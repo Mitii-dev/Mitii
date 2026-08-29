@@ -62,6 +62,9 @@ export const READ_ONLY_TOOL_IDS = [
   "search_files",
   "read_diagnostics",
   "read_git_status",
+  "goto_definition",
+  "find_references",
+  "analyze_change_impact",
   "run_readonly_command",
   "read_package_scripts",
 ] as const;
@@ -87,6 +90,14 @@ export const DECISION_REASON_CODES = [
   "simple_localized_no_visible_plan",
   "multi_file_internal_plan",
   "architecture_visible_plan",
+  /** Package/multi-file repair execute gets a visible plan + live checklist seed. */
+  "broad_repair_visible_plan",
+  /** Prompt/engine should prefer analyze_change_impact before shared-surface mutations. */
+  "change_impact_recommended",
+  /** Execute route should capture scoped build/typecheck evidence before planning. */
+  "preflight_build_recommended",
+  /** Understanding risk was low but shared-scope repair elevated effective grant risk. */
+  "shared_scope_risk_elevated",
   "explicit_plan_request",
   "plan_gate_none",
   "plan_gate_required",
@@ -98,12 +109,27 @@ export const DECISION_REASON_CODES = [
   "direct_knowledge_answer",
   "repository_grounded_answer",
   "mutation_execute",
+  /** Workspace-grounded bug report promoted to execute (may still be diagnose-first). */
+  "workspace_bug_execute",
+  /** Agent reported a runtime symptom (loading/hang) — diagnose with tools, not tool-less chat. */
+  "workspace_symptom_diagnose",
   "mutation_budget_relaxed",
   "mutation_budget_standard",
   "mutation_budget_tight",
   "process_execution_granted",
   "verification_required",
   "verification_not_required",
+  /** Agent/ask asked to run tests or inspect pass/fail — diagnose with process tools. */
+  "verification_run_requested",
+  "grant_narrowed",
+  /** Read/write scopes expanded after path_out_of_scope or compiler errors. */
+  "grant_expanded",
+  /** Grant expansion included network access (fetch_url/fetch_docs/web_search). */
+  "network_access_granted",
+  /** A host policy (planApproval: never) suppressed a plan gate risk analysis required. */
+  "plan_gate_suppressed_by_policy",
+  /** The window-derived mutation budget further tightened the profile-selected budget. */
+  "mutation_budget_window_clamped",
 ] as const;
 
 export const DECISION_POLICY_ERROR_CODES = [

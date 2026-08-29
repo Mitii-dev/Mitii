@@ -775,6 +775,9 @@ test(
         ],
         folderPrefix:
           "src",
+        filePaths: [
+          "tsconfig.json",
+        ],
         maximumResults:
           1,
       });
@@ -812,6 +815,12 @@ test(
         ?.lastSearchPredicate ??
         "",
       /active = true/,
+    );
+    assert.match(
+      table
+        ?.lastSearchPredicate ??
+        "",
+      /relative_path IN \('tsconfig\.json'\) OR relative_path = 'src' OR starts_with\(relative_path, 'src\/'\)/,
     );
   },
 );

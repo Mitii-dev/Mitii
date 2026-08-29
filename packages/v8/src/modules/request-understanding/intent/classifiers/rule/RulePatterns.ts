@@ -4,13 +4,13 @@ const INTENT_PATTERNS: IntentRule[] = [
   {
     intent: "bugfix",
     pattern:
-      /\b(?:fix|resolve|repair|patch|correct)\b.*\b(?:bug|issue|error|defect|crash|exception|failing tests?|regression|broken behavior)\b/i,
+      /\b(?:fix|resolve|repair|patch|correct)\b.*\b(?:bugs?|issues?|errors?|erros|defect|crash|exception|failing tests?|regression|broken behavior|ts(?:cript)?\s+err(?:ors?|os)|diagnostics?)\b|\b(?:SyntaxError|TypeError|ReferenceError|RangeError|NameError|AttributeError|ImportError|ModuleNotFoundError|[A-Z][A-Za-z0-9]*(?:Error|Exception))\b|\b(?:has already been declared|is not defined|cannot read propert(?:y|ies) of undefined|undefined reference|unresolved import|traceback|panic:)\b/i,
     confidence: 0.88,
   },
   {
     intent: "feature",
     pattern:
-      /\b(?:implement|add|build|create)\b.*\b(?:new feature|endpoint|capability|integration|functionality)\b/i,
+      /\b(?:implement|add|build|create|design|develop|write)\b.*\b(?:api|endpoint|route|controller|service|new feature|capability|integration|functionality)\b|\bi\s+need\s+(?:an?\s+|the\s+)?(?:api|endpoint|route)\b/i,
     confidence: 0.86,
   },
   {
@@ -28,13 +28,13 @@ const INTENT_PATTERNS: IntentRule[] = [
   {
     intent: "diagnose",
     pattern:
-      /\b(?:diagnose|investigate|troubleshoot)\b|\bfind\s+(?:the\s+)?root\s+cause\b|\bwhy\s+(?:is|does|did|has|was)\b/i,
+      /\b(?:diagnose|investigate|troubleshoot)\b|\bfind\s+(?:the\s+)?root\s+cause\b|\bwhy\s+(?:is|does|did|has|was)\b|\b(?:no preview|preview (?:is )?(?:not|never)|doesn'?t load|blank (?:page|preview)|runtime error|stack trace)\b/i,
     confidence: 0.84,
   },
   {
     intent: "test",
     pattern:
-      /\b(?:write|add|create|generate|run|improve)\b.*\b(?:tests?|unit tests?|integration tests?|e2e tests?|test coverage|test suite)\b/i,
+      /\b(?:write|add|create|generate|run|execute|improve)\b.*\b(?:tests?|testes|unit tests?|integration tests?|e2e tests?|test coverage|test suite)\b|\b(?:which|what)\s+tests?\s+(?:are\s+)?(?:failing|passing|failed|passed)\b|\bcan you test\b/i,
     confidence: 0.86,
   },
   {
@@ -148,7 +148,7 @@ const QUESTION_PATTERN =
  * Explicit modification language.
  */
 const ACT_PATTERN =
-  /\b(?:fix|resolve|repair|patch|correct|implement|add|build|create|update|modify|remove|delete|refactor|restructure|optimize|migrate|convert|rewrite|configure|install|upgrade|format|generate|scaffold|bootstrap|apply)\b/i;
+  /\b(?:fix|resolve|repair|patch|correct|implement|add|build|create|design|develop|write|update|modify|remove|delete|refactor|restructure|optimize|migrate|convert|rewrite|configure|install|upgrade|format|generate|scaffold|bootstrap|apply)\b|\bi\s+need\s+(?:an?\s+|the\s+)?(?:api|endpoint|route)\b/i;
 
 /**
  * Read-only investigation language.

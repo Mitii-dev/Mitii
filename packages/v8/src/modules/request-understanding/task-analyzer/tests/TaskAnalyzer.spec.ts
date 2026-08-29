@@ -122,6 +122,38 @@ test("task analyzer extension catalog covers repository-state top languages", ()
   }
 });
 
+test("task analyzer extracts @packages mentions and error symbols", () => {
+  const analyzer = new TaskAnalyzer();
+  const result = analyzer.analyze(
+    createInput(
+      [
+        "SyntaxError: Identifier 'InputTypes' has already been declared",
+        "check in @packages and fix it",
+      ].join("\n"),
+      { primaryTaskIntent: "bugfix" },
+    ),
+  );
+
+  assert.ok(
+    result.targets.some(
+      (target) =>
+        target.kind === "folder" &&
+        target.value === "packages" &&
+        target.explicit,
+    ),
+    "Expected explicit @packages folder target",
+  );
+  assert.ok(
+    result.targets.some(
+      (target) =>
+        target.kind === "symbol" &&
+        target.value === "InputTypes" &&
+        target.explicit,
+    ),
+    "Expected InputTypes symbol target from SyntaxError text",
+  );
+});
+
 test("task analyzer flags destructive act requests as critical risk", () => {
   const analyzer = new TaskAnalyzer();
   const result = analyzer.analyze(

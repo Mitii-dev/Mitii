@@ -1,10 +1,9 @@
 import {
-  EchoLlmPort,
   InMemoryRepositoryStateStore,
   NodeNetworkAdapter,
+  NodeGitAdapter,
   NodeProcessAdapter,
   NodeWorkspaceFileSystemAdapter,
-  OpenAiCompatibleLlmPort,
   RepositoryStatePipeline,
   ToolRuntimePipeline,
   VerificationPipeline,
@@ -13,12 +12,22 @@ import {
   type CreateMitiiClientOptions,
   type MitiiClient,
 } from '@mitii/sdk';
+import { MemoryPipeline } from '@mitii/v8';
 import {
   createFileSystemSkillsCatalog,
+  createHostCodeNavigationPort,
+  createHostLlmPorts,
+  createHostRepositoryGraphPort,
   createOptionalSearchPort,
   createWorkspaceCheckpointStore,
+  createWorkspaceVerificationStore,
   createWorkspaceMemoryStore,
   getProviderPreset,
+  inferHostProviderType,
+  isHostProviderType,
+  resolveMemoryEmbeddingPort,
+  resolveProviderApiKey,
+  type MemoryCaptureContext,
 } from '@mitii/host';
 import type { LlmPort, ModelCapabilities, ModelEvent, ModelRequest } from '@mitii/v8';
 
@@ -83,57 +92,54 @@ export function resolveCliPorts(
   const env = options.env ?? process.env;
   const config =
     options.config ?? loadMitiiHostConfig(options.cwd ?? process.cwd());
-  const apiKey = env.MITII_API_KEY ?? env.OPENAI_API_KEY;
+  const workspaceId = config.workspaceId ?? 'cli_workspace';
+  const defaultMode = config.defaultMode ?? 'ask';
   const forceEcho =
     options.forceEcho === true ||
     env.MITII_FORCE_ECHO === '1' ||
     config.provider === 'echo';
-  const workspaceId = config.workspaceId ?? 'cli_workspace';
-  const defaultMode = config.defaultMode ?? 'ask';
 
-  if (!forceEcho && (apiKey || config.provider === 'openai-compatible')) {
-    if (!apiKey) {
-      return {
-        understandingLlm: new LocalUnderstandingLlmPort(),
-        runLlm: new EchoLlmPort(),
-        providerLabel: 'echo (missing API key)',
-        workspaceId,
-        defaultMode,
-      };
-    }
-    const model = env.MITII_MODEL ?? config.model ?? 'gpt-4o-mini';
-    const baseUrl = env.MITII_BASE_URL ?? config.baseUrl;
-    const preset = getProviderPreset(config.providerPreset ?? 'openai-compatible');
-    const authHeader = preset?.authHeader;
-    const chatCompletionsPath = preset?.chatCompletionsPath;
-    const runLlm = new OpenAiCompatibleLlmPort({
-      model,
-      apiKey,
-      ...(baseUrl ? { baseUrl } : {}),
-      ...(authHeader ? { authHeader } : {}),
-      ...(chatCompletionsPath ? { chatCompletionsPath } : {}),
-    });
-    const understandingLlm = new OpenAiCompatibleLlmPort({
-      model,
-      apiKey,
-      ...(baseUrl ? { baseUrl } : {}),
-      ...(authHeader ? { authHeader } : {}),
-      ...(chatCompletionsPath ? { chatCompletionsPath } : {}),
-      capabilities: { supportsStructuredOutput: true },
-    });
+  const type =
+    (env.MITII_PROVIDER && isHostProviderType(env.MITII_PROVIDER)
+      ? env.MITII_PROVIDER
+      : undefined) ??
+    config.provider ??
+    inferHostProviderType(env) ??
+    'echo';
+  const presetId =
+    env.MITII_PROVIDER_PRESET ??
+    config.providerPreset ??
+    type;
+  const preset = getProviderPreset(presetId);
+  const model =
+    env.MITII_MODEL ??
+    config.model ??
+    preset?.model ??
+    'gpt-4o-mini';
+  const baseUrl = env.MITII_BASE_URL ?? config.baseUrl ?? preset?.baseUrl;
+  const apiKey = resolveProviderApiKey({ type, env });
+
+  if (forceEcho || type === 'echo') {
     return {
-      understandingLlm,
-      runLlm,
-      providerLabel: `openai-compatible:${model}`,
+      understandingLlm: new LocalUnderstandingLlmPort(),
+      runLlm: createHostLlmPorts({ type: 'echo', model: 'echo' }).runLlm,
+      providerLabel: 'echo',
       workspaceId,
       defaultMode,
     };
   }
 
+  const ports = createHostLlmPorts({
+    type,
+    preset: presetId,
+    model,
+    ...(baseUrl ? { baseUrl } : {}),
+    ...(apiKey ? { apiKey } : {}),
+  });
   return {
-    understandingLlm: new LocalUnderstandingLlmPort(),
-    runLlm: new EchoLlmPort(),
-    providerLabel: 'echo',
+    understandingLlm: ports.understandingLlm,
+    runLlm: ports.runLlm,
+    providerLabel: ports.providerLabel,
     workspaceId,
     defaultMode,
   };
@@ -144,7 +150,11 @@ export function createCliClient(options: {
   forceEcho?: boolean;
   env?: NodeJS.ProcessEnv;
   clientOverrides?: Partial<CreateMitiiClientOptions>;
-}): { client: MitiiClient; ports: ResolvedCliPorts } {
+}): {
+  client: MitiiClient;
+  ports: ResolvedCliPorts;
+  memoryCapture?: MemoryCaptureContext;
+} {
   const ports = resolveCliPorts({
     forceEcho: options.forceEcho,
     env: options.env,
@@ -153,10 +163,19 @@ export function createCliClient(options: {
   const env = options.env ?? process.env;
   const fileSystem = new NodeWorkspaceFileSystemAdapter();
   const search = createOptionalSearchPort(env);
+  const git = new NodeGitAdapter();
+  const repoGraphs = createHostRepositoryGraphPort({
+    workspaceRoot: options.cwd,
+  });
   const tools = new ToolRuntimePipeline({
     fileSystem,
     process: new NodeProcessAdapter(),
     network: new NodeNetworkAdapter(),
+    git,
+    codeNavigation: createHostCodeNavigationPort({
+      workspaceRoot: options.cwd,
+    }),
+    repoGraphs,
     ...(search ? { search } : {}),
   });
   const verification = new VerificationPipeline({
@@ -165,6 +184,7 @@ export function createCliClient(options: {
       fileSystem,
       workspaceRoot: options.cwd,
     }),
+    records: createWorkspaceVerificationStore(options.cwd),
   });
   const repositoryState = new RepositoryStatePipeline({
     store: new InMemoryRepositoryStateStore(),
@@ -172,10 +192,18 @@ export function createCliClient(options: {
   const config = loadMitiiHostConfig(options.cwd);
   const workspaceSkillsEnabled = env.MITII_DISABLE_WORKSPACE_SKILLS !== '1';
   const memoryDisabled = env.MITII_DISABLE_MEMORY === '1';
+  const semanticIndex = resolveCliSemanticIndexSettings({ env, config });
+  const memoryEmbedding = memoryDisabled
+    ? undefined
+    : resolveMemoryEmbeddingPort(semanticIndex);
+  const memoryStore = memoryDisabled
+    ? undefined
+    : createWorkspaceMemoryStore(options.cwd, ports.workspaceId);
   const repositoryContext = createHostRepositoryContext({
     repositoryState,
     workspaceRoot: options.cwd,
-    semanticIndex: resolveCliSemanticIndexSettings({ env, config }),
+    semanticIndex,
+    git,
   });
   const client = createMitiiClient({
     understandingLlm: ports.understandingLlm,
@@ -189,15 +217,31 @@ export function createCliClient(options: {
     enableInMemoryCheckpoints: false,
     checkpointStore: createWorkspaceCheckpointStore(options.cwd),
     tools,
+    repoGraphs,
     verification,
+    taskListAutoAdvance: env.MITII_TASK_LIST_AUTO_ADVANCE !== '0',
     skillsCatalog: createFileSystemSkillsCatalog({
       workspaceRoot: workspaceSkillsEnabled ? options.cwd : undefined,
       contentMode: 'metadata',
     }),
-    memoryStore: memoryDisabled
-      ? undefined
-      : createWorkspaceMemoryStore(options.cwd, ports.workspaceId),
+    memoryStore,
+    memoryEmbedding,
     ...options.clientOverrides,
   });
-  return { client, ports };
+  return {
+    client,
+    ports,
+    ...(memoryStore
+      ? {
+          memoryCapture: {
+            workspaceRoot: options.cwd,
+            workspaceId: ports.workspaceId,
+            pipeline: new MemoryPipeline({
+              store: memoryStore,
+              embedding: memoryEmbedding,
+            }),
+          },
+        }
+      : {}),
+  };
 }

@@ -70,10 +70,9 @@ describe("serializeTools MCP parity", () => {
       estimator,
       budgetTokens: 10_000,
     });
-    expect(result.tools?.map((t) => t.name)).toEqual([
-      "read_file",
-      "mcp__memory__store",
-    ]);
+    expect(result.tools?.map((t) => t.name).sort()).toEqual(
+      ["mcp__memory__store", "read_file"].sort(),
+    );
   });
 
   it("strips mcp__* tools on read grants", () => {
@@ -90,5 +89,64 @@ describe("serializeTools MCP parity", () => {
       budgetTokens: 10_000,
     });
     expect(result.tools?.map((t) => t.name)).toEqual(["read_file"]);
+  });
+
+  it("keeps apply_patch under a tight tools budget by dropping lower-priority tools", () => {
+    const fatCatalog: ModelToolDefinition[] = [
+      {
+        name: "apply_patch",
+        description: "patch",
+        inputSchema: {
+          type: "object",
+          properties: { patches: { type: "array" } },
+        },
+      },
+      {
+        name: "goto_definition",
+        description: "nav",
+        inputSchema: {
+          type: "object",
+          properties: { symbol: { type: "string" } },
+        },
+      },
+      {
+        name: "find_references",
+        description: "refs",
+        inputSchema: {
+          type: "object",
+          properties: { symbol: { type: "string" } },
+        },
+      },
+      {
+        name: "read_file",
+        description: "read",
+        inputSchema: {
+          type: "object",
+          properties: { path: { type: "string" } },
+        },
+      },
+    ];
+    const applyTokens = estimator.estimate(
+      `apply_patch\npatch\n${JSON.stringify(fatCatalog[0]!.inputSchema)}`,
+    );
+    const result = serializeTools({
+      decision: decision({
+        allowedTools: [
+          "apply_patch",
+          "read_file",
+          "goto_definition",
+          "find_references",
+        ],
+      }),
+      tools: fatCatalog,
+      capabilities,
+      estimator,
+      budgetTokens: applyTokens + 20,
+    });
+    const names = result.tools?.map((tool) => tool.name) ?? [];
+    expect(names).toContain("apply_patch");
+    expect(result.omissions.some((item) => item.detail === "budget")).toBe(
+      true,
+    );
   });
 });

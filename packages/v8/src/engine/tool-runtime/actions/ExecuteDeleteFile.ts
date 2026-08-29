@@ -4,6 +4,8 @@ import type { MutationTransactionRegistry } from "../internal/mutation";
 import { MutationError } from "../internal/mutation";
 import { PathContainmentError } from "../internal/PathContainment";
 import { deleteFileInputSchema } from "../internal/ToolCatalog";
+import { describeCaughtError } from "../internal/describeCaughtError";
+import { resolveMutationPathScopes } from "./ResolveMutationPathScopes";
 
 export async function executeDeleteFile(params: {
   arguments: unknown;
@@ -27,7 +29,7 @@ export async function executeDeleteFile(params: {
   try {
     const result = await params.transactions.deleteFile({
       workspaceRoot: params.workspaceRoot,
-      pathScopes: params.grant.pathScopes,
+      pathScopes: resolveMutationPathScopes(params.grant),
       fileSystem: params.fileSystem,
       path: parsed.path,
       dirtyPaths: params.dirtyPaths,
@@ -51,7 +53,7 @@ export async function executeDeleteFile(params: {
     }
     throw new MutationError(
       "execution_failed",
-      `delete_file failed: ${String(error)}`,
+      `delete_file failed: ${describeCaughtError(error)}`,
     );
   }
 }

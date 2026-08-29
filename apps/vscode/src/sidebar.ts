@@ -7,12 +7,19 @@ import {
   type MitiiClient,
   type MitiiResumeInput,
 } from '@mitii/sdk';
-import { loadDiskSkills } from '@mitii/host';
+import {
+  getProviderPreset,
+  listProviderModels,
+  loadDiskSkills,
+  PROVIDER_PRESETS,
+  resolveProviderApiKey,
+} from '@mitii/host';
 import type { SkillDescriptor } from '@mitii/v8';
 
 import {
   appendTurn,
   clearHistory,
+  clearPendingPlan,
   deleteThread,
   loadCheckpoints,
   loadHistory,
@@ -36,7 +43,11 @@ import {
   undoRunFileChanges,
   type FileChangeRunSnapshot,
 } from './fileChanges.js';
-import { runAskInOutputChannel, runEventToActivity } from './hostAsk.js';
+import {
+  resolveApprovalPolicy,
+  runAskInOutputChannel,
+  runEventToActivity,
+} from './hostAsk.js';
 import { buildContextUsageBreakdown } from './contextUsage.js';
 import { getSharedMcpManager } from './mcp/manager.js';
 import {
@@ -47,8 +58,20 @@ import {
 import { scaffoldMitiiWorkspace } from './mitiiWorkspace.js';
 import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
 import { resolveVsCodeSemanticIndexSettings } from './semanticIndex.js';
-import { findLocalModelPreset, LOCAL_MODEL_PRESETS } from './modelPresets.js';
+import { findLocalModelPreset } from './modelPresets.js';
+import { readModelIoLoggingEnabled } from './modelIoSettings.js';
+import {
+  normalizeTokenLimit,
+  readStoredContextWindow,
+} from './settingsFields.js';
 import { searchWorkspacePaths } from './pathSearch.js';
+import {
+  hashSecret,
+  profileFromProvider,
+  readProfiles,
+  upsertProfile,
+  writeProfiles,
+} from './profiles.js';
 import type {
   HostToWebviewMessage,
   IndexStatusSnapshot,
@@ -56,6 +79,8 @@ import type {
   PlanView,
   ProviderSettingsSnapshot,
   RunBudgetSettingsSnapshot,
+  SettingsProfileView,
+  SuspensionPayload,
   RunUsagePayload,
   TokenUsageSnapshot,
   UiSettingsSnapshot,
@@ -64,6 +89,7 @@ import type {
   WorkspaceSnapshotInfo,
 } from './protocol.js';
 import { planViewFromArtifact } from './planView.js';
+import { saveTaskListToWorkspace } from './taskStore.js';
 import {
   buildConversationCarry,
   compactActivityForHistory,
@@ -71,6 +97,7 @@ import {
   enrichAssistantCarryText,
   resolveDisplayedAssistantText,
   resolvePlanHandoff,
+  resolvePlanStrategyHandoff,
 } from './conversationCarry.js';
 import {
   resolveContextToggles,
@@ -82,12 +109,28 @@ import { testProviderConnection } from './testConnection.js';
 import { getWorkspaceTrustSnapshot } from './workspace/trust.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
 import {
+  TOKEN_BUDGET_FIELDS,
+  readTokenBudgetSettings,
+  tokenBudgetResetKeys,
+} from './tokenBudgetSettings.js';
+import {
+  LOOP_POLICY_FIELDS,
+  loopPolicyResetKeys,
+  readLoopPolicySettings,
+} from './loopPolicySettings.js';
+import { normalizeIntensitySettings } from './thoroughness.js';
+import {
   clearMemoriesForWorkspace,
   commitMemoryForWorkspace,
   deleteMemoryForWorkspace,
   estimateMemoryPromptBlock,
   loadMemoriesForView,
 } from './memoryStore.js';
+
+/** Companion markdown path for a saved plan JSON relative path. */
+function savedPlanMarkdownRelative(jsonRelativePath: string): string {
+  return jsonRelativePath.replace(/\.json$/i, '.md');
+}
 
 const DEFAULT_CONTEXT_WINDOW = 32768;
 const DEFAULT_RUN_BUDGET: RunBudgetSettingsSnapshot = {
@@ -173,6 +216,25 @@ function emptyTokenUsage(contextWindow = DEFAULT_CONTEXT_WINDOW): TokenUsageSnap
     estimated: true,
     turns: [],
     live: false,
+  };
+}
+
+function withResolvedUsageWindow(
+  usage: TokenUsageSnapshot,
+  contextWindow: number,
+): TokenUsageSnapshot {
+  const window = Math.max(1, contextWindow);
+  const contextBreakdown = usage.contextBreakdown
+    ? {
+        ...usage.contextBreakdown,
+        contextWindow: window,
+        fillRatio: Math.min(1, usage.contextBreakdown.totalTokens / window),
+      }
+    : undefined;
+  return {
+    ...usage,
+    contextWindow: window,
+    ...(contextBreakdown ? { contextBreakdown } : {}),
   };
 }
 
@@ -275,6 +337,13 @@ function needsFullIndexRefresh(index: IndexStatusSnapshot): boolean {
   return false;
 }
 
+const EMBEDDING_SOURCES = [
+  'bundled',
+  'ollama',
+  'openai-compatible',
+  'disabled',
+] as const;
+
 export interface SidebarHostOptions {
   extensionMode: vscode.ExtensionMode;
   workspaceState: vscode.Memento;
@@ -297,6 +366,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
   private pendingResume?: {
     resolve: (value: MitiiResumeInput | 'stop') => void;
   };
+  private pendingSuspension?: SuspensionPayload;
   private lastIndex: IndexStatusSnapshot = {
     fileCount: 0,
     truncated: false,
@@ -313,6 +383,10 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
   private runBaseTurns: TokenUsageSnapshot['turns'] = [];
   private runBaseInputTokens = 0;
   private runBaseOutputTokens = 0;
+  private runBaseModelCalls = 0;
+  private runBaseToolCalls = 0;
+  private runBaseLoopIterations = 0;
+  private runBaseTurnCount = 0;
   private hostHelpers?: SidebarHostHelpers;
   private lastAssistantText = '';
   private liveStreamText = '';
@@ -351,6 +425,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     const runId = this.lastSuspensionRunId;
     const { resolve } = this.pendingResume;
     this.pendingResume = undefined;
+    this.pendingSuspension = undefined;
     this.lastSuspensionRunId = undefined;
     this.post({ type: 'run.resumed', runId });
     resolve({
@@ -361,7 +436,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
   }
 
   async readIndexStatusPublic(): Promise<IndexStatusSnapshot> {
-    return this.readIndexStatus();
+    return this.withEmbedding(await this.readIndexStatus());
   }
 
   /**
@@ -422,12 +497,18 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       case 'ready': {
         // Post a quick bootstrap first, then continue index work in the background.
         await this.sendBootstrap();
+        void this.refreshDiscoveredModels({ notify: true });
         this.startBackgroundIndex('initial load');
         return;
       }
       case 'ask':
         await this.handleAsk(message);
         return;
+      case 'clearPendingPlan': {
+        await clearPendingPlan(this.host.workspaceState, this.activeThreadId);
+        this.post({ type: 'setPlan', plan: null });
+        return;
+      }
       case 'cancel':
         this.runCancel?.cancel();
         return;
@@ -438,6 +519,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       case 'setTab':
         return;
       case 'newChat': {
+        this.runCancel?.cancel();
         this.activeThreadId = newThreadId();
         const store = loadHistory(this.host.workspaceState);
         store.activeThreadId = this.activeThreadId;
@@ -458,7 +540,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           type: 'thread.loaded',
           threadId: this.activeThreadId,
           messages: [],
+          pendingPlan: null,
         });
+        this.post({ type: 'setPlan', plan: null });
         this.post({ type: 'tokenUsage', usage: this.tokenUsage });
         return;
       }
@@ -466,18 +550,23 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         const store = loadHistory(this.host.workspaceState);
         const thread = store.threads.find((t) => t.id === message.id);
         if (!thread) return;
+        this.runCancel?.cancel();
         this.activeThreadId = thread.id;
         store.activeThreadId = thread.id;
         await saveHistory(this.host.workspaceState, store);
         this.setActiveThreadUsage(
           this.tokenUsageByThread.get(thread.id) ??
+            thread.tokenUsage ??
             emptyTokenUsage(resolveContextWindow(this.vs)),
         );
+        const pendingPlan = planViewFromArtifact(thread.pendingPlan);
         this.post({
           type: 'thread.loaded',
           threadId: thread.id,
           messages: thread.messages,
+          pendingPlan: pendingPlan,
         });
+        this.post({ type: 'setPlan', plan: pendingPlan });
         this.post({
           type: 'history',
           threads: toThreadSummaries(store),
@@ -493,6 +582,8 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         if (this.activeThreadId) {
           this.setActiveThreadUsage(
             this.tokenUsageByThread.get(this.activeThreadId) ??
+              store.threads.find((t) => t.id === this.activeThreadId)
+                ?.tokenUsage ??
               emptyTokenUsage(resolveContextWindow(this.vs)),
           );
         } else {
@@ -714,6 +805,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       case 'settings.set':
         await this.handleSettingsSet(message);
         return;
+      case 'profile.switch':
+        await this.handleProfileSwitch(message.id);
+        return;
       case 'settings.setApiKey':
         await this.vs.commands.executeCommand('mitii.setApiKey');
         await this.sendBootstrap();
@@ -722,15 +816,31 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         await this.vs.commands.executeCommand('mitii.clearApiKey');
         await this.sendBootstrap();
         return;
+      case 'settings.resetTokenBudget':
+        await this.resetTokenBudgetToDefaults();
+        return;
+      case 'settings.resetLoopPolicy':
+        await this.resetLoopPolicyToDefaults();
+        return;
       case 'provider.testConnection':
         await this.handleTestConnection(message);
         return;
+      case 'provider.listModels':
+        await this.refreshDiscoveredModels({
+          notify: true,
+          type: message.provider.type,
+          baseUrl: message.provider.baseUrl,
+        });
+        return;
       case 'index.refresh':
-        this.post({ type: 'index.status', index: await this.readIndexStatus() });
+        this.post({
+          type: 'index.status',
+          index: await this.withEmbedding(await this.readIndexStatus()),
+        });
         return;
       case 'index.reindex': {
         this.postIndexingStatus('Indexing workspace…');
-        const index = await this.onIndexWorkspace();
+        const index = await this.withEmbedding(await this.onIndexWorkspace());
         this.lastIndex = index;
         this.post({ type: 'index.status', index });
         return;
@@ -904,6 +1014,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     if (!this.pendingResume) return;
     const { resolve } = this.pendingResume;
     this.pendingResume = undefined;
+    this.pendingSuspension = undefined;
     if (message.clarificationAnswer?.trim()) {
       this.post({ type: 'run.resumed', runId: message.runId });
       this.lastSuspensionRunId = undefined;
@@ -937,6 +1048,38 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       return;
     }
     resolve('stop');
+  }
+
+  private autoApprovePendingToolApprovalIfAllowed(
+    approvalMode: string | undefined,
+  ): void {
+    const pending = this.pendingSuspension;
+    if (
+      !this.pendingResume ||
+      !pending ||
+      pending.kind !== 'approval_required' ||
+      !pending.approval?.approvalId ||
+      resolveApprovalPolicy(approvalMode).approvalMode !== 'never'
+    ) {
+      return;
+    }
+
+    const { resolve } = this.pendingResume;
+    this.pendingResume = undefined;
+    this.pendingSuspension = undefined;
+    this.lastSuspensionRunId = undefined;
+    this.host.inlineDiff.setPending(undefined);
+    this.host.onInlineDiffPending(false);
+    this.post({ type: 'run.resumed', runId: pending.runId });
+    resolve({
+      schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+      runId: pending.runId,
+      approvalMode: 'never',
+      approval: {
+        approvalId: pending.approval.approvalId,
+        decision: 'approved',
+      },
+    });
   }
 
   private mcpRuntimeStatus(): McpRuntimeStatus {
@@ -974,6 +1117,11 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     const conversationText = conversation
       .map((m) => `${m.role}: ${m.content}`)
       .join('\n');
+    // Cancel any still-running prior run before disposing its token source —
+    // otherwise the old run keeps executing in the background, orphaned and
+    // undetectable, concurrently with the new one (they'd race on the same
+    // workspace files and interleave in the same session log).
+    this.runCancel?.cancel();
     this.runCancel?.dispose();
     this.runCancel = new this.vs.CancellationTokenSource();
     const mode = message.mode === 'review' ? 'ask' : (message.mode ?? 'ask');
@@ -996,6 +1144,10 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     this.runBaseTurns = [...(this.tokenUsage.turns ?? [])];
     this.runBaseInputTokens = this.tokenUsage.inputTokensTotal;
     this.runBaseOutputTokens = this.tokenUsage.outputTokensTotal;
+    this.runBaseModelCalls = this.tokenUsage.modelCalls;
+    this.runBaseToolCalls = this.tokenUsage.toolCalls;
+    this.runBaseLoopIterations = this.tokenUsage.loopIterations;
+    this.runBaseTurnCount = this.tokenUsage.turnCount;
     const contextWindow = resolveContextWindow(this.vs);
     const toggles = readContextToggles(this.vs);
     const memoryBlock = toggles.memory
@@ -1015,6 +1167,13 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       type: 'tokenUsage',
       usage: {
         ...this.tokenUsage,
+        inputTokensTotal:
+          this.runBaseInputTokens + provisionalContextBreakdown.totalTokens,
+        outputTokensTotal: this.runBaseOutputTokens,
+        sessionTotal:
+          this.runBaseInputTokens +
+          this.runBaseOutputTokens +
+          provisionalContextBreakdown.totalTokens,
         currentTurnTotal: provisionalContextBreakdown.totalTokens,
         currentTurnInputTokens: provisionalContextBreakdown.totalTokens,
         currentTurnOutputTokens: 0,
@@ -1041,6 +1200,12 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         mode: engineMode,
         pendingPlan: activeThread?.pendingPlan,
       });
+      const approvedPlanStrategy = resolvePlanStrategyHandoff({
+        mode: engineMode,
+        pendingPlanStrategy: activeThread?.pendingPlanStrategy,
+      });
+      const carriedTaskList =
+        engineMode === 'agent' ? activeThread?.pendingTaskList : undefined;
 
       const outcome = await runAskInOutputChannel({
         vs: this.vs,
@@ -1050,6 +1215,8 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         channel: this.channel,
         mode: engineMode,
         depth: message.depth,
+        effort: message.effort,
+        approvalMode: message.approvalMode,
         pinnedPaths: message.pinnedPaths,
         workspaceId: this.getWorkspaceId(),
         workspaceState: this.host.workspaceState,
@@ -1058,6 +1225,8 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         conversationText,
         conversation,
         approvedPlan,
+        approvedPlanStrategy,
+        taskList: carriedTaskList,
         handlers: {
           cancelToken: this.runCancel.token,
           onContextBreakdown: (breakdown) => {
@@ -1071,6 +1240,29 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           },
           onEvent: (event, activity) => {
             this.post({ type: 'run.event', event: activity });
+            if (event?.type === 'plan_ready' && event.plan) {
+              const livePlan = planViewFromArtifact(event.plan);
+              if (livePlan) {
+                this.post({ type: 'setPlan', plan: livePlan });
+              }
+            }
+            if (event?.type === 'task_list_updated' && event.taskList) {
+              const root = this.effectiveRoot();
+              const isDiscoveryTask =
+                event.taskList.purpose === 'discovery' ||
+                event.taskList.source === 'discovery';
+              if (root && !isDiscoveryTask) {
+                try {
+                  saveTaskListToWorkspace({
+                    workspaceRoot: root,
+                    taskList: event.taskList,
+                    threadId: this.activeThreadId,
+                  });
+                } catch {
+                  // Best-effort file mirror for debug.
+                }
+              }
+            }
             const changeRoot = this.effectiveRoot();
             if (changeRoot && this.activeFileChangeSnapshot && event) {
               noteMutatedPathsFromEvent(
@@ -1088,7 +1280,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
             this.liveStreamText += text;
             this.post({ type: 'run.delta', text });
           },
-          onSuspended: async (_result, suspension) => {
+          onSuspended: async (result, suspension) => {
             if (
               suspension.kind === 'approval_required' &&
               suspension.approval?.paths?.length &&
@@ -1122,20 +1314,19 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
                 this.host.onInlineDiffPending(true);
               }
             }
-            if (
-              suspension.kind === 'plan_approval_required' &&
-              suspension.plan
-            ) {
-              this.post({ type: 'setPlan', plan: suspension.plan });
+            if (suspension.kind === 'plan_approval_required') {
+              const artifact = result.plan;
               const root = this.effectiveRoot();
-              if (root) {
+              let savedPlanPath: string | undefined;
+              if (root && artifact) {
                 try {
                   const saved = savePlanToWorkspace({
                     workspaceRoot: root,
-                    plan: suspension.plan,
+                    plan: artifact,
                     source: 'plan_approval',
                     threadId: this.activeThreadId,
                   });
+                  savedPlanPath = savedPlanMarkdownRelative(saved.relativePath);
                   this.channel.appendLine(`[plan] saved ${saved.relativePath}`);
                 } catch (error) {
                   this.channel.appendLine(
@@ -1143,8 +1334,17 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
                   );
                 }
               }
+              const planView =
+                planViewFromArtifact(artifact, { savedPlanPath }) ??
+                suspension.plan ??
+                null;
+              if (planView) {
+                suspension.plan = planView;
+                this.post({ type: 'setPlan', plan: planView });
+              }
             }
             this.lastSuspensionRunId = suspension.runId;
+            this.pendingSuspension = suspension;
             this.post({ type: 'run.suspended', suspension });
             return new Promise<MitiiResumeInput | 'stop'>((resolve) => {
               this.pendingResume = { resolve };
@@ -1179,13 +1379,65 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       this.lastAssistantText = assistantText;
       this.liveStreamText = '';
       const resultPlan = outcome.result.plan;
+      const usedPlanHandoff = Boolean(approvedPlan);
+      let savedPlanPath: string | undefined;
+      if (resultPlan) {
+        const root = this.effectiveRoot();
+        if (root) {
+          try {
+            const saved = savePlanToWorkspace({
+              workspaceRoot: root,
+              plan: resultPlan,
+              source:
+                message.mode === 'plan'
+                  ? 'plan_mode'
+                  : approvedPlan
+                    ? 'plan_approval'
+                    : 'agent',
+              threadId: this.activeThreadId,
+            });
+            savedPlanPath = savedPlanMarkdownRelative(saved.relativePath);
+            this.channel.appendLine(`[plan] saved ${saved.relativePath}`);
+          } catch (error) {
+            this.channel.appendLine(
+              `[plan] save failed: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
+        }
+      }
       const plan =
         message.mode === 'plan'
-          ? planViewFromArtifact(resultPlan) ??
+          ? planViewFromArtifact(resultPlan, { savedPlanPath }) ??
             this.planFromAnswer(message.mode, answer)
           : approvedPlan
-            ? planViewFromArtifact(approvedPlan)
-            : null;
+            ? planViewFromArtifact(approvedPlan, {
+                savedPlanPath,
+              })
+            : resultPlan
+              ? planViewFromArtifact(resultPlan, {
+                  savedPlanPath,
+                })
+              : null;
+      if (outcome.result.taskList) {
+        const root = this.effectiveRoot();
+        const isDiscoveryTask =
+          outcome.result.taskList.purpose === 'discovery' ||
+          outcome.result.taskList.source === 'discovery';
+        if (root && !isDiscoveryTask) {
+          try {
+            const saved = saveTaskListToWorkspace({
+              workspaceRoot: root,
+              taskList: outcome.result.taskList,
+              threadId: this.activeThreadId,
+            });
+            this.channel.appendLine(`[tasks] saved ${saved.relativePath}`);
+          } catch (error) {
+            this.channel.appendLine(
+              `[tasks] save failed: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
+        }
+      }
 
       const changeRoot = this.effectiveRoot();
       const runId = outcome.result.runId;
@@ -1209,6 +1461,13 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           .filter((event): event is NonNullable<typeof event> => Boolean(event)),
       );
 
+      const pendingPlanForUi =
+        message.mode === 'plan' && resultPlan && plan
+          ? plan
+          : usedPlanHandoff && outcome.result.status === 'completed'
+            ? null
+            : undefined;
+
       this.post({
         type: 'run.result',
         status: outcome.result.status,
@@ -1217,6 +1476,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         error: outcome.result.error?.message,
         usage,
         plan,
+        ...(pendingPlanForUi !== undefined
+          ? { pendingPlan: pendingPlanForUi }
+          : {}),
       });
 
       if (persistedFileChanges && runId && this.activeFileChangeSnapshot) {
@@ -1229,32 +1491,6 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       this.activeFileChangeSnapshot = undefined;
 
       this.post({ type: 'tokenUsage', usage: this.tokenUsage });
-      const usedPlanHandoff = Boolean(approvedPlan);
-      if (resultPlan) {
-        const root = this.effectiveRoot();
-        if (root) {
-          try {
-            const saved = savePlanToWorkspace({
-              workspaceRoot: root,
-              plan: resultPlan,
-              source:
-                message.mode === 'plan'
-                  ? 'plan_mode'
-                  : approvedPlan
-                    ? 'plan_approval'
-                    : 'agent',
-              threadId: this.activeThreadId,
-            });
-            this.channel.appendLine(
-              `[plan] saved ${saved.relativePath}`,
-            );
-          } catch (error) {
-            this.channel.appendLine(
-              `[plan] save failed: ${error instanceof Error ? error.message : String(error)}`,
-            );
-          }
-        }
-      }
       const store = await appendTurn(this.host.workspaceState, {
         threadId: this.activeThreadId,
         userText: prompt,
@@ -1267,11 +1503,16 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         status: outcome.result.status,
         route: outcome.result.route ?? null,
         ...(message.mode === 'plan' && resultPlan
-          ? { pendingPlan: resultPlan }
+          ? {
+              pendingPlan: resultPlan,
+              pendingPlanStrategy: outcome.result.planStrategy ?? null,
+            }
           : {}),
         ...(usedPlanHandoff && outcome.result.status === 'completed'
           ? { clearPendingPlan: true }
           : {}),
+        pendingTaskList: outcome.result.taskList ?? null,
+        tokenUsage: this.tokenUsage,
       });
       this.activeThreadId = store.activeThreadId;
       this.post({
@@ -1321,6 +1562,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         this.pendingResume.resolve('stop');
         this.pendingResume = undefined;
       }
+      this.pendingSuspension = undefined;
     }
   }
 
@@ -1399,9 +1641,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     }
     this.postIndexingStatus('Checking repository index…');
     void this.ensureIndexed()
-      .then((index) => {
-        this.lastIndex = index;
-        this.post({ type: 'index.status', index });
+      .then(async (index) => {
+        this.lastIndex = await this.withEmbedding(index);
+        this.post({ type: 'index.status', index: this.lastIndex });
         this.channel.appendLine(
           `[index] ${reason} ${index.message ?? 'ready'} files=${index.fileCount}`,
         );
@@ -1437,10 +1679,12 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       message: 'Testing…',
       testing: true,
     });
-    const apiKey =
-      (await this.secrets.get('mitii.provider.apiKey')) ??
-      process.env.MITII_API_KEY ??
-      process.env.OPENAI_API_KEY;
+    const apiKey = resolveProviderApiKey({
+      type: message.provider.type,
+      env: process.env,
+      secretKey:
+        (await this.secrets.get('mitii.provider.apiKey')) ?? undefined,
+    });
     const result = await testProviderConnection({
       type: message.provider.type,
       baseUrl: message.provider.baseUrl,
@@ -1451,14 +1695,19 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     this.connectionStatus = result.message;
     if (result.models?.length) {
       this.discoveredModels = result.models;
+    } else {
+      await this.refreshDiscoveredModels({ notify: false });
     }
     this.post({
       type: 'provider.connectionResult',
       ok: result.ok,
       message: result.message,
-      models: result.models,
+      models: this.discoveredModels,
       testing: false,
     });
+    if (this.discoveredModels.length > 0) {
+      this.post({ type: 'provider.models', models: this.discoveredModels });
+    }
     await this.sendBootstrap();
   }
 
@@ -1477,7 +1726,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     this.pendingRunTurns = [
       ...this.pendingRunTurns,
       {
-        turnIndex: event.turnIndex,
+        turnIndex: this.runBaseTurns.length + this.pendingRunTurns.length,
         at: event.at,
         inputTokens: input,
         outputTokens: output,
@@ -1558,19 +1807,14 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     }
 
     const turnTotal = input + output;
-    const preset = findLocalModelPreset(
-      this.vs.workspace.getConfiguration('mitii').get<string>('provider.model') ??
-        '',
-    );
-    const contextWindow =
-      preset?.contextWindow ?? resolveContextWindow(this.vs);
+    const contextWindow = resolveContextWindow(this.vs);
 
     const committedTurns =
       pending.length > 0
         ? pending
         : [
             {
-              turnIndex: this.tokenUsage.modelCalls,
+              turnIndex: this.runBaseTurns.length,
               at: new Date().toISOString(),
               inputTokens: input,
               outputTokens: output,
@@ -1582,7 +1826,17 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     const baseTurns = this.runBaseTurns;
     const baseInput = this.runBaseInputTokens;
     const baseOutput = this.runBaseOutputTokens;
+    const baseModelCalls = this.runBaseModelCalls;
+    const baseToolCalls = this.runBaseToolCalls;
+    const baseLoopIterations = this.runBaseLoopIterations;
+    const baseTurnCount = this.runBaseTurnCount;
     this.runBaseTurns = [];
+    this.runBaseInputTokens = 0;
+    this.runBaseOutputTokens = 0;
+    this.runBaseModelCalls = 0;
+    this.runBaseToolCalls = 0;
+    this.runBaseLoopIterations = 0;
+    this.runBaseTurnCount = 0;
 
     this.tokenUsage = {
       ...this.tokenUsage,
@@ -1592,14 +1846,13 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       currentTurnTotal: turnTotal,
       currentTurnInputTokens: input,
       currentTurnOutputTokens: output,
-      aiCallCount: this.tokenUsage.aiCallCount + result.usage.modelCalls,
-      modelCalls: this.tokenUsage.modelCalls + result.usage.modelCalls,
-      toolCalls: this.tokenUsage.toolCalls + result.usage.toolCalls,
-      loopIterations:
-        this.tokenUsage.loopIterations + result.usage.loopIterations,
+      aiCallCount: baseModelCalls + result.usage.modelCalls,
+      modelCalls: baseModelCalls + result.usage.modelCalls,
+      toolCalls: baseToolCalls + result.usage.toolCalls,
+      loopIterations: baseLoopIterations + result.usage.loopIterations,
       lastPromptTokens: input,
       lastResponseTokens: output,
-      turnCount: this.tokenUsage.turnCount + 1,
+      turnCount: baseTurnCount + 1,
       contextWindow,
       estimated,
       durationMs: result.durationMs,
@@ -1624,65 +1877,41 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
   ): Promise<void> {
     const cfg = this.vs.workspace.getConfiguration('mitii');
     if (message.provider) {
-      if (message.provider.type !== undefined) {
-        await cfg.update(
-          'provider.type',
-          message.provider.type,
-          this.vs.ConfigurationTarget.Workspace,
-        );
-      }
-      if (message.provider.preset !== undefined) {
-        await cfg.update(
-          'provider.preset',
-          message.provider.preset,
-          this.vs.ConfigurationTarget.Workspace,
-        );
-      }
-      if (message.provider.baseUrl !== undefined) {
-        await cfg.update(
-          'provider.baseUrl',
-          message.provider.baseUrl,
-          this.vs.ConfigurationTarget.Workspace,
-        );
-      }
-      if (message.provider.model !== undefined) {
-        await cfg.update(
-          'provider.model',
-          message.provider.model,
-          this.vs.ConfigurationTarget.Workspace,
-        );
-      }
-      if (message.provider.contextWindow !== undefined) {
-        const window = Math.max(
-          1024,
-          Math.floor(Number(message.provider.contextWindow) || 0),
-        );
-        await cfg.update(
-          'provider.contextWindow',
-          window,
-          this.vs.ConfigurationTarget.Workspace,
-        );
-      }
-      if (message.provider.maximumOutputTokens !== undefined) {
-        const maxOut = Math.max(
-          256,
-          Math.floor(Number(message.provider.maximumOutputTokens) || 0),
-        );
-        await cfg.update(
-          'provider.maximumOutputTokens',
-          maxOut,
-          this.vs.ConfigurationTarget.Workspace,
-        );
-      }
-      this.connectionOk = undefined;
-      this.connectionStatus = undefined;
-      this.invalidateClient();
+      await this.writeProviderSettings(message.provider);
     }
     if (message.ui) {
       if (message.ui.showReasoning !== undefined) {
         await cfg.update(
           'ui.showReasoning',
           message.ui.showReasoning,
+          this.vs.ConfigurationTarget.Global,
+        );
+      }
+      if (message.ui.developerEnabled !== undefined) {
+        await cfg.update(
+          'developer.enabled',
+          message.ui.developerEnabled,
+          this.vs.ConfigurationTarget.Global,
+        );
+      }
+      if (message.ui.intensityOverrides !== undefined) {
+        await cfg.update(
+          'developer.intensityOverrides',
+          message.ui.intensityOverrides,
+          this.vs.ConfigurationTarget.Global,
+        );
+      }
+      if (message.ui.debugLogging !== undefined) {
+        await cfg.update(
+          'debug',
+          message.ui.debugLogging,
+          this.vs.ConfigurationTarget.Global,
+        );
+      }
+      if (message.ui.modelIoLogging !== undefined) {
+        await cfg.update(
+          'developer.modelIo',
+          message.ui.modelIoLogging,
           this.vs.ConfigurationTarget.Global,
         );
       }
@@ -1699,6 +1928,47 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           message.ui.depth,
           this.vs.ConfigurationTarget.Global,
         );
+      }
+      if (message.ui.effort !== undefined) {
+        await cfg.update(
+          'ui.effort',
+          message.ui.effort,
+          this.vs.ConfigurationTarget.Global,
+        );
+      }
+      if (message.ui.modeDefaults) {
+        for (const mode of ['ask', 'plan', 'agent'] as const) {
+          const defaults = message.ui.modeDefaults[mode];
+          if (!defaults) continue;
+          if (defaults.thoroughness !== undefined) {
+            await cfg.update(
+              `ui.modeDefaults.${mode}.thoroughness`,
+              defaults.thoroughness,
+              this.vs.ConfigurationTarget.Workspace,
+            );
+          }
+          if (defaults.depth !== undefined) {
+            await cfg.update(
+              `ui.modeDefaults.${mode}.depth`,
+              defaults.depth,
+              this.vs.ConfigurationTarget.Workspace,
+            );
+          }
+          if (defaults.approvalMode !== undefined) {
+            await cfg.update(
+              `ui.modeDefaults.${mode}.approvalMode`,
+              defaults.approvalMode,
+              this.vs.ConfigurationTarget.Workspace,
+            );
+          }
+          if (defaults.model !== undefined) {
+            await cfg.update(
+              `ui.modeDefaults.${mode}.model`,
+              defaults.model.trim(),
+              this.vs.ConfigurationTarget.Workspace,
+            );
+          }
+        }
       }
       if (message.ui.runBudget) {
         if (message.ui.runBudget.unlimited !== undefined) {
@@ -1734,6 +2004,58 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           1,
         );
       }
+      if (message.ui.tokenBudget) {
+        if (message.ui.tokenBudget.enabled !== undefined) {
+          await cfg.update(
+            'tokenBudget.enabled',
+            message.ui.tokenBudget.enabled,
+            this.vs.ConfigurationTarget.Workspace,
+          );
+        }
+        if (message.ui.tokenBudget.policy) {
+          for (const field of TOKEN_BUDGET_FIELDS) {
+            const value = message.ui.tokenBudget.policy[field.key];
+            if (typeof value !== 'number' || !Number.isFinite(value)) {
+              continue;
+            }
+            const bounded = Math.max(
+              field.min,
+              Math.min(field.max ?? Number.POSITIVE_INFINITY, value),
+            );
+            await cfg.update(
+              `tokenBudget.${field.key}`,
+              field.kind === 'int' ? Math.floor(bounded) : bounded,
+              this.vs.ConfigurationTarget.Workspace,
+            );
+          }
+        }
+      }
+      if (message.ui.loopPolicy) {
+        if (message.ui.loopPolicy.enabled !== undefined) {
+          await cfg.update(
+            'loopPolicy.enabled',
+            message.ui.loopPolicy.enabled,
+            this.vs.ConfigurationTarget.Workspace,
+          );
+        }
+        if (message.ui.loopPolicy.thresholds) {
+          for (const field of LOOP_POLICY_FIELDS) {
+            const value = message.ui.loopPolicy.thresholds[field.key];
+            if (typeof value !== 'number' || !Number.isFinite(value)) {
+              continue;
+            }
+            const bounded = Math.max(
+              field.min,
+              Math.min(field.max ?? Number.POSITIVE_INFINITY, value),
+            );
+            await cfg.update(
+              `loopPolicy.${field.key}`,
+              field.kind === 'int' ? Math.floor(bounded) : bounded,
+              this.vs.ConfigurationTarget.Workspace,
+            );
+          }
+        }
+      }
       if (message.ui.contextToggles) {
         for (const [key, value] of Object.entries(message.ui.contextToggles)) {
           if (value === undefined) continue;
@@ -1748,12 +2070,14 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         }
       }
     }
-    if (message.approvalMode !== undefined) {
+    const approvalMode = message.approvalMode ?? message.ui?.approvalMode;
+    if (approvalMode !== undefined) {
       await cfg.update(
         'safety.approvalMode',
-        message.approvalMode,
+        approvalMode,
         this.vs.ConfigurationTarget.Workspace,
       );
+      this.autoApprovePendingToolApprovalIfAllowed(approvalMode);
     }
     if (message.workspaceRootOverride !== undefined) {
       await cfg.update(
@@ -1766,6 +2090,166 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       await writeMcpSettings(this.vs, this.effectiveRoot(), message.mcp);
       this.invalidateClient();
     }
+    if (message.semanticIndex?.source) {
+      const source = EMBEDDING_SOURCES.includes(message.semanticIndex.source)
+        ? message.semanticIndex.source
+        : undefined;
+      if (source) {
+        await cfg.update(
+          'semanticIndex.source',
+          source,
+          this.vs.ConfigurationTarget.Workspace,
+        );
+        await cfg.update(
+          'semanticIndex.backend',
+          source === 'disabled' ? 'disabled' : source,
+          this.vs.ConfigurationTarget.Workspace,
+        );
+        if (source === 'disabled') {
+          await cfg.update(
+            'semanticIndex.enabled',
+            false,
+            this.vs.ConfigurationTarget.Workspace,
+          );
+        } else {
+          await cfg.update(
+            'semanticIndex.enabled',
+            true,
+            this.vs.ConfigurationTarget.Workspace,
+          );
+        }
+        this.invalidateClient();
+      }
+    }
+    if (message.profile) {
+      const root = this.effectiveRoot();
+      const secret = await this.secrets.get('mitii.provider.apiKey');
+      const currentProvider = await this.readProvider();
+      const profilesFile = readProfiles(root, currentProvider, hashSecret(secret));
+      const savedProfile: SettingsProfileView = {
+        ...message.profile,
+        provider: {
+          ...message.profile.provider,
+          type: message.provider?.type ?? message.profile.provider.type,
+          preset: message.provider?.preset ?? message.profile.provider.preset,
+          baseUrl: message.provider?.baseUrl ?? message.profile.provider.baseUrl,
+          model: message.provider?.model ?? message.profile.provider.model,
+          contextWindow:
+            message.provider?.contextWindow ??
+            message.profile.provider.contextWindow,
+          maximumOutputTokens:
+            message.provider?.maximumOutputTokens ??
+            message.profile.provider.maximumOutputTokens,
+        },
+        hasSecret: Boolean(secret),
+        secretHash: hashSecret(secret),
+      };
+      writeProfiles(root, upsertProfile(profilesFile, savedProfile));
+    }
+    await this.refreshDiscoveredModels({ notify: false });
+    await this.sendBootstrap();
+  }
+
+  private configurationTarget(): vscode.ConfigurationTarget {
+    return this.vs.workspace.workspaceFolders?.length
+      ? this.vs.ConfigurationTarget.Workspace
+      : this.vs.ConfigurationTarget.Global;
+  }
+
+  private async writeConfigValue(key: string, value: unknown): Promise<void> {
+    const cfg = this.vs.workspace.getConfiguration('mitii');
+    await cfg.update(key, value, this.configurationTarget());
+  }
+
+  private async resetTokenBudgetToDefaults(): Promise<void> {
+    const cfg = this.vs.workspace.getConfiguration('mitii');
+    const target = this.configurationTarget();
+    for (const key of tokenBudgetResetKeys()) {
+      await cfg.update(key, undefined, target);
+    }
+    await this.sendBootstrap();
+  }
+
+  private async resetLoopPolicyToDefaults(): Promise<void> {
+    const cfg = this.vs.workspace.getConfiguration('mitii');
+    const target = this.configurationTarget();
+    for (const key of loopPolicyResetKeys()) {
+      await cfg.update(key, undefined, target);
+    }
+    await this.sendBootstrap();
+  }
+
+  private async writeProviderSettings(
+    provider: NonNullable<
+      Extract<WebviewToHostMessage, { type: 'settings.set' }>['provider']
+    >,
+  ): Promise<void> {
+    if (provider.type !== undefined) {
+      await this.writeConfigValue('provider.type', provider.type);
+    }
+    if (provider.preset !== undefined) {
+      await this.writeConfigValue('provider.preset', provider.preset);
+    }
+    if (provider.baseUrl !== undefined) {
+      await this.writeConfigValue('provider.baseUrl', provider.baseUrl);
+    }
+    if (provider.model !== undefined) {
+      await this.writeConfigValue('provider.model', provider.model);
+    }
+    if (provider.contextWindow !== undefined) {
+      await this.writeConfigValue(
+        'provider.contextWindow',
+        normalizeTokenLimit(provider.contextWindow),
+      );
+    }
+    if (provider.maximumOutputTokens !== undefined) {
+      await this.writeConfigValue(
+        'provider.maximumOutputTokens',
+        normalizeTokenLimit(provider.maximumOutputTokens),
+      );
+    }
+    this.connectionOk = undefined;
+    this.connectionStatus = undefined;
+    this.invalidateClient();
+    await this.refreshDiscoveredModels({ notify: false });
+  }
+
+  private async handleProfileSwitch(id: string): Promise<void> {
+    const currentProvider = await this.readProvider();
+    const secret = await this.secrets.get('mitii.provider.apiKey');
+    const secretHash = hashSecret(secret);
+    let profilesFile = readProfiles(
+      this.effectiveRoot(),
+      currentProvider,
+      secretHash,
+    );
+    if (profilesFile.activeProfileId === id) {
+      await this.sendBootstrap();
+      return;
+    }
+    const profile = profilesFile.profiles.find((entry) => entry.id === id);
+    if (!profile) {
+      this.post({ type: 'error', message: `Profile not found: ${id}` });
+      return;
+    }
+    const outgoing = profilesFile.profiles.find(
+      (entry) => entry.id === profilesFile.activeProfileId,
+    );
+    if (outgoing) {
+      profilesFile = upsertProfile(
+        profilesFile,
+        profileFromProvider(currentProvider, {
+          id: outgoing.id,
+          name: outgoing.name,
+          secretHash,
+        }),
+      );
+    }
+    await this.writeProviderSettings(profile.provider);
+    writeProfiles(this.effectiveRoot(), {
+      activeProfileId: profile.id,
+      profiles: profilesFile.profiles,
+    });
     await this.sendBootstrap();
   }
 
@@ -1778,40 +2262,114 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     return this.getWorkspaceRoot();
   }
 
-  private buildAvailableModels(currentModel: string): string[] {
+  private async refreshDiscoveredModels(options: {
+    notify: boolean;
+    type?: string;
+    baseUrl?: string;
+  }): Promise<void> {
+    const cfg = this.vs.workspace.getConfiguration('mitii');
+    const type = options.type ?? cfg.get<string>('provider.type') ?? 'echo';
+    if (type === 'echo') {
+      this.discoveredModels = [];
+      if (options.notify) {
+        this.post({ type: 'provider.models', models: [] });
+      }
+      return;
+    }
+    const baseUrl =
+      options.baseUrl?.trim() ??
+      cfg.get<string>('provider.baseUrl')?.trim() ??
+      '';
+    const apiKey = resolveProviderApiKey({
+      type,
+      env: process.env,
+      secretKey:
+        (await this.secrets.get('mitii.provider.apiKey')) ?? undefined,
+    });
+    const models = await listProviderModels({
+      type,
+      baseUrl,
+      ...(apiKey ? { apiKey } : {}),
+    });
+    this.discoveredModels = models;
+    if (options.notify) {
+      this.post({ type: 'provider.models', models });
+    }
+  }
+
+  private buildAvailableModels(
+    currentModel: string,
+    type?: string,
+    presetId?: string,
+  ): string[] {
     const set = new Set<string>();
     if (currentModel.trim()) set.add(currentModel.trim());
-    for (const preset of LOCAL_MODEL_PRESETS) set.add(preset.model);
+    const providerPreset = getProviderPreset(presetId ?? type ?? '');
+    for (const id of providerPreset?.models ?? []) {
+      if (id.trim()) set.add(id.trim());
+    }
     for (const id of this.discoveredModels) {
       if (id.trim()) set.add(id.trim());
     }
     return [...set];
   }
 
+  private inferProviderPreset(
+    type: string,
+    preset: string | undefined,
+    baseUrl: string,
+    model: string,
+  ): string | undefined {
+    if (preset && getProviderPreset(preset)) return preset;
+    if (type === 'echo') return 'echo';
+    const normalizedBase = baseUrl.trim().replace(/\/+$/, '').toLowerCase();
+    const exactBase = PROVIDER_PRESETS.find(
+      (entry) =>
+        entry.type === type &&
+        entry.baseUrl.trim().replace(/\/+$/, '').toLowerCase() === normalizedBase,
+    );
+    if (exactBase) return exactBase.id;
+    const exactModel = PROVIDER_PRESETS.find(
+      (entry) => entry.type === type && entry.model === model,
+    );
+    return exactModel?.id;
+  }
+
   private async readProvider(): Promise<ProviderSettingsSnapshot> {
     const cfg = this.vs.workspace.getConfiguration('mitii');
-    const hasApiKey = Boolean(
-      (await this.secrets.get('mitii.provider.apiKey')) ??
-        process.env.MITII_API_KEY ??
-        process.env.OPENAI_API_KEY,
+    const type = cfg.get<string>('provider.type') ?? 'echo';
+    const configuredPreset = cfg.get<string>('provider.preset') ?? undefined;
+    const baseUrl =
+      cfg.get<string>('provider.baseUrl') ?? 'http://localhost:11434/v1';
+    const model = cfg.get<string>('provider.model') ?? '';
+    const preset = this.inferProviderPreset(
+      type,
+      configuredPreset,
+      baseUrl,
+      model,
     );
-    const model = cfg.get<string>('provider.model') ?? 'qwen3-coder:30b';
-    const contextWindow = resolveContextWindow(this.vs);
+    const hasApiKey = Boolean(
+      resolveProviderApiKey({
+        type,
+        env: process.env,
+        secretKey:
+          (await this.secrets.get('mitii.provider.apiKey')) ?? undefined,
+      }),
+    );
+    const contextWindow = readStoredContextWindow(
+      cfg.get<number>('provider.contextWindow'),
+    );
     const fromMaxOut = cfg.get<number>('provider.maximumOutputTokens');
-    const maximumOutputTokens =
-      typeof fromMaxOut === 'number' &&
-      Number.isFinite(fromMaxOut) &&
-      fromMaxOut > 0
-        ? Math.floor(fromMaxOut)
-        : Math.min(16_384, Math.max(1, contextWindow - 1));
+    const maximumOutputTokens = normalizeTokenLimit(fromMaxOut);
     return {
-      type: cfg.get<string>('provider.type') ?? 'echo',
-      preset: cfg.get<string>('provider.preset') ?? undefined,
-      baseUrl: cfg.get<string>('provider.baseUrl') ?? 'http://localhost:11434/v1',
+      type,
+      preset,
+      baseUrl,
       model,
       hasApiKey,
-      availableModels: this.buildAvailableModels(model),
+      availableModels: this.buildAvailableModels(model, type, preset),
       contextWindow,
+      effectiveContextWindow: resolveContextWindow(this.vs),
       maximumOutputTokens,
       connectionOk: this.connectionOk,
       connectionStatus: this.connectionStatus,
@@ -1820,14 +2378,106 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
 
   private readUi(): UiSettingsSnapshot {
     const cfg = this.vs.workspace.getConfiguration('mitii');
+    const legacyDepth =
+      (cfg.get<string>('ui.depth') as UiSettingsSnapshot['depth']) ?? 'auto';
+    const legacyApproval = cfg.get<string>('safety.approvalMode') ?? 'guided';
+    const defaultModeSettings = {
+      ask: {
+        thoroughness: 'medium' as const,
+        depth: 'auto' as const,
+        approvalMode: 'guided',
+        model: '',
+      },
+      plan: {
+        thoroughness: 'high' as const,
+        depth: 'deep' as const,
+        approvalMode: 'guided',
+        model: '',
+      },
+      agent: {
+        thoroughness: 'medium' as const,
+        depth: 'auto' as const,
+        approvalMode: 'safe',
+        model: '',
+      },
+    };
+    const readModeDepth = (
+      mode: 'ask' | 'plan' | 'agent',
+    ): UiSettingsSnapshot['depth'] =>
+      (cfg.get<string>(
+        `ui.modeDefaults.${mode}.depth`,
+      ) as UiSettingsSnapshot['depth']) ??
+      defaultModeSettings[mode].depth ??
+      legacyDepth;
+    const readModeThoroughness = (
+      mode: 'ask' | 'plan' | 'agent',
+    ): UiSettingsSnapshot['modeDefaults']['ask']['thoroughness'] | undefined => {
+      const value = cfg.get<string>(`ui.modeDefaults.${mode}.thoroughness`);
+      return value === 'low' || value === 'medium' || value === 'high'
+        ? value
+        : undefined;
+    };
+    const readModeApproval = (mode: 'ask' | 'plan' | 'agent'): string => {
+      const configured = cfg.get<string>(
+        `ui.modeDefaults.${mode}.approvalMode`,
+      );
+      if (configured === 'builder') return 'guided';
+      return configured ?? defaultModeSettings[mode].approvalMode;
+    };
+    const readModeModel = (mode: 'ask' | 'plan' | 'agent'): string =>
+      cfg.get<string>(`ui.modeDefaults.${mode}.model`)?.trim() ?? '';
+    const storedEffort = cfg.get<string>('ui.effort');
+    const effort: UiSettingsSnapshot['effort'] =
+      storedEffort === 'low' ||
+      storedEffort === 'high' ||
+      storedEffort === 'medium'
+        ? storedEffort
+        : 'medium';
+    const normalized = normalizeIntensitySettings({
+      effort,
+      intensityOverrides:
+        cfg.get<boolean>('developer.intensityOverrides') === true,
+      modeDefaults: {
+        ask: {
+          depth: readModeDepth('ask'),
+          thoroughness: readModeThoroughness('ask'),
+          approvalMode: readModeApproval('ask'),
+          model: readModeModel('ask'),
+        },
+        plan: {
+          depth: readModeDepth('plan'),
+          thoroughness: readModeThoroughness('plan'),
+          approvalMode: readModeApproval('plan'),
+          model: readModeModel('plan'),
+        },
+        agent: {
+          depth: readModeDepth('agent'),
+          thoroughness: readModeThoroughness('agent'),
+          approvalMode: readModeApproval('agent'),
+          model: readModeModel('agent'),
+        },
+      },
+    });
     return {
       showReasoning: cfg.get<boolean>('ui.showReasoning') ?? true,
       reasoningPreviewMaxChars:
         cfg.get<number>('ui.reasoningPreviewMaxChars') ?? 8000,
-      depth: (cfg.get<string>('ui.depth') as UiSettingsSnapshot['depth']) ?? 'auto',
+      depth: legacyDepth,
+      effort: normalized.effort,
+      intensityOverrides: normalized.intensityOverrides,
+      modeDefaults: normalized.modeDefaults,
       contextToggles: resolveContextToggles(cfg),
-      approvalMode: cfg.get<string>('safety.approvalMode') ?? 'guided',
+      approvalMode: legacyApproval,
       runBudget: readRunBudgetSettings(this.vs),
+      developerEnabled: cfg.get<boolean>('developer.enabled') ?? false,
+      debugLogging: cfg.get<boolean>('debug') ?? false,
+      modelIoLogging: readModelIoLoggingEnabled(cfg),
+      tokenBudget: readTokenBudgetSettings(
+        cfg,
+        resolveContextWindow(this.vs),
+        cfg.get<number>('provider.maximumOutputTokens'),
+      ),
+      loopPolicy: readLoopPolicySettings(cfg, resolveContextWindow(this.vs)),
     };
   }
 
@@ -1894,6 +2544,25 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       `[index] first-load ${status.message ?? 'done'} readiness=${status.readiness ?? 'n/a'}`,
     );
     return status;
+  }
+
+  private async withEmbedding(
+    index: IndexStatusSnapshot,
+  ): Promise<IndexStatusSnapshot> {
+    try {
+      const semantic = await resolveVsCodeSemanticIndexSettings(
+        this.vs,
+        this.secrets,
+      );
+      return {
+        ...index,
+        embeddingSource: semantic.source ?? (semantic.enabled ? 'bundled' : 'disabled'),
+        embeddingModel: semantic.model,
+        embeddingEnabled: semantic.enabled,
+      };
+    } catch {
+      return index;
+    }
   }
 
   private async readIndexStatus(): Promise<IndexStatusSnapshot> {
@@ -1975,7 +2644,12 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     return this.lastIndex;
   }
 
-  async publishIndexSnapshot(): Promise<IndexStatusSnapshot> {
+  async publishIndexSnapshot(options: {
+    force?: boolean;
+    filePaths?: readonly string[];
+    abortSignal?: AbortSignal;
+    onProgress?: Parameters<typeof runFullWorkspaceIndex>[0]['onProgress'];
+  } = {}): Promise<IndexStatusSnapshot> {
     const root = this.effectiveRoot();
     if (!root) {
       return {
@@ -1996,11 +2670,31 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         mitiiDir: dir,
         workspaceRoot: root,
         workspaceId: this.getWorkspaceId(),
+        force: options.force === true,
+        ...(options.filePaths?.length ? { filePaths: options.filePaths } : {}),
+        ...(options.abortSignal ? { abortSignal: options.abortSignal } : {}),
+        ...(options.onProgress ? { onProgress: options.onProgress } : {}),
         semanticIndex: await resolveVsCodeSemanticIndexSettings(
           this.vs,
           this.secrets,
         ),
       });
+      if (full.status === 'cancelled') {
+        this.lastIndex = {
+          fileCount: full.fileCount,
+          truncated: full.truncated,
+          message: 'Indexing cancelled',
+        };
+        return this.lastIndex;
+      }
+      if (full.status === 'skipped') {
+        return {
+          ...this.lastIndex,
+          fileCount: full.fileCount,
+          truncated: full.truncated,
+          message: 'Indexing already in progress',
+        };
+      }
       fileCount = full.fileCount;
       truncated = full.truncated;
       published = await client.publishRepositoryStateFromIndexing(full.indexing, {
@@ -2009,7 +2703,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         mapRevisionByRoot: full.mapRevisionByRoot,
       });
       this.channel.appendLine(
-        `[index] full code/text/graph/map index stored at ${full.databasePath}; vector=${full.vectorIndex.status}${full.vectorIndex.profileId ? ` profile=${full.vectorIndex.profileId}` : ''}${full.vectorIndex.reason ? ` reason=${full.vectorIndex.reason}` : ''}`,
+        `[index] ${options.filePaths?.length ? 'incremental' : 'full'} code/text/graph/map index stored at ${full.databasePath}; vector=${full.vectorIndex.status}${full.vectorIndex.profileId ? ` profile=${full.vectorIndex.profileId}` : ''}${full.vectorIndex.reason ? ` reason=${full.vectorIndex.reason}` : ''}`,
       );
     } catch (error) {
       fallbackReason = error instanceof Error ? error.message : String(error);
@@ -2063,11 +2757,13 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
   }
 
   private setActiveThreadUsage(usage: TokenUsageSnapshot): void {
-    this.tokenUsage = {
-      ...usage,
-      contextWindow: resolveContextWindow(this.vs),
-      live: false,
-    };
+    this.tokenUsage = withResolvedUsageWindow(
+      {
+        ...usage,
+        live: false,
+      },
+      resolveContextWindow(this.vs),
+    );
     this.persistThreadUsage();
   }
 
@@ -2092,6 +2788,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     if (this.activeThreadId) {
       this.setActiveThreadUsage(
         this.tokenUsageByThread.get(this.activeThreadId) ??
+          activeThread?.tokenUsage ??
           emptyTokenUsage(resolveContextWindow(this.vs)),
       );
     } else {
@@ -2099,11 +2796,16 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         emptyTokenUsage(resolveContextWindow(this.vs)),
       );
     }
+    const provider = await this.readProvider();
+    const secretHash = hashSecret(await this.secrets.get('mitii.provider.apiKey'));
+    const profilesFile = readProfiles(this.effectiveRoot(), provider, secretHash);
     this.post({
       type: 'bootstrap',
       workspace: this.readWorkspace(),
-      provider: await this.readProvider(),
-      index: await this.readIndexStatus(),
+      provider,
+      profiles: profilesFile.profiles,
+      activeProfileId: profilesFile.activeProfileId,
+      index: await this.withEmbedding(await this.readIndexStatus()),
       mcp: readMcpSettings(this.vs, this.effectiveRoot()),
       mcpRuntimeStatus: this.mcpRuntimeStatus(),
       mcpStore: readMcpStoreCatalog(this.effectiveRoot()),
@@ -2118,6 +2820,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       history: toThreadSummaries(history),
       activeThreadId: history.activeThreadId,
       activeThreadMessages: activeThread?.messages ?? [],
+      pendingPlan: planViewFromArtifact(activeThread?.pendingPlan),
       memories: await loadMemoriesForView(
         this.host.workspaceState,
         this.getWorkspaceId(),

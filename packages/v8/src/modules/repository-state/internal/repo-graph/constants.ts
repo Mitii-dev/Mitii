@@ -38,12 +38,13 @@ export const REPO_GRAPH_EDGE_ORDER: Readonly<
   Record<RepoGraphEdgeType, number>
 > = {
   imports: 10,
-  references: 20,
-  depends_on: 30,
-  development_depends_on: 40,
-  workspace_member: 50,
-  declares: 60,
-  contains: 70,
+  calls: 20,
+  references: 30,
+  depends_on: 40,
+  development_depends_on: 50,
+  workspace_member: 60,
+  declares: 70,
+  contains: 80,
 };
 
 /**
@@ -54,6 +55,7 @@ export const REPO_GRAPH_EDGE_BUDGET_PRIORITY: Readonly<
   Record<RepoGraphEdgeType, number>
 > = {
   imports: 100,
+  calls: 95,
   references: 90,
   depends_on: 80,
   development_depends_on: 75,
@@ -112,4 +114,3 @@ export const resolveRepoGraphBuilderOptions = (
     REPO_GRAPH_DEFAULTS
       .MAXIMUM_CONSISTENCY_RETRIES,
 });
-

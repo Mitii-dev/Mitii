@@ -4,7 +4,10 @@ export interface LocalModelPreset {
   contextWindow?: number;
 }
 
-/** Local Ollama-style presets used to populate the model dropdown. */
+/**
+ * Optional context-window hints for known local model ids.
+ * Not used to populate the model dropdown — that comes from Test connection.
+ */
 export const LOCAL_MODEL_PRESETS: LocalModelPreset[] = [
   { model: 'qwen3-coder:30b', label: 'Qwen3 Coder 30B', contextWindow: 262_144 },
   { model: 'qwen3.5:latest', label: 'Qwen3.5 latest', contextWindow: 256_000 },

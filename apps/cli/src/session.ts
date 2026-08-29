@@ -7,7 +7,53 @@ import {
   type MitiiRun,
   type RunEvent,
 } from '@mitii/sdk';
+import { writeSync } from 'node:fs';
 import * as readline from 'node:readline';
+
+import {
+  observeRunToolEvent,
+  type MemoryCaptureContext,
+} from '@mitii/host';
+
+import { formatTaskList } from './runReport.js';
+
+/** Keep --json payloads parseable; nested tool dumps can otherwise balloon. */
+export const CLI_JSON_MAX_STRING_CHARS = 8_000;
+/** Cap event count so --json stays under typical OS pipe buffers (~64KiB). */
+export const CLI_JSON_MAX_EVENTS = 120;
+
+/**
+ * Compact JSON for CLI --json output. Long strings are truncated so consumers
+ * (benchmark adapter, scripts) always receive valid, bounded JSON.
+ */
+export function serializeCliJson(value: unknown): string {
+  const compacted = compactCliJsonPayload(value);
+  return JSON.stringify(compacted, (_key, current) => {
+    if (
+      typeof current === 'string' &&
+      current.length > CLI_JSON_MAX_STRING_CHARS
+    ) {
+      return `${current.slice(0, CLI_JSON_MAX_STRING_CHARS)}…[truncated ${current.length} chars]`;
+    }
+    return current;
+  });
+}
+
+function compactCliJsonPayload(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return value;
+  }
+  const record = value as Record<string, unknown>;
+  const events = record.events;
+  if (!Array.isArray(events) || events.length <= CLI_JSON_MAX_EVENTS) {
+    return value;
+  }
+  return {
+    ...record,
+    events: events.slice(-CLI_JSON_MAX_EVENTS),
+    eventsOmitted: events.length - CLI_JSON_MAX_EVENTS,
+  };
+}
 
 export interface SessionIo {
   writeStdout: (chunk: string) => void;
@@ -33,6 +79,8 @@ export interface DriveRunOptions {
   /** Non-interactive approval decision. */
   autoApproval?: 'approved' | 'denied';
   io: SessionIo;
+  /** Optional host capture after mutating / failed tools. */
+  memoryCapture?: MemoryCaptureContext;
 }
 
 export interface DriveRunOutcome {
@@ -43,11 +91,13 @@ export interface DriveRunOutcome {
 
 export function createDefaultSessionIo(): SessionIo {
   return {
+    // writeSync avoids truncated --json when process.exit races a full pipe
+    // buffer (commonly 64KiB on macOS/Linux).
     writeStdout: (chunk) => {
-      process.stdout.write(chunk);
+      writeSync(1, chunk);
     },
     writeStderr: (chunk) => {
-      process.stderr.write(chunk);
+      writeSync(2, chunk);
     },
     prompt: promptLine,
     onInterrupt: (handler) => {
@@ -123,10 +173,19 @@ function streamEvents(
   io: SessionIo,
   json: boolean,
   events: RunEvent[],
+  memoryCapture?: MemoryCaptureContext,
+  userPrompt?: string,
 ): Promise<void> {
   return (async () => {
     for await (const event of run.events) {
       events.push(event);
+      if (memoryCapture) {
+        await observeRunToolEvent({
+          event,
+          capture: memoryCapture,
+          userPrompt,
+        });
+      }
       if (json) continue;
       if (
         event.type === 'model_delta' &&
@@ -136,6 +195,10 @@ function streamEvents(
         io.writeStdout(event.preview);
       } else if (event.type === 'tool_started') {
         io.writeStderr(`[mitii] tool ${event.toolName}…\n`);
+      } else if (event.type === 'task_list_updated') {
+        for (const line of formatTaskList(event.taskList)) {
+          io.writeStderr(`${line}\n`);
+        }
       } else if (event.type === 'suspended') {
         io.writeStderr(
           `[mitii] suspended (${event.kind}): ${event.rationale}\n`,
@@ -236,7 +299,14 @@ export async function driveRun(
       : () => undefined;
 
     try {
-      await streamEvents(run, options.io, json, events);
+      await streamEvents(
+        run,
+        options.io,
+        json,
+        events,
+        options.memoryCapture,
+        options.start.prompt,
+      );
       result = await run.result;
     } finally {
       unsubscribe();
@@ -246,8 +316,17 @@ export async function driveRun(
       break;
     }
 
-    if (json && !options.autoClarify && !options.autoApproval) {
-      // Non-interactive JSON: emit suspended result and stop (caller may resume later).
+    const suspensionKind = result.suspension?.kind;
+    const canAutoResolve =
+      (suspensionKind === 'clarification_required' &&
+        Boolean(options.autoClarify)) ||
+      (suspensionKind === 'approval_required' &&
+        Boolean(options.autoApproval));
+
+    // Non-interactive JSON: only auto-resume the suspension kind that has a
+    // matching flag. `--approve` must not open an interactive clarification
+    // prompt (benchmarks spawn with stdin ignored).
+    if (json && !canAutoResolve) {
       break;
     }
 
@@ -264,9 +343,7 @@ export async function driveRun(
   }
 
   if (json) {
-    options.io.writeStdout(
-      `${JSON.stringify({ result, events }, null, 2)}\n`,
-    );
+    options.io.writeStdout(`${serializeCliJson({ result, events })}\n`);
   } else {
     if (result.answer && !events.some((e) => e.type === 'model_delta')) {
       options.io.writeStdout(`${result.answer}\n`);

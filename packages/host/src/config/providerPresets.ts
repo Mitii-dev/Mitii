@@ -1,10 +1,15 @@
 import type { OpenAiCompatibleAuthHeader } from '@mitii/sdk';
 
 /**
- * UI / config preset id. All non-echo presets use OpenAiCompatibleLlmPort.
- * `provider.type` in hosts remains `echo` | `openai-compatible` for settings
- * persistence; presets only prefill base URL, model, and auth style.
+ * UI / config preset id. `type` selects the host-constructed LlmPort adapter.
+ * Secrets never live in presets.
  */
+export type HostProviderType =
+  | 'echo'
+  | 'openai-compatible'
+  | 'anthropic'
+  | 'gemini';
+
 export type ProviderPresetId =
   | 'echo'
   | 'ollama'
@@ -13,15 +18,18 @@ export type ProviderPresetId =
   | 'openrouter'
   | 'deepseek'
   | 'azure-openai'
-  | 'openai-compatible';
+  | 'openai-compatible'
+  | 'anthropic'
+  | 'gemini';
 
 export interface ProviderPreset {
   id: ProviderPresetId;
   /** Persisted mitii.provider.type / CLI provider field. */
-  type: 'echo' | 'openai-compatible';
+  type: HostProviderType;
   label: string;
   baseUrl: string;
   model: string;
+  models?: readonly string[];
   requiresApiKey: boolean;
   authHeader?: OpenAiCompatibleAuthHeader;
   chatCompletionsPath?: string;
@@ -43,16 +51,18 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
     type: 'openai-compatible',
     label: 'Ollama (local)',
     baseUrl: 'http://localhost:11434/v1',
-    model: 'qwen3-coder:30b',
+    model: '',
     requiresApiKey: false,
+    notes: 'Pick a model after Test connection lists /v1/models.',
   },
   {
     id: 'lm-studio',
     type: 'openai-compatible',
     label: 'LM Studio (local)',
     baseUrl: 'http://localhost:1234/v1',
-    model: 'local-model',
+    model: '',
     requiresApiKey: false,
+    notes: 'Pick a model after Test connection lists /v1/models.',
   },
   {
     id: 'openai',
@@ -60,6 +70,7 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
     label: 'OpenAI',
     baseUrl: 'https://api.openai.com/v1',
     model: 'gpt-4o-mini',
+    models: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1', 'o4-mini'],
     requiresApiKey: true,
   },
   {
@@ -68,7 +79,13 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
     label: 'OpenRouter',
     baseUrl: 'https://openrouter.ai/api/v1',
     model: 'openai/gpt-4o-mini',
+    models: [
+      'openai/gpt-4o-mini',
+      'anthropic/claude-sonnet-4',
+      'google/gemini-2.5-flash',
+    ],
     requiresApiKey: true,
+    notes: 'Route Claude, Gemini, and other vendors through one OpenAI-compatible key.',
   },
   {
     id: 'deepseek',
@@ -76,13 +93,15 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
     label: 'DeepSeek',
     baseUrl: 'https://api.deepseek.com/v1',
     model: 'deepseek-chat',
+    models: ['deepseek-chat', 'deepseek-reasoner'],
     requiresApiKey: true,
   },
   {
     id: 'azure-openai',
     type: 'openai-compatible',
     label: 'Azure OpenAI',
-    baseUrl: 'https://YOUR_RESOURCE.openai.azure.com/openai/deployments/YOUR_DEPLOYMENT',
+    baseUrl:
+      'https://YOUR_RESOURCE.openai.azure.com/openai/deployments/YOUR_DEPLOYMENT',
     model: 'gpt-4o-mini',
     requiresApiKey: true,
     authHeader: 'api-key',
@@ -94,9 +113,33 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
     type: 'openai-compatible',
     label: 'Custom OpenAI-compatible',
     baseUrl: 'http://localhost:11434/v1',
-    model: 'qwen3-coder:30b',
+    model: '',
     requiresApiKey: false,
-    notes: 'Any OpenAI-compatible /v1 chat completions endpoint.',
+    notes: 'Any OpenAI-compatible /v1 chat completions endpoint. Pick a model after Test connection.',
+  },
+  {
+    id: 'anthropic',
+    type: 'anthropic',
+    label: 'Anthropic (Claude)',
+    baseUrl: 'https://api.anthropic.com',
+    model: 'claude-sonnet-4-5',
+    models: [
+      'claude-sonnet-4-5',
+      'claude-opus-4-1',
+      'claude-haiku-4-5',
+    ],
+    requiresApiKey: true,
+    notes: 'Native Anthropic Messages API. API key from console.anthropic.com.',
+  },
+  {
+    id: 'gemini',
+    type: 'gemini',
+    label: 'Google Gemini',
+    baseUrl: 'https://generativelanguage.googleapis.com',
+    model: 'gemini-2.5-flash',
+    models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'],
+    requiresApiKey: true,
+    notes: 'Native Gemini generateContent API. API key from Google AI Studio.',
   },
 ] as const;
 
@@ -107,6 +150,26 @@ export function getProviderPreset(
     PROVIDER_PRESETS.find((p) => p.id === idOrType) ??
     PROVIDER_PRESETS.find((p) => p.type === idOrType)
   );
+}
+
+export function isHostProviderType(value: string): value is HostProviderType {
+  return (
+    value === 'echo' ||
+    value === 'openai-compatible' ||
+    value === 'anthropic' ||
+    value === 'gemini'
+  );
+}
+
+export function isOllamaBaseUrl(baseUrl?: string): boolean {
+  if (!baseUrl?.trim()) return false;
+  try {
+    const url = new URL(baseUrl);
+    if (url.hostname.toLowerCase().includes('ollama')) return true;
+    return url.port === '11434';
+  } catch {
+    return /11434|\bollama\b/i.test(baseUrl);
+  }
 }
 
 export function isLocalBaseUrl(baseUrl?: string): boolean {

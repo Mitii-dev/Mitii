@@ -115,6 +115,76 @@ describe("SkillsPipeline", () => {
     );
   });
 
+  it("matches on L1 metadata and hydrates only selected L2 bodies", async () => {
+    const loadBodyCalls: string[] = [];
+    const pipeline = new SkillsPipeline({
+      catalog: {
+        list: () => [
+          {
+            id: "parse-ts-null-debugging",
+            title: "Parse TS null debugging",
+            description: "Fix empty-input null crashes in TypeScript parsers.",
+            intents: ["bugfix"],
+            routes: ["execute"],
+            tags: ["null", "parse"],
+            paths: ["**/parse.ts"],
+            priority: 160,
+            alwaysApply: false,
+            resources: {
+              references: ["references/checklist.md"],
+              scripts: ["scripts/repro.ts"],
+            },
+          },
+          {
+            id: "docs-style",
+            title: "Docs style",
+            description: "Write concise documentation.",
+            intents: ["docs"],
+            routes: ["execute"],
+            tags: ["docs"],
+            paths: [],
+            priority: 100,
+            alwaysApply: false,
+          },
+        ],
+        loadBody: (id: string) => {
+          loadBodyCalls.push(id);
+          if (id !== "parse-ts-null-debugging") {
+            return undefined;
+          }
+          return {
+            content:
+              "Full playbook: reproduce empty input, add the smallest guard, then test parse.ts.",
+            resources: {
+              references: ["references/checklist.md"],
+              scripts: ["scripts/repro.ts"],
+            },
+          };
+        },
+      },
+    });
+
+    const result = await pipeline.select(
+      baseInput({
+        evidence: {
+          primaryIntent: "bugfix",
+          secondaryIntents: [],
+          paths: ["src/compiler/parse.ts"],
+        },
+      }),
+    );
+
+    expect(result.status).toBe("selected");
+    expect(loadBodyCalls).toEqual(["parse-ts-null-debugging"]);
+    expect(result.instructions.map((block) => block.id)).toEqual([
+      "parse-ts-null-debugging",
+    ]);
+    expect(result.instructions[0]?.content).toContain("Full playbook");
+    expect(result.instructions[0]?.resources?.references).toEqual([
+      "references/checklist.md",
+    ]);
+  });
+
   it("resolves conflict groups to the higher-priority skill", async () => {
     const pipeline = new SkillsPipeline({
       catalog: new InMemorySkillsCatalog(catalog),
@@ -126,6 +196,44 @@ describe("SkillsPipeline", () => {
     const ids = result.instructions.map((block) => block.id);
     expect(ids).toContain("bugfix-concise");
     expect(ids).not.toContain("bugfix-verbose");
+  });
+
+  it("injects compact metadata when the hydrated playbook exceeds the budget", async () => {
+    const pipeline = new SkillsPipeline({
+      catalog: {
+        list: () => [
+          {
+            id: "debugging-and-error-recovery",
+            title: "Debugging",
+            content:
+              "Skill: Debugging\nInstruction: Reproduce, localize, then fix the root cause.",
+            intents: ["bugfix"],
+            routes: ["execute"],
+            tags: ["debug"],
+            paths: [],
+            priority: 175,
+            alwaysApply: false,
+          },
+        ],
+        loadBody: () => ({
+          content: "FULL PLAYBOOK\n".repeat(400),
+        }),
+      },
+    });
+
+    const result = await pipeline.select(
+      baseInput({
+        budgetTokens: 80,
+        maxSkills: 2,
+      }),
+    );
+
+    expect(result.status).toBe("selected");
+    expect(result.reasonCodes).toContain("skills_compacted");
+    expect(result.instructions[0]?.id).toBe("debugging-and-error-recovery");
+    expect(result.instructions[0]?.content).toContain("Reproduce, localize");
+    expect(result.instructions[0]?.content).not.toContain("FULL PLAYBOOK");
+    expect(result.usedTokens).toBeLessThanOrEqual(80);
   });
 
   it("omits skills that exceed the dedicated budget", async () => {
@@ -145,6 +253,80 @@ describe("SkillsPipeline", () => {
       true,
     );
     expect(result.usedTokens).toBeLessThanOrEqual(20);
+  });
+
+  it("soft-boosts already-applicable skills with recommendedSkillTags", async () => {
+    const pipeline = new SkillsPipeline({
+      catalog: new InMemorySkillsCatalog([
+        {
+          id: "bugfix-localize",
+          title: "Localize",
+          content: "Prefer the smallest change that fixes the failure.",
+          intents: ["bugfix"],
+          routes: ["execute"],
+          tags: ["localize"],
+          paths: [],
+          priority: 10,
+          alwaysApply: false,
+        },
+        {
+          id: "bugfix-generic",
+          title: "Generic bugfix",
+          content: "General bugfix guidance.",
+          intents: ["bugfix"],
+          routes: ["execute"],
+          tags: ["general"],
+          paths: [],
+          priority: 200,
+          alwaysApply: false,
+        },
+      ]),
+    });
+
+    const result = await pipeline.select(
+      baseInput({
+        evidence: {
+          primaryIntent: "bugfix",
+          secondaryIntents: [],
+          recommendedSkillTags: ["localize"],
+        },
+      }),
+    );
+
+    expect(result.status).toBe("selected");
+    expect(result.instructions[0]?.id).toBe("bugfix-localize");
+  });
+
+  it("does not select skills from recommendedSkillTags alone", async () => {
+    const pipeline = new SkillsPipeline({
+      catalog: new InMemorySkillsCatalog([
+        {
+          id: "docs-localize",
+          title: "Docs localize",
+          content: "Only for documentation tasks.",
+          intents: ["docs"],
+          routes: ["direct_answer"],
+          tags: ["localize"],
+          paths: [],
+          priority: 200,
+          alwaysApply: false,
+        },
+      ]),
+    });
+
+    const result = await pipeline.select(
+      baseInput({
+        route: "execute",
+        evidence: {
+          primaryIntent: "bugfix",
+          secondaryIntents: [],
+          recommendedSkillTags: ["localize"],
+        },
+      }),
+    );
+
+    expect(result.status).toBe("empty");
+    expect(result.instructions).toEqual([]);
   });
 
   it("returns empty when the catalog has no matches", async () => {
@@ -241,5 +423,53 @@ describe("SkillsPipeline", () => {
 
     expect(result.status).toBe("empty");
     expect(result.instructions).toEqual([]);
+  });
+
+  it("does not apply intent-matched skills on incompatible routes", async () => {
+    const pipeline = new SkillsPipeline({
+      catalog: new InMemorySkillsCatalog([
+        {
+          id: "ask-concise",
+          title: "Ask concise",
+          content: "Keep answers short in ask routes.",
+          intents: ["question", "docs", "explain"],
+          routes: ["direct_answer", "repository_answer"],
+          tags: ["concise"],
+          paths: [],
+          priority: 180,
+          alwaysApply: false,
+        },
+        {
+          id: "safety-always",
+          title: "Safety",
+          content: "Never invent permissions beyond the granted tools.",
+          intents: [],
+          routes: [],
+          tags: [],
+          paths: [],
+          priority: 200,
+          alwaysApply: true,
+        },
+      ]),
+    });
+
+    const result = await pipeline.select(
+      baseInput({
+        route: "execute",
+        query: "Explain how the preview loader works",
+        evidence: {
+          primaryIntent: "question",
+          secondaryIntents: [],
+        },
+      }),
+    );
+
+    expect(result.status).toBe("selected");
+    expect(result.instructions.map((block) => block.id)).toEqual([
+      "safety-always",
+    ]);
+    expect(result.instructions.map((block) => block.id)).not.toContain(
+      "ask-concise",
+    );
   });
 });

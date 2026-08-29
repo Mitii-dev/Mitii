@@ -1,12 +1,15 @@
 import { createRequire } from 'node:module';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+
+import { resolveRuntimeFilename } from '../internal/resolveRuntimeFilename.js';
 
 import {
   InMemorySkillsCatalog,
+  type SkillBody,
   type SkillDescriptor,
+  type SkillIndexEntry,
   type SkillsCatalogPort,
 } from '@mitii/v8';
 
@@ -43,6 +46,8 @@ export interface DiskSkillManifest {
   intents?: readonly string[] | string;
   routes?: readonly string[] | string;
   tags?: readonly string[] | string;
+  languages?: readonly string[] | string;
+  projectKinds?: readonly string[] | string;
   priority?: number | string;
   conflictGroup?: string;
   alwaysApply?: boolean | string;
@@ -50,6 +55,11 @@ export interface DiskSkillManifest {
   when?: readonly string[] | string;
   instruction?: string;
   paths?: readonly string[] | string;
+  license?: string;
+  compatibility?: readonly string[] | string;
+  metadata?: unknown;
+  'allowed-tools'?: readonly string[] | string;
+  allowedTools?: readonly string[] | string;
 }
 
 interface ParsedSkillFile {
@@ -79,6 +89,9 @@ export function createFileSystemSkillsCatalog(
       }
       return new InMemorySkillsCatalog(diskSkills).list();
     },
+    async loadBody(id: string): Promise<SkillBody | undefined> {
+      return loadDiskSkillBody(id, options);
+    },
   };
 }
 
@@ -107,12 +120,85 @@ export async function loadDiskSkills(
   return [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
 }
 
+export async function loadDiskSkillBody(
+  id: string,
+  options: LoadDiskSkillsOptions = {},
+): Promise<SkillBody | undefined> {
+  const normalizedId = normalizeId(id);
+  if (!normalizedId) {
+    return undefined;
+  }
+  const roots = resolveSkillRoots(options);
+
+  for (const root of roots) {
+    const direct = join(root, normalizedId, SKILL_FILE_NAME);
+    if (await isFile(direct)) {
+      const raw = await readFile(direct, 'utf8');
+      const { manifest, body } = parseSkillFile(raw);
+      const index = buildSkillIndex(direct, manifest, body, 'metadata');
+      if (index?.id === normalizedId) {
+        const content =
+          body.trim() ||
+          index.content ||
+          compactSkillContent({
+            title: index.title,
+            description: index.description ?? index.title,
+            manifest: {},
+          });
+        return {
+          content,
+          resources: findSkillResources(direct),
+        };
+      }
+    }
+  }
+
+  // Fallback for skills whose folder name differs from frontmatter name.
+  let selected: { filePath: string; index: SkillIndexEntry; body: string } | undefined;
+  for (const root of roots) {
+    const files = await findSkillFiles([root]);
+    for (const filePath of files) {
+      const raw = await readFile(filePath, 'utf8');
+      const { manifest, body } = parseSkillFile(raw);
+      const index = buildSkillIndex(filePath, manifest, body, 'metadata');
+      if (index?.id === normalizedId) {
+        selected = { filePath, index, body };
+      }
+    }
+  }
+  if (!selected) {
+    return undefined;
+  }
+  const body = selected.body.trim();
+  const content =
+    body ||
+    selected.index.content ||
+    compactSkillContent({
+      title: selected.index.title,
+      description: selected.index.description ?? selected.index.title,
+      manifest: {},
+    });
+  return {
+    content,
+    resources: findSkillResources(selected.filePath),
+  };
+}
+
 async function loadSkillFile(
   filePath: string,
   contentMode: DiskSkillContentMode,
 ): Promise<SkillDescriptor | undefined> {
   const raw = await readFile(filePath, 'utf8');
   const { manifest, body } = parseSkillFile(raw);
+  return buildSkillIndex(filePath, manifest, body, contentMode);
+}
+
+function buildSkillIndex(
+  filePath: string,
+  manifest: DiskSkillManifest,
+  body: string,
+  contentMode: DiskSkillContentMode,
+): SkillDescriptor | undefined {
   if (normalizeBoolean(manifest.enabled, true) === false) {
     return undefined;
   }
@@ -137,6 +223,7 @@ async function loadSkillFile(
   return {
     id,
     title,
+    description,
     content,
     intents: normalizeList(manifest.intents),
     routes: normalizeList(manifest.routes).filter((route) =>
@@ -144,12 +231,38 @@ async function loadSkillFile(
     ) as SkillDescriptor['routes'],
     tags: normalizeList(manifest.tags),
     paths: normalizeList(manifest.paths),
+    languages: normalizeList(manifest.languages),
+    projectKinds: normalizeList(manifest.projectKinds),
     priority: normalizePriority(manifest.priority),
     ...(cleanScalar(manifest.conflictGroup)
       ? { conflictGroup: cleanScalar(manifest.conflictGroup) }
       : {}),
     alwaysApply: normalizeBoolean(manifest.alwaysApply, false),
+    resources: findSkillResources(filePath),
   };
+}
+
+function findSkillResources(filePath: string): SkillBody['resources'] {
+  const root = dirname(filePath);
+  return {
+    references: discoverRelativeFiles(root, 'references'),
+    scripts: discoverRelativeFiles(root, 'scripts'),
+  };
+}
+
+function discoverRelativeFiles(skillRoot: string, folder: string): string[] {
+  const folderPath = join(skillRoot, folder);
+  if (!existsSync(folderPath)) {
+    return [];
+  }
+  try {
+    return readdirSync(folderPath, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && !entry.name.startsWith('.'))
+      .map((entry) => `${folder}/${entry.name}`)
+      .sort();
+  } catch {
+    return [];
+  }
 }
 
 function resolveSkillRoots(options: LoadDiskSkillsOptions): string[] {
@@ -184,7 +297,7 @@ function resolveDefaultBundledSkillsRoot(): string | undefined {
   }
 
   try {
-    const req = createRequire(resolveRequireFilename());
+    const req = createRequire(resolveRuntimeFilename());
     const sdkEntry = req.resolve('@mitii/sdk');
     return join(dirname(sdkEntry), '..', 'skills');
   } catch {
@@ -192,33 +305,9 @@ function resolveDefaultBundledSkillsRoot(): string | undefined {
   }
 }
 
-function resolveRequireFilename(): string {
-  return resolveRuntimeFilename();
-}
-
 function resolveAdjacentBundledSkillsRoot(): string | undefined {
   const candidate = join(dirname(resolveRuntimeFilename()), 'skills');
   return existsSync(candidate) ? candidate : undefined;
-}
-
-function resolveRuntimeFilename(): string {
-  const metaUrl =
-    typeof import.meta !== 'undefined' &&
-    typeof import.meta.url === 'string' &&
-    import.meta.url.length > 0
-      ? import.meta.url
-      : undefined;
-  if (metaUrl) {
-    return fileURLToPath(metaUrl);
-  }
-  // CJS host (bundled VS Code extension): esbuild leaves import.meta.url
-  // undefined; use the bundle filename when present.
-  const cjsFilename =
-    typeof __filename !== 'undefined' ? __filename : undefined;
-  if (typeof cjsFilename === 'string' && cjsFilename.length > 0) {
-    return cjsFilename;
-  }
-  return join(process.cwd(), 'package.json');
 }
 
 async function findSkillFiles(roots: readonly string[]): Promise<string[]> {

@@ -35,6 +35,8 @@ export const DEFAULT_VERIFICATION_COMMAND_PREFIXES = [
   "git log",
   "git show",
   "git blame",
+  "tsc",
+  "npx",
 ] as const;
 
 /**

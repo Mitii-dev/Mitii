@@ -11,6 +11,7 @@ import {
 
 import {
   RepoGraphRetrievalSource,
+  RepoMapRetrievalSource,
 } from "../sources";
 
 import type {
@@ -490,7 +491,7 @@ test(
 );
 
 test(
-  "snapshot consistency guards reject stale repository intelligence",
+  "snapshot consistency guards drop stale repository intelligence and continue",
   async () => {
     const map: RepoMap = {
       schemaVersion:
@@ -522,17 +523,161 @@ test(
     };
 
     const retriever =
-      new HybridRetriever([]);
+      new HybridRetriever([
+        {
+          source:
+            new StaticRetrievalSource(
+              "lexical",
+              complete([
+                candidate(
+                  "src/auth.ts",
+                  "auth",
+                  0.9,
+                ),
+              ]),
+            ),
+        },
+      ]);
 
-    await assert.rejects(
-      retriever.retrieve({
+    const result =
+      await retriever.retrieve({
         ...baseInput,
         workspaceSnapshotId:
           "snapshot-a",
         repoMap:
           map,
-      }),
-      /different workspace snapshot/i,
+      });
+
+    assert.equal(
+      result.candidates.length,
+      1,
+    );
+    assert.ok(
+      result.warnings.some(
+        (warning) =>
+          warning.code ===
+            "optional_source_unavailable" &&
+          /workspace snapshot/i.test(
+            warning.message,
+          ),
+      ),
+    );
+  },
+);
+
+test(
+  "directory-like file paths are promoted to folderPrefix",
+  async () => {
+    let captured:
+      | NormalizedHybridRetrievalRequest
+      | undefined;
+    const capture: RetrievalSource = {
+      id: "capture",
+      canRetrieve: () => true,
+      retrieve: async (request) => {
+        captured = request;
+        return {
+          status: "empty",
+          candidates: [],
+          truncated: false,
+          warnings: [],
+        };
+      },
+    };
+
+    await new HybridRetriever([
+      {
+        source: capture,
+      },
+    ]).retrieve({
+      ...baseInput,
+      filePaths: [
+        "packages/demo",
+      ],
+    });
+
+    assert.equal(
+      captured?.folderPrefix,
+      "packages/demo",
+    );
+    assert.deepEqual(
+      captured?.filePaths,
+      [],
+    );
+  },
+);
+
+test(
+  "repo map scope includes explicit files plus folder contents",
+  async () => {
+    const map: RepoMap = {
+      schemaVersion:
+        1,
+      workspaceSnapshotId:
+        "snapshot-1",
+      codeIndexChangeToken:
+        "change-1",
+      entries: [
+        repoMapEntry(
+          "packages/mui-builder/src/FormBuilder.tsx",
+          0.9,
+        ),
+        repoMapEntry(
+          "tsconfig.json",
+          0.8,
+        ),
+        repoMapEntry(
+          "packages/other/src/Other.ts",
+          1,
+        ),
+      ],
+      statistics: {
+        availableFiles:
+          3,
+        rankedFiles:
+          3,
+        includedFiles:
+          3,
+        includedSymbols:
+          0,
+        estimatedTokens:
+          0,
+        durationMs:
+          0,
+      },
+      status:
+        "complete",
+      generatedAt:
+        new Date(0)
+          .toISOString(),
+    };
+
+    const result =
+      await new HybridRetriever([
+        {
+          source:
+            new RepoMapRetrievalSource(),
+        },
+      ]).retrieve({
+        ...baseInput,
+        folderPrefix:
+          "packages/mui-builder",
+        filePaths: [
+          "tsconfig.json",
+        ],
+        repoMap:
+          map,
+      });
+
+    assert.deepEqual(
+      result.candidates.map(
+        (entry) =>
+          entry.relativePath,
+      ),
+      [
+        "packages/mui-builder/src/FormBuilder.tsx",
+        "tsconfig.json",
+      ],
     );
   },
 );
@@ -644,6 +789,204 @@ test(
 );
 
 test(
+  "repo graph retrieval expands call blast radius across bounded hops",
+  async () => {
+    const nodes:
+      RepoGraphNode[] = [
+        {
+          id:
+            "file:entry",
+          kind:
+            "file",
+          fileId:
+            "entry",
+          rootId:
+            "root",
+          relativePath:
+            "src/entry.ts",
+        },
+        {
+          id:
+            "file:service",
+          kind:
+            "file",
+          fileId:
+            "service",
+          rootId:
+            "root",
+          relativePath:
+            "src/service.ts",
+        },
+        {
+          id:
+            "file:auth",
+          kind:
+            "file",
+          fileId:
+            "auth",
+          rootId:
+            "root",
+          relativePath:
+            "src/auth.ts",
+        },
+        {
+          id:
+            "symbol:entry",
+          kind:
+            "symbol",
+          symbolId:
+            "symbol:entry",
+          fileId:
+            "entry",
+          name:
+            "main",
+          symbolKind:
+            "function",
+          startLine:
+            1,
+        },
+        {
+          id:
+            "symbol:service",
+          kind:
+            "symbol",
+          symbolId:
+            "symbol:service",
+          fileId:
+            "service",
+          name:
+            "validateSession",
+          symbolKind:
+            "function",
+          startLine:
+            1,
+        },
+        {
+          id:
+            "symbol:auth",
+          kind:
+            "symbol",
+          symbolId:
+            "symbol:auth",
+          fileId:
+            "auth",
+          name:
+            "validateJwt",
+          symbolKind:
+            "function",
+          startLine:
+            1,
+        },
+      ];
+
+    const edges:
+      RepoGraphEdge[] = [
+        {
+          id:
+            "edge:entry-service",
+          type:
+            "calls",
+          fromNodeId:
+            "symbol:entry",
+          toNodeId:
+            "symbol:service",
+          weight:
+            1,
+          evidenceCount:
+            1,
+          evidence: [
+            {
+              source:
+                "code_index_reference",
+              detail:
+                "call",
+              line:
+                3,
+            },
+          ],
+          evidenceTruncated:
+            false,
+        },
+        {
+          id:
+            "edge:service-auth",
+          type:
+            "calls",
+          fromNodeId:
+            "symbol:service",
+          toNodeId:
+            "symbol:auth",
+          weight:
+            1,
+          evidenceCount:
+            1,
+          evidence: [
+            {
+              source:
+                "code_index_reference",
+              detail:
+                "call",
+              line:
+                4,
+            },
+          ],
+          evidenceTruncated:
+            false,
+        },
+      ];
+
+    const retriever =
+      new HybridRetriever([
+        {
+          source:
+            new RepoGraphRetrievalSource(
+              {
+                maximumHops: 2,
+                maximumNeighborsPerAnchor:
+                  4,
+              },
+            ),
+        },
+      ]);
+
+    const result =
+      await retriever.retrieve({
+        ...baseInput,
+        query:
+          "validateJwt",
+        repoGraph:
+          createGraph(
+            nodes,
+            edges,
+          ),
+      });
+
+    assert.deepEqual(
+      result.candidates.map(
+        (entry) =>
+          entry.relativePath,
+      ),
+      [
+        "src/auth.ts",
+        "src/service.ts",
+        "src/entry.ts",
+      ],
+    );
+    assert.ok(
+      result.candidates
+        .slice(1)
+        .every((entry) =>
+          entry.reasons.some(
+            (reason) =>
+              reason.type ===
+              "graph_call_neighbor",
+          ),
+        ),
+    );
+  },
+);
+
+test(
   "factory rejects incomplete vector configuration",
   () => {
     const factory =
@@ -677,23 +1020,52 @@ function createGraph(
     warnings: [],
     statistics: {
       availableFiles:
-        2,
+        nodes.filter(
+          (node) =>
+            node.kind === "file",
+        ).length,
       indexedFiles:
-        2,
+        nodes.filter(
+          (node) =>
+            node.kind === "file",
+        ).length,
       projectNodes:
-        0,
+        nodes.filter(
+          (node) =>
+            node.kind ===
+            "project",
+        ).length,
       fileNodes:
-        2,
+        nodes.filter(
+          (node) =>
+            node.kind === "file",
+        ).length,
       symbolNodes:
-        0,
+        nodes.filter(
+          (node) =>
+            node.kind ===
+            "symbol",
+        ).length,
       containsEdges:
         0,
       declaresEdges:
         0,
       importEdges:
-        1,
+        edges.filter(
+          (edge) =>
+            edge.type === "imports",
+        ).length,
+      callEdges:
+        edges.filter(
+          (edge) =>
+            edge.type === "calls",
+        ).length,
       referenceEdges:
-        0,
+        edges.filter(
+          (edge) =>
+            edge.type ===
+            "references",
+        ).length,
       projectRelationshipEdges:
         0,
       unresolvedImports:
@@ -724,5 +1096,41 @@ function createGraph(
     generatedAt:
       new Date(0)
         .toISOString(),
+  };
+}
+
+function repoMapEntry(
+  relativePath: string,
+  score: number,
+): RepoMap["entries"][number] {
+  return {
+    file: {
+      id:
+        relativePath,
+      rootId:
+        "root",
+      relativePath,
+    },
+    symbols: [],
+    score,
+    pageRank:
+      0,
+    inboundImportCount:
+      0,
+    outboundImportCount:
+      0,
+    inboundReferenceCount:
+      0,
+    outboundReferenceCount:
+      0,
+    reasons: [
+      {
+        type:
+          "query_match",
+        score,
+        evidence:
+          `Matched ${relativePath}.`,
+      },
+    ],
   };
 }

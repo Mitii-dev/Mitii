@@ -209,6 +209,9 @@ export const CHUNKING_MESSAGES = {
   CHUNKS_TRUNCATED:
     "The configured maximum chunk count was reached.",
 
+  COLLAPSED_PARENT:
+    "A symbol exceeded the maximum chunk size; its body was collapsed and child symbols were emitted separately.",
+
   CANCELLED:
     "Chunking was cancelled.",
 } as const;

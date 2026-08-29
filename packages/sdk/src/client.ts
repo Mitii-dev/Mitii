@@ -9,6 +9,7 @@ import type {
   AgentMode,
   ComposeReadOnlyAgentEngineOptions,
   LlmPort,
+  MemoryEmbeddingPort,
   MemoryStorePort,
   PublishRepositoryStateInput,
   PublishRepositoryStateResult,
@@ -18,6 +19,7 @@ import type {
   ToolRuntimePipeline,
   VerificationPipeline,
   WorkspaceIndexingPipelineResult,
+  RepositoryGraphPort,
 } from '@mitii/v8';
 
 import {
@@ -44,11 +46,17 @@ export interface CreateMitiiClientOptions {
   repositoryState?: RepositoryStatePipelineType;
   repositoryContext?: RepositoryContextPipeline;
   tools?: ToolRuntimePipeline;
+  /**
+   * Optional published RepoGraph port. When set, follow_evidence planning
+   * annotates Change steps with hop-1 mustRead/affected paths.
+   */
+  repoGraphs?: RepositoryGraphPort;
   verification?: VerificationPipeline;
   /** Enables clarification/approval resume across process turns. */
   checkpointStore?: ComposeReadOnlyAgentEngineOptions['checkpointStore'];
   skillsCatalog?: SkillsCatalogPort;
   memoryStore?: MemoryStorePort;
+  memoryEmbedding?: MemoryEmbeddingPort;
   toolDefinitions?: ComposeReadOnlyAgentEngineOptions['toolDefinitions'];
   /**
    * When true (default), create an in-memory checkpoint store if none is
@@ -60,6 +68,14 @@ export interface CreateMitiiClientOptions {
    * Repository State pipeline for optional publish helpers.
    */
   enableInMemoryRepositoryState?: boolean;
+  /**
+   * When true, Agent runs may auto-advance the live checklist after a
+   * successful built-in mutating tool (at most once per model turn).
+   *
+   * Library/engine default is false (opt-in). Host apps (VS Code/CLI) may
+   * enable this by default for product UX; see those compose sites.
+   */
+  taskListAutoAdvance?: boolean;
 }
 
 /**
@@ -104,11 +120,14 @@ export class MitiiClient {
       repositoryState,
       repositoryContext: options.repositoryContext,
       tools: options.tools,
+      repoGraphs: options.repoGraphs,
       verification: options.verification,
       checkpointStore,
       skillsCatalog: options.skillsCatalog,
       memoryStore: options.memoryStore,
+      memoryEmbedding: options.memoryEmbedding,
       toolDefinitions: options.toolDefinitions,
+      taskListAutoAdvance: options.taskListAutoAdvance,
     });
 
     this.repositoryState = repositoryState;

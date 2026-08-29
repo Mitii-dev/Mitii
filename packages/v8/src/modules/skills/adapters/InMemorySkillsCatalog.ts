@@ -14,6 +14,17 @@ export class InMemorySkillsCatalog implements SkillsCatalogPort {
     return this.skills;
   }
 
+  public loadBody(id: string) {
+    const skill = this.skills.find((entry) => entry.id === id);
+    if (!skill) {
+      return undefined;
+    }
+    return {
+      content: skill.content,
+      resources: skill.resources,
+    };
+  }
+
   public replace(skills: readonly SkillDescriptor[]): void {
     this.skills.splice(0, this.skills.length, ...skills);
   }

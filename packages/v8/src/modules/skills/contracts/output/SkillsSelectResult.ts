@@ -13,6 +13,13 @@ export const skillInstructionBlockSchema = z
     title: z.string().min(1).optional(),
     content: z.string().min(1),
     priority: z.number().int().nonnegative().default(100),
+    resources: z
+      .object({
+        references: z.array(z.string().min(1)).default([]),
+        scripts: z.array(z.string().min(1)).default([]),
+      })
+      .strict()
+      .optional(),
     provenance: z
       .object({
         skillId: z.string().min(1),

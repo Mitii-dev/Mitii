@@ -11,6 +11,7 @@ export {
   DEFAULT_MAX_SKILLS,
   DEFAULT_CHARACTERS_PER_TOKEN,
   DEFAULT_MIN_SKILL_SCORE,
+  DEFAULT_MIN_USEFUL_SKILL_TOKENS,
 } from "./defaults";
 
 export { SkillsPipeline } from "./pipeline/SkillsPipeline";
@@ -24,14 +25,20 @@ export {
   skillOmissionSchema,
   skillsSelectResultSchema,
   skillsErrorCodeSchema,
+  skillBodySchema,
+  skillIndexEntrySchema,
+  skillResourceManifestSchema,
   SkillsError,
 } from "./contracts";
 export type {
   SkillsSelectInput,
   SkillTaskEvidence,
+  SkillBody,
   SkillDescriptor,
+  SkillIndexEntry,
   SkillInstructionBlock,
   SkillOmission,
+  SkillResourceManifest,
   SkillsSelectResult,
   SkillReasonCode,
   SkillsErrorCode,
@@ -39,3 +46,5 @@ export type {
 } from "./contracts";
 
 export { InMemorySkillsCatalog } from "./adapters";
+export { KeywordSkillSimilarity } from "./KeywordSkillSimilarity";
+export type { SkillSimilarityPort } from "./contracts";

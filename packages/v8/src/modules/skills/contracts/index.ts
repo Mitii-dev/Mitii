@@ -8,8 +8,18 @@ export type {
   SkillTaskEvidence,
 } from "./input/SkillsSelectInput";
 
-export { skillDescriptorSchema } from "./output/SkillDescriptor";
-export type { SkillDescriptor } from "./output/SkillDescriptor";
+export {
+  skillBodySchema,
+  skillDescriptorSchema,
+  skillIndexEntrySchema,
+  skillResourceManifestSchema,
+} from "./output/SkillDescriptor";
+export type {
+  SkillBody,
+  SkillDescriptor,
+  SkillIndexEntry,
+  SkillResourceManifest,
+} from "./output/SkillDescriptor";
 
 export {
   skillInstructionBlockSchema,
@@ -27,3 +37,4 @@ export { skillsErrorCodeSchema, SkillsError } from "./errors/SkillsErrors";
 export type { SkillsErrorCode } from "./errors/SkillsErrors";
 
 export type { SkillsCatalogPort } from "./ports/SkillsPorts";
+export type { SkillSimilarityPort } from "./ports/SkillSimilarityPort";

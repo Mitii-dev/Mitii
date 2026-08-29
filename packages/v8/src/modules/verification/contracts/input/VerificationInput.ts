@@ -46,6 +46,8 @@ export const verificationInputSchema = z
     stateReadiness: z
       .enum(["ready", "degraded", "unavailable"])
       .default("ready"),
+    /** Window-derived cap on how many checks run this pass. */
+    maxChecks: z.number().int().positive().optional(),
   })
   .strict();
 

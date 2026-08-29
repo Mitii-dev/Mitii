@@ -1,4 +1,8 @@
 import {
+  expandCodeIdentifierTerms,
+} from "../../codeIdentifiers";
+
+import {
   TEXT_INDEX_DEFAULTS,
   TEXT_INDEX_ERRORS,
   TEXT_INDEX_MESSAGES,
@@ -11,6 +15,10 @@ import type {
   TextSearchNormalization,
   TextSearchWarning,
 } from "./types";
+
+export {
+  splitCodeIdentifier,
+} from "../../codeIdentifiers";
 
 export class TextQueryNormalizer {
   public normalize(
@@ -58,21 +66,20 @@ export class TextQueryNormalizer {
           .QUERY_TERM,
       ) ?? [];
 
+    const expandedTerms =
+      rawTerms.map(
+        (term) =>
+          this.expandTerm(term),
+      );
+
     const eligibleTerms =
-      rawTerms
-        .map((term) =>
-          term.toLowerCase(),
-        )
-        .filter(
-          (term) =>
-            term.length >=
-            TEXT_INDEX_DEFAULTS
-              .MINIMUM_TERM_CHARACTERS,
-        );
+      expandedTerms.flat();
 
     if (
-      eligibleTerms.length !==
-      rawTerms.length
+      expandedTerms.some(
+        (terms) =>
+          terms.length === 0,
+      )
     ) {
       warnings.push({
         code: "terms_removed",
@@ -222,6 +229,14 @@ export class TextQueryNormalizer {
     );
   }
 
+  private expandTerm(
+    term: string,
+  ): string[] {
+    return expandCodeIdentifierTerms(
+      term,
+    );
+  }
+
   private resolveBoundedPositive(
     value:
       number | undefined,
@@ -259,4 +274,3 @@ export class TextQueryNormalizer {
       .replace(/^\/+|\/+$/g, "");
   }
 }
-

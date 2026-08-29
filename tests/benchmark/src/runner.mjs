@@ -1,14 +1,18 @@
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, symlinkSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
-import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { runProcess, substitute } from './process.mjs';
 import { snapshotTree } from './snapshot.mjs';
 import { verifyCheck } from './verifiers.mjs';
 
+/** In-repo case workspaces (gitignored): tests/benchmark/.workspaces/<runId>/ */
+export function defaultWorkRoot(rootDir, runId) {
+  return join(rootDir, '.workspaces', runId);
+}
+
 export async function runCases(cases, rootDir, config, options = {}) {
   const runId = `${new Date().toISOString().replaceAll(/[:.]/g, '-')}-${randomUUID().slice(0, 8)}`;
-  const workRoot = options.workRoot ?? join(tmpdir(), 'mitii-solid-benchmark', runId);
+  const workRoot = options.workRoot ?? defaultWorkRoot(rootDir, runId);
   mkdirSync(workRoot, { recursive: true });
   const results = new Array(cases.length);
   let next = 0;
@@ -91,12 +95,14 @@ async function runOneCase(testCase, index, total, rootDir, workRoot, config, opt
       after,
     }));
   }
+  const usage = extractUsage(execution.stdout);
   return baseResult(testCase, {
     passed: !execution.timedOut && checks.every((check) => check.passed),
     error: execution.timedOut ? 'Agent timed out' : null,
     preconditions,
     checks,
     durationMs: execution.durationMs,
+    usage,
     exitCode: execution.exitCode,
     stdout: execution.stdout.slice(0, 8000),
     stderr: execution.stderr.slice(0, 4000),
@@ -104,22 +110,69 @@ async function runOneCase(testCase, index, total, rootDir, workRoot, config, opt
   });
 }
 
+/** Pull usage from the JSONL `end` event emitted by mitii-benchmark-agent. */
+export function extractUsage(stdout) {
+  const empty = {
+    modelCalls: null,
+    toolCalls: null,
+    loopIterations: null,
+    inputTokens: null,
+    outputTokens: null,
+  };
+  if (!stdout) return empty;
+  for (const line of String(stdout).split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('{')) continue;
+    try {
+      const event = JSON.parse(trimmed);
+      if (event?.type !== 'end') continue;
+      const usage = event.usage && typeof event.usage === 'object' ? event.usage : {};
+      return {
+        modelCalls: numberOrNull(usage.modelCalls),
+        toolCalls: numberOrNull(usage.toolCalls),
+        loopIterations: numberOrNull(usage.loopIterations),
+        inputTokens: numberOrNull(usage.inputTokens),
+        outputTokens: numberOrNull(usage.outputTokens),
+        agentDurationMs: numberOrNull(event.durationMs),
+      };
+    } catch {
+      // ignore non-JSON lines
+    }
+  }
+  return empty;
+}
+
+function numberOrNull(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
 function baseResult(testCase, run) {
   return {
     id: testCase.id,
     familyId: testCase.familyId,
     variant: testCase.variant,
+    suite: testCase.suite ?? null,
+    category: testCase.category ?? null,
     difficulty: testCase.difficulty,
     mode: testCase.mode,
     capability: testCase.capability,
     fixture: testCase.fixture,
+    prompt: testCase.prompt,
     ...run,
   };
 }
 
 function shouldIgnore(source, ignoredNames) {
   const normalized = source.replaceAll('\\', '/');
-  return ignoredNames.some((name) => normalized.split('/').includes(name));
+  const parts = normalized.split('/');
+  return ignoredNames.some((name) => {
+    if (parts.includes(name)) return true;
+    if (typeof name === 'string' && name.startsWith('*.')) {
+      const suffix = name.slice(1);
+      return parts.some((part) => part.endsWith(suffix));
+    }
+    return false;
+  });
 }
 
 function linkFixtureDependencies(sourceRoot, workspaceRoot) {

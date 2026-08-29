@@ -26,6 +26,7 @@ import type {
 export interface ContextAssemblyInput {
   selection: ContextSelectionResult;
   snapshot: WorkspaceSnapshot;
+  folderPrefix?: string;
   abortSignal?: AbortSignal;
 }
 
@@ -324,6 +325,7 @@ export type ContextAssemblyWarningCode =
   | "content_unavailable"
   | "content_source_failed"
   | "representation_fallback"
+  | "file_map_fallback"
   | "content_sanitized"
   | "secrets_redacted"
   | "content_truncated"

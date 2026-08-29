@@ -4,8 +4,17 @@ import {
   executionRouteSchema,
   planningDepthSchema,
 } from "../../../../modules/decision-policy";
-import { planArtifactSchema } from "../../../../modules/planning";
+import {
+  planArtifactSchema,
+  planStrategyDecisionSchema,
+} from "../../../../modules/planning";
+import { taskListSchema } from "../../../../modules/task-list";
 import { repositoryStateReferenceSchema } from "../../../../modules/repository-state";
+import {
+  repoBuildStateSchema,
+  verificationRecordSchema,
+} from "../../../../modules/verification";
+import { runEvidenceSchema } from "./RunEvidence";
 
 import {
   AGENT_ENGINE_SCHEMA_VERSION,
@@ -25,6 +34,10 @@ export const agentRunUsageSchema = z
     loopIterations: z.number().int().nonnegative(),
     inputTokens: z.number().int().nonnegative().optional(),
     outputTokens: z.number().int().nonnegative().optional(),
+    cacheHitTokens: z.number().int().nonnegative().optional(),
+    cacheMissTokens: z.number().int().nonnegative().optional(),
+    fileReadCalls: z.number().int().nonnegative().optional(),
+    uniqueFilePathsTouched: z.number().int().nonnegative().optional(),
   })
   .strict();
 
@@ -54,6 +67,7 @@ export const agentRunSuspensionSchema = z
         toolName: z.string().min(1),
         callId: z.string().min(1),
         paths: z.array(z.string()).optional(),
+        arguments: z.unknown().optional(),
       })
       .strict()
       .optional(),
@@ -73,6 +87,14 @@ export const agentRunResultSchema = z
     answer: z.string().optional(),
     /** Structured plan when planningDepth produced an artifact. */
     plan: planArtifactSchema.optional(),
+    /** How the plan should be followed after draft, approval, or host carry. */
+    planStrategy: planStrategyDecisionSchema.optional(),
+    /** Compact live checklist. Absent in ask mode. Never auto-completed. */
+    taskList: taskListSchema.optional(),
+    repoBuildStateBefore: repoBuildStateSchema.optional(),
+    repoBuildStateAfter: repoBuildStateSchema.optional(),
+    verificationRecord: verificationRecordSchema.optional(),
+    evidence: runEvidenceSchema.optional(),
     suspension: agentRunSuspensionSchema.optional(),
     pinnedState: repositoryStateReferenceSchema.optional(),
     reasonCodes: z.array(agentReasonCodeSchema).min(1),

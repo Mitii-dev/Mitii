@@ -5,10 +5,15 @@ import { ProjectRootDetector } from "./ProjectRootDetector";
 
 import { ManifestReaderRegistry } from "./manifests";
 import {
+  CargoTomlReader,
+  ComposerJsonReader,
+  DotnetProjectReader,
+  GemfileReader,
   GoModuleReader,
   GradleProjectReader,
   MavenProjectReader,
   PackageJsonReader,
+  PyprojectReader,
 } from "./readers";
 
 import type { ManifestReader, ProjectRootDetectorOptions } from "./types";
@@ -53,6 +58,11 @@ function registerBuiltInReaders(
     new MavenProjectReader(fileSystem),
     new GradleProjectReader(fileSystem),
     new GoModuleReader(fileSystem),
+    new CargoTomlReader(fileSystem),
+    new PyprojectReader(fileSystem),
+    new ComposerJsonReader(fileSystem),
+    new GemfileReader(fileSystem),
+    new DotnetProjectReader(fileSystem),
   ];
 
   for (const reader of readers) {

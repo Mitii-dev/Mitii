@@ -1,4 +1,7 @@
 import {
+  splitCodeIdentifier,
+} from "../../../../repository-state";
+import {
   HYBRID_RETRIEVAL_DEFAULTS,
   HYBRID_RETRIEVAL_QUERY_STOP_WORDS,
 } from "../constants";
@@ -18,22 +21,32 @@ export class CodeQueryTokenizer {
       new Set<string>();
 
     for (const match of matches) {
-      const token =
-        match.toLowerCase();
+      for (const token of [
+        match.toLowerCase(),
+        ...splitCodeIdentifier(match),
+      ]) {
+        if (
+          token.length <
+            HYBRID_RETRIEVAL_DEFAULTS
+              .MINIMUM_QUERY_TOKEN_CHARACTERS ||
+          HYBRID_RETRIEVAL_QUERY_STOP_WORDS
+            .has(token) ||
+          seen.has(token)
+        ) {
+          continue;
+        }
 
-      if (
-        token.length <
+        seen.add(token);
+        tokens.push(token);
+
+        if (
+          tokens.length >=
           HYBRID_RETRIEVAL_DEFAULTS
-            .MINIMUM_QUERY_TOKEN_CHARACTERS ||
-        HYBRID_RETRIEVAL_QUERY_STOP_WORDS
-          .has(token) ||
-        seen.has(token)
-      ) {
-        continue;
+            .MAXIMUM_QUERY_TOKENS
+        ) {
+          break;
+        }
       }
-
-      seen.add(token);
-      tokens.push(token);
 
       if (
         tokens.length >=

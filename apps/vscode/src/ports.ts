@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
+import { relative } from 'node:path';
 import {
-  EchoLlmPort,
-  OpenAiCompatibleLlmPort,
   createMitiiClient,
   InMemoryRepositoryStateStore,
   RepositoryStatePipeline,
@@ -13,6 +12,8 @@ import {
   NodeNetworkAdapter,
   NodeWorkspaceFileSystemAdapter,
   NodeGitAdapter,
+  WINDOW_BUDGET_SCHEMA_VERSION,
+  deriveWindowPolicy,
   type LlmPort,
   type MitiiClient,
   type ModelCapabilities,
@@ -22,9 +23,14 @@ import {
 } from '@mitii/sdk';
 import {
   createFileSystemSkillsCatalog,
+  createHostCodeNavigationPort,
+  createHostLlmPorts,
+  createHostRepositoryGraphPort,
   createOptionalSearchPort,
   createWorkspaceCheckpointStore,
-  getProviderPreset,
+  createWorkspaceVerificationStore,
+  resolveMemoryEmbeddingPort,
+  resolveProviderApiKey,
 } from '@mitii/host';
 import type * as vscode from 'vscode';
 
@@ -35,10 +41,16 @@ import { findLocalModelPreset } from './modelPresets.js';
 import { createHostRepositoryContext } from './repositoryContextHost.js';
 import { readContextToggles } from './contextToggles.js';
 import { createVsCodeMemoryStore } from './memoryStore.js';
+import { createVsCodeCodeNavigationPort } from './codeNavigation.js';
 import { resolveVsCodeSemanticIndexSettings } from './semanticIndex.js';
+import { readTokenBudgetPolicyOverrides } from './tokenBudgetSettings.js';
+import {
+  isModelIoLoggingEnabled,
+  wrapLlmPortForModelIo,
+} from './modelIoLog.js';
+import { readModelIoLoggingEnabled } from './modelIoSettings.js';
 
 const DEFAULT_CONTEXT_WINDOW = 32_768;
-const DEFAULT_MAXIMUM_OUTPUT = 16_384;
 
 export class LocalUnderstandingLlmPort implements LlmPort {
   readonly id = 'vscode-local-understanding';
@@ -99,14 +111,18 @@ function resolveMaximumOutput(
   contextWindowTokens: number,
 ): number {
   const fromSetting = cfg.get<number>('provider.maximumOutputTokens');
-  if (
+  const hostOutput =
     typeof fromSetting === 'number' &&
     Number.isFinite(fromSetting) &&
     fromSetting > 0
-  ) {
-    return Math.min(Math.floor(fromSetting), Math.max(1, contextWindowTokens - 1));
-  }
-  return Math.min(DEFAULT_MAXIMUM_OUTPUT, Math.max(1, contextWindowTokens - 1));
+      ? Math.floor(fromSetting)
+      : 0;
+  return deriveWindowPolicy({
+    schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+    contextWindowTokens: Math.max(1, contextWindowTokens),
+    maximumOutputTokens: hostOutput,
+    policy: readTokenBudgetPolicyOverrides(cfg),
+  }).maximumOutputTokens;
 }
 
 /**
@@ -123,60 +139,61 @@ export async function resolveVscodePorts(
 ): Promise<VscodePortResolution> {
   const cfg = vs.workspace.getConfiguration('mitii');
   const providerType = cfg.get<string>('provider.type') ?? 'echo';
-  const model = cfg.get<string>('provider.model') ?? 'qwen3-coder:30b';
+  const model = cfg.get<string>('provider.model') ?? '';
   const baseUrl =
     cfg.get<string>('provider.baseUrl')?.trim() ||
     'http://localhost:11434/v1';
   const workspaceId = resolveWorkspaceId(workspaceRoot);
 
-  const secretKey =
-    (await secrets.get('mitii.provider.apiKey')) ??
-    process.env.MITII_API_KEY ??
-    process.env.OPENAI_API_KEY;
+  const secretKey = resolveProviderApiKey({
+    type: providerType,
+    env: process.env,
+    secretKey:
+      (await secrets.get('mitii.provider.apiKey')) ?? undefined,
+  });
+  const presetId = cfg.get<string>('provider.preset') ?? providerType;
 
-  if (providerType === 'openai-compatible') {
-    const contextWindowTokens = resolveContextWindow(cfg, model);
-    const maximumOutputTokens = resolveMaximumOutput(cfg, contextWindowTokens);
-    const capabilities = {
-      contextWindowTokens,
-      maximumOutputTokens,
-      supportsTools: true,
-    };
-    const presetId = cfg.get<string>('provider.preset') ?? 'openai-compatible';
-    const preset = getProviderPreset(presetId);
-    const authHeader = preset?.authHeader;
-    const chatCompletionsPath = preset?.chatCompletionsPath;
-    const runLlm = new OpenAiCompatibleLlmPort({
-      model,
-      baseUrl,
-      ...(secretKey ? { apiKey: secretKey } : {}),
-      ...(authHeader ? { authHeader } : {}),
-      ...(chatCompletionsPath ? { chatCompletionsPath } : {}),
-      capabilities,
-    });
-    const understandingLlm = new OpenAiCompatibleLlmPort({
-      model,
-      baseUrl,
-      ...(secretKey ? { apiKey: secretKey } : {}),
-      ...(authHeader ? { authHeader } : {}),
-      ...(chatCompletionsPath ? { chatCompletionsPath } : {}),
-      capabilities: {
-        ...capabilities,
-        supportsStructuredOutput: true,
-      },
-    });
+  const modelIoEnabled = isModelIoLoggingEnabled(
+    cfg.get<boolean>('developer.enabled') ?? false,
+    readModelIoLoggingEnabled(cfg),
+  );
+
+  if (providerType === 'echo') {
     return {
-      understandingLlm,
-      runLlm,
-      providerLabel: `openai-compatible:${model}`,
+      understandingLlm: wrapLlmPortForModelIo(
+        new LocalUnderstandingLlmPort(),
+        modelIoEnabled,
+      ),
+      runLlm: wrapLlmPortForModelIo(
+        createHostLlmPorts({ type: 'echo', model: 'echo' }).runLlm,
+        modelIoEnabled,
+      ),
+      providerLabel: 'echo',
       workspaceId,
     };
   }
 
+  const contextWindowTokens = resolveContextWindow(cfg, model);
+  const maximumOutputTokens = resolveMaximumOutput(cfg, contextWindowTokens);
+  const ports = createHostLlmPorts({
+    type: providerType,
+    preset: presetId,
+    model,
+    baseUrl,
+    ...(secretKey ? { apiKey: secretKey } : {}),
+    capabilities: {
+      contextWindowTokens,
+      maximumOutputTokens,
+      supportsTools: true,
+    },
+  });
   return {
-    understandingLlm: new LocalUnderstandingLlmPort(),
-    runLlm: new EchoLlmPort(),
-    providerLabel: 'echo',
+    understandingLlm: wrapLlmPortForModelIo(
+      ports.understandingLlm,
+      modelIoEnabled,
+    ),
+    runLlm: wrapLlmPortForModelIo(ports.runLlm, modelIoEnabled),
+    providerLabel: ports.providerLabel,
     workspaceId,
   };
 }
@@ -203,15 +220,27 @@ export async function createVscodeClient(
     ? new NodeWorkspaceFileSystemAdapter()
     : undefined;
   const search = createOptionalSearchPort(process.env);
+  const git = workspaceRoot ? new NodeGitAdapter() : undefined;
+  const codeNavigation = workspaceRoot
+    ? createHostCodeNavigationPort({
+        workspaceRoot,
+        languageServer: createVsCodeCodeNavigationPort(vs, workspaceRoot),
+      })
+    : undefined;
+  const repoGraphs = workspaceRoot
+    ? createHostRepositoryGraphPort({ workspaceRoot })
+    : undefined;
   const tools = workspaceRoot && fileSystem
     ? new ToolRuntimePipeline(
         {
           fileSystem,
           process: new NodeProcessAdapter(),
           network: new NodeNetworkAdapter(),
-          git: new NodeGitAdapter(),
+          git,
           diagnostics: new VscodeDiagnosticsPort(vs, workspaceRoot),
           ...(search ? { search } : {}),
+          ...(codeNavigation ? { codeNavigation } : {}),
+          ...(repoGraphs ? { repoGraphs } : {}),
         },
         { registry: mcpManager.createRegistry() },
       )
@@ -225,14 +254,21 @@ export async function createVscodeClient(
             fileSystem,
             workspaceRoot,
           }),
+          records: createWorkspaceVerificationStore(workspaceRoot),
         })
       : undefined;
 
+  const semanticIndex = workspaceRoot
+    ? await resolveVsCodeSemanticIndexSettings(vs, secrets)
+    : undefined;
   const repositoryContext = workspaceRoot
     ? createHostRepositoryContext({
         repositoryState,
         workspaceRoot,
-        semanticIndex: await resolveVsCodeSemanticIndexSettings(vs, secrets),
+        semanticIndex,
+        ...(git ? { git } : {}),
+        resolveEditorReferences: () =>
+          resolveVsCodeEditorReferences(vs, workspaceRoot),
       })
     : undefined;
 
@@ -256,9 +292,14 @@ export async function createVscodeClient(
     repositoryState,
     repositoryContext,
     tools,
+    ...(repoGraphs ? { repoGraphs } : {}),
     verification,
     toolDefinitions,
     enableInMemoryCheckpoints: false,
+    taskListAutoAdvance:
+      vs.workspace
+        .getConfiguration('mitii')
+        .get<boolean>('agent.taskListAutoAdvance') ?? true,
     ...(workspaceRoot
       ? { checkpointStore: createWorkspaceCheckpointStore(workspaceRoot) }
       : {}),
@@ -272,6 +313,9 @@ export async function createVscodeClient(
       memoryEnabled && options.workspaceState
         ? createVsCodeMemoryStore(options.workspaceState, ports.workspaceId)
         : undefined,
+    memoryEmbedding: memoryEnabled
+      ? resolveMemoryEmbeddingPort(semanticIndex)
+      : undefined,
   });
   return { client, ports };
 }
@@ -281,4 +325,57 @@ function resolveWorkspaceId(workspaceRoot: string | undefined): string {
   const normalized = workspaceRoot.replace(/\\/g, '/');
   const hash = createHash('sha1').update(normalized).digest('hex').slice(0, 12);
   return `vscode_workspace_${hash}`;
+}
+
+function toWorkspaceRelativePath(
+  workspaceRoot: string,
+  filePath: string,
+): string | undefined {
+  const relativePath = relative(workspaceRoot, filePath).replace(/\\/g, '/');
+  if (
+    !relativePath ||
+    relativePath.startsWith('../') ||
+    relativePath === '..' ||
+    relativePath.startsWith('/')
+  ) {
+    return undefined;
+  }
+  return relativePath;
+}
+
+function resolveVsCodeEditorReferences(
+  vs: typeof vscode,
+  workspaceRoot: string,
+): {
+  currentFile?: { relativePath: string };
+  openFiles: Array<{ relativePath: string }>;
+} {
+  const seen = new Set<string>();
+  const openFiles: Array<{ relativePath: string }> = [];
+
+  for (const editor of vs.window.visibleTextEditors) {
+    if (editor.document.isUntitled || editor.document.uri.scheme !== 'file') {
+      continue;
+    }
+    const relativePath = toWorkspaceRelativePath(
+      workspaceRoot,
+      editor.document.uri.fsPath,
+    );
+    if (!relativePath || seen.has(relativePath)) continue;
+    seen.add(relativePath);
+    openFiles.push({ relativePath });
+  }
+
+  const active = vs.window.activeTextEditor;
+  const currentRelative =
+    active &&
+    !active.document.isUntitled &&
+    active.document.uri.scheme === 'file'
+      ? toWorkspaceRelativePath(workspaceRoot, active.document.uri.fsPath)
+      : undefined;
+
+  return {
+    ...(currentRelative ? { currentFile: { relativePath: currentRelative } } : {}),
+    openFiles,
+  };
 }

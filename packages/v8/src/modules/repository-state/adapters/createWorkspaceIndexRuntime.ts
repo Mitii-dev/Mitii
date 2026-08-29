@@ -1,6 +1,9 @@
 import {
   EmbeddingFactory,
 } from "../internal/embedding/EmbeddingFactory";
+import {
+  SqliteEmbeddingVectorCache,
+} from "../internal/embedding/SqliteEmbeddingVectorCache";
 import type {
   EmbeddingFactoryOptions,
   EmbeddingProvider,
@@ -38,6 +41,9 @@ import type {
 import type {
   WorkspaceIndexingPipeline,
 } from "../pipeline/ws-indexing-pipeline/WorkspaceIndexingPipeline";
+import type {
+  TreeSitterRuntimePort,
+} from "../contracts";
 import {
   WorkspaceIndexingAdapterFactory,
 } from "./WorkspaceIndexingAdapterFactory";
@@ -55,6 +61,7 @@ export interface CreateWorkspaceIndexRuntimeOptions {
   fileSystem?: FileSystemPort;
   ignorePolicy?: WorkspaceIgnorePolicyOptions;
   filePolicy?: WorkspaceIndexingFilePolicyPort;
+  treeSitterRuntime?: TreeSitterRuntimePort;
   vector?: WorkspaceIndexRuntimeVectorOptions;
 }
 
@@ -77,6 +84,12 @@ export async function createWorkspaceIndexRuntime(
     ...(options.fileSystem ? { fileSystem: options.fileSystem } : {}),
     ...(options.ignorePolicy ? { ignorePolicy: options.ignorePolicy } : {}),
     ...(options.filePolicy ? { filePolicy: options.filePolicy } : {}),
+    ...(options.treeSitterRuntime
+      ? {
+          treeSitterRuntime:
+            options.treeSitterRuntime,
+        }
+      : {}),
     codeIndexDatabase: options.codeIndexDatabase,
     textIndexDatabase: options.textIndexDatabase,
     ...(options.vector
@@ -93,6 +106,9 @@ export async function createWorkspaceIndexRuntime(
                 provider: options.vector!.embeddingProvider,
                 textIndex: textIndex.reader,
                 vectorWriter: lanceVectorIndex.writer,
+                vectorCache: new SqliteEmbeddingVectorCache(
+                  options.textIndexDatabase,
+                ),
               },
               options.vector!.embedding,
             ).synchronizer;

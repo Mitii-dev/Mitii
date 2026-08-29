@@ -410,3 +410,49 @@ test("unavailable state fails closed; degraded state warns and continues", async
     degraded.warnings.some((warning) => warning.code === "state_degraded"),
   );
 });
+
+test("folderPrefix drops unrelated git and editor references before selection", async () => {
+  let selectionInput: ContextSelectionInput | undefined;
+
+  const pipeline = new RepositoryContextPipeline({
+    stateResolver: createResolver(() => ({
+      status: "resolved",
+      artifacts: resolvedArtifacts(),
+    })),
+    retriever: {
+      retrieve: async (input) => emptyRetrieval(input.query),
+    },
+    selector: {
+      select: (input) => {
+        selectionInput = input;
+        return emptySelection(input);
+      },
+    },
+    assembler: {
+      assemble: emptyAssembly,
+    },
+  });
+
+  await pipeline.execute({
+    state: {
+      workspaceId: "workspace",
+      stateToken: STATE_TOKEN,
+    },
+    query: "fix types in this package",
+    mode: "agent",
+    folderPrefix: "packages/demo",
+    references: {
+      gitDiffFiles: [
+        { relativePath: ".gitignore" },
+        { relativePath: "packages/demo/src/used.ts" },
+      ],
+      openFiles: [{ relativePath: "apps/docs/readme.md" }],
+    },
+  });
+
+  assert.deepEqual(
+    selectionInput?.references?.gitDiffFiles?.map((file) => file.relativePath),
+    ["packages/demo/src/used.ts"],
+  );
+  assert.equal(selectionInput?.references?.openFiles, undefined);
+});

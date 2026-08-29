@@ -12,7 +12,7 @@
   <a href="LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/License-AGPL_v3-blue.svg"></a>
   <a href="https://code.visualstudio.com/"><img alt="VS Code 1.85+" src="https://img.shields.io/badge/VS%20Code-1.85%2B-007ACC?logo=visualstudiocode"></a>
   <a href="https://nodejs.org/"><img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-339933?logo=node.js"></a>
-  <img alt="Version 2.8.5" src="https://img.shields.io/badge/version-2.8.5-111111">
+  <img alt="Version 2.8.72" src="https://img.shields.io/badge/version-2.8.72-111111">
   <a href="https://docs.mitii.dev"><img alt="Documentation" src="https://img.shields.io/badge/docs-docs.mitii.dev-5B5BFF"></a>
 </p>
 
@@ -30,8 +30,9 @@ Mitii understands a repository before it changes it. It combines local indexing,
 
 - **Repository-aware context** — SQLite FTS5, symbols, vectors, repo maps, diagnostics, Git state, and explicitly attached files.
 - **Clear operating modes** — Ask for read-only analysis, Plan complex work, Agent applies changes, and Review inspects results.
+- **Evidence-assisted planning** — Plan mode can follow in-scope preflight diagnostics, discover first when evidence is thin, draft from the ask for scoped feature work, or ask clarifying questions when the request is too unclear.
 - **Controlled execution** — configurable approvals, dangerous-command blocking, workspace trust checks, and pre-write checkpoints.
-- **Model flexibility** — `echo` (local stub) and **OpenAI-compatible** endpoints (Ollama, LM Studio, OpenRouter, OpenAI, Azure OpenAI, DeepSeek, and similar `/v1` APIs). Native Anthropic, Gemini, and Bedrock adapters are not shipped yet.
+- **Model flexibility** — `echo` (local stub), native **Anthropic (Claude)** and **Gemini** adapters, plus **OpenAI-compatible** endpoints (Ollama, LM Studio, OpenRouter, OpenAI, Azure OpenAI, DeepSeek, and any `/v1` API).
 - **Extensible workflows** — built-in tools, MCP servers (VS Code), project rules, and reusable skills.
 - **Local evidence** — session logs and a basic audit-pack export from the VS Code host (settings redacted). Org SSO/RBAC, SIEM webhooks, and managed enterprise policy packs are not implemented yet.
 
@@ -111,18 +112,35 @@ Implement the approved plan and run the relevant tests.
 
 Mitii retrieves relevant context, selects the required capabilities, requests approval for protected actions, checkpoints affected files, applies scoped edits, and runs configured or discovered verification commands.
 
+For repair requests with matching preflight diagnostics, Mitii can skip redundant discovery and start from concrete Change steps tied to the failing files. Optional lightweight model enrichment can improve plan wording, but deterministic policy still owns gates, approvals, grants, and verification requirements.
+
+## Evidence-led execution
+
+Agent runs now carry a structured evidence artifact in addition to plan and task state. The goal is to make every major action accountable without making the live task list the source of truth.
+
+- **Discovery report** records the target, files/searches/commands inspected, bounded discovery capacity, and why discovery stopped.
+- **Issue inventory** tracks findings from diagnostics/build/verification as issues rather than just counting files.
+- **Plan evidence** records how many plan steps are linked to concrete targets, reviewed context, or verification.
+- **Execution ledger** records tool actions, edits, verification commands, and stop decisions with safe summaries and paths.
+- **Verification delta** records before/after error counts, remaining issues, checks, and the stop reason when verification is available.
+
+The plan remains the execution contract. Task lists are a derived progress view, useful for UI, but subordinate to plan evidence and verification. Once requested verification passes after edits, the agent should stop and summarize instead of continuing because the model produced transitional narration.
+
 ## CLI and SDK
 
 ### CLI
 
 ```bash
 pnpm run build:cli
+node apps/cli/bin/mitii.js --help
+node apps/cli/bin/mitii.js setup --provider ollama --yes
+node apps/cli/bin/mitii.js session
 node apps/cli/bin/mitii.js ask "Summarize the authentication flow" --echo
 node apps/cli/bin/mitii.js index --cwd /path/to/project
 node apps/cli/bin/mitii.js status --json
 ```
 
-See [apps/cli/README.md](apps/cli/README.md) for `ask`, `session`, `index`, `status`, and `export-session`. Daemon / `mitii serve` is deferred.
+New users: `mitii setup` writes non-secret provider config, then set an API key in the environment and run `mitii session` (dotted MITII banner + REPL). See [apps/cli/README.md](apps/cli/README.md) for `setup`, `ask`, `session`, `index`, `status`, and `export-session`. Daemon / `mitii serve` is deferred.
 
 ### SDK
 

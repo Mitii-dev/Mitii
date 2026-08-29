@@ -29,12 +29,30 @@ test(
     assert.equal(
       result
         .maximumOutputTokens,
-      4_096,
+      32_000,
     );
     assert.equal(
       result
         .supportsParallelToolCalls,
       true,
+    );
+  },
+);
+
+test(
+  "capability resolver derives default output from the context window",
+  () => {
+    const result = new ModelCapabilityResolver()
+      .resolve({
+        modelId:
+          "provider/large-context",
+        contextWindowTokens:
+          252_000,
+      });
+
+    assert.equal(
+      result.maximumOutputTokens,
+      63_000,
     );
   },
 );

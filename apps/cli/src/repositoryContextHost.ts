@@ -5,6 +5,7 @@ import {
 import type {
   RepositoryContextPipeline,
   RepositoryStatePipeline,
+  GitPort,
 } from '@mitii/v8';
 import Database from 'better-sqlite3';
 
@@ -13,6 +14,7 @@ export function createHostRepositoryContext(options: {
   workspaceRoot: string;
   textIndexDatabasePath?: string;
   semanticIndex?: SemanticIndexSettings;
+  git?: GitPort;
 }): RepositoryContextPipeline {
   return createSharedHostRepositoryContext({
     ...options,

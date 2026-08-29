@@ -1,5 +1,14 @@
-import type { MitiiConversationMessage, PlanArtifact } from '@mitii/sdk';
-import { planArtifactSchema } from '@mitii/sdk';
+import type {
+  MitiiConversationMessage,
+  PlanArtifact,
+  PlanStrategyDecision,
+  TaskList,
+} from '@mitii/sdk';
+import {
+  planArtifactSchema,
+  planStrategyDecisionSchema,
+  taskListSchema,
+} from '@mitii/sdk';
 
 /**
  * Host-side conversation / plan carry policy.
@@ -83,11 +92,37 @@ export function resolvePlanHandoff(options: {
 }
 
 /**
+ * Companion strategy for a host-carried approved plan.
+ * Agent mode only; ignored when the persisted shape is stale.
+ */
+export function resolvePlanStrategyHandoff(options: {
+  mode: AgentCarryMode;
+  pendingPlanStrategy: unknown;
+}): PlanStrategyDecision | undefined {
+  if (options.mode !== 'agent') return undefined;
+  return parsePendingPlanStrategy(options.pendingPlanStrategy);
+}
+
+/**
  * Validate a persisted pending plan (memento may hold stale shapes).
  */
 export function parsePendingPlan(value: unknown): PlanArtifact | undefined {
   if (value == null) return undefined;
   const parsed = planArtifactSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
+export function parsePendingPlanStrategy(
+  value: unknown,
+): PlanStrategyDecision | undefined {
+  if (value == null) return undefined;
+  const parsed = planStrategyDecisionSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
+export function parsePendingTaskList(value: unknown): TaskList | undefined {
+  if (value == null) return undefined;
+  const parsed = taskListSchema.safeParse(value);
   return parsed.success ? parsed.data : undefined;
 }
 
@@ -106,6 +141,16 @@ const TRANSITIONAL_CLOSERS = /(?::|\.\.\.|…)\s*$/;
 const TRAILING_INTENT_CLAUSE =
   /[.!,;]\s*(?:let me|i(?:'ll| will)|i(?:'m| am) going to)\b[\s\S]{0,160}$/i;
 
+const PLANNING_PHRASE =
+  /\b(?:let me|i(?:'ll| will)|i(?:'m| am) going to|i need to|i should)\b/gi;
+
+function isMidWorkAnalysisDump(text: string): boolean {
+  const trimmed = text.trim();
+  if (trimmed.length < 800) return false;
+  const planning = trimmed.match(PLANNING_PHRASE) ?? [];
+  return planning.length >= 8;
+}
+
 function isWeakAssistantDisplay(text: string): boolean {
   const trimmed = text.trim();
   if (trimmed.length === 0) return true;
@@ -114,6 +159,7 @@ function isWeakAssistantDisplay(text: string): boolean {
   if (/^Completed workspace edits\b[\s\S]*\bChanged files \(\d+\):/i.test(trimmed)) {
     return true;
   }
+  if (isMidWorkAnalysisDump(trimmed)) return true;
   if (trimmed.length > 600) return false;
 
   const singleBeat =
@@ -175,6 +221,7 @@ export function resolveDisplayedAssistantText(options: {
   const final = options.finalAnswer.trim();
   if (!final) return streamed || '(no answer)';
   if (!streamed) return final;
+  if (isMidWorkAnalysisDump(streamed)) return final;
 
   const finalWeak = isWeakAssistantDisplay(final);
   if (!finalWeak) return final;

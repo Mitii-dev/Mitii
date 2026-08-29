@@ -8,6 +8,7 @@ import type {
 
 import type {
   RepoGraph,
+  RepoGraphEdgeType,
 } from "../../../repository-state/index";
 
 import type {
@@ -33,6 +34,11 @@ export interface HybridRetrievalInput {
   rootIds?: readonly string[];
   folderPrefix?: string;
   filePaths?: readonly string[];
+  /**
+   * Extra graph file-node anchors (open / current / git-dirty files).
+   * These seed blast-radius expansion and must not be used as a scope filter.
+   */
+  anchorFilePaths?: readonly string[];
   kinds?: readonly ChunkKind[];
 
   maximumResults?: number;
@@ -60,6 +66,7 @@ export interface NormalizedHybridRetrievalRequest {
   rootIds: string[];
   folderPrefix?: string;
   filePaths: string[];
+  anchorFilePaths: string[];
   kinds: ChunkKind[];
 
   maximumResults: number;
@@ -91,7 +98,9 @@ export type RetrievalReasonType =
   | "semantic_match"
   | "repo_map_rank"
   | "graph_path_match"
+  | "graph_file_anchor"
   | "graph_symbol_match"
+  | "graph_call_neighbor"
   | "graph_import_neighbor"
   | "graph_reference_neighbor"
   | "reranked";
@@ -320,6 +329,7 @@ export type HybridRetrievalWarningCode =
   | "duplicate_filter_removed"
   | "source_failed"
   | "required_source_unavailable"
+  | "optional_source_unavailable"
   | "source_truncated"
   | "result_limit_reached"
   | "failure_policy_unsatisfied"
@@ -434,6 +444,8 @@ export interface RepoGraphRetrievalSourceOptions {
   maximumEdgesScanned?: number;
   maximumAnchorNodes?: number;
   maximumNeighborsPerAnchor?: number;
+  maximumHops?: number;
+  edgeTypes?: readonly RepoGraphEdgeType[];
 }
 
 export interface ResolvedRepoGraphRetrievalSourceOptions {
@@ -441,6 +453,8 @@ export interface ResolvedRepoGraphRetrievalSourceOptions {
   maximumEdgesScanned: number;
   maximumAnchorNodes: number;
   maximumNeighborsPerAnchor: number;
+  maximumHops: number;
+  edgeTypes: readonly RepoGraphEdgeType[];
 }
 
 /**

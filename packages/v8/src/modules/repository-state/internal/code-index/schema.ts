@@ -141,6 +141,14 @@ export const codeIndexReferenceSchema = z
   .object({
     fromFileId: z.string().min(1),
     symbolName: z.string().min(1),
+    kind: z.enum([
+      "call",
+      "construct",
+      "type",
+      "read",
+      "write",
+      "unknown",
+    ]),
     line:
       z.number().int().positive().optional(),
     resolution: z.enum([

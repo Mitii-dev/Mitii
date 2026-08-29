@@ -22,7 +22,12 @@ export class EmbeddingFactory {
     const generator =
       new EmbeddingGenerator(
         dependencies.provider,
-        options.generator,
+        {
+          ...options.generator,
+          ...(dependencies.vectorCache
+            ? { vectorCache: dependencies.vectorCache }
+            : {}),
+        },
       );
 
     const synchronizer =

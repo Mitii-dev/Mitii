@@ -7,8 +7,12 @@ export {
   TOOL_BACKENDS,
   TOOL_RESULT_STATUSES,
   TOOL_REASON_CODES,
+  PATCH_CURRENT_CONTENT_REASON_CODES,
+  PATCH_TARGETED_DISCOVERY_REASON_CODES,
   TOOL_RUNTIME_ERROR_CODES,
   TOOL_EFFECTS,
+  isPatchCurrentContentReason,
+  isPatchTargetedDiscoveryReason,
 } from "./constants";
 
 export {
@@ -38,9 +42,14 @@ export type {
 export type { ToolApprovalToken } from "./pipeline/types";
 
 export {
-  validateMutationBatch,
-  MutationBatchValidationError,
-} from "./mutationBatch";
+  StructuralShadowGrantAuthorizer,
+  compileToolGrantToCedar,
+} from "./shadow";
+export type {
+  ShadowAuthorizeDecision,
+  ShadowAuthorizeResult,
+  ShadowGrantAuthorizer,
+} from "./shadow";
 
 export {
   ToolRegistry,
@@ -93,6 +102,8 @@ export type {
   GitPort,
   NetworkPort,
   SearchPort,
+  RepositoryGraphPort,
+  CodeNavigationPort,
 } from "./contracts";
 
 export {
@@ -110,3 +121,8 @@ export {
   InMemoryNetworkAdapter,
 } from "./adapters";
 export type { ProcessHandler } from "./adapters";
+
+export {
+  validateMutationBatch,
+  MutationBatchValidationError,
+} from "./mutationBatch";

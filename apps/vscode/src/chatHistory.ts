@@ -1,14 +1,19 @@
 import { createHash } from 'node:crypto';
 import type * as vscode from 'vscode';
-import type { PlanArtifact } from '@mitii/sdk';
+import type { PlanArtifact, PlanStrategyDecision, TaskList } from '@mitii/sdk';
 
 import type {
   ActivityEventPayload,
   ChatMessageView,
   ChatThreadSummary,
   RunFileChangesView,
+  TokenUsageSnapshot,
 } from './protocol.js';
-import { parsePendingPlan } from './conversationCarry.js';
+import {
+  parsePendingPlan,
+  parsePendingPlanStrategy,
+  parsePendingTaskList,
+} from './conversationCarry.js';
 
 const HISTORY_KEY = 'mitii.chatHistory.v1';
 const CHECKPOINT_KEY = 'mitii.checkpoints.v1';
@@ -23,6 +28,12 @@ export interface StoredThread {
    * Cleared after a successful agent run that consumed it, or when replaced.
    */
   pendingPlan?: PlanArtifact;
+  /** Strategy for the pending plan, used on Agent handoff. */
+  pendingPlanStrategy?: PlanStrategyDecision;
+  /** Live working task list for this thread. */
+  pendingTaskList?: TaskList;
+  /** Cumulative token usage for this chat thread. */
+  tokenUsage?: TokenUsageSnapshot;
 }
 
 interface HistoryStore {
@@ -58,6 +69,9 @@ function normalizeMessage(raw: ChatMessageView): ChatMessageView {
 
 function normalizeThread(raw: StoredThread): StoredThread {
   const pendingPlan = parsePendingPlan(raw.pendingPlan);
+  const pendingPlanStrategy = parsePendingPlanStrategy(raw.pendingPlanStrategy);
+  const pendingTaskList = parsePendingTaskList(raw.pendingTaskList);
+  const tokenUsage = normalizeTokenUsage(raw.tokenUsage);
   return {
     id: raw.id,
     title: raw.title,
@@ -66,6 +80,59 @@ function normalizeThread(raw: StoredThread): StoredThread {
       ? raw.messages.map((message) => normalizeMessage(message))
       : [],
     ...(pendingPlan ? { pendingPlan } : {}),
+    ...(pendingPlanStrategy ? { pendingPlanStrategy } : {}),
+    ...(pendingTaskList ? { pendingTaskList } : {}),
+    ...(tokenUsage ? { tokenUsage } : {}),
+  };
+}
+
+function normalizeTokenUsage(
+  raw: StoredThread['tokenUsage'],
+): TokenUsageSnapshot | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const input = Math.max(0, Number(raw.inputTokensTotal) || 0);
+  const output = Math.max(0, Number(raw.outputTokensTotal) || 0);
+  return {
+    sessionTotal: Math.max(0, Number(raw.sessionTotal) || input + output),
+    inputTokensTotal: input,
+    outputTokensTotal: output,
+    currentTurnTotal: Math.max(0, Number(raw.currentTurnTotal) || 0),
+    currentTurnInputTokens: Math.max(
+      0,
+      Number(raw.currentTurnInputTokens) || 0,
+    ),
+    currentTurnOutputTokens: Math.max(
+      0,
+      Number(raw.currentTurnOutputTokens) || 0,
+    ),
+    aiCallCount: Math.max(0, Number(raw.aiCallCount) || 0),
+    modelCalls: Math.max(0, Number(raw.modelCalls) || 0),
+    toolCalls: Math.max(0, Number(raw.toolCalls) || 0),
+    loopIterations: Math.max(0, Number(raw.loopIterations) || 0),
+    lastPromptTokens: Math.max(0, Number(raw.lastPromptTokens) || 0),
+    lastResponseTokens: Math.max(0, Number(raw.lastResponseTokens) || 0),
+    turnCount: Math.max(0, Number(raw.turnCount) || 0),
+    contextWindow: Math.max(0, Number(raw.contextWindow) || 0),
+    estimated: Boolean(raw.estimated),
+    durationMs:
+      raw.durationMs === undefined
+        ? undefined
+        : Math.max(0, Number(raw.durationMs) || 0),
+    turns: Array.isArray(raw.turns)
+      ? raw.turns
+          .map((turn) => ({
+            turnIndex: Math.max(0, Number(turn.turnIndex) || 0),
+            at: typeof turn.at === 'string' ? turn.at : new Date().toISOString(),
+            inputTokens: Math.max(0, Number(turn.inputTokens) || 0),
+            outputTokens: Math.max(0, Number(turn.outputTokens) || 0),
+            ...(turn.finishReason ? { finishReason: String(turn.finishReason) } : {}),
+            ...(turn.truncated ? { truncated: true } : {}),
+            ...(turn.estimated ? { estimated: true } : {}),
+          }))
+          .slice(-40)
+      : [],
+    live: false,
+    ...(raw.contextBreakdown ? { contextBreakdown: raw.contextBreakdown } : {}),
   };
 }
 
@@ -117,8 +184,12 @@ export async function appendTurn(
     route?: string | null;
     /** When set, replaces the thread pending plan (plan-mode completion). */
     pendingPlan?: PlanArtifact | null;
+    /** Strategy for the pending plan, stored with the artifact. */
+    pendingPlanStrategy?: PlanStrategyDecision | null;
     /** Drop pending plan after a successful agent handoff. */
     clearPendingPlan?: boolean;
+    pendingTaskList?: TaskList | null;
+    tokenUsage?: TokenUsageSnapshot;
   },
 ): Promise<HistoryStore> {
   const store = loadHistory(state);
@@ -159,16 +230,65 @@ export async function appendTurn(
 
   if (options.clearPendingPlan) {
     delete thread.pendingPlan;
+    delete thread.pendingPlanStrategy;
   } else if (options.pendingPlan !== undefined) {
     if (options.pendingPlan === null) {
       delete thread.pendingPlan;
+      delete thread.pendingPlanStrategy;
     } else {
       thread.pendingPlan = options.pendingPlan;
+      if (options.pendingPlanStrategy) {
+        thread.pendingPlanStrategy = options.pendingPlanStrategy;
+      } else {
+        delete thread.pendingPlanStrategy;
+      }
     }
+  } else if (options.pendingPlanStrategy !== undefined) {
+    if (options.pendingPlanStrategy === null) {
+      delete thread.pendingPlanStrategy;
+    } else {
+      thread.pendingPlanStrategy = options.pendingPlanStrategy;
+    }
+  }
+
+  if (options.pendingTaskList !== undefined) {
+    if (options.pendingTaskList === null || options.pendingTaskList.items.length === 0) {
+      delete thread.pendingTaskList;
+    } else {
+      thread.pendingTaskList = options.pendingTaskList;
+    }
+  }
+
+  if (options.tokenUsage) {
+    thread.tokenUsage = {
+      ...options.tokenUsage,
+      live: false,
+      turns: (options.tokenUsage.turns ?? []).slice(-40),
+    };
   }
 
   store.activeThreadId = thread.id;
   await saveHistory(state, store);
+  return store;
+}
+
+/**
+ * Clear a thread's pending plan handoff state (UI dismiss / cancel).
+ */
+export async function clearPendingPlan(
+  state: vscode.Memento,
+  threadId?: string,
+): Promise<HistoryStore> {
+  const store = loadHistory(state);
+  const thread = threadId
+    ? store.threads.find((t) => t.id === threadId)
+    : store.threads.find((t) => t.id === store.activeThreadId);
+  if (thread?.pendingPlan || thread?.pendingPlanStrategy || thread?.pendingTaskList) {
+    delete thread.pendingPlan;
+    delete thread.pendingPlanStrategy;
+    delete thread.pendingTaskList;
+    await saveHistory(state, store);
+  }
   return store;
 }
 

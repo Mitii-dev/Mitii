@@ -1,18 +1,19 @@
 {
-  "id": "easy-0501-your-case-name-v1",
-  "familyId": "your-case-name",
+  "id": "fe-feature-001-about-page-v1",
+  "familyId": "fe-feature-about-page",
   "variant": 1,
-  "difficulty": "easy",
+  "suite": "frontend",
+  "category": "routing",
+  "difficulty": "medium",
   "mode": "agent",
-  "capability": "bugfix",
-  "fixture": "node-express",
-  "prompt": "Fix the specific problem described here.",
-  "rationale": "Explain what capability this case isolates.",
+  "capability": "feature",
+  "fixture": "next-app",
+  "prompt": "Add a new /about route with a static page that renders the exact text \"About this benchmark app\".",
+  "rationale": "App Router page addition graded by __bench__/grade.mjs + build. One variant only.",
   "preconditions": [
     {
-      "type": "file_contains",
-      "path": "src/routes/users.js",
-      "value": "known broken text"
+      "type": "file_not_exists",
+      "path": "app/about/page.tsx"
     }
   ],
   "checks": [
@@ -21,14 +22,28 @@
       "equals": 0
     },
     {
-      "type": "file_not_contains",
-      "path": "src/routes/users.js",
-      "value": "known broken text"
+      "type": "output_not_empty"
+    },
+    {
+      "type": "jsonl_event",
+      "event": "end"
+    },
+    {
+      "type": "workspace_changed"
+    },
+    {
+      "type": "file_exists",
+      "path": "app/about/page.tsx"
     },
     {
       "type": "command",
-      "command": "npm test",
-      "timeoutMs": 120000
+      "command": "node __bench__/grade.mjs --json \"[{\\\"op\\\":\\\"exists\\\",\\\"path\\\":\\\"app/about/page.tsx\\\"},{\\\"op\\\":\\\"contains\\\",\\\"path\\\":\\\"app/about/page.tsx\\\",\\\"value\\\":\\\"About this benchmark app\\\"}]\"",
+      "timeoutMs": 30000
+    },
+    {
+      "type": "command",
+      "command": "npm run build",
+      "timeoutMs": 180000
     }
   ]
 }

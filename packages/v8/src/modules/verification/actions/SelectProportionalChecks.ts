@@ -17,11 +17,15 @@ export interface SelectProportionalChecksResult {
 /**
  * Select the minimum useful checks: prefer required evidence kinds, then
  * proportional kinds for the change scope, capped by DEFAULT_MAX_CHECKS.
+ *
+ * `test` is never a bonus check. Browser/e2e scripts (wdio, desktop:test)
+ * only run when Decision Policy asked for `tests` evidence.
  */
 export function selectProportionalChecks(params: {
   candidates: readonly DiscoveredCheckCandidate[];
   verification: VerificationRequirement;
   changeScope: VerificationChangeScope;
+  maxChecks?: number;
 }): SelectProportionalChecksResult {
   const requiredKinds = new Set<VerificationCheckKind>();
   for (const evidence of params.verification.minimumEvidence) {
@@ -45,7 +49,11 @@ export function selectProportionalChecks(params: {
   const omitted: DiscoveredCheckCandidate[] = [];
 
   for (const candidate of byPriority) {
-    if (selected.length >= DEFAULT_MAX_CHECKS) {
+    if (candidate.kind === "test" && !requiredKinds.has("test")) {
+      omitted.push(candidate);
+      continue;
+    }
+    if (selected.length >= (params.maxChecks ?? DEFAULT_MAX_CHECKS)) {
       omitted.push(candidate);
       continue;
     }

@@ -160,6 +160,15 @@ export function buildFinishedResult(params: {
   });
 }
 
+export function formatZodIssues(error: ZodError): string {
+  return error.issues
+    .map((issue) => {
+      const path = issue.path.length > 0 ? issue.path.join(".") : "arguments";
+      return `${path}: ${issue.message}`;
+    })
+    .join("; ");
+}
+
 export function mapExecutionError(params: {
   error: unknown;
   parsed: ToolInvocationInput;
@@ -184,7 +193,7 @@ export function mapExecutionError(params: {
   } else if (error instanceof ZodError) {
     reasonCode = "invalid_arguments";
     status = "rejected";
-    warnings = [error.issues.map((issue) => issue.message).join("; ")];
+    warnings = [formatZodIssues(error)];
   } else if (error instanceof ToolRuntimeError) {
     reasonCode = "execution_failed";
     status = "failed";
@@ -199,5 +208,9 @@ export function mapExecutionError(params: {
     status,
     reasonCode,
     warnings,
+    output:
+      error instanceof MutationError && error.details
+        ? error.details
+        : undefined,
   });
 }

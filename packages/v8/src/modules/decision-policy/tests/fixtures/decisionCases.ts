@@ -46,6 +46,8 @@ export function createUnderstanding(
     needsClarification?: boolean;
     recommendsClarification?: boolean;
     status?: RequestUnderstandingResult["intent"]["status"];
+    alternatives?: RequestUnderstandingResult["intent"]["classification"]["alternatives"];
+    ambiguityQuestion?: string;
     taskAnalysis?: Partial<RequestUnderstandingResult["taskAnalysis"]>;
   } = {},
 ): RequestUnderstandingResult {
@@ -61,9 +63,16 @@ export function createUnderstanding(
         primaryTaskIntent: primary,
         secondaryTaskIntents: [],
         confidence: overrides.confidence ?? 0.9,
-        alternatives: [],
+        alternatives: overrides.alternatives ?? [],
         needsClarification: overrides.needsClarification ?? false,
         reason: "Fixture classification.",
+        ...(overrides.ambiguityQuestion
+          ? {
+              taskHints: {
+                ambiguityQuestion: overrides.ambiguityQuestion,
+              },
+            }
+          : {}),
       },
       scores: [
         {
@@ -128,7 +137,9 @@ export function createInput(
     DecisionCaseFixture,
     "mode" | "message" | "understanding" | "repositoryState"
   > &
-    Partial<Pick<DecisionPolicyInput, "approvalMode" | "planApproval">>,
+    Partial<
+      Pick<DecisionPolicyInput, "approvalMode" | "planApproval" | "windowPolicy">
+    >,
 ): DecisionPolicyInput {
   return {
     schemaVersion: 1,
@@ -137,6 +148,7 @@ export function createInput(
     repositoryState: fixture.repositoryState,
     approvalMode: fixture.approvalMode,
     planApproval: fixture.planApproval,
+    windowPolicy: fixture.windowPolicy,
   };
 }
 
@@ -204,6 +216,28 @@ export const DECISION_EVALUATION_CASES: DecisionCaseFixture[] = [
     expected: {
       route: "execute",
       planningDepth: "internal",
+      maximumWorkspaceEffect: "write",
+    },
+  },
+  {
+    id: "package_bugfix_visible_plan",
+    category: "build_failure",
+    mode: "agent",
+    message: "Resolve all TypeScript compilation errors in the mui-builder package",
+    understanding: createUnderstanding({
+      primaryTaskIntent: "bugfix",
+      interactionIntent: "act",
+      taskAnalysis: {
+        scope: "package",
+        complexity: "moderate",
+        risk: "low",
+        recommendsPlanning: true,
+        estimatedFilesAffected: { minimum: 5, maximum: 20 },
+      },
+    }),
+    expected: {
+      route: "execute",
+      planningDepth: "visible",
       maximumWorkspaceEffect: "write",
     },
   },
@@ -551,6 +585,74 @@ export const DECISION_EVALUATION_CASES: DecisionCaseFixture[] = [
     expected: {
       route: "execute",
       maximumWorkspaceEffect: "write",
+    },
+  },
+  {
+    id: "spanish_bugfix_understanding_execute",
+    category: "localized_bug",
+    mode: "agent",
+    message:
+      "Corrige el fallo nulo en src/parser/parse.ts y ejecuta las pruebas.",
+    understanding: createUnderstanding({
+      primaryTaskIntent: "bugfix",
+      interactionIntent: "act",
+      taskAnalysis: {
+        scope: "single_location",
+        complexity: "simple",
+        risk: "low",
+        targets: [
+          { kind: "file", value: "src/parser/parse.ts", explicit: true },
+        ],
+      },
+    }),
+    expected: {
+      route: "execute",
+      maximumWorkspaceEffect: "write",
+      planningDepth: "none",
+    },
+  },
+  {
+    id: "japanese_diagnose_understanding_readonly",
+    category: "diagnosis",
+    mode: "agent",
+    message: "ビルド失敗の原因を調査してください。ファイルは変更しないでください。",
+    understanding: createUnderstanding({
+      primaryTaskIntent: "diagnose",
+      interactionIntent: "question",
+      taskAnalysis: {
+        scope: "package",
+        complexity: "moderate",
+        risk: "low",
+        recommendsRepositoryDiscovery: true,
+        recommendsVerification: false,
+      },
+    }),
+    expected: {
+      route: "diagnose",
+      maximumWorkspaceEffect: "read",
+    },
+  },
+  {
+    id: "agent_run_tests_misclassified_as_question",
+    category: "diagnosis",
+    mode: "agent",
+    message:
+      "Can you run the tests and see what all are failing and passing ??",
+    understanding: createUnderstanding({
+      primaryTaskIntent: "question",
+      interactionIntent: "question",
+      taskAnalysis: {
+        scope: "unknown",
+        complexity: "simple",
+        risk: "low",
+        recommendsRepositoryDiscovery: false,
+        recommendsVerification: false,
+      },
+    }),
+    expected: {
+      route: "diagnose",
+      maximumWorkspaceEffect: "read",
+      forbidVisiblePlan: true,
     },
   },
 ];

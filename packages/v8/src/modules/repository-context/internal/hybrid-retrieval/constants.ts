@@ -76,6 +76,8 @@ export const HYBRID_RETRIEVAL_DEFAULTS = {
     24,
   GRAPH_MAXIMUM_NEIGHBORS_PER_ANCHOR:
     12,
+  GRAPH_MAXIMUM_HOPS:
+    2,
 
   MINIMUM_QUERY_TOKEN_CHARACTERS:
     2,
@@ -85,7 +87,17 @@ export const HYBRID_RETRIEVAL_DEFAULTS = {
   REPO_MAP_MAXIMUM_REASON_EVIDENCE:
     4,
 
+  /**
+   * When a folderPrefix is set, keep at least this many fused candidates
+   * by backfilling repo-map files in that folder. Weak NL queries must not
+   * collapse a package catalog to two hits.
+   */
+  MINIMUM_FOLDER_SCOPED_RESULTS:
+    12,
+
   GRAPH_EXACT_PATH_SCORE:
+    1,
+  GRAPH_FILE_ANCHOR_SCORE:
     1,
   GRAPH_FILE_NAME_SCORE:
     0.92,
@@ -124,6 +136,8 @@ export const HYBRID_RETRIEVAL_LIMITS = {
     1_000,
   MAXIMUM_GRAPH_NEIGHBORS_PER_ANCHOR:
     1_000,
+  MAXIMUM_GRAPH_HOPS:
+    4,
 } as const;
 
 export const HYBRID_RETRIEVAL_SOURCE_WEIGHTS:
@@ -147,6 +161,7 @@ export const HYBRID_RETRIEVAL_SOURCE_WEIGHTS:
 };
 
 export const HYBRID_RETRIEVAL_GRAPH_EDGE_TYPES = [
+  "calls",
   "imports",
   "references",
 ] as const;
@@ -202,6 +217,8 @@ export const HYBRID_RETRIEVAL_MESSAGES = {
     "A retrieval source failed.",
   REQUIRED_SOURCE_UNAVAILABLE:
     "A required retrieval source was unavailable.",
+  OPTIONAL_SOURCE_UNAVAILABLE:
+    "An optional retrieval source was unavailable; remaining sources continued.",
   SOURCE_TRUNCATED:
     "A retrieval source reached its candidate limit.",
   RESULT_LIMIT_REACHED:

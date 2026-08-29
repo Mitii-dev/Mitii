@@ -9,6 +9,7 @@ import { ChunkingFactory } from "../../internal/chunking/ChunkingFactory";
 import { NodeSha256ChunkHasher } from "../../internal/chunking/adapters/node/NodeSha256ChunkHasher";
 import { LanguageDetector } from "../../internal/source-analysis/LanguageDetector";
 import { createSourceAnalysisBuilder } from "../../internal/source-analysis/SourceAnalysisFactory";
+import type { TreeSitterRuntimePort } from "../../index";
 
 import { LANGUAGE_BASELINE_FIXTURES } from "./fixtures";
 
@@ -160,4 +161,50 @@ test("enhanced languages expose symbols; baseline languages degrade without fabr
       assert.equal(analysis.symbols.length, 0);
     }
   }
+});
+
+test("baseline languages can use an injected tree-sitter runtime without requiring WASM", async () => {
+  const runtime: TreeSitterRuntimePort = {
+    id: "fake-tree-sitter",
+    supports: (language) => language === "python",
+    parse: async (input) => {
+      assert.equal(input.language, "python");
+      assert.match(input.symbolQuery ?? "", /function_definition/);
+
+      return {
+        symbols: [
+          {
+            name: "foo",
+            nodeType: "function_definition",
+            startLine: 1,
+            endLine: 1,
+          },
+        ],
+        imports: [],
+        references: [],
+        warnings: [],
+      };
+    },
+  };
+
+  const analyzer = createSourceAnalysisBuilder({
+    treeSitterRuntime: runtime,
+  });
+
+  const analysis = await analyzer.analyze({
+    sourceId: "source:python",
+    file: {
+      rootId: "root",
+      relativePath: "example.py",
+      kind: "file",
+      depth: 1,
+      size: 24,
+    },
+    content: "def foo():\n    return 1\n",
+    language: "python",
+  });
+
+  assert.equal(analysis.parserId, "tree-sitter");
+  assert.equal(analysis.quality, "structural");
+  assert.equal(analysis.symbols[0]?.name, "foo");
 });

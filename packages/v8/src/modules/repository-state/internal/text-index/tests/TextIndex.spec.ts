@@ -151,6 +151,80 @@ test(
 );
 
 test(
+  "search treats explicit files and folder prefix as one path scope",
+  async () => {
+    const fixture =
+      await createFixture();
+
+    try {
+      for (const relativePath of [
+        "packages/mui-builder/src/FormBuilder.tsx",
+        "tsconfig.json",
+        "packages/other/src/Other.ts",
+      ]) {
+        const chunking =
+          await fixture.chunker
+            .chunk({
+              sourceId:
+                `source:${relativePath}`,
+              rootId:
+                "workspace",
+              relativePath,
+              language:
+                "typescript",
+              content:
+                "export const sharedscope = true;",
+            });
+
+        await fixture.textIndex
+          .coordinator.index({
+            workspace:
+              "/repo",
+            workspaceSnapshotId:
+              "snapshot-1",
+            indexedAt:
+              100,
+            chunking,
+          });
+      }
+
+      const result =
+        await fixture.textIndex
+          .search.search({
+            workspace:
+              "/repo",
+            query:
+              "sharedscope",
+            rootIds: [
+              "workspace",
+            ],
+            folderPrefix:
+              "packages/mui-builder",
+            filePaths: [
+              "tsconfig.json",
+            ],
+            maximumResults:
+              10,
+          });
+
+      assert.deepEqual(
+        result.matches
+          .map((match) =>
+            match.relativePath,
+          )
+          .sort(),
+        [
+          "packages/mui-builder/src/FormBuilder.tsx",
+          "tsconfig.json",
+        ],
+      );
+    } finally {
+      fixture.database.close();
+    }
+  },
+);
+
+test(
   "skips unchanged documents and refreshes metadata separately",
   async () => {
     const fixture =

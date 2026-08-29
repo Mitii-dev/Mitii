@@ -298,6 +298,8 @@ const modelTokenUsageSchema = z
     inputTokens: z.number().int().nonnegative().optional(),
     outputTokens: z.number().int().nonnegative().optional(),
     totalTokens: z.number().int().nonnegative().optional(),
+    cacheHitTokens: z.number().int().nonnegative().optional(),
+    cacheMissTokens: z.number().int().nonnegative().optional(),
   })
   .strict();
 

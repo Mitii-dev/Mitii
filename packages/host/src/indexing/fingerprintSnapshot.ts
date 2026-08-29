@@ -1,13 +1,14 @@
 import { createHash } from 'node:crypto';
 import { readdir, stat } from 'node:fs/promises';
-import { join, relative } from 'node:path';
+import { basename, join, relative } from 'node:path';
 
 import {
   REPOSITORY_STATE_SCHEMA_VERSION,
   type PublishRepositoryStateInput,
+  type WorkspaceSnapshot as V8WorkspaceSnapshot,
 } from '@mitii/v8';
 
-import { WORKSPACE_WALK_SKIP_DIR_NAMES } from '../internal/workspaceWalk.js';
+import { WORKSPACE_WALK_SKIP_DIR_NAMES, shouldSkipWorkspaceWalkFile } from '../internal/workspaceWalk.js';
 
 export interface WorkspaceSnapshotOptions {
   workspaceRoot: string;
@@ -21,6 +22,23 @@ export interface WorkspaceSnapshot {
   truncated: boolean;
   /** Sorted relative paths included in the fingerprint (for lightweight repo maps). */
   relativePaths: string[];
+}
+
+export function resolveFingerprintRootId(workspaceRoot: string): string {
+  const name = basename(workspaceRoot.replace(/[\\/]+$/, '')).trim();
+  if (!name || name === '.' || name === '..') {
+    return 'workspace';
+  }
+  return name;
+}
+
+export function fingerprintWorkspaceIndexSnapshot(
+  snapshot: V8WorkspaceSnapshot,
+): string {
+  // Snapshot IDs already hash root identity plus per-file size, mtime, and
+  // contentHash when the scanner recorded one. That is enough to invalidate
+  // incremental republish when files change without hashing every file twice.
+  return snapshot.snapshotId;
 }
 
 /**
@@ -64,6 +82,9 @@ export async function buildWorkspaceSnapshot(
       }
       if (!info.isFile()) continue;
       const rel = relative(options.workspaceRoot, full).replace(/\\/g, '/');
+      if (shouldSkipWorkspaceWalkFile(rel, name)) {
+        continue;
+      }
       relativePaths.push(rel);
       entries.push(`${rel}:${info.size}:${Math.trunc(info.mtimeMs)}`);
       if (entries.length >= maxFiles) {
@@ -81,6 +102,7 @@ export async function buildWorkspaceSnapshot(
     .digest('hex');
   const rev = digest.slice(0, 16);
   const generatedAt = new Date().toISOString();
+  const rootId = resolveFingerprintRootId(options.workspaceRoot);
 
   const candidate: PublishRepositoryStateInput = {
     schemaVersion: REPOSITORY_STATE_SCHEMA_VERSION,
@@ -89,7 +111,7 @@ export async function buildWorkspaceSnapshot(
     scanCompleteness: truncated ? 'truncated' : 'complete',
     roots: [
       {
-        rootId: 'workspace',
+        rootId,
         projectCatalogRevision: `catalog_${rev}`,
         capabilities: [
           {
@@ -121,7 +143,7 @@ export async function buildWorkspaceSnapshot(
         message: truncated
           ? `Fingerprint snapshot truncated after ${maxFiles} files. codeIndex/textIndex/vectorIndex unavailable until full index runs.`
           : `Fingerprint-only snapshot of ${entries.length} files. catalog degraded; codeIndex/textIndex/vectorIndex unavailable (run full workspace index for FTS/symbols/vectors).`,
-        rootId: 'workspace',
+        rootId,
       },
     ],
     generatedAt,

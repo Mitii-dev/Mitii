@@ -1,12 +1,7 @@
 import {
   HYBRID_RETRIEVAL_DEFAULTS,
-  HYBRID_RETRIEVAL_IDS,
   HYBRID_RETRIEVAL_MESSAGES,
 } from "./constants";
-
-import {
-  HybridRetrievalError,
-} from "./HybridRetrievalError";
 
 import {
   hybridRetrievalInputSchema,
@@ -76,15 +71,29 @@ export class HybridRetrievalRequestNormalizer {
         warnings,
       );
 
+    const anchorFilePaths =
+      this.uniqueSorted(
+        parsed.anchorFilePaths ?? [],
+        warnings,
+      );
+
     const kinds =
       this.uniqueSorted(
         parsed.kinds ?? [],
         warnings,
       );
 
-    this.validateConsistency(
-      parsed,
-    );
+    const scopedFilters =
+      this.promoteDirectoryLikeFilePaths(
+        filePaths,
+        parsed.folderPrefix,
+      );
+
+    const intelligence =
+      this.reconcileRepositoryIntelligence(
+        parsed,
+        warnings,
+      );
 
     const request:
       NormalizedHybridRetrievalRequest = {
@@ -92,13 +101,15 @@ export class HybridRetrievalRequestNormalizer {
           parsed.workspace.trim(),
         query,
         rootIds,
-        ...(parsed.folderPrefix
+        ...(scopedFilters.folderPrefix
           ? {
               folderPrefix:
-                parsed.folderPrefix,
+                scopedFilters.folderPrefix,
             }
           : {}),
-        filePaths,
+        filePaths:
+          scopedFilters.filePaths,
+        anchorFilePaths,
         kinds,
         maximumResults:
           parsed.maximumResults ??
@@ -116,24 +127,24 @@ export class HybridRetrievalRequestNormalizer {
                   .workspaceSnapshotId,
             }
           : {}),
-        ...(parsed
+        ...(intelligence
           .codeIndexChangeToken
           ? {
               codeIndexChangeToken:
-                parsed
+                intelligence
                   .codeIndexChangeToken,
             }
           : {}),
-        ...(parsed.repoMap
+        ...(intelligence.repoMap
           ? {
               repoMap:
-                parsed.repoMap,
+                intelligence.repoMap,
             }
           : {}),
-        ...(parsed.repoGraph
+        ...(intelligence.repoGraph
           ? {
               repoGraph:
-                parsed.repoGraph,
+                intelligence.repoGraph,
             }
           : {}),
       };
@@ -147,68 +158,202 @@ export class HybridRetrievalRequestNormalizer {
     };
   }
 
-  private validateConsistency(
+  /**
+   * Directory-like `filePaths` (for example `@packages/demo` misclassified as a
+   * file) would otherwise require an exact indexed path match and zero every
+   * source. Promote them to `folderPrefix` so lexical/map/graph retrieval can
+   * search inside the mentioned folder.
+   */
+  private promoteDirectoryLikeFilePaths(
+    filePaths: readonly string[],
+    folderPrefix: string | undefined,
+  ): {
+    filePaths: string[];
+    folderPrefix?: string;
+  } {
+    const files: string[] = [];
+    const folders: string[] = [];
+
+    for (const path of filePaths) {
+      if (this.looksLikeFilePath(path)) {
+        files.push(path);
+      } else {
+        folders.push(path);
+      }
+    }
+
+    if (folderPrefix) {
+      folders.push(folderPrefix);
+    }
+
+    const preferredFolder = [...new Set(folders)].sort(
+      (left, right) =>
+        right.length - left.length ||
+        left.localeCompare(right),
+    )[0];
+
+    return {
+      filePaths: files,
+      ...(preferredFolder
+        ? {
+            folderPrefix: preferredFolder,
+          }
+        : {}),
+    };
+  }
+
+  private looksLikeFilePath(
+    path: string,
+  ): boolean {
+    const lastSegment =
+      path.split("/").at(-1) ?? "";
+    if (!lastSegment) {
+      return false;
+    }
+    if (
+      lastSegment.startsWith(".") &&
+      lastSegment.length > 1
+    ) {
+      return true;
+    }
+    return (
+      lastSegment.includes(".") &&
+      !lastSegment.endsWith(".")
+    );
+  }
+
+  /**
+   * Stale Repo Map / Repo Graph must not abort lexical or vector retrieval.
+   * Drop the mismatched intelligence and continue with remaining sources.
+   */
+  private reconcileRepositoryIntelligence(
     input: HybridRetrievalInput,
-  ): void {
-    const snapshotIds = [
-      input.workspaceSnapshotId,
-      input.repoMap
-        ?.workspaceSnapshotId,
-      input.repoGraph
-        ?.workspaceSnapshotId,
-    ].filter(
-      (
-        value,
-      ): value is string =>
-        Boolean(value),
-    );
+    warnings: HybridRetrievalWarning[],
+  ): {
+    repoMap?: HybridRetrievalInput["repoMap"];
+    repoGraph?: HybridRetrievalInput["repoGraph"];
+    codeIndexChangeToken?: string;
+  } {
+    let repoMap = input.repoMap;
+    let repoGraph = input.repoGraph;
+    const pinnedSnapshot =
+      input.workspaceSnapshotId?.trim() ||
+      undefined;
 
-    if (
-      new Set(snapshotIds).size >
-      1
-    ) {
-      throw new HybridRetrievalError(
-        HYBRID_RETRIEVAL_MESSAGES
-          .SNAPSHOT_MISMATCH,
-        {
-          operation:
-            "normalize_request",
-          componentId:
-            HYBRID_RETRIEVAL_IDS
-              .REQUEST_NORMALIZER,
-        },
+    const dropMap = () => {
+      if (!repoMap) {
+        return;
+      }
+      repoMap = undefined;
+      warnings.push({
+        code: "optional_source_unavailable",
+        message:
+          HYBRID_RETRIEVAL_MESSAGES
+            .SNAPSHOT_MISMATCH,
+      });
+    };
+    const dropGraph = () => {
+      if (!repoGraph) {
+        return;
+      }
+      repoGraph = undefined;
+      warnings.push({
+        code: "optional_source_unavailable",
+        message:
+          HYBRID_RETRIEVAL_MESSAGES
+            .SNAPSHOT_MISMATCH,
+      });
+    };
+    const dropForChangeToken = () => {
+      warnings.push({
+        code: "optional_source_unavailable",
+        message:
+          HYBRID_RETRIEVAL_MESSAGES
+            .CHANGE_TOKEN_MISMATCH,
+      });
+    };
+
+    if (pinnedSnapshot) {
+      if (
+        repoMap &&
+        repoMap.workspaceSnapshotId !==
+          pinnedSnapshot
+      ) {
+        dropMap();
+      }
+      if (
+        repoGraph &&
+        repoGraph.workspaceSnapshotId !==
+          pinnedSnapshot
+      ) {
+        dropGraph();
+      }
+    } else {
+      const snapshotIds = [
+        repoMap?.workspaceSnapshotId,
+        repoGraph?.workspaceSnapshotId,
+      ].filter(
+        (value): value is string =>
+          Boolean(value),
       );
+      if (new Set(snapshotIds).size > 1) {
+        dropMap();
+        dropGraph();
+      }
     }
 
-    const changeTokens = [
-      input.codeIndexChangeToken,
-      input.repoMap
-        ?.codeIndexChangeToken,
-      input.repoGraph
-        ?.codeIndexChangeToken,
+    const pinnedToken =
+      input.codeIndexChangeToken?.trim() ||
+      undefined;
+    if (pinnedToken) {
+      if (
+        repoMap &&
+        repoMap.codeIndexChangeToken !==
+          pinnedToken
+      ) {
+        repoMap = undefined;
+        dropForChangeToken();
+      }
+      if (
+        repoGraph &&
+        repoGraph.codeIndexChangeToken !==
+          pinnedToken
+      ) {
+        repoGraph = undefined;
+        dropForChangeToken();
+      }
+    } else if (
+      repoMap &&
+      repoGraph &&
+      repoMap.codeIndexChangeToken !==
+        repoGraph.codeIndexChangeToken
+    ) {
+      repoMap = undefined;
+      repoGraph = undefined;
+      dropForChangeToken();
+    }
+
+    const remainingTokens = [
+      repoMap?.codeIndexChangeToken,
+      repoGraph?.codeIndexChangeToken,
     ].filter(
-      (
-        value,
-      ): value is string =>
+      (value): value is string =>
         Boolean(value),
     );
+    const codeIndexChangeToken =
+      remainingTokens.length > 0
+        ? remainingTokens[0]
+        : undefined;
 
-    if (
-      new Set(changeTokens).size >
-      1
-    ) {
-      throw new HybridRetrievalError(
-        HYBRID_RETRIEVAL_MESSAGES
-          .CHANGE_TOKEN_MISMATCH,
-        {
-          operation:
-            "normalize_request",
-          componentId:
-            HYBRID_RETRIEVAL_IDS
-              .REQUEST_NORMALIZER,
-        },
-      );
-    }
+    return {
+      ...(repoMap ? { repoMap } : {}),
+      ...(repoGraph ? { repoGraph } : {}),
+      ...(codeIndexChangeToken
+        ? {
+            codeIndexChangeToken,
+          }
+        : {}),
+    };
   }
 
   private uniqueSorted<T extends string>(

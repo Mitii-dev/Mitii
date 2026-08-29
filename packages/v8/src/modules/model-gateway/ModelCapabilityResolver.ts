@@ -1,6 +1,7 @@
 import {
   MODEL_GATEWAY_DEFAULTS,
   MODEL_GATEWAY_IDS,
+  MODEL_GATEWAY_LIMITS,
 } from "./constants";
 
 import {
@@ -32,11 +33,8 @@ export class ModelCapabilityResolver {
       maximumOutputTokens:
         input
           .maximumOutputTokens ??
-        Math.min(
-          MODEL_GATEWAY_DEFAULTS
-            .MAXIMUM_OUTPUT_TOKENS,
-          input
-            .contextWindowTokens,
+        this.deriveDefaultMaximumOutputTokens(
+          input.contextWindowTokens,
         ),
       supportsStreaming:
         input
@@ -91,5 +89,22 @@ export class ModelCapabilityResolver {
       .parse(
         result,
       ) as ModelCapabilities;
+  }
+
+  private deriveDefaultMaximumOutputTokens(
+    contextWindowTokens: number,
+  ): number {
+    return Math.min(
+      contextWindowTokens,
+      Math.max(
+        MODEL_GATEWAY_LIMITS
+          .MINIMUM_OUTPUT_TOKENS,
+        Math.floor(
+          contextWindowTokens *
+            MODEL_GATEWAY_DEFAULTS
+              .MAXIMUM_OUTPUT_CONTEXT_RATIO,
+        ),
+      ),
+    );
   }
 }

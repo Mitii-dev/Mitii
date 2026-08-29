@@ -2,6 +2,10 @@ import type {
   WorkspaceSnapshot,
 } from "../workspace/types";
 
+import type {
+  SourceReferenceKind,
+} from "../source-analysis/types";
+
 /**
  * CODE INDEX FACTS
  */
@@ -59,6 +63,7 @@ export type CodeIndexReferenceResolution =
 export interface CodeIndexReference {
   fromFileId: string;
   symbolName: string;
+  kind: SourceReferenceKind;
   line?: number;
   resolution: CodeIndexReferenceResolution;
   toFileId?: string;
@@ -212,6 +217,7 @@ export interface SqliteCodeIndexImportRow {
 export interface SqliteCodeIndexReferenceRow {
   fromFileId: number;
   symbolName: string;
+  kind: SourceReferenceKind;
   line: number;
   targetFileId: number | null;
   targetRelativePath: string | null;

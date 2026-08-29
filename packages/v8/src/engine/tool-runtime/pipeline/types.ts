@@ -1,6 +1,10 @@
 import type { SessionBudget } from "../internal/SessionBudget";
 import type { ToolRegistry } from "../internal/ToolRegistry";
 import type { ToolApprovalToken } from "../internal/mutation/assertApprovalSatisfied";
+import type {
+  ShadowAuthorizeResult,
+  ShadowGrantAuthorizer,
+} from "../internal/shadow/ShadowGrantAuthorizer";
 
 export interface ToolExecuteOptions {
   signal?: AbortSignal;
@@ -12,6 +16,20 @@ export interface ToolExecuteOptions {
   dirtyPaths?: readonly string[];
   /** Paths already mutated earlier in this run's transaction set. */
   alreadyMutatedPaths?: readonly string[];
+  /**
+   * Optional shadow authorizer. Default is structural forbid-wins shadow
+   * that logs disagreements without overriding ValidateGrant.
+   */
+  shadowAuthorizer?: ShadowGrantAuthorizer;
+  /** When true, shadow Deny overrides primary grant allow (kill-switch). */
+  enforceShadowAuthorization?: boolean;
+  /** Receives shadow audit events (disagreement / cedar snapshot). */
+  onShadowAuthorize?: (event: {
+    toolName: string;
+    primaryAllowed: boolean;
+    shadow: ShadowAuthorizeResult;
+    disagreed: boolean;
+  }) => void;
 }
 
 export interface ToolRuntimePipelineOptions {

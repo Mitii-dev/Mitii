@@ -92,6 +92,12 @@ export const verificationResultSchema = z
     affectedProjectIds: z.array(z.string()),
     checks: z.array(verificationCheckResultSchema),
     diagnostics: z.array(verificationDiagnosticSchema),
+    /**
+     * Full normalized diagnostics before baseline filtering. Consumers that
+     * need an after-state snapshot should use this; completion gates should
+     * use `diagnostics`, which may be delta-filtered by baselineDiagnostics.
+     */
+    allDiagnostics: z.array(verificationDiagnosticSchema).optional(),
     diff: verificationDiffInspectionSchema,
     warnings: z.array(z.string()),
     reasonCodes: z.array(verificationReasonCodeSchema).min(1),

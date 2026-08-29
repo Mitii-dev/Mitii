@@ -38,6 +38,32 @@ export type {
 } from "./adapters";
 
 export {
+  WorkspaceIgnorePolicy,
+  isSecurityConcern,
+  WS_CONSTANTS,
+} from "./ignorePolicy";
+export type {
+  WorkspaceIgnoreDecision,
+  WorkspaceIgnorePolicyOptions,
+  WorkspaceIgnoreReason,
+} from "./ignorePolicy";
+
+export {
+  splitCodeIdentifier,
+  expandCodeIdentifierTerms,
+  expandFtsText,
+  CODE_IDENTIFIER_MINIMUM_PART_CHARACTERS,
+  CODE_IDENTIFIER_MINIMUM_TERM_CHARACTERS,
+} from "./codeIdentifiers";
+
+export {
+  REPOSITORY_INDEX_FORMAT,
+} from "./indexFormat";
+export type {
+  RepositoryIndexFormat,
+} from "./indexFormat";
+
+export {
   LANGUAGE_IDS,
   languageIdSchema,
   languageProfileSchema,
@@ -101,6 +127,7 @@ export type {
   RepoGraphNode,
   RepoGraphSymbolNode,
   RepoGraphEdge,
+  RepoGraphEdgeType,
   RepoMap,
   RepoMapEntry,
   Chunk,
@@ -125,6 +152,15 @@ export type {
   SqliteCodeIndexDatabasePort,
   SqliteTextIndexModule,
   TextIndexSqliteDatabasePort,
+  SourceImportKind,
+  SourceLanguageId,
+  SourceReferenceKind,
+  TreeSitterRuntimeImport,
+  TreeSitterRuntimeParseInput,
+  TreeSitterRuntimeParseResult,
+  TreeSitterRuntimePort,
+  TreeSitterRuntimeReference,
+  TreeSitterRuntimeSymbol,
 } from "./contracts";
 
 export {

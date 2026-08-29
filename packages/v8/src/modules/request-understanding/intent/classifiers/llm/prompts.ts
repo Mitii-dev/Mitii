@@ -70,6 +70,9 @@ export const LLM_INTENT_CLASSIFICATION_SYSTEM_PROMPT = [
   "Return exactly one JSON object matching this schema:",
   '- interactionIntent MUST be exactly one of: "question", "plan", "act", "help", "unknown"',
   "- primaryTaskIntent MUST be exactly one of the task IDs listed above.",
+  "- taskHints is optional evidence only: targets, constraints, outcomes, clarity,",
+  "  ambiguityQuestion, and recommendedSkillTags (soft tags, not skill IDs).",
+  "- Do not choose routes, tool grants, or skill IDs.",
   "",
   JSON.stringify(
     {
@@ -86,6 +89,19 @@ export const LLM_INTENT_CLASSIFICATION_SYSTEM_PROMPT = [
       needsClarification: false,
       reason:
         "The user wants a step-by-step strategy to resolve the failing tests.",
+      taskHints: {
+        targets: [
+          {
+            kind: "file",
+            value: "src/auth/service.ts",
+            explicit: true,
+          },
+        ],
+        constraints: [],
+        requestedOutcomes: ["Failing auth tests pass"],
+        clarity: "clear",
+        recommendedSkillTags: ["localize", "null-safety"],
+      },
     },
     null,
     2,

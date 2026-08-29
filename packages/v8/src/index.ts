@@ -36,6 +36,9 @@ export {
   createDefaultProjectCatalogBuilder,
   RepoGraphBuilder,
   RepoMapBuilder,
+  WorkspaceIgnorePolicy,
+  isSecurityConcern,
+  WS_CONSTANTS,
 } from "./modules/repository-state";
 export {
   LANGUAGE_IDS,
@@ -48,6 +51,10 @@ export {
   repoGraphSchema,
   repoMapSchema,
   REPOSITORY_STATE_SCHEMA_VERSION,
+  REPOSITORY_INDEX_FORMAT,
+  splitCodeIdentifier,
+  expandCodeIdentifierTerms,
+  expandFtsText,
 } from "./modules/repository-state";
 export type {
   LanguageId,
@@ -69,6 +76,9 @@ export type {
   WorkspaceRetrievalRuntimeVectorOptions,
   WorkspaceIndexingPipelineInput,
   WorkspaceIndexingPipelineResult,
+  WorkspaceIgnoreDecision,
+  WorkspaceIgnorePolicyOptions,
+  WorkspaceIgnoreReason,
   WorkspaceSnapshot,
   WorkspaceFileEntry,
   RepoGraph,
@@ -88,13 +98,31 @@ export type {
   SqliteCodeIndexDatabasePort,
   SqliteTextIndexModule,
   TextIndexSqliteDatabasePort,
+  SourceImportKind,
+  SourceLanguageId,
+  SourceReferenceKind,
+  TreeSitterRuntimeImport,
+  TreeSitterRuntimeParseInput,
+  TreeSitterRuntimeParseResult,
+  TreeSitterRuntimePort,
+  TreeSitterRuntimeReference,
+  TreeSitterRuntimeSymbol,
+  RepositoryIndexFormat,
 } from "./modules/repository-state";
 
 export { RepositoryContextPipeline } from "./modules/repository-context";
 export {
+  collectRepositoryContextGraphAnchors,
+  deriveContextSelectionBudget,
+  pathMatchesFolderPrefix,
+  restrictContextReferencesToFolderPrefix,
+  REPOSITORY_CONTEXT_RETRIEVAL_POLICY,
+} from "./modules/repository-context";
+export {
   ContextAssemblyFactory,
   ContextSelector,
   HybridRetrievalFactory,
+  IdentifierAwareRetrievalReranker,
 } from "./modules/repository-context";
 export {
   repositoryContextPipelineInputSchema,
@@ -110,6 +138,7 @@ export type {
   HybridRetrievalInput,
   HybridRetrievalResult,
   RepositoryContextAssemblerPort,
+  RepositoryContextPipelineDependencies,
   RepositoryContextRetrieverPort,
   RepositoryContextSelectorPort,
   RepositoryContextStateResolverPort,
@@ -118,6 +147,7 @@ export type {
 export { DecisionPolicyPipeline } from "./modules/decision-policy";
 export {
   decisionPolicyInputSchema,
+  decisionTraceSchema,
   executionDecisionSchema,
   toolGrantSchema,
   approvalModeSchema,
@@ -126,6 +156,7 @@ export {
 export type {
   ApprovalMode,
   DecisionPolicyInput,
+  DecisionTrace,
   ExecutionDecision,
   ExecutionRoute,
   PlanningDepth,
@@ -159,12 +190,16 @@ export {
   ModelCapabilityResolver,
   EchoLlmPort,
   OpenAiCompatibleLlmPort,
+  AnthropicLlmPort,
+  GeminiLlmPort,
   MODEL_PROVIDER_SUPPORT,
   modelEventSchema,
 } from "./modules/model-gateway";
 export type {
   OpenAiCompatibleLlmPortConfig,
   OpenAiCompatibleAuthHeader,
+  AnthropicLlmPortConfig,
+  GeminiLlmPortConfig,
 } from "./modules/model-gateway";
 
 export { ToolRuntimePipeline } from "./engine/tool-runtime";
@@ -182,6 +217,13 @@ export {
   createBuiltinToolRegistry,
   defineTool,
   BUILTIN_TOOLS,
+  StructuralShadowGrantAuthorizer,
+  compileToolGrantToCedar,
+} from "./engine/tool-runtime";
+export type {
+  ShadowAuthorizeDecision,
+  ShadowAuthorizeResult,
+  ShadowGrantAuthorizer,
 } from "./engine/tool-runtime";
 export type {
   ToolInvocationInput,
@@ -197,19 +239,31 @@ export type {
   ToolDefinition,
   NetworkPort,
   SearchPort,
+  RepositoryGraphPort,
 } from "./engine/tool-runtime";
 
 export { VerificationPipeline } from "./modules/verification";
 export {
   verificationInputSchema,
   verificationResultSchema,
+  repoBuildStateSchema,
+  repoBuildStateComparisonSchema,
+  verificationRecordSchema,
+  buildVerificationRecord,
+  buildVerificationUserSummary,
   InMemoryManifestReader,
   WorkspaceFileSystemManifestReader,
+  InMemoryVerificationRecordStore,
+  FileVerificationRecordStore,
 } from "./modules/verification";
 export type {
   VerificationInput,
   VerificationResult,
   VerificationStatus,
+  RepoBuildState,
+  RepoBuildStateComparison,
+  VerificationRecord,
+  VerificationRecordStorePort,
   VerificationToolExecutorPort,
   VerificationManifestReaderPort,
 } from "./modules/verification";
@@ -219,14 +273,20 @@ export {
   skillsSelectInputSchema,
   skillsSelectResultSchema,
   skillDescriptorSchema,
+  skillIndexEntrySchema,
+  skillBodySchema,
   InMemorySkillsCatalog,
+  KeywordSkillSimilarity,
   SKILLS_SCHEMA_VERSION,
 } from "./modules/skills";
 export type {
   SkillsSelectInput,
   SkillsSelectResult,
+  SkillBody,
   SkillDescriptor,
+  SkillIndexEntry,
   SkillsCatalogPort,
+  SkillSimilarityPort,
 } from "./modules/skills";
 
 export { MemoryPipeline } from "./modules/memory";
@@ -237,6 +297,8 @@ export {
   memoryCommitResultSchema,
   memoryFactSchema,
   InMemoryMemoryStore,
+  HashMemoryEmbedding,
+  buildSyntheticMemoryDraft,
   MEMORY_SCHEMA_VERSION,
 } from "./modules/memory";
 export type {
@@ -245,26 +307,128 @@ export type {
   MemoryCommitInput,
   MemoryCommitResult,
   MemoryFact,
+  MemoryFactDraft,
+  MemoryScope,
   MemoryStorePort,
+  MemoryEmbeddingPort,
+  SyntheticObservation,
+  SyntheticObservationInput,
 } from "./modules/memory";
+
+export { CodeNavigationPipeline } from "./modules/code-navigation";
+export {
+  GraphCodeNavigationAdapter,
+  FallbackCodeNavigationAdapter,
+  codeNavigationInputSchema,
+  codeNavigationResultSchema,
+  CODE_NAVIGATION_SCHEMA_VERSION,
+} from "./modules/code-navigation";
+export type {
+  CodeNavigationInput,
+  CodeNavigationResult,
+  CodeNavigationPort,
+  CodeNavigationQuery,
+  CodeNavigationLocation,
+} from "./modules/code-navigation";
+
+export { ChangeImpactPipeline } from "./modules/change-impact";
+export {
+  changeImpactInputSchema,
+  changeImpactResultSchema,
+  CHANGE_IMPACT_SCHEMA_VERSION,
+  CHANGE_IMPACT_EDGE_TYPES,
+} from "./modules/change-impact";
+export type {
+  ChangeImpactInput,
+  ChangeImpactResult,
+  ChangeImpactSeed,
+} from "./modules/change-impact";
 
 export { PlanningPipeline } from "./modules/planning";
 export {
   planningInputSchema,
   planningResultSchema,
+  planningBuildEvidenceSchema,
+  planningImpactReportSchema,
+  planningScopedRepoMapSchema,
+  discoveryBriefSchema,
+  discoveryObservationSchema,
   planArtifactSchema,
+  planStrategyDecisionSchema,
+  explorationDepthSchema,
   PLANNING_SCHEMA_VERSION,
+  PLANNING_WORKING_SET_POLICY,
+  compileDiscoveryBrief,
   formatPlanAsAnswer,
+  inferPlanStrategyFromArtifact,
   serializePlanForPrompt,
   serializePlanText,
 } from "./modules/planning";
 export type {
   PlanningInput,
   PlanningResult,
+  PlanningBuildEvidence,
+  PlanningImpactReport,
+  PlanningScopedRepoMap,
+  DiscoveryBrief,
+  DiscoveryObservation,
   PlanArtifact,
+  PlanStrategyDecision,
+  PlanStrategyResolution,
   PlanPhase,
   PlanStep,
+  ExplorationDepth,
 } from "./modules/planning";
+
+export { TaskListPipeline } from "./modules/task-list";
+export {
+  taskListSchema,
+  taskListApplyInputSchema,
+  taskListApplyResultSchema,
+  TASK_LIST_SCHEMA_VERSION,
+  UPDATE_TODOS_TOOL_NAME,
+  parseTaskListMarkdown,
+  serializeTaskListMarkdown,
+  serializeTaskListForPrompt,
+  serializeTaskListGuidance,
+  serializeWorkingSetForLoop,
+  WORKING_SET_MARKER,
+  collectCompletedTaskPaths,
+  taskItemPaths,
+  taskListProgress,
+} from "./modules/task-list";
+export type {
+  TaskList,
+  TaskItem,
+  TaskItemStatus,
+  TaskListApplyInput,
+  TaskListApplyResult,
+  TaskListSource,
+  TaskListPurpose,
+} from "./modules/task-list";
+
+export { deriveWindowPolicy, mergeWindowBudgetPolicy, resolveGenerationCeiling } from "./modules/window-budget";
+export {
+  WINDOW_BUDGET_SCHEMA_VERSION,
+  DEFAULT_WINDOW_BUDGET_POLICY,
+  WINDOW_BUDGET_POLICY,
+  WINDOW_BUDGET_EFFORTS,
+  DEFAULT_WINDOW_BUDGET_EFFORT,
+  WINDOW_BUDGET_EFFORT_OVERLAY,
+  resolveWindowBudgetEffort,
+  windowBudgetInputSchema,
+  windowBudgetPolicySchema,
+  windowBudgetPolicyOverridesSchema,
+  windowPolicySchema,
+  WindowBudgetError,
+} from "./modules/window-budget";
+export type {
+  WindowBudgetInput,
+  WindowBudgetPolicy,
+  WindowBudgetPolicyOverrides,
+  WindowPolicy,
+  WindowBudgetEffort,
+} from "./modules/window-budget";
 
 export { AgentEnginePipeline } from "./engine/agent-engine";
 export {
@@ -272,8 +436,23 @@ export {
   agentEngineResumeInputSchema,
   agentRunResultSchema,
   agentRunBudgetSchema,
+  runEvidenceSchema,
   runEventSchema,
   AGENT_ENGINE_SCHEMA_VERSION,
+  AGENT_LOG_VERBOSITIES,
+  DEFAULT_AGENT_LOG_VERBOSITY,
+  AGENT_ENGINE_THRESHOLDS,
+  resolveAgentEngineThresholds,
+  agentEngineThresholdsSchema,
+  agentEngineThresholdsOverridesSchema,
+  resolveLoopPolicyThresholds,
+  resolveLoopPolicyBandThresholds,
+  LOOP_POLICY_WINDOW_BANDS,
+  LOOP_POLICY_WINDOW_BAND_CEILINGS,
+  LOOP_POLICY_WINDOW_BAND_TABLE,
+  resolveLoopPolicyWindowBand,
+  loopPolicyWindowBandDefinition,
+  listLoopPolicyWindowBands,
   composeReadOnlyAgentEngine,
   InMemoryRunCheckpointStore,
   FileRunCheckpointStore,
@@ -281,11 +460,21 @@ export {
   DEFAULT_TOOL_DEFINITIONS,
 } from "./engine/agent-engine";
 export type {
+  AgentEngineThresholds,
+  AgentEngineThresholdsOverrides,
+  LoopPolicyWindowBand,
+  LoopPolicyWindowBandDefinition,
+  ResolveLoopPolicyThresholdsInput,
+  ResolvedLoopPolicy,
+} from "./engine/agent-engine";
+export type {
   AgentEngineStartInput,
   AgentEngineResumeInput,
   AgentRunResult,
   AgentRunBudget,
   AgentRunHandle,
+  RunEvidence,
+  RunEvidenceIssue,
   RunEvent,
   AgentEngineDependencies,
   ComposeReadOnlyAgentEngineOptions,
@@ -293,4 +482,5 @@ export type {
   AgentRunCheckpoint,
   AgentEngineRunCheckpointStorePort,
   PendingApprovalState,
+  AgentLogVerbosity,
 } from "./engine/agent-engine";

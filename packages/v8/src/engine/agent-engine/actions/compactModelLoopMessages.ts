@@ -2,13 +2,15 @@ import type { ModelMessage, ModelToolCall } from "../../../modules/model-gateway
 import type { TokenEstimatorPort } from "../../../modules/prompt-construction";
 
 const DEFAULT_RECENT_TOOL_MESSAGES_TO_KEEP_FULL = 3;
-const DEFAULT_COMPACTED_TOOL_RESULT_CHARS = 400;
-const DEFAULT_COMPACTED_TOOL_ARGUMENT_CHARS = 256;
+const DEFAULT_COMPACTED_TOOL_RESULT_CHARS_RATIO = 0.006;
+const DEFAULT_COMPACTED_TOOL_ARGUMENT_CHARS_RATIO = 0.003;
+const DEFAULT_DROPPED_TURN_SUMMARY_CHARS_RATIO = 0.01;
+const DEFAULT_ESTABLISHED_FACT_REINJECT_CHARS_RATIO = 0.012;
+const DEFAULT_MEMORY_REINJECT_CHARS_RATIO = 0.006;
 const DEFAULT_MIN_MESSAGES_TO_KEEP = 6;
 const DEFAULT_WARN_RATIO = 0.7;
 const DEFAULT_AUTO_RATIO = 0.8;
 const DEFAULT_HARD_RATIO = 0.92;
-const TRUNCATED_FOR_LOOP_MARKER = "\n...[truncated from prior tool history]";
 
 export type ModelLoopCompactionPressure = "within" | "warn" | "auto" | "hard";
 
@@ -28,6 +30,7 @@ export interface ModelLoopCompactionResult {
   thresholds: ModelLoopCompactionThresholds;
   summarizedDroppedTurns: boolean;
   reinjectedMemory: boolean;
+  reinjectedEstablishedFacts: boolean;
 }
 
 export function compactModelLoopMessages(params: {
@@ -37,21 +40,47 @@ export function compactModelLoopMessages(params: {
   recentToolMessagesToKeepFull?: number;
   compactedToolResultChars?: number;
   compactedToolArgumentChars?: number;
+  droppedTurnSummaryChars?: number;
   minMessagesToKeep?: number;
   warnRatio?: number;
   autoRatio?: number;
   hardRatio?: number;
-  /** Budgeted memory facts to reinject after hard compaction. */
+  /** Absolute cap for auto compaction (effort overlay). */
+  autoMaxTokens?: number;
+  /** Absolute cap for hard compaction (effort overlay). */
+  hardMaxTokens?: number;
+  /**
+   * Prefix-cache providers: do not rewrite history until the hard window
+   * ceiling. Compacting the prefix turns cache hits into misses.
+   */
+  preservePrefix?: boolean;
+  /** Budgeted memory facts to reinject after auto/hard compaction. */
   memoryFacts?: readonly { id: string; content: string }[];
   maxMemoryReinjectChars?: number;
+  /** Mid-run observations that must survive dropped turns. */
+  establishedFacts?: readonly { id: string; content: string }[];
+  maxEstablishedFactReinjectChars?: number;
+  /** When true, established facts are pinned only in the trailing working set. */
+  skipEstablishedFactsReinject?: boolean;
 }): ModelLoopCompactionResult {
   const recentToolMessagesToKeepFull =
     params.recentToolMessagesToKeepFull ??
     DEFAULT_RECENT_TOOL_MESSAGES_TO_KEEP_FULL;
   const compactedToolResultChars =
-    params.compactedToolResultChars ?? DEFAULT_COMPACTED_TOOL_RESULT_CHARS;
+    params.compactedToolResultChars ??
+    scaledChars(params.budgetTokens, DEFAULT_COMPACTED_TOOL_RESULT_CHARS_RATIO);
   const compactedToolArgumentChars =
-    params.compactedToolArgumentChars ?? DEFAULT_COMPACTED_TOOL_ARGUMENT_CHARS;
+    params.compactedToolArgumentChars ??
+    scaledChars(params.budgetTokens, DEFAULT_COMPACTED_TOOL_ARGUMENT_CHARS_RATIO);
+  const droppedTurnSummaryChars =
+    params.droppedTurnSummaryChars ??
+    scaledChars(params.budgetTokens, DEFAULT_DROPPED_TURN_SUMMARY_CHARS_RATIO);
+  const maxEstablishedFactReinjectChars =
+    params.maxEstablishedFactReinjectChars ??
+    scaledChars(params.budgetTokens, DEFAULT_ESTABLISHED_FACT_REINJECT_CHARS_RATIO);
+  const maxMemoryReinjectChars =
+    params.maxMemoryReinjectChars ??
+    scaledChars(params.budgetTokens, DEFAULT_MEMORY_REINJECT_CHARS_RATIO);
   const minMessagesToKeep =
     params.minMessagesToKeep ?? DEFAULT_MIN_MESSAGES_TO_KEEP;
   const thresholds = resolveCompactionThresholds({
@@ -59,6 +88,9 @@ export function compactModelLoopMessages(params: {
     warnRatio: params.warnRatio ?? DEFAULT_WARN_RATIO,
     autoRatio: params.autoRatio ?? DEFAULT_AUTO_RATIO,
     hardRatio: params.hardRatio ?? DEFAULT_HARD_RATIO,
+    autoMaxTokens: params.autoMaxTokens,
+    hardMaxTokens: params.hardMaxTokens,
+    preservePrefix: params.preservePrefix,
   });
 
   let working = params.messages.map(cloneMessage);
@@ -66,6 +98,7 @@ export function compactModelLoopMessages(params: {
   let truncatedTokens = 0;
   let summarizedDroppedTurns = false;
   let reinjectedMemory = false;
+  let reinjectedEstablishedFacts = false;
   const droppedForSummary: ModelMessage[] = [];
 
   const estimateAll = (messages: readonly ModelMessage[]): number =>
@@ -87,6 +120,7 @@ export function compactModelLoopMessages(params: {
       thresholds,
       summarizedDroppedTurns: false,
       reinjectedMemory: false,
+      reinjectedEstablishedFacts: false,
     };
   }
 
@@ -135,6 +169,7 @@ export function compactModelLoopMessages(params: {
   const fullToolMessageIndices = new Set(
     takeLastIndices(toolMessageIndices, recentToolMessagesToKeepFull),
   );
+  const toolCallsById = collectToolCallsById(working);
 
   working = working.map((message, index) => {
     if (
@@ -145,9 +180,13 @@ export function compactModelLoopMessages(params: {
       return message;
     }
 
-    const nextContent =
-      message.content.slice(0, compactedToolResultChars) +
-      TRUNCATED_FOR_LOOP_MARKER;
+    const nextContent = compactToolMessageContent({
+      message,
+      toolCall: message.toolCallId
+        ? toolCallsById.get(message.toolCallId)
+        : undefined,
+      maxChars: compactedToolResultChars,
+    });
     truncatedTokens += Math.max(
       0,
       params.estimator.estimate(message.content) -
@@ -174,7 +213,10 @@ export function compactModelLoopMessages(params: {
   }
 
   if (droppedForSummary.length > 0) {
-    const summary = buildDroppedTurnsSummary(droppedForSummary);
+    const summary = buildDroppedTurnsSummary(
+      droppedForSummary,
+      droppedTurnSummaryChars,
+    );
     if (summary) {
       working = insertAfterSystemMessages(working, {
         role: "user",
@@ -197,21 +239,37 @@ export function compactModelLoopMessages(params: {
     usedTokens = estimateAll(working);
   }
 
-  if (
-    initialPressure === "hard" &&
-    params.memoryFacts &&
-    params.memoryFacts.length > 0
-  ) {
-    const reinjected = reinjectMemoryFacts({
-      messages: working,
-      memoryFacts: params.memoryFacts,
-      maxChars: params.maxMemoryReinjectChars ?? 800,
-      estimator: params.estimator,
-      budgetTokens: params.budgetTokens,
-    });
-    working = reinjected.messages;
-    reinjectedMemory = reinjected.reinjected;
-    usedTokens = estimateAll(working);
+  if (initialPressure === "auto" || initialPressure === "hard") {
+    if (
+      !params.skipEstablishedFactsReinject &&
+      params.establishedFacts &&
+      params.establishedFacts.length > 0
+    ) {
+      const reinjected = reinjectPinnedFacts({
+        messages: working,
+        facts: params.establishedFacts,
+        marker: ESTABLISHED_FACTS_MARKER,
+        maxChars: maxEstablishedFactReinjectChars,
+        estimator: params.estimator,
+        budgetTokens: params.budgetTokens,
+      });
+      working = reinjected.messages;
+      reinjectedEstablishedFacts = reinjected.reinjected;
+      usedTokens = estimateAll(working);
+    }
+    if (params.memoryFacts && params.memoryFacts.length > 0) {
+      const reinjected = reinjectPinnedFacts({
+        messages: working,
+        facts: params.memoryFacts,
+        marker: MEMORY_REINJECT_MARKER,
+        maxChars: maxMemoryReinjectChars,
+        estimator: params.estimator,
+        budgetTokens: params.budgetTokens,
+      });
+      working = reinjected.messages;
+      reinjectedMemory = reinjected.reinjected;
+      usedTokens = estimateAll(working);
+    }
   }
 
   return {
@@ -224,7 +282,95 @@ export function compactModelLoopMessages(params: {
     thresholds,
     summarizedDroppedTurns,
     reinjectedMemory,
+    reinjectedEstablishedFacts,
   };
+}
+
+const FILE_BODY_TOOLS = new Set(["read_file", "read_many_files"]);
+
+/**
+ * Immediately stub file-read bodies for paths no remaining task still needs.
+ * Does not wait for compaction pressure.
+ */
+export function stubToolResultsForCompletedPaths(params: {
+  messages: readonly ModelMessage[];
+  paths: readonly string[];
+  maxChars: number;
+}): { messages: ModelMessage[]; stubbed: boolean } {
+  const normalized = params.paths
+    .map((path) => path.trim().replace(/\\/g, "/"))
+    .filter((path) => path.length > 0);
+  if (normalized.length === 0) {
+    return { messages: [...params.messages], stubbed: false };
+  }
+
+  const toolCallsById = collectToolCallsById(params.messages);
+  let stubbed = false;
+  const messages = params.messages.map((message) => {
+    if (message.role !== "tool") {
+      return message;
+    }
+    const toolCall = message.toolCallId
+      ? toolCallsById.get(message.toolCallId)
+      : undefined;
+    if (!toolCall || !FILE_BODY_TOOLS.has(toolCall.name)) {
+      return message;
+    }
+    const toolPaths = collectToolCallFilePaths(toolCall);
+    if (!toolPaths.some((path) => pathMatchesCompleted(path, normalized))) {
+      return message;
+    }
+    const parsed = parseJsonObject(message.content);
+    if (
+      parsed?.compacted === true &&
+      (parsed.reason === "completed_task_file_body_stubbed" ||
+        parsed.reason === "previous_tool_result_compacted")
+    ) {
+      return message;
+    }
+    if (message.content.length <= params.maxChars) {
+      return message;
+    }
+    stubbed = true;
+    return {
+      ...message,
+      content: compactToolMessageContent({
+        message,
+        toolCall,
+        maxChars: params.maxChars,
+        reason: "completed_task_file_body_stubbed",
+      }),
+    };
+  });
+  return { messages, stubbed };
+}
+
+function collectToolCallFilePaths(toolCall: ModelToolCall): string[] {
+  const args = parseJsonObject(toolCall.arguments);
+  if (!args) {
+    return [];
+  }
+  if (typeof args.path === "string" && args.path.trim().length > 0) {
+    return [args.path.trim().replace(/\\/g, "/")];
+  }
+  if (Array.isArray(args.paths)) {
+    return args.paths
+      .filter(
+        (path): path is string =>
+          typeof path === "string" && path.trim().length > 0,
+      )
+      .map((path) => path.trim().replace(/\\/g, "/"));
+  }
+  return [];
+}
+
+function pathMatchesCompleted(
+  path: string,
+  completed: readonly string[],
+): boolean {
+  return completed.some(
+    (candidate) => path === candidate || path.endsWith(`/${candidate}`),
+  );
 }
 
 export function resolveCompactionThresholds(params: {
@@ -232,6 +378,9 @@ export function resolveCompactionThresholds(params: {
   warnRatio?: number;
   autoRatio?: number;
   hardRatio?: number;
+  autoMaxTokens?: number;
+  hardMaxTokens?: number;
+  preservePrefix?: boolean;
 }): ModelLoopCompactionThresholds {
   const budgetTokens = Math.max(1, Math.floor(params.budgetTokens));
   const warnRatio = clampRatio(params.warnRatio ?? DEFAULT_WARN_RATIO);
@@ -239,10 +388,31 @@ export function resolveCompactionThresholds(params: {
   const hardRatio = clampRatio(params.hardRatio ?? DEFAULT_HARD_RATIO);
   const sorted = [warnRatio, autoRatio, hardRatio].sort((a, b) => a - b);
 
+  let warnTokens = Math.max(1, Math.floor(budgetTokens * sorted[0]!));
+  let autoTokens = Math.max(1, Math.floor(budgetTokens * sorted[1]!));
+  let hardTokens = Math.max(1, Math.floor(budgetTokens * sorted[2]!));
+
+  if (params.autoMaxTokens !== undefined) {
+    autoTokens = Math.min(autoTokens, Math.max(1, Math.floor(params.autoMaxTokens)));
+  }
+  if (params.hardMaxTokens !== undefined) {
+    hardTokens = Math.min(hardTokens, Math.max(1, Math.floor(params.hardMaxTokens)));
+  }
+  if (params.preservePrefix) {
+    autoTokens = hardTokens;
+    warnTokens = Math.min(warnTokens, autoTokens);
+  }
+  if (autoTokens < warnTokens) {
+    warnTokens = autoTokens;
+  }
+  if (hardTokens < autoTokens) {
+    hardTokens = autoTokens;
+  }
+
   return {
-    warnTokens: Math.max(1, Math.floor(budgetTokens * sorted[0]!)),
-    autoTokens: Math.max(1, Math.floor(budgetTokens * sorted[1]!)),
-    hardTokens: Math.max(1, Math.floor(budgetTokens * sorted[2]!)),
+    warnTokens,
+    autoTokens,
+    hardTokens,
   };
 }
 
@@ -312,12 +482,185 @@ function clampRatio(value: number): number {
   return Math.min(1, Math.max(0.01, value));
 }
 
+function scaledChars(budgetTokens: number, ratio: number): number {
+  return Math.max(1, Math.floor(Math.max(1, budgetTokens) * ratio));
+}
+
+/** Identical old/new so a copied compacted patch cannot apply as a real edit. */
+const COMPACTED_PATCH_PLACEHOLDER = "[compacted prior patch]";
+
 function buildCompactedToolArguments(toolCall: ModelToolCall): string {
-  return JSON.stringify({
-    compacted: true,
-    reason: "previous_completed_tool_call_arguments_omitted",
-    originalArgumentCharacters: toolCall.arguments.length,
-  });
+  const schemaSafe = buildSchemaSafeCompactedToolArguments(toolCall);
+  if (schemaSafe) {
+    return schemaSafe;
+  }
+
+  if (toolCall.name === "apply_patch") {
+    return JSON.stringify({
+      patches: [
+        {
+          path: "(compacted prior patch)",
+          oldText: COMPACTED_PATCH_PLACEHOLDER,
+          newText: COMPACTED_PATCH_PLACEHOLDER,
+        },
+      ],
+    });
+  }
+
+  // Never emit unrecognized keys. Models copy compacted history as the next call.
+  return "{}";
+}
+
+function buildSchemaSafeCompactedToolArguments(
+  toolCall: ModelToolCall,
+): string | undefined {
+  const parsed = parseJsonObject(toolCall.arguments);
+  if (!parsed) {
+    return undefined;
+  }
+
+  switch (toolCall.name) {
+    case "read_file":
+      return compactObject(parsed, ["path", "startLine", "endLine"], ["path"]);
+    case "read_many_files":
+      return compactReadManyFilesArguments(parsed);
+    case "list_directory":
+    case "file_metadata":
+    case "read_package_scripts":
+      return compactObject(parsed, ["path"], ["path"]);
+    case "search_files":
+      return compactObject(
+        parsed,
+        ["query", "path", "maxMatches", "caseSensitive"],
+        ["query"],
+      );
+    case "glob_files":
+      return compactObject(
+        parsed,
+        ["pattern", "path", "maxResults"],
+        ["pattern"],
+      );
+    case "read_diagnostics":
+      return compactObject(parsed, ["paths"], []);
+    case "goto_definition":
+    case "find_references":
+      return compactObject(parsed, ["path", "line", "column"], ["path", "line"]);
+    case "analyze_change_impact":
+      return compactObject(
+        parsed,
+        ["path", "symbolName", "maximumHops"],
+        ["path"],
+      );
+    case "apply_patch":
+      return compactApplyPatchArguments(parsed);
+    case "delete_file":
+    case "delete_directory":
+      return compactObject(parsed, ["path", "recursive"], ["path"]);
+    case "move_file":
+      return compactObject(parsed, ["from", "to"], ["from", "to"]);
+    default:
+      return undefined;
+  }
+}
+
+function compactApplyPatchArguments(
+  parsed: Record<string, unknown>,
+): string | undefined {
+  const rawPatches = Array.isArray(parsed.patches)
+    ? parsed.patches
+    : typeof parsed.path === "string" && parsed.path.trim().length > 0
+      ? [parsed]
+      : [];
+  if (rawPatches.length === 0) {
+    return undefined;
+  }
+
+  const patches: Array<{
+    path: string;
+    oldText: string;
+    newText: string;
+  }> = [];
+  for (const raw of rawPatches) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      return undefined;
+    }
+    const path = (raw as Record<string, unknown>).path;
+    if (typeof path !== "string" || path.trim().length === 0) {
+      return undefined;
+    }
+    patches.push({
+      path,
+      oldText: COMPACTED_PATCH_PLACEHOLDER,
+      newText: COMPACTED_PATCH_PLACEHOLDER,
+    });
+  }
+  return JSON.stringify({ patches });
+}
+
+function compactReadManyFilesArguments(
+  parsed: Record<string, unknown>,
+): string | undefined {
+  const paths = parsed.paths;
+  if (
+    !Array.isArray(paths) ||
+    paths.length === 0 ||
+    !paths.every((path) => typeof path === "string" && path.trim().length > 0)
+  ) {
+    return undefined;
+  }
+
+  const next: Record<string, unknown> = { paths };
+  if (
+    typeof parsed.maxBytesPerFile === "number" &&
+    Number.isSafeInteger(parsed.maxBytesPerFile) &&
+    parsed.maxBytesPerFile > 0
+  ) {
+    next.maxBytesPerFile = parsed.maxBytesPerFile;
+  }
+  return JSON.stringify(next);
+}
+
+function compactObject(
+  parsed: Record<string, unknown>,
+  keepKeys: readonly string[],
+  requiredKeys: readonly string[],
+): string | undefined {
+  for (const key of requiredKeys) {
+    const value = parsed[key];
+    if (
+      !(
+        typeof value === "string"
+          ? value.trim().length > 0
+          : typeof value === "number"
+            ? Number.isSafeInteger(value) && value > 0
+            : value !== undefined
+      )
+    ) {
+      return undefined;
+    }
+  }
+
+  const next: Record<string, unknown> = {};
+  for (const key of keepKeys) {
+    const value = parsed[key];
+    if (value !== undefined) {
+      next[key] = value;
+    }
+  }
+  return JSON.stringify(next);
+}
+
+function parseJsonObject(value: string): Record<string, unknown> | undefined {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function countNonSystemMessages(messages: readonly ModelMessage[]): number {
@@ -371,8 +714,70 @@ function dropOldestNonSystemTurnWithRemoved(
   return { messages: next, removed };
 }
 
+function collectToolCallsById(
+  messages: readonly ModelMessage[],
+): Map<string, ModelToolCall> {
+  const toolCalls = new Map<string, ModelToolCall>();
+  for (const message of messages) {
+    for (const toolCall of message.toolCalls ?? []) {
+      toolCalls.set(toolCall.id, toolCall);
+    }
+  }
+  return toolCalls;
+}
+
+function compactToolMessageContent(params: {
+  message: ModelMessage;
+  toolCall?: ModelToolCall;
+  maxChars: number;
+  reason?: string;
+}): string {
+  const parsed = parseJsonObject(params.message.content);
+  const args = params.toolCall
+    ? parseJsonObject(params.toolCall.arguments)
+    : undefined;
+  const output = parsed?.output ?? parsed?.outputPreview;
+  const compact: Record<string, unknown> = {
+    compacted: true,
+    reason: params.reason ?? "previous_tool_result_compacted",
+    ...(parsed?.status ? { status: parsed.status } : {}),
+    toolName:
+      typeof parsed?.toolName === "string"
+        ? parsed.toolName
+        : params.toolCall?.name,
+    ...(parsed?.reasonCode ? { reasonCode: parsed.reasonCode } : {}),
+    ...(parsed?.truncated ? { truncated: parsed.truncated } : {}),
+    ...(parsed?.redacted ? { redacted: parsed.redacted } : {}),
+  };
+
+  const locator = params.toolCall && args
+    ? resolveToolArgumentLocator(params.toolCall.name, args)
+    : undefined;
+  if (locator) {
+    compact.locator = locator;
+  }
+
+  const finding = summarizeToolOutput(output ?? params.message.content);
+  if (finding) {
+    compact.finding = clipToBudget(finding, params.maxChars);
+  }
+
+  const serialized = JSON.stringify(compact);
+  if (serialized.length <= params.maxChars) {
+    return serialized;
+  }
+  return JSON.stringify({
+    ...compact,
+    finding:
+      typeof compact.finding === "string"
+        ? clipToBudget(compact.finding, Math.max(24, params.maxChars - 220))
+        : undefined,
+  });
+}
+
 function buildDroppedTurnsSummary(
   dropped: readonly ModelMessage[],
+  maxChars: number,
 ): string | undefined {
   if (dropped.length === 0) {
     return undefined;
@@ -381,16 +786,37 @@ function buildDroppedTurnsSummary(
     "[compacted prior context — older turns summarized locally]",
   ];
   let chars = lines[0]!.length;
-  const maxChars = 1_200;
+  const toolCallsById = new Map<string, ModelToolCall>();
+  for (const message of dropped) {
+    for (const toolCall of message.toolCalls ?? []) {
+      toolCallsById.set(toolCall.id, toolCall);
+    }
+  }
+
   for (const message of dropped) {
     if (message.role === "tool") {
+      const line = summarizeDroppedToolTurn(message, toolCallsById);
+      if (!line) {
+        continue;
+      }
+      if (chars + line.length + 1 > maxChars) {
+        lines.push("- …");
+        break;
+      }
+      lines.push(line);
+      chars += line.length + 1;
       continue;
     }
-    const preview = message.content.replace(/\s+/g, " ").trim().slice(0, 220);
-    if (!preview) {
+    const preview = compactPreview(
+      message.content,
+      Math.max(80, Math.floor(maxChars / 6)),
+    );
+    const toolSummary = summarizeToolCalls(message.toolCalls ?? []);
+    const lineBody = [preview, toolSummary].filter(Boolean).join(" ");
+    if (!lineBody) {
       continue;
     }
-    const line = `- ${message.role}: ${preview}`;
+    const line = `- ${message.role}: ${lineBody}`;
     if (chars + line.length + 1 > maxChars) {
       lines.push("- …");
       break;
@@ -399,6 +825,139 @@ function buildDroppedTurnsSummary(
     chars += line.length + 1;
   }
   return lines.length > 1 ? lines.join("\n") : undefined;
+}
+
+function summarizeToolCalls(toolCalls: readonly ModelToolCall[]): string | undefined {
+  const summaries = toolCalls
+    .map((toolCall) => {
+      const args = parseJsonObject(toolCall.arguments);
+      const locator = args ? resolveToolArgumentLocator(toolCall.name, args) : undefined;
+      return locator ? `${toolCall.name}(${locator})` : toolCall.name;
+    })
+    .filter(Boolean);
+  return summaries.length > 0 ? `tools=${summaries.join(", ")}` : undefined;
+}
+
+function summarizeDroppedToolTurn(
+  message: ModelMessage,
+  toolCallsById: ReadonlyMap<string, ModelToolCall>,
+): string | undefined {
+  if (!message.toolCallId) {
+    return undefined;
+  }
+  const toolCall = toolCallsById.get(message.toolCallId);
+  const toolName = toolCall?.name ?? "tool";
+  const args = toolCall ? parseJsonObject(toolCall.arguments) : undefined;
+  const locator = args ? resolveToolArgumentLocator(toolName, args) : undefined;
+  const parsedContent = parseJsonObject(message.content);
+  const resultOutput = parsedContent?.output ?? parsedContent?.outputPreview;
+  const finding = summarizeToolOutput(resultOutput ?? message.content);
+  const label = locator ? `${toolName} ${locator}` : toolName;
+  return `- tool: ${label}${finding ? ` => ${finding}` : ""}`;
+}
+
+function resolveToolArgumentLocator(
+  toolName: string,
+  args: Record<string, unknown>,
+): string | undefined {
+  const path = typeof args.path === "string" ? args.path.trim() : "";
+  const query = typeof args.query === "string" ? args.query.trim() : "";
+  const pattern = typeof args.pattern === "string" ? args.pattern.trim() : "";
+  if (path) {
+    const startLine = typeof args.startLine === "number" ? args.startLine : undefined;
+    const endLine = typeof args.endLine === "number" ? args.endLine : undefined;
+    const range =
+      startLine || endLine
+        ? `:${startLine ?? 1}${endLine ? `-${endLine}` : ""}`
+        : "";
+    return `${path}${range}`;
+  }
+  if (Array.isArray(args.paths)) {
+    const paths = args.paths
+      .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+      .slice(0, 4);
+    if (paths.length > 0) {
+      return paths.join(",");
+    }
+  }
+  if (query) {
+    return `query="${query.slice(0, 80)}"`;
+  }
+  if (pattern) {
+    return `pattern="${pattern.slice(0, 80)}"`;
+  }
+  return toolName;
+}
+
+function summarizeToolOutput(output: unknown): string | undefined {
+  if (typeof output === "string") {
+    return compactPreview(output);
+  }
+  if (!output || typeof output !== "object") {
+    return undefined;
+  }
+  const record = output as Record<string, unknown>;
+  if (typeof record.content === "string") {
+    return compactPreview(record.content);
+  }
+  if (typeof record.text === "string") {
+    return compactPreview(record.text);
+  }
+  if (Array.isArray(record.matches)) {
+    return compactPreview(
+      record.matches
+        .slice(0, 4)
+        .map((match) => {
+          if (!match || typeof match !== "object") {
+            return "";
+          }
+          const item = match as Record<string, unknown>;
+          return [
+            typeof item.path === "string" ? item.path : undefined,
+            typeof item.line === "number" ? String(item.line) : undefined,
+            typeof item.text === "string" ? item.text : undefined,
+          ]
+            .filter(Boolean)
+            .join(":");
+        })
+        .filter(Boolean)
+        .join("; "),
+    );
+  }
+  if (Array.isArray(record.files)) {
+    return compactPreview(
+      record.files
+        .slice(0, 4)
+        .map((file) => {
+          if (!file || typeof file !== "object") {
+            return "";
+          }
+          const item = file as Record<string, unknown>;
+          return [
+            typeof item.path === "string" ? item.path : undefined,
+            typeof item.content === "string" ? compactPreview(item.content, 80) : undefined,
+          ]
+            .filter(Boolean)
+            .join(": ");
+        })
+        .filter(Boolean)
+        .join("; "),
+    );
+  }
+  return compactPreview(JSON.stringify(record));
+}
+
+function compactPreview(value: string, maxChars = 180): string | undefined {
+  const preview = value.replace(/\s+/g, " ").trim();
+  if (!preview) {
+    return undefined;
+  }
+  return preview.length > maxChars ? `${preview.slice(0, maxChars)}…` : preview;
+}
+
+function clipToBudget(value: string, maxChars: number): string {
+  const limit = Math.max(1, maxChars);
+  return value.length > limit ? `${value.slice(0, limit)}…` : value;
 }
 
 function insertAfterSystemMessages(
@@ -416,21 +975,25 @@ function insertAfterSystemMessages(
   ];
 }
 
-function reinjectMemoryFacts(params: {
+const MEMORY_REINJECT_MARKER = "[memory reinjected after compaction]";
+const ESTABLISHED_FACTS_MARKER =
+  "[established observations after compaction]";
+
+function reinjectPinnedFacts(params: {
   messages: ModelMessage[];
-  memoryFacts: readonly { id: string; content: string }[];
+  facts: readonly { id: string; content: string }[];
+  marker: string;
   maxChars: number;
   estimator: TokenEstimatorPort;
   budgetTokens: number;
 }): { messages: ModelMessage[]; reinjected: boolean } {
-  const marker = "[memory reinjected after hard compaction]";
-  if (params.messages.some((message) => message.content.includes(marker))) {
+  if (params.messages.some((message) => message.content.includes(params.marker))) {
     return { messages: params.messages, reinjected: false };
   }
 
-  const lines: string[] = [marker];
-  let chars = marker.length;
-  for (const fact of params.memoryFacts) {
+  const lines: string[] = [params.marker];
+  let chars = params.marker.length;
+  for (const fact of params.facts) {
     const line = `- (${fact.id}) ${fact.content.replace(/\s+/g, " ").trim()}`;
     if (chars + line.length + 1 > params.maxChars) {
       break;
@@ -464,6 +1027,7 @@ function compactAllToolPayloads(params: {
 } {
   let compacted = false;
   let truncatedTokens = 0;
+  const toolCallsById = collectToolCallsById(params.messages);
   const messages = params.messages.map((message) => {
     let next = message;
 
@@ -488,9 +1052,13 @@ function compactAllToolPayloads(params: {
       next.role === "tool" &&
       next.content.length > params.compactedToolResultChars
     ) {
-      const content =
-        next.content.slice(0, params.compactedToolResultChars) +
-        TRUNCATED_FOR_LOOP_MARKER;
+      const content = compactToolMessageContent({
+        message: next,
+        toolCall: next.toolCallId
+          ? toolCallsById.get(next.toolCallId)
+          : undefined,
+        maxChars: params.compactedToolResultChars,
+      });
       compacted = true;
       truncatedTokens += Math.max(
         0,

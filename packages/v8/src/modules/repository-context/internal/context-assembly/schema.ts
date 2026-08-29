@@ -273,6 +273,7 @@ const warningSchema =
         "content_unavailable",
         "content_source_failed",
         "representation_fallback",
+        "file_map_fallback",
         "content_sanitized",
         "secrets_redacted",
         "content_truncated",
@@ -307,6 +308,10 @@ export const contextAssemblyInputSchema =
       contextSelectionResultSchema,
     snapshot:
       workspaceSnapshotSchema,
+    folderPrefix:
+      z.string()
+        .min(1)
+        .optional(),
     abortSignal:
       z.custom<AbortSignal>(
         (value) =>

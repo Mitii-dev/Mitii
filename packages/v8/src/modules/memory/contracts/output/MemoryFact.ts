@@ -1,9 +1,11 @@
 import { z } from "zod";
 
 import {
+  MEMORY_FACT_TYPES,
   MEMORY_PRIVACY_LEVELS,
   MEMORY_SCOPES,
 } from "../../constants";
+import { DEFAULT_MEMORY_IMPORTANCE } from "../../defaults";
 
 export const memoryScopeSchema = z
   .object({
@@ -43,6 +45,10 @@ export const memoryPrivacySchema = z.enum(MEMORY_PRIVACY_LEVELS);
 
 export type MemoryPrivacy = z.infer<typeof memoryPrivacySchema>;
 
+export const memoryFactTypeSchema = z.enum(MEMORY_FACT_TYPES);
+
+export type MemoryFactType = z.infer<typeof memoryFactTypeSchema>;
+
 export const memoryFactSchema = z
   .object({
     id: z.string().min(1),
@@ -53,7 +59,26 @@ export const memoryFactSchema = z
     createdAt: z.string().datetime(),
     expiresAt: z.string().datetime().optional(),
     source: z.string().min(1).default("user"),
+    type: memoryFactTypeSchema.default("fact"),
+    title: z.string().min(1).optional(),
+    concepts: z.array(z.string().min(1)).default([]),
+    files: z.array(z.string().min(1)).default([]),
+    importance: z
+      .number()
+      .int()
+      .min(1)
+      .max(10)
+      .default(DEFAULT_MEMORY_IMPORTANCE),
+    sourceIds: z.array(z.string().min(1)).default([]),
+    version: z.number().int().positive().default(1),
+    isLatest: z.boolean().default(true),
+    supersedes: z.array(z.string().min(1)).default([]),
+    contentHash: z.string().min(1).optional(),
+    accessCount: z.number().int().nonnegative().default(0),
+    lastAccessedAt: z.string().datetime().optional(),
+    accessLog: z.array(z.string().datetime()).max(20).default([]),
   })
   .strict();
 
 export type MemoryFact = z.infer<typeof memoryFactSchema>;
+export type MemoryFactDraft = z.input<typeof memoryFactSchema>;

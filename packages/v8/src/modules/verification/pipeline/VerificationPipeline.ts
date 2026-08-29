@@ -1,5 +1,9 @@
 import {
   discoverApplicableChecks,
+  buildVerificationRecord,
+  buildVerificationUserSummary,
+  captureRepoBuildState,
+  compareRepoBuildStates,
   executeChecks,
   inspectDiffAndStaleRisk,
   mapAffectedProjects,
@@ -7,15 +11,21 @@ import {
   recommendCompletion,
   selectProportionalChecks,
 } from "../actions";
+import type { BuildVerificationRecordParams } from "../actions";
 import {
   VerificationError,
   verificationInputSchema,
+  verificationRecordSchema,
   verificationResultSchema,
 } from "../contracts";
 import type {
   VerificationInput,
   VerificationManifestReaderPort,
   VerificationReasonCode,
+  RepoBuildState,
+  RepoBuildStateComparison,
+  VerificationRecord,
+  VerificationRecordStorePort,
   VerificationResult,
   VerificationToolExecutorPort,
 } from "../contracts";
@@ -28,6 +38,8 @@ export interface VerificationPipelineOptions {
 export interface VerificationPipelineDependencies {
   tools: VerificationToolExecutorPort;
   manifests: VerificationManifestReaderPort;
+  /** Optional durable store. Omit in tests that only exercise check execution. */
+  records?: VerificationRecordStorePort;
 }
 
 /**
@@ -46,6 +58,7 @@ export interface VerificationPipelineDependencies {
 export class VerificationPipeline {
   private readonly tools: VerificationToolExecutorPort;
   private readonly manifests: VerificationManifestReaderPort;
+  private readonly records?: VerificationRecordStorePort;
 
   constructor(dependencies: VerificationPipelineDependencies) {
     if (!dependencies.tools || !dependencies.manifests) {
@@ -56,6 +69,7 @@ export class VerificationPipeline {
     }
     this.tools = dependencies.tools;
     this.manifests = dependencies.manifests;
+    this.records = dependencies.records;
   }
 
   public async verify(
@@ -134,6 +148,7 @@ export class VerificationPipeline {
       candidates: discovered.candidates,
       verification: parsed.verification,
       changeScope: parsed.changeScope,
+      maxChecks: parsed.maxChecks,
     });
 
     const executed = await executeChecks({
@@ -145,9 +160,15 @@ export class VerificationPipeline {
       signal: options.signal,
     });
 
+    const allDiagnostics = normalizeDiagnostics({
+      checks: executed.checks,
+      toolOutputs: executed.toolOutputs,
+      projects: parsed.projects,
+    });
     const diagnostics = normalizeDiagnostics({
       checks: executed.checks,
       toolOutputs: executed.toolOutputs,
+      projects: parsed.projects,
       baselineDiagnostics: parsed.baselineDiagnostics,
     });
 
@@ -188,6 +209,22 @@ export class VerificationPipeline {
       );
     }
 
+    const failedChecksWithoutDiagnostics = executed.checks.filter(
+      (check) => check.outcome === "failed",
+    );
+    if (failedChecksWithoutDiagnostics.length > 0 && allDiagnostics.length === 0) {
+      // A failing exit code with zero parsed diagnostics usually means the
+      // output format wasn't recognized by NormalizeDiagnostics, not that
+      // the tool genuinely produced no findings — otherwise indistinguishable
+      // from a real "failed with no evidence" case.
+      warnings.push(
+        `${failedChecksWithoutDiagnostics.length} check(s) failed but no diagnostics could be parsed from their output: ${failedChecksWithoutDiagnostics
+          .map((check) => check.checkId)
+          .slice(0, 5)
+          .join(", ")}.`,
+      );
+    }
+
     return verificationResultSchema.parse({
       schemaVersion: VERIFICATION_SCHEMA_VERSION,
       status: recommendation.status,
@@ -195,11 +232,92 @@ export class VerificationPipeline {
       affectedProjectIds: mapping.projects.map((project) => project.projectId),
       checks: executed.checks,
       diagnostics,
+      allDiagnostics,
       diff: inspection.diff,
       warnings,
       reasonCodes,
       durationMs: Date.now() - startedMs,
     });
+  }
+
+  public async captureBuildState(
+    input: VerificationInput,
+    params: { phase: "before" | "after"; capturedAt?: string },
+    options: VerificationPipelineOptions = {},
+  ): Promise<RepoBuildState> {
+    const result = await this.verify(input, options);
+    return captureRepoBuildState({
+      phase: params.phase,
+      input,
+      result,
+      capturedAt: params.capturedAt,
+    });
+  }
+
+  public buildStateFromResult(
+    input: VerificationInput,
+    result: VerificationResult,
+    params: { phase: "before" | "after"; capturedAt?: string },
+  ): RepoBuildState {
+    return captureRepoBuildState({
+      phase: params.phase,
+      input,
+      result,
+      capturedAt: params.capturedAt,
+    });
+  }
+
+  public compareBuildStates(params: {
+    before?: RepoBuildState;
+    after: RepoBuildState;
+  }): RepoBuildStateComparison {
+    return compareRepoBuildStates(params);
+  }
+
+  public buildRecord(
+    params: BuildVerificationRecordParams,
+  ): VerificationRecord {
+    return buildVerificationRecord(params);
+  }
+
+  public buildUserSummary(record: VerificationRecord): string {
+    return buildVerificationUserSummary(record);
+  }
+
+  public async persistRecord(record: VerificationRecord): Promise<void> {
+    if (!this.records) {
+      return;
+    }
+    const parsed = verificationRecordSchema.parse(record);
+    try {
+      await this.records.save(parsed);
+    } catch (error) {
+      throw new VerificationError(
+        "store_failed",
+        "Failed to persist the verification record.",
+        {
+          cause: error instanceof Error ? error.message : String(error),
+        },
+      );
+    }
+  }
+
+  public async loadRecord(
+    recordId: string,
+  ): Promise<VerificationRecord | undefined> {
+    if (!this.records) {
+      return undefined;
+    }
+    return this.records.load(recordId);
+  }
+
+  public async loadLatestRecord(
+    workspaceId: string,
+  ): Promise<VerificationRecord | undefined> {
+    if (!this.records || workspaceId.trim().length === 0) {
+      return undefined;
+    }
+    return this.records.loadLatest(workspaceId);
   }
 }
 

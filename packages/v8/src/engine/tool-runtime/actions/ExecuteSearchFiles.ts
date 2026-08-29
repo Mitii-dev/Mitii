@@ -5,8 +5,12 @@ import {
   DEFAULT_MAX_SEARCH_FILE_BYTES,
   DEFAULT_MAX_SEARCH_MATCHES,
 } from "../defaults";
-import { resolveContainedPath } from "../internal/PathContainment";
+import {
+  resolveContainedPath,
+  resolveScopedSearchPath,
+} from "../internal/PathContainment";
 import { sanitizeTextOutput } from "../internal/OutputSanitizer";
+import { resolveSearchPattern } from "../internal/SearchPattern";
 import {
   searchFilesInputSchema,
   searchFilesOutputSchema,
@@ -18,28 +22,39 @@ export async function executeSearchFiles(params: {
   workspaceRoot: string;
   fileSystem: WorkspaceFileSystemPort;
   maxOutputBytes: number;
-}): Promise<{ output: unknown; truncated: boolean; redacted: boolean }> {
+}): Promise<{
+  output: unknown;
+  truncated: boolean;
+  redacted: boolean;
+  warnings?: string[];
+}> {
   const input = searchFilesInputSchema.parse(params.arguments);
   const contained = await resolveContainedPath({
     fileSystem: params.fileSystem,
     workspaceRoot: params.workspaceRoot,
-    requestedPath: input.path,
+    requestedPath: resolveScopedSearchPath({
+      requestedPath: input.path,
+      pathScopes: params.grant.pathScopes,
+    }),
     pathScopes: params.grant.pathScopes,
   });
 
   const maxMatches = input.maxMatches ?? DEFAULT_MAX_SEARCH_MATCHES;
-  const files = params.fileSystem.readTextFilesUnder
-    ? await params.fileSystem.readTextFilesUnder(contained.realPath, {
-        workspaceRoot: params.workspaceRoot,
-        maxFiles: 500,
-        maxFileBytes: DEFAULT_MAX_SEARCH_FILE_BYTES,
-      })
-    : await fallbackReadSingle(params.fileSystem, contained);
+  const files = await collectSearchFiles({
+    fileSystem: params.fileSystem,
+    contained,
+    workspaceRoot: params.workspaceRoot,
+  });
 
-  const needle = input.caseSensitive ? input.query : input.query.toLowerCase();
+  const pattern = resolveSearchPattern({
+    query: input.query,
+    mode: input.mode,
+    caseSensitive: input.caseSensitive,
+  });
   const matches: Array<{ path: string; line: number; text: string }> = [];
   let truncated = false;
   let redacted = false;
+  const warnings = pattern.warning ? [pattern.warning] : [];
 
   for (const file of files) {
     if (!isPathWithinGrant(file.relativePath, params.grant.pathScopes)) {
@@ -48,8 +63,7 @@ export async function executeSearchFiles(params: {
     const lines = file.content.split(/\r?\n/);
     for (let i = 0; i < lines.length; i += 1) {
       const line = lines[i] ?? "";
-      const haystack = input.caseSensitive ? line : line.toLowerCase();
-      if (!haystack.includes(needle)) {
+      if (!pattern.matches(line)) {
         continue;
       }
       const sanitized = sanitizeTextOutput(line, 2_000);
@@ -71,6 +85,7 @@ export async function executeSearchFiles(params: {
 
   const output = searchFilesOutputSchema.parse({
     query: input.query,
+    mode: pattern.mode,
     matches,
     truncated,
   });
@@ -87,10 +102,30 @@ export async function executeSearchFiles(params: {
       output: searchFilesOutputSchema.parse(reduced),
       truncated: true,
       redacted,
+      warnings,
     };
   }
 
-  return { output, truncated, redacted };
+  return { output, truncated, redacted, warnings };
+}
+
+async function collectSearchFiles(params: {
+  fileSystem: WorkspaceFileSystemPort;
+  contained: { relativePath: string; realPath: string };
+  workspaceRoot: string;
+}): Promise<Array<{ relativePath: string; content: string }>> {
+  const stat = await params.fileSystem.lstat(params.contained.realPath);
+  if (stat.kind === "file") {
+    return fallbackReadSingle(params.fileSystem, params.contained);
+  }
+  if (params.fileSystem.readTextFilesUnder) {
+    return params.fileSystem.readTextFilesUnder(params.contained.realPath, {
+      workspaceRoot: params.workspaceRoot,
+      maxFiles: 500,
+      maxFileBytes: DEFAULT_MAX_SEARCH_FILE_BYTES,
+    });
+  }
+  return fallbackReadSingle(params.fileSystem, params.contained);
 }
 
 async function fallbackReadSingle(

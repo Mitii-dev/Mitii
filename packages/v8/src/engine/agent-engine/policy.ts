@@ -5,7 +5,11 @@ import {
 } from "../tool-runtime";
 
 /**
- * Tunable Agent Engine thresholds for token / truncation recovery.
+ * Base working standards for loop / stall / recovery thresholds.
+ *
+ * Window-specific permanent tuning lives in
+ * `policy/loopPolicyBands.ts` (compact / standard / wide).
+ * Developer `mitii.loopPolicy.*` overrides are lab-only deltas on top.
  */
 export const AGENT_ENGINE_THRESHOLDS = {
   /** Max automatic recoveries after finishReason=length with incomplete tools. */
@@ -15,10 +19,76 @@ export const AGENT_ENGINE_THRESHOLDS = {
    * ("Let me check…") with no tool calls instead of a final answer.
    */
   maxIncompleteAnswerRecoveries: 2,
+  /**
+   * Max nudges when execute+write+mutation intent ends on a text-only
+   * diagnosis instead of apply_patch.
+   */
+  maxUnfulfilledExecuteRecoveries: 2,
+  /**
+   * Max recoveries after apply_patch/delete_file/move_file is rejected
+   * (e.g. old_text_not_found). Kept separate from text-only unfulfilled
+   * execute so a stale-hunk → targeted read → retry cycle can complete
+   * without burning the single diagnosis nudge.
+   */
+  maxRejectedMutationRecoveries: 3,
+  /**
+   * One withheld mutation when the active task's mustRead files are not yet
+   * in this-loop reads or established facts. A second attempt proceeds so
+   * this does not fight unfulfilled_execute recovery.
+   */
+  maxMustReadNudges: 1,
+  /**
+   * Extra grace turns after the first-mutation nudge when the model keeps
+   * reading files instead of patching. Kept separate from text-only
+   * unfulfilled execute so essays / rejected-tool loops do not get looser.
+   */
+  maxReadOnlyMutationRetryAttempts: 2,
+  /**
+   * Max successful read/search/tool turns in execute mode before requiring the
+   * first mutation attempt. This catches broad investigation loops that never
+   * reach apply_patch.
+   */
+  maxReadOnlyToolTurnsBeforeMutationNudge: 6,
+  /**
+   * After the first mutation, cap consecutive non-mutating tool turns so
+   * glob/search cannot spin while the transcript is expensive.
+   */
+  maxReadOnlyToolTurnsAfterMutationNudge: 3,
+  /**
+   * One post-mutation read nudge, then stop the first loop so verification
+   * repair can use remaining model-call budget instead of another glob pass.
+   */
+  maxReadOnlyToolTurnsAfterMutationNudges: 1,
+  /**
+   * Share of maxModelCalls held back from the first mutate loop so
+   * remaining-error repairs can start. Floor of 1 when repairs are enabled.
+   */
+  verificationRepairModelCallReserveRatio: 0.2,
   /** Fallback preferred batch size when grant omits mutationBudget. */
-  defaultPreferredBatchSize: 3,
+  defaultPreferredBatchSize: 8,
   /** Fallback hard patch cap when grant omits mutationBudget. */
-  defaultMaxPatchesPerCall: 8,
+  defaultMaxPatchesPerCall: 16,
+  /**
+   * Flag context-loss re-reads when file-read calls exceed unique paths
+   * by this ratio and at least `explorationRereadMinCalls` reads occurred.
+   */
+  explorationRereadRatio: 2,
+  explorationRereadMinCalls: 8,
+  /** One mid-loop nudge, then stop the spin. */
+  maxExplorationStallNudges: 1,
+  /**
+   * Fallback remaining-error repairs when Window Policy is absent.
+   * Window effort is the live cap (medium: 8). Stop earlier when
+   * consecutive verifies stop improving.
+   */
+  maxVerificationRepairAttempts: 8,
+  /** Stop repairing after this many consecutive non-improving verifies. */
+  maxStalledVerificationRepairs: 2,
+  /**
+   * When a recovered turn was a mid-work analysis dump, keep only this many
+   * characters in the transcript so leftover output budget remains for patches.
+   */
+  maxRecoveredAnalysisChars: 480,
 } as const;
 
 /**

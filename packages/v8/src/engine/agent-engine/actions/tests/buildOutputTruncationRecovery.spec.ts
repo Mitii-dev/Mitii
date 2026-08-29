@@ -89,6 +89,57 @@ describe("buildOutputTruncationRecovery", () => {
     expect(plan).toBeNull();
   });
 
+  it("shrinks the batch and changes strategy on later truncation recoveries", () => {
+    const first = buildOutputTruncationRecovery({
+      finishReason: "length",
+      content: "",
+      toolCalls: [
+        {
+          id: "c1",
+          name: "apply_patch",
+          arguments: '{"patches":[{"path":"a.ts","oldText":"x"',
+        },
+      ],
+      mutationBudget: tightBudget,
+      recoveryAttempt: 0,
+    });
+    const second = buildOutputTruncationRecovery({
+      finishReason: "length",
+      content: "",
+      toolCalls: [
+        {
+          id: "c1",
+          name: "apply_patch",
+          arguments: '{"patches":[{"path":"a.ts","oldText":"x"',
+        },
+      ],
+      mutationBudget: tightBudget,
+      recoveryAttempt: 1,
+    });
+    const third = buildOutputTruncationRecovery({
+      finishReason: "length",
+      content: "",
+      toolCalls: [
+        {
+          id: "c1",
+          name: "apply_patch",
+          arguments: '{"patches":[{"path":"a.ts","oldText":"x"',
+        },
+      ],
+      mutationBudget: tightBudget,
+      recoveryAttempt: 2,
+    });
+
+    expect(first?.recoveryMessage.content).toContain("2 files");
+    expect(second?.recoveryMessage.content).toContain("Shrink further");
+    expect(second?.recoveryMessage.content).toContain("1 file");
+    expect(third?.recoveryMessage.content).toContain("Last recovery");
+    expect(third?.recoveryMessage.content).toContain("One file, one minimal hunk");
+    expect(first?.recoveryMessage.content).not.toBe(
+      second?.recoveryMessage.content,
+    );
+  });
+
   it("recovers truncated text-only answers with a continuation nudge", () => {
     const plan = buildOutputTruncationRecovery({
       finishReason: "length",
@@ -100,6 +151,21 @@ describe("buildOutputTruncationRecovery", () => {
     expect(plan!.recoveryKind).toBe("text_continuation");
     expect(plan!.assistantContent).toContain("cut off mid-sent");
     expect(plan!.recoveryMessage.content).toContain("Continue exactly");
+  });
+
+  it("recovers truncated text on a mutation execute as apply_patch, not essay continuation", () => {
+    const plan = buildOutputTruncationRecovery({
+      finishReason: "length",
+      content: "Here are all the TypeScript errors that got cut off",
+      toolCalls: [],
+      recoveryAttempt: 0,
+      requireMutation: true,
+      mutationBudget: tightBudget,
+    });
+    expect(plan).not.toBeNull();
+    expect(plan!.recoveryKind).toBe("tool_call");
+    expect(plan!.recoveryMessage.content).toContain("apply_patch");
+    expect(plan!.recoveryMessage.content).not.toContain("Continue exactly");
   });
 });
 
@@ -137,5 +203,8 @@ describe("buildMutationBudgetInstruction", () => {
     expect(block?.content).toContain("batched execution");
     expect(block?.content).toContain("≤5 patches");
     expect(block?.content).toContain("≤3 unique files");
+    expect(block?.content).toContain("re-read or typecheck");
+    expect(block?.content).toContain("old_text_not_found");
+    expect(block?.content).toContain("replaceAll=true");
   });
 });

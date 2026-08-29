@@ -9,22 +9,39 @@ import {
   modelMessageSchema,
   modelToolDefinitionSchema,
 } from "../../../../modules/model-gateway";
-import { planArtifactSchema } from "../../../../modules/planning";
+import {
+  explorationDepthSchema,
+  planArtifactSchema,
+  planStrategyDecisionSchema,
+} from "../../../../modules/planning";
+import { taskListSchema } from "../../../../modules/task-list";
 import { promptInstructionsSchema } from "../../../../modules/prompt-construction";
 import { projectDescriptorSchema } from "../../../../modules/repository-state";
+import { windowBudgetPolicyOverridesSchema } from "../../../../modules/window-budget";
+import { WINDOW_BUDGET_EFFORTS } from "../../../../modules/window-budget";
 
-import { AGENT_ENGINE_SCHEMA_VERSION } from "../../constants";
+import {
+  AGENT_ENGINE_SCHEMA_VERSION,
+  AGENT_LOG_VERBOSITIES,
+  DEFAULT_AGENT_LOG_VERBOSITY,
+} from "../../constants";
 import {
   DEFAULT_MAX_LOOP_ITERATIONS,
   DEFAULT_MAX_MODEL_CALLS,
   DEFAULT_MAX_TOOL_CALLS,
   DEFAULT_MAX_WALL_TIME_MS,
 } from "../../defaults";
+import { agentEngineThresholdsOverridesSchema } from "../../actions/resolveAgentEngineThresholds";
 
 const agentApprovalModeSchema = z.enum(APPROVAL_MODES);
 
 export const agentRunBudgetSchema = z
   .object({
+    /**
+     * When true, host run-budget numbers are used as-is.
+     * Window-derived ceilings do not clamp an explicit unlimited request.
+     */
+    unlimited: z.boolean().default(false),
     maxModelCalls: z
       .number()
       .int()
@@ -73,6 +90,16 @@ export const agentEngineStartInputSchema = z
      * system prompt and skips the plan-approval gate for this start.
      */
     approvedPlan: planArtifactSchema.optional(),
+    /**
+     * Strategy for a host-carried approved plan. When omitted, Engine infers
+     * a conservative strategy from the artifact shape.
+     */
+    approvedPlanStrategy: planStrategyDecisionSchema.optional(),
+    /**
+     * Host-carried live task list from a prior turn.
+     * Engine does not stamp remaining items done when the run finishes.
+     */
+    taskList: taskListSchema.optional(),
     /** Optional override; otherwise Engine uses default tool definitions. */
     tools: z.array(modelToolDefinitionSchema).optional(),
     budget: agentRunBudgetSchema.optional(),
@@ -86,6 +113,42 @@ export const agentEngineStartInputSchema = z
      * Used for dirty-overlap rejection on mutation tools.
      */
     dirtyPaths: z.array(z.string().min(1)).optional(),
+    /**
+     * How hard Engine should look before drafting a plan. Orthogonal to
+     * Decision Policy's planningDepth (whether a visible plan exists at
+     * all) — this is the look-budget knob; "auto" defers to strategy rules.
+     */
+    explorationDepth: explorationDepthSchema.default("auto"),
+    /**
+     * Optional host overrides for window-proportional token allocation.
+     * When omitted, Window Budget defaults apply.
+     */
+    windowBudget: z
+      .object({
+        policy: windowBudgetPolicyOverridesSchema.optional(),
+        effort: z.enum(WINDOW_BUDGET_EFFORTS).optional(),
+      })
+      .strict()
+      .optional(),
+    /**
+     * Optional host lab overrides for Agent Engine loop/stall thresholds.
+     * Merged after the shipped window band selected from the effective
+     * context window. When omitted, band standards alone apply.
+     * Edit permanent band values in `policy/loopPolicyBands.ts`.
+     */
+    loopPolicy: z
+      .object({
+        thresholds: agentEngineThresholdsOverridesSchema.optional(),
+      })
+      .strict()
+      .optional(),
+    /**
+     * Developer-facing diagnostic detail level for this run's RunEvent
+     * stream. See AGENT_LOG_VERBOSITIES. Defaults to "verbose" so bugs are
+     * discoverable; hosts can turn this down when log volume matters more
+     * than diagnostic depth.
+     */
+    logVerbosity: z.enum(AGENT_LOG_VERBOSITIES).default(DEFAULT_AGENT_LOG_VERBOSITY),
   })
   .strict();
 
@@ -107,6 +170,12 @@ export const agentEngineResumeInputSchema = z
       })
       .strict()
       .optional(),
+    /**
+     * Optional host override captured at resume time. This lets a permission
+     * change made while a run is suspended apply to later tool calls in the
+     * same run.
+     */
+    approvalMode: agentApprovalModeSchema.optional(),
     clarificationAnswer: z.string().min(1).optional(),
     planDecision: z
       .object({

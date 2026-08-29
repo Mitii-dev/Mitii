@@ -202,29 +202,42 @@ export class RepoMapRetrievalSource
       return false;
     }
 
-    if (
-      request.filePaths.length >
-        0 &&
-      !request.filePaths.includes(
-        entry.file.relativePath,
-      )
-    ) {
-      return false;
-    }
-
-    if (
-      request.folderPrefix &&
-      entry.file.relativePath !==
-        request.folderPrefix &&
-      !entry.file.relativePath
-        .startsWith(
-          `${request.folderPrefix}/`,
-        )
-    ) {
+    if (!this.matchesFileScope(entry.file.relativePath, request)) {
       return false;
     }
 
     return true;
+  }
+
+  private matchesFileScope(
+    relativePath: string,
+    request:
+      NormalizedHybridRetrievalRequest,
+  ): boolean {
+    if (
+      request.filePaths.length ===
+        0 &&
+      !request.folderPrefix
+    ) {
+      return true;
+    }
+
+    if (
+      request.filePaths.includes(
+        relativePath,
+      )
+    ) {
+      return true;
+    }
+
+    return Boolean(
+      request.folderPrefix &&
+        (relativePath ===
+          request.folderPrefix ||
+          relativePath.startsWith(
+            `${request.folderPrefix}/`,
+          )),
+    );
   }
 
   private clamp(

@@ -52,6 +52,28 @@ export interface EmbeddingProvider {
 }
 
 /**
+ * CONTENT-ADDRESSED VECTOR CACHE
+ *
+ * Keyed by (profile.id, chunk.contentHash) so unchanged chunk bytes can
+ * reuse vectors across snapshot/chunk id changes.
+ */
+export interface EmbeddingVectorCachePort {
+  get(
+    profileId: string,
+    contentHash: string,
+  ):
+    | readonly number[]
+    | undefined
+    | Promise<readonly number[] | undefined>;
+
+  set(
+    profileId: string,
+    contentHash: string,
+    vector: readonly number[],
+  ): void | Promise<void>;
+}
+
+/**
  * GENERATION
  */
 
@@ -116,6 +138,7 @@ export interface EmbeddingGeneratorOptions {
   maximumInputCharacters?: number;
   includeTitle?: boolean;
   normalizeVectors?: boolean;
+  vectorCache?: EmbeddingVectorCachePort;
 }
 
 export interface ResolvedEmbeddingGeneratorOptions {
@@ -304,6 +327,7 @@ export interface EmbeddingFactoryDependencies {
   provider: EmbeddingProvider;
   textIndex: TextIndexReadPort;
   vectorWriter: EmbeddingIndexWritePort;
+  vectorCache?: EmbeddingVectorCachePort;
 }
 
 export interface EmbeddingFactoryOptions {

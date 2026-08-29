@@ -55,6 +55,7 @@ Agent Engine
         â”œâ”€â”€ Memory
         â”œâ”€â”€ Planning
         â”œâ”€â”€ Repository Context â”€â”€ Repository State
+        â”œâ”€â”€ Code Navigation
         â”œâ”€â”€ Prompt Construction
         â”œâ”€â”€ Model Gateway
         â”œâ”€â”€ Tool Runtime
@@ -95,6 +96,10 @@ belongs to the tool-runtime engine package path. Business facades remain under
 | `skills` | Task evidence + budget â†’ selected instructions | Selection, conflicts, provenance, instruction budgeting | General prompt construction |
 | `memory` | Scoped query/commit â†’ memory result | Retrieval, relevance, retention, provenance, privacy | Run orchestration |
 | `planning` | Task evidence + decision depth (+ optional skills/process hints) â†’ `PlanArtifact` | Dimension-driven plan drafting, validation, compaction, serialization | Route authority, tool execution, hard-coded plan types |
+| `task-list` | Plan artifact or apply input → live `TaskList` | Compact working checklist (max 8), derive pending tasks from a plan, markdown serialize/parse | Plan drafting, tool execution, host UI, stamping remaining items done when a run ends |
+| `code-navigation` | Path + caret -> definitions / references / hover | Language-server and repo-graph navigation | Indexing, retrieval budgets, spawning servers |
+| `change-impact` | Change seed + published `RepoGraph` → bounded impact report | Reverse-dependent blast radius (callers, importers, package dependents), truncation/staleness reason codes | Indexing, retrieval ranking, tool grants, planning dimensions |
+| `window-budget` | Advertised context window + optional overrides → `WindowPolicy` | Proportional output reserve, usable-input split, mutation/planning/skills/run/compaction numbers | Prompt text, retrieval, grants, model calls |
 
 Adding a top-level module requires all of:
 
@@ -389,6 +394,30 @@ interface ToolGrant {
 ```
 
 The model MAY propose tool calls; it MUST NOT modify the grant.
+
+Decision Policy is split conceptually into:
+
+- RoutePlanner: mode, intent, clarity, constraints, and risk become route,
+  run disposition, plan depth, and plan gate.
+- GrantCompiler: route, risk, host capabilities, path targets, command policy,
+  network allowlist, approval mode, mutation budget, and verification become a
+  `ToolGrant` snapshot.
+- InjectionGuard: prompt-injection signals may only narrow or annotate the
+  grant; they never add authority.
+
+Every policy-produced decision may include `DecisionTrace` with the route
+priority step, grant profile, mutation profile, injection clamp status, and
+signals used.
+
+After repository discovery, Agent Engine may call Decision Policy `narrow()`.
+Narrowing is monotonic: it can shrink path scopes, raise approval mode, or
+tighten mutation budget, but it cannot add tools, effects, network hosts, or
+broader paths. Tool Runtime remains the enforcement point for every tool call.
+Optional Cedar/OPA enforcement can sit beside the existing grant check, starting
+in shadow mode; deny-by-default and forbid-wins semantics are required. The
+runtime ships `StructuralShadowGrantAuthorizer` + `compileToolGrantToCedar` for
+audit/shadow comparison; hosts may later evaluate compiled Cedar with
+`@cedar-policy/cedar-wasm` through the same port.
 
 Planning policy:
 

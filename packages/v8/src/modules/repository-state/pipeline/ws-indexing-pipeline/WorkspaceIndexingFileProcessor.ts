@@ -25,6 +25,15 @@ import type {
 import type {
   TextIndexCoordinatorResult,
 } from "../../internal/text-index/types";
+import type {
+  CodeIndexFileState,
+} from "../../internal/code-indexing/types";
+import type {
+  TextIndexDocumentState,
+} from "../../internal/text-index/types";
+import {
+  TEXT_INDEX_SCHEMA_VERSION,
+} from "../../internal/text-index/constants";
 
 export class WorkspaceIndexingFileProcessor {
   public readonly id =
@@ -55,6 +64,15 @@ export class WorkspaceIndexingFileProcessor {
           .relativePath,
         selected.sourceId,
       );
+    }
+
+    const catalogFresh =
+      await this.tryBuildUnchangedResultFromCatalog(
+        input,
+      );
+
+    if (catalogFresh) {
+      return catalogFresh;
     }
 
     let source;
@@ -92,10 +110,37 @@ export class WorkspaceIndexingFileProcessor {
       );
     }
 
-    const [
-      analysisAttempt,
-      hashAttempt,
-    ] =
+    let contentHash: string;
+
+    try {
+      contentHash =
+        await this.dependencies
+          .contentHasher
+          .hash(
+            source.content,
+          );
+    } catch (
+      error
+    ) {
+      return this.failed({
+        selected,
+        stage:
+          "content_hash",
+        error,
+      });
+    }
+
+    const unchanged =
+      await this.tryBuildUnchangedResult({
+        input,
+        contentHash,
+      });
+
+    if (unchanged) {
+      return unchanged;
+    }
+
+    const analysisAttempt =
       await Promise
         .allSettled([
           this.dependencies
@@ -122,30 +167,12 @@ export class WorkspaceIndexingFileProcessor {
                   }
                 : {}),
             }),
-          Promise.resolve(
-            this.dependencies
-              .contentHasher
-              .hash(
-                source.content,
-              ),
-          ),
-        ]);
+        ])
+        .then(
+          ([result]) =>
+            result,
+        );
 
-    if (
-      hashAttempt.status ===
-      "rejected"
-    ) {
-      return this.failed({
-        selected,
-        stage:
-          "content_hash",
-        error:
-          hashAttempt.reason,
-      });
-    }
-
-    const contentHash =
-      hashAttempt.value;
     const warnings:
       WorkspaceIndexingWarning[] =
       [];
@@ -524,6 +551,8 @@ export class WorkspaceIndexingFileProcessor {
         CodeIndexCoordinatorResult;
       textIndex?:
         TextIndexCoordinatorResult;
+      contentHash?:
+        string;
       warnings:
         WorkspaceIndexingWarning[];
     },
@@ -610,6 +639,405 @@ export class WorkspaceIndexingFileProcessor {
           "metadata_refreshed",
       warnings:
         input.warnings,
+      ...(input.contentHash
+        ? {
+            contentHash:
+              input.contentHash,
+          }
+        : {}),
+    };
+  }
+
+  private async tryBuildUnchangedResultFromCatalog(
+    input:
+      WorkspaceIndexingFileProcessorInput,
+  ): Promise<
+    WorkspaceIndexingFileResult |
+    undefined
+  > {
+    const file =
+      input.selected.file;
+
+    if (
+      file.size === undefined ||
+      !file.modifiedAt
+    ) {
+      return undefined;
+    }
+
+    const states =
+      await this.readFreshnessStates(
+        input,
+      );
+
+    if (!states) {
+      return undefined;
+    }
+
+    const {
+      codeState,
+      textState,
+    } = states;
+
+    if (
+      !this.codeStateIsStatFresh(
+        codeState,
+        input.selected,
+        input.request.analysisVersion,
+      ) ||
+      !this.textStateIsFresh(
+        textState,
+        codeState.contentHash,
+        input.request.textPipelineVersion,
+      )
+    ) {
+      return undefined;
+    }
+
+    return this.buildUnchangedResult(
+      input,
+      codeState,
+      textState,
+      codeState.contentHash,
+    );
+  }
+
+  private async tryBuildUnchangedResult(
+    values: {
+      input:
+        WorkspaceIndexingFileProcessorInput;
+      contentHash:
+        string;
+    },
+  ): Promise<
+    WorkspaceIndexingFileResult |
+    undefined
+  > {
+    const states =
+      await this.readFreshnessStates(
+        values.input,
+      );
+
+    if (!states) {
+      return undefined;
+    }
+
+    const {
+      request,
+      selected,
+    } = values.input;
+    const {
+      codeState,
+      textState,
+    } = states;
+
+    if (
+      !this.codeStateIsFresh(
+        codeState,
+        selected,
+        values.contentHash,
+        request.analysisVersion,
+      ) ||
+      !this.textStateIsFresh(
+        textState,
+        values.contentHash,
+        request.textPipelineVersion,
+      )
+    ) {
+      return undefined;
+    }
+
+    return this.buildUnchangedResult(
+      values.input,
+      codeState,
+      textState,
+      values.contentHash,
+    );
+  }
+
+  private async readFreshnessStates(
+    input:
+      WorkspaceIndexingFileProcessorInput,
+  ): Promise<
+    | {
+        codeState: CodeIndexFileState;
+        textState: TextIndexDocumentState;
+      }
+    | undefined
+  > {
+    const freshness =
+      this.dependencies
+        .freshness;
+
+    if (!freshness) {
+      return undefined;
+    }
+
+    const {
+      request,
+      selected,
+    } = input;
+
+    try {
+      const [
+        codeState,
+        textState,
+      ] =
+        await Promise.all([
+          freshness
+            .getCodeFileState(
+              {
+                workspace:
+                  request.workspace,
+                rootId:
+                  selected.file.rootId,
+                relativePath:
+                  selected.file
+                    .relativePath,
+              },
+              request.abortSignal
+                ? {
+                    abortSignal:
+                      request
+                        .abortSignal,
+                  }
+                : {},
+            ),
+          freshness
+            .getTextDocumentState(
+              {
+                workspace:
+                  request.workspace,
+                rootId:
+                  selected.file.rootId,
+                relativePath:
+                  selected.file
+                    .relativePath,
+              },
+              request.abortSignal
+                ? {
+                    abortSignal:
+                      request
+                        .abortSignal,
+                  }
+                : {},
+            ),
+        ]);
+
+      if (!codeState || !textState) {
+        return undefined;
+      }
+
+      return {
+        codeState,
+        textState,
+      };
+    } catch {
+      return undefined;
+    }
+  }
+
+  private buildUnchangedResult(
+    input:
+      WorkspaceIndexingFileProcessorInput,
+    codeState:
+      CodeIndexFileState,
+    textState:
+      TextIndexDocumentState,
+    contentHash:
+      string,
+  ): WorkspaceIndexingFileResult {
+    return this.buildResult({
+      selected:
+        input.selected,
+      status:
+        "complete",
+      codeIndex:
+        {
+          status:
+            codeState
+              .analysisStatus ===
+              "unsupported"
+              ? "unsupported"
+              : "unchanged",
+          analysis:
+            this.syntheticAnalysis(
+              input.selected,
+              codeState,
+            ),
+          update:
+            {
+              status:
+                "unchanged",
+              plan: {
+                action:
+                  "skip",
+                reason:
+                  "unchanged",
+              },
+            },
+        },
+      textIndex:
+        {
+          schemaVersion:
+            TEXT_INDEX_SCHEMA_VERSION,
+          status:
+            "unchanged",
+          chunkingStatus:
+            textState
+              .chunkingStatus,
+          update:
+            {
+              status:
+                "unchanged",
+              plan: {
+                action:
+                  "skip",
+                reason:
+                  "unchanged",
+              },
+            },
+        },
+      contentHash,
+      warnings:
+        [],
+    });
+  }
+
+  private codeStateIsStatFresh(
+    state:
+      CodeIndexFileState,
+    selected:
+      WorkspaceIndexingFileProcessorInput[
+        "selected"
+      ],
+    analysisVersion:
+      string,
+  ): boolean {
+    const file =
+      selected.file;
+
+    if (
+      state.analysisVersion !==
+        analysisVersion ||
+      !file.modifiedAt ||
+      state.modifiedAt !==
+        file.modifiedAt ||
+      state.size !==
+        (file.size ?? 0) ||
+      state.providerPath !==
+        file.providerPath
+    ) {
+      return false;
+    }
+
+    return (
+      !selected.language ||
+      selected.language ===
+        state.language
+    );
+  }
+
+  private codeStateIsFresh(
+    state:
+      CodeIndexFileState |
+      null,
+    selected:
+      WorkspaceIndexingFileProcessorInput[
+        "selected"
+      ],
+    contentHash:
+      string,
+    analysisVersion:
+      string,
+  ): state is CodeIndexFileState {
+    if (
+      !state ||
+      state.contentHash !==
+        contentHash ||
+      state.analysisVersion !==
+        analysisVersion
+    ) {
+      return false;
+    }
+
+    const file =
+      selected.file;
+
+    if (
+      state.providerPath !==
+        file.providerPath ||
+      state.size !==
+        (file.size ?? 0) ||
+      state.modifiedAt !==
+        file.modifiedAt
+    ) {
+      return false;
+    }
+
+    return (
+      !selected.language ||
+      selected.language ===
+        state.language
+    );
+  }
+
+  private textStateIsFresh(
+    state:
+      TextIndexDocumentState |
+      null,
+    contentHash:
+      string,
+    pipelineVersion:
+      string,
+  ): state is TextIndexDocumentState {
+    return Boolean(
+      state &&
+        state.sourceContentHash ===
+          contentHash &&
+        state.pipelineVersion ===
+          pipelineVersion,
+    );
+  }
+
+  private syntheticAnalysis(
+    selected:
+      WorkspaceIndexingFileProcessorInput[
+        "selected"
+      ],
+    state:
+      CodeIndexFileState,
+  ): SourceAnalysis {
+    return {
+      schemaVersion:
+        1,
+      sourceId:
+        selected.sourceId,
+      rootId:
+        selected.file.rootId,
+      relativePath:
+        selected.file
+          .relativePath,
+      ...(state.language
+        ? {
+            language:
+              state.language,
+          }
+        : {}),
+      languageSource:
+        "explicit",
+      quality:
+        "none",
+      status:
+        state.analysisStatus,
+      symbols:
+        [],
+      imports:
+        [],
+      references:
+        [],
+      warnings:
+        [],
     };
   }
 

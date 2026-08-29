@@ -1,4 +1,10 @@
-import type { AgentRunResult, RunEvent } from '@mitii/sdk';
+import type {
+  AgentRunResult,
+  RunEvent,
+  TaskItemStatus,
+  TaskList,
+} from '@mitii/sdk';
+import { taskListProgress } from '@mitii/sdk';
 
 /** Format run usage for TTY / OutputChannel (cost/budget view). */
 export function formatUsageLine(result: AgentRunResult): string {
@@ -24,7 +30,25 @@ export function formatContextInspection(events: RunEvent[]): string[] {
   for (const event of events) {
     if (event.type === 'context_ready') {
       lines.push(
-        `[context] token=${event.stateToken.slice(0, 12)}… blocks=${event.blockCount} status=${event.status}`,
+        `[context] token=${event.stateToken.slice(0, 12)}… blocks=${event.blockCount} retrieved=${event.retrievedCandidates} selected=${event.selectedItems} dropped=${event.droppedBlocks} status=${event.status}`,
+      );
+      if (event.retrievalSources && event.retrievalSources.length > 0) {
+        lines.push(
+          `[context] sources=${event.retrievalSources
+            .map(
+              (source: {
+                sourceId: string;
+                status: string;
+                candidateCount: number;
+              }) =>
+                `${source.sourceId}:${source.status}:${source.candidateCount}`,
+            )
+            .join(',')}`,
+        );
+      }
+    } else if (event.type === 'model_turn') {
+      lines.push(
+        `[model] turn=${event.turnIndex} in=${event.inputTokens ?? '-'} out=${event.outputTokens ?? '-'} finish=${event.finishReason ?? '-'}${event.truncated ? ' truncated' : ''}`,
       );
     } else if (event.type === 'skills_ready') {
       lines.push(
@@ -39,6 +63,28 @@ export function formatContextInspection(events: RunEvent[]): string[] {
         `[decision] route=${event.route} disposition=${event.runDisposition}`,
       );
     }
+  }
+  return lines;
+}
+
+const TASK_MARK: Record<TaskItemStatus, string> = {
+  pending: '[ ]',
+  active: '[>]',
+  done: '[x]',
+  skipped: '[-]',
+  blocked: '[!]',
+};
+
+/** Render a live task list for TTY / OutputChannel. */
+export function formatTaskList(taskList: TaskList): string[] {
+  const progress = taskListProgress(taskList);
+  const lines = [
+    `[tasks] ${progress.completedCount}/${progress.totalCount} complete${
+      taskList.source ? ` source=${taskList.source}` : ''
+    }`,
+  ];
+  for (const item of taskList.items) {
+    lines.push(`  ${TASK_MARK[item.status]} ${item.title}`);
   }
   return lines;
 }

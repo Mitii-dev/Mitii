@@ -23,6 +23,9 @@ import {
 import type {
   WorkspaceIgnorePolicyOptions,
 } from "../internal/workspace/types";
+import type {
+  TreeSitterRuntimePort,
+} from "../contracts";
 import {
   SourceFileReader,
 } from "../internal/source-analysis/SourceFileReader";
@@ -77,6 +80,7 @@ export interface WorkspaceIndexingAdapterFactoryOptions {
   fileSystem?: FileSystemPort;
   ignorePolicy?: WorkspaceIgnorePolicyOptions;
   filePolicy?: WorkspaceIndexingFilePolicyPort;
+  treeSitterRuntime?: TreeSitterRuntimePort;
   codeIndexDatabase: SqliteCodeIndexDatabasePort;
   textIndexDatabase: TextIndexSqliteDatabasePort;
   embedding?: WorkspaceIndexingEmbeddingSynchronizerPort;
@@ -129,7 +133,14 @@ export class WorkspaceIndexingAdapterFactory {
         fileSystem,
       );
     const sourceAnalyzer =
-      createSourceAnalysisBuilder();
+      createSourceAnalysisBuilder({
+        ...(options.treeSitterRuntime
+          ? {
+              treeSitterRuntime:
+                options.treeSitterRuntime,
+            }
+          : {}),
+      });
     const chunker =
       new ChunkingFactory()
         .create({
@@ -156,9 +167,10 @@ export class WorkspaceIndexingAdapterFactory {
           new BoundedWalker(
             fileSystem,
           ),
-          new WorkspaceIgnorePolicy(
-            options.ignorePolicy,
-          ),
+          new WorkspaceIgnorePolicy({
+            ...(options.ignorePolicy ?? {}),
+            fileSystem: options.ignorePolicy?.fileSystem ?? fileSystem,
+          }),
         ),
       pipeline:
         new WorkspaceIndexingPipeline({
@@ -188,6 +200,22 @@ export class WorkspaceIndexingAdapterFactory {
                   textIndex
                     .reader
                     .getRevision(
+                      ...args,
+                    ),
+            },
+          freshness:
+            {
+              getCodeFileState:
+                (...args) =>
+                  codeWriter
+                    .getFileState(
+                      ...args,
+                    ),
+              getTextDocumentState:
+                (...args) =>
+                  textIndex
+                    .writer
+                    .getDocumentState(
                       ...args,
                     ),
             },

@@ -1,4 +1,5 @@
 import type { RequestUnderstandingResult } from "../../request-understanding";
+import type { WindowPolicy } from "../../window-budget";
 
 import {
   MUTATION_TASK_INTENTS,
@@ -22,6 +23,7 @@ import {
   DEFAULT_VERIFICATION_COMMAND_PREFIXES,
 } from "./BuildVerificationGrant";
 import { resolveMutationBudget } from "./ResolveMutationBudget";
+import { shouldElevateSharedScopeRisk } from "./ClassifySharedScopeRepair";
 
 export interface ToolGrantResolution {
   toolGrant: ToolGrant;
@@ -37,10 +39,20 @@ export function buildToolGrant(params: {
   approvalMode?: ApprovalMode;
   /** When false/undefined, never grant web_search (honest hide until SearchPort). */
   allowWebSearch?: boolean;
+  windowPolicy?: WindowPolicy;
 }): ToolGrantResolution {
   const { mode, route, understanding } = params;
   const reasonCodes: DecisionReasonCode[] = [];
+  const changeImpactAffordable =
+    params.windowPolicy?.planning.changeImpactAffordable !== false;
+  const readOnlyTools = READ_ONLY_TOOL_IDS.filter(
+    (toolId) => toolId !== "analyze_change_impact" || changeImpactAffordable,
+  );
   const pathScopes = resolvePathScopes(understanding);
+  const mutationPathScopes = resolveMutationPathScopes(
+    understanding,
+    params.message,
+  );
   const commandRules = [
     {
       prefixes: [...DEFAULT_AGENT_READONLY_COMMAND_PREFIXES],
@@ -90,7 +102,7 @@ export function buildToolGrant(params: {
       toolGrant: {
         maximumWorkspaceEffect: "read",
         allowedTools: [
-          ...READ_ONLY_TOOL_IDS,
+          ...readOnlyTools,
           ...network.allowedTools,
         ],
         // process_execute is required so Tool Runtime can run argv-only
@@ -111,7 +123,20 @@ export function buildToolGrant(params: {
   }
 
   // execute in agent mode
-  const risk = understanding.taskAnalysis.risk;
+  let risk = understanding.taskAnalysis.risk;
+  if (
+    shouldElevateSharedScopeRisk({
+      primaryTaskIntent: understanding.intent.classification.primaryTaskIntent,
+      taskAnalysis: understanding.taskAnalysis,
+      message: params.message ?? "",
+    })
+  ) {
+    risk = "medium";
+    reasonCodes.push("shared_scope_risk_elevated");
+    if (changeImpactAffordable) {
+      reasonCodes.push("change_impact_recommended");
+    }
+  }
   const defaultApprovalMode =
     risk === "high" || risk === "critical" ? "every_mutation" : "when_required";
   const approvalMode = params.approvalMode ?? defaultApprovalMode;
@@ -121,7 +146,10 @@ export function buildToolGrant(params: {
   }
   reasonCodes.push("mutation_execute");
 
-  const mutation = resolveMutationBudget({ understanding });
+  const mutation = resolveMutationBudget({
+    understanding,
+    windowPolicy: params.windowPolicy,
+  });
   reasonCodes.push(...mutation.reasonCodes);
   const processExecution = resolveProcessExecutionAuthority({
     understanding,
@@ -141,7 +169,7 @@ export function buildToolGrant(params: {
     toolGrant: {
       maximumWorkspaceEffect: "write",
       allowedTools: [
-        ...READ_ONLY_TOOL_IDS,
+        ...readOnlyTools,
         ...MUTATION_TOOL_IDS,
         ...processExecution.allowedTools,
         ...network.allowedTools,
@@ -153,6 +181,7 @@ export function buildToolGrant(params: {
         ...network.allowedEffects,
       ],
       pathScopes,
+      ...(mutationPathScopes ? { mutationPathScopes } : {}),
       commandRules: processExecution.commandRules,
       networkHosts: network.networkHosts,
       approvalMode,
@@ -205,20 +234,105 @@ function resolveProcessExecutionAuthority(params: {
 function resolvePathScopes(
   understanding: RequestUnderstandingResult,
 ): string[] {
-  const explicitPaths = understanding.taskAnalysis.targets
-    .filter(
-      (target) =>
-        target.explicit &&
-        (target.kind === "file" || target.kind === "folder") &&
-        target.value.length > 0,
-    )
-    .map((target) => target.value);
-
-  if (explicitPaths.length > 0) {
-    return explicitPaths;
+  const primaryIntent =
+    understanding.intent.classification.primaryTaskIntent;
+  if (
+    primaryIntent === "dependency" ||
+    primaryIntent === "security" ||
+    primaryIntent === "audit"
+  ) {
+    return ["."];
   }
 
-  return ["."];
+  const { taskAnalysis } = understanding;
+
+  // Discovery-heavy work must keep workspace-wide read access. Narrowing
+  // pathScopes to a few chat-mentioned files rejects search_files/glob/list
+  // outside those exact paths (seen when prior turns leaked into targets).
+  if (
+    taskAnalysis.recommendsRepositoryDiscovery ||
+    taskAnalysis.scope === "repository" ||
+    taskAnalysis.scope === "workspace" ||
+    taskAnalysis.scope === "package" ||
+    taskAnalysis.scope === "multi_file" ||
+    taskAnalysis.scope === "unknown"
+  ) {
+    return ["."];
+  }
+
+  const scopes = new Set<string>();
+  for (const target of taskAnalysis.targets) {
+    if (!target.explicit || target.value.length === 0) {
+      continue;
+    }
+    if (target.kind === "folder") {
+      scopes.add(normalizeScopePath(target.value));
+      continue;
+    }
+    if (target.kind === "file") {
+      // File scopes only allow that exact path; use the parent directory so
+      // siblings and nearby discovery tools still work.
+      scopes.add(parentDirectoryScope(target.value));
+    }
+  }
+
+  if (scopes.size === 0) {
+    return ["."];
+  }
+
+  return [...scopes];
+}
+
+function resolveMutationPathScopes(
+  understanding: RequestUnderstandingResult,
+  message?: string,
+): string[] | undefined {
+  const scopes = new Set<string>();
+  for (const target of understanding.taskAnalysis.targets) {
+    if (!target.explicit || target.value.length === 0) {
+      continue;
+    }
+    if (target.kind === "folder") {
+      scopes.add(normalizeScopePath(target.value));
+      continue;
+    }
+    if (target.kind === "file") {
+      scopes.add(parentDirectoryScope(target.value));
+    }
+  }
+  if (message && looksLikeWorkspaceRootMutation(message)) {
+    scopes.add(".");
+  }
+  if (scopes.size === 0) {
+    return undefined;
+  }
+  return [...scopes].sort((left, right) => left.localeCompare(right));
+}
+
+/** User asked to create or edit at the repository/workspace root. */
+export function looksLikeWorkspaceRootMutation(message: string): boolean {
+  return (
+    /\b(?:in|at|to)\s+(?:the\s+)?(?:project|repo(?:sitory)?|workspace)\s+root\b/i.test(
+      message,
+    ) ||
+    /\b(?:project|repo(?:sitory)?|workspace)\s+root\b/i.test(message) ||
+    /\broot\s+of\s+(?:the\s+)?(?:project|repo(?:sitory)?|workspace)\b/i.test(
+      message,
+    )
+  );
+}
+
+function normalizeScopePath(value: string): string {
+  return value.replace(/\\/g, "/").replace(/^\.?\//, "").replace(/\/+$/, "") || ".";
+}
+
+function parentDirectoryScope(filePath: string): string {
+  const normalized = normalizeScopePath(filePath);
+  const slash = normalized.lastIndexOf("/");
+  if (slash <= 0) {
+    return ".";
+  }
+  return normalized.slice(0, slash);
 }
 
 /**
@@ -247,10 +361,11 @@ function resolveNetworkAuthority(params: {
 
   const intent = params.understanding.intent.classification.primaryTaskIntent;
   const hosts = extractNetworkHosts(params.message ?? "");
-  const docsIntent = intent === "docs" || intent === "question";
+  // Docs/question intent alone is not enough — require concrete hosts or an
+  // explicit search ask. Hosts must also allow webSearch for search tools.
   const wantsSearch =
-    docsIntent &&
-    /\b(search|look up|google|docs?|documentation|reference)\b/i.test(
+    (intent === "docs" || intent === "question") &&
+    /\b(search\s+(?:the\s+)?(?:web|internet|docs?|documentation)|look\s+up|google)\b/i.test(
       params.message ?? "",
     );
 
@@ -267,7 +382,9 @@ function resolveNetworkAuthority(params: {
   if (hosts.length > 0) {
     allowedTools.push("fetch_url", "fetch_docs");
   }
-  if (params.allowWebSearch && (wantsSearch || hosts.length > 0)) {
+  // web_search only when host enabled it AND user explicitly asked to search.
+  // Presence of a URL alone does not open unrestricted search.
+  if (params.allowWebSearch && wantsSearch) {
     allowedTools.push("web_search");
   }
 
@@ -283,8 +400,9 @@ function resolveNetworkAuthority(params: {
   return {
     allowedTools,
     allowedEffects: ["network_access"],
+    // Search without hosts keeps an empty allowlist; fetch tools require hosts.
     networkHosts: hosts,
-    reasonCodes: [],
+    reasonCodes: ["network_access_granted"],
   };
 }
 

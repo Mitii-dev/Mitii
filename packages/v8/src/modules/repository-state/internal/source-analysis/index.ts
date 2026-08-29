@@ -2,6 +2,9 @@ export * from "./types";
 export * from "./constants";
 export * from "./schema";
 
+export * from "./queries/adaptTreeSitterTagsQuery";
+export * from "./queries/TreeSitterQueryCatalog";
+
 export * from "./LanguageDetector";
 export * from "./SourceAnalysisBuilder";
 export * from "./SourceAnalysisFactory";

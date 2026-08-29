@@ -5,26 +5,39 @@ import {
   CODE_INDEXING_PATTERNS,
 } from "./constants";
 
+import {
+  InRepoLanguageImportResolver,
+} from "./InRepoLanguageImportResolver";
+
 import type {
   CodeIndexImportResolution,
   CodeIndexImportResolutionInput,
 } from "./types";
 
 export class CodeIndexImportResolver {
+  constructor(
+    private readonly languageResolver:
+      InRepoLanguageImportResolver =
+        new InRepoLanguageImportResolver(),
+  ) {}
+
   public resolve(
     input: CodeIndexImportResolutionInput,
   ): CodeIndexImportResolution {
     const specifier = input.specifier.trim();
 
+    if (!specifier) {
+      return {
+        resolution: "unresolved",
+      };
+    }
+
     if (
-      !specifier ||
       !CODE_INDEXING_PATTERNS.RELATIVE_IMPORT.test(
         specifier,
       )
     ) {
-      return {
-        resolution: "unresolved",
-      };
+      return this.languageResolver.resolve(input);
     }
 
     const importerDirectory =

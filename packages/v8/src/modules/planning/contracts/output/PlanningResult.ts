@@ -6,6 +6,7 @@ import {
   PLANNING_STATUSES,
 } from "../../constants";
 import { planArtifactSchema } from "./PlanArtifact";
+import { planStrategyDecisionSchema } from "./PlanStrategyDecision";
 
 export const planningStatusSchema = z.enum(PLANNING_STATUSES);
 export const planningReasonCodeSchema = z.enum(PLANNING_REASON_CODES);
@@ -20,6 +21,7 @@ export const planningResultSchema = z
     usedTokens: z.number().int().nonnegative(),
     budgetTokens: z.number().int().positive(),
     durationMs: z.number().int().nonnegative(),
+    strategy: planStrategyDecisionSchema.optional(),
   })
   .strict();
 

@@ -115,6 +115,10 @@ export interface ModelTokenUsage {
   inputTokens?: number;
   outputTokens?: number;
   totalTokens?: number;
+  /** Prefix tokens served from provider cache (DeepSeek hit, Anthropic cache_read). */
+  cacheHitTokens?: number;
+  /** Prompt tokens billed at full input rate. */
+  cacheMissTokens?: number;
 }
 
 export type ModelErrorCode =

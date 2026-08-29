@@ -12,8 +12,10 @@ import type {
   TaskAnalysis,
   TaskAnalysisSignal,
   TaskAnalyzerInput,
+  TaskClarity,
   TaskComplexity,
   TaskScope,
+  TaskTarget,
 } from "../../contracts";
 
 export class RulewiseTaskAnalyzer {
@@ -52,24 +54,39 @@ export class RulewiseTaskAnalyzer {
     const interactionIntent = classification.interactionIntent;
     const primaryTaskIntent = classification.primaryTaskIntent;
 
+    const taskHints = classification.taskHints;
+
     /*
-     * 1. Extract targets
+     * 1. Extract targets (deterministic first; LLM hints fill gaps only)
      */
     const targetResult = this.targetExtractor.extractWithSignals(
       text,
       input.referencedArtifacts ?? [],
     );
+    const targets = this.mergeTargets(
+      targetResult.targets,
+      taskHints?.targets,
+      allSignals,
+    );
 
     allSignals.push(...targetResult.signals);
 
     /*
-     * 2. Extract constraints
+     * 2. Extract constraints / outcomes (union; deterministic values first)
      */
     const constraintResult = this.constraintExtractor.extract(text);
+    const constraints = this.mergeUniqueStrings(
+      constraintResult.values,
+      taskHints?.constraints,
+    );
 
     allSignals.push(...constraintResult.signals);
 
     const outcomeResult = this.outcomeExtractor.extract(text);
+    const requestedOutcomes = this.mergeUniqueStrings(
+      outcomeResult.values,
+      taskHints?.requestedOutcomes,
+    );
 
     allSignals.push(...outcomeResult.signals);
 
@@ -78,7 +95,7 @@ export class RulewiseTaskAnalyzer {
      */
     const scopeResult = this.scopeAnalyzer.analyzeScope({
       userMessage: text,
-      targets: targetResult.targets,
+      targets,
     });
 
     allSignals.push(
@@ -117,6 +134,7 @@ export class RulewiseTaskAnalyzer {
       interactionIntent,
       primaryTaskIntent,
       scope: scopeResult.scope,
+      // Risk scoring uses structured deterministic constraints only.
       constraints: constraintResult.constraints,
     });
 
@@ -136,7 +154,7 @@ export class RulewiseTaskAnalyzer {
      */
     const clarityResult = this.clarityAnalyzer.analyzeClarity({
       userMessage: text,
-      targets: targetResult.targets,
+      targets,
 
       intentRequiresClarification: input.intent.recommendsClarification,
 
@@ -144,6 +162,10 @@ export class RulewiseTaskAnalyzer {
 
       confidenceMargin: input.intent.confidenceMargin,
     });
+    const clarity = this.mergeClarity(
+      clarityResult.clarity,
+      taskHints?.clarity,
+    );
 
     allSignals.push(
       ...clarityResult.signals.map(
@@ -155,6 +177,14 @@ export class RulewiseTaskAnalyzer {
         }),
       ),
     );
+    if (clarity !== clarityResult.clarity && taskHints?.clarity) {
+      allSignals.push({
+        type: "clarity",
+        value: clarity,
+        weight: 0.55,
+        evidence: `Merged LLM clarity hint (${taskHints.clarity}) with deterministic clarity (${clarityResult.clarity}).`,
+      });
+    }
 
     /*
      * 7. Determine downstream recommendations (evidence only — Decision Policy authorizes)
@@ -163,9 +193,9 @@ export class RulewiseTaskAnalyzer {
 
     const recommendsRepositoryDiscovery = this.recommendsRepositoryDiscovery(
       primaryTaskIntent,
-      targetResult.targets.length,
+      targets.length,
       scopeResult.scope,
-      targetResult.targets,
+      targets,
     );
 
     const recommendsVerification =
@@ -187,7 +217,7 @@ export class RulewiseTaskAnalyzer {
 
     const recommendsTaskClarification =
       input.intent.recommendsClarification ||
-      (isActionable && clarityResult.clarity === "unclear");
+      (isActionable && clarity === "unclear");
 
     /*
      * 8. Calculate overall task-analysis confidence
@@ -207,10 +237,10 @@ export class RulewiseTaskAnalyzer {
       scope: scopeResult.scope,
       complexity: complexityResult.complexity,
       risk: riskResult.risk,
-      clarity: clarityResult.clarity,
-      targets: targetResult.targets,
-      constraints: constraintResult.values,
-      requestedOutcomes: outcomeResult.values,
+      clarity,
+      targets,
+      constraints,
+      requestedOutcomes,
 
       recommendsRepositoryDiscovery,
       recommendsPlanning,
@@ -225,6 +255,89 @@ export class RulewiseTaskAnalyzer {
       signals: allSignals,
       confidence: overallConfidence,
     };
+  }
+
+  /**
+   * Deterministic targets win on duplicates; LLM hints only add missing ones.
+   */
+  private mergeTargets(
+    deterministic: readonly TaskTarget[],
+    hinted: readonly TaskTarget[] | undefined,
+    signals: TaskAnalysisSignal[],
+  ): TaskTarget[] {
+    const merged = [...deterministic];
+    const seen = new Set(
+      deterministic.map((target) => this.targetKey(target)),
+    );
+
+    for (const hint of hinted ?? []) {
+      const value = hint.value.trim();
+      if (!value) {
+        continue;
+      }
+      const candidate: TaskTarget = {
+        kind: hint.kind,
+        value,
+        explicit: hint.explicit,
+      };
+      const key = this.targetKey(candidate);
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      merged.push(candidate);
+      signals.push({
+        type: "scope",
+        value: `${candidate.kind}:${candidate.value}`,
+        weight: 0.5,
+        evidence: `LLM task hint added ${candidate.kind} target: ${candidate.value}`,
+      });
+    }
+
+    return merged;
+  }
+
+  private mergeUniqueStrings(
+    deterministic: readonly string[],
+    hinted: readonly string[] | undefined,
+  ): string[] {
+    const merged: string[] = [];
+    const seen = new Set<string>();
+
+    for (const value of [...deterministic, ...(hinted ?? [])]) {
+      const normalized = value.trim();
+      if (!normalized) {
+        continue;
+      }
+      const key = normalized.toLowerCase();
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      merged.push(normalized);
+    }
+
+    return merged;
+  }
+
+  /** Prefer the more conservative (less clear) rating when both are present. */
+  private mergeClarity(
+    deterministic: TaskClarity,
+    hinted: TaskClarity | undefined,
+  ): TaskClarity {
+    if (!hinted) {
+      return deterministic;
+    }
+    const rank: Record<TaskClarity, number> = {
+      clear: 0,
+      partially_clear: 1,
+      unclear: 2,
+    };
+    return rank[hinted] > rank[deterministic] ? hinted : deterministic;
+  }
+
+  private targetKey(target: TaskTarget): string {
+    return `${target.kind}:${target.value.trim().toLowerCase()}`;
   }
 
   private recommendsRepositoryDiscovery(

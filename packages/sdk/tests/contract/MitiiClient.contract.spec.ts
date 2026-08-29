@@ -69,6 +69,18 @@ describe('MitiiClient contract (Phase 12)', () => {
     expect(
       mitiiStartInputSchema.safeParse({
         prompt: 'ok',
+        budget: {
+          unlimited: true,
+          maxModelCalls: 1_000_000,
+          maxToolCalls: 1_000_000,
+          maxLoopIterations: 1_000_000,
+          maxWallTimeMs: 60_000,
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      mitiiStartInputSchema.safeParse({
+        prompt: 'ok',
         approvalMode: 'never',
         planApproval: 'never',
       }).success,
@@ -140,6 +152,13 @@ describe('MitiiClient contract (Phase 12)', () => {
           { role: 'assistant', content: 'Phases…' },
         ],
         approvedPlan: plan,
+        approvedPlanStrategy: {
+          schemaVersion: 1,
+          strategy: 'follow_evidence',
+          rationale: 'Host-carried repair plan.',
+          skipDiscover: true,
+          useBuildEvidence: true,
+        },
       },
       { mode: 'ask', sessionId: 'sess_test' },
     );
@@ -150,8 +169,134 @@ describe('MitiiClient contract (Phase 12)', () => {
       content: 'Plan auth',
     });
     expect(engineInput.approvedPlan?.objective).toBe('Handoff plan');
+    expect(engineInput.approvedPlanStrategy?.strategy).toBe('follow_evidence');
+    expect(engineInput.approvedPlanStrategy?.skipDiscover).toBe(true);
     expect(engineInput.request.userMessage).toBe('Execute it');
     expect(engineInput.request.mode).toBe('agent');
+  });
+
+  it('maps a carried taskList onto engine start input', () => {
+    const engineInput = toAgentEngineStartInput(
+      {
+        prompt: 'Continue',
+        mode: 'agent',
+        taskList: {
+          schemaVersion: 1,
+          source: 'agent',
+          items: [
+            { id: 'one', title: 'Read module', status: 'done' },
+            { id: 'two', title: 'Write fix', status: 'pending' },
+          ],
+        },
+      },
+      { mode: 'ask', sessionId: 'sess_test' },
+    );
+    expect(engineInput.taskList?.items).toHaveLength(2);
+    expect(engineInput.taskList?.items[0]?.status).toBe('done');
+  });
+
+  it('maps pinnedPaths to referencedArtifacts with robust kind inference', () => {
+    const engineInput = toAgentEngineStartInput(
+      {
+        prompt: 'Inspect pinned context',
+        mode: 'ask',
+        pinnedPaths: [
+          'packages/core',
+          'apps/docs/README.md',
+          'Makefile',
+          'backend/api/',
+          'packages.legacy',
+        ],
+      },
+      { mode: 'ask', sessionId: 'sess_test' },
+    );
+
+    const artifacts = engineInput.request.referencedArtifacts ?? [];
+    expect(artifacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: 'packages/core', kind: 'folder' }),
+        expect.objectContaining({
+          path: 'apps/docs/README.md',
+          kind: 'file',
+        }),
+        expect.objectContaining({ path: 'Makefile', kind: 'file' }),
+        expect.objectContaining({ path: 'backend/api', kind: 'folder' }),
+        expect.objectContaining({ path: 'packages.legacy', kind: 'folder' }),
+      ]),
+    );
+  });
+
+  it('maps windowBudget policy overrides onto engine start input', () => {
+    const engineInput = toAgentEngineStartInput(
+      {
+        prompt: 'Tune the window',
+        windowBudget: {
+          policy: {
+            outputRatio: 0.12,
+            repositoryShare: 0.3,
+          },
+        },
+      },
+      { mode: 'ask', sessionId: 'sess_test' },
+    );
+    expect(engineInput.windowBudget?.policy?.outputRatio).toBe(0.12);
+    expect(engineInput.windowBudget?.policy?.repositoryShare).toBe(0.3);
+  });
+
+  it('maps windowBudget effort onto engine start input', () => {
+    const engineInput = toAgentEngineStartInput(
+      {
+        prompt: 'Use a larger working set',
+        windowBudget: {
+          effort: 'high',
+        },
+      },
+      { mode: 'ask', sessionId: 'sess_test' },
+    );
+    expect(engineInput.windowBudget?.effort).toBe('high');
+  });
+
+  it('maps loopPolicy threshold overrides onto engine start input', () => {
+    const engineInput = toAgentEngineStartInput(
+      {
+        prompt: 'fix it',
+        loopPolicy: {
+          thresholds: {
+            explorationRereadMinCalls: 24,
+            explorationRereadRatio: 3,
+            maxExplorationStallNudges: 3,
+          },
+        },
+      },
+      { mode: 'agent', sessionId: 'sess_test' },
+    );
+    expect(engineInput.loopPolicy?.thresholds?.explorationRereadMinCalls).toBe(
+      24,
+    );
+    expect(engineInput.loopPolicy?.thresholds?.explorationRereadRatio).toBe(3);
+    expect(engineInput.loopPolicy?.thresholds?.maxExplorationStallNudges).toBe(
+      3,
+    );
+  });
+
+  it('keeps loopPolicy thresholds as lab overrides for window-band merge', () => {
+    const engineInput = toAgentEngineStartInput(
+      {
+        prompt: 'fix it',
+        loopPolicy: {
+          thresholds: {
+            maxReadOnlyToolTurnsBeforeMutationNudge: 14,
+          },
+        },
+      },
+      { mode: 'agent', sessionId: 'sess_band' },
+    );
+    expect(
+      engineInput.loopPolicy?.thresholds?.maxReadOnlyToolTurnsBeforeMutationNudge,
+    ).toBe(14);
+    expect(
+      engineInput.loopPolicy?.thresholds?.explorationRereadMinCalls,
+    ).toBeUndefined();
   });
 
   it('rejects resume without approval or clarificationAnswer', () => {

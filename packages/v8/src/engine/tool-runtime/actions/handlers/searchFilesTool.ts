@@ -11,7 +11,7 @@ export const searchFilesTool: RegisteredTool = {
     name: "search_files",
     effects: ["workspace_read"],
     description:
-      "Search workspace text (preferred for content discovery). Use this to find symbols, tests, or patterns before read_file.",
+      "Search workspace text (preferred for content discovery). Supports literal or regex matching and is best used to narrow candidates before read_file.",
     inputSchema: searchFilesInputSchema,
     outputSchema: searchFilesOutputSchema,
     modelInputSchema: {
@@ -21,6 +21,7 @@ export const searchFilesTool: RegisteredTool = {
         path: { type: "string" },
         maxMatches: { type: "integer", minimum: 1, maximum: 200 },
         caseSensitive: { type: "boolean" },
+        mode: { type: "string", enum: ["auto", "literal", "regex"] },
       },
       required: ["query"],
     },

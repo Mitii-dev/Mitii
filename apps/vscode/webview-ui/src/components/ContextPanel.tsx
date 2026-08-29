@@ -18,6 +18,16 @@ interface ContextPanelProps {
   onKeep?: (path: string) => void;
 }
 
+function splitPath(path: string): { dir: string; name: string } {
+  const normalized = path.replace(/\\/g, '/');
+  const index = normalized.lastIndexOf('/');
+  if (index < 0) return { dir: '', name: normalized };
+  return {
+    dir: normalized.slice(0, index),
+    name: normalized.slice(index + 1) || normalized,
+  };
+}
+
 export function ContextPanel({
   pins,
   modeColor,
@@ -26,9 +36,11 @@ export function ContextPanel({
   onPick,
   onKeep,
 }: ContextPanelProps) {
+  if (pins.length === 0) return null;
+
   return (
     <section
-      className={`context-panel${pins.length === 0 ? ' context-panel--empty' : ''}`}
+      className="context-panel"
       aria-label="Pinned context"
       style={
         modeColor
@@ -37,22 +49,18 @@ export function ContextPanel({
       }
     >
       <div className="context-panel__label">
-        <span>Context</span>
-        {pins.length > 0 ? (
-          <span>{pins.length} pinned</span>
-        ) : (
-          <span>No files pinned</span>
-        )}
+        <span>{pins.length} pinned</span>
       </div>
       <div className="pins">
-        {pins.length > 0 ? (
-          pins.map((pin) => (
+        {pins.map((pin) => {
+          const file = splitPath(pin.path);
+          return (
             <span
               key={pin.path}
               className={`pin-chip${pin.source === 'auto' ? ' pin-chip--auto' : ''}`}
               title={
                 pin.source === 'auto'
-                  ? 'Auto from open editor - closes with the tab'
+                  ? `Auto from open editor - ${pin.path}`
                   : pin.path
               }
             >
@@ -62,14 +70,18 @@ export function ContextPanel({
                 onClick={() => onKeep?.(pin.path)}
                 title={
                   pin.source === 'auto'
-                    ? 'Keep this file in context'
+                    ? `Keep this file in context: ${pin.path}`
                     : pin.path
                 }
               >
-                @{pin.path}
+                <span className="pin-chip__name">@{file.name}</span>
+                {file.dir ? (
+                  <span className="pin-chip__dir">{file.dir}</span>
+                ) : null}
               </button>
               <button
                 type="button"
+                className="pin-chip__remove"
                 aria-label={`Unpin ${pin.path}`}
                 title={`Unpin ${pin.path}`}
                 onClick={() => onRemove(pin.path)}
@@ -77,20 +89,14 @@ export function ContextPanel({
                 ×
               </button>
             </span>
-          ))
-        ) : (
-          <span className="context-empty-text">
-            Type @ to search files, or pin files here.
-          </span>
-        )}
+          );
+        })}
         <IconButton label="Pin files or folders" variant="ghost" onClick={onPick}>
           <IconPlus />
         </IconButton>
-        {pins.length > 0 ? (
-          <IconButton label="Clear pinned context" variant="ghost" onClick={onClear}>
-            <IconTrash />
-          </IconButton>
-        ) : null}
+        <IconButton label="Clear pinned context" variant="ghost" onClick={onClear}>
+          <IconTrash />
+        </IconButton>
       </div>
     </section>
   );

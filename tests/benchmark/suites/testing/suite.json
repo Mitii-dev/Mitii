@@ -1,0 +1,22 @@
+{
+  "id": "testing",
+  "name": "Testing Agent Benchmark",
+  "description": "Unit/integration/e2e tests, coverage, and regression verification.",
+  "caseFiles": [
+    "easy.jsonl",
+    "medium.jsonl",
+    "hard.jsonl"
+  ],
+  "expectedCounts": {
+    "easy": 17,
+    "medium": 16,
+    "hard": 30,
+    "total": 63
+  },
+  "gates": {
+    "easy": 0.9,
+    "medium": 0.8,
+    "hard": 0.7,
+    "overall": 0.8
+  }
+}

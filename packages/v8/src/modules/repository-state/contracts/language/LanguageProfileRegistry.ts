@@ -174,6 +174,14 @@ export class LanguageProfileRegistry {
     return this.byAlias.get(value.trim().toLowerCase());
   }
 
+  public extensionIndex(): Readonly<Record<string, LanguageId>> {
+    return Object.fromEntries(this.byExtension);
+  }
+
+  public filenameIndex(): Readonly<Record<string, LanguageId>> {
+    return Object.fromEntries(this.byFilename);
+  }
+
   public detectFromPath(pathOrName: string): LanguageDetectionEvidence {
     const normalized = pathOrName.replace(/\\/g, "/");
     const basename = (normalized.split("/").pop() ?? "").toLowerCase();

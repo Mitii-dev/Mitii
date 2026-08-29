@@ -376,6 +376,10 @@ const fileResultSchema =
         .optional(),
     textIndexChanged:
       z.boolean(),
+    contentHash:
+      z.string()
+        .min(1)
+        .optional(),
     warnings:
       z.array(
         warningSchema,

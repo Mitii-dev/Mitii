@@ -139,4 +139,67 @@ describe('CLI driveRun (Phase 15)', () => {
     expect(outcome.result.status).toBe('cancelled');
     expect(outcome.exitCode).toBe(130);
   });
+
+  it('emits suspended JSON under --approve without prompting for clarification', async () => {
+    const suspended: AgentRunResult = {
+      schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+      runId: 'run_clarify_json',
+      requestId: 'req_clarify',
+      status: 'suspended',
+      reasonCodes: ['clarification_suspended'],
+      warnings: [],
+      usage: { modelCalls: 0, toolCalls: 0, loopIterations: 0 },
+      durationMs: 1,
+      suspension: {
+        kind: 'clarification_required',
+        rationale: 'Need outcome',
+        clarificationPrompt: 'What outcome do you want from this request?',
+      },
+    };
+
+    let promptCalls = 0;
+    let resumeCalls = 0;
+    const fakeRun: MitiiRun = {
+      runId: 'run_clarify_json',
+      events: (async function* (): AsyncGenerator<RunEvent> {
+        yield {
+          type: 'suspended',
+          runId: 'run_clarify_json',
+          kind: 'clarification_required',
+          rationale: 'Need outcome',
+          at: new Date().toISOString(),
+        };
+      })(),
+      result: Promise.resolve(suspended),
+      cancel: () => undefined,
+    };
+
+    const client = {
+      start: () => fakeRun,
+      resume: (_input: MitiiResumeInput) => {
+        resumeCalls += 1;
+        return fakeRun;
+      },
+    } as unknown as MitiiClient;
+
+    const io = memoryIo();
+    io.prompt = async () => {
+      promptCalls += 1;
+      return 'should not be asked';
+    };
+
+    const outcome = await driveRun({
+      client,
+      start: { prompt: 'Add app/error.tsx', mode: 'agent' },
+      json: true,
+      autoApproval: 'approved',
+      io,
+    });
+
+    expect(promptCalls).toBe(0);
+    expect(resumeCalls).toBe(0);
+    expect(outcome.result.status).toBe('suspended');
+    expect(outcome.exitCode).toBe(0);
+    expect(io.stdout.join('')).toContain('"status":"suspended"');
+  });
 });

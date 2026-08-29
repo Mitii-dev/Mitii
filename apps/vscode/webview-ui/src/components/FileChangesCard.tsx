@@ -59,11 +59,13 @@ export function FileChangesBar({
   onExpand,
   onUndo,
   onReviewAll,
+  onDismiss,
 }: {
   changes: RunFileChangesView;
   onExpand: () => void;
   onUndo: () => void;
   onReviewAll: () => void;
+  onDismiss?: () => void;
 }) {
   const n = changes.files.length;
   return (
@@ -92,6 +94,11 @@ export function FileChangesBar({
         <button type="button" className="btn" onClick={onReviewAll}>
           Review
         </button>
+        {onDismiss ? (
+          <IconButton label="Dismiss" variant="ghost" onClick={onDismiss}>
+            ×
+          </IconButton>
+        ) : null}
       </div>
     </div>
   );
@@ -99,7 +106,7 @@ export function FileChangesBar({
 
 export function FileChangesCard({
   changes,
-  compact = false,
+  compact = true,
   onOpenFile,
   onReviewFile,
   onUndo,
@@ -141,6 +148,18 @@ export function FileChangesCard({
     return `${visibleFolders.join(', ')}${hiddenFolders > 0 ? `, +${hiddenFolders} more` : ''}`;
   }, [changes.files]);
 
+  if (!expanded) {
+    return (
+      <FileChangesBar
+        changes={changes}
+        onExpand={() => setExpanded(true)}
+        onUndo={onUndo}
+        onReviewAll={onReviewAll}
+        onDismiss={onDismiss}
+      />
+    );
+  }
+
   return (
     <section className="file-changes-card" aria-label="File changes">
       {changes.leftUntouchedPreDirty ? (
@@ -168,6 +187,13 @@ export function FileChangesCard({
           </div>
         </div>
         <div className="file-changes-card__actions">
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={() => setExpanded(false)}
+          >
+            Minimize
+          </button>
           <button
             type="button"
             className="btn ghost"

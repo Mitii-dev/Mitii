@@ -66,4 +66,24 @@ export const VERIFICATION_ERROR_CODES = [
   "invalid_input",
   "misconfigured_ports",
   "execution_failed",
+  "store_failed",
+] as const;
+
+export const VERIFICATION_RECORD_SCHEMA_VERSION = 1 as const;
+
+export const VERIFICATION_RECORD_STATUSES = [
+  "captured_before",
+  "compared",
+  "passed",
+  "incomplete",
+  "cancelled",
+] as const;
+
+export const VERIFICATION_RECORD_REASON_CODES = [
+  "record_captured_before",
+  "record_compared",
+  "record_passed",
+  "record_incomplete",
+  "record_cancelled",
+  "retry_available",
 ] as const;

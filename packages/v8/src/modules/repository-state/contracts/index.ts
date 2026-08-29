@@ -89,6 +89,18 @@ export type {
   RepositoryStateStorePort,
 } from "./ports/RepositoryStateStorePorts";
 
+export type {
+  SourceImportKind,
+  SourceLanguageId,
+  SourceReferenceKind,
+  TreeSitterRuntimeImport,
+  TreeSitterRuntimeParseInput,
+  TreeSitterRuntimeParseResult,
+  TreeSitterRuntimePort,
+  TreeSitterRuntimeReference,
+  TreeSitterRuntimeSymbol,
+} from "./ports/TreeSitterRuntimePort";
+
 export {
   workspaceSnapshotSchema,
   workspaceEntrySchema,
@@ -103,6 +115,7 @@ export type {
   RepoGraphNode,
   RepoGraphSymbolNode,
   RepoGraphEdge,
+  RepoGraphEdgeType,
   RepoMap,
   RepoMapEntry,
   Chunk,

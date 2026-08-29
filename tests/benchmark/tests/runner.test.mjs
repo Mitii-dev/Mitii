@@ -3,7 +3,22 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { runCases } from '../src/runner.mjs';
+import { extractUsage, runCases } from '../src/runner.mjs';
+
+test('extractUsage reads tokens from JSONL end event', () => {
+  const stdout = [
+    '{"type":"model_turn","inputTokens":10}',
+    '{"type":"end","ok":true,"usage":{"modelCalls":2,"toolCalls":3,"loopIterations":4,"inputTokens":100,"outputTokens":40},"durationMs":1234}',
+  ].join('\n');
+  assert.deepEqual(extractUsage(stdout), {
+    modelCalls: 2,
+    toolCalls: 3,
+    loopIterations: 4,
+    inputTokens: 100,
+    outputTokens: 40,
+    agentDurationMs: 1234,
+  });
+});
 
 test('runner executes an agent in a fresh isolated fixture', async () => {
   const rootDir = mkdtempSync(join(tmpdir(), 'solid-bench-runner-'));

@@ -25,6 +25,7 @@ function createRuntime() {
       src: directory({
         "util.ts": file("export const n = 1;\n"),
         "util.spec.ts": file("describe('util', () => {});\n"),
+        "pattern.ts": file("const literal = 'items[0]';\nconst count = total + 1;\n"),
         nested: directory({
           "deep.ts": file("export const deep = true;\n"),
         }),
@@ -138,6 +139,7 @@ describe("read efficiency tools", () => {
     expect(READ_ONLY_TOOL_IDS).toContain("glob_files");
     expect(READ_ONLY_TOOL_IDS).toContain("read_many_files");
     expect(READ_ONLY_TOOL_IDS).toContain("file_metadata");
+    expect(READ_ONLY_TOOL_IDS).toContain("analyze_change_impact");
   });
 });
 
@@ -157,6 +159,9 @@ describe("model tool definition single source", () => {
 
     const readOnly = listBuiltinReadOnlyModelToolDefinitions().map((t) => t.name);
     expect(readOnly).toContain("glob_files");
+    expect(readOnly).toContain("goto_definition");
+    expect(readOnly).toContain("find_references");
+    expect(readOnly).toContain("analyze_change_impact");
     expect(readOnly).not.toContain("apply_patch");
     expect(readOnly).not.toContain("delete_file");
     expect(readOnly).not.toContain("move_file");
@@ -185,5 +190,153 @@ describe("model tool definition single source", () => {
       (readonlyCmd?.inputSchema as { properties?: Record<string, unknown> })
         .properties,
     ).not.toHaveProperty("cwd");
+
+    const searchFiles = listBuiltinModelToolDefinitions().find(
+      (t) => t.name === "search_files",
+    );
+    expect(
+      (searchFiles?.inputSchema as { properties?: Record<string, unknown> })
+        .properties,
+    ).toHaveProperty("mode");
+  });
+
+  it("search_files succeeds when path points at a single file", async () => {
+    const runtime = createRuntime();
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "s-file",
+      toolName: "search_files",
+      arguments: { query: "export const n", path: "src/util.ts" },
+      grant: createReadOnlyGrant(),
+      workspaceRoot: WORKSPACE,
+    });
+    expect(result.status).toBe("succeeded");
+    const output = result.output as {
+      matches: Array<{ path: string; line: number; text: string }>;
+    };
+    expect(output.matches.length).toBeGreaterThan(0);
+    expect(output.matches[0]?.path).toBe("src/util.ts");
+    expect(output.matches[0]?.text).toContain("export const n");
+  });
+
+  it("search_files auto mode keeps bracket-heavy queries as literal text", async () => {
+    const runtime = createRuntime();
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "s-literal",
+      toolName: "search_files",
+      arguments: { query: "items[0]", path: "src" },
+      grant: createReadOnlyGrant(),
+      workspaceRoot: WORKSPACE,
+    });
+    expect(result.status).toBe("succeeded");
+    const output = result.output as {
+      mode: "literal" | "regex";
+      matches: Array<{ path: string; text: string }>;
+    };
+    expect(output.mode).toBe("literal");
+    expect(output.matches).toHaveLength(1);
+    expect(output.matches[0]?.path).toBe("src/pattern.ts");
+    expect(output.matches[0]?.text).toContain("items[0]");
+  });
+
+  it("search_files supports explicit regex mode", async () => {
+    const runtime = createRuntime();
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "s-regex",
+      toolName: "search_files",
+      arguments: { query: "^export const \\w+ = 1;$", path: "src", mode: "regex" },
+      grant: createReadOnlyGrant(),
+      workspaceRoot: WORKSPACE,
+    });
+    expect(result.status).toBe("succeeded");
+    const output = result.output as {
+      mode: "literal" | "regex";
+      matches: Array<{ path: string }>;
+    };
+    expect(output.mode).toBe("regex");
+    expect(output.matches.map((match) => match.path)).toEqual(["src/util.ts"]);
+  });
+
+  it("search_files auto mode upgrades obvious regex patterns", async () => {
+    const runtime = createRuntime();
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "s-auto-regex",
+      toolName: "search_files",
+      arguments: { query: "^export const \\w+ = 1;$", path: "src" },
+      grant: createReadOnlyGrant(),
+      workspaceRoot: WORKSPACE,
+    });
+    expect(result.status).toBe("succeeded");
+    const output = result.output as {
+      mode: "literal" | "regex";
+      matches: Array<{ path: string }>;
+    };
+    expect(output.mode).toBe("regex");
+    expect(output.matches.map((match) => match.path)).toEqual(["src/util.ts"]);
+  });
+
+  it("search_files rejects an invalid explicit regex", async () => {
+    const runtime = createRuntime();
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "s-invalid-regex",
+      toolName: "search_files",
+      arguments: { query: "(", path: "src", mode: "regex" },
+      grant: createReadOnlyGrant(),
+      workspaceRoot: WORKSPACE,
+    });
+    expect(result.status).toBe("rejected");
+    expect(result.reasonCode).toBe("invalid_arguments");
+  });
+
+  it("search_files skips .mitii logs", async () => {
+    const fs = new InMemoryFileSystemAdapter(
+      WORKSPACE,
+      directory({
+        test: directory({
+          "a.ts": file('const discount = true;\n'),
+        }),
+        ".mitii": directory({
+          logs: directory({
+            "thread.jsonl": file('{"prompt":"discount"}\n'),
+          }),
+        }),
+      }),
+    );
+    const runtime = new ToolRuntimePipeline({
+      fileSystem: fs,
+      process: new InMemoryProcessAdapter(async () => ({
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        timedOut: false,
+        cancelled: false,
+        truncated: false,
+      })),
+      diagnostics: new InMemoryDiagnosticsAdapter([]),
+      git: new InMemoryGitAdapter({
+        branch: "main",
+        staged: [],
+        unstaged: [],
+        untracked: [],
+        raw: "",
+      }),
+    });
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "s-ignore-logs",
+      toolName: "search_files",
+      arguments: { query: "discount" },
+      grant: createReadOnlyGrant(),
+      workspaceRoot: WORKSPACE,
+    });
+    expect(result.status).toBe("succeeded");
+    const output = result.output as {
+      matches: Array<{ path: string }>;
+    };
+    expect(output.matches.map((match) => match.path)).toEqual(["test/a.ts"]);
   });
 });

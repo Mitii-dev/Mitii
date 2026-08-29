@@ -22,7 +22,7 @@ Forbidden: `host → apps`, `sdk → host`, `v8 → host`.
 npm install @mitii/host
 ```
 
-Requires **Node.js 20+**. Depends on `@mitii/sdk` and `@mitii/v8`. Optional: `@lancedb/lancedb` for vectors. License: **AGPL-3.0-or-later**.
+Requires **Node.js 20+**. Depends on `@mitii/sdk`, `@mitii/v8`, and `zod`. Optional: `@lancedb/lancedb` for the vector store, `onnxruntime-node` / `onnxruntime-web` for bundled MiniLM embeddings. License: **AGPL-3.0-or-later**.
 
 Published on `v*` release tags. For local development, consume via the workspace (`pnpm --filter @mitii/host`).
 
@@ -33,7 +33,7 @@ V8 is host-neutral. Apps still need:
 1. **SQLite** (Electron-native in VS Code, `better-sqlite3` in CLI)
 2. **On-disk workspace state** under `.mitii/` (indexes, checkpoints, memory, skills)
 3. **Wiring** of V8 pipelines that touch the filesystem / optional vendors (LanceDB, Brave)
-4. **Shared config UX** (OpenAI-compatible provider presets)
+4. **Shared config UX** (provider presets, LlmPort factory, connection probe)
 
 `@mitii/host` centralizes those so CLI and VS Code stay thin and do not drift.
 
@@ -46,6 +46,8 @@ src/
   index.ts                 # public barrel — import from `@mitii/host`
   sqlite/                  # injection contract for openDatabase
   indexing/                # embeddings, full index, fingerprint snapshot
+    bundled-embedding/     # on-device MiniLM source (native ONNX + WASM)
+    treeSitter/            # web-tree-sitter runtime; V8 injects query text
   repository-context/      # createHostRepositoryContext
   ports/                   # search, memory, skills, checkpoints
   prompt/                  # project rules loader → start({ projectRules })
@@ -60,17 +62,21 @@ Prefer importing from `@mitii/host`. Do not import `internal/`.
 | Host API | Satisfies | Notes |
 |---|---|---|
 | `OpenHostSqliteDatabase` | Host injection | Required by indexing + repository context |
-| `OpenAiCompatibleEmbeddingProvider` | V8 `EmbeddingProvider` | Optional semantic path |
-| `createLanceDbConnection` | V8 `LanceDbConnectionPort` | Optional `@lancedb/lancedb` |
+| `OpenAiCompatibleEmbeddingProvider` | V8 `EmbeddingProvider` | HTTP Ollama / OpenAI-compatible embeddings |
+| `createBundledMiniLmEmbeddingProvider` | V8 `EmbeddingProvider` | On-device MiniLM (native ONNX, WASM fallback) |
+| `createLanceDbConnection` | V8 `LanceDbConnectionPort` | Optional `@lancedb/lancedb` vector store |
 | `runFullWorkspaceIndex` | Orchestrates V8 index runtime | Writes `.mitii/repository-index.sqlite`, LanceDB, graph/map |
-| `buildWorkspaceSnapshot` | Builds `PublishRepositoryStateInput` | Fingerprint-only; indexes marked unavailable |
-| `createHostRepositoryContext` | V8 `RepositoryContextPipeline` | Hybrid retrieve + file-map fallback |
+| `buildWorkspaceSnapshot` | Builds `PublishRepositoryStateInput` | Fingerprint-only; indexes marked unavailable. `roots[0].rootId` is the workspace directory basename. |
+| `createHostRepositoryContext` | V8 `RepositoryContextPipeline` | Hybrid retrieve + file-map fallback. File-map fallback honors `folderPrefix`. |
 | `createWorkspaceCheckpointStore` | SDK checkpoint store | `.mitii/checkpoints/` |
+| `createWorkspaceVerificationStore` | Verification record store | `.mitii/verification/` |
 | `createWorkspaceMemoryStore` | V8 `MemoryStorePort` | `.mitii/memory/facts.json` |
 | `createOptionalSearchPort` | V8 `SearchPort` | Brave when `MITII_SEARCH_API_KEY` / `BRAVE_API_KEY` set |
 | `createFileSystemSkillsCatalog` | V8 `SkillsCatalogPort` | `.mitii/skills` + SDK defaults |
 | `loadProjectRules` | SDK `projectRules` | `AGENTS.md`, `.mitii/rules`, `MITTII.local.md` |
-| `PROVIDER_PRESETS` / `getProviderPreset` | Host config only | Prefills base URL / model / auth style |
+| `PROVIDER_PRESETS` / `getProviderPreset` | Host config only | Prefills base URL / model / adapter |
+| `createHostLlmPorts` | Host composition | Echo, OpenAI-compatible, Anthropic, Gemini |
+| `testProviderConnection` | Host UX | Probe without starting a run |
 
 ## How hosts wire it
 
@@ -120,6 +126,10 @@ await client.start({ /* … */, projectRules });
 
 **Indexing:** prefer `runFullWorkspaceIndex` → publish repository state. If that has not run, fall back to `buildWorkspaceSnapshot` (honest fingerprint: indexes unavailable).
 
+**Semantic retrieval** is off unless the host passes `semanticIndex.enabled` (and a ready embedding profile). When disabled, repository context logs `semantic_index_disabled` and falls back to path-based discovery.
+
+**Memory** persists under `.mitii/memory/facts.json` when `createWorkspaceMemoryStore` is injected. An empty store is a cold start (`memory_empty`), not a missing adapter. Reusable package facts are only available after a prior run committed them.
+
 ## Naming note: `WorkspaceSnapshot`
 
 `buildWorkspaceSnapshot` returns a **host fingerprint result**. That is **not** the V8 `WorkspaceSnapshot` type used inside indexing/retrieval.
@@ -146,6 +156,12 @@ await client.start({ /* … */, projectRules });
   skills/<id>/SKILL.md
   rules/**/*.md
 ```
+
+## Index pin and reuse
+
+`buildWorkspaceSnapshot` / `resolveFingerprintRootId` set `roots[0].rootId` to the workspace directory basename (not a hardcoded `"workspace"`). That keeps fingerprint identity stable across republish.
+
+VS Code `hostAsk` reuses an existing `.mitii/repository-index.sqlite` when `getLatest` is empty: it publishes that fingerprint pin and skips a full reindex. File-map fallback in `createHostRepositoryContext` filters snapshot/map paths with `folderPrefix`.
 
 ## Development (monorepo)
 

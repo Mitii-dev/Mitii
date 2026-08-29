@@ -129,6 +129,7 @@ export const SQLITE_CODE_INDEX_SQL = {
     SELECT
       sr.file_id AS fromFileId,
       sr.symbol_name AS symbolName,
+      sr.reference_kind AS kind,
       sr.line AS line,
       target_symbol.file_id AS targetFileId,
       target_file.rel_path AS targetRelativePath,

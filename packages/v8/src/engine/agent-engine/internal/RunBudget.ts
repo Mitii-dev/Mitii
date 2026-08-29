@@ -6,6 +6,10 @@ export class RunBudgetTracker {
   private loopIterations = 0;
   private inputTokens = 0;
   private outputTokens = 0;
+  private cacheHitTokens = 0;
+  private cacheMissTokens = 0;
+  private fileReadCalls = 0;
+  private readonly touchedFilePaths = new Set<string>();
   private readonly startedMs: number;
   /** Wall-clock time spent waiting on user (approval/clarification) — not billed. */
   private excludedWaitMs: number;
@@ -19,6 +23,8 @@ export class RunBudgetTracker {
       loopIterations?: number;
       inputTokens?: number;
       outputTokens?: number;
+      cacheHitTokens?: number;
+      cacheMissTokens?: number;
     },
     excludedWaitMs: number = 0,
   ) {
@@ -29,6 +35,8 @@ export class RunBudgetTracker {
     this.loopIterations = initialUsage?.loopIterations ?? 0;
     this.inputTokens = initialUsage?.inputTokens ?? 0;
     this.outputTokens = initialUsage?.outputTokens ?? 0;
+    this.cacheHitTokens = initialUsage?.cacheHitTokens ?? 0;
+    this.cacheMissTokens = initialUsage?.cacheMissTokens ?? 0;
   }
 
   public recordModelCall(): void {
@@ -43,15 +51,33 @@ export class RunBudgetTracker {
     this.loopIterations += 1;
   }
 
+  public recordFileRead(paths: readonly string[]): void {
+    this.fileReadCalls += 1;
+    for (const path of paths) {
+      const normalized = path.trim().replace(/\\/g, "/");
+      if (normalized.length > 0) {
+        this.touchedFilePaths.add(normalized);
+      }
+    }
+  }
+
   public addUsage(usage?: {
     inputTokens?: number;
     outputTokens?: number;
+    cacheHitTokens?: number;
+    cacheMissTokens?: number;
   }): void {
     if (usage?.inputTokens !== undefined) {
       this.inputTokens += usage.inputTokens;
     }
     if (usage?.outputTokens !== undefined) {
       this.outputTokens += usage.outputTokens;
+    }
+    if (usage?.cacheHitTokens !== undefined) {
+      this.cacheHitTokens += usage.cacheHitTokens;
+    }
+    if (usage?.cacheMissTokens !== undefined) {
+      this.cacheMissTokens += usage.cacheMissTokens;
     }
   }
 
@@ -99,8 +125,38 @@ export class RunBudgetTracker {
     return false;
   }
 
-  public canStartModelCall(): boolean {
-    return this.modelCalls < this.limits.maxModelCalls;
+  /**
+   * Progress stall: many file reads against few unique paths.
+   * Separate from the flat ceilings in `isExhausted()`.
+   */
+  public isExplorationStalled(params: {
+    minCalls: number;
+    ratio: number;
+  }): boolean {
+    if (this.fileReadCalls < params.minCalls || this.touchedFilePaths.size <= 0) {
+      return false;
+    }
+    return this.fileReadCalls >= this.touchedFilePaths.size * params.ratio;
+  }
+
+  public maxModelCalls(): number {
+    return this.limits.maxModelCalls;
+  }
+
+  public remainingModelCalls(): number {
+    return Math.max(0, this.limits.maxModelCalls - this.modelCalls);
+  }
+
+  /**
+   * `reserved` holds calls back for a later phase (verification repair).
+   * The reserve is never allowed to consume the entire ceiling.
+   */
+  public canStartModelCall(reserved = 0): boolean {
+    const reserve = Math.max(
+      0,
+      Math.min(reserved, Math.max(0, this.limits.maxModelCalls - 1)),
+    );
+    return this.modelCalls < this.limits.maxModelCalls - reserve;
   }
 
   public canStartToolCall(): boolean {
@@ -113,6 +169,10 @@ export class RunBudgetTracker {
     loopIterations: number;
     inputTokens: number;
     outputTokens: number;
+    cacheHitTokens: number;
+    cacheMissTokens: number;
+    fileReadCalls: number;
+    uniqueFilePathsTouched: number;
   } {
     return {
       modelCalls: this.modelCalls,
@@ -120,6 +180,10 @@ export class RunBudgetTracker {
       loopIterations: this.loopIterations,
       inputTokens: this.inputTokens,
       outputTokens: this.outputTokens,
+      cacheHitTokens: this.cacheHitTokens,
+      cacheMissTokens: this.cacheMissTokens,
+      fileReadCalls: this.fileReadCalls,
+      uniqueFilePathsTouched: this.touchedFilePaths.size,
     };
   }
 }

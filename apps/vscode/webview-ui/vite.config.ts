@@ -6,6 +6,14 @@ export default defineConfig({
   plugins: [react()],
   root: resolve(__dirname),
   base: './',
+  resolve: {
+    alias: {
+      '@mitii/live-token-budget': resolve(
+        __dirname,
+        '../src/liveTokenBudgetPreview.ts',
+      ),
+    },
+  },
   build: {
     outDir: resolve(__dirname, '../dist/webview'),
     emptyOutDir: true,

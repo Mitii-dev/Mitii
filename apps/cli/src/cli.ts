@@ -4,28 +4,41 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline';
 
+import type {
+  AgentMode,
+  MitiiClient,
+  MitiiConversationMessage,
+  TaskList,
+} from '@mitii/sdk';
+import { loadProjectRules } from '@mitii/host';
+
+import { formatSessionHeader } from './banner.js';
 import { CLI_HELP } from './help.js';
-import { createCliClient } from './ports.js';
+import { createCliClient, resolveCliPorts } from './ports.js';
 import {
   buildSessionExport,
   formatContextInspection,
   formatDiffReview,
+  formatTaskList,
   formatUsageLine,
 } from './runReport.js';
 import {
   createDefaultSessionIo,
   driveRun,
+  serializeCliJson,
   type SessionIo,
 } from './session.js';
+import { nextCliSessionCarry } from './sessionCarry.js';
+import { runSetup } from './setup.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
 import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
 import { loadMitiiHostConfig } from './config.js';
+import { resolveCliLoopPolicyThresholds } from './loopPolicy.js';
 import { resolveCliSemanticIndexSettings } from './semanticIndex.js';
 import {
   loadPersistedRepositoryState,
   persistLatestRepositoryState,
 } from './stateCache.js';
-import { loadProjectRules } from '@mitii/host';
 
 export interface ParsedCliArgs {
   command:
@@ -36,7 +49,9 @@ export interface ParsedCliArgs {
     | 'status'
     | 'export-session'
     | 'session'
-    | 'unknown';
+    | 'setup'
+    | 'unknown'
+    | 'error';
   prompt?: string;
   cwd?: string;
   json?: boolean;
@@ -44,8 +59,33 @@ export interface ParsedCliArgs {
   autoClarify?: string;
   autoApproval?: 'approved' | 'denied';
   exportPath?: string;
+  mode?: AgentMode;
   unknownCommand?: string;
+  errorMessage?: string;
+  setupProvider?: string;
+  setupModel?: string;
+  setupBaseUrl?: string;
+  setupGlobal?: boolean;
+  setupShow?: boolean;
+  setupTest?: boolean;
+  setupYes?: boolean;
+  /** One-off loop-policy threshold JSON (lab). Implies overrides for this run. */
+  loopPolicyJson?: string;
+  /** Force window-band standards even if config enables loopPolicy. */
+  noLoopPolicy?: boolean;
   rest: string[];
+}
+
+function takeValue(
+  args: string[],
+  index: number,
+  flag: string,
+): { value: string; next: number } | { error: string } {
+  const value = args[index + 1];
+  if (!value || value.startsWith('-')) {
+    return { error: `mitii: ${flag} requires a value` };
+  }
+  return { value, next: index + 1 };
 }
 
 export function parseCliArgs(argv: string[]): ParsedCliArgs {
@@ -56,14 +96,27 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   let autoClarify: string | undefined;
   let autoApproval: 'approved' | 'denied' | undefined;
   let exportPath: string | undefined;
+  let mode: AgentMode | undefined;
+  let setupProvider: string | undefined;
+  let setupModel: string | undefined;
+  let setupBaseUrl: string | undefined;
+  let loopPolicyJson: string | undefined;
 
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i]!;
     if (arg === '--help' || arg === '-h') {
       return { command: 'help', rest: [] };
     }
+    if (arg === '--version' || arg === '-v') {
+      return { command: 'version', rest: [] };
+    }
     if (arg === '--cwd') {
-      cwd = args[++i];
+      const taken = takeValue(args, i, '--cwd');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      cwd = taken.value;
+      i = taken.next;
       continue;
     }
     if (arg === '--json') {
@@ -75,7 +128,12 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       continue;
     }
     if (arg === '--clarify') {
-      autoClarify = args[++i];
+      const taken = takeValue(args, i, '--clarify');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      autoClarify = taken.value;
+      i = taken.next;
       continue;
     }
     if (arg === '--approve') {
@@ -87,11 +145,93 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       continue;
     }
     if (arg === '--out') {
-      exportPath = args[++i];
+      const taken = takeValue(args, i, '--out');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      exportPath = taken.value;
+      i = taken.next;
+      continue;
+    }
+    if (arg === '--mode') {
+      const taken = takeValue(args, i, '--mode');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      if (taken.value === 'ask' || taken.value === 'plan' || taken.value === 'agent') {
+        mode = taken.value;
+      } else {
+        return {
+          command: 'error',
+          errorMessage: `mitii: --mode must be ask, plan, or agent (got "${taken.value}")`,
+          rest: [],
+        };
+      }
+      i = taken.next;
+      continue;
+    }
+    if (arg === '--loop-policy-json') {
+      const taken = takeValue(args, i, '--loop-policy-json');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      loopPolicyJson = taken.value;
+      i = taken.next;
+      continue;
+    }
+    if (arg === '--no-loop-policy') {
+      flags.add('no-loop-policy');
+      continue;
+    }
+    if (arg === '--provider') {
+      const taken = takeValue(args, i, '--provider');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      setupProvider = taken.value;
+      i = taken.next;
+      continue;
+    }
+    if (arg === '--model') {
+      const taken = takeValue(args, i, '--model');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      setupModel = taken.value;
+      i = taken.next;
+      continue;
+    }
+    if (arg === '--base-url') {
+      const taken = takeValue(args, i, '--base-url');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      setupBaseUrl = taken.value;
+      i = taken.next;
+      continue;
+    }
+    if (arg === '--global') {
+      flags.add('global');
+      continue;
+    }
+    if (arg === '--show') {
+      flags.add('show');
+      continue;
+    }
+    if (arg === '--test') {
+      flags.add('test');
+      continue;
+    }
+    if (arg === '--yes' || arg === '-y') {
+      flags.add('yes');
       continue;
     }
     if (arg.startsWith('-')) {
-      continue;
+      return {
+        command: 'error',
+        errorMessage: `mitii: unknown option "${arg}"\nTry "mitii --help" for usage.`,
+        rest: [],
+      };
     }
     positionals.push(arg);
   }
@@ -99,12 +239,30 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   const [command = 'help', ...rest] = positionals;
   if (command === 'help') return { command: 'help', rest: [] };
   if (command === 'version') return { command: 'version', rest: [] };
+  if (command === 'setup') {
+    return {
+      command: 'setup',
+      cwd,
+      mode,
+      setupProvider,
+      setupModel,
+      setupBaseUrl,
+      setupGlobal: flags.has('global'),
+      setupShow: flags.has('show'),
+      setupTest: flags.has('test'),
+      setupYes: flags.has('yes'),
+      rest,
+    };
+  }
   if (command === 'index' || command === 'status' || command === 'session') {
     return {
       command,
       cwd,
       json: flags.has('json'),
       forceEcho: flags.has('echo'),
+      mode,
+      loopPolicyJson,
+      noLoopPolicy: flags.has('no-loop-policy'),
       rest,
     };
   }
@@ -116,6 +274,9 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       json: true,
       forceEcho: flags.has('echo'),
       exportPath,
+      mode,
+      loopPolicyJson,
+      noLoopPolicy: flags.has('no-loop-policy'),
       rest,
     };
   }
@@ -129,6 +290,9 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       forceEcho: flags.has('echo'),
       autoClarify,
       autoApproval,
+      mode,
+      loopPolicyJson,
+      noLoopPolicy: flags.has('no-loop-policy'),
       rest,
     };
   }
@@ -284,6 +448,11 @@ function reportOutcome(
   for (const line of formatDiffReview(outcome.result)) {
     io.writeStderr(`${line}\n`);
   }
+  if (outcome.result.taskList) {
+    for (const line of formatTaskList(outcome.result.taskList)) {
+      io.writeStderr(`${line}\n`);
+    }
+  }
   io.writeStderr(`${formatUsageLine(outcome.result)}\n`);
 }
 
@@ -294,35 +463,134 @@ async function runAsk(options: {
   forceEcho: boolean;
   autoClarify?: string;
   autoApproval?: 'approved' | 'denied';
+  mode?: AgentMode;
+  conversation?: MitiiConversationMessage[];
+  taskList?: TaskList;
+  loopPolicyJson?: string;
+  noLoopPolicy?: boolean;
   io?: SessionIo;
-}): Promise<{ code: number; outcome?: Awaited<ReturnType<typeof driveRun>> }> {
-  const { client, ports } = createCliClient({
+}): Promise<{
+  code: number;
+  mode: AgentMode;
+  outcome?: Awaited<ReturnType<typeof driveRun>>;
+}> {
+  const { client, ports, memoryCapture } = createCliClient({
     cwd: options.cwd,
     forceEcho: options.forceEcho,
   });
   const io = options.io ?? createDefaultSessionIo();
+  const mode = options.mode ?? ports.defaultMode;
   if (!options.json) {
-    io.writeStderr(`[mitii] provider=${ports.providerLabel}\n`);
+    io.writeStderr(`[mitii] provider=${ports.providerLabel} mode=${mode}\n`);
   }
+
+  // Each CLI invocation uses a fresh in-memory repository-state store.
+  // Index in a prior process only writes `.mitii/` on disk; ask must publish
+  // into this process or agent runs fail with state_unavailable.
+  await ensurePublishedRepositoryState({
+    client,
+    workspaceId: ports.workspaceId,
+    cwd: options.cwd,
+    io,
+  });
 
   const projectRules = await loadProjectRules({
     workspaceRoot: options.cwd,
   });
+  const hostConfig = loadMitiiHostConfig(options.cwd);
+  let loopPolicyThresholds;
+  try {
+    loopPolicyThresholds = resolveCliLoopPolicyThresholds({
+      config: hostConfig.loopPolicy,
+      flagJson: options.loopPolicyJson,
+      disabled: options.noLoopPolicy === true,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    io.writeStderr(`${message}\n`);
+    return { code: 2, mode };
+  }
+  if (loopPolicyThresholds && !options.json) {
+    io.writeStderr(
+      `[mitii] loopPolicy lab overrides active (${Object.keys(loopPolicyThresholds).join(', ')})\n`,
+    );
+  }
   const outcome = await driveRun({
     client,
     start: {
       prompt: options.prompt,
-      mode: ports.defaultMode,
+      mode,
       workspaceRoot: options.cwd,
       ...(projectRules.length > 0 ? { projectRules: [...projectRules] } : {}),
+      ...(options.conversation && options.conversation.length > 0
+        ? { conversation: options.conversation }
+        : {}),
+      ...(mode !== 'ask' && options.taskList
+        ? { taskList: options.taskList }
+        : {}),
+      ...(loopPolicyThresholds
+        ? { loopPolicy: { thresholds: loopPolicyThresholds } }
+        : {}),
     },
     json: options.json,
     autoClarify: options.autoClarify,
     autoApproval: options.autoApproval,
     io,
+    memoryCapture,
   });
   reportOutcome(io, options.json, outcome);
-  return { code: outcome.exitCode, outcome };
+  return { code: outcome.exitCode, mode, outcome };
+}
+
+async function ensurePublishedRepositoryState(options: {
+  client: MitiiClient;
+  workspaceId: string;
+  cwd: string;
+  io: SessionIo;
+}): Promise<void> {
+  if (await options.client.getLatestRepositoryState(options.workspaceId)) {
+    return;
+  }
+
+  try {
+    const config = loadMitiiHostConfig(options.cwd);
+    const full = await runFullWorkspaceIndex({
+      cwd: options.cwd,
+      workspaceId: options.workspaceId,
+      force: true,
+      semanticIndex: resolveCliSemanticIndexSettings({
+        env: process.env,
+        config,
+      }),
+    });
+    const published = await options.client.publishRepositoryStateFromIndexing(
+      full.indexing,
+      {
+        catalogRevisionByRoot: full.catalogRevisionByRoot,
+        graphRevisionByRoot: full.graphRevisionByRoot,
+        mapRevisionByRoot: full.mapRevisionByRoot,
+      },
+    );
+    if (published.status === 'published') {
+      persistLatestRepositoryState(options.cwd, published.descriptor);
+    }
+  } catch (error) {
+    const detail =
+      error instanceof Error ? error.message : String(error);
+    options.io.writeStderr(
+      `[mitii] auto-index for ask falling back to host snapshot: ${detail}\n`,
+    );
+    const snapshot = await buildWorkspaceSnapshot({
+      workspaceRoot: options.cwd,
+      workspaceId: options.workspaceId,
+    });
+    const published = await options.client.publishRepositoryState(
+      snapshot.candidate,
+    );
+    if (published.status === 'published') {
+      persistLatestRepositoryState(options.cwd, published.descriptor);
+    }
+  }
 }
 
 async function runIndex(options: {
@@ -349,6 +617,7 @@ async function runIndex(options: {
     const full = await runFullWorkspaceIndex({
       cwd: options.cwd,
       workspaceId: ports.workspaceId,
+      force: true,
       semanticIndex: resolveCliSemanticIndexSettings({
         env: process.env,
         config,
@@ -407,26 +676,22 @@ async function runIndex(options: {
   }
   if (options.json) {
     options.io.writeStdout(
-      `${JSON.stringify(
-        {
-          published,
-          fileCount,
-          truncated,
-          indexMode,
-          ...(indexingDiagnostics ? { indexing: indexingDiagnostics } : {}),
-          ...(published.status === 'published'
-            ? {
-                capabilitySummary: summarizeRepositoryCapabilities(
-                  published.descriptor,
-                ),
-              }
-            : {}),
-          ...(databasePath ? { databasePath } : {}),
-          ...(vectorIndex ? { vectorIndex } : {}),
-        },
-        null,
-        2,
-      )}\n`,
+      `${serializeCliJson({
+        published,
+        fileCount,
+        truncated,
+        indexMode,
+        ...(indexingDiagnostics ? { indexing: indexingDiagnostics } : {}),
+        ...(published.status === 'published'
+          ? {
+              capabilitySummary: summarizeRepositoryCapabilities(
+                published.descriptor,
+              ),
+            }
+          : {}),
+        ...(databasePath ? { databasePath } : {}),
+        ...(vectorIndex ? { vectorIndex } : {}),
+      })}\n`,
     );
   } else if (published.status === 'published') {
     options.io.writeStdout(
@@ -465,16 +730,12 @@ async function runStatus(options: {
     loadPersistedRepositoryState(options.cwd);
   if (options.json) {
     options.io.writeStdout(
-      `${JSON.stringify(
-        {
-          latest,
-          ...(latest
-            ? { capabilitySummary: summarizeRepositoryCapabilities(latest) }
-            : {}),
-        },
-        null,
-        2,
-      )}\n`,
+      `${serializeCliJson({
+        latest,
+        ...(latest
+          ? { capabilitySummary: summarizeRepositoryCapabilities(latest) }
+          : {}),
+      })}\n`,
     );
     return latest ? 0 : 1;
   }
@@ -497,6 +758,9 @@ async function runStatus(options: {
 async function runSession(options: {
   cwd: string;
   forceEcho: boolean;
+  mode?: AgentMode;
+  loopPolicyJson?: string;
+  noLoopPolicy?: boolean;
   io: SessionIo;
 }): Promise<number> {
   const rl = createInterface({
@@ -508,20 +772,58 @@ async function runSession(options: {
       rl.question(q, (answer) => resolve(answer));
     });
 
+  const ports = resolveCliPorts({
+    cwd: options.cwd,
+    forceEcho: options.forceEcho,
+  });
+  const mode = options.mode ?? ports.defaultMode;
+  const config = loadMitiiHostConfig(options.cwd);
+  const hasConfiguredProvider =
+    (Boolean(config.provider) && config.provider !== 'echo') ||
+    (Boolean(config.providerPreset) && config.providerPreset !== 'echo');
   options.io.writeStderr(
-    '[mitii] interactive session — empty line or Ctrl-D to exit; Ctrl-C cancels a run\n',
+    formatSessionHeader({
+      cwd: options.cwd,
+      providerLabel: ports.providerLabel,
+      mode,
+      version: readPackageVersion(),
+      isEcho: ports.providerLabel === 'echo' || options.forceEcho,
+      showSetupHint:
+        ports.providerLabel === 'echo' &&
+        !options.forceEcho &&
+        !hasConfiguredProvider,
+    }),
   );
+
+  let conversation: MitiiConversationMessage[] = [];
+  let taskList: TaskList | undefined;
   try {
     for (;;) {
       const prompt = (await ask('mitii> ')).trim();
       if (!prompt) break;
-      const { code } = await runAsk({
+      const { code, mode: runMode, outcome } = await runAsk({
         prompt,
         cwd: options.cwd,
         json: false,
         forceEcho: options.forceEcho,
+        mode: options.mode,
+        conversation,
+        taskList,
+        loopPolicyJson: options.loopPolicyJson,
+        noLoopPolicy: options.noLoopPolicy,
         io: options.io,
       });
+      if (outcome) {
+        const next = nextCliSessionCarry({
+          mode: runMode,
+          conversation,
+          taskList,
+          prompt,
+          result: outcome.result,
+        });
+        conversation = next.conversation;
+        taskList = next.taskList;
+      }
       if (code === 130) {
         options.io.writeStderr('[mitii] run cancelled\n');
       }
@@ -560,6 +862,9 @@ export async function main(
         forceEcho: parsed.forceEcho === true,
         autoClarify: parsed.autoClarify,
         autoApproval: parsed.autoApproval,
+        mode: parsed.mode,
+        loopPolicyJson: parsed.loopPolicyJson,
+        noLoopPolicy: parsed.noLoopPolicy === true,
         io: sessionIo,
       });
       return code;
@@ -588,6 +893,9 @@ export async function main(
         cwd,
         json: true,
         forceEcho: parsed.forceEcho === true,
+        mode: parsed.mode,
+        loopPolicyJson: parsed.loopPolicyJson,
+        noLoopPolicy: parsed.noLoopPolicy === true,
         io: sessionIo,
       });
       if (outcome && parsed.exportPath) {
@@ -604,8 +912,27 @@ export async function main(
       return runSession({
         cwd,
         forceEcho: parsed.forceEcho === true,
+        mode: parsed.mode,
+        loopPolicyJson: parsed.loopPolicyJson,
+        noLoopPolicy: parsed.noLoopPolicy === true,
         io: sessionIo,
       });
+    case 'setup':
+      return runSetup({
+        cwd,
+        global: parsed.setupGlobal === true,
+        show: parsed.setupShow === true,
+        provider: parsed.setupProvider,
+        model: parsed.setupModel,
+        baseUrl: parsed.setupBaseUrl,
+        mode: parsed.mode,
+        test: parsed.setupTest === true,
+        yes: parsed.setupYes === true,
+        io: sessionIo,
+      });
+    case 'error':
+      sessionIo.writeStderr(`${parsed.errorMessage ?? 'mitii: invalid arguments'}\n`);
+      return 2;
     case 'unknown':
       sessionIo.writeStderr(
         `mitii: unknown command "${parsed.unknownCommand ?? ''}"\n\n`,

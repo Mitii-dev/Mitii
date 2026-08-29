@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   AGENT_ENGINE_SCHEMA_VERSION,
@@ -8,7 +8,9 @@ import {
   type MitiiConversationMessage,
   type MitiiResumeInput,
   type PlanArtifact,
+  type PlanStrategyDecision,
   type RunEvent,
+  type TaskList,
 } from '@mitii/sdk';
 import type * as vscode from 'vscode';
 
@@ -18,7 +20,7 @@ import { buildContextUsageBreakdown } from './contextUsage.js';
 import { readContextToggles } from './contextToggles.js';
 import { getSharedMcpManager } from './mcp/manager.js';
 import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
-import { estimateMemoryPromptBlock } from './memoryStore.js';
+import { createVsCodeMemoryStore, estimateMemoryPromptBlock } from './memoryStore.js';
 import { scaffoldMitiiWorkspace } from './mitiiWorkspace.js';
 import { resolveVsCodeSemanticIndexSettings } from './semanticIndex.js';
 import type {
@@ -35,10 +37,23 @@ import {
   formatRunDiagnostics,
   formatUsageLine,
 } from './runReport.js';
-import { appendSessionLog } from './sessionLog.js';
+import { openSessionLog } from './sessionLog.js';
+import {
+  isModelIoLoggingEnabled,
+  openModelIoLog,
+  setActiveModelIoSink,
+} from './modelIoLog.js';
+import { readModelIoLoggingEnabled } from './modelIoSettings.js';
+import { readTokenBudgetPolicyOverrides } from './tokenBudgetSettings.js';
+import { readLoopPolicyThresholdOverrides } from './loopPolicySettings.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
 import { findLocalModelPreset } from './modelPresets.js';
-import { loadProjectRules } from '@mitii/host';
+import {
+  loadProjectRules,
+  observeRunToolEvent,
+  type MemoryCaptureContext,
+} from '@mitii/host';
+import { MemoryPipeline } from '@mitii/v8';
 
 export function formatRunEventLine(event: RunEvent): string | undefined {
   switch (event.type) {
@@ -73,14 +88,36 @@ export function formatRunEventLine(event: RunEvent): string | undefined {
         'paths' in event && Array.isArray(event.paths) && event.paths.length
           ? ` paths=${event.paths.slice(0, 6).join(',')}`
           : '';
-      return `[context] blocks=${event.blockCount} status=${event.status}${paths}`;
+      return `[context] blocks=${event.blockCount} retrieved=${event.retrievedCandidates} selected=${event.selectedItems} dropped=${event.droppedBlocks} status=${event.status}${paths}`;
     }
     case 'decision_made':
-      return `[decision] ${event.route}`;
+      return `[decision] ${event.route}${event.maximumWorkspaceEffect ? ` effect=${event.maximumWorkspaceEffect}` : ''}${formatEventList(' scopes', event.pathScopes)}`;
+    case 'grant_narrowed':
+      return `[grant] narrowed effect=${event.maximumWorkspaceEffect} approval=${event.approvalMode}${formatEventList(' scopes', event.pathScopes)}`;
     case 'skills_ready':
-      return `[skills] selected=${event.selectedCount}${formatEventList(' ids', event.selected)} omitted=${event.omittedCount}${formatEventList(' ids', event.omitted)} status=${event.status}`;
+      return `[skills] selected=${event.selectedCount}${formatEventList(' ids', event.selected)} omitted=${event.omittedCount}${formatSkillOmissions(event)} status=${event.status}`;
     case 'memory_ready':
       return `[memory] selected=${event.selectedCount} omitted=${event.omittedCount} status=${event.status}`;
+    case 'task_list_updated':
+      return `[tasks] ${event.completedCount}/${event.totalCount} complete`;
+    case 'evidence_updated':
+      return `[evidence] issues=${event.evidence.issues.length} ledger=${event.evidence.ledger.length}${event.evidence.finalStopReason ? ` stop=${event.evidence.finalStopReason}` : ''}`;
+    case 'repo_build_state_captured':
+      return `[verify] ${event.phase} errors=${event.errorCount} warnings=${event.warningCount}`;
+    case 'verification_comparison':
+      return `[verify] delta new=${event.newErrorCount} remaining=${event.remainingErrorCount} cleared=${event.clearedErrorCount}`;
+    case 'verification_record_saved':
+      return `[verify] record ${event.recordId} status=${event.status}${event.retryAvailable ? ' retry=yes' : ''}`;
+    case 'verification_summary_ready':
+      return `[verify] summary chars=${event.summaryChars}`;
+    case 'verification_retry_available':
+      return `[verify] retry available record=${event.recordId}`;
+    case 'discovery_started':
+      return `[discovery] started`;
+    case 'discovery_progress':
+      return `[discovery] files=${event.filesRead} searches=${event.searches}`;
+    case 'discovery_completed':
+      return `[discovery] ${event.confidence} files=${event.fileCount} surfaces=${event.surfaceCount}`;
     case 'stage_started':
       return `[stage] ${event.stage}…`;
     case 'stage_completed':
@@ -111,6 +148,12 @@ function formatClock(ms: number): string {
 
 let activitySeq = 0;
 
+type SkillOmittedDetail = {
+  id: string;
+  reason: string;
+  tokens?: number;
+};
+
 const STAGE_LABELS: Record<string, string> = {
   received: 'Received request',
   understood: 'Understood intent',
@@ -118,8 +161,11 @@ const STAGE_LABELS: Record<string, string> = {
   context_ready: 'Gathering context',
   skills_ready: 'Loading skills',
   memory_ready: 'Loading memory',
+  plan_ready: 'Planning',
+  discovery: 'Investigating request',
   model_running: 'Running model',
   tool_running: 'Running tools',
+  verifying: 'Verifying changes',
   answering: 'Answering',
   planning: 'Planning',
   acting: 'Acting',
@@ -237,15 +283,32 @@ export function runEventToActivity(event: RunEvent): ActivityEventPayload | unde
         detail: event.summary,
         status: 'running',
       };
-    case 'tool_completed':
+    case 'tool_completed': {
+      const reason =
+        'reasonCode' in event && typeof event.reasonCode === 'string'
+          ? event.reasonCode
+          : undefined;
+      const warning =
+        Array.isArray(event.warnings) &&
+        typeof event.warnings[0] === 'string'
+          ? event.warnings[0]
+          : undefined;
+      const detail = [
+        event.summary,
+        reason ? `(${reason})` : undefined,
+        warning,
+      ]
+        .filter(Boolean)
+        .join(' ');
       return {
         id,
         at,
         kind: 'tool',
         title: event.toolName,
-        detail: event.summary,
+        detail: detail || undefined,
         status: event.status,
       };
+    }
     case 'context_ready': {
       const rawPaths =
         'paths' in event && Array.isArray(event.paths) ? event.paths : [];
@@ -253,22 +316,29 @@ export function runEventToActivity(event: RunEvent): ActivityEventPayload | unde
         (path: unknown): path is string =>
           typeof path === 'string' && path.trim().length > 0,
       );
-      const pathPreview = paths.slice(0, 6).join(', ');
-      const more =
-        paths.length > 6 ? ` · +${paths.length - 6} more` : '';
+      const previewPaths = paths.slice(0, 6);
+      const moreCount = Math.max(0, paths.length - previewPaths.length);
+      const pathDetail = previewPaths.length
+        ? [
+            ...previewPaths,
+            moreCount > 0 ? `+${moreCount} more` : undefined,
+          ]
+            .filter(Boolean)
+            .join('\n')
+        : undefined;
       return {
         id,
         at,
         kind: 'context',
         title:
           paths.length === 1
-            ? `Read @${paths[0]}`
+            ? 'Read file'
             : paths.length > 1
               ? `Read ${paths.length} files`
               : 'Read repository context',
-        detail: pathPreview
-          ? `${pathPreview}${more}`
-          : `${event.blockCount} block(s) · ${event.status}`,
+        detail: pathDetail
+          ? pathDetail
+          : `${event.blockCount} block(s) · retrieved ${event.retrievedCandidates} · selected ${event.selectedItems} · dropped ${event.droppedBlocks} · ${event.status}`,
         status: event.status,
       };
     }
@@ -278,7 +348,29 @@ export function runEventToActivity(event: RunEvent): ActivityEventPayload | unde
         at,
         kind: 'decision',
         title: 'Decision',
-        detail: String(event.route),
+        detail: [
+          String(event.route),
+          event.maximumWorkspaceEffect
+            ? `effect ${event.maximumWorkspaceEffect}`
+            : undefined,
+          event.pathScopes?.length
+            ? `scope ${event.pathScopes.slice(0, 4).join(', ')}`
+            : undefined,
+        ].filter(Boolean).join(' · '),
+      };
+    case 'grant_narrowed':
+      return {
+        id,
+        at,
+        kind: 'decision',
+        title: 'Grant narrowed',
+        detail: [
+          `effect ${event.maximumWorkspaceEffect}`,
+          `approval ${event.approvalMode}`,
+          event.pathScopes.length
+            ? `scope ${event.pathScopes.slice(0, 4).join(', ')}`
+            : undefined,
+        ].filter(Boolean).join(' · '),
       };
     case 'warning':
       return {
@@ -311,11 +403,7 @@ export function runEventToActivity(event: RunEvent): ActivityEventPayload | unde
         at,
         kind: 'info',
         title: 'Skills ready',
-        detail: event.selected?.length
-          ? `${event.selected.slice(0, 6).join(', ')}${
-              event.selected.length > 6 ? ` · +${event.selected.length - 6} more` : ''
-            }`
-          : `${event.selectedCount} selected`,
+        detail: formatSkillsReadyDetail(event),
       };
     case 'memory_ready':
       return {
@@ -325,17 +413,179 @@ export function runEventToActivity(event: RunEvent): ActivityEventPayload | unde
         title: 'Memory ready',
         detail: `${event.selectedCount} selected`,
       };
+    case 'discovery_started':
+      return {
+        id,
+        at,
+        kind: 'info',
+        title: 'Investigating request',
+        detail: event.objective,
+      };
+    case 'discovery_progress':
+      return {
+        id,
+        at,
+        kind: 'info',
+        title: 'Discovery progress',
+        detail: `${event.filesRead} files · ${event.searches} searches`,
+      };
+    case 'discovery_completed':
+      return {
+        id,
+        at,
+        kind: 'info',
+        title: 'Discovery complete',
+        detail: `${event.confidence} confidence · ${event.surfaceCount} surfaces`,
+      };
     case 'plan_ready':
       return {
         id,
         at,
         kind: 'info',
         title: 'Plan ready',
-        detail: `${event.phaseCount} phases · ${event.planningDepth}`,
+        detail: [
+          `${event.phaseCount} phase${event.phaseCount === 1 ? '' : 's'}`,
+          event.plan
+            ? `${event.plan.phases.reduce(
+                (sum: number, phase: PlanArtifact['phases'][number]) =>
+                  sum + phase.steps.length,
+                0,
+              )} steps`
+            : undefined,
+          event.planningDepth,
+          event.approvalRequired ? 'approval required' : undefined,
+        ].filter(Boolean).join(' · '),
+      };
+    case 'task_list_updated':
+      return {
+        id,
+        at,
+        kind: 'info',
+        title: 'Tasks updated',
+        detail: `${event.completedCount}/${event.totalCount} complete`,
+      };
+    case 'evidence_updated':
+      return {
+        id,
+        at,
+        kind: 'info',
+        title: 'Evidence updated',
+        detail: [
+          `${event.evidence.issues.length} issue${event.evidence.issues.length === 1 ? '' : 's'}`,
+          `${event.evidence.ledger.length} ledger entr${event.evidence.ledger.length === 1 ? 'y' : 'ies'}`,
+          event.evidence.finalStopReason,
+        ].filter(Boolean).join(' · '),
+      };
+    case 'repo_build_state_captured':
+      return {
+        id,
+        at,
+        kind: 'info',
+        title: `Build state ${event.phase}`,
+        detail: `${event.errorCount} error(s) · ${event.warningCount} warning(s)`,
+      };
+    case 'verification_comparison':
+      return {
+        id,
+        at,
+        kind: event.newErrorCount > 0 ? 'warning' : 'info',
+        title: 'Verification comparison',
+        detail: `new ${event.newErrorCount} · remaining ${event.remainingErrorCount} · cleared ${event.clearedErrorCount}`,
+      };
+    case 'verification_record_saved':
+      return {
+        id,
+        at,
+        kind: 'info',
+        title: 'Verification record saved',
+        detail: `${event.status}${event.retryAvailable ? ' · retry available' : ''}`,
+      };
+    case 'verification_summary_ready':
+      return {
+        id,
+        at,
+        kind: 'info',
+        title: 'Verification summary',
+        detail: `${event.summaryChars} chars`,
+      };
+    case 'verification_retry_available':
+      return {
+        id,
+        at,
+        kind: 'info',
+        title: 'Verification retry available',
+        detail: event.recordId,
       };
     default:
       return undefined;
   }
+}
+
+function formatSkillOmissions(
+  event: Extract<RunEvent, { type: 'skills_ready' }>,
+): string {
+  if (event.omittedDetails?.length) {
+    const preview = event.omittedDetails
+      .slice(0, 6)
+      .map((item: SkillOmittedDetail) =>
+        item.tokens === undefined
+          ? `${item.id}:${item.reason}`
+          : `${item.id}:${item.reason}(${item.tokens})`,
+      )
+      .join(',');
+    const more =
+      event.omittedDetails.length > 6
+        ? `,+${event.omittedDetails.length - 6}`
+        : '';
+    return ` ids=${preview}${more}`;
+  }
+  return formatEventList(' ids', event.omitted);
+}
+
+function formatSkillsReadyDetail(
+  event: Extract<RunEvent, { type: 'skills_ready' }>,
+): string {
+  const selected = event.selected?.length
+    ? `${event.selected.slice(0, 6).join(', ')}${
+        event.selected.length > 6 ? ` · +${event.selected.length - 6} more` : ''
+      }`
+    : `${event.selectedCount} selected`;
+  if (!event.omittedDetails?.length) {
+    return selected;
+  }
+  const omitted = event.omittedDetails
+    .slice(0, 3)
+    .map((item: SkillOmittedDetail) => `${item.id}:${item.reason}`)
+    .join(', ');
+  const more =
+    event.omittedDetails.length > 3
+      ? ` · +${event.omittedDetails.length - 3} omitted`
+      : '';
+  return `${selected} · omitted ${omitted}${more}`;
+}
+
+type ApprovalViewSource = NonNullable<
+  NonNullable<AgentRunResult['suspension']>['approval']
+>;
+
+function shellQuoteArg(value: string): string {
+  if (/^[A-Za-z0-9_./:=@%+-]+$/.test(value)) return value;
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function approvalDetail(approval: ApprovalViewSource): string | undefined {
+  const args = approval.arguments;
+  if (
+    approval.toolName === 'run_command' &&
+    args &&
+    typeof args === 'object' &&
+    Array.isArray((args as { argv?: unknown }).argv)
+  ) {
+    return (args as { argv: unknown[] }).argv
+      .map((arg) => shellQuoteArg(String(arg)))
+      .join(' ');
+  }
+  return approval.paths?.join(', ');
 }
 
 export function resultToSuspension(
@@ -362,6 +612,7 @@ export function resultToSuspension(
         toolName: suspension.approval.toolName,
         paths: suspension.approval.paths,
         proposedText: suspension.approval.proposedText,
+        arguments: suspension.approval.arguments,
       },
     };
   }
@@ -417,7 +668,7 @@ async function resolveSuspensionNative(
         {
           label: 'Approve',
           description: suspension.approval.toolName,
-          detail: suspension.approval.paths?.join(', '),
+          detail: approvalDetail(suspension.approval),
         },
         { label: 'Deny', description: 'No mutation' },
       ],
@@ -489,7 +740,6 @@ export interface HostAskHandlers {
 
 function composePrompt(options: {
   prompt: string;
-  depth?: string;
   pinnedPaths?: string[];
   pinnedContents?: string;
   editorBlock?: string;
@@ -502,10 +752,9 @@ function composePrompt(options: {
   const HOST_MARKER = '<<<MITII_HOST_CONTEXT>>>';
 
   // Priority: pinned context first, then supplementary host evidence.
+  // Depth is a structured `explorationDepth` field on the start input, not a
+  // prompt tag — Engine strategy rules read it directly.
   const hostParts: string[] = [];
-  if (options.depth && options.depth !== 'auto') {
-    hostParts.push(`[depth:${options.depth}]`);
-  }
   if (options.pinnedContents) {
     hostParts.push(options.pinnedContents);
   } else if (options.pinnedPaths?.length) {
@@ -557,7 +806,7 @@ function readPinnedFileContents(
   return `Pinned file contents:\n\n${blocks.join('\n\n')}`;
 }
 
-function resolveApprovalPolicy(preset: string | undefined): {
+export function resolveApprovalPolicy(preset: string | undefined): {
   approvalMode: 'never' | 'when_required' | 'every_mutation';
   planApproval: 'policy' | 'never';
 } {
@@ -565,19 +814,33 @@ function resolveApprovalPolicy(preset: string | undefined): {
     case 'safe':
       return { approvalMode: 'every_mutation', planApproval: 'policy' };
     case 'builder':
+    case 'guided':
       return { approvalMode: 'never', planApproval: 'policy' };
     case 'pilot':
       return { approvalMode: 'never', planApproval: 'never' };
-    case 'guided':
     default:
       return { approvalMode: 'when_required', planApproval: 'policy' };
   }
+}
+
+function withCurrentApprovalPolicy(
+  vs: typeof vscode,
+  resume: MitiiResumeInput,
+): MitiiResumeInput {
+  const preset =
+    vs.workspace.getConfiguration('mitii').get<string>('safety.approvalMode') ??
+    'guided';
+  return {
+    ...resume,
+    approvalMode: resolveApprovalPolicy(preset).approvalMode,
+  };
 }
 
 function resolveRunBudget(vs: typeof vscode): AgentRunBudget {
   const cfg = vs.workspace.getConfiguration('mitii');
   if (cfg.get<boolean>('runBudget.unlimited') ?? false) {
     return {
+      unlimited: true,
       maxModelCalls: 1_000_000,
       maxToolCalls: 1_000_000,
       maxLoopIterations: 1_000_000,
@@ -600,6 +863,18 @@ function resolveRunBudget(vs: typeof vscode): AgentRunBudget {
   };
 }
 
+/** Developer-facing run-log detail level; see `mitii.logVerbosity` in package.json. */
+function resolveLogVerbosity(
+  vs: typeof vscode,
+): 'minimal' | 'standard' | 'verbose' {
+  const value = vs.workspace
+    .getConfiguration('mitii')
+    .get<string>('logVerbosity');
+  return value === 'minimal' || value === 'standard' || value === 'verbose'
+    ? value
+    : 'verbose';
+}
+
 /**
  * Run an ask through the SDK with OutputChannel streaming + optional UI hooks.
  */
@@ -611,6 +886,8 @@ export async function runAskInOutputChannel(options: {
   channel: vscode.OutputChannel;
   mode?: 'ask' | 'plan' | 'agent';
   depth?: string;
+  effort?: string;
+  approvalMode?: string;
   pinnedPaths?: string[];
   workspaceId?: string;
   /** Used to estimate memory tokens in the context meter (not prompt-stuffed). */
@@ -625,6 +902,10 @@ export async function runAskInOutputChannel(options: {
   conversation?: MitiiConversationMessage[];
   /** Structured plan handoff for agent execution. */
   approvedPlan?: PlanArtifact;
+  /** Strategy for a host-carried approved plan. */
+  approvedPlanStrategy?: PlanStrategyDecision;
+  /** Live working checklist carried across Agent turns. */
+  taskList?: TaskList;
   handlers?: HostAskHandlers;
 }): Promise<HostAskOutcome> {
   const { vs, client, workspaceRoot, channel, handlers } = options;
@@ -698,7 +979,6 @@ export async function runAskInOutputChannel(options: {
 
   const prompt = composePrompt({
     prompt: options.prompt,
-    depth: options.depth,
     pinnedPaths,
     pinnedContents: pinnedContents || undefined,
     editorBlock: editor?.promptBlock,
@@ -709,13 +989,24 @@ export async function runAskInOutputChannel(options: {
 
   const cfg = vs.workspace.getConfiguration('mitii');
   const approvalPolicy = resolveApprovalPolicy(
-    cfg.get<string>('safety.approvalMode') ?? 'guided',
+    options.approvalMode ??
+      cfg.get<string>('safety.approvalMode') ??
+      'guided',
   );
   const model = cfg.get<string>('provider.model') ?? '';
   const contextWindow =
     cfg.get<number>('provider.contextWindow') ||
     findLocalModelPreset(model)?.contextWindow ||
     32_768;
+  const configuredMaximumOutputTokens = cfg.get<number>(
+    'provider.maximumOutputTokens',
+  );
+  const maximumOutputTokens =
+    typeof configuredMaximumOutputTokens === 'number' &&
+    Number.isFinite(configuredMaximumOutputTokens) &&
+    configuredMaximumOutputTokens > 0
+      ? Math.floor(configuredMaximumOutputTokens)
+      : undefined;
   const mcpCatalogTokens = getSharedMcpManager().snapshot().toolsCatalogTokens;
   const memoryBlock =
     toggles.memory && options.workspaceState && options.workspaceId
@@ -806,41 +1097,54 @@ export async function runAskInOutputChannel(options: {
       );
       if (!latest) {
         const workspaceId = options.workspaceId ?? 'vscode_workspace';
-        try {
-          const full = await runFullWorkspaceIndex({
-            mitiiDir: scaffoldMitiiWorkspace(workspaceRoot),
-            workspaceRoot,
-            workspaceId,
-            ...(options.secrets
-              ? {
-                  semanticIndex: await resolveVsCodeSemanticIndexSettings(
-                    vs,
-                    options.secrets,
-                  ),
-                }
-              : {}),
-          });
-          await client.publishRepositoryStateFromIndexing(full.indexing, {
-            catalogRevisionByRoot: full.catalogRevisionByRoot,
-            graphRevisionByRoot: full.graphRevisionByRoot,
-            mapRevisionByRoot: full.mapRevisionByRoot,
-          });
-          channel.appendLine(
-            `[index] auto-published full index (${full.fileCount} files); vector=${full.vectorIndex.status}${full.vectorIndex.reason ? ` reason=${full.vectorIndex.reason}` : ''}`,
-          );
-        } catch (fullIndexError) {
+        const mitiiDir = scaffoldMitiiWorkspace(workspaceRoot);
+        const sqlitePath = join(mitiiDir, 'repository-index.sqlite');
+        if (existsSync(sqlitePath)) {
           const snap = await buildWorkspaceSnapshot({
             workspaceRoot,
             workspaceId,
           });
           await client.publishRepositoryState(snap.candidate);
           channel.appendLine(
-            `[index] auto-published host snapshot (${snap.fileCount} files; full index unavailable: ${
-              fullIndexError instanceof Error
-                ? fullIndexError.message
-                : String(fullIndexError)
-            })`,
+            `[index] reused on-disk index at ${sqlitePath}; published fingerprint pin (${snap.fileCount} files)`,
           );
+        } else {
+          try {
+            const full = await runFullWorkspaceIndex({
+              mitiiDir,
+              workspaceRoot,
+              workspaceId,
+              ...(options.secrets
+                ? {
+                    semanticIndex: await resolveVsCodeSemanticIndexSettings(
+                      vs,
+                      options.secrets,
+                    ),
+                  }
+                : {}),
+            });
+            await client.publishRepositoryStateFromIndexing(full.indexing, {
+              catalogRevisionByRoot: full.catalogRevisionByRoot,
+              graphRevisionByRoot: full.graphRevisionByRoot,
+              mapRevisionByRoot: full.mapRevisionByRoot,
+            });
+            channel.appendLine(
+              `[index] auto-published full index (${full.fileCount} files); vector=${full.vectorIndex.status}${full.vectorIndex.reason ? ` reason=${full.vectorIndex.reason}` : ''}`,
+            );
+          } catch (fullIndexError) {
+            const snap = await buildWorkspaceSnapshot({
+              workspaceRoot,
+              workspaceId,
+            });
+            await client.publishRepositoryState(snap.candidate);
+            channel.appendLine(
+              `[index] auto-published host snapshot (${snap.fileCount} files; full index unavailable: ${
+                fullIndexError instanceof Error
+                  ? fullIndexError.message
+                  : String(fullIndexError)
+              })`,
+            );
+          }
         }
       }
     } catch (error) {
@@ -856,6 +1160,15 @@ export async function runAskInOutputChannel(options: {
     const projectRules = workspaceRoot
       ? await loadProjectRules({ workspaceRoot })
       : [];
+    const runStartedAt = new Date().toISOString();
+    const windowBudgetPolicy = readTokenBudgetPolicyOverrides(cfg);
+    const loopPolicyThresholds = readLoopPolicyThresholdOverrides(cfg);
+    const effort =
+      options.effort === 'low' ||
+      options.effort === 'high' ||
+      options.effort === 'medium'
+        ? options.effort
+        : undefined;
     let run = client.start({
       prompt,
       mode: options.mode ?? 'ask',
@@ -864,15 +1177,80 @@ export async function runAskInOutputChannel(options: {
       approvalMode: approvalPolicy.approvalMode,
       planApproval: approvalPolicy.planApproval,
       budget: resolveRunBudget(vs),
+      ...(windowBudgetPolicy || effort
+        ? {
+            windowBudget: {
+              ...(windowBudgetPolicy ? { policy: windowBudgetPolicy } : {}),
+              ...(effort ? { effort } : {}),
+            },
+          }
+        : {}),
+      ...(loopPolicyThresholds
+        ? { loopPolicy: { thresholds: loopPolicyThresholds } }
+        : {}),
       ...(projectRules.length > 0 ? { projectRules: [...projectRules] } : {}),
+      ...(pinnedPaths.length > 0 ? { pinnedPaths } : {}),
       ...(options.conversation && options.conversation.length > 0
         ? { conversation: options.conversation }
         : {}),
       ...(options.approvedPlan ? { approvedPlan: options.approvedPlan } : {}),
+      ...(options.approvedPlanStrategy
+        ? { approvedPlanStrategy: options.approvedPlanStrategy }
+        : {}),
+      ...(options.taskList ? { taskList: options.taskList } : {}),
+      ...(options.depth ? { explorationDepth: options.depth } : {}),
+      logVerbosity: resolveLogVerbosity(vs),
     });
     const events: RunEvent[] = [];
+    const memoryCapture: MemoryCaptureContext | undefined =
+      toggles.memory &&
+      workspaceRoot &&
+      options.workspaceState &&
+      options.workspaceId
+        ? {
+            workspaceRoot,
+            workspaceId: options.workspaceId,
+            pipeline: new MemoryPipeline({
+              store: createVsCodeMemoryStore(
+                options.workspaceState,
+                options.workspaceId,
+              ),
+            }),
+          }
+        : undefined;
+    const sessionLog = openSessionLog(workspaceRoot, {
+      at: runStartedAt,
+      prompt: options.prompt,
+      mode: options.mode,
+      conversationCount: options.conversation?.length ?? 0,
+      sessionId: options.sessionId,
+      runId: run.runId,
+      contextWindowTokens: contextWindow,
+      maximumOutputTokens,
+    });
+    const logPath = sessionLog?.path;
+    if (logPath) {
+      channel.appendLine(`[log] ${logPath}`);
+    }
 
-    for (;;) {
+    const modelIoEnabled = isModelIoLoggingEnabled(
+      cfg.get<boolean>('developer.enabled') ?? false,
+      readModelIoLoggingEnabled(cfg),
+    );
+    const modelIoLog = modelIoEnabled
+      ? openModelIoLog(workspaceRoot, {
+          at: runStartedAt,
+          sessionId: options.sessionId,
+          runId: run.runId,
+        })
+      : undefined;
+    if (modelIoLog) {
+      setActiveModelIoSink(modelIoLog);
+      channel.appendLine(`[model-io] ${modelIoLog.path}`);
+    }
+
+    try {
+      for (;;) {
       const cancelSub = token.onCancellationRequested(() => {
         channel.appendLine('[mitii] cancelling…');
         run.cancel('user_cancelled');
@@ -881,6 +1259,14 @@ export async function runAskInOutputChannel(options: {
       try {
         for await (const event of run.events) {
           events.push(event);
+          if (memoryCapture) {
+            await observeRunToolEvent({
+              event,
+              capture: memoryCapture,
+              userPrompt: options.prompt,
+            });
+          }
+          sessionLog?.appendEvent(event);
           const activity = runEventToActivity(event);
           if (activity) {
             handlers?.onEvent?.(event, activity);
@@ -902,6 +1288,7 @@ export async function runAskInOutputChannel(options: {
         }
         const result = await run.result;
         if (result.status !== 'suspended') {
+          sessionLog?.finish(result);
           channel.appendLine('');
           for (const line of formatContextInspection(events)) {
             channel.appendLine(line);
@@ -948,18 +1335,6 @@ export async function runAskInOutputChannel(options: {
               status: 'failed',
             });
           }
-          const logPath = appendSessionLog(workspaceRoot, {
-            kind: 'run',
-            at: new Date().toISOString(),
-            prompt: options.prompt,
-            mode: options.mode,
-            conversationCount: options.conversation?.length ?? 0,
-            result,
-            events,
-          }, { sessionId: options.sessionId });
-          if (logPath) {
-            channel.appendLine(`[log] ${logPath}`);
-          }
           return {
             result: {
               ...result,
@@ -991,18 +1366,7 @@ export async function runAskInOutputChannel(options: {
           resume = await resolveSuspensionNative(vs, result);
         }
         if (resume === 'stop') {
-          const logPath = appendSessionLog(workspaceRoot, {
-            kind: 'run',
-            at: new Date().toISOString(),
-            prompt: options.prompt,
-            mode: options.mode,
-            conversationCount: options.conversation?.length ?? 0,
-            result,
-            events,
-          }, { sessionId: options.sessionId });
-          if (logPath) {
-            channel.appendLine(`[log] ${logPath}`);
-          }
+          sessionLog?.finish(result);
           return {
             result,
             events,
@@ -1011,10 +1375,14 @@ export async function runAskInOutputChannel(options: {
           };
         }
         channel.appendLine('[mitii] resuming…');
-        run = client.resume(resume);
+        run = client.resume(withCurrentApprovalPolicy(vs, resume));
       } finally {
         cancelSub.dispose();
       }
+    }
+    } finally {
+      setActiveModelIoSink(undefined);
+      modelIoLog?.close();
     }
   };
 

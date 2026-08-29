@@ -1,4 +1,6 @@
 import {
+  HYBRID_RETRIEVAL_DEFAULTS,
+  HYBRID_RETRIEVAL_IDS,
   HYBRID_RETRIEVAL_MESSAGES,
   HYBRID_RETRIEVAL_SCHEMA_VERSION,
 } from "./constants";
@@ -293,6 +295,13 @@ export class HybridRetriever {
         .candidates,
     ];
 
+      candidates =
+      this.backfillFolderScopedMapCandidates(
+        request,
+        successful,
+        candidates,
+      );
+
     if (
       this.reranker &&
       candidates.length > 0
@@ -318,6 +327,13 @@ export class HybridRetriever {
       candidates =
         reranked;
     }
+
+    candidates =
+      this.backfillFolderScopedMapCandidates(
+        request,
+        successful,
+        candidates,
+      );
 
     const finalCandidates =
       candidates.slice(
@@ -647,6 +663,86 @@ export class HybridRetriever {
         HYBRID_RETRIEVAL_MESSAGES
           .FAILURE_POLICY_UNSATISFIED,
     });
+  }
+
+  /**
+   * Folder-scoped queries must keep a catalog of in-folder map files even when
+   * high-scoring out-of-folder lexical hits fill the fusion window. Count
+   * in-folder paths, backfill from repo-map, then keep those ahead of junk.
+   */
+  private backfillFolderScopedMapCandidates(
+    request: NormalizedHybridRetrievalRequest,
+    successful: readonly SuccessfulRetrievalSourceResult[],
+    candidates: HybridRetrievalCandidate[],
+  ): HybridRetrievalCandidate[] {
+    if (!request.folderPrefix) {
+      return candidates;
+    }
+
+    const folderPrefix = request.folderPrefix;
+    const floor = Math.min(
+      HYBRID_RETRIEVAL_DEFAULTS.MINIMUM_FOLDER_SCOPED_RESULTS,
+      request.maximumResults,
+    );
+    const inFolder: HybridRetrievalCandidate[] = [];
+    const outOfFolder: HybridRetrievalCandidate[] = [];
+    const seen = new Set<string>();
+    for (const candidate of candidates) {
+      if (seen.has(candidate.relativePath)) {
+        continue;
+      }
+      seen.add(candidate.relativePath);
+      if (this.isUnderFolderPrefix(candidate.relativePath, folderPrefix)) {
+        inFolder.push(candidate);
+      } else {
+        outOfFolder.push(candidate);
+      }
+    }
+    if (inFolder.length >= floor) {
+      return candidates;
+    }
+
+    const mapSource = successful.find(
+      (source) => source.sourceId === HYBRID_RETRIEVAL_IDS.REPO_MAP_SOURCE,
+    );
+    if (!mapSource || mapSource.candidates.length === 0) {
+      return candidates;
+    }
+
+    const extras = mapSource.candidates.filter(
+      (candidate) =>
+        !seen.has(candidate.relativePath) &&
+        this.isUnderFolderPrefix(candidate.relativePath, folderPrefix),
+    );
+    if (extras.length === 0) {
+      return candidates;
+    }
+
+    const fusedExtras = this.fusion.fuse({
+      sourceResults: [
+        {
+          ...mapSource,
+          candidates: extras,
+        },
+      ],
+      rankConstant: this.options.rankConstant,
+      maximumResults: Math.max(1, floor - inFolder.length),
+    });
+
+    return [...inFolder, ...fusedExtras.candidates, ...outOfFolder].slice(
+      0,
+      request.maximumResults,
+    );
+  }
+
+  private isUnderFolderPrefix(
+    relativePath: string,
+    folderPrefix: string,
+  ): boolean {
+    return (
+      relativePath === folderPrefix ||
+      relativePath.startsWith(`${folderPrefix}/`)
+    );
   }
 
   private async applyReranker(

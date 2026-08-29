@@ -1,12 +1,28 @@
 import type {
+  SourceImportKind,
+  SourceLanguageId,
+  SourceReferenceKind,
+  TreeSitterRuntimePort,
+} from "../../contracts/ports/TreeSitterRuntimePort";
+import type {
   WorkspaceFileEntry,
 } from "../workspace/types";
+
+export type {
+  SourceImportKind,
+  SourceLanguageId,
+  SourceReferenceKind,
+  TreeSitterRuntimeImport,
+  TreeSitterRuntimeParseInput,
+  TreeSitterRuntimeParseResult,
+  TreeSitterRuntimePort,
+  TreeSitterRuntimeReference,
+  TreeSitterRuntimeSymbol,
+} from "../../contracts/ports/TreeSitterRuntimePort";
 
 /**
  * LANGUAGE DETECTION
  */
-
-export type SourceLanguageId = string;
 
 export type SourceLanguageDetectionSource =
   | "explicit"
@@ -95,13 +111,6 @@ export interface SourceAnalysisSymbol {
   endColumn?: number;
 }
 
-export type SourceImportKind =
-  | "static"
-  | "dynamic"
-  | "require"
-  | "reexport"
-  | "unknown";
-
 export interface SourceAnalysisImport {
   specifier: string;
   kind: SourceImportKind;
@@ -109,14 +118,6 @@ export interface SourceAnalysisImport {
   line: number;
   column?: number;
 }
-
-export type SourceReferenceKind =
-  | "call"
-  | "construct"
-  | "type"
-  | "read"
-  | "write"
-  | "unknown";
 
 export interface SourceAnalysisReference {
   symbolName: string;
@@ -205,71 +206,6 @@ export interface SourceParser {
 export interface SourceParserResolution {
   language: SourceLanguageId;
   parsers: readonly SourceParser[];
-}
-
-/**
- * TREE-SITTER RUNTIME PORT
- *
- * Source Analysis does not own WASM loading or process-global grammar
- * caches. A host adapter implements this port.
- */
-
-export interface TreeSitterRuntimeSymbol {
-  name: string;
-  nodeType: string;
-  signature?: string;
-  parentName?: string;
-  exported?: boolean;
-  startLine: number;
-  endLine?: number;
-  startColumn?: number;
-  endColumn?: number;
-}
-
-export interface TreeSitterRuntimeImport {
-  specifier: string;
-  kind?: SourceImportKind;
-  importedNames?: readonly string[];
-  line: number;
-  column?: number;
-}
-
-export interface TreeSitterRuntimeReference {
-  symbolName: string;
-  kind?: SourceReferenceKind;
-  line: number;
-  column?: number;
-}
-
-export interface TreeSitterRuntimeParseInput {
-  language: SourceLanguageId;
-  relativePath: string;
-  content: string;
-  symbolQuery?: string;
-  referenceQuery?: string;
-  maximumSymbols: number;
-  maximumImports: number;
-  maximumReferences: number;
-  abortSignal?: AbortSignal;
-}
-
-export interface TreeSitterRuntimeParseResult {
-  symbols: readonly TreeSitterRuntimeSymbol[];
-  imports?: readonly TreeSitterRuntimeImport[];
-  references?: readonly TreeSitterRuntimeReference[];
-  warnings?: readonly string[];
-}
-
-export interface TreeSitterRuntimePort {
-  readonly id: string;
-
-  supports(
-    language: SourceLanguageId,
-  ): boolean;
-
-  parse(
-    input: TreeSitterRuntimeParseInput,
-  ): Promise<TreeSitterRuntimeParseResult>;
 }
 
 /**

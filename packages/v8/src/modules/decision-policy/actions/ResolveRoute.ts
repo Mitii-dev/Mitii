@@ -6,6 +6,7 @@ import {
 } from "../constants";
 import type { DecisionReasonCode, ExecutionRoute } from "../contracts";
 import { DECISION_POLICY_THRESHOLDS } from "../policy";
+import { looksLikeWorkspaceBugReport } from "./LooksLikeWorkspaceBugReport";
 
 export interface RouteResolution {
   route: ExecutionRoute;
@@ -85,7 +86,20 @@ export function resolveRoute(params: {
     };
   }
 
-  // Mutation must win over question-shaped phrasing ("Can you implement…?").
+  // Pasted console/runtime dumps without an explicit fix/implement ask should
+  // diagnose first. Otherwise understanding often labels them bugfix+act and
+  // the execute loop fails with no_mutation_performed after endless searching.
+  if (looksLikePastedRuntimeErrorDump(message)) {
+    reasonCodes.push("diagnosis_readonly");
+    return {
+      route: "diagnose",
+      runDisposition: "continue",
+      reasonCodes,
+    };
+  }
+
+  // Mutation must win over question-shaped phrasing ("Can you implement…?")
+  // and over "run tests" mentions that are part of a feature request.
   // Previously interactionIntent=question short-circuited to repository_answer
   // and stripped apply_patch even in agent mode.
   if (
@@ -97,6 +111,40 @@ export function resolveRoute(params: {
     reasonCodes.push("mutation_execute");
     return {
       route: "execute",
+      runDisposition: "continue",
+      reasonCodes,
+    };
+  }
+
+  // "Run the tests / what is failing" must not fall through to direct_answer
+  // (zero tools). Diagnose grants run_readonly_command.
+  if (looksLikeAgentVerificationRequest(message)) {
+    reasonCodes.push("verification_run_requested");
+    reasonCodes.push("diagnosis_readonly");
+    return {
+      route: "diagnose",
+      runDisposition: "continue",
+      reasonCodes,
+    };
+  }
+
+  if (looksLikeWorkspaceBugReport(message)) {
+    reasonCodes.push("workspace_bug_execute");
+    return {
+      route: "execute",
+      runDisposition: "continue",
+      reasonCodes,
+    };
+  }
+
+  // Agent mode must not collapse workspace symptoms into tool-less chat.
+  // Prefer read-only diagnosis over direct_answer when the user reports
+  // loading/hang/server issues without an explicit "fix it".
+  if (looksLikeWorkspaceRuntimeSymptom(message)) {
+    reasonCodes.push("workspace_symptom_diagnose");
+    reasonCodes.push("diagnosis_readonly");
+    return {
+      route: "diagnose",
       runDisposition: "continue",
       reasonCodes,
     };
@@ -158,6 +206,16 @@ function resolveAskRoute(params: {
     };
   }
 
+  if (looksLikeAgentVerificationRequest(message)) {
+    reasonCodes.push("verification_run_requested");
+    reasonCodes.push("diagnosis_readonly");
+    return {
+      route: "diagnose",
+      runDisposition: "continue",
+      reasonCodes,
+    };
+  }
+
   if (
     needsRepositoryGrounding(taskAnalysis, message) ||
     primary === "docs" ||
@@ -211,17 +269,24 @@ function requiresClarification(
     return false;
   }
 
-  // Agent mode: clear actionable mutation asks should execute even when
-  // understanding marks soft ambiguity (avoids stalling "implement X" work).
-  if (
-    mode === "agent" &&
-    looksLikeAgentMutationRequest(message) &&
-    !isBareAmbiguousMutationAsk(message)
-  ) {
+  if (looksLikeAgentVerificationRequest(message)) {
     return false;
   }
 
   const { intent, taskAnalysis } = understanding;
+  const materialFork = isMaterialCapabilityFork(understanding, message);
+
+  // Agent mode: clear actionable mutation asks should execute even when
+  // understanding marks soft ambiguity (avoids stalling "implement X" work).
+  // Do NOT skip when alternatives fork read vs write (investigate vs fix).
+  if (
+    mode === "agent" &&
+    looksLikeAgentMutationRequest(message) &&
+    !isBareAmbiguousMutationAsk(message) &&
+    !materialFork
+  ) {
+    return false;
+  }
 
   if (intent.status === "clarification_required") {
     return true;
@@ -252,6 +317,93 @@ function requiresClarification(
     taskAnalysis.clarity === "unclear" &&
     intent.confidenceMargin < DECISION_POLICY_THRESHOLDS.minimumIntentMargin &&
     intent.classification.alternatives.length > 0
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Clarify when the fork changes what the agent is allowed to do (read vs write)
+ * or confidence is too low to guess. Clear "Add app/error.tsx" / "implement X"
+ * asks with soft ambiguity flags are not material forks.
+ */
+function isMaterialCapabilityFork(
+  understanding: RequestUnderstandingResult,
+  message = "",
+): boolean {
+  const { intent } = understanding;
+  const classification = intent.classification;
+  const flagged =
+    intent.status === "clarification_required" ||
+    intent.recommendsClarification ||
+    classification.needsClarification;
+  if (!flagged) {
+    return false;
+  }
+
+  const intents = new Set<string>([
+    classification.primaryTaskIntent,
+    ...classification.alternatives.map((alternative) => alternative.intent),
+  ]);
+  const hasDiagnoseSide = [...intents].some(
+    (value) => isDiagnosisIntent(value) || value === "question",
+  );
+  const hasMutateSide = [...intents].some((value) => isMutationIntent(value));
+  if (hasDiagnoseSide && hasMutateSide) {
+    return true;
+  }
+
+  const ambiguityQuestion =
+    classification.taskHints?.ambiguityQuestion?.trim() ?? "";
+  if (
+    ambiguityQuestion.length > 0 &&
+    /\b(?:investigate|diagnos(?:e|is)|look\s+into|explain)\b/i.test(
+      ambiguityQuestion,
+    ) &&
+    /\b(?:fix|implement|patch|change|edit)\b/i.test(ambiguityQuestion)
+  ) {
+    return true;
+  }
+
+  // Medium/low confidence with an explicit clarify flag — ask instead of
+  // collapsing to a tool-less answer or a guessed write grant. Skip when the
+  // user already named a concrete path target (benchmark / IDE file asks).
+  if (
+    classification.confidence <
+      DECISION_POLICY_THRESHOLDS.clarifyWhenFlaggedBelowConfidence
+  ) {
+    if (hasExplicitMutationPathTarget(message)) {
+      return false;
+    }
+    return true;
+  }
+
+  return false;
+}
+
+/** True when the ask names a concrete workspace path (file or app/src tree). */
+function hasExplicitMutationPathTarget(message: string): boolean {
+  const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
+  if (text.length === 0) {
+    return false;
+  }
+
+  // File with extension: app/error.tsx, src/components/Button.tsx
+  if (
+    /(?:^|[\s`'"(])(?:[\w@.+-]+\/)+[\w.@+-]+\.[A-Za-z][A-Za-z0-9]*\b/.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+
+  // Common source roots without requiring an extension: app/about, src/hooks
+  if (
+    /(?:^|[\s`'"(])(?:app|src|packages?|tests?|lib|components)\/[\w./@+-]+/.test(
+      text,
+    )
   ) {
     return true;
   }
@@ -318,6 +470,59 @@ function isExplicitReadOnlyRequest(message: string): boolean {
 }
 
 /**
+ * Run/inspect the workspace test suite — not "how do I run tests" and not
+ * "write new tests".
+ */
+export function looksLikeAgentVerificationRequest(message: string): boolean {
+  if (isExplicitPlanRequest(message)) {
+    return false;
+  }
+
+  // "Implement X so I can run tests" is a write request, not a test-run ask.
+  if (looksLikeAgentMutationRequest(message)) {
+    return false;
+  }
+
+  const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
+  if (text.length === 0) {
+    return false;
+  }
+
+  if (
+    /^(?:how\s+(?:do|does|did|can|should|would|to)|what\s+(?:is|are)\s+(?:the\s+)?(?:command|script|npm))/i.test(
+      text,
+    )
+  ) {
+    return false;
+  }
+
+  if (
+    /\b(?:write|add|create|generate|implement)\b[\s\S]{0,48}\btests?\b/i.test(
+      text,
+    ) &&
+    !/\b(?:run|execute|launch)\b/i.test(text)
+  ) {
+    return false;
+  }
+
+  return (
+    /\b(?:run|execute|launch)\b[\s\S]{0,80}\b(?:the\s+)?(?:tests?|testes|specs?|suite|e2e|wdio)\b/i.test(
+      text,
+    ) ||
+    /\b(?:which|what)\s+tests?\s+(?:are\s+)?(?:failing|passing|failed|passed)\b/i.test(
+      text,
+    ) ||
+    /\b(?:failing|passing)\s+and\s+(?:passing|failing)\b/i.test(text) ||
+    /\b(?:npm|pnpm|yarn|bun)\s+run\s+\S*test/i.test(text) ||
+    /\bwdio\s+run\b/i.test(text) ||
+    /^(?:please\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+)?test(?:\s|$|\?)/i.test(
+      text,
+    ) ||
+    /\bcan you test\b/i.test(text)
+  );
+}
+
+/**
  * Agent-mode safety net when understanding classifies an implementation ask
  * as a "question" (common with "Can you implement…?").
  */
@@ -349,10 +554,85 @@ function looksLikeAgentMutationRequest(message: string): boolean {
   }
 
   return (
-    /(?:^|\b)(?:please\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+|i\s+want\s+you\s+to\s+|i\s+need\s+you\s+to\s+|i\s+need\s+|we\s+need\s+to\s+|let(?:'s|\s+us)\s+)?(?:implement|build|create|add|fix|resolve|repair|patch|migrate|refactor|rewrite|convert|integrate|configure|optimize|redesign|replace|remove|delete|update|modify|generate|scaffold|install|upgrade)\b/i.test(
+    /(?:^|\b)(?:please\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+|i\s+want\s+you\s+to\s+|i\s+need\s+you\s+to\s+|i\s+need\s+|we\s+need\s+to\s+|let(?:'s|\s+us)\s+)?(?:implement|build|create|design|develop|write|add|fix|resolve|repair|patch|migrate|refactor|rewrite|convert|integrate|configure|optimize|redesign|replace|remove|delete|update|modify|generate|scaffold|install|upgrade)\b/i.test(
+      text,
+    ) ||
+    // Seeded bugfix phrasing: "X uses Y. Change it to Z." / "says Foo. Fix it to Bar."
+    /\b(?:change|fix|update|set|switch)\b[\s\S]{0,40}\bto\b/i.test(text) ||
+    /\bi\s+need\s+(?:to\s+design\s+|to\s+create\s+|to\s+build\s+|an?\s+|the\s+)*(?:api|endpoint|route)\b/i.test(
       text,
     )
   );
+}
+
+/**
+ * Soft runtime symptoms (stuck loading, hang after starting a server) that
+ * are not strong enough for workspace_bug_execute, but must not become
+ * tool-less direct_answer in Agent mode.
+ */
+function looksLikeWorkspaceRuntimeSymptom(message: string): boolean {
+  if (looksLikeAgentMutationRequest(message) || isExplicitPlanRequest(message)) {
+    return false;
+  }
+
+  const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
+  if (text.length < 8) {
+    return false;
+  }
+
+  const hasSymptom =
+    /\b(?:loading\.{0,3}|spinner|hang(?:s|ing)?|stuck|blank\s+page|splash|never\s+(?:finishes|loads|renders)|keeps?\s+loading)\b/i.test(
+      text,
+    ) ||
+    /\b(?:not\s+loading|won'?t\s+load|doesn'?t\s+load|fail(?:s|ed)?\s+to\s+load)\b/i.test(
+      text,
+    );
+
+  if (!hasSymptom) {
+    return false;
+  }
+
+  const hasWorkspaceAnchor =
+    /\b(?:server|localhost|npx|http|https|page|ui|app|browser|preview|vite|next|webpack|dev\s*server)\b/i.test(
+      text,
+    ) ||
+    /\bhttps?:\/\/localhost(?::\d+)?\//i.test(text);
+
+  return hasWorkspaceAnchor;
+}
+
+/**
+ * Chrome/Node-style console dumps pasted without "please fix". These need
+ * diagnosis (and often config guidance), not a forced write grant.
+ */
+function looksLikePastedRuntimeErrorDump(message: string): boolean {
+  if (looksLikeAgentMutationRequest(message) || isExplicitPlanRequest(message)) {
+    return false;
+  }
+
+  const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
+  if (text.length < 12) {
+    return false;
+  }
+
+  const hasFileLine =
+    /\b[\w./@+-]+\.(?:js|jsx|ts|tsx|mjs|cjs|vue|svelte|css):\d+(?::\d+)?\b/i.test(
+      text,
+    );
+  if (!hasFileLine) {
+    return false;
+  }
+
+  const hasStackFrame =
+    /\t@\t/.test(text) ||
+    /\n\s+at\s+\S+/.test(text) ||
+    /\bIs\t@\t/.test(text) ||
+    /\b@\s+[\w./+-]+\.(?:js|jsx|ts|tsx|mjs|cjs):\d+/i.test(text);
+  const hasConsoleObjectDump = /\bObject\b/.test(text);
+  const multiLine = text.split(/\n/).filter((line) => line.trim().length > 0)
+    .length >= 2;
+
+  return hasStackFrame || hasConsoleObjectDump || multiLine;
 }
 
 /**
@@ -366,7 +646,7 @@ function looksLikeWorkspaceGroundedRequest(message: string): boolean {
   }
 
   if (
-    /\b(?:this|the|current)\s+(?:project|repo|repository|codebase|workspace|code)\b/i.test(
+    /\b(?:this|the|current)\s+(?:project|repo|repository|codebase|workspace|code|suite|framework|app|application)\b/i.test(
       text,
     )
   ) {
@@ -374,7 +654,45 @@ function looksLikeWorkspaceGroundedRequest(message: string): boolean {
   }
 
   if (
-    /\b(?:in|across|throughout|within|of|on)\s+(?:this|the|current)\s+(?:project|repo|repository|codebase|workspace)\b/i.test(
+    /\b(?:in|across|throughout|within|of|on|for)\s+(?:this|the|current)\s+(?:project|repo|repository|codebase|workspace|suite|framework|app|application)\b/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+
+  // Deictic workspace asks without an explicit noun:
+  // "Is headless supported in this?", "does this support X", "configured here?"
+  if (
+    /\b(?:in|for|within|across|throughout|on|with)\s+this\b/i.test(text) ||
+    /\b(?:in|for|within)\s+here\b/i.test(text) ||
+    /\b(?:supported|configured|enabled|available|implemented)\s+(?:in|for|by|on)\s+(?:this|here)\b/i.test(
+      text,
+    ) ||
+    /\b(?:does|is|can|will)\s+(?:this|it)\s+(?:support|have|use|enable|include|allow|offer)\b/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+
+  // Follow-ups about implementing / enabling something already under discussion
+  // ("If I have to implement it?", "make headless and run in linux").
+  if (
+    /\b(?:implement|enable|add|configure|set\s*up|turn\s+on|apply)\b[\s\S]{0,48}\b(?:it|this|that|them|headless|support|feature|change|fix|patch)\b/i.test(
+      text,
+    ) ||
+    /\b(?:how\s+(?:do|can|should)\s+i|what\s+should\s+i\s+do|how\s+to|how\s+can\s+i)\b/i.test(
+      text,
+    ) ||
+    /\b(?:make|get)\s+(?:it|this|that|headless)\b[\s\S]{0,48}\b(?:work|run|supported|enabled)\b/i.test(
+      text,
+    ) ||
+    /\b(?:make|enable|run)\s+headless\b/i.test(text) ||
+    /\b(?:run|running|execute|executing)\b[\s\S]{0,40}\b(?:on|in)\s+(?:linux|ubuntu|debian|docker|ci|ci\/cd|github\s+actions)\b/i.test(
+      text,
+    ) ||
+    /\b(?:on|in)\s+(?:linux|ubuntu|debian|docker|ci|ci\/cd|github\s+actions)\b/i.test(
       text,
     )
   ) {
@@ -382,7 +700,15 @@ function looksLikeWorkspaceGroundedRequest(message: string): boolean {
   }
 
   if (
-    /\b(?:test cases?|specs?|page objects?|how to run|architecture|redundant code|working tree|file map|source files?)\b/i.test(
+    /\b(?:test cases?|specs?|page objects?|how to run|can you test|architecture|redundant code|working tree|file map|source files?)\b/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+
+  if (
+    /\b(?:i\s+need|we\s+need|design|create|build|implement)\b[\s\S]{0,100}\b(?:api|endpoint|route|controller|service|database|db|query|analytics?)\b/i.test(
       text,
     )
   ) {
@@ -394,6 +720,10 @@ function looksLikeWorkspaceGroundedRequest(message: string): boolean {
       text,
     )
   ) {
+    return true;
+  }
+
+  if (looksLikeWorkspaceBugReport(text)) {
     return true;
   }
 

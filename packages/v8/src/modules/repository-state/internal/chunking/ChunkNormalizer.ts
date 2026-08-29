@@ -67,11 +67,14 @@ export class ChunkNormalizer
     const splitSpans =
       acceptedSpans.flatMap(
         (span) =>
-          this.splitter.split(
-            input.content,
-            span,
-            input.options,
-          ),
+          span.contentOverride ===
+            undefined
+            ? this.splitter.split(
+                input.content,
+                span,
+                input.options,
+              )
+            : [span],
       );
 
     const chunks: Chunk[] = [];
@@ -116,20 +119,30 @@ export class ChunkNormalizer
       }
 
       const trimmed =
-        this.trimSpan(
-          input.content,
-          span,
-        );
+        span.contentOverride ===
+          undefined
+          ? this.trimSpan(
+              input.content,
+              span,
+            )
+          : span;
 
       if (!trimmed) {
         continue;
       }
 
       const chunkContent =
+        trimmed.contentOverride ??
         input.content.slice(
           trimmed.startOffset,
           trimmed.endOffset,
         );
+
+      if (
+        chunkContent.trim().length === 0
+      ) {
+        continue;
+      }
 
       const contentHash =
         this.hasher.hash(

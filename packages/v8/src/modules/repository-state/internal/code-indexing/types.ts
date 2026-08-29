@@ -233,6 +233,7 @@ export interface CodeIndexImportResolutionInput {
   importerRelativePath: string;
   specifier: string;
   snapshot: WorkspaceSnapshot;
+  language?: string;
 }
 
 export interface CodeIndexImportResolution {

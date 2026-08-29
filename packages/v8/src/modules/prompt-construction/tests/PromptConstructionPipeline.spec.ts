@@ -77,8 +77,9 @@ describe("PromptConstructionPipeline", () => {
       result.budget.contextWindowTokens - result.budget.outputReservedTokens,
     );
     expect(result.reasonCodes).toContain("output_reserved_first");
+    expect(result.request.maximumOutputTokens).toBeGreaterThan(0);
     expect(result.request.maximumOutputTokens).toBeLessThanOrEqual(
-      result.budget.outputReservedTokens,
+      result.budget.contextWindowTokens - result.budget.totalUsedTokens,
     );
   });
 
@@ -167,6 +168,43 @@ describe("PromptConstructionPipeline", () => {
     expect(system).toContain("untrusted evidence");
   });
 
+  it("wraps host-injected context as untrusted evidence outside the user request", () => {
+    const result = new PromptConstructionPipeline().construct(
+      createPromptInput({
+        userMessage: [
+          "<<<MITII_USER_MESSAGE>>>",
+          "I need to design an API for bill analytics",
+          "",
+          "<<<MITII_HOST_CONTEXT>>>",
+          "Workspace file map (2 files):",
+          "- app/admin/services/analytics/index.ts",
+          "- app/admin/services/bills/index.ts",
+        ].join("\n"),
+      }),
+    );
+
+    const userMessage = result.request.messages.find(
+      (message) => message.role === "user",
+    );
+    const content = userMessage?.content ?? "";
+    expect(content).toContain("<user_request trust=\"instruction\">");
+    expect(content).toContain("I need to design an API for bill analytics");
+    expect(content).toContain("<host_context trust=\"untrusted_data\">");
+    expect(content).toContain("Workspace file map (2 files):");
+    expect(content).not.toContain("<<<MITII_USER_MESSAGE>>>");
+    expect(content).not.toContain("<<<MITII_HOST_CONTEXT>>>");
+
+    const userRequestStart = content.indexOf("<user_request");
+    const userRequestEnd = content.indexOf("</user_request>");
+    const hostContextStart = content.indexOf("<host_context");
+    expect(userRequestStart).toBeGreaterThanOrEqual(0);
+    expect(userRequestEnd).toBeGreaterThan(userRequestStart);
+    expect(hostContextStart).toBeGreaterThan(userRequestEnd);
+
+    const system = result.request.messages[0]?.content ?? "";
+    expect(system).toContain("workspace file map shows paths and metadata");
+  });
+
   it("omits tools when the provider does not support tools", () => {
     const result = new PromptConstructionPipeline().construct(
       createPromptInput({
@@ -208,6 +246,22 @@ describe("PromptConstructionPipeline", () => {
     if (toolNames.length > 0) {
       expect(result.reasonCodes).toContain("tools_filtered_by_grant");
     }
+  });
+
+  it("tells read-only answer routes not to claim edits are being applied", () => {
+    const result = new PromptConstructionPipeline().construct(
+      createPromptInput({
+        decision: createDecision({
+          mode: "ask",
+          message: "How do I add a direct bill endpoint?",
+          primaryTaskIntent: "question",
+        }),
+      }),
+    );
+
+    const system = result.request.messages[0]?.content ?? "";
+    expect(system).toContain("read-only answer route");
+    expect(system).toContain("Do not claim you are applying edits");
   });
 
   it("reports omitted repository blocks when budget is tight", () => {
@@ -295,5 +349,66 @@ describe("PromptConstructionPipeline", () => {
     expect(result.budget.withinLimits).toBe(true);
     expect(result.reasonCodes).toContain("within_provider_limits");
     expect(result.status).not.toBe("blocked");
+  });
+
+  it("truncates a huge pasted user request instead of blocking the prompt", () => {
+    const hugeConfig = JSON.stringify(
+      {
+        baseSourcePath: "http://localhost:3000",
+        helpLinks: Object.fromEntries(
+          Array.from({ length: 400 }, (_, index) => [
+            `key_${index}`,
+            `https://example.com/help/${index}/${"x".repeat(60)}`,
+          ]),
+        ),
+        youtubeApiKey: "AIzaSyC5LyOtxFHTATPLJuzNFjKfp68BOkvcbrs",
+        projectId: "1",
+      },
+      null,
+      2,
+    );
+    const ask = "Please, specify correct config params:";
+    const userMessage = `${hugeConfig}\n\n${ask}`;
+    expect(userMessage.length).toBeGreaterThan(30_000);
+
+    const longHistory = Array.from({ length: 12 }, (_, index) => ({
+      role: index % 2 === 0 ? ("user" as const) : ("assistant" as const),
+      content: `Prior turn ${index}: ${"context ".repeat(80)}`,
+    }));
+
+    const result = new PromptConstructionPipeline().construct(
+      createPromptInput({
+        userMessage,
+        conversation: longHistory,
+        capabilities: createCapabilities({
+          contextWindowTokens: 8_192,
+          maximumOutputTokens: 2_048,
+        }),
+        repositoryContext: {
+          stateToken: "st_prompt_1",
+          blocks: [
+            {
+              id: "block_1",
+              relativePath: "index.html",
+              content: "<html><body>Loading...</body></html>",
+            },
+          ],
+        },
+      }),
+    );
+
+    expect(result.status).not.toBe("blocked");
+    expect(result.budget.withinLimits).toBe(true);
+    expect(result.reasonCodes).toContain("user_request_truncated");
+    expect(result.reasonCodes).toContain("within_provider_limits");
+    expect(result.reasonCodes).not.toContain("blocked_required_overflow");
+
+    const userContent =
+      [...result.request.messages]
+        .reverse()
+        .find((message) => message.role === "user")?.content ?? "";
+    expect(userContent).toContain(ask);
+    expect(userContent).toContain("…[truncated for context budget]");
+    expect(userContent.length).toBeLessThan(userMessage.length);
   });
 });

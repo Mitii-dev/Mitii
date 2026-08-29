@@ -1,7 +1,7 @@
 import { DecisionPolicyPipeline } from "../../../modules/decision-policy";
 import type { LlmPort, ModelToolDefinition } from "../../../modules/model-gateway";
 import { MemoryPipeline } from "../../../modules/memory";
-import type { MemoryStorePort } from "../../../modules/memory";
+import type { MemoryEmbeddingPort, MemoryStorePort } from "../../../modules/memory";
 import { PlanningPipeline } from "../../../modules/planning";
 import { PromptConstructionPipeline } from "../../../modules/prompt-construction";
 import type { RepositoryContextPipeline } from "../../../modules/repository-context";
@@ -13,7 +13,7 @@ import {
 import { RequestUnderstandingPipeline } from "../../../modules/request-understanding";
 import { SkillsPipeline } from "../../../modules/skills";
 import type { SkillsCatalogPort } from "../../../modules/skills";
-import type { ToolRuntimePipeline } from "../../tool-runtime";
+import type { RepositoryGraphPort, ToolRuntimePipeline } from "../../tool-runtime";
 import type { VerificationPipeline } from "../../../modules/verification";
 
 import type {
@@ -26,11 +26,19 @@ import { AgentEnginePipeline } from "../pipeline/AgentEnginePipeline";
 export interface ComposeReadOnlyAgentEngineOptions {
   /** LLM used by Request Understanding (structured classification). */
   understandingLlm: LlmPort;
+  /** Optional cheaper LLM for strategy/enrichment planning calls. */
+  planningLlm?: LlmPort;
   /** LLM used by the Engine model/tool loop. */
   runLlm: LlmPort;
   repositoryState?: RepositoryStatePipeline;
   repositoryContext?: RepositoryContextPipeline;
   tools?: ToolRuntimePipeline;
+  /**
+   * Optional published RepoGraph port used by follow_evidence planning to
+   * collect hop-1 mustRead/affected reports. Hosts should pass the same
+   * port already wired into ToolRuntime.
+   */
+  repoGraphs?: RepositoryGraphPort;
   /** Enables verification-gated completion for mutation routes (Phase 8). */
   verification?: VerificationPipeline;
   /** Required to suspend/resume mutation approvals across process turns. */
@@ -39,12 +47,19 @@ export interface ComposeReadOnlyAgentEngineOptions {
   skillsCatalog?: SkillsCatalogPort;
   /** Optional Memory store — omitting leaves the core loop intact. */
   memoryStore?: MemoryStorePort;
+  /** Optional embeddings for hybrid memory retrieve. */
+  memoryEmbedding?: MemoryEmbeddingPort;
   /**
    * When true (default), wire the generic Planning facade.
    * Set false only for tests that intentionally skip structured plans.
    */
   enablePlanning?: boolean;
   toolDefinitions?: readonly ModelToolDefinition[];
+  /**
+   * Opt-in checklist auto-advance after successful built-in mutating tools.
+   * Defaults to false for library-safe composition; hosts may enable by default.
+   */
+  taskListAutoAdvance?: boolean;
   intake?: Partial<RequestIntakePipelineDependencies>;
   clock?: AgentEngineClockPort;
   idGenerator?: AgentEngineIdGeneratorPort;
@@ -81,16 +96,25 @@ export function composeReadOnlyAgentEngine(
       ? new SkillsPipeline({ catalog: options.skillsCatalog })
       : undefined,
     memory: options.memoryStore
-      ? new MemoryPipeline({ store: options.memoryStore })
+      ? new MemoryPipeline({
+          store: options.memoryStore,
+          embedding: options.memoryEmbedding,
+        })
       : undefined,
     planning:
-      options.enablePlanning === false ? undefined : new PlanningPipeline(),
+      options.enablePlanning === false
+        ? undefined
+        : new PlanningPipeline({
+            llm: options.planningLlm ?? options.understandingLlm,
+          }),
     repositoryState: options.repositoryState,
     repositoryContext: options.repositoryContext,
     tools: options.tools,
+    repoGraphs: options.repoGraphs,
     verification: options.verification,
     checkpointStore: options.checkpointStore,
     toolDefinitions: options.toolDefinitions,
+    taskListAutoAdvance: options.taskListAutoAdvance,
     clock: options.clock,
     idGenerator: options.idGenerator,
   });

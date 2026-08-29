@@ -9,6 +9,8 @@ export {
   MODEL_GATEWAY_PATTERNS,
   MODEL_GATEWAY_MESSAGES,
   OPENAI_COMPATIBLE_DEFAULTS,
+  ANTHROPIC_DEFAULTS,
+  GEMINI_DEFAULTS,
   HTTP_STATUS_TO_MODEL_ERROR,
 } from "./constants";
 export type { ModelProviderId } from "./constants";
@@ -46,9 +48,13 @@ export { ModelCapabilityResolver } from "./ModelCapabilityResolver";
 export {
   EchoLlmPort,
   OpenAiCompatibleLlmPort,
+  AnthropicLlmPort,
+  GeminiLlmPort,
 } from "./adapters";
 export type {
   EchoLlmPortOptions,
   OpenAiCompatibleAuthHeader,
   OpenAiCompatibleLlmPortConfig,
+  AnthropicLlmPortConfig,
+  GeminiLlmPortConfig,
 } from "./adapters";

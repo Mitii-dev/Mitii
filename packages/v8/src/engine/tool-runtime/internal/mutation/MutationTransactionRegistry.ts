@@ -1,4 +1,5 @@
 import type { WorkspaceFileSystemPort } from "../../contracts";
+import { isPatchCurrentContentReason } from "../../constants";
 import {
   normalizeRelativePath,
   resolveContainedPath,
@@ -17,6 +18,7 @@ import {
   restoreFileCopyCheckpoint,
 } from "./checkpoint";
 import { MutationError } from "./types";
+import { describeCaughtError } from "../describeCaughtError";
 import type {
   AppliedPatchRecord,
   MutationCheckpoint,
@@ -107,16 +109,20 @@ export class MutationTransactionRegistry {
         current = proposed.get(relativePath)!.content;
       }
 
-      const preflight = preflightStructuredPatch({
-        patch: { ...patch, path: relativePath },
-        currentContent: current,
-      });
-      validatePostEditSyntax(relativePath, preflight.proposedContent);
-      proposed.set(relativePath, {
-        content: preflight.proposedContent,
-        created:
-          (proposed.get(relativePath)?.created ?? false) || preflight.created,
-      });
+      try {
+        const preflight = preflightStructuredPatch({
+          patch: { ...patch, path: relativePath },
+          currentContent: current,
+        });
+        validatePostEditSyntax(relativePath, preflight.proposedContent);
+        proposed.set(relativePath, {
+          content: preflight.proposedContent,
+          created:
+            (proposed.get(relativePath)?.created ?? false) || preflight.created,
+        });
+      } catch (error) {
+        throw attachPatchFailureContent(error, relativePath, current);
+      }
     }
 
     const checkpointId = this.idGenerator();
@@ -144,17 +150,23 @@ export class MutationTransactionRegistry {
         });
       }
     } catch (error) {
-      await restoreFileCopyCheckpoint({
+      const rollbackSuffix = await this.restoreCheckpointBestEffort(
         checkpoint,
-        fileSystem: params.fileSystem,
-      });
+        params.fileSystem,
+      );
       this.checkpoints.delete(checkpointId);
       if (error instanceof MutationError) {
-        throw error;
+        throw rollbackSuffix
+          ? new MutationError(
+              error.reasonCode,
+              `${error.message}${rollbackSuffix}`,
+              error.details,
+            )
+          : error;
       }
       throw new MutationError(
         "execution_failed",
-        `Failed to apply mutation: ${String(error)}`,
+        `Failed to apply mutation: ${describeCaughtError(error)}${rollbackSuffix}`,
       );
     }
 
@@ -409,7 +421,7 @@ export class MutationTransactionRegistry {
     } catch (error) {
       throw new MutationError(
         "rollback_failed",
-        `Failed to restore checkpoint "${params.checkpointId}": ${String(error)}`,
+        `Failed to restore checkpoint "${params.checkpointId}": ${describeCaughtError(error)}`,
       );
     }
     this.checkpoints.delete(params.checkpointId);
@@ -418,6 +430,26 @@ export class MutationTransactionRegistry {
 
   public commit(checkpointId: string): void {
     this.checkpoints.delete(checkpointId);
+  }
+
+  /**
+   * Restores a checkpoint after a mutation failure without letting a
+   * rollback error mask the mutation's original error — previously the
+   * rollback failure entirely replaced the real cause. Returns a message
+   * suffix (empty string when rollback succeeded) to attach to the original
+   * error, since a double-fault leaves the workspace in a state the caller
+   * must know about.
+   */
+  private async restoreCheckpointBestEffort(
+    checkpoint: MutationCheckpoint,
+    fileSystem: WorkspaceFileSystemPort,
+  ): Promise<string> {
+    try {
+      await restoreFileCopyCheckpoint({ checkpoint, fileSystem });
+      return "";
+    } catch (restoreError) {
+      return ` (rollback also failed, workspace may be partially mutated: ${describeCaughtError(restoreError)})`;
+    }
   }
 
   private async runRecoverableMutation(params: {
@@ -442,17 +474,23 @@ export class MutationTransactionRegistry {
     try {
       await params.mutate();
     } catch (error) {
-      await restoreFileCopyCheckpoint({
+      const rollbackSuffix = await this.restoreCheckpointBestEffort(
         checkpoint,
-        fileSystem: params.fileSystem,
-      });
+        params.fileSystem,
+      );
       this.checkpoints.delete(checkpointId);
       if (error instanceof MutationError) {
-        throw error;
+        throw rollbackSuffix
+          ? new MutationError(
+              error.reasonCode,
+              `${error.message}${rollbackSuffix}`,
+              error.details,
+            )
+          : error;
       }
       throw new MutationError(
         "execution_failed",
-        `${params.failureMessage}: ${String(error)}`,
+        `${params.failureMessage}: ${describeCaughtError(error)}${rollbackSuffix}`,
       );
     }
 
@@ -461,4 +499,31 @@ export class MutationTransactionRegistry {
       changedFiles: [...params.changedFiles],
     };
   }
+}
+
+const PATCH_CONFLICT_CONTENT_CHARS = 16_000;
+
+function attachPatchFailureContent(
+  error: unknown,
+  path: string,
+  currentContent: string | undefined,
+): unknown {
+  if (
+    !(error instanceof MutationError) ||
+    !isPatchCurrentContentReason(error.reasonCode)
+  ) {
+    return error;
+  }
+  if (currentContent === undefined) {
+    return error;
+  }
+  const clipped =
+    currentContent.length > PATCH_CONFLICT_CONTENT_CHARS
+      ? `${currentContent.slice(0, PATCH_CONFLICT_CONTENT_CHARS)}\n…[truncated]`
+      : currentContent;
+  return new MutationError(error.reasonCode, error.message, {
+    ...error.details,
+    path,
+    currentContent: clipped,
+  });
 }

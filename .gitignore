@@ -27,15 +27,25 @@ legacy/tools-benchmark/tasks/eval/generated/
 legacy/tools-benchmark/tasks/eval/generated-smoke/
 legacy/tools-benchmark/results/
 
-# Solid benchmark (Phase 14 under tests/)
+# Solid benchmark (under tests/benchmark only)
 tests/benchmark/results/
+tests/benchmark/reports/
+tests/benchmark/.workspaces/
 tests/benchmark/benchmark.config.json
 tests/benchmark/fixtures/**/.mitii/
 tests/benchmark/fixtures/**/.next/
 tests/benchmark/fixtures/**/dist/
+tests/benchmark/fixtures/**/coverage/
+tests/benchmark/fixtures/**/.turbo/
+tests/benchmark/fixtures/**/.vite/
+tests/benchmark/fixtures/**/.cache/
 tests/benchmark/fixtures/**/node_modules/
 tests/benchmark/fixtures/**/package-lock.json
 tests/benchmark/fixtures/**/pnpm-lock.yaml
+tests/benchmark/fixtures/**/yarn.lock
+tests/benchmark/fixtures/**/bun.lockb
+tests/benchmark/fixtures/**/*.tsbuildinfo
+tests/reports/
 
 # Fixture sandboxes — deps, builds, Mitii session state
 legacy/tools-benchmark/fixtures/**/.mitii/
@@ -51,3 +61,9 @@ legacy/tools-benchmark/fixtures/**/index.html
 legacy/tools-benchmark/fixtures/**/src/index.css
 legacy/tools-benchmark/fixtures/**/src/main.ts
 legacy/tools-benchmark/fixtures/**/src/main.tsx
+
+# Mitii local runtime data
+.mitii-session-export.json
+.mitii-audit-pack.json
+
+.pnpm-store/

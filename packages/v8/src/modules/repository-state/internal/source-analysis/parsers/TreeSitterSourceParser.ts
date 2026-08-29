@@ -3,9 +3,11 @@ import {
   SOURCE_PARSER_IDS,
   SOURCE_PARSER_PRIORITIES,
   SOURCE_SYMBOL_KIND_BY_NODE_TYPE,
-  SOURCE_TREE_SITTER_REFERENCE_QUERIES,
-  SOURCE_TREE_SITTER_SYMBOL_QUERIES,
 } from "../constants";
+
+import {
+  resolveTreeSitterQueries,
+} from "../queries/TreeSitterQueryCatalog";
 
 import {
   GenericImportExtractor,
@@ -54,9 +56,9 @@ export class TreeSitterSourceParser
       this.runtime.supports(
         language,
       ) &&
-      SOURCE_TREE_SITTER_SYMBOL_QUERIES[
-        language
-      ] !== undefined
+      resolveTreeSitterQueries(
+        language,
+      ) !== undefined
     );
   }
 
@@ -67,6 +69,11 @@ export class TreeSitterSourceParser
       input.abortSignal,
     );
 
+    const queries =
+      resolveTreeSitterQueries(
+        input.language,
+      );
+
     const runtimeResult =
       await this.runtime.parse({
         language: input.language,
@@ -74,25 +81,17 @@ export class TreeSitterSourceParser
           input.relativePath,
         content: input.content,
 
-        ...(SOURCE_TREE_SITTER_SYMBOL_QUERIES[
-          input.language
-        ]
+        ...(queries?.symbolQuery
           ? {
               symbolQuery:
-                SOURCE_TREE_SITTER_SYMBOL_QUERIES[
-                  input.language
-                ],
+                queries.symbolQuery,
             }
           : {}),
 
-        ...(SOURCE_TREE_SITTER_REFERENCE_QUERIES[
-          input.language
-        ]
+        ...(queries?.referenceQuery
           ? {
               referenceQuery:
-                SOURCE_TREE_SITTER_REFERENCE_QUERIES[
-                  input.language
-                ],
+                queries.referenceQuery,
             }
           : {}),
         maximumSymbols:
@@ -211,6 +210,7 @@ export class TreeSitterSourceParser
 
     for (const value of values) {
       const kind =
+        value.kind?.trim() ||
         this.kindFromNodeType(
           value.nodeType,
         );

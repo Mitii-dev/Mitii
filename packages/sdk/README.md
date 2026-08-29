@@ -18,7 +18,8 @@ Published on `v*` release tags. For local development, consume from the workspac
 import { createMitiiClient, EchoLlmPort } from '@mitii/sdk';
 import type { LlmPort } from '@mitii/v8';
 
-// Hosts inject real provider ports; Echo is for local smoke only.
+// Hosts inject real provider ports (AnthropicLlmPort, GeminiLlmPort,
+// OpenAiCompatibleLlmPort). Echo is for local smoke only.
 const understandingLlm: LlmPort = new EchoLlmPort();
 const runLlm = new EchoLlmPort();
 

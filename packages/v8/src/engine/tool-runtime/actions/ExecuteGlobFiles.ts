@@ -11,6 +11,7 @@ import { assertSafeGlobPattern, matchGlob } from "../internal/GlobMatch";
 import {
   PathContainmentError,
   resolveContainedPath,
+  resolveScopedSearchPath,
 } from "../internal/PathContainment";
 import {
   globFilesInputSchema,
@@ -36,7 +37,11 @@ export async function executeGlobFiles(params: {
   const contained = await resolveContainedPath({
     fileSystem: params.fileSystem,
     workspaceRoot: params.workspaceRoot,
-    requestedPath: input.path,
+    requestedPath: resolveScopedSearchPath({
+      requestedPath: input.path,
+      pattern: input.pattern,
+      pathScopes: params.grant.pathScopes,
+    }),
     pathScopes: params.grant.pathScopes,
   });
 

@@ -81,9 +81,6 @@ export function formatVisibleFailureDetails(options: {
   if (result.error?.message) {
     lines.push(`Reason: ${result.error.message}`);
   }
-  if (result.reasonCodes?.length) {
-    lines.push(`Reason codes: ${result.reasonCodes.join(', ')}`);
-  }
   if (
     result.reasonCodes?.includes('prompt_blocked') ||
     result.error?.code === 'prompt_blocked'
@@ -93,13 +90,31 @@ export function formatVisibleFailureDetails(options: {
     );
   }
   if (verification?.type === 'verification_completed') {
+    const verificationReasons = verification.reasonCodes
+      .filter((code: string) => code !== 'run_started')
+      .slice(0, 4);
     lines.push(
-      `Verification: ${verification.status} (${verification.reasonCodes.join(', ')})`,
+      `Verification: ${verification.status}${
+        verificationReasons.length
+          ? ` (${verificationReasons.join(', ')})`
+          : ''
+      }`,
     );
-    for (const check of verification.checks.slice(0, 6)) {
+    const failedChecks = verification.checks.filter(
+      (check: { outcome: string }) =>
+        check.outcome === 'failed' || check.outcome === 'timed_out',
+    );
+    const checksToShow = failedChecks.length
+      ? failedChecks
+      : verification.checks.slice(0, 3);
+    for (const check of checksToShow.slice(0, 6)) {
       lines.push(`- ${check.kind}/${check.outcome}: ${check.summary}`);
     }
-    for (const diagnostic of verification.diagnostics.slice(0, 6)) {
+    const diagnosticsToShow = verification.diagnostics.filter(
+      (diagnostic: { severity: string }) =>
+        diagnostic.severity === 'error' || diagnostic.severity === 'warning',
+    );
+    for (const diagnostic of diagnosticsToShow.slice(0, 6)) {
       const line = diagnostic.startLine ? `:${diagnostic.startLine}` : '';
       lines.push(
         `- ${diagnostic.path}${line} ${diagnostic.severity}: ${diagnostic.message}`,
@@ -126,7 +141,24 @@ export function formatContextInspection(events: RunEvent[]): string[] {
           ? ` paths=${event.paths.slice(0, 8).join(',')}`
           : '';
       lines.push(
-        `[context] token=${event.stateToken.slice(0, 12)}… blocks=${event.blockCount} status=${event.status}${paths}`,
+        `[context] token=${event.stateToken.slice(0, 12)}… blocks=${event.blockCount} retrieved=${event.retrievedCandidates} selected=${event.selectedItems} dropped=${event.droppedBlocks} status=${event.status}${paths}`,
+      );
+      if (event.retrievalSources && event.retrievalSources.length > 0) {
+        lines.push(
+          `[context] sources=${event.retrievalSources
+            .map(
+              (source: {
+                sourceId: string;
+                status: string;
+                candidateCount: number;
+              }) => `${source.sourceId}:${source.status}:${source.candidateCount}`,
+            )
+            .join(',')}`,
+        );
+      }
+    } else if (event.type === 'model_turn') {
+      lines.push(
+        `[model] turn=${event.turnIndex} in=${event.inputTokens ?? '-'} out=${event.outputTokens ?? '-'} finish=${event.finishReason ?? '-'}${event.truncated ? ' truncated' : ''}`,
       );
     } else if (event.type === 'skills_ready') {
       const selected =
@@ -134,9 +166,19 @@ export function formatContextInspection(events: RunEvent[]): string[] {
           ? ` ids=${event.selected.slice(0, 8).join(',')}`
           : '';
       const omitted =
-        'omitted' in event && Array.isArray(event.omitted) && event.omitted.length
-          ? ` omittedIds=${event.omitted.slice(0, 8).join(',')}`
-          : '';
+        'omittedDetails' in event &&
+        Array.isArray(event.omittedDetails) &&
+        event.omittedDetails.length
+          ? ` omitted=${event.omittedDetails
+              .slice(0, 8)
+              .map(
+                (item: { id: string; reason: string }) =>
+                  `${item.id}:${item.reason}`,
+              )
+              .join(',')}`
+          : 'omitted' in event && Array.isArray(event.omitted) && event.omitted.length
+            ? ` omittedIds=${event.omitted.slice(0, 8).join(',')}`
+            : '';
       lines.push(
         `[skills] selected=${event.selectedCount}${selected} omitted=${event.omittedCount}${omitted} status=${event.status}`,
       );
@@ -145,8 +187,20 @@ export function formatContextInspection(events: RunEvent[]): string[] {
         `[memory] selected=${event.selectedCount} omitted=${event.omittedCount} status=${event.status}`,
       );
     } else if (event.type === 'decision_made') {
+      const grant =
+        'maximumWorkspaceEffect' in event && event.maximumWorkspaceEffect
+          ? ` effect=${event.maximumWorkspaceEffect}`
+          : '';
+      const scopes =
+        'pathScopes' in event && Array.isArray(event.pathScopes) && event.pathScopes.length
+          ? ` scopes=${event.pathScopes.slice(0, 8).join(',')}`
+          : '';
       lines.push(
-        `[decision] route=${event.route} disposition=${event.runDisposition}`,
+        `[decision] route=${event.route} disposition=${event.runDisposition}${grant}${scopes}`,
+      );
+    } else if (event.type === 'grant_narrowed') {
+      lines.push(
+        `[grant] narrowed effect=${event.maximumWorkspaceEffect} approval=${event.approvalMode} scopes=${event.pathScopes.slice(0, 8).join(',')}`,
       );
     }
   }

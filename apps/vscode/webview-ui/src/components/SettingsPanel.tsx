@@ -1,5 +1,16 @@
-import { useMemo, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 
+import {
+  deriveLiveTokenBudgetPreview,
+  resolvePreviewContextWindow,
+} from '@mitii/live-token-budget';
 import { getProviderPreset, PROVIDER_OPTIONS } from '../providerOptions';
 import type {
   CheckpointItemView,
@@ -10,7 +21,10 @@ import type {
   McpSettings,
   MemoryItemView,
   ProviderSettingsSnapshot,
+  SemanticIndexSource,
   SettingsTab,
+  SettingsProfileView,
+  TokenBudgetPreview,
   UiSettingsPatch,
   UiSettingsSnapshot,
   WorkspaceSnapshotInfo,
@@ -19,6 +33,20 @@ import { CheckpointPanel } from './CheckpointPanel';
 import { ContextTogglesPanel } from './ContextTogglesPanel';
 import { McpServersEditor } from './McpServersEditor';
 import { MemoryPanel } from './MemoryPanel';
+import {
+  IconAgent,
+  IconAsk,
+  IconBug,
+  IconFolder,
+  IconLayers,
+  IconModel,
+  IconPlan,
+  IconPlug,
+} from './Icons';
+import { NumberField } from './NumberField';
+import { TokenBudgetAllocation } from './TokenBudgetAllocation';
+import { TokenBudgetEditor } from './TokenBudgetEditor';
+import { LoopPolicyEditor } from './LoopPolicyEditor';
 
 interface SettingsPanelProps {
   tab: SettingsTab;
@@ -26,13 +54,19 @@ interface SettingsPanelProps {
   workspace: WorkspaceSnapshotInfo;
   overrideDraft: string;
   onOverrideDraftChange: (value: string) => void;
-  onSaveOverride: () => void;
   onClearOverride: () => void;
   onOpenFolder: () => void;
+  profiles: SettingsProfileView[];
+  activeProfileId: string;
+  onActiveProfileChange: (id: string) => void;
+  onCreateProfile: (name: string) => void;
   provider: ProviderSettingsSnapshot;
-  onProviderChange: (next: ProviderSettingsSnapshot) => void;
+  onProviderChange: (
+    next:
+      | ProviderSettingsSnapshot
+      | ((prev: ProviderSettingsSnapshot) => ProviderSettingsSnapshot),
+  ) => void;
   onProviderTypeChange: (type: string) => void;
-  onSaveProvider: () => void;
   onSetApiKey: () => void;
   onClearApiKey: () => void;
   onTestConnection: () => void;
@@ -47,10 +81,10 @@ interface SettingsPanelProps {
   mcpStore: McpServerConfig[];
   mcpRuntimeStatus: McpRuntimeStatus;
   onMcpChange: (next: McpSettings) => void;
-  onSaveMcp: (next: McpSettings) => void;
   index: IndexStatusSnapshot;
   onReindex: () => void;
   onRefreshIndex: () => void;
+  onEmbeddingSourceChange: (source: SemanticIndexSource) => void;
   memories: MemoryItemView[];
   onAddMemory: (text: string) => void;
   onDeleteMemory: (id: string) => void;
@@ -60,16 +94,53 @@ interface SettingsPanelProps {
   onDeleteCheckpoint: (id: string) => void;
   onClearCheckpoints: () => void;
   onToggleContext: (source: keyof ContextToggles, enabled: boolean) => void;
+  onSaveAll: () => void;
+  onResetTokenBudget: () => void;
+  onResetLoopPolicy: () => void;
+  saving: boolean;
 }
 
-const TABS: { id: SettingsTab; label: string }[] = [
-  { id: 'workspace', label: 'Workspace' },
-  { id: 'model', label: 'Model' },
-  { id: 'modes', label: 'Modes' },
-  { id: 'context', label: 'Context' },
-  { id: 'integrations', label: 'Integrations' },
-  { id: 'debug', label: 'Debug' },
+const COMPACT_MAX_WIDTH = 440;
+
+const NAV: {
+  id: SettingsTab;
+  label: string;
+  icon: ReactNode;
+}[] = [
+  { id: 'model', label: 'Provider', icon: <IconModel /> },
+  { id: 'workspace', label: 'Workspace', icon: <IconFolder /> },
+  { id: 'modes', label: 'Modes', icon: <IconPlan /> },
+  { id: 'context', label: 'Context', icon: <IconLayers /> },
+  { id: 'integrations', label: 'MCP', icon: <IconPlug /> },
+  { id: 'debug', label: 'Developer', icon: <IconBug /> },
 ];
+
+const PAGE_COPY: Record<SettingsTab, { title: string; description: string }> = {
+  model: {
+    title: 'Provider',
+    description: 'Connect a model first. Everything else depends on this.',
+  },
+  workspace: {
+    title: 'Workspace',
+    description: 'Folder and local index used for context.',
+  },
+  modes: {
+    title: 'Modes',
+    description: 'Defaults and run limits for Ask, Plan, and Agent.',
+  },
+  context: {
+    title: 'Context',
+    description: 'What Mitii attaches to each turn.',
+  },
+  integrations: {
+    title: 'MCP',
+    description: 'Optional servers. Off by default.',
+  },
+  debug: {
+    title: 'Developer',
+    description: 'Diagnostics and advanced controls. Leave off unless you need them.',
+  },
+};
 
 function mergeModelOptions(
   available: string[] | undefined,
@@ -97,11 +168,13 @@ function displayCapabilityStatus(capability: {
   status: string;
   reasonCode?: string;
 }): { className: string; label: string } {
-  if (
-    capability.capability === 'vectorIndex' &&
-    capability.status === 'unavailable'
-  ) {
-    return { className: 'optional', label: 'not configured' };
+  if (capability.capability === 'vectorIndex') {
+    if (capability.status === 'unavailable') {
+      return { className: 'optional', label: 'not configured' };
+    }
+    if (capability.status === 'degraded') {
+      return { className: 'degraded', label: 'degraded — reindex' };
+    }
   }
   return { className: capability.status, label: capability.status };
 }
@@ -142,6 +215,101 @@ function SettingsSection({
   );
 }
 
+function KeyValueList({
+  rows,
+}: {
+  rows: Array<{ label: string; value: ReactNode }>;
+}) {
+  return (
+    <dl className="settings-kv">
+      {rows.map((row) => (
+        <div key={row.label} className="settings-kv__row">
+          <dt>{row.label}</dt>
+          <dd className="mono">{row.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function CustomerWindowBudgetSummary({
+  preview,
+}: {
+  preview: TokenBudgetPreview;
+}) {
+  return (
+    <div className="token-budget-preview">
+      <p className="field-hint">
+        These values follow the context window as you edit it. Use Developer →
+        Token budget if you need sliders for files per mutation or module
+        shares.
+      </p>
+      <TokenBudgetAllocation preview={preview} />
+      <KeyValueList
+        rows={[
+          { label: 'Effective window', value: String(preview.contextWindowTokens) },
+          { label: 'Usable input', value: String(preview.usableInputTokens) },
+          { label: 'Output reserve', value: String(preview.maximumOutputTokens) },
+          { label: 'Model-call cap', value: String(preview.maxModelCalls) },
+          {
+            label: 'Files per mutation',
+            value: String(preview.maxUniqueFilesPerCall),
+          },
+          {
+            label: 'Verification checks',
+            value: String(preview.maxVerificationChecks),
+          },
+        ]}
+      />
+    </div>
+  );
+}
+
+function TokenBudgetPreviewTable({ preview }: { preview: TokenBudgetPreview }) {
+  const rows: Array<[string, string]> = [
+    ['Window', String(preview.contextWindowTokens)],
+    ['Output reserve', String(preview.maximumOutputTokens)],
+    ['Tool schemas', String(preview.toolSchemaTokens)],
+    ['Usable input', String(preview.usableInputTokens)],
+    ['Repository', String(preview.repositoryTokens)],
+    ['Conversation', String(preview.conversationTokens)],
+    ['Plan', String(preview.planTokens)],
+    ['Skills', String(preview.skillsTokens)],
+    ['System / rules', String(preview.systemTokens)],
+    ['Model-call cap', String(preview.maxModelCalls)],
+    ['Tool-call cap', String(preview.maxToolCalls)],
+    ['Files per mutation', String(preview.maxUniqueFilesPerCall)],
+    ['Patch payload chars', String(preview.maxPatchPayloadCharacters)],
+    ['Recent tool results', String(preview.keepRecentToolResults)],
+    ['Tool result content', `${preview.toolResultContentChars} chars`],
+    ['Observation facts', String(preview.maxEstablishedFacts)],
+    ['Verification checks', String(preview.maxVerificationChecks)],
+    ['Visible plan', preview.visiblePlanAffordable ? 'affordable' : 'skipped'],
+    [
+      'Change impact',
+      preview.changeImpactAffordable ? 'affordable' : 'skipped',
+    ],
+    [
+      'Run budget (Modes)',
+      preview.runBudgetUnlimited
+        ? 'Unlimited'
+        : `${preview.runBudgetMaxModelCalls} model / ${preview.runBudgetMaxToolCalls} tools`,
+    ],
+  ];
+  return (
+    <div className="token-budget-preview">
+      <p className="field-hint">
+        Derived split for the current window. Shares are of usable input
+        (window − output − tools). Model and tool call limits are owned by
+        Modes → Run budget.
+      </p>
+      <KeyValueList
+        rows={rows.map(([label, value]) => ({ label, value }))}
+      />
+    </div>
+  );
+}
+
 export function SettingsPanel(props: SettingsPanelProps) {
   const {
     tab,
@@ -149,13 +317,15 @@ export function SettingsPanel(props: SettingsPanelProps) {
     workspace,
     overrideDraft,
     onOverrideDraftChange,
-    onSaveOverride,
     onClearOverride,
     onOpenFolder,
+    profiles,
+    activeProfileId,
+    onActiveProfileChange,
+    onCreateProfile,
     provider,
     onProviderChange,
     onProviderTypeChange,
-    onSaveProvider,
     onSetApiKey,
     onClearApiKey,
     onTestConnection,
@@ -170,10 +340,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
     mcpStore,
     mcpRuntimeStatus,
     onMcpChange,
-    onSaveMcp,
     index,
     onReindex,
     onRefreshIndex,
+    onEmbeddingSourceChange,
     memories,
     onAddMemory,
     onDeleteMemory,
@@ -183,612 +353,1171 @@ export function SettingsPanel(props: SettingsPanelProps) {
     onDeleteCheckpoint,
     onClearCheckpoints,
     onToggleContext,
+    onSaveAll,
+    onResetTokenBudget,
+    onResetLoopPolicy,
+    saving,
   } = props;
+  const [modeSettingsTab, setModeSettingsTab] =
+    useState<'ask' | 'plan' | 'agent'>('ask');
+  const [newProfileOpen, setNewProfileOpen] = useState(false);
+  const [newProfileName, setNewProfileName] = useState('');
+  const [draftContextWindow, setDraftContextWindow] = useState<
+    number | undefined
+  >();
+  const [draftMaxOutput, setDraftMaxOutput] = useState<number | undefined>();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [compact, setCompact] = useState(false);
+  const [iconTooltip, setIconTooltip] = useState<{
+    label: string;
+    top: number;
+  } | null>(null);
 
-  const options = useMemo(
-    () => mergeModelOptions(modelOptions, provider.model),
-    [modelOptions, provider.model],
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root || typeof ResizeObserver === 'undefined') {
+      return;
+    }
+    const update = () => {
+      setCompact(root.clientWidth <= COMPACT_MAX_WIDTH);
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!compact) setIconTooltip(null);
+  }, [compact]);
+
+  const showIconTooltip = useCallback(
+    (label: string, target: HTMLElement) => {
+      const root = rootRef.current;
+      if (!root || root.clientWidth > COMPACT_MAX_WIDTH) {
+        setIconTooltip(null);
+        return;
+      }
+      const rootBox = root.getBoundingClientRect();
+      const itemBox = target.getBoundingClientRect();
+      setIconTooltip({
+        label,
+        top: itemBox.top - rootBox.top + itemBox.height / 2,
+      });
+    },
+    [],
   );
 
-  const saveCurrentTab = () => {
-    if (tab === 'workspace') {
-      onSaveOverride();
-      return;
-    }
-    if (tab === 'model') {
-      onSaveProvider();
-      return;
-    }
-    if (tab === 'modes') {
-      onSaveUi({
-        depth: ui.depth,
-        approvalMode: ui.approvalMode,
-        showReasoning: ui.showReasoning,
-        reasoningPreviewMaxChars: ui.reasoningPreviewMaxChars,
+  const hideIconTooltip = useCallback(() => {
+    setIconTooltip(null);
+  }, []);
+
+  const options = useMemo(
+    () =>
+      mergeModelOptions(
+        [
+          ...modelOptions,
+          ...Object.values(ui.modeDefaults ?? {})
+            .map((entry) => entry.model ?? '')
+            .filter(Boolean),
+        ],
+        provider.model,
+      ),
+    [modelOptions, provider.model, ui.modeDefaults],
+  );
+
+  const activeTab = NAV.some((item) => item.id === tab) ? tab : 'model';
+  const page = PAGE_COPY[activeTab];
+  const activeProfile =
+    profiles.find((profile) => profile.id === activeProfileId) ?? profiles[0];
+  const modeDefault =
+    ui.modeDefaults?.[modeSettingsTab] ?? {
+      thoroughness: 'medium' as const,
+      depth: ui.depth,
+      approvalMode: ui.approvalMode,
+      model: provider.model,
+    };
+  const embeddingsDegraded = index.capabilities?.some(
+    (capability) =>
+      capability.capability === 'vectorIndex' &&
+      capability.status === 'degraded',
+  );
+  const keyRequired =
+    provider.type === 'anthropic' || provider.type === 'gemini';
+  const previewContextWindow = resolvePreviewContextWindow({
+    draft: draftContextWindow,
+    stored: provider.contextWindow,
+    effective: provider.effectiveContextWindow,
+    fallback: ui.tokenBudget.preview.contextWindowTokens,
+  });
+  const previewMaxOutput =
+    draftMaxOutput ?? provider.maximumOutputTokens;
+  const livePreview = useMemo(() => {
+    try {
+      return deriveLiveTokenBudgetPreview({
+        contextWindowTokens: previewContextWindow,
+        maximumOutputTokens: previewMaxOutput,
+        policy: ui.tokenBudget.enabled ? ui.tokenBudget.policy : undefined,
         runBudget: ui.runBudget,
       });
-      return;
+    } catch {
+      return ui.tokenBudget.preview;
     }
-    if (tab === 'context') {
-      onSaveUi({ contextToggles: ui.contextToggles });
-      return;
-    }
-    if (tab === 'integrations') {
-      onSaveMcp(mcp);
-    }
-  };
+  }, [
+    previewContextWindow,
+    previewMaxOutput,
+    ui.runBudget,
+    ui.tokenBudget.enabled,
+    ui.tokenBudget.policy,
+    ui.tokenBudget.preview,
+  ]);
 
   return (
-    <div className="settings-view">
-      <div className="settings-toolbar">
-        <div className="settings-tabs" role="tablist" aria-label="Settings">
-          {TABS.map(({ id, label }) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={tab === id}
-              className={`settings-tab ${tab === id ? 'active' : ''}`}
-              onClick={() => onTabChange(id)}
-              title={label}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <button
-          type="button"
-          className="btn settings-save-btn"
-          onClick={saveCurrentTab}
+    <div
+      ref={rootRef}
+      className={`settings-view${compact ? ' is-compact' : ''}`}
+    >
+      <nav className="settings-nav" aria-label="Settings">
+        {NAV.map(({ id, label, icon }) => (
+          <button
+            key={id}
+            type="button"
+            className={`settings-nav__item${activeTab === id ? ' is-active' : ''}`}
+            aria-current={activeTab === id ? 'page' : undefined}
+            aria-label={label}
+            title={compact ? label : undefined}
+            onMouseEnter={(event) =>
+              showIconTooltip(label, event.currentTarget)
+            }
+            onMouseLeave={hideIconTooltip}
+            onFocus={(event) => showIconTooltip(label, event.currentTarget)}
+            onBlur={hideIconTooltip}
+            onClick={() => onTabChange(id)}
+          >
+            <span className="settings-nav__icon">{icon}</span>
+            <span className="settings-nav__label">{label}</span>
+          </button>
+        ))}
+      </nav>
+      {compact && iconTooltip ? (
+        <div
+          className="settings-nav-tooltip"
+          role="tooltip"
+          style={{ top: iconTooltip.top }}
         >
-          Save
-        </button>
-      </div>
+          {iconTooltip.label}
+        </div>
+      ) : null}
 
-      <div className="settings-body">
-        {tab === 'workspace' ? (
-          <div className="settings-panel">
-            <SettingsSection
-              title="Workspace root"
-              description="Active folder used for indexing, context, and agent runs."
-            >
-              <div className="settings-path mono">
-                {workspace.displayRoot ?? 'No folder open'}
-              </div>
-              <div className="field">
-                <label htmlFor="override">Root path override</label>
-                <input
-                  id="override"
-                  value={overrideDraft}
-                  placeholder={workspace.root ?? '/path/to/repo'}
-                  onChange={(e) => onOverrideDraftChange(e.target.value)}
-                />
-              </div>
-              <div className="row">
-                <button type="button" className="btn" onClick={onSaveOverride}>
-                  Save override
-                </button>
-                <button
-                  type="button"
-                  className="btn ghost"
-                  onClick={onClearOverride}
-                >
-                  Clear
-                </button>
-                <button
-                  type="button"
-                  className="btn ghost"
-                  onClick={onOpenFolder}
-                >
-                  Open folder
-                </button>
-              </div>
-            </SettingsSection>
+      <div className="settings-main">
+        <div className="settings-body">
+          <header className="settings-page-header">
+            <h2 className="settings-page-header__title">{page.title}</h2>
+            <p className="settings-page-header__desc">{page.description}</p>
+          </header>
 
-            <SettingsSection
-              title="Repository index"
-              description="Local file map used by Ask, Plan, Agent, and Review."
-            >
-              <div className="stat-grid">
-                <div className="stat">
-                  <div className="stat-value">{index.fileCount}</div>
-                  <div className="stat-label">Indexed items</div>
-                </div>
-                <div className="stat">
-                  <div className="stat-value" style={{ fontSize: 15 }}>
-                    {index.readiness ?? '—'}
-                  </div>
-                  <div className="stat-label">Readiness</div>
-                </div>
-                <div className="stat">
-                  <div className="stat-value" style={{ fontSize: 15 }}>
-                    {index.scanCompleteness ?? '—'}
-                  </div>
-                  <div className="stat-label">Scan</div>
-                </div>
-                <div className="stat">
-                  <div className="stat-value" style={{ fontSize: 15 }}>
-                    {formatIndexMode(index.indexMode)}
-                  </div>
-                  <div className="stat-label">Mode</div>
-                </div>
-              </div>
-              {capabilityDetails(index).length > 0 ? (
-                <div
-                  className="index-capability-list"
-                  aria-label="Repository index capability status"
-                >
-                  {capabilityDetails(index).map((capability) => {
-                    const label =
-                      INDEX_CAPABILITY_LABELS[capability.capability] ??
-                      capability.capability;
-                    const displayStatus = displayCapabilityStatus(capability);
-                    return (
-                      <div
-                        key={`${capability.rootId ?? 'root'}:${capability.capability}`}
-                        className={`index-capability index-capability--${displayStatus.className}`}
-                        title={[
-                          capability.rootId
-                            ? `Root: ${capability.rootId}`
-                            : undefined,
-                          capability.revision
-                            ? `Revision: ${capability.revision}`
-                            : undefined,
-                          capability.profile
-                            ? `Profile: ${capability.profile}`
-                            : undefined,
-                          capability.reasonCode
-                            ? `Reason: ${capability.reasonCode}`
-                            : undefined,
-                        ]
-                          .filter(Boolean)
-                          .join(' · ')}
-                      >
-                        <span className="index-capability__name">{label}</span>
-                        <span className="index-capability__status">
-                          {displayStatus.label}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : null}
-              <p className="field-hint">
-                {index.message ?? 'No index yet'}
-                {index.truncated ? ' · truncated' : ''}
-              </p>
-              <div className="row">
-                <button type="button" className="btn" onClick={onReindex}>
-                  Reindex
-                </button>
-                <button
-                  type="button"
-                  className="btn ghost"
-                  onClick={onRefreshIndex}
-                >
-                  Refresh
-                </button>
-              </div>
-            </SettingsSection>
-          </div>
-        ) : null}
-
-        {tab === 'model' ? (
-          <div className="settings-panel">
-            <SettingsSection
-              title="Provider"
-              description="Connect a local or cloud OpenAI-compatible endpoint."
-            >
-              <div className="field">
-                <label htmlFor="ptype">Provider</label>
-                <select
-                  id="ptype"
-                  value={provider.preset ?? provider.type}
-                  onChange={(e) => onProviderTypeChange(e.target.value)}
-                >
-                  {PROVIDER_OPTIONS.map((option) => (
-                    <option key={option.preset} value={option.preset}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {provider.type === 'openai-compatible' ? (
+          {activeTab === 'model' ? (
+            <div className="settings-panel">
+              <SettingsSection
+                title="Connection"
+                description="Choose the provider and model Mitii will call."
+              >
                 <div className="field">
-                  <label htmlFor="base">Base URL</label>
-                  <input
-                    id="base"
-                    value={provider.baseUrl}
-                    placeholder="http://localhost:11434/v1"
-                    onChange={(e) =>
-                      onProviderChange({ ...provider, baseUrl: e.target.value })
+                  <label htmlFor="ptype">Provider</label>
+                  <select
+                    id="ptype"
+                    value={provider.preset ?? provider.type}
+                    onChange={(e) => onProviderTypeChange(e.target.value)}
+                  >
+                    {PROVIDER_OPTIONS.map((option) => (
+                      <option key={option.preset} value={option.preset}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {provider.type !== 'echo' ? (
+                  <div className="field">
+                    <label htmlFor="base">Base URL</label>
+                    <input
+                      id="base"
+                      value={provider.baseUrl}
+                      placeholder={
+                        provider.type === 'anthropic'
+                          ? 'https://api.anthropic.com'
+                          : provider.type === 'gemini'
+                            ? 'https://generativelanguage.googleapis.com'
+                            : 'http://localhost:11434/v1'
+                      }
+                      onChange={(e) =>
+                        onProviderChange((prev) => ({
+                          ...prev,
+                          baseUrl: e.target.value,
+                        }))
+                      }
+                    />
+                    <p className="field-hint">
+                      {provider.type === 'anthropic' ||
+                      provider.type === 'gemini'
+                        ? 'Override only for a proxy or regional endpoint.'
+                        : 'Local hosts do not need an API key.'}
+                    </p>
+                  </div>
+                ) : null}
+                <div className="field">
+                  <label htmlFor="model">Model</label>
+                  <select
+                    id="model"
+                    value={
+                      customModel || !options.includes(provider.model)
+                        ? '__custom__'
+                        : provider.model
                     }
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      if (next === '__custom__') {
+                        onCustomModelChange(true);
+                        return;
+                      }
+                      onCustomModelChange(false);
+                      onProviderChange((prev) => ({ ...prev, model: next }));
+                    }}
+                  >
+                    {options.map((id) => (
+                      <option key={id} value={id}>
+                        {id}
+                      </option>
+                    ))}
+                    <option value="__custom__">Custom…</option>
+                  </select>
+                  {customModel || !options.includes(provider.model) ? (
+                    <input
+                      className="settings-follow-input"
+                      value={provider.model}
+                      placeholder="custom model id"
+                      onChange={(e) =>
+                        onProviderChange((prev) => ({
+                          ...prev,
+                          model: e.target.value,
+                        }))
+                      }
+                    />
+                  ) : null}
+                </div>
+              </SettingsSection>
+
+              <SettingsSection title="Credentials">
+                <div className="row">
+                  <span className="mono">
+                    API key: {provider.hasApiKey ? 'configured' : 'not set'}
+                    {keyRequired ? ' (required)' : ''}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    onClick={onSetApiKey}
+                    title="Set API key"
+                  >
+                    Set key
+                  </button>
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    onClick={onClearApiKey}
+                    title="Clear API key"
+                  >
+                    Clear
+                  </button>
+                </div>
+                <div className="row">
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    onClick={onTestConnection}
+                    disabled={testingConnection}
+                    title="Test provider connection"
+                  >
+                    {testingConnection ? 'Testing…' : 'Test connection'}
+                  </button>
+                  {connectionMessage || provider.connectionStatus ? (
+                    <span
+                      className={`settings-status-pill${
+                        provider.connectionOk
+                          ? ' settings-status-pill--ok'
+                          : provider.connectionOk === false
+                            ? ' settings-status-pill--err'
+                            : ''
+                      }`}
+                    >
+                      {connectionMessage ?? provider.connectionStatus}
+                    </span>
+                  ) : null}
+                </div>
+              </SettingsSection>
+
+              <SettingsSection
+                title="Token limits"
+                description="Set the context window for this machine. Retrieval, compaction, mutation batches, and verification update immediately from that window."
+              >
+                <div className="settings-field-grid">
+                  <NumberField
+                    id="contextWindow"
+                    label="Context window"
+                    min={0}
+                    step={1}
+                    value={provider.contextWindow}
+                    onDraftChange={setDraftContextWindow}
+                    onCommit={(value) => {
+                      setDraftContextWindow(undefined);
+                      onProviderChange((prev) => ({
+                        ...prev,
+                        contextWindow: value,
+                      }));
+                    }}
                   />
+                  <NumberField
+                    id="maxOutput"
+                    label="Max output"
+                    min={0}
+                    step={1}
+                    value={provider.maximumOutputTokens}
+                    onDraftChange={setDraftMaxOutput}
+                    onCommit={(value) => {
+                      setDraftMaxOutput(undefined);
+                      onProviderChange((prev) => ({
+                        ...prev,
+                        maximumOutputTokens: value,
+                      }));
+                    }}
+                  />
+                </div>
+                <p className="field-hint">
+                  {provider.contextWindow === 0
+                    ? `Context window 0 uses the model preset${
+                        provider.effectiveContextWindow
+                          ? ` (currently ${provider.effectiveContextWindow.toLocaleString()} tokens)`
+                          : ''
+                      }.`
+                    : `Context window will save as ${provider.contextWindow.toLocaleString()} tokens.`}{' '}
+                  {provider.maximumOutputTokens === 0
+                    ? 'Max output 0 derives the reserve from the window.'
+                    : `Max output will save as ${provider.maximumOutputTokens.toLocaleString()} tokens.`}
+                </p>
+                {ui.tokenBudget.enabled ? (
                   <p className="field-hint">
-                    Local hosts (localhost, LAN, Docker) do not need an API key.
+                    Custom token-budget overrides are on. Use Reset budgets to
+                    defaults if you only want the context window to drive these
+                    numbers.
+                  </p>
+                ) : null}
+                <CustomerWindowBudgetSummary preview={livePreview} />
+                <div className="row">
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    onClick={onResetTokenBudget}
+                    title="Clear custom token-budget overrides and use built-in defaults for this window"
+                  >
+                    Reset budgets to defaults
+                  </button>
+                </div>
+              </SettingsSection>
+            </div>
+          ) : null}
+
+          {activeTab === 'workspace' ? (
+            <div className="settings-panel">
+              <SettingsSection
+                title="Folder"
+                description="Active folder used for indexing, context, and agent runs."
+              >
+                <div className="settings-path mono">
+                  {workspace.displayRoot ?? 'No folder open'}
+                </div>
+                <div className="row">
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    onClick={onOpenFolder}
+                  >
+                    Open folder
+                  </button>
+                </div>
+                <details className="settings-advanced">
+                  <summary>Advanced</summary>
+                  <div className="field">
+                    <label htmlFor="override">Root path override</label>
+                    <input
+                      id="override"
+                      value={overrideDraft}
+                      placeholder={workspace.root ?? '/path/to/repo'}
+                      onChange={(e) => onOverrideDraftChange(e.target.value)}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    onClick={onClearOverride}
+                  >
+                    Clear override
+                  </button>
+                </details>
+              </SettingsSection>
+
+              <SettingsSection
+                title="Repository index"
+                description="Local file map used by Ask, Plan, Agent, and Review."
+              >
+                <div className="field">
+                  <label htmlFor="embedding-source">Embedding source</label>
+                  <select
+                    id="embedding-source"
+                    value={index.embeddingSource ?? 'bundled'}
+                    onChange={(e) =>
+                      onEmbeddingSourceChange(
+                        e.target.value as SemanticIndexSource,
+                      )
+                    }
+                  >
+                    <option value="bundled">
+                      Bundled MiniLM (on-device)
+                    </option>
+                    <option value="ollama">Ollama embeddings API</option>
+                    <option value="openai-compatible">
+                      OpenAI-compatible embeddings API
+                    </option>
+                    <option value="disabled">Disabled (lexical only)</option>
+                  </select>
+                  <p className="field-hint">
+                    {index.embeddingEnabled === false
+                      ? 'Semantic search is off. Reindex after enabling a source.'
+                      : index.embeddingSource === 'bundled'
+                        ? `On-device ${index.embeddingModel ?? 'all-MiniLM-L6-v2'} (384-d). Native ONNX when available, WASM otherwise. Reindex after changing source.`
+                        : index.embeddingSource === 'ollama'
+                          ? `HTTP embeddings via Ollama (${index.embeddingModel ?? 'nomic-embed-text'}). Reindex after changing source.`
+                          : index.embeddingSource === 'openai-compatible'
+                            ? `HTTP embeddings via the OpenAI-compatible API (${index.embeddingModel ?? 'text-embedding-3-small'}). Reindex after changing source.`
+                            : 'LanceDB stores vectors; it is not an embedding source.'}
                   </p>
                 </div>
-              ) : null}
-              <div className="field">
-                <label htmlFor="model">Model</label>
-                <select
-                  id="model"
-                  value={
-                    customModel || !options.includes(provider.model)
-                      ? '__custom__'
-                      : provider.model
-                  }
-                  onChange={(e) => {
-                    const next = e.target.value;
-                    if (next === '__custom__') {
-                      onCustomModelChange(true);
-                      return;
-                    }
-                    onCustomModelChange(false);
-                    onProviderChange({ ...provider, model: next });
-                  }}
-                >
-                  {options.map((id) => (
-                    <option key={id} value={id}>
-                      {id}
-                    </option>
-                  ))}
-                  <option value="__custom__">Custom…</option>
-                </select>
-                {customModel || !options.includes(provider.model) ? (
-                  <input
-                    style={{ marginTop: 8 }}
-                    value={provider.model}
-                    placeholder="custom model id"
-                    onChange={(e) =>
-                      onProviderChange({ ...provider, model: e.target.value })
-                    }
-                  />
-                ) : null}
-              </div>
-            </SettingsSection>
-
-            <SettingsSection
-              title="Token limits"
-              description="Tune context window and max output for budgeting and testing."
-            >
-              <div className="settings-field-grid">
-                <div className="field">
-                  <label htmlFor="contextWindow">Context window (tokens)</label>
-                  <input
-                    id="contextWindow"
-                    type="number"
-                    min={1024}
-                    step={1024}
-                    value={provider.contextWindow || 32768}
-                    onChange={(e) =>
-                      onProviderChange({
-                        ...provider,
-                        contextWindow: Number(e.target.value) || 32768,
-                      })
-                    }
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="maxOutput">Max output (tokens)</label>
-                  <input
-                    id="maxOutput"
-                    type="number"
-                    min={256}
-                    step={256}
-                    value={provider.maximumOutputTokens || 16384}
-                    onChange={(e) =>
-                      onProviderChange({
-                        ...provider,
-                        maximumOutputTokens: Number(e.target.value) || 16384,
-                      })
-                    }
-                  />
-                </div>
-              </div>
-              <p className="field-hint">
-                Applied on Save provider. Context window drives the token meter
-                and prompt reserve.
-              </p>
-            </SettingsSection>
-
-            <SettingsSection title="Credentials & connection">
-              <div className="row">
-                <span className="mono">
-                  API key: {provider.hasApiKey ? 'configured' : 'not set'}
-                </span>
-                <button
-                  type="button"
-                  className="btn ghost"
-                  onClick={onSetApiKey}
-                  title="Set API key"
-                >
-                  Set key
-                </button>
-                <button
-                  type="button"
-                  className="btn ghost"
-                  onClick={onClearApiKey}
-                  title="Clear API key"
-                >
-                  Clear key
-                </button>
-              </div>
-              <div className="row">
-                <button
-                  type="button"
-                  className="btn ghost"
-                  onClick={onTestConnection}
-                  disabled={testingConnection}
-                  title="Test provider connection"
-                >
-                  {testingConnection ? 'Testing…' : 'Test connection'}
-                </button>
-                {connectionMessage || provider.connectionStatus ? (
-                  <span
-                    className={`settings-status-pill ${
-                      provider.connectionOk
-                        ? 'settings-status-pill--ok'
-                        : provider.connectionOk === false
-                          ? 'settings-status-pill--err'
-                          : ''
-                    }`}
-                  >
-                    {connectionMessage ?? provider.connectionStatus}
-                  </span>
-                ) : null}
-              </div>
-              <div className="row">
-                <button type="button" className="btn" onClick={onSaveProvider}>
-                  Save provider
-                </button>
-              </div>
-            </SettingsSection>
-          </div>
-        ) : null}
-
-        {tab === 'modes' ? (
-          <div className="settings-panel">
-            <SettingsSection
-              title="Defaults"
-              description="Applied to new turns unless overridden in the composer."
-            >
-              <div className="field">
-                <label htmlFor="depth">Default depth</label>
-                <select
-                  id="depth"
-                  value={ui.depth}
-                  onChange={(e) =>
-                    onSaveUi({
-                      depth: e.target.value as UiSettingsSnapshot['depth'],
-                    })
-                  }
-                >
-                  <option value="auto">Auto</option>
-                  <option value="quick">Quick</option>
-                  <option value="deep">Deep</option>
-                </select>
-              </div>
-              <div className="field">
-                <label htmlFor="approval">Approval mode</label>
-                <select
-                  id="approval"
-                  value={
-                    ui.approvalMode === 'builder' ? 'guided' : ui.approvalMode
-                  }
-                  onChange={(e) => onSaveUi({ approvalMode: e.target.value })}
-                >
-                  <option value="safe">Ask for approval</option>
-                  <option value="guided">Approve for me</option>
-                  <option value="pilot">Full access</option>
-                </select>
-              </div>
-              <label className="toggle">
-                <input
-                  type="checkbox"
-                  checked={ui.showReasoning}
-                  onChange={(e) => onSaveUi({ showReasoning: e.target.checked })}
+                <KeyValueList
+                  rows={[
+                    { label: 'Indexed items', value: index.fileCount },
+                    { label: 'Readiness', value: index.readiness ?? '—' },
+                    { label: 'Scan', value: index.scanCompleteness ?? '—' },
+                    { label: 'Mode', value: formatIndexMode(index.indexMode) },
+                  ]}
                 />
-                Show reasoning stream
-              </label>
-              <div className="field">
-                <label htmlFor="preview">Reasoning preview chars</label>
-                <input
+                {capabilityDetails(index).length > 0 ? (
+                  <div
+                    className="index-capability-list"
+                    aria-label="Repository index capability status"
+                  >
+                    {capabilityDetails(index).map((capability) => {
+                      const label =
+                        INDEX_CAPABILITY_LABELS[capability.capability] ??
+                        capability.capability;
+                      const displayStatus = displayCapabilityStatus(capability);
+                      return (
+                        <div
+                          key={`${capability.rootId ?? 'root'}:${capability.capability}`}
+                          className={`index-capability index-capability--${displayStatus.className}`}
+                          title={[
+                            capability.rootId
+                              ? `Root: ${capability.rootId}`
+                              : undefined,
+                            capability.revision
+                              ? `Revision: ${capability.revision}`
+                              : undefined,
+                            capability.profile
+                              ? `Profile: ${capability.profile}`
+                              : undefined,
+                            capability.reasonCode
+                              ? `Reason: ${capability.reasonCode}`
+                              : undefined,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        >
+                          <span className="index-capability__name">{label}</span>
+                          <span className="index-capability__status">
+                            {displayStatus.label}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+                <p className="field-hint">
+                  {index.message ?? 'No index yet'}
+                  {index.truncated ? ' · truncated' : ''}
+                  {embeddingsDegraded
+                    ? ' · Semantic search is degraded. Reindex to rebuild embeddings.'
+                    : ''}
+                </p>
+                <div className="row">
+                  <button type="button" className="btn" onClick={onReindex}>
+                    {embeddingsDegraded ? 'Reindex embeddings' : 'Reindex'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    onClick={onRefreshIndex}
+                  >
+                    Refresh
+                  </button>
+                </div>
+              </SettingsSection>
+            </div>
+          ) : null}
+
+          {activeTab === 'modes' ? (
+            <div className="settings-panel">
+              <SettingsSection title="Mode defaults">
+                <div
+                  className="mode-settings-tabs"
+                  role="tablist"
+                  aria-label="Mode settings"
+                >
+                  {[
+                    { id: 'ask' as const, label: 'Ask', icon: <IconAsk /> },
+                    { id: 'plan' as const, label: 'Plan', icon: <IconPlan /> },
+                    {
+                      id: 'agent' as const,
+                      label: 'Agent',
+                      icon: <IconAgent />,
+                    },
+                  ].map((modeTab) => (
+                    <button
+                      key={modeTab.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={modeSettingsTab === modeTab.id}
+                      className={`mode-settings-tab${
+                        modeSettingsTab === modeTab.id ? ' is-active' : ''
+                      }`}
+                      onClick={() => setModeSettingsTab(modeTab.id)}
+                    >
+                      <span className="mode-settings-tab__icon">
+                        {modeTab.icon}
+                      </span>
+                      <span>{modeTab.label}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="mode-settings-summary">
+                  {modeSettingsTab === 'ask'
+                    ? 'Ask stays lightweight: read, explain, and answer with minimal workspace impact.'
+                    : modeSettingsTab === 'plan'
+                      ? 'Plan focuses on structure: clarify scope, draft phases, and save a handoff-ready plan.'
+                      : 'Agent is execution-focused: use tools, edit files, and stop at approval and budget limits.'}
+                </p>
+                <div className="field">
+                  <label htmlFor="thoroughness">Thoroughness</label>
+                  <select
+                    id="thoroughness"
+                    value={modeDefault.thoroughness ?? 'medium'}
+                    disabled={ui.intensityOverrides === true}
+                    onChange={(e) => {
+                      const thoroughness = e.target
+                        .value as 'low' | 'medium' | 'high';
+                      const depth =
+                        thoroughness === 'low'
+                          ? 'quick'
+                          : thoroughness === 'high'
+                            ? 'deep'
+                            : 'auto';
+                      const effort = thoroughness;
+                      onSaveUi({
+                        intensityOverrides: false,
+                        effort,
+                        modeDefaults: {
+                          [modeSettingsTab]: { thoroughness, depth },
+                        },
+                      });
+                    }}
+                  >
+                    <option value="low">
+                      Low — quick look, fewer loop/repair calls
+                    </option>
+                    <option value="medium">Medium — default balance</option>
+                    <option value="high">
+                      High — deep look, more loop/repair calls
+                    </option>
+                  </select>
+                  {ui.intensityOverrides ? (
+                    <p className="field-hint">
+                      Developer intensity overrides are on. Edit depth and
+                      working set under Developer, or turn overrides off.
+                    </p>
+                  ) : (
+                    <p className="field-hint">
+                      Sets exploration depth and working-set effort together for
+                      this mode.
+                    </p>
+                  )}
+                </div>
+                <div className="field">
+                  <label htmlFor="approval">Approval mode</label>
+                  <select
+                    id="approval"
+                    value={
+                      modeDefault.approvalMode === 'builder'
+                        ? 'guided'
+                        : modeDefault.approvalMode
+                    }
+                    onChange={(e) =>
+                      onSaveUi({
+                        modeDefaults: {
+                          [modeSettingsTab]: { approvalMode: e.target.value },
+                        },
+                      })
+                    }
+                  >
+                    <option value="safe">Ask for approval</option>
+                    <option value="guided">Approve for me</option>
+                    <option value="pilot">Full access</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label htmlFor="modeModel">Default model</label>
+                  <select
+                    id="modeModel"
+                    value={modeDefault.model ?? ''}
+                    onChange={(e) =>
+                      onSaveUi({
+                        modeDefaults: {
+                          [modeSettingsTab]: { model: e.target.value },
+                        },
+                      })
+                    }
+                  >
+                    <option value="">Use active model</option>
+                    {options.map((id) => (
+                      <option key={id} value={id}>
+                        {id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <label className="toggle">
+                  <input
+                    type="checkbox"
+                    checked={ui.showReasoning}
+                    onChange={(e) =>
+                      onSaveUi({ showReasoning: e.target.checked })
+                    }
+                  />
+                  Show reasoning stream
+                </label>
+                <NumberField
                   id="preview"
-                  type="number"
+                  label="Reasoning preview chars"
                   min={500}
                   max={50000}
                   value={ui.reasoningPreviewMaxChars}
-                  onChange={(e) =>
+                  onCommit={(value) =>
                     onSaveUi({
-                      reasoningPreviewMaxChars: Number(e.target.value) || 8000,
+                      reasoningPreviewMaxChars: value,
                     })
                   }
                 />
-              </div>
-            </SettingsSection>
-            <SettingsSection
-              title="Run budget"
-              description="Caps for a single Mitii turn before it stops."
-            >
-              <label className="toggle">
-                <input
-                  type="checkbox"
-                  checked={ui.runBudget.unlimited}
-                  onChange={(e) =>
-                    onSaveUi({
-                      runBudget: { unlimited: e.target.checked },
-                    })
-                  }
-                />
-                Unlimited run budget
-              </label>
-              <div className="settings-field-grid">
-                <div className="field">
-                  <label htmlFor="maxModelCalls">Model calls</label>
+              </SettingsSection>
+              <SettingsSection
+                title="Run budget"
+                description="Optional safety caps for one turn. You do not need to retune these when you change the context window."
+              >
+                <label className="toggle">
                   <input
+                    type="checkbox"
+                    checked={ui.runBudget.unlimited}
+                    onChange={(e) =>
+                      onSaveUi({
+                        runBudget: { unlimited: e.target.checked },
+                      })
+                    }
+                  />
+                  Unlimited run budget
+                </label>
+                <div className="settings-field-grid">
+                  <NumberField
                     id="maxModelCalls"
-                    type="number"
+                    label="Model calls"
                     min={1}
                     disabled={ui.runBudget.unlimited}
                     value={ui.runBudget.maxModelCalls}
-                    onChange={(e) =>
+                    onCommit={(value) =>
                       onSaveUi({
-                        runBudget: {
-                          maxModelCalls: Number(e.target.value) || 64,
-                        },
+                        runBudget: { maxModelCalls: value },
                       })
                     }
                   />
-                </div>
-                <div className="field">
-                  <label htmlFor="maxToolCalls">Tool calls</label>
-                  <input
+                  <NumberField
                     id="maxToolCalls"
-                    type="number"
+                    label="Tool calls"
                     min={1}
                     disabled={ui.runBudget.unlimited}
                     value={ui.runBudget.maxToolCalls}
-                    onChange={(e) =>
+                    onCommit={(value) =>
                       onSaveUi({
-                        runBudget: {
-                          maxToolCalls: Number(e.target.value) || 128,
-                        },
+                        runBudget: { maxToolCalls: value },
                       })
                     }
                   />
-                </div>
-                <div className="field">
-                  <label htmlFor="maxLoopIterations">Loop iterations</label>
-                  <input
+                  <NumberField
                     id="maxLoopIterations"
-                    type="number"
+                    label="Loop iterations"
                     min={1}
                     disabled={ui.runBudget.unlimited}
                     value={ui.runBudget.maxLoopIterations}
-                    onChange={(e) =>
+                    onCommit={(value) =>
                       onSaveUi({
-                        runBudget: {
-                          maxLoopIterations: Number(e.target.value) || 96,
-                        },
+                        runBudget: { maxLoopIterations: value },
                       })
                     }
                   />
-                </div>
-                <div className="field">
-                  <label htmlFor="maxWallTimeMinutes">Wall time (min)</label>
-                  <input
+                  <NumberField
                     id="maxWallTimeMinutes"
-                    type="number"
+                    label="Wall time (min)"
                     min={1}
                     disabled={ui.runBudget.unlimited}
                     value={ui.runBudget.maxWallTimeMinutes}
-                    onChange={(e) =>
+                    onCommit={(value) =>
                       onSaveUi({
-                        runBudget: {
-                          maxWallTimeMinutes: Number(e.target.value) || 30,
-                        },
+                        runBudget: { maxWallTimeMinutes: value },
                       })
                     }
                   />
                 </div>
-              </div>
-            </SettingsSection>
-          </div>
-        ) : null}
+              </SettingsSection>
+            </div>
+          ) : null}
 
-        {tab === 'context' ? (
-          <div className="settings-panel">
-            <SettingsSection
-              title="Context sources"
-              description="Choose what evidence is attached to each turn."
-            >
-              <ContextTogglesPanel
-                toggles={ui.contextToggles}
-                onToggle={onToggleContext}
+          {activeTab === 'context' ? (
+            <div className="settings-panel">
+              <SettingsSection
+                title="Sources"
+                description="Choose what evidence is attached to each turn."
+              >
+                <ContextTogglesPanel
+                  toggles={ui.contextToggles}
+                  onToggle={onToggleContext}
+                />
+              </SettingsSection>
+              <MemoryPanel
+                memories={memories}
+                onAdd={onAddMemory}
+                onDelete={onDeleteMemory}
+                onClear={onClearMemory}
               />
-            </SettingsSection>
-            <MemoryPanel
-              memories={memories}
-              onAdd={onAddMemory}
-              onDelete={onDeleteMemory}
-              onClear={onClearMemory}
-            />
-            <CheckpointPanel
-              checkpoints={checkpoints}
-              onRestore={onRestoreCheckpoint}
-              onDelete={onDeleteCheckpoint}
-              onClear={onClearCheckpoints}
-            />
-          </div>
-        ) : null}
-
-        {tab === 'integrations' ? (
-          <div className="settings-panel">
-            <SettingsSection
-              title="MCP servers"
-              description="Optional store. Off by default — install what you need, delete anytime."
-            >
-              <McpServersEditor
-                mcp={mcp}
-                storeCatalog={mcpStore}
-                runtimeStatus={mcpRuntimeStatus}
-                onChange={onMcpChange}
-                onSave={onSaveMcp}
+              <CheckpointPanel
+                checkpoints={checkpoints}
+                onRestore={onRestoreCheckpoint}
+                onDelete={onDeleteCheckpoint}
+                onClear={onClearCheckpoints}
               />
-            </SettingsSection>
-          </div>
-        ) : null}
+            </div>
+          ) : null}
 
-        {tab === 'debug' ? (
-          <div className="settings-panel">
-            <SettingsSection
-              title="Runtime diagnostics"
-              description="Use View → Output → Mitii for activation and run logs. Enable mitii.debug for verbose stacks."
+          {activeTab === 'integrations' ? (
+            <div className="settings-panel">
+              <SettingsSection
+                title="Servers"
+                description="Install what you need. Delete anytime."
+              >
+                <McpServersEditor
+                  mcp={mcp}
+                  storeCatalog={mcpStore}
+                  runtimeStatus={mcpRuntimeStatus}
+                  onChange={onMcpChange}
+                />
+              </SettingsSection>
+            </div>
+          ) : null}
+
+          {activeTab === 'debug' ? (
+            <div className="settings-panel">
+              <SettingsSection
+                title="Access"
+                description="Unlocks logging and token-budget editors below."
+              >
+                <label className="toggle">
+                  <input
+                    type="checkbox"
+                    checked={ui.developerEnabled}
+                    onChange={(e) =>
+                      onSaveUi({ developerEnabled: e.target.checked })
+                    }
+                  />
+                  Enable developer settings
+                </label>
+              </SettingsSection>
+
+              <SettingsSection
+                title="Logging"
+                description="Verbose stacks and optional model request/response dumps."
+              >
+                <div
+                  className={`developer-options${
+                    ui.developerEnabled ? '' : ' is-locked'
+                  }`}
+                >
+                  <label className="toggle">
+                    <input
+                      type="checkbox"
+                      checked={ui.debugLogging}
+                      disabled={!ui.developerEnabled}
+                      onChange={(e) =>
+                        onSaveUi({ debugLogging: e.target.checked })
+                      }
+                    />
+                    Debug logging
+                  </label>
+                  <p className="field-hint">
+                    When on, Mitii shows the Output channel and prints verbose
+                    stacks on failures (
+                    <span className="mono">mitii.debug</span>).
+                  </p>
+                  <label className="toggle">
+                    <input
+                      type="checkbox"
+                      checked={ui.modelIoLogging === true}
+                      disabled={!ui.developerEnabled}
+                      onChange={(e) =>
+                        onSaveUi({ modelIoLogging: e.target.checked })
+                      }
+                    />
+                    Log model I/O
+                  </label>
+                  <p className="field-hint">
+                    Writes sanitized messages in / assistant out to a separate{' '}
+                    <span className="mono">*-model-io.jsonl</span> under{' '}
+                    <span className="mono">.mitii/logs/</span> (
+                    <span className="mono">mitii.developer.modelIo</span>). Keep
+                    local — may include workspace content. Use command{' '}
+                    <span className="mono">Mitii: Export Shareable Diagnostic</span>{' '}
+                    for a redacted one-file paste for online help.
+                  </p>
+                </div>
+              </SettingsSection>
+
+              <SettingsSection
+                title="Intensity"
+                description="Split exploration depth and working-set effort. Leave off to use Modes → Thoroughness."
+              >
+                <div
+                  className={`developer-options${
+                    ui.developerEnabled ? '' : ' is-locked'
+                  }`}
+                >
+                  <label className="toggle">
+                    <input
+                      type="checkbox"
+                      checked={ui.intensityOverrides === true}
+                      disabled={!ui.developerEnabled}
+                      onChange={(e) =>
+                        onSaveUi({ intensityOverrides: e.target.checked })
+                      }
+                    />
+                    Unlock intensity overrides
+                  </label>
+                  <p className="field-hint">
+                    When on, composer Thoroughness shows Custom until you pick a
+                    clubbed level again.
+                  </p>
+                  <div className="field">
+                    <label htmlFor="dev-effort">Working set (effort)</label>
+                    <select
+                      id="dev-effort"
+                      value={ui.effort}
+                      disabled={
+                        !ui.developerEnabled || ui.intensityOverrides !== true
+                      }
+                      onChange={(e) =>
+                        onSaveUi({
+                          effort: e.target
+                            .value as UiSettingsSnapshot['effort'],
+                        })
+                      }
+                    >
+                      <option value="low">Low — fewer loop/repair calls</option>
+                      <option value="medium">Medium — default</option>
+                      <option value="high">
+                        High — more loop/repair calls
+                      </option>
+                    </select>
+                  </div>
+                  {(
+                    [
+                      ['ask', 'Ask depth'],
+                      ['plan', 'Plan depth'],
+                      ['agent', 'Agent depth'],
+                    ] as const
+                  ).map(([modeKey, label]) => (
+                    <div className="field" key={modeKey}>
+                      <label htmlFor={`dev-depth-${modeKey}`}>{label}</label>
+                      <select
+                        id={`dev-depth-${modeKey}`}
+                        value={
+                          ui.modeDefaults?.[modeKey]?.depth ?? ui.depth
+                        }
+                        disabled={
+                          !ui.developerEnabled ||
+                          ui.intensityOverrides !== true
+                        }
+                        onChange={(e) =>
+                          onSaveUi({
+                            modeDefaults: {
+                              [modeKey]: {
+                                depth: e.target
+                                  .value as UiSettingsSnapshot['depth'],
+                              },
+                            },
+                          })
+                        }
+                      >
+                        <option value="auto">Auto</option>
+                        <option value="quick">Quick</option>
+                        <option value="deep">Deep</option>
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              </SettingsSection>
+
+              <SettingsSection
+                title="Token budget"
+                description="The context window drives these numbers. Open Simple sliders to tune files per mutation and module shares. Advanced keeps the core clamps."
+              >
+                <div
+                  className={`developer-options${
+                    ui.developerEnabled ? '' : ' is-locked'
+                  }`}
+                >
+                  <label className="toggle">
+                    <input
+                      type="checkbox"
+                      checked={ui.tokenBudget.enabled}
+                      disabled={!ui.developerEnabled}
+                      onChange={(e) =>
+                        onSaveUi({
+                          tokenBudget: { enabled: e.target.checked },
+                        })
+                      }
+                    />
+                    Custom token budget
+                  </label>
+                  <p className="field-hint">
+                    {ui.tokenBudget.enabled
+                      ? 'Custom values stay put when the window changes. Reset to follow the window again.'
+                      : 'Leave off to follow the context window. Moving a Simple slider turns this on.'}
+                  </p>
+                  <div className="row">
+                    <button
+                      type="button"
+                      className="btn ghost"
+                      onClick={onResetTokenBudget}
+                      disabled={!ui.developerEnabled}
+                    >
+                      Reset budgets to defaults
+                    </button>
+                  </div>
+                  <TokenBudgetEditor
+                    fields={ui.tokenBudget.fields}
+                    policy={ui.tokenBudget.policy}
+                    preview={livePreview}
+                    customEnabled={ui.tokenBudget.enabled}
+                    outputOverride={previewMaxOutput > 0}
+                    disabled={!ui.developerEnabled}
+                    onPolicyChange={(patch) =>
+                      onSaveUi({
+                        tokenBudget: { enabled: true, policy: patch },
+                      })
+                    }
+                  />
+                  <details className="settings-advanced">
+                    <summary>Derived counts</summary>
+                    <TokenBudgetPreviewTable preview={livePreview} />
+                  </details>
+                </div>
+              </SettingsSection>
+
+              <SettingsSection
+                title="Loop / stall policy"
+                description="Shipped standards pick a window band from the context window (compact / standard / wide). Turn Custom on only to lab-test deltas on that band. Reset clears overrides for deploy."
+              >
+                <div
+                  className={`developer-options${
+                    ui.developerEnabled ? '' : ' is-locked'
+                  }`}
+                >
+                  <p className="field-hint">
+                    Active band:{' '}
+                    <strong>
+                      {ui.loopPolicy.band.label} ({ui.loopPolicy.band.rangeLabel})
+                    </strong>
+                    {' · '}
+                    window {ui.loopPolicy.band.contextWindowTokens.toLocaleString()}{' '}
+                    tokens. Edit permanent band values in{' '}
+                    <code>packages/v8/.../policy/loopPolicyBands.ts</code>.
+                  </p>
+                  <label className="toggle">
+                    <input
+                      type="checkbox"
+                      checked={ui.loopPolicy.enabled}
+                      disabled={!ui.developerEnabled}
+                      onChange={(e) =>
+                        onSaveUi({
+                          loopPolicy: { enabled: e.target.checked },
+                        })
+                      }
+                    />
+                    Custom loop policy
+                  </label>
+                  <p className="field-hint">
+                    {ui.loopPolicy.enabled
+                      ? 'Lab overrides apply on top of the active band. Leave off to use shipped band standards only.'
+                      : 'Leave off for deploy. Editing a field turns this on and starts from the active band.'}
+                  </p>
+                  <div className="row">
+                    <button
+                      type="button"
+                      className="btn ghost"
+                      onClick={onResetLoopPolicy}
+                      disabled={!ui.developerEnabled}
+                    >
+                      Reset loop policy to standards
+                    </button>
+                  </div>
+                  <LoopPolicyEditor
+                    fields={ui.loopPolicy.fields}
+                    thresholds={ui.loopPolicy.thresholds}
+                    bandThresholds={ui.loopPolicy.bandThresholds}
+                    customEnabled={ui.loopPolicy.enabled}
+                    disabled={!ui.developerEnabled}
+                    onThresholdsChange={(patch) =>
+                      onSaveUi({
+                        loopPolicy: { enabled: true, thresholds: patch },
+                      })
+                    }
+                  />
+                </div>
+              </SettingsSection>
+
+              <SettingsSection
+                title="Diagnostics"
+                description="Use View → Output → Mitii for activation and run logs."
+              >
+                <KeyValueList
+                  rows={[
+                    {
+                      label: 'Provider',
+                      value:
+                        provider.connectionStatus ??
+                        (provider.connectionOk === true
+                          ? 'OK'
+                          : provider.connectionOk === false
+                            ? 'Failed'
+                            : 'Not tested'),
+                    },
+                    { label: 'MCP runtime', value: mcpRuntimeStatus },
+                    {
+                      label: 'Index token',
+                      value: index.stateTokenPreview ?? '—',
+                    },
+                    {
+                      label: 'Index mode',
+                      value: `${formatIndexMode(index.indexMode)} · files=${index.fileCount}`,
+                    },
+                    {
+                      label: 'Preset',
+                      value:
+                        getProviderPreset(provider.preset ?? provider.type)
+                          ?.label ?? provider.type,
+                    },
+                  ]}
+                />
+              </SettingsSection>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="settings-footer">
+          <div className="settings-footer__profiles">
+            <select
+              aria-label="Switch profile"
+              value={activeProfile?.id ?? activeProfileId}
+              onChange={(e) => onActiveProfileChange(e.target.value)}
             >
-              <div className="stat">
-                <div className="stat-label">Provider connection</div>
-                <div className="mono" style={{ marginTop: 8 }}>
-                  {provider.connectionStatus ??
-                    (provider.connectionOk === true
-                      ? 'OK'
-                      : provider.connectionOk === false
-                        ? 'Failed'
-                        : 'Not tested')}
-                </div>
-              </div>
-              <div className="stat">
-                <div className="stat-label">MCP runtime</div>
-                <div className="mono" style={{ marginTop: 8 }}>
-                  {mcpRuntimeStatus}
-                </div>
-              </div>
-              <div className="stat">
-                <div className="stat-label">Index state token</div>
-                <div className="mono" style={{ marginTop: 8 }}>
-                  {index.stateTokenPreview ?? '—'}
-                </div>
-              </div>
-              <div className="stat">
-                <div className="stat-label">Index mode</div>
-                <div className="mono" style={{ marginTop: 8 }}>
-                  {formatIndexMode(index.indexMode)} · files={index.fileCount}
-                </div>
-              </div>
-              <p className="field-hint">
-                Preset helper:{' '}
-                {getProviderPreset(provider.preset ?? provider.type)?.label ??
-                  provider.type}
-              </p>
-              <p className="field-hint">
-                Startup logs appear in the Mitii Output channel on activate.
-                Toggle <span className="mono">mitii.debug</span> in VS Code
-                settings to auto-show the channel and print stack traces.
-              </p>
-            </SettingsSection>
+              {profiles.map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.name}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className="btn ghost"
+              onClick={() => {
+                setNewProfileName('');
+                setNewProfileOpen(true);
+              }}
+            >
+              New
+            </button>
           </div>
-        ) : null}
+          <button
+            type="button"
+            className="btn settings-save-btn"
+            onClick={onSaveAll}
+            disabled={saving}
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
       </div>
+
+      {newProfileOpen ? (
+        <div
+          className="settings-modal-backdrop"
+          role="presentation"
+          onMouseDown={() => setNewProfileOpen(false)}
+        >
+          <form
+            className="settings-modal"
+            onMouseDown={(event) => event.stopPropagation()}
+            onSubmit={(event) => {
+              event.preventDefault();
+              onCreateProfile(newProfileName);
+              setNewProfileOpen(false);
+            }}
+          >
+            <h3>New profile</h3>
+            <div className="field">
+              <label htmlFor="newProfileName">Profile name</label>
+              <input
+                id="newProfileName"
+                autoFocus
+                value={newProfileName}
+                placeholder="Local Ollama"
+                onChange={(e) => setNewProfileName(e.target.value)}
+              />
+            </div>
+            <div className="row settings-modal__actions">
+              <button
+                type="button"
+                className="btn ghost"
+                onClick={() => setNewProfileOpen(false)}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="btn">
+                Create
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
     </div>
   );
 }

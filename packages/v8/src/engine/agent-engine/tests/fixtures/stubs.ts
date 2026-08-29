@@ -171,6 +171,7 @@ export function createUnderstanding(
 export class ScriptedLlmPort implements LlmPort {
   public readonly id = "scripted-engine-llm";
   public readonly capabilities: ModelCapabilities;
+  public readonly requests: ModelRequest[] = [];
   private turn = 0;
 
   constructor(
@@ -187,9 +188,10 @@ export class ScriptedLlmPort implements LlmPort {
   }
 
   public async *complete(
-    _request: ModelRequest,
+    request: ModelRequest,
     context?: { abortSignal?: AbortSignal },
   ): AsyncIterable<ModelEvent> {
+    this.requests.push(request);
     if (context?.abortSignal?.aborted) {
       yield {
         type: "cancelled",
@@ -271,6 +273,9 @@ export function createStubDependencies(options: {
   pinFails?: boolean;
   checkpointStore?: AgentEngineDependencies["checkpointStore"];
   planning?: AgentEngineDependencies["planning"];
+  verification?: AgentEngineDependencies["verification"];
+  repoGraphs?: AgentEngineDependencies["repoGraphs"];
+  taskListAutoAdvance?: boolean;
 }): AgentEngineDependencies {
   const decision = options.decision ?? createDecision();
   const understanding = options.understanding ?? createUnderstanding();
@@ -306,9 +311,15 @@ export function createStubDependencies(options: {
     planning: options.planning,
     prompt: {
       construct: (input: PromptConstructionInput): PromptConstructionResult => {
+        const instructionText =
+          input.instructions?.projectRules?.length
+            ? `\n${input.instructions.projectRules
+                .map((rule) => rule.content)
+                .join("\n")}`
+            : "";
         const systemContent = input.planText?.trim()
-          ? `system\n${input.planText.trim()}`
-          : "system";
+          ? `system${instructionText}\n${input.planText.trim()}`
+          : `system${instructionText}`;
         const prior = (input.conversation ?? []).filter(
           (message) =>
             message.role === "user" || message.role === "assistant",
@@ -411,7 +422,17 @@ export function createStubDependencies(options: {
           query: input.query,
           mode: input.mode,
           status: "complete",
-          retrieval: {},
+          retrieval: options.contextBlocks
+            ? {
+                sourceReports: [
+                  {
+                    sourceId: "text-index",
+                    status: "complete",
+                    candidateCount: options.contextBlocks.length,
+                  },
+                ],
+              }
+            : {},
           selection: {},
           assembly: {
             blocks: (options.contextBlocks ?? []).map((block) => ({
@@ -427,8 +448,8 @@ export function createStubDependencies(options: {
           },
           warnings: [],
           statistics: {
-            retrievedCandidates: 0,
-            selectedItems: 0,
+            retrievedCandidates: options.contextBlocks?.length ?? 0,
+            selectedItems: options.contextBlocks?.length ?? 0,
             assembledBlocks: options.contextBlocks?.length ?? 0,
             droppedBlocks: 0,
             usedTokens: 10,
@@ -466,7 +487,10 @@ export function createStubDependencies(options: {
         };
       },
     },
+    verification: options.verification,
+    repoGraphs: options.repoGraphs,
     checkpointStore: options.checkpointStore ?? new InMemoryRunCheckpointStore(),
+    taskListAutoAdvance: options.taskListAutoAdvance,
     clock: {
       now: () => new Date("2026-07-25T12:00:00.000Z"),
     },

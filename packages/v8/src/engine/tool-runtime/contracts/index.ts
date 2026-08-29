@@ -54,7 +54,9 @@ export type {
   NetworkFetchRequest,
   NetworkFetchResult,
   SearchPort,
+  RepositoryGraphPort,
   WebSearchRequest,
   WebSearchHit,
   WebSearchResult,
 } from "./ports/ToolRuntimePorts";
+export type { CodeNavigationPort } from "../../../modules/code-navigation";

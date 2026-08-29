@@ -3,6 +3,9 @@ import {
   TEXT_INDEX_SCHEMA_VERSION,
   TEXT_INDEX_SQL,
 } from "../../constants";
+import {
+  expandFtsText,
+} from "../../../../codeIdentifiers";
 
 import {
   textIndexDocumentLocatorSchema,
@@ -39,6 +42,9 @@ export class SqliteTextIndexWriter
   implements TextIndexWritePort
 {
   public readonly id: string;
+
+  private trigramTableAvailable:
+    boolean | undefined;
 
   constructor(
     private readonly database:
@@ -133,6 +139,10 @@ export class SqliteTextIndexWriter
             );
 
           this.upsertDocument(
+            validated,
+          );
+
+          this.deleteDocumentFts(
             validated,
           );
 
@@ -323,6 +333,10 @@ export class SqliteTextIndexWriter
               validated,
             );
 
+          this.deleteDocumentFts(
+            validated,
+          );
+
           const result =
             this.database
               .prepare(
@@ -480,6 +494,14 @@ export class SqliteTextIndexWriter
             const relativePath of
               removedPaths
           ) {
+            this.deleteDocumentFts({
+              workspace:
+                input.workspace,
+              rootId:
+                input.rootId,
+              relativePath,
+            });
+
             this.database
               .prepare(
                 TEXT_INDEX_SQL
@@ -596,6 +618,112 @@ export class SqliteTextIndexWriter
         chunk.startLine,
         chunk.endLine,
       );
+
+    this.database
+      .prepare(
+        TEXT_INDEX_SQL
+          .INSERT_CHUNK_FTS,
+      )
+      .run(
+        expandFtsText(
+          chunk.title ?? "",
+        ),
+        expandFtsText(
+          [
+            chunk.relativePath,
+            chunk.title ?? "",
+            chunk.content,
+          ].join(" "),
+        ),
+        workspace,
+        chunk.id,
+      );
+
+    this.insertChunkTrigram(
+      workspace,
+      chunk,
+    );
+  }
+
+  private insertChunkTrigram(
+    workspace: string,
+    chunk: TextIndexDocument["chunks"][number],
+  ): void {
+    if (!this.hasTrigramTable()) {
+      return;
+    }
+
+    this.database
+      .prepare(
+        TEXT_INDEX_SQL
+          .INSERT_CHUNK_FTS_TRIGRAM,
+      )
+      .run(
+        chunk.title ?? "",
+        [
+          chunk.relativePath,
+          chunk.title ?? "",
+          chunk.content,
+        ].join(" "),
+        workspace,
+        chunk.id,
+      );
+  }
+
+  private deleteDocumentFts(
+    locator: TextIndexDocumentLocator,
+  ): void {
+    this.database
+      .prepare(
+        TEXT_INDEX_SQL
+          .DELETE_DOCUMENT_FTS,
+      )
+      .run(
+        locator.workspace,
+        locator.rootId,
+        locator.relativePath,
+      );
+
+    if (!this.hasTrigramTable()) {
+      return;
+    }
+
+    this.database
+      .prepare(
+        TEXT_INDEX_SQL
+          .DELETE_DOCUMENT_FTS_TRIGRAM,
+      )
+      .run(
+        locator.workspace,
+        locator.rootId,
+        locator.relativePath,
+      );
+  }
+
+  private hasTrigramTable(): boolean {
+    if (
+      this.trigramTableAvailable !==
+      undefined
+    ) {
+      return this.trigramTableAvailable;
+    }
+
+    const row =
+      this.database
+        .prepare(
+          `
+            SELECT COUNT(*) AS value
+            FROM sqlite_schema
+            WHERE type = 'table'
+              AND name = 'text_index_fts_trigram'
+          `,
+        )
+        .get() as { value: number };
+
+    this.trigramTableAvailable =
+      row.value > 0;
+
+    return this.trigramTableAvailable;
   }
 
   private deleteDocumentChunks(

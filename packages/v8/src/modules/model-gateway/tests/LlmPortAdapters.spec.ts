@@ -134,6 +134,49 @@ test("openai compatible port maps non-streaming responses", async () => {
   assert.equal(completed?.type === "completed" && completed.usage?.totalTokens, 5);
 });
 
+test("openai compatible port maps prompt cache hit and miss tokens", async () => {
+  const fetchImpl: typeof fetch = async () =>
+    new Response(
+      JSON.stringify({
+        choices: [
+          {
+            message: { content: "ok" },
+            finish_reason: "stop",
+          },
+        ],
+        usage: {
+          prompt_tokens: 100,
+          completion_tokens: 8,
+          total_tokens: 108,
+          prompt_cache_hit_tokens: 70,
+          prompt_cache_miss_tokens: 30,
+        },
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+
+  const port = new OpenAiCompatibleLlmPort({
+    baseUrl: "https://api.deepseek.com/v1",
+    model: "deepseek-chat",
+    apiKey: "secret",
+    fetchImpl,
+    capabilities: { supportsPromptCaching: true },
+  });
+
+  const events = await collectEvents(
+    port.complete({
+      messages: [{ role: "user", content: "ping" }],
+      stream: false,
+    }),
+  );
+  const completed = events.find((event) => event.type === "completed");
+  assert.equal(completed?.type === "completed" && completed.usage?.cacheHitTokens, 70);
+  assert.equal(completed?.type === "completed" && completed.usage?.cacheMissTokens, 30);
+});
+
 test("openai compatible port maps SSE streaming chunks", async () => {
   const payload = [
     'data: {"choices":[{"delta":{"content":"hel"}}]}',
@@ -162,6 +205,20 @@ test("openai compatible port maps SSE streaming chunks", async () => {
   );
 
   assert.equal(content, "hello");
+});
+
+test("openai compatible port derives output tokens from configured context", () => {
+  const port = new OpenAiCompatibleLlmPort({
+    baseUrl: "https://example.test/v1",
+    model: "large-context-model",
+    capabilities: {
+      contextWindowTokens: 252_000,
+    },
+    fetchImpl: async () => new Response("{}", { status: 200 }),
+  });
+
+  assert.equal(port.capabilities.contextWindowTokens, 252_000);
+  assert.equal(port.capabilities.maximumOutputTokens, 63_000);
 });
 
 test("openai compatible port maps authentication failures", async () => {
@@ -211,14 +268,8 @@ test("provider support matrix lists only shipped adapters", () => {
   assert.equal(MODEL_PROVIDER_SUPPORT.deepseek.status, "supported");
   assert.equal(MODEL_PROVIDER_SUPPORT["lm-studio"].status, "supported");
   assert.equal(MODEL_PROVIDER_SUPPORT["azure-openai"].status, "supported");
-  assert.equal(
-    Object.prototype.hasOwnProperty.call(MODEL_PROVIDER_SUPPORT, "anthropic"),
-    false,
-  );
-  assert.equal(
-    Object.prototype.hasOwnProperty.call(MODEL_PROVIDER_SUPPORT, "gemini"),
-    false,
-  );
+  assert.equal(MODEL_PROVIDER_SUPPORT.anthropic.status, "supported");
+  assert.equal(MODEL_PROVIDER_SUPPORT.gemini.status, "supported");
   assert.equal(modelEventSchema.safeParse({ type: "content_delta" }).success, false);
   assert.equal(
     modelEventSchema.safeParse({

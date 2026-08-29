@@ -2,6 +2,7 @@ import type {
   BoundedWalkIgnoreContext,
   BoundedWalkWarningCode,
 } from "../shared/bounded-walker/types";
+import type { FileSystemReadPort } from "../shared/filesystem";
 
 /**
  * WORKSPACE IGNORE POLICY
@@ -13,6 +14,9 @@ export type WorkspaceIgnoreReason =
   | "configured_path"
   | "configured_file"
   | "configured_extension"
+  | "security"
+  | "gitignore"
+  | "mitiiignore"
   | "custom_rule"
   | "not_ignored";
 
@@ -30,6 +34,14 @@ export interface WorkspaceIgnorePolicyOptions {
   ignoredPaths?: readonly string[];
   ignoredFileNames?: readonly string[];
   ignoredExtensions?: readonly string[];
+
+  /**
+   * When set, `.gitignore`, `.mitiiignore`, and `.thunderignore` are loaded
+   * from each walked directory and applied with gitignore glob semantics.
+   */
+  fileSystem?: FileSystemReadPort;
+
+  ignoreFileNames?: readonly string[];
 
   customRule?: (context: BoundedWalkIgnoreContext) => boolean;
 }

@@ -5,6 +5,7 @@ import {
   MAX_APPLY_PATCH_PATCHES,
 } from "../defaults";
 import type { ToolReasonCode } from "../contracts";
+import { normalizeApplyPatchArguments } from "../internal/normalizeApplyPatchArguments";
 
 export class MutationBatchValidationError extends Error {
   public readonly reasonCode: ToolReasonCode;
@@ -45,7 +46,7 @@ export function validateMutationBatch(params: {
 
   if (patches.length > hardPatchCap) {
     throw new MutationBatchValidationError(
-      "limit_exceeded",
+      "mutation_budget_exceeded",
       `apply_patch allows at most ${hardPatchCap} patches per call (got ${patches.length}). Split into smaller batches.`,
     );
   }
@@ -57,7 +58,7 @@ export function validateMutationBatch(params: {
   );
   if (uniqueFiles.size > budget.maxUniqueFilesPerCall) {
     throw new MutationBatchValidationError(
-      "limit_exceeded",
+      "mutation_budget_exceeded",
       `apply_patch allows at most ${budget.maxUniqueFilesPerCall} unique files per call (got ${uniqueFiles.size}). Split into smaller batches.`,
     );
   }
@@ -70,7 +71,7 @@ export function validateMutationBatch(params: {
   }
   if (payloadCharacters > budget.maxPatchPayloadCharacters) {
     throw new MutationBatchValidationError(
-      "limit_exceeded",
+      "mutation_budget_exceeded",
       `apply_patch payload is ${payloadCharacters} characters; max is ${budget.maxPatchPayloadCharacters}. Use smaller diffs or fewer files per call.`,
     );
   }
@@ -86,15 +87,16 @@ function resolveBudget(grant: ToolGrant): MutationBudget {
 function extractPatches(
   argumentsValue: unknown,
 ): Array<{ path?: unknown; oldText?: unknown; newText?: unknown }> | null {
+  const normalized = normalizeApplyPatchArguments(argumentsValue);
   if (
-    !argumentsValue ||
-    typeof argumentsValue !== "object" ||
-    !("patches" in argumentsValue) ||
-    !Array.isArray((argumentsValue as { patches: unknown }).patches)
+    !normalized ||
+    typeof normalized !== "object" ||
+    !("patches" in normalized) ||
+    !Array.isArray((normalized as { patches: unknown }).patches)
   ) {
     return null;
   }
-  return (argumentsValue as {
+  return (normalized as {
     patches: Array<{ path?: unknown; oldText?: unknown; newText?: unknown }>;
   }).patches;
 }

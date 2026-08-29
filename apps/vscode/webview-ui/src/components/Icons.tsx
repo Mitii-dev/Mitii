@@ -1,17 +1,17 @@
-import type { SVGProps } from 'react';
+import type { SVGProps } from "react";
 
 type IconProps = SVGProps<SVGSVGElement>;
 
 const defaults: IconProps = {
   width: 16,
   height: 16,
-  viewBox: '0 0 16 16',
-  fill: 'none',
-  stroke: 'currentColor',
+  viewBox: "0 0 16 16",
+  fill: "none",
+  stroke: "currentColor",
   strokeWidth: 1.5,
-  strokeLinecap: 'round',
-  strokeLinejoin: 'round',
-  'aria-hidden': true,
+  strokeLinecap: "round",
+  strokeLinejoin: "round",
+  "aria-hidden": true,
 };
 
 export function IconChat(props: IconProps) {
@@ -48,6 +48,16 @@ export function IconTokens(props: IconProps) {
       <path d="M3.5 4.5h9v2.5H3.5z" />
       <path d="M3.5 9h9v2.5H3.5z" />
       <path d="M5.5 4.5v7.5M10.5 4.5v7.5" />
+    </svg>
+  );
+}
+
+export function IconModel(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <rect x="3" y="4" width="10" height="8" rx="1.5" />
+      <path d="M5.5 6.5h5M5.5 9.5h3" />
+      <path d="M6 2.5v1.5M10 2.5v1.5M6 12v1.5M10 12v1.5" />
     </svg>
   );
 }
@@ -89,6 +99,53 @@ export function IconIndex(props: IconProps) {
   );
 }
 
+export function IconFolder(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="M2.5 4.5h4l1.2 1.4H13.5v6.6h-11z" />
+    </svg>
+  );
+}
+
+export function IconPlug(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="M6 2.5v3M10 2.5v3" />
+      <path d="M4.5 5.5h7v3.2A3.5 3.5 0 0 1 8 12.2 3.5 3.5 0 0 1 4.5 8.7z" />
+      <path d="M8 12.2V14" />
+    </svg>
+  );
+}
+
+export function IconBug(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <circle cx="8" cy="8.5" r="3.2" />
+      <path d="M8 3.2v1.6M4.2 5.2 5.4 6.2M11.8 5.2 10.6 6.2M3.2 8.5h1.6M11.2 8.5h1.6M4.2 12 5.4 11M11.8 12 10.6 11" />
+    </svg>
+  );
+}
+
+export function IconLayers(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="M8 2.8 13.2 5.6 8 8.4 2.8 5.6 8 2.8z" />
+      <path d="M3.2 8.2 8 10.8l4.8-2.6" />
+      <path d="M3.2 11 8 13.6l4.8-2.6" />
+    </svg>
+  );
+}
+
+export function IconHelpCircle(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <circle cx="8" cy="8" r="5.5" />
+      <path d="M6.4 6.2a1.8 1.8 0 0 1 3.5.6c0 1.4-1.9 1.5-1.9 3" />
+      <path d="M8 12h.01" />
+    </svg>
+  );
+}
+
 export function IconCopy(props: IconProps) {
   return (
     <svg {...defaults} {...props}>
@@ -101,7 +158,15 @@ export function IconCopy(props: IconProps) {
 export function IconStop(props: IconProps) {
   return (
     <svg {...defaults} {...props}>
-      <rect x="4.5" y="4.5" width="7" height="7" rx="1" fill="currentColor" stroke="none" />
+      <rect
+        x="4.5"
+        y="4.5"
+        width="7"
+        height="7"
+        rx="1"
+        fill="currentColor"
+        stroke="none"
+      />
     </svg>
   );
 }
@@ -216,6 +281,36 @@ export function IconDepthDeep(props: IconProps) {
       <path d="M4 8h8" />
       <path d="M5.5 10.5h5" />
       <path d="M7 13h2" />
+    </svg>
+  );
+}
+
+export function IconEffortLow(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="M3.5 11.5v-2h2v2z" />
+      <path d="M7 11.5v-4h2v4z" opacity="0.35" />
+      <path d="M10.5 11.5v-7h2v7z" opacity="0.35" />
+    </svg>
+  );
+}
+
+export function IconEffortMedium(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="M3.5 11.5v-2h2v2z" />
+      <path d="M7 11.5v-4h2v4z" />
+      <path d="M10.5 11.5v-7h2v7z" opacity="0.35" />
+    </svg>
+  );
+}
+
+export function IconEffortHigh(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="M3.5 11.5v-2h2v2z" />
+      <path d="M7 11.5v-4h2v4z" />
+      <path d="M10.5 11.5v-7h2v7z" />
     </svg>
   );
 }

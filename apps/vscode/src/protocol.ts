@@ -5,6 +5,9 @@
 
 export type AgentUiMode = 'ask' | 'plan' | 'agent' | 'review';
 export type AgentUiDepth = 'auto' | 'quick' | 'deep';
+export type AgentUiEffort = 'low' | 'medium' | 'high';
+/** Clubbed customer control → maps to depth + effort unless intensity overrides. */
+export type AgentUiThoroughness = 'low' | 'medium' | 'high';
 export type UiNav = 'chat' | 'history' | 'settings' | 'skills';
 export type SettingsTab =
   | 'workspace'
@@ -85,12 +88,32 @@ export interface ProviderSettingsSnapshot {
   hasApiKey: boolean;
   /** Discovered + preset model ids for the dropdown. */
   availableModels: string[];
-  /** Model context window in tokens (prompt budgeting + meter). */
+  /** Stored context window. 0 means use the model preset. */
   contextWindow: number;
+  /** Resolved window used at runtime when contextWindow is 0. */
+  effectiveContextWindow?: number;
   /** Max tokens the model may generate per call. */
   maximumOutputTokens: number;
   connectionOk?: boolean;
   connectionStatus?: string;
+}
+
+export interface SettingsProfileView {
+  id: string;
+  name: string;
+  provider: Pick<
+    ProviderSettingsSnapshot,
+    | 'type'
+    | 'preset'
+    | 'baseUrl'
+    | 'model'
+    | 'contextWindow'
+    | 'maximumOutputTokens'
+  >;
+  hasSecret: boolean;
+  /** SHA-256 fingerprint only. Raw secrets stay out of settings and profiles. */
+  secretHash?: string;
+  updatedAt?: string;
 }
 
 export interface TokenUsageTurn {
@@ -127,6 +150,12 @@ export interface TokenUsageSnapshot {
   contextBreakdown?: ContextUsageBreakdown;
 }
 
+export type SemanticIndexSource =
+  | 'bundled'
+  | 'ollama'
+  | 'openai-compatible'
+  | 'disabled';
+
 export interface IndexStatusSnapshot {
   fileCount: number;
   truncated: boolean;
@@ -146,6 +175,9 @@ export interface IndexStatusSnapshot {
   stateTokenPreview?: string;
   lastIndexedAt?: string;
   message?: string;
+  embeddingSource?: SemanticIndexSource;
+  embeddingModel?: string;
+  embeddingEnabled?: boolean;
 }
 
 export interface WorkspaceSnapshotInfo {
@@ -158,9 +190,39 @@ export interface UiSettingsSnapshot {
   showReasoning: boolean;
   reasoningPreviewMaxChars: number;
   depth: AgentUiDepth;
+  /** Working-set overlay: loop/mutation/repair caps. Default medium. */
+  effort: AgentUiEffort;
+  modeDefaults: Record<'ask' | 'plan' | 'agent', ModeDefaultSettingsSnapshot>;
   contextToggles: ContextToggles;
   approvalMode: string;
   runBudget: RunBudgetSettingsSnapshot;
+  /** Master gate for Settings → Developer options. */
+  developerEnabled: boolean;
+  /**
+   * When true, Modes/composer thoroughness is ignored and depth + effort are
+   * edited separately under Developer → Intensity.
+   */
+  intensityOverrides: boolean;
+  /** Maps to mitii.debug (verbose Output channel / stacks). */
+  debugLogging: boolean;
+  /**
+   * Maps to mitii.developer.modelIo — sanitized request/response JSONL under
+   * .mitii/logs/. Requires developerEnabled. (Not under mitii.debug — that
+   * key is a boolean leaf in VS Code settings.)
+   */
+  modelIoLogging: boolean;
+  /** Window-proportional token budget tunables (Debug → developer). */
+  tokenBudget: TokenBudgetSettingsSnapshot;
+  /** Agent Engine loop/stall threshold tunables (Debug → developer). */
+  loopPolicy: LoopPolicySettingsSnapshot;
+}
+
+export interface ModeDefaultSettingsSnapshot {
+  /** Customer-facing Low / Medium / High for this mode. */
+  thoroughness: AgentUiThoroughness;
+  depth: AgentUiDepth;
+  approvalMode: string;
+  model?: string;
 }
 
 export interface RunBudgetSettingsSnapshot {
@@ -171,10 +233,107 @@ export interface RunBudgetSettingsSnapshot {
   maxWallTimeMinutes: number;
 }
 
+export interface TokenBudgetFieldDescriptor {
+  key: string;
+  group: string;
+  label: string;
+  description: string;
+  docsHref?: string;
+  kind: 'ratio' | 'int' | 'number';
+  min: number;
+  max?: number;
+  step: number;
+  defaultValue?: number;
+  /** High-level Developer controls vs core ratio/clamp fields. */
+  tier?: 'simple' | 'advanced';
+  /** Hide fields owned by Modes → Run budget. */
+  hiddenFromDebug?: boolean;
+}
+
+export interface TokenBudgetPreview {
+  contextWindowTokens: number;
+  maximumOutputTokens: number;
+  toolSchemaTokens: number;
+  usableInputTokens: number;
+  loopInputBudgetTokens: number;
+  repositoryTokens: number;
+  conversationTokens: number;
+  planTokens: number;
+  skillsTokens: number;
+  systemTokens: number;
+  compactionWarnTokens: number;
+  compactionAutoTokens: number;
+  compactionHardTokens: number;
+  keepRecentToolResults: number;
+  compactedToolResultChars: number;
+  compactedToolArgumentChars: number;
+  toolResultContentChars: number;
+  droppedTurnSummaryChars: number;
+  establishedFactChars: number;
+  maxEstablishedFacts: number;
+  establishedFactReinjectChars: number;
+  memoryReinjectChars: number;
+  maxPatchesPerCall: number;
+  maxModelCalls: number;
+  maxToolCalls: number;
+  maxUniqueFilesPerCall: number;
+  maxPatchPayloadCharacters: number;
+  requireBatchedExecution: boolean;
+  maxDiagnosticSteps: number;
+  maxTasks: number;
+  maxSkills: number;
+  maxVerificationChecks: number;
+  visiblePlanAffordable: boolean;
+  changeImpactAffordable: boolean;
+  runBudgetUnlimited: boolean;
+  runBudgetMaxModelCalls: number;
+  runBudgetMaxToolCalls: number;
+}
+
+export interface TokenBudgetSettingsSnapshot {
+  enabled: boolean;
+  policy: Record<string, number>;
+  fields: TokenBudgetFieldDescriptor[];
+  preview: TokenBudgetPreview;
+}
+
+export interface LoopPolicyBandSnapshot {
+  id: 'compact' | 'standard' | 'wide';
+  label: string;
+  rangeLabel: string;
+  contextWindowTokens: number;
+}
+
+export interface LoopPolicySettingsSnapshot {
+  enabled: boolean;
+  /** Effective thresholds (band + optional lab overrides). */
+  thresholds: Record<string, number>;
+  /** Band-only shipped standards for the current context window. */
+  bandThresholds: Record<string, number>;
+  band: LoopPolicyBandSnapshot;
+  fields: TokenBudgetFieldDescriptor[];
+}
+
 export type UiSettingsPatch = Partial<
-  Omit<UiSettingsSnapshot, 'contextToggles' | 'runBudget'> & {
+  Omit<
+    UiSettingsSnapshot,
+    'contextToggles' | 'runBudget' | 'modeDefaults' | 'tokenBudget' | 'loopPolicy'
+  > & {
     contextToggles?: Partial<ContextToggles>;
     runBudget?: Partial<RunBudgetSettingsSnapshot>;
+    modeDefaults?: Partial<
+      Record<'ask' | 'plan' | 'agent', Partial<ModeDefaultSettingsSnapshot>>
+    >;
+    tokenBudget?: {
+      enabled?: boolean;
+      policy?: Record<string, number>;
+    };
+    loopPolicy?: {
+      enabled?: boolean;
+      thresholds?: Record<string, number>;
+      bandThresholds?: Record<string, number>;
+      band?: LoopPolicyBandSnapshot;
+    };
   }
 >;
 
@@ -225,6 +384,7 @@ export interface SuspensionPayload {
     toolName: string;
     paths?: string[];
     proposedText?: string;
+    arguments?: unknown;
   };
 }
 
@@ -262,12 +422,47 @@ export interface PlanStepView {
   title: string;
   status: 'pending' | 'active' | 'done' | 'skipped';
   detail?: string;
+  riskLevel?: string;
+  targetRefs?: string[];
+  expectedOutcome?: string;
+  verification?: string;
+}
+
+export interface PlanPhaseView {
+  id: string;
+  name: string;
+  purpose?: string;
+  steps: PlanStepView[];
+}
+
+export interface PlanRiskView {
+  id: string;
+  summary: string;
+  severity?: string;
+  mitigation?: string;
+}
+
+export interface PlanDimensionsView {
+  scope: string;
+  risk: string;
+  clarity: string;
+  complexity: string;
 }
 
 export interface PlanView {
   title: string;
+  /** Flat steps kept for back-compat with older UI/history. */
   steps: PlanStepView[];
+  objective?: string;
+  dimensions?: PlanDimensionsView;
+  phases?: PlanPhaseView[];
+  risks?: PlanRiskView[];
+  openQuestions?: string[];
+  verificationSummary?: string;
+  /** Workspace-relative path to the saved markdown plan under `.mitii/plans/`. */
+  savedPlanPath?: string;
 }
+
 
 export interface ReviewDiffView {
   summary: string;
@@ -333,6 +528,8 @@ export type WebviewToHostMessage =
       prompt: string;
       mode: AgentUiMode;
       depth?: AgentUiDepth;
+      effort?: AgentUiEffort;
+      approvalMode?: string;
       pinnedPaths?: string[];
     }
   | { type: 'cancel' }
@@ -395,12 +592,23 @@ export type WebviewToHostMessage =
       workspaceRootOverride?: string | null;
       mcp?: McpSettings;
       approvalMode?: string;
+      profile?: SettingsProfileView;
+      semanticIndex?: {
+        source?: SemanticIndexSource;
+      };
     }
   | { type: 'settings.setApiKey' }
   | { type: 'settings.clearApiKey' }
+  | { type: 'settings.resetTokenBudget' }
+  | { type: 'settings.resetLoopPolicy' }
+  | { type: 'profile.switch'; id: string }
   | {
       type: 'provider.testConnection';
       provider: { type: string; baseUrl: string; model: string };
+    }
+  | {
+      type: 'provider.listModels';
+      provider: { type: string; baseUrl: string };
     }
   | { type: 'index.refresh' }
   | { type: 'index.reindex' }
@@ -409,7 +617,9 @@ export type WebviewToHostMessage =
   | { type: 'openFile'; path: string; line?: number; column?: number }
   | { type: 'undoFileChanges'; runId: string }
   | { type: 'reviewFileChange'; runId: string; path: string }
-  | { type: 'dismissFileChanges'; runId: string };
+  | { type: 'dismissFileChanges'; runId: string }
+  /** Drop the active thread's pending plan without starting a run. */
+  | { type: 'clearPendingPlan' };
 
 /** Host → webview */
 export type HostToWebviewMessage =
@@ -417,6 +627,8 @@ export type HostToWebviewMessage =
       type: 'bootstrap';
       workspace: WorkspaceSnapshotInfo;
       provider: ProviderSettingsSnapshot;
+      profiles: SettingsProfileView[];
+      activeProfileId: string;
       index: IndexStatusSnapshot;
       mcp: McpSettings;
       mcpRuntimeStatus: McpRuntimeStatus;
@@ -430,12 +642,16 @@ export type HostToWebviewMessage =
       history: ChatThreadSummary[];
       activeThreadId?: string;
       activeThreadMessages?: ChatMessageView[];
+      /** Pending plan awaiting Agent-mode handoff for the active thread. */
+      pendingPlan?: PlanView | null;
       memories: MemoryItemView[];
       checkpoints: CheckpointItemView[];
     }
   | {
       type: 'settings';
       provider: ProviderSettingsSnapshot;
+      profiles: SettingsProfileView[];
+      activeProfileId: string;
       ui: UiSettingsSnapshot;
       workspace: WorkspaceSnapshotInfo;
       mcp: McpSettings;
@@ -452,6 +668,7 @@ export type HostToWebviewMessage =
       models?: string[];
       testing?: boolean;
     }
+  | { type: 'provider.models'; models: string[] }
   | { type: 'tokenUsage'; usage: TokenUsageSnapshot }
   | { type: 'run.started'; mode: AgentUiMode; prompt: string }
   | { type: 'run.event'; event: ActivityEventPayload }
@@ -466,6 +683,8 @@ export type HostToWebviewMessage =
       error?: string;
       usage?: RunUsagePayload;
       plan?: PlanView | null;
+      /** Explicit pending-plan handoff state for the active thread. */
+      pendingPlan?: PlanView | null;
     }
   | { type: 'run.cancelled' }
   | { type: 'error'; message: string }
@@ -483,6 +702,8 @@ export type HostToWebviewMessage =
       type: 'thread.loaded';
       threadId: string;
       messages: ChatMessageView[];
+      /** Pending plan awaiting Agent-mode handoff for this thread. */
+      pendingPlan?: PlanView | null;
     }
   | { type: 'setPlan'; plan: PlanView | null }
   | { type: 'setReviewDiff'; review: ReviewDiffView | null }

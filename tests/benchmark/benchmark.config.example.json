@@ -2,16 +2,16 @@
   "agent": {
     "command": "node",
     "args": [
-      "apps/cli/bin/mitii.js",
+      "tests/benchmark/scripts/mitii-benchmark-agent.mjs",
+      "--mode",
       "{mode}",
+      "--prompt",
       "{prompt}",
       "--cwd",
-      "{workspace}",
-      "--json",
-      "--echo"
+      "{workspace}"
     ],
-    "cwd": "../../..",
-    "timeoutMs": 120000,
+    "cwd": "../..",
+    "timeoutMs": 300000,
     "env": {}
   },
   "run": {
@@ -23,7 +23,9 @@
       "node_modules",
       "dist",
       ".next",
-      "coverage"
+      "coverage",
+      "tsconfig.tsbuildinfo",
+      "*.tsbuildinfo"
     ]
   },
   "gates": {

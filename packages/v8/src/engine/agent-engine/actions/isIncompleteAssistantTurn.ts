@@ -1,3 +1,5 @@
+import { AGENT_ENGINE_THRESHOLDS } from "../policy";
+
 /**
  * Detect empty or transitional assistant turns that must not end a run.
  * Models often narrate ("Let me check…") then stop or return blank after tools.
@@ -16,11 +18,141 @@ const TRANSITIONAL_CLOSERS =
 const TRAILING_INTENT_CLAUSE =
   /[.!,;]\s*(?:let me|i(?:'ll| will)|i(?:'m| am) going to)\b[\s\S]{0,160}$/i;
 
+const PSEUDO_TOOL_REQUEST =
+  /<user_request\b[^>]*>\s*(?:read|open|inspect|look at)\b[\s\S]{0,800}<\/user_request>/i;
+
+const LITERAL_TOOL_TAG_REQUEST =
+  /<(?:read_file|read_many_files|search_files|glob_files|list_directory|goto_definition|find_references)\b[^>]*>(?:\s*<\/(?:read_file|read_many_files|search_files|glob_files|list_directory|goto_definition|find_references)>)?/i;
+
+/**
+ * Provider / model tool XML that leaked into assistant text instead of a
+ * structured tool call (seen when output truncates mid-tool).
+ */
+const LEAKED_TOOL_CALL_MARKUP =
+  /<\/?(?:tool_call|function|parameter|tool_request|invoke)\b/i;
+
+const READ_FILES_REQUEST =
+  /^(?:i(?:'ll| will)|let me|i need to|i should)\b[\s\S]{0,240}\b(?:read|open|inspect|look at)\b[\s\S]{0,240}\b(?:files?|models?|services?|routes?)\b/i;
+
+/**
+ * Long monologues that still end by announcing the next investigation step
+ * ("But first, let me check…") are not final answers — regardless of length.
+ */
+const ENDS_WITH_CONTINUE_INVESTIGATION =
+  /(?:^|[.!\n])\s*(?:wait[,.]?\s+)?(?:(?:but\s+)?(?:first|actually)[,.]?\s+)?(?:let me|i(?:'ll| will)|i(?:'m| am) going to|i need to|i should)\b[\s\S]{0,220}(?:check|look(?:\s+at)?|read|inspect|search|try|build|run|see|verify|examine|investigate|open|find|re-?read|start|begin|continue|implement|fix|apply|patch)\b[\s\S]{0,200}$/i;
+
+const PLANNING_PHRASE =
+  /\b(?:let me|i(?:'ll| will)|i(?:'m| am) going to|i need to|i should|here(?:'|’)s my (?:plan|final plan)|let me think)\b/gi;
+
+const ANALYSIS_OPENER =
+  /^(?:let me analyze|let me think|ok(?:ay)?[,.]?\s+let me|here(?:'|’)s my (?:plan|final plan))\b/i;
+
+const PAST_TENSE_OUTCOME =
+  /\b(?:i (?:fixed|updated|changed|patched|cleared|removed|added)|verification (?:passed|failed)|edits were kept|completed workspace edits)\b/i;
+
 export function isEmptyAssistantTurn(params: {
   content: string;
   toolCallCount: number;
 }): boolean {
   return params.content.trim().length === 0 && params.toolCallCount === 0;
+}
+
+/**
+ * True when a long answer is the same heading / numbered item repeating.
+ * Generic degeneracy detector — not tied to a package or error message.
+ */
+export function isDegenerateRepeatedAnswer(content: string): boolean {
+  const text = content.trim();
+  if (text.length < 2_000) {
+    return false;
+  }
+
+  const numbered =
+    text.match(/^\d+\.\s+\*{0,2}[^\n]{8,160}/gm)?.map((line) =>
+      line.replace(/^\d+\.\s+/, "").replace(/\*+/g, "").trim().toLowerCase(),
+    ) ?? [];
+  if (numbered.length >= 12) {
+    const unique = new Set(numbered);
+    if (unique.size <= Math.max(3, Math.floor(numbered.length * 0.25))) {
+      return true;
+    }
+  }
+
+  const paragraphs = text
+    .split(/\n{2,}/)
+    .map((part) => part.replace(/\s+/g, " ").trim().toLowerCase())
+    .filter((part) => part.length >= 80);
+  if (paragraphs.length >= 6) {
+    const counts = new Map<string, number>();
+    for (const paragraph of paragraphs) {
+      const key = paragraph.slice(0, 220);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    const maxCount = Math.max(0, ...counts.values());
+    if (maxCount >= 3) {
+      return true;
+    }
+  }
+
+  const windows: string[] = [];
+  const windowSize = 80;
+  for (let index = 0; index + windowSize <= Math.min(text.length, 8_000); index += 40) {
+    windows.push(text.slice(index, index + windowSize));
+  }
+  if (windows.length < 8) {
+    return false;
+  }
+  const uniqueWindows = new Set(windows);
+  return uniqueWindows.size <= Math.max(3, Math.floor(windows.length * 0.2));
+}
+
+const PACKAGE_SCRIPT_CLAIM =
+  /\b(?:npm|pnpm|yarn|bun)\s+run\b|\bnpx\s+wdio\b|\bwdio\s+run\b/i;
+
+/**
+ * True when the answer names package scripts without having read the repo.
+ * Short unverified claims are suspicious; long how-to guides that mention
+ * `npx wdio` / `npm run` as instructions are not incomplete turns.
+ */
+export function claimsPackageScriptsWithoutEvidence(content: string): boolean {
+  return PACKAGE_SCRIPT_CLAIM.test(content);
+}
+
+/** Substantial instructional answers (copy-paste guides) with fences or steps. */
+export function looksLikeInstructionalAnswer(content: string): boolean {
+  const text = content.trim();
+  const fenceCount = (text.match(/```/g) ?? []).length;
+  if (fenceCount >= 2 && text.length >= 400) {
+    return true;
+  }
+  if (text.length < 600) {
+    return false;
+  }
+  return (
+    /^#{1,3}\s+/m.test(text) &&
+    /\b(?:change|step|file|replace|find|edit|apply)\b/i.test(text)
+  );
+}
+
+/**
+ * Some reasoning models respond with an instruction-shaped request for the
+ * user/runtime to read files, but without issuing real tool calls. That is not
+ * a final answer.
+ */
+export function isPseudoToolRequestAnswer(content: string): boolean {
+  const text = content.trim();
+  if (text.length === 0) return false;
+  if (PSEUDO_TOOL_REQUEST.test(text)) return true;
+  if (LITERAL_TOOL_TAG_REQUEST.test(text)) return true;
+  if (hasLeakedToolCallMarkup(text)) return true;
+  if (READ_FILES_REQUEST.test(text) && /(?:^|\n)\s*-\s+\S+/m.test(text)) {
+    return true;
+  }
+  return false;
+}
+
+export function hasLeakedToolCallMarkup(content: string): boolean {
+  return LEAKED_TOOL_CALL_MARKUP.test(content);
 }
 
 /**
@@ -30,6 +162,10 @@ export function isEmptyAssistantTurn(params: {
 export function isTransitionalAssistantAnswer(content: string): boolean {
   const text = content.trim();
   if (text.length === 0) return true;
+  if (isPseudoToolRequestAnswer(text)) return true;
+  if (isUnfinishedInvestigationAnswer(text)) return true;
+  if (isMidWorkAnalysisDump(text)) return true;
+  if (isDegenerateRepeatedAnswer(text)) return true;
   if (text.length > 600) return false;
 
   const singleBeat = text.split(/\n+/).filter((line) => line.trim().length > 0)
@@ -62,13 +198,70 @@ export function isTransitionalAssistantAnswer(content: string): boolean {
   return false;
 }
 
+/**
+ * Long investigation dumps that still announce the next look/check step.
+ * Unlike short transitional narration, these are often >600 chars, so the
+ * length short-circuit must not hide them.
+ */
+export function isUnfinishedInvestigationAnswer(content: string): boolean {
+  const text = content.trim();
+  if (text.length === 0) return false;
+  if (hasLeakedToolCallMarkup(text)) return true;
+
+  const cleaned = text
+    .replace(/<\/?(?:tool_call|function|parameter|tool_request|invoke)\b[^>]*>/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (cleaned.length === 0) return true;
+
+  return ENDS_WITH_CONTINUE_INVESTIGATION.test(cleaned);
+}
+
+/**
+ * Long first-person planning essays are not user-facing answers. Truncated
+ * remaining-error turns often spend the output budget restating a plan
+ * instead of calling apply_patch; length alone must not make them "final".
+ */
+export function isMidWorkAnalysisDump(content: string): boolean {
+  const text = content.trim();
+  if (text.length < 800) {
+    return false;
+  }
+  if (PAST_TENSE_OUTCOME.test(text) && text.length < 4_000) {
+    return false;
+  }
+
+  const planning = text.match(PLANNING_PHRASE) ?? [];
+  if (planning.length >= 8) {
+    return true;
+  }
+  if (ANALYSIS_OPENER.test(text) && planning.length >= 4) {
+    return true;
+  }
+
+  const fenceCount = (text.match(/```/g) ?? []).length;
+  return fenceCount % 2 === 1 && text.length > 1_200;
+}
+
 export function shouldRecoverIncompleteAssistantTurn(params: {
   content: string;
   toolCallCount: number;
   changedFileCount: number;
+  fileReadCalls?: number;
 }): boolean {
   if (params.toolCallCount > 0) return false;
   if (isEmptyAssistantTurn(params)) return true;
+  if (isPseudoToolRequestAnswer(params.content)) return true;
+  if (isDegenerateRepeatedAnswer(params.content)) return true;
+  if (isUnfinishedInvestigationAnswer(params.content)) return true;
+  if (isMidWorkAnalysisDump(params.content)) return true;
+  if (
+    (params.fileReadCalls ?? 0) === 0 &&
+    claimsPackageScriptsWithoutEvidence(params.content) &&
+    !looksLikeInstructionalAnswer(params.content)
+  ) {
+    return true;
+  }
   // Defense in depth: blank stored answer after mutations must not complete.
   if (params.content.trim().length === 0 && params.changedFileCount > 0) {
     return true;
@@ -105,9 +298,9 @@ export function buildIncompleteAnswerRecoveryMessage(params: {
   }
 
   return [
-    "Your previous reply looked like mid-task narration, not a final answer.",
-    "Continue: call needed tools, or finish with a clear user-facing summary of what you did and the outcome.",
-    "Do not end on transitional phrases like \"Let me…\" or \"Now let me…\".",
+    "Your previous reply looked like mid-task narration or an incomplete tool attempt, not a final answer.",
+    "Continue: call needed tools (including apply_patch when a fix is required), or finish with a clear user-facing summary of the outcome.",
+    "Do not end on transitional phrases like \"Let me…\", \"Actually…\", or leaked tool markup.",
     changed,
   ]
     .filter((part) => part.length > 0)
@@ -136,6 +329,68 @@ export function synthesizeFallbackAnswer(params: {
     prior ||
     "I stopped without a complete final answer. Please ask a follow-up if you want me to continue."
   );
+}
+
+/**
+ * Keep mid-work analysis out of the live transcript so leftover output
+ * tokens stay available for apply_patch instead of another essay.
+ */
+export function compactRecoveredAssistantContent(
+  content: string,
+  maxRecoveredAnalysisChars: number = AGENT_ENGINE_THRESHOLDS.maxRecoveredAnalysisChars,
+): string {
+  const text = content.trim();
+  if (text.length === 0) {
+    return text;
+  }
+  const dump =
+    isMidWorkAnalysisDump(text) ||
+    isUnfinishedInvestigationAnswer(text) ||
+    isDegenerateRepeatedAnswer(text);
+  if (!dump) {
+    return text;
+  }
+  const maxChars = maxRecoveredAnalysisChars;
+  if (text.length <= maxChars) {
+    return text;
+  }
+  return `${text.slice(0, Math.max(1, maxChars - 1))}…\n(omitted mid-work analysis; continue with tools)`;
+}
+
+/**
+ * Prefer a verification summary (or a short changed-files fallback) over a
+ * truncated planning dump when the run ends.
+ */
+export function selectUserFacingLoopAnswer(params: {
+  loopAnswer?: string;
+  fallbackSummary?: string;
+  changedFiles?: readonly string[];
+}): string | undefined {
+  const loop = params.loopAnswer?.trim() ?? "";
+  const summary = params.fallbackSummary?.trim() ?? "";
+  const files = params.changedFiles ?? [];
+  const hideLoop =
+    loop.length > 0 &&
+    (isTransitionalAssistantAnswer(loop) ||
+      isMidWorkAnalysisDump(loop) ||
+      isUnfinishedInvestigationAnswer(loop) ||
+      isDegenerateRepeatedAnswer(loop));
+
+  if (hideLoop) {
+    if (summary.length > 0) {
+      return summary;
+    }
+    if (files.length > 0) {
+      return synthesizeFallbackAnswer({
+        priorAnswer: loop,
+        changedFiles: files,
+      });
+    }
+    return undefined;
+  }
+
+  const joined = [loop, summary].filter((part) => part.length > 0).join("\n\n");
+  return joined.length > 0 ? joined : undefined;
 }
 
 /**
@@ -172,6 +427,7 @@ export function amendMessageWithPriorConversation(
     "Prior conversation (for intent routing only; not the live user request):",
     ...lines,
     "",
+    // Keep in sync with extractCurrentUserRequestForAnalysis.
     "Current user request:",
     primary,
   ].join("\n");

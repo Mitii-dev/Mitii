@@ -92,8 +92,85 @@ const FILE_REFERENCE_PATTERN = new RegExp(
 const FOLDER_REFERENCE_PATTERN =
   /(?:^|[\s"'`])((?:\.{1,2}\/|[a-zA-Z0-9_-]+\/)(?:[a-zA-Z0-9_.-]+\/)+)(?=$|[\s"'`,.;:!?)\]}])/g;
 
+/**
+ * Common first-segment workspace roots across languages and layouts.
+ * Single-segment @mentions use this catalog; multi-segment @paths match
+ * generically (any @foo/bar) so layouts are not JS-monorepo-only.
+ */
+const WORKSPACE_PATH_ROOT_SEGMENTS = [
+  "package",
+  "packages",
+  "app",
+  "apps",
+  "lib",
+  "libs",
+  "service",
+  "services",
+  "module",
+  "modules",
+  "src",
+  "crate",
+  "crates",
+  "cmd",
+  "internal",
+  "pkg",
+  "bin",
+  "example",
+  "examples",
+  "testdata",
+  "vendor",
+  "third_party",
+  "third-party",
+  "proto",
+  "api",
+  "backend",
+  "frontend",
+  "server",
+  "client",
+  "web",
+  "mobile",
+  "desktop",
+  "tool",
+  "tools",
+  "script",
+  "scripts",
+  "config",
+  "configs",
+  "deploy",
+  "infra",
+  "chart",
+  "charts",
+  "helm",
+  "doc",
+  "docs",
+  "test",
+  "tests",
+  "spec",
+  "specs",
+] as const;
+
+const WORKSPACE_PATH_ROOT_ALTERNATION = WORKSPACE_PATH_ROOT_SEGMENTS.join("|");
+
+/**
+ * Chat @-mentions for workspace paths:
+ * - multi-segment: @apps/docs, @crates/core, @backend/api (layout-neutral)
+ * - single-segment roots from WORKSPACE_PATH_ROOT_SEGMENTS
+ * Leading @ is stripped when storing the target value.
+ */
+const AT_PATH_REFERENCE_PATTERN = new RegExp(
+  `(?:^|[\\s"'\\\`])@((?:[A-Za-z_][\\w.-]*(?:\\/[\\w.-]+)+|(?:${WORKSPACE_PATH_ROOT_ALTERNATION})))\\b`,
+  "gi",
+);
+
 const SYMBOL_REFERENCE_PATTERN =
   /(?:^|[\s"'`])(?:function|method|class|interface|type|component|symbol|struct|trait|enum|module|namespace|def|fn)\s+[`'"]?([a-zA-Z_$][a-zA-Z0-9_$]*)[`'"]?/gi;
+
+/**
+ * Identifiers near runtime / compiler error phrasing across common ecosystems
+ * (JS/TS, Python, Rust E-codes, linker unresolved symbols).
+ */
+const ERROR_SYMBOL_REFERENCE_PATTERN =
+  /(?:\b(?:Identifier|NameError|AttributeError|ImportError|ModuleNotFoundError|ReferenceError|TypeError|SyntaxError|Cannot find (?:name|module)|undefined reference to|unresolved import|error\[E\d+\])\b[^\n`'"]{0,100}[`'"]([A-Za-z_][A-Za-z0-9_$]*)[`'"]|\b(?:ReferenceError|TypeError|SyntaxError|NameError|AttributeError|ImportError|ModuleNotFoundError):\s*([A-Za-z_][A-Za-z0-9_$]*)\b)/g;
 
 const LOOKS_LIKE_FILE_PATTERN = /(?:^|\/)[^/]+\.[a-zA-Z0-9]+$/;
 
@@ -572,7 +649,9 @@ export const TASK_ANALYZER_CONSTANTS = {
 
   TARGET_PATTERNS: {
     FOLDER_REFERENCE: FOLDER_REFERENCE_PATTERN,
+    AT_PATH_REFERENCE: AT_PATH_REFERENCE_PATTERN,
     SYMBOL_REFERENCE: SYMBOL_REFERENCE_PATTERN,
+    ERROR_SYMBOL_REFERENCE: ERROR_SYMBOL_REFERENCE_PATTERN,
     LOOKS_LIKE_FILE: LOOKS_LIKE_FILE_PATTERN,
     PACKAGE_FOLDER: PACKAGE_FOLDER_PATTERN,
   },

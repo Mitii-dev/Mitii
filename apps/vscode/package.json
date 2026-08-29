@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
-  "version": "2.8.5",
+  "version": "2.8.72",
   "publisher": "mitii",
   "license": "AGPL-3.0-or-later",
   "icon": "media/mitii-short-logo.png",
@@ -64,10 +64,12 @@
     "onView:mitii.sidebar",
     "onCommand:mitii.openChat",
     "onCommand:mitii.indexWorkspace",
+    "onCommand:mitii.pauseIndexing",
     "onCommand:mitii.showSettings",
     "onCommand:mitii.generateCommitMessage",
     "onCommand:mitii.exportSessionLog",
     "onCommand:mitii.exportAuditPack",
+    "onCommand:mitii.exportShareableDiagnostic",
     "onCommand:mitii.openSessionLog",
     "onCommand:mitii.generateChangelog",
     "onCommand:mitii.prepareRelease",
@@ -81,6 +83,8 @@
   "files": [
     "dist/extension.js",
     "dist/native/better_sqlite3.node",
+    "dist/native/onnxruntime/**/*",
+    "dist/tree-sitter/**/*",
     "dist/skills/**/*",
     "dist/webview/**/*",
     "media/**/*",
@@ -102,6 +106,11 @@
         "category": "Mitii"
       },
       {
+        "command": "mitii.pauseIndexing",
+        "title": "Mitii: Pause Indexing",
+        "category": "Mitii"
+      },
+      {
         "command": "mitii.showSettings",
         "title": "Mitii: Show Settings",
         "category": "Mitii"
@@ -114,6 +123,11 @@
       {
         "command": "mitii.exportAuditPack",
         "title": "Mitii: Export Audit Pack",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.exportShareableDiagnostic",
+        "title": "Mitii: Export Shareable Diagnostic",
         "category": "Mitii"
       },
       {
@@ -217,19 +231,566 @@
     "configuration": {
       "title": "Mitii AI Agent",
       "properties": {
+        "mitii.developer.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Unlock developer options in the Mitii Settings → Developer page (nested debug switches appear after this is enabled)"
+        },
+        "mitii.developer.intensityOverrides": {
+          "type": "boolean",
+          "default": false,
+          "description": "Edit exploration depth and working-set effort separately instead of the clubbed Thoroughness control. Requires mitii.developer.enabled."
+        },
         "mitii.debug": {
           "type": "boolean",
           "default": false,
-          "description": "Enable debug logging in the Mitii Output channel (auto-shows the channel; includes stack traces on failures)"
+          "description": "Enable debug logging in the Mitii Output channel (auto-shows the channel; includes stack traces on failures). Requires mitii.developer.enabled in Settings → Developer."
+        },
+        "mitii.developer.modelIo": {
+          "type": "boolean",
+          "default": false,
+          "description": "When developer settings are enabled, write sanitized model request/response bodies to a separate *-model-io.jsonl under .mitii/logs/. Large and may include workspace content — keep local. Use Mitii: Export Shareable Diagnostic for a redacted one-file paste for online help."
+        },
+        "mitii.tokenBudget.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use custom Window Budget ratios from mitii.tokenBudget.* instead of built-in defaults. Requires developer settings in the Mitii Debug tab."
+        },
+        "mitii.tokenBudget.outputRatio": {
+          "type": "number",
+          "default": 0.1,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of the context window reserved for model output when max output is 0."
+        },
+        "mitii.tokenBudget.outputMinTokens": {
+          "type": "number",
+          "default": 1024,
+          "minimum": 1,
+          "description": "Floor for the derived output reserve."
+        },
+        "mitii.tokenBudget.outputMaxTokens": {
+          "type": "number",
+          "default": 32768,
+          "minimum": 1,
+          "description": "Ceiling for the derived output reserve."
+        },
+        "mitii.tokenBudget.outputWindowCapRatio": {
+          "type": "number",
+          "default": 0.2,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Output cannot exceed this fraction of the advertised window."
+        },
+        "mitii.tokenBudget.toolSchemaFallbackTokens": {
+          "type": "number",
+          "default": 8000,
+          "minimum": 0,
+          "description": "Fallback tool-JSON tokens when tool schemas have not been measured."
+        },
+        "mitii.tokenBudget.toolSchemaFallbackWindowRatio": {
+          "type": "number",
+          "default": 0.2,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fallback tool cost cannot exceed this fraction of the window."
+        },
+        "mitii.tokenBudget.minimumUsableInputTokens": {
+          "type": "number",
+          "default": 2048,
+          "minimum": 1,
+          "description": "Keep at least this many tokens for prompt and history after output and tools."
+        },
+        "mitii.tokenBudget.loopSafetyRatio": {
+          "type": "number",
+          "default": 0.94,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of usable input allowed in the live model-loop budget."
+        },
+        "mitii.tokenBudget.repositoryShare": {
+          "type": "number",
+          "default": 0.28,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Share of usable input for repository context."
+        },
+        "mitii.tokenBudget.conversationShare": {
+          "type": "number",
+          "default": 0.4,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Share of usable input for conversation and tool history."
+        },
+        "mitii.tokenBudget.planShare": {
+          "type": "number",
+          "default": 0.06,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Share of usable input for plan text."
+        },
+        "mitii.tokenBudget.skillsShare": {
+          "type": "number",
+          "default": 0.04,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Share of usable input for selected skill bodies."
+        },
+        "mitii.tokenBudget.planTokensCap": {
+          "type": "number",
+          "default": 16000,
+          "minimum": 1,
+          "description": "Hard cap on plan tokens regardless of share."
+        },
+        "mitii.tokenBudget.skillsTokensCap": {
+          "type": "number",
+          "default": 8000,
+          "minimum": 1,
+          "description": "Hard cap on skill-body tokens regardless of share."
+        },
+        "mitii.tokenBudget.repositoryTokensCap": {
+          "type": "number",
+          "default": 64000,
+          "minimum": 1,
+          "description": "Hard cap on repository-context tokens regardless of share."
+        },
+        "mitii.tokenBudget.compactionWarnRatio": {
+          "type": "number",
+          "default": 0.7,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Loop pressure warning fires at this fraction of the loop budget."
+        },
+        "mitii.tokenBudget.compactionAutoRatio": {
+          "type": "number",
+          "default": 0.8,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Automatic history compaction starts at this fraction of the loop budget."
+        },
+        "mitii.tokenBudget.compactionHardRatio": {
+          "type": "number",
+          "default": 0.92,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Aggressive compaction and memory reinject at this fraction of the loop budget."
+        },
+        "mitii.tokenBudget.keepRecentToolResultsRatio": {
+          "type": "number",
+          "default": 0.00008,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of usable input converted to the count of recent tool results kept in full."
+        },
+        "mitii.tokenBudget.keepRecentToolResultsMin": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "description": "Floor for recent tool results kept in full."
+        },
+        "mitii.tokenBudget.keepRecentToolResultsMax": {
+          "type": "number",
+          "default": 16,
+          "minimum": 1,
+          "description": "Maximum number of recent tool results kept in full."
+        },
+        "mitii.tokenBudget.compactedToolResultCharsRatio": {
+          "type": "number",
+          "default": 0.006,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of usable input converted to compacted tool-result characters."
+        },
+        "mitii.tokenBudget.compactedToolResultCharsMin": {
+          "type": "number",
+          "default": 400,
+          "minimum": 1,
+          "description": "Floor for compacted tool-result characters."
+        },
+        "mitii.tokenBudget.compactedToolResultCharsMax": {
+          "type": "number",
+          "default": 4000,
+          "minimum": 1,
+          "description": "Ceiling for compacted tool-result characters."
+        },
+        "mitii.tokenBudget.compactedToolArgumentCharsRatio": {
+          "type": "number",
+          "default": 0.003,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of usable input converted to compacted tool-argument characters."
+        },
+        "mitii.tokenBudget.compactedToolArgumentCharsMin": {
+          "type": "number",
+          "default": 256,
+          "minimum": 1,
+          "description": "Floor for compacted tool-argument characters."
+        },
+        "mitii.tokenBudget.compactedToolArgumentCharsMax": {
+          "type": "number",
+          "default": 2000,
+          "minimum": 1,
+          "description": "Ceiling for compacted tool-argument characters."
+        },
+        "mitii.tokenBudget.toolResultContentCharsRatio": {
+          "type": "number",
+          "default": 0.015,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of usable input converted to live tool-result content characters."
+        },
+        "mitii.tokenBudget.toolResultContentCharsMin": {
+          "type": "number",
+          "default": 2000,
+          "minimum": 1,
+          "description": "Floor for live tool-result content characters."
+        },
+        "mitii.tokenBudget.toolResultContentCharsMax": {
+          "type": "number",
+          "default": 24000,
+          "minimum": 1,
+          "description": "Ceiling for live tool-result content characters."
+        },
+        "mitii.tokenBudget.droppedTurnSummaryCharsRatio": {
+          "type": "number",
+          "default": 0.01,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of usable input converted to dropped-turn summary characters."
+        },
+        "mitii.tokenBudget.droppedTurnSummaryCharsMin": {
+          "type": "number",
+          "default": 1200,
+          "minimum": 1,
+          "description": "Floor for dropped-turn summary characters."
+        },
+        "mitii.tokenBudget.droppedTurnSummaryCharsMax": {
+          "type": "number",
+          "default": 8000,
+          "minimum": 1,
+          "description": "Ceiling for dropped-turn summary characters."
+        },
+        "mitii.tokenBudget.establishedFactCharsRatio": {
+          "type": "number",
+          "default": 0.002,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of usable input converted to each retained observation character budget."
+        },
+        "mitii.tokenBudget.establishedFactCharsMin": {
+          "type": "number",
+          "default": 220,
+          "minimum": 1,
+          "description": "Floor for each retained observation."
+        },
+        "mitii.tokenBudget.establishedFactCharsMax": {
+          "type": "number",
+          "default": 900,
+          "minimum": 1,
+          "description": "Ceiling for each retained observation."
+        },
+        "mitii.tokenBudget.establishedFactCountRatio": {
+          "type": "number",
+          "default": 0.00015,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of usable input converted to retained observation count."
+        },
+        "mitii.tokenBudget.establishedFactCountMin": {
+          "type": "number",
+          "default": 12,
+          "minimum": 1,
+          "description": "Floor for retained observation count."
+        },
+        "mitii.tokenBudget.establishedFactCountMax": {
+          "type": "number",
+          "default": 48,
+          "minimum": 1,
+          "description": "Ceiling for retained observation count."
+        },
+        "mitii.tokenBudget.establishedFactReinjectCharsRatio": {
+          "type": "number",
+          "default": 0.012,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of usable input converted to observation reinjection characters."
+        },
+        "mitii.tokenBudget.establishedFactReinjectCharsMin": {
+          "type": "number",
+          "default": 1600,
+          "minimum": 1,
+          "description": "Floor for observation reinjection characters."
+        },
+        "mitii.tokenBudget.establishedFactReinjectCharsMax": {
+          "type": "number",
+          "default": 8000,
+          "minimum": 1,
+          "description": "Ceiling for observation reinjection characters."
+        },
+        "mitii.tokenBudget.memoryReinjectCharsRatio": {
+          "type": "number",
+          "default": 0.006,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of usable input converted to memory reinjection characters."
+        },
+        "mitii.tokenBudget.memoryReinjectCharsMin": {
+          "type": "number",
+          "default": 800,
+          "minimum": 1,
+          "description": "Floor for memory reinjection characters."
+        },
+        "mitii.tokenBudget.memoryReinjectCharsMax": {
+          "type": "number",
+          "default": 4000,
+          "minimum": 1,
+          "description": "Ceiling for memory reinjection characters."
+        },
+        "mitii.tokenBudget.filesPerOutputTokens": {
+          "type": "number",
+          "default": 800,
+          "minimum": 1,
+          "description": "Unique files per mutation call scale as (context window × output ratio) / this value."
+        },
+        "mitii.tokenBudget.minUniqueFilesPerCall": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "description": "Floor for files allowed in one mutation call."
+        },
+        "mitii.tokenBudget.maxUniqueFilesPerCallCap": {
+          "type": "number",
+          "default": 48,
+          "minimum": 1,
+          "description": "Ceiling for files allowed in one mutation call."
+        },
+        "mitii.tokenBudget.patchPayloadOutputRatio": {
+          "type": "number",
+          "default": 0.6,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of output tokens treated as patch payload capacity."
+        },
+        "mitii.tokenBudget.charsPerOutputToken": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "description": "Approximate characters produced per output token for payload sizing."
+        },
+        "mitii.tokenBudget.requireBatchedBelowOutputTokens": {
+          "type": "number",
+          "default": 4096,
+          "minimum": 0,
+          "description": "Force batched mutation when derived output is below this many tokens."
+        },
+        "mitii.tokenBudget.visiblePlanMinUsableTokens": {
+          "type": "number",
+          "default": 40000,
+          "minimum": 0,
+          "description": "Visible plans are skipped when usable input is below this."
+        },
+        "mitii.tokenBudget.changeImpactMinUsableTokens": {
+          "type": "number",
+          "default": 40000,
+          "minimum": 0,
+          "description": "Change-impact analysis is skipped when usable input is below this."
+        },
+        "mitii.tokenBudget.diagnosticStepsBase": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "description": "Minimum diagnostic change steps in a drafted plan."
+        },
+        "mitii.tokenBudget.diagnosticStepsPerUsable": {
+          "type": "number",
+          "default": 20000,
+          "minimum": 1,
+          "description": "Add one diagnostic step per this many usable-input tokens."
+        },
+        "mitii.tokenBudget.diagnosticStepsMax": {
+          "type": "number",
+          "default": 8,
+          "minimum": 1,
+          "description": "Ceiling for diagnostic change steps."
+        },
+        "mitii.tokenBudget.maxModelCallsPerUsable": {
+          "type": "number",
+          "default": 2500,
+          "minimum": 1,
+          "description": "Suggested model-call cap scales as usable input / this value."
+        },
+        "mitii.tokenBudget.maxModelCallsMin": {
+          "type": "number",
+          "default": 48,
+          "minimum": 1,
+          "description": "Floor for the window-derived model-call cap."
+        },
+        "mitii.tokenBudget.maxModelCallsMax": {
+          "type": "number",
+          "default": 96,
+          "minimum": 1,
+          "description": "Ceiling for the window-derived model-call cap when Modes run budget is limited."
+        },
+        "mitii.tokenBudget.maxSkillsBase": {
+          "type": "number",
+          "default": 1,
+          "minimum": 1,
+          "description": "Minimum number of skills that may be selected."
+        },
+        "mitii.tokenBudget.maxSkillsPerUsable": {
+          "type": "number",
+          "default": 30000,
+          "minimum": 1,
+          "description": "Add one selectable skill per this many usable-input tokens."
+        },
+        "mitii.tokenBudget.maxSkillsCap": {
+          "type": "number",
+          "default": 4,
+          "minimum": 1,
+          "description": "Ceiling for selected skills."
+        },
+        "mitii.tokenBudget.verificationChecksBase": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "description": "Minimum verification checks after mutations."
+        },
+        "mitii.tokenBudget.verificationChecksPerUsable": {
+          "type": "number",
+          "default": 40000,
+          "minimum": 1,
+          "description": "Add one verification check per this many usable-input tokens."
+        },
+        "mitii.tokenBudget.verificationChecksMax": {
+          "type": "number",
+          "default": 16,
+          "minimum": 1,
+          "description": "Ceiling for verification checks."
+        },
+        "mitii.loopPolicy.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use custom Agent Engine loop/stall thresholds from mitii.loopPolicy.* instead of shipped working standards. Requires developer settings."
+        },
+        "mitii.loopPolicy.explorationRereadMinCalls": {
+          "type": "number",
+          "default": 8,
+          "minimum": 1,
+          "description": "Stall check starts after this many file-read calls in the current loop."
+        },
+        "mitii.loopPolicy.explorationRereadRatio": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "description": "Trip when file-read calls ≥ unique paths × this ratio."
+        },
+        "mitii.loopPolicy.maxExplorationStallNudges": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0,
+          "description": "Mid-loop nudges before exploration_stall_broken."
+        },
+        "mitii.loopPolicy.maxReadOnlyToolTurnsBeforeMutationNudge": {
+          "type": "number",
+          "default": 6,
+          "minimum": 1,
+          "description": "Read/search turns before requiring apply_patch in execute mode."
+        },
+        "mitii.loopPolicy.maxReadOnlyMutationRetryAttempts": {
+          "type": "number",
+          "default": 2,
+          "minimum": 0,
+          "description": "Extra read-only turns after the first-mutation nudge."
+        },
+        "mitii.loopPolicy.maxReadOnlyToolTurnsAfterMutationNudge": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "description": "Non-mutating turns allowed after the first successful mutation."
+        },
+        "mitii.loopPolicy.maxReadOnlyToolTurnsAfterMutationNudges": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0,
+          "description": "Post-mutation read nudges before stopping the first loop."
+        },
+        "mitii.loopPolicy.maxTruncationRecoveries": {
+          "type": "number",
+          "default": 3,
+          "minimum": 0,
+          "description": "Retries after finishReason=length with incomplete tools."
+        },
+        "mitii.loopPolicy.maxIncompleteAnswerRecoveries": {
+          "type": "number",
+          "default": 2,
+          "minimum": 0,
+          "description": "Nudges for empty or transitional narration with no tools."
+        },
+        "mitii.loopPolicy.maxUnfulfilledExecuteRecoveries": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0,
+          "description": "Nudges when execute ends on diagnosis instead of apply_patch."
+        },
+        "mitii.loopPolicy.maxRejectedMutationRecoveries": {
+          "type": "number",
+          "default": 3,
+          "minimum": 0,
+          "description": "Retries after apply_patch/delete_file/move_file is rejected (e.g. stale oldText)."
+        },
+        "mitii.loopPolicy.maxMustReadNudges": {
+          "type": "number",
+          "default": 1,
+          "minimum": 0,
+          "description": "Times to withhold a mutation when mustRead paths are not loaded."
+        },
+        "mitii.loopPolicy.verificationRepairModelCallReserveRatio": {
+          "type": "number",
+          "default": 0.2,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of maxModelCalls reserved for verification repair."
+        },
+        "mitii.loopPolicy.maxVerificationRepairAttempts": {
+          "type": "number",
+          "default": 8,
+          "minimum": 0,
+          "description": "Fallback remaining-error repair cap when Window Policy is absent."
+        },
+        "mitii.loopPolicy.maxStalledVerificationRepairs": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "description": "Stop repairing after this many consecutive non-improving verifies."
+        },
+        "mitii.loopPolicy.defaultPreferredBatchSize": {
+          "type": "number",
+          "default": 8,
+          "minimum": 1,
+          "description": "Fallback preferred mutation batch size."
+        },
+        "mitii.loopPolicy.defaultMaxPatchesPerCall": {
+          "type": "number",
+          "default": 16,
+          "minimum": 1,
+          "description": "Fallback hard patch cap per apply_patch call."
+        },
+        "mitii.loopPolicy.maxRecoveredAnalysisChars": {
+          "type": "number",
+          "default": 480,
+          "minimum": 64,
+          "description": "Max characters kept from mid-work analysis dumps in the transcript."
         },
         "mitii.provider.type": {
           "type": "string",
           "enum": [
             "echo",
-            "openai-compatible"
+            "openai-compatible",
+            "anthropic",
+            "gemini"
           ],
           "default": "echo",
-          "description": "LLM provider adapter family (echo or OpenAI-compatible)."
+          "description": "LLM provider adapter: echo, OpenAI-compatible (/v1), Anthropic Messages (Claude), or Gemini."
         },
         "mitii.provider.preset": {
           "type": "string",
@@ -241,48 +802,74 @@
             "openrouter",
             "deepseek",
             "azure-openai",
-            "openai-compatible"
+            "openai-compatible",
+            "anthropic",
+            "gemini"
           ],
           "default": "echo",
-          "description": "Provider preset that prefills base URL, model, and auth style. All non-echo presets use the OpenAI-compatible adapter."
+          "description": "Provider preset that prefills base URL, model, and adapter. Use openai-compatible for any /v1 chat completions API."
         },
         "mitii.provider.baseUrl": {
           "type": "string",
           "default": "http://localhost:11434/v1",
-          "description": "OpenAI-compatible API base URL"
+          "description": "Provider API base URL (OpenAI-compatible /v1, https://api.anthropic.com, or https://generativelanguage.googleapis.com)."
         },
         "mitii.provider.model": {
           "type": "string",
-          "default": "qwen3-coder:30b",
-          "description": "Model name"
+          "default": "",
+          "description": "Model id (for example gpt-4o-mini, claude-sonnet-4-5, gemini-2.5-flash, deepseek-chat)."
         },
         "mitii.provider.contextWindow": {
           "type": "number",
           "default": 0,
           "minimum": 0,
-          "description": "Model context window in tokens. Set 0 to use the model preset; use a positive value only when your runtime has a different limit."
+          "description": "Model context window in tokens. Set 0 to use the model preset; use a positive value only when your runtime has a different limit. Retrieval, compaction, mutation batches, and verification scale from this window automatically. Developer token-budget fields are optional."
         },
         "mitii.provider.maximumOutputTokens": {
           "type": "number",
-          "default": 16384,
-          "minimum": 256,
-          "description": "Maximum tokens the model may generate per call. Higher defaults help multi-file apply_patch batches; still pair with mutation batching for 30+ file tasks."
+          "default": 0,
+          "minimum": 0,
+          "description": "Maximum tokens the model may generate per call. Set 0 to derive the reserve from the context window (recommended; ~20% of the window, at least 4096 when the window allows). A positive value is a hard host override. The legacy default 5000 is ignored so apply_patch batches are not truncated. Leave at 0 unless your runtime has a different hard cap."
         },
         "mitii.semanticIndex.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Enable semantic workspace indexing when the provider is openai-compatible. If embeddings or LanceDB are unavailable, Mitii keeps vector search unavailable and continues with lexical indexing."
+          "description": "Enable semantic workspace indexing. Bundled MiniLM works with any chat provider. HTTP embedding sources fail closed to lexical indexing if the probe fails."
+        },
+        "mitii.semanticIndex.source": {
+          "type": "string",
+          "enum": [
+            "bundled",
+            "ollama",
+            "openai-compatible",
+            "disabled"
+          ],
+          "default": "bundled",
+          "description": "Embedding source for semantic indexing. Bundled runs on-device MiniLM (native ONNX, WASM fallback). Ollama and OpenAI-compatible call an HTTP embeddings API. Disabled keeps lexical indexing only. LanceDB is the vector store, not a source."
+        },
+        "mitii.semanticIndex.backend": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "bundled",
+            "openai-compatible",
+            "ollama",
+            "disabled"
+          ],
+          "default": "auto",
+          "markdownDeprecationMessage": "Use `mitii.semanticIndex.source` instead. `auto` now selects bundled MiniLM unless an embedding model is configured.",
+          "description": "Deprecated alias for mitii.semanticIndex.source. Auto selects bundled MiniLM when no embedding model is set."
         },
         "mitii.semanticIndex.model": {
           "type": "string",
-          "default": "text-embedding-3-small",
-          "description": "Embedding model used for the semantic workspace index."
+          "default": "",
+          "description": "Embedding model used for HTTP embedding sources. Ignored for bundled MiniLM. Empty uses the source preset, such as nomic-embed-text for Ollama."
         },
         "mitii.semanticIndex.dimensions": {
           "type": "number",
-          "default": 1536,
-          "minimum": 1,
-          "description": "Embedding vector dimensions for the semantic workspace index. Changing this creates a distinct vector profile."
+          "default": 0,
+          "minimum": 0,
+          "description": "Embedding vector dimensions for the semantic workspace index. Set 0 to use the backend preset/probe result. Changing this creates a distinct vector profile."
         },
         "mitii.semanticIndex.normalized": {
           "type": "boolean",
@@ -293,6 +880,13 @@
           "type": "string",
           "default": "",
           "description": "Optional workspace root override used for indexing and agent runs"
+        },
+        "mitii.workspace.maximumIndexFiles": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 240000,
+          "description": "Maximum files to include in the workspace index. 0 uses the default (30,000). Raise up to 240,000 for very large repos. Ignore rules still skip build artifacts and secrets. Retrieval still scales from the model context window, not this file cap."
         },
         "mitii.skills.workspace.enabled": {
           "type": "boolean",
@@ -319,7 +913,127 @@
             "deep"
           ],
           "default": "auto",
-          "description": "Default planning depth hint for chat turns"
+          "description": "Legacy global depth fallback. Prefer mitii.ui.modeDefaults.<mode>.thoroughness (or .depth when intensity overrides are on)."
+        },
+        "mitii.ui.effort": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "default": "medium",
+          "description": "Working-set overlay for model/tool/repair caps. Set by Thoroughness unless mitii.developer.intensityOverrides is on."
+        },
+        "mitii.ui.modeDefaults.ask.thoroughness": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "default": "medium",
+          "description": "Ask-mode thoroughness (Low/Medium/High). Maps to exploration depth + working-set effort unless intensity overrides are on."
+        },
+        "mitii.ui.modeDefaults.ask.depth": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "quick",
+            "deep"
+          ],
+          "default": "auto",
+          "description": "Ask exploration depth. Driven by thoroughness unless Developer intensity overrides are enabled."
+        },
+        "mitii.ui.modeDefaults.ask.approvalMode": {
+          "type": "string",
+          "enum": [
+            "safe",
+            "guided",
+            "pilot"
+          ],
+          "default": "guided",
+          "description": "Default approval mode for Ask mode"
+        },
+        "mitii.ui.modeDefaults.ask.model": {
+          "type": "string",
+          "default": "",
+          "description": "Default model for Ask mode. Empty uses the active provider model."
+        },
+        "mitii.ui.modeDefaults.plan.thoroughness": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "default": "high",
+          "description": "Plan-mode thoroughness (Low/Medium/High). Maps to exploration depth + working-set effort unless intensity overrides are on."
+        },
+        "mitii.ui.modeDefaults.plan.depth": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "quick",
+            "deep"
+          ],
+          "default": "deep",
+          "description": "Plan exploration depth. Driven by thoroughness unless Developer intensity overrides are enabled."
+        },
+        "mitii.ui.modeDefaults.plan.approvalMode": {
+          "type": "string",
+          "enum": [
+            "safe",
+            "guided",
+            "pilot"
+          ],
+          "default": "guided",
+          "description": "Default approval mode for Plan mode"
+        },
+        "mitii.ui.modeDefaults.plan.model": {
+          "type": "string",
+          "default": "",
+          "description": "Default model for Plan mode. Empty uses the active provider model."
+        },
+        "mitii.ui.modeDefaults.agent.thoroughness": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "default": "medium",
+          "description": "Agent-mode thoroughness (Low/Medium/High). Maps to exploration depth + working-set effort unless intensity overrides are on."
+        },
+        "mitii.ui.modeDefaults.agent.depth": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "quick",
+            "deep"
+          ],
+          "default": "auto",
+          "description": "Agent exploration depth. Driven by thoroughness unless Developer intensity overrides are enabled."
+        },
+        "mitii.ui.modeDefaults.agent.approvalMode": {
+          "type": "string",
+          "enum": [
+            "safe",
+            "guided",
+            "pilot"
+          ],
+          "default": "safe",
+          "description": "Default approval mode for Agent mode"
+        },
+        "mitii.ui.modeDefaults.agent.model": {
+          "type": "string",
+          "default": "",
+          "description": "Default model for Agent mode. Empty uses the active provider model."
+        },
+        "mitii.agent.taskListAutoAdvance": {
+          "type": "boolean",
+          "default": true,
+          "description": "Product default ON: after a successful built-in mutating tool in Agent mode, mark matching checklist items done (by changed path) and activate the next pending change item. Unmatched mutations still advance the active item at most once per model turn. The SDK/engine library default remains off when hosts do not pass taskListAutoAdvance."
         },
         "mitii.ui.contextToggles.repoMap": {
           "type": "boolean",
@@ -369,7 +1083,7 @@
             "pilot"
           ],
           "default": "guided",
-          "description": "Approval autonomy: safe (ask for approval), guided (approve for me), pilot (full access). Legacy builder maps to guided."
+          "description": "Approval autonomy: safe (ask before mutations), guided (approve tool use automatically), pilot (full access including plan approval). Legacy builder maps to guided."
         },
         "mitii.runBudget.unlimited": {
           "type": "boolean",
@@ -399,6 +1113,21 @@
           "default": 30,
           "minimum": 1,
           "description": "Maximum active wall-clock minutes allowed in one Mitii run. Time waiting for user approval is excluded by the engine."
+        },
+        "mitii.logVerbosity": {
+          "type": "string",
+          "enum": [
+            "minimal",
+            "standard",
+            "verbose"
+          ],
+          "enumDescriptions": [
+            "Baseline run events only (stage/tool/model/verification progress).",
+            "Adds structured reason codes and before/after values for clamps, drops, and soft failures.",
+            "Adds everything, including live nudge/retry-level detail. More log volume."
+          ],
+          "default": "verbose",
+          "description": "How much diagnostic detail Mitii records in the run log, for finding bugs. Turn this down if the exported session log is too noisy."
         },
         "mitii.onboarding.completed": {
           "type": "boolean",
@@ -506,6 +1235,10 @@
     "typescript": "^5.5.2"
   },
   "optionalDependencies": {
-    "@lancedb/lancedb": "0.33.0"
+    "@lancedb/lancedb": "0.33.0",
+    "onnxruntime-node": "1.21.0",
+    "onnxruntime-web": "1.21.0",
+    "tree-sitter-wasms": "^0.1.13",
+    "web-tree-sitter": "^0.24.7"
   }
 }

@@ -24,6 +24,9 @@ import type {
   ContextSelectionResult,
 } from "../internal/context-selection/types";
 
+/** Public selection budget contract (owned by repository-context). */
+export type { ContextSelectionBudget };
+
 import type {
   HybridRetrievalInput,
   HybridRetrievalResult,

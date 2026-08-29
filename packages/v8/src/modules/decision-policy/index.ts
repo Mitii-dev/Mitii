@@ -13,6 +13,9 @@ export {
   MUTATION_TOOL_IDS,
   DECISION_REASON_CODES,
   DECISION_POLICY_ERROR_CODES,
+  MUTATION_TASK_INTENTS,
+  DIAGNOSIS_TASK_INTENTS,
+  ANSWER_TASK_INTENTS,
 } from "./constants";
 
 export {
@@ -20,9 +23,15 @@ export {
   DEFAULT_VERIFICATION_COMMAND_PREFIXES,
   DEFAULT_AGENT_READONLY_COMMAND_PREFIXES,
   extractNetworkHosts,
+  planRoute,
+  compileGrant,
+  toolGrantsEquivalent,
+  looksLikeAgentVerificationRequest,
 } from "./actions";
 
 export { DecisionPolicyPipeline } from "./pipeline/DecisionPolicyPipeline";
+
+export { isRepairIntentTaxonomy, DECISION_POLICY_PATTERNS } from "./patterns";
 
 export {
   decisionPolicyInputSchema,
@@ -34,8 +43,10 @@ export {
   planGateSchema,
   runDispositionSchema,
   decisionReasonCodeSchema,
+  decisionTraceSchema,
   verificationRequirementSchema,
   toolGrantSchema,
+  workspaceEffectSchema,
   approvalModeSchema,
   toolGrantLimitsSchema,
   mutationBudgetSchema,
@@ -53,6 +64,7 @@ export type {
   PlanGate,
   RunDisposition,
   DecisionReasonCode,
+  DecisionTrace,
   VerificationRequirement,
   ApprovalMode,
   ToolGrant,

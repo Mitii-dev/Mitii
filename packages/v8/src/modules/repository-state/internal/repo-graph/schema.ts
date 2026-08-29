@@ -174,6 +174,7 @@ export const repoGraphEdgeSchema = z
       "contains",
       "declares",
       "imports",
+      "calls",
       "references",
       "workspace_member",
       "depends_on",
@@ -261,6 +262,8 @@ export const repoGraphStatisticsSchema = z
     declaresEdges:
       z.number().int().nonnegative(),
     importEdges:
+      z.number().int().nonnegative(),
+    callEdges:
       z.number().int().nonnegative(),
     referenceEdges:
       z.number().int().nonnegative(),
@@ -438,6 +441,12 @@ export const repoGraphSchema = z
         graph.edges.filter(
           (edge) =>
             edge.type === "imports",
+        ).length,
+
+      callEdges:
+        graph.edges.filter(
+          (edge) =>
+            edge.type === "calls",
         ).length,
 
       referenceEdges:

@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { describe, expect, it } from "vitest";
 
 import type {
   LlmPort,
@@ -31,9 +30,7 @@ class StaticLlmPort implements LlmPort {
     supportsEmbeddings: false,
   };
 
-  constructor(
-    private readonly response: Record<string, unknown>,
-  ) {}
+  constructor(private readonly response: Record<string, unknown>) {}
 
   public async *complete(
     _request: ModelRequest,
@@ -64,80 +61,78 @@ const envelope = (
     ...overrides,
   });
 
-test("request understanding pipeline returns validated intent and task analysis", async () => {
-  const pipeline = new RequestUnderstandingPipeline(
-    new StaticLlmPort({
-      interactionIntent: "act",
-      primaryTaskIntent: "bugfix",
-      secondaryTaskIntents: [],
-      confidence: 0.94,
-      alternatives: [],
-      needsClarification: false,
-      reason: "Test classification.",
-    }),
-  );
+describe("RequestUnderstandingPipeline", () => {
+  it("returns validated intent and task analysis", async () => {
+    const pipeline = new RequestUnderstandingPipeline(
+      new StaticLlmPort({
+        interactionIntent: "act",
+        primaryTaskIntent: "bugfix",
+        secondaryTaskIntents: [],
+        confidence: 0.94,
+        alternatives: [],
+        needsClarification: false,
+        reason: "Test classification.",
+      }),
+    );
 
-  const result = await pipeline.understand(envelope());
+    const result = await pipeline.understand(envelope());
 
-  assert.doesNotThrow(() =>
-    requestUnderstandingResultSchema.parse(result),
-  );
-  assert.equal(result.intent.classification.primaryTaskIntent, "bugfix");
-  assert.equal(result.intent.classification.interactionIntent, "act");
-  assert.ok(result.taskAnalysis.targets.length >= 1);
-  assert.equal(result.taskAnalysis.recommendsVerification, true);
-});
+    expect(() => requestUnderstandingResultSchema.parse(result)).not.toThrow();
+    expect(result.intent.classification.primaryTaskIntent).toBe("bugfix");
+    expect(result.intent.classification.interactionIntent).toBe("act");
+    expect(result.taskAnalysis.targets.length).toBeGreaterThanOrEqual(1);
+    expect(result.taskAnalysis.recommendsVerification).toBe(true);
+  });
 
-test("request understanding pipeline maps envelope artifacts into task analysis", async () => {
-  const pipeline = new RequestUnderstandingPipeline(
-    new StaticLlmPort({
-      interactionIntent: "act",
-      primaryTaskIntent: "bugfix",
-      secondaryTaskIntents: [],
-      confidence: 0.9,
-      alternatives: [],
-      needsClarification: false,
-    }),
-  );
+  it("maps envelope artifacts into task analysis", async () => {
+    const pipeline = new RequestUnderstandingPipeline(
+      new StaticLlmPort({
+        interactionIntent: "act",
+        primaryTaskIntent: "bugfix",
+        secondaryTaskIntents: [],
+        confidence: 0.9,
+        alternatives: [],
+        needsClarification: false,
+      }),
+    );
 
-  const result = await pipeline.understand(
-    envelope({
-      message: "Fix the selected handler.",
-      referencedArtifacts: [
-        {
-          name: "handler.go",
-          path: "internal/auth/handler.go",
-          kind: "selection",
-        },
-      ],
-    }),
-  );
+    const result = await pipeline.understand(
+      envelope({
+        message: "Fix the selected handler.",
+        referencedArtifacts: [
+          {
+            name: "handler.go",
+            path: "internal/auth/handler.go",
+            kind: "selection",
+          },
+        ],
+      }),
+    );
 
-  assert.ok(
-    result.taskAnalysis.targets.some(
-      (target) =>
-        target.kind === "file" &&
-        target.value === "internal/auth/handler.go" &&
-        target.explicit === false,
-    ),
-  );
-  assert.equal(result.taskAnalysis.recommendsRepositoryDiscovery, false);
-});
+    expect(
+      result.taskAnalysis.targets.some(
+        (target) =>
+          target.kind === "file" &&
+          target.value === "internal/auth/handler.go" &&
+          target.explicit === false,
+      ),
+    ).toBe(true);
+    expect(result.taskAnalysis.recommendsRepositoryDiscovery).toBe(false);
+  });
 
-test("request understanding pipeline rejects empty envelopes", async () => {
-  const pipeline = new RequestUnderstandingPipeline(
-    new StaticLlmPort({
-      interactionIntent: "question",
-      primaryTaskIntent: "question",
-      secondaryTaskIntents: [],
-      confidence: 0.8,
-      alternatives: [],
-      needsClarification: false,
-    }),
-  );
+  it("rejects empty envelopes", async () => {
+    const pipeline = new RequestUnderstandingPipeline(
+      new StaticLlmPort({
+        interactionIntent: "question",
+        primaryTaskIntent: "question",
+        secondaryTaskIntents: [],
+        confidence: 0.8,
+        alternatives: [],
+        needsClarification: false,
+      }),
+    );
 
-  await assert.rejects(
-    () =>
+    await expect(
       pipeline.understand({
         schemaVersion: 1,
         requestId: "request-1",
@@ -148,5 +143,6 @@ test("request understanding pipeline rejects empty envelopes", async () => {
         referencedArtifacts: [],
         createdAt: "2026-07-25T12:00:00.000Z",
       }),
-  );
+    ).rejects.toThrow();
+  });
 });

@@ -1,113 +1,119 @@
 # Embedding
 
-`embedding` converts Text Index chunks into validated vector records and
-synchronizes those records through an injected write port.
+Embedding prepares chunk text, generates vectors, plans changed vectors, and synchronizes vector rows into a vector index. It enables semantic retrieval for Repository Context.
 
-It does not own LanceDB, vector search, hybrid retrieval, queues, logging,
-telemetry, health UI, or provider selection.
+## What This Module Does
 
-## Boundary
+- Prepares embedding input text from chunks.
+- Calls an injected embedding provider.
+- Validates vector dimensions and numeric values.
+- Normalizes vectors according to profile settings.
+- Plans which chunk vectors need upsert/delete.
+- Writes vectors through an embedding index port.
+- Reports provider calls, truncation, and synchronization statistics.
 
-```text
-TextIndexReadPort
-  -> EmbeddingChangePlanner
-  -> EmbeddingGenerator
-  -> EmbeddingIndexWritePort
-```
-
-The future LanceDB module implements `EmbeddingIndexWritePort`. The future
-retrieval module owns vector search.
-
-## File tree
+## Structure
 
 ```text
 embedding/
-├── tests/
-│   └── Embedding.spec.ts
-├── EmbeddingChangePlanner.ts
-├── EmbeddingError.ts
-├── EmbeddingFactory.ts
-├── EmbeddingGenerator.ts
-├── EmbeddingSynchronizer.ts
-├── EmbeddingTextPreparer.ts
-├── EmbeddingVectorValidator.ts
-├── constants.ts
-├── index.ts
-├── README.md
-├── schema.ts
-└── types.ts
+  EmbeddingFactory.ts
+  EmbeddingGenerator.ts
+  EmbeddingTextPreparer.ts
+  EmbeddingVectorValidator.ts
+  EmbeddingChangePlanner.ts
+  EmbeddingSynchronizer.ts
+  EmbeddingError.ts
+  schema.ts
+  types.ts
+  tests/
 ```
 
-## Important behavior
+## Types And Contracts
 
-- A provider exposes an explicit `EmbeddingProfile`.
-- The profile ID identifies one exact embedding space.
-- A model, dimensionality, pooling, or normalization change requires a new
-  profile ID.
-- Profiles have independent Text Index checkpoints. A new profile can rebuild
-  from revision zero without deleting the previous profile.
-- Provider failures never silently switch to another embedding model.
-- Provider output count, dimensions, finite values, and non-zero norms are
-  validated.
-- Input truncation is explicit in warnings and statistics.
-- Text Index changes are coalesced by chunk before embedding.
-- Missing upsert chunks become vector deletions.
-- Vector mutations and checkpoint advancement are one atomic write-port call.
-- A caller-provided `updatedAt` keeps synchronization deterministic and easy
-  to test.
+- `EmbeddingProfile`: stable embedding-space id, provider id, model id, dimensions, and normalization flag.
+- `EmbeddingProvider`: provider contract for vector generation.
+- `EmbeddingGenerationInput`: chunks and optional abort signal.
+- `EmbeddingGenerationResult`: profile, vector records, warnings, statistics, and status.
+- `EmbeddingSynchronizerInput`: workspace, root id, update time, and optional abort signal.
+- `EmbeddingSynchronizationResult`: status, warnings, statistics, and revision data.
+- `EmbeddingIndexWritePort`: vector write/remove contract.
 
-## Integration
+## Technical Details
 
-```ts
-const embedding =
-  new EmbeddingFactory().create(
-    {
-      provider,
-      textIndex:
-        textIndex.reader,
-      vectorWriter:
-        lanceDbWriter,
-    },
-    {
-      generator: {
-        batchSize: 32,
-        maximumInputCharacters:
-          8_000,
-      },
-      synchronizer: {
-        maximumChangesPerBatch:
-          500,
-        maximumBatchesPerRun:
-          100,
-      },
-    },
-  );
+- The profile id must change when model/dimensions/normalization behavior changes.
+- Provider input truncation is reported with warnings.
+- `EmbeddingVectorValidator` rejects invalid vector shapes before writes.
+- Change planning avoids regenerating unchanged vectors.
+- Synchronization can be cancelled with an abort signal.
+- Embedding generation is optional in workspace indexing.
 
-const result =
-  await embedding
-    .synchronizer
-    .synchronize({
-      workspace:
-        workspaceId,
-      rootId,
-      updatedAt:
-        Date.now(),
-      abortSignal,
-    });
+## Ownership Boundaries
+
+Owns embedding preparation, generation, validation, change planning, and synchronization.
+
+Does not own chunking, vector search query execution, retrieval fusion, or prompt construction.
+
+## Tests
+
+```bash
+pnpm exec vitest run packages/v8/src/modules/repository-state/internal/embedding
 ```
 
-The Engine supplies timestamps, cancellation, logging, telemetry, scheduling,
-and retry policy around this call.
+## Example Flow
 
-## Deliberate exclusions
+This example uses a realistic coding-agent request and shows the kind of structure this module receives and returns. The output is representative: ids, timings, and scores are examples, but the shape matches how this module is meant to be understood.
 
-- No `HashEmbeddingProvider` production fallback.
-- No automatic provider discovery.
-- No database-specific code.
-- No vector search.
-- No hybrid score fusion.
-- No queue or background worker.
-- No global model cache.
+### Real Prompt
 
-Those concerns belong in provider adapters, the LanceDB module, retrieval, or
-the future V8 Engine.
+```text
+I am in a React app. In src/LoginForm.tsx, when the user clicks the "Sign in" button, show a loading label and disable the button until the login request finishes. Keep the existing validation and error handling. Add or update a focused test if there is already a LoginForm test nearby.
+```
+
+### Real Input Structure
+
+EmbeddingGenerationInput -> EmbeddingGenerationResult; EmbeddingSynchronizerInput -> EmbeddingSynchronizationResult:
+
+```json
+{
+  "prompt": "I am in a React app. In src/LoginForm.tsx, when the user clicks the \"Sign in\" button, show a loading label and disable the button until the login request finishes. Keep the existing validation and error handling. Add or update a focused test if there is already a LoginForm test nearby.",
+  "workspaceId": "workspace-1",
+  "stateToken": "state-abc",
+  "targetFile": "src/LoginForm.tsx"
+}
+```
+
+### Step-By-Step Flow
+
+1. A user sends the real prompt shown above from an editor or chat host.
+2. The host attaches workspace id `workspace-1` and the explicit target file `src/LoginForm.tsx`.
+3. The module receives the real structure shown in the input block.
+4. The module validates schema/version/limits before doing any work.
+5. The module extracts the important target: `src/LoginForm.tsx`.
+6. The module keeps the user constraint: existing validation and error handling must stay intact.
+7. The module performs only its own responsibility and does not cross into neighboring modules.
+8. Any budget, path, state, or provider constraint is applied before output is produced.
+9. The module records warnings/reason codes instead of hiding degraded behavior.
+10. The module returns the realistic output shape shown below.
+11. The next pipeline stage consumes that output without reinterpreting raw user text.
+
+### Realistic Output
+
+Embedding generation and synchronization result returns a result like this:
+
+```json
+{
+  "generation": {
+    "schemaVersion": 1,
+    "status": "complete",
+    "profile": { "id": "text-embedding", "providerId": "openai", "modelId": "text-embedding-3-small", "dimensions": 1536, "normalized": true },
+    "records": [{ "chunkId": "chunk:loginform:component", "relativePath": "src/LoginForm.tsx", "profileId": "text-embedding", "vector": [0.012, -0.044, 0.031] }],
+    "warnings": [],
+    "statistics": { "requestedChunks": 2, "embeddedChunks": 2, "providerCalls": 1, "truncatedInputs": 0 }
+  },
+  "synchronization": {
+    "status": "complete",
+    "warnings": [],
+    "statistics": { "upsertedVectors": 2, "deletedVectors": 0 }
+  }
+}
+```

@@ -4,6 +4,7 @@
 export { ContextAssemblyFactory } from "../internal/context-assembly/ContextAssemblyFactory";
 export { ContextSelector } from "../internal/context-selection/ContextSelector";
 export { HybridRetrievalFactory } from "../internal/hybrid-retrieval/HybridRetrievalFactory";
+export { IdentifierAwareRetrievalReranker } from "../internal/hybrid-retrieval/IdentifierAwareRetrievalReranker";
 export type {
   ContextAssemblyInput,
   ContextAssemblyResult,

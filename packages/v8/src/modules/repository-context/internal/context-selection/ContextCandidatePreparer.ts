@@ -1,4 +1,5 @@
 import {
+  CONTEXT_SELECTION_EXCLUDED_FILE_NAMES,
   CONTEXT_SELECTION_EXCLUDED_PATH_SEGMENTS,
   CONTEXT_SELECTION_IDS,
   CONTEXT_SELECTION_MESSAGES,
@@ -554,17 +555,25 @@ export class ContextCandidatePreparer {
   private isExcluded(
     relativePath: string,
   ): boolean {
-    return relativePath
+    const segments = relativePath
       .replace(
         /\\/g,
         "/",
       )
       .toLowerCase()
-      .split("/")
-      .some(
+      .split("/");
+
+    const fileName =
+      segments.at(-1) ??
+      "";
+
+    return (
+      CONTEXT_SELECTION_EXCLUDED_FILE_NAMES.has(fileName) ||
+      segments.some(
         (segment) =>
           CONTEXT_SELECTION_EXCLUDED_PATH_SEGMENTS
             .has(segment),
-      );
+      )
+    );
   }
 }

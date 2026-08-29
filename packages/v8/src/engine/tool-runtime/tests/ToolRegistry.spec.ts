@@ -76,6 +76,65 @@ describe("ToolRegistry", () => {
     );
   });
 
+  it("coerces object values back to schema-declared strings", async () => {
+    const registry = createBuiltinToolRegistry().register({
+      definition: defineTool({
+        name: "echo_stringified",
+        effects: ["workspace_read"],
+        description: "Test-only custom tool",
+        inputSchema: z.object({ payload: z.string().min(1) }).strict(),
+        outputSchema: z.object({ payload: z.string() }).strict(),
+        executeSupported: true,
+      }),
+      async execute(ctx) {
+        const input = z
+          .object({ payload: z.string().min(1) })
+          .strict()
+          .parse(ctx.arguments);
+        return {
+          output: { payload: input.payload },
+          truncated: false,
+          redacted: false,
+        };
+      },
+    });
+
+    const runtime = new ToolRuntimePipeline(
+      {
+        fileSystem: new InMemoryFileSystemAdapter(
+          WORKSPACE,
+          directory({ "a.txt": file("a") }),
+        ),
+        process: new InMemoryProcessAdapter(async () => ({
+          exitCode: 0,
+          stdout: "",
+          stderr: "",
+          timedOut: false,
+          cancelled: false,
+          truncated: false,
+        })),
+      },
+      { registry },
+    );
+
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "custom_2",
+      toolName: "echo_stringified",
+      arguments: { payload: { nested: ["json", 1] } },
+      grant: createReadOnlyGrant({
+        allowedTools: ["echo_stringified"],
+        allowedEffects: ["workspace_read"],
+      }),
+      workspaceRoot: WORKSPACE,
+    });
+
+    expect(result.status).toBe("succeeded");
+    expect(result.output).toEqual({
+      payload: JSON.stringify({ nested: ["json", 1] }),
+    });
+  });
+
   it("rejects duplicate registrations", () => {
     const registry = new ToolRegistry();
     const tool = {

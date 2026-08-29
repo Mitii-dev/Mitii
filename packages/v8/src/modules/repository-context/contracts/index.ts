@@ -3,6 +3,7 @@ export {
   repositoryContextPipelineResultSchema,
 } from "./schema";
 export type {
+  ContextSelectionBudget,
   RepositoryContextPipelineInput,
   RepositoryContextPipelineResult,
   RepositoryContextPipelineDependencies,

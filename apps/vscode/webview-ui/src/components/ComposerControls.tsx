@@ -1,26 +1,24 @@
-import {
-  useEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-  type ReactNode,
-} from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 
-import type { AgentUiDepth, AgentUiMode } from '../protocol';
+import type {
+  AgentUiMode,
+  AgentUiThoroughness,
+} from '../protocol';
 import { MODE_COLORS } from '../modeColors';
 import {
   normalizeApproval,
   type ApprovalUiMode,
 } from '../approvalPresets';
 import {
-  IconAgent,
   IconAsk,
-  IconAskApproval,
+  IconAgent,
   IconApproveForMe,
+  IconAskApproval,
   IconCheck,
-  IconDepthAuto,
   IconDepthDeep,
-  IconDepthQuick,
+  IconEffortHigh,
+  IconEffortLow,
+  IconEffortMedium,
   IconFullAccess,
   IconPlan,
   IconReview,
@@ -28,9 +26,6 @@ import {
 
 export type { ApprovalUiMode };
 export { normalizeApproval };
-export { MODE_COLORS };
-
-type ComposerSelectId = 'mode' | 'approval' | 'depth';
 
 interface ComposerOption<T extends string> {
   id: T;
@@ -38,7 +33,6 @@ interface ComposerOption<T extends string> {
   description: string;
   color: string;
   icon: ReactNode;
-  /** Emphasize as a high-privilege / warning choice. */
   warning?: boolean;
 }
 
@@ -60,14 +54,14 @@ const MODES: ComposerOption<AgentUiMode>[] = [
   {
     id: 'agent',
     label: 'Agent',
-    description: 'Implement with controlled execution',
+    description: 'Implement changes with controlled execution',
     color: MODE_COLORS.agent,
     icon: <IconAgent />,
   },
   {
     id: 'review',
     label: 'Review',
-    description: 'Inspect diffs and report findings',
+    description: 'Inspect working-tree diffs and report findings',
     color: MODE_COLORS.review,
     icon: <IconReview />,
   },
@@ -77,50 +71,52 @@ const APPROVAL_OPTIONS: ComposerOption<ApprovalUiMode>[] = [
   {
     id: 'safe',
     label: 'Ask for approval',
-    description: 'Always ask before edits, commands, and network use',
-    color: 'var(--mitii-text)',
+    description: 'Pause before mutations and plan execution',
+    color: '#38bdf8',
     icon: <IconAskApproval />,
   },
   {
     id: 'guided',
     label: 'Approve for me',
-    description: 'Only ask for actions detected as potentially unsafe',
-    color: 'var(--mitii-text)',
+    description: 'Auto-approve routine mutations; pause on risk',
+    color: '#22c55e',
     icon: <IconApproveForMe />,
   },
   {
     id: 'pilot',
     label: 'Full access',
     description: 'Unrestricted access to tools, network, and workspace files',
-    color: '#e8b84a',
+    color: '#c9b27a',
     icon: <IconFullAccess />,
     warning: true,
   },
 ];
 
-const DEPTH_OPTIONS: ComposerOption<AgentUiDepth>[] = [
+const THOROUGHNESS_OPTIONS: ComposerOption<AgentUiThoroughness>[] = [
   {
-    id: 'auto',
-    label: 'Auto',
-    description: 'Let Mitii choose depth',
+    id: 'low',
+    label: 'Low',
+    description: 'Quick look, lighter context, fewer loop/repair calls',
+    color: '#94a3b8',
+    icon: <IconEffortLow />,
+  },
+  {
+    id: 'medium',
+    label: 'Medium',
+    description: 'Balanced depth and working set for most tasks',
     color: '#38bdf8',
-    icon: <IconDepthAuto />,
+    icon: <IconEffortMedium />,
   },
   {
-    id: 'quick',
-    label: 'Quick',
-    description: 'Fast, lighter context',
-    color: '#22c55e',
-    icon: <IconDepthQuick />,
-  },
-  {
-    id: 'deep',
-    label: 'Deep',
-    description: 'Broader retrieval and reasoning',
-    color: '#a78bfa',
-    icon: <IconDepthDeep />,
+    id: 'high',
+    label: 'High',
+    description: 'Deep exploration, broader retrieval, more repairs',
+    color: '#f59e0b',
+    icon: <IconEffortHigh />,
   },
 ];
+
+type ComposerSelectId = 'mode' | 'approval' | 'thoroughness';
 
 export const MODE_HINT: Record<AgentUiMode, string> = {
   ask: 'Explore and answer — read-only.',
@@ -132,20 +128,23 @@ export const MODE_HINT: Record<AgentUiMode, string> = {
 interface ComposerControlsProps {
   mode: AgentUiMode;
   approvalMode: string;
-  depth: AgentUiDepth;
+  thoroughness: AgentUiThoroughness;
+  /** When true, thoroughness picker shows Custom until the user picks a level. */
+  intensityCustom?: boolean;
   onModeChange: (mode: AgentUiMode) => void;
   onApprovalModeChange: (mode: ApprovalUiMode) => void;
-  onDepthChange: (depth: AgentUiDepth) => void;
+  onThoroughnessChange: (thoroughness: AgentUiThoroughness) => void;
   includeReview?: boolean;
 }
 
 export function ComposerControls({
   mode,
   approvalMode,
-  depth,
+  thoroughness,
+  intensityCustom = false,
   onModeChange,
   onApprovalModeChange,
-  onDepthChange,
+  onThoroughnessChange,
   includeReview = true,
 }: ComposerControlsProps) {
   const [openSelect, setOpenSelect] = useState<ComposerSelectId | null>(null);
@@ -157,8 +156,20 @@ export function ComposerControls({
   const activeApproval =
     APPROVAL_OPTIONS.find((o) => o.id === normalizeApproval(approvalMode)) ??
     APPROVAL_OPTIONS[1]!;
-  const activeDepth =
-    DEPTH_OPTIONS.find((o) => o.id === depth) ?? DEPTH_OPTIONS[0]!;
+  const activeThoroughness =
+    THOROUGHNESS_OPTIONS.find((o) => o.id === thoroughness) ??
+    THOROUGHNESS_OPTIONS[1]!;
+  const thoroughnessSelected: ComposerOption<AgentUiThoroughness> =
+    intensityCustom
+      ? {
+          id: thoroughness,
+          label: 'Custom',
+          description:
+            'Developer intensity overrides are on — pick a level to reset',
+          color: '#a78bfa',
+          icon: <IconDepthDeep />,
+        }
+      : activeThoroughness;
 
   useEffect(() => {
     if (!openSelect) return;
@@ -170,11 +181,62 @@ export function ComposerControls({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setOpenSelect(null);
     };
-    window.addEventListener('pointerdown', onPointerDown);
+    // Use capture:false and defer so the opening click doesn't race-close.
+    const timer = window.setTimeout(() => {
+      window.addEventListener('pointerdown', onPointerDown);
+    }, 0);
     window.addEventListener('keydown', onKeyDown);
     return () => {
+      window.clearTimeout(timer);
       window.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [openSelect]);
+
+  useLayoutEffect(() => {
+    if (!openSelect || !rootRef.current) return;
+    const dropdown = rootRef.current.querySelector<HTMLElement>(
+      `.composer-dropdown--${openSelect}`,
+    );
+    const button = dropdown?.querySelector<HTMLElement>(
+      '.composer-dropdown__button[aria-expanded="true"]',
+    );
+    const menu = dropdown?.querySelector<HTMLElement>('.composer-dropdown__menu');
+    if (!button || !menu) return;
+
+    const margin = 8;
+    const gap = 6;
+    const buttonRect = button.getBoundingClientRect();
+    const menuWidth = menu.offsetWidth;
+    const menuHeight = menu.offsetHeight;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    let left = buttonRect.left + buttonRect.width / 2 - menuWidth / 2;
+    left = Math.max(margin, Math.min(left, viewportWidth - menuWidth - margin));
+
+    let top = buttonRect.top - menuHeight - gap;
+    if (top < margin) {
+      top = buttonRect.bottom + gap;
+    }
+    top = Math.max(margin, Math.min(top, viewportHeight - menuHeight - margin));
+
+    menu.style.position = 'fixed';
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+    menu.style.bottom = 'auto';
+    menu.style.right = 'auto';
+    menu.style.transform = 'none';
+    menu.style.zIndex = '1000';
+
+    return () => {
+      menu.style.position = '';
+      menu.style.left = '';
+      menu.style.top = '';
+      menu.style.bottom = '';
+      menu.style.right = '';
+      menu.style.transform = '';
+      menu.style.zIndex = '';
     };
   }, [openSelect]);
 
@@ -205,7 +267,7 @@ export function ComposerControls({
       >
         <button
           type="button"
-          className={`composer-dropdown__button${selected.warning ? ' composer-dropdown__button--warning' : ''}`}
+          className={`composer-dropdown__button composer-dropdown__button--link${selected.warning ? ' composer-dropdown__button--warning' : ''}`}
           aria-haspopup="listbox"
           aria-expanded={isOpen}
           aria-label={label}
@@ -227,7 +289,9 @@ export function ComposerControls({
         {isOpen ? (
           <div className="composer-dropdown__menu" role="listbox" aria-label={label}>
             {options.map((option) => {
-              const selectedOption = option.id === value;
+                  const selectedOption =
+                    option.id === value &&
+                    !(id === 'thoroughness' && intensityCustom);
               return (
                 <button
                   key={option.id}
@@ -294,12 +358,12 @@ export function ComposerControls({
         onChange: onApprovalModeChange,
       })}
       {renderDropdown({
-        id: 'depth',
-        label: 'Depth',
-        value: depth,
-        selected: activeDepth,
-        options: DEPTH_OPTIONS,
-        onChange: onDepthChange,
+        id: 'thoroughness',
+        label: 'Thoroughness',
+        value: thoroughness,
+        selected: thoroughnessSelected,
+        options: THOROUGHNESS_OPTIONS,
+        onChange: onThoroughnessChange,
       })}
     </div>
   );

@@ -852,6 +852,11 @@ export class RepoGraphBuilder {
         (file) => file.id,
       );
 
+    const sourceSymbolsByFileId =
+      this.createSourceSymbolLookup(
+        nodes,
+      );
+
     for (
       const batch of
       this.createBatches(
@@ -925,6 +930,53 @@ export class RepoGraphBuilder {
               "code_index_reference",
             detail:
               reference.symbolName,
+            ...(reference.line !==
+            undefined
+              ? {
+                  line:
+                    reference.line,
+                }
+              : {}),
+          },
+        });
+
+        if (
+          !this.isCallReference(
+            reference,
+          ) ||
+          !reference.toSymbolId ||
+          !nodes.has(
+            reference.toSymbolId,
+          )
+        ) {
+          continue;
+        }
+
+        const sourceNodeId =
+          this.resolveReferenceSource(
+            reference,
+            sourceSymbolsByFileId,
+          ) ??
+          reference.fromFileId;
+
+        if (
+          sourceNodeId ===
+          reference.toSymbolId
+        ) {
+          continue;
+        }
+
+        edges.add({
+          type: "calls",
+          fromNodeId:
+            sourceNodeId,
+          toNodeId:
+            reference.toSymbolId,
+          evidence: {
+            source:
+              "code_index_reference",
+            detail:
+              reference.kind,
             ...(reference.line !==
             undefined
               ? {
@@ -1265,6 +1317,123 @@ export class RepoGraphBuilder {
     return undefined;
   }
 
+  private createSourceSymbolLookup(
+    nodes:
+      ReadonlyMap<
+        string,
+        RepoGraphNode
+      >,
+  ): ReadonlyMap<
+    string,
+    readonly RepoGraphSymbolNode[]
+  > {
+    const symbolsByFileId =
+      new Map<
+        string,
+        RepoGraphSymbolNode[]
+      >();
+
+    for (const node of nodes.values()) {
+      if (node.kind !== "symbol") {
+        continue;
+      }
+
+      const symbols =
+        symbolsByFileId.get(
+          node.fileId,
+        ) ?? [];
+
+      symbols.push(node);
+      symbolsByFileId.set(
+        node.fileId,
+        symbols,
+      );
+    }
+
+    for (
+      const symbols of
+      symbolsByFileId.values()
+    ) {
+      symbols.sort(
+        (left, right) =>
+          (right.startLine ?? 0) -
+            (left.startLine ?? 0) ||
+          this.symbolSpan(left) -
+            this.symbolSpan(right) ||
+          left.id.localeCompare(
+            right.id,
+          ),
+      );
+    }
+
+    return symbolsByFileId;
+  }
+
+  private resolveReferenceSource(
+    reference:
+      CodeIndexReference,
+    symbolsByFileId:
+      ReadonlyMap<
+        string,
+        readonly RepoGraphSymbolNode[]
+      >,
+  ): string | undefined {
+    if (
+      reference.line ===
+      undefined
+    ) {
+      return undefined;
+    }
+
+    const symbols =
+      symbolsByFileId.get(
+        reference.fromFileId,
+      ) ?? [];
+
+    for (const symbol of symbols) {
+      if (
+        (symbol.startLine ?? 1) <=
+          reference.line &&
+        (symbol.endLine ??
+          Number.MAX_SAFE_INTEGER) >=
+          reference.line
+      ) {
+        return symbol.id;
+      }
+    }
+
+    return undefined;
+  }
+
+  private symbolSpan(
+    symbol:
+      RepoGraphSymbolNode,
+  ): number {
+    if (
+      symbol.startLine ===
+        undefined ||
+      symbol.endLine ===
+        undefined
+    ) {
+      return Number.MAX_SAFE_INTEGER;
+    }
+
+    return (
+      symbol.endLine -
+      symbol.startLine
+    );
+  }
+
+  private isCallReference(
+    reference:
+      CodeIndexReference,
+  ): boolean {
+    return (
+      reference.kind === "call" ||
+      reference.kind === "construct"
+    );
+  }
+
   private findOwningProject(
     file: CodeIndexFile,
     projects:
@@ -1426,6 +1595,8 @@ export class RepoGraphBuilder {
         countEdges("declares"),
       importEdges:
         countEdges("imports"),
+      callEdges:
+        countEdges("calls"),
       referenceEdges:
         countEdges("references"),
       projectRelationshipEdges:
@@ -1721,4 +1892,3 @@ export class RepoGraphBuilder {
     }
   }
 }
-

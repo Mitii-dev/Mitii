@@ -20,6 +20,7 @@ const MODULES = ['better-sqlite3'];
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
 const { stageNativeSqliteBinding } = require('./stage-native-sqlite.cjs');
+const { stageOnnxRuntime } = require('./stage-onnxruntime.cjs');
 
 function readElectronFromPlist(plistPath) {
   if (!existsSync(plistPath)) return null;
@@ -124,6 +125,7 @@ async function main() {
 
   try {
     stageNativeSqliteBinding({ createDist: true });
+    stageOnnxRuntime();
   } catch (error) {
     console.error(
       `\nNative rebuild succeeded but staging failed: ${

@@ -42,11 +42,11 @@ export function OnboardingPanel({
       <div className="onboarding__body">
         <h3>1. Provider</h3>
         <p>
-          Open Settings → Model to pick Echo (local stub), Ollama / LM Studio, or
+          Open Settings → Provider to pick Echo (local stub), Ollama / LM Studio, or
           another OpenAI-compatible endpoint. Local models do not need an API key.
         </p>
         <button type="button" className="btn ghost" onClick={onOpenSettings}>
-          Open model settings
+          Open provider settings
         </button>
       </div>
 

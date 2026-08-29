@@ -97,4 +97,51 @@ describe('OpenAiCompatibleLlmPort retries', () => {
       false,
     );
   });
+
+  it('maps prompt cache hit and miss tokens from usage', async () => {
+    const fetchImpl: typeof fetch = async () =>
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: { content: 'ok' },
+              finish_reason: 'stop',
+            },
+          ],
+          usage: {
+            prompt_tokens: 100,
+            completion_tokens: 8,
+            total_tokens: 108,
+            prompt_cache_hit_tokens: 70,
+            prompt_cache_miss_tokens: 30,
+          },
+        }),
+        {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        },
+      );
+
+    const port = new OpenAiCompatibleLlmPort({
+      baseUrl: 'https://api.deepseek.com/v1',
+      model: 'deepseek-chat',
+      apiKey: 'secret',
+      fetchImpl,
+      capabilities: { supportsPromptCaching: true },
+    });
+
+    const events = await collectEvents(
+      port.complete({
+        messages: [{ role: 'user', content: 'ping' }],
+        stream: false,
+      }),
+    );
+    const completed = events.find((event) => event.type === 'completed');
+    expect(completed?.type === 'completed' && completed.usage?.cacheHitTokens).toBe(
+      70,
+    );
+    expect(
+      completed?.type === 'completed' && completed.usage?.cacheMissTokens,
+    ).toBe(30);
+  });
 });

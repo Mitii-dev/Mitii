@@ -44,11 +44,9 @@ export class LanceDbFilterBuilder {
       request.rootIds,
     );
 
-    this.addInFilter(
+    this.addFileScopeFilter(
       filters,
-      VECTOR_INDEX_COLUMNS
-        .RELATIVE_PATH,
-      request.filePaths,
+      request,
     );
 
     this.addInFilter(
@@ -57,24 +55,6 @@ export class LanceDbFilterBuilder {
         .KIND,
       request.kinds,
     );
-
-    if (
-      request.folderPrefix
-    ) {
-      const folder =
-        this.quote(
-          request.folderPrefix,
-        );
-      const descendantPrefix =
-        this.quote(
-          `${request.folderPrefix}/`,
-        );
-
-      filters.push(
-        `(${VECTOR_INDEX_COLUMNS.RELATIVE_PATH} = ${folder} OR ` +
-          `starts_with(${VECTOR_INDEX_COLUMNS.RELATIVE_PATH}, ${descendantPrefix}))`,
-      );
-    }
 
     return filters.join(
       " AND ",
@@ -139,6 +119,46 @@ export class LanceDbFilterBuilder {
           .join(", ") +
         ")",
     );
+  }
+
+  private addFileScopeFilter(
+    filters: string[],
+    request:
+      NormalizedVectorSearchRequest,
+  ): void {
+    const clauses: string[] = [];
+
+    if (request.filePaths.length > 0) {
+      clauses.push(
+        `${VECTOR_INDEX_COLUMNS.RELATIVE_PATH} IN (` +
+          request.filePaths
+            .map((value) =>
+              this.quote(value),
+            )
+            .join(", ") +
+          ")",
+      );
+    }
+
+    if (request.folderPrefix) {
+      const folder =
+        this.quote(
+          request.folderPrefix,
+        );
+      const descendantPrefix =
+        this.quote(
+          `${request.folderPrefix}/`,
+        );
+
+      clauses.push(
+        `${VECTOR_INDEX_COLUMNS.RELATIVE_PATH} = ${folder} OR ` +
+          `starts_with(${VECTOR_INDEX_COLUMNS.RELATIVE_PATH}, ${descendantPrefix})`,
+      );
+    }
+
+    if (clauses.length > 0) {
+      filters.push(`(${clauses.join(" OR ")})`);
+    }
   }
 
   private equals(

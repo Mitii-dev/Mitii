@@ -12,12 +12,16 @@ import {
   toolInvocationInputSchema,
   toolResultSchema,
 } from "../index";
+import type { RepoGraph } from "../../../modules/repository-state";
 import type { ProcessHandler } from "../index";
 import { createReadOnlyGrant } from "./fixtures/grants";
 
 const WORKSPACE = "/workspace";
 
-function createRuntime(options?: { processHandler?: ProcessHandler }) {
+function createRuntime(options?: {
+  processHandler?: ProcessHandler;
+  expectedCodeIndexChangeToken?: string;
+}) {
   const fs = new InMemoryFileSystemAdapter(
     WORKSPACE,
     directory({
@@ -57,6 +61,33 @@ function createRuntime(options?: { processHandler?: ProcessHandler }) {
       untracked: [],
       raw: "",
     }),
+    codeNavigation: {
+      id: "test-graph",
+      provider: "repo_graph" as const,
+      definition: async () => [
+        {
+          relativePath: "src/util.ts",
+          startLine: 1,
+          symbolName: "n",
+        },
+      ],
+      references: async () => [
+        {
+          relativePath: "src/other.ts",
+          startLine: 1,
+          symbolName: "n",
+        },
+      ],
+    },
+    repoGraphs: {
+      loadGraphs: async () => [createGraph()],
+      ...(options?.expectedCodeIndexChangeToken
+        ? {
+            expectedCodeIndexChangeToken: async () =>
+              options.expectedCodeIndexChangeToken,
+          }
+        : {}),
+    },
   });
 }
 
@@ -194,5 +225,184 @@ describe("ToolRuntimePipeline", () => {
       workspaceRoot: WORKSPACE,
     });
     expect(git.status).toBe("succeeded");
+
+    const definition = await runtime.execute({
+      schemaVersion: 1,
+      callId: "nav1",
+      toolName: "goto_definition",
+      arguments: { path: "src/util.ts", line: 1 },
+      grant,
+      workspaceRoot: WORKSPACE,
+    });
+    expect(definition.status).toBe("succeeded");
+    expect(
+      (definition.output as { locations: Array<{ symbolName?: string }> })
+        .locations[0]?.symbolName,
+    ).toBe("n");
+
+    const references = await runtime.execute({
+      schemaVersion: 1,
+      callId: "nav2",
+      toolName: "find_references",
+      arguments: { path: "src/util.ts", line: 1 },
+      grant,
+      workspaceRoot: WORKSPACE,
+    });
+    expect(references.status).toBe("succeeded");
+    expect(
+      (references.output as { locations: Array<{ path?: string }> })
+        .locations[0]?.path,
+    ).toBe("src/other.ts");
+
+    const impact = await runtime.execute({
+      schemaVersion: 1,
+      callId: "impact1",
+      toolName: "analyze_change_impact",
+      arguments: { path: "src/util.ts", line: 1, symbolName: "n" },
+      grant,
+      workspaceRoot: WORKSPACE,
+    });
+    expect(impact.status).toBe("succeeded");
+    expect(
+      (impact.output as { affected: Array<{ path?: string }> }).affected[0]
+        ?.path,
+    ).toBe("src/other.ts");
+  });
+
+  it("passes expectedCodeIndexChangeToken for graph_stale impact results", async () => {
+    const runtime = createRuntime({
+      expectedCodeIndexChangeToken: "newer-than-graph",
+    });
+    const grant = createReadOnlyGrant();
+    const impact = await runtime.execute({
+      schemaVersion: 1,
+      callId: "impact-stale",
+      toolName: "analyze_change_impact",
+      arguments: { path: "src/util.ts", line: 1, symbolName: "n" },
+      grant,
+      workspaceRoot: WORKSPACE,
+    });
+
+    expect(impact.status).toBe("succeeded");
+    const output = impact.output as {
+      status: string;
+      reasonCodes: string[];
+    };
+    expect(output.status).toBe("partial");
+    expect(output.reasonCodes).toContain("graph_stale");
+    expect(output.reasonCodes).toContain("impact_resolved");
+  });
+
+  it("marks analyze_change_impact stale when the run already mutated files", async () => {
+    const runtime = createRuntime();
+    const grant = createReadOnlyGrant();
+    const impact = await runtime.execute(
+      {
+        schemaVersion: 1,
+        callId: "impact-run-dirty",
+        toolName: "analyze_change_impact",
+        arguments: { path: "src/util.ts", line: 1, symbolName: "n" },
+        grant,
+        workspaceRoot: WORKSPACE,
+      },
+      { alreadyMutatedPaths: ["src/util.ts"] },
+    );
+
+    expect(impact.status).toBe("succeeded");
+    const output = impact.output as {
+      status: string;
+      reasonCodes: string[];
+    };
+    expect(output.status).toBe("partial");
+    expect(output.reasonCodes).toContain("graph_stale");
   });
 });
+
+function createGraph(): RepoGraph {
+  return {
+    schemaVersion: 1,
+    workspaceSnapshotId: "snapshot-1",
+    codeIndexChangeToken: "token-1",
+    nodes: [
+      {
+        id: "file:util",
+        kind: "file",
+        fileId: "file:util",
+        rootId: "workspace",
+        relativePath: "src/util.ts",
+      },
+      {
+        id: "sym:n",
+        kind: "symbol",
+        symbolId: "sym:n",
+        fileId: "file:util",
+        name: "n",
+        symbolKind: "const",
+        startLine: 1,
+        endLine: 1,
+      },
+      {
+        id: "file:other",
+        kind: "file",
+        fileId: "file:other",
+        rootId: "workspace",
+        relativePath: "src/other.ts",
+      },
+      {
+        id: "sym:useN",
+        kind: "symbol",
+        symbolId: "sym:useN",
+        fileId: "file:other",
+        name: "useN",
+        symbolKind: "function",
+        startLine: 1,
+        endLine: 1,
+      },
+    ],
+    edges: [
+      {
+        id: "edge:useN:n",
+        type: "references",
+        fromNodeId: "sym:useN",
+        toNodeId: "sym:n",
+        weight: 2,
+        evidenceCount: 1,
+        evidence: [
+          {
+            source: "code_index_reference",
+            detail: "useN references n",
+            line: 1,
+          },
+        ],
+        evidenceTruncated: false,
+      },
+    ],
+    warnings: [],
+    statistics: {
+      availableFiles: 2,
+      indexedFiles: 2,
+      projectNodes: 0,
+      fileNodes: 2,
+      symbolNodes: 2,
+      containsEdges: 0,
+      declaresEdges: 0,
+      importEdges: 0,
+      callEdges: 0,
+      referenceEdges: 1,
+      projectRelationshipEdges: 0,
+      unresolvedImports: 0,
+      omittedImportTargets: 0,
+      ambiguousReferences: 0,
+      unresolvedReferences: 0,
+      omittedReferenceTargets: 0,
+      omittedParentSymbolTargets: 0,
+      truncatedSymbolFiles: 0,
+      droppedSymbolNodes: 0,
+      droppedEdges: 0,
+      consistencyRetries: 0,
+      durationMs: 1,
+    },
+    status: "complete",
+    generatedAt: "2026-08-13T00:00:00.000Z",
+  };
+}

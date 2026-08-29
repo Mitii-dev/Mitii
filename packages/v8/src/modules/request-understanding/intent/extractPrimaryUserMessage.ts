@@ -51,3 +51,28 @@ export function extractPrimaryUserMessage(message: string): string {
 
   return text;
 }
+
+/**
+ * Marker written by amendMessageWithPriorConversation. Task analysis must use
+ * only the live ask so prior-turn file paths do not become explicit targets /
+ * pathScopes (which then reject search_files/glob/list outside those files).
+ */
+export const CURRENT_USER_REQUEST_MARKER = "Current user request:";
+
+/**
+ * Returns the live user ask for task/target analysis when understanding was
+ * amended with prior conversation for intent routing.
+ */
+export function extractCurrentUserRequestForAnalysis(message: string): string {
+  const primary = extractPrimaryUserMessage(message);
+  if (!primary) return "";
+
+  const markerIdx = primary.lastIndexOf(CURRENT_USER_REQUEST_MARKER);
+  if (markerIdx < 0) {
+    return primary;
+  }
+
+  return primary
+    .slice(markerIdx + CURRENT_USER_REQUEST_MARKER.length)
+    .trim();
+}

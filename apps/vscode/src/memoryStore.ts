@@ -4,13 +4,16 @@ import {
   MemoryPipeline,
   memoryFactSchema,
   type MemoryFact,
+  type MemoryFactDraft,
   type MemoryStorePort,
 } from '@mitii/v8';
 
 type MemoryScope = MemoryFact['scope'];
 
 export const MEMORY_KEY = 'mitii.memories.v1';
-const STORAGE_VERSION = 1;
+const STORAGE_VERSION = 2;
+const SUPPORTED_STORAGE_VERSIONS = new Set([1, 2]);
+const MAX_ACCESS_LOG = 20;
 
 /** Host/UI facts are shareable within the workspace by default. */
 const HOST_DEFAULT_PRIVACY = 'shareable' as const;
@@ -28,7 +31,7 @@ export interface MemoryItemView {
 }
 
 interface MemoryEnvelope {
-  storageVersion: typeof STORAGE_VERSION;
+  storageVersion: 1 | 2;
   facts: MemoryFact[];
 }
 
@@ -54,7 +57,7 @@ export class VsCodeMementoMemoryStore implements MemoryStorePort {
     return facts.filter((fact) => scopesCompatible(fact.scope, input.scope));
   }
 
-  public async commit(fact: MemoryFact): Promise<void> {
+  public async commit(fact: MemoryFactDraft): Promise<void> {
     const parsed = parseFact(fact, this.workspaceId);
     if (!parsed) {
       throw new Error('Memory commit rejected: fact failed schema validation.');
@@ -72,6 +75,17 @@ export class VsCodeMementoMemoryStore implements MemoryStorePort {
     return scope
       ? facts.filter((fact) => scopesCompatible(fact.scope, scope))
       : facts;
+  }
+
+  public async recordAccess(ids: readonly string[], at: string): Promise<void> {
+    if (ids.length === 0) {
+      return;
+    }
+    const wanted = new Set(ids);
+    const facts = await this.readFacts();
+    await this.writeFacts(
+      facts.map((fact) => (wanted.has(fact.id) ? touchAccess(fact, at) : fact)),
+    );
   }
 
   public async delete(id: string): Promise<void> {
@@ -178,6 +192,7 @@ export async function commitMemoryForWorkspace(
     tags: [],
     privacy: HOST_DEFAULT_PRIVACY,
     source: 'user',
+    type: 'preference',
   });
 
   if (result.status !== 'committed') {
@@ -239,7 +254,8 @@ function isEnvelope(value: unknown): value is MemoryEnvelope {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Partial<MemoryEnvelope>;
   return (
-    candidate.storageVersion === STORAGE_VERSION &&
+    typeof candidate.storageVersion === 'number' &&
+    SUPPORTED_STORAGE_VERSIONS.has(candidate.storageVersion) &&
     Array.isArray(candidate.facts)
   );
 }
@@ -272,6 +288,31 @@ function parseFact(raw: unknown, workspaceId: string): MemoryFact | null {
       typeof fact.source === 'string' && fact.source.trim().length > 0
         ? fact.source
         : 'user',
+    ...(typeof fact.type === 'string' ? { type: fact.type } : {}),
+    ...(typeof fact.title === 'string' && fact.title.trim().length > 0
+      ? { title: fact.title }
+      : {}),
+    concepts: Array.isArray(fact.concepts)
+      ? fact.concepts
+      : Array.isArray(fact.tags)
+        ? fact.tags
+        : [],
+    files: Array.isArray(fact.files) ? fact.files : [],
+    ...(typeof fact.importance === 'number' ? { importance: fact.importance } : {}),
+    sourceIds: Array.isArray(fact.sourceIds) ? fact.sourceIds : [],
+    ...(typeof fact.version === 'number' ? { version: fact.version } : {}),
+    ...(typeof fact.isLatest === 'boolean' ? { isLatest: fact.isLatest } : {}),
+    supersedes: Array.isArray(fact.supersedes) ? fact.supersedes : [],
+    ...(typeof fact.contentHash === 'string' && fact.contentHash.trim().length > 0
+      ? { contentHash: fact.contentHash }
+      : {}),
+    ...(typeof fact.accessCount === 'number' ? { accessCount: fact.accessCount } : {}),
+    ...(typeof fact.lastAccessedAt === 'string'
+      ? { lastAccessedAt: normalizeDateTime(fact.lastAccessedAt) }
+      : {}),
+    accessLog: Array.isArray(fact.accessLog)
+      ? fact.accessLog.filter((item): item is string => typeof item === 'string')
+      : [],
   });
 
   return result.success ? result.data : null;
@@ -294,4 +335,13 @@ function scopesCompatible(fact: MemoryScope, request: MemoryScope): boolean {
     return fact.workspaceId === request.workspaceId;
   }
   return fact.projectId === request.projectId;
+}
+
+function touchAccess(fact: MemoryFact, at: string): MemoryFact {
+  return {
+    ...fact,
+    accessCount: fact.accessCount + 1,
+    lastAccessedAt: at,
+    accessLog: [...fact.accessLog, at].slice(-MAX_ACCESS_LOG),
+  };
 }

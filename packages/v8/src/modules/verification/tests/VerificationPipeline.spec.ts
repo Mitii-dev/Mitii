@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ToolInvocationInput, ToolResult } from "../../../engine/tool-runtime";
 import { TOOL_RUNTIME_SCHEMA_VERSION } from "../../../engine/tool-runtime";
 
-import { InMemoryManifestReader } from "..";
+import { InMemoryManifestReader, InMemoryVerificationRecordStore } from "..";
 import type { VerificationToolExecutorPort } from "../contracts";
 import { VerificationError } from "../contracts";
 import { VerificationPipeline } from "../pipeline/VerificationPipeline";
@@ -256,6 +256,225 @@ describe("VerificationPipeline", () => {
         code: "TS2339",
       }),
     ]);
+    expect(result.allDiagnostics).toHaveLength(2);
+  });
+
+  it("captures and compares repo build state snapshots", async () => {
+    const tools = createTools((input) => {
+      if (input.toolName === "read_diagnostics") {
+        return toolResult({
+          callId: input.callId,
+          toolName: input.toolName,
+          status: "succeeded",
+          output: {
+            diagnostics: [
+              {
+                path: "packages/mui-builder/src/Button.tsx",
+                severity: "error",
+                message: "Type mismatch",
+                startLine: 12,
+                source: "tsserver",
+                code: "TS2322",
+              },
+            ],
+          },
+        });
+      }
+      if (input.toolName === "read_git_status") {
+        return toolResult({
+          callId: input.callId,
+          toolName: input.toolName,
+          status: "succeeded",
+          output: {
+            staged: [],
+            unstaged: [],
+            untracked: [],
+            truncated: false,
+          },
+        });
+      }
+      return toolResult({
+        callId: input.callId,
+        toolName: input.toolName,
+        status: "succeeded",
+        output: {
+          argv: (input.arguments as { argv?: string[] }).argv ?? [],
+          exitCode: 1,
+          stdout: "",
+          stderr: "tsc failed",
+          truncated: false,
+        },
+      });
+    });
+    const pipeline = new VerificationPipeline({
+      tools,
+      manifests: new InMemoryManifestReader({
+        "packages/mui-builder/package.json": JSON.stringify({
+          scripts: { typecheck: "tsc -p . --noEmit" },
+        }),
+      }),
+    });
+
+    const before = await pipeline.captureBuildState(
+      baseVerificationInput({
+        changedFiles: ["packages/mui-builder"],
+        projects: [
+          {
+            projectId: "mui-builder",
+            rootPath: "packages/mui-builder",
+            primaryLanguageId: "typescript",
+            manifestPaths: ["packages/mui-builder/package.json"],
+          },
+        ],
+        changeScope: "module",
+        verification: {
+          required: true,
+          minimumEvidence: ["diagnostics", "typecheck"],
+          allowUnavailable: true,
+        },
+      }),
+      { phase: "before", capturedAt: "2026-08-14T12:00:00.000Z" },
+    );
+
+    const after = {
+      ...before,
+      phase: "after" as const,
+      diagnostics: [],
+      summary: {
+        errorCount: 0,
+        warningCount: 0,
+        failedCheckIds: [],
+      },
+    };
+    const comparison = pipeline.compareBuildStates({ before, after });
+
+    expect(before.summary.errorCount).toBe(1);
+    expect(before.scope.projectIds).toEqual(["mui-builder"]);
+    expect(before.scope.folderPrefixes).toEqual(["packages/mui-builder"]);
+    expect(comparison.reasonCodes).toContain("errors_cleared");
+    expect(comparison.clearedErrorCount).toBe(1);
+    expect(comparison.remainingErrorCount).toBe(0);
+  });
+
+  it("does not execute desktop:test / WDIO unless tests evidence is required", async () => {
+    const manifests = new InMemoryManifestReader({
+      "package.json": JSON.stringify({
+        scripts: {
+          "desktop:test": "wdio run ./wdio.desktop.conf.ts",
+        },
+      }),
+      "tsconfig.json": "{ \"compilerOptions\": { \"strict\": true } }",
+    });
+    const executed: string[][] = [];
+    const tools = createTools((input) => {
+      if (input.toolName === "run_readonly_command") {
+        const argv = (input.arguments as { argv: string[] }).argv;
+        executed.push(argv);
+        return toolResult({
+          callId: input.callId,
+          toolName: input.toolName,
+          status: "succeeded",
+          output: {
+            argv,
+            exitCode: 0,
+            stdout: "ok",
+            stderr: "",
+            truncated: false,
+          },
+        });
+      }
+      return toolResult({
+        callId: input.callId,
+        toolName: input.toolName,
+        status: "succeeded",
+        output:
+          input.toolName === "read_diagnostics"
+            ? { diagnostics: [] }
+            : { staged: [], unstaged: [], untracked: [], truncated: false },
+      });
+    });
+
+    await new VerificationPipeline({ tools, manifests }).captureBuildState(
+      baseVerificationInput({
+        changeScope: "cross_cutting",
+        verification: {
+          required: true,
+          minimumEvidence: ["diagnostics", "typecheck", "build"],
+          allowUnavailable: true,
+        },
+      }),
+      { phase: "before" },
+    );
+
+    expect(executed.some((argv) => argv.includes("desktop:test"))).toBe(false);
+    expect(executed.some((argv) => argv.includes("wdio"))).toBe(false);
+  });
+
+  it("counts remaining errors only against prior error keys", () => {
+    const pipeline = new VerificationPipeline({
+      tools: {
+        execute: async () => {
+          throw new Error("not used");
+        },
+      },
+      manifests: new InMemoryManifestReader({}),
+    });
+    const before = {
+      schemaVersion: 1 as const,
+      capturedAt: "2026-08-14T12:00:00.000Z",
+      phase: "before" as const,
+      scope: {
+        workspaceRoot: "/repo",
+        folderPrefixes: ["packages/mui-builder"],
+        projectIds: ["mui-builder"],
+        changeScope: "module" as const,
+      },
+      checks: [],
+      diagnostics: [
+        {
+          path: "packages/mui-builder/src/Button.tsx",
+          severity: "error" as const,
+          message: "Type mismatch",
+          startLine: 12,
+          code: "TS2322",
+        },
+        {
+          path: "packages/mui-builder/src/theme.ts",
+          severity: "warning" as const,
+          message: "Unused export",
+          startLine: 3,
+        },
+      ],
+      summary: {
+        errorCount: 1,
+        warningCount: 1,
+        failedCheckIds: [],
+      },
+      reasonCodes: ["checks_failed" as const],
+    };
+    const after = {
+      ...before,
+      phase: "after" as const,
+      diagnostics: [
+        {
+          path: "packages/mui-builder/src/Button.tsx",
+          severity: "error" as const,
+          message: "Type mismatch",
+          startLine: 12,
+          code: "TS2322",
+        },
+      ],
+      summary: {
+        errorCount: 1,
+        warningCount: 0,
+        failedCheckIds: [],
+      },
+    };
+
+    const comparison = pipeline.compareBuildStates({ before, after });
+    expect(comparison.remainingErrorCount).toBe(1);
+    expect(comparison.newErrorCount).toBe(0);
+    expect(comparison.reasonCodes).toContain("errors_remaining");
   });
 
   it("infers nested package checks and treats tsc build scripts as typecheck evidence", async () => {
@@ -675,5 +894,27 @@ describe("VerificationPipeline", () => {
     expect(result.status).toBe("implemented_unverified");
     expect(result.status).not.toBe("verified_success");
     expect(result.reasonCodes).toContain("checks_unavailable");
+  });
+
+  it("persists and reloads a durable verification record", async () => {
+    const store = new InMemoryVerificationRecordStore();
+    const pipeline = new VerificationPipeline({
+      tools: createTools(() => {
+        throw new Error("should not run");
+      }),
+      manifests: new InMemoryManifestReader(),
+      records: store,
+    });
+    const record = pipeline.buildRecord({
+      runId: "run_pipe",
+      requestId: "req_pipe",
+      workspaceId: "ws_pipe",
+      status: "incomplete",
+    });
+    await pipeline.persistRecord(record);
+    const loaded = await pipeline.loadLatestRecord("ws_pipe");
+    expect(loaded?.recordId).toBe("run_pipe");
+    expect(loaded?.retry?.kind).toBe("fix_remaining");
+    expect(pipeline.buildUserSummary(record)).toContain("kept the edits");
   });
 });

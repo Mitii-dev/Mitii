@@ -53,42 +53,13 @@ export const SOURCE_LANGUAGE_BASENAMES: Readonly<
   workspace: "starlark",
 };
 
-export const SOURCE_LANGUAGE_EXTENSIONS: Readonly<
+/**
+ * Dialects that are not first-class LanguageProfileRegistry IDs.
+ * Target-language extensions live only on LanguageProfileRegistry.
+ */
+export const SOURCE_LANGUAGE_DIALECT_EXTENSIONS: Readonly<
   Record<string, SourceLanguageId>
 > = {
-  ".ts": "typescript",
-  ".mts": "typescript",
-  ".cts": "typescript",
-  ".tsx": "typescript",
-
-  ".js": "javascript",
-  ".mjs": "javascript",
-  ".cjs": "javascript",
-  ".jsx": "javascript",
-
-  ".py": "python",
-  ".pyi": "python",
-  ".pyw": "python",
-
-  ".java": "java",
-  ".kt": "kotlin",
-  ".kts": "kotlin",
-
-  ".go": "go",
-  ".rs": "rust",
-
-  ".c": "c",
-  ".h": "c",
-  ".cpp": "cpp",
-  ".cc": "cpp",
-  ".cxx": "cpp",
-  ".hpp": "cpp",
-  ".hxx": "cpp",
-
-  ".cs": "csharp",
-  ".rb": "ruby",
-  ".php": "php",
-  ".swift": "swift",
   ".scala": "scala",
 
   ".lua": "lua",
@@ -97,12 +68,9 @@ export const SOURCE_LANGUAGE_EXTENSIONS: Readonly<
   ".sol": "solidity",
   ".zig": "zig",
   ".dart": "dart",
+  ".hs": "haskell",
+  ".lhs": "haskell",
 
-  ".sh": "shell",
-  ".bash": "shell",
-  ".zsh": "shell",
-
-  ".sql": "sql",
   ".tf": "hcl",
   ".tfvars": "hcl",
   ".proto": "proto",
@@ -137,26 +105,40 @@ export const SOURCE_SYMBOL_KIND_BY_NODE_TYPE: Readonly<
 > = {
   class_declaration: "class",
   class_definition: "class",
+  class_specifier: "class",
+  abstract_class_declaration: "class",
   interface_declaration: "interface",
+  protocol_declaration: "interface",
   struct_item: "struct",
   struct_specifier: "struct",
   struct_declaration: "struct",
   trait_item: "trait",
   trait_definition: "trait",
   enum_declaration: "enum",
+  enum_definition: "enum",
   enum_item: "enum",
+  enum_specifier: "enum",
   function_declaration: "function",
   function_definition: "function",
   function_item: "function",
+  function_signature: "function",
+  generator_function_declaration: "function",
   method_definition: "method",
   method_declaration: "method",
+  method_signature: "method",
   type_alias_declaration: "type",
   type_declaration: "type",
+  type_spec: "type",
+  type_alias: "type",
   module: "module",
   module_definition: "module",
+  namespace_declaration: "module",
+  object_declaration: "class",
+  object_definition: "class",
   contract_declaration: "contract",
   variable_declaration: "variable",
   lexical_declaration: "const",
+  FnProto: "function",
 };
 
 export interface RegexSourceSymbolPattern {
@@ -492,6 +474,14 @@ export const SOURCE_REGEX_SYMBOL_PATTERNS: Readonly<
     },
   ],
 
+  haskell: [
+    {
+      pattern:
+        /^([a-z_]\w*)\s+::/,
+      kind: "type",
+    },
+  ],
+
   bash: [
     {
       pattern:
@@ -571,134 +561,10 @@ export const SOURCE_GENERIC_IMPORT_PATTERNS = [
   },
 ] as const;
 
-export const SOURCE_TREE_SITTER_SYMBOL_QUERIES: Readonly<
-  Record<SourceLanguageId, string>
-> = {
-  typescript: `
-    (class_declaration name: (type_identifier) @name) @definition
-    (interface_declaration name: (type_identifier) @name) @definition
-    (function_declaration name: (identifier) @name) @definition
-    (method_definition name: (property_identifier) @name) @definition
-    (type_alias_declaration name: (type_identifier) @name) @definition
-    (enum_declaration name: (identifier) @name) @definition
-    (lexical_declaration (variable_declarator name: (identifier) @name)) @definition
-  `,
-  tsx: `
-    (class_declaration name: (type_identifier) @name) @definition
-    (interface_declaration name: (type_identifier) @name) @definition
-    (function_declaration name: (identifier) @name) @definition
-    (method_definition name: (property_identifier) @name) @definition
-    (lexical_declaration (variable_declarator name: (identifier) @name)) @definition
-  `,
-  javascript: `
-    (class_declaration name: (identifier) @name) @definition
-    (function_declaration name: (identifier) @name) @definition
-    (method_definition name: (property_identifier) @name) @definition
-    (lexical_declaration (variable_declarator name: (identifier) @name)) @definition
-  `,
-  python: `
-    (class_definition name: (identifier) @name) @definition
-    (function_definition name: (identifier) @name) @definition
-  `,
-  go: `
-    (function_declaration name: (identifier) @name) @definition
-    (method_declaration name: (field_identifier) @name) @definition
-    (type_declaration (type_spec name: (type_identifier) @name)) @definition
-  `,
-  java: `
-    (class_declaration name: (identifier) @name) @definition
-    (interface_declaration name: (identifier) @name) @definition
-    (method_declaration name: (identifier) @name) @definition
-    (enum_declaration name: (identifier) @name) @definition
-  `,
-  rust: `
-    (function_item name: (identifier) @name) @definition
-    (struct_item name: (type_identifier) @name) @definition
-    (enum_item name: (type_identifier) @name) @definition
-    (trait_item name: (type_identifier) @name) @definition
-  `,
-  c: `
-    (function_definition declarator: (function_declarator declarator: (identifier) @name)) @definition
-    (struct_specifier name: (type_identifier) @name) @definition
-    (enum_specifier name: (type_identifier) @name) @definition
-  `,
-  cpp: `
-    (class_specifier name: (type_identifier) @name) @definition
-    (struct_specifier name: (type_identifier) @name) @definition
-    (function_definition declarator: (function_declarator declarator: (identifier) @name)) @definition
-  `,
-  csharp: `
-    (class_declaration name: (identifier) @name) @definition
-    (interface_declaration name: (identifier) @name) @definition
-    (method_declaration name: (identifier) @name) @definition
-    (enum_declaration name: (identifier) @name) @definition
-  `,
-  kotlin: `
-    (class_declaration (type_identifier) @name) @definition
-    (function_declaration (simple_identifier) @name) @definition
-    (object_declaration (type_identifier) @name) @definition
-  `,
-  swift: `
-    (class_declaration name: (type_identifier) @name) @definition
-    (struct_declaration name: (type_identifier) @name) @definition
-    (enum_declaration name: (type_identifier) @name) @definition
-    (protocol_declaration name: (type_identifier) @name) @definition
-    (function_declaration name: (simple_identifier) @name) @definition
-  `,
-  ruby: `
-    (class name: (constant) @name) @definition
-    (module name: (constant) @name) @definition
-    (method name: (identifier) @name) @definition
-  `,
-  php: `
-    (class_declaration name: (name) @name) @definition
-    (interface_declaration name: (name) @name) @definition
-    (function_definition name: (name) @name) @definition
-    (method_declaration name: (name) @name) @definition
-  `,
-};
-
-export const SOURCE_TREE_SITTER_REFERENCE_QUERIES: Readonly<
-  Record<SourceLanguageId, string>
-> = {
-  typescript: `
-    (call_expression function: (identifier) @reference.call)
-    (new_expression constructor: (identifier) @reference.construct)
-    (type_identifier) @reference.type
-  `,
-  tsx: `
-    (call_expression function: (identifier) @reference.call)
-    (new_expression constructor: (identifier) @reference.construct)
-    (type_identifier) @reference.type
-  `,
-  javascript: `
-    (call_expression function: (identifier) @reference.call)
-    (new_expression constructor: (identifier) @reference.construct)
-  `,
-  python: `
-    (call function: (identifier) @reference.call)
-    (identifier) @reference.read
-  `,
-  go: `
-    (call_expression function: (identifier) @reference.call)
-    (type_identifier) @reference.type
-  `,
-  java: `
-    (method_invocation name: (identifier) @reference.call)
-    (type_identifier) @reference.type
-  `,
-  rust: `
-    (call_expression function: (identifier) @reference.call)
-    (type_identifier) @reference.type
-  `,
-  c: `(identifier) @reference.read`,
-  cpp: `(identifier) @reference.read`,
-  csharp: `(identifier) @reference.read`,
-  kotlin: `(simple_identifier) @reference.read`,
-  swift: `(simple_identifier) @reference.read`,
-  ruby: `(identifier) @reference.read`,
-  php: `(name) @reference.read`,
-};
+export {
+  SOURCE_TREE_SITTER_REFERENCE_QUERIES,
+  SOURCE_TREE_SITTER_SYMBOL_QUERIES,
+} from "./queries/TreeSitterQueryCatalog";
 
 export const resolveSourceFileReaderOptions = (
   options: SourceFileReaderOptions = {},

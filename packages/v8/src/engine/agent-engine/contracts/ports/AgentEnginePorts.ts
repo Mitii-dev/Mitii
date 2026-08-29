@@ -9,6 +9,8 @@ import type {
   PromptConstructionResult,
 } from "../../../../modules/prompt-construction";
 import type {
+  MemoryCommitInput,
+  MemoryCommitResult,
   MemoryRetrieveInput,
   MemoryRetrieveResult,
 } from "../../../../modules/memory";
@@ -28,7 +30,10 @@ import type {
   UnpinRepositoryStateResult,
 } from "../../../../modules/repository-state";
 import type { CreateUserRequestInput, UserRequestEnvelope } from "../../../../modules/request-intake";
-import type { RequestUnderstandingResult } from "../../../../modules/request-understanding";
+import type {
+  DiagnosticSummary,
+  RequestUnderstandingResult,
+} from "../../../../modules/request-understanding";
 import type {
   SkillsSelectInput,
   SkillsSelectResult,
@@ -38,9 +43,14 @@ import type {
   ToolExecuteOptions,
   ToolInvocationInput,
   ToolResult,
+  RepositoryGraphPort,
 } from "../../../tool-runtime";
 import type {
+  RepoBuildState,
+  RepoBuildStateComparison,
   VerificationInput,
+  VerificationPipelineOptions,
+  VerificationRecord,
   VerificationResult,
 } from "../../../../modules/verification";
 
@@ -61,11 +71,21 @@ export interface AgentEngineIntakePort {
 export interface AgentEngineUnderstandingPort {
   understand(
     input: UserRequestEnvelope,
+    diagnosticSummary?: DiagnosticSummary,
   ): Promise<RequestUnderstandingResult>;
 }
 
 export interface AgentEngineDecisionPort {
   decide(input: DecisionPolicyInput): ExecutionDecision;
+  narrow?(input: {
+    previous: ExecutionDecision;
+    discoveredPaths?: readonly string[];
+    residualRisk?: "low" | "medium" | "high" | "critical";
+  }): ExecutionDecision;
+  widen?(input: {
+    previous: ExecutionDecision;
+    extraPaths?: readonly string[];
+  }): ExecutionDecision;
 }
 
 export interface AgentEnginePromptPort {
@@ -78,10 +98,11 @@ export interface AgentEngineSkillsPort {
 
 export interface AgentEngineMemoryPort {
   retrieve(input: MemoryRetrieveInput): Promise<MemoryRetrieveResult>;
+  commit?(input: MemoryCommitInput): Promise<MemoryCommitResult>;
 }
 
 export interface AgentEnginePlanningPort {
-  plan(input: PlanningInput): PlanningResult;
+  plan(input: PlanningInput): Promise<PlanningResult>;
 }
 
 export interface AgentEngineRepositoryStatePort {
@@ -113,6 +134,25 @@ export interface AgentEngineToolRuntimePort {
 
 export interface AgentEngineVerificationPort {
   verify(input: VerificationInput): Promise<VerificationResult>;
+  captureBuildState?(
+    input: VerificationInput,
+    params: { phase: "before" | "after"; capturedAt?: string },
+    options?: VerificationPipelineOptions,
+  ): Promise<RepoBuildState>;
+  buildStateFromResult?(
+    input: VerificationInput,
+    result: VerificationResult,
+    params: { phase: "before" | "after"; capturedAt?: string },
+  ): RepoBuildState;
+  compareBuildStates?(params: {
+    before?: RepoBuildState;
+    after: RepoBuildState;
+  }): RepoBuildStateComparison;
+  persistRecord?(record: VerificationRecord): Promise<void>;
+  loadRecord?(recordId: string): Promise<VerificationRecord | undefined>;
+  loadLatestRecord?(
+    workspaceId: string,
+  ): Promise<VerificationRecord | undefined>;
 }
 
 /**
@@ -134,8 +174,22 @@ export interface AgentEngineDependencies {
   tools?: AgentEngineToolRuntimePort;
   verification?: AgentEngineVerificationPort;
   checkpointStore?: AgentEngineRunCheckpointStorePort;
+  /**
+   * Optional published RepoGraph port. When present, follow_evidence and
+   * discover_and_plan collect hop-1 mustRead/affected reports before drafting.
+   * Omitting leaves those fields empty.
+   */
+  repoGraphs?: RepositoryGraphPort;
   /** Defaults to policy DEFAULT_TOOL_DEFINITIONS when omitted. */
   toolDefinitions?: readonly ModelToolDefinition[];
+  /**
+   * Opt-in checklist auto-advance after successful built-in mutating tools
+   * (`DEFAULT_MUTATION_TOOL_DEFINITIONS`: apply_patch, write/delete/move, …).
+   * Defaults to false at the engine/SDK compose layer. Host apps may enable
+   * it by default; custom/MCP tools are not included unless added to the
+   * engine mutating-tool set later.
+   */
+  taskListAutoAdvance?: boolean;
   clock?: AgentEngineClockPort;
   idGenerator?: AgentEngineIdGeneratorPort;
 }

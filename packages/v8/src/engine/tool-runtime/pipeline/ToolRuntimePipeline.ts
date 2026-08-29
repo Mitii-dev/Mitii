@@ -105,11 +105,11 @@ export class ToolRuntimePipeline {
       return preflight.result;
     }
 
-    const { registered, maxOutputBytes } = preflight;
+    const { registered, maxOutputBytes, argumentsValue } = preflight;
 
     try {
       const executed = await registered.execute({
-        arguments: parsed.arguments,
+        arguments: argumentsValue,
         grant: parsed.grant,
         workspaceRoot: parsed.workspaceRoot,
         ports: this.ports,
@@ -201,7 +201,7 @@ function toResultBody(executed: ToolExecutionResult) {
       truncated: executed.truncated,
       redacted: executed.redacted,
       output: executed.output,
-      warnings: [],
+      warnings: executed.warnings ?? [],
       argv: executed.argv,
       path: executed.path,
     };
@@ -214,7 +214,7 @@ function toResultBody(executed: ToolExecutionResult) {
       truncated: executed.truncated,
       redacted: executed.redacted,
       output: executed.output,
-      warnings: [],
+      warnings: executed.warnings ?? [],
       argv: executed.argv,
       path: executed.path,
     };
@@ -226,9 +226,12 @@ function toResultBody(executed: ToolExecutionResult) {
     truncated: executed.truncated,
     redacted: executed.redacted,
     output: executed.output,
-    warnings: executed.truncated
-      ? ["Tool output was truncated to grant/tool limits."]
-      : [],
+    warnings: [
+      ...(executed.truncated
+        ? ["Tool output was truncated to grant/tool limits."]
+        : []),
+      ...(executed.warnings ?? []),
+    ],
     argv: executed.argv,
     path: executed.path,
   };

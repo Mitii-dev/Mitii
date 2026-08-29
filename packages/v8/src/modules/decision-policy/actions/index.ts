@@ -1,11 +1,26 @@
-export { resolveRoute, isMutationIntent, isDiagnosisIntent } from "./ResolveRoute";
+export { toolGrantsEquivalent } from "./CompareToolGrants";
+
+export { resolveRoute, isMutationIntent, isDiagnosisIntent, looksLikeAgentVerificationRequest } from "./ResolveRoute";
 export type { RouteResolution } from "./ResolveRoute";
+
+export { looksLikeWorkspaceBugReport } from "./LooksLikeWorkspaceBugReport";
 
 export { resolvePlanningDepth } from "./ResolvePlanningDepth";
 export type { PlanningDepthResolution } from "./ResolvePlanningDepth";
 
+export {
+  isBroadSharedScopeRepair,
+  shouldElevateSharedScopeRisk,
+} from "./ClassifySharedScopeRepair";
+
 export { resolvePlanGate } from "./ResolvePlanGate";
 export type { PlanGateResolution } from "./ResolvePlanGate";
+
+export { planRoute } from "./RoutePlanner";
+export type { RoutePlanResult } from "./RoutePlanner";
+
+export { compileGrant } from "./GrantCompiler";
+export type { CompiledGrantResult } from "./GrantCompiler";
 
 export { buildToolGrant, extractNetworkHosts } from "./BuildToolGrant";
 export type { ToolGrantResolution } from "./BuildToolGrant";
@@ -24,6 +39,9 @@ export type {
 
 export { resolveVerificationRequirement } from "./ResolveVerificationRequirement";
 export type { VerificationResolution } from "./ResolveVerificationRequirement";
+
+export { resolvePreflightBuild } from "./ResolvePreflightBuild";
+export type { PreflightBuildResolution } from "./ResolvePreflightBuild";
 
 export { scanPromptInjection } from "./ScanPromptInjection";
 export type { InjectionScanResult } from "./ScanPromptInjection";

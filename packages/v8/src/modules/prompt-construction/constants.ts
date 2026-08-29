@@ -38,6 +38,8 @@ export const PROMPT_CONSTRUCTION_STATUSES = [
 
 export const PROMPT_REASON_CODES = [
   "output_reserved_first",
+  "dynamic_output_expanded",
+  "dynamic_output_limited_by_context",
   "within_provider_limits",
   "partial_context_omitted",
   "tools_omitted_unsupported",
@@ -45,6 +47,7 @@ export const PROMPT_REASON_CODES = [
   "repository_not_required",
   "repository_wrapped_untrusted",
   "conversation_compacted",
+  "user_request_truncated",
   "blocked_required_overflow",
 ] as const;
 

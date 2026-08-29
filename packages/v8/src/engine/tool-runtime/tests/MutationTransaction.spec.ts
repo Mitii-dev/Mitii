@@ -8,6 +8,8 @@ import {
   directory,
   file,
   fingerprintToolCall,
+  isPatchCurrentContentReason,
+  isPatchTargetedDiscoveryReason,
 } from "../index";
 import { createReadOnlyGrant } from "./fixtures/grants";
 import type { ToolGrant } from "../../../modules/decision-policy";
@@ -200,7 +202,7 @@ describe("Tool Runtime Phase 8 mutations", () => {
     void fingerprint;
   });
 
-  it("rejects patch conflicts when oldText is missing", async () => {
+  it("rejects with old_text_not_found and attaches currentContent", async () => {
     const { runtime } = createRuntime();
     const result = await runtime.execute(
       {
@@ -222,7 +224,275 @@ describe("Tool Runtime Phase 8 mutations", () => {
     );
 
     expect(result.status).toBe("rejected");
-    expect(result.reasonCode).toBe("patch_conflict");
+    expect(result.reasonCode).toBe("old_text_not_found");
+    expect(result.output).toEqual(
+      expect.objectContaining({
+        path: "src/a.ts",
+        currentContent: "const x = 1;\n",
+      }),
+    );
+  });
+
+  it("rejects with old_text_ambiguous and attaches currentContent", async () => {
+    const { runtime } = createRuntime(
+      directory({ src: directory({ "a.ts": file("foo\nfoo\n") }) }),
+    );
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "m4b",
+      toolName: "apply_patch",
+      arguments: {
+        patches: [{ path: "src/a.ts", oldText: "foo", newText: "bar" }],
+      },
+      grant: createWriteGrant({ approvalMode: "never" }),
+      workspaceRoot: WORKSPACE,
+    });
+
+    expect(result.status).toBe("rejected");
+    expect(result.reasonCode).toBe("old_text_ambiguous");
+    expect(result.output).toEqual(
+      expect.objectContaining({
+        path: "src/a.ts",
+        currentContent: "foo\nfoo\n",
+      }),
+    );
+  });
+
+  it("rejects with patch_target_missing when the file does not exist", async () => {
+    const { runtime } = createRuntime();
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "m4c",
+      toolName: "apply_patch",
+      arguments: {
+        patches: [
+          {
+            path: "src/missing.ts",
+            oldText: "const x = 1;\n",
+            newText: "const x = 2;\n",
+          },
+        ],
+      },
+      grant: createWriteGrant({ approvalMode: "never" }),
+      workspaceRoot: WORKSPACE,
+    });
+
+    expect(result.status).toBe("rejected");
+    expect(result.reasonCode).toBe("patch_target_missing");
+    expect(result.output?.currentContent).toBeUndefined();
+  });
+
+  it("rejects with patch_hash_mismatch and attaches currentContent", async () => {
+    const { runtime } = createRuntime();
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "m4d",
+      toolName: "apply_patch",
+      arguments: {
+        patches: [
+          {
+            path: "src/a.ts",
+            oldText: "const x = 1;\n",
+            newText: "const x = 2;\n",
+            expectedHash: "stale-hash",
+          },
+        ],
+      },
+      grant: createWriteGrant({ approvalMode: "never" }),
+      workspaceRoot: WORKSPACE,
+    });
+
+    expect(result.status).toBe("rejected");
+    expect(result.reasonCode).toBe("patch_hash_mismatch");
+    expect(result.output).toEqual(
+      expect.objectContaining({
+        path: "src/a.ts",
+        currentContent: "const x = 1;\n",
+      }),
+    );
+  });
+
+  it("rejects identical oldText and newText without attaching currentContent", async () => {
+    const { runtime } = createRuntime();
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "m4e",
+      toolName: "apply_patch",
+      arguments: {
+        patches: [
+          {
+            path: "src/a.ts",
+            oldText: "const x = 1;\n",
+            newText: "const x = 1;\n",
+          },
+        ],
+      },
+      grant: createWriteGrant({ approvalMode: "never" }),
+      workspaceRoot: WORKSPACE,
+    });
+
+    expect(result.status).toBe("rejected");
+    expect(result.reasonCode).toBe("identical_old_and_new");
+    expect(result.output?.currentContent).toBeUndefined();
+  });
+
+  it("rejects with patch_syntax_invalid and attaches currentContent", async () => {
+    const { runtime } = createRuntime(
+      directory({ src: directory({ "data.json": file('{"ok":true}') }) }),
+    );
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "m4f",
+      toolName: "apply_patch",
+      arguments: {
+        patches: [
+          {
+            path: "src/data.json",
+            oldText: '{"ok":true}',
+            newText: "{not-json",
+          },
+        ],
+      },
+      grant: createWriteGrant({ approvalMode: "never" }),
+      workspaceRoot: WORKSPACE,
+    });
+
+    expect(result.status).toBe("rejected");
+    expect(result.reasonCode).toBe("patch_syntax_invalid");
+    expect(result.output).toEqual(
+      expect.objectContaining({
+        path: "src/data.json",
+        currentContent: '{"ok":true}',
+      }),
+    );
+  });
+
+  it("classifies which patch reason codes attach content vs targeted discovery", () => {
+    expect(isPatchCurrentContentReason("old_text_not_found")).toBe(true);
+    expect(isPatchCurrentContentReason("old_text_ambiguous")).toBe(true);
+    expect(isPatchCurrentContentReason("patch_target_missing")).toBe(false);
+    expect(isPatchCurrentContentReason("identical_old_and_new")).toBe(false);
+    expect(isPatchTargetedDiscoveryReason("old_text_not_found")).toBe(true);
+    expect(isPatchTargetedDiscoveryReason("patch_target_missing")).toBe(true);
+    expect(isPatchTargetedDiscoveryReason("old_text_ambiguous")).toBe(false);
+    expect(isPatchTargetedDiscoveryReason("identical_old_and_new")).toBe(false);
+    expect(isPatchTargetedDiscoveryReason("patch_syntax_invalid")).toBe(false);
+    expect(isPatchTargetedDiscoveryReason("patch_conflict")).toBe(true);
+  });
+
+  it("replaces every exact occurrence when replaceAll is true", async () => {
+    const { runtime, fs } = createRuntime(
+      directory({ src: directory({ "a.ts": file("foo\nfoo\n") }) }),
+    );
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "m6",
+      toolName: "apply_patch",
+      arguments: {
+        patches: [
+          {
+            path: "src/a.ts",
+            oldText: "foo",
+            newText: "bar",
+            replaceAll: true,
+          },
+        ],
+      },
+      grant: createWriteGrant({ approvalMode: "never" }),
+      workspaceRoot: WORKSPACE,
+    });
+
+    expect(result.status).toBe("succeeded");
+    const patched = await fs.readFile(`${WORKSPACE}/src/a.ts`);
+    expect(patched.content).toBe("bar\nbar\n");
+  });
+
+  it("still treats regex-looking oldText as a literal under replaceAll", async () => {
+    const { runtime, fs } = createRuntime(
+      directory({ src: directory({ "a.ts": file("a.*\na.*\n") }) }),
+    );
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "m6b",
+      toolName: "apply_patch",
+      arguments: {
+        patches: [
+          {
+            path: "src/a.ts",
+            oldText: "a.*",
+            newText: "b",
+            replaceAll: true,
+          },
+        ],
+      },
+      grant: createWriteGrant({ approvalMode: "never" }),
+      workspaceRoot: WORKSPACE,
+    });
+
+    expect(result.status).toBe("succeeded");
+    const patched = await fs.readFile(`${WORKSPACE}/src/a.ts`);
+    expect(patched.content).toBe("b\nb\n");
+  });
+
+  it("coerces string replaceAll and keeps unique-match as the default", async () => {
+    const { runtime } = createRuntime(
+      directory({ src: directory({ "a.ts": file("foo\nfoo\n") }) }),
+    );
+    const coerced = await runtime.execute({
+      schemaVersion: 1,
+      callId: "m6c",
+      toolName: "apply_patch",
+      arguments: {
+        patches: [
+          {
+            path: "src/a.ts",
+            oldText: "foo",
+            newText: "bar",
+            replaceAll: "true",
+          },
+        ],
+      },
+      grant: createWriteGrant({ approvalMode: "never" }),
+      workspaceRoot: WORKSPACE,
+    });
+    expect(coerced.status).toBe("succeeded");
+
+    const unique = await runtime.execute({
+      schemaVersion: 1,
+      callId: "m6d",
+      toolName: "apply_patch",
+      arguments: {
+        patches: [{ path: "src/a.ts", oldText: "bar", newText: "baz" }],
+      },
+      grant: createWriteGrant({ approvalMode: "never" }),
+      workspaceRoot: WORKSPACE,
+    });
+    expect(unique.status).toBe("rejected");
+    expect(unique.reasonCode).toBe("old_text_ambiguous");
+  });
+
+  it("rejects replaceAll with empty oldText", async () => {
+    const { runtime } = createRuntime();
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "m6e",
+      toolName: "apply_patch",
+      arguments: {
+        patches: [
+          {
+            path: "src/a.ts",
+            oldText: "",
+            newText: "const y = 1;\n",
+            replaceAll: true,
+          },
+        ],
+      },
+      grant: createWriteGrant({ approvalMode: "never" }),
+      workspaceRoot: WORKSPACE,
+    });
+
+    expect(result.status).toBe("rejected");
+    expect(result.reasonCode).toBe("invalid_arguments");
   });
 
   it("rejects write grant without write effect", async () => {

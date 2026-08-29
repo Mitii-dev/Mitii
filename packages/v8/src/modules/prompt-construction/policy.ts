@@ -9,17 +9,33 @@ export const PROMPT_CONSTRUCTION_THRESHOLDS = {
    */
   outputReserveRatio: 0.3,
 
+  /**
+   * Safety fraction of leftover context that output may use. A 10k-free
+   * window yields ~9.5k max_tokens. A real host override still caps this.
+   */
+  dynamicOutputWindowRatio: 0.95,
+
   /** Absolute floor for output reserve tokens when the window is large enough. */
   minimumOutputReserveTokens: 4_096,
-
-  /** Absolute ceiling for output reserve (still capped by provider max output). */
-  maximumOutputReserveTokens: 16_384,
 
   /** Soft minimum tokens retained for the required system safety preamble. */
   minimumSystemTokens: 200,
 
   /** Soft minimum tokens retained for the current user request. */
   minimumUserRequestTokens: 64,
+
+  /**
+   * Share of the conversation section reserved for the current user request
+   * before history is compacted. Large pastes (JSON dumps, logs) must not
+   * append unbounded on top of a full history budget.
+   */
+  userRequestConversationShare: 0.75,
+
+  /**
+   * When truncating an oversized user request, keep this fraction of the
+   * retained characters from the end (ask/error often trails a large paste).
+   */
+  userRequestTailKeepRatio: 0.7,
 
   /** When compacting conversation, truncate older tool results to this many chars. */
   compactedToolResultCharacters: 400,
@@ -29,9 +45,6 @@ export const PROMPT_CONSTRUCTION_THRESHOLDS = {
    * older tool messages are truncated to compactedToolResultCharacters.
    */
   compactedToolResultKeepRecent: 3,
-
-  /** Maximum repository blocks serialized even when budget remains. */
-  maximumRepositoryBlocks: 48,
 
   /**
    * Soft fraction of maximumOutputTokens used as a headroom hint for

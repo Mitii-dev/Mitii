@@ -1,5 +1,11 @@
-import type { MemoryFact, MemoryStorePort } from "../contracts";
-import type { MemoryScope } from "../contracts";
+import {
+  memoryFactSchema,
+  type MemoryFact,
+  type MemoryFactDraft,
+  type MemoryScope,
+  type MemoryStorePort,
+} from "../contracts";
+import { applyAccessTouch } from "../internal/retention";
 
 /**
  * In-process memory store for tests and single-process hosts.
@@ -7,9 +13,10 @@ import type { MemoryScope } from "../contracts";
 export class InMemoryMemoryStore implements MemoryStorePort {
   private readonly facts = new Map<string, MemoryFact>();
 
-  constructor(seed: readonly MemoryFact[] = []) {
+  constructor(seed: readonly MemoryFactDraft[] = []) {
     for (const fact of seed) {
-      this.facts.set(fact.id, fact);
+      const parsed = memoryFactSchema.parse(fact);
+      this.facts.set(parsed.id, parsed);
     }
   }
 
@@ -24,11 +31,25 @@ export class InMemoryMemoryStore implements MemoryStorePort {
   }
 
   public commit(fact: MemoryFact): void {
-    this.facts.set(fact.id, fact);
+    const parsed = memoryFactSchema.parse(fact);
+    this.facts.set(parsed.id, parsed);
   }
 
-  public list(): readonly MemoryFact[] {
-    return [...this.facts.values()];
+  public list(scope?: MemoryScope): readonly MemoryFact[] {
+    const facts = [...this.facts.values()];
+    return scope
+      ? facts.filter((fact) => scopesCompatible(fact.scope, scope))
+      : facts;
+  }
+
+  public recordAccess(ids: readonly string[], at: string): void {
+    for (const id of ids) {
+      const existing = this.facts.get(id);
+      if (!existing) {
+        continue;
+      }
+      this.facts.set(id, applyAccessTouch(existing, at));
+    }
   }
 }
 

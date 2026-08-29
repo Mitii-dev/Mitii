@@ -1,4 +1,5 @@
 import type { RequestUnderstandingResult } from "../../request-understanding";
+import type { WindowPolicy } from "../../window-budget";
 
 import type {
   DecisionReasonCode,
@@ -24,21 +25,58 @@ export interface MutationBudgetResolution {
  */
 export function resolveMutationBudget(params: {
   understanding: RequestUnderstandingResult;
+  windowPolicy?: WindowPolicy;
 }): MutationBudgetResolution {
-  const { understanding } = params;
-  const profile = selectProfile(understanding.taskAnalysis);
+  const { understanding, windowPolicy } = params;
+  const profile = selectProfile(understanding);
   const reasonCode = profileToReasonCode(profile);
+  const profileBudget = { ...MUTATION_BUDGET_PROFILES[profile] };
+  const mutationBudget = windowPolicy
+    ? mergeMutationBudget(profileBudget, windowPolicy.mutation)
+    : profileBudget;
+  const windowClamped =
+    mutationBudget.maxPatchesPerCall < profileBudget.maxPatchesPerCall ||
+    mutationBudget.maxUniqueFilesPerCall < profileBudget.maxUniqueFilesPerCall ||
+    mutationBudget.maxPatchPayloadCharacters <
+      profileBudget.maxPatchPayloadCharacters;
 
   return {
-    mutationBudget: { ...MUTATION_BUDGET_PROFILES[profile] },
+    mutationBudget,
     profile,
-    reasonCodes: [reasonCode],
+    reasonCodes: windowClamped
+      ? [reasonCode, "mutation_budget_window_clamped"]
+      : [reasonCode],
+  };
+}
+
+function mergeMutationBudget(
+  profileBudget: MutationBudget,
+  windowMutation: WindowPolicy["mutation"],
+): MutationBudget {
+  return {
+    maxPatchesPerCall: Math.min(
+      profileBudget.maxPatchesPerCall,
+      windowMutation.maxPatchesPerCall,
+    ),
+    maxUniqueFilesPerCall: Math.min(
+      profileBudget.maxUniqueFilesPerCall,
+      windowMutation.maxUniqueFilesPerCall,
+    ),
+    maxPatchPayloadCharacters: Math.min(
+      profileBudget.maxPatchPayloadCharacters,
+      windowMutation.maxPatchPayloadCharacters,
+    ),
+    preferredBatchSize: windowMutation.preferredBatchSize,
+    requireBatchedExecution:
+      profileBudget.requireBatchedExecution ||
+      windowMutation.requireBatchedExecution,
   };
 }
 
 function selectProfile(
-  taskAnalysis: RequestUnderstandingResult["taskAnalysis"],
+  understanding: RequestUnderstandingResult,
 ): MutationBudgetProfile {
+  const taskAnalysis = understanding.taskAnalysis;
   const estimatedMax = taskAnalysis.estimatedFilesAffected?.maximum;
   const largeFileSpan =
     typeof estimatedMax === "number" &&
@@ -54,7 +92,9 @@ function selectProfile(
     taskAnalysis.complexity === "complex" ||
     taskAnalysis.complexity === "very_complex";
 
+  const primary = understanding.intent.classification.primaryTaskIntent;
   if (
+    primary === "refactor" ||
     largeFileSpan ||
     (tightScope && tightComplexity) ||
     taskAnalysis.recommendsPlanning

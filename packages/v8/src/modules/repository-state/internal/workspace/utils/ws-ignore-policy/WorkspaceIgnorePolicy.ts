@@ -7,15 +7,29 @@ import type {
   WorkspaceIgnorePolicyOptions,
 } from "../../types";
 import { WS_CONSTANTS } from "../../constants";
+import {
+  NestedIgnoreFileLoader,
+  parseGitIgnoreLine,
+  gitIgnoreRuleMatches,
+  type GitIgnoreRule,
+} from "./git-ignore";
 
 export class WorkspaceIgnorePolicy {
   private readonly ignoredDirectoryNames: ReadonlySet<string>;
+
+  private readonly securityDirectoryNames: ReadonlySet<string>;
 
   private readonly ignoredPaths: ReadonlySet<string>;
 
   private readonly ignoredFileNames: ReadonlySet<string>;
 
+  private readonly securityFileNames: ReadonlySet<string>;
+
   private readonly ignoredExtensions: ReadonlySet<string>;
+
+  private readonly securityGlobs: readonly GitIgnoreRule[];
+
+  private readonly nestedIgnoreFiles?: NestedIgnoreFileLoader;
 
   private readonly customRule?: WorkspaceIgnorePolicyOptions["customRule"];
 
@@ -36,10 +50,14 @@ export class WorkspaceIgnorePolicy {
     }
 
     for (const directoryName of options.allowedDirectoryNames ?? []) {
-      ignoredDirectoryNames.delete(this.normalizeName(directoryName));
+      const normalized = this.normalizeName(directoryName);
+      if (!WS_CONSTANTS.DEFAULT_SECURITY_DIRECTORY_NAMES.has(normalized)) {
+        ignoredDirectoryNames.delete(normalized);
+      }
     }
 
     this.ignoredDirectoryNames = ignoredDirectoryNames;
+    this.securityDirectoryNames = WS_CONSTANTS.DEFAULT_SECURITY_DIRECTORY_NAMES;
 
     this.ignoredPaths = new Set(
       (options.ignoredPaths ?? [])
@@ -49,40 +67,72 @@ export class WorkspaceIgnorePolicy {
         .filter(Boolean),
     );
 
-    this.ignoredFileNames = new Set(
-      (options.ignoredFileNames ?? [])
-        .map((fileName) => this.normalizeName(fileName))
-        .filter(Boolean),
-    );
+    const ignoredFileNames = new Set(WS_CONSTANTS.DEFAULT_IGNORED_FILE_NAMES);
 
-    this.ignoredExtensions = new Set(
-      (options.ignoredExtensions ?? [])
-        .map((extension) => this.normalizeExtension(extension))
-        .filter(Boolean),
-    );
+    for (const fileName of options.ignoredFileNames ?? []) {
+      const normalized = this.normalizeName(fileName);
+
+      if (normalized) {
+        ignoredFileNames.add(normalized);
+      }
+    }
+
+    this.ignoredFileNames = ignoredFileNames;
+    this.securityFileNames = WS_CONSTANTS.DEFAULT_SECURITY_FILE_NAMES;
+
+    const ignoredExtensions = new Set(WS_CONSTANTS.DEFAULT_IGNORED_EXTENSIONS);
+
+    for (const extension of options.ignoredExtensions ?? []) {
+      const normalized = this.normalizeExtension(extension);
+      if (normalized) {
+        ignoredExtensions.add(normalized);
+      }
+    }
+
+    this.ignoredExtensions = ignoredExtensions;
+
+    this.securityGlobs = WS_CONSTANTS.DEFAULT_SECURITY_FILE_GLOBS.map(
+      (pattern) => parseGitIgnoreLine(pattern),
+    ).filter((rule): rule is GitIgnoreRule => Boolean(rule));
 
     this.customRule = options.customRule;
+
+    if (options.fileSystem) {
+      this.nestedIgnoreFiles = new NestedIgnoreFileLoader(
+        options.fileSystem,
+        options.ignoreFileNames ?? WS_CONSTANTS.DEFAULT_IGNORE_FILE_NAMES,
+        this.pathNormalizer,
+      );
+    }
   }
 
-  public evaluate(context: BoundedWalkIgnoreContext): WorkspaceIgnoreDecision {
-    const relativePath = this.pathNormalizer.normalizeRelative(
-      context.relativePath,
-    );
-
+  public evaluateSync(
+    context: BoundedWalkIgnoreContext,
+  ): WorkspaceIgnoreDecision {
+    const relativePath = this.normalizeRelativePath(context.relativePath);
     const name = this.normalizeName(
       this.pathNormalizer.basename(relativePath || context.path),
     );
 
-    if (context.kind === "directory" && this.ignoredDirectoryNames.has(name)) {
+    const security = this.evaluateSecurity(relativePath, name, context.kind);
+    if (security) {
+      return security;
+    }
+
+    const ignoredDirectory = this.findIgnoredDirectorySegment(
+      relativePath,
+      context.kind,
+      this.ignoredDirectoryNames,
+    );
+    if (ignoredDirectory) {
       return {
         ignored: true,
         reason: "default_directory",
-        matchedRule: name,
+        matchedRule: ignoredDirectory,
       };
     }
 
     const ignoredPath = this.findMatchingIgnoredPath(relativePath);
-
     if (ignoredPath) {
       return {
         ignored: true,
@@ -126,8 +176,91 @@ export class WorkspaceIgnorePolicy {
     };
   }
 
+  public async evaluate(
+    context: BoundedWalkIgnoreContext,
+  ): Promise<WorkspaceIgnoreDecision> {
+    const syncDecision = this.evaluateSync(context);
+    if (syncDecision.ignored || !this.nestedIgnoreFiles) {
+      return syncDecision;
+    }
+
+    const nested = await this.nestedIgnoreFiles.match(context);
+    if (nested) {
+      return {
+        ignored: true,
+        reason: nested.reason,
+        matchedRule: nested.matchedRule,
+      };
+    }
+
+    return syncDecision;
+  }
+
   public shouldIgnore(context: BoundedWalkIgnoreContext): boolean {
-    return this.evaluate(context).ignored;
+    return this.evaluateSync(context).ignored;
+  }
+
+  public async shouldIgnoreAsync(
+    context: BoundedWalkIgnoreContext,
+  ): Promise<boolean> {
+    return (await this.evaluate(context)).ignored;
+  }
+
+  private evaluateSecurity(
+    relativePath: string,
+    name: string,
+    kind: BoundedWalkIgnoreContext["kind"],
+  ): WorkspaceIgnoreDecision | undefined {
+    const securityDirectory = this.findIgnoredDirectorySegment(
+      relativePath,
+      kind,
+      this.securityDirectoryNames,
+    );
+    if (securityDirectory) {
+      return {
+        ignored: true,
+        reason: "security",
+        matchedRule: securityDirectory,
+      };
+    }
+
+    if (this.securityFileNames.has(name)) {
+      return {
+        ignored: true,
+        reason: "security",
+        matchedRule: name,
+      };
+    }
+
+    for (const rule of this.securityGlobs) {
+      if (gitIgnoreRuleMatches(rule, relativePath, kind)) {
+        return {
+          ignored: true,
+          reason: "security",
+          matchedRule: rule.source,
+        };
+      }
+    }
+
+    return undefined;
+  }
+
+  private findIgnoredDirectorySegment(
+    relativePath: string,
+    kind: BoundedWalkIgnoreContext["kind"],
+    names: ReadonlySet<string>,
+  ): string | undefined {
+    const segments = relativePath.split("/").filter(Boolean);
+    const directorySegments =
+      kind === "directory" ? segments : segments.slice(0, -1);
+
+    for (const segment of directorySegments) {
+      if (names.has(segment)) {
+        return segment;
+      }
+    }
+
+    return undefined;
   }
 
   private findMatchingIgnoredPath(relativePath: string): string | undefined {
@@ -141,6 +274,14 @@ export class WorkspaceIgnorePolicy {
     }
 
     return undefined;
+  }
+
+  private normalizeRelativePath(value: string): string {
+    try {
+      return this.pathNormalizer.normalizeRelative(value);
+    } catch {
+      return value.replace(/\\/g, "/").replace(/^\/+/, "");
+    }
   }
 
   private normalizeName(value: string): string {

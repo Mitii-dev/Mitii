@@ -19,7 +19,9 @@ export class PathContainmentError extends Error {
 export function normalizeRelativePath(targetPath: string): string {
   assertNoNullBytes(targetPath);
 
-  const slashNormalized = targetPath.replace(/\\/g, "/");
+  // Chat @-mentions (@packages, @apps/docs) should resolve as workspace paths.
+  const withoutAtMention = targetPath.replace(/^@(?=[A-Za-z0-9_.-])/, "");
+  const slashNormalized = withoutAtMention.replace(/\\/g, "/");
   if (isAbsolutePath(slashNormalized)) {
     throw new PathContainmentError(
       "path_escape",
@@ -64,6 +66,53 @@ export function isPathWithinScopes(
   return false;
 }
 
+/**
+ * When a search/glob defaults to workspace root but the grant is folder-scoped,
+ * remap "." to the pattern prefix or the first concrete path scope.
+ */
+export function resolveScopedSearchPath(params: {
+  requestedPath: string;
+  pattern?: string;
+  pathScopes: readonly string[];
+}): string {
+  const requested = normalizeRelativePath(params.requestedPath);
+  if (isPathWithinScopes(requested, params.pathScopes)) {
+    return requested;
+  }
+  if (requested !== ".") {
+    return requested;
+  }
+
+  const fromPattern = params.pattern
+    ? globPatternDirectory(params.pattern)
+    : undefined;
+  if (fromPattern && isPathWithinScopes(fromPattern, params.pathScopes)) {
+    return fromPattern;
+  }
+
+  const scoped = params.pathScopes
+    .map((scope) => normalizeRelativePath(scope))
+    .find((scope) => scope !== ".");
+  return scoped ?? requested;
+}
+
+function globPatternDirectory(pattern: string): string | undefined {
+  const cut = pattern.search(/[*?[]/);
+  const prefix = (cut === -1 ? pattern : pattern.slice(0, cut)).replace(
+    /\\/g,
+    "/",
+  );
+  const trimmed = prefix.replace(/\/+$/, "");
+  if (!trimmed || trimmed === ".") {
+    return undefined;
+  }
+  const lastSlash = trimmed.lastIndexOf("/");
+  if (lastSlash <= 0) {
+    return undefined;
+  }
+  return trimmed.slice(0, lastSlash);
+}
+
 export function isPhysicalPathWithinRoot(
   workspaceRoot: string,
   absolutePath: string,
@@ -89,6 +138,23 @@ export interface ContainedPath {
 }
 
 /**
+ * Canonical workspace root for containment checks against realpath'd targets.
+ * Logical roots like macOS `/var/folders/...` resolve to `/private/var/folders/...`;
+ * comparing without this step falsely rejects in-workspace paths as symlink escapes.
+ */
+async function resolvePhysicalWorkspaceRoot(params: {
+  fileSystem: WorkspaceFileSystemPort;
+  workspaceRoot: string;
+}): Promise<string> {
+  const absoluteRoot = path.resolve(params.workspaceRoot);
+  try {
+    return await params.fileSystem.realpath(absoluteRoot);
+  } catch {
+    return absoluteRoot;
+  }
+}
+
+/**
  * Resolves a relative path, enforces grant scopes, and rejects symlink escapes.
  */
 export async function resolveContainedPath(params: {
@@ -108,6 +174,10 @@ export async function resolveContainedPath(params: {
   }
 
   const absoluteRoot = path.resolve(params.workspaceRoot);
+  const physicalRoot = await resolvePhysicalWorkspaceRoot({
+    fileSystem: params.fileSystem,
+    workspaceRoot: absoluteRoot,
+  });
   const absolutePath =
     relativePath === "."
       ? absoluteRoot
@@ -128,6 +198,7 @@ export async function resolveContainedPath(params: {
       await assertCreatablePathWithinRoot({
         fileSystem: params.fileSystem,
         absoluteRoot,
+        physicalRoot,
         absolutePath,
         requestedPath: params.requestedPath,
       });
@@ -139,7 +210,7 @@ export async function resolveContainedPath(params: {
     );
   }
 
-  if (!isPhysicalPathWithinRoot(absoluteRoot, realPath)) {
+  if (!isPhysicalPathWithinRoot(physicalRoot, realPath)) {
     throw new PathContainmentError(
       "symlink_escape",
       `Symlink target escapes workspace for "${params.requestedPath}".`,
@@ -151,7 +222,7 @@ export async function resolveContainedPath(params: {
     const stat = await params.fileSystem.lstat(absolutePath);
     if (stat.isSymlink) {
       const linkReal = await params.fileSystem.realpath(absolutePath);
-      if (!isPhysicalPathWithinRoot(absoluteRoot, linkReal)) {
+      if (!isPhysicalPathWithinRoot(physicalRoot, linkReal)) {
         throw new PathContainmentError(
           "symlink_escape",
           `Symlink escapes workspace: "${params.requestedPath}".`,
@@ -179,6 +250,7 @@ export async function resolveContainedPath(params: {
 async function assertCreatablePathWithinRoot(params: {
   fileSystem: WorkspaceFileSystemPort;
   absoluteRoot: string;
+  physicalRoot: string;
   absolutePath: string;
   requestedPath: string;
 }): Promise<void> {
@@ -192,7 +264,7 @@ async function assertCreatablePathWithinRoot(params: {
     }
     try {
       const realAncestor = await params.fileSystem.realpath(cursor);
-      if (!isPhysicalPathWithinRoot(params.absoluteRoot, realAncestor)) {
+      if (!isPhysicalPathWithinRoot(params.physicalRoot, realAncestor)) {
         throw new PathContainmentError(
           "symlink_escape",
           `Create path parent escapes workspace: "${params.requestedPath}".`,

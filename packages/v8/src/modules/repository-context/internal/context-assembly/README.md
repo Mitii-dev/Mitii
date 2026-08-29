@@ -1,137 +1,124 @@
 # Context Assembly
 
-`context-assembly` resolves a validated `ContextSelectionResult` into safe,
-bounded, provenance-rich repository content blocks.
+Context Assembly turns selected context items into prompt-safe content blocks. It loads content, applies safety policies, truncates to budget, and returns blocks with provenance.
 
-It answers one question:
+## What This Module Does
 
-> What repository content corresponds to the selected items, and what exact
-> content can safely fit inside each allocated allowance?
+- Validates assembly input.
+- Loads content through registered content sources.
+- Applies sensitive-path policy.
+- Redacts common secret patterns.
+- Sanitizes unsafe/control text.
+- Applies line ranges and representation decisions.
+- Truncates content to budget.
+- Produces context blocks, dropped blocks, warnings, budget usage, and statistics.
 
-## Boundary
-
-This module:
-
-- loads selected file, line-range, excerpt, outline, or signature content
-  through registered content-source ports;
-- resolves sources deterministically by priority and ID;
-- applies visible representation fallbacks;
-- blocks sensitive credential paths by default;
-- sanitizes unsupported control characters;
-- redacts common credential and secret forms;
-- truncates every block to its selector-provided hard allowance;
-- marks repository content as untrusted data;
-- preserves selection, retrieval-source, path, range, and scoring provenance;
-- validates public input, options, and output.
-
-This module does not:
-
-- retrieve or rank candidates;
-- decide the overall model context window;
-- create system, developer, or user messages;
-- turn blocks into XML, Markdown, or a final prompt;
-- compact conversation history;
-- log, emit telemetry, retry, schedule work, or select a provider;
-- authorize tools or repository changes.
-
-Those responsibilities belong to `context-selection`, the future
-`prompt-assembly`/runtime budgeting layer, and the V8 engine.
-
-## Pipeline
+## Structure
 
 ```text
-ContextSelectionResult + WorkspaceSnapshot
-                    |
-                    v
-          ContextContentLoader
-                    |
-                    v
-     SensitivePathPolicy + Sanitizer
-                    |
-                    v
-             SecretRedactor
-                    |
-                    v
-            ContextTextTruncator
-                    |
-                    v
-           ContextBlockBuilder
-                    |
-                    v
-          ContextAssemblyResult
+context-assembly/
+  ContextAssembler.ts
+  ContextContentLoader.ts
+  ContextContentSourceRegistry.ts
+  WorkspaceFileContextSource.ts
+  SelectedPreviewContextSource.ts
+  ContextBlockBuilder.ts
+  ContextSecretRedactor.ts
+  ContextTextSanitizer.ts
+  ContextTextTruncator.ts
+  schema.ts
+  types.ts
+  tests/
 ```
 
-## Default sources
+## Types And Contracts
 
-`ContextAssemblyFactory` registers:
+- `ContextAssemblyInput`: selection result, workspace snapshot, optional `folderPrefix`, and optional abort signal.
+- `ContextContentSource`: loader contract for workspace files, previews, or future sources.
+- `ContextBlock`: prompt-safe assembled content with path, line ranges, token estimate, truncation, redaction, and provenance.
+- `DroppedContextBlock`: selected item that could not be assembled with a cause.
+- `ContextAssemblyResult`: status, blocks, dropped blocks, warnings, budget usage, and statistics.
+- `ContextAssemblyFactoryDependencies`: dependencies for building an assembler module.
 
-- `SelectedPreviewContextSource` for retrieval previews; and
-- `WorkspaceFileContextSource` for full files and line-based ranges.
+## Technical Details
 
-The engine can inject higher-priority sources for an indexed chunk store,
-SQLite code index, generated outlines, symbol signatures, or remote workspace
-providers. Source failure is observable even when a lower-priority source
-succeeds.
+- `WorkspaceFileContextSource` reads file content from snapshot-backed file sources.
+- `SelectedPreviewContextSource` can use candidate preview text without another file read.
+- Redaction and sanitization happen before prompt construction sees content.
+- Truncation preserves metadata and reports omitted characters/tokens.
+- Block ids are stable and derived from provenance.
 
-## Usage
+## Ownership Boundaries
 
-```ts
-import {
-  ContextAssemblyFactory,
-} from "./context-assembly";
+Owns content loading, redaction, sanitization, truncation, and context block creation.
 
-const assembler =
-  new ContextAssemblyFactory().create(
+Does not own retrieval ranking, selection scoring, prompt section budgeting, or model calls.
+
+## Tests
+
+```bash
+pnpm exec vitest run packages/v8/src/modules/repository-context/internal/context-assembly
+```
+
+## Example Flow
+
+This example uses a realistic coding-agent request and shows the kind of structure this module receives and returns. The output is representative: ids, timings, and scores are examples, but the shape matches how this module is meant to be understood.
+
+### Real Prompt
+
+```text
+I am in a React app. In src/LoginForm.tsx, when the user clicks the "Sign in" button, show a loading label and disable the button until the login request finishes. Keep the existing validation and error handling. Add or update a focused test if there is already a LoginForm test nearby.
+```
+
+### Real Input Structure
+
+ContextAssemblyInput -> ContextAssemblyResult:
+
+```json
+{
+  "prompt": "I am in a React app. In src/LoginForm.tsx, when the user clicks the \"Sign in\" button, show a loading label and disable the button until the login request finishes. Keep the existing validation and error handling. Add or update a focused test if there is already a LoginForm test nearby.",
+  "workspaceId": "workspace-1",
+  "stateToken": "state-abc",
+  "targetFile": "src/LoginForm.tsx"
+}
+```
+
+### Step-By-Step Flow
+
+1. A user sends the real prompt shown above from an editor or chat host.
+2. The host attaches workspace id `workspace-1` and the explicit target file `src/LoginForm.tsx`.
+3. The module receives the real structure shown in the input block.
+4. The module validates schema/version/limits before doing any work.
+5. The module extracts the important target: `src/LoginForm.tsx`.
+6. The module keeps the user constraint: existing validation and error handling must stay intact.
+7. The module performs only its own responsibility and does not cross into neighboring modules.
+8. Any budget, path, state, or provider constraint is applied before output is produced.
+9. The module records warnings/reason codes instead of hiding degraded behavior.
+10. The module returns the realistic output shape shown below.
+11. The next pipeline stage consumes that output without reinterpreting raw user text.
+
+### Realistic Output
+
+Context Assembly result returns a result like this:
+
+```json
+{
+  "schemaVersion": 1,
+  "status": "complete",
+  "blocks": [
     {
-      fileSystem,
-      additionalSources: [
-        indexedChunkSource,
-      ],
-    },
-    {
-      requiredLoadFailureMode: "partial",
-      sensitivePathMode: "block",
-      redactSecrets: true,
-      allowRepresentationFallback: true,
-    },
-  );
-
-const result = await assembler.assemble({
-  selection,
-  snapshot,
-  abortSignal,
-});
+      "id": "repo:src/LoginForm.tsx:1-120",
+      "relativePath": "src/LoginForm.tsx",
+      "content": "export function LoginForm() {\n  const [isSubmitting, setIsSubmitting] = useState(false);\n  ...\n}",
+      "lineRanges": [{ "startLine": 1, "endLine": 120 }],
+      "tokenEstimate": 1320,
+      "truncated": false,
+      "redactions": []
+    }
+  ],
+  "dropped": [],
+  "warnings": [],
+  "budget": { "maximumTokens": 6000, "usedTokens": 1320, "remainingTokens": 4680 },
+  "statistics": { "loadedItems": 1, "blocks": 1, "droppedBlocks": 0 }
+}
 ```
-
-## Untrusted-content contract
-
-Every block has:
-
-```ts
-trust: "untrusted_repository_content"
-```
-
-Repository content can contain comments, strings, documentation, generated
-text, or malicious instructions. The later prompt layer must preserve this
-trust boundary and must never promote block content into system or developer
-instructions.
-
-## Hard budgets
-
-`SelectedContextItem.allocatedTokens` is authoritative. Assembly estimates the
-loaded and redacted text, then deterministically truncates it when necessary.
-The output schema rejects any block whose estimate exceeds its allocation.
-
-## Sensitive content
-
-The default path policy blocks common credential stores such as `.env`,
-`.npmrc`, private-key files, `.ssh`, and `.aws`. Safe template suffixes such as
-`.example`, `.sample`, and `.template` remain readable.
-
-When sensitive-path mode is `"redact"`, secret redaction cannot be disabled.
-
-## Tuning
-
-All source priorities, byte caps, fallback chains, truncation behavior,
-sensitive-path rules, redaction patterns, IDs, and messages are centralized in
-`constants.ts`.

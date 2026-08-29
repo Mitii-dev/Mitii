@@ -17,7 +17,12 @@ export async function executeReadDiagnostics(params: {
   workspaceRoot: string;
   fileSystem: WorkspaceFileSystemPort;
   diagnostics?: DiagnosticsPort;
-}): Promise<{ output: unknown; truncated: boolean; redacted: boolean }> {
+}): Promise<{
+  output: unknown;
+  truncated: boolean;
+  redacted: boolean;
+  warnings?: string[];
+}> {
   if (!params.diagnostics) {
     throw new ToolRuntimeError(
       "misconfigured_ports",
@@ -27,6 +32,7 @@ export async function executeReadDiagnostics(params: {
 
   const input = readDiagnosticsInputSchema.parse(params.arguments);
   const scopedPaths: string[] = [];
+  const deniedPaths: string[] = [];
 
   if (input.paths) {
     for (const requested of input.paths) {
@@ -40,6 +46,7 @@ export async function executeReadDiagnostics(params: {
         scopedPaths.push(contained.relativePath);
       } catch (error) {
         if (error instanceof PathContainmentError) {
+          deniedPaths.push(requested);
           continue;
         }
         throw error;
@@ -47,9 +54,21 @@ export async function executeReadDiagnostics(params: {
     }
   }
 
+  const deniedWarnings =
+    deniedPaths.length > 0
+      ? [
+          `${deniedPaths.length} of ${input.paths?.length ?? 0} requested path(s) were outside the granted scope and skipped: ${deniedPaths.slice(0, 5).join(", ")}${deniedPaths.length > 5 ? ", ..." : ""}`,
+        ]
+      : [];
+
   if (input.paths && scopedPaths.length === 0) {
     const output = readDiagnosticsOutputSchema.parse({ diagnostics: [] });
-    return { output, truncated: false, redacted: false };
+    return {
+      output,
+      truncated: false,
+      redacted: false,
+      warnings: deniedWarnings,
+    };
   }
 
   const diagnostics = await params.diagnostics.readDiagnostics({
@@ -70,5 +89,5 @@ export async function executeReadDiagnostics(params: {
     diagnostics: filtered,
   });
 
-  return { output, truncated: false, redacted: false };
+  return { output, truncated: false, redacted: false, warnings: deniedWarnings };
 }

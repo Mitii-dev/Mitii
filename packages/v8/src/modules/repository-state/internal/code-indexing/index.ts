@@ -4,6 +4,7 @@ export * from "./schema";
 
 export * from "./CodeIndexWriteError";
 export * from "./CodeIndexImportResolver";
+export * from "./InRepoLanguageImportResolver";
 export * from "./CodeIndexDocumentMapper";
 export * from "./CodeIndexUpdatePlanner";
 export * from "./CodeIndexUpdater";

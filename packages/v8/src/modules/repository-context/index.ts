@@ -3,12 +3,21 @@ export {
   ContextAssemblyFactory,
   ContextSelector,
   HybridRetrievalFactory,
+  IdentifierAwareRetrievalReranker,
 } from "./adapters";
 export {
   repositoryContextPipelineInputSchema,
   repositoryContextPipelineResultSchema,
 } from "./contracts/schema";
+export {
+  collectRepositoryContextGraphAnchors,
+  deriveContextSelectionBudget,
+  pathMatchesFolderPrefix,
+  restrictContextReferencesToFolderPrefix,
+  REPOSITORY_CONTEXT_RETRIEVAL_POLICY,
+} from "./policy";
 export type {
+  ContextSelectionBudget,
   RepositoryContextPipelineInput,
   RepositoryContextPipelineResult,
   RepositoryContextAssemblerPort,

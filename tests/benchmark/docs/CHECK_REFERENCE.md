@@ -15,9 +15,25 @@
 | `dir_has_files` | Directory contains a minimum number of files |
 | `workspace_unchanged` / `workspace_changed` | Mode and scope enforcement |
 | `file_unchanged` / `file_changed` | Exact file or directory-scope enforcement |
-| `command` | Real build, test, lint, type-check, or script execution |
+| `command` | Real build, test, lint, type-check, or `__bench__/grade.mjs` script |
 | `http` | Starts the project and verifies an actual HTTP response |
 | `skills_installed` | Project skill installation count |
+
+## Frontend grading
+
+For feature/bugfix cases prefer:
+
+```json
+{
+  "type": "command",
+  "command": "node __bench__/grade.mjs --json \"[{\\\"op\\\":\\\"contains\\\",\\\"path\\\":\\\"src/App.tsx\\\",\\\"value\\\":\\\"Secondary\\\"}]\"",
+  "timeoutMs": 30000
+}
+```
+
+Supported grader ops: `exists`, `notExists`, `contains`, `notContains`, `matches`.
+
+Do not rely on `file_contains` alone as proof that a feature works — pair it with grade and/or `npm test` / `npm run build`.
 
 ## Command check
 
@@ -30,6 +46,15 @@
 ```
 
 The command runs inside the isolated case workspace after the agent finishes.
+
+## Per-case reporting
+
+Every finished case immediately writes:
+
+- `reports/runs/<runId>/cases/<id>.json`
+- `reports/runs/<runId>/cases/<id>.md`
+
+and refreshes `reports/runs/<runId>/summary.md` (live progress). A final copy is also written to `--output` / `<suite>-latest.json`.
 
 ## HTTP check
 

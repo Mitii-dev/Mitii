@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 import type { ClarificationOptionView, SuspensionPayload } from '../protocol';
 
 interface ApprovalCardsProps {
@@ -70,6 +72,37 @@ function compactText(text: string | undefined, max = 900): string | undefined {
   return cleaned.length > max ? `${cleaned.slice(0, max - 1)}…` : cleaned;
 }
 
+function shellQuoteArg(value: string): string {
+  if (/^[A-Za-z0-9_./:=@%+-]+$/.test(value)) return value;
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function approvalCommandText(approval: SuspensionPayload['approval']): string | undefined {
+  const args = approval?.arguments;
+  if (
+    approval?.toolName === 'run_command' &&
+    args &&
+    typeof args === 'object' &&
+    Array.isArray((args as { argv?: unknown }).argv)
+  ) {
+    return (args as { argv: unknown[] }).argv
+      .map((arg) => shellQuoteArg(String(arg)))
+      .join(' ');
+  }
+  return undefined;
+}
+
+function approvalArgumentsText(
+  approval: SuspensionPayload['approval'],
+): string | undefined {
+  if (!approval?.arguments || approvalCommandText(approval)) return undefined;
+  try {
+    return JSON.stringify(approval.arguments, null, 2);
+  } catch {
+    return String(approval.arguments);
+  }
+}
+
 export function ApprovalCards({
   suspension,
   clarifyText,
@@ -80,11 +113,14 @@ export function ApprovalCards({
   onDeny,
   onShowInlineDiff,
 }: ApprovalCardsProps) {
+  const [planExpanded, setPlanExpanded] = useState(true);
   const isClarify = suspension.kind === 'clarification_required';
   const isPlan = suspension.kind === 'plan_approval_required';
   const approval = suspension.approval;
   const options = suspension.clarificationOptions ?? [];
   const planText = suspension.planText;
+  const commandText = approvalCommandText(approval);
+  const argumentsText = approvalArgumentsText(approval);
   const objective = extractField(planText, 'Objective');
   const scope = extractField(planText, 'Scope');
   const verification = extractField(planText, 'Verification');
@@ -117,6 +153,22 @@ export function ApprovalCards({
           ) : null}
         </div>
       ) : null}
+      {!isClarify && !isPlan && commandText ? (
+        <div className="approval-command">
+          <span>Command to run</span>
+          <pre className="approval-plan__raw approval-plan__raw--command">
+            {commandText}
+          </pre>
+        </div>
+      ) : null}
+      {!isClarify && !isPlan && argumentsText ? (
+        <div className="approval-command">
+          <span>Tool arguments</span>
+          <pre className="approval-plan__raw approval-plan__raw--command">
+            {compactText(argumentsText, 1200)}
+          </pre>
+        </div>
+      ) : null}
       {isPlan && suspension.plan ? (
         <div className="approval-meta">
           <span>{suspension.plan.title}</span>
@@ -128,54 +180,66 @@ export function ApprovalCards({
       ) : null}
       {isPlan ? (
         <div className="approval-plan">
-          {objective || scope || verification ? (
-            <div className="approval-plan__facts">
-              {objective ? (
-                <div>
-                  <span>Objective</span>
-                  <strong>{objective}</strong>
+          <button
+            type="button"
+            className="approval-plan__toggle"
+            onClick={() => setPlanExpanded((value) => !value)}
+            aria-expanded={planExpanded}
+          >
+            {planExpanded ? 'Collapse plan' : 'Expand plan'}
+          </button>
+          {planExpanded ? (
+            <>
+              {objective || scope || verification ? (
+                <div className="approval-plan__facts">
+                  {objective ? (
+                    <div>
+                      <span>Objective</span>
+                      <strong>{objective}</strong>
+                    </div>
+                  ) : null}
+                  {scope ? (
+                    <div>
+                      <span>Scope</span>
+                      <strong>{scope}</strong>
+                    </div>
+                  ) : null}
+                  {verification ? (
+                    <div>
+                      <span>Verify</span>
+                      <strong>{verification}</strong>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
-              {scope ? (
-                <div>
-                  <span>Scope</span>
-                  <strong>{scope}</strong>
+              {suspension.plan?.steps.length ? (
+                <ol className="approval-plan__steps">
+                  {suspension.plan.steps.map((step, index) => (
+                    <li key={step.id}>
+                      <span>{index + 1}</span>
+                      <p>{step.title}</p>
+                    </li>
+                  ))}
+                </ol>
+              ) : fallbackPlanSteps.length ? (
+                <ol className="approval-plan__steps">
+                  {fallbackPlanSteps.map((step, index) => (
+                    <li key={`${index}:${step}`}>
+                      <span>{index + 1}</span>
+                      <p>{step}</p>
+                    </li>
+                  ))}
+                </ol>
+              ) : planText ? (
+                <pre className="approval-plan__raw">{compactText(planText)}</pre>
+              ) : null}
+              {riskItems.length ? (
+                <div className="approval-plan__risks">
+                  <span>Risks</span>
+                  {riskItems.join(' · ')}
                 </div>
               ) : null}
-              {verification ? (
-                <div>
-                  <span>Verify</span>
-                  <strong>{verification}</strong>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-          {suspension.plan?.steps.length ? (
-            <ol className="approval-plan__steps">
-              {suspension.plan.steps.map((step, index) => (
-                <li key={step.id}>
-                  <span>{index + 1}</span>
-                  <p>{step.title}</p>
-                </li>
-              ))}
-            </ol>
-          ) : fallbackPlanSteps.length ? (
-            <ol className="approval-plan__steps">
-              {fallbackPlanSteps.map((step, index) => (
-                <li key={`${index}:${step}`}>
-                  <span>{index + 1}</span>
-                  <p>{step}</p>
-                </li>
-              ))}
-            </ol>
-          ) : planText ? (
-            <pre className="approval-plan__raw">{compactText(planText)}</pre>
-          ) : null}
-          {riskItems.length ? (
-            <div className="approval-plan__risks">
-              <span>Risks</span>
-              {riskItems.join(' · ')}
-            </div>
+            </>
           ) : null}
         </div>
       ) : null}

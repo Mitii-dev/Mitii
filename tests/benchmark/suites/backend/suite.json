@@ -1,0 +1,22 @@
+{
+  "id": "backend",
+  "name": "Backend Agent Benchmark",
+  "description": "APIs, services, bugfixes, retrieval, planning, and server-side coding tasks.",
+  "caseFiles": [
+    "easy.jsonl",
+    "medium.jsonl",
+    "hard.jsonl"
+  ],
+  "expectedCounts": {
+    "easy": 348,
+    "medium": 460,
+    "hard": 419,
+    "total": 1227
+  },
+  "gates": {
+    "easy": 0.9,
+    "medium": 0.8,
+    "hard": 0.7,
+    "overall": 0.8
+  }
+}
