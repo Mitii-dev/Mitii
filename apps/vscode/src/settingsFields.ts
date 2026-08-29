@@ -226,6 +226,11 @@ export function applyUiPatch(
             ...base.loopPolicy.thresholds,
             ...(patch.loopPolicy.thresholds ?? {}),
           },
+          bandThresholds: {
+            ...base.loopPolicy.bandThresholds,
+            ...(patch.loopPolicy.bandThresholds ?? {}),
+          },
+          band: patch.loopPolicy.band ?? base.loopPolicy.band,
           fields: base.loopPolicy.fields,
         }
       : base.loopPolicy,

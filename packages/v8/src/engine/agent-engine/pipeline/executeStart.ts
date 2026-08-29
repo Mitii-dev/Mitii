@@ -104,7 +104,7 @@ import {
   DEFAULT_TOOL_DEFINITIONS,
   PHASE8_SUPPORTED_ROUTES,
 } from "../policy";
-import { resolveAgentEngineThresholds } from "../actions/resolveAgentEngineThresholds";
+import { resolveLoopPolicyThresholds } from "../actions/resolveLoopPolicyThresholds";
 
 import type { AgentEngineRuntime } from "./runtime";
 import { resolveWorkspaceId } from "./runtime";
@@ -1257,9 +1257,10 @@ export async function executeStart(
       id: block.id,
       content: block.content,
     }));
-    const thresholds = resolveAgentEngineThresholds(
-      input.loopPolicy?.thresholds,
-    );
+    const thresholds = resolveLoopPolicyThresholds({
+      contextWindowTokens: windowPolicy.contextWindowTokens,
+      overrides: input.loopPolicy?.thresholds,
+    }).thresholds;
 
     const loopOutcome = await runModelToolLoop(runtime, {
       runId,

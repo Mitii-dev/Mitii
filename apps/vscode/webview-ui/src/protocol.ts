@@ -291,9 +291,20 @@ export interface TokenBudgetSettingsSnapshot {
   preview: TokenBudgetPreview;
 }
 
+export interface LoopPolicyBandSnapshot {
+  id: 'compact' | 'standard' | 'wide';
+  label: string;
+  rangeLabel: string;
+  contextWindowTokens: number;
+}
+
 export interface LoopPolicySettingsSnapshot {
   enabled: boolean;
+  /** Effective thresholds (band + optional lab overrides). */
   thresholds: Record<string, number>;
+  /** Band-only shipped standards for the current context window. */
+  bandThresholds: Record<string, number>;
+  band: LoopPolicyBandSnapshot;
   fields: TokenBudgetFieldDescriptor[];
 }
 

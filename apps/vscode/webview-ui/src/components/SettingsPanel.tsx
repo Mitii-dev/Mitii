@@ -1324,13 +1324,23 @@ export function SettingsPanel(props: SettingsPanelProps) {
 
               <SettingsSection
                 title="Loop / stall policy"
-                description="Working standards ship in Agent Engine. Turn this on only to lab-test exploration stall and recovery knobs. Reset clears overrides for deploy."
+                description="Shipped standards pick a window band from the context window (compact / standard / wide). Turn Custom on only to lab-test deltas on that band. Reset clears overrides for deploy."
               >
                 <div
                   className={`developer-options${
                     ui.developerEnabled ? '' : ' is-locked'
                   }`}
                 >
+                  <p className="field-hint">
+                    Active band:{' '}
+                    <strong>
+                      {ui.loopPolicy.band.label} ({ui.loopPolicy.band.rangeLabel})
+                    </strong>
+                    {' · '}
+                    window {ui.loopPolicy.band.contextWindowTokens.toLocaleString()}{' '}
+                    tokens. Edit permanent band values in{' '}
+                    <code>packages/v8/.../policy/loopPolicyBands.ts</code>.
+                  </p>
                   <label className="toggle">
                     <input
                       type="checkbox"
@@ -1346,8 +1356,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
                   </label>
                   <p className="field-hint">
                     {ui.loopPolicy.enabled
-                      ? 'Overrides apply to Agent runs. Leave off to use shipped working standards.'
-                      : 'Leave off for deploy defaults. Editing a field turns this on.'}
+                      ? 'Lab overrides apply on top of the active band. Leave off to use shipped band standards only.'
+                      : 'Leave off for deploy. Editing a field turns this on and starts from the active band.'}
                   </p>
                   <div className="row">
                     <button
@@ -1362,6 +1372,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
                   <LoopPolicyEditor
                     fields={ui.loopPolicy.fields}
                     thresholds={ui.loopPolicy.thresholds}
+                    bandThresholds={ui.loopPolicy.bandThresholds}
                     customEnabled={ui.loopPolicy.enabled}
                     disabled={!ui.developerEnabled}
                     onThresholdsChange={(patch) =>

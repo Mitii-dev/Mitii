@@ -107,6 +107,13 @@ const BASE_UI: UiSettingsSnapshot = {
   loopPolicy: {
     enabled: false,
     thresholds: {},
+    bandThresholds: {},
+    band: {
+      id: 'compact',
+      label: 'Compact',
+      rangeLabel: '< 50k',
+      contextWindowTokens: 32_768,
+    },
     fields: [...LOOP_POLICY_FIELDS],
   },
 };

@@ -12,14 +12,16 @@ const ratioSchema = z.number().min(0).max(1);
  */
 export const agentEngineThresholdsSchema = z
   .object({
-    maxTruncationRecoveries: positiveIntSchema,
-    maxIncompleteAnswerRecoveries: positiveIntSchema,
-    maxUnfulfilledExecuteRecoveries: positiveIntSchema,
-    maxMustReadNudges: positiveIntSchema,
-    maxReadOnlyMutationRetryAttempts: positiveIntSchema,
+    // Recovery / nudge budgets: 0 disables that recovery path (lab tweaks).
+    maxTruncationRecoveries: nonnegativeIntSchema,
+    maxIncompleteAnswerRecoveries: nonnegativeIntSchema,
+    maxUnfulfilledExecuteRecoveries: nonnegativeIntSchema,
+    maxRejectedMutationRecoveries: nonnegativeIntSchema,
+    maxMustReadNudges: nonnegativeIntSchema,
+    maxReadOnlyMutationRetryAttempts: nonnegativeIntSchema,
     maxReadOnlyToolTurnsBeforeMutationNudge: positiveIntSchema,
     maxReadOnlyToolTurnsAfterMutationNudge: positiveIntSchema,
-    maxReadOnlyToolTurnsAfterMutationNudges: positiveIntSchema,
+    maxReadOnlyToolTurnsAfterMutationNudges: nonnegativeIntSchema,
     verificationRepairModelCallReserveRatio: ratioSchema,
     defaultPreferredBatchSize: positiveIntSchema,
     defaultMaxPatchesPerCall: positiveIntSchema,

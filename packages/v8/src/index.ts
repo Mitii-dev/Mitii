@@ -445,6 +445,14 @@ export {
   resolveAgentEngineThresholds,
   agentEngineThresholdsSchema,
   agentEngineThresholdsOverridesSchema,
+  resolveLoopPolicyThresholds,
+  resolveLoopPolicyBandThresholds,
+  LOOP_POLICY_WINDOW_BANDS,
+  LOOP_POLICY_WINDOW_BAND_CEILINGS,
+  LOOP_POLICY_WINDOW_BAND_TABLE,
+  resolveLoopPolicyWindowBand,
+  loopPolicyWindowBandDefinition,
+  listLoopPolicyWindowBands,
   composeReadOnlyAgentEngine,
   InMemoryRunCheckpointStore,
   FileRunCheckpointStore,
@@ -454,6 +462,10 @@ export {
 export type {
   AgentEngineThresholds,
   AgentEngineThresholdsOverrides,
+  LoopPolicyWindowBand,
+  LoopPolicyWindowBandDefinition,
+  ResolveLoopPolicyThresholdsInput,
+  ResolvedLoopPolicy,
 } from "./engine/agent-engine";
 export type {
   AgentEngineStartInput,

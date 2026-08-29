@@ -28,6 +28,19 @@ export {
 } from "./policy";
 
 export {
+  LOOP_POLICY_WINDOW_BANDS,
+  LOOP_POLICY_WINDOW_BAND_CEILINGS,
+  LOOP_POLICY_WINDOW_BAND_TABLE,
+  resolveLoopPolicyWindowBand,
+  loopPolicyWindowBandDefinition,
+  listLoopPolicyWindowBands,
+} from "./policy/loopPolicyBands";
+export type {
+  LoopPolicyWindowBand,
+  LoopPolicyWindowBandDefinition,
+} from "./policy/loopPolicyBands";
+
+export {
   resolveAgentEngineThresholds,
   agentEngineThresholdsSchema,
   agentEngineThresholdsOverridesSchema,
@@ -36,6 +49,14 @@ export type {
   AgentEngineThresholds,
   AgentEngineThresholdsOverrides,
 } from "./actions/resolveAgentEngineThresholds";
+export {
+  resolveLoopPolicyThresholds,
+  resolveLoopPolicyBandThresholds,
+} from "./actions/resolveLoopPolicyThresholds";
+export type {
+  ResolveLoopPolicyThresholdsInput,
+  ResolvedLoopPolicy,
+} from "./actions/resolveLoopPolicyThresholds";
 
 export { AgentEnginePipeline } from "./pipeline/AgentEnginePipeline";
 export type { AgentEnginePipelineDependencies } from "./pipeline/AgentEnginePipeline";

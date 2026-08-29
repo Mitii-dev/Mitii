@@ -48,7 +48,7 @@ import {
   recordStopEvidence,
   recordVerificationEvidence,
   markPlanEvidenceStepsDone,
-  resolveAgentEngineThresholds,
+  resolveLoopPolicyThresholds,
 } from "../actions";
 import {
   prepareRepairWorkingSet,
@@ -463,7 +463,10 @@ export async function finishAfterLoop(
       consecutiveStalledRepairs,
       canStartModelCall: budget.canStartModelCall(),
       maxAttempts: windowPolicy.run.maxVerificationRepairs,
-      thresholds: resolveAgentEngineThresholds(input.loopPolicy?.thresholds),
+      thresholds: resolveLoopPolicyThresholds({
+        contextWindowTokens: windowPolicy.contextWindowTokens,
+        overrides: input.loopPolicy?.thresholds,
+      }).thresholds,
     });
     const canRepair =
       verificationOutcome.repairable &&
@@ -546,7 +549,10 @@ export async function finishAfterLoop(
         windowPolicy,
         logVerbosity: input.logVerbosity,
         plan: params.loopContext?.plan,
-        thresholds: resolveAgentEngineThresholds(input.loopPolicy?.thresholds),
+        thresholds: resolveLoopPolicyThresholds({
+        contextWindowTokens: windowPolicy.contextWindowTokens,
+        overrides: input.loopPolicy?.thresholds,
+      }).thresholds,
       });
       if (
         currentOutcome.kind === "completed" ||

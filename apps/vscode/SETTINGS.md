@@ -185,15 +185,24 @@ Changing the context window already scales the built-in defaults. Use Simple sli
 
 ### Loop / stall policy
 
-Working standards ship in Agent Engine (`AGENT_ENGINE_THRESHOLDS`). Enable this only to lab-test exploration stall and recovery knobs. Leave off (or Reset) for deploy.
+Working standards are **window-banded** in Agent Engine (`policy/loopPolicyBands.ts`):
+
+| Band | Context window | Source |
+|---|---|---|
+| Compact | &lt; 50k | Band overrides on `AGENT_ENGINE_THRESHOLDS` |
+| Standard | 50k – &lt; 100k | Base thresholds as-is |
+| Wide | ≥ 100k | Band overrides |
+
+Merge order: base → band → optional lab overrides. Enable Custom only to lab-test deltas on the active band. Leave off (or Reset) for deploy. Permanent ship changes go in `loopPolicyBands.ts`, not VS Code settings.
 
 | UI field | Setting | Save / reflect |
 |---|---|---|
-| Custom loop policy | `mitii.loopPolicy.enabled` | When off, Engine uses shipped standards. |
-| Simple: min re-read calls / ratio / stall nudges | `mitii.loopPolicy.explorationReread*` / `maxExplorationStallNudges` | Exploration stall breaker. |
-| Simple: read/mutate pressure | `mitii.loopPolicy.maxReadOnly*` | How long execute may explore before requiring a patch. |
-| Advanced | `mitii.loopPolicy.<key>` | Truncation, unfulfilled-execute, must-read, verification repair, batch fallbacks. |
-| Reset loop policy to standards | Clears `mitii.loopPolicy.*` | Restores shipped working standards. |
+| Active band (read-only) | Derived from provider context window | Shown in Developer → Loop / stall policy. |
+| Custom loop policy | `mitii.loopPolicy.enabled` | When off, Engine uses band standards only. |
+| Simple: min re-read calls / ratio / stall nudges | `mitii.loopPolicy.explorationReread*` / `maxExplorationStallNudges` | Exploration stall breaker (lab). |
+| Simple: read/mutate pressure | `mitii.loopPolicy.maxReadOnly*` | How long execute may explore before requiring a patch (lab). |
+| Advanced | `mitii.loopPolicy.<key>` | Truncation, unfulfilled-execute, rejected-mutation, must-read, verification repair, batch fallbacks (lab). |
+| Reset loop policy to standards | Clears `mitii.loopPolicy.*` | Restores shipped band standards for the current window. |
 
 ### Diagnostics
 

@@ -6,12 +6,14 @@ import { NumberField } from './NumberField';
 export function LoopPolicyEditor({
   fields,
   thresholds,
+  bandThresholds,
   customEnabled,
   disabled,
   onThresholdsChange,
 }: {
   fields: TokenBudgetFieldDescriptor[];
   thresholds: Record<string, number>;
+  bandThresholds: Record<string, number>;
   customEnabled: boolean;
   disabled: boolean;
   onThresholdsChange: (patch: Record<string, number>) => void;
@@ -25,11 +27,13 @@ export function LoopPolicyEditor({
     [fields],
   );
 
+  const displayThresholds = customEnabled ? thresholds : bandThresholds;
+
   return (
     <div className="token-budget-editor">
       <LoopPolicyFields
         fields={simpleFields}
-        thresholds={thresholds}
+        thresholds={displayThresholds}
         disabled={disabled || !customEnabled}
         onChange={(key, value) => onThresholdsChange({ [key]: value })}
       />
@@ -37,7 +41,7 @@ export function LoopPolicyEditor({
         <summary>Advanced recoveries &amp; repair</summary>
         <LoopPolicyFields
           fields={advancedFields}
-          thresholds={thresholds}
+          thresholds={displayThresholds}
           disabled={disabled || !customEnabled}
           onChange={(key, value) => onThresholdsChange({ [key]: value })}
         />

@@ -47,7 +47,7 @@ import {
 import {
   DEFAULT_TOOL_DEFINITIONS,
 } from "../policy";
-import { resolveAgentEngineThresholds } from "../actions/resolveAgentEngineThresholds";
+import { resolveLoopPolicyThresholds } from "../actions/resolveLoopPolicyThresholds";
 
 import type { AgentEngineRuntime } from "./runtime";
 import { resolveWorkspaceId } from "./runtime";
@@ -486,7 +486,10 @@ export async function executeResume(
       logVerbosity: startInput.logVerbosity,
       reserveVerificationRepairModelCalls: true,
       plan: checkpoint.plan,
-      thresholds: resolveAgentEngineThresholds(startInput.loopPolicy?.thresholds),
+      thresholds: resolveLoopPolicyThresholds({
+        contextWindowTokens: windowPolicy.contextWindowTokens,
+        overrides: startInput.loopPolicy?.thresholds,
+      }).thresholds,
     });
 
     return await finishAfterLoop(runtime, {

@@ -5,7 +5,11 @@ import {
 } from "../tool-runtime";
 
 /**
- * Tunable Agent Engine thresholds for token / truncation recovery.
+ * Base working standards for loop / stall / recovery thresholds.
+ *
+ * Window-specific permanent tuning lives in
+ * `policy/loopPolicyBands.ts` (compact / standard / wide).
+ * Developer `mitii.loopPolicy.*` overrides are lab-only deltas on top.
  */
 export const AGENT_ENGINE_THRESHOLDS = {
   /** Max automatic recoveries after finishReason=length with incomplete tools. */
@@ -20,6 +24,13 @@ export const AGENT_ENGINE_THRESHOLDS = {
    * diagnosis instead of apply_patch.
    */
   maxUnfulfilledExecuteRecoveries: 1,
+  /**
+   * Max recoveries after apply_patch/delete_file/move_file is rejected
+   * (e.g. old_text_not_found). Kept separate from text-only unfulfilled
+   * execute so a stale-hunk → targeted read → retry cycle can complete
+   * without burning the single diagnosis nudge.
+   */
+  maxRejectedMutationRecoveries: 3,
   /**
    * One withheld mutation when the active task's mustRead files are not yet
    * in this-loop reads or established facts. A second attempt proceeds so

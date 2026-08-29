@@ -2475,7 +2475,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         resolveContextWindow(this.vs),
         cfg.get<number>('provider.maximumOutputTokens'),
       ),
-      loopPolicy: readLoopPolicySettings(cfg),
+      loopPolicy: readLoopPolicySettings(cfg, resolveContextWindow(this.vs)),
     };
   }
 

@@ -48,6 +48,16 @@ function patchCall(id: string) {
   };
 }
 
+/** Standard band (≥50k) so assertions match base AGENT_ENGINE_THRESHOLDS. */
+function stallCapabilities(
+  overrides: Parameters<typeof createCapabilities>[0] = {},
+) {
+  return createCapabilities({
+    contextWindowTokens: 75_000,
+    ...overrides,
+  });
+}
+
 function listDirectoryCall(id: string, path = "src") {
   return {
     id,
@@ -79,7 +89,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           },
           { content: "Should not be reached after the stall break." },
         ],
-        createCapabilities({ supportsTools: true }),
+        stallCapabilities({ supportsTools: true }),
       ),
     });
     const originalExecute = deps.tools!.execute.bind(deps.tools);
@@ -142,7 +152,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           },
           { content: "Patched remaining type errors." },
         ],
-        createCapabilities({ supportsTools: true }),
+        stallCapabilities({ supportsTools: true }),
       ),
     });
     const originalExecute = deps.tools!.execute.bind(deps.tools);
@@ -229,7 +239,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           },
           { content: "Should not be reached after the mutation stall." },
         ],
-        createCapabilities({ supportsTools: true }),
+        stallCapabilities({ supportsTools: true }),
       ),
     });
 
@@ -292,7 +302,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           },
           { content: "Should not be reached after read-only execute drift." },
         ],
-        createCapabilities({ supportsTools: true }),
+        stallCapabilities({ supportsTools: true }),
       ),
     });
 
@@ -348,7 +358,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           },
           { content: "Done." },
         ],
-        createCapabilities({ supportsTools: true }),
+        stallCapabilities({ supportsTools: true }),
       ),
     });
 
@@ -406,7 +416,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           },
           { content: "Done." },
         ],
-        createCapabilities({ supportsTools: true }),
+        stallCapabilities({ supportsTools: true }),
       ),
     });
 
@@ -491,7 +501,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           },
           { content: "Should not be reached after rejected mutation drift." },
         ],
-        createCapabilities({ supportsTools: true }),
+        stallCapabilities({ supportsTools: true }),
       ),
       toolResults: {
         apply_patch: {
@@ -551,7 +561,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           },
           { content: "Fixed the type error." },
         ],
-        createCapabilities({ supportsTools: true }),
+        stallCapabilities({ supportsTools: true }),
       ),
     });
     const originalExecute = deps.tools!.execute.bind(deps.tools);
@@ -688,7 +698,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           },
           { content: "Fixed the stale patch conflict." },
         ],
-        createCapabilities({ supportsTools: true }),
+        stallCapabilities({ supportsTools: true }),
       ),
     });
     const originalExecute = deps.tools!.execute.bind(deps.tools);
@@ -782,6 +792,129 @@ describe("AgentEnginePipeline stall and read dedup", () => {
     expect(patchAttempts).toBe(2);
   });
 
+  it("recovers a second stale apply_patch after targeted discovery (error-log no_mutation pattern)", async () => {
+    const deps = createStubDependencies({
+      decision: createDecision({
+        route: "execute",
+        toolGrant: createReadOnlyGrant({
+          maximumWorkspaceEffect: "write",
+          allowedTools: ["read_file", "apply_patch"],
+          allowedEffects: ["workspace_read", "workspace_write"],
+          approvalMode: "never",
+        }),
+        reasonCodes: ["mutation_execute"],
+      }),
+      llm: new ScriptedLlmPort(
+        [
+          { toolCalls: [patchCall("call_patch_stale_1")] },
+          {
+            toolCalls: [
+              readPathCall("call_read_stale_target", "src/form.ts"),
+            ],
+          },
+          { toolCalls: [patchCall("call_patch_stale_2")] },
+          { toolCalls: [patchCall("call_patch_ok")] },
+          { content: "Fixed after two stale hunk recoveries." },
+        ],
+        stallCapabilities({ supportsTools: true }),
+      ),
+    });
+    const originalExecute = deps.tools!.execute.bind(deps.tools);
+    let patchAttempts = 0;
+    deps.tools = {
+      ...deps.tools!,
+      execute: async (input, options): Promise<ToolResult> => {
+        if (input.toolName !== "apply_patch") {
+          return originalExecute(input, options);
+        }
+        patchAttempts += 1;
+        if (patchAttempts <= 2) {
+          return {
+            schemaVersion: TOOL_RUNTIME_SCHEMA_VERSION,
+            callId: input.callId,
+            toolName: input.toolName,
+            status: "rejected",
+            reasonCode: "old_text_not_found",
+            truncated: false,
+            redacted: false,
+            durationMs: 1,
+            bytesProduced: 0,
+            warnings: [
+              'oldText not found in "src/form.ts" — copy exact text from currentContent and retry.',
+            ],
+            audit: {
+              callId: input.callId,
+              toolName: input.toolName,
+              startedAt: "2026-07-25T12:00:00.000Z",
+              endedAt: "2026-07-25T12:00:00.001Z",
+              status: "rejected",
+              reasonCode: "old_text_not_found",
+              inputPreview: "{}",
+              outputPreview: "{}",
+              bytesProduced: 0,
+              durationMs: 1,
+              truncated: false,
+              redacted: false,
+            },
+          };
+        }
+        return {
+          schemaVersion: TOOL_RUNTIME_SCHEMA_VERSION,
+          callId: input.callId,
+          toolName: input.toolName,
+          status: "succeeded",
+          truncated: false,
+          redacted: false,
+          durationMs: 1,
+          bytesProduced: 24,
+          warnings: [],
+          output: {
+            checkpointId: "ckpt_double_stale",
+            changedFiles: ["src/form.ts"],
+          },
+          audit: {
+            callId: input.callId,
+            toolName: input.toolName,
+            startedAt: "2026-07-25T12:00:00.000Z",
+            endedAt: "2026-07-25T12:00:00.001Z",
+            status: "succeeded",
+            inputPreview: "{}",
+            outputPreview:
+              '{"checkpointId":"ckpt_double_stale","changedFiles":["src/form.ts"]}',
+            bytesProduced: 24,
+            durationMs: 1,
+            truncated: false,
+            redacted: false,
+          },
+        };
+      },
+    };
+
+    const engine = new AgentEnginePipeline(deps);
+    const result = await engine.start(
+      agentEngineStartInputSchema.parse({
+        schemaVersion: 1,
+        request: {
+          sessionId: "sess_double_stale_patch_recovery",
+          mode: "agent",
+          userMessage: "Fix the type error",
+          workspace: { workspaceId: "ws_1" },
+        },
+        workspaceRoot: "/workspace",
+      }),
+    ).result;
+
+    expect(result.status).toBe("completed");
+    expect(result.reasonCodes).toContain("mutation_applied");
+    expect(result.error?.code).not.toBe("no_mutation_performed");
+    expect(patchAttempts).toBe(3);
+    expect(
+      result.warnings.filter((warning) =>
+        warning.includes("requesting a corrected edit"),
+      ).length,
+    ).toBeGreaterThanOrEqual(2);
+  });
+
   it("recovers once then fails when mutation runs only call rejected read tools", async () => {
     const deps = createStubDependencies({
       decision: createDecision({
@@ -816,7 +949,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           },
           { content: "Should not be reached after rejected read drift." },
         ],
-        createCapabilities({ supportsTools: true }),
+        stallCapabilities({ supportsTools: true }),
       ),
       toolResults: {
         read_file: {
@@ -899,7 +1032,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           },
           { content: "Continuing after the glob stall nudge." },
         ],
-        createCapabilities({ supportsTools: true }),
+        stallCapabilities({ supportsTools: true }),
       ),
     });
     const originalExecute = deps.tools!.execute.bind(deps.tools);
@@ -1033,7 +1166,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           },
           { content: "Should not keep globbing after the post-mutation cap." },
         ],
-        createCapabilities({ supportsTools: true }),
+        stallCapabilities({ supportsTools: true }),
       ),
     });
     const originalExecute = deps.tools!.execute.bind(deps.tools);

@@ -1118,7 +1118,7 @@ export async function runModelToolLoop(
       reasonCodes.push("tool_failed");
       if (
         rejectedMutationRecoveries <
-          thresholds.maxUnfulfilledExecuteRecoveries &&
+          thresholds.maxRejectedMutationRecoveries &&
         budget.canStartModelCall()
       ) {
         rejectedMutationRecoveries += 1;

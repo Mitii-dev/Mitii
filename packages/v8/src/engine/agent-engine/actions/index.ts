@@ -43,6 +43,14 @@ export type {
   AgentEngineThresholds,
   AgentEngineThresholdsOverrides,
 } from "./resolveAgentEngineThresholds";
+export {
+  resolveLoopPolicyThresholds,
+  resolveLoopPolicyBandThresholds,
+} from "./resolveLoopPolicyThresholds";
+export type {
+  ResolveLoopPolicyThresholdsInput,
+  ResolvedLoopPolicy,
+} from "./resolveLoopPolicyThresholds";
 export { buildExplorationStallNudge } from "./buildExplorationStallNudge";
 export { buildPreflightDiagnosticRepairInstruction } from "./buildPreflightDiagnosticRepairInstruction";
 export { buildVerificationRepairPrompt } from "./buildVerificationRepairPrompt";

@@ -279,6 +279,26 @@ describe('MitiiClient contract (Phase 12)', () => {
     );
   });
 
+  it('keeps loopPolicy thresholds as lab overrides for window-band merge', () => {
+    const engineInput = toAgentEngineStartInput(
+      {
+        prompt: 'fix it',
+        loopPolicy: {
+          thresholds: {
+            maxReadOnlyToolTurnsBeforeMutationNudge: 14,
+          },
+        },
+      },
+      { mode: 'agent', sessionId: 'sess_band' },
+    );
+    expect(
+      engineInput.loopPolicy?.thresholds?.maxReadOnlyToolTurnsBeforeMutationNudge,
+    ).toBe(14);
+    expect(
+      engineInput.loopPolicy?.thresholds?.explorationRereadMinCalls,
+    ).toBeUndefined();
+  });
+
   it('rejects resume without approval or clarificationAnswer', () => {
     const parsed = mitiiResumeInputSchema.safeParse({
       schemaVersion: 1,

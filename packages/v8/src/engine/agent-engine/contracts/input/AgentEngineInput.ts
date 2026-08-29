@@ -131,8 +131,10 @@ export const agentEngineStartInputSchema = z
       .strict()
       .optional(),
     /**
-     * Optional host overrides for loop/stall thresholds (developer lab).
-     * When omitted, shipped `AGENT_ENGINE_THRESHOLDS` apply.
+     * Optional host lab overrides for Agent Engine loop/stall thresholds.
+     * Merged after the shipped window band selected from the effective
+     * context window. When omitted, band standards alone apply.
+     * Edit permanent band values in `policy/loopPolicyBands.ts`.
      */
     loopPolicy: z
       .object({

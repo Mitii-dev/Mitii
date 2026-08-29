@@ -1,17 +1,26 @@
 import {
   AGENT_ENGINE_THRESHOLDS,
   agentEngineThresholdsOverridesSchema,
-  resolveAgentEngineThresholds,
+  resolveLoopPolicyThresholds,
+  loopPolicyWindowBandDefinition,
 } from '@mitii/sdk';
 import type {
   AgentEngineThresholds,
   AgentEngineThresholdsOverrides,
+  LoopPolicyWindowBand,
 } from '@mitii/sdk';
 import type * as vscode from 'vscode';
 
 import type { TokenBudgetFieldDescriptor } from './protocol.js';
 
 export type LoopPolicyFieldDescriptor = TokenBudgetFieldDescriptor;
+
+export interface LoopPolicyBandSnapshot {
+  id: LoopPolicyWindowBand;
+  label: string;
+  rangeLabel: string;
+  contextWindowTokens: number;
+}
 
 const LOOP_POLICY_FIELD_SPECS: readonly Omit<
   LoopPolicyFieldDescriptor,
@@ -136,6 +145,18 @@ const LOOP_POLICY_FIELD_SPECS: readonly Omit<
     tier: 'advanced',
   },
   {
+    key: 'maxRejectedMutationRecoveries',
+    group: 'Recoveries',
+    label: 'Rejected-mutation recoveries',
+    description:
+      'Retries after apply_patch/delete_file/move_file is rejected (stale oldText, missing path, bad args). Separate from text-only unfulfilled-execute nudges.',
+    kind: 'int',
+    min: 0,
+    max: 8,
+    step: 1,
+    tier: 'advanced',
+  },
+  {
     key: 'maxMustReadNudges',
     group: 'Recoveries',
     label: 'Must-read nudges',
@@ -226,6 +247,15 @@ export const LOOP_POLICY_FIELDS: readonly LoopPolicyFieldDescriptor[] =
       AGENT_ENGINE_THRESHOLDS[field.key as keyof AgentEngineThresholds],
   }));
 
+function fieldsForThresholds(
+  thresholds: AgentEngineThresholds,
+): LoopPolicyFieldDescriptor[] {
+  return LOOP_POLICY_FIELD_SPECS.map((field) => ({
+    ...field,
+    defaultValue: thresholds[field.key as keyof AgentEngineThresholds],
+  }));
+}
+
 export function loopPolicyResetKeys(): readonly string[] {
   return [
     'loopPolicy.enabled',
@@ -237,21 +267,6 @@ export function readLoopPolicyEnabled(
   cfg: vscode.WorkspaceConfiguration,
 ): boolean {
   return cfg.get<boolean>('loopPolicy.enabled') === true;
-}
-
-export function readLoopPolicyThresholds(
-  cfg: vscode.WorkspaceConfiguration,
-): AgentEngineThresholds {
-  const overrides: Record<string, number> = {};
-  for (const field of LOOP_POLICY_FIELDS) {
-    const value = cfg.get<number>(`loopPolicy.${field.key}`);
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      overrides[field.key] = value;
-    }
-  }
-  return resolveAgentEngineThresholds(
-    agentEngineThresholdsOverridesSchema.parse(overrides),
-  );
 }
 
 /**
@@ -284,26 +299,58 @@ export function readLoopPolicyThresholdOverrides(
 
 export interface LoopPolicySettingsSnapshot {
   enabled: boolean;
+  /** Effective thresholds (band + optional lab overrides). */
   thresholds: Record<string, number>;
+  /** Band-only thresholds (shipped standards for this window). */
+  bandThresholds: Record<string, number>;
+  band: LoopPolicyBandSnapshot;
   fields: LoopPolicyFieldDescriptor[];
 }
 
 export function readLoopPolicySettings(
   cfg: vscode.WorkspaceConfiguration,
+  contextWindowTokens: number,
 ): LoopPolicySettingsSnapshot {
   const enabled = readLoopPolicyEnabled(cfg);
-  const thresholds = readLoopPolicyThresholds(cfg);
+  const labOverrides = enabled
+    ? readLoopPolicyThresholdOverrides(cfg)
+    : undefined;
+  const resolved = resolveLoopPolicyThresholds({
+    contextWindowTokens,
+    overrides: labOverrides,
+  });
+  const bandOnly = resolveLoopPolicyThresholds({ contextWindowTokens });
+  const bandDef = loopPolicyWindowBandDefinition(resolved.band);
+
   return {
     enabled,
-    thresholds: { ...thresholds },
-    fields: [...LOOP_POLICY_FIELDS],
+    thresholds: { ...resolved.thresholds },
+    bandThresholds: { ...bandOnly.thresholds },
+    band: {
+      id: resolved.band,
+      label: bandDef.label,
+      rangeLabel: bandDef.rangeLabel,
+      contextWindowTokens: resolved.contextWindowTokens,
+    },
+    fields: fieldsForThresholds(bandOnly.thresholds),
   };
 }
 
-export function defaultLoopPolicySettings(): LoopPolicySettingsSnapshot {
+export function defaultLoopPolicySettings(
+  contextWindowTokens = 32_768,
+): LoopPolicySettingsSnapshot {
+  const resolved = resolveLoopPolicyThresholds({ contextWindowTokens });
+  const bandDef = loopPolicyWindowBandDefinition(resolved.band);
   return {
     enabled: false,
-    thresholds: { ...AGENT_ENGINE_THRESHOLDS },
-    fields: [...LOOP_POLICY_FIELDS],
+    thresholds: { ...resolved.thresholds },
+    bandThresholds: { ...resolved.thresholds },
+    band: {
+      id: resolved.band,
+      label: bandDef.label,
+      rangeLabel: bandDef.rangeLabel,
+      contextWindowTokens: resolved.contextWindowTokens,
+    },
+    fields: fieldsForThresholds(resolved.thresholds),
   };
 }

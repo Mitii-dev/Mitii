@@ -139,6 +139,13 @@ const DEFAULT_TOKEN_BUDGET: TokenBudgetSettingsSnapshot = {
 const DEFAULT_LOOP_POLICY: LoopPolicySettingsSnapshot = {
   enabled: false,
   thresholds: {},
+  bandThresholds: {},
+  band: {
+    id: 'compact',
+    label: 'Compact',
+    rangeLabel: '< 50k',
+    contextWindowTokens: 0,
+  },
   fields: [],
 };
 
@@ -252,6 +259,11 @@ function mergeUiPatch(
             ...base.loopPolicy.thresholds,
             ...(patch.loopPolicy.thresholds ?? {}),
           },
+          bandThresholds: {
+            ...base.loopPolicy.bandThresholds,
+            ...(patch.loopPolicy.bandThresholds ?? {}),
+          },
+          band: patch.loopPolicy.band ?? base.loopPolicy.band,
           fields: base.loopPolicy.fields,
         }
       : base.loopPolicy,
@@ -623,6 +635,11 @@ export function App() {
             ...DEFAULT_LOOP_POLICY.thresholds,
             ...(msg.ui.loopPolicy?.thresholds ?? {}),
           },
+          bandThresholds: {
+            ...DEFAULT_LOOP_POLICY.bandThresholds,
+            ...(msg.ui.loopPolicy?.bandThresholds ?? {}),
+          },
+          band: msg.ui.loopPolicy?.band ?? DEFAULT_LOOP_POLICY.band,
           fields:
             msg.ui.loopPolicy?.fields?.length
               ? msg.ui.loopPolicy.fields

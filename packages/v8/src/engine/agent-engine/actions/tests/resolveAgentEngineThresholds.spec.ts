@@ -19,13 +19,26 @@ describe("resolveAgentEngineThresholds", () => {
       explorationRereadMinCalls: 24,
       explorationRereadRatio: 3,
       maxExplorationStallNudges: 3,
+      maxRejectedMutationRecoveries: 5,
     });
     expect(resolved.explorationRereadMinCalls).toBe(24);
     expect(resolved.explorationRereadRatio).toBe(3);
     expect(resolved.maxExplorationStallNudges).toBe(3);
+    expect(resolved.maxRejectedMutationRecoveries).toBe(5);
+    expect(resolved.maxUnfulfilledExecuteRecoveries).toBe(
+      AGENT_ENGINE_THRESHOLDS.maxUnfulfilledExecuteRecoveries,
+    );
     expect(resolved.maxReadOnlyToolTurnsBeforeMutationNudge).toBe(
       AGENT_ENGINE_THRESHOLDS.maxReadOnlyToolTurnsBeforeMutationNudge,
     );
+  });
+
+  it("keeps rejected-mutation recoveries independent of unfulfilled-execute", () => {
+    expect(AGENT_ENGINE_THRESHOLDS.maxRejectedMutationRecoveries).toBe(3);
+    expect(AGENT_ENGINE_THRESHOLDS.maxUnfulfilledExecuteRecoveries).toBe(1);
+    expect(
+      AGENT_ENGINE_THRESHOLDS.maxRejectedMutationRecoveries,
+    ).toBeGreaterThan(AGENT_ENGINE_THRESHOLDS.maxUnfulfilledExecuteRecoveries);
   });
 
   it("rejects invalid override values", () => {
@@ -34,6 +47,17 @@ describe("resolveAgentEngineThresholds", () => {
         explorationRereadMinCalls: 0,
       }),
     ).toThrow();
+  });
+
+  it("allows zero recovery overrides to disable nudges", () => {
+    const resolved = resolveAgentEngineThresholds({
+      maxRejectedMutationRecoveries: 0,
+      maxUnfulfilledExecuteRecoveries: 0,
+      maxTruncationRecoveries: 0,
+    });
+    expect(resolved.maxRejectedMutationRecoveries).toBe(0);
+    expect(resolved.maxUnfulfilledExecuteRecoveries).toBe(0);
+    expect(resolved.maxTruncationRecoveries).toBe(0);
   });
 });
 

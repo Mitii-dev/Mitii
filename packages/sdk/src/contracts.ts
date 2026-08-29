@@ -109,8 +109,9 @@ export const mitiiStartInputSchema = z
       .strict()
       .optional(),
     /**
-     * Optional host overrides for Agent Engine loop/stall thresholds.
-     * When omitted, shipped working standards apply.
+     * Optional host lab overrides for Agent Engine loop/stall thresholds.
+     * Merged after the shipped window band (compact / standard / wide).
+     * When omitted, band standards alone apply.
      */
     loopPolicy: z
       .object({
