@@ -1193,7 +1193,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
                     Writes sanitized messages in / assistant out to a separate{' '}
                     <span className="mono">*-model-io.jsonl</span> under{' '}
                     <span className="mono">.mitii/logs/</span> (
-                    <span className="mono">mitii.debug.modelIo</span>). Keep
+                    <span className="mono">mitii.developer.modelIo</span>). Keep
                     local — may include workspace content. Use command{' '}
                     <span className="mono">Mitii: Export Shareable Diagnostic</span>{' '}
                     for a redacted one-file paste for online help.

@@ -1025,13 +1025,16 @@ export function App() {
         case 'provider.connectionResult':
           setTestingConnection(Boolean(msg.testing));
           setConnectionMessage(msg.message);
-          if (msg.models?.length) {
+          if (Array.isArray(msg.models)) {
             updateProvider((p) => ({
               ...p,
-              availableModels: mergeModelOptions(msg.models, p.model),
+              availableModels: mergeModelOptions(msg.models ?? [], p.model),
               connectionOk: msg.ok,
               connectionStatus: msg.message,
             }));
+            if ((msg.models?.length ?? 0) > 0) {
+              setCustomModel(false);
+            }
           } else if (!msg.testing) {
             updateProvider((p) => ({
               ...p,

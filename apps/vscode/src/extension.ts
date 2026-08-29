@@ -13,7 +13,7 @@ import { resolveContextToggles } from './contextToggles.js';
 import { InlineDiffManager } from './diff/inlineDiffManager.js';
 import { showWriteDiffPreview } from './diff/diffPreview.js';
 import { runAskInOutputChannel } from './hostAsk.js';
-import { mitiiAuditDir, scaffoldMitiiWorkspace } from './mitiiWorkspace.js';
+import { mitiiLogsDir, scaffoldMitiiWorkspace } from './mitiiWorkspace.js';
 import { createVscodeClient } from './ports.js';
 import type { IndexStatusSnapshot } from './protocol.js';
 import { buildAuditPack, buildSessionExport } from './runReport.js';
@@ -23,6 +23,8 @@ import {
   writeSessionExport,
 } from './sessionLog.js';
 import { writeShareableDiagnostic } from './shareableDiagnostic.js';
+import { readModelIoLoggingEnabled } from './modelIoSettings.js';
+import { formatMitiiLogStamp } from './mitiiLogStamp.js';
 import { MitiiSidebarProvider } from './sidebar.js';
 import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
 import { resolveVsCodeSemanticIndexSettings } from './semanticIndex.js';
@@ -436,10 +438,10 @@ export function activate(context: ExtensionContext): void {
       workspaceRoot: root,
     });
     const auditDir = root
-      ? mitiiAuditDir(root)
+      ? mitiiLogsDir(root)
       : context.globalStorageUri.fsPath;
     mkdirSync(auditDir, { recursive: true });
-    const outPath = join(auditDir, 'audit-pack.json');
+    const outPath = join(auditDir, `audit-pack-${formatMitiiLogStamp()}.json`);
     writeFileSync(outPath, `${JSON.stringify(payload, null, 2)}\n`);
     channel.appendLine(`[audit] wrote ${outPath}`);
     void vscode.window.showInformationMessage(`Exported audit pack to ${outPath}`);
@@ -456,7 +458,7 @@ export function activate(context: ExtensionContext): void {
         model: cfg.get<string>('provider.model') ?? undefined,
         baseUrl: cfg.get<string>('provider.baseUrl') ?? undefined,
         developerEnabled: cfg.get<boolean>('developer.enabled') ?? false,
-        modelIoEnabled: cfg.get<boolean>('debug.modelIo') ?? false,
+        modelIoEnabled: readModelIoLoggingEnabled(cfg),
         contextWindowTokens: (() => {
           const raw = cfg.get<number>('provider.contextWindow');
           return typeof raw === 'number' && Number.isFinite(raw) && raw > 0
@@ -684,7 +686,7 @@ export function activate(context: ExtensionContext): void {
           event.affectsConfiguration('mitii.mcp') ||
           event.affectsConfiguration('mitii.ui.contextToggles.memory') ||
           event.affectsConfiguration('mitii.agent.taskListAutoAdvance') ||
-          event.affectsConfiguration('mitii.debug.modelIo') ||
+          event.affectsConfiguration('mitii.developer.modelIo') ||
           event.affectsConfiguration('mitii.developer.enabled')
         ) {
           invalidateClient();

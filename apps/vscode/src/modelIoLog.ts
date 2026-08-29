@@ -9,6 +9,10 @@ import type {
 } from '@mitii/sdk';
 
 import { mitiiLogsDir } from './mitiiWorkspace.js';
+import {
+  formatMitiiLogStamp,
+  MITII_LOG_STAMP_PREFIX,
+} from './mitiiLogStamp.js';
 
 type ModelMessage = ModelRequest['messages'][number];
 type ModelToolDefinition = NonNullable<ModelRequest['tools']>[number];
@@ -335,27 +339,17 @@ export class LoggingLlmPort implements LlmPort {
   }
 }
 
-function logStamp(date = new Date()): string {
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const year = date.getFullYear();
-  const hour24 = date.getHours();
-  const hour12 = String(hour24 % 12 || 12).padStart(2, '0');
-  const minute = String(date.getMinutes()).padStart(2, '0');
-  const meridiem = hour24 >= 12 ? 'PM' : 'AM';
-  return `${month}-${day}-${year}-${hour12}-${minute}-${meridiem}`;
-}
-
 function safeLogId(id: string): string {
   return id.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 96) || 'session';
 }
 
 function findExistingModelIoFile(dir: string, id: string): string | undefined {
   const suffix = `-${id}-model-io.jsonl`;
-  const prefixPattern = /^\d{2}-\d{2}-\d{4}-\d{2}-\d{2}-(?:AM|PM)-/;
   try {
     const names = readdirSync(dir)
-      .filter((name) => prefixPattern.test(name) && name.endsWith(suffix))
+      .filter(
+        (name) => MITII_LOG_STAMP_PREFIX.test(name) && name.endsWith(suffix),
+      )
       .sort();
     return names[0] ? join(dir, names[0]) : undefined;
   } catch {
@@ -379,7 +373,7 @@ export function openModelIoLog(
   const sessionId = safeLogId(options.sessionId ?? options.runId);
   const file =
     findExistingModelIoFile(dir, sessionId) ??
-    join(dir, `${logStamp()}-${sessionId}-model-io.jsonl`);
+    join(dir, `${formatMitiiLogStamp()}-${sessionId}-model-io.jsonl`);
 
   const write = (entry: Record<string, unknown>): void => {
     appendFileSync(file, `${JSON.stringify(entry)}\n`, 'utf8');

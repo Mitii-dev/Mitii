@@ -4,20 +4,13 @@ import { join } from 'node:path';
 import type { AgentRunResult, RunEvent } from '@mitii/sdk';
 
 import { mitiiLogsDir } from './mitiiWorkspace.js';
+import {
+  formatMitiiLogStamp,
+  MITII_LOG_STAMP_PREFIX,
+} from './mitiiLogStamp.js';
 
 function stamp(): string {
   return new Date().toISOString().replace(/[:.]/g, '-');
-}
-
-function logStamp(date = new Date()): string {
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const year = date.getFullYear();
-  const hour24 = date.getHours();
-  const hour12 = String(hour24 % 12 || 12).padStart(2, '0');
-  const minute = String(date.getMinutes()).padStart(2, '0');
-  const meridiem = hour24 >= 12 ? 'PM' : 'AM';
-  return `${month}-${day}-${year}-${hour12}-${minute}-${meridiem}`;
 }
 
 function safeLogId(id: string): string {
@@ -26,10 +19,14 @@ function safeLogId(id: string): string {
 
 function findExistingLogFile(dir: string, id: string): string | undefined {
   const suffix = `-${id}.jsonl`;
-  const prefixPattern = /^\d{2}-\d{2}-\d{4}-\d{2}-\d{2}-(?:AM|PM)-/;
   try {
     const names = readdirSync(dir)
-      .filter((name) => prefixPattern.test(name) && name.endsWith(suffix))
+      .filter(
+        (name) =>
+          MITII_LOG_STAMP_PREFIX.test(name) &&
+          name.endsWith(suffix) &&
+          !name.endsWith('-model-io.jsonl'),
+      )
       .sort();
     const existing = names[0];
     return existing ? join(dir, existing) : undefined;
@@ -399,7 +396,7 @@ export function openSessionLog(
   const sessionId = safeLogId(options.sessionId ?? options.runId);
   const file =
     findExistingLogFile(dir, sessionId) ??
-    join(dir, `${logStamp()}-${sessionId}.jsonl`);
+    join(dir, `${formatMitiiLogStamp()}-${sessionId}.jsonl`);
 
   writeLine(file, {
     kind: 'run_start',

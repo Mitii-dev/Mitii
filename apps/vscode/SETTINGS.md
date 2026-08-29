@@ -157,7 +157,7 @@ Leave this off unless you need it. Options are grouped so the page stays scannab
 | UI field | Setting | Save / reflect |
 |---|---|---|
 | Debug logging | `mitii.debug` | When on, Mitii shows the Output channel and prints verbose stacks. Locked until Access is enabled. |
-| Log model I/O | `mitii.debug.modelIo` | When on (and Access enabled), writes sanitized model request/response bodies to `.mitii/logs/*-model-io.jsonl`. Large; may include workspace content — keep local. Command **Mitii: Export Shareable Diagnostic** builds one redacted markdown file under `.mitii/audit/` for pasting into online chat help. |
+| Log model I/O | `mitii.developer.modelIo` | When on (and Access enabled), writes sanitized model request/response bodies to `.mitii/logs/*-model-io.jsonl`. Not nested under `mitii.debug` (that key is a boolean). Large; may include workspace content — keep local. Command **Mitii: Export Shareable Diagnostic** builds one redacted markdown file under `.mitii/logs/` for pasting into online chat help. |
 
 ### Intensity
 

@@ -7,14 +7,14 @@ export const PROVIDER_OPTIONS = [
     preset: 'ollama',
     label: 'Ollama (local)',
     baseUrl: 'http://localhost:11434/v1',
-    model: 'qwen3-coder:30b',
+    model: '',
   },
   {
     type: 'openai-compatible',
     preset: 'lm-studio',
     label: 'LM Studio (local)',
     baseUrl: 'http://localhost:1234/v1',
-    model: 'local-model',
+    model: '',
   },
   {
     type: 'openai-compatible',
@@ -57,7 +57,7 @@ export const PROVIDER_OPTIONS = [
     preset: 'openai-compatible',
     label: 'Custom OpenAI-compatible',
     baseUrl: 'http://localhost:11434/v1',
-    model: 'qwen3-coder:30b',
+    model: '',
   },
   {
     type: 'anthropic',
@@ -77,20 +77,6 @@ export const PROVIDER_OPTIONS = [
   },
 ] as const;
 
-export const LOCAL_MODEL_OPTIONS = [
-  'qwen3-coder:30b',
-  'qwen3.5:latest',
-  'qwen3.5:9b',
-  'qwen3.5:4b',
-  'devstral-small-2:24b',
-  'codestral:22b',
-  'deepseek-coder:33b-instruct-q4_0',
-  'gemma4:latest',
-  'gemma4:12b',
-  'llama3.2:latest',
-  'mistral:latest',
-] as const;
-
 export function getProviderPreset(typeOrPreset: string) {
   return (
     PROVIDER_OPTIONS.find((p) => p.preset === typeOrPreset) ??
@@ -98,23 +84,14 @@ export function getProviderPreset(typeOrPreset: string) {
   );
 }
 
+/**
+ * Curated cloud catalog only — local/Ollama models come from Test connection /
+ * /v1/models discovery, never a hardcoded list.
+ */
 export function modelsForProvider(typeOrPreset: string): string[] {
   const preset = getProviderPreset(typeOrPreset);
-  const fromPreset =
-    preset && 'models' in preset && preset.models
-      ? [...preset.models]
-      : [];
-  if (includesLocalModelCatalog(preset?.preset ?? typeOrPreset)) {
-    return [...fromPreset, ...LOCAL_MODEL_OPTIONS];
+  if (preset && 'models' in preset && preset.models) {
+    return [...preset.models];
   }
-  return fromPreset;
-}
-
-function includesLocalModelCatalog(presetOrType: string): boolean {
-  return (
-    presetOrType === 'ollama' ||
-    presetOrType === 'lm-studio' ||
-    presetOrType === 'openai-compatible' ||
-    presetOrType === 'echo'
-  );
+  return [];
 }

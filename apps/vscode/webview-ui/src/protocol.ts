@@ -206,8 +206,9 @@ export interface UiSettingsSnapshot {
   /** Maps to mitii.debug (verbose Output channel / stacks). */
   debugLogging: boolean;
   /**
-   * Maps to mitii.debug.modelIo — sanitized request/response JSONL under
-   * .mitii/logs/. Requires developerEnabled.
+   * Maps to mitii.developer.modelIo — sanitized request/response JSONL under
+   * .mitii/logs/. Requires developerEnabled. (Not under mitii.debug — that
+   * key is a boolean leaf in VS Code settings.)
    */
   modelIoLogging: boolean;
   /** Window-proportional token budget tunables (Debug → developer). */

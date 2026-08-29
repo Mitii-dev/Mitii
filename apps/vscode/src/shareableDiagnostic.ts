@@ -7,7 +7,7 @@ import {
 } from 'node:fs';
 import { basename, join } from 'node:path';
 
-import { mitiiAuditDir, mitiiLogsDir } from './mitiiWorkspace.js';
+import { mitiiLogsDir } from './mitiiWorkspace.js';
 import { findLatestModelIoLog } from './modelIoLog.js';
 
 const SHAREABLE_LIMITS = {
@@ -363,7 +363,7 @@ export function buildShareableDiagnostic(options: {
   };
 }
 
-/** Write one markdown file under `.mitii/audit/` for pasting into online chat. */
+/** Write one markdown file under `.mitii/logs/` for pasting into online chat. */
 export function writeShareableDiagnostic(options: {
   workspaceRoot?: string;
   fallbackDir: string;
@@ -372,7 +372,7 @@ export function writeShareableDiagnostic(options: {
 }): { path: string; sources: ShareableDiagnosticSources } {
   const built = buildShareableDiagnostic(options);
   const dir = options.workspaceRoot
-    ? mitiiAuditDir(options.workspaceRoot)
+    ? mitiiLogsDir(options.workspaceRoot)
     : options.fallbackDir;
   mkdirSync(dir, { recursive: true });
   const outPath = join(dir, `shareable-diagnostic-${stamp()}.md`);

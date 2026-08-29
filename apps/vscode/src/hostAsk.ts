@@ -43,6 +43,7 @@ import {
   openModelIoLog,
   setActiveModelIoSink,
 } from './modelIoLog.js';
+import { readModelIoLoggingEnabled } from './modelIoSettings.js';
 import { readTokenBudgetPolicyOverrides } from './tokenBudgetSettings.js';
 import { readLoopPolicyThresholdOverrides } from './loopPolicySettings.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
@@ -1234,7 +1235,7 @@ export async function runAskInOutputChannel(options: {
 
     const modelIoEnabled = isModelIoLoggingEnabled(
       cfg.get<boolean>('developer.enabled') ?? false,
-      cfg.get<boolean>('debug.modelIo') ?? false,
+      readModelIoLoggingEnabled(cfg),
     );
     const modelIoLog = modelIoEnabled
       ? openModelIoLog(workspaceRoot, {

@@ -48,6 +48,7 @@ import {
   isModelIoLoggingEnabled,
   wrapLlmPortForModelIo,
 } from './modelIoLog.js';
+import { readModelIoLoggingEnabled } from './modelIoSettings.js';
 
 const DEFAULT_CONTEXT_WINDOW = 32_768;
 
@@ -138,7 +139,7 @@ export async function resolveVscodePorts(
 ): Promise<VscodePortResolution> {
   const cfg = vs.workspace.getConfiguration('mitii');
   const providerType = cfg.get<string>('provider.type') ?? 'echo';
-  const model = cfg.get<string>('provider.model') ?? 'qwen3-coder:30b';
+  const model = cfg.get<string>('provider.model') ?? '';
   const baseUrl =
     cfg.get<string>('provider.baseUrl')?.trim() ||
     'http://localhost:11434/v1';
@@ -154,7 +155,7 @@ export async function resolveVscodePorts(
 
   const modelIoEnabled = isModelIoLoggingEnabled(
     cfg.get<boolean>('developer.enabled') ?? false,
-    cfg.get<boolean>('debug.modelIo') ?? false,
+    readModelIoLoggingEnabled(cfg),
   );
 
   if (providerType === 'echo') {

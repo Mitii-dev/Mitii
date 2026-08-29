@@ -713,10 +713,10 @@ export const SETTINGS_FIELDS: readonly SettingsFieldSpec[] = [
     sample: true,
   },
   {
-    id: 'debug.modelIo',
+    id: 'developer.modelIo',
     page: 'developer',
     tab: 'debug',
-    setting: 'debug.modelIo',
+    setting: 'developer.modelIo',
     label: 'Log model I/O',
     kind: 'boolean',
     reflect: 'raw',

@@ -58,7 +58,8 @@ import {
 import { scaffoldMitiiWorkspace } from './mitiiWorkspace.js';
 import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
 import { resolveVsCodeSemanticIndexSettings } from './semanticIndex.js';
-import { findLocalModelPreset, LOCAL_MODEL_PRESETS } from './modelPresets.js';
+import { findLocalModelPreset } from './modelPresets.js';
+import { readModelIoLoggingEnabled } from './modelIoSettings.js';
 import {
   normalizeTokenLimit,
   readStoredContextWindow,
@@ -1704,6 +1705,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       models: this.discoveredModels,
       testing: false,
     });
+    if (this.discoveredModels.length > 0) {
+      this.post({ type: 'provider.models', models: this.discoveredModels });
+    }
     await this.sendBootstrap();
   }
 
@@ -1906,7 +1910,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       }
       if (message.ui.modelIoLogging !== undefined) {
         await cfg.update(
-          'debug.modelIo',
+          'developer.modelIo',
           message.ui.modelIoLogging,
           this.vs.ConfigurationTarget.Global,
         );
@@ -2301,16 +2305,6 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     const set = new Set<string>();
     if (currentModel.trim()) set.add(currentModel.trim());
     const providerPreset = getProviderPreset(presetId ?? type ?? '');
-    const catalogId = providerPreset?.id ?? presetId ?? type ?? '';
-    if (
-      catalogId === 'ollama' ||
-      catalogId === 'lm-studio' ||
-      catalogId === 'openai-compatible' ||
-      catalogId === 'echo' ||
-      !providerPreset
-    ) {
-      for (const preset of LOCAL_MODEL_PRESETS) set.add(preset.model);
-    }
     for (const id of providerPreset?.models ?? []) {
       if (id.trim()) set.add(id.trim());
     }
@@ -2347,7 +2341,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     const configuredPreset = cfg.get<string>('provider.preset') ?? undefined;
     const baseUrl =
       cfg.get<string>('provider.baseUrl') ?? 'http://localhost:11434/v1';
-    const model = cfg.get<string>('provider.model') ?? 'qwen3-coder:30b';
+    const model = cfg.get<string>('provider.model') ?? '';
     const preset = this.inferProviderPreset(
       type,
       configuredPreset,
@@ -2477,7 +2471,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       runBudget: readRunBudgetSettings(this.vs),
       developerEnabled: cfg.get<boolean>('developer.enabled') ?? false,
       debugLogging: cfg.get<boolean>('debug') ?? false,
-      modelIoLogging: cfg.get<boolean>('debug.modelIo') ?? false,
+      modelIoLogging: readModelIoLoggingEnabled(cfg),
       tokenBudget: readTokenBudgetSettings(
         cfg,
         resolveContextWindow(this.vs),

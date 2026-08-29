@@ -17,7 +17,6 @@ const SUBDIRS = [
   'skills',
   'rules',
   'diff-preview',
-  'audit',
 ] as const;
 
 const MCP_TEMPLATE = {
@@ -31,7 +30,7 @@ Local runtime data for this workspace. Safe to gitignore.
 
 | Path | Purpose |
 |------|---------|
-| \`logs/\` | Session JSONL logs (+ optional \`*-model-io.jsonl\` when developer model I/O logging is on) |
+| \`logs/\` | Session JSONL logs (+ optional \`*-model-io.jsonl\` when developer model I/O logging is on; shareable diagnostics) |
 | \`checkpoints/\` | Saved run checkpoints |
 | \`verification/\` | Durable before/after verification records for retry |
 | \`plans/\` | Timestamped plan artifacts (\`MM-DD-YYYY-HH-MM-id-slug.json\`) |
@@ -39,7 +38,6 @@ Local runtime data for this workspace. Safe to gitignore.
 | \`skills/\` | Workspace skill playbooks |
 | \`rules/\` | Project methodology rules |
 | \`diff-preview/\` | Temporary diff preview files |
-| \`audit/\` | Audit pack + shareable diagnostic exports |
 | \`mcp.json\` | MCP install list (off by default; add from Settings store) |
 | \`profiles.json\` | Local model/provider profiles with secret fingerprints only |
 | \`last-repository-state.json\` | Last published index descriptor |
@@ -67,10 +65,6 @@ export function mitiiDir(workspaceRoot: string): string {
 
 export function mitiiLogsDir(workspaceRoot: string): string {
   return join(mitiiDir(workspaceRoot), 'logs');
-}
-
-export function mitiiAuditDir(workspaceRoot: string): string {
-  return join(mitiiDir(workspaceRoot), 'audit');
 }
 
 export function mitiiPlansDir(workspaceRoot: string): string {
