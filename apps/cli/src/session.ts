@@ -7,6 +7,7 @@ import {
   type MitiiRun,
   type RunEvent,
 } from '@mitii/sdk';
+import { writeSync } from 'node:fs';
 import * as readline from 'node:readline';
 
 import {
@@ -18,13 +19,16 @@ import { formatTaskList } from './runReport.js';
 
 /** Keep --json payloads parseable; nested tool dumps can otherwise balloon. */
 export const CLI_JSON_MAX_STRING_CHARS = 8_000;
+/** Cap event count so --json stays under typical OS pipe buffers (~64KiB). */
+export const CLI_JSON_MAX_EVENTS = 120;
 
 /**
  * Compact JSON for CLI --json output. Long strings are truncated so consumers
  * (benchmark adapter, scripts) always receive valid, bounded JSON.
  */
 export function serializeCliJson(value: unknown): string {
-  return JSON.stringify(value, (_key, current) => {
+  const compacted = compactCliJsonPayload(value);
+  return JSON.stringify(compacted, (_key, current) => {
     if (
       typeof current === 'string' &&
       current.length > CLI_JSON_MAX_STRING_CHARS
@@ -33,6 +37,22 @@ export function serializeCliJson(value: unknown): string {
     }
     return current;
   });
+}
+
+function compactCliJsonPayload(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return value;
+  }
+  const record = value as Record<string, unknown>;
+  const events = record.events;
+  if (!Array.isArray(events) || events.length <= CLI_JSON_MAX_EVENTS) {
+    return value;
+  }
+  return {
+    ...record,
+    events: events.slice(-CLI_JSON_MAX_EVENTS),
+    eventsOmitted: events.length - CLI_JSON_MAX_EVENTS,
+  };
 }
 
 export interface SessionIo {
@@ -71,11 +91,13 @@ export interface DriveRunOutcome {
 
 export function createDefaultSessionIo(): SessionIo {
   return {
+    // writeSync avoids truncated --json when process.exit races a full pipe
+    // buffer (commonly 64KiB on macOS/Linux).
     writeStdout: (chunk) => {
-      process.stdout.write(chunk);
+      writeSync(1, chunk);
     },
     writeStderr: (chunk) => {
-      process.stderr.write(chunk);
+      writeSync(2, chunk);
     },
     prompt: promptLine,
     onInterrupt: (handler) => {
@@ -294,8 +316,17 @@ export async function driveRun(
       break;
     }
 
-    if (json && !options.autoClarify && !options.autoApproval) {
-      // Non-interactive JSON: emit suspended result and stop (caller may resume later).
+    const suspensionKind = result.suspension?.kind;
+    const canAutoResolve =
+      (suspensionKind === 'clarification_required' &&
+        Boolean(options.autoClarify)) ||
+      (suspensionKind === 'approval_required' &&
+        Boolean(options.autoApproval));
+
+    // Non-interactive JSON: only auto-resume the suspension kind that has a
+    // matching flag. `--approve` must not open an interactive clarification
+    // prompt (benchmarks spawn with stdin ignored).
+    if (json && !canAutoResolve) {
       break;
     }
 

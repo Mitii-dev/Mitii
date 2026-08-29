@@ -138,6 +138,7 @@ export function buildReport(results, config, startedAt, finishedAt, meta = {}) {
     byCapability,
     bySuite,
     byCategory,
+    usageTotals: sumUsage(results),
     results,
   };
 }
@@ -168,6 +169,13 @@ export function writeReport(report, path, liveMeta = null) {
 }
 
 function renderCaseMarkdown(result) {
+  const usage = result.usage ?? {};
+  const tokenParts = [];
+  if (usage.inputTokens != null) tokenParts.push(`in=${usage.inputTokens}`);
+  if (usage.outputTokens != null) tokenParts.push(`out=${usage.outputTokens}`);
+  if (usage.modelCalls != null) tokenParts.push(`models=${usage.modelCalls}`);
+  if (usage.toolCalls != null) tokenParts.push(`tools=${usage.toolCalls}`);
+  if (usage.loopIterations != null) tokenParts.push(`loops=${usage.loopIterations}`);
   const lines = [
     `# Case ${result.id}`,
     '',
@@ -177,6 +185,7 @@ function renderCaseMarkdown(result) {
     `**Fixture:** ${result.fixture}`,
     `**Capability:** ${result.capability}`,
     `**Duration:** ${result.durationMs ?? 0}ms`,
+    `**Tokens / usage:** ${tokenParts.length ? tokenParts.join(' ') : 'n/a'}`,
     '',
     '## Checks',
     '',
@@ -211,6 +220,14 @@ function renderSummaryMarkdown(report, liveMeta) {
   const categoryRows = Object.entries(report.byCategory ?? {})
     .map(([name, item]) => `| ${name} | ${item.passed}/${item.total} | ${(item.caseScore * 100).toFixed(1)}% |`)
     .join('\n');
+  const usage = report.usageTotals ?? {};
+  const usageLine = [
+    usage.inputTokens != null ? `inTokens=${usage.inputTokens}` : null,
+    usage.outputTokens != null ? `outTokens=${usage.outputTokens}` : null,
+    usage.avgDurationMs != null ? `avgDurationMs=${Math.round(usage.avgDurationMs)}` : null,
+  ]
+    .filter(Boolean)
+    .join(' ');
   return `# Benchmark Result
 
 ## Signal: ${report.signal}
@@ -220,7 +237,7 @@ ${live}
 ${rows.join('\n')}
 
 Overall family-weighted score: **${(report.overall.familyScore * 100).toFixed(1)}%**.
-
+${usageLine ? `\nRun usage: **${usageLine}**.\n` : ''}
 ${categoryRows ? `## Categories\n\n| Category | Passed | Case score |\n|---|---:|---:|\n${categoryRows}\n` : ''}
 `;
 }
@@ -234,6 +251,7 @@ function summarize(results) {
     families.set(result.familyId, family);
   }
   const familyRates = [...families.values()].map((values) => values.reduce((a, b) => a + b, 0) / values.length);
+  const durations = results.map((result) => result.durationMs).filter((value) => typeof value === 'number');
   return {
     total: results.length,
     passed,
@@ -241,6 +259,31 @@ function summarize(results) {
     families: families.size,
     caseScore: results.length ? passed / results.length : 0,
     familyScore: familyRates.length ? familyRates.reduce((a, b) => a + b, 0) / familyRates.length : 0,
+    avgDurationMs: durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length : null,
+  };
+}
+
+function sumUsage(results) {
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let seenTokens = false;
+  const durations = [];
+  for (const result of results) {
+    if (typeof result.durationMs === 'number') durations.push(result.durationMs);
+    const usage = result.usage ?? {};
+    if (typeof usage.inputTokens === 'number') {
+      inputTokens += usage.inputTokens;
+      seenTokens = true;
+    }
+    if (typeof usage.outputTokens === 'number') {
+      outputTokens += usage.outputTokens;
+      seenTokens = true;
+    }
+  }
+  return {
+    inputTokens: seenTokens ? inputTokens : null,
+    outputTokens: seenTokens ? outputTokens : null,
+    avgDurationMs: durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length : null,
   };
 }
 

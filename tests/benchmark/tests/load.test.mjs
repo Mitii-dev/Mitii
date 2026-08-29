@@ -11,10 +11,10 @@ test('domains are frontend, backend, cicd, testing', () => {
   assert.deepEqual(listSuites(rootDir), [...DOMAINS]);
 });
 
-test('each domain has easy/medium/hard case files and matching counts', () => {
+test('each domain validates against suite.json counts and caseFiles', () => {
   for (const domain of DOMAINS) {
     const manifest = loadSuiteManifest(rootDir, domain);
-    assert.deepEqual(manifest.caseFiles, ['easy.jsonl', 'medium.jsonl', 'hard.jsonl']);
+    assert.ok(Array.isArray(manifest.caseFiles) && manifest.caseFiles.length > 0);
     const cases = loadCases(rootDir, { suite: domain });
     const validation = validateSuite(cases, rootDir, { suite: domain });
     assert.equal(validation.valid, true, `${domain}: ${validation.errors.join('\n')}`);
@@ -33,6 +33,26 @@ test('each domain has easy/medium/hard case files and matching counts', () => {
     );
     assert.equal(cases.every((c) => c.suite === domain), true);
   }
+});
+
+test('frontend core is agent-only with expected capability mix', () => {
+  const cases = loadCases(rootDir, { suite: 'frontend' });
+  assert.equal(cases.length, 70);
+  assert.equal(cases.every((c) => c.mode === 'agent'), true);
+  const byCap = Object.fromEntries(
+    ['feature', 'bugfix', 'docs', 'retrieval', 'testing'].map((capability) => [
+      capability,
+      cases.filter((c) => c.capability === capability).length,
+    ])
+  );
+  assert.deepEqual(byCap, {
+    feature: 20,
+    bugfix: 20,
+    docs: 10,
+    retrieval: 10,
+    testing: 10,
+  });
+  assert.equal(cases.every((c) => c.variant === 1), true);
 });
 
 test('combined domains validate with unique ids', () => {

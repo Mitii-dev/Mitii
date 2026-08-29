@@ -1,19 +1,19 @@
 {
-  "id": "fe-0501-your-case-name-v1",
-  "familyId": "fe-your-case-name",
+  "id": "fe-feature-001-about-page-v1",
+  "familyId": "fe-feature-about-page",
   "variant": 1,
   "suite": "frontend",
-  "category": "ui-components",
+  "category": "routing",
   "difficulty": "medium",
   "mode": "agent",
   "capability": "feature",
-  "fixture": "frontend-app",
-  "prompt": "Implement the specific frontend change described here.",
-  "rationale": "Explain which verification depths this case covers.",
+  "fixture": "next-app",
+  "prompt": "Add a new /about route with a static page that renders the exact text \"About this benchmark app\".",
+  "rationale": "App Router page addition graded by __bench__/grade.mjs + build. One variant only.",
   "preconditions": [
     {
-      "type": "file_exists",
-      "path": "package.json"
+      "type": "file_not_exists",
+      "path": "app/about/page.tsx"
     }
   ],
   "checks": [
@@ -33,12 +33,12 @@
     },
     {
       "type": "file_exists",
-      "path": "src/components/Example.tsx"
+      "path": "app/about/page.tsx"
     },
     {
-      "type": "file_contains",
-      "path": "src/components/Example.tsx",
-      "value": "export"
+      "type": "command",
+      "command": "node __bench__/grade.mjs --json \"[{\\\"op\\\":\\\"exists\\\",\\\"path\\\":\\\"app/about/page.tsx\\\"},{\\\"op\\\":\\\"contains\\\",\\\"path\\\":\\\"app/about/page.tsx\\\",\\\"value\\\":\\\"About this benchmark app\\\"}]\"",
+      "timeoutMs": 30000
     },
     {
       "type": "command",

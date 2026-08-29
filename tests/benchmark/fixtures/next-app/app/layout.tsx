@@ -1,6 +1,7 @@
 export const metadata = {
   title: 'Benchmark Next App',
-  description: 'Mitii benchmark fixture',
+  // Typo seeded for bugfix: benchmak
+  description: 'Mitii benchmak fixture',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

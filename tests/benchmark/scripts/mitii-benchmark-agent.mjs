@@ -54,6 +54,10 @@ const askArgs = [
   options.cwd,
   '--json',
   '--approve',
+  // Non-interactive: if understanding still soft-asks, proceed as written
+  // rather than hanging on a TTY prompt with stdin ignored.
+  '--clarify',
+  'Proceed with the request as written.',
 ];
 if (options.echo) askArgs.push('--echo');
 
@@ -155,5 +159,7 @@ function emitBenchmarkStdout(raw) {
     status: payload.result?.status ?? null,
     route: payload.result?.route ?? null,
     ok: payload.result?.status === 'completed' || payload.result?.status === 'suspended',
+    usage: payload.result?.usage ?? null,
+    durationMs: payload.result?.durationMs ?? null,
   });
 }

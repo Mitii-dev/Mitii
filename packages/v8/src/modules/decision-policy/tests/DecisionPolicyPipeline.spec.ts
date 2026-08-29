@@ -934,6 +934,36 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.toolGrant.maximumWorkspaceEffect).toBe("write");
   });
 
+  it("does not clarify path-targeted Add/create asks under low-confidence soft flags", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message:
+          "Add app/error.tsx for the home route following Next.js App Router conventions.",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "feature",
+          interactionIntent: "act",
+          confidence: 0.62,
+          confidenceMargin: 0.08,
+          status: "clarification_required",
+          recommendsClarification: true,
+          needsClarification: true,
+          taskAnalysis: {
+            clarity: "unclear",
+            recommendsTaskClarification: true,
+            scope: "single_location",
+            complexity: "simple",
+            risk: "low",
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("execute");
+    expect(decision.runDisposition).toBe("continue");
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("write");
+  });
+
   it("clarifies investigate-vs-fix forks even when the message looks actionable", () => {
     const decision = new DecisionPolicyPipeline().decide(
       createInput({

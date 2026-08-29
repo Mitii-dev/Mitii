@@ -274,7 +274,7 @@ function requiresClarification(
   }
 
   const { intent, taskAnalysis } = understanding;
-  const materialFork = isMaterialCapabilityFork(understanding);
+  const materialFork = isMaterialCapabilityFork(understanding, message);
 
   // Agent mode: clear actionable mutation asks should execute even when
   // understanding marks soft ambiguity (avoids stalling "implement X" work).
@@ -326,11 +326,12 @@ function requiresClarification(
 
 /**
  * Clarify when the fork changes what the agent is allowed to do (read vs write)
- * or confidence is too low to guess. Clear "implement X" asks with soft
- * ambiguity flags are not material forks.
+ * or confidence is too low to guess. Clear "Add app/error.tsx" / "implement X"
+ * asks with soft ambiguity flags are not material forks.
  */
 function isMaterialCapabilityFork(
   understanding: RequestUnderstandingResult,
+  message = "",
 ): boolean {
   const { intent } = understanding;
   const classification = intent.classification;
@@ -367,10 +368,42 @@ function isMaterialCapabilityFork(
   }
 
   // Medium/low confidence with an explicit clarify flag — ask instead of
-  // collapsing to a tool-less answer or a guessed write grant.
+  // collapsing to a tool-less answer or a guessed write grant. Skip when the
+  // user already named a concrete path target (benchmark / IDE file asks).
   if (
     classification.confidence <
       DECISION_POLICY_THRESHOLDS.clarifyWhenFlaggedBelowConfidence
+  ) {
+    if (hasExplicitMutationPathTarget(message)) {
+      return false;
+    }
+    return true;
+  }
+
+  return false;
+}
+
+/** True when the ask names a concrete workspace path (file or app/src tree). */
+function hasExplicitMutationPathTarget(message: string): boolean {
+  const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
+  if (text.length === 0) {
+    return false;
+  }
+
+  // File with extension: app/error.tsx, src/components/Button.tsx
+  if (
+    /(?:^|[\s`'"(])(?:[\w@.+-]+\/)+[\w.@+-]+\.[A-Za-z][A-Za-z0-9]*\b/.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+
+  // Common source roots without requiring an extension: app/about, src/hooks
+  if (
+    /(?:^|[\s`'"(])(?:app|src|packages?|tests?|lib|components)\/[\w./@+-]+/.test(
+      text,
+    )
   ) {
     return true;
   }

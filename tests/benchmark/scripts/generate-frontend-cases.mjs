@@ -1,14 +1,18 @@
 #!/usr/bin/env node
 /**
- * Generates suites/frontend/cases/frontend.jsonl from the
- * project-goals/ref/front-end-testcases.md scenario list.
+ * DEPRECATED: the frontend suite is now the 70-case agent core.
+ * Use: node scripts/write-frontend-core.mjs
  *
- * Verification is deterministic (files + commands). Browser/device/a11y
- * depths map to the strongest automatable proxies available in the suite.
+ * This script previously generated the large fe-001… / easy-medium-hard suite.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+console.error(
+  'generate-frontend-cases.mjs is retired. Use: node scripts/write-frontend-core.mjs'
+);
+process.exit(1);
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 

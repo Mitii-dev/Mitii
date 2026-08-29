@@ -8,7 +8,7 @@ Each case is:
 Prompt  →  Mitii (ask | plan | agent) on an isolated fixture copy  →  Checks
 ```
 
-Checks are real repository evidence: files, `npm run build` / `test` / `typecheck`,
+Checks are real repository evidence: `__bench__/grade.mjs`, files, `npm run build` / `test` / `typecheck`,
 HTTP responses, workspace changed/unchanged. **No LLM grades another LLM.**
 
 ---
@@ -52,7 +52,7 @@ Optional but useful:
 ```text
 tests/benchmark/
 ├── suites/
-│   ├── frontend/cases/{easy,medium,hard}.jsonl
+│   ├── frontend/cases/{feature,bugfix,docs,retrieval,testing}.jsonl
 │   ├── backend/cases/{easy,medium,hard}.jsonl
 │   ├── cicd/cases/{easy,medium,hard}.jsonl
 │   └── testing/cases/{easy,medium,hard}.jsonl
@@ -62,6 +62,7 @@ tests/benchmark/
 ├── scripts/
 │   ├── install-fixtures.mjs  # npm/pnpm install in every fixture
 │   ├── reset-fixtures.mjs    # wipe installs + .workspaces, reinstall
+│   ├── write-frontend-core.mjs  # regenerate frontend 70-case core
 │   └── mitii-benchmark-agent.mjs
 ├── reports/runs/<runId>/     # live + final reports (gitignored)
 ├── benchmark.config.example.json
@@ -76,12 +77,12 @@ tests/benchmark/
 
 | Domain | Focus |
 |---|---|
-| `frontend` | UI, React/Next, styling, a11y, responsive, client features |
+| `frontend` | Agent-only core: feature (20), bugfix (20), docs (10), retrieval (10), testing (10) |
 | `backend` | APIs, services, bugfixes, retrieval, planning |
 | `cicd` | Workflows, pipelines, deploy automation |
 | `testing` | Unit/integration/e2e, coverage, regression |
 
-Difficulty is **inside** each domain: `easy` / `medium` / `hard`.
+Frontend uses **capability** JSONL files. Other domains still use difficulty files (`easy` / `medium` / `hard`).
 
 ---
 
@@ -421,10 +422,10 @@ pnpm --filter @mitii/solid-benchmark benchmark -- \
 # One case by id substring
 pnpm --filter @mitii/solid-benchmark benchmark -- \
   --suite frontend \
-  --id fe-001 \
+  --id fe-feature-001 \
   --config tests/benchmark/benchmark.config.json
 
-# Five easy frontend cases
+# Five easy frontend cases (docs + retrieval)
 pnpm --filter @mitii/solid-benchmark benchmark -- \
   --suite frontend \
   --difficulty easy \
@@ -488,12 +489,14 @@ Reports are written **after every case**, then refreshed at the end.
 
 ```text
 tests/benchmark/reports/runs/<runId>/
-├── summary.json          # live + final aggregate
+├── summary.json          # live + final aggregate (includes usageTotals)
 ├── summary.md
 └── cases/
-    ├── <case-id>.json    # PASS/FAIL, checks, duration, stderr slice
+    ├── <case-id>.json    # PASS/FAIL, checks, durationMs, usage, stderr slice
     └── <case-id>.md
 ```
+
+Per-case markdown includes **Duration** and **Tokens / usage** (from the agent `end` event when the CLI provides `result.usage`).
 
 Also updated when the run finishes:
 
@@ -502,8 +505,8 @@ Also updated when the run finishes:
 Console output looks like:
 
 ```text
-[3/10] PASS frontend/easy fe-003-… (12400ms)
-  report: …/reports/runs/…/cases/fe-003-….md
+[3/70] PASS frontend/medium fe-feature-003-… (12400ms)
+  report: …/reports/runs/…/cases/fe-feature-003-….md
 ```
 
 Open the per-case `.md` immediately when something fails — you do not need to

@@ -148,10 +148,7 @@ if (command === 'validate') {
 Domains (top-level):
   ${availableSuites.join(' | ') || DOMAINS.join(' | ')}
 
-Each domain contains:
-  cases/easy.jsonl
-  cases/medium.jsonl
-  cases/hard.jsonl
+Each domain contains case JSONL files (frontend: capability files; others: easy/medium/hard).
 
 Filters:
   --suite all|${availableSuites.join('|') || DOMAINS.join('|')}

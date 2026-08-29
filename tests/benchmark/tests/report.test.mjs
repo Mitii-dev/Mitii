@@ -27,6 +27,7 @@ test('writeCaseReport creates json and markdown per case', () => {
   const md = readFileSync(paths.markdown, 'utf8');
   assert.match(md, /PASS/);
   assert.match(md, /fe-001-demo-v1/);
+  assert.match(md, /Tokens \/ usage/);
 });
 
 test('createRunReporter writes live summary after each case', () => {

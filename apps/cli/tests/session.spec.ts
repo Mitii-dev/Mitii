@@ -5,6 +5,7 @@ import type { AgentRunResult } from '@mitii/sdk';
 
 import {
   buildResumeInput,
+  CLI_JSON_MAX_EVENTS,
   CLI_JSON_MAX_STRING_CHARS,
   serializeCliJson,
 } from '../src/session.js';
@@ -142,5 +143,23 @@ describe('serializeCliJson', () => {
     expect(parsed.result.stdout.length).toBeLessThan(huge.length);
     expect(parsed.result.stdout).toContain('[truncated');
     expect(encoded.length).toBeLessThan(huge.length);
+  });
+
+  it('keeps only the newest events when the trail is very long', () => {
+    const events = Array.from({ length: CLI_JSON_MAX_EVENTS + 40 }, (_, i) => ({
+      type: 'tool_completed',
+      callId: `c${i}`,
+    }));
+    const encoded = serializeCliJson({
+      result: { status: 'completed' },
+      events,
+    });
+    const parsed = JSON.parse(encoded) as {
+      events: unknown[];
+      eventsOmitted: number;
+    };
+    expect(parsed.events).toHaveLength(CLI_JSON_MAX_EVENTS);
+    expect(parsed.eventsOmitted).toBe(40);
+    expect(JSON.parse(encoded)).toBeTruthy();
   });
 });

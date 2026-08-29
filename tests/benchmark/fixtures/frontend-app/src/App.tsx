@@ -7,7 +7,7 @@ import Button from './components/Button';
 export default function App() {
   return (
     <main className="app">
-      <h1>Mitii Frontend Benchmark</h1>
+      <h1>Mitii Frontend Benchmrk</h1>
       <p>Welcome to the Mitii frontend coding-agent fixture.</p>
       <Button label="Primary" />
       <Button label="Secondary" variant="secondary" />
