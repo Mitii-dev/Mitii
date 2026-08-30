@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_WINDOW_BUDGET_POLICY } from "../../defaults";
 import {
   WINDOW_BUDGET_BAND_CEILINGS,
   WINDOW_BUDGET_BAND_TABLE,
@@ -57,19 +56,54 @@ describe("resolveWindowBudgetPolicy", () => {
     );
   });
 
-  it("keeps defaults for standard", () => {
+  it("applies explicit standard band knobs", () => {
     const resolved = resolveWindowBudgetPolicy({
       contextWindowTokens: 75_000,
     });
     expect(resolved.band).toBe("standard");
-    expect(resolved.policy).toEqual({ ...DEFAULT_WINDOW_BUDGET_POLICY });
+    expect(resolved.policy.outputRatio).toBe(
+      WINDOW_BUDGET_BAND_TABLE.standard.overrides.outputRatio,
+    );
+    expect(resolved.policy.outputWindowCapRatio).toBe(
+      WINDOW_BUDGET_BAND_TABLE.standard.overrides.outputWindowCapRatio,
+    );
+    expect(resolved.policy.outputMinTokens).toBe(
+      WINDOW_BUDGET_BAND_TABLE.standard.overrides.outputMinTokens,
+    );
+    expect(resolved.policy.repositoryShare).toBe(
+      WINDOW_BUDGET_BAND_TABLE.standard.overrides.repositoryShare,
+    );
+    expect(resolved.policy.conversationShare).toBe(
+      WINDOW_BUDGET_BAND_TABLE.standard.overrides.conversationShare,
+    );
+    expect(resolved.policy.skillsShare).toBe(
+      WINDOW_BUDGET_BAND_TABLE.standard.overrides.skillsShare,
+    );
+    expect(resolved.policy.maxUniqueFilesPerCallCap).toBe(
+      WINDOW_BUDGET_BAND_TABLE.standard.overrides.maxUniqueFilesPerCallCap,
+    );
+    expect(resolved.policy.maxSkillsCap).toBe(
+      WINDOW_BUDGET_BAND_TABLE.standard.overrides.maxSkillsCap,
+    );
   });
 
-  it("raises maxSkillsCap on wide", () => {
+  it("applies explicit wide band knobs", () => {
     const resolved = resolveWindowBudgetPolicy({
       contextWindowTokens: 128_000,
     });
     expect(resolved.band).toBe("wide");
+    expect(resolved.policy.outputRatio).toBe(
+      WINDOW_BUDGET_BAND_TABLE.wide.overrides.outputRatio,
+    );
+    expect(resolved.policy.outputWindowCapRatio).toBe(
+      WINDOW_BUDGET_BAND_TABLE.wide.overrides.outputWindowCapRatio,
+    );
+    expect(resolved.policy.repositoryShare).toBe(
+      WINDOW_BUDGET_BAND_TABLE.wide.overrides.repositoryShare,
+    );
+    expect(resolved.policy.maxUniqueFilesPerCallCap).toBe(
+      WINDOW_BUDGET_BAND_TABLE.wide.overrides.maxUniqueFilesPerCallCap,
+    );
     expect(resolved.policy.maxSkillsCap).toBe(
       WINDOW_BUDGET_BAND_TABLE.wide.overrides.maxSkillsCap,
     );
