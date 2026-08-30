@@ -70,6 +70,7 @@ import type {
   SkillCatalogItem,
   TokenBudgetSettingsSnapshot,
   LoopPolicySettingsSnapshot,
+  PolicyLabSettingsSnapshot,
   TokenUsageSnapshot,
   UiSettingsPatch,
   UiNav,
@@ -152,6 +153,38 @@ const DEFAULT_LOOP_POLICY: LoopPolicySettingsSnapshot = {
   fields: [],
 };
 
+const DEFAULT_POLICY_LAB: PolicyLabSettingsSnapshot = {
+  enabled: false,
+  filePath: 'packages/v8/.../loopPolicyBands.ts + windowBudgetBands.ts',
+  exists: true,
+  previewContextWindowTokens: 35_000,
+  activeBand: {
+    id: 'compact',
+    label: 'Compact',
+    rangeLabel: '< 50k',
+    contextWindowTokens: 35_000,
+  },
+  editBand: 'compact',
+  bands: [
+    { id: 'compact', label: 'Compact', rangeLabel: '< 50k' },
+    { id: 'standard', label: 'Standard', rangeLabel: '50k – < 100k' },
+    { id: 'wide', label: 'Wide', rangeLabel: '≥ 100k' },
+  ],
+  loopByBand: { compact: {}, standard: {}, wide: {} },
+  windowByBand: { compact: {}, standard: {}, wide: {} },
+  loopOverrides: {},
+  windowOverrides: {},
+  loopThresholds: {},
+  loopBandThresholds: {},
+  windowPolicy: {},
+  windowBandPolicy: {},
+  loopFields: [],
+  windowFields: [],
+  loopBandHint: 'Compact (< 50k)',
+  shipPreviewNote:
+    'Save writes V8 source. Rebuild before runs use the new ship values.',
+};
+
 const DEFAULT_UI: UiSettingsSnapshot = {
   showReasoning: true,
   reasoningPreviewMaxChars: 8000,
@@ -186,6 +219,7 @@ const DEFAULT_UI: UiSettingsSnapshot = {
   modelIoLogging: false,
   tokenBudget: DEFAULT_TOKEN_BUDGET,
   loopPolicy: DEFAULT_LOOP_POLICY,
+  policyLab: DEFAULT_POLICY_LAB,
 };
 
 type SettingsMode = 'ask' | 'plan' | 'agent';
@@ -236,6 +270,74 @@ function hydrateUiSnapshot(
         ? raw.loopPolicy.fields
         : DEFAULT_LOOP_POLICY.fields,
     },
+    policyLab: {
+      ...DEFAULT_POLICY_LAB,
+      ...(raw?.policyLab ?? {}),
+      activeBand: raw?.policyLab?.activeBand ?? DEFAULT_POLICY_LAB.activeBand,
+      bands: raw?.policyLab?.bands?.length
+        ? raw.policyLab.bands
+        : DEFAULT_POLICY_LAB.bands,
+      loopByBand: {
+        compact: {
+          ...DEFAULT_POLICY_LAB.loopByBand.compact,
+          ...(raw?.policyLab?.loopByBand?.compact ?? {}),
+        },
+        standard: {
+          ...DEFAULT_POLICY_LAB.loopByBand.standard,
+          ...(raw?.policyLab?.loopByBand?.standard ?? {}),
+        },
+        wide: {
+          ...DEFAULT_POLICY_LAB.loopByBand.wide,
+          ...(raw?.policyLab?.loopByBand?.wide ?? {}),
+        },
+      },
+      windowByBand: {
+        compact: {
+          ...DEFAULT_POLICY_LAB.windowByBand.compact,
+          ...(raw?.policyLab?.windowByBand?.compact ?? {}),
+        },
+        standard: {
+          ...DEFAULT_POLICY_LAB.windowByBand.standard,
+          ...(raw?.policyLab?.windowByBand?.standard ?? {}),
+        },
+        wide: {
+          ...DEFAULT_POLICY_LAB.windowByBand.wide,
+          ...(raw?.policyLab?.windowByBand?.wide ?? {}),
+        },
+      },
+      loopOverrides: {
+        ...DEFAULT_POLICY_LAB.loopOverrides,
+        ...(raw?.policyLab?.loopOverrides ?? {}),
+      },
+      windowOverrides: {
+        ...DEFAULT_POLICY_LAB.windowOverrides,
+        ...(raw?.policyLab?.windowOverrides ?? {}),
+      },
+      loopThresholds: {
+        ...DEFAULT_POLICY_LAB.loopThresholds,
+        ...(raw?.policyLab?.loopThresholds ?? {}),
+      },
+      loopBandThresholds: {
+        ...DEFAULT_POLICY_LAB.loopBandThresholds,
+        ...(raw?.policyLab?.loopBandThresholds ?? {}),
+      },
+      windowPolicy: {
+        ...DEFAULT_POLICY_LAB.windowPolicy,
+        ...(raw?.policyLab?.windowPolicy ?? {}),
+      },
+      windowBandPolicy: {
+        ...DEFAULT_POLICY_LAB.windowBandPolicy,
+        ...(raw?.policyLab?.windowBandPolicy ?? {}),
+      },
+      loopFields: raw?.policyLab?.loopFields?.length
+        ? raw.policyLab.loopFields
+        : DEFAULT_POLICY_LAB.loopFields,
+      windowFields: raw?.policyLab?.windowFields?.length
+        ? raw.policyLab.windowFields
+        : DEFAULT_POLICY_LAB.windowFields,
+      shipPreviewNote:
+        raw?.policyLab?.shipPreviewNote ?? DEFAULT_POLICY_LAB.shipPreviewNote,
+    },
   };
 }
 
@@ -266,9 +368,18 @@ function mergeUiPatch(
   base: UiSettingsSnapshot,
   patch: UiSettingsPatch,
 ): UiSettingsSnapshot {
+  const {
+    contextToggles: _ct,
+    modeDefaults: _md,
+    runBudget: _rb,
+    tokenBudget: _tb,
+    loopPolicy: _lp,
+    policyLab: _pl,
+    ...scalarPatch
+  } = patch;
   return {
     ...base,
-    ...patch,
+    ...scalarPatch,
     contextToggles: patch.contextToggles
       ? { ...base.contextToggles, ...patch.contextToggles }
       : base.contextToggles,
@@ -320,6 +431,64 @@ function mergeUiPatch(
           fields: base.loopPolicy.fields,
         }
       : base.loopPolicy,
+    policyLab: patch.policyLab
+      ? {
+          ...base.policyLab,
+          ...patch.policyLab,
+          loopByBand: {
+            compact: {
+              ...base.policyLab.loopByBand.compact,
+              ...(patch.policyLab.loopByBand?.compact ?? {}),
+            },
+            standard: {
+              ...base.policyLab.loopByBand.standard,
+              ...(patch.policyLab.loopByBand?.standard ?? {}),
+            },
+            wide: {
+              ...base.policyLab.loopByBand.wide,
+              ...(patch.policyLab.loopByBand?.wide ?? {}),
+            },
+          },
+          windowByBand: {
+            compact: {
+              ...base.policyLab.windowByBand.compact,
+              ...(patch.policyLab.windowByBand?.compact ?? {}),
+            },
+            standard: {
+              ...base.policyLab.windowByBand.standard,
+              ...(patch.policyLab.windowByBand?.standard ?? {}),
+            },
+            wide: {
+              ...base.policyLab.windowByBand.wide,
+              ...(patch.policyLab.windowByBand?.wide ?? {}),
+            },
+          },
+          loopOverrides: {
+            ...base.policyLab.loopOverrides,
+            ...(patch.policyLab.loopOverrides ?? {}),
+          },
+          windowOverrides: {
+            ...base.policyLab.windowOverrides,
+            ...(patch.policyLab.windowOverrides ?? {}),
+          },
+          loopThresholds: {
+            ...base.policyLab.loopThresholds,
+            ...(patch.policyLab.loopThresholds ?? {}),
+          },
+          windowPolicy: {
+            ...base.policyLab.windowPolicy,
+            ...(patch.policyLab.windowPolicy ?? {}),
+          },
+          loopBandThresholds: base.policyLab.loopBandThresholds,
+          windowBandPolicy: base.policyLab.windowBandPolicy,
+          loopFields: base.policyLab.loopFields,
+          windowFields: base.policyLab.windowFields,
+          bands: base.policyLab.bands,
+          activeBand: patch.policyLab.activeBand ?? base.policyLab.activeBand,
+          shipPreviewNote:
+            patch.policyLab.shipPreviewNote ?? base.policyLab.shipPreviewNote,
+        }
+      : base.policyLab,
   };
 }
 

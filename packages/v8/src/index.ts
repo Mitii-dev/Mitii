@@ -407,7 +407,7 @@ export type {
   TaskListPurpose,
 } from "./modules/task-list";
 
-export { deriveWindowPolicy, mergeWindowBudgetPolicy, resolveGenerationCeiling } from "./modules/window-budget";
+export { deriveWindowPolicy, mergeWindowBudgetPolicy, resolveWindowBudgetPolicy, resolveGenerationCeiling } from "./modules/window-budget";
 export {
   WINDOW_BUDGET_SCHEMA_VERSION,
   DEFAULT_WINDOW_BUDGET_POLICY,
@@ -416,6 +416,12 @@ export {
   DEFAULT_WINDOW_BUDGET_EFFORT,
   WINDOW_BUDGET_EFFORT_OVERLAY,
   resolveWindowBudgetEffort,
+  WINDOW_BUDGET_BANDS,
+  WINDOW_BUDGET_BAND_CEILINGS,
+  WINDOW_BUDGET_BAND_TABLE,
+  resolveWindowBudgetBand,
+  windowBudgetBandDefinition,
+  listWindowBudgetBands,
   windowBudgetInputSchema,
   windowBudgetPolicySchema,
   windowBudgetPolicyOverridesSchema,
@@ -428,6 +434,10 @@ export type {
   WindowBudgetPolicyOverrides,
   WindowPolicy,
   WindowBudgetEffort,
+  WindowBudgetBand,
+  WindowBudgetBandDefinition,
+  ResolveWindowBudgetPolicyInput,
+  ResolvedWindowBudgetPolicy,
 } from "./modules/window-budget";
 
 export { AgentEnginePipeline } from "./engine/agent-engine";
@@ -453,6 +463,16 @@ export {
   resolveLoopPolicyWindowBand,
   loopPolicyWindowBandDefinition,
   listLoopPolicyWindowBands,
+  POLICY_LAB_SCHEMA_VERSION,
+  policyLabFileSchema,
+  EMPTY_POLICY_LAB,
+  parsePolicyLabFile,
+  tryParsePolicyLabFile,
+  resolvePolicyLabOverrides,
+  mergeLabUnderHostOverrides,
+  promotePolicyLabToShip,
+  labLoopDeltas,
+  labWindowDeltas,
   composeReadOnlyAgentEngine,
   InMemoryRunCheckpointStore,
   FileRunCheckpointStore,
@@ -466,6 +486,11 @@ export type {
   LoopPolicyWindowBandDefinition,
   ResolveLoopPolicyThresholdsInput,
   ResolvedLoopPolicy,
+  PolicyLabFile,
+  ResolvePolicyLabOverridesInput,
+  ResolvedPolicyLabOverrides,
+  PromotePolicyLabInput,
+  PromotePolicyLabResult,
 } from "./engine/agent-engine";
 export type {
   AgentEngineStartInput,

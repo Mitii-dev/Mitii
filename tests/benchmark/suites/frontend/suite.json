@@ -1,7 +1,7 @@
 {
   "id": "frontend",
   "name": "Frontend Agent Benchmark",
-  "description": "Agent-only frontend core: 25 feature, 23 bugfix, 10 docs, 10 retrieval, 11 testing. Graded with __bench__/grade.mjs and build/test commands.",
+  "description": "Agent-only frontend core (85 cases): 27 feature, 23 bugfix, 10 docs, 10 retrieval, 11 testing, 4 capstone full-applications. Graded with __bench__/grade.mjs, build/typecheck, and Vitest/RTL commands.",
   "caseFiles": [
     "feature.jsonl",
     "bugfix.jsonl",

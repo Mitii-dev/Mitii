@@ -16,11 +16,13 @@ import type {
   WindowBudgetReasonCode,
   WindowPolicy,
 } from "../contracts";
-import { mergeWindowBudgetPolicy } from "../policy";
+import { resolveWindowBudgetPolicy } from "../policy";
 
 /**
  * Derive a complete window allocation from advertised capabilities.
  * Tool schemas are a fixed cost; remaining usable input is split by policy shares.
+ *
+ * Policy merge: defaults → window band → optional host/lab overrides.
  */
 export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
   let parsed: WindowBudgetInput;
@@ -36,8 +38,11 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
     );
   }
 
-  const policy = mergeWindowBudgetPolicy(parsed.policy);
   const windowTokens = parsed.contextWindowTokens;
+  const policy = resolveWindowBudgetPolicy({
+    contextWindowTokens: windowTokens,
+    overrides: parsed.policy,
+  }).policy;
   const reasonCodes: WindowBudgetReasonCode[] = [];
   const effort = resolveWindowBudgetEffort(parsed.effort);
   const overlay = WINDOW_BUDGET_EFFORT_OVERLAY[effort];

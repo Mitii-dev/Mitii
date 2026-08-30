@@ -83,13 +83,30 @@ describe('live token budget preview', () => {
       'conversation',
       'plan',
       'skills',
-      'system',
+      'free',
     ]);
     expect(totalTokens).toBe(preview.contextWindowTokens);
     expect(totalShare).toBeCloseTo(1, 5);
     const repository = slices.find((slice) => slice.id === 'repository');
     expect(repository?.windowShare).toBeGreaterThan(0);
     expect(repository?.windowShare).toBeLessThan(0.5);
+  });
+
+  it('exposes free capacity when usable shares sum below 100%', () => {
+    const preview = deriveLiveTokenBudgetPreview({
+      contextWindowTokens: 48_000,
+      policy: {
+        repositoryShare: 0.1,
+        conversationShare: 0.2,
+        planShare: 0.05,
+        skillsShare: 0.05,
+      },
+    });
+    const slices = windowAllocationSlices(preview);
+    const free = slices.find((slice) => slice.id === 'free');
+    expect(free?.tokens).toBe(preview.systemTokens);
+    expect(free?.tokens).toBeGreaterThan(0);
+    expect(free?.windowShare).toBeGreaterThan(0);
   });
 
   it('ignores non-finite policy overrides so sliders never receive NaN', () => {

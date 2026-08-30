@@ -123,6 +123,36 @@ const BASE_UI: UiSettingsSnapshot = {
     },
     fields: [...LOOP_POLICY_FIELDS],
   },
+  policyLab: {
+    enabled: false,
+    filePath: 'packages/v8/.../loopPolicyBands.ts + windowBudgetBands.ts',
+    exists: true,
+    previewContextWindowTokens: 35_000,
+    activeBand: {
+      id: 'compact',
+      label: 'Compact',
+      rangeLabel: '< 50k',
+      contextWindowTokens: 32_768,
+    },
+    editBand: 'compact',
+    bands: [
+      { id: 'compact', label: 'Compact', rangeLabel: '< 50k' },
+      { id: 'standard', label: 'Standard', rangeLabel: '50k – < 100k' },
+      { id: 'wide', label: 'Wide', rangeLabel: '≥ 100k' },
+    ],
+    loopByBand: { compact: {}, standard: {}, wide: {} },
+    windowByBand: { compact: {}, standard: {}, wide: {} },
+    loopOverrides: {},
+    windowOverrides: {},
+    loopThresholds: {},
+    loopBandThresholds: {},
+    windowPolicy: {},
+    windowBandPolicy: {},
+    loopFields: [...LOOP_POLICY_FIELDS],
+    windowFields: [...TOKEN_BUDGET_FIELDS],
+    loopBandHint: 'Compact (< 50k)',
+    shipPreviewNote: 'Save writes V8 source.',
+  },
 };
 
 function emptyStore(): Record<string, unknown> {

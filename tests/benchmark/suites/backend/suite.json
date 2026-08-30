@@ -1,7 +1,7 @@
 {
   "id": "backend",
   "name": "Backend Agent Benchmark",
-  "description": "Curated agent-only backend core: 10 feature/bugfix/refactor cases each for easy, medium, and hard. Real APIs (NestJS, Express, a large synthetic SaaS API, a monorepo, and legacy CommonJS) with grounded feature, bugfix, and refactor tasks.",
+  "description": "Curated agent-only backend core (44 cases) organized by category: NestJS (guards/pipes/interceptors/filters), a large synthetic SaaS API for retrieval-style grading, Express/legacy-CommonJS, a pnpm monorepo, robustness (ambiguous prompts, scope discipline, prompt-injection resistance), and hand-rolled auth.",
   "caseFiles": [
     "nest.jsonl",
     "saas-api.jsonl",

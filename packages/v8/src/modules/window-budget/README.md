@@ -68,7 +68,14 @@ Worked defaults (`outputRatio=0.20`, `outputMinTokens=10240`,
 | 200k | 32,768 | 8,000 | ~159k | ~45k | ~9.5k | ~6.4k |
 
 Mutation batch size follows the **context window**, then the effort overlay
-caps it so a 200k model does not keep 25-file patches:
+caps it so a 200k model does not keep 25-file patches. **Window bands**
+(`windowBudgetBands.ts`) apply before host overrides:
+
+| Band | Window | Ship overlay |
+|---|---|---|
+| Compact | &lt; 50k | `maxUniqueFilesPerCallCap: 6`, skills share ↑, repo share ↓ |
+| Standard | 50k – &lt; 100k | Base `DEFAULT_WINDOW_BUDGET_POLICY` |
+| Wide | ≥ 100k | `maxSkillsCap: 6` |
 
 ```text
 windowFiles            = (W × outputRatio) / filesPerOutputTokens
@@ -78,8 +85,9 @@ maxPatchPayloadCharacters = O × charsPerOutputToken × patchPayloadOutputRatio
 preferredBatchSize     = maxUniqueFilesPerCall
 ```
 
-Medium effort (the default): 30k → 7 files, 48k → 8 files, 200k → 8 files
-(not 25). High effort raises the 200k cap to 12; low effort lowers it to 4.
+Medium effort (the default): 30k → 6 files (compact band cap), 48k → 8 files
+(standard), 200k → 8 files (not 25; effort-capped). High effort raises the 200k
+cap to 12; low effort lowers it to 4.
 
 Planning affordances follow **usable input**, scaled with the window so a 30k local cap still plans:
 

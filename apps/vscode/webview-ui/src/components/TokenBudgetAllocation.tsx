@@ -13,7 +13,7 @@ const SLICE_COLORS: Record<WindowAllocationSliceId, string> = {
   conversation: '#6f8794',
   plan: '#8da2fb',
   skills: '#c4a35a',
-  system: '#7c8794',
+  free: '#d6d3d1',
 };
 
 function formatTokens(value: number): string {

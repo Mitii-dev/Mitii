@@ -121,7 +121,7 @@ export function TokenBudgetEditor({
   onPolicyChange: (patch: Record<string, number>) => void;
 }) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const merged = mergeLiveWindowBudgetPolicy(customEnabled ? policy : undefined);
+  const merged = mergeLiveWindowBudgetPolicy(customEnabled ? policy : undefined, preview.contextWindowTokens);
   const activePolicy = customEnabled ? policy : DEFAULT_WINDOW_BUDGET_NUMBERS;
   const safeFields = Array.isArray(fields) ? fields : [];
   const filesPinned = customEnabled && isFilesPerMutationPinned(policy);
@@ -132,13 +132,28 @@ export function TokenBudgetEditor({
     onPolicyChange(patch);
   };
 
-  const shareFooter = (tokens: number, usableShare: number) => (
-    <p className="field-hint">
-      {formatPercent(windowShare(tokens, preview))} of the context window ·{' '}
-      {formatTokens(tokens)} tokens · {formatPercent(usableShare)} of usable
-      input
-    </p>
-  );
+  const shareFooter = (tokens: number, usableShare: number) => {
+    const usableSum =
+      merged.repositoryShare +
+      merged.conversationShare +
+      merged.planShare +
+      merged.skillsShare;
+    const freeUsable = Math.max(0, 1 - usableSum);
+    return (
+      <p className="field-hint">
+        {formatPercent(windowShare(tokens, preview))} of the context window ·{' '}
+        {formatTokens(tokens)} tokens · {formatPercent(usableShare)} of usable
+        input
+        {freeUsable > 0.001 ? (
+          <>
+            {' '}
+            · <strong>{formatPercent(freeUsable)} free</strong> of usable
+            ({formatTokens(preview.systemTokens)} tokens unallocated)
+          </>
+        ) : null}
+      </p>
+    );
+  };
 
   return (
     <div className="token-budget-editor">
@@ -147,8 +162,9 @@ export function TokenBudgetEditor({
       <div className="token-budget-simple">
         <h4 className="settings-category__title">Simple</h4>
         <p className="field-hint">
-          These follow the context window unless you move a slider. Custom
-          values stay put when the window changes.
+          Module shares are of usable input and do not need to total 100%.
+          Leftover shows as Free in the bar above. Values follow the context
+          window unless you move a slider.
         </p>
         <SliderField
           id="tokenBudget.filesPerMutation"
@@ -293,13 +309,14 @@ export function TokenBudgetEditor({
         onToggle={(event) =>
           setAdvancedOpen((event.currentTarget as HTMLDetailsElement).open)
         }
+        hidden={safeFields.length === 0}
       >
         <summary>Advanced</summary>
         {advancedOpen ? (
           <>
             <p className="field-hint">
-              Core ratios and clamps. Leave these alone unless a Simple slider
-              is not enough.
+              Core ratios and clamps. Prefer <code>pnpm policy-admin</code> for
+              ship defaults.
             </p>
             <TokenBudgetFields
               fields={safeFields}

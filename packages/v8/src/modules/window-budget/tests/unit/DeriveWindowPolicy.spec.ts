@@ -55,7 +55,8 @@ describe("deriveWindowPolicy", () => {
       schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
       contextWindowTokens: 200_000,
     });
-    expect(at30k.mutation.maxUniqueFilesPerCall).toBe(7);
+    // Compact band caps mutation at 6 (shipped windowBudgetBands).
+    expect(at30k.mutation.maxUniqueFilesPerCall).toBe(6);
     expect(at30k.taskList.maxTasks).toBe(8);
     expect(at30k.maximumOutputTokens).toBe(10_240);
     expect(at200k.mutation.maxUniqueFilesPerCall).toBe(8);

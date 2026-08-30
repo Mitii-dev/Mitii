@@ -234,6 +234,64 @@ export function applyUiPatch(
           fields: base.loopPolicy.fields,
         }
       : base.loopPolicy,
+    policyLab: patch.policyLab
+      ? {
+          ...base.policyLab,
+          ...patch.policyLab,
+          loopByBand: {
+            compact: {
+              ...base.policyLab.loopByBand.compact,
+              ...(patch.policyLab.loopByBand?.compact ?? {}),
+            },
+            standard: {
+              ...base.policyLab.loopByBand.standard,
+              ...(patch.policyLab.loopByBand?.standard ?? {}),
+            },
+            wide: {
+              ...base.policyLab.loopByBand.wide,
+              ...(patch.policyLab.loopByBand?.wide ?? {}),
+            },
+          },
+          windowByBand: {
+            compact: {
+              ...base.policyLab.windowByBand.compact,
+              ...(patch.policyLab.windowByBand?.compact ?? {}),
+            },
+            standard: {
+              ...base.policyLab.windowByBand.standard,
+              ...(patch.policyLab.windowByBand?.standard ?? {}),
+            },
+            wide: {
+              ...base.policyLab.windowByBand.wide,
+              ...(patch.policyLab.windowByBand?.wide ?? {}),
+            },
+          },
+          loopOverrides: {
+            ...base.policyLab.loopOverrides,
+            ...(patch.policyLab.loopOverrides ?? {}),
+          },
+          windowOverrides: {
+            ...base.policyLab.windowOverrides,
+            ...(patch.policyLab.windowOverrides ?? {}),
+          },
+          loopThresholds: {
+            ...base.policyLab.loopThresholds,
+            ...(patch.policyLab.loopThresholds ?? {}),
+          },
+          windowPolicy: {
+            ...base.policyLab.windowPolicy,
+            ...(patch.policyLab.windowPolicy ?? {}),
+          },
+          loopBandThresholds: base.policyLab.loopBandThresholds,
+          windowBandPolicy: base.policyLab.windowBandPolicy,
+          loopFields: base.policyLab.loopFields,
+          windowFields: base.policyLab.windowFields,
+          bands: base.policyLab.bands,
+          activeBand: patch.policyLab.activeBand ?? base.policyLab.activeBand,
+          shipPreviewNote:
+            patch.policyLab.shipPreviewNote ?? base.policyLab.shipPreviewNote,
+        }
+      : base.policyLab,
   };
 }
 

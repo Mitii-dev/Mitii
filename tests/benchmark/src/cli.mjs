@@ -187,7 +187,10 @@ if (command === 'validate') {
 Domains (top-level):
   ${availableSuites.join(' | ') || DOMAINS.join(' | ')}
 
-Each domain contains case JSONL files (frontend: capability files; others: easy/medium/hard).
+Each domain's case JSONL files are named by category (tech-family or
+cross-cutting theme), not difficulty — e.g. frontend/cases/feature.jsonl,
+backend/cases/nest.jsonl. difficulty (easy/medium/hard) is a field on each
+case, filterable with --difficulty below. Run 'cases' to browse them all.
 
 Filters:
   --suite all|${availableSuites.join('|') || DOMAINS.join('|')}

@@ -217,6 +217,8 @@ export interface UiSettingsSnapshot {
   tokenBudget: TokenBudgetSettingsSnapshot;
   /** Agent Engine loop/stall threshold tunables (Debug → developer). */
   loopPolicy: LoopPolicySettingsSnapshot;
+  /** Policy Admin — edits shipped V8 band tables (Save writes source). */
+  policyLab: PolicyLabSettingsSnapshot;
 }
 
 export interface ModeDefaultSettingsSnapshot {
@@ -316,10 +318,47 @@ export interface LoopPolicySettingsSnapshot {
   fields: TokenBudgetFieldDescriptor[];
 }
 
+export interface PolicyLabBandOption {
+  id: 'compact' | 'standard' | 'wide';
+  label: string;
+  rangeLabel: string;
+}
+
+export interface PolicyLabSettingsSnapshot {
+  /** Unused at runtime — kept for patch compatibility. Always false. */
+  enabled: boolean;
+  /** Human path hint for ship sources. */
+  filePath: string;
+  exists: boolean;
+  previewContextWindowTokens: number;
+  activeBand: LoopPolicyBandSnapshot;
+  editBand: 'compact' | 'standard' | 'wide';
+  bands: PolicyLabBandOption[];
+  /** Full draft maps for all bands (Save writes these into V8 source). */
+  loopByBand: Record<'compact' | 'standard' | 'wide', Record<string, number>>;
+  windowByBand: Record<'compact' | 'standard' | 'wide', Record<string, number>>;
+  /** Convenience aliases for the currently edited band. */
+  loopOverrides: Record<string, number>;
+  windowOverrides: Record<string, number>;
+  loopThresholds: Record<string, number>;
+  loopBandThresholds: Record<string, number>;
+  windowPolicy: Record<string, number>;
+  windowBandPolicy: Record<string, number>;
+  loopFields: TokenBudgetFieldDescriptor[];
+  windowFields: TokenBudgetFieldDescriptor[];
+  loopBandHint: string;
+  shipPreviewNote: string;
+}
+
 export type UiSettingsPatch = Partial<
   Omit<
     UiSettingsSnapshot,
-    'contextToggles' | 'runBudget' | 'modeDefaults' | 'tokenBudget' | 'loopPolicy'
+    | 'contextToggles'
+    | 'runBudget'
+    | 'modeDefaults'
+    | 'tokenBudget'
+    | 'loopPolicy'
+    | 'policyLab'
   > & {
     contextToggles?: Partial<ContextToggles>;
     runBudget?: Partial<RunBudgetSettingsSnapshot>;
@@ -336,6 +375,7 @@ export type UiSettingsPatch = Partial<
       bandThresholds?: Record<string, number>;
       band?: LoopPolicyBandSnapshot;
     };
+    policyLab?: Partial<PolicyLabSettingsSnapshot>;
   }
 >;
 
@@ -604,6 +644,16 @@ export type WebviewToHostMessage =
   | { type: 'settings.clearApiKey' }
   | { type: 'settings.resetTokenBudget' }
   | { type: 'settings.resetLoopPolicy' }
+  | {
+      type: 'settings.savePolicyLab';
+      policyLab: PolicyLabSettingsSnapshot;
+    }
+  | {
+      type: 'settings.setPolicyLabEditBand';
+      band: 'compact' | 'standard' | 'wide';
+      /** Carry draft maps so switching bands does not lose unsaved edits. */
+      policyLab?: PolicyLabSettingsSnapshot;
+    }
   | { type: 'profile.switch'; id: string }
   | {
       type: 'provider.testConnection';

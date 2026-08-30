@@ -276,7 +276,7 @@ function TokenBudgetPreviewTable({ preview }: { preview: TokenBudgetPreview }) {
     ['Conversation', String(preview.conversationTokens)],
     ['Plan', String(preview.planTokens)],
     ['Skills', String(preview.skillsTokens)],
-    ['System / rules', String(preview.systemTokens)],
+    ['Free (unallocated)', String(preview.systemTokens)],
     ['Model-call cap', String(preview.maxModelCalls)],
     ['Tool-call cap', String(preview.maxToolCalls)],
     ['Files per mutation', String(preview.maxUniqueFilesPerCall)],
@@ -929,51 +929,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
                       : 'Agent is execution-focused: use tools, edit files, and stop at approval and budget limits.'}
                 </p>
                 <div className="field">
-                  <label htmlFor="thoroughness">Thoroughness</label>
-                  <select
-                    id="thoroughness"
-                    value={modeDefault.thoroughness ?? 'medium'}
-                    disabled={ui.intensityOverrides === true}
-                    onChange={(e) => {
-                      const thoroughness = e.target
-                        .value as 'low' | 'medium' | 'high';
-                      const depth =
-                        thoroughness === 'low'
-                          ? 'quick'
-                          : thoroughness === 'high'
-                            ? 'deep'
-                            : 'auto';
-                      const effort = thoroughness;
-                      onSaveUi({
-                        intensityOverrides: false,
-                        effort,
-                        modeDefaults: {
-                          [modeSettingsTab]: { thoroughness, depth },
-                        },
-                      });
-                    }}
-                  >
-                    <option value="low">
-                      Low — quick look, fewer loop/repair calls
-                    </option>
-                    <option value="medium">Medium — default balance</option>
-                    <option value="high">
-                      High — deep look, more loop/repair calls
-                    </option>
-                  </select>
-                  {ui.intensityOverrides ? (
-                    <p className="field-hint">
-                      Developer intensity overrides are on. Edit depth and
-                      working set under Developer, or turn overrides off.
-                    </p>
-                  ) : (
-                    <p className="field-hint">
-                      Sets exploration depth and working-set effort together for
-                      this mode.
-                    </p>
-                  )}
-                </div>
-                <div className="field">
                   <label htmlFor="approval">Approval mode</label>
                   <select
                     id="approval"
@@ -1038,6 +993,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
                     })
                   }
                 />
+                <p className="field-hint">
+                  Thoroughness stays on the composer. Ship loop / window defaults
+                  live in <code>pnpm policy-admin</code>.
+                </p>
               </SettingsSection>
               <SettingsSection
                 title="Run budget"
@@ -1155,7 +1114,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
             <div className="settings-panel">
               <SettingsSection
                 title="Access"
-                description="Unlocks logging and token-budget editors below."
+                description="Unlocks logging and local Custom token / loop editors. Ship defaults: pnpm policy-admin."
               >
                 <label className="toggle">
                   <input
@@ -1218,92 +1177,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
               </SettingsSection>
 
               <SettingsSection
-                title="Intensity"
-                description="Split exploration depth and working-set effort. Leave off to use Modes → Thoroughness."
-              >
-                <div
-                  className={`developer-options${
-                    ui.developerEnabled ? '' : ' is-locked'
-                  }`}
-                >
-                  <label className="toggle">
-                    <input
-                      type="checkbox"
-                      checked={ui.intensityOverrides === true}
-                      disabled={!ui.developerEnabled}
-                      onChange={(e) =>
-                        onSaveUi({ intensityOverrides: e.target.checked })
-                      }
-                    />
-                    Unlock intensity overrides
-                  </label>
-                  <p className="field-hint">
-                    When on, composer Thoroughness shows Custom until you pick a
-                    clubbed level again.
-                  </p>
-                  <div className="field">
-                    <label htmlFor="dev-effort">Working set (effort)</label>
-                    <select
-                      id="dev-effort"
-                      value={ui.effort}
-                      disabled={
-                        !ui.developerEnabled || ui.intensityOverrides !== true
-                      }
-                      onChange={(e) =>
-                        onSaveUi({
-                          effort: e.target
-                            .value as UiSettingsSnapshot['effort'],
-                        })
-                      }
-                    >
-                      <option value="low">Low — fewer loop/repair calls</option>
-                      <option value="medium">Medium — default</option>
-                      <option value="high">
-                        High — more loop/repair calls
-                      </option>
-                    </select>
-                  </div>
-                  {(
-                    [
-                      ['ask', 'Ask depth'],
-                      ['plan', 'Plan depth'],
-                      ['agent', 'Agent depth'],
-                    ] as const
-                  ).map(([modeKey, label]) => (
-                    <div className="field" key={modeKey}>
-                      <label htmlFor={`dev-depth-${modeKey}`}>{label}</label>
-                      <select
-                        id={`dev-depth-${modeKey}`}
-                        value={
-                          ui.modeDefaults?.[modeKey]?.depth ?? ui.depth
-                        }
-                        disabled={
-                          !ui.developerEnabled ||
-                          ui.intensityOverrides !== true
-                        }
-                        onChange={(e) =>
-                          onSaveUi({
-                            modeDefaults: {
-                              [modeKey]: {
-                                depth: e.target
-                                  .value as UiSettingsSnapshot['depth'],
-                              },
-                            },
-                          })
-                        }
-                      >
-                        <option value="auto">Auto</option>
-                        <option value="quick">Quick</option>
-                        <option value="deep">Deep</option>
-                      </select>
-                    </div>
-                  ))}
-                </div>
-              </SettingsSection>
-
-              <SettingsSection
-                title="Token budget"
-                description="The context window drives these numbers. Open Simple sliders to tune files per mutation and module shares. Advanced keeps the core clamps."
+                title="Token budget (local)"
+                description="Optional local overrides for this machine. Shares need not total 100% — leftover shows as Free. Permanent ship defaults: pnpm policy-admin."
               >
                 <div
                   className={`developer-options${
@@ -1339,7 +1214,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
                     </button>
                   </div>
                   <TokenBudgetEditor
-                    fields={ui.tokenBudget.fields}
+                    fields={[]}
                     policy={ui.tokenBudget.policy}
                     preview={livePreview}
                     customEnabled={ui.tokenBudget.enabled}
@@ -1359,24 +1234,14 @@ export function SettingsPanel(props: SettingsPanelProps) {
               </SettingsSection>
 
               <SettingsSection
-                title="Loop / stall policy"
-                description="Shipped standards pick a window band from the context window (compact / standard / wide). Turn Custom on only to lab-test deltas on that band. Reset clears overrides for deploy."
+                title="Loop / stall (local)"
+                description={`Active band: ${ui.loopPolicy.band.label} (${ui.loopPolicy.band.rangeLabel}). Local Custom only — ship bands via pnpm policy-admin.`}
               >
                 <div
                   className={`developer-options${
                     ui.developerEnabled ? '' : ' is-locked'
                   }`}
                 >
-                  <p className="field-hint">
-                    Active band:{' '}
-                    <strong>
-                      {ui.loopPolicy.band.label} ({ui.loopPolicy.band.rangeLabel})
-                    </strong>
-                    {' · '}
-                    window {ui.loopPolicy.band.contextWindowTokens.toLocaleString()}{' '}
-                    tokens. Edit permanent band values in{' '}
-                    <code>packages/v8/.../policy/loopPolicyBands.ts</code>.
-                  </p>
                   <label className="toggle">
                     <input
                       type="checkbox"
@@ -1390,11 +1255,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
                     />
                     Custom loop policy
                   </label>
-                  <p className="field-hint">
-                    {ui.loopPolicy.enabled
-                      ? 'Lab overrides apply on top of the active band. Leave off to use shipped band standards only.'
-                      : 'Leave off for deploy. Editing a field turns this on and starts from the active band.'}
-                  </p>
                   <div className="row">
                     <button
                       type="button"
@@ -1402,27 +1262,36 @@ export function SettingsPanel(props: SettingsPanelProps) {
                       onClick={onResetLoopPolicy}
                       disabled={!ui.developerEnabled}
                     >
-                      Reset loop policy to standards
+                      Reset to ship band
                     </button>
                   </div>
-                  <LoopPolicyEditor
-                    fields={ui.loopPolicy.fields}
-                    thresholds={ui.loopPolicy.thresholds}
-                    bandThresholds={ui.loopPolicy.bandThresholds}
-                    customEnabled={ui.loopPolicy.enabled}
-                    disabled={!ui.developerEnabled}
-                    onThresholdsChange={(patch) =>
-                      onSaveUi({
-                        loopPolicy: { enabled: true, thresholds: patch },
-                      })
-                    }
-                  />
+                  {ui.loopPolicy.enabled ? (
+                    <LoopPolicyEditor
+                      fields={ui.loopPolicy.fields.filter(
+                        (f) => f.tier !== 'advanced',
+                      )}
+                      thresholds={ui.loopPolicy.thresholds}
+                      bandThresholds={ui.loopPolicy.bandThresholds}
+                      customEnabled={ui.loopPolicy.enabled}
+                      disabled={!ui.developerEnabled}
+                      onThresholdsChange={(patch) =>
+                        onSaveUi({
+                          loopPolicy: { enabled: true, thresholds: patch },
+                        })
+                      }
+                    />
+                  ) : (
+                    <p className="field-hint">
+                      Using shipped {ui.loopPolicy.band.label} band. Turn Custom
+                      on only to lab-test local deltas.
+                    </p>
+                  )}
                 </div>
               </SettingsSection>
 
               <SettingsSection
                 title="Diagnostics"
-                description="Use View → Output → Mitii for activation and run logs."
+                description="Use View → Output → Mitii for activation and run logs. Ship policy: pnpm policy-admin."
               >
                 <KeyValueList
                   rows={[
@@ -1450,6 +1319,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
                       value:
                         getProviderPreset(provider.preset ?? provider.type)
                           ?.label ?? provider.type,
+                    },
+                    {
+                      label: 'Policy band',
+                      value: `${ui.loopPolicy.band.label} (${ui.loopPolicy.band.rangeLabel})`,
                     },
                   ]}
                 />

@@ -22,12 +22,13 @@ HTTP responses, workspace changed/unchanged. **No LLM grades another LLM.**
 5. [Reset and clean up fixtures](#5-reset-and-clean-up-fixtures)
 6. [Configure a model](#6-configure-a-model)
 7. [Validate the suite](#7-validate-the-suite)
-8. [Run the benchmark](#8-run-the-benchmark)
-9. [Understanding reports](#9-understanding-reports)
-10. [Filters and options](#10-filters-and-options)
-11. [How a single case runs](#11-how-a-single-case-runs)
-12. [Troubleshooting](#12-troubleshooting)
-13. [Adding cases](#13-adding-cases)
+8. [Browse cases (read-only viewer)](#8-browse-cases-read-only-viewer)
+9. [Run the benchmark](#9-run-the-benchmark)
+10. [Understanding reports](#10-understanding-reports)
+11. [Filters and options](#11-filters-and-options)
+12. [How a single case runs](#12-how-a-single-case-runs)
+13. [Troubleshooting](#13-troubleshooting)
+14. [Adding cases](#14-adding-cases)
 
 ---
 
@@ -52,37 +53,56 @@ Optional but useful:
 ```text
 tests/benchmark/
 ├── suites/
-│   ├── frontend/cases/{feature,bugfix,docs,retrieval,testing}.jsonl
-│   ├── backend/cases/{easy,medium,hard}.jsonl
-│   ├── cicd/cases/{easy,medium,hard}.jsonl
-│   └── testing/cases/{easy,medium,hard}.jsonl
+│   ├── frontend/cases/{feature,bugfix,docs,retrieval,testing,capstone}.jsonl
+│   ├── backend/cases/{nest,saas-api,express,monorepo,robustness,auth}.jsonl
+│   ├── testing/cases/{express,monorepo,react}.jsonl
+│   └── cicd/cases/{react,nest,express,monorepo}.jsonl
 ├── fixtures/                 # pinned baseline repos (copied per case)
+│   ├── react-vite, next-app, frontend-app       # frontend
+│   ├── nest-api, saas-api, node-express,
+│   │   legacy-commonjs, broken-repo, monorepo   # backend / testing / cicd
+│   └── app-scaffold, app-scaffold-tictactoe,
+│       app-scaffold-sudoku, app-scaffold-chess  # frontend capstone (full apps)
 ├── .workspaces/<runId>/      # live case copies (gitignored; deleted unless --keep-workspaces)
-├── src/                      # runner, verifiers, reports, CLI
+├── src/                      # runner, verifiers, reports, CLI, cases browser
 ├── scripts/
-│   ├── install-fixtures.mjs  # npm/pnpm install in every fixture
-│   ├── reset-fixtures.mjs    # wipe installs + .workspaces, reinstall
-│   ├── write-frontend-core.mjs  # regenerate frontend 70-case core
+│   ├── install-fixtures.mjs     # npm/pnpm install in every fixture
+│   ├── reset-fixtures.mjs       # wipe installs + .workspaces, reinstall
+│   ├── write-frontend-core.mjs  # regenerate the frontend generated core only (see CAUTION in the script)
 │   └── mitii-benchmark-agent.mjs
 ├── reports/runs/<runId>/     # live + final reports (gitignored)
 ├── benchmark.config.example.json
 ├── benchmark.config.json     # your local copy (gitignored)
 └── docs/
-    ├── ADDING_CASES.md
-    ├── CHECK_REFERENCE.md
-    └── FRONTEND_SUITE.md
+    ├── ADDING_CASES.md                     # how to file a new case in the right category file
+    ├── CHECK_REFERENCE.md                  # every check type, with examples
+    ├── FRONTEND_SUITE.md                   # frontend category breakdown + capstone design
+    └── BACKEND_TESTING_CICD_SUITES.md      # backend/testing/cicd category breakdown + fixture quirks
 ```
 
 ### Domains
 
-| Domain | Focus |
-|---|---|
-| `frontend` | Agent-only core: feature (20), bugfix (20), docs (10), retrieval (10), testing (10) |
-| `backend` | APIs, services, bugfixes, retrieval, planning |
-| `cicd` | Workflows, pipelines, deploy automation |
-| `testing` | Unit/integration/e2e, coverage, regression |
+Every domain is organized into **category files** — the JSONL file name tells
+you the tech-family or cross-cutting theme (e.g. `nest.jsonl`, `robustness.jsonl`),
+**not** a difficulty bucket. `difficulty` (easy/medium/hard) is a field on
+each case and is mixed freely within a file. This is deliberate: it means you
+always know exactly which file to open when you want to add another React
+case, another Nest case, another CI case, etc.
 
-Frontend uses **capability** JSONL files. Other domains still use difficulty files (`easy` / `medium` / `hard`).
+| Domain | Cases | Category files | Focus |
+|---|---:|---|---|
+| `frontend` | 85 | `feature`, `bugfix`, `docs`, `retrieval`, `testing`, `capstone` | React/Next UI, hooks, a11y, SEO, full applications |
+| `backend` | 44 | `nest`, `saas-api`, `express`, `monorepo`, `robustness`, `auth` | APIs, bugfixes, ambiguous/adversarial prompts, auth |
+| `testing` | 23 | `express`, `monorepo`, `react` | Writing missing unit/integration tests |
+| `cicd` | 18 | `react`, `nest`, `express`, `monorepo` | Workflows, lint/build config, pipeline wiring |
+
+**All 170 cases are `mode: "agent"`.** `ask` / `plan` modes are not covered yet.
+
+Counts drift as cases are added — run `npm run suites` (or
+`node src/cli.mjs validate --suite all`) for the live, authoritative numbers.
+Full per-file breakdowns, fixture notes, and design rationale live in
+[docs/FRONTEND_SUITE.md](./docs/FRONTEND_SUITE.md) and
+[docs/BACKEND_TESTING_CICD_SUITES.md](./docs/BACKEND_TESTING_CICD_SUITES.md).
 
 ---
 
@@ -309,7 +329,7 @@ node apps/cli/bin/mitii.js setup \
   --test
 
 # Cloud Anthropic example
-node apps/cli/bin/mitii.js setup --provider anthropic --model claude-sonnet-4-5 --yes
+node apps/cli/bin/mitii.js setup --provider anthropic --model claude-sonnet-5 --yes
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
@@ -405,7 +425,35 @@ npm test
 
 ---
 
-## 8. Run the benchmark
+## 8. Browse cases (read-only viewer)
+
+Before running anything (or before adding a new case), it's worth seeing what
+already exists. The test case browser is a **static, read-only** HTML page —
+no editing, by design — that lists every case with its suite, source file,
+difficulty, capability, and fixture, filterable and searchable, with a detail
+panel showing the full prompt, rationale, preconditions, and checks.
+
+```bash
+pnpm --filter @mitii/solid-benchmark cases:open
+# without opening a browser automatically:
+pnpm --filter @mitii/solid-benchmark cases
+```
+
+From `tests/benchmark`:
+
+```bash
+npm run cases:open
+```
+
+It writes `reports/cases.html` and is also linked from the run viewer
+(`reports/index.html`) under "Browse test cases".
+
+Use it to answer, before adding a case: *which file does this belong in?*
+See [§14](#14-adding-cases) and [docs/ADDING_CASES.md](./docs/ADDING_CASES.md).
+
+---
+
+## 9. Run the benchmark
 
 ### Recommended first runs
 
@@ -463,7 +511,7 @@ npm run benchmark:backend -- --difficulty easy --limit 10
 ```bash
 pnpm --filter @mitii/solid-benchmark benchmark -- \
   --suite frontend \
-  --id fe-003 \
+  --id fe-feature-001 \
   --keep-workspaces \
   --config tests/benchmark/benchmark.config.json
 ```
@@ -483,7 +531,7 @@ pnpm --filter @mitii/solid-benchmark benchmark -- \
 
 ---
 
-## 9. Understanding reports
+## 10. Understanding reports
 
 Reports are written **after every case**, then refreshed at the end.
 
@@ -517,7 +565,7 @@ Also updated when the run finishes:
 Console output looks like:
 
 ```text
-[3/70] PASS frontend/medium fe-feature-003-… (12400ms)
+[3/85] PASS frontend/medium fe-feature-003-… (12400ms)
   report: …/reports/runs/…/cases/fe-feature-003-….md
 ```
 
@@ -526,7 +574,7 @@ wait for the full suite.
 
 ---
 
-## 10. Filters and options
+## 11. Filters and options
 
 | Flag | Meaning |
 |---|---|
@@ -534,7 +582,7 @@ wait for the full suite.
 | `--difficulty easy\|medium\|hard` | Difficulty within the domain |
 | `--mode ask\|plan\|agent` | Mitii mode |
 | `--fixture <name>` | Only cases using that fixture |
-| `--category <name>` | Frontend category (e.g. `authentication`) |
+| `--category <name>` | Filter by the case's `category` field (e.g. `authentication`, `a11y`, `dependency-injection`) — not the same as the JSONL file name |
 | `--id <substring>` | Match case id |
 | `--limit <n>` | Cap number of cases |
 | `--concurrency <n>` | Parallel workers |
@@ -553,7 +601,7 @@ cd tests/benchmark && npm run list -- --suite testing
 
 ---
 
-## 11. How a single case runs
+## 12. How a single case runs
 
 1. **Load** the case from `suites/<domain>/cases/<difficulty>.jsonl`
 2. **Copy** `fixtures/<fixture>` → `tests/benchmark/.workspaces/<runId>/<case-id>/`; link `node_modules`
@@ -566,7 +614,7 @@ cd tests/benchmark && npm run list -- --suite testing
 
 ---
 
-## 12. Troubleshooting
+## 13. Troubleshooting
 
 | Symptom | Likely cause | What to try |
 |---|---|---|
@@ -581,34 +629,55 @@ cd tests/benchmark && npm run list -- --suite testing
 
 ---
 
-## 13. Adding cases
+## 14. Adding cases
 
-1. Copy `templates/new-case.json`
-2. Append one JSON object per line to  
-   `suites/<domain>/cases/<difficulty>.jsonl`
-3. Update counts in `suites/<domain>/suite.json` if your process requires it  
-   (or re-run validation and fix until counts match)
-4. `npm run validate -- --suite <domain>`
+1. **Find the right file first** — run `npm run cases:open` and filter by
+   suite/fixture/capability to see what already exists, and which category
+   file a case like yours lives in.
+2. Copy `templates/new-case.json`.
+3. Append one JSON object per line to the matching category file:  
+   `suites/<domain>/cases/<category>.jsonl`  
+   (e.g. a new Nest guard case → `suites/backend/cases/nest.jsonl`; a new
+   React hook test → `suites/testing/cases/react.jsonl`). If it's genuinely a
+   new category, create a new file — the file name **is** the category.
+4. `mode` must be `"agent"` (`ask`/`plan` aren't covered yet) and `variant`
+   must be `1` (one variant per family — no paraphrase duplicates).
+5. Update `expectedCounts` (`easy`/`medium`/`hard`/`total`) in
+   `suites/<domain>/suite.json` — `validate` and `npm test` enforce these
+   against the real file contents and will fail until they match.
+6. `npm run validate -- --suite <domain>`, then `npm test`.
+7. `npm run cases` to regenerate the browser so the new case shows up there too.
 
-Details: [docs/ADDING_CASES.md](./docs/ADDING_CASES.md),  
-check types: [docs/CHECK_REFERENCE.md](./docs/CHECK_REFERENCE.md).
+Full walkthrough (required checks per mode, fixture picks, ID conventions):
+[docs/ADDING_CASES.md](./docs/ADDING_CASES.md). Check types:
+[docs/CHECK_REFERENCE.md](./docs/CHECK_REFERENCE.md). Per-suite fixture
+quirks and category rationale:
+[docs/FRONTEND_SUITE.md](./docs/FRONTEND_SUITE.md),
+[docs/BACKEND_TESTING_CICD_SUITES.md](./docs/BACKEND_TESTING_CICD_SUITES.md).
 
 ---
 
 ## Package scripts cheat sheet
 
-From **`tests/benchmark`** (`npm run …`) or monorepo **root** (`pnpm …`):
+From **`tests/benchmark`** (`npm run …`) or monorepo **root** (`pnpm …`,
+where forwarded — see [tests/README.md](../README.md) for which ones are):
 
 | Root (`pnpm`) | Package (`npm run`) | Action |
 |---|---|---|
 | `pnpm benchmark:fixtures` | `fixtures:install` | Install all fixture deps |
 | `pnpm benchmark:reset` | `fixtures:reset` | Wipe fixtures + temp run workspaces, reinstall |
 | `pnpm benchmark:validate` | `validate` | Validate cases |
-| — | `suites` | List domains + counts |
-| — | `list` | List cases (add filters) |
+| `pnpm benchmark:view` / `:view:open` | `view` / `view:open` | Open the HTML run viewer |
+| — | `cases` / `cases:open` | Read-only test case browser |
+| — | `suites` | List domains + live category/difficulty counts |
+| — | `list` | List cases (add filters), no run |
 | `pnpm benchmark` | `benchmark` | Run (`--suite`, `--limit`, …) |
 | `pnpm benchmark:frontend` | `benchmark:frontend` | Shortcut `--suite frontend` |
+| `pnpm benchmark:backend` | `benchmark:backend` | Shortcut `--suite backend` |
+| `pnpm benchmark:testing` | `benchmark:testing` | Shortcut `--suite testing` |
+| `pnpm benchmark:cicd` | `benchmark:cicd` | Shortcut `--suite cicd` |
 | — | `test` | Harness meta-tests (no LLM) |
+| — | `generate:frontend` | Regenerate the frontend *generated core* only — see CAUTION in `scripts/write-frontend-core.mjs`, it does not touch hand-authored extension/capstone cases |
 
 You can also call package scripts with
 `pnpm --filter @mitii/solid-benchmark <script>`.

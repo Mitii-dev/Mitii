@@ -81,6 +81,33 @@ export const DEFAULT_WINDOW_BUDGET_NUMBERS: Record<string, number> = {
 };
 
 /**
+ * Ship band overlays. Keep aligned with
+ * `packages/v8/src/modules/window-budget/windowBudgetBands.ts`.
+ */
+const WINDOW_BUDGET_BAND_OVERLAYS: Record<string, Record<string, number>> = {
+  compact: {
+    maxUniqueFilesPerCallCap: 6,
+    skillsShare: 0.05,
+    repositoryShare: 0.25,
+    maxSkillsCap: 4,
+  },
+  standard: {},
+  wide: {
+    maxSkillsCap: 6,
+  },
+};
+
+export function resolveLiveWindowBudgetBand(
+  contextWindowTokens: number,
+): 'compact' | 'standard' | 'wide' {
+  const window = Math.floor(contextWindowTokens);
+  if (!Number.isFinite(window) || window <= 0) return 'compact';
+  if (window < 50_000) return 'compact';
+  if (window < 100_000) return 'standard';
+  return 'wide';
+}
+
+/**
  * Medium working-set overlay. Keep aligned with
  * `packages/v8/src/modules/window-budget/effort.ts`.
  * Live preview cannot import V8; hosts still derive from `deriveWindowPolicy`.
@@ -107,7 +134,7 @@ export type WindowAllocationSliceId =
   | 'conversation'
   | 'plan'
   | 'skills'
-  | 'system';
+  | 'free';
 
 export interface WindowAllocationSlice {
   id: WindowAllocationSliceId;
@@ -144,8 +171,16 @@ function policyNumber(
 
 export function mergeLiveWindowBudgetPolicy(
   overrides?: Record<string, number>,
+  contextWindowTokens?: number,
 ): Record<string, number> {
   const merged = { ...DEFAULT_WINDOW_BUDGET_NUMBERS };
+  if (
+    typeof contextWindowTokens === 'number' &&
+    Number.isFinite(contextWindowTokens)
+  ) {
+    const band = resolveLiveWindowBudgetBand(contextWindowTokens);
+    Object.assign(merged, WINDOW_BUDGET_BAND_OVERLAYS[band]);
+  }
   if (!overrides) return merged;
   for (const [key, value] of Object.entries(overrides)) {
     if (typeof value === 'number' && Number.isFinite(value)) {
@@ -252,11 +287,11 @@ export function policyForVerificationChecks(
 export function deriveLiveTokenBudgetPreview(
   input: LiveTokenBudgetInput,
 ): TokenBudgetPreview {
-  const policy = mergeLiveWindowBudgetPolicy(input.policy);
   const windowTokens = Math.max(
     1,
     Math.floor(input.contextWindowTokens) || 1,
   );
+  const policy = mergeLiveWindowBudgetPolicy(input.policy, windowTokens);
 
   const windowOutputCap = Math.min(
     policyNumber(policy, 'outputMaxTokens'),
@@ -326,6 +361,8 @@ export function deriveLiveTokenBudgetPreview(
     1,
     policyNumber(policy, 'skillsTokensCap'),
   );
+  // Residual usable capacity when module shares sum to less than 100%.
+  // Shown in the UI as Free (unallocated) — shares are not forced to 100%.
   const systemTokens = Math.max(
     0,
     usableInputTokens -
@@ -544,8 +581,10 @@ const ALLOCATION_META: Array<{
   { id: 'plan', label: 'Plan', tokens: (preview) => preview.planTokens },
   { id: 'skills', label: 'Skills', tokens: (preview) => preview.skillsTokens },
   {
-    id: 'system',
-    label: 'System / rules',
+    id: 'free',
+    label: 'Free (unallocated)',
+    // Residual usable input when repo+conversation+plan+skills < 100%.
+    // Stored historically as systemTokens in the preview payload.
     tokens: (preview) => preview.systemTokens,
   },
 ];

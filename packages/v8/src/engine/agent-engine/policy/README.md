@@ -38,3 +38,25 @@ Runtime entry point: `resolveLoopPolicyThresholds({ contextWindowTokens, overrid
 | `compact` | &lt; 50k | More read/retry patience; shorter recovered essays |
 | `standard` | 50k – &lt; 100k | Base `AGENT_ENGINE_THRESHOLDS` as-is |
 | `wide` | ≥ 100k | Same pressure as base; slightly larger recovered analysis budget |
+
+## Policy Admin (ship defaults)
+
+Preferred HTML UI from the monorepo root:
+
+```bash
+pnpm policy-admin
+```
+
+Opens a local page with live context-token budgeting, free %, and per-knob help.
+**Save** writes:
+
+- `packages/v8/src/engine/agent-engine/policy/loopPolicyBands.ts`
+- `packages/v8/src/modules/window-budget/windowBudgetBands.ts`
+
+Then rebuild `@mitii/v8`. See `tools/policy-admin/README.md`.
+
+VS Code Developer Custom loop / token-budget toggles remain **local-only** deltas.
+
+```text
+ship band (code)  →  optional Custom host overrides (local)
+```

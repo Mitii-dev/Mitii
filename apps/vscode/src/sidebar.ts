@@ -119,6 +119,12 @@ import {
   loopPolicyResetKeys,
   readLoopPolicySettings,
 } from './loopPolicySettings.js';
+import {
+  readPolicyLabSettings,
+  readShipBandTables,
+  saveShipBandsFromUi,
+  tablesFromSnapshot,
+} from './policyLab.js';
 import { normalizeIntensitySettings } from './thoroughness.js';
 import {
   clearMemoriesForWorkspace,
@@ -385,6 +391,12 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
   private discoveredModels: string[] = [];
   private connectionOk?: boolean;
   private connectionStatus?: string;
+  /** Policy Admin: which band is being edited for ship source Save. */
+  private policyLabEditBand: 'compact' | 'standard' | 'wide' | undefined;
+  /** Unsaved draft band tables while editing Policy Admin. */
+  private policyLabDraftTables:
+    | ReturnType<typeof readShipBandTables>
+    | undefined;
   /** Token usage scoped per chat thread (not global across chats). */
   private tokenUsageByThread = new Map<string, TokenUsageSnapshot>();
   private tokenUsage: TokenUsageSnapshot = emptyTokenUsage();
@@ -830,6 +842,16 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         return;
       case 'settings.resetLoopPolicy':
         await this.resetLoopPolicyToDefaults();
+        return;
+      case 'settings.savePolicyLab':
+        await this.savePolicyLabFromUi(message.policyLab);
+        return;
+      case 'settings.setPolicyLabEditBand':
+        if (message.policyLab) {
+          this.policyLabDraftTables = tablesFromSnapshot(message.policyLab);
+        }
+        this.policyLabEditBand = message.band;
+        await this.sendBootstrap();
         return;
       case 'provider.testConnection':
         await this.handleTestConnection(message);
@@ -2548,7 +2570,33 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         cfg.get<number>('provider.maximumOutputTokens'),
       ),
       loopPolicy: readLoopPolicySettings(cfg, resolveContextWindow(this.vs)),
+      policyLab: readPolicyLabSettings(
+        resolveContextWindow(this.vs),
+        this.policyLabEditBand,
+        this.policyLabDraftTables,
+      ),
     };
+  }
+
+  private async savePolicyLabFromUi(
+    snapshot: import('./protocol.js').PolicyLabSettingsSnapshot,
+  ): Promise<void> {
+    try {
+      const written = saveShipBandsFromUi({
+        snapshot,
+        workspaceRoot: this.effectiveRoot() ?? this.getWorkspaceRoot(),
+        extensionPath: this.extensionUri.fsPath,
+      });
+      this.policyLabEditBand = snapshot.editBand;
+      this.policyLabDraftTables = tablesFromSnapshot(snapshot);
+      void this.vs.window.showInformationMessage(
+        `Ship bands saved to source. Rebuild @mitii/v8 before runs pick them up.\n${written.loopPath}\n${written.windowPath}`,
+      );
+      await this.sendBootstrap();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      void this.vs.window.showErrorMessage(`Save ship bands failed: ${message}`);
+    }
   }
 
   private readWorkspace(): WorkspaceSnapshotInfo {
