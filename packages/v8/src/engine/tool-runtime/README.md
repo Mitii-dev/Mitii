@@ -124,7 +124,15 @@ Tool Runtime execution returns a result like this:
   "callId": "call-read-login",
   "toolName": "read_file",
   "status": "ok",
-  "output": { "path": "src/LoginForm.tsx", "contentPreview": "export function LoginForm() { ... }" },
+  "output": {
+    "path": "src/LoginForm.tsx",
+    "content": "export function LoginForm() { ... }",
+    "startLine": 1,
+    "endLine": 120,
+    "totalLines": 120,
+    "eof": true,
+    "truncated": false
+  },
   "truncated": false,
   "redacted": false,
   "bytesProduced": 4812,

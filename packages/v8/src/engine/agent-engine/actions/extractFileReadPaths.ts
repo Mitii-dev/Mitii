@@ -1,9 +1,9 @@
 const FILE_READ_TOOLS = new Set(["read_file", "read_many_files"]);
 
 /**
- * Paths touched by a file-read tool call. Used for exploration-efficiency
- * metrics (call count vs unique paths). Mutation and search tools are
- * intentionally excluded so edit/verify loops do not inflate the ratio.
+ * Locators touched by a file-read tool call. Used for exploration-efficiency
+ * metrics (call count vs unique paths/ranges). Range-aware so continuation
+ * reads (`startLine=nextStartLine`) count as new coverage, not thrash.
  */
 export function extractFileReadPaths(
   toolName: string,
@@ -17,7 +17,7 @@ export function extractFileReadPaths(
   }
   const record = argumentsValue as Record<string, unknown>;
   if (typeof record.path === "string" && record.path.trim().length > 0) {
-    return [record.path];
+    return [withLineRange(record.path.trim(), record.startLine, record.endLine)];
   }
   if (Array.isArray(record.paths)) {
     return record.paths.filter(
@@ -26,4 +26,17 @@ export function extractFileReadPaths(
     );
   }
   return [];
+}
+
+function withLineRange(
+  path: string,
+  startLine: unknown,
+  endLine: unknown,
+): string {
+  const start = typeof startLine === "number" ? startLine : undefined;
+  const end = typeof endLine === "number" ? endLine : undefined;
+  if (!start && !end) {
+    return path;
+  }
+  return `${path}:${start ?? 1}${end ? `-${end}` : ""}`;
 }

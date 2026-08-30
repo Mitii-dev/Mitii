@@ -31,11 +31,19 @@ export const listDirectoryOutputSchema = z
   })
   .strict();
 
+export const readFileTruncationReasonSchema = z.enum([
+  "byte_cap",
+  "line_range",
+  "max_lines",
+  "model_budget",
+]);
+
 export const readFileInputSchema = z
   .object({
     path: z.string().min(1),
     startLine: z.number().int().positive().optional(),
     endLine: z.number().int().positive().optional(),
+    maxLines: z.number().int().positive().max(20_000).optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -56,9 +64,15 @@ export const readFileOutputSchema = z
   .object({
     path: z.string(),
     content: z.string(),
-    startLine: z.number().int().positive().optional(),
-    endLine: z.number().int().positive().optional(),
+    /** Actual first line included (1-based). */
+    startLine: z.number().int().positive(),
+    /** Actual last line included (1-based); 0 when content is empty. */
+    endLine: z.number().int().nonnegative(),
+    totalLines: z.number().int().nonnegative().optional(),
+    eof: z.boolean(),
+    nextStartLine: z.number().int().positive().optional(),
     truncated: z.boolean(),
+    truncationReason: readFileTruncationReasonSchema.optional(),
   })
   .strict();
 
@@ -497,6 +511,7 @@ export const readManyFilesInputSchema = z
   .object({
     paths: z.array(z.string().min(1)).min(1).max(20),
     maxBytesPerFile: z.number().int().positive().max(128_000).optional(),
+    maxLinesPerFile: z.number().int().positive().max(20_000).optional(),
   })
   .strict();
 
@@ -507,7 +522,13 @@ export const readManyFilesOutputSchema = z
         .object({
           path: z.string(),
           content: z.string().optional(),
+          startLine: z.number().int().positive().optional(),
+          endLine: z.number().int().nonnegative().optional(),
+          totalLines: z.number().int().nonnegative().optional(),
+          eof: z.boolean().optional(),
+          nextStartLine: z.number().int().positive().optional(),
           truncated: z.boolean(),
+          truncationReason: readFileTruncationReasonSchema.optional(),
           error: z.string().optional(),
         })
         .strict(),

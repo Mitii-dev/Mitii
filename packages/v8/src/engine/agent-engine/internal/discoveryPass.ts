@@ -374,7 +374,7 @@ export function buildDiscoveryPrompt(params: {
       "Find the concrete files, symbols, and verification checks for the request.",
       "Use only read/search tools. Do not mutate files, run writes, or draft a plan.",
       "When preferred paths are listed, read those first before exploring elsewhere.",
-      "If <pre_read_evidence> is present, those file bodies are already available — do not re-read them.",
+      "If <pre_read_evidence> is present, those file bodies are already available — do not re-read them unless a nextStartLine/uncovered range is required.",
       params.shapedDiscovery?.discoverySystemHint,
       "Stop after you have identified the smallest change surfaces.",
     ]

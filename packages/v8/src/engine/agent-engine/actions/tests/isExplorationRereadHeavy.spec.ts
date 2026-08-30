@@ -76,6 +76,19 @@ describe("LoopFileReadTracker", () => {
     );
   });
 
+  it("does not treat continuation ranges as identical thrash", () => {
+    const tracker = createLoopFileReadTracker();
+    recordLoopFileReads(tracker, ["src/big.ts"]);
+    recordLoopFileReads(tracker, ["src/big.ts:181"]);
+    recordLoopFileReads(tracker, ["src/big.ts:360"]);
+    recordLoopFileReads(tracker, ["src/other.ts"]);
+    expect(snapshotLoopFileReads(tracker)).toEqual({
+      fileReadCalls: 4,
+      uniqueFilePathsTouched: 4,
+    });
+    expect(isExplorationRereadHeavy(snapshotLoopFileReads(tracker))).toBe(false);
+  });
+
   it("clears the ratio after a successful mutation", () => {
     const tracker = createLoopFileReadTracker();
     for (let index = 0; index < 8; index += 1) {

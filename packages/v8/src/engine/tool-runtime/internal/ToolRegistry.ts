@@ -14,6 +14,11 @@ export interface ToolExecutionContext {
   ports: ToolRuntimePorts;
   timeoutMs: number;
   maxOutputBytes: number;
+  /**
+   * Optional model-facing content budget forwarded from WindowPolicy
+   * (`toolResultContentChars`). Read tools use it to window results early.
+   */
+  maxContentChars?: number;
   signal?: AbortSignal;
   /** Present when Tool Runtime is configured for Phase 8 mutations. */
   transactions?: MutationTransactionRegistry;

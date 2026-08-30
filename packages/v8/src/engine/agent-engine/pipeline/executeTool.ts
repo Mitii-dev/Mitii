@@ -616,6 +616,7 @@ export async function executeOneTool(
       dirtyPaths,
       alreadyMutatedPaths: changedFiles,
       approval: approvalToken,
+      maxContentChars: windowPolicy.compaction.toolResultContentChars,
     },
   );
 

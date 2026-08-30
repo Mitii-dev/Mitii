@@ -111,6 +111,88 @@ describe("read efficiency tools", () => {
     expect(output.files[2]?.error).toBeTruthy();
   });
 
+  it("read_file returns coverage cursors and supports continuation", async () => {
+    const runtime = new ToolRuntimePipeline({
+      fileSystem: new InMemoryFileSystemAdapter(
+        WORKSPACE,
+        directory({
+          "big.ts": file(
+            Array.from({ length: 20 }, (_, index) => `line-${index + 1}`).join(
+              "\n",
+            ),
+          ),
+        }),
+      ),
+      process: new InMemoryProcessAdapter(async () => ({
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        timedOut: false,
+        cancelled: false,
+        truncated: false,
+      })),
+      diagnostics: new InMemoryDiagnosticsAdapter([]),
+      git: new InMemoryGitAdapter({
+        branch: "main",
+        staged: [],
+        unstaged: [],
+        untracked: [],
+        raw: "",
+      }),
+    });
+
+    const first = await runtime.execute(
+      {
+        schemaVersion: 1,
+        callId: "rf1",
+        toolName: "read_file",
+        arguments: { path: "big.ts", maxLines: 8 },
+        grant: createReadOnlyGrant(),
+        workspaceRoot: WORKSPACE,
+      },
+      { maxContentChars: 10_000 },
+    );
+    expect(first.status).toBe("succeeded");
+    const firstOut = first.output as {
+      content: string;
+      startLine: number;
+      endLine: number;
+      nextStartLine?: number;
+      eof: boolean;
+      truncated: boolean;
+    };
+    expect(firstOut.startLine).toBe(1);
+    expect(firstOut.endLine).toBe(8);
+    expect(firstOut.nextStartLine).toBe(9);
+    expect(firstOut.eof).toBe(false);
+    expect(firstOut.truncated).toBe(true);
+    expect(firstOut.content).toContain("line-1");
+    expect(firstOut.content).toContain("line-8");
+    expect(firstOut.content).not.toContain("line-9");
+
+    const second = await runtime.execute({
+      schemaVersion: 1,
+      callId: "rf2",
+      toolName: "read_file",
+      arguments: { path: "big.ts", startLine: firstOut.nextStartLine },
+      grant: createReadOnlyGrant(),
+      workspaceRoot: WORKSPACE,
+    });
+    expect(second.status).toBe("succeeded");
+    const secondOut = second.output as {
+      content: string;
+      startLine: number;
+      endLine: number;
+      eof: boolean;
+      nextStartLine?: number;
+    };
+    expect(secondOut.startLine).toBe(9);
+    expect(secondOut.content).toContain("line-9");
+    expect(secondOut.content).toContain("line-20");
+    expect(secondOut.eof).toBe(true);
+    expect(secondOut.nextStartLine).toBeUndefined();
+  });
+
   it("file_metadata returns size and sha256", async () => {
     const runtime = createRuntime();
     const result = await runtime.execute({
