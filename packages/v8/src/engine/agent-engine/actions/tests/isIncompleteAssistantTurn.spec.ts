@@ -223,6 +223,10 @@ describe("isIncompleteAssistantTurn", () => {
     const compacted = compactRecoveredAssistantContent(dump);
     expect(compacted).toContain("omitted mid-work analysis");
     expect(compacted.length).toBeLessThan(dump.length);
+    expect(compacted.length).toBeLessThanOrEqual(
+      // default maxRecoveredAnalysisChars from AGENT_ENGINE_THRESHOLDS
+      480,
+    );
     expect(
       selectUserFacingLoopAnswer({
         loopAnswer: dump,
@@ -233,6 +237,69 @@ describe("isIncompleteAssistantTurn", () => {
     ).toBe(
       "Verification did not go clean. I kept the edits. After: 24 error(s).",
     );
+  });
+
+  it("compacts recovered dumps with head, keep crumbs, and tail", () => {
+    const head = [
+      "Let me analyze the remaining errors:",
+      "I need to group by root cause before patching.",
+      "Let me think about the FieldType export first.",
+      "I will map each TS2305 class carefully.",
+    ].join("\n");
+    const keepMiddle = [
+      "Root cause: FormRenderer imports InputTypes as a value.",
+      "src/components/FormRenderer.tsx still reports TS2305.",
+      "Remaining errors: 6 in field-radio and 3 in stepper.",
+    ].join("\n");
+    const fluff = Array.from(
+      { length: 12 },
+      (_, index) =>
+        `Let me think through remaining class ${index}: I should patch it this turn instead of writing another report about the architecture.`,
+    ).join("\n");
+    const tail = [
+      "I am going to apply_patch for FormRenderer next.",
+      "Then I will clear the field-radio TS2305 leftovers.",
+      "Let me start implementing those fixes now:",
+    ].join("\n");
+    const dump = [head, keepMiddle, fluff, tail].join("\n\n");
+
+    expect(dump.length).toBeGreaterThan(900);
+    expect(isMidWorkAnalysisDump(dump)).toBe(true);
+
+    const maxChars = 360;
+    const compacted = compactRecoveredAssistantContent(dump, maxChars);
+    expect(compacted.length).toBeLessThanOrEqual(maxChars);
+    expect(compacted).toContain("omitted mid-work analysis");
+    expect(compacted).toContain("Let me analyze the remaining errors");
+    expect(compacted).toMatch(/apply_patch for FormRenderer|FormRenderer next|implementing those fixes/i);
+    expect(compacted).toMatch(/FormRenderer\.tsx|TS2305|Remaining errors/i);
+    // Middle planning fluff should not dominate the compact form.
+    expect(compacted).not.toContain("remaining class 11");
+  });
+
+  it("keeps short dumps intact and respects tiny recovered budgets", () => {
+    const shortDump = [
+      "Let me analyze this briefly.",
+      "I need to check AuthService.",
+      "I will patch login next.",
+      "Let me think about the null guard.",
+      "I am going to read the test.",
+      "Let me focus on the failing assertion.",
+      "I should apply_patch after that.",
+      "Let me continue with tools:",
+    ].join(" ");
+    // May or may not classify as dump depending on length/phrases; force via unfinished closer.
+    const unfinished =
+      `${shortDump} But first, let me check the AuthService.login null path again before patching.`;
+    expect(isUnfinishedInvestigationAnswer(unfinished)).toBe(true);
+    expect(compactRecoveredAssistantContent(unfinished, 2_000)).toBe(
+      unfinished.trim(),
+    );
+
+    const longUnfinished = `${unfinished}\n${"Let me think about this more. ".repeat(40)}`;
+    const tiny = compactRecoveredAssistantContent(longUnfinished, 80);
+    expect(tiny.length).toBeLessThanOrEqual(80);
+    expect(tiny).toContain("omitted mid-work analysis");
   });
 
   it("keeps a concise outcome summary when joining with verification text", () => {

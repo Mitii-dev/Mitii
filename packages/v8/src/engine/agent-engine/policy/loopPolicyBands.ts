@@ -3,12 +3,11 @@ import type { AgentEngineThresholdsOverrides } from "../actions/resolveAgentEngi
 /**
  * Window bands for shipped loop/stall standards.
  *
- * **Edit this file** to change permanent per-window behavior after lab testing.
- * Developer `mitii.loopPolicy.*` overrides are temporary deltas on top of the
- * active band — they are not the ship source of truth.
+ * Permanent ship values. Edit via `pnpm policy-admin` (HTML UI) or this file.
+ * Developer Custom `mitii.loopPolicy.*` overrides are temporary local deltas.
  *
  * Merge order at run start:
- *   AGENT_ENGINE_THRESHOLDS  →  band overrides  →  lab overrides (optional)
+ *   AGENT_ENGINE_THRESHOLDS  →  band overrides  →  optional Custom host overrides
  *
  * Cutoffs are exclusive upper bounds except `wide` (open-ended).
  */
@@ -43,8 +42,7 @@ export interface LoopPolicyWindowBandDefinition {
 }
 
 /**
- * Shipped band table. Tune after day-to-day testing with Custom loop policy,
- * then promote proven values here and leave Custom off for deploy.
+ * Shipped band table. Highest-probability defaults for each window size.
  */
 export const LOOP_POLICY_WINDOW_BAND_TABLE: Record<
   LoopPolicyWindowBand,
@@ -58,11 +56,11 @@ export const LOOP_POLICY_WINDOW_BAND_TABLE: Record<
       // Small windows fill fast: allow more reads before forcing a patch,
       // more stale-hunk recoveries, and keep recovered essays shorter.
       explorationRereadMinCalls: 12,
-      maxReadOnlyToolTurnsBeforeMutationNudge: 10,
       maxReadOnlyMutationRetryAttempts: 3,
+      maxReadOnlyToolTurnsBeforeMutationNudge: 10,
+      maxRecoveredAnalysisChars: 560,
       maxRejectedMutationRecoveries: 4,
       maxTruncationRecoveries: 4,
-      maxRecoveredAnalysisChars: 320,
     },
   },
   standard: {
@@ -77,13 +75,7 @@ export const LOOP_POLICY_WINDOW_BAND_TABLE: Record<
     label: "Wide",
     rangeLabel: "≥ 100k",
     overrides: {
-      // Large windows invite exploration spin; keep pressure closer to base
-      // and leave a bit more room for recovered analysis text.
-      explorationRereadMinCalls: 8,
-      maxReadOnlyToolTurnsBeforeMutationNudge: 6,
-      maxReadOnlyMutationRetryAttempts: 2,
-      maxRejectedMutationRecoveries: 3,
-      maxTruncationRecoveries: 3,
+      // Large windows: keep mutation effort-capped; leave room for recovered analysis / skills.
       maxRecoveredAnalysisChars: 640,
     },
   },

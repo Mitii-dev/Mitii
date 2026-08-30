@@ -4,9 +4,8 @@ import type { WindowBudgetPolicyOverrides } from "./contracts";
  * Window-budget bands keyed by the same context-window cutoffs as loop policy
  * (`compact` &lt; 50k, `standard` &lt; 100k, else `wide`).
  *
- * Permanent ship values. Edit via Developer → Policy Admin → Save to ship code,
- * or edit this file directly. Developer Custom `mitii.tokenBudget.*` overrides
- * are temporary local deltas — not the ship source of truth.
+ * Permanent ship values. Edit via `pnpm policy-admin` (HTML UI) or this file.
+ * Developer Custom `mitii.tokenBudget.*` overrides are temporary local deltas.
  *
  * Merge order in `deriveWindowPolicy`:
  *   DEFAULT_WINDOW_BUDGET_POLICY  →  band overlays  →  optional host Custom overrides
@@ -37,8 +36,7 @@ export interface WindowBudgetBandDefinition {
 }
 
 /**
- * Shipped band table. Compact leans mutation; wide opens skills capacity.
- * Standard keeps `DEFAULT_WINDOW_BUDGET_POLICY` as-is.
+ * Shipped band table. Highest-probability capacity mix per window size.
  */
 export const WINDOW_BUDGET_BAND_TABLE: Record<
   WindowBudgetBand,
@@ -49,12 +47,13 @@ export const WINDOW_BUDGET_BAND_TABLE: Record<
     label: "Compact",
     rangeLabel: "< 50k",
     overrides: {
-      // Scarce usable input: leaner mutation batches, slightly more skills,
-      // slightly less repo so conversation + skills can finish the turn.
-      maxUniqueFilesPerCallCap: 6,
-      skillsShare: 0.05,
-      repositoryShare: 0.25,
-      maxSkillsCap: 4,
+      // Small windows fill fast: allow more reads before forcing a patch,
+      // more stale-hunk recoveries, and keep recovered essays shorter.
+      maxUniqueFilesPerCallCap: 4,
+      outputMinTokens: 5120,
+      outputRatio: 0.4,
+      repositoryShare: 0.23,
+      skillsShare: 0.07,
     },
   },
   standard: {
@@ -69,7 +68,7 @@ export const WINDOW_BUDGET_BAND_TABLE: Record<
     label: "Wide",
     rangeLabel: "≥ 100k",
     overrides: {
-      // Room to spare: more skills; mutation stays effort-capped (medium: 8).
+      // Large windows: keep mutation effort-capped; leave room for recovered analysis / skills.
       maxSkillsCap: 6,
     },
   },

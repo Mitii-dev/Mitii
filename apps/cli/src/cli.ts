@@ -515,12 +515,21 @@ async function runAsk(options: {
       `[mitii] loopPolicy lab overrides active (${Object.keys(loopPolicyThresholds).join(', ')})\n`,
     );
   }
+  // `--approve` is the headless host policy: skip plan-gate suspension and
+  // mutation approval prompts (same shape as VS Code "pilot"). `--deny` only
+  // answers resume prompts; it does not suppress gates on start.
+  const hostApproval =
+    options.autoApproval === 'approved'
+      ? ({ approvalMode: 'never' as const, planApproval: 'never' as const })
+      : {};
+
   const outcome = await driveRun({
     client,
     start: {
       prompt: options.prompt,
       mode,
       workspaceRoot: options.cwd,
+      ...hostApproval,
       ...(projectRules.length > 0 ? { projectRules: [...projectRules] } : {}),
       ...(options.conversation && options.conversation.length > 0
         ? { conversation: options.conversation }

@@ -61,6 +61,27 @@ function suspendedApproval(): AgentRunResult {
   };
 }
 
+function suspendedPlanApproval(): AgentRunResult {
+  return {
+    schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+    runId: 'run_plan',
+    requestId: 'req_3',
+    status: 'suspended',
+    reasonCodes: ['plan_approval_suspended'],
+    warnings: [],
+    usage: {
+      modelCalls: 0,
+      toolCalls: 0,
+      loopIterations: 0,
+    },
+    durationMs: 3,
+    suspension: {
+      kind: 'plan_approval_required',
+      rationale: 'A reviewable plan is required before mutation.',
+    },
+  };
+}
+
 describe('CLI Phase 15 session resume helpers', () => {
   it('builds clarification resume input', () => {
     const resume = buildResumeInput(suspendedClarification(), {
@@ -91,6 +112,25 @@ describe('CLI Phase 15 session resume helpers', () => {
         decision: 'denied',
       })?.approval?.decision,
     ).toBe('denied');
+  });
+
+  it('builds plan-approval resume input for approve and reject', () => {
+    expect(
+      buildResumeInput(suspendedPlanApproval(), {
+        kind: 'plan',
+        decision: 'approved',
+      }),
+    ).toEqual({
+      schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+      runId: 'run_plan',
+      planDecision: { decision: 'approved' },
+    });
+    expect(
+      buildResumeInput(suspendedPlanApproval(), {
+        kind: 'plan',
+        decision: 'rejected',
+      })?.planDecision?.decision,
+    ).toBe('rejected');
   });
 
   it('rejects empty clarification answers', () => {

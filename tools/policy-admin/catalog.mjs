@@ -397,13 +397,13 @@ export const LOOP_FIELDS = [
     max: 4000,
     step: 16,
     primary: true,
-    plain: 'If a turn dumped a long essay, keep only this many characters so the next turn can still patch.',
+    plain: 'If a turn dumped a long essay, keep a head + useful crumbs + tail within this many characters so the next turn can still patch.',
     whenHigher: 'Keeps more notes (wide).',
     whenLower: 'Cuts essays shorter (compact).',
-    example: 'Compact often 320; wide often 640.',
+    example: 'Compact often 320; wide often 640. Compaction keeps the start, file/error crumbs, and the ending plan.',
     examplePrompt: 'Continue — implement the fix you described.',
     story:
-      'Example prompt: “Continue — implement the fix you were describing.”\n\nWhen it reaches this point: a recovered turn left a huge analysis dump in the transcript.\n\nWhat Mitii does: trims that dump to this many characters so Output/history stay usable.\n\nStable tip: on low content windows, keep this lower so the next turn can still emit a patch.',
+      'Example prompt: “Continue — implement the fix you were describing.”\n\nWhen it reaches this point: a recovered turn left a huge analysis dump in the transcript.\n\nWhat Mitii does: trims that dump to this many characters using head + high-signal middle lines (paths / TS errors / outcomes) + tail, so conclusions survive without keeping the whole essay.\n\nStable tip: on low content windows, keep this lower so the next turn can still emit a patch.',
   },
   {
     key: 'explorationRereadRatio',
