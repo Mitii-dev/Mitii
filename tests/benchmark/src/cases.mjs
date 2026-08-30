@@ -53,6 +53,7 @@ export function loadCases(rootDir, options = {}) {
             suite: parsed.suite ?? suiteId,
             difficulty,
             category: parsed.category ?? null,
+            sourceFile: fileName,
           });
         } catch (error) {
           throw new Error(`${path}:${index + 1}: invalid JSON (${error.message})`);

@@ -16,6 +16,7 @@ import { validateSuite } from './validate.mjs';
 import { runCases } from './runner.mjs';
 import { createRunReporter } from './report.mjs';
 import { generateViewer } from './html-report.mjs';
+import { generateCasesViewer } from './cases-viewer.mjs';
 import { spawn } from 'node:child_process';
 import { platform } from 'node:os';
 import { pathToFileURL } from 'node:url';
@@ -149,18 +150,30 @@ if (command === 'validate') {
   const reportRoot = resolve(valueOf(args, '--output-dir') ?? join(rootDir, 'reports'));
   const runId = valueOf(args, '--run');
   const { indexPath, written, runs } = generateViewer(reportRoot, { runId });
+  const casesPath = generateCasesViewer(rootDir, reportRoot);
   if (runId && written.length === 0) {
     console.error(`No summary found for run: ${runId}`);
     process.exit(1);
   }
   console.log(`Index: ${indexPath} (${runs.length} run${runs.length === 1 ? '' : 's'})`);
   for (const path of written) console.log(`Viewer: ${path}`);
+  console.log(`Test case browser: ${casesPath}`);
   const openTarget = runId && written[0] ? written[0] : indexPath;
   if (args.includes('--open')) {
     openPath(openTarget);
     console.log(`Opened ${openTarget}`);
   } else {
     console.log(`Open in browser: ${pathToFileURL(openTarget).href}`);
+  }
+} else if (command === 'cases') {
+  const reportRoot = resolve(valueOf(args, '--output-dir') ?? join(rootDir, 'reports'));
+  const casesPath = generateCasesViewer(rootDir, reportRoot);
+  console.log(`Test case browser: ${casesPath}`);
+  if (args.includes('--open')) {
+    openPath(casesPath);
+    console.log(`Opened ${casesPath}`);
+  } else {
+    console.log(`Open in browser: ${pathToFileURL(casesPath).href}`);
   }
 } else {
   console.log(`Usage:
@@ -169,6 +182,7 @@ if (command === 'validate') {
   node src/cli.mjs suites
   node src/cli.mjs run --config benchmark.config.json [filters]
   node src/cli.mjs view [--run <runId>] [--output-dir <reports-root>] [--open]
+  node src/cli.mjs cases [--output-dir <reports-root>] [--open]   (read-only test case browser)
 
 Domains (top-level):
   ${availableSuites.join(' | ') || DOMAINS.join(' | ')}

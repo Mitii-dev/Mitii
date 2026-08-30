@@ -283,6 +283,7 @@ function renderIndexHtml(runs) {
           <option value="PARTIAL">PARTIAL</option>
         </select>
         <select id="index-suite"><option value="all">All suites</option></select>
+        <a class="link" href="cases.html">Browse test cases &rarr;</a>
         <button type="button" class="btn" id="export-pdf">Export PDF</button>
       </div>
     </header>
@@ -316,7 +317,7 @@ function renderIndexHtml(runs) {
 `;
 }
 
-function sharedCss() {
+export function sharedCss() {
   return `
 :root {
   --bg: #f4f5f7;

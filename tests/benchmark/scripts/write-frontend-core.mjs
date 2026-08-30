@@ -2,6 +2,14 @@
 /**
  * Writes the frontend-core agent suite (70 cases) and removes legacy JSONL.
  * Run: node scripts/write-frontend-core.mjs
+ *
+ * CAUTION: this overwrites suites/frontend/cases/*.jsonl entirely. Nine
+ * hand-authored extension cases (fe-feature-021..025, fe-bugfix-021..023,
+ * fe-testing-011 — hooks, theme persistence, dynamic OG metadata, a11y,
+ * and a testing-coverage case) are appended directly to those files and
+ * are NOT part of this generator. Re-running this script wipes them; if
+ * you do, re-append them from git history or docs/FRONTEND_SUITE.md and
+ * update suites/frontend/suite.json's expectedCounts back to 79 total.
  */
 import { mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
