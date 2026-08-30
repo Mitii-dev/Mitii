@@ -50,6 +50,7 @@ export interface ParsedCliArgs {
     | 'export-session'
     | 'session'
     | 'setup'
+    | 'connect'
     | 'unknown'
     | 'error';
   prompt?: string;
@@ -73,6 +74,7 @@ export interface ParsedCliArgs {
   loopPolicyJson?: string;
   /** Force window-band standards even if config enables loopPolicy. */
   noLoopPolicy?: boolean;
+  /** Passthrough args after `connect` (channel + channel flags). */
   rest: string[];
 }
 
@@ -101,9 +103,15 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   let setupModel: string | undefined;
   let setupBaseUrl: string | undefined;
   let loopPolicyJson: string | undefined;
+  /** Once `connect` is seen, remaining argv (flags included) is channel passthrough. */
+  let connectPassthrough: string[] | undefined;
 
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i]!;
+    if (connectPassthrough) {
+      connectPassthrough.push(arg);
+      continue;
+    }
     if (arg === '--help' || arg === '-h') {
       return { command: 'help', rest: [] };
     }
@@ -234,6 +242,9 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       };
     }
     positionals.push(arg);
+    if (arg === 'connect' && positionals.length === 1) {
+      connectPassthrough = [];
+    }
   }
 
   const [command = 'help', ...rest] = positionals;
@@ -294,6 +305,16 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       loopPolicyJson,
       noLoopPolicy: flags.has('no-loop-policy'),
       rest,
+    };
+  }
+  if (command === 'connect') {
+    return {
+      command: 'connect',
+      cwd,
+      forceEcho: flags.has('echo'),
+      autoApproval,
+      mode,
+      rest: connectPassthrough ?? rest,
     };
   }
 
@@ -939,6 +960,61 @@ export async function main(
         yes: parsed.setupYes === true,
         io: sessionIo,
       });
+    case 'connect': {
+      const {
+        formatAdapterList,
+        runConnectAdapter,
+        runStopAllConnectors,
+        sessionIoToConnectIo,
+      } = await import('./connectors/commands/connect.js');
+      const connectIo = sessionIoToConnectIo(sessionIo);
+      const rest = [...parsed.rest];
+      const stopRequested = rest.includes('--stop');
+      const channel = rest.find((arg) => !arg.startsWith('-'));
+      const passthrough = channel
+        ? rest.filter((arg) => arg !== channel)
+        : rest;
+
+      // Merge top-level cwd/mode/echo/approve into channel args when absent.
+      const withDefaults = [...passthrough];
+      if (parsed.cwd && !withDefaults.includes('--cwd')) {
+        withDefaults.push('--cwd', parsed.cwd);
+      }
+      if (parsed.mode && !withDefaults.includes('--mode')) {
+        withDefaults.push('--mode', parsed.mode);
+      }
+      if (parsed.forceEcho && !withDefaults.includes('--echo')) {
+        withDefaults.push('--echo');
+      }
+      if (
+        parsed.autoApproval === 'denied' &&
+        !withDefaults.includes('--deny')
+      ) {
+        withDefaults.push('--deny');
+      }
+      if (
+        parsed.autoApproval === 'approved' &&
+        !withDefaults.includes('--approve')
+      ) {
+        withDefaults.push('--approve');
+      }
+
+      if (stopRequested) {
+        if (channel) {
+          // Channel adapters own stop semantics (e.g. filter by bot username).
+          return runConnectAdapter(channel, withDefaults, connectIo);
+        }
+        return runStopAllConnectors(connectIo);
+      }
+      if (!channel) {
+        sessionIo.writeStdout(`\nAdapters:\n${formatAdapterList()}\n\n`);
+        sessionIo.writeStdout(
+          "Run 'mitii connect <channel> --help' for channel options.\n",
+        );
+        return 0;
+      }
+      return runConnectAdapter(channel, withDefaults, connectIo);
+    }
     case 'error':
       sessionIo.writeStderr(`${parsed.errorMessage ?? 'mitii: invalid arguments'}\n`);
       return 2;

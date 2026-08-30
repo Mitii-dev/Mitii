@@ -10,6 +10,9 @@ Usage:
   mitii index [--cwd <path>] [--json]
   mitii status [--cwd <path>] [--json]
   mitii export-session <prompt> --out <file> [--echo]
+  mitii connect [channel] [channel-options]
+  mitii connect --stop
+  mitii connect <channel> --stop
 
 First run:
   1. mitii setup                 # pick provider + write .mitii/config.json
@@ -24,6 +27,7 @@ Commands:
   index            Full workspace index + publish repository state
   status           Show latest persisted repository state
   export-session   Run ask and write secret-free JSON export
+  connect          Bridge Mitii into Telegram, Discord, or Slack
   version / help   Version and usage
 
 Modes (--mode or config defaultMode):
@@ -77,5 +81,13 @@ Environment:
 
 Hosts stream events, cancel, clarify/approve, index/status,
 usage/context inspection, live task lists, and secret-free session export.
-Daemon/board/channels are out of scope for this CLI.
+
+Channel connectors:
+  mitii connect                         # list adapters
+  mitii connect telegram|discord|slack  # bridge chat → Mitii turns
+  mitii connect <channel> --help
+  mitii connect <channel> --stop
+  State under .mitii/connectors/<channel>/
+  Setup guides: apps/cli/README.md → Connect
+  GitHub: use gh/git in agent mode — not a connect channel
 `;
