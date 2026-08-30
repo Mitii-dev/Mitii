@@ -4,14 +4,21 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Mitii Policy Admin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="/app.css" />
   </head>
   <body>
     <div class="shell">
       <header class="top">
         <div class="top__title">
+          <p class="eyebrow">Mitii · Ship defaults</p>
           <h1>Policy Admin</h1>
-          <p class="lede">Ship defaults · Budget first, then re-reads</p>
+          <p class="lede">Tune window bands. Left is live outcome · right is what you edit.</p>
         </div>
         <div class="actions">
           <button type="button" id="reload" class="btn ghost">Reload</button>
@@ -23,57 +30,68 @@
 
       <nav class="bands" id="band-tabs" aria-label="Window band"></nav>
 
-      <!-- Live budget strip -->
-      <section class="card budget-card">
-        <div class="budget-card__head">
-          <div>
-            <h2>Live preview</h2>
-            <p class="hint">
-              Bar = full preview window. Module shares (repo / conversation / plan / skills)
-              are % of <strong>usable input</strong> (after Output + Tool schemas), not % of the whole window.
-            </p>
-          </div>
-          <label class="window-picker">
-            <span>Preview tokens</span>
-            <input id="preview-window" type="number" min="8000" max="512000" step="1000" />
-          </label>
-        </div>
-        <div class="budget-bar" id="budget-bar"></div>
-        <ul class="budget-legend" id="budget-legend"></ul>
-        <div class="budget-meta" id="budget-meta"></div>
-      </section>
+      <div class="workspace">
+        <!-- Fixed live preview (left) -->
+        <aside class="preview-rail" aria-label="Live preview">
+          <section class="card budget-card">
+            <div class="budget-card__head">
+              <div>
+                <p class="rail-kicker">Live outcome</p>
+                <h2>Preview</h2>
+                <p class="hint">
+                  Updates as you edit. Module shares are % of
+                  <strong>usable input</strong> (after Output + Tool schemas).
+                </p>
+              </div>
+              <label class="window-picker">
+                <span>Preview window</span>
+                <input id="preview-window" type="number" min="8000" max="512000" step="1000" />
+                <span class="window-picker__unit">tokens</span>
+              </label>
+            </div>
+            <div class="budget-bar" id="budget-bar"></div>
+            <ul class="budget-legend" id="budget-legend"></ul>
+            <div class="budget-meta" id="budget-meta"></div>
+            <div class="derived-panel" id="derived-panel"></div>
+          </section>
+          <footer class="foot foot--rail">
+            <span>Writes <code id="path-loop"></code></span>
+            <span><code id="path-window"></code></span>
+            <span>Then <code>pnpm --filter @mitii/v8 build</code></span>
+          </footer>
+        </aside>
 
-      <!-- 1. Budget fields (all visible) -->
-      <section class="card knobs-card" id="section-budget">
-        <h2 class="section-title">1 · Budget</h2>
-        <p class="panel-intro">
-          Edit every slice below. Each tile shows your setting % → tokens for this preview.
-          Free is leftover usable input (not a slider).
-        </p>
-        <div id="window-fields" class="fields"></div>
-        <div class="field field-readonly" id="free-tile"></div>
-      </section>
+        <!-- Editable options (right) -->
+        <main class="editor-rail">
+          <section class="card knobs-card" id="section-budget">
+            <div class="section-head">
+              <h2 class="section-title">1 · Budget</h2>
+              <p class="panel-intro">
+                Edit settings below. Each tile shows your <strong>setting</strong> and the
+                <strong>live result</strong> at the preview window on the left.
+              </p>
+            </div>
+            <div id="window-fields" class="fields"></div>
+            <div class="field field-readonly" id="free-tile"></div>
+          </section>
 
-      <!-- 2. Re-reads / loop -->
-      <section class="card knobs-card" id="section-loop">
-        <h2 class="section-title">2 · Re-reads &amp; progress</h2>
-        <p class="panel-intro">
-          When the agent re-opens files, when we force a patch, and how many retries.
-          Click ⓘ for a full story: prompt → when it triggers → what happens → stable tip.
-        </p>
-        <div id="loop-fields" class="fields"></div>
-      </section>
+          <section class="card knobs-card" id="section-loop">
+            <div class="section-head">
+              <h2 class="section-title">2 · Re-reads &amp; progress</h2>
+              <p class="panel-intro">
+                When the agent re-opens files, when we force a patch, and how many retries.
+                Click ⓘ for prompt → trigger → outcome.
+              </p>
+            </div>
+            <div id="loop-fields" class="fields"></div>
+          </section>
 
-      <!-- 3. Advanced -->
-      <details class="card advanced-block" id="section-advanced">
-        <summary>3 · Advanced (rarely needed)</summary>
-        <div id="advanced-fields" class="fields" style="margin-top: 0.65rem"></div>
-      </details>
-
-      <footer class="foot">
-        <span>Writes <code id="path-loop"></code> + <code id="path-window"></code></span>
-        <span>Then <code>pnpm --filter @mitii/v8 build</code></span>
-      </footer>
+          <details class="card advanced-block" id="section-advanced">
+            <summary>3 · Advanced <span class="summary-hint">rarely needed</span></summary>
+            <div id="advanced-fields" class="fields" style="margin-top: 0.85rem"></div>
+          </details>
+        </main>
+      </div>
     </div>
 
     <div id="help-backdrop" class="help-backdrop" aria-hidden="true"></div>

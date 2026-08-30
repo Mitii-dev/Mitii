@@ -13,9 +13,10 @@ Opens [http://127.0.0.1:8787](http://127.0.0.1:8787). Reads V8 TypeScript source
 
 ## What you get
 
+- **Split workspace** — sticky live preview on the left; editable knobs on the right
+- **Setting vs live** — ceilings (e.g. verification max) are labeled separately from the derived count at the preview window
 - **Context token budget bar** — output, tools, repository, conversation, plan, skills, and **Free**
-- **Live percentages** that update as you move shares / output ratio
-- **Help drawer** on every knob — why, analogy, raise/lower, concrete example, example prompt
+- **Help drawer** on every knob — why, raise/lower, concrete example, example prompt
 - **Loop / stall** + **window budget** ship overlays per band
 
 ## Workflow

@@ -126,9 +126,28 @@ function effectChips(field) {
   return `<span class="effect up">↑ ${field.whenHigher}</span><span class="effect down">↓ ${field.whenLower}</span>`;
 }
 
+function countRoleLabel(field) {
+  const role = typeof field === 'string' ? field : field?.countRole;
+  const key = typeof field === 'object' && field ? field.key : '';
+  if (role === 'verify') {
+    if (key === 'verificationChecksBase') {
+      return { setting: 'Floor (start)', live: 'Live now', unitShort: 'checks' };
+    }
+    return { setting: 'Ceiling (max)', live: 'Live now', unitShort: 'checks' };
+  }
+  if (role === 'files') return { setting: 'Cap (max)', live: 'Live now', unitShort: 'files' };
+  if (role === 'skills') {
+    if (key === 'maxSkillsBase') {
+      return { setting: 'Floor (start)', live: 'Live now', unitShort: 'skills' };
+    }
+    return { setting: 'Cap (max)', live: 'Live now', unitShort: 'skills' };
+  }
+  return { setting: 'Your setting', live: 'Live now', unitShort: '' };
+}
+
 /**
- * Share tiles: show knob % → tokens, and explain usable vs window.
- * Example: Skills 5% of 17,760 usable = 888 tokens (2.5% of 35,000 window).
+ * Share tiles: setting vs live. Count knobs (verify/files/skills) get a split box
+ * so the input ceiling is never confused with the derived live count.
  */
 function renderPreviewBlock(field, preview, uiValue, isRatio) {
   const stats = tileTokenStats(field, preview);
@@ -160,13 +179,38 @@ function renderPreviewBlock(field, preview, uiValue, isRatio) {
   }
 
   if (stats && typeof stats.count === 'number') {
-    return `<div class="field-preview">
-      <div class="field-preview__main">
-        <span class="field-preview__pct">${stats.count}</span>
-        <span class="field-preview__tokens"><strong>${stats.unit}</strong></span>
+    const labels = countRoleLabel(field);
+    const settingNum = Number(uiValue);
+    const isFloor = labels.setting.toLowerCase().includes('floor');
+    let note;
+    if (isFloor) {
+      note =
+        stats.count > settingNum
+          ? `Floor is <strong>${settingNum}</strong>; live rose to <strong>${stats.count}</strong> with usable input.`
+          : `Live is at the floor for ${formatTokens(W)}.`;
+    } else if (stats.count < settingNum) {
+      note = `At ${formatTokens(W)} you get <strong>${stats.count}</strong> — the slider is only the ceiling until the window is large enough.`;
+    } else {
+      note = `At ${formatTokens(W)} the live count matches your ceiling.`;
+    }
+
+    return `<div class="field-split">
+      <div class="field-box field-box--setting">
+        <span class="field-box__tag">${labels.setting}</span>
+        <div class="field-box__main">
+          <span class="field-box__value">${uiValue}</span>
+          <span class="field-box__unit">${labels.unitShort}</span>
+        </div>
+        <p class="field-box__note">What you edit in the slider below</p>
       </div>
-      <p class="field-preview__for">for <strong>${forLabel}</strong></p>
-      <p class="field-preview__of">on preview window ${formatTokens(W)}</p>
+      <div class="field-box field-box--live">
+        <span class="field-box__tag">${labels.live}</span>
+        <div class="field-box__main">
+          <span class="field-box__value">${stats.count}</span>
+          <span class="field-box__unit">${stats.unit}</span>
+        </div>
+        <p class="field-box__note">${note}</p>
+      </div>
     </div>`;
   }
 
@@ -174,7 +218,7 @@ function renderPreviewBlock(field, preview, uiValue, isRatio) {
     <div class="field-preview__main">
       <span class="field-preview__pct">${isRatio ? `${uiValue}%` : uiValue}</span>
     </div>
-    <p class="field-preview__of">preview window ${formatTokens(W)}</p>
+    <p class="field-preview__of">Your setting · preview window ${formatTokens(W)}</p>
   </div>`;
 }
 
@@ -185,7 +229,7 @@ function renderFreeTile(preview) {
   el.innerHTML = `
     <div class="field-row">
       <label>Free (unallocated)</label>
-      <span class="chip">read-only</span>
+      <span class="chip">read-only · live</span>
     </div>
     <div class="field-preview">
       <div class="field-preview__main">
@@ -196,6 +240,37 @@ function renderFreeTile(preview) {
       <p class="field-preview__for">leftover <strong>usable input</strong> not claimed by repo / conversation / plan / skills</p>
       <p class="field-preview__math">${formatPctWhole(preview.freeUsableShare)} of usable · ${formatPctWhole(pctOf(preview.freeTokens, W))} of window ${formatTokens(W)}</p>
       <p class="field-preview__of">Lower any module share to grow Free. Not a slider — it is whatever is left.</p>
+    </div>
+  `;
+}
+
+function renderDerivedPanel(preview) {
+  const el = $('#derived-panel');
+  if (!el) return;
+  const W = preview.contextWindowTokens;
+  el.innerHTML = `
+    <p class="derived-panel__title">Derived at ${formatTokens(W)}</p>
+    <div class="derived-grid">
+      <div class="derived-pill">
+        <span class="derived-pill__label">Verify checks</span>
+        <span class="derived-pill__value">${preview.maxVerificationChecks}</span>
+        <span class="derived-pill__hint">live · not the max slider</span>
+      </div>
+      <div class="derived-pill">
+        <span class="derived-pill__label">Files / patch</span>
+        <span class="derived-pill__value">${preview.maxUniqueFilesPerCall}</span>
+        <span class="derived-pill__hint">after effort cap</span>
+      </div>
+      <div class="derived-pill">
+        <span class="derived-pill__label">Skills packed</span>
+        <span class="derived-pill__value">${preview.maxSkills}</span>
+        <span class="derived-pill__hint">live count</span>
+      </div>
+      <div class="derived-pill">
+        <span class="derived-pill__label">Usable input</span>
+        <span class="derived-pill__value">${formatTokens(preview.usableInputTokens)}</span>
+        <span class="derived-pill__hint">${formatPctWhole(pctOf(preview.usableInputTokens, W))} of window</span>
+      </div>
     </div>
   `;
 }
@@ -300,13 +375,13 @@ function renderBudget() {
   }
 
   $('#budget-meta').innerHTML = [
-    `Window <span>${formatTokens(W)}</span>`,
-    `Usable <span>${formatTokens(preview.usableInputTokens)} (${formatPctWhole(pctOf(preview.usableInputTokens, W))})</span>`,
-    `Free <span>${formatPctWhole(preview.freeUsableShare)} · ${formatTokens(preview.freeTokens)}</span>`,
-    `Files <span>${preview.maxUniqueFilesPerCall}</span>`,
-    `Skills packed <span>${preview.maxSkills}</span>`,
-  ].join(' · ');
+    `<div class="meta-row"><span>Window</span><span>${formatTokens(W)}</span></div>`,
+    `<div class="meta-row"><span>Usable</span><span>${formatTokens(preview.usableInputTokens)} · ${formatPctWhole(pctOf(preview.usableInputTokens, W))}</span></div>`,
+    `<div class="meta-row"><span>Free</span><span>${formatPctWhole(preview.freeUsableShare)} · ${formatTokens(preview.freeTokens)}</span></div>`,
+    `<div class="meta-row"><span>Output reserve</span><span>${formatTokens(preview.maximumOutputTokens)}</span></div>`,
+  ].join('');
 
+  renderDerivedPanel(preview);
   renderFreeTile(preview);
 }
 
@@ -334,9 +409,11 @@ function helpLiveBlock(field, kind, preview) {
   }
 
   if (stats && typeof stats.count === 'number') {
+    const labels = countRoleLabel(field);
     return `<div class="help-live">
-      <strong>On preview ${formatTokens(W)}</strong>
-      <p>Right now: <strong>${stats.count} ${stats.unit}</strong></p>
+      <strong>Setting vs live at ${formatTokens(W)}</strong>
+      <p>${labels.setting}: <strong>${uiValue}</strong> · ${labels.live}: <strong>${stats.count} ${stats.unit}</strong></p>
+      <p class="help-live__sub">The slider is a ceiling. Live count scales with usable input and may stay lower on small windows.</p>
     </div>`;
   }
 
@@ -408,6 +485,12 @@ function renderField(field, kind, base, root) {
   wrap.className = `field${overridden ? ' overridden' : ''}`;
   wrap.dataset.key = field.key;
 
+  const controlsLabel = field.countRole
+    ? countRoleLabel(field).setting
+    : isRatio
+      ? 'Share'
+      : 'Setting';
+
   wrap.innerHTML = `
     <div class="field-row">
       <label for="${kind}-${field.key}">${field.label}</label>
@@ -416,6 +499,7 @@ function renderField(field, kind, base, root) {
     ${renderPreviewBlock(field, preview, uiValue, isRatio)}
     <p class="field-oneline">${oneLineWhy(field)}</p>
     <div class="field-controls">
+      <span class="field-controls__label">${controlsLabel}</span>
       ${isRatio || field.kind === 'int' ? `<input type="range" min="${uiMin}" max="${uiMax ?? 100}" step="${uiStep}" value="${uiValue}" />` : ''}
       <input id="${kind}-${field.key}" type="number" min="${uiMin}" max="${uiMax ?? ''}" step="${uiStep}" value="${uiValue}" />
       ${isRatio ? '<span class="unit">%</span>' : ''}

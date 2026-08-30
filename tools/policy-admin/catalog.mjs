@@ -225,13 +225,13 @@ export const WINDOW_FIELDS = [
     primary: true,
     countRole: 'verify',
     forLabel: 'verify rounds after edits',
-    plain: 'After edits, Mitii can re-check (typecheck / tests). This is the max number of those check rounds.',
-    whenHigher: 'More thorough, slower.',
-    whenLower: 'Faster; may miss leftovers.',
-    example: 'Max 4 → edit → check → fix → check… then stop.',
+    plain: 'Ceiling for verify rounds after edits. The live count at small windows is often lower (starts at base) — raise the preview window on the left to see the ceiling kick in.',
+    whenHigher: 'Allows more thorough verify loops on large windows.',
+    whenLower: 'Harder cap; faster finish, may miss leftovers.',
+    example: 'Max 16 at 35k may still show Live now = 2. At a large window, live climbs toward 16.',
     examplePrompt: 'Fix remaining type errors until verification is quiet.',
     story:
-      'Example prompt: “Fix all TypeScript errors from this rename.”\n\nWhen it matters: after apply_patch, when verify still fails.\n\nWhat happens: each remaining-error repair may run another check, up to this max.\n\nStable tip: think QA rounds, not tokens. Too low ships broken work; too high loops forever on stuck errors.',
+      'Example prompt: “Fix all TypeScript errors from this rename.”\n\nWhen it matters: after apply_patch, when verify still fails.\n\nWhat happens: each remaining-error repair may run another check, up to this max. The slider is the ceiling; Live now on the left (and on the tile) is what this preview window actually gets.\n\nStable tip: think QA rounds, not tokens. Too low ships broken work; too high loops forever on stuck errors.',
   },
   {
     key: 'minUniqueFilesPerCall',
