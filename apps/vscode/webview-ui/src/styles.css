@@ -2990,6 +2990,28 @@ select.depth-select {
   gap: 6px;
 }
 
+.token-context-slices--tree {
+  gap: 5px;
+}
+
+.token-context-slice__name--child {
+  padding-left: calc(var(--token-tree-depth, 1) * 10px);
+  color: color-mix(in srgb, var(--mitii-text) 88%, var(--mitii-muted) 12%);
+}
+
+.token-context-slice__branch {
+  color: var(--mitii-muted);
+  font-family: var(--mitii-font-mono);
+  margin-right: 2px;
+}
+
+.token-context-slice__note {
+  margin-top: 2px;
+  font-size: 10px;
+  color: var(--mitii-muted);
+  font-family: var(--mitii-font-mono);
+}
+
 .token-context-slice__label {
   display: flex;
   justify-content: space-between;

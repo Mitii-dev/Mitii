@@ -1241,30 +1241,57 @@ export async function executeStart(
     if (promptResult.warnings.length > 0) {
       warnings.push(...promptResult.warnings);
     }
-    if (logVerbosityAtLeast(input.logVerbosity, "standard")) {
-      runtime.emit(bus, {
-        type: "prompt_ready",
-        runId,
-        status: promptResult.status,
-        totalOmittedTokens: promptResult.budget.totalOmittedTokens,
-        totalTruncatedTokens: promptResult.budget.totalTruncatedTokens,
-        ...(promptResult.omissions.length > 0
-          ? {
-              omissions: promptResult.omissions.slice(0, 20).map((omission) => ({
-                section: omission.section,
-                reason: omission.reason,
-                ...(typeof omission.tokens === "number"
-                  ? { tokens: omission.tokens }
-                  : {}),
-              })),
-            }
-          : {}),
-        ...(promptResult.warnings.length > 0
-          ? { warnings: promptResult.warnings.slice(0, 20) }
-          : {}),
-        at: runtime.isoNow(),
-      });
-    }
+    // Always emit: hosts need budget/window for the token-meter tree.
+    // Omissions and warning text stay verbosity-gated.
+    const includePromptDetails = logVerbosityAtLeast(
+      input.logVerbosity,
+      "standard",
+    );
+    runtime.emit(bus, {
+      type: "prompt_ready",
+      runId,
+      status: promptResult.status,
+      totalOmittedTokens: promptResult.budget.totalOmittedTokens,
+      totalTruncatedTokens: promptResult.budget.totalTruncatedTokens,
+      budget: {
+        contextWindowTokens: promptResult.budget.contextWindowTokens,
+        outputReservedTokens: promptResult.budget.outputReservedTokens,
+        inputBudgetTokens: promptResult.budget.inputBudgetTokens,
+        totalUsedTokens: promptResult.budget.totalUsedTokens,
+        withinLimits: promptResult.budget.withinLimits,
+        sections: promptResult.budget.sections.slice(0, 16).map((section) => ({
+          section: section.section,
+          allocatedTokens: section.allocatedTokens,
+          usedTokens: section.usedTokens,
+          omittedTokens: section.omittedTokens,
+          truncatedTokens: section.truncatedTokens,
+        })),
+      },
+      window: {
+        toolSchemaTokens: windowPolicy.toolSchemaTokens,
+        usableInputTokens: windowPolicy.usableInputTokens,
+        repositoryTokens: windowPolicy.sections.repositoryTokens,
+        conversationTokens: windowPolicy.sections.conversationTokens,
+        planTokens: windowPolicy.sections.planTokens,
+        skillsTokens: windowPolicy.sections.skillsTokens,
+        systemTokens: windowPolicy.sections.systemTokens,
+      },
+      ...(includePromptDetails && promptResult.omissions.length > 0
+        ? {
+            omissions: promptResult.omissions.slice(0, 20).map((omission) => ({
+              section: omission.section,
+              reason: omission.reason,
+              ...(typeof omission.tokens === "number"
+                ? { tokens: omission.tokens }
+                : {}),
+            })),
+          }
+        : {}),
+      ...(includePromptDetails && promptResult.warnings.length > 0
+        ? { warnings: promptResult.warnings.slice(0, 20) }
+        : {}),
+      at: runtime.isoNow(),
+    });
 
     // --- Model / tool loop ---
     const messages: ModelMessage[] = [...promptResult.request.messages];

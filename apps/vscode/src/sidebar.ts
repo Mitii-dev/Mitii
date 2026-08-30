@@ -50,6 +50,7 @@ import {
   runEventToActivity,
 } from './hostAsk.js';
 import { buildContextUsageBreakdown } from './contextUsage.js';
+import { deriveLiveTokenBudgetPreview } from './liveTokenBudgetPreview.js';
 import { getSharedMcpManager } from './mcp/manager.js';
 import {
   readMcpSettings,
@@ -111,6 +112,7 @@ import { getWorkspaceTrustSnapshot } from './workspace/trust.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
 import {
   TOKEN_BUDGET_FIELDS,
+  readTokenBudgetPolicyOverrides,
   readTokenBudgetSettings,
   tokenBudgetResetKeys,
 } from './tokenBudgetSettings.js';
@@ -1218,12 +1220,25 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           this.getWorkspaceId(),
         )
       : undefined;
+    const cfg = this.vs.workspace.getConfiguration('mitii');
+    const configuredMaxOut = cfg.get<number>('provider.maximumOutputTokens');
+    const maximumOutputTokens =
+      typeof configuredMaxOut === 'number' &&
+      Number.isFinite(configuredMaxOut) &&
+      configuredMaxOut > 0
+        ? Math.floor(configuredMaxOut)
+        : undefined;
     const provisionalContextBreakdown = buildContextUsageBreakdown({
       prompt: llmPrompt,
       conversationText,
       memoryBlock,
       depthHint: message.depth,
       contextWindow,
+      preview: deriveLiveTokenBudgetPreview({
+        contextWindowTokens: contextWindow,
+        maximumOutputTokens,
+        policy: readTokenBudgetPolicyOverrides(cfg),
+      }),
     });
     this.post({
       type: 'tokenUsage',

@@ -16,7 +16,10 @@ import type * as vscode from 'vscode';
 
 import { formatDiagnosticsPromptBlock } from './context/diagnosticsContext.js';
 import { captureEditorContext } from './context/editorContext.js';
-import { buildContextUsageBreakdown } from './contextUsage.js';
+import {
+  buildContextUsageBreakdown,
+  mergePromptBudgetIntoBreakdown,
+} from './contextUsage.js';
 import { readContextToggles } from './contextToggles.js';
 import { getSharedMcpManager } from './mcp/manager.js';
 import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
@@ -44,6 +47,7 @@ import {
   setActiveModelIoSink,
 } from './modelIoLog.js';
 import { readModelIoLoggingEnabled } from './modelIoSettings.js';
+import { deriveLiveTokenBudgetPreview } from './liveTokenBudgetPreview.js';
 import { readTokenBudgetPolicyOverrides } from './tokenBudgetSettings.js';
 import { readLoopPolicyThresholdOverrides } from './loopPolicySettings.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
@@ -98,6 +102,24 @@ export function formatRunEventLine(event: RunEvent): string | undefined {
       return `[skills] selected=${event.selectedCount}${formatEventList(' ids', event.selected)} omitted=${event.omittedCount}${formatSkillOmissions(event)} status=${event.status}`;
     case 'memory_ready':
       return `[memory] selected=${event.selectedCount} omitted=${event.omittedCount} status=${event.status}`;
+    case 'prompt_ready': {
+      const used = event.budget?.totalUsedTokens;
+      const reserved = event.budget?.outputReservedTokens;
+      const usable = event.window?.usableInputTokens;
+      const parts = [
+        `status=${event.status}`,
+        typeof used === 'number' ? `used=${used}` : undefined,
+        typeof reserved === 'number' ? `output=${reserved}` : undefined,
+        typeof usable === 'number' ? `usable=${usable}` : undefined,
+        event.totalOmittedTokens > 0
+          ? `omitted=${event.totalOmittedTokens}`
+          : undefined,
+        event.totalTruncatedTokens > 0
+          ? `truncated=${event.totalTruncatedTokens}`
+          : undefined,
+      ].filter(Boolean);
+      return `[prompt] ${parts.join(' ')}`;
+    }
     case 'task_list_updated':
       return `[tasks] ${event.completedCount}/${event.totalCount} complete`;
     case 'evidence_updated':
@@ -340,6 +362,31 @@ export function runEventToActivity(event: RunEvent): ActivityEventPayload | unde
           ? pathDetail
           : `${event.blockCount} block(s) · retrieved ${event.retrievedCandidates} · selected ${event.selectedItems} · dropped ${event.droppedBlocks} · ${event.status}`,
         status: event.status,
+      };
+    }
+    case 'prompt_ready': {
+      const used = event.budget?.totalUsedTokens;
+      const output = event.budget?.outputReservedTokens;
+      const usable = event.window?.usableInputTokens;
+      return {
+        id,
+        at,
+        kind: 'context',
+        title: 'Prompt budget ready',
+        detail: [
+          event.status,
+          typeof used === 'number' ? `${used.toLocaleString()} used` : undefined,
+          typeof output === 'number'
+            ? `${output.toLocaleString()} output reserved`
+            : undefined,
+          typeof usable === 'number'
+            ? `${usable.toLocaleString()} usable`
+            : undefined,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+        status:
+          event.status === 'blocked' ? 'failed' : 'done',
       };
     }
     case 'decision_made':
@@ -1015,7 +1062,13 @@ export async function runAskInOutputChannel(options: {
           options.workspaceId,
         )
       : undefined;
-  const contextBreakdown = buildContextUsageBreakdown({
+  const windowBudgetPolicy = readTokenBudgetPolicyOverrides(cfg);
+  const budgetPreview = deriveLiveTokenBudgetPreview({
+    contextWindowTokens: contextWindow,
+    maximumOutputTokens,
+    policy: windowBudgetPolicy,
+  });
+  let contextBreakdown = buildContextUsageBreakdown({
     prompt: options.prompt,
     conversationText: options.conversationText,
     pinnedContents: pinnedContents || undefined,
@@ -1027,6 +1080,7 @@ export async function runAskInOutputChannel(options: {
     mcpToolsCatalogTokens: mcpCatalogTokens,
     depthHint: options.depth,
     contextWindow,
+    preview: budgetPreview,
   });
   handlers?.onContextBreakdown?.(contextBreakdown);
 
@@ -1161,7 +1215,6 @@ export async function runAskInOutputChannel(options: {
       ? await loadProjectRules({ workspaceRoot })
       : [];
     const runStartedAt = new Date().toISOString();
-    const windowBudgetPolicy = readTokenBudgetPolicyOverrides(cfg);
     const loopPolicyThresholds = readLoopPolicyThresholdOverrides(cfg);
     const effort =
       options.effort === 'low' ||
@@ -1275,6 +1328,14 @@ export async function runAskInOutputChannel(options: {
             if (event.kind === 'content' && event.preview) {
               handlers?.onDelta?.(event.preview);
             }
+          }
+          if (event.type === 'prompt_ready' && event.budget) {
+            contextBreakdown = mergePromptBudgetIntoBreakdown({
+              host: contextBreakdown,
+              budget: event.budget,
+              window: event.window,
+            });
+            handlers?.onContextBreakdown?.(contextBreakdown);
           }
           const line = formatRunEventLine(event);
           if (line) {

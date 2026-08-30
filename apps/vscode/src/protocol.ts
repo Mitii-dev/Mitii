@@ -59,14 +59,45 @@ export interface ContextUsageSlice {
   active: boolean;
 }
 
+/**
+ * Hierarchical window-budget node for the chat token meter.
+ * Parents mirror WindowPolicy / PromptBudget; children are host sources.
+ */
+export interface ContextUsageNode {
+  id: string;
+  label: string;
+  /** Tokens packed or reserved for this node. */
+  usedTokens: number;
+  /** Budget ceiling when known. */
+  allocatedTokens?: number;
+  omittedTokens?: number;
+  truncatedTokens?: number;
+  kind:
+    | 'output'
+    | 'tools'
+    | 'usable'
+    | 'section'
+    | 'source'
+    | 'free';
+  active: boolean;
+  children?: ContextUsageNode[];
+}
+
 export interface ContextUsageBreakdown {
-  /** Estimated tokens by source (chars/4). */
+  /** Flat host-source list (backward compatible). */
   slices: ContextUsageSlice[];
+  /**
+   * Window tree: Output → Tools → Usable → sections → host sources.
+   * Prefer this in the UI when present.
+   */
+  tree?: ContextUsageNode[];
   totalTokens: number;
   contextWindow: number;
-  /** Share of window used by the last prompt composition (0–1). */
+  /** Share of window used by packed input (0–1). */
   fillRatio: number;
   estimated: boolean;
+  /** How the tree was produced. */
+  source?: 'host_estimate' | 'prompt_budget';
   updatedAt?: string;
 }
 
@@ -147,7 +178,7 @@ export interface TokenUsageSnapshot {
   /** Per model-call I/O within the session (live during a run). */
   turns: TokenUsageTurn[];
   live?: boolean;
-  /** Last prompt context breakdown (Conversation, MCP, Prompt, Repomap, …). */
+  /** Last prompt context breakdown (window tree + host sources). */
   contextBreakdown?: ContextUsageBreakdown;
 }
 
