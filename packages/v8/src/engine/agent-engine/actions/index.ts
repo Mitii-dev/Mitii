@@ -52,6 +52,10 @@ export type {
   ResolvedLoopPolicy,
 } from "./resolveLoopPolicyThresholds";
 export { buildExplorationStallNudge } from "./buildExplorationStallNudge";
+export {
+  buildStallContinueRationale,
+  shouldOfferStallContinue,
+} from "./buildStallContinueRationale";
 export { buildPreflightDiagnosticRepairInstruction } from "./buildPreflightDiagnosticRepairInstruction";
 export { buildVerificationRepairPrompt } from "./buildVerificationRepairPrompt";
 export { formatVerificationFailureAnswer, formatVerificationEvidence } from "./formatVerificationNarration";

@@ -15,10 +15,12 @@ export function buildSystemInstructions(params: {
   memory: readonly PromptInstructionBlock[];
   estimator: TokenEstimatorPort;
   budgetTokens: number;
-  planText?: string;
+    planBudgetTokens?: number;
+    planText?: string;
 }): {
   content: string;
   usedTokens: number;
+  planUsedTokens: number;
   truncatedTokens: number;
   omittedTokens: number;
   includedRuleIds: string[];
@@ -30,15 +32,23 @@ export function buildSystemInstructions(params: {
     tokens: number;
   }>;
 } {
-  const core = buildCoreSystemPrompt(params.decision, params.planText);
+  const core = buildCoreSystemPrompt(params.decision);
+  const planGuidance = buildPlanGuidance(params.decision, params.planText);
+  const planUsedTokens = params.estimator.estimate(planGuidance);
   let remaining = Math.max(
     PROMPT_CONSTRUCTION_THRESHOLDS.minimumSystemTokens,
     params.budgetTokens,
   );
 
   const parts: string[] = [core];
+  if (planGuidance.length > 0) {
+    parts.push(planGuidance);
+  }
   let usedTokens = params.estimator.estimate(core);
   remaining -= usedTokens;
+  if (planGuidance.length > 0) {
+    remaining -= planUsedTokens;
+  }
 
   const omitted: Array<{
     section: "rules" | "skills" | "memory";
@@ -98,6 +108,7 @@ export function buildSystemInstructions(params: {
   return {
     content: parts.join("\n\n"),
     usedTokens,
+    planUsedTokens,
     truncatedTokens,
     omittedTokens,
     includedRuleIds,
@@ -109,10 +120,8 @@ export function buildSystemInstructions(params: {
 
 function buildCoreSystemPrompt(
   decision: ExecutionDecision,
-  planText?: string,
 ): string {
   const toolGuidance = buildToolGuidance(decision);
-  const planGuidance = buildPlanGuidance(decision, planText);
 
   return [
     "You are Mitii, a coding agent runtime assistant.",
@@ -131,7 +140,6 @@ function buildCoreSystemPrompt(
     `Plan gate: ${decision.planGate}.`,
     `Run disposition: ${decision.runDisposition}.`,
     buildRouteGuidance(decision),
-    planGuidance,
     toolGuidance,
   ]
     .filter((line) => line.length > 0)

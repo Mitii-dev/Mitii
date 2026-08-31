@@ -121,6 +121,13 @@ describe('contextUsage tree', () => {
             omittedTokens: 0,
             truncatedTokens: 0,
           },
+          {
+            section: 'plan',
+            allocatedTokens: 1_000,
+            usedTokens: 320,
+            omittedTokens: 0,
+            truncatedTokens: 0,
+          },
         ],
       },
       window: {
@@ -129,6 +136,7 @@ describe('contextUsage tree', () => {
         repositoryTokens: 4_000,
         conversationTokens: 6_000,
         planTokens: 1_000,
+        planUsedTokens: 320,
         skillsTokens: 700,
         systemTokens: 2_000,
       },
@@ -152,5 +160,57 @@ describe('contextUsage tree', () => {
 
     const plan = usable!.children!.find((child) => child.id === 'plan');
     expect(plan?.allocatedTokens).toBe(1_000);
+    expect(plan?.usedTokens).toBe(320);
+  });
+
+  it('omits plan allocation when no plan content is used', () => {
+    const host = buildContextUsageBreakdown({
+      prompt: 'hello',
+      contextWindow: 32_000,
+      preview: {
+        toolSchemaTokens: 2_000,
+        usableInputTokens: 25_000,
+        repositoryTokens: 12_000,
+        conversationTokens: 6_000,
+        planTokens: 1_000,
+        skillsTokens: 1_000,
+        systemTokens: 2_000,
+      },
+    });
+
+    const merged = mergePromptBudgetIntoBreakdown({
+      host,
+      budget: {
+        contextWindowTokens: 32_000,
+        outputReservedTokens: 5_000,
+        inputBudgetTokens: 25_000,
+        totalUsedTokens: 800,
+        withinLimits: true,
+        sections: [
+          {
+            section: 'plan',
+            allocatedTokens: 0,
+            usedTokens: 0,
+            omittedTokens: 0,
+            truncatedTokens: 0,
+          },
+        ],
+      },
+      window: {
+        toolSchemaTokens: 2_000,
+        usableInputTokens: 25_000,
+        repositoryTokens: 12_000,
+        conversationTokens: 6_000,
+        planTokens: 0,
+        planUsedTokens: 0,
+        skillsTokens: 1_000,
+        systemTokens: 2_000,
+      },
+    });
+
+    const usable = merged.tree?.find((node) => node.id === 'usable');
+    const plan = usable?.children?.find((child) => child.id === 'plan');
+    expect(plan?.allocatedTokens).toBe(0);
+    expect(plan?.usedTokens).toBe(0);
   });
 });

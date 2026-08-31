@@ -444,7 +444,9 @@ export interface SuspensionPayload {
   kind:
     | 'clarification_required'
     | 'approval_required'
-    | 'plan_approval_required';
+    | 'plan_approval_required'
+    | 'grant_expansion_required'
+    | 'continue_required';
   rationale?: string;
   clarificationPrompt?: string;
   clarificationOptions?: ClarificationOptionView[];
@@ -459,6 +461,12 @@ export interface SuspensionPayload {
     proposedText?: string;
     arguments?: unknown;
   };
+  grantExpansion?: {
+    expansionId: string;
+    extraPaths: string[];
+    currentPathScopes?: string[];
+  };
+  continuePrompt?: string;
 }
 
 export interface RunUsagePayload {

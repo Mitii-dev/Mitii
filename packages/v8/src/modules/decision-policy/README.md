@@ -45,7 +45,8 @@ decision-policy/
 - Soft workspace symptoms (stuck loading / hang with server or localhost) route to `diagnose` in Agent mode — never tool-less `direct_answer`.
 - Injection scanning never broadens authority.
 - `narrow()` may reduce write scope or tighten approval/budgets after discovery; it cannot add authority. Workspace-wide read (`pathScopes: ["."]`) is preserved so config files stay readable.
-- `widen()` may add path/mutation scopes after `path_out_of_scope` or compiler errors; it cannot add tools, effects, or write authority that was not already granted.
+- `widen()` may add path/mutation scopes after `path_out_of_scope` or compiler errors; it cannot add tools, effects, or write authority that was not already granted. Agent Engine auto-widens only when `approvalMode` is `never`; otherwise it suspends for host approval.
+- Large greenfield / full-package feature work (`large_implementation_visible_plan`) is treated like architecture-scale planning when the window can afford a visible plan.
 - `narrow()` returns the previous decision when the grant is unchanged.
   Callers MUST emit `grant_narrowed` only when `toolGrantsEquivalent` is false.
 - Mutation profiles are `relaxed`, `standard`, and `tight`. When `windowPolicy` is present, each numeric cap is `min(profile, window)` and `requireBatchedExecution` is OR'd.

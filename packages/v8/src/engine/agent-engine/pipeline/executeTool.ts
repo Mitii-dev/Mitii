@@ -119,6 +119,10 @@ export function truncateForLogField(value: string, maxChars: number): string {
   return `${compact.slice(0, Math.max(0, maxChars - 1))}…`;
 }
 
+export type GrantRefreshOutcome =
+  | { kind: "ok" }
+  | { kind: "expansion_required"; extraPaths: string[] };
+
 export async function refreshAuthorityAfterTools(
   runtime: AgentEngineRuntime,
   params: {
@@ -144,7 +148,7 @@ export async function refreshAuthorityAfterTools(
   projects?: readonly ProjectDescriptor[];
   route: ExecutionDecision["route"];
   windowPolicy: WindowPolicy;
-}): Promise<void> {
+}): Promise<GrantRefreshOutcome> {
   const discoveredPaths = [
     ...new Set([
       ...(params.dirtyPaths ?? []),
@@ -191,6 +195,9 @@ export async function refreshAuthorityAfterTools(
       extraPaths,
     });
     if (!toolGrantsEquivalent(previous.toolGrant, widened.toolGrant)) {
+      if (previous.toolGrant.approvalMode !== "never") {
+        return { kind: "expansion_required", extraPaths };
+      }
       params.decisionRef.set(widened);
       params.reasonCodes.push("grant_expanded");
       runtime.emit(params.bus, {
@@ -217,7 +224,7 @@ export async function refreshAuthorityAfterTools(
     !params.mode ||
     discoveredPaths.length === 0
   ) {
-    return;
+    return { kind: "ok" };
   }
 
   const evidence = mapUnderstandingToSkillEvidence(params.understanding, {
@@ -239,7 +246,7 @@ export async function refreshAuthorityAfterTools(
     nextIds.length !== previousIds.length ||
     nextIds.some((id, index) => id !== previousIds[index]);
   if (!changed || skillsResult.instructions.length === 0) {
-    return;
+    return { kind: "ok" };
   }
 
   params.selectedSkillIdsRef.set(nextIds);
@@ -275,6 +282,7 @@ export async function refreshAuthorityAfterTools(
       .slice(0, 20),
     at: runtime.isoNow(),
   });
+  return { kind: "ok" };
 }
 
 export async function executeOneTool(

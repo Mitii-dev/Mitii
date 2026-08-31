@@ -96,6 +96,8 @@ export const DECISION_REASON_CODES = [
   "simple_localized_no_visible_plan",
   "multi_file_internal_plan",
   "architecture_visible_plan",
+  /** Greenfield / full-package implementation treated as architecture-scale work. */
+  "large_implementation_visible_plan",
   /** Package/multi-file repair execute gets a visible plan + live checklist seed. */
   "broad_repair_visible_plan",
   /** Prompt/engine should prefer analyze_change_impact before shared-surface mutations. */

@@ -40,6 +40,26 @@ export type ToolLoopOutcome =
       /** Authority as of the end of the loop — may have been refreshed mid-run. */
       decision: ExecutionDecision;
     }
+  | {
+      kind: "grant_expansion_required";
+      messages: ModelMessage[];
+      toolCache: ToolCallCache;
+      extraPaths: string[];
+      changedFiles: string[];
+      mutationCheckpointIds: string[];
+      answer?: string;
+      decision: ExecutionDecision;
+    }
+  | {
+      kind: "continue_required";
+      messages: ModelMessage[];
+      toolCache: ToolCallCache;
+      rationale: string;
+      changedFiles: string[];
+      mutationCheckpointIds: string[];
+      answer: string;
+      decision: ExecutionDecision;
+    }
   | { kind: "cancelled" }
   | {
       kind: "budget_exhausted";

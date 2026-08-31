@@ -33,6 +33,8 @@ export const AGENT_SUSPENSION_KINDS = [
   "clarification_required",
   "approval_required",
   "plan_approval_required",
+  "grant_expansion_required",
+  "continue_required",
 ] as const;
 
 export const AGENT_ACTIVE_STAGES = [
@@ -56,6 +58,9 @@ export const AGENT_REASON_CODES = [
   "decision_complete",
   "grant_narrowed",
   "grant_expanded",
+  "grant_expansion_suspended",
+  "grant_expansion_approved",
+  "grant_expansion_denied",
   "clarification_suspended",
   "plan_drafted",
   "plan_skipped",
@@ -103,6 +108,8 @@ export const AGENT_REASON_CODES = [
   "memory_skipped",
   "exploration_reread_heavy",
   "exploration_stall_broken",
+  "stall_continue_suspended",
+  "stall_continue_approved",
   "tool_result_deduped",
   "established_facts_reinjected",
   "completed_task_results_stubbed",

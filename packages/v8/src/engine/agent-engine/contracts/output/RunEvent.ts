@@ -276,6 +276,7 @@ export const runEventSchema = z.discriminatedUnion("type", [
           repositoryTokens: z.number().int().nonnegative(),
           conversationTokens: z.number().int().nonnegative(),
           planTokens: z.number().int().nonnegative(),
+          planUsedTokens: z.number().int().nonnegative().optional(),
           skillsTokens: z.number().int().nonnegative(),
           systemTokens: z.number().int().nonnegative(),
         })

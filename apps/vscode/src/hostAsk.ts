@@ -672,6 +672,22 @@ export function resultToSuspension(
       planText: result.answer,
     };
   }
+  if (suspension.kind === 'grant_expansion_required' && suspension.grantExpansion) {
+    return {
+      runId: result.runId,
+      kind: 'grant_expansion_required',
+      rationale: suspension.rationale,
+      grantExpansion: suspension.grantExpansion,
+    };
+  }
+  if (suspension.kind === 'continue_required') {
+    return {
+      runId: result.runId,
+      kind: 'continue_required',
+      rationale: suspension.rationale,
+      continuePrompt: suspension.continuePrompt ?? suspension.rationale,
+    };
+  }
   return undefined;
 }
 
@@ -754,6 +770,56 @@ async function resolveSuspensionNative(
       runId: result.runId,
       planDecision: {
         decision: choice.label === 'Approve plan' ? 'approved' : 'rejected',
+      },
+    };
+  }
+
+  if (suspension.kind === 'grant_expansion_required' && suspension.grantExpansion) {
+    const pathPreview = suspension.grantExpansion.extraPaths.slice(0, 5).join(', ');
+    const choice = await vs.window.showQuickPick(
+      [
+        {
+          label: 'Expand access',
+          description: pathPreview || 'Additional workspace paths',
+        },
+        { label: 'Deny expansion', description: 'Keep current grant' },
+      ],
+      {
+        title: 'Mitii workspace access expansion',
+        placeHolder: suspension.rationale,
+        ignoreFocusOut: true,
+      },
+    );
+    if (!choice) return 'stop';
+    return {
+      schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+      runId: result.runId,
+      grantExpansion: {
+        expansionId: suspension.grantExpansion.expansionId,
+        decision: choice.label === 'Expand access' ? 'approved' : 'denied',
+      },
+    };
+  }
+
+  if (suspension.kind === 'continue_required') {
+    const choice = await vs.window.showQuickPick(
+      [
+        { label: 'Continue', description: 'Keep working on remaining tasks' },
+        { label: 'Stop here', description: 'Finish with partial progress' },
+      ],
+      {
+        title: 'Mitii continue required',
+        placeHolder:
+          suspension.continuePrompt ?? suspension.rationale ?? 'Continue this run?',
+        ignoreFocusOut: true,
+      },
+    );
+    if (!choice) return 'stop';
+    return {
+      schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+      runId: result.runId,
+      continueDecision: {
+        decision: choice.label === 'Continue' ? 'continue' : 'stop',
       },
     };
   }
@@ -862,7 +928,7 @@ export function resolveApprovalPolicy(preset: string | undefined): {
       return { approvalMode: 'every_mutation', planApproval: 'policy' };
     case 'builder':
     case 'guided':
-      return { approvalMode: 'never', planApproval: 'policy' };
+      return { approvalMode: 'when_required', planApproval: 'policy' };
     case 'pilot':
       return { approvalMode: 'never', planApproval: 'never' };
     default:

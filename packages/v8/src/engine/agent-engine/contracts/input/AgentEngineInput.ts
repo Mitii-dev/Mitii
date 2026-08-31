@@ -185,6 +185,19 @@ export const agentEngineResumeInputSchema = z
       })
       .strict()
       .optional(),
+    grantExpansion: z
+      .object({
+        expansionId: z.string().min(1),
+        decision: z.enum(["approved", "denied"]),
+      })
+      .strict()
+      .optional(),
+    continueDecision: z
+      .object({
+        decision: z.enum(["continue", "stop"]),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -192,12 +205,14 @@ export const agentEngineResumeInputSchema = z
       value.approval,
       value.clarificationAnswer,
       value.planDecision,
+      value.grantExpansion,
+      value.continueDecision,
     ].filter((item) => item !== undefined);
     if (provided.length === 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message:
-          "Resume requires approval, clarificationAnswer, or planDecision.",
+          "Resume requires approval, clarificationAnswer, planDecision, grantExpansion, or continueDecision.",
       });
     }
     if (

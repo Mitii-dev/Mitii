@@ -134,7 +134,9 @@ export function createAutomationRunExecutor(
           const kind = result.suspension?.kind;
           if (
             kind === 'approval_required' ||
-            kind === 'plan_approval_required'
+            kind === 'plan_approval_required' ||
+            kind === 'grant_expansion_required' ||
+            kind === 'continue_required'
           ) {
             const resume = buildAutoApproveResume(result);
             if (!resume) {
@@ -169,6 +171,7 @@ function buildAutoApproveResume(result: {
   suspension?: {
     kind: string;
     approval?: { approvalId: string };
+    grantExpansion?: { expansionId: string };
   };
 }): MitiiResumeInput | undefined {
   const suspension = result.suspension;
@@ -192,6 +195,28 @@ function buildAutoApproveResume(result: {
       schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
       runId: result.runId,
       planDecision: { decision: 'approved' },
+      approvalMode: 'never',
+    };
+  }
+  if (
+    suspension.kind === 'grant_expansion_required' &&
+    suspension.grantExpansion?.expansionId
+  ) {
+    return {
+      schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+      runId: result.runId,
+      grantExpansion: {
+        expansionId: suspension.grantExpansion.expansionId,
+        decision: 'approved',
+      },
+      approvalMode: 'never',
+    };
+  }
+  if (suspension.kind === 'continue_required') {
+    return {
+      schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+      runId: result.runId,
+      continueDecision: { decision: 'continue' },
       approvalMode: 'never',
     };
   }

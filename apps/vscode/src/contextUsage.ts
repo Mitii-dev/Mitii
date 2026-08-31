@@ -43,6 +43,7 @@ export interface PromptReadyWindow {
   repositoryTokens: number;
   conversationTokens: number;
   planTokens: number;
+  planUsedTokens?: number;
   skillsTokens: number;
   systemTokens: number;
 }
@@ -462,6 +463,14 @@ export function mergePromptBudgetIntoBreakdown(params: {
     budget.inputBudgetTokens ??
     Math.max(0, contextWindow - outputReserved - toolSchemaTokens);
 
+  const planSection = sectionUsed(sections, 'plan');
+  const planUsed =
+    window?.planUsedTokens ?? planSection?.usedTokens ?? 0;
+  const planAllocated =
+    planUsed > 0
+      ? window?.planTokens ?? planSection?.allocatedTokens ?? 0
+      : 0;
+
   const tree = buildWindowTree({
     slices: host.slices,
     contextWindow,
@@ -472,13 +481,13 @@ export function mergePromptBudgetIntoBreakdown(params: {
       window?.repositoryTokens ?? repositorySection?.allocatedTokens ?? 0,
     conversationAllocated:
       window?.conversationTokens ?? conversationSection?.allocatedTokens ?? 0,
-    planAllocated: window?.planTokens ?? 0,
+    planAllocated,
     skillsAllocated: window?.skillsTokens ?? skillsSection?.allocatedTokens ?? 0,
     systemAllocated:
       window?.systemTokens ?? sumAllocated(sections, systemIds),
     repositoryUsed: repositorySection?.usedTokens ?? 0,
     conversationUsed: conversationSection?.usedTokens ?? 0,
-    planUsed: 0,
+    planUsed,
     skillsUsed: skillsSection?.usedTokens ?? 0,
     systemUsed: sumUsed(sections, systemIds),
     toolsUsed: toolsSection?.usedTokens ?? 0,

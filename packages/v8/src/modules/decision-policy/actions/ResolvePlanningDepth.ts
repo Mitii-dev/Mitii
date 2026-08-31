@@ -51,8 +51,15 @@ export function resolvePlanningDepth(params: {
     return { planningDepth: "visible", reasonCodes };
   }
 
-  if (isArchitectureScale(taskAnalysis, primary, message)) {
-    reasonCodes.push("architecture_visible_plan");
+  if (
+    isArchitectureScale(taskAnalysis, primary, message) ||
+    isLargeImplementationScale(taskAnalysis, primary, message)
+  ) {
+    if (isArchitectureScale(taskAnalysis, primary, message)) {
+      reasonCodes.push("architecture_visible_plan");
+    } else {
+      reasonCodes.push("large_implementation_visible_plan");
+    }
     if (
       mode === "agent" &&
       route === "execute" &&
@@ -124,6 +131,45 @@ function isSimpleLocalized(
     taskAnalysis.risk === "low" || taskAnalysis.risk === "medium";
 
   return lowComplexity && localized && lowRisk && taskAnalysis.risk !== "critical";
+}
+
+/**
+ * Large greenfield or full-package implementation that should not run as a
+ * silent internal multi-file execute (e.g. "implement the entire package").
+ */
+function isLargeImplementationScale(
+  taskAnalysis: RequestUnderstandingResult["taskAnalysis"],
+  primary: string,
+  message: string,
+): boolean {
+  if (primary !== "feature" && primary !== "refactor") {
+    return false;
+  }
+  const packageScale =
+    taskAnalysis.scope === "package" ||
+    taskAnalysis.scope === "repository" ||
+    taskAnalysis.scope === "workspace";
+  if (!packageScale) {
+    return false;
+  }
+  const estimatedMax = taskAnalysis.estimatedFilesAffected?.maximum;
+  const largeByEstimate =
+    estimatedMax !== undefined && estimatedMax >= 6;
+  const largeByComplexity =
+    taskAnalysis.complexity === "complex" ||
+    taskAnalysis.complexity === "very_complex";
+  const largeByMessage =
+    /\b(entire|whole|full)\s+(package|module|library|builder|framework)\b/i.test(
+      message,
+    ) ||
+    /\bimplement\s+(the\s+)?(entire|whole|full)\b/i.test(message) ||
+    /\b(greenfield|from\s+scratch|like\s+\w+)\b/i.test(message);
+  return (
+    largeByEstimate ||
+    (largeByComplexity && packageScale) ||
+    (largeByMessage && packageScale) ||
+    (taskAnalysis.recommendsPlanning && packageScale && largeByComplexity)
+  );
 }
 
 function isArchitectureScale(

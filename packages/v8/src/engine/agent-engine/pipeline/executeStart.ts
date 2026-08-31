@@ -1221,6 +1221,7 @@ export async function executeStart(
       temperature: input.temperature,
       stream: input.stream,
       outputReserveTokens: windowPolicy.maximumOutputTokens,
+      planBudgetTokens: planText ? windowPolicy.sections.planTokens : 0,
     });
 
     if (promptResult.status === "blocked") {
@@ -1247,6 +1248,10 @@ export async function executeStart(
       input.logVerbosity,
       "standard",
     );
+    const planSection = promptResult.budget.sections.find(
+      (section) => section.section === "plan",
+    );
+    const planUsedTokens = planSection?.usedTokens ?? 0;
     runtime.emit(bus, {
       type: "prompt_ready",
       runId,
@@ -1272,7 +1277,9 @@ export async function executeStart(
         usableInputTokens: windowPolicy.usableInputTokens,
         repositoryTokens: windowPolicy.sections.repositoryTokens,
         conversationTokens: windowPolicy.sections.conversationTokens,
-        planTokens: windowPolicy.sections.planTokens,
+        planTokens:
+          planUsedTokens > 0 ? windowPolicy.sections.planTokens : 0,
+        planUsedTokens,
         skillsTokens: windowPolicy.sections.skillsTokens,
         systemTokens: windowPolicy.sections.systemTokens,
       },
