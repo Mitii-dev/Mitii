@@ -31,7 +31,7 @@ export function createCapabilities(
   };
 }
 
-function createUnderstanding(
+export function createUnderstanding(
   overrides: {
     primaryTaskIntent?: RequestUnderstandingResult["intent"]["classification"]["primaryTaskIntent"];
     interactionIntent?: RequestUnderstandingResult["intent"]["classification"]["interactionIntent"];

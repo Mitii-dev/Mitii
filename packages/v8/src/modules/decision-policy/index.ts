@@ -24,6 +24,7 @@ export {
   DEFAULT_VERIFICATION_COMMAND_PREFIXES,
   DEFAULT_AGENT_READONLY_COMMAND_PREFIXES,
   extractNetworkHosts,
+  isExplicitWebSearchAsk,
   planRoute,
   compileGrant,
   toolGrantsEquivalent,

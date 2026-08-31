@@ -330,6 +330,20 @@ function normalizeScopePath(value: string): string {
   return value.replace(/\\/g, "/").replace(/^\.?\//, "").replace(/\/+$/, "") || ".";
 }
 
+/** True when the user message explicitly asks for a web/internet search. */
+export function isExplicitWebSearchAsk(
+  message: string,
+  primaryTaskIntent?: RequestUnderstandingResult["intent"]["classification"]["primaryTaskIntent"],
+): boolean {
+  const intent = primaryTaskIntent ?? "question";
+  return (
+    (intent === "docs" || intent === "question") &&
+    /\b(search\s+(?:the\s+)?(?:web|internet|docs?|documentation)|look\s+up|google)\b/i.test(
+      message,
+    )
+  );
+}
+
 function parentDirectoryScope(filePath: string): string {
   const normalized = normalizeScopePath(filePath);
   const slash = normalized.lastIndexOf("/");
@@ -367,11 +381,7 @@ function resolveNetworkAuthority(params: {
   const hosts = extractNetworkHosts(params.message ?? "");
   // Docs/question intent alone is not enough — require concrete hosts or an
   // explicit search ask. Hosts must also allow webSearch for search tools.
-  const wantsSearch =
-    (intent === "docs" || intent === "question") &&
-    /\b(search\s+(?:the\s+)?(?:web|internet|docs?|documentation)|look\s+up|google)\b/i.test(
-      params.message ?? "",
-    );
+  const wantsSearch = isExplicitWebSearchAsk(params.message ?? "", intent);
 
   if (hosts.length === 0 && !wantsSearch) {
     return {

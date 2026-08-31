@@ -89,6 +89,9 @@ importers:
 
   apps/vscode:
     dependencies:
+      '@mitii/automation':
+        specifier: workspace:*
+        version: link:../../packages/automation
       '@mitii/host':
         specifier: workspace:*
         version: link:../../packages/host

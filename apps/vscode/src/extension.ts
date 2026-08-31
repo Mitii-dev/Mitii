@@ -140,6 +140,35 @@ export function activate(context: ExtensionContext): void {
     void vscode.window.showInformationMessage('Mitii API key cleared.');
   };
 
+  const setSearchApiKey = async (): Promise<void> => {
+    const key = await vscode.window.showInputBox({
+      prompt:
+        'Brave Search API key (stored in SecretStorage as mitii.search.apiKey)',
+      password: true,
+      ignoreFocusOut: true,
+      placeHolder: 'BSA…',
+    });
+    if (key === undefined) return;
+    const trimmed = key.trim();
+    if (!trimmed) {
+      void vscode.window.showWarningMessage('Web search API key not set (empty).');
+      return;
+    }
+    await context.secrets.store('mitii.search.apiKey', trimmed);
+    invalidateClient();
+    channel.appendLine('[mitii] SecretStorage mitii.search.apiKey updated');
+    void vscode.window.showInformationMessage(
+      'Mitii web search key saved. Explicit “search the web” asks will grant web_search.',
+    );
+  };
+
+  const clearSearchApiKey = async (): Promise<void> => {
+    await context.secrets.delete('mitii.search.apiKey');
+    invalidateClient();
+    channel.appendLine('[mitii] SecretStorage mitii.search.apiKey cleared');
+    void vscode.window.showInformationMessage('Mitii web search API key cleared.');
+  };
+
   let sidebar: MitiiSidebarProvider;
 
   const inlineDiff = new InlineDiffManager(
@@ -611,6 +640,8 @@ export function activate(context: ExtensionContext): void {
     }),
     vscode.commands.registerCommand('mitii.setApiKey', setApiKey),
     vscode.commands.registerCommand('mitii.clearApiKey', clearApiKey),
+    vscode.commands.registerCommand('mitii.setSearchApiKey', setSearchApiKey),
+    vscode.commands.registerCommand('mitii.clearSearchApiKey', clearSearchApiKey),
     vscode.commands.registerCommand('mitii.showSettings', async () => {
       await vscode.commands.executeCommand('mitii.sidebar.focus');
       sidebar.post({ type: 'openSettings', tab: 'model' });

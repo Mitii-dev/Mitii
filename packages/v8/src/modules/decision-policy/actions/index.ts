@@ -22,7 +22,7 @@ export type { RoutePlanResult } from "./RoutePlanner";
 export { compileGrant } from "./GrantCompiler";
 export type { CompiledGrantResult } from "./GrantCompiler";
 
-export { buildToolGrant, extractNetworkHosts } from "./BuildToolGrant";
+export { buildToolGrant, extractNetworkHosts, isExplicitWebSearchAsk } from "./BuildToolGrant";
 export type { ToolGrantResolution } from "./BuildToolGrant";
 
 export {

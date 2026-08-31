@@ -42,6 +42,16 @@ Required setup. Connection and credentials are at the top so you do not scroll p
 
 Anthropic and Gemini require a key. Echo and local OpenAI-compatible hosts usually do not.
 
+### Web search (optional)
+
+Explicit asks like “search the web for …” grant the `web_search` tool only when a Brave Search API key is configured.
+
+| UI field | Storage | Save / reflect |
+|---|---|---|
+| Set web search key / Clear | SecretStorage `mitii.search.apiKey` | Command palette: **Mitii: Set Web Search API Key**. Alternatively set `BRAVE_API_KEY` or `MITII_SEARCH_API_KEY` in the environment before launching VS Code. |
+
+Without a key, Mitii completes the turn from model knowledge and logs a warning that SearchPort is not configured.
+
 ### Token limits
 
 The context window is the only token setting a customer needs. Retrieval, compaction, mutation batches, verification checks, and the derived model-call cap scale from that window. Developer → Token budget is optional.

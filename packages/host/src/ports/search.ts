@@ -18,17 +18,37 @@ interface WebSearchResult {
   truncated: boolean;
 }
 
+export interface CreateSearchPortOptions {
+  /** Overrides env vars when hosts store keys in SecretStorage. */
+  apiKey?: string;
+  env?: NodeJS.ProcessEnv;
+}
+
+function resolveSearchApiKey(
+  env: NodeJS.ProcessEnv,
+  override?: string,
+): string | undefined {
+  return (
+    override?.trim() ||
+    env.MITII_SEARCH_API_KEY?.trim() ||
+    env.BRAVE_API_KEY?.trim() ||
+    undefined
+  );
+}
+
 /**
  * Optional Brave Search adapter. Returns undefined when no API key is set so
  * hosts can omit SearchPort and Decision/Engine hide `web_search`.
  */
 export function createOptionalSearchPort(
-  env: NodeJS.ProcessEnv = process.env,
+  envOrOptions: NodeJS.ProcessEnv | CreateSearchPortOptions = process.env,
 ): SearchPort | undefined {
-  const apiKey =
-    env.MITII_SEARCH_API_KEY?.trim() ||
-    env.BRAVE_API_KEY?.trim() ||
-    undefined;
+  const options: CreateSearchPortOptions =
+    envOrOptions && typeof envOrOptions === "object" && "env" in envOrOptions
+      ? envOrOptions
+      : { env: envOrOptions as NodeJS.ProcessEnv };
+  const env = options.env ?? process.env;
+  const apiKey = resolveSearchApiKey(env, options.apiKey);
   if (!apiKey) {
     return undefined;
   }

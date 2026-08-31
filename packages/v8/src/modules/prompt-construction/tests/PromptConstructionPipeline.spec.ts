@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { DecisionPolicyPipeline } from "../../decision-policy";
 import {
   PromptConstructionError,
   PromptConstructionPipeline,
@@ -11,6 +12,7 @@ import {
   createCapabilities,
   createDecision,
   createPromptInput,
+  createUnderstanding,
 } from "./fixtures/promptCases";
 
 describe("PromptConstructionPipeline", () => {
@@ -410,5 +412,47 @@ describe("PromptConstructionPipeline", () => {
     expect(userContent).toContain(ask);
     expect(userContent).toContain("…[truncated for context budget]");
     expect(userContent.length).toBeLessThan(userMessage.length);
+  });
+
+  it("instructs the model to call web_search when it is granted", () => {
+    const decision = new DecisionPolicyPipeline().decide({
+      schemaVersion: 1,
+      envelope: {
+        schemaVersion: 1,
+        requestId: "req_web_search",
+        sessionId: "sess_web_search",
+        mode: "ask",
+        origin: "user",
+        message: "Search the web for Next.js 15 error boundaries",
+        referencedArtifacts: [],
+        createdAt: "2026-07-25T12:00:00.000Z",
+      },
+      understanding: createUnderstanding({
+        primaryTaskIntent: "docs",
+        interactionIntent: "question",
+        taskAnalysis: {
+          recommendsRepositoryDiscovery: false,
+          recommendsPlanning: false,
+          recommendsVerification: false,
+        },
+      }),
+      repositoryState: {
+        reference: { workspaceId: "ws_1", stateToken: "st_web_search" },
+        readiness: "ready",
+      },
+      hostCapabilities: { webSearch: true },
+    });
+
+    const result = new PromptConstructionPipeline().construct(
+      createPromptInput({
+        decision,
+        userMessage: "Search the web for Next.js 15 error boundaries",
+        tools: SAMPLE_TOOLS,
+      }),
+    );
+
+    const system = result.request.messages[0]?.content ?? "";
+    expect(decision.toolGrant.allowedTools).toContain("web_search");
+    expect(system).toContain("call web_search first");
   });
 });

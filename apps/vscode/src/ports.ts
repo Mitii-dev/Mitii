@@ -219,7 +219,15 @@ export async function createVscodeClient(
   const fileSystem = workspaceRoot
     ? new NodeWorkspaceFileSystemAdapter()
     : undefined;
-  const search = createOptionalSearchPort(process.env);
+  const searchEnv = process.env;
+  const searchApiKey =
+    (await secrets.get('mitii.search.apiKey'))?.trim() ||
+    searchEnv.MITII_SEARCH_API_KEY?.trim() ||
+    searchEnv.BRAVE_API_KEY?.trim() ||
+    undefined;
+  const search = searchApiKey
+    ? createOptionalSearchPort({ env: searchEnv, apiKey: searchApiKey })
+    : createOptionalSearchPort(searchEnv);
   const git = workspaceRoot ? new NodeGitAdapter() : undefined;
   const codeNavigation = workspaceRoot
     ? createHostCodeNavigationPort({

@@ -3,6 +3,7 @@ import type {
 } from "../../../modules/decision-policy";
 import {
   DECISION_POLICY_SCHEMA_VERSION,
+  isExplicitWebSearchAsk,
   toolGrantsEquivalent,
 } from "../../../modules/decision-policy";
 import type {
@@ -471,6 +472,27 @@ export async function executeStart(
       at: runtime.isoNow(),
     });
     runtime.emitStage(bus, runId, "decided", "completed", ["decision_complete"]);
+
+    const userMessage = extractPrimaryUserMessage(envelope.message);
+    const hasSearchPort = runtime.deps.tools?.hasSearchPort?.() === true;
+    if (
+      isExplicitWebSearchAsk(
+        userMessage,
+        understanding.intent.classification.primaryTaskIntent,
+      ) &&
+      !hasSearchPort &&
+      !decision.toolGrant.allowedTools.includes("web_search")
+    ) {
+      const searchWarning =
+        "Web search was requested but no SearchPort is configured. Set BRAVE_API_KEY or MITII_SEARCH_API_KEY (VS Code: Mitii: Set Web Search API Key) to enable web_search.";
+      warnings.push(searchWarning);
+      runtime.emit(bus, {
+        type: "warning",
+        runId,
+        message: searchWarning,
+        at: runtime.isoNow(),
+      });
+    }
 
     if (signal.aborted) {
       return await cancelledResult();
