@@ -491,6 +491,11 @@ export const createGithubIssueInputSchema = z
     body: z.string().min(1).max(65_536),
     labels: z.array(z.string().min(1).max(64)).max(20).optional(),
     assignees: z.array(z.string().min(1).max(64)).max(10).optional(),
+    /**
+     * When set, search open issues for `[mitii:<fingerprint>]` and comment
+     * instead of creating a duplicate (idempotent triage).
+     */
+    fingerprint: z.string().min(4).max(64).optional(),
   })
   .strict();
 
@@ -512,6 +517,9 @@ export const githubMutationOutputSchema = z
     stderr: z.string(),
     truncated: z.boolean(),
     url: z.string().optional(),
+    /** True when a new issue/PR was created; false when an existing issue was updated. */
+    created: z.boolean().optional(),
+    issueNumber: z.number().int().positive().optional(),
   })
   .strict();
 

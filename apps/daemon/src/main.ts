@@ -21,6 +21,7 @@ function parseArgs(argv: string[]): {
   pollIntervalMs: number;
   webhookPort?: number;
   webhookToken?: string;
+  githubWebhookSecret?: string;
 } {
   let cwd = process.cwd();
   let dbPath: string | undefined;
@@ -28,6 +29,7 @@ function parseArgs(argv: string[]): {
   let pollIntervalMs = 5_000;
   let webhookPort: number | undefined;
   let webhookToken: string | undefined;
+  let githubWebhookSecret: string | undefined;
   for (let i = 2; i < argv.length; i += 1) {
     const arg = argv[i]!;
     if (arg === '--cwd') {
@@ -54,6 +56,10 @@ function parseArgs(argv: string[]): {
       webhookToken = argv[++i];
       continue;
     }
+    if (arg === '--github-webhook-secret') {
+      githubWebhookSecret = argv[++i];
+      continue;
+    }
     if (arg === '--help' || arg === '-h') {
       process.stdout.write(`mitii-daemon — automation serve loop
 
@@ -62,6 +68,7 @@ function parseArgs(argv: string[]): {
   --poll-ms <n>         Materialize/claim poll interval (default 5000)
   --webhook-port <n>    HTTP event ingress
   --webhook-token <t>   Optional bearer for ingress
+  --github-webhook-secret <s>  GitHub HMAC secret (or MITII_GITHUB_WEBHOOK_SECRET)
   --echo                Force echo LLM (smoke)
 
 DB default: ${resolveAutomationDbPath()}
@@ -69,7 +76,16 @@ DB default: ${resolveAutomationDbPath()}
       process.exit(0);
     }
   }
-  return { cwd, dbPath, forceEcho, pollIntervalMs, webhookPort, webhookToken };
+  return {
+    cwd,
+    dbPath,
+    forceEcho,
+    pollIntervalMs,
+    webhookPort,
+    webhookToken,
+    githubWebhookSecret:
+      githubWebhookSecret ?? process.env.MITII_GITHUB_WEBHOOK_SECRET,
+  };
 }
 
 const opts = parseArgs(process.argv);
@@ -109,6 +125,7 @@ if (opts.webhookPort) {
   const url = await service.startWebhook({
     port: opts.webhookPort,
     token: opts.webhookToken,
+    githubWebhookSecret: opts.githubWebhookSecret,
     workspaceRoot: opts.cwd,
   });
   process.stderr.write(`[mitii-daemon] webhook ${url}\n`);

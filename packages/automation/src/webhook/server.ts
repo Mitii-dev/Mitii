@@ -8,6 +8,7 @@ import {
 import { EventIngress } from '../events/ingress.js';
 import { normalizeGitHubWebhook } from '../events/github.js';
 import type { AutomationEventEnvelope } from '../events/types.js';
+import { verifyGitHubWebhookSignature } from '../security/githubWebhook.js';
 import type { AutomationService } from '../service.js';
 
 export interface AutomationWebhookServerOptions {
@@ -16,6 +17,11 @@ export interface AutomationWebhookServerOptions {
   port: number;
   /** Shared secret for `Authorization: Bearer …` or `X-Mitii-Token`. */
   token?: string;
+  /**
+   * GitHub webhook secret for `X-Hub-Signature-256` on `/hooks/github`.
+   * When set, unsigned or invalid signatures are rejected (401).
+   */
+  githubWebhookSecret?: string;
   workspaceRoot?: string;
 }
 
@@ -25,7 +31,7 @@ export interface AutomationWebhookServer {
 }
 
 /**
- * Minimal ingress HTTP surface for Phase 2.
+ * Minimal ingress HTTP surface for Phase 2+.
  * Kept inside @mitii/automation (no sdk) so apps/daemon and CLI can share it.
  */
 export async function startAutomationWebhookServer(
@@ -38,6 +44,7 @@ export async function startAutomationWebhookServer(
     void handleRequest(req, res, {
       ingress,
       token: options.token,
+      githubWebhookSecret: options.githubWebhookSecret,
       workspaceRoot: options.workspaceRoot,
     });
   });
@@ -62,6 +69,7 @@ async function handleRequest(
   ctx: {
     ingress: EventIngress;
     token?: string;
+    githubWebhookSecret?: string;
     workspaceRoot?: string;
   },
 ): Promise<void> {
@@ -72,26 +80,32 @@ async function handleRequest(
       return;
     }
 
-    if (ctx.token && !authorize(req, ctx.token)) {
-      json(res, 401, { error: 'unauthorized' });
-      return;
-    }
-
-    if (req.method === 'POST' && url.pathname === '/events') {
-      const body = await readJson(req);
-      const result = ctx.ingress.ingestEvent(body as AutomationEventEnvelope);
-      json(res, 202, {
-        eventId: result.event.eventId,
-        duplicate: result.duplicate,
-        status: result.event.processingStatus,
-        queued: result.queuedRuns.map((r) => r.runId),
-        suppressions: result.suppressions,
-      });
-      return;
-    }
-
     if (req.method === 'POST' && url.pathname === '/hooks/github') {
-      const body = await readJson(req);
+      const raw = await readRaw(req);
+      if (ctx.githubWebhookSecret) {
+        const sig = headerValue(req.headers, 'x-hub-signature-256');
+        if (
+          !verifyGitHubWebhookSignature({
+            rawBody: raw,
+            signatureHeader: sig,
+            secret: ctx.githubWebhookSecret,
+          })
+        ) {
+          json(res, 401, { error: 'invalid_github_signature' });
+          return;
+        }
+      } else if (ctx.token && !authorize(req, ctx.token)) {
+        json(res, 401, { error: 'unauthorized' });
+        return;
+      }
+
+      let body: unknown;
+      try {
+        body = raw.length ? JSON.parse(raw.toString('utf8')) : {};
+      } catch {
+        json(res, 400, { error: 'invalid_json' });
+        return;
+      }
       const envelope = normalizeGitHubWebhook({
         headers: req.headers as Record<string, string | string[] | undefined>,
         body,
@@ -105,6 +119,24 @@ async function handleRequest(
       json(res, 202, {
         eventId: result.event.eventId,
         eventType: result.event.eventType,
+        duplicate: result.duplicate,
+        status: result.event.processingStatus,
+        queued: result.queuedRuns.map((r) => r.runId),
+        suppressions: result.suppressions,
+      });
+      return;
+    }
+
+    if (ctx.token && !authorize(req, ctx.token)) {
+      json(res, 401, { error: 'unauthorized' });
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/events') {
+      const body = await readJson(req);
+      const result = ctx.ingress.ingestEvent(body as AutomationEventEnvelope);
+      json(res, 202, {
+        eventId: result.event.eventId,
         duplicate: result.duplicate,
         status: result.event.processingStatus,
         queued: result.queuedRuns.map((r) => r.runId),
@@ -129,6 +161,19 @@ function authorize(req: IncomingMessage, token: string): boolean {
   return false;
 }
 
+function headerValue(
+  headers: IncomingMessage['headers'],
+  name: string,
+): string | undefined {
+  const lower = name.toLowerCase();
+  for (const [key, value] of Object.entries(headers)) {
+    if (key.toLowerCase() !== lower) continue;
+    if (Array.isArray(value)) return value[0];
+    return value;
+  }
+  return undefined;
+}
+
 function json(
   res: ServerResponse,
   status: number,
@@ -142,14 +187,18 @@ function json(
   res.end(payload);
 }
 
-async function readJson(req: IncomingMessage): Promise<unknown> {
+async function readRaw(req: IncomingMessage): Promise<Buffer> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   }
-  const raw = Buffer.concat(chunks).toString('utf8');
-  if (!raw.trim()) return {};
-  return JSON.parse(raw) as unknown;
+  return Buffer.concat(chunks);
+}
+
+async function readJson(req: IncomingMessage): Promise<unknown> {
+  const raw = await readRaw(req);
+  if (!raw.length) return {};
+  return JSON.parse(raw.toString('utf8')) as unknown;
 }
 
 function closeServer(server: Server): Promise<void> {

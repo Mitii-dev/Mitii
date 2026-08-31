@@ -17,7 +17,7 @@ export const createGithubIssueTool: RegisteredTool = {
     backend: "local",
     status: "available",
     description:
-      "Create a GitHub issue via `gh issue create` (argv-only). Use for automation triage tickets.",
+      "Create or update a GitHub issue via `gh`. Pass fingerprint to upsert (comment on existing `[mitii:<fingerprint>]` issue instead of duplicating).",
     inputSchema: createGithubIssueInputSchema,
     outputSchema: githubMutationOutputSchema,
     modelInputSchema: {
@@ -25,6 +25,11 @@ export const createGithubIssueTool: RegisteredTool = {
       properties: {
         title: { type: "string" },
         body: { type: "string" },
+        fingerprint: {
+          type: "string",
+          description:
+            "Stable incident fingerprint; enables idempotent create-or-comment.",
+        },
         labels: { type: "array", items: { type: "string" } },
         assignees: { type: "array", items: { type: "string" } },
       },

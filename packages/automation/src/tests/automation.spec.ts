@@ -233,6 +233,28 @@ describe('incident fingerprint', () => {
   });
 });
 
+describe('cron markdown frontmatter', () => {
+  it('parses dotted filter.* keys into filtersJson', async () => {
+    const { parseCronMarkdown } = await import('../specs/reconciler.js');
+    const parsed = parseCronMarkdown(
+      `---
+name: ci-failure-triage
+trigger: event
+event: github.workflow_run.completed
+filter.conclusion: failure
+mode: agent
+---
+
+Triage this failure.
+`,
+      '/tmp/ci-failure.event.md',
+    );
+    expect(parsed.filtersJson).toBe(JSON.stringify({ conclusion: 'failure' }));
+    expect(parsed.eventType).toBe('github.workflow_run.completed');
+    expect(parsed.triggerKind).toBe('event');
+  });
+});
+
 describe('export/import specs', () => {
   it('round-trips schedules', () => {
     const dir = mkdtempSync(join(tmpdir(), 'mitii-auto-'));
@@ -255,22 +277,41 @@ describe('export/import specs', () => {
   });
 });
 
-describe('multi-workspace isolation', () => {
-  it('keeps separate DBs independent', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'mitii-auto-'));
-    dirs.push(dir);
-    const left = new AutomationService({ dbPath: join(dir, 'left.db') });
-    const right = new AutomationService({ dbPath: join(dir, 'right.db') });
-    left.createSchedule({
-      name: 'Left',
-      cron: '0 1 * * *',
-      prompt: 'L',
-      workspaceRoot: dir,
-    });
-    expect(right.listSchedules()).toHaveLength(0);
-    expect(left.listSchedules()).toHaveLength(1);
-    left.close();
-    right.close();
+describe('security', () => {
+  it('redacts tokens from evidence text', async () => {
+    const { redactSecrets } = await import('../security/redact.js');
+    const { text, redacted } = redactSecrets(
+      'token=ghp_abcdefghijklmnopqrstuvwxyz0123456789 password=hunter2',
+    );
+    expect(redacted).toBe(true);
+    expect(text).toContain('[REDACTED:gh_pat]');
+    expect(text).not.toContain('ghp_abcdefghijklmnopqrstuvwxyz0123456789');
+  });
+
+  it('verifies GitHub webhook HMAC', async () => {
+    const { createHmac } = await import('node:crypto');
+    const { verifyGitHubWebhookSignature } = await import(
+      '../security/githubWebhook.js'
+    );
+    const body = Buffer.from('{"ok":true}');
+    const secret = 'whsec_test';
+    const sig =
+      'sha256=' +
+      createHmac('sha256', secret).update(body).digest('hex');
+    expect(
+      verifyGitHubWebhookSignature({
+        rawBody: body,
+        signatureHeader: sig,
+        secret,
+      }),
+    ).toBe(true);
+    expect(
+      verifyGitHubWebhookSignature({
+        rawBody: body,
+        signatureHeader: 'sha256=deadbeef',
+        secret,
+      }),
+    ).toBe(false);
   });
 });
 

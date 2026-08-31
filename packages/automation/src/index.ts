@@ -104,6 +104,9 @@ export {
 } from './incident/evidence.js';
 export { prepareIncidentEvidence } from './incident/prepare.js';
 
+export { redactSecrets } from './security/redact.js';
+export { verifyGitHubWebhookSignature } from './security/githubWebhook.js';
+
 export { startAutomationWebhookServer } from './webhook/server.js';
 export type {
   AutomationWebhookServer,

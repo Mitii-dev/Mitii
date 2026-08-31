@@ -30,14 +30,24 @@ import {
 } from '../config/providerPresets.js';
 import { createHostCodeNavigationPort } from '../code-navigation/createHostCodeNavigationPort.js';
 import { createHostRepositoryGraphPort } from '../repository-graph/loadWorkspaceGraphs.js';
+import { createHostRepositoryContext } from '../repository-context/createHostRepositoryContext.js';
+import { buildWorkspaceSnapshot } from '../indexing/fingerprintSnapshot.js';
 import { createOptionalSearchPort } from '../ports/search.js';
 import { createFileSystemSkillsCatalog } from '../ports/skillsCatalog.js';
 import { createWorkspaceCheckpointStore } from '../ports/checkpoints.js';
 import { createWorkspaceVerificationStore } from '../ports/verificationRecords.js';
+import type { OpenHostSqliteDatabase } from '../sqlite/types.js';
+
+const AUTOMATION_WORKSPACE_ID = 'automation_workspace';
 
 export interface CreateAutomationRunExecutorOptions {
   forceEcho?: boolean;
   env?: NodeJS.ProcessEnv;
+  /**
+   * Hosts inject SQLite open (better-sqlite3 / Electron). When omitted,
+   * repository context still works via file-map fallback after a fingerprint publish.
+   */
+  openDatabase?: OpenHostSqliteDatabase;
 }
 
 /**
@@ -50,10 +60,11 @@ export function createAutomationRunExecutor(
   const env = options.env ?? process.env;
   return {
     async execute(input: AutomationExecuteInput): Promise<AutomationExecuteResult> {
-      const client = createAutomationClient({
+      const client = await createAutomationClient({
         cwd: input.workspaceRoot,
         forceEcho: options.forceEcho,
         env,
+        openDatabase: options.openDatabase,
       });
 
       const approvalMode =
@@ -187,11 +198,12 @@ function buildAutoApproveResume(result: {
   return undefined;
 }
 
-function createAutomationClient(options: {
+async function createAutomationClient(options: {
   cwd: string;
   forceEcho?: boolean;
   env: NodeJS.ProcessEnv;
-}): MitiiClient {
+  openDatabase?: OpenHostSqliteDatabase;
+}): Promise<MitiiClient> {
   const env = options.env;
   const type =
     (env.MITII_PROVIDER && isHostProviderType(env.MITII_PROVIDER)
@@ -243,14 +255,39 @@ function createAutomationClient(options: {
     store: new InMemoryRepositoryStateStore(),
   });
 
+  // Pinable fingerprint so agent routes that require repository context can run
+  // (file-map fallback) without a full semantic index.
+  const snapshot = await buildWorkspaceSnapshot({
+    workspaceRoot: options.cwd,
+    workspaceId: AUTOMATION_WORKSPACE_ID,
+    maxFiles: 500,
+  });
+  await repositoryState.publish(snapshot.candidate);
+
+  const openDatabase =
+    options.openDatabase ??
+    ((() => {
+      throw new Error(
+        'SQLite openDatabase not configured for automation executor',
+      );
+    }) as OpenHostSqliteDatabase);
+
+  const repositoryContext = createHostRepositoryContext({
+    repositoryState,
+    workspaceRoot: options.cwd,
+    openDatabase,
+    git,
+  });
+
   return createMitiiClient({
     understandingLlm: ports.understandingLlm,
     runLlm: ports.runLlm,
     workspaceRoot: options.cwd,
     defaultMode: 'agent',
     defaultSessionId: 'automation_session',
-    workspaceId: 'automation_workspace',
+    workspaceId: AUTOMATION_WORKSPACE_ID,
     repositoryState,
+    repositoryContext,
     enableInMemoryCheckpoints: false,
     checkpointStore: createWorkspaceCheckpointStore(options.cwd),
     tools,

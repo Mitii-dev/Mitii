@@ -12,7 +12,11 @@ autonomyPreset: apply
 enabled: true
 ---
 
-Triage this CI workflow failure. Read the trigger event payload, identify the
-failing job, pull relevant logs if available, open or update a GitHub issue
-with a fingerprint-stable title, and propose a focused fix. Prefer
-`create_github_issue` over free-form `gh` commands. Do not push to main.
+Triage this CI workflow failure.
+
+1. Use the Suggested ticket fingerprint from the trigger context when present.
+2. Read the payload / evidence pack; identify the failing job.
+3. Open or update a GitHub issue with `create_github_issue` and that `fingerprint`
+   (idempotent: comments on an existing `[mitii:<fingerprint>]` issue).
+4. If a fix is verified, put it on a feature branch and optionally
+   `create_pull_request` as a draft. Never push to main.

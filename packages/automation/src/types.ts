@@ -152,4 +152,6 @@ export interface AutomationServeOptions {
   webhookPort?: number;
   webhookHost?: string;
   webhookToken?: string;
+  /** GitHub X-Hub-Signature-256 secret for /hooks/github. */
+  githubWebhookSecret?: string;
 }

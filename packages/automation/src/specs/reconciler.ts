@@ -176,7 +176,7 @@ function splitFrontmatter(raw: string): {
   const body = trimmed.slice(end + 4).replace(/^\r?\n/, '');
   const frontmatter: Record<string, string> = {};
   for (const line of fmBlock.split(/\r?\n/)) {
-    const match = /^([A-Za-z][\w-]*)\s*:\s*(.*)$/.exec(line.trim());
+    const match = /^([A-Za-z][\w.-]*)\s*:\s*(.*)$/.exec(line.trim());
     if (!match) continue;
     let value = match[2]!.trim();
     if (

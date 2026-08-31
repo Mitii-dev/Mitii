@@ -3,6 +3,8 @@
 Control plane for unattended Mitii runs: origin/autonomy (Phase 0), local
 schedules + claim runner (Phase 1), and event ingress / GitHub (Phase 2).
 
+**Design & test new scenarios:** [DESIGN_AND_TESTING.md](./DESIGN_AND_TESTING.md)
+
 ## Phase 0 — worker + CI wrappers
 
 Use GitHub Actions or system cron calling the CLI when you do not need a local
@@ -84,10 +86,14 @@ Composite action:
 See `.github/workflows/mitii-post-commit-cover.yml` and
 `docs/automation/agents/post-commit-cover.md`.
 
+**Ship guide:** [SHIP.md](./SHIP.md) · smoke: `docs/automation/smoke/example1-post-commit.sh`
+
 ## Example 2 — CI failure → ticket
 
 See `.github/workflows/mitii-ci-failure-triage.yml` and
 `docs/automation/agents/incident-from-logs.md`.
+
+**Ship guide:** [SHIP.md](./SHIP.md) · smoke: `docs/automation/smoke/example2-ci-failure.sh`
 
 ## Phase 1 — schedules + daemon (landed)
 

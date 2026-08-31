@@ -3,6 +3,8 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 
+import { redactSecrets } from '../security/redact.js';
+
 /**
  * Phase 4 — pull CI logs and build an evidence pack directory for triage.
  */
@@ -44,7 +46,7 @@ export function pullGithubActionsLogs(
       error: String(result.stderr || result.error?.message || 'gh run view failed'),
     };
   }
-  writeFileSync(logPath, result.stdout ?? '', 'utf8');
+  writeFileSync(logPath, redactSecrets(result.stdout ?? '').text, 'utf8');
   return { ok: true, logPath };
 }
 
@@ -72,9 +74,17 @@ export function writeEvidencePack(
 ): EvidencePackResult {
   mkdirSync(input.outDir, { recursive: true });
   if (input.eventJson) {
-    writeFileSync(join(input.outDir, 'event.json'), input.eventJson, 'utf8');
+    writeFileSync(
+      join(input.outDir, 'event.json'),
+      redactSecrets(input.eventJson).text,
+      'utf8',
+    );
   }
-  writeFileSync(join(input.outDir, 'summary.md'), input.summary, 'utf8');
+  writeFileSync(
+    join(input.outDir, 'summary.md'),
+    redactSecrets(input.summary).text,
+    'utf8',
+  );
   const files = ['summary.md'];
   if (input.eventJson) files.push('event.json');
   for (const log of input.logPaths ?? []) {
@@ -134,6 +144,7 @@ export function formatIncidentIssueBody(input: {
   eventType?: string;
   runUrl?: string;
 }): string {
+  const summary = redactSecrets(input.summary).text;
   return `## Mitii incident triage
 
 **Fingerprint:** \`${input.fingerprint}\`
@@ -142,7 +153,7 @@ ${input.runUrl ? `**Run:** ${input.runUrl}` : ''}
 
 ### Summary
 
-${input.summary}
+${summary}
 
 ${input.evidenceDir ? `### Evidence\n\nLocal pack: \`${input.evidenceDir}\`` : ''}
 

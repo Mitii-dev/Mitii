@@ -338,6 +338,7 @@ export class AutomationService {
         port: serve.webhookPort,
         host: serve.webhookHost,
         token: serve.webhookToken,
+        githubWebhookSecret: serve.githubWebhookSecret,
         workspaceRoot: serve.workspaceRoot,
       }).then((server) => {
         this.webhook = server;
@@ -349,6 +350,7 @@ export class AutomationService {
     port: number;
     host?: string;
     token?: string;
+    githubWebhookSecret?: string;
     workspaceRoot?: string;
   }): Promise<string> {
     if (this.webhook) return this.webhook.url;
@@ -357,6 +359,7 @@ export class AutomationService {
       port: options.port,
       host: options.host,
       token: options.token,
+      githubWebhookSecret: options.githubWebhookSecret,
       workspaceRoot: options.workspaceRoot,
     });
     return this.webhook.url;

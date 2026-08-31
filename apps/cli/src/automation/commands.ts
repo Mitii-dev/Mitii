@@ -7,6 +7,7 @@ import {
   createAutomationRunExecutor,
   createCompositeDeliverySender,
 } from '@mitii/host';
+import Database from 'better-sqlite3';
 
 import type { SessionIo } from '../session.js';
 
@@ -39,6 +40,10 @@ export function openAutomationService(options: {
       ? {
           executor: createAutomationRunExecutor({
             forceEcho: options.forceEcho,
+            openDatabase: ((
+              filename: string,
+              openOptions?: { readonly?: boolean; fileMustExist?: boolean },
+            ) => new Database(filename, openOptions)) as never,
           }),
           deliverySender: createCompositeDeliverySender({}),
         }
@@ -278,9 +283,11 @@ export async function runServeCommand(options: {
     --db <path>           Override automation DB path
     --webhook-port <n>    HTTP ingress (POST /events, /hooks/github)
     --webhook-token <t>   Optional bearer / X-Mitii-Token
+    --github-webhook-secret <s>  X-Hub-Signature-256 secret (or env)
 
   Env:
-    MITII_AUTOMATION_DB   SQLite path (default ~/.mitii/automation/automation.db)
+    MITII_AUTOMATION_DB           SQLite path (default ~/.mitii/automation/automation.db)
+    MITII_GITHUB_WEBHOOK_SECRET   GitHub webhook HMAC secret
 `);
     return 0;
   }
@@ -289,6 +296,9 @@ export async function runServeCommand(options: {
   const dbOverride = takeFlagValue(args, '--db');
   const webhookPort = takeFlagValue(args, '--webhook-port');
   const webhookToken = takeFlagValue(args, '--webhook-token');
+  const githubWebhookSecret =
+    takeFlagValue(args, '--github-webhook-secret') ??
+    process.env.MITII_GITHUB_WEBHOOK_SECRET;
   const forceEcho = options.forceEcho === true || args.includes('--echo');
 
   const service = openAutomationService({
@@ -329,6 +339,7 @@ export async function runServeCommand(options: {
     const url = await service.startWebhook({
       port: Number(webhookPort),
       token: webhookToken,
+      githubWebhookSecret,
       workspaceRoot: cwd,
     });
     io.writeStderr(`[mitii serve] webhook ${url}\n`);
