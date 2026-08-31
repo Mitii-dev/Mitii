@@ -1022,6 +1022,41 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.toolGrant.maximumWorkspaceEffect).toBe("none");
   });
 
+  it("suppresses clarify for automation origin and continues best-effort", () => {
+    const base = createInput({
+      mode: "agent",
+      message: "fix it",
+      understanding: createUnderstanding({
+        primaryTaskIntent: "bugfix",
+        interactionIntent: "act",
+        confidence: 0.6,
+        confidenceMargin: 0.05,
+        needsClarification: true,
+        recommendsClarification: true,
+        alternatives: [
+          { intent: "diagnose", confidence: 0.55 },
+          { intent: "bugfix", confidence: 0.5 },
+        ],
+        ambiguityQuestion:
+          "Should I investigate the loading hang, or apply a fix?",
+        taskAnalysis: {
+          clarity: "unclear",
+          recommendsTaskClarification: true,
+          scope: "unknown",
+        },
+      }),
+    });
+    const decision = new DecisionPolicyPipeline().decide({
+      ...base,
+      envelope: { ...base.envelope, origin: "automation" },
+    });
+
+    expect(decision.route).not.toBe("clarify");
+    expect(decision.runDisposition).toBe("continue");
+    expect(decision.reasonCodes).toContain("automation_origin");
+    expect(decision.reasonCodes).toContain("automation_clarify_suppressed");
+  });
+
   it("diagnoses agent loading/server symptoms instead of tool-less direct_answer", () => {
     const decision = new DecisionPolicyPipeline().decide(
       createInput({

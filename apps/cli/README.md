@@ -64,6 +64,9 @@ mitii export-session "Summarize this repo" --out session.json --echo
 | `status` | Show latest persisted repository state |
 | `export-session` | Run ask and write secret-free JSON export |
 | `connect` | Bridge Mitii into Telegram, Discord, or Slack |
+| `schedule` | CRUD / trigger / history for automation schedules |
+| `serve` | Long-lived automation daemon (+ optional webhook ingress) |
+| `events` | Ingest / list automation events (GitHub webhooks, etc.) |
 | `version` / `help` | Version and usage (`-v` / `--version`, `-h` / `--help`) |
 
 ## Connect (channel bridges)
@@ -356,6 +359,10 @@ Set with `--mode <mode>` or `defaultMode` in config.
 | `--approve` / `--deny` | Non-interactive approval resume |
 | `--out <file>` | Session export path (`export-session`) |
 | `--mode <mode>` | `ask` \| `plan` \| `agent` |
+| `--origin <o>` | `user` \| `automation` \| `api` (unattended policy) |
+| `--autonomy <a>` | `readonly` \| `propose` \| `apply` \| `apply_and_pr` |
+| `--agent <id\|path>` | Load `.mitii/agents/<id>.md` or a markdown path |
+| `--prompt-file <path>` | Prompt from file (`-` = stdin) |
 | `--loop-policy-json <json>` | Lab: one-off threshold overrides for this run |
 | `--no-loop-policy` | Ignore config `loopPolicy` for this run |
 
@@ -487,9 +494,13 @@ Cursor Cloud Agents are a separate agent API, not an LLM endpoint. Point `openai
 
 ## Out of scope
 
-Daemon and board UIs are not part of this CLI. Channel bridges are Telegram, Discord,
-and Slack via `mitii connect`. GitHub work uses the repo + tools/`gh`, not a `connect`
-adapter (see **Connect** above).
+Daemon and board UIs are not part of this CLI yet (Phase 1+). Channel bridges are
+Telegram, Discord, and Slack via `mitii connect`. GitHub work uses the repo +
+tools/`gh`, not a `connect` adapter (see **Connect** above).
+
+**Phase 0 CI automation** works today: `--origin` / `--autonomy` / `--agent` /
+`--prompt-file` plus the workflows under `.github/workflows/mitii-*.yml`. See
+[docs/automation/README.md](../../docs/automation/README.md).
 
 ## Development (monorepo)
 

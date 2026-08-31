@@ -788,6 +788,20 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         });
         return;
       }
+      case 'requestAutomations':
+      case 'automation.trigger':
+      case 'automation.pause':
+      case 'automation.resume': {
+        const { handleAutomationHostMessage } = await import(
+          './automationHost.js'
+        );
+        handleAutomationHostMessage({
+          message,
+          post: (msg) => this.post(msg),
+          workspaceRoot: this.getWorkspaceRoot(),
+        });
+        return;
+      }
       case 'pickContextPath': {
         const picked = await this.vs.window.showOpenDialog({
           canSelectMany: true,

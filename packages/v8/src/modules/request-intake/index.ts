@@ -22,5 +22,10 @@ export {
   createUserRequestInputSchema,
 } from "./contracts";
 
+export {
+  USER_REQUEST_ORIGINS,
+  REQUEST_ENVELOPE_DEFAULTS,
+} from "./request-envelope/constants";
+
 export { RequestIntakePipeline } from "./pipeline/RequestIntakePipeline";
 export type { RequestIntakePipelineDependencies } from "./pipeline/RequestIntakePipeline";

@@ -8,7 +8,7 @@ export type AgentUiDepth = 'auto' | 'quick' | 'deep';
 export type AgentUiEffort = 'low' | 'medium' | 'high';
 /** Clubbed customer control → maps to depth + effort unless intensity overrides. */
 export type AgentUiThoroughness = 'low' | 'medium' | 'high';
-export type UiNav = 'chat' | 'history' | 'settings' | 'skills';
+export type UiNav = 'chat' | 'history' | 'settings' | 'skills' | 'automations';
 export type SettingsTab =
   | 'workspace'
   | 'model'
@@ -586,6 +586,25 @@ export interface SkillCatalogItem {
   enabled: boolean;
 }
 
+export interface AutomationSpecView {
+  specId: string;
+  title: string;
+  enabled: boolean;
+  triggerKind: string;
+  scheduleExpr?: string | null;
+  eventType?: string | null;
+  nextRunAt?: string | null;
+  autonomyPreset?: string | null;
+}
+
+export interface AutomationRunView {
+  runId: string;
+  specId: string;
+  status: string;
+  createdAt: string;
+  error?: string | null;
+}
+
 export interface WorkspaceNoticeView {
   isTrusted: boolean;
   notice: string | null;
@@ -644,6 +663,10 @@ export type WebviewToHostMessage =
       requestId: string;
       query?: string;
     }
+  | { type: 'requestAutomations'; requestId: string }
+  | { type: 'automation.trigger'; specId: string }
+  | { type: 'automation.pause'; specId: string }
+  | { type: 'automation.resume'; specId: string }
   | { type: 'pickContextPath' }
   | { type: 'copyLastResponse' }
   | { type: 'approveAllPending' }
@@ -798,6 +821,13 @@ export type HostToWebviewMessage =
       type: 'skillCatalogResult';
       requestId: string;
       items: SkillCatalogItem[];
+      error?: string;
+    }
+  | {
+      type: 'automationsResult';
+      requestId: string;
+      specs: AutomationSpecView[];
+      runs: AutomationRunView[];
       error?: string;
     }
   | { type: 'onboarding'; required: boolean };

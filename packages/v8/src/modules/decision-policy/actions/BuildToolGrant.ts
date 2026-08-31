@@ -4,6 +4,7 @@ import type { WindowPolicy } from "../../window-budget";
 import {
   MUTATION_TASK_INTENTS,
   MUTATION_TOOL_IDS,
+  GITHUB_MUTATION_TOOL_IDS,
   PROCESS_TOOL_IDS,
   READ_ONLY_TOOL_IDS,
 } from "../constants";
@@ -171,6 +172,7 @@ export function buildToolGrant(params: {
       allowedTools: [
         ...readOnlyTools,
         ...MUTATION_TOOL_IDS,
+        ...GITHUB_MUTATION_TOOL_IDS,
         ...processExecution.allowedTools,
         ...network.allowedTools,
       ],
@@ -178,6 +180,8 @@ export function buildToolGrant(params: {
         "workspace_read",
         "workspace_write",
         "process_execute",
+        "external_write",
+        "git_write",
         ...network.allowedEffects,
       ],
       pathScopes,

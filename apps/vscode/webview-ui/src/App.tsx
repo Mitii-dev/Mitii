@@ -9,6 +9,7 @@ import {
 } from 'react';
 
 import { onHostMessage, postToHost } from './bridge';
+import { AutomationsPanel } from './components/AutomationsPanel';
 import { ContextPanel, type ContextPin } from './components/ContextPanel';
 import { ErrorBanner } from './components/ErrorBanner';
 import { HistoryPanel } from './components/HistoryPanel';
@@ -18,6 +19,7 @@ import {
   IconCopy,
   IconHistory,
   IconCheck,
+  IconLayers,
   IconModel,
   IconPlus,
   IconSend,
@@ -50,6 +52,8 @@ import type {
   AgentUiEffort,
   AgentUiMode,
   AgentUiThoroughness,
+  AutomationRunView,
+  AutomationSpecView,
   ChatThreadSummary,
   CheckpointItemView,
   ContextToggles,
@@ -852,6 +856,12 @@ export function App() {
 
   const [review, setReview] = useState<ReviewDiffView | null>(null);
   const [skillItems, setSkillItems] = useState<SkillCatalogItem[]>([]);
+  const [automationSpecs, setAutomationSpecs] = useState<AutomationSpecView[]>(
+    [],
+  );
+  const [automationRuns, setAutomationRuns] = useState<AutomationRunView[]>([]);
+  const [automationLoading, setAutomationLoading] = useState(false);
+  const [automationError, setAutomationError] = useState<string | null>(null);
   const [skillError, setSkillError] = useState<string | null>(null);
   const [skillLoading, setSkillLoading] = useState(false);
 
@@ -1347,6 +1357,12 @@ export function App() {
           setSkillItems(msg.items);
           setSkillError(msg.error ?? null);
           setSkillLoading(false);
+          break;
+        case 'automationsResult':
+          setAutomationSpecs(msg.specs);
+          setAutomationRuns(msg.runs);
+          setAutomationError(msg.error ?? null);
+          setAutomationLoading(false);
           break;
         case 'onboarding':
           setOnboardingRequired(msg.required);
@@ -1857,10 +1873,20 @@ export function App() {
     postToHost({ type: 'requestSkillCatalog', requestId: uid('skill') });
   };
 
+  const requestAutomations = () => {
+    setAutomationLoading(true);
+    postToHost({ type: 'requestAutomations', requestId: uid('auto') });
+  };
+
   useEffect(() => {
     if (nav === 'skills' && skillManagement) requestSkills();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nav, skillManagement]);
+
+  useEffect(() => {
+    if (nav === 'automations') requestAutomations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nav]);
 
   const followingPlan = mode === 'plan' && Boolean(plan?.steps.length);
 
@@ -1943,6 +1969,13 @@ export function App() {
                 <IconSkills />
               </IconButton>
             ) : null}
+            <IconButton
+              label="Automations"
+              active={nav === 'automations'}
+              onClick={() => navigate('automations')}
+            >
+              <IconLayers />
+            </IconButton>
           </nav>
           <IndexingStatusBar
             index={index}
@@ -2363,6 +2396,16 @@ export function App() {
           items={skillItems}
           error={skillError}
           loading={skillLoading}
+        />
+      ) : null}
+
+      {nav === 'automations' ? (
+        <AutomationsPanel
+          specs={automationSpecs}
+          runs={automationRuns}
+          loading={automationLoading}
+          error={automationError}
+          onRefresh={requestAutomations}
         />
       ) : null}
     </div>

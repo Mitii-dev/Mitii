@@ -1,3 +1,4 @@
+import type { UserRequestOrigin } from "../../request-intake";
 import type { RequestUnderstandingResult } from "../../request-understanding";
 import type { WindowPolicy } from "../../window-budget";
 
@@ -19,6 +20,10 @@ export interface RoutePlanResult {
   reasonCodes: DecisionReasonCode[];
 }
 
+function isUnattendedOrigin(origin: UserRequestOrigin | undefined): boolean {
+  return origin === "automation" || origin === "api";
+}
+
 /**
  * RoutePlanner: mode + understanding + message → route / plan depth / plan gate.
  * Does not authorize tools.
@@ -29,12 +34,30 @@ export function planRoute(params: {
   message: string;
   planApproval?: "policy" | "never";
   windowPolicy?: WindowPolicy;
+  /** When automation/api, suppress interactive clarify and continue best-effort. */
+  origin?: UserRequestOrigin;
 }): RoutePlanResult {
-  const routeResult = resolveRoute({
+  const unattended = isUnattendedOrigin(params.origin);
+  let routeResult = resolveRoute({
     mode: params.mode,
     understanding: params.understanding,
     message: params.message,
   });
+  const originReasonCodes: DecisionReasonCode[] = [];
+  if (params.origin === "automation") {
+    originReasonCodes.push("automation_origin");
+  } else if (params.origin === "api") {
+    originReasonCodes.push("api_origin");
+  }
+  if (unattended && routeResult.route === "clarify") {
+    routeResult = resolveRoute({
+      mode: params.mode,
+      understanding: params.understanding,
+      message: params.message,
+      suppressClarification: true,
+    });
+    originReasonCodes.push("automation_clarify_suppressed");
+  }
   const depthResult = resolvePlanningDepth({
     mode: params.mode,
     route: routeResult.route,
@@ -71,6 +94,7 @@ export function planRoute(params: {
     planningDepth: depthResult.planningDepth,
     planGate: planGateResult.planGate,
     reasonCodes: [
+      ...originReasonCodes,
       ...routeResult.reasonCodes,
       ...depthResult.reasonCodes,
       ...planGateResult.reasonCodes,

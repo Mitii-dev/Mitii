@@ -9,15 +9,20 @@ export {
   mitiiResumeInputSchema,
   mitiiConversationMessageSchema,
   toAgentEngineStartInput,
+  MITII_AUTONOMY_PRESETS,
+  mitiiAutonomyPresetSchema,
+  resolveAutonomyPreset,
 } from './contracts';
 export type {
   MitiiStartInput,
   MitiiResumeInput,
   MitiiStartDefaults,
   MitiiConversationMessage,
+  MitiiAutonomyPreset,
   AgentMode,
   AgentRunBudget,
   RepositoryStateReference,
+  UserRequestOrigin,
 } from './contracts';
 
 export {

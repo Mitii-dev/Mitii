@@ -239,3 +239,12 @@ export type {
   TestProviderConnectionInput,
   ListProviderModelsInput,
 } from './config/testProviderConnection.js';
+
+// ---------------------------------------------------------------------------
+// Automation (Phase 1) — SDK executor for @mitii/automation ClaimRunner
+// ---------------------------------------------------------------------------
+export { createAutomationRunExecutor } from './automation/createAutomationRunExecutor.js';
+export type { CreateAutomationRunExecutorOptions } from './automation/createAutomationRunExecutor.js';
+export { createCompositeDeliverySender } from './automation/delivery/createCompositeDeliverySender.js';
+export type { CreateCompositeDeliverySenderOptions } from './automation/delivery/createCompositeDeliverySender.js';
+export { formatDeliveryMessage } from './automation/delivery/formatMessage.js';

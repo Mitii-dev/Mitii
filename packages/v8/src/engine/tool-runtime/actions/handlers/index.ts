@@ -11,6 +11,7 @@ import { fetchDocsTool } from "./fetchDocsTool";
 import { fetchUrlTool } from "./fetchUrlTool";
 import { fileMetadataTool } from "./fileMetadataTool";
 import { findReferencesTool } from "./findReferencesTool";
+import { createGithubIssueTool, createPullRequestTool } from "./githubMutationTools";
 import { globFilesTool } from "./globFilesTool";
 import { gotoDefinitionTool } from "./gotoDefinitionTool";
 import { listDirectoryTool } from "./listDirectoryTool";
@@ -51,6 +52,8 @@ export const BUILTIN_TOOLS: readonly RegisteredTool[] = [
   deleteDirectoryTool,
   moveFileTool,
   runCommandTool,
+  createGithubIssueTool,
+  createPullRequestTool,
   fetchUrlTool,
   fetchDocsTool,
   webSearchTool,
@@ -74,7 +77,9 @@ export function listBuiltinReadOnlyModelToolDefinitions(): RuntimeModelToolDefin
       tool.name !== "delete_file" &&
       tool.name !== "delete_directory" &&
       tool.name !== "move_file" &&
-      tool.name !== "run_command",
+      tool.name !== "run_command" &&
+      tool.name !== "create_github_issue" &&
+      tool.name !== "create_pull_request",
   );
 }
 
@@ -103,6 +108,8 @@ export {
   deleteDirectoryTool,
   moveFileTool,
   runCommandTool,
+  createGithubIssueTool,
+  createPullRequestTool,
   fetchUrlTool,
   fetchDocsTool,
   webSearchTool,

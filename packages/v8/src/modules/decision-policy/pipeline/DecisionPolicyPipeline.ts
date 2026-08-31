@@ -49,6 +49,7 @@ export class DecisionPolicyPipeline {
       message,
       planApproval: parsed.planApproval,
       windowPolicy: parsed.windowPolicy,
+      origin: parsed.envelope.origin,
     });
     const grantCompiled = compileGrant({
       mode,

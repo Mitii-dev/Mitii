@@ -485,6 +485,36 @@ export const runCommandOutputSchema = z
   })
   .strict();
 
+export const createGithubIssueInputSchema = z
+  .object({
+    title: z.string().min(1).max(256),
+    body: z.string().min(1).max(65_536),
+    labels: z.array(z.string().min(1).max(64)).max(20).optional(),
+    assignees: z.array(z.string().min(1).max(64)).max(10).optional(),
+  })
+  .strict();
+
+export const createPullRequestInputSchema = z
+  .object({
+    title: z.string().min(1).max(256),
+    body: z.string().min(1).max(65_536),
+    head: z.string().min(1).max(256),
+    base: z.string().min(1).max(256).default("main"),
+    draft: z.boolean().optional(),
+  })
+  .strict();
+
+export const githubMutationOutputSchema = z
+  .object({
+    argv: z.array(z.string()),
+    exitCode: z.number().nullable(),
+    stdout: z.string(),
+    stderr: z.string(),
+    truncated: z.boolean(),
+    url: z.string().optional(),
+  })
+  .strict();
+
 export const globFilesInputSchema = z
   .object({
     pattern: z.string().min(1).max(512),

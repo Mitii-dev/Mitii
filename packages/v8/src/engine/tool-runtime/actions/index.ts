@@ -14,6 +14,10 @@ export { executeReadGitStatus } from "./ExecuteReadGitStatus";
 export { executeAnalyzeChangeImpact } from "./ExecuteAnalyzeChangeImpact";
 export { executeRunReadonlyCommand } from "./ExecuteRunReadonlyCommand";
 export { executeRunCommand } from "./ExecuteRunCommand";
+export {
+  executeCreateGithubIssue,
+  executeCreatePullRequest,
+} from "./ExecuteGithubMutation";
 export { executeFetchUrl } from "./ExecuteFetchUrl";
 export { executeWebSearch } from "./ExecuteWebSearch";
 export { executeReadPackageScripts } from "./ExecuteReadPackageScripts";

@@ -1,0 +1,114 @@
+name: Mitii Run
+description: Run Mitii headless agent for CI automation (Phase 0)
+inputs:
+  prompt:
+    description: Prompt text (optional if prompt-file or agent is set)
+    required: false
+    default: ""
+  prompt-file:
+    description: Path to prompt file inside the workspace
+    required: false
+    default: ""
+  agent:
+    description: Agent id under .mitii/agents/ or path to an agent markdown file
+    required: false
+    default: ""
+  mode:
+    description: ask | plan | agent (overridden by autonomy / agent frontmatter)
+    required: false
+    default: ""
+  origin:
+    description: user | automation | api
+    required: false
+    default: automation
+  autonomy:
+    description: readonly | propose | apply | apply_and_pr
+    required: false
+    default: apply
+  cwd:
+    description: Workspace directory
+    required: false
+    default: "."
+  mitii-version:
+    description: npm version or dist-tag for @mitii/cli
+    required: false
+    default: latest
+  extra-args:
+    description: Extra CLI args (space-separated)
+    required: false
+    default: ""
+outputs:
+  exit-code:
+    description: Mitii process exit code
+    value: ${{ steps.run.outputs.exit-code }}
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "20"
+
+    - name: Install Mitii CLI
+      shell: bash
+      run: npm install -g "@mitii/cli@${{ inputs.mitii-version }}"
+
+    - name: Run Mitii
+      id: run
+      shell: bash
+      working-directory: ${{ inputs.cwd }}
+      env:
+        ANTHROPIC_API_KEY: ${{ env.ANTHROPIC_API_KEY }}
+        OPENAI_API_KEY: ${{ env.OPENAI_API_KEY }}
+        GEMINI_API_KEY: ${{ env.GEMINI_API_KEY }}
+        MITII_API_KEY: ${{ env.MITII_API_KEY }}
+        GH_TOKEN: ${{ env.GH_TOKEN || env.GITHUB_TOKEN }}
+        MITII_PROMPT: ${{ inputs.prompt }}
+        MITII_PROMPT_FILE: ${{ inputs.prompt-file }}
+        MITII_AGENT: ${{ inputs.agent }}
+        MITII_MODE: ${{ inputs.mode }}
+        MITII_ORIGIN: ${{ inputs.origin }}
+        MITII_AUTONOMY: ${{ inputs.autonomy }}
+        MITII_EXTRA_ARGS: ${{ inputs.extra-args }}
+      run: |
+        set +e
+        ARGS=(ask --json --origin "${MITII_ORIGIN}")
+        if [ -n "$MITII_AUTONOMY" ]; then
+          ARGS+=(--autonomy "$MITII_AUTONOMY")
+        fi
+        if [ -n "$MITII_MODE" ]; then
+          ARGS+=(--mode "$MITII_MODE")
+        fi
+        if [ -n "$MITII_AGENT" ]; then
+          ARGS+=(--agent "$MITII_AGENT")
+        fi
+        if [ -n "$MITII_PROMPT_FILE" ]; then
+          ARGS+=(--prompt-file "$MITII_PROMPT_FILE")
+        fi
+        if [ -n "$MITII_PROMPT" ]; then
+          PROMPT_PATH="$(mktemp)"
+          printf '%s\n' "$MITII_PROMPT" > "$PROMPT_PATH"
+          # If a prompt-file was also set, append inline prompt via a combined file.
+          if [ -n "$MITII_PROMPT_FILE" ]; then
+            COMBINED="$(mktemp)"
+            cat "$MITII_PROMPT_FILE" > "$COMBINED"
+            printf '\n\n' >> "$COMBINED"
+            cat "$PROMPT_PATH" >> "$COMBINED"
+            ARGS=(ask --json --origin "${MITII_ORIGIN}")
+            [ -n "$MITII_AUTONOMY" ] && ARGS+=(--autonomy "$MITII_AUTONOMY")
+            [ -n "$MITII_MODE" ] && ARGS+=(--mode "$MITII_MODE")
+            [ -n "$MITII_AGENT" ] && ARGS+=(--agent "$MITII_AGENT")
+            ARGS+=(--prompt-file "$COMBINED")
+          else
+            ARGS+=(--prompt-file "$PROMPT_PATH")
+          fi
+        fi
+        # shellcheck disable=SC2206
+        EXTRA=($MITII_EXTRA_ARGS)
+        if [ ${#EXTRA[@]} -gt 0 ]; then
+          ARGS+=("${EXTRA[@]}")
+        fi
+        mitii "${ARGS[@]}"
+        CODE=$?
+        echo "exit-code=$CODE" >> "$GITHUB_OUTPUT"
+        exit "$CODE"

@@ -29,6 +29,11 @@ export function resolveRoute(params: {
   mode: "ask" | "plan" | "agent";
   understanding: RequestUnderstandingResult;
   message: string;
+  /**
+   * When true, skip the clarify early-return so unattended hosts
+   * (automation / api) can continue with a best-effort route.
+   */
+  suppressClarification?: boolean;
 }): RouteResolution {
   const { mode, understanding, message } = params;
   const { intent, taskAnalysis } = understanding;
@@ -36,7 +41,10 @@ export function resolveRoute(params: {
   const interaction = intent.classification.interactionIntent;
   const reasonCodes: DecisionReasonCode[] = [];
 
-  if (requiresClarification(understanding, message, mode)) {
+  if (
+    !params.suppressClarification &&
+    requiresClarification(understanding, message, mode)
+  ) {
     reasonCodes.push("clarification_material");
     return {
       route: "clarify",

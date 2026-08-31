@@ -293,7 +293,10 @@ async function resolveSuspension(
 
 function exitCodeFor(
   result: AgentRunResult,
-  options: { declinedSuspension?: boolean },
+  options: {
+    declinedSuspension?: boolean;
+    origin?: string;
+  },
 ): number {
   if (options.declinedSuspension) {
     return 1;
@@ -302,6 +305,15 @@ function exitCodeFor(
     return 0;
   }
   if (result.status === 'suspended') {
+    // Unattended origins that still need clarification are a policy/input gap.
+    const unattended =
+      options.origin === 'automation' || options.origin === 'api';
+    if (
+      unattended &&
+      result.suspension?.kind === 'clarification_required'
+    ) {
+      return 4;
+    }
     // JSON non-interactive suspend is a successful checkpoint for scripting.
     return 0;
   }
@@ -391,7 +403,10 @@ export async function driveRun(
   }
 
   return {
-    exitCode: exitCodeFor(result, { declinedSuspension }),
+    exitCode: exitCodeFor(result, {
+      declinedSuspension,
+      origin: options.start.origin,
+    }),
     result,
     events,
   };

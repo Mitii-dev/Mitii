@@ -4,11 +4,14 @@ export type {
   UserRequestEnvelope,
   CreateUserRequestInput,
   AgentMode,
+  UserRequestOrigin,
 } from "./modules/request-intake";
 export {
   agentModeSchema,
   userRequestEnvelopeSchema,
   createUserRequestInputSchema,
+  USER_REQUEST_ORIGINS,
+  REQUEST_ENVELOPE_DEFAULTS,
 } from "./modules/request-intake";
 
 export { RequestUnderstandingPipeline } from "./modules/request-understanding";

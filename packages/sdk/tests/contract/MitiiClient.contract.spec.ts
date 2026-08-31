@@ -299,6 +299,42 @@ describe('MitiiClient contract (Phase 12)', () => {
     ).toBeUndefined();
   });
 
+  it('maps origin, autonomyPreset, and correlation onto engine start input', () => {
+    const engineInput = toAgentEngineStartInput(
+      {
+        prompt: 'Cover the latest commit with tests',
+        origin: 'automation',
+        autonomyPreset: 'apply_and_pr',
+        correlation: {
+          traceId: 'trace_ci_1',
+          clientRequestId: 'gha_run_99',
+        },
+      },
+      { mode: 'ask', sessionId: 'sess_auto' },
+    );
+    expect(engineInput.request.origin).toBe('automation');
+    expect(engineInput.request.mode).toBe('agent');
+    expect(engineInput.approvalMode).toBe('never');
+    expect(engineInput.planApproval).toBe('never');
+    expect(engineInput.request.correlation).toEqual({
+      traceId: 'trace_ci_1',
+      clientRequestId: 'gha_run_99',
+    });
+  });
+
+  it('lets explicit mode override autonomyPreset mode', () => {
+    const engineInput = toAgentEngineStartInput(
+      {
+        prompt: 'Only plan',
+        autonomyPreset: 'apply',
+        mode: 'plan',
+      },
+      { mode: 'ask', sessionId: 'sess_override' },
+    );
+    expect(engineInput.request.mode).toBe('plan');
+    expect(engineInput.approvalMode).toBe('never');
+  });
+
   it('rejects resume without approval or clarificationAnswer', () => {
     const parsed = mitiiResumeInputSchema.safeParse({
       schemaVersion: 1,
