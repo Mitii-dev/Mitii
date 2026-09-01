@@ -166,6 +166,8 @@ export interface OnnxInferenceSession {
   run(
     feeds: Record<string, unknown>,
   ): Promise<Record<string, OnnxTensorLike>>;
+  /** Release native/WASM session resources before process exit when available. */
+  release?(): Promise<void>;
 }
 
 export interface CreateOnnxSessionInput {

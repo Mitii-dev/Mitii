@@ -153,6 +153,9 @@ export interface LanceDbConnectionPort {
     data: LanceDbRow[],
     options?: LanceDbCreateTableOptions,
   ): Promise<LanceDbTablePort>;
+
+  /** Optional: real LanceDB connections expose close() to free native resources. */
+  close?(): void;
 }
 
 export interface LanceDbCreateTableOptions {

@@ -49,6 +49,12 @@ export interface EmbeddingProvider {
     texts: readonly string[],
     context?: EmbeddingProviderContext,
   ): Promise<readonly (readonly number[])[]>;
+
+  /**
+   * Optional cleanup for providers that hold native/WASM sessions.
+   * Safe to omit for pure-JS providers.
+   */
+  dispose?(): void | Promise<void>;
 }
 
 /**

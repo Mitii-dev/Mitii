@@ -58,6 +58,17 @@ export function resetBundledEmbeddingProviderCache(): void {
   providerCache.clear();
 }
 
+/**
+ * Release a bundled provider session and drop the process-wide cache so the
+ * next resolve creates a fresh session (required after fullWorkspaceIndex).
+ */
+export async function disposeBundledEmbeddingProvider(
+  provider?: EmbeddingProvider | null,
+): Promise<void> {
+  providerCache.clear();
+  await provider?.dispose?.();
+}
+
 export function bundledEmbeddingProfile(): EmbeddingProfile {
   return {
     id: [
