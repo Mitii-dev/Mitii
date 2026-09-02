@@ -166,6 +166,13 @@ export function buildToolGrant(params: {
     allowWebSearch: params.allowWebSearch === true,
   });
 
+  // Full-access / headless approve (`approvalMode: never`): keep mutation
+  // workspace-wide so required companion files (package.json, configs, tests)
+  // are never rejected as path_out_of_scope after a narrow folder target.
+  const writePathScopes = approvalMode === "never" ? ["."] : pathScopes;
+  const writeMutationPathScopes =
+    approvalMode === "never" ? ["."] : mutationPathScopes;
+
   return {
     toolGrant: {
       maximumWorkspaceEffect: "write",
@@ -184,8 +191,8 @@ export function buildToolGrant(params: {
         "git_write",
         ...network.allowedEffects,
       ],
-      pathScopes,
-      ...(mutationPathScopes ? { mutationPathScopes } : {}),
+      pathScopes: writePathScopes,
+      ...(writeMutationPathScopes ? { mutationPathScopes: writeMutationPathScopes } : {}),
       commandRules: processExecution.commandRules,
       networkHosts: network.networkHosts,
       approvalMode,

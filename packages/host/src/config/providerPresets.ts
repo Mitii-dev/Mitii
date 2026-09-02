@@ -13,6 +13,7 @@ export type HostProviderType =
 export type ProviderPresetId =
   | 'echo'
   | 'ollama'
+  | 'ollama-cloud'
   | 'lm-studio'
   | 'openai'
   | 'openrouter'
@@ -54,6 +55,16 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
     model: '',
     requiresApiKey: false,
     notes: 'Pick a model after Test connection lists /v1/models.',
+  },
+  {
+    id: 'ollama-cloud',
+    type: 'openai-compatible',
+    label: 'Ollama Cloud',
+    baseUrl: 'https://ollama.com/v1',
+    model: '',
+    requiresApiKey: true,
+    notes:
+      'Cloud models at ollama.com. Set an API key, then Test connection to list models.',
   },
   {
     id: 'lm-studio',

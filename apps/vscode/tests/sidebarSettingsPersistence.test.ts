@@ -211,4 +211,95 @@ describe('MitiiSidebarProvider settings persistence', () => {
     expect(byKey.get('workspace.maximumIndexFiles')?.value).toBe(55_555);
     expect(byKey.get('semanticIndex.enabled')?.value).toBe(false);
   });
+
+  it('does not bootstrap after test connection (preserves unsaved drafts)', async () => {
+    const { provider } = createProviderHarness();
+    const sendBootstrap = vi.fn(async () => undefined);
+    const posts: unknown[] = [];
+    (provider as unknown as { sendBootstrap: () => Promise<void> }).sendBootstrap =
+      sendBootstrap;
+    (provider as unknown as { post: (message: unknown) => void }).post = (
+      message,
+    ) => {
+      posts.push(message);
+    };
+    (provider as unknown as { secrets: { get: () => Promise<undefined> } }).secrets =
+      { get: async () => undefined };
+
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (String(url).includes('/models') || String(url).includes('/api/tags')) {
+        return {
+          ok: true,
+          json: async () => ({
+            data: [{ id: 'gemma4:31b' }, { id: 'qwen3.8:27b' }],
+            models: [{ name: 'gemma4:31b' }, { name: 'qwen3.8:27b' }],
+          }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: 'ok' } }],
+        }),
+      };
+    });
+    vi.stubGlobal('fetch', fetchImpl);
+
+    try {
+      await (
+        provider as unknown as {
+          handleTestConnection: (message: unknown) => Promise<void>;
+        }
+      ).handleTestConnection({
+        type: 'provider.testConnection',
+        provider: {
+          type: 'openai-compatible',
+          baseUrl: 'https://ollama.com/v1',
+          model: 'gemma4:31b',
+        },
+      });
+
+      expect(sendBootstrap).not.toHaveBeenCalled();
+      expect(
+        posts.some((p) => (p as { type: string }).type === 'provider.models'),
+      ).toBe(true);
+      const finalResult = posts.find(
+        (p) =>
+          (p as { type: string; testing?: boolean }).type ===
+            'provider.connectionResult' &&
+          (p as { testing?: boolean }).testing === false,
+      ) as { ok: boolean; models?: string[] } | undefined;
+      expect(finalResult?.ok).toBe(true);
+      expect(finalResult?.models?.length).toBeGreaterThan(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('skips model rediscovery on model-only settings patches', async () => {
+    const { provider } = createProviderHarness();
+    const refreshDiscoveredModels = vi.fn(async () => undefined);
+    (
+      provider as unknown as {
+        refreshDiscoveredModels: (options: unknown) => Promise<void>;
+      }
+    ).refreshDiscoveredModels = refreshDiscoveredModels;
+    (
+      provider as unknown as { discoveredModels: string[] }
+    ).discoveredModels = ['gemma4:31b'];
+
+    await (
+      provider as unknown as {
+        handleSettingsSet: (message: unknown) => Promise<void>;
+      }
+    ).handleSettingsSet({
+      type: 'settings.set',
+      provider: { model: 'gemma4:31b' },
+    });
+
+    expect(refreshDiscoveredModels).not.toHaveBeenCalled();
+    expect(
+      (provider as unknown as { discoveredModels: string[] }).discoveredModels,
+    ).toEqual(['gemma4:31b']);
+  });
 });

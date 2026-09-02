@@ -226,6 +226,8 @@ function buildToolGuidance(decision: ExecutionDecision): string {
 
   if (grant.maximumWorkspaceEffect === "write") {
     lines.push(
+      "You have write authority for this turn. Apply required edits with mutation tools (apply_patch / write tools). Never claim you are on a read-only route or ask the user to switch sessions when write tools are listed above.",
+      "If a mutation is rejected as path_out_of_scope, retry the same edit on the next turn — granted path scopes expand to include required paths when write authority is already active.",
       "For the live checklist tool, call update_todos (aliases: update_todo, task_list_update). Use type=replace|patch|clear with items (or todos) and title (or content).",
     );
   }

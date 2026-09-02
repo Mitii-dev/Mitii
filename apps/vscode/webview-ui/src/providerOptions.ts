@@ -11,6 +11,13 @@ export const PROVIDER_OPTIONS = [
   },
   {
     type: 'openai-compatible',
+    preset: 'ollama-cloud',
+    label: 'Ollama Cloud',
+    baseUrl: 'https://ollama.com/v1',
+    model: '',
+  },
+  {
+    type: 'openai-compatible',
     preset: 'lm-studio',
     label: 'LM Studio (local)',
     baseUrl: 'http://localhost:1234/v1',

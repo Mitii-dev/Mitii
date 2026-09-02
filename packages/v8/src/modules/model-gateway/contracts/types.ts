@@ -15,6 +15,11 @@ export interface ModelToolCall {
   id: string;
   name: string;
   arguments: string;
+  /**
+   * Provider opaque token that must be echoed with the tool call on the next
+   * request. Required for Gemini 3+ function-calling thought signatures.
+   */
+  thoughtSignature?: string;
 }
 
 export interface ModelMessage {
@@ -109,6 +114,11 @@ export interface ModelToolCallDelta {
   id?: string;
   name?: string;
   arguments?: string;
+  /**
+   * Provider opaque token that must be echoed with the tool call on the next
+   * request. Required for Gemini 3+ function-calling thought signatures.
+   */
+  thoughtSignature?: string;
 }
 
 export interface ModelTokenUsage {

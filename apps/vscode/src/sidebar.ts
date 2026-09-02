@@ -393,6 +393,8 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
   private discoveredModels: string[] = [];
   private connectionOk?: boolean;
   private connectionStatus?: string;
+  /** Suppress config-listener bootstraps while a settings write batch is in flight. */
+  private settingsWriteDepth = 0;
   /** Policy Admin: which band is being edited for ship source Save. */
   private policyLabEditBand: 'compact' | 'standard' | 'wide' | undefined;
   /** Unsaved draft band tables while editing Policy Admin. */
@@ -507,6 +509,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
   }
 
   async refreshBootstrap(): Promise<void> {
+    if (this.settingsWriteDepth > 0) return;
     await this.sendBootstrap();
   }
 
@@ -1788,7 +1791,12 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     if (result.models?.length) {
       this.discoveredModels = result.models;
     } else {
-      await this.refreshDiscoveredModels({ notify: false });
+      // Use the draft URL/type from the webview — not persisted settings.
+      await this.refreshDiscoveredModels({
+        notify: false,
+        type: message.provider.type,
+        baseUrl: message.provider.baseUrl,
+      });
     }
     this.post({
       type: 'provider.connectionResult',
@@ -1800,7 +1808,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     if (this.discoveredModels.length > 0) {
       this.post({ type: 'provider.models', models: this.discoveredModels });
     }
-    await this.sendBootstrap();
+    // Do not sendBootstrap here — that would wipe unsaved provider drafts.
   }
 
   private recordLiveModelTurn(event: {
@@ -1965,6 +1973,30 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
   }
 
   private async handleSettingsSet(
+    message: Extract<WebviewToHostMessage, { type: 'settings.set' }>,
+  ): Promise<void> {
+    this.settingsWriteDepth += 1;
+    try {
+      await this.applySettingsSet(message);
+    } finally {
+      this.settingsWriteDepth = Math.max(0, this.settingsWriteDepth - 1);
+    }
+    const providerPatch = message.provider;
+    const shouldRefreshModels =
+      !providerPatch ||
+      providerPatch.type !== undefined ||
+      providerPatch.baseUrl !== undefined;
+    if (shouldRefreshModels) {
+      await this.refreshDiscoveredModels({
+        notify: false,
+        type: providerPatch?.type,
+        baseUrl: providerPatch?.baseUrl,
+      });
+    }
+    await this.sendBootstrap();
+  }
+
+  private async applySettingsSet(
     message: Extract<WebviewToHostMessage, { type: 'settings.set' }>,
   ): Promise<void> {
     const cfg = this.vs.workspace.getConfiguration('mitii');
@@ -2256,8 +2288,6 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       };
       writeProfiles(root, upsertProfile(profilesFile, savedProfile));
     }
-    await this.refreshDiscoveredModels({ notify: false });
-    await this.sendBootstrap();
   }
 
   private configurationTarget(): vscode.ConfigurationTarget {
@@ -2321,7 +2351,15 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     this.connectionOk = undefined;
     this.connectionStatus = undefined;
     this.invalidateClient();
-    await this.refreshDiscoveredModels({ notify: false });
+    // Model-only patches must not re-list against stale type/URL (or clear
+    // discovery when persisted type is still echo while the draft is Ollama).
+    if (provider.type !== undefined || provider.baseUrl !== undefined) {
+      await this.refreshDiscoveredModels({
+        notify: false,
+        type: provider.type,
+        baseUrl: provider.baseUrl,
+      });
+    }
   }
 
   private async handleProfileSwitch(id: string): Promise<void> {
@@ -2371,7 +2409,12 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       });
       return;
     }
-    await this.writeProviderSettings(profile.provider);
+    this.settingsWriteDepth += 1;
+    try {
+      await this.writeProviderSettings(profile.provider);
+    } finally {
+      this.settingsWriteDepth = Math.max(0, this.settingsWriteDepth - 1);
+    }
     await this.sendBootstrap();
   }
 
@@ -2462,7 +2505,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     const type = cfg.get<string>('provider.type') ?? 'echo';
     const configuredPreset = cfg.get<string>('provider.preset') ?? undefined;
     const baseUrl =
-      cfg.get<string>('provider.baseUrl') ?? 'http://localhost:11434/v1';
+      cfg.get<string>('provider.baseUrl') ?? '';
     const model = cfg.get<string>('provider.model') ?? '';
     const preset = this.inferProviderPreset(
       type,

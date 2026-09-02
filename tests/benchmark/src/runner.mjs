@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, symlinkSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { runProcess, substitute } from './process.mjs';
@@ -84,6 +84,13 @@ async function runOneCase(testCase, index, total, rootDir, workRoot, config, opt
     timeoutMs: testCase.timeoutMs ?? config.agent.timeoutMs,
   });
   const output = execution.stdout;
+  if (options.keepWorkspaces) {
+    // Full agent transcript for post-mortem (ignored by workspace diff via .mitii/).
+    const mitiiDir = join(workspace, '.mitii');
+    mkdirSync(mitiiDir, { recursive: true });
+    writeFileSync(join(mitiiDir, 'benchmark-agent.stdout'), execution.stdout ?? '');
+    writeFileSync(join(mitiiDir, 'benchmark-agent.stderr'), execution.stderr ?? '');
+  }
   const after = snapshotTree(workspace, config.run.ignoreChanges);
   const checks = [];
   for (const check of testCase.checks) {

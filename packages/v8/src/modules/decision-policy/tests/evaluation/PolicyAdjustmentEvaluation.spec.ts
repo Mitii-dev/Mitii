@@ -87,4 +87,35 @@ describe("Policy adjustment evaluation", () => {
       expect.arrayContaining(["src/types"]),
     );
   });
+
+  it("approvalMode never keeps workspace-wide mutation and skips narrow", () => {
+    const input = createDecisionInput({
+      mode: "agent",
+      approvalMode: "never",
+      message: "Add scripts/lint.mjs and wire package.json lint script",
+      understanding: createUnderstanding({
+        primaryTaskIntent: "feature",
+        interactionIntent: "act",
+        taskAnalysis: {
+          scope: "multi_file",
+          recommendsRepositoryDiscovery: true,
+          targets: [
+            { kind: "file", value: "scripts/lint.mjs", explicit: true },
+          ],
+        },
+      }),
+    });
+    const initial = pipeline.decide(input);
+    expect(initial.toolGrant.approvalMode).toBe("never");
+    expect(initial.toolGrant.maximumWorkspaceEffect).toBe("write");
+    expect(initial.toolGrant.pathScopes).toEqual(["."]);
+    expect(initial.toolGrant.mutationPathScopes).toEqual(["."]);
+
+    const narrowed = pipeline.narrow({
+      previous: initial,
+      discoveredPaths: ["scripts/lint.mjs"],
+    });
+    expect(narrowed.toolGrant.mutationPathScopes).toEqual(["."]);
+    expect(narrowed.toolGrant.pathScopes).toEqual(["."]);
+  });
 });

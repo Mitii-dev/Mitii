@@ -160,6 +160,48 @@ export async function refreshAuthorityAfterTools(
     .filter((path) => path.trim().length > 0)
     .slice(0, 50);
 
+  const extraPaths = [...new Set(params.extraPaths ?? [])].filter(
+    (path) => path.trim().length > 0,
+  );
+  // Widen first so path_out_of_scope / compiler paths are admitted before any
+  // discovery-based narrow can drop them.
+  if (runtime.deps.decision.widen && extraPaths.length > 0) {
+    const previous = params.decisionRef.get();
+    const widened = runtime.deps.decision.widen({
+      previous,
+      extraPaths,
+    });
+    if (!toolGrantsEquivalent(previous.toolGrant, widened.toolGrant)) {
+      // Path/mutation scope expansion does not add write authority — only
+      // admits paths needed by an already-granted write/read effect. Auto-apply
+      // whenever write (or read) is already allowed so required companion files
+      // are not blocked behind a second approval gate.
+      const canAutoExpand =
+        previous.toolGrant.approvalMode === "never" ||
+        previous.toolGrant.maximumWorkspaceEffect === "write" ||
+        previous.toolGrant.maximumWorkspaceEffect === "read";
+      if (!canAutoExpand) {
+        return { kind: "expansion_required", extraPaths };
+      }
+      params.decisionRef.set(widened);
+      params.reasonCodes.push("grant_expanded");
+      runtime.emit(params.bus, {
+        type: "grant_narrowed",
+        runId: params.runId,
+        maximumWorkspaceEffect: widened.toolGrant.maximumWorkspaceEffect,
+        approvalMode: widened.toolGrant.approvalMode,
+        pathScopes: widened.toolGrant.pathScopes.slice(0, 20),
+        reasonCodes: widened.reasonCodes.slice(-8),
+        truncated:
+          widened.toolGrant.pathScopes.length > 20 ||
+          widened.reasonCodes.length > 8
+            ? true
+            : undefined,
+        at: runtime.isoNow(),
+      });
+    }
+  }
+
   if (runtime.deps.decision.narrow && discoveredPaths.length > 0) {
     const previous = params.decisionRef.get();
     const narrowed = runtime.deps.decision.narrow({
@@ -180,38 +222,6 @@ export async function refreshAuthorityAfterTools(
         truncated:
           narrowed.toolGrant.pathScopes.length > 20 ||
           narrowed.reasonCodes.length > 8
-            ? true
-            : undefined,
-        at: runtime.isoNow(),
-      });
-    }
-  }
-
-  const extraPaths = [...new Set(params.extraPaths ?? [])].filter(
-    (path) => path.trim().length > 0,
-  );
-  if (runtime.deps.decision.widen && extraPaths.length > 0) {
-    const previous = params.decisionRef.get();
-    const widened = runtime.deps.decision.widen({
-      previous,
-      extraPaths,
-    });
-    if (!toolGrantsEquivalent(previous.toolGrant, widened.toolGrant)) {
-      if (previous.toolGrant.approvalMode !== "never") {
-        return { kind: "expansion_required", extraPaths };
-      }
-      params.decisionRef.set(widened);
-      params.reasonCodes.push("grant_expanded");
-      runtime.emit(params.bus, {
-        type: "grant_narrowed",
-        runId: params.runId,
-        maximumWorkspaceEffect: widened.toolGrant.maximumWorkspaceEffect,
-        approvalMode: widened.toolGrant.approvalMode,
-        pathScopes: widened.toolGrant.pathScopes.slice(0, 20),
-        reasonCodes: widened.reasonCodes.slice(-8),
-        truncated:
-          widened.toolGrant.pathScopes.length > 20 ||
-          widened.reasonCodes.length > 8
             ? true
             : undefined,
         at: runtime.isoNow(),

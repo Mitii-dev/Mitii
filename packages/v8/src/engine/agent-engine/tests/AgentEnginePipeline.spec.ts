@@ -1520,6 +1520,26 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     ]);
   });
 
+  it("preserves thoughtSignature when assembling tool call deltas", () => {
+    const calls = assembleToolCalls([
+      {
+        index: 0,
+        id: "t1",
+        name: "read_file",
+        arguments: "{\"path\":\"x.ts\"}",
+        thoughtSignature: "sig-1",
+      },
+    ]);
+    expect(calls).toEqual([
+      {
+        id: "t1",
+        name: "read_file",
+        arguments: "{\"path\":\"x.ts\"}",
+        thoughtSignature: "sig-1",
+      },
+    ]);
+  });
+
   it("suspends for plan approval when planGate requires it", async () => {
     const { InMemoryRunCheckpointStore } = await import("../adapters");
     const { PLANNING_SCHEMA_VERSION } = await import(

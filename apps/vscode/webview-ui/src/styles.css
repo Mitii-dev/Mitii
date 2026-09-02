@@ -118,12 +118,7 @@ input:focus-visible {
   min-height: 0;
   width: 100%;
   overflow: hidden;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--mitii-surface) 98%, var(--mitii-panel) 2%),
-      var(--mitii-surface) 220px
-    );
+  background: transparent;
 }
 
 .shell-header {
@@ -134,7 +129,7 @@ input:focus-visible {
   min-height: 44px;
   padding: 6px 10px 6px 14px;
   border-bottom: 1px solid var(--mitii-border-soft);
-  background: var(--mitii-surface);
+  background: transparent;
   flex-wrap: nowrap;
   flex-shrink: 0;
   position: relative;
@@ -160,7 +155,7 @@ input:focus-visible {
   padding: 0 8px 0 10px;
   border: 1px solid var(--mitii-border-soft);
   border-radius: 6px;
-  background: color-mix(in srgb, var(--mitii-panel) 88%, transparent);
+  background: transparent;
   color: var(--mitii-text);
   cursor: pointer;
 }
@@ -287,12 +282,7 @@ input:focus-visible {
 .chat-view {
   position: relative;
   overflow: visible;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--mitii-panel) 98%, var(--mitii-accent) 2%),
-      var(--mitii-panel) 180px
-    );
+  background: transparent;
 }
 
 .chat-view .composer-dock {
@@ -1033,12 +1023,7 @@ input:focus-visible {
   z-index: 40;
   border-top: 1px solid var(--mitii-border-soft);
   padding: 10px 10px 12px;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--mitii-surface) 96%, transparent),
-      var(--mitii-surface)
-    );
+  background: transparent;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1585,8 +1570,7 @@ input:focus-visible {
   --composer-mode-color: var(--mitii-accent);
   border: 1px solid color-mix(in srgb, var(--composer-mode-color) 36%, var(--mitii-border));
   border-radius: var(--mitii-radius-lg);
-  background: var(--vscode-input-background, var(--mitii-panel));
-  box-shadow: 0 1px 0 color-mix(in srgb, #fff 5%, transparent) inset;
+  background: transparent;
   display: flex;
   flex-direction: column;
   overflow: visible;
@@ -1594,9 +1578,7 @@ input:focus-visible {
 
 .composer-box:focus-within {
   border-color: color-mix(in srgb, var(--composer-mode-color) 68%, var(--mitii-border));
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--composer-mode-color) 16%, transparent),
-    0 1px 0 color-mix(in srgb, #fff 5%, transparent) inset;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--composer-mode-color) 16%, transparent);
 }
 
 .composer-box textarea {

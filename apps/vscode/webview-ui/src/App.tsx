@@ -886,6 +886,9 @@ export function App() {
   const listModelsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hydratedModeDefaults = useRef(false);
   const readySentRef = useRef(false);
+  /** Unsaved provider connection edits — bootstrap must not wipe these. */
+  const providerDraftDirtyRef = useRef(false);
+  const settingsSavingRef = useRef(false);
   /** Paths the user removed; skip auto-re-pin while the file stays open. */
   const dismissedAutoPinsRef = useRef(new Set<string>());
 
@@ -953,21 +956,50 @@ export function App() {
   const applyBootstrap = useCallback((msg: HostToWebviewMessage) => {
     if (msg.type === 'bootstrap' || msg.type === 'settings') {
       setWorkspace(msg.workspace);
+      const draft = providerRef.current;
+      const preserveDraft =
+        providerDraftDirtyRef.current && !settingsSavingRef.current;
+      const nextContextWindow = Number.isFinite(msg.provider.contextWindow)
+        ? Math.max(0, Math.floor(msg.provider.contextWindow))
+        : 0;
+      const nextEffectiveContextWindow = Number.isFinite(
+        msg.provider.effectiveContextWindow,
+      )
+        ? Math.max(1, Math.floor(msg.provider.effectiveContextWindow ?? 0))
+        : undefined;
+      const nextMaximumOutputTokens = Number.isFinite(
+        msg.provider.maximumOutputTokens,
+      )
+        ? Math.max(0, Math.floor(msg.provider.maximumOutputTokens))
+        : 0;
+      const nextModel = preserveDraft
+        ? draft.model
+        : (msg.provider.model ?? '');
       updateProvider({
-        ...msg.provider,
-        contextWindow: Number.isFinite(msg.provider.contextWindow)
-          ? Math.max(0, Math.floor(msg.provider.contextWindow))
-          : 0,
-        effectiveContextWindow: Number.isFinite(
-          msg.provider.effectiveContextWindow,
-        )
-          ? Math.max(1, Math.floor(msg.provider.effectiveContextWindow ?? 0))
-          : undefined,
-        maximumOutputTokens: Number.isFinite(msg.provider.maximumOutputTokens)
-          ? Math.max(0, Math.floor(msg.provider.maximumOutputTokens))
-          : 0,
+        type: preserveDraft ? draft.type : msg.provider.type,
+        preset: preserveDraft ? draft.preset : msg.provider.preset,
+        baseUrl: preserveDraft ? draft.baseUrl : msg.provider.baseUrl,
+        model: nextModel,
+        hasApiKey: msg.provider.hasApiKey,
+        availableModels: mergeModelOptions(
+          [
+            ...(msg.provider.availableModels ?? []),
+            ...(preserveDraft ? (draft.availableModels ?? []) : []),
+          ],
+          nextModel,
+        ),
+        contextWindow: preserveDraft ? draft.contextWindow : nextContextWindow,
+        effectiveContextWindow: nextEffectiveContextWindow,
+        maximumOutputTokens: preserveDraft
+          ? draft.maximumOutputTokens
+          : nextMaximumOutputTokens,
+        connectionOk: msg.provider.connectionOk,
+        connectionStatus: msg.provider.connectionStatus,
       });
-      savedProviderModelRef.current = msg.provider.model ?? '';
+      if (!preserveDraft) {
+        providerDraftDirtyRef.current = false;
+        savedProviderModelRef.current = msg.provider.model ?? '';
+      }
       setProfiles(msg.profiles ?? []);
       setActiveProfileId(msg.activeProfileId ?? 'default');
       setMcp(msg.mcp);
@@ -1002,16 +1034,22 @@ export function App() {
       applyTokenUsage(msg.tokenUsage);
       setNotice(msg.notice);
       setCustomModel((wasCustom) => {
-        const nextModel = msg.provider.model?.trim() ?? '';
         const catalog = new Set([
+          ...(preserveDraft
+            ? (draft.availableModels ?? [])
+            : (msg.provider.availableModels ?? [])),
           ...(msg.provider.availableModels ?? []),
-          ...modelsForProvider(msg.provider.preset ?? msg.provider.type),
+          ...modelsForProvider(
+            (preserveDraft ? draft.preset : msg.provider.preset) ??
+              (preserveDraft ? draft.type : msg.provider.type),
+          ),
         ]);
-        return Boolean(nextModel) && (wasCustom || !catalog.has(nextModel));
+        return Boolean(nextModel.trim()) && (wasCustom || !catalog.has(nextModel));
       });
       if (msg.provider.connectionStatus) {
         setConnectionMessage(msg.provider.connectionStatus);
       }
+      settingsSavingRef.current = false;
       setSettingsSaving(false);
       if (msg.type === 'bootstrap') {
         setIndex(msg.index);
@@ -1690,6 +1728,16 @@ export function App() {
     const before = providerRef.current;
     updateProvider(next);
     const after = providerRef.current;
+    if (
+      after.type !== before.type ||
+      after.preset !== before.preset ||
+      after.baseUrl !== before.baseUrl ||
+      after.model !== before.model ||
+      after.contextWindow !== before.contextWindow ||
+      after.maximumOutputTokens !== before.maximumOutputTokens
+    ) {
+      providerDraftDirtyRef.current = true;
+    }
     if (after.model.trim() !== before.model.trim()) {
       const nextUi = clearStaleModeModelDefaultsAfterProviderModelChange({
         ui: uiRef.current,
@@ -1711,12 +1759,14 @@ export function App() {
   const onProviderTypeChange = (presetId: string) => {
     const preset = getProviderPreset(presetId);
     const type = preset?.type ?? presetId;
+    providerDraftDirtyRef.current = true;
     updateProvider((p) => ({
       ...p,
       type,
       preset: preset?.preset ?? presetId,
       baseUrl: preset?.baseUrl ?? p.baseUrl,
       model: preset?.model ?? p.model,
+      availableModels: [],
       connectionOk: undefined,
       connectionStatus: undefined,
     }));
@@ -1858,12 +1908,21 @@ export function App() {
   const applyProfileLocally = (profile: SettingsProfileView) => {
     setActiveProfileId(profile.id);
     savedProviderModelRef.current = profile.provider.model ?? '';
-    updateProvider((prev) => ({
-      ...prev,
+    updateProvider({
       ...profile.provider,
       hasApiKey: profile.hasSecret,
-      availableModels: prev.availableModels,
-    }));
+      availableModels: [],
+      connectionOk: undefined,
+      connectionStatus: undefined,
+    });
+    setConnectionMessage(null);
+    if (profile.provider.type && profile.provider.type !== 'echo') {
+      requestListedModels(
+        profile.provider.type,
+        profile.provider.baseUrl ?? '',
+        true,
+      );
+    }
     if (profile.ui) {
       const nextUi = hydrateUiSnapshot(profile.ui);
       uiRef.current = nextUi;
@@ -1885,6 +1944,7 @@ export function App() {
   const switchProfile = (id: string) => {
     const profile = profiles.find((entry) => entry.id === id);
     if (!profile || profile.id === activeProfileId) return;
+    providerDraftDirtyRef.current = false;
     applyProfileLocally(profile);
     postToHost({ type: 'profile.switch', id: profile.id });
   };
@@ -1900,7 +1960,9 @@ export function App() {
       ui: uiRef.current,
     };
     setProfiles((prev) => [...prev, nextProfile]);
+    providerDraftDirtyRef.current = false;
     applyProfileLocally(nextProfile);
+    settingsSavingRef.current = true;
     setSettingsSaving(true);
     postToHost({
       type: 'settings.set',
@@ -1928,6 +1990,7 @@ export function App() {
       provider: latestProvider,
       hasSecret: provider.hasApiKey,
     };
+    settingsSavingRef.current = true;
     setSettingsSaving(true);
     postToHost({
       type: 'settings.set',

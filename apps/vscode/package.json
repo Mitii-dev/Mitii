@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
-  "version": "2.9.1",
+  "version": "2.9.2",
   "publisher": "mitii",
   "license": "AGPL-3.0-or-later",
   "icon": "media/mitii-short-logo.png",
@@ -807,6 +807,7 @@
           "enum": [
             "echo",
             "ollama",
+            "ollama-cloud",
             "lm-studio",
             "openai",
             "openrouter",
@@ -821,8 +822,8 @@
         },
         "mitii.provider.baseUrl": {
           "type": "string",
-          "default": "http://localhost:11434/v1",
-          "description": "Provider API base URL (OpenAI-compatible /v1, https://api.anthropic.com, or https://generativelanguage.googleapis.com)."
+          "default": "",
+          "description": "Provider API base URL (OpenAI-compatible /v1, https://api.anthropic.com, https://ollama.com/v1, or https://generativelanguage.googleapis.com)."
         },
         "mitii.provider.model": {
           "type": "string",

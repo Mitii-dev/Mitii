@@ -183,4 +183,122 @@ describe('GeminiLlmPort', () => {
       'content_filtered',
     );
   });
+
+  it('captures thoughtSignature from functionCall parts', async () => {
+    const port = new GeminiLlmPort({
+      model: 'gemini-3.5-flash',
+      apiKey: 'gemini-test',
+      fetchImpl: async () =>
+        new Response(
+          JSON.stringify({
+            candidates: [
+              {
+                content: {
+                  role: 'model',
+                  parts: [
+                    {
+                      functionCall: { name: 'read_file', args: { path: 'a.ts' } },
+                      thoughtSignature: 'sig-abc',
+                    },
+                  ],
+                },
+                finishReason: 'STOP',
+              },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ),
+    });
+
+    const events = await collectEvents(
+      port.complete({
+        messages: [{ role: 'user', content: 'read a.ts' }],
+        stream: false,
+        tools: [
+          {
+            name: 'read_file',
+            description: 'Read a file',
+            inputSchema: { type: 'object' },
+          },
+        ],
+      }),
+    );
+
+    expect(events[0]?.type).toBe('tool_call_delta');
+    expect(
+      events[0]?.type === 'tool_call_delta' &&
+        events[0].toolCalls[0]?.thoughtSignature,
+    ).toBe('sig-abc');
+  });
+
+  it('echoes thoughtSignature on follow-up functionCall parts', async () => {
+    let capturedBody: string | undefined;
+    const port = new GeminiLlmPort({
+      model: 'gemini-3.5-flash',
+      apiKey: 'gemini-test',
+      fetchImpl: async (_input, init) => {
+        capturedBody =
+          typeof init?.body === 'string' ? init.body : undefined;
+        return new Response(
+          JSON.stringify({
+            candidates: [
+              {
+                content: { role: 'model', parts: [{ text: 'done' }] },
+                finishReason: 'STOP',
+              },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      },
+    });
+
+    await collectEvents(
+      port.complete({
+        messages: [
+          { role: 'user', content: 'read a.ts' },
+          {
+            role: 'assistant',
+            content: '',
+            toolCalls: [
+              {
+                id: 'call_0',
+                name: 'read_file',
+                arguments: '{"path":"a.ts"}',
+                thoughtSignature: 'sig-abc',
+              },
+            ],
+          },
+          {
+            role: 'tool',
+            toolCallId: 'call_0',
+            name: 'read_file',
+            content: '{"status":"succeeded"}',
+          },
+        ],
+        stream: false,
+        tools: [
+          {
+            name: 'read_file',
+            description: 'Read a file',
+            inputSchema: { type: 'object' },
+          },
+        ],
+      }),
+    );
+
+    const body = JSON.parse(capturedBody ?? '{}') as {
+      contents?: Array<{
+        role?: string;
+        parts?: Array<{
+          functionCall?: { name?: string };
+          thoughtSignature?: string;
+        }>;
+      }>;
+    };
+    const modelTurn = body.contents?.find((item) =>
+      item.parts?.some((part) => part.functionCall?.name === 'read_file'),
+    );
+    expect(modelTurn?.parts?.[0]?.thoughtSignature).toBe('sig-abc');
+  });
 });

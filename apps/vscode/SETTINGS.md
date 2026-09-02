@@ -29,7 +29,7 @@ Required setup. Connection and credentials are at the top so you do not scroll p
 
 | UI field | Setting | Save / reflect |
 |---|---|---|
-| Provider | `mitii.provider.preset` + `mitii.provider.type` | Saved preset prefills base URL and model. After Save, the same preset is shown. |
+| Provider | `mitii.provider.preset` + `mitii.provider.type` | Saved preset prefills base URL and model. After Save, the same preset is shown. Includes **Ollama Cloud** (`https://ollama.com/v1`). |
 | Base URL | `mitii.provider.baseUrl` | Saved as typed. Local hosts do not need a key. |
 | Model | `mitii.provider.model` | Dropdown or Custom. Saved model id is reflected exactly. |
 
@@ -38,7 +38,7 @@ Required setup. Connection and credentials are at the top so you do not scroll p
 | UI field | Storage | Save / reflect |
 |---|---|---|
 | Set key / Clear | SecretStorage `mitii.provider.apiKey` | Never written to settings JSON. Status shows `configured` or `not set`. |
-| Test connection | Host probe | Status pill only. Not a persisted setting. |
+| Test connection | Host probe | Status pill + model list only. Does **not** persist settings or reset unsaved drafts. |
 
 Anthropic and Gemini require a key. Echo and local OpenAI-compatible hosts usually do not.
 

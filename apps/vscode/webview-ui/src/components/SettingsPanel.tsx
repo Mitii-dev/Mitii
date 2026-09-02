@@ -562,7 +562,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
                       {provider.type === 'anthropic' ||
                       provider.type === 'gemini'
                         ? 'Override only for a proxy or regional endpoint.'
-                        : 'Local hosts do not need an API key.'}
+                        : provider.preset === 'ollama-cloud' ||
+                            /ollama\.com/i.test(provider.baseUrl)
+                          ? 'Ollama Cloud requires an API key.'
+                          : 'Local hosts do not need an API key.'}
                     </p>
                   </div>
                 ) : null}
