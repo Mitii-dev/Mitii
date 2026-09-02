@@ -127,6 +127,13 @@ export const agentEngineStartInputSchema = z
       .object({
         policy: windowBudgetPolicyOverridesSchema.optional(),
         effort: z.enum(WINDOW_BUDGET_EFFORTS).optional(),
+        /**
+         * Raw host max-output setting. `0` / omitted → derive from the
+         * advertised context window. A positive value is a hard override.
+         * Do not pass a pre-derived reserve here — that incorrectly becomes
+         * `output_host_override` and caps generation below leftover context.
+         */
+        maximumOutputTokens: z.number().int().nonnegative().optional(),
       })
       .strict()
       .optional(),

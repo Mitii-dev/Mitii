@@ -63,11 +63,31 @@ describe("deriveWindowPolicy", () => {
     expect(at200k.taskList.maxTasks).toBeGreaterThanOrEqual(10);
     expect(at200k.reasonCodes).toContain("mutation_effort_capped");
     expect(at200k.reasonCodes).toContain("effort_medium");
-    expect(at200k.compaction.autoMaxTokens).toBe(32_000);
-    expect(at200k.compaction.hardMaxTokens).toBe(40_000);
-    expect(at200k.maximumOutputTokens).toBe(32_768);
+    // Compaction ceilings scale with the advertised window (not fixed 32k/40k).
+    expect(at200k.compaction.autoMaxTokens).toBe(160_000);
+    expect(at200k.compaction.hardMaxTokens).toBe(200_000);
+    // Wide band: 18% output, capped by 25% window ratio (no 32k absolute choke).
+    expect(at200k.maximumOutputTokens).toBe(36_000);
     expect(at200k.maximumOutputTokens).toBeGreaterThan(
       at30k.maximumOutputTokens,
+    );
+  });
+
+  it("scales compaction ceilings with the context window across bands", () => {
+    const at40k = deriveWindowPolicy({
+      schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+      contextWindowTokens: 40_000,
+    });
+    const at100k = deriveWindowPolicy({
+      schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+      contextWindowTokens: 100_000,
+    });
+    expect(at40k.compaction.autoMaxTokens).toBe(32_000);
+    expect(at40k.compaction.hardMaxTokens).toBe(40_000);
+    expect(at100k.compaction.autoMaxTokens).toBe(80_000);
+    expect(at100k.compaction.hardMaxTokens).toBe(100_000);
+    expect(at100k.compaction.autoMaxTokens).toBeGreaterThan(
+      at40k.compaction.autoMaxTokens,
     );
   });
 

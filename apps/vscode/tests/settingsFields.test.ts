@@ -12,6 +12,7 @@ import {
   DEFAULT_MODE_DEFAULTS,
   DEFAULT_RUN_BUDGET,
   isSettingsNavCompact,
+  normalizeMaximumOutputTokens,
   normalizeTokenLimit,
   parseNumberFieldDraft,
   readStoredContextWindow,
@@ -306,6 +307,25 @@ describe('context window edit / save / reflect', () => {
   it('resolves an unknown model to the default window when stored is 0', () => {
     expect(resolveEffectiveContextWindow(0, 'not-a-preset')).toBe(
       DEFAULT_CONTEXT_WINDOW,
+    );
+  });
+
+  it('uses the saved context window as the source of truth when positive', () => {
+    expect(resolveEffectiveContextWindow(100_000, 'claude-sonnet-4-5', 'anthropic')).toBe(
+      100_000,
+    );
+    expect(resolveEffectiveContextWindow(100_000, 'not-a-preset')).toBe(100_000);
+  });
+
+  it('falls back to cloud-sized windows when stored is 0', () => {
+    expect(resolveEffectiveContextWindow(0, 'claude-sonnet-4-5', 'anthropic')).toBe(
+      200_000,
+    );
+    expect(resolveEffectiveContextWindow(0, 'gemini-2.5-flash', 'gemini')).toBe(
+      1_048_576,
+    );
+    expect(resolveEffectiveContextWindow(0, 'gpt-4o', 'openai-compatible')).toBe(
+      128_000,
     );
   });
 
@@ -694,6 +714,18 @@ describe('token limits must not snap back to 30000 while editing', () => {
       contextWindow: 30_000,
       maximumOutputTokens: 5_000,
     });
+  });
+
+  it('maps the legacy 5000 max-output default to auto (0)', () => {
+    expect(normalizeMaximumOutputTokens(5_000)).toBe(0);
+    expect(normalizeMaximumOutputTokens(0)).toBe(0);
+    expect(normalizeMaximumOutputTokens(12_288)).toBe(12_288);
+    const reflected = reflectProviderTokenLimits({
+      contextWindow: 100_000,
+      maximumOutputTokens: 5_000,
+      model: 'qwen3-coder:30b',
+    });
+    expect(reflected.maximumOutputTokens).toBe(0);
   });
 
   it('saves a change away from 30000 / 5000 and reflects the new raw values', () => {

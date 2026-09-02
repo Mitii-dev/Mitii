@@ -1,5 +1,19 @@
 import type { TokenBudgetPreview } from './protocol.js';
 
+/** Historical VS Code default; treated as unset so output scales with the window. */
+export const LEGACY_DEFAULT_MAXIMUM_OUTPUT_TOKENS = 5_000;
+
+export function normalizeMaximumOutputTokens(raw: unknown): number {
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0) return 0;
+  const floored = Math.floor(value);
+  return floored === LEGACY_DEFAULT_MAXIMUM_OUTPUT_TOKENS ? 0 : floored;
+}
+
+export function isAutoMaximumOutputTokens(raw: unknown): boolean {
+  return normalizeMaximumOutputTokens(raw) === 0;
+}
+
 /**
  * Built-in Window Budget defaults. Keep aligned with
  * `packages/v8/src/modules/window-budget/defaults.ts`.
@@ -9,7 +23,7 @@ import type { TokenBudgetPreview } from './protocol.js';
 export const DEFAULT_WINDOW_BUDGET_NUMBERS: Record<string, number> = {
   outputRatio: 0.2,
   outputMinTokens: 10_240,
-  outputMaxTokens: 32_768,
+  outputMaxTokens: 512_000,
   outputWindowCapRatio: 0.35,
   toolSchemaFallbackTokens: 8_000,
   toolSchemaFallbackWindowRatio: 0.2,
@@ -19,9 +33,9 @@ export const DEFAULT_WINDOW_BUDGET_NUMBERS: Record<string, number> = {
   conversationShare: 0.4,
   planShare: 0.06,
   skillsShare: 0.04,
-  planTokensCap: 16_000,
-  skillsTokensCap: 8_000,
-  repositoryTokensCap: 64_000,
+  planTokensCap: 32_000,
+  skillsTokensCap: 16_000,
+  repositoryTokensCap: 128_000,
   compactionWarnRatio: 0.7,
   compactionAutoRatio: 0.8,
   compactionHardRatio: 0.92,
@@ -36,7 +50,7 @@ export const DEFAULT_WINDOW_BUDGET_NUMBERS: Record<string, number> = {
   compactedToolArgumentCharsMax: 2_000,
   toolResultContentCharsRatio: 0.015,
   toolResultContentCharsMin: 2_000,
-  toolResultContentCharsMax: 24_000,
+  toolResultContentCharsMax: 64_000,
   droppedTurnSummaryCharsRatio: 0.01,
   droppedTurnSummaryCharsMin: 1_200,
   droppedTurnSummaryCharsMax: 8_000,
@@ -117,6 +131,10 @@ const WINDOW_BUDGET_BAND_OVERLAYS: Record<string, Record<string, number>> = {
     planShare: 0.06,
     skillsShare: 0.05,
     maxSkillsCap: 6,
+    repositoryTokensCap: 180_000,
+    planTokensCap: 48_000,
+    skillsTokensCap: 24_000,
+    toolResultContentCharsMax: 96_000,
   },
 };
 
@@ -134,13 +152,37 @@ export function resolveLiveWindowBudgetBand(
  * Medium working-set overlay. Keep aligned with
  * `packages/v8/src/modules/window-budget/effort.ts`.
  * Live preview cannot import V8; hosts still derive from `deriveWindowPolicy`.
+ * Compaction ceilings scale with the context window (settings source of truth).
  */
 const MEDIUM_WINDOW_BUDGET_EFFORT = {
   maxUniqueFilesPerCall: 8,
   maxModelCalls: 64,
-  compactionAutoMaxTokens: 32_000,
-  compactionHardMaxTokens: 40_000,
+  compactionAutoWindowRatio: 0.8,
+  compactionHardWindowRatio: 1,
+  compactionAutoMinTokens: 16_000,
+  compactionHardMinTokens: 24_000,
 } as const;
+
+function resolveMediumCompactionCeilings(contextWindowTokens: number): {
+  autoMaxTokens: number;
+  hardMaxTokens: number;
+} {
+  const windowTokens = Math.max(1, Math.floor(contextWindowTokens));
+  const autoMaxTokens = Math.max(
+    MEDIUM_WINDOW_BUDGET_EFFORT.compactionAutoMinTokens,
+    Math.floor(
+      windowTokens * MEDIUM_WINDOW_BUDGET_EFFORT.compactionAutoWindowRatio,
+    ),
+  );
+  const hardMaxTokens = Math.max(
+    MEDIUM_WINDOW_BUDGET_EFFORT.compactionHardMinTokens,
+    Math.floor(
+      windowTokens * MEDIUM_WINDOW_BUDGET_EFFORT.compactionHardWindowRatio,
+    ),
+    autoMaxTokens,
+  );
+  return { autoMaxTokens, hardMaxTokens };
+}
 
 export const SIMPLE_TOKEN_BUDGET_KEYS = [
   'outputRatio',
@@ -334,11 +376,12 @@ export function deriveLiveTokenBudgetPreview(
     windowOutputCap,
   );
 
-  const rawHostOutput = input.maximumOutputTokens ?? 0;
-  const hostOutput = rawHostOutput === 5_000 ? 0 : rawHostOutput;
+  const rawHostOutput = normalizeMaximumOutputTokens(
+    input.maximumOutputTokens ?? 0,
+  );
   const maximumOutputTokens =
-    hostOutput > 0
-      ? clampInt(hostOutput, 1, Math.max(1, windowTokens - 1))
+    rawHostOutput > 0
+      ? clampInt(rawHostOutput, 1, Math.max(1, windowTokens - 1))
       : derivedOutput;
 
   const fallbackTools = Math.min(
@@ -464,6 +507,7 @@ export function deriveLiveTokenBudgetPreview(
     ),
   );
 
+  const compactionCeilings = resolveMediumCompactionCeilings(windowTokens);
   return {
     contextWindowTokens: windowTokens,
     maximumOutputTokens,
@@ -482,13 +526,13 @@ export function deriveLiveTokenBudgetPreview(
       Math.floor(
         loopInputBudgetTokens * policyNumber(policy, 'compactionAutoRatio'),
       ),
-      MEDIUM_WINDOW_BUDGET_EFFORT.compactionAutoMaxTokens,
+      compactionCeilings.autoMaxTokens,
     ),
     compactionHardTokens: Math.min(
       Math.floor(
         loopInputBudgetTokens * policyNumber(policy, 'compactionHardRatio'),
       ),
-      MEDIUM_WINDOW_BUDGET_EFFORT.compactionHardMaxTokens,
+      compactionCeilings.hardMaxTokens,
     ),
     keepRecentToolResults: clampInt(
       Math.floor(

@@ -642,16 +642,23 @@ async function resolveVectorRetrievalRuntime(options: {
         'Vector retrieval is unavailable (embedding_profile_missing): index-runtime.json does not describe a ready embedding profile. Reindex the workspace.',
     };
   }
-  const vectorCapability = vectorCapabilityForProfile(
+  let vectorCapability = vectorCapabilityForProfile(
     options.descriptor,
     metadata.embeddingProfile.id,
   );
   if (!vectorCapability) {
-    return {
-      status: 'unavailable',
-      reason:
-        'Vector retrieval is unavailable (published_profile_missing): published repository state does not expose the persisted vector profile. Reindex the workspace.',
-    };
+    // Fingerprint republish (and workspace-id remaps) often omit vectorProfile
+    // even when LanceDB + index-runtime still hold a ready embedding index.
+    // Prefer using the on-disk vectors over dropping semantic search.
+    if (existsSync(metadata.lanceDbPath)) {
+      vectorCapability = 'ready';
+    } else {
+      return {
+        status: 'unavailable',
+        reason:
+          'Vector retrieval is unavailable (published_profile_missing): published repository state does not expose the persisted vector profile. Reindex the workspace.',
+      };
+    }
   }
   const alignedSettings = alignSemanticSettingsWithPersistedProfile(
     options.semanticIndex,

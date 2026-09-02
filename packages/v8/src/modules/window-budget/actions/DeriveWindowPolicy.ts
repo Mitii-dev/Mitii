@@ -4,6 +4,7 @@ import {
 } from "../constants";
 import {
   WINDOW_BUDGET_EFFORT_OVERLAY,
+  resolveEffortCompactionCeilings,
   resolveWindowBudgetEffort,
 } from "../effort";
 import {
@@ -178,6 +179,10 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
     policy.memoryReinjectCharsMin,
     policy.memoryReinjectCharsMax,
   );
+  const { autoMaxTokens, hardMaxTokens } = resolveEffortCompactionCeilings({
+    contextWindowTokens: windowTokens,
+    effort,
+  });
 
   const windowDerivedFiles = Math.floor(
     (windowTokens * policy.outputRatio) / policy.filesPerOutputTokens,
@@ -267,8 +272,8 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
       maxEstablishedFacts,
       establishedFactReinjectChars,
       memoryReinjectChars,
-      autoMaxTokens: overlay.compactionAutoMaxTokens,
-      hardMaxTokens: overlay.compactionHardMaxTokens,
+      autoMaxTokens,
+      hardMaxTokens,
     },
     mutation: {
       maxPatchesPerCall,

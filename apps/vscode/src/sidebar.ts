@@ -60,11 +60,13 @@ import {
 import { scaffoldMitiiWorkspace } from './mitiiWorkspace.js';
 import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
 import { resolveVsCodeSemanticIndexSettings } from './semanticIndex.js';
-import { findLocalModelPreset } from './modelPresets.js';
 import { readModelIoLoggingEnabled } from './modelIoSettings.js';
 import {
+  DEFAULT_CONTEXT_WINDOW,
+  normalizeMaximumOutputTokens,
   normalizeTokenLimit,
   readStoredContextWindow,
+  resolveEffectiveContextWindow,
 } from './settingsFields.js';
 import { searchWorkspacePaths } from './pathSearch.js';
 import {
@@ -141,7 +143,6 @@ function savedPlanMarkdownRelative(jsonRelativePath: string): string {
   return jsonRelativePath.replace(/\.json$/i, '.md');
 }
 
-const DEFAULT_CONTEXT_WINDOW = 32768;
 const DEFAULT_RUN_BUDGET: RunBudgetSettingsSnapshot = {
   unlimited: false,
   maxModelCalls: 64,
@@ -200,18 +201,35 @@ function readMaximumIndexFiles(vs: typeof vscode): number {
   return Math.max(0, Math.min(240_000, Math.floor(value)));
 }
 
+function configValuesEqual(current: unknown, next: unknown): boolean {
+  if (Object.is(current, next)) return true;
+  if (
+    typeof current === 'number' &&
+    typeof next === 'number' &&
+    Number.isFinite(current) &&
+    Number.isFinite(next)
+  ) {
+    return current === next;
+  }
+  if (typeof current === 'string' && typeof next === 'string') {
+    return current === next;
+  }
+  if (typeof current === 'boolean' && typeof next === 'boolean') {
+    return current === next;
+  }
+  return false;
+}
+
 function resolveContextWindow(vs: typeof vscode): number {
   const cfg = vs.workspace.getConfiguration('mitii');
   const fromSetting = cfg.get<number>('provider.contextWindow');
-  if (
-    typeof fromSetting === 'number' &&
-    Number.isFinite(fromSetting) &&
-    fromSetting > 0
-  ) {
-    return Math.floor(fromSetting);
-  }
+  const stored =
+    typeof fromSetting === 'number' && Number.isFinite(fromSetting)
+      ? Math.floor(fromSetting)
+      : 0;
   const model = cfg.get<string>('provider.model') ?? '';
-  return findLocalModelPreset(model)?.contextWindow ?? DEFAULT_CONTEXT_WINDOW;
+  const providerType = cfg.get<string>('provider.type') ?? '';
+  return resolveEffectiveContextWindow(stored, model, providerType);
 }
 
 function emptyTokenUsage(contextWindow = DEFAULT_CONTEXT_WINDOW): TokenUsageSnapshot {
@@ -1975,25 +1993,51 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
   private async handleSettingsSet(
     message: Extract<WebviewToHostMessage, { type: 'settings.set' }>,
   ): Promise<void> {
+    const cfg = this.vs.workspace.getConfiguration('mitii');
+    const previousType = cfg.get<string>('provider.type') ?? 'echo';
+    const previousBaseUrl = cfg.get<string>('provider.baseUrl')?.trim() ?? '';
     this.settingsWriteDepth += 1;
     try {
-      await this.applySettingsSet(message);
+      try {
+        await this.applySettingsSet(message);
+        this.post({ type: 'settings.saved', ok: true });
+      } catch (error) {
+        this.post({
+          type: 'settings.saved',
+          ok: false,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'Settings could not be saved.',
+        });
+      }
+      // Echo full state after the quick ack so Save never waits on bootstrap.
+      await this.sendBootstrap();
+      const providerPatch = message.provider;
+      if (!providerPatch) {
+        return;
+      }
+      const nextType = providerPatch.type ?? previousType;
+      const nextBaseUrl =
+        providerPatch.baseUrl !== undefined
+          ? providerPatch.baseUrl.trim()
+          : previousBaseUrl;
+      const typeOrUrlChanged =
+        (providerPatch.type !== undefined &&
+          providerPatch.type !== previousType) ||
+        (providerPatch.baseUrl !== undefined &&
+          nextBaseUrl !== previousBaseUrl);
+      if (!typeOrUrlChanged || nextType === 'echo') {
+        return;
+      }
+      void this.refreshDiscoveredModels({
+        notify: true,
+        type: nextType,
+        baseUrl: nextBaseUrl,
+      }).catch(() => undefined);
     } finally {
       this.settingsWriteDepth = Math.max(0, this.settingsWriteDepth - 1);
     }
-    const providerPatch = message.provider;
-    const shouldRefreshModels =
-      !providerPatch ||
-      providerPatch.type !== undefined ||
-      providerPatch.baseUrl !== undefined;
-    if (shouldRefreshModels) {
-      await this.refreshDiscoveredModels({
-        notify: false,
-        type: providerPatch?.type,
-        baseUrl: providerPatch?.baseUrl,
-      });
-    }
-    await this.sendBootstrap();
   }
 
   private async applySettingsSet(
@@ -2001,107 +2045,59 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
   ): Promise<void> {
     const cfg = this.vs.workspace.getConfiguration('mitii');
     const target = this.configurationTarget();
+    const update = async (key: string, value: unknown): Promise<void> => {
+      if (configValuesEqual(cfg.get(key), value)) return;
+      await cfg.update(key, value, target);
+    };
     if (message.provider) {
       await this.writeProviderSettings(message.provider);
     }
     if (message.ui) {
       if (message.ui.showReasoning !== undefined) {
-        await cfg.update(
-          'ui.showReasoning',
-          message.ui.showReasoning,
-          target,
-        );
+        await update('ui.showReasoning', message.ui.showReasoning);
       }
       if (message.ui.developerEnabled !== undefined) {
-        await cfg.update(
-          'developer.enabled',
-          message.ui.developerEnabled,
-          target,
-        );
+        await update('developer.enabled', message.ui.developerEnabled);
       }
       if (message.ui.intensityOverrides !== undefined) {
-        await cfg.update(
-          'developer.intensityOverrides',
-          message.ui.intensityOverrides,
-          target,
-        );
+        await update('developer.intensityOverrides', message.ui.intensityOverrides);
       }
       if (message.ui.debugLogging !== undefined) {
-        await cfg.update(
-          'debug',
-          message.ui.debugLogging,
-          target,
-        );
+        await update('debug', message.ui.debugLogging);
       }
       if (message.ui.modelIoLogging !== undefined) {
-        await cfg.update(
-          'developer.modelIo',
-          message.ui.modelIoLogging,
-          target,
-        );
+        await update('developer.modelIo', message.ui.modelIoLogging);
       }
       if (message.ui.reasoningPreviewMaxChars !== undefined) {
-        await cfg.update(
-          'ui.reasoningPreviewMaxChars',
-          message.ui.reasoningPreviewMaxChars,
-          target,
-        );
+        await update('ui.reasoningPreviewMaxChars', message.ui.reasoningPreviewMaxChars);
       }
       if (message.ui.depth !== undefined) {
-        await cfg.update(
-          'ui.depth',
-          message.ui.depth,
-          target,
-        );
+        await update('ui.depth', message.ui.depth);
       }
       if (message.ui.effort !== undefined) {
-        await cfg.update(
-          'ui.effort',
-          message.ui.effort,
-          target,
-        );
+        await update('ui.effort', message.ui.effort);
       }
       if (message.ui.modeDefaults) {
         for (const mode of ['ask', 'plan', 'agent'] as const) {
           const defaults = message.ui.modeDefaults[mode];
           if (!defaults) continue;
           if (defaults.thoroughness !== undefined) {
-            await cfg.update(
-              `ui.modeDefaults.${mode}.thoroughness`,
-              defaults.thoroughness,
-              target,
-            );
+            await update(`ui.modeDefaults.${mode}.thoroughness`, defaults.thoroughness);
           }
           if (defaults.depth !== undefined) {
-            await cfg.update(
-              `ui.modeDefaults.${mode}.depth`,
-              defaults.depth,
-              target,
-            );
+            await update(`ui.modeDefaults.${mode}.depth`, defaults.depth);
           }
           if (defaults.approvalMode !== undefined) {
-            await cfg.update(
-              `ui.modeDefaults.${mode}.approvalMode`,
-              defaults.approvalMode,
-              target,
-            );
+            await update(`ui.modeDefaults.${mode}.approvalMode`, defaults.approvalMode);
           }
           if (defaults.model !== undefined) {
-            await cfg.update(
-              `ui.modeDefaults.${mode}.model`,
-              defaults.model.trim(),
-              target,
-            );
+            await update(`ui.modeDefaults.${mode}.model`, defaults.model.trim());
           }
         }
       }
       if (message.ui.runBudget) {
         if (message.ui.runBudget.unlimited !== undefined) {
-          await cfg.update(
-            'runBudget.unlimited',
-            message.ui.runBudget.unlimited,
-            target,
-          );
+          await update('runBudget.unlimited', message.ui.runBudget.unlimited);
         }
         const writeBudgetNumber = async (
           key: Exclude<keyof RunBudgetSettingsSnapshot, 'unlimited'>,
@@ -2110,10 +2106,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         ) => {
           const value = message.ui?.runBudget?.[key];
           if (value === undefined) return;
-          await cfg.update(
+          await update(
             setting,
             Math.max(minimum, Math.floor(Number(value) || 0)),
-            target,
           );
         };
         await writeBudgetNumber('maxModelCalls', 'runBudget.maxModelCalls', 1);
@@ -2131,13 +2126,14 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       }
       if (message.ui.tokenBudget) {
         if (message.ui.tokenBudget.enabled !== undefined) {
-          await cfg.update(
-            'tokenBudget.enabled',
-            message.ui.tokenBudget.enabled,
-            target,
-          );
+          await update('tokenBudget.enabled', message.ui.tokenBudget.enabled);
         }
-        if (message.ui.tokenBudget.policy) {
+        // Skip dozens of policy keys when custom budgets are off — Save was
+        // blocking on ~68 sequential VS Code configuration writes.
+        const tokenBudgetEnabled =
+          message.ui.tokenBudget.enabled ??
+          cfg.get<boolean>('tokenBudget.enabled') === true;
+        if (message.ui.tokenBudget.policy && tokenBudgetEnabled) {
           for (const field of TOKEN_BUDGET_FIELDS) {
             const value = message.ui.tokenBudget.policy[field.key];
             if (typeof value !== 'number' || !Number.isFinite(value)) {
@@ -2147,23 +2143,21 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
               field.min,
               Math.min(field.max ?? Number.POSITIVE_INFINITY, value),
             );
-            await cfg.update(
+            await update(
               `tokenBudget.${field.key}`,
               field.kind === 'int' ? Math.floor(bounded) : bounded,
-              target,
             );
           }
         }
       }
       if (message.ui.loopPolicy) {
         if (message.ui.loopPolicy.enabled !== undefined) {
-          await cfg.update(
-            'loopPolicy.enabled',
-            message.ui.loopPolicy.enabled,
-            target,
-          );
+          await update('loopPolicy.enabled', message.ui.loopPolicy.enabled);
         }
-        if (message.ui.loopPolicy.thresholds) {
+        const loopPolicyEnabled =
+          message.ui.loopPolicy.enabled ??
+          cfg.get<boolean>('loopPolicy.enabled') === true;
+        if (message.ui.loopPolicy.thresholds && loopPolicyEnabled) {
           for (const field of LOOP_POLICY_FIELDS) {
             const value = message.ui.loopPolicy.thresholds[field.key];
             if (typeof value !== 'number' || !Number.isFinite(value)) {
@@ -2173,10 +2167,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
               field.min,
               Math.min(field.max ?? Number.POSITIVE_INFINITY, value),
             );
-            await cfg.update(
+            await update(
               `loopPolicy.${field.key}`,
               field.kind === 'int' ? Math.floor(bounded) : bounded,
-              target,
             );
           }
         }
@@ -2184,11 +2177,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       if (message.ui.contextToggles) {
         for (const [key, value] of Object.entries(message.ui.contextToggles)) {
           if (value === undefined) continue;
-          await cfg.update(
-            `ui.contextToggles.${key}`,
-            value,
-            target,
-          );
+          await update(`ui.contextToggles.${key}`, value);
         }
         if (message.ui.contextToggles.memory !== undefined) {
           this.invalidateClient();
@@ -2197,28 +2186,19 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     }
     const approvalMode = message.approvalMode ?? message.ui?.approvalMode;
     if (approvalMode !== undefined) {
-      await cfg.update(
-        'safety.approvalMode',
-        approvalMode,
-        target,
-      );
+      await update('safety.approvalMode', approvalMode);
       this.autoApprovePendingToolApprovalIfAllowed(approvalMode);
     }
     if (message.workspaceRootOverride !== undefined) {
-      await cfg.update(
-        'workspace.rootPathOverride',
-        message.workspaceRootOverride,
-        target,
-      );
+      await update('workspace.rootPathOverride', message.workspaceRootOverride);
     }
     if (message.workspaceMaximumIndexFiles !== undefined) {
       const value = Number(message.workspaceMaximumIndexFiles);
-      await cfg.update(
+      await update(
         'workspace.maximumIndexFiles',
         Number.isFinite(value)
           ? Math.max(0, Math.min(240_000, Math.floor(value)))
           : 0,
-        target,
       );
     }
     if (message.mcp) {
@@ -2230,28 +2210,12 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         ? message.semanticIndex.source
         : undefined;
       if (source) {
-        await cfg.update(
-          'semanticIndex.source',
-          source,
-          target,
-        );
-        await cfg.update(
-          'semanticIndex.backend',
-          source === 'disabled' ? 'disabled' : source,
-          target,
-        );
+        await update('semanticIndex.source', source);
+        await update('semanticIndex.backend', source === 'disabled' ? 'disabled' : source);
         if (source === 'disabled') {
-          await cfg.update(
-            'semanticIndex.enabled',
-            false,
-            target,
-          );
+          await update('semanticIndex.enabled', false);
         } else {
-          await cfg.update(
-            'semanticIndex.enabled',
-            true,
-            target,
-          );
+          await update('semanticIndex.enabled', true);
         }
         this.invalidateClient();
       }
@@ -2298,6 +2262,10 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
 
   private async writeConfigValue(key: string, value: unknown): Promise<void> {
     const cfg = this.vs.workspace.getConfiguration('mitii');
+    const current = cfg.get(key);
+    if (configValuesEqual(current, value)) {
+      return;
+    }
     await cfg.update(key, value, this.configurationTarget());
   }
 
@@ -2345,21 +2313,14 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     if (provider.maximumOutputTokens !== undefined) {
       await this.writeConfigValue(
         'provider.maximumOutputTokens',
-        normalizeTokenLimit(provider.maximumOutputTokens),
+        normalizeMaximumOutputTokens(provider.maximumOutputTokens),
       );
     }
     this.connectionOk = undefined;
     this.connectionStatus = undefined;
     this.invalidateClient();
-    // Model-only patches must not re-list against stale type/URL (or clear
-    // discovery when persisted type is still echo while the draft is Ollama).
-    if (provider.type !== undefined || provider.baseUrl !== undefined) {
-      await this.refreshDiscoveredModels({
-        notify: false,
-        type: provider.type,
-        baseUrl: provider.baseUrl,
-      });
-    }
+    // Model rediscovery is owned by handleSettingsSet / explicit Refresh models
+    // so Save never blocks on a hung provider catalog request.
   }
 
   private async handleProfileSwitch(id: string): Promise<void> {
@@ -2525,7 +2486,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       cfg.get<number>('provider.contextWindow'),
     );
     const fromMaxOut = cfg.get<number>('provider.maximumOutputTokens');
-    const maximumOutputTokens = normalizeTokenLimit(fromMaxOut);
+    const maximumOutputTokens = normalizeMaximumOutputTokens(fromMaxOut);
     return {
       type,
       preset,

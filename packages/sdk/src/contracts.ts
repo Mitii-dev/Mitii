@@ -134,6 +134,8 @@ export const mitiiStartInputSchema = z
       .object({
         policy: windowBudgetPolicyOverridesSchema.optional(),
         effort: z.enum(WINDOW_BUDGET_EFFORTS).optional(),
+        /** Raw host max-output setting; 0 / omit derives from context window. */
+        maximumOutputTokens: z.number().int().nonnegative().optional(),
       })
       .strict()
       .optional(),

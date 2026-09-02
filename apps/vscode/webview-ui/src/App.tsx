@@ -835,6 +835,7 @@ export function App() {
   const [tokenUsage, setTokenUsage] =
     useState<TokenUsageSnapshot>(EMPTY_TOKEN_USAGE);
   const [testingConnection, setTestingConnection] = useState(false);
+  const [refreshingModels, setRefreshingModels] = useState(false);
   const [connectionMessage, setConnectionMessage] = useState<string | null>(
     null,
   );
@@ -972,6 +973,8 @@ export function App() {
       )
         ? Math.max(0, Math.floor(msg.provider.maximumOutputTokens))
         : 0;
+      const normalizedMaximumOutputTokens =
+        nextMaximumOutputTokens === 5_000 ? 0 : nextMaximumOutputTokens;
       const nextModel = preserveDraft
         ? draft.model
         : (msg.provider.model ?? '');
@@ -991,8 +994,10 @@ export function App() {
         contextWindow: preserveDraft ? draft.contextWindow : nextContextWindow,
         effectiveContextWindow: nextEffectiveContextWindow,
         maximumOutputTokens: preserveDraft
-          ? draft.maximumOutputTokens
-          : nextMaximumOutputTokens,
+          ? draft.maximumOutputTokens === 5_000
+            ? 0
+            : draft.maximumOutputTokens
+          : normalizedMaximumOutputTokens,
         connectionOk: msg.provider.connectionOk,
         connectionStatus: msg.provider.connectionStatus,
       });
@@ -1069,6 +1074,25 @@ export function App() {
       }
     }
   }, [applyTokenUsage]);
+
+  useEffect(() => {
+    if (!settingsSaving) return;
+    // Last-resort unlock if the host never acks (should be rare after settings.saved).
+    const timer = window.setTimeout(() => {
+      if (!settingsSavingRef.current) return;
+      settingsSavingRef.current = false;
+      setSettingsSaving(false);
+    }, 45_000);
+    return () => window.clearTimeout(timer);
+  }, [settingsSaving]);
+
+  useEffect(() => {
+    if (!refreshingModels) return;
+    const timer = window.setTimeout(() => {
+      setRefreshingModels(false);
+    }, 12_000);
+    return () => window.clearTimeout(timer);
+  }, [refreshingModels]);
 
   useEffect(() => {
     modeRef.current = mode;
@@ -1311,10 +1335,8 @@ export function App() {
           break;
         case 'syncAutoPins': {
           const open = new Set(msg.paths);
-          // Allow auto-pin again after the file is closed and reopened.
-          for (const path of [...dismissedAutoPinsRef.current]) {
-            if (!open.has(path)) dismissedAutoPinsRef.current.delete(path);
-          }
+          // Keep user dismissals for the rest of the session. Clearing them when
+          // a tab briefly leaves the open set made removed pins come right back.
           setPinned((prev) => {
             const kept = prev.filter(
               (p) => p.source === 'user' || open.has(p.path),
@@ -1440,10 +1462,18 @@ export function App() {
           }
           break;
         case 'provider.models':
+          setRefreshingModels(false);
           updateProvider((p) => ({
             ...p,
             availableModels: mergeModelOptions(msg.models, p.model),
           }));
+          break;
+        case 'settings.saved':
+          settingsSavingRef.current = false;
+          setSettingsSaving(false);
+          if (!msg.ok) {
+            setError(msg.message ?? 'Settings could not be saved.');
+          }
           break;
         case 'tokenUsage':
           applyTokenUsage(msg.usage);
@@ -1708,6 +1738,7 @@ export function App() {
     }
     const send = () => {
       if (type === 'echo') return;
+      setRefreshingModels(true);
       postToHost({
         type: 'provider.listModels',
         provider: { type, baseUrl },
@@ -1718,6 +1749,11 @@ export function App() {
       return;
     }
     listModelsTimerRef.current = setTimeout(send, 400);
+  };
+
+  const refreshModels = () => {
+    const current = providerRef.current;
+    requestListedModels(current.type, current.baseUrl, true);
   };
 
   const handleProviderChange = (
@@ -1895,13 +1931,15 @@ export function App() {
 
   const snapshotProvider = () => {
     const current = providerRef.current;
+    const maximumOutputTokens =
+      current.maximumOutputTokens === 5_000 ? 0 : current.maximumOutputTokens;
     return {
       type: current.type,
       preset: current.preset,
       baseUrl: current.baseUrl,
       model: current.model,
       contextWindow: current.contextWindow,
-      maximumOutputTokens: current.maximumOutputTokens,
+      maximumOutputTokens,
     };
   };
 
@@ -2531,6 +2569,8 @@ export function App() {
           onTestConnection={testConnection}
           testingConnection={testingConnection}
           connectionMessage={connectionMessage}
+          onRefreshModels={refreshModels}
+          refreshingModels={refreshingModels}
           customModel={customModel}
           onCustomModelChange={setCustomModel}
           modelOptions={modelOptions}

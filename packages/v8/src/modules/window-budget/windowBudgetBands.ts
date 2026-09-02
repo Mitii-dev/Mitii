@@ -93,6 +93,10 @@ export const WINDOW_BUDGET_BAND_TABLE: Record<
       planShare: 0.06,
       skillsShare: 0.05,
       maxSkillsCap: 6,
+      repositoryTokensCap: 180_000,
+      planTokensCap: 48_000,
+      skillsTokensCap: 24_000,
+      toolResultContentCharsMax: 96_000,
     },
   },
 };

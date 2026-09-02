@@ -4,6 +4,10 @@ import { PromptConstructionPipeline, estimateTurnOutputHeadroom } from "../index
 import { resolveDynamicOutputTokens } from "../actions";
 import { PROMPT_CONSTRUCTION_THRESHOLDS } from "../policy";
 import {
+  WINDOW_BUDGET_SCHEMA_VERSION,
+  deriveWindowPolicy,
+} from "../../window-budget";
+import {
   createCapabilities,
   createPromptInput,
 } from "./fixtures/promptCases";
@@ -103,10 +107,15 @@ describe("prompt construction output reserve", () => {
   });
 
   it("expands a derived reserve to 95 percent leftover", () => {
+    // Use the live window-derived reserve so band overlays stay the source of truth.
+    const derived = deriveWindowPolicy({
+      schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+      contextWindowTokens: 30_000,
+    }).maximumOutputTokens;
     const result = resolveDynamicOutputTokens({
       contextWindowTokens: 30_000,
-      configuredOutputTokens: 10_240,
-      outputReservedTokens: 10_240,
+      configuredOutputTokens: derived,
+      outputReservedTokens: derived,
       usedInputTokens: 12_000,
     });
 

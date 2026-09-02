@@ -51,12 +51,16 @@ import { deriveLiveTokenBudgetPreview } from './liveTokenBudgetPreview.js';
 import { readTokenBudgetPolicyOverrides } from './tokenBudgetSettings.js';
 import { readLoopPolicyThresholdOverrides } from './loopPolicySettings.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
-import { findLocalModelPreset } from './modelPresets.js';
 import {
   loadProjectRules,
   observeRunToolEvent,
+  enrichFingerprintWithPersistedVectorProfile,
   type MemoryCaptureContext,
 } from '@mitii/host';
+import {
+  normalizeMaximumOutputTokens,
+  resolveEffectiveContextWindow,
+} from './settingsFields.js';
 import { MemoryPipeline } from '@mitii/v8';
 
 export function formatRunEventLine(event: RunEvent): string | undefined {
@@ -219,10 +223,8 @@ function terminalDetail(event: Extract<RunEvent, { type: 'terminal' }>): string 
   }
   const err = event.result.error?.message?.trim();
   if (err) return err.slice(0, 240);
-  const codes = event.result.reasonCodes ?? [];
-  if (codes.includes('context_skipped')) {
-    return 'Repository context was skipped for this route.';
-  }
+  // Keep "Done" clean — context/tool wiring notes belong on Run diagnostic,
+  // with Run summary as the final activity row.
   return undefined;
 }
 
@@ -1108,19 +1110,18 @@ export async function runAskInOutputChannel(options: {
       'guided',
   );
   const model = cfg.get<string>('provider.model') ?? '';
-  const contextWindow =
-    cfg.get<number>('provider.contextWindow') ||
-    findLocalModelPreset(model)?.contextWindow ||
-    32_768;
-  const configuredMaximumOutputTokens = cfg.get<number>(
-    'provider.maximumOutputTokens',
+  const providerType = cfg.get<string>('provider.type') ?? '';
+  const storedContextWindow = cfg.get<number>('provider.contextWindow');
+  const contextWindow = resolveEffectiveContextWindow(
+    typeof storedContextWindow === 'number' && Number.isFinite(storedContextWindow)
+      ? Math.floor(storedContextWindow)
+      : 0,
+    model,
+    providerType,
   );
-  const maximumOutputTokens =
-    typeof configuredMaximumOutputTokens === 'number' &&
-    Number.isFinite(configuredMaximumOutputTokens) &&
-    configuredMaximumOutputTokens > 0
-      ? Math.floor(configuredMaximumOutputTokens)
-      : undefined;
+  const maximumOutputTokens = normalizeMaximumOutputTokens(
+    cfg.get<number>('provider.maximumOutputTokens'),
+  );
   const mcpCatalogTokens = getSharedMcpManager().snapshot().toolsCatalogTokens;
   const memoryBlock =
     toggles.memory && options.workspaceState && options.workspaceId
@@ -1132,7 +1133,8 @@ export async function runAskInOutputChannel(options: {
   const windowBudgetPolicy = readTokenBudgetPolicyOverrides(cfg);
   const budgetPreview = deriveLiveTokenBudgetPreview({
     contextWindowTokens: contextWindow,
-    maximumOutputTokens,
+    maximumOutputTokens:
+      maximumOutputTokens > 0 ? maximumOutputTokens : undefined,
     policy: windowBudgetPolicy,
   });
   let contextBreakdown = buildContextUsageBreakdown({
@@ -1221,14 +1223,71 @@ export async function runAskInOutputChannel(options: {
         const mitiiDir = scaffoldMitiiWorkspace(workspaceRoot);
         const sqlitePath = join(mitiiDir, 'repository-index.sqlite');
         if (existsSync(sqlitePath)) {
-          const snap = await buildWorkspaceSnapshot({
-            workspaceRoot,
-            workspaceId,
-          });
-          await client.publishRepositoryState(snap.candidate);
-          channel.appendLine(
-            `[index] reused on-disk index at ${sqlitePath}; published fingerprint pin (${snap.fileCount} files)`,
-          );
+          const statePath = join(mitiiDir, 'last-repository-state.json');
+          let publishedFromCache = false;
+          if (existsSync(statePath)) {
+            try {
+              const raw = JSON.parse(readFileSync(statePath, 'utf8')) as {
+                schemaVersion?: number;
+                snapshotId?: string;
+                roots?: Array<{ vectorProfile?: string }>;
+                scanCompleteness?: 'complete' | 'truncated' | 'unknown';
+                reasons?: Array<{
+                  code: string;
+                  message: string;
+                  rootId?: string;
+                }>;
+              };
+              const hasVectorProfile = raw.roots?.some(
+                (root) => typeof root.vectorProfile === 'string' && root.vectorProfile.trim(),
+              );
+              if (
+                raw.schemaVersion === 1 &&
+                typeof raw.snapshotId === 'string' &&
+                Array.isArray(raw.roots) &&
+                raw.roots.length > 0 &&
+                hasVectorProfile
+              ) {
+                await client.publishRepositoryState({
+                  schemaVersion: 1,
+                  workspaceId,
+                  snapshotId: raw.snapshotId,
+                  roots: raw.roots as never,
+                  scanCompleteness: raw.scanCompleteness ?? 'complete',
+                  reasons: (raw.reasons ?? []) as never,
+                  generatedAt: new Date().toISOString(),
+                });
+                publishedFromCache = true;
+                channel.appendLine(
+                  `[index] reused on-disk index via last-repository-state.json (${raw.roots.length} root(s); vector profile preserved)`,
+                );
+              }
+            } catch (error) {
+              channel.appendLine(
+                `[index] last-repository-state.json unusable; falling back to fingerprint pin: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+              );
+            }
+          }
+          if (!publishedFromCache) {
+            const snap = await buildWorkspaceSnapshot({
+              workspaceRoot,
+              workspaceId,
+            });
+            const candidate = enrichFingerprintWithPersistedVectorProfile(
+              snap.candidate,
+              mitiiDir,
+            );
+            await client.publishRepositoryState(candidate);
+            channel.appendLine(
+              `[index] reused on-disk index at ${sqlitePath}; published fingerprint pin (${snap.fileCount} files)${
+                candidate.roots.some((root) => root.vectorProfile)
+                  ? ' with persisted vector profile'
+                  : ''
+              }`,
+            );
+          }
         } else {
           try {
             const full = await runFullWorkspaceIndex({
@@ -1297,14 +1356,13 @@ export async function runAskInOutputChannel(options: {
       approvalMode: approvalPolicy.approvalMode,
       planApproval: approvalPolicy.planApproval,
       budget: resolveRunBudget(vs),
-      ...(windowBudgetPolicy || effort
-        ? {
-            windowBudget: {
-              ...(windowBudgetPolicy ? { policy: windowBudgetPolicy } : {}),
-              ...(effort ? { effort } : {}),
-            },
-          }
-        : {}),
+      windowBudget: {
+        ...(windowBudgetPolicy ? { policy: windowBudgetPolicy } : {}),
+        ...(effort ? { effort } : {}),
+        // Raw settings value (0 = derive). Engine must not see a pre-derived
+        // capability number as a host override.
+        maximumOutputTokens,
+      },
       ...(loopPolicyThresholds
         ? { loopPolicy: { thresholds: loopPolicyThresholds } }
         : {}),
@@ -1434,14 +1492,6 @@ export async function runAskInOutputChannel(options: {
           const statusLine = `[mitii] status=${result.status} route=${result.route ?? 'n/a'}`;
           channel.appendLine(usageLine);
           channel.appendLine(statusLine);
-          handlers?.onEvent?.(undefined, {
-            id: `evt_${++activitySeq}`,
-            at: Date.now(),
-            kind: 'info',
-            title: 'Run summary',
-            detail: `${usageLine.replace('[mitii] ', '')} · ${statusLine.replace('[mitii] ', '')}`,
-            status: result.status,
-          });
           for (const line of formatRunDiagnostics(result)) {
             handlers?.onEvent?.(undefined, {
               id: `evt_${++activitySeq}`,
@@ -1466,6 +1516,15 @@ export async function runAskInOutputChannel(options: {
               status: 'failed',
             });
           }
+          // Always last in the activity timeline so the usage/status line closes the run.
+          handlers?.onEvent?.(undefined, {
+            id: `evt_${++activitySeq}`,
+            at: Date.now(),
+            kind: 'info',
+            title: 'Run summary',
+            detail: `${usageLine.replace('[mitii] ', '')} · ${statusLine.replace('[mitii] ', '')}`,
+            status: result.status,
+          });
           return {
             result: {
               ...result,

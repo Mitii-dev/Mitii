@@ -577,6 +577,35 @@ export function activate(context: ExtensionContext): void {
     },
   );
 
+  /** Soft pins follow Context toggles — never force-attach when Editor/Open tabs are off. */
+  const postEditorAutoPins = (): void => {
+    const root = workspaceRoot();
+    const toggles = resolveContextToggles(
+      vscode.workspace.getConfiguration('mitii'),
+    );
+    const snap = captureEditorContext(vscode, root, {
+      includeOpenTabs: toggles.openTabs,
+    });
+    if (toggles.editor && snap.activeRelPath) {
+      sidebar.post({
+        type: 'editorPin',
+        path: snap.activeRelPath,
+        source: 'auto',
+      });
+    }
+    let paths: string[] = [];
+    if (toggles.openTabs) {
+      paths = snap.openTabRelPaths.length
+        ? snap.openTabRelPaths
+        : snap.activeRelPath
+          ? [snap.activeRelPath]
+          : [];
+    } else if (toggles.editor && snap.activeRelPath) {
+      paths = [snap.activeRelPath];
+    }
+    sidebar.post({ type: 'syncAutoPins', paths });
+  };
+
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
       MitiiSidebarProvider.viewType,
@@ -647,58 +676,32 @@ export function activate(context: ExtensionContext): void {
       sidebar.post({ type: 'openSettings', tab: 'model' });
     }),
     vscode.window.onDidChangeActiveTextEditor(() => {
-      const root = workspaceRoot();
-      const snap = captureEditorContext(vscode, root, {
-        includeOpenTabs: true,
-      });
-      if (snap.activeRelPath) {
-        sidebar.post({
-          type: 'editorPin',
-          path: snap.activeRelPath,
-          source: 'auto',
-        });
-      }
-      sidebar.post({
-        type: 'syncAutoPins',
-        paths: snap.openTabRelPaths.length
-          ? snap.openTabRelPaths
-          : snap.activeRelPath
-            ? [snap.activeRelPath]
-            : [],
-      });
+      postEditorAutoPins();
       sidebar.postTrustAndNotices(getWorkspaceTrustSnapshot(vscode));
     }),
     vscode.workspace.onDidCloseTextDocument((doc) => {
       if (doc.uri.scheme !== 'file') return;
-      const root = workspaceRoot();
-      const snap = captureEditorContext(vscode, root, {
-        includeOpenTabs: true,
-      });
-      // Prefer full sync so soft pins match still-open tabs.
-      sidebar.post({
-        type: 'syncAutoPins',
-        paths: snap.openTabRelPaths,
-      });
-      if (snap.openTabRelPaths.length > 0) {
-        debugLog(
-          `[mitii] document closed -> syncAutoPins (${snap.openTabRelPaths.length})`,
-        );
+      postEditorAutoPins();
+      const toggles = resolveContextToggles(
+        vscode.workspace.getConfiguration('mitii'),
+      );
+      if (toggles.openTabs || toggles.editor) {
+        debugLog('[mitii] document closed -> syncAutoPins');
       }
     }),
     vscode.window.onDidChangeVisibleTextEditors(() => {
-      const root = workspaceRoot();
-      const snap = captureEditorContext(vscode, root, {
-        includeOpenTabs: true,
-      });
-      sidebar.post({
-        type: 'syncAutoPins',
-        paths: snap.openTabRelPaths,
-      });
+      postEditorAutoPins();
     }),
     onWorkspaceTrustChanged(vscode, (snap) => {
       sidebar.postTrustAndNotices(snap);
     }),
     vscode.workspace.onDidChangeConfiguration((event) => {
+      if (
+        event.affectsConfiguration('mitii.ui.contextToggles.editor') ||
+        event.affectsConfiguration('mitii.ui.contextToggles.openTabs')
+      ) {
+        postEditorAutoPins();
+      }
       if (event.affectsConfiguration('mitii.debug')) {
         channel.appendLine(
           `[mitii] debug logging ${debugEnabled() ? 'enabled' : 'disabled'}`,

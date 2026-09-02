@@ -12,6 +12,54 @@ import type {
 } from './protocol.js';
 
 export const DEFAULT_CONTEXT_WINDOW = 32_768;
+
+/** Provider-type fallbacks when settings.contextWindow is 0 and no model preset matches. */
+export const PROVIDER_CONTEXT_WINDOW_FALLBACKS: Readonly<
+  Record<string, number>
+> = {
+  anthropic: 200_000,
+  gemini: 1_048_576,
+  openai: 128_000,
+};
+
+export function inferContextWindowFromModelId(model: string): number | undefined {
+  const id = model.trim().toLowerCase();
+  if (!id) return undefined;
+  if (id.includes('claude')) return 200_000;
+  if (id.includes('gemini')) return 1_048_576;
+  if (
+    id.startsWith('gpt-') ||
+    id.startsWith('o1') ||
+    id.startsWith('o3') ||
+    id.startsWith('o4') ||
+    id.includes('gpt-4')
+  ) {
+    return 128_000;
+  }
+  if (id.includes('deepseek')) return 128_000;
+  return undefined;
+}
+
+/**
+ * Effective context window: **settings value wins** when positive.
+ * Only when stored is 0 (auto) do we fall back to model preset → provider → default.
+ */
+export function resolveEffectiveContextWindow(
+  stored: number,
+  model: string,
+  providerType?: string,
+): number {
+  if (stored > 0) return Math.floor(stored);
+  const preset = findLocalModelPreset(model)?.contextWindow;
+  if (typeof preset === 'number' && preset > 0) return preset;
+  const fromModel = inferContextWindowFromModelId(model);
+  if (fromModel) return fromModel;
+  const typeKey = (providerType ?? '').trim().toLowerCase();
+  if (typeKey && PROVIDER_CONTEXT_WINDOW_FALLBACKS[typeKey]) {
+    return PROVIDER_CONTEXT_WINDOW_FALLBACKS[typeKey]!;
+  }
+  return DEFAULT_CONTEXT_WINDOW;
+}
 export const SETTINGS_NAV_COMPACT_MAX_WIDTH = 440;
 
 export const SETTINGS_NAV_ITEMS: readonly {
@@ -98,24 +146,29 @@ export function parseNumberFieldDraft(
   );
 }
 
+/** Historical VS Code default; treated as unset so output scales with the window. */
+export const LEGACY_DEFAULT_MAXIMUM_OUTPUT_TOKENS = 5_000;
+
 export function normalizeTokenLimit(raw: unknown): number {
   const value = Number(raw);
   if (!Number.isFinite(value) || value < 0) return 0;
   return Math.floor(value);
 }
 
+/** Map the legacy 5000 default to 0 (auto / derive from context window). */
+export function normalizeMaximumOutputTokens(raw: unknown): number {
+  const value = normalizeTokenLimit(raw);
+  return value === LEGACY_DEFAULT_MAXIMUM_OUTPUT_TOKENS ? 0 : value;
+}
+
+export function isAutoMaximumOutputTokens(raw: unknown): boolean {
+  return normalizeMaximumOutputTokens(raw) === 0;
+}
+
 export function normalizePositiveInt(raw: unknown, fallback: number, min = 1): number {
   const value = Number(raw);
   if (!Number.isFinite(value)) return fallback;
   return Math.max(min, Math.floor(value));
-}
-
-export function resolveEffectiveContextWindow(
-  stored: number,
-  model: string,
-): number {
-  if (stored > 0) return stored;
-  return findLocalModelPreset(model)?.contextWindow ?? DEFAULT_CONTEXT_WINDOW;
 }
 
 export function readStoredContextWindow(raw: unknown): number {
@@ -134,7 +187,7 @@ export function applyProviderTokenLimits(
     maximumOutputTokens:
       patch.maximumOutputTokens === undefined
         ? current.maximumOutputTokens
-        : normalizeTokenLimit(patch.maximumOutputTokens),
+        : normalizeMaximumOutputTokens(patch.maximumOutputTokens),
   };
 }
 
@@ -148,7 +201,9 @@ export function reflectProviderTokenLimits(stored: {
   effectiveContextWindow: number;
 } {
   const contextWindow = normalizeTokenLimit(stored.contextWindow);
-  const maximumOutputTokens = normalizeTokenLimit(stored.maximumOutputTokens);
+  const maximumOutputTokens = normalizeMaximumOutputTokens(
+    stored.maximumOutputTokens,
+  );
   return {
     contextWindow,
     maximumOutputTokens,

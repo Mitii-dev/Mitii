@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
-  "version": "2.9.4",
+  "version": "2.9.5",
   "publisher": "mitii",
   "license": "AGPL-3.0-or-later",
   "icon": "media/mitii-short-logo.png",
@@ -281,9 +281,9 @@
         },
         "mitii.tokenBudget.outputMaxTokens": {
           "type": "number",
-          "default": 32768,
+          "default": 512000,
           "minimum": 1,
-          "description": "Ceiling for the derived output reserve."
+          "description": "Ceiling for the derived output reserve. Prefer leaving this high so outputWindowCapRatio and the context window govern the reserve."
         },
         "mitii.tokenBudget.outputWindowCapRatio": {
           "type": "number",
@@ -348,19 +348,19 @@
         },
         "mitii.tokenBudget.planTokensCap": {
           "type": "number",
-          "default": 16000,
+          "default": 32000,
           "minimum": 1,
           "description": "Hard cap on plan tokens regardless of share."
         },
         "mitii.tokenBudget.skillsTokensCap": {
           "type": "number",
-          "default": 8000,
+          "default": 16000,
           "minimum": 1,
           "description": "Hard cap on skill-body tokens regardless of share."
         },
         "mitii.tokenBudget.repositoryTokensCap": {
           "type": "number",
-          "default": 64000,
+          "default": 128000,
           "minimum": 1,
           "description": "Hard cap on repository-context tokens regardless of share."
         },
@@ -457,7 +457,7 @@
         },
         "mitii.tokenBudget.toolResultContentCharsMax": {
           "type": "number",
-          "default": 24000,
+          "default": 64000,
           "minimum": 1,
           "description": "Ceiling for live tool-result content characters."
         },

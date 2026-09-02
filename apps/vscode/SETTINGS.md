@@ -56,10 +56,12 @@ Without a key, Mitii completes the turn from model knowledge and logs a warning 
 
 The context window is the only token setting a customer needs. Retrieval, compaction, mutation batches, verification checks, and the derived model-call cap scale from that window. Developer → Token budget is optional.
 
+**Source of truth:** a positive `mitii.provider.contextWindow` always wins for budgeting, compact/standard/wide bands, and loop-history compaction ceilings. `0` means auto (model preset → provider/model heuristic → 32 768 fallback).
+
 | UI field | Setting | Save / reflect |
 |---|---|---|
 | Context window | `mitii.provider.contextWindow` | Type freely, then click **Save**. The field does not write on each keystroke. After Save, the raw number is what you see. `0` means “use the model preset”. |
-| Max output | `mitii.provider.maximumOutputTokens` | Same commit rules as context window. `0` derives the output reserve from the window (~20%, floored at 10240 when the window allows so a 30k local cap can still finish a mutation batch). Leave at `0` unless you need a hard override. The legacy default `5000` is ignored so mutation batches are not truncated. |
+| Max output | `mitii.provider.maximumOutputTokens` | Same commit rules as context window. `0` derives the output reserve from the window (~20%, floored so a 30k local cap can still finish a mutation batch). Leave at `0` unless you need a hard override. A positive value is a host override for generation; the legacy default `5000` is ignored. |
 | Derived budget | Live preview | Usable input, output reserve, model-call cap, files per mutation, verification checks, and a module-share bar. Updates as soon as the context window or max output changes. |
 | Reset budgets to defaults | Clears `mitii.tokenBudget.*` | Turns off custom token-budget overrides and restores built-in ratios for the current window. |
 

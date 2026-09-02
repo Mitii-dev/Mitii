@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
 import { basename, join, relative } from 'node:path';
 
@@ -9,6 +10,7 @@ import {
 } from '@mitii/v8';
 
 import { WORKSPACE_WALK_SKIP_DIR_NAMES, shouldSkipWorkspaceWalkFile } from '../internal/workspaceWalk.js';
+import { readIndexRuntimeMetadata } from './semanticIndex.js';
 
 export interface WorkspaceSnapshotOptions {
   workspaceRoot: string;
@@ -154,5 +156,42 @@ export async function buildWorkspaceSnapshot(
     fileCount: entries.length,
     truncated,
     relativePaths,
+  };
+}
+
+/**
+ * When a fingerprint pin is published over an existing on-disk LanceDB index,
+ * copy the persisted embedding profile onto the candidate so vector retrieval
+ * does not report published_profile_missing.
+ */
+export function enrichFingerprintWithPersistedVectorProfile(
+  candidate: PublishRepositoryStateInput,
+  mitiiDir: string,
+): PublishRepositoryStateInput {
+  const metadata = readIndexRuntimeMetadata(join(mitiiDir, 'index-runtime.json'));
+  const profileId = metadata?.embeddingProfile?.id?.trim();
+  if (!profileId || !metadata?.lanceDbPath || !existsSync(metadata.lanceDbPath)) {
+    return candidate;
+  }
+  return {
+    ...candidate,
+    roots: candidate.roots.map((root) => ({
+      ...root,
+      vectorProfile: profileId,
+      vectorIndexRevision:
+        root.vectorIndexRevision ??
+        root.textIndexRevision ??
+        root.codeIndexRevision ??
+        root.projectCatalogRevision,
+      capabilities: root.capabilities.map((capability) =>
+        capability.capability === 'vectorIndex'
+          ? {
+              capability: 'vectorIndex' as const,
+              status: 'degraded' as const,
+              reasonCode: 'capability_degraded' as const,
+            }
+          : capability,
+      ),
+    })),
   };
 }

@@ -776,6 +776,7 @@ export type HostToWebviewMessage =
       tokenUsage: TokenUsageSnapshot;
       notice: WorkspaceNoticeView;
     }
+  | { type: 'settings.saved'; ok: boolean; message?: string }
   | { type: 'index.status'; index: IndexStatusSnapshot }
   | {
       type: 'provider.connectionResult';

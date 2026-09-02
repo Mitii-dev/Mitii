@@ -150,9 +150,6 @@ describe('MitiiSidebarProvider settings persistence', () => {
 
     const byKey = new Map(updates.map((entry) => [entry.key, entry]));
     const expectedKeys = [
-      'provider.type',
-      'provider.preset',
-      'provider.baseUrl',
       'provider.model',
       'provider.contextWindow',
       'provider.maximumOutputTokens',
@@ -200,6 +197,10 @@ describe('MitiiSidebarProvider settings persistence', () => {
       'semanticIndex.backend',
       'semanticIndex.enabled',
     ];
+    // Unchanged provider.type / preset / baseUrl are skipped intentionally.
+    expect(byKey.has('provider.type')).toBe(false);
+    expect(byKey.has('provider.preset')).toBe(false);
+    expect(byKey.has('provider.baseUrl')).toBe(false);
 
     for (const key of expectedKeys) {
       expect(byKey.has(key), key).toBe(true);
@@ -301,5 +302,54 @@ describe('MitiiSidebarProvider settings persistence', () => {
     expect(
       (provider as unknown as { discoveredModels: string[] }).discoveredModels,
     ).toEqual(['gemma4:31b']);
+  });
+
+  it('bootstraps before model refresh and skips rediscovery when type/url are unchanged', async () => {
+    const { provider, updates } = createProviderHarness();
+    const refreshDiscoveredModels = vi.fn(async () => undefined);
+    const posts: unknown[] = [];
+    (
+      provider as unknown as {
+        refreshDiscoveredModels: (options: unknown) => Promise<void>;
+      }
+    ).refreshDiscoveredModels = refreshDiscoveredModels;
+    const sendBootstrap = vi.fn(async () => undefined);
+    (
+      provider as unknown as { sendBootstrap: () => Promise<void> }
+    ).sendBootstrap = sendBootstrap;
+    (provider as unknown as { post: (message: unknown) => void }).post = (
+      message,
+    ) => {
+      posts.push(message);
+    };
+
+    await (
+      provider as unknown as {
+        handleSettingsSet: (message: unknown) => Promise<void>;
+      }
+    ).handleSettingsSet({
+      type: 'settings.set',
+      provider: {
+        type: 'echo',
+        preset: 'echo',
+        baseUrl: '',
+        model: 'echo',
+        contextWindow: 100_000,
+        maximumOutputTokens: 5_000,
+      },
+    });
+
+    expect(posts.some((p) => (p as { type: string }).type === 'settings.saved')).toBe(
+      true,
+    );
+    expect(sendBootstrap).toHaveBeenCalled();
+    expect(refreshDiscoveredModels).not.toHaveBeenCalled();
+    expect(
+      updates.find((entry) => entry.key === 'provider.contextWindow')?.value,
+    ).toBe(100_000);
+    expect(
+      updates.find((entry) => entry.key === 'provider.maximumOutputTokens')
+        ?.value,
+    ).toBe(0);
   });
 });

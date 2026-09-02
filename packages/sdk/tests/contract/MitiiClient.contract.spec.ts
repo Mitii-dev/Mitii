@@ -256,6 +256,19 @@ describe('MitiiClient contract (Phase 12)', () => {
     expect(engineInput.windowBudget?.effort).toBe('high');
   });
 
+  it('maps windowBudget maximumOutputTokens onto engine start input', () => {
+    const engineInput = toAgentEngineStartInput(
+      {
+        prompt: 'Cap generation',
+        windowBudget: {
+          maximumOutputTokens: 18_000,
+        },
+      },
+      { mode: 'ask', sessionId: 'sess_test' },
+    );
+    expect(engineInput.windowBudget?.maximumOutputTokens).toBe(18_000);
+  });
+
   it('maps loopPolicy threshold overrides onto engine start input', () => {
     const engineInput = toAgentEngineStartInput(
       {

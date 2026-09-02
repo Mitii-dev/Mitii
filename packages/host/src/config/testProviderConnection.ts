@@ -24,6 +24,8 @@ export interface ListProviderModelsInput {
   baseUrl?: string;
   apiKey?: string;
   fetchImpl?: typeof fetch;
+  /** Abort catalog listing after this many ms (default 8000). */
+  timeoutMs?: number;
 }
 
 /**
@@ -105,11 +107,18 @@ export async function listProviderModels(
     return [];
   }
 
+  const controller = new AbortController();
+  const timeoutMs = input.timeoutMs ?? 8_000;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const signal = controller.signal;
+  const fetchWithTimeout: typeof fetch = (url, init) =>
+    fetchImpl(url, { ...init, signal: init?.signal ?? signal });
+
   try {
     if (type === 'anthropic') {
       if (!apiKey?.trim()) return [];
       const root = baseUrl.replace(/\/$/, '');
-      const modelsRes = await fetchImpl(`${root}/v1/models`, {
+      const modelsRes = await fetchWithTimeout(`${root}/v1/models`, {
         headers: {
           'x-api-key': apiKey.trim(),
           'anthropic-version': '2023-06-01',
@@ -123,7 +132,7 @@ export async function listProviderModels(
     if (type === 'gemini') {
       if (!apiKey?.trim()) return [];
       const root = baseUrl.replace(/\/$/, '');
-      const modelsRes = await fetchImpl(`${root}/v1beta/models`, {
+      const modelsRes = await fetchWithTimeout(`${root}/v1beta/models`, {
         headers: { 'x-goog-api-key': apiKey.trim() },
       });
       if (!modelsRes.ok) return [];
@@ -143,9 +152,11 @@ export async function listProviderModels(
 
     const root = baseUrl.replace(/\/$/, '');
     const headers = openAiCompatibleAuthHeaders(root, apiKey);
-    return listOpenAiCompatibleModels(root, headers, fetchImpl);
+    return await listOpenAiCompatibleModels(root, headers, fetchWithTimeout);
   } catch {
     return [];
+  } finally {
+    clearTimeout(timer);
   }
 }
 

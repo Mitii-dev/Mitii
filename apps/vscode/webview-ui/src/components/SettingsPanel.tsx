@@ -9,6 +9,8 @@ import {
 
 import {
   deriveLiveTokenBudgetPreview,
+  isAutoMaximumOutputTokens,
+  normalizeMaximumOutputTokens,
   resolvePreviewContextWindow,
 } from '@mitii/live-token-budget';
 import { getProviderPreset, PROVIDER_OPTIONS } from '../providerOptions';
@@ -72,6 +74,8 @@ interface SettingsPanelProps {
   onTestConnection: () => void;
   testingConnection: boolean;
   connectionMessage: string | null;
+  onRefreshModels: () => void;
+  refreshingModels: boolean;
   customModel: boolean;
   onCustomModelChange: (value: boolean) => void;
   modelOptions: string[];
@@ -332,6 +336,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
     onTestConnection,
     testingConnection,
     connectionMessage,
+    onRefreshModels,
+    refreshingModels,
     customModel,
     onCustomModelChange,
     modelOptions,
@@ -452,13 +458,15 @@ export function SettingsPanel(props: SettingsPanelProps) {
     effective: provider.effectiveContextWindow,
     fallback: ui.tokenBudget.preview.contextWindowTokens,
   });
-  const previewMaxOutput =
-    draftMaxOutput ?? provider.maximumOutputTokens;
+  const storedMaxOutput = normalizeMaximumOutputTokens(
+    draftMaxOutput ?? provider.maximumOutputTokens,
+  );
+  const autoMaxOutput = isAutoMaximumOutputTokens(storedMaxOutput);
   const livePreview = useMemo(() => {
     try {
       return deriveLiveTokenBudgetPreview({
         contextWindowTokens: previewContextWindow,
-        maximumOutputTokens: previewMaxOutput,
+        maximumOutputTokens: storedMaxOutput,
         policy: ui.tokenBudget.enabled ? ui.tokenBudget.policy : undefined,
         runBudget: ui.runBudget,
       });
@@ -467,12 +475,15 @@ export function SettingsPanel(props: SettingsPanelProps) {
     }
   }, [
     previewContextWindow,
-    previewMaxOutput,
+    storedMaxOutput,
     ui.runBudget,
     ui.tokenBudget.enabled,
     ui.tokenBudget.policy,
     ui.tokenBudget.preview,
   ]);
+  const displayMaxOutput = autoMaxOutput
+    ? livePreview.maximumOutputTokens
+    : storedMaxOutput;
 
   return (
     <div
@@ -644,6 +655,15 @@ export function SettingsPanel(props: SettingsPanelProps) {
                   >
                     {testingConnection ? 'Testing…' : 'Test connection'}
                   </button>
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    onClick={onRefreshModels}
+                    disabled={refreshingModels || provider.type === 'echo'}
+                    title="Refresh the model list from the provider"
+                  >
+                    {refreshingModels ? 'Refreshing…' : 'Refresh models'}
+                  </button>
                   {connectionMessage || provider.connectionStatus ? (
                     <span
                       className={`settings-status-pill${
@@ -685,13 +705,23 @@ export function SettingsPanel(props: SettingsPanelProps) {
                     label="Max output"
                     min={0}
                     step={1}
-                    value={provider.maximumOutputTokens}
+                    value={displayMaxOutput}
                     onDraftChange={setDraftMaxOutput}
                     onCommit={(value) => {
                       setDraftMaxOutput(undefined);
+                      // Keep auto (0) when the user accepts the derived reserve for
+                      // the current window; only store a hard override when they
+                      // pick a different number (or explicitly type 0).
+                      const next =
+                        value === 0
+                          ? 0
+                          : autoMaxOutput &&
+                              value === livePreview.maximumOutputTokens
+                            ? 0
+                            : normalizeMaximumOutputTokens(value);
                       onProviderChange((prev) => ({
                         ...prev,
-                        maximumOutputTokens: value,
+                        maximumOutputTokens: next,
                       }));
                     }}
                   />
@@ -704,9 +734,9 @@ export function SettingsPanel(props: SettingsPanelProps) {
                           : ''
                       }.`
                     : `Context window will save as ${provider.contextWindow.toLocaleString()} tokens.`}{' '}
-                  {provider.maximumOutputTokens === 0
-                    ? 'Max output 0 derives the reserve from the window.'
-                    : `Max output will save as ${provider.maximumOutputTokens.toLocaleString()} tokens.`}
+                  {autoMaxOutput
+                    ? `Max output follows the window (~${livePreview.maximumOutputTokens.toLocaleString()} tokens). Set a different number to hard-override.`
+                    : `Max output will save as ${storedMaxOutput.toLocaleString()} tokens.`}
                 </p>
                 {ui.tokenBudget.enabled ? (
                   <p className="field-hint">
@@ -1221,7 +1251,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
                     policy={ui.tokenBudget.policy}
                     preview={livePreview}
                     customEnabled={ui.tokenBudget.enabled}
-                    outputOverride={previewMaxOutput > 0}
+                    outputOverride={!autoMaxOutput && storedMaxOutput > 0}
                     disabled={!ui.developerEnabled}
                     onPolicyChange={(patch) =>
                       onSaveUi({

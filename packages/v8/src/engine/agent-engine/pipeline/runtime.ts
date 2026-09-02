@@ -265,10 +265,17 @@ export function createAgentEngineRuntime(
       input.tools ?? deps.toolDefinitions ?? DEFAULT_TOOL_DEFINITIONS;
     const toolSchemaTokens =
       tools.length > 0 ? tokenEstimator.estimate(JSON.stringify(tools)) : 0;
+    // Context window comes from llm capabilities (host settings). Max output
+    // comes from the start-input host setting when provided; never from a
+    // pre-derived capability number (that would become a false host override).
+    const hostMaximumOutputTokens =
+      input.windowBudget?.maximumOutputTokens !== undefined
+        ? input.windowBudget.maximumOutputTokens
+        : 0;
     return deriveWindowPolicy({
       schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
       contextWindowTokens: deps.llm.capabilities.contextWindowTokens,
-      maximumOutputTokens: deps.llm.capabilities.maximumOutputTokens,
+      maximumOutputTokens: hostMaximumOutputTokens,
       toolSchemaTokens,
       policy: input.windowBudget?.policy,
       effort: input.windowBudget?.effort,
