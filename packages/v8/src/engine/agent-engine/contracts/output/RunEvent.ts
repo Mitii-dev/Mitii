@@ -100,8 +100,11 @@ export const runEventSchema = z.discriminatedUnion("type", [
       runId: z.string().min(1),
       selectedCount: z.number().int().nonnegative(),
       omittedCount: z.number().int().nonnegative(),
+      requiredCount: z.number().int().nonnegative().optional(),
+      matchedCount: z.number().int().nonnegative().optional(),
       status: z.string().min(1),
       selected: z.array(z.string().min(1).max(160)).max(20).optional(),
+      required: z.array(z.string().min(1).max(160)).max(20).optional(),
       omitted: z.array(z.string().min(1).max(160)).max(20).optional(),
       omittedDetails: z
         .array(

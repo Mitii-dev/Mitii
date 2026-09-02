@@ -89,6 +89,29 @@ Write tests for the latest commit.
     expect(agent.prompt).toContain('Write tests');
   });
 
+  it('loads skills frontmatter as requiredSkillIds', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mitii-agent-skills-'));
+    dirs.push(dir);
+    mkdirSync(join(dir, '.mitii', 'agents'), { recursive: true });
+    writeFileSync(
+      join(dir, '.mitii', 'agents', 'docs-agent.md'),
+      `---
+name: docs-agent
+skills: module-doc-generator, planning-default
+---
+
+Generate docs.
+`,
+      'utf8',
+    );
+
+    const agent = loadAgentFile('docs-agent', dir);
+    expect(agent.requiredSkillIds).toEqual([
+      'module-doc-generator',
+      'planning-default',
+    ]);
+  });
+
   it('composes agent body with CLI prompt and prompt-file', () => {
     const dir = mkdtempSync(join(tmpdir(), 'mitii-prompt-'));
     dirs.push(dir);

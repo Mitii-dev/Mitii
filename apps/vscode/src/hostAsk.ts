@@ -99,7 +99,7 @@ export function formatRunEventLine(event: RunEvent): string | undefined {
     case 'grant_narrowed':
       return `[grant] narrowed effect=${event.maximumWorkspaceEffect} approval=${event.approvalMode}${formatEventList(' scopes', event.pathScopes)}`;
     case 'skills_ready':
-      return `[skills] selected=${event.selectedCount}${formatEventList(' ids', event.selected)} omitted=${event.omittedCount}${formatSkillOmissions(event)} status=${event.status}`;
+      return `[skills] selected=${event.selectedCount}${event.requiredCount ? ` required=${event.requiredCount}` : ''}${formatEventList(' ids', event.selected)}${formatEventList(' required', event.required)} omitted=${event.omittedCount}${formatSkillOmissions(event)} status=${event.status}`;
     case 'memory_ready':
       return `[memory] selected=${event.selectedCount} omitted=${event.omittedCount} status=${event.status}`;
     case 'prompt_ready': {
@@ -1002,6 +1002,7 @@ export async function runAskInOutputChannel(options: {
   effort?: string;
   approvalMode?: string;
   pinnedPaths?: string[];
+  requiredSkillIds?: string[];
   workspaceId?: string;
   /** Used to estimate memory tokens in the context meter (not prompt-stuffed). */
   workspaceState?: vscode.Memento;
@@ -1309,6 +1310,9 @@ export async function runAskInOutputChannel(options: {
         : {}),
       ...(projectRules.length > 0 ? { projectRules: [...projectRules] } : {}),
       ...(pinnedPaths.length > 0 ? { pinnedPaths } : {}),
+      ...(options.requiredSkillIds && options.requiredSkillIds.length > 0
+        ? { requiredSkillIds: [...options.requiredSkillIds] }
+        : {}),
       ...(options.conversation && options.conversation.length > 0
         ? { conversation: options.conversation }
         : {}),

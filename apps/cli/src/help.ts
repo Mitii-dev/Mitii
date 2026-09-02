@@ -38,6 +38,7 @@ Modes (--mode or config defaultMode):
 Automation (Phase 0):
   --origin <o>       user | automation | api
                      automation/api suppress interactive clarify in policy
+  --skill <id>       Force-attach a skill for this run (repeat up to 3 times)
   --autonomy <a>     readonly | propose | apply | apply_and_pr
                      fills mode + approval policy for unattended runs
   --agent <id|path>  Load .mitii/agents/<id>.md (or a file path)

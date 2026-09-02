@@ -2,8 +2,10 @@ export {
   SKILLS_SCHEMA_VERSION,
   SKILL_SELECTION_STATUSES,
   SKILL_OMISSION_REASONS,
+  SKILL_SELECTION_KINDS,
   SKILL_REASON_CODES,
   SKILLS_ERROR_CODES,
+  MAX_REQUIRED_SKILLS,
 } from "./constants";
 
 export {
@@ -48,3 +50,8 @@ export type {
 export { InMemorySkillsCatalog } from "./adapters";
 export { KeywordSkillSimilarity } from "./KeywordSkillSimilarity";
 export type { SkillSimilarityPort } from "./contracts";
+export {
+  parseRequiredSkillMentions,
+  mergeRequiredSkillIds,
+  normalizeSkillId,
+} from "./parseRequiredSkillMentions";

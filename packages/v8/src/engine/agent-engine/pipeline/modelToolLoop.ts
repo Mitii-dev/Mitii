@@ -135,6 +135,7 @@ export async function runModelToolLoop(
   memoryFacts?: readonly { id: string; content: string }[];
   establishedFacts?: EstablishedFact[];
   selectedSkillIds?: string[];
+  requiredSkillIds?: string[];
   taskListRef: TaskListRef;
   evidence?: RunEvidence;
   windowPolicy: WindowPolicy;
@@ -987,6 +988,7 @@ export async function runModelToolLoop(
       projects: params.projects,
       route: decision.route,
       windowPolicy: params.windowPolicy,
+      requiredSkillIds: params.requiredSkillIds,
     });
     if (grantExpansionOutcome.kind === "expansion_required") {
       return {

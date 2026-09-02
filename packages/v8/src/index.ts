@@ -281,6 +281,9 @@ export {
   InMemorySkillsCatalog,
   KeywordSkillSimilarity,
   SKILLS_SCHEMA_VERSION,
+  parseRequiredSkillMentions,
+  mergeRequiredSkillIds,
+  MAX_REQUIRED_SKILLS,
 } from "./modules/skills";
 export type {
   SkillsSelectInput,

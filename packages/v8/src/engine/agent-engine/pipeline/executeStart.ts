@@ -76,6 +76,7 @@ import {
   recordDiscoveryEvidence,
   recordPlanEvidence,
   formatSkillPromptContent,
+  buildSkillsReadyEvent,
 } from "../actions";
 import { applyPlanModeDiscoveryContract } from "../actions/planDiscoveryContract";
 import {
@@ -801,6 +802,7 @@ export async function executeStart(
         route: decision.route,
         budgetTokens: windowPolicy.skills.budgetTokens,
         maxSkills: windowPolicy.skills.maxSkills,
+        requiredSkillIds: input.requiredSkillIds ?? [],
         evidence: {
           ...understandingSkillEvidence,
           paths: skillEvidencePaths,
@@ -820,31 +822,14 @@ export async function executeStart(
           ? "skills_selected"
           : "skills_skipped",
       );
-      runtime.emit(bus, {
-        type: "skills_ready",
-        runId,
-        selectedCount: skillsResult.instructions.length,
-        omittedCount: skillsResult.omissions.length,
-        status: skillsResult.status,
-        selected: skillsResult.instructions
-          .map((block) => block.id)
-          .filter((id) => id.trim().length > 0)
-          .slice(0, 20),
-        omitted: skillsResult.omissions
-          .map((omission) => omission.skillId)
-          .filter((id) => id.trim().length > 0)
-          .slice(0, 20),
-        omittedDetails: skillsResult.omissions
-          .map((omission) => ({
-            id: omission.skillId,
-            reason: omission.reason,
-            ...(typeof omission.tokens === "number"
-              ? { tokens: omission.tokens }
-              : {}),
-          }))
-          .slice(0, 20),
-        at: runtime.isoNow(),
-      });
+      runtime.emit(
+        bus,
+        buildSkillsReadyEvent({
+          runId,
+          skillsResult,
+          at: runtime.isoNow(),
+        }),
+      );
       runtime.emitStage(bus, runId, "skills_ready", "completed", [
         skillsResult.instructions.length > 0
           ? "skills_selected"
@@ -1360,6 +1345,7 @@ export async function executeStart(
       taskListRef,
       memoryFacts,
       establishedFacts,
+      requiredSkillIds: input.requiredSkillIds ?? [],
       selectedSkillIds: selectedSkills?.map((block) => block.id) ?? [],
       evidence: runEvidence,
       windowPolicy,
@@ -1404,6 +1390,7 @@ export async function executeStart(
         mode: envelope.mode,
         projects: input.projects,
         memoryFacts,
+        requiredSkillIds: input.requiredSkillIds ?? [],
         selectedSkillIds: selectedSkills?.map((block) => block.id) ?? [],
         establishedFacts,
         plan: runPlan,

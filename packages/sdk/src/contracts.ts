@@ -16,6 +16,9 @@ import {
   WINDOW_BUDGET_EFFORTS,
   windowBudgetPolicyOverridesSchema,
   agentEngineThresholdsOverridesSchema,
+  mergeRequiredSkillIds,
+  parseRequiredSkillMentions,
+  MAX_REQUIRED_SKILLS,
 } from '@mitii/v8';
 import type {
   AgentEngineResumeInput,
@@ -172,6 +175,10 @@ export const mitiiStartInputSchema = z
       )
       .max(32)
       .optional(),
+    /**
+     * Explicitly attached skill ids (merged with @skill: mentions in prompt).
+     */
+    requiredSkillIds: z.array(z.string().min(1).max(64)).max(MAX_REQUIRED_SKILLS).optional(),
   })
   .strict();
 
@@ -209,6 +216,16 @@ export function toAgentEngineStartInput(
   const planApproval = parsed.planApproval ?? autonomy?.planApproval;
   const origin = parsed.origin ?? 'user';
 
+  const parsedMentions = parseRequiredSkillMentions(parsed.prompt);
+  const requiredSkillIds = mergeRequiredSkillIds(
+    parsed.requiredSkillIds,
+    parsedMentions.requiredSkillIds,
+  );
+  const userMessage =
+    parsedMentions.cleanedMessage.length > 0
+      ? parsedMentions.cleanedMessage
+      : parsed.prompt;
+
   const pinnedArtifacts = (parsed.pinnedPaths ?? [])
     .map((path) => path.replace(/\\/g, '/').replace(/^@/, '').trim())
     .filter((path) => path.length > 0)
@@ -226,7 +243,7 @@ export function toAgentEngineStartInput(
     sessionId: parsed.sessionId ?? defaults.sessionId,
     mode,
     origin,
-    userMessage: parsed.prompt,
+    userMessage: userMessage,
     ...(pinnedArtifacts.length > 0
       ? { referencedArtifacts: pinnedArtifacts }
       : {}),
@@ -276,6 +293,7 @@ export function toAgentEngineStartInput(
     windowBudget: parsed.windowBudget,
     loopPolicy: parsed.loopPolicy,
     logVerbosity: parsed.logVerbosity,
+    requiredSkillIds,
     instructions:
       parsed.projectRules && parsed.projectRules.length > 0
         ? {

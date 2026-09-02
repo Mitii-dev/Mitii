@@ -43,6 +43,7 @@ import {
   serializeToolResultForModel,
   recordToolEvidence,
   formatSkillPromptContent,
+  buildSkillsReadyEvent,
 } from "../actions";
 import type {
   EstablishedFact,
@@ -148,6 +149,7 @@ export async function refreshAuthorityAfterTools(
   projects?: readonly ProjectDescriptor[];
   route: ExecutionDecision["route"];
   windowPolicy: WindowPolicy;
+  requiredSkillIds?: readonly string[];
 }): Promise<GrantRefreshOutcome> {
   const discoveredPaths = [
     ...new Set([
@@ -238,6 +240,7 @@ export async function refreshAuthorityAfterTools(
     route: params.route,
     budgetTokens: params.windowPolicy.skills.budgetTokens,
     maxSkills: params.windowPolicy.skills.maxSkills,
+    requiredSkillIds: [...(params.requiredSkillIds ?? [])],
     evidence,
   });
   const nextIds = skillsResult.instructions.map((block) => block.id);
@@ -261,27 +264,14 @@ export async function refreshAuthorityAfterTools(
     role: "user",
     content: `Updated skill guidance after discovery (follow within current tool grant):\n\n${refreshContent}`,
   });
-  runtime.emit(params.bus, {
-    type: "skills_ready",
-    runId: params.runId,
-    selectedCount: skillsResult.instructions.length,
-    omittedCount: skillsResult.omissions.length,
-    status: skillsResult.status,
-    selected: nextIds.slice(0, 20),
-    omitted: skillsResult.omissions
-      .map((omission) => omission.skillId)
-      .slice(0, 20),
-    omittedDetails: skillsResult.omissions
-      .map((omission) => ({
-        id: omission.skillId,
-        reason: omission.reason,
-        ...(typeof omission.tokens === "number"
-          ? { tokens: omission.tokens }
-          : {}),
-      }))
-      .slice(0, 20),
-    at: runtime.isoNow(),
-  });
+  runtime.emit(
+    params.bus,
+    buildSkillsReadyEvent({
+      runId: params.runId,
+      skillsResult,
+      at: runtime.isoNow(),
+    }),
+  );
   return { kind: "ok" };
 }
 

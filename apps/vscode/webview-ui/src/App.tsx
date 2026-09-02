@@ -24,8 +24,9 @@ import {
   IconPlus,
   IconSend,
   IconSettings,
-  IconSkills,
+  IconSlash,
   IconStop,
+  IconChevronDown,
 } from './components/Icons';
 import { IndexingStatusBar } from './components/IndexingStatusBar';
 import type { ChatTurn, TurnSegment } from './components/MessageList';
@@ -42,10 +43,14 @@ import { PlanFollowStrip } from './components/PlanPanel';
 import { ReviewPanel } from './components/ReviewPanel';
 import { SettingsErrorBoundary } from './components/SettingsErrorBoundary';
 import { SettingsPanel } from './components/SettingsPanel';
-import { SkillManagementPanel } from './components/skills/SkillManagementPanel';
 import { WorkspaceBanner } from './components/WorkspaceBanner';
 import { deriveLiveTokenBudgetPreview } from '@mitii/live-token-budget';
 import { getProviderPreset, modelsForProvider } from './providerOptions';
+import {
+  detectSkillMentionQuery,
+  filterSkillSuggestions,
+  skillCatalogSuggestSideEffects,
+} from './skillSuggest';
 import type {
   ActivityEventPayload,
   AgentUiDepth,
@@ -803,6 +808,7 @@ export function App() {
   const [approvalMode, setApprovalMode] = useState<ApprovalUiMode>('guided');
   const [prompt, setPrompt] = useState('');
   const [pinned, setPinned] = useState<ContextPin[]>([]);
+  const [pinnedSkillIds, setPinnedSkillIds] = useState<string[]>([]);
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -810,6 +816,7 @@ export function App() {
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [suggestQuery, setSuggestQuery] = useState('');
+  const [suggestKind, setSuggestKind] = useState<'path' | 'skill'>('path');
   const [activeSuggest, setActiveSuggest] = useState(0);
   const [workspace, setWorkspace] = useState<WorkspaceSnapshotInfo>({});
   const [provider, setProvider] = useState<ProviderSettingsSnapshot>({
@@ -845,7 +852,6 @@ export function App() {
   const [overrideDraft, setOverrideDraft] = useState('');
   const [notice, setNotice] = useState<WorkspaceNoticeView | null>(null);
   const [onboardingRequired, setOnboardingRequired] = useState(false);
-  const [skillManagement, setSkillManagement] = useState(false);
   const [history, setHistory] = useState<ChatThreadSummary[]>([]);
   const [activeThreadId, setActiveThreadId] = useState<string | undefined>();
   const [memories, setMemories] = useState<MemoryItemView[]>([]);
@@ -862,11 +868,10 @@ export function App() {
   const [automationRuns, setAutomationRuns] = useState<AutomationRunView[]>([]);
   const [automationLoading, setAutomationLoading] = useState(false);
   const [automationError, setAutomationError] = useState<string | null>(null);
-  const [skillError, setSkillError] = useState<string | null>(null);
-  const [skillLoading, setSkillLoading] = useState(false);
 
   const searchReq = useRef(0);
   const lastSearchId = useRef('');
+  const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
@@ -1011,7 +1016,6 @@ export function App() {
       if (msg.type === 'bootstrap') {
         setIndex(msg.index);
         setOnboardingRequired(msg.onboardingRequired);
-        setSkillManagement(msg.flags.skillManagement);
         setHistory(msg.history);
         setActiveThreadId(msg.activeThreadId);
         if (!activeAssistantId.current) {
@@ -1353,11 +1357,20 @@ export function App() {
         case 'setCheckpoints':
           setCheckpoints(msg.checkpoints);
           break;
-        case 'skillCatalogResult':
+        case 'skillCatalogResult': {
+          const suggestEffects = skillCatalogSuggestSideEffects(
+            msg.requestId,
+            lastSearchId.current,
+          );
+          if (!suggestEffects) {
+            break;
+          }
           setSkillItems(msg.items);
-          setSkillError(msg.error ?? null);
-          setSkillLoading(false);
+          setSuggestLoading(false);
+          setSuggestOpen(suggestEffects.suggestOpen);
+          setActiveSuggest(suggestEffects.activeSuggest);
           break;
+        }
         case 'automationsResult':
           setAutomationSpecs(msg.specs);
           setAutomationRuns(msg.runs);
@@ -1448,11 +1461,13 @@ export function App() {
       effort: intensity.effort,
       approvalMode,
       pinnedPaths: pinned.map((p) => p.path),
+      requiredSkillIds: pinnedSkillIds,
     });
     setPrompt('');
+    setPinnedSkillIds([]);
     setSuggestLoading(false);
     setSuggestOpen(false);
-  }, [prompt, running, mode, ui, approvalMode, pinned]);
+  }, [prompt, running, mode, ui, approvalMode, pinned, pinnedSkillIds]);
 
   const executePendingPlan = useCallback(() => {
     if (running) return;
@@ -1480,17 +1495,35 @@ export function App() {
       effort: intensity.effort,
       approvalMode: agentDefaults.approvalMode,
       pinnedPaths: pinned.map((p) => p.path),
+      requiredSkillIds: pinnedSkillIds,
     });
     setPrompt('');
+    setPinnedSkillIds([]);
     setSuggestLoading(false);
     setSuggestOpen(false);
-  }, [running, ui, pinned]);
+  }, [running, ui, pinned, pinnedSkillIds]);
 
   const onPromptChange = (value: string) => {
     setPrompt(value);
+    const skillQuery = detectSkillMentionQuery(value);
+    if (skillQuery !== null) {
+      setSuggestKind('skill');
+      setSuggestQuery(skillQuery);
+      const requestId = String(++searchReq.current);
+      lastSearchId.current = requestId;
+      setSuggestLoading(true);
+      setSuggestOpen(true);
+      postToHost({
+        type: 'requestSkillCatalog',
+        requestId,
+        query: skillQuery || undefined,
+      });
+      return;
+    }
     const match = value.match(/@([\w./_-]*)$/);
     if (match) {
       const q = match[1] ?? '';
+      setSuggestKind('path');
       setSuggestQuery(q);
       const requestId = String(++searchReq.current);
       lastSearchId.current = requestId;
@@ -1521,6 +1554,56 @@ export function App() {
     setSuggestLoading(false);
     setSuggestOpen(false);
   };
+
+  const insertSkillMention = (skillId: string) => {
+    const replaced = prompt.replace(
+      /@skill:[a-z0-9_.-]*$/i,
+      `@skill:${skillId} `,
+    );
+    setPrompt(replaced);
+    setPinnedSkillIds((prev) =>
+      prev.includes(skillId) ? prev : [...prev, skillId].slice(0, 3),
+    );
+    setSuggestLoading(false);
+    setSuggestOpen(false);
+  };
+
+  const pinSkill = (skillId: string) => {
+    setPinnedSkillIds((prev) =>
+      prev.includes(skillId) ? prev : [...prev, skillId].slice(0, 3),
+    );
+    setSuggestLoading(false);
+    setSuggestOpen(false);
+  };
+
+  const selectSkill = (skillId: string) => {
+    if (/@skill:[a-z0-9_.-]*$/i.test(prompt)) {
+      insertSkillMention(skillId);
+      return;
+    }
+    pinSkill(skillId);
+  };
+
+  const openSkillPicker = () => {
+    setSuggestKind('skill');
+    setSuggestQuery('');
+    setActiveSuggest(0);
+    const requestId = String(++searchReq.current);
+    lastSearchId.current = requestId;
+    setSuggestLoading(true);
+    setSuggestOpen(true);
+    postToHost({
+      type: 'requestSkillCatalog',
+      requestId,
+      query: undefined,
+    });
+    promptTextareaRef.current?.focus();
+  };
+
+  const filteredSkillSuggestions = filterSkillSuggestions(
+    skillItems,
+    suggestQuery,
+  );
 
   const openFile = useCallback(
     (path: string, line?: number, column?: number) => {
@@ -1868,20 +1951,10 @@ export function App() {
     }));
   };
 
-  const requestSkills = () => {
-    setSkillLoading(true);
-    postToHost({ type: 'requestSkillCatalog', requestId: uid('skill') });
-  };
-
   const requestAutomations = () => {
     setAutomationLoading(true);
     postToHost({ type: 'requestAutomations', requestId: uid('auto') });
   };
-
-  useEffect(() => {
-    if (nav === 'skills' && skillManagement) requestSkills();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nav, skillManagement]);
 
   useEffect(() => {
     if (nav === 'automations') requestAutomations();
@@ -1918,9 +1991,8 @@ export function App() {
   return (
     <div className="app">
       <header className="shell-header">
-        <div className="brand">
+        <div className="brand" aria-label="Mitii">
           <div className="brand-mark">Mitii</div>
-          {/* <div className="brand-sub">Enterprise workspace agent</div> */}
         </div>
         <div className="shell-header__actions">
           <nav className="nav-pills" aria-label="Primary">
@@ -1960,15 +2032,6 @@ export function App() {
             >
               <IconSettings />
             </IconButton>
-            {skillManagement ? (
-              <IconButton
-                label="Skills"
-                active={nav === 'skills'}
-                onClick={() => navigate('skills')}
-              >
-                <IconSkills />
-              </IconButton>
-            ) : null}
             <IconButton
               label="Automations"
               active={nav === 'automations'}
@@ -1982,19 +2045,21 @@ export function App() {
             onRefresh={() => postToHost({ type: 'index.refresh' })}
             onOpenSettings={() => navigate('settings', 'workspace')}
           />
-          <select
-            className="shell-header__profile"
-            aria-label="Profile"
-            title={`Profile: ${selectedProfileLabel}`}
-            value={activeProfileId}
-            onChange={(e) => switchProfile(e.target.value)}
-          >
-            {profiles.map((profile) => (
-              <option key={profile.id} value={profile.id}>
-                {profile.name}
-              </option>
-            ))}
-          </select>
+          <label className="shell-header__profile" title={`Profile: ${selectedProfileLabel}`}>
+            <span className="shell-header__profile-label">{selectedProfileLabel}</span>
+            <IconChevronDown width={12} height={12} />
+            <select
+              aria-label="Profile"
+              value={activeProfileId}
+              onChange={(e) => switchProfile(e.target.value)}
+            >
+              {profiles.map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.name}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
       </header>
 
@@ -2147,54 +2212,117 @@ export function App() {
                     );
                   }}
                 />
+                {pinnedSkillIds.length > 0 ? (
+                  <div className="skill-pin-row">
+                    {pinnedSkillIds.map((skillId) => (
+                      <span key={skillId} className="skill-pin-chip mono">
+                        @skill:{skillId}
+                        <button
+                          type="button"
+                          aria-label={`Remove skill ${skillId}`}
+                          onClick={() =>
+                            setPinnedSkillIds((prev) =>
+                              prev.filter((id) => id !== skillId),
+                            )
+                          }
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
                 {suggestOpen ? (
                   <div className="suggest-pop" role="listbox">
                     {suggestLoading ? (
                       <div className="suggest-item suggest-item--loading">
-                        <span className="mono">Loading files…</span>
+                        <span className="mono">
+                          {suggestKind === 'skill'
+                            ? 'Loading skills…'
+                            : 'Loading files…'}
+                        </span>
                       </div>
                     ) : null}
-                    {!suggestLoading && suggestions.length === 0 ? (
-                      <div className="suggest-item suggest-item--loading">
-                        <span className="mono">No matching files</span>
-                      </div>
-                    ) : null}
-                    {!suggestLoading ? suggestions.map((s, i) => (
-                      <button
-                        key={s.path}
-                        type="button"
-                        className={`suggest-item ${i === activeSuggest ? 'active' : ''}`}
-                        onClick={() => insertMention(s.path)}
-                      >
-                        <span className="mono">@{s.path}</span>
-                        <span className="suggest-kind">{s.kind}</span>
-                      </button>
-                    )) : null}
+                    {suggestKind === 'skill' ? (
+                      <>
+                        {!suggestLoading && filteredSkillSuggestions.length === 0 ? (
+                          <div className="suggest-item suggest-item--loading">
+                            <span className="mono">No matching skills</span>
+                          </div>
+                        ) : null}
+                        {!suggestLoading
+                          ? filteredSkillSuggestions.map((item, i) => (
+                              <button
+                                key={item.id}
+                                type="button"
+                                className={`suggest-item ${i === activeSuggest ? 'active' : ''}`}
+                                onClick={() => selectSkill(item.id)}
+                              >
+                                <span className="mono">@skill:{item.id}</span>
+                                <span className="suggest-kind">{item.name}</span>
+                              </button>
+                            ))
+                          : null}
+                      </>
+                    ) : (
+                      <>
+                        {!suggestLoading && suggestions.length === 0 ? (
+                          <div className="suggest-item suggest-item--loading">
+                            <span className="mono">No matching files</span>
+                          </div>
+                        ) : null}
+                        {!suggestLoading ? suggestions.map((s, i) => (
+                          <button
+                            key={s.path}
+                            type="button"
+                            className={`suggest-item ${i === activeSuggest ? 'active' : ''}`}
+                            onClick={() => insertMention(s.path)}
+                          >
+                            <span className="mono">@{s.path}</span>
+                            <span className="suggest-kind">{s.kind}</span>
+                          </button>
+                        )) : null}
+                      </>
+                    )}
                   </div>
                 ) : null}
                 <textarea
+                  ref={promptTextareaRef}
                   rows={1}
                   value={prompt}
-                  placeholder={`Message Mitii… type @ for context (${suggestQuery ? `filter: ${suggestQuery}` : 'files'})`}
+                  placeholder="Message Mitii… @ files, / skills"
                   onChange={(e) => onPromptChange(e.target.value)}
                   onKeyDown={(e) => {
-                    if (suggestOpen && suggestions.length) {
+                    const activeSuggestions =
+                      suggestKind === 'skill'
+                        ? filteredSkillSuggestions
+                        : suggestions;
+                    if (suggestOpen && activeSuggestions.length) {
                       if (e.key === 'ArrowDown') {
                         e.preventDefault();
-                        setActiveSuggest((i) => (i + 1) % suggestions.length);
+                        setActiveSuggest(
+                          (i) => (i + 1) % activeSuggestions.length,
+                        );
                         return;
                       }
                       if (e.key === 'ArrowUp') {
                         e.preventDefault();
                         setActiveSuggest(
                           (i) =>
-                            (i - 1 + suggestions.length) % suggestions.length,
+                            (i - 1 + activeSuggestions.length) %
+                            activeSuggestions.length,
                         );
                         return;
                       }
                       if (e.key === 'Enter' || e.key === 'Tab') {
                         e.preventDefault();
-                        insertMention(suggestions[activeSuggest]!.path);
+                        if (suggestKind === 'skill') {
+                          selectSkill(
+                            filteredSkillSuggestions[activeSuggest]!.id,
+                          );
+                        } else {
+                          insertMention(suggestions[activeSuggest]!.path);
+                        }
                         return;
                       }
                       if (e.key === 'Escape') {
@@ -2225,27 +2353,39 @@ export function App() {
                   </div>
                   <div className="composer-utility-row">
                     <div className="composer-left">
-                      <TokenMeter usage={tokenUsage} placement="above" />
-                      <ModelQuickSelect
-                        label={selectedModelLabel}
-                        value={provider.model}
-                        custom={selectedModelIsCustom}
-                        options={modelOptions}
-                        onSelect={(model) => {
-                          setCustomModel(false);
-                          saveModel(model);
-                        }}
-                        onCustomMode={() => setCustomModel(true)}
-                        onDraftChange={(model) =>
-                          updateProvider((p) => ({ ...p, model }))
-                        }
-                        onCommitCustom={() => {
-                          const model = providerRef.current.model.trim();
-                          if (model) saveModel(model);
-                        }}
-                      />
+                      <div className="composer-meta-group">
+                        <TokenMeter usage={tokenUsage} placement="above" />
+                        <ModelQuickSelect
+                          label={selectedModelLabel}
+                          value={provider.model}
+                          custom={selectedModelIsCustom}
+                          options={modelOptions}
+                          onSelect={(model) => {
+                            setCustomModel(false);
+                            saveModel(model);
+                          }}
+                          onCustomMode={() => setCustomModel(true)}
+                          onDraftChange={(model) =>
+                            updateProvider((p) => ({ ...p, model }))
+                          }
+                          onCommitCustom={() => {
+                            const model = providerRef.current.model.trim();
+                            if (model) saveModel(model);
+                          }}
+                        />
+                      </div>
                     </div>
                     <div className="composer-actions">
+                      <IconButton
+                        label="Attach skill"
+                        variant="ghost"
+                        className="icon-btn--slash"
+                        active={suggestOpen && suggestKind === 'skill'}
+                        disabled={pinnedSkillIds.length >= 3}
+                        onClick={openSkillPicker}
+                      >
+                        <IconSlash />
+                      </IconButton>
                       <IconButton
                         label="Copy last response"
                         onClick={() =>
@@ -2389,14 +2529,6 @@ export function App() {
           saving={settingsSaving}
         />
         </SettingsErrorBoundary>
-      ) : null}
-
-      {nav === 'skills' && skillManagement ? (
-        <SkillManagementPanel
-          items={skillItems}
-          error={skillError}
-          loading={skillLoading}
-        />
       ) : null}
 
       {nav === 'automations' ? (

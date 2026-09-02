@@ -127,6 +127,7 @@ export {
 
 export { recoverLeakedToolCallsFromMarkup } from "./recoverLeakedToolCalls";
 export { formatSkillPromptContent } from "./formatSkillPromptContent";
+export { buildSkillsReadyEvent } from "./buildSkillsReadyEvent";
 export {
   CONTEXT_READY_VERBOSE_WARNING_CODES,
   CONTEXT_READY_WARNING_CODES,

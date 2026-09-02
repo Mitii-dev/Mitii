@@ -149,6 +149,10 @@ export const agentEngineStartInputSchema = z
      * than diagnostic depth.
      */
     logVerbosity: z.enum(AGENT_LOG_VERBOSITIES).default(DEFAULT_AGENT_LOG_VERBOSITY),
+    /**
+     * Explicitly attached skill ids for this run (@skill:, CLI --skill, host pin).
+     */
+    requiredSkillIds: z.array(z.string().min(1).max(64)).max(3).default([]),
   })
   .strict();
 

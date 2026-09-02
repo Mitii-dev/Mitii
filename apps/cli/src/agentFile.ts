@@ -15,6 +15,7 @@ export interface MitiiAgentFile {
   mode?: AgentMode;
   origin?: UserRequestOrigin;
   autonomyPreset?: MitiiAutonomyPreset;
+  requiredSkillIds?: string[];
   /** Prompt body from the markdown (after frontmatter). */
   prompt: string;
   /** Raw frontmatter key/values for forward compatibility. */
@@ -74,6 +75,7 @@ export function loadAgentFile(
   const originRaw = frontmatter.origin?.trim();
   const autonomyRaw =
     frontmatter.autonomyPreset?.trim() || frontmatter.autonomy?.trim();
+  const requiredSkillIds = parseSkillIds(frontmatter.skills);
 
   if (modeRaw && !AGENT_MODES.has(modeRaw)) {
     throw new Error(
@@ -104,6 +106,7 @@ export function loadAgentFile(
     mode: modeRaw as AgentMode | undefined,
     origin: originRaw as UserRequestOrigin | undefined,
     autonomyPreset: autonomyRaw as MitiiAutonomyPreset | undefined,
+    requiredSkillIds,
     prompt,
     frontmatter,
   };
@@ -205,4 +208,21 @@ function parseFrontmatter(raw: string): {
     frontmatter[key] = value;
   }
   return { frontmatter, body };
+}
+
+function parseSkillIds(raw: string | undefined): string[] | undefined {
+  const value = raw?.trim();
+  if (!value) {
+    return undefined;
+  }
+  const stripped =
+    value.startsWith('[') && value.endsWith(']')
+      ? value.slice(1, -1)
+      : value;
+  const ids = stripped
+    .split(',')
+    .map((part) => part.trim().replace(/^['"]|['"]$/g, ''))
+    .filter(Boolean)
+    .slice(0, 3);
+  return ids.length > 0 ? ids : undefined;
 }

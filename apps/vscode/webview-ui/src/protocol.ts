@@ -8,7 +8,7 @@ export type AgentUiDepth = 'auto' | 'quick' | 'deep';
 export type AgentUiEffort = 'low' | 'medium' | 'high';
 /** Clubbed customer control → maps to depth + effort unless intensity overrides. */
 export type AgentUiThoroughness = 'low' | 'medium' | 'high';
-export type UiNav = 'chat' | 'history' | 'settings' | 'skills' | 'automations';
+export type UiNav = 'chat' | 'history' | 'settings' | 'automations';
 export type SettingsTab =
   | 'workspace'
   | 'model'
@@ -631,6 +631,7 @@ export type WebviewToHostMessage =
       effort?: AgentUiEffort;
       approvalMode?: string;
       pinnedPaths?: string[];
+      requiredSkillIds?: string[];
     }
   | { type: 'cancel' }
   | {
@@ -754,7 +755,6 @@ export type HostToWebviewMessage =
       tokenUsage: TokenUsageSnapshot;
       notice: WorkspaceNoticeView;
       onboardingRequired: boolean;
-      flags: { skillManagement: boolean };
       history: ChatThreadSummary[];
       activeThreadId?: string;
       activeThreadMessages?: ChatMessageView[];

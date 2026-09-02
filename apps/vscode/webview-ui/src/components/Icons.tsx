@@ -8,7 +8,7 @@ const defaults: IconProps = {
   viewBox: "0 0 16 16",
   fill: "none",
   stroke: "currentColor",
-  strokeWidth: 1.5,
+  strokeWidth: 1.35,
   strokeLinecap: "round",
   strokeLinejoin: "round",
   "aria-hidden": true,
@@ -31,12 +31,20 @@ export function IconHistory(props: IconProps) {
   );
 }
 
-/** Classic gear — used for Settings. */
+/** Classic settings gear — outline, hollow hub. */
 export function IconSettings(props: IconProps) {
   return (
     <svg {...defaults} {...props}>
-      <path d="M6.4 1.9h3.2l.4 1.5c.35.12.68.28.98.48l1.5-.55 1.6 1.6-.55 1.5c.2.3.36.63.48.98l1.5.4v3.2l-1.5.4c-.12.35-.28.68-.48.98l.55 1.5-1.6 1.6-1.5-.55c-.3.2-.63.36-.98.48l-.4 1.5H6.4l-.4-1.5a4.8 4.8 0 0 1-.98-.48l-1.5.55-1.6-1.6.55-1.5a4.8 4.8 0 0 1-.48-.98l-1.5-.4V6.4l1.5-.4c.12-.35.28-.68.48-.98l-.55-1.5 1.6-1.6 1.5.55c.3-.2.63-.36.98-.48l.4-1.5z" />
-      <circle cx="8" cy="8" r="2.1" />
+      <path d="M8.75 1.6h-1.5l-.22 1.55a4.7 4.7 0 0 0-1.12.46L4.7 2.95 3.45 4.2l.66 1.21a4.7 4.7 0 0 0-.46 1.12L2.1 6.75v1.5l1.55.22c.1.4.25.78.46 1.12l-.66 1.21 1.25 1.25 1.21-.66c.34.21.72.36 1.12.46l.22 1.55h1.5l.22-1.55c.4-.1.78-.25 1.12-.46l1.21.66 1.25-1.25-.66-1.21c.21-.34.36-.72.46-1.12l1.55-.22v-1.5l-1.55-.22a4.7 4.7 0 0 0-.46-1.12l.66-1.21L11.3 2.95l-1.21.66a4.7 4.7 0 0 0-1.12-.46L8.75 1.6z" />
+      <circle cx="8" cy="8" r="2.05" />
+    </svg>
+  );
+}
+
+export function IconChevronDown(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="M4.25 6.25 8 10l3.75-3.75" />
     </svg>
   );
 }
@@ -90,6 +98,14 @@ export function IconSkills(props: IconProps) {
   );
 }
 
+export function IconSlash(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="M10.8 3.2 5.2 12.8" />
+    </svg>
+  );
+}
+
 export function IconIndex(props: IconProps) {
   return (
     <svg {...defaults} {...props}>
@@ -99,10 +115,12 @@ export function IconIndex(props: IconProps) {
   );
 }
 
+/** Workspace index / folder status glyph (color via CSS currentColor). */
 export function IconFolder(props: IconProps) {
   return (
     <svg {...defaults} {...props}>
-      <path d="M2.5 4.5h4l1.2 1.4H13.5v6.6h-11z" />
+      <path d="M2.25 4.75h3.1l1.15 1.2H13.75v6.3a1 1 0 0 1-1 1H3.25a1 1 0 0 1-1-1V4.75z" />
+      <path d="M2.25 4.75V3.9A.9.9 0 0 1 3.15 3h2.55" />
     </svg>
   );
 }

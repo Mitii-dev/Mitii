@@ -1309,6 +1309,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         effort: message.effort,
         approvalMode: message.approvalMode,
         pinnedPaths: message.pinnedPaths,
+        requiredSkillIds: message.requiredSkillIds,
         workspaceId: this.getWorkspaceId(),
         workspaceState: this.host.workspaceState,
         secrets: this.secrets,
@@ -2976,10 +2977,6 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       tokenUsage: this.tokenUsage,
       notice: getWorkspaceTrustSnapshot(this.vs),
       onboardingRequired: !onboardingCompleted,
-      flags: {
-        skillManagement:
-          this.host.extensionMode === this.vs.ExtensionMode.Development,
-      },
       history: toThreadSummaries(history),
       activeThreadId: history.activeThreadId,
       activeThreadMessages: activeThread?.messages ?? [],

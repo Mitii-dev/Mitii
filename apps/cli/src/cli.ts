@@ -76,6 +76,8 @@ export interface ParsedCliArgs {
   autonomyPreset?: MitiiAutonomyPreset;
   /** Path or id for `.mitii/agents/<id>.md`. */
   agent?: string;
+  /** Explicitly attach skill ids for this run (repeatable). */
+  skills?: string[];
   /** Prompt file path, or `-` for stdin. */
   promptFile?: string;
   unknownCommand?: string;
@@ -120,6 +122,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   let autonomyPreset: MitiiAutonomyPreset | undefined;
   let agent: string | undefined;
   let promptFile: string | undefined;
+  const skills: string[] = [];
   let setupProvider: string | undefined;
   let setupModel: string | undefined;
   let setupBaseUrl: string | undefined;
@@ -245,6 +248,15 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
           rest: [],
         };
       }
+      i = taken.next;
+      continue;
+    }
+    if (arg === '--skill') {
+      const taken = takeValue(args, i, '--skill');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      skills.push(taken.value);
       i = taken.next;
       continue;
     }
@@ -400,6 +412,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       autonomyPreset,
       agent,
       promptFile,
+      skills: skills.length > 0 ? skills : undefined,
       loopPolicyJson,
       noLoopPolicy: flags.has('no-loop-policy'),
       rest,
@@ -594,6 +607,7 @@ async function runAsk(options: {
   mode?: AgentMode;
   origin?: UserRequestOrigin;
   autonomyPreset?: MitiiAutonomyPreset;
+  requiredSkillIds?: string[];
   conversation?: MitiiConversationMessage[];
   taskList?: TaskList;
   loopPolicyJson?: string;
@@ -669,6 +683,9 @@ async function runAsk(options: {
       workspaceRoot: options.cwd,
       ...hostApproval,
       ...(projectRules.length > 0 ? { projectRules: [...projectRules] } : {}),
+      ...(options.requiredSkillIds && options.requiredSkillIds.length > 0
+        ? { requiredSkillIds: [...options.requiredSkillIds] }
+        : {}),
       ...(options.conversation && options.conversation.length > 0
         ? { conversation: options.conversation }
         : {}),
@@ -698,6 +715,7 @@ function resolveAskPrompt(
   origin?: UserRequestOrigin;
   autonomyPreset?: MitiiAutonomyPreset;
   autoApproval?: 'approved' | 'denied';
+  requiredSkillIds?: string[];
 } {
   let agent: MitiiAgentFile | undefined;
   if (parsed.agent) {
@@ -712,6 +730,10 @@ function resolveAskPrompt(
     promptFileText,
     agent,
   });
+  const requiredSkillIds = [
+    ...(parsed.skills ?? []),
+    ...(agent?.requiredSkillIds ?? []),
+  ];
   const autonomyPreset = parsed.autonomyPreset ?? agent?.autonomyPreset;
   const mode = parsed.mode ?? agent?.mode;
   const origin =
@@ -727,7 +749,14 @@ function resolveAskPrompt(
   ) {
     autoApproval = 'approved';
   }
-  return { prompt, mode, origin, autonomyPreset, autoApproval };
+  return {
+    prompt,
+    mode,
+    origin,
+    autonomyPreset,
+    autoApproval,
+    ...(requiredSkillIds.length > 0 ? { requiredSkillIds } : {}),
+  };
 }
 
 async function ensurePublishedRepositoryState(options: {
@@ -1057,6 +1086,7 @@ export async function main(
         mode: resolved.mode,
         origin: resolved.origin,
         autonomyPreset: resolved.autonomyPreset,
+        requiredSkillIds: resolved.requiredSkillIds,
         loopPolicyJson: parsed.loopPolicyJson,
         noLoopPolicy: parsed.noLoopPolicy === true,
         io: sessionIo,

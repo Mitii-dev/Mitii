@@ -1,6 +1,7 @@
 ---
 name: post-commit-cover
 description: After a commit, write missing tests, verify the suite, and open a draft PR.
+skills: cicd-agent
 mode: agent
 origin: automation
 autonomyPreset: apply_and_pr

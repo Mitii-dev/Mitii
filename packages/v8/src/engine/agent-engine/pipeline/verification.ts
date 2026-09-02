@@ -137,6 +137,7 @@ export async function finishAfterLoop(
     projects?: readonly ProjectDescriptor[];
     memoryFacts?: readonly { id: string; content: string }[];
     selectedSkillIds?: string[];
+    requiredSkillIds?: string[];
     establishedFacts: EstablishedFact[];
     plan?: PlanArtifact;
   };
@@ -690,6 +691,7 @@ export async function finishAfterLoop(
         memoryFacts: params.loopContext?.memoryFacts,
         establishedFacts: params.loopContext?.establishedFacts ?? [],
         selectedSkillIds: params.loopContext?.selectedSkillIds,
+        requiredSkillIds: params.loopContext?.requiredSkillIds,
         evidence,
         windowPolicy,
         logVerbosity: input.logVerbosity,

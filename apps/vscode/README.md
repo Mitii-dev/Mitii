@@ -25,6 +25,7 @@ For cloud providers, run **Mitii: Set Provider API Key** (stored in VS Code Secr
 ## What you get
 
 - **Repository-aware context** — SQLite FTS5, symbols, optional vectors, repo map, diagnostics, Git state, and `@` attachments
+- **Skills** — force-attach playbooks with `/` or `@skill:id` in chat (up to 3 per message); workspace skills in `.mitii/skills/`
 - **Ask / Plan / Agent** — read-only Q&A, structured plans, controlled edits with cancel / clarify / approve
 - **Safety** — configurable approvals, path containment, command policy, pre-write checkpoints, workspace trust
 - **Providers** — Echo, Anthropic (Claude), Gemini, and OpenAI-compatible endpoints (DeepSeek, OpenRouter, Azure, Ollama, custom `/v1`)
@@ -55,8 +56,28 @@ For cloud providers, run **Mitii: Set Provider API Key** (stored in VS Code Secr
 | `mitii.mcp` | MCP server config (disabled by default) |
 | `mitii.ui.showReasoning` | Show streamed reasoning when available |
 | `mitii.ui.modeDefaults.<mode>.thoroughness` | Low / Medium / High run intensity per mode |
+| `mitii.skills.workspace.enabled` | Load workspace skills from `.mitii/skills/` (default on) |
 
 All product settings use the `mitii.*` prefix. Full field reference, save/reflect behavior, and UI map: [SETTINGS.md](./SETTINGS.md).
+
+## Skills in chat
+
+Attach a skill for the **next message** (bundled or workspace):
+
+| Action | How |
+|--------|-----|
+| Pick from list | Click **`/`** in the composer, or type `@skill:` and use autocomplete |
+| Pin indicator | Selected skills show as chips above the input |
+| Limit | Up to **3** skills per message |
+
+Example prompt:
+
+```text
+@skill:module-doc-generator
+Generate docs for test/Tablet
+```
+
+Authoring format and matcher fields: [docs/SKILLS_FORMAT.md](../../docs/SKILLS_FORMAT.md).
 
 ## Platform notes
 
