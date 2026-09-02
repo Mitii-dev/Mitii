@@ -380,7 +380,14 @@ export async function executeOneTool(
     at: runtime.isoNow(),
   });
 
-  const cachedByCallId = toolCache.get(toolCall.id);
+  // callId cache is resume/idempotency only. Require matching toolName so a
+  // recycled provider id (e.g. Gemini historically always emitting call_0)
+  // cannot replay an unrelated tool result.
+  const cachedByCallIdRaw = toolCache.get(toolCall.id);
+  const cachedByCallId =
+    cachedByCallIdRaw && cachedByCallIdRaw.toolName === toolCall.name
+      ? cachedByCallIdRaw
+      : undefined;
   const cachedByContent =
     cachedByCallId === undefined &&
     (READ_ONLY_TOOL_IDS as readonly string[]).includes(toolCall.name)

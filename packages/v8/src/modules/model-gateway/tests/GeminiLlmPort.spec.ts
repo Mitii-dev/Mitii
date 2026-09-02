@@ -91,6 +91,9 @@ describe('GeminiLlmPort', () => {
     expect(
       events[1]?.type === 'tool_call_delta' && events[1].toolCalls[0]?.name,
     ).toBe('lookup');
+    expect(
+      events[1]?.type === 'tool_call_delta' && events[1].toolCalls[0]?.id,
+    ).toBe('call_0');
     const completed = events.find((event) => event.type === 'completed');
     expect(completed?.type === 'completed' && completed.finishReason).toBe(
       'tool_calls',
@@ -98,6 +101,66 @@ describe('GeminiLlmPort', () => {
     expect(completed?.type === 'completed' && completed.usage?.totalTokens).toBe(
       5,
     );
+  });
+
+  it('allocates unique tool call ids across successive complete() turns', async () => {
+    const fetchImpl: typeof fetch = async () =>
+      new Response(
+        JSON.stringify({
+          candidates: [
+            {
+              content: {
+                role: 'model',
+                parts: [
+                  { functionCall: { name: 'search_files', args: { q: 'a' } } },
+                ],
+              },
+              finishReason: 'STOP',
+            },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+
+    const port = new GeminiLlmPort({
+      model: 'gemini-3.5-flash',
+      apiKey: 'gemini-test',
+      fetchImpl,
+    });
+
+    const tools = [
+      {
+        name: 'search_files',
+        description: 'Search',
+        inputSchema: { type: 'object' },
+      },
+    ];
+
+    const first = await collectEvents(
+      port.complete({
+        messages: [{ role: 'user', content: 'search a' }],
+        stream: false,
+        tools,
+      }),
+    );
+    const second = await collectEvents(
+      port.complete({
+        messages: [{ role: 'user', content: 'search b' }],
+        stream: false,
+        tools,
+      }),
+    );
+
+    const firstId =
+      first[0]?.type === 'tool_call_delta' ? first[0].toolCalls[0]?.id : undefined;
+    const secondId =
+      second[0]?.type === 'tool_call_delta'
+        ? second[0].toolCalls[0]?.id
+        : undefined;
+
+    expect(firstId).toBe('call_0');
+    expect(secondId).toBe('call_1');
+    expect(secondId).not.toBe(firstId);
   });
 
   it('maps SSE streamGenerateContent chunks', async () => {

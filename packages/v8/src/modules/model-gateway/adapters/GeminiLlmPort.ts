@@ -96,6 +96,12 @@ export class GeminiLlmPort implements LlmPort {
     ms: number,
     signal?: AbortSignal,
   ) => Promise<void>;
+  /**
+   * Monotonic tool-call id allocator for this port instance.
+   * Gemini does not return provider call ids; recycling `call_0` each turn
+   * collides with ToolCallCache resume keys and replays the first tool result.
+   */
+  private toolCallSeq = 0;
 
   constructor(config: GeminiLlmPortConfig) {
     this.config = {
@@ -552,7 +558,7 @@ export class GeminiLlmPort implements LlmPort {
         const thoughtSignature = this.readThoughtSignature(part);
         toolCalls.push({
           index: toolIndexStart + toolOffset,
-          id: `call_${toolIndexStart + toolOffset}`,
+          id: this.nextToolCallId(),
           name: part.functionCall.name,
           arguments: JSON.stringify(part.functionCall.args ?? {}),
           ...(thoughtSignature ? { thoughtSignature } : {}),
@@ -563,6 +569,12 @@ export class GeminiLlmPort implements LlmPort {
     if (toolCalls.length > 0) {
       yield { type: "tool_call_delta", toolCalls };
     }
+  }
+
+  private nextToolCallId(): string {
+    const id = `call_${this.toolCallSeq}`;
+    this.toolCallSeq += 1;
+    return id;
   }
 
   private readThoughtSignature(part: GeminiPart): string | undefined {
