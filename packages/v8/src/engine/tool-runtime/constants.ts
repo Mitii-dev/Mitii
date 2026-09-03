@@ -96,18 +96,21 @@ export const PATCH_CURRENT_CONTENT_REASON_CODES = [
   "old_text_ambiguous",
   "patch_hash_mismatch",
   "patch_syntax_invalid",
+  "identical_old_and_new",
 ] as const;
 
 /**
  * Patch failures where targeted read/list/search of the failed path is
- * a useful next step. Ambiguous matches and no-op patches should retry
- * from attached content instead of exploring more files.
+ * a useful next step. Ambiguous matches should retry from attached
+ * content. No-op patches also attach currentContent, and still allow one
+ * bounded re-read because earlier file reads are often truncated.
  */
 export const PATCH_TARGETED_DISCOVERY_REASON_CODES = [
   "patch_conflict",
   "old_text_not_found",
   "patch_target_missing",
   "patch_hash_mismatch",
+  "identical_old_and_new",
 ] as const;
 
 export function isPatchCurrentContentReason(

@@ -28,6 +28,40 @@ export const CONTEXT_READY_VERBOSE_WARNING_CODES = new Set([
   "duplicate_reference_removed",
 ]);
 
+/**
+ * Collapse `@`, `./`, empty, and `.` segments into a workspace-relative path
+ * the repository-context schema will accept. Drop absolute / `..` values.
+ */
+export function toCanonicalWorkspaceRelativePath(
+  value: string,
+): string | undefined {
+  const trimmed = value
+    .replace(/\\/g, "/")
+    .replace(/^@+/, "")
+    .trim();
+  if (
+    !trimmed ||
+    trimmed.startsWith("/") ||
+    trimmed.startsWith("~") ||
+    /^[A-Za-z]:\//.test(trimmed)
+  ) {
+    return undefined;
+  }
+
+  const segments: string[] = [];
+  for (const segment of trimmed.split("/")) {
+    if (!segment || segment === ".") {
+      continue;
+    }
+    if (segment === "..") {
+      return undefined;
+    }
+    segments.push(segment);
+  }
+
+  return segments.length > 0 ? segments.join("/") : undefined;
+}
+
 export function looksLikeContextFilePath(path: string): boolean {
   const lastSegment = path.split("/").at(-1) ?? "";
   if (!lastSegment) {
@@ -91,20 +125,11 @@ export function deriveContextFocusFromUnderstanding(
     if (target.kind !== "file" && target.kind !== "folder") {
       continue;
     }
-    const value = target.value
-      .replace(/\\/g, "/")
-      .replace(/^@/, "")
-      .replace(/\/+$/, "");
-    // Reject absolute paths (leading "/", drive letters, "~") in addition to
-    // "..": the context pipeline requires a canonical workspace-relative
-    // path, and an absolute host path here must never reach that boundary.
-    if (
-      !value ||
-      value.includes("..") ||
-      value.startsWith("/") ||
-      value.startsWith("~") ||
-      /^[A-Za-z]:\//.test(value)
-    ) {
+    // Classifiers copy diagnostic strings as-is (`./src/a.ts`). Collapse those
+    // to the same canonical form the context pipeline schema requires, rather
+    // than depending on the model to emit workspace-relative paths.
+    const value = toCanonicalWorkspaceRelativePath(target.value);
+    if (!value) {
       continue;
     }
     if (target.kind === "file" && looksLikeContextFilePath(value)) {

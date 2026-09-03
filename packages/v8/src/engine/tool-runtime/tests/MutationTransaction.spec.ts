@@ -312,7 +312,7 @@ describe("Tool Runtime Phase 8 mutations", () => {
     );
   });
 
-  it("rejects identical oldText and newText without attaching currentContent", async () => {
+  it("rejects identical oldText and newText and attaches currentContent", async () => {
     const { runtime } = createRuntime();
     const result = await runtime.execute({
       schemaVersion: 1,
@@ -333,7 +333,13 @@ describe("Tool Runtime Phase 8 mutations", () => {
 
     expect(result.status).toBe("rejected");
     expect(result.reasonCode).toBe("identical_old_and_new");
-    expect(result.output?.currentContent).toBeUndefined();
+    expect(result.output).toEqual(
+      expect.objectContaining({
+        path: "src/a.ts",
+        currentContent: "const x = 1;\n",
+      }),
+    );
+    expect(result.warnings[0]).toContain("would not change the file");
   });
 
   it("rejects with patch_syntax_invalid and attaches currentContent", async () => {
@@ -371,11 +377,11 @@ describe("Tool Runtime Phase 8 mutations", () => {
     expect(isPatchCurrentContentReason("old_text_not_found")).toBe(true);
     expect(isPatchCurrentContentReason("old_text_ambiguous")).toBe(true);
     expect(isPatchCurrentContentReason("patch_target_missing")).toBe(false);
-    expect(isPatchCurrentContentReason("identical_old_and_new")).toBe(false);
+    expect(isPatchCurrentContentReason("identical_old_and_new")).toBe(true);
     expect(isPatchTargetedDiscoveryReason("old_text_not_found")).toBe(true);
     expect(isPatchTargetedDiscoveryReason("patch_target_missing")).toBe(true);
     expect(isPatchTargetedDiscoveryReason("old_text_ambiguous")).toBe(false);
-    expect(isPatchTargetedDiscoveryReason("identical_old_and_new")).toBe(false);
+    expect(isPatchTargetedDiscoveryReason("identical_old_and_new")).toBe(true);
     expect(isPatchTargetedDiscoveryReason("patch_syntax_invalid")).toBe(false);
     expect(isPatchTargetedDiscoveryReason("patch_conflict")).toBe(true);
   });

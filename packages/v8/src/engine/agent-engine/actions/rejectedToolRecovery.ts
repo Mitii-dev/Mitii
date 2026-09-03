@@ -36,8 +36,18 @@ export function buildRejectedMutationRecoveryMessage(params: {
     `The mutation tool ${params.toolName} was ${params.status}${reason}.`,
     `${summary}${warnings}`,
     "Do not restart broad exploration.",
-    "When the rejected result includes currentContent, copy exact oldText from that content and retry apply_patch immediately. Do not spend a turn re-reading unless currentContent is missing.",
   ];
+
+  if (params.reasonCode === "identical_old_and_new") {
+    instructions.push(
+      "oldText and newText were the same, so the file was not changed.",
+      "Using attached currentContent, retry apply_patch with a newText that actually differs and fixes the listed diagnostic. Do not copy the same code.",
+    );
+  } else {
+    instructions.push(
+      "When the rejected result includes currentContent, copy exact oldText from that content and retry apply_patch immediately. Do not spend a turn re-reading unless currentContent is missing.",
+    );
+  }
 
   if (allowTargetedDiscovery) {
     const max =
@@ -45,7 +55,9 @@ export function buildRejectedMutationRecoveryMessage(params: {
       params.defaultPreferredBatchSize ??
       AGENT_ENGINE_THRESHOLDS.defaultPreferredBatchSize;
     instructions.push(
-      `If the rejection indicates stale oldText or a missing patch path, you may use at most ${max} targeted read/list/search call(s) for exact stale patch files or their parent directories.`,
+      params.reasonCode === "identical_old_and_new"
+        ? `If currentContent is truncated, you may use at most ${max} targeted read(s) of that same file, then retry apply_patch with a real diff.`
+        : `If the rejection indicates stale oldText or a missing patch path, you may use at most ${max} targeted read/list/search call(s) for exact stale patch files or their parent directories.`,
       "After that targeted discovery, retry apply_patch/delete_file/move_file with corrected arguments, or stop with a clear blocker.",
     );
   } else {

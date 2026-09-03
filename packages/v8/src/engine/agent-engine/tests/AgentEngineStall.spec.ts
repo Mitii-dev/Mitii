@@ -763,6 +763,134 @@ describe("AgentEnginePipeline stall and read dedup", () => {
     expect(patchAttempts).toBe(2);
   });
 
+  it("allows one targeted read after identical_old_and_new then a real patch", async () => {
+    const deps = createStubDependencies({
+      decision: createDecision({
+        route: "execute",
+        toolGrant: createReadOnlyGrant({
+          maximumWorkspaceEffect: "write",
+          allowedTools: ["read_file", "apply_patch"],
+          allowedEffects: ["workspace_read", "workspace_write"],
+          approvalMode: "never",
+        }),
+        reasonCodes: ["mutation_execute"],
+      }),
+      llm: new ScriptedLlmPort(
+        [
+          {
+            toolCalls: [patchCall("call_patch_noop")],
+          },
+          {
+            toolCalls: [readCall("call_read_after_noop")],
+          },
+          {
+            toolCalls: [patchCall("call_patch_real")],
+          },
+          { content: "Fixed the type error." },
+        ],
+        stallCapabilities({ supportsTools: true }),
+      ),
+    });
+    const originalExecute = deps.tools!.execute.bind(deps.tools);
+    let patchAttempts = 0;
+    deps.tools = {
+      ...deps.tools!,
+      execute: async (input, options): Promise<ToolResult> => {
+        if (input.toolName !== "apply_patch") {
+          return originalExecute(input, options);
+        }
+
+        patchAttempts += 1;
+        if (patchAttempts === 1) {
+          return {
+            schemaVersion: TOOL_RUNTIME_SCHEMA_VERSION,
+            callId: input.callId,
+            toolName: input.toolName,
+            status: "rejected",
+            reasonCode: "identical_old_and_new",
+            truncated: false,
+            redacted: false,
+            durationMs: 1,
+            bytesProduced: 0,
+            warnings: [
+              'oldText and newText are identical for "src/form.ts" — this patch would not change the file.',
+            ],
+            output: {
+              path: "src/form.ts",
+              currentContent: "private readonly sidebar: SidebarComponent;\n",
+            },
+            audit: {
+              callId: input.callId,
+              toolName: input.toolName,
+              startedAt: "2026-07-25T12:00:00.000Z",
+              endedAt: "2026-07-25T12:00:00.001Z",
+              status: "rejected",
+              reasonCode: "identical_old_and_new",
+              inputPreview: "{}",
+              outputPreview: "{}",
+              bytesProduced: 0,
+              durationMs: 1,
+              truncated: false,
+              redacted: false,
+            },
+          };
+        }
+
+        return {
+          schemaVersion: TOOL_RUNTIME_SCHEMA_VERSION,
+          callId: input.callId,
+          toolName: input.toolName,
+          status: "succeeded",
+          truncated: false,
+          redacted: false,
+          durationMs: 1,
+          bytesProduced: 24,
+          warnings: [],
+          output: {
+            checkpointId: "ckpt_identical_retry",
+            changedFiles: ["src/form.ts"],
+          },
+          audit: {
+            callId: input.callId,
+            toolName: input.toolName,
+            startedAt: "2026-07-25T12:00:00.000Z",
+            endedAt: "2026-07-25T12:00:00.001Z",
+            status: "succeeded",
+            inputPreview: "{}",
+            outputPreview:
+              '{"checkpointId":"ckpt_identical_retry","changedFiles":["src/form.ts"]}',
+            bytesProduced: 24,
+            durationMs: 1,
+            truncated: false,
+            redacted: false,
+          },
+        };
+      },
+    };
+
+    const engine = new AgentEnginePipeline(deps);
+    const result = await engine.start(
+      agentEngineStartInputSchema.parse({
+        schemaVersion: 1,
+        request: {
+          sessionId: "sess_identical_old_and_new_retry",
+          mode: "agent",
+          userMessage: "Fix the type error",
+          workspace: { workspaceId: "ws_1" },
+        },
+        workspaceRoot: "/workspace",
+      }),
+    ).result;
+
+    expect(result.status).toBe("completed");
+    expect(result.reasonCodes).toContain("mutation_applied");
+    expect(result.error?.code).not.toBe("no_mutation_performed");
+    expect(result.warnings).toContain(
+      "Allowed targeted stale-patch discovery after a recoverable rejected mutation.",
+    );
+    expect(patchAttempts).toBe(2);
+  });
+
   it("allows bounded stale-patch reads across turns after a patch conflict", async () => {
     const deps = createStubDependencies({
       decision: createDecision({
