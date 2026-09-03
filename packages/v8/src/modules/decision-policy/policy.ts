@@ -19,6 +19,24 @@ export const DECISION_POLICY_THRESHOLDS = {
    * (smaller apply_patch batches to stay under provider output limits).
    */
   largeMutationFileThreshold: 8,
+  /**
+   * Primary-ask character length (after clarification strip) at which an
+   * execute route gets at least an internal plan. Band-scaled via
+   * {@link longPromptPlanThresholdsForWindow}.
+   */
+  longPromptInternalPlanChars: {
+    compact: 800,
+    standard: 1_200,
+    wide: 1_600,
+  },
+  /**
+   * Longer briefs on execute get a visible plan when the window can afford it.
+   */
+  longPromptVisiblePlanChars: {
+    compact: 2_000,
+    standard: 2_500,
+    wide: 3_200,
+  },
 } as const;
 
 /**

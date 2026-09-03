@@ -39,6 +39,7 @@ import {
 } from "../../../modules/repository-context";
 import type { UserRequestEnvelope } from "../../../modules/request-intake";
 import { extractPrimaryUserMessage } from "../../../modules/request-understanding/intent/extractPrimaryUserMessage";
+import { resolveFuzzyFileTargets } from "../../../modules/request-understanding";
 import { SKILLS_SCHEMA_VERSION } from "../../../modules/skills";
 import type {
   RepoBuildState,
@@ -62,6 +63,7 @@ import {
   amendMessageWithPriorConversation,
   buildDiagnosticSummary,
   extractMentionedPaths,
+  collectUnderstandingCandidatePaths,
   buildPlanningQuery,
   buildScopedRepoMapForPlanning,
   collectPreferredPlanningPaths,
@@ -427,9 +429,21 @@ export async function executeStart(
           extractPrimaryUserMessage(understandingEnvelope.message),
         )
       : undefined;
-    const understanding = await runtime.deps.understanding.understand(
-      understandingEnvelope,
+    // Collect cheap path hints for *post-context* fuzzy resolution only.
+    // Do not pass them into early understand(): sparse dirty/diagnostic
+    // candidates can uniquely resolve a basename to the wrong file, lock
+    // mutation scopes / context focus, and then block later correction.
+    const candidateRelativePaths = collectUnderstandingCandidatePaths({
+      dirtyPaths: input.dirtyPaths,
       diagnosticSummary,
+      referencedArtifacts: understandingEnvelope.referencedArtifacts,
+      userMessage: extractPrimaryUserMessage(understandingEnvelope.message),
+    });
+    let understanding = await runtime.deps.understanding.understand(
+      understandingEnvelope,
+      {
+        ...(diagnosticSummary ? { diagnosticSummary } : {}),
+      },
     );
     reasonCodes.push("understanding_complete");
     runtime.emitStage(bus, runId, "understood", "completed", [
@@ -651,12 +665,29 @@ export async function executeStart(
 
       repositoryContext = mapContextToPromptSlice(contextResult);
       reasonCodes.push("context_retrieved");
-      contextPaths = scopeDiscoveredContextPaths(
-        contextResult.assembly.blocks
-          .map((block) => block.relativePath)
-          .filter((path): path is string => Boolean(path?.trim())),
-        contextFocus,
-      );
+      const discoveredPaths = contextResult.assembly.blocks
+        .map((block) => block.relativePath)
+        .filter((path): path is string => Boolean(path?.trim()));
+      // Fuzzy-resolve against retrieved paths (plus dirty/@ hints). Require
+      // discovered context so sparse dirty-only lists cannot lock a basename
+      // to the wrong file. Decision already ran; this improves planning focus.
+      if (discoveredPaths.length > 0) {
+        const fuzzy = resolveFuzzyFileTargets(
+          understanding.taskAnalysis.targets,
+          [...candidateRelativePaths, ...discoveredPaths],
+        );
+        if (fuzzy.resolved.length > 0) {
+          understanding = {
+            ...understanding,
+            taskAnalysis: {
+              ...understanding.taskAnalysis,
+              targets: fuzzy.targets,
+            },
+          };
+        }
+      }
+      const scopedFocus = deriveContextFocusFromUnderstanding(understanding);
+      contextPaths = scopeDiscoveredContextPaths(discoveredPaths, scopedFocus);
       runtime.emit(bus, {
         type: "context_ready",
         runId,

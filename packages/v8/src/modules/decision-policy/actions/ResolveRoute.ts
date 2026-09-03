@@ -1,4 +1,5 @@
 import type { RequestUnderstandingResult } from "../../request-understanding";
+import { isWholeRequestReadOnlyConstraint } from "../../request-understanding/intent/isWholeRequestReadOnlyConstraint";
 
 import {
   DIAGNOSIS_TASK_INTENTS,
@@ -460,21 +461,11 @@ function looksLikeDocsMutation(message: string): boolean {
 }
 
 /**
- * Explicit read-only / no-edit constraints — never promote to execute.
+ * Explicit whole-request read-only / no-edit constraints — never promote to
+ * execute. Scoped constraints ("Do not refactor Tablet…") do not match.
  */
 function isExplicitReadOnlyRequest(message: string): boolean {
-  return (
-    /\b(?:do not|don't|dont|without)\s+(?:edit|change|modify|fix|implement|apply|write|update|remove|refactor|touch)\b/i.test(
-      message,
-    ) ||
-    /\b(?:explain|review|diagnose|analyze|investigate)\s+only\b/i.test(
-      message,
-    ) ||
-    /\bno\s+(?:code|file)\s+changes\b/i.test(message) ||
-    /\bread[- ]only\b/i.test(message) ||
-    /\b(?:do not|don't|dont)\s+implement\b/i.test(message) ||
-    /\bwithout\s+implementing\b/i.test(message)
-  );
+  return isWholeRequestReadOnlyConstraint(message);
 }
 
 /**

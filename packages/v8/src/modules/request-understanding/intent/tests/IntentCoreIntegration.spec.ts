@@ -137,7 +137,7 @@ test(
       provider
         .lastRequest
         ?.maximumOutputTokens,
-      1_000,
+      2_048,
     );
     assert.equal(
       provider

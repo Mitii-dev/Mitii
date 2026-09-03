@@ -234,6 +234,22 @@ test("task analyzer treats breadth language as repository scope", () => {
   assert.equal(result.recommendsRepositoryDiscovery, true);
 });
 
+test("task analyzer treats project restructure as repository scope", () => {
+  const analyzer = new TaskAnalyzer();
+  const result = analyzer.analyze(
+    createInput(
+      "Restructure this project, make sure every test case follow proper interface and lib\n- Need proper folder restructure as well",
+      {
+        primaryTaskIntent: "refactor",
+        interactionIntent: "act",
+      },
+    ),
+  );
+
+  assert.equal(result.scope, "repository");
+  assert.equal(result.recommendsRepositoryDiscovery, true);
+});
+
 test("task analyzer does not treat locative app/codebase phrases as repository scope", () => {
   const analyzer = new TaskAnalyzer();
 

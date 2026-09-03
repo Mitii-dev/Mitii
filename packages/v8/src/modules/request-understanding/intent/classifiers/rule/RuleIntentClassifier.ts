@@ -2,6 +2,7 @@
 import { INTENT_CONSTANTS } from '../../constants';
 import { IntentClassification } from '../../schema';
 import { TaskIntent } from '../../types';
+import { isWholeRequestReadOnlyConstraint } from '../../isWholeRequestReadOnlyConstraint';
 import { PATTERNS } from './RulePatterns';
 
 /**
@@ -170,7 +171,9 @@ export class RuleIntentClassifier {
       return 'plan';
     }
 
-    if (PATTERNS.NO_CHANGE_PATTERN.test(text)) {
+    // Whole-request read-only only — scoped "Do not refactor Tablet…" must
+    // not force interaction=question on an otherwise mutating ask.
+    if (isWholeRequestReadOnlyConstraint(text)) {
       return 'question';
     }
 

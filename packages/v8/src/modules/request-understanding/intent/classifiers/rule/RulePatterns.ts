@@ -133,7 +133,9 @@ const PLAN_PATTERN =
   /\b(?:create|give|provide|write|prepare|make)\b.*\b(?:implementation plan|migration plan|refactoring plan|debugging plan|step-by-step plan|approach|strategy)\b|\bplan\s+only\b|\bdo not implement\b|\bdon't implement\b|\bwithout implementing\b/i;
 
 /**
- * Explicitly prohibits code or file modifications.
+ * Explicitly prohibits code or file modifications for the whole request.
+ * Prefer {@link isWholeRequestReadOnlyConstraint} for matching — this regex
+ * alone also hits scoped constraints ("Do not refactor Tablet…").
  */
 const NO_CHANGE_PATTERN =
   /\b(?:do not|don't|dont|without)\s+(?:edit|change|modify|fix|implement|apply|write|update|remove|refactor|touch)\b|\b(?:explain|review|diagnose|analyze|investigate)\s+only\b|\bno\s+(?:code|file)\s+changes\b|\bread[- ]only\b/i;

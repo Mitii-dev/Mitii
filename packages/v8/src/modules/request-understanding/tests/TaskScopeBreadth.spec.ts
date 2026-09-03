@@ -16,6 +16,8 @@ describe("repository scope breadth (plan-gate input)", () => {
       true,
     );
     expect(pattern.test("Apply the change project-wide")).toBe(true);
+    expect(pattern.test("Restructure this project")).toBe(true);
+    expect(pattern.test("Need proper folder restructure as well")).toBe(true);
   });
 
   it("does not match locative or casual app/codebase references", () => {
@@ -43,6 +45,14 @@ describe("repository scope breadth (plan-gate input)", () => {
     expect(
       analyzer.estimateScope({
         userMessage: "Refactor authentication across the codebase.",
+        targets: [],
+      }),
+    ).toBe("repository");
+
+    expect(
+      analyzer.estimateScope({
+        userMessage:
+          "Restructure this project, make sure tests follow interfaces\n- Need proper folder restructure as well",
         targets: [],
       }),
     ).toBe("repository");

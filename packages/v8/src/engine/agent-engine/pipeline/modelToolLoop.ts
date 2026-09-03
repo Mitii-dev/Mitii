@@ -1290,6 +1290,16 @@ export async function runModelToolLoop(
         warnings.push(
           "Stopped further read-only turns after mutations so verification can use remaining model-call budget.",
         );
+        if (
+          changedFiles.length > 0 &&
+          (answer.trim().length === 0 || isTransitionalAssistantAnswer(answer))
+        ) {
+          answer = synthesizeFallbackAnswer({
+            priorAnswer: answer,
+            changedFiles,
+          });
+          reasonCodes.push("incomplete_answer_fallback");
+        }
         return {
           kind: "completed",
           answer,

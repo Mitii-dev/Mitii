@@ -11,6 +11,7 @@ import type {
 import { IntentClassification, intentClassificationSchema } from "../../schema";
 import { IntentClassificationInput, ReferencedArtifact } from "../../types";
 import type { DiagnosticSummary } from "../../../contracts";
+import { resolveIntentClassifierMaximumOutputTokens } from "../../resolveIntentClassifierMaximumOutputTokens";
 import { LLM_INTENT_CLASSIFICATION_SYSTEM_PROMPT } from "./prompts";
 
 
@@ -49,7 +50,10 @@ export class LlmIntentClassifier {
         },
       ],
       temperature: 0,
-      maximumOutputTokens: 1000,
+      maximumOutputTokens: resolveIntentClassifierMaximumOutputTokens(
+        this.provider.capabilities.contextWindowTokens,
+        this.provider.capabilities.maximumOutputTokens,
+      ),
       stream: false,
       toolChoice: "none",
       reasoning: {

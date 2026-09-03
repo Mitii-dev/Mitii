@@ -668,6 +668,73 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.reasonCodes).toContain("process_execution_granted");
   });
 
+  it("routes Fix asks with scoped Do-not constraints to execute, not repository_answer", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message: [
+          "Fix Desktop headless Chrome support and clean up Billing page-object usage.",
+          "",
+          "## Constraints",
+          "- Do not change test intent/coverage; only encapsulate selectors/actions.",
+          "- Do not refactor Tablet/Appium unless required for shared config typing.",
+        ].join("\n"),
+        understanding: createUnderstanding({
+          primaryTaskIntent: "refactor",
+          interactionIntent: "question",
+          taskAnalysis: {
+            scope: "repository",
+            complexity: "moderate",
+            risk: "medium",
+            recommendsRepositoryDiscovery: true,
+          },
+        }),
+        windowPolicy: deriveWindowPolicy({
+          schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+          contextWindowTokens: 64_000,
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("execute");
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("write");
+    expect(decision.reasonCodes).toContain("mutation_execute");
+    expect(decision.reasonCodes).not.toContain("repository_grounded_answer");
+    expect(decision.planningDepth).not.toBe("none");
+  });
+
+  it("routes Implement asks with scoped Do-not-implement to execute", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message: [
+          "Implement Desktop headless Chrome support.",
+          "",
+          "## Constraints",
+          "- Do not implement Tablet/Appium changes unless required for shared typing.",
+        ].join("\n"),
+        understanding: createUnderstanding({
+          primaryTaskIntent: "feature",
+          interactionIntent: "act",
+          taskAnalysis: {
+            scope: "multi_file",
+            complexity: "moderate",
+            risk: "medium",
+            recommendsRepositoryDiscovery: true,
+          },
+        }),
+        windowPolicy: deriveWindowPolicy({
+          schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+          contextWindowTokens: 64_000,
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("execute");
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("write");
+    expect(decision.reasonCodes).not.toContain("repository_grounded_answer");
+  });
+
   it("routes pasted console runtime dumps without a fix ask to diagnose", () => {
     const decision = new DecisionPolicyPipeline().decide(
       createInput({

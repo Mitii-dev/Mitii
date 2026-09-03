@@ -22,6 +22,15 @@ export interface RequestUnderstandingPipelineDependencies {
   taskAnalyzer?: TaskAnalyzerDependencies;
 }
 
+export interface RequestUnderstandingOptions {
+  diagnosticSummary?: DiagnosticSummary;
+  /**
+   * Optional workspace-relative paths (repo-map / catalog) for fuzzy file
+   * target resolution after explicit extraction.
+   */
+  candidateRelativePaths?: readonly string[];
+}
+
 export class RequestUnderstandingPipeline {
   private readonly intentRouter: IntentRouter;
   private readonly taskAnalyzer: TaskAnalyzer;
@@ -39,10 +48,16 @@ export class RequestUnderstandingPipeline {
 
   public async understand(
     input: RequestUnderstandingPipelineInput,
-    diagnosticSummary?: DiagnosticSummary,
+    diagnosticSummaryOrOptions?: DiagnosticSummary | RequestUnderstandingOptions,
+    maybeOptions?: RequestUnderstandingOptions,
   ): Promise<RequestUnderstandingResult> {
     const envelope =
       requestUnderstandingPipelineInputSchema.parse(input);
+
+    const options = normalizeUnderstandOptions(
+      diagnosticSummaryOrOptions,
+      maybeOptions,
+    );
 
     const userMessage = extractPrimaryUserMessage(envelope.message);
     // Intent may see prior-turn context (follow-up status questions). Targets /
@@ -55,7 +70,7 @@ export class RequestUnderstandingPipeline {
       mode: envelope.mode,
       userMessage,
       referencedArtifacts: envelope.referencedArtifacts,
-      diagnosticSummary,
+      diagnosticSummary: options.diagnosticSummary,
     });
 
     const taskAnalysis = this.taskAnalyzer.analyze({
@@ -71,6 +86,10 @@ export class RequestUnderstandingPipeline {
         extension: artifact.extension,
         language: artifact.language,
       })),
+      ...(options.candidateRelativePaths &&
+      options.candidateRelativePaths.length > 0
+        ? { candidateRelativePaths: [...options.candidateRelativePaths] }
+        : {}),
     });
 
     return requestUnderstandingResultSchema.parse({
@@ -78,4 +97,38 @@ export class RequestUnderstandingPipeline {
       taskAnalysis,
     });
   }
+}
+
+function normalizeUnderstandOptions(
+  diagnosticSummaryOrOptions?: DiagnosticSummary | RequestUnderstandingOptions,
+  maybeOptions?: RequestUnderstandingOptions,
+): RequestUnderstandingOptions {
+  if (
+    diagnosticSummaryOrOptions &&
+    typeof diagnosticSummaryOrOptions === "object" &&
+    "errorCount" in diagnosticSummaryOrOptions &&
+    "diagnostics" in diagnosticSummaryOrOptions
+  ) {
+    return {
+      diagnosticSummary: diagnosticSummaryOrOptions,
+      candidateRelativePaths: maybeOptions?.candidateRelativePaths,
+    };
+  }
+
+  if (
+    diagnosticSummaryOrOptions &&
+    typeof diagnosticSummaryOrOptions === "object"
+  ) {
+    const asOptions = diagnosticSummaryOrOptions as RequestUnderstandingOptions;
+    return {
+      diagnosticSummary:
+        asOptions.diagnosticSummary ?? maybeOptions?.diagnosticSummary,
+      candidateRelativePaths:
+        asOptions.candidateRelativePaths ?? maybeOptions?.candidateRelativePaths,
+    };
+  }
+
+  return {
+    candidateRelativePaths: maybeOptions?.candidateRelativePaths,
+  };
 }

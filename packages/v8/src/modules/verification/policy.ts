@@ -65,9 +65,13 @@ export const NODE_SCRIPT_CANDIDATES: Record<
   typecheck: ["typecheck", "build:types", "check:types", "tsc"],
   lint: ["lint", "eslint", "check"],
   format: ["format", "format:check", "prettier"],
+  // Prefer fast unit runners; browser/e2e names are last so discovery only
+  // lands on them when no lighter script exists (selection may still omit).
   test: [
     "test",
     "test:unit",
+    "vitest",
+    "jest",
     "test:e2e",
     "test:desktop",
     "desktop:test",
@@ -75,11 +79,13 @@ export const NODE_SCRIPT_CANDIDATES: Record<
     "cross:test",
     "e2e",
     "wdio",
-    "vitest",
-    "jest",
   ],
   build: ["build", "compile", "verify"],
 };
+
+/** Script names / argv tokens that imply browser or device e2e suites. */
+export const BROWSER_E2E_TEST_PATTERN =
+  /(?:^|:)(?:e2e|wdio|playwright|cypress|desktop:test|tablet:test|cross:test|test:desktop|test:tablet|test:e2e)(?:$|:)|(?:^|[\s/])(?:wdio|playwright|cypress)(?:$|[\s.])/i;
 
 export const PLACEHOLDER_TEST_SCRIPT =
   /no test specified|error:\s*no test|exit\s+1/i;

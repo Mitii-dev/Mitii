@@ -100,6 +100,10 @@ export const DECISION_REASON_CODES = [
   "large_implementation_visible_plan",
   /** Package/multi-file repair execute gets a visible plan + live checklist seed. */
   "broad_repair_visible_plan",
+  /** Long structured execute briefs get an internal plan (length alone never forces repository_answer). */
+  "long_prompt_internal_plan",
+  /** Long structured execute briefs get a visible plan when the window can afford it. */
+  "long_prompt_visible_plan",
   /** Prompt/engine should prefer analyze_change_impact before shared-surface mutations. */
   "change_impact_recommended",
   /** Execute route should capture scoped build/typecheck evidence before planning. */

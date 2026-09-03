@@ -585,7 +585,10 @@ export async function finishAfterLoop(
       reasonCodes.push("answer_produced");
       return finish({
         status: "completed",
-        answer: loopAnswer,
+        answer: selectUserFacingLoopAnswer({
+          loopAnswer,
+          changedFiles: loopChangedFiles,
+        }),
         reasonCodes,
       });
     }

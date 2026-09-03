@@ -243,9 +243,12 @@ const WORKSPACE_SCOPE_PATTERN =
  * Repository scope = the *work spans* the repo, not that something merely
  * exists "in this codebase" / concerns "the app". Locative and deictic
  * phrases alone must not inflate scope (they false-trigger plan gates).
+ *
+ * Explicit restructure/reorganize of the project or folder layout *is*
+ * repo-spanning work even without "entire/whole/full".
  */
 const REPOSITORY_SCOPE_PATTERN =
-  /\b(?:entire|whole|full|all)\s+(?:repository|repo|project|application|app|codebase)\b|\b(?:repository-wide|repo-wide|project-wide|application-wide|app-wide|codebase-wide)\b|\bacross\s+(?:the\s+)?(?:repository|repo|codebase|project|application|app)\b|\bthroughout\s+(?:the\s+)?(?:repository|repo|codebase|project|application|app)\b/i;
+  /\b(?:entire|whole|full|all)\s+(?:repository|repo|project|application|app|codebase)\b|\b(?:repository-wide|repo-wide|project-wide|application-wide|app-wide|codebase-wide)\b|\bacross\s+(?:the\s+)?(?:repository|repo|codebase|project|application|app)\b|\bthroughout\s+(?:the\s+)?(?:repository|repo|codebase|project|application|app)\b|\b(?:restructure|reorganize)\s+(?:this|the)\s+(?:project|repo|repository|codebase|application|app)\b|\b(?:folder|directory)\s+(?:restructure|reorganization|reorg)\b|\brestructure\s+(?:the\s+)?(?:folder|directory)\s+(?:structure|layout)\b/i;
 
 const PACKAGE_SCOPE_PATTERN =
   /\b(?:entire|whole|full|all)\s+(?:package|module|library|service)|\b(?:package-wide|module-wide|library-wide|service-wide|within this package|across this module)\b/i;

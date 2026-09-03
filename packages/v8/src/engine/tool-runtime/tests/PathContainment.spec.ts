@@ -175,4 +175,67 @@ describe("PathContainment.resolveContainedPath", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it("resolves paths case-insensitively when the on-disk casing differs", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "mitii-path-ci-"));
+    try {
+      await mkdir(path.join(root, "Billing"), { recursive: true });
+      await writeFile(
+        path.join(root, "Billing", "billing.spec.ts"),
+        "export {};\n",
+      );
+      const physicalRoot = await fsRealpath(root);
+
+      const contained = await resolveContainedPath({
+        fileSystem: new NodeWorkspaceFileSystemAdapter(),
+        workspaceRoot: root,
+        requestedPath: "billing/billing.spec.ts",
+        pathScopes: ["."],
+      });
+      // On case-insensitive volumes the first realpath may succeed with the
+      // requested spelling; on case-sensitive volumes the CI walk remaps.
+      expect(contained.relativePath.toLowerCase()).toBe(
+        "billing/billing.spec.ts",
+      );
+      expect(contained.realPath.toLowerCase()).toBe(
+        path.join(physicalRoot, "Billing", "billing.spec.ts").toLowerCase(),
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("hints glob_files when a path is missing", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "mitii-path-missing-"));
+    try {
+      await mkdir(path.join(root, "Billing"), { recursive: true });
+      await expect(
+        resolveContainedPath({
+          fileSystem: new NodeWorkspaceFileSystemAdapter(),
+          workspaceRoot: root,
+          requestedPath: "Billing/missing.spec.ts",
+          pathScopes: ["."],
+        }),
+      ).rejects.toThrow(/\*\*\/missing\.spec\.ts/);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("hints CamelCase stem globs when an extensionless path is missing", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "mitii-path-stem-"));
+    try {
+      await mkdir(path.join(root, "Billing"), { recursive: true });
+      await expect(
+        resolveContainedPath({
+          fileSystem: new NodeWorkspaceFileSystemAdapter(),
+          workspaceRoot: root,
+          requestedPath: "Billing/BillPage",
+          pathScopes: ["."],
+        }),
+      ).rejects.toThrow(/\*\*\/\*bill\*|\*\*\/BillPage|\*\*\/\*BillPage\*/i);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

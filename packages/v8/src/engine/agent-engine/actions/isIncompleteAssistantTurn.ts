@@ -547,7 +547,7 @@ export function selectUserFacingLoopAnswer(params: {
       isUnfinishedInvestigationAnswer(loop) ||
       isDegenerateRepeatedAnswer(loop));
 
-  if (hideLoop) {
+  if (hideLoop || loop.length === 0) {
     if (summary.length > 0) {
       return summary;
     }

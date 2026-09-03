@@ -5,3 +5,4 @@ export * from "./TaskConstraintExtractor";
 export * from "./TaskRiskAnalyzer";
 export * from "./TaskTargetExtractor";
 export * from "./TaskOutcomeExtractor";
+export * from "./resolveFuzzyFileTargets";

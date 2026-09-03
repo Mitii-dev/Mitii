@@ -179,6 +179,13 @@ export {
   resolveVerificationProjects,
   uniqueVerificationEvidence,
 } from "./preflightBuild";
+export { collectUnderstandingCandidatePaths } from "./collectUnderstandingCandidatePaths";
+export {
+  isExplicitEditorReference,
+  isFileContextRelevant,
+  isInternalAgentPath,
+  scoreFileContextRelevance,
+} from "./isFileContextRelevant";
 export {
   allowsTargetedDiscoveryAfterRejectedMutation,
   buildRejectedMutationRecoveryMessage,

@@ -313,6 +313,15 @@ describe("isIncompleteAssistantTurn", () => {
     ).toContain("Updated field-radio.tsx");
   });
 
+  it("synthesizes a changed-files answer when the loop answer is empty", () => {
+    expect(
+      selectUserFacingLoopAnswer({
+        loopAnswer: "",
+        changedFiles: ["testConfig.ts", "Desktop.ts", "package.json"],
+      }),
+    ).toMatch(/^Completed workspace edits \(3 files\):/);
+  });
+
   it("recovers empty and transitional finals", () => {
     expect(
       shouldRecoverIncompleteAssistantTurn({

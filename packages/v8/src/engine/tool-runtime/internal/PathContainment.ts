@@ -2,6 +2,7 @@ import * as path from "node:path";
 
 import type { WorkspaceFileSystemPort } from "../contracts";
 import type { ToolReasonCode } from "../contracts";
+import { selectMissingPathGlobHintsForMessage } from "./missingPathGlobHints";
 
 export class PathContainmentError extends Error {
   public readonly reasonCode: ToolReasonCode;
@@ -204,9 +205,39 @@ export async function resolveContainedPath(params: {
       });
       return { relativePath, absolutePath, realPath: absolutePath };
     }
+
+    // Case-insensitive fallback: models often ask for billing/… when the
+    // on-disk folder is Billing/.
+    const ciRelative = await resolveCaseInsensitiveRelativePath({
+      fileSystem: params.fileSystem,
+      absoluteRoot,
+      relativePath,
+    });
+    if (ciRelative && ciRelative !== relativePath) {
+      if (!isPathWithinScopes(ciRelative, params.pathScopes)) {
+        throw new PathContainmentError(
+          "path_out_of_scope",
+          `Path "${ciRelative}" is outside granted pathScopes.`,
+        );
+      }
+      const ciAbsolute = params.fileSystem.resolve(absoluteRoot, ciRelative);
+      try {
+        const ciReal = await params.fileSystem.realpath(ciAbsolute);
+        if (isPhysicalPathWithinRoot(physicalRoot, ciReal)) {
+          return {
+            relativePath: ciRelative,
+            absolutePath: ciAbsolute,
+            realPath: ciReal,
+          };
+        }
+      } catch {
+        // Fall through to the missing-path error with a discovery hint.
+      }
+    }
+
     throw new PathContainmentError(
       "execution_failed",
-      `Path does not exist or cannot be resolved: "${params.requestedPath}".`,
+      buildMissingPathMessage(relativePath, params.requestedPath),
     );
   }
 
@@ -302,4 +333,57 @@ function isAbsolutePath(slashNormalizedPath: string): boolean {
     path.posix.isAbsolute(slashNormalizedPath) ||
     /^[a-zA-Z]:\//.test(slashNormalizedPath)
   );
+}
+
+function buildMissingPathMessage(
+  relativePath: string,
+  requestedPath: string,
+): string {
+  const parent = path.posix.dirname(relativePath);
+  const parentHint =
+    parent === "." ? "the workspace root" : `"${parent}"`;
+  const globHints = selectMissingPathGlobHintsForMessage(relativePath, 2);
+  const globHintText =
+    globHints.length === 0
+      ? "glob_files"
+      : globHints.length === 1
+        ? `glob_files with pattern "${globHints[0]}" (case-insensitive)`
+        : `glob_files with pattern "${globHints[0]}" or "${globHints[1]}" (case-insensitive)`;
+  return (
+    `Path does not exist or cannot be resolved: "${requestedPath}". ` +
+    `Try ${globHintText} or list_directory on ${parentHint}.`
+  );
+}
+
+/**
+ * Walk path segments against on-disk names, ignoring case. Returns the
+ * canonical relative path when every segment resolves, otherwise undefined.
+ */
+async function resolveCaseInsensitiveRelativePath(params: {
+  fileSystem: WorkspaceFileSystemPort;
+  absoluteRoot: string;
+  relativePath: string;
+}): Promise<string | undefined> {
+  if (params.relativePath === "." || params.relativePath === "") {
+    return params.relativePath;
+  }
+  const segments = params.relativePath.split("/").filter((part) => part.length > 0);
+  let absoluteCursor = params.absoluteRoot;
+  const resolved: string[] = [];
+  for (const segment of segments) {
+    let entries: Awaited<ReturnType<WorkspaceFileSystemPort["listDirectory"]>>;
+    try {
+      entries = await params.fileSystem.listDirectory(absoluteCursor);
+    } catch {
+      return undefined;
+    }
+    const needle = segment.toLowerCase();
+    const hit = entries.find((entry) => entry.name.toLowerCase() === needle);
+    if (!hit) {
+      return undefined;
+    }
+    resolved.push(hit.name);
+    absoluteCursor = params.fileSystem.resolve(absoluteCursor, hit.name);
+  }
+  return resolved.join("/");
 }
