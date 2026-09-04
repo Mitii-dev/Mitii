@@ -1,7 +1,9 @@
 import type { AgentMode, UserRequestOrigin } from "../../../request-intake";
-import { WINDOW_BUDGET_SCHEMA_VERSION } from "../../../window-budget/constants";
-import { deriveWindowPolicy } from "../../../window-budget/actions/DeriveWindowPolicy";
-import type { WindowPolicy } from "../../../window-budget";
+import {
+  WINDOW_BUDGET_SCHEMA_VERSION,
+  deriveWindowPolicy,
+  type WindowPolicy,
+} from "../../../window-budget";
 import type { RequestUnderstandingResult } from "../../../request-understanding";
 import { DECISION_POLICY_SCHEMA_VERSION } from "../../constants";
 import type { DecisionPolicyInput } from "../../contracts";

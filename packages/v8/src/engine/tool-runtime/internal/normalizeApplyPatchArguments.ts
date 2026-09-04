@@ -3,9 +3,26 @@
  * 1) Flat `{ path, oldText, newText }` instead of `{ patches: [...] }`
  * 2) `patches` as a JSON string instead of an array
  * 3) `expectedHash: null` (Zod optional string rejects null)
+ * 4) `replaceAll: "true"` / `"false"` instead of a real boolean
  *
  * Normalize those shapes before schema validation so recoverable calls succeed.
  */
+
+function coerceOptionalBoolean(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const lowered = value.trim().toLowerCase();
+    if (lowered === "true") {
+      return true;
+    }
+    if (lowered === "false") {
+      return false;
+    }
+  }
+  return undefined;
+}
 
 function sanitizePatchEntry(value: unknown): unknown {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -16,8 +33,13 @@ function sanitizePatchEntry(value: unknown): unknown {
   if (typeof hash !== "string" || hash.length === 0) {
     delete entry.expectedHash;
   }
-  if (entry.replaceAll !== undefined && typeof entry.replaceAll !== "boolean") {
-    delete entry.replaceAll;
+  if (entry.replaceAll !== undefined) {
+    const replaceAll = coerceOptionalBoolean(entry.replaceAll);
+    if (replaceAll === undefined) {
+      delete entry.replaceAll;
+    } else {
+      entry.replaceAll = replaceAll;
+    }
   }
   return entry;
 }
@@ -69,8 +91,9 @@ export function normalizeApplyPatchArguments(value: unknown): unknown {
       if (typeof expectedHash === "string" && expectedHash.length > 0) {
         patch.expectedHash = expectedHash;
       }
-      if (typeof replaceAll === "boolean") {
-        patch.replaceAll = replaceAll;
+      const coercedReplaceAll = coerceOptionalBoolean(replaceAll);
+      if (coercedReplaceAll !== undefined) {
+        patch.replaceAll = coercedReplaceAll;
       }
       return {
         ...rest,

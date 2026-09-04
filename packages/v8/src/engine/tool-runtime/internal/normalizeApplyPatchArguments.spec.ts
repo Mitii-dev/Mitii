@@ -82,6 +82,29 @@ describe("normalizeApplyPatchArguments", () => {
       patches: [{ path: "test/shared/config/testConfig.ts", replaceAll: true }],
     });
   });
+
+  it("coerces string replaceAll before schema validation", () => {
+    const normalized = normalizeApplyPatchArguments({
+      patches: [
+        {
+          path: "src/a.ts",
+          oldText: "foo",
+          newText: "bar",
+          replaceAll: "true",
+        },
+      ],
+    });
+    expect(normalized).toEqual({
+      patches: [
+        {
+          path: "src/a.ts",
+          oldText: "foo",
+          newText: "bar",
+          replaceAll: true,
+        },
+      ],
+    });
+  });
 });
 
 describe("coerceArgumentsToSchema apply_patch arrays", () => {

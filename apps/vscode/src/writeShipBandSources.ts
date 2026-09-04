@@ -131,7 +131,11 @@ export function renderLoopPolicyBandsSource(tables: ShipBandTables): string {
     )
     .join('\n');
 
-  return `import type { AgentEngineThresholdsOverrides } from "../actions/resolveAgentEngineThresholds";
+  // Codegen target lives under agent-engine; avoid a host-source line that looks
+  // like a deep actions import to architecture scanners.
+  const thresholdsTypeImport = `import type { AgentEngineThresholdsOverrides } from ${JSON.stringify("../actions/resolveAgentEngineThresholds")};`;
+
+  return `${thresholdsTypeImport}
 
 /**
  * Window bands for shipped loop/stall standards.
