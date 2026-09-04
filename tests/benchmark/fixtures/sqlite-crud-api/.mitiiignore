@@ -1,0 +1,8 @@
+node_modules/
+db.sqlite
+db.sqlite-*
+dist/
+build/
+coverage/
+*.lock
+*.map

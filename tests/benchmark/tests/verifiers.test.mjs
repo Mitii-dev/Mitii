@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import Database from 'better-sqlite3';
 import { snapshotTree } from '../src/snapshot.mjs';
 import { verifyCheck } from '../src/verifiers.mjs';
 
@@ -128,4 +129,85 @@ test('HTTP check starts a server and validates the exact response', async () => 
     { output: '', agentExitCode: 0, workspace, before, after: before }
   );
   assert.equal(checked.passed, true, checked.details);
+});
+
+test('sqlite_query asserts a row/column value from a real db file', async () => {
+  const workspace = mkdtempSync(join(tmpdir(), 'solid-bench-sqlite-'));
+  const db = new Database(join(workspace, 'db.sqlite'));
+  db.exec('CREATE TABLE tasks (id INTEGER PRIMARY KEY, title TEXT)');
+  db.prepare('INSERT INTO tasks (title) VALUES (?)').run('write plan');
+  db.close();
+  const before = snapshotTree(workspace);
+  const context = { output: '', agentExitCode: 0, workspace, before, after: before };
+
+  const countCheck = await verifyCheck(
+    { type: 'sqlite_query', dbPath: 'db.sqlite', sql: 'SELECT count(*) as n FROM tasks', column: 'n', equals: 1 },
+    context
+  );
+  assert.equal(countCheck.passed, true, countCheck.details);
+
+  const wrongCountCheck = await verifyCheck(
+    { type: 'sqlite_query', dbPath: 'db.sqlite', sql: 'SELECT count(*) as n FROM tasks', column: 'n', equals: 0 },
+    context
+  );
+  assert.equal(wrongCountCheck.passed, false);
+
+  const missingDbCheck = await verifyCheck(
+    { type: 'sqlite_query', dbPath: 'missing.sqlite', sql: 'SELECT 1', column: 'n', equals: 0 },
+    context
+  );
+  assert.equal(missingDbCheck.passed, false);
+});
+
+test('changed_file_count enforces a min/max on the workspace diff', async () => {
+  const workspace = mkdtempSync(join(tmpdir(), 'solid-bench-changed-count-'));
+  writeFileSync(join(workspace, 'a.txt'), 'a\n');
+  const before = snapshotTree(workspace);
+  writeFileSync(join(workspace, 'a.txt'), 'a changed\n');
+  writeFileSync(join(workspace, 'b.txt'), 'b\n');
+  const after = snapshotTree(workspace);
+  const context = { output: '', agentExitCode: 0, workspace, before, after };
+
+  const inRange = await verifyCheck({ type: 'changed_file_count', minimum: 2, maximum: 2 }, context);
+  assert.equal(inRange.passed, true, inRange.details);
+
+  const tooFew = await verifyCheck({ type: 'changed_file_count', minimum: 5 }, context);
+  assert.equal(tooFew.passed, false);
+
+  const tooMany = await verifyCheck({ type: 'changed_file_count', maximum: 1 }, context);
+  assert.equal(tooMany.passed, false);
+});
+
+test('workflow_yaml_valid checks required jobs and triggers', async () => {
+  const workspace = mkdtempSync(join(tmpdir(), 'solid-bench-workflow-'));
+  mkdirSync(join(workspace, '.github', 'workflows'), { recursive: true });
+  writeFileSync(
+    join(workspace, '.github', 'workflows', 'ci.yml'),
+    'on:\n  push: {}\n  pull_request: {}\njobs:\n  build:\n    runs-on: ubuntu-latest\n  test:\n    runs-on: ubuntu-latest\n'
+  );
+  const before = snapshotTree(workspace);
+  const context = { output: '', agentExitCode: 0, workspace, before, after: before };
+
+  const passing = await verifyCheck(
+    {
+      type: 'workflow_yaml_valid',
+      path: '.github/workflows/ci.yml',
+      requireJobs: ['build', 'test'],
+      requireTriggers: ['push', 'pull_request'],
+    },
+    context
+  );
+  assert.equal(passing.passed, true, passing.details);
+
+  const missingJob = await verifyCheck(
+    { type: 'workflow_yaml_valid', path: '.github/workflows/ci.yml', requireJobs: ['deploy'] },
+    context
+  );
+  assert.equal(missingJob.passed, false);
+
+  const missingFile = await verifyCheck(
+    { type: 'workflow_yaml_valid', path: '.github/workflows/missing.yml', requireJobs: ['build'] },
+    context
+  );
+  assert.equal(missingFile.passed, false);
 });

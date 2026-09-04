@@ -24,6 +24,9 @@ export const CHECK_TYPES = new Set([
   'command',
   'http',
   'skills_installed',
+  'sqlite_query',
+  'changed_file_count',
+  'workflow_yaml_valid',
 ]);
 
 const OUTPUT_ASSERTIONS = new Set([
@@ -47,6 +50,9 @@ const STATE_ASSERTIONS = new Set([
   'file_unchanged',
   'file_changed',
   'http',
+  'sqlite_query',
+  'changed_file_count',
+  'workflow_yaml_valid',
 ]);
 
 export function validateSuite(cases, rootDir, options = {}) {

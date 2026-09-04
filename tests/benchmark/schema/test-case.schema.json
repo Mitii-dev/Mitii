@@ -31,7 +31,7 @@
       "minimum": 1
     },
     "suite": {
-      "enum": ["frontend", "backend", "cicd", "testing"]
+      "enum": ["frontend", "backend", "cicd", "testing", "api-build", "ui-vision"]
     },
     "category": {
       "type": ["string", "null"],
@@ -62,6 +62,24 @@
     "timeoutMs": {
       "type": "integer",
       "minimum": 1
+    },
+    "attachments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "mimeType": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      }
     },
     "preconditions": {
       "type": "array",
@@ -104,11 +122,45 @@
             "file_changed",
             "command",
             "http",
-            "skills_installed"
+            "skills_installed",
+            "sqlite_query",
+            "changed_file_count",
+            "workflow_yaml_valid"
           ]
         },
         "equals": {
-          "type": "integer"
+          "type": ["integer", "string", "boolean"]
+        },
+        "maximum": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "dbPath": {
+          "type": "string"
+        },
+        "sql": {
+          "type": "string"
+        },
+        "row": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "column": {
+          "type": "string"
+        },
+        "requireJobs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "requireTriggers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
         },
         "value": {
           "type": "string"

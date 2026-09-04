@@ -7,7 +7,7 @@ import { validateSuite } from '../src/validate.mjs';
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-test('domains are frontend, backend, cicd, testing', () => {
+test('domains are frontend, backend, cicd, testing, api-build', () => {
   assert.deepEqual(listSuites(rootDir), [...DOMAINS]);
 });
 

@@ -1,0 +1,6 @@
+node_modules/
+dist/
+*.tgz
+pack.json
+*.lock
+*.map

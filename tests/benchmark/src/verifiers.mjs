@@ -1,5 +1,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import Database from 'better-sqlite3';
+import { parse as parseYaml } from 'yaml';
 import { runHttpCheck } from './http-check.mjs';
 import { runProcess } from './process.mjs';
 import { diffSnapshots } from './snapshot.mjs';
@@ -111,7 +113,72 @@ async function verify(check, context) {
       : 0;
     return result(count >= check.minimum, `${count} skills`);
   }
+  if (check.type === 'sqlite_query') {
+    return runSqliteQueryCheck(check, workspace);
+  }
+  if (check.type === 'changed_file_count') {
+    const changed = diffSnapshots(before, after);
+    const passed =
+      changed.length >= (check.minimum ?? 0) && changed.length <= (check.maximum ?? Infinity);
+    return result(passed, `${changed.length} files changed: ${changed.join(', ')}`);
+  }
+  if (check.type === 'workflow_yaml_valid') {
+    return runWorkflowYamlCheck(check, workspace);
+  }
   return result(false, `Unsupported check type: ${check.type}`);
+}
+
+function runSqliteQueryCheck(check, workspace) {
+  const dbPath = join(workspace, check.dbPath);
+  if (!existsSync(dbPath)) return result(false, `sqlite db not found: ${check.dbPath}`);
+  const db = new Database(dbPath, { readonly: true });
+  try {
+    const rows = db.prepare(check.sql).all();
+    const row = rows[check.row ?? 0];
+    const actual = row ? row[check.column] : undefined;
+    if (check.equals !== undefined) {
+      return result(row !== undefined && String(actual) === String(check.equals), `row ${check.row ?? 0}.${check.column} = ${actual}`);
+    }
+    if (check.minimum !== undefined) {
+      return result(row !== undefined && Number(actual) >= check.minimum, `row ${check.row ?? 0}.${check.column} = ${actual}`);
+    }
+    return result(rows.length > 0, `${rows.length} rows`);
+  } finally {
+    db.close();
+  }
+}
+
+function runWorkflowYamlCheck(check, workspace) {
+  const path = join(workspace, check.path);
+  if (!existsSync(path)) return result(false, `workflow file not found: ${check.path}`);
+  let parsed;
+  try {
+    parsed = parseYaml(readFileSync(path, 'utf8'));
+  } catch (error) {
+    return result(false, `invalid YAML: ${error.message}`);
+  }
+  const jobs = Object.keys(parsed?.jobs ?? {});
+  const triggers = normalizeWorkflowTriggers(parsed?.on);
+  const missingJobs = (check.requireJobs ?? []).filter((job) => !jobs.includes(job));
+  const missingTriggers = (check.requireTriggers ?? []).filter((trigger) => !triggers.includes(trigger));
+  const passed = missingJobs.length === 0 && missingTriggers.length === 0;
+  const details = [
+    `jobs=${jobs.join(',')}`,
+    `triggers=${triggers.join(',')}`,
+    missingJobs.length ? `missingJobs=${missingJobs.join(',')}` : '',
+    missingTriggers.length ? `missingTriggers=${missingTriggers.join(',')}` : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+  return result(passed, details);
+}
+
+function normalizeWorkflowTriggers(on) {
+  if (!on) return [];
+  if (typeof on === 'string') return [on];
+  if (Array.isArray(on)) return on;
+  if (typeof on === 'object') return Object.keys(on);
+  return [];
 }
 
 function parseJsonLines(text) {
