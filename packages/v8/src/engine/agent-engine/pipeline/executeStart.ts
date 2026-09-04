@@ -1251,10 +1251,28 @@ export async function executeStart(
       memory: selectedMemory,
     });
 
+    if (
+      envelope.attachments &&
+      envelope.attachments.length > 0 &&
+      !runtime.deps.llm.capabilities.supportsVision
+    ) {
+      reasonCodes.push("vision_unsupported");
+      await runtime.safeUnpin(runId, pinnedState);
+      return finish({
+        status: "failed",
+        reasonCodes,
+        error: {
+          code: "vision_unsupported",
+          message: `Model ${runtime.deps.llm.capabilities.modelId} does not support image input.`,
+        },
+      });
+    }
+
     const promptResult = runtime.deps.prompt.construct({
       schemaVersion: PROMPT_CONSTRUCTION_SCHEMA_VERSION,
       decision,
       userMessage: envelope.message,
+      attachments: envelope.attachments,
       conversation: input.conversation,
       repositoryContext,
       instructions,

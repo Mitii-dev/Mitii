@@ -1,7 +1,20 @@
 import { readFileSync } from 'node:fs';
-import { isAbsolute, join, resolve } from 'node:path';
+import { extname, isAbsolute, join, resolve } from 'node:path';
 
-import type { AgentMode, MitiiAutonomyPreset, UserRequestOrigin } from '@mitii/sdk';
+import type {
+  AgentMode,
+  MitiiAutonomyPreset,
+  MitiiImageAttachment,
+  UserRequestOrigin,
+} from '@mitii/sdk';
+
+const IMAGE_MIME_TYPES_BY_EXTENSION: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+};
 
 /**
  * Agent markdown under `.mitii/agents/<id>.md` (Continue-style).
@@ -143,6 +156,43 @@ export function loadPromptFile(
     const detail = error instanceof Error ? error.message : String(error);
     throw new Error(`mitii: cannot read prompt file "${trimmed}": ${detail}`);
   }
+}
+
+/**
+ * Load an image file from disk as a base64 attachment for `--image`.
+ * Supports .png/.jpg/.jpeg/.webp/.gif — matches SUPPORTED_IMAGE_MIME_TYPES.
+ */
+export function loadImageAttachment(
+  imagePath: string,
+  cwd: string,
+): MitiiImageAttachment {
+  const trimmed = imagePath.trim();
+  if (!trimmed) {
+    throw new Error('mitii: --image requires a file path');
+  }
+  const extension = extname(trimmed).toLowerCase();
+  const mimeType = IMAGE_MIME_TYPES_BY_EXTENSION[extension];
+  if (!mimeType) {
+    throw new Error(
+      `mitii: unsupported image type "${extension || trimmed}" (supported: .png, .jpg, .jpeg, .webp, .gif)`,
+    );
+  }
+  const resolvedPath = isAbsolute(trimmed) ? trimmed : resolve(cwd, trimmed);
+  let buffer: Buffer;
+  try {
+    buffer = readFileSync(resolvedPath);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`mitii: cannot read image "${trimmed}": ${detail}`);
+  }
+  if (buffer.length === 0) {
+    throw new Error(`mitii: image "${trimmed}" is empty`);
+  }
+  return {
+    mimeType: mimeType as MitiiImageAttachment['mimeType'],
+    data: buffer.toString('base64'),
+    name: trimmed.replace(/\\/g, '/').split('/').pop() || trimmed,
+  };
 }
 
 /**

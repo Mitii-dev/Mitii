@@ -5,6 +5,7 @@ export type {
   UserRequestEnvelopeBuilderDependencies,
   RequestArtifactReference,
   RequestArtifactKind,
+  RequestImageAttachment,
   UserRequestCorrelation,
   UserRequestOrigin,
   UserRequestWorkspaceScope,
@@ -12,6 +13,7 @@ export type {
 export {
   userRequestEnvelopeSchema,
   requestArtifactReferenceSchema,
+  requestImageAttachmentSchema,
 } from "./request-envelope/schema";
 
 export { agentModeSchema } from "./interaction-mode/schema";
@@ -25,6 +27,8 @@ export {
 export {
   USER_REQUEST_ORIGINS,
   REQUEST_ENVELOPE_DEFAULTS,
+  REQUEST_ENVELOPE_LIMITS,
+  SUPPORTED_IMAGE_MIME_TYPES,
 } from "./request-envelope/constants";
 
 export { RequestIntakePipeline } from "./pipeline/RequestIntakePipeline";

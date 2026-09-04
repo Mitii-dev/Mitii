@@ -11,6 +11,7 @@ import {
   REQUEST_ENVELOPE_MESSAGES,
   REQUEST_ENVELOPE_PATTERNS,
   REQUEST_ENVELOPE_SCHEMA_VERSION,
+  SUPPORTED_IMAGE_MIME_TYPES,
   USER_REQUEST_ORIGINS,
 } from "./constants";
 
@@ -139,6 +140,29 @@ export const requestArtifactReferenceSchema =
       },
     );
 
+export const requestImageAttachmentSchema =
+  z.object({
+    mimeType:
+      z.enum(
+        SUPPORTED_IMAGE_MIME_TYPES,
+      ),
+    data:
+      z.string()
+        .min(1)
+        .max(
+          REQUEST_ENVELOPE_LIMITS
+            .MAXIMUM_ATTACHMENT_DATA_CHARACTERS,
+        ),
+    name:
+      z.string()
+        .min(1)
+        .max(
+          REQUEST_ENVELOPE_LIMITS
+            .MAXIMUM_ATTACHMENT_NAME_CHARACTERS,
+        )
+        .optional(),
+  }).strict();
+
 export const userRequestWorkspaceScopeSchema =
   z.object({
     workspaceId:
@@ -240,6 +264,15 @@ export const userRequestEnvelopeSchema =
         .optional(),
     correlation:
       userRequestCorrelationSchema
+        .optional(),
+    attachments:
+      z.array(
+        requestImageAttachmentSchema,
+      )
+        .max(
+          REQUEST_ENVELOPE_LIMITS
+            .MAXIMUM_ATTACHMENTS,
+        )
         .optional(),
     createdAt:
       z.string()

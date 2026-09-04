@@ -3,6 +3,7 @@ import { z } from "zod";
 import { agentModeSchema } from "../../interaction-mode/schema";
 import {
   requestArtifactReferenceSchema,
+  requestImageAttachmentSchema,
   userRequestCorrelationSchema,
   userRequestWorkspaceScopeSchema,
 } from "../../request-envelope/schema";
@@ -32,6 +33,10 @@ export const createUserRequestInputSchema = z
       .optional(),
     workspace: userRequestWorkspaceScopeSchema.optional(),
     correlation: userRequestCorrelationSchema.optional(),
+    attachments: z
+      .array(requestImageAttachmentSchema)
+      .max(REQUEST_ENVELOPE_LIMITS.MAXIMUM_ATTACHMENTS)
+      .optional(),
   })
   .strict()
   .superRefine((input, context) => {

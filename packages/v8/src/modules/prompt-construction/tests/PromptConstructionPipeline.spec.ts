@@ -42,6 +42,36 @@ describe("PromptConstructionPipeline", () => {
     expect(result.request.messages[0]?.role).toBe("system");
   });
 
+  it("attaches image attachments to the final user message", () => {
+    const pipeline = new PromptConstructionPipeline();
+    const input = createPromptInput({
+      attachments: [
+        { mimeType: "image/png", data: "aGVsbG8=", name: "screenshot.png" },
+      ],
+    });
+
+    const result = pipeline.construct(input);
+
+    const userMessage = result.request.messages.at(-1);
+    expect(userMessage?.role).toBe("user");
+    expect(userMessage?.attachments).toEqual([
+      {
+        kind: "image",
+        mimeType: "image/png",
+        data: "aGVsbG8=",
+        name: "screenshot.png",
+      },
+    ]);
+  });
+
+  it("omits attachments from the final user message when none are given", () => {
+    const pipeline = new PromptConstructionPipeline();
+    const result = pipeline.construct(createPromptInput());
+
+    const userMessage = result.request.messages.at(-1);
+    expect(userMessage?.attachments).toBeUndefined();
+  });
+
   it("raises PromptConstructionError with stable code on invalid input", () => {
     const pipeline = new PromptConstructionPipeline();
 

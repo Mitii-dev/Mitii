@@ -143,3 +143,63 @@ test(
     );
   },
 );
+
+test(
+  "request envelope carries image attachments through the builder",
+  () => {
+    const result = createBuilder().build({
+      sessionId: "session-1",
+      mode: "agent",
+      userMessage: "What does this screenshot show?",
+      attachments: [
+        {
+          mimeType: "image/png",
+          data: "aGVsbG8=",
+          name: "screenshot.png",
+        },
+      ],
+    });
+
+    assert.equal(result.attachments?.length, 1);
+    assert.equal(result.attachments?.[0]?.mimeType, "image/png");
+    assert.equal(result.attachments?.[0]?.data, "aGVsbG8=");
+    assert.equal(result.attachments?.[0]?.name, "screenshot.png");
+  },
+);
+
+test(
+  "request envelope schema rejects unsupported mime types and too many attachments",
+  () => {
+    const base = {
+      schemaVersion: 1 as const,
+      requestId: "request-1",
+      sessionId: "session-1",
+      mode: "agent" as const,
+      origin: "user" as const,
+      message: "Look at this.",
+      referencedArtifacts: [],
+      createdAt: "2026-07-25T12:00:00.000Z",
+    };
+
+    const badMimeType = userRequestEnvelopeSchema.safeParse({
+      ...base,
+      attachments: [{ mimeType: "application/pdf", data: "aGVsbG8=" }],
+    });
+    assert.equal(badMimeType.success, false);
+
+    const tooMany = userRequestEnvelopeSchema.safeParse({
+      ...base,
+      attachments: Array.from({ length: 5 }, () => ({
+        mimeType: "image/png",
+        data: "aGVsbG8=",
+      })),
+    });
+    assert.equal(tooMany.success, false);
+
+    const ok = userRequestEnvelopeSchema.safeParse({
+      ...base,
+      attachments: [{ mimeType: "image/png", data: "aGVsbG8=" }],
+    });
+    assert.equal(ok.success, true);
+  },
+);

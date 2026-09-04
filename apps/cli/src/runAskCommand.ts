@@ -3,6 +3,7 @@ import type {
   MitiiAutonomyPreset,
   MitiiClient,
   MitiiConversationMessage,
+  MitiiImageAttachment,
   TaskList,
   UserRequestOrigin,
 } from '@mitii/sdk';
@@ -11,6 +12,7 @@ import { loadProjectRules, loadUserSafetyRules } from '@mitii/host';
 import {
   composeAgentPrompt,
   loadAgentFile,
+  loadImageAttachment,
   loadPromptFile,
   type MitiiAgentFile,
 } from './agentFile.js';
@@ -46,6 +48,7 @@ export function resolveAskPrompt(
   autonomyPreset?: MitiiAutonomyPreset;
   autoApproval?: 'approved' | 'denied';
   requiredSkillIds?: string[];
+  attachments?: MitiiImageAttachment[];
 } {
   let agent: MitiiAgentFile | undefined;
   if (parsed.agent) {
@@ -64,6 +67,9 @@ export function resolveAskPrompt(
     ...(parsed.skills ?? []),
     ...(agent?.requiredSkillIds ?? []),
   ];
+  const attachments = (parsed.images ?? []).map((imagePath) =>
+    loadImageAttachment(imagePath, cwd),
+  );
   const autonomyPreset = parsed.autonomyPreset ?? agent?.autonomyPreset;
   const mode = parsed.mode ?? agent?.mode;
   const origin =
@@ -86,6 +92,7 @@ export function resolveAskPrompt(
     autonomyPreset,
     autoApproval,
     ...(requiredSkillIds.length > 0 ? { requiredSkillIds } : {}),
+    ...(attachments.length > 0 ? { attachments } : {}),
   };
 }
 
@@ -171,6 +178,7 @@ export async function runAsk(options: {
   origin?: UserRequestOrigin;
   autonomyPreset?: MitiiAutonomyPreset;
   requiredSkillIds?: string[];
+  attachments?: MitiiImageAttachment[];
   conversation?: MitiiConversationMessage[];
   taskList?: TaskList;
   loopPolicyJson?: string;
@@ -250,6 +258,9 @@ export async function runAsk(options: {
       ...(projectRules.length > 0 ? { projectRules: [...projectRules] } : {}),
       ...(options.requiredSkillIds && options.requiredSkillIds.length > 0
         ? { requiredSkillIds: [...options.requiredSkillIds] }
+        : {}),
+      ...(options.attachments && options.attachments.length > 0
+        ? { attachments: [...options.attachments] }
         : {}),
       ...(options.conversation && options.conversation.length > 0
         ? { conversation: options.conversation }

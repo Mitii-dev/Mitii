@@ -40,6 +40,7 @@ import {
   resolveAskPrompt,
 } from './runAskCommand.js';
 
+import { parseCliArgs } from './parseCliArgs.js';
 export { parseCliArgs, type ParsedCliArgs } from './parseCliArgs.js';
 
 function readPackageVersion(): string {
@@ -469,6 +470,7 @@ export async function main(
         origin: resolved.origin,
         autonomyPreset: resolved.autonomyPreset,
         requiredSkillIds: resolved.requiredSkillIds,
+        attachments: resolved.attachments,
         loopPolicyJson: parsed.loopPolicyJson,
         noLoopPolicy: parsed.noLoopPolicy === true,
         io: sessionIo,

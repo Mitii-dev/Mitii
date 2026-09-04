@@ -5,13 +5,17 @@ export type {
   CreateUserRequestInput,
   AgentMode,
   UserRequestOrigin,
+  RequestImageAttachment,
 } from "./modules/request-intake";
 export {
   agentModeSchema,
   userRequestEnvelopeSchema,
   createUserRequestInputSchema,
+  requestImageAttachmentSchema,
   USER_REQUEST_ORIGINS,
   REQUEST_ENVELOPE_DEFAULTS,
+  REQUEST_ENVELOPE_LIMITS,
+  SUPPORTED_IMAGE_MIME_TYPES,
 } from "./modules/request-intake";
 
 export { RequestUnderstandingPipeline } from "./modules/request-understanding";

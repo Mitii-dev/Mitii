@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   composeAgentPrompt,
   loadAgentFile,
+  loadImageAttachment,
   loadPromptFile,
   resolveAgentFilePath,
 } from '../src/agentFile.js';
@@ -130,5 +131,48 @@ Generate docs.
     expect(combined).toContain('agent body');
     expect(combined).toContain('from cli');
     expect(combined).toContain('from file');
+  });
+
+  it('loads a png image as a base64 attachment', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mitii-image-'));
+    dirs.push(dir);
+    const imagePath = join(dir, 'shot.png');
+    writeFileSync(imagePath, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+
+    const attachment = loadImageAttachment(imagePath, dir);
+    expect(attachment.mimeType).toBe('image/png');
+    expect(attachment.name).toBe('shot.png');
+    expect(Buffer.from(attachment.data, 'base64')).toEqual(
+      Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+    );
+  });
+
+  it('resolves a relative image path against cwd', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mitii-image-rel-'));
+    dirs.push(dir);
+    writeFileSync(join(dir, 'shot.jpg'), Buffer.from([0xff, 0xd8]));
+
+    const attachment = loadImageAttachment('shot.jpg', dir);
+    expect(attachment.mimeType).toBe('image/jpeg');
+  });
+
+  it('rejects unsupported image extensions', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mitii-image-bad-'));
+    dirs.push(dir);
+    const filePath = join(dir, 'doc.pdf');
+    writeFileSync(filePath, 'not an image');
+
+    expect(() => loadImageAttachment(filePath, dir)).toThrow(
+      /unsupported image type/,
+    );
+  });
+
+  it('rejects a missing image file', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mitii-image-missing-'));
+    dirs.push(dir);
+
+    expect(() =>
+      loadImageAttachment(join(dir, 'missing.png'), dir),
+    ).toThrow(/cannot read image/);
   });
 });

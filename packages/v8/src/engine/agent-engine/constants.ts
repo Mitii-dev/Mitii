@@ -145,6 +145,8 @@ export const AGENT_REASON_CODES = [
   "misconfigured",
   "invalid_input",
   "prompt_blocked",
+  /** Request carried an image attachment but the resolved model does not support vision. */
+  "vision_unsupported",
   "context_failed",
   "state_unavailable",
   "resume_complete",

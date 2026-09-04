@@ -37,6 +37,8 @@ export interface ParsedCliArgs {
   agent?: string;
   /** Explicitly attach skill ids for this run (repeatable). */
   skills?: string[];
+  /** Path to an image file to attach (repeatable, e.g. a screenshot/mockup). */
+  images?: string[];
   /** Prompt file path, or `-` for stdin. */
   promptFile?: string;
   unknownCommand?: string;
@@ -82,6 +84,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   let agent: string | undefined;
   let promptFile: string | undefined;
   const skills: string[] = [];
+  const images: string[] = [];
   let setupProvider: string | undefined;
   let setupModel: string | undefined;
   let setupBaseUrl: string | undefined;
@@ -220,6 +223,15 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
         return { command: 'error', errorMessage: taken.error, rest: [] };
       }
       skills.push(taken.value);
+      i = taken.next;
+      continue;
+    }
+    if (arg === '--image') {
+      const taken = takeValue(args, i, '--image');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      images.push(taken.value);
       i = taken.next;
       continue;
     }
@@ -377,6 +389,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       agent,
       promptFile,
       skills: skills.length > 0 ? skills : undefined,
+      images: images.length > 0 ? images : undefined,
       loopPolicyJson,
       noLoopPolicy: flags.has('no-loop-policy'),
       rest,

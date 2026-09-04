@@ -97,6 +97,69 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     );
   });
 
+  it("sends an image attachment to a vision-capable model", async () => {
+    const llm = new ScriptedLlmPort(
+      [{ content: "It shows a login form." }],
+      createCapabilities({ supportsTools: false, supportsVision: true }),
+    );
+    const engine = new AgentEnginePipeline(
+      createStubDependencies({
+        decision: createDecision({ route: "direct_answer" }),
+        llm,
+      }),
+    );
+
+    const result = await engine.start(
+      baseStartInput({
+        request: {
+          sessionId: "sess_1",
+          mode: "ask",
+          userMessage: "What does this screenshot show?",
+          workspace: { workspaceId: "ws_1" },
+          attachments: [{ mimeType: "image/png", data: "aGVsbG8=" }],
+        },
+      }),
+    ).result;
+
+    expect(result.status).toBe("completed");
+    const userMessage = llm.requests[0]?.messages.find(
+      (message) => message.content === "What does this screenshot show?",
+    );
+    expect(userMessage?.attachments).toEqual([
+      { kind: "image", mimeType: "image/png", data: "aGVsbG8=" },
+    ]);
+  });
+
+  it("fails fast with vision_unsupported when the model can't see images", async () => {
+    const llm = new ScriptedLlmPort(
+      [{ content: "should never be reached" }],
+      createCapabilities({ supportsTools: false, supportsVision: false }),
+    );
+    const engine = new AgentEnginePipeline(
+      createStubDependencies({
+        decision: createDecision({ route: "direct_answer" }),
+        llm,
+      }),
+    );
+
+    const result = await engine.start(
+      baseStartInput({
+        request: {
+          sessionId: "sess_1",
+          mode: "ask",
+          userMessage: "What does this screenshot show?",
+          workspace: { workspaceId: "ws_1" },
+          attachments: [{ mimeType: "image/png", data: "aGVsbG8=" }],
+        },
+      }),
+    ).result;
+
+    expect(result.status).toBe("failed");
+    expect(result.error?.code).toBe("vision_unsupported");
+    expect(result.reasonCodes).toContain("vision_unsupported");
+    expect(llm.requests.length).toBe(0);
+  });
+
   it("continues truncated text-only answers instead of accepting a partial final answer", async () => {
     const engine = new AgentEnginePipeline(
       createStubDependencies({
