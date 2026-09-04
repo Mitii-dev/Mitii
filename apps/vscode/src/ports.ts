@@ -40,7 +40,6 @@ import { readContextToggles } from './contextToggles.js';
 import { createVsCodeMemoryStore } from './memoryStore.js';
 import { createVsCodeCodeNavigationPort } from './codeNavigation.js';
 import { resolveVsCodeSemanticIndexSettings } from './semanticIndex.js';
-import { readTokenBudgetPolicyOverrides } from './tokenBudgetSettings.js';
 import {
   isModelIoLoggingEnabled,
   wrapLlmPortForModelIo,

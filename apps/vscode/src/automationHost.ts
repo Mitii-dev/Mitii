@@ -54,16 +54,18 @@ export function handleAutomationHostMessage(input: {
     | { type: 'automation.pause'; specId: string }
     | { type: 'automation.resume'; specId: string };
   post: (msg: HostToWebviewMessage) => void;
-  workspaceRoot: string;
+  workspaceRoot: string | undefined;
 }): void {
   const service = new AutomationService({});
   try {
     if (input.message.type === 'requestAutomations') {
       // Reconcile workspace file specs so the panel mirrors `mitii serve`.
-      try {
-        service.reconcileFiles({ workspaceRoot: input.workspaceRoot });
-      } catch {
-        // ignore reconcile errors in UI
+      if (input.workspaceRoot) {
+        try {
+          service.reconcileFiles({ workspaceRoot: input.workspaceRoot });
+        } catch {
+          // ignore reconcile errors in UI
+        }
       }
       const specs = service.listSchedules().map(mapSpec);
       const runs = service.listRuns({ limit: 40 }).map(mapRun);

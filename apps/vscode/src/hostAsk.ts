@@ -1282,7 +1282,9 @@ export async function runAskInOutputChannel(options: {
             await client.publishRepositoryState(candidate);
             channel.appendLine(
               `[index] reused on-disk index at ${sqlitePath}; published fingerprint pin (${snap.fileCount} files)${
-                candidate.roots.some((root) => root.vectorProfile)
+                candidate.roots.some(
+                  (root: { vectorProfile?: string }) => root.vectorProfile,
+                )
                   ? ' with persisted vector profile'
                   : ''
               }`,
