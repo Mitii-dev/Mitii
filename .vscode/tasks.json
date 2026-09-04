@@ -18,6 +18,22 @@
       "presentation": { "reveal": "silent", "panel": "shared", "showReuseMessage": false }
     },
     {
+      "label": "mitii: build:automation",
+      "type": "shell",
+      "command": "pnpm --filter @mitii/automation build",
+      "problemMatcher": ["$tsc"],
+      "group": "build",
+      "presentation": { "reveal": "silent", "panel": "shared", "showReuseMessage": false }
+    },
+    {
+      "label": "mitii: build:host",
+      "type": "shell",
+      "command": "pnpm --filter @mitii/automation --filter @mitii/host run build",
+      "problemMatcher": ["$tsc"],
+      "group": "build",
+      "presentation": { "reveal": "silent", "panel": "shared", "showReuseMessage": false }
+    },
+    {
       "label": "mitii: build:vscode",
       "type": "shell",
       "command": "pnpm --filter @mitii/vscode build",
@@ -31,6 +47,8 @@
       "dependsOn": [
         "mitii: build:v8",
         "mitii: build:sdk",
+        "mitii: build:automation",
+        "mitii: build:host",
         "mitii: build:vscode"
       ],
       "problemMatcher": [],
