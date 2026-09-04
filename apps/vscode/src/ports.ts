@@ -25,9 +25,11 @@ import {
   createHostLlmPorts,
   createHostRepositoryGraphPort,
   createOptionalSearchPort,
+  createSandboxedProcessPort,
   createWorkspaceCheckpointStore,
   createWorkspaceVerificationStore,
   resolveMemoryEmbeddingPort,
+  resolveSandboxPolicy,
   resolveProviderApiKey,
 } from '@mitii/host';
 import type * as vscode from 'vscode';
@@ -244,7 +246,22 @@ export async function createVscodeClient(
     ? new ToolRuntimePipeline(
         {
           fileSystem,
-          process: new NodeProcessAdapter(),
+          process: createSandboxedProcessPort(
+            new NodeProcessAdapter(),
+            resolveSandboxPolicy({
+              enabled:
+                vs.workspace
+                  .getConfiguration('mitii')
+                  .get<boolean>('safety.sandbox.enabled') === true,
+              network:
+                vs.workspace
+                  .getConfiguration('mitii')
+                  .get<string>('safety.sandbox.network') === 'allow'
+                  ? 'allow'
+                  : 'deny',
+              workspaceRoot,
+            }),
+          ),
           network: new NodeNetworkAdapter(),
           git,
           diagnostics: new VscodeDiagnosticsPort(vs, workspaceRoot),

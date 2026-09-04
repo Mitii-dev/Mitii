@@ -1,5 +1,6 @@
 import {
   compileGrant,
+  intersectUserSafetyRules,
   planRoute,
   resolvePreflightBuild,
   scanPromptInjection,
@@ -69,7 +70,13 @@ export class DecisionPolicyPipeline {
       routePlan.route,
       mode,
     );
-    const toolGrant = clampResult.toolGrant;
+
+    // User safety rules: tighten-only intersect after mode seals + injection clamp.
+    const safetyResult = intersectUserSafetyRules(
+      clampResult.toolGrant,
+      parsed.userSafetyRules,
+    );
+    const toolGrant = safetyResult.toolGrant;
 
     const contextResult = resolveRepositoryContextNeed({
       route: routePlan.route,
@@ -89,6 +96,7 @@ export class DecisionPolicyPipeline {
       ...contextResult.reasonCodes,
       ...preflightBuild.reasonCodes,
       ...injection.reasonCodes,
+      ...safetyResult.reasonCodes,
     ]);
     const trace = buildDecisionTrace({
       reasonCodes,

@@ -120,6 +120,22 @@ export const mitiiStartInputSchema = z
     stream: z.boolean().optional(),
     approvalMode: mitiiApprovalModeSchema.optional(),
     planApproval: z.enum(['policy', 'never']).optional(),
+    /**
+     * Tighten-only user safety rules (usually from `.mitii/safety.json`).
+     * Never widens Decision Policy grants.
+     */
+    userSafetyRules: z
+      .object({
+        enabled: z.boolean().default(false),
+        denyTools: z.array(z.string().min(1)).default([]),
+        denyCommandPrefixes: z.array(z.string().min(1)).default([]),
+        allowCommandPrefixes: z.array(z.string().min(1)).optional(),
+        denyPathScopes: z.array(z.string().min(1)).default([]),
+        denyNetworkHosts: z.array(z.string().min(1)).default([]),
+        approvalCeiling: mitiiApprovalModeSchema.optional(),
+      })
+      .strict()
+      .optional(),
     dirtyPaths: z.array(z.string().min(1)).optional(),
     /**
      * How hard Engine should look before drafting a plan. "auto" defers to
@@ -290,6 +306,7 @@ export function toAgentEngineStartInput(
     stream: parsed.stream,
     approvalMode,
     planApproval,
+    userSafetyRules: parsed.userSafetyRules,
     dirtyPaths: parsed.dirtyPaths,
     explorationDepth: parsed.explorationDepth,
     windowBudget: parsed.windowBudget,

@@ -45,3 +45,25 @@ export type { PreflightBuildResolution } from "./ResolvePreflightBuild";
 
 export { scanPromptInjection } from "./ScanPromptInjection";
 export type { InjectionScanResult } from "./ScanPromptInjection";
+
+export {
+  intersectUserSafetyRules,
+  grantNeverWidens,
+} from "./IntersectUserSafetyRules";
+export type { IntersectUserSafetyResult } from "./IntersectUserSafetyRules";
+
+export {
+  formatEffectiveGrant,
+  formatEffectiveGrantJson,
+} from "./FormatEffectiveGrant";
+
+export {
+  APPROVAL_PRESET_COPY,
+  VSCODE_APPROVAL_PRESETS,
+  getApprovalPresetCopy,
+  formatApprovalPresetHelp,
+} from "./ApprovalPresetCopy";
+export type {
+  ApprovalPresetCopy,
+  VsCodeApprovalPreset,
+} from "./ApprovalPresetCopy";

@@ -69,6 +69,10 @@ export const runEventSchema = z.discriminatedUnion("type", [
       maximumWorkspaceEffect: workspaceEffectSchema.optional(),
       approvalMode: approvalModeSchema.optional(),
       pathScopes: z.array(z.string().min(1).max(512)).max(20).optional(),
+      /** Safe tool id list for effective-grant readout (capped). */
+      allowedTools: z.array(z.string().min(1).max(128)).max(40).optional(),
+      /** Safe command prefix list for effective-grant readout (capped). */
+      commandPrefixes: z.array(z.string().min(1).max(128)).max(40).optional(),
       trace: decisionTraceSchema.optional(),
       at: z.string().datetime(),
     })

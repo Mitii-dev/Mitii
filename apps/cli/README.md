@@ -47,6 +47,7 @@ mitii -v                     # or: mitii --version / mitii version
 
 ```bash
 mitii ask "What is recursion?" --echo
+mitii run --auto "run tests and fix failures" --echo
 mitii index
 mitii status --json
 mitii session
@@ -59,6 +60,7 @@ mitii export-session "Summarize this repo" --out session.json --echo
 |---|---|
 | `setup` | Interactive (or flag-driven) model/provider setup |
 | `ask <prompt>` | SDK ask with streaming, cancel, clarify/approve |
+| `run --auto "<task>"` | Unattended CI run (agent + apply autonomy; no prompts) |
 | `session` | Interactive prompt loop with MITII banner |
 | `index` | Full workspace index + publish repository state |
 | `status` | Show latest persisted repository state |
@@ -499,6 +501,9 @@ Telegram, Discord, and Slack via `mitii connect`. GitHub work uses the repo +
 tools/`gh`, not a `connect` adapter (see **Connect** above).
 
 **Phase 0 CI automation** works today: `--origin` / `--autonomy` / `--agent` /
+`mitii run --auto`, plus optional `.mitii/safety.json` (tighten-only) and
+`MITII_SANDBOX=1` (OS process sandbox, fail-closed). See
+[docs/SAFETY_PHASES.md](../../docs/SAFETY_PHASES.md).
 `--prompt-file` plus the workflows under `.github/workflows/mitii-*.yml`. See
 [docs/automation/README.md](../../docs/automation/README.md).
 
