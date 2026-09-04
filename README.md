@@ -12,7 +12,7 @@
   <a href="LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/License-AGPL_v3-blue.svg"></a>
   <a href="https://code.visualstudio.com/"><img alt="VS Code 1.85+" src="https://img.shields.io/badge/VS%20Code-1.85%2B-007ACC?logo=visualstudiocode"></a>
   <a href="https://nodejs.org/"><img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-339933?logo=node.js"></a>
-  <img alt="Version 2.9.9" src="https://img.shields.io/badge/version-2.9.9-111111">
+  <img alt="Version 2.9.10" src="https://img.shields.io/badge/version-2.9.10-111111">
   <a href="https://docs.mitii.dev"><img alt="Documentation" src="https://img.shields.io/badge/docs-docs.mitii.dev-5B5BFF"></a>
 </p>
 
@@ -20,7 +20,7 @@
   <code>AI coding agent</code> · <code>VS Code</code> · <code>local-first</code> · <code>MCP</code> · <code>Ollama</code> · <code>TypeScript</code>
 </p>
 
-Mitii understands a repository before it changes it. It combines local indexing, Ask/Plan/Agent workflows, approval-aware tools, checkpoints, memory, and session logs in one VS Code experience. Use a local OpenAI-compatible model for privacy, or any OpenAI-compatible cloud endpoint when more capability is required.
+Mitii understands a repository before it changes it. It combines local indexing, Ask/Plan/Agent workflows, optional FIM autocomplete, approval-aware tools, checkpoints, memory, and session logs in one VS Code experience. Use a local OpenAI-compatible model for privacy, or any OpenAI-compatible cloud endpoint when more capability is required.
 
 <p align="center">
   <img src="apps/vscode/media/mitii-vs-code-chat-ui.png" alt="Mitii chat interface in VS Code" width="520" />
@@ -32,6 +32,7 @@ Mitii understands a repository before it changes it. It combines local indexing,
 - **Clear operating modes** — Ask for read-only analysis, Plan complex work, Agent applies changes, and Review inspects results.
 - **Evidence-assisted planning** — Plan mode can follow in-scope preflight diagnostics, discover first when evidence is thin, draft from the ask for scoped feature work, or ask clarifying questions when the request is too unclear.
 - **Controlled execution** — configurable approvals, dangerous-command blocking, workspace trust checks, and pre-write checkpoints.
+- **FIM autocomplete** — optional VS Code inline suggestions from a generic OpenAI-compatible `prompt` + `suffix` endpoint.
 - **Model flexibility** — `echo` (local stub), native **Anthropic (Claude)** and **Gemini** adapters, plus **OpenAI-compatible** endpoints (Ollama, LM Studio, OpenRouter, OpenAI, Azure OpenAI, DeepSeek, and any `/v1` API).
 - **Extensible workflows** — built-in tools, MCP servers (VS Code), project rules, and reusable skills.
 - **Local evidence** — session logs and a basic audit-pack export from the VS Code host (settings redacted). Org SSO/RBAC, SIEM webhooks, and managed enterprise policy packs are not implemented yet.
@@ -94,6 +95,19 @@ Run an OpenAI-compatible endpoint such as Ollama, then configure:
 ```
 
 API keys for hosted providers are stored in VS Code SecretStorage rather than workspace settings.
+
+### Enable FIM autocomplete
+
+Autocomplete is disabled by default and separate from the Ask/Plan/Agent model path. Leave `baseUrl` and `model` empty to inherit the provider settings, or point them at a faster FIM-specific endpoint.
+
+```json
+{
+  "mitii.autocomplete.enabled": true,
+  "mitii.autocomplete.baseUrl": "http://localhost:11434/v1",
+  "mitii.autocomplete.model": "your-fim-model",
+  "mitii.autocomplete.endpointPath": "completions"
+}
+```
 
 ## Example workflow
 

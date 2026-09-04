@@ -200,6 +200,7 @@ describe('settings field catalog', () => {
   it('covers every settings page', () => {
     const pages = new Set(SETTINGS_FIELDS.map((field) => field.page));
     expect([...pages].sort()).toEqual([
+      'autocomplete',
       'context',
       'developer',
       'mcp',
@@ -673,6 +674,7 @@ describe('compact settings nav tooltips', () => {
   it('covers the current settings pages in the icon rail', () => {
     expect(SETTINGS_NAV_ITEMS.map((item) => item.id)).toEqual([
       'model',
+      'autocomplete',
       'workspace',
       'modes',
       'context',

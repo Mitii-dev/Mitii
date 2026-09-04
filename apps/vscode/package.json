@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
-  "version": "2.9.9",
+  "version": "2.9.10",
   "publisher": "mitii",
   "license": "AGPL-3.0-or-later",
   "icon": "media/mitii-short-logo.png",
@@ -76,8 +76,10 @@
     "onCommand:mitii.showInlineDiff",
     "onCommand:mitii.acceptInlineDiff",
     "onCommand:mitii.rejectInlineDiff",
+    "onCommand:mitii.toggleAutocomplete",
     "onCommand:mitii.setApiKey",
-    "onCommand:mitii.clearApiKey"
+    "onCommand:mitii.clearApiKey",
+    "onStartupFinished"
   ],
   "main": "./dist/extension.js",
   "files": [
@@ -174,6 +176,11 @@
       {
         "command": "mitii.clearApiKey",
         "title": "Mitii: Clear Provider API Key",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.toggleAutocomplete",
+        "title": "Mitii: Toggle Autocomplete",
         "category": "Mitii"
       },
       {
@@ -841,6 +848,86 @@
           "default": 0,
           "minimum": 0,
           "description": "Maximum tokens the model may generate per call. Set 0 to derive the reserve from the context window (recommended; ~20% of the window, at least 4096 when the window allows). A positive value is a hard host override. The legacy default 5000 is ignored so apply_patch batches are not truncated. Leave at 0 unless your runtime has a different hard cap."
+        },
+        "mitii.autocomplete.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable inline FIM autocomplete suggestions in file-backed editors."
+        },
+        "mitii.autocomplete.provider": {
+          "type": "string",
+          "enum": [
+            "openai-compatible"
+          ],
+          "default": "openai-compatible",
+          "description": "Autocomplete provider adapter. The first implementation supports OpenAI-compatible FIM/completions endpoints."
+        },
+        "mitii.autocomplete.baseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Autocomplete API base URL. Empty inherits mitii.provider.baseUrl."
+        },
+        "mitii.autocomplete.model": {
+          "type": "string",
+          "default": "",
+          "description": "Autocomplete model id. Empty inherits mitii.provider.model."
+        },
+        "mitii.autocomplete.endpointPath": {
+          "type": "string",
+          "default": "completions",
+          "description": "Path appended to the autocomplete base URL, such as completions or fim/completions."
+        },
+        "mitii.autocomplete.authHeader": {
+          "type": "string",
+          "enum": [
+            "authorization",
+            "api-key",
+            "x-api-key"
+          ],
+          "default": "authorization",
+          "description": "Header used when sending the existing Mitii provider API key to the autocomplete endpoint."
+        },
+        "mitii.autocomplete.maxTokens": {
+          "type": "number",
+          "default": 96,
+          "minimum": 1,
+          "maximum": 512,
+          "description": "Maximum tokens requested for each inline autocomplete suggestion."
+        },
+        "mitii.autocomplete.debounceMs": {
+          "type": "number",
+          "default": 250,
+          "minimum": 0,
+          "maximum": 2000,
+          "description": "Typing pause before Mitii sends an autocomplete request."
+        },
+        "mitii.autocomplete.timeoutMs": {
+          "type": "number",
+          "default": 4000,
+          "minimum": 250,
+          "maximum": 30000,
+          "description": "Maximum time to wait for an autocomplete response before failing closed."
+        },
+        "mitii.autocomplete.prefixChars": {
+          "type": "number",
+          "default": 6000,
+          "minimum": 128,
+          "maximum": 60000,
+          "description": "Maximum characters before the cursor sent as FIM prefix context."
+        },
+        "mitii.autocomplete.suffixChars": {
+          "type": "number",
+          "default": 2000,
+          "minimum": 0,
+          "maximum": 60000,
+          "description": "Maximum characters after the cursor sent as FIM suffix context."
+        },
+        "mitii.autocomplete.temperature": {
+          "type": "number",
+          "default": 0.2,
+          "minimum": 0,
+          "maximum": 2,
+          "description": "Autocomplete sampling temperature."
         },
         "mitii.semanticIndex.enabled": {
           "type": "boolean",

@@ -59,6 +59,7 @@ import type {
   AgentUiThoroughness,
   AutomationRunView,
   AutomationSpecView,
+  AutocompleteSettingsSnapshot,
   ChatThreadSummary,
   CheckpointItemView,
   ContextToggles,
@@ -230,6 +231,31 @@ const DEFAULT_UI: UiSettingsSnapshot = {
   loopPolicy: DEFAULT_LOOP_POLICY,
   policyLab: DEFAULT_POLICY_LAB,
 };
+
+const DEFAULT_AUTOCOMPLETE: AutocompleteSettingsSnapshot = {
+  enabled: false,
+  provider: 'openai-compatible',
+  baseUrl: '',
+  model: '',
+  endpointPath: 'completions',
+  authHeader: 'authorization',
+  maxTokens: 96,
+  debounceMs: 250,
+  timeoutMs: 4000,
+  prefixChars: 6000,
+  suffixChars: 2000,
+  temperature: 0.2,
+};
+
+function hydrateAutocompleteSnapshot(
+  raw: Partial<AutocompleteSettingsSnapshot> | undefined,
+): AutocompleteSettingsSnapshot {
+  return {
+    ...DEFAULT_AUTOCOMPLETE,
+    ...(raw ?? {}),
+    provider: 'openai-compatible',
+  };
+}
 
 type SettingsMode = 'ask' | 'plan' | 'agent';
 
@@ -829,6 +855,8 @@ export function App() {
     effectiveContextWindow: 32768,
     maximumOutputTokens: 0,
   });
+  const [autocomplete, setAutocomplete] =
+    useState<AutocompleteSettingsSnapshot>(DEFAULT_AUTOCOMPLETE);
   const [profiles, setProfiles] = useState<SettingsProfileView[]>([]);
   const [activeProfileId, setActiveProfileId] = useState('default');
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -882,6 +910,8 @@ export function App() {
   const modeRef = useRef<AgentUiMode>(mode);
   const uiRef = useRef<UiSettingsSnapshot>(ui);
   const providerRef = useRef<ProviderSettingsSnapshot>(provider);
+  const autocompleteRef =
+    useRef<AutocompleteSettingsSnapshot>(autocomplete);
   const indexRef = useRef<IndexStatusSnapshot>(index);
   const savedProviderModelRef = useRef(provider.model);
   const listModelsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -902,6 +932,19 @@ export function App() {
       typeof next === 'function' ? next(providerRef.current) : next;
     providerRef.current = resolved;
     setProvider(resolved);
+  };
+
+  const updateAutocomplete = (
+    next:
+      | AutocompleteSettingsSnapshot
+      | ((
+          prev: AutocompleteSettingsSnapshot,
+        ) => AutocompleteSettingsSnapshot),
+  ) => {
+    const resolved =
+      typeof next === 'function' ? next(autocompleteRef.current) : next;
+    autocompleteRef.current = resolved;
+    setAutocomplete(resolved);
   };
 
   const applyTokenUsage = useCallback(
@@ -1001,6 +1044,7 @@ export function App() {
         connectionOk: msg.provider.connectionOk,
         connectionStatus: msg.provider.connectionStatus,
       });
+      updateAutocomplete(hydrateAutocompleteSnapshot(msg.autocomplete));
       if (!preserveDraft) {
         providerDraftDirtyRef.current = false;
         savedProviderModelRef.current = msg.provider.model ?? '';
@@ -2005,6 +2049,7 @@ export function App() {
     postToHost({
       type: 'settings.set',
       provider: snapshotProvider(),
+      autocomplete: autocompleteRef.current,
       profile: nextProfile,
     });
   };
@@ -2033,6 +2078,7 @@ export function App() {
     postToHost({
       type: 'settings.set',
       provider: latestProvider,
+      autocomplete: autocompleteRef.current,
       ui: latestUi,
       workspaceRootOverride: overrideDraft.trim() || null,
       workspaceMaximumIndexFiles: indexRef.current.maximumIndexFiles ?? 0,
@@ -2564,6 +2610,8 @@ export function App() {
           provider={provider}
           onProviderChange={handleProviderChange}
           onProviderTypeChange={onProviderTypeChange}
+          autocomplete={autocomplete}
+          onAutocompleteChange={updateAutocomplete}
           onSetApiKey={() => postToHost({ type: 'settings.setApiKey' })}
           onClearApiKey={() => postToHost({ type: 'settings.clearApiKey' })}
           onTestConnection={testConnection}

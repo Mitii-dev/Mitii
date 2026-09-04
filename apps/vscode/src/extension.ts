@@ -9,6 +9,7 @@ import type { MitiiClient } from '@mitii/sdk';
 import { isSecurityConcern, WorkspaceIgnorePolicy } from '@mitii/v8';
 
 import { captureEditorContext } from './context/editorContext.js';
+import { MitiiInlineCompletionProvider } from './autocomplete/inlineCompletionProvider.js';
 import { resolveContextToggles } from './contextToggles.js';
 import { InlineDiffManager } from './diff/inlineDiffManager.js';
 import { showWriteDiffPreview } from './diff/diffPreview.js';
@@ -167,6 +168,18 @@ export function activate(context: ExtensionContext): void {
     invalidateClient();
     channel.appendLine('[mitii] SecretStorage mitii.search.apiKey cleared');
     void vscode.window.showInformationMessage('Mitii web search API key cleared.');
+  };
+
+  const toggleAutocomplete = async (): Promise<void> => {
+    const cfg = vscode.workspace.getConfiguration('mitii');
+    const current = cfg.get<boolean>('autocomplete.enabled') === true;
+    const target = vscode.workspace.workspaceFolders?.length
+      ? vscode.ConfigurationTarget.Workspace
+      : vscode.ConfigurationTarget.Global;
+    await cfg.update('autocomplete.enabled', !current, target);
+    void vscode.window.showInformationMessage(
+      `Mitii autocomplete ${current ? 'disabled' : 'enabled'}.`,
+    );
   };
 
   let sidebar: MitiiSidebarProvider;
@@ -671,6 +684,19 @@ export function activate(context: ExtensionContext): void {
     vscode.commands.registerCommand('mitii.clearApiKey', clearApiKey),
     vscode.commands.registerCommand('mitii.setSearchApiKey', setSearchApiKey),
     vscode.commands.registerCommand('mitii.clearSearchApiKey', clearSearchApiKey),
+    vscode.commands.registerCommand(
+      'mitii.toggleAutocomplete',
+      toggleAutocomplete,
+    ),
+    vscode.languages.registerInlineCompletionItemProvider(
+      { scheme: 'file' },
+      new MitiiInlineCompletionProvider(
+        vscode,
+        context.secrets,
+        workspaceRoot,
+        channel,
+      ),
+    ),
     vscode.commands.registerCommand('mitii.showSettings', async () => {
       await vscode.commands.executeCommand('mitii.sidebar.focus');
       sidebar.post({ type: 'openSettings', tab: 'model' });
@@ -716,6 +742,7 @@ export function activate(context: ExtensionContext): void {
         event.affectsConfiguration('mitii.safety') ||
         event.affectsConfiguration('mitii.agent') ||
         event.affectsConfiguration('mitii.onboarding') ||
+        event.affectsConfiguration('mitii.autocomplete') ||
         event.affectsConfiguration('mitii.debug') ||
         event.affectsConfiguration('mitii.developer')
       ) {

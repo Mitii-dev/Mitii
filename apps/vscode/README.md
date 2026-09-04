@@ -2,7 +2,7 @@
 
 **Marketplace id:** `mitii.mitii-ai-agent`
 
-Local-first AI coding agent for VS Code. Mitii indexes your repository, answers in Ask mode, plans in Plan mode, and applies changes in Agent mode — with approvals, checkpoints, and OpenAI-compatible providers (Ollama, LM Studio, cloud `/v1` APIs).
+Local-first AI coding agent for VS Code. Mitii indexes your repository, answers in Ask mode, plans in Plan mode, applies changes in Agent mode, and can provide FIM inline autocomplete — with approvals, checkpoints, and OpenAI-compatible providers (Ollama, LM Studio, cloud `/v1` APIs).
 
 ![Mitii chat in VS Code](media/mitii-vs-code-chat-ui.png)
 
@@ -27,6 +27,7 @@ For cloud providers, run **Mitii: Set Provider API Key** (stored in VS Code Secr
 - **Repository-aware context** — SQLite FTS5, symbols, optional vectors, repo map, diagnostics, Git state, and `@` attachments
 - **Skills** — force-attach playbooks with `/` or `@skill:id` in chat (up to 3 per message); workspace skills in `.mitii/skills/`
 - **Ask / Plan / Agent** — read-only Q&A, structured plans, controlled edits with cancel / clarify / approve
+- **FIM autocomplete** — optional inline ghost text from a low-latency OpenAI-compatible `prompt` + `suffix` endpoint
 - **Safety** — configurable approvals, path containment, command policy, pre-write checkpoints, workspace trust
 - **Providers** — Echo, Anthropic (Claude), Gemini, and OpenAI-compatible endpoints (DeepSeek, OpenRouter, Azure, Ollama, custom `/v1`)
 - **MCP** — optional stdio servers (`mitii.mcp` / `.mitii/mcp.json`); off by default
@@ -39,6 +40,7 @@ For cloud providers, run **Mitii: Set Provider API Key** (stored in VS Code Secr
 | **Mitii: Open Chat** | Open the sidebar |
 | **Mitii: Index Workspace** | Rebuild repository index |
 | **Mitii: Show Settings** | Provider, index, MCP, workspace |
+| **Mitii: Toggle Autocomplete** | Enable or disable FIM inline suggestions |
 | **Mitii: Set Provider API Key** | Store cloud API key in SecretStorage |
 | **Mitii: Generate Commit Message** | SCM commit helper |
 | **Mitii: Export Session Log** | Export session JSON |
@@ -52,6 +54,10 @@ For cloud providers, run **Mitii: Set Provider API Key** (stored in VS Code Secr
 | `mitii.provider.type` | `echo`, `openai-compatible`, `anthropic`, or `gemini` |
 | `mitii.provider.baseUrl` | e.g. `http://localhost:11434/v1` for Ollama |
 | `mitii.provider.model` | Model id |
+| `mitii.autocomplete.enabled` | Enable inline FIM suggestions |
+| `mitii.autocomplete.baseUrl` | Empty inherits `mitii.provider.baseUrl` |
+| `mitii.autocomplete.model` | Empty inherits `mitii.provider.model` |
+| `mitii.autocomplete.endpointPath` | FIM/completions path, such as `completions` or `fim/completions` |
 | `mitii.workspace.rootPathOverride` | Only when no folder is open |
 | `mitii.mcp` | MCP server config (disabled by default) |
 | `mitii.ui.showReasoning` | Show streamed reasoning when available |
