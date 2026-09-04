@@ -131,7 +131,8 @@ export function buildResumeInput(
   result: AgentRunResult,
   decision:
     | { kind: 'clarification'; answer: string }
-    | { kind: 'approval'; decision: 'approved' | 'denied' },
+    | { kind: 'approval'; decision: 'approved' | 'denied' }
+    | { kind: 'plan'; decision: 'approved' | 'rejected' },
 ): MitiiResumeInput | null {
   if (result.status !== 'suspended' || !result.suspension) {
     return null;
@@ -162,6 +163,17 @@ export function buildResumeInput(
         approvalId: result.suspension.approval.approvalId,
         decision: decision.decision,
       },
+    };
+  }
+
+  if (
+    decision.kind === 'plan' &&
+    result.suspension.kind === 'plan_approval_required'
+  ) {
+    return {
+      schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+      runId: result.runId,
+      planDecision: { decision: decision.decision },
     };
   }
 
@@ -255,12 +267,36 @@ async function resolveSuspension(
     return resume ?? 'stop';
   }
 
+  if (suspension.kind === 'plan_approval_required') {
+    const decision =
+      options.autoApproval === 'approved'
+        ? 'approved'
+        : options.autoApproval === 'denied'
+          ? 'rejected'
+          : await (async () => {
+              const raw = await options.io.prompt(
+                `Approve plan before execute? [y/N] `,
+              );
+              const normalized = raw.trim().toLowerCase();
+              if (normalized === 'y' || normalized === 'yes') return 'approved';
+              return 'rejected';
+            })();
+    const resume = buildResumeInput(result, {
+      kind: 'plan',
+      decision,
+    });
+    return resume ?? 'stop';
+  }
+
   return 'stop';
 }
 
 function exitCodeFor(
   result: AgentRunResult,
-  options: { declinedSuspension?: boolean },
+  options: {
+    declinedSuspension?: boolean;
+    origin?: string;
+  },
 ): number {
   if (options.declinedSuspension) {
     return 1;
@@ -269,6 +305,15 @@ function exitCodeFor(
     return 0;
   }
   if (result.status === 'suspended') {
+    // Unattended origins that still need clarification are a policy/input gap.
+    const unattended =
+      options.origin === 'automation' || options.origin === 'api';
+    if (
+      unattended &&
+      result.suspension?.kind === 'clarification_required'
+    ) {
+      return 4;
+    }
     // JSON non-interactive suspend is a successful checkpoint for scripting.
     return 0;
   }
@@ -321,6 +366,8 @@ export async function driveRun(
       (suspensionKind === 'clarification_required' &&
         Boolean(options.autoClarify)) ||
       (suspensionKind === 'approval_required' &&
+        Boolean(options.autoApproval)) ||
+      (suspensionKind === 'plan_approval_required' &&
         Boolean(options.autoApproval));
 
     // Non-interactive JSON: only auto-resume the suspension kind that has a
@@ -356,7 +403,10 @@ export async function driveRun(
   }
 
   return {
-    exitCode: exitCodeFor(result, { declinedSuspension }),
+    exitCode: exitCodeFor(result, {
+      declinedSuspension,
+      origin: options.start.origin,
+    }),
     result,
     events,
   };

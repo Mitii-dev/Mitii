@@ -12,9 +12,13 @@ import {
   planStrategyDecisionSchema,
   repositoryStateReferenceSchema,
   taskListSchema,
+  USER_REQUEST_ORIGINS,
   WINDOW_BUDGET_EFFORTS,
   windowBudgetPolicyOverridesSchema,
   agentEngineThresholdsOverridesSchema,
+  mergeRequiredSkillIds,
+  parseRequiredSkillMentions,
+  MAX_REQUIRED_SKILLS,
 } from '@mitii/v8';
 import type {
   AgentEngineResumeInput,
@@ -26,7 +30,14 @@ import type {
   PlanStrategyDecision,
   RepositoryStateReference,
   TaskList,
+  UserRequestOrigin,
 } from '@mitii/v8';
+
+import {
+  mitiiAutonomyPresetSchema,
+  resolveAutonomyPreset,
+  type MitiiAutonomyPreset,
+} from './autonomy';
 
 /**
  * Host-facing start input. Mapped onto V8 AgentEngineStartInput.
@@ -59,6 +70,24 @@ export const mitiiStartInputSchema = z
     mode: agentModeSchema.optional(),
     sessionId: z.string().min(1).optional(),
     requestId: z.string().min(1).optional(),
+    /**
+     * Who initiated the request. Defaults to "user".
+     * automation/api enable unattended Decision Policy (suppress clarify).
+     */
+    origin: z.enum(USER_REQUEST_ORIGINS).optional(),
+    /**
+     * Unattended autonomy preset. When set, fills mode / approvalMode /
+     * planApproval unless the host already set those fields explicitly.
+     */
+    autonomyPreset: mitiiAutonomyPresetSchema.optional(),
+    /** Optional correlation ids for automation / tracing. */
+    correlation: z
+      .object({
+        traceId: z.string().min(1).max(500).optional(),
+        clientRequestId: z.string().min(1).max(500).optional(),
+      })
+      .strict()
+      .optional(),
     workspaceRoot: z.string().min(1).optional(),
     workspaceId: z.string().min(1).optional(),
     repositoryState: z
@@ -105,6 +134,8 @@ export const mitiiStartInputSchema = z
       .object({
         policy: windowBudgetPolicyOverridesSchema.optional(),
         effort: z.enum(WINDOW_BUDGET_EFFORTS).optional(),
+        /** Raw host max-output setting; 0 / omit derives from context window. */
+        maximumOutputTokens: z.number().int().nonnegative().optional(),
       })
       .strict()
       .optional(),
@@ -146,6 +177,10 @@ export const mitiiStartInputSchema = z
       )
       .max(32)
       .optional(),
+    /**
+     * Explicitly attached skill ids (merged with @skill: mentions in prompt).
+     */
+    requiredSkillIds: z.array(z.string().min(1).max(64)).max(MAX_REQUIRED_SKILLS).optional(),
   })
   .strict();
 
@@ -156,6 +191,12 @@ export type MitiiResumeInput = AgentEngineResumeInput;
 
 export type { AgentMode, AgentRunBudget, RepositoryStateReference };
 export type { PlanArtifact, PlanStrategyDecision, TaskList, ExplorationDepth };
+export type { MitiiAutonomyPreset, UserRequestOrigin };
+export {
+  MITII_AUTONOMY_PRESETS,
+  mitiiAutonomyPresetSchema,
+  resolveAutonomyPreset,
+} from './autonomy';
 
 export interface MitiiStartDefaults {
   mode: AgentMode;
@@ -169,6 +210,24 @@ export function toAgentEngineStartInput(
   defaults: MitiiStartDefaults,
 ): AgentEngineStartInput {
   const parsed = mitiiStartInputSchema.parse(input);
+  const autonomy = parsed.autonomyPreset
+    ? resolveAutonomyPreset(parsed.autonomyPreset)
+    : undefined;
+  const mode = parsed.mode ?? autonomy?.mode ?? defaults.mode;
+  const approvalMode = parsed.approvalMode ?? autonomy?.approvalMode;
+  const planApproval = parsed.planApproval ?? autonomy?.planApproval;
+  const origin = parsed.origin ?? 'user';
+
+  const parsedMentions = parseRequiredSkillMentions(parsed.prompt);
+  const requiredSkillIds = mergeRequiredSkillIds(
+    parsed.requiredSkillIds,
+    parsedMentions.requiredSkillIds,
+  );
+  const userMessage =
+    parsedMentions.cleanedMessage.length > 0
+      ? parsedMentions.cleanedMessage
+      : parsed.prompt;
+
   const pinnedArtifacts = (parsed.pinnedPaths ?? [])
     .map((path) => path.replace(/\\/g, '/').replace(/^@/, '').trim())
     .filter((path) => path.length > 0)
@@ -184,8 +243,9 @@ export function toAgentEngineStartInput(
   const request = createUserRequestInputSchema.parse({
     requestId: parsed.requestId,
     sessionId: parsed.sessionId ?? defaults.sessionId,
-    mode: parsed.mode ?? defaults.mode,
-    userMessage: parsed.prompt,
+    mode,
+    origin,
+    userMessage: userMessage,
     ...(pinnedArtifacts.length > 0
       ? { referencedArtifacts: pinnedArtifacts }
       : {}),
@@ -193,6 +253,18 @@ export function toAgentEngineStartInput(
       parsed.workspaceId || defaults.workspaceId
         ? { workspaceId: parsed.workspaceId ?? defaults.workspaceId }
         : undefined,
+    ...(parsed.correlation
+      ? {
+          correlation: {
+            ...(parsed.correlation.traceId
+              ? { traceId: parsed.correlation.traceId }
+              : {}),
+            ...(parsed.correlation.clientRequestId
+              ? { clientRequestId: parsed.correlation.clientRequestId }
+              : {}),
+          },
+        }
+      : {}),
   });
 
   return agentEngineStartInputSchema.parse({
@@ -216,13 +288,14 @@ export function toAgentEngineStartInput(
     model: parsed.model,
     temperature: parsed.temperature,
     stream: parsed.stream,
-    approvalMode: parsed.approvalMode,
-    planApproval: parsed.planApproval,
+    approvalMode,
+    planApproval,
     dirtyPaths: parsed.dirtyPaths,
     explorationDepth: parsed.explorationDepth,
     windowBudget: parsed.windowBudget,
     loopPolicy: parsed.loopPolicy,
     logVerbosity: parsed.logVerbosity,
+    requiredSkillIds,
     instructions:
       parsed.projectRules && parsed.projectRules.length > 0
         ? {

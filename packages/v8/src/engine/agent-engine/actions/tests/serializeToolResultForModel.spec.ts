@@ -32,29 +32,45 @@ function toolResult(output: unknown): ToolResult {
 }
 
 describe("serializeToolResultForModel", () => {
-  it("budgets output content instead of slicing the serialized envelope", () => {
+  it("budgets read_file content on line boundaries and rewrites the cursor", () => {
+    const lines = Array.from({ length: 40 }, (_, index) => `line-${index + 1}`);
     const serialized = serializeToolResultForModel(
       toolResult({
         path: "src/large.ts",
-        content: "a".repeat(2_000),
+        content: lines.join("\n"),
         startLine: 10,
-        endLine: 80,
+        endLine: 49,
+        eof: true,
         truncated: false,
       }),
-      { maxContentChars: 120 },
+      { maxContentChars: 40 },
     );
 
     const parsed = JSON.parse(serialized) as {
-      output: { path: string; content: string; startLine: number; endLine: number; truncated: boolean };
+      output: {
+        path: string;
+        content: string;
+        startLine: number;
+        endLine: number;
+        nextStartLine?: number;
+        truncated: boolean;
+        truncationReason?: string;
+        eof?: boolean;
+      };
       outputTruncatedForModel?: boolean;
     };
 
     expect(parsed.output.path).toBe("src/large.ts");
     expect(parsed.output.startLine).toBe(10);
-    expect(parsed.output.endLine).toBe(80);
-    expect(parsed.output.content.length).toBeLessThan(150);
-    expect(parsed.output.content).toContain("[truncated]");
+    expect(parsed.output.endLine).toBeLessThan(49);
+    expect(parsed.output.nextStartLine).toBe(parsed.output.endLine + 1);
+    expect(parsed.output.content).not.toContain("…[truncated]");
+    expect(parsed.output.content.split("\n").every((line) => line.startsWith("line-"))).toBe(
+      true,
+    );
     expect(parsed.output.truncated).toBe(true);
+    expect(parsed.output.truncationReason).toBe("model_budget");
+    expect(parsed.output.eof).toBe(false);
     expect(parsed.outputTruncatedForModel).toBe(true);
   });
 

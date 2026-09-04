@@ -6,6 +6,7 @@ import {
   TaskRiskAnalyzer,
   TaskScopeAnalyzer,
   TaskTargetExtractor,
+  resolveFuzzyFileTargets,
 } from "../../analyzer";
 import { TASK_ANALYZER_CONSTANTS } from "../../constants";
 import type {
@@ -63,11 +64,24 @@ export class RulewiseTaskAnalyzer {
       text,
       input.referencedArtifacts ?? [],
     );
-    const targets = this.mergeTargets(
+    const mergedTargets = this.mergeTargets(
       targetResult.targets,
       taskHints?.targets,
       allSignals,
     );
+    const fuzzy = resolveFuzzyFileTargets(
+      mergedTargets,
+      input.candidateRelativePaths ?? [],
+    );
+    const targets = fuzzy.targets;
+    for (const pair of fuzzy.resolved) {
+      allSignals.push({
+        type: "scope",
+        value: `fuzzy_file:${pair.from}->${pair.to}`,
+        weight: 0.85,
+        evidence: `Resolved file target "${pair.from}" to repo path "${pair.to}".`,
+      });
+    }
 
     allSignals.push(...targetResult.signals);
 

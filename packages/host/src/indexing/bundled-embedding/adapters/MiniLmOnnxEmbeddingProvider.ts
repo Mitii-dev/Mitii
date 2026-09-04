@@ -34,6 +34,7 @@ function firstOutput(
 
 export class MiniLmOnnxEmbeddingProvider implements EmbeddingProvider {
   readonly profile: EmbeddingProfile;
+  private disposed = false;
 
   constructor(
     private readonly runtime: CreatedOnnxSession,
@@ -51,6 +52,9 @@ export class MiniLmOnnxEmbeddingProvider implements EmbeddingProvider {
     texts: readonly string[],
     context?: { abortSignal?: AbortSignal },
   ): Promise<readonly (readonly number[])[]> {
+    if (this.disposed) {
+      throw new Error('MiniLM ONNX embedding provider has been disposed.');
+    }
     if (texts.length === 0) return [];
     context?.abortSignal?.throwIfAborted();
     const maxLength =
@@ -94,5 +98,11 @@ export class MiniLmOnnxEmbeddingProvider implements EmbeddingProvider {
       attentionMasks: batch.attentionMask,
       normalize: this.profile.normalized,
     });
+  }
+
+  async dispose(): Promise<void> {
+    if (this.disposed) return;
+    this.disposed = true;
+    await this.runtime.session.release?.();
   }
 }

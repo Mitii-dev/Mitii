@@ -174,13 +174,27 @@ export class SuperIntent {
         llmInteraction:
           llmClassification
             .interactionIntent,
+        llmPrimaryIntent:
+          llmClassification
+            .primaryTaskIntent,
+        llmConfidence:
+          llmClassification
+            .confidence,
+      });
+    const acceptedHighConfidenceLlmAction =
+      this.acceptsHighConfidenceLlmAction({
+        interactionIntent,
+        llmClassification,
       });
 
     /*
      * Ask and Plan modes deterministically resolve the interaction boundary.
      * A raw classifier conflict matters only in Agent mode.
      */
-    const interactionConflict = mode === "agent" && rawInteractionConflict;
+    const interactionConflict =
+      mode === "agent" &&
+      rawInteractionConflict &&
+      !acceptedHighConfidenceLlmAction;
 
     const interactionAgreement = !interactionConflict;
 
@@ -197,7 +211,7 @@ export class SuperIntent {
         agreedIntent,
         agreementBonusApplied,
       );
-    } else if (ruleClassification) {
+    } else if (ruleClassification && !acceptedHighConfidenceLlmAction) {
       disagreementPenaltyApplied = this.options.disagreementPenalty;
 
       const currentWinner = this.getSortedScores(combinedScores)[0];
@@ -433,10 +447,14 @@ export class SuperIntent {
     mode,
     ruleInteraction,
     llmInteraction,
+    llmPrimaryIntent,
+    llmConfidence,
   }: {
     mode: AgentMode;
     ruleInteraction?: InteractionIntent;
     llmInteraction: InteractionIntent;
+    llmPrimaryIntent: TaskIntent;
+    llmConfidence: number;
   }): InteractionIntent {
     if (mode === "ask") {
       return "question";
@@ -450,9 +468,17 @@ export class SuperIntent {
       return llmInteraction;
     }
 
+    if (
+      llmInteraction === "act" &&
+      llmConfidence >= INTENT_CONSTANTS.HIGH_CONFIDENCE &&
+      this.isActionableTaskIntent(llmPrimaryIntent)
+    ) {
+      return "act";
+    }
+
     /*
-     * In Agent mode, use the safer interaction while clarification is
-     * pending. The clarification decision will record the conflict.
+     * In Agent mode, keep ambiguous read/write conflicts read-only unless
+     * the LLM strongly identifies an actionable task above.
      */
     if (ruleInteraction === "question" || llmInteraction === "question") {
       return "question";
@@ -463,6 +489,45 @@ export class SuperIntent {
     }
 
     return "act";
+  }
+
+  private acceptsHighConfidenceLlmAction({
+    interactionIntent,
+    llmClassification,
+  }: {
+    interactionIntent: InteractionIntent;
+    llmClassification: IntentClassification;
+  }): boolean {
+    return (
+      interactionIntent === "act" &&
+      llmClassification.interactionIntent === "act" &&
+      llmClassification.confidence >= INTENT_CONSTANTS.HIGH_CONFIDENCE &&
+      this.isActionableTaskIntent(llmClassification.primaryTaskIntent)
+    );
+  }
+
+  private isActionableTaskIntent(intent: TaskIntent): boolean {
+    switch (intent) {
+      case "bugfix":
+      case "feature":
+      case "refactor":
+      case "optimize":
+      case "test":
+      case "security":
+      case "scaffold":
+      case "migrate":
+      case "schema":
+      case "mock":
+      case "config":
+      case "dependency":
+      case "docs":
+      case "style":
+      case "format":
+        return true;
+
+      default:
+        return false;
+    }
   }
 
   private applyModePolicy(

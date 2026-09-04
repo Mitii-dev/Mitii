@@ -105,6 +105,43 @@ describe("normalizeDiagnostics", () => {
     );
   });
 
+  it("does not prefix workspace-root paths with ./", () => {
+    const diagnostics = normalizeDiagnostics({
+      checks: [
+        check({
+          projectId: "workspace-root",
+        }),
+      ],
+      toolOutputs: new Map([
+        [
+          "call-1",
+          {
+            diagnostics: [
+              {
+                path: "./test/Desktop/pages/NavigationPage.ts",
+                severity: "error",
+                message: "Class incorrectly extends base class.",
+                code: "TS2415",
+              },
+            ],
+          },
+        ],
+      ]),
+      projects: [
+        {
+          projectId: "workspace-root",
+          rootPath: ".",
+          primaryLanguageId: "typescript",
+          manifestPaths: [],
+        },
+      ],
+    });
+
+    expect(diagnostics[0]?.path).toBe(
+      "test/Desktop/pages/NavigationPage.ts",
+    );
+  });
+
   it("leaves the path unchanged when no project match exists", () => {
     const diagnostics = normalizeDiagnostics({
       checks: [check({ projectId: "packages/unmapped" })],

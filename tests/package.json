@@ -11,7 +11,9 @@
     "benchmark:testing": "pnpm --filter @mitii/solid-benchmark benchmark:testing",
     "benchmark:validate": "pnpm --filter @mitii/solid-benchmark validate",
     "benchmark:fixtures": "pnpm --filter @mitii/solid-benchmark fixtures:install",
-    "benchmark:reset": "pnpm --filter @mitii/solid-benchmark fixtures:reset"
+    "benchmark:reset": "pnpm --filter @mitii/solid-benchmark fixtures:reset",
+    "benchmark:view": "pnpm --filter @mitii/solid-benchmark view",
+    "benchmark:view:open": "pnpm --filter @mitii/solid-benchmark view:open"
   },
   "engines": {
     "node": ">=20"

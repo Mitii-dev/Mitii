@@ -32,6 +32,9 @@ importers:
 
   apps/cli:
     dependencies:
+      '@mitii/automation':
+        specifier: workspace:*
+        version: link:../../packages/automation
       '@mitii/host':
         specifier: workspace:*
         version: link:../../packages/host
@@ -68,8 +71,27 @@ importers:
         specifier: 1.21.0
         version: 1.21.0
 
+  apps/daemon:
+    dependencies:
+      '@mitii/automation':
+        specifier: workspace:*
+        version: link:../../packages/automation
+      '@mitii/host':
+        specifier: workspace:*
+        version: link:../../packages/host
+    devDependencies:
+      '@types/node':
+        specifier: ^20.14.0
+        version: 20.19.43
+      typescript:
+        specifier: ^5.5.2
+        version: 5.9.3
+
   apps/vscode:
     dependencies:
+      '@mitii/automation':
+        specifier: workspace:*
+        version: link:../../packages/automation
       '@mitii/host':
         specifier: workspace:*
         version: link:../../packages/host
@@ -149,8 +171,33 @@ importers:
         specifier: ^5.4.11
         version: 5.4.21(@types/node@20.19.43)
 
+  packages/automation:
+    dependencies:
+      better-sqlite3:
+        specifier: ^12.11.1
+        version: 12.11.1
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
+    devDependencies:
+      '@types/better-sqlite3':
+        specifier: ^7.6.12
+        version: 7.6.13
+      '@types/node':
+        specifier: ^20.14.0
+        version: 20.19.43
+      typescript:
+        specifier: ^5.5.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/debug@4.1.13)(@types/node@20.19.43)(jiti@2.7.0)(yaml@2.9.0)
+
   packages/host:
     dependencies:
+      '@mitii/automation':
+        specifier: workspace:*
+        version: link:../automation
       '@mitii/sdk':
         specifier: workspace:*
         version: link:../sdk

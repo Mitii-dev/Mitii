@@ -1,4 +1,5 @@
 import type { RequestUnderstandingResult } from "../../request-understanding";
+import { isWholeRequestReadOnlyConstraint } from "../../request-understanding/intent/isWholeRequestReadOnlyConstraint";
 
 import {
   DIAGNOSIS_TASK_INTENTS,
@@ -29,6 +30,11 @@ export function resolveRoute(params: {
   mode: "ask" | "plan" | "agent";
   understanding: RequestUnderstandingResult;
   message: string;
+  /**
+   * When true, skip the clarify early-return so unattended hosts
+   * (automation / api) can continue with a best-effort route.
+   */
+  suppressClarification?: boolean;
 }): RouteResolution {
   const { mode, understanding, message } = params;
   const { intent, taskAnalysis } = understanding;
@@ -36,7 +42,10 @@ export function resolveRoute(params: {
   const interaction = intent.classification.interactionIntent;
   const reasonCodes: DecisionReasonCode[] = [];
 
-  if (requiresClarification(understanding, message, mode)) {
+  if (
+    !params.suppressClarification &&
+    requiresClarification(understanding, message, mode)
+  ) {
     reasonCodes.push("clarification_material");
     return {
       route: "clarify",
@@ -452,21 +461,11 @@ function looksLikeDocsMutation(message: string): boolean {
 }
 
 /**
- * Explicit read-only / no-edit constraints — never promote to execute.
+ * Explicit whole-request read-only / no-edit constraints — never promote to
+ * execute. Scoped constraints ("Do not refactor Tablet…") do not match.
  */
 function isExplicitReadOnlyRequest(message: string): boolean {
-  return (
-    /\b(?:do not|don't|dont|without)\s+(?:edit|change|modify|fix|implement|apply|write|update|remove|refactor|touch)\b/i.test(
-      message,
-    ) ||
-    /\b(?:explain|review|diagnose|analyze|investigate)\s+only\b/i.test(
-      message,
-    ) ||
-    /\bno\s+(?:code|file)\s+changes\b/i.test(message) ||
-    /\bread[- ]only\b/i.test(message) ||
-    /\b(?:do not|don't|dont)\s+implement\b/i.test(message) ||
-    /\bwithout\s+implementing\b/i.test(message)
-  );
+  return isWholeRequestReadOnlyConstraint(message);
 }
 
 /**
@@ -554,7 +553,7 @@ function looksLikeAgentMutationRequest(message: string): boolean {
   }
 
   return (
-    /(?:^|\b)(?:please\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+|i\s+want\s+you\s+to\s+|i\s+need\s+you\s+to\s+|i\s+need\s+|we\s+need\s+to\s+|let(?:'s|\s+us)\s+)?(?:implement|build|create|design|develop|write|add|fix|resolve|repair|patch|migrate|refactor|rewrite|convert|integrate|configure|optimize|redesign|replace|remove|delete|update|modify|generate|scaffold|install|upgrade)\b/i.test(
+    /(?:^|\b)(?:please\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+|i\s+want\s+you\s+to\s+|i\s+need\s+you\s+to\s+|i\s+need\s+|we\s+need\s+to\s+|let(?:'s|\s+us)\s+)?(?:start\s+(?:the\s+)?implem(?:entation|netation)|implement|build|create|design|develop|write|add|fix|resolve|repair|patch|migrate|refactor|rewrite|convert|integrate|configure|optimize|redesign|replace|remove|delete|update|modify|generate|scaffold|install|upgrade)\b/i.test(
       text,
     ) ||
     // Seeded bugfix phrasing: "X uses Y. Change it to Z." / "says Foo. Fix it to Bar."

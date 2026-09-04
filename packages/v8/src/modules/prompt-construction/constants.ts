@@ -8,6 +8,7 @@ export const PROMPT_SECTIONS = [
   "rules",
   "skills",
   "memory",
+  "plan",
   "conversation",
   "repository",
   "tools",

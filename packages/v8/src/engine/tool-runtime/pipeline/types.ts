@@ -17,6 +17,11 @@ export interface ToolExecuteOptions {
   /** Paths already mutated earlier in this run's transaction set. */
   alreadyMutatedPaths?: readonly string[];
   /**
+   * Optional model-facing content budget (WindowPolicy.toolResultContentChars).
+   * Forwarded into tool execution so read tools can window early.
+   */
+  maxContentChars?: number;
+  /**
    * Optional shadow authorizer. Default is structural forbid-wins shadow
    * that logs disagreements without overriding ValidateGrant.
    */

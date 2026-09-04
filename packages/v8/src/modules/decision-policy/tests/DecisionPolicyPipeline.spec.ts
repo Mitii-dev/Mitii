@@ -668,6 +668,73 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.reasonCodes).toContain("process_execution_granted");
   });
 
+  it("routes Fix asks with scoped Do-not constraints to execute, not repository_answer", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message: [
+          "Fix Desktop headless Chrome support and clean up Billing page-object usage.",
+          "",
+          "## Constraints",
+          "- Do not change test intent/coverage; only encapsulate selectors/actions.",
+          "- Do not refactor Tablet/Appium unless required for shared config typing.",
+        ].join("\n"),
+        understanding: createUnderstanding({
+          primaryTaskIntent: "refactor",
+          interactionIntent: "question",
+          taskAnalysis: {
+            scope: "repository",
+            complexity: "moderate",
+            risk: "medium",
+            recommendsRepositoryDiscovery: true,
+          },
+        }),
+        windowPolicy: deriveWindowPolicy({
+          schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+          contextWindowTokens: 64_000,
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("execute");
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("write");
+    expect(decision.reasonCodes).toContain("mutation_execute");
+    expect(decision.reasonCodes).not.toContain("repository_grounded_answer");
+    expect(decision.planningDepth).not.toBe("none");
+  });
+
+  it("routes Implement asks with scoped Do-not-implement to execute", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message: [
+          "Implement Desktop headless Chrome support.",
+          "",
+          "## Constraints",
+          "- Do not implement Tablet/Appium changes unless required for shared typing.",
+        ].join("\n"),
+        understanding: createUnderstanding({
+          primaryTaskIntent: "feature",
+          interactionIntent: "act",
+          taskAnalysis: {
+            scope: "multi_file",
+            complexity: "moderate",
+            risk: "medium",
+            recommendsRepositoryDiscovery: true,
+          },
+        }),
+        windowPolicy: deriveWindowPolicy({
+          schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+          contextWindowTokens: 64_000,
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("execute");
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("write");
+    expect(decision.reasonCodes).not.toContain("repository_grounded_answer");
+  });
+
   it("routes pasted console runtime dumps without a fix ask to diagnose", () => {
     const decision = new DecisionPolicyPipeline().decide(
       createInput({
@@ -906,6 +973,30 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.toolGrant.allowedTools).toContain("run_command");
   });
 
+  it("routes start-implementation follow-ups to execute even with stale question intent", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message: "STart the implemnetation",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "question",
+          interactionIntent: "question",
+          taskAnalysis: {
+            clarity: "unclear",
+            scope: "unknown",
+            complexity: "simple",
+            risk: "low",
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("execute");
+    expect(decision.runDisposition).toBe("continue");
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("write");
+    expect(decision.toolGrant.allowedTools).toContain("apply_patch");
+  });
+
   it("does not clarify clear agent implement asks even when understanding is soft-ambiguous", () => {
     const decision = new DecisionPolicyPipeline().decide(
       createInput({
@@ -996,6 +1087,41 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.runDisposition).toBe("clarification_required");
     expect(decision.reasonCodes).toContain("clarification_material");
     expect(decision.toolGrant.maximumWorkspaceEffect).toBe("none");
+  });
+
+  it("suppresses clarify for automation origin and continues best-effort", () => {
+    const base = createInput({
+      mode: "agent",
+      message: "fix it",
+      understanding: createUnderstanding({
+        primaryTaskIntent: "bugfix",
+        interactionIntent: "act",
+        confidence: 0.6,
+        confidenceMargin: 0.05,
+        needsClarification: true,
+        recommendsClarification: true,
+        alternatives: [
+          { intent: "diagnose", confidence: 0.55 },
+          { intent: "bugfix", confidence: 0.5 },
+        ],
+        ambiguityQuestion:
+          "Should I investigate the loading hang, or apply a fix?",
+        taskAnalysis: {
+          clarity: "unclear",
+          recommendsTaskClarification: true,
+          scope: "unknown",
+        },
+      }),
+    });
+    const decision = new DecisionPolicyPipeline().decide({
+      ...base,
+      envelope: { ...base.envelope, origin: "automation" },
+    });
+
+    expect(decision.route).not.toBe("clarify");
+    expect(decision.runDisposition).toBe("continue");
+    expect(decision.reasonCodes).toContain("automation_origin");
+    expect(decision.reasonCodes).toContain("automation_clarify_suppressed");
   });
 
   it("diagnoses agent loading/server symptoms instead of tool-less direct_answer", () => {

@@ -82,6 +82,12 @@ export const MUTATION_TOOL_IDS = [
   "move_file",
 ] as const;
 
+/** External GitHub write tools (require `gh` auth in the environment). */
+export const GITHUB_MUTATION_TOOL_IDS = [
+  "create_github_issue",
+  "create_pull_request",
+] as const;
+
 export const DECISION_REASON_CODES = [
   "mode_ask_readonly",
   "mode_plan_only",
@@ -90,8 +96,14 @@ export const DECISION_REASON_CODES = [
   "simple_localized_no_visible_plan",
   "multi_file_internal_plan",
   "architecture_visible_plan",
+  /** Greenfield / full-package implementation treated as architecture-scale work. */
+  "large_implementation_visible_plan",
   /** Package/multi-file repair execute gets a visible plan + live checklist seed. */
   "broad_repair_visible_plan",
+  /** Long structured execute briefs get an internal plan (length alone never forces repository_answer). */
+  "long_prompt_internal_plan",
+  /** Long structured execute briefs get a visible plan when the window can afford it. */
+  "long_prompt_visible_plan",
   /** Prompt/engine should prefer analyze_change_impact before shared-surface mutations. */
   "change_impact_recommended",
   /** Execute route should capture scoped build/typecheck evidence before planning. */
@@ -130,6 +142,15 @@ export const DECISION_REASON_CODES = [
   "plan_gate_suppressed_by_policy",
   /** The window-derived mutation budget further tightened the profile-selected budget. */
   "mutation_budget_window_clamped",
+  /** Request originated from automation (cron, CI, webhook) rather than an interactive user. */
+  "automation_origin",
+  /** Request originated from an API client rather than an interactive user. */
+  "api_origin",
+  /**
+   * Unattended origin would have clarified; Decision Policy continued with the
+   * best-effort non-clarify route instead of suspending for interactive input.
+   */
+  "automation_clarify_suppressed",
 ] as const;
 
 export const DECISION_POLICY_ERROR_CODES = [

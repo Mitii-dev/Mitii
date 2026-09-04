@@ -106,6 +106,8 @@ export const promptConstructionInputSchema = z
     stream: z.boolean().optional(),
     /** Optional override for output reserve; otherwise policy derives it. */
     outputReserveTokens: z.number().int().positive().optional(),
+    /** Window-reserved plan slice; used for metering when plan text is present. */
+    planBudgetTokens: z.number().int().nonnegative().optional(),
   })
   .strict();
 

@@ -57,6 +57,11 @@ export const taskAnalyzerInputSchema = z.object({
   userMessage: z.string(),
   intent: superIntentResultSchema,
   referencedArtifacts: z.array(ReferencedArtifactSchema).optional(),
+  /**
+   * Optional workspace-relative paths (e.g. repo-map entries) used to fuzzy-
+   * resolve basename / partial file targets after explicit extraction.
+   */
+  candidateRelativePaths: z.array(z.string().min(1)).optional(),
 });
 
 export type TaskAnalyzerInput = z.infer<typeof taskAnalyzerInputSchema>;

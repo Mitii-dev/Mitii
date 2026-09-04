@@ -43,6 +43,7 @@ import {
   serializeToolResultForModel,
   recordToolEvidence,
   formatSkillPromptContent,
+  buildSkillsReadyEvent,
 } from "../actions";
 import type {
   EstablishedFact,
@@ -119,6 +120,10 @@ export function truncateForLogField(value: string, maxChars: number): string {
   return `${compact.slice(0, Math.max(0, maxChars - 1))}…`;
 }
 
+export type GrantRefreshOutcome =
+  | { kind: "ok" }
+  | { kind: "expansion_required"; extraPaths: string[] };
+
 export async function refreshAuthorityAfterTools(
   runtime: AgentEngineRuntime,
   params: {
@@ -144,7 +149,8 @@ export async function refreshAuthorityAfterTools(
   projects?: readonly ProjectDescriptor[];
   route: ExecutionDecision["route"];
   windowPolicy: WindowPolicy;
-}): Promise<void> {
+  requiredSkillIds?: readonly string[];
+}): Promise<GrantRefreshOutcome> {
   const discoveredPaths = [
     ...new Set([
       ...(params.dirtyPaths ?? []),
@@ -153,6 +159,48 @@ export async function refreshAuthorityAfterTools(
   ]
     .filter((path) => path.trim().length > 0)
     .slice(0, 50);
+
+  const extraPaths = [...new Set(params.extraPaths ?? [])].filter(
+    (path) => path.trim().length > 0,
+  );
+  // Widen first so path_out_of_scope / compiler paths are admitted before any
+  // discovery-based narrow can drop them.
+  if (runtime.deps.decision.widen && extraPaths.length > 0) {
+    const previous = params.decisionRef.get();
+    const widened = runtime.deps.decision.widen({
+      previous,
+      extraPaths,
+    });
+    if (!toolGrantsEquivalent(previous.toolGrant, widened.toolGrant)) {
+      // Path/mutation scope expansion does not add write authority — only
+      // admits paths needed by an already-granted write/read effect. Auto-apply
+      // whenever write (or read) is already allowed so required companion files
+      // are not blocked behind a second approval gate.
+      const canAutoExpand =
+        previous.toolGrant.approvalMode === "never" ||
+        previous.toolGrant.maximumWorkspaceEffect === "write" ||
+        previous.toolGrant.maximumWorkspaceEffect === "read";
+      if (!canAutoExpand) {
+        return { kind: "expansion_required", extraPaths };
+      }
+      params.decisionRef.set(widened);
+      params.reasonCodes.push("grant_expanded");
+      runtime.emit(params.bus, {
+        type: "grant_narrowed",
+        runId: params.runId,
+        maximumWorkspaceEffect: widened.toolGrant.maximumWorkspaceEffect,
+        approvalMode: widened.toolGrant.approvalMode,
+        pathScopes: widened.toolGrant.pathScopes.slice(0, 20),
+        reasonCodes: widened.reasonCodes.slice(-8),
+        truncated:
+          widened.toolGrant.pathScopes.length > 20 ||
+          widened.reasonCodes.length > 8
+            ? true
+            : undefined,
+        at: runtime.isoNow(),
+      });
+    }
+  }
 
   if (runtime.deps.decision.narrow && discoveredPaths.length > 0) {
     const previous = params.decisionRef.get();
@@ -181,35 +229,6 @@ export async function refreshAuthorityAfterTools(
     }
   }
 
-  const extraPaths = [...new Set(params.extraPaths ?? [])].filter(
-    (path) => path.trim().length > 0,
-  );
-  if (runtime.deps.decision.widen && extraPaths.length > 0) {
-    const previous = params.decisionRef.get();
-    const widened = runtime.deps.decision.widen({
-      previous,
-      extraPaths,
-    });
-    if (!toolGrantsEquivalent(previous.toolGrant, widened.toolGrant)) {
-      params.decisionRef.set(widened);
-      params.reasonCodes.push("grant_expanded");
-      runtime.emit(params.bus, {
-        type: "grant_narrowed",
-        runId: params.runId,
-        maximumWorkspaceEffect: widened.toolGrant.maximumWorkspaceEffect,
-        approvalMode: widened.toolGrant.approvalMode,
-        pathScopes: widened.toolGrant.pathScopes.slice(0, 20),
-        reasonCodes: widened.reasonCodes.slice(-8),
-        truncated:
-          widened.toolGrant.pathScopes.length > 20 ||
-          widened.reasonCodes.length > 8
-            ? true
-            : undefined,
-        at: runtime.isoNow(),
-      });
-    }
-  }
-
   if (
     !runtime.deps.skills ||
     !params.understanding ||
@@ -217,7 +236,7 @@ export async function refreshAuthorityAfterTools(
     !params.mode ||
     discoveredPaths.length === 0
   ) {
-    return;
+    return { kind: "ok" };
   }
 
   const evidence = mapUnderstandingToSkillEvidence(params.understanding, {
@@ -231,6 +250,7 @@ export async function refreshAuthorityAfterTools(
     route: params.route,
     budgetTokens: params.windowPolicy.skills.budgetTokens,
     maxSkills: params.windowPolicy.skills.maxSkills,
+    requiredSkillIds: [...(params.requiredSkillIds ?? [])],
     evidence,
   });
   const nextIds = skillsResult.instructions.map((block) => block.id);
@@ -239,7 +259,7 @@ export async function refreshAuthorityAfterTools(
     nextIds.length !== previousIds.length ||
     nextIds.some((id, index) => id !== previousIds[index]);
   if (!changed || skillsResult.instructions.length === 0) {
-    return;
+    return { kind: "ok" };
   }
 
   params.selectedSkillIdsRef.set(nextIds);
@@ -254,27 +274,15 @@ export async function refreshAuthorityAfterTools(
     role: "user",
     content: `Updated skill guidance after discovery (follow within current tool grant):\n\n${refreshContent}`,
   });
-  runtime.emit(params.bus, {
-    type: "skills_ready",
-    runId: params.runId,
-    selectedCount: skillsResult.instructions.length,
-    omittedCount: skillsResult.omissions.length,
-    status: skillsResult.status,
-    selected: nextIds.slice(0, 20),
-    omitted: skillsResult.omissions
-      .map((omission) => omission.skillId)
-      .slice(0, 20),
-    omittedDetails: skillsResult.omissions
-      .map((omission) => ({
-        id: omission.skillId,
-        reason: omission.reason,
-        ...(typeof omission.tokens === "number"
-          ? { tokens: omission.tokens }
-          : {}),
-      }))
-      .slice(0, 20),
-    at: runtime.isoNow(),
-  });
+  runtime.emit(
+    params.bus,
+    buildSkillsReadyEvent({
+      runId: params.runId,
+      skillsResult,
+      at: runtime.isoNow(),
+    }),
+  );
+  return { kind: "ok" };
 }
 
 export async function executeOneTool(
@@ -372,7 +380,14 @@ export async function executeOneTool(
     at: runtime.isoNow(),
   });
 
-  const cachedByCallId = toolCache.get(toolCall.id);
+  // callId cache is resume/idempotency only. Require matching toolName so a
+  // recycled provider id (e.g. Gemini historically always emitting call_0)
+  // cannot replay an unrelated tool result.
+  const cachedByCallIdRaw = toolCache.get(toolCall.id);
+  const cachedByCallId =
+    cachedByCallIdRaw && cachedByCallIdRaw.toolName === toolCall.name
+      ? cachedByCallIdRaw
+      : undefined;
   const cachedByContent =
     cachedByCallId === undefined &&
     (READ_ONLY_TOOL_IDS as readonly string[]).includes(toolCall.name)
@@ -616,6 +631,7 @@ export async function executeOneTool(
       dirtyPaths,
       alreadyMutatedPaths: changedFiles,
       approval: approvalToken,
+      maxContentChars: windowPolicy.compaction.toolResultContentChars,
     },
   );
 

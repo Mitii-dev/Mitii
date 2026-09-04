@@ -2,11 +2,15 @@ import { DEFAULT_CHARACTERS_PER_TOKEN } from "../defaults";
 import type { SkillIndexEntry, SkillsSelectParsedInput } from "../contracts";
 import type { SkillSimilarityPort } from "../contracts/ports/SkillSimilarityPort";
 import { SKILLS_THRESHOLDS } from "../policy";
+import type { SKILL_SELECTION_KINDS } from "../constants";
+
+export type SkillSelectionKind = (typeof SKILL_SELECTION_KINDS)[number];
 
 export interface ScoredSkill {
   skill: SkillIndexEntry;
   score: number;
   reasons: string[];
+  selection?: SkillSelectionKind;
 }
 
 export interface MatchSkillsResult {
@@ -162,7 +166,12 @@ export async function matchSkills(params: {
       continue;
     }
 
-    scored.push({ skill, score: normalized, reasons });
+    scored.push({
+      skill,
+      score: normalized,
+      reasons,
+      selection: skill.alwaysApply ? "always_apply" : "matched",
+    });
   }
 
   scored.sort((a, b) => {

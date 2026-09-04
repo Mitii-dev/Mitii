@@ -13,6 +13,7 @@ import {
 import type {
   CreatedOnnxSession,
   CreateOnnxSessionInput,
+  OnnxExecutionKind,
   OnnxInferenceSession,
   OnnxRuntimeSessionFactory,
   OnnxTensorLike,
@@ -34,6 +35,7 @@ interface OrtModule {
       inputNames: string[];
       outputNames: string[];
       run(feeds: Record<string, unknown>): Promise<Record<string, OnnxTensorLike>>;
+      release?(): Promise<void>;
     }>;
   };
   env?: {
@@ -101,13 +103,42 @@ function wrapSession(
     inputNames: string[];
     outputNames: string[];
     run(feeds: Record<string, unknown>): Promise<Record<string, OnnxTensorLike>>;
+    release?(): Promise<void>;
   },
 ): OnnxInferenceSession {
   return {
     inputNames: raw.inputNames,
     outputNames: raw.outputNames,
     run: (feeds) => raw.run(feeds),
+    ...(typeof raw.release === 'function'
+      ? { release: () => raw.release!() }
+      : {}),
   };
+}
+
+/**
+ * Prefer WASM on plain Node: loading onnxruntime-node and creating a session
+ * makes process exit abort with "mutex lock failed" on darwin (ORT 1.21.x),
+ * even after session.release(). Electron keeps native-first for speed.
+ *
+ * Override with CreateOnnxSessionInput.preferredKind or MITII_ONNX_KIND=native|wasm.
+ */
+export function resolvePreferredOnnxKind(
+  preferredKind?: OnnxExecutionKind,
+  env: NodeJS.ProcessEnv = process.env,
+  versions: NodeJS.ProcessVersions = process.versions,
+): OnnxExecutionKind | undefined {
+  if (preferredKind === 'native' || preferredKind === 'wasm') {
+    return preferredKind;
+  }
+  const fromEnv = env.MITII_ONNX_KIND?.trim().toLowerCase();
+  if (fromEnv === 'native' || fromEnv === 'wasm') {
+    return fromEnv;
+  }
+  if (typeof versions.electron === 'string' && versions.electron.length > 0) {
+    return undefined; // native-first
+  }
+  return 'wasm';
 }
 
 export class HostOnnxRuntimeSessionFactory implements OnnxRuntimeSessionFactory {
@@ -117,24 +148,29 @@ export class HostOnnxRuntimeSessionFactory implements OnnxRuntimeSessionFactory 
 
   async create(input: CreateOnnxSessionInput): Promise<CreatedOnnxSession> {
     input.abortSignal?.throwIfAborted();
-    const native = this.loadModule(ONNX_RUNTIME_NODE_PACKAGE);
-    if (native?.InferenceSession && native.Tensor && input.preferredKind !== 'wasm') {
-      const raw = await native.InferenceSession.create(input.modelPath, {
-        executionProviders: ['cpu'],
-      });
-      return {
-        session: wrapSession(raw),
-        resolution: describeOnnxExecutionProvider({
-          kind: 'native',
-          packageId: ONNX_RUNTIME_NODE_PACKAGE,
-        }),
-        createInt64Tensor: (values, dims) =>
-          new native.Tensor!(
-            'int64',
-            BigInt64Array.from(values.map((value) => BigInt(value))),
-            [...dims],
-          ),
-      };
+    const preferred = resolvePreferredOnnxKind(input.preferredKind);
+    const tryNative = preferred !== 'wasm';
+
+    if (tryNative) {
+      const native = this.loadModule(ONNX_RUNTIME_NODE_PACKAGE);
+      if (native?.InferenceSession && native.Tensor) {
+        const raw = await native.InferenceSession.create(input.modelPath, {
+          executionProviders: ['cpu'],
+        });
+        return {
+          session: wrapSession(raw),
+          resolution: describeOnnxExecutionProvider({
+            kind: 'native',
+            packageId: ONNX_RUNTIME_NODE_PACKAGE,
+          }),
+          createInt64Tensor: (values, dims) =>
+            new native.Tensor!(
+              'int64',
+              BigInt64Array.from(values.map((value) => BigInt(value))),
+              [...dims],
+            ),
+        };
+      }
     }
 
     const wasm = this.loadModule(ONNX_RUNTIME_WEB_PACKAGE);

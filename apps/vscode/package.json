@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
-  "version": "2.8.72",
+  "version": "2.9.9",
   "publisher": "mitii",
   "license": "AGPL-3.0-or-later",
   "icon": "media/mitii-short-logo.png",
@@ -175,6 +175,16 @@
         "command": "mitii.clearApiKey",
         "title": "Mitii: Clear Provider API Key",
         "category": "Mitii"
+      },
+      {
+        "command": "mitii.setSearchApiKey",
+        "title": "Mitii: Set Web Search API Key",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.clearSearchApiKey",
+        "title": "Mitii: Clear Web Search API Key",
+        "category": "Mitii"
       }
     ],
     "keybindings": [
@@ -271,9 +281,9 @@
         },
         "mitii.tokenBudget.outputMaxTokens": {
           "type": "number",
-          "default": 32768,
+          "default": 512000,
           "minimum": 1,
-          "description": "Ceiling for the derived output reserve."
+          "description": "Ceiling for the derived output reserve. Prefer leaving this high so outputWindowCapRatio and the context window govern the reserve."
         },
         "mitii.tokenBudget.outputWindowCapRatio": {
           "type": "number",
@@ -338,19 +348,19 @@
         },
         "mitii.tokenBudget.planTokensCap": {
           "type": "number",
-          "default": 16000,
+          "default": 32000,
           "minimum": 1,
           "description": "Hard cap on plan tokens regardless of share."
         },
         "mitii.tokenBudget.skillsTokensCap": {
           "type": "number",
-          "default": 8000,
+          "default": 16000,
           "minimum": 1,
           "description": "Hard cap on skill-body tokens regardless of share."
         },
         "mitii.tokenBudget.repositoryTokensCap": {
           "type": "number",
-          "default": 64000,
+          "default": 128000,
           "minimum": 1,
           "description": "Hard cap on repository-context tokens regardless of share."
         },
@@ -447,7 +457,7 @@
         },
         "mitii.tokenBudget.toolResultContentCharsMax": {
           "type": "number",
-          "default": 24000,
+          "default": 64000,
           "minimum": 1,
           "description": "Ceiling for live tool-result content characters."
         },
@@ -797,6 +807,7 @@
           "enum": [
             "echo",
             "ollama",
+            "ollama-cloud",
             "lm-studio",
             "openai",
             "openrouter",
@@ -811,8 +822,8 @@
         },
         "mitii.provider.baseUrl": {
           "type": "string",
-          "default": "http://localhost:11434/v1",
-          "description": "Provider API base URL (OpenAI-compatible /v1, https://api.anthropic.com, or https://generativelanguage.googleapis.com)."
+          "default": "",
+          "description": "Provider API base URL (OpenAI-compatible /v1, https://api.anthropic.com, https://ollama.com/v1, or https://generativelanguage.googleapis.com)."
         },
         "mitii.provider.model": {
           "type": "string",
@@ -1221,6 +1232,7 @@
     "package:raw": "pnpm exec vsce package --no-dependencies"
   },
   "dependencies": {
+    "@mitii/automation": "workspace:*",
     "@mitii/host": "workspace:*",
     "@mitii/sdk": "workspace:*",
     "@mitii/v8": "workspace:*",

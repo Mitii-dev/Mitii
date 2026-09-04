@@ -32,6 +32,7 @@ import type {
 import type { CreateUserRequestInput, UserRequestEnvelope } from "../../../../modules/request-intake";
 import type {
   DiagnosticSummary,
+  RequestUnderstandingOptions,
   RequestUnderstandingResult,
 } from "../../../../modules/request-understanding";
 import type {
@@ -71,7 +72,7 @@ export interface AgentEngineIntakePort {
 export interface AgentEngineUnderstandingPort {
   understand(
     input: UserRequestEnvelope,
-    diagnosticSummary?: DiagnosticSummary,
+    diagnosticSummaryOrOptions?: DiagnosticSummary | RequestUnderstandingOptions,
   ): Promise<RequestUnderstandingResult>;
 }
 

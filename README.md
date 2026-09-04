@@ -12,7 +12,7 @@
   <a href="LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/License-AGPL_v3-blue.svg"></a>
   <a href="https://code.visualstudio.com/"><img alt="VS Code 1.85+" src="https://img.shields.io/badge/VS%20Code-1.85%2B-007ACC?logo=visualstudiocode"></a>
   <a href="https://nodejs.org/"><img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-339933?logo=node.js"></a>
-  <img alt="Version 2.8.72" src="https://img.shields.io/badge/version-2.8.72-111111">
+  <img alt="Version 2.9.9" src="https://img.shields.io/badge/version-2.9.9-111111">
   <a href="https://docs.mitii.dev"><img alt="Documentation" src="https://img.shields.io/badge/docs-docs.mitii.dev-5B5BFF"></a>
 </p>
 
@@ -196,11 +196,11 @@ mitii-ai-agent/
 │   ├── vscode/               # VS Code extension (F5 target)
 │   └── cli/                  # headless CLI
 ├── tests/                    # architecture + consumer suites + solid benchmark
-├── docs/                     # developer and release guides
+├── docs/                     # developer and release guides (+ automation/)
 └── scripts/                  # build, release, and audit automation
 ```
 
-See [docs/REPO_LAYOUT.md](docs/REPO_LAYOUT.md). Canonical architecture: [packages/v8/ARCHITECTURE.md](packages/v8/ARCHITECTURE.md).
+See [docs/REPO_LAYOUT.md](docs/REPO_LAYOUT.md). Canonical architecture: [packages/v8/ARCHITECTURE.md](packages/v8/ARCHITECTURE.md). Unattended CI agents (Phase 0): [docs/automation/README.md](docs/automation/README.md).
 
 ## Development
 

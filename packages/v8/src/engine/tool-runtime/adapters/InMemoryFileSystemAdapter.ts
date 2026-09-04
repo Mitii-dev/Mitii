@@ -3,9 +3,12 @@ import * as path from "node:path";
 import type {
   WorkspaceDirectoryEntry,
   WorkspaceFileSystemPort,
+  WorkspaceReadFileOptions,
+  WorkspaceReadFileResult,
   WorkspaceStat,
 } from "../contracts";
 import { shouldSkipSearchWalkEntry } from "../internal/SearchWalkIgnore";
+import { selectLineWindow } from "../internal/readFileWindow";
 
 export interface InMemoryFileNode {
   kind: "file";
@@ -70,24 +73,64 @@ export class InMemoryFileSystemAdapter implements WorkspaceFileSystemPort {
 
   public async readFile(
     absolutePath: string,
-    options?: { maxBytes?: number },
-  ): Promise<{ content: string; truncated: boolean; bytesRead: number }> {
+    options?: WorkspaceReadFileOptions,
+  ): Promise<WorkspaceReadFileResult> {
     const real = await this.realpath(absolutePath);
     const node = this.lookup(real, { followSymlinks: false });
     if (!node || node.kind !== "file") {
       throw new Error(`ENOENT or not a file: ${absolutePath}`);
     }
-    const encoded = Buffer.from(node.content, "utf8");
-    const maxBytes = options?.maxBytes ?? encoded.byteLength;
-    if (encoded.byteLength <= maxBytes) {
-      return {
-        content: node.content,
-        truncated: false,
-        bytesRead: encoded.byteLength,
-      };
+
+    // In-memory always has the full file; apply byte cap only as a window budget
+    // after line selection so late startLine values remain reachable.
+    const fullWindow = selectLineWindow({
+      text: node.content,
+      startLine: options?.startLine,
+      endLine: options?.endLine,
+      maxLines: options?.maxLines,
+      textIsComplete: true,
+    });
+
+    const maxBytes = options?.maxBytes;
+    let content = fullWindow.content;
+    let startLine = fullWindow.startLine;
+    let endLine = fullWindow.endLine;
+    let eof = fullWindow.eof;
+    let nextStartLine = fullWindow.nextStartLine;
+    let truncated = fullWindow.truncated;
+    let truncationReason = fullWindow.truncationReason;
+
+    if (maxBytes !== undefined && Buffer.byteLength(content, "utf8") > maxBytes) {
+      const encoded = Buffer.from(content, "utf8");
+      const prefix = encoded.subarray(0, maxBytes).toString("utf8");
+      const capped = selectLineWindow({
+        text: prefix,
+        textIsComplete: false,
+      });
+      // Drop incomplete trailing line from byte cut when possible.
+      content = capped.content;
+      if (capped.endLine > 0) {
+        endLine = startLine + capped.endLine - 1;
+      } else {
+        endLine = startLine - 1;
+      }
+      eof = false;
+      nextStartLine = endLine >= startLine ? endLine + 1 : startLine;
+      truncated = true;
+      truncationReason = "byte_cap";
     }
-    const content = encoded.subarray(0, maxBytes).toString("utf8");
-    return { content, truncated: true, bytesRead: maxBytes };
+
+    return {
+      content,
+      truncated,
+      bytesRead: Buffer.byteLength(content, "utf8"),
+      startLine,
+      endLine,
+      totalLines: fullWindow.totalLines,
+      eof,
+      ...(nextStartLine !== undefined ? { nextStartLine } : {}),
+      ...(truncationReason ? { truncationReason } : {}),
+    };
   }
 
   public async listDirectory(

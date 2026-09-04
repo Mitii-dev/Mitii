@@ -100,8 +100,11 @@ export const runEventSchema = z.discriminatedUnion("type", [
       runId: z.string().min(1),
       selectedCount: z.number().int().nonnegative(),
       omittedCount: z.number().int().nonnegative(),
+      requiredCount: z.number().int().nonnegative().optional(),
+      matchedCount: z.number().int().nonnegative().optional(),
       status: z.string().min(1),
       selected: z.array(z.string().min(1).max(160)).max(20).optional(),
+      required: z.array(z.string().min(1).max(160)).max(20).optional(),
       omitted: z.array(z.string().min(1).max(160)).max(20).optional(),
       omittedDetails: z
         .array(
@@ -239,6 +242,49 @@ export const runEventSchema = z.discriminatedUnion("type", [
       status: promptConstructionStatusSchema,
       totalOmittedTokens: z.number().int().nonnegative(),
       totalTruncatedTokens: z.number().int().nonnegative(),
+      /**
+       * Safe prompt-budget snapshot for host token meters.
+       * Optional for older session logs; current engine always includes it.
+       */
+      budget: z
+        .object({
+          contextWindowTokens: z.number().int().positive(),
+          outputReservedTokens: z.number().int().nonnegative(),
+          inputBudgetTokens: z.number().int().nonnegative(),
+          totalUsedTokens: z.number().int().nonnegative(),
+          withinLimits: z.boolean(),
+          sections: z
+            .array(
+              z
+                .object({
+                  section: promptSectionSchema,
+                  allocatedTokens: z.number().int().nonnegative(),
+                  usedTokens: z.number().int().nonnegative(),
+                  omittedTokens: z.number().int().nonnegative(),
+                  truncatedTokens: z.number().int().nonnegative(),
+                })
+                .strict(),
+            )
+            .max(16),
+        })
+        .strict()
+        .optional(),
+      /**
+       * Window-policy parent ceilings (usable split). Optional for older logs.
+       */
+      window: z
+        .object({
+          toolSchemaTokens: z.number().int().nonnegative(),
+          usableInputTokens: z.number().int().nonnegative(),
+          repositoryTokens: z.number().int().nonnegative(),
+          conversationTokens: z.number().int().nonnegative(),
+          planTokens: z.number().int().nonnegative(),
+          planUsedTokens: z.number().int().nonnegative().optional(),
+          skillsTokens: z.number().int().nonnegative(),
+          systemTokens: z.number().int().nonnegative(),
+        })
+        .strict()
+        .optional(),
       omissions: z
         .array(
           z

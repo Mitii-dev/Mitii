@@ -1,17 +1,17 @@
 {
   "id": "testing",
   "name": "Testing Agent Benchmark",
-  "description": "Unit/integration/e2e tests, coverage, and regression verification.",
+  "description": "Curated agent-only testing core: 7 cases each for easy, medium, and hard, writing missing unit/integration tests (node:test) across Express, a monorepo, and legacy CommonJS fixtures.",
   "caseFiles": [
-    "easy.jsonl",
-    "medium.jsonl",
-    "hard.jsonl"
+    "express.jsonl",
+    "monorepo.jsonl",
+    "react.jsonl"
   ],
   "expectedCounts": {
-    "easy": 17,
-    "medium": 16,
-    "hard": 30,
-    "total": 63
+    "easy": 7,
+    "medium": 8,
+    "hard": 8,
+    "total": 23
   },
   "gates": {
     "easy": 0.9,

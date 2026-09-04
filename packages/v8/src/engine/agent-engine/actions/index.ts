@@ -52,6 +52,10 @@ export type {
   ResolvedLoopPolicy,
 } from "./resolveLoopPolicyThresholds";
 export { buildExplorationStallNudge } from "./buildExplorationStallNudge";
+export {
+  buildStallContinueRationale,
+  shouldOfferStallContinue,
+} from "./buildStallContinueRationale";
 export { buildPreflightDiagnosticRepairInstruction } from "./buildPreflightDiagnosticRepairInstruction";
 export { buildVerificationRepairPrompt } from "./buildVerificationRepairPrompt";
 export { formatVerificationFailureAnswer, formatVerificationEvidence } from "./formatVerificationNarration";
@@ -123,6 +127,7 @@ export {
 
 export { recoverLeakedToolCallsFromMarkup } from "./recoverLeakedToolCalls";
 export { formatSkillPromptContent } from "./formatSkillPromptContent";
+export { buildSkillsReadyEvent } from "./buildSkillsReadyEvent";
 export {
   CONTEXT_READY_VERBOSE_WARNING_CODES,
   CONTEXT_READY_WARNING_CODES,
@@ -174,6 +179,13 @@ export {
   resolveVerificationProjects,
   uniqueVerificationEvidence,
 } from "./preflightBuild";
+export { collectUnderstandingCandidatePaths } from "./collectUnderstandingCandidatePaths";
+export {
+  isExplicitEditorReference,
+  isFileContextRelevant,
+  isInternalAgentPath,
+  scoreFileContextRelevance,
+} from "./isFileContextRelevant";
 export {
   allowsTargetedDiscoveryAfterRejectedMutation,
   buildRejectedMutationRecoveryMessage,

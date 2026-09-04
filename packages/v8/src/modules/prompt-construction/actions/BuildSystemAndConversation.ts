@@ -15,10 +15,12 @@ export function buildSystemInstructions(params: {
   memory: readonly PromptInstructionBlock[];
   estimator: TokenEstimatorPort;
   budgetTokens: number;
-  planText?: string;
+    planBudgetTokens?: number;
+    planText?: string;
 }): {
   content: string;
   usedTokens: number;
+  planUsedTokens: number;
   truncatedTokens: number;
   omittedTokens: number;
   includedRuleIds: string[];
@@ -30,15 +32,23 @@ export function buildSystemInstructions(params: {
     tokens: number;
   }>;
 } {
-  const core = buildCoreSystemPrompt(params.decision, params.planText);
+  const core = buildCoreSystemPrompt(params.decision);
+  const planGuidance = buildPlanGuidance(params.decision, params.planText);
+  const planUsedTokens = params.estimator.estimate(planGuidance);
   let remaining = Math.max(
     PROMPT_CONSTRUCTION_THRESHOLDS.minimumSystemTokens,
     params.budgetTokens,
   );
 
   const parts: string[] = [core];
+  if (planGuidance.length > 0) {
+    parts.push(planGuidance);
+  }
   let usedTokens = params.estimator.estimate(core);
   remaining -= usedTokens;
+  if (planGuidance.length > 0) {
+    remaining -= planUsedTokens;
+  }
 
   const omitted: Array<{
     section: "rules" | "skills" | "memory";
@@ -98,6 +108,7 @@ export function buildSystemInstructions(params: {
   return {
     content: parts.join("\n\n"),
     usedTokens,
+    planUsedTokens,
     truncatedTokens,
     omittedTokens,
     includedRuleIds,
@@ -109,10 +120,8 @@ export function buildSystemInstructions(params: {
 
 function buildCoreSystemPrompt(
   decision: ExecutionDecision,
-  planText?: string,
 ): string {
   const toolGuidance = buildToolGuidance(decision);
-  const planGuidance = buildPlanGuidance(decision, planText);
 
   return [
     "You are Mitii, a coding agent runtime assistant.",
@@ -131,7 +140,6 @@ function buildCoreSystemPrompt(
     `Plan gate: ${decision.planGate}.`,
     `Run disposition: ${decision.runDisposition}.`,
     buildRouteGuidance(decision),
-    planGuidance,
     toolGuidance,
   ]
     .filter((line) => line.length > 0)
@@ -201,8 +209,25 @@ function buildToolGuidance(decision: ExecutionDecision): string {
     }
   }
 
+  if (grant.allowedTools.includes("web_search")) {
+    lines.push(
+      "When the user explicitly asks to search the web, internet, or external documentation, call web_search first and answer from those results with source URLs. Do not answer from memory alone or claim you lack network access when web_search is listed above.",
+    );
+  }
+
+  if (
+    grant.allowedTools.includes("fetch_url") ||
+    grant.allowedTools.includes("fetch_docs")
+  ) {
+    lines.push(
+      "When the user names a concrete http(s) URL, use fetch_url or fetch_docs on that URL before guessing page contents.",
+    );
+  }
+
   if (grant.maximumWorkspaceEffect === "write") {
     lines.push(
+      "You have write authority for this turn. Apply required edits with mutation tools (apply_patch / write tools). Never claim you are on a read-only route or ask the user to switch sessions when write tools are listed above.",
+      "If a mutation is rejected as path_out_of_scope, retry the same edit on the next turn — granted path scopes expand to include required paths when write authority is already active.",
       "For the live checklist tool, call update_todos (aliases: update_todo, task_list_update). Use type=replace|patch|clear with items (or todos) and title (or content).",
     );
   }

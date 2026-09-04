@@ -29,7 +29,7 @@ Required setup. Connection and credentials are at the top so you do not scroll p
 
 | UI field | Setting | Save / reflect |
 |---|---|---|
-| Provider | `mitii.provider.preset` + `mitii.provider.type` | Saved preset prefills base URL and model. After Save, the same preset is shown. |
+| Provider | `mitii.provider.preset` + `mitii.provider.type` | Saved preset prefills base URL and model. After Save, the same preset is shown. Includes **Ollama Cloud** (`https://ollama.com/v1`). |
 | Base URL | `mitii.provider.baseUrl` | Saved as typed. Local hosts do not need a key. |
 | Model | `mitii.provider.model` | Dropdown or Custom. Saved model id is reflected exactly. |
 
@@ -38,18 +38,30 @@ Required setup. Connection and credentials are at the top so you do not scroll p
 | UI field | Storage | Save / reflect |
 |---|---|---|
 | Set key / Clear | SecretStorage `mitii.provider.apiKey` | Never written to settings JSON. Status shows `configured` or `not set`. |
-| Test connection | Host probe | Status pill only. Not a persisted setting. |
+| Test connection | Host probe | Status pill + model list only. Does **not** persist settings or reset unsaved drafts. |
 
 Anthropic and Gemini require a key. Echo and local OpenAI-compatible hosts usually do not.
+
+### Web search (optional)
+
+Explicit asks like “search the web for …” grant the `web_search` tool only when a Brave Search API key is configured.
+
+| UI field | Storage | Save / reflect |
+|---|---|---|
+| Set web search key / Clear | SecretStorage `mitii.search.apiKey` | Command palette: **Mitii: Set Web Search API Key**. Alternatively set `BRAVE_API_KEY` or `MITII_SEARCH_API_KEY` in the environment before launching VS Code. |
+
+Without a key, Mitii completes the turn from model knowledge and logs a warning that SearchPort is not configured.
 
 ### Token limits
 
 The context window is the only token setting a customer needs. Retrieval, compaction, mutation batches, verification checks, and the derived model-call cap scale from that window. Developer → Token budget is optional.
 
+**Source of truth:** a positive `mitii.provider.contextWindow` always wins for budgeting, compact/standard/wide bands, and loop-history compaction ceilings. `0` means auto (model preset → provider/model heuristic → 32 768 fallback).
+
 | UI field | Setting | Save / reflect |
 |---|---|---|
 | Context window | `mitii.provider.contextWindow` | Type freely, then click **Save**. The field does not write on each keystroke. After Save, the raw number is what you see. `0` means “use the model preset”. |
-| Max output | `mitii.provider.maximumOutputTokens` | Same commit rules as context window. `0` derives the output reserve from the window (~20%, floored at 10240 when the window allows so a 30k local cap can still finish a mutation batch). Leave at `0` unless you need a hard override. The legacy default `5000` is ignored so mutation batches are not truncated. |
+| Max output | `mitii.provider.maximumOutputTokens` | Same commit rules as context window. `0` derives the output reserve from the window (~20%, floored so a 30k local cap can still finish a mutation batch). Leave at `0` unless you need a hard override. A positive value is a host override for generation; the legacy default `5000` is ignored. |
 | Derived budget | Live preview | Usable input, output reserve, model-call cap, files per mutation, verification checks, and a module-share bar. Updates as soon as the context window or max output changes. |
 | Reset budgets to defaults | Clears `mitii.tokenBudget.*` | Turns off custom token-budget overrides and restores built-in ratios for the current window. |
 
@@ -77,19 +89,12 @@ Each mode has its own row. Switching the Ask / Plan / Agent control edits that m
 
 | UI field | Setting | Save / reflect |
 |---|---|---|
-| Thoroughness | `mitii.ui.modeDefaults.<mode>.thoroughness` | Per mode. `low` / `medium` / `high`. Also in the chat composer. Maps to exploration depth + working-set effort unless Developer intensity overrides are on. |
 | Approval mode | `mitii.ui.modeDefaults.<mode>.approvalMode` | `safe` (ask) / `guided` (approve for me) / `pilot` (full access). Composer changes also update the active mode default and `mitii.safety.approvalMode` immediately so Save cannot restore Agent’s default `safe`. |
 | Default model | `mitii.ui.modeDefaults.<mode>.model` | Empty = use the active Provider model. |
 | Show reasoning stream | `mitii.ui.showReasoning` | Global, not per mode. |
 | Reasoning preview chars | `mitii.ui.reasoningPreviewMaxChars` | 500–50000. Reflected as the saved integer. |
 
-Thoroughness mapping (when overrides are off):
-
-| Thoroughness | Exploration depth | Working set (effort) |
-|---|---|---|
-| Low | `quick` | `low` |
-| Medium | `auto` | `medium` |
-| High | `deep` | `high` |
+Thoroughness stays on the **composer** (not duplicated here). Ship loop / window defaults: `pnpm policy-admin`.
 
 ### Run budget
 
@@ -144,70 +149,52 @@ Runtime status (ready / error / disabled) is diagnostic only.
 
 ## Developer
 
-Leave this off unless you need it. Options are grouped so the page stays scannable as more switches are added.
+Keep this minimal. Permanent ship policy lives in `pnpm policy-admin`.
 
 ### Access
 
 | UI field | Setting | Save / reflect |
 |---|---|---|
-| Enable developer settings | `mitii.developer.enabled` | Unlocks Logging, Intensity, Token budget, and Loop / stall policy editors. |
+| Enable developer settings | `mitii.developer.enabled` | Unlocks Logging and local Custom token / loop editors. |
 
 ### Logging
 
 | UI field | Setting | Save / reflect |
 |---|---|---|
 | Debug logging | `mitii.debug` | When on, Mitii shows the Output channel and prints verbose stacks. Locked until Access is enabled. |
-| Log model I/O | `mitii.developer.modelIo` | When on (and Access enabled), writes sanitized model request/response bodies to `.mitii/logs/*-model-io.jsonl`. Not nested under `mitii.debug` (that key is a boolean). Large; may include workspace content — keep local. Command **Mitii: Export Shareable Diagnostic** builds one redacted markdown file under `.mitii/logs/` for pasting into online chat help. |
+| Log model I/O | `mitii.developer.modelIo` | When on (and Access enabled), writes sanitized model request/response bodies to `.mitii/logs/*-model-io.jsonl`. Large; may include workspace content — keep local. Command **Mitii: Export Shareable Diagnostic** builds one redacted markdown file under `.mitii/logs/` for pasting into online chat help. |
 
-### Intensity
+### Token budget (local)
 
-Leave off unless you need an edge case (for example quick planning with a high repair budget). When overrides are off, Modes → Thoroughness owns both axes.
-
-| UI field | Setting | Save / reflect |
-|---|---|---|
-| Unlock intensity overrides | `mitii.developer.intensityOverrides` | When on, composer Thoroughness shows Custom until you pick a clubbed level. |
-| Working set (effort) | `mitii.ui.effort` | `low` / `medium` / `high`. Editable only while overrides are on. |
-| Ask / Plan / Agent depth | `mitii.ui.modeDefaults.<mode>.depth` | `auto` / `quick` / `deep`. Editable only while overrides are on. |
-
-### Token budget
-
-Changing the context window already scales the built-in defaults. Use Simple sliders only when you need a custom value. Custom values stay put when the window changes; everything else follows the window.
+Optional local overrides for this machine. Module shares are of usable input and **need not total 100%** — leftover shows as **Free** in the allocation bar.
 
 | UI field | Setting | Save / reflect |
 |---|---|---|
-| Custom token budget | `mitii.tokenBudget.enabled` | Turns on when you move a Simple slider or edit an Advanced field. When off, V8 defaults scale from the window. |
-| Simple: files per mutation | `mitii.tokenBudget.minUniqueFilesPerCall` and `maxUniqueFilesPerCallCap` | Slider. Follows the context window (`W × outputRatio / 800`) until you set a value; then both min and cap pin to that count. |
-| Simple: output reserve | `mitii.tokenBudget.outputRatio` | Slider as a percent of the context window. Unused while Provider → Max output is set. |
-| Simple: repository / conversation / plan / skills | `mitii.tokenBudget.*Share` | Sliders. Each row shows that module’s percent of the **context window** and of usable input. |
-| Simple: verification checks | `mitii.tokenBudget.verificationChecksBase` and `verificationChecksMax` | Slider. Follows usable input until you set a value. |
-| Advanced | `mitii.tokenBudget.<key>` | Core ratios and clamps. Hidden “run cap” keys stay owned by Modes → Run budget. |
-| Module split | Live preview | Stacked bar of output, tools, repository, conversation, plan, skills, and system as percent of the current window. |
-| Reset budgets to defaults | Clears `mitii.tokenBudget.*` | Same action as Provider → Token limits. Restores window-scaled defaults. |
+| Custom token budget | `mitii.tokenBudget.enabled` | Turns on when you move a Simple slider. When off, V8 defaults scale from the window. |
+| Simple: files / output / shares / verification | `mitii.tokenBudget.*` | Local sliders only. Ship defaults: `pnpm policy-admin`. |
+| Module split | Live preview | Stacked bar of output, tools, repository, conversation, plan, skills, and **Free**. |
+| Reset budgets to defaults | Clears `mitii.tokenBudget.*` | Restores window-scaled defaults. |
 
-### Loop / stall policy
-
-Working standards are **window-banded** in Agent Engine (`policy/loopPolicyBands.ts`):
-
-| Band | Context window | Source |
-|---|---|---|
-| Compact | &lt; 50k | Band overrides on `AGENT_ENGINE_THRESHOLDS` |
-| Standard | 50k – &lt; 100k | Base thresholds as-is |
-| Wide | ≥ 100k | Band overrides |
-
-Merge order: base → band → optional lab overrides. Enable Custom only to lab-test deltas on the active band. Leave off (or Reset) for deploy. Permanent ship changes go in `loopPolicyBands.ts`, not VS Code settings.
+### Loop / stall (local)
 
 | UI field | Setting | Save / reflect |
 |---|---|---|
-| Active band (read-only) | Derived from provider context window | Shown in Developer → Loop / stall policy. |
-| Custom loop policy | `mitii.loopPolicy.enabled` | When off, Engine uses band standards only. |
-| Simple: min re-read calls / ratio / stall nudges | `mitii.loopPolicy.explorationReread*` / `maxExplorationStallNudges` | Exploration stall breaker (lab). |
-| Simple: read/mutate pressure | `mitii.loopPolicy.maxReadOnly*` | How long execute may explore before requiring a patch (lab). |
-| Advanced | `mitii.loopPolicy.<key>` | Truncation, unfulfilled-execute, rejected-mutation, must-read, verification repair, batch fallbacks (lab). |
-| Reset loop policy to standards | Clears `mitii.loopPolicy.*` | Restores shipped band standards for the current window. |
+| Active band (read-only) | Derived from provider context window | Compact / standard / wide. |
+| Custom loop policy | `mitii.loopPolicy.enabled` | Local lab deltas on the active band. |
+| Simple fields | `mitii.loopPolicy.*` | Shown only while Custom is on. |
+| Reset to ship band | Clears `mitii.loopPolicy.*` | Restores shipped band for the current window. |
+
+### Ship policy (HTML, not in VS Code)
+
+```bash
+pnpm policy-admin
+```
+
+Edits `loopPolicyBands.ts` + `windowBudgetBands.ts`. See `tools/policy-admin/README.md`.
 
 ### Diagnostics
 
-Read-only: provider connection, MCP runtime, index token, index mode, preset label. Use **View → Output → Mitii** for logs.
+Read-only: provider connection, MCP runtime, index token, index mode, preset label, active policy band. Use **View → Output → Mitii** for logs.
 
 ---
 

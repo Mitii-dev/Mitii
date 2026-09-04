@@ -202,4 +202,82 @@ describe('CLI driveRun (Phase 15)', () => {
     expect(outcome.exitCode).toBe(0);
     expect(io.stdout.join('')).toContain('"status":"suspended"');
   });
+
+  it('auto-resumes plan_approval_required under --approve in JSON mode', async () => {
+    const suspended: AgentRunResult = {
+      schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+      runId: 'run_plan_json',
+      requestId: 'req_plan',
+      status: 'suspended',
+      reasonCodes: ['plan_approval_suspended'],
+      warnings: [],
+      usage: { modelCalls: 0, toolCalls: 0, loopIterations: 0 },
+      durationMs: 1,
+      suspension: {
+        kind: 'plan_approval_required',
+        rationale: 'A reviewable plan is required before mutation.',
+      },
+    };
+    const completed: AgentRunResult = {
+      ...suspended,
+      status: 'completed',
+      reasonCodes: ['plan_approved', 'answer_produced'],
+      suspension: undefined,
+      answer: 'done',
+    };
+
+    let resumeInput: MitiiResumeInput | undefined;
+    const suspendedRun: MitiiRun = {
+      runId: 'run_plan_json',
+      events: (async function* (): AsyncGenerator<RunEvent> {
+        yield {
+          type: 'suspended',
+          runId: 'run_plan_json',
+          kind: 'plan_approval_required',
+          rationale: 'A reviewable plan is required before mutation.',
+          at: new Date().toISOString(),
+        };
+      })(),
+      result: Promise.resolve(suspended),
+      cancel: () => undefined,
+    };
+    const completedRun: MitiiRun = {
+      runId: 'run_plan_json',
+      events: (async function* (): AsyncGenerator<RunEvent> {
+        yield {
+          type: 'stage_completed',
+          runId: 'run_plan_json',
+          stage: 'completed',
+          at: new Date().toISOString(),
+        };
+      })(),
+      result: Promise.resolve(completed),
+      cancel: () => undefined,
+    };
+
+    const client = {
+      start: () => suspendedRun,
+      resume: (input: MitiiResumeInput) => {
+        resumeInput = input;
+        return completedRun;
+      },
+    } as unknown as MitiiClient;
+
+    const io = memoryIo();
+    const outcome = await driveRun({
+      client,
+      start: { prompt: 'Add a Nest pipe', mode: 'agent' },
+      json: true,
+      autoApproval: 'approved',
+      io,
+    });
+
+    expect(resumeInput).toEqual({
+      schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+      runId: 'run_plan_json',
+      planDecision: { decision: 'approved' },
+    });
+    expect(outcome.result.status).toBe('completed');
+    expect(outcome.exitCode).toBe(0);
+  });
 });

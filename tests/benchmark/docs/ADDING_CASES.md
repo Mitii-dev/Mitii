@@ -1,16 +1,32 @@
 # Adding a benchmark case
 
-Frontend cases are organized by **capability** (agent-only core):
+Every suite is organized by **category** — the JSONL file name is the
+category, not the difficulty. `difficulty` (easy/medium/hard) is just a
+field on each case object and is mixed freely within a file.
 
 ```text
-suites/frontend/cases/{feature,bugfix,docs,retrieval,testing}.jsonl
+suites/frontend/cases/{feature,bugfix,docs,retrieval,testing,capstone}.jsonl
+suites/backend/cases/{nest,saas-api,express,monorepo,robustness,auth}.jsonl
+suites/testing/cases/{express,monorepo,react}.jsonl
+suites/cicd/cases/{react,nest,express,monorepo}.jsonl
 ```
 
-Other domains still use difficulty files:
+**Before adding a case, find the right file with the test case
+browser** (`pnpm cases` from `tests/benchmark`, or `pnpm cases:open`) —
+it lists every case with its suite, source file, difficulty,
+capability, and fixture, filterable and searchable, so you can see at
+a glance which file a new React case, a new Nest case, a new auth case,
+etc. belongs in, and skim what's already covered before adding more.
+Most categories map to one fixture family (`nest.jsonl` → `nest-api`,
+`express.jsonl` → `node-express`/`legacy-commonjs`/`broken-repo`); a few
+(`robustness`, `auth`, `capstone`) are cross-cutting themes that span
+multiple fixtures on purpose — pick whichever fixture fits the specific
+case, that file is still the right home for it.
 
-```text
-suites/<backend|cicd|testing>/cases/{easy,medium,hard}.jsonl
-```
+See `BACKEND_TESTING_CICD_SUITES.md` for the full per-file breakdown,
+fixtures used, and a couple of environment quirks worth knowing about
+before adding more cases against `node-express`, `legacy-commonjs`,
+`broken-repo`, `nest-api`, or `saas-api`.
 
 Each line is one complete JSON object. Copy `templates/new-case.json`, edit it,
 then append to the correct file. **One variant per family** (`variant: 1` only).
@@ -55,9 +71,12 @@ Prefer:
 npm run validate -- --suite frontend
 npm run validate -- --suite all
 npm test
+npm run cases          # regenerate the read-only test case browser after adding cases
 ```
 
-Expected counts are defined per domain in `suites/<domain>/suite.json`.
+Expected counts are defined per domain in `suites/<domain>/suite.json` —
+update `expectedCounts` (per-difficulty and `total`) whenever you add or
+remove cases, or `validate`/`npm test` will fail.
 
 To regenerate the frontend core from the writer script:
 

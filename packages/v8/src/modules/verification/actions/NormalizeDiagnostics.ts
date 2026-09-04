@@ -74,14 +74,22 @@ function resolveDiagnosticPath(
   diagnostic: VerificationDiagnostic,
   projectRoot: string | undefined,
 ): VerificationDiagnostic {
-  if (!projectRoot || diagnostic.path === "<test>") {
+  if (diagnostic.path === "<test>") {
     return diagnostic;
   }
   const path = normalizeSlashes(diagnostic.path);
-  if (path === projectRoot || path.startsWith(`${projectRoot}/`)) {
-    return diagnostic;
+  const root = projectRoot
+    ? normalizeSlashes(projectRoot).replace(/\/$/, "")
+    : "";
+  // Workspace-root projects use `rootPath: "."`. Joining that produces
+  // `./src/a.ts`, which is not a canonical workspace-relative path.
+  if (!root || root === ".") {
+    return path === diagnostic.path ? diagnostic : { ...diagnostic, path };
   }
-  return { ...diagnostic, path: `${projectRoot}/${path}` };
+  if (path === root || path.startsWith(`${root}/`)) {
+    return path === diagnostic.path ? diagnostic : { ...diagnostic, path };
+  }
+  return { ...diagnostic, path: `${root}/${path}` };
 }
 
 function normalizeSlashes(path: string): string {

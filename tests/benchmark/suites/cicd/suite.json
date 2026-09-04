@@ -1,17 +1,18 @@
 {
   "id": "cicd",
   "name": "CI/CD Agent Benchmark",
-  "description": "Pipelines, workflows, deploy configs, and automation scripting.",
+  "description": "Curated agent-only build/config/devops core: 6 cases each for easy, medium, and hard — GitHub Actions workflows, lint/format gates, Docker, module migrations, and test-pipeline wiring, all executable with tooling already installed in each fixture (no new package installs).",
   "caseFiles": [
-    "easy.jsonl",
-    "medium.jsonl",
-    "hard.jsonl"
+    "react.jsonl",
+    "nest.jsonl",
+    "express.jsonl",
+    "monorepo.jsonl"
   ],
   "expectedCounts": {
-    "easy": 1,
-    "medium": 4,
-    "hard": 29,
-    "total": 34
+    "easy": 6,
+    "medium": 6,
+    "hard": 6,
+    "total": 18
   },
   "gates": {
     "easy": 0.9,

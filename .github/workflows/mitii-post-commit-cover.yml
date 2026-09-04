@@ -1,0 +1,66 @@
+# Example: after push, run Mitii post-commit coverage agent.
+# Copy agent markdown into the consuming repo at .mitii/agents/post-commit-cover.md
+# (see docs/automation/agents/post-commit-cover.md).
+name: Mitii post-commit cover
+
+on:
+  push:
+    branches: [main, master, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  cover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ensure agent file
+        run: |
+          mkdir -p .mitii/agents
+          if [ ! -f .mitii/agents/post-commit-cover.md ]; then
+            cp docs/automation/agents/post-commit-cover.md .mitii/agents/post-commit-cover.md 2>/dev/null \
+              || true
+          fi
+          if [ ! -f .mitii/agents/post-commit-cover.md ]; then
+            cat > .mitii/agents/post-commit-cover.md <<'EOF'
+          ---
+          name: post-commit-cover
+          mode: agent
+          origin: automation
+          autonomyPreset: apply_and_pr
+          ---
+          Inspect the latest commit diff. Write missing tests, run the suite,
+          and open a draft PR if green. Never push to main.
+          EOF
+          fi
+
+      - name: Diff context
+        id: diff
+        run: |
+          {
+            echo 'DIFF<<EOF_DIFF'
+            git diff HEAD~1...HEAD || git show --stat HEAD
+            echo 'EOF_DIFF'
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/mitii-run
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          agent: post-commit-cover
+          origin: automation
+          autonomy: apply_and_pr
+          prompt: |
+            Repository: ${{ github.repository }}
+            Ref: ${{ github.ref }}
+            SHA: ${{ github.sha }}
+
+            Latest diff:
+            ${{ steps.diff.outputs.DIFF }}

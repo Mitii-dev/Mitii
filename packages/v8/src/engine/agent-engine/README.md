@@ -41,7 +41,7 @@ agent-engine/
 ## Main Types
 
 - `AgentEngineStartInput`: raw request, optional workspace root, repository-state summary, projects, conversation, instructions, approved plan, optional approved plan strategy, task list, tool definitions, budget, model options, approval mode, dirty paths, and `explorationDepth` (`auto` | `quick` | `deep` — how hard to look before drafting a plan; orthogonal to Decision Policy's `planningDepth`, which is whether a visible plan exists at all).
-- `AgentEngineResumeInput`: run id plus exactly one continuation: approval, clarification answer, or plan decision.
+- `AgentEngineResumeInput`: run id plus exactly one continuation: approval, clarification answer, plan decision, grant expansion decision, or continue/stop after a stall pause.
 - `AgentRunHandle`: opaque active-run handle with events and final result.
 - `AgentRunResult`: final status, route, planning depth, answer, optional plan, optional plan strategy, optional task list, optional suspension, pinned state, reason codes, warnings, usage, duration, and optional error.
 - `AgentEngineDependencies`: injected ports/pipelines used by the orchestrator.
@@ -51,19 +51,22 @@ agent-engine/
 
 - `start()` creates a new run and checkpoint.
 - `resume()` continues from a persisted checkpoint and does not replay completed `callId`s.
-- Runs can suspend for clarification, plan approval, or mutating tool approval.
+- Runs can suspend for clarification, plan approval, mutating tool approval, grant expansion (when approval mode is not `never`), or continue-required after exploration stall with partial progress.
 - Tool calls are passed to Tool Runtime with the exact grant from Decision Policy.
-- The engine may narrow authority after discovery but never expands the grant.
+- The engine may narrow authority after discovery but never expands the grant without policy.
   `grant_narrowed` is emitted only when the grant actually changed.
-  After out-of-scope reads or compiler errors, Engine may `widen` the grant
-  and record `grant_expanded`.
+  After out-of-scope reads or compiler errors, Engine may `widen` the grant when
+  `approvalMode` is `never` (pilot/unrestricted) and record `grant_expanded`.
+  Otherwise it suspends with `grant_expansion_required` until the host approves.
 - `usage` reports `fileReadCalls` vs `uniqueFilePathsTouched`. Repeated
-  re-reads of the same files emit `exploration_reread_heavy` mid-loop and
-  after one nudge stop the spin with `exploration_stall_broken`. Stall
-  detection uses paths read in the current loop (reset after a successful
-  mutation) so verification repair can re-read known error files without
-  aborting. Hosts may pass `loopPolicy.thresholds` (partial overrides of
-  `AGENT_ENGINE_THRESHOLDS`) for lab tweaks; omit for shipped standards.
+  re-reads of the same files emit `exploration_reread_heavy` mid-loop and,
+  after nudges exhaust, `exploration_stall_broken`. When the run already
+  changed files or has pending checklist work, the engine suspends with
+  `continue_required` instead of ending silently. Stall detection uses paths
+  read in the current loop (reset after a successful mutation) so verification
+  repair can re-read known error files without aborting. Hosts may pass
+  `loopPolicy.thresholds` (partial overrides of `AGENT_ENGINE_THRESHOLDS`) for
+  lab tweaks; omit for shipped standards.
 - Identical read-only tool+args reuse the prior result (`tool_result_deduped`).
   Mutations invalidate that content cache.
 - Auto/hard compaction reinjects mid-run observations as well as pre-run
@@ -88,8 +91,8 @@ agent-engine/
   incomplete narration.
 - Execute + write + mutation-intent turns that produce text and no `apply_patch` are **unfulfilled execute**. The loop nudges up to twice (`unfulfilled_execute_recovered`, `maxUnfulfilledExecuteRecoveries: 2`) to call `apply_patch` in a bounded batch grouped by error class. Further text-only turns complete with `unfulfilled_execute_exhausted` instead of spinning. Docs create/update on execute+write is treated the same way.
 - Rejected `apply_patch`/`delete_file`/`move_file` recoveries use a **separate** budget (`maxRejectedMutationRecoveries`, band-aware) so a stale-hunk → targeted read → retry cycle is not starved by the text-only unfulfilled-execute nudge.
-- **Window bands** select shipped loop/stall standards from the effective context window (`compact` &lt; 50k, `standard` &lt; 100k, `wide` ≥ 100k). Edit permanent values in [`policy/loopPolicyBands.ts`](./policy/loopPolicyBands.ts). Merge order: `AGENT_ENGINE_THRESHOLDS` → band → optional host lab overrides (`loopPolicy.thresholds`). See [`policy/README.md`](./policy/README.md).
-- `apply_patch` failures use distinct reason codes (`old_text_not_found`, `old_text_ambiguous`, `patch_target_missing`, `patch_hash_mismatch`, `identical_old_and_new`, `patch_syntax_invalid`). Retryable codes attach current file content so the model can copy exact `oldText` without a separate re-read. Targeted discovery after a rejected mutation follows those codes, not warning-string matching. `patch_conflict` remains as a legacy umbrella. Optional `replaceAll` replaces every exact occurrence; the default remains unique match.
+- **Window bands** select shipped loop/stall standards from the effective context window (`compact` &lt; 50k, `standard` &lt; 100k, `wide` ≥ 100k). Permanent values: [`policy/loopPolicyBands.ts`](./policy/loopPolicyBands.ts) and [`windowBudgetBands.ts`](../../modules/window-budget/windowBudgetBands.ts). Edit with `pnpm policy-admin` (HTML UI), then rebuild. Optional Custom host overrides stay local-only. See [`policy/README.md`](./policy/README.md).
+- `apply_patch` failures use distinct reason codes (`old_text_not_found`, `old_text_ambiguous`, `patch_target_missing`, `patch_hash_mismatch`, `identical_old_and_new`, `patch_syntax_invalid`). Retryable codes (including no-op `identical_old_and_new`) attach current file content so the model can copy exact `oldText` without a separate re-read. Targeted discovery after a rejected mutation follows those codes, not warning-string matching. `patch_conflict` remains as a legacy umbrella. Optional `replaceAll` replaces every exact occurrence; the default remains unique match.
 - Compiler/tsc tool output is grouped by error code and asks for a class-wide batch, not one diagnostic at a time.
 - `budget_exhausted` after mutations still captures `repo_build_state` phase `after` so remaining error counts are visible.
 - Truncation on that same execute+write path recovers as a **tool-call** nudge, not essay continuation. Direct-answer truncation still continues the text.

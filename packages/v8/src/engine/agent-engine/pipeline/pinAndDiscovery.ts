@@ -455,7 +455,7 @@ export async function runDiscoveryPass(
     if (preReadEvidence.length > 0) {
       userParts.push(
         preReadEvidence,
-        `Contents above were already read for: ${preReadPaths.join(", ")}. Do not call read_file again for those paths unless you need a different line range that is not covered. Continue only if more surfaces are needed.`,
+        `Contents above were already read for: ${preReadPaths.join(", ")}. Do not call read_file again for those paths unless nextStartLine/uncovered lines are needed. Prefer read_file({ path, startLine: nextStartLine }) for remainder. Continue only if more surfaces are needed.`,
       );
     } else if (seeds.length > 0) {
       userParts.push(
@@ -586,15 +586,20 @@ export async function runDiscoveryPass(
         });
         budget.recordToolCall();
         const result = runtime.deps.tools
-          ? await runtime.deps.tools.execute({
-              schemaVersion: TOOL_RUNTIME_SCHEMA_VERSION,
-              callId: toolCall.id,
-              toolName: toolCall.name,
-              arguments: argumentsValue,
-              grant,
-              workspaceRoot: workspaceRoot!,
-              pinnedState,
-            })
+          ? await runtime.deps.tools.execute(
+              {
+                schemaVersion: TOOL_RUNTIME_SCHEMA_VERSION,
+                callId: toolCall.id,
+                toolName: toolCall.name,
+                arguments: argumentsValue,
+                grant,
+                workspaceRoot: workspaceRoot!,
+                pinnedState,
+              },
+              {
+                maxContentChars: windowPolicy.compaction.toolResultContentChars,
+              },
+            )
           : undefined;
         const status = result?.status ?? "failed";
         recordDiscoveryToolUse({
@@ -608,9 +613,13 @@ export async function runDiscoveryPass(
         if (readPaths && status === "succeeded") {
           budget.recordFileRead(readPaths);
           const text = extractDiscoveryReadText(result?.output);
-          if (text.length > 0 && readPaths[0]) {
+          const rawPath =
+            typeof (argumentsValue as { path?: unknown }).path === "string"
+              ? (argumentsValue as { path: string }).path
+              : readPaths[0]?.replace(/:\d+(?:-\d+)?$/, "");
+          if (text.length > 0 && rawPath) {
             preReadByPath.set(
-              readPaths[0].replace(/\\/g, "/").replace(/^\.\//, ""),
+              rawPath.replace(/\\/g, "/").replace(/^\.\//, ""),
               text.slice(0, perFileChars),
             );
           }
@@ -718,15 +727,20 @@ async function executeDiscoveryToolCall(
   });
   params.budget.recordToolCall();
   const result = runtime.deps.tools
-    ? await runtime.deps.tools.execute({
-        schemaVersion: TOOL_RUNTIME_SCHEMA_VERSION,
-        callId,
-        toolName: params.toolName,
-        arguments: params.argumentsValue,
-        grant: params.grant,
-        workspaceRoot: params.workspaceRoot,
-        pinnedState: params.pinnedState,
-      })
+    ? await runtime.deps.tools.execute(
+        {
+          schemaVersion: TOOL_RUNTIME_SCHEMA_VERSION,
+          callId,
+          toolName: params.toolName,
+          arguments: params.argumentsValue,
+          grant: params.grant,
+          workspaceRoot: params.workspaceRoot,
+          pinnedState: params.pinnedState,
+        },
+        {
+          maxContentChars: params.windowPolicy.compaction.toolResultContentChars,
+        },
+      )
     : undefined;
   const status = result?.status ?? "failed";
   recordDiscoveryToolUse({

@@ -8,7 +8,12 @@ export const DEFAULT_WINDOW_BUDGET_POLICY: WindowBudgetPolicy = {
   outputRatio: 0.2,
   /** Floor so a 30k window can emit a full mutation batch instead of 6k. */
   outputMinTokens: 10_240,
-  outputMaxTokens: 32_768,
+  /**
+   * Soft absolute ceiling on the planning output reserve. Prefer
+   * `outputWindowCapRatio` so the host context window stays the source of
+   * truth; keep this high enough that large windows are ratio-limited.
+   */
+  outputMaxTokens: 512_000,
   outputWindowCapRatio: 0.35,
   toolSchemaFallbackTokens: 8_000,
   toolSchemaFallbackWindowRatio: 0.2,
@@ -18,9 +23,9 @@ export const DEFAULT_WINDOW_BUDGET_POLICY: WindowBudgetPolicy = {
   conversationShare: 0.4,
   planShare: 0.06,
   skillsShare: 0.04,
-  planTokensCap: 16_000,
-  skillsTokensCap: 8_000,
-  repositoryTokensCap: 64_000,
+  planTokensCap: 32_000,
+  skillsTokensCap: 16_000,
+  repositoryTokensCap: 128_000,
   compactionWarnRatio: 0.7,
   compactionAutoRatio: 0.8,
   compactionHardRatio: 0.92,
@@ -35,7 +40,7 @@ export const DEFAULT_WINDOW_BUDGET_POLICY: WindowBudgetPolicy = {
   compactedToolArgumentCharsMax: 2_000,
   toolResultContentCharsRatio: 0.015,
   toolResultContentCharsMin: 2_000,
-  toolResultContentCharsMax: 24_000,
+  toolResultContentCharsMax: 64_000,
   droppedTurnSummaryCharsRatio: 0.01,
   droppedTurnSummaryCharsMin: 1_200,
   droppedTurnSummaryCharsMax: 8_000,

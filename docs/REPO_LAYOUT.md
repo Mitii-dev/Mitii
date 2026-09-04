@@ -19,13 +19,15 @@ Execution order:
 ```text
 apps/vscode ──┐
 apps/cli    ──┼──► packages/host ──► packages/sdk ──► packages/v8
-              │                         │
-tests/* ──────┤                         ├── modules/* (business facades)
-  (incl. tests/benchmark)               └── engine/*
+apps/daemon ──┤         │
+              │         └──► packages/automation  (schedules / claim runner)
+tests/* ──────┘
+  (incl. tests/benchmark)
 
 Forbidden:
-  packages/v8 → apps/* | packages/sdk | packages/host | vscode | webview
-  packages/sdk → apps/* | packages/host | vscode
+  packages/v8 → apps/* | packages/sdk | packages/host | packages/automation | vscode | webview
+  packages/sdk → apps/* | packages/host | packages/automation | vscode
+  packages/automation → apps/* | packages/sdk | packages/host | packages/v8
   packages/host → apps/* | vscode
   apps/* → another app's internals
   any product package → tests/* | legacy/*
@@ -42,10 +44,12 @@ mitii/
 ├── packages/
 │   ├── v8/                      # @mitii/v8
 │   ├── sdk/                     # @mitii/sdk
-│   └── host/                    # @mitii/host (shared host kit: indexing / ports / presets)
+│   ├── host/                    # @mitii/host (shared host kit: indexing / ports / presets)
+│   └── automation/              # @mitii/automation (Phase 1 control plane)
 ├── apps/
 │   ├── vscode/
-│   └── cli/
+│   ├── cli/                     # mitii schedule | serve | ask …
+│   └── daemon/                  # mitii-daemon (long-lived serve)
 ├── tests/                       # Phase 14
 │   ├── reports/
 │   ├── benchmark/               # solid suite (from repo-root benchmark/)
@@ -67,7 +71,9 @@ After Phase 16 + human purge the active root must not keep a second `src/` kerne
 | V8 runtime | `@mitii/v8` | `packages/v8` |
 | SDK | `@mitii/sdk` | hosts/tests use this |
 | Host kit | `@mitii/host` | shared indexing, ports adapters, presets, checkpoints, project rules |
-| CLI | `@mitii/cli` | solid benchmark agent target |
+| Automation | `@mitii/automation` | schedules, SQLite runs, claim/lease runner (Phase 1) |
+| CLI | `@mitii/cli` | solid benchmark agent target; `schedule` / `serve` |
+| Daemon | `@mitii/daemon` | long-lived automation process entry |
 | VS Code extension | `@mitii/vscode` | VSIX; F5 development path |
 | Solid benchmark | `@mitii/solid-benchmark` | `tests/benchmark` |
 | Workspace root | private | never published as product |
@@ -75,7 +81,7 @@ After Phase 16 + human purge the active root must not keep a second `src/` kerne
 ## 4. Binding decisions
 
 1. Host → SDK → V8 is mandatory for VS Code and CLI.
-2. Daemon / channels / board were purged with `legacy/`; adapt only if reintroduced as new `apps/*` over SDK with score ≥7.
+2. Daemon / channels / board: daemon reintroduced as `apps/daemon` + `@mitii/automation` (Phase 1). Channels/board remain deferred unless scored ≥7.
 3. **Legacy vault:** purged (2026-07-26) via `pnpm run legacy:purge`. Do not recreate `src/kernel` or a second legacy tree.
 4. **F5** loads `apps/vscode` only (`docs/INITIAL_LAUNCH.md`).
 5. **Tests:** only `tests/` + package-local `*.spec.ts`; old suites were vaulted then purged, not ported.

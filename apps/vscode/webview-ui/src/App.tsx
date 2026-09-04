@@ -9,6 +9,7 @@ import {
 } from 'react';
 
 import { onHostMessage, postToHost } from './bridge';
+import { AutomationsPanel } from './components/AutomationsPanel';
 import { ContextPanel, type ContextPin } from './components/ContextPanel';
 import { ErrorBanner } from './components/ErrorBanner';
 import { HistoryPanel } from './components/HistoryPanel';
@@ -17,11 +18,15 @@ import {
   IconChat,
   IconCopy,
   IconHistory,
+  IconCheck,
+  IconLayers,
+  IconModel,
   IconPlus,
   IconSend,
   IconSettings,
-  IconSkills,
+  IconSlash,
   IconStop,
+  IconChevronDown,
 } from './components/Icons';
 import { IndexingStatusBar } from './components/IndexingStatusBar';
 import type { ChatTurn, TurnSegment } from './components/MessageList';
@@ -38,16 +43,22 @@ import { PlanFollowStrip } from './components/PlanPanel';
 import { ReviewPanel } from './components/ReviewPanel';
 import { SettingsErrorBoundary } from './components/SettingsErrorBoundary';
 import { SettingsPanel } from './components/SettingsPanel';
-import { SkillManagementPanel } from './components/skills/SkillManagementPanel';
 import { WorkspaceBanner } from './components/WorkspaceBanner';
 import { deriveLiveTokenBudgetPreview } from '@mitii/live-token-budget';
 import { getProviderPreset, modelsForProvider } from './providerOptions';
+import {
+  detectSkillMentionQuery,
+  filterSkillSuggestions,
+  skillCatalogSuggestSideEffects,
+} from './skillSuggest';
 import type {
   ActivityEventPayload,
   AgentUiDepth,
   AgentUiEffort,
   AgentUiMode,
   AgentUiThoroughness,
+  AutomationRunView,
+  AutomationSpecView,
   ChatThreadSummary,
   CheckpointItemView,
   ContextToggles,
@@ -68,6 +79,7 @@ import type {
   SkillCatalogItem,
   TokenBudgetSettingsSnapshot,
   LoopPolicySettingsSnapshot,
+  PolicyLabSettingsSnapshot,
   TokenUsageSnapshot,
   UiSettingsPatch,
   UiNav,
@@ -150,6 +162,38 @@ const DEFAULT_LOOP_POLICY: LoopPolicySettingsSnapshot = {
   fields: [],
 };
 
+const DEFAULT_POLICY_LAB: PolicyLabSettingsSnapshot = {
+  enabled: false,
+  filePath: 'packages/v8/.../loopPolicyBands.ts + windowBudgetBands.ts',
+  exists: true,
+  previewContextWindowTokens: 35_000,
+  activeBand: {
+    id: 'compact',
+    label: 'Compact',
+    rangeLabel: '< 50k',
+    contextWindowTokens: 35_000,
+  },
+  editBand: 'compact',
+  bands: [
+    { id: 'compact', label: 'Compact', rangeLabel: '< 50k' },
+    { id: 'standard', label: 'Standard', rangeLabel: '50k – < 100k' },
+    { id: 'wide', label: 'Wide', rangeLabel: '≥ 100k' },
+  ],
+  loopByBand: { compact: {}, standard: {}, wide: {} },
+  windowByBand: { compact: {}, standard: {}, wide: {} },
+  loopOverrides: {},
+  windowOverrides: {},
+  loopThresholds: {},
+  loopBandThresholds: {},
+  windowPolicy: {},
+  windowBandPolicy: {},
+  loopFields: [],
+  windowFields: [],
+  loopBandHint: 'Compact (< 50k)',
+  shipPreviewNote:
+    'Save writes V8 source. Rebuild before runs use the new ship values.',
+};
+
 const DEFAULT_UI: UiSettingsSnapshot = {
   showReasoning: true,
   reasoningPreviewMaxChars: 8000,
@@ -184,9 +228,127 @@ const DEFAULT_UI: UiSettingsSnapshot = {
   modelIoLogging: false,
   tokenBudget: DEFAULT_TOKEN_BUDGET,
   loopPolicy: DEFAULT_LOOP_POLICY,
+  policyLab: DEFAULT_POLICY_LAB,
 };
 
 type SettingsMode = 'ask' | 'plan' | 'agent';
+
+function hydrateUiSnapshot(
+  raw: Partial<UiSettingsSnapshot> | undefined,
+): UiSettingsSnapshot {
+  return {
+    ...DEFAULT_UI,
+    ...(raw ?? {}),
+    modeDefaults: {
+      ...DEFAULT_UI.modeDefaults,
+      ...(raw?.modeDefaults ?? {}),
+    },
+    contextToggles: {
+      ...DEFAULT_CONTEXT_TOGGLES,
+      ...(raw?.contextToggles ?? {}),
+    },
+    runBudget: {
+      ...DEFAULT_RUN_BUDGET,
+      ...(raw?.runBudget ?? {}),
+    },
+    tokenBudget: {
+      ...DEFAULT_TOKEN_BUDGET,
+      ...(raw?.tokenBudget ?? {}),
+      policy: {
+        ...DEFAULT_TOKEN_BUDGET.policy,
+        ...(raw?.tokenBudget?.policy ?? {}),
+      },
+      fields: raw?.tokenBudget?.fields?.length
+        ? raw.tokenBudget.fields
+        : DEFAULT_TOKEN_BUDGET.fields,
+      preview: raw?.tokenBudget?.preview ?? DEFAULT_TOKEN_BUDGET.preview,
+    },
+    loopPolicy: {
+      ...DEFAULT_LOOP_POLICY,
+      ...(raw?.loopPolicy ?? {}),
+      thresholds: {
+        ...DEFAULT_LOOP_POLICY.thresholds,
+        ...(raw?.loopPolicy?.thresholds ?? {}),
+      },
+      bandThresholds: {
+        ...DEFAULT_LOOP_POLICY.bandThresholds,
+        ...(raw?.loopPolicy?.bandThresholds ?? {}),
+      },
+      band: raw?.loopPolicy?.band ?? DEFAULT_LOOP_POLICY.band,
+      fields: raw?.loopPolicy?.fields?.length
+        ? raw.loopPolicy.fields
+        : DEFAULT_LOOP_POLICY.fields,
+    },
+    policyLab: {
+      ...DEFAULT_POLICY_LAB,
+      ...(raw?.policyLab ?? {}),
+      activeBand: raw?.policyLab?.activeBand ?? DEFAULT_POLICY_LAB.activeBand,
+      bands: raw?.policyLab?.bands?.length
+        ? raw.policyLab.bands
+        : DEFAULT_POLICY_LAB.bands,
+      loopByBand: {
+        compact: {
+          ...DEFAULT_POLICY_LAB.loopByBand.compact,
+          ...(raw?.policyLab?.loopByBand?.compact ?? {}),
+        },
+        standard: {
+          ...DEFAULT_POLICY_LAB.loopByBand.standard,
+          ...(raw?.policyLab?.loopByBand?.standard ?? {}),
+        },
+        wide: {
+          ...DEFAULT_POLICY_LAB.loopByBand.wide,
+          ...(raw?.policyLab?.loopByBand?.wide ?? {}),
+        },
+      },
+      windowByBand: {
+        compact: {
+          ...DEFAULT_POLICY_LAB.windowByBand.compact,
+          ...(raw?.policyLab?.windowByBand?.compact ?? {}),
+        },
+        standard: {
+          ...DEFAULT_POLICY_LAB.windowByBand.standard,
+          ...(raw?.policyLab?.windowByBand?.standard ?? {}),
+        },
+        wide: {
+          ...DEFAULT_POLICY_LAB.windowByBand.wide,
+          ...(raw?.policyLab?.windowByBand?.wide ?? {}),
+        },
+      },
+      loopOverrides: {
+        ...DEFAULT_POLICY_LAB.loopOverrides,
+        ...(raw?.policyLab?.loopOverrides ?? {}),
+      },
+      windowOverrides: {
+        ...DEFAULT_POLICY_LAB.windowOverrides,
+        ...(raw?.policyLab?.windowOverrides ?? {}),
+      },
+      loopThresholds: {
+        ...DEFAULT_POLICY_LAB.loopThresholds,
+        ...(raw?.policyLab?.loopThresholds ?? {}),
+      },
+      loopBandThresholds: {
+        ...DEFAULT_POLICY_LAB.loopBandThresholds,
+        ...(raw?.policyLab?.loopBandThresholds ?? {}),
+      },
+      windowPolicy: {
+        ...DEFAULT_POLICY_LAB.windowPolicy,
+        ...(raw?.policyLab?.windowPolicy ?? {}),
+      },
+      windowBandPolicy: {
+        ...DEFAULT_POLICY_LAB.windowBandPolicy,
+        ...(raw?.policyLab?.windowBandPolicy ?? {}),
+      },
+      loopFields: raw?.policyLab?.loopFields?.length
+        ? raw.policyLab.loopFields
+        : DEFAULT_POLICY_LAB.loopFields,
+      windowFields: raw?.policyLab?.windowFields?.length
+        ? raw.policyLab.windowFields
+        : DEFAULT_POLICY_LAB.windowFields,
+      shipPreviewNote:
+        raw?.policyLab?.shipPreviewNote ?? DEFAULT_POLICY_LAB.shipPreviewNote,
+    },
+  };
+}
 
 function settingsModeFor(mode: AgentUiMode): SettingsMode {
   return mode === 'plan' || mode === 'agent' ? mode : 'ask';
@@ -215,9 +377,18 @@ function mergeUiPatch(
   base: UiSettingsSnapshot,
   patch: UiSettingsPatch,
 ): UiSettingsSnapshot {
+  const {
+    contextToggles: _ct,
+    modeDefaults: _md,
+    runBudget: _rb,
+    tokenBudget: _tb,
+    loopPolicy: _lp,
+    policyLab: _pl,
+    ...scalarPatch
+  } = patch;
   return {
     ...base,
-    ...patch,
+    ...scalarPatch,
     contextToggles: patch.contextToggles
       ? { ...base.contextToggles, ...patch.contextToggles }
       : base.contextToggles,
@@ -269,7 +440,86 @@ function mergeUiPatch(
           fields: base.loopPolicy.fields,
         }
       : base.loopPolicy,
+    policyLab: patch.policyLab
+      ? {
+          ...base.policyLab,
+          ...patch.policyLab,
+          loopByBand: {
+            compact: {
+              ...base.policyLab.loopByBand.compact,
+              ...(patch.policyLab.loopByBand?.compact ?? {}),
+            },
+            standard: {
+              ...base.policyLab.loopByBand.standard,
+              ...(patch.policyLab.loopByBand?.standard ?? {}),
+            },
+            wide: {
+              ...base.policyLab.loopByBand.wide,
+              ...(patch.policyLab.loopByBand?.wide ?? {}),
+            },
+          },
+          windowByBand: {
+            compact: {
+              ...base.policyLab.windowByBand.compact,
+              ...(patch.policyLab.windowByBand?.compact ?? {}),
+            },
+            standard: {
+              ...base.policyLab.windowByBand.standard,
+              ...(patch.policyLab.windowByBand?.standard ?? {}),
+            },
+            wide: {
+              ...base.policyLab.windowByBand.wide,
+              ...(patch.policyLab.windowByBand?.wide ?? {}),
+            },
+          },
+          loopOverrides: {
+            ...base.policyLab.loopOverrides,
+            ...(patch.policyLab.loopOverrides ?? {}),
+          },
+          windowOverrides: {
+            ...base.policyLab.windowOverrides,
+            ...(patch.policyLab.windowOverrides ?? {}),
+          },
+          loopThresholds: {
+            ...base.policyLab.loopThresholds,
+            ...(patch.policyLab.loopThresholds ?? {}),
+          },
+          windowPolicy: {
+            ...base.policyLab.windowPolicy,
+            ...(patch.policyLab.windowPolicy ?? {}),
+          },
+          loopBandThresholds: base.policyLab.loopBandThresholds,
+          windowBandPolicy: base.policyLab.windowBandPolicy,
+          loopFields: base.policyLab.loopFields,
+          windowFields: base.policyLab.windowFields,
+          bands: base.policyLab.bands,
+          activeBand: patch.policyLab.activeBand ?? base.policyLab.activeBand,
+          shipPreviewNote:
+            patch.policyLab.shipPreviewNote ?? base.policyLab.shipPreviewNote,
+        }
+      : base.policyLab,
   };
+}
+
+function clearStaleModeModelDefaultsAfterProviderModelChange(params: {
+  ui: UiSettingsSnapshot;
+  previousProviderModel: string;
+  nextProviderModel: string;
+}): UiSettingsSnapshot {
+  const previous = params.previousProviderModel.trim();
+  const next = params.nextProviderModel.trim();
+  if (!previous || previous === next) return params.ui;
+  let changed = false;
+  const modeDefaults = { ...params.ui.modeDefaults };
+  for (const mode of ['ask', 'plan', 'agent'] as const) {
+    if ((modeDefaults[mode].model ?? '').trim() !== previous) continue;
+    changed = true;
+    modeDefaults[mode] = {
+      ...modeDefaults[mode],
+      model: '',
+    };
+  }
+  return changed ? { ...params.ui, modeDefaults } : params.ui;
 }
 
 /** Tool titles switch from "Running X" (started) to plain "X" (completed) — normalize so both merge into one row. */
@@ -437,6 +687,116 @@ function mergeModelOptions(
   return [...set];
 }
 
+interface ModelQuickSelectProps {
+  label: string;
+  value: string;
+  custom: boolean;
+  options: string[];
+  onSelect: (value: string) => void;
+  onCustomMode: () => void;
+  onDraftChange: (value: string) => void;
+  onCommitCustom: () => void;
+}
+
+function ModelQuickSelect({
+  label,
+  value,
+  custom,
+  options,
+  onSelect,
+  onCustomMode,
+  onDraftChange,
+  onCommitCustom,
+}: ModelQuickSelectProps) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    const timer = window.setTimeout(() => {
+      window.addEventListener('pointerdown', onPointerDown);
+    }, 0);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div className="model-quick-select" ref={rootRef}>
+      <button
+        type="button"
+        className="model-quick-select__trigger"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        title={`Model: ${label}`}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <IconModel />
+        <span>{label}</span>
+      </button>
+      {open ? (
+        <div className="model-quick-select__menu" role="listbox" aria-label="Model">
+          {options.map((id) => {
+            const selected = !custom && id === value;
+            return (
+              <button
+                key={id}
+                type="button"
+                className={`model-quick-select__option${selected ? ' is-selected' : ''}`}
+                role="option"
+                aria-selected={selected}
+                onClick={() => {
+                  onSelect(id);
+                  setOpen(false);
+                }}
+              >
+                <span className="model-quick-select__option-text">{id}</span>
+                <span className="model-quick-select__check" aria-hidden>
+                  {selected ? <IconCheck /> : null}
+                </span>
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            className={`model-quick-select__option${custom ? ' is-selected' : ''}`}
+            role="option"
+            aria-selected={custom}
+            onClick={() => {
+              onCustomMode();
+              setOpen(false);
+            }}
+          >
+            <span className="model-quick-select__option-text">Custom model</span>
+            <span className="model-quick-select__check" aria-hidden>
+              {custom ? <IconCheck /> : null}
+            </span>
+          </button>
+        </div>
+      ) : null}
+      {custom ? (
+        <input
+          className="model-custom-input model-custom-input--inline"
+          value={value}
+          placeholder="model id"
+          onChange={(event) => onDraftChange(event.target.value)}
+          onBlur={onCommitCustom}
+          title="Custom model id"
+        />
+      ) : null}
+    </div>
+  );
+}
+
 export function App() {
   const [nav, setNav] = useState<UiNav>('chat');
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('model');
@@ -448,6 +808,7 @@ export function App() {
   const [approvalMode, setApprovalMode] = useState<ApprovalUiMode>('guided');
   const [prompt, setPrompt] = useState('');
   const [pinned, setPinned] = useState<ContextPin[]>([]);
+  const [pinnedSkillIds, setPinnedSkillIds] = useState<string[]>([]);
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -455,6 +816,7 @@ export function App() {
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [suggestQuery, setSuggestQuery] = useState('');
+  const [suggestKind, setSuggestKind] = useState<'path' | 'skill'>('path');
   const [activeSuggest, setActiveSuggest] = useState(0);
   const [workspace, setWorkspace] = useState<WorkspaceSnapshotInfo>({});
   const [provider, setProvider] = useState<ProviderSettingsSnapshot>({
@@ -473,6 +835,7 @@ export function App() {
   const [tokenUsage, setTokenUsage] =
     useState<TokenUsageSnapshot>(EMPTY_TOKEN_USAGE);
   const [testingConnection, setTestingConnection] = useState(false);
+  const [refreshingModels, setRefreshingModels] = useState(false);
   const [connectionMessage, setConnectionMessage] = useState<string | null>(
     null,
   );
@@ -490,7 +853,6 @@ export function App() {
   const [overrideDraft, setOverrideDraft] = useState('');
   const [notice, setNotice] = useState<WorkspaceNoticeView | null>(null);
   const [onboardingRequired, setOnboardingRequired] = useState(false);
-  const [skillManagement, setSkillManagement] = useState(false);
   const [history, setHistory] = useState<ChatThreadSummary[]>([]);
   const [activeThreadId, setActiveThreadId] = useState<string | undefined>();
   const [memories, setMemories] = useState<MemoryItemView[]>([]);
@@ -501,11 +863,16 @@ export function App() {
 
   const [review, setReview] = useState<ReviewDiffView | null>(null);
   const [skillItems, setSkillItems] = useState<SkillCatalogItem[]>([]);
-  const [skillError, setSkillError] = useState<string | null>(null);
-  const [skillLoading, setSkillLoading] = useState(false);
+  const [automationSpecs, setAutomationSpecs] = useState<AutomationSpecView[]>(
+    [],
+  );
+  const [automationRuns, setAutomationRuns] = useState<AutomationRunView[]>([]);
+  const [automationLoading, setAutomationLoading] = useState(false);
+  const [automationError, setAutomationError] = useState<string | null>(null);
 
   const searchReq = useRef(0);
   const lastSearchId = useRef('');
+  const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
@@ -515,9 +882,14 @@ export function App() {
   const modeRef = useRef<AgentUiMode>(mode);
   const uiRef = useRef<UiSettingsSnapshot>(ui);
   const providerRef = useRef<ProviderSettingsSnapshot>(provider);
+  const indexRef = useRef<IndexStatusSnapshot>(index);
+  const savedProviderModelRef = useRef(provider.model);
   const listModelsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hydratedModeDefaults = useRef(false);
   const readySentRef = useRef(false);
+  /** Unsaved provider connection edits — bootstrap must not wipe these. */
+  const providerDraftDirtyRef = useRef(false);
+  const settingsSavingRef = useRef(false);
   /** Paths the user removed; skip auto-re-pin while the file stays open. */
   const dismissedAutoPinsRef = useRef(new Set<string>());
 
@@ -585,71 +957,60 @@ export function App() {
   const applyBootstrap = useCallback((msg: HostToWebviewMessage) => {
     if (msg.type === 'bootstrap' || msg.type === 'settings') {
       setWorkspace(msg.workspace);
+      const draft = providerRef.current;
+      const preserveDraft =
+        providerDraftDirtyRef.current && !settingsSavingRef.current;
+      const nextContextWindow = Number.isFinite(msg.provider.contextWindow)
+        ? Math.max(0, Math.floor(msg.provider.contextWindow))
+        : 0;
+      const nextEffectiveContextWindow = Number.isFinite(
+        msg.provider.effectiveContextWindow,
+      )
+        ? Math.max(1, Math.floor(msg.provider.effectiveContextWindow ?? 0))
+        : undefined;
+      const nextMaximumOutputTokens = Number.isFinite(
+        msg.provider.maximumOutputTokens,
+      )
+        ? Math.max(0, Math.floor(msg.provider.maximumOutputTokens))
+        : 0;
+      const normalizedMaximumOutputTokens =
+        nextMaximumOutputTokens === 5_000 ? 0 : nextMaximumOutputTokens;
+      const nextModel = preserveDraft
+        ? draft.model
+        : (msg.provider.model ?? '');
       updateProvider({
-        ...msg.provider,
-        contextWindow: Number.isFinite(msg.provider.contextWindow)
-          ? Math.max(0, Math.floor(msg.provider.contextWindow))
-          : 0,
-        effectiveContextWindow: Number.isFinite(
-          msg.provider.effectiveContextWindow,
-        )
-          ? Math.max(1, Math.floor(msg.provider.effectiveContextWindow ?? 0))
-          : undefined,
-        maximumOutputTokens: Number.isFinite(msg.provider.maximumOutputTokens)
-          ? Math.max(0, Math.floor(msg.provider.maximumOutputTokens))
-          : 0,
+        type: preserveDraft ? draft.type : msg.provider.type,
+        preset: preserveDraft ? draft.preset : msg.provider.preset,
+        baseUrl: preserveDraft ? draft.baseUrl : msg.provider.baseUrl,
+        model: nextModel,
+        hasApiKey: msg.provider.hasApiKey,
+        availableModels: mergeModelOptions(
+          [
+            ...(msg.provider.availableModels ?? []),
+            ...(preserveDraft ? (draft.availableModels ?? []) : []),
+          ],
+          nextModel,
+        ),
+        contextWindow: preserveDraft ? draft.contextWindow : nextContextWindow,
+        effectiveContextWindow: nextEffectiveContextWindow,
+        maximumOutputTokens: preserveDraft
+          ? draft.maximumOutputTokens === 5_000
+            ? 0
+            : draft.maximumOutputTokens
+          : normalizedMaximumOutputTokens,
+        connectionOk: msg.provider.connectionOk,
+        connectionStatus: msg.provider.connectionStatus,
       });
+      if (!preserveDraft) {
+        providerDraftDirtyRef.current = false;
+        savedProviderModelRef.current = msg.provider.model ?? '';
+      }
       setProfiles(msg.profiles ?? []);
       setActiveProfileId(msg.activeProfileId ?? 'default');
       setMcp(msg.mcp);
       setMcpStore(msg.mcpStore ?? []);
       setMcpRuntimeStatus(msg.mcpRuntimeStatus);
-      const nextUi = {
-        ...DEFAULT_UI,
-        ...msg.ui,
-        modeDefaults: {
-          ...DEFAULT_UI.modeDefaults,
-          ...msg.ui.modeDefaults,
-        },
-        contextToggles: {
-          ...DEFAULT_CONTEXT_TOGGLES,
-          ...msg.ui.contextToggles,
-        },
-        runBudget: {
-          ...DEFAULT_RUN_BUDGET,
-          ...msg.ui.runBudget,
-        },
-        tokenBudget: {
-          ...DEFAULT_TOKEN_BUDGET,
-          ...msg.ui.tokenBudget,
-          policy: {
-            ...DEFAULT_TOKEN_BUDGET.policy,
-            ...(msg.ui.tokenBudget?.policy ?? {}),
-          },
-          fields:
-            msg.ui.tokenBudget?.fields?.length
-              ? msg.ui.tokenBudget.fields
-              : DEFAULT_TOKEN_BUDGET.fields,
-          preview: msg.ui.tokenBudget?.preview ?? DEFAULT_TOKEN_BUDGET.preview,
-        },
-        loopPolicy: {
-          ...DEFAULT_LOOP_POLICY,
-          ...msg.ui.loopPolicy,
-          thresholds: {
-            ...DEFAULT_LOOP_POLICY.thresholds,
-            ...(msg.ui.loopPolicy?.thresholds ?? {}),
-          },
-          bandThresholds: {
-            ...DEFAULT_LOOP_POLICY.bandThresholds,
-            ...(msg.ui.loopPolicy?.bandThresholds ?? {}),
-          },
-          band: msg.ui.loopPolicy?.band ?? DEFAULT_LOOP_POLICY.band,
-          fields:
-            msg.ui.loopPolicy?.fields?.length
-              ? msg.ui.loopPolicy.fields
-              : DEFAULT_LOOP_POLICY.fields,
-        },
-      };
+      const nextUi = hydrateUiSnapshot(msg.ui);
       const previousUi = uiRef.current;
       uiRef.current = nextUi;
       setUi(nextUi);
@@ -678,21 +1039,26 @@ export function App() {
       applyTokenUsage(msg.tokenUsage);
       setNotice(msg.notice);
       setCustomModel((wasCustom) => {
-        const nextModel = msg.provider.model?.trim() ?? '';
         const catalog = new Set([
+          ...(preserveDraft
+            ? (draft.availableModels ?? [])
+            : (msg.provider.availableModels ?? [])),
           ...(msg.provider.availableModels ?? []),
-          ...modelsForProvider(msg.provider.preset ?? msg.provider.type),
+          ...modelsForProvider(
+            (preserveDraft ? draft.preset : msg.provider.preset) ??
+              (preserveDraft ? draft.type : msg.provider.type),
+          ),
         ]);
-        return Boolean(nextModel) && (wasCustom || !catalog.has(nextModel));
+        return Boolean(nextModel.trim()) && (wasCustom || !catalog.has(nextModel));
       });
       if (msg.provider.connectionStatus) {
         setConnectionMessage(msg.provider.connectionStatus);
       }
+      settingsSavingRef.current = false;
       setSettingsSaving(false);
       if (msg.type === 'bootstrap') {
         setIndex(msg.index);
         setOnboardingRequired(msg.onboardingRequired);
-        setSkillManagement(msg.flags.skillManagement);
         setHistory(msg.history);
         setActiveThreadId(msg.activeThreadId);
         if (!activeAssistantId.current) {
@@ -710,12 +1076,35 @@ export function App() {
   }, [applyTokenUsage]);
 
   useEffect(() => {
+    if (!settingsSaving) return;
+    // Last-resort unlock if the host never acks (should be rare after settings.saved).
+    const timer = window.setTimeout(() => {
+      if (!settingsSavingRef.current) return;
+      settingsSavingRef.current = false;
+      setSettingsSaving(false);
+    }, 45_000);
+    return () => window.clearTimeout(timer);
+  }, [settingsSaving]);
+
+  useEffect(() => {
+    if (!refreshingModels) return;
+    const timer = window.setTimeout(() => {
+      setRefreshingModels(false);
+    }, 12_000);
+    return () => window.clearTimeout(timer);
+  }, [refreshingModels]);
+
+  useEffect(() => {
     modeRef.current = mode;
   }, [mode]);
 
   useEffect(() => {
     uiRef.current = ui;
   }, [ui]);
+
+  useEffect(() => {
+    indexRef.current = index;
+  }, [index]);
 
   const markSuspensionResumed = useCallback((runId: string) => {
     setRunning(true);
@@ -946,10 +1335,8 @@ export function App() {
           break;
         case 'syncAutoPins': {
           const open = new Set(msg.paths);
-          // Allow auto-pin again after the file is closed and reopened.
-          for (const path of [...dismissedAutoPinsRef.current]) {
-            if (!open.has(path)) dismissedAutoPinsRef.current.delete(path);
-          }
+          // Keep user dismissals for the rest of the session. Clearing them when
+          // a tab briefly leaves the open set made removed pins come right back.
           setPinned((prev) => {
             const kept = prev.filter(
               (p) => p.source === 'user' || open.has(p.path),
@@ -1030,10 +1417,25 @@ export function App() {
         case 'setCheckpoints':
           setCheckpoints(msg.checkpoints);
           break;
-        case 'skillCatalogResult':
+        case 'skillCatalogResult': {
+          const suggestEffects = skillCatalogSuggestSideEffects(
+            msg.requestId,
+            lastSearchId.current,
+          );
+          if (!suggestEffects) {
+            break;
+          }
           setSkillItems(msg.items);
-          setSkillError(msg.error ?? null);
-          setSkillLoading(false);
+          setSuggestLoading(false);
+          setSuggestOpen(suggestEffects.suggestOpen);
+          setActiveSuggest(suggestEffects.activeSuggest);
+          break;
+        }
+        case 'automationsResult':
+          setAutomationSpecs(msg.specs);
+          setAutomationRuns(msg.runs);
+          setAutomationError(msg.error ?? null);
+          setAutomationLoading(false);
           break;
         case 'onboarding':
           setOnboardingRequired(msg.required);
@@ -1060,10 +1462,18 @@ export function App() {
           }
           break;
         case 'provider.models':
+          setRefreshingModels(false);
           updateProvider((p) => ({
             ...p,
             availableModels: mergeModelOptions(msg.models, p.model),
           }));
+          break;
+        case 'settings.saved':
+          settingsSavingRef.current = false;
+          setSettingsSaving(false);
+          if (!msg.ok) {
+            setError(msg.message ?? 'Settings could not be saved.');
+          }
           break;
         case 'tokenUsage':
           applyTokenUsage(msg.usage);
@@ -1119,11 +1529,13 @@ export function App() {
       effort: intensity.effort,
       approvalMode,
       pinnedPaths: pinned.map((p) => p.path),
+      requiredSkillIds: pinnedSkillIds,
     });
     setPrompt('');
+    setPinnedSkillIds([]);
     setSuggestLoading(false);
     setSuggestOpen(false);
-  }, [prompt, running, mode, ui, approvalMode, pinned]);
+  }, [prompt, running, mode, ui, approvalMode, pinned, pinnedSkillIds]);
 
   const executePendingPlan = useCallback(() => {
     if (running) return;
@@ -1142,7 +1554,7 @@ export function App() {
     setEffort(intensity.effort);
     setApprovalMode(normalizeApproval(agentDefaults.approvalMode));
     const nextModel = agentDefaults.model?.trim();
-    if (nextModel) saveModel(nextModel);
+    if (nextModel) saveModel(nextModel, { clearStaleModeDefaults: false });
     postToHost({
       type: 'ask',
       prompt: 'Implement the pending plan.',
@@ -1151,17 +1563,35 @@ export function App() {
       effort: intensity.effort,
       approvalMode: agentDefaults.approvalMode,
       pinnedPaths: pinned.map((p) => p.path),
+      requiredSkillIds: pinnedSkillIds,
     });
     setPrompt('');
+    setPinnedSkillIds([]);
     setSuggestLoading(false);
     setSuggestOpen(false);
-  }, [running, ui, pinned]);
+  }, [running, ui, pinned, pinnedSkillIds]);
 
   const onPromptChange = (value: string) => {
     setPrompt(value);
+    const skillQuery = detectSkillMentionQuery(value);
+    if (skillQuery !== null) {
+      setSuggestKind('skill');
+      setSuggestQuery(skillQuery);
+      const requestId = String(++searchReq.current);
+      lastSearchId.current = requestId;
+      setSuggestLoading(true);
+      setSuggestOpen(true);
+      postToHost({
+        type: 'requestSkillCatalog',
+        requestId,
+        query: skillQuery || undefined,
+      });
+      return;
+    }
     const match = value.match(/@([\w./_-]*)$/);
     if (match) {
       const q = match[1] ?? '';
+      setSuggestKind('path');
       setSuggestQuery(q);
       const requestId = String(++searchReq.current);
       lastSearchId.current = requestId;
@@ -1192,6 +1622,56 @@ export function App() {
     setSuggestLoading(false);
     setSuggestOpen(false);
   };
+
+  const insertSkillMention = (skillId: string) => {
+    const replaced = prompt.replace(
+      /@skill:[a-z0-9_.-]*$/i,
+      `@skill:${skillId} `,
+    );
+    setPrompt(replaced);
+    setPinnedSkillIds((prev) =>
+      prev.includes(skillId) ? prev : [...prev, skillId].slice(0, 3),
+    );
+    setSuggestLoading(false);
+    setSuggestOpen(false);
+  };
+
+  const pinSkill = (skillId: string) => {
+    setPinnedSkillIds((prev) =>
+      prev.includes(skillId) ? prev : [...prev, skillId].slice(0, 3),
+    );
+    setSuggestLoading(false);
+    setSuggestOpen(false);
+  };
+
+  const selectSkill = (skillId: string) => {
+    if (/@skill:[a-z0-9_.-]*$/i.test(prompt)) {
+      insertSkillMention(skillId);
+      return;
+    }
+    pinSkill(skillId);
+  };
+
+  const openSkillPicker = () => {
+    setSuggestKind('skill');
+    setSuggestQuery('');
+    setActiveSuggest(0);
+    const requestId = String(++searchReq.current);
+    lastSearchId.current = requestId;
+    setSuggestLoading(true);
+    setSuggestOpen(true);
+    postToHost({
+      type: 'requestSkillCatalog',
+      requestId,
+      query: undefined,
+    });
+    promptTextareaRef.current?.focus();
+  };
+
+  const filteredSkillSuggestions = filterSkillSuggestions(
+    skillItems,
+    suggestQuery,
+  );
 
   const openFile = useCallback(
     (path: string, line?: number, column?: number) => {
@@ -1258,6 +1738,7 @@ export function App() {
     }
     const send = () => {
       if (type === 'echo') return;
+      setRefreshingModels(true);
       postToHost({
         type: 'provider.listModels',
         provider: { type, baseUrl },
@@ -1270,6 +1751,11 @@ export function App() {
     listModelsTimerRef.current = setTimeout(send, 400);
   };
 
+  const refreshModels = () => {
+    const current = providerRef.current;
+    requestListedModels(current.type, current.baseUrl, true);
+  };
+
   const handleProviderChange = (
     next:
       | ProviderSettingsSnapshot
@@ -1278,6 +1764,27 @@ export function App() {
     const before = providerRef.current;
     updateProvider(next);
     const after = providerRef.current;
+    if (
+      after.type !== before.type ||
+      after.preset !== before.preset ||
+      after.baseUrl !== before.baseUrl ||
+      after.model !== before.model ||
+      after.contextWindow !== before.contextWindow ||
+      after.maximumOutputTokens !== before.maximumOutputTokens
+    ) {
+      providerDraftDirtyRef.current = true;
+    }
+    if (after.model.trim() !== before.model.trim()) {
+      const nextUi = clearStaleModeModelDefaultsAfterProviderModelChange({
+        ui: uiRef.current,
+        previousProviderModel: before.model,
+        nextProviderModel: after.model,
+      });
+      if (nextUi !== uiRef.current) {
+        uiRef.current = nextUi;
+        setUi(nextUi);
+      }
+    }
     if (after.type !== before.type) {
       requestListedModels(after.type, after.baseUrl, true);
     } else if (after.baseUrl !== before.baseUrl) {
@@ -1288,12 +1795,14 @@ export function App() {
   const onProviderTypeChange = (presetId: string) => {
     const preset = getProviderPreset(presetId);
     const type = preset?.type ?? presetId;
+    providerDraftDirtyRef.current = true;
     updateProvider((p) => ({
       ...p,
       type,
       preset: preset?.preset ?? presetId,
       baseUrl: preset?.baseUrl ?? p.baseUrl,
       model: preset?.model ?? p.model,
+      availableModels: [],
       connectionOk: undefined,
       connectionStatus: undefined,
     }));
@@ -1320,11 +1829,29 @@ export function App() {
     ? provider.model.trim() || 'Custom model'
     : provider.model || 'Select model';
 
-  const saveModel = (model: string) => {
+  const saveModel = (
+    model: string,
+    options: { clearStaleModeDefaults?: boolean } = {},
+  ) => {
+    const previousModel = savedProviderModelRef.current;
     updateProvider((p) => ({ ...p, model }));
+    let uiPatch: UiSettingsPatch | undefined;
+    if (options.clearStaleModeDefaults !== false) {
+      const nextUi = clearStaleModeModelDefaultsAfterProviderModelChange({
+        ui: uiRef.current,
+        previousProviderModel: previousModel,
+        nextProviderModel: model,
+      });
+      if (nextUi !== uiRef.current) {
+        uiRef.current = nextUi;
+        setUi(nextUi);
+        uiPatch = { modeDefaults: nextUi.modeDefaults };
+      }
+    }
     postToHost({
       type: 'settings.set',
       provider: { model },
+      ui: uiPatch,
     });
   };
 
@@ -1353,7 +1880,8 @@ export function App() {
     setEffort(intensity.effort);
     setApprovalMode(normalizeApproval(defaults.approvalMode));
     const nextModel = defaults.model?.trim();
-    if (nextModel) saveModel(nextModel);
+    if (nextModel) saveModel(nextModel, { clearStaleModeDefaults: false });
+    if (next === 'review') postToHost({ type: 'refreshReviewDiff' });
   };
 
   const changeThoroughness = (next: AgentUiThoroughness) => {
@@ -1403,29 +1931,58 @@ export function App() {
 
   const snapshotProvider = () => {
     const current = providerRef.current;
+    const maximumOutputTokens =
+      current.maximumOutputTokens === 5_000 ? 0 : current.maximumOutputTokens;
     return {
       type: current.type,
       preset: current.preset,
       baseUrl: current.baseUrl,
       model: current.model,
       contextWindow: current.contextWindow,
-      maximumOutputTokens: current.maximumOutputTokens,
+      maximumOutputTokens,
     };
   };
 
   const applyProfileLocally = (profile: SettingsProfileView) => {
     setActiveProfileId(profile.id);
-    updateProvider((prev) => ({
-      ...prev,
+    savedProviderModelRef.current = profile.provider.model ?? '';
+    updateProvider({
       ...profile.provider,
       hasApiKey: profile.hasSecret,
-      availableModels: prev.availableModels,
-    }));
+      availableModels: [],
+      connectionOk: undefined,
+      connectionStatus: undefined,
+    });
+    setConnectionMessage(null);
+    if (profile.provider.type && profile.provider.type !== 'echo') {
+      requestListedModels(
+        profile.provider.type,
+        profile.provider.baseUrl ?? '',
+        true,
+      );
+    }
+    if (profile.ui) {
+      const nextUi = hydrateUiSnapshot(profile.ui);
+      uiRef.current = nextUi;
+      setUi(nextUi);
+      const defaults = modeDefaultsFromUi(nextUi, modeRef.current);
+      const intensity = resolveRunIntensity({
+        intensityOverrides: nextUi.intensityOverrides === true,
+        thoroughness: defaults.thoroughness,
+        depth: defaults.depth,
+        effort: nextUi.effort,
+      });
+      setThoroughness(intensity.thoroughness);
+      setDepth(intensity.depth);
+      setEffort(intensity.effort);
+      setApprovalMode(normalizeApproval(defaults.approvalMode));
+    }
   };
 
   const switchProfile = (id: string) => {
     const profile = profiles.find((entry) => entry.id === id);
     if (!profile || profile.id === activeProfileId) return;
+    providerDraftDirtyRef.current = false;
     applyProfileLocally(profile);
     postToHost({ type: 'profile.switch', id: profile.id });
   };
@@ -1438,9 +1995,12 @@ export function App() {
       name: trimmed,
       provider: snapshotProvider(),
       hasSecret: provider.hasApiKey,
+      ui: uiRef.current,
     };
     setProfiles((prev) => [...prev, nextProfile]);
+    providerDraftDirtyRef.current = false;
     applyProfileLocally(nextProfile);
+    settingsSavingRef.current = true;
     setSettingsSaving(true);
     postToHost({
       type: 'settings.set',
@@ -1451,29 +2011,36 @@ export function App() {
 
   const saveAllSettings = () => {
     (document.activeElement as HTMLElement | null)?.blur?.();
-    const latestUi = mergeUiPatch(
-      uiRef.current,
-      approvalModeUiPatch({ mode, approvalMode }),
-    );
+    const latestProvider = snapshotProvider();
+    const latestUi = clearStaleModeModelDefaultsAfterProviderModelChange({
+      ui: mergeUiPatch(
+        uiRef.current,
+        approvalModeUiPatch({ mode, approvalMode }),
+      ),
+      previousProviderModel: savedProviderModelRef.current,
+      nextProviderModel: latestProvider.model,
+    });
     uiRef.current = latestUi;
     setUi(latestUi);
     const profile = activeProfile ?? {
       id: activeProfileId || 'default',
       name: 'Default',
-      provider: snapshotProvider(),
+      provider: latestProvider,
       hasSecret: provider.hasApiKey,
     };
+    settingsSavingRef.current = true;
     setSettingsSaving(true);
     postToHost({
       type: 'settings.set',
-      provider: snapshotProvider(),
+      provider: latestProvider,
       ui: latestUi,
       workspaceRootOverride: overrideDraft.trim() || null,
+      workspaceMaximumIndexFiles: indexRef.current.maximumIndexFiles ?? 0,
       mcp,
       approvalMode,
       profile: {
         ...profile,
-        provider: snapshotProvider(),
+        provider: latestProvider,
       },
     });
     setTokenUsage((prev) => ({
@@ -1485,15 +2052,15 @@ export function App() {
     }));
   };
 
-  const requestSkills = () => {
-    setSkillLoading(true);
-    postToHost({ type: 'requestSkillCatalog', requestId: uid('skill') });
+  const requestAutomations = () => {
+    setAutomationLoading(true);
+    postToHost({ type: 'requestAutomations', requestId: uid('auto') });
   };
 
   useEffect(() => {
-    if (nav === 'skills' && skillManagement) requestSkills();
+    if (nav === 'automations') requestAutomations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nav, skillManagement]);
+  }, [nav]);
 
   const followingPlan = mode === 'plan' && Boolean(plan?.steps.length);
 
@@ -1525,9 +2092,8 @@ export function App() {
   return (
     <div className="app">
       <header className="shell-header">
-        <div className="brand">
+        <div className="brand" aria-label="Mitii">
           <div className="brand-mark">Mitii</div>
-          {/* <div className="brand-sub">Enterprise workspace agent</div> */}
         </div>
         <div className="shell-header__actions">
           <nav className="nav-pills" aria-label="Primary">
@@ -1567,34 +2133,34 @@ export function App() {
             >
               <IconSettings />
             </IconButton>
-            {skillManagement ? (
-              <IconButton
-                label="Skills"
-                active={nav === 'skills'}
-                onClick={() => navigate('skills')}
-              >
-                <IconSkills />
-              </IconButton>
-            ) : null}
+            <IconButton
+              label="Automations"
+              active={nav === 'automations'}
+              onClick={() => navigate('automations')}
+            >
+              <IconLayers />
+            </IconButton>
           </nav>
           <IndexingStatusBar
             index={index}
             onRefresh={() => postToHost({ type: 'index.refresh' })}
             onOpenSettings={() => navigate('settings', 'workspace')}
           />
-          <select
-            className="shell-header__profile"
-            aria-label="Profile"
-            title={`Profile: ${selectedProfileLabel}`}
-            value={activeProfileId}
-            onChange={(e) => switchProfile(e.target.value)}
-          >
-            {profiles.map((profile) => (
-              <option key={profile.id} value={profile.id}>
-                {profile.name}
-              </option>
-            ))}
-          </select>
+          <label className="shell-header__profile" title={`Profile: ${selectedProfileLabel}`}>
+            <span className="shell-header__profile-label">{selectedProfileLabel}</span>
+            <IconChevronDown width={12} height={12} />
+            <select
+              aria-label="Profile"
+              value={activeProfileId}
+              onChange={(e) => switchProfile(e.target.value)}
+            >
+              {profiles.map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.name}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
       </header>
 
@@ -1611,6 +2177,10 @@ export function App() {
             <ReviewPanel
               review={review}
               onRefresh={() => postToHost({ type: 'refreshReviewDiff' })}
+              onOpenFile={openFile}
+              onOpenDiff={(path) =>
+                postToHost({ type: 'reviewWorkspaceFile', path })
+              }
             />
             <div className="composer-dock">
               <ComposerControls
@@ -1689,6 +2259,7 @@ export function App() {
               onReviewFileChange={reviewFileChange}
               onReviewAllFileChanges={reviewAllFileChanges}
               onDismissFileChanges={dismissFileChanges}
+              showWarnings={ui.developerEnabled === true}
               containerRef={messagesRef}
               onScroll={onMessagesScroll}
               bottomRef={bottomRef}
@@ -1742,54 +2313,117 @@ export function App() {
                     );
                   }}
                 />
+                {pinnedSkillIds.length > 0 ? (
+                  <div className="skill-pin-row">
+                    {pinnedSkillIds.map((skillId) => (
+                      <span key={skillId} className="skill-pin-chip mono">
+                        @skill:{skillId}
+                        <button
+                          type="button"
+                          aria-label={`Remove skill ${skillId}`}
+                          onClick={() =>
+                            setPinnedSkillIds((prev) =>
+                              prev.filter((id) => id !== skillId),
+                            )
+                          }
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
                 {suggestOpen ? (
                   <div className="suggest-pop" role="listbox">
                     {suggestLoading ? (
                       <div className="suggest-item suggest-item--loading">
-                        <span className="mono">Loading files…</span>
+                        <span className="mono">
+                          {suggestKind === 'skill'
+                            ? 'Loading skills…'
+                            : 'Loading files…'}
+                        </span>
                       </div>
                     ) : null}
-                    {!suggestLoading && suggestions.length === 0 ? (
-                      <div className="suggest-item suggest-item--loading">
-                        <span className="mono">No matching files</span>
-                      </div>
-                    ) : null}
-                    {!suggestLoading ? suggestions.map((s, i) => (
-                      <button
-                        key={s.path}
-                        type="button"
-                        className={`suggest-item ${i === activeSuggest ? 'active' : ''}`}
-                        onClick={() => insertMention(s.path)}
-                      >
-                        <span className="mono">@{s.path}</span>
-                        <span className="suggest-kind">{s.kind}</span>
-                      </button>
-                    )) : null}
+                    {suggestKind === 'skill' ? (
+                      <>
+                        {!suggestLoading && filteredSkillSuggestions.length === 0 ? (
+                          <div className="suggest-item suggest-item--loading">
+                            <span className="mono">No matching skills</span>
+                          </div>
+                        ) : null}
+                        {!suggestLoading
+                          ? filteredSkillSuggestions.map((item, i) => (
+                              <button
+                                key={item.id}
+                                type="button"
+                                className={`suggest-item ${i === activeSuggest ? 'active' : ''}`}
+                                onClick={() => selectSkill(item.id)}
+                              >
+                                <span className="mono">@skill:{item.id}</span>
+                                <span className="suggest-kind">{item.name}</span>
+                              </button>
+                            ))
+                          : null}
+                      </>
+                    ) : (
+                      <>
+                        {!suggestLoading && suggestions.length === 0 ? (
+                          <div className="suggest-item suggest-item--loading">
+                            <span className="mono">No matching files</span>
+                          </div>
+                        ) : null}
+                        {!suggestLoading ? suggestions.map((s, i) => (
+                          <button
+                            key={s.path}
+                            type="button"
+                            className={`suggest-item ${i === activeSuggest ? 'active' : ''}`}
+                            onClick={() => insertMention(s.path)}
+                          >
+                            <span className="mono">@{s.path}</span>
+                            <span className="suggest-kind">{s.kind}</span>
+                          </button>
+                        )) : null}
+                      </>
+                    )}
                   </div>
                 ) : null}
                 <textarea
+                  ref={promptTextareaRef}
                   rows={1}
                   value={prompt}
-                  placeholder={`Message Mitii… type @ for context (${suggestQuery ? `filter: ${suggestQuery}` : 'files'})`}
+                  placeholder="Message Mitii… @ files, / skills"
                   onChange={(e) => onPromptChange(e.target.value)}
                   onKeyDown={(e) => {
-                    if (suggestOpen && suggestions.length) {
+                    const activeSuggestions =
+                      suggestKind === 'skill'
+                        ? filteredSkillSuggestions
+                        : suggestions;
+                    if (suggestOpen && activeSuggestions.length) {
                       if (e.key === 'ArrowDown') {
                         e.preventDefault();
-                        setActiveSuggest((i) => (i + 1) % suggestions.length);
+                        setActiveSuggest(
+                          (i) => (i + 1) % activeSuggestions.length,
+                        );
                         return;
                       }
                       if (e.key === 'ArrowUp') {
                         e.preventDefault();
                         setActiveSuggest(
                           (i) =>
-                            (i - 1 + suggestions.length) % suggestions.length,
+                            (i - 1 + activeSuggestions.length) %
+                            activeSuggestions.length,
                         );
                         return;
                       }
                       if (e.key === 'Enter' || e.key === 'Tab') {
                         e.preventDefault();
-                        insertMention(suggestions[activeSuggest]!.path);
+                        if (suggestKind === 'skill') {
+                          selectSkill(
+                            filteredSkillSuggestions[activeSuggest]!.id,
+                          );
+                        } else {
+                          insertMention(suggestions[activeSuggest]!.path);
+                        }
                         return;
                       }
                       if (e.key === 'Escape') {
@@ -1820,50 +2454,39 @@ export function App() {
                   </div>
                   <div className="composer-utility-row">
                     <div className="composer-left">
-                      <TokenMeter usage={tokenUsage} placement="above" />
-                      <select
-                        className="composer-link-select composer-link-select--model"
-                        aria-label="Model"
-                        title={`Model: ${selectedModelLabel}`}
-                        value={
-                          selectedModelIsCustom ? '__custom__' : provider.model
-                        }
-                        onChange={(e) => {
-                          if (e.target.value === '__custom__') {
-                            setCustomModel(true);
-                            return;
-                          }
-                          setCustomModel(false);
-                          saveModel(e.target.value);
-                        }}
-                      >
-                        {modelOptions.map((id) => (
-                          <option key={id} value={id}>
-                            {id}
-                          </option>
-                        ))}
-                        <option value="__custom__">Custom…</option>
-                      </select>
-                      {selectedModelIsCustom ? (
-                        <input
-                          className="model-custom-input model-custom-input--inline"
+                      <div className="composer-meta-group">
+                        <TokenMeter usage={tokenUsage} placement="above" />
+                        <ModelQuickSelect
+                          label={selectedModelLabel}
                           value={provider.model}
-                          placeholder="model id"
-                          onChange={(e) =>
-                            updateProvider((p) => ({
-                              ...p,
-                              model: e.target.value,
-                            }))
+                          custom={selectedModelIsCustom}
+                          options={modelOptions}
+                          onSelect={(model) => {
+                            setCustomModel(false);
+                            saveModel(model);
+                          }}
+                          onCustomMode={() => setCustomModel(true)}
+                          onDraftChange={(model) =>
+                            updateProvider((p) => ({ ...p, model }))
                           }
-                          onBlur={() => {
+                          onCommitCustom={() => {
                             const model = providerRef.current.model.trim();
                             if (model) saveModel(model);
                           }}
-                          title="Custom model id"
                         />
-                      ) : null}
+                      </div>
                     </div>
                     <div className="composer-actions">
+                      <IconButton
+                        label="Attach skill"
+                        variant="ghost"
+                        className="icon-btn--slash"
+                        active={suggestOpen && suggestKind === 'skill'}
+                        disabled={pinnedSkillIds.length >= 3}
+                        onClick={openSkillPicker}
+                      >
+                        <IconSlash />
+                      </IconButton>
                       <IconButton
                         label="Copy last response"
                         onClick={() =>
@@ -1946,6 +2569,8 @@ export function App() {
           onTestConnection={testConnection}
           testingConnection={testingConnection}
           connectionMessage={connectionMessage}
+          onRefreshModels={refreshModels}
+          refreshingModels={refreshingModels}
           customModel={customModel}
           onCustomModelChange={setCustomModel}
           modelOptions={modelOptions}
@@ -1958,6 +2583,20 @@ export function App() {
           index={index}
           onReindex={() => postToHost({ type: 'index.reindex' })}
           onRefreshIndex={() => postToHost({ type: 'index.refresh' })}
+          onMaximumIndexFilesChange={(value) => {
+            const maximumIndexFiles = Math.max(
+              0,
+              Math.min(240000, Math.floor(value)),
+            );
+            indexRef.current = {
+              ...indexRef.current,
+              maximumIndexFiles,
+            };
+            setIndex((current) => ({
+              ...current,
+              maximumIndexFiles,
+            }));
+          }}
           onEmbeddingSourceChange={(source: SemanticIndexSource) => {
             setIndex((current) => ({
               ...current,
@@ -1995,11 +2634,13 @@ export function App() {
         </SettingsErrorBoundary>
       ) : null}
 
-      {nav === 'skills' && skillManagement ? (
-        <SkillManagementPanel
-          items={skillItems}
-          error={skillError}
-          loading={skillLoading}
+      {nav === 'automations' ? (
+        <AutomationsPanel
+          specs={automationSpecs}
+          runs={automationRuns}
+          loading={automationLoading}
+          error={automationError}
+          onRefresh={requestAutomations}
         />
       ) : null}
     </div>

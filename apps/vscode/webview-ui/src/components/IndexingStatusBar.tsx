@@ -1,11 +1,14 @@
 import type { IndexStatusSnapshot } from '../protocol';
+import { IconFolder } from './Icons';
+
 interface IndexingStatusBarProps {
   index: IndexStatusSnapshot;
   onRefresh: () => void;
   onOpenSettings: () => void;
 }
 
-type IndexTone = 'idle' | 'indexing' | 'ready' | 'warn';
+/** Status tones map to folder color: green / orange / red (+ idle muted). */
+export type IndexTone = 'idle' | 'indexing' | 'ready' | 'warn';
 
 const CAPABILITY_LABELS: Record<string, string> = {
   catalog: 'Catalog',
@@ -16,7 +19,7 @@ const CAPABILITY_LABELS: Record<string, string> = {
   map: 'Map',
 };
 
-function resolveIndexTone(index: IndexStatusSnapshot): IndexTone {
+export function resolveIndexTone(index: IndexStatusSnapshot): IndexTone {
   const message = (index.message ?? '').toLowerCase();
   const readiness = (index.readiness ?? '').toLowerCase();
   const capabilities = index.capabilities ?? [];
@@ -52,6 +55,20 @@ function resolveIndexTone(index: IndexStatusSnapshot): IndexTone {
   if (coreReady) return 'ready';
   if (index.fileCount > 0 || readiness) return 'ready';
   return 'idle';
+}
+
+/** Enterprise folder colors: green ready, orange in-progress, red issue. */
+export function indexToneFolderColor(tone: IndexTone): string {
+  switch (tone) {
+    case 'ready':
+      return '#3ecf8e';
+    case 'indexing':
+      return '#f0a020';
+    case 'warn':
+      return '#ef5f67';
+    default:
+      return 'muted';
+  }
 }
 
 function shortLabel(tone: IndexTone, index: IndexStatusSnapshot): string {
@@ -121,7 +138,6 @@ export function IndexingStatusBar({
   const tone = resolveIndexTone(index);
   const label = shortLabel(tone, index);
   const tooltip = detailTooltip(index);
-  const symbol = tone === 'ready' ? '✓' : '!';
 
   return (
     <button
@@ -129,13 +145,10 @@ export function IndexingStatusBar({
       className={`indexing-chip indexing-chip--${tone}`}
       onClick={onOpenSettings}
       onDoubleClick={onRefresh}
-      title={`${tooltip} - click to open index settings`}
+      title={`${tooltip} — click for index settings · double-click to refresh`}
       aria-label={`${label}. ${tooltip}. Open index settings.`}
     >
-      <span className="indexing-chip__symbol" aria-hidden="true">
-        {symbol}
-      </span>
-      <span className="indexing-chip__label">{label}</span>
+      <IconFolder width={15} height={15} />
     </button>
   );
 }

@@ -45,7 +45,9 @@ export function applySkillBudget(params: {
   const minUseful = SKILLS_THRESHOLDS.minUsefulSkillTokens;
 
   for (const entry of params.scored) {
-    if (!entry.skill.alwaysApply && selectedMatchSkills >= params.maxSkills) {
+    const exemptFromMaxSkills =
+      entry.skill.alwaysApply || entry.selection === "required";
+    if (!exemptFromMaxSkills && selectedMatchSkills >= params.maxSkills) {
       omissions.push({
         skillId: entry.skill.id,
         reason: "budget",
@@ -75,7 +77,8 @@ export function applySkillBudget(params: {
     if (!packed) {
       omissions.push({
         skillId: entry.skill.id,
-        reason: "budget",
+        reason:
+          entry.selection === "required" ? "required_budget" : "budget",
         tokens: estimateTokens(fullContent),
       });
       budgetOmitted = true;
@@ -99,12 +102,13 @@ export function applySkillBudget(params: {
         skillId: entry.skill.id,
         source: "skills",
         score: entry.score,
+        ...(entry.selection ? { selection: entry.selection } : {}),
         conflictGroup: entry.skill.conflictGroup,
       },
     });
     usedTokens += packed.tokens;
     remaining -= packed.tokens;
-    if (!entry.skill.alwaysApply) {
+    if (!exemptFromMaxSkills) {
       selectedMatchSkills += 1;
     }
   }

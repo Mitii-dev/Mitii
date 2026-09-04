@@ -6,7 +6,7 @@ import type {
 } from "../contracts";
 import { DEFAULT_MAX_CHECKS } from "../defaults";
 import { checkKindsForEvidence } from "../internal/evidencePolicy";
-import { CHECK_KIND_PRIORITY } from "../policy";
+import { BROWSER_E2E_TEST_PATTERN, CHECK_KIND_PRIORITY } from "../policy";
 import type { DiscoveredCheckCandidate } from "../internal/discovery";
 
 export interface SelectProportionalChecksResult {
@@ -19,7 +19,10 @@ export interface SelectProportionalChecksResult {
  * proportional kinds for the change scope, capped by DEFAULT_MAX_CHECKS.
  *
  * `test` is never a bonus check. Browser/e2e scripts (wdio, desktop:test)
- * only run when Decision Policy asked for `tests` evidence.
+ * are never auto-selected — they need a live backend and can take hours.
+ * Decision Policy `tests` evidence is satisfied by typecheck / unit scripts
+ * instead (see EVIDENCE_TO_CHECK). Explicit "run the e2e suite" asks use
+ * agent tools, not this proportional verifier.
  */
 export function selectProportionalChecks(params: {
   candidates: readonly DiscoveredCheckCandidate[];
@@ -38,6 +41,12 @@ export function selectProportionalChecks(params: {
     const aRequired = requiredKinds.has(a.kind) ? 0 : 1;
     const bRequired = requiredKinds.has(b.kind) ? 0 : 1;
     if (aRequired !== bRequired) return aRequired - bRequired;
+    // Prefer non-browser tests ahead of e2e when both are candidates.
+    if (a.kind === "test" && b.kind === "test") {
+      const aE2e = isBrowserE2eCandidate(a) ? 1 : 0;
+      const bE2e = isBrowserE2eCandidate(b) ? 1 : 0;
+      if (aE2e !== bE2e) return aE2e - bE2e;
+    }
     return (
       CHECK_KIND_PRIORITY.indexOf(a.kind) - CHECK_KIND_PRIORITY.indexOf(b.kind)
     );
@@ -50,6 +59,10 @@ export function selectProportionalChecks(params: {
 
   for (const candidate of byPriority) {
     if (candidate.kind === "test" && !requiredKinds.has("test")) {
+      omitted.push(candidate);
+      continue;
+    }
+    if (candidate.kind === "test" && isBrowserE2eCandidate(candidate)) {
       omitted.push(candidate);
       continue;
     }
@@ -70,4 +83,16 @@ export function selectProportionalChecks(params: {
   }
 
   return { selected, omitted };
+}
+
+export function isBrowserE2eCandidate(
+  candidate: DiscoveredCheckCandidate,
+): boolean {
+  const haystack = [
+    candidate.checkId,
+    candidate.label,
+    candidate.evidenceSource,
+    ...(candidate.argv ?? []),
+  ].join(" ");
+  return BROWSER_E2E_TEST_PATTERN.test(haystack);
 }

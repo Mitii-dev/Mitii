@@ -4,6 +4,7 @@ import { executionRouteSchema } from "../../../decision-policy";
 import { agentModeSchema } from "../../../request-intake";
 
 import { SKILLS_SCHEMA_VERSION } from "../../constants";
+import { MAX_REQUIRED_SKILLS } from "../../constants";
 import {
   DEFAULT_MAX_SKILLS,
   DEFAULT_SKILLS_BUDGET_TOKENS,
@@ -59,6 +60,14 @@ export const skillsSelectInputSchema = z
       .positive()
       .default(DEFAULT_SKILLS_BUDGET_TOKENS),
     maxSkills: z.number().int().positive().default(DEFAULT_MAX_SKILLS),
+    /**
+     * Explicitly attached skill ids (from @skill:, CLI --skill, or host pin).
+     * Bypass relevance matching but not policy/tool grants.
+     */
+    requiredSkillIds: z
+      .array(z.string().min(1).max(64))
+      .max(MAX_REQUIRED_SKILLS)
+      .default([]),
   })
   .strict();
 

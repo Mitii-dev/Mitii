@@ -1,19 +1,20 @@
 {
   "id": "frontend",
   "name": "Frontend Agent Benchmark",
-  "description": "Agent-only frontend core: 20 feature, 20 bugfix, 10 docs, 10 retrieval, 10 testing. Graded with __bench__/grade.mjs and build/test commands.",
+  "description": "Agent-only frontend core (85 cases): 27 feature, 23 bugfix, 10 docs, 10 retrieval, 11 testing, 4 capstone full-applications. Graded with __bench__/grade.mjs, build/typecheck, and Vitest/RTL commands.",
   "caseFiles": [
     "feature.jsonl",
     "bugfix.jsonl",
     "docs.jsonl",
     "retrieval.jsonl",
-    "testing.jsonl"
+    "testing.jsonl",
+    "capstone.jsonl"
   ],
   "expectedCounts": {
     "easy": 20,
-    "medium": 20,
-    "hard": 30,
-    "total": 70
+    "medium": 27,
+    "hard": 38,
+    "total": 85
   },
   "gates": {
     "easy": 0.85,

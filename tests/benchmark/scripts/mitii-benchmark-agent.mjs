@@ -14,6 +14,8 @@
  *
  * Important: always emit `end` with a synchronous write so a following
  * process.exit() cannot drop the marker when stdout is buffered/large.
+ * On harness timeout (SIGTERM/SIGINT), emit a best-effort `end` so graders
+ * still see structured output even when ask is killed mid-run.
  *
  * Usage (placeholders already substituted by the runner):
  *   node mitii-benchmark-agent.mjs --mode <mode> --prompt <prompt> --cwd <workspace> [--echo]
@@ -36,11 +38,46 @@ if (!options.mode || !options.prompt || !options.cwd) {
   process.exit(2);
 }
 
+/** @type {import('node:child_process').ChildProcess | null} */
+let activeChild = null;
+let emittedEnd = false;
+
+function emitTimeoutEnd(reason) {
+  if (emittedEnd) return;
+  emittedEnd = true;
+  writeJsonLine({
+    type: 'end',
+    ok: false,
+    status: 'timeout',
+    reason,
+    usage: null,
+  });
+}
+
+for (const signal of ['SIGTERM', 'SIGINT']) {
+  process.on(signal, () => {
+    try {
+      if (activeChild?.pid) {
+        try {
+          process.kill(-activeChild.pid, 'SIGTERM');
+        } catch {
+          activeChild.kill('SIGTERM');
+        }
+      }
+    } catch {
+      // child may already be gone
+    }
+    emitTimeoutEnd(`adapter_${signal.toLowerCase()}`);
+    process.exit(124);
+  });
+}
+
 const index = await runMitii(['index', '--cwd', options.cwd, '--json'], {
   inheritStdout: false,
 });
 if (index.exitCode !== 0) {
   process.stderr.write(index.stderr || index.stdout || 'mitii index failed\n');
+  emittedEnd = true;
   writeJsonLine({ type: 'end', ok: false, stage: 'index' });
   process.exit(index.exitCode || 1);
 }
@@ -84,7 +121,9 @@ function runMitii(args, { inheritStdout }) {
       cwd: repoRoot,
       env: process.env,
       stdio: ['ignore', inheritStdout ? 'inherit' : 'pipe', 'pipe'],
+      detached: process.platform !== 'win32',
     });
+    activeChild = child;
     let stdout = '';
     let stderr = '';
     if (!inheritStdout) {
@@ -98,9 +137,11 @@ function runMitii(args, { inheritStdout }) {
       stderr += chunk;
     });
     child.on('error', (error) => {
+      activeChild = null;
       resolvePromise({ exitCode: 1, stdout, stderr: `${stderr}${error.message}\n` });
     });
     child.on('close', (code) => {
+      activeChild = null;
       resolvePromise({ exitCode: code ?? 1, stdout, stderr });
     });
   });
@@ -122,6 +163,7 @@ function writeJsonLine(value) {
 function emitBenchmarkStdout(raw) {
   const text = String(raw ?? '').trim();
   if (!text) {
+    emittedEnd = true;
     writeJsonLine({ type: 'end', ok: false, reason: 'empty_cli_stdout' });
     return;
   }
@@ -137,6 +179,7 @@ function emitBenchmarkStdout(raw) {
       bytes: Buffer.byteLength(text, 'utf8'),
       message: error instanceof Error ? error.message : String(error),
     });
+    emittedEnd = true;
     writeJsonLine({ type: 'end', ok: false, reason: 'cli_json_parse_error' });
     return;
   }
@@ -154,6 +197,7 @@ function emitBenchmarkStdout(raw) {
     writeJsonLine(answer);
   }
 
+  emittedEnd = true;
   writeJsonLine({
     type: 'end',
     status: payload.result?.status ?? null,

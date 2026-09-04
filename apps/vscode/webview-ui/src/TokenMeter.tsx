@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 
-import type { TokenUsageSnapshot } from './protocol';
+import type { ContextUsageNode, TokenUsageSnapshot } from './protocol';
 import { IconTokens } from './components/Icons';
 
 interface TokenMeterProps {
@@ -9,8 +9,16 @@ interface TokenMeterProps {
 }
 
 const CONTEXT_SLICE_COLORS: Record<string, string> = {
-  prompt: '#7c8794',
+  output: '#9a6b6b',
+  tools: '#777189',
+  usable: '#5f6b77',
+  repository: '#71806f',
   conversation: '#64748b',
+  plan: '#6f8794',
+  skills: '#8b7d6b',
+  system: '#7c8794',
+  free: '#9aa6b2',
+  prompt: '#7c8794',
   pinned: '#8b949e',
   memory: '#6b7280',
   editor: '#707b87',
@@ -45,14 +53,60 @@ function formatDuration(ms?: number): string {
   return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
 }
 
+function formatNodeMeta(node: ContextUsageNode, windowTokens: number): string {
+  const allocated = node.allocatedTokens;
+  if (node.kind === 'output' && allocated != null) {
+    return `${formatCompact(allocated)} reserved · ${formatPct(allocated / Math.max(1, windowTokens))} of window`;
+  }
+  if (node.kind === 'free' && allocated != null) {
+    return `${allocated.toLocaleString()} available`;
+  }
+  if (allocated != null && allocated > 0) {
+    const used = node.usedTokens;
+    const ofAlloc = formatPct(used / allocated);
+    return `${used.toLocaleString()} / ${allocated.toLocaleString()} · ${ofAlloc} of budget`;
+  }
+  if (node.usedTokens > 0) {
+    return `${node.usedTokens.toLocaleString()} · ${formatPct(node.usedTokens / Math.max(1, windowTokens))} of window`;
+  }
+  return '—';
+}
+
+function flattenTree(
+  nodes: readonly ContextUsageNode[],
+  depth = 0,
+): Array<{ node: ContextUsageNode; depth: number }> {
+  const rows: Array<{ node: ContextUsageNode; depth: number }> = [];
+  for (const node of nodes) {
+    rows.push({ node, depth });
+    if (node.children && node.children.length > 0) {
+      rows.push(...flattenTree(node.children, depth + 1));
+    }
+  }
+  return rows;
+}
+
+function topLevelSegments(
+  tree: readonly ContextUsageNode[],
+): Array<{ id: string; label: string; tokens: number }> {
+  return tree
+    .map((node) => ({
+      id: node.id,
+      label: node.label,
+      tokens:
+        node.kind === 'output'
+          ? node.allocatedTokens ?? 0
+          : Math.max(node.usedTokens, node.allocatedTokens ?? 0),
+    }))
+    .filter((entry) => entry.tokens > 0);
+}
+
 export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
   const [open, setOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
   const inputTotal = usage.inputTokensTotal;
   const outputTotal = usage.outputTokensTotal;
   const sessionTotal = usage.sessionTotal || inputTotal + outputTotal;
-  const windowLabel =
-    usage.contextWindow > 0 ? formatCompact(usage.contextWindow) : null;
   const turns = usage.turns ?? [];
   const breakdown = usage.contextBreakdown;
   const latestCall = turns[turns.length - 1];
@@ -63,36 +117,20 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
     ? `Call ${latestCall.turnIndex + 1}`
     : 'Latest call';
   const runTotal = usage.currentTurnTotal;
-  const attributedInputTokens = breakdown?.totalTokens ?? 0;
-  const runtimeTokens =
-    breakdown && latestInput > attributedInputTokens
-      ? latestInput - attributedInputTokens
-      : 0;
-  const inputSourceTotal = breakdown
-    ? Math.max(latestInput, attributedInputTokens)
-    : 0;
-  const inputSourceRows = breakdown
-    ? [
-        ...breakdown.slices,
-        ...(runtimeTokens > 0
-          ? [
-              {
-                id: 'runtime',
-                label: 'Runtime / system',
-                tokens: runtimeTokens,
-                active: true,
-              },
-            ]
-          : []),
-      ]
-    : [];
-  const sourceRows = [...inputSourceRows].sort((a, b) => {
-    if (b.tokens !== a.tokens) return b.tokens - a.tokens;
-    if (a.active !== b.active) return a.active ? -1 : 1;
-    return a.label.localeCompare(b.label);
-  });
-  const activeSourceRows = sourceRows.filter((s) => s.active && s.tokens > 0);
+  const tree = breakdown?.tree;
+  const treeRows = tree ? flattenTree(tree) : [];
+  const segmentRows = tree
+    ? topLevelSegments(tree)
+    : (breakdown?.slices ?? [])
+        .filter((slice) => slice.active && slice.tokens > 0)
+        .map((slice) => ({
+          id: slice.id,
+          label: slice.label,
+          tokens: slice.tokens,
+        }));
+  const segmentTotal = segmentRows.reduce((sum, row) => sum + row.tokens, 0);
   const fillRatio = breakdown?.fillRatio ?? 0;
+  const windowTokens = breakdown?.contextWindow ?? usage.contextWindow;
 
   const tooltip = [
     usage.live ? 'Live · updating cumulative chat totals' : null,
@@ -158,24 +196,6 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
           <span aria-hidden="true">↓</span>
           <span>{formatCompact(outputTotal)}</span>
         </span>
-        {/* {usage.live ? (
-          <>
-            <span className="token-chip__sep">·</span>
-            <span className="token-chip__live">
-              {formatCompact(runTotal)}
-            </span>
-          </>
-        ) : null} */}
-        {/* {windowLabel ? (
-          <>
-            <span className="token-chip__sep">·</span>
-            <span>
-              {breakdown
-                ? `${formatPct(fillRatio)} of ${windowLabel}`
-                : `${windowLabel} window`}
-            </span>
-          </>
-        ) : null} */}
       </button>
       {open ? (
         <div
@@ -188,7 +208,13 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
               {usage.live ? 'Live chat token monitor' : 'Chat token summary'}
             </span>
             <strong>
-              {usage.live ? 'Live' : usage.estimated ? 'Estimated' : 'Reported'}
+              {usage.live
+                ? 'Live'
+                : breakdown?.source === 'prompt_budget'
+                  ? 'Budget'
+                  : usage.estimated
+                    ? 'Estimated'
+                    : 'Reported'}
             </strong>
           </div>
 
@@ -235,7 +261,7 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
               </div>
               <div>
                 <dt>Current run</dt>
-                <dd>{runTotal.toLocaleString()}</dd>
+                <dd>{formatCompact(runTotal)}</dd>
               </div>
             </dl>
           )}
@@ -269,7 +295,9 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
           <dl className="token-popover__stats token-popover__stats--tiny">
             <div>
               <dt>Context window</dt>
-              <dd>{windowLabel ?? '—'}</dd>
+              <dd>
+                {windowTokens > 0 ? formatCompact(windowTokens) : '—'}
+              </dd>
             </div>
             <div>
               <dt>Window used</dt>
@@ -286,16 +314,23 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
           </dl>
 
           {breakdown ? (
-            <section className="token-source-panel" aria-label="Input attribution">
+            <section className="token-source-panel" aria-label="Window budget tree">
               <div className="token-popover__section-title token-popover__section-title--flush">
                 <span>
-                  {usage.live ? 'Latest input by source' : 'Final context by source'}
+                  {tree
+                    ? usage.live
+                      ? 'Window budget (live)'
+                      : 'Final window budget'
+                    : usage.live
+                      ? 'Latest input by source'
+                      : 'Final context by source'}
                 </span>
                 <span className="token-popover__section-meta">
                   {formatCompact(breakdown.totalTokens)} /{' '}
                   {formatCompact(breakdown.contextWindow)} ·{' '}
                   {formatPct(fillRatio)}
                   {breakdown.estimated ? ' · est.' : ''}
+                  {breakdown.source === 'prompt_budget' ? ' · engine' : ''}
                 </span>
               </div>
               <div
@@ -306,11 +341,9 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
                 aria-valuenow={Math.round(fillRatio * 100)}
                 aria-label="Context window fill"
               >
-                {activeSourceRows.map((slice) => {
+                {segmentRows.map((slice) => {
                   const share =
-                    inputSourceTotal > 0
-                      ? slice.tokens / inputSourceTotal
-                      : 0;
+                    segmentTotal > 0 ? slice.tokens / segmentTotal : 0;
                   return (
                     <span
                       key={slice.id}
@@ -326,51 +359,128 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
                   );
                 })}
               </div>
-              <ul className="token-context-slices token-context-slices--monitor">
-                {sourceRows.map((slice) => {
-                  const share =
-                    breakdown.contextWindow > 0
-                      ? slice.tokens / breakdown.contextWindow
-                      : 0;
-                  const inputShare =
-                    inputSourceTotal > 0
-                      ? slice.tokens / inputSourceTotal
-                      : 0;
-                  return (
-                    <li
-                      key={slice.id}
-                      className={
-                        slice.active && slice.tokens > 0
-                          ? 'token-context-slice'
-                          : 'token-context-slice token-context-slice--idle'
-                      }
-                      style={
-                        {
-                          '--token-slice-color': contextSliceColor(slice.id),
-                        } as CSSProperties
-                      }
-                    >
-                      <div className="token-context-slice__label">
-                        <span>{slice.label}</span>
-                        <span>
-                          {slice.tokens > 0
-                            ? `${slice.tokens.toLocaleString()} · ${formatPct(inputShare)}`
-                            : '—'}
-                        </span>
-                      </div>
-                      <div className="token-context-slice__track">
-                        <div
-                          className="token-context-slice__bar"
-                          style={{
-                            width: `${Math.min(100, share * 100)}%`,
-                          }}
-                        />
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-              {activeSourceRows.length === 0 ? (
+              {treeRows.length > 0 ? (
+                <ul className="token-context-slices token-context-slices--tree">
+                  {treeRows.map(({ node, depth }) => {
+                    const barBase =
+                      node.allocatedTokens && node.allocatedTokens > 0
+                        ? node.allocatedTokens
+                        : Math.max(1, windowTokens);
+                    const barShare =
+                      node.kind === 'output'
+                        ? (node.allocatedTokens ?? 0) / Math.max(1, windowTokens)
+                        : node.usedTokens / barBase;
+                    const idle =
+                      node.kind === 'free' ||
+                      (node.usedTokens <= 0 &&
+                        (node.allocatedTokens ?? 0) <= 0);
+                    return (
+                      <li
+                        key={`${depth}:${node.id}`}
+                        className={
+                          idle
+                            ? 'token-context-slice token-context-slice--idle'
+                            : 'token-context-slice'
+                        }
+                        style={
+                          {
+                            '--token-slice-color': contextSliceColor(node.id),
+                            '--token-tree-depth': String(depth),
+                          } as CSSProperties
+                        }
+                      >
+                        <div className="token-context-slice__label">
+                          <span
+                            className={
+                              depth > 0
+                                ? 'token-context-slice__name token-context-slice__name--child'
+                                : 'token-context-slice__name'
+                            }
+                          >
+                            {depth > 0 ? (
+                              <span className="token-context-slice__branch" aria-hidden="true">
+                                {'└ '.repeat(1)}
+                              </span>
+                            ) : null}
+                            {node.label}
+                          </span>
+                          <span>{formatNodeMeta(node, windowTokens)}</span>
+                        </div>
+                        <div className="token-context-slice__track">
+                          <div
+                            className="token-context-slice__bar"
+                            style={{
+                              width: `${Math.min(100, Math.max(0, barShare * 100))}%`,
+                            }}
+                          />
+                        </div>
+                        {(node.omittedTokens ?? 0) > 0 ||
+                        (node.truncatedTokens ?? 0) > 0 ? (
+                          <div className="token-context-slice__note">
+                            {(node.omittedTokens ?? 0) > 0
+                              ? `${node.omittedTokens!.toLocaleString()} omitted`
+                              : null}
+                            {(node.omittedTokens ?? 0) > 0 &&
+                            (node.truncatedTokens ?? 0) > 0
+                              ? ' · '
+                              : null}
+                            {(node.truncatedTokens ?? 0) > 0
+                              ? `${node.truncatedTokens!.toLocaleString()} truncated`
+                              : null}
+                          </div>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <ul className="token-context-slices token-context-slices--monitor">
+                  {(breakdown.slices ?? []).map((slice) => {
+                    const share =
+                      breakdown.contextWindow > 0
+                        ? slice.tokens / breakdown.contextWindow
+                        : 0;
+                    const inputShare =
+                      breakdown.totalTokens > 0
+                        ? slice.tokens / breakdown.totalTokens
+                        : 0;
+                    return (
+                      <li
+                        key={slice.id}
+                        className={
+                          slice.active && slice.tokens > 0
+                            ? 'token-context-slice'
+                            : 'token-context-slice token-context-slice--idle'
+                        }
+                        style={
+                          {
+                            '--token-slice-color': contextSliceColor(slice.id),
+                          } as CSSProperties
+                        }
+                      >
+                        <div className="token-context-slice__label">
+                          <span>{slice.label}</span>
+                          <span>
+                            {slice.tokens > 0
+                              ? `${slice.tokens.toLocaleString()} · ${formatPct(inputShare)}`
+                              : '—'}
+                          </span>
+                        </div>
+                        <div className="token-context-slice__track">
+                          <div
+                            className="token-context-slice__bar"
+                            style={{
+                              width: `${Math.min(100, share * 100)}%`,
+                            }}
+                          />
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              {treeRows.length === 0 &&
+              (breakdown.slices ?? []).every((s) => !s.active || s.tokens <= 0) ? (
                 <div className="token-popover__summary token-popover__summary--start">
                   <span>No context slices attached yet.</span>
                 </div>

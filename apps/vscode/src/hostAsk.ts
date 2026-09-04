@@ -16,7 +16,10 @@ import type * as vscode from 'vscode';
 
 import { formatDiagnosticsPromptBlock } from './context/diagnosticsContext.js';
 import { captureEditorContext } from './context/editorContext.js';
-import { buildContextUsageBreakdown } from './contextUsage.js';
+import {
+  buildContextUsageBreakdown,
+  mergePromptBudgetIntoBreakdown,
+} from './contextUsage.js';
 import { readContextToggles } from './contextToggles.js';
 import { getSharedMcpManager } from './mcp/manager.js';
 import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
@@ -44,15 +47,20 @@ import {
   setActiveModelIoSink,
 } from './modelIoLog.js';
 import { readModelIoLoggingEnabled } from './modelIoSettings.js';
+import { deriveLiveTokenBudgetPreview } from './liveTokenBudgetPreview.js';
 import { readTokenBudgetPolicyOverrides } from './tokenBudgetSettings.js';
 import { readLoopPolicyThresholdOverrides } from './loopPolicySettings.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
-import { findLocalModelPreset } from './modelPresets.js';
 import {
   loadProjectRules,
   observeRunToolEvent,
+  enrichFingerprintWithPersistedVectorProfile,
   type MemoryCaptureContext,
 } from '@mitii/host';
+import {
+  normalizeMaximumOutputTokens,
+  resolveEffectiveContextWindow,
+} from './settingsFields.js';
 import { MemoryPipeline } from '@mitii/v8';
 
 export function formatRunEventLine(event: RunEvent): string | undefined {
@@ -95,9 +103,27 @@ export function formatRunEventLine(event: RunEvent): string | undefined {
     case 'grant_narrowed':
       return `[grant] narrowed effect=${event.maximumWorkspaceEffect} approval=${event.approvalMode}${formatEventList(' scopes', event.pathScopes)}`;
     case 'skills_ready':
-      return `[skills] selected=${event.selectedCount}${formatEventList(' ids', event.selected)} omitted=${event.omittedCount}${formatSkillOmissions(event)} status=${event.status}`;
+      return `[skills] selected=${event.selectedCount}${event.requiredCount ? ` required=${event.requiredCount}` : ''}${formatEventList(' ids', event.selected)}${formatEventList(' required', event.required)} omitted=${event.omittedCount}${formatSkillOmissions(event)} status=${event.status}`;
     case 'memory_ready':
       return `[memory] selected=${event.selectedCount} omitted=${event.omittedCount} status=${event.status}`;
+    case 'prompt_ready': {
+      const used = event.budget?.totalUsedTokens;
+      const reserved = event.budget?.outputReservedTokens;
+      const usable = event.window?.usableInputTokens;
+      const parts = [
+        `status=${event.status}`,
+        typeof used === 'number' ? `used=${used}` : undefined,
+        typeof reserved === 'number' ? `output=${reserved}` : undefined,
+        typeof usable === 'number' ? `usable=${usable}` : undefined,
+        event.totalOmittedTokens > 0
+          ? `omitted=${event.totalOmittedTokens}`
+          : undefined,
+        event.totalTruncatedTokens > 0
+          ? `truncated=${event.totalTruncatedTokens}`
+          : undefined,
+      ].filter(Boolean);
+      return `[prompt] ${parts.join(' ')}`;
+    }
     case 'task_list_updated':
       return `[tasks] ${event.completedCount}/${event.totalCount} complete`;
     case 'evidence_updated':
@@ -197,10 +223,8 @@ function terminalDetail(event: Extract<RunEvent, { type: 'terminal' }>): string 
   }
   const err = event.result.error?.message?.trim();
   if (err) return err.slice(0, 240);
-  const codes = event.result.reasonCodes ?? [];
-  if (codes.includes('context_skipped')) {
-    return 'Repository context was skipped for this route.';
-  }
+  // Keep "Done" clean — context/tool wiring notes belong on Run diagnostic,
+  // with Run summary as the final activity row.
   return undefined;
 }
 
@@ -340,6 +364,31 @@ export function runEventToActivity(event: RunEvent): ActivityEventPayload | unde
           ? pathDetail
           : `${event.blockCount} block(s) · retrieved ${event.retrievedCandidates} · selected ${event.selectedItems} · dropped ${event.droppedBlocks} · ${event.status}`,
         status: event.status,
+      };
+    }
+    case 'prompt_ready': {
+      const used = event.budget?.totalUsedTokens;
+      const output = event.budget?.outputReservedTokens;
+      const usable = event.window?.usableInputTokens;
+      return {
+        id,
+        at,
+        kind: 'context',
+        title: 'Prompt budget ready',
+        detail: [
+          event.status,
+          typeof used === 'number' ? `${used.toLocaleString()} used` : undefined,
+          typeof output === 'number'
+            ? `${output.toLocaleString()} output reserved`
+            : undefined,
+          typeof usable === 'number'
+            ? `${usable.toLocaleString()} usable`
+            : undefined,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+        status:
+          event.status === 'blocked' ? 'failed' : 'done',
       };
     }
     case 'decision_made':
@@ -625,6 +674,22 @@ export function resultToSuspension(
       planText: result.answer,
     };
   }
+  if (suspension.kind === 'grant_expansion_required' && suspension.grantExpansion) {
+    return {
+      runId: result.runId,
+      kind: 'grant_expansion_required',
+      rationale: suspension.rationale,
+      grantExpansion: suspension.grantExpansion,
+    };
+  }
+  if (suspension.kind === 'continue_required') {
+    return {
+      runId: result.runId,
+      kind: 'continue_required',
+      rationale: suspension.rationale,
+      continuePrompt: suspension.continuePrompt ?? suspension.rationale,
+    };
+  }
   return undefined;
 }
 
@@ -707,6 +772,56 @@ async function resolveSuspensionNative(
       runId: result.runId,
       planDecision: {
         decision: choice.label === 'Approve plan' ? 'approved' : 'rejected',
+      },
+    };
+  }
+
+  if (suspension.kind === 'grant_expansion_required' && suspension.grantExpansion) {
+    const pathPreview = suspension.grantExpansion.extraPaths.slice(0, 5).join(', ');
+    const choice = await vs.window.showQuickPick(
+      [
+        {
+          label: 'Expand access',
+          description: pathPreview || 'Additional workspace paths',
+        },
+        { label: 'Deny expansion', description: 'Keep current grant' },
+      ],
+      {
+        title: 'Mitii workspace access expansion',
+        placeHolder: suspension.rationale,
+        ignoreFocusOut: true,
+      },
+    );
+    if (!choice) return 'stop';
+    return {
+      schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+      runId: result.runId,
+      grantExpansion: {
+        expansionId: suspension.grantExpansion.expansionId,
+        decision: choice.label === 'Expand access' ? 'approved' : 'denied',
+      },
+    };
+  }
+
+  if (suspension.kind === 'continue_required') {
+    const choice = await vs.window.showQuickPick(
+      [
+        { label: 'Continue', description: 'Keep working on remaining tasks' },
+        { label: 'Stop here', description: 'Finish with partial progress' },
+      ],
+      {
+        title: 'Mitii continue required',
+        placeHolder:
+          suspension.continuePrompt ?? suspension.rationale ?? 'Continue this run?',
+        ignoreFocusOut: true,
+      },
+    );
+    if (!choice) return 'stop';
+    return {
+      schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+      runId: result.runId,
+      continueDecision: {
+        decision: choice.label === 'Continue' ? 'continue' : 'stop',
       },
     };
   }
@@ -815,7 +930,7 @@ export function resolveApprovalPolicy(preset: string | undefined): {
       return { approvalMode: 'every_mutation', planApproval: 'policy' };
     case 'builder':
     case 'guided':
-      return { approvalMode: 'never', planApproval: 'policy' };
+      return { approvalMode: 'when_required', planApproval: 'policy' };
     case 'pilot':
       return { approvalMode: 'never', planApproval: 'never' };
     default:
@@ -889,6 +1004,7 @@ export async function runAskInOutputChannel(options: {
   effort?: string;
   approvalMode?: string;
   pinnedPaths?: string[];
+  requiredSkillIds?: string[];
   workspaceId?: string;
   /** Used to estimate memory tokens in the context meter (not prompt-stuffed). */
   workspaceState?: vscode.Memento;
@@ -994,19 +1110,18 @@ export async function runAskInOutputChannel(options: {
       'guided',
   );
   const model = cfg.get<string>('provider.model') ?? '';
-  const contextWindow =
-    cfg.get<number>('provider.contextWindow') ||
-    findLocalModelPreset(model)?.contextWindow ||
-    32_768;
-  const configuredMaximumOutputTokens = cfg.get<number>(
-    'provider.maximumOutputTokens',
+  const providerType = cfg.get<string>('provider.type') ?? '';
+  const storedContextWindow = cfg.get<number>('provider.contextWindow');
+  const contextWindow = resolveEffectiveContextWindow(
+    typeof storedContextWindow === 'number' && Number.isFinite(storedContextWindow)
+      ? Math.floor(storedContextWindow)
+      : 0,
+    model,
+    providerType,
   );
-  const maximumOutputTokens =
-    typeof configuredMaximumOutputTokens === 'number' &&
-    Number.isFinite(configuredMaximumOutputTokens) &&
-    configuredMaximumOutputTokens > 0
-      ? Math.floor(configuredMaximumOutputTokens)
-      : undefined;
+  const maximumOutputTokens = normalizeMaximumOutputTokens(
+    cfg.get<number>('provider.maximumOutputTokens'),
+  );
   const mcpCatalogTokens = getSharedMcpManager().snapshot().toolsCatalogTokens;
   const memoryBlock =
     toggles.memory && options.workspaceState && options.workspaceId
@@ -1015,7 +1130,14 @@ export async function runAskInOutputChannel(options: {
           options.workspaceId,
         )
       : undefined;
-  const contextBreakdown = buildContextUsageBreakdown({
+  const windowBudgetPolicy = readTokenBudgetPolicyOverrides(cfg);
+  const budgetPreview = deriveLiveTokenBudgetPreview({
+    contextWindowTokens: contextWindow,
+    maximumOutputTokens:
+      maximumOutputTokens > 0 ? maximumOutputTokens : undefined,
+    policy: windowBudgetPolicy,
+  });
+  let contextBreakdown = buildContextUsageBreakdown({
     prompt: options.prompt,
     conversationText: options.conversationText,
     pinnedContents: pinnedContents || undefined,
@@ -1027,6 +1149,7 @@ export async function runAskInOutputChannel(options: {
     mcpToolsCatalogTokens: mcpCatalogTokens,
     depthHint: options.depth,
     contextWindow,
+    preview: budgetPreview,
   });
   handlers?.onContextBreakdown?.(contextBreakdown);
 
@@ -1100,14 +1223,73 @@ export async function runAskInOutputChannel(options: {
         const mitiiDir = scaffoldMitiiWorkspace(workspaceRoot);
         const sqlitePath = join(mitiiDir, 'repository-index.sqlite');
         if (existsSync(sqlitePath)) {
-          const snap = await buildWorkspaceSnapshot({
-            workspaceRoot,
-            workspaceId,
-          });
-          await client.publishRepositoryState(snap.candidate);
-          channel.appendLine(
-            `[index] reused on-disk index at ${sqlitePath}; published fingerprint pin (${snap.fileCount} files)`,
-          );
+          const statePath = join(mitiiDir, 'last-repository-state.json');
+          let publishedFromCache = false;
+          if (existsSync(statePath)) {
+            try {
+              const raw = JSON.parse(readFileSync(statePath, 'utf8')) as {
+                schemaVersion?: number;
+                snapshotId?: string;
+                roots?: Array<{ vectorProfile?: string }>;
+                scanCompleteness?: 'complete' | 'truncated' | 'unknown';
+                reasons?: Array<{
+                  code: string;
+                  message: string;
+                  rootId?: string;
+                }>;
+              };
+              const hasVectorProfile = raw.roots?.some(
+                (root) => typeof root.vectorProfile === 'string' && root.vectorProfile.trim(),
+              );
+              if (
+                raw.schemaVersion === 1 &&
+                typeof raw.snapshotId === 'string' &&
+                Array.isArray(raw.roots) &&
+                raw.roots.length > 0 &&
+                hasVectorProfile
+              ) {
+                await client.publishRepositoryState({
+                  schemaVersion: 1,
+                  workspaceId,
+                  snapshotId: raw.snapshotId,
+                  roots: raw.roots as never,
+                  scanCompleteness: raw.scanCompleteness ?? 'complete',
+                  reasons: (raw.reasons ?? []) as never,
+                  generatedAt: new Date().toISOString(),
+                });
+                publishedFromCache = true;
+                channel.appendLine(
+                  `[index] reused on-disk index via last-repository-state.json (${raw.roots.length} root(s); vector profile preserved)`,
+                );
+              }
+            } catch (error) {
+              channel.appendLine(
+                `[index] last-repository-state.json unusable; falling back to fingerprint pin: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+              );
+            }
+          }
+          if (!publishedFromCache) {
+            const snap = await buildWorkspaceSnapshot({
+              workspaceRoot,
+              workspaceId,
+            });
+            const candidate = enrichFingerprintWithPersistedVectorProfile(
+              snap.candidate,
+              mitiiDir,
+            );
+            await client.publishRepositoryState(candidate);
+            channel.appendLine(
+              `[index] reused on-disk index at ${sqlitePath}; published fingerprint pin (${snap.fileCount} files)${
+                candidate.roots.some(
+                  (root: { vectorProfile?: string }) => root.vectorProfile,
+                )
+                  ? ' with persisted vector profile'
+                  : ''
+              }`,
+            );
+          }
         } else {
           try {
             const full = await runFullWorkspaceIndex({
@@ -1161,7 +1343,6 @@ export async function runAskInOutputChannel(options: {
       ? await loadProjectRules({ workspaceRoot })
       : [];
     const runStartedAt = new Date().toISOString();
-    const windowBudgetPolicy = readTokenBudgetPolicyOverrides(cfg);
     const loopPolicyThresholds = readLoopPolicyThresholdOverrides(cfg);
     const effort =
       options.effort === 'low' ||
@@ -1177,19 +1358,21 @@ export async function runAskInOutputChannel(options: {
       approvalMode: approvalPolicy.approvalMode,
       planApproval: approvalPolicy.planApproval,
       budget: resolveRunBudget(vs),
-      ...(windowBudgetPolicy || effort
-        ? {
-            windowBudget: {
-              ...(windowBudgetPolicy ? { policy: windowBudgetPolicy } : {}),
-              ...(effort ? { effort } : {}),
-            },
-          }
-        : {}),
+      windowBudget: {
+        ...(windowBudgetPolicy ? { policy: windowBudgetPolicy } : {}),
+        ...(effort ? { effort } : {}),
+        // Raw settings value (0 = derive). Engine must not see a pre-derived
+        // capability number as a host override.
+        maximumOutputTokens,
+      },
       ...(loopPolicyThresholds
         ? { loopPolicy: { thresholds: loopPolicyThresholds } }
         : {}),
       ...(projectRules.length > 0 ? { projectRules: [...projectRules] } : {}),
       ...(pinnedPaths.length > 0 ? { pinnedPaths } : {}),
+      ...(options.requiredSkillIds && options.requiredSkillIds.length > 0
+        ? { requiredSkillIds: [...options.requiredSkillIds] }
+        : {}),
       ...(options.conversation && options.conversation.length > 0
         ? { conversation: options.conversation }
         : {}),
@@ -1276,6 +1459,14 @@ export async function runAskInOutputChannel(options: {
               handlers?.onDelta?.(event.preview);
             }
           }
+          if (event.type === 'prompt_ready' && event.budget) {
+            contextBreakdown = mergePromptBudgetIntoBreakdown({
+              host: contextBreakdown,
+              budget: event.budget,
+              window: event.window,
+            });
+            handlers?.onContextBreakdown?.(contextBreakdown);
+          }
           const line = formatRunEventLine(event);
           if (line) {
             const stamp = formatClock(eventAtMs(event));
@@ -1303,14 +1494,6 @@ export async function runAskInOutputChannel(options: {
           const statusLine = `[mitii] status=${result.status} route=${result.route ?? 'n/a'}`;
           channel.appendLine(usageLine);
           channel.appendLine(statusLine);
-          handlers?.onEvent?.(undefined, {
-            id: `evt_${++activitySeq}`,
-            at: Date.now(),
-            kind: 'info',
-            title: 'Run summary',
-            detail: `${usageLine.replace('[mitii] ', '')} · ${statusLine.replace('[mitii] ', '')}`,
-            status: result.status,
-          });
           for (const line of formatRunDiagnostics(result)) {
             handlers?.onEvent?.(undefined, {
               id: `evt_${++activitySeq}`,
@@ -1335,6 +1518,15 @@ export async function runAskInOutputChannel(options: {
               status: 'failed',
             });
           }
+          // Always last in the activity timeline so the usage/status line closes the run.
+          handlers?.onEvent?.(undefined, {
+            id: `evt_${++activitySeq}`,
+            at: Date.now(),
+            kind: 'info',
+            title: 'Run summary',
+            detail: `${usageLine.replace('[mitii] ', '')} · ${statusLine.replace('[mitii] ', '')}`,
+            status: result.status,
+          });
           return {
             result: {
               ...result,

@@ -1,7 +1,9 @@
+import type { ExecutionDecision } from "../../../modules/decision-policy";
 import type {
   ModelMessage,
   ModelToolCall,
 } from "../../../modules/model-gateway";
+import type { WindowPolicy } from "../../../modules/window-budget";
 import {
   formatPlanAsAnswer,
   inferPlanStrategyFromArtifact,
@@ -35,6 +37,7 @@ import type {
   AgentReasonCode,
   AgentRunResult,
 } from "../contracts";
+import type { AgentRunCheckpoint } from "../internal/RunCheckpoint";
 import { EventBus } from "../internal/EventBus";
 import { RunBudgetTracker } from "../internal/RunBudget";
 import {
@@ -326,7 +329,137 @@ export async function executeResume(
       });
     }
 
-    // suspensionKind === "approval_required"
+    if (checkpoint.suspensionKind === "grant_expansion_required") {
+      if (!input.grantExpansion) {
+        throw new AgentEngineError(
+          "invalid_input",
+          "Resuming a grant-expansion-required run requires grantExpansion.",
+        );
+      }
+      const pending = checkpoint.pendingGrantExpansion;
+      if (
+        !pending ||
+        pending.expansionId !== input.grantExpansion.expansionId
+      ) {
+        throw new AgentEngineError(
+          "invalid_input",
+          "Grant expansion id does not match the pending checkpoint.",
+        );
+      }
+
+      if (input.grantExpansion.decision === "denied") {
+        await runtime.deps.checkpointStore.delete(runId);
+        await runtime.safeUnpin(runId, pinnedState);
+        reasonCodes.push("grant_expansion_denied");
+        return finish({
+          status: "approval_denied",
+          reasonCodes,
+          error: {
+            code: "grant_expansion_denied",
+            message: "Workspace access expansion was denied.",
+          },
+        });
+      }
+
+      if (!runtime.deps.decision?.widen) {
+        await runtime.safeUnpin(runId, pinnedState);
+        return finish({
+          status: "failed",
+          reasonCodes: [...reasonCodes, "misconfigured"],
+          error: {
+            code: "misconfigured",
+            message: "Decision policy widen is not configured.",
+          },
+        });
+      }
+
+      const widenedDecision = runtime.deps.decision.widen({
+        previous: decision,
+        extraPaths: pending.extraPaths,
+      });
+      reasonCodes.push("grant_expansion_approved", "grant_expanded", "resume_complete");
+      await runtime.deps.checkpointStore.delete(runId);
+
+      return await resumeToolLoopFromCheckpoint(runtime, {
+        runId,
+        requestId,
+        checkpoint,
+        startInput,
+        decision: widenedDecision,
+        bus,
+        signal,
+        budget,
+        reasonCodes,
+        warnings,
+        taskListRef,
+        windowPolicy,
+        pinnedState,
+        finish,
+        cancelledResult,
+        repoBuildStateAfter,
+        onRepoBuildStateAfter: (state) => {
+          repoBuildStateAfter = state;
+        },
+        onVerificationRecord: (record) => {
+          verificationRecord = record;
+        },
+      });
+    }
+
+    if (checkpoint.suspensionKind === "continue_required") {
+      if (!input.continueDecision) {
+        throw new AgentEngineError(
+          "invalid_input",
+          "Resuming a continue-required run requires continueDecision.",
+        );
+      }
+
+      if (input.continueDecision.decision === "stop") {
+        await runtime.deps.checkpointStore.delete(runId);
+        await runtime.safeUnpin(runId, pinnedState);
+        reasonCodes.push("resume_complete");
+        const partialAnswer = checkpoint.messages
+          .filter((message) => message.role === "assistant")
+          .map((message) => message.content)
+          .filter((content) => content.trim().length > 0)
+          .pop();
+        return finish({
+          status: "completed",
+          answer: partialAnswer,
+          reasonCodes,
+        });
+      }
+
+      reasonCodes.push("stall_continue_approved", "resume_complete");
+      await runtime.deps.checkpointStore.delete(runId);
+
+      return await resumeToolLoopFromCheckpoint(runtime, {
+        runId,
+        requestId,
+        checkpoint,
+        startInput,
+        decision,
+        bus,
+        signal,
+        budget,
+        reasonCodes,
+        warnings,
+        taskListRef,
+        windowPolicy,
+        pinnedState,
+        finish,
+        cancelledResult,
+        repoBuildStateAfter,
+        onRepoBuildStateAfter: (state) => {
+          repoBuildStateAfter = state;
+        },
+        onVerificationRecord: (record) => {
+          verificationRecord = record;
+        },
+      });
+    }
+
+    if (checkpoint.suspensionKind === "approval_required") {
     if (!input.approval) {
       throw new AgentEngineError(
         "invalid_input",
@@ -530,6 +663,12 @@ export async function executeResume(
         plan: checkpoint.plan,
       },
     });
+    }
+
+    throw new AgentEngineError(
+      "invalid_input",
+      `Unsupported suspension kind "${checkpoint.suspensionKind}".`,
+    );
   } catch (error) {
     if (error instanceof AgentEngineError) {
       throw error;
@@ -548,4 +687,176 @@ export async function executeResume(
       },
     });
   }
+}
+
+async function resumeToolLoopFromCheckpoint(
+  runtime: AgentEngineRuntime,
+  params: {
+    runId: string;
+    requestId: string;
+    checkpoint: AgentRunCheckpoint;
+    startInput: AgentEngineStartInput;
+    decision: ExecutionDecision;
+    bus: EventBus;
+    signal: AbortSignal;
+    budget: RunBudgetTracker;
+    reasonCodes: AgentReasonCode[];
+    warnings: string[];
+    taskListRef: TaskListRef;
+    windowPolicy: WindowPolicy;
+    pinnedState: AgentRunCheckpoint["pinnedState"];
+    finish: (
+      partial: Omit<
+        AgentRunResult,
+        | "schemaVersion"
+        | "runId"
+        | "requestId"
+        | "usage"
+        | "durationMs"
+        | "warnings"
+        | "reasonCodes"
+      > & {
+        reasonCodes?: AgentReasonCode[];
+        warnings?: string[];
+      },
+    ) => AgentRunResult;
+    cancelledResult: () => Promise<AgentRunResult>;
+    repoBuildStateAfter?: AgentRunCheckpoint["repoBuildStateAfter"];
+    onRepoBuildStateAfter?: (state: NonNullable<
+      AgentRunCheckpoint["repoBuildStateAfter"]
+    >) => void;
+    onVerificationRecord?: (record: VerificationRecord) => void;
+  },
+): Promise<AgentRunResult> {
+  const {
+    runId,
+    requestId,
+    checkpoint,
+    startInput,
+    decision,
+    bus,
+    signal,
+    budget,
+    reasonCodes,
+    warnings,
+    taskListRef,
+    windowPolicy,
+    pinnedState,
+    finish,
+    cancelledResult,
+  } = params;
+
+  if (!runtime.deps.tools) {
+    await runtime.safeUnpin(runId, pinnedState);
+    return finish({
+      status: "failed",
+      reasonCodes: [...reasonCodes, "misconfigured"],
+      error: {
+        code: "misconfigured",
+        message: "Model requested tools but Tool Runtime is not configured.",
+      },
+    });
+  }
+  if (!startInput.workspaceRoot) {
+    await runtime.safeUnpin(runId, pinnedState);
+    return finish({
+      status: "failed",
+      reasonCodes: [...reasonCodes, "misconfigured"],
+      error: {
+        code: "misconfigured",
+        message: "workspaceRoot is required to resume a tool loop.",
+      },
+    });
+  }
+
+  const messages: ModelMessage[] = [...checkpoint.messages];
+  const toolCache = ToolCallCache.fromEntries(checkpoint.toolCacheEntries);
+  const changedFiles = [...checkpoint.changedFiles];
+  const mutationCheckpointIds = [...checkpoint.mutationCheckpointIds];
+  const establishedFacts: EstablishedFact[] = [];
+
+  const toolDefinitions = annotateMutationToolDefinitions(
+    attachTaskListTool({
+      mode: startInput.request.mode,
+      tools: filterToolDefinitions({
+        grant: decision.toolGrant,
+        definitions:
+          startInput.tools ??
+          runtime.deps.toolDefinitions ??
+          DEFAULT_TOOL_DEFINITIONS,
+        supportsTools: runtime.deps.llm.capabilities.supportsTools,
+      }),
+    }),
+    decision.toolGrant.mutationBudget,
+  );
+
+  const loopOutcome = await runModelToolLoop(runtime, {
+    runId,
+    request: {
+      messages: [...messages],
+      model: startInput.model,
+      temperature: startInput.temperature,
+      stream: startInput.stream,
+      tools: toolDefinitions,
+    },
+    decision,
+    dirtyPaths: startInput.dirtyPaths,
+    pinnedState,
+    workspaceRoot: startInput.workspaceRoot,
+    bus,
+    signal,
+    budget,
+    reasonCodes,
+    warnings,
+    messages,
+    toolCache,
+    changedFiles,
+    mutationCheckpointIds,
+    taskListRef,
+    establishedFacts,
+    windowPolicy,
+    repoBuildStateBefore: checkpoint.repoBuildStateBefore,
+    logVerbosity: startInput.logVerbosity,
+    reserveVerificationRepairModelCalls: true,
+    plan: checkpoint.plan,
+    thresholds: resolveLoopPolicyThresholds({
+      contextWindowTokens: windowPolicy.contextWindowTokens,
+      overrides: startInput.loopPolicy?.thresholds,
+    }).thresholds,
+  });
+
+  return await finishAfterLoop(runtime, {
+    runId,
+    requestId,
+    input: startInput,
+    request: {
+      messages: [...messages],
+      model: startInput.model,
+      temperature: startInput.temperature,
+      stream: startInput.stream,
+      tools: toolDefinitions,
+    },
+    decision,
+    bus,
+    signal,
+    pinnedState,
+    dirtyPaths: startInput.dirtyPaths,
+    loopOutcome,
+    reasonCodes,
+    warnings,
+    budget,
+    startedAtMs: checkpoint.startedAtMs,
+    finish,
+    cancelledResult,
+    taskListRef,
+    repoBuildStateBefore: checkpoint.repoBuildStateBefore,
+    repoBuildStateAfter: params.repoBuildStateAfter,
+    onRepoBuildStateAfter: params.onRepoBuildStateAfter,
+    onVerificationRecord: params.onVerificationRecord,
+    windowPolicy,
+    loopContext: {
+      establishedFacts,
+      plan: checkpoint.plan,
+    },
+  });
 }

@@ -12,8 +12,6 @@ import {
   NodeNetworkAdapter,
   NodeWorkspaceFileSystemAdapter,
   NodeGitAdapter,
-  WINDOW_BUDGET_SCHEMA_VERSION,
-  deriveWindowPolicy,
   type LlmPort,
   type MitiiClient,
   type ModelCapabilities,
@@ -37,20 +35,20 @@ import type * as vscode from 'vscode';
 import { VscodeDiagnosticsPort } from './diagnosticsPort.js';
 import { getSharedMcpManager } from './mcp/manager.js';
 import { readMcpSettings } from './mcpConfig.js';
-import { findLocalModelPreset } from './modelPresets.js';
 import { createHostRepositoryContext } from './repositoryContextHost.js';
 import { readContextToggles } from './contextToggles.js';
 import { createVsCodeMemoryStore } from './memoryStore.js';
 import { createVsCodeCodeNavigationPort } from './codeNavigation.js';
 import { resolveVsCodeSemanticIndexSettings } from './semanticIndex.js';
-import { readTokenBudgetPolicyOverrides } from './tokenBudgetSettings.js';
 import {
   isModelIoLoggingEnabled,
   wrapLlmPortForModelIo,
 } from './modelIoLog.js';
 import { readModelIoLoggingEnabled } from './modelIoSettings.js';
-
-const DEFAULT_CONTEXT_WINDOW = 32_768;
+import {
+  normalizeMaximumOutputTokens,
+  resolveEffectiveContextWindow,
+} from './settingsFields.js';
 
 export class LocalUnderstandingLlmPort implements LlmPort {
   readonly id = 'vscode-local-understanding';
@@ -92,37 +90,33 @@ export interface VscodePortResolution {
   workspaceId: string;
 }
 
-function resolveContextWindow(cfg: vscode.WorkspaceConfiguration, model: string): number {
-  const fromSetting = cfg.get<number>('provider.contextWindow');
-  if (
-    typeof fromSetting === 'number' &&
-    Number.isFinite(fromSetting) &&
-    fromSetting > 0
-  ) {
-    return Math.floor(fromSetting);
-  }
-  return (
-    findLocalModelPreset(model)?.contextWindow ?? DEFAULT_CONTEXT_WINDOW
-  );
-}
-
-function resolveMaximumOutput(
+/**
+ * Settings context window is the source of truth when positive.
+ * Auto (0) falls back to model / provider presets.
+ */
+export function resolveContextWindowFromSettings(
   cfg: vscode.WorkspaceConfiguration,
-  contextWindowTokens: number,
+  model: string,
+  providerType?: string,
 ): number {
-  const fromSetting = cfg.get<number>('provider.maximumOutputTokens');
-  const hostOutput =
-    typeof fromSetting === 'number' &&
-    Number.isFinite(fromSetting) &&
-    fromSetting > 0
+  const fromSetting = cfg.get<number>('provider.contextWindow');
+  const stored =
+    typeof fromSetting === 'number' && Number.isFinite(fromSetting)
       ? Math.floor(fromSetting)
       : 0;
-  return deriveWindowPolicy({
-    schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
-    contextWindowTokens: Math.max(1, contextWindowTokens),
-    maximumOutputTokens: hostOutput,
-    policy: readTokenBudgetPolicyOverrides(cfg),
-  }).maximumOutputTokens;
+  return resolveEffectiveContextWindow(stored, model, providerType);
+}
+
+/**
+ * Raw host max-output setting. 0 / legacy 5000 → derive in Window Budget.
+ * Never pre-derive here — that falsely becomes output_host_override.
+ */
+export function resolveHostMaximumOutputTokens(
+  cfg: vscode.WorkspaceConfiguration,
+): number {
+  return normalizeMaximumOutputTokens(
+    cfg.get<number>('provider.maximumOutputTokens'),
+  );
 }
 
 /**
@@ -173,8 +167,12 @@ export async function resolveVscodePorts(
     };
   }
 
-  const contextWindowTokens = resolveContextWindow(cfg, model);
-  const maximumOutputTokens = resolveMaximumOutput(cfg, contextWindowTokens);
+  const contextWindowTokens = resolveContextWindowFromSettings(
+    cfg,
+    model,
+    providerType,
+  );
+  const hostMaximumOutputTokens = resolveHostMaximumOutputTokens(cfg);
   const ports = createHostLlmPorts({
     type: providerType,
     preset: presetId,
@@ -183,7 +181,11 @@ export async function resolveVscodePorts(
     ...(secretKey ? { apiKey: secretKey } : {}),
     capabilities: {
       contextWindowTokens,
-      maximumOutputTokens,
+      // Only forward a real host override. Omitting lets the adapter advertise
+      // a capability default without Window Budget treating it as an override.
+      ...(hostMaximumOutputTokens > 0
+        ? { maximumOutputTokens: hostMaximumOutputTokens }
+        : {}),
       supportsTools: true,
     },
   });
@@ -219,7 +221,15 @@ export async function createVscodeClient(
   const fileSystem = workspaceRoot
     ? new NodeWorkspaceFileSystemAdapter()
     : undefined;
-  const search = createOptionalSearchPort(process.env);
+  const searchEnv = process.env;
+  const searchApiKey =
+    (await secrets.get('mitii.search.apiKey'))?.trim() ||
+    searchEnv.MITII_SEARCH_API_KEY?.trim() ||
+    searchEnv.BRAVE_API_KEY?.trim() ||
+    undefined;
+  const search = searchApiKey
+    ? createOptionalSearchPort({ env: searchEnv, apiKey: searchApiKey })
+    : createOptionalSearchPort(searchEnv);
   const git = workspaceRoot ? new NodeGitAdapter() : undefined;
   const codeNavigation = workspaceRoot
     ? createHostCodeNavigationPort({

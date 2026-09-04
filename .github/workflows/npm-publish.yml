@@ -1,5 +1,6 @@
 # Publishes @mitii/v8 → @mitii/sdk → @mitii/host → @mitii/cli to npm.
 # Invoked from the Release workflow on v* tags, or manually via workflow_dispatch.
+# For trusted publishing through workflow_call, configure npm with the caller workflow filename.
 # Prefers GitHub OIDC trusted publishing; NPM_TOKEN is optional fallback.
 name: npm publish
 
@@ -18,9 +19,15 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           registry-url: https://registry.npmjs.org
           cache: pnpm
+      - name: Install npm trusted publishing support
+        run: |
+          npm install -g npm@^11.5.1
+          node --version
+          npm --version
+          pnpm --version
       - name: Require publish auth
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

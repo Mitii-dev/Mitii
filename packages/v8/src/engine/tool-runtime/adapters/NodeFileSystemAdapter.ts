@@ -4,9 +4,15 @@ import * as path from "node:path";
 import type {
   WorkspaceDirectoryEntry,
   WorkspaceFileSystemPort,
+  WorkspaceReadFileOptions,
+  WorkspaceReadFileResult,
   WorkspaceStat,
 } from "../contracts";
 import { shouldSkipSearchWalkEntry } from "../internal/SearchWalkIgnore";
+import { selectLineWindow } from "../internal/readFileWindow";
+
+/** Safety cap while seeking to startLine so huge files cannot hang the tool. */
+const MAX_SEEK_BYTES = 8_000_000;
 
 export class NodeWorkspaceFileSystemAdapter implements WorkspaceFileSystemPort {
   public resolve(workspaceRoot: string, relativePath: string): string {
@@ -49,19 +55,93 @@ export class NodeWorkspaceFileSystemAdapter implements WorkspaceFileSystemPort {
 
   public async readFile(
     absolutePath: string,
-    options?: { maxBytes?: number },
-  ): Promise<{ content: string; truncated: boolean; bytesRead: number }> {
+    options?: WorkspaceReadFileOptions,
+  ): Promise<WorkspaceReadFileResult> {
     const handle = await fs.open(absolutePath, "r");
     try {
       const stats = await handle.stat();
-      const maxBytes = options?.maxBytes ?? stats.size;
-      const toRead = Math.min(stats.size, maxBytes);
-      const buffer = Buffer.alloc(toRead);
-      const { bytesRead } = await handle.read(buffer, 0, toRead, 0);
+      const wantsRange =
+        options?.startLine !== undefined ||
+        options?.endLine !== undefined ||
+        options?.maxLines !== undefined;
+
+      // Prefix-only reads honor maxBytes from offset 0. Ranged reads may scan
+      // farther (up to MAX_SEEK_BYTES) so late startLine values stay reachable,
+      // then the returned window is still bounded by maxBytes.
+      const scanLimit = wantsRange
+        ? Math.min(stats.size, MAX_SEEK_BYTES)
+        : Math.min(stats.size, options?.maxBytes ?? stats.size);
+
+      const buffer = Buffer.alloc(scanLimit);
+      const { bytesRead } = await handle.read(buffer, 0, scanLimit, 0);
+      const raw = buffer.subarray(0, bytesRead).toString("utf8");
+      const loadedComplete = stats.size <= scanLimit;
+
+      let text = raw;
+      if (!loadedComplete && raw.length > 0 && !raw.endsWith("\n") && !wantsRange) {
+        const lastNl = Math.max(raw.lastIndexOf("\n"), raw.lastIndexOf("\r"));
+        if (lastNl >= 0) {
+          text = raw.slice(0, lastNl);
+        }
+      }
+
+      const maxChars =
+        options?.maxBytes !== undefined && Number.isFinite(options.maxBytes)
+          ? options.maxBytes
+          : undefined;
+
+      const window = selectLineWindow({
+        text,
+        startLine: options?.startLine,
+        endLine: options?.endLine,
+        maxLines: options?.maxLines,
+        maxChars: wantsRange ? maxChars : undefined,
+        textIsComplete: loadedComplete,
+      });
+
+      // Prefix path without explicit range: apply byte budget via window maxChars
+      // when the loaded prefix itself was not already limited to maxBytes.
+      const finalized =
+        !wantsRange && maxChars !== undefined && window.content.length > maxChars
+          ? selectLineWindow({
+              text: window.content,
+              maxChars,
+              textIsComplete: window.eof,
+            })
+          : window;
+
+      const truncated =
+        finalized.truncated ||
+        !loadedComplete ||
+        Boolean(finalized.truncationReason);
+
       return {
-        content: buffer.subarray(0, bytesRead).toString("utf8"),
-        truncated: stats.size > toRead,
-        bytesRead,
+        content: finalized.content,
+        truncated,
+        bytesRead: Buffer.byteLength(finalized.content, "utf8"),
+        startLine: finalized.startLine,
+        endLine: finalized.endLine,
+        ...(finalized.totalLines !== undefined
+          ? { totalLines: finalized.totalLines }
+          : {}),
+        eof: Boolean(finalized.eof && loadedComplete),
+        ...(finalized.nextStartLine !== undefined
+          ? { nextStartLine: finalized.nextStartLine }
+          : !finalized.eof || !loadedComplete
+            ? {
+                nextStartLine:
+                  finalized.endLine >= finalized.startLine
+                    ? finalized.endLine + 1
+                    : Math.max(1, options?.startLine ?? 1),
+              }
+            : {}),
+        ...(truncated
+          ? {
+              truncationReason:
+                finalized.truncationReason ??
+                (!loadedComplete ? ("byte_cap" as const) : ("line_range" as const)),
+            }
+          : {}),
       };
     } finally {
       await handle.close();

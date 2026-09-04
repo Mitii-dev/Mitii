@@ -14,6 +14,22 @@ describe("extractFileReadPaths", () => {
     ).toEqual(["a.ts", "b.ts"]);
   });
 
+  it("includes line ranges so continuation reads count as new coverage", () => {
+    expect(
+      extractFileReadPaths("read_file", {
+        path: "src/a.ts",
+        startLine: 181,
+      }),
+    ).toEqual(["src/a.ts:181"]);
+    expect(
+      extractFileReadPaths("read_file", {
+        path: "src/a.ts",
+        startLine: 10,
+        endLine: 20,
+      }),
+    ).toEqual(["src/a.ts:10-20"]);
+  });
+
   it("ignores mutation and search tools", () => {
     expect(
       extractFileReadPaths("apply_patch", {

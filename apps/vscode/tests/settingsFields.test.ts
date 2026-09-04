@@ -6,11 +6,13 @@ import {
   applyProviderTokenLimits,
   applyTokenBudgetPolicyField,
   applyUiPatch,
+  clearStaleModeModelDefaultsAfterProviderModelChange,
   DEFAULT_CONTEXT_TOGGLES,
   DEFAULT_CONTEXT_WINDOW,
   DEFAULT_MODE_DEFAULTS,
   DEFAULT_RUN_BUDGET,
   isSettingsNavCompact,
+  normalizeMaximumOutputTokens,
   normalizeTokenLimit,
   parseNumberFieldDraft,
   readStoredContextWindow,
@@ -25,6 +27,10 @@ import {
   tokenLimitDraftAfterHostEcho,
   withActiveModeApproval,
 } from '../src/settingsFields';
+import {
+  profileFromProvider,
+  reconcileActiveProfileWithProvider,
+} from '../src/profiles';
 import {
   defaultTokenBudgetSettings,
   TOKEN_BUDGET_FIELDS,
@@ -117,6 +123,36 @@ const BASE_UI: UiSettingsSnapshot = {
       contextWindowTokens: 32_768,
     },
     fields: [...LOOP_POLICY_FIELDS],
+  },
+  policyLab: {
+    enabled: false,
+    filePath: 'packages/v8/.../loopPolicyBands.ts + windowBudgetBands.ts',
+    exists: true,
+    previewContextWindowTokens: 35_000,
+    activeBand: {
+      id: 'compact',
+      label: 'Compact',
+      rangeLabel: '< 50k',
+      contextWindowTokens: 32_768,
+    },
+    editBand: 'compact',
+    bands: [
+      { id: 'compact', label: 'Compact', rangeLabel: '< 50k' },
+      { id: 'standard', label: 'Standard', rangeLabel: '50k – < 100k' },
+      { id: 'wide', label: 'Wide', rangeLabel: '≥ 100k' },
+    ],
+    loopByBand: { compact: {}, standard: {}, wide: {} },
+    windowByBand: { compact: {}, standard: {}, wide: {} },
+    loopOverrides: {},
+    windowOverrides: {},
+    loopThresholds: {},
+    loopBandThresholds: {},
+    windowPolicy: {},
+    windowBandPolicy: {},
+    loopFields: [...LOOP_POLICY_FIELDS],
+    windowFields: [...TOKEN_BUDGET_FIELDS],
+    loopBandHint: 'Compact (< 50k)',
+    shipPreviewNote: 'Save writes V8 source.',
   },
 };
 
@@ -274,6 +310,25 @@ describe('context window edit / save / reflect', () => {
     );
   });
 
+  it('uses the saved context window as the source of truth when positive', () => {
+    expect(resolveEffectiveContextWindow(100_000, 'claude-sonnet-4-5', 'anthropic')).toBe(
+      100_000,
+    );
+    expect(resolveEffectiveContextWindow(100_000, 'not-a-preset')).toBe(100_000);
+  });
+
+  it('falls back to cloud-sized windows when stored is 0', () => {
+    expect(resolveEffectiveContextWindow(0, 'claude-sonnet-4-5', 'anthropic')).toBe(
+      200_000,
+    );
+    expect(resolveEffectiveContextWindow(0, 'gemini-2.5-flash', 'gemini')).toBe(
+      1_048_576,
+    );
+    expect(resolveEffectiveContextWindow(0, 'gpt-4o', 'openai-compatible')).toBe(
+      128_000,
+    );
+  });
+
   it('rejects blank and non-numeric drafts without committing', () => {
     expect(parseNumberFieldDraft('', { min: 0, integer: true })).toBeUndefined();
     expect(parseNumberFieldDraft('abc', { min: 0, integer: true })).toBeUndefined();
@@ -326,6 +381,80 @@ describe('provider connection fields', () => {
     expect(next.preset).toBe('anthropic');
     expect(next.baseUrl).toBe('https://api.anthropic.com');
     expect(next.model).toBe('claude-sonnet-4-5');
+  });
+
+  it('clears stale mode-default models when the active provider model changes', () => {
+    const ui = applyUiPatch(BASE_UI, {
+      modeDefaults: {
+        ask: { model: 'old-model' },
+        plan: { model: 'old-model' },
+        agent: { model: 'intentional-agent-model' },
+      },
+    });
+    const next = clearStaleModeModelDefaultsAfterProviderModelChange({
+      ui,
+      previousProviderModel: 'old-model',
+      nextProviderModel: 'new-model',
+    });
+    expect(next.modeDefaults.ask.model).toBe('');
+    expect(next.modeDefaults.plan.model).toBe('');
+    expect(next.modeDefaults.agent.model).toBe('intentional-agent-model');
+  });
+
+  it('keeps mode-default models when the provider model has not changed', () => {
+    const ui = applyUiPatch(BASE_UI, {
+      modeDefaults: {
+        ask: { model: 'same-model' },
+      },
+    });
+    const next = clearStaleModeModelDefaultsAfterProviderModelChange({
+      ui,
+      previousProviderModel: 'same-model',
+      nextProviderModel: 'same-model',
+    });
+    expect(next).toBe(ui);
+    expect(next.modeDefaults.ask.model).toBe('same-model');
+  });
+});
+
+describe('profile settings', () => {
+  it('keeps the active profile provider aligned with effective VS Code settings', () => {
+    const oldProvider = {
+      ...BASE_PROVIDER,
+      model: 'old-model',
+      baseUrl: 'http://old.example/v1',
+    };
+    const currentProvider = {
+      ...BASE_PROVIDER,
+      model: 'new-model',
+      baseUrl: 'http://new.example/v1',
+    };
+    const profilesFile = {
+      activeProfileId: 'default',
+      profiles: [
+        profileFromProvider(oldProvider, {
+          id: 'default',
+          name: 'Default',
+          secretHash: 'old-secret',
+        }),
+        profileFromProvider(oldProvider, {
+          id: 'secondary',
+          name: 'Secondary',
+        }),
+      ],
+    };
+
+    const reconciled = reconcileActiveProfileWithProvider(
+      profilesFile,
+      currentProvider,
+      'new-secret',
+    );
+
+    expect(reconciled.activeProfileId).toBe('default');
+    expect(reconciled.profiles[0]?.provider.model).toBe('new-model');
+    expect(reconciled.profiles[0]?.provider.baseUrl).toBe('http://new.example/v1');
+    expect(reconciled.profiles[0]?.secretHash).toBe('new-secret');
+    expect(reconciled.profiles[1]?.provider.model).toBe('old-model');
   });
 });
 
@@ -585,6 +714,18 @@ describe('token limits must not snap back to 30000 while editing', () => {
       contextWindow: 30_000,
       maximumOutputTokens: 5_000,
     });
+  });
+
+  it('maps the legacy 5000 max-output default to auto (0)', () => {
+    expect(normalizeMaximumOutputTokens(5_000)).toBe(0);
+    expect(normalizeMaximumOutputTokens(0)).toBe(0);
+    expect(normalizeMaximumOutputTokens(12_288)).toBe(12_288);
+    const reflected = reflectProviderTokenLimits({
+      contextWindow: 100_000,
+      maximumOutputTokens: 5_000,
+      model: 'qwen3-coder:30b',
+    });
+    expect(reflected.maximumOutputTokens).toBe(0);
   });
 
   it('saves a change away from 30000 / 5000 and reflects the new raw values', () => {

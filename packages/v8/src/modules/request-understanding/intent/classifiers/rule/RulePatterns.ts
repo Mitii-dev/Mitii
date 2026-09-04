@@ -10,7 +10,7 @@ const INTENT_PATTERNS: IntentRule[] = [
   {
     intent: "feature",
     pattern:
-      /\b(?:implement|add|build|create|design|develop|write)\b.*\b(?:api|endpoint|route|controller|service|new feature|capability|integration|functionality)\b|\bi\s+need\s+(?:an?\s+|the\s+)?(?:api|endpoint|route)\b/i,
+      /\b(?:start\s+(?:the\s+)?implem(?:entation|netation)|implement|add|build|create|design|develop|write)\b.*\b(?:api|endpoint|route|controller|service|new feature|capability|integration|functionality|implem(?:entation|netation))\b|\bi\s+need\s+(?:an?\s+|the\s+)?(?:api|endpoint|route)\b/i,
     confidence: 0.86,
   },
   {
@@ -133,7 +133,9 @@ const PLAN_PATTERN =
   /\b(?:create|give|provide|write|prepare|make)\b.*\b(?:implementation plan|migration plan|refactoring plan|debugging plan|step-by-step plan|approach|strategy)\b|\bplan\s+only\b|\bdo not implement\b|\bdon't implement\b|\bwithout implementing\b/i;
 
 /**
- * Explicitly prohibits code or file modifications.
+ * Explicitly prohibits code or file modifications for the whole request.
+ * Prefer {@link isWholeRequestReadOnlyConstraint} for matching — this regex
+ * alone also hits scoped constraints ("Do not refactor Tablet…").
  */
 const NO_CHANGE_PATTERN =
   /\b(?:do not|don't|dont|without)\s+(?:edit|change|modify|fix|implement|apply|write|update|remove|refactor|touch)\b|\b(?:explain|review|diagnose|analyze|investigate)\s+only\b|\bno\s+(?:code|file)\s+changes\b|\bread[- ]only\b/i;
@@ -148,7 +150,7 @@ const QUESTION_PATTERN =
  * Explicit modification language.
  */
 const ACT_PATTERN =
-  /\b(?:fix|resolve|repair|patch|correct|implement|add|build|create|design|develop|write|update|modify|remove|delete|refactor|restructure|optimize|migrate|convert|rewrite|configure|install|upgrade|format|generate|scaffold|bootstrap|apply)\b|\bi\s+need\s+(?:an?\s+|the\s+)?(?:api|endpoint|route)\b/i;
+  /\b(?:start\s+(?:the\s+)?implem(?:entation|netation)|fix|resolve|repair|patch|correct|implement|add|build|create|design|develop|write|update|modify|remove|delete|refactor|restructure|optimize|migrate|convert|rewrite|configure|install|upgrade|format|generate|scaffold|bootstrap|apply)\b|\bi\s+need\s+(?:an?\s+|the\s+)?(?:api|endpoint|route)\b/i;
 
 /**
  * Read-only investigation language.

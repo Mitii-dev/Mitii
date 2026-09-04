@@ -16,12 +16,17 @@ function readJsonFile(path, callback) {
 }
 
 function formatUser(user, callback) {
+  // Simulated variable latency per user (e.g. different backing stores).
+  // BUG: combined with routes/users.js's callback-counting aggregation,
+  // this lets a slower earlier user resolve after a faster later one,
+  // reordering the response.
+  var delay = (4 - user.id) * 15;
   setTimeout(function () {
     callback(null, {
       id: user.id,
       label: user.name + ' <' + user.email + '>'
     });
-  }, 0);
+  }, delay);
 }
 
 module.exports = {

@@ -41,7 +41,7 @@ export function buildMutationBudgetInstruction(
       "Use minimal diffs (small oldText anchors). Never emit 30+ file rewrites in one response — split across turns.",
       "If a prior turn was truncated, immediately retry with a smaller batch.",
       "After a multi-file apply_patch, re-read or typecheck the touched files before the next mutation. Do not batch files whose contents may be stale.",
-      "If apply_patch returns old_text_not_found, old_text_ambiguous, or patch_hash_mismatch, the tool result includes current file content — copy exact oldText from that content and retry the stale file alone. Do not re-read unless currentContent is missing. For repeated exact text, set replaceAll=true instead of guessing. patch_target_missing means the path does not exist; glob or list the parent, then retry with oldText=\"\" to create or a corrected path.",
+      "If apply_patch returns old_text_not_found, old_text_ambiguous, patch_hash_mismatch, or identical_old_and_new, the tool result includes current file content. For stale hunks, copy exact oldText from that content and retry the stale file alone. For identical_old_and_new, newText must differ from oldText — do not resend the same block. Do not re-read unless currentContent is missing. For repeated exact text, set replaceAll=true instead of guessing. patch_target_missing means the path does not exist; glob or list the parent, then retry with oldText=\"\" to create or a corrected path.",
     ].join("\n"),
   };
 }

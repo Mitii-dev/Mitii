@@ -34,11 +34,26 @@ export {
   resolveLoopPolicyWindowBand,
   loopPolicyWindowBandDefinition,
   listLoopPolicyWindowBands,
-} from "./policy/loopPolicyBands";
+  POLICY_LAB_SCHEMA_VERSION,
+  policyLabFileSchema,
+  EMPTY_POLICY_LAB,
+  parsePolicyLabFile,
+  tryParsePolicyLabFile,
+  resolvePolicyLabOverrides,
+  mergeLabUnderHostOverrides,
+  promotePolicyLabToShip,
+  labLoopDeltas,
+  labWindowDeltas,
+} from "./policy/index";
 export type {
   LoopPolicyWindowBand,
   LoopPolicyWindowBandDefinition,
-} from "./policy/loopPolicyBands";
+  PolicyLabFile,
+  ResolvePolicyLabOverridesInput,
+  ResolvedPolicyLabOverrides,
+  PromotePolicyLabInput,
+  PromotePolicyLabResult,
+} from "./policy/index";
 
 export {
   resolveAgentEngineThresholds,

@@ -62,6 +62,8 @@ import {
   buildRejectedToolRecoveryMessage,
   isTargetedDiscoveryAfterRejectedMutation,
   isSuccessfulVerificationToolResult,
+  buildStallContinueRationale,
+  shouldOfferStallContinue,
 } from "../actions";
 import type {
   EstablishedFact,
@@ -133,6 +135,7 @@ export async function runModelToolLoop(
   memoryFacts?: readonly { id: string; content: string }[];
   establishedFacts?: EstablishedFact[];
   selectedSkillIds?: string[];
+  requiredSkillIds?: string[];
   taskListRef: TaskListRef;
   evidence?: RunEvidence;
   windowPolicy: WindowPolicy;
@@ -957,7 +960,7 @@ export async function runModelToolLoop(
       }
     }
 
-    await refreshAuthorityAfterTools(runtime, {
+    const grantExpansionOutcome = await refreshAuthorityAfterTools(runtime, {
       runId,
       bus,
       reasonCodes,
@@ -985,7 +988,20 @@ export async function runModelToolLoop(
       projects: params.projects,
       route: decision.route,
       windowPolicy: params.windowPolicy,
+      requiredSkillIds: params.requiredSkillIds,
     });
+    if (grantExpansionOutcome.kind === "expansion_required") {
+      return {
+        kind: "grant_expansion_required",
+        messages,
+        toolCache,
+        extraPaths: grantExpansionOutcome.extraPaths,
+        changedFiles,
+        mutationCheckpointIds,
+        answer: answer || undefined,
+        decision,
+      };
+    }
 
     reasonCodes.push("tools_executed");
     runtime.emitStage(bus, runId, "tool_running", "completed", [
@@ -1274,6 +1290,16 @@ export async function runModelToolLoop(
         warnings.push(
           "Stopped further read-only turns after mutations so verification can use remaining model-call budget.",
         );
+        if (
+          changedFiles.length > 0 &&
+          (answer.trim().length === 0 || isTransitionalAssistantAnswer(answer))
+        ) {
+          answer = synthesizeFallbackAnswer({
+            priorAnswer: answer,
+            changedFiles,
+          });
+          reasonCodes.push("incomplete_answer_fallback");
+        }
         return {
           kind: "completed",
           answer,
@@ -1345,6 +1371,31 @@ export async function runModelToolLoop(
               message:
                 "The model repeatedly read files but did not apply the required workspace edits.",
             },
+          };
+        }
+        if (
+          shouldOfferStallContinue({
+            changedFiles,
+            taskList: taskListRef.current,
+            mutationRequired: isMutationRequired(),
+          })
+        ) {
+          const rationale = buildStallContinueRationale({
+            changedFiles,
+            taskList: taskListRef.current,
+            answer,
+            fileReadCalls: loopUsageSnap.fileReadCalls,
+            uniqueFilePathsTouched: loopUsageSnap.uniqueFilePathsTouched,
+          });
+          return {
+            kind: "continue_required",
+            messages,
+            toolCache,
+            rationale,
+            changedFiles,
+            mutationCheckpointIds,
+            answer,
+            decision,
           };
         }
         return {

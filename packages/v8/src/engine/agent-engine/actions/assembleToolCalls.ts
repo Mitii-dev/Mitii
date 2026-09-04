@@ -8,7 +8,12 @@ export function assembleToolCalls(
 ): ModelToolCall[] {
   const byIndex = new Map<
     number,
-    { id?: string; name?: string; arguments: string }
+    {
+      id?: string;
+      name?: string;
+      arguments: string;
+      thoughtSignature?: string;
+    }
   >();
 
   for (const delta of deltas) {
@@ -22,6 +27,12 @@ export function assembleToolCalls(
     if (delta.arguments !== undefined) {
       current.arguments += delta.arguments;
     }
+    if (
+      delta.thoughtSignature !== undefined &&
+      delta.thoughtSignature.length > 0
+    ) {
+      current.thoughtSignature = delta.thoughtSignature;
+    }
     byIndex.set(delta.index, current);
   }
 
@@ -31,6 +42,9 @@ export function assembleToolCalls(
       id: value.id && value.id.length > 0 ? value.id : `tool_call_${index}`,
       name: value.name ?? "",
       arguments: value.arguments,
+      ...(value.thoughtSignature
+        ? { thoughtSignature: value.thoughtSignature }
+        : {}),
     }))
     .filter((call) => call.name.length > 0);
 }

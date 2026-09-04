@@ -62,7 +62,7 @@ export function preflightStructuredPatch(params: {
   if (patch.oldText === patch.newText) {
     throw new MutationError(
       "identical_old_and_new",
-      `oldText and newText are identical for "${patch.path}" — this patch would not change the file.`,
+      `oldText and newText are identical for "${patch.path}" — this patch would not change the file. Retry apply_patch with a different newText that actually edits the file. Copy exact oldText from currentContent; do not resend the same block.`,
     );
   }
 

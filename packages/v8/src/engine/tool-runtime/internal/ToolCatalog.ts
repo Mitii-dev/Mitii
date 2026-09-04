@@ -31,11 +31,19 @@ export const listDirectoryOutputSchema = z
   })
   .strict();
 
+export const readFileTruncationReasonSchema = z.enum([
+  "byte_cap",
+  "line_range",
+  "max_lines",
+  "model_budget",
+]);
+
 export const readFileInputSchema = z
   .object({
     path: z.string().min(1),
     startLine: z.number().int().positive().optional(),
     endLine: z.number().int().positive().optional(),
+    maxLines: z.number().int().positive().max(20_000).optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -56,9 +64,15 @@ export const readFileOutputSchema = z
   .object({
     path: z.string(),
     content: z.string(),
-    startLine: z.number().int().positive().optional(),
-    endLine: z.number().int().positive().optional(),
+    /** Actual first line included (1-based). */
+    startLine: z.number().int().positive(),
+    /** Actual last line included (1-based); 0 when content is empty. */
+    endLine: z.number().int().nonnegative(),
+    totalLines: z.number().int().nonnegative().optional(),
+    eof: z.boolean(),
+    nextStartLine: z.number().int().positive().optional(),
     truncated: z.boolean(),
+    truncationReason: readFileTruncationReasonSchema.optional(),
   })
   .strict();
 
@@ -471,6 +485,44 @@ export const runCommandOutputSchema = z
   })
   .strict();
 
+export const createGithubIssueInputSchema = z
+  .object({
+    title: z.string().min(1).max(256),
+    body: z.string().min(1).max(65_536),
+    labels: z.array(z.string().min(1).max(64)).max(20).optional(),
+    assignees: z.array(z.string().min(1).max(64)).max(10).optional(),
+    /**
+     * When set, search open issues for `[mitii:<fingerprint>]` and comment
+     * instead of creating a duplicate (idempotent triage).
+     */
+    fingerprint: z.string().min(4).max(64).optional(),
+  })
+  .strict();
+
+export const createPullRequestInputSchema = z
+  .object({
+    title: z.string().min(1).max(256),
+    body: z.string().min(1).max(65_536),
+    head: z.string().min(1).max(256),
+    base: z.string().min(1).max(256).default("main"),
+    draft: z.boolean().optional(),
+  })
+  .strict();
+
+export const githubMutationOutputSchema = z
+  .object({
+    argv: z.array(z.string()),
+    exitCode: z.number().nullable(),
+    stdout: z.string(),
+    stderr: z.string(),
+    truncated: z.boolean(),
+    url: z.string().optional(),
+    /** True when a new issue/PR was created; false when an existing issue was updated. */
+    created: z.boolean().optional(),
+    issueNumber: z.number().int().positive().optional(),
+  })
+  .strict();
+
 export const globFilesInputSchema = z
   .object({
     pattern: z.string().min(1).max(512),
@@ -497,6 +549,7 @@ export const readManyFilesInputSchema = z
   .object({
     paths: z.array(z.string().min(1)).min(1).max(20),
     maxBytesPerFile: z.number().int().positive().max(128_000).optional(),
+    maxLinesPerFile: z.number().int().positive().max(20_000).optional(),
   })
   .strict();
 
@@ -507,7 +560,13 @@ export const readManyFilesOutputSchema = z
         .object({
           path: z.string(),
           content: z.string().optional(),
+          startLine: z.number().int().positive().optional(),
+          endLine: z.number().int().nonnegative().optional(),
+          totalLines: z.number().int().nonnegative().optional(),
+          eof: z.boolean().optional(),
+          nextStartLine: z.number().int().positive().optional(),
           truncated: z.boolean(),
+          truncationReason: readFileTruncationReasonSchema.optional(),
           error: z.string().optional(),
         })
         .strict(),

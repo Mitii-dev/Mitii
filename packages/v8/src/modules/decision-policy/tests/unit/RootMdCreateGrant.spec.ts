@@ -9,21 +9,24 @@ const PROMPT =
   "Create me an md file with breif explaination about this project, Create the md file in the root of the project";
 
 describe("root markdown creation grants", () => {
-  it("extracts repository scope without blocking workspace-root writes", () => {
+  it("grants workspace-root writes for root-of-project markdown without repo-wide scope", () => {
     const targets = new TaskTargetExtractor().extract(PROMPT);
+    // Locative "root of the project" / "about this project" must not inflate to
+    // repository-wide scope (that false-triggers plan gates). Root writes are
+    // granted from the message via looksLikeWorkspaceRootMutation instead.
     expect(
       targets.some(
         (target) => target.kind === "repository" && target.value === "repository",
       ),
-    ).toBe(true);
+    ).toBe(false);
 
     const understanding = createUnderstanding({
       primaryTaskIntent: "docs",
       interactionIntent: "act",
       taskAnalysis: {
-        scope: "repository",
+        scope: "single_location",
         targets,
-        recommendsRepositoryDiscovery: true,
+        recommendsRepositoryDiscovery: false,
       },
     });
 
@@ -59,9 +62,9 @@ describe("root markdown creation grants", () => {
       primaryTaskIntent: "docs",
       interactionIntent: "act",
       taskAnalysis: {
-        scope: "repository",
+        scope: "single_location",
         targets,
-        recommendsRepositoryDiscovery: true,
+        recommendsRepositoryDiscovery: false,
       },
     });
 

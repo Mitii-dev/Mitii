@@ -54,7 +54,7 @@ Every finished case immediately writes:
 - `reports/runs/<runId>/cases/<id>.json`
 - `reports/runs/<runId>/cases/<id>.md`
 
-and refreshes `reports/runs/<runId>/summary.md` (live progress). A final copy is also written to `--output` / `<suite>-latest.json`.
+and refreshes `reports/runs/<runId>/summary.md` / `summary.html` (live progress). A final copy is also written to `--output` / `<suite>-latest.json`, and `reports/index.html` lists every run.
 
 ## HTTP check
 

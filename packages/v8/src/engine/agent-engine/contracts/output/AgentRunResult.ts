@@ -71,6 +71,15 @@ export const agentRunSuspensionSchema = z
       })
       .strict()
       .optional(),
+    grantExpansion: z
+      .object({
+        expansionId: z.string().min(1),
+        extraPaths: z.array(z.string()).max(50),
+        currentPathScopes: z.array(z.string()).max(20).optional(),
+      })
+      .strict()
+      .optional(),
+    continuePrompt: z.string().min(1).max(4_000).optional(),
   })
   .strict();
 

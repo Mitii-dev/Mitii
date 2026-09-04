@@ -231,7 +231,7 @@ const LOOP_POLICY_FIELD_SPECS: readonly Omit<
     group: 'Transcript',
     label: 'Recovered analysis chars',
     description:
-      'Keep at most this many characters of mid-work analysis dumps in the transcript.',
+      'Budget for mid-work analysis dumps kept in the transcript (head + useful crumbs + tail).',
     kind: 'int',
     min: 64,
     max: 4000,

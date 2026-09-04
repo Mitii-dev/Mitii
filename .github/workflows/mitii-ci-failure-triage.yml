@@ -1,0 +1,75 @@
+# Example: on failed CI, triage logs and open a GitHub issue (optional patch).
+name: Mitii CI failure triage
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  actions: read
+
+jobs:
+  triage:
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Ensure agent file
+        run: |
+          mkdir -p .mitii/agents
+          if [ ! -f .mitii/agents/incident-from-logs.md ]; then
+            cat > .mitii/agents/incident-from-logs.md <<'EOF'
+          ---
+          name: incident-from-logs
+          mode: agent
+          origin: automation
+          autonomyPreset: apply
+          ---
+          Triage the CI failure logs below. Reproduce if possible. Create a
+          GitHub issue with full evidence. Attach a verified patch when safe.
+          EOF
+          fi
+
+      - name: Download failed run logs
+        id: logs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ github.event.workflow_run.id || '' }}
+        run: |
+          mkdir -p /tmp/mitii-ci-logs
+          if [ -n "$RUN_ID" ]; then
+            gh run view "$RUN_ID" --log-failed > /tmp/mitii-ci-logs/failed.log 2>/dev/null \
+              || gh run view "$RUN_ID" --log > /tmp/mitii-ci-logs/failed.log 2>/dev/null \
+              || echo "No logs available for run $RUN_ID" > /tmp/mitii-ci-logs/failed.log
+          else
+            echo "Manual dispatch — no workflow_run logs. Provide context in the agent prompt." \
+              > /tmp/mitii-ci-logs/failed.log
+          fi
+          # Cap size for the prompt; full file remains on disk for the agent.
+          head -c 120000 /tmp/mitii-ci-logs/failed.log > /tmp/mitii-ci-logs/failed.head.log
+
+      - uses: ./.github/actions/mitii-run
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          agent: incident-from-logs
+          origin: automation
+          autonomy: apply
+          prompt-file: /tmp/mitii-ci-logs/failed.head.log
+          prompt: |
+            CI failure triage for ${{ github.repository }}.
+            Failed workflow run id: ${{ github.event.workflow_run.id || 'n/a' }}
+            Head SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+            Full log path on runner: /tmp/mitii-ci-logs/failed.log
+            Create or update a GitHub issue with complete evidence.

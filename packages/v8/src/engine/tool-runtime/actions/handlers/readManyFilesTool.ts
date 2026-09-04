@@ -11,7 +11,7 @@ export const readManyFilesTool: RegisteredTool = {
     name: "read_many_files",
     effects: ["workspace_read"],
     description:
-      "Read multiple small workspace files in one call with per-file byte caps. Prefer after glob_files/search_files narrows candidates; avoid dumping large trees.",
+      "Read multiple small workspace files in one call with per-file caps. Each file may include eof/nextStartLine when truncated — continue those paths with read_file(startLine=nextStartLine). Prefer after glob_files/search_files narrows candidates.",
     inputSchema: readManyFilesInputSchema,
     outputSchema: readManyFilesOutputSchema,
     modelInputSchema: {
@@ -29,6 +29,11 @@ export const readManyFilesTool: RegisteredTool = {
           minimum: 1,
           maximum: 128000,
         },
+        maxLinesPerFile: {
+          type: "integer",
+          minimum: 1,
+          maximum: 20000,
+        },
       },
       required: ["paths"],
     },
@@ -41,6 +46,7 @@ export const readManyFilesTool: RegisteredTool = {
       workspaceRoot: ctx.workspaceRoot,
       fileSystem: ctx.ports.fileSystem,
       maxOutputBytes: ctx.maxOutputBytes,
+      maxContentChars: ctx.maxContentChars,
     });
   },
 };

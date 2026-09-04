@@ -1,0 +1,32 @@
+{
+  "name": "@mitii/daemon",
+  "version": "2.8.84",
+  "description": "Mitii automation daemon process entry (Phase 1). Long-lived schedule runner.",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "bin": {
+    "mitii-daemon": "./bin/mitii-daemon.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node -e \"require('node:fs').accessSync('dist/main.js')\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node bin/mitii-daemon.js"
+  },
+  "dependencies": {
+    "@mitii/automation": "workspace:*",
+    "@mitii/host": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.2"
+  }
+}

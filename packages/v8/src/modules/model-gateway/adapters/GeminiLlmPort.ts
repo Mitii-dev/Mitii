@@ -50,6 +50,9 @@ export interface GeminiLlmPortConfig {
 interface GeminiPart {
   text?: string;
   thought?: boolean;
+  /** Gemini REST JSON uses camelCase; some payloads may use snake_case. */
+  thoughtSignature?: string;
+  thought_signature?: string;
   inlineData?: { mimeType?: string; data?: string };
   functionCall?: { name?: string; args?: Record<string, unknown> };
   functionResponse?: {
@@ -93,6 +96,12 @@ export class GeminiLlmPort implements LlmPort {
     ms: number,
     signal?: AbortSignal,
   ) => Promise<void>;
+  /**
+   * Monotonic tool-call id allocator for this port instance.
+   * Gemini does not return provider call ids; recycling `call_0` each turn
+   * collides with ToolCallCache resume keys and replays the first tool result.
+   */
+  private toolCallSeq = 0;
 
   constructor(config: GeminiLlmPortConfig) {
     this.config = {
@@ -363,12 +372,17 @@ export class GeminiLlmPort implements LlmPort {
       } catch {
         args = { raw: toolCall.arguments };
       }
-      parts.push({
+      const part: GeminiPart = {
         functionCall: {
           name: toolCall.name,
           args,
         },
-      });
+      };
+      // Gemini 3+ requires echoing thoughtSignature on functionCall parts.
+      if (toolCall.thoughtSignature) {
+        part.thoughtSignature = toolCall.thoughtSignature;
+      }
+      parts.push(part);
     }
     return parts.length > 0 ? parts : [{ text: "" }];
   }
@@ -541,11 +555,13 @@ export class GeminiLlmPort implements LlmPort {
         yield { type: "content_delta", content: part.text };
       }
       if (part.functionCall?.name) {
+        const thoughtSignature = this.readThoughtSignature(part);
         toolCalls.push({
           index: toolIndexStart + toolOffset,
-          id: `call_${toolIndexStart + toolOffset}`,
+          id: this.nextToolCallId(),
           name: part.functionCall.name,
           arguments: JSON.stringify(part.functionCall.args ?? {}),
+          ...(thoughtSignature ? { thoughtSignature } : {}),
         });
         toolOffset += 1;
       }
@@ -553,6 +569,17 @@ export class GeminiLlmPort implements LlmPort {
     if (toolCalls.length > 0) {
       yield { type: "tool_call_delta", toolCalls };
     }
+  }
+
+  private nextToolCallId(): string {
+    const id = `call_${this.toolCallSeq}`;
+    this.toolCallSeq += 1;
+    return id;
+  }
+
+  private readThoughtSignature(part: GeminiPart): string | undefined {
+    const value = part.thoughtSignature ?? part.thought_signature;
+    return typeof value === "string" && value.length > 0 ? value : undefined;
   }
 
   private mapUsage(usage?: {

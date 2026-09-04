@@ -4,6 +4,7 @@ import type { WindowPolicy } from "../../window-budget";
 import {
   MUTATION_TASK_INTENTS,
   MUTATION_TOOL_IDS,
+  GITHUB_MUTATION_TOOL_IDS,
   PROCESS_TOOL_IDS,
   READ_ONLY_TOOL_IDS,
 } from "../constants";
@@ -165,12 +166,20 @@ export function buildToolGrant(params: {
     allowWebSearch: params.allowWebSearch === true,
   });
 
+  // Full-access / headless approve (`approvalMode: never`): keep mutation
+  // workspace-wide so required companion files (package.json, configs, tests)
+  // are never rejected as path_out_of_scope after a narrow folder target.
+  const writePathScopes = approvalMode === "never" ? ["."] : pathScopes;
+  const writeMutationPathScopes =
+    approvalMode === "never" ? ["."] : mutationPathScopes;
+
   return {
     toolGrant: {
       maximumWorkspaceEffect: "write",
       allowedTools: [
         ...readOnlyTools,
         ...MUTATION_TOOL_IDS,
+        ...GITHUB_MUTATION_TOOL_IDS,
         ...processExecution.allowedTools,
         ...network.allowedTools,
       ],
@@ -178,10 +187,12 @@ export function buildToolGrant(params: {
         "workspace_read",
         "workspace_write",
         "process_execute",
+        "external_write",
+        "git_write",
         ...network.allowedEffects,
       ],
-      pathScopes,
-      ...(mutationPathScopes ? { mutationPathScopes } : {}),
+      pathScopes: writePathScopes,
+      ...(writeMutationPathScopes ? { mutationPathScopes: writeMutationPathScopes } : {}),
       commandRules: processExecution.commandRules,
       networkHosts: network.networkHosts,
       approvalMode,
@@ -326,6 +337,20 @@ function normalizeScopePath(value: string): string {
   return value.replace(/\\/g, "/").replace(/^\.?\//, "").replace(/\/+$/, "") || ".";
 }
 
+/** True when the user message explicitly asks for a web/internet search. */
+export function isExplicitWebSearchAsk(
+  message: string,
+  primaryTaskIntent?: RequestUnderstandingResult["intent"]["classification"]["primaryTaskIntent"],
+): boolean {
+  const intent = primaryTaskIntent ?? "question";
+  return (
+    (intent === "docs" || intent === "question") &&
+    /\b(search\s+(?:the\s+)?(?:web|internet|docs?|documentation)|look\s+up|google)\b/i.test(
+      message,
+    )
+  );
+}
+
 function parentDirectoryScope(filePath: string): string {
   const normalized = normalizeScopePath(filePath);
   const slash = normalized.lastIndexOf("/");
@@ -363,11 +388,7 @@ function resolveNetworkAuthority(params: {
   const hosts = extractNetworkHosts(params.message ?? "");
   // Docs/question intent alone is not enough — require concrete hosts or an
   // explicit search ask. Hosts must also allow webSearch for search tools.
-  const wantsSearch =
-    (intent === "docs" || intent === "question") &&
-    /\b(search\s+(?:the\s+)?(?:web|internet|docs?|documentation)|look\s+up|google)\b/i.test(
-      params.message ?? "",
-    );
+  const wantsSearch = isExplicitWebSearchAsk(params.message ?? "", intent);
 
   if (hosts.length === 0 && !wantsSearch) {
     return {

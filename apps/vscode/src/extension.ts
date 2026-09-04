@@ -140,6 +140,35 @@ export function activate(context: ExtensionContext): void {
     void vscode.window.showInformationMessage('Mitii API key cleared.');
   };
 
+  const setSearchApiKey = async (): Promise<void> => {
+    const key = await vscode.window.showInputBox({
+      prompt:
+        'Brave Search API key (stored in SecretStorage as mitii.search.apiKey)',
+      password: true,
+      ignoreFocusOut: true,
+      placeHolder: 'BSA…',
+    });
+    if (key === undefined) return;
+    const trimmed = key.trim();
+    if (!trimmed) {
+      void vscode.window.showWarningMessage('Web search API key not set (empty).');
+      return;
+    }
+    await context.secrets.store('mitii.search.apiKey', trimmed);
+    invalidateClient();
+    channel.appendLine('[mitii] SecretStorage mitii.search.apiKey updated');
+    void vscode.window.showInformationMessage(
+      'Mitii web search key saved. Explicit “search the web” asks will grant web_search.',
+    );
+  };
+
+  const clearSearchApiKey = async (): Promise<void> => {
+    await context.secrets.delete('mitii.search.apiKey');
+    invalidateClient();
+    channel.appendLine('[mitii] SecretStorage mitii.search.apiKey cleared');
+    void vscode.window.showInformationMessage('Mitii web search API key cleared.');
+  };
+
   let sidebar: MitiiSidebarProvider;
 
   const inlineDiff = new InlineDiffManager(
@@ -548,6 +577,35 @@ export function activate(context: ExtensionContext): void {
     },
   );
 
+  /** Soft pins follow Context toggles — never force-attach when Editor/Open tabs are off. */
+  const postEditorAutoPins = (): void => {
+    const root = workspaceRoot();
+    const toggles = resolveContextToggles(
+      vscode.workspace.getConfiguration('mitii'),
+    );
+    const snap = captureEditorContext(vscode, root, {
+      includeOpenTabs: toggles.openTabs,
+    });
+    if (toggles.editor && snap.activeRelPath) {
+      sidebar.post({
+        type: 'editorPin',
+        path: snap.activeRelPath,
+        source: 'auto',
+      });
+    }
+    let paths: string[] = [];
+    if (toggles.openTabs) {
+      paths = snap.openTabRelPaths.length
+        ? snap.openTabRelPaths
+        : snap.activeRelPath
+          ? [snap.activeRelPath]
+          : [];
+    } else if (toggles.editor && snap.activeRelPath) {
+      paths = [snap.activeRelPath];
+    }
+    sidebar.post({ type: 'syncAutoPins', paths });
+  };
+
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
       MitiiSidebarProvider.viewType,
@@ -611,59 +669,39 @@ export function activate(context: ExtensionContext): void {
     }),
     vscode.commands.registerCommand('mitii.setApiKey', setApiKey),
     vscode.commands.registerCommand('mitii.clearApiKey', clearApiKey),
+    vscode.commands.registerCommand('mitii.setSearchApiKey', setSearchApiKey),
+    vscode.commands.registerCommand('mitii.clearSearchApiKey', clearSearchApiKey),
     vscode.commands.registerCommand('mitii.showSettings', async () => {
       await vscode.commands.executeCommand('mitii.sidebar.focus');
       sidebar.post({ type: 'openSettings', tab: 'model' });
     }),
     vscode.window.onDidChangeActiveTextEditor(() => {
-      const root = workspaceRoot();
-      const snap = captureEditorContext(vscode, root, {
-        includeOpenTabs: true,
-      });
-      if (snap.activeRelPath) {
-        sidebar.post({
-          type: 'editorPin',
-          path: snap.activeRelPath,
-          source: 'auto',
-        });
-      }
-      sidebar.post({
-        type: 'syncAutoPins',
-        paths: snap.openTabRelPaths.length
-          ? snap.openTabRelPaths
-          : snap.activeRelPath
-            ? [snap.activeRelPath]
-            : [],
-      });
+      postEditorAutoPins();
       sidebar.postTrustAndNotices(getWorkspaceTrustSnapshot(vscode));
     }),
     vscode.workspace.onDidCloseTextDocument((doc) => {
       if (doc.uri.scheme !== 'file') return;
-      const root = workspaceRoot();
-      const snap = captureEditorContext(vscode, root, {
-        includeOpenTabs: true,
-      });
-      // Prefer full sync so soft pins match still-open tabs.
-      sidebar.post({
-        type: 'syncAutoPins',
-        paths: snap.openTabRelPaths,
-      });
-      debugLog(`[mitii] document closed → syncAutoPins (${snap.openTabRelPaths.length})`);
+      postEditorAutoPins();
+      const toggles = resolveContextToggles(
+        vscode.workspace.getConfiguration('mitii'),
+      );
+      if (toggles.openTabs || toggles.editor) {
+        debugLog('[mitii] document closed -> syncAutoPins');
+      }
     }),
     vscode.window.onDidChangeVisibleTextEditors(() => {
-      const root = workspaceRoot();
-      const snap = captureEditorContext(vscode, root, {
-        includeOpenTabs: true,
-      });
-      sidebar.post({
-        type: 'syncAutoPins',
-        paths: snap.openTabRelPaths,
-      });
+      postEditorAutoPins();
     }),
     onWorkspaceTrustChanged(vscode, (snap) => {
       sidebar.postTrustAndNotices(snap);
     }),
     vscode.workspace.onDidChangeConfiguration((event) => {
+      if (
+        event.affectsConfiguration('mitii.ui.contextToggles.editor') ||
+        event.affectsConfiguration('mitii.ui.contextToggles.openTabs')
+      ) {
+        postEditorAutoPins();
+      }
       if (event.affectsConfiguration('mitii.debug')) {
         channel.appendLine(
           `[mitii] debug logging ${debugEnabled() ? 'enabled' : 'disabled'}`,

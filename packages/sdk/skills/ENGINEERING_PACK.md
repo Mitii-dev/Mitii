@@ -4,7 +4,7 @@ Adapted from [addyosmani/agent-skills](https://github.com/addyosmani/agent-skill
 
 These are **bundled defaults** under `packages/sdk/skills/`. Edit them in place. Replace any skill by overwriting its folder, or override per workspace without touching the pack.
 
-## Included (phase 1)
+## Included (phase 1 + automation)
 
 | Skill | Conflict group | Primary intents |
 |---|---|---|
@@ -16,6 +16,8 @@ These are **bundled defaults** under `packages/sdk/skills/`. Edit them in place.
 | `code-review-and-quality` | review | review, audit, refactor |
 | `security-and-hardening` | review | security, audit, feature |
 | `git-workflow-and-versioning` | ship | feature, bugfix, refactor, docs, migrate |
+| `cicd-agent` | verify | test, bugfix, feature, config (CI/PR automation) |
+| `incident-triage` | debug | bugfix, diagnose, trace (logs → ticket) |
 
 Mitii still injects **at most a few** skills per turn (metadata mode). Long playbooks stay on disk; only frontmatter + `# Planning` enter the prompt.
 

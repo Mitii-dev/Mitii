@@ -199,4 +199,22 @@ describe('CLI resolveCliPorts', () => {
     });
     expect(ports.providerLabel).toBe('gemini:gemini-2.5-pro');
   });
+
+  it('parses repeatable --skill flags for ask', () => {
+    const parsed = parseCliArgs([
+      'node',
+      'mitii',
+      'ask',
+      'write docs',
+      '--skill',
+      'module-doc-generator',
+      '--skill',
+      'planning-default',
+    ]);
+    expect(parsed.command).toBe('ask');
+    expect(parsed.skills).toEqual([
+      'module-doc-generator',
+      'planning-default',
+    ]);
+  });
 });

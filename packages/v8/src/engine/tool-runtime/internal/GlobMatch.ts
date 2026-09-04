@@ -62,5 +62,6 @@ function globToRegExp(pattern: string): RegExp {
     i += 1;
   }
   out += "$";
-  return new RegExp(out);
+  // Case-insensitive: models often glob `**/billing/**` against `Billing/`.
+  return new RegExp(out, "i");
 }

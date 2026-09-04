@@ -24,6 +24,11 @@ export interface PendingApprovalState {
   paths: string[];
 }
 
+export interface PendingGrantExpansionState {
+  expansionId: string;
+  extraPaths: string[];
+}
+
 /**
  * Persisted run checkpoint for suspension/resume.
  * Completed tool callIds are retained so resume does not replay them.
@@ -34,13 +39,19 @@ export interface AgentRunCheckpoint {
   suspensionKind:
     | "approval_required"
     | "clarification_required"
-    | "plan_approval_required";
+    | "plan_approval_required"
+    | "grant_expansion_required"
+    | "continue_required";
   input: AgentEngineStartInput;
   decision: ExecutionDecision;
   pinnedState?: RepositoryStateReference;
   messages: ModelMessage[];
   toolCacheEntries: Array<[string, ToolResult]>;
   pendingApproval?: PendingApprovalState;
+  /** Paths awaiting approval before grant widen. */
+  pendingGrantExpansion?: PendingGrantExpansionState;
+  /** User-facing stall summary when suspensionKind is continue_required. */
+  stallContinueRationale?: string;
   /** Structured plan awaiting approval when suspensionKind is plan_approval_required. */
   plan?: PlanArtifact;
   /** Strategy that produced `plan`; restored on resume so the prompt contract survives. */

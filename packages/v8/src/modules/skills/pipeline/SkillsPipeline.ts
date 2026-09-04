@@ -1,6 +1,8 @@
 import {
   applySkillBudget,
   matchSkills,
+  mergeSkillCandidates,
+  resolveRequiredSkills,
   resolveSkillConflicts,
 } from "../actions";
 import { KeywordSkillSimilarity } from "../KeywordSkillSimilarity";
@@ -100,12 +102,39 @@ export class SkillsPipeline {
         status: "empty",
         instructions: [],
         omissions: [],
+        required: [],
+        requiredCount: 0,
+        matchedCount: 0,
         usedTokens: 0,
         budgetTokens: parsed.budgetTokens,
         warnings,
         reasonCodes,
         durationMs: Date.now() - startedMs,
       });
+    }
+
+    const required = resolveRequiredSkills({
+      catalog,
+      requiredSkillIds: parsed.requiredSkillIds,
+    });
+    if (required.resolvedIds.length > 0) {
+      reasonCodes.push("skills_required");
+    }
+    if (
+      parsed.requiredSkillIds.length > 0 &&
+      required.omissions.some((omission) => omission.reason === "not_found")
+    ) {
+      reasonCodes.push("skills_required_not_found");
+      warnings.push(
+        "One or more required skills were not found in the catalog.",
+      );
+    }
+    if (
+      parsed.requiredSkillIds.length > 0 &&
+      required.resolvedIds.length > 0 &&
+      required.resolvedIds.length < parsed.requiredSkillIds.length
+    ) {
+      reasonCodes.push("skills_required_partial");
     }
 
     const matched = await matchSkills({
@@ -124,7 +153,8 @@ export class SkillsPipeline {
         `${matched.nonMatchedCount} of ${catalog.length} catalog skill(s) did not match this request (path/intent/route/keyword/threshold) and were not considered.`,
       );
     }
-    const conflicts = resolveSkillConflicts({ scored: matched.scored });
+    const merged = mergeSkillCandidates(required.scored, matched.scored);
+    const conflicts = resolveSkillConflicts({ scored: merged });
     if (conflicts.conflictsResolved) {
       reasonCodes.push("conflicts_resolved");
     }
@@ -154,10 +184,18 @@ export class SkillsPipeline {
     }
 
     const omissions = [
+      ...required.omissions,
       ...conflicts.omissions,
       ...hydrated.omissions,
       ...budgeted.omissions,
     ];
+
+    const requiredInInstructions = budgeted.instructions.filter(
+      (block) => block.provenance.selection === "required",
+    );
+    const matchedCount = budgeted.instructions.filter(
+      (block) => block.provenance.selection === "matched",
+    ).length;
 
     if (budgeted.instructions.length === 0) {
       reasonCodes.push("no_matching_skills");
@@ -166,6 +204,9 @@ export class SkillsPipeline {
         status: "empty",
         instructions: [],
         omissions,
+        required: required.resolvedIds,
+        requiredCount: requiredInInstructions.length,
+        matchedCount,
         usedTokens: 0,
         budgetTokens: parsed.budgetTokens,
         warnings,
@@ -180,6 +221,9 @@ export class SkillsPipeline {
       status: "selected",
       instructions: budgeted.instructions,
       omissions,
+      required: required.resolvedIds,
+      requiredCount: requiredInInstructions.length,
+      matchedCount,
       usedTokens: budgeted.usedTokens,
       budgetTokens: parsed.budgetTokens,
       warnings,

@@ -15,6 +15,11 @@ import {
 import { validateSuite } from './validate.mjs';
 import { runCases } from './runner.mjs';
 import { createRunReporter } from './report.mjs';
+import { generateViewer } from './html-report.mjs';
+import { generateCasesViewer } from './cases-viewer.mjs';
+import { spawn } from 'node:child_process';
+import { platform } from 'node:os';
+import { pathToFileURL } from 'node:url';
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const [command = 'help', ...args] = process.argv.slice(2);
@@ -118,6 +123,7 @@ if (command === 'validate') {
   console.log(`Domain: ${suiteFilter}`);
   console.log(`Per-case reports: ${join(runDir, 'cases')}`);
   console.log(`Live summary: ${join(runDir, 'summary.md')}`);
+  console.log(`Run viewer: ${join(runDir, 'summary.html')}`);
 
   const results = await runCases(selected, rootDir, config, {
     configPath,
@@ -136,19 +142,55 @@ if (command === 'validate') {
   const { report, summaryPaths } = reporter.finalize(results);
   console.log(`\nSignal: ${report.signal}`);
   console.log(`Run summary: ${summaryPaths.markdown}`);
+  console.log(`Run viewer: ${summaryPaths.html}`);
   console.log(`Latest: ${latestPath.replace(/\.json$/i, '.md')}`);
+  console.log(`All runs: ${join(reportRoot, 'index.html')}`);
   if (report.signal !== 'GO' && report.signal !== 'RUNNING') process.exitCode = 1;
+} else if (command === 'view') {
+  const reportRoot = resolve(valueOf(args, '--output-dir') ?? join(rootDir, 'reports'));
+  const runId = valueOf(args, '--run');
+  const { indexPath, written, runs } = generateViewer(reportRoot, { runId });
+  const casesPath = generateCasesViewer(rootDir, reportRoot);
+  if (runId && written.length === 0) {
+    console.error(`No summary found for run: ${runId}`);
+    process.exit(1);
+  }
+  console.log(`Index: ${indexPath} (${runs.length} run${runs.length === 1 ? '' : 's'})`);
+  for (const path of written) console.log(`Viewer: ${path}`);
+  console.log(`Test case browser: ${casesPath}`);
+  const openTarget = runId && written[0] ? written[0] : indexPath;
+  if (args.includes('--open')) {
+    openPath(openTarget);
+    console.log(`Opened ${openTarget}`);
+  } else {
+    console.log(`Open in browser: ${pathToFileURL(openTarget).href}`);
+  }
+} else if (command === 'cases') {
+  const reportRoot = resolve(valueOf(args, '--output-dir') ?? join(rootDir, 'reports'));
+  const casesPath = generateCasesViewer(rootDir, reportRoot);
+  console.log(`Test case browser: ${casesPath}`);
+  if (args.includes('--open')) {
+    openPath(casesPath);
+    console.log(`Opened ${casesPath}`);
+  } else {
+    console.log(`Open in browser: ${pathToFileURL(casesPath).href}`);
+  }
 } else {
   console.log(`Usage:
   node src/cli.mjs validate [--suite all|${DOMAINS.join('|')}]
   node src/cli.mjs list [--suite ...] [--difficulty easy|medium|hard] [--mode ...]
   node src/cli.mjs suites
   node src/cli.mjs run --config benchmark.config.json [filters]
+  node src/cli.mjs view [--run <runId>] [--output-dir <reports-root>] [--open]
+  node src/cli.mjs cases [--output-dir <reports-root>] [--open]   (read-only test case browser)
 
 Domains (top-level):
   ${availableSuites.join(' | ') || DOMAINS.join(' | ')}
 
-Each domain contains case JSONL files (frontend: capability files; others: easy/medium/hard).
+Each domain's case JSONL files are named by category (tech-family or
+cross-cutting theme), not difficulty — e.g. frontend/cases/feature.jsonl,
+backend/cases/nest.jsonl. difficulty (easy/medium/hard) is a field on each
+case, filterable with --difficulty below. Run 'cases' to browse them all.
 
 Filters:
   --suite all|${availableSuites.join('|') || DOMAINS.join('|')}
@@ -163,6 +205,12 @@ Filters:
   --output <latest-report.json>
   --output-dir <reports-root>
   --dry-run`);
+}
+
+function openPath(target) {
+  const cmd = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'cmd' : 'xdg-open';
+  const args = platform() === 'win32' ? ['/c', 'start', '', target] : [target];
+  spawn(cmd, args, { detached: true, stdio: 'ignore' }).unref();
 }
 
 function select(cases, values) {

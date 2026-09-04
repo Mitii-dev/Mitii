@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   SKILL_OMISSION_REASONS,
   SKILL_REASON_CODES,
+  SKILL_SELECTION_KINDS,
   SKILL_SELECTION_STATUSES,
   SKILLS_SCHEMA_VERSION,
 } from "../../constants";
@@ -25,6 +26,7 @@ export const skillInstructionBlockSchema = z
         skillId: z.string().min(1),
         source: z.literal("skills"),
         score: z.number().min(0).max(1),
+        selection: z.enum(SKILL_SELECTION_KINDS).optional(),
         conflictGroup: z.string().min(1).optional(),
       })
       .strict(),
@@ -49,6 +51,9 @@ export const skillsSelectResultSchema = z
     status: z.enum(SKILL_SELECTION_STATUSES),
     instructions: z.array(skillInstructionBlockSchema),
     omissions: z.array(skillOmissionSchema),
+    required: z.array(z.string().min(1).max(160)).max(20).default([]),
+    requiredCount: z.number().int().nonnegative().default(0),
+    matchedCount: z.number().int().nonnegative().default(0),
     usedTokens: z.number().int().nonnegative(),
     budgetTokens: z.number().int().positive(),
     warnings: z.array(z.string()),

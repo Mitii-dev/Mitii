@@ -941,6 +941,7 @@ describe("AgentEnginePipeline (Phase 7)", () => {
             reference: { workspaceId: "ws_1", stateToken: "tok_1" },
             readiness: "ready",
           },
+          windowBudget: { maximumOutputTokens: 64_000 },
           request: {
             sessionId: "sess_1",
             mode: "ask",
@@ -1517,6 +1518,26 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     ]);
     expect(calls).toEqual([
       { id: "t1", name: "read_file", arguments: "{\"path\":\"x.ts\"}" },
+    ]);
+  });
+
+  it("preserves thoughtSignature when assembling tool call deltas", () => {
+    const calls = assembleToolCalls([
+      {
+        index: 0,
+        id: "t1",
+        name: "read_file",
+        arguments: "{\"path\":\"x.ts\"}",
+        thoughtSignature: "sig-1",
+      },
+    ]);
+    expect(calls).toEqual([
+      {
+        id: "t1",
+        name: "read_file",
+        arguments: "{\"path\":\"x.ts\"}",
+        thoughtSignature: "sig-1",
+      },
     ]);
   });
 
@@ -2559,7 +2580,11 @@ it("injects scoped preflight diagnostics into execute repair prompts", async () 
     };
 
     const engine = new AgentEnginePipeline(deps);
-    const result = await engine.start(baseStartInput()).result;
+    const result = await engine.start(
+      baseStartInput({
+        windowBudget: { maximumOutputTokens: 3_000 },
+      }),
+    ).result;
     expect(result.status).toBe("completed");
 
     const expected = deriveWindowPolicy({

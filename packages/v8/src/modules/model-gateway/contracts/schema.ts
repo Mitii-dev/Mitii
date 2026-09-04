@@ -51,6 +51,10 @@ export const modelMessageSchema =
               .min(1),
           arguments:
             z.string(),
+          thoughtSignature:
+            z.string()
+              .min(1)
+              .optional(),
         }).strict(),
       )
         .optional(),
@@ -290,6 +294,7 @@ const modelToolCallDeltaSchema = z
     id: z.string().min(1).optional(),
     name: z.string().min(1).optional(),
     arguments: z.string().optional(),
+    thoughtSignature: z.string().min(1).optional(),
   })
   .strict();
 

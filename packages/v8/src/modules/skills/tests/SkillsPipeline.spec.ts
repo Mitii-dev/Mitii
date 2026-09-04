@@ -472,4 +472,68 @@ describe("SkillsPipeline", () => {
       "ask-concise",
     );
   });
+
+  it("loads required skills even when relevance matching would skip them", async () => {
+    const pipeline = new SkillsPipeline({
+      catalog: new InMemorySkillsCatalog([
+        ...catalog,
+        {
+          id: "module-doc-generator",
+          title: "Module Doc Generator",
+          content: "Follow the module documentation playbook.",
+          intents: [],
+          routes: [],
+          tags: [],
+          paths: [],
+          priority: 220,
+          alwaysApply: false,
+        },
+      ]),
+    });
+
+    const result = await pipeline.select(
+      baseInput({
+        route: "execute",
+        query: "Generate docs for test/Tablet",
+        evidence: {
+          primaryIntent: "docs",
+          secondaryIntents: [],
+        },
+        requiredSkillIds: ["module-doc-generator"],
+      }),
+    );
+
+    expect(result.status).toBe("selected");
+    expect(result.required).toEqual(["module-doc-generator"]);
+    expect(result.requiredCount).toBe(1);
+    expect(result.instructions.map((block) => block.id)).toContain(
+      "module-doc-generator",
+    );
+    expect(
+      result.instructions.find((block) => block.id === "module-doc-generator")
+        ?.provenance.selection,
+    ).toBe("required");
+  });
+
+  it("reports not_found omissions for missing required skills", async () => {
+    const pipeline = new SkillsPipeline({
+      catalog: new InMemorySkillsCatalog(catalog),
+    });
+
+    const result = await pipeline.select(
+      baseInput({
+        requiredSkillIds: ["missing-skill"],
+      }),
+    );
+
+    expect(result.reasonCodes).toContain("skills_required_not_found");
+    expect(result.omissions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          skillId: "missing-skill",
+          reason: "not_found",
+        }),
+      ]),
+    );
+  });
 });

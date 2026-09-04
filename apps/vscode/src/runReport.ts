@@ -179,8 +179,14 @@ export function formatContextInspection(events: RunEvent[]): string[] {
           : 'omitted' in event && Array.isArray(event.omitted) && event.omitted.length
             ? ` omittedIds=${event.omitted.slice(0, 8).join(',')}`
             : '';
+      const required =
+        'required' in event &&
+        Array.isArray(event.required) &&
+        event.required.length
+          ? ` required=${event.required.slice(0, 8).join(',')}`
+          : '';
       lines.push(
-        `[skills] selected=${event.selectedCount}${selected} omitted=${event.omittedCount}${omitted} status=${event.status}`,
+        `[skills] selected=${event.selectedCount}${required}${selected} omitted=${event.omittedCount}${omitted} status=${event.status}`,
       );
     } else if (event.type === 'memory_ready') {
       lines.push(

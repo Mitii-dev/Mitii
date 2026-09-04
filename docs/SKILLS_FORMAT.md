@@ -184,6 +184,51 @@ Prefer one focused skill per intent or workflow. For a 50-skill pack, use
 `conflictGroup` to prevent near-duplicates from loading together, for example
 `debugging`, `testing`, `migration`, or `docs`.
 
+## Forcing a skill for one run
+
+Explicit attachment bypasses relevance matching but not policy or tool grants.
+
+Prompt (VS Code / CLI):
+
+```text
+@skill:module-doc-generator
+Generate docs for test/Tablet
+```
+
+Slash alias (first line only):
+
+```text
+/module-doc-generator
+Generate docs for test/Tablet
+```
+
+CLI:
+
+```bash
+mitii ask "Generate docs" --skill module-doc-generator
+```
+
+Automation agent (`.mitii/agents/<id>.md` frontmatter):
+
+```yaml
+skills: cicd-agent, module-doc-generator
+```
+
+SDK / engine start input:
+
+```json
+{ "requiredSkillIds": ["module-doc-generator"] }
+```
+
+Forced skills pack first, do not count toward `maxSkills`, and win conflict
+groups over optional matches. If a forced skill cannot fit the skills budget
+even in compact form, the run continues with a warning and omission reason
+`required_budget`.
+
+VS Code also supports pinning up to three skills from the chat composer: click
+**`/`** or type **`@skill:`** for autocomplete. Pinned skills show as chips
+above the input for the next message.
+
 ## Skipping Skills
 
 To skip one uploaded skill without deleting it:

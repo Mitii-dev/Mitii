@@ -6,12 +6,20 @@ import { createInterface } from 'node:readline';
 
 import type {
   AgentMode,
+  MitiiAutonomyPreset,
   MitiiClient,
   MitiiConversationMessage,
   TaskList,
+  UserRequestOrigin,
 } from '@mitii/sdk';
 import { loadProjectRules } from '@mitii/host';
 
+import {
+  composeAgentPrompt,
+  loadAgentFile,
+  loadPromptFile,
+  type MitiiAgentFile,
+} from './agentFile.js';
 import { formatSessionHeader } from './banner.js';
 import { CLI_HELP } from './help.js';
 import { createCliClient, resolveCliPorts } from './ports.js';
@@ -50,6 +58,10 @@ export interface ParsedCliArgs {
     | 'export-session'
     | 'session'
     | 'setup'
+    | 'connect'
+    | 'schedule'
+    | 'serve'
+    | 'events'
     | 'unknown'
     | 'error';
   prompt?: string;
@@ -60,6 +72,14 @@ export interface ParsedCliArgs {
   autoApproval?: 'approved' | 'denied';
   exportPath?: string;
   mode?: AgentMode;
+  origin?: UserRequestOrigin;
+  autonomyPreset?: MitiiAutonomyPreset;
+  /** Path or id for `.mitii/agents/<id>.md`. */
+  agent?: string;
+  /** Explicitly attach skill ids for this run (repeatable). */
+  skills?: string[];
+  /** Prompt file path, or `-` for stdin. */
+  promptFile?: string;
   unknownCommand?: string;
   errorMessage?: string;
   setupProvider?: string;
@@ -73,6 +93,7 @@ export interface ParsedCliArgs {
   loopPolicyJson?: string;
   /** Force window-band standards even if config enables loopPolicy. */
   noLoopPolicy?: boolean;
+  /** Passthrough args after `connect` (channel + channel flags). */
   rest: string[];
 }
 
@@ -97,13 +118,30 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   let autoApproval: 'approved' | 'denied' | undefined;
   let exportPath: string | undefined;
   let mode: AgentMode | undefined;
+  let origin: UserRequestOrigin | undefined;
+  let autonomyPreset: MitiiAutonomyPreset | undefined;
+  let agent: string | undefined;
+  let promptFile: string | undefined;
+  const skills: string[] = [];
   let setupProvider: string | undefined;
   let setupModel: string | undefined;
   let setupBaseUrl: string | undefined;
   let loopPolicyJson: string | undefined;
+  /** Once `connect` is seen, remaining argv (flags included) is channel passthrough. */
+  let connectPassthrough: string[] | undefined;
+  /** Once `schedule`/`serve` is seen, remaining argv (flags included) is subcommand passthrough. */
+  let automationPassthrough: string[] | undefined;
 
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i]!;
+    if (connectPassthrough) {
+      connectPassthrough.push(arg);
+      continue;
+    }
+    if (automationPassthrough) {
+      automationPassthrough.push(arg);
+      continue;
+    }
     if (arg === '--help' || arg === '-h') {
       return { command: 'help', rest: [] };
     }
@@ -167,6 +205,76 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
           rest: [],
         };
       }
+      i = taken.next;
+      continue;
+    }
+    if (arg === '--origin') {
+      const taken = takeValue(args, i, '--origin');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      if (
+        taken.value === 'user' ||
+        taken.value === 'automation' ||
+        taken.value === 'api'
+      ) {
+        origin = taken.value;
+      } else {
+        return {
+          command: 'error',
+          errorMessage: `mitii: --origin must be user, automation, or api (got "${taken.value}")`,
+          rest: [],
+        };
+      }
+      i = taken.next;
+      continue;
+    }
+    if (arg === '--autonomy') {
+      const taken = takeValue(args, i, '--autonomy');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      if (
+        taken.value === 'readonly' ||
+        taken.value === 'propose' ||
+        taken.value === 'apply' ||
+        taken.value === 'apply_and_pr'
+      ) {
+        autonomyPreset = taken.value;
+      } else {
+        return {
+          command: 'error',
+          errorMessage: `mitii: --autonomy must be readonly, propose, apply, or apply_and_pr (got "${taken.value}")`,
+          rest: [],
+        };
+      }
+      i = taken.next;
+      continue;
+    }
+    if (arg === '--skill') {
+      const taken = takeValue(args, i, '--skill');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      skills.push(taken.value);
+      i = taken.next;
+      continue;
+    }
+    if (arg === '--agent') {
+      const taken = takeValue(args, i, '--agent');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      agent = taken.value;
+      i = taken.next;
+      continue;
+    }
+    if (arg === '--prompt-file') {
+      const taken = takeValue(args, i, '--prompt-file');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      promptFile = taken.value;
       i = taken.next;
       continue;
     }
@@ -234,6 +342,15 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       };
     }
     positionals.push(arg);
+    if (arg === 'connect' && positionals.length === 1) {
+      connectPassthrough = [];
+    }
+    if (
+      (arg === 'schedule' || arg === 'serve' || arg === 'events') &&
+      positionals.length === 1
+    ) {
+      automationPassthrough = [];
+    }
   }
 
   const [command = 'help', ...rest] = positionals;
@@ -291,9 +408,33 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       autoClarify,
       autoApproval,
       mode,
+      origin,
+      autonomyPreset,
+      agent,
+      promptFile,
+      skills: skills.length > 0 ? skills : undefined,
       loopPolicyJson,
       noLoopPolicy: flags.has('no-loop-policy'),
       rest,
+    };
+  }
+  if (command === 'connect') {
+    return {
+      command: 'connect',
+      cwd,
+      forceEcho: flags.has('echo'),
+      autoApproval,
+      mode,
+      rest: connectPassthrough ?? rest,
+    };
+  }
+  if (command === 'schedule' || command === 'serve' || command === 'events') {
+    return {
+      command,
+      cwd,
+      json: flags.has('json'),
+      forceEcho: flags.has('echo'),
+      rest: automationPassthrough ?? rest,
     };
   }
 
@@ -464,6 +605,9 @@ async function runAsk(options: {
   autoClarify?: string;
   autoApproval?: 'approved' | 'denied';
   mode?: AgentMode;
+  origin?: UserRequestOrigin;
+  autonomyPreset?: MitiiAutonomyPreset;
+  requiredSkillIds?: string[];
   conversation?: MitiiConversationMessage[];
   taskList?: TaskList;
   loopPolicyJson?: string;
@@ -480,8 +624,11 @@ async function runAsk(options: {
   });
   const io = options.io ?? createDefaultSessionIo();
   const mode = options.mode ?? ports.defaultMode;
+  const origin = options.origin ?? 'user';
   if (!options.json) {
-    io.writeStderr(`[mitii] provider=${ports.providerLabel} mode=${mode}\n`);
+    io.writeStderr(
+      `[mitii] provider=${ports.providerLabel} mode=${mode} origin=${origin}\n`,
+    );
   }
 
   // Each CLI invocation uses a fresh in-memory repository-state store.
@@ -515,13 +662,30 @@ async function runAsk(options: {
       `[mitii] loopPolicy lab overrides active (${Object.keys(loopPolicyThresholds).join(', ')})\n`,
     );
   }
+  // `--approve` is the headless host policy: skip plan-gate suspension and
+  // mutation approval prompts (same shape as VS Code "pilot"). `--deny` only
+  // answers resume prompts; it does not suppress gates on start.
+  // Autonomy apply* presets also set never/never via SDK mapping.
+  const hostApproval =
+    options.autoApproval === 'approved'
+      ? ({ approvalMode: 'never' as const, planApproval: 'never' as const })
+      : {};
+
   const outcome = await driveRun({
     client,
     start: {
       prompt: options.prompt,
       mode,
+      origin,
+      ...(options.autonomyPreset
+        ? { autonomyPreset: options.autonomyPreset }
+        : {}),
       workspaceRoot: options.cwd,
+      ...hostApproval,
       ...(projectRules.length > 0 ? { projectRules: [...projectRules] } : {}),
+      ...(options.requiredSkillIds && options.requiredSkillIds.length > 0
+        ? { requiredSkillIds: [...options.requiredSkillIds] }
+        : {}),
       ...(options.conversation && options.conversation.length > 0
         ? { conversation: options.conversation }
         : {}),
@@ -540,6 +704,59 @@ async function runAsk(options: {
   });
   reportOutcome(io, options.json, outcome);
   return { code: outcome.exitCode, mode, outcome };
+}
+
+function resolveAskPrompt(
+  parsed: ParsedCliArgs,
+  cwd: string,
+): {
+  prompt: string;
+  mode?: AgentMode;
+  origin?: UserRequestOrigin;
+  autonomyPreset?: MitiiAutonomyPreset;
+  autoApproval?: 'approved' | 'denied';
+  requiredSkillIds?: string[];
+} {
+  let agent: MitiiAgentFile | undefined;
+  if (parsed.agent) {
+    agent = loadAgentFile(parsed.agent, cwd);
+  }
+  let promptFileText: string | undefined;
+  if (parsed.promptFile) {
+    promptFileText = loadPromptFile(parsed.promptFile);
+  }
+  const prompt = composeAgentPrompt({
+    cliPrompt: parsed.prompt,
+    promptFileText,
+    agent,
+  });
+  const requiredSkillIds = [
+    ...(parsed.skills ?? []),
+    ...(agent?.requiredSkillIds ?? []),
+  ];
+  const autonomyPreset = parsed.autonomyPreset ?? agent?.autonomyPreset;
+  const mode = parsed.mode ?? agent?.mode;
+  const origin =
+    parsed.origin ??
+    agent?.origin ??
+    (autonomyPreset && autonomyPreset !== 'readonly'
+      ? 'automation'
+      : undefined);
+  let autoApproval = parsed.autoApproval;
+  if (
+    !autoApproval &&
+    (autonomyPreset === 'apply' || autonomyPreset === 'apply_and_pr')
+  ) {
+    autoApproval = 'approved';
+  }
+  return {
+    prompt,
+    mode,
+    origin,
+    autonomyPreset,
+    autoApproval,
+    ...(requiredSkillIds.length > 0 ? { requiredSkillIds } : {}),
+  };
 }
 
 async function ensurePublishedRepositoryState(options: {
@@ -850,19 +1067,26 @@ export async function main(
       sessionIo.writeStdout(`${readPackageVersion()}\n`);
       return 0;
     case 'ask': {
-      if (!parsed.prompt) {
-        sessionIo.writeStderr('mitii ask: missing prompt\n\n');
+      let resolved;
+      try {
+        resolved = resolveAskPrompt(parsed, cwd);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        sessionIo.writeStderr(`${message}\n\n`);
         sessionIo.writeStdout(CLI_HELP);
         return 2;
       }
       const { code } = await runAsk({
-        prompt: parsed.prompt,
+        prompt: resolved.prompt,
         cwd,
         json: parsed.json === true,
         forceEcho: parsed.forceEcho === true,
         autoClarify: parsed.autoClarify,
-        autoApproval: parsed.autoApproval,
-        mode: parsed.mode,
+        autoApproval: resolved.autoApproval,
+        mode: resolved.mode,
+        origin: resolved.origin,
+        autonomyPreset: resolved.autonomyPreset,
+        requiredSkillIds: resolved.requiredSkillIds,
         loopPolicyJson: parsed.loopPolicyJson,
         noLoopPolicy: parsed.noLoopPolicy === true,
         io: sessionIo,
@@ -930,6 +1154,88 @@ export async function main(
         yes: parsed.setupYes === true,
         io: sessionIo,
       });
+    case 'connect': {
+      const {
+        formatAdapterList,
+        runConnectAdapter,
+        runStopAllConnectors,
+        sessionIoToConnectIo,
+      } = await import('./connectors/commands/connect.js');
+      const connectIo = sessionIoToConnectIo(sessionIo);
+      const rest = [...parsed.rest];
+      const stopRequested = rest.includes('--stop');
+      const channel = rest.find((arg) => !arg.startsWith('-'));
+      const passthrough = channel
+        ? rest.filter((arg) => arg !== channel)
+        : rest;
+
+      // Merge top-level cwd/mode/echo/approve into channel args when absent.
+      const withDefaults = [...passthrough];
+      if (parsed.cwd && !withDefaults.includes('--cwd')) {
+        withDefaults.push('--cwd', parsed.cwd);
+      }
+      if (parsed.mode && !withDefaults.includes('--mode')) {
+        withDefaults.push('--mode', parsed.mode);
+      }
+      if (parsed.forceEcho && !withDefaults.includes('--echo')) {
+        withDefaults.push('--echo');
+      }
+      if (
+        parsed.autoApproval === 'denied' &&
+        !withDefaults.includes('--deny')
+      ) {
+        withDefaults.push('--deny');
+      }
+      if (
+        parsed.autoApproval === 'approved' &&
+        !withDefaults.includes('--approve')
+      ) {
+        withDefaults.push('--approve');
+      }
+
+      if (stopRequested) {
+        if (channel) {
+          // Channel adapters own stop semantics (e.g. filter by bot username).
+          return runConnectAdapter(channel, withDefaults, connectIo);
+        }
+        return runStopAllConnectors(connectIo);
+      }
+      if (!channel) {
+        sessionIo.writeStdout(`\nAdapters:\n${formatAdapterList()}\n\n`);
+        sessionIo.writeStdout(
+          "Run 'mitii connect <channel> --help' for channel options.\n",
+        );
+        return 0;
+      }
+      return runConnectAdapter(channel, withDefaults, connectIo);
+    }
+    case 'schedule': {
+      const { runScheduleCommand } = await import('./automation/commands.js');
+      return runScheduleCommand({
+        args: parsed.rest,
+        cwd,
+        json: parsed.json === true,
+        io: sessionIo,
+      });
+    }
+    case 'serve': {
+      const { runServeCommand } = await import('./automation/commands.js');
+      return runServeCommand({
+        args: parsed.rest,
+        cwd,
+        forceEcho: parsed.forceEcho === true,
+        io: sessionIo,
+      });
+    }
+    case 'events': {
+      const { runEventsCommand } = await import('./automation/commands.js');
+      return runEventsCommand({
+        args: parsed.rest,
+        cwd,
+        json: parsed.json === true,
+        io: sessionIo,
+      });
+    }
     case 'error':
       sessionIo.writeStderr(`${parsed.errorMessage ?? 'mitii: invalid arguments'}\n`);
       return 2;

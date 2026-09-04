@@ -14,6 +14,7 @@ export const DEFAULT_SECTION_WEIGHTS: Readonly<Record<PromptSection, number>> = 
   rules: 8,
   skills: 4,
   memory: 4,
+  plan: 0,
   conversation: 24,
   repository: 36,
   tools: 14,

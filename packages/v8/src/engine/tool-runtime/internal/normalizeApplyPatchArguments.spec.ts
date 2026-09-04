@@ -49,6 +49,62 @@ describe("normalizeApplyPatchArguments", () => {
     };
     expect(normalizeApplyPatchArguments(input)).toEqual(input);
   });
+
+  it("drops expectedHash null so gemma-style patches validate (billbuddy headless run)", () => {
+    const normalized = normalizeApplyPatchArguments({
+      patches: [
+        {
+          path: "test/shared/config/testConfig.ts",
+          oldText: "  capabilities: {\n    browserName: \"chrome\",\n  },",
+          newText:
+            "  capabilities: {\n    browserName: \"chrome\",\n    'goog:chromeOptions': {\n      args: ['--headless']\n    }\n  },",
+          expectedHash: null,
+          replaceAll: true,
+        },
+      ],
+    });
+    expect(normalized).toEqual({
+      patches: [
+        {
+          path: "test/shared/config/testConfig.ts",
+          oldText: "  capabilities: {\n    browserName: \"chrome\",\n  },",
+          newText:
+            "  capabilities: {\n    browserName: \"chrome\",\n    'goog:chromeOptions': {\n      args: ['--headless']\n    }\n  },",
+          replaceAll: true,
+        },
+      ],
+    });
+    expect(
+      applyPatchInputSchema.parse(
+        coerceArgumentsToSchema(normalized, applyPatchInputSchema),
+      ),
+    ).toMatchObject({
+      patches: [{ path: "test/shared/config/testConfig.ts", replaceAll: true }],
+    });
+  });
+
+  it("coerces string replaceAll before schema validation", () => {
+    const normalized = normalizeApplyPatchArguments({
+      patches: [
+        {
+          path: "src/a.ts",
+          oldText: "foo",
+          newText: "bar",
+          replaceAll: "true",
+        },
+      ],
+    });
+    expect(normalized).toEqual({
+      patches: [
+        {
+          path: "src/a.ts",
+          oldText: "foo",
+          newText: "bar",
+          replaceAll: true,
+        },
+      ],
+    });
+  });
 });
 
 describe("coerceArgumentsToSchema apply_patch arrays", () => {

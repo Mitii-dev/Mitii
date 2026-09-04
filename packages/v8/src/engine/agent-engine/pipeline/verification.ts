@@ -137,6 +137,7 @@ export async function finishAfterLoop(
     projects?: readonly ProjectDescriptor[];
     memoryFacts?: readonly { id: string; content: string }[];
     selectedSkillIds?: string[];
+    requiredSkillIds?: string[];
     establishedFacts: EstablishedFact[];
     plan?: PlanArtifact;
   };
@@ -167,7 +168,9 @@ export async function finishAfterLoop(
   // decision so verification and any repair rerun use live authority.
   let decision =
     currentOutcome.kind === "completed" ||
-    currentOutcome.kind === "approval_required"
+    currentOutcome.kind === "approval_required" ||
+    currentOutcome.kind === "grant_expansion_required" ||
+    currentOutcome.kind === "continue_required"
       ? currentOutcome.decision
       : params.decision;
   let afterState = params.repoBuildStateAfter;
@@ -244,6 +247,149 @@ export async function finishAfterLoop(
             paths: currentOutcome.pendingApproval.paths,
             arguments: currentOutcome.pendingApproval.arguments,
           },
+        },
+        reasonCodes,
+      });
+    }
+
+    if (currentOutcome.kind === "grant_expansion_required") {
+      if (!runtime.deps.checkpointStore) {
+        await runtime.safeUnpin(runId, pinnedState);
+        reasonCodes.push("misconfigured");
+        return finish({
+          status: "failed",
+          reasonCodes,
+          error: {
+            code: "misconfigured",
+            message: "Grant expansion suspend requires a checkpoint store.",
+          },
+        });
+      }
+
+      const expansionId = runtime.deps.idGenerator.next("gexp");
+      reasonCodes.push("grant_expansion_suspended");
+      await runtime.deps.checkpointStore.save({
+        runId,
+        requestId,
+        suspensionKind: "grant_expansion_required",
+        input,
+        decision,
+        pinnedState,
+        messages: currentOutcome.messages,
+        toolCacheEntries: currentOutcome.toolCache.entries(),
+        pendingGrantExpansion: {
+          expansionId,
+          extraPaths: [...currentOutcome.extraPaths],
+        },
+        changedFiles: currentOutcome.changedFiles,
+        mutationCheckpointIds: currentOutcome.mutationCheckpointIds,
+        reasonCodes,
+        warnings,
+        usage: budget.snapshot(),
+        startedAtMs,
+        excludedWaitMs: budget.getExcludedWaitMs(),
+        suspendedAtMs: Date.now(),
+        repoBuildStateBefore,
+        repoBuildStateAfter: params.repoBuildStateAfter,
+        ...(taskListRef.current ? { taskList: taskListRef.current } : {}),
+        ...(taskListRef.completedPlanStepIds &&
+        taskListRef.completedPlanStepIds.length > 0
+          ? { completedPlanStepIds: [...taskListRef.completedPlanStepIds] }
+          : {}),
+        ...(params.loopContext?.plan ? { plan: params.loopContext.plan } : {}),
+      });
+
+      const pathPreview = currentOutcome.extraPaths.slice(0, 5).join(", ");
+      const more =
+        currentOutcome.extraPaths.length > 5
+          ? ` (+${currentOutcome.extraPaths.length - 5} more)`
+          : "";
+      const rationale = `Workspace access expansion required for: ${pathPreview}${more}.`;
+      runtime.emit(bus, {
+        type: "suspended",
+        runId,
+        kind: "grant_expansion_required",
+        rationale,
+        at: runtime.isoNow(),
+      });
+
+      return finish({
+        status: "suspended",
+        route: decision.route,
+        planningDepth: decision.planningDepth,
+        suspension: {
+          kind: "grant_expansion_required",
+          rationale,
+          grantExpansion: {
+            expansionId,
+            extraPaths: currentOutcome.extraPaths.slice(0, 50),
+            currentPathScopes: decision.toolGrant.pathScopes.slice(0, 20),
+          },
+        },
+        reasonCodes,
+      });
+    }
+
+    if (currentOutcome.kind === "continue_required") {
+      if (!runtime.deps.checkpointStore) {
+        await runtime.safeUnpin(runId, pinnedState);
+        reasonCodes.push("misconfigured");
+        return finish({
+          status: "failed",
+          reasonCodes,
+          error: {
+            code: "misconfigured",
+            message: "Continue suspend requires a checkpoint store.",
+          },
+        });
+      }
+
+      reasonCodes.push("stall_continue_suspended");
+      await runtime.deps.checkpointStore.save({
+        runId,
+        requestId,
+        suspensionKind: "continue_required",
+        input,
+        decision,
+        pinnedState,
+        messages: currentOutcome.messages,
+        toolCacheEntries: currentOutcome.toolCache.entries(),
+        changedFiles: currentOutcome.changedFiles,
+        mutationCheckpointIds: currentOutcome.mutationCheckpointIds,
+        stallContinueRationale: currentOutcome.rationale,
+        reasonCodes,
+        warnings,
+        usage: budget.snapshot(),
+        startedAtMs,
+        excludedWaitMs: budget.getExcludedWaitMs(),
+        suspendedAtMs: Date.now(),
+        repoBuildStateBefore,
+        repoBuildStateAfter: params.repoBuildStateAfter,
+        ...(taskListRef.current ? { taskList: taskListRef.current } : {}),
+        ...(taskListRef.completedPlanStepIds &&
+        taskListRef.completedPlanStepIds.length > 0
+          ? { completedPlanStepIds: [...taskListRef.completedPlanStepIds] }
+          : {}),
+        ...(params.loopContext?.plan ? { plan: params.loopContext.plan } : {}),
+      });
+
+      runtime.emit(bus, {
+        type: "suspended",
+        runId,
+        kind: "continue_required",
+        rationale: currentOutcome.rationale,
+        at: runtime.isoNow(),
+      });
+
+      return finish({
+        status: "suspended",
+        route: decision.route,
+        planningDepth: decision.planningDepth,
+        answer: currentOutcome.answer || undefined,
+        suspension: {
+          kind: "continue_required",
+          rationale: currentOutcome.rationale,
+          continuePrompt: currentOutcome.rationale,
         },
         reasonCodes,
       });
@@ -439,7 +585,10 @@ export async function finishAfterLoop(
       reasonCodes.push("answer_produced");
       return finish({
         status: "completed",
-        answer: loopAnswer,
+        answer: selectUserFacingLoopAnswer({
+          loopAnswer,
+          changedFiles: loopChangedFiles,
+        }),
         reasonCodes,
       });
     }
@@ -545,6 +694,7 @@ export async function finishAfterLoop(
         memoryFacts: params.loopContext?.memoryFacts,
         establishedFacts: params.loopContext?.establishedFacts ?? [],
         selectedSkillIds: params.loopContext?.selectedSkillIds,
+        requiredSkillIds: params.loopContext?.requiredSkillIds,
         evidence,
         windowPolicy,
         logVerbosity: input.logVerbosity,

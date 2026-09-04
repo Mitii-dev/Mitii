@@ -49,6 +49,7 @@ export class DecisionPolicyPipeline {
       message,
       planApproval: parsed.planApproval,
       windowPolicy: parsed.windowPolicy,
+      origin: parsed.envelope.origin,
     });
     const grantCompiled = compileGrant({
       mode,
@@ -131,7 +132,11 @@ export class DecisionPolicyPipeline {
       previous: previous.toolGrant,
       discoveredPaths: input.discoveredPaths ?? [],
       residualRisk: input.residualRisk,
-      keepWriteWide: previous.planningDepth === "visible",
+      // Visible plans and full-access (approval never) keep workspace-wide
+      // mutation so required out-of-discovery paths stay writable.
+      keepWriteWide:
+        previous.planningDepth === "visible" ||
+        previous.toolGrant.approvalMode === "never",
     });
     const changed = !toolGrantsEquivalent(previous.toolGrant, narrowedGrant);
     if (!changed) {

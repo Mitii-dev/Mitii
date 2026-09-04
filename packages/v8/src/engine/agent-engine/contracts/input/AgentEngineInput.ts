@@ -127,6 +127,13 @@ export const agentEngineStartInputSchema = z
       .object({
         policy: windowBudgetPolicyOverridesSchema.optional(),
         effort: z.enum(WINDOW_BUDGET_EFFORTS).optional(),
+        /**
+         * Raw host max-output setting. `0` / omitted → derive from the
+         * advertised context window. A positive value is a hard override.
+         * Do not pass a pre-derived reserve here — that incorrectly becomes
+         * `output_host_override` and caps generation below leftover context.
+         */
+        maximumOutputTokens: z.number().int().nonnegative().optional(),
       })
       .strict()
       .optional(),
@@ -149,6 +156,10 @@ export const agentEngineStartInputSchema = z
      * than diagnostic depth.
      */
     logVerbosity: z.enum(AGENT_LOG_VERBOSITIES).default(DEFAULT_AGENT_LOG_VERBOSITY),
+    /**
+     * Explicitly attached skill ids for this run (@skill:, CLI --skill, host pin).
+     */
+    requiredSkillIds: z.array(z.string().min(1).max(64)).max(3).default([]),
   })
   .strict();
 
@@ -185,6 +196,19 @@ export const agentEngineResumeInputSchema = z
       })
       .strict()
       .optional(),
+    grantExpansion: z
+      .object({
+        expansionId: z.string().min(1),
+        decision: z.enum(["approved", "denied"]),
+      })
+      .strict()
+      .optional(),
+    continueDecision: z
+      .object({
+        decision: z.enum(["continue", "stop"]),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -192,12 +216,14 @@ export const agentEngineResumeInputSchema = z
       value.approval,
       value.clarificationAnswer,
       value.planDecision,
+      value.grantExpansion,
+      value.continueDecision,
     ].filter((item) => item !== undefined);
     if (provided.length === 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message:
-          "Resume requires approval, clarificationAnswer, or planDecision.",
+          "Resume requires approval, clarificationAnswer, planDecision, grantExpansion, or continueDecision.",
       });
     }
     if (

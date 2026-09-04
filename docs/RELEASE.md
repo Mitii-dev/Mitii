@@ -51,7 +51,7 @@ Add these under **Settings → Secrets and variables → Actions** (values are n
 
 | Secret | Required | Purpose |
 |---|---|---|
-| `NPM_TOKEN` | Optional fallback | npm automation token with publish rights for `@mitii/*` when trusted publishing is not configured |
+| `NPM_TOKEN` | Optional fallback | npm granular access token with publish rights for `@mitii/*` and bypass 2FA enabled when trusted publishing is not configured |
 | `VSCE_PAT` | Yes (marketplace job) | Azure DevOps PAT with Marketplace publish scope for publisher `mitii` |
 | `OVSX_PAT` | Optional | Open VSX token; Open VSX publish is skipped when unset |
 
@@ -67,6 +67,18 @@ Add these under **Settings → Secrets and variables → Actions** (values are n
    - Publish all four targets to the VS Code Marketplace (`VSCE_PAT`)
    - Publish to Open VSX when `OVSX_PAT` is set
    - Call **npm publish** for `@mitii/v8` → `@mitii/sdk` → `@mitii/host` → `@mitii/cli` (GitHub OIDC trusted publishing, with `NPM_TOKEN` fallback)
+
+### npm authentication
+
+The npm publish workflow runs on Node 22 and installs npm CLI 11.5.1+ so GitHub OIDC trusted publishing can be used. On npmjs.com, configure a trusted publisher for each package (`@mitii/v8`, `@mitii/sdk`, `@mitii/host`, `@mitii/cli`) with:
+
+- Owner: `Mitii-dev`
+- Repository: `Mitii`
+- Workflow filename: `release.yml` for tag releases
+
+The npm docs validate the caller workflow when a reusable workflow is invoked with `workflow_call`, so tag releases authenticate as `.github/workflows/release.yml` even though the publish steps live in `.github/workflows/npm-publish.yml`. If you need to run the standalone **npm publish** workflow manually with trusted publishing, switch the package trusted publisher workflow filename to `npm-publish.yml` for that run, or use the `NPM_TOKEN` fallback.
+
+If using the `NPM_TOKEN` fallback instead, create a granular access token with package publish access and enable bypass 2FA. Tokens without bypass 2FA will fail in CI with `EOTP` because GitHub Actions cannot supply an interactive authenticator code.
 
 ### Local / manual
 

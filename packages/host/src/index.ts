@@ -113,7 +113,7 @@ export {
  * Fingerprint-only publish candidate (honest: indexes unavailable).
  * Not the V8 `WorkspaceSnapshot` artifact used by indexing/retrieval.
  */
-export { buildWorkspaceSnapshot, resolveFingerprintRootId } from './indexing/fingerprintSnapshot.js';
+export { buildWorkspaceSnapshot, resolveFingerprintRootId, enrichFingerprintWithPersistedVectorProfile } from './indexing/fingerprintSnapshot.js';
 export type {
   WorkspaceSnapshot,
   WorkspaceSnapshotOptions,
@@ -239,3 +239,12 @@ export type {
   TestProviderConnectionInput,
   ListProviderModelsInput,
 } from './config/testProviderConnection.js';
+
+// ---------------------------------------------------------------------------
+// Automation (Phase 1) — SDK executor for @mitii/automation ClaimRunner
+// ---------------------------------------------------------------------------
+export { createAutomationRunExecutor } from './automation/createAutomationRunExecutor.js';
+export type { CreateAutomationRunExecutorOptions } from './automation/createAutomationRunExecutor.js';
+export { createCompositeDeliverySender } from './automation/delivery/createCompositeDeliverySender.js';
+export type { CreateCompositeDeliverySenderOptions } from './automation/delivery/createCompositeDeliverySender.js';
+export { formatDeliveryMessage } from './automation/delivery/formatMessage.js';

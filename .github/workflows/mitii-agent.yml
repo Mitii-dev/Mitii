@@ -1,6 +1,6 @@
-# GitHub issue /mitii runner is deferred until a real host command exists.
-# Current CLI supports: ask, session, index, status, export-session (no `agent`).
-name: mitii agent (deferred)
+# GitHub issue /mitii mentions — use Phase 0 headless ask instead.
+# See docs/automation/README.md and .github/workflows/mitii-*.yml
+name: mitii agent (legacy stub)
 
 on:
   issue_comment:
@@ -11,4 +11,4 @@ jobs:
     if: false
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Deferred — CLI has no GitHub issue agent command yet."
+      - run: echo "Use mitii-post-commit-cover / mitii-ci-failure-triage workflows."

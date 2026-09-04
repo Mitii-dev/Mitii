@@ -46,7 +46,7 @@ tool-runtime/
 - `StructuralShadowGrantAuthorizer` can evaluate a Cedar-shaped structural grant in parallel with normal validation.
 - Mutation batches enforce `maxPatchesPerCall`, `maxUniqueFilesPerCall`, and `maxPatchPayloadCharacters`. Exceeding those caps fails preflight with `mutation_budget_exceeded` (not a generic `limit_exceeded`).
 - Mutation tools (`apply_patch`, delete, move) authorize against `grant.mutationPathScopes` when present; discovery tools keep `grant.pathScopes`.
-- `apply_patch` keeps exact `oldText` matching (no fuzzy match, no regex). Default requires a unique occurrence. Optional `replaceAll: true` replaces every exact occurrence in that file; empty `oldText` still means create or full-file replace and rejects `replaceAll`. Distinct reason codes describe why a hunk failed: `old_text_not_found`, `old_text_ambiguous`, `patch_target_missing`, `patch_hash_mismatch`, `identical_old_and_new`, `patch_syntax_invalid`. Retryable conflicts attach clipped `currentContent` in the tool result. `patch_conflict` remains as a legacy umbrella for older hosts.
+- `apply_patch` keeps exact `oldText` matching (no fuzzy match, no regex). Default requires a unique occurrence. Optional `replaceAll: true` replaces every exact occurrence in that file; empty `oldText` still means create or full-file replace and rejects `replaceAll`. Distinct reason codes describe why a hunk failed: `old_text_not_found`, `old_text_ambiguous`, `patch_target_missing`, `patch_hash_mismatch`, `identical_old_and_new`, `patch_syntax_invalid`. Retryable conflicts, including no-op `identical_old_and_new`, attach clipped `currentContent` in the tool result. `patch_conflict` remains as a legacy umbrella for older hosts.
 - Preflight coerces common model mis-encodings for `apply_patch`: a flat `{ path, oldText, newText }` object is wrapped into `{ patches: [...] }`, and a JSON-string `patches` value is parsed into an array before schema validation.
 - Process execution always goes through `ProcessPort`.
 - Network access always goes through `NetworkPort` and host allow-lists.
@@ -124,7 +124,15 @@ Tool Runtime execution returns a result like this:
   "callId": "call-read-login",
   "toolName": "read_file",
   "status": "ok",
-  "output": { "path": "src/LoginForm.tsx", "contentPreview": "export function LoginForm() { ... }" },
+  "output": {
+    "path": "src/LoginForm.tsx",
+    "content": "export function LoginForm() { ... }",
+    "startLine": 1,
+    "endLine": 120,
+    "totalLines": 120,
+    "eof": true,
+    "truncated": false
+  },
   "truncated": false,
   "redacted": false,
   "bytesProduced": 4812,

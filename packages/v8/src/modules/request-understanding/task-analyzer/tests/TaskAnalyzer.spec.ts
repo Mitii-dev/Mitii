@@ -218,20 +218,80 @@ test("task analyzer recommends repository discovery when refactor lacks explicit
   assert.equal(result.recommendsRepositoryDiscovery, true);
 });
 
-test("task analyzer treats this-project language as repository scope", () => {
+test("task analyzer treats breadth language as repository scope", () => {
   const analyzer = new TaskAnalyzer();
   const result = analyzer.analyze(
     createInput(
-      "Can you do deep analysis on this project and how to run it?",
+      "Refactor authentication across the codebase and document the flow.",
       {
-        primaryTaskIntent: "question",
-        interactionIntent: "question",
+        primaryTaskIntent: "refactor",
+        interactionIntent: "act",
       },
     ),
   );
 
   assert.equal(result.scope, "repository");
   assert.equal(result.recommendsRepositoryDiscovery, true);
+});
+
+test("task analyzer treats project restructure as repository scope", () => {
+  const analyzer = new TaskAnalyzer();
+  const result = analyzer.analyze(
+    createInput(
+      "Restructure this project, make sure every test case follow proper interface and lib\n- Need proper folder restructure as well",
+      {
+        primaryTaskIntent: "refactor",
+        interactionIntent: "act",
+      },
+    ),
+  );
+
+  assert.equal(result.scope, "repository");
+  assert.equal(result.recommendsRepositoryDiscovery, true);
+});
+
+test("task analyzer does not treat locative app/codebase phrases as repository scope", () => {
+  const analyzer = new TaskAnalyzer();
+
+  assert.notEqual(
+    analyzer.analyze(
+      createInput(
+        "Build and unit-test the app instead of booting an HTTP server.",
+        { primaryTaskIntent: "feature", interactionIntent: "act" },
+      ),
+    ).scope,
+    "repository",
+  );
+
+  assert.notEqual(
+    analyzer.analyze(
+      createInput(
+        "Helpers don't exist anywhere in this codebase — implement them with crypto.",
+        { primaryTaskIntent: "bugfix", interactionIntent: "act" },
+      ),
+    ).scope,
+    "repository",
+  );
+
+  assert.notEqual(
+    analyzer.analyze(
+      createInput("The app won't start. Please investigate and fix it.", {
+        primaryTaskIntent: "bugfix",
+        interactionIntent: "act",
+      }),
+    ).scope,
+    "repository",
+  );
+
+  assert.notEqual(
+    analyzer.analyze(
+      createInput(
+        "Inject CartRepository the same way the repository is injected.",
+        { primaryTaskIntent: "bugfix", interactionIntent: "act" },
+      ),
+    ).scope,
+    "repository",
+  );
 });
 
 test("task analyzer uses referenced artifacts as implicit targets", () => {

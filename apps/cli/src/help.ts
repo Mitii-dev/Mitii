@@ -6,10 +6,13 @@ Usage:
   mitii help
   mitii setup [--show] [--provider <id>] [--model <id>] [--test]
   mitii ask <prompt> [options]
+  mitii ask --agent <id|path> [options]
+  mitii ask --prompt-file <path|-> [options]
   mitii session [options]
   mitii index [--cwd <path>] [--json]
   mitii status [--cwd <path>] [--json]
   mitii export-session <prompt> --out <file> [--echo]
+  mitii connect <channel> …
 
 First run:
   1. mitii setup                 # pick provider + write .mitii/config.json
@@ -24,12 +27,29 @@ Commands:
   index            Full workspace index + publish repository state
   status           Show latest persisted repository state
   export-session   Run ask and write secret-free JSON export
+  connect          Chat bridges (telegram / discord / slack)
   version / help   Version and usage
 
 Modes (--mode or config defaultMode):
   ask     Q&A / explain (default)
   plan    Read-only plan; no file edits
   agent   Edit + verify with approvals
+
+Automation (Phase 0):
+  --origin <o>       user | automation | api
+                     automation/api suppress interactive clarify in policy
+  --skill <id>       Force-attach a skill for this run (repeat up to 3 times)
+  --autonomy <a>     readonly | propose | apply | apply_and_pr
+                     fills mode + approval policy for unattended runs
+  --agent <id|path>  Load .mitii/agents/<id>.md (or a file path)
+  --prompt-file <p>  Prompt from file, or - for stdin
+
+Exit codes:
+  0   completed (or non-clarify suspend checkpoint in --json)
+  1   failed / declined suspension
+  2   usage / config error
+  4   suspended needing clarification (policy / input gap)
+  130 cancelled (SIGINT)
 
 Options:
   -h, --help         Show this help
@@ -38,9 +58,14 @@ Options:
   --json             Emit machine-readable JSON on stdout
   --echo             Force EchoLlmPort even when API keys are set
   --clarify <text>   Non-interactive clarification resume
-  --approve / --deny Non-interactive approval resume
+  --approve / --deny Non-interactive approval: resume mutation/plan gates;
+                     --approve also skips plan-gate on start (headless)
   --out <file>       Session export path (export-session)
   --mode <mode>      ask | plan | agent
+  --origin <origin>  user | automation | api
+  --autonomy <preset> readonly | propose | apply | apply_and_pr
+  --agent <id|path>  Agent markdown under .mitii/agents/ or a path
+  --prompt-file <p>  Prompt file path, or - for stdin
   --loop-policy-json <json>
                      Lab: one-off threshold overrides for this run
                      (merged on the active window band; see README)
@@ -74,7 +99,7 @@ Environment:
   GEMINI_API_KEY / GOOGLE_API_KEY  Gemini
   OPENAI_API_KEY                   OpenAI-compatible (OpenAI, DeepSeek, …)
 
-Hosts stream events, cancel, clarify/approve, index/status,
-usage/context inspection, live task lists, and secret-free session export.
-Daemon/board/channels are out of scope for this CLI.
+Daemon/board UIs remain separate from interactive chat.
+Phase 1 automation: mitii schedule | mitii serve | mitii-daemon
+  (see docs/automation/README.md and packages/automation/ARCHITECTURE.md)
 `;

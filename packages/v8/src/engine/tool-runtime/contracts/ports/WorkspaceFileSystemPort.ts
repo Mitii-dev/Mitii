@@ -13,6 +13,37 @@ export interface WorkspaceDirectoryEntry {
   kind: WorkspaceEntryKind;
 }
 
+/** Options for workspace file reads (byte and/or line windows). */
+export interface WorkspaceReadFileOptions {
+  maxBytes?: number;
+  /** 1-based inclusive start line. */
+  startLine?: number;
+  /** 1-based inclusive end line. */
+  endLine?: number;
+  /** Soft cap on number of lines returned. */
+  maxLines?: number;
+}
+
+export type WorkspaceReadFileTruncationReason =
+  | "byte_cap"
+  | "line_range"
+  | "max_lines"
+  | "model_budget";
+
+export interface WorkspaceReadFileResult {
+  content: string;
+  truncated: boolean;
+  bytesRead: number;
+  /** Actual first line included (1-based). */
+  startLine: number;
+  /** Actual last line included (1-based); 0 when content is empty. */
+  endLine: number;
+  totalLines?: number;
+  eof: boolean;
+  nextStartLine?: number;
+  truncationReason?: WorkspaceReadFileTruncationReason;
+}
+
 /**
  * Workspace filesystem used by Tool Runtime.
  * Implementations MUST use lstat/realpath semantics for containment.
@@ -22,11 +53,10 @@ export interface WorkspaceFileSystemPort {
   resolve(workspaceRoot: string, relativePath: string): string;
   lstat(absolutePath: string): Promise<WorkspaceStat>;
   realpath(absolutePath: string): Promise<string>;
-  readFile(absolutePath: string, options?: { maxBytes?: number }): Promise<{
-    content: string;
-    truncated: boolean;
-    bytesRead: number;
-  }>;
+  readFile(
+    absolutePath: string,
+    options?: WorkspaceReadFileOptions,
+  ): Promise<WorkspaceReadFileResult>;
   listDirectory(absolutePath: string): Promise<WorkspaceDirectoryEntry[]>;
   /**
    * Read text files under a workspace path. The path MAY be a file or a

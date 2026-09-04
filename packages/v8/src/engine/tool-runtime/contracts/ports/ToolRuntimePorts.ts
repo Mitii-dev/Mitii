@@ -39,6 +39,9 @@ export type {
   WorkspaceStat,
   WorkspaceDirectoryEntry,
   WorkspaceEntryKind,
+  WorkspaceReadFileOptions,
+  WorkspaceReadFileResult,
+  WorkspaceReadFileTruncationReason,
 } from "./WorkspaceFileSystemPort";
 export type {
   ProcessPort,

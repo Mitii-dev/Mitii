@@ -3,6 +3,7 @@ import type {
 } from "../../../modules/decision-policy";
 import {
   DECISION_POLICY_SCHEMA_VERSION,
+  isExplicitWebSearchAsk,
   toolGrantsEquivalent,
 } from "../../../modules/decision-policy";
 import type {
@@ -38,6 +39,7 @@ import {
 } from "../../../modules/repository-context";
 import type { UserRequestEnvelope } from "../../../modules/request-intake";
 import { extractPrimaryUserMessage } from "../../../modules/request-understanding/intent/extractPrimaryUserMessage";
+import { resolveFuzzyFileTargets } from "../../../modules/request-understanding";
 import { SKILLS_SCHEMA_VERSION } from "../../../modules/skills";
 import type {
   RepoBuildState,
@@ -61,6 +63,7 @@ import {
   amendMessageWithPriorConversation,
   buildDiagnosticSummary,
   extractMentionedPaths,
+  collectUnderstandingCandidatePaths,
   buildPlanningQuery,
   buildScopedRepoMapForPlanning,
   collectPreferredPlanningPaths,
@@ -75,6 +78,7 @@ import {
   recordDiscoveryEvidence,
   recordPlanEvidence,
   formatSkillPromptContent,
+  buildSkillsReadyEvent,
 } from "../actions";
 import { applyPlanModeDiscoveryContract } from "../actions/planDiscoveryContract";
 import {
@@ -425,9 +429,21 @@ export async function executeStart(
           extractPrimaryUserMessage(understandingEnvelope.message),
         )
       : undefined;
-    const understanding = await runtime.deps.understanding.understand(
-      understandingEnvelope,
+    // Collect cheap path hints for *post-context* fuzzy resolution only.
+    // Do not pass them into early understand(): sparse dirty/diagnostic
+    // candidates can uniquely resolve a basename to the wrong file, lock
+    // mutation scopes / context focus, and then block later correction.
+    const candidateRelativePaths = collectUnderstandingCandidatePaths({
+      dirtyPaths: input.dirtyPaths,
       diagnosticSummary,
+      referencedArtifacts: understandingEnvelope.referencedArtifacts,
+      userMessage: extractPrimaryUserMessage(understandingEnvelope.message),
+    });
+    let understanding = await runtime.deps.understanding.understand(
+      understandingEnvelope,
+      {
+        ...(diagnosticSummary ? { diagnosticSummary } : {}),
+      },
     );
     reasonCodes.push("understanding_complete");
     runtime.emitStage(bus, runId, "understood", "completed", [
@@ -471,6 +487,27 @@ export async function executeStart(
       at: runtime.isoNow(),
     });
     runtime.emitStage(bus, runId, "decided", "completed", ["decision_complete"]);
+
+    const userMessage = extractPrimaryUserMessage(envelope.message);
+    const hasSearchPort = runtime.deps.tools?.hasSearchPort?.() === true;
+    if (
+      isExplicitWebSearchAsk(
+        userMessage,
+        understanding.intent.classification.primaryTaskIntent,
+      ) &&
+      !hasSearchPort &&
+      !decision.toolGrant.allowedTools.includes("web_search")
+    ) {
+      const searchWarning =
+        "Web search was requested but no SearchPort is configured. Set BRAVE_API_KEY or MITII_SEARCH_API_KEY (VS Code: Mitii: Set Web Search API Key) to enable web_search.";
+      warnings.push(searchWarning);
+      runtime.emit(bus, {
+        type: "warning",
+        runId,
+        message: searchWarning,
+        at: runtime.isoNow(),
+      });
+    }
 
     if (signal.aborted) {
       return await cancelledResult();
@@ -628,12 +665,29 @@ export async function executeStart(
 
       repositoryContext = mapContextToPromptSlice(contextResult);
       reasonCodes.push("context_retrieved");
-      contextPaths = scopeDiscoveredContextPaths(
-        contextResult.assembly.blocks
-          .map((block) => block.relativePath)
-          .filter((path): path is string => Boolean(path?.trim())),
-        contextFocus,
-      );
+      const discoveredPaths = contextResult.assembly.blocks
+        .map((block) => block.relativePath)
+        .filter((path): path is string => Boolean(path?.trim()));
+      // Fuzzy-resolve against retrieved paths (plus dirty/@ hints). Require
+      // discovered context so sparse dirty-only lists cannot lock a basename
+      // to the wrong file. Decision already ran; this improves planning focus.
+      if (discoveredPaths.length > 0) {
+        const fuzzy = resolveFuzzyFileTargets(
+          understanding.taskAnalysis.targets,
+          [...candidateRelativePaths, ...discoveredPaths],
+        );
+        if (fuzzy.resolved.length > 0) {
+          understanding = {
+            ...understanding,
+            taskAnalysis: {
+              ...understanding.taskAnalysis,
+              targets: fuzzy.targets,
+            },
+          };
+        }
+      }
+      const scopedFocus = deriveContextFocusFromUnderstanding(understanding);
+      contextPaths = scopeDiscoveredContextPaths(discoveredPaths, scopedFocus);
       runtime.emit(bus, {
         type: "context_ready",
         runId,
@@ -779,6 +833,7 @@ export async function executeStart(
         route: decision.route,
         budgetTokens: windowPolicy.skills.budgetTokens,
         maxSkills: windowPolicy.skills.maxSkills,
+        requiredSkillIds: input.requiredSkillIds ?? [],
         evidence: {
           ...understandingSkillEvidence,
           paths: skillEvidencePaths,
@@ -798,31 +853,14 @@ export async function executeStart(
           ? "skills_selected"
           : "skills_skipped",
       );
-      runtime.emit(bus, {
-        type: "skills_ready",
-        runId,
-        selectedCount: skillsResult.instructions.length,
-        omittedCount: skillsResult.omissions.length,
-        status: skillsResult.status,
-        selected: skillsResult.instructions
-          .map((block) => block.id)
-          .filter((id) => id.trim().length > 0)
-          .slice(0, 20),
-        omitted: skillsResult.omissions
-          .map((omission) => omission.skillId)
-          .filter((id) => id.trim().length > 0)
-          .slice(0, 20),
-        omittedDetails: skillsResult.omissions
-          .map((omission) => ({
-            id: omission.skillId,
-            reason: omission.reason,
-            ...(typeof omission.tokens === "number"
-              ? { tokens: omission.tokens }
-              : {}),
-          }))
-          .slice(0, 20),
-        at: runtime.isoNow(),
-      });
+      runtime.emit(
+        bus,
+        buildSkillsReadyEvent({
+          runId,
+          skillsResult,
+          at: runtime.isoNow(),
+        }),
+      );
       runtime.emitStage(bus, runId, "skills_ready", "completed", [
         skillsResult.instructions.length > 0
           ? "skills_selected"
@@ -1221,6 +1259,7 @@ export async function executeStart(
       temperature: input.temperature,
       stream: input.stream,
       outputReserveTokens: windowPolicy.maximumOutputTokens,
+      planBudgetTokens: planText ? windowPolicy.sections.planTokens : 0,
     });
 
     if (promptResult.status === "blocked") {
@@ -1241,30 +1280,63 @@ export async function executeStart(
     if (promptResult.warnings.length > 0) {
       warnings.push(...promptResult.warnings);
     }
-    if (logVerbosityAtLeast(input.logVerbosity, "standard")) {
-      runtime.emit(bus, {
-        type: "prompt_ready",
-        runId,
-        status: promptResult.status,
-        totalOmittedTokens: promptResult.budget.totalOmittedTokens,
-        totalTruncatedTokens: promptResult.budget.totalTruncatedTokens,
-        ...(promptResult.omissions.length > 0
-          ? {
-              omissions: promptResult.omissions.slice(0, 20).map((omission) => ({
-                section: omission.section,
-                reason: omission.reason,
-                ...(typeof omission.tokens === "number"
-                  ? { tokens: omission.tokens }
-                  : {}),
-              })),
-            }
-          : {}),
-        ...(promptResult.warnings.length > 0
-          ? { warnings: promptResult.warnings.slice(0, 20) }
-          : {}),
-        at: runtime.isoNow(),
-      });
-    }
+    // Always emit: hosts need budget/window for the token-meter tree.
+    // Omissions and warning text stay verbosity-gated.
+    const includePromptDetails = logVerbosityAtLeast(
+      input.logVerbosity,
+      "standard",
+    );
+    const planSection = promptResult.budget.sections.find(
+      (section) => section.section === "plan",
+    );
+    const planUsedTokens = planSection?.usedTokens ?? 0;
+    runtime.emit(bus, {
+      type: "prompt_ready",
+      runId,
+      status: promptResult.status,
+      totalOmittedTokens: promptResult.budget.totalOmittedTokens,
+      totalTruncatedTokens: promptResult.budget.totalTruncatedTokens,
+      budget: {
+        contextWindowTokens: promptResult.budget.contextWindowTokens,
+        outputReservedTokens: promptResult.budget.outputReservedTokens,
+        inputBudgetTokens: promptResult.budget.inputBudgetTokens,
+        totalUsedTokens: promptResult.budget.totalUsedTokens,
+        withinLimits: promptResult.budget.withinLimits,
+        sections: promptResult.budget.sections.slice(0, 16).map((section) => ({
+          section: section.section,
+          allocatedTokens: section.allocatedTokens,
+          usedTokens: section.usedTokens,
+          omittedTokens: section.omittedTokens,
+          truncatedTokens: section.truncatedTokens,
+        })),
+      },
+      window: {
+        toolSchemaTokens: windowPolicy.toolSchemaTokens,
+        usableInputTokens: windowPolicy.usableInputTokens,
+        repositoryTokens: windowPolicy.sections.repositoryTokens,
+        conversationTokens: windowPolicy.sections.conversationTokens,
+        planTokens:
+          planUsedTokens > 0 ? windowPolicy.sections.planTokens : 0,
+        planUsedTokens,
+        skillsTokens: windowPolicy.sections.skillsTokens,
+        systemTokens: windowPolicy.sections.systemTokens,
+      },
+      ...(includePromptDetails && promptResult.omissions.length > 0
+        ? {
+            omissions: promptResult.omissions.slice(0, 20).map((omission) => ({
+              section: omission.section,
+              reason: omission.reason,
+              ...(typeof omission.tokens === "number"
+                ? { tokens: omission.tokens }
+                : {}),
+            })),
+          }
+        : {}),
+      ...(includePromptDetails && promptResult.warnings.length > 0
+        ? { warnings: promptResult.warnings.slice(0, 20) }
+        : {}),
+      at: runtime.isoNow(),
+    });
 
     // --- Model / tool loop ---
     const messages: ModelMessage[] = [...promptResult.request.messages];
@@ -1304,6 +1376,7 @@ export async function executeStart(
       taskListRef,
       memoryFacts,
       establishedFacts,
+      requiredSkillIds: input.requiredSkillIds ?? [],
       selectedSkillIds: selectedSkills?.map((block) => block.id) ?? [],
       evidence: runEvidence,
       windowPolicy,
@@ -1348,6 +1421,7 @@ export async function executeStart(
         mode: envelope.mode,
         projects: input.projects,
         memoryFacts,
+        requiredSkillIds: input.requiredSkillIds ?? [],
         selectedSkillIds: selectedSkills?.map((block) => block.id) ?? [],
         establishedFacts,
         plan: runPlan,

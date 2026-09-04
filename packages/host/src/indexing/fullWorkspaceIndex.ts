@@ -177,6 +177,7 @@ async function runFullWorkspaceIndexOnce(options: {
     semanticCandidate.status === 'ready' ? semanticCandidate.profile : undefined;
   const vectorRuntimeKey = semanticProfile?.id ?? 'unavailable';
   const database = options.openDatabase(databasePath);
+  let semanticRuntime: Awaited<ReturnType<typeof resolveSemanticRuntime>> | undefined;
   try {
     database.pragma('journal_mode = WAL');
     database.pragma('foreign_keys = ON');
@@ -239,7 +240,11 @@ async function runFullWorkspaceIndexOnce(options: {
       };
     }
 
-    const semanticRuntime = await resolveSemanticRuntime(semanticCandidate, lanceDbPath);
+    const resolvedSemantic = await resolveSemanticRuntime(
+      semanticCandidate,
+      lanceDbPath,
+    );
+    semanticRuntime = resolvedSemantic;
     const treeSitterRuntime = await createDefaultTreeSitterRuntime();
     const treeSitter = treeSitterRuntime
       ? { status: 'ready' as const }
@@ -251,14 +256,14 @@ async function runFullWorkspaceIndexOnce(options: {
     // Scan used a lightweight runtime so unchanged workspaces can return before
     // loading tree-sitter/embeddings. Rebuild with those only when indexing.
     const indexingRuntime =
-      treeSitterRuntime || semanticRuntime.status === 'ready'
+      treeSitterRuntime || resolvedSemantic.status === 'ready'
         ? await createWorkspaceIndexRuntime({
             fileSystem,
             codeIndexDatabase: database as never,
             textIndexDatabase: database as never,
             ...(treeSitterRuntime ? { treeSitterRuntime } : {}),
-            ...(semanticRuntime.status === 'ready'
-              ? { vector: semanticRuntime.vector }
+            ...(resolvedSemantic.status === 'ready'
+              ? { vector: resolvedSemantic.vector }
               : {}),
           })
         : components;
@@ -315,7 +320,7 @@ async function runFullWorkspaceIndexOnce(options: {
     }
 
     const vectorIndex = resolveVectorIndexStatus({
-      semanticRuntime,
+      semanticRuntime: resolvedSemantic,
       indexing,
       lanceDbPath,
       runtimeMetadataPath,
@@ -343,12 +348,12 @@ async function runFullWorkspaceIndexOnce(options: {
       workspaceId: options.workspaceId,
       sqlitePath: databasePath,
       lanceDbPath,
-      ...(semanticRuntime.status === 'ready' && vectorIndex.status === 'ready'
-        ? { embeddingProfile: semanticRuntime.provider.profile }
+      ...(resolvedSemantic.status === 'ready' && vectorIndex.status === 'ready'
+        ? { embeddingProfile: resolvedSemantic.provider.profile }
         : {}),
       vectorRuntimeKey:
-        semanticRuntime.status === 'ready' && vectorIndex.status === 'ready'
-          ? semanticRuntime.provider.profile.id
+        resolvedSemantic.status === 'ready' && vectorIndex.status === 'ready'
+          ? resolvedSemantic.provider.profile.id
           : 'unavailable',
       snapshotFingerprint,
       fileCount: snapshot.statistics.files,
@@ -379,7 +384,26 @@ async function runFullWorkspaceIndexOnce(options: {
       ...graphMap,
     };
   } finally {
+    await disposeSemanticRuntime(semanticRuntime);
     database.close();
+  }
+}
+
+async function disposeSemanticRuntime(
+  semanticRuntime:
+    | Awaited<ReturnType<typeof resolveSemanticRuntime>>
+    | undefined,
+): Promise<void> {
+  if (!semanticRuntime || semanticRuntime.status !== 'ready') {
+    return;
+  }
+  try {
+    // Close Lance eagerly; the embedding provider may still be reused by the
+    // same process (CLI ask indexes then retrieves). WASM ORT does not abort
+    // on process teardown, so skipping provider.dispose here is intentional.
+    semanticRuntime.vector.lanceConnection.close?.();
+  } catch {
+    // Best-effort: Lance close must not mask the indexing result.
   }
 }
 

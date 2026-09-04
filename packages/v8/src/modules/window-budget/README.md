@@ -24,8 +24,9 @@ Given `contextWindowTokens`, optional host `maximumOutputTokens`, optional measu
 - `effort`: `low` | `medium` | `high` (default `medium`)
 - `maximumOutputTokens` / `toolSchemaTokens` / `usableInputTokens` / `loopInputBudgetTokens`
 - `sections`: repository, conversation, plan, skills, system
-- `compaction`: warn/auto/hard ratios plus absolute `autoMaxTokens` /
-  `hardMaxTokens` ceilings from the effort overlay, how much tool history to keep, live
+- `compaction`: warn/auto/hard ratios plus window-scaled `autoMaxTokens` /
+  `hardMaxTokens` ceilings from the effort overlay (fractions of the advertised
+  context window, with small-window floors), how much tool history to keep, live
   tool-result content budget, compacted result/argument budgets, dropped-turn
   summary budget, observation size/count, and memory/observation reinjection
   budgets
@@ -59,16 +60,28 @@ Tool JSON is treated as a **fixed cost**. Shares below are of `U`, not of `W`:
 | System + rules | remainder | none |
 
 Worked defaults (`outputRatio=0.20`, `outputMinTokens=10240`,
-`outputWindowCapRatio=0.35`, tool fallback 8k / 20% of W):
+`outputWindowCapRatio=0.35`, tool fallback 8k / 20% of W). Band overlays may
+change ratios (compact uses ~30% output):
 
 | Window | Output | Tools | Usable | Repo | Plan | Skills |
 |---|---|---|---|---|---|---|
 | 30k | 10,240 | 6,000 | ~13.8k | ~3.9k | ~0.8k | ~0.6k |
-| 100k | 20,000 | 8,000 | ~72k | ~20k | ~4.3k | ~2.9k |
-| 200k | 32,768 | 8,000 | ~159k | ~45k | ~9.5k | ~6.4k |
+| 100k | 18,000 | 8,000 | ~74k | ~22k | ~4.4k | ~3.7k |
+| 200k | 36,000 | 8,000 | ~156k | ~47k | ~9.4k | ~6.2k |
+
+Medium effort compaction ceilings scale with W (auto ≈ 0.8×W, hard ≈ W), so a
+100k settings window keeps ~80k of loop history before auto-compaction — not a
+fixed 32k absolute.
 
 Mutation batch size follows the **context window**, then the effort overlay
-caps it so a 200k model does not keep 25-file patches:
+caps it so a 200k model does not keep 25-file patches. **Window bands**
+(`windowBudgetBands.ts`) apply before host overrides:
+
+| Band | Window | Ship overlay |
+|---|---|---|
+| Compact | &lt; 50k | `maxUniqueFilesPerCallCap: 6`, skills share ↑, repo share ↓ |
+| Standard | 50k – &lt; 100k | Base `DEFAULT_WINDOW_BUDGET_POLICY` |
+| Wide | ≥ 100k | `maxSkillsCap: 6` |
 
 ```text
 windowFiles            = (W × outputRatio) / filesPerOutputTokens
@@ -78,8 +91,9 @@ maxPatchPayloadCharacters = O × charsPerOutputToken × patchPayloadOutputRatio
 preferredBatchSize     = maxUniqueFilesPerCall
 ```
 
-Medium effort (the default): 30k → 7 files, 48k → 8 files, 200k → 8 files
-(not 25). High effort raises the 200k cap to 12; low effort lowers it to 4.
+Medium effort (the default): 30k → 6 files (compact band cap), 48k → 8 files
+(standard), 200k → 8 files (not 25; effort-capped). High effort raises the 200k
+cap to 12; low effort lowers it to 4.
 
 Planning affordances follow **usable input**, scaled with the window so a 30k local cap still plans:
 

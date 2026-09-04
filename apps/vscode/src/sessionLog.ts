@@ -201,17 +201,20 @@ function compactEvent(
         truncated: event.truncated,
       };
     case 'skills_ready':
-    case 'memory_ready':
       return {
         ...base,
         selectedCount: event.selectedCount,
         omittedCount: event.omittedCount,
+        requiredCount: 'requiredCount' in event ? event.requiredCount : undefined,
+        matchedCount: 'matchedCount' in event ? event.matchedCount : undefined,
         selected: 'selected' in event ? event.selected : undefined,
+        required: 'required' in event ? event.required : undefined,
         omitted: 'omitted' in event ? event.omitted : undefined,
         omittedDetails:
           'omittedDetails' in event ? event.omittedDetails : undefined,
         status: event.status,
       };
+    case 'memory_ready':
     case 'task_list_updated':
       return {
         ...base,

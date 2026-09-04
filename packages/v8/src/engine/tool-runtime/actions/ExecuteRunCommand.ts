@@ -7,6 +7,7 @@ import {
   runCommandInputSchema,
   runCommandOutputSchema,
 } from "../internal/ToolCatalog";
+import { assertSafeGitPushArgv } from "./ExecuteGithubMutation";
 import { GrantValidationError } from "./ValidateGrant";
 
 /**
@@ -55,6 +56,7 @@ export async function executeRunCommand(params: {
   }
 
   const input = runCommandInputSchema.parse(params.arguments);
+  assertSafeGitPushArgv(input.argv);
   const validated = validateReadonlyCommand({
     argv: input.argv,
     commandRules: params.grant.commandRules,

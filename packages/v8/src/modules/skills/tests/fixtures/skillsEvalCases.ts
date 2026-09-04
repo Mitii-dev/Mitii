@@ -12,7 +12,8 @@ export interface SkillsEvalCase {
     | "diagnose"
     | "feature"
     | "adversarial"
-    | "budget";
+    | "budget"
+    | "required";
   input: Omit<SkillsSelectInput, "schemaVersion">;
   /** Skills that must appear when selection is non-empty (excluding always-apply). */
   expectedRelevantIds: readonly string[];
@@ -296,6 +297,19 @@ export const SKILLS_EVALUATION_CASES: readonly SkillsEvalCase[] = [
       "adversarial-override",
     ],
     enforceBudget: true,
+  },
+  {
+    id: "skills-required-docs",
+    category: "required",
+    input: caseInput({
+      query: "Generate docs for test/Tablet",
+      route: "execute",
+      primaryIntent: "docs",
+      requiredSkillIds: ["docs-style"],
+    }),
+    expectedRelevantIds: ["docs-style"],
+    forbiddenIds: ["adversarial-override"],
+    enforceBudget: false,
   },
 ];
 

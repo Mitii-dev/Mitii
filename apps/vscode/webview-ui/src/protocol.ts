@@ -8,7 +8,7 @@ export type AgentUiDepth = 'auto' | 'quick' | 'deep';
 export type AgentUiEffort = 'low' | 'medium' | 'high';
 /** Clubbed customer control → maps to depth + effort unless intensity overrides. */
 export type AgentUiThoroughness = 'low' | 'medium' | 'high';
-export type UiNav = 'chat' | 'history' | 'settings' | 'skills';
+export type UiNav = 'chat' | 'history' | 'settings' | 'automations';
 export type SettingsTab =
   | 'workspace'
   | 'model'
@@ -59,14 +59,45 @@ export interface ContextUsageSlice {
   active: boolean;
 }
 
+/**
+ * Hierarchical window-budget node for the chat token meter.
+ * Parents mirror WindowPolicy / PromptBudget; children are host sources.
+ */
+export interface ContextUsageNode {
+  id: string;
+  label: string;
+  /** Tokens packed or reserved for this node. */
+  usedTokens: number;
+  /** Budget ceiling when known. */
+  allocatedTokens?: number;
+  omittedTokens?: number;
+  truncatedTokens?: number;
+  kind:
+    | 'output'
+    | 'tools'
+    | 'usable'
+    | 'section'
+    | 'source'
+    | 'free';
+  active: boolean;
+  children?: ContextUsageNode[];
+}
+
 export interface ContextUsageBreakdown {
-  /** Estimated tokens by source (chars/4). */
+  /** Flat host-source list (backward compatible). */
   slices: ContextUsageSlice[];
+  /**
+   * Window tree: Output → Tools → Usable → sections → host sources.
+   * Prefer this in the UI when present.
+   */
+  tree?: ContextUsageNode[];
   totalTokens: number;
   contextWindow: number;
-  /** Share of window used by the last prompt composition (0–1). */
+  /** Share of window used by packed input (0–1). */
   fillRatio: number;
   estimated: boolean;
+  /** How the tree was produced. */
+  source?: 'host_estimate' | 'prompt_budget';
   updatedAt?: string;
 }
 
@@ -111,6 +142,7 @@ export interface SettingsProfileView {
     | 'maximumOutputTokens'
   >;
   hasSecret: boolean;
+  ui?: UiSettingsSnapshot;
   /** SHA-256 fingerprint only. Raw secrets stay out of settings and profiles. */
   secretHash?: string;
   updatedAt?: string;
@@ -146,7 +178,7 @@ export interface TokenUsageSnapshot {
   /** Per model-call I/O within the session (live during a run). */
   turns: TokenUsageTurn[];
   live?: boolean;
-  /** Last prompt context breakdown (Conversation, MCP, Prompt, Repomap, …). */
+  /** Last prompt context breakdown (window tree + host sources). */
   contextBreakdown?: ContextUsageBreakdown;
 }
 
@@ -159,6 +191,7 @@ export type SemanticIndexSource =
 export interface IndexStatusSnapshot {
   fileCount: number;
   truncated: boolean;
+  maximumIndexFiles?: number;
   scanCompleteness?: string;
   cleanupAllowed?: boolean;
   rootCount?: number;
@@ -215,6 +248,8 @@ export interface UiSettingsSnapshot {
   tokenBudget: TokenBudgetSettingsSnapshot;
   /** Agent Engine loop/stall threshold tunables (Debug → developer). */
   loopPolicy: LoopPolicySettingsSnapshot;
+  /** Policy Admin — edits shipped V8 band tables (Save writes source). */
+  policyLab: PolicyLabSettingsSnapshot;
 }
 
 export interface ModeDefaultSettingsSnapshot {
@@ -314,10 +349,47 @@ export interface LoopPolicySettingsSnapshot {
   fields: TokenBudgetFieldDescriptor[];
 }
 
+export interface PolicyLabBandOption {
+  id: 'compact' | 'standard' | 'wide';
+  label: string;
+  rangeLabel: string;
+}
+
+export interface PolicyLabSettingsSnapshot {
+  /** Unused at runtime — kept for patch compatibility. Always false. */
+  enabled: boolean;
+  /** Human path hint for ship sources. */
+  filePath: string;
+  exists: boolean;
+  previewContextWindowTokens: number;
+  activeBand: LoopPolicyBandSnapshot;
+  editBand: 'compact' | 'standard' | 'wide';
+  bands: PolicyLabBandOption[];
+  /** Full draft maps for all bands (Save writes these into V8 source). */
+  loopByBand: Record<'compact' | 'standard' | 'wide', Record<string, number>>;
+  windowByBand: Record<'compact' | 'standard' | 'wide', Record<string, number>>;
+  /** Convenience aliases for the currently edited band. */
+  loopOverrides: Record<string, number>;
+  windowOverrides: Record<string, number>;
+  loopThresholds: Record<string, number>;
+  loopBandThresholds: Record<string, number>;
+  windowPolicy: Record<string, number>;
+  windowBandPolicy: Record<string, number>;
+  loopFields: TokenBudgetFieldDescriptor[];
+  windowFields: TokenBudgetFieldDescriptor[];
+  loopBandHint: string;
+  shipPreviewNote: string;
+}
+
 export type UiSettingsPatch = Partial<
   Omit<
     UiSettingsSnapshot,
-    'contextToggles' | 'runBudget' | 'modeDefaults' | 'tokenBudget' | 'loopPolicy'
+    | 'contextToggles'
+    | 'runBudget'
+    | 'modeDefaults'
+    | 'tokenBudget'
+    | 'loopPolicy'
+    | 'policyLab'
   > & {
     contextToggles?: Partial<ContextToggles>;
     runBudget?: Partial<RunBudgetSettingsSnapshot>;
@@ -334,6 +406,7 @@ export type UiSettingsPatch = Partial<
       bandThresholds?: Record<string, number>;
       band?: LoopPolicyBandSnapshot;
     };
+    policyLab?: Partial<PolicyLabSettingsSnapshot>;
   }
 >;
 
@@ -371,7 +444,9 @@ export interface SuspensionPayload {
   kind:
     | 'clarification_required'
     | 'approval_required'
-    | 'plan_approval_required';
+    | 'plan_approval_required'
+    | 'grant_expansion_required'
+    | 'continue_required';
   rationale?: string;
   clarificationPrompt?: string;
   clarificationOptions?: ClarificationOptionView[];
@@ -386,6 +461,12 @@ export interface SuspensionPayload {
     proposedText?: string;
     arguments?: unknown;
   };
+  grantExpansion?: {
+    expansionId: string;
+    extraPaths: string[];
+    currentPathScopes?: string[];
+  };
+  continuePrompt?: string;
 }
 
 export interface RunUsagePayload {
@@ -513,6 +594,25 @@ export interface SkillCatalogItem {
   enabled: boolean;
 }
 
+export interface AutomationSpecView {
+  specId: string;
+  title: string;
+  enabled: boolean;
+  triggerKind: string;
+  scheduleExpr?: string | null;
+  eventType?: string | null;
+  nextRunAt?: string | null;
+  autonomyPreset?: string | null;
+}
+
+export interface AutomationRunView {
+  runId: string;
+  specId: string;
+  status: string;
+  createdAt: string;
+  error?: string | null;
+}
+
 export interface WorkspaceNoticeView {
   isTrusted: boolean;
   notice: string | null;
@@ -531,6 +631,7 @@ export type WebviewToHostMessage =
       effort?: AgentUiEffort;
       approvalMode?: string;
       pinnedPaths?: string[];
+      requiredSkillIds?: string[];
     }
   | { type: 'cancel' }
   | {
@@ -571,6 +672,10 @@ export type WebviewToHostMessage =
       requestId: string;
       query?: string;
     }
+  | { type: 'requestAutomations'; requestId: string }
+  | { type: 'automation.trigger'; specId: string }
+  | { type: 'automation.pause'; specId: string }
+  | { type: 'automation.resume'; specId: string }
   | { type: 'pickContextPath' }
   | { type: 'copyLastResponse' }
   | { type: 'approveAllPending' }
@@ -592,6 +697,7 @@ export type WebviewToHostMessage =
       workspaceRootOverride?: string | null;
       mcp?: McpSettings;
       approvalMode?: string;
+      workspaceMaximumIndexFiles?: number;
       profile?: SettingsProfileView;
       semanticIndex?: {
         source?: SemanticIndexSource;
@@ -601,6 +707,16 @@ export type WebviewToHostMessage =
   | { type: 'settings.clearApiKey' }
   | { type: 'settings.resetTokenBudget' }
   | { type: 'settings.resetLoopPolicy' }
+  | {
+      type: 'settings.savePolicyLab';
+      policyLab: PolicyLabSettingsSnapshot;
+    }
+  | {
+      type: 'settings.setPolicyLabEditBand';
+      band: 'compact' | 'standard' | 'wide';
+      /** Carry draft maps so switching bands does not lose unsaved edits. */
+      policyLab?: PolicyLabSettingsSnapshot;
+    }
   | { type: 'profile.switch'; id: string }
   | {
       type: 'provider.testConnection';
@@ -617,6 +733,7 @@ export type WebviewToHostMessage =
   | { type: 'openFile'; path: string; line?: number; column?: number }
   | { type: 'undoFileChanges'; runId: string }
   | { type: 'reviewFileChange'; runId: string; path: string }
+  | { type: 'reviewWorkspaceFile'; path: string }
   | { type: 'dismissFileChanges'; runId: string }
   /** Drop the active thread's pending plan without starting a run. */
   | { type: 'clearPendingPlan' };
@@ -638,7 +755,6 @@ export type HostToWebviewMessage =
       tokenUsage: TokenUsageSnapshot;
       notice: WorkspaceNoticeView;
       onboardingRequired: boolean;
-      flags: { skillManagement: boolean };
       history: ChatThreadSummary[];
       activeThreadId?: string;
       activeThreadMessages?: ChatMessageView[];
@@ -660,6 +776,7 @@ export type HostToWebviewMessage =
       tokenUsage: TokenUsageSnapshot;
       notice: WorkspaceNoticeView;
     }
+  | { type: 'settings.saved'; ok: boolean; message?: string }
   | { type: 'index.status'; index: IndexStatusSnapshot }
   | {
       type: 'provider.connectionResult';
@@ -713,6 +830,13 @@ export type HostToWebviewMessage =
       type: 'skillCatalogResult';
       requestId: string;
       items: SkillCatalogItem[];
+      error?: string;
+    }
+  | {
+      type: 'automationsResult';
+      requestId: string;
+      specs: AutomationSpecView[];
+      runs: AutomationRunView[];
       error?: string;
     }
   | { type: 'onboarding'; required: boolean };

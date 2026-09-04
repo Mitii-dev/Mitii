@@ -115,6 +115,7 @@ export class ToolRuntimePipeline {
         ports: this.ports,
         timeoutMs: registered.definition.timeoutMs,
         maxOutputBytes,
+        maxContentChars: options.maxContentChars,
         signal: options.signal,
         transactions: this.transactions,
         dirtyPaths: options.dirtyPaths,

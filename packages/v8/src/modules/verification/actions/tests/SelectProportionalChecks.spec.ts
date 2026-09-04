@@ -45,9 +45,17 @@ describe("selectProportionalChecks", () => {
     expect(result.omitted.map((candidate) => candidate.kind)).toEqual(["test"]);
   });
 
-  it("keeps test checks when tests evidence is required", () => {
+  it("keeps unit test checks when tests evidence is required", () => {
+    const unitTest: DiscoveredCheckCandidate = {
+      ...desktopTest,
+      checkId: "root:test:test:unit",
+      label: "npm test:unit",
+      evidenceSource: "manifest:package.json#scripts.test:unit",
+      toolArguments: { argv: ["npm", "run", "test:unit"] },
+      argv: ["npm", "run", "test:unit"],
+    };
     const result = selectProportionalChecks({
-      candidates: [typecheck, desktopTest],
+      candidates: [typecheck, unitTest],
       verification: {
         required: true,
         minimumEvidence: ["tests"],
@@ -60,5 +68,27 @@ describe("selectProportionalChecks", () => {
       "typecheck",
       "test",
     ]);
+    expect(result.selected.map((candidate) => candidate.checkId)).toContain(
+      "root:test:test:unit",
+    );
+  });
+
+  it("omits browser/e2e scripts even when tests evidence is required", () => {
+    const result = selectProportionalChecks({
+      candidates: [typecheck, desktopTest],
+      verification: {
+        required: true,
+        minimumEvidence: ["tests"],
+        allowUnavailable: true,
+      },
+      changeScope: "cross_cutting",
+    });
+
+    expect(result.selected.map((candidate) => candidate.kind)).toEqual([
+      "typecheck",
+    ]);
+    expect(result.omitted.map((candidate) => candidate.checkId)).toContain(
+      "root:test:desktop:test",
+    );
   });
 });

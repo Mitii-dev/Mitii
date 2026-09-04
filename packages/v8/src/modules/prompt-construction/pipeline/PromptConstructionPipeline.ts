@@ -157,7 +157,11 @@ export class PromptConstructionPipeline {
     );
     const systemCoreUsed = Math.max(
       0,
-      system.usedTokens - rulesUsed - skillsUsed - memoryUsed,
+      system.usedTokens -
+        rulesUsed -
+        skillsUsed -
+        memoryUsed -
+        system.planUsedTokens,
     );
 
     sections = updateSectionBudget(sections, "system", {
@@ -182,6 +186,14 @@ export class PromptConstructionPipeline {
       omittedTokens: system.omitted
         .filter((item) => item.section === "memory")
         .reduce((sum, item) => sum + item.tokens, 0),
+    });
+    const planAllocated =
+      system.planUsedTokens > 0
+        ? Math.max(system.planUsedTokens, parsed.planBudgetTokens ?? 0)
+        : 0;
+    sections = updateSectionBudget(sections, "plan", {
+      allocatedTokens: planAllocated,
+      usedTokens: system.planUsedTokens,
     });
 
     const toolsResult = serializeTools({
