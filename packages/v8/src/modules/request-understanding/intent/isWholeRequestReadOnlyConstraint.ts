@@ -47,7 +47,7 @@ export function isWholeRequestReadOnlyConstraint(message: string): boolean {
 
 function hasMutatingPrimaryAsk(text: string): boolean {
   if (
-    /^(?:please\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+|i\s+want\s+you\s+to\s+|i\s+need\s+you\s+to\s+)?(?:fix|implement|add|build|create|design|develop|write|update|modify|remove|delete|refactor|restructure|rewrite|migrate|convert|configure|optimize|scaffold|generate|patch|repair|resolve)\b/i.test(
+    /^(?:please\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+|i\s+want\s+you\s+to\s+|i\s+need\s+you\s+to\s+)?(?:fix|implement|add|build|create|design|develop|write|edit|replace|change|update|modify|remove|delete|refactor|restructure|rewrite|migrate|convert|configure|optimize|scaffold|generate|patch|repair|resolve)\b/i.test(
       text,
     )
   ) {
@@ -59,7 +59,7 @@ function hasMutatingPrimaryAsk(text: string): boolean {
     /\b(?:##\s*)?(?:requirements|done when|acceptance|verification checklist|constraints)\b/i.test(
       text,
     ) &&
-    /\b(?:fix|implement|add|build|create|refactor|update|migrate|configure|encapsulate|move)\b/i.test(
+    /\b(?:fix|implement|add|build|create|edit|replace|refactor|update|migrate|configure|encapsulate|move)\b/i.test(
       text,
     )
   ) {

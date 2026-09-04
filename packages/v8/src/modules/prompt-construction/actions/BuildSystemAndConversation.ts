@@ -228,6 +228,9 @@ function buildToolGuidance(decision: ExecutionDecision): string {
     lines.push(
       "You have write authority for this turn. Apply required edits with mutation tools (apply_patch / write tools). Never claim you are on a read-only route or ask the user to switch sessions when write tools are listed above.",
       "If a mutation is rejected as path_out_of_scope, retry the same edit on the next turn — granted path scopes expand to include required paths when write authority is already active.",
+      "Prefer exact paths named in the user ask. When the ask says every/all occurrences of a typo or string, use replaceAll (or equivalent) so none remain.",
+      "Match named APIs and file layouts from the ask (for example src/routes/login.js, createUserStore() as a factory function, new Logger(...)). Do not invent alternate paths when the ask is specific.",
+      "Stay scoped: edit only the modules needed for the ask. Do not drive-by-fix unrelated siblings (for example analytics when only products was named).",
       "For the live checklist tool, call update_todos (aliases: update_todo, task_list_update). Use type=replace|patch|clear with items (or todos) and title (or content).",
     );
   }

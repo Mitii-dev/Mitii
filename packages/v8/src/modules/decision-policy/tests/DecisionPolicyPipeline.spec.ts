@@ -779,6 +779,51 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.reasonCodes).toContain("mutation_execute");
   });
 
+  it("routes Edit docs asks to execute even when understanding labels diagnose", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message:
+          "Edit docs/loading-indicator.md only: replace border-blue-500 with border-green-500. Do not change app/loading.tsx.",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "diagnose",
+          interactionIntent: "question",
+          taskAnalysis: {
+            scope: "single_location",
+            clarity: "clear",
+            targets: [
+              { kind: "file", value: "docs/loading-indicator.md", explicit: true },
+            ],
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("execute");
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("write");
+    expect(decision.toolGrant.allowedTools).toContain("apply_patch");
+    expect(decision.reasonCodes).toContain("mutation_execute");
+    expect(decision.reasonCodes).not.toContain("diagnosis_readonly");
+  });
+
+  it("routes symptom + can you fix asks to execute", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message:
+          "Users say pasting their email into the signup form doesn't work even when the email is valid — can you fix that?",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "diagnose",
+          interactionIntent: "question",
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("execute");
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("write");
+    expect(decision.reasonCodes).toContain("mutation_execute");
+  });
+
   it("still routes agent how-to implement questions to repository_answer", () => {
     const decision = new DecisionPolicyPipeline().decide(
       createInput({

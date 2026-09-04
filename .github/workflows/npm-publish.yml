@@ -1,4 +1,4 @@
-# Publishes @mitii/v8 → @mitii/sdk → @mitii/automation → @mitii/host → @mitii/cli to npm.
+# Publishes @mitii/v8 → @mitii/sdk → @mitii/automation → @mitii/host → @mitii/cli → @mitii/daemon to npm.
 # Invoked from the Release workflow on v* tags, or manually via workflow_dispatch.
 # For trusted publishing through workflow_call, configure npm with the caller workflow filename.
 # Prefers GitHub OIDC trusted publishing; NPM_TOKEN is optional fallback.
@@ -39,13 +39,15 @@ jobs:
       - name: Install native build tools
         run: sudo apt-get update && sudo apt-get install -y build-essential python3
       - run: pnpm install --frozen-lockfile
-      - run: pnpm run sync:versions -- --check
+      - name: Check product package versions are synced
+        run: pnpm run sync:versions -- --check
       - run: pnpm run rebuild:node
       - run: pnpm run build:v8
       - run: pnpm run build:sdk
       - run: pnpm run build:automation
       - run: pnpm run build:host
       - run: pnpm run build:cli
+      - run: pnpm run build:daemon
       - run: pnpm run check:architecture
       - name: Publish npm packages
         run: node scripts/publish-npm.cjs

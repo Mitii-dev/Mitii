@@ -743,4 +743,67 @@ export const GOLDEN_DECISION_CASES_EXTENDED: GoldenDecisionCase[] = [
       reasonCodesIncludes: ["diagnosis_readonly"],
     },
   },
+  {
+    id: "golden-edit-docs-beats-diagnose-label",
+    category: "route",
+    mode: "agent",
+    message:
+      "Edit docs/loading-indicator.md only: replace border-blue-500 with border-green-500. Do not change app/loading.tsx.",
+    understanding: createUnderstanding({
+      primaryTaskIntent: "diagnose",
+      interactionIntent: "question",
+      confidence: 0.72,
+      taskAnalysis: {
+        scope: "single_location",
+        clarity: "clear",
+        targets: [createTarget("docs/loading-indicator.md")],
+      },
+    }),
+    expected: {
+      route: "execute",
+      maximumWorkspaceEffect: "write",
+      reasonCodesIncludes: ["mutation_execute"],
+      reasonCodesExcludes: ["diagnosis_readonly"],
+    },
+  },
+  {
+    id: "golden-symptom-fix-request-executes",
+    category: "route",
+    mode: "agent",
+    message:
+      "Users say pasting their email into the signup form doesn't work even when the email is valid — can you fix that?",
+    understanding: createUnderstanding({
+      primaryTaskIntent: "diagnose",
+      interactionIntent: "question",
+      confidence: 0.7,
+      taskAnalysis: {
+        scope: "unknown",
+        clarity: "unclear",
+      },
+    }),
+    expected: {
+      route: "execute",
+      maximumWorkspaceEffect: "write",
+      reasonCodesIncludes: ["mutation_execute"],
+    },
+  },
+  {
+    id: "golden-typo-fix-to-executes",
+    category: "route",
+    mode: "agent",
+    message: 'Home page copy says "Fixtuer". Fix the typo to "Fixture".',
+    understanding: createUnderstanding({
+      primaryTaskIntent: "bugfix",
+      interactionIntent: "act",
+      taskAnalysis: {
+        scope: "single_location",
+        targets: [createTarget("app/page.tsx")],
+      },
+    }),
+    expected: {
+      route: "execute",
+      maximumWorkspaceEffect: "write",
+      reasonCodesIncludes: ["mutation_execute"],
+    },
+  },
 ];

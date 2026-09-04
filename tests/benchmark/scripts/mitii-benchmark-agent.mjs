@@ -91,6 +91,9 @@ const askArgs = [
   options.cwd,
   '--json',
   '--approve',
+  // Benchmarks are unattended: suppress interactive clarify in Decision Policy.
+  '--origin',
+  'automation',
   // Non-interactive: if understanding still soft-asks, proceed as written
   // rather than hanging on a TTY prompt with stdin ignored.
   '--clarify',

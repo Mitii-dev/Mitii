@@ -6,6 +6,7 @@ const packages = [
   '@mitii/automation',
   '@mitii/host',
   '@mitii/cli',
+  '@mitii/daemon',
 ];
 const hasToken = Boolean(process.env.NODE_AUTH_TOKEN || process.env.NPM_TOKEN);
 const hasGithubOidc = Boolean(

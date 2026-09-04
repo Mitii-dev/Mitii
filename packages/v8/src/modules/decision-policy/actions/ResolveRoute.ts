@@ -86,18 +86,10 @@ export function resolveRoute(params: {
     };
   }
 
-  if (isDiagnosisIntent(primary)) {
-    reasonCodes.push("diagnosis_readonly");
-    return {
-      route: "diagnose",
-      runDisposition: "continue",
-      reasonCodes,
-    };
-  }
-
   // Pasted console/runtime dumps without an explicit fix/implement ask should
   // diagnose first. Otherwise understanding often labels them bugfix+act and
   // the execute loop fails with no_mutation_performed after endless searching.
+  // Keep this ahead of mutation-intent promotion so stack pastes stay read-only.
   if (looksLikePastedRuntimeErrorDump(message)) {
     reasonCodes.push("diagnosis_readonly");
     return {
@@ -107,10 +99,10 @@ export function resolveRoute(params: {
     };
   }
 
-  // Mutation must win over question-shaped phrasing ("Can you implement…?")
-  // and over "run tests" mentions that are part of a feature request.
-  // Previously interactionIntent=question short-circuited to repository_answer
-  // and stripped apply_patch even in agent mode.
+  // Mutation must win over soft diagnosis labels and question-shaped phrasing
+  // ("Edit docs/…", "Can you fix that?", "implement…?"). Previously
+  // isDiagnosisIntent ran first and stripped apply_patch for edit/fix asks
+  // that understanding classified as investigate_symptom / diagnose.
   if (
     !isExplicitReadOnlyRequest(message) &&
     (isMutationIntent(primary) ||
@@ -120,6 +112,15 @@ export function resolveRoute(params: {
     reasonCodes.push("mutation_execute");
     return {
       route: "execute",
+      runDisposition: "continue",
+      reasonCodes,
+    };
+  }
+
+  if (isDiagnosisIntent(primary)) {
+    reasonCodes.push("diagnosis_readonly");
+    return {
+      route: "diagnose",
       runDisposition: "continue",
       reasonCodes,
     };
@@ -457,7 +458,9 @@ function isExplicitPlanRequest(message: string): boolean {
 }
 
 function looksLikeDocsMutation(message: string): boolean {
-  return /\b(write|add|update|create|draft|document)\b/i.test(message);
+  return /\b(write|add|update|create|draft|document|edit|replace|change|fix)\b/i.test(
+    message,
+  );
 }
 
 /**
@@ -553,11 +556,15 @@ function looksLikeAgentMutationRequest(message: string): boolean {
   }
 
   return (
-    /(?:^|\b)(?:please\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+|i\s+want\s+you\s+to\s+|i\s+need\s+you\s+to\s+|i\s+need\s+|we\s+need\s+to\s+|let(?:'s|\s+us)\s+)?(?:start\s+(?:the\s+)?implem(?:entation|netation)|implement|build|create|design|develop|write|add|fix|resolve|repair|patch|migrate|refactor|rewrite|convert|integrate|configure|optimize|redesign|replace|remove|delete|update|modify|generate|scaffold|install|upgrade)\b/i.test(
+    /(?:^|\b)(?:please\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+|i\s+want\s+you\s+to\s+|i\s+need\s+you\s+to\s+|i\s+need\s+|we\s+need\s+to\s+|let(?:'s|\s+us)\s+)?(?:start\s+(?:the\s+)?implem(?:entation|netation)|implement|build(?!\s+(?:logs?|errors?|output|failures?|status|artifacts?)\b)|create|design|develop|write|add|edit|fix|resolve|repair|patch|migrate|refactor|rewrite|convert|integrate|configure|optimize|redesign|replace|remove|delete|update|modify|change|generate|scaffold|install|upgrade)\b/i.test(
       text,
     ) ||
+    // Imperative docs/code edits: "Edit docs/foo.md only: …"
+    /^(?:please\s+|can\s+you\s+|could\s+you\s+)?edit\b/i.test(text) ||
     // Seeded bugfix phrasing: "X uses Y. Change it to Z." / "says Foo. Fix it to Bar."
-    /\b(?:change|fix|update|set|switch)\b[\s\S]{0,40}\bto\b/i.test(text) ||
+    /\b(?:change|fix|update|set|switch|replace)\b[\s\S]{0,40}\bto\b/i.test(
+      text,
+    ) ||
     /\bi\s+need\s+(?:to\s+design\s+|to\s+create\s+|to\s+build\s+|an?\s+|the\s+)*(?:api|endpoint|route)\b/i.test(
       text,
     )
