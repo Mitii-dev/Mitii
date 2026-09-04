@@ -28,7 +28,7 @@
     {
       "label": "mitii: build:host",
       "type": "shell",
-      "command": "pnpm --filter @mitii/automation --filter @mitii/host run build",
+      "command": "pnpm -r --filter '@mitii/host...' run build",
       "problemMatcher": ["$tsc"],
       "group": "build",
       "presentation": { "reveal": "silent", "panel": "shared", "showReuseMessage": false }
