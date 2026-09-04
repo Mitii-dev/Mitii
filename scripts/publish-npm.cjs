@@ -1,6 +1,12 @@
 const { spawnSync } = require('node:child_process');
 
-const packages = ['@mitii/v8', '@mitii/sdk', '@mitii/host', '@mitii/cli'];
+const packages = [
+  '@mitii/v8',
+  '@mitii/sdk',
+  '@mitii/automation',
+  '@mitii/host',
+  '@mitii/cli',
+];
 const hasToken = Boolean(process.env.NODE_AUTH_TOKEN || process.env.NPM_TOKEN);
 const hasGithubOidc = Boolean(
   process.env.GITHUB_ACTIONS &&

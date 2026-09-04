@@ -84,7 +84,7 @@ If using the `NPM_TOKEN` fallback instead, create a granular access token with p
 
 ```bash
 # npm packages (requires NODE_AUTH_TOKEN or NPM_TOKEN)
-pnpm run build:v8 && pnpm run build:sdk && pnpm run build:host && pnpm run build:cli
+pnpm run build:v8 && pnpm run build:sdk && pnpm run build:automation && pnpm run build:host && pnpm run build:cli
 pnpm run publish:npm
 
 # VSIX → Marketplace (expects complete set under dist-vsix/)
