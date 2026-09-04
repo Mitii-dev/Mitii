@@ -471,6 +471,7 @@ export async function executeStart(
         webSearch: runtime.deps.tools?.hasSearchPort?.() === true,
       },
       windowPolicy,
+      userSafetyRules: input.userSafetyRules,
     });
     route = decision.route;
     planningDepth = decision.planningDepth;
@@ -483,9 +484,14 @@ export async function executeStart(
       maximumWorkspaceEffect: decision.toolGrant.maximumWorkspaceEffect,
       approvalMode: decision.toolGrant.approvalMode,
       pathScopes: decision.toolGrant.pathScopes.slice(0, 20),
+      allowedTools: decision.toolGrant.allowedTools.slice(0, 40),
+      commandPrefixes: (decision.toolGrant.commandRules ?? [])
+        .flatMap((rule) => rule.prefixes)
+        .slice(0, 40),
       trace: decision.trace,
       at: runtime.isoNow(),
     });
+
     runtime.emitStage(bus, runId, "decided", "completed", ["decision_complete"]);
 
     const userMessage = extractPrimaryUserMessage(envelope.message);

@@ -248,3 +248,28 @@ export type { CreateAutomationRunExecutorOptions } from './automation/createAuto
 export { createCompositeDeliverySender } from './automation/delivery/createCompositeDeliverySender.js';
 export type { CreateCompositeDeliverySenderOptions } from './automation/delivery/createCompositeDeliverySender.js';
 export { formatDeliveryMessage } from './automation/delivery/formatMessage.js';
+
+// ---------------------------------------------------------------------------
+// Safety — tighten-only user rules, marketplace-lite, OS sandbox
+// ---------------------------------------------------------------------------
+export {
+  loadUserSafetyRules,
+  USER_SAFETY_RULES_FILENAME,
+  USER_SAFETY_RULES_EXAMPLE,
+} from './safety/loadUserSafetyRules.js';
+export {
+  MARKETPLACE_LITE_CATALOG,
+  listMarketplaceLite,
+} from './safety/marketplaceLite.js';
+export type { MarketplaceCatalogEntry } from './safety/marketplaceLite.js';
+export {
+  createSandboxedProcessPort,
+  detectSandboxBackend,
+  resolveSandboxPolicy,
+  SandboxUnavailableError,
+} from './sandbox/createSandboxedProcessPort.js';
+export type {
+  SandboxPolicy,
+  SandboxNetworkMode,
+  SandboxBackend,
+} from './sandbox/createSandboxedProcessPort.js';

@@ -155,6 +155,16 @@ export {
   toolGrantSchema,
   approvalModeSchema,
   mutationBudgetSchema,
+  userSafetyRulesSchema,
+  DISABLED_USER_SAFETY_RULES,
+  intersectUserSafetyRules,
+  grantNeverWidens,
+  formatEffectiveGrant,
+  formatEffectiveGrantJson,
+  APPROVAL_PRESET_COPY,
+  VSCODE_APPROVAL_PRESETS,
+  getApprovalPresetCopy,
+  formatApprovalPresetHelp,
 } from "./modules/decision-policy";
 export type {
   ApprovalMode,
@@ -165,6 +175,9 @@ export type {
   PlanningDepth,
   ToolGrant,
   MutationBudget,
+  UserSafetyRules,
+  ApprovalPresetCopy,
+  VsCodeApprovalPreset,
 } from "./modules/decision-policy";
 
 export { PromptConstructionPipeline } from "./modules/prompt-construction";
@@ -243,6 +256,9 @@ export type {
   NetworkPort,
   SearchPort,
   RepositoryGraphPort,
+  ProcessPort,
+  ProcessExecRequest,
+  ProcessExecResult,
 } from "./engine/tool-runtime";
 
 export { VerificationPipeline } from "./modules/verification";

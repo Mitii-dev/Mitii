@@ -12,7 +12,7 @@
   <a href="LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/License-AGPL_v3-blue.svg"></a>
   <a href="https://code.visualstudio.com/"><img alt="VS Code 1.85+" src="https://img.shields.io/badge/VS%20Code-1.85%2B-007ACC?logo=visualstudiocode"></a>
   <a href="https://nodejs.org/"><img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-339933?logo=node.js"></a>
-  <img alt="Version 2.9.12" src="https://img.shields.io/badge/version-2.9.12-111111">
+  <img alt="Version 2.9.13" src="https://img.shields.io/badge/version-2.9.13-111111">
   <a href="https://docs.mitii.dev"><img alt="Documentation" src="https://img.shields.io/badge/docs-docs.mitii.dev-5B5BFF"></a>
 </p>
 
@@ -192,7 +192,10 @@ Mitii keeps indexes, plans, memory, logs, and checkpoints local by default. Only
 
 What exists today:
 
-- approval presets and workspace trust enforcement
+- approval presets and workspace trust enforcement (Safe / Guided / Pilot — see [docs/SAFETY_PHASES.md](docs/SAFETY_PHASES.md))
+- tighten-only `.mitii/safety.json` (opt-in; never widens Decision Policy grants)
+- optional OS process sandbox (`MITII_SANDBOX=1` / `mitii.safety.sandbox.enabled`; fail-closed)
+- `mitii run --auto` for unattended CI
 - SecretStorage for API keys (VS Code)
 - session logs and a basic audit-pack export (redacted settings + run events)
 - OpenAI-compatible local endpoints (Ollama / LM Studio) for privacy-sensitive work

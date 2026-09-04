@@ -59,9 +59,22 @@ export function formatContextInspection(events: RunEvent[]): string[] {
         `[memory] selected=${event.selectedCount} omitted=${event.omittedCount} status=${event.status}`,
       );
     } else if (event.type === 'decision_made') {
+      const tools =
+        event.allowedTools && event.allowedTools.length > 0
+          ? ` tools=${event.allowedTools.slice(0, 8).join(',')}${
+              event.allowedTools.length > 8 ? '…' : ''
+            }`
+          : '';
+      const prefixes =
+        event.commandPrefixes && event.commandPrefixes.length > 0
+          ? ` cmds=${event.commandPrefixes.slice(0, 6).join(',')}`
+          : '';
       lines.push(
-        `[decision] route=${event.route} disposition=${event.runDisposition}`,
+        `[decision] route=${event.route} disposition=${event.runDisposition} effect=${event.maximumWorkspaceEffect ?? '-'} approval=${event.approvalMode ?? '-'}${tools}${prefixes}`,
       );
+      if (event.pathScopes && event.pathScopes.length > 0) {
+        lines.push(`[grant] paths=${event.pathScopes.join(',')}`);
+      }
     }
   }
   return lines;
