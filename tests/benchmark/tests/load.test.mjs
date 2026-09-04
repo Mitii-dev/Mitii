@@ -37,7 +37,7 @@ test('each domain validates against suite.json counts and caseFiles', () => {
 
 test('frontend core is agent-only with expected capability mix', () => {
   const cases = loadCases(rootDir, { suite: 'frontend' });
-  assert.equal(cases.length, 85);
+  assert.equal(cases.length, 86);
   assert.equal(cases.every((c) => c.mode === 'agent'), true);
   const byCap = Object.fromEntries(
     ['feature', 'bugfix', 'docs', 'retrieval', 'testing', 'capstone'].map((capability) => [
@@ -47,7 +47,7 @@ test('frontend core is agent-only with expected capability mix', () => {
   );
   assert.deepEqual(byCap, {
     feature: 27,
-    bugfix: 23,
+    bugfix: 24,
     docs: 10,
     retrieval: 10,
     testing: 11,

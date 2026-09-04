@@ -21,35 +21,47 @@ export async function runHttpCheck(check, cwd) {
 
   try {
     const baseUrl = `http://127.0.0.1:${port}`;
-    const response = await requestWithRetry(baseUrl, check.request, check.timeoutMs ?? 15000);
-    const bodyText = await response.text();
-    let json;
-    try {
-      json = JSON.parse(bodyText);
-    } catch {
-      json = undefined;
-    }
-
+    const steps = normalizeHttpSteps(check);
+    const timeoutMs = check.timeoutMs ?? 15000;
+    const summaries = [];
     const failures = [];
-    if (response.status !== check.expect.status) {
-      failures.push(`expected status ${check.expect.status}, got ${response.status}`);
-    }
-    if (check.expect.bodyContains && !bodyText.includes(check.expect.bodyContains)) {
-      failures.push(`body did not contain ${JSON.stringify(check.expect.bodyContains)}`);
-    }
-    if (check.expect.jsonType && jsonType(json) !== check.expect.jsonType) {
-      failures.push(`expected JSON type ${check.expect.jsonType}, got ${jsonType(json)}`);
-    }
-    if (check.expect.jsonSubset && !isSubset(check.expect.jsonSubset, json)) {
-      failures.push(`JSON body did not contain expected subset`);
-    }
-    for (const path of check.expect.jsonPaths ?? []) {
-      if (readPath(json, path) === undefined) failures.push(`missing JSON path ${path}`);
+
+    for (const [index, step] of steps.entries()) {
+      const response = await requestWithRetry(baseUrl, step, timeoutMs);
+      const bodyText = await response.text();
+      let json;
+      try {
+        json = JSON.parse(bodyText);
+      } catch {
+        json = undefined;
+      }
+
+      const expect = step.expect ?? {};
+      const label = `${step.method ?? 'GET'} ${step.path}`;
+      summaries.push(`${label} -> ${response.status}`);
+
+      if (expect.status !== undefined && response.status !== expect.status) {
+        failures.push(`step ${index + 1} ${label}: expected status ${expect.status}, got ${response.status}`);
+      }
+      if (expect.bodyContains && !bodyText.includes(expect.bodyContains)) {
+        failures.push(`step ${index + 1} ${label}: body did not contain ${JSON.stringify(expect.bodyContains)}`);
+      }
+      if (expect.jsonType && jsonType(json) !== expect.jsonType) {
+        failures.push(`step ${index + 1} ${label}: expected JSON type ${expect.jsonType}, got ${jsonType(json)}`);
+      }
+      if (expect.jsonSubset && !isSubset(expect.jsonSubset, json)) {
+        failures.push(`step ${index + 1} ${label}: JSON body did not contain expected subset`);
+      }
+      for (const path of expect.jsonPaths ?? []) {
+        if (readPath(json, path) === undefined) {
+          failures.push(`step ${index + 1} ${label}: missing JSON path ${path}`);
+        }
+      }
     }
 
     return {
       passed: failures.length === 0,
-      details: failures.length ? failures.join('; ') : `${check.request.method ?? 'GET'} ${check.request.path} -> ${response.status}`,
+      details: failures.length ? failures.join('; ') : summaries.join(' | '),
     };
   } catch (error) {
     return { passed: false, details: `${error.message}; server output: ${logs.slice(0, 500)}` };
@@ -57,6 +69,22 @@ export async function runHttpCheck(check, cwd) {
     terminateTree(child, 'SIGTERM');
     setTimeout(() => terminateTree(child, 'SIGKILL'), 1000).unref();
   }
+}
+
+/** Prefer `requests[]` (each with optional `expect`); fall back to single `request` + top-level `expect`. */
+function normalizeHttpSteps(check) {
+  if (Array.isArray(check.requests) && check.requests.length > 0) {
+    return check.requests.map((step) => ({
+      ...step,
+      expect: step.expect ?? {},
+    }));
+  }
+  return [
+    {
+      ...(check.request ?? {}),
+      expect: check.expect ?? {},
+    },
+  ];
 }
 
 function terminateTree(child, signal) {

@@ -58,6 +58,15 @@ async function verify(check, context) {
     const contains = existsSync(path) && readFileSync(path, 'utf8').includes(check.value);
     return result(check.type === 'file_contains' ? contains : !contains);
   }
+  if (check.type === 'file_contains_any') {
+    const paths = check.paths ?? (check.path ? [check.path] : []);
+    const hit = paths.find(
+      (relative) =>
+        existsSync(join(workspace, relative)) &&
+        readFileSync(join(workspace, relative), 'utf8').includes(check.value)
+    );
+    return result(Boolean(hit), hit ? `matched ${hit}` : `none of: ${paths.join(', ')}`);
+  }
   if (check.type === 'dir_has_files') {
     const path = join(workspace, check.path);
     const count = existsSync(path)

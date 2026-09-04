@@ -96,6 +96,7 @@
             "file_not_exists",
             "file_contains",
             "file_not_contains",
+            "file_contains_any",
             "dir_has_files",
             "workspace_unchanged",
             "workspace_changed",
@@ -137,12 +138,63 @@
         "path": {
           "type": "string"
         },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
         "minimum": {
           "type": "integer",
           "minimum": 0
         },
         "command": {
           "type": "string"
+        },
+        "requests": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["path"],
+            "properties": {
+              "method": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "headers": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "json": {},
+              "expect": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "integer"
+                  },
+                  "bodyContains": {
+                    "type": "string"
+                  },
+                  "jsonType": {
+                    "type": "string"
+                  },
+                  "jsonSubset": {},
+                  "jsonPaths": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
         },
         "timeoutMs": {
           "type": "integer",

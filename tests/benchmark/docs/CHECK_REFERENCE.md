@@ -12,6 +12,7 @@
 | `json_path_truthy` | JSON/JSONL output includes a required value |
 | `file_exists` / `file_not_exists` | Required file state |
 | `file_contains` / `file_not_contains` | Exact repository mutation or preservation |
+| `file_contains_any` | Value appears in at least one of several paths (fairer DTO/location grading) |
 | `dir_has_files` | Directory contains a minimum number of files |
 | `workspace_unchanged` / `workspace_changed` | Mode and scope enforcement |
 | `file_unchanged` / `file_changed` | Exact file or directory-scope enforcement |
@@ -85,3 +86,36 @@ and refreshes `reports/runs/<runId>/summary.md` / `summary.html` (live progress)
 ```
 
 The runner allocates a free port and sets `PORT` for the server process.
+
+For multi-step flows on one server (signup then duplicate 409, login then protected route), use `requests` instead of a single `request`/`expect`:
+
+```json
+{
+  "type": "http",
+  "start": { "command": "node src/index.js" },
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/login",
+      "json": { "username": "admin", "password": "admin123" },
+      "expect": { "status": 200, "jsonPaths": ["token"] }
+    },
+    {
+      "method": "GET",
+      "path": "/users",
+      "expect": { "status": 401, "jsonSubset": { "error": "unauthorized" } }
+    }
+  ],
+  "timeoutMs": 20000
+}
+```
+
+### `file_contains_any`
+
+```json
+{
+  "type": "file_contains_any",
+  "paths": ["src/create-user.dto.ts", "src/list-users.dto.ts"],
+  "value": "ListUsersDto"
+}
+```
