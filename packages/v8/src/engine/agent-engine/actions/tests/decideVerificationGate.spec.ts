@@ -79,6 +79,36 @@ describe("decideVerificationGate", () => {
     });
   });
 
+  it("rejects implemented_unverified when diagnostics still contain errors", () => {
+    expect(
+      decideVerificationGate({
+        verificationRequired: true,
+        allowUnavailable: false,
+        changedFileCount: 1,
+        canVerify: true,
+        comparison: {
+          beforeErrorCount: 0,
+          afterErrorCount: 19,
+          clearedErrorCount: 0,
+          newErrorCount: 19,
+          remainingErrorCount: 0,
+          failedCheckIdsBefore: [],
+          failedCheckIdsAfter: ["typecheck"],
+          reasonCodes: ["new_errors_introduced"],
+        },
+        verification: result("implemented_unverified", ["checks_unavailable"]),
+      }),
+    ).toMatchObject({
+      action: "reject",
+      repairable: true,
+      rejectKind: "verification_failed",
+      error: {
+        code: "verification_failed",
+        message: expect.stringContaining("19 error(s)"),
+      },
+    });
+  });
+
   it("accepts legacy soft blocked results when checks only show unavailable evidence", () => {
     expect(
       decideVerificationGate({

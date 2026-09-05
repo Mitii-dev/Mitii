@@ -104,6 +104,18 @@ export function decideVerificationGate(params: {
     case "verified_success":
       return { action: "accept", acceptKind: "verified_success" };
     case "implemented_unverified":
+      if (hasDiagnosticErrors(params.comparison)) {
+        return {
+          action: "reject",
+          repairable: true,
+          rejectKind: "verification_failed",
+          verification,
+          error: {
+            code: "verification_failed",
+            message: diagnosticErrorMessage(params.comparison),
+          },
+        };
+      }
       // Architecture: "implementation completed but verification unavailable".
       // Keep mutations; do not roll back a successful edit for missing scripts.
       return { action: "accept", acceptKind: "implemented_unverified" };
@@ -164,6 +176,23 @@ export function decideVerificationGate(params: {
       };
     }
   }
+}
+
+function hasDiagnosticErrors(
+  comparison: RepoBuildStateComparison | undefined,
+): comparison is RepoBuildStateComparison {
+  return (
+    comparison !== undefined &&
+    (comparison.afterErrorCount > 0 || comparison.newErrorCount > 0)
+  );
+}
+
+function diagnosticErrorMessage(comparison: RepoBuildStateComparison): string {
+  const newErrors =
+    comparison.newErrorCount > 0
+      ? `, including ${comparison.newErrorCount} new error(s)`
+      : "";
+  return `Verification is incomplete and diagnostics still report ${comparison.afterErrorCount} error(s)${newErrors}.`;
 }
 
 /**

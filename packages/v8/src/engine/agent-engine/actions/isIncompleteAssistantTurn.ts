@@ -545,7 +545,9 @@ export function selectUserFacingLoopAnswer(params: {
     (isTransitionalAssistantAnswer(loop) ||
       isMidWorkAnalysisDump(loop) ||
       isUnfinishedInvestigationAnswer(loop) ||
-      isDegenerateRepeatedAnswer(loop));
+      isDegenerateRepeatedAnswer(loop) ||
+      // Early recovery blockers must not stick after later mutations.
+      (files.length > 0 && isClearMutationBlockerAnswer(loop)));
 
   if (hideLoop || loop.length === 0) {
     if (summary.length > 0) {
@@ -553,7 +555,8 @@ export function selectUserFacingLoopAnswer(params: {
     }
     if (files.length > 0) {
       return synthesizeFallbackAnswer({
-        priorAnswer: loop,
+        // Drop stale mid-work / blocker narration once disk edits exist.
+        priorAnswer: hideLoop ? "" : loop,
         changedFiles: files,
       });
     }
@@ -562,6 +565,17 @@ export function selectUserFacingLoopAnswer(params: {
 
   const joined = [loop, summary].filter((part) => part.length > 0).join("\n\n");
   return joined.length > 0 ? joined : undefined;
+}
+
+function isClearMutationBlockerAnswer(content: string): boolean {
+  return (
+    /(?:^|\n)\s*(?:\*{0,2}|_{0,2})?\s*blocker(?:\*{0,2}|_{0,2})?\s*[:\-—]/im.test(
+      content,
+    ) ||
+    /\b(?:stop(?:ping)?\s+here\s+with\s+a\s+clear\s+blocker|have\s+to\s+stop\s+here\s+with\s+a\s+clear\s+blocker)\b/i.test(
+      content,
+    )
+  );
 }
 
 /**

@@ -8,6 +8,10 @@ import type {
 } from "../contracts";
 import { DEFAULT_MAX_STEPS_PER_PHASE } from "../defaults";
 import { filterBuildEvidenceToAskScope } from "../internal/evidenceScope";
+import {
+  remapPathThroughScaffoldMapping,
+  resolveScaffoldPackageMapping,
+} from "./remapScaffoldChangeSurfaces";
 
 /**
  * Apply a `discover_and_plan` model draft onto the deterministic discovery
@@ -21,7 +25,7 @@ export function applyDiscoveredPlanDraft(params: {
   input: PlanningParsedInput;
 }): PlanArtifact {
   const allowlist = buildTargetAllowlist(params.input);
-  const grouped = groupByPhase(params.draft, allowlist);
+  const grouped = groupByPhase(params.draft, allowlist, params.input);
   const phases = params.skeleton.phases.map((phase) =>
     replacePhaseSteps({
       phase,
@@ -72,6 +76,7 @@ function replacePhaseSteps(params: {
 function groupByPhase(
   draft: DiscoveredPlanDraft,
   allowlist: readonly string[],
+  input: PlanningParsedInput,
 ): Map<DiscoveredPlanStep["phaseHint"], DiscoveredPlanStep[]> {
   const grouped = new Map<DiscoveredPlanStep["phaseHint"], DiscoveredPlanStep[]>();
   for (const step of draft.steps) {
@@ -79,7 +84,7 @@ function groupByPhase(
       phaseHint: step.phaseHint,
       intent: step.intent.trim(),
       actionSummary: step.actionSummary.trim(),
-      targetRefs: filterTargetRefs(step.targetRefs, allowlist),
+      targetRefs: filterTargetRefs(step.targetRefs, allowlist, input),
       expectedOutcome: step.expectedOutcome.trim(),
     };
     const existing = grouped.get(step.phaseHint) ?? [];
@@ -96,26 +101,50 @@ function buildTargetAllowlist(input: PlanningParsedInput): string[] {
       targets: input.evidence.targets,
       query: input.query,
     })?.diagnostics ?? [];
-  return uniqueStrings(
-    [
-      ...(input.scopedRepoMap?.entries.map((entry) => entry.path) ?? []),
-      ...(input.discoveryBrief?.filesRead.map((file) => file.path) ?? []),
-      ...(input.discoveryBrief?.proposedChangeSurfaces.map((surface) => surface.path) ??
-        []),
-      ...(input.discoveryBrief?.targets.map((target) => target.value) ?? []),
-      ...scopedDiagnostics.map((diagnostic) => diagnostic.path),
-      ...input.evidence.targets
-        .filter((target) => target.explicit)
-        .map((target) => target.value),
-    ].map(normalizePath),
-  ).filter((value) => value.length > 0);
+  const mapping = resolveScaffoldMappingForInput(input);
+  const raw = [
+    ...(input.scopedRepoMap?.entries.map((entry) => entry.path) ?? []),
+    ...(input.discoveryBrief?.filesRead.map((file) => file.path) ?? []),
+    ...(input.discoveryBrief?.proposedChangeSurfaces.map((surface) => surface.path) ??
+      []),
+    ...(input.discoveryBrief?.targets.map((target) => target.value) ?? []),
+    ...scopedDiagnostics.map((diagnostic) => diagnostic.path),
+    ...input.evidence.targets
+      .filter((target) => target.explicit)
+      .map((target) => target.value),
+  ].map(normalizePath);
+
+  // Clone/port asks: write allowlist is the TARGET package only. Template
+  // filesRead stay as evidence in the prompt, not as writable targetRefs.
+  if (mapping) {
+    return uniqueStrings([
+      mapping.targetPrefix,
+      ...raw.map((path) => remapPathThroughScaffoldMapping(path, mapping)),
+    ]).filter(
+      (value) =>
+        value.length > 0 &&
+        (value === mapping.targetPrefix ||
+          value.startsWith(`${mapping.targetPrefix}/`) ||
+          (!value.startsWith(`${mapping.sourcePrefix}/`) &&
+            value !== mapping.sourcePrefix)),
+    );
+  }
+
+  return uniqueStrings(raw).filter((value) => value.length > 0);
 }
 
 function filterTargetRefs(
   targetRefs: readonly string[],
   allowlist: readonly string[],
+  input?: PlanningParsedInput,
 ): string[] {
-  const normalized = targetRefs.map(normalizePath).filter(Boolean);
+  const mapping = input ? resolveScaffoldMappingForInput(input) : undefined;
+  const normalized = targetRefs
+    .map(normalizePath)
+    .filter(Boolean)
+    .map((path) =>
+      mapping ? remapPathThroughScaffoldMapping(path, mapping) : path,
+    );
   if (allowlist.length === 0) {
     return uniqueStrings(normalized).slice(0, 8);
   }
@@ -124,6 +153,14 @@ function filterTargetRefs(
       allowlist.some((allowed) => pathOverlaps(targetRef, allowed)),
     ),
   ).slice(0, 8);
+}
+
+function resolveScaffoldMappingForInput(input: PlanningParsedInput) {
+  return resolveScaffoldPackageMapping({
+    objective: input.discoveryBrief?.objective ?? input.query,
+    explicitTargets: input.discoveryBrief?.targets ?? [],
+    filesRead: input.discoveryBrief?.filesRead ?? [],
+  });
 }
 
 function phaseKind(phase: PlanPhase): DiscoveredPlanStep["phaseHint"] {

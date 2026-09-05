@@ -12,8 +12,10 @@ import {
   buildIncompleteAnswerRecoveryMessage,
   buildUnfulfilledExecuteRecoveryMessage,
   compactRecoveredAssistantContent,
+  isClearMutationBlocker,
   isEmptyAssistantTurn,
   isTransitionalAssistantAnswer,
+  requiresMutationForExecute,
   resolveLoopTurnOutcome,
   shouldRecoverIncompleteAssistantTurn,
   synthesizeFallbackAnswer,
@@ -100,6 +102,37 @@ export function handleNoToolModelTurn(params: {
       changedFileCount: changedFiles.length,
       fileReadCalls: budget.snapshot().fileReadCalls,
     });
+    const mutationRequired = requiresMutationForExecute({
+      route: decision.route,
+      maximumWorkspaceEffect: grant.maximumWorkspaceEffect,
+      primaryTaskIntent:
+        understanding?.intent.classification.primaryTaskIntent,
+      reasonCodes: decision.reasonCodes,
+    });
+    if (
+      mutationRequired &&
+      changedFiles.length === 0 &&
+      isClearMutationBlocker(turnContent)
+    ) {
+      reasonCodes.push("incomplete_execute");
+      session.answer = answer;
+      session.pendingTextContinuation = pendingTextContinuation;
+      session.incompleteAnswerRecoveries = incompleteAnswerRecoveries;
+      session.unfulfilledExecuteRecoveries = unfulfilledExecuteRecoveries;
+      return {
+        kind: "return",
+        outcome: {
+          kind: "failed",
+          answer: answer || undefined,
+          extraReasons: ["incomplete_execute"],
+          error: {
+            code: "incomplete_execute",
+            message:
+              "The model reported a clear blocker without applying the required workspace edits.",
+          },
+        },
+      };
+    }
     const loopOutcome = resolveLoopTurnOutcome({
       route: decision.route,
       maximumWorkspaceEffect: grant.maximumWorkspaceEffect,

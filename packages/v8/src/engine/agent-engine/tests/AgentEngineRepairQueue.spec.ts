@@ -248,6 +248,7 @@ describe("AgentEnginePipeline repair remaining-error queue (Phase 4)", () => {
     ).result;
 
     expect(result.status).toBe("completed");
+    expect(result.error).toBeUndefined();
     expect(result.reasonCodes).toContain("verification_repair_attempted");
     expect(result.reasonCodes).toContain("verification_repair_succeeded");
     expect(result.reasonCodes).not.toContain("mutation_rolled_back");
@@ -325,6 +326,7 @@ describe("AgentEnginePipeline repair remaining-error queue (Phase 4)", () => {
     ).result;
 
     expect(result.status).toBe("completed");
+    expect(result.error).toBeUndefined();
     expect(result.reasonCodes).toContain("verification_repair_attempted");
     expect(result.reasonCodes).toContain("verification_repair_succeeded");
     expect(result.reasonCodes).not.toContain("repo_build_state_remaining_error_batch");
@@ -426,6 +428,7 @@ describe("AgentEnginePipeline repair remaining-error queue (Phase 4)", () => {
     ).result;
 
     expect(result.status).toBe("completed");
+    expect(result.error).toBeUndefined();
     expect(result.reasonCodes).toContain("verification_repair_attempted");
     expect(result.reasonCodes).toContain("verification_repair_succeeded");
     expect(result.reasonCodes).not.toContain("verification_kept_changes");
@@ -485,7 +488,8 @@ describe("AgentEnginePipeline repair remaining-error queue (Phase 4)", () => {
       }),
     ).result;
 
-    expect(result.status).toBe("completed");
+    expect(result.status).toBe("failed");
+    expect(result.error?.code).toBe("verification_failed");
     expect(result.reasonCodes).toContain("verification_repair_attempted");
     expect(result.reasonCodes).toContain("verification_kept_changes");
     expect(result.reasonCodes).toContain("verification_incomplete");

@@ -172,7 +172,7 @@ The customer knob is the advertised context window. Built-in defaults already sc
 
 The VS Code host maps Developer → **Token budget** onto `policy` overrides. Simple sliders cover files per mutation, output reserve, module shares, and verification checks. Advanced keeps the core ratios and clamps. Each field is also a `mitii.tokenBudget.*` setting. When the toggle is off, V8 defaults apply and scale with the context window. Moving a Simple slider turns custom budget on and pins that value so later window changes do not overwrite it. Reset clears those overrides.
 
-`mitii.provider.maximumOutputTokens = 0` means “derive O from the window”. A positive value is a host override and still cannot exceed `W − 1`. The historical default `5000` is treated as unset (`output_legacy_default_ignored`) so mutation batches are not truncated. `O` is the planning reserve (input must not fill the window). Per-turn `max_tokens` is leftover context, owned by Prompt Construction / Agent Engine, unless the host overrode output.
+`mitii.provider.maximumOutputTokens = 0` means “derive O from the window”. A positive value is a host override and still cannot exceed `W − 1`. The historical default `5000` is treated as unset (`output_legacy_default_ignored`) so mutation batches are not truncated. `O` is the planning reserve (input must not fill the window). Per-turn `max_tokens` is leftover context, owned by Prompt Construction / Agent Engine, with an additional tool-loop cap for mid-run tool turns.
 
 ## Explicit non-responsibilities
 

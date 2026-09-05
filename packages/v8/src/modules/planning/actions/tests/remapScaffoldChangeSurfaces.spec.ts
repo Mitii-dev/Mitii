@@ -18,6 +18,18 @@ describe("resolveScaffoldPackageMapping", () => {
     });
   });
 
+  it("maps full-port phrasing onto target and template packages", () => {
+    expect(
+      resolveScaffoldPackageMapping({
+        objective:
+          "Create packages/mui-builder as a full port of packages/formik-form-builder, but with MUI Material instead of Joy.",
+      }),
+    ).toEqual({
+      sourcePrefix: "packages/formik-form-builder",
+      targetPrefix: "packages/mui-builder",
+    });
+  });
+
   it("returns undefined for ordinary bugfix asks", () => {
     expect(
       resolveScaffoldPackageMapping({

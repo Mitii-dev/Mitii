@@ -67,6 +67,50 @@ function listDirectoryCall(id: string, path = "src") {
 }
 
 describe("AgentEnginePipeline stall and read dedup", () => {
+  it("fails fast when a no-tool route leaks workspace tool calls", async () => {
+    let executeCalls = 0;
+    const deps = createStubDependencies({
+      decision: createDecision({
+        route: "direct_answer",
+        reasonCodes: ["direct_knowledge_answer"],
+      }),
+      llm: new ScriptedLlmPort(
+        [{ toolCalls: [patchCall("call_patch_without_grant")] }],
+        createCapabilities({ supportsTools: true }),
+      ),
+    });
+    const originalExecute = deps.tools!.execute.bind(deps.tools);
+    deps.tools = {
+      ...deps.tools!,
+      execute: async (input, options) => {
+        executeCalls += 1;
+        return originalExecute(input, options);
+      },
+    };
+
+    const engine = new AgentEnginePipeline(deps);
+    const result = await engine.start(
+      agentEngineStartInputSchema.parse({
+        schemaVersion: 1,
+        request: {
+          sessionId: "sess_no_tool_leak",
+          mode: "ask",
+          userMessage: "What changed?",
+          workspace: { workspaceId: "ws_1" },
+        },
+        workspaceRoot: "/workspace",
+      }),
+    ).result;
+
+    expect(result.status).toBe("failed");
+    expect(result.error?.code).toBe("tool_calls_without_grant");
+    expect(result.reasonCodes).toContain("misconfigured");
+    expect(result.warnings).toContain(
+      "Model requested workspace tools on a route where no tools were granted.",
+    );
+    expect(executeCalls).toBe(0);
+  });
+
   it("dedups identical reads and stops after a re-read stall nudge", async () => {
     let executeCalls = 0;
     const deps = createStubDependencies({
@@ -265,7 +309,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
     expect(result.answer ?? "").not.toContain("I still need the same file");
   });
 
-  it("gives two grace turns after the first-mutation nudge, then fails if reading continues", async () => {
+  it("fails after the post-nudge evidence-read allowance is exhausted", async () => {
     const deps = createStubDependencies({
       decision: createDecision({
         route: "execute",
@@ -331,11 +375,11 @@ describe("AgentEnginePipeline stall and read dedup", () => {
     expect(result.reasonCodes).toContain("unfulfilled_execute_exhausted");
     expect(result.reasonCodes).not.toContain("mutation_applied");
     expect(result.error?.code).toBe("no_mutation_performed");
-    expect(result.error?.message).toContain("continued reading");
+    expect(result.error?.message).toContain("read-only discovery");
     expect(result.answer ?? "").not.toContain("Should not be reached");
   });
 
-  it("completes with a clear blocker after the final no-tools recovery ask", async () => {
+  it("fails with incomplete_execute when a clear blocker arrives with no mutations", async () => {
     const deps = createStubDependencies({
       decision: createDecision({
         route: "execute",
@@ -354,18 +398,6 @@ describe("AgentEnginePipeline stall and read dedup", () => {
               readPathCall(`call_read_${index}`, `src/file-${index}.ts`),
             ],
           })),
-          {
-            content: "One more read.",
-            toolCalls: [readPathCall("call_read_after_nudge", "src/final.ts")],
-          },
-          {
-            content: "Grace read 1.",
-            toolCalls: [readPathCall("call_read_grace_1", "src/final-2.ts")],
-          },
-          {
-            content: "Grace read 2.",
-            toolCalls: [readPathCall("call_read_grace_2", "src/final-3.ts")],
-          },
           {
             content:
               "Blocker: cannot fix this in the workspace. Stripo.init requires API credentials and config params that are not present in this repo.",
@@ -389,13 +421,14 @@ describe("AgentEnginePipeline stall and read dedup", () => {
       }),
     ).result;
 
-    expect(result.status).not.toBe("failed");
-    expect(result.error?.code).not.toBe("no_mutation_performed");
+    expect(result.status).toBe("failed");
+    expect(result.error?.code).toBe("incomplete_execute");
+    expect(result.reasonCodes).toContain("incomplete_execute");
     expect(result.answer ?? "").toMatch(/Blocker:/i);
     expect(result.reasonCodes).toContain("unfulfilled_execute_recovered");
   });
 
-  it("succeeds if the model mutates during the grace turn after the first-mutation nudge", async () => {
+  it("succeeds if the model mutates after the first-mutation nudge", async () => {
     const deps = createStubDependencies({
       decision: createDecision({
         route: "execute",
@@ -414,10 +447,6 @@ describe("AgentEnginePipeline stall and read dedup", () => {
               readPathCall(`call_read_${index}`, `src/file-${index}.ts`),
             ],
           })),
-          {
-            content: "I still want to inspect one more file first.",
-            toolCalls: [readPathCall("call_read_after_nudge", "src/final.ts")],
-          },
           {
             content: "Applying the fix now.",
             toolCalls: [patchCall("call_patch_after_grace")],
@@ -485,7 +514,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
     expect(result.error?.code).not.toBe("no_mutation_performed");
   });
 
-  it("still succeeds when the model patches on the second grace turn after the first-mutation nudge", async () => {
+  it("succeeds when the model uses a few evidence reads after the nudge then patches", async () => {
     const deps = createStubDependencies({
       decision: createDecision({
         route: "execute",
@@ -567,7 +596,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
       agentEngineStartInputSchema.parse({
         schemaVersion: 1,
         request: {
-          sessionId: "sess_mutation_second_grace_recovered",
+          sessionId: "sess_mutation_evidence_reads_then_patch",
           mode: "agent",
           userMessage: "Fix all TypeScript errors",
           workspace: { workspaceId: "ws_1" },
@@ -576,9 +605,9 @@ describe("AgentEnginePipeline stall and read dedup", () => {
       }),
     ).result;
 
+    expect(result.status).not.toBe("failed");
     expect(result.reasonCodes).toContain("unfulfilled_execute_recovered");
     expect(result.reasonCodes).toContain("mutation_applied");
-    expect(result.status).not.toBe("failed");
     expect(result.error?.code).not.toBe("no_mutation_performed");
   });
 

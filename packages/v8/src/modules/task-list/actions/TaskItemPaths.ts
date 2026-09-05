@@ -117,8 +117,11 @@ export function itemMentionsAnyPath(
 }
 
 /**
- * True when changed files hit checklist write targets or the same package
- * root named in write/title/detail (scaffold rows that only say Scope: …).
+ * True when changed files hit this row's write targets.
+ *
+ * When `write` is present, only those paths (or package-prefixed equivalents)
+ * complete the row — sibling files under the same package root do not.
+ * Package-root matching is reserved for Scope-only rows with empty `write`.
  */
 export function itemWriteTargetsMatchChangedFiles(
   item: {
@@ -132,21 +135,16 @@ export function itemWriteTargetsMatchChangedFiles(
     return false;
   }
   const write = uniquePaths(item.write ?? []);
-  if (
-    write.length > 0 &&
-    changedFiles.some((changed) =>
+  if (write.length > 0) {
+    return changedFiles.some((changed) =>
       write.some((path) => taskPathsMatch(path, changed)),
-    )
-  ) {
-    return true;
+    );
   }
 
-  const packageRoots = collectPackageRoots([
-    ...write,
-    ...(`${item.title} ${item.detail ?? ""}`.match(
-      /packages\/[A-Za-z0-9._-]+/g,
-    ) ?? []),
-  ]);
+  const packageRoots = collectPackageRoots(
+    `${item.title} ${item.detail ?? ""}`.match(/packages\/[A-Za-z0-9._-]+/g) ??
+      [],
+  );
   if (packageRoots.length === 0) {
     return false;
   }

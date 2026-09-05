@@ -288,7 +288,7 @@ function clampTurnOutput(
     runtime.emit(bus, {
       type: "warning",
       runId,
-      message: `Turn output tokens reduced from ${previousOutputTokens} to ${leftoverOutputTokens} because leftover context was smaller than the generation ceiling.`,
+      message: `Turn output tokens reduced from ${previousOutputTokens} to ${leftoverOutputTokens} to fit leftover context (window ${windowPolicy.contextWindowTokens} − input ~${usedInputTokens}).`,
       code: "output_tokens_clamped",
       data: {
         reservedOutputTokens: generationCeiling,

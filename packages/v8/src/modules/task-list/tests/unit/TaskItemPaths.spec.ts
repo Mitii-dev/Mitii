@@ -45,13 +45,35 @@ describe("taskPathsMatch", () => {
 });
 
 describe("itemWriteTargetsMatchChangedFiles", () => {
-  it("matches mutations under the same package root as write/Scope", () => {
+  it("matches only the explicit write target, not sibling package files", () => {
     expect(
       itemWriteTargetsMatchChangedFiles(
         {
           title: "Change: draft package files",
           detail: "Scope: packages/mui-builder/src/index.ts",
           write: ["packages/mui-builder/src/index.ts"],
+        },
+        ["packages/mui-builder/src/Button.tsx"],
+      ),
+    ).toBe(false);
+    expect(
+      itemWriteTargetsMatchChangedFiles(
+        {
+          title: "Change: draft package files",
+          detail: "Scope: packages/mui-builder/src/index.ts",
+          write: ["packages/mui-builder/src/index.ts"],
+        },
+        ["packages/mui-builder/src/index.ts"],
+      ),
+    ).toBe(true);
+  });
+
+  it("uses package-root matching only when write targets are empty", () => {
+    expect(
+      itemWriteTargetsMatchChangedFiles(
+        {
+          title: "Change: draft package files",
+          detail: "Scope: packages/mui-builder",
         },
         ["packages/mui-builder/src/Button.tsx"],
       ),

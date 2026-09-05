@@ -256,6 +256,19 @@ describe("isIncompleteAssistantTurn", () => {
     );
   });
 
+  it("replaces a stale blocker answer after mutations land", () => {
+    expect(
+      selectUserFacingLoopAnswer({
+        loopAnswer:
+          "I have to stop here with a clear blocker rather than fabricate content.\n\n**Blocker:** need template reads.",
+        changedFiles: [
+          "packages/mui-builder/README.md",
+          "packages/mui-builder/.gitignore",
+        ],
+      }),
+    ).toMatch(/Completed workspace edits/);
+  });
+
   it("compacts recovered dumps with head, keep crumbs, and tail", () => {
     const head = [
       "Let me analyze the remaining errors:",

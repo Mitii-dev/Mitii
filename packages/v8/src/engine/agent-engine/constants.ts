@@ -126,6 +126,7 @@ export const AGENT_REASON_CODES = [
   "output_truncation_recovered",
   "incomplete_answer_recovered",
   "incomplete_answer_fallback",
+  "incomplete_execute",
   "unfulfilled_execute_recovered",
   "unfulfilled_execute_exhausted",
   "must_read_nudged",

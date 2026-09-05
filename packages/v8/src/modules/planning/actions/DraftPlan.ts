@@ -23,6 +23,10 @@ import {
 } from "./draftDiagnosticSteps";
 import { buildDiscoveryChangeSteps } from "./draftDiscoverySurfaces";
 import {
+  remapPathThroughScaffoldMapping,
+  resolveScaffoldPackageMapping,
+} from "./remapScaffoldChangeSurfaces";
+import {
   clipPhrase,
   normalizePhaseName,
   slugify,
@@ -174,13 +178,32 @@ function resolveTargetRefs(
   evidence: PlanningTaskEvidence,
   discoveryBrief: DiscoveryBrief | undefined,
 ): string[] {
+  const mapping = discoveryBrief
+    ? resolveScaffoldPackageMapping({
+        objective: discoveryBrief.objective,
+        explicitTargets: discoveryBrief.targets,
+        filesRead: discoveryBrief.filesRead,
+      })
+    : undefined;
   const fromDiscovery = [
     ...(discoveryBrief?.proposedChangeSurfaces.map((surface) => surface.path) ??
       []),
     ...(discoveryBrief?.targets
       .filter((target) => target.kind === "file" || target.kind === "test")
       .map((target) => target.value) ?? []),
-  ];
+  ]
+    .map((path) =>
+      mapping ? remapPathThroughScaffoldMapping(path, mapping) : path,
+    )
+    .filter((path) => {
+      if (!mapping) return true;
+      return (
+        path === mapping.targetPrefix ||
+        path.startsWith(`${mapping.targetPrefix}/`) ||
+        (!path.startsWith(`${mapping.sourcePrefix}/`) &&
+          path !== mapping.sourcePrefix)
+      );
+    });
   if (fromDiscovery.length > 0) {
     return uniqueStrings(fromDiscovery).slice(0, 12);
   }

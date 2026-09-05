@@ -29,6 +29,7 @@ export {
   serializePlanText,
 } from "./pipeline/PlanningPipeline";
 export {
+  remapPathThroughScaffoldMapping,
   remapScaffoldChangeSurfaces,
   resolveScaffoldPackageMapping,
 } from "./actions/remapScaffoldChangeSurfaces";

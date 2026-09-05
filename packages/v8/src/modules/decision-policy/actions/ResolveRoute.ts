@@ -559,6 +559,7 @@ function looksLikeAgentMutationRequest(message: string): boolean {
     /(?:^|\b)(?:please\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+|i\s+want\s+you\s+to\s+|i\s+need\s+you\s+to\s+|i\s+need\s+|we\s+need\s+to\s+|let(?:'s|\s+us)\s+)?(?:start\s+(?:the\s+)?implem(?:entation|netation)|implement|build(?!\s+(?:logs?|errors?|output|failures?|status|artifacts?)\b)|create|design|develop|write|add|edit|fix|resolve|repair|patch|migrate|refactor|rewrite|convert|integrate|configure|optimize|redesign|replace|remove|delete|update|modify|change|generate|scaffold|install|upgrade)\b/i.test(
       text,
     ) ||
+    looksLikeContinuationArtifactRequest(text) ||
     // Imperative docs/code edits: "Edit docs/foo.md only: …"
     /^(?:please\s+|can\s+you\s+|could\s+you\s+)?edit\b/i.test(text) ||
     // Seeded bugfix phrasing: "X uses Y. Change it to Z." / "says Foo. Fix it to Bar."
@@ -568,6 +569,19 @@ function looksLikeAgentMutationRequest(message: string): boolean {
     /\bi\s+need\s+(?:to\s+design\s+|to\s+create\s+|to\s+build\s+|an?\s+|the\s+)*(?:api|endpoint|route)\b/i.test(
       text,
     )
+  );
+}
+
+function looksLikeContinuationArtifactRequest(text: string): boolean {
+  if (
+    !/\b(?:i|we)\s+need\b/i.test(text) ||
+    !/\b(?:also|too|as\s+well|remaining|missing|left|still)\b/i.test(text)
+  ) {
+    return false;
+  }
+
+  return /\b(?:fields?|components?|modules?|files?|exports?|helpers?|hooks?|types?|schemas?|package|builder|renderer|formbuilder|formrenderer|provider|adapter|tests?)\b/i.test(
+    text,
   );
 }
 

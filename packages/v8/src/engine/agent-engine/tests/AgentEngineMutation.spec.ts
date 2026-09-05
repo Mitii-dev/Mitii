@@ -369,7 +369,8 @@ describe("AgentEnginePipeline mutation approvals (Phase 8)", () => {
       approval: { approvalId: approvalId!, decision: "approved" },
     }).result;
 
-    expect(resumed.status).toBe("completed");
+    expect(resumed.status).toBe("failed");
+    expect(resumed.error?.code).toBe("verification_failed");
     expect(resumed.answer).toContain("Updated src/a.ts");
     expect(resumed.answer).toMatch(/kept the edits|Verification did not/i);
     expect(resumed.reasonCodes).toContain("verification_kept_changes");
@@ -526,7 +527,8 @@ describe("AgentEnginePipeline mutation approvals (Phase 8)", () => {
       approval: { approvalId: approvalId!, decision: "approved" },
     }).result;
 
-    expect(resumed.status).toBe("completed");
+    expect(resumed.status).toBe("failed");
+    expect(resumed.error?.code).toBe("verification_failed");
     expect(resumed.answer).toContain("Updated src/a.ts");
     expect(resumed.answer).toContain("Verification is required but unavailable");
     expect(resumed.answer).not.toContain("rolled back");

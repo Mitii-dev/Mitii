@@ -33,6 +33,11 @@ describe("resolveLoopTurnOutcome", () => {
     expect(outcome.reasonCode).toBe("unfulfilled_execute_recovered");
     expect(outcome.recoveryMessage).toContain("apply_patch");
     expect(outcome.recoveryMessage).toContain("working-set");
+    expect(outcome.recoveryMessage).toContain("write/mustRead");
+    expect(outcome.recoveryMessage).toContain("list_directory");
+    expect(outcome.recoveryMessage).not.toContain(
+      "Do not call read_file, read_many_files",
+    );
   });
 
   it("exhausts unfulfilled execute after the recovery budget", () => {

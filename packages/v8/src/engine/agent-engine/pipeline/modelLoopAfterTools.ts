@@ -179,7 +179,7 @@ export function resolveModelLoopAfterTools(params: {
       messages.push({
         role: "user",
         content:
-          "You read again instead of editing. Your very next turn must call apply_patch/delete_file/move_file with a bounded change, or stop with a clear blocker. No further reads unless you state the blocker first.\n\n" +
+          "You read again instead of editing. Prefer apply_patch/delete_file/move_file with a bounded change on your next turn. You may use a few more targeted read_file/read_many_files turns for active-row write/mustRead paths only; broad list/glob/search rediscovery will fail the run. Or stop with a clear blocker.\n\n" +
           buildUnfulfilledExecuteRecoveryMessage(grant.mutationBudget),
       });
       warnings.push(
@@ -319,6 +319,24 @@ export function resolveModelLoopAfterTools(params: {
       session.readOnlyToolTurnsAfterMutation = 0;
       resetLoopFileReadTracker(loopFileReads);
       session.explorationStallNudges = 0;
+      session.postNudgeEvidenceReadTurns = 0;
+      // Drop stale recovery/blocker narration once disk edits exist.
+      if (
+        changedFiles.length > 0 &&
+        (answer.trim().length === 0 ||
+          isTransitionalAssistantAnswer(answer) ||
+          /(?:^|\n)\s*(?:\*{0,2}|_{0,2})?\s*blocker(?:\*{0,2}|_{0,2})?\s*[:\-—]/im.test(
+            answer,
+          ) ||
+          /\b(?:stop(?:ping)?\s+here\s+with\s+a\s+clear\s+blocker|have\s+to\s+stop\s+here\s+with\s+a\s+clear\s+blocker)\b/i.test(
+            answer,
+          ))
+      ) {
+        answer = synthesizeFallbackAnswer({
+          priorAnswer: answer,
+          changedFiles,
+        });
+      }
     }
   } else if (
     isMutationRequired() &&
@@ -336,7 +354,7 @@ export function resolveModelLoopAfterTools(params: {
         messages.push({
           role: "user",
           content:
-            "You have enough repository context to attempt the requested edit. Stop reading/searching. Your next turn must call apply_patch/delete_file/move_file with a bounded change, or stop with a clear blocker.\n\n" +
+            "You have enough repository context to attempt the requested edit. Prefer apply_patch/delete_file/move_file now. If an active checklist write/mustRead path is still missing from evidence, you may use a few targeted read_file/read_many_files turns, then patch. Do not start broad rediscovery. Or stop with a clear blocker.\n\n" +
             buildUnfulfilledExecuteRecoveryMessage(grant.mutationBudget),
         });
         warnings.push(

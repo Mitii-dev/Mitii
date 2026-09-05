@@ -24,6 +24,8 @@ export type ModelLoopSession = {
   afterMutationReadOnlyNudges: number;
   awaitingReadOnlyMutationRetry: boolean;
   readOnlyMutationRetryAttempts: number;
+  /** Count of allowed evidence-read batches after the mutation nudge. */
+  postNudgeEvidenceReadTurns: number;
   mutationBlockerAsked: boolean;
   awaitingRejectedMutationRetry:
     | {

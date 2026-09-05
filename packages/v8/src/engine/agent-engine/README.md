@@ -90,13 +90,15 @@ agent-engine/
   (typical local runtimes that never report hit/miss) enables earlier auto
   compaction. Class is resolved from `supportsPromptCaching` plus observed
   `cacheHitTokens` / `cacheMissTokens`.
-- Tool-loop turns clamp `maximumOutputTokens` to a **band tool-loop ceiling**
-  (compact 2k / standard 3k / wide 4k) so leftover context cannot open a
-  mid-loop essay budget.
+- Per-turn `maximumOutputTokens` follows **leftover context** (`window − used
+  input`, scaled, then generation ceiling). Tool-loop turns additionally apply
+  a band cap (4k compact, 8k standard/wide) so local models do not turn spare
+  context into long analysis instead of bounded patch calls.
 - Scaffold/clone discovery **remaps write surfaces** from the template package
   onto the target package before planning/checklist seeding.
-- Checklist auto-advance matches **write / package-root** targets so mutations
-  under the target package complete the active row.
+- Checklist auto-advance matches **explicit write / title file paths** (and
+  package-root only when `write` is empty). Sibling files under the same
+  package no longer complete other checklist rows.
 - Skills support optional `sizeClass` (S/M/L). Packing prefers compact L1 for L
   playbooks when later M skills remain; compact windows forbid L injection
   unless required/`alwaysApply`. Optional `requireTagEvidence` gates niche
@@ -104,8 +106,14 @@ agent-engine/
 - Host (VS Code): lean context defaults (repo map / git diff off) with
   intent-lite auto-enable for deep / CI-git asks; Agent conversation carry
   prefers a compact `<carry_handoff>` prefix and tighter chat caps.
-- Decision Policy keeps scaffold-like package feature/migrate work on the
-  **standard** mutation profile instead of ultra-tight.
+- Decision Policy keeps scaffold-like package feature/migrate/**scaffold**/port work
+  on the **standard** mutation profile instead of ultra-tight (including migrate
+  asks that look like `single_location` but name two packages).
+- Clone/port discovery remaps write surfaces and plan allowlists onto the
+  **target** package; template `filesRead` stay evidence-only.
+- After the first-mutation nudge, up to **3** targeted `read_file` /
+  `read_many_files` batches are allowed before failing; broad list/glob/search
+  still fails immediately.
 - Trailing `<working_set>` is **always** re-upserted before each model call
   (including verification repair), so live checklist / mutation budget /
   observations survive hard compaction.
@@ -122,12 +130,14 @@ agent-engine/
   mutations complete every matching change item (by path), not just the
   active row once per turn.
 - Output truncation recovery can ask the model to continue safely within remaining budgets.
+  Per-turn `max_tokens` also floors at 256 (when leftover allows) so recovery
+  never collapses to a 1-token turn.
 - When providers leak XML/tag-shaped tool requests into assistant text instead
   of structured tool deltas, the loop can recover a conservative subset of
   read/discovery tool calls from tag attributes and continue through normal
   Tool Runtime enforcement rather than immediately treating the turn as
   incomplete narration.
-- Execute + write + mutation-intent turns that produce text and no `apply_patch` are **unfulfilled execute**. The loop nudges up to twice (`unfulfilled_execute_recovered`, `maxUnfulfilledExecuteRecoveries: 2`) to call `apply_patch` in a bounded batch grouped by error class. Further text-only turns complete with `unfulfilled_execute_exhausted` instead of spinning. Docs create/update on execute+write is treated the same way.
+- Execute + write + mutation-intent turns that produce text and no `apply_patch` are **unfulfilled execute**. The loop nudges up to twice (`unfulfilled_execute_recovered`, `maxUnfulfilledExecuteRecoveries: 2`) to prefer `apply_patch`, while allowing one targeted `read_file`/`read_many_files` of active write/mustRead paths. Clear blockers with no mutations end as `incomplete_execute` (failed), not success. Stale blocker narration is replaced after later mutations land.
 - Rejected `apply_patch`/`delete_file`/`move_file` recoveries use a **separate** budget (`maxRejectedMutationRecoveries`, band-aware) so a stale-hunk → targeted read → retry cycle is not starved by the text-only unfulfilled-execute nudge.
 - **Window bands** select shipped loop/stall standards from the effective context window (`compact` &lt; 50k, `standard` &lt; 100k, `wide` ≥ 100k). Permanent values: [`policy/loopPolicyBands.ts`](./policy/loopPolicyBands.ts) and [`windowBudgetBands.ts`](../../modules/window-budget/windowBudgetBands.ts). Edit with `pnpm policy-admin` (HTML UI), then rebuild. Optional Custom host overrides stay local-only. See [`policy/README.md`](./policy/README.md).
 - `apply_patch` failures use distinct reason codes (`old_text_not_found`, `old_text_ambiguous`, `patch_target_missing`, `patch_hash_mismatch`, `identical_old_and_new`, `patch_syntax_invalid`). Retryable codes (including no-op `identical_old_and_new`) attach current file content so the model can copy exact `oldText` without a separate re-read. Targeted discovery after a rejected mutation follows those codes, not warning-string matching. `patch_conflict` remains as a legacy umbrella. Optional `replaceAll` replaces every exact occurrence; the default remains unique match.
@@ -156,7 +166,7 @@ planning:
   discover_and_plan  -> bounded read-only discovery loop, then planning.plan({ discoveryBrief, strategyOverride })
   else               -> planning.plan({ strategyOverride }) immediately
 prompt construction
-model/tool loop               (per-turn max_tokens follows leftover context, capped by a real host override)
+model/tool loop               (per-turn max_tokens follows leftover context and tool-loop cap, capped by a real host override)
 verification gate + repair queue (see below)
 ```
 
@@ -170,7 +180,7 @@ After a mutation, `finishAfterLoop` runs Verification, compares before/after whe
 
 - **Passed**: commit mutations and complete as today.
 - **Repairable failure** (`verification_failed`): persist the record, inject a compact remaining-error prompt (not the full dump), and run another model/tool loop. Window effort caps repairs (`run.maxVerificationRepairs`; medium is 8). The first mutate loop reserves that slice of `maxModelCalls` (`verification_repair_budget_reserved`) so a productive exploration pass cannot spend the whole ceiling before repairs start. Quick exploration stays at one repair. Stop after `maxStalledVerificationRepairs` non-improving verifies. Lint/format-only leftovers after typecheck and diagnostics are green complete as `implemented_unverified` instead of opening another repair loop. `verification_repair_attempted` / `verification_repair_succeeded` mark that path.
-- **Still failing, or not repairable** (blocked / cancelled / infra-missing / stalled): keep the edits, write a short user summary, commit a memory pointer, and complete with `verification_incomplete` / `verification_kept_changes`.
+- **Still failing after edits, or not repairable** (blocked / cancelled / infra-missing / stalled): keep the edits, write a short user summary, commit a memory pointer, and finish `failed` with `verification_incomplete` / `verification_kept_changes`.
 - **Cancel / interrupt**: persist whatever before/after snapshot exists so the next turn can reload it.
 - **Retry**: a later user ask matching “fix the remaining verification errors” loads `loadLatest(workspaceId)` instead of scraping chat history.
 

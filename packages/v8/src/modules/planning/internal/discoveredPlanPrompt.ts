@@ -1,5 +1,9 @@
 import type { DiscoveryBrief } from "../contracts";
 import type { PlanningParsedInput } from "../contracts";
+import {
+  remapPathThroughScaffoldMapping,
+  resolveScaffoldPackageMapping,
+} from "../actions/remapScaffoldChangeSurfaces";
 
 export const DISCOVERED_PLAN_SYSTEM = [
   "You already looked at the repository through a bounded read-only discovery pass.",
@@ -7,6 +11,7 @@ export const DISCOVERED_PLAN_SYSTEM = [
   "Ground every step in the discovery evidence (files read, proposed change surfaces).",
   "Do not invent files or targets that discovery did not surface.",
   "Prefer allowedTargets and proposedChangeSurfaces over README or package.json unless they appear there.",
+  "When allowedTargets are under a new/target package, write Change steps there — template filesRead are evidence only.",
   "If discovery evidence is thin, prefer openQuestions over invented file work.",
   "Return only JSON matching the provided schema.",
 ].join("\n");
@@ -16,13 +21,35 @@ export function renderDiscoveredPlanUserPrompt(params: {
   discoveryBrief: DiscoveryBrief;
 }): string {
   const { input, discoveryBrief } = params;
+  const mapping = resolveScaffoldPackageMapping({
+    objective: discoveryBrief.objective || input.query,
+    explicitTargets: discoveryBrief.targets,
+    filesRead: discoveryBrief.filesRead,
+  });
+  const remappedReads = discoveryBrief.filesRead.map((file) =>
+    mapping
+      ? remapPathThroughScaffoldMapping(file.path, mapping)
+      : file.path,
+  );
   const allowedTargets = uniquePaths([
     ...(input.knownPathHints ?? []),
-    ...(input.contextReviewed ?? []).map((ref) => ref.ref),
     ...(input.scopedRepoMap?.entries ?? []).map((entry) => entry.path),
     ...discoveryBrief.proposedChangeSurfaces.map((surface) => surface.path),
-    ...discoveryBrief.filesRead.map((file) => file.path),
-  ]).slice(0, 24);
+    // For clone/port, advertise remapped write paths — not the template paths.
+    ...(mapping ? remappedReads : discoveryBrief.filesRead.map((file) => file.path)),
+    ...(mapping ? [mapping.targetPrefix] : []),
+    ...(input.contextReviewed ?? []).map((ref) => ref.ref),
+  ])
+    .filter((path) => {
+      if (!mapping) return true;
+      return (
+        path === mapping.targetPrefix ||
+        path.startsWith(`${mapping.targetPrefix}/`) ||
+        (!path.startsWith(`${mapping.sourcePrefix}/`) &&
+          path !== mapping.sourcePrefix)
+      );
+    })
+    .slice(0, 24);
 
   return [
     '<discovery_result trust="untrusted-data">',
@@ -33,6 +60,15 @@ export function renderDiscoveredPlanUserPrompt(params: {
         confidence: discoveryBrief.confidence,
         allowedTargets,
         filesRead: discoveryBrief.filesRead.slice(0, 20),
+        ...(mapping
+          ? {
+              scaffoldMapping: {
+                sourcePrefix: mapping.sourcePrefix,
+                targetPrefix: mapping.targetPrefix,
+                note: "Write Change targetRefs under targetPrefix; filesRead are the template.",
+              },
+            }
+          : {}),
         targets: discoveryBrief.targets.slice(0, 20),
         proposedChangeSurfaces: discoveryBrief.proposedChangeSurfaces.slice(0, 12),
         discoveredConstraints: discoveryBrief.discoveredConstraints.slice(0, 10),

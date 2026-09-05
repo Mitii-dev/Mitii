@@ -85,6 +85,8 @@ export function maybeAutoAdvanceTaskList(params: {
       item.status !== "done" &&
       item.status !== "skipped" &&
       isMutationAutoAdvanceEligible(item) &&
+      // Path-accurate via write/title paths; package-root siblings no longer match
+      // when explicit write[] is present (see itemWriteTargetsMatchChangedFiles).
       itemMentionsAnyPath(item, changedFiles) &&
       // Diagnostic-coded Change batches wait for verification evidence.
       extractDiagnosticCodeHint(`${item.title} ${item.detail ?? ""}`) ===
@@ -431,6 +433,25 @@ export function isMutationAutoAdvanceEligible(item: {
   const hint = `${title} ${item.detail ?? ""} ${taskItemPaths(item).join(" ")}`;
   // Package-wide mega-objectives without a file must not burn through on one patch.
   return TASK_LIST_POLICY.autoAdvanceConcreteFileHint.test(hint);
+}
+
+/**
+ * True when execute still has open change-like checklist rows (not verify /
+ * deferred). Used to avoid marking a package scaffold "completed" early.
+ */
+export function hasIncompleteChangeSurfaces(taskList?: TaskList): boolean {
+  if (!taskList || taskList.items.length === 0) {
+    return false;
+  }
+  if (taskList.purpose === "discovery") {
+    return false;
+  }
+  return taskList.items.some(
+    (item) =>
+      item.status !== "done" &&
+      item.status !== "skipped" &&
+      isMutationAutoAdvanceEligible(item),
+  );
 }
 
 export { upsertTrailingWorkingSet } from "./workingSetRuntime";

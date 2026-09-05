@@ -159,6 +159,7 @@ export async function runModelToolLoop(
     afterMutationReadOnlyNudges: 0,
     awaitingReadOnlyMutationRetry: false,
     readOnlyMutationRetryAttempts: 0,
+    postNudgeEvidenceReadTurns: 0,
     mutationBlockerAsked: false,
     awaitingRejectedMutationRetry: undefined,
     lastPromptCacheClass: undefined,
@@ -459,6 +460,7 @@ export async function runModelToolLoop(
       requiredSkillIds: params.requiredSkillIds,
       answer: session.answer,
       changeImpactGate,
+      thresholds,
     });
     if (toolPhase.kind !== "batch_done") {
       if (toolPhase.kind === "return") {

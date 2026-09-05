@@ -26,15 +26,29 @@ const FAKE_CAPABILITIES: ModelCapabilities = {
   supportsEmbeddings: false,
 };
 
-function fakeLlm(responses: readonly string[]): LlmPort {
+function fakeLlm(
+  responses: readonly (
+    | string
+    | {
+        content: string;
+        finishReason?: "stop" | "length";
+      }
+  )[],
+): LlmPort {
   let index = 0;
   return {
     id: "fake-planning-llm",
     capabilities: FAKE_CAPABILITIES,
     async *complete() {
-      const content = responses[index++] ?? "";
+      const response = responses[index++] ?? "";
+      const content =
+        typeof response === "string" ? response : response.content;
+      const finishReason =
+        typeof response === "string"
+          ? ("stop" as const)
+          : response.finishReason ?? ("stop" as const);
       yield { type: "content_delta" as const, content };
-      yield { type: "completed" as const, finishReason: "stop" as const };
+      yield { type: "completed" as const, finishReason };
     },
   };
 }
@@ -1153,6 +1167,68 @@ describe("PlanningPipeline", () => {
       "Discover",
     );
     const change = result.plan?.phases.find((phase) => phase.name === "Change");
+    expect(change?.steps[0]?.targetRefs).toEqual(["src/payments/client.ts"]);
+  });
+
+  it("rejects truncated one-shot discovery drafts and uses the deterministic skeleton", async () => {
+    const llmPipeline = new PlanningPipeline({
+      llm: fakeLlm([
+        {
+          content: JSON.stringify({
+            objective: "Add retry around the payment client",
+            steps: [
+              {
+                phaseHint: "change",
+                intent: "Partial model draft that should be ignored",
+                actionSummary: "This JSON parses, but the response was truncated.",
+                targetRefs: ["src/payments/client.ts"],
+                expectedOutcome: "Should not be applied.",
+              },
+            ],
+          }),
+          finishReason: "length",
+        },
+      ]),
+    });
+    const result = await llmPipeline.plan(
+      baseInput({
+        discoveryBrief: {
+          schemaVersion: 1,
+          objective: "Add retry around the payment client",
+          filesRead: [
+            {
+              path: "src/payments/client.ts",
+              reason: "Outbound payment entrypoint",
+            },
+          ],
+          targets: [],
+          proposedChangeSurfaces: [
+            {
+              path: "src/payments/client.ts",
+              actionHint: "Change",
+              riskLevel: "medium",
+              evidence: "Retries are missing around createCharge",
+            },
+          ],
+          discoveredConstraints: [],
+          verificationHints: [],
+          openQuestions: [],
+          confidence: "high",
+        },
+        strategyOverride: {
+          schemaVersion: 1,
+          strategy: "discover_and_plan",
+          rationale: "Read-only discovery already identified concrete targets.",
+          skipDiscover: true,
+          useBuildEvidence: false,
+        },
+      }),
+    );
+
+    expect(result.reasonCodes).toContain("plan_discovery_draft_failed_fallback");
+    expect(result.warnings.join("\n")).toContain("truncated");
+    const change = result.plan?.phases.find((phase) => phase.name === "Change");
+    expect(change?.steps[0]?.intent).not.toContain("Partial model draft");
     expect(change?.steps[0]?.targetRefs).toEqual(["src/payments/client.ts"]);
   });
 

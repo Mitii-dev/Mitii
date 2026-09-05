@@ -5,10 +5,11 @@ import type {
 } from "../contracts";
 
 const PACKAGE_PREFIX = /^(packages\/[^/]+)/i;
+/** Create / scaffold / clone / port / migrate a new package. */
 const CREATE_CHUNK =
-  /\b(?:create|scaffold|clone|copy|spin\s*up|generate)\b([^.\n]{0,120})/i;
+  /\b(?:create|scaffold|clone|copy|spin\s*up|generate|port|migrate)\b([^.\n]{0,160})/i;
 const LIKE_CHUNK =
-  /\b(?:like|from|based\s+on|mirroring|modeled\s+on|similar\s+to)\b([^.\n]{0,120})/i;
+  /\b(?:like|from|based\s+on|mirroring|modeled\s+on|similar\s+to|port\s+of|full\s+port\s+of)\b([^.\n]{0,160})/i;
 const STOP_NAMES = new Set([
   "a",
   "an",
@@ -22,10 +23,16 @@ const STOP_NAMES = new Set([
   "module",
   "same",
   "with",
+  "full",
+  "usable",
+  "end",
+  "to",
+  "into",
+  "as",
 ]);
 
 /**
- * When the ask is "scaffold/create package B like package A", rewrite
+ * When the ask is "scaffold/create/port package B like package A", rewrite
  * discovery change surfaces under A into write paths under B. Source paths
  * stay as evidence text so planning can still cite the template.
  *
@@ -56,10 +63,7 @@ export function remapScaffoldChangeSurfaces(params: {
     if (!path.startsWith(`${sourcePrefix}/`) && path !== sourcePrefix) {
       return { ...surface, path };
     }
-    const rewritten =
-      path === sourcePrefix
-        ? targetPrefix
-        : `${targetPrefix}${path.slice(sourcePrefix.length)}`;
+    const rewritten = remapPathThroughScaffoldMapping(path, mapping);
     return {
       ...surface,
       path: rewritten,
@@ -69,6 +73,24 @@ export function remapScaffoldChangeSurfaces(params: {
       evidence: `${surface.evidence} (templated from ${path})`.slice(0, 500),
     };
   });
+}
+
+/**
+ * Rewrite a workspace path from the template package onto the target package.
+ * Returns the original path when no mapping applies.
+ */
+export function remapPathThroughScaffoldMapping(
+  path: string,
+  mapping: { sourcePrefix: string; targetPrefix: string },
+): string {
+  const normalized = normalizePath(path);
+  if (normalized === mapping.sourcePrefix) {
+    return mapping.targetPrefix;
+  }
+  if (normalized.startsWith(`${mapping.sourcePrefix}/`)) {
+    return `${mapping.targetPrefix}${normalized.slice(mapping.sourcePrefix.length)}`;
+  }
+  return normalized;
 }
 
 export function resolveScaffoldPackageMapping(params: {
@@ -97,6 +119,15 @@ export function resolveScaffoldPackageMapping(params: {
     (params.filesRead ?? []).map((file) => packagePrefix(file.path)),
   );
 
+  // Also pick package prefixes named anywhere in the objective.
+  const objectivePackages = [
+    ...new Set(
+      [...objective.matchAll(/packages\/([A-Za-z][\w.-]*)/gi)].map((match) =>
+        toPackagePrefix(match[1]!),
+      ),
+    ),
+  ];
+
   let targetPrefix: string | undefined;
   if (createName) {
     targetPrefix = toPackagePrefix(createName);
@@ -104,6 +135,10 @@ export function resolveScaffoldPackageMapping(params: {
     targetPrefix =
       explicitFolders.find((folder) => folder !== readPackages[0]) ??
       explicitFolders[0];
+  } else if (objectivePackages.length >= 2 && likeName) {
+    // "Create A as a full port of B" — prefer the non-like package as target.
+    const likePrefix = toPackagePrefix(likeName);
+    targetPrefix = objectivePackages.find((pkg) => pkg !== likePrefix);
   }
 
   let sourcePrefix: string | undefined;
@@ -111,13 +146,20 @@ export function resolveScaffoldPackageMapping(params: {
     sourcePrefix = toPackagePrefix(likeName);
   } else if (readPackages.length > 0) {
     sourcePrefix = readPackages.find((pkg) => pkg !== targetPrefix);
+  } else if (objectivePackages.length >= 2 && targetPrefix) {
+    sourcePrefix = objectivePackages.find((pkg) => pkg !== targetPrefix);
   }
 
   if (!targetPrefix || !sourcePrefix || targetPrefix === sourcePrefix) {
     return undefined;
   }
 
-  if (!CREATE_CHUNK.test(objective) && explicitFolders.length === 0) {
+  const looksLikeScaffoldAsk =
+    CREATE_CHUNK.test(objective) ||
+    LIKE_CHUNK.test(objective) ||
+    explicitFolders.length >= 1 ||
+    objectivePackages.length >= 2;
+  if (!looksLikeScaffoldAsk) {
     return undefined;
   }
 

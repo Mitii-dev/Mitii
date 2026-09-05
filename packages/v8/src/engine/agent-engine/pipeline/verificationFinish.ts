@@ -23,6 +23,7 @@ import type {
 
 import {
   buildVerificationRepairPrompt,
+  requiresMutationForExecute,
   selectUserFacingLoopAnswer,
   shouldContinueVerificationRepair,
   nextStalledRepairCount,
@@ -32,6 +33,7 @@ import {
 import {
   prepareRepairWorkingSet,
   completePlanStepsFromDiagnostics,
+  hasIncompleteChangeSurfaces,
   planProgressOf,
   type TaskListRef,
 } from "../internal/taskListRuntime";
@@ -553,14 +555,47 @@ export async function finishAfterLoop(
       if (repairAttempts > 0) {
         reasonCodes.push("verification_repair_succeeded");
       }
+      const incompleteExecute =
+        requiresMutationForExecute({
+          route: decision.route,
+          maximumWorkspaceEffect: decision.toolGrant.maximumWorkspaceEffect,
+          primaryTaskIntent:
+            params.loopContext?.understanding?.intent.classification
+              .primaryTaskIntent,
+          reasonCodes: decision.reasonCodes,
+        }) &&
+        hasIncompleteChangeSurfaces(taskListRef.current) &&
+        // Partial progress with an honest next-step answer may leave rows open.
+        // Fail only when the run stopped with no edits or a stuck blocker answer.
+        (loopChangedFiles.length === 0 ||
+          /(?:^|\n)\s*(?:\*{0,2}|_{0,2})?\s*blocker(?:\*{0,2}|_{0,2})?\s*[:\-—]/im.test(
+            loopAnswer ?? "",
+          ) ||
+          /\b(?:stop(?:ping)?\s+here\s+with\s+a\s+clear\s+blocker|have\s+to\s+stop\s+here\s+with\s+a\s+clear\s+blocker)\b/i.test(
+            loopAnswer ?? "",
+          ));
+      const userAnswer = selectUserFacingLoopAnswer({
+        loopAnswer,
+        changedFiles: loopChangedFiles,
+      });
       await runtime.safeUnpin(runId, pinnedState);
+      if (incompleteExecute) {
+        reasonCodes.push("incomplete_execute", "answer_produced");
+        return finish({
+          status: "failed",
+          answer: userAnswer,
+          reasonCodes,
+          error: {
+            code: "incomplete_execute",
+            message:
+              "The execute run ended while change checklist surfaces were still open.",
+          },
+        });
+      }
       reasonCodes.push("answer_produced");
       return finish({
         status: "completed",
-        answer: selectUserFacingLoopAnswer({
-          loopAnswer,
-          changedFiles: loopChangedFiles,
-        }),
+        answer: userAnswer,
         reasonCodes,
       });
     }
@@ -716,9 +751,6 @@ export async function finishAfterLoop(
       !verificationOutcome.repairable &&
       logVerbosityAtLeast(input.logVerbosity, "standard")
     ) {
-      // The run's terminal status is still "completed" here — this is the
-      // only signal that changes were kept despite a hard/blocked
-      // verification rejection rather than a genuinely clean pass.
       reasonCodes.push("verification_rejected_kept");
       runtime.emit(bus, {
         type: "warning",
@@ -782,8 +814,9 @@ export async function finishAfterLoop(
     }
     await runtime.safeUnpin(runId, pinnedState);
     reasonCodes.push("answer_produced");
+    const keptMutationsWithFailedVerification = loopChangedFiles.length > 0;
     return finish({
-      status: "completed",
+      status: keptMutationsWithFailedVerification ? "failed" : "completed",
       answer: selectUserFacingLoopAnswer({
         loopAnswer:
           "answer" in currentOutcome ? currentOutcome.answer : loopAnswer,
@@ -791,7 +824,9 @@ export async function finishAfterLoop(
         changedFiles: loopChangedFiles,
       }),
       reasonCodes,
+      error: keptMutationsWithFailedVerification
+        ? verificationOutcome.error
+        : undefined,
     });
   }
 }
-

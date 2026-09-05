@@ -234,6 +234,54 @@ describe("maybeAutoAdvanceTaskList", () => {
     expect(result.taskList).toBeUndefined();
   });
 
+  it("does not complete sibling package write targets from one patch", () => {
+    const current: TaskList = {
+      schemaVersion: 1,
+      source: "plan",
+      purpose: "execution",
+      items: [
+        {
+          id: "readme",
+          title: "Update packages/mui-builder/README.md",
+          status: "active",
+          write: ["packages/mui-builder/README.md"],
+        },
+        {
+          id: "select",
+          title: "Update packages/mui-builder/src/fields/field-select/field-select.tsx",
+          status: "pending",
+          write: [
+            "packages/mui-builder/src/fields/field-select/field-select.tsx",
+          ],
+        },
+        {
+          id: "gitignore",
+          title: "Update packages/mui-builder/.gitignore",
+          status: "pending",
+          write: ["packages/mui-builder/.gitignore"],
+        },
+      ],
+    };
+
+    const result = maybeAutoAdvanceTaskList({
+      enabled: true,
+      current,
+      toolStatus: "succeeded",
+      isMutatingTool: true,
+      changedFiles: [
+        "packages/mui-builder/README.md",
+        "packages/mui-builder/.gitignore",
+      ],
+    });
+
+    expect(result.advanced).toBe(true);
+    expect(result.taskList?.items.map((item) => item.status)).toEqual([
+      "done",
+      "active",
+      "done",
+    ]);
+  });
+
   it("skips diagnostic-coded Change rows until verification clears them", () => {
     const current: TaskList = {
       schemaVersion: 1,

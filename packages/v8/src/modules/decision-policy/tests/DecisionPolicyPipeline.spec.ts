@@ -1042,6 +1042,33 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.toolGrant.allowedTools).toContain("apply_patch");
   });
 
+  it("routes continuation artifact requests to execute even with stale question intent", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message: "I need fields and FormBuilder and Renderer as well",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "question",
+          interactionIntent: "question",
+          taskAnalysis: {
+            clarity: "unclear",
+            scope: "unknown",
+            complexity: "simple",
+            risk: "low",
+            recommendsRepositoryDiscovery: false,
+            recommendsVerification: false,
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("execute");
+    expect(decision.runDisposition).toBe("continue");
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("write");
+    expect(decision.toolGrant.allowedTools).toContain("apply_patch");
+    expect(decision.reasonCodes).toContain("mutation_execute");
+  });
+
   it("does not clarify clear agent implement asks even when understanding is soft-ambiguous", () => {
     const decision = new DecisionPolicyPipeline().decide(
       createInput({

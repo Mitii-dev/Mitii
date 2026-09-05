@@ -19,6 +19,7 @@ export const agentEngineThresholdsSchema = z
     maxRejectedMutationRecoveries: nonnegativeIntSchema,
     maxMustReadNudges: nonnegativeIntSchema,
     maxReadOnlyMutationRetryAttempts: nonnegativeIntSchema,
+    maxPostNudgeEvidenceReadTurns: nonnegativeIntSchema,
     maxReadOnlyToolTurnsBeforeMutationNudge: positiveIntSchema,
     maxReadOnlyToolTurnsAfterMutationNudge: positiveIntSchema,
     maxReadOnlyToolTurnsAfterMutationNudges: nonnegativeIntSchema,

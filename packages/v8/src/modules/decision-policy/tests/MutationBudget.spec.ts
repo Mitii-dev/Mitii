@@ -127,6 +127,52 @@ describe("ResolveMutationBudget", () => {
     expect(result.profile).toBe("standard");
     expect(result.reasonCodes).toContain("mutation_budget_standard");
   });
+
+  it("keeps primary scaffold package work on standard instead of tight", () => {
+    const result = resolveMutationBudget({
+      understanding: createUnderstanding({
+        primaryTaskIntent: "scaffold",
+        taskAnalysis: {
+          scope: "package",
+          complexity: "complex",
+          estimatedFilesAffected: { minimum: 8, maximum: 30 },
+          recommendsPlanning: true,
+        },
+      }),
+    });
+    expect(result.profile).toBe("standard");
+    expect(result.reasonCodes).toContain("mutation_budget_standard");
+  });
+
+  it("keeps migrate package-port asks on standard even when scope is single_location", () => {
+    const result = resolveMutationBudget({
+      understanding: createUnderstanding({
+        primaryTaskIntent: "migrate",
+        taskAnalysis: {
+          scope: "single_location",
+          complexity: "moderate",
+          estimatedFilesAffected: { minimum: 4, maximum: 12 },
+          recommendsPlanning: true,
+          targets: [
+            {
+              kind: "folder",
+              value: "packages/mui-builder",
+              explicit: true,
+            },
+            {
+              kind: "folder",
+              value: "packages/formik-form-builder",
+              explicit: true,
+            },
+          ],
+        },
+      }),
+      message:
+        "Create packages/mui-builder as a full port of packages/formik-form-builder",
+    });
+    expect(result.profile).toBe("standard");
+    expect(result.reasonCodes).toContain("mutation_budget_standard");
+  });
 });
 
 describe("DecisionPolicyPipeline mutation budget", () => {

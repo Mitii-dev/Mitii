@@ -37,6 +37,7 @@ import {
   type TaskListRef,
 } from "../internal/taskListRuntime";
 import type { LoopFileReadTracker } from "../actions";
+import type { AgentEngineThresholds } from "../actions/resolveAgentEngineThresholds";
 
 import type { AgentEngineRuntime } from "./runtime";
 import {
@@ -106,6 +107,7 @@ export async function runModelLoopToolPhase(params: {
   requiredSkillIds: string[] | undefined;
   answer: string;
   changeImpactGate: { required: boolean; satisfied: boolean };
+  thresholds: AgentEngineThresholds;
 }): Promise<ModelLoopStepResult | { kind: "batch_done"; stats: ToolPhaseBatchStats }> {
   const {
     runtime,
@@ -140,6 +142,7 @@ export async function runModelLoopToolPhase(params: {
     requiredSkillIds,
     answer,
     changeImpactGate,
+    thresholds,
   } = params;
   let decision = session.decision;
   let grant = decision.toolGrant;
@@ -149,31 +152,132 @@ export async function runModelLoopToolPhase(params: {
   const needsWorkspaceTools = toolCalls.some(
     (call) => !isUpdateTodosTool(call.name),
   );
+  if (needsWorkspaceTools && grant.allowedTools.length === 0) {
+    const message =
+      "Model requested workspace tools on a route where no tools were granted.";
+    warnings.push(message);
+    runtime.emit(bus, {
+      type: "warning",
+      runId,
+      message,
+      code: "tool_calls_without_grant",
+      data: {
+        route: decision.route,
+        requestedTools: toolCalls.map((call) => call.name).join(", "),
+      },
+      at: runtime.isoNow(),
+    });
+    session.decision = decision;
+    session.selectedSkillIds = selectedSkillIds;
+    return {
+      kind: "return",
+      outcome: {
+        kind: "failed",
+        answer: answer || undefined,
+        extraReasons: ["misconfigured"],
+        error: {
+          code: "tool_calls_without_grant",
+          message,
+        },
+      },
+    };
+  }
+  const requestedMutatingTool = toolCalls.some((call) =>
+    DEFAULT_MUTATING_TOOL_NAMES.has(call.name),
+  );
+  const BROAD_DISCOVERY_TOOLS = new Set([
+    "list_directory",
+    "glob_files",
+    "search_files",
+    "run_readonly_command",
+    "read_git_status",
+  ]);
+  const EVIDENCE_READ_TOOLS = new Set(["read_file", "read_many_files"]);
+  if (
+    needsWorkspaceTools &&
+    session.awaitingReadOnlyMutationRetry &&
+    !requestedMutatingTool
+  ) {
+    const workspaceCalls = toolCalls.filter(
+      (call) => !isUpdateTodosTool(call.name),
+    );
+    const hasBroadDiscovery = workspaceCalls.some((call) =>
+      BROAD_DISCOVERY_TOOLS.has(call.name),
+    );
+    const onlyEvidenceReads =
+      workspaceCalls.length > 0 &&
+      workspaceCalls.every((call) => EVIDENCE_READ_TOOLS.has(call.name));
+    const allowEvidenceRead =
+      onlyEvidenceReads &&
+      !hasBroadDiscovery &&
+      session.postNudgeEvidenceReadTurns <
+        thresholds.maxPostNudgeEvidenceReadTurns;
+    if (!allowEvidenceRead) {
+      const message =
+        "The model tried to read/search again after the required mutation nudge.";
+      warnings.push(message);
+      reasonCodes.push("unfulfilled_execute_exhausted");
+      runtime.emit(bus, {
+        type: "warning",
+        runId,
+        message,
+        code: "read_only_after_mutation_nudge",
+        data: {
+          route: decision.route,
+          requestedTools: toolCalls.map((call) => call.name).join(", "),
+        },
+        at: runtime.isoNow(),
+      });
+      session.decision = decision;
+      session.selectedSkillIds = selectedSkillIds;
+      return {
+        kind: "return",
+        outcome: {
+          kind: "failed",
+          answer: answer || undefined,
+          extraReasons: [],
+          error: {
+            code: "no_mutation_performed",
+            message:
+              "The model attempted more read-only discovery after being told to apply the required workspace edit.",
+          },
+        },
+      };
+    }
+    // Allow a few targeted evidence-read batches after the nudge; then fail.
+    session.postNudgeEvidenceReadTurns += 1;
+  }
   if (needsWorkspaceTools && !runtime.deps.tools) {
     session.decision = decision;
-      session.selectedSkillIds = selectedSkillIds;
-      return { kind: "return", outcome: {
-      kind: "failed",
-      answer: answer || undefined,
-      extraReasons: ["misconfigured"],
-      error: {
-        code: "misconfigured",
-        message: "Model requested tools but Tool Runtime is not configured.",
+    session.selectedSkillIds = selectedSkillIds;
+    return {
+      kind: "return",
+      outcome: {
+        kind: "failed",
+        answer: answer || undefined,
+        extraReasons: ["misconfigured"],
+        error: {
+          code: "misconfigured",
+          message: "Model requested tools but Tool Runtime is not configured.",
+        },
       },
-    } };
+    };
   }
   if (needsWorkspaceTools && !workspaceRoot) {
     session.decision = decision;
-      session.selectedSkillIds = selectedSkillIds;
-      return { kind: "return", outcome: {
-      kind: "failed",
-      answer: answer || undefined,
-      extraReasons: ["misconfigured"],
-      error: {
-        code: "misconfigured",
-        message: "Model requested tools but workspaceRoot was not provided.",
+    session.selectedSkillIds = selectedSkillIds;
+    return {
+      kind: "return",
+      outcome: {
+        kind: "failed",
+        answer: answer || undefined,
+        extraReasons: ["misconfigured"],
+        error: {
+          code: "misconfigured",
+          message: "Model requested tools but workspaceRoot was not provided.",
+        },
       },
-    } };
+    };
   }
 
   messages.push({
