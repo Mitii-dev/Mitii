@@ -34,17 +34,17 @@ describe("clampTurnMaximumOutputTokens", () => {
   });
 
   it("caps tool-loop turns while still allowing larger patch batches", () => {
-    // 50k window, ~20k input, ~15k generation ceiling -> cap at 8k.
+    // Compact (<50k): 8k ceiling when leftover is larger.
     expect(
       clampTurnMaximumOutputTokens({
-        reservedOutputTokens: 14_999,
-        contextWindowTokens: 50_000,
+        reservedOutputTokens: 29_999,
+        contextWindowTokens: 45_000,
         usedInputTokens: 20_000,
         toolLoop: true,
       }),
     ).toBe(8_192);
 
-    // High ceiling + large leftover: still bounded for local model stability.
+    // Standard (50k–<100k): 10k ceiling.
     expect(
       clampTurnMaximumOutputTokens({
         reservedOutputTokens: 29_999,
@@ -52,17 +52,17 @@ describe("clampTurnMaximumOutputTokens", () => {
         usedInputTokens: 10_000,
         toolLoop: true,
       }),
-    ).toBe(8_192);
+    ).toBe(10_240);
 
-    // Compact windows get a smaller but still useful tool-loop cap.
+    // Wide (≥100k): 12k ceiling — still far below full leftover.
     expect(
       clampTurnMaximumOutputTokens({
-        reservedOutputTokens: 29_999,
-        contextWindowTokens: 35_000,
-        usedInputTokens: 10_000,
+        reservedOutputTokens: 49_999,
+        contextWindowTokens: 128_000,
+        usedInputTokens: 20_000,
         toolLoop: true,
       }),
-    ).toBe(4_096);
+    ).toBe(12_288);
   });
 
   it("never collapses a usable leftover window to a 1-token turn", () => {

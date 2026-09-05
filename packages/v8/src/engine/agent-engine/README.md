@@ -92,7 +92,7 @@ agent-engine/
   `cacheHitTokens` / `cacheMissTokens`.
 - Per-turn `maximumOutputTokens` follows **leftover context** (`window − used
   input`, scaled, then generation ceiling). Tool-loop turns additionally apply
-  a band cap (4k compact, 8k standard/wide) so local models do not turn spare
+  a band cap (8k compact, 10k standard, 12k wide) so local models do not turn spare
   context into long analysis instead of bounded patch calls.
 - Scaffold/clone discovery **remaps write surfaces** from the template package
   onto the target package before planning/checklist seeding.
