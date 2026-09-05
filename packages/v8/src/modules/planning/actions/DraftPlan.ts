@@ -1336,22 +1336,20 @@ function isRepairIntent(evidence: PlanningTaskEvidence): boolean {
 }
 
 /**
- * Strip chat @-mentions and repeated path noise from user/outcome text.
+ * Strip chat @-mention markers from user/outcome text while keeping the path.
+ * Never delete destination package paths from phrases like
+ * "Create packages/mui-builder as a full port of …".
  */
 function sanitizeUserPhrase(
   value: string,
-  targetRefs: readonly string[] = [],
+  _targetRefs: readonly string[] = [],
 ): string {
   let text = value.replace(/\r\n/g, "\n").trim();
-  // Remove @path mentions used by hosts for attachments.
-  text = text.replace(/(^|\s)@[^\s]+/g, " ");
-  // Remove repeated absolute-ish path tokens when targets already carry them.
-  for (const ref of targetRefs) {
-    const escaped = escapeRegExp(ref.trim());
-    if (!escaped) continue;
-    text = text.replace(new RegExp(`(?:^|\\s)${escaped}(?=\\s|$)`, "gi"), " ");
-  }
-  text = text.replace(/\s+/g, " ").trim();
+  // Hosts attach paths as @packages/foo — keep the path, drop only the @.
+  text = text.replace(/(^|[\s(,])@(?=[\w./\\-])/g, "$1");
+  // Collapse duplicate blank lines / spaces from mention cleanup.
+  text = text.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n");
+  text = text.replace(/[^\S\n]{2,}/g, " ").trim();
   // Drop leftover punctuation-only crumbs.
   text = text.replace(/^[,:;.\-_/]+/, "").replace(/[,:;.\-_/]+$/, "").trim();
   return text;

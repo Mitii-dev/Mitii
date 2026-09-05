@@ -194,6 +194,49 @@ describe("PlanningPipeline", () => {
     expect(doneWhen.some((item) => item.startsWith("Done when:"))).toBe(false);
   });
 
+  it("keeps destination package path in port/create objectives", async () => {
+    const result = await pipeline.plan(
+      baseInput({
+        query:
+          "Create @packages/mui-builder as a full port of @packages/formik-form-builder, but with MUI Material instead of Joy.",
+        evidence: {
+          primaryIntent: "migrate",
+          secondaryIntents: ["feature"],
+          interactionIntent: "act",
+          scope: "multi_file",
+          complexity: "moderate",
+          risk: "medium",
+          clarity: "clear",
+          targets: [
+            {
+              kind: "folder",
+              value: "packages/mui-builder",
+              explicit: true,
+            },
+            {
+              kind: "folder",
+              value: "packages/formik-form-builder",
+              explicit: true,
+            },
+          ],
+          constraints: [],
+          requestedOutcomes: [
+            "Create @packages/mui-builder as a full port of @packages/formik-form-builder, but with MUI Material instead of Joy.",
+          ],
+          recommendsPlanning: true,
+          recommendsVerification: true,
+          changeImpact: ["code"],
+        },
+        processHints: [],
+      }),
+    );
+
+    expect(result.status).toBe("validated");
+    expect(result.plan?.objective).toMatch(/packages\/mui-builder/i);
+    expect(result.plan?.objective).toMatch(/full port/i);
+    expect(result.plan?.objective.includes("@")).toBe(false);
+  });
+
   it("returns blocked when planningDepth is none", async () => {
     const result = await pipeline.plan(baseInput({ planningDepth: "none" }));
     expect(result.status).toBe("blocked");
