@@ -109,6 +109,15 @@ export async function matchSkills(params: {
       continue;
     }
 
+    if (
+      skill.requireTagEvidence === true &&
+      !skill.alwaysApply &&
+      !hasTagEvidence(skill, input, queryTokens, reasons)
+    ) {
+      nonMatchedCount += 1;
+      continue;
+    }
+
     // Soft understanding tags boost score only after applicability is earned.
     const recommendedTags = input.evidence.recommendedSkillTags ?? [];
     if (skill.tags.length > 0 && recommendedTags.length > 0) {
@@ -251,6 +260,39 @@ function scoreKeywordOverlap(
     }
   }
   return hits === 0 ? 0 : Math.min(1, hits / Math.min(searchable.size, 6));
+}
+
+/**
+ * Tag-gated skills (e.g. cicd-agent) need query/tag evidence beyond a bare
+ * intent match so ordinary feature asks do not pull CI playbooks.
+ */
+function hasTagEvidence(
+  skill: SkillIndexEntry,
+  input: SkillsSelectParsedInput,
+  queryTokens: ReadonlySet<string>,
+  reasons: readonly string[],
+): boolean {
+  if (skill.tags.length === 0) {
+    return true;
+  }
+  if (reasons.includes("keyword") || reasons.includes("recommended_tag")) {
+    return true;
+  }
+  const recommended = new Set(
+    (input.evidence.recommendedSkillTags ?? []).map((tag) =>
+      tag.toLowerCase(),
+    ),
+  );
+  if (skill.tags.some((tag) => recommended.has(tag.toLowerCase()))) {
+    return true;
+  }
+  const tagTokens = tokenize(skill.tags.join(" "));
+  for (const token of tagTokens) {
+    if (queryTokens.has(token)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function overlapBoost(

@@ -165,6 +165,7 @@ export class SkillsPipeline {
       scored: hydrated.selected,
       budgetTokens: parsed.budgetTokens,
       maxSkills: resolveMaxSkills(input, parsed),
+      forbidLargeSkills: parsed.forbidLargeSkills === true,
     });
 
     if (budgeted.budgetOmitted) {

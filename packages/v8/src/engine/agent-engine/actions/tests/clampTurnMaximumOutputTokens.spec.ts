@@ -32,4 +32,23 @@ describe("clampTurnMaximumOutputTokens", () => {
       }),
     ).toBe(1_900);
   });
+
+  it("applies the band tool-loop ceiling on tool-capable turns", () => {
+    expect(
+      clampTurnMaximumOutputTokens({
+        reservedOutputTokens: 29_999,
+        contextWindowTokens: 65_000,
+        usedInputTokens: 10_000,
+        toolLoop: true,
+      }),
+    ).toBe(3_072);
+    expect(
+      clampTurnMaximumOutputTokens({
+        reservedOutputTokens: 29_999,
+        contextWindowTokens: 35_000,
+        usedInputTokens: 8_000,
+        toolLoop: true,
+      }),
+    ).toBe(2_048);
+  });
 });

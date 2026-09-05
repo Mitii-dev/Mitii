@@ -2954,13 +2954,16 @@ select.depth-select {
 
 .token-chip--live {
   color: var(--mitii-text);
-  border-color: var(--mitii-border);
+  border-color: color-mix(in srgb, var(--mitii-accent) 55%, var(--mitii-border) 45%);
+  background: color-mix(in srgb, var(--mitii-accent) 10%, transparent);
 }
 
 .token-chip__live {
-  color: var(--mitii-text);
+  color: var(--mitii-accent);
   text-transform: lowercase;
-  letter-spacing: 0;
+  letter-spacing: 0.02em;
+  font-size: 0.72em;
+  font-weight: 600;
 }
 
 .token-chip__glyph {

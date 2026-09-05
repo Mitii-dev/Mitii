@@ -22,7 +22,7 @@ const PSEUDO_TOOL_REQUEST =
   /<user_request\b[^>]*>\s*(?:read|open|inspect|look at)\b[\s\S]{0,800}<\/user_request>/i;
 
 const LITERAL_TOOL_TAG_REQUEST =
-  /<(?:read_file|read_many_files|search_files|glob_files|list_directory|goto_definition|find_references)\b[^>]*>(?:\s*<\/(?:read_file|read_many_files|search_files|glob_files|list_directory|goto_definition|find_references)>)?/i;
+  /<(?:read_file|read_many_files|search_files|glob_files|list_directory|goto_definition|find_references|analyze_change_impact)\b[^>]*>(?:\s*<\/(?:read_file|read_many_files|search_files|glob_files|list_directory|goto_definition|find_references|analyze_change_impact)>)?/i;
 
 /**
  * Provider / model tool XML that leaked into assistant text instead of a

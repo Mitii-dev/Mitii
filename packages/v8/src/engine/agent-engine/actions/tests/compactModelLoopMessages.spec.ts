@@ -445,6 +445,73 @@ describe("compactModelLoopMessages", () => {
     expect(thresholds.autoTokens).toBe(40_000);
   });
 
+  it("keeps distinct auto and hard ceilings when preservePrefix is false", () => {
+    const thresholds = resolveCompactionThresholds({
+      budgetTokens: 200_000,
+      autoMaxTokens: 32_000,
+      hardMaxTokens: 40_000,
+      preservePrefix: false,
+    });
+    expect(thresholds.autoTokens).toBe(32_000);
+    expect(thresholds.hardTokens).toBe(40_000);
+    expect(thresholds.autoTokens).toBeLessThan(thresholds.hardTokens);
+  });
+
+  it("compacts earlier under no_cache style thresholds without preservePrefix", () => {
+    const longBody = "y".repeat(4_000);
+    const messages: ModelMessage[] = [
+      { role: "system", content: "system" },
+      { role: "user", content: "implement" },
+    ];
+    for (let index = 0; index < 8; index += 1) {
+      messages.push({
+        role: "assistant",
+        content: "",
+        toolCalls: [
+          {
+            id: `read_${index}`,
+            name: "read_file",
+            arguments: JSON.stringify({ path: `src/f${index}.ts` }),
+          },
+        ],
+      });
+      messages.push({
+        role: "tool",
+        toolCallId: `read_${index}`,
+        content: JSON.stringify({
+          status: "succeeded",
+          toolName: "read_file",
+          output: longBody,
+        }),
+      });
+    }
+
+    const withPreserve = compactModelLoopMessages({
+      messages,
+      estimator: { estimate: (text: string) => Math.ceil(text.length / 4) },
+      budgetTokens: 6_000,
+      preservePrefix: true,
+      recentToolMessagesToKeepFull: 2,
+      compactedToolResultChars: 200,
+    });
+    const withoutPreserve = compactModelLoopMessages({
+      messages,
+      estimator: { estimate: (text: string) => Math.ceil(text.length / 4) },
+      budgetTokens: 6_000,
+      preservePrefix: false,
+      recentToolMessagesToKeepFull: 2,
+      compactedToolResultChars: 200,
+    });
+
+    // Without prefix preservation, auto pressure should engage sooner.
+    expect(["auto", "hard"]).toContain(withoutPreserve.pressure);
+    if (withPreserve.pressure === "within" || withPreserve.pressure === "warn") {
+      expect(withoutPreserve.compacted || withoutPreserve.pressure !== withPreserve.pressure).toBe(
+        true,
+      );
+    }
+  });
+
   it("stubs completed-task file-read bodies without waiting for compaction", () => {
     const fileBody = "x".repeat(2_000);
     const messages: ModelMessage[] = [

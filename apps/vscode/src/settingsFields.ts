@@ -439,9 +439,9 @@ export function applyTokenBudgetPolicyField(
 }
 
 export const DEFAULT_CONTEXT_TOGGLES: ContextToggles = {
-  repoMap: true,
+  repoMap: false,
   diagnostics: true,
-  gitDiff: true,
+  gitDiff: false,
   editor: true,
   openTabs: false,
   memory: true,

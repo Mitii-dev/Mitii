@@ -10,10 +10,27 @@ export type {
 } from "./buildClarificationPayload";
 export { extractFileReadPaths } from "./extractFileReadPaths";
 export {
+  extractToolContentPaths,
+  stripPathRangeSuffix,
+  toolContentPathsOverlap,
+  normalizeRepoPath,
+} from "./extractToolContentPaths";
+export {
   extractMutationTargetPaths,
   missingMustReadPaths,
   buildMustReadNudgeMessage,
 } from "./assertBatchReads";
+export {
+  resolvePromptCacheClass,
+  shouldPreserveModelLoopPrefix,
+  PROMPT_CACHE_CLASSES,
+} from "./resolvePromptCacheClass";
+export type {
+  PromptCacheClass,
+  ResolvePromptCacheClassInput,
+} from "./resolvePromptCacheClass";
+export { estimateStickyMutableChars } from "./estimateStickyMutableChars";
+export type { StickyMutableCharEstimate } from "./estimateStickyMutableChars";
 export {
   extractEstablishedFact,
   extractCompilerErrorQueue,

@@ -329,6 +329,62 @@ describe("SkillsPipeline", () => {
     expect(result.instructions).toEqual([]);
   });
 
+  it("omits requireTagEvidence skills without tag evidence", async () => {
+    const pipeline = new SkillsPipeline({
+      catalog: new InMemorySkillsCatalog([
+        {
+          id: "cicd-agent",
+          title: "CI/CD Agent",
+          content: "Diff-first CI guidance.",
+          intents: ["test", "config"],
+          routes: ["execute"],
+          tags: ["ci", "workflow", "coverage"],
+          paths: [],
+          priority: 200,
+          alwaysApply: false,
+          requireTagEvidence: true,
+        },
+        {
+          id: "safety-always",
+          title: "Safety",
+          content: "Never invent permissions beyond the granted tools.",
+          intents: [],
+          routes: [],
+          tags: [],
+          paths: [],
+          priority: 10,
+          alwaysApply: true,
+        },
+      ]),
+    });
+
+    const withoutTags = await pipeline.select(
+      baseInput({
+        query: "Add unit tests for the parser",
+        evidence: {
+          primaryIntent: "test",
+          secondaryIntents: [],
+        },
+      }),
+    );
+    expect(withoutTags.instructions.map((block) => block.id)).not.toContain(
+      "cicd-agent",
+    );
+
+    const withTags = await pipeline.select(
+      baseInput({
+        query: "Fix the GitHub Actions workflow coverage gate",
+        evidence: {
+          primaryIntent: "test",
+          secondaryIntents: [],
+        },
+      }),
+    );
+    expect(withTags.instructions.map((block) => block.id)).toContain(
+      "cicd-agent",
+    );
+  });
+
   it("returns empty when the catalog has no matches", async () => {
     const pipeline = new SkillsPipeline({
       catalog: new InMemorySkillsCatalog([

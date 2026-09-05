@@ -161,9 +161,9 @@ Controls how much diagnostic detail lands in the run log (visible via "Export se
 
 | UI field | Setting | Save / reflect |
 |---|---|---|
-| Repo map | `mitii.ui.contextToggles.repoMap` | Boolean, reflected as saved. |
+| Repo map | `mitii.ui.contextToggles.repoMap` | Boolean. Default off; auto-enabled for deep / CI-git impact asks. |
 | Diagnostics | `mitii.ui.contextToggles.diagnostics` | Boolean. |
-| Git diff | `mitii.ui.contextToggles.gitDiff` | Boolean. |
+| Git diff | `mitii.ui.contextToggles.gitDiff` | Boolean. Default off; auto-enabled for deep / CI-git impact asks. |
 | Active editor | `mitii.ui.contextToggles.editor` | Boolean. |
 | Open tabs | `mitii.ui.contextToggles.openTabs` | Boolean. Default off. |
 | Memory | `mitii.ui.contextToggles.memory` | Boolean. Default on. |

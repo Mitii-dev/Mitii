@@ -99,6 +99,23 @@ describe("isIncompleteAssistantTurn", () => {
     ).toBe(true);
   });
 
+  it("detects literal change-impact tags emitted as text", () => {
+    const answer = [
+      "Let me check the impact surface before editing.",
+      "",
+      '<analyze_change_impact path="src/core.ts" maximumHops="1" />',
+    ].join("\n");
+
+    expect(isPseudoToolRequestAnswer(answer)).toBe(true);
+    expect(
+      shouldRecoverIncompleteAssistantTurn({
+        content: answer,
+        toolCallCount: 0,
+        changedFileCount: 0,
+      }),
+    ).toBe(true);
+  });
+
   it("recovers long unfinished investigation monologues with leaked tool markup", () => {
     const answer = [
       "everything looks correct in the code. The SELECT type is defined, the FieldSelect component exists, and it's properly imported in the dynamic field renderer.",

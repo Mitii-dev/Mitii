@@ -21,20 +21,32 @@ agent-engine/
   pipeline/                 Public facade plus cohesive run stages
     AgentEnginePipeline     start()/resume() orchestration
     runtime                 deps, events, window policy, run handle
-    executeStart            intake → pin → understand → decide → prompt
+    executeStart            prompt + model/tool loop orchestration
+    executeStartEarlyPipeline  intake → pin → preflight → understand → decide
+    executeStartEnrichment  context → skills → memory → planning
     executeResume           clarification / plan / tool-approval continuation
-    modelToolLoop           model turns, compaction, recovery
-    executeTool             one authorized tool call + grant refresh
+    executeResumeToolLoop   resume model/tool loop from checkpoint
+    modelToolLoop           turn orchestration, truncation recovery, cache-class
+    modelLoopNoToolTurn     text-only turn outcomes / recoveries
+    modelLoopToolPhase      tool batch + grant refresh
+    modelLoopAfterTools     post-tool mutation / stall outcomes
+    prepareModelLoopTurn    compaction, working set, output clamp
+    consumeModelTurn        single LLM stream consumption
+    executeTool             one authorized tool call (+ support helpers)
     pinAndDiscovery         repository pin, preflight snapshot, discovery pass
-    verification            gate, repair queue, persist, user summary
+    verification            re-exports + retry-ask helper
+    verificationFinish      finishAfterLoop / repair queue
+    verificationSupport     gate, persist, commit, summaries
   contracts/
     input/                  AgentEngineStartInput, AgentEngineResumeInput
     output/                 AgentRunHandle, AgentRunResult, RunEvent
     ports/                  AgentEngineDependencies
     errors/                 AgentEngineError
-  actions/                  Mapping, prompt slices, output recovery, gates, evidence
+  actions/                  Mapping, prompt slices, output recovery, gates, evidence,
+                            path extractors, cache-class, sticky/mutable estimates
   adapters/                 In-memory/file checkpoint stores, composition helpers
-  internal/                 Checkpoints, event bus, budgets, task-list runtime
+  internal/                 Checkpoints, event bus, budgets, tool cache, read ledger,
+                            working-set upsert, task-list runtime
   tests/                    Unit and wired engine tests
 ```
 
@@ -68,13 +80,39 @@ agent-engine/
   `loopPolicy.thresholds` (partial overrides of `AGENT_ENGINE_THRESHOLDS`) for
   lab tweaks; omit for shipped standards.
 - Identical read-only tool+args reuse the prior result (`tool_result_deduped`).
-  Mutations invalidate that content cache.
+  Mutations **path-invalidate** that content cache (only overlapping paths), so
+  reference-package reads survive edits to the target package.
+- Main-loop **read ledger** returns compact `already_read` stubs for unchanged
+  `read_file` / `read_many_files` path+range repeats (`tool_result_already_read`),
+  matching discovery’s duplicate-read protection.
+- Compaction is **cache-class aware**: `prompt_cache` preserves the message
+  prefix until the hard ceiling (provider prompt-cache friendly); `no_cache`
+  (typical local runtimes that never report hit/miss) enables earlier auto
+  compaction. Class is resolved from `supportsPromptCaching` plus observed
+  `cacheHitTokens` / `cacheMissTokens`.
+- Tool-loop turns clamp `maximumOutputTokens` to a **band tool-loop ceiling**
+  (compact 2k / standard 3k / wide 4k) so leftover context cannot open a
+  mid-loop essay budget.
+- Scaffold/clone discovery **remaps write surfaces** from the template package
+  onto the target package before planning/checklist seeding.
+- Checklist auto-advance matches **write / package-root** targets so mutations
+  under the target package complete the active row.
+- Skills support optional `sizeClass` (S/M/L). Packing prefers compact L1 for L
+  playbooks when later M skills remain; compact windows forbid L injection
+  unless required/`alwaysApply`. Optional `requireTagEvidence` gates niche
+  skills (e.g. CI) so intent alone is not enough.
+- Host (VS Code): lean context defaults (repo map / git diff off) with
+  intent-lite auto-enable for deep / CI-git asks; Agent conversation carry
+  prefers a compact `<carry_handoff>` prefix and tighter chat caps.
+- Decision Policy keeps scaffold-like package feature/migrate work on the
+  **standard** mutation profile instead of ultra-tight.
+- Trailing `<working_set>` is **always** re-upserted before each model call
+  (including verification repair), so live checklist / mutation budget /
+  observations survive hard compaction.
 - Auto/hard compaction reinjects mid-run observations as well as pre-run
   memory. Observation count, observation size, reinjection size, dropped-turn
   summary size, compacted tool-result size, compacted tool-argument size, and
   live tool-result content size are all read from `WindowPolicy.compaction`.
-  The model-loop prefix is preserved until the hard compaction ceiling so
-  local KV caches and provider prompt caches can hit across turns.
 - Tool-result history compaction preserves schema-shaped read/search arguments
   and replaces older tool results with path/range/finding stubs instead of
   slicing raw JSON or dropping tool rows from the summary.
@@ -97,7 +135,7 @@ agent-engine/
 - `budget_exhausted` after mutations still captures `repo_build_state` phase `after` so remaining error counts are visible.
 - Truncation on that same execute+write path recovers as a **tool-call** nudge, not essay continuation. Direct-answer truncation still continues the text.
 - `context_ready` may include `retrievalSources` (`sourceId`, `status`, `candidateCount`) from hybrid retrieval reports.
-- `model_turn` events include turn index, optional token counts, `finishReason`, and `truncated`.
+- `model_turn` events include turn index, optional token counts, `finishReason`, `truncated`, plus telemetry: `preservePrefix`, `promptCacheClass`, `stickyInputChars`, `mutableInputChars`, and `compactionPressure`.
 - `composeReadOnlyAgentEngine` provides a useful read-only wiring helper.
 
 ### Start order
@@ -160,6 +198,29 @@ pnpm exec vitest run \
   packages/v8/src/engine/agent-engine/internal/tests/discoveryPassBudget.spec.ts
 ```
 
+Evidence-economy / cache-class coverage:
+
+```bash
+pnpm exec vitest run \
+  packages/v8/src/engine/agent-engine/internal/tests/ToolCallCache.spec.ts \
+  packages/v8/src/engine/agent-engine/internal/tests/ReadLedger.spec.ts \
+  packages/v8/src/engine/agent-engine/internal/tests/workingSetRuntime.spec.ts \
+  packages/v8/src/engine/agent-engine/actions/tests/extractToolContentPaths.spec.ts \
+  packages/v8/src/engine/agent-engine/actions/tests/resolvePromptCacheClass.spec.ts \
+  packages/v8/src/engine/agent-engine/actions/tests/estimateStickyMutableChars.spec.ts \
+  packages/v8/src/engine/agent-engine/actions/tests/compactModelLoopMessages.spec.ts \
+  packages/v8/src/engine/agent-engine/actions/tests/clampTurnMaximumOutputTokens.spec.ts \
+  packages/v8/src/engine/agent-engine/actions/tests/extractEstablishedFact.spec.ts \
+  packages/v8/src/engine/agent-engine/internal/tests/taskListRuntime.spec.ts \
+  packages/v8/src/modules/planning/actions/tests/remapScaffoldChangeSurfaces.spec.ts \
+  packages/v8/src/modules/skills/tests/unit/ApplySkillBudget.spec.ts \
+  packages/v8/src/modules/decision-policy/tests/MutationBudget.spec.ts
+```
+
+- `ToolCallCache` — path-aware content invalidation keeps unrelated package reads.
+- `ReadLedger` — main-loop already-read stubs; path-overlap invalidation.
+- `workingSetRuntime` — trailing `<working_set>` always upserted (including repair).
+- `resolvePromptCacheClass` — `prompt_cache` vs `no_cache` and `preservePrefix`.
 - `planDiscoveryContract` — cold Plan asks force `discover_and_plan`; `quick` / Agent mode do not.
 - `planDiscoveryQuality` — quality-floor predicates and clarify fallback decision.
 - `discoveryPassBudget` — shaped preflight must not starve seed reads / model turns.

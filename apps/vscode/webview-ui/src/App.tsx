@@ -120,9 +120,9 @@ const EMPTY_TOKEN_USAGE: TokenUsageSnapshot = {
 };
 
 const DEFAULT_CONTEXT_TOGGLES: ContextToggles = {
-  repoMap: true,
+  repoMap: false,
   diagnostics: true,
-  gitDiff: true,
+  gitDiff: false,
   editor: true,
   openTabs: false,
   memory: true,
@@ -837,6 +837,8 @@ export function App() {
   const [pinnedSkillIds, setPinnedSkillIds] = useState<string[]>([]);
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [running, setRunning] = useState(false);
+  const runningRef = useRef(false);
+  runningRef.current = running;
   const [error, setError] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<PathSuggestion[]>([]);
   const [suggestOpen, setSuggestOpen] = useState(false);
@@ -950,13 +952,17 @@ export function App() {
   const applyTokenUsage = useCallback(
     (usage: TokenUsageSnapshot) => {
       setTokenUsage((prev) => {
+        const keepLiveDuringRun =
+          runningRef.current && prev.live && usage.live === false;
         const shouldKeepLiveBreakdown =
-          usage.contextBreakdown === undefined && usage.live && prev.live;
+          (usage.contextBreakdown === undefined && usage.live && prev.live) ||
+          (keepLiveDuringRun && prev.contextBreakdown !== undefined);
         const current = providerRef.current;
         const providerContextWindow =
           current.effectiveContextWindow || current.contextWindow;
         return {
           ...usage,
+          live: keepLiveDuringRun ? true : usage.live,
           contextWindow:
             usage.contextWindow ||
             providerContextWindow ||
@@ -1178,6 +1184,7 @@ export function App() {
         case 'run.started': {
           setRunning(true);
           setError(null);
+          setTokenUsage((prev) => ({ ...prev, live: true }));
           // Keep a pending-plan handoff visible, but clear stale plans for new runs.
           if (msg.mode === 'plan' || !pendingPlanRef.current) setPlan(null);
           stickToBottomRef.current = true;
@@ -1276,6 +1283,8 @@ export function App() {
           break;
         }
         case 'run.resumed':
+          setRunning(true);
+          setTokenUsage((prev) => ({ ...prev, live: true }));
           markSuspensionResumed(msg.runId);
           break;
         case 'run.result': {

@@ -105,6 +105,7 @@ import { planViewFromArtifact } from './planView.js';
 import { saveTaskListToWorkspace } from './taskStore.js';
 import {
   buildConversationCarry,
+  collectStructuredCarryFromThread,
   compactActivityForHistory,
   compactFileChangesForHistory,
   enrichAssistantCarryText,
@@ -1215,12 +1216,20 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     const prompt = String(message.prompt ?? '').trim();
     if (!prompt) return;
     const activeThread = await this.ensureActiveThread(prompt);
+    const mode = message.mode === 'review' ? 'ask' : (message.mode ?? 'ask');
+    const engineMode =
+      mode === 'plan' || mode === 'agent' ? mode : 'ask';
     const conversation = buildConversationCarry({
       messages: (activeThread?.messages ?? []).map((m) => ({
         role: m.role,
         text: m.text,
       })),
       currentPrompt: prompt,
+      mode: engineMode,
+      structured:
+        engineMode === 'agent'
+          ? collectStructuredCarryFromThread(activeThread ?? {})
+          : undefined,
     });
     const conversationText = conversation
       .map((m) => `${m.role}: ${m.content}`)
@@ -1232,7 +1241,6 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     this.runCancel?.cancel();
     this.runCancel?.dispose();
     this.runCancel = new this.vs.CancellationTokenSource();
-    const mode = message.mode === 'review' ? 'ask' : (message.mode ?? 'ask');
     const llmPrompt =
       message.mode === 'review'
         ? `Review the current git changes and suggest improvements / risks.\n\n${prompt}`
@@ -1284,28 +1292,26 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         policy: readTokenBudgetPolicyOverrides(cfg),
       }),
     });
-    this.post({
-      type: 'tokenUsage',
-      usage: {
-        ...this.tokenUsage,
-        inputTokensTotal:
-          this.runBaseInputTokens + provisionalContextBreakdown.totalTokens,
-        outputTokensTotal: this.runBaseOutputTokens,
-        sessionTotal:
-          this.runBaseInputTokens +
-          this.runBaseOutputTokens +
-          provisionalContextBreakdown.totalTokens,
-        currentTurnTotal: provisionalContextBreakdown.totalTokens,
-        currentTurnInputTokens: provisionalContextBreakdown.totalTokens,
-        currentTurnOutputTokens: 0,
-        lastPromptTokens: provisionalContextBreakdown.totalTokens,
-        lastResponseTokens: 0,
-        contextWindow,
-        contextBreakdown: provisionalContextBreakdown,
-        estimated: true,
-        live: true,
-      },
-    });
+    this.tokenUsage = {
+      ...this.tokenUsage,
+      inputTokensTotal:
+        this.runBaseInputTokens + provisionalContextBreakdown.totalTokens,
+      outputTokensTotal: this.runBaseOutputTokens,
+      sessionTotal:
+        this.runBaseInputTokens +
+        this.runBaseOutputTokens +
+        provisionalContextBreakdown.totalTokens,
+      currentTurnTotal: provisionalContextBreakdown.totalTokens,
+      currentTurnInputTokens: provisionalContextBreakdown.totalTokens,
+      currentTurnOutputTokens: 0,
+      lastPromptTokens: provisionalContextBreakdown.totalTokens,
+      lastResponseTokens: 0,
+      contextWindow,
+      contextBreakdown: provisionalContextBreakdown,
+      estimated: true,
+      live: true,
+    };
+    this.post({ type: 'tokenUsage', usage: this.tokenUsage });
 
     const workspaceRootForChanges = this.effectiveRoot();
     const preDirty = workspaceRootForChanges
@@ -1315,8 +1321,6 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
 
     try {
       const client = await this.ensureClient();
-      const engineMode =
-        mode === 'plan' || mode === 'agent' ? mode : 'ask';
       const approvedPlan = resolvePlanHandoff({
         mode: engineMode,
         pendingPlan: activeThread?.pendingPlan,
@@ -3049,7 +3053,23 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     return this.lastIndex;
   }
 
+  private isRunActive(): boolean {
+    return this.runCancel !== undefined;
+  }
+
   private setActiveThreadUsage(usage: TokenUsageSnapshot): void {
+    // Bootstrap/settings refreshes must not wipe an in-flight live meter.
+    if (this.isRunActive() && this.tokenUsage.live) {
+      this.tokenUsage = withResolvedUsageWindow(
+        {
+          ...this.tokenUsage,
+          contextWindow:
+            usage.contextWindow || this.tokenUsage.contextWindow,
+        },
+        resolveContextWindow(this.vs),
+      );
+      return;
+    }
     this.tokenUsage = withResolvedUsageWindow(
       {
         ...usage,
@@ -3062,6 +3082,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
 
   private persistThreadUsage(): void {
     if (!this.activeThreadId) return;
+    // Durable cache is always non-live; in-memory this.tokenUsage keeps live.
     this.tokenUsageByThread.set(this.activeThreadId, {
       ...this.tokenUsage,
       live: false,

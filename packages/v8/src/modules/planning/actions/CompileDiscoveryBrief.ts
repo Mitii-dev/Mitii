@@ -11,6 +11,7 @@ import type {
   DiscoveryTarget,
   DiscoveryVerificationHint,
 } from "../contracts";
+import { remapScaffoldChangeSurfaces } from "./remapScaffoldChangeSurfaces";
 
 const FILE_LIKE = /\.\w{1,16}$/;
 const TEST_LIKE = /(?:\.test|\.spec|\/tests?\/|\/__tests__\/)/i;
@@ -57,10 +58,16 @@ export function compileDiscoveryBrief(
     })),
   ]);
 
-  const proposedChangeSurfaces = inferChangeSurfaces({
+  const inferredSurfaces = inferChangeSurfaces({
     filesRead,
     searchFiles,
     explicitTargets: parsed.explicitTargets,
+  });
+  const proposedChangeSurfaces = remapScaffoldChangeSurfaces({
+    objective: parsed.objective,
+    surfaces: inferredSurfaces,
+    explicitTargets: parsed.explicitTargets,
+    filesRead,
   });
   const verificationHints = uniqueHints([
     ...parsed.verificationHints,

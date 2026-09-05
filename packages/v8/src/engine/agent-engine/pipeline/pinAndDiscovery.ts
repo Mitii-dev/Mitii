@@ -83,7 +83,7 @@ import {
 
 import type { AgentEngineRuntime } from "./runtime";
 
-import { consumeModelTurn } from "./modelToolLoop";
+import { consumeModelTurn } from "./consumeModelTurn";
 
 /**
  * Resolve + pin whenever a workspace reference exists — no longer gated

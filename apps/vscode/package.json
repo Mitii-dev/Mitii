@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
-  "version": "2.9.21",
+  "version": "2.9.22",
   "publisher": "mitii",
   "license": "AGPL-3.0-or-later",
   "icon": "media/mitii-short-logo.png",
@@ -1135,8 +1135,8 @@
         },
         "mitii.ui.contextToggles.repoMap": {
           "type": "boolean",
-          "default": true,
-          "description": "Include repository map hints in agent context"
+          "default": false,
+          "description": "Include repository map hints in agent context (also auto-enabled for deep / CI-git impact asks)"
         },
         "mitii.ui.contextToggles.diagnostics": {
           "type": "boolean",
@@ -1145,8 +1145,8 @@
         },
         "mitii.ui.contextToggles.gitDiff": {
           "type": "boolean",
-          "default": true,
-          "description": "Include git status/diff hints in agent context"
+          "default": false,
+          "description": "Include git status/diff hints in agent context (also auto-enabled for deep / CI-git impact asks)"
         },
         "mitii.ui.contextToggles.editor": {
           "type": "boolean",

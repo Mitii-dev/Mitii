@@ -71,6 +71,40 @@ It is intentionally not injected in metadata mode.
     expect(skills[0]?.content).not.toContain('Long internal playbook');
   });
 
+  it('parses sizeClass and requireTagEvidence from frontmatter', async () => {
+    const skillDir = join(root, '.mitii', 'skills', 'cicd-gated');
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(
+      join(skillDir, 'SKILL.md'),
+      `---
+name: cicd-gated
+description: CI gated skill.
+intents: [test]
+routes: [execute]
+tags: [ci, workflow]
+sizeClass: M
+requireTagEvidence: true
+priority: 180
+---
+
+# Body
+`,
+      'utf8',
+    );
+
+    const skills = await loadDiskSkills({
+      workspaceRoot: root,
+      includeBundled: false,
+    });
+
+    expect(skills).toHaveLength(1);
+    expect(skills[0]).toMatchObject({
+      id: 'cicd-gated',
+      sizeClass: 'M',
+      requireTagEvidence: true,
+    });
+  });
+
   it('loads agentskills.io minimal skills and hydrates the body lazily', async () => {
     const skillDir = join(root, '.mitii', 'skills', 'empty-input-parser');
     await mkdir(join(skillDir, 'references'), { recursive: true });

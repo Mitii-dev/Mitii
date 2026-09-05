@@ -110,6 +110,23 @@ describe("ResolveMutationBudget", () => {
     expect(result.profile).toBe("tight");
     expect(result.reasonCodes).toContain("mutation_budget_tight");
   });
+
+  it("keeps scaffold-like package feature work on standard instead of tight", () => {
+    const result = resolveMutationBudget({
+      understanding: createUnderstanding({
+        primaryTaskIntent: "feature",
+        taskAnalysis: {
+          scope: "package",
+          complexity: "moderate",
+          estimatedFilesAffected: { minimum: 4, maximum: 12 },
+          recommendsPlanning: true,
+          constraints: ["scaffold package like formik-form-builder"],
+        },
+      }),
+    });
+    expect(result.profile).toBe("standard");
+    expect(result.reasonCodes).toContain("mutation_budget_standard");
+  });
 });
 
 describe("DecisionPolicyPipeline mutation budget", () => {

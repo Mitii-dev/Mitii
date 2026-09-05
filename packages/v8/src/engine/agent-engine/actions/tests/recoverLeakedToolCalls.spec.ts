@@ -32,6 +32,26 @@ describe("recoverLeakedToolCallsFromMarkup", () => {
     expect(toolCalls.map((c) => c.name)).toEqual(["search_files", "read_file"]);
   });
 
+  it("recovers analyze_change_impact tags", () => {
+    const content = `<analyze_change_impact path="src/core.ts" maximumHops="1" includePackages="true" />`;
+    const { toolCalls } = recoverLeakedToolCallsFromMarkup({
+      content,
+      allowedToolNames: new Set(["analyze_change_impact"]),
+    });
+
+    expect(toolCalls).toEqual([
+      {
+        id: "recovered_0",
+        name: "analyze_change_impact",
+        arguments: JSON.stringify({
+          path: "src/core.ts",
+          maximumHops: 1,
+          includePackages: true,
+        }),
+      },
+    ]);
+  });
+
   it("does not recover unsupported tool tags", () => {
     const content = `<run_command command="echo hi" />`;
     const { toolCalls } = recoverLeakedToolCallsFromMarkup({
@@ -50,4 +70,3 @@ describe("recoverLeakedToolCallsFromMarkup", () => {
     expect(toolCalls).toHaveLength(0);
   });
 });
-

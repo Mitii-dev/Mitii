@@ -114,7 +114,12 @@ export function recoverLeakedToolCallsFromMarkup(params: {
     index += 1;
   }
 
-  if (toolCalls.length === 0 && /<\s*(?:read_file|search_files|glob_files|list_directory|goto_definition|find_references)\b/i.test(content)) {
+  if (
+    toolCalls.length === 0 &&
+    /<\s*(?:read_file|search_files|glob_files|list_directory|goto_definition|find_references|analyze_change_impact)\b/i.test(
+      content,
+    )
+  ) {
     warnings.push(
       "Leaked tool-call markup was detected but no recoverable tool attributes were parsed.",
     );
@@ -122,4 +127,3 @@ export function recoverLeakedToolCallsFromMarkup(params: {
 
   return { toolCalls, warnings };
 }
-

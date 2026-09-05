@@ -79,6 +79,7 @@ export const TOOL_REASON_CODES = [
   "identical_old_and_new",
   "patch_syntax_invalid",
   "must_read_incomplete",
+  "already_read",
   "checkpoint_missing",
   "rollback_failed",
   "pinned_state_missing",

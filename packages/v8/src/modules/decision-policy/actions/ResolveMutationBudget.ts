@@ -93,6 +93,12 @@ function selectProfile(
     taskAnalysis.complexity === "very_complex";
 
   const primary = understanding.intent.classification.primaryTaskIntent;
+  // Scaffold / package-create work needs room for multi-file batches.
+  // Ultra-tight budgets caused thrash on clone-package executes.
+  if (isScaffoldLikeExecute(understanding)) {
+    return "standard";
+  }
+
   if (
     primary === "refactor" ||
     largeFileSpan ||
@@ -114,6 +120,41 @@ function selectProfile(
   }
 
   return "standard";
+}
+
+/**
+ * Create/scaffold/migrate package work should not inherit the ultra-tight
+ * refactor profile even when scope is package and planning is recommended.
+ */
+function isScaffoldLikeExecute(
+  understanding: RequestUnderstandingResult,
+): boolean {
+  const primary = understanding.intent.classification.primaryTaskIntent;
+  if (primary !== "feature" && primary !== "migrate" && primary !== "config") {
+    return false;
+  }
+  const haystack = [
+    ...(understanding.taskAnalysis.constraints ?? []),
+    ...(understanding.taskAnalysis.requestedOutcomes ?? []),
+    ...(understanding.intent.classification.secondaryTaskIntents ?? []),
+    ...(understanding.intent.classification.taskHints?.recommendedSkillTags ??
+      []),
+  ]
+    .join(" ")
+    .toLowerCase();
+  if (
+    /\b(scaffold|clone|parity|boilerplate|package\s+template|create\s+package|new\s+package)\b/.test(
+      haystack,
+    )
+  ) {
+    return true;
+  }
+  return (
+    understanding.taskAnalysis.scope === "package" &&
+    (primary === "feature" || primary === "migrate") &&
+    understanding.taskAnalysis.recommendsPlanning === true &&
+    !/\brefactor\b/.test(haystack)
+  );
 }
 
 function profileToReasonCode(

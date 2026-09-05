@@ -1,4 +1,5 @@
 import type {
+  PlanArtifact,
   RunEvent,
 } from '@mitii/sdk';
 
@@ -103,7 +104,7 @@ function formatEventList(label: string, values: readonly string[] | undefined): 
   return `${label}=${preview}${more}`;
 }
 
-function eventAtMs(event: RunEvent): number {
+export function eventAtMs(event: RunEvent): number {
   if ('at' in event && typeof event.at === 'string') {
     const parsed = Date.parse(event.at);
     if (!Number.isNaN(parsed)) return parsed;
@@ -111,11 +112,15 @@ function eventAtMs(event: RunEvent): number {
   return Date.now();
 }
 
-function formatClock(ms: number): string {
+export function formatClock(ms: number): string {
   return new Date(ms).toISOString().slice(11, 23);
 }
 
 let activitySeq = 0;
+
+export function nextActivityEventId(): string {
+  return `evt_${++activitySeq}`;
+}
 
 type SkillOmittedDetail = {
   id: string;
@@ -172,7 +177,7 @@ function terminalDetail(event: Extract<RunEvent, { type: 'terminal' }>): string 
 }
 
 export function runEventToActivity(event: RunEvent): ActivityEventPayload | undefined {
-  const id = `evt_${++activitySeq}`;
+  const id = nextActivityEventId();
   const at = eventAtMs(event);
   switch (event.type) {
     case 'stage_started':
@@ -559,28 +564,3 @@ function formatSkillsReadyDetail(
       : '';
   return `${selected} · omitted ${omitted}${more}`;
 }
-
-type ApprovalViewSource = NonNullable<
-  NonNullable<AgentRunResult['suspension']>['approval']
->;
-
-function shellQuoteArg(value: string): string {
-  if (/^[A-Za-z0-9_./:=@%+-]+$/.test(value)) return value;
-  return `'${value.replace(/'/g, `'\\''`)}'`;
-}
-
-function approvalDetail(approval: ApprovalViewSource): string | undefined {
-  const args = approval.arguments;
-  if (
-    approval.toolName === 'run_command' &&
-    args &&
-    typeof args === 'object' &&
-    Array.isArray((args as { argv?: unknown }).argv)
-  ) {
-    return (args as { argv: unknown[] }).argv
-      .map((arg) => shellQuoteArg(String(arg)))
-      .join(' ');
-  }
-  return approval.paths?.join(', ');
-}
-

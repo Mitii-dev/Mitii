@@ -326,6 +326,18 @@ export const runEventSchema = z.discriminatedUnion("type", [
       cacheMissTokens: z.number().int().nonnegative().optional(),
       finishReason: z.string().min(1).optional(),
       truncated: z.boolean().optional(),
+      /** Whether the loop preserved the message prefix for provider prompt cache. */
+      preservePrefix: z.boolean().optional(),
+      /** Resolved cache class for this turn (`no_cache` | `prompt_cache`). */
+      promptCacheClass: z.enum(["no_cache", "prompt_cache"]).optional(),
+      /** Approximate sticky (prefix) message characters before the model call. */
+      stickyInputChars: z.number().int().nonnegative().optional(),
+      /** Approximate mutable (working set / recovery) message characters. */
+      mutableInputChars: z.number().int().nonnegative().optional(),
+      /** Compaction pressure just before the model call. */
+      compactionPressure: z
+        .enum(["within", "warn", "auto", "hard"])
+        .optional(),
       /** Retries the gateway performed before this turn completed (rate limit/timeout/5xx). */
       retryCount: z.number().int().nonnegative().optional(),
       /** SSE chunks dropped for malformed payloads during this turn's stream. */

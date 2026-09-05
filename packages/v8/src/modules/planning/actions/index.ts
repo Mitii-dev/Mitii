@@ -19,6 +19,10 @@ export { applyPlanWorkingSets } from "./ApplyPlanWorkingSets";
 export type { ApplyPlanWorkingSetsResult } from "./ApplyPlanWorkingSets";
 export { collectDiscoveryImpactSeedPaths } from "./collectDiscoveryImpactSeedPaths";
 export {
+  remapScaffoldChangeSurfaces,
+  resolveScaffoldPackageMapping,
+} from "./remapScaffoldChangeSurfaces";
+export {
   compactPlan,
   serializePlanText,
   serializePlanForPrompt,

@@ -69,6 +69,7 @@ export {
   collectCompletedTaskPaths,
   extractDiagnosticCodeHint,
   itemMentionsAnyPath,
+  itemWriteTargetsMatchChangedFiles,
   normalizeTaskPath,
   taskItemPaths,
   taskPathsMatch,

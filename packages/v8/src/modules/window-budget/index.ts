@@ -28,6 +28,10 @@ export type {
   WindowBudgetBandDefinition,
 } from "./windowBudgetBands";
 export {
+  TOOL_LOOP_MAX_OUTPUT_TOKENS_BY_BAND,
+  resolveToolLoopMaxOutputTokens,
+} from "./toolLoopOutputCaps";
+export {
   WINDOW_BUDGET_EFFORTS,
   DEFAULT_WINDOW_BUDGET_EFFORT,
   WINDOW_BUDGET_EFFORT_OVERLAY,

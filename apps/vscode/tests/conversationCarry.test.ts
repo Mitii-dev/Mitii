@@ -3,12 +3,15 @@ import { PLANNING_SCHEMA_VERSION } from '@mitii/sdk';
 
 import {
   buildConversationCarry,
+  buildStructuredCarryPrefix,
+  collectStructuredCarryFromThread,
   compactActivityForHistory,
   compactFileChangesForHistory,
   CONVERSATION_CARRY_LIMITS,
   enrichAssistantCarryText,
   parsePendingPlan,
   parsePendingPlanStrategy,
+  resolveConversationCarryLimits,
   resolveDisplayedAssistantText,
   resolvePlanHandoff,
   resolvePlanStrategyHandoff,
@@ -92,6 +95,73 @@ describe('conversationCarry (VS Code host)', () => {
   it('uses default limits from policy constants', () => {
     expect(CONVERSATION_CARRY_LIMITS.maxMessages).toBeGreaterThan(0);
     expect(CONVERSATION_CARRY_LIMITS.maxCharsPerMessage).toBeGreaterThan(0);
+    expect(CONVERSATION_CARRY_LIMITS.agentMaxMessages).toBeLessThan(
+      CONVERSATION_CARRY_LIMITS.maxMessages,
+    );
+    expect(resolveConversationCarryLimits('agent').maxMessages).toBe(
+      CONVERSATION_CARRY_LIMITS.agentMaxMessages,
+    );
+  });
+
+  it('applies tighter agent caps and prepends structured handoff', () => {
+    const messages = Array.from({ length: 20 }, (_, i) => ({
+      role: (i % 2 === 0 ? 'user' : 'assistant') as 'user' | 'assistant',
+      text: `turn-${i}`,
+    }));
+
+    const carried = buildConversationCarry({
+      messages,
+      mode: 'agent',
+      structured: {
+        objective: 'Build mui-builder',
+        changedPaths: ['packages/mui-builder/src/index.ts'],
+        lastErrors: ['tsc: Cannot find module'],
+      },
+    });
+
+    expect(carried[0]?.role).toBe('user');
+    expect(carried[0]?.content).toContain('<carry_handoff>');
+    expect(carried[0]?.content).toContain('Build mui-builder');
+    expect(carried[0]?.content).toContain('packages/mui-builder/src/index.ts');
+    // prefix + (agentMaxMessages - 1) chat turns
+    expect(carried).toHaveLength(CONVERSATION_CARRY_LIMITS.agentMaxMessages);
+  });
+
+  it('collects structured handoff from thread plan and file changes', () => {
+    const handoff = collectStructuredCarryFromThread({
+      pendingPlan: { objective: 'Ship package' },
+      pendingTaskList: {
+        items: [
+          { status: 'done', title: 'A' },
+          { status: 'active', title: 'B' },
+          { status: 'pending', title: 'C' },
+        ],
+      },
+      messages: [
+        {
+          fileChanges: {
+            files: [{ path: 'packages/x/src/a.ts' }, { path: 'packages/x/src/b.ts' }],
+          },
+          activity: [
+            {
+              kind: 'warning',
+              title: 'verify failed',
+              detail: 'Type error in a.ts',
+              status: 'failed',
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(handoff?.objective).toBe('Ship package');
+    expect(handoff?.changedPaths).toEqual([
+      'packages/x/src/a.ts',
+      'packages/x/src/b.ts',
+    ]);
+    expect(handoff?.lastErrors?.[0]).toContain('Type error');
+    expect(handoff?.taskSummary).toContain('3 items');
+    expect(buildStructuredCarryPrefix(handoff)).toContain('</carry_handoff>');
   });
 
   it('hands pending plan only in agent mode', () => {

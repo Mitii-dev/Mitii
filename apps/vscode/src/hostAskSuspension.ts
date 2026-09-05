@@ -1,11 +1,18 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type {
-  AgentRunResult,
-  PlanArtifact,
+import {
+  AGENT_ENGINE_SCHEMA_VERSION,
+  type AgentRunResult,
+  type MitiiResumeInput,
+  type RunEvent,
 } from '@mitii/sdk';
+import type * as vscode from 'vscode';
 
-import type { SuspensionPayload } from './protocol.js';
+import type {
+  ActivityEventPayload,
+  ContextUsageBreakdown,
+  SuspensionPayload,
+} from './protocol.js';
 import { planViewFromArtifact } from './planView.js';
 
 export function resultToSuspension(
@@ -64,7 +71,7 @@ export function resultToSuspension(
   return undefined;
 }
 
-async function resolveSuspensionNative(
+export async function resolveSuspensionNative(
   vs: typeof vscode,
   result: AgentRunResult,
 ): Promise<MitiiResumeInput | 'stop'> {
@@ -268,7 +275,7 @@ export function composePrompt(options: {
   return parts.join('\n\n');
 }
 
-function readPinnedFileContents(
+export function readPinnedFileContents(
   workspaceRoot: string,
   paths: string[],
   options: { maxFiles?: number; maxCharsPerFile?: number } = {},
@@ -292,3 +299,26 @@ function readPinnedFileContents(
   return `Pinned file contents:\n\n${blocks.join('\n\n')}`;
 }
 
+type ApprovalViewSource = NonNullable<
+  NonNullable<AgentRunResult['suspension']>['approval']
+>;
+
+function shellQuoteArg(value: string): string {
+  if (/^[A-Za-z0-9_./:=@%+-]+$/.test(value)) return value;
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function approvalDetail(approval: ApprovalViewSource): string | undefined {
+  const args = approval.arguments;
+  if (
+    approval.toolName === 'run_command' &&
+    args &&
+    typeof args === 'object' &&
+    Array.isArray((args as { argv?: unknown }).argv)
+  ) {
+    return (args as { argv: unknown[] })
+      .argv.map((arg) => shellQuoteArg(String(arg)))
+      .join(' ');
+  }
+  return approval.paths?.join(', ');
+}

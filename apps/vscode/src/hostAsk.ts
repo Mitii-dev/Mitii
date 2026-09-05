@@ -1,9 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  AGENT_ENGINE_SCHEMA_VERSION,
   type AgentRunBudget,
-  type AgentRunResult,
   type MitiiClient,
   type MitiiConversationMessage,
   type MitiiResumeInput,
@@ -21,18 +19,15 @@ import {
   buildContextUsageBreakdown,
   mergePromptBudgetIntoBreakdown,
 } from './contextUsage.js';
-import { readContextToggles } from './contextToggles.js';
+import {
+  readContextToggles,
+  resolveIntentLiteContextToggles,
+} from './contextToggles.js';
 import { getSharedMcpManager } from './mcp/manager.js';
 import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
 import { createVsCodeMemoryStore, estimateMemoryPromptBlock } from './memoryStore.js';
 import { scaffoldMitiiWorkspace } from './mitiiWorkspace.js';
 import { resolveVsCodeSemanticIndexSettings } from './semanticIndex.js';
-import type {
-  ActivityEventPayload,
-  ContextUsageBreakdown,
-  SuspensionPayload,
-} from './protocol.js';
-import { planViewFromArtifact } from './planView.js';
 import { buildReviewDiff } from './reviewDiff.js';
 import {
   resolveApprovalPolicy as resolveApprovalPolicyFromModule,
@@ -69,14 +64,32 @@ import { MemoryPipeline } from '@mitii/v8';
 
 export {
   formatRunEventLine,
+  nextActivityEventId,
   runEventToActivity,
 } from './hostAskEvents.js';
 
-export { resultToSuspension, composePrompt } from './hostAskSuspension.js';
+export {
+  composePrompt,
+  resultToSuspension,
+  type HostAskHandlers,
+  type HostAskOutcome,
+} from './hostAskSuspension.js';
 
-import { composePrompt } from './hostAskSuspension.js';
-import { formatRunEventLine } from './hostAskEvents.js';
-import { resultToSuspension } from './hostAskSuspension.js';
+import {
+  composePrompt,
+  readPinnedFileContents,
+  resolveSuspensionNative,
+  resultToSuspension,
+  type HostAskHandlers,
+  type HostAskOutcome,
+} from './hostAskSuspension.js';
+import {
+  eventAtMs,
+  formatClock,
+  formatRunEventLine,
+  nextActivityEventId,
+  runEventToActivity,
+} from './hostAskEvents.js';
 
 export function resolveApprovalPolicy(preset: string | undefined): {
   approvalMode: 'never' | 'when_required' | 'every_mutation';
@@ -172,7 +185,11 @@ export async function runAskInOutputChannel(options: {
   handlers?: HostAskHandlers;
 }): Promise<HostAskOutcome> {
   const { vs, client, workspaceRoot, channel, handlers } = options;
-  const toggles = readContextToggles(vs);
+  const toggles = resolveIntentLiteContextToggles({
+    toggles: readContextToggles(vs),
+    depth: options.depth,
+    prompt: options.prompt,
+  });
   const editor = toggles.editor
     ? captureEditorContext(vs, workspaceRoot, {
         includeOpenTabs: toggles.openTabs,
@@ -313,7 +330,7 @@ export async function runAskInOutputChannel(options: {
   const emitHostNote = (line: string, title: string, detail?: string) => {
     channel.appendLine(line);
     handlers?.onEvent?.(undefined, {
-      id: `evt_${++activitySeq}`,
+      id: nextActivityEventId(),
       at: Date.now(),
       kind: 'context',
       title,
@@ -499,7 +516,7 @@ export async function runAskInOutputChannel(options: {
         : undefined;
     const userRulesEnabled =
       cfg.get<boolean>('safety.userRulesEnabled') === true;
-    const userSafetyRules = userRulesEnabled
+    const userSafetyRules = userRulesEnabled && workspaceRoot
       ? loadUserSafetyRules(workspaceRoot)
       : undefined;
     let run = client.start({
@@ -649,7 +666,7 @@ export async function runAskInOutputChannel(options: {
           channel.appendLine(statusLine);
           for (const line of formatRunDiagnostics(result)) {
             handlers?.onEvent?.(undefined, {
-              id: `evt_${++activitySeq}`,
+              id: nextActivityEventId(),
               at: Date.now(),
               kind: result.status === 'budget_exhausted' ? 'warning' : 'info',
               title:
@@ -663,7 +680,7 @@ export async function runAskInOutputChannel(options: {
           }
           if (result.error?.message && result.status !== 'budget_exhausted') {
             handlers?.onEvent?.(undefined, {
-              id: `evt_${++activitySeq}`,
+              id: nextActivityEventId(),
               at: Date.now(),
               kind: 'warning',
               title: 'Error',
@@ -673,7 +690,7 @@ export async function runAskInOutputChannel(options: {
           }
           // Always last in the activity timeline so the usage/status line closes the run.
           handlers?.onEvent?.(undefined, {
-            id: `evt_${++activitySeq}`,
+            id: nextActivityEventId(),
             at: Date.now(),
             kind: 'info',
             title: 'Run summary',

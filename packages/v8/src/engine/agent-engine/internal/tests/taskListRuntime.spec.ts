@@ -92,6 +92,46 @@ describe("upsertTrailingWorkingSet", () => {
     expect(messages.at(-1)?.content).toContain("src/auth/types.ts");
     expect(messages.at(-1)?.role).toBe("user");
   });
+
+  it("always upserts a minimal working set when no task list exists", () => {
+    const messages: ModelMessage[] = [
+      { role: "system", content: "system" },
+      { role: "assistant", content: "working" },
+      { role: "tool", toolCallId: "t1", content: "{}" },
+    ];
+    upsertTrailingWorkingSet(messages, {});
+    expect(messages.at(-1)?.role).toBe("user");
+    expect(messages.at(-1)?.content).toContain(WORKING_SET_MARKER);
+    expect(messages.at(-1)?.content).toContain("No live checklist yet");
+  });
+
+  it("re-upserts working set after it was dropped from the transcript", () => {
+    const messages: ModelMessage[] = [
+      { role: "system", content: "system" },
+      { role: "user", content: "implement package" },
+    ];
+    upsertTrailingWorkingSet(messages, {
+      establishedFacts: [
+        { id: "read_file:src/a.ts", content: "src/a.ts => export const a" },
+      ],
+    });
+    // Simulate hard compaction dropping the trailing block.
+    messages.splice(
+      messages.findIndex((m) => m.content.includes(WORKING_SET_MARKER)),
+      1,
+    );
+    expect(
+      messages.some((m) => m.content.includes(WORKING_SET_MARKER)),
+    ).toBe(false);
+
+    upsertTrailingWorkingSet(messages, {
+      establishedFacts: [
+        { id: "read_file:src/a.ts", content: "src/a.ts => export const a" },
+      ],
+    });
+    expect(messages.at(-1)?.content).toContain(WORKING_SET_MARKER);
+    expect(messages.at(-1)?.content).toContain("Established observations");
+  });
 });
 
 describe("maybeAutoAdvanceTaskList", () => {

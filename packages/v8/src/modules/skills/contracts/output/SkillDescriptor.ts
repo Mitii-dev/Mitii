@@ -38,6 +38,16 @@ export const skillIndexEntrySchema = z
     languages: z.array(z.string().min(1)).default([]),
     /** Soft project-kind evidence. Boost only — never sole authority. */
     projectKinds: z.array(z.string().min(1)).default([]),
+    /**
+     * Optional packer size class. S = tiny always-on, M = default working
+     * skill, L = full playbook (Plan / @skill / strong intent).
+     */
+    sizeClass: z.enum(["S", "M", "L"]).optional(),
+    /**
+     * When true, the skill only applies if query keywords or recommended
+     * skill tags overlap the skill's tags (in addition to intent/route).
+     */
+    requireTagEvidence: z.boolean().optional(),
     /** Higher wins when multiple skills compete. */
     priority: z.number().int().nonnegative().default(100),
     /** When set, only one skill from the group may be selected. */

@@ -96,6 +96,8 @@ Mitii keeps this body out of the prompt by default.
 | `paths` | No | Workspace-relative globs that gate a skill, for example `**/parse.ts` or `apps/vscode/**`. |
 | `languages` | No | Soft language tags from host/repository evidence. Boost only. |
 | `projectKinds` | No | Soft project-kind tags from host/repository evidence. Boost only. |
+| `sizeClass` | No | Packer hint: `S` (tiny), `M` (default working), `L` (full playbook). Compact windows may omit `L`. |
+| `requireTagEvidence` | No | When `true`, also require query/tag or recommended-tag overlap (not intent alone). Use for niche skills like CI. |
 | `priority` | No | Higher wins when multiple skills match. Default `100`. |
 | `conflictGroup` | No | Allows only one selected skill from that group. |
 | `alwaysApply` | No | Use rarely. Default `false`. |
