@@ -76,6 +76,7 @@ export {
 } from './hostAskSuspension.js';
 
 import {
+  buildStopResumeFromSuspension,
   composePrompt,
   readPinnedFileContents,
   resolveSuspensionNative,
@@ -728,6 +729,12 @@ export async function runAskInOutputChannel(options: {
           resume = await resolveSuspensionNative(vs, result);
         }
         if (resume === 'stop') {
+          const stopResume = buildStopResumeFromSuspension(result);
+          if (stopResume) {
+            channel.appendLine('[mitii] finishing suspended run…');
+            run = client.resume(withCurrentApprovalPolicy(vs, stopResume));
+            continue;
+          }
           sessionLog?.finish(result);
           return {
             result,

@@ -2267,7 +2267,32 @@ export function App() {
                 markSuspensionResumed(runId);
                 setClarifyText('');
               }}
-              onResumeStop={(runId) => postToHost({ type: 'resume', runId })}
+              onResumeStop={(runId) => {
+                const turn = turns.find((t) => t.suspension?.runId === runId);
+                if (turn?.suspension?.kind === 'continue_required') {
+                  postToHost({
+                    type: 'resume',
+                    runId,
+                    continueDecision: { decision: 'stop' },
+                  });
+                  markSuspensionResumed(runId);
+                  setClarifyText('');
+                  return;
+                }
+                postToHost({ type: 'resume', runId });
+              }}
+              onResumeContinue={(runId, guidance) => {
+                postToHost({
+                  type: 'resume',
+                  runId,
+                  continueDecision: {
+                    decision: 'continue',
+                    ...(guidance ? { guidance } : {}),
+                  },
+                });
+                markSuspensionResumed(runId);
+                setClarifyText('');
+              }}
               onApprove={(runId, approvalId) => {
                 const turn = turns.find((t) => t.suspension?.runId === runId);
                 if (turn?.suspension?.kind === 'plan_approval_required') {
@@ -2277,6 +2302,31 @@ export function App() {
                     planDecision: { decision: 'approved' },
                   });
                   markSuspensionResumed(runId);
+                  return;
+                }
+                if (turn?.suspension?.kind === 'grant_expansion_required') {
+                  const expansionId =
+                    turn.suspension.grantExpansion?.expansionId;
+                  if (!expansionId) return;
+                  postToHost({
+                    type: 'resume',
+                    runId,
+                    grantExpansion: {
+                      expansionId,
+                      decision: 'approved',
+                    },
+                  });
+                  markSuspensionResumed(runId);
+                  return;
+                }
+                if (turn?.suspension?.kind === 'continue_required') {
+                  postToHost({
+                    type: 'resume',
+                    runId,
+                    continueDecision: { decision: 'continue' },
+                  });
+                  markSuspensionResumed(runId);
+                  setClarifyText('');
                   return;
                 }
                 if (!approvalId) return;
@@ -2296,6 +2346,31 @@ export function App() {
                     planDecision: { decision: 'rejected' },
                   });
                   markSuspensionResumed(runId);
+                  return;
+                }
+                if (turn?.suspension?.kind === 'grant_expansion_required') {
+                  const expansionId =
+                    turn.suspension.grantExpansion?.expansionId;
+                  if (!expansionId) return;
+                  postToHost({
+                    type: 'resume',
+                    runId,
+                    grantExpansion: {
+                      expansionId,
+                      decision: 'denied',
+                    },
+                  });
+                  markSuspensionResumed(runId);
+                  return;
+                }
+                if (turn?.suspension?.kind === 'continue_required') {
+                  postToHost({
+                    type: 'resume',
+                    runId,
+                    continueDecision: { decision: 'stop' },
+                  });
+                  markSuspensionResumed(runId);
+                  setClarifyText('');
                   return;
                 }
                 if (!approvalId) return;

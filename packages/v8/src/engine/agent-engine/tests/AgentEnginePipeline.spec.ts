@@ -610,7 +610,7 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     expect(result.answer).not.toContain("Let me analyze the remaining errors");
   });
 
-  it("exhausts unfulfilled-execute recoveries then fails without edits", async () => {
+  it("exhausts unfulfilled-execute recoveries then suspends for Continue/Stop", async () => {
     const engine = new AgentEnginePipeline(
       createStubDependencies({
         decision: createDecision({
@@ -653,11 +653,12 @@ describe("AgentEnginePipeline (Phase 7)", () => {
       }),
     ).result;
 
-    expect(result.status).toBe("failed");
+    expect(result.status).toBe("suspended");
+    expect(result.suspension?.kind).toBe("continue_required");
     expect(result.reasonCodes).toContain("unfulfilled_execute_recovered");
     expect(result.reasonCodes).toContain("unfulfilled_execute_exhausted");
+    expect(result.reasonCodes).toContain("stall_continue_suspended");
     expect(result.reasonCodes).not.toContain("mutation_applied");
-    expect(result.error?.code).toBe("no_mutation_performed");
   });
 
   it("completes repository_answer analysis without forcing apply_patch", async () => {
@@ -1462,7 +1463,7 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     expect(result.reasonCodes).toContain("cancelled");
   });
 
-  it("terminates deterministically when model budget is exhausted", async () => {
+  it("suspends for Continue when model budget is exhausted", async () => {
     const engine = new AgentEnginePipeline(
       createStubDependencies({
         decision: createDecision({
@@ -1514,7 +1515,10 @@ describe("AgentEnginePipeline (Phase 7)", () => {
       }),
     ).result;
 
-    expect(result.status).toBe("budget_exhausted");
+    expect(result.status).toBe("suspended");
+    expect(result.suspension?.kind).toBe("continue_required");
+    expect(result.reasonCodes).toContain("stall_continue_suspended");
+    expect(result.suspension?.continuePrompt ?? "").toMatch(/budget/i);
     expect(result.usage.modelCalls).toBeLessThanOrEqual(2);
   });
 

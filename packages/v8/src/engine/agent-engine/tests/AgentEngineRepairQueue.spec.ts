@@ -488,11 +488,13 @@ describe("AgentEnginePipeline repair remaining-error queue (Phase 4)", () => {
       }),
     ).result;
 
-    expect(result.status).toBe("failed");
-    expect(result.error?.code).toBe("verification_failed");
+    expect(result.status).toBe("suspended");
+    expect(result.suspension?.kind).toBe("continue_required");
     expect(result.reasonCodes).toContain("verification_repair_attempted");
-    expect(result.reasonCodes).toContain("verification_kept_changes");
-    expect(result.reasonCodes).toContain("verification_incomplete");
+    expect(result.reasonCodes).toContain("stall_continue_suspended");
+    expect(result.suspension?.continuePrompt ?? "").toMatch(
+      /Verification repairs are capped/i,
+    );
     expect(result.reasonCodes).not.toContain("verification_repair_succeeded");
     expect(result.reasonCodes).not.toContain("repo_build_state_remaining_error_batch");
     expect(result.reasonCodes).not.toContain("mutation_rolled_back");

@@ -15,6 +15,7 @@ import {
   amendMessageWithClarification,
   annotateMutationToolDefinitions,
   applyExplorationSignal,
+  buildBudgetWallResetMessage,
   clampRunBudget,
   toRunUsage,
   filterToolDefinitions,
@@ -22,6 +23,7 @@ import {
 import type {
   EstablishedFact,
 } from "../actions";
+import type { BudgetWallReason } from "../actions/buildStallContinueRationale";
 import { ToolCallCache } from "../internal/ToolCallCache";
 import { AGENT_ENGINE_SCHEMA_VERSION } from "../constants";
 import {
@@ -415,7 +417,7 @@ export async function executeResume(
       if (input.continueDecision.decision === "stop") {
         await runtime.deps.checkpointStore.delete(runId);
         await runtime.safeUnpin(runId, pinnedState);
-        reasonCodes.push("resume_complete");
+        reasonCodes.push("stall_continue_stopped", "resume_complete");
         const partialAnswer = checkpoint.messages
           .filter((message) => message.role === "assistant")
           .map((message) => message.content)
@@ -429,17 +431,63 @@ export async function executeResume(
       }
 
       reasonCodes.push("stall_continue_approved", "resume_complete");
+      const nextOverrideCount = (checkpoint.continueOverrideCount ?? 0) + 1;
+      const guidance = input.continueDecision.guidance?.trim();
+      const wallReason: BudgetWallReason =
+        checkpoint.continueWallReason ?? "exploration_stall";
+      const mutationRequired =
+        checkpoint.decision.reasonCodes.includes("mutation_execute") ||
+        checkpoint.decision.toolGrant.maximumWorkspaceEffect === "write";
+      const resetMessage = buildBudgetWallResetMessage({
+        reason: wallReason,
+        guidance,
+        mutationRequired,
+        changedFiles: checkpoint.changedFiles,
+      });
+      const resumedCheckpoint = {
+        ...checkpoint,
+        continueOverrideCount: nextOverrideCount,
+        continueWallReason: wallReason,
+        messages: [
+          ...checkpoint.messages,
+          { role: "user" as const, content: resetMessage },
+        ],
+      };
+
+      let continueBudget = budget;
+      if (wallReason === "budget_exhausted") {
+        const bump = resolveLoopPolicyThresholds({
+          contextWindowTokens: windowPolicy.contextWindowTokens,
+          overrides: startInput.loopPolicy?.thresholds,
+        }).thresholds.continueBudgetModelCallBump;
+        continueBudget = new RunBudgetTracker(
+          {
+            ...resumeBudgetClamp.budget,
+            maxModelCalls: resumeBudgetClamp.budget.maxModelCalls + bump,
+            maxToolCalls: resumeBudgetClamp.budget.maxToolCalls + bump,
+            maxLoopIterations:
+              resumeBudgetClamp.budget.maxLoopIterations + bump,
+          },
+          checkpoint.startedAtMs,
+          checkpoint.usage,
+          excludedWaitMs,
+        );
+        warnings.push(
+          `Extended run budget by ${bump} model/tool/loop units after Continue.`,
+        );
+      }
+
       await runtime.deps.checkpointStore.delete(runId);
 
       return await resumeToolLoopFromCheckpoint(runtime, {
         runId,
         requestId,
-        checkpoint,
+        checkpoint: resumedCheckpoint,
         startInput,
         decision,
         bus,
         signal,
-        budget,
+        budget: continueBudget,
         reasonCodes,
         warnings,
         taskListRef,
@@ -454,6 +502,7 @@ export async function executeResume(
         onVerificationRecord: (record) => {
           verificationRecord = record;
         },
+        continueOverrideCount: nextOverrideCount,
       });
     }
 

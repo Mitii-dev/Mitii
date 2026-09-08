@@ -30,6 +30,8 @@ import type { AgentEngineRuntime } from "./runtime";
 import { appendTextContinuation } from "./appendTextContinuation";
 import type { ModelLoopSession } from "./modelLoopSession";
 import type { ModelLoopStepResult } from "./modelLoopStep";
+import { tryOfferBudgetWallContinue } from "./tryOfferBudgetWallContinue";
+import type { TaskListRef } from "../internal/taskListRuntime";
 
 export function handleNoToolModelTurn(params: {
   runtime: AgentEngineRuntime;
@@ -50,6 +52,7 @@ export function handleNoToolModelTurn(params: {
   reasonCodes: AgentReasonCode[];
   warnings: string[];
   thresholds: AgentEngineThresholds;
+  taskListRef?: TaskListRef;
 }): ModelLoopStepResult {
   const {
     runtime,
@@ -70,6 +73,7 @@ export function handleNoToolModelTurn(params: {
     reasonCodes,
     warnings,
     thresholds,
+    taskListRef,
   } = params;
   let answer = session.answer;
   let pendingTextContinuation = session.pendingTextContinuation;
@@ -115,10 +119,27 @@ export function handleNoToolModelTurn(params: {
       isClearMutationBlocker(turnContent)
     ) {
       reasonCodes.push("incomplete_execute");
+      const offered = tryOfferBudgetWallContinue({
+        wallReason: "incomplete_execute",
+        messages,
+        toolCache,
+        changedFiles,
+        mutationCheckpointIds,
+        answer,
+        decision,
+        continueOverrideCount: session.continueOverrideCount,
+        maxContinueOverrides: thresholds.maxContinueOverrides,
+        taskList: taskListRef?.current,
+        mutationRequired: true,
+      });
       session.answer = answer;
       session.pendingTextContinuation = pendingTextContinuation;
       session.incompleteAnswerRecoveries = incompleteAnswerRecoveries;
       session.unfulfilledExecuteRecoveries = unfulfilledExecuteRecoveries;
+      if (offered) {
+        return { kind: "return", outcome: offered };
+      }
+      reasonCodes.push("stall_continue_override_capped");
       return {
         kind: "return",
         outcome: {
@@ -217,20 +238,40 @@ export function handleNoToolModelTurn(params: {
 
     if (loopOutcome.reasonCode === "unfulfilled_execute_exhausted") {
       reasonCodes.push("unfulfilled_execute_exhausted");
+      const offered = tryOfferBudgetWallContinue({
+        wallReason: "unfulfilled_execute",
+        messages,
+        toolCache,
+        changedFiles,
+        mutationCheckpointIds,
+        answer,
+        decision,
+        continueOverrideCount: session.continueOverrideCount,
+        maxContinueOverrides: thresholds.maxContinueOverrides,
+        taskList: taskListRef?.current,
+        mutationRequired: true,
+      });
       session.answer = answer;
       session.pendingTextContinuation = pendingTextContinuation;
       session.incompleteAnswerRecoveries = incompleteAnswerRecoveries;
       session.unfulfilledExecuteRecoveries = unfulfilledExecuteRecoveries;
-      return { kind: "return", outcome: {
-        kind: "failed",
-        answer: answer || undefined,
-        extraReasons: ["unfulfilled_execute_exhausted"],
-        error: {
-          code: "no_mutation_performed",
-          message:
-            "The model exhausted the recovery budget without applying workspace edits.",
+      if (offered) {
+        return { kind: "return", outcome: offered };
+      }
+      reasonCodes.push("stall_continue_override_capped");
+      return {
+        kind: "return",
+        outcome: {
+          kind: "failed",
+          answer: answer || undefined,
+          extraReasons: ["unfulfilled_execute_exhausted"],
+          error: {
+            code: "no_mutation_performed",
+            message:
+              "The model exhausted the recovery budget without applying workspace edits.",
+          },
         },
-      } };
+      };
     } else if (
       (incompleteAssistantTurn ||
         loopOutcome.disposition === "recover_incomplete_narration") &&

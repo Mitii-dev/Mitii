@@ -48,6 +48,7 @@ import {
 } from "./executeTool";
 import type { ModelLoopSession } from "./modelLoopSession";
 import type { ModelLoopStepResult } from "./modelLoopStep";
+import { tryOfferBudgetWallContinue } from "./tryOfferBudgetWallContinue";
 
 export type ToolPhaseBatchStats = {
   attemptedMutatingTool: boolean;
@@ -230,6 +231,23 @@ export async function runModelLoopToolPhase(params: {
       });
       session.decision = decision;
       session.selectedSkillIds = selectedSkillIds;
+      const offered = tryOfferBudgetWallContinue({
+        wallReason: "unfulfilled_execute",
+        messages,
+        toolCache,
+        changedFiles,
+        mutationCheckpointIds,
+        answer,
+        decision,
+        continueOverrideCount: session.continueOverrideCount,
+        maxContinueOverrides: thresholds.maxContinueOverrides,
+        taskList: taskListRef.current,
+        mutationRequired: true,
+      });
+      if (offered) {
+        return { kind: "return", outcome: offered };
+      }
+      reasonCodes.push("stall_continue_override_capped");
       return {
         kind: "return",
         outcome: {
@@ -323,13 +341,32 @@ export async function runModelLoopToolPhase(params: {
     if (!budget.canStartToolCall()) {
       session.decision = decision;
       session.selectedSkillIds = selectedSkillIds;
-      return { kind: "return", outcome: {
-        kind: "budget_exhausted",
-        answer: answer || undefined,
-        message: "Tool call budget exhausted.",
+      const offered = tryOfferBudgetWallContinue({
+        wallReason: "budget_exhausted",
+        messages,
+        toolCache,
         changedFiles,
         mutationCheckpointIds,
-      } };
+        answer,
+        decision,
+        continueOverrideCount: session.continueOverrideCount,
+        maxContinueOverrides: thresholds.maxContinueOverrides,
+        taskList: taskListRef.current,
+        budgetMessage: "Tool call budget exhausted.",
+      });
+      if (offered) {
+        return { kind: "return", outcome: offered };
+      }
+      return {
+        kind: "return",
+        outcome: {
+          kind: "budget_exhausted",
+          answer: answer || undefined,
+          message: "Tool call budget exhausted.",
+          changedFiles,
+          mutationCheckpointIds,
+        },
+      };
     }
 
     const outcome = await executeOneTool(runtime, {

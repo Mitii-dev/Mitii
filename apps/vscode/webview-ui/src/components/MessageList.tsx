@@ -67,6 +67,7 @@ interface MessageListProps {
   onClarifyChange: (value: string) => void;
   onResumeClarify: (runId: string, answer: string) => void;
   onResumeStop: (runId: string) => void;
+  onResumeContinue?: (runId: string, guidance?: string) => void;
   onApprove: (runId: string, approvalId?: string) => void;
   onDeny: (runId: string, approvalId?: string) => void;
   onShowInlineDiff: (approvalId: string) => void;
@@ -94,6 +95,7 @@ export function MessageList({
   onClarifyChange,
   onResumeClarify,
   onResumeStop,
+  onResumeContinue,
   onApprove,
   onDeny,
   onShowInlineDiff,
@@ -244,6 +246,9 @@ export function MessageList({
                     onResumeClarify(turn.suspension!.runId, answer)
                   }
                   onStop={() => onResumeStop(turn.suspension!.runId)}
+                  onContinue={(guidance) =>
+                    onResumeContinue?.(turn.suspension!.runId, guidance)
+                  }
                   onApprove={() =>
                     onApprove(
                       turn.suspension!.runId,

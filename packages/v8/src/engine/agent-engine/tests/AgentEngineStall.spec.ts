@@ -159,10 +159,12 @@ describe("AgentEnginePipeline stall and read dedup", () => {
       }),
     ).result;
 
-    expect(result.status).toBe("completed");
+    expect(result.status).toBe("suspended");
+    expect(result.suspension?.kind).toBe("continue_required");
     expect(result.reasonCodes).toContain("tool_result_deduped");
     expect(result.reasonCodes).toContain("exploration_reread_heavy");
     expect(result.reasonCodes).toContain("exploration_stall_broken");
+    expect(result.reasonCodes).toContain("stall_continue_suspended");
     expect(executeCalls).toBe(1);
     expect(result.usage.fileReadCalls).toBeGreaterThanOrEqual(8);
     expect(result.usage.uniqueFilePathsTouched).toBe(1);
@@ -257,7 +259,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
     expect(result.answer ?? "").toContain("Patched remaining type errors.");
   });
 
-  it("fails mutation runs that keep re-reading without edits", async () => {
+  it("suspends mutation runs that keep re-reading without edits for a Continue/Stop choice", async () => {
     const deps = createStubDependencies({
       decision: createDecision({
         route: "execute",
@@ -301,15 +303,27 @@ describe("AgentEnginePipeline stall and read dedup", () => {
       }),
     ).result;
 
-    expect(result.status).toBe("failed");
+    expect(result.status).toBe("suspended");
+    expect(result.suspension?.kind).toBe("continue_required");
     expect(result.reasonCodes).toContain("exploration_stall_broken");
-    expect(result.reasonCodes).toContain("unfulfilled_execute_exhausted");
+    expect(result.reasonCodes).toContain("stall_continue_suspended");
     expect(result.reasonCodes).not.toContain("mutation_applied");
-    expect(result.error?.code).toBe("no_mutation_performed");
+    expect(result.suspension?.continuePrompt ?? "").toContain(
+      "without applying the required workspace edits",
+    );
     expect(result.answer ?? "").not.toContain("I still need the same file");
+
+    const stopped = await engine.resume({
+      schemaVersion: 1,
+      runId: result.runId,
+      continueDecision: { decision: "stop" },
+    }).result;
+
+    expect(stopped.status).toBe("completed");
+    expect(stopped.reasonCodes).toContain("stall_continue_stopped");
   });
 
-  it("fails after the post-nudge evidence-read allowance is exhausted", async () => {
+  it("suspends after the post-nudge evidence-read allowance is exhausted", async () => {
     const deps = createStubDependencies({
       decision: createDecision({
         route: "execute",
@@ -370,16 +384,19 @@ describe("AgentEnginePipeline stall and read dedup", () => {
       }),
     ).result;
 
-    expect(result.status).toBe("failed");
+    expect(result.status).toBe("suspended");
+    expect(result.suspension?.kind).toBe("continue_required");
     expect(result.reasonCodes).toContain("unfulfilled_execute_recovered");
     expect(result.reasonCodes).toContain("unfulfilled_execute_exhausted");
+    expect(result.reasonCodes).toContain("stall_continue_suspended");
     expect(result.reasonCodes).not.toContain("mutation_applied");
-    expect(result.error?.code).toBe("no_mutation_performed");
-    expect(result.error?.message).toContain("read-only discovery");
+    expect(result.suspension?.continuePrompt ?? "").toMatch(
+      /read-only discovery|mutation recovery limit/i,
+    );
     expect(result.answer ?? "").not.toContain("Should not be reached");
   });
 
-  it("fails with incomplete_execute when a clear blocker arrives with no mutations", async () => {
+  it("suspends with continue_required when a clear blocker arrives with no mutations", async () => {
     const deps = createStubDependencies({
       decision: createDecision({
         route: "execute",
@@ -421,9 +438,10 @@ describe("AgentEnginePipeline stall and read dedup", () => {
       }),
     ).result;
 
-    expect(result.status).toBe("failed");
-    expect(result.error?.code).toBe("incomplete_execute");
+    expect(result.status).toBe("suspended");
+    expect(result.suspension?.kind).toBe("continue_required");
     expect(result.reasonCodes).toContain("incomplete_execute");
+    expect(result.reasonCodes).toContain("stall_continue_suspended");
     expect(result.answer ?? "").toMatch(/Blocker:/i);
     expect(result.reasonCodes).toContain("unfulfilled_execute_recovered");
   });
@@ -611,7 +629,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
     expect(result.error?.code).not.toBe("no_mutation_performed");
   });
 
-  it("fails immediately when a rejected mutation is followed by more reading", async () => {
+  it("suspends when a rejected mutation is followed by more reading", async () => {
     const deps = createStubDependencies({
       decision: createDecision({
         route: "execute",
@@ -659,11 +677,14 @@ describe("AgentEnginePipeline stall and read dedup", () => {
       }),
     ).result;
 
-    expect(result.status).toBe("failed");
-    expect(result.error?.code).toBe("no_mutation_performed");
-    expect(result.error?.message).toContain("rejected mutation");
+    expect(result.status).toBe("suspended");
+    expect(result.suspension?.kind).toBe("continue_required");
     expect(result.reasonCodes).toContain("tool_failed");
     expect(result.reasonCodes).toContain("unfulfilled_execute_exhausted");
+    expect(result.reasonCodes).toContain("stall_continue_suspended");
+    expect(result.suspension?.continuePrompt ?? "").toMatch(
+      /rejected mutation|valid workspace edit/i,
+    );
     expect(result.usage.modelCalls).toBe(2);
     expect(result.answer ?? "").not.toContain("Should not be reached");
   });
@@ -1254,12 +1275,12 @@ describe("AgentEnginePipeline stall and read dedup", () => {
       }),
     ).result;
 
-    expect(result.status).toBe("failed");
-    expect(result.error?.code).toBe("no_mutation_performed");
-    expect(result.error?.message).toContain("rejected tools");
+    expect(result.status).toBe("suspended");
+    expect(result.suspension?.kind).toBe("continue_required");
     expect(result.reasonCodes).toContain("tool_failed");
     expect(result.reasonCodes).toContain("unfulfilled_execute_exhausted");
-    // Two recoveries (maxUnfulfilledExecuteRecoveries: 2), then fail on the third rejected turn.
+    expect(result.reasonCodes).toContain("stall_continue_suspended");
+    // Two recoveries (maxUnfulfilledExecuteRecoveries: 2), then suspend on the third rejected turn.
     expect(result.usage.modelCalls).toBe(3);
     expect(result.answer ?? "").not.toContain("Should not be reached");
   });

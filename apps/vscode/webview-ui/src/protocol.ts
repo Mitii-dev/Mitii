@@ -663,6 +663,15 @@ export type WebviewToHostMessage =
       planDecision?: {
         decision: 'approved' | 'rejected' | 'edited';
       };
+      grantExpansion?: {
+        expansionId: string;
+        decision: 'approved' | 'denied';
+      };
+      continueDecision?: {
+        decision: 'continue' | 'stop';
+        /** Optional redirect hint when continuing after a zero-progress stall. */
+        guidance?: string;
+      };
     }
   | { type: 'newChat' }
   | { type: 'openChatThread'; id: string }

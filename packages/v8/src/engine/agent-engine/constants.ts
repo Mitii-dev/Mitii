@@ -110,6 +110,8 @@ export const AGENT_REASON_CODES = [
   "exploration_stall_broken",
   "stall_continue_suspended",
   "stall_continue_approved",
+  "stall_continue_stopped",
+  "stall_continue_override_capped",
   "tool_result_deduped",
   "tool_result_already_read",
   "content_cache_path_invalidated",

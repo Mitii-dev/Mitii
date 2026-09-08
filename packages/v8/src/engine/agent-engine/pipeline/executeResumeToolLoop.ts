@@ -65,6 +65,8 @@ export async function resumeToolLoopFromCheckpoint(
       AgentRunCheckpoint["repoBuildStateAfter"]
     >) => void;
     onVerificationRecord?: (record: VerificationRecord) => void;
+    /** Seeded after a Continue approval so the next stall can enforce the override cap. */
+    continueOverrideCount?: number;
   },
 ): Promise<AgentRunResult> {
   const {
@@ -158,6 +160,8 @@ export async function resumeToolLoopFromCheckpoint(
     logVerbosity: startInput.logVerbosity,
     reserveVerificationRepairModelCalls: true,
     plan: checkpoint.plan,
+    continueOverrideCount:
+      params.continueOverrideCount ?? checkpoint.continueOverrideCount ?? 0,
     thresholds: resolveLoopPolicyThresholds({
       contextWindowTokens: windowPolicy.contextWindowTokens,
       overrides: startInput.loopPolicy?.thresholds,
@@ -193,6 +197,8 @@ export async function resumeToolLoopFromCheckpoint(
     onRepoBuildStateAfter: params.onRepoBuildStateAfter,
     onVerificationRecord: params.onVerificationRecord,
     windowPolicy,
+    continueOverrideCount:
+      params.continueOverrideCount ?? checkpoint.continueOverrideCount ?? 0,
     loopContext: {
       establishedFacts,
       plan: checkpoint.plan,

@@ -2,6 +2,7 @@ import type {
   ExecutionDecision,
 } from "../../../modules/decision-policy";
 import type {
+  ModelMessage,
   ModelRequest,
 } from "../../../modules/model-gateway";
 import type {
@@ -29,6 +30,8 @@ import {
   nextStalledRepairCount,
   markPlanEvidenceStepsDone,
   resolveLoopPolicyThresholds,
+  buildBudgetWallRationale,
+  shouldOfferBudgetWallContinue,
 } from "../actions";
 import {
   prepareRepairWorkingSet,
@@ -49,9 +52,11 @@ import type {
 } from "../contracts";
 import { EventBus } from "../internal/EventBus";
 import { RunBudgetTracker } from "../internal/RunBudget";
+import type { ToolCallCache } from "../internal/ToolCallCache";
 import {
   logVerbosityAtLeast,
 } from "../internal/logVerbosity";
+import type { BudgetWallReason } from "../actions/buildStallContinueRationale";
 
 import type { AgentEngineRuntime } from "./runtime";
 import { resolveWorkspaceId } from "./runtime";
@@ -104,6 +109,8 @@ export async function finishAfterLoop(
   onRepoBuildStateAfter?: (state: RepoBuildState) => void;
   onVerificationRecord?: (record: VerificationRecord) => void;
   windowPolicy: WindowPolicy;
+  /** Seeded after a Continue resume so nested walls honor the override cap. */
+  continueOverrideCount?: number;
   loopContext?: {
     understanding?: RequestUnderstandingResult;
     skillsQuery?: string;
@@ -135,6 +142,94 @@ export async function finishAfterLoop(
     evidence,
     windowPolicy,
   } = params;
+  const continueOverrideCount = params.continueOverrideCount ?? 0;
+  const thresholds = resolveLoopPolicyThresholds({
+    contextWindowTokens: windowPolicy.contextWindowTokens,
+    overrides: input.loopPolicy?.thresholds,
+  }).thresholds;
+
+  const suspendForBudgetWall = async (opts: {
+    wallReason: Extract<
+      BudgetWallReason,
+      | "incomplete_checklist"
+      | "verification_repair_capped"
+      | "incomplete_execute"
+    >;
+    messages: ModelMessage[];
+    toolCache: ToolCallCache;
+    changedFiles: string[];
+    mutationCheckpointIds: string[];
+    answer: string;
+    mutationRequired?: boolean;
+  }): Promise<AgentRunResult | undefined> => {
+    if (
+      !shouldOfferBudgetWallContinue({
+        continueOverrideCount,
+        maxContinueOverrides: thresholds.maxContinueOverrides,
+      })
+    ) {
+      return undefined;
+    }
+    if (!runtime.deps.checkpointStore) {
+      return undefined;
+    }
+    const rationale = buildBudgetWallRationale({
+      reason: opts.wallReason,
+      changedFiles: opts.changedFiles,
+      taskList: taskListRef.current,
+      answer: opts.answer,
+      mutationRequired: opts.mutationRequired,
+    });
+    reasonCodes.push("stall_continue_suspended");
+    await runtime.deps.checkpointStore.save({
+      runId,
+      requestId,
+      suspensionKind: "continue_required",
+      input,
+      decision,
+      pinnedState,
+      messages: opts.messages,
+      toolCacheEntries: opts.toolCache.entries(),
+      changedFiles: opts.changedFiles,
+      mutationCheckpointIds: opts.mutationCheckpointIds,
+      stallContinueRationale: rationale,
+      continueWallReason: opts.wallReason,
+      continueOverrideCount,
+      reasonCodes,
+      warnings,
+      usage: budget.snapshot(),
+      startedAtMs,
+      excludedWaitMs: budget.getExcludedWaitMs(),
+      suspendedAtMs: Date.now(),
+      repoBuildStateBefore,
+      repoBuildStateAfter: params.repoBuildStateAfter,
+      ...(taskListRef.current ? { taskList: taskListRef.current } : {}),
+      ...(taskListRef.completedPlanStepIds &&
+      taskListRef.completedPlanStepIds.length > 0
+        ? { completedPlanStepIds: [...taskListRef.completedPlanStepIds] }
+        : {}),
+      ...(params.loopContext?.plan ? { plan: params.loopContext.plan } : {}),
+    });
+    runtime.emit(bus, {
+      type: "suspended",
+      runId,
+      kind: "continue_required",
+      rationale,
+      at: runtime.isoNow(),
+    });
+    return finish({
+      status: "suspended",
+      route: decision.route,
+      planningDepth: decision.planningDepth,
+      answer: opts.answer || undefined,
+      suspension: {
+        kind: "continue_required",
+        rationale,
+        continuePrompt: rationale,
+      },
+      reasonCodes,
+    });
+  };
 
   let currentOutcome = loopOutcome;
   // Authority may have been refreshed mid-loop (e.g. after approval or
@@ -331,6 +426,8 @@ export async function finishAfterLoop(
         changedFiles: currentOutcome.changedFiles,
         mutationCheckpointIds: currentOutcome.mutationCheckpointIds,
         stallContinueRationale: currentOutcome.rationale,
+        continueWallReason: currentOutcome.wallReason,
+        continueOverrideCount: currentOutcome.continueOverrideCount,
         reasonCodes,
         warnings,
         usage: budget.snapshot(),
@@ -578,6 +675,21 @@ export async function finishAfterLoop(
         loopAnswer,
         changedFiles: loopChangedFiles,
       });
+      if (incompleteExecute && currentOutcome.kind === "completed") {
+        const suspended = await suspendForBudgetWall({
+          wallReason: "incomplete_checklist",
+          messages: currentOutcome.messages,
+          toolCache: currentOutcome.toolCache,
+          changedFiles: loopChangedFiles,
+          mutationCheckpointIds: loopMutationIds,
+          answer: userAnswer ?? "",
+          mutationRequired: true,
+        });
+        if (suspended) {
+          return suspended;
+        }
+        reasonCodes.push("stall_continue_override_capped");
+      }
       await runtime.safeUnpin(runId, pinnedState);
       if (incompleteExecute) {
         reasonCodes.push("incomplete_execute", "answer_produced");
@@ -619,10 +731,7 @@ export async function finishAfterLoop(
       consecutiveStalledRepairs,
       canStartModelCall: budget.canStartModelCall(),
       maxAttempts: windowPolicy.run.maxVerificationRepairs,
-      thresholds: resolveLoopPolicyThresholds({
-        contextWindowTokens: windowPolicy.contextWindowTokens,
-        overrides: input.loopPolicy?.thresholds,
-      }).thresholds,
+      thresholds,
     });
     const canRepair =
       verificationOutcome.repairable &&
@@ -718,6 +827,14 @@ export async function finishAfterLoop(
         decision = currentOutcome.decision;
         continue;
       }
+      if (currentOutcome.kind === "continue_required") {
+        decision = currentOutcome.decision;
+        continue;
+      }
+      if (currentOutcome.kind === "grant_expansion_required") {
+        decision = currentOutcome.decision;
+        continue;
+      }
       if (currentOutcome.kind === "cancelled") {
         await runtime.safeUnpin(runId, pinnedState);
         return await cancelledResult();
@@ -732,6 +849,31 @@ export async function finishAfterLoop(
         });
       }
       reasonCodes.push("budget_exhausted");
+    }
+
+    // Verification repairs stalled / capped — offer Continue before keeping changes.
+    if (
+      verificationOutcome.repairable &&
+      currentOutcome.kind === "completed" &&
+      loopChangedFiles.length > 0
+    ) {
+      const suspended = await suspendForBudgetWall({
+        wallReason: "verification_repair_capped",
+        messages: currentOutcome.messages,
+        toolCache: currentOutcome.toolCache,
+        changedFiles: loopChangedFiles,
+        mutationCheckpointIds: loopMutationIds,
+        answer:
+          selectUserFacingLoopAnswer({
+            loopAnswer,
+            changedFiles: loopChangedFiles,
+          }) ?? "",
+        mutationRequired: true,
+      });
+      if (suspended) {
+        return suspended;
+      }
+      reasonCodes.push("stall_continue_override_capped");
     }
 
     // Verification did not pass (or remaining-error repairs stalled / capped).

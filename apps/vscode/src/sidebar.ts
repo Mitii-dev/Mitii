@@ -1156,6 +1156,31 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       });
       return;
     }
+    if (message.grantExpansion) {
+      this.post({ type: 'run.resumed', runId: message.runId });
+      this.lastSuspensionRunId = undefined;
+      resolve({
+        schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+        runId: message.runId,
+        grantExpansion: message.grantExpansion,
+      });
+      return;
+    }
+    if (message.continueDecision) {
+      this.post({ type: 'run.resumed', runId: message.runId });
+      this.lastSuspensionRunId = undefined;
+      resolve({
+        schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+        runId: message.runId,
+        continueDecision: {
+          decision: message.continueDecision.decision,
+          ...(message.continueDecision.guidance?.trim()
+            ? { guidance: message.continueDecision.guidance.trim() }
+            : {}),
+        },
+      });
+      return;
+    }
     resolve('stop');
   }
 

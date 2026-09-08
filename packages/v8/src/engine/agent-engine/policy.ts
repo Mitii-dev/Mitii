@@ -82,6 +82,16 @@ export const AGENT_ENGINE_THRESHOLDS = {
   /** One mid-loop nudge, then stop the spin. */
   maxExplorationStallNudges: 1,
   /**
+   * Max user-approved Continue overrides after exploration stall walls.
+   * Further stalls fall back to terminal fail/complete.
+   */
+  maxContinueOverrides: 2,
+  /**
+   * Extra model calls granted when the user Continues after budget_exhausted.
+   * Without this, resume would immediately re-hit the same ceiling.
+   */
+  continueBudgetModelCallBump: 4,
+  /**
    * Fallback remaining-error repairs when Window Policy is absent.
    * Window effort is the live cap (medium: 8). Stop earlier when
    * consecutive verifies stop improving.

@@ -64,6 +64,7 @@ import { handleNoToolModelTurn } from "./modelLoopNoToolTurn";
 import { runModelLoopToolPhase } from "./modelLoopToolPhase";
 import { resolveModelLoopAfterTools } from "./modelLoopAfterTools";
 import { createLoopFileReadTracker } from "../actions";
+import { tryOfferBudgetWallContinue } from "./tryOfferBudgetWallContinue";
 
 export async function runModelToolLoop(
   runtime: AgentEngineRuntime,
@@ -107,6 +108,8 @@ export async function runModelToolLoop(
    * When omitted, shipped `AGENT_ENGINE_THRESHOLDS` apply.
    */
   thresholds?: AgentEngineThresholds;
+  /** Seeded from checkpoint when resuming after a Continue approval. */
+  continueOverrideCount?: number;
 }): Promise<ToolLoopOutcome> {
   const {
     runId,
@@ -152,6 +155,7 @@ export async function runModelToolLoop(
     emittedLoopCompactionWarning: false,
     successfulVerificationAfterMutation: false,
     explorationStallNudges: 0,
+    continueOverrideCount: Math.max(0, params.continueOverrideCount ?? 0),
     rejectedMutationRecoveries: 0,
     rejectedToolRecoveries: 0,
     readOnlyToolTurnsWithoutMutation: 0,
@@ -181,6 +185,24 @@ export async function runModelToolLoop(
 
     const exhausted = budget.isExhausted();
     if (exhausted) {
+      const offered = tryOfferBudgetWallContinue({
+        wallReason: "budget_exhausted",
+        messages,
+        toolCache,
+        changedFiles,
+        mutationCheckpointIds,
+        answer: session.answer,
+        decision: session.decision,
+        continueOverrideCount: session.continueOverrideCount,
+        maxContinueOverrides: thresholds.maxContinueOverrides,
+        taskList: taskListRef.current,
+        mutationRequired: isMutationRequired(),
+        budgetMessage: `Run budget exhausted (${exhausted}).`,
+      });
+      if (offered) {
+        return offered;
+      }
+      reasonCodes.push("stall_continue_override_capped");
       return {
         kind: "budget_exhausted",
         answer: session.answer || undefined,
@@ -217,6 +239,24 @@ export async function runModelToolLoop(
           decision: session.decision,
         };
       }
+      const offered = tryOfferBudgetWallContinue({
+        wallReason: "budget_exhausted",
+        messages,
+        toolCache,
+        changedFiles,
+        mutationCheckpointIds,
+        answer: session.answer,
+        decision: session.decision,
+        continueOverrideCount: session.continueOverrideCount,
+        maxContinueOverrides: thresholds.maxContinueOverrides,
+        taskList: taskListRef.current,
+        mutationRequired: isMutationRequired(),
+        budgetMessage: "Model call budget exhausted.",
+      });
+      if (offered) {
+        return offered;
+      }
+      reasonCodes.push("stall_continue_override_capped");
       return {
         kind: "budget_exhausted",
         answer: session.answer || undefined,
@@ -420,6 +460,7 @@ export async function runModelToolLoop(
         reasonCodes,
         warnings,
         thresholds,
+        taskListRef,
       });
       if (noTool.kind === "return") {
         return noTool.outcome;

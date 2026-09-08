@@ -29,6 +29,8 @@ export const agentEngineThresholdsSchema = z
     explorationRereadRatio: z.number().positive(),
     explorationRereadMinCalls: positiveIntSchema,
     maxExplorationStallNudges: nonnegativeIntSchema,
+    maxContinueOverrides: nonnegativeIntSchema,
+    continueBudgetModelCallBump: nonnegativeIntSchema,
     maxVerificationRepairAttempts: nonnegativeIntSchema,
     maxStalledVerificationRepairs: positiveIntSchema,
     maxRecoveredAnalysisChars: positiveIntSchema,

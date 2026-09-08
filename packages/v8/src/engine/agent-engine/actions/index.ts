@@ -71,8 +71,14 @@ export type {
 export { buildExplorationStallNudge } from "./buildExplorationStallNudge";
 export {
   buildStallContinueRationale,
+  buildStallContinueResetMessage,
+  buildBudgetWallRationale,
+  buildBudgetWallResetMessage,
   shouldOfferStallContinue,
+  shouldOfferBudgetWallContinue,
+  BUDGET_WALL_REASONS,
 } from "./buildStallContinueRationale";
+export type { BudgetWallReason } from "./buildStallContinueRationale";
 export { buildPreflightDiagnosticRepairInstruction } from "./buildPreflightDiagnosticRepairInstruction";
 export { buildVerificationRepairPrompt } from "./buildVerificationRepairPrompt";
 export { formatVerificationFailureAnswer, formatVerificationEvidence } from "./formatVerificationNarration";

@@ -72,11 +72,22 @@ agent-engine/
   Otherwise it suspends with `grant_expansion_required` until the host approves.
 - `usage` reports `fileReadCalls` vs `uniqueFilePathsTouched`. Repeated
   re-reads of the same files emit `exploration_reread_heavy` mid-loop and,
-  after nudges exhaust, `exploration_stall_broken`. When the run already
-  changed files or has pending checklist work, the engine suspends with
-  `continue_required` instead of ending silently. Stall detection uses paths
+  after nudges exhaust, `exploration_stall_broken`. The engine then suspends
+  with `continue_required` (Continue / Stop) instead of ending silently —
+  including zero-progress mutation stalls — unless the user has already used
+  `maxContinueOverrides` Continues. Stop resumes as `completed` with
+  `stall_continue_stopped`; Continue injects a strategy-reset nudge and may
+  carry optional user guidance. Stall detection uses paths
   read in the current loop (reset after a successful mutation) so verification
-  repair can re-read known error files without aborting. Hosts may pass
+  repair can re-read known error files without aborting.
+- The same `continue_required` channel covers other **budget walls** (not only
+  re-read stalls): unfulfilled-execute / rejected-mutation exhaustions,
+  clear incomplete-execute blockers, model/tool `budget_exhausted`, incomplete
+  checklist finishes, and capped verification repairs. Wall reason is stored on
+  the checkpoint (`continueWallReason`) so Continue reset copy and budget bumps
+  stay reason-specific. Continuing after `budget_exhausted` adds
+  `continueBudgetModelCallBump` (default 4) model/tool/loop units so resume
+  does not immediately re-hit the same ceiling. Hosts may pass
   `loopPolicy.thresholds` (partial overrides of `AGENT_ENGINE_THRESHOLDS`) for
   lab tweaks; omit for shipped standards.
 - Identical read-only tool+args reuse the prior result (`tool_result_deduped`).
@@ -137,12 +148,12 @@ agent-engine/
   read/discovery tool calls from tag attributes and continue through normal
   Tool Runtime enforcement rather than immediately treating the turn as
   incomplete narration.
-- Execute + write + mutation-intent turns that produce text and no `apply_patch` are **unfulfilled execute**. The loop nudges up to twice (`unfulfilled_execute_recovered`, `maxUnfulfilledExecuteRecoveries: 2`) to prefer `apply_patch`, while allowing one targeted `read_file`/`read_many_files` of active write/mustRead paths. Clear blockers with no mutations end as `incomplete_execute` (failed), not success. Stale blocker narration is replaced after later mutations land.
+- Execute + write + mutation-intent turns that produce text and no `apply_patch` are **unfulfilled execute**. The loop nudges up to twice (`unfulfilled_execute_recovered`, `maxUnfulfilledExecuteRecoveries: 2`) to prefer `apply_patch`, while allowing one targeted `read_file`/`read_many_files` of active write/mustRead paths. After recoveries exhaust (or a clear blocker with no mutations), the run suspends with `continue_required` instead of a silent fail — unless Continue overrides are already spent. Stale blocker narration is replaced after later mutations land.
 - Rejected `apply_patch`/`delete_file`/`move_file` recoveries use a **separate** budget (`maxRejectedMutationRecoveries`, band-aware) so a stale-hunk → targeted read → retry cycle is not starved by the text-only unfulfilled-execute nudge.
 - **Window bands** select shipped loop/stall standards from the effective context window (`compact` &lt; 50k, `standard` &lt; 100k, `wide` ≥ 100k). Permanent values: [`policy/loopPolicyBands.ts`](./policy/loopPolicyBands.ts) and [`windowBudgetBands.ts`](../../modules/window-budget/windowBudgetBands.ts). Edit with `pnpm policy-admin` (HTML UI), then rebuild. Optional Custom host overrides stay local-only. See [`policy/README.md`](./policy/README.md).
 - `apply_patch` failures use distinct reason codes (`old_text_not_found`, `old_text_ambiguous`, `patch_target_missing`, `patch_hash_mismatch`, `identical_old_and_new`, `patch_syntax_invalid`). Retryable codes (including no-op `identical_old_and_new`) attach current file content so the model can copy exact `oldText` without a separate re-read. Targeted discovery after a rejected mutation follows those codes, not warning-string matching. `patch_conflict` remains as a legacy umbrella. Optional `replaceAll` replaces every exact occurrence; the default remains unique match.
 - Compiler/tsc tool output is grouped by error code and asks for a class-wide batch, not one diagnostic at a time.
-- `budget_exhausted` after mutations still captures `repo_build_state` phase `after` so remaining error counts are visible.
+- `budget_exhausted` prefers `continue_required` (extend-once) while overrides remain; if the user stops or overrides are spent, terminal `budget_exhausted` after mutations still captures `repo_build_state` phase `after` so remaining error counts are visible.
 - Truncation on that same execute+write path recovers as a **tool-call** nudge, not essay continuation. Direct-answer truncation still continues the text.
 - `context_ready` may include `retrievalSources` (`sourceId`, `status`, `candidateCount`) from hybrid retrieval reports.
 - `model_turn` events include turn index, optional token counts, `finishReason`, `truncated`, plus telemetry: `preservePrefix`, `promptCacheClass`, `stickyInputChars`, `mutableInputChars`, and `compactionPressure`.

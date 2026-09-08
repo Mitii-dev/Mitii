@@ -19,8 +19,6 @@ import {
   snapshotLoopFileReads,
   isTransitionalAssistantAnswer,
   synthesizeFallbackAnswer,
-  buildStallContinueRationale,
-  shouldOfferStallContinue,
 } from "../actions";
 import type { LoopFileReadTracker } from "../actions";
 import type { AgentReasonCode } from "../contracts";
@@ -38,6 +36,7 @@ import type { AgentEngineRuntime } from "./runtime";
 import type { ModelLoopSession } from "./modelLoopSession";
 import type { ModelLoopStepResult } from "./modelLoopStep";
 import type { ToolPhaseBatchStats } from "./modelLoopToolPhase";
+import { tryOfferBudgetWallContinue } from "./tryOfferBudgetWallContinue";
 
 export function resolveModelLoopAfterTools(params: {
   runtime: AgentEngineRuntime;
@@ -135,17 +134,38 @@ export function resolveModelLoopAfterTools(params: {
     }
 
     reasonCodes.push("tool_failed", "unfulfilled_execute_exhausted");
+    const offered = tryOfferBudgetWallContinue({
+      wallReason: "rejected_mutation",
+      messages,
+      toolCache,
+      changedFiles,
+      mutationCheckpointIds,
+      answer,
+      decision,
+      continueOverrideCount: session.continueOverrideCount,
+      maxContinueOverrides: thresholds.maxContinueOverrides,
+      taskList: taskListRef.current,
+      mutationRequired: true,
+    });
+    if (offered) {
+      session.answer = answer;
+      return { kind: "return", outcome: offered };
+    }
+    reasonCodes.push("stall_continue_override_capped");
     session.answer = answer;
-      return { kind: "return", outcome: {
-      kind: "failed",
-      answer: answer || undefined,
-      extraReasons: [],
-      error: {
-        code: "no_mutation_performed",
-        message:
-          "The model read more files after a rejected mutation instead of retrying the workspace edit.",
+    return {
+      kind: "return",
+      outcome: {
+        kind: "failed",
+        answer: answer || undefined,
+        extraReasons: [],
+        error: {
+          code: "no_mutation_performed",
+          message:
+            "The model read more files after a rejected mutation instead of retrying the workspace edit.",
+        },
       },
-    } };
+    };
   }
 
   if (
@@ -156,17 +176,38 @@ export function resolveModelLoopAfterTools(params: {
   ) {
     if (session.mutationBlockerAsked) {
       reasonCodes.push("unfulfilled_execute_exhausted");
+      const offered = tryOfferBudgetWallContinue({
+        wallReason: "unfulfilled_execute",
+        messages,
+        toolCache,
+        changedFiles,
+        mutationCheckpointIds,
+        answer,
+        decision,
+        continueOverrideCount: session.continueOverrideCount,
+        maxContinueOverrides: thresholds.maxContinueOverrides,
+        taskList: taskListRef.current,
+        mutationRequired: true,
+      });
+      if (offered) {
+        session.answer = answer;
+        return { kind: "return", outcome: offered };
+      }
+      reasonCodes.push("stall_continue_override_capped");
       session.answer = answer;
-      return { kind: "return", outcome: {
-        kind: "failed",
-        answer: answer || undefined,
-        extraReasons: [],
-        error: {
-          code: "no_mutation_performed",
-          message:
-            "The model continued reading after being told to apply the required workspace edit.",
+      return {
+        kind: "return",
+        outcome: {
+          kind: "failed",
+          answer: answer || undefined,
+          extraReasons: [],
+          error: {
+            code: "no_mutation_performed",
+            message:
+              "The model continued reading after being told to apply the required workspace edit.",
+          },
         },
-      } };
+      };
     }
 
     if (
@@ -205,17 +246,38 @@ export function resolveModelLoopAfterTools(params: {
     }
 
     reasonCodes.push("unfulfilled_execute_exhausted");
+    const offeredReadDrift = tryOfferBudgetWallContinue({
+      wallReason: "unfulfilled_execute",
+      messages,
+      toolCache,
+      changedFiles,
+      mutationCheckpointIds,
+      answer,
+      decision,
+      continueOverrideCount: session.continueOverrideCount,
+      maxContinueOverrides: thresholds.maxContinueOverrides,
+      taskList: taskListRef.current,
+      mutationRequired: true,
+    });
+    if (offeredReadDrift) {
+      session.answer = answer;
+      return { kind: "return", outcome: offeredReadDrift };
+    }
+    reasonCodes.push("stall_continue_override_capped");
     session.answer = answer;
-      return { kind: "return", outcome: {
-      kind: "failed",
-      answer: answer || undefined,
-      extraReasons: [],
-      error: {
-        code: "no_mutation_performed",
-        message:
-          "The model continued reading after being told to apply the required workspace edit.",
+    return {
+      kind: "return",
+      outcome: {
+        kind: "failed",
+        answer: answer || undefined,
+        extraReasons: [],
+        error: {
+          code: "no_mutation_performed",
+          message:
+            "The model continued reading after being told to apply the required workspace edit.",
+        },
       },
-    } };
+    };
   }
 
   if (
@@ -245,17 +307,38 @@ export function resolveModelLoopAfterTools(params: {
     }
 
     reasonCodes.push("unfulfilled_execute_exhausted");
+    const offeredRejectedTool = tryOfferBudgetWallContinue({
+      wallReason: "unfulfilled_execute",
+      messages,
+      toolCache,
+      changedFiles,
+      mutationCheckpointIds,
+      answer,
+      decision,
+      continueOverrideCount: session.continueOverrideCount,
+      maxContinueOverrides: thresholds.maxContinueOverrides,
+      taskList: taskListRef.current,
+      mutationRequired: true,
+    });
+    if (offeredRejectedTool) {
+      session.answer = answer;
+      return { kind: "return", outcome: offeredRejectedTool };
+    }
+    reasonCodes.push("stall_continue_override_capped");
     session.answer = answer;
-      return { kind: "return", outcome: {
-      kind: "failed",
-      answer: answer || undefined,
-      extraReasons: [],
-      error: {
-        code: "no_mutation_performed",
-        message:
-          "The model repeatedly called rejected tools instead of applying the required workspace edits.",
+    return {
+      kind: "return",
+      outcome: {
+        kind: "failed",
+        answer: answer || undefined,
+        extraReasons: [],
+        error: {
+          code: "no_mutation_performed",
+          message:
+            "The model repeatedly called rejected tools instead of applying the required workspace edits.",
+        },
       },
-    } };
+    };
   }
 
   if (
@@ -296,17 +379,38 @@ export function resolveModelLoopAfterTools(params: {
     }
 
     reasonCodes.push("unfulfilled_execute_exhausted");
+    const offeredRejectedMutation = tryOfferBudgetWallContinue({
+      wallReason: "rejected_mutation",
+      messages,
+      toolCache,
+      changedFiles,
+      mutationCheckpointIds,
+      answer,
+      decision,
+      continueOverrideCount: session.continueOverrideCount,
+      maxContinueOverrides: thresholds.maxContinueOverrides,
+      taskList: taskListRef.current,
+      mutationRequired: true,
+    });
+    if (offeredRejectedMutation) {
+      session.answer = answer;
+      return { kind: "return", outcome: offeredRejectedMutation };
+    }
+    reasonCodes.push("stall_continue_override_capped");
     session.answer = answer;
-      return { kind: "return", outcome: {
-      kind: "failed",
-      answer: answer || undefined,
-      extraReasons: [],
-      error: {
-        code: "no_mutation_performed",
-        message:
-          "The model could not apply a valid workspace edit after a rejected mutation attempt.",
+    return {
+      kind: "return",
+      outcome: {
+        kind: "failed",
+        answer: answer || undefined,
+        extraReasons: [],
+        error: {
+          code: "no_mutation_performed",
+          message:
+            "The model could not apply a valid workspace edit after a rejected mutation attempt.",
+        },
       },
-    } };
+    };
   }
 
   if (attemptedMutatingTool) {
@@ -365,17 +469,38 @@ export function resolveModelLoopAfterTools(params: {
       }
 
       reasonCodes.push("unfulfilled_execute_exhausted");
+      const offeredNoMutation = tryOfferBudgetWallContinue({
+        wallReason: "unfulfilled_execute",
+        messages,
+        toolCache,
+        changedFiles,
+        mutationCheckpointIds,
+        answer,
+        decision,
+        continueOverrideCount: session.continueOverrideCount,
+        maxContinueOverrides: thresholds.maxContinueOverrides,
+        taskList: taskListRef.current,
+        mutationRequired: true,
+      });
+      if (offeredNoMutation) {
+        session.answer = answer;
+        return { kind: "return", outcome: offeredNoMutation };
+      }
+      reasonCodes.push("stall_continue_override_capped");
       session.answer = answer;
-      return { kind: "return", outcome: {
-        kind: "failed",
-        answer: answer || undefined,
-        extraReasons: ["unfulfilled_execute_exhausted"],
-        error: {
-          code: "no_mutation_performed",
-          message:
-            "The model repeatedly read files but did not apply the required workspace edits.",
+      return {
+        kind: "return",
+        outcome: {
+          kind: "failed",
+          answer: answer || undefined,
+          extraReasons: ["unfulfilled_execute_exhausted"],
+          error: {
+            code: "no_mutation_performed",
+            message:
+              "The model repeatedly read files but did not apply the required workspace edits.",
+          },
         },
-      } };
+      };
     }
   } else if (
     changedFiles.length > 0 &&
@@ -483,55 +608,57 @@ export function resolveModelLoopAfterTools(params: {
           at: runtime.isoNow(),
         });
       }
-      if (isMutationRequired() && changedFiles.length === 0) {
-        session.answer = answer;
-      return { kind: "return", outcome: {
-          kind: "failed",
-          answer: answer || undefined,
-          extraReasons: ["unfulfilled_execute_exhausted"],
-          error: {
-            code: "no_mutation_performed",
-            message:
-              "The model repeatedly read files but did not apply the required workspace edits.",
-          },
-        } };
-      }
-      if (
-        shouldOfferStallContinue({
-          changedFiles,
-          taskList: taskListRef.current,
-          mutationRequired: isMutationRequired(),
-        })
-      ) {
-        const rationale = buildStallContinueRationale({
-          changedFiles,
-          taskList: taskListRef.current,
-          answer,
-          fileReadCalls: loopUsageSnap.fileReadCalls,
-          uniqueFilePathsTouched: loopUsageSnap.uniqueFilePathsTouched,
-        });
-        session.answer = answer;
-      return { kind: "return", outcome: {
-          kind: "continue_required",
-          messages,
-          toolCache,
-          rationale,
-          changedFiles,
-          mutationCheckpointIds,
-          answer,
-          decision,
-        } };
-      }
-      session.answer = answer;
-      return { kind: "return", outcome: {
-        kind: "completed",
-        answer,
-        changedFiles,
-        mutationCheckpointIds,
+      const mutationRequired = isMutationRequired();
+      const offeredStall = tryOfferBudgetWallContinue({
+        wallReason: "exploration_stall",
         messages,
         toolCache,
+        changedFiles,
+        mutationCheckpointIds,
+        answer,
         decision,
-      } };
+        continueOverrideCount: session.continueOverrideCount,
+        maxContinueOverrides: thresholds.maxContinueOverrides,
+        taskList: taskListRef.current,
+        mutationRequired,
+        fileReadCalls: loopUsageSnap.fileReadCalls,
+        uniqueFilePathsTouched: loopUsageSnap.uniqueFilePathsTouched,
+      });
+      if (offeredStall) {
+        session.answer = answer;
+        return { kind: "return", outcome: offeredStall };
+      }
+
+      reasonCodes.push("stall_continue_override_capped");
+      if (mutationRequired && changedFiles.length === 0) {
+        session.answer = answer;
+        return {
+          kind: "return",
+          outcome: {
+            kind: "failed",
+            answer: answer || undefined,
+            extraReasons: ["unfulfilled_execute_exhausted"],
+            error: {
+              code: "no_mutation_performed",
+              message:
+                "The model repeatedly read files but did not apply the required workspace edits.",
+            },
+          },
+        };
+      }
+      session.answer = answer;
+      return {
+        kind: "return",
+        outcome: {
+          kind: "completed",
+          answer,
+          changedFiles,
+          mutationCheckpointIds,
+          messages,
+          toolCache,
+          decision,
+        },
+      };
     }
   }
 

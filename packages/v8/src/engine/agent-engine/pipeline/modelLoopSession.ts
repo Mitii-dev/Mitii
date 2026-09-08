@@ -17,6 +17,8 @@ export type ModelLoopSession = {
   emittedLoopCompactionWarning: boolean;
   successfulVerificationAfterMutation: boolean;
   explorationStallNudges: number;
+  /** How many times the user already approved Continue on a stall wall. */
+  continueOverrideCount: number;
   rejectedMutationRecoveries: number;
   rejectedToolRecoveries: number;
   readOnlyToolTurnsWithoutMutation: number;

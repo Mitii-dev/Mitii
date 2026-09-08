@@ -223,6 +223,8 @@ export const agentEngineResumeInputSchema = z
     continueDecision: z
       .object({
         decision: z.enum(["continue", "stop"]),
+        /** Optional user redirect hint after a zero-progress stall wall. */
+        guidance: z.string().min(1).max(2_000).optional(),
       })
       .strict()
       .optional(),

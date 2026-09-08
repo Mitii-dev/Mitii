@@ -194,17 +194,66 @@ export async function resolveSuspensionNative(
         ignoreFocusOut: true,
       },
     );
-    if (!choice) return 'stop';
+    // Dismiss or explicit stop both finish cleanly via continueDecision.
     return {
       schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
       runId: result.runId,
       continueDecision: {
-        decision: choice.label === 'Continue' ? 'continue' : 'stop',
+        decision: choice?.label === 'Continue' ? 'continue' : 'stop',
       },
     };
   }
 
   return 'stop';
+}
+
+/**
+ * Convert a bare host "stop" into an explicit resume when the suspension
+ * supports a clean finish (avoids leaving status=suspended forever).
+ */
+export function buildStopResumeFromSuspension(
+  result: AgentRunResult,
+): MitiiResumeInput | undefined {
+  const suspension = result.suspension;
+  if (!suspension) return undefined;
+  if (suspension.kind === 'continue_required') {
+    return {
+      schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+      runId: result.runId,
+      continueDecision: { decision: 'stop' },
+    };
+  }
+  if (
+    suspension.kind === 'grant_expansion_required' &&
+    suspension.grantExpansion?.expansionId
+  ) {
+    return {
+      schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+      runId: result.runId,
+      grantExpansion: {
+        expansionId: suspension.grantExpansion.expansionId,
+        decision: 'denied',
+      },
+    };
+  }
+  if (suspension.kind === 'plan_approval_required') {
+    return {
+      schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+      runId: result.runId,
+      planDecision: { decision: 'rejected' },
+    };
+  }
+  if (suspension.kind === 'approval_required' && suspension.approval?.approvalId) {
+    return {
+      schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+      runId: result.runId,
+      approval: {
+        approvalId: suspension.approval.approvalId,
+        decision: 'denied',
+      },
+    };
+  }
+  return undefined;
 }
 
 export interface HostAskOutcome {

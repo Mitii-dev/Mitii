@@ -10,6 +10,7 @@ interface ApprovalCardsProps {
   onStop: () => void;
   onApprove: () => void;
   onDeny: () => void;
+  onContinue?: (guidance?: string) => void;
   onShowInlineDiff: (approvalId: string) => void;
 }
 
@@ -111,11 +112,14 @@ export function ApprovalCards({
   onStop,
   onApprove,
   onDeny,
+  onContinue,
   onShowInlineDiff,
 }: ApprovalCardsProps) {
   const [planExpanded, setPlanExpanded] = useState(true);
   const isClarify = suspension.kind === 'clarification_required';
   const isPlan = suspension.kind === 'plan_approval_required';
+  const isContinue = suspension.kind === 'continue_required';
+  const isGrantExpansion = suspension.kind === 'grant_expansion_required';
   const approval = suspension.approval;
   const options = suspension.clarificationOptions ?? [];
   const planText = suspension.planText;
@@ -126,26 +130,40 @@ export function ApprovalCards({
   const verification = extractField(planText, 'Verification');
   const riskItems = extractListSection(planText, 'Risks', 3);
   const fallbackPlanSteps = extractListSection(planText, 'Plan', 8);
+  const grantPaths = suspension.grantExpansion?.extraPaths ?? [];
+
   const prompt =
-    shortClarifyText(suspension.clarificationPrompt) ??
+    shortClarifyText(
+      isContinue
+        ? suspension.continuePrompt ?? suspension.rationale
+        : suspension.clarificationPrompt,
+    ) ??
     (suspension.rationale && !/^mode=/.test(suspension.rationale)
       ? shortClarifyText(suspension.rationale)
       : undefined) ??
     (isPlan
       ? 'Review the plan, then approve to continue or reject to stop.'
-      : 'I need a bit more detail before continuing.');
+      : isContinue
+        ? 'This run hit a safety limit. Continue with a fresh approach, or stop with current progress.'
+        : isGrantExpansion
+          ? 'Expand workspace access for additional paths, or keep the current grant.'
+          : 'I need a bit more detail before continuing.');
 
   const title = isClarify
     ? 'Clarification needed'
     : isPlan
       ? 'Plan approval required'
-      : 'Approval required';
+      : isContinue
+        ? 'Continue required'
+        : isGrantExpansion
+          ? 'Workspace access expansion'
+          : 'Approval required';
 
   return (
     <div className="card approval-card">
       <h3>{title}</h3>
       <p className="approval-card__prompt">{prompt}</p>
-      {!isClarify && !isPlan && approval ? (
+      {!isClarify && !isPlan && !isContinue && !isGrantExpansion && approval ? (
         <div className="approval-meta">
           <span className="mono">{approval.toolName}</span>
           {approval.paths?.length ? (
@@ -153,7 +171,15 @@ export function ApprovalCards({
           ) : null}
         </div>
       ) : null}
-      {!isClarify && !isPlan && commandText ? (
+      {isGrantExpansion && grantPaths.length > 0 ? (
+        <div className="approval-meta">
+          <span className="mono">{grantPaths.slice(0, 8).join(', ')}</span>
+          {grantPaths.length > 8 ? (
+            <span className="mono">+{grantPaths.length - 8} more</span>
+          ) : null}
+        </div>
+      ) : null}
+      {!isClarify && !isPlan && !isContinue && !isGrantExpansion && commandText ? (
         <div className="approval-command">
           <span>Command to run</span>
           <pre className="approval-plan__raw approval-plan__raw--command">
@@ -161,7 +187,11 @@ export function ApprovalCards({
           </pre>
         </div>
       ) : null}
-      {!isClarify && !isPlan && argumentsText ? (
+      {!isClarify &&
+      !isPlan &&
+      !isContinue &&
+      !isGrantExpansion &&
+      argumentsText ? (
         <div className="approval-command">
           <span>Tool arguments</span>
           <pre className="approval-plan__raw approval-plan__raw--command">
@@ -243,7 +273,11 @@ export function ApprovalCards({
           ) : null}
         </div>
       ) : null}
-      {!isClarify && !isPlan && approval?.proposedText ? (
+      {!isClarify &&
+      !isPlan &&
+      !isContinue &&
+      !isGrantExpansion &&
+      approval?.proposedText ? (
         <pre className="approval-plan__raw approval-plan__raw--diff">
           {compactText(approval.proposedText, 1200)}
         </pre>
@@ -293,6 +327,36 @@ export function ApprovalCards({
             </button>
           </div>
         </>
+      ) : isContinue ? (
+        <>
+          <textarea
+            rows={2}
+            value={clarifyText}
+            onChange={(e) => onClarifyChange(e.target.value)}
+            placeholder="Optional: narrow the task or point to files…"
+          />
+          <div className="card-actions">
+            <button
+              type="button"
+              className="btn"
+              onClick={() => onContinue?.(clarifyText.trim() || undefined)}
+            >
+              Continue
+            </button>
+            <button type="button" className="btn ghost" onClick={onStop}>
+              Stop here
+            </button>
+          </div>
+        </>
+      ) : isGrantExpansion ? (
+        <div className="card-actions">
+          <button type="button" className="btn" onClick={onApprove}>
+            Expand access
+          </button>
+          <button type="button" className="btn ghost" onClick={onDeny}>
+            Keep current grant
+          </button>
+        </div>
       ) : (
         <div className="card-actions">
           <button type="button" className="btn" onClick={onApprove}>
