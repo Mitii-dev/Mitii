@@ -595,6 +595,16 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
     }
   });
 
+  it('keeps recursive pnpm filters portable across Windows and POSIX shells', () => {
+    const rootPackage = JSON.parse(
+      readFileSync(join(repoRoot, 'package.json'), 'utf8'),
+    ) as { scripts?: Record<string, string> };
+    const nonPortable = Object.entries(rootPackage.scripts ?? {}).filter(
+      ([, command]) => /--filter\s+'[^']+'/.test(command),
+    );
+    expect(nonPortable).toEqual([]);
+  });
+
   it('strips thunder dual brand from apps/vscode (Phase 16)', () => {
     const vscodeRoot = join(repoRoot, 'apps/vscode');
     const pkg = JSON.parse(
