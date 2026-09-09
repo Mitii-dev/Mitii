@@ -53,6 +53,8 @@ export interface AgentRunCheckpoint {
   pendingGrantExpansion?: PendingGrantExpansionState;
   /** User-facing stall summary when suspensionKind is continue_required. */
   stallContinueRationale?: string;
+  /** Best user-facing answer available if the user chooses Stop. */
+  continuePartialAnswer?: string;
   /** Why continue_required was raised. */
   continueWallReason?: BudgetWallReason;
   /** How many Continue approvals the user has already granted this run. */

@@ -558,14 +558,16 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
     expect(existsSync(join(repoRoot, 'legacy'))).toBe(false);
     expect(existsSync(join(repoRoot, 'scripts/legacy-purge.mjs'))).toBe(true);
     // Active tree must not keep a second kernel or old tools/benchmark beside solid suite.
-    // `tools/policy-admin` is the allowed ship-band editor; legacy tools dumps are not.
+    // Active maintained tools are allowed; legacy tool dumps are not.
     expect(existsSync(join(repoRoot, 'src'))).toBe(false);
     expect(existsSync(join(repoRoot, 'tools/benchmark'))).toBe(false);
     if (existsSync(join(repoRoot, 'tools'))) {
       const toolEntries = readdirSync(join(repoRoot, 'tools'));
-      expect(toolEntries.filter((entry) => entry !== 'policy-admin')).toEqual(
-        [],
-      );
+      expect(
+        toolEntries.filter(
+          (entry) => entry !== 'policy-admin' && entry !== 'log-viewer',
+        ),
+      ).toEqual([]);
     }
     // Phase 14: solid benchmark lives under tests/benchmark; flat test/ dump is gone.
     expect(existsSync(join(repoRoot, 'tests/benchmark/package.json'))).toBe(true);

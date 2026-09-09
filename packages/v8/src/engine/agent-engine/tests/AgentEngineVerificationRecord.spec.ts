@@ -183,13 +183,22 @@ describe("AgentEnginePipeline verification records", () => {
       }),
     ).result;
 
-    expect(first.status).toBe("completed");
+    expect(first.status).toBe("suspended");
+    expect(first.suspension?.kind).toBe("continue_required");
     expect(first.reasonCodes).toContain("verification_record_saved");
     expect(first.reasonCodes).toContain("verification_retry_available");
     expect(first.reasonCodes).toContain("memory_committed");
     expect(first.verificationRecord?.retry?.kind).toBe("fix_remaining");
     expect(committed[0]).toContain("Retry handle: verification/");
     expect(saved.some((record) => record.status === "incomplete")).toBe(true);
+
+    const stopped = await engine.resume({
+      schemaVersion: 1,
+      runId: first.runId,
+      continueDecision: { decision: "stop" },
+    }).result;
+    expect(stopped.status).toBe("completed");
+    expect(stopped.reasonCodes).toContain("stall_continue_stopped");
 
     const retry = await engine.start(
       agentEngineStartInputSchema.parse({

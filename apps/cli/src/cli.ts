@@ -6,7 +6,6 @@ import { createInterface } from 'node:readline';
 
 import type {
   AgentMode,
-  MitiiClient,
   MitiiConversationMessage,
   TaskList,
 } from '@mitii/sdk';
@@ -15,11 +14,7 @@ import { resolveRunAutoOptions } from './commands/runAuto.js';
 import { formatSessionHeader } from './banner.js';
 import { CLI_HELP } from './help.js';
 import { createCliClient, resolveCliPorts } from './ports.js';
-import {
-  buildSessionExport,
-  formatTaskList,
-  formatUsageLine,
-} from './runReport.js';
+import { buildSessionExport } from './runReport.js';
 import {
   createDefaultSessionIo,
   serializeCliJson,

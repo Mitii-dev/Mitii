@@ -58,6 +58,7 @@ import { executeStart } from "./executeStart";
 import { DEFAULT_MUTATING_TOOL_NAMES, executeOneTool } from "./executeTool";
 import { runModelToolLoop } from "./modelToolLoop";
 import { finishAfterLoop, persistVerificationArtifact } from "./verification";
+import { commitMutations } from "./verificationSupport";
 import { resumeToolLoopFromCheckpoint } from "./executeResumeToolLoop";
 
 export async function executeResume(
@@ -416,6 +417,12 @@ export async function executeResume(
 
       if (input.continueDecision.decision === "stop") {
         await runtime.deps.checkpointStore.delete(runId);
+        commitMutations(runtime, checkpoint.mutationCheckpointIds, {
+          runId,
+          bus,
+          warnings,
+          logVerbosity: startInput.logVerbosity,
+        });
         await runtime.safeUnpin(runId, pinnedState);
         reasonCodes.push("stall_continue_stopped", "resume_complete");
         const partialAnswer = checkpoint.messages
@@ -425,7 +432,7 @@ export async function executeResume(
           .pop();
         return finish({
           status: "completed",
-          answer: partialAnswer,
+          answer: checkpoint.continuePartialAnswer ?? partialAnswer,
           reasonCodes,
         });
       }

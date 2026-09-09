@@ -369,15 +369,21 @@ describe("AgentEnginePipeline mutation approvals (Phase 8)", () => {
       approval: { approvalId: approvalId!, decision: "approved" },
     }).result;
 
-    expect(resumed.status).toBe("failed");
-    expect(resumed.error?.code).toBe("verification_failed");
-    expect(resumed.answer).toContain("Updated src/a.ts");
-    expect(resumed.answer).toMatch(/kept the edits|Verification did not/i);
-    expect(resumed.reasonCodes).toContain("verification_kept_changes");
-    expect(resumed.reasonCodes).toContain("verification_incomplete");
-    expect(resumed.reasonCodes).toContain("verification_failed");
-    expect(resumed.reasonCodes).toContain("answer_produced");
-    expect(resumed.reasonCodes).not.toContain("mutation_rolled_back");
+    expect(resumed.status).toBe("suspended");
+    expect(resumed.suspension?.kind).toBe("continue_required");
+    expect(resumed.suspension?.continuePrompt).toMatch(
+      /Verification repairs are capped/i,
+    );
+
+    const stopped = await engine.resume({
+      schemaVersion: 1,
+      runId: resumed.runId,
+      continueDecision: { decision: "stop" },
+    }).result;
+    expect(stopped.status).toBe("completed");
+    expect(stopped.answer).toContain("Updated src/a.ts");
+    expect(stopped.reasonCodes).toContain("stall_continue_stopped");
+    expect(stopped.reasonCodes).not.toContain("mutation_rolled_back");
 
     const kept = await fs.readFile(`${WORKSPACE}/src/a.ts`);
     expect(kept.content).toBe("const x = 2;\n");

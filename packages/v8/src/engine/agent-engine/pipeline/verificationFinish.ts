@@ -193,6 +193,7 @@ export async function finishAfterLoop(
       changedFiles: opts.changedFiles,
       mutationCheckpointIds: opts.mutationCheckpointIds,
       stallContinueRationale: rationale,
+      continuePartialAnswer: opts.answer || undefined,
       continueWallReason: opts.wallReason,
       continueOverrideCount,
       reasonCodes,
@@ -402,6 +403,18 @@ export async function finishAfterLoop(
     if (currentOutcome.kind === "continue_required") {
       if (!runtime.deps.checkpointStore) {
         await runtime.safeUnpin(runId, pinnedState);
+        if (currentOutcome.wallReason === "budget_exhausted") {
+          reasonCodes.push("budget_exhausted");
+          return finish({
+            status: "budget_exhausted",
+            answer: currentOutcome.answer || undefined,
+            reasonCodes,
+            error: {
+              code: "budget_exhausted",
+              message: currentOutcome.rationale,
+            },
+          });
+        }
         reasonCodes.push("misconfigured");
         return finish({
           status: "failed",
@@ -426,6 +439,7 @@ export async function finishAfterLoop(
         changedFiles: currentOutcome.changedFiles,
         mutationCheckpointIds: currentOutcome.mutationCheckpointIds,
         stallContinueRationale: currentOutcome.rationale,
+        continuePartialAnswer: currentOutcome.answer || undefined,
         continueWallReason: currentOutcome.wallReason,
         continueOverrideCount: currentOutcome.continueOverrideCount,
         reasonCodes,
@@ -851,31 +865,6 @@ export async function finishAfterLoop(
       reasonCodes.push("budget_exhausted");
     }
 
-    // Verification repairs stalled / capped — offer Continue before keeping changes.
-    if (
-      verificationOutcome.repairable &&
-      currentOutcome.kind === "completed" &&
-      loopChangedFiles.length > 0
-    ) {
-      const suspended = await suspendForBudgetWall({
-        wallReason: "verification_repair_capped",
-        messages: currentOutcome.messages,
-        toolCache: currentOutcome.toolCache,
-        changedFiles: loopChangedFiles,
-        mutationCheckpointIds: loopMutationIds,
-        answer:
-          selectUserFacingLoopAnswer({
-            loopAnswer,
-            changedFiles: loopChangedFiles,
-          }) ?? "",
-        mutationRequired: true,
-      });
-      if (suspended) {
-        return suspended;
-      }
-      reasonCodes.push("stall_continue_override_capped");
-    }
-
     // Verification did not pass (or remaining-error repairs stalled / capped).
     // Keep the edits, summarize the delta, and end the task.
     commitMutations(runtime, loopMutationIds, {
@@ -953,6 +942,32 @@ export async function finishAfterLoop(
         recordId: record.recordId,
         at: runtime.isoNow(),
       });
+    }
+    // Finalize verification evidence and memory before suspending. This makes
+    // Stop a clean terminal choice with a durable summary/retry record.
+    if (
+      verificationOutcome.repairable &&
+      currentOutcome.kind === "completed" &&
+      loopChangedFiles.length > 0
+    ) {
+      const suspended = await suspendForBudgetWall({
+        wallReason: "verification_repair_capped",
+        messages: currentOutcome.messages,
+        toolCache: currentOutcome.toolCache,
+        changedFiles: loopChangedFiles,
+        mutationCheckpointIds: loopMutationIds,
+        answer:
+          selectUserFacingLoopAnswer({
+            loopAnswer: currentOutcome.answer,
+            fallbackSummary: summary,
+            changedFiles: loopChangedFiles,
+          }) ?? summary,
+        mutationRequired: true,
+      });
+      if (suspended) {
+        return suspended;
+      }
+      reasonCodes.push("stall_continue_override_capped");
     }
     await runtime.safeUnpin(runId, pinnedState);
     reasonCodes.push("answer_produced");
