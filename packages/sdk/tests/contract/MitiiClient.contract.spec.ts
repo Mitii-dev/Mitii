@@ -226,6 +226,32 @@ describe('MitiiClient contract (Phase 12)', () => {
     );
   });
 
+  it('maps attachments onto the engine start input request', () => {
+    const engineInput = toAgentEngineStartInput(
+      {
+        prompt: 'What does this screenshot show?',
+        mode: 'ask',
+        attachments: [
+          { mimeType: 'image/png', data: 'aGVsbG8=', name: 'shot.png' },
+        ],
+      },
+      { mode: 'ask', sessionId: 'sess_test' },
+    );
+
+    expect(engineInput.request.attachments).toEqual([
+      { mimeType: 'image/png', data: 'aGVsbG8=', name: 'shot.png' },
+    ]);
+  });
+
+  it('omits attachments from the engine start input when none are given', () => {
+    const engineInput = toAgentEngineStartInput(
+      { prompt: 'Plain text request', mode: 'ask' },
+      { mode: 'ask', sessionId: 'sess_test' },
+    );
+
+    expect(engineInput.request.attachments).toBeUndefined();
+  });
+
   it('maps windowBudget policy overrides onto engine start input', () => {
     const engineInput = toAgentEngineStartInput(
       {

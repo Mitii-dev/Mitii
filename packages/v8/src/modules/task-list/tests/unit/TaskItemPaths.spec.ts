@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   collectCompletedTaskPaths,
   extractDiagnosticCodeHint,
+  itemWriteTargetsMatchChangedFiles,
   taskItemPaths,
   taskPathsMatch,
 } from "../../actions/TaskItemPaths";
@@ -40,6 +41,56 @@ describe("taskPathsMatch", () => {
       taskPathsMatch("src/Button.tsx", "packages/mui-builder/src/Button.tsx"),
     ).toBe(true);
     expect(taskPathsMatch("src/a.ts", "src/b.ts")).toBe(false);
+  });
+});
+
+describe("itemWriteTargetsMatchChangedFiles", () => {
+  it("matches only the explicit write target, not sibling package files", () => {
+    expect(
+      itemWriteTargetsMatchChangedFiles(
+        {
+          title: "Change: draft package files",
+          detail: "Scope: packages/mui-builder/src/index.ts",
+          write: ["packages/mui-builder/src/index.ts"],
+        },
+        ["packages/mui-builder/src/Button.tsx"],
+      ),
+    ).toBe(false);
+    expect(
+      itemWriteTargetsMatchChangedFiles(
+        {
+          title: "Change: draft package files",
+          detail: "Scope: packages/mui-builder/src/index.ts",
+          write: ["packages/mui-builder/src/index.ts"],
+        },
+        ["packages/mui-builder/src/index.ts"],
+      ),
+    ).toBe(true);
+  });
+
+  it("uses package-root matching only when write targets are empty", () => {
+    expect(
+      itemWriteTargetsMatchChangedFiles(
+        {
+          title: "Change: draft package files",
+          detail: "Scope: packages/mui-builder",
+        },
+        ["packages/mui-builder/src/Button.tsx"],
+      ),
+    ).toBe(true);
+  });
+
+  it("does not match a different package root", () => {
+    expect(
+      itemWriteTargetsMatchChangedFiles(
+        {
+          title: "Change: draft",
+          detail: "Scope: packages/formik-form-builder/src/index.ts",
+          write: ["packages/formik-form-builder/src/index.ts"],
+        },
+        ["packages/mui-builder/src/index.ts"],
+      ),
+    ).toBe(false);
   });
 });
 

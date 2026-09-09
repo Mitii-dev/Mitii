@@ -28,6 +28,11 @@ export {
   serializePlanForPrompt,
   serializePlanText,
 } from "./pipeline/PlanningPipeline";
+export {
+  remapPathThroughScaffoldMapping,
+  remapScaffoldChangeSurfaces,
+  resolveScaffoldPackageMapping,
+} from "./actions/remapScaffoldChangeSurfaces";
 export type { PlanStrategyResolution } from "./pipeline/PlanningPipeline";
 
 export {

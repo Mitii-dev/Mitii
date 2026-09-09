@@ -70,6 +70,16 @@ export function IconModel(props: IconProps) {
   );
 }
 
+export function IconCode(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="m6.1 4.6-3 3.4 3 3.4" />
+      <path d="m9.9 4.6 3 3.4-3 3.4" />
+      <path d="M8.8 3.5 7.2 12.5" />
+    </svg>
+  );
+}
+
 export function IconPlus(props: IconProps) {
   return (
     <svg {...defaults} {...props}>

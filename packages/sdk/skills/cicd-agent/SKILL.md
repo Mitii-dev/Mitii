@@ -2,14 +2,16 @@
 name: cicd-agent
 title: CI/CD Agent
 description: Post-commit coverage, CI failures, workflows, and PR-ready verification for unattended automation.
-intents: [test, bugfix, feature, config]
+intents: [test, config]
 routes: [execute, diagnose]
-tags: [ci, cicd, github-actions, coverage, pr, automation]
+tags: [ci, cicd, github-actions, coverage, pr, automation, workflow]
+sizeClass: M
+requireTagEvidence: true
 priority: 180
 conflictGroup: verify
 alwaysApply: false
 enabled: true
-when: [After a commit needing tests, CI failed, Writing or fixing GitHub Actions, Opening a PR from automation]
+when: [After a commit needing tests, CI failed, Writing or fixing GitHub Actions, Opening a PR from automation, Workflow or coverage ask]
 instruction: Diff-first; write focused tests; run the repo suite; never push to main; prefer draft PRs via gh when asked to raise a PR.
 ---
 

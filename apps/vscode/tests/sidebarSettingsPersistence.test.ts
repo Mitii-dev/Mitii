@@ -141,6 +141,20 @@ describe('MitiiSidebarProvider settings persistence', () => {
         contextWindow: 16_000,
         maximumOutputTokens: 2048,
       },
+      autocomplete: {
+        enabled: true,
+        provider: 'openai-compatible',
+        baseUrl: ' http://localhost:1234/v1 ',
+        model: ' local-fim ',
+        endpointPath: '/fim/completions',
+        authHeader: 'x-api-key',
+        maxTokens: 1024,
+        debounceMs: -1,
+        timeoutMs: 100,
+        prefixChars: 10,
+        suffixChars: 999_999,
+        temperature: 9,
+      },
       ui: UI_PATCH,
       workspaceRootOverride: '/tmp/project',
       workspaceMaximumIndexFiles: 55_555,
@@ -153,6 +167,18 @@ describe('MitiiSidebarProvider settings persistence', () => {
       'provider.model',
       'provider.contextWindow',
       'provider.maximumOutputTokens',
+      'autocomplete.enabled',
+      'autocomplete.provider',
+      'autocomplete.baseUrl',
+      'autocomplete.model',
+      'autocomplete.endpointPath',
+      'autocomplete.authHeader',
+      'autocomplete.maxTokens',
+      'autocomplete.debounceMs',
+      'autocomplete.timeoutMs',
+      'autocomplete.prefixChars',
+      'autocomplete.suffixChars',
+      'autocomplete.temperature',
       'ui.showReasoning',
       'developer.enabled',
       'developer.intensityOverrides',
@@ -209,6 +235,19 @@ describe('MitiiSidebarProvider settings persistence', () => {
     expect(byKey.get('provider.model')?.value).toBe('new-model');
     expect(byKey.get('provider.contextWindow')?.value).toBe(16_000);
     expect(byKey.get('provider.maximumOutputTokens')?.value).toBe(2048);
+    expect(byKey.get('autocomplete.baseUrl')?.value).toBe(
+      'http://localhost:1234/v1',
+    );
+    expect(byKey.get('autocomplete.model')?.value).toBe('local-fim');
+    expect(byKey.get('autocomplete.endpointPath')?.value).toBe(
+      'fim/completions',
+    );
+    expect(byKey.get('autocomplete.maxTokens')?.value).toBe(512);
+    expect(byKey.get('autocomplete.debounceMs')?.value).toBe(0);
+    expect(byKey.get('autocomplete.timeoutMs')?.value).toBe(250);
+    expect(byKey.get('autocomplete.prefixChars')?.value).toBe(128);
+    expect(byKey.get('autocomplete.suffixChars')?.value).toBe(60_000);
+    expect(byKey.get('autocomplete.temperature')?.value).toBe(2);
     expect(byKey.get('workspace.maximumIndexFiles')?.value).toBe(55_555);
     expect(byKey.get('semanticIndex.enabled')?.value).toBe(false);
   });

@@ -14,6 +14,7 @@ import type {
   AgentReasonCode,
   AgentRunUsage,
 } from "../contracts/output/AgentRunResult";
+import type { BudgetWallReason } from "../actions/buildStallContinueRationale";
 
 export interface PendingApprovalState {
   approvalId: string;
@@ -52,6 +53,12 @@ export interface AgentRunCheckpoint {
   pendingGrantExpansion?: PendingGrantExpansionState;
   /** User-facing stall summary when suspensionKind is continue_required. */
   stallContinueRationale?: string;
+  /** Best user-facing answer available if the user chooses Stop. */
+  continuePartialAnswer?: string;
+  /** Why continue_required was raised. */
+  continueWallReason?: BudgetWallReason;
+  /** How many Continue approvals the user has already granted this run. */
+  continueOverrideCount?: number;
   /** Structured plan awaiting approval when suspensionKind is plan_approval_required. */
   plan?: PlanArtifact;
   /** Strategy that produced `plan`; restored on resume so the prompt contract survives. */

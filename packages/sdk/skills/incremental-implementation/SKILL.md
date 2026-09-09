@@ -4,24 +4,27 @@ title: Incremental Implementation
 description: Ship thin vertical slices: implement, test, verify, then expand.
 intents: [feature, refactor, migrate, scaffold, config]
 routes: [execute]
-tags: [incremental, slice, feature-flag, rollback]
-priority: 160
+tags: [incremental, slice, feature-flag, rollback, scaffold]
+sizeClass: M
+priority: 170
 conflictGroup: build
 alwaysApply: false
 enabled: true
-when: [Change touches more than one file, About to write a large amount of code, Task feels too big for one step]
-instruction: Implement one thin vertical slice at a time with safe defaults and rollback-friendly changes; verify before expanding.
+when: [Change touches more than one file, Scaffolding or cloning a package, About to write a large amount of code, Task feels too big for one step]
+instruction: Implement one thin vertical slice at a time on the target paths only; verify before expanding; prefer apply_patch batches grouped by error class; keep template/reference packages read-only.
 ---
 
 # Planning
 
 Discover:
-- Identify the smallest useful vertical slice
+- Identify the smallest useful vertical slice on the **target** paths
+- Treat reference/template packages as read-only evidence
 - Note existing patterns to match
 
 Change:
-- Implement only the current slice
+- Implement only the current slice with apply_patch (bounded batch)
 - Prefer feature flags and safe defaults
+- Do not rewrite the template package
 
 Verify:
 - Slice works end-to-end before the next slice

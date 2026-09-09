@@ -19,6 +19,8 @@ import {
   mergeRequiredSkillIds,
   parseRequiredSkillMentions,
   MAX_REQUIRED_SKILLS,
+  REQUEST_ENVELOPE_LIMITS,
+  SUPPORTED_IMAGE_MIME_TYPES,
 } from '@mitii/v8';
 import type {
   AgentEngineResumeInput,
@@ -63,6 +65,21 @@ export const mitiiConversationMessageSchema = z
 export type MitiiConversationMessage = z.infer<
   typeof mitiiConversationMessageSchema
 >;
+
+/** Host-facing image attachment. Mapped onto V8 request-envelope attachments. */
+export const mitiiImageAttachmentSchema = z
+  .object({
+    mimeType: z.enum(SUPPORTED_IMAGE_MIME_TYPES),
+    data: z.string().min(1).max(REQUEST_ENVELOPE_LIMITS.MAXIMUM_ATTACHMENT_DATA_CHARACTERS),
+    name: z
+      .string()
+      .min(1)
+      .max(REQUEST_ENVELOPE_LIMITS.MAXIMUM_ATTACHMENT_NAME_CHARACTERS)
+      .optional(),
+  })
+  .strict();
+
+export type MitiiImageAttachment = z.infer<typeof mitiiImageAttachmentSchema>;
 
 export const mitiiStartInputSchema = z
   .object({
@@ -120,6 +137,22 @@ export const mitiiStartInputSchema = z
     stream: z.boolean().optional(),
     approvalMode: mitiiApprovalModeSchema.optional(),
     planApproval: z.enum(['policy', 'never']).optional(),
+    /**
+     * Tighten-only user safety rules (usually from `.mitii/safety.json`).
+     * Never widens Decision Policy grants.
+     */
+    userSafetyRules: z
+      .object({
+        enabled: z.boolean().default(false),
+        denyTools: z.array(z.string().min(1)).default([]),
+        denyCommandPrefixes: z.array(z.string().min(1)).default([]),
+        allowCommandPrefixes: z.array(z.string().min(1)).optional(),
+        denyPathScopes: z.array(z.string().min(1)).default([]),
+        denyNetworkHosts: z.array(z.string().min(1)).default([]),
+        approvalCeiling: mitiiApprovalModeSchema.optional(),
+      })
+      .strict()
+      .optional(),
     dirtyPaths: z.array(z.string().min(1)).optional(),
     /**
      * How hard Engine should look before drafting a plan. "auto" defers to
@@ -181,6 +214,11 @@ export const mitiiStartInputSchema = z
      * Explicitly attached skill ids (merged with @skill: mentions in prompt).
      */
     requiredSkillIds: z.array(z.string().min(1).max(64)).max(MAX_REQUIRED_SKILLS).optional(),
+    /** Images (screenshots, mockups) attached to the current request. */
+    attachments: z
+      .array(mitiiImageAttachmentSchema)
+      .max(REQUEST_ENVELOPE_LIMITS.MAXIMUM_ATTACHMENTS)
+      .optional(),
   })
   .strict();
 
@@ -249,6 +287,9 @@ export function toAgentEngineStartInput(
     ...(pinnedArtifacts.length > 0
       ? { referencedArtifacts: pinnedArtifacts }
       : {}),
+    ...(parsed.attachments && parsed.attachments.length > 0
+      ? { attachments: parsed.attachments }
+      : {}),
     workspace:
       parsed.workspaceId || defaults.workspaceId
         ? { workspaceId: parsed.workspaceId ?? defaults.workspaceId }
@@ -290,6 +331,7 @@ export function toAgentEngineStartInput(
     stream: parsed.stream,
     approvalMode,
     planApproval,
+    userSafetyRules: parsed.userSafetyRules,
     dirtyPaths: parsed.dirtyPaths,
     explorationDepth: parsed.explorationDepth,
     windowBudget: parsed.windowBudget,

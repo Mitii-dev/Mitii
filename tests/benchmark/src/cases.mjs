@@ -2,7 +2,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 /** Top-level benchmark domains (not global easy/medium/hard). */
-export const DOMAINS = Object.freeze(['frontend', 'backend', 'cicd', 'testing']);
+export const DOMAINS = Object.freeze(['frontend', 'backend', 'cicd', 'testing', 'api-build']);
 export const DIFFICULTIES = Object.freeze(['easy', 'medium', 'hard']);
 export const MODES = Object.freeze(['ask', 'plan', 'agent']);
 export const DEFAULT_CASE_FILES = Object.freeze(['easy.jsonl', 'medium.jsonl', 'hard.jsonl']);

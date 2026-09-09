@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mitii Log Viewer</title>
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand__mark">Mitii</span>
+          <div>
+            <h1>Log Viewer</h1>
+            <p>Inspect turns, model I/O, tool calls, failures, and truncation signals.</p>
+          </div>
+        </div>
+        <div class="repo-picker">
+          <label class="repo-picker__field">
+            <span>Repo or logs path</span>
+            <input id="repo-path" autocomplete="off" spellcheck="false" />
+          </label>
+          <button id="load-path" class="btn btn--primary" type="button">Load</button>
+          <button id="choose-folder" class="btn" type="button">Choose repo folder</button>
+          <button id="refresh" class="icon-btn" type="button" aria-label="Refresh">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M20 12a8 8 0 0 1-14.2 5.1M4 12A8 8 0 0 1 18.2 6.9" />
+              <path d="M20 5v6h-6M4 19v-6h6" />
+            </svg>
+          </button>
+          <input id="folder-input" type="file" webkitdirectory directory multiple hidden />
+        </div>
+      </header>
+
+      <section class="status-strip" id="status-strip">
+        <div>
+          <span class="status-strip__label">Workspace</span>
+          <strong id="workspace-label">Not loaded</strong>
+        </div>
+        <div class="metric">
+          <span>Files</span>
+          <strong id="metric-files">0</strong>
+        </div>
+        <div class="metric metric--calls">
+          <span>Turns</span>
+          <strong id="metric-calls">0</strong>
+        </div>
+        <div class="metric metric--errors">
+          <span>Errors</span>
+          <strong id="metric-errors">0</strong>
+        </div>
+        <div class="metric metric--warn">
+          <span>Warnings</span>
+          <strong id="metric-warnings">0</strong>
+        </div>
+      </section>
+
+      <main class="workspace">
+        <aside class="file-rail">
+          <div class="rail-head">
+            <div>
+              <h2>Log Files</h2>
+              <p id="logs-dir">Select a repo that has .mitii/logs</p>
+            </div>
+          </div>
+          <div class="file-filters" role="tablist" aria-label="Log file filter">
+            <button class="filter is-active" type="button" data-filter="all">All</button>
+            <button class="filter" type="button" data-filter="model_io">Model I/O</button>
+            <button class="filter" type="button" data-filter="session">Session</button>
+          </div>
+          <div class="file-list" id="file-list"></div>
+        </aside>
+
+        <section class="turn-rail">
+          <div class="rail-head">
+            <div>
+              <h2>Turns</h2>
+              <p id="selected-file-label">No file selected</p>
+            </div>
+          </div>
+          <label class="search-box">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m16 16 4 4" />
+            </svg>
+            <input id="search" placeholder="Search turns, tools, errors" />
+          </label>
+          <div class="issue-panel" id="issue-panel"></div>
+          <div class="turn-list" id="turn-list"></div>
+        </section>
+
+        <section class="detail-pane">
+          <div class="detail-empty" id="detail-empty">
+            <h2>Select a log</h2>
+            <p>Load a repo, then choose a model I/O file to inspect inputs and outputs.</p>
+          </div>
+          <article class="detail" id="detail" hidden>
+            <header class="detail-head">
+              <div>
+                <p class="eyebrow" id="detail-eyebrow">Model turn</p>
+                <h2 id="detail-title">Turn</h2>
+                <p id="detail-meta">No metadata</p>
+              </div>
+              <div class="detail-actions">
+                <button class="btn" id="copy-summary" type="button">Copy bug summary</button>
+                <button class="btn" id="toggle-raw" type="button">Raw JSON</button>
+              </div>
+            </header>
+
+            <div class="split">
+              <section class="io-card">
+                <header>
+                  <h3>Input</h3>
+                  <span id="input-count"></span>
+                </header>
+                <div id="input-content" class="io-stack"></div>
+              </section>
+              <section class="io-card">
+                <header>
+                  <h3>Output</h3>
+                  <span id="output-count"></span>
+                </header>
+                <div id="output-content" class="io-stack"></div>
+              </section>
+            </div>
+
+            <section class="raw-panel" id="raw-panel" hidden>
+              <h3>Raw JSON</h3>
+              <div class="raw-grid">
+                <pre id="raw-request"></pre>
+                <pre id="raw-response"></pre>
+              </div>
+            </section>
+          </article>
+          <article class="detail detail--timeline" id="timeline-detail" hidden>
+            <header class="detail-head">
+              <div>
+                <p class="eyebrow">Session log</p>
+                <h2>Run Timeline</h2>
+                <p id="timeline-meta">Session events and diagnostics</p>
+              </div>
+            </header>
+            <div class="timeline" id="timeline"></div>
+          </article>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" hidden></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

@@ -67,6 +67,50 @@ function listDirectoryCall(id: string, path = "src") {
 }
 
 describe("AgentEnginePipeline stall and read dedup", () => {
+  it("fails fast when a no-tool route leaks workspace tool calls", async () => {
+    let executeCalls = 0;
+    const deps = createStubDependencies({
+      decision: createDecision({
+        route: "direct_answer",
+        reasonCodes: ["direct_knowledge_answer"],
+      }),
+      llm: new ScriptedLlmPort(
+        [{ toolCalls: [patchCall("call_patch_without_grant")] }],
+        createCapabilities({ supportsTools: true }),
+      ),
+    });
+    const originalExecute = deps.tools!.execute.bind(deps.tools);
+    deps.tools = {
+      ...deps.tools!,
+      execute: async (input, options) => {
+        executeCalls += 1;
+        return originalExecute(input, options);
+      },
+    };
+
+    const engine = new AgentEnginePipeline(deps);
+    const result = await engine.start(
+      agentEngineStartInputSchema.parse({
+        schemaVersion: 1,
+        request: {
+          sessionId: "sess_no_tool_leak",
+          mode: "ask",
+          userMessage: "What changed?",
+          workspace: { workspaceId: "ws_1" },
+        },
+        workspaceRoot: "/workspace",
+      }),
+    ).result;
+
+    expect(result.status).toBe("failed");
+    expect(result.error?.code).toBe("tool_calls_without_grant");
+    expect(result.reasonCodes).toContain("misconfigured");
+    expect(result.warnings).toContain(
+      "Model requested workspace tools on a route where no tools were granted.",
+    );
+    expect(executeCalls).toBe(0);
+  });
+
   it("dedups identical reads and stops after a re-read stall nudge", async () => {
     let executeCalls = 0;
     const deps = createStubDependencies({
@@ -115,10 +159,12 @@ describe("AgentEnginePipeline stall and read dedup", () => {
       }),
     ).result;
 
-    expect(result.status).toBe("completed");
+    expect(result.status).toBe("suspended");
+    expect(result.suspension?.kind).toBe("continue_required");
     expect(result.reasonCodes).toContain("tool_result_deduped");
     expect(result.reasonCodes).toContain("exploration_reread_heavy");
     expect(result.reasonCodes).toContain("exploration_stall_broken");
+    expect(result.reasonCodes).toContain("stall_continue_suspended");
     expect(executeCalls).toBe(1);
     expect(result.usage.fileReadCalls).toBeGreaterThanOrEqual(8);
     expect(result.usage.uniqueFilePathsTouched).toBe(1);
@@ -213,7 +259,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
     expect(result.answer ?? "").toContain("Patched remaining type errors.");
   });
 
-  it("fails mutation runs that keep re-reading without edits", async () => {
+  it("suspends mutation runs that keep re-reading without edits for a Continue/Stop choice", async () => {
     const deps = createStubDependencies({
       decision: createDecision({
         route: "execute",
@@ -257,15 +303,27 @@ describe("AgentEnginePipeline stall and read dedup", () => {
       }),
     ).result;
 
-    expect(result.status).toBe("failed");
+    expect(result.status).toBe("suspended");
+    expect(result.suspension?.kind).toBe("continue_required");
     expect(result.reasonCodes).toContain("exploration_stall_broken");
-    expect(result.reasonCodes).toContain("unfulfilled_execute_exhausted");
+    expect(result.reasonCodes).toContain("stall_continue_suspended");
     expect(result.reasonCodes).not.toContain("mutation_applied");
-    expect(result.error?.code).toBe("no_mutation_performed");
+    expect(result.suspension?.continuePrompt ?? "").toContain(
+      "without applying the required workspace edits",
+    );
     expect(result.answer ?? "").not.toContain("I still need the same file");
+
+    const stopped = await engine.resume({
+      schemaVersion: 1,
+      runId: result.runId,
+      continueDecision: { decision: "stop" },
+    }).result;
+
+    expect(stopped.status).toBe("completed");
+    expect(stopped.reasonCodes).toContain("stall_continue_stopped");
   });
 
-  it("gives two grace turns after the first-mutation nudge, then fails if reading continues", async () => {
+  it("suspends after the post-nudge evidence-read allowance is exhausted", async () => {
     const deps = createStubDependencies({
       decision: createDecision({
         route: "execute",
@@ -326,16 +384,19 @@ describe("AgentEnginePipeline stall and read dedup", () => {
       }),
     ).result;
 
-    expect(result.status).toBe("failed");
+    expect(result.status).toBe("suspended");
+    expect(result.suspension?.kind).toBe("continue_required");
     expect(result.reasonCodes).toContain("unfulfilled_execute_recovered");
     expect(result.reasonCodes).toContain("unfulfilled_execute_exhausted");
+    expect(result.reasonCodes).toContain("stall_continue_suspended");
     expect(result.reasonCodes).not.toContain("mutation_applied");
-    expect(result.error?.code).toBe("no_mutation_performed");
-    expect(result.error?.message).toContain("continued reading");
+    expect(result.suspension?.continuePrompt ?? "").toMatch(
+      /read-only discovery|mutation recovery limit/i,
+    );
     expect(result.answer ?? "").not.toContain("Should not be reached");
   });
 
-  it("completes with a clear blocker after the final no-tools recovery ask", async () => {
+  it("suspends with continue_required when a clear blocker arrives with no mutations", async () => {
     const deps = createStubDependencies({
       decision: createDecision({
         route: "execute",
@@ -354,18 +415,6 @@ describe("AgentEnginePipeline stall and read dedup", () => {
               readPathCall(`call_read_${index}`, `src/file-${index}.ts`),
             ],
           })),
-          {
-            content: "One more read.",
-            toolCalls: [readPathCall("call_read_after_nudge", "src/final.ts")],
-          },
-          {
-            content: "Grace read 1.",
-            toolCalls: [readPathCall("call_read_grace_1", "src/final-2.ts")],
-          },
-          {
-            content: "Grace read 2.",
-            toolCalls: [readPathCall("call_read_grace_2", "src/final-3.ts")],
-          },
           {
             content:
               "Blocker: cannot fix this in the workspace. Stripo.init requires API credentials and config params that are not present in this repo.",
@@ -389,13 +438,15 @@ describe("AgentEnginePipeline stall and read dedup", () => {
       }),
     ).result;
 
-    expect(result.status).not.toBe("failed");
-    expect(result.error?.code).not.toBe("no_mutation_performed");
+    expect(result.status).toBe("suspended");
+    expect(result.suspension?.kind).toBe("continue_required");
+    expect(result.reasonCodes).toContain("incomplete_execute");
+    expect(result.reasonCodes).toContain("stall_continue_suspended");
     expect(result.answer ?? "").toMatch(/Blocker:/i);
     expect(result.reasonCodes).toContain("unfulfilled_execute_recovered");
   });
 
-  it("succeeds if the model mutates during the grace turn after the first-mutation nudge", async () => {
+  it("succeeds if the model mutates after the first-mutation nudge", async () => {
     const deps = createStubDependencies({
       decision: createDecision({
         route: "execute",
@@ -414,10 +465,6 @@ describe("AgentEnginePipeline stall and read dedup", () => {
               readPathCall(`call_read_${index}`, `src/file-${index}.ts`),
             ],
           })),
-          {
-            content: "I still want to inspect one more file first.",
-            toolCalls: [readPathCall("call_read_after_nudge", "src/final.ts")],
-          },
           {
             content: "Applying the fix now.",
             toolCalls: [patchCall("call_patch_after_grace")],
@@ -485,7 +532,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
     expect(result.error?.code).not.toBe("no_mutation_performed");
   });
 
-  it("still succeeds when the model patches on the second grace turn after the first-mutation nudge", async () => {
+  it("succeeds when the model uses a few evidence reads after the nudge then patches", async () => {
     const deps = createStubDependencies({
       decision: createDecision({
         route: "execute",
@@ -567,7 +614,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
       agentEngineStartInputSchema.parse({
         schemaVersion: 1,
         request: {
-          sessionId: "sess_mutation_second_grace_recovered",
+          sessionId: "sess_mutation_evidence_reads_then_patch",
           mode: "agent",
           userMessage: "Fix all TypeScript errors",
           workspace: { workspaceId: "ws_1" },
@@ -576,13 +623,13 @@ describe("AgentEnginePipeline stall and read dedup", () => {
       }),
     ).result;
 
+    expect(result.status).not.toBe("failed");
     expect(result.reasonCodes).toContain("unfulfilled_execute_recovered");
     expect(result.reasonCodes).toContain("mutation_applied");
-    expect(result.status).not.toBe("failed");
     expect(result.error?.code).not.toBe("no_mutation_performed");
   });
 
-  it("fails immediately when a rejected mutation is followed by more reading", async () => {
+  it("suspends when a rejected mutation is followed by more reading", async () => {
     const deps = createStubDependencies({
       decision: createDecision({
         route: "execute",
@@ -630,11 +677,14 @@ describe("AgentEnginePipeline stall and read dedup", () => {
       }),
     ).result;
 
-    expect(result.status).toBe("failed");
-    expect(result.error?.code).toBe("no_mutation_performed");
-    expect(result.error?.message).toContain("rejected mutation");
+    expect(result.status).toBe("suspended");
+    expect(result.suspension?.kind).toBe("continue_required");
     expect(result.reasonCodes).toContain("tool_failed");
     expect(result.reasonCodes).toContain("unfulfilled_execute_exhausted");
+    expect(result.reasonCodes).toContain("stall_continue_suspended");
+    expect(result.suspension?.continuePrompt ?? "").toMatch(
+      /rejected mutation|valid workspace edit/i,
+    );
     expect(result.usage.modelCalls).toBe(2);
     expect(result.answer ?? "").not.toContain("Should not be reached");
   });
@@ -1225,12 +1275,12 @@ describe("AgentEnginePipeline stall and read dedup", () => {
       }),
     ).result;
 
-    expect(result.status).toBe("failed");
-    expect(result.error?.code).toBe("no_mutation_performed");
-    expect(result.error?.message).toContain("rejected tools");
+    expect(result.status).toBe("suspended");
+    expect(result.suspension?.kind).toBe("continue_required");
     expect(result.reasonCodes).toContain("tool_failed");
     expect(result.reasonCodes).toContain("unfulfilled_execute_exhausted");
-    // Two recoveries (maxUnfulfilledExecuteRecoveries: 2), then fail on the third rejected turn.
+    expect(result.reasonCodes).toContain("stall_continue_suspended");
+    // Two recoveries (maxUnfulfilledExecuteRecoveries: 2), then suspend on the third rejected turn.
     expect(result.usage.modelCalls).toBe(3);
     expect(result.answer ?? "").not.toContain("Should not be reached");
   });

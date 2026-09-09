@@ -3,14 +3,15 @@ name: planning-and-task-breakdown
 title: Planning and Task Breakdown
 description: Decompose specs into small ordered tasks with acceptance criteria.
 intents: [feature, bugfix, refactor, migrate, scaffold, test, config, dependency, optimize, security, schema, mock, docs, style]
-routes: [plan, execute]
+routes: [plan]
 tags: [plan, tasks, breakdown, acceptance]
+sizeClass: L
 priority: 190
 conflictGroup: planning
 alwaysApply: false
 enabled: true
-when: [You have a spec or clear requirements, The task feels too large to start, You need ordered implementable units]
-instruction: Break work into small atomic tasks with acceptance criteria and dependency order; implement one task at a time.
+when: [You are in Plan mode with a spec or clear requirements, The task feels too large to start, You need ordered implementable units]
+instruction: Break work into small atomic tasks with acceptance criteria and dependency order; keep each task file-scoped and verifiable. Do not implement during planning.
 ---
 
 # Planning

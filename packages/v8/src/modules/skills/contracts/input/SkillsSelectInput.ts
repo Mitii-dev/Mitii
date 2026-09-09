@@ -68,6 +68,11 @@ export const skillsSelectInputSchema = z
       .array(z.string().min(1).max(64))
       .max(MAX_REQUIRED_SKILLS)
       .default([]),
+    /**
+     * When true, omit sizeClass L skills unless alwaysApply / required.
+     * Engine sets this for compact no_cache windows.
+     */
+    forbidLargeSkills: z.boolean().optional(),
   })
   .strict();
 

@@ -19,9 +19,24 @@ describe("extractEstablishedFact", () => {
 
     expect(fact).toMatchObject({
       id: "read_file:src/formik.ts:12-18",
+      kind: "observation",
+      paths: ["src/formik.ts"],
     });
     expect(fact?.content).toContain("src/formik.ts:12-18 =>");
     expect(fact?.content).toContain("useFormik");
+  });
+
+  it("records package-root observations from directory listings", () => {
+    const fact = extractEstablishedFact({
+      toolName: "list_directory",
+      argumentsValue: { path: "packages/mui-builder" },
+      outputPreview: "package.json\nsrc\nREADME.md",
+    });
+    expect(fact).toMatchObject({
+      id: "path-summary:packages/mui-builder",
+      kind: "path_summary",
+      paths: ["packages/mui-builder"],
+    });
   });
 
   it("ignores mutation tools", () => {

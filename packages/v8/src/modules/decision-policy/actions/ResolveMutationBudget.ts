@@ -26,9 +26,11 @@ export interface MutationBudgetResolution {
 export function resolveMutationBudget(params: {
   understanding: RequestUnderstandingResult;
   windowPolicy?: WindowPolicy;
+  /** Raw user message — used to detect package port/clone phrasing. */
+  message?: string;
 }): MutationBudgetResolution {
   const { understanding, windowPolicy } = params;
-  const profile = selectProfile(understanding);
+  const profile = selectProfile(understanding, params.message);
   const reasonCode = profileToReasonCode(profile);
   const profileBudget = { ...MUTATION_BUDGET_PROFILES[profile] };
   const mutationBudget = windowPolicy
@@ -75,6 +77,7 @@ function mergeMutationBudget(
 
 function selectProfile(
   understanding: RequestUnderstandingResult,
+  message?: string,
 ): MutationBudgetProfile {
   const taskAnalysis = understanding.taskAnalysis;
   const estimatedMax = taskAnalysis.estimatedFilesAffected?.maximum;
@@ -93,6 +96,12 @@ function selectProfile(
     taskAnalysis.complexity === "very_complex";
 
   const primary = understanding.intent.classification.primaryTaskIntent;
+  // Scaffold / package-create / port work needs room for multi-file batches.
+  // Ultra-tight budgets caused thrash on clone-package executes.
+  if (isScaffoldLikeExecute(understanding, message)) {
+    return "standard";
+  }
+
   if (
     primary === "refactor" ||
     largeFileSpan ||
@@ -114,6 +123,67 @@ function selectProfile(
   }
 
   return "standard";
+}
+
+/**
+ * Create/scaffold/migrate/port package work should not inherit the ultra-tight
+ * refactor profile even when scope is package/single_location and planning
+ * is recommended.
+ */
+function isScaffoldLikeExecute(
+  understanding: RequestUnderstandingResult,
+  message?: string,
+): boolean {
+  const primary = understanding.intent.classification.primaryTaskIntent;
+  if (primary === "scaffold") {
+    return true;
+  }
+  if (primary !== "feature" && primary !== "migrate" && primary !== "config") {
+    return false;
+  }
+  const haystack = [
+    message ?? "",
+    ...(understanding.taskAnalysis.constraints ?? []),
+    ...(understanding.taskAnalysis.requestedOutcomes ?? []),
+    ...(understanding.intent.classification.secondaryTaskIntents ?? []),
+    ...(understanding.intent.classification.taskHints?.recommendedSkillTags ??
+      []),
+  ]
+    .join(" ")
+    .toLowerCase();
+  if (
+    /\b(scaffold|clone|parity|boilerplate|package\s+template|create\s+package|new\s+package|full\s+port|port\s+of|mirror(?:ing)?\b|like\s+packages\/)/.test(
+      haystack,
+    )
+  ) {
+    return true;
+  }
+
+  const packageTargets = new Set(
+    understanding.taskAnalysis.targets
+      .map((target) => {
+        const value = target.value.trim().replace(/\\/g, "/");
+        const match = value.match(/^(packages\/[^/]+)/i);
+        return match?.[1]?.toLowerCase();
+      })
+      .filter((value): value is string => Boolean(value)),
+  );
+  // Template + destination package folders ⇒ package port even if scope
+  // was classified as single_location / multi_file.
+  if (
+    packageTargets.size >= 2 &&
+    (primary === "feature" || primary === "migrate") &&
+    understanding.taskAnalysis.recommendsPlanning === true
+  ) {
+    return true;
+  }
+
+  return (
+    understanding.taskAnalysis.scope === "package" &&
+    (primary === "feature" || primary === "migrate") &&
+    understanding.taskAnalysis.recommendsPlanning === true &&
+    !/\brefactor\b/.test(haystack)
+  );
 }
 
 function profileToReasonCode(

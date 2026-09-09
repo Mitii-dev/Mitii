@@ -48,6 +48,12 @@ export interface UserRequestCorrelation {
   clientRequestId?: string;
 }
 
+export interface RequestImageAttachment {
+  mimeType: string;
+  data: string;
+  name?: string;
+}
+
 export interface UserRequestEnvelope {
   schemaVersion: 1;
 
@@ -62,6 +68,7 @@ export interface UserRequestEnvelope {
 
   workspace?: UserRequestWorkspaceScope;
   correlation?: UserRequestCorrelation;
+  attachments?: RequestImageAttachment[];
 
   createdAt: string;
 }

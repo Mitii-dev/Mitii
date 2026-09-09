@@ -217,4 +217,25 @@ describe('CLI resolveCliPorts', () => {
       'planning-default',
     ]);
   });
+
+  it('parses repeatable --image flags for ask', () => {
+    const parsed = parseCliArgs([
+      'node',
+      'mitii',
+      'ask',
+      'describe these',
+      '--image',
+      './mock.png',
+      '--image',
+      './second.jpg',
+    ]);
+    expect(parsed.command).toBe('ask');
+    expect(parsed.images).toEqual(['./mock.png', './second.jpg']);
+  });
+
+  it('leaves images undefined when --image is not passed', () => {
+    const parsed = parseCliArgs(['node', 'mitii', 'ask', 'plain prompt']);
+    expect(parsed.command).toBe('ask');
+    expect(parsed.images).toBeUndefined();
+  });
 });

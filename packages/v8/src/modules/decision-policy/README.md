@@ -40,6 +40,7 @@ decision-policy/
 ## Technical Details
 
 - Ask and plan modes cannot receive write grants.
+- Optional `userSafetyRules` (from `.mitii/safety.json`) may only tighten a grant after mode seals and injection clamp — never widen.
 - Agent (and ask) "run the tests / can you test" requests route to `diagnose` with `run_readonly_command`. Implement/fix phrasing still wins over a mention of running tests.
 - Agent clarify gate: clear "implement/fix …" asks still execute when understanding only has soft ambiguity. Material forks (diagnose vs mutation alternatives, investigate-vs-fix ambiguity questions, or `needsClarification` with confidence below 0.75) route to `clarify` instead of guessing.
 - Soft workspace symptoms (stuck loading / hang with server or localhost) route to `diagnose` in Agent mode — never tool-less `direct_answer`.

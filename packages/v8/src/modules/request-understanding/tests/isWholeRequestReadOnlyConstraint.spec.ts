@@ -53,4 +53,12 @@ describe("isWholeRequestReadOnlyConstraint", () => {
       ),
     ).toBe(true);
   });
+
+  it("treats Edit asks with scoped Do-not-change as not read-only", () => {
+    expect(
+      isWholeRequestReadOnlyConstraint(
+        "Edit docs/loading-indicator.md only: replace border-blue-500 with border-green-500. Do not change app/loading.tsx.",
+      ),
+    ).toBe(false);
+  });
 });

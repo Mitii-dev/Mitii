@@ -86,6 +86,14 @@ export class UserRequestEnvelopeBuilder {
               ),
           }
         : {}),
+      ...(input.attachments &&
+      input.attachments.length >
+        0
+        ? {
+            attachments:
+              input.attachments,
+          }
+        : {}),
       createdAt:
         this.toIsoDate(
           this.dependencies

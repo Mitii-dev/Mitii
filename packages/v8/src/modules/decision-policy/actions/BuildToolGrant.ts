@@ -150,6 +150,7 @@ export function buildToolGrant(params: {
   const mutation = resolveMutationBudget({
     understanding,
     windowPolicy: params.windowPolicy,
+    message: params.message,
   });
   reasonCodes.push(...mutation.reasonCodes);
   const processExecution = resolveProcessExecutionAuthority({

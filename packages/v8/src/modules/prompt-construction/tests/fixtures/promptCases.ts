@@ -156,6 +156,7 @@ export function createPromptInput(
     decision,
     userMessage:
       overrides.userMessage ?? "Explain the null check in src/util.ts",
+    attachments: overrides.attachments,
     conversation: overrides.conversation ?? [],
     repositoryContext: overrides.repositoryContext,
     instructions: overrides.instructions,

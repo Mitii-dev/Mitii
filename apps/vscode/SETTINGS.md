@@ -11,6 +11,7 @@ VS Code configuration keys use the `mitii.*` prefix. Profiles are stored in `.mi
 | Page | Tab id | What it is for |
 |---|---|---|
 | Provider | `model` | Connect a model. Open this first. |
+| Autocomplete | `autocomplete` | Configure FIM inline suggestions |
 | Workspace | `workspace` | Folder + repository index |
 | Modes | `modes` | Ask / Plan / Agent defaults and run budget |
 | Context | `context` | What is attached to each turn |
@@ -69,6 +70,42 @@ Runtime still uses the **effective** window (`0` → model preset, else the stor
 
 ---
 
+## Autocomplete
+
+Optional editor inline suggestions. Autocomplete is separate from Ask/Plan/Agent so you can use a fast FIM model without changing the main agent provider.
+
+Mitii registers a VS Code inline completion provider at startup, but it sends no network requests unless `mitii.autocomplete.enabled` is true. Requests are file-only, workspace-trust aware, bounded by prefix/suffix character limits, skipped for ignored/security-sensitive paths, debounced, and aborted on typing or timeout.
+
+| UI field | Setting | Save / reflect |
+|---|---|---|
+| Enable autocomplete | `mitii.autocomplete.enabled` | Saved on Save or via **Mitii: Toggle Autocomplete**. |
+| Provider | `mitii.autocomplete.provider` | Currently `openai-compatible`. |
+| Base URL | `mitii.autocomplete.baseUrl` | Empty inherits `mitii.provider.baseUrl`. |
+| Model | `mitii.autocomplete.model` | Empty inherits `mitii.provider.model`. |
+| Endpoint path | `mitii.autocomplete.endpointPath` | Appended to the base URL. Common values are `completions` and `fim/completions`. |
+| Auth header | `mitii.autocomplete.authHeader` | Uses SecretStorage `mitii.provider.apiKey` as `authorization`, `api-key`, or `x-api-key`. |
+| Max tokens | `mitii.autocomplete.maxTokens` | Clamped to 1–512. |
+| Debounce | `mitii.autocomplete.debounceMs` | Clamped to 0–2000ms. |
+| Timeout | `mitii.autocomplete.timeoutMs` | Clamped to 250–30000ms. |
+| Prefix chars | `mitii.autocomplete.prefixChars` | Clamped to 128–60000 characters before the cursor. |
+| Suffix chars | `mitii.autocomplete.suffixChars` | Clamped to 0–60000 characters after the cursor. |
+| Temperature | `mitii.autocomplete.temperature` | Clamped to 0–2. |
+
+The HTTP body follows the generic OpenAI-style FIM shape:
+
+```json
+{
+  "model": "your-fim-model",
+  "prompt": "text before cursor",
+  "suffix": "text after cursor",
+  "max_tokens": 96,
+  "temperature": 0.2,
+  "stream": false
+}
+```
+
+---
+
 ## Workspace
 
 | UI field | Setting | Save / reflect |
@@ -124,9 +161,9 @@ Controls how much diagnostic detail lands in the run log (visible via "Export se
 
 | UI field | Setting | Save / reflect |
 |---|---|---|
-| Repo map | `mitii.ui.contextToggles.repoMap` | Boolean, reflected as saved. |
+| Repo map | `mitii.ui.contextToggles.repoMap` | Boolean. Default off; auto-enabled for deep / CI-git impact asks. |
 | Diagnostics | `mitii.ui.contextToggles.diagnostics` | Boolean. |
-| Git diff | `mitii.ui.contextToggles.gitDiff` | Boolean. |
+| Git diff | `mitii.ui.contextToggles.gitDiff` | Boolean. Default off; auto-enabled for deep / CI-git impact asks. |
 | Active editor | `mitii.ui.contextToggles.editor` | Boolean. |
 | Open tabs | `mitii.ui.contextToggles.openTabs` | Boolean. Default off. |
 | Memory | `mitii.ui.contextToggles.memory` | Boolean. Default on. |

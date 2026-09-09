@@ -1,7 +1,7 @@
 {
   "id": "testing",
   "name": "Testing Agent Benchmark",
-  "description": "Curated agent-only testing core: 7 cases each for easy, medium, and hard, writing missing unit/integration tests (node:test) across Express, a monorepo, and legacy CommonJS fixtures.",
+  "description": "Curated agent-only testing core (24 cases: 7 easy / 9 medium / 8 hard), writing missing unit/integration tests (node:test) across Express, a monorepo, and legacy CommonJS fixtures.",
   "caseFiles": [
     "express.jsonl",
     "monorepo.jsonl",
@@ -9,9 +9,9 @@
   ],
   "expectedCounts": {
     "easy": 7,
-    "medium": 8,
+    "medium": 9,
     "hard": 8,
-    "total": 23
+    "total": 24
   },
   "gates": {
     "easy": 0.9,

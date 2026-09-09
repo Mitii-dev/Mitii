@@ -21,20 +21,32 @@ agent-engine/
   pipeline/                 Public facade plus cohesive run stages
     AgentEnginePipeline     start()/resume() orchestration
     runtime                 deps, events, window policy, run handle
-    executeStart            intake → pin → understand → decide → prompt
+    executeStart            prompt + model/tool loop orchestration
+    executeStartEarlyPipeline  intake → pin → preflight → understand → decide
+    executeStartEnrichment  context → skills → memory → planning
     executeResume           clarification / plan / tool-approval continuation
-    modelToolLoop           model turns, compaction, recovery
-    executeTool             one authorized tool call + grant refresh
+    executeResumeToolLoop   resume model/tool loop from checkpoint
+    modelToolLoop           turn orchestration, truncation recovery, cache-class
+    modelLoopNoToolTurn     text-only turn outcomes / recoveries
+    modelLoopToolPhase      tool batch + grant refresh
+    modelLoopAfterTools     post-tool mutation / stall outcomes
+    prepareModelLoopTurn    compaction, working set, output clamp
+    consumeModelTurn        single LLM stream consumption
+    executeTool             one authorized tool call (+ support helpers)
     pinAndDiscovery         repository pin, preflight snapshot, discovery pass
-    verification            gate, repair queue, persist, user summary
+    verification            re-exports + retry-ask helper
+    verificationFinish      finishAfterLoop / repair queue
+    verificationSupport     gate, persist, commit, summaries
   contracts/
     input/                  AgentEngineStartInput, AgentEngineResumeInput
     output/                 AgentRunHandle, AgentRunResult, RunEvent
     ports/                  AgentEngineDependencies
     errors/                 AgentEngineError
-  actions/                  Mapping, prompt slices, output recovery, gates, evidence
+  actions/                  Mapping, prompt slices, output recovery, gates, evidence,
+                            path extractors, cache-class, sticky/mutable estimates
   adapters/                 In-memory/file checkpoint stores, composition helpers
-  internal/                 Checkpoints, event bus, budgets, task-list runtime
+  internal/                 Checkpoints, event bus, budgets, tool cache, read ledger,
+                            working-set upsert, task-list runtime
   tests/                    Unit and wired engine tests
 ```
 
@@ -60,21 +72,66 @@ agent-engine/
   Otherwise it suspends with `grant_expansion_required` until the host approves.
 - `usage` reports `fileReadCalls` vs `uniqueFilePathsTouched`. Repeated
   re-reads of the same files emit `exploration_reread_heavy` mid-loop and,
-  after nudges exhaust, `exploration_stall_broken`. When the run already
-  changed files or has pending checklist work, the engine suspends with
-  `continue_required` instead of ending silently. Stall detection uses paths
+  after nudges exhaust, `exploration_stall_broken`. The engine then suspends
+  with `continue_required` (Continue / Stop) instead of ending silently —
+  including zero-progress mutation stalls — unless the user has already used
+  `maxContinueOverrides` Continues. Stop resumes as `completed` with
+  `stall_continue_stopped`; Continue injects a strategy-reset nudge and may
+  carry optional user guidance. Stall detection uses paths
   read in the current loop (reset after a successful mutation) so verification
-  repair can re-read known error files without aborting. Hosts may pass
+  repair can re-read known error files without aborting.
+- The same `continue_required` channel covers other **budget walls** (not only
+  re-read stalls): unfulfilled-execute / rejected-mutation exhaustions,
+  clear incomplete-execute blockers, model/tool `budget_exhausted`, incomplete
+  checklist finishes, and capped verification repairs. Wall reason is stored on
+  the checkpoint (`continueWallReason`) so Continue reset copy and budget bumps
+  stay reason-specific. Continuing after `budget_exhausted` adds
+  `continueBudgetModelCallBump` (default 4) model/tool/loop units so resume
+  does not immediately re-hit the same ceiling. Hosts may pass
   `loopPolicy.thresholds` (partial overrides of `AGENT_ENGINE_THRESHOLDS`) for
   lab tweaks; omit for shipped standards.
 - Identical read-only tool+args reuse the prior result (`tool_result_deduped`).
-  Mutations invalidate that content cache.
+  Mutations **path-invalidate** that content cache (only overlapping paths), so
+  reference-package reads survive edits to the target package.
+- Main-loop **read ledger** returns compact `already_read` stubs for unchanged
+  `read_file` / `read_many_files` path+range repeats (`tool_result_already_read`),
+  matching discovery’s duplicate-read protection.
+- Compaction is **cache-class aware**: `prompt_cache` preserves the message
+  prefix until the hard ceiling (provider prompt-cache friendly); `no_cache`
+  (typical local runtimes that never report hit/miss) enables earlier auto
+  compaction. Class is resolved from `supportsPromptCaching` plus observed
+  `cacheHitTokens` / `cacheMissTokens`.
+- Per-turn `maximumOutputTokens` follows **leftover context** (`window − used
+  input`, scaled, then generation ceiling). Tool-loop turns additionally apply
+  a band cap (8k compact, 10k standard, 12k wide) so local models do not turn spare
+  context into long analysis instead of bounded patch calls.
+- Scaffold/clone discovery **remaps write surfaces** from the template package
+  onto the target package before planning/checklist seeding.
+- Checklist auto-advance matches **explicit write / title file paths** (and
+  package-root only when `write` is empty). Sibling files under the same
+  package no longer complete other checklist rows.
+- Skills support optional `sizeClass` (S/M/L). Packing prefers compact L1 for L
+  playbooks when later M skills remain; compact windows forbid L injection
+  unless required/`alwaysApply`. Optional `requireTagEvidence` gates niche
+  skills (e.g. CI) so intent alone is not enough.
+- Host (VS Code): lean context defaults (repo map / git diff off) with
+  intent-lite auto-enable for deep / CI-git asks; Agent conversation carry
+  prefers a compact `<carry_handoff>` prefix and tighter chat caps.
+- Decision Policy keeps scaffold-like package feature/migrate/**scaffold**/port work
+  on the **standard** mutation profile instead of ultra-tight (including migrate
+  asks that look like `single_location` but name two packages).
+- Clone/port discovery remaps write surfaces and plan allowlists onto the
+  **target** package; template `filesRead` stay evidence-only.
+- After the first-mutation nudge, up to **3** targeted `read_file` /
+  `read_many_files` batches are allowed before failing; broad list/glob/search
+  still fails immediately.
+- Trailing `<working_set>` is **always** re-upserted before each model call
+  (including verification repair), so live checklist / mutation budget /
+  observations survive hard compaction.
 - Auto/hard compaction reinjects mid-run observations as well as pre-run
   memory. Observation count, observation size, reinjection size, dropped-turn
   summary size, compacted tool-result size, compacted tool-argument size, and
   live tool-result content size are all read from `WindowPolicy.compaction`.
-  The model-loop prefix is preserved until the hard compaction ceiling so
-  local KV caches and provider prompt caches can hit across turns.
 - Tool-result history compaction preserves schema-shaped read/search arguments
   and replaces older tool results with path/range/finding stubs instead of
   slicing raw JSON or dropping tool rows from the summary.
@@ -84,20 +141,22 @@ agent-engine/
   mutations complete every matching change item (by path), not just the
   active row once per turn.
 - Output truncation recovery can ask the model to continue safely within remaining budgets.
+  Per-turn `max_tokens` also floors at 256 (when leftover allows) so recovery
+  never collapses to a 1-token turn.
 - When providers leak XML/tag-shaped tool requests into assistant text instead
   of structured tool deltas, the loop can recover a conservative subset of
   read/discovery tool calls from tag attributes and continue through normal
   Tool Runtime enforcement rather than immediately treating the turn as
   incomplete narration.
-- Execute + write + mutation-intent turns that produce text and no `apply_patch` are **unfulfilled execute**. The loop nudges up to twice (`unfulfilled_execute_recovered`, `maxUnfulfilledExecuteRecoveries: 2`) to call `apply_patch` in a bounded batch grouped by error class. Further text-only turns complete with `unfulfilled_execute_exhausted` instead of spinning. Docs create/update on execute+write is treated the same way.
+- Execute + write + mutation-intent turns that produce text and no `apply_patch` are **unfulfilled execute**. The loop nudges up to twice (`unfulfilled_execute_recovered`, `maxUnfulfilledExecuteRecoveries: 2`) to prefer `apply_patch`, while allowing one targeted `read_file`/`read_many_files` of active write/mustRead paths. After recoveries exhaust (or a clear blocker with no mutations), the run suspends with `continue_required` instead of a silent fail — unless Continue overrides are already spent. Stale blocker narration is replaced after later mutations land.
 - Rejected `apply_patch`/`delete_file`/`move_file` recoveries use a **separate** budget (`maxRejectedMutationRecoveries`, band-aware) so a stale-hunk → targeted read → retry cycle is not starved by the text-only unfulfilled-execute nudge.
 - **Window bands** select shipped loop/stall standards from the effective context window (`compact` &lt; 50k, `standard` &lt; 100k, `wide` ≥ 100k). Permanent values: [`policy/loopPolicyBands.ts`](./policy/loopPolicyBands.ts) and [`windowBudgetBands.ts`](../../modules/window-budget/windowBudgetBands.ts). Edit with `pnpm policy-admin` (HTML UI), then rebuild. Optional Custom host overrides stay local-only. See [`policy/README.md`](./policy/README.md).
 - `apply_patch` failures use distinct reason codes (`old_text_not_found`, `old_text_ambiguous`, `patch_target_missing`, `patch_hash_mismatch`, `identical_old_and_new`, `patch_syntax_invalid`). Retryable codes (including no-op `identical_old_and_new`) attach current file content so the model can copy exact `oldText` without a separate re-read. Targeted discovery after a rejected mutation follows those codes, not warning-string matching. `patch_conflict` remains as a legacy umbrella. Optional `replaceAll` replaces every exact occurrence; the default remains unique match.
 - Compiler/tsc tool output is grouped by error code and asks for a class-wide batch, not one diagnostic at a time.
-- `budget_exhausted` after mutations still captures `repo_build_state` phase `after` so remaining error counts are visible.
+- `budget_exhausted` prefers `continue_required` (extend-once) while overrides remain; if the user stops or overrides are spent, terminal `budget_exhausted` after mutations still captures `repo_build_state` phase `after` so remaining error counts are visible.
 - Truncation on that same execute+write path recovers as a **tool-call** nudge, not essay continuation. Direct-answer truncation still continues the text.
 - `context_ready` may include `retrievalSources` (`sourceId`, `status`, `candidateCount`) from hybrid retrieval reports.
-- `model_turn` events include turn index, optional token counts, `finishReason`, and `truncated`.
+- `model_turn` events include turn index, optional token counts, `finishReason`, `truncated`, plus telemetry: `preservePrefix`, `promptCacheClass`, `stickyInputChars`, `mutableInputChars`, and `compactionPressure`.
 - `composeReadOnlyAgentEngine` provides a useful read-only wiring helper.
 
 ### Start order
@@ -118,7 +177,7 @@ planning:
   discover_and_plan  -> bounded read-only discovery loop, then planning.plan({ discoveryBrief, strategyOverride })
   else               -> planning.plan({ strategyOverride }) immediately
 prompt construction
-model/tool loop               (per-turn max_tokens follows leftover context, capped by a real host override)
+model/tool loop               (per-turn max_tokens follows leftover context and tool-loop cap, capped by a real host override)
 verification gate + repair queue (see below)
 ```
 
@@ -132,7 +191,7 @@ After a mutation, `finishAfterLoop` runs Verification, compares before/after whe
 
 - **Passed**: commit mutations and complete as today.
 - **Repairable failure** (`verification_failed`): persist the record, inject a compact remaining-error prompt (not the full dump), and run another model/tool loop. Window effort caps repairs (`run.maxVerificationRepairs`; medium is 8). The first mutate loop reserves that slice of `maxModelCalls` (`verification_repair_budget_reserved`) so a productive exploration pass cannot spend the whole ceiling before repairs start. Quick exploration stays at one repair. Stop after `maxStalledVerificationRepairs` non-improving verifies. Lint/format-only leftovers after typecheck and diagnostics are green complete as `implemented_unverified` instead of opening another repair loop. `verification_repair_attempted` / `verification_repair_succeeded` mark that path.
-- **Still failing, or not repairable** (blocked / cancelled / infra-missing / stalled): keep the edits, write a short user summary, commit a memory pointer, and complete with `verification_incomplete` / `verification_kept_changes`.
+- **Still failing after edits, or not repairable** (blocked / cancelled / infra-missing / stalled): keep the edits, write a short user summary, commit a memory pointer, and finish `failed` with `verification_incomplete` / `verification_kept_changes`.
 - **Cancel / interrupt**: persist whatever before/after snapshot exists so the next turn can reload it.
 - **Retry**: a later user ask matching “fix the remaining verification errors” loads `loadLatest(workspaceId)` instead of scraping chat history.
 
@@ -160,6 +219,29 @@ pnpm exec vitest run \
   packages/v8/src/engine/agent-engine/internal/tests/discoveryPassBudget.spec.ts
 ```
 
+Evidence-economy / cache-class coverage:
+
+```bash
+pnpm exec vitest run \
+  packages/v8/src/engine/agent-engine/internal/tests/ToolCallCache.spec.ts \
+  packages/v8/src/engine/agent-engine/internal/tests/ReadLedger.spec.ts \
+  packages/v8/src/engine/agent-engine/internal/tests/workingSetRuntime.spec.ts \
+  packages/v8/src/engine/agent-engine/actions/tests/extractToolContentPaths.spec.ts \
+  packages/v8/src/engine/agent-engine/actions/tests/resolvePromptCacheClass.spec.ts \
+  packages/v8/src/engine/agent-engine/actions/tests/estimateStickyMutableChars.spec.ts \
+  packages/v8/src/engine/agent-engine/actions/tests/compactModelLoopMessages.spec.ts \
+  packages/v8/src/engine/agent-engine/actions/tests/clampTurnMaximumOutputTokens.spec.ts \
+  packages/v8/src/engine/agent-engine/actions/tests/extractEstablishedFact.spec.ts \
+  packages/v8/src/engine/agent-engine/internal/tests/taskListRuntime.spec.ts \
+  packages/v8/src/modules/planning/actions/tests/remapScaffoldChangeSurfaces.spec.ts \
+  packages/v8/src/modules/skills/tests/unit/ApplySkillBudget.spec.ts \
+  packages/v8/src/modules/decision-policy/tests/MutationBudget.spec.ts
+```
+
+- `ToolCallCache` — path-aware content invalidation keeps unrelated package reads.
+- `ReadLedger` — main-loop already-read stubs; path-overlap invalidation.
+- `workingSetRuntime` — trailing `<working_set>` always upserted (including repair).
+- `resolvePromptCacheClass` — `prompt_cache` vs `no_cache` and `preservePrefix`.
 - `planDiscoveryContract` — cold Plan asks force `discover_and_plan`; `quick` / Agent mode do not.
 - `planDiscoveryQuality` — quality-floor predicates and clarify fallback decision.
 - `discoveryPassBudget` — shaped preflight must not starve seed reads / model turns.

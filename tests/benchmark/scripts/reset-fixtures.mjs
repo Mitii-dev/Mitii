@@ -13,11 +13,12 @@
  * Fixture *source* files stay as committed (or your local edits). Agent edits
  * from a run live under .workspaces/, not in fixtures/ copies.
  */
-import { existsSync, readdirSync, rmSync, unlinkSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, rmSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runProcess } from '../src/process.mjs';
+import { needsNativeRebuild } from './native-rebuild-deps.mjs';
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const fixturesDir = join(rootDir, 'fixtures');
@@ -156,6 +157,26 @@ for (const fixtureRoot of fixtures) {
     process.exit(1);
   }
   console.log('done');
+
+  if (!usePnpm) {
+    const manifest = JSON.parse(readFileSync(join(fixtureRoot, 'package.json'), 'utf8'));
+    const toRebuild = needsNativeRebuild(manifest);
+    if (toRebuild.length > 0) {
+      process.stdout.write(`  rebuilding native deps for ${name} (${toRebuild.join(', ')})... `);
+      const rebuild = await runProcess({
+        command: `npm rebuild ${toRebuild.join(' ')}`,
+        cwd: fixtureRoot,
+        shell: true,
+        timeoutMs: 300_000,
+      });
+      if (rebuild.exitCode !== 0) {
+        console.error('FAILED');
+        console.error((rebuild.stderr || rebuild.stdout).slice(0, 2000));
+        process.exit(1);
+      }
+      console.log('done');
+    }
+  }
 }
 
 console.log('Fixture reset complete.');

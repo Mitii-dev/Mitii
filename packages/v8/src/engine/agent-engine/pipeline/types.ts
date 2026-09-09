@@ -3,6 +3,7 @@ import type { ModelMessage } from "../../../modules/model-gateway";
 import type { RepoBuildStateComparison, VerificationResult } from "../../../modules/verification";
 
 import type { VerificationGateDecision } from "../actions";
+import type { BudgetWallReason } from "../actions/buildStallContinueRationale";
 import type { AgentReasonCode } from "../contracts";
 import type { PendingApprovalState } from "../internal/RunCheckpoint";
 import type { ToolCallCache } from "../internal/ToolCallCache";
@@ -59,6 +60,10 @@ export type ToolLoopOutcome =
       mutationCheckpointIds: string[];
       answer: string;
       decision: ExecutionDecision;
+      /** Continue approvals already used; persisted on the checkpoint. */
+      continueOverrideCount: number;
+      /** Why this wall was raised — drives resume reset copy and budget bumps. */
+      wallReason: BudgetWallReason;
     }
   | { kind: "cancelled" }
   | {

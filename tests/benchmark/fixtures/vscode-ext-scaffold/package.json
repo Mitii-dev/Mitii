@@ -1,0 +1,23 @@
+{
+  "name": "bench-sample-extension",
+  "displayName": "Bench Sample Extension",
+  "description": "Minimal VS Code extension fixture for release-engineering benchmark cases",
+  "version": "0.0.1",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [{ "command": "benchSample.hello", "title": "Bench Sample: Hello" }]
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.2",
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.14.2",
+    "@vscode/vsce": "^3.9.2"
+  }
+}

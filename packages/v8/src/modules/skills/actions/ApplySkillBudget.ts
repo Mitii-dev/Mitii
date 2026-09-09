@@ -18,14 +18,19 @@ export type HydratedScoredSkill = Omit<ScoredSkill, "skill"> & {
 /**
  * Apply the dedicated skills token budget and max count.
  *
- * Packing is rank-preserving: a higher-ranked skill is never dropped solely
- * so a smaller later skill can take its slot. When the full body does not
- * fit, a distinct compact body is used (or truncated) before omitting.
+ * Packing is rank-preserving for equal size classes. sizeClass L playbooks
+ * prefer their compact L1 body when later M skills remain, and may be omitted
+ * entirely when `forbidLargeSkills` is set (compact no_cache windows).
  */
 export function applySkillBudget(params: {
   scored: readonly HydratedScoredSkill[];
   budgetTokens: number;
   maxSkills: number;
+  /**
+   * When true, omit sizeClass L skills unless alwaysApply / required.
+   * Typical for compact no_cache local windows.
+   */
+  forbidLargeSkills?: boolean;
 }): {
   instructions: SkillInstructionBlock[];
   omissions: SkillOmission[];
@@ -43,8 +48,10 @@ export function applySkillBudget(params: {
   let remaining = params.budgetTokens;
   let selectedMatchSkills = 0;
   const minUseful = SKILLS_THRESHOLDS.minUsefulSkillTokens;
+  const forbidLarge = params.forbidLargeSkills === true;
 
-  for (const entry of params.scored) {
+  for (let index = 0; index < params.scored.length; index += 1) {
+    const entry = params.scored[index]!;
     const exemptFromMaxSkills =
       entry.skill.alwaysApply || entry.selection === "required";
     if (!exemptFromMaxSkills && selectedMatchSkills >= params.maxSkills) {
@@ -63,16 +70,57 @@ export function applySkillBudget(params: {
       continue;
     }
 
+    const sizeClass = resolveSkillSizeClass(entry.skill);
+    if (forbidLarge && sizeClass === "L" && !exemptFromMaxSkills) {
+      omissions.push({
+        skillId: entry.skill.id,
+        reason: "budget",
+        tokens: estimateTokens(fullContent),
+      });
+      budgetOmitted = true;
+      continue;
+    }
+
     const compactContent = entry.compactContent?.trim();
     const hasDistinctCompact = Boolean(
       compactContent && compactContent !== fullContent,
     );
-    const packed = packSkillContent({
-      fullContent,
-      compactContent: hasDistinctCompact ? compactContent : undefined,
-      remaining,
-      minUsefulTokens: minUseful,
-    });
+    const laterMediumPending = params.scored
+      .slice(index + 1)
+      .some((candidate) => {
+        if (candidate.skill.alwaysApply || candidate.selection === "required") {
+          return false;
+        }
+        return resolveSkillSizeClass(candidate.skill) !== "L";
+      });
+
+    // Prefer two M over one L: when later medium skills remain, pack L via
+    // compact L1 first instead of consuming the budget on the full playbook.
+    const preferCompactForLarge =
+      sizeClass === "L" &&
+      !exemptFromMaxSkills &&
+      hasDistinctCompact &&
+      laterMediumPending;
+
+    const packed = preferCompactForLarge
+      ? packSkillContent({
+          fullContent: compactContent!,
+          compactContent: undefined,
+          remaining,
+          minUsefulTokens: minUseful,
+        }) ??
+        packSkillContent({
+          fullContent,
+          compactContent: hasDistinctCompact ? compactContent : undefined,
+          remaining,
+          minUsefulTokens: minUseful,
+        })
+      : packSkillContent({
+          fullContent,
+          compactContent: hasDistinctCompact ? compactContent : undefined,
+          remaining,
+          minUsefulTokens: minUseful,
+        });
 
     if (!packed) {
       omissions.push({
@@ -85,7 +133,7 @@ export function applySkillBudget(params: {
       continue;
     }
 
-    if (packed.kind === "compacted") {
+    if (packed.kind === "compacted" || preferCompactForLarge) {
       compacted = true;
     }
     if (packed.kind === "truncated") {
@@ -121,6 +169,25 @@ export function applySkillBudget(params: {
     compacted,
     truncated,
   };
+}
+
+export type SkillSizeClass = "S" | "M" | "L";
+
+export function resolveSkillSizeClass(skill: {
+  sizeClass?: SkillSizeClass;
+  content: string;
+}): SkillSizeClass {
+  if (skill.sizeClass === "S" || skill.sizeClass === "M" || skill.sizeClass === "L") {
+    return skill.sizeClass;
+  }
+  const chars = skill.content.trim().length;
+  if (chars <= 400) {
+    return "S";
+  }
+  if (chars <= 2_500) {
+    return "M";
+  }
+  return "L";
 }
 
 function packSkillContent(params: {

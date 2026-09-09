@@ -1,9 +1,7 @@
-import type { ExecutionDecision } from "../../../modules/decision-policy";
 import type {
   ModelMessage,
   ModelToolCall,
 } from "../../../modules/model-gateway";
-import type { WindowPolicy } from "../../../modules/window-budget";
 import {
   formatPlanAsAnswer,
   inferPlanStrategyFromArtifact,
@@ -17,6 +15,7 @@ import {
   amendMessageWithClarification,
   annotateMutationToolDefinitions,
   applyExplorationSignal,
+  buildBudgetWallResetMessage,
   clampRunBudget,
   toRunUsage,
   filterToolDefinitions,
@@ -24,6 +23,7 @@ import {
 import type {
   EstablishedFact,
 } from "../actions";
+import type { BudgetWallReason } from "../actions/buildStallContinueRationale";
 import { ToolCallCache } from "../internal/ToolCallCache";
 import { AGENT_ENGINE_SCHEMA_VERSION } from "../constants";
 import {
@@ -37,7 +37,6 @@ import type {
   AgentReasonCode,
   AgentRunResult,
 } from "../contracts";
-import type { AgentRunCheckpoint } from "../internal/RunCheckpoint";
 import { EventBus } from "../internal/EventBus";
 import { RunBudgetTracker } from "../internal/RunBudget";
 import {
@@ -59,6 +58,8 @@ import { executeStart } from "./executeStart";
 import { DEFAULT_MUTATING_TOOL_NAMES, executeOneTool } from "./executeTool";
 import { runModelToolLoop } from "./modelToolLoop";
 import { finishAfterLoop, persistVerificationArtifact } from "./verification";
+import { commitMutations } from "./verificationSupport";
+import { resumeToolLoopFromCheckpoint } from "./executeResumeToolLoop";
 
 export async function executeResume(
   runtime: AgentEngineRuntime,
@@ -416,8 +417,14 @@ export async function executeResume(
 
       if (input.continueDecision.decision === "stop") {
         await runtime.deps.checkpointStore.delete(runId);
+        commitMutations(runtime, checkpoint.mutationCheckpointIds, {
+          runId,
+          bus,
+          warnings,
+          logVerbosity: startInput.logVerbosity,
+        });
         await runtime.safeUnpin(runId, pinnedState);
-        reasonCodes.push("resume_complete");
+        reasonCodes.push("stall_continue_stopped", "resume_complete");
         const partialAnswer = checkpoint.messages
           .filter((message) => message.role === "assistant")
           .map((message) => message.content)
@@ -425,23 +432,69 @@ export async function executeResume(
           .pop();
         return finish({
           status: "completed",
-          answer: partialAnswer,
+          answer: checkpoint.continuePartialAnswer ?? partialAnswer,
           reasonCodes,
         });
       }
 
       reasonCodes.push("stall_continue_approved", "resume_complete");
+      const nextOverrideCount = (checkpoint.continueOverrideCount ?? 0) + 1;
+      const guidance = input.continueDecision.guidance?.trim();
+      const wallReason: BudgetWallReason =
+        checkpoint.continueWallReason ?? "exploration_stall";
+      const mutationRequired =
+        checkpoint.decision.reasonCodes.includes("mutation_execute") ||
+        checkpoint.decision.toolGrant.maximumWorkspaceEffect === "write";
+      const resetMessage = buildBudgetWallResetMessage({
+        reason: wallReason,
+        guidance,
+        mutationRequired,
+        changedFiles: checkpoint.changedFiles,
+      });
+      const resumedCheckpoint = {
+        ...checkpoint,
+        continueOverrideCount: nextOverrideCount,
+        continueWallReason: wallReason,
+        messages: [
+          ...checkpoint.messages,
+          { role: "user" as const, content: resetMessage },
+        ],
+      };
+
+      let continueBudget = budget;
+      if (wallReason === "budget_exhausted") {
+        const bump = resolveLoopPolicyThresholds({
+          contextWindowTokens: windowPolicy.contextWindowTokens,
+          overrides: startInput.loopPolicy?.thresholds,
+        }).thresholds.continueBudgetModelCallBump;
+        continueBudget = new RunBudgetTracker(
+          {
+            ...resumeBudgetClamp.budget,
+            maxModelCalls: resumeBudgetClamp.budget.maxModelCalls + bump,
+            maxToolCalls: resumeBudgetClamp.budget.maxToolCalls + bump,
+            maxLoopIterations:
+              resumeBudgetClamp.budget.maxLoopIterations + bump,
+          },
+          checkpoint.startedAtMs,
+          checkpoint.usage,
+          excludedWaitMs,
+        );
+        warnings.push(
+          `Extended run budget by ${bump} model/tool/loop units after Continue.`,
+        );
+      }
+
       await runtime.deps.checkpointStore.delete(runId);
 
       return await resumeToolLoopFromCheckpoint(runtime, {
         runId,
         requestId,
-        checkpoint,
+        checkpoint: resumedCheckpoint,
         startInput,
         decision,
         bus,
         signal,
-        budget,
+        budget: continueBudget,
         reasonCodes,
         warnings,
         taskListRef,
@@ -456,6 +509,7 @@ export async function executeResume(
         onVerificationRecord: (record) => {
           verificationRecord = record;
         },
+        continueOverrideCount: nextOverrideCount,
       });
     }
 
@@ -687,176 +741,4 @@ export async function executeResume(
       },
     });
   }
-}
-
-async function resumeToolLoopFromCheckpoint(
-  runtime: AgentEngineRuntime,
-  params: {
-    runId: string;
-    requestId: string;
-    checkpoint: AgentRunCheckpoint;
-    startInput: AgentEngineStartInput;
-    decision: ExecutionDecision;
-    bus: EventBus;
-    signal: AbortSignal;
-    budget: RunBudgetTracker;
-    reasonCodes: AgentReasonCode[];
-    warnings: string[];
-    taskListRef: TaskListRef;
-    windowPolicy: WindowPolicy;
-    pinnedState: AgentRunCheckpoint["pinnedState"];
-    finish: (
-      partial: Omit<
-        AgentRunResult,
-        | "schemaVersion"
-        | "runId"
-        | "requestId"
-        | "usage"
-        | "durationMs"
-        | "warnings"
-        | "reasonCodes"
-      > & {
-        reasonCodes?: AgentReasonCode[];
-        warnings?: string[];
-      },
-    ) => AgentRunResult;
-    cancelledResult: () => Promise<AgentRunResult>;
-    repoBuildStateAfter?: AgentRunCheckpoint["repoBuildStateAfter"];
-    onRepoBuildStateAfter?: (state: NonNullable<
-      AgentRunCheckpoint["repoBuildStateAfter"]
-    >) => void;
-    onVerificationRecord?: (record: VerificationRecord) => void;
-  },
-): Promise<AgentRunResult> {
-  const {
-    runId,
-    requestId,
-    checkpoint,
-    startInput,
-    decision,
-    bus,
-    signal,
-    budget,
-    reasonCodes,
-    warnings,
-    taskListRef,
-    windowPolicy,
-    pinnedState,
-    finish,
-    cancelledResult,
-  } = params;
-
-  if (!runtime.deps.tools) {
-    await runtime.safeUnpin(runId, pinnedState);
-    return finish({
-      status: "failed",
-      reasonCodes: [...reasonCodes, "misconfigured"],
-      error: {
-        code: "misconfigured",
-        message: "Model requested tools but Tool Runtime is not configured.",
-      },
-    });
-  }
-  if (!startInput.workspaceRoot) {
-    await runtime.safeUnpin(runId, pinnedState);
-    return finish({
-      status: "failed",
-      reasonCodes: [...reasonCodes, "misconfigured"],
-      error: {
-        code: "misconfigured",
-        message: "workspaceRoot is required to resume a tool loop.",
-      },
-    });
-  }
-
-  const messages: ModelMessage[] = [...checkpoint.messages];
-  const toolCache = ToolCallCache.fromEntries(checkpoint.toolCacheEntries);
-  const changedFiles = [...checkpoint.changedFiles];
-  const mutationCheckpointIds = [...checkpoint.mutationCheckpointIds];
-  const establishedFacts: EstablishedFact[] = [];
-
-  const toolDefinitions = annotateMutationToolDefinitions(
-    attachTaskListTool({
-      mode: startInput.request.mode,
-      tools: filterToolDefinitions({
-        grant: decision.toolGrant,
-        definitions:
-          startInput.tools ??
-          runtime.deps.toolDefinitions ??
-          DEFAULT_TOOL_DEFINITIONS,
-        supportsTools: runtime.deps.llm.capabilities.supportsTools,
-      }),
-    }),
-    decision.toolGrant.mutationBudget,
-  );
-
-  const loopOutcome = await runModelToolLoop(runtime, {
-    runId,
-    request: {
-      messages: [...messages],
-      model: startInput.model,
-      temperature: startInput.temperature,
-      stream: startInput.stream,
-      tools: toolDefinitions,
-    },
-    decision,
-    dirtyPaths: startInput.dirtyPaths,
-    pinnedState,
-    workspaceRoot: startInput.workspaceRoot,
-    bus,
-    signal,
-    budget,
-    reasonCodes,
-    warnings,
-    messages,
-    toolCache,
-    changedFiles,
-    mutationCheckpointIds,
-    taskListRef,
-    establishedFacts,
-    windowPolicy,
-    repoBuildStateBefore: checkpoint.repoBuildStateBefore,
-    logVerbosity: startInput.logVerbosity,
-    reserveVerificationRepairModelCalls: true,
-    plan: checkpoint.plan,
-    thresholds: resolveLoopPolicyThresholds({
-      contextWindowTokens: windowPolicy.contextWindowTokens,
-      overrides: startInput.loopPolicy?.thresholds,
-    }).thresholds,
-  });
-
-  return await finishAfterLoop(runtime, {
-    runId,
-    requestId,
-    input: startInput,
-    request: {
-      messages: [...messages],
-      model: startInput.model,
-      temperature: startInput.temperature,
-      stream: startInput.stream,
-      tools: toolDefinitions,
-    },
-    decision,
-    bus,
-    signal,
-    pinnedState,
-    dirtyPaths: startInput.dirtyPaths,
-    loopOutcome,
-    reasonCodes,
-    warnings,
-    budget,
-    startedAtMs: checkpoint.startedAtMs,
-    finish,
-    cancelledResult,
-    taskListRef,
-    repoBuildStateBefore: checkpoint.repoBuildStateBefore,
-    repoBuildStateAfter: params.repoBuildStateAfter,
-    onRepoBuildStateAfter: params.onRepoBuildStateAfter,
-    onVerificationRecord: params.onVerificationRecord,
-    windowPolicy,
-    loopContext: {
-      establishedFacts,
-      plan: checkpoint.plan,
-    },
-  });
 }

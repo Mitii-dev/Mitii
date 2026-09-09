@@ -15,6 +15,7 @@ export const CHECK_TYPES = new Set([
   'file_not_exists',
   'file_contains',
   'file_not_contains',
+  'file_contains_any',
   'dir_has_files',
   'workspace_unchanged',
   'workspace_changed',
@@ -23,6 +24,9 @@ export const CHECK_TYPES = new Set([
   'command',
   'http',
   'skills_installed',
+  'sqlite_query',
+  'changed_file_count',
+  'workflow_yaml_valid',
 ]);
 
 const OUTPUT_ASSERTIONS = new Set([
@@ -39,12 +43,16 @@ const STATE_ASSERTIONS = new Set([
   'file_not_exists',
   'file_contains',
   'file_not_contains',
+  'file_contains_any',
   'dir_has_files',
   'workspace_unchanged',
   'workspace_changed',
   'file_unchanged',
   'file_changed',
   'http',
+  'sqlite_query',
+  'changed_file_count',
+  'workflow_yaml_valid',
 ]);
 
 export function validateSuite(cases, rootDir, options = {}) {

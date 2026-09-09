@@ -92,6 +92,11 @@ export function itemMentionsAnyPath(
   if (paths.length === 0) {
     return false;
   }
+  // Mutation auto-advance prefers write targets so reference/template
+  // mustRead paths (source package) do not block completing the row.
+  if (itemWriteTargetsMatchChangedFiles(item, paths)) {
+    return true;
+  }
   const owned = taskItemPaths(item);
   if (owned.length > 0) {
     return paths.some((changed) =>
@@ -109,6 +114,60 @@ export function itemMentionsAnyPath(
       hint.includes(normalized.split("/").pop() ?? "")
     );
   });
+}
+
+/**
+ * True when changed files hit this row's write targets.
+ *
+ * When `write` is present, only those paths (or package-prefixed equivalents)
+ * complete the row — sibling files under the same package root do not.
+ * Package-root matching is reserved for Scope-only rows with empty `write`.
+ */
+export function itemWriteTargetsMatchChangedFiles(
+  item: {
+    title: string;
+    detail?: string;
+    write?: readonly string[];
+  },
+  changedFiles: readonly string[],
+): boolean {
+  if (changedFiles.length === 0) {
+    return false;
+  }
+  const write = uniquePaths(item.write ?? []);
+  if (write.length > 0) {
+    return changedFiles.some((changed) =>
+      write.some((path) => taskPathsMatch(path, changed)),
+    );
+  }
+
+  const packageRoots = collectPackageRoots(
+    `${item.title} ${item.detail ?? ""}`.match(/packages\/[A-Za-z0-9._-]+/g) ??
+      [],
+  );
+  if (packageRoots.length === 0) {
+    return false;
+  }
+  return changedFiles.some((changed) => {
+    const normalized = normalizeTaskPath(changed).toLowerCase();
+    return packageRoots.some(
+      (root) =>
+        normalized === root ||
+        normalized.startsWith(`${root}/`),
+    );
+  });
+}
+
+function collectPackageRoots(paths: readonly string[]): string[] {
+  const roots = new Set<string>();
+  for (const path of paths) {
+    const normalized = normalizeTaskPath(path).toLowerCase();
+    const match = normalized.match(/^(packages\/[^/]+)/);
+    if (match?.[1]) {
+      roots.add(match[1]);
+    }
+  }
+  return [...roots];
 }
 
 /**

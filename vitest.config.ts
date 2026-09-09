@@ -42,6 +42,7 @@ export default defineConfig({
       'packages/v8/src/modules/repository-state/internal/embedding/tests/EmbeddingVectorCache.spec.ts',
       'packages/v8/src/modules/repository-state/pipeline/ws-indexing-pipeline/tests/FileProcessorStatFreshness.spec.ts',
       'packages/host/src/**/*.spec.ts',
+      'apps/cli/src/**/*.spec.ts',
     ],
     setupFiles: ['./vitest.setup.ts'],
     exclude: ['**/node_modules/**', 'legacy/**', 'tests/benchmark/**'],

@@ -67,6 +67,7 @@ interface MessageListProps {
   onClarifyChange: (value: string) => void;
   onResumeClarify: (runId: string, answer: string) => void;
   onResumeStop: (runId: string) => void;
+  onResumeContinue?: (runId: string, guidance?: string) => void;
   onApprove: (runId: string, approvalId?: string) => void;
   onDeny: (runId: string, approvalId?: string) => void;
   onShowInlineDiff: (approvalId: string) => void;
@@ -94,6 +95,7 @@ export function MessageList({
   onClarifyChange,
   onResumeClarify,
   onResumeStop,
+  onResumeContinue,
   onApprove,
   onDeny,
   onShowInlineDiff,
@@ -134,7 +136,15 @@ export function MessageList({
       {turns.map((turn) => (
         <div
           key={turn.id}
-          className={`turn turn--${turn.role}${turn.suspension ? ' turn--suspended' : ''}`}
+          className={[
+            'turn',
+            `turn--${turn.role}`,
+            turn.mode ? `turn--mode-${turn.mode}` : '',
+            turn.suspension ? 'turn--suspended' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+          data-status={turn.status}
         >
           {turn.role === 'user' ? (
             <>
@@ -244,6 +254,9 @@ export function MessageList({
                     onResumeClarify(turn.suspension!.runId, answer)
                   }
                   onStop={() => onResumeStop(turn.suspension!.runId)}
+                  onContinue={(guidance) =>
+                    onResumeContinue?.(turn.suspension!.runId, guidance)
+                  }
                   onApprove={() =>
                     onApprove(
                       turn.suspension!.runId,

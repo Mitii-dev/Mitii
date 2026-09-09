@@ -423,10 +423,21 @@ export class PromptConstructionPipeline {
       .filter((part) => part.length > 0)
       .join("\n\n");
 
+    const userAttachments = input.attachments?.map((attachment) => ({
+      kind: "image" as const,
+      ...attachment,
+    }));
+
     const messages: ModelMessage[] = [
       { role: "system", content: systemContent },
       ...conversationResult.messages,
-      { role: "user", content: userContent },
+      {
+        role: "user",
+        content: userContent,
+        ...(userAttachments && userAttachments.length > 0
+          ? { attachments: userAttachments }
+          : {}),
+      },
     ];
 
     let recomputedUsed = sections
@@ -456,6 +467,9 @@ export class PromptConstructionPipeline {
         messages[messages.length - 1] = {
           role: "user",
           content: fittedUserContent,
+          ...(userAttachments && userAttachments.length > 0
+            ? { attachments: userAttachments }
+            : {}),
         };
         const reclaimed = userRequestTokens - emergency.usedTokens;
         sections = updateSectionBudget(sections, "conversation", {

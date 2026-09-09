@@ -216,7 +216,10 @@ export function AgentTimeline({
   if (events.length === 0) return null;
 
   return (
-    <ol className="timeline" aria-label="Agent activity">
+    <ol
+      className={`timeline${streaming ? ' timeline--streaming' : ''}`}
+      aria-label="Agent activity"
+    >
       {events.map((item, index) => {
         const isActiveThinking =
           streaming && index === events.length - 1 && item.kind === 'thinking';
@@ -225,11 +228,17 @@ export function AgentTimeline({
         return (
           <li
             key={item.id}
-            className={`timeline__row timeline__row--${markerVariant(item)}${
-              item.kind === 'tool' ? ' timeline__row--tool' : ''
-            }${isActiveThinking ? ' timeline__row--thinking-active' : ''}${
-              isCommandEvent(item) ? ' timeline__row--command' : ''
-            }${files ? ' timeline__row--files' : ''}`}
+            className={[
+              'timeline__row',
+              `timeline__row--${markerVariant(item)}`,
+              `timeline__row--kind-${item.kind}`,
+              item.kind === 'tool' ? 'timeline__row--tool' : '',
+              isActiveThinking ? 'timeline__row--thinking-active' : '',
+              isCommandEvent(item) ? 'timeline__row--command' : '',
+              files ? 'timeline__row--files' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
           >
             <span className="timeline__marker" aria-hidden="true" />
             {item.kind === 'thinking' ? (

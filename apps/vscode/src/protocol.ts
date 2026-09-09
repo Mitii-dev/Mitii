@@ -12,6 +12,7 @@ export type UiNav = 'chat' | 'history' | 'settings' | 'automations';
 export type SettingsTab =
   | 'workspace'
   | 'model'
+  | 'autocomplete'
   | 'modes'
   | 'context'
   | 'integrations'
@@ -127,6 +128,26 @@ export interface ProviderSettingsSnapshot {
   maximumOutputTokens: number;
   connectionOk?: boolean;
   connectionStatus?: string;
+}
+
+export type AutocompleteAuthHeader =
+  | 'authorization'
+  | 'api-key'
+  | 'x-api-key';
+
+export interface AutocompleteSettingsSnapshot {
+  enabled: boolean;
+  provider: 'openai-compatible';
+  baseUrl: string;
+  model: string;
+  endpointPath: string;
+  authHeader: AutocompleteAuthHeader;
+  maxTokens: number;
+  debounceMs: number;
+  timeoutMs: number;
+  prefixChars: number;
+  suffixChars: number;
+  temperature: number;
 }
 
 export interface SettingsProfileView {
@@ -642,6 +663,15 @@ export type WebviewToHostMessage =
       planDecision?: {
         decision: 'approved' | 'rejected' | 'edited';
       };
+      grantExpansion?: {
+        expansionId: string;
+        decision: 'approved' | 'denied';
+      };
+      continueDecision?: {
+        decision: 'continue' | 'stop';
+        /** Optional redirect hint when continuing after a zero-progress stall. */
+        guidance?: string;
+      };
     }
   | { type: 'newChat' }
   | { type: 'openChatThread'; id: string }
@@ -693,6 +723,7 @@ export type WebviewToHostMessage =
           | 'maximumOutputTokens'
         >
       >;
+      autocomplete?: Partial<AutocompleteSettingsSnapshot>;
       ui?: UiSettingsPatch;
       workspaceRootOverride?: string | null;
       mcp?: McpSettings;
@@ -744,6 +775,7 @@ export type HostToWebviewMessage =
       type: 'bootstrap';
       workspace: WorkspaceSnapshotInfo;
       provider: ProviderSettingsSnapshot;
+      autocomplete: AutocompleteSettingsSnapshot;
       profiles: SettingsProfileView[];
       activeProfileId: string;
       index: IndexStatusSnapshot;
@@ -766,6 +798,7 @@ export type HostToWebviewMessage =
   | {
       type: 'settings';
       provider: ProviderSettingsSnapshot;
+      autocomplete: AutocompleteSettingsSnapshot;
       profiles: SettingsProfileView[];
       activeProfileId: string;
       ui: UiSettingsSnapshot;

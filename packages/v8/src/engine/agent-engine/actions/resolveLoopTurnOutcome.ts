@@ -247,8 +247,10 @@ export function buildUnfulfilledExecuteRecoveryMessage(
   return [
     "You described the fix but did not call apply_patch.",
     "Do not repeat the diagnosis or write a report.",
-    "Call apply_patch now for the next batch. Use the live working-set mutation budget and compiler/preflight sections.",
-    "If a file is still unknown, read it — then patch. Do not end this turn with analysis only.",
+    "Prefer calling apply_patch now for the next bounded batch using the live working-set mutation budget and compiler/preflight sections.",
+    "If a write/mustRead path for the active checklist row is still missing from evidence, you may call read_file or read_many_files for those paths (a few turns) — then patch.",
+    "Do not call list_directory, glob_files, search_files, or run_readonly_command for broad rediscovery on this recovery turn.",
+    "If you still cannot make a bounded edit from evidence, stop with a clear blocker. Do not end this turn with analysis only.",
   ].join("\n");
 }
 

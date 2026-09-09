@@ -29,6 +29,14 @@ export {
   compileGrant,
   toolGrantsEquivalent,
   looksLikeAgentVerificationRequest,
+  intersectUserSafetyRules,
+  grantNeverWidens,
+  formatEffectiveGrant,
+  formatEffectiveGrantJson,
+  APPROVAL_PRESET_COPY,
+  VSCODE_APPROVAL_PRESETS,
+  getApprovalPresetCopy,
+  formatApprovalPresetHelp,
 } from "./actions";
 
 export { DecisionPolicyPipeline } from "./pipeline/DecisionPolicyPipeline";
@@ -39,6 +47,8 @@ export {
   decisionPolicyInputSchema,
   repositoryStateCapabilitySummarySchema,
   hostCapabilityFlagsSchema,
+  userSafetyRulesSchema,
+  DISABLED_USER_SAFETY_RULES,
   executionDecisionSchema,
   executionRouteSchema,
   planningDepthSchema,
@@ -60,6 +70,7 @@ export type {
   DecisionPolicyInput,
   RepositoryStateCapabilitySummary,
   HostCapabilityFlags,
+  UserSafetyRules,
   ExecutionDecision,
   ExecutionRoute,
   PlanningDepth,
@@ -75,3 +86,7 @@ export type {
   CommandRule,
   DecisionPolicyErrorCode,
 } from "./contracts";
+export type {
+  ApprovalPresetCopy,
+  VsCodeApprovalPreset,
+} from "./actions";

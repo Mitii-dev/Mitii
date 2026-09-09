@@ -1,0 +1,17 @@
+{
+  "id": "api-build",
+  "name": "Multi-Endpoint API Build Benchmark",
+  "description": "Real multi-endpoint REST service work against a live SQLite-backed API, graded by actual HTTP request/response payloads plus direct SQLite state assertions — not single-route edits.",
+  "caseFiles": ["sqlite-crud.jsonl"],
+  "expectedCounts": {
+    "easy": 0,
+    "medium": 1,
+    "hard": 1,
+    "total": 2
+  },
+  "gates": {
+    "medium": 0.6,
+    "hard": 0.4,
+    "overall": 0.5
+  }
+}

@@ -299,6 +299,7 @@ export function createStubDependencies(options: {
         referencedArtifacts: input.referencedArtifacts ?? [],
         workspace: input.workspace,
         correlation: input.correlation,
+        attachments: input.attachments,
         createdAt: "2026-07-25T12:00:00.000Z",
       }),
     },
@@ -334,7 +335,18 @@ export function createStubDependencies(options: {
                 role: message.role,
                 content: message.content,
               })),
-              { role: "user", content: input.userMessage },
+              {
+                role: "user",
+                content: input.userMessage,
+                ...(input.attachments && input.attachments.length > 0
+                  ? {
+                      attachments: input.attachments.map((attachment) => ({
+                        kind: "image" as const,
+                        ...attachment,
+                      })),
+                    }
+                  : {}),
+              },
             ],
             model: input.model ?? "test",
             tools: input.tools,

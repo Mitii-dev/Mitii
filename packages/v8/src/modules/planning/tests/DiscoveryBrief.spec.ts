@@ -132,6 +132,36 @@ describe("DiscoveryBrief contract", () => {
     expect(compiled.confidence).toBe("high");
   });
 
+  it("remaps scaffold template surfaces onto the target package", () => {
+    const compiled = compileDiscoveryBrief({
+      schemaVersion: 1,
+      objective:
+        "Create package mui-builder like formik-form-builder with the same public API",
+      filesRead: [
+        {
+          path: "packages/formik-form-builder/src/index.ts",
+          reason: "Template entry",
+        },
+        {
+          path: "packages/formik-form-builder/src/Form.tsx",
+          reason: "Template form",
+        },
+      ],
+      explicitTargets: [
+        {
+          kind: "folder",
+          value: "packages/mui-builder",
+          reason: "Requested package",
+          explicit: true,
+        },
+      ],
+    });
+    expect(compiled.proposedChangeSurfaces.map((item) => item.path)).toEqual([
+      "packages/mui-builder/src/index.ts",
+      "packages/mui-builder/src/Form.tsx",
+    ]);
+  });
+
   it("exposes compileDiscovery on the Planning facade", () => {
     const pipeline = new PlanningPipeline();
     const brief = pipeline.compileDiscovery({

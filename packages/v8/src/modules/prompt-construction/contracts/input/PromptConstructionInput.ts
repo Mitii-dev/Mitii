@@ -79,6 +79,16 @@ export const promptInstructionsSchema = z
 
 export type PromptInstructions = z.infer<typeof promptInstructionsSchema>;
 
+export const promptImageAttachmentSchema = z
+  .object({
+    mimeType: z.string().min(1),
+    data: z.string().min(1),
+    name: z.string().min(1).optional(),
+  })
+  .strict();
+
+export type PromptImageAttachment = z.infer<typeof promptImageAttachmentSchema>;
+
 /**
  * Boundary input for Prompt Construction.
  *
@@ -91,6 +101,7 @@ export const promptConstructionInputSchema = z
     schemaVersion: z.literal(PROMPT_CONSTRUCTION_SCHEMA_VERSION),
     decision: executionDecisionSchema,
     userMessage: z.string().min(1),
+    attachments: z.array(promptImageAttachmentSchema).optional(),
     conversation: z.array(modelMessageSchema).default([]),
     repositoryContext: promptRepositoryContextSchema.optional(),
     instructions: promptInstructionsSchema.optional(),

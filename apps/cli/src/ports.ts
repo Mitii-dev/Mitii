@@ -19,6 +19,7 @@ import {
   createHostLlmPorts,
   createHostRepositoryGraphPort,
   createOptionalSearchPort,
+  createSandboxedProcessPort,
   createWorkspaceCheckpointStore,
   createWorkspaceVerificationStore,
   createWorkspaceMemoryStore,
@@ -27,6 +28,7 @@ import {
   isHostProviderType,
   resolveMemoryEmbeddingPort,
   resolveProviderApiKey,
+  resolveSandboxPolicy,
   type MemoryCaptureContext,
 } from '@mitii/host';
 import type { LlmPort, ModelCapabilities, ModelEvent, ModelRequest } from '@mitii/v8';
@@ -167,9 +169,20 @@ export function createCliClient(options: {
   const repoGraphs = createHostRepositoryGraphPort({
     workspaceRoot: options.cwd,
   });
+  const sandboxEnabled = env.MITII_SANDBOX === '1' || env.MITII_SANDBOX === 'true';
+  const sandboxNetwork =
+    env.MITII_SANDBOX_NETWORK === 'allow' ? 'allow' : 'deny';
+  const processPort = createSandboxedProcessPort(
+    new NodeProcessAdapter(),
+    resolveSandboxPolicy({
+      enabled: sandboxEnabled,
+      network: sandboxNetwork,
+      workspaceRoot: options.cwd,
+    }),
+  );
   const tools = new ToolRuntimePipeline({
     fileSystem,
-    process: new NodeProcessAdapter(),
+    process: processPort,
     network: new NodeNetworkAdapter(),
     git,
     codeNavigation: createHostCodeNavigationPort({

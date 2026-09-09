@@ -10,10 +10,27 @@ export type {
 } from "./buildClarificationPayload";
 export { extractFileReadPaths } from "./extractFileReadPaths";
 export {
+  extractToolContentPaths,
+  stripPathRangeSuffix,
+  toolContentPathsOverlap,
+  normalizeRepoPath,
+} from "./extractToolContentPaths";
+export {
   extractMutationTargetPaths,
   missingMustReadPaths,
   buildMustReadNudgeMessage,
 } from "./assertBatchReads";
+export {
+  resolvePromptCacheClass,
+  shouldPreserveModelLoopPrefix,
+  PROMPT_CACHE_CLASSES,
+} from "./resolvePromptCacheClass";
+export type {
+  PromptCacheClass,
+  ResolvePromptCacheClassInput,
+} from "./resolvePromptCacheClass";
+export { estimateStickyMutableChars } from "./estimateStickyMutableChars";
+export type { StickyMutableCharEstimate } from "./estimateStickyMutableChars";
 export {
   extractEstablishedFact,
   extractCompilerErrorQueue,
@@ -54,8 +71,14 @@ export type {
 export { buildExplorationStallNudge } from "./buildExplorationStallNudge";
 export {
   buildStallContinueRationale,
+  buildStallContinueResetMessage,
+  buildBudgetWallRationale,
+  buildBudgetWallResetMessage,
   shouldOfferStallContinue,
+  shouldOfferBudgetWallContinue,
+  BUDGET_WALL_REASONS,
 } from "./buildStallContinueRationale";
+export type { BudgetWallReason } from "./buildStallContinueRationale";
 export { buildPreflightDiagnosticRepairInstruction } from "./buildPreflightDiagnosticRepairInstruction";
 export { buildVerificationRepairPrompt } from "./buildVerificationRepairPrompt";
 export { formatVerificationFailureAnswer, formatVerificationEvidence } from "./formatVerificationNarration";

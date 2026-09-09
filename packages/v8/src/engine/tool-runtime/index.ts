@@ -97,6 +97,8 @@ export type {
   ToolRuntimePorts,
   WorkspaceFileSystemPort,
   ProcessPort,
+  ProcessExecRequest,
+  ProcessExecResult,
   DiagnosticsPort,
   DiagnosticItem,
   GitPort,

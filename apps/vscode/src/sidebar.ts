@@ -62,6 +62,14 @@ import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
 import { resolveVsCodeSemanticIndexSettings } from './semanticIndex.js';
 import { readModelIoLoggingEnabled } from './modelIoSettings.js';
 import {
+  DEFAULT_AUTOCOMPLETE_SETTINGS,
+  readAutocompleteSettings,
+  normalizeAutocompleteAuthHeader,
+  normalizeAutocompleteEndpointPath,
+  normalizeAutocompleteInt,
+  normalizeAutocompleteNumber,
+} from './autocomplete/settings.js';
+import {
   DEFAULT_CONTEXT_WINDOW,
   normalizeMaximumOutputTokens,
   normalizeTokenLimit,
@@ -78,6 +86,7 @@ import {
 } from './profiles.js';
 import type {
   HostToWebviewMessage,
+  AutocompleteSettingsSnapshot,
   IndexStatusSnapshot,
   McpRuntimeStatus,
   PlanView,
@@ -96,6 +105,7 @@ import { planViewFromArtifact } from './planView.js';
 import { saveTaskListToWorkspace } from './taskStore.js';
 import {
   buildConversationCarry,
+  collectStructuredCarryFromThread,
   compactActivityForHistory,
   compactFileChangesForHistory,
   enrichAssistantCarryText,
@@ -1146,6 +1156,31 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       });
       return;
     }
+    if (message.grantExpansion) {
+      this.post({ type: 'run.resumed', runId: message.runId });
+      this.lastSuspensionRunId = undefined;
+      resolve({
+        schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+        runId: message.runId,
+        grantExpansion: message.grantExpansion,
+      });
+      return;
+    }
+    if (message.continueDecision) {
+      this.post({ type: 'run.resumed', runId: message.runId });
+      this.lastSuspensionRunId = undefined;
+      resolve({
+        schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+        runId: message.runId,
+        continueDecision: {
+          decision: message.continueDecision.decision,
+          ...(message.continueDecision.guidance?.trim()
+            ? { guidance: message.continueDecision.guidance.trim() }
+            : {}),
+        },
+      });
+      return;
+    }
     resolve('stop');
   }
 
@@ -1206,12 +1241,20 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     const prompt = String(message.prompt ?? '').trim();
     if (!prompt) return;
     const activeThread = await this.ensureActiveThread(prompt);
+    const mode = message.mode === 'review' ? 'ask' : (message.mode ?? 'ask');
+    const engineMode =
+      mode === 'plan' || mode === 'agent' ? mode : 'ask';
     const conversation = buildConversationCarry({
       messages: (activeThread?.messages ?? []).map((m) => ({
         role: m.role,
         text: m.text,
       })),
       currentPrompt: prompt,
+      mode: engineMode,
+      structured:
+        engineMode === 'agent'
+          ? collectStructuredCarryFromThread(activeThread ?? {})
+          : undefined,
     });
     const conversationText = conversation
       .map((m) => `${m.role}: ${m.content}`)
@@ -1223,7 +1266,6 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     this.runCancel?.cancel();
     this.runCancel?.dispose();
     this.runCancel = new this.vs.CancellationTokenSource();
-    const mode = message.mode === 'review' ? 'ask' : (message.mode ?? 'ask');
     const llmPrompt =
       message.mode === 'review'
         ? `Review the current git changes and suggest improvements / risks.\n\n${prompt}`
@@ -1275,28 +1317,26 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         policy: readTokenBudgetPolicyOverrides(cfg),
       }),
     });
-    this.post({
-      type: 'tokenUsage',
-      usage: {
-        ...this.tokenUsage,
-        inputTokensTotal:
-          this.runBaseInputTokens + provisionalContextBreakdown.totalTokens,
-        outputTokensTotal: this.runBaseOutputTokens,
-        sessionTotal:
-          this.runBaseInputTokens +
-          this.runBaseOutputTokens +
-          provisionalContextBreakdown.totalTokens,
-        currentTurnTotal: provisionalContextBreakdown.totalTokens,
-        currentTurnInputTokens: provisionalContextBreakdown.totalTokens,
-        currentTurnOutputTokens: 0,
-        lastPromptTokens: provisionalContextBreakdown.totalTokens,
-        lastResponseTokens: 0,
-        contextWindow,
-        contextBreakdown: provisionalContextBreakdown,
-        estimated: true,
-        live: true,
-      },
-    });
+    this.tokenUsage = {
+      ...this.tokenUsage,
+      inputTokensTotal:
+        this.runBaseInputTokens + provisionalContextBreakdown.totalTokens,
+      outputTokensTotal: this.runBaseOutputTokens,
+      sessionTotal:
+        this.runBaseInputTokens +
+        this.runBaseOutputTokens +
+        provisionalContextBreakdown.totalTokens,
+      currentTurnTotal: provisionalContextBreakdown.totalTokens,
+      currentTurnInputTokens: provisionalContextBreakdown.totalTokens,
+      currentTurnOutputTokens: 0,
+      lastPromptTokens: provisionalContextBreakdown.totalTokens,
+      lastResponseTokens: 0,
+      contextWindow,
+      contextBreakdown: provisionalContextBreakdown,
+      estimated: true,
+      live: true,
+    };
+    this.post({ type: 'tokenUsage', usage: this.tokenUsage });
 
     const workspaceRootForChanges = this.effectiveRoot();
     const preDirty = workspaceRootForChanges
@@ -1306,8 +1346,6 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
 
     try {
       const client = await this.ensureClient();
-      const engineMode =
-        mode === 'plan' || mode === 'agent' ? mode : 'ask';
       const approvedPlan = resolvePlanHandoff({
         mode: engineMode,
         pendingPlan: activeThread?.pendingPlan,
@@ -2052,6 +2090,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     if (message.provider) {
       await this.writeProviderSettings(message.provider);
     }
+    if (message.autocomplete) {
+      await this.writeAutocompleteSettings(message.autocomplete);
+    }
     if (message.ui) {
       if (message.ui.showReasoning !== undefined) {
         await update('ui.showReasoning', message.ui.showReasoning);
@@ -2323,6 +2364,119 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     // so Save never blocks on a hung provider catalog request.
   }
 
+  private async writeAutocompleteSettings(
+    autocomplete: Partial<AutocompleteSettingsSnapshot>,
+  ): Promise<void> {
+    if (autocomplete.enabled !== undefined) {
+      await this.writeConfigValue('autocomplete.enabled', autocomplete.enabled);
+    }
+    if (autocomplete.provider !== undefined) {
+      await this.writeConfigValue('autocomplete.provider', 'openai-compatible');
+    }
+    if (autocomplete.baseUrl !== undefined) {
+      await this.writeConfigValue(
+        'autocomplete.baseUrl',
+        autocomplete.baseUrl.trim(),
+      );
+    }
+    if (autocomplete.model !== undefined) {
+      await this.writeConfigValue(
+        'autocomplete.model',
+        autocomplete.model.trim(),
+      );
+    }
+    if (autocomplete.endpointPath !== undefined) {
+      await this.writeConfigValue(
+        'autocomplete.endpointPath',
+        normalizeAutocompleteEndpointPath(autocomplete.endpointPath),
+      );
+    }
+    if (autocomplete.authHeader !== undefined) {
+      await this.writeConfigValue(
+        'autocomplete.authHeader',
+        normalizeAutocompleteAuthHeader(autocomplete.authHeader),
+      );
+    }
+    if (autocomplete.maxTokens !== undefined) {
+      await this.writeConfigValue(
+        'autocomplete.maxTokens',
+        normalizeAutocompleteInt(
+          autocomplete.maxTokens,
+          DEFAULT_AUTOCOMPLETE_SETTINGS.maxTokens,
+          {
+            min: 1,
+            max: 512,
+          },
+        ),
+      );
+    }
+    if (autocomplete.debounceMs !== undefined) {
+      await this.writeConfigValue(
+        'autocomplete.debounceMs',
+        normalizeAutocompleteInt(
+          autocomplete.debounceMs,
+          DEFAULT_AUTOCOMPLETE_SETTINGS.debounceMs,
+          {
+            min: 0,
+            max: 2_000,
+          },
+        ),
+      );
+    }
+    if (autocomplete.timeoutMs !== undefined) {
+      await this.writeConfigValue(
+        'autocomplete.timeoutMs',
+        normalizeAutocompleteInt(
+          autocomplete.timeoutMs,
+          DEFAULT_AUTOCOMPLETE_SETTINGS.timeoutMs,
+          {
+            min: 250,
+            max: 30_000,
+          },
+        ),
+      );
+    }
+    if (autocomplete.prefixChars !== undefined) {
+      await this.writeConfigValue(
+        'autocomplete.prefixChars',
+        normalizeAutocompleteInt(
+          autocomplete.prefixChars,
+          DEFAULT_AUTOCOMPLETE_SETTINGS.prefixChars,
+          {
+            min: 128,
+            max: 60_000,
+          },
+        ),
+      );
+    }
+    if (autocomplete.suffixChars !== undefined) {
+      await this.writeConfigValue(
+        'autocomplete.suffixChars',
+        normalizeAutocompleteInt(
+          autocomplete.suffixChars,
+          DEFAULT_AUTOCOMPLETE_SETTINGS.suffixChars,
+          {
+            min: 0,
+            max: 60_000,
+          },
+        ),
+      );
+    }
+    if (autocomplete.temperature !== undefined) {
+      await this.writeConfigValue(
+        'autocomplete.temperature',
+        normalizeAutocompleteNumber(
+          autocomplete.temperature,
+          DEFAULT_AUTOCOMPLETE_SETTINGS.temperature,
+          {
+            min: 0,
+            max: 2,
+          },
+        ),
+      );
+    }
+  }
+
   private async handleProfileSwitch(id: string): Promise<void> {
     const currentProvider = await this.readProvider();
     const currentUi = this.readUi();
@@ -2500,6 +2654,12 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       connectionOk: this.connectionOk,
       connectionStatus: this.connectionStatus,
     };
+  }
+
+  private readAutocomplete(): AutocompleteSettingsSnapshot {
+    return readAutocompleteSettings(
+      this.vs.workspace.getConfiguration('mitii'),
+    );
   }
 
   private readUi(): UiSettingsSnapshot {
@@ -2918,7 +3078,23 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     return this.lastIndex;
   }
 
+  private isRunActive(): boolean {
+    return this.runCancel !== undefined;
+  }
+
   private setActiveThreadUsage(usage: TokenUsageSnapshot): void {
+    // Bootstrap/settings refreshes must not wipe an in-flight live meter.
+    if (this.isRunActive() && this.tokenUsage.live) {
+      this.tokenUsage = withResolvedUsageWindow(
+        {
+          ...this.tokenUsage,
+          contextWindow:
+            usage.contextWindow || this.tokenUsage.contextWindow,
+        },
+        resolveContextWindow(this.vs),
+      );
+      return;
+    }
     this.tokenUsage = withResolvedUsageWindow(
       {
         ...usage,
@@ -2931,6 +3107,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
 
   private persistThreadUsage(): void {
     if (!this.activeThreadId) return;
+    // Durable cache is always non-live; in-memory this.tokenUsage keeps live.
     this.tokenUsageByThread.set(this.activeThreadId, {
       ...this.tokenUsage,
       live: false,
@@ -2959,6 +3136,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       );
     }
     const provider = await this.readProvider();
+    const autocomplete = this.readAutocomplete();
     const ui = this.readUi();
     const secretHash = hashSecret(await this.secrets.get('mitii.provider.apiKey'));
     const profilesFile = readProfiles(
@@ -2971,6 +3149,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       type: 'bootstrap',
       workspace: this.readWorkspace(),
       provider,
+      autocomplete,
       profiles: profilesFile.profiles,
       activeProfileId: profilesFile.activeProfileId,
       index: await this.withEmbedding(await this.readIndexStatus()),

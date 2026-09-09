@@ -55,6 +55,8 @@ export interface DiskSkillManifest {
   when?: readonly string[] | string;
   instruction?: string;
   paths?: readonly string[] | string;
+  sizeClass?: string;
+  requireTagEvidence?: boolean | string;
   license?: string;
   compatibility?: readonly string[] | string;
   metadata?: unknown;
@@ -236,6 +238,12 @@ function buildSkillIndex(
     priority: normalizePriority(manifest.priority),
     ...(cleanScalar(manifest.conflictGroup)
       ? { conflictGroup: cleanScalar(manifest.conflictGroup) }
+      : {}),
+    ...(normalizeSizeClass(manifest.sizeClass)
+      ? { sizeClass: normalizeSizeClass(manifest.sizeClass) }
+      : {}),
+    ...(normalizeBoolean(manifest.requireTagEvidence, false)
+      ? { requireTagEvidence: true }
       : {}),
     alwaysApply: normalizeBoolean(manifest.alwaysApply, false),
     resources: findSkillResources(filePath),
@@ -490,6 +498,14 @@ function normalizePriority(value: unknown): number {
   const numeric =
     typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10);
   return Number.isFinite(numeric) && numeric >= 0 ? Math.floor(numeric) : 100;
+}
+
+function normalizeSizeClass(value: unknown): 'S' | 'M' | 'L' | undefined {
+  const raw = cleanScalar(value)?.toUpperCase();
+  if (raw === 'S' || raw === 'M' || raw === 'L') {
+    return raw;
+  }
+  return undefined;
 }
 
 function normalizeBoolean(value: unknown, fallback: boolean): boolean {

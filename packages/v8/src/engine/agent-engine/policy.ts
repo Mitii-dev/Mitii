@@ -44,6 +44,11 @@ export const AGENT_ENGINE_THRESHOLDS = {
    */
   maxReadOnlyMutationRetryAttempts: 2,
   /**
+   * Targeted read_file / read_many_files batches allowed after the mutation
+   * nudge before failing. Broad list/glob/search still fails immediately.
+   */
+  maxPostNudgeEvidenceReadTurns: 3,
+  /**
    * Max successful read/search/tool turns in execute mode before requiring the
    * first mutation attempt. This catches broad investigation loops that never
    * reach apply_patch.
@@ -76,6 +81,16 @@ export const AGENT_ENGINE_THRESHOLDS = {
   explorationRereadMinCalls: 8,
   /** One mid-loop nudge, then stop the spin. */
   maxExplorationStallNudges: 1,
+  /**
+   * Max user-approved Continue overrides after exploration stall walls.
+   * Further stalls fall back to terminal fail/complete.
+   */
+  maxContinueOverrides: 2,
+  /**
+   * Extra model calls granted when the user Continues after budget_exhausted.
+   * Without this, resume would immediately re-hit the same ceiling.
+   */
+  continueBudgetModelCallBump: 4,
   /**
    * Fallback remaining-error repairs when Window Policy is absent.
    * Window effort is the live cap (medium: 8). Stop earlier when

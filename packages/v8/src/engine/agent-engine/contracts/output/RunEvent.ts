@@ -69,6 +69,10 @@ export const runEventSchema = z.discriminatedUnion("type", [
       maximumWorkspaceEffect: workspaceEffectSchema.optional(),
       approvalMode: approvalModeSchema.optional(),
       pathScopes: z.array(z.string().min(1).max(512)).max(20).optional(),
+      /** Safe tool id list for effective-grant readout (capped). */
+      allowedTools: z.array(z.string().min(1).max(128)).max(40).optional(),
+      /** Safe command prefix list for effective-grant readout (capped). */
+      commandPrefixes: z.array(z.string().min(1).max(128)).max(40).optional(),
       trace: decisionTraceSchema.optional(),
       at: z.string().datetime(),
     })
@@ -322,6 +326,18 @@ export const runEventSchema = z.discriminatedUnion("type", [
       cacheMissTokens: z.number().int().nonnegative().optional(),
       finishReason: z.string().min(1).optional(),
       truncated: z.boolean().optional(),
+      /** Whether the loop preserved the message prefix for provider prompt cache. */
+      preservePrefix: z.boolean().optional(),
+      /** Resolved cache class for this turn (`no_cache` | `prompt_cache`). */
+      promptCacheClass: z.enum(["no_cache", "prompt_cache"]).optional(),
+      /** Approximate sticky (prefix) message characters before the model call. */
+      stickyInputChars: z.number().int().nonnegative().optional(),
+      /** Approximate mutable (working set / recovery) message characters. */
+      mutableInputChars: z.number().int().nonnegative().optional(),
+      /** Compaction pressure just before the model call. */
+      compactionPressure: z
+        .enum(["within", "warn", "auto", "hard"])
+        .optional(),
       /** Retries the gateway performed before this turn completed (rate limit/timeout/5xx). */
       retryCount: z.number().int().nonnegative().optional(),
       /** SSE chunks dropped for malformed payloads during this turn's stream. */

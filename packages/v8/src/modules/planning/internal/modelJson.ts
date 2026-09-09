@@ -7,6 +7,7 @@ export async function collectCompletionText(params: {
 }): Promise<string> {
   let content = "";
   let reasoning = "";
+  let finishReason: string | undefined;
 
   for await (const rawEvent of params.llm.complete(params.request)) {
     const event = modelEventSchema.parse(rawEvent);
@@ -20,6 +21,13 @@ export async function collectCompletionText(params: {
     if (event.type === "reasoning_delta") {
       reasoning += event.reasoning;
     }
+    if (event.type === "completed") {
+      finishReason = event.finishReason;
+    }
+  }
+
+  if (finishReason === "length") {
+    throw new Error("model_output_truncated");
   }
 
   const text = content.trim() || reasoning.trim();

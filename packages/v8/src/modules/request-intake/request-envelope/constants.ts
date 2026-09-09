@@ -43,7 +43,20 @@ export const REQUEST_ENVELOPE_LIMITS = {
     100,
   MAXIMUM_CORRELATION_ID_CHARACTERS:
     500,
+  MAXIMUM_ATTACHMENTS:
+    4,
+  MAXIMUM_ATTACHMENT_NAME_CHARACTERS:
+    255,
+  MAXIMUM_ATTACHMENT_DATA_CHARACTERS:
+    8_000_000,
 } as const;
+
+export const SUPPORTED_IMAGE_MIME_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+] as const;
 
 export const REQUEST_ENVELOPE_PATTERNS = {
   IDENTIFIER:

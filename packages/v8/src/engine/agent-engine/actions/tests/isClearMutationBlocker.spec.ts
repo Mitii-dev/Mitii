@@ -19,6 +19,14 @@ describe("isClearMutationBlocker", () => {
     ).toBe(true);
   });
 
+  it("accepts mid-answer blocker headers and stop-with-blocker phrasing", () => {
+    expect(
+      isClearMutationBlocker(
+        "I have to stop here with a clear blocker rather than fabricate content.\n\n**Blocker:** The recovery turn forbids the read tools I need for faithful source code.",
+      ),
+    ).toBe(true);
+  });
+
   it("rejects short or transitional narration", () => {
     expect(isClearMutationBlocker("Blocked.")).toBe(false);
     expect(

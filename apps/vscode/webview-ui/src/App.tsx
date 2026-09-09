@@ -59,6 +59,7 @@ import type {
   AgentUiThoroughness,
   AutomationRunView,
   AutomationSpecView,
+  AutocompleteSettingsSnapshot,
   ChatThreadSummary,
   CheckpointItemView,
   ContextToggles,
@@ -119,9 +120,9 @@ const EMPTY_TOKEN_USAGE: TokenUsageSnapshot = {
 };
 
 const DEFAULT_CONTEXT_TOGGLES: ContextToggles = {
-  repoMap: true,
+  repoMap: false,
   diagnostics: true,
-  gitDiff: true,
+  gitDiff: false,
   editor: true,
   openTabs: false,
   memory: true,
@@ -230,6 +231,31 @@ const DEFAULT_UI: UiSettingsSnapshot = {
   loopPolicy: DEFAULT_LOOP_POLICY,
   policyLab: DEFAULT_POLICY_LAB,
 };
+
+const DEFAULT_AUTOCOMPLETE: AutocompleteSettingsSnapshot = {
+  enabled: false,
+  provider: 'openai-compatible',
+  baseUrl: '',
+  model: '',
+  endpointPath: 'completions',
+  authHeader: 'authorization',
+  maxTokens: 96,
+  debounceMs: 250,
+  timeoutMs: 4000,
+  prefixChars: 6000,
+  suffixChars: 2000,
+  temperature: 0.2,
+};
+
+function hydrateAutocompleteSnapshot(
+  raw: Partial<AutocompleteSettingsSnapshot> | undefined,
+): AutocompleteSettingsSnapshot {
+  return {
+    ...DEFAULT_AUTOCOMPLETE,
+    ...(raw ?? {}),
+    provider: 'openai-compatible',
+  };
+}
 
 type SettingsMode = 'ask' | 'plan' | 'agent';
 
@@ -811,6 +837,8 @@ export function App() {
   const [pinnedSkillIds, setPinnedSkillIds] = useState<string[]>([]);
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [running, setRunning] = useState(false);
+  const runningRef = useRef(false);
+  runningRef.current = running;
   const [error, setError] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<PathSuggestion[]>([]);
   const [suggestOpen, setSuggestOpen] = useState(false);
@@ -829,6 +857,8 @@ export function App() {
     effectiveContextWindow: 32768,
     maximumOutputTokens: 0,
   });
+  const [autocomplete, setAutocomplete] =
+    useState<AutocompleteSettingsSnapshot>(DEFAULT_AUTOCOMPLETE);
   const [profiles, setProfiles] = useState<SettingsProfileView[]>([]);
   const [activeProfileId, setActiveProfileId] = useState('default');
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -882,6 +912,8 @@ export function App() {
   const modeRef = useRef<AgentUiMode>(mode);
   const uiRef = useRef<UiSettingsSnapshot>(ui);
   const providerRef = useRef<ProviderSettingsSnapshot>(provider);
+  const autocompleteRef =
+    useRef<AutocompleteSettingsSnapshot>(autocomplete);
   const indexRef = useRef<IndexStatusSnapshot>(index);
   const savedProviderModelRef = useRef(provider.model);
   const listModelsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -904,16 +936,33 @@ export function App() {
     setProvider(resolved);
   };
 
+  const updateAutocomplete = (
+    next:
+      | AutocompleteSettingsSnapshot
+      | ((
+          prev: AutocompleteSettingsSnapshot,
+        ) => AutocompleteSettingsSnapshot),
+  ) => {
+    const resolved =
+      typeof next === 'function' ? next(autocompleteRef.current) : next;
+    autocompleteRef.current = resolved;
+    setAutocomplete(resolved);
+  };
+
   const applyTokenUsage = useCallback(
     (usage: TokenUsageSnapshot) => {
       setTokenUsage((prev) => {
+        const keepLiveDuringRun =
+          runningRef.current && prev.live && usage.live === false;
         const shouldKeepLiveBreakdown =
-          usage.contextBreakdown === undefined && usage.live && prev.live;
+          (usage.contextBreakdown === undefined && usage.live && prev.live) ||
+          (keepLiveDuringRun && prev.contextBreakdown !== undefined);
         const current = providerRef.current;
         const providerContextWindow =
           current.effectiveContextWindow || current.contextWindow;
         return {
           ...usage,
+          live: keepLiveDuringRun ? true : usage.live,
           contextWindow:
             usage.contextWindow ||
             providerContextWindow ||
@@ -1001,6 +1050,7 @@ export function App() {
         connectionOk: msg.provider.connectionOk,
         connectionStatus: msg.provider.connectionStatus,
       });
+      updateAutocomplete(hydrateAutocompleteSnapshot(msg.autocomplete));
       if (!preserveDraft) {
         providerDraftDirtyRef.current = false;
         savedProviderModelRef.current = msg.provider.model ?? '';
@@ -1134,6 +1184,7 @@ export function App() {
         case 'run.started': {
           setRunning(true);
           setError(null);
+          setTokenUsage((prev) => ({ ...prev, live: true }));
           // Keep a pending-plan handoff visible, but clear stale plans for new runs.
           if (msg.mode === 'plan' || !pendingPlanRef.current) setPlan(null);
           stickToBottomRef.current = true;
@@ -1232,6 +1283,8 @@ export function App() {
           break;
         }
         case 'run.resumed':
+          setRunning(true);
+          setTokenUsage((prev) => ({ ...prev, live: true }));
           markSuspensionResumed(msg.runId);
           break;
         case 'run.result': {
@@ -2005,6 +2058,7 @@ export function App() {
     postToHost({
       type: 'settings.set',
       provider: snapshotProvider(),
+      autocomplete: autocompleteRef.current,
       profile: nextProfile,
     });
   };
@@ -2033,6 +2087,7 @@ export function App() {
     postToHost({
       type: 'settings.set',
       provider: latestProvider,
+      autocomplete: autocompleteRef.current,
       ui: latestUi,
       workspaceRootOverride: overrideDraft.trim() || null,
       workspaceMaximumIndexFiles: indexRef.current.maximumIndexFiles ?? 0,
@@ -2212,7 +2267,32 @@ export function App() {
                 markSuspensionResumed(runId);
                 setClarifyText('');
               }}
-              onResumeStop={(runId) => postToHost({ type: 'resume', runId })}
+              onResumeStop={(runId) => {
+                const turn = turns.find((t) => t.suspension?.runId === runId);
+                if (turn?.suspension?.kind === 'continue_required') {
+                  postToHost({
+                    type: 'resume',
+                    runId,
+                    continueDecision: { decision: 'stop' },
+                  });
+                  markSuspensionResumed(runId);
+                  setClarifyText('');
+                  return;
+                }
+                postToHost({ type: 'resume', runId });
+              }}
+              onResumeContinue={(runId, guidance) => {
+                postToHost({
+                  type: 'resume',
+                  runId,
+                  continueDecision: {
+                    decision: 'continue',
+                    ...(guidance ? { guidance } : {}),
+                  },
+                });
+                markSuspensionResumed(runId);
+                setClarifyText('');
+              }}
               onApprove={(runId, approvalId) => {
                 const turn = turns.find((t) => t.suspension?.runId === runId);
                 if (turn?.suspension?.kind === 'plan_approval_required') {
@@ -2222,6 +2302,31 @@ export function App() {
                     planDecision: { decision: 'approved' },
                   });
                   markSuspensionResumed(runId);
+                  return;
+                }
+                if (turn?.suspension?.kind === 'grant_expansion_required') {
+                  const expansionId =
+                    turn.suspension.grantExpansion?.expansionId;
+                  if (!expansionId) return;
+                  postToHost({
+                    type: 'resume',
+                    runId,
+                    grantExpansion: {
+                      expansionId,
+                      decision: 'approved',
+                    },
+                  });
+                  markSuspensionResumed(runId);
+                  return;
+                }
+                if (turn?.suspension?.kind === 'continue_required') {
+                  postToHost({
+                    type: 'resume',
+                    runId,
+                    continueDecision: { decision: 'continue' },
+                  });
+                  markSuspensionResumed(runId);
+                  setClarifyText('');
                   return;
                 }
                 if (!approvalId) return;
@@ -2241,6 +2346,31 @@ export function App() {
                     planDecision: { decision: 'rejected' },
                   });
                   markSuspensionResumed(runId);
+                  return;
+                }
+                if (turn?.suspension?.kind === 'grant_expansion_required') {
+                  const expansionId =
+                    turn.suspension.grantExpansion?.expansionId;
+                  if (!expansionId) return;
+                  postToHost({
+                    type: 'resume',
+                    runId,
+                    grantExpansion: {
+                      expansionId,
+                      decision: 'denied',
+                    },
+                  });
+                  markSuspensionResumed(runId);
+                  return;
+                }
+                if (turn?.suspension?.kind === 'continue_required') {
+                  postToHost({
+                    type: 'resume',
+                    runId,
+                    continueDecision: { decision: 'stop' },
+                  });
+                  markSuspensionResumed(runId);
+                  setClarifyText('');
                   return;
                 }
                 if (!approvalId) return;
@@ -2564,6 +2694,8 @@ export function App() {
           provider={provider}
           onProviderChange={handleProviderChange}
           onProviderTypeChange={onProviderTypeChange}
+          autocomplete={autocomplete}
+          onAutocompleteChange={updateAutocomplete}
           onSetApiKey={() => postToHost({ type: 'settings.setApiKey' })}
           onClearApiKey={() => postToHost({ type: 'settings.clearApiKey' })}
           onTestConnection={testConnection}

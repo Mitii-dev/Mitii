@@ -8,6 +8,7 @@ Usage:
   mitii ask <prompt> [options]
   mitii ask --agent <id|path> [options]
   mitii ask --prompt-file <path|-> [options]
+  mitii run --auto "<task>" [options]
   mitii session [options]
   mitii index [--cwd <path>] [--json]
   mitii status [--cwd <path>] [--json]
@@ -23,6 +24,7 @@ First run:
 Commands:
   setup            Interactive (or flag) model/provider setup
   ask <prompt>     One-shot agent run with streaming
+  run --auto       Unattended CI run (agent + apply autonomy; no prompts)
   session          Interactive REPL (MITII banner + prompts)
   index            Full workspace index + publish repository state
   status           Show latest persisted repository state
@@ -41,6 +43,7 @@ Automation (Phase 0):
   --skill <id>       Force-attach a skill for this run (repeat up to 3 times)
   --autonomy <a>     readonly | propose | apply | apply_and_pr
                      fills mode + approval policy for unattended runs
+  --auto             With "run": require unattended apply path (CI)
   --agent <id|path>  Load .mitii/agents/<id>.md (or a file path)
   --prompt-file <p>  Prompt from file, or - for stdin
 
@@ -87,6 +90,7 @@ Config (no secrets):
           loopPolicy (optional lab: { enabled, thresholds })
   provider: echo | openai-compatible | anthropic | gemini
   API keys never go in config files — use env vars
+  .mitii/safety.json   Optional tighten-only user rules (enabled:false by default)
   Permanent window bands live in @mitii/v8 policy/loopPolicyBands.ts
   loopPolicy lab overrides merge after the band (same as VS Code Developer)
 
@@ -95,9 +99,15 @@ Environment:
   MITII_MODEL / MITII_BASE_URL     Model id and API base URL
   MITII_API_KEY                    Generic key (any provider)
   MITII_TASK_LIST_AUTO_ADVANCE     Product default on; set to 0 to disable
+  MITII_SANDBOX=1                  Enable OS process sandbox (macOS/Linux; fail-closed)
+  MITII_SANDBOX_NETWORK=allow|deny Network for sandboxed children (default deny)
   ANTHROPIC_API_KEY                Claude / Anthropic
   GEMINI_API_KEY / GOOGLE_API_KEY  Gemini
   OPENAI_API_KEY                   OpenAI-compatible (OpenAI, DeepSeek, …)
+
+CI example:
+  mitii run --auto "run tests and fix failures" --echo
+  # or with a real provider + MITII_SANDBOX=1 for OS confinement
 
 Daemon/board UIs remain separate from interactive chat.
 Phase 1 automation: mitii schedule | mitii serve | mitii-daemon

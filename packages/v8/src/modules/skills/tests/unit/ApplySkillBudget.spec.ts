@@ -117,4 +117,107 @@ describe("applySkillBudget", () => {
     );
     expect(result.budgetOmitted).toBe(true);
   });
+
+  it("prefers compact L1 for a large skill so a later medium skill still fits", () => {
+    const result = applySkillBudget({
+      budgetTokens: 120,
+      maxSkills: 2,
+      scored: [
+        scored({
+          skill: {
+            id: "planning-and-task-breakdown",
+            title: "Planning",
+            content: "L".repeat(3_000),
+            sizeClass: "L",
+            intents: ["feature"],
+            routes: ["execute"],
+            tags: [],
+            paths: [],
+            languages: [],
+            projectKinds: [],
+            priority: 200,
+            alwaysApply: false,
+          },
+          compactContent: "Skill: Planning\nKeep plans short and executable.",
+        }),
+        scored({
+          skill: {
+            id: "incremental-implementation",
+            title: "Incremental",
+            content: "Ship the smallest correct batch, then verify.",
+            sizeClass: "M",
+            intents: ["feature"],
+            routes: ["execute"],
+            tags: [],
+            paths: [],
+            languages: [],
+            projectKinds: [],
+            priority: 180,
+            alwaysApply: false,
+          },
+        }),
+      ],
+    });
+
+    expect(result.instructions.map((block) => block.id)).toEqual([
+      "planning-and-task-breakdown",
+      "incremental-implementation",
+    ]);
+    expect(result.instructions[0]?.content).toContain("Keep plans short");
+    expect(result.compacted).toBe(true);
+  });
+
+  it("omits L skills when forbidLargeSkills is set", () => {
+    const result = applySkillBudget({
+      budgetTokens: 500,
+      maxSkills: 3,
+      forbidLargeSkills: true,
+      scored: [
+        scored({
+          skill: {
+            id: "planning-and-task-breakdown",
+            title: "Planning",
+            content: "L".repeat(3_000),
+            sizeClass: "L",
+            intents: ["feature"],
+            routes: ["execute"],
+            tags: [],
+            paths: [],
+            languages: [],
+            projectKinds: [],
+            priority: 200,
+            alwaysApply: false,
+          },
+        }),
+        scored({
+          skill: {
+            id: "incremental-implementation",
+            title: "Incremental",
+            content: "Ship the smallest correct batch.",
+            sizeClass: "M",
+            intents: ["feature"],
+            routes: ["execute"],
+            tags: [],
+            paths: [],
+            languages: [],
+            projectKinds: [],
+            priority: 180,
+            alwaysApply: false,
+          },
+        }),
+      ],
+    });
+
+    expect(result.instructions.map((block) => block.id)).toEqual([
+      "incremental-implementation",
+    ]);
+    expect(result.omissions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          skillId: "planning-and-task-breakdown",
+          reason: "budget",
+        }),
+      ]),
+    );
+  });
 });

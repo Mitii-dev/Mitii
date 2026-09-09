@@ -97,6 +97,69 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     );
   });
 
+  it("sends an image attachment to a vision-capable model", async () => {
+    const llm = new ScriptedLlmPort(
+      [{ content: "It shows a login form." }],
+      createCapabilities({ supportsTools: false, supportsVision: true }),
+    );
+    const engine = new AgentEnginePipeline(
+      createStubDependencies({
+        decision: createDecision({ route: "direct_answer" }),
+        llm,
+      }),
+    );
+
+    const result = await engine.start(
+      baseStartInput({
+        request: {
+          sessionId: "sess_1",
+          mode: "ask",
+          userMessage: "What does this screenshot show?",
+          workspace: { workspaceId: "ws_1" },
+          attachments: [{ mimeType: "image/png", data: "aGVsbG8=" }],
+        },
+      }),
+    ).result;
+
+    expect(result.status).toBe("completed");
+    const userMessage = llm.requests[0]?.messages.find(
+      (message) => message.content === "What does this screenshot show?",
+    );
+    expect(userMessage?.attachments).toEqual([
+      { kind: "image", mimeType: "image/png", data: "aGVsbG8=" },
+    ]);
+  });
+
+  it("fails fast with vision_unsupported when the model can't see images", async () => {
+    const llm = new ScriptedLlmPort(
+      [{ content: "should never be reached" }],
+      createCapabilities({ supportsTools: false, supportsVision: false }),
+    );
+    const engine = new AgentEnginePipeline(
+      createStubDependencies({
+        decision: createDecision({ route: "direct_answer" }),
+        llm,
+      }),
+    );
+
+    const result = await engine.start(
+      baseStartInput({
+        request: {
+          sessionId: "sess_1",
+          mode: "ask",
+          userMessage: "What does this screenshot show?",
+          workspace: { workspaceId: "ws_1" },
+          attachments: [{ mimeType: "image/png", data: "aGVsbG8=" }],
+        },
+      }),
+    ).result;
+
+    expect(result.status).toBe("failed");
+    expect(result.error?.code).toBe("vision_unsupported");
+    expect(result.reasonCodes).toContain("vision_unsupported");
+    expect(llm.requests.length).toBe(0);
+  });
+
   it("continues truncated text-only answers instead of accepting a partial final answer", async () => {
     const engine = new AgentEnginePipeline(
       createStubDependencies({
@@ -547,7 +610,7 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     expect(result.answer).not.toContain("Let me analyze the remaining errors");
   });
 
-  it("exhausts unfulfilled-execute recoveries then fails without edits", async () => {
+  it("exhausts unfulfilled-execute recoveries then suspends for Continue/Stop", async () => {
     const engine = new AgentEnginePipeline(
       createStubDependencies({
         decision: createDecision({
@@ -590,11 +653,12 @@ describe("AgentEnginePipeline (Phase 7)", () => {
       }),
     ).result;
 
-    expect(result.status).toBe("failed");
+    expect(result.status).toBe("suspended");
+    expect(result.suspension?.kind).toBe("continue_required");
     expect(result.reasonCodes).toContain("unfulfilled_execute_recovered");
     expect(result.reasonCodes).toContain("unfulfilled_execute_exhausted");
+    expect(result.reasonCodes).toContain("stall_continue_suspended");
     expect(result.reasonCodes).not.toContain("mutation_applied");
-    expect(result.error?.code).toBe("no_mutation_performed");
   });
 
   it("completes repository_answer analysis without forcing apply_patch", async () => {
@@ -1399,7 +1463,7 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     expect(result.reasonCodes).toContain("cancelled");
   });
 
-  it("terminates deterministically when model budget is exhausted", async () => {
+  it("suspends for Continue when model budget is exhausted", async () => {
     const engine = new AgentEnginePipeline(
       createStubDependencies({
         decision: createDecision({
@@ -1451,7 +1515,10 @@ describe("AgentEnginePipeline (Phase 7)", () => {
       }),
     ).result;
 
-    expect(result.status).toBe("budget_exhausted");
+    expect(result.status).toBe("suspended");
+    expect(result.suspension?.kind).toBe("continue_required");
+    expect(result.reasonCodes).toContain("stall_continue_suspended");
+    expect(result.suspension?.continuePrompt ?? "").toMatch(/budget/i);
     expect(result.usage.modelCalls).toBeLessThanOrEqual(2);
   });
 

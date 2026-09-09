@@ -6,11 +6,14 @@ node scripts/bump-version.mjs
 node scripts/sync-readme-version.mjs
 node scripts/sync-versions.mjs
 
+# Keep in sync with scripts/sync-versions.mjs packageFiles.
 git add \
   package.json \
   README.md \
   packages/v8/package.json \
   packages/sdk/package.json \
+  packages/automation/package.json \
   packages/host/package.json \
   apps/cli/package.json \
+  apps/daemon/package.json \
   apps/vscode/package.json
