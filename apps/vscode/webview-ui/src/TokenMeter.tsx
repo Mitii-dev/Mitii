@@ -184,9 +184,7 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
           <IconTokens width={14} height={14} />
         </span>
         {usage.live ? (
-          <span className="token-chip__live" aria-label="Live">
-            live
-          </span>
+          <span className="token-chip__live" aria-label="Updating live" />
         ) : null}
         <span>{formatCompact(sessionTotal)}</span>
         <span className="token-chip__sep">·</span>

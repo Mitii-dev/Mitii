@@ -136,7 +136,15 @@ export function MessageList({
       {turns.map((turn) => (
         <div
           key={turn.id}
-          className={`turn turn--${turn.role}${turn.suspension ? ' turn--suspended' : ''}`}
+          className={[
+            'turn',
+            `turn--${turn.role}`,
+            turn.mode ? `turn--mode-${turn.mode}` : '',
+            turn.suspension ? 'turn--suspended' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+          data-status={turn.status}
         >
           {turn.role === 'user' ? (
             <>
