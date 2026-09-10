@@ -32,7 +32,7 @@ import {
 } from './stateCache.js';
 import {
   runAsk,
-  resolveAskPrompt,
+  resolveAskPromptWithRecipe,
 } from './runAskCommand.js';
 
 import { parseCliArgs } from './parseCliArgs.js';
@@ -427,7 +427,10 @@ export async function main(
       sessionIo.writeStdout(`${readPackageVersion()}\n`);
       return 0;
     case 'ask':
-    case 'run': {
+    case 'run':
+    case 'commit-message':
+    case 'pr-summary':
+    case 'changelog': {
       let resolved;
       try {
         if (parsed.command === 'run') {
@@ -447,7 +450,7 @@ export async function main(
             parsed.mode = 'agent';
           }
         }
-        resolved = resolveAskPrompt(parsed, cwd);
+        resolved = await resolveAskPromptWithRecipe(parsed, cwd);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         sessionIo.writeStderr(`${message}\n\n`);

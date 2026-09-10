@@ -19,6 +19,9 @@ export interface ParsedCliArgs {
     | 'schedule'
     | 'serve'
     | 'events'
+    | 'commit-message'
+    | 'pr-summary'
+    | 'changelog'
     | 'unknown'
     | 'error';
   prompt?: string;
@@ -37,6 +40,11 @@ export interface ParsedCliArgs {
   agent?: string;
   /** Explicitly attach skill ids for this run (repeatable). */
   skills?: string[];
+  /**
+   * Writing recipe id (`commit-message` | `pr-summary` | `changelog`).
+   * Force-attaches the matching bundled skill and builds a git-context prompt.
+   */
+  recipe?: string;
   /** Path to an image file to attach (repeatable, e.g. a screenshot/mockup). */
   images?: string[];
   /** Prompt file path, or `-` for stdin. */
@@ -83,6 +91,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   let autonomyPreset: MitiiAutonomyPreset | undefined;
   let agent: string | undefined;
   let promptFile: string | undefined;
+  let recipe: string | undefined;
   const skills: string[] = [];
   const images: string[] = [];
   let setupProvider: string | undefined;
@@ -223,6 +232,15 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
         return { command: 'error', errorMessage: taken.error, rest: [] };
       }
       skills.push(taken.value);
+      i = taken.next;
+      continue;
+    }
+    if (arg === '--recipe') {
+      const taken = takeValue(args, i, '--recipe');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      recipe = taken.value;
       i = taken.next;
       continue;
     }
@@ -388,6 +406,34 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       autonomyPreset,
       agent,
       promptFile,
+      recipe,
+      skills: skills.length > 0 ? skills : undefined,
+      images: images.length > 0 ? images : undefined,
+      loopPolicyJson,
+      noLoopPolicy: flags.has('no-loop-policy'),
+      rest,
+    };
+  }
+  if (
+    command === 'commit-message' ||
+    command === 'pr-summary' ||
+    command === 'changelog'
+  ) {
+    const prompt = rest.join(' ').trim();
+    return {
+      command,
+      prompt: prompt.length > 0 ? prompt : undefined,
+      cwd,
+      json: flags.has('json'),
+      forceEcho: flags.has('echo'),
+      autoClarify,
+      autoApproval,
+      mode: mode ?? 'ask',
+      origin,
+      autonomyPreset,
+      agent,
+      promptFile,
+      recipe: recipe ?? command,
       skills: skills.length > 0 ? skills : undefined,
       images: images.length > 0 ? images : undefined,
       loopPolicyJson,

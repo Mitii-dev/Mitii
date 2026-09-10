@@ -1,6 +1,6 @@
 # `@mitii/cli`
 
-Headless Mitii CLI over `@mitii/sdk` → `@mitii/v8` (with `@mitii/host` for indexing, checkpoints, memory, and skills).
+Headless Mitii CLI over `@mitii/sdk` -> `@mitii/v8` (with `@mitii/host` for indexing, checkpoints, memory, and skills).
 
 ## Install
 
@@ -19,14 +19,14 @@ pnpm --filter @mitii/cli build
 node apps/cli/bin/mitii.js --help
 ```
 
-Legacy npm `@mitii/cli@2.7.x` is a different binary stack — prefer versions published from this tree.
+Legacy npm `@mitii/cli@2.7.x` is a different binary stack - prefer versions published from this tree.
 
 ## First run (new users)
 
 ```bash
 mitii --help                 # or: mitii -h
 mitii setup                  # pick provider + write .mitii/config.json
-export ANTHROPIC_API_KEY=…   # or GEMINI_ / OPENAI_ / MITII_API_KEY
+export ANTHROPIC_API_KEY=...   # or GEMINI_ / OPENAI_ / MITII_API_KEY
 mitii session                # dotted MITII banner + interactive loop
 ```
 
@@ -60,6 +60,9 @@ mitii export-session "Summarize this repo" --out session.json --echo
 |---|---|
 | `setup` | Interactive (or flag-driven) model/provider setup |
 | `ask <prompt>` | SDK ask with streaming, cancel, clarify/approve |
+| `commit-message` | Draft commit message (auto-attaches `git-commit-message`) |
+| `pr-summary` | Draft PR body (auto-attaches `git-pr-summary`) |
+| `changelog` | Draft Keep a Changelog entry (auto-attaches `release-changelog`) |
 | `run --auto "<task>"` | Unattended CI run (agent + apply autonomy; no prompts) |
 | `session` | Interactive prompt loop with MITII banner |
 | `index` | Full workspace index + publish repository state |
@@ -70,6 +73,20 @@ mitii export-session "Summarize this repo" --out session.json --echo
 | `serve` | Long-lived automation daemon (+ optional webhook ingress) |
 | `events` | Ingest / list automation events (GitHub webhooks, etc.) |
 | `version` / `help` | Version and usage (`-v` / `--version`, `-h` / `--help`) |
+
+### Writing recipes
+
+These gather git status/diff/log and **force-attach** the matching bundled skill:
+
+```bash
+mitii commit-message
+mitii pr-summary
+mitii changelog
+# equivalent:
+mitii ask --recipe commit-message
+```
+
+Optional note after the command becomes a user hint on the prompt.
 
 ## Connect (channel bridges)
 
@@ -86,14 +103,14 @@ mitii connect <channel> --stop        # stop one channel
 
 ### Do you need GitHub (`gh`)?
 
-**No — not as a `connect` adapter.** Connectors are chat surfaces (Telegram, Discord, Slack).
+**No - not as a `connect` adapter.** Connectors are chat surfaces (Telegram, Discord, Slack).
 GitHub is different:
 
 | Need | Use |
 |---|---|
 | Chat with Mitii from phone / Discord / Slack | `mitii connect telegram\|discord\|slack` |
 | PRs, issues, `gh` / `git` in a repo | Run Mitii **in the repo** (`--cwd`) with `--mode agent`; install [`gh`](https://cli.github.com/) on that machine if you want PR tooling |
-| Bot that replies on PR / issue comments | Not a `connect` channel — use agent mode + `gh`, or a future issue-bot adapter |
+| Bot that replies on PR / issue comments | Not a `connect` channel - use agent mode + `gh`, or a future issue-bot adapter |
 
 ### Available adapters
 
@@ -108,8 +125,8 @@ GitHub is different:
 1. Configure a real model (not echo), unless you are smoke-testing with `--echo`:
 
    ```bash
-   mitii setup --provider anthropic --yes   # or ollama / gemini / …
-   export ANTHROPIC_API_KEY=…               # matching provider key
+   mitii setup --provider anthropic --yes   # or ollama / gemini / ...
+   export ANTHROPIC_API_KEY=...               # matching provider key
    ```
 
 2. Prefer indexing the workspace once (ask/connect will auto-index if needed):
@@ -125,7 +142,7 @@ GitHub is different:
 | Flag | Meaning |
 |---|---|
 | `--cwd <path>` | Workspace root (default: current directory) |
-| `--mode ask\|plan\|agent` | Same modes as CLI (`ask` default — safest for chat) |
+| `--mode ask\|plan\|agent` | Same modes as CLI (`ask` default - safest for chat) |
 | `--echo` | Force Echo LLM (local smoke, no API key) |
 | `--approve` | Auto-approve mutation/plan gates (**default** for connectors) |
 | `--deny` | Do not auto-approve; suspended turns stop instead |
@@ -138,7 +155,7 @@ GitHub is different:
 | Command | Effect |
 |---|---|
 | `/help` | Short connector help + mode/cwd |
-| `/new` | Clear this thread’s Mitii conversation carry |
+| `/new` | Clear this thread's Mitii conversation carry |
 | `/whereami` | Print channel / user ids, cwd, mode |
 
 Ordinary text becomes one Mitii turn; the reply is posted back to the same chat/thread.
@@ -146,16 +163,16 @@ History is kept **per thread** under `.mitii/connectors/<channel>/`.
 
 ---
 
-### Telegram — step by step
+### Telegram - step by step
 
 #### 1. Create a bot
 
 1. Open Telegram and chat with [@BotFather](https://t.me/BotFather).
-2. Send `/newbot`, follow the prompts, copy the **bot token** (`123456:ABC…`).
-3. Optional: `/setprivacy` → **Disable** if the bot should see all group messages (DMs work either way).
+2. Send `/newbot`, follow the prompts, copy the **bot token** (`123456:ABC...`).
+3. Optional: `/setprivacy` -> **Disable** if the bot should see all group messages (DMs work either way).
 
 ```bash
-export TELEGRAM_BOT_TOKEN='123456:ABC…'
+export TELEGRAM_BOT_TOKEN='123456:ABC...'
 ```
 
 #### 2. Start the bridge
@@ -174,7 +191,7 @@ Telegram-only flags: `--token` / `-t`, `--bot-username` / `-u`.
 
 #### 3. Allowlist your user id
 
-1. Start once, send `/whereami` in chat, note `userId=…`.
+1. Start once, send `/whereami` in chat, note `userId=...`.
 2. Restart with `--allowed-user-id <that id>`.
 
 #### 4. Stop
@@ -187,14 +204,14 @@ mitii connect telegram --stop
 
 ---
 
-### Discord — step by step
+### Discord - step by step
 
 #### 1. Create a Discord application + bot
 
-1. Open the [Discord Developer Portal](https://discord.com/developers/applications) → **New Application**.
-2. Open **Bot** → **Add Bot** → **Reset Token** → copy the bot token.
+1. Open the [Discord Developer Portal](https://discord.com/developers/applications) -> **New Application**.
+2. Open **Bot** -> **Add Bot** -> **Reset Token** -> copy the bot token.
 3. Under **Privileged Gateway Intents**, enable **Message Content Intent** (required to read message text).
-4. Open **OAuth2 → URL Generator**:
+4. Open **OAuth2 -> URL Generator**:
    - Scopes: `bot`
    - Bot permissions: at least **Send Messages**, **Read Message History**, **View Channels**
 5. Open the generated URL, invite the bot to your server.
@@ -218,13 +235,13 @@ Discord-only flags: `--token` / `-t` (or `DISCORD_BOT_TOKEN`).
 
 Behavior:
 
-- **DMs** — every message is handled (subject to allowlist).
-- **Guild channels** — the bot only replies when **@mentioned**.
+- **DMs** - every message is handled (subject to allowlist).
+- **Guild channels** - the bot only replies when **@mentioned**.
 
 #### 3. Allowlist your Discord user id
 
-1. Enable Discord Developer Mode (Settings → Advanced → Developer Mode).
-2. Right-click your avatar → **Copy User ID**, or send `/whereami` to the bot.
+1. Enable Discord Developer Mode (Settings -> Advanced -> Developer Mode).
+2. Right-click your avatar -> **Copy User ID**, or send `/whereami` to the bot.
 3. Restart with `--allowed-user-id <id>`.
 
 #### 4. Stop
@@ -237,30 +254,30 @@ mitii connect discord --stop
 
 ---
 
-### Slack — step by step
+### Slack - step by step
 
 Slack uses **Socket Mode** (no public webhook URL).
 
 #### 1. Create a Slack app
 
-1. Open [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → **From scratch**.
-2. **Socket Mode** → enable → create an **App-Level Token** with scope `connections:write` → copy `xapp-…`.
-3. **OAuth & Permissions** → Bot Token Scopes, add at least:
+1. Open [api.slack.com/apps](https://api.slack.com/apps) -> **Create New App** -> **From scratch**.
+2. **Socket Mode** -> enable -> create an **App-Level Token** with scope `connections:write` -> copy `xapp-...`.
+3. **OAuth & Permissions** -> Bot Token Scopes, add at least:
    - `chat:write`
    - `channels:history`
    - `groups:history`
    - `im:history`
    - `mpim:history`
    - `app_mentions:read` (optional, useful in channels)
-4. **Event Subscriptions** → enable → subscribe the bot to:
+4. **Event Subscriptions** -> enable -> subscribe the bot to:
    - `message.im`
    - `message.channels` (and/or `message.groups` as needed)
-5. **Install App** to your workspace → copy the **Bot User OAuth Token** `xoxb-…`.
+5. **Install App** to your workspace -> copy the **Bot User OAuth Token** `xoxb-...`.
 6. Invite the bot to the channel: `/invite @YourBot`.
 
 ```bash
-export SLACK_BOT_TOKEN='xoxb-…'
-export SLACK_APP_TOKEN='xapp-…'
+export SLACK_BOT_TOKEN='xoxb-...'
+export SLACK_APP_TOKEN='xapp-...'
 ```
 
 #### 2. Start the bridge
@@ -281,7 +298,7 @@ Slack-only flags: `--bot-token`, `--app-token` (or the env vars above).
 #### 3. Allowlist your Slack user id
 
 1. Start once and send `/whereami` in a DM or channel with the bot.
-2. Note `userId=U…` and restart with `--allowed-user-id U…`.
+2. Note `userId=U...` and restart with `--allowed-user-id U...`.
 
 #### 4. Stop
 
@@ -322,21 +339,21 @@ Safe to delete `*.threads.json` to reset history. Tokens are **not** written to 
 - Always set `--allowed-user-id` for personal bots.
 - Use `--cwd` pointing only at the repo you intend to expose.
 - `--approve` is on by default for connectors (no TTY for y/n). Use `--deny` if you want suspensions to stop instead of mutating.
-- Keep bot / app tokens in the environment — never commit them.
+- Keep bot / app tokens in the environment - never commit them.
 
 ### Troubleshooting (connect)
 
 | Symptom | What to try |
 |---|---|
 | Missing token errors | Set the channel env var or pass the matching `--token` / `--bot-token` / `--app-token` |
-| `already running pid=…` | `mitii connect <channel> --stop` then start again |
+| `already running pid=...` | `mitii connect <channel> --stop` then start again |
 | Echo / stub answers | Configure provider + API key; drop `--echo` |
-| Unauthorized… | Your user id is not on `--allowed-user-id` |
-| Telegram ignores group messages | BotFather → `/setprivacy` → Disable, or @mention the bot |
+| Unauthorized... | Your user id is not on `--allowed-user-id` |
+| Telegram ignores group messages | BotFather -> `/setprivacy` -> Disable, or @mention the bot |
 | Discord ignores guild messages | Enable **Message Content Intent**; @mention the bot |
 | Slack not receiving events | Socket Mode on; app installed; bot invited; event subscriptions saved |
 | `requires Node.js with global WebSocket` | Use Node **22+** (Discord/Slack bridges use the built-in WebSocket) |
-| No repo context / weak tools | `mitii index --cwd …` then restart connect with that `--cwd` |
+| No repo context / weak tools | `mitii index --cwd ...` then restart connect with that `--cwd` |
 
 ### Modes
 
@@ -375,10 +392,10 @@ Unknown options error out (they are not silently ignored).
 ### Loop / stall policy (lab)
 
 By default the CLI uses **window-band standards** from the model context window
-(`compact` &lt; 50k, `standard` &lt; 100k, `wide` ≥ 100k). Permanent ship values live in
-`@mitii/v8` → `policy/loopPolicyBands.ts`.
+(`compact` &lt; 50k, `standard` &lt; 100k, `wide` >= 100k). Permanent ship values live in
+`@mitii/v8` -> `policy/loopPolicyBands.ts`.
 
-Optional lab overrides (same merge as VS Code Developer → Custom loop policy):
+Optional lab overrides (same merge as VS Code Developer -> Custom loop policy):
 
 ```json
 {
@@ -410,7 +427,7 @@ Leave `loopPolicy` unset (or `"enabled": false`) for deploy / normal use.
 | Option | Meaning |
 |---|---|
 | `--show` | Print current config (no secrets) |
-| `--provider <id>` | `ollama`, `anthropic`, `gemini`, `openai`, `deepseek`, … |
+| `--provider <id>` | `ollama`, `anthropic`, `gemini`, `openai`, `deepseek`, ... |
 | `--model <id>` | Model id |
 | `--base-url <url>` | OpenAI-compatible base URL |
 | `--global` | Write `~/.mitii/config.json` instead of project `.mitii/` |
@@ -488,11 +505,11 @@ Cursor Cloud Agents are a separate agent API, not an LLM endpoint. Point `openai
 | Symptom | What to try |
 |---|---|
 | Echo / stub answers only | `mitii setup`, then export the matching API key |
-| `unknown option` | Typos fail loudly — run `mitii --help` |
+| `unknown option` | Typos fail loudly - run `mitii --help` |
 | Index falls back to snapshot | Optional native deps / embeddings; ask still works with host snapshot |
 | No repository state | `mitii index`, or let `ask` / `connect` auto-index |
 | Wrong model | `mitii setup --show`, then `mitii setup` again |
-| Connect / Telegram issues | See **Connect → Troubleshooting** above |
+| Connect / Telegram issues | See **Connect -> Troubleshooting** above |
 
 ## Out of scope
 

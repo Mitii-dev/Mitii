@@ -28,7 +28,7 @@
     {
       "label": "mitii: build:host",
       "type": "shell",
-      "command": "pnpm -r --filter '@mitii/host...' run build",
+      "command": "pnpm -r --filter @mitii/host... run build",
       "problemMatcher": ["$tsc"],
       "group": "build",
       "presentation": { "reveal": "silent", "panel": "shared", "showReuseMessage": false }
@@ -36,7 +36,7 @@
     {
       "label": "mitii: build:vscode",
       "type": "shell",
-      "command": "pnpm --filter @mitii/vscode build",
+      "command": "pnpm --filter ./apps/vscode build",
       "problemMatcher": ["$tsc"],
       "group": "build",
       "presentation": { "reveal": "silent", "panel": "shared", "showReuseMessage": false }

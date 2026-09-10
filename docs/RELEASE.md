@@ -10,7 +10,7 @@ Publish units and CI gates for the Mitii monorepo.
 | `@mitii/sdk` | `packages/sdk` | npm over `@mitii/v8` | Published on release |
 | `@mitii/host` | `packages/host` | npm over sdk/v8 | Published on release |
 | `@mitii/cli` | `apps/cli` | npm bin `mitii` | Published on release |
-| `mitii-ai-agent` (VS Code) | `apps/vscode` | VSIX | Multi-platform VSIX via Release workflow — Marketplace id `mitii.mitii-ai-agent` |
+| `mitii-ai-agent` (VS Code) | `apps/vscode` | VSIX | Multi-platform VSIX via Release workflow - Marketplace id `mitii.mitii-ai-agent` |
 
 Workspace root `package.json` is **private** and must not ship as the product.
 
@@ -47,7 +47,7 @@ Do not claim a gate passed unless it actually ran successfully.
 
 ## GitHub Actions secrets
 
-Add these under **Settings → Secrets and variables → Actions** (values are never committed):
+Add these under **Settings -> Secrets and variables -> Actions** (values are never committed):
 
 | Secret | Required | Purpose |
 |---|---|---|
@@ -66,7 +66,7 @@ Add these under **Settings → Secrets and variables → Actions** (values are n
    - Attach them to a GitHub Release
    - Publish all four targets to the VS Code Marketplace (`VSCE_PAT`)
    - Publish to Open VSX when `OVSX_PAT` is set
-   - Call **npm publish** for `@mitii/v8` → `@mitii/sdk` → `@mitii/host` → `@mitii/cli` (GitHub OIDC trusted publishing, with `NPM_TOKEN` fallback)
+   - Call **npm publish** for `@mitii/v8` -> `@mitii/sdk` -> `@mitii/host` -> `@mitii/cli` (GitHub OIDC trusted publishing, with `NPM_TOKEN` fallback)
 
 ### npm authentication
 
@@ -87,7 +87,7 @@ If using the `NPM_TOKEN` fallback instead, create a granular access token with p
 pnpm run build:v8 && pnpm run build:sdk && pnpm run build:automation && pnpm run build:host && pnpm run build:cli
 pnpm run publish:npm
 
-# VSIX → Marketplace (expects complete set under dist-vsix/)
+# VSIX -> Marketplace (expects complete set under dist-vsix/)
 pnpm run package   # per platform / runner
 pnpm run publish:vsce
 pnpm run publish:ovsx   # no-op without OVSX_PAT
@@ -104,4 +104,4 @@ Manual multi-platform VSIX artifacts without publishing: run **VS Code native VS
 
 ## Legacy
 
-- Obsolete trees under `legacy/` were purged. Do not reintroduce `legacy/**` or vaulted kernel paths into product packages (architecture tests).
+- Do not reintroduce a second `src/` kernel or `legacy/` tree into product packages (architecture tests).

@@ -8,6 +8,10 @@ Usage:
   mitii ask <prompt> [options]
   mitii ask --agent <id|path> [options]
   mitii ask --prompt-file <path|-> [options]
+  mitii ask --recipe <id> [note] [options]
+  mitii commit-message [note] [options]
+  mitii pr-summary [note] [options]
+  mitii changelog [note] [options]
   mitii run --auto "<task>" [options]
   mitii session [options]
   mitii index [--cwd <path>] [--json]
@@ -24,6 +28,9 @@ First run:
 Commands:
   setup            Interactive (or flag) model/provider setup
   ask <prompt>     One-shot agent run with streaming
+  commit-message   Draft a commit message (auto-attaches git-commit-message)
+  pr-summary       Draft a PR body (auto-attaches git-pr-summary)
+  changelog        Draft Keep a Changelog entry (auto-attaches release-changelog)
   run --auto       Unattended CI run (agent + apply autonomy; no prompts)
   session          Interactive REPL (MITII banner + prompts)
   index            Full workspace index + publish repository state
@@ -35,17 +42,26 @@ Commands:
 Modes (--mode or config defaultMode):
   ask     Q&A / explain (default)
   plan    Read-only plan; no file edits
-  agent   Edit + verify with approvals
+  agent   Edit + tools with approvals
 
 Automation (Phase 0):
   --origin <o>       user | automation | api
                      automation/api suppress interactive clarify in policy
   --skill <id>       Force-attach a skill for this run (repeat up to 3 times)
+  --recipe <id>      Writing recipe: commit-message | pr-summary | changelog
+                     (gathers git context + force-attaches the matching skill)
   --autonomy <a>     readonly | propose | apply | apply_and_pr
                      fills mode + approval policy for unattended runs
   --auto             With "run": require unattended apply path (CI)
   --agent <id|path>  Load .mitii/agents/<id>.md (or a file path)
   --prompt-file <p>  Prompt from file, or - for stdin
+
+Writing recipes (VS Code + CLI):
+  commit-message  → skill git-commit-message
+  pr-summary      → skill git-pr-summary
+  changelog       → skill release-changelog
+  Equivalent: mitii ask --recipe commit-message
+  Chat: @skill:git-commit-message  (or /git-commit-message)
 
 Exit codes:
   0   completed (or non-clarify suspend checkpoint in --json)
@@ -67,6 +83,8 @@ Options:
   --mode <mode>      ask | plan | agent
   --origin <origin>  user | automation | api
   --autonomy <preset> readonly | propose | apply | apply_and_pr
+  --skill <id>       Force-attach a skill for this run (repeat up to 3 times)
+  --recipe <id>      commit-message | pr-summary | changelog
   --agent <id|path>  Agent markdown under .mitii/agents/ or a path
   --prompt-file <p>  Prompt file path, or - for stdin
   --loop-policy-json <json>

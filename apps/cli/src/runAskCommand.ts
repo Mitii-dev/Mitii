@@ -7,7 +7,12 @@ import type {
   TaskList,
   UserRequestOrigin,
 } from '@mitii/sdk';
-import { loadProjectRules, loadUserSafetyRules } from '@mitii/host';
+import {
+  buildWritingRecipeAsk,
+  loadProjectRules,
+  loadUserSafetyRules,
+  resolveMitiiWritingRecipe,
+} from '@mitii/host';
 
 import {
   composeAgentPrompt,
@@ -92,6 +97,91 @@ export function resolveAskPrompt(
     autonomyPreset,
     autoApproval,
     ...(requiredSkillIds.length > 0 ? { requiredSkillIds } : {}),
+    ...(attachments.length > 0 ? { attachments } : {}),
+  };
+}
+
+/**
+ * Like resolveAskPrompt, but applies writing recipes (git context + force skill).
+ */
+export async function resolveAskPromptWithRecipe(
+  parsed: ParsedCliArgs,
+  cwd: string,
+): Promise<{
+  prompt: string;
+  mode?: AgentMode;
+  origin?: UserRequestOrigin;
+  autonomyPreset?: MitiiAutonomyPreset;
+  autoApproval?: 'approved' | 'denied';
+  requiredSkillIds?: string[];
+  attachments?: MitiiImageAttachment[];
+}> {
+  if (!parsed.recipe) {
+    return resolveAskPrompt(parsed, cwd);
+  }
+  const recipe = resolveMitiiWritingRecipe(parsed.recipe);
+  if (!recipe) {
+    throw new Error(
+      `mitii: unknown --recipe "${parsed.recipe}" (use commit-message, pr-summary, or changelog)`,
+    );
+  }
+
+  let agent: MitiiAgentFile | undefined;
+  if (parsed.agent) {
+    agent = loadAgentFile(parsed.agent, cwd);
+  }
+  let promptFileText: string | undefined;
+  if (parsed.promptFile) {
+    promptFileText = loadPromptFile(parsed.promptFile);
+  }
+  const userNoteParts = [
+    parsed.prompt?.trim(),
+    promptFileText?.trim(),
+    agent?.prompt?.trim(),
+  ].filter((part): part is string => Boolean(part));
+  const userNote = userNoteParts.join('\n\n') || undefined;
+
+  const ask = await buildWritingRecipeAsk({
+    workspaceRoot: cwd,
+    recipe: recipe.id,
+    userNote,
+  });
+
+  const autonomyPreset = parsed.autonomyPreset ?? agent?.autonomyPreset;
+  const mode = parsed.mode ?? agent?.mode ?? ask.mode;
+  const origin =
+    parsed.origin ??
+    agent?.origin ??
+    (autonomyPreset && autonomyPreset !== 'readonly'
+      ? 'automation'
+      : undefined);
+  let autoApproval = parsed.autoApproval;
+  if (
+    !autoApproval &&
+    (autonomyPreset === 'apply' || autonomyPreset === 'apply_and_pr')
+  ) {
+    autoApproval = 'approved';
+  }
+
+  const requiredSkillIds = [
+    ...ask.requiredSkillIds,
+    ...(parsed.skills ?? []),
+    ...(agent?.requiredSkillIds ?? []),
+  ]
+    .filter((id, index, all) => all.indexOf(id) === index)
+    .slice(0, 3);
+
+  const attachments = (parsed.images ?? []).map((imagePath) =>
+    loadImageAttachment(imagePath, cwd),
+  );
+
+  return {
+    prompt: ask.prompt,
+    mode,
+    origin,
+    autonomyPreset,
+    autoApproval,
+    requiredSkillIds,
     ...(attachments.length > 0 ? { attachments } : {}),
   };
 }

@@ -2,21 +2,21 @@
 
 **Marketplace id:** `mitii.mitii-ai-agent`
 
-Local-first AI coding agent for VS Code. Mitii indexes your repository, answers in Ask mode, plans in Plan mode, applies changes in Agent mode, and can provide FIM inline autocomplete — with approvals, checkpoints, and OpenAI-compatible providers (Ollama, LM Studio, cloud `/v1` APIs).
+Local-first AI coding agent for VS Code. Mitii indexes your repository, answers in Ask mode, plans in Plan mode, applies changes in Agent mode, and can provide FIM inline autocomplete - with approvals, checkpoints, and OpenAI-compatible providers (Ollama, LM Studio, cloud `/v1` APIs).
 
 ![Mitii chat in VS Code](media/mitii-vs-code-chat-ui.png)
 
 ## Install
 
-1. In VS Code: **Extensions** → search **Mitii AI Agent** → Install  
-   Or open: [Marketplace — mitii.mitii-ai-agent](https://marketplace.visualstudio.com/items?itemName=mitii.mitii-ai-agent)
+1. In VS Code: **Extensions** -> search **Mitii AI Agent** -> Install  
+   Or open: [Marketplace - mitii.mitii-ai-agent](https://marketplace.visualstudio.com/items?itemName=mitii.mitii-ai-agent)
 2. Open a trusted workspace folder
 3. Click the Mitii icon in the activity bar
-4. Wait for indexing to finish (status in the sidebar / Settings → Index)
-5. In **Settings → Provider**, choose:
-   - **echo** — local stub (no API key)
+4. Wait for indexing to finish (status in the sidebar / Settings -> Index)
+5. In **Settings -> Provider**, choose:
+   - **echo** - local stub (no API key)
    - **Anthropic (Claude)** / **Gemini** / **DeepSeek** / **OpenAI** / **OpenRouter**
-   - **Custom OpenAI-compatible** — any `/v1/chat/completions` API
+   - **Custom OpenAI-compatible** - any `/v1/chat/completions` API
 
 For cloud providers, run **Mitii: Set Provider API Key** (stored in VS Code SecretStorage). Local Ollama/LM Studio usually need no key.
 
@@ -24,14 +24,14 @@ For cloud providers, run **Mitii: Set Provider API Key** (stored in VS Code Secr
 
 ## What you get
 
-- **Repository-aware context** — SQLite FTS5, symbols, optional vectors, repo map, diagnostics, Git state, and `@` attachments
-- **Skills** — force-attach playbooks with `/` or `@skill:id` in chat (up to 3 per message); workspace skills in `.mitii/skills/`
-- **Ask / Plan / Agent** — read-only Q&A, structured plans, controlled edits with cancel / clarify / approve
-- **FIM autocomplete** — optional inline ghost text from a low-latency OpenAI-compatible `prompt` + `suffix` endpoint
-- **Safety** — configurable approvals, path containment, command policy, pre-write checkpoints, workspace trust
-- **Providers** — Echo, Anthropic (Claude), Gemini, and OpenAI-compatible endpoints (DeepSeek, OpenRouter, Azure, Ollama, custom `/v1`)
-- **MCP** — optional stdio servers (`mitii.mcp` / `.mitii/mcp.json`); off by default
-- **Evidence** — session logs and audit-pack export (secrets redacted). Org SSO / RBAC / SIEM are not included
+- **Repository-aware context** - SQLite FTS5, symbols, optional vectors, repo map, diagnostics, Git state, and `@` attachments
+- **Skills** - force-attach playbooks with `/` or `@skill:id` in chat (up to 3 per message); workspace skills in `.mitii/skills/`
+- **Ask / Plan / Agent** - read-only Q&A, structured plans, controlled edits with cancel / clarify / approve
+- **FIM autocomplete** - optional inline ghost text from a low-latency OpenAI-compatible `prompt` + `suffix` endpoint
+- **Safety** - configurable approvals, path containment, command policy, pre-write checkpoints, workspace trust
+- **Providers** - Echo, Anthropic (Claude), Gemini, and OpenAI-compatible endpoints (DeepSeek, OpenRouter, Azure, Ollama, custom `/v1`)
+- **MCP** - optional stdio servers (`mitii.mcp` / `.mitii/mcp.json`); off by default
+- **Evidence** - session logs and audit-pack export (secrets redacted). Org SSO / RBAC / SIEM are not included
 
 ## Quick commands
 
@@ -42,7 +42,10 @@ For cloud providers, run **Mitii: Set Provider API Key** (stored in VS Code Secr
 | **Mitii: Show Settings** | Provider, index, MCP, workspace |
 | **Mitii: Toggle Autocomplete** | Enable or disable FIM inline suggestions |
 | **Mitii: Set Provider API Key** | Store cloud API key in SecretStorage |
-| **Mitii: Generate Commit Message** | SCM commit helper |
+| **Mitii: Generate Commit Message** | SCM commit helper (force-attaches `git-commit-message`) |
+| **Mitii: Generate PR Summary** | Draft PR body (force-attaches `git-pr-summary`) |
+| **Mitii: Generate Changelog** | Keep a Changelog draft (force-attaches `release-changelog`) |
+| **Mitii: Prepare Release Notes** | Release notes via `release-changelog` |
 | **Mitii: Export Session Log** | Export session JSON |
 | **Mitii: Export Audit Pack** | Redacted audit bundle |
 | **Mitii: Export Shareable Diagnostic** | One redacted markdown file for pasting into online chat help |
@@ -79,9 +82,20 @@ Attach a skill for the **next message** (bundled or workspace):
 Example prompt:
 
 ```text
-@skill:module-doc-generator
-Generate docs for test/Tablet
+@skill:git-commit-message
+Write a commit message for the staged changes.
 ```
+
+### Writing recipes (auto-attach)
+
+| UI / CLI | Skill id | Output |
+|---|---|---|
+| **Mitii: Generate Commit Message** / `mitii commit-message` | `git-commit-message` | Commit text -> SCM box |
+| **Mitii: Generate PR Summary** / `mitii pr-summary` | `git-pr-summary` | PR Summary + Test plan |
+| **Mitii: Generate Changelog** / `mitii changelog` | `release-changelog` | Keep a Changelog section |
+
+CLI also accepts `mitii ask --recipe commit-message` (same for `pr-summary`, `changelog`).
+These entry points gather git status/diff/log and set `requiredSkillIds` so the skill is guaranteed.
 
 Authoring format and matcher fields: [docs/SKILLS_FORMAT.md](../../docs/SKILLS_FORMAT.md).
 
@@ -109,7 +123,7 @@ pnpm run setup
 
 Press **F5** for an Extension Development Host. Details: [docs/INITIAL_LAUNCH.md](https://github.com/Mitii-dev/Mitii/blob/main/docs/INITIAL_LAUNCH.md).
 
-Runtime stack: extension → `@mitii/host` → `@mitii/sdk` → `@mitii/v8`.
+Runtime stack: extension -> `@mitii/host` -> `@mitii/sdk` -> `@mitii/v8`.
 
 ```bash
 pnpm --filter ./apps/vscode build

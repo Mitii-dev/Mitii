@@ -2,9 +2,8 @@ import { defineConfig } from 'vitest/config';
 
 /**
  * Vitest owns suites that import from `vitest`.
- * Legacy `node:test` specs remain on disk and are unchanged; they are not
- * collected here (Phase 10 baseline collection mismatch). Run them later via
- * `node --test` / Phase 14 test layout work — do not redesign them in Phase 11.
+ * Specs using Node's built-in test runner are not collected here; run those
+ * separately with `node --test` when needed.
  */
 export default defineConfig({
   test: {

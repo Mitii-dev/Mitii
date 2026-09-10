@@ -4,12 +4,12 @@ title: Git Workflow and Versioning
 description: Atomic commits, clear history, and safe branching for parallel work.
 intents: [feature, bugfix, refactor, docs, migrate]
 routes: [execute]
-tags: [git, commit, branch, changelog, semver]
+tags: [git, branch, worktree, semver, versioning]
 priority: 120
 conflictGroup: ship
 alwaysApply: false
 enabled: true
-when: [Committing or branching, Organizing parallel work streams, Cutting a release or writing a changelog]
+when: [Organizing parallel work streams, Branching or worktrees, Cutting a release version]
 instruction: Prefer trunk-based flow with small atomic commits as save points; write clear messages and keep change size reviewable.
 ---
 

@@ -1,42 +1,42 @@
-# Mitii Safety Phases (A–C)
+# Mitii Safety Phases (A-C)
 
 Status: shipped in-tree  
 Audience: contributors and hosts (VS Code / CLI)
 
-This document is the product README for the safety workstream that compares Mitii’s Decision Policy with Kilo-style permissions/sandbox **without** cloning a second permission engine.
+This document is the product README for the safety workstream that compares Mitii's Decision Policy with Kilo-style permissions/sandbox **without** cloning a second permission engine.
 
 ## Goals
 
 | Phase | Goal | Accuracy impact |
 |---|---|---|
-| **A** | Seal goldens, preset UX copy, effective grant readout | **None** — trust / clarity |
-| **B** | `mitii run --auto`, tighten-only `.mitii/safety.json`, Debug skill, marketplace-lite | **None** — operability |
-| **C** | Optional OS sandbox (macOS Seatbelt / Linux bwrap), default off, fail-closed | **None** — blast radius |
+| **A** | Seal goldens, preset UX copy, effective grant readout | **None** - trust / clarity |
+| **B** | `mitii run --auto`, tighten-only `.mitii/safety.json`, Debug skill, marketplace-lite | **None** - operability |
+| **C** | Optional OS sandbox (macOS Seatbelt / Linux bwrap), default off, fail-closed | **None** - blast radius |
 
-Coding solve-rate is owned by evidence + verification + benchmarks — not this stack.
+Coding solve-rate is owned by evidence + verification + benchmarks - not this stack.
 
 ## Architecture (must follow)
 
 ```text
 apps (vscode/cli)
-  → @mitii/host   (load .mitii/safety.json, sandbox ProcessPort wrap, marketplace-lite)
-  → @mitii/sdk    (start input: userSafetyRules)
-  → @mitii/v8     (Decision Policy: mode seals → injection clamp → user-rule intersect)
+  -> @mitii/host   (load .mitii/safety.json, sandbox ProcessPort wrap, marketplace-lite)
+  -> @mitii/sdk    (start input: userSafetyRules)
+  -> @mitii/v8     (Decision Policy: mode seals -> injection clamp -> user-rule intersect)
 ```
 
 V8 owns authority. Hosts never widen grants. User rules **intersect only**.
 
-## Phase A — Floor
+## Phase A - Floor
 
 ### Mode seals
 
-- **Ask** — no mutation tools / no write effect (even under pilot approvals or injection).
-- **Plan** — no `run_command`, no mutation tools.
+- **Ask** - no mutation tools / no write effect (even under pilot approvals or injection).
+- **Plan** - no `run_command`, no mutation tools.
 - Tests: `packages/v8/.../tests/unit/ModeSealInvariants.spec.ts`
 
 ### Preset UX (VS Code)
 
-Setting: `mitii.safety.approvalMode` = `safe` | `guided` | `pilot` (legacy `builder` → guided).
+Setting: `mitii.safety.approvalMode` = `safe` | `guided` | `pilot` (legacy `builder` -> guided).
 
 Copy lives in `ApprovalPresetCopy` (`@mitii/v8`) and `apps/vscode/src/approvalPolicy.ts`.
 
@@ -46,7 +46,7 @@ Copy lives in `ApprovalPresetCopy` (`@mitii/v8`) and `apps/vscode/src/approvalPo
 CLI (`runReport`) and VS Code activity lines print them.  
 Helpers: `formatEffectiveGrant` / `formatEffectiveGrantJson`.
 
-## Phase B — Productize
+## Phase B - Productize
 
 ### `mitii run --auto`
 
@@ -73,7 +73,7 @@ File: `.mitii/safety.json` (default **disabled**).
 
 Semantics:
 
-- `enabled: false` → ignored.
+- `enabled: false` -> ignored.
 - May only **remove** tools/prefixes/hosts/paths or raise approval strictness.
 - **Must never** add tools Decision Policy did not grant.
 - VS Code also requires `mitii.safety.userRulesEnabled: true`.
@@ -85,14 +85,14 @@ Intersection: `intersectUserSafetyRules` in Decision Policy (after injection cla
 
 Bundled skill `debug-systematic` under `packages/sdk/skills/debug-systematic/`.  
 Attach with `--skill debug-systematic` or `@skill:debug-systematic`.  
-This is a thin Debug playbook — **not** a fourth interaction mode.
+This is a thin Debug playbook - **not** a fourth interaction mode.
 
 ### Marketplace-lite
 
 Catalog only (no plugin framework): `listMarketplaceLite()` in `@mitii/host`.  
 MCP still installs via Settings / `.mitii/mcp.json`; skills via bundled catalog / `.mitii/skills/`.
 
-## Phase C — OS sandbox
+## Phase C - OS sandbox
 
 | Setting / env | Default | Meaning |
 |---|---|---|
@@ -101,14 +101,14 @@ MCP still installs via Settings / `.mitii/mcp.json`; skills via bundled catalog 
 
 Backends:
 
-- macOS → `sandbox-exec` Seatbelt profile (workspace writable, optional network deny)
-- Linux → `bwrap` if on PATH
-- Windows / missing binary → **fail-closed** (command does not run unrestricted)
+- macOS -> `sandbox-exec` Seatbelt profile (workspace writable, optional network deny)
+- Linux -> `bwrap` if on PATH
+- Windows / missing binary -> **fail-closed** (command does not run unrestricted)
 
 Implementation: `packages/host/src/sandbox/createSandboxedProcessPort.ts`  
 Wired in CLI + VS Code `ports.ts`.
 
-Sandbox is a second fence **after** grants. It does not make “allow everything” safe inside the workspace.
+Sandbox is a second fence **after** grants. It does not make "allow everything" safe inside the workspace.
 
 ## What we deliberately did **not** ship
 
@@ -147,5 +147,5 @@ pnpm exec vitest run apps/cli/src/commands/runAuto.spec.ts
 
 1. Prefer golden / unit tests named `never_widens_*` for any safety change.
 2. Keep new modules under **800 lines**.
-3. Do not put OS-specific Seatbelt/bwrap code in V8 — hosts own `ProcessPort`.
+3. Do not put OS-specific Seatbelt/bwrap code in V8 - hosts own `ProcessPort`.
 4. Feature flags default **off** (`safety.json.enabled`, sandbox enabled).

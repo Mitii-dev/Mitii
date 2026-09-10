@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * Phase 17 automated connection proxies (no Extension Host required).
- * Exit 0 only when all measurable F5 wiring checks pass.
+ * Extension launch wiring checks (no Extension Host required).
+ * Exit 0 only when measurable launch checks pass.
+ * Invoked via: pnpm run verify:launch
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
@@ -49,9 +50,11 @@ step('build product packages', () => {
     '--filter',
     '@mitii/sdk',
     '--filter',
+    '@mitii/host',
+    '--filter',
     '@mitii/cli',
     '--filter',
-    '@mitii/vscode',
+    './apps/vscode',
     'run',
     'build',
   ]);
@@ -205,7 +208,7 @@ step('benchmark example points at apps/cli', () => {
   }
 });
 
-process.stdout.write('\n== Phase 17 checklist (automated proxies) ==\n');
+process.stdout.write('\n== Launch checklist (automated checks) ==\n');
 const checklist = [
   { id: 1, name: 'Activation / Output channel', evidence: 'bundle + CLI ask' },
   { id: 2, name: 'Echo provider ports', evidence: 'CLI ask --echo' },
@@ -239,12 +242,12 @@ for (const row of checklist) {
 }
 
 if (failures.length > 0) {
-  process.stderr.write(`\nPhase 17 verify FAILED (${failures.length}):\n`);
+  process.stderr.write(`\nLaunch verify FAILED (${failures.length}):\n`);
   for (const f of failures) {
     process.stderr.write(`  - ${f.id}: ${f.message}\n`);
   }
   process.exit(1);
 }
 
-process.stdout.write('\nPhase 17 verify PASSED.\n');
+process.stdout.write('\nLaunch verify PASSED.\n');
 process.exit(0);

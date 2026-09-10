@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
-  "version": "2.9.29",
+  "version": "2.9.30",
   "publisher": "mitii",
   "license": "AGPL-3.0-or-later",
   "icon": "media/mitii-short-logo.png",
@@ -72,6 +72,7 @@
     "onCommand:mitii.exportShareableDiagnostic",
     "onCommand:mitii.openSessionLog",
     "onCommand:mitii.generateChangelog",
+    "onCommand:mitii.generatePrSummary",
     "onCommand:mitii.prepareRelease",
     "onCommand:mitii.showInlineDiff",
     "onCommand:mitii.acceptInlineDiff",
@@ -140,6 +141,11 @@
       {
         "command": "mitii.generateChangelog",
         "title": "Mitii: Generate Changelog",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.generatePrSummary",
+        "title": "Mitii: Generate PR Summary",
         "category": "Mitii"
       },
       {
@@ -1170,7 +1176,7 @@
             "plain"
           ],
           "default": "conventional",
-          "description": "Style hint for generated commit messages"
+          "description": "Style hint for generated commit messages. The Generate Commit Message command force-attaches the bundled git-commit-message skill."
         },
         "mitii.safety.approvalMode": {
           "type": "string",

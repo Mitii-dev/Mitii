@@ -53,12 +53,30 @@ export const MARKETPLACE_LITE_CATALOG: readonly MarketplaceCatalogEntry[] = [
     recommended: true,
   },
   {
-    id: "debug-systematic",
+    id: "git-commit-message",
     kind: "skill",
-    title: "Debug Systematic (mode-like)",
-    description: "Thin Debug playbook for Agent mode root-cause work.",
+    title: "Git commit message",
+    description: "Compact conventional commit from status/diff/log.",
     installHint:
-      "Bundled skill debug-systematic. Attach with --skill debug-systematic",
+      "Bundled. Auto-attached by Mitii: Generate Commit Message and `mitii commit-message`.",
+    recommended: true,
+  },
+  {
+    id: "git-pr-summary",
+    kind: "skill",
+    title: "Git PR summary",
+    description: "Compact PR Summary + Test plan from branch diff.",
+    installHint:
+      "Bundled. Auto-attached by Mitii: Generate PR Summary and `mitii pr-summary`.",
+    recommended: true,
+  },
+  {
+    id: "release-changelog",
+    kind: "skill",
+    title: "Release changelog",
+    description: "Keep a Changelog entry from commits since last tag.",
+    installHint:
+      "Bundled. Auto-attached by Mitii: Generate Changelog and `mitii changelog`.",
     recommended: true,
   },
 ] as const;

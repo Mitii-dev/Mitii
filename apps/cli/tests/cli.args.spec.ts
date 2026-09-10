@@ -218,6 +218,27 @@ describe('CLI resolveCliPorts', () => {
     ]);
   });
 
+  it('parses writing recipe subcommands and --recipe', () => {
+    const sub = parseCliArgs(['node', 'mitii', 'commit-message', 'focus on why']);
+    expect(sub.command).toBe('commit-message');
+    expect(sub.recipe).toBe('commit-message');
+    expect(sub.prompt).toBe('focus on why');
+
+    const viaFlag = parseCliArgs([
+      'node',
+      'mitii',
+      'ask',
+      '--recipe',
+      'pr-summary',
+    ]);
+    expect(viaFlag.command).toBe('ask');
+    expect(viaFlag.recipe).toBe('pr-summary');
+
+    const changelog = parseCliArgs(['node', 'mitii', 'changelog']);
+    expect(changelog.command).toBe('changelog');
+    expect(changelog.recipe).toBe('changelog');
+  });
+
   it('parses repeatable --image flags for ask', () => {
     const parsed = parseCliArgs([
       'node',

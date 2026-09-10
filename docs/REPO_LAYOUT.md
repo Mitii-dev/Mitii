@@ -1,119 +1,73 @@
-# Mitii repository layout (Phases 10–17)
+# Mitii repository layout
 
-Status: Phase 17 **complete**; Phase 14 **in progress** (2026-07-26 — `tests/` + solid benchmark relocated)  
-Canonical V8 architecture: `packages/v8/ARCHITECTURE.md`  
-Capability decisions: `docs/CAPABILITY_INVENTORY.md`  
-F5 operator guide: `docs/INITIAL_LAUNCH.md`  
-Tests / solid benchmark: `docs/TESTS.md`
+Current product package boundaries. Canonical V8 architecture: [`packages/v8/ARCHITECTURE.md`](../packages/v8/ARCHITECTURE.md).
 
-This document freezes **product package boundaries**. It does not redesign V8 module internals. Live V8 code is at `packages/v8/src/` (`@mitii/v8`). Hosts and tests prefer `@mitii/sdk` over V8 public facades.
-
-Execution order:
-
-1. **Phase 16** — clean active tree; one `legacy/` vault + one-click purge; strip new-code compat — **done** (vault purged 2026-07-26)
-2. **Phase 17** — F5 / initial launch wiring for `apps/vscode` — **done** (`pnpm run f5:verify`)
-3. **Phase 14** — `tests/` + solid benchmark + package consumer suites (last) — **in progress**
-
-## 1. Target dependency graph
+## Dependency graph
 
 ```text
-apps/vscode ──┐
-apps/cli    ──┼──► packages/host ──► packages/sdk ──► packages/v8
-apps/daemon ──┤         │
-              │         └──► packages/automation  (schedules / claim runner)
-tests/* ──────┘
-  (incl. tests/benchmark)
-
-Forbidden:
-  packages/v8 → apps/* | packages/sdk | packages/host | packages/automation | vscode | webview
-  packages/sdk → apps/* | packages/host | packages/automation | vscode
-  packages/automation → apps/* | packages/sdk | packages/host | packages/v8
-  packages/host → apps/* | vscode
-  apps/* → another app's internals
-  any product package → tests/* | legacy/*
-  F5 / CI → legacy/*
+apps/vscode --+
+apps/cli    --+--> packages/host --> packages/sdk --> packages/v8
+apps/daemon --+         |
+                        `--> packages/automation
+tests/* ---------------/
 ```
 
-## 2. Target repository tree
+**Forbidden**
+
+- `packages/v8` -> apps, sdk, host, automation
+- `packages/sdk` -> apps, host, automation
+- `packages/host` -> apps
+- product packages -> `tests/*`
+
+Hosts and tests prefer `@mitii/sdk` over importing V8 internals.
+
+## Tree
 
 ```text
 mitii/
-├── package.json                 # private workspace root ONLY
-├── pnpm-workspace.yaml
-├── .vscode/                     # F5 → apps/vscode (Phase 17)
-├── packages/
-│   ├── v8/                      # @mitii/v8
-│   ├── sdk/                     # @mitii/sdk
-│   ├── host/                    # @mitii/host (shared host kit: indexing / ports / presets)
-│   └── automation/              # @mitii/automation (Phase 1 control plane)
-├── apps/
-│   ├── vscode/
-│   ├── cli/                     # mitii schedule | serve | ask …
-│   └── daemon/                  # mitii-daemon (long-lived serve)
-├── tests/                       # Phase 14
-│   ├── reports/
-│   ├── benchmark/               # solid suite (from repo-root benchmark/)
-│   ├── packages/{v8,sdk}/
-│   ├── architecture/
-│   ├── contract/
-│   ├── integration/
-│   └── e2e/
-├── docs/
-└── (legacy/ purged — do not recreate)
+|-- package.json              # private workspace orchestrator
+|-- pnpm-workspace.yaml
+|-- .vscode/                  # F5 -> apps/vscode
+|-- packages/
+|   |-- v8/                   # @mitii/v8
+|   |-- sdk/                  # @mitii/sdk (+ bundled skills/)
+|   |-- host/                 # @mitii/host
+|   `-- automation/           # @mitii/automation
+|-- apps/
+|   |-- vscode/               # VS Code extension (VSIX)
+|   |-- cli/                  # @mitii/cli (`mitii`)
+|   `-- daemon/               # @mitii/daemon
+|-- tests/
+|   `-- benchmark/            # @mitii/solid-benchmark
+|-- docs/
+|-- scripts/
+`-- tools/                    # policy-admin, log-viewer (dev UX)
 ```
 
-After Phase 16 + human purge the active root must not keep a second `src/` kernel, active `test/` dump, twin `tools/benchmark`, or a `legacy/` vault.
+## Publish units
 
-## 3. Package names and publish units
-
-| Package / app | npm / publish name | Notes |
+| Package / app | Name | Notes |
 |---|---|---|
-| V8 runtime | `@mitii/v8` | `packages/v8` |
-| SDK | `@mitii/sdk` | hosts/tests use this |
-| Host kit | `@mitii/host` | shared indexing, ports adapters, presets, checkpoints, project rules |
-| Automation | `@mitii/automation` | schedules, SQLite runs, claim/lease runner (Phase 1) |
-| CLI | `@mitii/cli` | solid benchmark agent target; `schedule` / `serve` |
-| Daemon | `@mitii/daemon` | long-lived automation process entry |
-| VS Code extension | `@mitii/vscode` | VSIX; F5 development path |
-| Solid benchmark | `@mitii/solid-benchmark` | `tests/benchmark` |
-| Workspace root | private | never published as product |
+| V8 | `@mitii/v8` | Runtime |
+| SDK | `@mitii/sdk` | Public API; ships `skills/` |
+| Host | `@mitii/host` | Indexing, ports, recipes, skills catalog |
+| Automation | `@mitii/automation` | Schedules / claim runner |
+| CLI | `@mitii/cli` | `mitii` bin |
+| Daemon | `@mitii/daemon` | Long-lived serve |
+| VS Code | `mitii-ai-agent` | VSIX / Marketplace |
+| Benchmark | `@mitii/solid-benchmark` | `tests/benchmark` |
+| Root | private | Never published |
 
-## 4. Binding decisions
+## Skills
 
-1. Host → SDK → V8 is mandatory for VS Code and CLI.
-2. Daemon / channels / board: daemon reintroduced as `apps/daemon` + `@mitii/automation` (Phase 1). Channels/board remain deferred unless scored ≥7.
-3. **Legacy vault:** purged (2026-07-26) via `pnpm run legacy:purge`. Do not recreate `src/kernel` or a second legacy tree.
-4. **F5** loads `apps/vscode` only (`docs/INITIAL_LAUNCH.md`).
-5. **Tests:** only `tests/` + package-local `*.spec.ts`; old suites were vaulted then purged, not ported.
-6. Shim / dual-brand (`thunder.*`) removed in Phase 16.
+Bundled playbooks live in `packages/sdk/skills/<id>/SKILL.md`. Format: [`docs/SKILLS_FORMAT.md`](SKILLS_FORMAT.md).
 
-## 5. Temporary shim policy
+Writing recipes (force-attach + git context) are defined in `@mitii/host` and used by VS Code SCM helpers and CLI (`commit-message`, `pr-summary`, `changelog`). See [`apps/cli/README.md`](../apps/cli/README.md) and [`apps/vscode/README.md`](../apps/vscode/README.md).
 
-| Shim | Must remove by |
-|---|---|
-| `apps/vscode` `thunder.*` dual APIs | Phase 16 |
-| Deprecated V8/SDK aliases | Phase 16 |
-| Root scripts pointing at `src/extension.ts` | Phase 16 |
-| `.vscode` thunder prelaunch / root extensionPath | Phase 17 — **done** |
-| Repo-root `benchmark/` | **Moved** to `tests/benchmark/` (Phase 14) |
-| `legacy/` vault itself | **Purged** 2026-07-26 (`MITII_PURGE_LEGACY=1 pnpm run legacy:purge`) |
+## Related
 
-## 6. Phase checkpoints
-
-| Phase | Outcome |
-|---|---|
-| 10–13 | Packaging — **done** |
-| 15 | Host UX on SDK/V8 — **done** |
-| 16 | Clean repo + `legacy/` vault + strip compat — **done** (vault **purged**) |
-| 17 | F5 / initial launch wiring — **done** (`f5:verify`) |
-| 14 | `tests/` + solid benchmark — **next (last)** |
-
-## 9. Related documents
-
-- `packages/v8/ARCHITECTURE.md`
-- `packages/v8/ROADMAP.md`
-- `docs/CAPABILITY_INVENTORY.md`
-- `docs/INITIAL_LAUNCH.md`
-- `docs/TESTS.md`
-- `docs/RELEASE.md`
-- `scripts/legacy-purge.mjs` (idempotent guard; exits non-zero if `legacy/` already absent)
+- [`docs/INITIAL_LAUNCH.md`](INITIAL_LAUNCH.md) - F5 / first launch
+- [`docs/TESTS.md`](TESTS.md) - tests + benchmark
+- [`docs/RELEASE.md`](RELEASE.md) - publish gates
+- [`docs/SAFETY_PHASES.md`](SAFETY_PHASES.md) - safety / sandbox
+- [`docs/automation/README.md`](automation/README.md) - unattended agents

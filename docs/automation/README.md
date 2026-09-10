@@ -1,16 +1,16 @@
 # Mitii Automation
 
-Control plane for unattended Mitii runs: origin/autonomy (Phase 0), local
-schedules + claim runner (Phase 1), and event ingress / GitHub (Phase 2).
+Control plane for unattended Mitii runs: CLI/CI workers, local schedules, event
+ingress (including GitHub), delivery adapters, and incident evidence packs.
 
 **Design & test new scenarios:** [DESIGN_AND_TESTING.md](./DESIGN_AND_TESTING.md)
 
-## Phase 0 — worker + CI wrappers
+## CI and worker wrappers
 
 Use GitHub Actions or system cron calling the CLI when you do not need a local
 daemon.
 
-## What landed
+## Capability map
 
 | Surface | Capability |
 |---|---|
@@ -28,7 +28,7 @@ daemon.
 mkdir -p .mitii/agents
 cp docs/automation/agents/post-commit-cover.md .mitii/agents/
 
-export ANTHROPIC_API_KEY=…
+export ANTHROPIC_API_KEY=...
 mitii ask --agent post-commit-cover --json \
   --origin automation --autonomy apply_and_pr
 ```
@@ -81,21 +81,21 @@ Composite action:
     autonomy: apply_and_pr
 ```
 
-## Example 1 — post-commit cover
+## Example: post-commit cover
 
 See `.github/workflows/mitii-post-commit-cover.yml` and
 `docs/automation/agents/post-commit-cover.md`.
 
-**Ship guide:** [SHIP.md](./SHIP.md) · smoke: `docs/automation/smoke/example1-post-commit.sh`
+**Ship guide:** [SHIP.md](./SHIP.md) - smoke: `docs/automation/smoke/example1-post-commit.sh`
 
-## Example 2 — CI failure → ticket
+## Example: CI failure to ticket
 
 See `.github/workflows/mitii-ci-failure-triage.yml` and
 `docs/automation/agents/incident-from-logs.md`.
 
-**Ship guide:** [SHIP.md](./SHIP.md) · smoke: `docs/automation/smoke/example2-ci-failure.sh`
+**Ship guide:** [SHIP.md](./SHIP.md) - smoke: `docs/automation/smoke/example2-ci-failure.sh`
 
-## Phase 1 — schedules + daemon (landed)
+## Schedules and daemon
 
 ```bash
 mitii schedule create "morning" --cron "0 9 * * *" --prompt "Health check" --workspace .
@@ -105,11 +105,11 @@ mitii serve --echo          # local smoke; omit --echo for real provider
 # or: mitii-daemon
 ```
 
-- `@mitii/automation` — SQLite specs/runs, materializer, claim/lease runner
+- `@mitii/automation` - SQLite specs/runs, materializer, claim/lease runner
 - File specs: `.mitii/cron/*.cron.md`
 - Architecture: [packages/automation/ARCHITECTURE.md](../../packages/automation/ARCHITECTURE.md)
 
-## Phase 2 — events + GitHub (landed)
+## Events and GitHub webhooks
 
 ```bash
 mitii events ingest --type github.workflow_run.completed --source github --json-file ./payload.json
@@ -120,7 +120,7 @@ mitii serve --webhook-port 8787   # POST /hooks/github , POST /events , GET /hea
 - Event specs: `.mitii/cron/events/*.event.md`
 - Tools: `create_github_issue`, `create_pull_request` (via `gh`)
 
-## Phase 3 — delivery bus (landed)
+## Delivery bus
 
 Spec metadata:
 
@@ -131,18 +131,18 @@ Spec metadata:
 Adapters: `webhook`, `slack`, `discord`, `telegram`, `github_comment`, `github_check`.  
 Senders live in `@mitii/host` (`createCompositeDeliverySender`); tokens from env.
 
-## Phase 4 — incident evidence (landed)
+## Incident evidence
 
 On CI failure events, ClaimRunner pulls `gh run view --log` when possible and
 writes an evidence pack under `~/.mitii/automation/artifacts/<runId>/` with a
 stable `[mitii:<fingerprint>]` issue title hint.
 
-## Phase 5 — VS Code + export (landed)
+## VS Code and export
 
 - Automations panel in the VS Code sidebar (list / trigger / pause / resume)
 - `mitii schedule export` / `mitii schedule import`
 
-## Phase 6 — hardening (landed)
+## Hardening
 
 Lease reclaim, delivery retries, multi-DB isolation, and export/import covered
 by `@mitii/automation` unit tests.

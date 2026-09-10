@@ -186,6 +186,26 @@ export type {
 } from './ports/skillsCatalog.js';
 
 // ---------------------------------------------------------------------------
+// Writing recipes — force-attach bundled skills for commit / PR / changelog
+// ---------------------------------------------------------------------------
+export {
+  MITII_WRITING_RECIPE_IDS,
+  MITII_WRITING_RECIPES,
+  buildWritingRecipeAsk,
+  collectGitWritingContext,
+  isMitiiWritingRecipeId,
+  resolveMitiiWritingRecipe,
+  unwrapRecipeAnswer,
+} from './recipes/gitWritingRecipes.js';
+export type {
+  BuildWritingRecipeAskOptions,
+  CommitMessageStyle,
+  MitiiWritingRecipe,
+  MitiiWritingRecipeId,
+  WritingRecipeAsk,
+} from './recipes/gitWritingRecipes.js';
+
+// ---------------------------------------------------------------------------
 // Prompt helpers — host-owned instruction files → MitiiStartInput.projectRules
 // ---------------------------------------------------------------------------
 export { loadProjectRules } from './prompt/projectRules.js';

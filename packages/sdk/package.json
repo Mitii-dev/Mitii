@@ -1,6 +1,6 @@
 {
   "name": "@mitii/sdk",
-  "version": "2.9.29",
+  "version": "2.9.30",
   "description": "Host-neutral Mitii programmatic API over @mitii/v8 Agent Engine.",
   "license": "AGPL-3.0-or-later",
   "type": "module",
@@ -29,7 +29,6 @@
     "dist",
     "skills",
     "README.md",
-    "LEGACY_EXPORTS.md",
     "LICENSE"
   ],
   "engines": {

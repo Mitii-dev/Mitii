@@ -1,8 +1,7 @@
 # V8 Architecture
 
-Status: target architecture and binding migration specification
+Status: canonical runtime architecture  
 Canonical code root: `packages/v8/src/`
-Last reviewed: 2026-07-26
 
 The key words **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, and **MAY** are used as normative requirements in the sense of BCP 14.
 
@@ -11,7 +10,7 @@ The key words **MUST**, **MUST NOT**, **SHOULD**, **SHOULD NOT**, and **MAY** ar
 V8 is a host-neutral coding-agent runtime built around explicit, validated business pipelines:
 
 ```text
-Validated Input â†’ Cohesive Pipeline â†’ Validated Result
+Validated Input -> Cohesive Pipeline -> Validated Result
 ```
 
 Its priorities are:
@@ -42,64 +41,65 @@ V8 does not:
 ```text
 Application Hosts
   VS Code | CLI | tests | future web/desktop
-        â”‚
-        â”‚ inject ports, secrets, UI, persistence
-        â–¼
+        |
+        | inject ports, secrets, UI, persistence
+        v
 Agent Engine
   coordinates public V8 facades and run state
-        â”‚
-        â”œâ”€â”€ Request Intake
-        â”œâ”€â”€ Request Understanding
-        â”œâ”€â”€ Decision Policy
-        â”œâ”€â”€ Skills
-        â”œâ”€â”€ Memory
-        â”œâ”€â”€ Planning
-        â”œâ”€â”€ Repository Context â”€â”€ Repository State
-        â”œâ”€â”€ Code Navigation
-        â”œâ”€â”€ Prompt Construction
-        â”œâ”€â”€ Model Gateway
-        â”œâ”€â”€ Tool Runtime
-        â””â”€â”€ Verification
+        |
+        |-- Request Intake
+        |-- Request Understanding
+        |-- Decision Policy
+        |-- Skills
+        |-- Memory
+        |-- Planning
+        |-- Repository Context -- Repository State
+        |-- Code Navigation
+        |-- Prompt Construction
+        |-- Model Gateway
+        |-- Tool Runtime
+        `-- Verification
 ```
 
 The Application layer MUST own host APIs, user-interface DTO mapping, secret retrieval, and adapter composition. V8 MUST remain usable in tests and a headless CLI.
 
-Repository packaging (Roadmap Phases 10–13 for product packages; Phase 14 last for `tests/` / `fixtures/`) places this boundary in concrete packages:
+Repository packaging places this boundary in concrete packages:
 
-- Runtime: `packages/v8` (`@mitii/v8`) — live root is `packages/v8/src/`
-- Public API: `packages/sdk` (`@mitii/sdk`) — hosts and tests prefer this
+- Runtime: `packages/v8` (`@mitii/v8`) - live root is `packages/v8/src/`
+- Public API: `packages/sdk` (`@mitii/sdk`) - hosts and tests prefer this
+- Host kit: `packages/host` (`@mitii/host`)
 - Hosts: `apps/vscode`, `apps/cli` (optional `apps/daemon`)
-- Consumers: `tests/`, `fixtures/`
+- Consumers: `tests/` (benchmark), package-local `*.spec.ts`
 
-Authoritative packaging freeze (Phase 10): `docs/REPO_LAYOUT.md` and `docs/CAPABILITY_INVENTORY.md`.
+Authoritative packaging layout: `docs/REPO_LAYOUT.md`.
 
-Dependency direction MUST remain `apps → sdk → v8`. V8 MUST NOT import host or SDK packages.
+Dependency direction MUST remain `apps -> host -> sdk -> v8` (apps may also import sdk/v8 types carefully). V8 MUST NOT import host or SDK packages.
 
-Runtime orchestration belongs to `packages/v8/src/engine/agent-engine/` (or `packages/v8/.../engine/agent-engine/` after Phase 11). Tool execution
+Runtime orchestration belongs to `packages/v8/src/engine/agent-engine/`. Tool execution
 belongs to the tool-runtime engine package path. Business facades remain under
 `modules/`.
 
 ## 4. Stable public modules
 
-| Module | Primary input â†’ output | Owns | Must not own |
+| Module | Primary input -> output | Owns | Must not own |
 |---|---|---|---|
-| `request-intake` | Raw host request â†’ request envelope | Request validation, interaction mode, attachments/references, conversation metadata normalization | Intent, policy, retrieval |
-| `request-understanding` | Envelope â†’ understanding result | Intent evidence, targets, constraints, scope, complexity, risk, clarity, expected outcome, clarification assessment | Final route or authority |
-| `repository-state` | Workspace change/sync request â†’ published state descriptor | Discovery, ignore policy, project catalog, source analysis, indexes, graph, map, readiness, atomic state publication | Prompting or tool execution |
-| `repository-context` | State reference + query + budget â†’ context result | Hybrid retrieval, deduplication, diversity selection, representation choice, safe assembly | Re-indexing or model calls |
-| `decision-policy` | Envelope + understanding + mode + state capability â†’ execution decision | Route, planning depth, plan gate, context need, tool grant, approval and verification policy | Executing decisions |
-| `prompt-construction` | Decision + context + conversation + selected instructions â†’ model request | Total budget allocation, serialization, compaction, provenance, omission report | Retrieval or model invocation |
-| `model-gateway` | Model invocation â†’ model-event stream | Provider selection, capability negotiation, normalized streaming, usage, retry classification | Tool execution or run policy |
-| `tool-runtime` | Authorized tool call â†’ tool result | Tool catalog, schema validation, permissions, path/command/network enforcement, timeout, audit, mutation transaction | Choosing the task route |
-| `verification` | Change/result + state + policy â†’ verification result | Affected-project selection, applicable checks, diagnostics/diff evidence, completion recommendation | Direct shell bypass |
-| `agent-engine` | Start/resume request â†’ run handle | State machine, sequencing, model/tool loop, cancellation, suspension/resume, checkpoints, events, terminal result | Internals owned by other modules |
-| `skills` | Task evidence + budget â†’ selected instructions | Selection, conflicts, provenance, instruction budgeting | General prompt construction |
-| `memory` | Scoped query/commit â†’ memory result | Retrieval, relevance, retention, provenance, privacy | Run orchestration |
-| `planning` | Task evidence + decision depth (+ optional skills/process hints) â†’ `PlanArtifact` | Dimension-driven plan drafting, validation, compaction, serialization | Route authority, tool execution, hard-coded plan types |
-| `task-list` | Plan artifact or apply input → live `TaskList` | Compact working checklist (max 8), derive pending tasks from a plan, markdown serialize/parse | Plan drafting, tool execution, host UI, stamping remaining items done when a run ends |
+| `request-intake` | Raw host request -> request envelope | Request validation, interaction mode, attachments/references, conversation metadata normalization | Intent, policy, retrieval |
+| `request-understanding` | Envelope -> understanding result | Intent evidence, targets, constraints, scope, complexity, risk, clarity, expected outcome, clarification assessment | Final route or authority |
+| `repository-state` | Workspace change/sync request -> published state descriptor | Discovery, ignore policy, project catalog, source analysis, indexes, graph, map, readiness, atomic state publication | Prompting or tool execution |
+| `repository-context` | State reference + query + budget -> context result | Hybrid retrieval, deduplication, diversity selection, representation choice, safe assembly | Re-indexing or model calls |
+| `decision-policy` | Envelope + understanding + mode + state capability -> execution decision | Route, planning depth, plan gate, context need, tool grant, approval and verification policy | Executing decisions |
+| `prompt-construction` | Decision + context + conversation + selected instructions -> model request | Total budget allocation, serialization, compaction, provenance, omission report | Retrieval or model invocation |
+| `model-gateway` | Model invocation -> model-event stream | Provider selection, capability negotiation, normalized streaming, usage, retry classification | Tool execution or run policy |
+| `tool-runtime` | Authorized tool call -> tool result | Tool catalog, schema validation, permissions, path/command/network enforcement, timeout, audit, mutation transaction | Choosing the task route |
+| `verification` | Change/result + state + policy -> verification result | Affected-project selection, applicable checks, diagnostics/diff evidence, completion recommendation | Direct shell bypass |
+| `agent-engine` | Start/resume request -> run handle | State machine, sequencing, model/tool loop, cancellation, suspension/resume, checkpoints, events, terminal result | Internals owned by other modules |
+| `skills` | Task evidence + budget -> selected instructions | Selection, conflicts, provenance, instruction budgeting | General prompt construction |
+| `memory` | Scoped query/commit -> memory result | Retrieval, relevance, retention, provenance, privacy | Run orchestration |
+| `planning` | Task evidence + decision depth (+ optional skills/process hints) -> `PlanArtifact` | Dimension-driven plan drafting, validation, compaction, serialization | Route authority, tool execution, hard-coded plan types |
+| `task-list` | Plan artifact or apply input -> live `TaskList` | Compact working checklist (max 8), derive pending tasks from a plan, markdown serialize/parse | Plan drafting, tool execution, host UI, stamping remaining items done when a run ends |
 | `code-navigation` | Path + caret -> definitions / references / hover | Language-server and repo-graph navigation | Indexing, retrieval budgets, spawning servers |
-| `change-impact` | Change seed + published `RepoGraph` → bounded impact report | Reverse-dependent blast radius (callers, importers, package dependents), truncation/staleness reason codes | Indexing, retrieval ranking, tool grants, planning dimensions |
-| `window-budget` | Advertised context window + optional overrides → `WindowPolicy` | Proportional output reserve, usable-input split, mutation/planning/skills/run/compaction numbers | Prompt text, retrieval, grants, model calls |
+| `change-impact` | Change seed + published `RepoGraph` -> bounded impact report | Reverse-dependent blast radius (callers, importers, package dependents), truncation/staleness reason codes | Indexing, retrieval ranking, tool grants, planning dimensions |
+| `window-budget` | Advertised context window + optional overrides -> `WindowPolicy` | Proportional output reserve, usable-input split, mutation/planning/skills/run/compaction numbers | Prompt text, retrieval, grants, model calls |
 
 Adding a top-level module requires all of:
 
@@ -115,30 +115,30 @@ Use the smallest subset of this structure that the module needs:
 
 ```text
 packages/v8/src/modules/<module-name>/
-â”œâ”€â”€ contracts/
-â”‚   â”œâ”€â”€ input/                 boundary schemas and inferred input types
-â”‚   â”œâ”€â”€ output/                result schemas and inferred result types
-â”‚   â”œâ”€â”€ errors/                stable module errors/reason codes
-â”‚   â””â”€â”€ ports/                 environmental dependency contracts
-â”œâ”€â”€ pipeline/                  public orchestration, when useful
-â”œâ”€â”€ actions/                   meaningful pipeline stages
-â”œâ”€â”€ internal/                  private algorithms and data structures
-â”œâ”€â”€ adapters/                  module-owned port implementations
-â”œâ”€â”€ tests/
-â”‚   â”œâ”€â”€ contract/
-â”‚   â”œâ”€â”€ unit/
-â”‚   â””â”€â”€ integration/
-â”œâ”€â”€ constants.ts               optional stable constants/identifiers
-â”œâ”€â”€ defaults.ts                optional default configurable values
-â”œâ”€â”€ policy.ts                  optional thresholds and weights
-â”œâ”€â”€ patterns.ts                optional large rule/pattern catalogs
-â”œâ”€â”€ README.md
-â””â”€â”€ index.ts                   explicit public facade/contracts only
+|-- contracts/
+|   |-- input/                 boundary schemas and inferred input types
+|   |-- output/                result schemas and inferred result types
+|   |-- errors/                stable module errors/reason codes
+|   `-- ports/                 environmental dependency contracts
+|-- pipeline/                  public orchestration, when useful
+|-- actions/                   meaningful pipeline stages
+|-- internal/                  private algorithms and data structures
+|-- adapters/                  module-owned port implementations
+|-- tests/
+|   |-- contract/
+|   |-- unit/
+|   `-- integration/
+|-- constants.ts               optional stable constants/identifiers
+|-- defaults.ts                optional default configurable values
+|-- policy.ts                  optional thresholds and weights
+|-- patterns.ts                optional large rule/pattern catalogs
+|-- README.md
+`-- index.ts                   explicit public facade/contracts only
 ```
 
 Do not create empty directories. A small module may keep its primary facade at the module root and use fewer folders.
 
-A module normally has 3â€“10 meaningful stages. This is a diagnostic range, not a quota. A three-stage `Retrieve â†’ Select â†’ Assemble` pipeline is valid. Artificial wrapper actions are not.
+A module normally has 3-10 meaningful stages. This is a diagnostic range, not a quota. A three-stage `Retrieve -> Select -> Assemble` pipeline is valid. Artificial wrapper actions are not.
 
 ### Cohesion test
 
@@ -190,10 +190,10 @@ Contract compatibility follows explicit schema versions. Breaking public changes
 Allowed dependencies point inward to contracts and public facades:
 
 ```text
-Application â†’ Agent Engine â†’ public V8 facades
-Repository Context â†’ Repository State public contracts/reader port
-Verification â†’ Tool Runtime public facade
-All modules â†’ their own contracts, actions, internals, adapters
+Application -> Agent Engine -> public V8 facades
+Repository Context -> Repository State public contracts/reader port
+Verification -> Tool Runtime public facade
+All modules -> their own contracts, actions, internals, adapters
 ```
 
 Forbidden dependencies:
@@ -226,7 +226,7 @@ It MUST NOT export:
 - Test fixtures.
 - Wildcard barrels that accidentally expand the API.
 
-Each module `README.md` records responsibility, input, output, stages, dependencies, public exports, failure modes, and â€œdoes not own.â€
+Each module `README.md` records responsibility, input, output, stages, dependencies, public exports, failure modes, and "does not own."
 
 ## 9. Repository State: the consistency authority
 
@@ -268,11 +268,11 @@ The exact schemas belong to `repository-state`; the interfaces above illustrate 
 
 ```text
 Observe workspace
-â†’ build candidate snapshot/catalog/index/graph/map artifacts
-â†’ validate revision relationships and completeness
-â†’ derive manifest and stateToken
-â†’ atomically publish immutable descriptor
-â†’ make it available to new runs
+-> build candidate snapshot/catalog/index/graph/map artifacts
+-> validate revision relationships and completeness
+-> derive manifest and stateToken
+-> atomically publish immutable descriptor
+-> make it available to new runs
 ```
 
 Rules:
@@ -450,7 +450,7 @@ It MUST:
 - Compact or omit by policy, not arbitrary string truncation.
 - Report allocated, used, omitted, and truncated tokens by section.
 - Keep secret/sensitive content out even when budget permits it.
-- Avoid loading all skills, memories, files, or tool results â€œjust in case.â€
+- Avoid loading all skills, memories, files, or tool results "just in case."
 
 ## 13. Model Gateway
 
@@ -497,14 +497,14 @@ Mutation transaction:
 
 ```text
 Pinned-state validation
-â†’ dirty-overlap check
-â†’ recoverable checkpoint
-â†’ patch preflight
-â†’ apply mutation
-â†’ parse/diagnostic validation
-â†’ changed-file manifest
-â†’ verification
-â†’ commit transaction or offer rollback
+-> dirty-overlap check
+-> recoverable checkpoint
+-> patch preflight
+-> apply mutation
+-> parse/diagnostic validation
+-> changed-file manifest
+-> verification
+-> commit transaction or offer rollback
 ```
 
 Approval displays the concrete operation and scope. Approval is resumable and applies only to the represented action/scope; it is not a permanent authority escalation.
@@ -537,8 +537,8 @@ Result states distinguish:
 
 ```text
 Active:
-received â†’ understood â†’ decided â†’ context_ready
-â†’ model_running â†” tool_running â†’ verifying
+received -> understood -> decided -> context_ready
+-> model_running <-> tool_running -> verifying
 
 Suspended:
 clarification_required

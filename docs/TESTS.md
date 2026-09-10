@@ -16,10 +16,10 @@ packages/v8/src/**/tests/         # co-located module specs
 
 ```text
 tests/
-├── README.md                 # short overview + quick start
-├── package.json              # forwards to @mitii/solid-benchmark
-└── benchmark/
-    └── README.md             # full install / run / cleanup guide
+|-- README.md                 # short overview + quick start
+|-- package.json              # forwards to @mitii/solid-benchmark
+`-- benchmark/
+    `-- README.md             # full install / run / cleanup guide
 ```
 
 ## Package tests
@@ -33,8 +33,8 @@ pnpm run check:architecture
 
 Start here:
 
-1. [tests/README.md](../tests/README.md) — overview  
-2. [tests/benchmark/README.md](../tests/benchmark/README.md) — step-by-step  
+1. [tests/README.md](../tests/README.md) - overview  
+2. [tests/benchmark/README.md](../tests/benchmark/README.md) - step-by-step  
    (fixtures install & cleanup, model setup, run options, reports)
 
 ```bash

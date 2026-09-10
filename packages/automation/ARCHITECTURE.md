@@ -1,6 +1,6 @@
-# @mitii/automation — Architecture
+# @mitii/automation - Architecture
 
-Status: Phases 1–6 control plane (schedules, events, delivery, incident evidence)  
+Status: control plane (schedules, events, delivery, incident evidence)  
 Depends on: `better-sqlite3`, `zod`  
 Must **not** depend on: `@mitii/v8`, `@mitii/sdk`, `@mitii/host`, apps
 
@@ -16,19 +16,19 @@ Agent **execution** and **chat/GitHub delivery senders** are injected from
 ## Dependency graph
 
 ```text
-apps/cli ──┐
-apps/daemon ──┼──► @mitii/host ──► @mitii/sdk ──► @mitii/v8
-apps/vscode ──┤         │
-              │         ├── createAutomationRunExecutor
-              │         └── createCompositeDeliverySender
-              └──► @mitii/automation
+apps/cli --+
+apps/daemon --+--> @mitii/host --> @mitii/sdk --> @mitii/v8
+apps/vscode --|         |
+              |         |-- createAutomationRunExecutor
+              |         `-- createCompositeDeliverySender
+              `--> @mitii/automation
 ```
 
 Forbidden:
 
-- `@mitii/automation` → sdk | host | v8 | apps
-- `@mitii/v8` → automation
-- `@mitii/sdk` → automation
+- `@mitii/automation` -> sdk | host | v8 | apps
+- `@mitii/v8` -> automation
+- `@mitii/sdk` -> automation
 
 ## Module layout
 

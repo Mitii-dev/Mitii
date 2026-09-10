@@ -1,12 +1,12 @@
-# Shipping Mitii Automation — E2E loops
+# Shipping Mitii Automation - E2E loops
 
-Control-plane scaffolding (Phases 0–6) is in tree. **Ship** means these two
+Control-plane scaffolding (Phases 0-6) is in tree. **Ship** means these two
 loops work on a real repo.
 
 **How to design skills, agents, specs, and smoke tests for new scenarios:**
 [DESIGN_AND_TESTING.md](./DESIGN_AND_TESTING.md)
 
-## Example 1 — post-commit → tests → draft PR
+## Example 1 - post-commit -> tests -> draft PR
 
 ### Via GitHub Actions (recommended)
 
@@ -17,7 +17,7 @@ loops work on a real repo.
    ```
 2. Enable `.github/workflows/mitii-post-commit-cover.yml` (or copy it).
 3. Set secret `ANTHROPIC_API_KEY` (or other provider).
-4. Push a commit that changes behavior without tests → workflow opens a draft PR.
+4. Push a commit that changes behavior without tests -> workflow opens a draft PR.
 
 ### Via local daemon + webhook
 
@@ -25,9 +25,9 @@ loops work on a real repo.
 mkdir -p .mitii/cron/events
 cp docs/automation/cron/events/post-commit.event.md .mitii/cron/events/
 
-export MITII_GITHUB_WEBHOOK_SECRET=…
+export MITII_GITHUB_WEBHOOK_SECRET=...
 mitii serve --webhook-port 8787 --github-webhook-secret "$MITII_GITHUB_WEBHOOK_SECRET"
-# Point GitHub repo webhook → https://<host>:8787/hooks/github (push events)
+# Point GitHub repo webhook -> https://<host>:8787/hooks/github (push events)
 ```
 
 ### Smoke (no live model)
@@ -36,11 +36,11 @@ mitii serve --webhook-port 8787 --github-webhook-secret "$MITII_GITHUB_WEBHOOK_S
 ./docs/automation/smoke/example1-post-commit.sh --echo
 ```
 
-## Example 2 — CI fail → evidence → ticket
+## Example 2 - CI fail -> evidence -> ticket
 
 ### Via GitHub Actions
 
-1. Copy `docs/automation/agents/incident-from-logs.md` → `.mitii/agents/`.
+1. Copy `docs/automation/agents/incident-from-logs.md` -> `.mitii/agents/`.
 2. Enable `.github/workflows/mitii-ci-failure-triage.yml` (expects a workflow named `CI`).
 3. On a failed CI run, Mitii opens/updates an issue with fingerprint title
    `[mitii:<fingerprint>]` via `create_github_issue`.
@@ -51,9 +51,9 @@ mitii serve --webhook-port 8787 --github-webhook-secret "$MITII_GITHUB_WEBHOOK_S
 mkdir -p .mitii/cron/events
 cp docs/automation/cron/events/ci-failure.event.md .mitii/cron/events/
 
-export MITII_GITHUB_WEBHOOK_SECRET=…
+export MITII_GITHUB_WEBHOOK_SECRET=...
 mitii serve --webhook-port 8787 --github-webhook-secret "$MITII_GITHUB_WEBHOOK_SECRET"
-# Webhook: workflow_run events → /hooks/github
+# Webhook: workflow_run events -> /hooks/github
 ```
 
 ### Smoke
