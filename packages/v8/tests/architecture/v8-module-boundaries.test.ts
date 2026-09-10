@@ -443,6 +443,37 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
     expect(index).not.toContain('DaemonClient');
   });
 
+  it('keeps @mitii/search-kit free of v8/sdk/host/apps', () => {
+    const kitRoot = join(repoRoot, 'packages/search-kit');
+    const kitSrc = join(kitRoot, 'src');
+    expect(existsSync(kitRoot)).toBe(true);
+    expect(existsSync(join(kitRoot, 'package.json'))).toBe(true);
+    expect(existsSync(join(kitRoot, 'ARCHITECTURE.md'))).toBe(true);
+
+    const pkg = JSON.parse(
+      readFileSync(join(kitRoot, 'package.json'), 'utf8'),
+    ) as {
+      name: string;
+      dependencies?: Record<string, string>;
+    };
+    expect(pkg.name).toBe('@mitii/search-kit');
+    expect(pkg.dependencies?.['@mitii/v8']).toBeUndefined();
+    expect(pkg.dependencies?.['@mitii/sdk']).toBeUndefined();
+    expect(pkg.dependencies?.['@mitii/host']).toBeUndefined();
+
+    const hostPkg = JSON.parse(
+      readFileSync(join(repoRoot, 'packages/host/package.json'), 'utf8'),
+    ) as { dependencies?: Record<string, string> };
+    expect(hostPkg.dependencies?.['@mitii/search-kit']).toBeTruthy();
+
+    const forbidden = [
+      /from ['"]@mitii\/(?:v8|sdk|host)(?:\/|['"])/,
+      /from ['"]vscode['"]/,
+      /from ['"].*apps\/(?:cli|vscode|daemon)/,
+    ] as const;
+    expect(scanImports(kitSrc, forbidden)).toEqual([]);
+  });
+
   it('places host packages under apps/ over @mitii/sdk', () => {
     const cliRoot = join(repoRoot, 'apps/cli');
     const vscodeRoot = join(repoRoot, 'apps/vscode');

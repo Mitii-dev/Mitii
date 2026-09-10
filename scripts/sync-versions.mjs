@@ -8,6 +8,7 @@ const packageFiles = [
   'packages/v8/package.json',
   'packages/sdk/package.json',
   'packages/automation/package.json',
+  'packages/search-kit/package.json',
   'packages/host/package.json',
   'apps/cli/package.json',
   'apps/daemon/package.json',

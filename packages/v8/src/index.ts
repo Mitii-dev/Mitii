@@ -258,6 +258,8 @@ export type {
   GitPort,
   ToolDefinition,
   NetworkPort,
+  NetworkFetchRequest,
+  NetworkFetchResult,
   SearchPort,
   RepositoryGraphPort,
   ProcessPort,

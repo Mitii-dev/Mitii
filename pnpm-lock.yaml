@@ -201,6 +201,9 @@ importers:
       '@mitii/sdk':
         specifier: workspace:*
         version: link:../sdk
+      '@mitii/search-kit':
+        specifier: workspace:*
+        version: link:../search-kit
       '@mitii/v8':
         specifier: workspace:*
         version: link:../v8
@@ -239,6 +242,22 @@ importers:
       '@mitii/v8':
         specifier: workspace:*
         version: link:../v8
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^20.14.0
+        version: 20.19.43
+      typescript:
+        specifier: ^5.5.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/debug@4.1.13)(@types/node@20.19.43)(jiti@2.7.0)(yaml@2.9.0)
+
+  packages/search-kit:
+    dependencies:
       zod:
         specifier: ^3.23.8
         version: 3.25.76

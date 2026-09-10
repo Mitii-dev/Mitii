@@ -1,7 +1,7 @@
 {
-  "name": "@mitii/sdk",
-  "version": "2.9.31",
-  "description": "Host-neutral Mitii programmatic API over @mitii/v8 Agent Engine.",
+  "name": "@mitii/search-kit",
+  "version": "2.9.30",
+  "description": "Mitii web retrieval kit: pluggable search providers, content resolvers, and URL safety. Host-neutral; no V8 dependency.",
   "license": "AGPL-3.0-or-later",
   "type": "module",
   "main": "./dist/index.js",
@@ -19,15 +19,15 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Mitii-dev/Mitii.git",
-    "directory": "packages/sdk"
+    "directory": "packages/search-kit"
   },
-  "homepage": "https://github.com/Mitii-dev/Mitii/tree/main/packages/sdk",
+  "homepage": "https://github.com/Mitii-dev/Mitii/tree/main/packages/search-kit",
   "bugs": {
     "url": "https://github.com/Mitii-dev/Mitii/issues"
   },
   "files": [
     "dist",
-    "skills",
+    "ARCHITECTURE.md",
     "README.md",
     "LICENSE"
   ],
@@ -35,12 +35,11 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && node -e \"require('node:fs').accessSync('dist/index.js')\"",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json && node -e \"require('node:fs').accessSync('dist/index.js')\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
-    "@mitii/v8": "workspace:*",
     "zod": "^3.23.8"
   },
   "devDependencies": {

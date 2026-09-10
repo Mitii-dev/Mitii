@@ -10,6 +10,8 @@ apps/cli | apps/vscode
         v
   @mitii/host     <- this package
         |
+        +--> @mitii/search-kit   (web retrieval helpers)
+        |
         v
   @mitii/sdk
         |
@@ -17,7 +19,7 @@ apps/cli | apps/vscode
   @mitii/v8
 ```
 
-Forbidden: `host -> apps`, `sdk -> host`, `v8 -> host`.
+Forbidden: `host -> apps`, `sdk -> host`, `v8 -> host`, `search-kit -> host|sdk|v8`.
 
 ## Install
 
@@ -25,7 +27,7 @@ Forbidden: `host -> apps`, `sdk -> host`, `v8 -> host`.
 npm install @mitii/host
 ```
 
-Requires **Node.js 20+**. Depends on `@mitii/sdk`, `@mitii/v8`, and `zod`. Optional: `@lancedb/lancedb` for the vector store, `onnxruntime-node` / `onnxruntime-web` for bundled MiniLM embeddings. License: **AGPL-3.0-or-later**.
+Requires **Node.js 20+**. Depends on `@mitii/sdk`, `@mitii/v8`, `@mitii/search-kit`, and `zod`. Optional: `@lancedb/lancedb` for the vector store, `onnxruntime-node` / `onnxruntime-web` for bundled MiniLM embeddings. License: **AGPL-3.0-or-later**.
 
 Published on `v*` release tags. For local development, consume via the workspace (`pnpm --filter @mitii/host`).
 
@@ -52,7 +54,7 @@ src/
     bundled-embedding/     # on-device MiniLM source (native ONNX + WASM)
     treeSitter/            # web-tree-sitter runtime; V8 injects query text
   repository-context/      # createHostRepositoryContext
-  ports/                   # search, memory, skills, checkpoints
+  ports/                   # search, network (content-aware), memory, skills, checkpoints
   prompt/                  # project rules loader -> start({ projectRules })
   config/                  # provider presets (not a V8 port)
   internal/                # private helpers (not public)
@@ -74,7 +76,8 @@ Prefer importing from `@mitii/host`. Do not import `internal/`.
 | `createWorkspaceCheckpointStore` | SDK checkpoint store | `.mitii/checkpoints/` |
 | `createWorkspaceVerificationStore` | Verification record store | `.mitii/verification/` |
 | `createWorkspaceMemoryStore` | V8 `MemoryStorePort` | `.mitii/memory/facts.json` |
-| `createOptionalSearchPort` | V8 `SearchPort` | Brave when `MITII_SEARCH_API_KEY` / `BRAVE_API_KEY` set, or VS Code SecretStorage `mitii.search.apiKey` |
+| `createOptionalSearchPort` | V8 `SearchPort` | Multi-provider via `@mitii/search-kit` (SearXNG / Brave / Tavily). SecretStorage `mitii.search.apiKey` or env keys. |
+| `createHostNetworkPort` | V8 `NetworkPort` | Content-aware wrapper: SO / GitHub issues / Wiki / arXiv / HTML readability before raw HTTP. |
 | `createFileSystemSkillsCatalog` | V8 `SkillsCatalogPort` | SDK bundled `skills/` + `.mitii/skills` |
 | `buildWritingRecipeAsk` | Host recipes | Force-attach commit / PR / changelog skills + git context |
 | `loadProjectRules` | SDK `projectRules` | `AGENTS.md`, `.mitii/rules`, `MITTII.local.md` |
@@ -87,6 +90,7 @@ Prefer importing from `@mitii/host`. Do not import `internal/`.
 ```ts
 import {
   createFileSystemSkillsCatalog,
+  createHostNetworkPort,
   createHostRepositoryContext,
   createOptionalSearchPort,
   createWorkspaceCheckpointStore,
@@ -95,13 +99,17 @@ import {
   loadProjectRules,
   runFullWorkspaceIndex,
 } from '@mitii/host';
-import { createMitiiClient, ToolRuntimePipeline } from '@mitii/sdk';
+import { createMitiiClient, NodeNetworkAdapter, ToolRuntimePipeline } from '@mitii/sdk';
 
 const openDatabase = /* better-sqlite3 | Electron native */;
 
 const tools = new ToolRuntimePipeline({
   /* ... */,
   search: createOptionalSearchPort(process.env),
+  network: createHostNetworkPort({
+    inner: new NodeNetworkAdapter(),
+    env: process.env,
+  }),
 });
 
 const repositoryContext = createHostRepositoryContext({

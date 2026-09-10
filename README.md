@@ -12,7 +12,7 @@
   <a href="LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/License-AGPL_v3-blue.svg"></a>
   <a href="https://code.visualstudio.com/"><img alt="VS Code 1.85+" src="https://img.shields.io/badge/VS%20Code-1.85%2B-007ACC?logo=visualstudiocode"></a>
   <a href="https://nodejs.org/"><img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-339933?logo=node.js"></a>
-  <img alt="Version 2.9.30" src="https://img.shields.io/badge/version-2.9.30-111111">
+  <img alt="Version 2.9.31" src="https://img.shields.io/badge/version-2.9.31-111111">
   <a href="https://docs.mitii.dev"><img alt="Documentation" src="https://img.shields.io/badge/docs-docs.mitii.dev-5B5BFF"></a>
 </p>
 
@@ -35,6 +35,7 @@ Mitii understands a repository before it changes it. It combines local indexing,
 - **FIM autocomplete** - optional VS Code inline suggestions from a generic OpenAI-compatible `prompt` + `suffix` endpoint.
 - **Model flexibility** - `echo` (local stub), native **Anthropic (Claude)** and **Gemini** adapters, plus **OpenAI-compatible** endpoints (Ollama, LM Studio, OpenRouter, OpenAI, Azure OpenAI, DeepSeek, and any `/v1` API).
 - **Extensible workflows** - built-in tools, MCP servers (VS Code), project rules, and reusable skills.
+- **Web retrieval** - optional multi-provider `web_search` (SearXNG / Brave / Tavily via `@mitii/search-kit`) and content-aware `fetch_url` (Stack Overflow answers, GitHub issues, Wikipedia, arXiv, HTML readability).
 - **Local evidence** - session logs and a basic audit-pack export from the VS Code host (settings redacted). Org SSO/RBAC, SIEM webhooks, and managed enterprise policy packs are not implemented yet.
 
 ## How it works
@@ -54,7 +55,7 @@ flowchart LR
   Loop --> Provider[Local or cloud model]
 ```
 
-The extension and CLI talk to the agent through `@mitii/sdk` -> `@mitii/v8`. See [packages/v8/ARCHITECTURE.md](packages/v8/ARCHITECTURE.md) for component boundaries, request flows, storage, security, and an end-to-end example.
+The extension and CLI talk to the agent through `@mitii/sdk` -> `@mitii/v8`. Hosts inject ports from `@mitii/host` (including `@mitii/search-kit` for web retrieval). See [packages/v8/ARCHITECTURE.md](packages/v8/ARCHITECTURE.md) and [packages/search-kit/ARCHITECTURE.md](packages/search-kit/ARCHITECTURE.md).
 
 ## Quick start
 

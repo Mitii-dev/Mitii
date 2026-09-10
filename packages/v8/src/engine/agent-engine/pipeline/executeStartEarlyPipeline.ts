@@ -316,7 +316,7 @@ export async function runStartEarlyPipeline(
     !decision.toolGrant.allowedTools.includes("web_search")
   ) {
     const searchWarning =
-      "Web search was requested but no SearchPort is configured. Set BRAVE_API_KEY or MITII_SEARCH_API_KEY (VS Code: Mitii: Set Web Search API Key) to enable web_search.";
+      "Web search was requested but no SearchPort is configured. Set SEARXNG_BASE_URL, BRAVE_API_KEY / MITII_SEARCH_API_KEY, or TAVILY_API_KEY (VS Code: Mitii: Set Web Search API Key for Brave) to enable web_search.";
     warnings.push(searchWarning);
     runtime.emit(bus, {
       type: "warning",

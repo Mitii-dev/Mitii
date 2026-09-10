@@ -6,7 +6,8 @@
  *
  * This package owns host-side adapters and orchestration that must not live in
  * V8 or the SDK: SQLite injection, workspace indexing, durable FS stores,
- * optional SearchPort, disk skills, project rules, and provider presets.
+ * optional SearchPort / content-aware NetworkPort (@mitii/search-kit), disk skills,
+ * project rules, and provider presets.
  *
  * Public surface is grouped below by intent. Prefer importing from `@mitii/host`
  * (this barrel). Apps inject environment-specific pieces (SQLite opener,
@@ -173,7 +174,19 @@ export { createMemoryEmbeddingPort } from './ports/memoryEmbeddingAdapter.js';
 export {
   createOptionalSearchPort,
   BraveSearchAdapter,
+  SearchKitSearchAdapter,
+  resolveSearchKitConfig,
 } from './ports/search.js';
+export type {
+  CreateSearchPortOptions,
+  SearchKitConfig,
+  ResolveSearchKitConfigOptions,
+} from './ports/search.js';
+export {
+  createHostNetworkPort,
+  ContentAwareNetworkAdapter,
+} from './ports/network.js';
+export type { CreateHostNetworkPortOptions } from './ports/network.js';
 
 export {
   createFileSystemSkillsCatalog,

@@ -28,11 +28,12 @@ import {
   getProviderPreset,
   isHostProviderType,
 } from '../config/providerPresets.js';
+import { createHostNetworkPort } from '../ports/network.js';
+import { createOptionalSearchPort } from '../ports/search.js';
 import { createHostCodeNavigationPort } from '../code-navigation/createHostCodeNavigationPort.js';
 import { createHostRepositoryGraphPort } from '../repository-graph/loadWorkspaceGraphs.js';
 import { createHostRepositoryContext } from '../repository-context/createHostRepositoryContext.js';
 import { buildWorkspaceSnapshot } from '../indexing/fingerprintSnapshot.js';
-import { createOptionalSearchPort } from '../ports/search.js';
 import { createFileSystemSkillsCatalog } from '../ports/skillsCatalog.js';
 import { createWorkspaceCheckpointStore } from '../ports/checkpoints.js';
 import { createWorkspaceVerificationStore } from '../ports/verificationRecords.js';
@@ -258,7 +259,10 @@ async function createAutomationClient(options: {
   const tools = new ToolRuntimePipeline({
     fileSystem,
     process: new NodeProcessAdapter(),
-    network: new NodeNetworkAdapter(),
+    network: createHostNetworkPort({
+      inner: new NodeNetworkAdapter(),
+      env,
+    }),
     git,
     codeNavigation: createHostCodeNavigationPort({
       workspaceRoot: options.cwd,

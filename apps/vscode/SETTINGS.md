@@ -45,13 +45,21 @@ Anthropic and Gemini require a key. Echo and local OpenAI-compatible hosts usual
 
 ### Web search (optional)
 
-Explicit asks like “search the web for …” grant the `web_search` tool only when a Brave Search API key is configured.
+Explicit asks like “search the web for …” grant the `web_search` tool when at least one search provider is configured via `@mitii/search-kit` (wired through `@mitii/host`).
 
-| UI field | Storage | Save / reflect |
+| UI field / env | Storage | Notes |
 |---|---|---|
-| Set web search key / Clear | SecretStorage `mitii.search.apiKey` | Command palette: **Mitii: Set Web Search API Key**. Alternatively set `BRAVE_API_KEY` or `MITII_SEARCH_API_KEY` in the environment before launching VS Code. |
+| Set web search key / Clear | SecretStorage `mitii.search.apiKey` | Brave key. Command palette: **Mitii: Set Web Search API Key**. |
+| `BRAVE_API_KEY` / `MITII_SEARCH_API_KEY` | Environment | Same Brave key if SecretStorage is empty. |
+| `SEARXNG_BASE_URL` / `MITII_SEARXNG_URL` | Environment | Self-hosted SearXNG (no API key; local-first). |
+| `TAVILY_API_KEY` | Environment | Optional Tavily fallback. |
+| `MITII_SEARCH_PROVIDERS` | Environment | Optional order, e.g. `searxng,brave,tavily`. |
 
-Without a key, Mitii completes the turn from model knowledge and logs a warning that SearchPort is not configured.
+Default order when unset: SearXNG (if URL) → Brave (if key) → Tavily (if key).
+
+`fetch_url` / `fetch_docs` use a content-aware `NetworkPort`: Stack Overflow answers, GitHub issue threads, Wikipedia, arXiv abstracts, then HTML readability.
+
+Without any provider, Mitii completes the turn from model knowledge and logs that SearchPort is not configured.
 
 ### Token limits
 

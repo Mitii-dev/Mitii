@@ -160,7 +160,7 @@ export function activate(context: ExtensionContext): void {
     invalidateClient();
     channel.appendLine('[mitii] SecretStorage mitii.search.apiKey updated');
     void vscode.window.showInformationMessage(
-      'Mitii web search key saved. Explicit “search the web” asks will grant web_search.',
+      'Mitii web search key saved. Explicit “search the web” asks will grant web_search (Brave). SearXNG/Tavily can also be enabled via env.',
     );
   };
 

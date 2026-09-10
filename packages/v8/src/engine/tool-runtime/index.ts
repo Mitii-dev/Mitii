@@ -103,6 +103,8 @@ export type {
   DiagnosticItem,
   GitPort,
   NetworkPort,
+  NetworkFetchRequest,
+  NetworkFetchResult,
   SearchPort,
   RepositoryGraphPort,
   CodeNavigationPort,

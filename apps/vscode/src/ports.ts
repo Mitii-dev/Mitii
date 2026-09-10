@@ -23,6 +23,7 @@ import {
   createFileSystemSkillsCatalog,
   createHostCodeNavigationPort,
   createHostLlmPorts,
+  createHostNetworkPort,
   createHostRepositoryGraphPort,
   createOptionalSearchPort,
   createSandboxedProcessPort,
@@ -229,9 +230,10 @@ export async function createVscodeClient(
     searchEnv.MITII_SEARCH_API_KEY?.trim() ||
     searchEnv.BRAVE_API_KEY?.trim() ||
     undefined;
-  const search = searchApiKey
-    ? createOptionalSearchPort({ env: searchEnv, apiKey: searchApiKey })
-    : createOptionalSearchPort(searchEnv);
+  const search = createOptionalSearchPort({
+    env: searchEnv,
+    ...(searchApiKey ? { apiKey: searchApiKey } : {}),
+  });
   const git = workspaceRoot ? new NodeGitAdapter() : undefined;
   const codeNavigation = workspaceRoot
     ? createHostCodeNavigationPort({
@@ -242,6 +244,10 @@ export async function createVscodeClient(
   const repoGraphs = workspaceRoot
     ? createHostRepositoryGraphPort({ workspaceRoot })
     : undefined;
+  const network = createHostNetworkPort({
+    inner: new NodeNetworkAdapter(),
+    env: searchEnv,
+  });
   const tools = workspaceRoot && fileSystem
     ? new ToolRuntimePipeline(
         {
@@ -262,7 +268,7 @@ export async function createVscodeClient(
               workspaceRoot,
             }),
           ),
-          network: new NodeNetworkAdapter(),
+          network,
           git,
           diagnostics: new VscodeDiagnosticsPort(vs, workspaceRoot),
           ...(search ? { search } : {}),

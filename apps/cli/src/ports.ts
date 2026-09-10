@@ -17,6 +17,7 @@ import {
   createFileSystemSkillsCatalog,
   createHostCodeNavigationPort,
   createHostLlmPorts,
+  createHostNetworkPort,
   createHostRepositoryGraphPort,
   createOptionalSearchPort,
   createSandboxedProcessPort,
@@ -183,7 +184,10 @@ export function createCliClient(options: {
   const tools = new ToolRuntimePipeline({
     fileSystem,
     process: processPort,
-    network: new NodeNetworkAdapter(),
+    network: createHostNetworkPort({
+      inner: new NodeNetworkAdapter(),
+      env,
+    }),
     git,
     codeNavigation: createHostCodeNavigationPort({
       workspaceRoot: options.cwd,
