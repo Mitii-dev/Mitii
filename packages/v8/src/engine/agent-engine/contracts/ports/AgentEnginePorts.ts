@@ -45,6 +45,8 @@ import type {
   ToolInvocationInput,
   ToolResult,
   RepositoryGraphPort,
+  ToolAdversaryPort,
+  AdversaryFailMode,
 } from "../../../tool-runtime";
 import type {
   RepoBuildState,
@@ -199,6 +201,12 @@ export interface AgentEngineDependencies {
   tools?: AgentEngineToolRuntimePort;
   verification?: AgentEngineVerificationPort;
   checkpointStore?: AgentEngineRunCheckpointStorePort;
+  /**
+   * Optional restrict-only ToolAdversaryPort (Phase 3). Forwarded into tool
+   * execute options. Unset = no-op. Never widens grants.
+   */
+  adversary?: ToolAdversaryPort;
+  adversaryFailMode?: AdversaryFailMode;
   /**
    * Optional published RepoGraph port. When present, follow_evidence and
    * discover_and_plan collect hop-1 mustRead/affected reports before drafting.

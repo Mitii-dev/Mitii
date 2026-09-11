@@ -48,6 +48,10 @@ tool-runtime/
 - Mutation tools (`apply_patch`, delete, move) authorize against `grant.mutationPathScopes` when present; discovery tools keep `grant.pathScopes`.
 - `apply_patch` keeps exact `oldText` matching (no fuzzy match, no regex). Default requires a unique occurrence. Optional `replaceAll: true` replaces every exact occurrence in that file; empty `oldText` still means create or full-file replace and rejects `replaceAll`. Distinct reason codes describe why a hunk failed: `old_text_not_found`, `old_text_ambiguous`, `patch_target_missing`, `patch_hash_mismatch`, `identical_old_and_new`, `patch_syntax_invalid`. Retryable conflicts, including no-op `identical_old_and_new`, attach clipped `currentContent` in the tool result. `patch_conflict` remains as a legacy umbrella for older hosts.
 - Preflight coerces common model mis-encodings for `apply_patch`: a flat `{ path, oldText, newText }` object is wrapped into `{ patches: [...] }`, and a JSON-string `patches` value is parsed into an array before schema validation.
+- Preflight also normalizes common discovery/command aliases via
+  `normalizeCommonToolArguments`: `search_files.pattern` → `query`,
+  string `maxMatches`, `run_readonly_command`/`run_command` `command` →
+  `argv`, and numeric strings for ZodNumber fields.
 - Process execution always goes through `ProcessPort`.
 - Network access always goes through `NetworkPort` and host allow-lists.
 - Output is bounded by the minimum of tool, grant, and session limits.
@@ -78,6 +82,13 @@ tool-runtime/
   skips robots for explicit user-requested URLs (distinct User-Agents).
 - **`read_file` head/tail:** first/last N lines without combining with line ranges.
 - **`directory_tree`:** recursive JSON tree (skips `.git` / `node_modules` by default).
+- **`describe_tool`:** progressive disclosure meta-tool. Returns the full
+  model-facing JSON Schema for a tool already in the grant. Cannot unlock
+  tools Decision Policy did not grant. Agent Engine attaches INDEX stubs via
+  `filterToolDefinitions`; execution still uses registered Zod schemas.
+- **`ToolAdversaryPort`:** optional restrict-only fence after ValidateGrant /
+  shadow and before approval. BLOCK → `tool_not_allowed`; ASK →
+  `approval_required`. Fail-closed by default. Never widens grants.
 
 ## Ownership Boundaries
 

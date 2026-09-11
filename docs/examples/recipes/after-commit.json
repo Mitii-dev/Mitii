@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "after-commit",
+  "title": "After this commit",
+  "description": "Example parameterized recipe: write tests and open a PR after a commit.",
+  "mode": "agent",
+  "autonomyPreset": "propose",
+  "requiredSkillIds": ["git-pr-summary"],
+  "promptTemplate": "After this commit, {{task}}. Keep changes focused and ask before pushing.",
+  "params": [
+    {
+      "name": "task",
+      "description": "What to do after the commit",
+      "required": true,
+      "default": "write tests and open a PR"
+    }
+  ]
+}

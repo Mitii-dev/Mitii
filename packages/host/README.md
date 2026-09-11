@@ -54,6 +54,8 @@ src/
     bundled-embedding/     # on-device MiniLM source (native ONNX + WASM)
     treeSitter/            # web-tree-sitter runtime; V8 injects query text
   repository-context/      # createHostRepositoryContext
+  corpus/                  # optional `.mitii/corpus/` index + retrieval source
+  runtime/                 # child-run narrowing helpers
   ports/                   # search, network (content-aware), memory, skills, checkpoints
   prompt/                  # project rules loader -> start({ projectRules })
   config/                  # provider presets (not a V8 port)
@@ -71,16 +73,21 @@ Prefer importing from `@mitii/host`. Do not import `internal/`.
 | `createBundledMiniLmEmbeddingProvider` | V8 `EmbeddingProvider` | On-device MiniLM (native ONNX, WASM fallback) |
 | `createLanceDbConnection` | V8 `LanceDbConnectionPort` | Optional `@lancedb/lancedb` vector store |
 | `runFullWorkspaceIndex` | Orchestrates V8 index runtime | Writes `.mitii/repository-index.sqlite`, LanceDB, graph/map |
+| `runCorpusIndex` / `CorpusRetrievalSource` | Optional corpus RAG | Indexes `.mitii/corpus/` markdown/text → `index.json`; hybrid `additionalSources` when `corpusEnabled` |
 | `buildWorkspaceSnapshot` | Builds `PublishRepositoryStateInput` | Fingerprint-only; indexes marked unavailable. `roots[0].rootId` is the workspace directory basename. |
-| `createHostRepositoryContext` | V8 `RepositoryContextPipeline` | Hybrid retrieve + file-map fallback. File-map fallback honors `folderPrefix`. |
+| `createHostRepositoryContext` | V8 `RepositoryContextPipeline` | Hybrid retrieve + file-map fallback. File-map fallback honors `folderPrefix`. Optional `corpusEnabled` (default false). |
 | `createWorkspaceCheckpointStore` | SDK checkpoint store | `.mitii/checkpoints/` |
 | `createWorkspaceVerificationStore` | Verification record store | `.mitii/verification/` |
 | `createWorkspaceMemoryStore` | V8 `MemoryStorePort` | `.mitii/memory/facts.json` (mutation queue + atomic rename + honest deletes) |
+| `listPendingMemories` / `approvePendingMemory` | Memory approve queue | `.mitii/memory/pending.json` — `autoPromote` default false |
+| `narrowChildStartInput` | Child-run helper | Mode ≤ parent; deny-only `userSafetyRules`; `enabled` default off |
 | `createWorkspaceKnowledgeGraph` | V8 `KnowledgeGraphPort` | `.mitii/memory/graph.jsonl` (entities/relations beside facts) |
 | `createOptionalSearchPort` | V8 `SearchPort` | Multi-provider via `@mitii/search-kit` (SearXNG / Brave / Tavily). SecretStorage `mitii.search.apiKey` or env keys. |
 | `createHostNetworkPort` | V8 `NetworkPort` | Content-aware wrapper: SO / GitHub issues / Wiki / arXiv / HTML readability before raw HTTP. |
 | `createFileSystemSkillsCatalog` | V8 `SkillsCatalogPort` | SDK bundled `skills/` + `.mitii/skills` |
 | `buildWritingRecipeAsk` | Host recipes | Force-attach commit / PR / changelog skills + git context |
+| `compileRecipeToStartInput` / `RecipeSpec` | Parameterized recipes | Prompt/mode/skills/autonomy only — never widens ToolGrant |
+| `loadRecipeSpec` | Parameterized recipes | Load `.mitii/recipes/<id>.json` (schemaVersion: 1) |
 | `loadProjectRules` | SDK `projectRules` | `AGENTS.md`, `.mitii/rules`, `MITTII.local.md` |
 | `PROVIDER_PRESETS` / `getProviderPreset` | Host config only | Prefills base URL / model / adapter |
 | `createHostLlmPorts` | Host composition | Echo, OpenAI-compatible, Anthropic, Gemini |
@@ -178,13 +185,18 @@ Unknown RestorePoint schema versions are ignored. Clear with
 
 - **Catalog:** `createFileSystemSkillsCatalog({ workspaceRoot, contentMode: 'metadata' })` loads SDK-bundled skills then workspace `.mitii/skills/`.
 - **Format:** [`docs/SKILLS_FORMAT.md`](../../docs/SKILLS_FORMAT.md), pack notes in [`packages/sdk/skills/README.md`](../sdk/skills/README.md).
-- **Recipes:** `buildWritingRecipeAsk({ recipe: 'commit-message' | 'pr-summary' | 'changelog', workspaceRoot })` gathers git context and returns `requiredSkillIds` for VS Code SCM helpers and CLI.
+- **Writing recipes:** `buildWritingRecipeAsk({ recipe: 'commit-message' | 'pr-summary' | 'changelog', workspaceRoot })` gathers git context and returns `requiredSkillIds` for VS Code SCM helpers and CLI.
+- **Parameterized recipes:** `RecipeSpec` (`schemaVersion: 1`) under `.mitii/recipes/<id>.json`. `compileRecipeToStartInput` fills `prompt` / `mode` / `requiredSkillIds` / `autonomyPreset` only — Decision Policy still owns grants. CLI: `mitii recipe run <id> --param k=v`.
 
 ## Index pin and reuse
 
 `buildWorkspaceSnapshot` / `resolveFingerprintRootId` set `roots[0].rootId` to the workspace directory basename (not a hardcoded `"workspace"`). That keeps fingerprint identity stable across republish.
 
 VS Code `hostAsk` reuses an existing `.mitii/repository-index.sqlite` when `getLatest` is empty: it publishes that fingerprint pin and skips a full reindex. File-map fallback in `createHostRepositoryContext` filters snapshot/map paths with `folderPrefix`.
+
+### Corpus indexing (optional)
+
+Place markdown/text under `.mitii/corpus/`, then call `runCorpusIndex({ workspaceRoot })` to write `.mitii/corpus/index.json` (file list + chunk excerpts). Pass `corpusEnabled: true` to `createHostRepositoryContext` to register `CorpusRetrievalSource` via hybrid `additionalSources` when that index exists. Default remains off.
 
 ## Development (monorepo)
 

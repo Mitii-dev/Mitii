@@ -38,7 +38,7 @@ import type * as vscode from 'vscode';
 
 import { VscodeDiagnosticsPort } from './diagnosticsPort.js';
 import { getSharedMcpManager } from './mcp/manager.js';
-import { readMcpSettings } from './mcpConfig.js';
+import { defaultMcpSettings, readMcpSettings } from './mcpConfig.js';
 import { createHostRepositoryContext } from './repositoryContextHost.js';
 import { readContextToggles } from './contextToggles.js';
 import { createVsCodeMemoryStore } from './memoryStore.js';
@@ -218,7 +218,11 @@ export async function createVscodeClient(
     store: new InMemoryRepositoryStateStore(),
   });
 
-  const mcp = readMcpSettings(vs, workspaceRoot);
+  // Untrusted folders: skip project MCP (no connect) and keep Ask-only defaultMode.
+  const workspaceTrusted = vs.workspace.isTrusted !== false;
+  const mcp = workspaceTrusted
+    ? readMcpSettings(vs, workspaceRoot)
+    : defaultMcpSettings();
   const mcpManager = getSharedMcpManager();
   const mcpSnapshot = await mcpManager.sync(mcp, workspaceRoot);
 
@@ -324,6 +328,7 @@ export async function createVscodeClient(
     understandingLlm: ports.understandingLlm,
     runLlm: ports.runLlm,
     workspaceRoot,
+    // Ask-only ceiling until the folder is trusted (and the product default otherwise).
     defaultMode: 'ask',
     defaultSessionId: 'vscode_session',
     workspaceId: ports.workspaceId,

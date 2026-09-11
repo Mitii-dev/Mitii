@@ -461,6 +461,7 @@ export async function main(
         prompt: resolved.prompt,
         cwd,
         json: parsed.json === true,
+        streamJson: parsed.streamJson === true,
         forceEcho: parsed.forceEcho === true,
         autoClarify: parsed.autoClarify,
         autoApproval: resolved.autoApproval,
@@ -625,6 +626,25 @@ export async function main(
         cwd,
         json: parsed.json === true,
         forceEcho: parsed.forceEcho === true,
+        io: sessionIo,
+      });
+    }
+    case 'recipe': {
+      const { runRecipeCommand } = await import('./commands/recipe.js');
+      return runRecipeCommand({
+        args: parsed.rest,
+        cwd,
+        json: parsed.json === true,
+        forceEcho: parsed.forceEcho === true,
+        io: sessionIo,
+      });
+    }
+    case 'memory': {
+      const { runMemoryCommand } = await import('./commands/memory.js');
+      return runMemoryCommand({
+        args: parsed.rest,
+        cwd,
+        json: parsed.json === true,
         io: sessionIo,
       });
     }

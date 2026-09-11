@@ -38,15 +38,10 @@ import {
   memoryGraphUpdateTool,
 } from "./memoryGraphTools";
 import { webSearchTool } from "./webSearchTool";
+import { describeToolTool } from "./describeToolTool";
+import { setBuiltinModelToolLookup } from "./builtinModelLookup";
 
-/**
- * Built-in tools. Add a new tool by:
- * 1. Creating `actions/handlers/<name>Tool.ts` with definition + execute
- * 2. Appending it to this list
- *
- * Do not edit ToolRuntimePipeline for new tools.
- */
-export const BUILTIN_TOOLS: readonly RegisteredTool[] = [
+const BUILTIN_TOOLS_BASE: readonly RegisteredTool[] = [
   listDirectoryTool,
   directoryTreeTool,
   readFileTool,
@@ -80,6 +75,20 @@ export const BUILTIN_TOOLS: readonly RegisteredTool[] = [
   fetchUrlTool,
   fetchDocsTool,
   webSearchTool,
+];
+
+setBuiltinModelToolLookup(listModelToolDefinitions(BUILTIN_TOOLS_BASE));
+
+/**
+ * Built-in tools. Add a new tool by:
+ * 1. Creating `actions/handlers/<name>Tool.ts` with definition + execute
+ * 2. Appending it to BUILTIN_TOOLS_BASE (before describe_tool)
+ *
+ * Do not edit ToolRuntimePipeline for new tools.
+ */
+export const BUILTIN_TOOLS: readonly RegisteredTool[] = [
+  ...BUILTIN_TOOLS_BASE,
+  describeToolTool,
 ];
 
 export function createBuiltinToolRegistry(): ToolRegistry {
@@ -147,4 +156,5 @@ export {
   fetchUrlTool,
   fetchDocsTool,
   webSearchTool,
+  describeToolTool,
 };

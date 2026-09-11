@@ -39,6 +39,7 @@ const WRITE_CRITICAL_TOOL_IDS = new Set<string>([
  * advertises apply_patch in prose while omitting its schema.
  */
 const TOOL_PACK_PRIORITY: Record<string, number> = {
+  describe_tool: 110,
   apply_patch: 100,
   delete_file: 95,
   delete_directory: 94,

@@ -1,4 +1,4 @@
-# Mitii Safety Phases (A-C)
+# Mitii Safety Phases (A–D)
 
 Status: shipped in-tree  
 Audience: contributors and hosts (VS Code / CLI)
@@ -12,6 +12,7 @@ This document is the product README for the safety workstream that compares Miti
 | **A** | Seal goldens, preset UX copy, effective grant readout | **None** - trust / clarity |
 | **B** | `mitii run --auto`, tighten-only `.mitii/safety.json`, Debug skill, marketplace-lite | **None** - operability |
 | **C** | Optional OS sandbox (macOS Seatbelt / Linux bwrap), default off, fail-closed | **None** - blast radius |
+| **D** | Adversary heuristics, workspace hooks, trusted folders, Docker/Podman sandbox | **None** - restrict-only fences |
 
 Coding solve-rate is owned by evidence + verification + benchmarks - not this stack.
 
@@ -103,12 +104,48 @@ Backends:
 
 - macOS -> `sandbox-exec` Seatbelt profile (workspace writable, optional network deny)
 - Linux -> `bwrap` if on PATH
+- Optional -> Docker / Podman via `detectSandboxBackend({ prefer: "docker" | "podman" })` (Phase D)
 - Windows / missing binary -> **fail-closed** (command does not run unrestricted)
 
 Implementation: `packages/host/src/sandbox/createSandboxedProcessPort.ts`  
 Wired in CLI + VS Code `ports.ts`.
 
 Sandbox is a second fence **after** grants. It does not make "allow everything" safe inside the workspace.
+
+## Phase D - Restrict-only fences (flags default **off**)
+
+Phase D adds more **narrowing** layers. Nothing here widens Decision Policy grants.
+Every switch defaults off until a host explicitly enables it.
+
+### Heuristic adversary
+
+- Host: `createHeuristicAdversary({ enabled: false })` in `@mitii/host`
+- Restrict-only: may BLOCK / ASK on high-risk tools and dangerous command prefixes
+- Never adds tools or raises autonomy
+- Inject into SDK/V8 only when the host sets `enabled: true`
+
+### Workspace hooks
+
+- Specs under `.mitii/hooks/` (schema via `hookSpecSchema`)
+- `loadWorkspaceHooks` / `evaluatePreToolHooks` — deny tools / command prefixes, optional audit
+- Sample: `SAMPLE_PRE_TOOL_DENY_GIT_PUSH`
+- Master switch `enabled` defaults **false**; absent directory → no-op
+
+### Trusted folders (VS Code)
+
+- When `!vscode.workspace.isTrusted`: skip project MCP sync (disabled empty settings / no connect)
+- Ask-only `defaultMode` ceiling remains
+- Indexing, mutating tools, MCP, and writing recipes stay gated until trust
+- Notice copy lives in `apps/vscode/src/workspace/trust.ts`
+
+### Docker / Podman sandbox
+
+- Backend ids: `docker` | `podman` (plus existing seatbelt / bubblewrap / unavailable)
+- `resolveDockerBackend("docker" | "podman")` — fail-closed if binary missing on PATH
+- Wrap shape: `docker|podman run --rm -i [--network none] -v workspace:workspace -w cwd <image> <cmd…>`
+- Image: `MITII_SANDBOX_IMAGE` (default `alpine:3.20`; tag `mitii-sandbox:local` for a custom image)
+- `detectSandboxBackend({ prefer: "docker" | "podman" | … })` — prefer container runtimes when requested; otherwise keep OS detection
+- Still requires the master sandbox flag (`mitii.safety.sandbox.enabled` / `MITII_SANDBOX=1`)
 
 ## What we deliberately did **not** ship
 
@@ -137,10 +174,12 @@ pnpm exec vitest run apps/cli/src/commands/runAuto.spec.ts
 | `packages/v8/.../IntersectUserSafetyRules.ts` | Tighten-only intersect |
 | `packages/v8/.../FormatEffectiveGrant.ts` | Readout helpers |
 | `packages/v8/.../ApprovalPresetCopy.ts` | Safe/Guided/Pilot copy |
-| `packages/host/src/safety/` | Load rules + marketplace-lite |
-| `packages/host/src/sandbox/` | OS ProcessPort wrap |
+| `packages/host/src/safety/` | Load rules + marketplace-lite + heuristic adversary |
+| `packages/host/src/hooks/` | Workspace session hooks (restrict-only) |
+| `packages/host/src/sandbox/` | OS / container ProcessPort wrap |
 | `apps/cli/src/commands/runAuto.ts` | CI entry mapping |
 | `packages/sdk/skills/debug-systematic/` | Debug skill |
+| `apps/acp/` | ACP-lite stdio bridge (not full ACP; V8-free of ACP) |
 | `docs/SAFETY_PHASES.md` | This README |
 
 ## Contributor rules
@@ -148,4 +187,4 @@ pnpm exec vitest run apps/cli/src/commands/runAuto.spec.ts
 1. Prefer golden / unit tests named `never_widens_*` for any safety change.
 2. Keep new modules under **800 lines**.
 3. Do not put OS-specific Seatbelt/bwrap code in V8 - hosts own `ProcessPort`.
-4. Feature flags default **off** (`safety.json.enabled`, sandbox enabled).
+4. Feature flags default **off** (`safety.json.enabled`, sandbox enabled, hooks enabled, adversary enabled).

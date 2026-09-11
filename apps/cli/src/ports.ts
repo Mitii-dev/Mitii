@@ -25,6 +25,8 @@ import {
   createWorkspaceVerificationStore,
   createWorkspaceMemoryStore,
   createWorkspaceKnowledgeGraph,
+  createHeuristicAdversary,
+  detectSandboxBackend,
   getProviderPreset,
   inferHostProviderType,
   isHostProviderType,
@@ -175,6 +177,14 @@ export function createCliClient(options: {
   const sandboxEnabled = env.MITII_SANDBOX === '1' || env.MITII_SANDBOX === 'true';
   const sandboxNetwork =
     env.MITII_SANDBOX_NETWORK === 'allow' ? 'allow' : 'deny';
+  const sandboxPreferRaw = env.MITII_SANDBOX_BACKEND;
+  const sandboxPrefer =
+    sandboxPreferRaw === 'docker' ||
+    sandboxPreferRaw === 'podman' ||
+    sandboxPreferRaw === 'seatbelt' ||
+    sandboxPreferRaw === 'bubblewrap'
+      ? sandboxPreferRaw
+      : 'auto';
   const processPort = createSandboxedProcessPort(
     new NodeProcessAdapter(),
     resolveSandboxPolicy({
@@ -182,7 +192,13 @@ export function createCliClient(options: {
       network: sandboxNetwork,
       workspaceRoot: options.cwd,
     }),
+    detectSandboxBackend({ prefer: sandboxPrefer }),
   );
+  const adversary = createHeuristicAdversary({
+    enabled: env.MITII_ADVERSARY === '1' || env.MITII_ADVERSARY === 'true',
+  });
+  const adversaryFailMode =
+    env.MITII_ADVERSARY_FAIL === 'open' ? ('fail_open' as const) : ('fail_closed' as const);
   const tools = new ToolRuntimePipeline({
     fileSystem,
     process: processPort,
@@ -246,6 +262,9 @@ export function createCliClient(options: {
     }),
     memoryStore,
     memoryEmbedding,
+    ...(adversary
+      ? { adversary, adversaryFailMode }
+      : {}),
     ...options.clientOverrides,
   });
   return {

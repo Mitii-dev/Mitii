@@ -158,6 +158,13 @@ export type {
   ObserveWorkspaceEventResult,
 } from './ports/memoryCapture.js';
 export {
+  listPendingMemories,
+  approvePendingMemory,
+  rejectPendingMemory,
+  appendPendingMemory,
+} from './ports/memoryPending.js';
+export type { PendingMemoryDraft } from './ports/memoryPending.js';
+export {
   observeRunToolEvent,
   shouldObserveRunEvent,
 } from './ports/observeRunEvent.js';
@@ -175,6 +182,38 @@ export type { MemoryObservation } from './ports/memoryObservations.js';
 export { appendMemoryAudit } from './ports/memoryAudit.js';
 export type { MemoryAuditEvent } from './ports/memoryAudit.js';
 export { createMemoryEmbeddingPort } from './ports/memoryEmbeddingAdapter.js';
+
+// ---------------------------------------------------------------------------
+// Corpus RAG (Phase 4) — optional `.mitii/corpus/` text index + retrieval
+// ---------------------------------------------------------------------------
+export {
+  runCorpusIndex,
+  loadCorpusIndex,
+  corpusDirectory,
+  corpusIndexPath,
+  corpusIndexExists,
+  CORPUS_DIR_NAME,
+  CORPUS_INDEX_FILE,
+  CORPUS_INDEX_SCHEMA_VERSION,
+} from './corpus/corpusIndex.js';
+export type {
+  CorpusIndex,
+  CorpusFileEntry,
+  CorpusChunk,
+} from './corpus/corpusIndex.js';
+export { CorpusRetrievalSource } from './corpus/CorpusRetrievalSource.js';
+
+// ---------------------------------------------------------------------------
+// Child runs (Phase 5) — mode ≤ parent, deny-only safety, worktree path
+// ---------------------------------------------------------------------------
+export {
+  narrowChildStartInput,
+  createChildWorktreePath,
+} from './runtime/childRuns.js';
+export type {
+  NarrowChildStartInputParams,
+  NarrowedChildStartInput,
+} from './runtime/childRuns.js';
 
 export {
   createOptionalSearchPort,
@@ -222,6 +261,20 @@ export type {
   MitiiWritingRecipeId,
   WritingRecipeAsk,
 } from './recipes/gitWritingRecipes.js';
+
+export {
+  RECIPE_SPEC_SCHEMA_VERSION,
+  recipeSpecSchema,
+  compileRecipeToStartInput,
+  loadRecipeSpec,
+  renderRecipePrompt,
+  writingRecipeToSpec,
+} from './recipes/recipeSpec.js';
+export type {
+  RecipeSpec,
+  CompiledRecipeStart,
+  CompileRecipeOptions,
+} from './recipes/recipeSpec.js';
 
 // ---------------------------------------------------------------------------
 // Prompt helpers — host-owned instruction files → MitiiStartInput.projectRules
@@ -303,6 +356,7 @@ export type { MarketplaceCatalogEntry } from './safety/marketplaceLite.js';
 export {
   createSandboxedProcessPort,
   detectSandboxBackend,
+  resolveDockerBackend,
   resolveSandboxPolicy,
   SandboxUnavailableError,
 } from './sandbox/createSandboxedProcessPort.js';
@@ -310,4 +364,17 @@ export type {
   SandboxPolicy,
   SandboxNetworkMode,
   SandboxBackend,
+  SandboxBackendPrefer,
 } from './sandbox/createSandboxedProcessPort.js';
+
+export {
+  loadWorkspaceHooks,
+  evaluatePreToolHooks,
+  hookSpecSchema,
+  SAMPLE_PRE_TOOL_DENY_GIT_PUSH,
+  HOOK_SPEC_SCHEMA_VERSION,
+} from './hooks/workspaceHooks.js';
+export type { HookSpec, LoadedHooks } from './hooks/workspaceHooks.js';
+
+export { createHeuristicAdversary } from './safety/heuristicAdversary.js';
+export type { HeuristicAdversaryOptions } from './safety/heuristicAdversary.js';

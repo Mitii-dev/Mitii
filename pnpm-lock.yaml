@@ -30,6 +30,22 @@ importers:
         specifier: ^3.2.7
         version: 3.2.7(@types/debug@4.1.13)(@types/node@20.19.43)(jiti@2.7.0)(yaml@2.9.0)
 
+  apps/acp:
+    dependencies:
+      '@mitii/host':
+        specifier: workspace:*
+        version: link:../../packages/host
+      '@mitii/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+    devDependencies:
+      '@types/node':
+        specifier: ^20.14.0
+        version: 20.19.43
+      typescript:
+        specifier: ^5.5.2
+        version: 5.9.3
+
   apps/cli:
     dependencies:
       '@mitii/automation':

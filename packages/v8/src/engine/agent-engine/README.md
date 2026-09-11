@@ -77,6 +77,18 @@ agent-engine/
   (`compactModelLoopMessagesFromWindowPolicy`): soft tool stubs → drop oldest
   turns → dropped-turn summary → hard tool compact → reinject facts/memory.
   `stagesApplied` records which stages mutated history.
+- **Progressive tool schemas:** `filterToolDefinitions` exposes INDEX stubs
+  for long-tail / MCP tools, while core discovery + mutation tools
+  (`FULL_SCHEMA_TOOL_IDS`: read_file, search_files, run_readonly_command,
+  apply_patch, …) keep full parameter schemas. Models can still call
+  `describe_tool` for stubbed tools. Tool Runtime validates real Zod schemas
+  at execute time — stubs never widen the grant. Common arg aliases
+  (`pattern`→`query`, `command`→`argv`, numeric strings) are normalized in
+  preflight.
+- **ToolAdversaryPort (optional):** restrict-only fence after grant/shadow and
+  before approval. Hosts inject via `composeReadOnlyAgentEngine({ adversary })`
+  or `CreateMitiiClientOptions.adversary`. Decisions: ALLOW | ASK | BLOCK.
+  Unset = no-op. Never widens grants. CLI: `MITII_ADVERSARY=1`.
 - Runs can suspend for clarification, plan approval, mutating tool approval, grant expansion (when approval mode is not `never`), or continue-required after exploration stall with partial progress.
 - Tool calls are passed to Tool Runtime with the exact grant from Decision Policy.
 - The engine may narrow authority after discovery but never expands the grant without policy.

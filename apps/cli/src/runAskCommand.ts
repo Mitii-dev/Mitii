@@ -11,6 +11,7 @@ import {
   buildWritingRecipeAsk,
   loadProjectRules,
   loadUserSafetyRules,
+  loadWorkspaceHooks,
   resolveMitiiWritingRecipe,
 } from '@mitii/host';
 
@@ -239,10 +240,10 @@ export async function ensurePublishedRepositoryState(options: {
 
 function reportOutcome(
   io: SessionIo,
-  json: boolean,
+  machineReadable: boolean,
   outcome: Awaited<ReturnType<typeof driveRun>>,
 ): void {
-  if (json) return;
+  if (machineReadable) return;
   for (const line of formatContextInspection(outcome.events)) {
     io.writeStderr(`${line}\n`);
   }
@@ -261,6 +262,7 @@ export async function runAsk(options: {
   prompt: string;
   cwd: string;
   json: boolean;
+  streamJson?: boolean;
   forceEcho: boolean;
   autoClarify?: string;
   autoApproval?: 'approved' | 'denied';
@@ -286,7 +288,9 @@ export async function runAsk(options: {
   const io = options.io ?? createDefaultSessionIo();
   const mode = options.mode ?? ports.defaultMode;
   const origin = options.origin ?? 'user';
-  if (!options.json) {
+  const machineReadable =
+    options.json === true || options.streamJson === true;
+  if (!machineReadable) {
     io.writeStderr(
       `[mitii] provider=${ports.providerLabel} mode=${mode} origin=${origin}\n`,
     );
@@ -305,7 +309,29 @@ export async function runAsk(options: {
   const projectRules = await loadProjectRules({
     workspaceRoot: options.cwd,
   });
-  const userSafetyRules = loadUserSafetyRules(options.cwd);
+  const baseSafety = loadUserSafetyRules(options.cwd);
+  const hooksEnabled =
+    process.env.MITII_HOOKS === '1' || process.env.MITII_HOOKS === 'true';
+  const hooks = await loadWorkspaceHooks({
+    workspaceRoot: options.cwd,
+    enabled: hooksEnabled,
+  });
+  const userSafetyRules = {
+    ...baseSafety,
+    enabled:
+      baseSafety.enabled ||
+      hooks.denyTools.length > 0 ||
+      hooks.denyCommandPrefixes.length > 0,
+    denyTools: [
+      ...new Set([...(baseSafety.denyTools ?? []), ...hooks.denyTools]),
+    ],
+    denyCommandPrefixes: [
+      ...new Set([
+        ...(baseSafety.denyCommandPrefixes ?? []),
+        ...hooks.denyCommandPrefixes,
+      ]),
+    ],
+  };
   const hostConfig = loadMitiiHostConfig(options.cwd);
   let loopPolicyThresholds;
   try {
@@ -363,12 +389,13 @@ export async function runAsk(options: {
         : {}),
     },
     json: options.json,
+    streamJson: options.streamJson === true,
     autoClarify: options.autoClarify,
     autoApproval: options.autoApproval,
     io,
     memoryCapture,
   });
-  reportOutcome(io, options.json, outcome);
+  reportOutcome(io, machineReadable, outcome);
   return { code: outcome.exitCode, mode, outcome };
 }
 

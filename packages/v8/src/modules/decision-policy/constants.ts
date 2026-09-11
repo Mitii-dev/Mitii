@@ -54,6 +54,7 @@ export const VERIFICATION_EVIDENCE_KINDS = [
 
 /** Tool catalog IDs Decision Policy may grant (must stay aligned with Tool Runtime). */
 export const READ_ONLY_TOOL_IDS = [
+  "describe_tool",
   "list_directory",
   "directory_tree",
   "read_file",

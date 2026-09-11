@@ -301,6 +301,28 @@ describe("model tool definition single source", () => {
     expect(output.matches[0]?.text).toContain("export const n");
   });
 
+  it("search_files accepts Cursor-style pattern + string maxMatches aliases", async () => {
+    const runtime = createRuntime();
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "s-alias",
+      toolName: "search_files",
+      arguments: {
+        pattern: "export const n",
+        path: "src/util.ts",
+        output_mode: "content",
+        maxMatches: "10",
+      },
+      grant: createReadOnlyGrant(),
+      workspaceRoot: WORKSPACE,
+    });
+    expect(result.status).toBe("succeeded");
+    const output = result.output as {
+      matches: Array<{ path: string; text: string }>;
+    };
+    expect(output.matches[0]?.text).toContain("export const n");
+  });
+
   it("search_files auto mode keeps bracket-heavy queries as literal text", async () => {
     const runtime = createRuntime();
     const result = await runtime.execute({

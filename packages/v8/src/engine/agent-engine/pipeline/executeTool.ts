@@ -470,6 +470,12 @@ export async function executeOneTool(
       alreadyMutatedPaths: changedFiles,
       approval: approvalToken,
       maxContentChars: windowPolicy.compaction.toolResultContentChars,
+      ...(runtime.deps.adversary
+        ? {
+            adversary: runtime.deps.adversary,
+            adversaryFailMode: runtime.deps.adversaryFailMode,
+          }
+        : {}),
     },
   );
 

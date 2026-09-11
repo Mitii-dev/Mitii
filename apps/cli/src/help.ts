@@ -19,6 +19,8 @@ Usage:
   mitii export-session <prompt> --out <file> [--echo]
   mitii restore --list <runId> [--json]
   mitii restore <runId> <restorePointId> [--json]
+  mitii recipe run <id|path> [--param key=value]... [--preview] [note]
+  mitii memory pending|approve <id>|reject <id> [--json]
   mitii connect <channel> …
 
 First run:
@@ -39,6 +41,8 @@ Commands:
   status           Show latest persisted repository state
   export-session   Run ask and write secret-free JSON export
   restore          Undo Agent file mutations to a RestorePoint (or --list)
+  recipe           Run a parameterized RecipeSpec (prompt/mode/skills only)
+  memory           List/approve/reject pending auto-mined memories
   connect          Chat bridges (telegram / discord / slack)
   version / help   Version and usage
 
@@ -66,6 +70,12 @@ Writing recipes (VS Code + CLI):
   Equivalent: mitii ask --recipe commit-message
   Chat: @skill:git-commit-message  (or /git-commit-message)
 
+Parameterized recipes (Phase 2):
+  mitii recipe run after-commit --param task="write tests"
+  mitii recipe run commit-message --preview
+  Specs live in .mitii/recipes/<id>.json (schemaVersion: 1).
+  Compile fills prompt/mode/skills/autonomy only — never ToolGrant.
+
 Exit codes:
   0   completed (or non-clarify suspend checkpoint in --json)
   1   failed / declined suspension
@@ -78,6 +88,7 @@ Options:
   -v, --version      Print package version
   --cwd <path>       Workspace root (default: process.cwd())
   --json             Emit machine-readable JSON on stdout
+  --stream-json      NDJSON: one line per RunEvent, then a result line
   --echo             Force EchoLlmPort even when API keys are set
   --clarify <text>   Non-interactive clarification resume
   --approve / --deny Non-interactive approval: resume mutation/plan gates;
@@ -122,6 +133,7 @@ Environment:
   MITII_TASK_LIST_AUTO_ADVANCE     Product default on; set to 0 to disable
   MITII_SANDBOX=1                  Enable OS process sandbox (macOS/Linux; fail-closed)
   MITII_SANDBOX_NETWORK=allow|deny Network for sandboxed children (default deny)
+  MITII_SANDBOX_IMAGE              Docker/Podman image (default alpine:3.20)
   ANTHROPIC_API_KEY                Claude / Anthropic
   GEMINI_API_KEY / GOOGLE_API_KEY  Gemini
   OPENAI_API_KEY                   OpenAI-compatible (OpenAI, DeepSeek, …)

@@ -35,6 +35,8 @@ import {
   type EmbeddingProvider,
   pathMatchesFolderPrefix,
 } from '@mitii/v8';
+import { CorpusRetrievalSource } from '../corpus/CorpusRetrievalSource.js';
+import { corpusIndexExists } from '../corpus/corpusIndex.js';
 import {
   alignSemanticSettingsWithPersistedProfile,
   createLanceDbConnection,
@@ -78,6 +80,11 @@ export function createHostRepositoryContext(options: {
   git?: GitPort;
   includeUntrackedGitFiles?: boolean;
   maximumGitDiffFiles?: number;
+  /**
+   * Opt-in corpus RAG (`.mitii/corpus/`). Default false.
+   * Only registers when enabled AND `.mitii/corpus/index.json` exists.
+   */
+  corpusEnabled?: boolean;
   resolveEditorReferences?: () =>
     | HostEditorContextReferences
     | Promise<HostEditorContextReferences>;
@@ -146,6 +153,7 @@ export function createHostRepositoryContext(options: {
       openDatabase: options.openDatabase,
       resolvedDescriptors,
       semanticIndex: options.semanticIndex,
+      corpusEnabled: options.corpusEnabled === true,
     }),
     selector,
     assembler: createHostAssembler(defaultAssembler, (snapshotId) =>
@@ -449,6 +457,7 @@ function createHostRetriever(options: {
   openDatabase: OpenHostSqliteDatabase;
   resolvedDescriptors: ReadonlyMap<string, RepositoryStateDescriptor>;
   semanticIndex?: SemanticIndexSettings;
+  corpusEnabled?: boolean;
 }): RepositoryContextRetrieverPort {
   return {
     retrieve: async (
@@ -523,6 +532,19 @@ function createHostRetriever(options: {
           });
         }
 
+        const additionalSources =
+          options.corpusEnabled && corpusIndexExists(options.workspaceRoot)
+            ? ([
+                {
+                  source: new CorpusRetrievalSource({
+                    workspaceRoot: options.workspaceRoot,
+                  }),
+                },
+              ] as NonNullable<
+                Parameters<HybridRetrievalFactory['create']>[0]['additionalSources']
+              >)
+            : undefined;
+
         const retriever = new HybridRetrievalFactory().create({
           ...(textIndex ? { textIndex } : {}),
           reranker: new IdentifierAwareRetrievalReranker(),
@@ -532,6 +554,7 @@ function createHostRetriever(options: {
                 embeddingProvider,
               }
             : {}),
+          ...(additionalSources ? { additionalSources } : {}),
         });
 
         const runRetrieve = async (

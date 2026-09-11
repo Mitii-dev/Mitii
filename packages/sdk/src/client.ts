@@ -20,6 +20,8 @@ import type {
   VerificationPipeline,
   WorkspaceIndexingPipelineResult,
   RepositoryGraphPort,
+  ToolAdversaryPort,
+  AdversaryFailMode,
 } from '@mitii/v8';
 
 import {
@@ -82,6 +84,9 @@ export interface CreateMitiiClientOptions {
    * enable this by default for product UX; see those compose sites.
    */
   taskListAutoAdvance?: boolean;
+  /** Restrict-only ToolAdversaryPort (Phase 3). Default unset = no-op. */
+  adversary?: ToolAdversaryPort;
+  adversaryFailMode?: AdversaryFailMode;
 }
 
 /**
@@ -134,6 +139,8 @@ export class MitiiClient {
       memoryEmbedding: options.memoryEmbedding,
       toolDefinitions: options.toolDefinitions,
       taskListAutoAdvance: options.taskListAutoAdvance,
+      adversary: options.adversary,
+      adversaryFailMode: options.adversaryFailMode,
     });
 
     this.repositoryState = repositoryState;

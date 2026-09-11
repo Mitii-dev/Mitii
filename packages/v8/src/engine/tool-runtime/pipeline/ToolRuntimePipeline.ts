@@ -101,7 +101,7 @@ export class ToolRuntimePipeline {
     const parsed = parseInvocation(input);
     const budget = options.budget ?? new SessionBudget(parsed.grant);
 
-    const preflight = preflightToolCall({
+    const preflight = await preflightToolCall({
       parsed,
       options,
       budget,

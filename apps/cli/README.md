@@ -88,6 +88,19 @@ mitii ask --recipe commit-message
 
 Optional note after the command becomes a user hint on the prompt.
 
+### Parameterized recipes
+
+Shareable `RecipeSpec` documents (`schemaVersion: 1`) under `.mitii/recipes/<id>.json`.
+They compile to prompt / mode / skills / autonomy only — **never** widen `ToolGrant`.
+
+```bash
+mitii recipe run after-commit --param task="write tests and open a PR"
+mitii recipe run commit-message --preview   # compile only
+mitii recipe run .mitii/recipes/smoke.json --param word=hi --echo
+```
+
+Built-in writing recipe ids (`commit-message`, `pr-summary`, `changelog`) also work as `recipe run` targets.
+
 ## Connect (channel bridges)
 
 `mitii connect` runs a **long-lived bridge** from a chat channel into Mitii agent turns
@@ -373,6 +386,7 @@ Set with `--mode <mode>` or `defaultMode` in config.
 | `-v`, `--version` | Print package version |
 | `--cwd <path>` | Workspace root (default: `process.cwd()`) |
 | `--json` | Machine-readable JSON on stdout |
+| `--stream-json` | NDJSON: one `{ type: "event", event }` line per RunEvent, then `{ type: "result", result }` |
 | `--echo` | Force `EchoLlmPort` even when API keys are set |
 | `--clarify <text>` | Non-interactive clarification resume |
 | `--approve` / `--deny` | Non-interactive approval resume |

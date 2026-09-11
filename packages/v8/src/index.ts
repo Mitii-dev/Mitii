@@ -239,11 +239,18 @@ export {
   BUILTIN_TOOLS,
   StructuralShadowGrantAuthorizer,
   compileToolGrantToCedar,
+  ADVERSARY_HIGH_RISK_TOOL_IDS,
+  isAdversaryHighRiskTool,
 } from "./engine/tool-runtime";
 export type {
   ShadowAuthorizeDecision,
   ShadowAuthorizeResult,
   ShadowGrantAuthorizer,
+  AdversaryDecision,
+  AdversaryEvaluateInput,
+  AdversaryEvaluateResult,
+  AdversaryFailMode,
+  ToolAdversaryPort,
 } from "./engine/tool-runtime";
 export type {
   ToolInvocationInput,

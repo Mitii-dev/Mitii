@@ -5,6 +5,7 @@ export const TOOL_RUNTIME_SCHEMA_VERSION = 1 as const;
 
 /** Read-only tools Decision Policy may grant. */
 export const READ_ONLY_TOOL_IDS = [
+  "describe_tool",
   "list_directory",
   "directory_tree",
   "read_file",

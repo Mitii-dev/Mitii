@@ -116,7 +116,15 @@ export type { SkillRepoEvidence } from "./deriveSkillRepoEvidence";
 export { mapUnderstandingToPlanningEvidence } from "./mapUnderstandingToPlanningEvidence";
 export { collectPlanningImpactReports } from "./collectPlanningImpactReports";
 export { mergePromptInstructions } from "./mergePromptInstructions";
-export { filterToolDefinitions } from "./filterToolDefinitions";
+export {
+  filterToolDefinitions,
+  toToolIndexDefinition,
+  isMcpToolName,
+  DESCRIBE_TOOL_NAME,
+  FULL_SCHEMA_TOOL_IDS,
+  TOOL_INDEX_INPUT_SCHEMA,
+  MCP_TOOL_NAME_PREFIX,
+} from "./filterToolDefinitions";
 export { annotateMutationToolDefinitions } from "./annotateMutationToolDefinitions";
 export { serializeToolResultForModel } from "./serializeToolResultForModel";
 export {

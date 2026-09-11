@@ -20,6 +20,8 @@ export interface ParsedCliArgs {
     | 'serve'
     | 'events'
     | 'restore'
+    | 'recipe'
+    | 'memory'
     | 'commit-message'
     | 'pr-summary'
     | 'changelog'
@@ -28,6 +30,8 @@ export interface ParsedCliArgs {
   prompt?: string;
   cwd?: string;
   json?: boolean;
+  /** NDJSON RunEvent stream + final result line (ask/run). */
+  streamJson?: boolean;
   forceEcho?: boolean;
   autoClarify?: string;
   autoApproval?: 'approved' | 'denied';
@@ -101,7 +105,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   let loopPolicyJson: string | undefined;
   /** Once `connect` is seen, remaining argv (flags included) is channel passthrough. */
   let connectPassthrough: string[] | undefined;
-  /** Once `schedule`/`serve`/`events`/`restore` is seen, remaining argv is passthrough. */
+  /** Once `schedule`/`serve`/`events`/`restore`/`recipe` is seen, remaining argv is passthrough. */
   let automationPassthrough: string[] | undefined;
 
   for (let i = 0; i < args.length; i += 1) {
@@ -131,6 +135,10 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
     }
     if (arg === '--json') {
       flags.add('json');
+      continue;
+    }
+    if (arg === '--stream-json') {
+      flags.add('stream-json');
       continue;
     }
     if (arg === '--echo') {
@@ -343,7 +351,9 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       (arg === 'schedule' ||
         arg === 'serve' ||
         arg === 'events' ||
-        arg === 'restore') &&
+        arg === 'restore' ||
+        arg === 'recipe' ||
+        arg === 'memory') &&
       positionals.length === 1
     ) {
       automationPassthrough = [];
@@ -401,6 +411,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       prompt: prompt.length > 0 ? prompt : undefined,
       cwd,
       json: flags.has('json'),
+      streamJson: flags.has('stream-json'),
       forceEcho: flags.has('echo'),
       autoClarify,
       autoApproval,
@@ -429,6 +440,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       prompt: prompt.length > 0 ? prompt : undefined,
       cwd,
       json: flags.has('json'),
+      streamJson: flags.has('stream-json'),
       forceEcho: flags.has('echo'),
       autoClarify,
       autoApproval,
@@ -459,7 +471,9 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
     command === 'schedule' ||
     command === 'serve' ||
     command === 'events' ||
-    command === 'restore'
+    command === 'restore' ||
+    command === 'recipe' ||
+    command === 'memory'
   ) {
     return {
       command,

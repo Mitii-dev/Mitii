@@ -74,6 +74,20 @@ describe('CLI parseCliArgs', () => {
     expect(parsed.forceEcho).toBe(true);
   });
 
+  it('parses --stream-json on ask', () => {
+    const parsed = parseCliArgs([
+      'node',
+      'mitii',
+      'ask',
+      'ping',
+      '--stream-json',
+      '--echo',
+    ]);
+    expect(parsed.command).toBe('ask');
+    expect(parsed.streamJson).toBe(true);
+    expect(parsed.forceEcho).toBe(true);
+  });
+
   it('parses setup flags', () => {
     const parsed = parseCliArgs([
       'node',
@@ -237,6 +251,27 @@ describe('CLI resolveCliPorts', () => {
     const changelog = parseCliArgs(['node', 'mitii', 'changelog']);
     expect(changelog.command).toBe('changelog');
     expect(changelog.recipe).toBe('changelog');
+  });
+
+  it('parses recipe run passthrough', () => {
+    const parsed = parseCliArgs([
+      'node',
+      'mitii',
+      'recipe',
+      'run',
+      'after-commit',
+      '--param',
+      'task=write tests',
+      '--preview',
+    ]);
+    expect(parsed.command).toBe('recipe');
+    expect(parsed.rest).toEqual([
+      'run',
+      'after-commit',
+      '--param',
+      'task=write tests',
+      '--preview',
+    ]);
   });
 
   it('parses repeatable --image flags for ask', () => {

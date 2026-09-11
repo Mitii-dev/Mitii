@@ -29,6 +29,10 @@ tests/
 | Golden decision cases | `packages/v8/src/modules/decision-policy/tests/` | Route/grant expectations — **100% pass** merge gate |
 | Mode seal invariants | `.../decision-policy/tests/unit/ModeSealInvariants.spec.ts` | Ask/Plan never gain writes |
 | Behavioral evals | `packages/v8/src/engine/agent-engine/tests/behavioral/` | Real coding prompts → deny tools / mode seals (not prose) |
+| Progressive tools | `tool-runtime/tests/DescribeTool.spec.ts`, `filterToolDefinitions.spec.ts` | INDEX stubs + `describe_tool` grant-bound hydrate |
+| RecipeSpec | `packages/host/src/recipes/recipeSpec.spec.ts` | Params compile; never emits ToolGrant fields |
+| Adversary | `tool-runtime/tests/Adversary.spec.ts` | BLOCK/ASK/fail-closed; unset = no-op |
+| Hooks / corpus / child | `packages/host/src/hooks`, `corpus`, `runtime` | Restrict-only hooks; corpus RAG opt-in; child mode ≤ parent |
 
 ## Package tests
 

@@ -13,6 +13,7 @@ import {
   FileWorkspaceObservationStore,
   MAX_OBSERVATIONS_PER_WORKSPACE,
 } from './memoryObservations.js';
+import { appendPendingMemory } from './memoryPending.js';
 
 const DEDUP_WINDOW_MS = 5 * 60 * 1000;
 
@@ -21,23 +22,30 @@ export interface ObserveWorkspaceEventInput extends SyntheticObservationInput {
   workspaceId: string;
   pipeline: MemoryPipeline;
   now?: Date;
+  /**
+   * When true, promotable drafts commit immediately (legacy behavior).
+   * Default false: write `.mitii/memory/pending.json` for human approve.
+   */
+  autoPromote?: boolean;
 }
 
 export interface ObserveWorkspaceEventResult {
   observationId?: string;
   promotedMemoryId?: string;
+  pendingMemoryId?: string;
   duplicate: boolean;
   evictedIds: string[];
 }
 
 /**
- * Host-owned capture: persist a raw observation, then promote only
- * preference / bug-like events through MemoryPipeline.commit.
+ * Host-owned capture: persist a raw observation, then optionally promote
+ * preference / bug-like events (autoPromote) or queue them for approve.
  */
 export async function observeWorkspaceEvent(
   input: ObserveWorkspaceEventInput,
 ): Promise<ObserveWorkspaceEventResult> {
   const now = input.now ?? new Date();
+  const autoPromote = input.autoPromote === true;
   const draft = buildSyntheticMemoryDraft(input);
   const hash = createHash('sha256')
     .update(
@@ -58,7 +66,9 @@ export async function observeWorkspaceEvent(
 
   const observationId = `obs_${now.getTime().toString(36)}`;
   let promotedMemoryId: string | undefined;
-  if (draft.promotable) {
+  let pendingMemoryId: string | undefined;
+
+  if (draft.promotable && autoPromote) {
     const scope: MemoryScope = {
       kind: 'workspace',
       workspaceId: input.workspaceId,
@@ -79,6 +89,20 @@ export async function observeWorkspaceEvent(
     if (result.status === 'committed') {
       promotedMemoryId = result.memoryId;
     }
+  } else if (draft.promotable && !autoPromote) {
+    pendingMemoryId = `pend_${now.getTime().toString(36)}`;
+    await appendPendingMemory(input.workspaceRoot, {
+      id: pendingMemoryId,
+      createdAt: now.toISOString(),
+      observationId,
+      content: draft.content,
+      type: draft.type,
+      title: draft.title,
+      files: draft.files,
+      concepts: draft.concepts,
+      importance: draft.importance,
+      workspaceId: input.workspaceId,
+    });
   }
 
   const appended = await store.append(
@@ -107,14 +131,23 @@ export async function observeWorkspaceEvent(
   await appendMemoryAudit(input.workspaceRoot, {
     at: now.toISOString(),
     action: promotedMemoryId ? 'promote' : 'observe',
-    reason: draft.promotable ? 'synthetic_promote' : 'synthetic_observe',
-    memoryIds: promotedMemoryId ? [promotedMemoryId] : [observationId],
+    reason: promotedMemoryId
+      ? 'synthetic_promote'
+      : pendingMemoryId
+        ? 'synthetic_pending'
+        : 'synthetic_observe',
+    memoryIds: promotedMemoryId
+      ? [promotedMemoryId]
+      : pendingMemoryId
+        ? [pendingMemoryId]
+        : [observationId],
     workspaceId: input.workspaceId,
   });
 
   return {
     observationId,
     promotedMemoryId,
+    pendingMemoryId,
     duplicate: false,
     evictedIds: appended.evictedIds,
   };
