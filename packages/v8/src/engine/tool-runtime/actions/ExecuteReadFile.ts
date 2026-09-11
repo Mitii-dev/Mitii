@@ -35,17 +35,25 @@ export async function executeReadFile(params: {
     params.maxContentChars !== undefined
       ? Math.max(1, Math.floor(params.maxContentChars))
       : undefined;
+
+  const head = input.head;
+  const tail = input.tail;
+  const startLine = head !== undefined ? 1 : input.startLine;
+  const endLine = head !== undefined ? undefined : input.endLine;
   const maxLines =
-    input.maxLines ??
-    (maxContentChars !== undefined
-      ? deriveMaxLinesFromCharBudget(maxContentChars)
-      : undefined);
+    head !== undefined
+      ? head
+      : (input.maxLines ??
+        (maxContentChars !== undefined && tail === undefined
+          ? deriveMaxLinesFromCharBudget(maxContentChars)
+          : undefined));
 
   const read = await params.fileSystem.readFile(contained.realPath, {
     maxBytes,
-    startLine: input.startLine,
-    endLine: input.endLine,
+    startLine,
+    endLine,
     maxLines,
+    ...(tail !== undefined ? { tailLines: tail } : {}),
   });
 
   let window: {
@@ -99,12 +107,14 @@ export async function executeReadFile(params: {
     content: window.content,
     startLine: Math.max(1, window.startLine || 1),
     endLine: Math.max(0, window.endLine),
-    ...(window.totalLines !== undefined ? { totalLines: window.totalLines } : {}),
-    eof: Boolean(window.eof),
+    ...(window.totalLines !== undefined
+      ? { totalLines: window.totalLines }
+      : {}),
+    eof: window.eof,
     ...(window.nextStartLine !== undefined
       ? { nextStartLine: window.nextStartLine }
       : {}),
-    truncated: Boolean(window.truncated),
+    truncated: window.truncated,
     ...(window.truncationReason
       ? { truncationReason: window.truncationReason }
       : {}),
@@ -112,7 +122,7 @@ export async function executeReadFile(params: {
 
   return {
     output,
-    truncated: output.truncated,
+    truncated: window.truncated,
     redacted: sanitized.redacted,
   };
 }

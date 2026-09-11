@@ -24,6 +24,7 @@ import {
   createWorkspaceCheckpointStore,
   createWorkspaceVerificationStore,
   createWorkspaceMemoryStore,
+  createWorkspaceKnowledgeGraph,
   getProviderPreset,
   inferHostProviderType,
   isHostProviderType,
@@ -167,6 +168,7 @@ export function createCliClient(options: {
   const fileSystem = new NodeWorkspaceFileSystemAdapter();
   const search = createOptionalSearchPort(env);
   const git = new NodeGitAdapter();
+  const knowledgeGraph = createWorkspaceKnowledgeGraph(options.cwd);
   const repoGraphs = createHostRepositoryGraphPort({
     workspaceRoot: options.cwd,
   });
@@ -189,6 +191,7 @@ export function createCliClient(options: {
       env,
     }),
     git,
+    knowledgeGraph,
     codeNavigation: createHostCodeNavigationPort({
       workspaceRoot: options.cwd,
     }),

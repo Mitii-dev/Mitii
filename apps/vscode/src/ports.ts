@@ -28,6 +28,7 @@ import {
   createOptionalSearchPort,
   createSandboxedProcessPort,
   createWorkspaceCheckpointStore,
+  createWorkspaceKnowledgeGraph,
   createWorkspaceVerificationStore,
   resolveMemoryEmbeddingPort,
   resolveSandboxPolicy,
@@ -235,6 +236,9 @@ export async function createVscodeClient(
     ...(searchApiKey ? { apiKey: searchApiKey } : {}),
   });
   const git = workspaceRoot ? new NodeGitAdapter() : undefined;
+  const knowledgeGraph = workspaceRoot
+    ? createWorkspaceKnowledgeGraph(workspaceRoot)
+    : undefined;
   const codeNavigation = workspaceRoot
     ? createHostCodeNavigationPort({
         workspaceRoot,
@@ -274,6 +278,7 @@ export async function createVscodeClient(
           ...(search ? { search } : {}),
           ...(codeNavigation ? { codeNavigation } : {}),
           ...(repoGraphs ? { repoGraphs } : {}),
+          ...(knowledgeGraph ? { knowledgeGraph } : {}),
         },
         { registry: mcpManager.createRegistry() },
       )

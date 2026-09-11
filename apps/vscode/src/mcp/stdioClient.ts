@@ -1,10 +1,22 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createInterface } from 'node:readline';
+import { pathToFileURL } from 'node:url';
 
 export interface McpToolDescriptor {
   name: string;
   description?: string;
   inputSchema?: Record<string, unknown>;
+}
+
+export interface McpRoot {
+  uri: string;
+  name?: string;
+}
+
+export interface McpToolCallResult {
+  content: unknown;
+  structuredContent?: unknown;
+  isError?: boolean;
 }
 
 interface JsonRpcRequest {
@@ -14,7 +26,7 @@ interface JsonRpcRequest {
   params?: unknown;
 }
 
-interface JsonRpcResponse {
+interface JsonRpcMessage {
   jsonrpc: '2.0';
   id?: number | string | null;
   result?: unknown;
@@ -25,7 +37,8 @@ interface JsonRpcResponse {
 
 /**
  * Minimal MCP stdio client (JSON-RPC + Content-Length framing).
- * Enough for initialize → tools/list → tools/call.
+ * Supports initialize (with roots capability), tools/list, tools/call,
+ * and server-initiated roots/list.
  */
 export class McpStdioClient {
   private readonly child: ChildProcessWithoutNullStreams;
@@ -40,6 +53,7 @@ export class McpStdioClient {
   >();
   private closed = false;
   private readonly serverLabel: string;
+  private readonly roots: McpRoot[];
 
   constructor(options: {
     command: string;
@@ -47,8 +61,11 @@ export class McpStdioClient {
     cwd?: string;
     env?: Record<string, string>;
     serverLabel: string;
+    /** Workspace folders advertised via MCP roots. */
+    roots?: McpRoot[];
   }) {
     this.serverLabel = options.serverLabel;
+    this.roots = options.roots ?? [];
     this.child = spawn(options.command, options.args ?? [], {
       cwd: options.cwd,
       env: { ...process.env, ...options.env },
@@ -79,12 +96,22 @@ export class McpStdioClient {
   }
 
   async initialize(): Promise<void> {
+    const capabilities: Record<string, unknown> = {};
+    if (this.roots.length > 0) {
+      capabilities.roots = { listChanged: true };
+    }
     await this.request('initialize', {
       protocolVersion: '2024-11-05',
-      capabilities: {},
+      capabilities,
       clientInfo: { name: 'mitii-vscode', version: '1.0.0' },
     });
     this.notify('notifications/initialized', {});
+  }
+
+  /** Notify servers that workspace roots changed. */
+  notifyRootsListChanged(): void {
+    if (this.roots.length === 0) return;
+    this.notify('notifications/roots/list_changed', {});
   }
 
   async listTools(): Promise<McpToolDescriptor[]> {
@@ -105,16 +132,20 @@ export class McpStdioClient {
     }));
   }
 
-  async callTool(
-    name: string,
-    args: unknown,
-  ): Promise<{ content: unknown; isError?: boolean }> {
+  async callTool(name: string, args: unknown): Promise<McpToolCallResult> {
     const result = (await this.request('tools/call', {
       name,
       arguments: args && typeof args === 'object' ? args : {},
-    })) as { content?: unknown; isError?: boolean };
+    })) as {
+      content?: unknown;
+      structuredContent?: unknown;
+      isError?: boolean;
+    };
     return {
       content: result.content ?? result,
+      ...(result.structuredContent !== undefined
+        ? { structuredContent: result.structuredContent }
+        : {}),
       isError: Boolean(result.isError),
     };
   }
@@ -128,6 +159,47 @@ export class McpStdioClient {
     } catch {
       // ignore
     }
+  }
+
+  private respond(id: number | string, result: unknown): void {
+    if (this.closed) return;
+    this.write(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id,
+        result,
+      }),
+    );
+  }
+
+  private respondError(
+    id: number | string,
+    code: number,
+    message: string,
+  ): void {
+    if (this.closed) return;
+    this.write(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id,
+        error: { code, message },
+      }),
+    );
+  }
+
+  private handleServerRequest(message: JsonRpcMessage): void {
+    if (message.id === undefined || message.id === null || !message.method) {
+      return;
+    }
+    if (message.method === 'roots/list') {
+      this.respond(message.id, { roots: this.roots });
+      return;
+    }
+    this.respondError(
+      message.id,
+      -32601,
+      `Method not found: ${message.method}`,
+    );
   }
 
   private notify(method: string, params: unknown): void {
@@ -211,18 +283,36 @@ export class McpStdioClient {
   }
 
   private handleMessage(raw: string): void {
-    let message: JsonRpcResponse;
+    let message: JsonRpcMessage;
     try {
-      message = JSON.parse(raw) as JsonRpcResponse;
+      message = JSON.parse(raw) as JsonRpcMessage;
     } catch {
       return;
     }
+
+    // Server-initiated request (has method + id).
+    if (
+      message.method &&
+      message.id !== undefined &&
+      message.id !== null &&
+      !this.pending.has(Number(message.id))
+    ) {
+      this.handleServerRequest(message);
+      return;
+    }
+
     if (message.id === undefined || message.id === null) {
       return; // notification from server
     }
     const id = Number(message.id);
     const pending = this.pending.get(id);
-    if (!pending) return;
+    if (!pending) {
+      // Could be a server request with numeric id that arrived after we checked.
+      if (message.method) {
+        this.handleServerRequest(message);
+      }
+      return;
+    }
     this.pending.delete(id);
     if (message.error) {
       pending.reject(
@@ -241,6 +331,19 @@ export class McpStdioClient {
     }
     this.pending.clear();
   }
+}
+
+/** Build file:// roots for a workspace folder. */
+export function workspaceRootsFromPath(
+  workspaceRoot: string,
+  name = 'workspace',
+): McpRoot[] {
+  return [
+    {
+      uri: pathToFileURL(workspaceRoot).href,
+      name,
+    },
+  ];
 }
 
 /** Convenience for servers that speak NDJSON (no Content-Length). Unused helper kept for tests. */

@@ -59,6 +59,22 @@ export type {
 } from "./contracts";
 
 export { InMemoryMemoryStore, HashMemoryEmbedding } from "./adapters";
+export {
+  KnowledgeGraphManager,
+  InMemoryKnowledgeGraphStore,
+  knowledgeGraphEntitySchema,
+  knowledgeGraphRelationSchema,
+  knowledgeGraphSchema,
+} from "./graph";
+export type {
+  KnowledgeGraph,
+  KnowledgeGraphEntity,
+  KnowledgeGraphRelation,
+  KnowledgeGraphPort,
+  KnowledgeGraphStorePort,
+  KnowledgeGraphDeleteEntitiesResult,
+  KnowledgeGraphAddObservationsResult,
+} from "./graph";
 export { buildSyntheticMemoryDraft } from "./observe/buildSyntheticMemoryDraft";
 export type {
   SyntheticObservation,

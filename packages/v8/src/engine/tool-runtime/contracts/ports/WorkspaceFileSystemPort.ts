@@ -22,6 +22,8 @@ export interface WorkspaceReadFileOptions {
   endLine?: number;
   /** Soft cap on number of lines returned. */
   maxLines?: number;
+  /** Last N lines (when loaded text is complete enough). */
+  tailLines?: number;
 }
 
 export type WorkspaceReadFileTruncationReason =

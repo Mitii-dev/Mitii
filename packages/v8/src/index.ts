@@ -328,6 +328,11 @@ export {
   HashMemoryEmbedding,
   buildSyntheticMemoryDraft,
   MEMORY_SCHEMA_VERSION,
+  KnowledgeGraphManager,
+  InMemoryKnowledgeGraphStore,
+  knowledgeGraphEntitySchema,
+  knowledgeGraphRelationSchema,
+  knowledgeGraphSchema,
 } from "./modules/memory";
 export type {
   MemoryRetrieveInput,
@@ -341,6 +346,13 @@ export type {
   MemoryEmbeddingPort,
   SyntheticObservation,
   SyntheticObservationInput,
+  KnowledgeGraph,
+  KnowledgeGraphEntity,
+  KnowledgeGraphRelation,
+  KnowledgeGraphPort,
+  KnowledgeGraphStorePort,
+  KnowledgeGraphDeleteEntitiesResult,
+  KnowledgeGraphAddObservationsResult,
 } from "./modules/memory";
 
 export { CodeNavigationPipeline } from "./modules/code-navigation";

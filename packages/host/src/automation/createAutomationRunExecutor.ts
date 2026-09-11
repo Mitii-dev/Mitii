@@ -36,6 +36,7 @@ import { createHostRepositoryContext } from '../repository-context/createHostRep
 import { buildWorkspaceSnapshot } from '../indexing/fingerprintSnapshot.js';
 import { createFileSystemSkillsCatalog } from '../ports/skillsCatalog.js';
 import { createWorkspaceCheckpointStore } from '../ports/checkpoints.js';
+import { createWorkspaceKnowledgeGraph } from '../ports/knowledgeGraphStore.js';
 import { createWorkspaceVerificationStore } from '../ports/verificationRecords.js';
 import type { OpenHostSqliteDatabase } from '../sqlite/types.js';
 
@@ -256,6 +257,7 @@ async function createAutomationClient(options: {
   const fileSystem = new NodeWorkspaceFileSystemAdapter();
   const search = createOptionalSearchPort(env);
   const git = new NodeGitAdapter();
+  const knowledgeGraph = createWorkspaceKnowledgeGraph(options.cwd);
   const tools = new ToolRuntimePipeline({
     fileSystem,
     process: new NodeProcessAdapter(),
@@ -264,6 +266,7 @@ async function createAutomationClient(options: {
       env,
     }),
     git,
+    knowledgeGraph,
     codeNavigation: createHostCodeNavigationPort({
       workspaceRoot: options.cwd,
     }),

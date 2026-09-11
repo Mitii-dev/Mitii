@@ -42,7 +42,32 @@ interface MemoryEnvelope {
  * migrates that shadow format into canonical MemoryFact records and then keeps
  * the engine-facing store as the source of truth.
  */
+/**
+ * Serializes RMW so concurrent commits/deletes cannot last-write-wins
+ * (same pattern as FileWorkspaceMemoryStore / servers-main memory).
+ */
+class MutationQueue {
+  private chain: Promise<unknown> = Promise.resolve();
+
+  public enqueue<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.chain.then(operation, operation);
+    this.chain = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+}
+
+export interface MemoryDeleteResult {
+  id: string;
+  deleted: boolean;
+  message: string;
+}
+
 export class VsCodeMementoMemoryStore implements MemoryStorePort {
+  private readonly mutations = new MutationQueue();
+
   constructor(
     private readonly state: vscode.Memento,
     private readonly workspaceId: string,
@@ -58,16 +83,20 @@ export class VsCodeMementoMemoryStore implements MemoryStorePort {
   }
 
   public async commit(fact: MemoryFactDraft): Promise<void> {
-    const parsed = parseFact(fact, this.workspaceId);
-    if (!parsed) {
-      throw new Error('Memory commit rejected: fact failed schema validation.');
-    }
-    const facts = await this.readFacts();
-    const next = [
-      ...facts.filter((existing) => existing.id !== parsed.id),
-      parsed,
-    ];
-    await this.writeFacts(next);
+    return this.mutations.enqueue(async () => {
+      const parsed = parseFact(fact, this.workspaceId);
+      if (!parsed) {
+        throw new Error(
+          'Memory commit rejected: fact failed schema validation.',
+        );
+      }
+      const facts = await this.readFacts();
+      const next = [
+        ...facts.filter((existing) => existing.id !== parsed.id),
+        parsed,
+      ];
+      await this.writeFacts(next);
+    });
   }
 
   public async list(scope?: MemoryScope): Promise<readonly MemoryFact[]> {
@@ -81,23 +110,46 @@ export class VsCodeMementoMemoryStore implements MemoryStorePort {
     if (ids.length === 0) {
       return;
     }
-    const wanted = new Set(ids);
-    const facts = await this.readFacts();
-    await this.writeFacts(
-      facts.map((fact) => (wanted.has(fact.id) ? touchAccess(fact, at) : fact)),
-    );
+    return this.mutations.enqueue(async () => {
+      const wanted = new Set(ids);
+      const facts = await this.readFacts();
+      await this.writeFacts(
+        facts.map((fact) =>
+          wanted.has(fact.id) ? touchAccess(fact, at) : fact,
+        ),
+      );
+    });
   }
 
-  public async delete(id: string): Promise<void> {
-    const facts = await this.readFacts();
-    await this.writeFacts(facts.filter((fact) => fact.id !== id));
+  public async delete(id: string): Promise<MemoryDeleteResult> {
+    return this.mutations.enqueue(async () => {
+      const facts = await this.readFacts();
+      const existed = facts.some((fact) => fact.id === id);
+      if (!existed) {
+        return {
+          id,
+          deleted: false,
+          message: `Memory id "${id}" not found.`,
+        };
+      }
+      await this.writeFacts(facts.filter((fact) => fact.id !== id));
+      return {
+        id,
+        deleted: true,
+        message: `Deleted memory id "${id}".`,
+      };
+    });
   }
 
   public async clear(scope?: MemoryScope): Promise<void> {
-    const facts = await this.readFacts();
-    await this.writeFacts(
-      scope ? facts.filter((fact) => !scopesCompatible(fact.scope, scope)) : [],
-    );
+    return this.mutations.enqueue(async () => {
+      const facts = await this.readFacts();
+      await this.writeFacts(
+        scope
+          ? facts.filter((fact) => !scopesCompatible(fact.scope, scope))
+          : [],
+      );
+    });
   }
 
   public async listForView(): Promise<MemoryItemView[]> {

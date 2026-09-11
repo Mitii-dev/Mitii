@@ -63,7 +63,8 @@ export class NodeWorkspaceFileSystemAdapter implements WorkspaceFileSystemPort {
       const wantsRange =
         options?.startLine !== undefined ||
         options?.endLine !== undefined ||
-        options?.maxLines !== undefined;
+        options?.maxLines !== undefined ||
+        options?.tailLines !== undefined;
 
       // Prefix-only reads honor maxBytes from offset 0. Ranged reads may scan
       // farther (up to MAX_SEEK_BYTES) so late startLine values stay reachable,
@@ -95,6 +96,7 @@ export class NodeWorkspaceFileSystemAdapter implements WorkspaceFileSystemPort {
         startLine: options?.startLine,
         endLine: options?.endLine,
         maxLines: options?.maxLines,
+        tailLines: options?.tailLines,
         maxChars: wantsRange ? maxChars : undefined,
         textIsComplete: loadedComplete,
       });

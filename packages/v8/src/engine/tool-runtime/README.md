@@ -57,6 +57,27 @@ tool-runtime/
   contract supports `mode: "auto" | "literal" | "regex"` so hosts and models
   can search text generically without depending on a specific CLI search tool.
   Auto mode prefers literal search unless the query shows clear regex intent.
+- **Path containment** resolves case-insensitive and NFC-equivalent path
+  components, rejects ambiguous Unicode collisions, and compares realpath'd
+  targets against the physical workspace root (macOS `/var` → `/private/var`
+  alias safe). Helpers: `matchDirectoryEntry`, `expandRootAliases`.
+- **`fetch_url` / `fetch_docs`** support continuation windows via
+  `startIndex` / `maxLength` and return `nextStartIndex` + `totalLength` when
+  more content remains.
+- **`sequential_thinking`** is a first-party metacognition tool (process-local
+  history keyed by workspace root): revisions, branches, coerced booleans.
+- **`get_current_time` / `convert_time`** are read-only IANA timezone tools.
+- **Git argv safety:** path args must not start with `-`; diffs append paths
+  after `--` (`GitArgSafety`).
+- **Git reads:** optional `GitPort.log` / `show` / `listBranches` power
+  `read_git_log`, `read_git_show`, `read_git_branches`.
+- **Knowledge graph:** optional `ToolRuntimePorts.knowledgeGraph` powers
+  `memory_graph_search` / `memory_graph_open` / `memory_graph_update`
+  (relational memory beside MemoryFact).
+- **`fetch_url` intent:** default `autonomous` checks robots.txt; `intent=user`
+  skips robots for explicit user-requested URLs (distinct User-Agents).
+- **`read_file` head/tail:** first/last N lines without combining with line ranges.
+- **`directory_tree`:** recursive JSON tree (skips `.git` / `node_modules` by default).
 
 ## Ownership Boundaries
 

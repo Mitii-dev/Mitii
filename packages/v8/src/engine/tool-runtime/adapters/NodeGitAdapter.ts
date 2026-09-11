@@ -1,12 +1,25 @@
 import { spawn } from "node:child_process";
 
-import type { GitDiffResult, GitPort, GitStatusResult } from "../contracts";
+import type {
+  GitBranchListResult,
+  GitDiffResult,
+  GitLogResult,
+  GitPort,
+  GitShowResult,
+  GitStatusResult,
+} from "../contracts";
+import {
+  appendPathsAfterDoubleDash,
+  assertSafeGitArg,
+} from "../internal/GitArgSafety";
 
 const DEFAULT_MAX_OUTPUT_BYTES = 512_000;
 const DEFAULT_TIMEOUT_MS = 30_000;
+const LOG_RECORD_SEP = "\x1e";
+const LOG_FIELD_SEP = "\x1f";
 
 /**
- * Argv-only git status/diff for host wiring (Verification + read_git_status).
+ * Argv-only git for host wiring (Verification + git read tools).
  */
 export class NodeGitAdapter implements GitPort {
   constructor(
@@ -34,22 +47,110 @@ export class NodeGitAdapter implements GitPort {
     staged?: boolean;
     signal?: AbortSignal;
   }): Promise<GitDiffResult> {
-    const argv = ["diff", "--no-color"];
+    let argv = ["diff", "--no-color"];
     if (params.staged) {
       argv.push("--cached");
     }
     if (params.paths && params.paths.length > 0) {
-      argv.push("--", ...params.paths);
+      argv = appendPathsAfterDoubleDash(argv, params.paths);
     }
     const diff = await this.runGit(argv, params.workspaceRoot, params.signal);
-    const max = this.options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
-    if (Buffer.byteLength(diff, "utf8") > max) {
-      return {
-        diff: Buffer.from(diff, "utf8").subarray(0, max).toString("utf8"),
-        truncated: true,
-      };
+    return truncateText(diff, this.options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES);
+  }
+
+  public async log(params: {
+    workspaceRoot: string;
+    maxCount?: number;
+    paths?: readonly string[];
+    signal?: AbortSignal;
+  }): Promise<GitLogResult> {
+    const maxCount = Math.min(Math.max(params.maxCount ?? 20, 1), 100);
+    let argv = [
+      "log",
+      `--max-count=${maxCount}`,
+      `--pretty=format:%H${LOG_FIELD_SEP}%s${LOG_FIELD_SEP}%an${LOG_FIELD_SEP}%ae${LOG_FIELD_SEP}%aI${LOG_RECORD_SEP}`,
+    ];
+    if (params.paths && params.paths.length > 0) {
+      argv = appendPathsAfterDoubleDash(argv, params.paths);
     }
-    return { diff, truncated: false };
+    const raw = await this.runGit(argv, params.workspaceRoot, params.signal);
+    const entries = raw
+      .split(LOG_RECORD_SEP)
+      .map((chunk) => chunk.trim())
+      .filter((chunk) => chunk.length > 0)
+      .map((chunk) => {
+        const [hash, subject, authorName, authorEmail, authoredAt] =
+          chunk.split(LOG_FIELD_SEP);
+        return {
+          hash: hash ?? "",
+          subject: subject ?? "",
+          ...(authorName ? { authorName } : {}),
+          ...(authorEmail ? { authorEmail } : {}),
+          ...(authoredAt ? { authoredAt } : {}),
+        };
+      })
+      .filter((entry) => entry.hash.length > 0);
+    return { entries, truncated: false };
+  }
+
+  public async show(params: {
+    workspaceRoot: string;
+    revision: string;
+    path?: string;
+    signal?: AbortSignal;
+  }): Promise<GitShowResult> {
+    assertSafeGitArg(params.revision, "git revision");
+    const argv = ["show", "--no-color", params.revision];
+    if (params.path) {
+      assertSafeGitArg(params.path, "git path");
+      argv.push("--", params.path);
+    }
+    const content = await this.runGit(
+      argv,
+      params.workspaceRoot,
+      params.signal,
+    );
+    const truncated = truncateText(
+      content,
+      this.options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES,
+    );
+    return {
+      revision: params.revision,
+      content: truncated.diff,
+      truncated: truncated.truncated,
+    };
+  }
+
+  public async listBranches(params: {
+    workspaceRoot: string;
+    signal?: AbortSignal;
+  }): Promise<GitBranchListResult> {
+    const raw = await this.runGit(
+      ["branch", "--format=%(refname:short)"],
+      params.workspaceRoot,
+      params.signal,
+    );
+    const branches = raw
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+    for (const branch of branches) {
+      assertSafeGitArg(branch, "git branch");
+    }
+    let current: string | undefined;
+    try {
+      current = (
+        await this.runGit(
+          ["branch", "--show-current"],
+          params.workspaceRoot,
+          params.signal,
+        )
+      ).trim();
+      if (!current) current = undefined;
+    } catch {
+      current = undefined;
+    }
+    return { current, branches, truncated: false };
   }
 
   private runGit(
@@ -130,6 +231,19 @@ export class NodeGitAdapter implements GitPort {
       });
     });
   }
+}
+
+function truncateText(
+  text: string,
+  max: number,
+): { diff: string; truncated: boolean } {
+  if (Buffer.byteLength(text, "utf8") > max) {
+    return {
+      diff: Buffer.from(text, "utf8").subarray(0, max).toString("utf8"),
+      truncated: true,
+    };
+  }
+  return { diff: text, truncated: false };
 }
 
 function parsePorcelainStatus(raw: string): GitStatusResult {

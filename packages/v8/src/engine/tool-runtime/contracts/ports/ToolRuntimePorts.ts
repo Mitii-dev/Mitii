@@ -1,4 +1,5 @@
 import type { CodeNavigationPort } from "../../../../modules/code-navigation";
+import type { KnowledgeGraphPort } from "../../../../modules/memory";
 import type { RepoGraph } from "../../../../modules/repository-state";
 import type { DiagnosticsPort } from "./DiagnosticsPort";
 import type { GitPort } from "./GitPort";
@@ -16,6 +17,8 @@ export interface ToolRuntimePorts {
   search?: SearchPort;
   codeNavigation?: CodeNavigationPort;
   repoGraphs?: RepositoryGraphPort;
+  /** Optional relational memory beside MemoryFact pipeline. */
+  knowledgeGraph?: KnowledgeGraphPort;
 }
 
 export interface RepositoryGraphPort {
@@ -53,7 +56,12 @@ export type {
   GitPort,
   GitStatusResult,
   GitDiffResult,
+  GitLogEntry,
+  GitLogResult,
+  GitShowResult,
+  GitBranchListResult,
 } from "./GitPort";
+export type { KnowledgeGraphPort } from "../../../../modules/memory";
 export type {
   NetworkPort,
   NetworkFetchRequest,

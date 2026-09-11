@@ -147,6 +147,11 @@ export {
   createWorkspaceMemoryStore,
   FileWorkspaceMemoryStore,
 } from './ports/memoryStore.js';
+export type { MemoryDeleteResult } from './ports/memoryStore.js';
+export {
+  createWorkspaceKnowledgeGraph,
+  FileWorkspaceKnowledgeGraphStore,
+} from './ports/knowledgeGraphStore.js';
 export { observeWorkspaceEvent } from './ports/memoryCapture.js';
 export type {
   ObserveWorkspaceEventInput,

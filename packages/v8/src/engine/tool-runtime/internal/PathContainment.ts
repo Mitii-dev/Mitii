@@ -230,7 +230,10 @@ export async function resolveContainedPath(params: {
             realPath: ciReal,
           };
         }
-      } catch {
+      } catch (error) {
+        if (error instanceof PathContainmentError) {
+          throw error;
+        }
         // Fall through to the missing-path error with a discovery hint.
       }
     }
@@ -356,8 +359,11 @@ function buildMissingPathMessage(
 }
 
 /**
- * Walk path segments against on-disk names, ignoring case. Returns the
- * canonical relative path when every segment resolves, otherwise undefined.
+ * Walk path segments against on-disk names with exact → NFC → case-insensitive
+ * matching (servers-main filesystem technique). Returns the canonical relative
+ * path when every segment resolves, otherwise undefined.
+ *
+ * Ambiguous Unicode (multiple NFC-equivalent directory entries) fails closed.
  */
 async function resolveCaseInsensitiveRelativePath(params: {
   fileSystem: WorkspaceFileSystemPort;
@@ -377,13 +383,67 @@ async function resolveCaseInsensitiveRelativePath(params: {
     } catch {
       return undefined;
     }
-    const needle = segment.toLowerCase();
-    const hit = entries.find((entry) => entry.name.toLowerCase() === needle);
+    const hit = matchDirectoryEntry(entries, segment);
     if (!hit) {
       return undefined;
     }
-    resolved.push(hit.name);
-    absoluteCursor = params.fileSystem.resolve(absoluteCursor, hit.name);
+    if (hit === "ambiguous") {
+      throw new PathContainmentError(
+        "path_escape",
+        `Ambiguous Unicode path component: "${segment}".`,
+      );
+    }
+    resolved.push(hit);
+    absoluteCursor = params.fileSystem.resolve(absoluteCursor, hit);
   }
   return resolved.join("/");
+}
+
+/**
+ * Prefer a single NFC-equivalent name (exact or normalized), then a single
+ * case-insensitive match. Multiple distinct NFC-equivalent directory entries
+ * → "ambiguous" (fail closed).
+ */
+export function matchDirectoryEntry(
+  entries: readonly { name: string }[],
+  segment: string,
+): string | "ambiguous" | undefined {
+  const nfcNeedle = segment.normalize("NFC");
+  const nfcHits = entries.filter(
+    (entry) => entry.name.normalize("NFC") === nfcNeedle,
+  );
+  const uniqueNfcNames = [...new Set(nfcHits.map((entry) => entry.name))];
+  if (uniqueNfcNames.length > 1) {
+    return "ambiguous";
+  }
+  if (uniqueNfcNames.length === 1) {
+    return uniqueNfcNames[0];
+  }
+
+  const lowerNeedle = segment.toLowerCase();
+  const caseHits = entries.filter(
+    (entry) => entry.name.toLowerCase() === lowerNeedle,
+  );
+  const uniqueCaseNames = [...new Set(caseHits.map((entry) => entry.name))];
+  if (uniqueCaseNames.length === 1) {
+    return uniqueCaseNames[0];
+  }
+  return undefined;
+}
+
+/**
+ * Returns unique absolute roots useful for ACL checks when the OS aliases
+ * a logical root (e.g. macOS `/var` → `/private/var`). Callers should treat
+ * both as allowed when comparing unresolved paths.
+ */
+export function expandRootAliases(
+  absoluteRoot: string,
+  physicalRoot: string,
+): readonly string[] {
+  const resolvedAbsolute = path.resolve(absoluteRoot);
+  const resolvedPhysical = path.resolve(physicalRoot);
+  if (resolvedAbsolute === resolvedPhysical) {
+    return [resolvedAbsolute];
+  }
+  return [resolvedAbsolute, resolvedPhysical];
 }

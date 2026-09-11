@@ -10,7 +10,7 @@ import {
 
 import { activeMcpServers } from '../mcpConfig.js';
 import type { McpServerConfig, McpSettings } from '../protocol.js';
-import { McpStdioClient, type McpToolDescriptor } from './stdioClient.js';
+import { McpStdioClient, type McpToolDescriptor, workspaceRootsFromPath } from './stdioClient.js';
 
 export type McpServerRuntimeStatus =
   | 'disabled'
@@ -57,6 +57,16 @@ function formatToolResult(content: unknown): string {
       .join('\n');
   }
   return JSON.stringify(content, null, 2);
+}
+
+function preferStructuredOutput(params: {
+  content: unknown;
+  structuredContent?: unknown;
+}): unknown {
+  if (params.structuredContent !== undefined) {
+    return params.structuredContent;
+  }
+  return formatToolResult(params.content);
 }
 
 /**
@@ -110,6 +120,9 @@ export class McpManager {
           cwd: server.cwd ?? workspaceRoot,
           env: server.env,
           serverLabel: server.name,
+          ...(workspaceRoot
+            ? { roots: workspaceRootsFromPath(workspaceRoot) }
+            : {}),
         });
         await client.initialize();
         const tools = await client.listTools();
@@ -216,20 +229,34 @@ export class McpManager {
         }),
         async execute(ctx: ToolExecutionContext) {
           const result = await client.callTool(tool.name, ctx.arguments);
-          const text = formatToolResult(result.content);
+          const preferred = preferStructuredOutput({
+            content: result.content,
+            structuredContent: result.structuredContent,
+          });
+          const text =
+            typeof preferred === 'string'
+              ? preferred
+              : JSON.stringify(preferred);
           const truncated =
             Buffer.byteLength(text, 'utf8') > ctx.maxOutputBytes;
-          const output = truncated
+          const clipped = truncated
             ? text.slice(0, Math.max(0, ctx.maxOutputBytes - 20)) +
               '\n…(truncated)'
             : text;
+          let contentOut: unknown = clipped;
+          if (typeof preferred !== 'string' && !truncated) {
+            contentOut = preferred;
+          }
           return {
             output: {
               serverId,
               server: serverName,
               tool: tool.name,
               isError: Boolean(result.isError),
-              content: output,
+              content: contentOut,
+              ...(result.structuredContent !== undefined
+                ? { structuredContent: result.structuredContent }
+                : {}),
             },
             truncated,
             redacted: false,

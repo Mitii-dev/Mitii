@@ -6,6 +6,7 @@ export const TOOL_RUNTIME_SCHEMA_VERSION = 1 as const;
 /** Read-only tools Decision Policy may grant. */
 export const READ_ONLY_TOOL_IDS = [
   "list_directory",
+  "directory_tree",
   "read_file",
   "read_many_files",
   "glob_files",
@@ -13,11 +14,19 @@ export const READ_ONLY_TOOL_IDS = [
   "search_files",
   "read_diagnostics",
   "read_git_status",
+  "read_git_log",
+  "read_git_show",
+  "read_git_branches",
   "goto_definition",
   "find_references",
   "analyze_change_impact",
   "run_readonly_command",
   "read_package_scripts",
+  "sequential_thinking",
+  "get_current_time",
+  "convert_time",
+  "memory_graph_search",
+  "memory_graph_open",
 ] as const;
 
 /** Catalogued network tools — granted only when Decision Policy issues hosts/search. */
@@ -36,6 +45,7 @@ export const MUTATION_TOOL_IDS = [
   "delete_file",
   "delete_directory",
   "move_file",
+  "memory_graph_update",
 ] as const;
 
 /** Opt-in mutating process tool (not in default MUTATION_TOOL_IDS). */

@@ -31,6 +31,34 @@ export const listDirectoryOutputSchema = z
   })
   .strict();
 
+export const directoryTreeInputSchema = z
+  .object({
+    path: z.string().min(1).default("."),
+    maxDepth: z.number().int().positive().max(20).optional(),
+    maxEntries: z.number().int().positive().max(5_000).optional(),
+    excludeNames: z.array(z.string().min(1).max(256)).max(50).optional(),
+  })
+  .strict();
+
+export const directoryTreeNodeSchema: z.ZodTypeAny = z.lazy(() =>
+  z
+    .object({
+      name: z.string(),
+      kind: z.enum(["file", "directory", "symlink", "other"]),
+      children: z.array(directoryTreeNodeSchema).optional(),
+    })
+    .strict(),
+);
+
+export const directoryTreeOutputSchema = z
+  .object({
+    path: z.string(),
+    tree: z.array(directoryTreeNodeSchema),
+    truncated: z.boolean(),
+    entryCount: z.number().int().nonnegative(),
+  })
+  .strict();
+
 export const readFileTruncationReasonSchema = z.enum([
   "byte_cap",
   "line_range",
@@ -44,6 +72,10 @@ export const readFileInputSchema = z
     startLine: z.number().int().positive().optional(),
     endLine: z.number().int().positive().optional(),
     maxLines: z.number().int().positive().max(20_000).optional(),
+    /** First N lines (alias for startLine=1 + maxLines). Mutually exclusive with tail. */
+    head: z.number().int().positive().max(20_000).optional(),
+    /** Last N lines when the loaded prefix is complete. Mutually exclusive with head. */
+    tail: z.number().int().positive().max(20_000).optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -56,6 +88,37 @@ export const readFileInputSchema = z
         code: z.ZodIssueCode.custom,
         message: "endLine must be >= startLine",
         path: ["endLine"],
+      });
+    }
+    if (value.head !== undefined && value.tail !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "head and tail are mutually exclusive",
+        path: ["tail"],
+      });
+    }
+    if (
+      value.head !== undefined &&
+      (value.startLine !== undefined ||
+        value.endLine !== undefined ||
+        value.maxLines !== undefined)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "head cannot be combined with startLine/endLine/maxLines",
+        path: ["head"],
+      });
+    }
+    if (
+      value.tail !== undefined &&
+      (value.startLine !== undefined ||
+        value.endLine !== undefined ||
+        value.maxLines !== undefined)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "tail cannot be combined with startLine/endLine/maxLines",
+        path: ["tail"],
       });
     }
   });
@@ -302,6 +365,124 @@ export const readGitStatusOutputSchema = z
   })
   .strict();
 
+export const readGitLogInputSchema = z
+  .object({
+    maxCount: z.number().int().positive().max(100).optional(),
+    paths: z.array(z.string().min(1)).max(50).optional(),
+  })
+  .strict();
+
+export const readGitLogOutputSchema = z
+  .object({
+    entries: z.array(
+      z
+        .object({
+          hash: z.string(),
+          subject: z.string(),
+          authorName: z.string().optional(),
+          authorEmail: z.string().optional(),
+          authoredAt: z.string().optional(),
+        })
+        .strict(),
+    ),
+    truncated: z.boolean(),
+  })
+  .strict();
+
+export const readGitShowInputSchema = z
+  .object({
+    revision: z.string().min(1).max(256),
+    path: z.string().min(1).optional(),
+  })
+  .strict();
+
+export const readGitShowOutputSchema = z
+  .object({
+    revision: z.string(),
+    content: z.string(),
+    truncated: z.boolean(),
+  })
+  .strict();
+
+export const readGitBranchesInputSchema = z.object({}).strict();
+
+export const readGitBranchesOutputSchema = z
+  .object({
+    current: z.string().optional(),
+    branches: z.array(z.string()),
+    truncated: z.boolean(),
+  })
+  .strict();
+
+export const memoryGraphSearchInputSchema = z
+  .object({
+    query: z.string().min(1).max(2048),
+  })
+  .strict();
+
+export const memoryGraphEntitySchema = z
+  .object({
+    name: z.string().min(1),
+    entityType: z.string().min(1),
+    observations: z.array(z.string()).default([]),
+  })
+  .strict();
+
+export const memoryGraphRelationSchema = z
+  .object({
+    from: z.string().min(1),
+    to: z.string().min(1),
+    relationType: z.string().min(1),
+  })
+  .strict();
+
+export const memoryGraphOutputSchema = z
+  .object({
+    entities: z.array(memoryGraphEntitySchema),
+    relations: z.array(memoryGraphRelationSchema),
+  })
+  .strict();
+
+export const memoryGraphOpenInputSchema = z
+  .object({
+    names: z.array(z.string().min(1)).min(1).max(50),
+  })
+  .strict();
+
+export const memoryGraphUpdateInputSchema = z
+  .object({
+    operation: z.enum([
+      "create_entities",
+      "create_relations",
+      "add_observations",
+      "delete_entities",
+      "delete_relations",
+    ]),
+    entities: z.array(memoryGraphEntitySchema).max(50).optional(),
+    relations: z.array(memoryGraphRelationSchema).max(100).optional(),
+    observations: z
+      .array(
+        z
+          .object({
+            entityName: z.string().min(1),
+            contents: z.array(z.string().min(1)).min(1).max(50),
+          })
+          .strict(),
+      )
+      .max(50)
+      .optional(),
+    names: z.array(z.string().min(1)).max(50).optional(),
+  })
+  .strict();
+
+export const memoryGraphUpdateOutputSchema = z
+  .object({
+    operation: z.string(),
+    result: z.unknown(),
+    message: z.string(),
+  })
+  .strict();
+
 export const runReadonlyCommandInputSchema = z
   .object({
     argv: z.array(z.string().min(1)).min(1),
@@ -321,6 +502,15 @@ export const runReadonlyCommandOutputSchema = z
 export const fetchUrlInputSchema = z
   .object({
     url: z.string().url(),
+    /** Byte/char offset into the fetched body for continuation windows. */
+    startIndex: z.number().int().nonnegative().optional(),
+    /** Max characters to return from startIndex (servers-main fetch pagination). */
+    maxLength: z.number().int().positive().max(1_000_000).optional(),
+    /**
+     * `autonomous` (default) respects robots.txt; `user` skips robots for
+     * explicit user-requested URLs (servers-main fetch policy split).
+     */
+    intent: z.enum(["autonomous", "user"]).optional(),
   })
   .strict();
 
@@ -330,6 +520,84 @@ export const fetchUrlOutputSchema = z
     status: z.number().int(),
     body: z.string(),
     truncated: z.boolean(),
+    startIndex: z.number().int().nonnegative(),
+    /** Present when more content remains — call again with this as startIndex. */
+    nextStartIndex: z.number().int().nonnegative().optional(),
+    totalLength: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+
+/** Coerce LLM stringified booleans while keeping JSON Schema `required`. */
+export const coercedBooleanSchema = z.union([
+  z.boolean(),
+  z
+    .string()
+    .transform((value, ctx) => {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === "true") return true;
+      if (normalized === "false") return false;
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Expected boolean or "true"/"false"',
+      });
+      return z.NEVER;
+    }),
+]);
+
+export const sequentialThinkingInputSchema = z
+  .object({
+    thought: z.string().min(1).max(32_000),
+    thoughtNumber: z.coerce.number().int().positive(),
+    totalThoughts: z.coerce.number().int().positive(),
+    nextThoughtNeeded: coercedBooleanSchema,
+    isRevision: coercedBooleanSchema.optional(),
+    revisesThought: z.coerce.number().int().positive().optional(),
+    branchFromThought: z.coerce.number().int().positive().optional(),
+    branchId: z.string().min(1).max(256).optional(),
+    needsMoreThoughts: coercedBooleanSchema.optional(),
+  })
+  .strict();
+
+export const sequentialThinkingOutputSchema = z
+  .object({
+    thoughtNumber: z.number().int().positive(),
+    totalThoughts: z.number().int().positive(),
+    nextThoughtNeeded: z.boolean(),
+    branches: z.array(z.string()),
+    thoughtHistoryLength: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const getCurrentTimeInputSchema = z
+  .object({
+    timezone: z.string().min(1).max(128).optional(),
+  })
+  .strict();
+
+export const timeSnapshotSchema = z
+  .object({
+    timezone: z.string(),
+    datetime: z.string(),
+    dayOfWeek: z.string(),
+    isDst: z.boolean(),
+  })
+  .strict();
+
+export const getCurrentTimeOutputSchema = timeSnapshotSchema;
+
+export const convertTimeInputSchema = z
+  .object({
+    sourceTimezone: z.string().min(1).max(128),
+    time: z.string().min(1).max(16),
+    targetTimezone: z.string().min(1).max(128),
+  })
+  .strict();
+
+export const convertTimeOutputSchema = z
+  .object({
+    source: timeSnapshotSchema,
+    target: timeSnapshotSchema,
+    timeDifference: z.string(),
   })
   .strict();
 
