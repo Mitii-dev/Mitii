@@ -11,7 +11,11 @@ import {
 import type {
   PromptInstructions,
 } from "../../../modules/prompt-construction";
-
+import {
+  compileDecisionBrief,
+  formatDecisionBriefForPrompt,
+} from "../../../modules/decision-policy";
+import { resolveSteeringFeatureFlags } from "../steeringFlags";
 import {
   annotateMutationToolDefinitions,
   applyExplorationSignal,
@@ -360,6 +364,14 @@ export async function executeStart(
       });
     }
 
+    const steering = resolveSteeringFeatureFlags(input.steering);
+    const decisionBriefText =
+      steering.decisionBrief
+        ? formatDecisionBriefForPrompt(
+            compileDecisionBrief({ decision, understanding }),
+          )
+        : undefined;
+
     const promptResult = runtime.deps.prompt.construct({
       schemaVersion: PROMPT_CONSTRUCTION_SCHEMA_VERSION,
       decision,
@@ -369,6 +381,7 @@ export async function executeStart(
       repositoryContext,
       instructions,
       planText,
+      ...(decisionBriefText ? { decisionBriefText } : {}),
       tools,
       capabilities: runtime.deps.llm.capabilities,
       model: input.model,
@@ -501,6 +514,7 @@ export async function executeStart(
       reserveVerificationRepairModelCalls: true,
       plan: shared.runPlan,
       thresholds,
+      criticMode: steering.criticMode,
     });
 
     return await finishAfterLoop(runtime, {

@@ -17,6 +17,7 @@ export function buildSystemInstructions(params: {
   budgetTokens: number;
     planBudgetTokens?: number;
     planText?: string;
+    decisionBriefText?: string;
 }): {
   content: string;
   usedTokens: number;
@@ -34,6 +35,7 @@ export function buildSystemInstructions(params: {
 } {
   const core = buildCoreSystemPrompt(params.decision);
   const planGuidance = buildPlanGuidance(params.decision, params.planText);
+  const briefText = params.decisionBriefText?.trim() ?? "";
   const planUsedTokens = params.estimator.estimate(planGuidance);
   let remaining = Math.max(
     PROMPT_CONSTRUCTION_THRESHOLDS.minimumSystemTokens,
@@ -41,11 +43,19 @@ export function buildSystemInstructions(params: {
   );
 
   const parts: string[] = [core];
+  if (briefText.length > 0) {
+    parts.push(briefText);
+  }
   if (planGuidance.length > 0) {
     parts.push(planGuidance);
   }
   let usedTokens = params.estimator.estimate(core);
   remaining -= usedTokens;
+  if (briefText.length > 0) {
+    const briefTokens = params.estimator.estimate(briefText);
+    usedTokens += briefTokens;
+    remaining -= briefTokens;
+  }
   if (planGuidance.length > 0) {
     remaining -= planUsedTokens;
   }

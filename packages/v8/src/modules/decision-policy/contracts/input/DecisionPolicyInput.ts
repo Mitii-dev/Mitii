@@ -57,6 +57,11 @@ export const decisionPolicyInputSchema = z
      * Ignored unless `enabled: true`. Never widens the policy grant.
      */
     userSafetyRules: userSafetyRulesSchema.optional(),
+    /**
+     * When true, prefer high-confidence understanding over looksLike*
+     * heuristics except documented safety overrides.
+     */
+    policyFactsFirst: z.boolean().optional(),
   })
   .strict();
 

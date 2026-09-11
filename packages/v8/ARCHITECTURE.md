@@ -359,6 +359,15 @@ Its output includes evidence such as:
 - clarity and missing decisions
 - expected outcome
 - planning, discovery, verification, and clarification recommendations
+- optional situation clarify slots and soft skill tags (Understanding Ballot)
+
+The understanding LLM is a **constrained ballot** over messy language (catalog
+intents, situation options, closed skill tags). It outputs facts, not grants.
+See [`docs/UNDERSTANDING_BALLOT_AND_STEERING.md`](../../../docs/UNDERSTANDING_BALLOT_AND_STEERING.md).
+
+DecisionBrief (when enabled) translates the authoritative decision into
+worker-facing mission/constraints. A pre-mutation critic may narrow or pause
+only — never widen the grant.
 
 Decision Policy turns evidence into one authoritative decision:
 

@@ -3,11 +3,23 @@ export { clampTurnMaximumOutputTokens } from "./clampTurnMaximumOutputTokens";
 export {
   amendMessageWithClarification,
   buildClarificationPayload,
+  resolveClarificationAnswer,
 } from "./buildClarificationPayload";
 export type {
   ClarificationOptionPayload,
   ClarificationPayload,
+  ClarificationSession,
+  ClarificationSessionOption,
 } from "./buildClarificationPayload";
+export {
+  evaluateMutationCritic,
+  MUTATION_CRITIC_VERDICTS,
+} from "./evaluateMutationCritic";
+export type {
+  MutationCriticInput,
+  MutationCriticResult,
+  MutationCriticVerdict,
+} from "./evaluateMutationCritic";
 export { extractFileReadPaths } from "./extractFileReadPaths";
 export {
   extractToolContentPaths,

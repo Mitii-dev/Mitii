@@ -97,6 +97,7 @@ export class PromptConstructionPipeline {
       estimator: this.estimator,
       budgetTokens: systemBudget,
       planText: parsed.planText,
+      decisionBriefText: parsed.decisionBriefText,
     });
     let systemContent = system.content;
 
@@ -106,6 +107,14 @@ export class PromptConstructionPipeline {
       source: "system:safety+route",
       trust: "trusted_instruction",
     });
+    if (parsed.decisionBriefText?.trim()) {
+      provenance.push({
+        blockId: "system:decision-brief",
+        section: "system",
+        source: "system:decision-brief",
+        trust: "trusted_instruction",
+      });
+    }
     for (const id of system.includedRuleIds) {
       provenance.push({
         blockId: id,

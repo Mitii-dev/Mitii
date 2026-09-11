@@ -67,3 +67,8 @@ export type {
   ApprovalPresetCopy,
   VsCodeApprovalPreset,
 } from "./ApprovalPresetCopy";
+
+export {
+  compileDecisionBrief,
+  formatDecisionBriefForPrompt,
+} from "./CompileDecisionBrief";

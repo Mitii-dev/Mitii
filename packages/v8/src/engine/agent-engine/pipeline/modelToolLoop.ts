@@ -21,16 +21,23 @@ import type {
 } from "../../../modules/verification";
 
 import {
+  compileDecisionBrief,
+} from "../../../modules/decision-policy";
+import {
   buildOutputTruncationRecovery,
   estimateStickyMutableChars,
   compactRecoveredAssistantContent,
   requiresMutationForExecute,
   reservedVerificationRepairModelCalls,
   recoverLeakedToolCallsFromMarkup,
+  evaluateMutationCritic,
+  extractMutationTargetPaths,
 } from "../actions";
 import type {
   EstablishedFact,
 } from "../actions";
+import type { SteeringCriticMode } from "../steeringFlags";
+import { MUTATION_TOOL_IDS } from "../../tool-runtime";
 import { ToolCallCache } from "../internal/ToolCallCache";
 import { ReadLedger } from "../internal/ReadLedger";
 import type {
@@ -110,6 +117,8 @@ export async function runModelToolLoop(
   thresholds?: AgentEngineThresholds;
   /** Seeded from checkpoint when resuming after a Continue approval. */
   continueOverrideCount?: number;
+  /** Pre-mutation critic mode from steering flags (default off). */
+  criticMode?: SteeringCriticMode;
 }): Promise<ToolLoopOutcome> {
   const {
     runId,
@@ -129,6 +138,7 @@ export async function runModelToolLoop(
     evidence,
     logVerbosity,
   } = params;
+  const criticMode: SteeringCriticMode = params.criticMode ?? "off";
   const thresholds = params.thresholds ?? AGENT_ENGINE_THRESHOLDS;
   const establishedFacts = params.establishedFacts ?? [];
   const readLedger = new ReadLedger();
@@ -466,6 +476,86 @@ export async function runModelToolLoop(
         return noTool.outcome;
       }
       continue;
+    }
+
+    // Pre-mutation critic (narrow/pause only). Runs before Tool Runtime.
+    const mutationToolNames = toolCalls
+      .map((call) => call.name)
+      .filter((name) =>
+        (MUTATION_TOOL_IDS as readonly string[]).includes(name) ||
+        name === "run_command",
+      );
+    if (mutationToolNames.length > 0 && criticMode !== "off") {
+      const intendedPaths: string[] = [];
+      for (const call of toolCalls) {
+        let args: unknown = call.arguments;
+        if (typeof args === "string") {
+          try {
+            args = JSON.parse(args);
+          } catch {
+            args = undefined;
+          }
+        }
+        intendedPaths.push(...extractMutationTargetPaths(call.name, args));
+      }
+      const brief = compileDecisionBrief({
+        decision: session.decision,
+        understanding: params.understanding,
+      });
+      const critic = evaluateMutationCritic({
+        decision: session.decision,
+        brief,
+        mutationToolNames,
+        intendedPaths,
+        proposedSummary: turn.content.slice(0, 800),
+        mode: criticMode,
+      });
+      if (critic.shadowWouldBlock) {
+        reasonCodes.push("mutation_critic_shadow_block");
+        warnings.push(
+          `Mutation critic (shadow) would block: ${critic.reasons.join(" ")}`,
+        );
+        runtime.emit(bus, {
+          type: "warning",
+          runId,
+          message: `Mutation critic shadow: ${critic.reasons[0] ?? "would block"}`,
+          at: runtime.isoNow(),
+        });
+      }
+      if (critic.verdict === "pass" && !critic.shadowWouldBlock) {
+        reasonCodes.push("mutation_critic_pass");
+      } else if (critic.verdict === "revise") {
+        reasonCodes.push("mutation_critic_revise");
+        if (critic.narrowToPaths && critic.narrowToPaths.length > 0) {
+          if (runtime.deps.decision.narrow) {
+            session.decision = runtime.deps.decision.narrow({
+              previous: session.decision,
+              discoveredPaths: critic.narrowToPaths,
+            });
+            reasonCodes.push("grant_narrowed");
+          }
+        }
+        warnings.push(`Mutation critic revise: ${critic.reasons.join(" ")}`);
+        messages.push({
+          role: "user",
+          content:
+            `Mutation critic requires revision before applying edits:\n` +
+            critic.reasons.map((r) => `- ${r}`).join("\n") +
+            `\nAdjust the plan or tool calls; do not widen authority.`,
+        });
+        continue;
+      } else if (critic.verdict === "stop_and_clarify") {
+        reasonCodes.push("mutation_critic_stop");
+        warnings.push(`Mutation critic stop: ${critic.reasons.join(" ")}`);
+        messages.push({
+          role: "user",
+          content:
+            `Mutation critic blocked this mutation batch:\n` +
+            critic.reasons.map((r) => `- ${r}`).join("\n") +
+            `\nDo not execute those mutations. Clarify or stay in-scope.`,
+        });
+        continue;
+      }
     }
 
     const toolPhase = await runModelLoopToolPhase({

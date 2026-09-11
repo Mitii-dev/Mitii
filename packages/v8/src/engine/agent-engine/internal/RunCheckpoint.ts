@@ -15,6 +15,7 @@ import type {
   AgentRunUsage,
 } from "../contracts/output/AgentRunResult";
 import type { BudgetWallReason } from "../actions/buildStallContinueRationale";
+import type { ClarificationSession } from "../actions/buildClarificationPayload";
 
 export interface PendingApprovalState {
   approvalId: string;
@@ -61,6 +62,8 @@ export interface AgentRunCheckpoint {
   continueOverrideCount?: number;
   /** Structured plan awaiting approval when suspensionKind is plan_approval_required. */
   plan?: PlanArtifact;
+  /** Clarification option map for structured resume (ballot v2). */
+  clarificationSession?: ClarificationSession;
   /** Strategy that produced `plan`; restored on resume so the prompt contract survives. */
   planStrategy?: PlanStrategyDecision;
   /** Live task list at suspension time. */

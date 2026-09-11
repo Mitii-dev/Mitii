@@ -51,6 +51,7 @@ export class DecisionPolicyPipeline {
       planApproval: parsed.planApproval,
       windowPolicy: parsed.windowPolicy,
       origin: parsed.envelope.origin,
+      policyFactsFirst: parsed.policyFactsFirst === true,
     });
     const grantCompiled = compileGrant({
       mode,

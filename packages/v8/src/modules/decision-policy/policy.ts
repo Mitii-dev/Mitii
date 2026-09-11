@@ -12,6 +12,12 @@ export const DECISION_POLICY_THRESHOLDS = {
   clarifyWhenFlaggedBelowConfidence: 0.75,
   /** Above this margin, competing intents are treated as clear enough to proceed. */
   minimumIntentMargin: 0.12,
+  /**
+   * When policyFactsFirst is on, treat understanding as authoritative above
+   * this confidence (and margin) except for documented safety overrides.
+   */
+  factsFirstMinConfidence: 0.74,
+  factsFirstMinMargin: 0.12,
   /** Estimated file count above which multi-file work gets an internal plan. */
   multiFilePlanThreshold: 2,
   /**

@@ -110,6 +110,10 @@ export const promptConstructionInputSchema = z
      * Optional — omitted when planningDepth is none or planning was skipped.
      */
     planText: z.string().min(1).max(20_000).optional(),
+    /**
+     * Trusted DecisionBrief block (already formatted). Advisory only.
+     */
+    decisionBriefText: z.string().min(1).max(8_000).optional(),
     tools: z.array(modelToolDefinitionSchema).optional(),
     capabilities: modelCapabilitiesSchema,
     model: z.string().min(1).optional(),

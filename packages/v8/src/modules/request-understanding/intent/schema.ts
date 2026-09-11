@@ -15,6 +15,31 @@ export const InteractionIntentEnum = z.enum([
   'unknown',
 ]);
 
+export const ambiguousSlotKindSchema = z.enum([
+  'interaction',
+  'target',
+  'scope',
+  'outcome',
+  'intent',
+]);
+
+export const ambiguousSlotOptionSchema = z
+  .object({
+    /** Namespaced id, e.g. target:src/LoginForm.tsx or interaction:act */
+    id: z.string().min(1).max(200),
+    label: z.string().min(1).max(200),
+    description: z.string().max(500).optional(),
+  })
+  .strict();
+
+export const ambiguousSlotSchema = z
+  .object({
+    kind: ambiguousSlotKindSchema,
+    question: z.string().min(1).max(500),
+    options: z.array(ambiguousSlotOptionSchema).min(2).max(6),
+  })
+  .strict();
+
 /**
  * Optional evidence hints from the understanding LLM call.
  * Recommendations only — never grants, routes, or selected skill IDs.
@@ -48,6 +73,11 @@ export const understandingTaskHintsSchema = z
       .array(z.string().min(1).max(64))
       .max(10)
       .default([]),
+    /**
+     * Situation-specific clarify slots (Understanding Ballot v2).
+     * Prefer over intent-chip alternatives when present.
+     */
+    ambiguousSlots: z.array(ambiguousSlotSchema).max(4).default([]),
   })
   .strict();
 
@@ -69,3 +99,6 @@ export type InteractionIntent = z.infer<typeof InteractionIntentEnum>;
 export type UnderstandingTaskHints = z.infer<
   typeof understandingTaskHintsSchema
 >;
+export type AmbiguousSlotKind = z.infer<typeof ambiguousSlotKindSchema>;
+export type AmbiguousSlotOption = z.infer<typeof ambiguousSlotOptionSchema>;
+export type AmbiguousSlot = z.infer<typeof ambiguousSlotSchema>;

@@ -161,6 +161,12 @@ export const DECISION_REASON_CODES = [
    * best-effort non-clarify route instead of suspending for interactive input.
    */
   "automation_clarify_suppressed",
+  /** High-confidence understanding preferred over looksLike heuristics. */
+  "policy_facts_first",
+  /** Safety heuristic overrode facts-first (e.g. pasted runtime dump). */
+  "policy_facts_safety_override",
+  /** Heuristic vs ballot conflict with material grant impact → clarify. */
+  "policy_facts_heuristic_conflict_clarify",
 ] as const;
 
 export const DECISION_POLICY_ERROR_CODES = [

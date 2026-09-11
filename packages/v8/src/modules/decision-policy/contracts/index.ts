@@ -34,6 +34,9 @@ export type {
   VerificationRequirement,
 } from "./output/ExecutionDecision";
 
+export { decisionBriefSchema } from "./output/DecisionBrief";
+export type { DecisionBrief } from "./output/DecisionBrief";
+
 export {
   toolGrantSchema,
   toolGrantLimitsSchema,

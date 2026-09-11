@@ -23,6 +23,7 @@ import {
 } from "../internal/taskListRuntime";
 import { DEFAULT_TOOL_DEFINITIONS } from "../policy";
 import { resolveLoopPolicyThresholds } from "../actions/resolveLoopPolicyThresholds";
+import { resolveSteeringFeatureFlags } from "../steeringFlags";
 
 import type { AgentEngineRuntime } from "./runtime";
 import { runModelToolLoop } from "./modelToolLoop";
@@ -166,6 +167,7 @@ export async function resumeToolLoopFromCheckpoint(
       contextWindowTokens: windowPolicy.contextWindowTokens,
       overrides: startInput.loopPolicy?.thresholds,
     }).thresholds,
+    criticMode: resolveSteeringFeatureFlags(startInput.steering).criticMode,
   });
 
   return await finishAfterLoop(runtime, {

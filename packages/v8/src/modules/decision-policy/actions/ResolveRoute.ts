@@ -35,12 +35,18 @@ export function resolveRoute(params: {
    * (automation / api) can continue with a best-effort route.
    */
   suppressClarification?: boolean;
+  /**
+   * Prefer high-confidence understanding over looksLike* except safety overrides.
+   */
+  policyFactsFirst?: boolean;
 }): RouteResolution {
   const { mode, understanding, message } = params;
   const { intent, taskAnalysis } = understanding;
   const primary = intent.classification.primaryTaskIntent;
   const interaction = intent.classification.interactionIntent;
   const reasonCodes: DecisionReasonCode[] = [];
+  const factsFirst =
+    params.policyFactsFirst === true && isHighConfidenceUnderstanding(understanding);
 
   if (
     !params.suppressClarification &&
@@ -86,17 +92,27 @@ export function resolveRoute(params: {
     };
   }
 
-  // Pasted console/runtime dumps without an explicit fix/implement ask should
-  // diagnose first. Otherwise understanding often labels them bugfix+act and
-  // the execute loop fails with no_mutation_performed after endless searching.
-  // Keep this ahead of mutation-intent promotion so stack pastes stay read-only.
+  // SAFETY OVERRIDE (always): pasted dumps stay diagnose-first.
   if (looksLikePastedRuntimeErrorDump(message)) {
+    if (factsFirst) {
+      reasonCodes.push("policy_facts_safety_override");
+    }
     reasonCodes.push("diagnosis_readonly");
     return {
       route: "diagnose",
       runDisposition: "continue",
       reasonCodes,
     };
+  }
+
+  if (factsFirst) {
+    reasonCodes.push("policy_facts_first");
+    return resolveAgentRouteFactsFirst({
+      understanding,
+      message,
+      reasonCodes,
+      suppressClarification: params.suppressClarification === true,
+    });
   }
 
   // Mutation must win over soft diagnosis labels and question-shaped phrasing
@@ -166,6 +182,141 @@ export function resolveRoute(params: {
     interaction === "help" ||
     (primary === "docs" && !looksLikeDocsMutation(message))
   ) {
+    if (needsRepositoryGrounding(taskAnalysis, message)) {
+      reasonCodes.push("repository_grounded_answer");
+      return {
+        route: "repository_answer",
+        runDisposition: "continue",
+        reasonCodes,
+      };
+    }
+    reasonCodes.push("direct_knowledge_answer");
+    return {
+      route: "direct_answer",
+      runDisposition: "continue",
+      reasonCodes,
+    };
+  }
+
+  if (needsRepositoryGrounding(taskAnalysis, message)) {
+    reasonCodes.push("repository_grounded_answer");
+    return {
+      route: "repository_answer",
+      runDisposition: "continue",
+      reasonCodes,
+    };
+  }
+
+  reasonCodes.push("direct_knowledge_answer");
+  return {
+    route: "direct_answer",
+    runDisposition: "continue",
+    reasonCodes,
+  };
+}
+
+function isHighConfidenceUnderstanding(
+  understanding: RequestUnderstandingResult,
+): boolean {
+  const { intent } = understanding;
+  return (
+    intent.status === "accepted" &&
+    !intent.recommendsClarification &&
+    !intent.classification.needsClarification &&
+    intent.classification.confidence >=
+      DECISION_POLICY_THRESHOLDS.factsFirstMinConfidence &&
+    intent.confidenceMargin >= DECISION_POLICY_THRESHOLDS.factsFirstMinMargin
+  );
+}
+
+/**
+ * Facts-first agent routing: understanding drives route; looksLike* are weak
+ * priors. Material heuristic-vs-ballot conflict → clarify (or safe diagnose
+ * when clarification is suppressed).
+ */
+function resolveAgentRouteFactsFirst(params: {
+  understanding: RequestUnderstandingResult;
+  message: string;
+  reasonCodes: DecisionReasonCode[];
+  suppressClarification: boolean;
+}): RouteResolution {
+  const { understanding, message, reasonCodes, suppressClarification } = params;
+  const { intent, taskAnalysis } = understanding;
+  const primary = intent.classification.primaryTaskIntent;
+  const interaction = intent.classification.interactionIntent;
+
+  const understandingWantsWrite =
+    !isExplicitReadOnlyRequest(message) &&
+    (isMutationIntent(primary) || interaction === "act");
+  const heuristicWantsWrite =
+    !isExplicitReadOnlyRequest(message) &&
+    (looksLikeAgentMutationRequest(message) ||
+      looksLikeWorkspaceBugReport(message));
+  const understandingWantsRead =
+    interaction === "question" ||
+    interaction === "help" ||
+    primary === "question" ||
+    (primary === "docs" && !looksLikeDocsMutation(message));
+
+  // Material conflict: heuristic wants write, ballot wants read.
+  if (heuristicWantsWrite && understandingWantsRead && !understandingWantsWrite) {
+    reasonCodes.push("policy_facts_heuristic_conflict_clarify");
+    if (!suppressClarification) {
+      reasonCodes.push("clarification_material");
+      return {
+        route: "clarify",
+        runDisposition: "clarification_required",
+        reasonCodes,
+      };
+    }
+    reasonCodes.push("diagnosis_readonly");
+    return {
+      route: "diagnose",
+      runDisposition: "continue",
+      reasonCodes,
+    };
+  }
+
+  if (understandingWantsWrite) {
+    reasonCodes.push("mutation_execute");
+    return {
+      route: "execute",
+      runDisposition: "continue",
+      reasonCodes,
+    };
+  }
+
+  if (isDiagnosisIntent(primary)) {
+    reasonCodes.push("diagnosis_readonly");
+    return {
+      route: "diagnose",
+      runDisposition: "continue",
+      reasonCodes,
+    };
+  }
+
+  if (looksLikeAgentVerificationRequest(message)) {
+    reasonCodes.push("verification_run_requested");
+    reasonCodes.push("diagnosis_readonly");
+    return {
+      route: "diagnose",
+      runDisposition: "continue",
+      reasonCodes,
+    };
+  }
+
+  // Soft heuristic only when understanding did not assert a clear path.
+  if (looksLikeWorkspaceRuntimeSymptom(message) && !understandingWantsWrite) {
+    reasonCodes.push("workspace_symptom_diagnose");
+    reasonCodes.push("diagnosis_readonly");
+    return {
+      route: "diagnose",
+      runDisposition: "continue",
+      reasonCodes,
+    };
+  }
+
+  if (understandingWantsRead) {
     if (needsRepositoryGrounding(taskAnalysis, message)) {
       reasonCodes.push("repository_grounded_answer");
       return {

@@ -13,6 +13,7 @@ import type {
 
 import {
   amendMessageWithClarification,
+  resolveClarificationAnswer,
   annotateMutationToolDefinitions,
   applyExplorationSignal,
   buildBudgetWallResetMessage,
@@ -20,6 +21,10 @@ import {
   toRunUsage,
   filterToolDefinitions,
 } from "../actions";
+import {
+  formatClarificationAnswerFromPatch,
+} from "../../../modules/request-understanding/intent/applyClarificationFactPatch";
+import { resolveSteeringFeatureFlags } from "../steeringFlags";
 import type {
   EstablishedFact,
 } from "../actions";
@@ -247,9 +252,16 @@ export async function executeResume(
       }
       await runtime.deps.checkpointStore.delete(runId);
       reasonCodes.push("resume_complete");
+      const patch = resolveClarificationAnswer(
+        input.clarificationAnswer,
+        checkpoint.clarificationSession,
+      );
+      const displayAnswer = patch
+        ? formatClarificationAnswerFromPatch(patch)
+        : input.clarificationAnswer;
       const clarifiedMessage = amendMessageWithClarification(
         startInput.request.userMessage,
-        input.clarificationAnswer,
+        displayAnswer,
       );
       const amendedInput: AgentEngineStartInput = {
         ...startInput,
@@ -259,8 +271,27 @@ export async function executeResume(
         },
         conversation: [
           ...startInput.conversation,
-          { role: "user", content: input.clarificationAnswer },
+          { role: "user", content: displayAnswer },
         ],
+        ...(patch
+          ? {
+              clarificationResolution: {
+                optionId: patch.optionId,
+                ...(patch.label ? { label: patch.label } : {}),
+                ...(patch.interactionIntent
+                  ? { interactionIntent: patch.interactionIntent }
+                  : {}),
+                ...(patch.primaryTaskIntent
+                  ? { primaryTaskIntent: patch.primaryTaskIntent }
+                  : {}),
+                ...(patch.targetPath ? { targetPath: patch.targetPath } : {}),
+                ...(patch.scopeHint ? { scopeHint: patch.scopeHint } : {}),
+                ...(patch.outcomeNote
+                  ? { outcomeNote: patch.outcomeNote }
+                  : {}),
+              },
+            }
+          : {}),
       };
       return executeStart(runtime, {
         runId,
@@ -677,6 +708,7 @@ export async function executeResume(
         contextWindowTokens: windowPolicy.contextWindowTokens,
         overrides: startInput.loopPolicy?.thresholds,
       }).thresholds,
+      criticMode: resolveSteeringFeatureFlags(startInput.steering).criticMode,
     });
 
     return await finishAfterLoop(runtime, {
