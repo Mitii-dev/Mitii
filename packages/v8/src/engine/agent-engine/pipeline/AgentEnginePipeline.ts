@@ -10,6 +10,7 @@ import type {
   AgentRunHandle,
 } from "../contracts";
 import { executeResume } from "./executeResume";
+import { executeRestore } from "./executeRestore";
 import { executeStart } from "./executeStart";
 import {
   createAgentEngineRuntime,
@@ -32,8 +33,9 @@ export type AgentEnginePipelineDependencies = AgentEngineDependencies;
  *
  * Mutation tool calls that require approval suspend the run with a
  * persisted checkpoint; `resume()` continues without replaying completed
- * tool callIds. Does not implement understanding, policy, retrieval,
- * prompting, tool enforcement, skills/memory selection, or verification.
+ * tool callIds. Successful mutations also write RestorePoints for undo.
+ * Does not implement understanding, policy, retrieval, prompting, tool
+ * enforcement, skills/memory selection, or verification.
  */
 export class AgentEnginePipeline {
   private readonly runtime: AgentEngineRuntime;
@@ -102,5 +104,28 @@ export class AgentEnginePipeline {
         getCancelReason,
       }),
     );
+  }
+
+  /**
+   * Undo workspace mutations to a RestorePoint (and any newer points).
+   * Never rewrites user git. Never escalates interaction mode / grants.
+   */
+  public restore(
+    input: import("../contracts/output/RestorePoint").AgentEngineRestoreInput,
+  ): Promise<
+    import("../contracts/output/RestorePoint").AgentEngineRestoreResult
+  > {
+    return executeRestore(this.runtime, input);
+  }
+
+  /**
+   * List durable restore points for a run (oldest → newest).
+   */
+  public async listRestorePoints(runId: string) {
+    const store = this.runtime.deps.checkpointStore;
+    if (!store?.listRestorePoints) {
+      return [];
+    }
+    return store.listRestorePoints(runId);
   }
 }

@@ -618,6 +618,16 @@ export async function main(
         io: sessionIo,
       });
     }
+    case 'restore': {
+      const { runRestoreCommand } = await import('./commands/restore.js');
+      return runRestoreCommand({
+        args: parsed.rest,
+        cwd,
+        json: parsed.json === true,
+        forceEcho: parsed.forceEcho === true,
+        io: sessionIo,
+      });
+    }
     case 'error':
       sessionIo.writeStderr(`${parsed.errorMessage ?? 'mitii: invalid arguments'}\n`);
       return 2;

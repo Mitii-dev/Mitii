@@ -22,6 +22,14 @@ tests/
     `-- README.md             # full install / run / cleanup guide
 ```
 
+## Behavioral vs golden policy tests
+
+| Suite | Location | Asserts |
+|-------|----------|---------|
+| Golden decision cases | `packages/v8/src/modules/decision-policy/tests/` | Route/grant expectations — **100% pass** merge gate |
+| Mode seal invariants | `.../decision-policy/tests/unit/ModeSealInvariants.spec.ts` | Ask/Plan never gain writes |
+| Behavioral evals | `packages/v8/src/engine/agent-engine/tests/behavioral/` | Real coding prompts → deny tools / mode seals (not prose) |
+
 ## Package tests
 
 ```bash

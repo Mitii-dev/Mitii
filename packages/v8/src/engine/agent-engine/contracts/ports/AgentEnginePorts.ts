@@ -128,6 +128,30 @@ export interface AgentEngineToolRuntimePort {
     checkpointId: string;
   }): Promise<ToolResult>;
   commitMutation?(checkpointId: string): void;
+  /** Live in-memory mutation snapshot (pre-commit). */
+  getMutationCheckpoint?(checkpointId: string):
+    | {
+        checkpointId: string;
+        workspaceRoot: string;
+        files: readonly {
+          relativePath: string;
+          kind: "existing" | "missing" | "directory";
+          content?: string;
+        }[];
+        createdAt: string;
+      }
+    | undefined;
+  /** Apply a durable mutation snapshot to the workspace. */
+  restoreMutationSnapshot?(snapshot: {
+    checkpointId: string;
+    workspaceRoot: string;
+    files: readonly {
+      relativePath: string;
+      kind: "existing" | "missing" | "directory";
+      content?: string;
+    }[];
+    createdAt: string;
+  }): Promise<string[]>;
   /** Honest grant gating — omit / false when SearchPort is not injected. */
   hasSearchPort?(): boolean;
   hasDiagnosticsPort?(): boolean;

@@ -484,6 +484,10 @@ export { AgentEnginePipeline } from "./engine/agent-engine";
 export {
   agentEngineStartInputSchema,
   agentEngineResumeInputSchema,
+  agentEngineRestoreInputSchema,
+  agentEngineRestoreResultSchema,
+  restorePointSchema,
+  restorePointSummarySchema,
   agentRunResultSchema,
   agentRunBudgetSchema,
   runEvidenceSchema,
@@ -535,6 +539,10 @@ export type {
 export type {
   AgentEngineStartInput,
   AgentEngineResumeInput,
+  AgentEngineRestoreInput,
+  AgentEngineRestoreResult,
+  RestorePoint,
+  RestorePointSummary,
   AgentRunResult,
   AgentRunBudget,
   AgentRunHandle,

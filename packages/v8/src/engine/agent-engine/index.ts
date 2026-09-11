@@ -105,6 +105,10 @@ export {
   agentEventTypeSchema,
   agentEngineErrorCodeSchema,
   AgentEngineError,
+  restorePointSchema,
+  restorePointSummarySchema,
+  agentEngineRestoreInputSchema,
+  agentEngineRestoreResultSchema,
 } from "./contracts";
 export type {
   AgentEngineStartInput,
@@ -136,4 +140,8 @@ export type {
   AgentEngineRepositoryContextPort,
   AgentEngineToolRuntimePort,
   AgentEngineVerificationPort,
+  RestorePoint,
+  RestorePointSummary,
+  AgentEngineRestoreInput,
+  AgentEngineRestoreResult,
 } from "./contracts";

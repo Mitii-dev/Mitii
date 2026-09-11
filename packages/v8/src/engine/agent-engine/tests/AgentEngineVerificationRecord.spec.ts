@@ -134,6 +134,10 @@ describe("AgentEnginePipeline verification records", () => {
       execute: (input, options) => tools.execute(input, options),
       rollbackMutation: (input) => tools.rollbackMutation(input),
       commitMutation: (checkpointId) => tools.commitMutation(checkpointId),
+      getMutationCheckpoint: (checkpointId) =>
+        tools.getMutationCheckpoint(checkpointId),
+      restoreMutationSnapshot: (snapshot) =>
+        tools.restoreMutationSnapshot(snapshot),
     };
     deps.verification = {
       verify: async () => failedVerification(),

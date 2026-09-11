@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
-  "version": "2.9.35",
+  "version": "2.9.36",
   "publisher": "mitii",
   "license": "AGPL-3.0-or-later",
   "icon": "media/mitii-short-logo.png",
@@ -68,6 +68,7 @@
     "onCommand:mitii.showSettings",
     "onCommand:mitii.generateCommitMessage",
     "onCommand:mitii.exportSessionLog",
+    "onCommand:mitii.restoreCheckpoint",
     "onCommand:mitii.exportAuditPack",
     "onCommand:mitii.exportShareableDiagnostic",
     "onCommand:mitii.openSessionLog",
@@ -121,6 +122,11 @@
       {
         "command": "mitii.exportSessionLog",
         "title": "Mitii: Export Session Log",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.restoreCheckpoint",
+        "title": "Mitii: Restore Checkpoint",
         "category": "Mitii"
       },
       {

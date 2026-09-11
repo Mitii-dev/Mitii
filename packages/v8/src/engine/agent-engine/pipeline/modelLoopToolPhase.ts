@@ -49,6 +49,7 @@ import {
 import type { ModelLoopSession } from "./modelLoopSession";
 import type { ModelLoopStepResult } from "./modelLoopStep";
 import { tryOfferBudgetWallContinue } from "./tryOfferBudgetWallContinue";
+import { writeRestorePointAfterMutation } from "./writeRestorePoint";
 
 export type ToolPhaseBatchStats = {
   attemptedMutatingTool: boolean;
@@ -109,6 +110,8 @@ export async function runModelLoopToolPhase(params: {
   answer: string;
   changeImpactGate: { required: boolean; satisfied: boolean };
   thresholds: AgentEngineThresholds;
+  /** Correlates RestorePoints with the originating request. */
+  requestId: string;
 }): Promise<ModelLoopStepResult | { kind: "batch_done"; stats: ToolPhaseBatchStats }> {
   const {
     runtime,
@@ -144,6 +147,7 @@ export async function runModelLoopToolPhase(params: {
     answer,
     changeImpactGate,
     thresholds,
+    requestId,
   } = params;
   let decision = session.decision;
   let grant = decision.toolGrant;
@@ -432,6 +436,23 @@ export async function runModelLoopToolPhase(params: {
       successfulToolCount += 1;
       if (mutatingTool) {
         succeededMutatingTool = true;
+        const mutationOutput = result.output as
+          | { checkpointId?: string }
+          | undefined;
+        if (mutationOutput?.checkpointId) {
+          await writeRestorePointAfterMutation(runtime, {
+            runId,
+            requestId,
+            interactionMode: mode ?? "agent",
+            mutationCheckpointId: mutationOutput.checkpointId,
+            mutationCheckpointIds,
+            messages,
+            toolCache,
+            changedFiles,
+            plan,
+            taskList: taskListRef.current,
+          });
+        }
       }
     } else if (result) {
       rejectedToolCount += 1;

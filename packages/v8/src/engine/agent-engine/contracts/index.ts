@@ -52,6 +52,23 @@ export type { RunEvent, AgentActiveStage } from "./output/RunEvent";
 export type { AgentRunHandle } from "./output/AgentRunHandle";
 
 export {
+  restorePointSchema,
+  restorePointSummarySchema,
+  restorePointMutationSnapshotSchema,
+  restorePointFileSnapshotSchema,
+  agentEngineRestoreInputSchema,
+  agentEngineRestoreResultSchema,
+} from "./output/RestorePoint";
+export type {
+  RestorePoint,
+  RestorePointSummary,
+  RestorePointMutationSnapshot,
+  RestorePointFileSnapshot,
+  AgentEngineRestoreInput,
+  AgentEngineRestoreResult,
+} from "./output/RestorePoint";
+
+export {
   agentEngineErrorCodeSchema,
   AgentEngineError,
 } from "./errors/AgentEngineErrors";

@@ -132,16 +132,19 @@ export type { RecoverabilityWorkingSetInput } from "./serializeRecoverabilityWor
 export { estimateMutationPayloadCharacters } from "./estimateMutationPayloadCharacters";
 export {
   compactModelLoopMessages,
+  compactModelLoopMessagesFromWindowPolicy,
   stubToolResultsForCompletedPaths,
   estimateModelMessageTokens,
   estimateModelMessagesTokens,
   resolveCompactionPressure,
   resolveCompactionThresholds,
+  COMPACTION_LADDER_STAGES,
 } from "./compactModelLoopMessages";
 export type {
   ModelLoopCompactionResult,
   ModelLoopCompactionPressure,
   ModelLoopCompactionThresholds,
+  CompactionLadderStage,
 } from "./compactModelLoopMessages";
 export {
   buildIncompleteAnswerRecoveryMessage,

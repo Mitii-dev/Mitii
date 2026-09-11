@@ -17,6 +17,8 @@ Usage:
   mitii index [--cwd <path>] [--json]
   mitii status [--cwd <path>] [--json]
   mitii export-session <prompt> --out <file> [--echo]
+  mitii restore --list <runId> [--json]
+  mitii restore <runId> <restorePointId> [--json]
   mitii connect <channel> …
 
 First run:
@@ -36,6 +38,7 @@ Commands:
   index            Full workspace index + publish repository state
   status           Show latest persisted repository state
   export-session   Run ask and write secret-free JSON export
+  restore          Undo Agent file mutations to a RestorePoint (or --list)
   connect          Chat bridges (telegram / discord / slack)
   version / help   Version and usage
 

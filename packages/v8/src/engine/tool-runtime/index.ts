@@ -126,6 +126,11 @@ export {
 } from "./adapters";
 export type { ProcessHandler } from "./adapters";
 
+export type {
+  MutationCheckpoint,
+  CheckpointFileSnapshot,
+} from "./pipeline/ToolRuntimePipeline";
+
 export {
   validateMutationBatch,
   MutationBatchValidationError,

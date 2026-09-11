@@ -164,11 +164,15 @@ await client.start({ /* ... */, projectRules });
   repository-index.sqlite
   lancedb/                 # optional vector store
   index-runtime.json
-  checkpoints/
+  checkpoints/             # suspended AgentRunCheckpoint JSON + restore/
+    restore/<runId>/       # RestorePoint schemaVersion 1 (undo after mutations)
   memory/facts.json
   skills/<id>/SKILL.md     # workspace overrides (same name wins)
   rules/**/*.md
 ```
+
+Unknown RestorePoint schema versions are ignored. Clear with
+`rm -rf .mitii/checkpoints` (no dual deserializer).
 
 ## Skills and writing recipes
 

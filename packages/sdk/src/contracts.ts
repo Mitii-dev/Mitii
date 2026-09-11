@@ -3,6 +3,7 @@ import {
   AGENT_ENGINE_SCHEMA_VERSION,
   AGENT_LOG_VERBOSITIES,
   agentEngineResumeInputSchema,
+  agentEngineRestoreInputSchema,
   agentEngineStartInputSchema,
   agentModeSchema,
   agentRunBudgetSchema,
@@ -24,6 +25,8 @@ import {
 } from '@mitii/v8';
 import type {
   AgentEngineResumeInput,
+  AgentEngineRestoreInput,
+  AgentEngineRestoreResult,
   AgentEngineStartInput,
   AgentMode,
   AgentRunBudget,
@@ -31,6 +34,7 @@ import type {
   PlanArtifact,
   PlanStrategyDecision,
   RepositoryStateReference,
+  RestorePointSummary,
   TaskList,
   UserRequestOrigin,
 } from '@mitii/v8';
@@ -226,6 +230,11 @@ export type MitiiStartInput = z.infer<typeof mitiiStartInputSchema>;
 
 export const mitiiResumeInputSchema = agentEngineResumeInputSchema;
 export type MitiiResumeInput = AgentEngineResumeInput;
+
+export const mitiiRestoreInputSchema = agentEngineRestoreInputSchema;
+export type MitiiRestoreInput = AgentEngineRestoreInput;
+export type MitiiRestoreResult = AgentEngineRestoreResult;
+export type { RestorePointSummary };
 
 export type { AgentMode, AgentRunBudget, RepositoryStateReference };
 export type { PlanArtifact, PlanStrategyDecision, TaskList, ExplorationDepth };

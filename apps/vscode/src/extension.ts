@@ -33,6 +33,7 @@ import { MitiiSidebarProvider } from './sidebar.js';
 import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
 import { resolveVsCodeSemanticIndexSettings } from './semanticIndex.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
+import { restoreCheckpointCommand } from './restoreCheckpoint.js';
 import {
   getWorkspaceTrustSnapshot,
   onWorkspaceTrustChanged,
@@ -621,6 +622,9 @@ export function activate(context: ExtensionContext): void {
     ),
     vscode.commands.registerCommand('mitii.exportSessionLog', async () => {
       await exportSession();
+    }),
+    vscode.commands.registerCommand('mitii.restoreCheckpoint', async () => {
+      await restoreCheckpointCommand(vscode, context.secrets);
     }),
     vscode.commands.registerCommand('mitii.exportAuditPack', exportAudit),
     vscode.commands.registerCommand(

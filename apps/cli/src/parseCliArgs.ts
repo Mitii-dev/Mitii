@@ -19,6 +19,7 @@ export interface ParsedCliArgs {
     | 'schedule'
     | 'serve'
     | 'events'
+    | 'restore'
     | 'commit-message'
     | 'pr-summary'
     | 'changelog'
@@ -100,7 +101,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   let loopPolicyJson: string | undefined;
   /** Once `connect` is seen, remaining argv (flags included) is channel passthrough. */
   let connectPassthrough: string[] | undefined;
-  /** Once `schedule`/`serve` is seen, remaining argv (flags included) is subcommand passthrough. */
+  /** Once `schedule`/`serve`/`events`/`restore` is seen, remaining argv is passthrough. */
   let automationPassthrough: string[] | undefined;
 
   for (let i = 0; i < args.length; i += 1) {
@@ -339,7 +340,10 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       connectPassthrough = [];
     }
     if (
-      (arg === 'schedule' || arg === 'serve' || arg === 'events') &&
+      (arg === 'schedule' ||
+        arg === 'serve' ||
+        arg === 'events' ||
+        arg === 'restore') &&
       positionals.length === 1
     ) {
       automationPassthrough = [];
@@ -451,7 +455,12 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       rest: connectPassthrough ?? rest,
     };
   }
-  if (command === 'schedule' || command === 'serve' || command === 'events') {
+  if (
+    command === 'schedule' ||
+    command === 'serve' ||
+    command === 'events' ||
+    command === 'restore'
+  ) {
     return {
       command,
       cwd,

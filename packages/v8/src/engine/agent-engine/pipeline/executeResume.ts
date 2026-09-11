@@ -685,6 +685,7 @@ export async function executeResume(
         tools: toolDefinitions,
       },
       decision,
+      requestId: checkpoint.requestId,
       dirtyPaths: startInput.dirtyPaths,
       pinnedState,
       workspaceRoot: startInput.workspaceRoot,

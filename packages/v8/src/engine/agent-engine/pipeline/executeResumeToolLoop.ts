@@ -142,6 +142,7 @@ export async function resumeToolLoopFromCheckpoint(
       tools: toolDefinitions,
     },
     decision,
+    requestId: checkpoint.requestId,
     dirtyPaths: startInput.dirtyPaths,
     pinnedState,
     workspaceRoot: startInput.workspaceRoot,

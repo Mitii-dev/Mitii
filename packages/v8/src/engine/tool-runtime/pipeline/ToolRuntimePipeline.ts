@@ -7,7 +7,14 @@ import type {
   ToolRuntimePorts,
 } from "../contracts";
 import { fingerprintToolCall, MutationTransactionRegistry } from "../internal/mutation";
+import type {
+  CheckpointFileSnapshot,
+  MutationCheckpoint,
+} from "../internal/mutation";
+import { restoreFileCopyCheckpoint } from "../internal/mutation";
 import { SessionBudget } from "../internal/SessionBudget";
+
+export type { CheckpointFileSnapshot, MutationCheckpoint };
 import type { ToolRegistry } from "../internal/ToolRegistry";
 import type { ToolExecutionResult } from "../internal/ToolRegistry";
 import {
@@ -191,6 +198,27 @@ export class ToolRuntimePipeline {
 
   public commitMutation(checkpointId: string): void {
     this.transactions.commit(checkpointId);
+  }
+
+  /** In-memory mutation snapshot (undefined after commit or unknown id). */
+  public getMutationCheckpoint(
+    checkpointId: string,
+  ): MutationCheckpoint | undefined {
+    return this.transactions.get(checkpointId);
+  }
+
+  /**
+   * Apply a durable RestorePoint mutation snapshot to the workspace.
+   * Does not require the in-memory registry entry.
+   */
+  public async restoreMutationSnapshot(
+    snapshot: MutationCheckpoint,
+  ): Promise<string[]> {
+    await restoreFileCopyCheckpoint({
+      checkpoint: snapshot,
+      fileSystem: this.ports.fileSystem,
+    });
+    return snapshot.files.map((file) => file.relativePath);
   }
 }
 

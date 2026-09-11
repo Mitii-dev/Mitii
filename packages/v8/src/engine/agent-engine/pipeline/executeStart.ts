@@ -489,6 +489,7 @@ export async function executeStart(
       understanding,
       skillsQuery: extractPrimaryUserMessage(envelope.message),
       mode: envelope.mode,
+      requestId: shared.requestId,
       projects: input.projects,
       dirtyPaths: input.dirtyPaths,
       pinnedState: shared.pinnedState,

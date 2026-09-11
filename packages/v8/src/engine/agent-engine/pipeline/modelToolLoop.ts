@@ -82,6 +82,8 @@ export async function runModelToolLoop(
   understanding?: RequestUnderstandingResult;
   skillsQuery?: string;
   mode?: "ask" | "plan" | "agent";
+  /** Correlates RestorePoints; defaults to runId when omitted. */
+  requestId?: string;
   projects?: readonly ProjectDescriptor[];
   dirtyPaths: readonly string[] | undefined;
   pinnedState: RepositoryStateReference | undefined;
@@ -592,6 +594,7 @@ export async function runModelToolLoop(
       answer: session.answer,
       changeImpactGate,
       thresholds,
+      requestId: params.requestId ?? runId,
     });
     if (toolPhase.kind !== "batch_done") {
       if (toolPhase.kind === "return") {
