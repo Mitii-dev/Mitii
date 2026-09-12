@@ -91,15 +91,18 @@ case, another Nest case, another CI case, etc.
 
 | Domain | Cases | Category files | Focus |
 |---|---:|---|---|
-| `frontend` | 85 | `feature`, `bugfix`, `docs`, `retrieval`, `testing`, `capstone` | React/Next UI, hooks, a11y, SEO, full applications |
-| `backend` | 44 | `nest`, `saas-api`, `express`, `monorepo`, `robustness`, `auth` | APIs, bugfixes, ambiguous/adversarial prompts, auth |
-| `testing` | 23 | `express`, `monorepo`, `react` | Writing missing unit/integration tests |
-| `cicd` | 18 | `react`, `nest`, `express`, `monorepo` | Workflows, lint/build config, pipeline wiring |
+| `frontend` | 86 | `feature`, `bugfix`, `docs`, `retrieval`, `testing`, `capstone` | React/Next UI, hooks, a11y, SEO, full applications |
+| `backend` | 47 | `nest`, `saas-api`, `express`, `monorepo`, `robustness`, `auth`, `type-cascade` | APIs, bugfixes, ambiguous/adversarial prompts, auth, wide TypeScript fixes |
+| `cicd` | 22 | `react`, `nest`, `express`, `monorepo`, `vscode-publish`, `npm-publish`, `workflow-authoring` | Workflows, lint/build config, packaging, release pipelines |
+| `testing` | 24 | `express`, `monorepo`, `react` | Writing missing unit/integration tests |
+| `api-build` | 2 | `sqlite-crud` | Multi-endpoint REST work graded through HTTP and SQLite assertions |
 
-**All 170 cases are `mode: "agent"`.** `ask` / `plan` modes are not covered yet.
+**All 181 cases are `mode: "agent"` in the current suite output.** `ask` /
+`plan` modes are not covered yet.
 
 Counts drift as cases are added — run `npm run suites` (or
-`node src/cli.mjs validate --suite all`) for the live, authoritative numbers.
+`pnpm --filter @mitii/solid-benchmark suites` from the repo root) for the
+live, authoritative numbers.
 Full per-file breakdowns, fixture notes, and design rationale live in
 [docs/FRONTEND_SUITE.md](./docs/FRONTEND_SUITE.md) and
 [docs/BACKEND_TESTING_CICD_SUITES.md](./docs/BACKEND_TESTING_CICD_SUITES.md).
@@ -565,7 +568,7 @@ Also updated when the run finishes:
 Console output looks like:
 
 ```text
-[3/85] PASS frontend/medium fe-feature-003-… (12400ms)
+[3/86] PASS frontend/medium fe-feature-003-... (12400ms)
   report: …/reports/runs/…/cases/fe-feature-003-….md
 ```
 

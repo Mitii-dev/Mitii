@@ -9,6 +9,7 @@ import {
 } from '@mitii/v8';
 
 import { appendMemoryAudit } from './memoryAudit.js';
+import { createWorkspaceMemoryLeaseStore } from './memoryLeases.js';
 
 const PENDING_FILE_NAME = 'pending.json';
 const STORAGE_VERSION = 1 as const;
@@ -102,8 +103,42 @@ export async function appendPendingMemory(
 
 /**
  * Commit a pending memory through MemoryPipeline, then remove it from the queue.
+ * Takes a short `memory:approve_pending` lease so concurrent approves cannot race.
  */
 export async function approvePendingMemory(input: {
+  workspaceRoot: string;
+  workspaceId: string;
+  pendingId: string;
+  pipeline: MemoryPipeline;
+  now?: Date;
+  holderId?: string;
+}): Promise<{
+  memoryId?: string;
+  status: 'committed' | 'not_found' | 'rejected' | 'lease_held';
+  leaseError?: string;
+}> {
+  const leases = createWorkspaceMemoryLeaseStore(input.workspaceRoot);
+  const holderId =
+    input.holderId?.trim() ||
+    `approve:${input.pendingId}:${process.pid}`;
+
+  const leased = await leases.withLease({
+    resource: 'memory:approve_pending',
+    holderId,
+    ttlMs: 60_000,
+    fn: async () => approvePendingMemoryUnlocked(input),
+  });
+
+  if (!leased.ok) {
+    return {
+      status: 'lease_held',
+      leaseError: leased.error,
+    };
+  }
+  return leased.value;
+}
+
+async function approvePendingMemoryUnlocked(input: {
   workspaceRoot: string;
   workspaceId: string;
   pendingId: string;

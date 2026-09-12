@@ -13,7 +13,7 @@ export const applyPatchTool: RegisteredTool = {
     name: "apply_patch",
     effects: ["workspace_write"],
     description:
-      "Apply structured oldText/newText patches inside a recoverable transaction. Arguments MUST be `{ \"patches\": [ { \"path\", \"oldText\", \"newText\" } ] }` — `patches` is a JSON array (not a string). Do not send a flat `{ path, oldText, newText }` object. Default is exact unique oldText match (no fuzzy or regex). Set replaceAll=true to replace every exact occurrence in that file. Batch to the mutation budget on this grant (preferredBatchSize / maxUniqueFilesPerCall; catalog max 12 unique files). Use minimal hunks — never rewrite many whole files in one response; continue across turns for large refactors. Create new files with oldText=\"\". Distinct rejections: old_text_not_found, old_text_ambiguous, patch_target_missing, patch_hash_mismatch, identical_old_and_new, patch_syntax_invalid. For deletes use delete_file/delete_directory; for renames/moves use move_file.",
+      "Apply structured oldText/newText patches inside a recoverable transaction. Arguments MUST be `{ \"patches\": [ { \"path\", \"oldText\", \"newText\" } ] }` — `patches` is a JSON array (not a string). Do not send a flat `{ path, oldText, newText }` object. Default is exact unique oldText match (no regex). Set replaceAll=true to replace every exact occurrence in that file. Set fuzzyMatch=true for bounded recovery when exact oldText is missing (trim / indent / ±5 line window); ambiguous fuzzy hits return patch_fuzzy_ambiguous. Batch to the mutation budget on this grant (preferredBatchSize / maxUniqueFilesPerCall; catalog max 12 unique files). Use minimal hunks — never rewrite many whole files in one response; continue across turns for large refactors. Create new files with oldText=\"\". Distinct rejections: old_text_not_found, old_text_ambiguous, patch_fuzzy_ambiguous, patch_target_missing, patch_hash_mismatch, identical_old_and_new, patch_syntax_invalid. For deletes use delete_file/delete_directory; for renames/moves use move_file.",
     inputSchema: applyPatchInputSchema,
     outputSchema: applyPatchOutputSchema,
     modelInputSchema: {
@@ -29,6 +29,7 @@ export const applyPatchTool: RegisteredTool = {
               newText: { type: "string" },
               expectedHash: { type: "string" },
               replaceAll: { type: "boolean" },
+              fuzzyMatch: { type: "boolean" },
             },
             required: ["path", "oldText", "newText"],
           },

@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
-  "version": "2.9.39",
+  "version": "2.9.40",
   "publisher": "mitii",
   "license": "AGPL-3.0-or-later",
   "icon": "media/mitii-short-logo.png",
@@ -866,6 +866,15 @@
           "default": false,
           "description": "Enable inline FIM autocomplete suggestions in file-backed editors."
         },
+        "mitii.autocomplete.mode": {
+          "type": "string",
+          "enum": [
+            "fim",
+            "next-edit"
+          ],
+          "default": "fim",
+          "description": "Inline completion mode: classic fill-in-the-middle (fim) or next-edit span prediction."
+        },
         "mitii.autocomplete.provider": {
           "type": "string",
           "enum": [
@@ -1195,6 +1204,35 @@
           "default": "guided",
           "description": "Approval autonomy: safe (ask before mutations), guided (approve tool use automatically), pilot (full access including plan approval). Legacy builder maps to guided."
         },
+        "mitii.safety.sandbox.enabled": {
+          "type": "boolean",
+          "description": "Enable OS process sandbox for run_command / process tools. When unset, defaults follow approval mode (safe/guided → on+deny; pilot → on+allow)."
+        },
+        "mitii.safety.sandbox.network": {
+          "type": "string",
+          "enum": [
+            "deny",
+            "allow"
+          ],
+          "description": "Outbound network for sandboxed children. When unset, follows approval-mode sandbox preset."
+        },
+        "mitii.safety.sandbox.backend": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "seatbelt",
+            "bubblewrap",
+            "docker",
+            "podman"
+          ],
+          "default": "auto",
+          "description": "Preferred sandbox backend. auto picks seatbelt (macOS) or bubblewrap (Linux)."
+        },
+        "mitii.tools.applyPatch.fuzzyMatch": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow bounded fuzzy recovery when apply_patch oldText is not found exactly (trim / indent / ±5 line window). Default off for first ship."
+        },
         "mitii.runBudget.unlimited": {
           "type": "boolean",
           "default": false,
@@ -1333,6 +1371,7 @@
   "dependencies": {
     "@mitii/automation": "workspace:*",
     "@mitii/host": "workspace:*",
+    "@mitii/mcp": "workspace:*",
     "@mitii/sdk": "workspace:*",
     "@mitii/v8": "workspace:*",
     "better-sqlite3": "^12.11.1"

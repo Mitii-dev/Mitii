@@ -68,7 +68,9 @@ export class ToolRuntimePipeline {
     }
     this.ports = ports;
     this.registry = options.registry ?? createBuiltinToolRegistry();
-    this.transactions = new MutationTransactionRegistry();
+    this.transactions = new MutationTransactionRegistry(undefined, {
+      fuzzyMatchDefault: options.fuzzyMatchDefault === true,
+    });
   }
 
   public createBudget(grant: ToolInvocationInput["grant"]): SessionBudget {
@@ -127,6 +129,7 @@ export class ToolRuntimePipeline {
         transactions: this.transactions,
         dirtyPaths: options.dirtyPaths,
         alreadyMutatedPaths: options.alreadyMutatedPaths,
+        registry: this.registry,
       });
 
       return buildFinishedResult({

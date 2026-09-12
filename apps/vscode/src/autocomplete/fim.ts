@@ -31,6 +31,8 @@ export interface FimCompletionResponse {
 }
 
 const MAX_RETURNED_COMPLETION_CHARS = 12_000;
+const MAX_RETURNED_COMPLETION_LINES = 80;
+const MAX_PREFIX_ECHO_CHARS = 80;
 
 export function sliceFimContext(params: {
   text: string;
@@ -93,20 +95,32 @@ export function extractFimChoiceText(response: FimCompletionResponse): string {
 export function sanitizeFimCompletion(params: {
   completion: string;
   suffix: string;
+  prefix?: string;
 }): string {
   let text = params.completion
-    .replace(/^```[\w-]*\s*\n?/, '')
-    .replace(/\n?```\s*$/, '');
+    .replace(/^\s*```[\w.+-]*\s*\n?/, '')
+    .replace(/\n?```\s*$/, '')
+    .replace(/\r\n/g, '\n');
+
+  // Drop leading echo of the immediate prefix tail.
+  if (params.prefix) {
+    text = stripPrefixEcho(text, params.prefix);
+    text = text.replace(/^\n+/, '');
+  }
+
+  // Drop if the model started by repeating the suffix.
+  if (params.suffix && text.startsWith(params.suffix.slice(0, Math.min(40, params.suffix.length)))) {
+    return '';
+  }
 
   text = stripSuffixOverlap(text, params.suffix);
-  text = text.replace(/\s+$/g, '');
+  text = text.replace(/[ \t]+$/gm, '').replace(/\s+$/g, '');
 
-  if (text.length > MAX_RETURNED_COMPLETION_CHARS) {
-    return '';
-  }
-  if (looksLikeWholeFileReplacement(text)) {
-    return '';
-  }
+  if (!text.trim()) return '';
+  if (text.length > MAX_RETURNED_COMPLETION_CHARS) return '';
+  if (text.split('\n').length > MAX_RETURNED_COMPLETION_LINES) return '';
+  if (looksLikeWholeFileReplacement(text)) return '';
+  if (looksLikeRepeatedLineSpam(text)) return '';
   return text;
 }
 
@@ -115,6 +129,17 @@ export function stripSuffixOverlap(completion: string, suffix: string): string {
   for (let size = max; size > 0; size -= 1) {
     if (completion.endsWith(suffix.slice(0, size))) {
       return completion.slice(0, completion.length - size);
+    }
+  }
+  return completion;
+}
+
+export function stripPrefixEcho(completion: string, prefix: string): string {
+  const max = Math.min(completion.length, prefix.length, MAX_PREFIX_ECHO_CHARS);
+  for (let size = max; size >= 8; size -= 1) {
+    const tail = prefix.slice(prefix.length - size);
+    if (completion.startsWith(tail)) {
+      return completion.slice(size);
     }
   }
   return completion;
@@ -144,4 +169,18 @@ function looksLikeWholeFileReplacement(text: string): boolean {
     /^\s*(import|export|package|using|#include|from\s+\S+\s+import)\b/.test(line),
   ).length;
   return importLike >= 8;
+}
+
+function looksLikeRepeatedLineSpam(text: string): boolean {
+  const lines = text
+    .split(/\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length < 6) return false;
+  const counts = new Map<string, number>();
+  for (const line of lines) {
+    counts.set(line, (counts.get(line) ?? 0) + 1);
+  }
+  const max = Math.max(...counts.values());
+  return max / lines.length >= 0.7;
 }

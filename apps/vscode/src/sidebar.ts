@@ -35,6 +35,7 @@ import {
   showPatchDiffPreview,
   showWriteDiffPreview,
 } from './diff/diffPreview.js';
+import { cumulativeChangedPathsSince } from './diff/cumulativeCheckpointDiff.js';
 import {
   buildRunFileChangesView,
   createFileChangeRunSnapshot,
@@ -756,6 +757,10 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         this.post({ type: 'setCheckpoints', checkpoints: [] });
         return;
       }
+      case 'reviewCheckpointChanges': {
+        await this.handleReviewCheckpointChanges(message.id);
+        return;
+      }
       case 'addMemory': {
         try {
           const items = await commitMemoryForWorkspace(
@@ -1067,6 +1072,34 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       before ?? '',
       after,
     );
+  }
+
+  /**
+   * Open git HEAD ↔ working-tree diffs for the cumulative path set
+   * from the selected checkpoint through the newest label.
+   */
+  private async handleReviewCheckpointChanges(
+    checkpointId: string,
+  ): Promise<void> {
+    const root = this.effectiveRoot();
+    if (!root) return;
+    const checkpoints = loadCheckpoints(this.host.workspaceState);
+    const { paths } = cumulativeChangedPathsSince(checkpoints, checkpointId);
+    if (paths.length === 0) {
+      void this.vs.window.showInformationMessage(
+        'Mitii: No changed paths recorded for this checkpoint range.',
+      );
+      return;
+    }
+    const pick =
+      paths.length === 1
+        ? paths[0]
+        : await this.vs.window.showQuickPick(paths, {
+            title: `Cumulative changes (${paths.length} files)`,
+            placeHolder: 'Select a file to review vs HEAD',
+          });
+    if (!pick) return;
+    await this.handleReviewWorkspaceFile(pick);
   }
 
   private async handleReviewWorkspaceFile(path: string): Promise<void> {
@@ -1678,6 +1711,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           id: `cp_${Date.now().toString(36)}`,
           label: `After: ${prompt.slice(0, 40)}`,
           createdAt: new Date().toISOString(),
+          ...(changedPaths.length > 0 ? { changedPaths } : {}),
         });
         await saveCheckpoints(this.host.workspaceState, checkpoints.slice(0, 30));
         this.post({ type: 'setCheckpoints', checkpoints: checkpoints.slice(0, 30) });

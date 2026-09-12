@@ -281,7 +281,7 @@ export async function runAsk(options: {
   mode: AgentMode;
   outcome?: Awaited<ReturnType<typeof driveRun>>;
 }> {
-  const { client, ports, memoryCapture } = createCliClient({
+  const { client, ports, memoryCapture } = await createCliClient({
     cwd: options.cwd,
     forceEcho: options.forceEcho,
   });

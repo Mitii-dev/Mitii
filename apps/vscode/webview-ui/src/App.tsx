@@ -2751,6 +2751,9 @@ export function App() {
           onClearCheckpoints={() =>
             postToHost({ type: 'clearCheckpoints' })
           }
+          onReviewCheckpointChanges={(id) =>
+            postToHost({ type: 'reviewCheckpointChanges', id })
+          }
           onToggleContext={(source, enabled) => {
             updateUiDraft({ contextToggles: { [source]: enabled } });
           }}

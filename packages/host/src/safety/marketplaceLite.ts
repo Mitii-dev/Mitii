@@ -23,6 +23,16 @@ export const MARKETPLACE_LITE_CATALOG: readonly MarketplaceCatalogEntry[] = [
     recommended: false,
   },
   {
+    id: "mitii-web",
+    kind: "mcp",
+    title: "Mitii Web Search MCP",
+    description:
+      "First-party @mitii/mcp-web: web_search + fetch_url via @mitii/search-kit.",
+    installHint:
+      "Add mitii-mcp-web to .mitii/mcp.json (pnpm --filter @mitii/mcp-web build; path packages/mcp/web)",
+    recommended: true,
+  },
+  {
     id: "sequential-thinking",
     kind: "mcp",
     title: "Sequential Thinking",

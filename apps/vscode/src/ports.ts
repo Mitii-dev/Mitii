@@ -30,9 +30,12 @@ import {
   createWorkspaceCheckpointStore,
   createWorkspaceKnowledgeGraph,
   createWorkspaceVerificationStore,
+  detectSandboxBackend,
   resolveMemoryEmbeddingPort,
   resolveSandboxPolicy,
+  resolveSandboxSettingsFromPreset,
   resolveProviderApiKey,
+  type SandboxBackendPrefer,
 } from '@mitii/host';
 import type * as vscode from 'vscode';
 
@@ -256,6 +259,37 @@ export async function createVscodeClient(
     inner: new NodeNetworkAdapter(),
     env: searchEnv,
   });
+  const cfg = vs.workspace.getConfiguration('mitii');
+  const sandboxInspectEnabled = cfg.inspect<boolean>('safety.sandbox.enabled');
+  const sandboxInspectNetwork = cfg.inspect<string>('safety.sandbox.network');
+  const sandboxEnabledUnset =
+    sandboxInspectEnabled?.globalValue === undefined &&
+    sandboxInspectEnabled?.workspaceValue === undefined &&
+    sandboxInspectEnabled?.workspaceFolderValue === undefined;
+  const sandboxNetworkUnset =
+    sandboxInspectNetwork?.globalValue === undefined &&
+    sandboxInspectNetwork?.workspaceValue === undefined &&
+    sandboxInspectNetwork?.workspaceFolderValue === undefined;
+  const sandboxResolved = resolveSandboxSettingsFromPreset({
+    approvalMode: cfg.get<string>('safety.approvalMode') ?? 'guided',
+    ...(sandboxEnabledUnset
+      ? {}
+      : { enabled: cfg.get<boolean>('safety.sandbox.enabled') === true }),
+    ...(sandboxNetworkUnset
+      ? {}
+      : { network: cfg.get<string>('safety.sandbox.network') ?? 'deny' }),
+  });
+  const sandboxBackendRaw = cfg.get<string>('safety.sandbox.backend') ?? 'auto';
+  const sandboxPrefer: SandboxBackendPrefer =
+    sandboxBackendRaw === 'docker' ||
+    sandboxBackendRaw === 'podman' ||
+    sandboxBackendRaw === 'seatbelt' ||
+    sandboxBackendRaw === 'bubblewrap' ||
+    sandboxBackendRaw === 'auto'
+      ? sandboxBackendRaw
+      : 'auto';
+  const fuzzyMatchDefault =
+    cfg.get<boolean>('tools.applyPatch.fuzzyMatch') === true;
   const tools = workspaceRoot && fileSystem
     ? new ToolRuntimePipeline(
         {
@@ -263,18 +297,11 @@ export async function createVscodeClient(
           process: createSandboxedProcessPort(
             new NodeProcessAdapter(),
             resolveSandboxPolicy({
-              enabled:
-                vs.workspace
-                  .getConfiguration('mitii')
-                  .get<boolean>('safety.sandbox.enabled') === true,
-              network:
-                vs.workspace
-                  .getConfiguration('mitii')
-                  .get<string>('safety.sandbox.network') === 'allow'
-                  ? 'allow'
-                  : 'deny',
+              enabled: sandboxResolved.enabled,
+              network: sandboxResolved.network,
               workspaceRoot,
             }),
+            detectSandboxBackend({ prefer: sandboxPrefer }),
           ),
           network,
           git,
@@ -284,7 +311,10 @@ export async function createVscodeClient(
           ...(repoGraphs ? { repoGraphs } : {}),
           ...(knowledgeGraph ? { knowledgeGraph } : {}),
         },
-        { registry: mcpManager.createRegistry() },
+        {
+          registry: mcpManager.createRegistry(),
+          fuzzyMatchDefault,
+        },
       )
     : undefined;
 

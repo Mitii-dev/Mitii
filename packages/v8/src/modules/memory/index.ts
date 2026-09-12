@@ -28,6 +28,7 @@ export type { MemoryPipelineDependencies } from "./pipeline/MemoryPipeline";
 export {
   memoryRetrieveInputSchema,
   memoryCommitInputSchema,
+  memoryConsolidateInputSchema,
   memoryScopeSchema,
   memoryPrivacySchema,
   memoryFactSchema,
@@ -36,12 +37,14 @@ export {
   memoryOmissionSchema,
   memoryRetrieveResultSchema,
   memoryCommitResultSchema,
+  memoryConsolidateResultSchema,
   memoryErrorCodeSchema,
   MemoryError,
 } from "./contracts";
 export type {
   MemoryRetrieveInput,
   MemoryCommitInput,
+  MemoryConsolidateInput,
   MemoryScope,
   MemoryPrivacy,
   MemoryFact,
@@ -51,6 +54,7 @@ export type {
   MemoryOmission,
   MemoryRetrieveResult,
   MemoryCommitResult,
+  MemoryConsolidateResult,
   MemoryReasonCode,
   MemoryErrorCode,
   MemoryStorePort,

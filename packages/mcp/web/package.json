@@ -1,0 +1,56 @@
+{
+  "name": "@mitii/mcp-web",
+  "version": "2.9.39",
+  "description": "Mitii MCP stdio server under packages/mcp/web: web_search, fetch_url, optional memory_search via search-kit (no v8).",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "mitii-mcp-web": "./bin/mitii-mcp-web.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mitii-dev/Mitii.git",
+    "directory": "packages/mcp/web"
+  },
+  "homepage": "https://github.com/Mitii-dev/Mitii/tree/main/packages/mcp/web",
+  "bugs": {
+    "url": "https://github.com/Mitii-dev/Mitii/issues"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "ARCHITECTURE.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json && node -e \"require('node:fs').accessSync('dist/index.js')\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node bin/mitii-mcp-web.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@mitii/search-kit": "workspace:*",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.2",
+    "vitest": "^3.2.7"
+  }
+}

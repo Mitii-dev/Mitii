@@ -16,7 +16,7 @@ export async function runRestoreCommand(params: {
   const listMode = args.includes('--list');
   const positional = args.filter((a) => a !== '--list' && !a.startsWith('-'));
 
-  const { client } = createCliClient({
+  const { client } = await createCliClient({
     cwd,
     forceEcho: forceEcho === true,
   });

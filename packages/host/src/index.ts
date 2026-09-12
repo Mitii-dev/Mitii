@@ -179,6 +179,17 @@ export {
   MAX_OBSERVATIONS_PER_WORKSPACE,
 } from './ports/memoryObservations.js';
 export type { MemoryObservation } from './ports/memoryObservations.js';
+export {
+  createWorkspaceMemoryLeaseStore,
+  FileWorkspaceMemoryLeaseStore,
+  MEMORY_LEASE_RESOURCES,
+} from './ports/memoryLeases.js';
+export type {
+  MemoryLease,
+  MemoryLeaseResource,
+  LeaseAcquireResult,
+  LeaseReleaseResult,
+} from './ports/memoryLeases.js';
 export { appendMemoryAudit } from './ports/memoryAudit.js';
 export type { MemoryAuditEvent } from './ports/memoryAudit.js';
 export { createMemoryEmbeddingPort } from './ports/memoryEmbeddingAdapter.js';
@@ -336,6 +347,12 @@ export type {
 // ---------------------------------------------------------------------------
 export { createAutomationRunExecutor } from './automation/createAutomationRunExecutor.js';
 export type { CreateAutomationRunExecutorOptions } from './automation/createAutomationRunExecutor.js';
+export {
+  MEMORY_CONSOLIDATE_SCHEDULE_NAME,
+  MEMORY_CONSOLIDATE_SCHEDULE_PROMPT,
+  buildMemoryConsolidateScheduleInput,
+  runMemoryConsolidateWithLease,
+} from './automation/memoryConsolidateRecipe.js';
 export { createCompositeDeliverySender } from './automation/delivery/createCompositeDeliverySender.js';
 export type { CreateCompositeDeliverySenderOptions } from './automation/delivery/createCompositeDeliverySender.js';
 export { formatDeliveryMessage } from './automation/delivery/formatMessage.js';
@@ -366,6 +383,14 @@ export type {
   SandboxBackend,
   SandboxBackendPrefer,
 } from './sandbox/createSandboxedProcessPort.js';
+export {
+  resolveSandboxPreset,
+  resolveSandboxSettingsFromPreset,
+} from './sandbox/resolveSandboxPreset.js';
+export type {
+  SandboxApprovalPreset,
+  SandboxPresetDefaults,
+} from './sandbox/resolveSandboxPreset.js';
 
 export {
   loadWorkspaceHooks,

@@ -43,11 +43,18 @@ export interface MutationPathResult {
  */
 export class MutationTransactionRegistry {
   private readonly checkpoints = new Map<string, MutationCheckpoint>();
+  private readonly idGenerator: () => string;
+  private readonly fuzzyMatchDefault: boolean;
 
   constructor(
-    private readonly idGenerator: () => string = () =>
-      `cp_${Math.random().toString(36).slice(2, 12)}`,
-  ) {}
+    idGenerator?: () => string,
+    options: { fuzzyMatchDefault?: boolean } = {},
+  ) {
+    this.idGenerator =
+      idGenerator ??
+      (() => `cp_${Math.random().toString(36).slice(2, 12)}`);
+    this.fuzzyMatchDefault = options.fuzzyMatchDefault === true;
+  }
 
   public get(checkpointId: string): MutationCheckpoint | undefined {
     return this.checkpoints.get(checkpointId);
@@ -113,6 +120,7 @@ export class MutationTransactionRegistry {
         const preflight = preflightStructuredPatch({
           patch: { ...patch, path: relativePath },
           currentContent: current,
+          fuzzyMatch: this.fuzzyMatchDefault,
         });
         validatePostEditSyntax(relativePath, preflight.proposedContent);
         proposed.set(relativePath, {

@@ -5,6 +5,7 @@ import {
   NodeProcessAdapter,
   NodeWorkspaceFileSystemAdapter,
   RepositoryStatePipeline,
+  DEFAULT_TOOL_DEFINITIONS,
   ToolRuntimePipeline,
   VerificationPipeline,
   WorkspaceFileSystemManifestReader,
@@ -35,6 +36,10 @@ import {
   resolveSandboxPolicy,
   type MemoryCaptureContext,
 } from '@mitii/host';
+import {
+  getSharedMcpManager,
+  readMcpSettingsFromDisk,
+} from '@mitii/mcp';
 import type { LlmPort, ModelCapabilities, ModelEvent, ModelRequest } from '@mitii/v8';
 
 import { loadMitiiHostConfig, type MitiiHostConfig } from './config.js';
@@ -151,16 +156,16 @@ export function resolveCliPorts(
   };
 }
 
-export function createCliClient(options: {
+export async function createCliClient(options: {
   cwd: string;
   forceEcho?: boolean;
   env?: NodeJS.ProcessEnv;
   clientOverrides?: Partial<CreateMitiiClientOptions>;
-}): {
+}): Promise<{
   client: MitiiClient;
   ports: ResolvedCliPorts;
   memoryCapture?: MemoryCaptureContext;
-} {
+}> {
   const ports = resolveCliPorts({
     forceEcho: options.forceEcho,
     env: options.env,
@@ -185,6 +190,11 @@ export function createCliClient(options: {
     sandboxPreferRaw === 'bubblewrap'
       ? sandboxPreferRaw
       : 'auto';
+
+  const mcpManager = getSharedMcpManager({ clientInfoName: 'mitii-cli' });
+  const mcp = readMcpSettingsFromDisk(options.cwd);
+  const mcpSnapshot = await mcpManager.sync(mcp, options.cwd);
+
   const processPort = createSandboxedProcessPort(
     new NodeProcessAdapter(),
     resolveSandboxPolicy({
@@ -199,21 +209,24 @@ export function createCliClient(options: {
   });
   const adversaryFailMode =
     env.MITII_ADVERSARY_FAIL === 'open' ? ('fail_open' as const) : ('fail_closed' as const);
-  const tools = new ToolRuntimePipeline({
-    fileSystem,
-    process: processPort,
-    network: createHostNetworkPort({
-      inner: new NodeNetworkAdapter(),
-      env,
-    }),
-    git,
-    knowledgeGraph,
-    codeNavigation: createHostCodeNavigationPort({
-      workspaceRoot: options.cwd,
-    }),
-    repoGraphs,
-    ...(search ? { search } : {}),
-  });
+  const tools = new ToolRuntimePipeline(
+    {
+      fileSystem,
+      process: processPort,
+      network: createHostNetworkPort({
+        inner: new NodeNetworkAdapter(),
+        env,
+      }),
+      git,
+      knowledgeGraph,
+      codeNavigation: createHostCodeNavigationPort({
+        workspaceRoot: options.cwd,
+      }),
+      repoGraphs,
+      ...(search ? { search } : {}),
+    },
+    { registry: mcpManager.createRegistry() },
+  );
   const verification = new VerificationPipeline({
     tools,
     manifests: new WorkspaceFileSystemManifestReader({
@@ -255,6 +268,10 @@ export function createCliClient(options: {
     tools,
     repoGraphs,
     verification,
+    toolDefinitions: [
+      ...DEFAULT_TOOL_DEFINITIONS,
+      ...mcpSnapshot.toolDefinitions,
+    ],
     taskListAutoAdvance: env.MITII_TASK_LIST_AUTO_ADVANCE !== '0',
     skillsCatalog: createFileSystemSkillsCatalog({
       workspaceRoot: workspaceSkillsEnabled ? options.cwd : undefined,

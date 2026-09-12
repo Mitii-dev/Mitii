@@ -6,10 +6,14 @@ Current product package boundaries. Canonical V8 architecture: [`packages/v8/ARC
 
 ```text
 apps/vscode --+
-apps/cli    --+--> packages/host --> packages/sdk --> packages/v8
-apps/daemon --+         |
-                        `--> packages/automation
-tests/* ---------------/
+apps/cli    --+
+apps/daemon --+--> packages/host --> packages/sdk --> packages/v8
+apps/acp    --+         |
+                        +--> packages/automation
+                        +--> packages/mcp            # client @mitii/mcp
+                        `--> packages/search-kit
+packages/mcp/web -------> packages/search-kit        # server @mitii/mcp-web
+tests/* ----------------/
 ```
 
 **Forbidden**
@@ -17,6 +21,7 @@ tests/* ---------------/
 - `packages/v8` -> apps, sdk, host, automation
 - `packages/sdk` -> apps, host, automation
 - `packages/host` -> apps
+- `packages/mcp/web` (`@mitii/mcp-web`) -> v8, sdk, host (search-kit only)
 - product packages -> `tests/*`
 
 Hosts and tests prefer `@mitii/sdk` over importing V8 internals.
@@ -32,11 +37,16 @@ mitii/
 |   |-- v8/                   # @mitii/v8
 |   |-- sdk/                  # @mitii/sdk (+ bundled skills/)
 |   |-- host/                 # @mitii/host
-|   `-- automation/           # @mitii/automation
+|   |-- automation/           # @mitii/automation
+|   |-- mcp/                  # MCP family (all MCP code here)
+|   |   |-- src/              #   @mitii/mcp client
+|   |   `-- web/              #   @mitii/mcp-web server (+ memory_search)
+|   `-- search-kit/           # @mitii/search-kit
 |-- apps/
 |   |-- vscode/               # VS Code extension (VSIX)
 |   |-- cli/                  # @mitii/cli (`mitii`)
-|   `-- daemon/               # @mitii/daemon
+|   |-- daemon/               # @mitii/daemon
+|   `-- acp/                  # @mitii/acp (ACP-lite stdio bridge)
 |-- tests/
 |   `-- benchmark/            # @mitii/solid-benchmark
 |-- docs/
@@ -52,8 +62,12 @@ mitii/
 | SDK | `@mitii/sdk` | Public API; ships `skills/` |
 | Host | `@mitii/host` | Indexing, ports, recipes, skills catalog |
 | Automation | `@mitii/automation` | Schedules / claim runner |
+| MCP | `@mitii/mcp` | MCP **client** + ToolRegistry bridge (`packages/mcp`) |
+| MCP Web | `@mitii/mcp-web` | MCP **server** over search-kit (`packages/mcp/web`) |
+| Search kit | `@mitii/search-kit` | Web search / content resolvers |
 | CLI | `@mitii/cli` | `mitii` bin |
 | Daemon | `@mitii/daemon` | Long-lived serve |
+| ACP | `@mitii/acp` | ACP-lite stdio bridge |
 | VS Code | `mitii-ai-agent` | VSIX / Marketplace |
 | Benchmark | `@mitii/solid-benchmark` | `tests/benchmark` |
 | Root | private | Never published |

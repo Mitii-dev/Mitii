@@ -6,3 +6,4 @@ export * from "./RepoMapBuilder";
 export * from "./RepoMapRenderer";
 export * from "./ranking/pageRank";
 export * from "./ranking/RepoMapRanker";
+export * from "./ranking/importance";

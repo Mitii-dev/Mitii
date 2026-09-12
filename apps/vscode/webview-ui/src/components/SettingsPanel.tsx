@@ -108,6 +108,7 @@ interface SettingsPanelProps {
   onRestoreCheckpoint: (id: string) => void;
   onDeleteCheckpoint: (id: string) => void;
   onClearCheckpoints: () => void;
+  onReviewCheckpointChanges?: (id: string) => void;
   onToggleContext: (source: keyof ContextToggles, enabled: boolean) => void;
   onSaveAll: () => void;
   onResetTokenBudget: () => void;
@@ -377,6 +378,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     onRestoreCheckpoint,
     onDeleteCheckpoint,
     onClearCheckpoints,
+    onReviewCheckpointChanges,
     onToggleContext,
     onSaveAll,
     onResetTokenBudget,
@@ -1339,6 +1341,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
                 onRestore={onRestoreCheckpoint}
                 onDelete={onDeleteCheckpoint}
                 onClear={onClearCheckpoints}
+                onReviewChanges={onReviewCheckpointChanges}
               />
             </div>
           ) : null}

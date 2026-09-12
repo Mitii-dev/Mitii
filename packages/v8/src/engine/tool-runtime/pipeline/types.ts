@@ -61,6 +61,11 @@ export interface ToolRuntimePipelineOptions {
    * modifying this pipeline.
    */
   registry?: ToolRegistry;
+  /**
+   * Default for apply_patch fuzzy recovery when a patch omits fuzzyMatch.
+   * Hosts map mitii.tools.applyPatch.fuzzyMatch here (default false).
+   */
+  fuzzyMatchDefault?: boolean;
 }
 
 /** Timing anchors shared across preflight, execute, and result builders. */

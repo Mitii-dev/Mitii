@@ -57,6 +57,7 @@ const retrievalReasonTypeSchema =
     "lexical_match",
     "semantic_match",
     "repo_map_rank",
+    "repo_map_importance_boost",
     "graph_path_match",
     "graph_file_anchor",
     "graph_symbol_match",

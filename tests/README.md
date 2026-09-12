@@ -29,14 +29,16 @@ easy/medium/hard is just a field mixed freely within each file):
 
 | Domain | Cases | Category files |
 |---|---:|---|
-| `frontend` | 85 | `feature`, `bugfix`, `docs`, `retrieval`, `testing`, `capstone` |
-| `backend` | 44 | `nest`, `saas-api`, `express`, `monorepo`, `robustness`, `auth` |
-| `testing` | 23 | `express`, `monorepo`, `react` |
-| `cicd` | 18 | `react`, `nest`, `express`, `monorepo` |
+| `frontend` | 86 | `feature`, `bugfix`, `docs`, `retrieval`, `testing`, `capstone` |
+| `backend` | 47 | `nest`, `saas-api`, `express`, `monorepo`, `robustness`, `auth`, `type-cascade` |
+| `cicd` | 22 | `react`, `nest`, `express`, `monorepo`, `vscode-publish`, `npm-publish`, `workflow-authoring` |
+| `testing` | 24 | `express`, `monorepo`, `react` |
+| `api-build` | 2 | `sqlite-crud` |
 
-**170 cases total.** Run `pnpm --filter @mitii/solid-benchmark suites` (or
-`cd tests/benchmark && npm run suites`) any time for live, authoritative counts -
-the table above will drift as cases are added, that command never will.
+**181 cases total as of the latest checked suite output.** Run
+`pnpm --filter @mitii/solid-benchmark suites` (or
+`cd tests/benchmark && npm run suites`) any time for live, authoritative counts.
+The table above will drift as cases are added; that command will not.
 
 `frontend/cases/capstone.jsonl` is a special category: instead of modifying an
 existing fixture, the agent builds a **complete small application** from a
@@ -48,7 +50,7 @@ After **every** case finishes, a report is written immediately under
 
 ## Browse cases before you run anything
 
-A **read-only** test case browser lets you filter/search all 170 cases by
+A **read-only** test case browser lets you filter/search all benchmark cases by
 suite, category file, difficulty, capability, and fixture - useful both to see
 what's already covered and to find the right file when adding a new case:
 

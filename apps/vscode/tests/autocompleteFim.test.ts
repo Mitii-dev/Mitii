@@ -7,6 +7,7 @@ import {
   sanitizeFimCompletion,
   sliceFimContext,
 } from '../src/autocomplete/fim';
+import { buildNextEditRequestBody } from '../src/autocomplete/nextEdit';
 import { OpenAiCompatibleFimClient } from '../src/autocomplete/openAiCompatibleFimClient';
 import {
   readAutocompleteSettings,
@@ -71,6 +72,28 @@ describe('FIM autocomplete helpers', () => {
       }),
     ).toBe('answer();');
   });
+
+  it('rejects prefix echo, suffix-leading, and line-spam completions', () => {
+    expect(
+      sanitizeFimCompletion({
+        completion: 'value = 1;\nnext',
+        prefix: 'const value = 1;',
+        suffix: '',
+      }),
+    ).toBe('next');
+    expect(
+      sanitizeFimCompletion({
+        completion: 'already here more',
+        suffix: 'already here',
+      }),
+    ).toBe('');
+    expect(
+      sanitizeFimCompletion({
+        completion: Array.from({ length: 10 }, () => 'spam();').join('\n'),
+        suffix: '',
+      }),
+    ).toBe('');
+  });
 });
 
 describe('autocomplete settings', () => {
@@ -78,6 +101,7 @@ describe('autocomplete settings', () => {
     const autocomplete = readAutocompleteSettings(
       config({
         'autocomplete.enabled': true,
+        'autocomplete.mode': 'next-edit',
         'autocomplete.baseUrl': '',
         'autocomplete.model': '',
         'autocomplete.endpointPath': '/completions',
@@ -93,6 +117,7 @@ describe('autocomplete settings', () => {
 
     expect(autocomplete).toMatchObject({
       enabled: true,
+      mode: 'next-edit',
       endpointPath: 'completions',
       authHeader: 'api-key',
       maxTokens: 512,
@@ -113,6 +138,26 @@ describe('autocomplete settings', () => {
       baseUrl: 'https://provider.test/v1',
       model: 'provider-model',
     });
+  });
+
+  it('builds next-edit chat bodies with cursor markers', () => {
+    const body = buildNextEditRequestBody({
+      model: 'edit-model',
+      prefix: 'const a = ',
+      suffix: ';',
+      maxTokens: 32,
+      temperature: 0.1,
+      languageId: 'typescript',
+      relativePath: 'src/a.ts',
+    });
+    expect(body).toMatchObject({
+      model: 'edit-model',
+      max_tokens: 32,
+      stream: false,
+    });
+    const messages = body.messages as Array<{ role: string; content: string }>;
+    expect(messages[1]?.content).toContain('<<<CURSOR>>>');
+    expect(messages[1]?.content).toContain('file=src/a.ts');
   });
 });
 

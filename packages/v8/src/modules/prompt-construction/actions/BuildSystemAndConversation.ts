@@ -242,6 +242,7 @@ function buildToolGuidance(decision: ExecutionDecision): string {
       "Match named APIs and file layouts from the ask (for example src/routes/login.js, createUserStore() as a factory function, new Logger(...)). Do not invent alternate paths when the ask is specific.",
       "Stay scoped: edit only the modules needed for the ask. Do not drive-by-fix unrelated siblings (for example analytics when only products was named).",
       "For the live checklist tool, call update_todos (aliases: update_todo, task_list_update). Use type=replace|patch|clear with items (or todos) and title (or content).",
+      "When apply_patch fails: (1) re-read and copy exact oldText, (2) add surrounding context if ambiguous, (3) use smaller hunks, (4) only then rely on fuzzyMatch if enabled, (5) full-file replace (empty oldText) is last resort. Never invent a different edit format in chat.",
     );
   }
 

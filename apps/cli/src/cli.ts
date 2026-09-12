@@ -176,7 +176,7 @@ async function runIndex(options: {
   forceEcho: boolean;
   io: SessionIo;
 }): Promise<number> {
-  const { client, ports } = createCliClient({
+  const { client, ports } = await createCliClient({
     cwd: options.cwd,
     forceEcho: options.forceEcho,
   });
@@ -298,7 +298,7 @@ async function runStatus(options: {
   forceEcho: boolean;
   io: SessionIo;
 }): Promise<number> {
-  const { client, ports } = createCliClient({
+  const { client, ports } = await createCliClient({
     cwd: options.cwd,
     forceEcho: options.forceEcho,
   });

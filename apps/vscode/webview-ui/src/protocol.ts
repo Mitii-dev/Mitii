@@ -606,6 +606,7 @@ export interface CheckpointItemView {
   id: string;
   label: string;
   createdAt: string;
+  changedPaths?: string[];
 }
 
 export interface SkillCatalogItem {
@@ -694,6 +695,7 @@ export type WebviewToHostMessage =
   | { type: 'restoreCheckpoint'; id: string }
   | { type: 'deleteCheckpoint'; id: string }
   | { type: 'clearCheckpoints' }
+  | { type: 'reviewCheckpointChanges'; id: string }
   | { type: 'addMemory'; text: string }
   | { type: 'deleteMemory'; id: string }
   | { type: 'clearMemory' }

@@ -4,7 +4,7 @@ import { createCliClient } from '../src/ports.js';
 
 describe('CLI cancel smoke', () => {
   it('cancels an in-flight echo run', async () => {
-    const { client } = createCliClient({
+    const { client } = await createCliClient({
       cwd: process.cwd(),
       forceEcho: true,
     });

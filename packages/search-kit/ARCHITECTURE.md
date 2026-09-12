@@ -134,5 +134,5 @@ the content chain, then fall back to raw HTTP.
 |---|---|
 | 1 | Brave + SearXNG + Tavily; SO/GH/Wiki/arXiv + HTML fallback |
 | 2 | Extracted package + host wiring (this package) |
-| 3 | Optional `@mitii/mcp-web` wrapping the same kit |
+| 3 | Optional `@mitii/mcp-web` (`packages/mcp/web`) wrapping the same kit |
 | later | Browser scrape MCP (not this package) |

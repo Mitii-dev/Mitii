@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import {
   InMemoryFileSystemAdapter,
   InMemoryProcessAdapter,
   ToolRuntimePipeline,
   createBuiltinToolRegistry,
+  defineTool,
   directory,
 } from "../index";
 import { createReadOnlyGrant } from "./fixtures/grants";
@@ -78,5 +80,60 @@ describe("describe_tool progressive disclosure", () => {
         .list()
         .some((t) => t.definition.name === "describe_tool"),
     ).toBe(true);
+  });
+
+  it("hydrates mcp__ tools when grant has write effect", async () => {
+    const registry = createBuiltinToolRegistry().register({
+      definition: defineTool({
+        name: "mcp__memory__store",
+        effects: ["workspace_read", "workspace_write"],
+        backend: "mcp",
+        description: "[MCP:memory] store",
+        inputSchema: z.unknown(),
+        outputSchema: z.unknown(),
+        modelInputSchema: {
+          type: "object",
+          properties: { key: { type: "string" } },
+          required: ["key"],
+        },
+        executeSupported: true,
+      }),
+      async execute() {
+        return { output: {}, truncated: false, redacted: false };
+      },
+    });
+    const mcpRuntime = new ToolRuntimePipeline(
+      {
+        fileSystem: new InMemoryFileSystemAdapter(WORKSPACE, directory({})),
+        process: new InMemoryProcessAdapter(async () => ({
+          exitCode: 0,
+          stdout: "",
+          stderr: "",
+          timedOut: false,
+          cancelled: false,
+          truncated: false,
+        })),
+      },
+      { registry },
+    );
+
+    const result = await mcpRuntime.execute({
+      schemaVersion: 1,
+      callId: "describe_mcp",
+      toolName: "describe_tool",
+      arguments: { name: "mcp__memory__store" },
+      grant: createReadOnlyGrant({
+        maximumWorkspaceEffect: "write",
+        allowedTools: ["describe_tool", "read_file"],
+        allowedEffects: ["workspace_read", "workspace_write"],
+      }),
+      workspaceRoot: WORKSPACE,
+    });
+
+    expect(result.status).toBe("succeeded");
+    expect(result.output).toMatchObject({
+      name: "mcp__memory__store",
+      found: true,
+    });
   });
 });

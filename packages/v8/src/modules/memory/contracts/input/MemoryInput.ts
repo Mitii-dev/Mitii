@@ -31,6 +31,12 @@ export const memoryRetrieveInputSchema = z
     concepts: z.array(z.string().min(1)).default([]),
     /** Optional run id recorded on access touch. */
     runId: z.string().min(1).optional(),
+    /**
+     * `layered` partitions selected memory into L1 index clips (~30%),
+     * L2 timeline (~30%), and L3 full facts (~40%). Default retrieve
+     * remains a flat instruction list.
+     */
+    mode: z.enum(["default", "layered"]).default("default"),
   })
   .strict();
 
@@ -66,3 +72,18 @@ export const memoryCommitInputSchema = z
 
 export type MemoryCommitInput = z.input<typeof memoryCommitInputSchema>;
 export type MemoryCommitParsedInput = z.infer<typeof memoryCommitInputSchema>;
+
+export const memoryConsolidateInputSchema = z
+  .object({
+    schemaVersion: z.literal(MEMORY_SCHEMA_VERSION),
+    scope: memoryScopeSchema,
+    now: z.string().datetime().optional(),
+  })
+  .strict();
+
+export type MemoryConsolidateInput = z.input<
+  typeof memoryConsolidateInputSchema
+>;
+export type MemoryConsolidateParsedInput = z.infer<
+  typeof memoryConsolidateInputSchema
+>;

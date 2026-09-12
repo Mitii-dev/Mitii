@@ -27,6 +27,11 @@ import {
   WeightedReciprocalRankFusion,
 } from "./WeightedReciprocalRankFusion";
 
+import {
+  boostCandidatesByRepoMapImportance,
+  importanceByPathFromRepoMapEntries,
+} from "./boostByImportance";
+
 import type {
   HybridRetrievalCandidate,
   HybridRetrievalInput,
@@ -301,6 +306,21 @@ export class HybridRetriever {
         successful,
         candidates,
       );
+
+    // Optional post-RRF boost from published RepoMap composite scores.
+    // Does not recompute PageRank — only applies published importance.
+    if (request.repoMap?.entries?.length) {
+      const importanceByPath =
+        importanceByPathFromRepoMapEntries(
+          request.repoMap.entries,
+        );
+      const boosted =
+        boostCandidatesByRepoMapImportance({
+          candidates,
+          importanceByPath,
+        });
+      candidates = boosted.candidates;
+    }
 
     if (
       this.reranker &&

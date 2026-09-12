@@ -1,5 +1,6 @@
 import {
   AGENT_ENGINE_SCHEMA_VERSION,
+  DEFAULT_TOOL_DEFINITIONS,
   InMemoryRepositoryStateStore,
   NodeGitAdapter,
   NodeNetworkAdapter,
@@ -18,6 +19,10 @@ import type {
   AutomationExecuteResult,
   AutomationRunExecutor,
 } from '@mitii/automation';
+import {
+  getSharedMcpManager,
+  readMcpSettingsFromDisk,
+} from '@mitii/mcp';
 
 import { createHostLlmPorts } from '../config/createHostLlmPorts.js';
 import {
@@ -258,23 +263,29 @@ async function createAutomationClient(options: {
   const search = createOptionalSearchPort(env);
   const git = new NodeGitAdapter();
   const knowledgeGraph = createWorkspaceKnowledgeGraph(options.cwd);
-  const tools = new ToolRuntimePipeline({
-    fileSystem,
-    process: new NodeProcessAdapter(),
-    network: createHostNetworkPort({
-      inner: new NodeNetworkAdapter(),
-      env,
-    }),
-    git,
-    knowledgeGraph,
-    codeNavigation: createHostCodeNavigationPort({
-      workspaceRoot: options.cwd,
-    }),
-    repoGraphs: createHostRepositoryGraphPort({
-      workspaceRoot: options.cwd,
-    }),
-    ...(search ? { search } : {}),
-  });
+  const mcpManager = getSharedMcpManager({ clientInfoName: 'mitii-automation' });
+  const mcp = readMcpSettingsFromDisk(options.cwd);
+  const mcpSnapshot = await mcpManager.sync(mcp, options.cwd);
+  const tools = new ToolRuntimePipeline(
+    {
+      fileSystem,
+      process: new NodeProcessAdapter(),
+      network: createHostNetworkPort({
+        inner: new NodeNetworkAdapter(),
+        env,
+      }),
+      git,
+      knowledgeGraph,
+      codeNavigation: createHostCodeNavigationPort({
+        workspaceRoot: options.cwd,
+      }),
+      repoGraphs: createHostRepositoryGraphPort({
+        workspaceRoot: options.cwd,
+      }),
+      ...(search ? { search } : {}),
+    },
+    { registry: mcpManager.createRegistry() },
+  );
   const verification = new VerificationPipeline({
     tools,
     manifests: new WorkspaceFileSystemManifestReader({
@@ -324,6 +335,10 @@ async function createAutomationClient(options: {
     checkpointStore: createWorkspaceCheckpointStore(options.cwd),
     tools,
     verification,
+    toolDefinitions: [
+      ...DEFAULT_TOOL_DEFINITIONS,
+      ...mcpSnapshot.toolDefinitions,
+    ],
     skillsCatalog: createFileSystemSkillsCatalog({
       workspaceRoot: options.cwd,
       includeBundled: true,

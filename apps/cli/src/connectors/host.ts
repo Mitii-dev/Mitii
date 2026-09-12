@@ -63,7 +63,7 @@ function toSessionIo(io: ConnectIo): SessionIo {
 }
 
 async function ensurePublishedRepositoryState(options: {
-  client: ReturnType<typeof createCliClient>['client'];
+  client: Awaited<ReturnType<typeof createCliClient>>['client'];
   workspaceId: string;
   cwd: string;
   io: ConnectIo;
@@ -129,7 +129,7 @@ export async function runConnectorTurn(
   const conversation: MitiiConversationMessage[] = carry?.conversation ?? [];
   const taskList: TaskList | undefined = carry?.taskList;
 
-  const { client, ports, memoryCapture } = createCliClient({
+  const { client, ports, memoryCapture } = await createCliClient({
     cwd: options.cwd,
     forceEcho: options.forceEcho === true,
   });

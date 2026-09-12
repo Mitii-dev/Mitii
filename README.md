@@ -10,9 +10,9 @@
 
 <p align="center">
   <a href="LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/License-AGPL_v3-blue.svg"></a>
-  <a href="https://code.visualstudio.com/"><img alt="VS Code 1.85+" src="https://img.shields.io/badge/VS%20Code-1.85%2B-007ACC?logo=visualstudiocode"></a>
+  <a href="https://code.visualstudio.com/"><img alt="VS Code 1.124+" src="https://img.shields.io/badge/VS%20Code-1.124%2B-007ACC?logo=visualstudiocode"></a>
   <a href="https://nodejs.org/"><img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-339933?logo=node.js"></a>
-  <img alt="Version 2.9.39" src="https://img.shields.io/badge/version-2.9.39-111111">
+  <img alt="Version 2.9.40" src="https://img.shields.io/badge/version-2.9.40-111111">
   <a href="https://docs.mitii.dev"><img alt="Documentation" src="https://img.shields.io/badge/docs-docs.mitii.dev-5B5BFF"></a>
 </p>
 
@@ -61,7 +61,7 @@ The extension and CLI talk to the agent through `@mitii/sdk` -> `@mitii/v8`. Hos
 
 ### Requirements
 
-- VS Code 1.85 or newer
+- VS Code 1.124 or newer
 - Node.js 20 or newer
 - pnpm 10.13 or newer for source development
 
@@ -155,7 +155,7 @@ node apps/cli/bin/mitii.js index --cwd /path/to/project
 node apps/cli/bin/mitii.js status --json
 ```
 
-New users: `mitii setup` writes non-secret provider config, then set an API key in the environment and run `mitii session` (dotted MITII banner + REPL). See [apps/cli/README.md](apps/cli/README.md) for `setup`, `ask`, `session`, `index`, `status`, and `export-session`. Daemon / `mitii serve` is deferred.
+New users: `mitii setup` writes non-secret provider config, then set an API key in the environment and run `mitii session` (dotted MITII banner + REPL). See [apps/cli/README.md](apps/cli/README.md) for `setup`, `ask`, `session`, `index`, `status`, `export-session`, and automation commands such as `schedule`, `events`, and `serve`.
 
 ### SDK
 
@@ -208,11 +208,14 @@ mitii-ai-agent/
 |   |-- v8/                   # @mitii/v8 - host-neutral agent runtime
 |   |-- sdk/                  # @mitii/sdk - public API + bundled skills/
 |   |-- host/                 # @mitii/host - indexing, ports, writing recipes
-|   `-- automation/           # @mitii/automation
+|   |-- automation/           # @mitii/automation - schedules and claim runner
+|   |-- mcp/                  # @mitii/mcp client + @mitii/mcp-web server
+|   `-- search-kit/           # @mitii/search-kit - web search/fetch helpers
 |-- apps/
 |   |-- vscode/               # VS Code extension (F5 target)
 |   |-- cli/                  # headless CLI (`mitii`)
-|   `-- daemon/               # long-lived automation
+|   |-- daemon/               # long-lived automation daemon (`mitii-daemon`)
+|   `-- acp/                  # ACP-lite stdio bridge (`mitii-acp`)
 |-- tests/                    # solid benchmark (+ package-local specs elsewhere)
 |-- docs/                     # developer and release guides (+ automation/)
 `-- scripts/                  # build, release, and audit automation
@@ -254,6 +257,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for coding conventions and pull request g
 - [Release / publish units](docs/RELEASE.md)
 - [Solid benchmark](tests/benchmark/README.md)
 - [Tests layout](docs/TESTS.md)
+- [MCP packages](packages/mcp/README.md)
+- [Search kit](packages/search-kit/README.md)
 - [Website](https://mitii.dev)
 - [Hosted documentation](https://docs.mitii.dev)
 

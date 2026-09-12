@@ -4,6 +4,7 @@ import { isSecurityConcern, WorkspaceIgnorePolicy } from '@mitii/v8';
 
 import { sliceFimContext } from './fim.js';
 import { OpenAiCompatibleFimClient } from './openAiCompatibleFimClient.js';
+import { OpenAiCompatibleNextEditClient } from './nextEdit.js';
 import {
   readAutocompleteSettings,
   resolveAutocompleteRuntimeSettings,
@@ -67,21 +68,41 @@ export class MitiiInlineCompletionProvider
       abortController.abort();
     });
     try {
-      const client = new OpenAiCompatibleFimClient({
-        baseUrl: settings.baseUrl,
-        endpointPath: settings.endpointPath,
-        authHeader: settings.authHeader,
-        apiKey:
-          (await this.secrets.get('mitii.provider.apiKey')) ?? undefined,
-        timeoutMs: settings.timeoutMs,
-      });
-      const result = await client.complete({
-        ...context,
-        model: settings.model,
-        maxTokens: settings.maxTokens,
-        temperature: settings.temperature,
-        abortSignal: abortController.signal,
-      });
+      const apiKey =
+        (await this.secrets.get('mitii.provider.apiKey')) ?? undefined;
+      const result =
+        settings.mode === 'next-edit'
+          ? await new OpenAiCompatibleNextEditClient({
+              baseUrl: settings.baseUrl,
+              endpointPath:
+                settings.endpointPath === 'completions'
+                  ? 'chat/completions'
+                  : settings.endpointPath,
+              authHeader: settings.authHeader,
+              apiKey,
+              timeoutMs: settings.timeoutMs,
+            }).complete({
+              ...context,
+              model: settings.model,
+              maxTokens: settings.maxTokens,
+              temperature: settings.temperature,
+              languageId: document.languageId,
+              relativePath: this.relativePath(document),
+              abortSignal: abortController.signal,
+            })
+          : await new OpenAiCompatibleFimClient({
+              baseUrl: settings.baseUrl,
+              endpointPath: settings.endpointPath,
+              authHeader: settings.authHeader,
+              apiKey,
+              timeoutMs: settings.timeoutMs,
+            }).complete({
+              ...context,
+              model: settings.model,
+              maxTokens: settings.maxTokens,
+              temperature: settings.temperature,
+              abortSignal: abortController.signal,
+            });
       if (requestId !== this.sequence || token.isCancellationRequested) {
         return undefined;
       }

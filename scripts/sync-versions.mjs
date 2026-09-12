@@ -9,9 +9,12 @@ const packageFiles = [
   'packages/sdk/package.json',
   'packages/automation/package.json',
   'packages/search-kit/package.json',
+  'packages/mcp/package.json',
+  'packages/mcp/web/package.json',
   'packages/host/package.json',
   'apps/cli/package.json',
   'apps/daemon/package.json',
+  'apps/acp/package.json',
   'apps/vscode/package.json',
 ];
 

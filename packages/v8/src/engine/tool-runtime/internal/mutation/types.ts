@@ -35,6 +35,11 @@ export interface StructuredPatch {
   expectedHash?: string;
   /** When true, replace every exact oldText occurrence. Default is unique match. */
   replaceAll?: boolean;
+  /**
+   * When true, allow bounded fuzzy recovery if exact oldText is missing
+   * (trim / indent-normalize / unique ±5 line window). Default false.
+   */
+  fuzzyMatch?: boolean;
 }
 
 export interface AppliedPatchRecord {

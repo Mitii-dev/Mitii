@@ -4,6 +4,12 @@ import type { RegisteredTool } from "../../internal/ToolRegistry";
 import { defineTool } from "../../internal/ToolCatalog";
 import { getBuiltinModelToolDefinition } from "./builtinModelLookup";
 
+const MCP_TOOL_NAME_PREFIX = "mcp__";
+
+function isMcpToolName(name: string): boolean {
+  return name.startsWith(MCP_TOOL_NAME_PREFIX);
+}
+
 export const describeToolInputSchema = z
   .object({
     name: z.string().min(1).max(128),
@@ -23,6 +29,9 @@ export const describeToolOutputSchema = z
  * Progressive disclosure meta-tool. Returns the full model-facing JSON Schema
  * for a tool the grant already allows. Cannot unlock tools outside the grant
  * (Tool Runtime preflight + Decision Policy).
+ *
+ * Host MCP tools (`mcp__*`) are allowed when the grant has write effect
+ * (same rule as filterToolDefinitions) or the name is in allowedTools.
  */
 export const describeToolTool: RegisteredTool = {
   definition: defineTool({
@@ -65,7 +74,15 @@ export const describeToolTool: RegisteredTool = {
     }
 
     const name = parsed.data.name.trim();
-    if (!ctx.grant.allowedTools.includes(name) && name !== "describe_tool") {
+    const mcpWritable =
+      isMcpToolName(name) &&
+      ctx.grant.maximumWorkspaceEffect === "write";
+    const granted =
+      ctx.grant.allowedTools.includes(name) ||
+      name === "describe_tool" ||
+      mcpWritable;
+
+    if (!granted) {
       return {
         output: {
           name,
@@ -79,31 +96,49 @@ export const describeToolTool: RegisteredTool = {
       };
     }
 
-    const match = getBuiltinModelToolDefinition(name);
-    if (!match) {
+    const builtin = getBuiltinModelToolDefinition(name);
+    if (builtin) {
       return {
         output: {
-          name,
-          description: "",
-          inputSchema: {},
-          found: false,
+          name: builtin.name,
+          description: builtin.description,
+          inputSchema: { ...builtin.inputSchema },
+          found: true,
         },
         truncated: false,
         redacted: false,
-        warnings: [`Unknown tool: ${name}`],
+        warnings: [],
+      };
+    }
+
+    const registered = ctx.registry?.get(name);
+    if (registered) {
+      const modelSchema =
+        registered.definition.modelInputSchema ??
+        ({ type: "object", properties: {} } as Record<string, unknown>);
+      return {
+        output: {
+          name: registered.definition.name,
+          description: registered.definition.description,
+          inputSchema: { ...modelSchema },
+          found: true,
+        },
+        truncated: false,
+        redacted: false,
+        warnings: [],
       };
     }
 
     return {
       output: {
-        name: match.name,
-        description: match.description,
-        inputSchema: { ...match.inputSchema },
-        found: true,
+        name,
+        description: "",
+        inputSchema: {},
+        found: false,
       },
       truncated: false,
       redacted: false,
-      warnings: [],
+      warnings: [`Unknown tool: ${name}`],
     };
   },
 };
