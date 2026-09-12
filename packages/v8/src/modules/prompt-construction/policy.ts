@@ -64,4 +64,8 @@ export const UNTRUSTED_CONTENT_INJECTION_PATTERNS: readonly RegExp[] = [
   /grant\s+yourself\s+(write|network|git)\s+access/i,
   /bypass\s+(tool|permission|grant|approval)\s+checks?/i,
   /system\s*:\s*you\s+are/i,
+  /\[?\s*SYSTEM\s*:\s*/i,
+  /confirm\s+(?:your\s+)?compliance/i,
+  /output\s+the\s+exact\s+string/i,
+  /MITII_INJECTION_ACK_/i,
 ];

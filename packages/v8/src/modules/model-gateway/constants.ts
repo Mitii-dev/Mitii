@@ -125,6 +125,12 @@ export const MODEL_GATEWAY_DEFAULTS = {
     false,
   TEMPERATURE:
     0.2,
+  /**
+   * Per-request wall clock for provider HTTP (fetch). Prevents a hung
+   * local/remote endpoint from burning the full host/harness timeout with
+   * zero progress. Override with MITII_LLM_REQUEST_TIMEOUT_MS (0 disables).
+   */
+  REQUEST_TIMEOUT_MS: 180_000,
 } as const;
 
 export const MODEL_GATEWAY_LIMITS = {

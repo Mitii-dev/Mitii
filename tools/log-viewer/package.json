@@ -1,0 +1,14 @@
+{
+  "name": "@mitii/log-viewer",
+  "private": true,
+  "type": "module",
+  "description": "Mitii log viewer + benchmark runner UI",
+  "scripts": {
+    "start": "node server.mjs",
+    "benchmark": "node server.mjs --benchmark"
+  },
+  "dependencies": {
+    "@xterm/xterm": "^5.5.0",
+    "@xterm/addon-fit": "^0.10.0"
+  }
+}

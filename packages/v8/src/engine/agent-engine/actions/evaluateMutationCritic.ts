@@ -67,7 +67,9 @@ export function evaluateMutationCritic(
     }
   }
 
-  const scopes = grant.pathScopes.map((s) => s.replace(/\\/g, "/"));
+  const scopes = grant.mutationPathScopes?.length
+    ? grant.mutationPathScopes.map((s) => s.replace(/\\/g, "/"))
+    : grant.pathScopes.map((s) => s.replace(/\\/g, "/"));
   const outOfScope: string[] = [];
   for (const raw of input.intendedPaths ?? []) {
     const path = raw.replace(/\\/g, "/").replace(/^\.\//, "");

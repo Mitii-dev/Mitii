@@ -1,7 +1,7 @@
 {
   "name": "mitii-ai-agent",
   "description": "Private Mitii monorepo workspace orchestrator. Product packages: @mitii/v8, @mitii/sdk, @mitii/automation, @mitii/search-kit, @mitii/host, @mitii/cli, @mitii/daemon, @mitii/acp, apps/vscode.",
-  "version": "2.9.41",
+  "version": "2.9.42",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "author": {
@@ -65,8 +65,10 @@
     "benchmark:cicd": "pnpm --filter @mitii/solid-benchmark benchmark:cicd",
     "benchmark:testing": "pnpm --filter @mitii/solid-benchmark benchmark:testing",
     "benchmark:validate": "pnpm --filter @mitii/solid-benchmark validate",
-    "benchmark:fixtures": "pnpm --filter @mitii/solid-benchmark fixtures:install",
+    "benchmark:fixtures": "pnpm --filter @mitii/solid-benchmark fixtures:reset",
     "benchmark:reset": "pnpm --filter @mitii/solid-benchmark fixtures:reset",
+    "benchmark:prepare": "pnpm --filter @mitii/solid-benchmark fixtures:reset",
+    "benchmark:fixtures:install-only": "pnpm --filter @mitii/solid-benchmark fixtures:install",
     "rebuild:native": "node scripts/rebuild-native.mjs",
     "rebuild:node": "node scripts/rebuild-node.mjs",
     "sync:versions": "node scripts/sync-versions.mjs",

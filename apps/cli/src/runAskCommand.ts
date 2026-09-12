@@ -359,6 +359,19 @@ export async function runAsk(options: {
       ? ({ approvalMode: 'never' as const, planApproval: 'never' as const })
       : {};
 
+  // Unattended / headless runs: turn on DecisionBrief + mutation critic so
+  // multi-clause asks and path-scope discipline are enforced without a human.
+  const unattendedSteering =
+    options.autoApproval === 'approved' || origin === 'automation'
+      ? ({
+          steering: {
+            decisionBrief: true,
+            criticMode: 'enforce' as const,
+            policyFactsFirst: true,
+          },
+        })
+      : {};
+
   const outcome = await driveRun({
     client,
     start: {
@@ -370,6 +383,7 @@ export async function runAsk(options: {
         : {}),
       workspaceRoot: options.cwd,
       ...hostApproval,
+      ...unattendedSteering,
       ...(userSafetyRules.enabled ? { userSafetyRules } : {}),
       ...(projectRules.length > 0 ? { projectRules: [...projectRules] } : {}),
       ...(options.requiredSkillIds && options.requiredSkillIds.length > 0

@@ -1522,6 +1522,8 @@ describe("DecisionPolicyPipeline", () => {
     );
 
     expect(decision.toolGrant.approvalMode).toBe("never");
+    expect(decision.toolGrant.pathScopes).toEqual(["."]);
+    expect(decision.toolGrant.mutationPathScopes).toEqual(["src/parser"]);
     const narrowed = pipeline.narrow({
       previous: decision,
       discoveredPaths: ["src/parser/parse.ts"],

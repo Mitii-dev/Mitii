@@ -57,6 +57,12 @@ export interface OpenAiCompatibleLlmPortConfig {
   initialBackoffMs?: number;
   /** Cap for exponential backoff in ms. Defaults to 8_000. */
   maxBackoffMs?: number;
+  /**
+   * Per-request provider HTTP wall clock (ms). Defaults to
+   * MODEL_GATEWAY_DEFAULTS.REQUEST_TIMEOUT_MS / MITII_LLM_REQUEST_TIMEOUT_MS.
+   * Pass 0 to disable.
+   */
+  requestTimeoutMs?: number;
   /** Test seam for backoff waits. Defaults to setTimeout. */
   sleepImpl?: (ms: number, signal?: AbortSignal) => Promise<void>;
 }
@@ -131,6 +137,7 @@ export class OpenAiCompatibleLlmPort implements LlmPort {
   private readonly maxRetries: number;
   private readonly initialBackoffMs: number;
   private readonly maxBackoffMs: number;
+  private readonly requestTimeoutMs: number | undefined;
   private readonly sleepImpl: (
     ms: number,
     signal?: AbortSignal,
@@ -164,6 +171,10 @@ export class OpenAiCompatibleLlmPort implements LlmPort {
       config.maxBackoffMs,
       OPENAI_COMPATIBLE_DEFAULTS.MAX_BACKOFF_MS,
     );
+    this.requestTimeoutMs =
+      typeof config.requestTimeoutMs === "number"
+        ? config.requestTimeoutMs
+        : undefined;
     this.sleepImpl = config.sleepImpl ?? defaultSleep;
 
     this.capabilities = new ModelCapabilityResolver().resolve({
@@ -212,6 +223,7 @@ export class OpenAiCompatibleLlmPort implements LlmPort {
       body: JSON.stringify(this.buildBody(normalized, stream)),
       stream,
       abortSignal: context?.abortSignal,
+      requestTimeoutMs: this.requestTimeoutMs,
       fetchImpl: this.fetchImpl,
       maxRetries: this.maxRetries,
       initialBackoffMs: this.initialBackoffMs,

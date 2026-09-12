@@ -302,17 +302,18 @@ function executionContract(strategy?: PlanStrategyDecision): string {
       "Execution contract: preflight evidence already enumerates failures.",
       "Skip rediscovery. Start at the first Change step or active checklist item.",
       "Load only files for the active todo; mark it done before moving on.",
+      "Do not end after planning — call apply_patch (or other mutation tools) for Change steps now.",
       "Do not expand scope unless the user revises the plan.",
     ].join(" ");
   }
   if (strategy?.strategy === "discover_and_plan") {
-    return "Execution contract: discovery already ran. Start at the first Change step — do not rediscover. Complete each step before moving on, and do not expand scope unless the user revises the plan.";
+    return "Execution contract: discovery already ran. Start at the first Change step — do not rediscover. Do not end after planning; mutate with apply_patch for Change steps. Complete each step before moving on, and do not expand scope unless the user revises the plan.";
   }
   if (strategy?.strategy === "plan_from_ask") {
-    return "Execution contract: plan from the approved objective and listed targets. Start with the first unfinished step, complete each step before moving on, and do not expand scope unless the user revises the plan.";
+    return "Execution contract: plan from the approved objective and listed targets. Do not end after planning; call apply_patch for Change steps now. Start with the first unfinished step, complete each step before moving on, and do not expand scope unless the user revises the plan.";
   }
   if (strategy?.strategy === "clarify") {
     return "Execution contract: resolve the plan open questions before mutating files. Do not expand scope unless the user revises the plan.";
   }
-  return "Execution contract: follow the approved plan phase by phase. Start with the first unfinished step, complete each step before moving on, and do not expand scope unless the user revises the plan.";
+  return "Execution contract: follow the approved plan phase by phase. Do not end after planning — mutate with apply_patch for Change steps. Start with the first unfinished step, complete each step before moving on, and do not expand scope unless the user revises the plan.";
 }

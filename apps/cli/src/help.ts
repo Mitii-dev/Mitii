@@ -114,7 +114,7 @@ Options:
   --yes              setup: non-interactive (requires --provider)
 
 Signals:
-  SIGINT (Ctrl-C)    Cancel the active run via SDK run.cancel()
+  SIGINT / SIGTERM   Cancel the active run via SDK run.cancel()
 
 Config (no secrets):
   .mitii/config.json or ~/.mitii/config.json

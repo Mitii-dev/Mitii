@@ -108,8 +108,10 @@ export function createDefaultSessionIo(): SessionIo {
     onInterrupt: (handler) => {
       const wrapped = () => handler();
       process.on('SIGINT', wrapped);
+      process.on('SIGTERM', wrapped);
       return () => {
         process.off('SIGINT', wrapped);
+        process.off('SIGTERM', wrapped);
       };
     },
   };
