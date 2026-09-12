@@ -20,6 +20,17 @@ const externals = new Set([
 
 mkdirSync(dirname(outfile), { recursive: true });
 
+function resolveBareImport(args) {
+  if (args.importer) {
+    try {
+      return createRequire(args.importer).resolve(args.path);
+    } catch {
+      // Fall back to the app package for entry-point and shared dependency imports.
+    }
+  }
+  return requireFromApp.resolve(args.path);
+}
+
 function stageBundledSkills() {
   const source = resolve(__dirname, '../../../packages/sdk/skills');
   const target = join(root, 'dist/skills');
@@ -50,7 +61,7 @@ build({
             return { path: args.path, external: true };
           }
           try {
-            return { path: requireFromApp.resolve(args.path) };
+            return { path: resolveBareImport(args) };
           } catch {
             return undefined;
           }

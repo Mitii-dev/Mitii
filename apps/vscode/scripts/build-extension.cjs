@@ -63,6 +63,17 @@ function stageBundledSkills() {
   console.log(`staged ${target}`);
 }
 
+function resolveBareImport(args) {
+  if (args.importer) {
+    try {
+      return createRequire(args.importer).resolve(args.path);
+    } catch {
+      // Fall back to the app package for entry-point and shared dependency imports.
+    }
+  }
+  return requireFromApp.resolve(args.path);
+}
+
 rmSync(distDir, { recursive: true, force: true });
 mkdirSync(dirname(outfile), { recursive: true });
 
@@ -91,7 +102,7 @@ build({
             return { path: args.path, external: true };
           }
           try {
-            return { path: requireFromApp.resolve(args.path) };
+            return { path: resolveBareImport(args) };
           } catch {
             return undefined;
           }
