@@ -6,10 +6,10 @@ const {
   cpSync,
   existsSync,
   mkdirSync,
-  rmSync,
   writeFileSync,
 } = require('node:fs');
 const { dirname, join, resolve } = require('node:path');
+const { rmRf } = require(resolve(__dirname, '../../../scripts/rm-rf.cjs'));
 const {
   stageNativeSqliteBinding,
 } = require(resolve(__dirname, '../../../scripts/stage-native-sqlite.cjs'));
@@ -58,7 +58,7 @@ function buildWebview() {
 function stageBundledSkills() {
   const source = resolve(__dirname, '../../../packages/sdk/skills');
   const target = join(distDir, 'skills');
-  rmSync(target, { recursive: true, force: true });
+  rmRf(target);
   cpSync(source, target, { recursive: true });
   console.log(`staged ${target}`);
 }
@@ -74,7 +74,7 @@ function resolveBareImport(args) {
   return requireFromApp.resolve(args.path);
 }
 
-rmSync(distDir, { recursive: true, force: true });
+rmRf(distDir);
 mkdirSync(dirname(outfile), { recursive: true });
 
 buildWebview();

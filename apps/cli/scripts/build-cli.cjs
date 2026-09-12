@@ -1,8 +1,9 @@
 const { build } = require('esbuild');
 const { createRequire } = require('node:module');
 const { builtinModules } = require('node:module');
-const { cpSync, mkdirSync, rmSync } = require('node:fs');
+const { cpSync, mkdirSync } = require('node:fs');
 const { dirname, join, resolve } = require('node:path');
+const { rmRf } = require(resolve(__dirname, '../../../scripts/rm-rf.cjs'));
 
 const root = join(__dirname, '..');
 const outfile = join(root, 'dist/cli.js');
@@ -34,7 +35,7 @@ function resolveBareImport(args) {
 function stageBundledSkills() {
   const source = resolve(__dirname, '../../../packages/sdk/skills');
   const target = join(root, 'dist/skills');
-  rmSync(target, { recursive: true, force: true });
+  rmRf(target);
   cpSync(source, target, { recursive: true });
   console.log(`staged ${target}`);
 }
