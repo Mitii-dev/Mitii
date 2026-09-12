@@ -1,6 +1,8 @@
 import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { spawnSync } from 'child_process';
 
 const checkOnly = process.argv.includes('--check');
+const shouldStage = process.argv.includes('--stage');
 const root = JSON.parse(readFileSync('package.json', 'utf8'));
 const version = root.version;
 /** Keep in sync with CI/release/npm-publish workflows and scripts/publish-npm.cjs. */
@@ -16,6 +18,7 @@ const packageFiles = [
 ];
 
 const mismatches = [];
+const touched = [];
 
 for (const file of packageFiles) {
   if (!existsSync(file)) {
@@ -29,6 +32,7 @@ for (const file of packageFiles) {
   if (!checkOnly) {
     pkg.version = version;
     writeFileSync(file, `${JSON.stringify(pkg, null, 2)}\n`);
+    touched.push(file);
   }
 }
 
@@ -50,6 +54,11 @@ if (checkOnly) {
     `Mitii product packages aligned at ${version} (${packageFiles.length} packages)`,
   );
   process.exit(0);
+}
+
+if (shouldStage && touched.length > 0) {
+  const result = spawnSync('git', ['add', ...touched], { stdio: 'inherit' });
+  if (result.status) process.exit(result.status);
 }
 
 console.log(
