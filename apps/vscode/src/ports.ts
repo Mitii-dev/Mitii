@@ -235,9 +235,15 @@ export async function createVscodeClient(
     searchEnv.MITII_SEARCH_API_KEY?.trim() ||
     searchEnv.BRAVE_API_KEY?.trim() ||
     undefined;
+  const searxngBaseUrl =
+    vs.workspace
+      .getConfiguration('mitii')
+      .get<string>('search.searxngBaseUrl')
+      ?.trim() || undefined;
   const search = createOptionalSearchPort({
     env: searchEnv,
     ...(searchApiKey ? { apiKey: searchApiKey } : {}),
+    ...(searxngBaseUrl ? { config: { searxngBaseUrl } } : {}),
   });
   const git = workspaceRoot ? new NodeGitAdapter() : undefined;
   const knowledgeGraph = workspaceRoot

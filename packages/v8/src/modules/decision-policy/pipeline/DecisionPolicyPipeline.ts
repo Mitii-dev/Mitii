@@ -186,21 +186,27 @@ export class DecisionPolicyPipeline {
   /**
    * Expand read (and write, when already granted) scopes to include extra
    * paths after path_out_of_scope or compiler errors outside the current grant.
+   * Also merges hosts discovered from web_search results for follow-up fetch_url.
    */
   public widen(input: {
     previous: ExecutionDecision;
     extraPaths?: readonly string[];
+    extraNetworkHosts?: readonly string[];
   }): ExecutionDecision {
     const previous = executionDecisionSchema.parse(input.previous);
     const extraPaths = (input.extraPaths ?? []).filter(
       (path) => path.trim().length > 0,
     );
-    if (extraPaths.length === 0) {
+    const extraNetworkHosts = (input.extraNetworkHosts ?? [])
+      .map((host) => host.trim().toLowerCase())
+      .filter((host) => host.length > 0);
+    if (extraPaths.length === 0 && extraNetworkHosts.length === 0) {
       return previous;
     }
     const widenedGrant = widenToolGrant({
       previous: previous.toolGrant,
       extraPaths,
+      extraNetworkHosts,
     });
     if (toolGrantsEquivalent(previous.toolGrant, widenedGrant)) {
       return previous;
@@ -467,17 +473,32 @@ function narrowToolGrant(params: {
 function widenToolGrant(params: {
   previous: ToolGrant;
   extraPaths: readonly string[];
+  extraNetworkHosts?: readonly string[];
 }): ToolGrant {
   const extraScopes = deriveDiscoveredScopes(params.extraPaths);
-  if (extraScopes.length === 0) {
+  const previousHosts = params.previous.networkHosts ?? [];
+  const mergedHosts = uniqueStrings([
+    ...previousHosts,
+    ...(params.extraNetworkHosts ?? []),
+  ]).slice(0, 16);
+
+  const hostsChanged =
+    mergedHosts.length !== previousHosts.length ||
+    mergedHosts.some((host, index) => host !== previousHosts[index]);
+
+  if (extraScopes.length === 0 && !hostsChanged) {
     return params.previous;
   }
 
-  const pathScopes = params.previous.pathScopes.includes(".")
-    ? [...params.previous.pathScopes]
-    : uniqueStrings([...params.previous.pathScopes, ...extraScopes]);
+  const pathScopes =
+    extraScopes.length === 0
+      ? [...params.previous.pathScopes]
+      : params.previous.pathScopes.includes(".")
+        ? [...params.previous.pathScopes]
+        : uniqueStrings([...params.previous.pathScopes, ...extraScopes]);
 
   const mutationPathScopes =
+    extraScopes.length > 0 &&
     params.previous.maximumWorkspaceEffect === "write"
       ? uniqueStrings([
           ...(params.previous.mutationPathScopes ?? []),
@@ -492,6 +513,7 @@ function widenToolGrant(params: {
       mutationPathScopes && mutationPathScopes.length > 0
         ? mutationPathScopes
         : params.previous.mutationPathScopes,
+    networkHosts: hostsChanged ? mergedHosts : params.previous.networkHosts,
   };
 }
 

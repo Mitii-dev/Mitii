@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
-  "version": "2.9.38",
+  "version": "2.9.39",
   "publisher": "mitii",
   "license": "AGPL-3.0-or-later",
   "icon": "media/mitii-short-logo.png",
@@ -860,6 +860,11 @@
           "default": 0,
           "minimum": 0,
           "description": "Maximum tokens the model may generate per call. Set 0 to derive the reserve from the context window (recommended; ~20% of the window, at least 4096 when the window allows). A positive value is a hard host override. The legacy default 5000 is ignored so apply_patch batches are not truncated. Leave at 0 unless your runtime has a different hard cap."
+        },
+        "mitii.search.searxngBaseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "SearXNG base URL for free local/self-hosted web_search (e.g. http://127.0.0.1:8080). Takes precedence over SEARXNG_BASE_URL / MITII_SEARXNG_URL. Leave empty to use env or Brave/Tavily keys only."
         },
         "mitii.autocomplete.enabled": {
           "type": "boolean",

@@ -161,14 +161,20 @@ export function createCliClient(options: {
   ports: ResolvedCliPorts;
   memoryCapture?: MemoryCaptureContext;
 } {
+  const env = options.env ?? process.env;
+  const config = loadMitiiHostConfig(options.cwd);
   const ports = resolveCliPorts({
     forceEcho: options.forceEcho,
     env: options.env,
     cwd: options.cwd,
+    config,
   });
-  const env = options.env ?? process.env;
   const fileSystem = new NodeWorkspaceFileSystemAdapter();
-  const search = createOptionalSearchPort(env);
+  const searxngBaseUrl = config.searxngBaseUrl?.trim() || undefined;
+  const search = createOptionalSearchPort({
+    env,
+    ...(searxngBaseUrl ? { config: { searxngBaseUrl } } : {}),
+  });
   const git = new NodeGitAdapter();
   const knowledgeGraph = createWorkspaceKnowledgeGraph(options.cwd);
   const repoGraphs = createHostRepositoryGraphPort({

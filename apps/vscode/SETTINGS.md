@@ -45,19 +45,20 @@ Anthropic and Gemini require a key. Echo and local OpenAI-compatible hosts usual
 
 ### Web search (optional)
 
-Explicit asks like “search the web for …” grant the `web_search` tool when at least one search provider is configured via `@mitii/search-kit` (wired through `@mitii/host`).
+External / product / docs asks grant the `web_search` tool when at least one search provider is configured via `@mitii/search-kit` (wired through `@mitii/host`). Explicit phrases like “search the web for …” still work.
 
 | UI field / env | Storage | Notes |
 |---|---|---|
-| Set web search key / Clear | SecretStorage `mitii.search.apiKey` | Brave key. Command palette: **Mitii: Set Web Search API Key**. |
+| SearXNG base URL | `mitii.search.searxngBaseUrl` | Preferred free path (e.g. `http://127.0.0.1:8080` or your LAN instance). Wins over env. |
+| Set web search key / Clear | SecretStorage `mitii.search.apiKey` | Optional Brave key. Command palette: **Mitii: Set Web Search API Key**. |
 | `BRAVE_API_KEY` / `MITII_SEARCH_API_KEY` | Environment | Same Brave key if SecretStorage is empty. |
-| `SEARXNG_BASE_URL` / `MITII_SEARXNG_URL` | Environment | Self-hosted SearXNG (no API key; local-first). |
+| `SEARXNG_BASE_URL` / `MITII_SEARXNG_URL` | Environment | Self-hosted SearXNG when the setting is empty. |
 | `TAVILY_API_KEY` | Environment | Optional Tavily fallback. |
 | `MITII_SEARCH_PROVIDERS` | Environment | Optional order, e.g. `searxng,brave,tavily`. |
 
 Default order when unset: SearXNG (if URL) → Brave (if key) → Tavily (if key).
 
-`fetch_url` / `fetch_docs` use a content-aware `NetworkPort`: Stack Overflow answers, GitHub issue threads, Wikipedia, arXiv abstracts, then HTML readability.
+`fetch_url` / `fetch_docs` use a content-aware `NetworkPort`: Stack Overflow answers, GitHub issue threads, Wikipedia, arXiv abstracts, then HTML readability. After `web_search`, result hosts are widened into the grant so the agent can fetch top hits.
 
 Without any provider, Mitii completes the turn from model knowledge and logs that SearchPort is not configured.
 

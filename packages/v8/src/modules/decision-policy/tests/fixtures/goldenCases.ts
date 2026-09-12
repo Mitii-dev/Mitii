@@ -622,7 +622,7 @@ const GOLDEN_DECISION_CASES_CORE: GoldenDecisionCase[] = [
     }),
     expected: {
       route: "repository_answer",
-      allowedToolsIncludes: ["web_search"],
+      allowedToolsIncludes: ["web_search", "fetch_url"],
       reasonCodesIncludes: ["network_access_granted"],
     },
   },
@@ -636,6 +636,61 @@ const GOLDEN_DECISION_CASES_CORE: GoldenDecisionCase[] = [
       primaryTaskIntent: "docs",
       interactionIntent: "question",
       taskAnalysis: { scope: "unknown", recommendsRepositoryDiscovery: false },
+    }),
+    expected: {
+      route: "repository_answer",
+      allowedToolsExcludes: ["web_search"],
+    },
+  },
+  {
+    id: "golden-network-live-web-product-compat",
+    category: "network",
+    mode: "ask",
+    message:
+      "Need Zebra ZP450 software compatible with Windows 11",
+    hostCapabilities: { webSearch: true },
+    understanding: createUnderstanding({
+      primaryTaskIntent: "question",
+      interactionIntent: "question",
+      taskAnalysis: { scope: "unknown", recommendsRepositoryDiscovery: false },
+    }),
+    expected: {
+      route: "direct_answer",
+      allowedToolsIncludes: ["web_search", "fetch_url"],
+      reasonCodesIncludes: ["network_access_granted"],
+    },
+  },
+  {
+    id: "golden-network-live-web-product-compat-disabled",
+    category: "network",
+    mode: "ask",
+    message:
+      "Need Zebra ZP450 software compatible with Windows 11",
+    hostCapabilities: { webSearch: false },
+    understanding: createUnderstanding({
+      primaryTaskIntent: "question",
+      interactionIntent: "question",
+      taskAnalysis: { scope: "unknown", recommendsRepositoryDiscovery: false },
+    }),
+    expected: {
+      route: "direct_answer",
+      allowedToolsExcludes: ["web_search"],
+    },
+  },
+  {
+    id: "golden-network-in-repo-question-no-search",
+    category: "network",
+    mode: "ask",
+    message: "What does this function in src/auth.ts do?",
+    hostCapabilities: { webSearch: true },
+    understanding: createUnderstanding({
+      primaryTaskIntent: "question",
+      interactionIntent: "question",
+      taskAnalysis: {
+        scope: "single_location",
+        recommendsRepositoryDiscovery: true,
+        targets: [createTarget("src/auth.ts")],
+      },
     }),
     expected: {
       route: "repository_answer",

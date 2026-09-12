@@ -150,6 +150,14 @@ export interface AutocompleteSettingsSnapshot {
   temperature: number;
 }
 
+/** Web search provider settings (SearXNG URL + optional Brave key status). */
+export interface SearchSettingsSnapshot {
+  /** Preferred free SearXNG base URL (empty = use env / Brave / Tavily). */
+  searxngBaseUrl: string;
+  /** True when SecretStorage or env has a Brave/Mitii search API key. */
+  hasApiKey: boolean;
+}
+
 export interface SettingsProfileView {
   id: string;
   name: string;
@@ -724,6 +732,7 @@ export type WebviewToHostMessage =
         >
       >;
       autocomplete?: Partial<AutocompleteSettingsSnapshot>;
+      search?: Partial<Pick<SearchSettingsSnapshot, 'searxngBaseUrl'>>;
       ui?: UiSettingsPatch;
       workspaceRootOverride?: string | null;
       mcp?: McpSettings;
@@ -736,6 +745,8 @@ export type WebviewToHostMessage =
     }
   | { type: 'settings.setApiKey' }
   | { type: 'settings.clearApiKey' }
+  | { type: 'settings.setSearchApiKey' }
+  | { type: 'settings.clearSearchApiKey' }
   | { type: 'settings.resetTokenBudget' }
   | { type: 'settings.resetLoopPolicy' }
   | {
@@ -776,6 +787,7 @@ export type HostToWebviewMessage =
       workspace: WorkspaceSnapshotInfo;
       provider: ProviderSettingsSnapshot;
       autocomplete: AutocompleteSettingsSnapshot;
+      search: SearchSettingsSnapshot;
       profiles: SettingsProfileView[];
       activeProfileId: string;
       index: IndexStatusSnapshot;
@@ -799,6 +811,7 @@ export type HostToWebviewMessage =
       type: 'settings';
       provider: ProviderSettingsSnapshot;
       autocomplete: AutocompleteSettingsSnapshot;
+      search: SearchSettingsSnapshot;
       profiles: SettingsProfileView[];
       activeProfileId: string;
       ui: UiSettingsSnapshot;

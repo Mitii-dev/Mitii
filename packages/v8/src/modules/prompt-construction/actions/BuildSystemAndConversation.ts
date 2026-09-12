@@ -221,7 +221,8 @@ function buildToolGuidance(decision: ExecutionDecision): string {
 
   if (grant.allowedTools.includes("web_search")) {
     lines.push(
-      "When the user explicitly asks to search the web, internet, or external documentation, call web_search first and answer from those results with source URLs. Do not answer from memory alone or claim you lack network access when web_search is listed above.",
+      "When the ask needs current, external, product, vendor, compatibility, or documentation facts outside this repository, call web_search first and answer from those results with source URLs. Do not answer from memory alone or claim you lack network access when web_search is listed above.",
+      "After web_search, use fetch_url or fetch_docs on promising result URLs when snippets are thin (hosts from search results are admitted into the grant).",
     );
   }
 
@@ -230,7 +231,7 @@ function buildToolGuidance(decision: ExecutionDecision): string {
     grant.allowedTools.includes("fetch_docs")
   ) {
     lines.push(
-      "When the user names a concrete http(s) URL, use fetch_url or fetch_docs on that URL before guessing page contents.",
+      "When the user names a concrete http(s) URL, or when a search result host is granted, use fetch_url or fetch_docs on that URL before guessing page contents.",
     );
   }
 

@@ -92,6 +92,7 @@ import type {
   PlanView,
   ProviderSettingsSnapshot,
   RunBudgetSettingsSnapshot,
+  SearchSettingsSnapshot,
   SettingsProfileView,
   SuspensionPayload,
   RunUsagePayload,
@@ -882,6 +883,14 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         return;
       case 'settings.clearApiKey':
         await this.vs.commands.executeCommand('mitii.clearApiKey');
+        await this.sendBootstrap();
+        return;
+      case 'settings.setSearchApiKey':
+        await this.vs.commands.executeCommand('mitii.setSearchApiKey');
+        await this.sendBootstrap();
+        return;
+      case 'settings.clearSearchApiKey':
+        await this.vs.commands.executeCommand('mitii.clearSearchApiKey');
         await this.sendBootstrap();
         return;
       case 'settings.resetTokenBudget':
@@ -2093,6 +2102,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     if (message.autocomplete) {
       await this.writeAutocompleteSettings(message.autocomplete);
     }
+    if (message.search) {
+      await this.writeSearchSettings(message.search);
+    }
     if (message.ui) {
       if (message.ui.showReasoning !== undefined) {
         await update('ui.showReasoning', message.ui.showReasoning);
@@ -2477,6 +2489,18 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private async writeSearchSettings(
+    search: Partial<Pick<SearchSettingsSnapshot, 'searxngBaseUrl'>>,
+  ): Promise<void> {
+    if (search.searxngBaseUrl !== undefined) {
+      await this.writeConfigValue(
+        'search.searxngBaseUrl',
+        search.searxngBaseUrl.trim(),
+      );
+    }
+    this.invalidateClient();
+  }
+
   private async handleProfileSwitch(id: string): Promise<void> {
     const currentProvider = await this.readProvider();
     const currentUi = this.readUi();
@@ -2660,6 +2684,17 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     return readAutocompleteSettings(
       this.vs.workspace.getConfiguration('mitii'),
     );
+  }
+
+  private async readSearch(): Promise<SearchSettingsSnapshot> {
+    const cfg = this.vs.workspace.getConfiguration('mitii');
+    const searxngBaseUrl = cfg.get<string>('search.searxngBaseUrl')?.trim() ?? '';
+    const hasApiKey = Boolean(
+      (await this.secrets.get('mitii.search.apiKey'))?.trim() ||
+        process.env.MITII_SEARCH_API_KEY?.trim() ||
+        process.env.BRAVE_API_KEY?.trim(),
+    );
+    return { searxngBaseUrl, hasApiKey };
   }
 
   private readUi(): UiSettingsSnapshot {
@@ -3137,6 +3172,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     }
     const provider = await this.readProvider();
     const autocomplete = this.readAutocomplete();
+    const search = await this.readSearch();
     const ui = this.readUi();
     const secretHash = hashSecret(await this.secrets.get('mitii.provider.apiKey'));
     const profilesFile = readProfiles(
@@ -3150,6 +3186,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       workspace: this.readWorkspace(),
       provider,
       autocomplete,
+      search,
       profiles: profilesFile.profiles,
       activeProfileId: profilesFile.activeProfileId,
       index: await this.withEmbedding(await this.readIndexStatus()),

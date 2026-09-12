@@ -161,7 +161,7 @@ export function activate(context: ExtensionContext): void {
     invalidateClient();
     channel.appendLine('[mitii] SecretStorage mitii.search.apiKey updated');
     void vscode.window.showInformationMessage(
-      'Mitii web search key saved. Explicit “search the web” asks will grant web_search (Brave). SearXNG/Tavily can also be enabled via env.',
+      'Mitii Brave web search key saved. Prefer mitii.search.searxngBaseUrl for free SearXNG; Tavily via TAVILY_API_KEY. External/product asks grant web_search when a provider is configured.',
     );
   };
 
@@ -756,6 +756,7 @@ export function activate(context: ExtensionContext): void {
         event.affectsConfiguration('mitii.provider') ||
         event.affectsConfiguration('mitii.workspace') ||
         event.affectsConfiguration('mitii.mcp') ||
+        event.affectsConfiguration('mitii.search') ||
         event.affectsConfiguration('mitii.ui') ||
         event.affectsConfiguration('mitii.safety') ||
         event.affectsConfiguration('mitii.agent') ||
@@ -767,6 +768,7 @@ export function activate(context: ExtensionContext): void {
         if (
           event.affectsConfiguration('mitii.provider') ||
           event.affectsConfiguration('mitii.mcp') ||
+          event.affectsConfiguration('mitii.search') ||
           event.affectsConfiguration('mitii.ui.contextToggles.memory') ||
           event.affectsConfiguration('mitii.agent.taskListAutoAdvance') ||
           event.affectsConfiguration('mitii.developer.modelIo') ||
@@ -774,7 +776,7 @@ export function activate(context: ExtensionContext): void {
         ) {
           invalidateClient();
           channel.appendLine(
-            '[mitii] provider/mcp/memory/agent/debug settings changed; client will recompose',
+            '[mitii] provider/mcp/search/memory/agent/debug settings changed; client will recompose',
           );
         }
         void (async () => {

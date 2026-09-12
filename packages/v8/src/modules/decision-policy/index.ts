@@ -25,6 +25,7 @@ export {
   DEFAULT_AGENT_READONLY_COMMAND_PREFIXES,
   extractNetworkHosts,
   isExplicitWebSearchAsk,
+  needsLiveWebEvidence,
   planRoute,
   compileGrant,
   toolGrantsEquivalent,
