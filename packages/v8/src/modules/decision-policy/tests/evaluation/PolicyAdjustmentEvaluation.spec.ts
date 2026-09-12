@@ -88,7 +88,7 @@ describe("Policy adjustment evaluation", () => {
     );
   });
 
-  it("approvalMode never keeps workspace-wide mutation and skips narrow", () => {
+  it("approvalMode never keeps workspace-wide read and preserves narrow mutation", () => {
     const input = createDecisionInput({
       mode: "agent",
       approvalMode: "never",
@@ -109,13 +109,13 @@ describe("Policy adjustment evaluation", () => {
     expect(initial.toolGrant.approvalMode).toBe("never");
     expect(initial.toolGrant.maximumWorkspaceEffect).toBe("write");
     expect(initial.toolGrant.pathScopes).toEqual(["."]);
-    expect(initial.toolGrant.mutationPathScopes).toEqual(["."]);
+    expect(initial.toolGrant.mutationPathScopes).toEqual(["scripts"]);
 
     const narrowed = pipeline.narrow({
       previous: initial,
       discoveredPaths: ["scripts/lint.mjs"],
     });
-    expect(narrowed.toolGrant.mutationPathScopes).toEqual(["."]);
+    expect(narrowed.toolGrant.mutationPathScopes).toEqual(["scripts"]);
     expect(narrowed.toolGrant.pathScopes).toEqual(["."]);
   });
 });

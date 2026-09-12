@@ -45,6 +45,7 @@ export function compileGrant(params: {
     mode: params.mode,
     understanding: params.understanding,
     maximumWorkspaceEffect: grantResult.toolGrant.maximumWorkspaceEffect,
+    message: params.message,
   });
 
   return {

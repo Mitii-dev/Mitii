@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mitii · Benchmark Runner</title>
+    <link rel="stylesheet" href="/app.css" />
+    <link rel="stylesheet" href="/vendor/@xterm/xterm/css/xterm.css" />
+    <link rel="stylesheet" href="/benchmark.css" />
+  </head>
+  <body
+    class="bench-page"
+    data-log-open="true"
+    data-rail-open="true"
+    data-inspector-open="true"
+  >
+    <div class="app-shell bench-shell">
+      <header class="topbar bench-topbar">
+        <div class="brand">
+          <button type="button" class="icon-btn" id="btn-toggle-log" title="Activity (L)">
+            <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h14"/></svg>
+          </button>
+          <span class="brand__mark">Mitii</span>
+          <div>
+            <h1>Benchmark</h1>
+            <p id="meta-line">loading…</p>
+          </div>
+        </div>
+        <nav class="mode-nav" aria-label="Tool mode">
+          <a href="/">Logs</a>
+          <a href="/benchmark" class="is-active">Benchmark</a>
+        </nav>
+        <div class="bench-actions">
+          <div class="panel-toggles" title="Collapse panels">
+            <button type="button" class="chip-toggle is-on" id="btn-toggle-rail">Runs</button>
+            <button type="button" class="chip-toggle is-on" id="btn-toggle-inspector">Inspector</button>
+          </div>
+          <span id="run-pill" class="status-chip idle">idle</span>
+          <button type="button" class="btn" id="btn-toggle-provider">Provider</button>
+          <button type="button" class="btn" id="btn-reset-fixtures">Reset fixtures</button>
+          <button type="button" class="btn btn--primary" id="btn-start">Start suite</button>
+          <button type="button" class="btn btn--danger" id="btn-stop" disabled>Stop</button>
+        </div>
+      </header>
+
+      <section class="provider-drawer" id="provider-drawer" hidden>
+        <div class="provider-grid">
+          <label>Provider
+            <select id="cfg-provider">
+              <option value="">(use Mitii setup / env)</option>
+              <option value="ollama">ollama</option>
+              <option value="openai-compatible">openai-compatible</option>
+              <option value="anthropic">anthropic</option>
+              <option value="openai">openai</option>
+              <option value="gemini">gemini</option>
+            </select>
+          </label>
+          <label>Base URL
+            <input id="cfg-base-url" type="url" placeholder="http://127.0.0.1:11434/v1" autocomplete="off" />
+          </label>
+          <label>Model
+            <input id="cfg-model" type="text" placeholder="model id" autocomplete="off" spellcheck="false" />
+          </label>
+          <label>API key
+            <input id="cfg-api-key" type="password" placeholder="leave blank to keep" autocomplete="off" />
+          </label>
+          <label>Timeout ms
+            <input id="cfg-timeout" type="number" min="1000" step="1000" placeholder="300000" />
+          </label>
+          <div class="provider-actions">
+            <label class="check"><input id="cfg-clear-key" type="checkbox" /> Clear key</label>
+            <button type="button" class="btn btn--primary" id="btn-save-config">Save config</button>
+            <span class="muted" id="cfg-status"></span>
+          </div>
+        </div>
+      </section>
+
+      <div class="bench-body">
+        <aside class="activity-drawer panel" id="activity-drawer">
+          <div class="panel-head">
+            <div>
+              <h2>Activity</h2>
+              <p class="sub" id="activity-sub">Live feed</p>
+            </div>
+            <div class="row-gap">
+              <button type="button" class="btn btn--tiny" id="btn-clear-log">Clear</button>
+              <button type="button" class="btn btn--tiny" id="btn-close-log">✕</button>
+            </div>
+          </div>
+          <label class="check tiny activity-auto">
+            <input id="f-autoscroll" type="checkbox" checked /> Autoscroll
+          </label>
+          <pre id="log-view" class="log-view" aria-live="polite"></pre>
+        </aside>
+
+        <div class="bench-main">
+          <button type="button" class="live-strip" id="live-strip" hidden>
+            <span class="live-dot"></span>
+            <span class="live-strip-copy">
+              <strong id="live-strip-title">Run in progress</strong>
+              <span id="live-strip-meta">Click to open live console</span>
+            </span>
+            <span class="live-strip-cta">Open live view →</span>
+          </button>
+
+          <section class="bench-toolbar">
+            <div class="filters">
+              <label>Suite
+                <select id="f-suite"></select>
+              </label>
+              <label>Difficulty
+                <select id="f-difficulty">
+                  <option value="">all</option>
+                  <option value="easy">easy</option>
+                  <option value="medium">medium</option>
+                  <option value="hard">hard</option>
+                </select>
+              </label>
+              <label>Concurrency
+                <input id="f-concurrency" type="number" min="1" max="8" value="1" />
+              </label>
+              <label class="check inline">
+                <input id="f-keep" type="checkbox" /> Keep workspaces
+              </label>
+            </div>
+            <div class="kpi-row">
+              <div class="kpi"><span class="k-label">Signal</span><strong id="kpi-signal" class="signal-text">—</strong></div>
+              <div class="kpi"><span class="k-label">Passed</span><strong id="kpi-passed" class="ok">0</strong></div>
+              <div class="kpi"><span class="k-label">Failed</span><strong id="kpi-failed" class="bad">0</strong></div>
+              <div class="kpi"><span class="k-label">Score</span><strong id="kpi-score">—</strong></div>
+              <div class="kpi grow">
+                <span class="k-label">Progress</span>
+                <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+                <span id="kpi-progress" class="muted">—</span>
+              </div>
+            </div>
+          </section>
+
+          <main class="bench-layout">
+            <aside class="rail panel" id="rail-panel">
+              <div class="panel-head">
+                <div class="tabs" role="tablist">
+                  <button type="button" class="tab is-active" id="tab-runs">Runs</button>
+                  <button type="button" class="tab" id="tab-cases">Cases</button>
+                </div>
+                <div class="row-gap">
+                  <div id="runs-actions"><button type="button" class="btn btn--tiny" id="btn-refresh-runs">↻</button></div>
+                  <div id="cases-actions" hidden>
+                    <button type="button" class="btn btn--tiny" id="btn-select-all">All</button>
+                    <button type="button" class="btn btn--tiny" id="btn-select-none">None</button>
+                  </div>
+                  <button type="button" class="btn btn--tiny" id="btn-collapse-rail" title="Collapse">‹</button>
+                </div>
+              </div>
+              <div class="rail-search">
+                <input id="f-search" type="search" placeholder="Filter…" />
+              </div>
+              <div id="runs-list" class="rail-list"></div>
+              <div id="cases-list" class="rail-list" hidden></div>
+              <div class="rail-foot" id="cases-foot" hidden>
+                <button type="button" class="btn btn--primary btn-block" id="btn-run-selected">Run selected</button>
+              </div>
+            </aside>
+
+            <section class="panel results-panel">
+              <div class="panel-head">
+                <div>
+                  <h2>Results</h2>
+                  <p class="sub" id="results-subtitle">Select a past run or start a suite</p>
+                </div>
+                <div class="row-gap">
+                  <div class="seg" id="result-filter">
+                    <button type="button" class="seg-btn is-active" data-filter="all">All</button>
+                    <button type="button" class="seg-btn" data-filter="fail">Failed</button>
+                    <button type="button" class="seg-btn" data-filter="pass">Passed</button>
+                  </div>
+                  <a class="btn btn--tiny" id="link-run-viewer" href="#" target="_blank" rel="noreferrer" hidden>HTML report</a>
+                </div>
+              </div>
+              <div class="results-table-wrap">
+                <table class="results-table">
+                  <thead>
+                    <tr>
+                      <th>Status</th>
+                      <th>Case</th>
+                      <th>Suite</th>
+                      <th>Diff</th>
+                      <th>Time</th>
+                      <th>Error</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody id="results-body">
+                    <tr class="empty-row"><td colspan="7">No results yet.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="panel detail-panel" id="inspector-panel">
+              <div class="panel-head">
+                <h2>Inspector</h2>
+                <div class="row-gap">
+                  <button type="button" class="btn btn--tiny btn--primary" id="btn-run-one" disabled>Re-run case</button>
+                  <button type="button" class="btn btn--tiny" id="btn-collapse-inspector" title="Collapse">›</button>
+                </div>
+              </div>
+              <div id="case-detail" class="case-detail empty">Pick a result to inspect after the run.</div>
+            </section>
+          </main>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fullscreen live-run console -->
+    <div class="live-modal" id="live-modal" hidden>
+      <div class="live-modal__backdrop" id="live-modal-backdrop"></div>
+      <div class="live-modal__sheet" role="dialog" aria-modal="true" aria-labelledby="live-title">
+        <header class="live-modal__head">
+          <div>
+            <p class="eyebrow">Live run</p>
+            <h2 id="live-title">Benchmark in progress</h2>
+            <p id="live-run-id" class="muted mono"></p>
+          </div>
+          <div class="row-gap">
+            <button type="button" class="btn btn--danger" id="btn-live-stop">Stop</button>
+            <button type="button" class="btn" id="btn-live-minimize">Minimize</button>
+          </div>
+        </header>
+
+        <div class="live-modal__stats">
+          <div class="live-stat">
+            <span>Progress</span>
+            <strong id="live-progress">0 / 0</strong>
+            <div class="progress-track tall"><div class="progress-fill" id="live-progress-fill"></div></div>
+          </div>
+          <div class="live-stat"><span>Passed</span><strong id="live-passed" class="ok">0</strong></div>
+          <div class="live-stat"><span>Failed</span><strong id="live-failed" class="bad">0</strong></div>
+          <div class="live-stat"><span>Left</span><strong id="live-left">0</strong></div>
+          <div class="live-stat"><span>Case timer</span><strong id="live-case-timer">0s</strong></div>
+          <div class="live-stat"><span>Run timer</span><strong id="live-run-timer">0s</strong></div>
+        </div>
+
+        <div class="live-modal__grid">
+          <section class="live-card">
+            <h3>Current case</h3>
+            <div class="mono" id="live-case">—</div>
+            <p class="muted" id="live-case-meta">—</p>
+            <div class="stage-pills" id="live-stage-pills"></div>
+            <p id="live-stage-detail">Waiting…</p>
+            <p class="prompt-box" id="live-prompt"></p>
+          </section>
+          <section class="live-card">
+            <h3>Queue</h3>
+            <div id="live-queue" class="live-queue"></div>
+          </section>
+          <section class="live-card live-card--term">
+            <div class="term-head">
+              <h3>Terminal</h3>
+              <span class="muted" id="live-term-hint">Streaming activity</span>
+            </div>
+            <div id="live-term" class="live-term"></div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <script src="/vendor/@xterm/xterm/lib/xterm.js"></script>
+    <script src="/vendor/@xterm/addon-fit/lib/addon-fit.js"></script>
+    <script type="module" src="/benchmark.js"></script>
+  </body>
+</html>

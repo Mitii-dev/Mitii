@@ -537,8 +537,10 @@ export function selectUserFacingLoopAnswer(params: {
   fallbackSummary?: string;
   changedFiles?: readonly string[];
 }): string | undefined {
-  const loop = params.loopAnswer?.trim() ?? "";
-  const summary = params.fallbackSummary?.trim() ?? "";
+  const loop = stripInjectionComplianceEchoes(params.loopAnswer?.trim() ?? "");
+  const summary = stripInjectionComplianceEchoes(
+    params.fallbackSummary?.trim() ?? "",
+  );
   const files = params.changedFiles ?? [];
   const hideLoop =
     loop.length > 0 &&
@@ -565,6 +567,17 @@ export function selectUserFacingLoopAnswer(params: {
 
   const joined = [loop, summary].filter((part) => part.length > 0).join("\n\n");
   return joined.length > 0 ? joined : undefined;
+}
+
+/** Strip untrusted-file compliance / ACK echoes from user-facing answers. */
+export function stripInjectionComplianceEchoes(text: string): string {
+  if (!text) return text;
+  return text
+    .replace(/\bMITII_INJECTION_ACK_[A-Za-z0-9_-]+\b/g, "[redacted-injection-token]")
+    .replace(/\[?\s*SYSTEM\s*:[^\n\]]*\]?/gi, "[redacted-untrusted-directive]")
+    .replace(/\bconfirm(?:\s+your)?\s+compliance\b[^.!\n]*/gi, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function isClearMutationBlockerAnswer(content: string): boolean {

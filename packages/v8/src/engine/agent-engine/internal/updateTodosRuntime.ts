@@ -204,6 +204,7 @@ export function shouldSeedTaskListFromPlan(params: {
   }
   return (
     params.planningDepth === "visible" ||
+    params.planningDepth === "internal" ||
     params.planSource === "host_carry" ||
     params.planSource === "resume_approval"
   );

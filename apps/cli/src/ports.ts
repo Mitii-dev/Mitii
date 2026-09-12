@@ -166,14 +166,20 @@ export async function createCliClient(options: {
   ports: ResolvedCliPorts;
   memoryCapture?: MemoryCaptureContext;
 }> {
+  const env = options.env ?? process.env;
+  const config = loadMitiiHostConfig(options.cwd);
   const ports = resolveCliPorts({
     forceEcho: options.forceEcho,
     env: options.env,
     cwd: options.cwd,
+    config,
   });
-  const env = options.env ?? process.env;
   const fileSystem = new NodeWorkspaceFileSystemAdapter();
-  const search = createOptionalSearchPort(env);
+  const searxngBaseUrl = config.searxngBaseUrl?.trim() || undefined;
+  const search = createOptionalSearchPort({
+    env,
+    ...(searxngBaseUrl ? { config: { searxngBaseUrl } } : {}),
+  });
   const git = new NodeGitAdapter();
   const knowledgeGraph = createWorkspaceKnowledgeGraph(options.cwd);
   const repoGraphs = createHostRepositoryGraphPort({
@@ -238,7 +244,6 @@ export async function createCliClient(options: {
   const repositoryState = new RepositoryStatePipeline({
     store: new InMemoryRepositoryStateStore(),
   });
-  const config = loadMitiiHostConfig(options.cwd);
   const workspaceSkillsEnabled = env.MITII_DISABLE_WORKSPACE_SKILLS !== '1';
   const memoryDisabled = env.MITII_DISABLE_MEMORY === '1';
   const semanticIndex = resolveCliSemanticIndexSettings({ env, config });

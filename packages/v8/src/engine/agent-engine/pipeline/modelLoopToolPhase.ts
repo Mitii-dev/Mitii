@@ -43,6 +43,7 @@ import type { AgentEngineRuntime } from "./runtime";
 import {
   DEFAULT_MUTATING_TOOL_NAMES,
   executeOneTool,
+  extractHostsFromWebSearchOutput,
   refreshAuthorityAfterTools,
   safeJsonParse,
 } from "./executeTool";
@@ -328,6 +329,7 @@ export async function runModelLoopToolPhase(params: {
   let successfulToolCount = 0;
   let rejectedToolCount = 0;
   let extraAuthorityPaths: string[] = [];
+  const extraNetworkHosts: string[] = [];
   let rejectedTool:
     | {
         toolName: string;
@@ -434,6 +436,11 @@ export async function runModelLoopToolPhase(params: {
     }
     if (result?.status === "succeeded") {
       successfulToolCount += 1;
+      if (toolCall.name === "web_search") {
+        extraNetworkHosts.push(
+          ...extractHostsFromWebSearchOutput(result.output),
+        );
+      }
       if (mutatingTool) {
         succeededMutatingTool = true;
         const mutationOutput = result.output as
@@ -535,6 +542,7 @@ export async function runModelLoopToolPhase(params: {
     changedFiles,
     dirtyPaths,
     extraPaths: extraAuthorityPaths,
+    extraNetworkHosts,
     understanding: understanding,
     skillsQuery: skillsQuery,
     mode: mode,

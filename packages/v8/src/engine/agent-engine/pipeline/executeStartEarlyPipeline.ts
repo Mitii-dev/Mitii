@@ -5,6 +5,7 @@ import type {
 import {
   DECISION_POLICY_SCHEMA_VERSION,
   isExplicitWebSearchAsk,
+  needsLiveWebEvidence,
 } from "../../../modules/decision-policy";
 import type {
   PlanArtifact,
@@ -325,15 +326,19 @@ export async function runStartEarlyPipeline(
   const userMessage = extractPrimaryUserMessage(envelope.message);
   const hasSearchPort = runtime.deps.tools?.hasSearchPort?.() === true;
   if (
-    isExplicitWebSearchAsk(
+    (isExplicitWebSearchAsk(
       userMessage,
       understanding.intent.classification.primaryTaskIntent,
-    ) &&
+    ) ||
+      needsLiveWebEvidence(
+        userMessage,
+        understanding.intent.classification.primaryTaskIntent,
+      )) &&
     !hasSearchPort &&
     !decision.toolGrant.allowedTools.includes("web_search")
   ) {
     const searchWarning =
-      "Web search was requested but no SearchPort is configured. Set SEARXNG_BASE_URL, BRAVE_API_KEY / MITII_SEARCH_API_KEY, or TAVILY_API_KEY (VS Code: Mitii: Set Web Search API Key for Brave) to enable web_search.";
+      "Web search was needed but no SearchPort is configured. Set mitii.search.searxngBaseUrl (or SEARXNG_BASE_URL), BRAVE_API_KEY / MITII_SEARCH_API_KEY, or TAVILY_API_KEY to enable web_search.";
     warnings.push(searchWarning);
     runtime.emit(bus, {
       type: "warning",

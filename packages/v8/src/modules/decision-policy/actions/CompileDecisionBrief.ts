@@ -89,6 +89,20 @@ export function compileDecisionBrief(params: {
   if (targets.length > 0) {
     evidenceNeeded.push(`Prefer named targets: ${targets.join(", ")}.`);
   }
+  const constraints =
+    understanding?.taskAnalysis.constraints
+      ?.map((c) => c.trim())
+      .filter((c) => c.length > 0)
+      .slice(0, 6) ?? [];
+  for (const constraint of constraints) {
+    if (/do not|don't|dont|never|only\b/i.test(constraint)) {
+      if (!mustNotDo.includes(constraint)) {
+        mustNotDo.push(constraint);
+      }
+    } else if (!mustDo.includes(constraint)) {
+      mustDo.push(constraint);
+    }
+  }
   if (decision.repositoryContextRequired) {
     evidenceNeeded.push(
       "Ground answers in repository context or tool evidence before asserting file contents.",

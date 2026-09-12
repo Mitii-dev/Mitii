@@ -76,6 +76,7 @@ export {
   safeJsonParse,
   toolCompletionDiagnostics,
   truncateForLogField,
+  extractHostsFromWebSearchOutput,
   refreshAuthorityAfterTools,
 } from "./executeToolSupport";
 export type { GrantRefreshOutcome } from "./executeToolSupport";

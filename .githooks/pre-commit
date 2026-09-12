@@ -2,18 +2,10 @@
 set -e
 
 # Bump root version, sync README badge + all product package.json versions, then stage.
+# Staging of product packages comes from sync-versions.mjs --stage so new packages
+# cannot be forgotten the way packages/search-kit was.
 node scripts/bump-version.mjs
 node scripts/sync-readme-version.mjs
-node scripts/sync-versions.mjs
+node scripts/sync-versions.mjs --stage
 
-# Keep in sync with scripts/sync-versions.mjs packageFiles.
-git add \
-  package.json \
-  README.md \
-  packages/v8/package.json \
-  packages/sdk/package.json \
-  packages/automation/package.json \
-  packages/host/package.json \
-  apps/cli/package.json \
-  apps/daemon/package.json \
-  apps/vscode/package.json
+git add package.json README.md

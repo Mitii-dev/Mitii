@@ -69,6 +69,23 @@ describe("evaluateMutationCritic", () => {
     expect(result.verdict).toBe("stop_and_clarify");
   });
 
+  it("uses mutationPathScopes when present instead of pathScopes", () => {
+    const decision = writeDecision();
+    decision.toolGrant = {
+      ...decision.toolGrant,
+      pathScopes: ["."],
+      mutationPathScopes: ["docs"],
+    };
+    const result = evaluateMutationCritic({
+      decision,
+      mutationToolNames: ["apply_patch"],
+      intendedPaths: ["app/loading.tsx"],
+      mode: "enforce",
+    });
+    expect(result.verdict).toBe("stop_and_clarify");
+    expect(result.reasons.some((r) => /out of grant scope/i.test(r))).toBe(true);
+  });
+
   it("uses brief for change-impact revise signal", () => {
     const decision = {
       ...writeDecision(),

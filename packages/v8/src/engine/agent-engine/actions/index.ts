@@ -168,6 +168,7 @@ export {
   synthesizeFallbackAnswer,
   compactRecoveredAssistantContent,
   selectUserFacingLoopAnswer,
+  stripInjectionComplianceEchoes,
   amendMessageWithPriorConversation,
 } from "./isIncompleteAssistantTurn";
 

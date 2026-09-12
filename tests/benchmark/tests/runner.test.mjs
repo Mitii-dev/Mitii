@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { extractUsage, runCases } from '../src/runner.mjs';
+import { extractUsage, runCases, sliceStdoutForReport } from '../src/runner.mjs';
 
 test('extractUsage reads tokens from JSONL end event', () => {
   const stdout = [
@@ -18,6 +18,16 @@ test('extractUsage reads tokens from JSONL end event', () => {
     outputTokens: 40,
     agentDurationMs: 1234,
   });
+});
+
+test('sliceStdoutForReport keeps head and tail on failures', () => {
+  const body = `${'A'.repeat(6000)}${'B'.repeat(6000)}${'C'.repeat(6000)}`;
+  const sliced = sliceStdoutForReport(body, true);
+  assert.ok(sliced.startsWith('A'.repeat(100)));
+  assert.ok(sliced.endsWith('C'.repeat(100)));
+  assert.match(sliced, /truncated \d+ chars/);
+  assert.ok(sliced.length < body.length);
+  assert.equal(sliceStdoutForReport('short', false), 'short');
 });
 
 test('runner executes an agent in a fresh isolated fixture', async () => {

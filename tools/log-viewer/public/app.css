@@ -73,13 +73,41 @@ svg {
 
 .topbar {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) minmax(360px, 760px);
-  gap: 20px;
+  grid-template-columns: minmax(220px, 1fr) auto minmax(320px, 720px);
+  gap: 16px;
   align-items: center;
   padding: 16px 20px;
   border-bottom: 1px solid var(--border-soft);
   background: rgba(10, 15, 23, 0.84);
   backdrop-filter: blur(16px);
+}
+
+.mode-nav {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-soft);
+}
+
+.mode-nav a {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 999px;
+}
+
+.mode-nav a:hover {
+  color: var(--text);
+}
+
+.mode-nav a.is-active {
+  background: rgba(90, 167, 255, 0.18);
+  color: var(--accent);
 }
 
 .brand {

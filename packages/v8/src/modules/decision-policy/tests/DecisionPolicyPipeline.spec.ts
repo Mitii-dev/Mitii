@@ -1269,6 +1269,49 @@ describe("DecisionPolicyPipeline", () => {
     expect(withPort.toolGrant.allowedTools).toContain("web_search");
   });
 
+  it("widen() merges network hosts from web_search results", () => {
+    const pipeline = new DecisionPolicyPipeline();
+    const base = pipeline.decide({
+      ...createInput({
+        mode: "ask",
+        message: "Need Zebra ZP450 software compatible with Windows 11",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "question",
+          interactionIntent: "question",
+        }),
+      }),
+      hostCapabilities: { webSearch: true },
+    });
+    expect(base.toolGrant.allowedTools).toContain("web_search");
+    expect(base.toolGrant.networkHosts ?? []).toEqual([]);
+
+    const widened = pipeline.widen({
+      previous: base,
+      extraNetworkHosts: ["www.zebra.com", "support.zebra.com", "www.zebra.com"],
+    });
+    expect(widened.toolGrant.networkHosts).toEqual([
+      "www.zebra.com",
+      "support.zebra.com",
+    ]);
+    expect(widened.reasonCodes).toContain("grant_expanded");
+  });
+
+  it("grants web_search for product compatibility asks when SearchPort is available", () => {
+    const decision = new DecisionPolicyPipeline().decide({
+      ...createInput({
+        mode: "ask",
+        message: "Need Zebra ZP450 software compatible with Windows 11",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "question",
+          interactionIntent: "question",
+        }),
+      }),
+      hostCapabilities: { webSearch: true },
+    });
+    expect(decision.toolGrant.allowedTools).toContain("web_search");
+    expect(decision.toolGrant.allowedTools).toContain("fetch_url");
+  });
+
   it("does not grant web_search from a bare URL without an explicit search ask", () => {
     const decision = new DecisionPolicyPipeline().decide({
       ...createInput({
@@ -1479,6 +1522,8 @@ describe("DecisionPolicyPipeline", () => {
     );
 
     expect(decision.toolGrant.approvalMode).toBe("never");
+    expect(decision.toolGrant.pathScopes).toEqual(["."]);
+    expect(decision.toolGrant.mutationPathScopes).toEqual(["src/parser"]);
     const narrowed = pipeline.narrow({
       previous: decision,
       discoveredPaths: ["src/parser/parse.ts"],

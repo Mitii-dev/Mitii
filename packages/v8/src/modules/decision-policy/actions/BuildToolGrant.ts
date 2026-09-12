@@ -62,6 +62,30 @@ export function buildToolGrant(params: {
   ];
 
   if (route === "clarify" || route === "direct_answer") {
+    // Cursor-like: external product/docs asks still need web_search even when
+    // the route is tool-light direct_answer (no repository grounding).
+    if (route === "direct_answer") {
+      const network = resolveNetworkAuthority({
+        understanding,
+        message: params.message,
+        allowNetwork: true,
+        allowWebSearch: params.allowWebSearch === true,
+      });
+      if (network.allowedTools.length > 0) {
+        return {
+          toolGrant: {
+            maximumWorkspaceEffect: "read",
+            allowedTools: [...network.allowedTools],
+            allowedEffects: [...network.allowedEffects],
+            pathScopes,
+            networkHosts: network.networkHosts,
+            approvalMode: "never",
+            limits: { ...DEFAULT_READ_ONLY_TOOL_GRANT_LIMITS },
+          },
+          reasonCodes: [...reasonCodes, ...network.reasonCodes],
+        };
+      }
+    }
     return {
       toolGrant: {
         maximumWorkspaceEffect: "none",
@@ -167,12 +191,12 @@ export function buildToolGrant(params: {
     allowWebSearch: params.allowWebSearch === true,
   });
 
-  // Full-access / headless approve (`approvalMode: never`): keep mutation
-  // workspace-wide so required companion files (package.json, configs, tests)
-  // are never rejected as path_out_of_scope after a narrow folder target.
+  // Full-access / headless approve (`approvalMode: never`): keep *read*
+  // pathScopes workspace-wide so discovery still works, but preserve narrow
+  // mutationPathScopes from explicit targets (docs-only / single-folder asks).
+  // Companion writes still widen via path_out_of_scope recovery.
   const writePathScopes = approvalMode === "never" ? ["."] : pathScopes;
-  const writeMutationPathScopes =
-    approvalMode === "never" ? ["."] : mutationPathScopes;
+  const writeMutationPathScopes = mutationPathScopes;
 
   return {
     toolGrant: {
@@ -352,6 +376,46 @@ export function isExplicitWebSearchAsk(
   );
 }
 
+/**
+ * Cursor-like: external product / vendor / compatibility / “latest” facts that
+ * should not be answered from model memory alone when SearchPort is available.
+ * Tight enough to skip pure in-repo explanation asks.
+ */
+export function needsLiveWebEvidence(
+  message: string,
+  primaryTaskIntent?: RequestUnderstandingResult["intent"]["classification"]["primaryTaskIntent"],
+): boolean {
+  const intent = primaryTaskIntent ?? "question";
+  if (intent !== "docs" && intent !== "question") {
+    return false;
+  }
+  // In-repo code explanation / local file asks stay offline.
+  if (
+    /\b(?:this\s+(?:file|function|class|module|repo|code)|in\s+(?:the\s+)?(?:codebase|workspace|repository)|src\/|[\w.-]+\.(?:ts|tsx|js|jsx|py|go|rs|java))\b/i.test(
+      message,
+    )
+  ) {
+    return false;
+  }
+  return (
+    /\b(?:compatible|compatibility|compat)\b/i.test(message) ||
+    /\b(?:driver|firmware|datasheet|sku)\b/i.test(message) ||
+    /\b(?:download|installer)\b/i.test(message) ||
+    /\b(?:latest|current)\s+(?:version|release|software|driver|firmware)\b/i.test(
+      message,
+    ) ||
+    /\b(?:software|driver)\s+(?:for|compatible\s+with)\b/i.test(message) ||
+    (/\b(?:windows\s*(?:10|11)|macos|linux)\b/i.test(message) &&
+      /\b(?:printer|scanner|device|hardware|zebra|epson|brother|hp)\b/i.test(
+        message,
+      )) ||
+    /\b(?:which|what)\s+(?:software|driver|version|release)\b/i.test(message) ||
+    /\b(?:vendor|oem)\s+(?:docs?|documentation|support)\b/i.test(message) ||
+    (/\b[A-Z]{1,5}[- ]?\d{2,5}\b/.test(message) &&
+      /\b(?:printer|scanner|device|software|driver|compatible)\b/i.test(message))
+  );
+}
+
 function parentDirectoryScope(filePath: string): string {
   const normalized = normalizeScopePath(filePath);
   const slash = normalized.lastIndexOf("/");
@@ -362,8 +426,8 @@ function parentDirectoryScope(filePath: string): string {
 }
 
 /**
- * Grant fetch_url / web_search only when the request explicitly references
- * network-worthy intent (docs) or concrete http(s) URLs.
+ * Grant fetch_url / web_search when the request has concrete http(s) URLs,
+ * an explicit search ask, or Cursor-like live-web evidence needs.
  */
 function resolveNetworkAuthority(params: {
   understanding: RequestUnderstandingResult;
@@ -386,10 +450,11 @@ function resolveNetworkAuthority(params: {
   }
 
   const intent = params.understanding.intent.classification.primaryTaskIntent;
-  const hosts = extractNetworkHosts(params.message ?? "");
-  // Docs/question intent alone is not enough — require concrete hosts or an
-  // explicit search ask. Hosts must also allow webSearch for search tools.
-  const wantsSearch = isExplicitWebSearchAsk(params.message ?? "", intent);
+  const message = params.message ?? "";
+  const hosts = extractNetworkHosts(message);
+  const wantsSearch =
+    isExplicitWebSearchAsk(message, intent) ||
+    needsLiveWebEvidence(message, intent);
 
   if (hosts.length === 0 && !wantsSearch) {
     return {
@@ -401,10 +466,12 @@ function resolveNetworkAuthority(params: {
   }
 
   const allowedTools: string[] = [];
-  if (hosts.length > 0) {
+  // Concrete hosts or a search grant: allow fetch so the model can deepen hits
+  // once networkHosts are widened after web_search (or from message URLs).
+  if (hosts.length > 0 || (params.allowWebSearch && wantsSearch)) {
     allowedTools.push("fetch_url", "fetch_docs");
   }
-  // web_search only when host enabled it AND user explicitly asked to search.
+  // web_search only when host enabled SearchPort AND search/live-web evidence.
   // Presence of a URL alone does not open unrestricted search.
   if (params.allowWebSearch && wantsSearch) {
     allowedTools.push("web_search");
@@ -422,7 +489,7 @@ function resolveNetworkAuthority(params: {
   return {
     allowedTools,
     allowedEffects: ["network_access"],
-    // Search without hosts keeps an empty allowlist; fetch tools require hosts.
+    // Search without hosts keeps an empty allowlist until tool-phase widen.
     networkHosts: hosts,
     reasonCodes: ["network_access_granted"],
   };

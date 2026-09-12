@@ -44,6 +44,8 @@ export interface GeminiLlmPortConfig {
   maxRetries?: number;
   initialBackoffMs?: number;
   maxBackoffMs?: number;
+  /** Per-request HTTP wall clock (ms). Pass 0 to disable. */
+  requestTimeoutMs?: number;
   sleepImpl?: (ms: number, signal?: AbortSignal) => Promise<void>;
 }
 
@@ -92,6 +94,7 @@ export class GeminiLlmPort implements LlmPort {
   private readonly maxRetries: number;
   private readonly initialBackoffMs: number;
   private readonly maxBackoffMs: number;
+  private readonly requestTimeoutMs: number | undefined;
   private readonly sleepImpl: (
     ms: number,
     signal?: AbortSignal,
@@ -124,6 +127,10 @@ export class GeminiLlmPort implements LlmPort {
       config.maxBackoffMs,
       GEMINI_DEFAULTS.MAX_BACKOFF_MS,
     );
+    this.requestTimeoutMs =
+      typeof config.requestTimeoutMs === "number"
+        ? config.requestTimeoutMs
+        : undefined;
     this.sleepImpl = config.sleepImpl ?? defaultSleep;
     this.capabilities = new ModelCapabilityResolver().resolve({
       modelId: config.model,
@@ -171,6 +178,7 @@ export class GeminiLlmPort implements LlmPort {
       body,
       stream,
       abortSignal: context?.abortSignal,
+      requestTimeoutMs: this.requestTimeoutMs,
       fetchImpl: this.fetchImpl,
       maxRetries: this.maxRetries,
       initialBackoffMs: this.initialBackoffMs,

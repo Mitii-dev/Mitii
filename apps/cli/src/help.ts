@@ -114,12 +114,12 @@ Options:
   --yes              setup: non-interactive (requires --provider)
 
 Signals:
-  SIGINT (Ctrl-C)    Cancel the active run via SDK run.cancel()
+  SIGINT / SIGTERM   Cancel the active run via SDK run.cancel()
 
 Config (no secrets):
   .mitii/config.json or ~/.mitii/config.json
-  Fields: provider, providerPreset, model, baseUrl, workspaceId, defaultMode,
-          loopPolicy (optional lab: { enabled, thresholds })
+  Fields: provider, providerPreset, model, baseUrl, searxngBaseUrl, workspaceId,
+          defaultMode, loopPolicy (optional lab: { enabled, thresholds })
   provider: echo | openai-compatible | anthropic | gemini
   API keys never go in config files — use env vars
   .mitii/safety.json   Optional tighten-only user rules (enabled:false by default)
@@ -130,6 +130,10 @@ Environment:
   MITII_PROVIDER                   echo | openai-compatible | anthropic | gemini
   MITII_MODEL / MITII_BASE_URL     Model id and API base URL
   MITII_API_KEY                    Generic key (any provider)
+  SEARXNG_BASE_URL / MITII_SEARXNG_URL
+                                   Free SearXNG for web_search (config searxngBaseUrl wins)
+  BRAVE_API_KEY / MITII_SEARCH_API_KEY / TAVILY_API_KEY
+                                   Optional paid search providers
   MITII_TASK_LIST_AUTO_ADVANCE     Product default on; set to 0 to disable
   MITII_SANDBOX=1                  Enable OS process sandbox (macOS/Linux; fail-closed)
   MITII_SANDBOX_NETWORK=allow|deny Network for sandboxed children (default deny)

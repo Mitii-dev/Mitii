@@ -24,6 +24,7 @@ import type {
   McpSettings,
   MemoryItemView,
   ProviderSettingsSnapshot,
+  SearchSettingsSnapshot,
   SemanticIndexSource,
   SettingsTab,
   SettingsProfileView,
@@ -79,8 +80,16 @@ interface SettingsPanelProps {
           prev: AutocompleteSettingsSnapshot,
         ) => AutocompleteSettingsSnapshot),
   ) => void;
+  search: SearchSettingsSnapshot;
+  onSearchChange: (
+    next:
+      | SearchSettingsSnapshot
+      | ((prev: SearchSettingsSnapshot) => SearchSettingsSnapshot),
+  ) => void;
   onSetApiKey: () => void;
   onClearApiKey: () => void;
+  onSetSearchApiKey: () => void;
+  onClearSearchApiKey: () => void;
   onTestConnection: () => void;
   testingConnection: boolean;
   connectionMessage: string | null;
@@ -349,8 +358,12 @@ export function SettingsPanel(props: SettingsPanelProps) {
     onProviderTypeChange,
     autocomplete,
     onAutocompleteChange,
+    search,
+    onSearchChange,
     onSetApiKey,
     onClearApiKey,
+    onSetSearchApiKey,
+    onClearSearchApiKey,
     onTestConnection,
     testingConnection,
     connectionMessage,
@@ -773,6 +786,52 @@ export function SettingsPanel(props: SettingsPanelProps) {
                     title="Clear custom token-budget overrides and use built-in defaults for this window"
                   >
                     Reset budgets to defaults
+                  </button>
+                </div>
+              </SettingsSection>
+
+              <SettingsSection
+                title="Web search"
+                description="Free SearXNG URL preferred. Optional Brave key for paid search. External/product asks grant web_search when a provider is configured."
+              >
+                <div className="field">
+                  <label htmlFor="searxng-base-url">SearXNG base URL</label>
+                  <input
+                    id="searxng-base-url"
+                    value={search.searxngBaseUrl}
+                    placeholder="http://127.0.0.1:8080"
+                    onChange={(event) =>
+                      onSearchChange((prev) => ({
+                        ...prev,
+                        searxngBaseUrl: event.target.value,
+                      }))
+                    }
+                  />
+                  <p className="field-hint">
+                    Overrides SEARXNG_BASE_URL / MITII_SEARXNG_URL. Example:{' '}
+                    http://192.168.0.91:8888
+                  </p>
+                </div>
+                <div className="row">
+                  <span className="settings-status-pill">
+                    Brave key:{' '}
+                    {search.hasApiKey ? 'configured' : 'not set'}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    onClick={onSetSearchApiKey}
+                    title="Set Brave Search API key"
+                  >
+                    Set Brave key
+                  </button>
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    onClick={onClearSearchApiKey}
+                    title="Clear Brave Search API key"
+                  >
+                    Clear
                   </button>
                 </div>
               </SettingsSection>

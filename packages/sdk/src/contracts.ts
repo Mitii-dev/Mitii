@@ -142,6 +142,19 @@ export const mitiiStartInputSchema = z
     approvalMode: mitiiApprovalModeSchema.optional(),
     planApproval: z.enum(['policy', 'never']).optional(),
     /**
+     * Understanding Ballot + Decision Steering feature flags.
+     * Defaults off in the engine; CLI enables for automation/--approve.
+     */
+    steering: z
+      .object({
+        understandingBallotV2: z.boolean().optional(),
+        policyFactsFirst: z.boolean().optional(),
+        decisionBrief: z.boolean().optional(),
+        criticMode: z.enum(['off', 'shadow', 'enforce']).optional(),
+      })
+      .strict()
+      .optional(),
+    /**
      * Tighten-only user safety rules (usually from `.mitii/safety.json`).
      * Never widens Decision Policy grants.
      */
@@ -340,6 +353,7 @@ export function toAgentEngineStartInput(
     stream: parsed.stream,
     approvalMode,
     planApproval,
+    steering: parsed.steering,
     userSafetyRules: parsed.userSafetyRules,
     dirtyPaths: parsed.dirtyPaths,
     explorationDepth: parsed.explorationDepth,

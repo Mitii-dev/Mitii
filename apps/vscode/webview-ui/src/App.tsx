@@ -74,6 +74,7 @@ import type {
   ProviderSettingsSnapshot,
   ReviewDiffView,
   RunFileChangesView,
+  SearchSettingsSnapshot,
   SemanticIndexSource,
   SettingsTab,
   SettingsProfileView,
@@ -247,6 +248,11 @@ const DEFAULT_AUTOCOMPLETE: AutocompleteSettingsSnapshot = {
   temperature: 0.2,
 };
 
+const DEFAULT_SEARCH: SearchSettingsSnapshot = {
+  searxngBaseUrl: '',
+  hasApiKey: false,
+};
+
 function hydrateAutocompleteSnapshot(
   raw: Partial<AutocompleteSettingsSnapshot> | undefined,
 ): AutocompleteSettingsSnapshot {
@@ -254,6 +260,17 @@ function hydrateAutocompleteSnapshot(
     ...DEFAULT_AUTOCOMPLETE,
     ...(raw ?? {}),
     provider: 'openai-compatible',
+  };
+}
+
+function hydrateSearchSnapshot(
+  raw: Partial<SearchSettingsSnapshot> | undefined,
+): SearchSettingsSnapshot {
+  return {
+    ...DEFAULT_SEARCH,
+    ...(raw ?? {}),
+    searxngBaseUrl: raw?.searxngBaseUrl?.trim() ?? '',
+    hasApiKey: Boolean(raw?.hasApiKey),
   };
 }
 
@@ -859,6 +876,7 @@ export function App() {
   });
   const [autocomplete, setAutocomplete] =
     useState<AutocompleteSettingsSnapshot>(DEFAULT_AUTOCOMPLETE);
+  const [search, setSearch] = useState<SearchSettingsSnapshot>(DEFAULT_SEARCH);
   const [profiles, setProfiles] = useState<SettingsProfileView[]>([]);
   const [activeProfileId, setActiveProfileId] = useState('default');
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -914,6 +932,7 @@ export function App() {
   const providerRef = useRef<ProviderSettingsSnapshot>(provider);
   const autocompleteRef =
     useRef<AutocompleteSettingsSnapshot>(autocomplete);
+  const searchRef = useRef<SearchSettingsSnapshot>(search);
   const indexRef = useRef<IndexStatusSnapshot>(index);
   const savedProviderModelRef = useRef(provider.model);
   const listModelsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -947,6 +966,17 @@ export function App() {
       typeof next === 'function' ? next(autocompleteRef.current) : next;
     autocompleteRef.current = resolved;
     setAutocomplete(resolved);
+  };
+
+  const updateSearch = (
+    next:
+      | SearchSettingsSnapshot
+      | ((prev: SearchSettingsSnapshot) => SearchSettingsSnapshot),
+  ) => {
+    const resolved =
+      typeof next === 'function' ? next(searchRef.current) : next;
+    searchRef.current = resolved;
+    setSearch(resolved);
   };
 
   const applyTokenUsage = useCallback(
@@ -1051,6 +1081,7 @@ export function App() {
         connectionStatus: msg.provider.connectionStatus,
       });
       updateAutocomplete(hydrateAutocompleteSnapshot(msg.autocomplete));
+      updateSearch(hydrateSearchSnapshot(msg.search));
       if (!preserveDraft) {
         providerDraftDirtyRef.current = false;
         savedProviderModelRef.current = msg.provider.model ?? '';
@@ -2059,6 +2090,7 @@ export function App() {
       type: 'settings.set',
       provider: snapshotProvider(),
       autocomplete: autocompleteRef.current,
+      search: { searxngBaseUrl: searchRef.current.searxngBaseUrl },
       profile: nextProfile,
     });
   };
@@ -2088,6 +2120,7 @@ export function App() {
       type: 'settings.set',
       provider: latestProvider,
       autocomplete: autocompleteRef.current,
+      search: { searxngBaseUrl: searchRef.current.searxngBaseUrl },
       ui: latestUi,
       workspaceRootOverride: overrideDraft.trim() || null,
       workspaceMaximumIndexFiles: indexRef.current.maximumIndexFiles ?? 0,
@@ -2696,8 +2729,16 @@ export function App() {
           onProviderTypeChange={onProviderTypeChange}
           autocomplete={autocomplete}
           onAutocompleteChange={updateAutocomplete}
+          search={search}
+          onSearchChange={updateSearch}
           onSetApiKey={() => postToHost({ type: 'settings.setApiKey' })}
           onClearApiKey={() => postToHost({ type: 'settings.clearApiKey' })}
+          onSetSearchApiKey={() =>
+            postToHost({ type: 'settings.setSearchApiKey' })
+          }
+          onClearSearchApiKey={() =>
+            postToHost({ type: 'settings.clearSearchApiKey' })
+          }
           onTestConnection={testConnection}
           testingConnection={testingConnection}
           connectionMessage={connectionMessage}
