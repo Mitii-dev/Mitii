@@ -231,7 +231,6 @@ export function createCliClient(options: {
   const repositoryState = new RepositoryStatePipeline({
     store: new InMemoryRepositoryStateStore(),
   });
-  const config = loadMitiiHostConfig(options.cwd);
   const workspaceSkillsEnabled = env.MITII_DISABLE_WORKSPACE_SKILLS !== '1';
   const memoryDisabled = env.MITII_DISABLE_MEMORY === '1';
   const semanticIndex = resolveCliSemanticIndexSettings({ env, config });
