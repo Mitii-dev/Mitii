@@ -1,5 +1,5 @@
-# GitHub issue /mitii mentions — use Phase 0 headless ask instead.
-# See docs/automation/README.md and .github/workflows/mitii-*.yml
+# Example / legacy stub — copy into a consumer repo's `.github/workflows/` if needed.
+# See docs/automation/README.md and sibling mitii-*.yml examples in this folder.
 name: mitii agent (legacy stub)
 
 on:

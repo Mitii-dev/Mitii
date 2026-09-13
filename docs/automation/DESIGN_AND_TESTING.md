@@ -463,8 +463,9 @@ Same as production but isolated:
 
 ### Layer 6 — GitHub Actions
 
-Copy workflow examples from `.github/workflows/mitii-*.yml` and enable on the
-consumer repo. GHA is the last mile, not the first debug surface.
+Copy workflow examples from `docs/examples/workflows/mitii-*.yml` into
+`.github/workflows/` on the consumer repo. GHA is the last mile, not the first
+debug surface.
 
 ---
 

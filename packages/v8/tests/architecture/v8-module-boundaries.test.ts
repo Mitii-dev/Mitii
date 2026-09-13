@@ -14,6 +14,7 @@ const PUBLIC_MODULES = [
   'repository-state',
   'repository-context',
   'decision-policy',
+  'mcp-attach',
   'prompt-construction',
   'model-gateway',
   'verification',

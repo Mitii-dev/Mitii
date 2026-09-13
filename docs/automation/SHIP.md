@@ -15,7 +15,7 @@ loops work on a real repo.
    mkdir -p .mitii/agents
    cp docs/automation/agents/post-commit-cover.md .mitii/agents/
    ```
-2. Enable `.github/workflows/mitii-post-commit-cover.yml` (or copy it).
+2. Copy `docs/examples/workflows/mitii-post-commit-cover.yml` into `.github/workflows/`.
 3. Set secret `ANTHROPIC_API_KEY` (or other provider).
 4. Push a commit that changes behavior without tests → workflow opens a draft PR.
 
@@ -41,7 +41,7 @@ mitii serve --webhook-port 8787 --github-webhook-secret "$MITII_GITHUB_WEBHOOK_S
 ### Via GitHub Actions
 
 1. Copy `docs/automation/agents/incident-from-logs.md` → `.mitii/agents/`.
-2. Enable `.github/workflows/mitii-ci-failure-triage.yml` (expects a workflow named `CI`).
+2. Copy `docs/examples/workflows/mitii-ci-failure-triage.yml` into `.github/workflows/` (expects a workflow named `CI`).
 3. On a failed CI run, Mitii opens/updates an issue with fingerprint title
    `[mitii:<fingerprint>]` via `create_github_issue`.
 

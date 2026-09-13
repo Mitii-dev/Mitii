@@ -504,7 +504,8 @@ tools/`gh`, not a `connect` adapter (see **Connect** above).
 `mitii run --auto`, plus optional `.mitii/safety.json` (tighten-only) and
 `MITII_SANDBOX=1` (OS process sandbox, fail-closed). See
 [docs/SAFETY_PHASES.md](../../docs/SAFETY_PHASES.md).
-`--prompt-file` plus the workflows under `.github/workflows/mitii-*.yml`. See
+`--prompt-file` plus the example workflows under
+`docs/examples/workflows/mitii-*.yml`. See
 [docs/automation/README.md](../../docs/automation/README.md).
 
 ## Development (monorepo)

@@ -19,7 +19,7 @@ daemon.
 | CLI | `--origin`, `--autonomy`, `--agent`, `--prompt-file`; exit `4` on unattended clarify gap |
 | Skills | `cicd-agent`, `incident-triage` |
 | Agents | Example markdown under `docs/automation/agents/` |
-| GHA | `.github/actions/mitii-run` + post-commit / CI-fail workflow examples |
+| GHA | `.github/actions/mitii-run` + post-commit / CI-fail examples under `docs/examples/workflows/` |
 
 ## Quick start (local)
 
@@ -83,14 +83,14 @@ Composite action:
 
 ## Example 1 — post-commit cover
 
-See `.github/workflows/mitii-post-commit-cover.yml` and
+See `docs/examples/workflows/mitii-post-commit-cover.yml` and
 `docs/automation/agents/post-commit-cover.md`.
 
 **Ship guide:** [SHIP.md](./SHIP.md) · smoke: `docs/automation/smoke/example1-post-commit.sh`
 
 ## Example 2 — CI failure → ticket
 
-See `.github/workflows/mitii-ci-failure-triage.yml` and
+See `docs/examples/workflows/mitii-ci-failure-triage.yml` and
 `docs/automation/agents/incident-from-logs.md`.
 
 **Ship guide:** [SHIP.md](./SHIP.md) · smoke: `docs/automation/smoke/example2-ci-failure.sh`
