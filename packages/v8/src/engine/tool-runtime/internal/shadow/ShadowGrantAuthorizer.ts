@@ -43,7 +43,8 @@ export class StructuralShadowGrantAuthorizer implements ShadowGrantAuthorizer {
     const mcpAllowed =
       tool.name.startsWith(MCP_TOOL_NAME_PREFIX) &&
       grant.allowedTools.length > 0 &&
-      grant.maximumWorkspaceEffect === "write";
+      (grant.maximumWorkspaceEffect === "write" ||
+        grant.maximumWorkspaceEffect === "read");
 
     if (!grant.allowedTools.includes(tool.name) && !mcpAllowed) {
       return {

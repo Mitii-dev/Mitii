@@ -125,6 +125,9 @@ export const modelToolDefinitionSchema =
               "Tool input schema exceeds the configured character limit.",
           },
         ),
+    requiresWorkspaceWrite:
+      z.boolean()
+        .optional(),
   }).strict();
 
 const responseFormatSchema =

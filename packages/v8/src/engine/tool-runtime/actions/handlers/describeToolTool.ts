@@ -30,8 +30,8 @@ export const describeToolOutputSchema = z
  * for a tool the grant already allows. Cannot unlock tools outside the grant
  * (Tool Runtime preflight + Decision Policy).
  *
- * Host MCP tools (`mcp__*`) are allowed when the grant has write effect
- * (same rule as filterToolDefinitions) or the name is in allowedTools.
+ * Host MCP tools (`mcp__*`) are allowed when the grant has read or write effect
+ * (same rule as filterToolDefinitions / ValidateGrant) or the name is in allowedTools.
  */
 export const describeToolTool: RegisteredTool = {
   definition: defineTool({
@@ -74,13 +74,14 @@ export const describeToolTool: RegisteredTool = {
     }
 
     const name = parsed.data.name.trim();
-    const mcpWritable =
+    const mcpAllowed =
       isMcpToolName(name) &&
-      ctx.grant.maximumWorkspaceEffect === "write";
+      (ctx.grant.maximumWorkspaceEffect === "write" ||
+        ctx.grant.maximumWorkspaceEffect === "read");
     const granted =
       ctx.grant.allowedTools.includes(name) ||
       name === "describe_tool" ||
-      mcpWritable;
+      mcpAllowed;
 
     if (!granted) {
       return {

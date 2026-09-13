@@ -327,6 +327,7 @@ export async function executeStart(
           definitions:
             input.tools ?? runtime.deps.toolDefinitions ?? DEFAULT_TOOL_DEFINITIONS,
           supportsTools: runtime.deps.llm.capabilities.supportsTools,
+          mode: envelope.mode,
         }),
       }),
       decision.toolGrant.mutationBudget,

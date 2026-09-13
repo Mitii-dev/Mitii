@@ -116,7 +116,9 @@ export class McpManager {
         await client.initialize();
         const tools = await client.listTools();
         this.clients.set(id, client);
-        this.registerServerTools(id, server.name, client, tools);
+        this.registerServerTools(id, server.name, client, tools, {
+          requiresWorkspaceWrite: mcpServerRequiresWorkspaceWrite(server),
+        });
         const status = this.statuses.find((s) => s.id === id);
         if (status) {
           status.status = 'ready';
@@ -231,7 +233,9 @@ export class McpManager {
     serverName: string,
     client: McpClient,
     tools: McpToolDescriptor[],
+    options: { requiresWorkspaceWrite: boolean },
   ): void {
+    const requiresWorkspaceWrite = options.requiresWorkspaceWrite;
     for (const tool of tools) {
       const name = mcpToolName(serverId, tool.name);
       const description =
@@ -246,14 +250,15 @@ export class McpManager {
         name,
         description: `[MCP:${serverName}] ${description}`,
         inputSchema,
+        ...(requiresWorkspaceWrite ? { requiresWorkspaceWrite: true } : {}),
       });
 
       this.registered.push({
         definition: defineTool({
           name,
-          effects: readOnlyMcpServer(serverId)
-            ? (['workspace_read'] as const)
-            : (['workspace_read', 'workspace_write'] as const),
+          effects: requiresWorkspaceWrite
+            ? (['workspace_read', 'workspace_write'] as const)
+            : (['workspace_read'] as const),
           backend: 'mcp',
           description: `[MCP:${serverName}] ${description}`,
           inputSchema: z.unknown(),
@@ -311,12 +316,25 @@ function resolveArgs(
   return server.args;
 }
 
+/** Servers / transports that do not mutate the workspace. */
+function mcpServerRequiresWorkspaceWrite(server: McpServerConfig): boolean {
+  if (
+    server.transport === 'streamable-http' ||
+    server.transport === 'sse'
+  ) {
+    return false;
+  }
+  const id = (server.id ?? server.name).toLowerCase();
+  return !readOnlyMcpServer(id);
+}
+
 /** Servers known to be side-effect free (no workspace mutation). */
 function readOnlyMcpServer(serverId: string): boolean {
   return (
     serverId === 'sequential-thinking' ||
     serverId === 'sequential_thinking' ||
-    serverId.includes('thinking')
+    serverId.includes('thinking') ||
+    serverId === 'excalidraw'
   );
 }
 

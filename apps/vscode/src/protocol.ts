@@ -29,7 +29,7 @@ export type McpRuntimeStatus =
   | 'unsupported_runtime';
 
 export interface McpServerConfig {
-  /** Stable id (builtins: filesystem, sequential-thinking, memory, puppeteer). */
+  /** Stable id (builtins: filesystem, sequential-thinking, memory, puppeteer, excalidraw). */
   id?: string;
   name: string;
   transport: McpTransport;

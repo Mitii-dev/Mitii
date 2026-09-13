@@ -14,6 +14,7 @@ import {
   loadDiskSkills,
   PROVIDER_PRESETS,
   resolveProviderApiKey,
+  IndexLockedError,
 } from '@mitii/host';
 import type { SkillDescriptor } from '@mitii/v8';
 
@@ -60,6 +61,7 @@ import {
 } from './mcpConfig.js';
 import { scaffoldMitiiWorkspace } from './mitiiWorkspace.js';
 import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
+import { rehydrateRepositoryStateFromDisk } from './rehydrateRepositoryState.js';
 import { resolveVsCodeSemanticIndexSettings } from './semanticIndex.js';
 import { readModelIoLoggingEnabled } from './modelIoSettings.js';
 import {
@@ -1833,6 +1835,22 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       });
       return;
     }
+    // Activation already ensureIndexed; skip a redundant full path when caps are ready.
+    if (
+      reason === 'initial load' &&
+      this.lastIndex.fileCount > 0 &&
+      this.lastIndex.readiness === 'ready' &&
+      !needsFullIndexRefresh(this.lastIndex)
+    ) {
+      void this.withEmbedding(this.lastIndex).then((index) => {
+        this.lastIndex = index;
+        this.post({ type: 'index.status', index });
+        this.channel.appendLine(
+          `[index] ${reason} skipped (already ready) files=${index.fileCount}`,
+        );
+      });
+      return;
+    }
     this.postIndexingStatus('Checking repository index…');
     void this.ensureIndexed()
       .then(async (index) => {
@@ -2910,6 +2928,39 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         }
         return this.lastIndex;
       }
+
+      // After client invalidate / restart, restore in-memory publish from disk
+      // before paying for a full scan + lock (profile switches used to thrash here).
+      const mitiiDir = scaffoldMitiiWorkspace(root);
+      const rehydrated = await rehydrateRepositoryStateFromDisk({
+        client,
+        mitiiDir,
+        workspaceRoot: root,
+        workspaceId: this.getWorkspaceId(),
+        channel: this.channel,
+      });
+      if (rehydrated.ok) {
+        await this.readIndexStatus();
+        const after = await client.getLatestRepositoryState(this.getWorkspaceId());
+        if (after) {
+          const descriptorStatus = indexStatusFromDescriptor(after);
+          this.lastIndex = {
+            ...this.lastIndex,
+            ...descriptorStatus,
+            fileCount: Math.max(this.lastIndex.fileCount, rehydrated.fileCount),
+            ...(rehydrated.indexMode
+              ? { indexMode: rehydrated.indexMode }
+              : {}),
+            message: `Indexed ${Math.max(this.lastIndex.fileCount, rehydrated.fileCount)} files`,
+          };
+          if (!needsFullIndexRefresh(this.lastIndex)) {
+            return this.lastIndex;
+          }
+          this.channel.appendLine(
+            '[index] rehydrated state still missing full caps; republishing full index…',
+          );
+        }
+      }
     } catch (error) {
       this.channel.appendLine(
         `[index] latest-state check failed: ${
@@ -2918,7 +2969,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       );
     }
 
-    this.channel.appendLine('[index] first load: publishing host snapshot…');
+    this.channel.appendLine('[index] first load: publishing repository index…');
     this.postIndexingStatus('Indexing workspace…');
     const status = await this.publishIndexSnapshot();
     this.channel.appendLine(
@@ -3076,9 +3127,26 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         return this.lastIndex;
       }
       if (full.status === 'skipped') {
+        const rehydrated = await rehydrateRepositoryStateFromDisk({
+          client,
+          mitiiDir: dir,
+          workspaceRoot: root,
+          workspaceId: this.getWorkspaceId(),
+          channel: this.channel,
+        });
+        if (rehydrated.ok) {
+          await this.readIndexStatus();
+          return {
+            ...this.lastIndex,
+            fileCount: Math.max(this.lastIndex.fileCount, full.fileCount),
+            truncated: full.truncated,
+            maximumIndexFiles,
+            message: 'Indexing already in progress (using on-disk index)',
+          };
+        }
         return {
           ...this.lastIndex,
-          fileCount: full.fileCount,
+          fileCount: full.fileCount || this.lastIndex.fileCount,
           truncated: full.truncated,
           maximumIndexFiles,
           message: 'Indexing already in progress',
@@ -3091,10 +3159,45 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         graphRevisionByRoot: full.graphRevisionByRoot,
         mapRevisionByRoot: full.mapRevisionByRoot,
       });
-      this.channel.appendLine(
-        `[index] ${options.filePaths?.length ? 'incremental' : 'full'} code/text/graph/map index stored at ${full.databasePath}; vector=${full.vectorIndex.status}${full.vectorIndex.profileId ? ` profile=${full.vectorIndex.profileId}` : ''}${full.vectorIndex.reason ? ` reason=${full.vectorIndex.reason}` : ''}`,
-      );
+      if (full.status === 'unchanged') {
+        this.channel.appendLine(
+          `[index] unchanged (up to date) at ${full.databasePath}; vector=${full.vectorIndex.status}${full.vectorIndex.profileId ? ` profile=${full.vectorIndex.profileId}` : ''}`,
+        );
+      } else {
+        this.channel.appendLine(
+          `[index] ${options.filePaths?.length ? 'incremental' : 'full'} code/text/graph/map index stored at ${full.databasePath}; vector=${full.vectorIndex.status}${full.vectorIndex.profileId ? ` profile=${full.vectorIndex.profileId}` : ''}${full.vectorIndex.reason ? ` reason=${full.vectorIndex.reason}` : ''}`,
+        );
+      }
     } catch (error) {
+      if (
+        error instanceof IndexLockedError ||
+        (error instanceof Error && error.name === 'IndexLockedError')
+      ) {
+        this.channel.appendLine(
+          `[index] skipped (lock held): ${error instanceof Error ? error.message : String(error)}`,
+        );
+        const rehydrated = await rehydrateRepositoryStateFromDisk({
+          client,
+          mitiiDir: dir,
+          workspaceRoot: root,
+          workspaceId: this.getWorkspaceId(),
+          channel: this.channel,
+        });
+        if (rehydrated.ok) {
+          await this.readIndexStatus();
+          return {
+            ...this.lastIndex,
+            fileCount: Math.max(this.lastIndex.fileCount, rehydrated.fileCount),
+            maximumIndexFiles,
+            message: 'Indexing already in progress (using on-disk index)',
+          };
+        }
+        return {
+          ...this.lastIndex,
+          maximumIndexFiles,
+          message: 'Indexing already in progress',
+        };
+      }
       fallbackReason = error instanceof Error ? error.message : String(error);
       this.channel.appendLine(
         `[index] full index unavailable; falling back to host snapshot: ${fallbackReason}`,

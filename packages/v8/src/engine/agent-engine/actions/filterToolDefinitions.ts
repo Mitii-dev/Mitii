@@ -48,6 +48,29 @@ export function isMcpToolName(name: string): boolean {
 }
 
 /**
+ * Whether host MCP tools may appear under this grant.
+ * - write: always (Agent execute)
+ * - read + agent: yes (repository_answer still needs MCP Apps like Excalidraw)
+ * - read + ask/plan: no
+ * - none: no
+ */
+export function isMcpAllowedByGrant(
+  grant: Pick<ToolGrant, "allowedTools" | "maximumWorkspaceEffect">,
+  options?: { mode?: "ask" | "plan" | "agent" },
+): boolean {
+  if (grant.allowedTools.length === 0) {
+    return false;
+  }
+  if (grant.maximumWorkspaceEffect === "write") {
+    return true;
+  }
+  if (grant.maximumWorkspaceEffect === "read") {
+    return options?.mode === "agent";
+  }
+  return false;
+}
+
+/**
  * Compact model-facing index entry (progressive disclosure).
  * Core discovery/mutation keep full schemas; long-tail + MCP stay INDEX stubs
  * (hydrate via describe_tool). Execution always uses Tool Runtime Zod schemas.
@@ -66,6 +89,9 @@ export function toToolIndexDefinition(
     name: tool.name,
     description,
     inputSchema: TOOL_INDEX_INPUT_SCHEMA,
+    ...(tool.requiresWorkspaceWrite
+      ? { requiresWorkspaceWrite: true }
+      : {}),
   };
 }
 
@@ -74,13 +100,15 @@ export function toToolIndexDefinition(
  * Always includes describe_tool when any tools are granted so the model can
  * hydrate full schemas. Model text cannot broaden the set.
  *
- * Host-registered MCP tools (`mcp__*`) are only exposed when the grant already
- * allows workspace writes (Agent execute).
+ * Host-registered MCP tools (`mcp__*`) are exposed on Agent write grants, and
+ * on Agent read grants when the tool does not require workspace writes
+ * (remote MCP Apps such as Excalidraw). Ask/Plan stay MCP-hidden.
  */
 export function filterToolDefinitions(params: {
   grant: ToolGrant;
   definitions?: readonly ModelToolDefinition[];
   supportsTools: boolean;
+  mode?: "ask" | "plan" | "agent";
 }): ModelToolDefinition[] {
   if (!params.supportsTools || params.grant.allowedTools.length === 0) {
     return [];
@@ -88,12 +116,21 @@ export function filterToolDefinitions(params: {
 
   const allowed = new Set(params.grant.allowedTools);
   const catalog = params.definitions ?? DEFAULT_READ_ONLY_TOOL_DEFINITIONS;
-  const mcpWritable = params.grant.maximumWorkspaceEffect === "write";
+  const mcpAllowed = isMcpAllowedByGrant(params.grant, { mode: params.mode });
+  const writeGrant = params.grant.maximumWorkspaceEffect === "write";
 
-  const filtered = catalog.filter(
-    (tool) =>
-      allowed.has(tool.name) || (mcpWritable && isMcpToolName(tool.name)),
-  );
+  const filtered = catalog.filter((tool) => {
+    if (allowed.has(tool.name)) {
+      return true;
+    }
+    if (!mcpAllowed || !isMcpToolName(tool.name)) {
+      return false;
+    }
+    if (!writeGrant && tool.requiresWorkspaceWrite) {
+      return false;
+    }
+    return true;
+  });
 
   const indexed = filtered.map(toToolIndexDefinition);
 

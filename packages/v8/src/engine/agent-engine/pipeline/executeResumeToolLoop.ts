@@ -127,6 +127,7 @@ export async function resumeToolLoopFromCheckpoint(
           runtime.deps.toolDefinitions ??
           DEFAULT_TOOL_DEFINITIONS,
         supportsTools: runtime.deps.llm.capabilities.supportsTools,
+        mode: startInput.request.mode,
       }),
     }),
     decision.toolGrant.mutationBudget,

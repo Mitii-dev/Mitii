@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   type AgentRunBudget,
@@ -53,9 +53,9 @@ import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
 import {
   loadProjectRules,
   observeRunToolEvent,
-  enrichFingerprintWithPersistedVectorProfile,
   type MemoryCaptureContext,
 } from '@mitii/host';
+import { rehydrateRepositoryStateFromDisk } from './rehydrateRepositoryState.js';
 import {
   normalizeMaximumOutputTokens,
   resolveEffectiveContextWindow,
@@ -388,110 +388,39 @@ export async function runAskInOutputChannel(options: {
         const mitiiDir = scaffoldMitiiWorkspace(workspaceRoot);
         const sqlitePath = join(mitiiDir, 'repository-index.sqlite');
         if (existsSync(sqlitePath)) {
-          const statePath = join(mitiiDir, 'last-repository-state.json');
-          let publishedFromCache = false;
-          if (existsSync(statePath)) {
-            try {
-              const raw = JSON.parse(readFileSync(statePath, 'utf8')) as {
-                schemaVersion?: number;
-                snapshotId?: string;
-                roots?: Array<{ vectorProfile?: string }>;
-                scanCompleteness?: 'complete' | 'truncated' | 'unknown';
-                reasons?: Array<{
-                  code: string;
-                  message: string;
-                  rootId?: string;
-                }>;
-              };
-              const hasVectorProfile = raw.roots?.some(
-                (root) => typeof root.vectorProfile === 'string' && root.vectorProfile.trim(),
-              );
-              if (
-                raw.schemaVersion === 1 &&
-                typeof raw.snapshotId === 'string' &&
-                Array.isArray(raw.roots) &&
-                raw.roots.length > 0 &&
-                hasVectorProfile
-              ) {
-                await client.publishRepositoryState({
-                  schemaVersion: 1,
-                  workspaceId,
-                  snapshotId: raw.snapshotId,
-                  roots: raw.roots as never,
-                  scanCompleteness: raw.scanCompleteness ?? 'complete',
-                  reasons: (raw.reasons ?? []) as never,
-                  generatedAt: new Date().toISOString(),
-                });
-                publishedFromCache = true;
-                channel.appendLine(
-                  `[index] reused on-disk index via last-repository-state.json (${raw.roots.length} root(s); vector profile preserved)`,
-                );
-              }
-            } catch (error) {
-              channel.appendLine(
-                `[index] last-repository-state.json unusable; falling back to fingerprint pin: ${
-                  error instanceof Error ? error.message : String(error)
-                }`,
-              );
-            }
-          }
-          if (!publishedFromCache) {
-            const snap = await buildWorkspaceSnapshot({
+          const rehydrated = await rehydrateRepositoryStateFromDisk({
+            client,
+            mitiiDir,
+            workspaceRoot,
+            workspaceId,
+            channel,
+          });
+          if (rehydrated.ok) {
+            // In-memory state restored from disk; skip full reindex.
+          } else {
+            channel.appendLine(
+              `[index] on-disk sqlite present but rehydrate failed; falling through to full index`,
+            );
+            await autoPublishFullOrSnapshot({
+              client,
+              mitiiDir,
               workspaceRoot,
               workspaceId,
+              channel,
+              vs,
+              secrets: options.secrets,
             });
-            const candidate = enrichFingerprintWithPersistedVectorProfile(
-              snap.candidate,
-              mitiiDir,
-            );
-            await client.publishRepositoryState(candidate);
-            channel.appendLine(
-              `[index] reused on-disk index at ${sqlitePath}; published fingerprint pin (${snap.fileCount} files)${
-                candidate.roots.some(
-                  (root: { vectorProfile?: string }) => root.vectorProfile,
-                )
-                  ? ' with persisted vector profile'
-                  : ''
-              }`,
-            );
           }
         } else {
-          try {
-            const full = await runFullWorkspaceIndex({
-              mitiiDir,
-              workspaceRoot,
-              workspaceId,
-              ...(options.secrets
-                ? {
-                    semanticIndex: await resolveVsCodeSemanticIndexSettings(
-                      vs,
-                      options.secrets,
-                    ),
-                  }
-                : {}),
-            });
-            await client.publishRepositoryStateFromIndexing(full.indexing, {
-              catalogRevisionByRoot: full.catalogRevisionByRoot,
-              graphRevisionByRoot: full.graphRevisionByRoot,
-              mapRevisionByRoot: full.mapRevisionByRoot,
-            });
-            channel.appendLine(
-              `[index] auto-published full index (${full.fileCount} files); vector=${full.vectorIndex.status}${full.vectorIndex.reason ? ` reason=${full.vectorIndex.reason}` : ''}`,
-            );
-          } catch (fullIndexError) {
-            const snap = await buildWorkspaceSnapshot({
-              workspaceRoot,
-              workspaceId,
-            });
-            await client.publishRepositoryState(snap.candidate);
-            channel.appendLine(
-              `[index] auto-published host snapshot (${snap.fileCount} files; full index unavailable: ${
-                fullIndexError instanceof Error
-                  ? fullIndexError.message
-                  : String(fullIndexError)
-              })`,
-            );
-          }
+          await autoPublishFullOrSnapshot({
+            client,
+            mitiiDir,
+            workspaceRoot,
+            workspaceId,
+            channel,
+            vs,
+            secrets: options.secrets,
+          });
         }
       }
     } catch (error) {
@@ -767,4 +696,51 @@ export async function runAskInOutputChannel(options: {
     },
     async (_progress, token) => execute(token),
   );
+}
+
+async function autoPublishFullOrSnapshot(options: {
+  client: MitiiClient;
+  mitiiDir: string;
+  workspaceRoot: string;
+  workspaceId: string;
+  channel: { appendLine(line: string): void };
+  vs: typeof vscode;
+  secrets?: vscode.SecretStorage;
+}): Promise<void> {
+  try {
+    const full = await runFullWorkspaceIndex({
+      mitiiDir: options.mitiiDir,
+      workspaceRoot: options.workspaceRoot,
+      workspaceId: options.workspaceId,
+      ...(options.secrets
+        ? {
+            semanticIndex: await resolveVsCodeSemanticIndexSettings(
+              options.vs,
+              options.secrets,
+            ),
+          }
+        : {}),
+    });
+    await options.client.publishRepositoryStateFromIndexing(full.indexing, {
+      catalogRevisionByRoot: full.catalogRevisionByRoot,
+      graphRevisionByRoot: full.graphRevisionByRoot,
+      mapRevisionByRoot: full.mapRevisionByRoot,
+    });
+    options.channel.appendLine(
+      `[index] auto-published full index (${full.fileCount} files); vector=${full.vectorIndex.status}${full.vectorIndex.reason ? ` reason=${full.vectorIndex.reason}` : ''}`,
+    );
+  } catch (fullIndexError) {
+    const snap = await buildWorkspaceSnapshot({
+      workspaceRoot: options.workspaceRoot,
+      workspaceId: options.workspaceId,
+    });
+    await options.client.publishRepositoryState(snap.candidate);
+    options.channel.appendLine(
+      `[index] auto-published host snapshot (${snap.fileCount} files; full index unavailable: ${
+        fullIndexError instanceof Error
+          ? fullIndexError.message
+          : String(fullIndexError)
+      })`,
+    );
+  }
 }

@@ -18,19 +18,22 @@ export {
   activeMcpServers,
 };
 
+/**
+ * Prefer explicitly configured VS Code settings; otherwise read `.mitii/mcp.json`.
+ * `cfg.get('mcp')` alone always returns the package.json default
+ * `{ enabled: false, servers: [] }`, which previously hid disk config.
+ */
 export function readMcpSettings(
   vs: typeof vscode,
   workspaceRoot: string | undefined,
 ): McpSettings {
   const cfg = vs.workspace.getConfiguration('mitii');
-  const fromSettings = cfg.get<McpSettings>('mcp');
-  if (
-    fromSettings &&
-    typeof fromSettings === 'object' &&
-    (Array.isArray((fromSettings as McpSettings).servers) ||
-      (fromSettings as { mcpServers?: unknown }).mcpServers ||
-      typeof (fromSettings as McpSettings).enabled === 'boolean')
-  ) {
+  const inspected = cfg.inspect<McpSettings>('mcp');
+  const fromSettings =
+    inspected?.workspaceFolderValue ??
+    inspected?.workspaceValue ??
+    inspected?.globalValue;
+  if (fromSettings && typeof fromSettings === 'object') {
     return parseMcp(fromSettings, workspaceRoot);
   }
   return readMcpSettingsFromDisk(workspaceRoot);

@@ -10,6 +10,7 @@ export const MCP_BUILTIN_IDS = [
   'sequential-thinking',
   'memory',
   'puppeteer',
+  'excalidraw',
 ] as const;
 
 export type McpBuiltinId = (typeof MCP_BUILTIN_IDS)[number];
@@ -56,6 +57,14 @@ export function createBuiltinMcpCatalog(
       transport: 'stdio',
       command: 'npx',
       args: ['-y', '@modelcontextprotocol/server-puppeteer'],
+      builtin: true,
+      enabled: false,
+    },
+    {
+      id: 'excalidraw',
+      name: 'Excalidraw',
+      transport: 'streamable-http',
+      url: 'https://mcp.excalidraw.com',
       builtin: true,
       enabled: false,
     },

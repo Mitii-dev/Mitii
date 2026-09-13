@@ -8,6 +8,7 @@ import {
   buildWritingRecipeAsk,
   unwrapRecipeAnswer,
   type MitiiWritingRecipeId,
+  IndexLockedError,
 } from '@mitii/host';
 import { isSecurityConcern, WorkspaceIgnorePolicy } from '@mitii/v8';
 
@@ -33,6 +34,7 @@ import { MitiiSidebarProvider } from './sidebar.js';
 import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
 import { resolveVsCodeSemanticIndexSettings } from './semanticIndex.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
+import { rehydrateRepositoryStateFromDisk } from './rehydrateRepositoryState.js';
 import { restoreCheckpointCommand } from './restoreCheckpoint.js';
 import {
   getWorkspaceTrustSnapshot,
@@ -100,6 +102,32 @@ export function activate(context: ExtensionContext): void {
   const invalidateClient = (): void => {
     client = undefined;
   };
+
+  /** Coalesce profile/settings storms into one ensure after writes settle. */
+  let ensureIndexedTimer: ReturnType<typeof setTimeout> | undefined;
+  const scheduleEnsureIndexed = (delayMs = 500): void => {
+    if (ensureIndexedTimer) clearTimeout(ensureIndexedTimer);
+    ensureIndexedTimer = setTimeout(() => {
+      ensureIndexedTimer = undefined;
+      void (async () => {
+        if (!sidebar) return;
+        const status = await sidebar.ensureIndexed();
+        sidebar.post({ type: 'index.status', index: status });
+        await sidebar.refreshBootstrap();
+      })().catch((error) => {
+        channel.appendLine(
+          `[index] scheduled ensure failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      });
+    }, delayMs);
+  };
+  context.subscriptions.push({
+    dispose: () => {
+      if (ensureIndexedTimer) clearTimeout(ensureIndexedTimer);
+    },
+  });
 
   const ensureClient = async (): Promise<MitiiClient> => {
     if (client) return client;
@@ -287,15 +315,57 @@ export function activate(context: ExtensionContext): void {
               message: 'Indexing cancelled',
             };
           }
+          if (full.status === 'skipped') {
+            await rehydrateRepositoryStateFromDisk({
+              client: c,
+              mitiiDir: dir,
+              workspaceRoot: root,
+              workspaceId,
+              channel,
+            });
+            return {
+              fileCount,
+              truncated,
+              message: 'Indexing already in progress',
+            };
+          }
           published = await c.publishRepositoryStateFromIndexing(full.indexing, {
             catalogRevisionByRoot: full.catalogRevisionByRoot,
             graphRevisionByRoot: full.graphRevisionByRoot,
             mapRevisionByRoot: full.mapRevisionByRoot,
           });
-          channel.appendLine(
-            `[index] full code/text/graph/map index stored at ${full.databasePath}; vector=${full.vectorIndex.status}${full.vectorIndex.profileId ? ` profile=${full.vectorIndex.profileId}` : ''}${full.vectorIndex.reason ? ` reason=${full.vectorIndex.reason}` : ''}`,
-          );
+          if (full.status === 'unchanged') {
+            channel.appendLine(
+              `[index] unchanged (up to date) at ${full.databasePath}; vector=${full.vectorIndex.status}${full.vectorIndex.profileId ? ` profile=${full.vectorIndex.profileId}` : ''}`,
+            );
+          } else {
+            channel.appendLine(
+              `[index] full code/text/graph/map index stored at ${full.databasePath}; vector=${full.vectorIndex.status}${full.vectorIndex.profileId ? ` profile=${full.vectorIndex.profileId}` : ''}${full.vectorIndex.reason ? ` reason=${full.vectorIndex.reason}` : ''}`,
+            );
+          }
         } catch (error) {
+          if (
+            error instanceof IndexLockedError ||
+            (error instanceof Error && error.name === 'IndexLockedError')
+          ) {
+            channel.appendLine(
+              `[index] skipped (lock held): ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+            await rehydrateRepositoryStateFromDisk({
+              client: c,
+              mitiiDir: dir,
+              workspaceRoot: root,
+              workspaceId,
+              channel,
+            });
+            return {
+              fileCount,
+              truncated,
+              message: 'Indexing already in progress',
+            };
+          }
           indexMode = 'host_snapshot';
           fallbackReason = error instanceof Error ? error.message : String(error);
           channel.appendLine(
@@ -779,11 +849,7 @@ export function activate(context: ExtensionContext): void {
             '[mitii] provider/mcp/search/memory/agent/debug settings changed; client will recompose',
           );
         }
-        void (async () => {
-          const status = await sidebar.ensureIndexed();
-          sidebar.post({ type: 'index.status', index: status });
-          await sidebar.refreshBootstrap();
-        })();
+        scheduleEnsureIndexed();
       }
     }),
   );

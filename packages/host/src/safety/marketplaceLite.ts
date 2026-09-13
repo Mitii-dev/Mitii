@@ -54,6 +54,15 @@ export const MARKETPLACE_LITE_CATALOG: readonly MarketplaceCatalogEntry[] = [
     installHint: "Enable from Mitii Settings → MCP store (requires Puppeteer deps)",
   },
   {
+    id: "excalidraw",
+    kind: "mcp",
+    title: "Excalidraw",
+    description:
+      "Hand-drawn diagrams via remote Excalidraw MCP App (mcp.excalidraw.com).",
+    installHint:
+      "Enable from Mitii Settings → MCP store, or add streamable-http https://mcp.excalidraw.com to .mitii/mcp.json",
+  },
+  {
     id: "debugging-and-error-recovery",
     kind: "skill",
     title: "Debugging and Error Recovery",

@@ -31,6 +31,7 @@ describe("filterToolDefinitions MCP gating", () => {
       name: "mcp__memory__store",
       description: "mcp",
       inputSchema: { type: "object" },
+      requiresWorkspaceWrite: true,
     },
   ];
 
@@ -39,10 +40,45 @@ describe("filterToolDefinitions MCP gating", () => {
       grant: grant({ maximumWorkspaceEffect: "read" }),
       definitions: catalog,
       supportsTools: true,
+      mode: "ask",
     });
     expect(tools.map((t) => t.name)).toEqual(["read_file"]);
     // Core discovery keeps full schema (not INDEX stub).
     expect(tools[0]?.inputSchema).toEqual({ type: "object" });
+  });
+
+  it("exposes read-safe mcp__* tools on agent read grants", () => {
+    const tools = filterToolDefinitions({
+      grant: grant({ maximumWorkspaceEffect: "read" }),
+      definitions: [
+        {
+          name: "read_file",
+          description: "read",
+          inputSchema: { type: "object" },
+        },
+        {
+          name: "mcp__excalidraw__create_view",
+          description: "draw",
+          inputSchema: { type: "object" },
+        },
+      ],
+      supportsTools: true,
+      mode: "agent",
+    });
+    expect(tools.map((t) => t.name)).toEqual([
+      "read_file",
+      "mcp__excalidraw__create_view",
+    ]);
+  });
+
+  it("hides write-requiring mcp__* tools on agent read grants", () => {
+    const tools = filterToolDefinitions({
+      grant: grant({ maximumWorkspaceEffect: "read" }),
+      definitions: catalog,
+      supportsTools: true,
+      mode: "agent",
+    });
+    expect(tools.map((t) => t.name)).toEqual(["read_file"]);
   });
 
   it("injects describe_tool and keeps full schemas for core tools", () => {
@@ -90,7 +126,7 @@ describe("filterToolDefinitions MCP gating", () => {
     });
   });
 
-  it("exposes mcp__* tools only when write is granted (INDEX stubbed)", () => {
+  it("exposes mcp__* tools when write is granted (INDEX stubbed)", () => {
     const tools = filterToolDefinitions({
       grant: grant({
         maximumWorkspaceEffect: "write",
@@ -99,6 +135,7 @@ describe("filterToolDefinitions MCP gating", () => {
       }),
       definitions: catalog,
       supportsTools: true,
+      mode: "agent",
     });
     expect(tools.map((t) => t.name)).toEqual([
       "read_file",

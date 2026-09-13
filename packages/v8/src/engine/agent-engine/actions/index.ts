@@ -120,6 +120,7 @@ export {
   filterToolDefinitions,
   toToolIndexDefinition,
   isMcpToolName,
+  isMcpAllowedByGrant,
   DESCRIBE_TOOL_NAME,
   FULL_SCHEMA_TOOL_IDS,
   TOOL_INDEX_INPUT_SCHEMA,

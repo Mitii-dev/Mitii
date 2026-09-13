@@ -228,6 +228,20 @@ export async function createVscodeClient(
     : defaultMcpSettings();
   const mcpManager = getSharedMcpManager();
   const mcpSnapshot = await mcpManager.sync(mcp, workspaceRoot);
+  const mcpReady = mcpSnapshot.servers.filter((s) => s.status === 'ready');
+  const mcpErrors = mcpSnapshot.servers.filter((s) => s.status === 'error');
+  if (mcp.enabled || mcpSnapshot.servers.length > 0) {
+    // Surface connect results in the Extension Host console (Output → Mitii
+    // also shows runtime status from the Settings UI).
+    console.info(
+      `[mitii:mcp] enabled=${mcp.enabled} ready=${mcpReady.length} error=${mcpErrors.length} tools=${mcpSnapshot.toolDefinitions.length}`,
+    );
+    for (const server of mcpErrors) {
+      console.warn(
+        `[mitii:mcp] ${server.id} failed: ${server.error ?? 'unknown'}`,
+      );
+    }
+  }
 
   const fileSystem = workspaceRoot
     ? new NodeWorkspaceFileSystemAdapter()
