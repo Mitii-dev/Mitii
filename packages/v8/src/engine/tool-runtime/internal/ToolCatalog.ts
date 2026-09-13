@@ -565,7 +565,23 @@ export const coercedBooleanSchema = z.union([
     }),
 ]);
 
-export const sequentialThinkingInputSchema = z
+export const sequentialThinkingInputSchema = z.preprocess((raw) => {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return raw;
+  }
+  const obj: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
+  // Models often omit counters on the first thought; default instead of NaN reject.
+  if (obj.thoughtNumber === undefined || obj.thoughtNumber === null || obj.thoughtNumber === "") {
+    obj.thoughtNumber = 1;
+  }
+  if (obj.totalThoughts === undefined || obj.totalThoughts === null || obj.totalThoughts === "") {
+    obj.totalThoughts = obj.thoughtNumber ?? 1;
+  }
+  if (obj.nextThoughtNeeded === undefined || obj.nextThoughtNeeded === null || obj.nextThoughtNeeded === "") {
+    obj.nextThoughtNeeded = true;
+  }
+  return obj;
+}, z
   .object({
     thought: z.string().min(1).max(32_000),
     thoughtNumber: z.coerce.number().int().positive(),
@@ -577,7 +593,7 @@ export const sequentialThinkingInputSchema = z
     branchId: z.string().min(1).max(256).optional(),
     needsMoreThoughts: coercedBooleanSchema.optional(),
   })
-  .strict();
+  .strip());
 
 export const sequentialThinkingOutputSchema = z
   .object({

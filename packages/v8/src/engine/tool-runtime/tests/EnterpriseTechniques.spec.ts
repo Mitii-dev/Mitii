@@ -160,6 +160,33 @@ describe("enterprise P0 techniques", () => {
       expect(output.nextThoughtNeeded).toBe(false);
     });
 
+    it("defaults missing thoughtNumber/totalThoughts instead of rejecting", async () => {
+      const runtime = createRuntime();
+      const result = await runtime.execute({
+        schemaVersion: 1,
+        callId: "s-defaults",
+        toolName: "sequential_thinking",
+        arguments: {
+          thought: "Phase 0 inventory without counters",
+          nextThoughtNeeded: "true",
+        },
+        grant: createReadOnlyGrant({
+          allowedTools: ["sequential_thinking"],
+          allowedEffects: ["workspace_read"],
+        }),
+        workspaceRoot: WORKSPACE,
+      });
+      expect(result.status).toBe("succeeded");
+      const output = result.output as {
+        thoughtNumber: number;
+        totalThoughts: number;
+        nextThoughtNeeded: boolean;
+      };
+      expect(output.thoughtNumber).toBe(1);
+      expect(output.totalThoughts).toBe(1);
+      expect(output.nextThoughtNeeded).toBe(true);
+    });
+
     it("auto-extends totalThoughts and coerces string booleans", () => {
       const engine = new SequentialThinkingEngine();
       const result = engine.processThought({

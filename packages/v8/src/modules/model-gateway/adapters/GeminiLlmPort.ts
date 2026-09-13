@@ -25,6 +25,7 @@ import {
   normalizeNonNegativeInteger,
   normalizePositiveInteger,
 } from "../internal/http";
+import { sanitizeGeminiJsonSchema } from "../internal/sanitizeGeminiJsonSchema";
 import { iterateSseEvents } from "../internal/sse";
 import { ModelCapabilityResolver } from "../ModelCapabilityResolver";
 
@@ -236,7 +237,9 @@ export class GeminiLlmPort implements LlmPort {
       generationConfig.responseMimeType = "application/json";
     } else if (request.responseFormat?.type === "json_schema") {
       generationConfig.responseMimeType = "application/json";
-      generationConfig.responseSchema = request.responseFormat.schema;
+      generationConfig.responseSchema = sanitizeGeminiJsonSchema(
+        request.responseFormat.schema,
+      );
     }
 
     const body: Record<string, unknown> = {
@@ -258,7 +261,7 @@ export class GeminiLlmPort implements LlmPort {
           functionDeclarations: request.tools.map((tool) => ({
             name: tool.name,
             description: tool.description,
-            parameters: tool.inputSchema,
+            parameters: sanitizeGeminiJsonSchema(tool.inputSchema),
           })),
         },
       ];

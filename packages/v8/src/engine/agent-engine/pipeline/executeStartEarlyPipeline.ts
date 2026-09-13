@@ -348,6 +348,21 @@ export async function runStartEarlyPipeline(
     });
   }
 
+  if (
+    decision.planningDepth === "visible" &&
+    decision.reasonCodes.includes("plan_gate_suppressed_by_policy")
+  ) {
+    const planGateWarning =
+      "A visible architecture plan was drafted, but plan approval was skipped because host approval policy is set to never. Switch approval mode away from never/pilot if you want to review the plan before mutations.";
+    warnings.push(planGateWarning);
+    runtime.emit(bus, {
+      type: "warning",
+      runId,
+      message: planGateWarning,
+      at: runtime.isoNow(),
+    });
+  }
+
   if (signal.aborted) {
     return { kind: "terminal", result: await cancelledResult() };
   }

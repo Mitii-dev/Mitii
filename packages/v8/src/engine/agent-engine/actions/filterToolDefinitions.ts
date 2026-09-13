@@ -39,7 +39,6 @@ export const TOOL_INDEX_INPUT_SCHEMA: Readonly<Record<string, unknown>> = {
   description:
     "Index stub. Call describe_tool with this tool's name to load the full parameter schema before use when needed. Tool Runtime still validates real arguments.",
   properties: {},
-  additionalProperties: true,
 };
 
 const INDEX_DESCRIPTION_MAX = 160;

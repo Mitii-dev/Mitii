@@ -1531,4 +1531,49 @@ describe("PlanningPipeline", () => {
       } as never),
     ).rejects.toThrow(PlanningError);
   });
+
+  it("splits package-scale refactor asks into multiple architecture change steps", async () => {
+    const result = await pipeline.plan(
+      baseInput({
+        query:
+          "Refactor the entire test package POM across Desktop, Tablet, and shared layers",
+        evidence: {
+          primaryIntent: "refactor",
+          secondaryIntents: ["feature"],
+          interactionIntent: "act",
+          scope: "package",
+          complexity: "complex",
+          risk: "medium",
+          clarity: "clear",
+          targets: [
+            { kind: "folder", value: "test/shared", explicit: true },
+            { kind: "folder", value: "test/Desktop/pages", explicit: true },
+            { kind: "folder", value: "test/Tablet/pages", explicit: true },
+            {
+              kind: "file",
+              value: "test/specs/Cross/dinein-complete-order.spec.ts",
+              explicit: true,
+            },
+          ],
+          constraints: [],
+          requestedOutcomes: [],
+          recommendsPlanning: true,
+          recommendsVerification: true,
+          changeImpact: ["code"],
+        },
+      }),
+    );
+    expect(result.plan).toBeDefined();
+    const change = result.plan!.phases.find((phase) => phase.id === "phase-change");
+    expect(change).toBeDefined();
+    const stepIds = change!.steps.map((step) => step.id);
+    expect(stepIds).toEqual(
+      expect.arrayContaining([
+        "step-shared-foundation",
+        "step-platform-pages",
+        "step-specs-flows",
+      ]),
+    );
+    expect(change!.steps.length).toBeGreaterThanOrEqual(3);
+  });
 });

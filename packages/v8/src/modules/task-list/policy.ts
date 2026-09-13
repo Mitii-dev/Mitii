@@ -33,10 +33,11 @@ export const TASK_LIST_POLICY = {
    */
   autoAdvanceOnMutationSuccess: false,
   /**
-   * Never auto-advance Discover/Verify (or explore) process rows from a random
-   * successful patch — those need real evidence / model patches.
+   * Never auto-advance Discover/Verify/design (or explore) process rows from a
+   * random successful patch — those need real evidence / model patches.
    */
-  autoAdvanceBlockedTitle: /^(discover|verify|explore|investigate)\b/i,
+  autoAdvanceBlockedTitle:
+    /^(discover|verify|explore|investigate)\b|:\s*(choose|design|select an approach)\b|\bchoose a non-hardcoded approach\b/i,
   /**
    * Change-like phase prefixes (optional). Concrete file-scoped titles without
    * a blocked prefix are also eligible.

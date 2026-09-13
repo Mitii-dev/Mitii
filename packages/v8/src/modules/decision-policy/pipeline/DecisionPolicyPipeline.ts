@@ -374,6 +374,12 @@ function buildDecisionTrace(params: {
     signalsUsed: uniqueStrings([
       `primary:${params.understanding.intent.classification.primaryTaskIntent}`,
       `interaction:${params.understanding.intent.classification.interactionIntent}`,
+      ...(params.understanding.intent.diagnostics?.llmPrimaryIntent
+        ? [
+            `llmPrimary:${params.understanding.intent.diagnostics.llmPrimaryIntent}`,
+            `llmInteraction:${params.understanding.intent.diagnostics.llmInteractionIntent}`,
+          ]
+        : []),
       `scope:${params.understanding.taskAnalysis.scope}`,
       `risk:${params.understanding.taskAnalysis.risk}`,
       `clarity:${params.understanding.taskAnalysis.clarity}`,

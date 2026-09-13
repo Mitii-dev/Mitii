@@ -82,8 +82,7 @@ export function maybeAutoAdvanceTaskList(params: {
 
   const matching = params.current.items.filter(
     (item) =>
-      item.status !== "done" &&
-      item.status !== "skipped" &&
+      item.status === "active" &&
       isMutationAutoAdvanceEligible(item) &&
       // Path-accurate via write/title paths; package-root siblings no longer match
       // when explicit write[] is present (see itemWriteTargetsMatchChangedFiles).
