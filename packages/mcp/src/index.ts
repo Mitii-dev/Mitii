@@ -14,6 +14,7 @@ export type {
   McpSettings,
   McpToolDescriptor,
   McpRoot,
+  McpResourceContents,
   McpToolCallResult,
   McpClient,
   McpServerRuntimeStatus,
@@ -51,4 +52,5 @@ export {
   mcpToolName,
   type McpManagerSnapshot,
   type McpManagerOptions,
+  type McpToolResultEvent,
 } from './manager/index.js';

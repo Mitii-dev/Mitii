@@ -329,6 +329,28 @@ describe('conversationCarry (VS Code host)', () => {
     expect(activity).toHaveLength(2);
     expect(activity.every((e) => e.kind !== 'delta')).toBe(true);
 
+    const withDiagram = compactActivityForHistory([
+      {
+        id: '4',
+        at: 4,
+        kind: 'mcp_app',
+        title: 'Architecture diagram',
+        status: 'succeeded',
+        mcpApp: {
+          serverId: 'excalidraw',
+          tool: 'create_view',
+          title: 'Architecture diagram',
+          svgDataUrl: 'data:image/svg+xml;base64,abc',
+          html: '<html>huge</html>',
+          paths: { md: '.mitii/artifacts/excalidraw/x/diagram.md' },
+        },
+      },
+    ]);
+    expect(withDiagram).toHaveLength(1);
+    expect(withDiagram[0]?.kind).toBe('mcp_app');
+    expect(withDiagram[0]?.mcpApp?.paths.md).toContain('diagram.md');
+    expect(withDiagram[0]?.mcpApp).not.toHaveProperty('html');
+
     const changes = compactFileChangesForHistory({
       runId: 'run_1',
       files: [

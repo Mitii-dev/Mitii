@@ -58,6 +58,7 @@ export class McpStreamableHttpClient implements McpClient {
         name: string;
         description?: string;
         inputSchema?: Record<string, unknown>;
+        _meta?: Record<string, unknown>;
       }>;
     };
     return (result.tools ?? []).map((tool) => ({
@@ -67,6 +68,7 @@ export class McpStreamableHttpClient implements McpClient {
         tool.inputSchema && typeof tool.inputSchema === 'object'
           ? tool.inputSchema
           : { type: 'object', properties: {} },
+      ...(tool._meta ? { _meta: tool._meta } : {}),
     }));
   }
 
@@ -78,6 +80,7 @@ export class McpStreamableHttpClient implements McpClient {
       content?: unknown;
       structuredContent?: unknown;
       isError?: boolean;
+      _meta?: Record<string, unknown>;
     };
     return {
       content: result.content ?? result,
@@ -85,6 +88,30 @@ export class McpStreamableHttpClient implements McpClient {
         ? { structuredContent: result.structuredContent }
         : {}),
       isError: Boolean(result.isError),
+      ...(result._meta ? { _meta: result._meta } : {}),
+    };
+  }
+
+  async readResource(
+    uri: string,
+  ): Promise<{ contents: import('../contracts/types.js').McpResourceContents[] }> {
+    const result = (await this.request('resources/read', { uri })) as {
+      contents?: Array<{
+        uri?: string;
+        mimeType?: string;
+        text?: string;
+        blob?: string;
+        _meta?: Record<string, unknown>;
+      }>;
+    };
+    return {
+      contents: (result.contents ?? []).map((entry) => ({
+        uri: entry.uri ?? uri,
+        ...(entry.mimeType ? { mimeType: entry.mimeType } : {}),
+        ...(entry.text !== undefined ? { text: entry.text } : {}),
+        ...(entry.blob !== undefined ? { blob: entry.blob } : {}),
+        ...(entry._meta ? { _meta: entry._meta } : {}),
+      })),
     };
   }
 

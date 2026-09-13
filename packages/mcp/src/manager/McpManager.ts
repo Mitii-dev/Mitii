@@ -36,6 +36,17 @@ export interface McpManagerOptions {
   /** Value sent as clientInfo.name during initialize. */
   clientInfoName?: string;
   fetchImpl?: typeof fetch;
+  /** Fired after each successful MCP tools/call (including isError results). */
+  onToolResult?: (event: McpToolResultEvent) => void | Promise<void>;
+}
+
+export interface McpToolResultEvent {
+  serverId: string;
+  serverName: string;
+  toolName: string;
+  args: unknown;
+  result: import('../contracts/types.js').McpToolCallResult;
+  resourceUri?: string;
 }
 
 function estimateTokens(text: string): number {
@@ -79,10 +90,38 @@ export class McpManager {
   private enabled = false;
   private readonly clientInfoName: string;
   private readonly fetchImpl?: typeof fetch;
+  private onToolResult?: McpManagerOptions['onToolResult'];
+  /** toolName (raw) → ui resource URI from listTools `_meta.ui.resourceUri`. */
+  private toolUiResourceUri = new Map<string, string>();
 
   constructor(options: McpManagerOptions = {}) {
     this.clientInfoName = options.clientInfoName ?? 'mitii-mcp';
     this.fetchImpl = options.fetchImpl;
+    this.onToolResult = options.onToolResult;
+  }
+
+  /** Allow hosts to attach a listener after the shared singleton was created. */
+  setToolResultListener(
+    listener: McpManagerOptions['onToolResult'] | undefined,
+  ): void {
+    this.onToolResult = listener;
+  }
+
+  getClient(serverId: string): McpClient | undefined {
+    return this.clients.get(serverId);
+  }
+
+  async readResource(
+    serverId: string,
+    uri: string,
+  ): Promise<{ contents: import('../contracts/types.js').McpResourceContents[] }> {
+    const client = this.clients.get(serverId);
+    if (!client?.readResource) {
+      throw new Error(
+        `MCP server "${serverId}" does not support resources/read`,
+      );
+    }
+    return client.readResource(uri);
   }
 
   async sync(
@@ -177,6 +216,7 @@ export class McpManager {
     this.statuses = [];
     this.registered = [];
     this.toolDefinitions = [];
+    this.toolUiResourceUri.clear();
     this.enabled = false;
   }
 
@@ -236,6 +276,7 @@ export class McpManager {
     options: { requiresWorkspaceWrite: boolean },
   ): void {
     const requiresWorkspaceWrite = options.requiresWorkspaceWrite;
+    const manager = this;
     for (const tool of tools) {
       const name = mcpToolName(serverId, tool.name);
       const description =
@@ -245,6 +286,13 @@ export class McpManager {
         tool.inputSchema && typeof tool.inputSchema === 'object'
           ? tool.inputSchema
           : { type: 'object', properties: {} };
+      const listedResourceUri = extractUiResourceUri(tool._meta);
+      if (listedResourceUri) {
+        manager.toolUiResourceUri.set(
+          `${serverId}::${tool.name}`,
+          listedResourceUri,
+        );
+      }
 
       this.toolDefinitions.push({
         name,
@@ -268,6 +316,23 @@ export class McpManager {
         }),
         async execute(ctx: ToolExecutionContext) {
           const result = await client.callTool(tool.name, ctx.arguments);
+          const resourceUriForTool =
+            extractUiResourceUri(result._meta) ??
+            manager.toolUiResourceUri.get(`${serverId}::${tool.name}`);
+          try {
+            await manager.onToolResult?.({
+              serverId,
+              serverName,
+              toolName: tool.name,
+              args: ctx.arguments,
+              result,
+              ...(resourceUriForTool
+                ? { resourceUri: resourceUriForTool }
+                : {}),
+            });
+          } catch {
+            // Host persistence / UI hooks must not fail the tool call.
+          }
           const preferred = preferStructuredOutput({
             content: result.content,
             structuredContent: result.structuredContent,
@@ -296,6 +361,10 @@ export class McpManager {
               ...(result.structuredContent !== undefined
                 ? { structuredContent: result.structuredContent }
                 : {}),
+              ...(resourceUriForTool
+                ? { resourceUri: resourceUriForTool }
+                : {}),
+              ...(result._meta ? { _meta: result._meta } : {}),
             },
             truncated,
             redacted: false,
@@ -304,6 +373,16 @@ export class McpManager {
       });
     }
   }
+}
+
+function extractUiResourceUri(
+  meta: Record<string, unknown> | undefined,
+): string | undefined {
+  if (!meta || typeof meta !== 'object') return undefined;
+  const ui = meta.ui;
+  if (!ui || typeof ui !== 'object') return undefined;
+  const uri = (ui as { resourceUri?: unknown }).resourceUri;
+  return typeof uri === 'string' && uri.trim() ? uri.trim() : undefined;
 }
 
 function resolveArgs(

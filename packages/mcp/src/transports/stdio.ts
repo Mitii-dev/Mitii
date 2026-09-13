@@ -113,6 +113,7 @@ export class McpStdioClient implements McpClient {
         name: string;
         description?: string;
         inputSchema?: Record<string, unknown>;
+        _meta?: Record<string, unknown>;
       }>;
     };
     return (result.tools ?? []).map((tool) => ({
@@ -122,6 +123,7 @@ export class McpStdioClient implements McpClient {
         tool.inputSchema && typeof tool.inputSchema === 'object'
           ? tool.inputSchema
           : { type: 'object', properties: {} },
+      ...(tool._meta ? { _meta: tool._meta } : {}),
     }));
   }
 
@@ -133,6 +135,7 @@ export class McpStdioClient implements McpClient {
       content?: unknown;
       structuredContent?: unknown;
       isError?: boolean;
+      _meta?: Record<string, unknown>;
     };
     return {
       content: result.content ?? result,
@@ -140,6 +143,7 @@ export class McpStdioClient implements McpClient {
         ? { structuredContent: result.structuredContent }
         : {}),
       isError: Boolean(result.isError),
+      ...(result._meta ? { _meta: result._meta } : {}),
     };
   }
 

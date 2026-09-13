@@ -33,6 +33,8 @@ export interface McpToolDescriptor {
   name: string;
   description?: string;
   inputSchema?: Record<string, unknown>;
+  /** Tool metadata (e.g. MCP Apps `_meta.ui.resourceUri`). */
+  _meta?: Record<string, unknown>;
 }
 
 export interface McpRoot {
@@ -40,10 +42,19 @@ export interface McpRoot {
   name?: string;
 }
 
+export interface McpResourceContents {
+  uri: string;
+  mimeType?: string;
+  text?: string;
+  blob?: string;
+  _meta?: Record<string, unknown>;
+}
+
 export interface McpToolCallResult {
   content: unknown;
   structuredContent?: unknown;
   isError?: boolean;
+  _meta?: Record<string, unknown>;
 }
 
 /** Unified client surface for all transports. */
@@ -51,6 +62,8 @@ export interface McpClient {
   initialize(): Promise<void>;
   listTools(): Promise<McpToolDescriptor[]>;
   callTool(name: string, args: unknown): Promise<McpToolCallResult>;
+  /** Optional — required for MCP Apps UI resource loading. */
+  readResource?(uri: string): Promise<{ contents: McpResourceContents[] }>;
   dispose(): void;
 }
 

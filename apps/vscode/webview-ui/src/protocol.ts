@@ -444,6 +444,24 @@ export interface PathSuggestion {
   kind: 'file' | 'folder';
 }
 
+/** Excalidraw / MCP Apps diagram card shown in the chat timeline. */
+export interface McpAppViewPayload {
+  serverId: string;
+  tool: string;
+  title: string;
+  checkpointId?: string;
+  /** Inline SVG preview (data URL). */
+  svgDataUrl?: string;
+  /** MCP Apps HTML when resources/read succeeded (iframe srcdoc). */
+  html?: string;
+  paths: {
+    md?: string;
+    docsMd?: string;
+    excalidraw?: string;
+    svg?: string;
+  };
+}
+
 export interface ActivityEventPayload {
   id: string;
   at: number;
@@ -456,10 +474,12 @@ export interface ActivityEventPayload {
     | 'warning'
     | 'suspended'
     | 'terminal'
-    | 'info';
+    | 'info'
+    | 'mcp_app';
   title: string;
   detail?: string;
   status?: string;
+  mcpApp?: McpAppViewPayload;
 }
 
 export interface ClarificationOptionView {

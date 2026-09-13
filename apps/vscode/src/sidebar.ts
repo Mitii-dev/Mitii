@@ -54,6 +54,7 @@ import {
 import { buildContextUsageBreakdown } from './contextUsage.js';
 import { deriveLiveTokenBudgetPreview } from './liveTokenBudgetPreview.js';
 import { getSharedMcpManager } from './mcp/manager.js';
+import { persistExcalidrawFromToolResult } from './excalidrawArtifacts.js';
 import {
   readMcpSettings,
   readMcpStoreCatalog,
@@ -104,6 +105,7 @@ import type {
   WebviewToHostMessage,
   WorkspaceNoticeView,
   WorkspaceSnapshotInfo,
+  ActivityEventPayload,
 } from './protocol.js';
 import { planViewFromArtifact } from './planView.js';
 import { saveTaskListToWorkspace } from './taskStore.js';
@@ -151,6 +153,33 @@ import {
   estimateMemoryPromptBlock,
   loadMemoriesForView,
 } from './memoryStore.js';
+
+function formatDiagramCarryMarkdown(
+  events: ActivityEventPayload[],
+): string {
+  const blocks: string[] = [];
+  for (const event of events) {
+    const app = event.mcpApp;
+    if (!app) continue;
+    const title = app.title || 'Diagram';
+    const svg = app.paths.svg;
+    const md = app.paths.md;
+    const docsMd = app.paths.docsMd;
+    const excalidraw = app.paths.excalidraw;
+    const lines = [`## ${title}`, ''];
+    if (svg) {
+      lines.push(`![${title}](${svg})`, '');
+    }
+    lines.push('Saved files:');
+    if (md) lines.push(`- Markdown: \`${md}\``);
+    if (docsMd) lines.push(`- Docs reference: \`${docsMd}\``);
+    if (excalidraw) lines.push(`- Excalidraw: \`${excalidraw}\``);
+    if (svg) lines.push(`- SVG: \`${svg}\``);
+    lines.push(`- Latest pointer: \`.mitii/artifacts/excalidraw/LATEST.md\``);
+    blocks.push(lines.join('\n'));
+  }
+  return blocks.join('\n\n');
+}
 
 /** Companion markdown path for a saved plan JSON relative path. */
 function savedPlanMarkdownRelative(jsonRelativePath: string): string {
@@ -448,6 +477,8 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
   private lastAssistantText = '';
   private liveStreamText = '';
   private activeThreadId?: string;
+  /** MCP App / Excalidraw cards posted during the active run (merged into history). */
+  private pendingMcpAppEvents: ActivityEventPayload[] = [];
   private lastSuspensionRunId?: string;
   /** Per-run file mutation snapshots for undo / diff preview. */
   private fileChangeSnapshots = new Map<string, FileChangeRunSnapshot>();
@@ -467,6 +498,95 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
   ) {
     const history = loadHistory(host.workspaceState);
     this.activeThreadId = history.activeThreadId;
+    this.installMcpAppListener();
+  }
+
+  private installMcpAppListener(): void {
+    getSharedMcpManager().setToolResultListener(async (event) => {
+      if (event.toolName !== 'create_view' || event.result.isError) {
+        return;
+      }
+      const root = this.effectiveRoot();
+      if (!root) return;
+
+      const persisted = persistExcalidrawFromToolResult({
+        workspaceRoot: root,
+        event,
+        threadId: this.activeThreadId,
+      });
+      if (!persisted) {
+        this.channel.appendLine(
+          '[mcp-app] create_view succeeded but no elements were available to persist',
+        );
+        return;
+      }
+
+      let html: string | undefined;
+      if (event.resourceUri) {
+        try {
+          const resource = await getSharedMcpManager().readResource(
+            event.serverId,
+            event.resourceUri,
+          );
+          const first = resource.contents[0];
+          if (first?.text) {
+            html = first.text;
+          } else if (first?.blob) {
+            html = Buffer.from(first.blob, 'base64').toString('utf8');
+          }
+        } catch (error) {
+          this.channel.appendLine(
+            `[mcp-app] resources/read failed: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+      }
+
+      const svgDataUrl = `data:image/svg+xml;base64,${Buffer.from(
+        persisted.svg,
+        'utf8',
+      ).toString('base64')}`;
+
+      this.channel.appendLine(
+        `[mcp-app] saved diagram → ${persisted.paths.relativeMd}${
+          persisted.paths.relativeDocsMd
+            ? ` + ${persisted.paths.relativeDocsMd}`
+            : ''
+        }`,
+      );
+
+      const activity: ActivityEventPayload = {
+        id: `mcp-app-${Date.now()}`,
+        at: Date.now(),
+        kind: 'mcp_app',
+        title: persisted.title,
+        detail: `Saved ${persisted.paths.relativeMd}`,
+        status: 'succeeded',
+        mcpApp: {
+          serverId: event.serverId,
+          tool: event.toolName,
+          title: persisted.title,
+          ...(persisted.paths.checkpointId
+            ? { checkpointId: persisted.paths.checkpointId }
+            : {}),
+          svgDataUrl,
+          // Full AppBridge is not wired yet; keep HTML available for future
+          // interactive host work but prefer SVG for a reliable visible diagram.
+          ...(html ? { html } : {}),
+          paths: {
+            md: persisted.paths.relativeMd,
+            ...(persisted.paths.relativeDocsMd
+              ? { docsMd: persisted.paths.relativeDocsMd }
+              : {}),
+            excalidraw: persisted.paths.relativeExcalidraw,
+            svg: persisted.paths.relativeSvg,
+          },
+        },
+      };
+      this.pendingMcpAppEvents.push(activity);
+      this.post({ type: 'run.event', event: activity });
+    });
   }
 
   attachHostHelpers(helpers: SidebarHostHelpers): void {
@@ -1325,6 +1445,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     }
     this.post({ type: 'run.started', mode: message.mode, prompt });
     this.pendingRunTurns = [];
+    this.pendingMcpAppEvents = [];
     this.liveStreamText = '';
     this.runBaseTurns = [...(this.tokenUsage.turns ?? [])];
     this.runBaseInputTokens = this.tokenUsage.inputTokensTotal;
@@ -1559,18 +1680,30 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       const changedPaths = this.activeFileChangeSnapshot
         ? [...this.activeFileChangeSnapshot.mutatedPaths]
         : [];
+      const diagramCarry =
+        this.pendingMcpAppEvents.length > 0
+          ? formatDiagramCarryMarkdown(this.pendingMcpAppEvents)
+          : '';
       const enrichedAnswer = enrichAssistantCarryText({
         answer: answer.trim()
           ? answer
-          : outcome.result.error?.message
-            ? `Error: ${outcome.result.error.message}`
-            : `(${outcome.result.status})`,
+          : diagramCarry
+            ? diagramCarry
+            : outcome.result.error?.message
+              ? `Error: ${outcome.result.error.message}`
+              : `(${outcome.result.status})`,
         changedPaths,
       });
-      const assistantText = resolveDisplayedAssistantText({
+      const assistantTextRaw = resolveDisplayedAssistantText({
         streamedText: this.liveStreamText,
         finalAnswer: enrichedAnswer,
       });
+      const assistantText =
+        diagramCarry &&
+        answer.trim() &&
+        !assistantTextRaw.includes(diagramCarry)
+          ? `${assistantTextRaw.trimEnd()}\n\n${diagramCarry}`
+          : assistantTextRaw;
       this.lastAssistantText = assistantText;
       this.liveStreamText = '';
       const resultPlan = outcome.result.plan;
@@ -1650,11 +1783,13 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       persistedFileChanges =
         compactFileChangesForHistory(persistedFileChanges) ?? null;
 
-      const activity = compactActivityForHistory(
-        outcome.events
+      const activity = compactActivityForHistory([
+        ...outcome.events
           .map((event) => runEventToActivity(event))
           .filter((event): event is NonNullable<typeof event> => Boolean(event)),
-      );
+        ...this.pendingMcpAppEvents,
+      ]);
+      this.pendingMcpAppEvents = [];
 
       const pendingPlanForUi =
         message.mode === 'plan' && resultPlan && plan
@@ -3359,6 +3494,8 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       `script-src ${webview.cspSource}`,
       `font-src ${webview.cspSource}`,
       `img-src ${webview.cspSource} data:`,
+      "frame-src 'self' data: blob: https:",
+      "child-src 'self' data: blob: https:",
     ].join('; ');
 
     return `<!DOCTYPE html>

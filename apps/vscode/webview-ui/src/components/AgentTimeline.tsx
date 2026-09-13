@@ -1,10 +1,12 @@
 import type { ActivityEventPayload } from '../protocol';
+import { McpAppCard } from './McpAppCard';
 
 interface AgentTimelineProps {
   events: ActivityEventPayload[];
   streaming?: boolean;
   /** When this group of steps ended (e.g. the timestamp text resumed at), used to time the final thinking step. */
   endAt?: number;
+  onOpenFile?: (path: string) => void;
 }
 
 interface FileListDetail {
@@ -212,6 +214,7 @@ export function AgentTimeline({
   events,
   streaming = false,
   endAt,
+  onOpenFile,
 }: AgentTimelineProps) {
   if (events.length === 0) return null;
 
@@ -221,6 +224,20 @@ export function AgentTimeline({
       aria-label="Agent activity"
     >
       {events.map((item, index) => {
+        if (item.kind === 'mcp_app' && item.mcpApp) {
+          return (
+            <li
+              key={item.id}
+              className="timeline__row timeline__row--done timeline__row--kind-mcp_app"
+            >
+              <span className="timeline__marker" aria-hidden="true" />
+              <div className="timeline__row-text timeline__row-text--block">
+                <strong className="timeline__row-title">Diagram ready</strong>
+                <McpAppCard app={item.mcpApp} onOpenPath={onOpenFile} />
+              </div>
+            </li>
+          );
+        }
         const isActiveThinking =
           streaming && index === events.length - 1 && item.kind === 'thinking';
         const preview = isActiveThinking ? thinkingPreview(item.detail) : '';

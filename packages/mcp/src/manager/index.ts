@@ -5,4 +5,5 @@ export {
   resetSharedMcpManager,
   type McpManagerSnapshot,
   type McpManagerOptions,
+  type McpToolResultEvent,
 } from './McpManager.js';

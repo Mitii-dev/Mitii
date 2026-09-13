@@ -855,6 +855,66 @@ input:focus-visible {
   font-weight: 600;
 }
 
+.timeline__row-text--block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+}
+
+.mcp-app-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 80%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mitii-panel-raised) 88%, transparent);
+}
+
+.mcp-app-card__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.mcp-app-card__meta {
+  color: var(--mitii-muted);
+  font-size: 11px;
+}
+
+.mcp-app-card__svg {
+  display: block;
+  width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.mcp-app-card__fallback {
+  font-size: 12px;
+  color: var(--mitii-muted);
+}
+
+.mcp-app-card__frame {
+  width: 100%;
+  min-height: 280px;
+  margin-top: 8px;
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 70%, transparent);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.mcp-app-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .timeline__command code {
   min-width: 0;
   white-space: pre-wrap;

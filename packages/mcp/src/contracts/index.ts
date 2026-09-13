@@ -4,6 +4,7 @@ export type {
   McpSettings,
   McpToolDescriptor,
   McpRoot,
+  McpResourceContents,
   McpToolCallResult,
   McpClient,
   McpServerRuntimeStatus,
