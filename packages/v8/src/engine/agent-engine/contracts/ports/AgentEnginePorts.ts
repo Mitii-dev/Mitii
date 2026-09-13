@@ -45,6 +45,8 @@ import type {
   ToolInvocationInput,
   ToolResult,
   RepositoryGraphPort,
+  ToolAdversaryPort,
+  AdversaryFailMode,
 } from "../../../tool-runtime";
 import type {
   RepoBuildState,
@@ -86,6 +88,7 @@ export interface AgentEngineDecisionPort {
   widen?(input: {
     previous: ExecutionDecision;
     extraPaths?: readonly string[];
+    extraNetworkHosts?: readonly string[];
   }): ExecutionDecision;
 }
 
@@ -128,6 +131,30 @@ export interface AgentEngineToolRuntimePort {
     checkpointId: string;
   }): Promise<ToolResult>;
   commitMutation?(checkpointId: string): void;
+  /** Live in-memory mutation snapshot (pre-commit). */
+  getMutationCheckpoint?(checkpointId: string):
+    | {
+        checkpointId: string;
+        workspaceRoot: string;
+        files: readonly {
+          relativePath: string;
+          kind: "existing" | "missing" | "directory";
+          content?: string;
+        }[];
+        createdAt: string;
+      }
+    | undefined;
+  /** Apply a durable mutation snapshot to the workspace. */
+  restoreMutationSnapshot?(snapshot: {
+    checkpointId: string;
+    workspaceRoot: string;
+    files: readonly {
+      relativePath: string;
+      kind: "existing" | "missing" | "directory";
+      content?: string;
+    }[];
+    createdAt: string;
+  }): Promise<string[]>;
   /** Honest grant gating — omit / false when SearchPort is not injected. */
   hasSearchPort?(): boolean;
   hasDiagnosticsPort?(): boolean;
@@ -175,6 +202,12 @@ export interface AgentEngineDependencies {
   tools?: AgentEngineToolRuntimePort;
   verification?: AgentEngineVerificationPort;
   checkpointStore?: AgentEngineRunCheckpointStorePort;
+  /**
+   * Optional restrict-only ToolAdversaryPort (Phase 3). Forwarded into tool
+   * execute options. Unset = no-op. Never widens grants.
+   */
+  adversary?: ToolAdversaryPort;
+  adversaryFailMode?: AdversaryFailMode;
   /**
    * Optional published RepoGraph port. When present, follow_evidence and
    * discover_and_plan collect hop-1 mustRead/affected reports before drafting.

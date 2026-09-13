@@ -12,6 +12,12 @@ export const DECISION_POLICY_THRESHOLDS = {
   clarifyWhenFlaggedBelowConfidence: 0.75,
   /** Above this margin, competing intents are treated as clear enough to proceed. */
   minimumIntentMargin: 0.12,
+  /**
+   * When policyFactsFirst is on, treat understanding as authoritative above
+   * this confidence (and margin) except for documented safety overrides.
+   */
+  factsFirstMinConfidence: 0.74,
+  factsFirstMinMargin: 0.12,
   /** Estimated file count above which multi-file work gets an internal plan. */
   multiFilePlanThreshold: 2,
   /**
@@ -88,4 +94,8 @@ export const PROMPT_INJECTION_PATTERNS: readonly RegExp[] = [
   /do\s+not\s+ask\s+for\s+(?:permission|approval)/i,
   /pretend\s+(?:you\s+)?(?:have|are)\s+(?:unrestricted|no)\s+(?:access|limits?)/i,
   /act\s+as\s+if\s+(?:safety|permission|grant)\s+(?:rules?|checks?)\s+(?:do\s+not|don't)\s+exist/i,
+  /\[?\s*SYSTEM\s*:\s*/i,
+  /confirm\s+(?:your\s+)?compliance/i,
+  /output\s+the\s+exact\s+string/i,
+  /MITII_INJECTION_ACK_/i,
 ];

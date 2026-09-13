@@ -1,12 +1,15 @@
 export {
   memoryRetrieveInputSchema,
   memoryCommitInputSchema,
+  memoryConsolidateInputSchema,
 } from "./input/MemoryInput";
 export type {
   MemoryRetrieveInput,
   MemoryRetrieveParsedInput,
   MemoryCommitInput,
   MemoryCommitParsedInput,
+  MemoryConsolidateInput,
+  MemoryConsolidateParsedInput,
 } from "./input/MemoryInput";
 
 export {
@@ -28,12 +31,14 @@ export {
   memoryOmissionSchema,
   memoryRetrieveResultSchema,
   memoryCommitResultSchema,
+  memoryConsolidateResultSchema,
 } from "./output/MemoryResult";
 export type {
   MemoryInstructionBlock,
   MemoryOmission,
   MemoryRetrieveResult,
   MemoryCommitResult,
+  MemoryConsolidateResult,
   MemoryReasonCode,
 } from "./output/MemoryResult";
 

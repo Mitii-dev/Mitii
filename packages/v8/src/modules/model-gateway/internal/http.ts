@@ -1,5 +1,6 @@
 import {
   HTTP_STATUS_TO_MODEL_ERROR,
+  MODEL_GATEWAY_DEFAULTS,
   MODEL_GATEWAY_LIMITS,
   MODEL_GATEWAY_MESSAGES,
 } from "../constants";
@@ -177,6 +178,12 @@ export interface ProviderHttpCompleteOptions {
   body: string;
   stream: boolean;
   abortSignal?: AbortSignal;
+  /**
+   * Per-attempt wall clock for the provider HTTP call. When omitted, uses
+   * MITII_LLM_REQUEST_TIMEOUT_MS or MODEL_GATEWAY_DEFAULTS.REQUEST_TIMEOUT_MS.
+   * Pass 0 to disable.
+   */
+  requestTimeoutMs?: number;
   fetchImpl: typeof fetch;
   maxRetries: number;
   initialBackoffMs: number;
@@ -193,6 +200,59 @@ export interface ProviderHttpCompleteOptions {
   ) => AsyncIterable<ModelEvent>;
 }
 
+/** Resolve effective request timeout; `0` / negative disables. */
+export function resolveRequestTimeoutMs(explicit?: number): number | undefined {
+  if (typeof explicit === "number" && Number.isFinite(explicit)) {
+    return explicit > 0 ? Math.floor(explicit) : undefined;
+  }
+  const fromEnv = process.env.MITII_LLM_REQUEST_TIMEOUT_MS;
+  if (fromEnv != null && fromEnv !== "") {
+    const parsed = Number(fromEnv);
+    if (Number.isFinite(parsed)) {
+      return parsed > 0 ? Math.floor(parsed) : undefined;
+    }
+  }
+  const fallback = MODEL_GATEWAY_DEFAULTS.REQUEST_TIMEOUT_MS;
+  return fallback > 0 ? fallback : undefined;
+}
+
+function isTimeoutAbort(
+  signal: AbortSignal | undefined,
+  timeoutSignal: AbortSignal | undefined,
+): boolean {
+  if (timeoutSignal?.aborted) return true;
+  const reason = signal?.reason;
+  return (
+    reason instanceof Error &&
+    (reason.name === "TimeoutError" || /timed out/i.test(reason.message))
+  );
+}
+
+/**
+ * Combine caller abort with an optional per-request timeout.
+ * Returns the signal to pass to fetch and whether a timeout fired.
+ */
+export function mergeAbortWithTimeout(
+  abortSignal: AbortSignal | undefined,
+  requestTimeoutMs: number | undefined,
+): { signal?: AbortSignal; timeoutSignal?: AbortSignal } {
+  if (!requestTimeoutMs || requestTimeoutMs <= 0) {
+    return { signal: abortSignal };
+  }
+  const timeoutSignal = AbortSignal.timeout(requestTimeoutMs);
+  if (!abortSignal) {
+    return { signal: timeoutSignal, timeoutSignal };
+  }
+  if (typeof AbortSignal.any === "function") {
+    return {
+      signal: AbortSignal.any([abortSignal, timeoutSignal]),
+      timeoutSignal,
+    };
+  }
+  // Rare fallback: prefer timeout signal when AbortSignal.any is unavailable.
+  return { signal: timeoutSignal, timeoutSignal };
+}
+
 export async function* completeWithHttpRetry(
   options: ProviderHttpCompleteOptions,
 ): AsyncIterable<ModelEvent> {
@@ -201,6 +261,7 @@ export async function* completeWithHttpRetry(
     return;
   }
 
+  const requestTimeoutMs = resolveRequestTimeoutMs(options.requestTimeoutMs);
   let attempt = 0;
   let lastError: ModelError | undefined;
 
@@ -210,6 +271,11 @@ export async function* completeWithHttpRetry(
       return;
     }
 
+    const { signal, timeoutSignal } = mergeAbortWithTimeout(
+      options.abortSignal,
+      requestTimeoutMs,
+    );
+
     let response: Response;
 
     try {
@@ -217,10 +283,22 @@ export async function* completeWithHttpRetry(
         method: "POST",
         headers: options.headers,
         body: options.body,
-        signal: options.abortSignal,
+        signal,
       });
     } catch (error) {
-      if (options.abortSignal?.aborted) {
+      if (isTimeoutAbort(signal, timeoutSignal)) {
+        yield {
+          type: "failed",
+          finishReason: "error",
+          error: {
+            code: "provider_unavailable",
+            message: `LLM request timed out after ${requestTimeoutMs}ms.`,
+            retryable: false,
+          },
+        };
+        return;
+      }
+      if (options.abortSignal?.aborted || signal?.aborted) {
         yield cancelledEvent("Request was aborted during transport.");
         return;
       }

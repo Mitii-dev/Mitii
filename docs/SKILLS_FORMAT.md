@@ -227,6 +227,20 @@ groups over optional matches. If a forced skill cannot fit the skills budget
 even in compact form, the run continues with a warning and omission reason
 `required_budget`.
 
+### Product writing recipes
+
+Mitii ships three compact bundled skills used by dedicated UI/CLI entry points.
+Those entry points call `buildWritingRecipeAsk()` from `@mitii/host`, which
+gathers git context and sets `requiredSkillIds` so matching is not best-effort:
+
+| Recipe id | Skill id | VS Code | CLI |
+|---|---|---|---|
+| `commit-message` | `git-commit-message` | Generate Commit Message | `mitii commit-message` |
+| `pr-summary` | `git-pr-summary` | Generate PR Summary | `mitii pr-summary` |
+| `changelog` | `release-changelog` | Generate Changelog | `mitii changelog` |
+
+Also: `mitii ask --recipe <id>`.
+
 VS Code also supports pinning up to three skills from the chat composer: click
 **`/`** or type **`@skill:`** for autocomplete. Pinned skills show as chips
 above the input for the next message.

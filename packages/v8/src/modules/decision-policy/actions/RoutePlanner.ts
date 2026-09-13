@@ -36,12 +36,15 @@ export function planRoute(params: {
   windowPolicy?: WindowPolicy;
   /** When automation/api, suppress interactive clarify and continue best-effort. */
   origin?: UserRequestOrigin;
+  /** Prefer high-confidence understanding over looksLike* heuristics. */
+  policyFactsFirst?: boolean;
 }): RoutePlanResult {
   const unattended = isUnattendedOrigin(params.origin);
   let routeResult = resolveRoute({
     mode: params.mode,
     understanding: params.understanding,
     message: params.message,
+    policyFactsFirst: params.policyFactsFirst,
   });
   const originReasonCodes: DecisionReasonCode[] = [];
   if (params.origin === "automation") {
@@ -55,6 +58,7 @@ export function planRoute(params: {
       understanding: params.understanding,
       message: params.message,
       suppressClarification: true,
+      policyFactsFirst: params.policyFactsFirst,
     });
     originReasonCodes.push("automation_clarify_suppressed");
   }

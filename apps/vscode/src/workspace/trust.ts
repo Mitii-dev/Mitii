@@ -13,7 +13,7 @@ export function getWorkspaceTrustSnapshot(
     isTrusted,
     notice: isTrusted
       ? null
-      : 'This workspace is not trusted. Indexing and mutating tools are restricted until you trust the folder.',
+      : 'This workspace is not trusted. Indexing, mutating tools, project MCP, and writing recipes are gated until you trust the folder.',
   };
 }
 

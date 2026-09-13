@@ -54,7 +54,9 @@ export const VERIFICATION_EVIDENCE_KINDS = [
 
 /** Tool catalog IDs Decision Policy may grant (must stay aligned with Tool Runtime). */
 export const READ_ONLY_TOOL_IDS = [
+  "describe_tool",
   "list_directory",
+  "directory_tree",
   "read_file",
   "read_many_files",
   "glob_files",
@@ -62,11 +64,19 @@ export const READ_ONLY_TOOL_IDS = [
   "search_files",
   "read_diagnostics",
   "read_git_status",
+  "read_git_log",
+  "read_git_show",
+  "read_git_branches",
   "goto_definition",
   "find_references",
   "analyze_change_impact",
   "run_readonly_command",
   "read_package_scripts",
+  "sequential_thinking",
+  "get_current_time",
+  "convert_time",
+  "memory_graph_search",
+  "memory_graph_open",
 ] as const;
 
 /** Process tools that may change workspace state through repository scripts. */
@@ -80,6 +90,7 @@ export const MUTATION_TOOL_IDS = [
   "delete_file",
   "delete_directory",
   "move_file",
+  "memory_graph_update",
 ] as const;
 
 /** External GitHub write tools (require `gh` auth in the environment). */
@@ -151,6 +162,12 @@ export const DECISION_REASON_CODES = [
    * best-effort non-clarify route instead of suspending for interactive input.
    */
   "automation_clarify_suppressed",
+  /** High-confidence understanding preferred over looksLike heuristics. */
+  "policy_facts_first",
+  /** Safety heuristic overrode facts-first (e.g. pasted runtime dump). */
+  "policy_facts_safety_override",
+  /** Heuristic vs ballot conflict with material grant impact → clarify. */
+  "policy_facts_heuristic_conflict_clarify",
 ] as const;
 
 export const DECISION_POLICY_ERROR_CODES = [

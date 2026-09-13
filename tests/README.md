@@ -3,15 +3,15 @@
 This folder is **benchmark-only**.
 
 Unit, architecture, and package tests live next to their owners
-(`packages/v8/tests`, `packages/sdk/tests`, `apps/vscode/tests`, …).
+(`packages/v8/tests`, `packages/sdk/tests`, `apps/vscode/tests`, ...).
 What remains here is the solid coding-agent evaluation suite.
 
 ```text
 tests/
-├── README.md                 ← you are here (overview)
-├── package.json              ← thin scripts that forward to the benchmark package
-└── benchmark/                ← full suite (cases, fixtures, runner, reports)
-    └── README.md             ← detailed how-to (install, run, clean up)
+|-- README.md                 <- you are here (overview)
+|-- package.json              <- thin scripts that forward to the benchmark package
+`-- benchmark/                <- full suite (cases, fixtures, runner, reports)
+    `-- README.md             <- detailed how-to (install, run, clean up)
 ```
 
 ## What the benchmark does
@@ -23,20 +23,22 @@ It measures how well Mitii performs as a coding agent on **pinned fake repositor
 **Agent mode only, for now.** Every case in every domain has `mode: "agent"`.
 `ask` and `plan` mode cases will be added later.
 
-Domains — each organized into **category files** (the JSONL file name tells you
+Domains - each organized into **category files** (the JSONL file name tells you
 the tech-family or cross-cutting theme, not a difficulty bucket; `difficulty`
 easy/medium/hard is just a field mixed freely within each file):
 
 | Domain | Cases | Category files |
 |---|---:|---|
-| `frontend` | 85 | `feature`, `bugfix`, `docs`, `retrieval`, `testing`, `capstone` |
-| `backend` | 44 | `nest`, `saas-api`, `express`, `monorepo`, `robustness`, `auth` |
-| `testing` | 23 | `express`, `monorepo`, `react` |
-| `cicd` | 18 | `react`, `nest`, `express`, `monorepo` |
+| `frontend` | 86 | `feature`, `bugfix`, `docs`, `retrieval`, `testing`, `capstone` |
+| `backend` | 47 | `nest`, `saas-api`, `express`, `monorepo`, `robustness`, `auth`, `type-cascade` |
+| `cicd` | 22 | `react`, `nest`, `express`, `monorepo`, `vscode-publish`, `npm-publish`, `workflow-authoring` |
+| `testing` | 24 | `express`, `monorepo`, `react` |
+| `api-build` | 2 | `sqlite-crud` |
 
-**170 cases total.** Run `pnpm --filter @mitii/solid-benchmark suites` (or
-`cd tests/benchmark && npm run suites`) any time for live, authoritative counts —
-the table above will drift as cases are added, that command never will.
+**181 cases total as of the latest checked suite output.** Run
+`pnpm --filter @mitii/solid-benchmark suites` (or
+`cd tests/benchmark && npm run suites`) any time for live, authoritative counts.
+The table above will drift as cases are added; that command will not.
 
 `frontend/cases/capstone.jsonl` is a special category: instead of modifying an
 existing fixture, the agent builds a **complete small application** from a
@@ -48,8 +50,8 @@ After **every** case finishes, a report is written immediately under
 
 ## Browse cases before you run anything
 
-A **read-only** test case browser lets you filter/search all 170 cases by
-suite, category file, difficulty, capability, and fixture — useful both to see
+A **read-only** test case browser lets you filter/search all benchmark cases by
+suite, category file, difficulty, capability, and fixture - useful both to see
 what's already covered and to find the right file when adding a new case:
 
 ```bash
@@ -57,7 +59,7 @@ pnpm --filter @mitii/solid-benchmark cases:open
 # or: cd tests/benchmark && npm run cases:open
 ```
 
-It has no edit capability by design — it's a viewer, not an editor.
+It has no edit capability by design - it's a viewer, not an editor.
 
 ## Quick start (short path)
 
@@ -70,8 +72,8 @@ pnpm benchmark:fixtures
 #    To wipe node_modules / lockfiles / build outputs and reinstall everything:
 #    pnpm benchmark:reset
 
-# 2) Configure a real model (Ollama, Anthropic, OpenAI-compatible, …)
-#    See tests/benchmark/README.md → “Configure a model”
+# 2) Configure a real model (Ollama, Anthropic, OpenAI-compatible, ...)
+#    See tests/benchmark/README.md -> "Configure a model"
 node apps/cli/bin/mitii.js setup --show
 
 # 3) Validate case files
@@ -102,7 +104,7 @@ From repo root (`pnpm`) or via `tests/package.json`:
 | `pnpm benchmark:backend` | Run the backend domain |
 | `pnpm benchmark:cicd` | Run the CI/CD domain |
 | `pnpm benchmark:testing` | Run the testing domain |
-| `pnpm benchmark -- …` | Forward extra flags to the runner |
+| `pnpm benchmark -- ...` | Forward extra flags to the runner |
 | `pnpm benchmark:view` / `:view:open` | Open the HTML run viewer |
 
 Not yet forwarded from this folder's `package.json` (call via
@@ -131,5 +133,5 @@ npm run benchmark -- --suite frontend --limit 3
 - Repo dependencies installed (`pnpm install` at monorepo root)
 - A configured Mitii model provider (local Ollama or a cloud API)
 - Fixture installs completed before agent runs that execute `npm test` / `npm run build`
-  — fixtures cannot install new packages mid-case, so every dependency a case
+  - fixtures cannot install new packages mid-case, so every dependency a case
   might need is already committed as a fixture `devDependency`

@@ -8,6 +8,7 @@ export default defineConfig({
       '@mitii/v8': resolve(__dirname, 'packages/v8/src/index.ts'),
       '@mitii/sdk': resolve(__dirname, 'packages/sdk/src/index.ts'),
       '@mitii/host': resolve(__dirname, 'packages/host/src/index.ts'),
+      '@mitii/search-kit': resolve(__dirname, 'packages/search-kit/src/index.ts'),
     },
   },
   test: {
@@ -41,6 +42,7 @@ export default defineConfig({
       'packages/v8/src/modules/repository-state/internal/text-index/tests/TrigramFts.spec.ts',
       'packages/v8/src/modules/repository-state/internal/embedding/tests/EmbeddingVectorCache.spec.ts',
       'packages/v8/src/modules/repository-state/pipeline/ws-indexing-pipeline/tests/FileProcessorStatFreshness.spec.ts',
+      'packages/search-kit/src/**/*.spec.ts',
       'packages/host/src/**/*.spec.ts',
       'apps/cli/src/**/*.spec.ts',
     ],

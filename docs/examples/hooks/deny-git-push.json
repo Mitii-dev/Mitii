@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "deny-git-push",
+  "on": "pre_tool",
+  "denyTools": [],
+  "denyCommandPrefixes": ["git push", "kubectl delete"],
+  "audit": true,
+  "enabled": true
+}

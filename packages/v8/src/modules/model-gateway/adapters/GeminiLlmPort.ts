@@ -25,6 +25,7 @@ import {
   normalizeNonNegativeInteger,
   normalizePositiveInteger,
 } from "../internal/http";
+import { sanitizeGeminiJsonSchema } from "../internal/sanitizeGeminiJsonSchema";
 import { iterateSseEvents } from "../internal/sse";
 import { ModelCapabilityResolver } from "../ModelCapabilityResolver";
 
@@ -44,6 +45,8 @@ export interface GeminiLlmPortConfig {
   maxRetries?: number;
   initialBackoffMs?: number;
   maxBackoffMs?: number;
+  /** Per-request HTTP wall clock (ms). Pass 0 to disable. */
+  requestTimeoutMs?: number;
   sleepImpl?: (ms: number, signal?: AbortSignal) => Promise<void>;
 }
 
@@ -92,6 +95,7 @@ export class GeminiLlmPort implements LlmPort {
   private readonly maxRetries: number;
   private readonly initialBackoffMs: number;
   private readonly maxBackoffMs: number;
+  private readonly requestTimeoutMs: number | undefined;
   private readonly sleepImpl: (
     ms: number,
     signal?: AbortSignal,
@@ -124,6 +128,10 @@ export class GeminiLlmPort implements LlmPort {
       config.maxBackoffMs,
       GEMINI_DEFAULTS.MAX_BACKOFF_MS,
     );
+    this.requestTimeoutMs =
+      typeof config.requestTimeoutMs === "number"
+        ? config.requestTimeoutMs
+        : undefined;
     this.sleepImpl = config.sleepImpl ?? defaultSleep;
     this.capabilities = new ModelCapabilityResolver().resolve({
       modelId: config.model,
@@ -171,6 +179,7 @@ export class GeminiLlmPort implements LlmPort {
       body,
       stream,
       abortSignal: context?.abortSignal,
+      requestTimeoutMs: this.requestTimeoutMs,
       fetchImpl: this.fetchImpl,
       maxRetries: this.maxRetries,
       initialBackoffMs: this.initialBackoffMs,
@@ -228,7 +237,9 @@ export class GeminiLlmPort implements LlmPort {
       generationConfig.responseMimeType = "application/json";
     } else if (request.responseFormat?.type === "json_schema") {
       generationConfig.responseMimeType = "application/json";
-      generationConfig.responseSchema = request.responseFormat.schema;
+      generationConfig.responseSchema = sanitizeGeminiJsonSchema(
+        request.responseFormat.schema,
+      );
     }
 
     const body: Record<string, unknown> = {
@@ -250,7 +261,7 @@ export class GeminiLlmPort implements LlmPort {
           functionDeclarations: request.tools.map((tool) => ({
             name: tool.name,
             description: tool.description,
-            parameters: tool.inputSchema,
+            parameters: sanitizeGeminiJsonSchema(tool.inputSchema),
           })),
         },
       ];

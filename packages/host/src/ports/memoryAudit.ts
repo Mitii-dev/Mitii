@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 
 export interface MemoryAuditEvent {
   at: string;
-  action: 'delete' | 'clear' | 'evict' | 'observe' | 'promote';
+  action: 'delete' | 'clear' | 'evict' | 'observe' | 'promote' | 'reject';
   reason: string;
   memoryIds?: readonly string[];
   workspaceId: string;

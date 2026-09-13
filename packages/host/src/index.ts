@@ -6,7 +6,8 @@
  *
  * This package owns host-side adapters and orchestration that must not live in
  * V8 or the SDK: SQLite injection, workspace indexing, durable FS stores,
- * optional SearchPort, disk skills, project rules, and provider presets.
+ * optional SearchPort / content-aware NetworkPort (@mitii/search-kit), disk skills,
+ * project rules, and provider presets.
  *
  * Public surface is grouped below by intent. Prefer importing from `@mitii/host`
  * (this barrel). Apps inject environment-specific pieces (SQLite opener,
@@ -146,11 +147,23 @@ export {
   createWorkspaceMemoryStore,
   FileWorkspaceMemoryStore,
 } from './ports/memoryStore.js';
+export type { MemoryDeleteResult } from './ports/memoryStore.js';
+export {
+  createWorkspaceKnowledgeGraph,
+  FileWorkspaceKnowledgeGraphStore,
+} from './ports/knowledgeGraphStore.js';
 export { observeWorkspaceEvent } from './ports/memoryCapture.js';
 export type {
   ObserveWorkspaceEventInput,
   ObserveWorkspaceEventResult,
 } from './ports/memoryCapture.js';
+export {
+  listPendingMemories,
+  approvePendingMemory,
+  rejectPendingMemory,
+  appendPendingMemory,
+} from './ports/memoryPending.js';
+export type { PendingMemoryDraft } from './ports/memoryPending.js';
 export {
   observeRunToolEvent,
   shouldObserveRunEvent,
@@ -166,14 +179,69 @@ export {
   MAX_OBSERVATIONS_PER_WORKSPACE,
 } from './ports/memoryObservations.js';
 export type { MemoryObservation } from './ports/memoryObservations.js';
+export {
+  createWorkspaceMemoryLeaseStore,
+  FileWorkspaceMemoryLeaseStore,
+  MEMORY_LEASE_RESOURCES,
+} from './ports/memoryLeases.js';
+export type {
+  MemoryLease,
+  MemoryLeaseResource,
+  LeaseAcquireResult,
+  LeaseReleaseResult,
+} from './ports/memoryLeases.js';
 export { appendMemoryAudit } from './ports/memoryAudit.js';
 export type { MemoryAuditEvent } from './ports/memoryAudit.js';
 export { createMemoryEmbeddingPort } from './ports/memoryEmbeddingAdapter.js';
 
+// ---------------------------------------------------------------------------
+// Corpus RAG (Phase 4) — optional `.mitii/corpus/` text index + retrieval
+// ---------------------------------------------------------------------------
+export {
+  runCorpusIndex,
+  loadCorpusIndex,
+  corpusDirectory,
+  corpusIndexPath,
+  corpusIndexExists,
+  CORPUS_DIR_NAME,
+  CORPUS_INDEX_FILE,
+  CORPUS_INDEX_SCHEMA_VERSION,
+} from './corpus/corpusIndex.js';
+export type {
+  CorpusIndex,
+  CorpusFileEntry,
+  CorpusChunk,
+} from './corpus/corpusIndex.js';
+export { CorpusRetrievalSource } from './corpus/CorpusRetrievalSource.js';
+
+// ---------------------------------------------------------------------------
+// Child runs (Phase 5) — mode ≤ parent, deny-only safety, worktree path
+// ---------------------------------------------------------------------------
+export {
+  narrowChildStartInput,
+  createChildWorktreePath,
+} from './runtime/childRuns.js';
+export type {
+  NarrowChildStartInputParams,
+  NarrowedChildStartInput,
+} from './runtime/childRuns.js';
+
 export {
   createOptionalSearchPort,
   BraveSearchAdapter,
+  SearchKitSearchAdapter,
+  resolveSearchKitConfig,
 } from './ports/search.js';
+export type {
+  CreateSearchPortOptions,
+  SearchKitConfig,
+  ResolveSearchKitConfigOptions,
+} from './ports/search.js';
+export {
+  createHostNetworkPort,
+  ContentAwareNetworkAdapter,
+} from './ports/network.js';
+export type { CreateHostNetworkPortOptions } from './ports/network.js';
 
 export {
   createFileSystemSkillsCatalog,
@@ -184,6 +252,40 @@ export type {
   DiskSkillManifest,
   LoadDiskSkillsOptions,
 } from './ports/skillsCatalog.js';
+
+// ---------------------------------------------------------------------------
+// Writing recipes — force-attach bundled skills for commit / PR / changelog
+// ---------------------------------------------------------------------------
+export {
+  MITII_WRITING_RECIPE_IDS,
+  MITII_WRITING_RECIPES,
+  buildWritingRecipeAsk,
+  collectGitWritingContext,
+  isMitiiWritingRecipeId,
+  resolveMitiiWritingRecipe,
+  unwrapRecipeAnswer,
+} from './recipes/gitWritingRecipes.js';
+export type {
+  BuildWritingRecipeAskOptions,
+  CommitMessageStyle,
+  MitiiWritingRecipe,
+  MitiiWritingRecipeId,
+  WritingRecipeAsk,
+} from './recipes/gitWritingRecipes.js';
+
+export {
+  RECIPE_SPEC_SCHEMA_VERSION,
+  recipeSpecSchema,
+  compileRecipeToStartInput,
+  loadRecipeSpec,
+  renderRecipePrompt,
+  writingRecipeToSpec,
+} from './recipes/recipeSpec.js';
+export type {
+  RecipeSpec,
+  CompiledRecipeStart,
+  CompileRecipeOptions,
+} from './recipes/recipeSpec.js';
 
 // ---------------------------------------------------------------------------
 // Prompt helpers — host-owned instruction files → MitiiStartInput.projectRules
@@ -245,6 +347,12 @@ export type {
 // ---------------------------------------------------------------------------
 export { createAutomationRunExecutor } from './automation/createAutomationRunExecutor.js';
 export type { CreateAutomationRunExecutorOptions } from './automation/createAutomationRunExecutor.js';
+export {
+  MEMORY_CONSOLIDATE_SCHEDULE_NAME,
+  MEMORY_CONSOLIDATE_SCHEDULE_PROMPT,
+  buildMemoryConsolidateScheduleInput,
+  runMemoryConsolidateWithLease,
+} from './automation/memoryConsolidateRecipe.js';
 export { createCompositeDeliverySender } from './automation/delivery/createCompositeDeliverySender.js';
 export type { CreateCompositeDeliverySenderOptions } from './automation/delivery/createCompositeDeliverySender.js';
 export { formatDeliveryMessage } from './automation/delivery/formatMessage.js';
@@ -265,6 +373,7 @@ export type { MarketplaceCatalogEntry } from './safety/marketplaceLite.js';
 export {
   createSandboxedProcessPort,
   detectSandboxBackend,
+  resolveDockerBackend,
   resolveSandboxPolicy,
   SandboxUnavailableError,
 } from './sandbox/createSandboxedProcessPort.js';
@@ -272,4 +381,25 @@ export type {
   SandboxPolicy,
   SandboxNetworkMode,
   SandboxBackend,
+  SandboxBackendPrefer,
 } from './sandbox/createSandboxedProcessPort.js';
+export {
+  resolveSandboxPreset,
+  resolveSandboxSettingsFromPreset,
+} from './sandbox/resolveSandboxPreset.js';
+export type {
+  SandboxApprovalPreset,
+  SandboxPresetDefaults,
+} from './sandbox/resolveSandboxPreset.js';
+
+export {
+  loadWorkspaceHooks,
+  evaluatePreToolHooks,
+  hookSpecSchema,
+  SAMPLE_PRE_TOOL_DENY_GIT_PUSH,
+  HOOK_SPEC_SCHEMA_VERSION,
+} from './hooks/workspaceHooks.js';
+export type { HookSpec, LoadedHooks } from './hooks/workspaceHooks.js';
+
+export { createHeuristicAdversary } from './safety/heuristicAdversary.js';
+export type { HeuristicAdversaryOptions } from './safety/heuristicAdversary.js';

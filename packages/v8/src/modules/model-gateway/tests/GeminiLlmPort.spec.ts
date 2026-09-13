@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { GeminiLlmPort, MODEL_PROVIDER_SUPPORT } from '..';
 import type { ModelEvent } from '../contracts/types';
+import { sanitizeGeminiJsonSchema } from '../internal/sanitizeGeminiJsonSchema';
 
 async function collectEvents(
   stream: AsyncIterable<ModelEvent>,
@@ -363,5 +364,147 @@ describe('GeminiLlmPort', () => {
       item.parts?.some((part) => part.functionCall?.name === 'read_file'),
     );
     expect(modelTurn?.parts?.[0]?.thoughtSignature).toBe('sig-abc');
+  });
+
+  it('strips unsupported JSON Schema keywords from tool parameters', async () => {
+    let capturedBody: string | undefined;
+    const port = new GeminiLlmPort({
+      model: 'gemini-2.5-flash',
+      apiKey: 'gemini-test',
+      fetchImpl: async (_input, init) => {
+        capturedBody =
+          typeof init?.body === 'string' ? init.body : undefined;
+        return new Response(
+          JSON.stringify({
+            candidates: [
+              {
+                content: { role: 'model', parts: [{ text: 'ok' }] },
+                finishReason: 'STOP',
+              },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      },
+    });
+
+    await collectEvents(
+      port.complete({
+        messages: [{ role: 'user', content: 'hi' }],
+        stream: false,
+        tools: [
+          {
+            name: 'read_diagnostics',
+            description: 'Read diagnostics',
+            inputSchema: {
+              type: 'object',
+              description: 'Index stub',
+              properties: {},
+              additionalProperties: true,
+            },
+          },
+          {
+            name: 'apply_patch',
+            description: 'Apply patches',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                patches: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                      path: { type: 'string', minLength: 1 },
+                    },
+                  },
+                  minItems: 1,
+                },
+              },
+              required: ['patches'],
+              additionalProperties: false,
+            },
+          },
+        ],
+      }),
+    );
+
+    const body = JSON.parse(capturedBody ?? '{}') as {
+      tools?: Array<{
+        functionDeclarations?: Array<{
+          name: string;
+          parameters?: Record<string, unknown>;
+        }>;
+      }>;
+    };
+    const decls = body.tools?.[0]?.functionDeclarations ?? [];
+    expect(decls.map((d) => d.name)).toEqual([
+      'read_diagnostics',
+      'apply_patch',
+    ]);
+    expect(decls[0]?.parameters).toEqual({
+      type: 'object',
+      description: 'Index stub',
+      properties: {},
+    });
+    expect(decls[0]?.parameters).not.toHaveProperty('additionalProperties');
+    expect(decls[1]?.parameters).toEqual({
+      type: 'object',
+      properties: {
+        patches: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              path: { type: 'string' },
+            },
+          },
+        },
+      },
+      required: ['patches'],
+    });
+    expect(JSON.stringify(decls)).not.toContain('additionalProperties');
+    expect(JSON.stringify(decls)).not.toContain('minLength');
+    expect(JSON.stringify(decls)).not.toContain('minItems');
+  });
+});
+
+describe('sanitizeGeminiJsonSchema', () => {
+  it('recursively removes Gemini-unsupported keywords', () => {
+    expect(
+      sanitizeGeminiJsonSchema({
+        $schema: 'https://json-schema.org/draft/2020-12/schema',
+        type: 'object',
+        additionalProperties: true,
+        properties: {
+          paths: {
+            type: 'array',
+            items: { type: 'string', pattern: '^.+$' },
+            minItems: 0,
+          },
+        },
+        anyOf: [
+          {
+            type: 'object',
+            additionalProperties: false,
+            properties: { id: { type: 'string' } },
+          },
+        ],
+      }),
+    ).toEqual({
+      type: 'object',
+      properties: {
+        paths: {
+          type: 'array',
+          items: { type: 'string' },
+        },
+      },
+      anyOf: [
+        {
+          type: 'object',
+          properties: { id: { type: 'string' } },
+        },
+      ],
+    });
   });
 });

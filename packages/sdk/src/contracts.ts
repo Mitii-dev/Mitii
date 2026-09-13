@@ -1,12 +1,10 @@
 import { z } from 'zod';
 import {
-  AGENT_ENGINE_SCHEMA_VERSION,
   AGENT_LOG_VERBOSITIES,
   agentEngineResumeInputSchema,
-  agentEngineStartInputSchema,
+  agentEngineRestoreInputSchema,
   agentModeSchema,
   agentRunBudgetSchema,
-  createUserRequestInputSchema,
   explorationDepthSchema,
   planArtifactSchema,
   planStrategyDecisionSchema,
@@ -16,30 +14,33 @@ import {
   WINDOW_BUDGET_EFFORTS,
   windowBudgetPolicyOverridesSchema,
   agentEngineThresholdsOverridesSchema,
-  mergeRequiredSkillIds,
-  parseRequiredSkillMentions,
   MAX_REQUIRED_SKILLS,
+  MAX_REQUIRED_MCP_SERVERS,
   REQUEST_ENVELOPE_LIMITS,
   SUPPORTED_IMAGE_MIME_TYPES,
 } from '@mitii/v8';
 import type {
   AgentEngineResumeInput,
-  AgentEngineStartInput,
+  AgentEngineRestoreInput,
+  AgentEngineRestoreResult,
   AgentMode,
   AgentRunBudget,
   ExplorationDepth,
   PlanArtifact,
   PlanStrategyDecision,
   RepositoryStateReference,
+  RestorePointSummary,
   TaskList,
   UserRequestOrigin,
 } from '@mitii/v8';
 
-import {
-  mitiiAutonomyPresetSchema,
-  resolveAutonomyPreset,
-  type MitiiAutonomyPreset,
-} from './autonomy';
+import { mitiiAutonomyPresetSchema, type MitiiAutonomyPreset } from './autonomy.js';
+
+export {
+  toAgentEngineStartInput,
+  type MitiiStartDefaults,
+  inferPinnedArtifactKind,
+} from './toAgentEngineStartInput.js';
 
 /**
  * Host-facing start input. Mapped onto V8 AgentEngineStartInput.
@@ -70,7 +71,10 @@ export type MitiiConversationMessage = z.infer<
 export const mitiiImageAttachmentSchema = z
   .object({
     mimeType: z.enum(SUPPORTED_IMAGE_MIME_TYPES),
-    data: z.string().min(1).max(REQUEST_ENVELOPE_LIMITS.MAXIMUM_ATTACHMENT_DATA_CHARACTERS),
+    data: z
+      .string()
+      .min(1)
+      .max(REQUEST_ENVELOPE_LIMITS.MAXIMUM_ATTACHMENT_DATA_CHARACTERS),
     name: z
       .string()
       .min(1)
@@ -87,17 +91,8 @@ export const mitiiStartInputSchema = z
     mode: agentModeSchema.optional(),
     sessionId: z.string().min(1).optional(),
     requestId: z.string().min(1).optional(),
-    /**
-     * Who initiated the request. Defaults to "user".
-     * automation/api enable unattended Decision Policy (suppress clarify).
-     */
     origin: z.enum(USER_REQUEST_ORIGINS).optional(),
-    /**
-     * Unattended autonomy preset. When set, fills mode / approvalMode /
-     * planApproval unless the host already set those fields explicitly.
-     */
     autonomyPreset: mitiiAutonomyPresetSchema.optional(),
-    /** Optional correlation ids for automation / tracing. */
     correlation: z
       .object({
         traceId: z.string().min(1).max(500).optional(),
@@ -114,22 +109,9 @@ export const mitiiStartInputSchema = z
       })
       .strict()
       .optional(),
-    /**
-     * Prior user/assistant turns for multi-turn continuity.
-     * Engine compactConversation applies token budgets.
-     */
     conversation: z.array(mitiiConversationMessageSchema).max(200).optional(),
-    /**
-     * Structured plan from a prior plan-mode turn (plan→agent handoff).
-     * Injected as an approved plan; skips the in-run plan gate.
-     */
     approvedPlan: planArtifactSchema.optional(),
-    /** Strategy for a host-carried approved plan. */
     approvedPlanStrategy: planStrategyDecisionSchema.optional(),
-    /**
-     * Live working checklist from a prior Agent/Plan turn.
-     * Engine does not stamp remaining items done on run completion.
-     */
     taskList: taskListSchema.optional(),
     budget: agentRunBudgetSchema.optional(),
     model: z.string().min(1).optional(),
@@ -137,10 +119,15 @@ export const mitiiStartInputSchema = z
     stream: z.boolean().optional(),
     approvalMode: mitiiApprovalModeSchema.optional(),
     planApproval: z.enum(['policy', 'never']).optional(),
-    /**
-     * Tighten-only user safety rules (usually from `.mitii/safety.json`).
-     * Never widens Decision Policy grants.
-     */
+    steering: z
+      .object({
+        understandingBallotV2: z.boolean().optional(),
+        policyFactsFirst: z.boolean().optional(),
+        decisionBrief: z.boolean().optional(),
+        criticMode: z.enum(['off', 'shadow', 'enforce']).optional(),
+      })
+      .strict()
+      .optional(),
     userSafetyRules: z
       .object({
         enabled: z.boolean().default(false),
@@ -154,49 +141,23 @@ export const mitiiStartInputSchema = z
       .strict()
       .optional(),
     dirtyPaths: z.array(z.string().min(1)).optional(),
-    /**
-     * How hard Engine should look before drafting a plan. "auto" defers to
-     * strategy rules; "quick" skips discovery even for wide-scope asks.
-     */
     explorationDepth: explorationDepthSchema.optional(),
-    /**
-     * Optional host overrides for window-proportional token allocation.
-     * When omitted, Window Budget defaults apply.
-     */
     windowBudget: z
       .object({
         policy: windowBudgetPolicyOverridesSchema.optional(),
         effort: z.enum(WINDOW_BUDGET_EFFORTS).optional(),
-        /** Raw host max-output setting; 0 / omit derives from context window. */
         maximumOutputTokens: z.number().int().nonnegative().optional(),
       })
       .strict()
       .optional(),
-    /**
-     * Optional host lab overrides for Agent Engine loop/stall thresholds.
-     * Merged after the shipped window band (compact / standard / wide).
-     * When omitted, band standards alone apply.
-     */
     loopPolicy: z
       .object({
         thresholds: agentEngineThresholdsOverridesSchema.optional(),
       })
       .strict()
       .optional(),
-    /**
-     * Developer-facing run-log detail level. Defaults to "verbose" so bugs
-     * are discoverable; hosts can turn it down when log volume matters more.
-     */
     logVerbosity: z.enum(AGENT_LOG_VERBOSITIES).optional(),
-    /**
-     * Host-pinned workspace paths (@mentions). Mapped to intake
-     * referencedArtifacts so understanding/context can prefer them.
-     */
     pinnedPaths: z.array(z.string().min(1)).max(32).optional(),
-    /**
-     * Host-loaded project rules (AGENTS.md, .mitii/rules, MITTII.local.md).
-     * Mapped to Agent Engine Prompt Construction `instructions.projectRules`.
-     */
     projectRules: z
       .array(
         z
@@ -210,11 +171,14 @@ export const mitiiStartInputSchema = z
       )
       .max(32)
       .optional(),
-    /**
-     * Explicitly attached skill ids (merged with @skill: mentions in prompt).
-     */
-    requiredSkillIds: z.array(z.string().min(1).max(64)).max(MAX_REQUIRED_SKILLS).optional(),
-    /** Images (screenshots, mockups) attached to the current request. */
+    requiredSkillIds: z
+      .array(z.string().min(1).max(64))
+      .max(MAX_REQUIRED_SKILLS)
+      .optional(),
+    requiredMcpServerIds: z
+      .array(z.string().min(1).max(64))
+      .max(MAX_REQUIRED_MCP_SERVERS)
+      .optional(),
     attachments: z
       .array(mitiiImageAttachmentSchema)
       .max(REQUEST_ENVELOPE_LIMITS.MAXIMUM_ATTACHMENTS)
@@ -227,6 +191,11 @@ export type MitiiStartInput = z.infer<typeof mitiiStartInputSchema>;
 export const mitiiResumeInputSchema = agentEngineResumeInputSchema;
 export type MitiiResumeInput = AgentEngineResumeInput;
 
+export const mitiiRestoreInputSchema = agentEngineRestoreInputSchema;
+export type MitiiRestoreInput = AgentEngineRestoreInput;
+export type MitiiRestoreResult = AgentEngineRestoreResult;
+export type { RestorePointSummary };
+
 export type { AgentMode, AgentRunBudget, RepositoryStateReference };
 export type { PlanArtifact, PlanStrategyDecision, TaskList, ExplorationDepth };
 export type { MitiiAutonomyPreset, UserRequestOrigin };
@@ -234,153 +203,4 @@ export {
   MITII_AUTONOMY_PRESETS,
   mitiiAutonomyPresetSchema,
   resolveAutonomyPreset,
-} from './autonomy';
-
-export interface MitiiStartDefaults {
-  mode: AgentMode;
-  sessionId: string;
-  workspaceRoot?: string;
-  workspaceId?: string;
-}
-
-export function toAgentEngineStartInput(
-  input: MitiiStartInput,
-  defaults: MitiiStartDefaults,
-): AgentEngineStartInput {
-  const parsed = mitiiStartInputSchema.parse(input);
-  const autonomy = parsed.autonomyPreset
-    ? resolveAutonomyPreset(parsed.autonomyPreset)
-    : undefined;
-  const mode = parsed.mode ?? autonomy?.mode ?? defaults.mode;
-  const approvalMode = parsed.approvalMode ?? autonomy?.approvalMode;
-  const planApproval = parsed.planApproval ?? autonomy?.planApproval;
-  const origin = parsed.origin ?? 'user';
-
-  const parsedMentions = parseRequiredSkillMentions(parsed.prompt);
-  const requiredSkillIds = mergeRequiredSkillIds(
-    parsed.requiredSkillIds,
-    parsedMentions.requiredSkillIds,
-  );
-  const userMessage =
-    parsedMentions.cleanedMessage.length > 0
-      ? parsedMentions.cleanedMessage
-      : parsed.prompt;
-
-  const pinnedArtifacts = (parsed.pinnedPaths ?? [])
-    .map((path) => path.replace(/\\/g, '/').replace(/^@/, '').trim())
-    .filter((path) => path.length > 0)
-    .slice(0, 32)
-    .map((path) => {
-      const normalized = path.replace(/\/+$/, '') || path;
-      return {
-        name: normalized,
-        path: normalized,
-        kind: inferPinnedArtifactKind(path),
-      };
-    });
-  const request = createUserRequestInputSchema.parse({
-    requestId: parsed.requestId,
-    sessionId: parsed.sessionId ?? defaults.sessionId,
-    mode,
-    origin,
-    userMessage: userMessage,
-    ...(pinnedArtifacts.length > 0
-      ? { referencedArtifacts: pinnedArtifacts }
-      : {}),
-    ...(parsed.attachments && parsed.attachments.length > 0
-      ? { attachments: parsed.attachments }
-      : {}),
-    workspace:
-      parsed.workspaceId || defaults.workspaceId
-        ? { workspaceId: parsed.workspaceId ?? defaults.workspaceId }
-        : undefined,
-    ...(parsed.correlation
-      ? {
-          correlation: {
-            ...(parsed.correlation.traceId
-              ? { traceId: parsed.correlation.traceId }
-              : {}),
-            ...(parsed.correlation.clientRequestId
-              ? { clientRequestId: parsed.correlation.clientRequestId }
-              : {}),
-          },
-        }
-      : {}),
-  });
-
-  return agentEngineStartInputSchema.parse({
-    schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
-    request,
-    workspaceRoot: parsed.workspaceRoot ?? defaults.workspaceRoot,
-    repositoryState: parsed.repositoryState
-      ? {
-          reference: parsed.repositoryState.reference,
-          readiness: parsed.repositoryState.readiness ?? 'ready',
-        }
-      : undefined,
-    conversation: parsed.conversation?.map((message) => ({
-      role: message.role,
-      content: message.content,
-    })),
-    approvedPlan: parsed.approvedPlan,
-    approvedPlanStrategy: parsed.approvedPlanStrategy,
-    taskList: parsed.taskList,
-    budget: parsed.budget,
-    model: parsed.model,
-    temperature: parsed.temperature,
-    stream: parsed.stream,
-    approvalMode,
-    planApproval,
-    userSafetyRules: parsed.userSafetyRules,
-    dirtyPaths: parsed.dirtyPaths,
-    explorationDepth: parsed.explorationDepth,
-    windowBudget: parsed.windowBudget,
-    loopPolicy: parsed.loopPolicy,
-    logVerbosity: parsed.logVerbosity,
-    requiredSkillIds,
-    instructions:
-      parsed.projectRules && parsed.projectRules.length > 0
-        ? {
-            projectRules: parsed.projectRules.map((rule) => ({
-              id: rule.id,
-              content: rule.content,
-              ...(rule.title ? { title: rule.title } : {}),
-              priority: rule.priority ?? 100,
-            })),
-          }
-        : undefined,
-  });
-}
-
-/**
- * Infer artifact kind for host-pinned paths without a workspace walk.
- * Trailing slash ⇒ folder; known extensionless filenames and common
- * file extensions ⇒ file. Dotted folder names (packages.legacy) stay folders.
- */
-function inferPinnedArtifactKind(path: string): 'file' | 'folder' {
-  const normalized = path.replace(/\\/g, '/').trim();
-  if (normalized.endsWith('/')) {
-    return 'folder';
-  }
-  const base = normalized.split('/').pop() ?? normalized;
-  if (
-    /^(?:Makefile|Dockerfile|Gemfile|Procfile|Rakefile|Podfile|Cargo\.toml|Cargo\.lock|go\.mod|go\.sum|Pipfile|poetry\.lock)$/i.test(
-      base,
-    )
-  ) {
-    return 'file';
-  }
-  // Dotfiles (.env, .gitignore).
-  if (/^\.[A-Za-z0-9][\w.-]*$/.test(base)) {
-    return 'file';
-  }
-  // Common multi-language source / config extensions (not "any dot").
-  if (
-    /\.(?:[cm]?[jt]sx?|mjs|cjs|py|go|rs|java|kt|kts|swift|rb|php|cs|cpp|cxx|cc|h|hpp|hh|md|mdx|json|ya?ml|toml|xml|html?|css|scss|sass|less|sql|sh|bash|zsh|ps1|bat|cmd|env|lock|txt|csv|svg|png|jpe?g|webp|gif|wasm|proto|graphql|gql|dart|lua|r|jl|ex|exs|erl|hs|scala|clj|cljs|fs|fsx|vb|pl|pm|raku|zig|nim|v|d|f90|f95|asm|s|ipynb|vue|svelte|astro|tf|hcl|bicep|gradle|groovy|cmake|makefile)$/i.test(
-      base,
-    )
-  ) {
-    return 'file';
-  }
-  return 'folder';
-}
+} from './autonomy.js';

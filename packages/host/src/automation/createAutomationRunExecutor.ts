@@ -1,5 +1,6 @@
 import {
   AGENT_ENGINE_SCHEMA_VERSION,
+  DEFAULT_TOOL_DEFINITIONS,
   InMemoryRepositoryStateStore,
   NodeGitAdapter,
   NodeNetworkAdapter,
@@ -18,6 +19,10 @@ import type {
   AutomationExecuteResult,
   AutomationRunExecutor,
 } from '@mitii/automation';
+import {
+  getSharedMcpManager,
+  readMcpSettingsFromDisk,
+} from '@mitii/mcp';
 
 import { createHostLlmPorts } from '../config/createHostLlmPorts.js';
 import {
@@ -28,13 +33,15 @@ import {
   getProviderPreset,
   isHostProviderType,
 } from '../config/providerPresets.js';
+import { createHostNetworkPort } from '../ports/network.js';
+import { createOptionalSearchPort } from '../ports/search.js';
 import { createHostCodeNavigationPort } from '../code-navigation/createHostCodeNavigationPort.js';
 import { createHostRepositoryGraphPort } from '../repository-graph/loadWorkspaceGraphs.js';
 import { createHostRepositoryContext } from '../repository-context/createHostRepositoryContext.js';
 import { buildWorkspaceSnapshot } from '../indexing/fingerprintSnapshot.js';
-import { createOptionalSearchPort } from '../ports/search.js';
 import { createFileSystemSkillsCatalog } from '../ports/skillsCatalog.js';
 import { createWorkspaceCheckpointStore } from '../ports/checkpoints.js';
+import { createWorkspaceKnowledgeGraph } from '../ports/knowledgeGraphStore.js';
 import { createWorkspaceVerificationStore } from '../ports/verificationRecords.js';
 import type { OpenHostSqliteDatabase } from '../sqlite/types.js';
 
@@ -255,19 +262,30 @@ async function createAutomationClient(options: {
   const fileSystem = new NodeWorkspaceFileSystemAdapter();
   const search = createOptionalSearchPort(env);
   const git = new NodeGitAdapter();
-  const tools = new ToolRuntimePipeline({
-    fileSystem,
-    process: new NodeProcessAdapter(),
-    network: new NodeNetworkAdapter(),
-    git,
-    codeNavigation: createHostCodeNavigationPort({
-      workspaceRoot: options.cwd,
-    }),
-    repoGraphs: createHostRepositoryGraphPort({
-      workspaceRoot: options.cwd,
-    }),
-    ...(search ? { search } : {}),
-  });
+  const knowledgeGraph = createWorkspaceKnowledgeGraph(options.cwd);
+  const mcpManager = getSharedMcpManager({ clientInfoName: 'mitii-automation' });
+  const mcp = readMcpSettingsFromDisk(options.cwd);
+  const mcpSnapshot = await mcpManager.sync(mcp, options.cwd);
+  const tools = new ToolRuntimePipeline(
+    {
+      fileSystem,
+      process: new NodeProcessAdapter(),
+      network: createHostNetworkPort({
+        inner: new NodeNetworkAdapter(),
+        env,
+      }),
+      git,
+      knowledgeGraph,
+      codeNavigation: createHostCodeNavigationPort({
+        workspaceRoot: options.cwd,
+      }),
+      repoGraphs: createHostRepositoryGraphPort({
+        workspaceRoot: options.cwd,
+      }),
+      ...(search ? { search } : {}),
+    },
+    { registry: mcpManager.createRegistry() },
+  );
   const verification = new VerificationPipeline({
     tools,
     manifests: new WorkspaceFileSystemManifestReader({
@@ -317,6 +335,10 @@ async function createAutomationClient(options: {
     checkpointStore: createWorkspaceCheckpointStore(options.cwd),
     tools,
     verification,
+    toolDefinitions: [
+      ...DEFAULT_TOOL_DEFINITIONS,
+      ...mcpSnapshot.toolDefinitions,
+    ],
     skillsCatalog: createFileSystemSkillsCatalog({
       workspaceRoot: options.cwd,
       includeBundled: true,

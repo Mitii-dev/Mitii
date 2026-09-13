@@ -24,6 +24,11 @@ export interface ToolExecutionContext {
   transactions?: MutationTransactionRegistry;
   dirtyPaths?: readonly string[];
   alreadyMutatedPaths?: readonly string[];
+  /**
+   * Live registry (builtins + host MCP). Used by describe_tool to hydrate
+   * schemas for host-registered `mcp__*` tools.
+   */
+  registry?: ToolRegistry;
 }
 
 export interface ToolExecutionResult {

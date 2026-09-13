@@ -16,30 +16,63 @@ export async function runCases(cases, rootDir, config, options = {}) {
   mkdirSync(workRoot, { recursive: true });
   const results = new Array(cases.length);
   let next = 0;
+  const signal = options.signal;
 
   async function worker() {
     while (next < cases.length) {
+      if (signal?.aborted) break;
       const index = next;
       next += 1;
-      results[index] = await runOneCase(cases[index], index, cases.length, rootDir, workRoot, config, options);
+      options.onCaseStart?.(cases[index], index, cases.length);
+      results[index] = await runOneCase(
+        cases[index],
+        index,
+        cases.length,
+        rootDir,
+        workRoot,
+        config,
+        options,
+      );
       options.onResult?.(results[index], index, cases.length);
     }
   }
 
   const concurrency = Math.max(1, options.concurrency ?? config.run.concurrency ?? 1);
   await Promise.all(Array.from({ length: Math.min(concurrency, cases.length) }, () => worker()));
-  if (!(options.keepWorkspaces ?? config.run.keepWorkspaces)) rmSync(workRoot, { recursive: true, force: true });
+
+  // Fill any not-started slots after abort.
+  for (let i = 0; i < results.length; i += 1) {
+    if (results[i]) continue;
+    results[i] = baseResult(cases[i], {
+      passed: false,
+      error: signal?.aborted ? 'Run stopped' : 'Not executed',
+      preconditions: [],
+      checks: [],
+      durationMs: 0,
+      exitCode: signal?.aborted ? 130 : null,
+      stdout: '',
+      stderr: '',
+      workspace: null,
+    });
+  }
+
+  if (!(options.keepWorkspaces ?? config.run.keepWorkspaces)) {
+    rmSync(workRoot, { recursive: true, force: true });
+  }
   return results;
 }
 
 async function runOneCase(testCase, index, total, rootDir, workRoot, config, options) {
+  const stage = (name, detail) => options.onCaseStage?.(testCase, name, detail, index, total);
   const workspace = join(workRoot, testCase.id);
+  stage('prepare', `Copying fixture ${testCase.fixture}`);
   cpSync(join(rootDir, 'fixtures', testCase.fixture), workspace, {
     recursive: true,
     filter: (source) => !shouldIgnore(source, config.run.ignoreChanges ?? []),
   });
   linkFixtureDependencies(join(rootDir, 'fixtures', testCase.fixture), workspace);
   const before = snapshotTree(workspace, config.run.ignoreChanges);
+  stage('preconditions', `Checking ${(testCase.preconditions ?? []).length} precondition(s)`);
   const preconditions = [];
   for (const check of testCase.preconditions ?? []) {
     preconditions.push(await verifyCheck(check, {
@@ -51,6 +84,7 @@ async function runOneCase(testCase, index, total, rootDir, workRoot, config, opt
     }));
   }
   if (preconditions.some((check) => !check.passed)) {
+    stage('failed', 'Fixture precondition failed');
     return baseResult(testCase, {
       passed: false,
       error: 'Fixture precondition failed',
@@ -76,12 +110,17 @@ async function runOneCase(testCase, index, total, rootDir, workRoot, config, opt
   const agentCwd = config.agent.cwd
     ? resolve(dirname(options.configPath), substitute(config.agent.cwd, variables))
     : rootDir;
+  const timeoutMs = testCase.timeoutMs ?? config.agent.timeoutMs;
+  stage('agent', `Invoking agent (timeout ${timeoutMs}ms)`);
   const execution = await runProcess({
     command,
     args,
     cwd: agentCwd,
     env: Object.fromEntries(Object.entries(config.agent.env ?? {}).map(([key, value]) => [key, substitute(value, variables)])),
-    timeoutMs: testCase.timeoutMs ?? config.agent.timeoutMs,
+    timeoutMs,
+    signal: options.signal,
+    onStdout: (chunk) => options.onCaseStdout?.(testCase, chunk),
+    onStderr: (chunk) => options.onCaseStderr?.(testCase, chunk),
   });
   const output = execution.stdout;
   if (options.keepWorkspaces) {
@@ -91,6 +130,7 @@ async function runOneCase(testCase, index, total, rootDir, workRoot, config, opt
     writeFileSync(join(mitiiDir, 'benchmark-agent.stdout'), execution.stdout ?? '');
     writeFileSync(join(mitiiDir, 'benchmark-agent.stderr'), execution.stderr ?? '');
   }
+  stage('verify', `Running ${testCase.checks.length} check(s)`);
   const after = snapshotTree(workspace, config.run.ignoreChanges);
   const checks = [];
   for (const check of testCase.checks) {
@@ -103,18 +143,41 @@ async function runOneCase(testCase, index, total, rootDir, workRoot, config, opt
     }));
   }
   const usage = extractUsage(execution.stdout);
+  const failedRun =
+    execution.timedOut ||
+    execution.aborted ||
+    execution.exitCode !== 0;
+  const passed =
+    !execution.timedOut &&
+    !execution.aborted &&
+    checks.every((check) => check.passed);
+  stage(passed ? 'passed' : 'failed', passed ? 'All checks passed' : (execution.timedOut ? 'Timed out' : 'Checks failed'));
   return baseResult(testCase, {
-    passed: !execution.timedOut && checks.every((check) => check.passed),
-    error: execution.timedOut ? 'Agent timed out' : null,
+    passed,
+    error: execution.aborted
+      ? 'Run stopped'
+      : execution.timedOut
+        ? 'Agent timed out'
+        : null,
     preconditions,
     checks,
     durationMs: execution.durationMs,
     usage,
     exitCode: execution.exitCode,
-    stdout: execution.stdout.slice(0, 8000),
-    stderr: execution.stderr.slice(0, 4000),
+    stdout: sliceStdoutForReport(execution.stdout, failedRun),
+    stderr: execution.stderr.slice(0, failedRun ? 8000 : 4000),
     workspace: options.keepWorkspaces ? workspace : null,
   });
+}
+
+/** Keep head+tail on failures so late `end` / errors survive the report cap. */
+export function sliceStdoutForReport(stdout, failedRun) {
+  const text = String(stdout ?? '');
+  if (!failedRun) return text.slice(0, 8000);
+  const head = 4000;
+  const tail = 12000;
+  if (text.length <= head + tail) return text;
+  return `${text.slice(0, head)}\n…[truncated ${text.length - head - tail} chars]…\n${text.slice(-tail)}`;
 }
 
 /** Pull usage from the JSONL `end` event emitted by mitii-benchmark-agent. */

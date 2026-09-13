@@ -11,7 +11,7 @@ import {
   buildPreflightDiagnosticRepairInstruction,
   calculateLoopInputBudgetTokens,
   clampTurnMaximumOutputTokens,
-  compactModelLoopMessages,
+  compactModelLoopMessagesFromWindowPolicy,
   estimateModelMessagesTokens,
   resolvePromptCacheClass,
   shouldPreserveModelLoopPrefix,
@@ -118,28 +118,13 @@ export function prepareModelLoopTurn(params: {
     );
   }
   const preservePrefix = shouldPreserveModelLoopPrefix(promptCacheClass);
-  const compaction = compactModelLoopMessages({
+  const compaction = compactModelLoopMessagesFromWindowPolicy({
     messages,
     estimator: runtime.tokenEstimator,
     budgetTokens: loopInputBudgetTokens,
+    compaction: params.windowPolicy.compaction,
     memoryFacts: params.memoryFacts,
     establishedFacts: params.establishedFacts,
-    maxEstablishedFactReinjectChars:
-      params.windowPolicy.compaction.establishedFactReinjectChars,
-    maxMemoryReinjectChars: params.windowPolicy.compaction.memoryReinjectChars,
-    recentToolMessagesToKeepFull:
-      params.windowPolicy.compaction.keepRecentToolResults,
-    compactedToolResultChars:
-      params.windowPolicy.compaction.compactedToolResultChars,
-    compactedToolArgumentChars:
-      params.windowPolicy.compaction.compactedToolArgumentChars,
-    droppedTurnSummaryChars:
-      params.windowPolicy.compaction.droppedTurnSummaryChars,
-    warnRatio: params.windowPolicy.compaction.warnRatio,
-    autoRatio: params.windowPolicy.compaction.autoRatio,
-    hardRatio: params.windowPolicy.compaction.hardRatio,
-    autoMaxTokens: params.windowPolicy.compaction.autoMaxTokens,
-    hardMaxTokens: params.windowPolicy.compaction.hardMaxTokens,
     preservePrefix,
     skipEstablishedFactsReinject: true,
   });

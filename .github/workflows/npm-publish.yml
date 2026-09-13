@@ -1,4 +1,4 @@
-# Publishes @mitii/v8 → @mitii/sdk → @mitii/automation → @mitii/host → @mitii/cli → @mitii/daemon to npm.
+# Publishes @mitii/v8 -> @mitii/sdk -> @mitii/automation -> @mitii/search-kit -> @mitii/host -> @mitii/cli -> @mitii/daemon to npm.
 # Invoked from the Release workflow on v* tags, or manually via workflow_dispatch.
 # For trusted publishing through workflow_call, configure npm with the caller workflow filename.
 # Prefers GitHub OIDC trusted publishing; NPM_TOKEN is optional fallback.

@@ -8,6 +8,10 @@ import type {
   ModelToolChoice,
   ModelToolDefinition,
 } from "../../model-gateway";
+import {
+  isMcpToolAttached,
+  MCP_TOOL_NAME_PREFIX,
+} from "../../mcp-attach";
 
 import type { TokenEstimatorPort } from "../contracts";
 
@@ -39,6 +43,7 @@ const WRITE_CRITICAL_TOOL_IDS = new Set<string>([
  * advertises apply_patch in prose while omitting its schema.
  */
 const TOOL_PACK_PRIORITY: Record<string, number> = {
+  describe_tool: 110,
   apply_patch: 100,
   delete_file: 95,
   delete_directory: 94,
@@ -70,8 +75,9 @@ export function serializeTools(params: {
   const grantTools = new Set(params.decision.toolGrant.allowedTools);
   const reasonCodes: SerializedTools["reasonCodes"] = [];
   const omissions: SerializedTools["omissions"] = [];
-  const mcpWritable =
-    params.decision.toolGrant.maximumWorkspaceEffect === "write";
+  const mcpAllowed =
+    params.decision.toolGrant.maximumWorkspaceEffect === "write" ||
+    params.decision.toolGrant.maximumWorkspaceEffect === "read";
 
   if (
     grantTools.size === 0 ||
@@ -113,18 +119,30 @@ export function serializeTools(params: {
   }
 
   // Keep parity with Agent Engine filterToolDefinitions: mcp__* may pass when
-  // write is granted even if not listed in allowedTools.
+  // a read/write grant has a tool belt; attach list further scopes servers.
   const filtered = (params.tools ?? []).filter(
     (tool) =>
       grantTools.has(tool.name) ||
-      (mcpWritable && tool.name.startsWith("mcp__")),
+      (mcpAllowed &&
+        tool.name.startsWith(MCP_TOOL_NAME_PREFIX) &&
+        isMcpToolAttached(
+          tool.name,
+          params.decision.toolGrant.allowedMcpServerIds,
+        )),
   );
   if ((params.tools?.length ?? 0) > filtered.length) {
     reasonCodes.push("tools_filtered_by_grant");
     for (const tool of params.tools ?? []) {
       if (
         !grantTools.has(tool.name) &&
-        !(mcpWritable && tool.name.startsWith("mcp__"))
+        !(
+          mcpAllowed &&
+          tool.name.startsWith(MCP_TOOL_NAME_PREFIX) &&
+          isMcpToolAttached(
+            tool.name,
+            params.decision.toolGrant.allowedMcpServerIds,
+          )
+        )
       ) {
         omissions.push({
           source: tool.name,
@@ -149,10 +167,12 @@ export function serializeTools(params: {
   let omittedTokens = 0;
   let remaining = params.budgetTokens;
 
+  const writeGrant =
+    params.decision.toolGrant.maximumWorkspaceEffect === "write";
   for (const tool of ordered) {
     const tokens = estimateTool(tool, params.estimator);
     const critical =
-      mcpWritable &&
+      writeGrant &&
       WRITE_CRITICAL_TOOL_IDS.has(tool.name) &&
       grantTools.has(tool.name);
 

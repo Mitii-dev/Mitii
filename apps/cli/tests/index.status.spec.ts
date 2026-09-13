@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { parseCliArgs, main } from '../src/cli.js';
 import { createDefaultSessionIo } from '../src/session.js';
 
-describe('CLI Phase 15 commands', () => {
+describe('CLI commands (index/status)', () => {
   it('parses index, status, session, export-session', () => {
     expect(parseCliArgs(['node', 'mitii', 'index', '--json']).command).toBe(
       'index',

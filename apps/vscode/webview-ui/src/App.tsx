@@ -47,10 +47,17 @@ import { WorkspaceBanner } from './components/WorkspaceBanner';
 import { deriveLiveTokenBudgetPreview } from '@mitii/live-token-budget';
 import { getProviderPreset, modelsForProvider } from './providerOptions';
 import {
-  detectSkillMentionQuery,
   filterSkillSuggestions,
   skillCatalogSuggestSideEffects,
 } from './skillSuggest';
+import {
+  enabledMcpSuggestItems,
+  filterMcpSuggestions,
+  insertMcpMention,
+  togglePinnedMcpServer,
+} from './mcpSuggest';
+import { detectMentionSuggest } from './mentionSuggest';
+import { McpPinChips } from './components/McpPinChips';
 import type {
   ActivityEventPayload,
   AgentUiDepth,
@@ -74,6 +81,7 @@ import type {
   ProviderSettingsSnapshot,
   ReviewDiffView,
   RunFileChangesView,
+  SearchSettingsSnapshot,
   SemanticIndexSource,
   SettingsTab,
   SettingsProfileView,
@@ -247,6 +255,11 @@ const DEFAULT_AUTOCOMPLETE: AutocompleteSettingsSnapshot = {
   temperature: 0.2,
 };
 
+const DEFAULT_SEARCH: SearchSettingsSnapshot = {
+  searxngBaseUrl: '',
+  hasApiKey: false,
+};
+
 function hydrateAutocompleteSnapshot(
   raw: Partial<AutocompleteSettingsSnapshot> | undefined,
 ): AutocompleteSettingsSnapshot {
@@ -254,6 +267,17 @@ function hydrateAutocompleteSnapshot(
     ...DEFAULT_AUTOCOMPLETE,
     ...(raw ?? {}),
     provider: 'openai-compatible',
+  };
+}
+
+function hydrateSearchSnapshot(
+  raw: Partial<SearchSettingsSnapshot> | undefined,
+): SearchSettingsSnapshot {
+  return {
+    ...DEFAULT_SEARCH,
+    ...(raw ?? {}),
+    searxngBaseUrl: raw?.searxngBaseUrl?.trim() ?? '',
+    hasApiKey: Boolean(raw?.hasApiKey),
   };
 }
 
@@ -835,6 +859,7 @@ export function App() {
   const [prompt, setPrompt] = useState('');
   const [pinned, setPinned] = useState<ContextPin[]>([]);
   const [pinnedSkillIds, setPinnedSkillIds] = useState<string[]>([]);
+  const [pinnedMcpServerIds, setPinnedMcpServerIds] = useState<string[]>([]);
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [running, setRunning] = useState(false);
   const runningRef = useRef(false);
@@ -844,7 +869,9 @@ export function App() {
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [suggestQuery, setSuggestQuery] = useState('');
-  const [suggestKind, setSuggestKind] = useState<'path' | 'skill'>('path');
+  const [suggestKind, setSuggestKind] = useState<
+    'path' | 'skill' | 'mcp' | 'all'
+  >('path');
   const [activeSuggest, setActiveSuggest] = useState(0);
   const [workspace, setWorkspace] = useState<WorkspaceSnapshotInfo>({});
   const [provider, setProvider] = useState<ProviderSettingsSnapshot>({
@@ -859,6 +886,7 @@ export function App() {
   });
   const [autocomplete, setAutocomplete] =
     useState<AutocompleteSettingsSnapshot>(DEFAULT_AUTOCOMPLETE);
+  const [search, setSearch] = useState<SearchSettingsSnapshot>(DEFAULT_SEARCH);
   const [profiles, setProfiles] = useState<SettingsProfileView[]>([]);
   const [activeProfileId, setActiveProfileId] = useState('default');
   const [settingsSaving, setSettingsSaving] = useState(false);
@@ -914,6 +942,7 @@ export function App() {
   const providerRef = useRef<ProviderSettingsSnapshot>(provider);
   const autocompleteRef =
     useRef<AutocompleteSettingsSnapshot>(autocomplete);
+  const searchRef = useRef<SearchSettingsSnapshot>(search);
   const indexRef = useRef<IndexStatusSnapshot>(index);
   const savedProviderModelRef = useRef(provider.model);
   const listModelsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -947,6 +976,17 @@ export function App() {
       typeof next === 'function' ? next(autocompleteRef.current) : next;
     autocompleteRef.current = resolved;
     setAutocomplete(resolved);
+  };
+
+  const updateSearch = (
+    next:
+      | SearchSettingsSnapshot
+      | ((prev: SearchSettingsSnapshot) => SearchSettingsSnapshot),
+  ) => {
+    const resolved =
+      typeof next === 'function' ? next(searchRef.current) : next;
+    searchRef.current = resolved;
+    setSearch(resolved);
   };
 
   const applyTokenUsage = useCallback(
@@ -1051,6 +1091,7 @@ export function App() {
         connectionStatus: msg.provider.connectionStatus,
       });
       updateAutocomplete(hydrateAutocompleteSnapshot(msg.autocomplete));
+      updateSearch(hydrateSearchSnapshot(msg.search));
       if (!preserveDraft) {
         providerDraftDirtyRef.current = false;
         savedProviderModelRef.current = msg.provider.model ?? '';
@@ -1583,12 +1624,14 @@ export function App() {
       approvalMode,
       pinnedPaths: pinned.map((p) => p.path),
       requiredSkillIds: pinnedSkillIds,
+      requiredMcpServerIds: pinnedMcpServerIds,
     });
     setPrompt('');
     setPinnedSkillIds([]);
+    setPinnedMcpServerIds([]);
     setSuggestLoading(false);
     setSuggestOpen(false);
-  }, [prompt, running, mode, ui, approvalMode, pinned, pinnedSkillIds]);
+  }, [prompt, running, mode, ui, approvalMode, pinned, pinnedSkillIds, pinnedMcpServerIds]);
 
   const executePendingPlan = useCallback(() => {
     if (running) return;
@@ -1617,43 +1660,51 @@ export function App() {
       approvalMode: agentDefaults.approvalMode,
       pinnedPaths: pinned.map((p) => p.path),
       requiredSkillIds: pinnedSkillIds,
+      requiredMcpServerIds: pinnedMcpServerIds,
     });
     setPrompt('');
     setPinnedSkillIds([]);
+    setPinnedMcpServerIds([]);
     setSuggestLoading(false);
     setSuggestOpen(false);
-  }, [running, ui, pinned, pinnedSkillIds]);
+  }, [running, ui, pinned, pinnedSkillIds, pinnedMcpServerIds]);
 
   const onPromptChange = (value: string) => {
     setPrompt(value);
-    const skillQuery = detectSkillMentionQuery(value);
-    if (skillQuery !== null) {
-      setSuggestKind('skill');
-      setSuggestQuery(skillQuery);
-      const requestId = String(++searchReq.current);
-      lastSearchId.current = requestId;
-      setSuggestLoading(true);
-      setSuggestOpen(true);
+    const mention = detectMentionSuggest(value);
+    if (!mention) {
+      setSuggestLoading(false);
+      setSuggestOpen(false);
+      return;
+    }
+
+    setSuggestKind(mention.mode);
+    setSuggestQuery(mention.query);
+    setActiveSuggest(0);
+    setSuggestOpen(true);
+
+    if (mention.mode === 'mcp') {
+      setSuggestLoading(false);
+      return;
+    }
+
+    const requestId = String(++searchReq.current);
+    lastSearchId.current = requestId;
+    setSuggestLoading(true);
+
+    if (mention.mode === 'skill' || mention.mode === 'all') {
       postToHost({
         type: 'requestSkillCatalog',
         requestId,
-        query: skillQuery || undefined,
+        query: mention.query || undefined,
       });
-      return;
     }
-    const match = value.match(/@([\w./_-]*)$/);
-    if (match) {
-      const q = match[1] ?? '';
-      setSuggestKind('path');
-      setSuggestQuery(q);
-      const requestId = String(++searchReq.current);
-      lastSearchId.current = requestId;
-      setSuggestLoading(true);
-      setSuggestOpen(true);
-      postToHost({ type: 'paths.search', query: q, requestId });
-    } else {
-      setSuggestLoading(false);
-      setSuggestOpen(false);
+    if (mention.mode === 'path' || mention.mode === 'all') {
+      postToHost({
+        type: 'paths.search',
+        query: mention.query,
+        requestId,
+      });
     }
   };
 
@@ -1677,11 +1728,17 @@ export function App() {
   };
 
   const insertSkillMention = (skillId: string) => {
-    const replaced = prompt.replace(
-      /@skill:[a-z0-9_.-]*$/i,
+    let next = prompt.replace(
+      /@skill:?[a-z0-9_.-]*$/i,
       `@skill:${skillId} `,
     );
-    setPrompt(replaced);
+    if (next === prompt && /@$/i.test(prompt)) {
+      next = prompt.replace(/@$/i, `@skill:${skillId} `);
+    }
+    if (next === prompt) {
+      next = `${prompt.trimEnd()} @skill:${skillId} `;
+    }
+    setPrompt(next);
     setPinnedSkillIds((prev) =>
       prev.includes(skillId) ? prev : [...prev, skillId].slice(0, 3),
     );
@@ -1698,11 +1755,20 @@ export function App() {
   };
 
   const selectSkill = (skillId: string) => {
-    if (/@skill:[a-z0-9_.-]*$/i.test(prompt)) {
+    if (/@skill:?[a-z0-9_.-]*$/i.test(prompt) || /@$/i.test(prompt)) {
       insertSkillMention(skillId);
       return;
     }
     pinSkill(skillId);
+  };
+
+  const selectMcp = (serverId: string) => {
+    if (/@mcp:?[a-z0-9_-]*$/i.test(prompt) || /@$/i.test(prompt)) {
+      setPrompt(insertMcpMention(prompt, serverId));
+    }
+    setPinnedMcpServerIds((prev) => togglePinnedMcpServer(prev, serverId));
+    setSuggestLoading(false);
+    setSuggestOpen(false);
   };
 
   const openSkillPicker = () => {
@@ -1725,6 +1791,40 @@ export function App() {
     skillItems,
     suggestQuery,
   );
+
+  const filteredMcpSuggestions = filterMcpSuggestions(
+    enabledMcpSuggestItems(mcp.enabled ? mcp.servers : []),
+    suggestQuery,
+  );
+
+  type CombinedSuggestItem =
+    | { type: 'skill'; id: string; label: string; sub: string }
+    | { type: 'mcp'; id: string; label: string; sub: string }
+    | { type: 'path'; id: string; label: string; sub: string };
+
+  const allSuggestItems: CombinedSuggestItem[] =
+    suggestKind === 'all'
+      ? [
+          ...filteredSkillSuggestions.map((item) => ({
+            type: 'skill' as const,
+            id: `skill:${item.id}`,
+            label: `@skill:${item.id}`,
+            sub: item.name,
+          })),
+          ...filteredMcpSuggestions.map((item) => ({
+            type: 'mcp' as const,
+            id: `mcp:${item.id}`,
+            label: `@mcp:${item.id}`,
+            sub: item.name,
+          })),
+          ...suggestions.map((item) => ({
+            type: 'path' as const,
+            id: `path:${item.path}`,
+            label: `@${item.path}`,
+            sub: item.kind,
+          })),
+        ]
+      : [];
 
   const openFile = useCallback(
     (path: string, line?: number, column?: number) => {
@@ -2059,6 +2159,7 @@ export function App() {
       type: 'settings.set',
       provider: snapshotProvider(),
       autocomplete: autocompleteRef.current,
+      search: { searxngBaseUrl: searchRef.current.searxngBaseUrl },
       profile: nextProfile,
     });
   };
@@ -2088,6 +2189,7 @@ export function App() {
       type: 'settings.set',
       provider: latestProvider,
       autocomplete: autocompleteRef.current,
+      search: { searxngBaseUrl: searchRef.current.searxngBaseUrl },
       ui: latestUi,
       workspaceRootOverride: overrideDraft.trim() || null,
       workspaceMaximumIndexFiles: indexRef.current.maximumIndexFiles ?? 0,
@@ -2463,6 +2565,14 @@ export function App() {
                     ))}
                   </div>
                 ) : null}
+                <McpPinChips
+                  pinnedIds={pinnedMcpServerIds}
+                  onRemove={(serverId) =>
+                    setPinnedMcpServerIds((prev) =>
+                      prev.filter((id) => id !== serverId),
+                    )
+                  }
+                />
                 {suggestOpen ? (
                   <div className="suggest-pop" role="listbox">
                     {suggestLoading ? (
@@ -2470,7 +2580,11 @@ export function App() {
                         <span className="mono">
                           {suggestKind === 'skill'
                             ? 'Loading skills…'
-                            : 'Loading files…'}
+                            : suggestKind === 'mcp'
+                              ? 'Loading MCP…'
+                              : suggestKind === 'all'
+                                ? 'Loading mentions…'
+                                : 'Loading files…'}
                         </span>
                       </div>
                     ) : null}
@@ -2494,6 +2608,56 @@ export function App() {
                               </button>
                             ))
                           : null}
+                      </>
+                    ) : suggestKind === 'mcp' ? (
+                      <>
+                        {filteredMcpSuggestions.length === 0 ? (
+                          <div className="suggest-item suggest-item--loading">
+                            <span className="mono">
+                              {mcp.enabled
+                                ? 'No matching MCP servers'
+                                : 'Enable MCP in Settings first'}
+                            </span>
+                          </div>
+                        ) : null}
+                        {filteredMcpSuggestions.map((item, i) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            className={`suggest-item ${i === activeSuggest ? 'active' : ''}`}
+                            onClick={() => selectMcp(item.id)}
+                          >
+                            <span className="mono">@mcp:{item.id}</span>
+                            <span className="suggest-kind">{item.name}</span>
+                          </button>
+                        ))}
+                      </>
+                    ) : suggestKind === 'all' ? (
+                      <>
+                        {!suggestLoading && allSuggestItems.length === 0 ? (
+                          <div className="suggest-item suggest-item--loading">
+                            <span className="mono">No matches — try @skill, @mcp, or a path</span>
+                          </div>
+                        ) : null}
+                        {allSuggestItems.map((item, i) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            className={`suggest-item ${i === activeSuggest ? 'active' : ''}`}
+                            onClick={() => {
+                              if (item.type === 'skill') {
+                                selectSkill(item.id.slice('skill:'.length));
+                              } else if (item.type === 'mcp') {
+                                selectMcp(item.id.slice('mcp:'.length));
+                              } else {
+                                insertMention(item.id.slice('path:'.length));
+                              }
+                            }}
+                          >
+                            <span className="mono">{item.label}</span>
+                            <span className="suggest-kind">{item.sub}</span>
+                          </button>
+                        ))}
                       </>
                     ) : (
                       <>
@@ -2521,13 +2685,17 @@ export function App() {
                   ref={promptTextareaRef}
                   rows={1}
                   value={prompt}
-                  placeholder="Message Mitii… @ files, / skills"
+                  placeholder="Message Mitii… @ for files, skills, MCP"
                   onChange={(e) => onPromptChange(e.target.value)}
                   onKeyDown={(e) => {
                     const activeSuggestions =
                       suggestKind === 'skill'
                         ? filteredSkillSuggestions
-                        : suggestions;
+                        : suggestKind === 'mcp'
+                          ? filteredMcpSuggestions
+                          : suggestKind === 'all'
+                            ? allSuggestItems
+                            : suggestions;
                     if (suggestOpen && activeSuggestions.length) {
                       if (e.key === 'ArrowDown') {
                         e.preventDefault();
@@ -2551,12 +2719,24 @@ export function App() {
                           selectSkill(
                             filteredSkillSuggestions[activeSuggest]!.id,
                           );
+                        } else if (suggestKind === 'mcp') {
+                          selectMcp(filteredMcpSuggestions[activeSuggest]!.id);
+                        } else if (suggestKind === 'all') {
+                          const item = allSuggestItems[activeSuggest]!;
+                          if (item.type === 'skill') {
+                            selectSkill(item.id.slice('skill:'.length));
+                          } else if (item.type === 'mcp') {
+                            selectMcp(item.id.slice('mcp:'.length));
+                          } else {
+                            insertMention(item.id.slice('path:'.length));
+                          }
                         } else {
                           insertMention(suggestions[activeSuggest]!.path);
                         }
                         return;
                       }
                       if (e.key === 'Escape') {
+                        e.preventDefault();
                         setSuggestOpen(false);
                         return;
                       }
@@ -2696,8 +2876,16 @@ export function App() {
           onProviderTypeChange={onProviderTypeChange}
           autocomplete={autocomplete}
           onAutocompleteChange={updateAutocomplete}
+          search={search}
+          onSearchChange={updateSearch}
           onSetApiKey={() => postToHost({ type: 'settings.setApiKey' })}
           onClearApiKey={() => postToHost({ type: 'settings.clearApiKey' })}
+          onSetSearchApiKey={() =>
+            postToHost({ type: 'settings.setSearchApiKey' })
+          }
+          onClearSearchApiKey={() =>
+            postToHost({ type: 'settings.clearSearchApiKey' })
+          }
           onTestConnection={testConnection}
           testingConnection={testingConnection}
           connectionMessage={connectionMessage}
@@ -2750,6 +2938,9 @@ export function App() {
           }
           onClearCheckpoints={() =>
             postToHost({ type: 'clearCheckpoints' })
+          }
+          onReviewCheckpointChanges={(id) =>
+            postToHost({ type: 'reviewCheckpointChanges', id })
           }
           onToggleContext={(source, enabled) => {
             updateUiDraft({ contextToggles: { [source]: enabled } });

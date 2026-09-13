@@ -58,11 +58,37 @@ agent-engine/
 - `AgentRunResult`: final status, route, planning depth, answer, optional plan, optional plan strategy, optional task list, optional suspension, pinned state, reason codes, warnings, usage, duration, and optional error.
 - `AgentEngineDependencies`: injected ports/pipelines used by the orchestrator.
 - `AgentRunCheckpoint`: persisted run state used by resume.
+- `RestorePoint` (`schemaVersion: 1`): durable undo point after each successful
+  mutation. Stored under `.mitii/checkpoints/restore/<runId>/`. Unknown
+  schema versions are ignored (delete `.mitii/checkpoints` to clear old shapes —
+  no dual reader).
+- `restore(runId, restorePointId)`: rolls back the target RestorePoint and every
+  newer point (newest → oldest) via durable mutation snapshots. Never rewrites
+  user `.git`. Returns the frozen `interactionMode` from the point (never
+  escalates Ask → Agent).
 
 ## Technical Details
 
 - `start()` creates a new run and checkpoint.
 - `resume()` continues from a persisted checkpoint and does not replay completed `callId`s.
+- Successful mutating tools also call `saveRestorePoint` when the checkpoint
+  store and live mutation snapshot are available.
+- Compaction follows an explicit ladder owned by `WindowPolicy.compaction`
+  (`compactModelLoopMessagesFromWindowPolicy`): soft tool stubs → drop oldest
+  turns → dropped-turn summary → hard tool compact → reinject facts/memory.
+  `stagesApplied` records which stages mutated history.
+- **Progressive tool schemas:** `filterToolDefinitions` exposes INDEX stubs
+  for long-tail / MCP tools, while core discovery + mutation tools
+  (`FULL_SCHEMA_TOOL_IDS`: read_file, search_files, run_readonly_command,
+  apply_patch, …) keep full parameter schemas. Models can still call
+  `describe_tool` for stubbed tools. Tool Runtime validates real Zod schemas
+  at execute time — stubs never widen the grant. Common arg aliases
+  (`pattern`→`query`, `command`→`argv`, numeric strings) are normalized in
+  preflight.
+- **ToolAdversaryPort (optional):** restrict-only fence after grant/shadow and
+  before approval. Hosts inject via `composeReadOnlyAgentEngine({ adversary })`
+  or `CreateMitiiClientOptions.adversary`. Decisions: ALLOW | ASK | BLOCK.
+  Unset = no-op. Never widens grants. CLI: `MITII_ADVERSARY=1`.
 - Runs can suspend for clarification, plan approval, mutating tool approval, grant expansion (when approval mode is not `never`), or continue-required after exploration stall with partial progress.
 - Tool calls are passed to Tool Runtime with the exact grant from Decision Policy.
 - The engine may narrow authority after discovery but never expands the grant without policy.

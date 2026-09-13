@@ -311,6 +311,18 @@ const SCOPE_CONSTRAINT_PATTERNS = [
       /\b(?:single file|one file|this file only|selected file only|do not touch other files|don't touch other files)\b[^.!?;\n]{0,100}/gi,
     confidence: 0.95,
   },
+  {
+    kind: "scope",
+    pattern:
+      /\bin\s+[\w./@${}-][\w./@${}-]*\s+only\b[^.!?;\n]{0,80}/gi,
+    confidence: 0.96,
+  },
+  {
+    kind: "prohibition",
+    pattern:
+      /\b(?:do not|don't|dont)\s+(?:modify|change|edit|touch|alter)\b[^.!?;\n]{1,160}/gi,
+    confidence: 0.97,
+  },
 ] as const satisfies readonly {
   kind: TaskConstraintKind;
   pattern: RegExp;

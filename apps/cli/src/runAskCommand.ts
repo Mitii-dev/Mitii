@@ -7,7 +7,13 @@ import type {
   TaskList,
   UserRequestOrigin,
 } from '@mitii/sdk';
-import { loadProjectRules, loadUserSafetyRules } from '@mitii/host';
+import {
+  buildWritingRecipeAsk,
+  loadProjectRules,
+  loadUserSafetyRules,
+  loadWorkspaceHooks,
+  resolveMitiiWritingRecipe,
+} from '@mitii/host';
 
 import {
   composeAgentPrompt,
@@ -96,6 +102,91 @@ export function resolveAskPrompt(
   };
 }
 
+/**
+ * Like resolveAskPrompt, but applies writing recipes (git context + force skill).
+ */
+export async function resolveAskPromptWithRecipe(
+  parsed: ParsedCliArgs,
+  cwd: string,
+): Promise<{
+  prompt: string;
+  mode?: AgentMode;
+  origin?: UserRequestOrigin;
+  autonomyPreset?: MitiiAutonomyPreset;
+  autoApproval?: 'approved' | 'denied';
+  requiredSkillIds?: string[];
+  attachments?: MitiiImageAttachment[];
+}> {
+  if (!parsed.recipe) {
+    return resolveAskPrompt(parsed, cwd);
+  }
+  const recipe = resolveMitiiWritingRecipe(parsed.recipe);
+  if (!recipe) {
+    throw new Error(
+      `mitii: unknown --recipe "${parsed.recipe}" (use commit-message, pr-summary, or changelog)`,
+    );
+  }
+
+  let agent: MitiiAgentFile | undefined;
+  if (parsed.agent) {
+    agent = loadAgentFile(parsed.agent, cwd);
+  }
+  let promptFileText: string | undefined;
+  if (parsed.promptFile) {
+    promptFileText = loadPromptFile(parsed.promptFile);
+  }
+  const userNoteParts = [
+    parsed.prompt?.trim(),
+    promptFileText?.trim(),
+    agent?.prompt?.trim(),
+  ].filter((part): part is string => Boolean(part));
+  const userNote = userNoteParts.join('\n\n') || undefined;
+
+  const ask = await buildWritingRecipeAsk({
+    workspaceRoot: cwd,
+    recipe: recipe.id,
+    userNote,
+  });
+
+  const autonomyPreset = parsed.autonomyPreset ?? agent?.autonomyPreset;
+  const mode = parsed.mode ?? agent?.mode ?? ask.mode;
+  const origin =
+    parsed.origin ??
+    agent?.origin ??
+    (autonomyPreset && autonomyPreset !== 'readonly'
+      ? 'automation'
+      : undefined);
+  let autoApproval = parsed.autoApproval;
+  if (
+    !autoApproval &&
+    (autonomyPreset === 'apply' || autonomyPreset === 'apply_and_pr')
+  ) {
+    autoApproval = 'approved';
+  }
+
+  const requiredSkillIds = [
+    ...ask.requiredSkillIds,
+    ...(parsed.skills ?? []),
+    ...(agent?.requiredSkillIds ?? []),
+  ]
+    .filter((id, index, all) => all.indexOf(id) === index)
+    .slice(0, 3);
+
+  const attachments = (parsed.images ?? []).map((imagePath) =>
+    loadImageAttachment(imagePath, cwd),
+  );
+
+  return {
+    prompt: ask.prompt,
+    mode,
+    origin,
+    autonomyPreset,
+    autoApproval,
+    requiredSkillIds,
+    ...(attachments.length > 0 ? { attachments } : {}),
+  };
+}
+
 export async function ensurePublishedRepositoryState(options: {
   client: MitiiClient;
   workspaceId: string;
@@ -149,10 +240,10 @@ export async function ensurePublishedRepositoryState(options: {
 
 function reportOutcome(
   io: SessionIo,
-  json: boolean,
+  machineReadable: boolean,
   outcome: Awaited<ReturnType<typeof driveRun>>,
 ): void {
-  if (json) return;
+  if (machineReadable) return;
   for (const line of formatContextInspection(outcome.events)) {
     io.writeStderr(`${line}\n`);
   }
@@ -171,6 +262,7 @@ export async function runAsk(options: {
   prompt: string;
   cwd: string;
   json: boolean;
+  streamJson?: boolean;
   forceEcho: boolean;
   autoClarify?: string;
   autoApproval?: 'approved' | 'denied';
@@ -189,14 +281,16 @@ export async function runAsk(options: {
   mode: AgentMode;
   outcome?: Awaited<ReturnType<typeof driveRun>>;
 }> {
-  const { client, ports, memoryCapture } = createCliClient({
+  const { client, ports, memoryCapture } = await createCliClient({
     cwd: options.cwd,
     forceEcho: options.forceEcho,
   });
   const io = options.io ?? createDefaultSessionIo();
   const mode = options.mode ?? ports.defaultMode;
   const origin = options.origin ?? 'user';
-  if (!options.json) {
+  const machineReadable =
+    options.json === true || options.streamJson === true;
+  if (!machineReadable) {
     io.writeStderr(
       `[mitii] provider=${ports.providerLabel} mode=${mode} origin=${origin}\n`,
     );
@@ -215,7 +309,29 @@ export async function runAsk(options: {
   const projectRules = await loadProjectRules({
     workspaceRoot: options.cwd,
   });
-  const userSafetyRules = loadUserSafetyRules(options.cwd);
+  const baseSafety = loadUserSafetyRules(options.cwd);
+  const hooksEnabled =
+    process.env.MITII_HOOKS === '1' || process.env.MITII_HOOKS === 'true';
+  const hooks = await loadWorkspaceHooks({
+    workspaceRoot: options.cwd,
+    enabled: hooksEnabled,
+  });
+  const userSafetyRules = {
+    ...baseSafety,
+    enabled:
+      baseSafety.enabled ||
+      hooks.denyTools.length > 0 ||
+      hooks.denyCommandPrefixes.length > 0,
+    denyTools: [
+      ...new Set([...(baseSafety.denyTools ?? []), ...hooks.denyTools]),
+    ],
+    denyCommandPrefixes: [
+      ...new Set([
+        ...(baseSafety.denyCommandPrefixes ?? []),
+        ...hooks.denyCommandPrefixes,
+      ]),
+    ],
+  };
   const hostConfig = loadMitiiHostConfig(options.cwd);
   let loopPolicyThresholds;
   try {
@@ -243,6 +359,19 @@ export async function runAsk(options: {
       ? ({ approvalMode: 'never' as const, planApproval: 'never' as const })
       : {};
 
+  // Unattended / headless runs: turn on DecisionBrief + mutation critic so
+  // multi-clause asks and path-scope discipline are enforced without a human.
+  const unattendedSteering =
+    options.autoApproval === 'approved' || origin === 'automation'
+      ? ({
+          steering: {
+            decisionBrief: true,
+            criticMode: 'enforce' as const,
+            policyFactsFirst: true,
+          },
+        })
+      : {};
+
   const outcome = await driveRun({
     client,
     start: {
@@ -254,6 +383,7 @@ export async function runAsk(options: {
         : {}),
       workspaceRoot: options.cwd,
       ...hostApproval,
+      ...unattendedSteering,
       ...(userSafetyRules.enabled ? { userSafetyRules } : {}),
       ...(projectRules.length > 0 ? { projectRules: [...projectRules] } : {}),
       ...(options.requiredSkillIds && options.requiredSkillIds.length > 0
@@ -273,12 +403,13 @@ export async function runAsk(options: {
         : {}),
     },
     json: options.json,
+    streamJson: options.streamJson === true,
     autoClarify: options.autoClarify,
     autoApproval: options.autoApproval,
     io,
     memoryCapture,
   });
-  reportOutcome(io, options.json, outcome);
+  reportOutcome(io, machineReadable, outcome);
   return { code: outcome.exitCode, mode, outcome };
 }
 

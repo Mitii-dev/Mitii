@@ -74,6 +74,20 @@ describe('CLI parseCliArgs', () => {
     expect(parsed.forceEcho).toBe(true);
   });
 
+  it('parses --stream-json on ask', () => {
+    const parsed = parseCliArgs([
+      'node',
+      'mitii',
+      'ask',
+      'ping',
+      '--stream-json',
+      '--echo',
+    ]);
+    expect(parsed.command).toBe('ask');
+    expect(parsed.streamJson).toBe(true);
+    expect(parsed.forceEcho).toBe(true);
+  });
+
   it('parses setup flags', () => {
     const parsed = parseCliArgs([
       'node',
@@ -215,6 +229,48 @@ describe('CLI resolveCliPorts', () => {
     expect(parsed.skills).toEqual([
       'module-doc-generator',
       'planning-default',
+    ]);
+  });
+
+  it('parses writing recipe subcommands and --recipe', () => {
+    const sub = parseCliArgs(['node', 'mitii', 'commit-message', 'focus on why']);
+    expect(sub.command).toBe('commit-message');
+    expect(sub.recipe).toBe('commit-message');
+    expect(sub.prompt).toBe('focus on why');
+
+    const viaFlag = parseCliArgs([
+      'node',
+      'mitii',
+      'ask',
+      '--recipe',
+      'pr-summary',
+    ]);
+    expect(viaFlag.command).toBe('ask');
+    expect(viaFlag.recipe).toBe('pr-summary');
+
+    const changelog = parseCliArgs(['node', 'mitii', 'changelog']);
+    expect(changelog.command).toBe('changelog');
+    expect(changelog.recipe).toBe('changelog');
+  });
+
+  it('parses recipe run passthrough', () => {
+    const parsed = parseCliArgs([
+      'node',
+      'mitii',
+      'recipe',
+      'run',
+      'after-commit',
+      '--param',
+      'task=write tests',
+      '--preview',
+    ]);
+    expect(parsed.command).toBe('recipe');
+    expect(parsed.rest).toEqual([
+      'run',
+      'after-commit',
+      '--param',
+      'task=write tests',
+      '--preview',
     ]);
   });
 

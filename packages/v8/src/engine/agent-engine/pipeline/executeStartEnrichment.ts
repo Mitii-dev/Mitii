@@ -444,11 +444,21 @@ export async function runStartEnrichment(
       query: extractPrimaryUserMessage(envelope.message),
       scope: { kind: "workspace", workspaceId },
       now: runtime.isoNow(),
+      mode: "layered",
       ...(memoryFileTargets.length > 0
         ? { fileTargets: memoryFileTargets }
         : {}),
     });
-    selectedMemory = memoryResult.instructions.map((block) => ({
+    const layered = memoryResult.layers;
+    selectedMemory = (
+      layered
+        ? [
+            ...layered.l1Index,
+            ...layered.l2Timeline,
+            ...layered.l3Facts,
+          ]
+        : memoryResult.instructions
+    ).map((block) => ({
       id: block.id,
       title: block.title,
       content: block.content,

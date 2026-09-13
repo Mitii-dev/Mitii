@@ -184,6 +184,8 @@ if (command === 'validate') {
   node src/cli.mjs view [--run <runId>] [--output-dir <reports-root>] [--open]
   node src/cli.mjs cases [--output-dir <reports-root>] [--open]   (read-only test case browser)
 
+  Interactive runner UI lives in tools/log-viewer (pnpm log-viewer -- --benchmark).
+
 Domains (top-level):
   ${availableSuites.join(' | ') || DOMAINS.join(' | ')}
 

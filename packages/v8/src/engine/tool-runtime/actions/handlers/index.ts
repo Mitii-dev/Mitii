@@ -15,6 +15,7 @@ import { createGithubIssueTool, createPullRequestTool } from "./githubMutationTo
 import { globFilesTool } from "./globFilesTool";
 import { gotoDefinitionTool } from "./gotoDefinitionTool";
 import { listDirectoryTool } from "./listDirectoryTool";
+import { directoryTreeTool } from "./directoryTreeTool";
 import { moveFileTool } from "./moveFileTool";
 import { readDiagnosticsTool } from "./readDiagnosticsTool";
 import { readFileTool } from "./readFileTool";
@@ -24,17 +25,25 @@ import { readPackageScriptsTool } from "./readPackageScriptsTool";
 import { runCommandTool } from "./runCommandTool";
 import { runReadonlyCommandTool } from "./runReadonlyCommandTool";
 import { searchFilesTool } from "./searchFilesTool";
+import { sequentialThinkingTool } from "./sequentialThinkingTool";
+import { convertTimeTool, getCurrentTimeTool } from "./timeTools";
+import {
+  readGitBranchesTool,
+  readGitLogTool,
+  readGitShowTool,
+} from "./gitReadTools";
+import {
+  memoryGraphOpenTool,
+  memoryGraphSearchTool,
+  memoryGraphUpdateTool,
+} from "./memoryGraphTools";
 import { webSearchTool } from "./webSearchTool";
+import { describeToolTool } from "./describeToolTool";
+import { setBuiltinModelToolLookup } from "./builtinModelLookup";
 
-/**
- * Built-in tools. Add a new tool by:
- * 1. Creating `actions/handlers/<name>Tool.ts` with definition + execute
- * 2. Appending it to this list
- *
- * Do not edit ToolRuntimePipeline for new tools.
- */
-export const BUILTIN_TOOLS: readonly RegisteredTool[] = [
+const BUILTIN_TOOLS_BASE: readonly RegisteredTool[] = [
   listDirectoryTool,
+  directoryTreeTool,
   readFileTool,
   readManyFilesTool,
   globFilesTool,
@@ -42,21 +51,44 @@ export const BUILTIN_TOOLS: readonly RegisteredTool[] = [
   searchFilesTool,
   readDiagnosticsTool,
   readGitStatusTool,
+  readGitLogTool,
+  readGitShowTool,
+  readGitBranchesTool,
   gotoDefinitionTool,
   findReferencesTool,
   analyzeChangeImpactTool,
   runReadonlyCommandTool,
   readPackageScriptsTool,
+  sequentialThinkingTool,
+  getCurrentTimeTool,
+  convertTimeTool,
+  memoryGraphSearchTool,
+  memoryGraphOpenTool,
   applyPatchTool,
   deleteFileTool,
   deleteDirectoryTool,
   moveFileTool,
+  memoryGraphUpdateTool,
   runCommandTool,
   createGithubIssueTool,
   createPullRequestTool,
   fetchUrlTool,
   fetchDocsTool,
   webSearchTool,
+];
+
+setBuiltinModelToolLookup(listModelToolDefinitions(BUILTIN_TOOLS_BASE));
+
+/**
+ * Built-in tools. Add a new tool by:
+ * 1. Creating `actions/handlers/<name>Tool.ts` with definition + execute
+ * 2. Appending it to BUILTIN_TOOLS_BASE (before describe_tool)
+ *
+ * Do not edit ToolRuntimePipeline for new tools.
+ */
+export const BUILTIN_TOOLS: readonly RegisteredTool[] = [
+  ...BUILTIN_TOOLS_BASE,
+  describeToolTool,
 ];
 
 export function createBuiltinToolRegistry(): ToolRegistry {
@@ -77,6 +109,7 @@ export function listBuiltinReadOnlyModelToolDefinitions(): RuntimeModelToolDefin
       tool.name !== "delete_file" &&
       tool.name !== "delete_directory" &&
       tool.name !== "move_file" &&
+      tool.name !== "memory_graph_update" &&
       tool.name !== "run_command" &&
       tool.name !== "create_github_issue" &&
       tool.name !== "create_pull_request",
@@ -91,6 +124,7 @@ export function listBuiltinMutationModelToolDefinitions(): RuntimeModelToolDefin
 
 export {
   listDirectoryTool,
+  directoryTreeTool,
   readFileTool,
   readManyFilesTool,
   globFilesTool,
@@ -98,11 +132,20 @@ export {
   searchFilesTool,
   readDiagnosticsTool,
   readGitStatusTool,
+  readGitLogTool,
+  readGitShowTool,
+  readGitBranchesTool,
   gotoDefinitionTool,
   findReferencesTool,
   analyzeChangeImpactTool,
   runReadonlyCommandTool,
   readPackageScriptsTool,
+  sequentialThinkingTool,
+  getCurrentTimeTool,
+  convertTimeTool,
+  memoryGraphSearchTool,
+  memoryGraphOpenTool,
+  memoryGraphUpdateTool,
   applyPatchTool,
   deleteFileTool,
   deleteDirectoryTool,
@@ -113,4 +156,5 @@ export {
   fetchUrlTool,
   fetchDocsTool,
   webSearchTool,
+  describeToolTool,
 };

@@ -76,6 +76,103 @@ export function truncateForLogField(value: string, maxChars: number): string {
   return `${compact.slice(0, Math.max(0, maxChars - 1))}…`;
 }
 
+/** Extract public hosts from a successful web_search tool output (cap 16). */
+export function extractHostsFromWebSearchOutput(output: unknown): string[] {
+  if (!output || typeof output !== "object") {
+    return [];
+  }
+  const record = output as { results?: unknown; query?: unknown };
+  const results = record.results;
+  const hosts = new Set<string>();
+  if (Array.isArray(results)) {
+    for (const hit of results) {
+      if (!hit || typeof hit !== "object") continue;
+      const url = (hit as { url?: unknown }).url;
+      if (typeof url !== "string" || url.trim().length === 0) continue;
+      try {
+        const parsed = new URL(url);
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") continue;
+        const host = parsed.hostname.toLowerCase();
+        if (
+          !host ||
+          host === "localhost" ||
+          host.endsWith(".local") ||
+          host === "127.0.0.1" ||
+          host === "::1"
+        ) {
+          continue;
+        }
+        hosts.add(host);
+      } catch {
+        continue;
+      }
+      if (hosts.size >= 12) break;
+    }
+  }
+
+  const query = typeof record.query === "string" ? record.query : "";
+  for (const host of inferPackageRegistryHostsFromQuery(query)) {
+    hosts.add(host);
+  }
+  for (const host of expandRelatedNetworkHosts([...hosts])) {
+    hosts.add(host);
+  }
+  return [...hosts].slice(0, 16);
+}
+
+/** Admit canonical package registries when search results already touch that ecosystem. */
+export function expandRelatedNetworkHosts(hosts: readonly string[]): string[] {
+  const set = new Set(hosts.map((host) => host.trim().toLowerCase()).filter(Boolean));
+  const extra: string[] = [];
+  const touches = (...needles: string[]) =>
+    [...set].some(
+      (host) =>
+        needles.some((needle) => host === needle || host.endsWith(`.${needle}`)),
+    );
+
+  if (touches("npmjs.com", "npmjs.org")) {
+    extra.push("registry.npmjs.org", "www.npmjs.com", "npmjs.com");
+  }
+  if (touches("pypi.org", "pythonhosted.org")) {
+    extra.push("pypi.org", "files.pythonhosted.org");
+  }
+  if (touches("crates.io", "docs.rs")) {
+    extra.push("crates.io", "static.crates.io", "docs.rs");
+  }
+  if (touches("proxy.golang.org", "pkg.go.dev", "sum.golang.org")) {
+    extra.push("proxy.golang.org", "pkg.go.dev", "sum.golang.org");
+  }
+  return extra.filter((host) => !set.has(host));
+}
+
+/**
+ * When the search query looks like an npm/PyPI/crates package lookup, admit
+ * the matching registry so follow-up fetch_url can hit the API, not only HTML
+ * result pages (e.g. Snyk / GitHub) from the first hit list.
+ */
+export function inferPackageRegistryHostsFromQuery(query: string): string[] {
+  const q = query.trim();
+  if (!q) return [];
+  const hosts: string[] = [];
+  if (
+    /\bnpm\b/i.test(q) ||
+    /(?:^|[\s"`'])@[a-z0-9][\w.-]*\/[\w.-]+/i.test(q) ||
+    /\b(?:package\.json|node_modules|npmjs)\b/i.test(q)
+  ) {
+    hosts.push("registry.npmjs.org", "www.npmjs.com", "npmjs.com");
+  }
+  if (/\b(?:pypi|pip install|pyproject\.toml|requirements\.txt)\b/i.test(q)) {
+    hosts.push("pypi.org", "files.pythonhosted.org");
+  }
+  if (/\b(?:crates\.io|cargo add|Cargo\.toml)\b/i.test(q)) {
+    hosts.push("crates.io", "static.crates.io", "docs.rs");
+  }
+  if (/\b(?:pkg\.go\.dev|go get|go\.mod)\b/i.test(q)) {
+    hosts.push("proxy.golang.org", "pkg.go.dev", "sum.golang.org");
+  }
+  return hosts;
+}
+
 export type GrantRefreshOutcome =
   | { kind: "ok" }
   | { kind: "expansion_required"; extraPaths: string[] };
@@ -99,6 +196,8 @@ export async function refreshAuthorityAfterTools(
   changedFiles: readonly string[];
   dirtyPaths: readonly string[] | undefined;
   extraPaths?: readonly string[];
+  /** Hosts from successful web_search results for follow-up fetch_url. */
+  extraNetworkHosts?: readonly string[];
   understanding?: RequestUnderstandingResult;
   skillsQuery?: string;
   mode?: "ask" | "plan" | "agent";
@@ -119,42 +218,60 @@ export async function refreshAuthorityAfterTools(
   const extraPaths = [...new Set(params.extraPaths ?? [])].filter(
     (path) => path.trim().length > 0,
   );
+  const extraNetworkHosts = [
+    ...new Set(
+      (params.extraNetworkHosts ?? [])
+        .map((host) => host.trim().toLowerCase())
+        .filter((host) => host.length > 0),
+    ),
+  ].slice(0, 16);
   // Widen first so path_out_of_scope / compiler paths are admitted before any
-  // discovery-based narrow can drop them.
-  if (runtime.deps.decision.widen && extraPaths.length > 0) {
+  // discovery-based narrow can drop them. Also admit web_search result hosts.
+  if (
+    runtime.deps.decision.widen &&
+    (extraPaths.length > 0 || extraNetworkHosts.length > 0)
+  ) {
     const previous = params.decisionRef.get();
-    const widened = runtime.deps.decision.widen({
-      previous,
-      extraPaths,
-    });
-    if (!toolGrantsEquivalent(previous.toolGrant, widened.toolGrant)) {
-      // Path/mutation scope expansion does not add write authority — only
-      // admits paths needed by an already-granted write/read effect. Auto-apply
-      // whenever write (or read) is already allowed so required companion files
-      // are not blocked behind a second approval gate.
-      const canAutoExpand =
-        previous.toolGrant.approvalMode === "never" ||
-        previous.toolGrant.maximumWorkspaceEffect === "write" ||
-        previous.toolGrant.maximumWorkspaceEffect === "read";
-      if (!canAutoExpand) {
-        return { kind: "expansion_required", extraPaths };
-      }
-      params.decisionRef.set(widened);
-      params.reasonCodes.push("grant_expanded");
-      runtime.emit(params.bus, {
-        type: "grant_narrowed",
-        runId: params.runId,
-        maximumWorkspaceEffect: widened.toolGrant.maximumWorkspaceEffect,
-        approvalMode: widened.toolGrant.approvalMode,
-        pathScopes: widened.toolGrant.pathScopes.slice(0, 20),
-        reasonCodes: widened.reasonCodes.slice(-8),
-        truncated:
-          widened.toolGrant.pathScopes.length > 20 ||
-          widened.reasonCodes.length > 8
-            ? true
-            : undefined,
-        at: runtime.isoNow(),
+    const canAutoExpandPaths =
+      previous.toolGrant.approvalMode === "never" ||
+      previous.toolGrant.maximumWorkspaceEffect === "write" ||
+      previous.toolGrant.maximumWorkspaceEffect === "read";
+    const canAutoExpandHosts =
+      previous.toolGrant.allowedEffects.includes("network_access") ||
+      previous.toolGrant.allowedTools.includes("web_search") ||
+      previous.toolGrant.allowedTools.includes("fetch_url");
+
+    // Path expansion still requires an approval gate when effect is none.
+    if (extraPaths.length > 0 && !canAutoExpandPaths) {
+      return { kind: "expansion_required", extraPaths };
+    }
+
+    const widenPaths = canAutoExpandPaths ? extraPaths : [];
+    const widenHosts = canAutoExpandHosts ? extraNetworkHosts : [];
+    if (widenPaths.length > 0 || widenHosts.length > 0) {
+      const widened = runtime.deps.decision.widen({
+        previous,
+        extraPaths: widenPaths,
+        extraNetworkHosts: widenHosts,
       });
+      if (!toolGrantsEquivalent(previous.toolGrant, widened.toolGrant)) {
+        params.decisionRef.set(widened);
+        params.reasonCodes.push("grant_expanded");
+        runtime.emit(params.bus, {
+          type: "grant_narrowed",
+          runId: params.runId,
+          maximumWorkspaceEffect: widened.toolGrant.maximumWorkspaceEffect,
+          approvalMode: widened.toolGrant.approvalMode,
+          pathScopes: widened.toolGrant.pathScopes.slice(0, 20),
+          reasonCodes: widened.reasonCodes.slice(-8),
+          truncated:
+            widened.toolGrant.pathScopes.length > 20 ||
+            widened.reasonCodes.length > 8
+              ? true
+              : undefined,
+          at: runtime.isoNow(),
+        });
+      }
     }
   }
 

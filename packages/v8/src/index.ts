@@ -239,11 +239,18 @@ export {
   BUILTIN_TOOLS,
   StructuralShadowGrantAuthorizer,
   compileToolGrantToCedar,
+  ADVERSARY_HIGH_RISK_TOOL_IDS,
+  isAdversaryHighRiskTool,
 } from "./engine/tool-runtime";
 export type {
   ShadowAuthorizeDecision,
   ShadowAuthorizeResult,
   ShadowGrantAuthorizer,
+  AdversaryDecision,
+  AdversaryEvaluateInput,
+  AdversaryEvaluateResult,
+  AdversaryFailMode,
+  ToolAdversaryPort,
 } from "./engine/tool-runtime";
 export type {
   ToolInvocationInput,
@@ -258,6 +265,8 @@ export type {
   GitPort,
   ToolDefinition,
   NetworkPort,
+  NetworkFetchRequest,
+  NetworkFetchResult,
   SearchPort,
   RepositoryGraphPort,
   ProcessPort,
@@ -291,7 +300,9 @@ export type {
   VerificationManifestReaderPort,
 } from "./modules/verification";
 
-export { SkillsPipeline } from "./modules/skills";
+export {
+  SkillsPipeline,
+} from "./modules/skills";
 export {
   skillsSelectInputSchema,
   skillsSelectResultSchema,
@@ -315,6 +326,18 @@ export type {
   SkillSimilarityPort,
 } from "./modules/skills";
 
+export {
+  parseRequiredMcpMentions,
+  mergeRequiredMcpServerIds,
+  normalizeMcpServerId,
+  MAX_REQUIRED_MCP_SERVERS,
+  MCP_TOOL_NAME_PREFIX,
+  mcpServerIdFromToolName,
+  isMcpToolAttached,
+  filterToolsByMcpAttach,
+  withMcpAttachOnGrant,
+} from "./modules/mcp-attach";
+
 export { MemoryPipeline } from "./modules/memory";
 export {
   memoryRetrieveInputSchema,
@@ -326,6 +349,11 @@ export {
   HashMemoryEmbedding,
   buildSyntheticMemoryDraft,
   MEMORY_SCHEMA_VERSION,
+  KnowledgeGraphManager,
+  InMemoryKnowledgeGraphStore,
+  knowledgeGraphEntitySchema,
+  knowledgeGraphRelationSchema,
+  knowledgeGraphSchema,
 } from "./modules/memory";
 export type {
   MemoryRetrieveInput,
@@ -339,6 +367,13 @@ export type {
   MemoryEmbeddingPort,
   SyntheticObservation,
   SyntheticObservationInput,
+  KnowledgeGraph,
+  KnowledgeGraphEntity,
+  KnowledgeGraphRelation,
+  KnowledgeGraphPort,
+  KnowledgeGraphStorePort,
+  KnowledgeGraphDeleteEntitiesResult,
+  KnowledgeGraphAddObservationsResult,
 } from "./modules/memory";
 
 export { CodeNavigationPipeline } from "./modules/code-navigation";
@@ -470,6 +505,10 @@ export { AgentEnginePipeline } from "./engine/agent-engine";
 export {
   agentEngineStartInputSchema,
   agentEngineResumeInputSchema,
+  agentEngineRestoreInputSchema,
+  agentEngineRestoreResultSchema,
+  restorePointSchema,
+  restorePointSummarySchema,
   agentRunResultSchema,
   agentRunBudgetSchema,
   runEvidenceSchema,
@@ -521,6 +560,10 @@ export type {
 export type {
   AgentEngineStartInput,
   AgentEngineResumeInput,
+  AgentEngineRestoreInput,
+  AgentEngineRestoreResult,
+  RestorePoint,
+  RestorePointSummary,
   AgentRunResult,
   AgentRunBudget,
   AgentRunHandle,

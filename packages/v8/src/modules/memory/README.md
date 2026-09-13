@@ -19,8 +19,9 @@ memory/
   pipeline/                 MemoryPipeline
   actions/                  Filtering, BM25/file ranking, budgeting, commit preparation
   internal/                 Stemmer, synonyms, tokenizer, BM25 index, RRF fusion
+  graph/                    KnowledgeGraphManager + schemas (entities/relations)
   observe/                  buildSyntheticMemoryDraft (host capture helper)
-  adapters/                 InMemoryMemoryStore, HashMemoryEmbedding
+  adapters/                 InMemoryMemoryStore, HashMemoryEmbedding, graph re-exports
   contracts/
     input/                  MemoryRetrieveInput, MemoryCommitInput
     output/                 MemoryFact, MemoryRetrieveResult, MemoryCommitResult
@@ -48,6 +49,9 @@ memory/
 - Commits redact secrets, reject 5-minute exact duplicates, reinforce older hashes, and supersede Jaccard > 0.7 near-duplicates.
 - `InMemoryMemoryStore` supports tests and simple hosts. Hosts own observation files, eviction, and audit logs.
 - Optional `MemoryEmbeddingPort` stays host-injected. No model runtime lives in this module.
+- **Host durability (enterprise):** `FileWorkspaceMemoryStore` / VS Code Memento adapters serialize RMW behind a mutation queue, write via unique temp + rename, soft-skip malformed facts on load, and return honest `{ deleted, message }` delete results. This is host ownership — not part of `MemoryStorePort` contracts.
+- **Host leases:** `FileWorkspaceMemoryLeaseStore` (`.mitii/memory/leases.json`) gates `memory:consolidate` and `memory:approve_pending` with TTL acquire/release/renew (agentmemory-inspired). `approvePendingMemory` and `runMemoryConsolidateWithLease` use these leases.
+- **Knowledge graph (beside facts):** optional `KnowledgeGraphPort` / `KnowledgeGraphManager` stores entities, relations, and observations (JSONL on disk via host). Tools: `memory_graph_search`, `memory_graph_open`, `memory_graph_update`. Does not replace BM25 fact retrieve — use graph for who/owns/depends; facts for prefs/patterns.
 
 ## Ownership Boundaries
 

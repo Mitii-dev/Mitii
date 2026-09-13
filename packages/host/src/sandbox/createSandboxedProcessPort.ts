@@ -27,11 +27,23 @@ export interface SandboxPolicy {
 }
 
 export interface SandboxBackend {
-  readonly id: "seatbelt" | "bubblewrap" | "unavailable";
+  readonly id:
+    | "seatbelt"
+    | "bubblewrap"
+    | "docker"
+    | "podman"
+    | "unavailable";
   readonly available: boolean;
   readonly reason?: string;
   wrap(request: ProcessExecRequest, policy: SandboxPolicy): ProcessExecRequest;
 }
+
+export type SandboxBackendPrefer =
+  | "auto"
+  | "docker"
+  | "podman"
+  | "seatbelt"
+  | "bubblewrap";
 
 export class SandboxUnavailableError extends Error {
   readonly code = "sandbox_unavailable";
@@ -41,7 +53,37 @@ export class SandboxUnavailableError extends Error {
   }
 }
 
-export function detectSandboxBackend(): SandboxBackend {
+export function detectSandboxBackend(options?: {
+  prefer?: SandboxBackendPrefer;
+}): SandboxBackend {
+  const prefer = options?.prefer ?? "auto";
+  if (prefer === "docker") {
+    return resolveDockerBackend("docker");
+  }
+  if (prefer === "podman") {
+    return resolveDockerBackend("podman");
+  }
+  if (prefer === "seatbelt") {
+    const seatbelt = resolveSeatbeltBackend();
+    if (seatbelt.available) return seatbelt;
+    return {
+      id: "unavailable",
+      available: false,
+      reason: seatbelt.reason ?? "macOS sandbox-exec unavailable",
+      wrap: failWrap,
+    };
+  }
+  if (prefer === "bubblewrap") {
+    const bwrap = resolveBubblewrapBackend();
+    if (bwrap.available) return bwrap;
+    return {
+      id: "unavailable",
+      available: false,
+      reason: bwrap.reason ?? "Linux bwrap unavailable",
+      wrap: failWrap,
+    };
+  }
+
   const os = platform();
   if (os === "darwin") {
     const seatbelt = resolveSeatbeltBackend();
@@ -173,6 +215,55 @@ function resolveBubblewrapBackend(): SandboxBackend {
       return {
         ...request,
         argv: ["bwrap", ...bindArgs, command, ...args],
+      };
+    },
+  };
+}
+
+/**
+ * Container sandbox via Docker or Podman.
+ * Image: `MITII_SANDBOX_IMAGE` or default `alpine:3.20`
+ * (build/tag `mitii-sandbox:local` and set the env to use a custom image).
+ * Fail-closed when the runtime binary is missing.
+ */
+export function resolveDockerBackend(
+  runtime: "docker" | "podman" = "docker",
+): SandboxBackend {
+  const available = commandExists(runtime);
+  return {
+    id: runtime,
+    available,
+    reason: available ? undefined : `${runtime} not found on PATH`,
+    wrap(request, policy) {
+      const [command, ...args] = request.argv;
+      if (!command) return request;
+      const image =
+        process.env.MITII_SANDBOX_IMAGE?.trim() || "alpine:3.20";
+      const networkArgs =
+        policy.network === "deny" ? (["--network", "none"] as const) : [];
+      const volumeArgs: string[] = [
+        "-v",
+        `${policy.workspaceRoot}:${policy.workspaceRoot}`,
+      ];
+      for (const extra of policy.writablePaths ?? []) {
+        volumeArgs.push("-v", `${extra}:${extra}`);
+      }
+      const cwd = request.cwd || policy.workspaceRoot;
+      return {
+        ...request,
+        argv: [
+          runtime,
+          "run",
+          "--rm",
+          "-i",
+          ...networkArgs,
+          ...volumeArgs,
+          "-w",
+          cwd,
+          image,
+          command,
+          ...args,
+        ],
       };
     },
   };

@@ -8,7 +8,7 @@ Agent execution is **not** in this package. Hosts inject
 
 ## Install
 
-Workspace package — used by `@mitii/cli` and `@mitii/daemon`.
+Workspace package - used by `@mitii/cli` and `@mitii/daemon`.
 
 ## Quick use
 

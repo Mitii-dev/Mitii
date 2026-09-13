@@ -119,7 +119,8 @@ export function McpServersEditor({
       </label>
       <p className="field-hint">
         Off by default. Install servers from the store, enable the ones you
-        want, or remove them anytime. Custom stdio servers work the same way.
+        want, or remove them anytime. Custom stdio / SSE / streamable-http
+        servers work the same way.
       </p>
 
       <h3 className="mcp-section-title">Installed</h3>

@@ -16,6 +16,7 @@ import {
 import type {
   IntentClassification,
   InteractionIntent,
+  AmbiguousSlotKind,
 } from "./schema";
 export type TaskIntent = (typeof INTENT_CONSTANTS.TASK_INTENTS)[number];
 
@@ -97,7 +98,13 @@ export interface SuperIntentScore {
 }
 
 export interface SuperIntentClarificationOption {
-  intent: TaskIntent;
+  /**
+   * Stable namespaced id for UI resume (intent:bugfix, target:path, …).
+   * When omitted, hosts fall back to `intent` as the id.
+   */
+  id: string;
+  /** Task intent when this option is intent-shaped; optional for situation slots. */
+  intent?: TaskIntent;
   label: string;
   description: string;
   confidence: number;
@@ -106,6 +113,8 @@ export interface SuperIntentClarificationOption {
 export interface SuperIntentClarification {
   question: string;
   options: SuperIntentClarificationOption[];
+  /** Slot kind when options come from ambiguousSlots (ballot v2). */
+  slotKind?: AmbiguousSlotKind;
 }
 
 export interface SuperIntentDiagnostics {

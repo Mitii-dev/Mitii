@@ -5,6 +5,7 @@ import type { ProcessExecRequest, ProcessPort } from "@mitii/v8";
 import {
   createSandboxedProcessPort,
   detectSandboxBackend,
+  resolveDockerBackend,
   resolveSandboxPolicy,
 } from "./createSandboxedProcessPort.js";
 
@@ -72,8 +73,81 @@ describe("createSandboxedProcessPort", () => {
     expect(inner.last).toBeUndefined();
   });
 
-  it("detectSandboxBackend reports a concrete id", () => {
+  it("fails closed when docker backend is unavailable", async () => {
+    const inner = new RecordingProcessPort();
+    const port = createSandboxedProcessPort(
+      inner,
+      resolveSandboxPolicy({
+        enabled: true,
+        workspaceRoot: "/tmp/ws",
+      }),
+      {
+        id: "docker",
+        available: false,
+        reason: "docker not found on PATH",
+        wrap: () => {
+          throw new Error("should not wrap");
+        },
+      },
+    );
+    const result = await port.execFile({
+      argv: ["echo", "hi"],
+      cwd: "/tmp/ws",
+      env: {},
+      timeoutMs: 1000,
+      maxOutputBytes: 1024,
+    });
+    expect(result.exitCode).toBeNull();
+    expect(result.stderr).toContain("fail-closed");
+    expect(result.stderr).toContain("docker");
+    expect(inner.last).toBeUndefined();
+  });
+
+  it("detectSandboxBackend reports a concrete id from the union", () => {
     const backend = detectSandboxBackend();
-    expect(["seatbelt", "bubblewrap", "unavailable"]).toContain(backend.id);
+    expect([
+      "seatbelt",
+      "bubblewrap",
+      "docker",
+      "podman",
+      "unavailable",
+    ]).toContain(backend.id);
+  });
+
+  it("prefer docker uses docker id (fail-closed when missing)", () => {
+    const backend = detectSandboxBackend({ prefer: "docker" });
+    expect(backend.id).toBe("docker");
+    if (!backend.available) {
+      expect(backend.reason).toMatch(/docker/i);
+    }
+  });
+
+  it("resolveDockerBackend wraps with docker run --rm -i", () => {
+    const backend = resolveDockerBackend("docker");
+    if (!backend.available) {
+      expect(backend.id).toBe("docker");
+      return;
+    }
+    const wrapped = backend.wrap(
+      {
+        argv: ["echo", "hi"],
+        cwd: "/tmp/ws",
+        env: {},
+        timeoutMs: 1000,
+        maxOutputBytes: 1024,
+      },
+      resolveSandboxPolicy({
+        enabled: true,
+        network: "deny",
+        workspaceRoot: "/tmp/ws",
+      }),
+    );
+    expect(wrapped.argv[0]).toBe("docker");
+    expect(wrapped.argv.slice(1, 4)).toEqual(["run", "--rm", "-i"]);
+    expect(wrapped.argv).toContain("--network");
+    expect(wrapped.argv).toContain("none");
+    expect(wrapped.argv).toContain("-v");
+    expect(wrapped.argv).toContain("/tmp/ws:/tmp/ws");
+    expect(wrapped.argv).toContain("-w");
   });
 });

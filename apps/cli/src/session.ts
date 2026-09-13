@@ -74,6 +74,11 @@ export interface DriveRunOptions {
   client: MitiiClient;
   start: MitiiStartInput;
   json?: boolean;
+  /**
+   * Emit each RunEvent as one NDJSON line, then a final result line.
+   * Skips human preview (and the bulk `--json` end dump).
+   */
+  streamJson?: boolean;
   /** Non-interactive clarification answer. */
   autoClarify?: string;
   /** Non-interactive approval decision. */
@@ -103,8 +108,10 @@ export function createDefaultSessionIo(): SessionIo {
     onInterrupt: (handler) => {
       const wrapped = () => handler();
       process.on('SIGINT', wrapped);
+      process.on('SIGTERM', wrapped);
       return () => {
         process.off('SIGINT', wrapped);
+        process.off('SIGTERM', wrapped);
       };
     },
   };
@@ -183,7 +190,7 @@ export function buildResumeInput(
 function streamEvents(
   run: MitiiRun,
   io: SessionIo,
-  json: boolean,
+  options: { json: boolean; streamJson: boolean },
   events: RunEvent[],
   memoryCapture?: MemoryCaptureContext,
   userPrompt?: string,
@@ -198,7 +205,11 @@ function streamEvents(
           userPrompt,
         });
       }
-      if (json) continue;
+      if (options.streamJson) {
+        io.writeStdout(`${JSON.stringify({ type: 'event', event })}\n`);
+        continue;
+      }
+      if (options.json) continue;
       if (
         event.type === 'model_delta' &&
         typeof event.preview === 'string' &&
@@ -330,6 +341,8 @@ export async function driveRun(
   options: DriveRunOptions,
 ): Promise<DriveRunOutcome> {
   const json = options.json === true;
+  const streamJson = options.streamJson === true;
+  const machineReadable = json || streamJson;
   const events: RunEvent[] = [];
   let run = options.client.start(options.start);
   let result: AgentRunResult;
@@ -347,7 +360,7 @@ export async function driveRun(
       await streamEvents(
         run,
         options.io,
-        json,
+        { json, streamJson },
         events,
         options.memoryCapture,
         options.start.prompt,
@@ -370,10 +383,10 @@ export async function driveRun(
       (suspensionKind === 'plan_approval_required' &&
         Boolean(options.autoApproval));
 
-    // Non-interactive JSON: only auto-resume the suspension kind that has a
-    // matching flag. `--approve` must not open an interactive clarification
-    // prompt (benchmarks spawn with stdin ignored).
-    if (json && !canAutoResolve) {
+    // Non-interactive JSON / stream-json: only auto-resume the suspension kind
+    // that has a matching flag. `--approve` must not open an interactive
+    // clarification prompt (benchmarks spawn with stdin ignored).
+    if (machineReadable && !canAutoResolve) {
       break;
     }
 
@@ -383,13 +396,17 @@ export async function driveRun(
       break;
     }
 
-    if (!json) {
+    if (!machineReadable) {
       options.io.writeStderr('[mitii] resuming…\n');
     }
     run = options.client.resume(next);
   }
 
-  if (json) {
+  if (streamJson) {
+    options.io.writeStdout(
+      `${JSON.stringify({ type: 'result', result })}\n`,
+    );
+  } else if (json) {
     options.io.writeStdout(`${serializeCliJson({ result, events })}\n`);
   } else {
     if (result.answer && !events.some((e) => e.type === 'model_delta')) {

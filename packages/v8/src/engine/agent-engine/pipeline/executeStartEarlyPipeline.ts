@@ -5,6 +5,7 @@ import type {
 import {
   DECISION_POLICY_SCHEMA_VERSION,
   isExplicitWebSearchAsk,
+  needsLiveWebEvidence,
 } from "../../../modules/decision-policy";
 import type {
   PlanArtifact,
@@ -15,9 +16,18 @@ import type {
 } from "../../../modules/repository-state";
 import type { UserRequestEnvelope } from "../../../modules/request-intake";
 import { extractPrimaryUserMessage } from "../../../modules/request-understanding/intent/extractPrimaryUserMessage";
+import {
+  applyClarificationFactPatch,
+  type ClarificationFactPatch,
+} from "../../../modules/request-understanding/intent/applyClarificationFactPatch";
 import type {
   RequestUnderstandingResult,
 } from "../../../modules/request-understanding";
+import type {
+  IntentClassification,
+} from "../../../modules/request-understanding/intent/schema";
+import type { TaskIntent } from "../../../modules/request-understanding/intent/types";
+import { INTENT_CONSTANTS } from "../../../modules/request-understanding/intent/constants";
 import type {
   RepoBuildState,
   VerificationRecord,
@@ -32,6 +42,7 @@ import {
   extractMentionedPaths,
   collectUnderstandingCandidatePaths,
 } from "../actions";
+import { resolveSteeringFeatureFlags } from "../steeringFlags";
 import type {
   AgentEngineStartInput,
   AgentReasonCode,
@@ -250,11 +261,15 @@ export async function runStartEarlyPipeline(
     referencedArtifacts: understandingEnvelope.referencedArtifacts,
     userMessage: extractPrimaryUserMessage(understandingEnvelope.message),
   });
-  const understanding = await runtime.deps.understanding.understand(
+  const understandingRaw = await runtime.deps.understanding.understand(
     understandingEnvelope,
     {
       ...(diagnosticSummary ? { diagnosticSummary } : {}),
     },
+  );
+  const understanding = applyClarificationResolutionOverlay(
+    understandingRaw,
+    input.clarificationResolution,
   );
   reasonCodes.push("understanding_complete");
   runtime.emitStage(bus, runId, "understood", "completed", [
@@ -265,6 +280,8 @@ export async function runStartEarlyPipeline(
     await runtime.safeUnpin(runId, shared.pinnedState);
     return { kind: "terminal", result: await cancelledResult() };
   }
+
+  const steering = resolveSteeringFeatureFlags(input.steering);
 
   // --- Decide ---
   // Validates composed DecisionPolicyInput at its boundary (not a second
@@ -283,6 +300,7 @@ export async function runStartEarlyPipeline(
     },
     windowPolicy,
     userSafetyRules: input.userSafetyRules,
+    policyFactsFirst: steering.policyFactsFirst,
   });
   shared.route = decision.route;
   shared.planningDepth = decision.planningDepth;
@@ -308,20 +326,39 @@ export async function runStartEarlyPipeline(
   const userMessage = extractPrimaryUserMessage(envelope.message);
   const hasSearchPort = runtime.deps.tools?.hasSearchPort?.() === true;
   if (
-    isExplicitWebSearchAsk(
+    (isExplicitWebSearchAsk(
       userMessage,
       understanding.intent.classification.primaryTaskIntent,
-    ) &&
+    ) ||
+      needsLiveWebEvidence(
+        userMessage,
+        understanding.intent.classification.primaryTaskIntent,
+      )) &&
     !hasSearchPort &&
     !decision.toolGrant.allowedTools.includes("web_search")
   ) {
     const searchWarning =
-      "Web search was requested but no SearchPort is configured. Set BRAVE_API_KEY or MITII_SEARCH_API_KEY (VS Code: Mitii: Set Web Search API Key) to enable web_search.";
+      "Web search was needed but no SearchPort is configured. Set mitii.search.searxngBaseUrl (or SEARXNG_BASE_URL), BRAVE_API_KEY / MITII_SEARCH_API_KEY, or TAVILY_API_KEY to enable web_search.";
     warnings.push(searchWarning);
     runtime.emit(bus, {
       type: "warning",
       runId,
       message: searchWarning,
+      at: runtime.isoNow(),
+    });
+  }
+
+  if (
+    decision.planningDepth === "visible" &&
+    decision.reasonCodes.includes("plan_gate_suppressed_by_policy")
+  ) {
+    const planGateWarning =
+      "A visible architecture plan was drafted, but plan approval was skipped because host approval policy is set to never. Switch approval mode away from never/pilot if you want to review the plan before mutations.";
+    warnings.push(planGateWarning);
+    runtime.emit(bus, {
+      type: "warning",
+      runId,
+      message: planGateWarning,
       at: runtime.isoNow(),
     });
   }
@@ -342,6 +379,7 @@ export async function runStartEarlyPipeline(
     const clarification = buildClarificationPayload(
       understanding,
       rationale,
+      { ballotV2: steering.understandingBallotV2 },
     );
     if (runtime.deps.checkpointStore) {
       await runtime.deps.checkpointStore.save({
@@ -362,6 +400,9 @@ export async function runStartEarlyPipeline(
         startedAtMs: startedMs,
         repoBuildStateBefore: shared.repoBuildStateBefore,
         repoBuildStateAfter: shared.repoBuildStateAfter,
+        ...(clarification.clarificationSession
+          ? { clarificationSession: clarification.clarificationSession }
+          : {}),
         ...(taskListRef.current ? { taskList: taskListRef.current } : {}),
         ...(taskListRef.completedPlanStepIds &&
         taskListRef.completedPlanStepIds.length > 0
@@ -429,6 +470,44 @@ export async function runStartEarlyPipeline(
       understanding,
       decision,
       candidateRelativePaths,
+    },
+  };
+}
+
+function applyClarificationResolutionOverlay(
+  understanding: RequestUnderstandingResult,
+  resolution: AgentEngineStartInput["clarificationResolution"],
+): RequestUnderstandingResult {
+  if (!resolution) {
+    return understanding;
+  }
+  const taskIntentSet = new Set<string>(INTENT_CONSTANTS.TASK_INTENTS);
+  const patch: ClarificationFactPatch = {
+    optionId: resolution.optionId,
+    label: resolution.label,
+    interactionIntent: resolution.interactionIntent,
+    targetPath: resolution.targetPath,
+    scopeHint: resolution.scopeHint,
+    outcomeNote: resolution.outcomeNote,
+  };
+  if (
+    resolution.primaryTaskIntent &&
+    taskIntentSet.has(resolution.primaryTaskIntent)
+  ) {
+    patch.primaryTaskIntent = resolution.primaryTaskIntent as TaskIntent;
+  }
+  const classification = applyClarificationFactPatch(
+    understanding.intent.classification as IntentClassification,
+    patch,
+  );
+  return {
+    ...understanding,
+    intent: {
+      ...understanding.intent,
+      status: "accepted",
+      recommendsClarification: false,
+      clarification: undefined,
+      classification,
     },
   };
 }

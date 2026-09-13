@@ -4,6 +4,7 @@ const packages = [
   '@mitii/v8',
   '@mitii/sdk',
   '@mitii/automation',
+  '@mitii/search-kit',
   '@mitii/host',
   '@mitii/cli',
   '@mitii/daemon',

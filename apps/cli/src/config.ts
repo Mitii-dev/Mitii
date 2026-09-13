@@ -18,6 +18,8 @@ export interface MitiiHostConfig {
   providerPreset?: string;
   model?: string;
   baseUrl?: string;
+  /** Preferred free SearXNG base URL for web_search (wins over env when set). */
+  searxngBaseUrl?: string;
   embeddingBackend?: 'auto' | 'bundled' | 'openai-compatible' | 'ollama' | 'disabled';
   embeddingSource?: 'bundled' | 'openai-compatible' | 'ollama' | 'disabled';
   embeddingModel?: string;
@@ -60,6 +62,10 @@ function parseConfigObject(raw: Record<string, unknown>): MitiiHostConfig {
         : undefined,
     model: typeof safe.model === 'string' ? safe.model : undefined,
     baseUrl: typeof safe.baseUrl === 'string' ? safe.baseUrl : undefined,
+    searxngBaseUrl:
+      typeof safe.searxngBaseUrl === 'string' && safe.searxngBaseUrl.trim()
+        ? safe.searxngBaseUrl.trim()
+        : undefined,
     embeddingBackend:
       safe.embeddingBackend === 'auto' ||
       safe.embeddingBackend === 'bundled' ||
@@ -152,6 +158,7 @@ export function saveMitiiHostConfig(
   if (merged.providerPreset) payload.providerPreset = merged.providerPreset;
   if (merged.model) payload.model = merged.model;
   if (merged.baseUrl) payload.baseUrl = merged.baseUrl;
+  if (merged.searxngBaseUrl) payload.searxngBaseUrl = merged.searxngBaseUrl;
   if (merged.embeddingBackend) payload.embeddingBackend = merged.embeddingBackend;
   if (merged.embeddingSource) payload.embeddingSource = merged.embeddingSource;
   if (merged.embeddingModel) payload.embeddingModel = merged.embeddingModel;

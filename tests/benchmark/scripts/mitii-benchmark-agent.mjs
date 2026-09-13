@@ -8,12 +8,11 @@
  * - JSONL events including type "end" / "done"
  * - real workspace mutations in agent mode
  *
- * Current CLI emits one JSON blob ({ result, events }) and uses
- * `ask --mode <mode>` rather than a positional mode command. This adapter
- * indexes the isolated workspace, invokes the CLI, and rewrites output to JSONL.
+ * Uses `ask --stream-json` so stage/model events flush live. Buffering the
+ * entire `--json` blob meant harness SIGTERM left only `adapter_sigterm` with
+ * zero prior telemetry. `plan_ready` is compacted (VS Code sessionLog pattern)
+ * so one huge plan object cannot eat the runner's stdout slice.
  *
- * Important: always emit `end` with a synchronous write so a following
- * process.exit() cannot drop the marker when stdout is buffered/large.
  * On harness timeout (SIGTERM/SIGINT), emit a best-effort `end` so graders
  * still see structured output even when ask is killed mid-run.
  *
@@ -26,7 +25,9 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
-const mitiiBin = resolve(repoRoot, 'apps/cli/bin/mitii.js');
+const mitiiBin = resolve(
+  process.env.MITII_BIN || resolve(repoRoot, 'apps/cli/bin/mitii.js'),
+);
 /** Cap per-line payload so the harness does not drown in nested CLI dumps. */
 const MAX_EVENT_LINE_CHARS = 8_000;
 
@@ -72,8 +73,14 @@ for (const signal of ['SIGTERM', 'SIGINT']) {
   });
 }
 
+writeJsonLine({ type: 'stage_started', stage: 'adapter_index' });
 const index = await runMitii(['index', '--cwd', options.cwd, '--json'], {
-  inheritStdout: false,
+  onStdoutLine: null,
+});
+writeJsonLine({
+  type: 'stage_completed',
+  stage: 'adapter_index',
+  exitCode: index.exitCode,
 });
 if (index.exitCode !== 0) {
   process.stderr.write(index.stderr || index.stdout || 'mitii index failed\n');
@@ -89,7 +96,7 @@ const askArgs = [
   options.mode,
   '--cwd',
   options.cwd,
-  '--json',
+  '--stream-json',
   '--approve',
   // Benchmarks are unattended: suppress interactive clarify in Decision Policy.
   '--origin',
@@ -101,9 +108,27 @@ const askArgs = [
 ];
 if (options.echo) askArgs.push('--echo');
 
-const ask = await runMitii(askArgs, { inheritStdout: false });
-emitBenchmarkStdout(ask.stdout);
+writeJsonLine({ type: 'stage_started', stage: 'adapter_ask' });
+const ask = await runMitii(askArgs, {
+  onStdoutLine: handleStreamJsonLine,
+});
 if (ask.stderr) process.stderr.write(ask.stderr);
+writeJsonLine({
+  type: 'stage_completed',
+  stage: 'adapter_ask',
+  exitCode: ask.exitCode,
+});
+
+if (!emittedEnd) {
+  emittedEnd = true;
+  writeJsonLine({
+    type: 'end',
+    ok: false,
+    reason: 'missing_stream_result',
+    usage: null,
+  });
+}
+
 process.exit(ask.exitCode ?? 1);
 
 function parseArgs(argv) {
@@ -118,33 +143,48 @@ function parseArgs(argv) {
   return out;
 }
 
-function runMitii(args, { inheritStdout }) {
+/**
+ * @param {string[]} args
+ * @param {{ onStdoutLine: ((line: string) => void) | null }} opts
+ */
+function runMitii(args, { onStdoutLine }) {
   return new Promise((resolvePromise) => {
     const child = spawn(process.execPath, [mitiiBin, ...args], {
       cwd: repoRoot,
       env: process.env,
-      stdio: ['ignore', inheritStdout ? 'inherit' : 'pipe', 'pipe'],
+      stdio: ['ignore', 'pipe', 'pipe'],
       detached: process.platform !== 'win32',
     });
     activeChild = child;
     let stdout = '';
     let stderr = '';
-    if (!inheritStdout) {
-      child.stdout.setEncoding('utf8');
-      child.stdout.on('data', (chunk) => {
-        stdout += chunk;
-      });
-    }
+    let lineBuffer = '';
+
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => {
+      const text = String(chunk);
+      stdout += text;
+      if (!onStdoutLine) return;
+      lineBuffer += text;
+      let newline;
+      while ((newline = lineBuffer.indexOf('\n')) !== -1) {
+        const line = lineBuffer.slice(0, newline);
+        lineBuffer = lineBuffer.slice(newline + 1);
+        if (line.trim()) onStdoutLine(line);
+      }
+    });
     child.stderr.setEncoding('utf8');
     child.stderr.on('data', (chunk) => {
       stderr += chunk;
     });
     child.on('error', (error) => {
       activeChild = null;
+      if (onStdoutLine && lineBuffer.trim()) onStdoutLine(lineBuffer);
       resolvePromise({ exitCode: 1, stdout, stderr: `${stderr}${error.message}\n` });
     });
     child.on('close', (code) => {
       activeChild = null;
+      if (onStdoutLine && lineBuffer.trim()) onStdoutLine(lineBuffer);
       resolvePromise({ exitCode: code ?? 1, stdout, stderr });
     });
   });
@@ -163,50 +203,73 @@ function writeJsonLine(value) {
   writeSync(1, `${clipped}\n`);
 }
 
-function emitBenchmarkStdout(raw) {
-  const text = String(raw ?? '').trim();
-  if (!text) {
-    emittedEnd = true;
-    writeJsonLine({ type: 'end', ok: false, reason: 'empty_cli_stdout' });
-    return;
-  }
-
-  let payload;
+/**
+ * Flatten CLI `--stream-json` envelopes into benchmark JSONL events.
+ * @param {string} rawLine
+ */
+function handleStreamJsonLine(rawLine) {
+  const trimmed = rawLine.trim();
+  if (!trimmed.startsWith('{')) return;
+  let envelope;
   try {
-    payload = JSON.parse(text);
-  } catch (error) {
-    // Do not dump multi‑tens‑of‑KB truncated CLI blobs into the harness —
-    // that used to hide/race the end marker. Keep a compact breadcrumb instead.
+    envelope = JSON.parse(trimmed);
+  } catch {
     writeJsonLine({
       type: 'cli_json_parse_error',
-      bytes: Buffer.byteLength(text, 'utf8'),
-      message: error instanceof Error ? error.message : String(error),
+      message: 'stream-json line parse failed',
+      bytes: Buffer.byteLength(trimmed, 'utf8'),
     });
-    emittedEnd = true;
-    writeJsonLine({ type: 'end', ok: false, reason: 'cli_json_parse_error' });
     return;
   }
 
-  const events = Array.isArray(payload.events) ? payload.events : [];
-  for (const event of events) {
-    if (event && typeof event === 'object') {
-      writeJsonLine(event);
-    }
+  if (envelope?.type === 'event' && envelope.event && typeof envelope.event === 'object') {
+    writeJsonLine(compactRunEvent(envelope.event));
+    return;
   }
 
-  const answer =
-    typeof payload.result?.answer === 'string' ? payload.result.answer.trim() : '';
-  if (answer) {
-    writeJsonLine(answer);
+  if (envelope?.type === 'result' && envelope.result && typeof envelope.result === 'object') {
+    const result = envelope.result;
+    const answer =
+      typeof result.answer === 'string' ? result.answer.trim() : '';
+    if (answer) writeJsonLine(answer);
+    emittedEnd = true;
+    writeJsonLine({
+      type: 'end',
+      status: result.status ?? null,
+      route: result.route ?? null,
+      ok: result.status === 'completed' || result.status === 'suspended',
+      usage: result.usage ?? null,
+      durationMs: result.durationMs ?? null,
+    });
   }
+}
 
-  emittedEnd = true;
-  writeJsonLine({
-    type: 'end',
-    status: payload.result?.status ?? null,
-    route: payload.result?.route ?? null,
-    ok: payload.result?.status === 'completed' || payload.result?.status === 'suspended',
-    usage: payload.result?.usage ?? null,
-    durationMs: payload.result?.durationMs ?? null,
-  });
+/**
+ * Drop bulky nested payloads that blow the runner's 8KB stdout window.
+ * Mirrors apps/vscode/src/sessionLog.ts plan_ready compaction.
+ * @param {Record<string, unknown>} event
+ */
+function compactRunEvent(event) {
+  if (event.type !== 'plan_ready') return event;
+  const plan = event.plan && typeof event.plan === 'object' ? event.plan : null;
+  const phases = Array.isArray(plan?.phases) ? plan.phases : [];
+  const stepCount = phases.reduce(
+    (sum, phase) =>
+      sum + (Array.isArray(phase?.steps) ? phase.steps.length : 0),
+    0,
+  );
+  return {
+    type: event.type,
+    runId: event.runId,
+    at: event.at,
+    planningDepth: event.planningDepth,
+    phaseCount: event.phaseCount,
+    approvalRequired: event.approvalRequired,
+    ...(plan
+      ? {
+          objective: plan.objective,
+          stepCount,
+        }
+      : {}),
+  };
 }

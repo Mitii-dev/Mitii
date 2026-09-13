@@ -88,6 +88,7 @@ export class InMemoryFileSystemAdapter implements WorkspaceFileSystemPort {
       startLine: options?.startLine,
       endLine: options?.endLine,
       maxLines: options?.maxLines,
+      tailLines: options?.tailLines,
       textIsComplete: true,
     });
 

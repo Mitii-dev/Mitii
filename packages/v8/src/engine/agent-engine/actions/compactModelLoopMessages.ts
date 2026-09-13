@@ -1,5 +1,6 @@
 import type { ModelMessage, ModelToolCall } from "../../../modules/model-gateway";
 import type { TokenEstimatorPort } from "../../../modules/prompt-construction";
+import type { WindowPolicyCompaction } from "../../../modules/window-budget";
 
 import {
   buildCompactedToolArguments,
@@ -23,6 +24,21 @@ const DEFAULT_WARN_RATIO = 0.7;
 const DEFAULT_AUTO_RATIO = 0.8;
 const DEFAULT_HARD_RATIO = 0.92;
 
+/**
+ * Explicit compaction ladder (production path uses WindowPolicy.compaction).
+ * Stages run in order when pressure reaches auto/hard.
+ */
+export const COMPACTION_LADDER_STAGES = [
+  "soft_tool_stubs",
+  "drop_oldest_turns",
+  "dropped_turn_summary",
+  "hard_tool_compact",
+  "reinject_established_facts",
+  "reinject_memory",
+] as const;
+
+export type CompactionLadderStage = (typeof COMPACTION_LADDER_STAGES)[number];
+
 export type ModelLoopCompactionPressure = "within" | "warn" | "auto" | "hard";
 
 export interface ModelLoopCompactionThresholds {
@@ -42,6 +58,8 @@ export interface ModelLoopCompactionResult {
   summarizedDroppedTurns: boolean;
   reinjectedMemory: boolean;
   reinjectedEstablishedFacts: boolean;
+  /** Ladder stages that mutated history this turn (provenance). */
+  stagesApplied: CompactionLadderStage[];
 }
 
 export function compactModelLoopMessages(params: {
@@ -110,6 +128,7 @@ export function compactModelLoopMessages(params: {
   let summarizedDroppedTurns = false;
   let reinjectedMemory = false;
   let reinjectedEstablishedFacts = false;
+  const stagesApplied: CompactionLadderStage[] = [];
   const droppedForSummary: ModelMessage[] = [];
 
   const estimateAll = (messages: readonly ModelMessage[]): number =>
@@ -132,6 +151,7 @@ export function compactModelLoopMessages(params: {
       summarizedDroppedTurns: false,
       reinjectedMemory: false,
       reinjectedEstablishedFacts: false,
+      stagesApplied,
     };
   }
 
@@ -174,6 +194,10 @@ export function compactModelLoopMessages(params: {
     return { ...message, toolCalls };
   });
 
+  if (compacted) {
+    stagesApplied.push("soft_tool_stubs");
+  }
+
   const toolMessageIndices = working
     .map((message, index) => (message.role === "tool" ? index : -1))
     .filter((index) => index >= 0);
@@ -182,6 +206,7 @@ export function compactModelLoopMessages(params: {
   );
   const toolCallsById = collectToolCallsById(working);
 
+  let softResultCompacted = false;
   working = working.map((message, index) => {
     if (
       message.role !== "tool" ||
@@ -204,8 +229,12 @@ export function compactModelLoopMessages(params: {
         params.estimator.estimate(nextContent),
     );
     compacted = true;
+    softResultCompacted = true;
     return { ...message, content: nextContent };
   });
+  if (softResultCompacted && !stagesApplied.includes("soft_tool_stubs")) {
+    stagesApplied.push("soft_tool_stubs");
+  }
 
   usedTokens = estimateAll(working);
   const omittedBeforeDrop = usedTokens;
@@ -222,6 +251,9 @@ export function compactModelLoopMessages(params: {
     compacted = true;
     usedTokens = estimateAll(working);
   }
+  if (droppedForSummary.length > 0) {
+    stagesApplied.push("drop_oldest_turns");
+  }
 
   if (droppedForSummary.length > 0) {
     const summary = buildDroppedTurnsSummary(
@@ -234,6 +266,7 @@ export function compactModelLoopMessages(params: {
         content: summary,
       });
       summarizedDroppedTurns = true;
+      stagesApplied.push("dropped_turn_summary");
       usedTokens = estimateAll(working);
     }
   }
@@ -247,6 +280,9 @@ export function compactModelLoopMessages(params: {
     working = fullyCompacted.messages;
     truncatedTokens += fullyCompacted.truncatedTokens;
     compacted = compacted || fullyCompacted.compacted;
+    if (fullyCompacted.compacted) {
+      stagesApplied.push("hard_tool_compact");
+    }
     usedTokens = estimateAll(working);
   }
 
@@ -266,6 +302,9 @@ export function compactModelLoopMessages(params: {
       });
       working = reinjected.messages;
       reinjectedEstablishedFacts = reinjected.reinjected;
+      if (reinjected.reinjected) {
+        stagesApplied.push("reinject_established_facts");
+      }
       usedTokens = estimateAll(working);
     }
     if (params.memoryFacts && params.memoryFacts.length > 0) {
@@ -279,6 +318,9 @@ export function compactModelLoopMessages(params: {
       });
       working = reinjected.messages;
       reinjectedMemory = reinjected.reinjected;
+      if (reinjected.reinjected) {
+        stagesApplied.push("reinject_memory");
+      }
       usedTokens = estimateAll(working);
     }
   }
@@ -294,6 +336,7 @@ export function compactModelLoopMessages(params: {
     summarizedDroppedTurns,
     reinjectedMemory,
     reinjectedEstablishedFacts,
+    stagesApplied,
   };
 }
 
@@ -609,4 +652,41 @@ function compactAllToolPayloads(params: {
   });
 
   return { messages, truncatedTokens, compacted };
+}
+
+/**
+ * Production entry: thresholds come only from WindowPolicy.compaction
+ * (no parallel default-ratio path).
+ */
+export function compactModelLoopMessagesFromWindowPolicy(params: {
+  messages: readonly ModelMessage[];
+  estimator: TokenEstimatorPort;
+  budgetTokens: number;
+  compaction: WindowPolicyCompaction;
+  preservePrefix?: boolean;
+  memoryFacts?: readonly { id: string; content: string }[];
+  establishedFacts?: readonly { id: string; content: string }[];
+  skipEstablishedFactsReinject?: boolean;
+}): ModelLoopCompactionResult {
+  const { compaction } = params;
+  return compactModelLoopMessages({
+    messages: params.messages,
+    estimator: params.estimator,
+    budgetTokens: params.budgetTokens,
+    memoryFacts: params.memoryFacts,
+    establishedFacts: params.establishedFacts,
+    maxEstablishedFactReinjectChars: compaction.establishedFactReinjectChars,
+    maxMemoryReinjectChars: compaction.memoryReinjectChars,
+    recentToolMessagesToKeepFull: compaction.keepRecentToolResults,
+    compactedToolResultChars: compaction.compactedToolResultChars,
+    compactedToolArgumentChars: compaction.compactedToolArgumentChars,
+    droppedTurnSummaryChars: compaction.droppedTurnSummaryChars,
+    warnRatio: compaction.warnRatio,
+    autoRatio: compaction.autoRatio,
+    hardRatio: compaction.hardRatio,
+    autoMaxTokens: compaction.autoMaxTokens,
+    hardMaxTokens: compaction.hardMaxTokens,
+    preservePrefix: params.preservePrefix,
+    skipEstablishedFactsReinject: params.skipEstablishedFactsReinject,
+  });
 }

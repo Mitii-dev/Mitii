@@ -17,6 +17,8 @@ export interface MemoryCaptureContext {
   workspaceRoot: string;
   workspaceId: string;
   pipeline: MemoryPipeline;
+  /** Opt-in immediate promote; default false queues pending.json. */
+  autoPromote?: boolean;
 }
 
 export interface ObservingRunEvent {
@@ -56,6 +58,7 @@ export async function observeRunToolEvent(input: {
       workspaceRoot: input.capture.workspaceRoot,
       workspaceId: input.capture.workspaceId,
       pipeline: input.capture.pipeline,
+      autoPromote: input.capture.autoPromote,
       toolName: input.event.toolName,
       hookType:
         input.event.status === 'failed' ? 'post_tool_failure' : 'post_tool',

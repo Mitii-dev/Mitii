@@ -16,6 +16,8 @@ export function resolveVerificationRequirement(params: {
   mode: "ask" | "plan" | "agent";
   understanding: RequestUnderstandingResult;
   maximumWorkspaceEffect: "none" | "read" | "write";
+  /** Optional raw user message for frontend/build heuristics. */
+  message?: string;
 }): VerificationResolution {
   const { route, understanding, maximumWorkspaceEffect } = params;
   const reasonCodes: DecisionReasonCode[] = [];
@@ -42,6 +44,17 @@ export function resolveVerificationRequirement(params: {
     minimumEvidence.push("tests");
   }
 
+  const messageHint = (params.message ?? "").toLowerCase();
+  const targetHint = (understanding.taskAnalysis.targets ?? [])
+    .map((t) => t.value)
+    .join(" ")
+    .toLowerCase();
+  const combinedHint = `${messageHint} ${targetHint}`;
+  const wantsFrontendBuild =
+    /\b(?:next\.?js|vite|react|frontend|server action|'use server'|"use server")\b/i.test(
+      combinedHint,
+    ) || /\b(?:^|\/)(?:app|pages|components|src\/app)\//i.test(combinedHint);
+
   if (
     understanding.taskAnalysis.complexity === "complex" ||
     understanding.taskAnalysis.complexity === "very_complex" ||
@@ -50,6 +63,15 @@ export function resolveVerificationRequirement(params: {
   ) {
     if (!minimumEvidence.includes("typecheck")) {
       minimumEvidence.push("typecheck");
+    }
+  }
+
+  if (wantsFrontendBuild) {
+    if (!minimumEvidence.includes("typecheck")) {
+      minimumEvidence.push("typecheck");
+    }
+    if (!minimumEvidence.includes("build")) {
+      minimumEvidence.push("build");
     }
   }
 

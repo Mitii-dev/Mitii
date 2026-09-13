@@ -33,6 +33,7 @@ import {
   buildBudgetWallRationale,
   shouldOfferBudgetWallContinue,
 } from "../actions";
+import { resolveSteeringFeatureFlags } from "../steeringFlags";
 import {
   prepareRepairWorkingSet,
   completePlanStepsFromDiagnostics,
@@ -833,6 +834,7 @@ export async function finishAfterLoop(
         contextWindowTokens: windowPolicy.contextWindowTokens,
         overrides: input.loopPolicy?.thresholds,
       }).thresholds,
+        criticMode: resolveSteeringFeatureFlags(input.steering).criticMode,
       });
       if (
         currentOutcome.kind === "completed" ||

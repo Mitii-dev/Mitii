@@ -19,11 +19,19 @@ export interface ParsedCliArgs {
     | 'schedule'
     | 'serve'
     | 'events'
+    | 'restore'
+    | 'recipe'
+    | 'memory'
+    | 'commit-message'
+    | 'pr-summary'
+    | 'changelog'
     | 'unknown'
     | 'error';
   prompt?: string;
   cwd?: string;
   json?: boolean;
+  /** NDJSON RunEvent stream + final result line (ask/run). */
+  streamJson?: boolean;
   forceEcho?: boolean;
   autoClarify?: string;
   autoApproval?: 'approved' | 'denied';
@@ -37,6 +45,11 @@ export interface ParsedCliArgs {
   agent?: string;
   /** Explicitly attach skill ids for this run (repeatable). */
   skills?: string[];
+  /**
+   * Writing recipe id (`commit-message` | `pr-summary` | `changelog`).
+   * Force-attaches the matching bundled skill and builds a git-context prompt.
+   */
+  recipe?: string;
   /** Path to an image file to attach (repeatable, e.g. a screenshot/mockup). */
   images?: string[];
   /** Prompt file path, or `-` for stdin. */
@@ -83,6 +96,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   let autonomyPreset: MitiiAutonomyPreset | undefined;
   let agent: string | undefined;
   let promptFile: string | undefined;
+  let recipe: string | undefined;
   const skills: string[] = [];
   const images: string[] = [];
   let setupProvider: string | undefined;
@@ -91,7 +105,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   let loopPolicyJson: string | undefined;
   /** Once `connect` is seen, remaining argv (flags included) is channel passthrough. */
   let connectPassthrough: string[] | undefined;
-  /** Once `schedule`/`serve` is seen, remaining argv (flags included) is subcommand passthrough. */
+  /** Once `schedule`/`serve`/`events`/`restore`/`recipe` is seen, remaining argv is passthrough. */
   let automationPassthrough: string[] | undefined;
 
   for (let i = 0; i < args.length; i += 1) {
@@ -121,6 +135,10 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
     }
     if (arg === '--json') {
       flags.add('json');
+      continue;
+    }
+    if (arg === '--stream-json') {
+      flags.add('stream-json');
       continue;
     }
     if (arg === '--echo') {
@@ -226,6 +244,15 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       i = taken.next;
       continue;
     }
+    if (arg === '--recipe') {
+      const taken = takeValue(args, i, '--recipe');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      recipe = taken.value;
+      i = taken.next;
+      continue;
+    }
     if (arg === '--image') {
       const taken = takeValue(args, i, '--image');
       if ('error' in taken) {
@@ -321,7 +348,12 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       connectPassthrough = [];
     }
     if (
-      (arg === 'schedule' || arg === 'serve' || arg === 'events') &&
+      (arg === 'schedule' ||
+        arg === 'serve' ||
+        arg === 'events' ||
+        arg === 'restore' ||
+        arg === 'recipe' ||
+        arg === 'memory') &&
       positionals.length === 1
     ) {
       automationPassthrough = [];
@@ -379,6 +411,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       prompt: prompt.length > 0 ? prompt : undefined,
       cwd,
       json: flags.has('json'),
+      streamJson: flags.has('stream-json'),
       forceEcho: flags.has('echo'),
       autoClarify,
       autoApproval,
@@ -388,6 +421,35 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       autonomyPreset,
       agent,
       promptFile,
+      recipe,
+      skills: skills.length > 0 ? skills : undefined,
+      images: images.length > 0 ? images : undefined,
+      loopPolicyJson,
+      noLoopPolicy: flags.has('no-loop-policy'),
+      rest,
+    };
+  }
+  if (
+    command === 'commit-message' ||
+    command === 'pr-summary' ||
+    command === 'changelog'
+  ) {
+    const prompt = rest.join(' ').trim();
+    return {
+      command,
+      prompt: prompt.length > 0 ? prompt : undefined,
+      cwd,
+      json: flags.has('json'),
+      streamJson: flags.has('stream-json'),
+      forceEcho: flags.has('echo'),
+      autoClarify,
+      autoApproval,
+      mode: mode ?? 'ask',
+      origin,
+      autonomyPreset,
+      agent,
+      promptFile,
+      recipe: recipe ?? command,
       skills: skills.length > 0 ? skills : undefined,
       images: images.length > 0 ? images : undefined,
       loopPolicyJson,
@@ -405,7 +467,14 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       rest: connectPassthrough ?? rest,
     };
   }
-  if (command === 'schedule' || command === 'serve' || command === 'events') {
+  if (
+    command === 'schedule' ||
+    command === 'serve' ||
+    command === 'events' ||
+    command === 'restore' ||
+    command === 'recipe' ||
+    command === 'memory'
+  ) {
     return {
       command,
       cwd,

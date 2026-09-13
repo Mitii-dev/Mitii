@@ -19,6 +19,8 @@ export interface LineWindowRequest {
   startLine?: number;
   endLine?: number;
   maxLines?: number;
+  /** When set, select the last N lines (ignores startLine/endLine/maxLines). */
+  tailLines?: number;
   /** Soft character budget for the returned content (line-boundary clip). */
   maxChars?: number;
   /**
@@ -46,6 +48,49 @@ export function selectLineWindow(request: LineWindowRequest): LineWindowResult {
   const lines = splitLines(request.text);
   const textIsComplete = request.textIsComplete !== false;
   const totalLines = textIsComplete ? lines.length : undefined;
+
+  if (request.tailLines !== undefined) {
+    const tail = Math.max(1, Math.floor(request.tailLines));
+    if (lines.length === 0) {
+      return {
+        content: "",
+        startLine: 1,
+        endLine: 0,
+        totalLines: textIsComplete ? 0 : undefined,
+        eof: textIsComplete,
+        truncated: !textIsComplete,
+        ...(!textIsComplete ? { truncationReason: "byte_cap" as const } : {}),
+      };
+    }
+    const startIndex = Math.max(0, lines.length - tail);
+    const maxChars =
+      request.maxChars !== undefined
+        ? Math.max(1, Math.floor(request.maxChars))
+        : undefined;
+    let endIndex = lines.length;
+    let reason: ReadFileTruncationReason | undefined = !textIsComplete
+      ? "byte_cap"
+      : startIndex > 0
+        ? "max_lines"
+        : undefined;
+    if (maxChars !== undefined) {
+      const clipped = clipLinesToCharBudget(lines, startIndex, endIndex, maxChars);
+      endIndex = clipped.endExclusive;
+      if (clipped.truncated) {
+        reason = "byte_cap";
+      }
+    }
+    const slice = lines.slice(startIndex, endIndex);
+    return {
+      content: slice.join("\n"),
+      startLine: startIndex + 1,
+      endLine: endIndex > startIndex ? endIndex : startIndex,
+      totalLines,
+      eof: textIsComplete && endIndex >= lines.length,
+      truncated: Boolean(reason),
+      ...(reason ? { truncationReason: reason } : {}),
+    };
+  }
 
   const requestedStart = Math.max(1, Math.floor(request.startLine ?? 1));
   const requestedEnd =

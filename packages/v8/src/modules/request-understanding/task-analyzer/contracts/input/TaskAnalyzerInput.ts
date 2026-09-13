@@ -14,7 +14,10 @@ const superIntentScoreSchema = z.object({
 });
 
 const superIntentClarificationOptionSchema = z.object({
-  intent: intentClassificationSchema.shape.primaryTaskIntent,
+  /** Namespaced option id for structured resume. */
+  id: z.string().min(1).max(200),
+  /** Present when the option is intent-shaped; optional for situation slots. */
+  intent: intentClassificationSchema.shape.primaryTaskIntent.optional(),
   label: z.string(),
   description: z.string(),
   confidence: z.number().min(0).max(1),
@@ -23,6 +26,9 @@ const superIntentClarificationOptionSchema = z.object({
 const superIntentClarificationSchema = z.object({
   question: z.string(),
   options: z.array(superIntentClarificationOptionSchema),
+  slotKind: z
+    .enum(["interaction", "target", "scope", "outcome", "intent"])
+    .optional(),
 });
 
 const superIntentDiagnosticsSchema = z.object({

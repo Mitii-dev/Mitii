@@ -2,7 +2,7 @@
 
 Thanks for looking at Mitii. This doc covers how to get a dev environment running, where things live in the repo, and what we expect in pull requests.
 
-Maintainer: **codewithshinde** — [codewithshinde@gmail.com](mailto:codewithshinde@gmail.com)
+Maintainer: **codewithshinde** - [codewithshinde@gmail.com](mailto:codewithshinde@gmail.com)
 
 ---
 
@@ -10,7 +10,7 @@ Maintainer: **codewithshinde** — [codewithshinde@gmail.com](mailto:codewithshi
 
 Mitii is released under [AGPL-3.0-or-later](LICENSE). By contributing code, you agree that your contributions will be licensed under the same terms. If that doesn't work for your employer or use case, reach out before investing a large amount of time.
 
-For bugs and feature ideas, open an [issue](https://github.com/Mitii-dev/Mitii/issues) first when the change is non-trivial — saves everyone a rework loop.
+For bugs and feature ideas, open an [issue](https://github.com/Mitii-dev/Mitii/issues) first when the change is non-trivial - saves everyone a rework loop.
 
 ---
 
@@ -51,15 +51,15 @@ Git hooks are installed automatically via `pnpm install` -> `prepare` -> `script
 3. In the Extension Development Host, open a project folder
 4. Click the Mitii icon in the activity bar
 
-Automated F5 gate (no Extension Host): `pnpm run f5:verify` — see [docs/INITIAL_LAUNCH.md](docs/INITIAL_LAUNCH.md).
+Automated launch gate (no Extension Host): `pnpm run verify:launch` - see [docs/INITIAL_LAUNCH.md](docs/INITIAL_LAUNCH.md).
 
 ### Watch mode (day-to-day dev)
 
 ```bash
-pnpm --filter @mitii/vscode build
+pnpm --filter ./apps/vscode build
 ```
 
-Rebuild the extension package after host changes. Phase 17 F5 wiring is complete (`docs/INITIAL_LAUNCH.md`). Reload the Extension Development Host after rebuilds.
+Rebuild the extension after host changes. Reload the Extension Development Host after rebuilds.
 
 ---
 
@@ -69,23 +69,40 @@ Canonical packaging layout: [docs/REPO_LAYOUT.md](docs/REPO_LAYOUT.md). Canonica
 
 ```
 mitii-ai-agent/
-├── packages/v8/                  # @mitii/v8 — host-neutral runtime
-├── packages/sdk/                 # @mitii/sdk — public API over V8
-├── apps/vscode/                  # VS Code extension
-├── apps/cli/                     # Headless CLI
-├── tests/                        # Phase 14 architecture, consumer, solid benchmark
-├── docs/
-├── scripts/
-├── pnpm-workspace.yaml
-└── package.json                  # Private workspace orchestrator
+|-- packages/v8/                  # @mitii/v8 - host-neutral runtime
+|-- packages/sdk/                 # @mitii/sdk - public API + bundled skills/
+|-- packages/host/                # @mitii/host - indexing, ports, recipes
+|-- packages/automation/          # @mitii/automation
+|-- apps/vscode/                  # VS Code extension
+|-- apps/cli/                     # Headless CLI
+|-- apps/daemon/                  # Long-lived automation
+|-- tests/benchmark/              # Solid benchmark
+|-- docs/
+|-- scripts/
+|-- pnpm-workspace.yaml
+`-- package.json                  # Private workspace orchestrator
 ```
 
-**Related repos** (standalone — not part of this package):
+**Related repos** (standalone - not part of this package):
 
-- [mitii-docs](https://github.com/codewithshinde/mitii-docs) → docs.mitii.dev
-- [mitii-website](https://github.com/codewithshinde/mitii-website) → mitii.dev
+- [mitii-docs](https://github.com/codewithshinde/mitii-docs) -> docs.mitii.dev
+- [mitii-website](https://github.com/codewithshinde/mitii-website) -> mitii.dev
 
-**Rule of thumb:** hosts use `@mitii/sdk` only. Do not import V8 `actions/` / `internal/`. Prefer `packages → apps` dependency direction. Do not recreate purged `legacy/` or `src/kernel`.
+**Rule of thumb:** hosts use `@mitii/sdk` only. Do not import V8 `actions/` / `internal/`. Prefer `packages -> apps` dependency direction.
+
+### Skills
+
+Bundled skills: `packages/sdk/skills/`. Format: [docs/SKILLS_FORMAT.md](docs/SKILLS_FORMAT.md).
+
+Writing recipes (CLI + VS Code SCM):
+
+| Entry | Skill |
+|---|---|
+| `mitii commit-message` / Generate Commit Message | `git-commit-message` |
+| `mitii pr-summary` / Generate PR Summary | `git-pr-summary` |
+| `mitii changelog` / Generate Changelog | `release-changelog` |
+
+Details: [apps/cli/README.md](apps/cli/README.md), [apps/vscode/README.md](apps/vscode/README.md).
 
 ### Benchmark
 
@@ -94,7 +111,7 @@ pnpm run benchmark:validate
 pnpm run benchmark
 ```
 
-See [tests/benchmark/README.md](tests/benchmark/README.md) and [docs/TESTS.md](docs/TESTS.md). The old `tools/benchmark` harness was purged with `legacy/` (2026-07-26).
+See [tests/benchmark/README.md](tests/benchmark/README.md) and [docs/TESTS.md](docs/TESTS.md).
 
 ---
 
@@ -103,7 +120,7 @@ See [tests/benchmark/README.md](tests/benchmark/README.md) and [docs/TESTS.md](d
 ### Run tests
 
 ```bash
-pnpm test               # architecture + selected Vitest suites (auto-heals SQLite ABI)
+pnpm test               # Vitest suites (auto-heals SQLite ABI)
 pnpm run test:v8        # @mitii/v8 package tests
 pnpm run test:watch     # watch mode
 ```
@@ -113,17 +130,17 @@ If `better-sqlite3` was last built for Electron, pretest runs `rebuild:node` aut
 ### Typecheck
 
 ```bash
-pnpm run typecheck      # typecheck v8 + sdk + cli + vscode
+pnpm run typecheck
 ```
 
 ### Build a VSIX
 
 ```bash
 pnpm run build
-pnpm run package        # outputs mitii-ai-agent-<version>.vsix via @mitii/vscode
+pnpm run package        # outputs mitii-ai-agent-<version>.vsix
 ```
 
-Install locally: **Extensions → ... → Install from VSIX**.
+Install locally: **Extensions -> ... -> Install from VSIX**.
 
 ### Native module rebuild
 
@@ -133,22 +150,18 @@ Install locally: **Extensions → ... → Install from VSIX**.
 | F5 / VS Code extension host | `pnpm run rebuild:native` |
 | Cursor extension host | `MITII_EDITOR=cursor pnpm run rebuild:native` |
 | Local vitest / CLI only | `pnpm run rebuild:node` |
-| Both (Electron staged + Node restored) | `pnpm run rebuild:all` |
 
-`rebuild:native` stages `better_sqlite3.node` into `apps/vscode/dist/native`, then restores the system Node ABI in `node_modules`. The extension host loads the staged Electron binding; Vitest/CLI use `node_modules`. Without the staged Electron binding, code/text indexes fail in the Extension Host.
-
-If SQLite throws on startup, this is almost always the fix.
+`rebuild:native` stages `better_sqlite3.node` into `apps/vscode/dist/native`, then restores the system Node ABI in `node_modules`. Without the staged Electron binding, code/text indexes fail in the Extension Host.
 
 ### Audit scripts
 
 ```bash
 pnpm run audit:dependencies
-pnpm run audit:dead-code
 pnpm run check:circular-deps
 pnpm run audit:engines
 ```
 
-These are useful before large refactors. Not required on every PR, but run them if you touch imports or dependencies.
+Useful before large refactors. Not required on every PR.
 
 ---
 
@@ -160,7 +173,7 @@ Keep it simple: `fix/approval-queue-stall`, `feat/lancedb-backend`, `docs/contri
 
 ### Commit messages
 
-Follow what's already in the log — short imperative subject, optional body:
+Follow what's already in the log - short imperative subject, optional body:
 
 ```
 feat: add session log export command
@@ -187,7 +200,7 @@ The pre-commit hook may stage a version bump in `package.json`. Include that in 
 
 ### Adding a setting
 
-1. `package.json` → `contributes.configuration.properties`
+1. `package.json` -> `contributes.configuration.properties`
 2. Zod schema in `src/core/config/schema.ts`
 3. Reader in `src/core/config/vscodeSettings.ts`
 4. UI control in `src/webview-ui/src/components/SettingsPanel.tsx` if user-facing
@@ -201,7 +214,7 @@ The pre-commit hook may stage a version bump in `package.json`. Include that in 
 3. Run `pnpm run typecheck` and `pnpm test`
 4. Manually smoke-test in the Extension Development Host if you touched agent behavior or UI
 5. Open a PR against `main` with:
-   - What changed and why (2–4 sentences is fine)
+   - What changed and why (2-4 sentences is fine)
    - How you tested it
    - Screenshots or a short recording for UI changes
 
@@ -214,9 +227,9 @@ I review PRs as time allows. Small, well-scoped changes land faster.
 Include:
 
 - VS Code (or Cursor) version
-- Mitii version (`package.json` → `version`)
+- Mitii version (`package.json` -> `version`)
 - OS
-- Provider config (model name and base URL — no API keys)
+- Provider config (model name and base URL - no API keys)
 - Steps to reproduce
 - Relevant session log from `.mitii/logs/` if you have one (`Mitii: Export Session Log`)
 
@@ -230,4 +243,4 @@ Don't open public issues for exploitable vulnerabilities. Email **codewithshinde
 
 ## Questions
 
-GitHub Discussions aren't set up yet — issues tagged `question` or a direct email to codewithshinde@gmail.com both work.
+GitHub Discussions aren't set up yet - issues tagged `question` or a direct email to codewithshinde@gmail.com both work.

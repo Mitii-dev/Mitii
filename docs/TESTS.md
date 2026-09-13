@@ -16,11 +16,23 @@ packages/v8/src/**/tests/         # co-located module specs
 
 ```text
 tests/
-├── README.md                 # short overview + quick start
-├── package.json              # forwards to @mitii/solid-benchmark
-└── benchmark/
-    └── README.md             # full install / run / cleanup guide
+|-- README.md                 # short overview + quick start
+|-- package.json              # forwards to @mitii/solid-benchmark
+`-- benchmark/
+    `-- README.md             # full install / run / cleanup guide
 ```
+
+## Behavioral vs golden policy tests
+
+| Suite | Location | Asserts |
+|-------|----------|---------|
+| Golden decision cases | `packages/v8/src/modules/decision-policy/tests/` | Route/grant expectations — **100% pass** merge gate |
+| Mode seal invariants | `.../decision-policy/tests/unit/ModeSealInvariants.spec.ts` | Ask/Plan never gain writes |
+| Behavioral evals | `packages/v8/src/engine/agent-engine/tests/behavioral/` | Real coding prompts → deny tools / mode seals (not prose) |
+| Progressive tools | `packages/v8/src/engine/tool-runtime/tests/DescribeTool.spec.ts`, `packages/v8/src/engine/agent-engine/actions/tests/filterToolDefinitions.spec.ts` | INDEX stubs + `describe_tool` grant-bound hydrate |
+| RecipeSpec | `packages/host/src/recipes/recipeSpec.spec.ts` | Params compile; never emits ToolGrant fields |
+| Adversary | `tool-runtime/tests/Adversary.spec.ts` | BLOCK/ASK/fail-closed; unset = no-op |
+| Hooks / corpus / child | `packages/host/src/hooks`, `corpus`, `runtime` | Restrict-only hooks; corpus RAG opt-in; child mode ≤ parent |
 
 ## Package tests
 
@@ -33,14 +45,15 @@ pnpm run check:architecture
 
 Start here:
 
-1. [tests/README.md](../tests/README.md) — overview  
-2. [tests/benchmark/README.md](../tests/benchmark/README.md) — step-by-step  
+1. [tests/README.md](../tests/README.md) - overview  
+2. [tests/benchmark/README.md](../tests/benchmark/README.md) - step-by-step  
    (fixtures install & cleanup, model setup, run options, reports)
 
 ```bash
 pnpm benchmark:fixtures   # install fixture deps
 pnpm benchmark:reset      # wipe + reinstall all fixtures
 pnpm benchmark:validate
+pnpm --filter @mitii/solid-benchmark suites   # live case counts
 pnpm benchmark:frontend
 ```
 

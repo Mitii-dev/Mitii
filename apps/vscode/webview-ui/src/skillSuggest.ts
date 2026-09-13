@@ -48,9 +48,9 @@ export function skillCatalogSuggestSideEffects(
   };
 }
 
-/** Returns the partial id after `@skill:` at end of input, or null. */
+/** Returns the partial id after `@skill` / `@skill:` at end of input, or null. */
 export function detectSkillMentionQuery(value: string): string | null {
-  const skillMatch = value.match(/@skill:([a-z0-9_.-]*)$/i);
+  const skillMatch = value.match(/@skill:?([a-z0-9_.-]*)$/i);
   if (!skillMatch) {
     return null;
   }

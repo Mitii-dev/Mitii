@@ -48,6 +48,10 @@ tool-runtime/
 - Mutation tools (`apply_patch`, delete, move) authorize against `grant.mutationPathScopes` when present; discovery tools keep `grant.pathScopes`.
 - `apply_patch` keeps exact `oldText` matching (no fuzzy match, no regex). Default requires a unique occurrence. Optional `replaceAll: true` replaces every exact occurrence in that file; empty `oldText` still means create or full-file replace and rejects `replaceAll`. Distinct reason codes describe why a hunk failed: `old_text_not_found`, `old_text_ambiguous`, `patch_target_missing`, `patch_hash_mismatch`, `identical_old_and_new`, `patch_syntax_invalid`. Retryable conflicts, including no-op `identical_old_and_new`, attach clipped `currentContent` in the tool result. `patch_conflict` remains as a legacy umbrella for older hosts.
 - Preflight coerces common model mis-encodings for `apply_patch`: a flat `{ path, oldText, newText }` object is wrapped into `{ patches: [...] }`, and a JSON-string `patches` value is parsed into an array before schema validation.
+- Preflight also normalizes common discovery/command aliases via
+  `normalizeCommonToolArguments`: `search_files.pattern` → `query`,
+  string `maxMatches`, `run_readonly_command`/`run_command` `command` →
+  `argv`, and numeric strings for ZodNumber fields.
 - Process execution always goes through `ProcessPort`.
 - Network access always goes through `NetworkPort` and host allow-lists.
 - Output is bounded by the minimum of tool, grant, and session limits.
@@ -57,6 +61,34 @@ tool-runtime/
   contract supports `mode: "auto" | "literal" | "regex"` so hosts and models
   can search text generically without depending on a specific CLI search tool.
   Auto mode prefers literal search unless the query shows clear regex intent.
+- **Path containment** resolves case-insensitive and NFC-equivalent path
+  components, rejects ambiguous Unicode collisions, and compares realpath'd
+  targets against the physical workspace root (macOS `/var` → `/private/var`
+  alias safe). Helpers: `matchDirectoryEntry`, `expandRootAliases`.
+- **`fetch_url` / `fetch_docs`** support continuation windows via
+  `startIndex` / `maxLength` and return `nextStartIndex` + `totalLength` when
+  more content remains.
+- **`sequential_thinking`** is a first-party metacognition tool (process-local
+  history keyed by workspace root): revisions, branches, coerced booleans.
+- **`get_current_time` / `convert_time`** are read-only IANA timezone tools.
+- **Git argv safety:** path args must not start with `-`; diffs append paths
+  after `--` (`GitArgSafety`).
+- **Git reads:** optional `GitPort.log` / `show` / `listBranches` power
+  `read_git_log`, `read_git_show`, `read_git_branches`.
+- **Knowledge graph:** optional `ToolRuntimePorts.knowledgeGraph` powers
+  `memory_graph_search` / `memory_graph_open` / `memory_graph_update`
+  (relational memory beside MemoryFact).
+- **`fetch_url` intent:** default `autonomous` checks robots.txt; `intent=user`
+  skips robots for explicit user-requested URLs (distinct User-Agents).
+- **`read_file` head/tail:** first/last N lines without combining with line ranges.
+- **`directory_tree`:** recursive JSON tree (skips `.git` / `node_modules` by default).
+- **`describe_tool`:** progressive disclosure meta-tool. Returns the full
+  model-facing JSON Schema for a tool already in the grant. Cannot unlock
+  tools Decision Policy did not grant. Agent Engine attaches INDEX stubs via
+  `filterToolDefinitions`; execution still uses registered Zod schemas.
+- **`ToolAdversaryPort`:** optional restrict-only fence after ValidateGrant /
+  shadow and before approval. BLOCK → `tool_not_allowed`; ASK →
+  `approval_required`. Fail-closed by default. Never widens grants.
 
 ## Ownership Boundaries
 

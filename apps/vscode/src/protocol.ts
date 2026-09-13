@@ -29,7 +29,7 @@ export type McpRuntimeStatus =
   | 'unsupported_runtime';
 
 export interface McpServerConfig {
-  /** Stable id (builtins: filesystem, sequential-thinking, memory, puppeteer). */
+  /** Stable id (builtins: filesystem, sequential-thinking, memory, puppeteer, excalidraw). */
   id?: string;
   name: string;
   transport: McpTransport;
@@ -148,6 +148,14 @@ export interface AutocompleteSettingsSnapshot {
   prefixChars: number;
   suffixChars: number;
   temperature: number;
+}
+
+/** Web search provider settings (SearXNG URL + optional Brave key status). */
+export interface SearchSettingsSnapshot {
+  /** Preferred free SearXNG base URL (empty = use env / Brave / Tavily). */
+  searxngBaseUrl: string;
+  /** True when SecretStorage or env has a Brave/Mitii search API key. */
+  hasApiKey: boolean;
 }
 
 export interface SettingsProfileView {
@@ -436,6 +444,24 @@ export interface PathSuggestion {
   kind: 'file' | 'folder';
 }
 
+/** Excalidraw / MCP Apps diagram card shown in the chat timeline. */
+export interface McpAppViewPayload {
+  serverId: string;
+  tool: string;
+  title: string;
+  checkpointId?: string;
+  /** Inline SVG preview (data URL). */
+  svgDataUrl?: string;
+  /** MCP Apps HTML when resources/read succeeded (iframe srcdoc). */
+  html?: string;
+  paths: {
+    md?: string;
+    docsMd?: string;
+    excalidraw?: string;
+    svg?: string;
+  };
+}
+
 export interface ActivityEventPayload {
   id: string;
   at: number;
@@ -448,10 +474,12 @@ export interface ActivityEventPayload {
     | 'warning'
     | 'suspended'
     | 'terminal'
-    | 'info';
+    | 'info'
+    | 'mcp_app';
   title: string;
   detail?: string;
   status?: string;
+  mcpApp?: McpAppViewPayload;
 }
 
 export interface ClarificationOptionView {
@@ -606,6 +634,7 @@ export interface CheckpointItemView {
   id: string;
   label: string;
   createdAt: string;
+  changedPaths?: string[];
 }
 
 export interface SkillCatalogItem {
@@ -653,6 +682,8 @@ export type WebviewToHostMessage =
       approvalMode?: string;
       pinnedPaths?: string[];
       requiredSkillIds?: string[];
+      /** Attached MCP server ids for this turn (@mcp: / pin chips). */
+      requiredMcpServerIds?: string[];
     }
   | { type: 'cancel' }
   | {
@@ -694,6 +725,7 @@ export type WebviewToHostMessage =
   | { type: 'restoreCheckpoint'; id: string }
   | { type: 'deleteCheckpoint'; id: string }
   | { type: 'clearCheckpoints' }
+  | { type: 'reviewCheckpointChanges'; id: string }
   | { type: 'addMemory'; text: string }
   | { type: 'deleteMemory'; id: string }
   | { type: 'clearMemory' }
@@ -724,6 +756,7 @@ export type WebviewToHostMessage =
         >
       >;
       autocomplete?: Partial<AutocompleteSettingsSnapshot>;
+      search?: Partial<Pick<SearchSettingsSnapshot, 'searxngBaseUrl'>>;
       ui?: UiSettingsPatch;
       workspaceRootOverride?: string | null;
       mcp?: McpSettings;
@@ -736,6 +769,8 @@ export type WebviewToHostMessage =
     }
   | { type: 'settings.setApiKey' }
   | { type: 'settings.clearApiKey' }
+  | { type: 'settings.setSearchApiKey' }
+  | { type: 'settings.clearSearchApiKey' }
   | { type: 'settings.resetTokenBudget' }
   | { type: 'settings.resetLoopPolicy' }
   | {
@@ -776,6 +811,7 @@ export type HostToWebviewMessage =
       workspace: WorkspaceSnapshotInfo;
       provider: ProviderSettingsSnapshot;
       autocomplete: AutocompleteSettingsSnapshot;
+      search: SearchSettingsSnapshot;
       profiles: SettingsProfileView[];
       activeProfileId: string;
       index: IndexStatusSnapshot;
@@ -799,6 +835,7 @@ export type HostToWebviewMessage =
       type: 'settings';
       provider: ProviderSettingsSnapshot;
       autocomplete: AutocompleteSettingsSnapshot;
+      search: SearchSettingsSnapshot;
       profiles: SettingsProfileView[];
       activeProfileId: string;
       ui: UiSettingsSnapshot;

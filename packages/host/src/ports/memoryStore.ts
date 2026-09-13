@@ -1,4 +1,5 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { randomBytes } from 'node:crypto';
+import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 import {
@@ -22,13 +23,43 @@ interface MemoryEnvelope {
   facts: MemoryFact[];
 }
 
+export interface MemoryDeleteResult {
+  id: string;
+  deleted: boolean;
+  message: string;
+}
+
+/**
+ * Serializes read-modify-write mutations so concurrent commits/deletes from one
+ * agent turn cannot last-write-wins or corrupt the envelope (servers-main memory pattern).
+ */
+class MutationQueue {
+  private chain: Promise<unknown> = Promise.resolve();
+
+  public enqueue<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.chain.then(operation, operation);
+    this.chain = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+}
+
 /**
  * Durable MemoryStorePort under `<workspace>/.mitii/memory/facts.json`.
  * Shared by CLI (and any non-Memento host).
+ *
+ * Persistence guarantees:
+ * - Same-directory temp + rename (crash-safe)
+ * - Mutation queue (no concurrent RMW races)
+ * - Soft-fail load (skip malformed facts; never wipe the store)
+ * - Honest deletes (`deleted: false` when id missing)
  */
 export class FileWorkspaceMemoryStore implements MemoryStorePort {
   private readonly filePath: string;
   private readonly workspaceRoot: string;
+  private readonly mutations = new MutationQueue();
 
   constructor(workspaceRoot: string, private readonly workspaceId: string) {
     this.workspaceRoot = workspaceRoot;
@@ -50,16 +81,20 @@ export class FileWorkspaceMemoryStore implements MemoryStorePort {
   }
 
   public async commit(fact: MemoryFactDraft): Promise<void> {
-    const parsed = parseFact(fact, this.workspaceId);
-    if (!parsed) {
-      throw new Error('Memory commit rejected: fact failed schema validation.');
-    }
-    const facts = await this.readFacts();
-    const next = [
-      ...facts.filter((existing) => existing.id !== parsed.id),
-      parsed,
-    ];
-    await this.writeFacts(next);
+    return this.mutations.enqueue(async () => {
+      const parsed = parseFact(fact, this.workspaceId);
+      if (!parsed) {
+        throw new Error(
+          'Memory commit rejected: fact failed schema validation.',
+        );
+      }
+      const facts = await this.readFacts();
+      const next = [
+        ...facts.filter((existing) => existing.id !== parsed.id),
+        parsed,
+      ];
+      await this.writeFacts(next);
+    });
   }
 
   public async list(scope?: MemoryScope): Promise<readonly MemoryFact[]> {
@@ -73,23 +108,43 @@ export class FileWorkspaceMemoryStore implements MemoryStorePort {
     if (ids.length === 0) {
       return;
     }
-    const wanted = new Set(ids);
-    const facts = await this.readFacts();
-    const next = facts.map((fact) =>
-      wanted.has(fact.id) ? touchAccess(fact, at) : fact,
-    );
-    await this.writeFacts(next);
+    return this.mutations.enqueue(async () => {
+      const wanted = new Set(ids);
+      const facts = await this.readFacts();
+      const next = facts.map((fact) =>
+        wanted.has(fact.id) ? touchAccess(fact, at) : fact,
+      );
+      await this.writeFacts(next);
+    });
   }
 
-  public async delete(id: string, reason = 'user_delete'): Promise<void> {
-    const facts = await this.readFacts();
-    await this.writeFacts(facts.filter((fact) => fact.id !== id));
-    await appendMemoryAudit(this.workspaceRoot, {
-      at: new Date().toISOString(),
-      action: 'delete',
-      reason,
-      memoryIds: [id],
-      workspaceId: this.workspaceId,
+  public async delete(
+    id: string,
+    reason = 'user_delete',
+  ): Promise<MemoryDeleteResult> {
+    return this.mutations.enqueue(async () => {
+      const facts = await this.readFacts();
+      const existed = facts.some((fact) => fact.id === id);
+      if (!existed) {
+        return {
+          id,
+          deleted: false,
+          message: `Memory id "${id}" not found.`,
+        };
+      }
+      await this.writeFacts(facts.filter((fact) => fact.id !== id));
+      await appendMemoryAudit(this.workspaceRoot, {
+        at: new Date().toISOString(),
+        action: 'delete',
+        reason,
+        memoryIds: [id],
+        workspaceId: this.workspaceId,
+      });
+      return {
+        id,
+        deleted: true,
+        message: `Deleted memory id "${id}".`,
+      };
     });
   }
 
@@ -108,6 +163,7 @@ export class FileWorkspaceMemoryStore implements MemoryStorePort {
     try {
       parsed = JSON.parse(raw);
     } catch {
+      // Soft-fail: corrupt envelope must not wipe durable memory on next write.
       return [];
     }
 
@@ -129,9 +185,18 @@ export class FileWorkspaceMemoryStore implements MemoryStorePort {
       facts: validated,
     };
     await mkdir(dirname(this.filePath), { recursive: true });
-    const tempPath = `${this.filePath}.${process.pid}.tmp`;
-    await writeFile(tempPath, `${JSON.stringify(envelope, null, 2)}\n`, 'utf8');
-    await rename(tempPath, this.filePath);
+    const tempPath = `${this.filePath}.${process.pid}.${randomBytes(8).toString('hex')}.tmp`;
+    try {
+      await writeFile(
+        tempPath,
+        `${JSON.stringify(envelope, null, 2)}\n`,
+        'utf8',
+      );
+      await rename(tempPath, this.filePath);
+    } catch (error) {
+      await unlink(tempPath).catch(() => undefined);
+      throw error;
+    }
   }
 }
 

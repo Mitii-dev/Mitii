@@ -1,4 +1,5 @@
 import { INTENT_CATALOG } from "../../catalog";
+import { DEFAULT_CLOSED_SKILL_TAGS } from "../../intersectRecommendedSkillTags";
 
 export const INTENT_DESCRIPTIONS_PROMPT = Object.values(INTENT_CATALOG)
   .map((intent) => {
@@ -30,6 +31,10 @@ export const INTENT_DESCRIPTIONS_PROMPT = Object.values(INTENT_CATALOG)
     ].join("\n");
   })
   .join("\n\n");
+
+export const ALLOWED_SKILL_TAGS_PROMPT = [...DEFAULT_CLOSED_SKILL_TAGS]
+  .sort()
+  .join(", ");
 
 export const LLM_INTENT_CLASSIFICATION_SYSTEM_PROMPT = [
   "You are an intent classifier for an AI coding agent.",
@@ -65,13 +70,22 @@ export const LLM_INTENT_CLASSIFICATION_SYSTEM_PROMPT = [
   "",
   INTENT_DESCRIPTIONS_PROMPT,
   "",
+  "ALLOWED_SKILL_TAGS (choose only from this list; omit if none apply):",
+  "",
+  ALLOWED_SKILL_TAGS_PROMPT,
+  "",
   "OUTPUT",
   "",
   "Return exactly one JSON object matching this schema:",
   '- interactionIntent MUST be exactly one of: "question", "plan", "act", "help", "unknown"',
   "- primaryTaskIntent MUST be exactly one of the task IDs listed above.",
   "- taskHints is optional evidence only: targets, constraints, outcomes, clarity,",
-  "  ambiguityQuestion, and recommendedSkillTags (soft tags, not skill IDs).",
+  "  ambiguityQuestion, recommendedSkillTags (soft tags from ALLOWED_SKILL_TAGS only,",
+  "  not skill IDs), and ambiguousSlots (situation clarify when ambiguity materially",
+  "  changes interaction, target, scope, or outcome).",
+  "- When needsClarification=true, prefer ambiguousSlots with 2-4 concrete options",
+  "  using namespaced ids: interaction:question|plan|act, target:<path>,",
+  "  scope:one_file|module|repo, outcome:<short-slug>, intent:<taskIntentId>.",
   "- Do not choose routes, tool grants, or skill IDs.",
   "",
   JSON.stringify(
@@ -101,6 +115,7 @@ export const LLM_INTENT_CLASSIFICATION_SYSTEM_PROMPT = [
         requestedOutcomes: ["Failing auth tests pass"],
         clarity: "clear",
         recommendedSkillTags: ["localize", "null-safety"],
+        ambiguousSlots: [],
       },
     },
     null,

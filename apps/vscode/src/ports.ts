@@ -23,20 +23,25 @@ import {
   createFileSystemSkillsCatalog,
   createHostCodeNavigationPort,
   createHostLlmPorts,
+  createHostNetworkPort,
   createHostRepositoryGraphPort,
   createOptionalSearchPort,
   createSandboxedProcessPort,
   createWorkspaceCheckpointStore,
+  createWorkspaceKnowledgeGraph,
   createWorkspaceVerificationStore,
+  detectSandboxBackend,
   resolveMemoryEmbeddingPort,
   resolveSandboxPolicy,
+  resolveSandboxSettingsFromPreset,
   resolveProviderApiKey,
+  type SandboxBackendPrefer,
 } from '@mitii/host';
 import type * as vscode from 'vscode';
 
 import { VscodeDiagnosticsPort } from './diagnosticsPort.js';
 import { getSharedMcpManager } from './mcp/manager.js';
-import { readMcpSettings } from './mcpConfig.js';
+import { defaultMcpSettings, readMcpSettings } from './mcpConfig.js';
 import { createHostRepositoryContext } from './repositoryContextHost.js';
 import { readContextToggles } from './contextToggles.js';
 import { createVsCodeMemoryStore } from './memoryStore.js';
@@ -216,9 +221,27 @@ export async function createVscodeClient(
     store: new InMemoryRepositoryStateStore(),
   });
 
-  const mcp = readMcpSettings(vs, workspaceRoot);
+  // Untrusted folders: skip project MCP (no connect) and keep Ask-only defaultMode.
+  const workspaceTrusted = vs.workspace.isTrusted !== false;
+  const mcp = workspaceTrusted
+    ? readMcpSettings(vs, workspaceRoot)
+    : defaultMcpSettings();
   const mcpManager = getSharedMcpManager();
   const mcpSnapshot = await mcpManager.sync(mcp, workspaceRoot);
+  const mcpReady = mcpSnapshot.servers.filter((s) => s.status === 'ready');
+  const mcpErrors = mcpSnapshot.servers.filter((s) => s.status === 'error');
+  if (mcp.enabled || mcpSnapshot.servers.length > 0) {
+    // Surface connect results in the Extension Host console (Output → Mitii
+    // also shows runtime status from the Settings UI).
+    console.info(
+      `[mitii:mcp] enabled=${mcp.enabled} ready=${mcpReady.length} error=${mcpErrors.length} tools=${mcpSnapshot.toolDefinitions.length}`,
+    );
+    for (const server of mcpErrors) {
+      console.warn(
+        `[mitii:mcp] ${server.id} failed: ${server.error ?? 'unknown'}`,
+      );
+    }
+  }
 
   const fileSystem = workspaceRoot
     ? new NodeWorkspaceFileSystemAdapter()
@@ -229,10 +252,20 @@ export async function createVscodeClient(
     searchEnv.MITII_SEARCH_API_KEY?.trim() ||
     searchEnv.BRAVE_API_KEY?.trim() ||
     undefined;
-  const search = searchApiKey
-    ? createOptionalSearchPort({ env: searchEnv, apiKey: searchApiKey })
-    : createOptionalSearchPort(searchEnv);
+  const searxngBaseUrl =
+    vs.workspace
+      .getConfiguration('mitii')
+      .get<string>('search.searxngBaseUrl')
+      ?.trim() || undefined;
+  const search = createOptionalSearchPort({
+    env: searchEnv,
+    ...(searchApiKey ? { apiKey: searchApiKey } : {}),
+    ...(searxngBaseUrl ? { config: { searxngBaseUrl } } : {}),
+  });
   const git = workspaceRoot ? new NodeGitAdapter() : undefined;
+  const knowledgeGraph = workspaceRoot
+    ? createWorkspaceKnowledgeGraph(workspaceRoot)
+    : undefined;
   const codeNavigation = workspaceRoot
     ? createHostCodeNavigationPort({
         workspaceRoot,
@@ -242,6 +275,41 @@ export async function createVscodeClient(
   const repoGraphs = workspaceRoot
     ? createHostRepositoryGraphPort({ workspaceRoot })
     : undefined;
+  const network = createHostNetworkPort({
+    inner: new NodeNetworkAdapter(),
+    env: searchEnv,
+  });
+  const cfg = vs.workspace.getConfiguration('mitii');
+  const sandboxInspectEnabled = cfg.inspect<boolean>('safety.sandbox.enabled');
+  const sandboxInspectNetwork = cfg.inspect<string>('safety.sandbox.network');
+  const sandboxEnabledUnset =
+    sandboxInspectEnabled?.globalValue === undefined &&
+    sandboxInspectEnabled?.workspaceValue === undefined &&
+    sandboxInspectEnabled?.workspaceFolderValue === undefined;
+  const sandboxNetworkUnset =
+    sandboxInspectNetwork?.globalValue === undefined &&
+    sandboxInspectNetwork?.workspaceValue === undefined &&
+    sandboxInspectNetwork?.workspaceFolderValue === undefined;
+  const sandboxResolved = resolveSandboxSettingsFromPreset({
+    approvalMode: cfg.get<string>('safety.approvalMode') ?? 'guided',
+    ...(sandboxEnabledUnset
+      ? {}
+      : { enabled: cfg.get<boolean>('safety.sandbox.enabled') === true }),
+    ...(sandboxNetworkUnset
+      ? {}
+      : { network: cfg.get<string>('safety.sandbox.network') ?? 'deny' }),
+  });
+  const sandboxBackendRaw = cfg.get<string>('safety.sandbox.backend') ?? 'auto';
+  const sandboxPrefer: SandboxBackendPrefer =
+    sandboxBackendRaw === 'docker' ||
+    sandboxBackendRaw === 'podman' ||
+    sandboxBackendRaw === 'seatbelt' ||
+    sandboxBackendRaw === 'bubblewrap' ||
+    sandboxBackendRaw === 'auto'
+      ? sandboxBackendRaw
+      : 'auto';
+  const fuzzyMatchDefault =
+    cfg.get<boolean>('tools.applyPatch.fuzzyMatch') === true;
   const tools = workspaceRoot && fileSystem
     ? new ToolRuntimePipeline(
         {
@@ -249,27 +317,24 @@ export async function createVscodeClient(
           process: createSandboxedProcessPort(
             new NodeProcessAdapter(),
             resolveSandboxPolicy({
-              enabled:
-                vs.workspace
-                  .getConfiguration('mitii')
-                  .get<boolean>('safety.sandbox.enabled') === true,
-              network:
-                vs.workspace
-                  .getConfiguration('mitii')
-                  .get<string>('safety.sandbox.network') === 'allow'
-                  ? 'allow'
-                  : 'deny',
+              enabled: sandboxResolved.enabled,
+              network: sandboxResolved.network,
               workspaceRoot,
             }),
+            detectSandboxBackend({ prefer: sandboxPrefer }),
           ),
-          network: new NodeNetworkAdapter(),
+          network,
           git,
           diagnostics: new VscodeDiagnosticsPort(vs, workspaceRoot),
           ...(search ? { search } : {}),
           ...(codeNavigation ? { codeNavigation } : {}),
           ...(repoGraphs ? { repoGraphs } : {}),
+          ...(knowledgeGraph ? { knowledgeGraph } : {}),
         },
-        { registry: mcpManager.createRegistry() },
+        {
+          registry: mcpManager.createRegistry(),
+          fuzzyMatchDefault,
+        },
       )
     : undefined;
 
@@ -313,6 +378,7 @@ export async function createVscodeClient(
     understandingLlm: ports.understandingLlm,
     runLlm: ports.runLlm,
     workspaceRoot,
+    // Ask-only ceiling until the folder is trusted (and the product default otherwise).
     defaultMode: 'ask',
     defaultSessionId: 'vscode_session',
     workspaceId: ports.workspaceId,

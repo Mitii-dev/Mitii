@@ -43,12 +43,14 @@ import type { AgentEngineRuntime } from "./runtime";
 import {
   DEFAULT_MUTATING_TOOL_NAMES,
   executeOneTool,
+  extractHostsFromWebSearchOutput,
   refreshAuthorityAfterTools,
   safeJsonParse,
 } from "./executeTool";
 import type { ModelLoopSession } from "./modelLoopSession";
 import type { ModelLoopStepResult } from "./modelLoopStep";
 import { tryOfferBudgetWallContinue } from "./tryOfferBudgetWallContinue";
+import { writeRestorePointAfterMutation } from "./writeRestorePoint";
 
 export type ToolPhaseBatchStats = {
   attemptedMutatingTool: boolean;
@@ -109,6 +111,8 @@ export async function runModelLoopToolPhase(params: {
   answer: string;
   changeImpactGate: { required: boolean; satisfied: boolean };
   thresholds: AgentEngineThresholds;
+  /** Correlates RestorePoints with the originating request. */
+  requestId: string;
 }): Promise<ModelLoopStepResult | { kind: "batch_done"; stats: ToolPhaseBatchStats }> {
   const {
     runtime,
@@ -144,6 +148,7 @@ export async function runModelLoopToolPhase(params: {
     answer,
     changeImpactGate,
     thresholds,
+    requestId,
   } = params;
   let decision = session.decision;
   let grant = decision.toolGrant;
@@ -324,6 +329,7 @@ export async function runModelLoopToolPhase(params: {
   let successfulToolCount = 0;
   let rejectedToolCount = 0;
   let extraAuthorityPaths: string[] = [];
+  const extraNetworkHosts: string[] = [];
   let rejectedTool:
     | {
         toolName: string;
@@ -430,8 +436,30 @@ export async function runModelLoopToolPhase(params: {
     }
     if (result?.status === "succeeded") {
       successfulToolCount += 1;
+      if (toolCall.name === "web_search") {
+        extraNetworkHosts.push(
+          ...extractHostsFromWebSearchOutput(result.output),
+        );
+      }
       if (mutatingTool) {
         succeededMutatingTool = true;
+        const mutationOutput = result.output as
+          | { checkpointId?: string }
+          | undefined;
+        if (mutationOutput?.checkpointId) {
+          await writeRestorePointAfterMutation(runtime, {
+            runId,
+            requestId,
+            interactionMode: mode ?? "agent",
+            mutationCheckpointId: mutationOutput.checkpointId,
+            mutationCheckpointIds,
+            messages,
+            toolCache,
+            changedFiles,
+            plan,
+            taskList: taskListRef.current,
+          });
+        }
       }
     } else if (result) {
       rejectedToolCount += 1;
@@ -514,6 +542,7 @@ export async function runModelLoopToolPhase(params: {
     changedFiles,
     dirtyPaths,
     extraPaths: extraAuthorityPaths,
+    extraNetworkHosts,
     understanding: understanding,
     skillsQuery: skillsQuery,
     mode: mode,

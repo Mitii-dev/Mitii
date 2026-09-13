@@ -77,6 +77,9 @@ export async function executeReadDiagnostics(params: {
   });
 
   const filtered = diagnostics.filter((item) => {
+    if (isMitiiRuntimeNoisePath(item.path)) {
+      return false;
+    }
     if (params.grant.pathScopes.includes(".")) {
       return true;
     }
@@ -90,4 +93,15 @@ export async function executeReadDiagnostics(params: {
   });
 
   return { output, truncated: false, redacted: false, warnings: deniedWarnings };
+}
+
+/** Host logs / Mitii workspace artifacts are not actionable code diagnostics. */
+function isMitiiRuntimeNoisePath(relativePath: string): boolean {
+  const normalized = relativePath.replace(/\\/g, "/").replace(/^\.\//, "");
+  return (
+    normalized === ".mitii" ||
+    normalized.startsWith(".mitii/") ||
+    /(^|\/)\.mitii\/logs\//.test(normalized) ||
+    normalized.endsWith("-model-io.jsonl")
+  );
 }

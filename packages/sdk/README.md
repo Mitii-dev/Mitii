@@ -50,7 +50,7 @@ const result = await run.result;
 | API | Role |
 |---|---|
 | `createMitiiClient(options)` | Compose default V8 facades; inject `LlmPort`s (secrets stay on the port) |
-| `client.start(input)` | Validate intake-facing input → Agent Engine run handle |
+| `client.start(input)` | Validate intake-facing input -> Agent Engine run handle |
 | `run.events` | Async iterable of V8 `RunEvent` |
 | `run.result` | Terminal `AgentRunResult` |
 | `run.cancel()` | Cancel in-flight model/tool work |
@@ -59,13 +59,13 @@ const result = await run.result;
 
 Filesystem checkpoints, skills catalogs, search, and indexing live in **`@mitii/host`** (or your own port implementations). The SDK stays host-neutral.
 
+Bundled default skills ship beside this package under [`skills/`](./skills/). Format: [`docs/SKILLS_FORMAT.md`](../../docs/SKILLS_FORMAT.md). Hosts load them via `createFileSystemSkillsCatalog()` from `@mitii/host`.
+
 ## Must not
 
 - Import V8 `actions/` or `internal/`
 - Import `vscode` or webview protocols
 - Own intent classification, retrieval, prompting, tools, or verification algorithms
-
-See [LEGACY_EXPORTS.md](./LEGACY_EXPORTS.md) for pre-rewrite SDK decisions.
 
 ## Development (monorepo)
 

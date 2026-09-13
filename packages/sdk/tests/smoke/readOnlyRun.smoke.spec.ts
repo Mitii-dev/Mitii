@@ -49,7 +49,7 @@ async function collectEvents(
 /**
  * Headless smoke: drive a read-only direct_answer run only through @mitii/sdk.
  */
-describe('SDK read-only smoke (Phase 12)', () => {
+describe('SDK read-only smoke', () => {
   it('completes a direct_answer run via createMitiiClient.start', async () => {
     const client = createMitiiClient({
       understandingLlm: new UnderstandingLlmPort({

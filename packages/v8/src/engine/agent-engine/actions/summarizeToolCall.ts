@@ -121,6 +121,51 @@ export function summarizeToolCall(
       return url ? `url=${url}` : undefined;
     case "web_search":
       return query ? `query="${query}"` : undefined;
+    case "sequential_thinking": {
+      const n =
+        typeof args.thoughtNumber === "number" ||
+        typeof args.thoughtNumber === "string"
+          ? String(args.thoughtNumber)
+          : undefined;
+      const total =
+        typeof args.totalThoughts === "number" ||
+        typeof args.totalThoughts === "string"
+          ? String(args.totalThoughts)
+          : undefined;
+      return n && total ? `thought=${n}/${total}` : undefined;
+    }
+    case "get_current_time":
+      return typeof args.timezone === "string"
+        ? `timezone=${args.timezone}`
+        : undefined;
+    case "convert_time":
+      return [
+        typeof args.sourceTimezone === "string"
+          ? `from=${args.sourceTimezone}`
+          : undefined,
+        typeof args.targetTimezone === "string"
+          ? `to=${args.targetTimezone}`
+          : undefined,
+        typeof args.time === "string" ? `time=${args.time}` : undefined,
+      ]
+        .filter(Boolean)
+        .join(" ");
+    case "read_git_log":
+      return typeof args.maxCount === "number"
+        ? `maxCount=${args.maxCount}`
+        : undefined;
+    case "read_git_show":
+      return typeof args.revision === "string"
+        ? `revision=${args.revision}`
+        : undefined;
+    case "memory_graph_search":
+      return typeof args.query === "string" ? `query="${args.query}"` : undefined;
+    case "memory_graph_update":
+      return typeof args.operation === "string"
+        ? `op=${args.operation}`
+        : undefined;
+    case "directory_tree":
+      return typeof args.path === "string" ? `path=${args.path}` : undefined;
     default: {
       const keys = Object.keys(args)
         .filter((key) => !key.startsWith("_"))

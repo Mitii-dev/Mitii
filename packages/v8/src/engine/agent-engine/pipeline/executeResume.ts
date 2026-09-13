@@ -13,6 +13,7 @@ import type {
 
 import {
   amendMessageWithClarification,
+  resolveClarificationAnswer,
   annotateMutationToolDefinitions,
   applyExplorationSignal,
   buildBudgetWallResetMessage,
@@ -20,6 +21,11 @@ import {
   toRunUsage,
   filterToolDefinitions,
 } from "../actions";
+import { withMcpAttachOnGrant } from "../../../modules/mcp-attach";
+import {
+  formatClarificationAnswerFromPatch,
+} from "../../../modules/request-understanding/intent/applyClarificationFactPatch";
+import { resolveSteeringFeatureFlags } from "../steeringFlags";
 import type {
   EstablishedFact,
 } from "../actions";
@@ -247,9 +253,16 @@ export async function executeResume(
       }
       await runtime.deps.checkpointStore.delete(runId);
       reasonCodes.push("resume_complete");
+      const patch = resolveClarificationAnswer(
+        input.clarificationAnswer,
+        checkpoint.clarificationSession,
+      );
+      const displayAnswer = patch
+        ? formatClarificationAnswerFromPatch(patch)
+        : input.clarificationAnswer;
       const clarifiedMessage = amendMessageWithClarification(
         startInput.request.userMessage,
-        input.clarificationAnswer,
+        displayAnswer,
       );
       const amendedInput: AgentEngineStartInput = {
         ...startInput,
@@ -259,8 +272,27 @@ export async function executeResume(
         },
         conversation: [
           ...startInput.conversation,
-          { role: "user", content: input.clarificationAnswer },
+          { role: "user", content: displayAnswer },
         ],
+        ...(patch
+          ? {
+              clarificationResolution: {
+                optionId: patch.optionId,
+                ...(patch.label ? { label: patch.label } : {}),
+                ...(patch.interactionIntent
+                  ? { interactionIntent: patch.interactionIntent }
+                  : {}),
+                ...(patch.primaryTaskIntent
+                  ? { primaryTaskIntent: patch.primaryTaskIntent }
+                  : {}),
+                ...(patch.targetPath ? { targetPath: patch.targetPath } : {}),
+                ...(patch.scopeHint ? { scopeHint: patch.scopeHint } : {}),
+                ...(patch.outcomeNote
+                  ? { outcomeNote: patch.outcomeNote }
+                  : {}),
+              },
+            }
+          : {}),
       };
       return executeStart(runtime, {
         runId,
@@ -629,19 +661,23 @@ export async function executeResume(
     messages.push(toolOutcome.message);
     await runtime.deps.checkpointStore.delete(runId);
 
+    const attachIds = startInput.requiredMcpServerIds ?? [];
+    const toolGrant = withMcpAttachOnGrant(decision.toolGrant, attachIds);
     const toolDefinitions = annotateMutationToolDefinitions(
       attachTaskListTool({
         mode: startInput.request.mode,
         tools: filterToolDefinitions({
-          grant: decision.toolGrant,
+          grant: toolGrant,
           definitions:
             startInput.tools ??
             runtime.deps.toolDefinitions ??
             DEFAULT_TOOL_DEFINITIONS,
           supportsTools: runtime.deps.llm.capabilities.supportsTools,
+          mode: startInput.request.mode,
+          requiredMcpServerIds: attachIds,
         }),
       }),
-      decision.toolGrant.mutationBudget,
+      toolGrant.mutationBudget,
     );
 
     const loopOutcome = await runModelToolLoop(runtime, {
@@ -653,7 +689,8 @@ export async function executeResume(
         stream: startInput.stream,
         tools: toolDefinitions,
       },
-      decision,
+      decision: { ...decision, toolGrant },
+      requestId: checkpoint.requestId,
       dirtyPaths: startInput.dirtyPaths,
       pinnedState,
       workspaceRoot: startInput.workspaceRoot,
@@ -677,6 +714,7 @@ export async function executeResume(
         contextWindowTokens: windowPolicy.contextWindowTokens,
         overrides: startInput.loopPolicy?.thresholds,
       }).thresholds,
+      criticMode: resolveSteeringFeatureFlags(startInput.steering).criticMode,
     });
 
     return await finishAfterLoop(runtime, {

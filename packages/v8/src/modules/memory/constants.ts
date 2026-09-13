@@ -55,6 +55,8 @@ export const MEMORY_REASON_CODES = [
   "privacy_redacted",
   "memory_duplicate",
   "memory_reinforced",
+  "memory_layered",
+  "memory_consolidated",
 ] as const;
 
 export const MEMORY_ERROR_CODES = [

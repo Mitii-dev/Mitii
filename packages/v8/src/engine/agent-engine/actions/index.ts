@@ -3,11 +3,23 @@ export { clampTurnMaximumOutputTokens } from "./clampTurnMaximumOutputTokens";
 export {
   amendMessageWithClarification,
   buildClarificationPayload,
+  resolveClarificationAnswer,
 } from "./buildClarificationPayload";
 export type {
   ClarificationOptionPayload,
   ClarificationPayload,
+  ClarificationSession,
+  ClarificationSessionOption,
 } from "./buildClarificationPayload";
+export {
+  evaluateMutationCritic,
+  MUTATION_CRITIC_VERDICTS,
+} from "./evaluateMutationCritic";
+export type {
+  MutationCriticInput,
+  MutationCriticResult,
+  MutationCriticVerdict,
+} from "./evaluateMutationCritic";
 export { extractFileReadPaths } from "./extractFileReadPaths";
 export {
   extractToolContentPaths,
@@ -104,7 +116,16 @@ export type { SkillRepoEvidence } from "./deriveSkillRepoEvidence";
 export { mapUnderstandingToPlanningEvidence } from "./mapUnderstandingToPlanningEvidence";
 export { collectPlanningImpactReports } from "./collectPlanningImpactReports";
 export { mergePromptInstructions } from "./mergePromptInstructions";
-export { filterToolDefinitions } from "./filterToolDefinitions";
+export {
+  filterToolDefinitions,
+  toToolIndexDefinition,
+  isMcpToolName,
+  isMcpAllowedByGrant,
+  DESCRIBE_TOOL_NAME,
+  FULL_SCHEMA_TOOL_IDS,
+  TOOL_INDEX_INPUT_SCHEMA,
+  MCP_TOOL_NAME_PREFIX,
+} from "./filterToolDefinitions";
 export { annotateMutationToolDefinitions } from "./annotateMutationToolDefinitions";
 export { serializeToolResultForModel } from "./serializeToolResultForModel";
 export {
@@ -120,16 +141,19 @@ export type { RecoverabilityWorkingSetInput } from "./serializeRecoverabilityWor
 export { estimateMutationPayloadCharacters } from "./estimateMutationPayloadCharacters";
 export {
   compactModelLoopMessages,
+  compactModelLoopMessagesFromWindowPolicy,
   stubToolResultsForCompletedPaths,
   estimateModelMessageTokens,
   estimateModelMessagesTokens,
   resolveCompactionPressure,
   resolveCompactionThresholds,
+  COMPACTION_LADDER_STAGES,
 } from "./compactModelLoopMessages";
 export type {
   ModelLoopCompactionResult,
   ModelLoopCompactionPressure,
   ModelLoopCompactionThresholds,
+  CompactionLadderStage,
 } from "./compactModelLoopMessages";
 export {
   buildIncompleteAnswerRecoveryMessage,
@@ -145,6 +169,7 @@ export {
   synthesizeFallbackAnswer,
   compactRecoveredAssistantContent,
   selectUserFacingLoopAnswer,
+  stripInjectionComplianceEchoes,
   amendMessageWithPriorConversation,
 } from "./isIncompleteAssistantTurn";
 

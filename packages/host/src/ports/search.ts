@@ -1,108 +1,134 @@
 import type { SearchPort } from '@mitii/v8';
-
-interface WebSearchRequest {
-  query: string;
-  maxResults: number;
-  signal?: AbortSignal;
-}
-
-interface WebSearchResult {
-  query: string;
-  results: Array<{
-    title: string;
-    url: string;
-    snippet: string;
-    publishedAt?: string;
-    source?: string;
-  }>;
-  truncated: boolean;
-}
+import {
+  BraveSearchProvider,
+  createOptionalSearchProvider,
+  resolveSearchKitConfig,
+  type FetchImpl,
+  type ResolveSearchKitConfigOptions,
+  type SearchKitConfig,
+  type SearchProvider,
+} from '@mitii/search-kit';
 
 export interface CreateSearchPortOptions {
-  /** Overrides env vars when hosts store keys in SecretStorage. */
+  /** Overrides env vars when hosts store keys in SecretStorage (Brave/Mitii key). */
   apiKey?: string;
   env?: NodeJS.ProcessEnv;
-}
-
-function resolveSearchApiKey(
-  env: NodeJS.ProcessEnv,
-  override?: string,
-): string | undefined {
-  return (
-    override?.trim() ||
-    env.MITII_SEARCH_API_KEY?.trim() ||
-    env.BRAVE_API_KEY?.trim() ||
-    undefined
-  );
+  /** Comma-separated provider order override, e.g. "searxng,brave". */
+  providers?: string;
+  /** Partial kit config override. */
+  config?: Partial<SearchKitConfig>;
+  fetchImpl?: FetchImpl;
+  timeoutMs?: number;
 }
 
 /**
- * Optional Brave Search adapter. Returns undefined when no API key is set so
+ * Optional multi-provider SearchPort (SearXNG → Brave → Tavily by default).
+ * Returns undefined when no provider credentials/base URL are configured so
  * hosts can omit SearchPort and Decision/Engine hide `web_search`.
  */
 export function createOptionalSearchPort(
   envOrOptions: NodeJS.ProcessEnv | CreateSearchPortOptions = process.env,
 ): SearchPort | undefined {
-  const options: CreateSearchPortOptions =
-    envOrOptions && typeof envOrOptions === "object" && "env" in envOrOptions
-      ? envOrOptions
-      : { env: envOrOptions as NodeJS.ProcessEnv };
-  const env = options.env ?? process.env;
-  const apiKey = resolveSearchApiKey(env, options.apiKey);
-  if (!apiKey) {
-    return undefined;
-  }
-  return new BraveSearchAdapter({ apiKey });
+  const options = normalizeOptions(envOrOptions);
+  const provider = createOptionalSearchProvider({
+    env: options.env,
+    apiKey: options.apiKey,
+    providers: options.providers,
+    config: options.config,
+    fetchImpl: options.fetchImpl,
+    timeoutMs: options.timeoutMs,
+  });
+  if (!provider) return undefined;
+  return new SearchKitSearchAdapter(provider);
 }
 
-export class BraveSearchAdapter implements SearchPort {
-  constructor(
-    private readonly options: {
-      apiKey: string;
-      fetchImpl?: typeof fetch;
-      baseUrl?: string;
-    },
-  ) {}
+function normalizeOptions(
+  envOrOptions: NodeJS.ProcessEnv | CreateSearchPortOptions,
+): CreateSearchPortOptions {
+  if (
+    envOrOptions &&
+    typeof envOrOptions === 'object' &&
+    ('env' in envOrOptions ||
+      'apiKey' in envOrOptions ||
+      'providers' in envOrOptions ||
+      'config' in envOrOptions ||
+      'fetchImpl' in envOrOptions)
+  ) {
+    return envOrOptions as CreateSearchPortOptions;
+  }
+  return { env: envOrOptions as NodeJS.ProcessEnv };
+}
 
-  public async search(request: WebSearchRequest): Promise<WebSearchResult> {
-    const fetchImpl = this.options.fetchImpl ?? fetch;
-    const baseUrl =
-      this.options.baseUrl ?? 'https://api.search.brave.com/res/v1/web/search';
-    const url = new URL(baseUrl);
-    url.searchParams.set('q', request.query);
-    url.searchParams.set('count', String(Math.min(20, Math.max(1, request.maxResults))));
+/**
+ * Adapts `@mitii/search-kit` SearchProvider → V8 SearchPort.
+ * Kit-only fields (`provider`, `partialFailures`) are omitted from the port
+ * result so the V8 tool schema stays stable.
+ */
+export class SearchKitSearchAdapter implements SearchPort {
+  constructor(private readonly provider: SearchProvider) {}
 
-    const response = await fetchImpl(url, {
-      method: 'GET',
-      headers: {
-        Accept: 'application/json',
-        'X-Subscription-Token': this.options.apiKey,
-      },
-      signal: request.signal,
-    });
-
-    if (!response.ok) {
-      throw new Error(
-        `Brave search failed with HTTP ${response.status} ${response.statusText}`,
-      );
-    }
-
-    const payload = (await response.json()) as {
-      web?: { results?: Array<Record<string, unknown>> };
-    };
-    const raw = payload.web?.results ?? [];
-    const results = raw.slice(0, request.maxResults).map((hit) => ({
-      title: String(hit.title ?? hit.url ?? 'Result'),
-      url: String(hit.url ?? ''),
-      snippet: String(hit.description ?? hit.snippet ?? ''),
-      ...(typeof hit.age === 'string' ? { publishedAt: hit.age } : {}),
-      source: 'brave',
-    })).filter((hit) => hit.url.length > 0);
-
+  public async search(request: {
+    query: string;
+    maxResults: number;
+    signal?: AbortSignal;
+  }): Promise<{
+    query: string;
+    results: Array<{
+      title: string;
+      url: string;
+      snippet: string;
+      publishedAt?: string;
+      source?: string;
+    }>;
+    truncated: boolean;
+  }> {
+    const result = await this.provider.search(request);
     return {
-      query: request.query,
-      results,
-      truncated: raw.length > results.length,
+      query: result.query,
+      results: result.results.map((hit) => ({
+        title: hit.title,
+        url: hit.url,
+        snippet: hit.snippet,
+        ...(hit.publishedAt ? { publishedAt: hit.publishedAt } : {}),
+        ...(hit.source ? { source: hit.source } : {}),
+      })),
+      truncated: result.truncated,
     };
   }
 }
+
+/**
+ * @deprecated Prefer SearchKitSearchAdapter. Kept for callers that constructed
+ * Brave directly in tests or custom hosts.
+ */
+export class BraveSearchAdapter implements SearchPort {
+  private readonly inner: SearchPort;
+
+  constructor(options: {
+    apiKey: string;
+    fetchImpl?: FetchImpl;
+    baseUrl?: string;
+  }) {
+    this.inner = new SearchKitSearchAdapter(
+      new BraveSearchProvider({
+        apiKey: options.apiKey,
+        fetchImpl: options.fetchImpl,
+        baseUrl: options.baseUrl,
+      }),
+    );
+  }
+
+  public search(request: {
+    query: string;
+    maxResults: number;
+    signal?: AbortSignal;
+  }): ReturnType<SearchPort['search']> {
+    return this.inner.search(request);
+  }
+}
+
+export {
+  resolveSearchKitConfig,
+  type ResolveSearchKitConfigOptions,
+  type SearchKitConfig,
+};
