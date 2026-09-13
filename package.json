@@ -1,7 +1,7 @@
 {
   "name": "mitii-ai-agent",
   "description": "Private Mitii monorepo workspace orchestrator. Product packages: @mitii/v8, @mitii/sdk, @mitii/automation, @mitii/search-kit, @mitii/mcp, @mitii/mcp-web, @mitii/host, @mitii/cli, @mitii/daemon, @mitii/acp, apps/vscode.",
-  "version": "2.9.50",
+  "version": "2.9.52",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "author": {
@@ -35,11 +35,13 @@
     "build:acp": "pnpm -r --filter @mitii/acp... run build",
     "build:vscode": "pnpm --filter ./apps/vscode build",
     "build:vscode:prod": "pnpm --filter ./apps/vscode build:prod",
-    "typecheck": "pnpm run typecheck:v8 && pnpm run build:v8 && pnpm run typecheck:sdk && pnpm run build:sdk && pnpm run typecheck:automation && pnpm run build:automation && pnpm run typecheck:search-kit && pnpm run build:search-kit && pnpm run typecheck:host && pnpm run build:host && pnpm run typecheck:cli && pnpm run typecheck:daemon && pnpm run typecheck:acp && pnpm run typecheck:vscode",
+    "typecheck": "pnpm run typecheck:v8 && pnpm run build:v8 && pnpm run typecheck:sdk && pnpm run build:sdk && pnpm run typecheck:automation && pnpm run build:automation && pnpm run typecheck:search-kit && pnpm run build:search-kit && pnpm run typecheck:mcp && pnpm run build:mcp && pnpm run typecheck:mcp-web && pnpm run build:mcp-web && pnpm run typecheck:host && pnpm run build:host && pnpm run typecheck:cli && pnpm run typecheck:daemon && pnpm run typecheck:acp && pnpm run typecheck:vscode",
     "typecheck:v8": "pnpm --filter @mitii/v8 typecheck",
     "typecheck:sdk": "pnpm --filter @mitii/sdk typecheck",
     "typecheck:automation": "pnpm --filter @mitii/automation typecheck",
     "typecheck:search-kit": "pnpm --filter @mitii/search-kit typecheck",
+    "typecheck:mcp": "pnpm --filter @mitii/mcp typecheck",
+    "typecheck:mcp-web": "pnpm --filter @mitii/mcp-web typecheck",
     "typecheck:host": "pnpm --filter @mitii/host typecheck",
     "typecheck:cli": "pnpm --filter @mitii/cli typecheck",
     "typecheck:daemon": "pnpm --filter @mitii/daemon typecheck",
