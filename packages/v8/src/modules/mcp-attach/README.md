@@ -18,6 +18,7 @@ Mentions are stripped from the user message before the engine runs.
 constants.ts                 MAX_REQUIRED_MCP_SERVERS
 parseRequiredMcpMentions.ts  @mcp: parse + merge
 mcpToolAttachFilter.ts       mcp__{server}__* matching
+contracts/                   public-module layout marker
 index.ts
 ```
 
