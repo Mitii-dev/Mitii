@@ -300,7 +300,9 @@ export type {
   VerificationManifestReaderPort,
 } from "./modules/verification";
 
-export { SkillsPipeline } from "./modules/skills";
+export {
+  SkillsPipeline,
+} from "./modules/skills";
 export {
   skillsSelectInputSchema,
   skillsSelectResultSchema,
@@ -323,6 +325,18 @@ export type {
   SkillsCatalogPort,
   SkillSimilarityPort,
 } from "./modules/skills";
+
+export {
+  parseRequiredMcpMentions,
+  mergeRequiredMcpServerIds,
+  normalizeMcpServerId,
+  MAX_REQUIRED_MCP_SERVERS,
+  MCP_TOOL_NAME_PREFIX,
+  mcpServerIdFromToolName,
+  isMcpToolAttached,
+  filterToolsByMcpAttach,
+  withMcpAttachOnGrant,
+} from "./modules/mcp-attach";
 
 export { MemoryPipeline } from "./modules/memory";
 export {

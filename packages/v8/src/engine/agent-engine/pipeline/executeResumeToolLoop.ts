@@ -7,6 +7,7 @@ import {
   annotateMutationToolDefinitions,
   filterToolDefinitions,
 } from "../actions";
+import { withMcpAttachOnGrant } from "../../../modules/mcp-attach";
 import type { EstablishedFact } from "../actions";
 import { ToolCallCache } from "../internal/ToolCallCache";
 import type {
@@ -117,20 +118,23 @@ export async function resumeToolLoopFromCheckpoint(
   const mutationCheckpointIds = [...checkpoint.mutationCheckpointIds];
   const establishedFacts: EstablishedFact[] = [];
 
+  const attachIds = startInput.requiredMcpServerIds ?? [];
+  const toolGrant = withMcpAttachOnGrant(decision.toolGrant, attachIds);
   const toolDefinitions = annotateMutationToolDefinitions(
     attachTaskListTool({
       mode: startInput.request.mode,
       tools: filterToolDefinitions({
-        grant: decision.toolGrant,
+        grant: toolGrant,
         definitions:
           startInput.tools ??
           runtime.deps.toolDefinitions ??
           DEFAULT_TOOL_DEFINITIONS,
         supportsTools: runtime.deps.llm.capabilities.supportsTools,
         mode: startInput.request.mode,
+        requiredMcpServerIds: attachIds,
       }),
     }),
-    decision.toolGrant.mutationBudget,
+    toolGrant.mutationBudget,
   );
 
   const loopOutcome = await runModelToolLoop(runtime, {
@@ -142,7 +146,7 @@ export async function resumeToolLoopFromCheckpoint(
       stream: startInput.stream,
       tools: toolDefinitions,
     },
-    decision,
+    decision: { ...decision, toolGrant },
     requestId: checkpoint.requestId,
     dirtyPaths: startInput.dirtyPaths,
     pinnedState,

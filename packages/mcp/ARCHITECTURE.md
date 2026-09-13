@@ -60,6 +60,26 @@ Unsafe characters in ids become `_`. Ask/Plan grants hide
 read grants expose MCP tools that do not require workspace writes
 (V8 `filterToolDefinitions`).
 
+### Per-turn attach (`@mcp:`)
+
+Hosts may pass `requiredMcpServerIds` (pins / `@mcp:excalidraw`). When
+non-empty, V8 scopes the catalog and grant to those server ids only.
+Empty = all enabled servers under the grant. Parsing lives in
+`packages/v8/src/modules/mcp-attach/` (V8 must not import this package).
+
+## Manager layout
+
+```text
+manager/
+  McpManager.ts              sync / snapshot / dispose
+  createMcpClient.ts         transport factory
+  registerMcpServerTools.ts  mcp__* ToolRegistry bridge
+  mcpServerEffects.ts        write vs read-only tagging
+  mcpManagerTypes.ts         snapshot + result event types
+  sharedMcpManager.ts        host singleton
+  toolName.ts
+```
+
 ## Host responsibilities
 
 Hosts still own:

@@ -26,6 +26,7 @@ import {
   createInitialRunEvidence,
   finalizeRunEvidence,
 } from "../actions";
+import { withMcpAttachOnGrant } from "../../../modules/mcp-attach";
 import type {
   EstablishedFact,
 } from "../actions";
@@ -319,18 +320,22 @@ export async function executeStart(
     } = enrichment.state;
 
     // --- Prompt ---
+    const attachIds = input.requiredMcpServerIds ?? [];
+    const toolGrant = withMcpAttachOnGrant(decision.toolGrant, attachIds);
+    const decisionWithAttach = { ...decision, toolGrant };
     const tools = annotateMutationToolDefinitions(
       attachTaskListTool({
         mode: envelope.mode,
         tools: filterToolDefinitions({
-          grant: decision.toolGrant,
+          grant: toolGrant,
           definitions:
             input.tools ?? runtime.deps.toolDefinitions ?? DEFAULT_TOOL_DEFINITIONS,
           supportsTools: runtime.deps.llm.capabilities.supportsTools,
           mode: envelope.mode,
+          requiredMcpServerIds: attachIds,
         }),
       }),
-      decision.toolGrant.mutationBudget,
+      toolGrant.mutationBudget,
     );
 
     const projectRules = [...(input.instructions?.projectRules ?? [])];
@@ -369,13 +374,13 @@ export async function executeStart(
     const decisionBriefText =
       steering.decisionBrief
         ? formatDecisionBriefForPrompt(
-            compileDecisionBrief({ decision, understanding }),
+            compileDecisionBrief({ decision: decisionWithAttach, understanding }),
           )
         : undefined;
 
     const promptResult = runtime.deps.prompt.construct({
       schemaVersion: PROMPT_CONSTRUCTION_SCHEMA_VERSION,
-      decision,
+      decision: decisionWithAttach,
       userMessage: envelope.message,
       attachments: envelope.attachments,
       conversation: input.conversation,
@@ -486,7 +491,7 @@ export async function executeStart(
     const loopOutcome = await runModelToolLoop(runtime, {
       runId,
       request: promptResult.request,
-      decision,
+      decision: decisionWithAttach,
       understanding,
       skillsQuery: extractPrimaryUserMessage(envelope.message),
       mode: envelope.mode,
@@ -524,7 +529,7 @@ export async function executeStart(
       requestId: shared.requestId,
       input,
       request: promptResult.request,
-      decision,
+      decision: decisionWithAttach,
       bus,
       signal,
       pinnedState: shared.pinnedState,

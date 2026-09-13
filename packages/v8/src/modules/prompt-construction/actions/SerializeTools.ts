@@ -8,6 +8,10 @@ import type {
   ModelToolChoice,
   ModelToolDefinition,
 } from "../../model-gateway";
+import {
+  isMcpToolAttached,
+  MCP_TOOL_NAME_PREFIX,
+} from "../../mcp-attach";
 
 import type { TokenEstimatorPort } from "../contracts";
 
@@ -115,18 +119,30 @@ export function serializeTools(params: {
   }
 
   // Keep parity with Agent Engine filterToolDefinitions: mcp__* may pass when
-  // a read/write grant has a tool belt (Ask/Plan filtering happens upstream).
+  // a read/write grant has a tool belt; attach list further scopes servers.
   const filtered = (params.tools ?? []).filter(
     (tool) =>
       grantTools.has(tool.name) ||
-      (mcpAllowed && tool.name.startsWith("mcp__")),
+      (mcpAllowed &&
+        tool.name.startsWith(MCP_TOOL_NAME_PREFIX) &&
+        isMcpToolAttached(
+          tool.name,
+          params.decision.toolGrant.allowedMcpServerIds,
+        )),
   );
   if ((params.tools?.length ?? 0) > filtered.length) {
     reasonCodes.push("tools_filtered_by_grant");
     for (const tool of params.tools ?? []) {
       if (
         !grantTools.has(tool.name) &&
-        !(mcpAllowed && tool.name.startsWith("mcp__"))
+        !(
+          mcpAllowed &&
+          tool.name.startsWith(MCP_TOOL_NAME_PREFIX) &&
+          isMcpToolAttached(
+            tool.name,
+            params.decision.toolGrant.allowedMcpServerIds,
+          )
+        )
       ) {
         omissions.push({
           source: tool.name,

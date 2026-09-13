@@ -67,6 +67,11 @@ export const toolGrantSchema = z
     limits: toolGrantLimitsSchema,
     /** Present on write grants; omitted for read-only / none grants. */
     mutationBudget: mutationBudgetSchema.optional(),
+    /**
+     * When set (non-empty), only `mcp__{id}__*` tools from these servers may
+     * pass grant/catalog checks. Omitted/empty = all MCP tools under effect.
+     */
+    allowedMcpServerIds: z.array(z.string().min(1).max(64)).max(5).optional(),
   })
   .strict();
 

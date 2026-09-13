@@ -72,6 +72,7 @@ describe('detectSkillMentionQuery', () => {
   it('detects partial id at end of prompt', () => {
     expect(detectSkillMentionQuery('docs @skill:module')).toBe('module');
     expect(detectSkillMentionQuery('@skill:')).toBe('');
+    expect(detectSkillMentionQuery('@skill')).toBe('');
   });
 
   it('returns null when mention is not at end or missing', () => {

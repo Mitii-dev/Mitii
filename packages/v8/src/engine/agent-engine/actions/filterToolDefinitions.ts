@@ -1,10 +1,13 @@
 import type { ToolGrant } from "../../../modules/decision-policy";
 import type { ModelToolDefinition } from "../../../modules/model-gateway";
+import {
+  filterToolsByMcpAttach,
+  MCP_TOOL_NAME_PREFIX,
+} from "../../../modules/mcp-attach";
 
 import { DEFAULT_READ_ONLY_TOOL_DEFINITIONS } from "../policy";
 
-/** Host-registered MCP tools use this stable name prefix. */
-export const MCP_TOOL_NAME_PREFIX = "mcp__";
+export { MCP_TOOL_NAME_PREFIX };
 
 /** Meta-tool that hydrates full schemas for granted tools. */
 export const DESCRIBE_TOOL_NAME = "describe_tool";
@@ -101,14 +104,16 @@ export function toToolIndexDefinition(
  * hydrate full schemas. Model text cannot broaden the set.
  *
  * Host-registered MCP tools (`mcp__*`) are exposed on Agent write grants, and
- * on Agent read grants when the tool does not require workspace writes
- * (remote MCP Apps such as Excalidraw). Ask/Plan stay MCP-hidden.
+ * on Agent read grants when the tool does not require workspace writes.
+ * Optional `requiredMcpServerIds` / `grant.allowedMcpServerIds` scopes which
+ * servers appear (empty = all enabled MCP tools under the grant).
  */
 export function filterToolDefinitions(params: {
   grant: ToolGrant;
   definitions?: readonly ModelToolDefinition[];
   supportsTools: boolean;
   mode?: "ask" | "plan" | "agent";
+  requiredMcpServerIds?: readonly string[];
 }): ModelToolDefinition[] {
   if (!params.supportsTools || params.grant.allowedTools.length === 0) {
     return [];
@@ -118,6 +123,10 @@ export function filterToolDefinitions(params: {
   const catalog = params.definitions ?? DEFAULT_READ_ONLY_TOOL_DEFINITIONS;
   const mcpAllowed = isMcpAllowedByGrant(params.grant, { mode: params.mode });
   const writeGrant = params.grant.maximumWorkspaceEffect === "write";
+  const attachIds =
+    params.requiredMcpServerIds ??
+    params.grant.allowedMcpServerIds ??
+    undefined;
 
   const filtered = catalog.filter((tool) => {
     if (allowed.has(tool.name)) {
@@ -132,9 +141,9 @@ export function filterToolDefinitions(params: {
     return true;
   });
 
-  const indexed = filtered.map(toToolIndexDefinition);
+  const scoped = filterToolsByMcpAttach(filtered, attachIds);
+  const indexed = scoped.map(toToolIndexDefinition);
 
-  // Ensure describe_tool is present whenever the grant allows it (read belt).
   if (
     allowed.has(DESCRIBE_TOOL_NAME) &&
     !indexed.some((tool) => tool.name === DESCRIBE_TOOL_NAME)

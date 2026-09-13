@@ -178,6 +178,14 @@ export const agentEngineStartInputSchema = z
      */
     requiredSkillIds: z.array(z.string().min(1).max(64)).max(3).default([]),
     /**
+     * Explicitly attached MCP server ids for this run (@mcp:, host pin).
+     * Empty = all enabled MCP servers under the grant (default).
+     */
+    requiredMcpServerIds: z
+      .array(z.string().min(1).max(64))
+      .max(5)
+      .default([]),
+    /**
      * Understanding Ballot + Decision Steering feature flags.
      * Defaults off — see docs/UNDERSTANDING_BALLOT_AND_STEERING.md.
      */

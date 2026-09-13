@@ -1,9 +1,15 @@
 export { mcpToolName } from './toolName.js';
+export { McpManager } from './McpManager.js';
 export {
-  McpManager,
   getSharedMcpManager,
   resetSharedMcpManager,
-  type McpManagerSnapshot,
-  type McpManagerOptions,
-  type McpToolResultEvent,
-} from './McpManager.js';
+} from './sharedMcpManager.js';
+export type {
+  McpManagerSnapshot,
+  McpManagerOptions,
+  McpToolResultEvent,
+} from './mcpManagerTypes.js';
+export {
+  mcpServerRequiresWorkspaceWrite,
+  readOnlyMcpServer,
+} from './mcpServerEffects.js';

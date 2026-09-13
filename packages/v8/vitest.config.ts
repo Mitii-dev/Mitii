@@ -25,6 +25,7 @@ export default defineConfig({
       'src/modules/repository-context/tests/**/*.spec.ts',
       'src/modules/window-budget/**/*.spec.ts',
       'src/modules/skills/**/*.spec.ts',
+      'src/modules/mcp-attach/**/*.spec.ts',
       'src/modules/verification/**/*.spec.ts',
       'src/modules/repository-state/internal/repo-map/**/*.spec.ts',
       'src/modules/repository-state/internal/source-analysis/**/*.spec.ts',

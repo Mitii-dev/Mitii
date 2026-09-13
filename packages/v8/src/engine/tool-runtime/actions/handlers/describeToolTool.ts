@@ -1,10 +1,12 @@
 import { z } from "zod";
 
+import {
+  isMcpToolAttached,
+  MCP_TOOL_NAME_PREFIX,
+} from "../../../../modules/mcp-attach";
 import type { RegisteredTool } from "../../internal/ToolRegistry";
 import { defineTool } from "../../internal/ToolCatalog";
 import { getBuiltinModelToolDefinition } from "./builtinModelLookup";
-
-const MCP_TOOL_NAME_PREFIX = "mcp__";
 
 function isMcpToolName(name: string): boolean {
   return name.startsWith(MCP_TOOL_NAME_PREFIX);
@@ -27,11 +29,7 @@ export const describeToolOutputSchema = z
 
 /**
  * Progressive disclosure meta-tool. Returns the full model-facing JSON Schema
- * for a tool the grant already allows. Cannot unlock tools outside the grant
- * (Tool Runtime preflight + Decision Policy).
- *
- * Host MCP tools (`mcp__*`) are allowed when the grant has read or write effect
- * (same rule as filterToolDefinitions / ValidateGrant) or the name is in allowedTools.
+ * for a tool the grant already allows. Cannot unlock tools outside the grant.
  */
 export const describeToolTool: RegisteredTool = {
   definition: defineTool({
@@ -74,10 +72,12 @@ export const describeToolTool: RegisteredTool = {
     }
 
     const name = parsed.data.name.trim();
-    const mcpAllowed =
+    const mcpEffectOk =
       isMcpToolName(name) &&
       (ctx.grant.maximumWorkspaceEffect === "write" ||
         ctx.grant.maximumWorkspaceEffect === "read");
+    const mcpAllowed =
+      mcpEffectOk && isMcpToolAttached(name, ctx.grant.allowedMcpServerIds);
     const granted =
       ctx.grant.allowedTools.includes(name) ||
       name === "describe_tool" ||

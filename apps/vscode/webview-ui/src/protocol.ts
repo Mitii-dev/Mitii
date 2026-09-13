@@ -682,6 +682,8 @@ export type WebviewToHostMessage =
       approvalMode?: string;
       pinnedPaths?: string[];
       requiredSkillIds?: string[];
+      /** Attached MCP server ids for this turn (@mcp: / pin chips). */
+      requiredMcpServerIds?: string[];
     }
   | { type: 'cancel' }
   | {

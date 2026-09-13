@@ -21,6 +21,7 @@ import {
   toRunUsage,
   filterToolDefinitions,
 } from "../actions";
+import { withMcpAttachOnGrant } from "../../../modules/mcp-attach";
 import {
   formatClarificationAnswerFromPatch,
 } from "../../../modules/request-understanding/intent/applyClarificationFactPatch";
@@ -660,20 +661,23 @@ export async function executeResume(
     messages.push(toolOutcome.message);
     await runtime.deps.checkpointStore.delete(runId);
 
+    const attachIds = startInput.requiredMcpServerIds ?? [];
+    const toolGrant = withMcpAttachOnGrant(decision.toolGrant, attachIds);
     const toolDefinitions = annotateMutationToolDefinitions(
       attachTaskListTool({
         mode: startInput.request.mode,
         tools: filterToolDefinitions({
-          grant: decision.toolGrant,
+          grant: toolGrant,
           definitions:
             startInput.tools ??
             runtime.deps.toolDefinitions ??
             DEFAULT_TOOL_DEFINITIONS,
           supportsTools: runtime.deps.llm.capabilities.supportsTools,
           mode: startInput.request.mode,
+          requiredMcpServerIds: attachIds,
         }),
       }),
-      decision.toolGrant.mutationBudget,
+      toolGrant.mutationBudget,
     );
 
     const loopOutcome = await runModelToolLoop(runtime, {
@@ -685,7 +689,7 @@ export async function executeResume(
         stream: startInput.stream,
         tools: toolDefinitions,
       },
-      decision,
+      decision: { ...decision, toolGrant },
       requestId: checkpoint.requestId,
       dirtyPaths: startInput.dirtyPaths,
       pinnedState,

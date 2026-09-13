@@ -145,4 +145,29 @@ describe("filterToolDefinitions MCP gating", () => {
       description: expect.stringContaining("Index stub"),
     });
   });
+
+  it("scopes mcp__* tools to requiredMcpServerIds", () => {
+    const tools = filterToolDefinitions({
+      grant: grant({
+        maximumWorkspaceEffect: "write",
+        allowedTools: ["read_file", "apply_patch"],
+        allowedEffects: ["workspace_read", "workspace_write"],
+      }),
+      definitions: [
+        ...catalog,
+        {
+          name: "mcp__excalidraw__create_view",
+          description: "draw",
+          inputSchema: { type: "object" },
+        },
+      ],
+      supportsTools: true,
+      mode: "agent",
+      requiredMcpServerIds: ["excalidraw"],
+    });
+    expect(tools.map((t) => t.name)).toEqual([
+      "read_file",
+      "mcp__excalidraw__create_view",
+    ]);
+  });
 });

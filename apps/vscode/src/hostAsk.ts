@@ -166,6 +166,8 @@ export async function runAskInOutputChannel(options: {
   approvalMode?: string;
   pinnedPaths?: string[];
   requiredSkillIds?: string[];
+  /** Attached MCP server ids for this turn (@mcp: / host pin). */
+  requiredMcpServerIds?: string[];
   workspaceId?: string;
   /** Used to estimate memory tokens in the context meter (not prompt-stuffed). */
   workspaceState?: vscode.Memento;
@@ -472,6 +474,10 @@ export async function runAskInOutputChannel(options: {
       ...(pinnedPaths.length > 0 ? { pinnedPaths } : {}),
       ...(options.requiredSkillIds && options.requiredSkillIds.length > 0
         ? { requiredSkillIds: [...options.requiredSkillIds] }
+        : {}),
+      ...(options.requiredMcpServerIds &&
+      options.requiredMcpServerIds.length > 0
+        ? { requiredMcpServerIds: [...options.requiredMcpServerIds] }
         : {}),
       ...(options.conversation && options.conversation.length > 0
         ? { conversation: options.conversation }

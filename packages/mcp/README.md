@@ -14,7 +14,14 @@ packages/mcp/
 | `@mitii/mcp` | `packages/mcp` | Client: `.mitii/mcp.json`, transports, `mcp__*` registry |
 | `@mitii/mcp-web` | `packages/mcp/web` | Server: `web_search`, `fetch_url`, optional `memory_search` |
 
-App hosts may keep **thin adapters** (e.g. `apps/vscode/src/mcp/`) that only wire VS Code UI → `@mitii/mcp`. Product logic stays under `packages/mcp/`.
+App hosts may keep **thin adapters** (e.g. `apps/vscode/src/mcp/`) that only wire VS Code UI → `@mitii/mcp`. Product logic stays under `packages/mcp`.
+
+## Per-turn MCP attach
+
+Users can pin / `@mcp:excalidraw` like skills. Mentions are parsed in
+**V8** (`packages/v8/src/modules/mcp-attach/`) and applied by
+`filterToolDefinitions`. This client package still registers all enabled
+servers; V8 scopes which `mcp__*` tools the model sees for that run.
 
 ## MCP memory (`memory_search`)
 

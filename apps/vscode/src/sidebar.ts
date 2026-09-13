@@ -1534,6 +1534,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         approvalMode: message.approvalMode,
         pinnedPaths: message.pinnedPaths,
         requiredSkillIds: message.requiredSkillIds,
+        requiredMcpServerIds: message.requiredMcpServerIds,
         workspaceId: this.getWorkspaceId(),
         workspaceState: this.host.workspaceState,
         secrets: this.secrets,

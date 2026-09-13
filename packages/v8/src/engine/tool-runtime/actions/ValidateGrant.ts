@@ -1,4 +1,8 @@
 import type { ToolGrant } from "../../../modules/decision-policy";
+import {
+  isMcpToolAttached,
+  MCP_TOOL_NAME_PREFIX,
+} from "../../../modules/mcp-attach";
 
 import type { ToolReasonCode } from "../contracts";
 import type { ToolDefinition } from "../internal/ToolCatalog";
@@ -13,24 +17,28 @@ export class GrantValidationError extends Error {
   }
 }
 
-/** Host-registered MCP tools use this stable name prefix (see Agent Engine filter). */
-const MCP_TOOL_NAME_PREFIX = "mcp__";
-
 export function validateToolAgainstGrant(params: {
   tool: ToolDefinition;
   grant: ToolGrant;
 }): void {
   const { tool, grant } = params;
 
-  const mcpAllowed =
-    tool.name.startsWith(MCP_TOOL_NAME_PREFIX) &&
+  const mcpName = tool.name.startsWith(MCP_TOOL_NAME_PREFIX);
+  const mcpEffectOk =
+    mcpName &&
     grant.allowedTools.length > 0 &&
     (grant.maximumWorkspaceEffect === "write" ||
       grant.maximumWorkspaceEffect === "read");
+  const mcpAttachOk =
+    !mcpName || isMcpToolAttached(tool.name, grant.allowedMcpServerIds);
+  const mcpAllowed = mcpEffectOk && mcpAttachOk;
+
   if (!grant.allowedTools.includes(tool.name) && !mcpAllowed) {
     throw new GrantValidationError(
       "tool_not_allowed",
-      `Tool "${tool.name}" is not in the grant allowedTools list.`,
+      mcpName && mcpEffectOk && !mcpAttachOk
+        ? `MCP tool "${tool.name}" is outside the attached MCP server list.`
+        : `Tool "${tool.name}" is not in the grant allowedTools list.`,
     );
   }
 
