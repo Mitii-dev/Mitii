@@ -351,4 +351,48 @@ describe('full workspace indexing incremental publish', () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it('returns skipped for a full index when the lock is held', async () => {
+    const Database = require('better-sqlite3') as new (
+      filename: string,
+      options?: { readonly?: boolean; fileMustExist?: boolean },
+    ) => unknown;
+    const root = await mkdtemp(join(tmpdir(), 'mitii-full-index-lock-'));
+
+    try {
+      await mkdir(join(root, 'src'), { recursive: true });
+      await writeFile(
+        join(root, 'src', 'app.py'),
+        'def foo():\n    return 1\n',
+        'utf8',
+      );
+
+      const common = {
+        mitiiDir: join(root, '.mitii'),
+        workspaceRoot: root,
+        workspaceId: 'test_workspace',
+        maximumFiles: 100,
+        openDatabase: ((
+          filename: string,
+          openOptions?: { readonly?: boolean; fileMustExist?: boolean },
+        ) => new Database(filename, openOptions)) as never,
+      };
+
+      const first = await runFullWorkspaceIndex(common);
+      expect(first.status).toBe('indexed');
+
+      const { acquireIndexLock } = await import('./indexLock.js');
+      const lock = acquireIndexLock(common.mitiiDir);
+      try {
+        const skipped = await runFullWorkspaceIndex(common);
+        expect(skipped.status).toBe('skipped');
+        expect(skipped.skipReason).toBe('locked');
+        expect(skipped.fileCount).toBe(first.fileCount);
+      } finally {
+        lock.release();
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

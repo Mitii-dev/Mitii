@@ -42,6 +42,11 @@ export interface ModelToolDefinition {
   name: string;
   description: string;
   inputSchema: Readonly<Record<string, unknown>>;
+  /**
+   * Host MCP only. When true, advertise only under write grants.
+   * Provider adapters ignore this field (name/description/schema only).
+   */
+  requiresWorkspaceWrite?: boolean;
 }
 
 export type ModelToolChoice =

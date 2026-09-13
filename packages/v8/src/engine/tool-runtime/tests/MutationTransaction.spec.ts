@@ -520,4 +520,75 @@ describe("Tool Runtime Phase 8 mutations", () => {
     expect(result.status).toBe("rejected");
     expect(result.reasonCode).toBe("effect_not_granted");
   });
+
+  it("applies bounded fuzzyMatch when exact oldText is missing", async () => {
+    const tree = directory({
+      src: directory({
+        "a.ts": file("  const x = 1;\n"),
+      }),
+    });
+    const fs = new InMemoryFileSystemAdapter(WORKSPACE, tree);
+    const runtime = new ToolRuntimePipeline({
+      fileSystem: fs,
+      process: new InMemoryProcessAdapter(async () => ({
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        timedOut: false,
+        cancelled: false,
+        truncated: false,
+      })),
+    });
+    const args = {
+      patches: [
+        {
+          path: "src/a.ts",
+          oldText: "const x = 1;\n",
+          newText: "const x = 2;\n",
+          fuzzyMatch: true,
+        },
+      ],
+    };
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "fuzzy1",
+      toolName: "apply_patch",
+      arguments: args,
+      grant: createWriteGrant({ approvalMode: "never" }),
+      workspaceRoot: WORKSPACE,
+    });
+    expect(result.status).toBe("succeeded");
+    const written = await fs.readFile(`${WORKSPACE}/src/a.ts`);
+    expect(written.content).toContain("const x = 2");
+  });
+
+  it("rejects ambiguous fuzzyMatch with patch_fuzzy_ambiguous", async () => {
+    const { runtime } = createRuntime(
+      directory({
+        src: directory({
+          "a.ts": file("const x = 1;\nconst y = 1;\nconst x = 1;\n"),
+        }),
+      }),
+    );
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "fuzzy2",
+      toolName: "apply_patch",
+      arguments: {
+        patches: [
+          {
+            path: "src/a.ts",
+            oldText: "  const x = 1;\n",
+            newText: "  const x = 2;\n",
+            fuzzyMatch: true,
+          },
+        ],
+      },
+      grant: createWriteGrant({ approvalMode: "never" }),
+      workspaceRoot: WORKSPACE,
+    });
+    expect(result.status).toBe("rejected");
+    expect(result.reasonCode).toBe("patch_fuzzy_ambiguous");
+    expect(isPatchCurrentContentReason(result.reasonCode)).toBe(true);
+  });
 });

@@ -25,6 +25,7 @@ export {
   DEFAULT_AGENT_READONLY_COMMAND_PREFIXES,
   extractNetworkHosts,
   isExplicitWebSearchAsk,
+  needsLiveWebEvidence,
   planRoute,
   compileGrant,
   toolGrantsEquivalent,
@@ -37,6 +38,8 @@ export {
   VSCODE_APPROVAL_PRESETS,
   getApprovalPresetCopy,
   formatApprovalPresetHelp,
+  compileDecisionBrief,
+  formatDecisionBriefForPrompt,
 } from "./actions";
 
 export { DecisionPolicyPipeline } from "./pipeline/DecisionPolicyPipeline";
@@ -65,6 +68,7 @@ export {
   commandRuleSchema,
   DecisionPolicyError,
   decisionPolicyErrorCodeSchema,
+  decisionBriefSchema,
 } from "./contracts";
 export type {
   DecisionPolicyInput,
@@ -85,6 +89,7 @@ export type {
   MutationBudget,
   CommandRule,
   DecisionPolicyErrorCode,
+  DecisionBrief,
 } from "./contracts";
 export type {
   ApprovalPresetCopy,

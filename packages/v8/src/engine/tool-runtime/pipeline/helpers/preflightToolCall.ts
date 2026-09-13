@@ -8,8 +8,9 @@ import {
 } from "../../actions";
 import type { ToolInvocationInput, ToolResult } from "../../contracts";
 import { assertApprovalSatisfied } from "../../internal/mutation/assertApprovalSatisfied";
-import { coerceArgumentsToSchema } from "../../internal/CoerceArgumentsToSchema";
 import { normalizeApplyPatchArguments } from "../../internal/normalizeApplyPatchArguments";
+import { normalizeCommonToolArguments } from "../../internal/normalizeCommonToolArguments";
+import { coerceArgumentsToSchema } from "../../internal/CoerceArgumentsToSchema";
 import { fingerprintToolCall } from "../../internal/mutation";
 import type { SessionBudget } from "../../internal/SessionBudget";
 import { SessionBudgetError } from "../../internal/SessionBudget";
@@ -18,6 +19,10 @@ import {
   StructuralShadowGrantAuthorizer,
   type ShadowGrantAuthorizer,
 } from "../../internal/shadow/ShadowGrantAuthorizer";
+import {
+  isAdversaryHighRiskTool,
+  type AdversaryEvaluateResult,
+} from "../../internal/adversary";
 import { buildRejectedResult, formatZodIssues } from "./buildToolResult";
 import type { CallClock, ToolExecuteOptions } from "../types";
 
@@ -38,16 +43,16 @@ export type PreflightOutcome = PreflightSuccess | PreflightFailure;
 const DEFAULT_SHADOW_AUTHORIZER = new StructuralShadowGrantAuthorizer();
 
 /**
- * Budget, cancellation, registration, grant, approval, and argument checks.
+ * Budget, cancellation, registration, grant, approval, adversary, and argument checks.
  * Returns a rejected ToolResult when preflight fails.
  */
-export function preflightToolCall(params: {
+export async function preflightToolCall(params: {
   parsed: ToolInvocationInput;
   options: ToolExecuteOptions;
   budget: SessionBudget;
   registry: ToolRegistry;
   clock: CallClock;
-}): PreflightOutcome {
+}): Promise<PreflightOutcome> {
   const { parsed, options, budget, registry, clock } = params;
 
   try {
@@ -134,7 +139,7 @@ export function preflightToolCall(params: {
   const rawArguments =
     parsed.toolName === "apply_patch"
       ? normalizeApplyPatchArguments(parsed.arguments)
-      : parsed.arguments;
+      : normalizeCommonToolArguments(parsed.toolName, parsed.arguments);
   const argumentsValue = coerceArgumentsToSchema(
     rawArguments,
     registered.definition.inputSchema,
@@ -198,6 +203,17 @@ export function preflightToolCall(params: {
     throw error;
   }
 
+  const adversaryOutcome = await runAdversaryCheck({
+    parsed,
+    options,
+    registered,
+    argumentsValue,
+    clock,
+  });
+  if (adversaryOutcome) {
+    return adversaryOutcome;
+  }
+
   try {
     assertApprovalSatisfied({
       tool: registered.definition,
@@ -241,6 +257,79 @@ export function preflightToolCall(params: {
   );
 
   return { ok: true, registered, maxOutputBytes, argumentsValue };
+}
+
+async function runAdversaryCheck(params: {
+  parsed: ToolInvocationInput;
+  options: ToolExecuteOptions;
+  registered: RegisteredTool;
+  argumentsValue: unknown;
+  clock: CallClock;
+}): Promise<PreflightFailure | undefined> {
+  const { parsed, options, registered, argumentsValue, clock } = params;
+  if (!options.adversary) {
+    return undefined;
+  }
+  if (!isAdversaryHighRiskTool(parsed.toolName)) {
+    return undefined;
+  }
+
+  let result: AdversaryEvaluateResult;
+  try {
+    result = await options.adversary.evaluate({
+      toolName: parsed.toolName,
+      arguments: argumentsValue,
+      grant: parsed.grant,
+      tool: registered.definition,
+      workspaceRoot: parsed.workspaceRoot,
+    });
+  } catch (error) {
+    const failMode = options.adversaryFailMode ?? "fail_closed";
+    result = {
+      decision: failMode === "fail_open" ? "ALLOW" : "BLOCK",
+      reason: `Adversary error (${failMode}): ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    };
+  }
+
+  options.onAdversary?.({ toolName: parsed.toolName, result });
+
+  if (result.decision === "ALLOW") {
+    return undefined;
+  }
+
+  if (result.decision === "ASK") {
+    const fingerprint = fingerprintToolCall(parsed.toolName, argumentsValue);
+    return {
+      ok: false,
+      result: buildRejectedResult({
+        parsed,
+        clock,
+        status: "rejected",
+        reasonCode: "approval_required",
+        warnings: [result.reason],
+        output: {
+          approvalRequired: true,
+          fingerprint,
+          toolName: parsed.toolName,
+          paths: extractMutationPaths(parsed.toolName, argumentsValue),
+          adversaryAsk: true,
+        },
+      }),
+    };
+  }
+
+  return {
+    ok: false,
+    result: buildRejectedResult({
+      parsed,
+      clock,
+      status: "rejected",
+      reasonCode: "tool_not_allowed",
+      warnings: [result.reason],
+    }),
+  };
 }
 
 function extractMutationPaths(

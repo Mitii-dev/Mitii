@@ -18,12 +18,12 @@ function baseUnderstanding(
       status: "clarification_required",
       classification: {
         interactionIntent: "act",
-        primaryTaskIntent: "implement_feature",
+        primaryTaskIntent: "feature",
         secondaryTaskIntents: [],
         confidence: 0.4,
         alternatives: [
-          { intent: "explain_code", confidence: 0.35 },
-          { intent: "refactor_code", confidence: 0.3 },
+          { intent: "question", confidence: 0.35 },
+          { intent: "refactor", confidence: 0.3 },
         ],
         needsClarification: true,
       },
@@ -34,13 +34,15 @@ function baseUnderstanding(
         question: "What outcome do you want from this request?",
         options: [
           {
-            intent: "implement_feature",
+            id: "intent:feature",
+            intent: "feature",
             label: "Implement Feature",
             description: "Make a code change",
             confidence: 0.4,
           },
           {
-            intent: "explain_code",
+            id: "intent:question",
+            intent: "question",
             label: "Explain Code",
             description: "Read-only explanation",
             confidence: 0.35,
@@ -48,7 +50,7 @@ function baseUnderstanding(
         ],
       },
       diagnostics: {
-        llmPrimaryIntent: "implement_feature",
+        llmPrimaryIntent: "feature",
         llmInteractionIntent: "act",
         taskAgreement: false,
         interactionAgreement: true,

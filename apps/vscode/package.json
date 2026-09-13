@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
-  "version": "2.9.30",
+  "version": "2.9.53",
   "publisher": "mitii",
   "license": "AGPL-3.0-or-later",
   "icon": "media/mitii-short-logo.png",
@@ -68,10 +68,12 @@
     "onCommand:mitii.showSettings",
     "onCommand:mitii.generateCommitMessage",
     "onCommand:mitii.exportSessionLog",
+    "onCommand:mitii.restoreCheckpoint",
     "onCommand:mitii.exportAuditPack",
     "onCommand:mitii.exportShareableDiagnostic",
     "onCommand:mitii.openSessionLog",
     "onCommand:mitii.generateChangelog",
+    "onCommand:mitii.generatePrSummary",
     "onCommand:mitii.prepareRelease",
     "onCommand:mitii.showInlineDiff",
     "onCommand:mitii.acceptInlineDiff",
@@ -123,6 +125,11 @@
         "category": "Mitii"
       },
       {
+        "command": "mitii.restoreCheckpoint",
+        "title": "Mitii: Restore Checkpoint",
+        "category": "Mitii"
+      },
+      {
         "command": "mitii.exportAuditPack",
         "title": "Mitii: Export Audit Pack",
         "category": "Mitii"
@@ -140,6 +147,11 @@
       {
         "command": "mitii.generateChangelog",
         "title": "Mitii: Generate Changelog",
+        "category": "Mitii"
+      },
+      {
+        "command": "mitii.generatePrSummary",
+        "title": "Mitii: Generate PR Summary",
         "category": "Mitii"
       },
       {
@@ -849,10 +861,24 @@
           "minimum": 0,
           "description": "Maximum tokens the model may generate per call. Set 0 to derive the reserve from the context window (recommended; ~20% of the window, at least 4096 when the window allows). A positive value is a hard host override. The legacy default 5000 is ignored so apply_patch batches are not truncated. Leave at 0 unless your runtime has a different hard cap."
         },
+        "mitii.search.searxngBaseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "SearXNG base URL for free local/self-hosted web_search (e.g. http://127.0.0.1:8080). Takes precedence over SEARXNG_BASE_URL / MITII_SEARXNG_URL. Leave empty to use env or Brave/Tavily keys only."
+        },
         "mitii.autocomplete.enabled": {
           "type": "boolean",
           "default": false,
           "description": "Enable inline FIM autocomplete suggestions in file-backed editors."
+        },
+        "mitii.autocomplete.mode": {
+          "type": "string",
+          "enum": [
+            "fim",
+            "next-edit"
+          ],
+          "default": "fim",
+          "description": "Inline completion mode: classic fill-in-the-middle (fim) or next-edit span prediction."
         },
         "mitii.autocomplete.provider": {
           "type": "string",
@@ -1170,7 +1196,7 @@
             "plain"
           ],
           "default": "conventional",
-          "description": "Style hint for generated commit messages"
+          "description": "Style hint for generated commit messages. The Generate Commit Message command force-attaches the bundled git-commit-message skill."
         },
         "mitii.safety.approvalMode": {
           "type": "string",
@@ -1182,6 +1208,35 @@
           ],
           "default": "guided",
           "description": "Approval autonomy: safe (ask before mutations), guided (approve tool use automatically), pilot (full access including plan approval). Legacy builder maps to guided."
+        },
+        "mitii.safety.sandbox.enabled": {
+          "type": "boolean",
+          "description": "Enable OS process sandbox for run_command / process tools. When unset, defaults follow approval mode (safe/guided → on+deny; pilot → on+allow)."
+        },
+        "mitii.safety.sandbox.network": {
+          "type": "string",
+          "enum": [
+            "deny",
+            "allow"
+          ],
+          "description": "Outbound network for sandboxed children. When unset, follows approval-mode sandbox preset."
+        },
+        "mitii.safety.sandbox.backend": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "seatbelt",
+            "bubblewrap",
+            "docker",
+            "podman"
+          ],
+          "default": "auto",
+          "description": "Preferred sandbox backend. auto picks seatbelt (macOS) or bubblewrap (Linux)."
+        },
+        "mitii.tools.applyPatch.fuzzyMatch": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow bounded fuzzy recovery when apply_patch oldText is not found exactly (trim / indent / ±5 line window). Default off for first ship."
         },
         "mitii.runBudget.unlimited": {
           "type": "boolean",
@@ -1238,7 +1293,7 @@
             "enabled": false,
             "servers": []
           },
-          "description": "MCP store install list (mirrored to .mitii/mcp.json). Off by default; add servers from the Settings store or as custom stdio/SSE entries. Deleting removes them from the install list.",
+          "description": "MCP store install list (mirrored to .mitii/mcp.json). Off by default; add servers from the Settings store or as custom stdio/SSE/streamable-http entries. Deleting removes them from the install list.",
           "properties": {
             "enabled": {
               "type": "boolean",
@@ -1257,7 +1312,7 @@
                 "properties": {
                   "id": {
                     "type": "string",
-                    "description": "Stable server id (builtins: filesystem, sequential-thinking, memory, puppeteer)"
+                    "description": "Stable server id (builtins: filesystem, sequential-thinking, memory, puppeteer, excalidraw)"
                   },
                   "name": {
                     "type": "string"
@@ -1321,6 +1376,7 @@
   "dependencies": {
     "@mitii/automation": "workspace:*",
     "@mitii/host": "workspace:*",
+    "@mitii/mcp": "workspace:*",
     "@mitii/sdk": "workspace:*",
     "@mitii/v8": "workspace:*",
     "better-sqlite3": "^12.11.1"

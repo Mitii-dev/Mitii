@@ -35,6 +35,20 @@ export function coerceArgumentsToSchema(
     return value;
   }
 
+  if (unwrapped instanceof z.ZodNumber) {
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed.length === 0) {
+        return value;
+      }
+      const parsed = Number(trimmed);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+    return value;
+  }
+
   if (unwrapped instanceof z.ZodArray) {
     let arrayValue = value;
     if (typeof value === "string") {

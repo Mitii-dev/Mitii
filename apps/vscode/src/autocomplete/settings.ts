@@ -5,8 +5,11 @@ export type AutocompleteAuthHeader =
   | 'api-key'
   | 'x-api-key';
 
+export type AutocompleteMode = 'fim' | 'next-edit';
+
 export interface AutocompleteSettingsSnapshot {
   enabled: boolean;
+  mode: AutocompleteMode;
   provider: 'openai-compatible';
   baseUrl: string;
   model: string;
@@ -24,6 +27,7 @@ export type AutocompleteSettingsPatch = Partial<AutocompleteSettingsSnapshot>;
 
 export const DEFAULT_AUTOCOMPLETE_SETTINGS: AutocompleteSettingsSnapshot = {
   enabled: false,
+  mode: 'fim',
   provider: 'openai-compatible',
   baseUrl: '',
   model: '',
@@ -77,11 +81,16 @@ export function normalizeAutocompleteAuthHeader(
     : DEFAULT_AUTOCOMPLETE_SETTINGS.authHeader;
 }
 
+export function normalizeAutocompleteMode(raw: unknown): AutocompleteMode {
+  return raw === 'next-edit' ? 'next-edit' : 'fim';
+}
+
 export function readAutocompleteSettings(
   cfg: vscode.WorkspaceConfiguration,
 ): AutocompleteSettingsSnapshot {
   return {
     enabled: cfg.get<boolean>('autocomplete.enabled') === true,
+    mode: normalizeAutocompleteMode(cfg.get<string>('autocomplete.mode')),
     provider: 'openai-compatible',
     baseUrl: cfg.get<string>('autocomplete.baseUrl')?.trim() ?? '',
     model: cfg.get<string>('autocomplete.model')?.trim() ?? '',

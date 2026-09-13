@@ -5,6 +5,11 @@ import type {
   ShadowAuthorizeResult,
   ShadowGrantAuthorizer,
 } from "../internal/shadow/ShadowGrantAuthorizer";
+import type {
+  AdversaryEvaluateResult,
+  AdversaryFailMode,
+  ToolAdversaryPort,
+} from "../internal/adversary";
 
 export interface ToolExecuteOptions {
   signal?: AbortSignal;
@@ -35,6 +40,18 @@ export interface ToolExecuteOptions {
     shadow: ShadowAuthorizeResult;
     disagreed: boolean;
   }) => void;
+  /**
+   * Optional ToolAdversaryPort (Phase 3). Consulted after grant + shadow,
+   * before approval. Restrict-only — never widens grants. Unset = no-op.
+   */
+  adversary?: ToolAdversaryPort;
+  /** How to treat adversary errors. Default fail_closed. */
+  adversaryFailMode?: AdversaryFailMode;
+  /** Audit callback for adversary decisions. */
+  onAdversary?: (event: {
+    toolName: string;
+    result: AdversaryEvaluateResult;
+  }) => void;
 }
 
 export interface ToolRuntimePipelineOptions {
@@ -44,6 +61,11 @@ export interface ToolRuntimePipelineOptions {
    * modifying this pipeline.
    */
   registry?: ToolRegistry;
+  /**
+   * Default for apply_patch fuzzy recovery when a patch omits fuzzyMatch.
+   * Hosts map mitii.tools.applyPatch.fuzzyMatch here (default false).
+   */
+  fuzzyMatchDefault?: boolean;
 }
 
 /** Timing anchors shared across preflight, execute, and result builders. */

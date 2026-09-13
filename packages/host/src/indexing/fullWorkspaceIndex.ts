@@ -114,10 +114,10 @@ export async function runFullWorkspaceIndex(options: {
   try {
     lock = acquireIndexLock(options.mitiiDir);
   } catch (error) {
-    if (
-      error instanceof IndexLockedError &&
-      options.filePaths?.length
-    ) {
+    // Full and incremental callers share one disk lock. Returning skipped with
+    // prior metadata avoids treating contention as a hard failure (which used
+    // to force host_snapshot → needsFullIndexRefresh loops in the VS Code host).
+    if (error instanceof IndexLockedError) {
       const skipped = skippedFromPreviousMetadata(options);
       if (skipped) return skipped;
     }

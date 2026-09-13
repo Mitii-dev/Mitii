@@ -5,6 +5,7 @@ import {
   NodeProcessAdapter,
   NodeWorkspaceFileSystemAdapter,
   RepositoryStatePipeline,
+  DEFAULT_TOOL_DEFINITIONS,
   ToolRuntimePipeline,
   VerificationPipeline,
   WorkspaceFileSystemManifestReader,
@@ -17,12 +18,16 @@ import {
   createFileSystemSkillsCatalog,
   createHostCodeNavigationPort,
   createHostLlmPorts,
+  createHostNetworkPort,
   createHostRepositoryGraphPort,
   createOptionalSearchPort,
   createSandboxedProcessPort,
   createWorkspaceCheckpointStore,
   createWorkspaceVerificationStore,
   createWorkspaceMemoryStore,
+  createWorkspaceKnowledgeGraph,
+  createHeuristicAdversary,
+  detectSandboxBackend,
   getProviderPreset,
   inferHostProviderType,
   isHostProviderType,
@@ -31,6 +36,10 @@ import {
   resolveSandboxPolicy,
   type MemoryCaptureContext,
 } from '@mitii/host';
+import {
+  getSharedMcpManager,
+  readMcpSettingsFromDisk,
+} from '@mitii/mcp';
 import type { LlmPort, ModelCapabilities, ModelEvent, ModelRequest } from '@mitii/v8';
 
 import { loadMitiiHostConfig, type MitiiHostConfig } from './config.js';
@@ -147,31 +156,51 @@ export function resolveCliPorts(
   };
 }
 
-export function createCliClient(options: {
+export async function createCliClient(options: {
   cwd: string;
   forceEcho?: boolean;
   env?: NodeJS.ProcessEnv;
   clientOverrides?: Partial<CreateMitiiClientOptions>;
-}): {
+}): Promise<{
   client: MitiiClient;
   ports: ResolvedCliPorts;
   memoryCapture?: MemoryCaptureContext;
-} {
+}> {
+  const env = options.env ?? process.env;
+  const config = loadMitiiHostConfig(options.cwd);
   const ports = resolveCliPorts({
     forceEcho: options.forceEcho,
     env: options.env,
     cwd: options.cwd,
+    config,
   });
-  const env = options.env ?? process.env;
   const fileSystem = new NodeWorkspaceFileSystemAdapter();
-  const search = createOptionalSearchPort(env);
+  const searxngBaseUrl = config.searxngBaseUrl?.trim() || undefined;
+  const search = createOptionalSearchPort({
+    env,
+    ...(searxngBaseUrl ? { config: { searxngBaseUrl } } : {}),
+  });
   const git = new NodeGitAdapter();
+  const knowledgeGraph = createWorkspaceKnowledgeGraph(options.cwd);
   const repoGraphs = createHostRepositoryGraphPort({
     workspaceRoot: options.cwd,
   });
   const sandboxEnabled = env.MITII_SANDBOX === '1' || env.MITII_SANDBOX === 'true';
   const sandboxNetwork =
     env.MITII_SANDBOX_NETWORK === 'allow' ? 'allow' : 'deny';
+  const sandboxPreferRaw = env.MITII_SANDBOX_BACKEND;
+  const sandboxPrefer =
+    sandboxPreferRaw === 'docker' ||
+    sandboxPreferRaw === 'podman' ||
+    sandboxPreferRaw === 'seatbelt' ||
+    sandboxPreferRaw === 'bubblewrap'
+      ? sandboxPreferRaw
+      : 'auto';
+
+  const mcpManager = getSharedMcpManager({ clientInfoName: 'mitii-cli' });
+  const mcp = readMcpSettingsFromDisk(options.cwd);
+  const mcpSnapshot = await mcpManager.sync(mcp, options.cwd);
+
   const processPort = createSandboxedProcessPort(
     new NodeProcessAdapter(),
     resolveSandboxPolicy({
@@ -179,18 +208,31 @@ export function createCliClient(options: {
       network: sandboxNetwork,
       workspaceRoot: options.cwd,
     }),
+    detectSandboxBackend({ prefer: sandboxPrefer }),
   );
-  const tools = new ToolRuntimePipeline({
-    fileSystem,
-    process: processPort,
-    network: new NodeNetworkAdapter(),
-    git,
-    codeNavigation: createHostCodeNavigationPort({
-      workspaceRoot: options.cwd,
-    }),
-    repoGraphs,
-    ...(search ? { search } : {}),
+  const adversary = createHeuristicAdversary({
+    enabled: env.MITII_ADVERSARY === '1' || env.MITII_ADVERSARY === 'true',
   });
+  const adversaryFailMode =
+    env.MITII_ADVERSARY_FAIL === 'open' ? ('fail_open' as const) : ('fail_closed' as const);
+  const tools = new ToolRuntimePipeline(
+    {
+      fileSystem,
+      process: processPort,
+      network: createHostNetworkPort({
+        inner: new NodeNetworkAdapter(),
+        env,
+      }),
+      git,
+      knowledgeGraph,
+      codeNavigation: createHostCodeNavigationPort({
+        workspaceRoot: options.cwd,
+      }),
+      repoGraphs,
+      ...(search ? { search } : {}),
+    },
+    { registry: mcpManager.createRegistry() },
+  );
   const verification = new VerificationPipeline({
     tools,
     manifests: new WorkspaceFileSystemManifestReader({
@@ -202,7 +244,6 @@ export function createCliClient(options: {
   const repositoryState = new RepositoryStatePipeline({
     store: new InMemoryRepositoryStateStore(),
   });
-  const config = loadMitiiHostConfig(options.cwd);
   const workspaceSkillsEnabled = env.MITII_DISABLE_WORKSPACE_SKILLS !== '1';
   const memoryDisabled = env.MITII_DISABLE_MEMORY === '1';
   const semanticIndex = resolveCliSemanticIndexSettings({ env, config });
@@ -232,6 +273,10 @@ export function createCliClient(options: {
     tools,
     repoGraphs,
     verification,
+    toolDefinitions: [
+      ...DEFAULT_TOOL_DEFINITIONS,
+      ...mcpSnapshot.toolDefinitions,
+    ],
     taskListAutoAdvance: env.MITII_TASK_LIST_AUTO_ADVANCE !== '0',
     skillsCatalog: createFileSystemSkillsCatalog({
       workspaceRoot: workspaceSkillsEnabled ? options.cwd : undefined,
@@ -239,6 +284,9 @@ export function createCliClient(options: {
     }),
     memoryStore,
     memoryEmbedding,
+    ...(adversary
+      ? { adversary, adversaryFailMode }
+      : {}),
     ...options.clientOverrides,
   });
   return {

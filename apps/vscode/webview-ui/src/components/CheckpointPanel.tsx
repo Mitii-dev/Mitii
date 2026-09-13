@@ -5,6 +5,7 @@ interface CheckpointPanelProps {
   onRestore: (id: string) => void;
   onDelete: (id: string) => void;
   onClear: () => void;
+  onReviewChanges?: (id: string) => void;
 }
 
 export function CheckpointPanel({
@@ -12,6 +13,7 @@ export function CheckpointPanel({
   onRestore,
   onDelete,
   onClear,
+  onReviewChanges,
 }: CheckpointPanelProps) {
   if (checkpoints.length === 0) {
     return (
@@ -43,8 +45,24 @@ export function CheckpointPanel({
               <span className="mono">
                 {new Date(cp.createdAt).toLocaleString()}
               </span>
+              {cp.changedPaths && cp.changedPaths.length > 0 ? (
+                <span className="mono">
+                  {cp.changedPaths.length} file
+                  {cp.changedPaths.length === 1 ? '' : 's'}
+                </span>
+              ) : null}
             </div>
             <div className="checkpoint-item__actions">
+              {onReviewChanges ? (
+                <button
+                  type="button"
+                  className="btn ghost"
+                  onClick={() => onReviewChanges(cp.id)}
+                  title="Review cumulative changes since this checkpoint"
+                >
+                  Review
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="btn ghost"

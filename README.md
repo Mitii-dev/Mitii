@@ -10,9 +10,9 @@
 
 <p align="center">
   <a href="LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/License-AGPL_v3-blue.svg"></a>
-  <a href="https://code.visualstudio.com/"><img alt="VS Code 1.85+" src="https://img.shields.io/badge/VS%20Code-1.85%2B-007ACC?logo=visualstudiocode"></a>
+  <a href="https://code.visualstudio.com/"><img alt="VS Code 1.124+" src="https://img.shields.io/badge/VS%20Code-1.124%2B-007ACC?logo=visualstudiocode"></a>
   <a href="https://nodejs.org/"><img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-339933?logo=node.js"></a>
-  <img alt="Version 2.9.30" src="https://img.shields.io/badge/version-2.9.30-111111">
+  <img alt="Version 2.9.53" src="https://img.shields.io/badge/version-2.9.53-111111">
   <a href="https://docs.mitii.dev"><img alt="Documentation" src="https://img.shields.io/badge/docs-docs.mitii.dev-5B5BFF"></a>
 </p>
 
@@ -28,14 +28,15 @@ Mitii understands a repository before it changes it. It combines local indexing,
 
 ## What Mitii provides
 
-- **Repository-aware context** — SQLite FTS5, symbols, vectors, repo maps, diagnostics, Git state, and explicitly attached files.
-- **Clear operating modes** — Ask for read-only analysis, Plan complex work, Agent applies changes, and Review inspects results.
-- **Evidence-assisted planning** — Plan mode can follow in-scope preflight diagnostics, discover first when evidence is thin, draft from the ask for scoped feature work, or ask clarifying questions when the request is too unclear.
-- **Controlled execution** — configurable approvals, dangerous-command blocking, workspace trust checks, and pre-write checkpoints.
-- **FIM autocomplete** — optional VS Code inline suggestions from a generic OpenAI-compatible `prompt` + `suffix` endpoint.
-- **Model flexibility** — `echo` (local stub), native **Anthropic (Claude)** and **Gemini** adapters, plus **OpenAI-compatible** endpoints (Ollama, LM Studio, OpenRouter, OpenAI, Azure OpenAI, DeepSeek, and any `/v1` API).
-- **Extensible workflows** — built-in tools, MCP servers (VS Code), project rules, and reusable skills.
-- **Local evidence** — session logs and a basic audit-pack export from the VS Code host (settings redacted). Org SSO/RBAC, SIEM webhooks, and managed enterprise policy packs are not implemented yet.
+- **Repository-aware context** - SQLite FTS5, symbols, vectors, repo maps, diagnostics, Git state, and explicitly attached files.
+- **Clear operating modes** - Ask for read-only analysis, Plan complex work, Agent applies changes, and Review inspects results.
+- **Evidence-assisted planning** - Plan mode can follow in-scope preflight diagnostics, discover first when evidence is thin, draft from the ask for scoped feature work, or ask clarifying questions when the request is too unclear.
+- **Controlled execution** - configurable approvals, dangerous-command blocking, workspace trust checks, and pre-write checkpoints.
+- **FIM autocomplete** - optional VS Code inline suggestions from a generic OpenAI-compatible `prompt` + `suffix` endpoint.
+- **Model flexibility** - `echo` (local stub), native **Anthropic (Claude)** and **Gemini** adapters, plus **OpenAI-compatible** endpoints (Ollama, LM Studio, OpenRouter, OpenAI, Azure OpenAI, DeepSeek, and any `/v1` API).
+- **Extensible workflows** - built-in tools, MCP servers (VS Code), project rules, and reusable skills.
+- **Web retrieval** - optional multi-provider `web_search` (SearXNG / Brave / Tavily via `@mitii/search-kit`) and content-aware `fetch_url` (Stack Overflow answers, GitHub issues, Wikipedia, arXiv, HTML readability).
+- **Local evidence** - session logs and a basic audit-pack export from the VS Code host (settings redacted). Org SSO/RBAC, SIEM webhooks, and managed enterprise policy packs are not implemented yet.
 
 ## How it works
 
@@ -46,7 +47,7 @@ flowchart LR
   Controller --> Context[Hybrid context engine]
   Context --> Index[(SQLite FTS5 + symbols)]
   Context --> Vectors[(LanceDB or SQLite vectors)]
-  Controller --> Pipeline[Classify → route → depth → skills]
+  Controller --> Pipeline[Classify -> route -> depth -> skills]
   Pipeline --> Loop[Ask / Plan / Agent loop]
   Loop --> Policy[Tool policy + approvals]
   Policy --> Tools[Files, shell, Git, MCP]
@@ -54,13 +55,13 @@ flowchart LR
   Loop --> Provider[Local or cloud model]
 ```
 
-The extension and CLI talk to the agent through `@mitii/sdk` → `@mitii/v8`. See [packages/v8/ARCHITECTURE.md](packages/v8/ARCHITECTURE.md) for component boundaries, request flows, storage, security, and an end-to-end example.
+The extension and CLI talk to the agent through `@mitii/sdk` -> `@mitii/v8`. Hosts inject ports from `@mitii/host` (including `@mitii/search-kit` for web retrieval). See [packages/v8/ARCHITECTURE.md](packages/v8/ARCHITECTURE.md) and [packages/search-kit/ARCHITECTURE.md](packages/search-kit/ARCHITECTURE.md).
 
 ## Quick start
 
 ### Requirements
 
-- VS Code 1.85 or newer
+- VS Code 1.124 or newer
 - Node.js 20 or newer
 - pnpm 10.13 or newer for source development
 
@@ -154,7 +155,7 @@ node apps/cli/bin/mitii.js index --cwd /path/to/project
 node apps/cli/bin/mitii.js status --json
 ```
 
-New users: `mitii setup` writes non-secret provider config, then set an API key in the environment and run `mitii session` (dotted MITII banner + REPL). See [apps/cli/README.md](apps/cli/README.md) for `setup`, `ask`, `session`, `index`, `status`, and `export-session`. Daemon / `mitii serve` is deferred.
+New users: `mitii setup` writes non-secret provider config, then set an API key in the environment and run `mitii session` (dotted MITII banner + REPL). See [apps/cli/README.md](apps/cli/README.md) for `setup`, `ask`, `session`, `index`, `status`, `export-session`, and automation commands such as `schedule`, `events`, and `serve`.
 
 ### SDK
 
@@ -184,7 +185,7 @@ for await (const event of run.events) {
 await run.result;
 ```
 
-The live surface is `createMitiiClient` / `start` / `resume` — not a legacy `query()` helper or `DaemonClient`. More detail: [packages/sdk/README.md](packages/sdk/README.md).
+The live surface is `createMitiiClient` / `start` / `resume` - not a legacy `query()` helper or `DaemonClient`. More detail: [packages/sdk/README.md](packages/sdk/README.md).
 
 ## Local safety controls
 
@@ -203,27 +204,33 @@ Not yet product features: `mitii.enterprise.localProvidersOnly`, signed SIEM/web
 
 ```text
 mitii-ai-agent/
-├── packages/
-│   ├── v8/                   # @mitii/v8 — host-neutral agent runtime
-│   └── sdk/                  # @mitii/sdk — public API over V8
-├── apps/
-│   ├── vscode/               # VS Code extension (F5 target)
-│   └── cli/                  # headless CLI
-├── tests/                    # architecture + consumer suites + solid benchmark
-├── docs/                     # developer and release guides (+ automation/)
-└── scripts/                  # build, release, and audit automation
+|-- packages/
+|   |-- v8/                   # @mitii/v8 - host-neutral agent runtime
+|   |-- sdk/                  # @mitii/sdk - public API + bundled skills/
+|   |-- host/                 # @mitii/host - indexing, ports, writing recipes
+|   |-- automation/           # @mitii/automation - schedules and claim runner
+|   |-- mcp/                  # @mitii/mcp client + @mitii/mcp-web server
+|   `-- search-kit/           # @mitii/search-kit - web search/fetch helpers
+|-- apps/
+|   |-- vscode/               # VS Code extension (F5 target)
+|   |-- cli/                  # headless CLI (`mitii`)
+|   |-- daemon/               # long-lived automation daemon (`mitii-daemon`)
+|   `-- acp/                  # ACP-lite stdio bridge (`mitii-acp`)
+|-- tests/                    # solid benchmark (+ package-local specs elsewhere)
+|-- docs/                     # developer and release guides (+ automation/)
+`-- scripts/                  # build, release, and audit automation
 ```
 
-See [docs/REPO_LAYOUT.md](docs/REPO_LAYOUT.md). Canonical architecture: [packages/v8/ARCHITECTURE.md](packages/v8/ARCHITECTURE.md). Unattended CI agents (Phase 0): [docs/automation/README.md](docs/automation/README.md).
+See [docs/REPO_LAYOUT.md](docs/REPO_LAYOUT.md). Canonical architecture: [packages/v8/ARCHITECTURE.md](packages/v8/ARCHITECTURE.md). Unattended CI agents: [docs/automation/README.md](docs/automation/README.md). Skills format: [docs/SKILLS_FORMAT.md](docs/SKILLS_FORMAT.md).
 
 ## Development
 
 ```bash
 pnpm run build:all          # build all packages + Electron SQLite for F5 / indexes
-pnpm run build              # packages only (v8 + sdk + cli + vscode)
-pnpm run typecheck          # typecheck v8 + sdk + cli + vscode
-pnpm test                   # architecture + selected Vitest suites
-pnpm run package            # build the target-specific VSIX (apps/vscode)
+pnpm run build              # packages only
+pnpm run typecheck
+pnpm test
+pnpm run package            # target-specific VSIX (apps/vscode)
 pnpm run package:preflight  # release checks, tests, and package
 ```
 
@@ -231,9 +238,8 @@ Native modules target different runtimes. `rebuild:native` stages the Electron
 binding for F5 and restores the Node ABI in `node_modules`, so tests keep working:
 
 ```bash
-pnpm run rebuild:native     # Electron → dist/native, then restore Node ABI
+pnpm run rebuild:native     # Electron -> dist/native, then restore Node ABI
 pnpm run rebuild:node       # Node-only (tests/CLI)
-pnpm run rebuild:all        # alias of rebuild:native (both targets ready)
 ```
 
 Vitest scripts auto-heal ABI mismatches via `scripts/ensure-node-native.mjs`.
@@ -244,10 +250,15 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for coding conventions and pull request g
 
 - [Architecture](packages/v8/ARCHITECTURE.md)
 - [Repository layout](docs/REPO_LAYOUT.md)
+- [Initial launch / F5](docs/INITIAL_LAUNCH.md)
+- [Skills format](docs/SKILLS_FORMAT.md)
+- [CLI](apps/cli/README.md) (includes writing recipes)
+- [VS Code extension](apps/vscode/README.md)
 - [Release / publish units](docs/RELEASE.md)
-- [User and developer guides](docs/)
 - [Solid benchmark](tests/benchmark/README.md)
 - [Tests layout](docs/TESTS.md)
+- [MCP packages](packages/mcp/README.md)
+- [Search kit](packages/search-kit/README.md)
 - [Website](https://mitii.dev)
 - [Hosted documentation](https://docs.mitii.dev)
 

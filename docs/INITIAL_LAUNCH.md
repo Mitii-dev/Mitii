@@ -1,36 +1,27 @@
-# Initial launch (F5) — Phase 17
+# Initial launch (F5)
 
-Status: planned (after Phase 16). Canonical phase text: `packages/v8/ROADMAP.md` Phase 17.
-
-Goal: press **F5** in this monorepo, load **`apps/vscode`**, and verify host ↔ `@mitii/sdk` ↔ `@mitii/v8` wiring before investing in polish or the full solid benchmark.
+Press **F5** in this monorepo to load `apps/vscode` and verify host -> `@mitii/sdk` -> `@mitii/v8`.
 
 ## Prerequisites
 
-1. Phase 15 complete (hosts exist under `apps/cli`, `apps/vscode`).
-2. Phase 16 complete preferred: active tree clean; `mitii.*` only; obsolete code under `legacy/` only.
-3. Node ≥ 20, `pnpm` install at repo root.
-
-## One-time build check
+- Node.js >= 20, pnpm 10.13+
+- Repo root opened in VS Code or Cursor
 
 ```bash
-pnpm --filter @mitii/v8 build
-pnpm --filter @mitii/sdk build
-pnpm --filter @mitii/vscode build
+pnpm run setup            # VS Code
+# or
+pnpm run setup:cursor     # Cursor on macOS
 ```
 
-Confirm `apps/vscode/dist/extension.js` exists.
+Confirm `apps/vscode/dist/extension.js` exists (setup/build creates it).
 
-## F5 configuration (Phase 17 must ship this)
+## Launch config
 
 `.vscode/launch.json` must use:
 
 - `extensionDevelopmentPath`: `${workspaceFolder}/apps/vscode`
 - `outFiles`: `${workspaceFolder}/apps/vscode/dist/**/*.js`
-- `preLaunchTask`: `mitii: prelaunch`
-
-`.vscode/tasks.json` must build the package chain (`@mitii/v8` → `@mitii/sdk` → `@mitii/vscode`), not the old root `src/extension.ts` / `thunder:*` labels.
-
-**Today (pre–Phase 17):** launch still points at the repo root and `thunder: prelaunch` — that is incorrect after Phase 13 and is the first Phase 17 fix.
+- `preLaunchTask`: builds v8 -> sdk -> host -> vscode
 
 ## Smoke checklist
 
@@ -38,37 +29,37 @@ In the Extension Development Host:
 
 | # | Check | Pass criteria |
 |---|---|---|
-| 1 | Activation | Output channel “Mitii”; no crash on activate |
+| 1 | Activation | Output channel "Mitii"; no activate crash |
 | 2 | Echo provider | `mitii.provider.type=echo` ask completes without API key |
-| 3 | Real provider (optional) | SecretStorage / env key path works when configured |
-| 4 | `mitii.openChat` | SDK run returns completed / suspended / failed with a clear message |
+| 3 | Real provider (optional) | SecretStorage / env key works when configured |
+| 4 | Open Chat | Ask run completes / suspends / fails with a clear message |
 | 5 | Cancel | Run ends `cancelled` |
-| 6 | `mitii.indexWorkspace` | State publish; degraded capabilities OK if honest |
-| 7 | Sidebar | WebviewView loads; can trigger ask |
-| 8 | Resume | Clarify/approve resume does not replay mutations |
+| 6 | Index Workspace | State publish; degraded capabilities OK if honest |
+| 7 | Sidebar | Webview loads; can trigger ask |
+| 8 | Generate Commit Message | Fills SCM input (attaches `git-commit-message`) |
 | 9 | Export session | File written; no secrets |
-| 10 | No legacy | No load of `legacy/**` or old kernel |
 
-## Failure triage
+## Automated gate (no Extension Host)
 
-| Symptom | Likely cause | Fix owner |
-|---|---|---|
-| “No extension” / empty contributes | F5 pointed at repo root | Phase 17 launch.json |
-| Cannot find module `@mitii/sdk` | Workspace deps / build order | prelaunch tasks |
-| Activate throws | ports composition / missing dist | `apps/vscode` build + `ports.ts` |
-| Ask hangs | LLM port / cancel token | SDK client + hostAsk |
-| Index lies “ready” | capability honesty | repository-state publish path |
+```bash
+pnpm run verify:launch
+```
 
-## Out of scope for first launch
+## Native SQLite note
 
-- Full React webview UI
-- Daemon / channels / board
-- Full 1,500-case solid benchmark GO gate (Phase 14)
-- Running `pnpm run legacy:purge` (human-only when ready)
+F5 needs the Electron ABI staged into `apps/vscode/dist/native`:
+
+```bash
+pnpm run rebuild:native
+# Cursor:
+MITII_EDITOR=cursor pnpm run rebuild:native
+```
+
+Vitest/CLI use the Node ABI in `node_modules` (`pnpm run rebuild:node` if needed).
 
 ## Related
 
-- `packages/v8/ROADMAP.md` — Phase 17
-- `docs/REPO_LAYOUT.md` — package boundaries
-- `docs/RELEASE.md` — publish units
-- `legacy/DELETE.md` — one-click purge (created in Phase 16)
+- [`docs/REPO_LAYOUT.md`](REPO_LAYOUT.md)
+- [`docs/RELEASE.md`](RELEASE.md)
+- [`CONTRIBUTING.md`](../CONTRIBUTING.md)
+- [`apps/vscode/README.md`](../apps/vscode/README.md)

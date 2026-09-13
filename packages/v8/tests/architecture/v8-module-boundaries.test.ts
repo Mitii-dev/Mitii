@@ -400,7 +400,7 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
     expect(violations).toEqual([]);
   });
 
-  it('keeps @mitii/sdk host-neutral over public @mitii/v8 only (Phase 12)', () => {
+  it('keeps @mitii/sdk host-neutral over public @mitii/v8 only', () => {
     const sdkRoot = join(repoRoot, 'packages/sdk');
     const sdkSrc = join(sdkRoot, 'src');
     expect(existsSync(sdkRoot)).toBe(true);
@@ -444,7 +444,38 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
     expect(index).not.toContain('DaemonClient');
   });
 
-  it('places host packages under apps/ over @mitii/sdk (Phase 13)', () => {
+  it('keeps @mitii/search-kit free of v8/sdk/host/apps', () => {
+    const kitRoot = join(repoRoot, 'packages/search-kit');
+    const kitSrc = join(kitRoot, 'src');
+    expect(existsSync(kitRoot)).toBe(true);
+    expect(existsSync(join(kitRoot, 'package.json'))).toBe(true);
+    expect(existsSync(join(kitRoot, 'ARCHITECTURE.md'))).toBe(true);
+
+    const pkg = JSON.parse(
+      readFileSync(join(kitRoot, 'package.json'), 'utf8'),
+    ) as {
+      name: string;
+      dependencies?: Record<string, string>;
+    };
+    expect(pkg.name).toBe('@mitii/search-kit');
+    expect(pkg.dependencies?.['@mitii/v8']).toBeUndefined();
+    expect(pkg.dependencies?.['@mitii/sdk']).toBeUndefined();
+    expect(pkg.dependencies?.['@mitii/host']).toBeUndefined();
+
+    const hostPkg = JSON.parse(
+      readFileSync(join(repoRoot, 'packages/host/package.json'), 'utf8'),
+    ) as { dependencies?: Record<string, string> };
+    expect(hostPkg.dependencies?.['@mitii/search-kit']).toBeTruthy();
+
+    const forbidden = [
+      /from ['"]@mitii\/(?:v8|sdk|host)(?:\/|['"])/,
+      /from ['"]vscode['"]/,
+      /from ['"].*apps\/(?:cli|vscode|daemon)/,
+    ] as const;
+    expect(scanImports(kitSrc, forbidden)).toEqual([]);
+  });
+
+  it('places host packages under apps/ over @mitii/sdk', () => {
     const cliRoot = join(repoRoot, 'apps/cli');
     const vscodeRoot = join(repoRoot, 'apps/vscode');
     const rootPkg = JSON.parse(
@@ -546,7 +577,7 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
     expect(cliHostSrc).toContain('createMitiiClient');
   });
 
-  it('forbids V8 from importing apps packages (Phase 13)', () => {
+  it('forbids V8 from importing apps packages', () => {
     const violations = scanImports(v8SrcRoot, [
       /from ['"]@mitii\/(?:cli|vscode|daemon)['"]/,
       /from ['"].*(?:^|\/)apps\/(?:cli|vscode|daemon)/,
@@ -554,12 +585,8 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
     expect(violations).toEqual([]);
   });
 
-  it('keeps legacy purged and no active kernel dump (Phase 16)', () => {
-    // Human ran MITII_PURGE_LEGACY=1 pnpm run legacy:purge (2026-07-26).
+  it('keeps active tree clean (no legacy vault / old roots)', () => {
     expect(existsSync(join(repoRoot, 'legacy'))).toBe(false);
-    expect(existsSync(join(repoRoot, 'scripts/legacy-purge.mjs'))).toBe(true);
-    // Active tree must not keep a second kernel or old tools/benchmark beside solid suite.
-    // Active maintained tools are allowed; legacy tool dumps are not.
     expect(existsSync(join(repoRoot, 'src'))).toBe(false);
     expect(existsSync(join(repoRoot, 'tools/benchmark'))).toBe(false);
     if (existsSync(join(repoRoot, 'tools'))) {
@@ -570,15 +597,9 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
         ),
       ).toEqual([]);
     }
-    // Phase 14: solid benchmark lives under tests/benchmark; flat test/ dump is gone.
     expect(existsSync(join(repoRoot, 'tests/benchmark/package.json'))).toBe(true);
     expect(existsSync(join(repoRoot, 'benchmark'))).toBe(false);
     expect(existsSync(join(repoRoot, 'test'))).toBe(false);
-
-    const rootPkg = JSON.parse(
-      readFileSync(join(repoRoot, 'package.json'), 'utf8'),
-    ) as { scripts?: Record<string, string> };
-    expect(rootPkg.scripts?.['legacy:purge']).toContain('legacy-purge');
 
     const productRoots = [
       join(repoRoot, 'packages/v8/src'),
@@ -606,7 +627,7 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
     expect(nonPortable).toEqual([]);
   });
 
-  it('strips thunder dual brand from apps/vscode (Phase 16)', () => {
+  it('strips legacy dual brand from apps/vscode', () => {
     const vscodeRoot = join(repoRoot, 'apps/vscode');
     const pkg = JSON.parse(
       readFileSync(join(vscodeRoot, 'package.json'), 'utf8'),

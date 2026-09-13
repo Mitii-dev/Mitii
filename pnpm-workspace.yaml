@@ -1,5 +1,6 @@
 packages:
   - 'packages/*'
+  - 'packages/mcp/*'
   - 'apps/*'
   - 'apps/vscode/webview-ui'
   - 'tests'

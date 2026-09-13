@@ -14,6 +14,7 @@ import {
   loadDiskSkills,
   PROVIDER_PRESETS,
   resolveProviderApiKey,
+  IndexLockedError,
 } from '@mitii/host';
 import type { SkillDescriptor } from '@mitii/v8';
 
@@ -35,6 +36,7 @@ import {
   showPatchDiffPreview,
   showWriteDiffPreview,
 } from './diff/diffPreview.js';
+import { cumulativeChangedPathsSince } from './diff/cumulativeCheckpointDiff.js';
 import {
   buildRunFileChangesView,
   createFileChangeRunSnapshot,
@@ -52,6 +54,7 @@ import {
 import { buildContextUsageBreakdown } from './contextUsage.js';
 import { deriveLiveTokenBudgetPreview } from './liveTokenBudgetPreview.js';
 import { getSharedMcpManager } from './mcp/manager.js';
+import { persistExcalidrawFromToolResult } from './excalidrawArtifacts.js';
 import {
   readMcpSettings,
   readMcpStoreCatalog,
@@ -59,6 +62,7 @@ import {
 } from './mcpConfig.js';
 import { scaffoldMitiiWorkspace } from './mitiiWorkspace.js';
 import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
+import { rehydrateRepositoryStateFromDisk } from './rehydrateRepositoryState.js';
 import { resolveVsCodeSemanticIndexSettings } from './semanticIndex.js';
 import { readModelIoLoggingEnabled } from './modelIoSettings.js';
 import {
@@ -92,6 +96,7 @@ import type {
   PlanView,
   ProviderSettingsSnapshot,
   RunBudgetSettingsSnapshot,
+  SearchSettingsSnapshot,
   SettingsProfileView,
   SuspensionPayload,
   RunUsagePayload,
@@ -100,6 +105,7 @@ import type {
   WebviewToHostMessage,
   WorkspaceNoticeView,
   WorkspaceSnapshotInfo,
+  ActivityEventPayload,
 } from './protocol.js';
 import { planViewFromArtifact } from './planView.js';
 import { saveTaskListToWorkspace } from './taskStore.js';
@@ -147,6 +153,33 @@ import {
   estimateMemoryPromptBlock,
   loadMemoriesForView,
 } from './memoryStore.js';
+
+function formatDiagramCarryMarkdown(
+  events: ActivityEventPayload[],
+): string {
+  const blocks: string[] = [];
+  for (const event of events) {
+    const app = event.mcpApp;
+    if (!app) continue;
+    const title = app.title || 'Diagram';
+    const svg = app.paths.svg;
+    const md = app.paths.md;
+    const docsMd = app.paths.docsMd;
+    const excalidraw = app.paths.excalidraw;
+    const lines = [`## ${title}`, ''];
+    if (svg) {
+      lines.push(`![${title}](${svg})`, '');
+    }
+    lines.push('Saved files:');
+    if (md) lines.push(`- Markdown: \`${md}\``);
+    if (docsMd) lines.push(`- Docs reference: \`${docsMd}\``);
+    if (excalidraw) lines.push(`- Excalidraw: \`${excalidraw}\``);
+    if (svg) lines.push(`- SVG: \`${svg}\``);
+    lines.push(`- Latest pointer: \`.mitii/artifacts/excalidraw/LATEST.md\``);
+    blocks.push(lines.join('\n'));
+  }
+  return blocks.join('\n\n');
+}
 
 /** Companion markdown path for a saved plan JSON relative path. */
 function savedPlanMarkdownRelative(jsonRelativePath: string): string {
@@ -444,6 +477,8 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
   private lastAssistantText = '';
   private liveStreamText = '';
   private activeThreadId?: string;
+  /** MCP App / Excalidraw cards posted during the active run (merged into history). */
+  private pendingMcpAppEvents: ActivityEventPayload[] = [];
   private lastSuspensionRunId?: string;
   /** Per-run file mutation snapshots for undo / diff preview. */
   private fileChangeSnapshots = new Map<string, FileChangeRunSnapshot>();
@@ -463,6 +498,95 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
   ) {
     const history = loadHistory(host.workspaceState);
     this.activeThreadId = history.activeThreadId;
+    this.installMcpAppListener();
+  }
+
+  private installMcpAppListener(): void {
+    getSharedMcpManager().setToolResultListener(async (event) => {
+      if (event.toolName !== 'create_view' || event.result.isError) {
+        return;
+      }
+      const root = this.effectiveRoot();
+      if (!root) return;
+
+      const persisted = persistExcalidrawFromToolResult({
+        workspaceRoot: root,
+        event,
+        threadId: this.activeThreadId,
+      });
+      if (!persisted) {
+        this.channel.appendLine(
+          '[mcp-app] create_view succeeded but no elements were available to persist',
+        );
+        return;
+      }
+
+      let html: string | undefined;
+      if (event.resourceUri) {
+        try {
+          const resource = await getSharedMcpManager().readResource(
+            event.serverId,
+            event.resourceUri,
+          );
+          const first = resource.contents[0];
+          if (first?.text) {
+            html = first.text;
+          } else if (first?.blob) {
+            html = Buffer.from(first.blob, 'base64').toString('utf8');
+          }
+        } catch (error) {
+          this.channel.appendLine(
+            `[mcp-app] resources/read failed: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+      }
+
+      const svgDataUrl = `data:image/svg+xml;base64,${Buffer.from(
+        persisted.svg,
+        'utf8',
+      ).toString('base64')}`;
+
+      this.channel.appendLine(
+        `[mcp-app] saved diagram → ${persisted.paths.relativeMd}${
+          persisted.paths.relativeDocsMd
+            ? ` + ${persisted.paths.relativeDocsMd}`
+            : ''
+        }`,
+      );
+
+      const activity: ActivityEventPayload = {
+        id: `mcp-app-${Date.now()}`,
+        at: Date.now(),
+        kind: 'mcp_app',
+        title: persisted.title,
+        detail: `Saved ${persisted.paths.relativeMd}`,
+        status: 'succeeded',
+        mcpApp: {
+          serverId: event.serverId,
+          tool: event.toolName,
+          title: persisted.title,
+          ...(persisted.paths.checkpointId
+            ? { checkpointId: persisted.paths.checkpointId }
+            : {}),
+          svgDataUrl,
+          // Full AppBridge is not wired yet; keep HTML available for future
+          // interactive host work but prefer SVG for a reliable visible diagram.
+          ...(html ? { html } : {}),
+          paths: {
+            md: persisted.paths.relativeMd,
+            ...(persisted.paths.relativeDocsMd
+              ? { docsMd: persisted.paths.relativeDocsMd }
+              : {}),
+            excalidraw: persisted.paths.relativeExcalidraw,
+            svg: persisted.paths.relativeSvg,
+          },
+        },
+      };
+      this.pendingMcpAppEvents.push(activity);
+      this.post({ type: 'run.event', event: activity });
+    });
   }
 
   attachHostHelpers(helpers: SidebarHostHelpers): void {
@@ -756,6 +880,10 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         this.post({ type: 'setCheckpoints', checkpoints: [] });
         return;
       }
+      case 'reviewCheckpointChanges': {
+        await this.handleReviewCheckpointChanges(message.id);
+        return;
+      }
       case 'addMemory': {
         try {
           const items = await commitMemoryForWorkspace(
@@ -882,6 +1010,14 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         return;
       case 'settings.clearApiKey':
         await this.vs.commands.executeCommand('mitii.clearApiKey');
+        await this.sendBootstrap();
+        return;
+      case 'settings.setSearchApiKey':
+        await this.vs.commands.executeCommand('mitii.setSearchApiKey');
+        await this.sendBootstrap();
+        return;
+      case 'settings.clearSearchApiKey':
+        await this.vs.commands.executeCommand('mitii.clearSearchApiKey');
         await this.sendBootstrap();
         return;
       case 'settings.resetTokenBudget':
@@ -1067,6 +1203,34 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       before ?? '',
       after,
     );
+  }
+
+  /**
+   * Open git HEAD ↔ working-tree diffs for the cumulative path set
+   * from the selected checkpoint through the newest label.
+   */
+  private async handleReviewCheckpointChanges(
+    checkpointId: string,
+  ): Promise<void> {
+    const root = this.effectiveRoot();
+    if (!root) return;
+    const checkpoints = loadCheckpoints(this.host.workspaceState);
+    const { paths } = cumulativeChangedPathsSince(checkpoints, checkpointId);
+    if (paths.length === 0) {
+      void this.vs.window.showInformationMessage(
+        'Mitii: No changed paths recorded for this checkpoint range.',
+      );
+      return;
+    }
+    const pick =
+      paths.length === 1
+        ? paths[0]
+        : await this.vs.window.showQuickPick(paths, {
+            title: `Cumulative changes (${paths.length} files)`,
+            placeHolder: 'Select a file to review vs HEAD',
+          });
+    if (!pick) return;
+    await this.handleReviewWorkspaceFile(pick);
   }
 
   private async handleReviewWorkspaceFile(path: string): Promise<void> {
@@ -1281,6 +1445,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     }
     this.post({ type: 'run.started', mode: message.mode, prompt });
     this.pendingRunTurns = [];
+    this.pendingMcpAppEvents = [];
     this.liveStreamText = '';
     this.runBaseTurns = [...(this.tokenUsage.turns ?? [])];
     this.runBaseInputTokens = this.tokenUsage.inputTokensTotal;
@@ -1369,6 +1534,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         approvalMode: message.approvalMode,
         pinnedPaths: message.pinnedPaths,
         requiredSkillIds: message.requiredSkillIds,
+        requiredMcpServerIds: message.requiredMcpServerIds,
         workspaceId: this.getWorkspaceId(),
         workspaceState: this.host.workspaceState,
         secrets: this.secrets,
@@ -1515,18 +1681,30 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       const changedPaths = this.activeFileChangeSnapshot
         ? [...this.activeFileChangeSnapshot.mutatedPaths]
         : [];
+      const diagramCarry =
+        this.pendingMcpAppEvents.length > 0
+          ? formatDiagramCarryMarkdown(this.pendingMcpAppEvents)
+          : '';
       const enrichedAnswer = enrichAssistantCarryText({
         answer: answer.trim()
           ? answer
-          : outcome.result.error?.message
-            ? `Error: ${outcome.result.error.message}`
-            : `(${outcome.result.status})`,
+          : diagramCarry
+            ? diagramCarry
+            : outcome.result.error?.message
+              ? `Error: ${outcome.result.error.message}`
+              : `(${outcome.result.status})`,
         changedPaths,
       });
-      const assistantText = resolveDisplayedAssistantText({
+      const assistantTextRaw = resolveDisplayedAssistantText({
         streamedText: this.liveStreamText,
         finalAnswer: enrichedAnswer,
       });
+      const assistantText =
+        diagramCarry &&
+        answer.trim() &&
+        !assistantTextRaw.includes(diagramCarry)
+          ? `${assistantTextRaw.trimEnd()}\n\n${diagramCarry}`
+          : assistantTextRaw;
       this.lastAssistantText = assistantText;
       this.liveStreamText = '';
       const resultPlan = outcome.result.plan;
@@ -1606,11 +1784,13 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       persistedFileChanges =
         compactFileChangesForHistory(persistedFileChanges) ?? null;
 
-      const activity = compactActivityForHistory(
-        outcome.events
+      const activity = compactActivityForHistory([
+        ...outcome.events
           .map((event) => runEventToActivity(event))
           .filter((event): event is NonNullable<typeof event> => Boolean(event)),
-      );
+        ...this.pendingMcpAppEvents,
+      ]);
+      this.pendingMcpAppEvents = [];
 
       const pendingPlanForUi =
         message.mode === 'plan' && resultPlan && plan
@@ -1678,6 +1858,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           id: `cp_${Date.now().toString(36)}`,
           label: `After: ${prompt.slice(0, 40)}`,
           createdAt: new Date().toISOString(),
+          ...(changedPaths.length > 0 ? { changedPaths } : {}),
         });
         await saveCheckpoints(this.host.workspaceState, checkpoints.slice(0, 30));
         this.post({ type: 'setCheckpoints', checkpoints: checkpoints.slice(0, 30) });
@@ -1787,6 +1968,22 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           truncated: false,
           message: 'Open a workspace folder to index',
         },
+      });
+      return;
+    }
+    // Activation already ensureIndexed; skip a redundant full path when caps are ready.
+    if (
+      reason === 'initial load' &&
+      this.lastIndex.fileCount > 0 &&
+      this.lastIndex.readiness === 'ready' &&
+      !needsFullIndexRefresh(this.lastIndex)
+    ) {
+      void this.withEmbedding(this.lastIndex).then((index) => {
+        this.lastIndex = index;
+        this.post({ type: 'index.status', index });
+        this.channel.appendLine(
+          `[index] ${reason} skipped (already ready) files=${index.fileCount}`,
+        );
       });
       return;
     }
@@ -2092,6 +2289,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     }
     if (message.autocomplete) {
       await this.writeAutocompleteSettings(message.autocomplete);
+    }
+    if (message.search) {
+      await this.writeSearchSettings(message.search);
     }
     if (message.ui) {
       if (message.ui.showReasoning !== undefined) {
@@ -2477,6 +2677,18 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private async writeSearchSettings(
+    search: Partial<Pick<SearchSettingsSnapshot, 'searxngBaseUrl'>>,
+  ): Promise<void> {
+    if (search.searxngBaseUrl !== undefined) {
+      await this.writeConfigValue(
+        'search.searxngBaseUrl',
+        search.searxngBaseUrl.trim(),
+      );
+    }
+    this.invalidateClient();
+  }
+
   private async handleProfileSwitch(id: string): Promise<void> {
     const currentProvider = await this.readProvider();
     const currentUi = this.readUi();
@@ -2662,6 +2874,17 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     );
   }
 
+  private async readSearch(): Promise<SearchSettingsSnapshot> {
+    const cfg = this.vs.workspace.getConfiguration('mitii');
+    const searxngBaseUrl = cfg.get<string>('search.searxngBaseUrl')?.trim() ?? '';
+    const hasApiKey = Boolean(
+      (await this.secrets.get('mitii.search.apiKey'))?.trim() ||
+        process.env.MITII_SEARCH_API_KEY?.trim() ||
+        process.env.BRAVE_API_KEY?.trim(),
+    );
+    return { searxngBaseUrl, hasApiKey };
+  }
+
   private readUi(): UiSettingsSnapshot {
     const cfg = this.vs.workspace.getConfiguration('mitii');
     const legacyDepth =
@@ -2841,6 +3064,39 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         }
         return this.lastIndex;
       }
+
+      // After client invalidate / restart, restore in-memory publish from disk
+      // before paying for a full scan + lock (profile switches used to thrash here).
+      const mitiiDir = scaffoldMitiiWorkspace(root);
+      const rehydrated = await rehydrateRepositoryStateFromDisk({
+        client,
+        mitiiDir,
+        workspaceRoot: root,
+        workspaceId: this.getWorkspaceId(),
+        channel: this.channel,
+      });
+      if (rehydrated.ok) {
+        await this.readIndexStatus();
+        const after = await client.getLatestRepositoryState(this.getWorkspaceId());
+        if (after) {
+          const descriptorStatus = indexStatusFromDescriptor(after);
+          this.lastIndex = {
+            ...this.lastIndex,
+            ...descriptorStatus,
+            fileCount: Math.max(this.lastIndex.fileCount, rehydrated.fileCount),
+            ...(rehydrated.indexMode
+              ? { indexMode: rehydrated.indexMode }
+              : {}),
+            message: `Indexed ${Math.max(this.lastIndex.fileCount, rehydrated.fileCount)} files`,
+          };
+          if (!needsFullIndexRefresh(this.lastIndex)) {
+            return this.lastIndex;
+          }
+          this.channel.appendLine(
+            '[index] rehydrated state still missing full caps; republishing full index…',
+          );
+        }
+      }
     } catch (error) {
       this.channel.appendLine(
         `[index] latest-state check failed: ${
@@ -2849,7 +3105,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       );
     }
 
-    this.channel.appendLine('[index] first load: publishing host snapshot…');
+    this.channel.appendLine('[index] first load: publishing repository index…');
     this.postIndexingStatus('Indexing workspace…');
     const status = await this.publishIndexSnapshot();
     this.channel.appendLine(
@@ -3007,9 +3263,26 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         return this.lastIndex;
       }
       if (full.status === 'skipped') {
+        const rehydrated = await rehydrateRepositoryStateFromDisk({
+          client,
+          mitiiDir: dir,
+          workspaceRoot: root,
+          workspaceId: this.getWorkspaceId(),
+          channel: this.channel,
+        });
+        if (rehydrated.ok) {
+          await this.readIndexStatus();
+          return {
+            ...this.lastIndex,
+            fileCount: Math.max(this.lastIndex.fileCount, full.fileCount),
+            truncated: full.truncated,
+            maximumIndexFiles,
+            message: 'Indexing already in progress (using on-disk index)',
+          };
+        }
         return {
           ...this.lastIndex,
-          fileCount: full.fileCount,
+          fileCount: full.fileCount || this.lastIndex.fileCount,
           truncated: full.truncated,
           maximumIndexFiles,
           message: 'Indexing already in progress',
@@ -3022,10 +3295,45 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         graphRevisionByRoot: full.graphRevisionByRoot,
         mapRevisionByRoot: full.mapRevisionByRoot,
       });
-      this.channel.appendLine(
-        `[index] ${options.filePaths?.length ? 'incremental' : 'full'} code/text/graph/map index stored at ${full.databasePath}; vector=${full.vectorIndex.status}${full.vectorIndex.profileId ? ` profile=${full.vectorIndex.profileId}` : ''}${full.vectorIndex.reason ? ` reason=${full.vectorIndex.reason}` : ''}`,
-      );
+      if (full.status === 'unchanged') {
+        this.channel.appendLine(
+          `[index] unchanged (up to date) at ${full.databasePath}; vector=${full.vectorIndex.status}${full.vectorIndex.profileId ? ` profile=${full.vectorIndex.profileId}` : ''}`,
+        );
+      } else {
+        this.channel.appendLine(
+          `[index] ${options.filePaths?.length ? 'incremental' : 'full'} code/text/graph/map index stored at ${full.databasePath}; vector=${full.vectorIndex.status}${full.vectorIndex.profileId ? ` profile=${full.vectorIndex.profileId}` : ''}${full.vectorIndex.reason ? ` reason=${full.vectorIndex.reason}` : ''}`,
+        );
+      }
     } catch (error) {
+      if (
+        error instanceof IndexLockedError ||
+        (error instanceof Error && error.name === 'IndexLockedError')
+      ) {
+        this.channel.appendLine(
+          `[index] skipped (lock held): ${error instanceof Error ? error.message : String(error)}`,
+        );
+        const rehydrated = await rehydrateRepositoryStateFromDisk({
+          client,
+          mitiiDir: dir,
+          workspaceRoot: root,
+          workspaceId: this.getWorkspaceId(),
+          channel: this.channel,
+        });
+        if (rehydrated.ok) {
+          await this.readIndexStatus();
+          return {
+            ...this.lastIndex,
+            fileCount: Math.max(this.lastIndex.fileCount, rehydrated.fileCount),
+            maximumIndexFiles,
+            message: 'Indexing already in progress (using on-disk index)',
+          };
+        }
+        return {
+          ...this.lastIndex,
+          maximumIndexFiles,
+          message: 'Indexing already in progress',
+        };
+      }
       fallbackReason = error instanceof Error ? error.message : String(error);
       this.channel.appendLine(
         `[index] full index unavailable; falling back to host snapshot: ${fallbackReason}`,
@@ -3137,6 +3445,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     }
     const provider = await this.readProvider();
     const autocomplete = this.readAutocomplete();
+    const search = await this.readSearch();
     const ui = this.readUi();
     const secretHash = hashSecret(await this.secrets.get('mitii.provider.apiKey'));
     const profilesFile = readProfiles(
@@ -3150,6 +3459,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       workspace: this.readWorkspace(),
       provider,
       autocomplete,
+      search,
       profiles: profilesFile.profiles,
       activeProfileId: profilesFile.activeProfileId,
       index: await this.withEmbedding(await this.readIndexStatus()),
@@ -3185,6 +3495,8 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       `script-src ${webview.cspSource}`,
       `font-src ${webview.cspSource}`,
       `img-src ${webview.cspSource} data:`,
+      "frame-src 'self' data: blob: https:",
+      "child-src 'self' data: blob: https:",
     ].join('; ');
 
     return `<!DOCTYPE html>

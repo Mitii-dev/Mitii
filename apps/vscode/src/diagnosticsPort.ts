@@ -54,13 +54,28 @@ export class VscodeDiagnosticsPort implements DiagnosticsPort {
   }
 }
 
+/** Mitii runtime artifacts — never surface as agent “problems”. */
+export function isMitiiRuntimeDiagnosticPath(relativePath: string): boolean {
+  const normalized = relativePath.replace(/\\/g, '/').replace(/^\.\//, '');
+  return (
+    normalized === '.mitii' ||
+    normalized.startsWith('.mitii/') ||
+    normalized.endsWith('-model-io.jsonl') ||
+    /(^|\/)\.mitii\/logs\//.test(normalized)
+  );
+}
+
 function toWorkspaceRelative(
   workspaceRoot: string,
   absolutePath: string,
 ): string | undefined {
   const rel = relative(workspaceRoot, absolutePath);
   if (!rel || rel.startsWith('..')) return undefined;
-  return rel.replace(/\\/g, '/');
+  const normalized = rel.replace(/\\/g, '/');
+  if (isMitiiRuntimeDiagnosticPath(normalized)) {
+    return undefined;
+  }
+  return normalized;
 }
 
 function mapSeverity(

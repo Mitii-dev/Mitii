@@ -63,7 +63,7 @@ function memoryIo(): SessionIo & { stdout: string[]; stderr: string[] } {
   };
 }
 
-describe('CLI driveRun (Phase 15)', () => {
+describe('CLI driveRun', () => {
   it('completes an echo ask with streaming status', async () => {
     const client = createMitiiClient({
       understandingLlm: new LocalUnderstandingLlmPort(),

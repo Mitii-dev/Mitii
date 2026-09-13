@@ -16,6 +16,9 @@ These are **bundled defaults** under `packages/sdk/skills/`. Edit them in place.
 | `code-review-and-quality` | review | review, audit, refactor |
 | `security-and-hardening` | review | security, audit, feature |
 | `git-workflow-and-versioning` | ship | feature, bugfix, refactor, docs, migrate |
+| `git-commit-message` | ship-commit | docs, feature, bugfix, refactor (recipe) |
+| `git-pr-summary` | ship-pr | docs, feature, bugfix, refactor, review (recipe) |
+| `release-changelog` | ship-changelog | docs, feature, bugfix, migrate (recipe) |
 | `cicd-agent` | verify | test, bugfix, feature, config (CI/PR automation) |
 | `incident-triage` | debug | bugfix, diagnose, trace (logs → ticket) |
 

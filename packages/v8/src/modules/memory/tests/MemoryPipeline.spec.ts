@@ -373,4 +373,60 @@ describe("MemoryPipeline", () => {
     expect(result.reasonCodes).toContain("memory_hybrid");
     expect(result.instructions.map((block) => block.id)).toContain("m-pnpm");
   });
+
+  it("returns layered L1/L2/L3 partitions when mode is layered", async () => {
+    const pipeline = new MemoryPipeline({
+      store: new InMemoryMemoryStore(seed),
+    });
+
+    const result = await pipeline.retrieve({
+      schemaVersion: MEMORY_SCHEMA_VERSION,
+      query: "install packages with pnpm",
+      scope: { kind: "workspace", workspaceId: "ws" },
+      now,
+      mode: "layered",
+    });
+
+    expect(result.reasonCodes).toContain("memory_layered");
+    expect(result.layers).toBeDefined();
+    expect(result.layers!.l1Index.length).toBeGreaterThan(0);
+    expect(result.layers!.l3Facts.some((b) => b.id === "m-pnpm")).toBe(true);
+    expect(result.instructions.length).toBeGreaterThan(0);
+  });
+
+  it("consolidates whitespace-normalized duplicates", async () => {
+    const store = new InMemoryMemoryStore([
+      {
+        id: "m-a",
+        content: "Prefer  pnpm   workspaces.",
+        scope: { kind: "workspace", workspaceId: "ws" },
+        tags: ["pnpm"],
+        privacy: "shareable",
+        createdAt: "2026-07-01T00:00:00.000Z",
+        source: "user",
+      },
+      {
+        id: "m-b",
+        content: "Prefer pnpm workspaces.",
+        scope: { kind: "workspace", workspaceId: "ws" },
+        tags: ["pnpm"],
+        privacy: "shareable",
+        createdAt: "2026-07-10T00:00:00.000Z",
+        source: "user",
+      },
+    ]);
+    const pipeline = new MemoryPipeline({ store });
+    const result = await pipeline.consolidate({
+      schemaVersion: MEMORY_SCHEMA_VERSION,
+      scope: { kind: "workspace", workspaceId: "ws" },
+      now,
+    });
+
+    expect(result.scanned).toBe(2);
+    expect(result.superseded).toBe(1);
+    expect(result.reasonCodes).toContain("memory_consolidated");
+    const facts = store.list();
+    expect(facts.find((f) => f.id === "m-a")?.isLatest).toBe(false);
+    expect(facts.find((f) => f.id === "m-b")?.isLatest).not.toBe(false);
+  });
 });

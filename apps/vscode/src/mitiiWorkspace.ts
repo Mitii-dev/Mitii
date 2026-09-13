@@ -17,6 +17,8 @@ const SUBDIRS = [
   'skills',
   'rules',
   'diff-preview',
+  'artifacts',
+  'artifacts/excalidraw',
 ] as const;
 
 const MCP_TEMPLATE = {
@@ -38,6 +40,7 @@ Local runtime data for this workspace. Safe to gitignore.
 | \`skills/\` | Workspace skill playbooks |
 | \`rules/\` | Project methodology rules |
 | \`diff-preview/\` | Temporary diff preview files |
+| \`artifacts/excalidraw/\` | Saved Excalidraw diagrams (\`.excalidraw\`, \`.svg\`, \`.md\`) |
 | \`mcp.json\` | MCP install list (off by default; add from Settings store) |
 | \`profiles.json\` | Local model/provider profiles with secret fingerprints only |
 | \`last-repository-state.json\` | Last published index descriptor |

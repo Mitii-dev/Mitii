@@ -443,6 +443,71 @@ describe("AgentEngine task list", () => {
     expect(result.reasonCodes).not.toContain("task_list_auto_advanced");
   });
 
+  it("does not auto-advance design approach rows when a shared file is patched", async () => {
+    const llm = new ScriptedLlmPort([
+      {
+        content: "",
+        toolCalls: [
+          {
+            id: "todo_1",
+            name: "update_todos",
+            arguments: JSON.stringify({
+              type: "replace",
+              items: [
+                {
+                  id: "design",
+                  title: "Choose a non-hardcoded approach for src/widget.ts",
+                  status: "active",
+                  write: ["src/widget.ts"],
+                },
+                {
+                  id: "implement",
+                  title: "Implement src/widget.ts",
+                  write: ["src/widget.ts"],
+                },
+              ],
+            }),
+          },
+          {
+            id: "patch_1",
+            name: "apply_patch",
+            arguments: JSON.stringify({ patches: [] }),
+          },
+        ],
+      },
+      { content: "Patched widget." },
+    ]);
+
+    const engine = new AgentEnginePipeline(
+      createStubDependencies({
+        decision: createDecision({
+          route: "execute",
+          planningDepth: "none",
+          repositoryContextRequired: false,
+          toolGrant: createWriteGrant(),
+          reasonCodes: ["mutation_execute"],
+        }),
+        llm,
+        taskListAutoAdvance: true,
+        toolResults: {
+          apply_patch: {
+            output: {
+              checkpointId: "ckpt_design",
+              changedFiles: ["src/widget.ts"],
+            },
+          },
+        },
+      }),
+    );
+
+    const result = await engine.start(agentStartInput()).result;
+    expect(result.taskList?.items.map((item) => item.status)).toEqual([
+      "active",
+      "pending",
+    ]);
+    expect(result.reasonCodes).not.toContain("task_list_auto_advanced");
+  });
+
   it("accepts todos/content aliases for update_todos replace", async () => {
     const llm = new ScriptedLlmPort([
       {

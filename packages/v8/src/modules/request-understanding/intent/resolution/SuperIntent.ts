@@ -7,7 +7,12 @@ import { INTENT_CONSTANTS } from "../constants";
 
 import { intentClassificationSchema } from "../schema";
 
-import type { IntentClassification, InteractionIntent } from "../schema";
+import type {
+  IntentClassification,
+  InteractionIntent,
+  AmbiguousSlot,
+  AmbiguousSlotKind,
+} from "../schema";
 
 import type {
   IntentClassifierResult,
@@ -650,6 +655,21 @@ export class SuperIntent {
   private buildClarification(
     classification: IntentClassification,
   ): SuperIntentClarification {
+    const slots = classification.taskHints?.ambiguousSlots ?? [];
+    const preferredSlot = pickPreferredAmbiguousSlot(slots);
+    if (preferredSlot) {
+      return {
+        question: preferredSlot.question,
+        slotKind: preferredSlot.kind,
+        options: preferredSlot.options.map((option) => ({
+          id: option.id,
+          label: option.label,
+          description: option.description ?? "",
+          confidence: 0,
+        })),
+      };
+    }
+
     const candidateIntents = new Set<TaskIntent>([
       classification.primaryTaskIntent,
       ...classification.alternatives.map((alternative) => alternative.intent),
@@ -658,6 +678,7 @@ export class SuperIntent {
     const options = [...candidateIntents]
       .slice(0, this.options.maximumClarificationOptions)
       .map((intent) => ({
+        id: `intent:${intent}`,
         intent,
         label: this.humanizeIntent(intent),
         description: INTENT_CATALOG[intent].description,
@@ -671,6 +692,7 @@ export class SuperIntent {
         hintedQuestion && hintedQuestion.length > 0
           ? hintedQuestion
           : "What outcome do you want from this request?",
+      slotKind: "intent",
       options,
     };
   }
@@ -737,4 +759,25 @@ export class SuperIntent {
       }
     }
   }
+}
+
+const SLOT_KIND_PRIORITY: AmbiguousSlotKind[] = [
+  "interaction",
+  "target",
+  "scope",
+  "outcome",
+  "intent",
+];
+
+function pickPreferredAmbiguousSlot(
+  slots: readonly AmbiguousSlot[],
+): AmbiguousSlot | undefined {
+  if (slots.length === 0) return undefined;
+  for (const kind of SLOT_KIND_PRIORITY) {
+    const match = slots.find(
+      (slot) => slot.kind === kind && slot.options.length >= 2,
+    );
+    if (match) return match;
+  }
+  return slots.find((slot) => slot.options.length >= 2) ?? slots[0];
 }

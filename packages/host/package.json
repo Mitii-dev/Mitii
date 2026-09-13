@@ -1,7 +1,7 @@
 {
   "name": "@mitii/host",
-  "version": "2.9.30",
-  "description": "Shared host kit for Mitii apps: SQLite injection, workspace indexing, repository context, durable ports (checkpoints/memory/skills/search), project rules, provider presets.",
+  "version": "2.9.53",
+  "description": "Shared host kit for Mitii apps: SQLite injection, workspace indexing, repository context, durable ports (checkpoints/memory/skills/search/network), project rules, provider presets. Web retrieval via @mitii/search-kit.",
   "license": "AGPL-3.0-or-later",
   "type": "module",
   "main": "./dist/index.js",
@@ -40,7 +40,9 @@
   },
   "dependencies": {
     "@mitii/automation": "workspace:*",
+    "@mitii/mcp": "workspace:*",
     "@mitii/sdk": "workspace:*",
+    "@mitii/search-kit": "workspace:*",
     "@mitii/v8": "workspace:*",
     "zod": "^3.23.8"
   },

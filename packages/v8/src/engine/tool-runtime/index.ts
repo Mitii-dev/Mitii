@@ -52,6 +52,18 @@ export type {
 } from "./shadow";
 
 export {
+  ADVERSARY_HIGH_RISK_TOOL_IDS,
+  isAdversaryHighRiskTool,
+} from "./adversary";
+export type {
+  AdversaryDecision,
+  AdversaryEvaluateInput,
+  AdversaryEvaluateResult,
+  AdversaryFailMode,
+  ToolAdversaryPort,
+} from "./adversary";
+
+export {
   ToolRegistry,
   createBuiltinToolRegistry,
   defineTool,
@@ -103,6 +115,8 @@ export type {
   DiagnosticItem,
   GitPort,
   NetworkPort,
+  NetworkFetchRequest,
+  NetworkFetchResult,
   SearchPort,
   RepositoryGraphPort,
   CodeNavigationPort,
@@ -123,6 +137,11 @@ export {
   InMemoryNetworkAdapter,
 } from "./adapters";
 export type { ProcessHandler } from "./adapters";
+
+export type {
+  MutationCheckpoint,
+  CheckpointFileSnapshot,
+} from "./pipeline/ToolRuntimePipeline";
 
 export {
   validateMutationBatch,

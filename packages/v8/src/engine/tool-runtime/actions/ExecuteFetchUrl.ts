@@ -5,10 +5,22 @@ import { DEFAULT_MAX_OUTPUT_BYTES } from "../defaults";
 import { validateNetworkHost } from "../internal/CommandPolicy";
 import { sanitizeTextOutput } from "../internal/OutputSanitizer";
 import {
+  AUTONOMOUS_FETCH_USER_AGENT,
+  USER_INITIATED_FETCH_USER_AGENT,
+  canFetchUrlPerRobots,
+  robotsTxtUrlFor,
+  RobotsDeniedError,
+  type FetchIntent,
+} from "../internal/RobotsPolicy";
+import {
   fetchUrlInputSchema,
   fetchUrlOutputSchema,
 } from "../internal/ToolCatalog";
 import { GrantValidationError } from "./ValidateGrant";
+
+const DEFAULT_FETCH_WINDOW = 100_000;
+const ROBOTS_TIMEOUT_MS = 8_000;
+const ROBOTS_MAX_BYTES = 64_000;
 
 export async function executeFetchUrl(params: {
   arguments: unknown;
@@ -46,13 +58,39 @@ export async function executeFetchUrl(params: {
     );
   }
 
+  const intent: FetchIntent = input.intent ?? "autonomous";
+  const userAgent =
+    intent === "user"
+      ? USER_INITIATED_FETCH_USER_AGENT
+      : AUTONOMOUS_FETCH_USER_AGENT;
+
+  if (intent === "autonomous") {
+    try {
+      await assertAutonomousFetchAllowed({
+        url: input.url,
+        network: params.network,
+        userAgent,
+        signal: params.signal,
+        networkHosts: params.grant.networkHosts ?? [],
+      });
+    } catch (error) {
+      if (error instanceof RobotsDeniedError) {
+        throw new GrantValidationError("network_not_allowed", error.message);
+      }
+      throw error;
+    }
+  }
+
+  const maxBodyBytes = Math.min(params.maxOutputBytes, DEFAULT_MAX_OUTPUT_BYTES);
+
   let fetched;
   try {
     fetched = await params.network.fetch({
       url: input.url,
       method: "GET",
+      headers: { "user-agent": userAgent },
       timeoutMs: params.timeoutMs,
-      maxBodyBytes: Math.min(params.maxOutputBytes, DEFAULT_MAX_OUTPUT_BYTES),
+      maxBodyBytes,
       signal: params.signal,
     });
   } catch (error) {
@@ -63,6 +101,7 @@ export async function executeFetchUrl(params: {
           status: 0,
           body: "",
           truncated: false,
+          startIndex: input.startIndex ?? 0,
         }),
         truncated: false,
         redacted: false,
@@ -77,12 +116,31 @@ export async function executeFetchUrl(params: {
     body = simplifyDocsBody(body);
   }
 
-  const sanitized = sanitizeTextOutput(body, params.maxOutputBytes);
+  const startIndex = input.startIndex ?? 0;
+  const windowMax = Math.min(
+    input.maxLength ?? DEFAULT_FETCH_WINDOW,
+    params.maxOutputBytes,
+  );
+  const totalLength = body.length;
+  const sliced =
+    startIndex >= totalLength ? "" : body.slice(startIndex, startIndex + windowMax);
+  const windowTruncated = startIndex + sliced.length < totalLength;
+  const sanitized = sanitizeTextOutput(sliced, params.maxOutputBytes);
+  const truncated =
+    fetched.truncated || sanitized.truncated || windowTruncated;
+
+  const nextStartIndex = windowTruncated
+    ? startIndex + sanitized.text.length
+    : undefined;
+
   const output = fetchUrlOutputSchema.parse({
     url: input.url,
     status: fetched.status,
     body: sanitized.text,
-    truncated: fetched.truncated || sanitized.truncated,
+    truncated,
+    startIndex,
+    ...(nextStartIndex !== undefined ? { nextStartIndex } : {}),
+    totalLength,
   });
 
   return {
@@ -90,6 +148,67 @@ export async function executeFetchUrl(params: {
     truncated: output.truncated,
     redacted: sanitized.redacted,
   };
+}
+
+async function assertAutonomousFetchAllowed(params: {
+  url: string;
+  network: NetworkPort;
+  userAgent: string;
+  signal?: AbortSignal;
+  networkHosts: readonly string[];
+}): Promise<void> {
+  const robotsUrl = robotsTxtUrlFor(params.url);
+  // Robots host follows the target host; grant already validated target.
+  try {
+    validateNetworkHost({
+      url: robotsUrl,
+      networkHosts: params.networkHosts,
+    });
+  } catch {
+    // If robots.txt host somehow fails grant (shouldn't for same host), allow.
+    return;
+  }
+
+  let robotsResponse;
+  try {
+    robotsResponse = await params.network.fetch({
+      url: robotsUrl,
+      method: "GET",
+      headers: { "user-agent": params.userAgent },
+      timeoutMs: ROBOTS_TIMEOUT_MS,
+      maxBodyBytes: ROBOTS_MAX_BYTES,
+      signal: params.signal,
+    });
+  } catch {
+    // Connection issues fetching robots → deny autonomous (conservative).
+    throw new RobotsDeniedError(
+      `Failed to fetch robots.txt for ${params.url}; autonomous fetch blocked. Retry with intent="user" if the user explicitly requested this URL.`,
+    );
+  }
+
+  if (robotsResponse.status === 401 || robotsResponse.status === 403) {
+    throw new RobotsDeniedError(
+      `robots.txt at ${robotsUrl} returned ${robotsResponse.status}; autonomous fetch not allowed. Use intent="user" for explicit user requests.`,
+    );
+  }
+  if (robotsResponse.status >= 400 && robotsResponse.status < 500) {
+    return;
+  }
+  if (robotsResponse.status < 200 || robotsResponse.status >= 300) {
+    return;
+  }
+
+  if (
+    !canFetchUrlPerRobots({
+      robotsTxt: robotsResponse.body,
+      targetUrl: params.url,
+      userAgent: params.userAgent,
+    })
+  ) {
+    throw new RobotsDeniedError(
+      `robots.txt disallows autonomous fetch of ${params.url}. Use intent="user" if the user explicitly asked for this URL.`,
+    );
+  }
 }
 
 function simplifyDocsBody(body: string): string {

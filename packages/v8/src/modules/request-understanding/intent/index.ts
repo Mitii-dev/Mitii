@@ -9,3 +9,5 @@ export * from "./resolveIntentClassifierMaximumOutputTokens";
 export * from "./IntentRouter";
 export * from "./policy";
 export * from "./resolution";
+export * from "./intersectRecommendedSkillTags";
+export * from "./applyClarificationFactPatch";

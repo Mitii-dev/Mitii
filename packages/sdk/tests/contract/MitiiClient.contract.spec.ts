@@ -41,7 +41,7 @@ class UnderstandingLlmPort implements LlmPort {
   }
 }
 
-describe('MitiiClient contract (Phase 12)', () => {
+describe('MitiiClient contract', () => {
   it('rejects invalid start input with MitiiSdkError invalid_input', () => {
     const client = createMitiiClient({
       understandingLlm: new UnderstandingLlmPort({

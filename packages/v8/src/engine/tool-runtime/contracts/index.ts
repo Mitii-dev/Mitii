@@ -53,6 +53,10 @@ export type {
   GitPort,
   GitStatusResult,
   GitDiffResult,
+  GitLogEntry,
+  GitLogResult,
+  GitShowResult,
+  GitBranchListResult,
   NetworkPort,
   NetworkFetchRequest,
   NetworkFetchResult,
@@ -61,5 +65,6 @@ export type {
   WebSearchRequest,
   WebSearchHit,
   WebSearchResult,
+  KnowledgeGraphPort,
 } from "./ports/ToolRuntimePorts";
 export type { CodeNavigationPort } from "../../../modules/code-navigation";

@@ -52,6 +52,15 @@ export const memoryRetrieveResultSchema = z
     warnings: z.array(z.string()),
     reasonCodes: z.array(z.enum(MEMORY_REASON_CODES)),
     durationMs: z.number().int().nonnegative(),
+    /** Present when retrieve mode is `layered`. */
+    layers: z
+      .object({
+        l1Index: z.array(memoryInstructionBlockSchema),
+        l2Timeline: z.array(memoryInstructionBlockSchema),
+        l3Facts: z.array(memoryInstructionBlockSchema),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -71,3 +80,19 @@ export const memoryCommitResultSchema = z
   .strict();
 
 export type MemoryCommitResult = z.infer<typeof memoryCommitResultSchema>;
+
+export const memoryConsolidateResultSchema = z
+  .object({
+    schemaVersion: z.literal(MEMORY_SCHEMA_VERSION),
+    scanned: z.number().int().nonnegative(),
+    merged: z.number().int().nonnegative(),
+    superseded: z.number().int().nonnegative(),
+    warnings: z.array(z.string()),
+    reasonCodes: z.array(z.enum(MEMORY_REASON_CODES)),
+    durationMs: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export type MemoryConsolidateResult = z.infer<
+  typeof memoryConsolidateResultSchema
+>;

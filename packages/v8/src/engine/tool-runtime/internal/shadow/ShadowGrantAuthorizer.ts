@@ -40,10 +40,20 @@ export class StructuralShadowGrantAuthorizer implements ShadowGrantAuthorizer {
     const { tool, grant } = params;
     const cedarPolicy = compileToolGrantToCedar(grant);
 
-    const mcpAllowed =
+    const mcpEffectOk =
       tool.name.startsWith(MCP_TOOL_NAME_PREFIX) &&
       grant.allowedTools.length > 0 &&
-      grant.maximumWorkspaceEffect === "write";
+      (grant.maximumWorkspaceEffect === "write" ||
+        grant.maximumWorkspaceEffect === "read");
+    const mcpAttachOk =
+      !tool.name.startsWith(MCP_TOOL_NAME_PREFIX) ||
+      !grant.allowedMcpServerIds?.length ||
+      grant.allowedMcpServerIds.some((id) =>
+        tool.name
+          .toLowerCase()
+          .startsWith(`${MCP_TOOL_NAME_PREFIX}${id.toLowerCase()}__`),
+      );
+    const mcpAllowed = mcpEffectOk && mcpAttachOk;
 
     if (!grant.allowedTools.includes(tool.name) && !mcpAllowed) {
       return {

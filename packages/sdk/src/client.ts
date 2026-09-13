@@ -20,15 +20,23 @@ import type {
   VerificationPipeline,
   WorkspaceIndexingPipelineResult,
   RepositoryGraphPort,
+  ToolAdversaryPort,
+  AdversaryFailMode,
 } from '@mitii/v8';
 
 import {
   mitiiResumeInputSchema,
   toAgentEngineStartInput,
 } from './contracts';
-import type { MitiiResumeInput, MitiiStartInput } from './contracts';
+import type {
+  MitiiResumeInput,
+  MitiiRestoreInput,
+  MitiiStartInput,
+} from './contracts';
 import { MitiiSdkError, mapToSdkError } from './errors';
 import { MitiiRun } from './run';
+
+export type { MitiiRestoreInput } from './contracts';
 
 export interface CreateMitiiClientOptions {
   /** LLM used by Request Understanding (structured classification). */
@@ -76,6 +84,9 @@ export interface CreateMitiiClientOptions {
    * enable this by default for product UX; see those compose sites.
    */
   taskListAutoAdvance?: boolean;
+  /** Restrict-only ToolAdversaryPort (Phase 3). Default unset = no-op. */
+  adversary?: ToolAdversaryPort;
+  adversaryFailMode?: AdversaryFailMode;
 }
 
 /**
@@ -128,6 +139,8 @@ export class MitiiClient {
       memoryEmbedding: options.memoryEmbedding,
       toolDefinitions: options.toolDefinitions,
       taskListAutoAdvance: options.taskListAutoAdvance,
+      adversary: options.adversary,
+      adversaryFailMode: options.adversaryFailMode,
     });
 
     this.repositoryState = repositoryState;
@@ -158,6 +171,27 @@ export class MitiiClient {
     try {
       const parsed = mitiiResumeInputSchema.parse(input);
       return new MitiiRun(this.engine.resume(parsed));
+    } catch (error) {
+      throw mapToSdkError(error);
+    }
+  }
+
+  /**
+   * Undo workspace files to a RestorePoint (and any newer points for the run).
+   * Never rewrites user git. Never escalates grants / interaction mode.
+   */
+  async restore(input: MitiiRestoreInput) {
+    try {
+      return await this.engine.restore(input);
+    } catch (error) {
+      throw mapToSdkError(error);
+    }
+  }
+
+  /** List durable restore points for a run (oldest → newest). */
+  async listRestorePoints(runId: string): Promise<import('@mitii/v8').RestorePointSummary[]> {
+    try {
+      return await this.engine.listRestorePoints(runId);
     } catch (error) {
       throw mapToSdkError(error);
     }

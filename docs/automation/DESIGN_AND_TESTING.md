@@ -1,4 +1,4 @@
-# Designing automation — skills, agents, specs, and smoke tests
+# Designing automation - skills, agents, specs, and smoke tests
 
 Use this when you add a **new unattended scenario** (post-commit cover, CI triage,
 nightly health, release notes, etc.). It explains what belongs in a **skill**,
@@ -13,31 +13,31 @@ Related:
 
 ---
 
-## Mental model — four layers
+## Mental model - four layers
 
 Mitii automation is split on purpose. Each layer has one job:
 
 | Layer | File(s) | Answers | Loaded by |
 |---|---|---|---|
-| **Skill** | `SKILL.md` | *How* should the model behave for this class of work? | Skills pipeline (L1 match → L2 body) |
+| **Skill** | `SKILL.md` | *How* should the model behave for this class of work? | Skills pipeline (L1 match -> L2 body) |
 | **Agent** | `.mitii/agents/<id>.md` | *What* is this run asked to do right now? | CLI `--agent` / GHA `agent:` input |
 | **Spec** | `.mitii/cron/*.cron.md`, `.mitii/cron/events/*.event.md` | *When* should it run unattended? | `@mitii/automation` reconcile + materializer |
 | **Smoke** | `docs/automation/smoke/*.sh` | Does the **control plane** queue/match/claim correctly? | You / CI (bash) |
 
 ```text
 Trigger (cron / webhook / manual)
-        │
-        ▼
-  Event or schedule spec  ──►  prompt + mode + autonomy + workspace
-        │
-        ▼
-  ClaimRunner + host executor  ──►  SDK agent run (origin=automation)
-        │
-        ▼
-  Skills selected by intent/route  ──►  playbook + hard rules in prompt
-        │
-        ▼
-  Tools (run_command, create_github_issue, …)  ──►  repo effects
+        |
+        v
+  Event or schedule spec  -->  prompt + mode + autonomy + workspace
+        |
+        v
+  ClaimRunner + host executor  -->  SDK agent run (origin=automation)
+        |
+        v
+  Skills selected by intent/route  -->  playbook + hard rules in prompt
+        |
+        v
+  Tools (run_command, create_github_issue, ...)  -->  repo effects
 ```
 
 **Rule of thumb:** put reusable *behavior* in skills; put scenario-specific
@@ -46,7 +46,7 @@ frontmatter; put *deterministic plumbing checks* in `.sh` smoke scripts.
 
 ---
 
-## Part 1 — Designing a skill
+## Part 1 - Designing a skill
 
 ### When you need a new skill
 
@@ -56,7 +56,7 @@ Create or extend a skill when:
 - You want consistent hard rules (never push main, fingerprint before filing).
 - The model needs a structured planning template (Discover / Change / Verify).
 
-Do **not** put cron expressions, webhook types, or “run every Monday” in a skill.
+Do **not** put cron expressions, webhook types, or "run every Monday" in a skill.
 That belongs in a **spec**.
 
 ### Skill locations
@@ -74,8 +74,8 @@ See [SKILLS_FORMAT.md](../SKILLS_FORMAT.md) for the full field list.
 
 One skill = one coherent workflow. Examples:
 
-- `cicd-agent` — tests, CI, draft PRs
-- `incident-triage` — logs, fingerprint, idempotent issues
+- `cicd-agent` - tests, CI, draft PRs
+- `incident-triage` - logs, fingerprint, idempotent issues
 
 If two workflows fight for the same `conflictGroup`, split them or tune
 `priority` / `when`.
@@ -108,7 +108,7 @@ time the skill is selected.
 
 #### 3. Add a `# Planning` block (optional but useful)
 
-Extracted in metadata mode — good for automation:
+Extracted in metadata mode - good for automation:
 
 ```markdown
 # Planning
@@ -170,12 +170,12 @@ Important:
 | One-off helper tied to the playbook | Standard `npm test` / `pnpm verify` |
 | Template the model may adapt | CI already documents the command |
 
-Prefer **documenting the repo’s real command** in the playbook over hiding logic
+Prefer **documenting the repo's real command** in the playbook over hiding logic
 in skill scripts. Skill scripts are hints, not a second CI system.
 
 ---
 
-## Part 2 — Agents, cron specs, and event specs
+## Part 2 - Agents, cron specs, and event specs
 
 ### Agent file (`.mitii/agents/<id>.md`)
 
@@ -195,7 +195,7 @@ autonomyPreset: apply_and_pr
 Follow the `cicd-agent` skill.
 
 1. Inspect the latest commit diff.
-2. …
+2. ...
 ```
 
 Ship examples under `docs/automation/agents/`. Consumers copy to `.mitii/agents/`.
@@ -204,7 +204,7 @@ Ship examples under `docs/automation/agents/`. Consumers copy to `.mitii/agents/
 
 | Agent | Skill |
 |---|---|
-| “Do this now on this trigger context” | “Whenever CI/test work, behave like this” |
+| "Do this now on this trigger context" | "Whenever CI/test work, behave like this" |
 | Fixed prompt for one scenario | Reusable across many prompts |
 | Sets mode / autonomy / origin | Sets matching + playbook |
 
@@ -225,7 +225,7 @@ autonomyPreset: readonly
 enabled: true
 ---
 
-Run a lightweight repo health summary …
+Run a lightweight repo health summary ...
 ```
 
 Reconcile: `mitii schedule reconcile` (also runs on `mitii serve` startup).
@@ -247,14 +247,14 @@ autonomyPreset: apply
 enabled: true
 ---
 
-Triage this CI workflow failure …
+Triage this CI workflow failure ...
 ```
 
 Notes:
 
 - Dotted keys like `filter.conclusion` are supported in frontmatter.
 - Filters match event attributes and payload paths (see `packages/automation/src/events/filters.ts`).
-- Ingest manually: `mitii events ingest …` or via `mitii serve --webhook-port`.
+- Ingest manually: `mitii events ingest ...` or via `mitii serve --webhook-port`.
 
 ### Choosing autonomy for a scenario
 
@@ -270,7 +270,7 @@ headless (no interactive clarify).
 
 ---
 
-## Part 3 — Shell scripts (`.sh`) — what they are for
+## Part 3 - Shell scripts (`.sh`) - what they are for
 
 Mitii uses bash smoke scripts for **control-plane** validation, not for agent
 logic.
@@ -279,8 +279,8 @@ logic.
 
 | Script | Validates |
 |---|---|
-| `example1-post-commit.sh` | schedule create → trigger → optional `serve --echo` |
-| `example2-ci-failure.sh` | reconcile event spec → ingest → match → filter |
+| `example1-post-commit.sh` | schedule create -> trigger -> optional `serve --echo` |
+| `example2-ci-failure.sh` | reconcile event spec -> ingest -> match -> filter |
 
 Conventions (follow these for new smokes):
 
@@ -294,7 +294,7 @@ WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/mitii-my-scenario-ws.XXXXXX")"
 export MITII_AUTOMATION_DB="$DB"
 trap 'rm -f "$DB"; rm -rf "$WORKDIR"' EXIT
 
-# 1. Seed minimal workspace + .mitii/cron/…
+# 1. Seed minimal workspace + .mitii/cron/...
 # 2. pnpm --filter @mitii/cli build (and host/automation if needed)
 # 3. Exercise CLI commands with --json
 # 4. Assert on JSON fields (status, queuedRuns, filtersJson)
@@ -320,7 +320,7 @@ trap 'rm -f "$DB"; rm -rf "$WORKDIR"' EXIT
 mitii serve --echo --poll-ms 1000 --db "$DB"
 ```
 
-Forces the echo LLM provider. Use it to verify **claim → execute → terminal status**
+Forces the echo LLM provider. Use it to verify **claim -> execute -> terminal status**
 without API keys.
 
 Echo limitations:
@@ -336,27 +336,27 @@ ingress only (no echo executor).
 
 Separate from Mitii smokes:
 
-- `.github/workflows/*.yml` — production path with real keys
-- `.github/actions/mitii-run` — wraps `mitii ask --agent …`
-- Consumer repo scripts (`npm test`) — what the **skill playbook** should point at
+- `.github/workflows/*.yml` - production path with real keys
+- `.github/actions/mitii-run` - wraps `mitii ask --agent ...`
+- Consumer repo scripts (`npm test`) - what the **skill playbook** should point at
 
 ---
 
-## Part 4 — Testing a new CLI automation scenario
+## Part 4 - Testing a new CLI automation scenario
 
 Use a **layered** approach. Do not jump straight to live GitHub.
 
-### Layer 0 — Clarify the scenario contract
+### Layer 0 - Clarify the scenario contract
 
 Write down:
 
-1. **Trigger** — manual, cron, or event type (+ filters)
-2. **Inputs** — diff, log file, webhook payload, workspace root
-3. **Outputs** — draft PR, issue + fingerprint, Slack message, report path
-4. **Autonomy** — readonly vs apply vs apply_and_pr
-5. **Skills** — which skill(s) should attach
+1. **Trigger** - manual, cron, or event type (+ filters)
+2. **Inputs** - diff, log file, webhook payload, workspace root
+3. **Outputs** - draft PR, issue + fingerprint, Slack message, report path
+4. **Autonomy** - readonly vs apply vs apply_and_pr
+5. **Skills** - which skill(s) should attach
 
-### Layer 1 — Skill + agent on the CLI (interactive dev)
+### Layer 1 - Skill + agent on the CLI (interactive dev)
 
 Fastest loop while authoring behavior:
 
@@ -374,7 +374,7 @@ $EDITOR .mitii/agents/my-scenario.md
 mitii ask --agent my-scenario --echo --origin automation --autonomy readonly
 
 # 4. Real model (sandbox repo + key)
-export ANTHROPIC_API_KEY=…
+export ANTHROPIC_API_KEY=...
 mitii ask --agent my-scenario --origin automation --autonomy apply_and_pr --json
 ```
 
@@ -387,10 +387,10 @@ Checklist:
 Disable workspace skills to test bundled only:
 
 ```bash
-MITII_DISABLE_WORKSPACE_SKILLS=1 mitii ask --agent my-scenario --echo "…"
+MITII_DISABLE_WORKSPACE_SKILLS=1 mitii ask --agent my-scenario --echo "..."
 ```
 
-### Layer 2 — Spec + control plane (no model)
+### Layer 2 - Spec + control plane (no model)
 
 Convert the scenario to unattended form:
 
@@ -417,15 +417,15 @@ mitii schedule reconcile --json
 
 Add **unit tests** when you introduce new matching logic:
 
-- `packages/automation/src/tests/automation.spec.ts` — ingress, filters, dedupe
-- `packages/automation` — `pnpm --filter @mitii/automation test`
+- `packages/automation/src/tests/automation.spec.ts` - ingress, filters, dedupe
+- `packages/automation` - `pnpm --filter @mitii/automation test`
 
-### Layer 3 — Smoke script (regression gate)
+### Layer 3 - Smoke script (regression gate)
 
 Add `docs/automation/smoke/my-scenario.sh`:
 
 1. Temp DB + temp workspace
-2. Copy your event/cron spec into `$WORKDIR/.mitii/cron/…`
+2. Copy your event/cron spec into `$WORKDIR/.mitii/cron/...`
 3. Run reconcile + ingest/trigger
 4. Assert JSON outcomes
 5. Document in [SHIP.md](./SHIP.md) checklist
@@ -438,7 +438,7 @@ chmod +x docs/automation/smoke/my-scenario.sh
 ./docs/automation/smoke/my-scenario.sh --echo   # only if ask/readonly
 ```
 
-### Layer 4 — `mitii serve` / daemon
+### Layer 4 - `mitii serve` / daemon
 
 ```bash
 export MITII_AUTOMATION_DB=~/.mitii/automation/dev.db
@@ -452,7 +452,7 @@ Verify:
 - Claim loop runs queued jobs
 - Webhook HMAC if using GitHub (`--github-webhook-secret`)
 
-### Layer 5 — Sandbox repo + real provider
+### Layer 5 - Sandbox repo + real provider
 
 Same as production but isolated:
 
@@ -461,7 +461,7 @@ Same as production but isolated:
 3. Force the trigger (push commit, fail CI, or `mitii events ingest`)
 4. Confirm real issue/PR/check/comment
 
-### Layer 6 — GitHub Actions
+### Layer 6 - GitHub Actions
 
 Copy workflow examples from `docs/examples/workflows/mitii-*.yml` into
 `.github/workflows/` on the consumer repo. GHA is the last mile, not the first
@@ -469,13 +469,13 @@ debug surface.
 
 ---
 
-## Part 5 — Worked example: adding “nightly dependency audit”
+## Part 5 - Worked example: adding "nightly dependency audit"
 
 ### 1. Skill (if not covered by an existing one)
 
 `packages/sdk/skills/security-and-hardening/` may already match. If not, add
 `.mitii/skills/deps-audit/SKILL.md` with `routes: [diagnose, execute]`, short
-`instruction`, and a playbook that runs the repo’s audit command (`npm audit`,
+`instruction`, and a playbook that runs the repo's audit command (`npm audit`,
 `pnpm audit`, etc.).
 
 ### 2. Agent
@@ -508,7 +508,7 @@ autonomyPreset: apply
 enabled: true
 ---
 
-Run the nightly dependency audit agent prompt …
+Run the nightly dependency audit agent prompt ...
 ```
 
 ### 4. Tests
@@ -516,16 +516,16 @@ Run the nightly dependency audit agent prompt …
 | Layer | Command / artifact |
 |---|---|
 | Unit | filter/dedupe tests if new event filters added |
-| Smoke | `docs/automation/smoke/nightly-deps.sh` — reconcile + trigger + queue |
+| Smoke | `docs/automation/smoke/nightly-deps.sh` - reconcile + trigger + queue |
 | Echo | `mitii serve --echo` with `mode: ask` variant of prompt |
 | Live | manual run on sandbox repo |
 | GHA | optional workflow calling `mitii ask --agent nightly-deps` |
 
 ---
 
-## Quick reference — file picker
+## Quick reference - file picker
 
-| I need to… | Create / edit |
+| I need to... | Create / edit |
 |---|---|
 | Change how CI/incident work is done in general | `SKILL.md` (bundled or `.mitii/skills/`) |
 | Define a one-off scenario prompt | `.mitii/agents/<id>.md` |
@@ -546,13 +546,13 @@ Run the nightly dependency audit agent prompt …
 | Smoke script that calls live `gh` | Assert `mitii events ingest --json` |
 | `mode: agent` + `--echo` expecting success | `ask`/`readonly` for echo, or skip echo |
 | Duplicating `cicd-agent` in every agent | `Follow the cicd-agent skill` one-liner |
-| Skill script as hidden test runner | Document repo’s canonical test command |
+| Skill script as hidden test runner | Document repo's canonical test command |
 
 ---
 
 ## See also
 
-- [SKILLS_FORMAT.md](../SKILLS_FORMAT.md) — frontmatter fields, L1/L2/L3
-- [packages/sdk/skills/ENGINEERING_PACK.md](../../packages/sdk/skills/ENGINEERING_PACK.md) — bundled skill index
-- [ARCHITECTURE.md](../../packages/automation/ARCHITECTURE.md) — automation vs host boundary
-- [SHIP.md](./SHIP.md) — release checklist for Examples 1 & 2
+- [SKILLS_FORMAT.md](../SKILLS_FORMAT.md) - frontmatter fields, L1/L2/L3
+- [packages/sdk/skills/ENGINEERING_PACK.md](../../packages/sdk/skills/ENGINEERING_PACK.md) - bundled skill index
+- [ARCHITECTURE.md](../../packages/automation/ARCHITECTURE.md) - automation vs host boundary
+- [SHIP.md](./SHIP.md) - release checklist for Examples 1 & 2

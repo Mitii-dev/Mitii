@@ -9,6 +9,8 @@ Hybrid Retrieval gathers candidate context from repository intelligence sources 
 - Captures per-source success, failure, skip, and warning reports.
 - Deduplicates candidates across sources.
 - Combines rankings with weighted reciprocal-rank fusion.
+- Optionally boosts fused scores from published RepoMap importance
+  (`boostByImportance.ts` — never recomputes PageRank).
 - Optionally reranks candidates using identifier-aware signals.
 - Returns fused candidates and retrieval statistics.
 

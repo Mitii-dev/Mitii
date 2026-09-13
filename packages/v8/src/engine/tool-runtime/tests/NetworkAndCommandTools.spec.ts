@@ -49,6 +49,46 @@ describe("network and mutating command tools", () => {
     expect((result.output as { body: string }).body).toContain("Hello docs");
   });
 
+  it("fetch_url maps maxBytes alias and strips unknown keys", async () => {
+    const runtime = new ToolRuntimePipeline({
+      fileSystem: new InMemoryFileSystemAdapter(WORKSPACE, directory({})),
+      process: new InMemoryProcessAdapter(async () => ({
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        timedOut: false,
+        cancelled: false,
+        truncated: false,
+      })),
+      network: new InMemoryNetworkAdapter(() => ({
+        status: 200,
+        body: "abcdefghijklmnopqrstuvwxyz",
+        headers: { "content-type": "text/plain" },
+      })),
+    });
+
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "n-maxbytes",
+      toolName: "fetch_url",
+      arguments: {
+        url: "https://docs.example.com/guide",
+        maxBytes: "10",
+        inventHeaders: { Authorization: "nope" },
+      },
+      grant: createReadOnlyGrant({
+        allowedTools: ["fetch_url"],
+        allowedEffects: ["network_access"],
+        networkHosts: ["docs.example.com"],
+      }),
+      workspaceRoot: WORKSPACE,
+    });
+    expect(result.status).toBe("succeeded");
+    expect((result.output as { body: string }).body.length).toBeLessThanOrEqual(
+      10,
+    );
+  });
+
   it("fetch_docs strips html noise", async () => {
     const runtime = new ToolRuntimePipeline({
       fileSystem: new InMemoryFileSystemAdapter(WORKSPACE, directory({})),

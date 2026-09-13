@@ -79,6 +79,10 @@ function wrapTools(
     },
     rollbackMutation: (input) => realTools.rollbackMutation(input),
     commitMutation: (checkpointId) => realTools.commitMutation(checkpointId),
+    getMutationCheckpoint: (checkpointId) =>
+      realTools.getMutationCheckpoint(checkpointId),
+    restoreMutationSnapshot: (snapshot) =>
+      realTools.restoreMutationSnapshot(snapshot),
   };
 }
 

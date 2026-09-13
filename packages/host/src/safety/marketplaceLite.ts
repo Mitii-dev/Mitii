@@ -23,6 +23,16 @@ export const MARKETPLACE_LITE_CATALOG: readonly MarketplaceCatalogEntry[] = [
     recommended: false,
   },
   {
+    id: "mitii-web",
+    kind: "mcp",
+    title: "Mitii Web Search MCP",
+    description:
+      "First-party @mitii/mcp-web: web_search + fetch_url via @mitii/search-kit.",
+    installHint:
+      "Add mitii-mcp-web to .mitii/mcp.json (pnpm --filter @mitii/mcp-web build; path packages/mcp/web)",
+    recommended: true,
+  },
+  {
     id: "sequential-thinking",
     kind: "mcp",
     title: "Sequential Thinking",
@@ -44,6 +54,15 @@ export const MARKETPLACE_LITE_CATALOG: readonly MarketplaceCatalogEntry[] = [
     installHint: "Enable from Mitii Settings → MCP store (requires Puppeteer deps)",
   },
   {
+    id: "excalidraw",
+    kind: "mcp",
+    title: "Excalidraw",
+    description:
+      "Hand-drawn diagrams via remote Excalidraw MCP App (mcp.excalidraw.com).",
+    installHint:
+      "Enable from Mitii Settings → MCP store, or add streamable-http https://mcp.excalidraw.com to .mitii/mcp.json",
+  },
+  {
     id: "debugging-and-error-recovery",
     kind: "skill",
     title: "Debugging and Error Recovery",
@@ -53,12 +72,30 @@ export const MARKETPLACE_LITE_CATALOG: readonly MarketplaceCatalogEntry[] = [
     recommended: true,
   },
   {
-    id: "debug-systematic",
+    id: "git-commit-message",
     kind: "skill",
-    title: "Debug Systematic (mode-like)",
-    description: "Thin Debug playbook for Agent mode root-cause work.",
+    title: "Git commit message",
+    description: "Compact conventional commit from status/diff/log.",
     installHint:
-      "Bundled skill debug-systematic. Attach with --skill debug-systematic",
+      "Bundled. Auto-attached by Mitii: Generate Commit Message and `mitii commit-message`.",
+    recommended: true,
+  },
+  {
+    id: "git-pr-summary",
+    kind: "skill",
+    title: "Git PR summary",
+    description: "Compact PR Summary + Test plan from branch diff.",
+    installHint:
+      "Bundled. Auto-attached by Mitii: Generate PR Summary and `mitii pr-summary`.",
+    recommended: true,
+  },
+  {
+    id: "release-changelog",
+    kind: "skill",
+    title: "Release changelog",
+    description: "Keep a Changelog entry from commits since last tag.",
+    installHint:
+      "Bundled. Auto-attached by Mitii: Generate Changelog and `mitii changelog`.",
     recommended: true,
   },
 ] as const;

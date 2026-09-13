@@ -32,7 +32,7 @@ import {
 } from './stateCache.js';
 import {
   runAsk,
-  resolveAskPrompt,
+  resolveAskPromptWithRecipe,
 } from './runAskCommand.js';
 
 import { parseCliArgs } from './parseCliArgs.js';
@@ -176,7 +176,7 @@ async function runIndex(options: {
   forceEcho: boolean;
   io: SessionIo;
 }): Promise<number> {
-  const { client, ports } = createCliClient({
+  const { client, ports } = await createCliClient({
     cwd: options.cwd,
     forceEcho: options.forceEcho,
   });
@@ -298,7 +298,7 @@ async function runStatus(options: {
   forceEcho: boolean;
   io: SessionIo;
 }): Promise<number> {
-  const { client, ports } = createCliClient({
+  const { client, ports } = await createCliClient({
     cwd: options.cwd,
     forceEcho: options.forceEcho,
   });
@@ -427,7 +427,10 @@ export async function main(
       sessionIo.writeStdout(`${readPackageVersion()}\n`);
       return 0;
     case 'ask':
-    case 'run': {
+    case 'run':
+    case 'commit-message':
+    case 'pr-summary':
+    case 'changelog': {
       let resolved;
       try {
         if (parsed.command === 'run') {
@@ -447,7 +450,7 @@ export async function main(
             parsed.mode = 'agent';
           }
         }
-        resolved = resolveAskPrompt(parsed, cwd);
+        resolved = await resolveAskPromptWithRecipe(parsed, cwd);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         sessionIo.writeStderr(`${message}\n\n`);
@@ -458,6 +461,7 @@ export async function main(
         prompt: resolved.prompt,
         cwd,
         json: parsed.json === true,
+        streamJson: parsed.streamJson === true,
         forceEcho: parsed.forceEcho === true,
         autoClarify: parsed.autoClarify,
         autoApproval: resolved.autoApproval,
@@ -609,6 +613,35 @@ export async function main(
     case 'events': {
       const { runEventsCommand } = await import('./automation/commands.js');
       return runEventsCommand({
+        args: parsed.rest,
+        cwd,
+        json: parsed.json === true,
+        io: sessionIo,
+      });
+    }
+    case 'restore': {
+      const { runRestoreCommand } = await import('./commands/restore.js');
+      return runRestoreCommand({
+        args: parsed.rest,
+        cwd,
+        json: parsed.json === true,
+        forceEcho: parsed.forceEcho === true,
+        io: sessionIo,
+      });
+    }
+    case 'recipe': {
+      const { runRecipeCommand } = await import('./commands/recipe.js');
+      return runRecipeCommand({
+        args: parsed.rest,
+        cwd,
+        json: parsed.json === true,
+        forceEcho: parsed.forceEcho === true,
+        io: sessionIo,
+      });
+    }
+    case 'memory': {
+      const { runMemoryCommand } = await import('./commands/memory.js');
+      return runMemoryCommand({
         args: parsed.rest,
         cwd,
         json: parsed.json === true,

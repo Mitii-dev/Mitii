@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 /**
- * Standalone Mitii Log Viewer.
+ * Standalone Mitii Log Viewer (+ Benchmark Runner tab).
  *
  *   node tools/log-viewer/server.mjs
  *   node tools/log-viewer/server.mjs --root /path/to/repo
+ *   node tools/log-viewer/server.mjs --benchmark-root /path/to/tests/benchmark
  *
- * Opens a browser UI for inspecting `.mitii/logs` without shipping anything in
- * the VS Code extension bundle.
+ * Opens a browser UI for inspecting `.mitii/logs` and driving the coding-agent
+ * benchmark harness. Lives under tools/ — not part of the VS Code extension or
+ * the benchmark package itself.
  */
 import { execFile } from 'node:child_process';
 import { createServer } from 'node:http';
@@ -21,6 +23,7 @@ import {
 } from 'node:fs';
 import { basename, dirname, extname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createBenchmarkApi, DEFAULT_BENCHMARK_ROOT } from './benchmark-api.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC = join(__dirname, 'public');
@@ -43,6 +46,10 @@ const HOST = argValue('--host', process.env.LOG_VIEWER_HOST || '127.0.0.1');
 const START_ROOT = resolvePath(
   argValue('--root', process.env.LOG_VIEWER_ROOT || process.cwd()),
 );
+const BENCHMARK_ROOT = resolvePath(
+  argValue('--benchmark-root', process.env.BENCHMARK_ROOT || DEFAULT_BENCHMARK_ROOT),
+);
+const benchmarkApi = createBenchmarkApi({ benchmarkRoot: BENCHMARK_ROOT });
 
 function resolvePath(input) {
   const raw = String(input || '').trim();
@@ -579,9 +586,11 @@ function safePublicPath(pathname) {
   return resolved;
 }
 
-const server = createServer((req, res) => {
+const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url || '/', `http://${HOST}:${PORT}`);
+    if (await benchmarkApi.handle(req, res, url)) return;
+
     if (url.pathname === '/api/load') {
       sendJson(
         res,
@@ -592,6 +601,22 @@ const server = createServer((req, res) => {
     }
     if (url.pathname === '/api/default-root') {
       sendJson(res, 200, { root: START_ROOT, rootLabel: compactPath(START_ROOT) });
+      return;
+    }
+    if (url.pathname === '/benchmark' || url.pathname === '/benchmark/') {
+      sendFile(res, join(PUBLIC, 'benchmark.html'));
+      return;
+    }
+    // Serve xterm packages for the live-run terminal (no bundler required).
+    if (url.pathname.startsWith('/vendor/')) {
+      const vendorRoot = resolve(__dirname, 'node_modules');
+      const rel = url.pathname.slice('/vendor/'.length);
+      const full = resolve(vendorRoot, rel);
+      if (full.startsWith(vendorRoot) && existsSync(full) && statSync(full).isFile()) {
+        sendFile(res, full);
+        return;
+      }
+      sendJson(res, 404, { error: 'vendor file not found' });
       return;
     }
     const filePath = safePublicPath(url.pathname);
@@ -610,7 +635,9 @@ const server = createServer((req, res) => {
 server.listen(PORT, HOST, () => {
   const url = `http://${HOST}:${PORT}`;
   console.log(`Mitii Log Viewer running at ${url}`);
+  console.log(`Benchmark Runner: ${url}/benchmark`);
   console.log(`Default repo: ${START_ROOT}`);
+  console.log(`Benchmark root: ${BENCHMARK_ROOT}`);
   if (!process.argv.includes('--no-open') && process.env.LOG_VIEWER_OPEN !== '0') {
     const opener =
       process.platform === 'darwin'
@@ -618,8 +645,11 @@ server.listen(PORT, HOST, () => {
         : process.platform === 'win32'
           ? 'cmd'
           : 'xdg-open';
+    const openTarget = process.argv.includes('--benchmark')
+      ? `${url}/benchmark`
+      : url;
     const args =
-      process.platform === 'win32' ? ['/c', 'start', '', url] : [url];
+      process.platform === 'win32' ? ['/c', 'start', '', openTarget] : [openTarget];
     execFile(opener, args, { stdio: 'ignore' }, () => {});
   }
 });

@@ -82,8 +82,7 @@ export function maybeAutoAdvanceTaskList(params: {
 
   const matching = params.current.items.filter(
     (item) =>
-      item.status !== "done" &&
-      item.status !== "skipped" &&
+      (item.status === "active" || item.status === "pending") &&
       isMutationAutoAdvanceEligible(item) &&
       // Path-accurate via write/title paths; package-root siblings no longer match
       // when explicit write[] is present (see itemWriteTargetsMatchChangedFiles).
@@ -93,11 +92,18 @@ export function maybeAutoAdvanceTaskList(params: {
         undefined,
   );
 
-  if (matching.length === 0) {
+  // Pending write targets may complete with the active row when the same patch
+  // touched them — but never when the active row itself did not match.
+  const activeMatched = matching.some((item) => item.status === "active");
+  const toComplete = activeMatched
+    ? matching
+    : matching.filter((item) => item.status === "active");
+
+  if (toComplete.length === 0) {
     return { advanced: false, warnings: [] };
   }
 
-  const doneIds = new Set(matching.map((item) => item.id));
+  const doneIds = new Set(toComplete.map((item) => item.id));
   const nextPending = params.current.items.find(
     (item) =>
       item.status === "pending" &&
@@ -105,7 +111,7 @@ export function maybeAutoAdvanceTaskList(params: {
       isMutationAutoAdvanceEligible(item),
   );
   const patchItems = [
-    ...matching.map((item) => ({ id: item.id, status: "done" as const })),
+    ...toComplete.map((item) => ({ id: item.id, status: "done" as const })),
     ...(nextPending ? [{ id: nextPending.id, status: "active" as const }] : []),
   ];
   const result = pipeline.apply({
@@ -121,8 +127,8 @@ export function maybeAutoAdvanceTaskList(params: {
     return { advanced: false, warnings: result.warnings };
   }
   const completedStepIds = params.taskListRef
-    ? recordCompletedPlanSteps(params.taskListRef, matching)
-    : matching.map((item) => item.sourceRef ?? item.id);
+    ? recordCompletedPlanSteps(params.taskListRef, toComplete)
+    : toComplete.map((item) => item.sourceRef ?? item.id);
   return withPlanRefill({
     advanced: result.reasonCodes.includes("task_list_patched"),
     taskList: result.taskList,

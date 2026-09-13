@@ -50,6 +50,8 @@ export type AgentEngineResolvedDeps = Required<
     | "toolDefinitions"
     | "taskListAutoAdvance"
     | "repoGraphs"
+    | "adversary"
+    | "adversaryFailMode"
   >;
 
 export interface AgentEngineRuntime {
@@ -135,6 +137,8 @@ export function resolveAgentEngineDeps(
     repoGraphs: dependencies.repoGraphs,
     toolDefinitions: dependencies.toolDefinitions,
     taskListAutoAdvance: dependencies.taskListAutoAdvance,
+    adversary: dependencies.adversary,
+    adversaryFailMode: dependencies.adversaryFailMode,
     clock: dependencies.clock ?? { now: () => new Date() },
     idGenerator: dependencies.idGenerator ?? {
       next: (prefix: string) =>

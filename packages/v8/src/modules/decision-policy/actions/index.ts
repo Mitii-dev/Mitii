@@ -22,7 +22,7 @@ export type { RoutePlanResult } from "./RoutePlanner";
 export { compileGrant } from "./GrantCompiler";
 export type { CompiledGrantResult } from "./GrantCompiler";
 
-export { buildToolGrant, extractNetworkHosts, isExplicitWebSearchAsk } from "./BuildToolGrant";
+export { buildToolGrant, extractNetworkHosts, isExplicitWebSearchAsk, needsLiveWebEvidence } from "./BuildToolGrant";
 export type { ToolGrantResolution } from "./BuildToolGrant";
 
 export {
@@ -67,3 +67,8 @@ export type {
   ApprovalPresetCopy,
   VsCodeApprovalPreset,
 } from "./ApprovalPresetCopy";
+
+export {
+  compileDecisionBrief,
+  formatDecisionBriefForPrompt,
+} from "./CompileDecisionBrief";

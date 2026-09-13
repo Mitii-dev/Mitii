@@ -311,9 +311,18 @@ input:focus-visible {
   z-index: 1;
 }
 
-/* Keep open composer menus above approval cards and the message scroller. */
-.chat-view:has(.approval-card) .composer-dock:has(.composer-dropdown__button[aria-expanded='true']) {
+/* Also raise when model menu is open with approval cards present. */
+.chat-view:has(.approval-card)
+  .composer-dock:has(.model-quick-select__trigger[aria-expanded='true']),
+.chat-view:has(.approval-card)
+  .composer-dock:has(.composer-dropdown__button[aria-expanded='true']) {
   z-index: 620;
+}
+
+.chat-view:has(.approval-card)
+  .composer-dock:has(.model-quick-select__trigger[aria-expanded='true'])
+  .model-quick-select__menu {
+  z-index: 630;
 }
 
 .chat-view:has(.approval-card)
@@ -855,6 +864,66 @@ input:focus-visible {
   font-weight: 600;
 }
 
+.timeline__row-text--block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+}
+
+.mcp-app-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 80%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mitii-panel-raised) 88%, transparent);
+}
+
+.mcp-app-card__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.mcp-app-card__meta {
+  color: var(--mitii-muted);
+  font-size: 11px;
+}
+
+.mcp-app-card__svg {
+  display: block;
+  width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.mcp-app-card__fallback {
+  font-size: 12px;
+  color: var(--mitii-muted);
+}
+
+.mcp-app-card__frame {
+  width: 100%;
+  min-height: 280px;
+  margin-top: 8px;
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 70%, transparent);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.mcp-app-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .timeline__command code {
   min-width: 0;
   white-space: pre-wrap;
@@ -1140,7 +1209,7 @@ input:focus-visible {
   position: relative;
   z-index: 40;
   border-top: 0;
-  padding: 18px 12px 14px;
+  padding: 18px 12px 4px;
   background:
     linear-gradient(
       180deg,
@@ -1198,6 +1267,21 @@ input:focus-visible {
   overflow: visible;
   position: relative;
   z-index: 1;
+}
+
+/* Model menu opens upward — keep it above mode/access controls. */
+.composer-footer:has(.model-quick-select__trigger[aria-expanded='true'])
+  .composer-dropdown-row {
+  z-index: 1;
+}
+
+.composer-footer:has(.model-quick-select__trigger[aria-expanded='true'])
+  .composer-utility-row {
+  z-index: 30;
+}
+
+.model-quick-select:has(.model-quick-select__trigger[aria-expanded='true']) {
+  z-index: 50;
 }
 
 /* Token details panel opens upward over the mode/access/depth controls. */
@@ -1331,7 +1415,7 @@ input:focus-visible {
   position: absolute;
   left: 0;
   bottom: calc(100% + 7px);
-  z-index: 340;
+  z-index: 500;
   display: grid;
   gap: 1px;
   width: min(320px, calc(100vw - 20px));

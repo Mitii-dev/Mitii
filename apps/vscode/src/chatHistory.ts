@@ -315,6 +315,8 @@ export interface CheckpointItem {
   id: string;
   label: string;
   createdAt: string;
+  /** Paths mutated in the run that produced this checkpoint (newest-first store). */
+  changedPaths?: string[];
 }
 
 export function loadCheckpoints(state: vscode.Memento): CheckpointItem[] {

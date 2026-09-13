@@ -27,6 +27,7 @@ describe("compactModelLoopMessages", () => {
 
     expect(result.pressure).toBe("warn");
     expect(result.compacted).toBe(false);
+    expect(result.stagesApplied).toEqual([]);
     expect(result.messages).toEqual(messages);
     expect(result.thresholds).toEqual({
       warnTokens: 700,

@@ -220,6 +220,7 @@ export function MessageList({
                           events={group.events}
                           streaming={groupStreaming}
                           endAt={group.endAt}
+                          onOpenFile={onOpenFile}
                         />
                       );
                     })}

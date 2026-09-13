@@ -59,6 +59,7 @@ export class OpenAiCompatibleFimClient {
         text: sanitizeFimCompletion({
           completion: extractFimChoiceText(data),
           suffix: request.suffix,
+          prefix: request.prefix,
         }),
       };
     } catch (error) {

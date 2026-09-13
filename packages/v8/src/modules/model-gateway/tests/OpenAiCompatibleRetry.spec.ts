@@ -68,6 +68,44 @@ describe('OpenAiCompatibleLlmPort retries', () => {
     expect(sleeps).toHaveLength(2);
   });
 
+  it('fails when provider fetch exceeds requestTimeoutMs', async () => {
+    const fetchImpl: typeof fetch = async (_url, init) => {
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => resolve(), 5_000);
+        init?.signal?.addEventListener(
+          'abort',
+          () => {
+            clearTimeout(timer);
+            reject(Object.assign(new Error('Aborted'), { name: 'AbortError' }));
+          },
+          { once: true },
+        );
+      });
+      return new Response('{}', { status: 200 });
+    };
+
+    const port = new OpenAiCompatibleLlmPort({
+      model: 'test',
+      fetchImpl,
+      maxRetries: 0,
+      requestTimeoutMs: 40,
+    });
+
+    const events = await collectEvents(
+      port.complete({
+        messages: [{ role: 'user', content: 'hi' }],
+        stream: false,
+      }),
+    );
+
+    expect(events).toHaveLength(1);
+    expect(events[0]?.type).toBe('failed');
+    if (events[0]?.type === 'failed') {
+      expect(events[0].error.message).toMatch(/timed out after 40ms/i);
+      expect(events[0].error.retryable).toBe(false);
+    }
+  });
+
   it('does not retry authentication failures', async () => {
     let calls = 0;
     const fetchImpl: typeof fetch = async () => {

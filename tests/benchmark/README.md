@@ -18,7 +18,7 @@ HTTP responses, workspace changed/unchanged. **No LLM grades another LLM.**
 1. [What you need](#1-what-you-need)
 2. [Folder layout](#2-folder-layout)
 3. [One-time setup](#3-one-time-setup)
-4. [Install fixtures](#4-install-fixtures)
+4. [Prepare fixtures (one command)](#4-prepare-fixtures-one-command)
 5. [Reset and clean up fixtures](#5-reset-and-clean-up-fixtures)
 6. [Configure a model](#6-configure-a-model)
 7. [Validate the suite](#7-validate-the-suite)
@@ -91,15 +91,18 @@ case, another Nest case, another CI case, etc.
 
 | Domain | Cases | Category files | Focus |
 |---|---:|---|---|
-| `frontend` | 85 | `feature`, `bugfix`, `docs`, `retrieval`, `testing`, `capstone` | React/Next UI, hooks, a11y, SEO, full applications |
-| `backend` | 44 | `nest`, `saas-api`, `express`, `monorepo`, `robustness`, `auth` | APIs, bugfixes, ambiguous/adversarial prompts, auth |
-| `testing` | 23 | `express`, `monorepo`, `react` | Writing missing unit/integration tests |
-| `cicd` | 18 | `react`, `nest`, `express`, `monorepo` | Workflows, lint/build config, pipeline wiring |
+| `frontend` | 86 | `feature`, `bugfix`, `docs`, `retrieval`, `testing`, `capstone` | React/Next UI, hooks, a11y, SEO, full applications |
+| `backend` | 47 | `nest`, `saas-api`, `express`, `monorepo`, `robustness`, `auth`, `type-cascade` | APIs, bugfixes, ambiguous/adversarial prompts, auth, wide TypeScript fixes |
+| `cicd` | 22 | `react`, `nest`, `express`, `monorepo`, `vscode-publish`, `npm-publish`, `workflow-authoring` | Workflows, lint/build config, packaging, release pipelines |
+| `testing` | 24 | `express`, `monorepo`, `react` | Writing missing unit/integration tests |
+| `api-build` | 2 | `sqlite-crud` | Multi-endpoint REST work graded through HTTP and SQLite assertions |
 
-**All 170 cases are `mode: "agent"`.** `ask` / `plan` modes are not covered yet.
+**All 181 cases are `mode: "agent"` in the current suite output.** `ask` /
+`plan` modes are not covered yet.
 
 Counts drift as cases are added — run `npm run suites` (or
-`node src/cli.mjs validate --suite all`) for the live, authoritative numbers.
+`pnpm --filter @mitii/solid-benchmark suites` from the repo root) for the
+live, authoritative numbers.
 Full per-file breakdowns, fixture notes, and design rationale live in
 [docs/FRONTEND_SUITE.md](./docs/FRONTEND_SUITE.md) and
 [docs/BACKEND_TESTING_CICD_SUITES.md](./docs/BACKEND_TESTING_CICD_SUITES.md).
@@ -137,7 +140,14 @@ You can edit timeouts later, for example:
 "timeoutMs": 600000
 ```
 
-### Step C — Install fixtures (see next section)
+### Step C — Prepare fixtures (one command — wipe + install)
+
+```bash
+pnpm benchmark:prepare
+# aliases: pnpm benchmark:reset · pnpm benchmark:fixtures
+```
+
+This is the only fixture prep step you need before a run.
 
 ### Step D — Configure a model (see [§6](#6-configure-a-model))
 
@@ -154,11 +164,31 @@ pnpm --filter @mitii/solid-benchmark benchmark -- \
 
 ---
 
-## 4. Install fixtures
+## 4. Prepare fixtures (one command)
 
 Fixtures are small sample apps under `fixtures/`. Before each case, the runner
 **copies** one fixture into a temp workspace and symlinks its `node_modules`.
-Those dependencies must be installed once on the fixture itself.
+
+Prefer **one** command that both wipes stale artifacts and reinstalls — you do
+**not** need a separate install afterward:
+
+```bash
+# from Mitii repo root
+pnpm benchmark:prepare
+# aliases: pnpm benchmark:reset · pnpm benchmark:fixtures
+
+# from tests/benchmark
+npm run fixtures:prepare   # same as fixtures:reset
+```
+
+That runs `scripts/reset-fixtures.mjs` (wipe + reinstall). Details in [§5](#5-reset-and-clean-up-fixtures).
+
+### Install-only (no wipe)
+
+```bash
+pnpm benchmark:fixtures:install-only
+# or: cd tests/benchmark && npm run fixtures:install
+```
 
 ### What install does
 
@@ -170,58 +200,36 @@ For every folder under `fixtures/` that has a `package.json`, the installer runs
 Installed trees are **gitignored** (`node_modules`, lockfiles). You will not
 commit them.
 
-### Ways to install
-
-**Way 1 — from repo root (recommended)**
-
-```bash
-pnpm benchmark:fixtures
-```
-
-**Way 2 — via the benchmark package**
-
-```bash
-pnpm --filter @mitii/solid-benchmark fixtures:install
-```
-
-**Way 3 — from inside the package**
-
-```bash
-cd tests/benchmark
-npm run fixtures:install
-```
-
-**Way 4 — single fixture (manual)**
+### Single fixture (manual)
 
 ```bash
 cd tests/benchmark/fixtures/frontend-app
 npm install --ignore-scripts
 ```
 
-Repeat for other fixtures as needed (`react-vite`, `next-app`, `node-express`, …).
-
 ### When to reinstall or reset
 
 | Situation | Command |
 |---|---|
-| First setup / missing `node_modules` | `pnpm benchmark:fixtures` |
-| Fixture `package.json` changed after a pull | `pnpm benchmark:reset` |
-| Corrupt installs, stale locks, leftover `.next` / `dist` | `pnpm benchmark:reset` |
-| Checks fail with “module not found” | `pnpm benchmark:reset` (or `pnpm benchmark:fixtures` if you only need install) |
+| First setup / missing `node_modules` | `pnpm benchmark:prepare` |
+| After a bad / partial run, or stale builds | `pnpm benchmark:prepare` |
+| Install without wiping (rare) | `pnpm benchmark:fixtures:install-only` |
+| Checks fail with “module not found” | `pnpm benchmark:prepare` |
 
 ---
 
 ## 5. Reset and clean up fixtures
 
-Fixture installs and run artifacts can grow large. Prefer the reset script unless
-you intentionally want a partial cleanup.
+`fixtures:reset` / `fixtures:prepare` is the same one-step wipe + reinstall
+described in [§4](#4-prepare-fixtures-one-command). Use it whenever fixtures look
+stale or after a bad run.
 
 ### Recommended — reset all fixtures
 
 From the **repo root**:
 
 ```bash
-pnpm benchmark:reset
+pnpm benchmark:prepare
 ```
 
 Same action via the benchmark package:
@@ -451,6 +459,16 @@ It writes `reports/cases.html` and is also linked from the run viewer
 Use it to answer, before adding a case: *which file does this belong in?*
 See [§14](#14-adding-cases) and [docs/ADDING_CASES.md](./docs/ADDING_CASES.md).
 
+For an interactive start/stop/re-run UI with live logs, use the standalone
+tool (not this package):
+
+```bash
+# from Mitii repo root
+pnpm log-viewer -- --benchmark
+```
+
+See [`tools/log-viewer/README.md`](../../tools/log-viewer/README.md).
+
 ---
 
 ## 9. Run the benchmark
@@ -565,7 +583,7 @@ Also updated when the run finishes:
 Console output looks like:
 
 ```text
-[3/85] PASS frontend/medium fe-feature-003-… (12400ms)
+[3/86] PASS frontend/medium fe-feature-003-... (12400ms)
   report: …/reports/runs/…/cases/fe-feature-003-….md
 ```
 
@@ -664,8 +682,8 @@ where forwarded — see [tests/README.md](../README.md) for which ones are):
 
 | Root (`pnpm`) | Package (`npm run`) | Action |
 |---|---|---|
-| `pnpm benchmark:fixtures` | `fixtures:install` | Install all fixture deps |
-| `pnpm benchmark:reset` | `fixtures:reset` | Wipe fixtures + temp run workspaces, reinstall |
+| `pnpm benchmark:prepare` / `:reset` / `:fixtures` | `fixtures:prepare` / `fixtures:reset` | **One step:** wipe fixture artifacts + reinstall |
+| `pnpm benchmark:fixtures:install-only` | `fixtures:install` | Install only (no wipe) |
 | `pnpm benchmark:validate` | `validate` | Validate cases |
 | `pnpm benchmark:view` / `:view:open` | `view` / `view:open` | Open the HTML run viewer |
 | — | `cases` / `cases:open` | Read-only test case browser |

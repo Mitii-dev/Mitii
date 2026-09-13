@@ -8,6 +8,8 @@ import type { WorkspaceFileSystemPort } from "../contracts";
 import { NodeWorkspaceFileSystemAdapter } from "../index";
 import {
   PathContainmentError,
+  expandRootAliases,
+  matchDirectoryEntry,
   resolveContainedPath,
 } from "../internal/PathContainment";
 
@@ -237,5 +239,47 @@ describe("PathContainment.resolveContainedPath", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  it("resolves NFC-equivalent Unicode path components", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "mitii-path-nfc-"));
+    try {
+      // NFD "café" (e + combining acute) on disk; request NFC "café".
+      const nfdName = "cafe\u0301";
+      const nfcName = "café";
+      await mkdir(path.join(root, nfdName), { recursive: true });
+      await writeFile(path.join(root, nfdName, "readme.md"), "# hi\n");
+
+      const contained = await resolveContainedPath({
+        fileSystem: new NodeWorkspaceFileSystemAdapter(),
+        workspaceRoot: root,
+        requestedPath: `${nfcName}/readme.md`,
+        pathScopes: ["."],
+      });
+      expect(contained.relativePath.normalize("NFC")).toBe(
+        `${nfcName}/readme.md`.normalize("NFC"),
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("matchDirectoryEntry rejects ambiguous NFC collisions", () => {
+    const nfc = "café";
+    const nfd = "cafe\u0301";
+    // Two distinct strings that normalize to the same NFC form.
+    expect(nfc.normalize("NFC")).toBe(nfd.normalize("NFC"));
+    expect(
+      matchDirectoryEntry([{ name: nfc }, { name: nfd }], nfc),
+    ).toBe("ambiguous");
+  });
+
+  it("expandRootAliases returns both logical and physical roots when they differ", () => {
+    const logical = path.resolve(path.join(path.sep, "var", "tmp", "ws"));
+    const physical = path.resolve(
+      path.join(path.sep, "private", "var", "tmp", "ws"),
+    );
+    expect(expandRootAliases(logical, physical)).toEqual([logical, physical]);
+    expect(expandRootAliases(logical, logical)).toEqual([logical]);
   });
 });

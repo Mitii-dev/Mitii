@@ -82,7 +82,7 @@ function suspendedPlanApproval(): AgentRunResult {
   };
 }
 
-describe('CLI Phase 15 session resume helpers', () => {
+describe('CLI session resume helpers', () => {
   it('builds clarification resume input', () => {
     const resume = buildResumeInput(suspendedClarification(), {
       kind: 'clarification',
@@ -143,7 +143,7 @@ describe('CLI Phase 15 session resume helpers', () => {
   });
 });
 
-describe('CLI parseCliArgs Phase 15 flags', () => {
+describe('CLI parseCliArgs flags', () => {
   it('parses clarify / approve / deny', () => {
     const clarified = parseCliArgs([
       'node',

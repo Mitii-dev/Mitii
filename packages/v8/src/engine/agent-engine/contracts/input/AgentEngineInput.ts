@@ -177,6 +177,45 @@ export const agentEngineStartInputSchema = z
      * Explicitly attached skill ids for this run (@skill:, CLI --skill, host pin).
      */
     requiredSkillIds: z.array(z.string().min(1).max(64)).max(3).default([]),
+    /**
+     * Explicitly attached MCP server ids for this run (@mcp:, host pin).
+     * Empty = all enabled MCP servers under the grant (default).
+     */
+    requiredMcpServerIds: z
+      .array(z.string().min(1).max(64))
+      .max(5)
+      .default([]),
+    /**
+     * Understanding Ballot + Decision Steering feature flags.
+     * Defaults off — see docs/UNDERSTANDING_BALLOT_AND_STEERING.md.
+     */
+    steering: z
+      .object({
+        understandingBallotV2: z.boolean().optional(),
+        policyFactsFirst: z.boolean().optional(),
+        decisionBrief: z.boolean().optional(),
+        criticMode: z.enum(["off", "shadow", "enforce"]).optional(),
+      })
+      .strict()
+      .optional(),
+    /**
+     * Structured clarification resolution from a prior clarify resume.
+     * Engine overlays these facts onto understanding after classify.
+     */
+    clarificationResolution: z
+      .object({
+        optionId: z.string().min(1).max(200),
+        label: z.string().max(200).optional(),
+        interactionIntent: z
+          .enum(["question", "plan", "act", "help", "unknown"])
+          .optional(),
+        primaryTaskIntent: z.string().min(1).max(64).optional(),
+        targetPath: z.string().min(1).max(500).optional(),
+        scopeHint: z.enum(["one_file", "module", "repo"]).optional(),
+        outcomeNote: z.string().min(1).max(500).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

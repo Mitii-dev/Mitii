@@ -14,6 +14,10 @@ import { RequestUnderstandingPipeline } from "../../../modules/request-understan
 import { SkillsPipeline } from "../../../modules/skills";
 import type { SkillsCatalogPort } from "../../../modules/skills";
 import type { RepositoryGraphPort, ToolRuntimePipeline } from "../../tool-runtime";
+import type {
+  AdversaryFailMode,
+  ToolAdversaryPort,
+} from "../../tool-runtime";
 import type { VerificationPipeline } from "../../../modules/verification";
 
 import type {
@@ -60,6 +64,9 @@ export interface ComposeReadOnlyAgentEngineOptions {
    * Defaults to false for library-safe composition; hosts may enable by default.
    */
   taskListAutoAdvance?: boolean;
+  /** Restrict-only adversary fence (Phase 3). Default unset = no-op. */
+  adversary?: ToolAdversaryPort;
+  adversaryFailMode?: AdversaryFailMode;
   intake?: Partial<RequestIntakePipelineDependencies>;
   clock?: AgentEngineClockPort;
   idGenerator?: AgentEngineIdGeneratorPort;
@@ -115,6 +122,8 @@ export function composeReadOnlyAgentEngine(
     checkpointStore: options.checkpointStore,
     toolDefinitions: options.toolDefinitions,
     taskListAutoAdvance: options.taskListAutoAdvance,
+    adversary: options.adversary,
+    adversaryFailMode: options.adversaryFailMode,
     clock: options.clock,
     idGenerator: options.idGenerator,
   });

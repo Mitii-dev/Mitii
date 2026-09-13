@@ -14,7 +14,12 @@ import type {
   AgentReasonCode,
   AgentRunUsage,
 } from "../contracts/output/AgentRunResult";
+import type {
+  RestorePoint,
+  RestorePointSummary,
+} from "../contracts/output/RestorePoint";
 import type { BudgetWallReason } from "../actions/buildStallContinueRationale";
+import type { ClarificationSession } from "../actions/buildClarificationPayload";
 
 export interface PendingApprovalState {
   approvalId: string;
@@ -61,6 +66,8 @@ export interface AgentRunCheckpoint {
   continueOverrideCount?: number;
   /** Structured plan awaiting approval when suspensionKind is plan_approval_required. */
   plan?: PlanArtifact;
+  /** Clarification option map for structured resume (ballot v2). */
+  clarificationSession?: ClarificationSession;
   /** Strategy that produced `plan`; restored on resume so the prompt contract survives. */
   planStrategy?: PlanStrategyDecision;
   /** Live task list at suspension time. */
@@ -88,4 +95,13 @@ export interface AgentEngineRunCheckpointStorePort {
   save(checkpoint: AgentRunCheckpoint): Promise<void>;
   load(runId: string): Promise<AgentRunCheckpoint | undefined>;
   delete(runId: string): Promise<void>;
+  /** Persist a durable undo point after a successful mutation. */
+  saveRestorePoint(point: RestorePoint): Promise<void>;
+  loadRestorePoint(
+    runId: string,
+    restorePointId: string,
+  ): Promise<RestorePoint | undefined>;
+  listRestorePoints(runId: string): Promise<RestorePointSummary[]>;
+  /** Remove all restore points for a run (e.g. after terminal commit). */
+  deleteRestorePoints(runId: string): Promise<void>;
 }

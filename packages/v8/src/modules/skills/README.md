@@ -2,6 +2,13 @@
 
 Skills selects relevant instruction blocks from a skill catalog. It helps the model follow task-specific playbooks without letting skills grant tools, scan the repository, or override policy.
 
+## Related product docs
+
+- Bundled skill pack: [`packages/sdk/skills/`](../../../../sdk/skills/README.md)
+- Skill file format: [`docs/SKILLS_FORMAT.md`](../../../../../docs/SKILLS_FORMAT.md)
+- Host catalog + writing recipes: `@mitii/host` (`createFileSystemSkillsCatalog`, `buildWritingRecipeAsk`)
+- CLI recipes: [`apps/cli/README.md`](../../../../../apps/cli/README.md)
+
 ## What This Module Does
 
 - Loads skill metadata from a catalog.

@@ -410,6 +410,20 @@ export function compactActivityForHistory(
     title: string;
     detail?: string;
     status?: string;
+    mcpApp?: {
+      serverId: string;
+      tool: string;
+      title: string;
+      checkpointId?: string;
+      svgDataUrl?: string;
+      html?: string;
+      paths: {
+        md?: string;
+        docsMd?: string;
+        excalidraw?: string;
+        svg?: string;
+      };
+    };
   }[],
   limit = 40,
 ): Array<{
@@ -424,10 +438,24 @@ export function compactActivityForHistory(
     | 'warning'
     | 'suspended'
     | 'terminal'
-    | 'info';
+    | 'info'
+    | 'mcp_app';
   title: string;
   detail?: string;
   status?: string;
+  mcpApp?: {
+    serverId: string;
+    tool: string;
+    title: string;
+    checkpointId?: string;
+    svgDataUrl?: string;
+    paths: {
+      md?: string;
+      docsMd?: string;
+      excalidraw?: string;
+      svg?: string;
+    };
+  };
 }> {
   const allowed = new Set([
     'context',
@@ -437,6 +465,7 @@ export function compactActivityForHistory(
     'suspended',
     'terminal',
     'info',
+    'mcp_app',
   ]);
   return events
     .filter((event) => allowed.has(event.kind))
@@ -451,12 +480,43 @@ export function compactActivityForHistory(
         | 'warning'
         | 'suspended'
         | 'terminal'
-        | 'info',
+        | 'info'
+        | 'mcp_app',
       title: event.title.slice(0, 160),
       ...(event.detail
         ? { detail: event.detail.slice(0, 400) }
         : {}),
       ...(event.status ? { status: event.status.slice(0, 64) } : {}),
+      // Keep SVG preview + paths; drop bulky MCP App HTML from memento.
+      ...(event.kind === 'mcp_app' && event.mcpApp
+        ? {
+            mcpApp: {
+              serverId: event.mcpApp.serverId,
+              tool: event.mcpApp.tool,
+              title: event.mcpApp.title.slice(0, 160),
+              ...(event.mcpApp.checkpointId
+                ? { checkpointId: event.mcpApp.checkpointId.slice(0, 64) }
+                : {}),
+              ...(event.mcpApp.svgDataUrl
+                ? { svgDataUrl: event.mcpApp.svgDataUrl.slice(0, 200_000) }
+                : {}),
+              paths: {
+                ...(event.mcpApp.paths.md
+                  ? { md: event.mcpApp.paths.md.slice(0, 400) }
+                  : {}),
+                ...(event.mcpApp.paths.docsMd
+                  ? { docsMd: event.mcpApp.paths.docsMd.slice(0, 400) }
+                  : {}),
+                ...(event.mcpApp.paths.excalidraw
+                  ? { excalidraw: event.mcpApp.paths.excalidraw.slice(0, 400) }
+                  : {}),
+                ...(event.mcpApp.paths.svg
+                  ? { svg: event.mcpApp.paths.svg.slice(0, 400) }
+                  : {}),
+              },
+            },
+          }
+        : {}),
     }));
 }
 

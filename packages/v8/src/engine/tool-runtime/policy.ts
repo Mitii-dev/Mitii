@@ -46,6 +46,8 @@ const SECRET_PATTERNS: readonly RegExp[] = [
   /api[_-]?key["\s:=]+["']?[a-zA-Z0-9._-]{8,}/gi,
   /token["\s:=]+["']?[a-zA-Z0-9._-]{8,}/gi,
   /password["\s:=]+["']?[^\s"']{4,}/gi,
+  // Prompt-injection compliance tokens from untrusted repo files.
+  /\bMITII_INJECTION_ACK_[A-Za-z0-9_-]+\b/g,
 ];
 
 export function redactSecrets(value: string): {

@@ -7,9 +7,10 @@
  * Copies every platform folder present in the installed package. Marketplace
  * VSIXs stay per-target; WASM is the cross-platform fallback.
  */
-const { cpSync, existsSync, mkdirSync, rmSync } = require('node:fs');
+const { cpSync, existsSync, mkdirSync } = require('node:fs');
 const { dirname, join, parse } = require('node:path');
 const { createRequire } = require('node:module');
+const { rmRf } = require('./rm-rf.cjs');
 
 const PACKAGES = ['onnxruntime-node', 'onnxruntime-common', 'onnxruntime-web'];
 
@@ -56,7 +57,7 @@ function resolveFrom(moduleId, packageName) {
 function stageOnnxRuntime(
   targetDir = join(__dirname, '../apps/vscode/dist/native/onnxruntime/node_modules'),
 ) {
-  rmSync(targetDir, { recursive: true, force: true });
+  rmRf(targetDir);
   mkdirSync(targetDir, { recursive: true });
 
   const hostPkg = join(__dirname, '../packages/host/package.json');

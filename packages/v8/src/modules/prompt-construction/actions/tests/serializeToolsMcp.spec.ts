@@ -75,7 +75,7 @@ describe("serializeTools MCP parity", () => {
     );
   });
 
-  it("strips mcp__* tools on read grants", () => {
+  it("keeps mcp__* tools on read grants when already filtered in", () => {
     const result = serializeTools({
       decision: decision({
         maximumWorkspaceEffect: "read",
@@ -88,7 +88,9 @@ describe("serializeTools MCP parity", () => {
       estimator,
       budgetTokens: 10_000,
     });
-    expect(result.tools?.map((t) => t.name)).toEqual(["read_file"]);
+    expect(result.tools?.map((t) => t.name).sort()).toEqual(
+      ["mcp__memory__store", "read_file"].sort(),
+    );
   });
 
   it("keeps apply_patch under a tight tools budget by dropping lower-priority tools", () => {

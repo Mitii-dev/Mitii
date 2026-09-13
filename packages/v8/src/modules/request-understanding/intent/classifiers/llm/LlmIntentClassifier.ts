@@ -13,6 +13,7 @@ import { IntentClassificationInput, ReferencedArtifact } from "../../types";
 import type { DiagnosticSummary } from "../../../contracts";
 import { resolveIntentClassifierMaximumOutputTokens } from "../../resolveIntentClassifierMaximumOutputTokens";
 import { LLM_INTENT_CLASSIFICATION_SYSTEM_PROMPT } from "./prompts";
+import { intersectRecommendedSkillTags } from "../../intersectRecommendedSkillTags";
 
 
 export class LlmIntentClassifier {
@@ -237,7 +238,9 @@ export class LlmIntentClassifier {
             candidate,
           );
 
-        return intentClassificationSchema.parse(parsed);
+        return this.normalizeClassification(
+          intentClassificationSchema.parse(parsed),
+        );
       } catch (error) {
         lastError = error;
       }
@@ -249,6 +252,37 @@ export class LlmIntentClassifier {
     throw new Error(
       `Intent classifier returned no valid classification: ${message}`,
     );
+  }
+
+  /**
+   * Intersect soft skill tags with the closed vocabulary (always-on sanitize).
+   * Does not change route/grant authority.
+   */
+  private normalizeClassification(
+    classification: IntentClassification,
+  ): IntentClassification {
+    const hints = classification.taskHints;
+    if (!hints) {
+      return classification;
+    }
+    const { tags } = intersectRecommendedSkillTags(
+      hints.recommendedSkillTags ?? [],
+    );
+    const slots = (hints.ambiguousSlots ?? [])
+      .filter((slot) => slot.options.length >= 2)
+      .slice(0, 4)
+      .map((slot) => ({
+        ...slot,
+        options: slot.options.slice(0, 6),
+      }));
+    return {
+      ...classification,
+      taskHints: {
+        ...hints,
+        recommendedSkillTags: tags,
+        ambiguousSlots: slots,
+      },
+    };
   }
 
   /**
