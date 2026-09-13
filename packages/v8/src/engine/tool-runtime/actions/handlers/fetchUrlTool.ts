@@ -29,7 +29,8 @@ export const fetchUrlTool: RegisteredTool = {
         maxLength: {
           type: "integer",
           minimum: 1,
-          description: "Max characters to return from startIndex.",
+          description:
+            "Max characters to return from startIndex. Do not pass maxBytes.",
         },
         intent: {
           type: "string",

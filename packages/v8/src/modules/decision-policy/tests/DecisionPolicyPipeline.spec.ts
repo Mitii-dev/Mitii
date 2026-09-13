@@ -1312,6 +1312,46 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.toolGrant.allowedTools).toContain("fetch_url");
   });
 
+  it("grants web_search for online vulnerability checks (security intent)", () => {
+    const decision = new DecisionPolicyPipeline().decide({
+      ...createInput({
+        mode: "agent",
+        message: "Please check all the vurnerabilities online and update",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "security",
+          interactionIntent: "act",
+          taskAnalysis: {
+            scope: "unknown",
+            recommendsRepositoryDiscovery: true,
+            recommendsVerification: true,
+          },
+        }),
+      }),
+      hostCapabilities: { webSearch: true },
+    });
+    expect(decision.toolGrant.allowedTools).toContain("web_search");
+    expect(decision.toolGrant.allowedTools).toContain("fetch_url");
+  });
+
+  it("does not grant web_search for in-repo security fixes without online ask", () => {
+    const decision = new DecisionPolicyPipeline().decide({
+      ...createInput({
+        mode: "agent",
+        message: "Fix the XSS vulnerability in this file src/auth.ts",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "security",
+          interactionIntent: "act",
+          taskAnalysis: {
+            scope: "unknown",
+            recommendsRepositoryDiscovery: true,
+          },
+        }),
+      }),
+      hostCapabilities: { webSearch: true },
+    });
+    expect(decision.toolGrant.allowedTools).not.toContain("web_search");
+  });
+
   it("does not grant web_search from a bare URL without an explicit search ask", () => {
     const decision = new DecisionPolicyPipeline().decide({
       ...createInput({

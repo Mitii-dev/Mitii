@@ -508,6 +508,68 @@ Overrides: `MITII_PROVIDER`, `MITII_MODEL`, `MITII_BASE_URL`, `MITII_API_KEY`.
 
 Local Ollama / LM Studio do not need a key. Anthropic and Gemini do.
 
+## Web search (SearXNG)
+
+Optional. When configured, the CLI injects a `SearchPort` so Decision Policy can grant `web_search` (and content-aware `fetch_url`) for live-web asks. Prefer free self-hosted **SearXNG**; Brave / Tavily are paid fallbacks.
+
+### Configure SearXNG
+
+**Option A — project or global config** (wins over env):
+
+```bash
+# Project (cwd)
+mkdir -p .mitii
+cat > .mitii/config.json <<'EOF'
+{
+  "provider": "echo",
+  "searxngBaseUrl": "http://192.168.0.91:8888"
+}
+EOF
+
+# Or merge into an existing config (keep your provider/model fields):
+#   "searxngBaseUrl": "http://127.0.0.1:8080"
+```
+
+Global alternative: `~/.mitii/config.json` with the same `searxngBaseUrl` field. Project config is tried first.
+
+**Option B — environment** (used when config has no `searxngBaseUrl`):
+
+```bash
+export SEARXNG_BASE_URL=http://192.168.0.91:8888
+# or
+export MITII_SEARXNG_URL=http://192.168.0.91:8888
+```
+
+Optional paid providers (same search-kit chain as VS Code):
+
+```bash
+export BRAVE_API_KEY=...          # or MITII_SEARCH_API_KEY
+export TAVILY_API_KEY=...
+# optional order:
+export MITII_SEARCH_PROVIDERS=searxng,brave,tavily
+```
+
+Default order when unset: **SearXNG (if URL) → Brave (if key) → Tavily (if key)**.
+
+### SearXNG instance checklist
+
+1. Base URL only — no `/search` path. Mitii appends `/search?format=json`.
+2. Enable JSON in SearXNG settings (`formats` must include `json`). Smoke test:
+
+   ```bash
+   curl -sS 'http://192.168.0.91:8888/search?q=test&format=json' | head
+   ```
+
+3. LAN / localhost hosts are allowed for the configured SearXNG base URL.
+
+### Try it
+
+```bash
+mitii ask "Search the web for Next.js 15 error boundaries"
+```
+
+Explicit phrases like “search the web for …” grant `web_search` when a provider is configured. Security asks such as “check vulnerabilities online …” also grant it. Without any provider, Mitii continues from model knowledge and omits `SearchPort`.
+
 Cursor Cloud Agents are a separate agent API, not an LLM endpoint. Point `openai-compatible` at any `/v1/chat/completions` proxy if you need a custom gateway.
 
 ## Session UI

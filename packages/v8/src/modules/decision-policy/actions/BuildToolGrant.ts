@@ -362,17 +362,32 @@ function normalizeScopePath(value: string): string {
   return value.replace(/\\/g, "/").replace(/^\.?\//, "").replace(/\/+$/, "") || ".";
 }
 
+/** Intents that may honestly need live web evidence when SearchPort exists. */
+const LIVE_WEB_EVIDENCE_INTENTS = new Set([
+  "docs",
+  "question",
+  "security",
+  "dependency",
+]);
+
 /** True when the user message explicitly asks for a web/internet search. */
 export function isExplicitWebSearchAsk(
   message: string,
   primaryTaskIntent?: RequestUnderstandingResult["intent"]["classification"]["primaryTaskIntent"],
 ): boolean {
   const intent = primaryTaskIntent ?? "question";
+  if (!LIVE_WEB_EVIDENCE_INTENTS.has(intent)) {
+    return false;
+  }
   return (
-    (intent === "docs" || intent === "question") &&
     /\b(search\s+(?:the\s+)?(?:web|internet|docs?|documentation)|look\s+up|google)\b/i.test(
       message,
-    )
+    ) ||
+    // "check … online", "search online", "look up online"
+    /\b(?:check|find|search|look(?:\s+up)?)\b[\s\w,-]{0,48}\bonline\b/i.test(
+      message,
+    ) ||
+    /\b(?:on\s+the\s+(?:web|internet)|search\s+online)\b/i.test(message)
   );
 }
 
@@ -386,7 +401,7 @@ export function needsLiveWebEvidence(
   primaryTaskIntent?: RequestUnderstandingResult["intent"]["classification"]["primaryTaskIntent"],
 ): boolean {
   const intent = primaryTaskIntent ?? "question";
-  if (intent !== "docs" && intent !== "question") {
+  if (!LIVE_WEB_EVIDENCE_INTENTS.has(intent)) {
     return false;
   }
   // In-repo code explanation / local file asks stay offline.
@@ -395,6 +410,21 @@ export function needsLiveWebEvidence(
       message,
     )
   ) {
+    return false;
+  }
+  // Security / dependency asks that request online or published advisories.
+  if (
+    (intent === "security" || intent === "dependency") &&
+    /\b(?:vulnerabilit(?:y|ies)|cves?|advisories?|ghsa|nvd|osv)\b/i.test(
+      message,
+    ) &&
+    /\b(?:online|web|internet|latest|known|published|advisory|advisories)\b/i.test(
+      message,
+    )
+  ) {
+    return true;
+  }
+  if (intent !== "docs" && intent !== "question") {
     return false;
   }
   return (

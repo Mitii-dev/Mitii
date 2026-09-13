@@ -499,7 +499,26 @@ export const runReadonlyCommandOutputSchema = z
   })
   .strict();
 
-export const fetchUrlInputSchema = z
+export const fetchUrlInputSchema = z.preprocess((raw) => {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return raw;
+  }
+  const obj: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
+  // Models often invent maxBytes; map it onto the real maxLength window.
+  if (obj.maxLength === undefined && obj.maxBytes !== undefined) {
+    const n =
+      typeof obj.maxBytes === "number"
+        ? obj.maxBytes
+        : typeof obj.maxBytes === "string"
+          ? Number(obj.maxBytes)
+          : Number.NaN;
+    if (Number.isFinite(n) && n > 0) {
+      obj.maxLength = Math.floor(n);
+    }
+  }
+  delete obj.maxBytes;
+  return obj;
+}, z
   .object({
     url: z.string().url(),
     /** Byte/char offset into the fetched body for continuation windows. */
@@ -512,7 +531,9 @@ export const fetchUrlInputSchema = z
      */
     intent: z.enum(["autonomous", "user"]).optional(),
   })
-  .strict();
+  // Strip other invented keys (models often add maxBytes/headers) instead of
+  // hard-failing the whole fetch_url call.
+  .strip());
 
 export const fetchUrlOutputSchema = z
   .object({

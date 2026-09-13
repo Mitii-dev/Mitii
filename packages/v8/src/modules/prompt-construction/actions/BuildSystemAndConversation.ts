@@ -222,7 +222,7 @@ function buildToolGuidance(decision: ExecutionDecision): string {
   if (grant.allowedTools.includes("web_search")) {
     lines.push(
       "When the ask needs current, external, product, vendor, compatibility, or documentation facts outside this repository, call web_search first and answer from those results with source URLs. Do not answer from memory alone or claim you lack network access when web_search is listed above.",
-      "After web_search, use fetch_url or fetch_docs on promising result URLs when snippets are thin (hosts from search results are admitted into the grant).",
+      "After web_search, use fetch_url or fetch_docs on promising result URLs when snippets are thin (result hosts and related package registries such as registry.npmjs.org are admitted into the grant). For fetch_url, pass only url / startIndex / maxLength / intent — never maxBytes.",
     );
   }
 
