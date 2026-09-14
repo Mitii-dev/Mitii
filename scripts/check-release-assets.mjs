@@ -7,8 +7,10 @@ const readme = readFileSync('README.md', 'utf8');
 
 const requiredAssets = [
   vscodePkg.icon ? `apps/vscode/${vscodePkg.icon}` : null,
-  'apps/vscode/media/mitii-short-logo.png',
-  'apps/vscode/media/mitii-activitybar.svg',
+  'apps/vscode/media/mitii-logo.png',
+  'apps/vscode/media/mitii-logo.svg',
+  'apps/vscode/media/mitii-full-logo.png',
+  'apps/vscode/media/mitii-full-logo-dark.png',
 ].filter(Boolean);
 
 const missingAssets = requiredAssets.filter((asset) => !existsSync(asset));

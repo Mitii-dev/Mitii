@@ -1,10 +1,8 @@
 :root {
-  --mitii-accent: var(--vscode-focusBorder, #0078d4);
-  --mitii-accent-soft: color-mix(
-    in srgb,
-    var(--vscode-focusBorder, #0078d4) 18%,
-    transparent
-  );
+  --mitii-brand: #ff751f;
+  --mitii-brand-soft: #ffbd59;
+  --mitii-accent: var(--mitii-brand);
+  --mitii-accent-soft: color-mix(in srgb, var(--mitii-brand) 18%, transparent);
   --mitii-surface: var(--vscode-sideBar-background);
   --mitii-panel: var(--vscode-editor-background);
   --mitii-panel-raised: color-mix(
@@ -20,7 +18,7 @@
   --mitii-ok: var(--vscode-testing-iconPassed, #89b86c);
   --mitii-warn: color-mix(
     in srgb,
-    var(--vscode-charts-orange, #d19a66) 58%,
+    var(--mitii-brand-soft) 58%,
     var(--vscode-foreground) 42%
   );
   --mitii-warn-soft: #c9b27a;
@@ -195,12 +193,21 @@ input:focus-visible {
 .brand {
   display: flex;
   align-items: center;
+  gap: 8px;
   min-width: 0;
   padding: 0;
 }
 
 .brand::before {
   display: none;
+}
+
+.brand-symbol {
+  display: block;
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  flex: 0 0 auto;
 }
 
 .brand-mark {
@@ -356,16 +363,42 @@ input:focus-visible {
 .empty-state {
   margin: auto;
   text-align: center;
-  max-width: 280px;
+  max-width: 320px;
   padding: 28px 16px 44px;
 }
 
-.empty-state img {
+.empty-state__logo {
   display: block;
-  width: 72px;
-  height: 72px;
-  margin: 0 auto 14px;
+  width: 168px;
+  height: auto;
+  max-height: 168px;
+  margin: 0 auto 16px;
   object-fit: contain;
+}
+
+/* Light full logo (dark wordmark) — default for light themes */
+.empty-state__logo--dark {
+  display: none;
+}
+
+body.vscode-dark .empty-state__logo--light,
+body.vscode-high-contrast .empty-state__logo--light {
+  display: none;
+}
+
+body.vscode-dark .empty-state__logo--dark,
+body.vscode-high-contrast .empty-state__logo--dark {
+  display: block;
+}
+
+@media (prefers-color-scheme: dark) {
+  body:not(.vscode-light):not(.vscode-high-contrast-light) .empty-state__logo--light {
+    display: none;
+  }
+
+  body:not(.vscode-light):not(.vscode-high-contrast-light) .empty-state__logo--dark {
+    display: block;
+  }
 }
 
 .empty-state h2 {

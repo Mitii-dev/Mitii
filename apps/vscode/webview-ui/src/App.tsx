@@ -100,6 +100,7 @@ import { modeColor } from './modeColors';
 import { TokenMeter } from './TokenMeter';
 import { resolveDisplayedAssistantText } from './assistantDisplay';
 import type { ChatMessageView } from './protocol';
+import SYMBOL_LOGO from '../../media/mitii-logo.png';
 import {
   inferThoroughness,
   resolveRunIntensity,
@@ -2225,8 +2226,8 @@ export function App() {
     return (
       <div className="app">
         <header className="shell-header">
-          <div className="brand">
-            <div className="brand-mark">Mitii</div>
+          <div className="brand" aria-label=">Mitii.dev_">
+            <img className="brand-symbol" src={SYMBOL_LOGO} alt="" />
             <div className="brand-sub">First-run setup</div>
           </div>
         </header>
@@ -2249,8 +2250,8 @@ export function App() {
   return (
     <div className="app">
       <header className="shell-header">
-        <div className="brand" aria-label="Mitii">
-          <div className="brand-mark">Mitii</div>
+        <div className="brand" aria-label=">Mitii.dev_">
+          <img className="brand-symbol" src={SYMBOL_LOGO} alt="" />
         </div>
         <div className="shell-header__actions">
           <nav className="nav-pills" aria-label="Primary">

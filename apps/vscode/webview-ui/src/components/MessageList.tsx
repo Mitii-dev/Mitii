@@ -11,7 +11,8 @@ import { ApprovalCards } from './ApprovalCards';
 import { FileChangesCard } from './FileChangesCard';
 import { derivePhase, LiveStatus } from './LiveStatus';
 import { MarkdownMessage } from './MarkdownMessage';
-import LOGO from '../../../media/Mitii.png';
+import FULL_LOGO from '../../../media/mitii-full-logo.png';
+import FULL_LOGO_DARK from '../../../media/mitii-full-logo-dark.png';
 
 export type TurnSegment =
   | { id: string; kind: 'text'; text: string; at: number }
@@ -117,7 +118,16 @@ export function MessageList({
         onScroll={onScroll}
       >
         <div className="empty-state">
-          <img src={LOGO} alt="Mitii Logo" />
+          <img
+            className="empty-state__logo empty-state__logo--light"
+            src={FULL_LOGO}
+            alt=">Mitii.dev_"
+          />
+          <img
+            className="empty-state__logo empty-state__logo--dark"
+            src={FULL_LOGO_DARK}
+            alt=">Mitii.dev_"
+          />
           <h2>Ready when you are</h2>
           <p>Workspace context is ready. Start with the outcome you want.</p>
         </div>

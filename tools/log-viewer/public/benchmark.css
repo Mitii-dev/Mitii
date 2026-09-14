@@ -42,7 +42,7 @@
 }
 
 .chip-toggle.is-on {
-  background: rgba(90, 167, 255, 0.18);
+  background: rgba(255, 117, 31, 0.18);
   color: var(--text);
 }
 
@@ -59,7 +59,7 @@
 }
 
 .icon-btn:hover {
-  border-color: rgba(90, 167, 255, 0.45);
+  border-color: rgba(255, 117, 31, 0.45);
   color: var(--accent);
 }
 
@@ -82,7 +82,7 @@
 
 .status-chip.running {
   color: #0b1220;
-  background: linear-gradient(90deg, #6ee7b7, #5aa7ff);
+  background: linear-gradient(90deg, #ffbd59, #ff751f);
   border-color: transparent;
 }
 
@@ -185,8 +185,8 @@ body[data-log-open='true'] .activity-drawer {
   margin: 10px 12px 0;
   padding: 12px 16px;
   border-radius: 12px;
-  border: 1px solid rgba(110, 231, 183, 0.35);
-  background: linear-gradient(90deg, rgba(110, 231, 183, 0.14), rgba(90, 167, 255, 0.1));
+  border: 1px solid rgba(255, 189, 89, 0.35);
+  background: linear-gradient(90deg, rgba(255, 189, 89, 0.14), rgba(255, 117, 31, 0.1));
   color: inherit;
   text-align: left;
   cursor: pointer;
@@ -200,14 +200,14 @@ body[data-log-open='true'] .activity-drawer {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: #6ee7b7;
+  background: #ffbd59;
   animation: pulse 1.4s infinite;
 }
 
 @keyframes pulse {
-  0% { box-shadow: 0 0 0 0 rgba(110, 231, 183, 0.55); }
-  70% { box-shadow: 0 0 0 12px rgba(110, 231, 183, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(110, 231, 183, 0); }
+  0% { box-shadow: 0 0 0 0 rgba(255, 189, 89, 0.55); }
+  70% { box-shadow: 0 0 0 12px rgba(255, 189, 89, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 189, 89, 0); }
 }
 
 .live-strip-copy {
@@ -404,14 +404,14 @@ body[data-inspector-open='false'] .detail-panel {
   height: 26px;
   padding: 0 10px;
   border-radius: 7px;
-  border: 1px solid rgba(90, 167, 255, 0.35);
-  background: rgba(90, 167, 255, 0.12);
+  border: 1px solid rgba(255, 117, 31, 0.35);
+  background: rgba(255, 117, 31, 0.12);
   color: var(--accent);
   font: 700 11px/1 var(--font-ui);
   white-space: nowrap;
 }
 
-.btn-rerun:hover { background: rgba(90, 167, 255, 0.22); }
+.btn-rerun:hover { background: rgba(255, 117, 31, 0.22); }
 .btn-rerun:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .tabs {
@@ -437,7 +437,7 @@ body[data-inspector-open='false'] .detail-panel {
 
 .tab.is-active {
   color: var(--text);
-  background: rgba(90, 167, 255, 0.18);
+  background: rgba(255, 117, 31, 0.18);
 }
 
 .seg {
@@ -460,7 +460,7 @@ body[data-inspector-open='false'] .detail-panel {
 }
 
 .seg-btn.is-active {
-  background: rgba(90, 167, 255, 0.2);
+  background: rgba(255, 117, 31, 0.2);
   color: var(--text);
 }
 
@@ -493,12 +493,12 @@ body[data-inspector-open='false'] .detail-panel {
 
 .case-row.active,
 .run-row.active {
-  background: rgba(90, 167, 255, 0.12);
+  background: rgba(255, 117, 31, 0.12);
   box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .case-row.running-case {
-  background: rgba(110, 231, 183, 0.08);
+  background: rgba(255, 189, 89, 0.08);
   box-shadow: inset 2px 0 0 var(--accent-2);
 }
 
@@ -604,10 +604,10 @@ body[data-inspector-open='false'] .detail-panel {
 }
 
 .results-table tbody tr { cursor: pointer; }
-.results-table tbody tr:hover { background: rgba(90, 167, 255, 0.06); }
-.results-table tbody tr.active { background: rgba(90, 167, 255, 0.12); }
+.results-table tbody tr:hover { background: rgba(255, 117, 31, 0.06); }
+.results-table tbody tr.active { background: rgba(255, 117, 31, 0.12); }
 .results-table tbody tr.is-running {
-  background: rgba(110, 231, 183, 0.08);
+  background: rgba(255, 189, 89, 0.08);
 }
 
 .results-table .case-id {
@@ -724,7 +724,7 @@ body[data-inspector-open='false'] .detail-panel {
   word-break: break-word;
 }
 
-.log-view .pass { color: #6ee7b7; }
+.log-view .pass { color: #ffbd59; }
 .log-view .fail { color: #fca5a5; }
 .log-view .warn { color: #fcd34d; }
 .log-view .info { color: #93c5fd; }
@@ -781,9 +781,9 @@ a.btn {
   gap: 14px;
   padding: 18px;
   border-radius: 18px;
-  border: 1px solid rgba(90, 167, 255, 0.28);
+  border: 1px solid rgba(255, 117, 31, 0.28);
   background:
-    radial-gradient(circle at 10% 0%, rgba(90, 167, 255, 0.16), transparent 40%),
+    radial-gradient(circle at 10% 0%, rgba(255, 117, 31, 0.16), transparent 40%),
     linear-gradient(180deg, #101822, #0c121b 60%);
   box-shadow: 0 30px 90px rgba(0, 0, 0, 0.55);
 }
@@ -890,8 +890,8 @@ a.btn {
 }
 
 .queue-item.current {
-  border-color: rgba(110, 231, 183, 0.45);
-  background: rgba(110, 231, 183, 0.08);
+  border-color: rgba(255, 189, 89, 0.45);
+  background: rgba(255, 189, 89, 0.08);
 }
 
 .queue-item.done-pass { opacity: 0.55; }

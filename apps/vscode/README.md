@@ -2,6 +2,13 @@
 
 **Marketplace id:** `mitii.mitii-ai-agent`
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="media/mitii-full-logo-dark.png" />
+    <img src="media/mitii-full-logo.png" alt=">Mitii.dev_" width="180" />
+  </picture>
+</p>
+
 Local-first AI coding agent for VS Code. Mitii indexes your repository, answers in Ask mode, plans in Plan mode, applies changes in Agent mode, and can provide FIM inline autocomplete - with approvals, checkpoints, and OpenAI-compatible providers (Ollama, LM Studio, cloud `/v1` APIs).
 
 ![Mitii chat in VS Code](media/mitii-vs-code-chat-ui.png)

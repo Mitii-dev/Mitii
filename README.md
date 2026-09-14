@@ -1,7 +1,10 @@
 # Mitii AI Agent
 
 <p align="center">
-  <img src="apps/vscode/media/Mitii.png" alt="Mitii AI Agent logo" width="160" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="apps/vscode/media/mitii-full-logo-dark.png" />
+    <img src="apps/vscode/media/mitii-full-logo.png" alt=">Mitii.dev_" width="220" />
+  </picture>
 </p>
 
 <p align="center">
@@ -12,8 +15,8 @@
   <a href="LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/License-AGPL_v3-blue.svg"></a>
   <a href="https://code.visualstudio.com/"><img alt="VS Code 1.124+" src="https://img.shields.io/badge/VS%20Code-1.124%2B-007ACC?logo=visualstudiocode"></a>
   <a href="https://nodejs.org/"><img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-339933?logo=node.js"></a>
-  <img alt="Version 2.9.53" src="https://img.shields.io/badge/version-2.9.53-111111">
-  <a href="https://docs.mitii.dev"><img alt="Documentation" src="https://img.shields.io/badge/docs-docs.mitii.dev-5B5BFF"></a>
+  <img alt="Version 2.9.54" src="https://img.shields.io/badge/version-2.9.54-111111">
+  <a href="https://docs.mitii.dev"><img alt="Documentation" src="https://img.shields.io/badge/docs-docs.mitii.dev-ff751f"></a>
 </p>
 
 <p align="center">

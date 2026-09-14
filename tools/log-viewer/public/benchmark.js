@@ -197,7 +197,7 @@ function ensureTerm() {
     theme: {
       background: '#000000',
       foreground: '#d7e3f4',
-      cursor: '#5aa7ff',
+      cursor: '#ff751f',
       selectionBackground: '#243247',
     },
   });
