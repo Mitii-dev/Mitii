@@ -1,11 +1,9 @@
-# Tag release: multi-platform VSIX + GitHub Release + Marketplace (+ Open VSX) + npm.
+# Manual release: multi-platform VSIX + GitHub Release + Marketplace (+ Open VSX) + npm.
 # Requires secrets: VSCE_PAT. Optional: NPM_TOKEN, OVSX_PAT.
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
 
 jobs:
   package:
@@ -19,8 +17,6 @@ jobs:
         include:
           - os: macos-14
             target: darwin-arm64
-          - os: macos-13
-            target: darwin-x64
           - os: ubuntu-latest
             target: linux-x64
           - os: windows-latest
