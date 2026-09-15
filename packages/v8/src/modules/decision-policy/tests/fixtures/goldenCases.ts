@@ -923,7 +923,34 @@ const GOLDEN_DECISION_CASES_CORE: GoldenDecisionCase[] = [
     expected: {
       route: "diagnose",
       maximumWorkspaceEffect: "read",
-      reasonCodesIncludes: ["diagnosis_readonly"],
+      reasonCodesIncludes: [
+        "diagnosis_readonly",
+        "review_pipeline_required",
+        "review_findings_structured",
+      ],
+      allowedToolsIncludes: ["emit_review_finding", "read_file", "read_git_status"],
+      allowedToolsExcludes: ["apply_patch"],
+    },
+  },
+
+  {
+    id: "golden-bench-review-and-fix",
+    category: "benchmark",
+    mode: "agent",
+    message: "Review these staged changes and fix the blockers",
+    understanding: createUnderstanding({
+      primaryTaskIntent: "bugfix",
+      interactionIntent: "act",
+      taskAnalysis: {
+        scope: "multi_file",
+        targets: [createTarget("src/Auth.ts")],
+      },
+    }),
+    expected: {
+      route: "execute",
+      maximumWorkspaceEffect: "write",
+      reasonCodesIncludes: ["mutation_execute"],
+      allowedToolsIncludes: ["apply_patch"],
     },
   },
 

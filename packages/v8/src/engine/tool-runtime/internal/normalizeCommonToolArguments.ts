@@ -30,7 +30,144 @@ export function normalizeCommonToolArguments(
     return normalizeGlobFilesArguments(value as Record<string, unknown>);
   }
 
+  if (toolName === "emit_review_finding") {
+    return normalizeEmitReviewFindingArguments(value as Record<string, unknown>);
+  }
+
+  if (toolName === "read_git_show") {
+    return normalizeReadGitShowArguments(value as Record<string, unknown>);
+  }
+
   return value;
+}
+
+function normalizeEmitReviewFindingArguments(
+  raw: Record<string, unknown>,
+): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...raw };
+
+  if (
+    (next.path === undefined || next.path === "") &&
+    typeof next.file === "string" &&
+    next.file.length > 0
+  ) {
+    next.path = next.file;
+  }
+
+  if (
+    next.content === undefined ||
+    next.content === "" ||
+    typeof next.content !== "string"
+  ) {
+    const fromTitle =
+      typeof next.title === "string" && next.title.length > 0
+        ? next.title
+        : undefined;
+    const fromDescription =
+      typeof next.description === "string" && next.description.length > 0
+        ? next.description
+        : undefined;
+    const fromMessage =
+      typeof next.message === "string" && next.message.length > 0
+        ? next.message
+        : undefined;
+    const fromBody =
+      typeof next.body === "string" && next.body.length > 0
+        ? next.body
+        : undefined;
+    const parts = [fromTitle, fromDescription ?? fromMessage ?? fromBody].filter(
+      Boolean,
+    ) as string[];
+    if (parts.length > 0) {
+      next.content = parts.join(": ");
+    }
+  }
+
+  if (
+    next.existingCode === undefined ||
+    next.existingCode === "" ||
+    typeof next.existingCode !== "string"
+  ) {
+    const fromAnchor =
+      typeof next.existing_code === "string"
+        ? next.existing_code
+        : typeof next.anchor === "string"
+          ? next.anchor
+          : typeof next.code === "string"
+            ? next.code
+            : undefined;
+    if (fromAnchor && fromAnchor.length > 0) {
+      next.existingCode = fromAnchor;
+    } else if (typeof next.content === "string" && next.content.length > 0) {
+      // Keep Zod happy; anchoring may still fail later and mark unanchored.
+      next.existingCode = next.content.slice(0, 240);
+    }
+  }
+
+  if (next.startLine === undefined && next.line !== undefined) {
+    const line = toPositiveInt(next.line);
+    if (line !== undefined) {
+      next.startLine = line;
+      if (next.endLine === undefined) {
+        next.endLine = line;
+      }
+    }
+  }
+
+  if (next.startLine === undefined && next.start_line !== undefined) {
+    next.startLine = toPositiveInt(next.start_line) ?? next.start_line;
+  }
+  if (next.endLine === undefined && next.end_line !== undefined) {
+    next.endLine = toPositiveInt(next.end_line) ?? next.end_line;
+  }
+
+  delete next.file;
+  delete next.title;
+  delete next.description;
+  delete next.message;
+  delete next.body;
+  delete next.line;
+  delete next.existing_code;
+  delete next.anchor;
+  delete next.code;
+  delete next.start_line;
+  delete next.end_line;
+
+  return next;
+}
+
+function normalizeReadGitShowArguments(
+  raw: Record<string, unknown>,
+): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...raw };
+  if (
+    (next.revision === undefined || next.revision === "") &&
+    typeof next.rev === "string" &&
+    next.rev.length > 0
+  ) {
+    next.revision = next.rev;
+  }
+  if (
+    (next.revision === undefined || next.revision === "") &&
+    typeof next.ref === "string" &&
+    next.ref.length > 0
+  ) {
+    next.revision = next.ref;
+  }
+  delete next.rev;
+  delete next.ref;
+  return next;
+}
+
+function toPositiveInt(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
+    const n = Number(value.trim());
+    return n > 0 ? n : undefined;
+  }
+  return undefined;
 }
 
 function normalizeSearchFilesArguments(

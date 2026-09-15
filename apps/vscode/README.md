@@ -33,7 +33,7 @@ For cloud providers, run **Mitii: Set Provider API Key** (stored in VS Code Secr
 
 - **Repository-aware context** - SQLite FTS5, symbols, optional vectors, repo map, diagnostics, Git state, and `@` attachments
 - **Skills** - force-attach playbooks with `/` or `@skill:id` in chat (up to 3 per message); workspace skills in `.mitii/skills/`
-- **Ask / Plan / Agent** - read-only Q&A, structured plans, controlled edits with cancel / clarify / approve
+- **Ask / Plan / Agent** - read-only Q&A, structured plans, and controlled edits. Use the collapsible **Review** bar above chat (file count → Review) for structured working-tree findings via `emit_review_finding` — not a fourth mode.
 - **FIM autocomplete** - optional inline ghost text from a low-latency OpenAI-compatible `prompt` + `suffix` endpoint
 - **Safety** - configurable approvals, path containment, command policy, pre-write checkpoints, workspace trust
 - **Providers** - Echo, Anthropic (Claude), Gemini, and OpenAI-compatible endpoints (DeepSeek, OpenRouter, Azure, Ollama, custom `/v1`)
@@ -45,6 +45,7 @@ For cloud providers, run **Mitii: Set Provider API Key** (stored in VS Code Secr
 | Command | Purpose |
 |---|---|
 | **Mitii: Open Chat** | Open the sidebar |
+| **Mitii: Review Working Tree Changes** | Switch to Review mode and run a structured review |
 | **Mitii: Index Workspace** | Rebuild repository index |
 | **Mitii: Show Settings** | Provider, index, MCP, workspace |
 | **Mitii: Toggle Autocomplete** | Enable or disable FIM inline suggestions |

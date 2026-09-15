@@ -21,7 +21,6 @@ import {
   IconEffortMedium,
   IconFullAccess,
   IconPlan,
-  IconReview,
 } from './Icons';
 
 export type { ApprovalUiMode };
@@ -36,7 +35,7 @@ interface ComposerOption<T extends string> {
   warning?: boolean;
 }
 
-const MODES: ComposerOption<AgentUiMode>[] = [
+const MODES: ComposerOption<'ask' | 'plan' | 'agent'>[] = [
   {
     id: 'ask',
     label: 'Ask',
@@ -57,13 +56,6 @@ const MODES: ComposerOption<AgentUiMode>[] = [
     description: 'Implement changes with controlled execution',
     color: MODE_COLORS.agent,
     icon: <IconAgent />,
-  },
-  {
-    id: 'review',
-    label: 'Review',
-    description: 'Inspect working-tree diffs and report findings',
-    color: MODE_COLORS.review,
-    icon: <IconReview />,
   },
 ];
 
@@ -122,7 +114,7 @@ export const MODE_HINT: Record<AgentUiMode, string> = {
   ask: 'Explore and answer — read-only.',
   plan: 'Analyze and propose a structured plan.',
   agent: 'Implement changes with controlled execution.',
-  review: 'Inspect working-tree diffs and report findings.',
+  review: 'Structured working-tree review (use the Review bar above the chat).',
 };
 
 interface ComposerControlsProps {
@@ -134,7 +126,6 @@ interface ComposerControlsProps {
   onModeChange: (mode: AgentUiMode) => void;
   onApprovalModeChange: (mode: ApprovalUiMode) => void;
   onThoroughnessChange: (thoroughness: AgentUiThoroughness) => void;
-  includeReview?: boolean;
 }
 
 export function ComposerControls({
@@ -145,14 +136,14 @@ export function ComposerControls({
   onModeChange,
   onApprovalModeChange,
   onThoroughnessChange,
-  includeReview = true,
 }: ComposerControlsProps) {
   const [openSelect, setOpenSelect] = useState<ComposerSelectId | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
-  const modeOptions = includeReview
-    ? MODES
-    : MODES.filter((option) => option.id !== 'review');
-  const activeMode = modeOptions.find((m) => m.id === mode) ?? modeOptions[0]!;
+  const composerMode: 'ask' | 'plan' | 'agent' =
+    mode === 'plan' || mode === 'agent' ? mode : 'ask';
+  const modeOptions = MODES;
+  const activeMode =
+    modeOptions.find((m) => m.id === composerMode) ?? modeOptions[0]!;
   const activeApproval =
     APPROVAL_OPTIONS.find((o) => o.id === normalizeApproval(approvalMode)) ??
     APPROVAL_OPTIONS[1]!;

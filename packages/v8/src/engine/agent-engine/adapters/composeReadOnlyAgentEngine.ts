@@ -19,12 +19,14 @@ import type {
   ToolAdversaryPort,
 } from "../../tool-runtime";
 import type { VerificationPipeline } from "../../../modules/verification";
+import type { ReviewPipeline } from "../../../modules/review";
 
 import type {
   AgentEngineClockPort,
   AgentEngineIdGeneratorPort,
 } from "../contracts";
 import type { AgentEngineRunCheckpointStorePort } from "../internal/RunCheckpoint";
+import { createAgentEngineReviewPort } from "./createAgentEngineReviewPort";
 import { AgentEnginePipeline } from "../pipeline/AgentEnginePipeline";
 
 export interface ComposeReadOnlyAgentEngineOptions {
@@ -45,6 +47,8 @@ export interface ComposeReadOnlyAgentEngineOptions {
   repoGraphs?: RepositoryGraphPort;
   /** Enables verification-gated completion for mutation routes (Phase 8). */
   verification?: VerificationPipeline;
+  /** Optional structured code-review pipeline. */
+  review?: ReviewPipeline;
   /** Required to suspend/resume mutation approvals across process turns. */
   checkpointStore?: AgentEngineRunCheckpointStorePort;
   /** Optional Skills catalog — omitting leaves the core loop intact. */
@@ -119,6 +123,9 @@ export function composeReadOnlyAgentEngine(
     tools: options.tools,
     repoGraphs: options.repoGraphs,
     verification: options.verification,
+    review: options.review
+      ? createAgentEngineReviewPort(options.review)
+      : undefined,
     checkpointStore: options.checkpointStore,
     toolDefinitions: options.toolDefinitions,
     taskListAutoAdvance: options.taskListAutoAdvance,

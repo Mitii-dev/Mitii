@@ -24,6 +24,7 @@ const PUBLIC_MODULES = [
   'task-list',
   'code-navigation',
   'change-impact',
+  'review',
   'window-budget',
 ] as const;
 
@@ -125,6 +126,9 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
     expect(index).toContain('verificationInputSchema');
     expect(index).toContain('verificationResultSchema');
     expect(index).toContain('verificationRecordSchema');
+    expect(index).toContain('ReviewPipeline');
+    expect(index).toContain('reviewInputSchema');
+    expect(index).toContain('reviewRecordSchema');
     expect(index).toContain('AgentEnginePipeline');
     expect(index).toContain('agentEngineStartInputSchema');
     expect(index).toContain('agentRunResultSchema');

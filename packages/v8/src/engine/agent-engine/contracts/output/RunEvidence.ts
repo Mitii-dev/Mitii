@@ -67,7 +67,7 @@ export const runEvidencePlanSchema = z
 export const runEvidenceLedgerEntrySchema = z
   .object({
     id: z.string().min(1).max(120),
-    kind: z.enum(["discovery", "plan", "edit", "verification", "tool", "stop"]),
+    kind: z.enum(["discovery", "plan", "edit", "verification", "tool", "stop", "review"]),
     summary: z.string().min(1).max(800),
     status: z.string().min(1).max(80).optional(),
     toolName: z.string().min(1).max(120).optional(),

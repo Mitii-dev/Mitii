@@ -878,6 +878,8 @@ export type HostToWebviewMessage =
   | { type: 'paths.results'; requestId: string; suggestions: PathSuggestion[] }
   | { type: 'openSettings'; tab?: SettingsTab }
   | { type: 'setTab'; tab: UiNav }
+  /** Open chat in Review mode; optionally auto-start an LLM review. */
+  | { type: 'startReview'; autoRun?: boolean; prompt?: string }
   | { type: 'editorPin'; path: string; source?: ContextPinSource }
   | { type: 'editorUnpin'; path: string }
   | { type: 'syncAutoPins'; paths: string[] }
@@ -894,6 +896,17 @@ export type HostToWebviewMessage =
     }
   | { type: 'setPlan'; plan: PlanView | null }
   | { type: 'setReviewDiff'; review: ReviewDiffView | null }
+  | {
+      type: 'setReviewFindings';
+      findings: Array<{
+        path: string;
+        content: string;
+        startLine?: number;
+        endLine?: number;
+        severity: string;
+        category?: string;
+      }>;
+    }
   | { type: 'setMemories'; memories: MemoryItemView[] }
   | { type: 'setCheckpoints'; checkpoints: CheckpointItemView[] }
   | {

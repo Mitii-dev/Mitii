@@ -405,6 +405,38 @@ export type {
   ChangeImpactSeed,
 } from "./modules/change-impact";
 
+export { ReviewPipeline } from "./modules/review";
+export {
+  reviewInputSchema,
+  reviewPreviewSchema,
+  reviewPrepResultSchema,
+  reviewResultSchema,
+  reviewRecordSchema,
+  reviewFindingSchema,
+  exportSarif,
+  formatReviewPrepForPrompt,
+  InMemoryReviewRecordStore,
+  FileReviewRecordStore,
+  REVIEW_SCHEMA_VERSION,
+  REVIEW_RECORD_SCHEMA_VERSION,
+  REVIEW_CATEGORIES,
+  REVIEW_SEVERITIES,
+} from "./modules/review";
+export type {
+  ReviewInput,
+  ReviewParsedInput,
+  ReviewPreview,
+  ReviewPrepResult,
+  ReviewResult,
+  ReviewRecord,
+  ReviewFinding,
+  ReviewChangedFile,
+  ReviewRecordStorePort,
+  ReviewDiffPort,
+  ReviewLlmPort,
+  SarifReport,
+} from "./modules/review";
+
 export { PlanningPipeline } from "./modules/planning";
 export {
   planningInputSchema,

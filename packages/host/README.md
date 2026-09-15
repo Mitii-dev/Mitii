@@ -78,6 +78,7 @@ Prefer importing from `@mitii/host`. Do not import `internal/`.
 | `createHostRepositoryContext` | V8 `RepositoryContextPipeline` | Hybrid retrieve + file-map fallback. File-map fallback honors `folderPrefix`. Optional `corpusEnabled` (default false). |
 | `createWorkspaceCheckpointStore` | SDK checkpoint store | `.mitii/checkpoints/` |
 | `createWorkspaceVerificationStore` | Verification record store | `.mitii/verification/` |
+| `createWorkspaceReviewStore` | Review record store | `.mitii/review/` |
 | `createWorkspaceMemoryStore` | V8 `MemoryStorePort` | `.mitii/memory/facts.json` (mutation queue + atomic rename + honest deletes) |
 | `listPendingMemories` / `approvePendingMemory` | Memory approve queue | `.mitii/memory/pending.json` — `autoPromote` default false |
 | `narrowChildStartInput` | Child-run helper | Mode ≤ parent; deny-only `userSafetyRules`; `enabled` default off |

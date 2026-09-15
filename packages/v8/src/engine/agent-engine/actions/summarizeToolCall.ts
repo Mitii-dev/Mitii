@@ -166,6 +166,32 @@ export function summarizeToolCall(
         : undefined;
     case "directory_tree":
       return typeof args.path === "string" ? `path=${args.path}` : undefined;
+    case "emit_review_finding": {
+      // Compact, host-parseable line for editor diagnostics/comments.
+      const file = path ?? safeText(args.file);
+      const line =
+        typeof args.startLine === "number"
+          ? args.startLine
+          : typeof args.line === "number"
+            ? args.line
+            : undefined;
+      const sev = safeText(args.severity, 24) ?? "medium";
+      const cat = safeText(args.category, 40);
+      const msg =
+        safeText(args.content, 220) ??
+        safeText(args.title, 120) ??
+        safeText(args.description, 180);
+      return [
+        "finding",
+        file ? `path=${file}` : undefined,
+        line ? `line=${line}` : undefined,
+        `sev=${sev}`,
+        cat ? `cat=${cat}` : undefined,
+        msg ? `:: ${msg}` : undefined,
+      ]
+        .filter(Boolean)
+        .join(" ");
+    }
     default: {
       const keys = Object.keys(args)
         .filter((key) => !key.startsWith("_"))

@@ -124,7 +124,8 @@ import {
   readContextToggles,
 } from './contextToggles.js';
 import { savePlanToWorkspace } from './planStore.js';
-import { buildReviewDiff } from './reviewDiff.js';
+import { buildReviewDiff, buildReviewFileDiffs } from './reviewDiff.js';
+import type { ReviewFindingsPresenter } from './review/reviewFindingsPresenter.js';
 import { testProviderConnection } from './testConnection.js';
 import { getWorkspaceTrustSnapshot } from './workspace/trust.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
@@ -415,6 +416,22 @@ function needsFullIndexRefresh(index: IndexStatusSnapshot): boolean {
   return false;
 }
 
+const REVIEW_HOST_PREFIX =
+  'Review the current git changes. Use emit_review_finding for each issue with path, content, existingCode, severity, and category. Prefer high-signal findings.';
+
+/** Avoid stacking identical review instructions from UI + host. */
+function buildReviewLlmPrompt(userPrompt: string): string {
+  const trimmed = userPrompt.trim();
+  if (!trimmed) return REVIEW_HOST_PREFIX;
+  if (
+    /\bemit_review_finding\b/i.test(trimmed) ||
+    /^Review the current (?:git |working-tree )/i.test(trimmed)
+  ) {
+    return trimmed;
+  }
+  return `${REVIEW_HOST_PREFIX}\n\n${trimmed}`;
+}
+
 const EMBEDDING_SOURCES = [
   'bundled',
   'ollama',
@@ -427,6 +444,7 @@ export interface SidebarHostOptions {
   workspaceState: vscode.Memento;
   inlineDiff: InlineDiffManager;
   onInlineDiffPending: (pending: boolean) => void;
+  reviewFindings: ReviewFindingsPresenter;
 }
 
 export interface SidebarHostHelpers {
@@ -1430,20 +1448,45 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     this.runCancel?.cancel();
     this.runCancel?.dispose();
     this.runCancel = new this.vs.CancellationTokenSource();
-    const llmPrompt =
+    let llmPrompt =
       message.mode === 'review'
-        ? `Review the current git changes and suggest improvements / risks.\n\n${prompt}`
+        ? buildReviewLlmPrompt(prompt)
         : prompt;
     if (message.mode === 'review') {
       const root = this.effectiveRoot();
       if (root) {
+        const reviewDiff = await buildReviewDiff(root);
         this.post({
           type: 'setReviewDiff',
-          review: await buildReviewDiff(root),
+          review: reviewDiff,
         });
+        try {
+          const { ReviewPipeline, formatReviewPrepForPrompt } = await import(
+            '@mitii/sdk'
+          );
+          const files = await buildReviewFileDiffs(
+            root,
+            reviewDiff.files ?? [],
+          );
+          const prep = new ReviewPipeline().prepare({
+            schemaVersion: 1,
+            mode: 'workspace',
+            workspaceId: root,
+            files,
+          });
+          if (prep.selectedCount > 0) {
+            llmPrompt = `${llmPrompt}\n\n${formatReviewPrepForPrompt(prep)}`;
+          }
+        } catch {
+          // Review prep is best-effort in the host UI.
+        }
       }
     }
     this.post({ type: 'run.started', mode: message.mode, prompt });
+    if (message.mode === 'review') {
+      this.host.reviewFindings.beginRun();
+      this.post({ type: 'setReviewFindings', findings: [] });
+    }
     this.pendingRunTurns = [];
     this.pendingMcpAppEvents = [];
     this.liveStreamText = '';
@@ -1557,6 +1600,31 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           },
           onEvent: (event, activity) => {
             this.post({ type: 'run.event', event: activity });
+            if (
+              event?.type === 'tool_completed' &&
+              event.toolName === 'emit_review_finding'
+            ) {
+              this.host.reviewFindings.ingestToolEvent({
+                status: String(event.status ?? ''),
+                summary:
+                  typeof event.summary === 'string' ? event.summary : undefined,
+                outputPreview:
+                  typeof event.outputPreview === 'string'
+                    ? event.outputPreview
+                    : undefined,
+              });
+              this.post({
+                type: 'setReviewFindings',
+                findings: this.host.reviewFindings.getFindings().map((f) => ({
+                  path: f.path,
+                  content: f.content,
+                  startLine: f.startLine,
+                  endLine: f.endLine,
+                  severity: f.severity,
+                  category: f.category,
+                })),
+              });
+            }
             if (event?.type === 'plan_ready' && event.plan) {
               const livePlan = planViewFromArtifact(event.plan);
               if (livePlan) {

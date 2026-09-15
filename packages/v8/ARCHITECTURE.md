@@ -58,7 +58,8 @@ Agent Engine
         |-- Prompt Construction
         |-- Model Gateway
         |-- Tool Runtime
-        `-- Verification
+        |-- Verification
+        `-- Review
 ```
 
 The Application layer MUST own host APIs, user-interface DTO mapping, secret retrieval, and adapter composition. V8 MUST remain usable in tests and a headless CLI.
@@ -99,6 +100,7 @@ belongs to the tool-runtime engine package path. Business facades remain under
 | `task-list` | Plan artifact or apply input -> live `TaskList` | Compact working checklist (max 8), derive pending tasks from a plan, markdown serialize/parse | Plan drafting, tool execution, host UI, stamping remaining items done when a run ends |
 | `code-navigation` | Path + caret -> definitions / references / hover | Language-server and repo-graph navigation | Indexing, retrieval budgets, spawning servers |
 | `change-impact` | Change seed + published `RepoGraph` -> bounded impact report | Reverse-dependent blast radius (callers, importers, package dependents), truncation/staleness reason codes | Indexing, retrieval ranking, tool grants, planning dimensions |
+| `review` | Diff/scan seed -> structured review artifact (`ReviewRecord`) | Deterministic file selection, grouping, path rules, finding anchor/repair/reflect, SARIF export | Mutation, verification checks, git shelling, model tool loops |
 | `window-budget` | Advertised context window + optional overrides -> `WindowPolicy` | Proportional output reserve, usable-input split, mutation/planning/skills/run/compaction numbers | Prompt text, retrieval, grants, model calls |
 
 Adding a top-level module requires all of:

@@ -34,6 +34,11 @@ Smoke without a live model:
 
 ```bash
 mitii ask "What is recursion?" --echo
+# Deterministic prep / SARIF only (no LLM):
+mitii review --preview
+mitii review --from main --to HEAD --format sarif --output review.sarif
+# LLM findings (read-only ask + review skill):
+mitii ask "Review the working-tree changes" --mode ask --skill code-review-and-quality --echo
 ```
 
 Check what is configured (never prints secrets):
@@ -66,6 +71,7 @@ mitii export-session "Summarize this repo" --out session.json --echo
 | `run --auto "<task>"` | Unattended CI run (agent + apply autonomy; no prompts) |
 | `session` | Interactive prompt loop with MITII banner |
 | `index` | Full workspace index + publish repository state |
+| `review` | Deterministic review prep / SARIF (`--preview`, `--from`/`--to`, `--commit`, `--format`, `--output`). For LLM findings use `mitii ask … --skill code-review-and-quality` or VS Code **Review** mode |
 | `status` | Show latest persisted repository state |
 | `export-session` | Run ask and write secret-free JSON export |
 | `connect` | Bridge Mitii into Telegram, Discord, or Slack |

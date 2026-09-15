@@ -142,6 +142,7 @@ export {
 // ---------------------------------------------------------------------------
 export { createWorkspaceCheckpointStore } from './ports/checkpoints.js';
 export { createWorkspaceVerificationStore } from './ports/verificationRecords.js';
+export { createWorkspaceReviewStore } from './ports/reviewRecords.js';
 
 export {
   createWorkspaceMemoryStore,

@@ -26,6 +26,12 @@ tests/* ----------------/
 
 Hosts and tests prefer `@mitii/sdk` over importing V8 internals.
 
+Workspace durable artifacts (under each project `.mitii/`):
+
+- `verification/` — post-mutation verification records
+- `review/` — structured `ReviewRecord` artifacts (`mitii.review/v1`)
+- `review-rules/` — optional path-matched review rules (`rule.json` + markdown)
+
 ## Tree
 
 ```text

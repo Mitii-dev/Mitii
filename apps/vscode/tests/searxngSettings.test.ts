@@ -61,6 +61,7 @@ function createProviderHarness(options?: {
       extensionMode: 1 as never,
       workspaceState: { get: vi.fn(), update: vi.fn() } as never,
       inlineDiff: {} as never,
+      reviewFindings: {} as never,
       onInlineDiffPending: vi.fn(),
     },
   );

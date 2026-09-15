@@ -473,6 +473,33 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.reasonCodes).toContain("repository_state_degraded");
   });
 
+  it("routes ask-mode Review UI prompts to diagnose with structured findings", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "ask",
+        message:
+          "Review the current git changes. Use emit_review_finding for each issue with path, content, existingCode, severity, and category.\n\n# Review prep (workspace, effort=medium, rounds=2)\nSelected 3 file(s).",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "question",
+          interactionIntent: "question",
+          taskAnalysis: {
+            scope: "multi_file",
+            clarity: "unclear",
+            recommendsRepositoryDiscovery: true,
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("diagnose");
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("read");
+    expect(decision.toolGrant.allowedTools).toContain("emit_review_finding");
+    expect(decision.reasonCodes).toContain("diagnosis_readonly");
+    expect(decision.reasonCodes).toContain("review_pipeline_required");
+    expect(decision.reasonCodes).toContain("review_findings_structured");
+    expect(decision.reasonCodes).toContain("mode_ask_readonly");
+  });
+
   it("routes ask-mode project questions to repository_answer with read tools", () => {
     const decision = new DecisionPolicyPipeline().decide(
       createInput({
