@@ -37,17 +37,38 @@ export async function executeReadGitStatus(params: {
     let redacted = false;
 
     if (input.includeDiff) {
-      const diffResult = await params.git.diff({
-        workspaceRoot: params.workspaceRoot,
-        paths: input.paths,
-        signal: params.signal,
-      });
+      // A working-tree review needs both sides of `git status`: `git diff`
+      // alone omits everything already staged in the index.
+      const [stagedDiff, unstagedDiff] = await Promise.all([
+        params.git.diff({
+          workspaceRoot: params.workspaceRoot,
+          paths: input.paths,
+          staged: true,
+          signal: params.signal,
+        }),
+        params.git.diff({
+          workspaceRoot: params.workspaceRoot,
+          paths: input.paths,
+          signal: params.signal,
+        }),
+      ]);
+      const combinedDiff = [
+        stagedDiff.diff.trim()
+          ? `# Staged changes\n${stagedDiff.diff}`
+          : "",
+        unstagedDiff.diff.trim()
+          ? `# Unstaged changes\n${unstagedDiff.diff}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n");
       const sanitized = sanitizeTextOutput(
-        diffResult.diff,
+        combinedDiff,
         params.maxOutputBytes,
       );
       diff = sanitized.text;
-      truncated = diffResult.truncated || sanitized.truncated;
+      truncated =
+        stagedDiff.truncated || unstagedDiff.truncated || sanitized.truncated;
       redacted = sanitized.redacted;
     }
 

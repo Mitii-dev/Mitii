@@ -22,6 +22,10 @@ export type {
 } from "./evaluateMutationCritic";
 export { extractFileReadPaths } from "./extractFileReadPaths";
 export {
+  requiresStructuredReviewFindings,
+  buildIncompleteReviewRecoveryMessage,
+} from "./incompleteReviewFindings";
+export {
   extractToolContentPaths,
   stripPathRangeSuffix,
   toolContentPathsOverlap,

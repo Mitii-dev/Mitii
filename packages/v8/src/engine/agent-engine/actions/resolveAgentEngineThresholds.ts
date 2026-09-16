@@ -16,6 +16,7 @@ export const agentEngineThresholdsSchema = z
     maxTruncationRecoveries: nonnegativeIntSchema,
     maxIncompleteAnswerRecoveries: nonnegativeIntSchema,
     maxUnfulfilledExecuteRecoveries: nonnegativeIntSchema,
+    maxStructuredReviewRecoveries: nonnegativeIntSchema,
     maxRejectedMutationRecoveries: nonnegativeIntSchema,
     maxMustReadNudges: nonnegativeIntSchema,
     maxReadOnlyMutationRetryAttempts: nonnegativeIntSchema,

@@ -9,6 +9,9 @@ export type ReviewFindingChip = {
   endLine?: number;
   severity: string;
   category?: string;
+  existingCode?: string;
+  suggestionCode?: string;
+  status?: 'open' | 'fixed';
 };
 
 interface WorkingTreeReviewBarProps {
@@ -26,6 +29,12 @@ interface WorkingTreeReviewBarProps {
   onRunReview: () => void;
   onUndoAll?: () => void;
   onKeepAll?: () => void;
+  /** Clear sticky review findings (Problems + comments + chips). */
+  onDismissFindings?: () => void;
+  /** Fix one finding by index into `findings`. */
+  onFixFinding?: (index: number) => void;
+  /** Fix every open finding via the host recipe. */
+  onFixAllFindings?: () => void;
 }
 
 function statusLabel(status: string): string {
@@ -71,11 +80,20 @@ export function WorkingTreeReviewBar({
   onRunReview,
   onUndoAll,
   onKeepAll,
+  onDismissFindings,
+  onFixFinding,
+  onFixAllFindings,
 }: WorkingTreeReviewBarProps) {
   const files = review?.files ?? [];
   const fileCount = files.length > 0 ? files.length : (runChanges?.files.length ?? 0);
   const [expanded, setExpanded] = useState(false);
   const [tab, setTab] = useState<'files' | 'findings'>('files');
+
+  const openFindings = findings.filter((f) => f.status !== 'fixed');
+  const fixedFindings = findings.filter((f) => f.status === 'fixed');
+  const reviewComplete =
+    findings.length > 0 && openFindings.length === 0 && fixedFindings.length > 0;
+  const hasOpenFindings = openFindings.length > 0;
 
   useEffect(() => {
     if (expandSignal > 0) setExpanded(true);
@@ -88,11 +106,18 @@ export function WorkingTreeReviewBar({
     }
   }, [findings.length]);
 
+  useEffect(() => {
+    if (reviewComplete) setExpanded(false);
+  }, [reviewComplete]);
+
   if (fileCount === 0 && findings.length === 0 && !running) {
     return null;
   }
 
-  const canUndoKeep = Boolean(runChanges && runChanges.files.length > 0);
+  const canUndoKeep =
+    !reviewComplete && Boolean(runChanges && runChanges.files.length > 0);
+  const canFix =
+    hasOpenFindings && !running && Boolean(onFixAllFindings) && !reviewComplete;
   const listFiles =
     files.length > 0
       ? files.map((f) => ({ path: f.path, status: f.status }))
@@ -102,7 +127,10 @@ export function WorkingTreeReviewBar({
         }));
 
   return (
-    <div className="wt-review wt-review--attached" aria-label="Working tree review">
+    <div
+      className={`wt-review wt-review--attached${reviewComplete ? ' wt-review--done' : ''}`}
+      aria-label="Working tree review"
+    >
       <div className="wt-review__bar">
         <button
           type="button"
@@ -119,52 +147,111 @@ export function WorkingTreeReviewBar({
           <span className="wt-review__count">
             {fileCount} File{fileCount === 1 ? '' : 's'}
           </span>
-          {findings.length > 0 ? (
+          {reviewComplete ? (
+            <span
+              className="wt-review__done-tick"
+              title="All review findings fixed"
+              aria-label="Review complete"
+            >
+              ✓
+            </span>
+          ) : null}
+          {hasOpenFindings ? (
             <span className="wt-review__finding-badge">
-              {findings.length} finding{findings.length === 1 ? '' : 's'}
+              {openFindings.length} open
+            </span>
+          ) : null}
+          {reviewComplete ? (
+            <span className="wt-review__done-badge">Done</span>
+          ) : fixedFindings.length > 0 ? (
+            <span className="wt-review__fixed-badge">
+              {fixedFindings.length} fixed
             </span>
           ) : null}
         </button>
-        <div className="wt-review__actions">
-          <button
-            type="button"
-            className="wt-review__link"
-            disabled={!canUndoKeep || running}
-            title={
-              canUndoKeep
-                ? 'Revert Mitii edits from the latest run'
-                : 'Undo All is available after Mitii edits a run'
-            }
-            onClick={() => onUndoAll?.()}
-          >
-            Undo All
-          </button>
-          <button
-            type="button"
-            className="wt-review__link"
-            disabled={!canUndoKeep || running}
-            title={
-              canUndoKeep
-                ? 'Keep Mitii edits and dismiss the change list'
-                : 'Keep All is available after Mitii edits a run'
-            }
-            onClick={() => {
-              onKeepAll?.();
-              setExpanded(false);
-            }}
-          >
-            Keep All
-          </button>
-          <button
-            type="button"
-            className="wt-review__cta"
-            disabled={running || fileCount === 0}
-            title="Run a structured read-only review — findings open in the editor"
-            onClick={onRunReview}
-          >
-            {running ? 'Reviewing…' : 'Review'}
-          </button>
-        </div>
+        {!reviewComplete ? (
+          <div className="wt-review__actions">
+            <button
+              type="button"
+              className="wt-review__link"
+              disabled={!canUndoKeep || running}
+              title={
+                canUndoKeep
+                  ? 'Revert Mitii edits from the latest run'
+                  : 'Undo All is available after Mitii edits a run'
+              }
+              onClick={() => onUndoAll?.()}
+            >
+              Undo All
+            </button>
+            <button
+              type="button"
+              className="wt-review__link"
+              disabled={!canUndoKeep || running}
+              title={
+                canUndoKeep
+                  ? 'Keep Mitii edits and dismiss the change list'
+                  : 'Keep All is available after Mitii edits a run'
+              }
+              onClick={() => {
+                onKeepAll?.();
+                setExpanded(false);
+              }}
+            >
+              Keep All
+            </button>
+            {findings.length > 0 && onDismissFindings ? (
+              <button
+                type="button"
+                className="wt-review__link"
+                disabled={running}
+                title="Clear review findings from the editor and this bar"
+                onClick={() => {
+                  onDismissFindings();
+                  setExpanded(false);
+                }}
+              >
+                Dismiss
+              </button>
+            ) : null}
+            {canFix ? (
+              <button
+                type="button"
+                className="wt-review__cta wt-review__cta--fix"
+                disabled={running}
+                title="Fix all open findings in Agent mode (localized edits)"
+                onClick={() => onFixAllFindings?.()}
+              >
+                Fix all
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="wt-review__cta"
+              disabled={running || fileCount === 0}
+              title="Run a structured read-only review — findings open in the editor"
+              onClick={onRunReview}
+            >
+              {running ? 'Reviewing…' : 'Review'}
+            </button>
+          </div>
+        ) : (
+          <div className="wt-review__actions">
+            {onDismissFindings ? (
+              <button
+                type="button"
+                className="wt-review__link"
+                title="Clear the completed review strip"
+                onClick={() => {
+                  onDismissFindings();
+                  setExpanded(false);
+                }}
+              >
+                Clear
+              </button>
+            ) : null}
+          </div>
+        )}
       </div>
       {expanded ? (
         <div className="wt-review__panel">
@@ -201,30 +288,51 @@ export function WorkingTreeReviewBar({
               </p>
             ) : (
               <ul className="wt-review__list">
-                {findings.map((f, i) => (
-                  <li key={`${f.path}:${f.startLine ?? 0}:${i}`} className="wt-review__item">
-                    <button
-                      type="button"
-                      className="wt-review__file"
-                      onClick={() => {
-                        if (onOpenFinding) onOpenFinding(f.path, f.startLine);
-                        else onOpenFile(f.path);
-                      }}
-                      title={`Open ${f.path}${f.startLine ? `:${f.startLine}` : ''}`}
+                {findings.map((f, i) => {
+                  const fixed = f.status === 'fixed';
+                  return (
+                    <li
+                      key={`${f.path}:${f.startLine ?? 0}:${i}`}
+                      className={`wt-review__item${fixed ? ' wt-review__item--fixed' : ''}`}
                     >
-                      <span
-                        className={`wt-review__sev wt-review__sev--${severityTone(f.severity)}`}
+                      <button
+                        type="button"
+                        className="wt-review__file"
+                        onClick={() => {
+                          if (onOpenFinding) onOpenFinding(f.path, f.startLine);
+                          else onOpenFile(f.path);
+                        }}
+                        title={`Open ${f.path}${f.startLine ? `:${f.startLine}` : ''}`}
                       >
-                        {f.severity}
-                      </span>
-                      <span className="wt-review__path mono">
-                        {f.path}
-                        {f.startLine ? `:${f.startLine}` : ''}
-                      </span>
-                      <span className="wt-review__finding-text">{f.content}</span>
-                    </button>
-                  </li>
-                ))}
+                        <span
+                          className={`wt-review__sev wt-review__sev--${severityTone(f.severity)}`}
+                        >
+                          {fixed ? 'fixed' : f.severity}
+                        </span>
+                        <span className="wt-review__path mono">
+                          {f.path}
+                          {f.startLine ? `:${f.startLine}` : ''}
+                        </span>
+                        <span className="wt-review__finding-text">{f.content}</span>
+                      </button>
+                      {!fixed && onFixFinding ? (
+                        <button
+                          type="button"
+                          className="wt-review__link"
+                          disabled={running}
+                          title="Fix this finding in Agent mode"
+                          onClick={() => onFixFinding(i)}
+                        >
+                          Fix
+                        </button>
+                      ) : fixed ? (
+                        <span className="wt-review__fixed-mark" aria-hidden>
+                          ✓
+                        </span>
+                      ) : null}
+                    </li>
+                  );
+                })}
               </ul>
             )
           ) : listFiles.length === 0 ? (

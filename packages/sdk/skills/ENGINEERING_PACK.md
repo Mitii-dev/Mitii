@@ -14,6 +14,7 @@ These are **bundled defaults** under `packages/sdk/skills/`. Edit them in place.
 | `test-driven-development` | verify | test, bugfix, feature, refactor |
 | `debugging-and-error-recovery` | debug | bugfix, diagnose, trace |
 | `code-review-and-quality` | review | review, audit, refactor |
+| `fix-review-findings` | build | bugfix, refactor (recipe: Fix / Fix all) |
 | `security-and-hardening` | review | security, audit, feature |
 | `git-workflow-and-versioning` | ship | feature, bugfix, refactor, docs, migrate |
 | `git-commit-message` | ship-commit | docs, feature, bugfix, refactor (recipe) |

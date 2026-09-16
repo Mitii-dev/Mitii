@@ -18,6 +18,20 @@ export interface ReviewFindingView {
   category?: string;
   severity: ReviewFindingSeverity;
   anchored?: boolean;
+  /** Set after a successful Fix / Fix all run. */
+  status?: 'open' | 'fixed';
+}
+
+/** Stable id for matching findings across Fix runs. */
+export function reviewFindingKey(finding: {
+  path: string;
+  content: string;
+  startLine?: number;
+}): string {
+  const path = finding.path.replace(/\\/g, '/').replace(/^\.\//, '');
+  const line = finding.startLine ?? '';
+  const content = finding.content.trim().slice(0, 160);
+  return `${path}|${line}|${content}`;
 }
 
 /**
@@ -61,9 +75,33 @@ export class ReviewFindingsPresenter implements vscode.Disposable {
     return this.findings;
   }
 
+  getOpenFindings(): readonly ReviewFindingView[] {
+    return this.findings.filter((f) => f.status !== 'fixed');
+  }
+
   /** Begin a new review run — drop prior findings. */
   beginRun(): void {
     this.clear();
+  }
+
+  /**
+   * Mark findings as fixed (by key). Clears their editor markers but keeps
+   * them in the list for strike-through / Done UI.
+   */
+  markFixedByKeys(keys: readonly string[]): number {
+    if (keys.length === 0) return 0;
+    const keySet = new Set(keys);
+    let marked = 0;
+    this.findings = this.findings.map((finding) => {
+      if (finding.status === 'fixed') return finding;
+      if (!keySet.has(reviewFindingKey(finding))) return finding;
+      marked += 1;
+      return { ...finding, status: 'fixed' as const };
+    });
+    if (marked > 0) {
+      void this.publish();
+    }
+    return marked;
   }
 
   /** Ingest one successful emit_review_finding tool result. */
@@ -77,13 +115,16 @@ export class ReviewFindingsPresenter implements vscode.Disposable {
       parseFindingFromOutputPreview(params.outputPreview ?? '') ??
       (params.summary ? parseFindingFromSummary(params.summary) : null);
     if (!finding) return;
-    this.findings.push(finding);
+    this.findings.push({ ...finding, status: 'open' });
     void this.publish();
   }
 
   /** Replace all findings and publish (e.g. from a finalized record). */
   setFindings(next: readonly ReviewFindingView[]): void {
-    this.findings = [...next];
+    this.findings = next.map((f) => ({
+      ...f,
+      status: f.status === 'fixed' ? 'fixed' : 'open',
+    }));
     void this.publish();
   }
 
@@ -101,6 +142,9 @@ export class ReviewFindingsPresenter implements vscode.Disposable {
     const byUri = new Map<string, vscode.Diagnostic[]>();
 
     for (const finding of this.findings) {
+      // Fixed findings stay in the list for UI strike-through, but drop editor noise.
+      if (finding.status === 'fixed') continue;
+
       const abs = join(root, finding.path);
       const uri = this.vs.Uri.file(abs);
       const line = Math.max(1, finding.startLine ?? 1);
@@ -160,8 +204,8 @@ export class ReviewFindingsPresenter implements vscode.Disposable {
       this.diagnostics.set(this.vs.Uri.parse(uriKey), diags);
     }
 
-    // Open the first finding once per run so subsequent findings don't steal focus.
-    const first = this.findings[0];
+    // Open the first open finding once per run so subsequent findings don't steal focus.
+    const first = this.findings.find((f) => f.status !== 'fixed');
     if (first && !this.revealedFirst) {
       this.revealedFirst = true;
       try {

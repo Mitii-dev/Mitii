@@ -25,6 +25,11 @@ export const AGENT_ENGINE_THRESHOLDS = {
    */
   maxUnfulfilledExecuteRecoveries: 2,
   /**
+   * Max nudges when a structured review (review_findings_structured) ends
+   * without any emit_review_finding tool call.
+   */
+  maxStructuredReviewRecoveries: 2,
+  /**
    * Max recoveries after apply_patch/delete_file/move_file is rejected
    * (e.g. old_text_not_found). Kept separate from text-only unfulfilled
    * execute so a stale-hunk → targeted read → retry cycle can complete

@@ -87,6 +87,7 @@ Prefer importing from `@mitii/host`. Do not import `internal/`.
 | `createHostNetworkPort` | V8 `NetworkPort` | Content-aware wrapper: SO / GitHub issues / Wiki / arXiv / HTML readability before raw HTTP. |
 | `createFileSystemSkillsCatalog` | V8 `SkillsCatalogPort` | SDK bundled `skills/` + `.mitii/skills` |
 | `buildWritingRecipeAsk` | Host recipes | Force-attach commit / PR / changelog skills + git context |
+| `buildFixReviewFindingsAsk` | Host recipes | Compile review findings → Agent prompt + `fix-review-findings` skill (no ToolGrant) |
 | `compileRecipeToStartInput` / `RecipeSpec` | Parameterized recipes | Prompt/mode/skills/autonomy only — never widens ToolGrant |
 | `loadRecipeSpec` | Parameterized recipes | Load `.mitii/recipes/<id>.json` (schemaVersion: 1) |
 | `loadProjectRules` | SDK `projectRules` | `AGENTS.md`, `.mitii/rules`, `MITTII.local.md` |

@@ -29,7 +29,11 @@ export function formatReviewPrepForPrompt(prep: ReviewPrepResult): string {
   }
   lines.push(
     "",
-    "Emit findings with emit_review_finding (path, content, existingCode, severity, category).",
+    "## Structured findings (required)",
+    "You MUST call emit_review_finding at least once before finishing.",
+    "Use one call per high-signal issue with path, content, existingCode, severity, and category.",
+    "If there are no material issues, emit a single low/info finding that says so and names the covered scope.",
+    "Prose-only analysis is not a valid review. Prefer covering selected will_review files over filename-casing digressions.",
   );
   return lines.join("\n");
 }

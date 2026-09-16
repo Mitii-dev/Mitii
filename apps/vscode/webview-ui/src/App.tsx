@@ -938,6 +938,9 @@ export function App() {
       endLine?: number;
       severity: string;
       category?: string;
+      existingCode?: string;
+      suggestionCode?: string;
+      status?: 'open' | 'fixed';
     }>
   >([]);
   const [reviewBarExpandToken, setReviewBarExpandToken] = useState(0);
@@ -1961,6 +1964,44 @@ export function App() {
     );
   }, []);
 
+  const dismissReviewFindings = useCallback(() => {
+    setReviewFindings([]);
+    postToHost({ type: 'dismissReviewFindings' });
+  }, []);
+
+  const fixReviewFindings = useCallback(
+    (indices?: number[]) => {
+      if (running) return;
+      const latestRunId = [...turns]
+        .reverse()
+        .find((t) => t.fileChanges)?.fileChanges?.runId;
+      setMode('agent');
+      const agentDefaults = modeDefaultsFromUi(ui, 'agent');
+      const intensity = resolveRunIntensity({
+        intensityOverrides: ui.intensityOverrides === true,
+        thoroughness: agentDefaults.thoroughness,
+        depth: agentDefaults.depth,
+        effort: ui.effort,
+      });
+      setThoroughness(intensity.thoroughness);
+      setDepth(intensity.depth);
+      setEffort(intensity.effort);
+      setApprovalMode(normalizeApproval(agentDefaults.approvalMode));
+      const openIndices =
+        indices ??
+        reviewFindings
+          .map((f, i) => (f.status === 'fixed' ? -1 : i))
+          .filter((i) => i >= 0);
+      if (openIndices.length === 0) return;
+      postToHost({
+        type: 'fixReviewFindings',
+        indices: openIndices,
+        runId: latestRunId,
+      });
+    },
+    [running, turns, ui, reviewFindings],
+  );
+
   const currentModeColor = modeColor(mode);
 
   const testConnection = () => {
@@ -2630,6 +2671,9 @@ export function App() {
                       .find((t) => t.fileChanges)?.fileChanges;
                     if (changes) dismissFileChanges(changes.runId);
                   }}
+                  onDismissFindings={dismissReviewFindings}
+                  onFixAllFindings={() => fixReviewFindings()}
+                  onFixFinding={(index) => fixReviewFindings([index])}
                 />
                 <ContextPanel
                   pins={pinned}

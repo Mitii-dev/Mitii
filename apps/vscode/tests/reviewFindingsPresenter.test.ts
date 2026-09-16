@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   parseFindingFromOutputPreview,
   parseFindingFromSummary,
+  reviewFindingKey,
 } from '../src/review/reviewFindingsPresenter.ts';
 
 describe('parseFindingFromSummary', () => {
@@ -46,5 +47,28 @@ describe('parseFindingFromOutputPreview', () => {
       severity: 'critical',
       category: 'bug',
     });
+  });
+});
+
+describe('reviewFindingKey', () => {
+  it('is stable for the same finding anchors', () => {
+    const a = reviewFindingKey({
+      path: './src/a.ts',
+      startLine: 12,
+      content: 'Missing null check',
+    });
+    const b = reviewFindingKey({
+      path: 'src/a.ts',
+      startLine: 12,
+      content: 'Missing null check',
+    });
+    expect(a).toBe(b);
+    expect(a).not.toBe(
+      reviewFindingKey({
+        path: 'src/a.ts',
+        startLine: 13,
+        content: 'Missing null check',
+      }),
+    );
   });
 });

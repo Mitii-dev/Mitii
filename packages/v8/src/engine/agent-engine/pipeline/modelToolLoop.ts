@@ -162,6 +162,8 @@ export async function runModelToolLoop(
     truncationRecoveries: 0,
     incompleteAnswerRecoveries: 0,
     unfulfilledExecuteRecoveries: 0,
+    emitReviewFindingCount: 0,
+    structuredReviewRecoveries: 0,
     pendingTextContinuation: "",
     emittedLoopPressureWarning: false,
     emittedLoopCompactionWarning: false,

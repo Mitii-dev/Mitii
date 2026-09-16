@@ -366,6 +366,7 @@ Full body.
         'test-driven-development',
         'debugging-and-error-recovery',
         'code-review-and-quality',
+        'fix-review-findings',
         'security-and-hardening',
         'git-workflow-and-versioning',
       ]),

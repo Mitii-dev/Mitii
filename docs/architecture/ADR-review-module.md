@@ -39,3 +39,6 @@ will **not** vendor the Go CLI or drop in OCR prompts/`rule_docs`.
   review UI, automation/CI (SARIF + PR comments).
 - Skills remain playbooks; structured output uses `emit_review_finding`.
 - Architecture boundary tests and `ARCHITECTURE.md` §4 must list `review`.
+- Post-review **mutation** is host-owned: VS Code **Fix / Fix all** compiles
+  findings through `@mitii/host` `buildFixReviewFindingsAsk` into Agent mode
+  with the `fix-review-findings` skill. The V8 review module never mutates.
