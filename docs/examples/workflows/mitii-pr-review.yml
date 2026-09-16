@@ -1,0 +1,71 @@
+# Mitii PR review (example)
+
+name: mitii-pr-review
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Mitii CLI (workspace or published)
+        run: |
+          # In this monorepo: pnpm run build:cli
+          # Downstream: npm i -g @mitii/cli  (when published)
+          echo "Configure Mitii install for your consumer repo"
+
+      - name: Deterministic review prepare
+        run: |
+          mitii review --preview --from origin/${{ github.base_ref }} --to HEAD \
+            --format json --output mitii-review-preview.json || true
+
+      - name: LLM review (optional; requires provider secrets)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          mitii ask --agent pr-review --origin automation --autonomy readonly --json \
+            --mode ask \
+            "Review this PR vs ${{ github.base_ref }}. Emit structured findings." \
+            || true
+
+      - name: Export SARIF from prepare finalize
+        run: |
+          mitii review --from origin/${{ github.base_ref }} --to HEAD \
+            --format sarif --output mitii-review.sarif || true
+          mitii review --from origin/${{ github.base_ref }} --to HEAD \
+            --format json --output mitii-review.json || true
+
+      - name: Upload SARIF
+        if: hashFiles('mitii-review.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: mitii-review.sarif
+        continue-on-error: true
+
+      - name: Post PR review comments
+        if: hashFiles('mitii-review.json') != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const { postMitiiReviewComments } = require('./scripts/github-actions/post-mitii-review-comments.js');
+            await postMitiiReviewComments({
+              github,
+              context,
+              core,
+              fs,
+              reviewPath: 'mitii-review.json',
+            });

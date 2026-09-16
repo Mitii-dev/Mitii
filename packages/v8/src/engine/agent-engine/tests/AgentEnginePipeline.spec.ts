@@ -1298,6 +1298,71 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     expect(result.answer).toContain("Root cause");
   });
 
+  it("recovers then fails structured review without emit_review_finding", async () => {
+    const engine = new AgentEnginePipeline(
+      createStubDependencies({
+        decision: createDecision({
+          route: "diagnose",
+          repositoryContextRequired: true,
+          pinnedState: { workspaceId: "ws_1", stateToken: "tok_1" },
+          toolGrant: createReadOnlyGrant({
+            allowedTools: [
+              "read_file",
+              "emit_review_finding",
+              "read_git_status",
+            ],
+          }),
+          reasonCodes: [
+            "diagnosis_readonly",
+            "review_pipeline_required",
+            "review_findings_structured",
+          ],
+        }),
+        llm: new ScriptedLlmPort([
+          {
+            content:
+              "I'm noticing a file naming inconsistency in TabletLoginpage.ts vs TabletLoginPage.ts.",
+          },
+          {
+            content:
+              "Still investigating the casing conflict; here is more prose analysis.",
+          },
+          {
+            content:
+              "Final prose-only answer with no structured findings emitted.",
+          },
+        ]),
+      }),
+    );
+
+    const result = await engine.start(
+      baseStartInput({
+        workspaceRoot: "/repo",
+        repositoryState: {
+          reference: { workspaceId: "ws_1", stateToken: "tok_1" },
+          readiness: "ready",
+        },
+        request: {
+          sessionId: "sess_review",
+          mode: "ask",
+          userMessage:
+            "Review the current working-tree changes. Prefer high-signal bugs.",
+          workspace: { workspaceId: "ws_1" },
+        },
+        loopPolicy: {
+          thresholds: {
+            maxStructuredReviewRecoveries: 2,
+          },
+        },
+      }),
+    ).result;
+
+    expect(result.status).toBe("failed");
+    expect(result.error?.code).toBe("incomplete_review");
+    expect(result.reasonCodes).toContain("incomplete_review_recovered");
+    expect(result.reasonCodes).toContain("incomplete_review");
+  });
+
   it("suspends execute routes for approval when a mutation tool requires it (Phase 8)", async () => {
     const engine = new AgentEnginePipeline(
       createStubDependencies({

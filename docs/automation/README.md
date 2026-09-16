@@ -17,9 +17,10 @@ daemon.
 | SDK | `origin`, `autonomyPreset`, `correlation` on `MitiiStartInput` |
 | V8 Decision Policy | `automation` / `api` suppress interactive clarify |
 | CLI | `--origin`, `--autonomy`, `--agent`, `--prompt-file`; exit `4` on unattended clarify gap |
-| Skills | `cicd-agent`, `incident-triage` |
-| Agents | Example markdown under `docs/automation/agents/` |
-| GHA | `.github/actions/mitii-run` + post-commit / CI-fail examples under `docs/examples/workflows/` |
+| Skills | `cicd-agent`, `incident-triage`, `code-review-and-quality` |
+| Agents | Example markdown under `docs/automation/agents/` (incl. `pr-review.md`) |
+| GHA | `.github/actions/mitii-run` + post-commit / CI-fail / [PR review](../examples/workflows/mitii-pr-review.yml) examples |
+| Review CLI | `mitii review --preview|--format sarif` + `scripts/github-actions/post-mitii-review-comments.js` |
 
 ## Quick start (local)
 

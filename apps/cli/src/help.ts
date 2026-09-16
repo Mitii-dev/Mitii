@@ -15,6 +15,7 @@ Usage:
   mitii run --auto "<task>" [options]
   mitii session [options]
   mitii index [--cwd <path>] [--json]
+  mitii review [--preview] [--from <ref> --to <ref>] [--commit <hash>] [--format json|sarif] [--output <path>] [--effort low|medium|high]
   mitii status [--cwd <path>] [--json]
   mitii export-session <prompt> --out <file> [--echo]
   mitii restore --list <runId> [--json]
@@ -38,6 +39,15 @@ Commands:
   run --auto       Unattended CI run (agent + apply autonomy; no prompts)
   session          Interactive REPL (MITII banner + prompts)
   index            Full workspace index + publish repository state
+  review           Deterministic review preview/prepare (+ SARIF); LLM findings via ask
+                   --preview           Selection preview only (no prepare)
+                   --from/--to <ref>   Diff range (required together unless --commit)
+                   --commit <hash>     Single-commit review input
+                   --format json|sarif Output shape (default json)
+                   --output <path>     Write result to file
+                   --effort low|medium|high  Prep effort band
+                   Full LLM review: VS Code Review mode, or:
+                     mitii ask "review these changes" --mode ask --skill code-review-and-quality
   status           Show latest persisted repository state
   export-session   Run ask and write secret-free JSON export
   restore          Undo Agent file mutations to a RestorePoint (or --list)

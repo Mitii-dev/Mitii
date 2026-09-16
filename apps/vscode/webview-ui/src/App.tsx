@@ -40,7 +40,7 @@ import { approvalModeUiPatch } from './approvalPresets';
 import { OnboardingPanel } from './components/OnboardingPanel';
 import { PendingPlanBanner } from './components/PendingPlanBanner';
 import { PlanFollowStrip } from './components/PlanPanel';
-import { ReviewPanel } from './components/ReviewPanel';
+import { WorkingTreeReviewBar } from './components/WorkingTreeReviewBar';
 import { SettingsErrorBoundary } from './components/SettingsErrorBoundary';
 import { SettingsPanel } from './components/SettingsPanel';
 import { WorkspaceBanner } from './components/WorkspaceBanner';
@@ -127,6 +127,15 @@ const EMPTY_TOKEN_USAGE: TokenUsageSnapshot = {
   turns: [],
   live: false,
 };
+
+const REVIEW_SKILL_ID = 'code-review-and-quality';
+const DEFAULT_REVIEW_PROMPT =
+  'Review the current working-tree changes. Prefer high-signal bugs and security issues.';
+
+function mergeReviewSkillIds(ids: string[]): string[] {
+  const without = ids.filter((id) => id !== REVIEW_SKILL_ID);
+  return [REVIEW_SKILL_ID, ...without].slice(0, 3);
+}
 
 const DEFAULT_CONTEXT_TOGGLES: ContextToggles = {
   repoMap: false,
@@ -921,6 +930,24 @@ export function App() {
   const pendingPlanRef = useRef<PlanView | null>(null);
 
   const [review, setReview] = useState<ReviewDiffView | null>(null);
+  const [reviewFindings, setReviewFindings] = useState<
+    Array<{
+      path: string;
+      content: string;
+      startLine?: number;
+      endLine?: number;
+      severity: string;
+      category?: string;
+      existingCode?: string;
+      suggestionCode?: string;
+      status?: 'open' | 'fixed';
+    }>
+  >([]);
+  const [reviewBarExpandToken, setReviewBarExpandToken] = useState(0);
+  const pendingAutoReviewRef = useRef<{ prompt?: string } | null>(null);
+  const runReviewRef = useRef<((promptOverride?: string) => void) | null>(
+    null,
+  );
   const [skillItems, setSkillItems] = useState<SkillCatalogItem[]>([]);
   const [automationSpecs, setAutomationSpecs] = useState<AutomationSpecView[]>(
     [],
@@ -1163,6 +1190,8 @@ export function App() {
         if (bootstrapPlan) setPlan(bootstrapPlan);
         setMemories(msg.memories);
         setCheckpoints(msg.checkpoints);
+        postToHost({ type: 'refreshReviewDiff' });
+        if (modeRef.current === 'review') setMode('ask');
       }
     }
   }, [applyTokenUsage]);
@@ -1400,6 +1429,19 @@ export function App() {
         case 'setTab':
           setNav(msg.tab);
           break;
+        case 'startReview': {
+          setNav('chat');
+          // Review is a composer action, not a chat mode.
+          if (modeRef.current === 'review') setMode('ask');
+          setReviewBarExpandToken((n) => n + 1);
+          postToHost({ type: 'refreshReviewDiff' });
+          if (msg.autoRun) {
+            pendingAutoReviewRef.current = { prompt: msg.prompt };
+          } else {
+            pendingAutoReviewRef.current = null;
+          }
+          break;
+        }
         case 'editorPin':
           setPinned((prev) => {
             const source = msg.source ?? 'auto';
@@ -1503,8 +1545,23 @@ export function App() {
         case 'setPlan':
           setPlan(msg.plan);
           break;
-        case 'setReviewDiff':
+        case 'setReviewDiff': {
           setReview(msg.review);
+          const pending = pendingAutoReviewRef.current;
+          if (!pending) break;
+          if ((msg.review?.files?.length ?? 0) === 0) {
+            pendingAutoReviewRef.current = null;
+            break;
+          }
+          if (runReviewRef.current) {
+            pendingAutoReviewRef.current = null;
+            const promptOverride = pending.prompt;
+            queueMicrotask(() => runReviewRef.current?.(promptOverride));
+          }
+          break;
+        }
+        case 'setReviewFindings':
+          setReviewFindings(msg.findings);
           break;
         case 'setMemories':
           setMemories(msg.memories);
@@ -1609,7 +1666,8 @@ export function App() {
     if (!text || running) return;
     stickToBottomRef.current = true;
     forceScrollToBottomRef.current = true;
-    const defaults = modeDefaultsFromUi(ui, mode);
+    const uiMode = mode === 'review' ? 'ask' : mode;
+    const defaults = modeDefaultsFromUi(ui, uiMode);
     const intensity = resolveRunIntensity({
       intensityOverrides: ui.intensityOverrides === true,
       thoroughness: defaults.thoroughness,
@@ -1619,7 +1677,7 @@ export function App() {
     postToHost({
       type: 'ask',
       prompt: text,
-      mode,
+      mode: uiMode,
       depth: intensity.depth,
       effort: intensity.effort,
       approvalMode,
@@ -1633,6 +1691,46 @@ export function App() {
     setSuggestLoading(false);
     setSuggestOpen(false);
   }, [prompt, running, mode, ui, approvalMode, pinned, pinnedSkillIds, pinnedMcpServerIds]);
+
+  const runReview = useCallback(
+    (promptOverride?: string) => {
+      if (running) return;
+      const text = (promptOverride ?? prompt).trim() || DEFAULT_REVIEW_PROMPT;
+      stickToBottomRef.current = true;
+      forceScrollToBottomRef.current = true;
+      const defaults = modeDefaultsFromUi(ui, 'ask');
+      const intensity = resolveRunIntensity({
+        intensityOverrides: ui.intensityOverrides === true,
+        thoroughness: defaults.thoroughness,
+        depth: defaults.depth,
+        effort: ui.effort,
+      });
+      // Keep Ask/Plan/Agent selection; host maps mode:'review' → engine ask.
+      if (mode === 'review') setMode('ask');
+      setReviewBarExpandToken((n) => n + 1);
+      postToHost({
+        type: 'ask',
+        prompt: text,
+        mode: 'review',
+        depth: intensity.depth,
+        effort: intensity.effort,
+        approvalMode: defaults.approvalMode,
+        pinnedPaths: pinned.map((p) => p.path),
+        requiredSkillIds: mergeReviewSkillIds(pinnedSkillIds),
+        requiredMcpServerIds: pinnedMcpServerIds,
+      });
+      setPrompt('');
+      setPinnedSkillIds([]);
+      setPinnedMcpServerIds([]);
+      setSuggestLoading(false);
+      setSuggestOpen(false);
+    },
+    [running, prompt, ui, mode, pinned, pinnedSkillIds, pinnedMcpServerIds],
+  );
+
+  useEffect(() => {
+    runReviewRef.current = runReview;
+  }, [runReview]);
 
   const executePendingPlan = useCallback(() => {
     if (running) return;
@@ -1843,7 +1941,7 @@ export function App() {
   }, []);
 
   const reviewAllFileChanges = useCallback((changes: RunFileChangesView) => {
-    setMode('review');
+    setReviewBarExpandToken((n) => n + 1);
     postToHost({ type: 'refreshReviewDiff' });
     for (const file of changes.files.slice(0, 1)) {
       postToHost({
@@ -1852,6 +1950,7 @@ export function App() {
         path: file.path,
       });
     }
+    queueMicrotask(() => runReviewRef.current?.());
   }, []);
 
   const dismissFileChanges = useCallback((runId: string) => {
@@ -1864,6 +1963,44 @@ export function App() {
       ),
     );
   }, []);
+
+  const dismissReviewFindings = useCallback(() => {
+    setReviewFindings([]);
+    postToHost({ type: 'dismissReviewFindings' });
+  }, []);
+
+  const fixReviewFindings = useCallback(
+    (indices?: number[]) => {
+      if (running) return;
+      const latestRunId = [...turns]
+        .reverse()
+        .find((t) => t.fileChanges)?.fileChanges?.runId;
+      setMode('agent');
+      const agentDefaults = modeDefaultsFromUi(ui, 'agent');
+      const intensity = resolveRunIntensity({
+        intensityOverrides: ui.intensityOverrides === true,
+        thoroughness: agentDefaults.thoroughness,
+        depth: agentDefaults.depth,
+        effort: ui.effort,
+      });
+      setThoroughness(intensity.thoroughness);
+      setDepth(intensity.depth);
+      setEffort(intensity.effort);
+      setApprovalMode(normalizeApproval(agentDefaults.approvalMode));
+      const openIndices =
+        indices ??
+        reviewFindings
+          .map((f, i) => (f.status === 'fixed' ? -1 : i))
+          .filter((i) => i >= 0);
+      if (openIndices.length === 0) return;
+      postToHost({
+        type: 'fixReviewFindings',
+        indices: openIndices,
+        runId: latestRunId,
+      });
+    },
+    [running, turns, ui, reviewFindings],
+  );
 
   const currentModeColor = modeColor(mode);
 
@@ -2021,8 +2158,9 @@ export function App() {
   };
 
   const changeMode = (next: AgentUiMode) => {
-    setMode(next);
-    const defaults = modeDefaultsFromUi(ui, next);
+    const uiMode = next === 'review' ? 'ask' : next;
+    setMode(uiMode);
+    const defaults = modeDefaultsFromUi(ui, uiMode);
     const intensity = resolveRunIntensity({
       intensityOverrides: ui.intensityOverrides === true,
       thoroughness: defaults.thoroughness,
@@ -2035,7 +2173,6 @@ export function App() {
     setApprovalMode(normalizeApproval(defaults.approvalMode));
     const nextModel = defaults.model?.trim();
     if (nextModel) saveModel(nextModel, { clearStaleModeDefaults: false });
-    if (next === 'review') postToHost({ type: 'refreshReviewDiff' });
   };
 
   const changeThoroughness = (next: AgentUiThoroughness) => {
@@ -2330,32 +2467,6 @@ export function App() {
       <WorkspaceBanner notice={notice} workspace={workspace} />
 
       {nav === 'chat' ? (
-        mode === 'review' ? (
-          <div className="chat-view">
-            <ReviewPanel
-              review={review}
-              onRefresh={() => postToHost({ type: 'refreshReviewDiff' })}
-              onOpenFile={openFile}
-              onOpenDiff={(path) =>
-                postToHost({ type: 'reviewWorkspaceFile', path })
-              }
-            />
-            <div className="composer-dock">
-              <ComposerControls
-                mode={mode}
-                approvalMode={approvalMode}
-                thoroughness={thoroughness}
-                intensityCustom={
-                  ui.intensityOverrides === true &&
-                  inferThoroughness(depth, effort) === undefined
-                }
-                onModeChange={changeMode}
-                onApprovalModeChange={changeApprovalMode}
-                onThoroughnessChange={changeThoroughness}
-              />
-            </div>
-          </div>
-        ) : (
           <div className={`chat-view${running ? ' chat-view--running' : ''}`}>
             <MessageList
               turns={turns}
@@ -2516,13 +2627,54 @@ export function App() {
                 />
               ) : null}
               <div
-                className="composer-box"
+                className={`composer-box${
+                  (review?.files.length ?? 0) > 0 ||
+                  turns.some((t) => t.fileChanges) ||
+                  reviewFindings.length > 0
+                    ? ' composer-box--with-review'
+                    : ''
+                }`}
                 style={
                   {
                     '--composer-mode-color': currentModeColor,
                   } as CSSProperties
                 }
               >
+                <WorkingTreeReviewBar
+                  review={review}
+                  findings={reviewFindings}
+                  runChanges={
+                    [...turns]
+                      .reverse()
+                      .find((t) => t.fileChanges)?.fileChanges ?? null
+                  }
+                  running={running}
+                  expandSignal={reviewBarExpandToken}
+                  onRefresh={() => postToHost({ type: 'refreshReviewDiff' })}
+                  onOpenFile={openFile}
+                  onOpenDiff={(path) =>
+                    postToHost({ type: 'reviewWorkspaceFile', path })
+                  }
+                  onOpenFinding={(path, line) =>
+                    postToHost({ type: 'openFile', path, line })
+                  }
+                  onRunReview={() => runReview()}
+                  onUndoAll={() => {
+                    const changes = [...turns]
+                      .reverse()
+                      .find((t) => t.fileChanges)?.fileChanges;
+                    if (changes) undoFileChanges(changes.runId);
+                  }}
+                  onKeepAll={() => {
+                    const changes = [...turns]
+                      .reverse()
+                      .find((t) => t.fileChanges)?.fileChanges;
+                    if (changes) dismissFileChanges(changes.runId);
+                  }}
+                  onDismissFindings={dismissReviewFindings}
+                  onFixAllFindings={() => fixReviewFindings()}
+                  onFixFinding={(index) => fixReviewFindings([index])}
+                />
                 <ContextPanel
                   pins={pinned}
                   modeColor={currentModeColor}
@@ -2835,7 +2987,6 @@ export function App() {
               </div>
             </div>
           </div>
-        )
       ) : null}
 
       {nav === 'history' ? (

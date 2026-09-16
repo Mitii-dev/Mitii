@@ -145,6 +145,18 @@ const LOOP_POLICY_FIELD_SPECS: readonly Omit<
     tier: 'advanced',
   },
   {
+    key: 'maxStructuredReviewRecoveries',
+    group: 'Recoveries',
+    label: 'Structured-review recoveries',
+    description:
+      'Nudges when a Mitii review ends without emit_review_finding (0 disables).',
+    kind: 'int',
+    min: 0,
+    max: 8,
+    step: 1,
+    tier: 'advanced',
+  },
+  {
     key: 'maxRejectedMutationRecoveries',
     group: 'Recoveries',
     label: 'Rejected-mutation recoveries',

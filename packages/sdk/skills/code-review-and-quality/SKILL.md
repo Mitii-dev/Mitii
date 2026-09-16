@@ -10,18 +10,20 @@ conflictGroup: review
 alwaysApply: false
 enabled: true
 when: [Before merging any change, Reviewing agent or human code, Need a multi-axis quality check]
-instruction: Review across correctness, readability, architecture, tests, and operational risk; prefer ~100-line changes and severity-labeled feedback.
+instruction: Review across correctness, readability, architecture, tests, and operational risk; prefer ~100-line changes and severity-labeled feedback. Emit structured findings via emit_review_finding (map Blocker→critical/high, Optional→medium, Nit/FYI→low).
 ---
 
 # Planning
 
 Discover:
+- Prefer Mitii ReviewPipeline prep when available (selected files, groups, path rules)
 - Understand the change intent and diff scope
 - Identify high-risk areas
 
 Change:
 - Review five axes: correctness, readability, architecture, tests, risk
-- Label findings Nit / Optional / FYI / Blocker
+- Label findings using severity critical/high/medium/low (Blocker→critical/high)
+- Call `emit_review_finding` once per finding with path + existingCode anchor
 
 Verify:
 - Blockers resolved or explicitly accepted
@@ -30,13 +32,17 @@ Verify:
 # Playbook
 
 <!-- Source: https://github.com/addyosmani/agent-skills/tree/main/skills/code-review-and-quality -->
-<!-- Adapted for Mitii. Edit freely. Override: <workspace>/.mitii/skills/code-review-and-quality/SKILL.md -->
+<!-- Adapted for Mitii. Structured findings use the V8 review module (inspired by Open Code Review algorithms). -->
+<!-- Override: <workspace>/.mitii/skills/code-review-and-quality/SKILL.md -->
 
 # Code Review and Quality
 
 ## Overview
 
-Multi-dimensional code review with quality gates. Every change gets reviewed before merge — no exceptions. Review covers five axes: correctness, readability, architecture, security, and performance.
+Multi-dimensional code review with quality gates. Prefer Mitii's structured
+`emit_review_finding` tool so hosts can anchor lines, export SARIF, and post
+PR comments. Deterministic prep (file selection / rules) lives in
+`@mitii/v8` `ReviewPipeline` — do not skip coverage.
 
 **The approval standard:** Approve a change when it definitely improves overall code health, even if it isn't perfect. Perfect code doesn't exist — the goal is continuous improvement. Don't block a change because it isn't exactly how you would have written it. If it improves the codebase and follows the project's conventions, approve it.
 

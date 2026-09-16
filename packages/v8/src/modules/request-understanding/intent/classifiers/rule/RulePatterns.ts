@@ -46,7 +46,7 @@ const INTENT_PATTERNS: IntentRule[] = [
   {
     intent: "review",
     pattern:
-      /\b(?:review|critique)\b.*\b(?:diff|pr|pull request|patch|commit|code|changes)\b|\bgenerate\b.*\bpr\s+(?:description|summary)\b/i,
+      /\b(?:review|critique)\b.*\b(?:diff|pr|pull request|patch|commit|code|changes|working[- ]tree|findings?)\b|\b(?:code\s*review|emit_review_finding)\b|\bgenerate\b.*\bpr\s+(?:description|summary)\b/i,
     confidence: 0.86,
   },
   {

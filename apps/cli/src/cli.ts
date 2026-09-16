@@ -34,6 +34,7 @@ import {
   runAsk,
   resolveAskPromptWithRecipe,
 } from './runAskCommand.js';
+import { runReviewCommand } from './runReviewCommand.js';
 
 import { parseCliArgs } from './parseCliArgs.js';
 export { parseCliArgs, type ParsedCliArgs } from './parseCliArgs.js';
@@ -483,6 +484,26 @@ export async function main(
         forceEcho: parsed.forceEcho === true,
         io: sessionIo,
       });
+    case 'review': {
+      const mode =
+        parsed.reviewCommit
+          ? ('commit' as const)
+          : parsed.reviewFrom && parsed.reviewTo
+            ? ('range' as const)
+            : ('workspace' as const);
+      const outcome = await runReviewCommand({
+        cwd,
+        mode,
+        fromRef: parsed.reviewFrom,
+        toRef: parsed.reviewTo,
+        commit: parsed.reviewCommit,
+        preview: parsed.reviewPreview === true,
+        format: parsed.reviewFormat,
+        output: parsed.reviewOutput,
+        effort: parsed.reviewEffort,
+      });
+      return outcome.exitCode;
+    }
     case 'status':
       return runStatus({
         cwd,

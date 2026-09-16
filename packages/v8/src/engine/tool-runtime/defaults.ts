@@ -47,4 +47,5 @@ export const DEFAULT_READONLY_COMMAND_PREFIXES = [
   "git log",
   "git show",
   "git blame",
+  "git ls-files",
 ] as const;

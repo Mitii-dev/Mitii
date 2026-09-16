@@ -71,11 +71,11 @@ export function FileChangesBar({
   return (
     <div className="file-changes-bar" role="status">
       <button type="button" className="file-changes-bar__summary" onClick={onExpand}>
-        <span className="file-changes-bar__icon" aria-hidden>
-          +
+        <span className="file-changes-bar__chevron" aria-hidden>
+          ›
         </span>
         <span>
-          {n} file{n === 1 ? '' : 's'} changed
+          {n} File{n === 1 ? '' : 's'}
         </span>
         <span className="file-changes-bar__stats">
           <span className="diff-add">+{changes.totalAdditions}</span>
@@ -85,20 +85,25 @@ export function FileChangesBar({
       <div className="file-changes-bar__actions">
         <button
           type="button"
-          className="btn ghost"
+          className="file-changes-bar__link"
           onClick={onUndo}
           title="Revert Mitii's edits from this run"
         >
-          Undo
-        </button>
-        <button type="button" className="btn" onClick={onReviewAll}>
-          Review
+          Undo All
         </button>
         {onDismiss ? (
-          <IconButton label="Dismiss" variant="ghost" onClick={onDismiss}>
-            ×
-          </IconButton>
+          <button
+            type="button"
+            className="file-changes-bar__link"
+            onClick={onDismiss}
+            title="Keep these edits and dismiss"
+          >
+            Keep All
+          </button>
         ) : null}
+        <button type="button" className="file-changes-bar__cta" onClick={onReviewAll}>
+          Review
+        </button>
       </div>
     </div>
   );
@@ -196,20 +201,25 @@ export function FileChangesCard({
           </button>
           <button
             type="button"
-            className="btn ghost"
+            className="file-changes-bar__link"
             onClick={onUndo}
             title="Revert Mitii's edits from this run"
           >
-            Undo
-          </button>
-          <button type="button" className="btn" onClick={onReviewAll}>
-            Review
+            Undo All
           </button>
           {onDismiss ? (
-            <IconButton label="Dismiss" variant="ghost" onClick={onDismiss}>
-              ×
-            </IconButton>
+            <button
+              type="button"
+              className="file-changes-bar__link"
+              onClick={onDismiss}
+              title="Keep these edits and dismiss"
+            >
+              Keep All
+            </button>
           ) : null}
+          <button type="button" className="file-changes-bar__cta" onClick={onReviewAll}>
+            Review
+          </button>
         </div>
       </header>
       {statusSummary.length > 0 ? (

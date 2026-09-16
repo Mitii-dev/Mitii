@@ -4,6 +4,7 @@ import { listModelToolDefinitions } from "../../internal/modelToolDefinitions";
 import type { RuntimeModelToolDefinition } from "../../internal/modelToolDefinitions";
 
 import { analyzeChangeImpactTool } from "./analyzeChangeImpactTool";
+import { emitReviewFindingTool } from "./emitReviewFindingTool";
 import { applyPatchTool } from "./applyPatchTool";
 import { deleteDirectoryTool } from "./deleteDirectoryTool";
 import { deleteFileTool } from "./deleteFileTool";
@@ -57,6 +58,7 @@ const BUILTIN_TOOLS_BASE: readonly RegisteredTool[] = [
   gotoDefinitionTool,
   findReferencesTool,
   analyzeChangeImpactTool,
+  emitReviewFindingTool,
   runReadonlyCommandTool,
   readPackageScriptsTool,
   sequentialThinkingTool,
@@ -138,6 +140,7 @@ export {
   gotoDefinitionTool,
   findReferencesTool,
   analyzeChangeImpactTool,
+  emitReviewFindingTool,
   runReadonlyCommandTool,
   readPackageScriptsTool,
   sequentialThinkingTool,

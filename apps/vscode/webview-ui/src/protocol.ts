@@ -801,6 +801,19 @@ export type WebviewToHostMessage =
   | { type: 'reviewFileChange'; runId: string; path: string }
   | { type: 'reviewWorkspaceFile'; path: string }
   | { type: 'dismissFileChanges'; runId: string }
+  /** Clear Mitii review findings (Problems + comment threads + chat chips). */
+  | { type: 'dismissReviewFindings' }
+  /**
+   * Start Agent with the fix-review-findings host recipe.
+   * Uses the host finding store (full anchors); indices select a subset.
+   */
+  | {
+      type: 'fixReviewFindings';
+      /** Indices into the current review finding list; omit = all. */
+      indices?: number[];
+      /** Optional Mitii run id — opens before/after patch preview for the first path. */
+      runId?: string;
+    }
   /** Drop the active thread's pending plan without starting a run. */
   | { type: 'clearPendingPlan' };
 
@@ -878,6 +891,8 @@ export type HostToWebviewMessage =
   | { type: 'paths.results'; requestId: string; suggestions: PathSuggestion[] }
   | { type: 'openSettings'; tab?: SettingsTab }
   | { type: 'setTab'; tab: UiNav }
+  /** Open chat in Review mode; optionally auto-start an LLM review. */
+  | { type: 'startReview'; autoRun?: boolean; prompt?: string }
   | { type: 'editorPin'; path: string; source?: ContextPinSource }
   | { type: 'editorUnpin'; path: string }
   | { type: 'syncAutoPins'; paths: string[] }
@@ -894,6 +909,20 @@ export type HostToWebviewMessage =
     }
   | { type: 'setPlan'; plan: PlanView | null }
   | { type: 'setReviewDiff'; review: ReviewDiffView | null }
+  | {
+      type: 'setReviewFindings';
+      findings: Array<{
+        path: string;
+        content: string;
+        startLine?: number;
+        endLine?: number;
+        severity: string;
+        category?: string;
+        existingCode?: string;
+        suggestionCode?: string;
+        status?: 'open' | 'fixed';
+      }>;
+    }
   | { type: 'setMemories'; memories: MemoryItemView[] }
   | { type: 'setCheckpoints'; checkpoints: CheckpointItemView[] }
   | {

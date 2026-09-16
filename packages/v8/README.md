@@ -45,6 +45,8 @@ packages/v8/
       memory/              Scoped memory retrieval and commit
       code-navigation/     Definition/reference/hover lookup
       change-impact/       Graph-based blast-radius analysis
+      review/              Structured code review (prep, findings, SARIF)
+      window-budget/       Context-window policy numbers
       verification/        Post-change verification evidence
 ```
 

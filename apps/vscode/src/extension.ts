@@ -17,6 +17,7 @@ import { MitiiInlineCompletionProvider } from './autocomplete/inlineCompletionPr
 import { resolveContextToggles } from './contextToggles.js';
 import { InlineDiffManager } from './diff/inlineDiffManager.js';
 import { showWriteDiffPreview } from './diff/diffPreview.js';
+import { ReviewFindingsPresenter } from './review/reviewFindingsPresenter.js';
 import { runAskInOutputChannel } from './hostAsk.js';
 import { mitiiLogsDir, scaffoldMitiiWorkspace } from './mitiiWorkspace.js';
 import { createVscodeClient } from './ports.js';
@@ -225,6 +226,9 @@ export function activate(context: ExtensionContext): void {
   );
   context.subscriptions.push(inlineDiff);
 
+  const reviewFindings = new ReviewFindingsPresenter(vscode, workspaceRoot);
+  context.subscriptions.push(reviewFindings);
+
   const setInlineDiffContext = (pending: boolean): void => {
     void vscode.commands.executeCommand(
       'setContext',
@@ -416,6 +420,11 @@ export function activate(context: ExtensionContext): void {
   const openChat = async (): Promise<void> => {
     await vscode.commands.executeCommand('mitii.sidebar.focus');
     sidebar?.post({ type: 'setTab', tab: 'chat' });
+  };
+
+  const reviewChanges = async (): Promise<void> => {
+    await vscode.commands.executeCommand('mitii.sidebar.focus');
+    sidebar?.post({ type: 'startReview', autoRun: true });
   };
 
   const runWritingRecipe = async (
@@ -638,6 +647,7 @@ export function activate(context: ExtensionContext): void {
       extensionMode: context.extensionMode,
       workspaceState: context.workspaceState,
       inlineDiff,
+      reviewFindings,
       onInlineDiffPending: setInlineDiffContext,
     },
   );
@@ -678,6 +688,7 @@ export function activate(context: ExtensionContext): void {
       { webviewOptions: { retainContextWhenHidden: true } },
     ),
     vscode.commands.registerCommand('mitii.openChat', openChat),
+    vscode.commands.registerCommand('mitii.reviewChanges', reviewChanges),
     vscode.commands.registerCommand('mitii.indexWorkspace', async () => {
       await indexWorkspace();
     }),

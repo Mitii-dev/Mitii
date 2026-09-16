@@ -436,6 +436,9 @@ export async function runModelLoopToolPhase(params: {
     }
     if (result?.status === "succeeded") {
       successfulToolCount += 1;
+      if (toolCall.name === "emit_review_finding") {
+        session.emitReviewFindingCount += 1;
+      }
       if (toolCall.name === "web_search") {
         extraNetworkHosts.push(
           ...extractHostsFromWebSearchOutput(result.output),

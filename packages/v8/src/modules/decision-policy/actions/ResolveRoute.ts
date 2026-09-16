@@ -358,8 +358,15 @@ function resolveAskRoute(params: {
 }): RouteResolution {
   const { primary, taskAnalysis, message, reasonCodes } = params;
 
-  if (isDiagnosisIntent(primary)) {
+  // Host Review UI maps to ask mode; classifiers often label these as
+  // "question" once review prep is prepended. Keep the diagnose + structured
+  // findings path regardless.
+  if (isDiagnosisIntent(primary) || looksLikeCodeReviewRequest(message)) {
     reasonCodes.push("diagnosis_readonly");
+    if (primary === "review" || looksLikeCodeReviewRequest(message)) {
+      reasonCodes.push("review_pipeline_required");
+      reasonCodes.push("review_findings_structured");
+    }
     return {
       route: "diagnose",
       runDisposition: "continue",
@@ -396,6 +403,41 @@ function resolveAskRoute(params: {
     runDisposition: "continue",
     reasonCodes,
   };
+}
+
+/**
+ * Explicit code-review asks (VS Code Review mode, CLI, or free-form).
+ * Matches host prefixes that include emit_review_finding / working-tree language.
+ */
+export function looksLikeCodeReviewRequest(message: string): boolean {
+  const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
+  if (text.length === 0) {
+    return false;
+  }
+
+  if (/\bemit_review_finding\b/i.test(text)) {
+    return true;
+  }
+
+  if (
+    /\b(?:code\s*review|review\s+(?:the\s+)?(?:current\s+)?(?:git\s+)?(?:working[- ]tree\s+)?(?:changes|diff|patch|pr|pull\s+request|commit))\b/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+
+  if (
+    /\breview\b[\s\S]{0,80}\b(?:bugs?|security|findings?|severity)\b/i.test(text)
+  ) {
+    return true;
+  }
+
+  if (/^#\s*Review prep\b/m.test(text) || /\bReview prep\s*\(/i.test(text)) {
+    return true;
+  }
+
+  return false;
 }
 
 function needsRepositoryGrounding(

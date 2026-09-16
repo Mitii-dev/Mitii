@@ -15,6 +15,7 @@ import {
   PROVIDER_PRESETS,
   resolveProviderApiKey,
   IndexLockedError,
+  buildFixReviewFindingsAsk,
 } from '@mitii/host';
 import type { SkillDescriptor } from '@mitii/v8';
 
@@ -124,7 +125,9 @@ import {
   readContextToggles,
 } from './contextToggles.js';
 import { savePlanToWorkspace } from './planStore.js';
-import { buildReviewDiff } from './reviewDiff.js';
+import { buildReviewDiff, buildReviewFileDiffs } from './reviewDiff.js';
+import type { ReviewFindingsPresenter } from './review/reviewFindingsPresenter.js';
+import { reviewFindingKey } from './review/reviewFindingsPresenter.js';
 import { testProviderConnection } from './testConnection.js';
 import { getWorkspaceTrustSnapshot } from './workspace/trust.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
@@ -145,7 +148,7 @@ import {
   saveShipBandsFromUi,
   tablesFromSnapshot,
 } from './policyLab.js';
-import { normalizeIntensitySettings } from './thoroughness.js';
+import { normalizeIntensitySettings, resolveRunIntensity } from './thoroughness.js';
 import {
   clearMemoriesForWorkspace,
   commitMemoryForWorkspace,
@@ -415,6 +418,22 @@ function needsFullIndexRefresh(index: IndexStatusSnapshot): boolean {
   return false;
 }
 
+const REVIEW_HOST_PREFIX =
+  'Review every selected file in the current git changes, including both staged and unstaged patches. Start by calling read_git_status with includeDiff=true. You MUST call emit_review_finding at least once before finishing — once per high-signal issue with path, content, existingCode, severity, and category. If there are no material issues, emit a single low/info finding that says so. Prose-only analysis is not a valid review. Do not digress into filename-casing rabbit holes; account for every selected file while preferring high-signal findings.';
+
+/** Avoid stacking identical review instructions from UI + host. */
+function buildReviewLlmPrompt(userPrompt: string): string {
+  const trimmed = userPrompt.trim();
+  if (!trimmed) return REVIEW_HOST_PREFIX;
+  if (
+    /\bemit_review_finding\b/i.test(trimmed) ||
+    /^Review the current (?:git |working-tree )/i.test(trimmed)
+  ) {
+    return trimmed;
+  }
+  return `${REVIEW_HOST_PREFIX}\n\n${trimmed}`;
+}
+
 const EMBEDDING_SOURCES = [
   'bundled',
   'ollama',
@@ -427,6 +446,7 @@ export interface SidebarHostOptions {
   workspaceState: vscode.Memento;
   inlineDiff: InlineDiffManager;
   onInlineDiffPending: (pending: boolean) => void;
+  reviewFindings: ReviewFindingsPresenter;
 }
 
 export interface SidebarHostHelpers {
@@ -483,6 +503,8 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
   /** Per-run file mutation snapshots for undo / diff preview. */
   private fileChangeSnapshots = new Map<string, FileChangeRunSnapshot>();
   private activeFileChangeSnapshot?: FileChangeRunSnapshot;
+  /** Finding keys targeted by the in-flight fix-review-findings Agent run. */
+  private pendingFixFindingKeys: string[] = [];
 
   constructor(
     private readonly vs: typeof vscode,
@@ -688,6 +710,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         return;
       }
       case 'cancel':
+        this.pendingFixFindingKeys = [];
         this.runCancel?.cancel();
         return;
       case 'resume':
@@ -1098,6 +1121,15 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         this.fileChangeSnapshots.delete(message.runId);
         return;
       }
+      case 'dismissReviewFindings': {
+        this.host.reviewFindings.clear();
+        this.post({ type: 'setReviewFindings', findings: [] });
+        return;
+      }
+      case 'fixReviewFindings': {
+        await this.handleFixReviewFindings(message);
+        return;
+      }
       default:
         return;
     }
@@ -1203,6 +1235,107 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       before ?? '',
       after,
     );
+  }
+
+  /**
+   * Host recipe: Agent-fix with `fix-review-findings`.
+   * Does not open diff previews — keeps the chat flow focused.
+   */
+  private async handleFixReviewFindings(
+    message: Extract<WebviewToHostMessage, { type: 'fixReviewFindings' }>,
+  ): Promise<void> {
+    const stored = this.host.reviewFindings.getFindings();
+    const open = stored.filter((f) => f.status !== 'fixed');
+    if (open.length === 0) {
+      void this.vs.window.showWarningMessage(
+        'Mitii: No open review findings to fix. Run Review first.',
+      );
+      return;
+    }
+
+    const selected =
+      message.indices && message.indices.length > 0
+        ? message.indices
+            .map((index) => stored[index])
+            .filter(
+              (finding): finding is NonNullable<typeof finding> =>
+                Boolean(finding) && finding.status !== 'fixed',
+            )
+        : [...open];
+
+    if (selected.length === 0) {
+      void this.vs.window.showWarningMessage(
+        'Mitii: Selected review findings are no longer available.',
+      );
+      return;
+    }
+
+    let ask;
+    try {
+      ask = buildFixReviewFindingsAsk({
+        findings: selected,
+        single: selected.length === 1,
+      });
+    } catch (error) {
+      this.post({
+        type: 'error',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'Could not build fix-review-findings ask.',
+      });
+      return;
+    }
+
+    this.pendingFixFindingKeys = selected.map((f) => reviewFindingKey(f));
+
+    const ui = this.readUi();
+    const agentDefaults = ui.modeDefaults.agent;
+    const intensity = resolveRunIntensity({
+      intensityOverrides: ui.intensityOverrides === true,
+      thoroughness: agentDefaults.thoroughness,
+      depth: agentDefaults.depth ?? ui.depth,
+      effort: ui.effort,
+    });
+
+    await this.handleAsk({
+      type: 'ask',
+      prompt: ask.prompt,
+      mode: 'agent',
+      depth: intensity.depth,
+      effort: intensity.effort,
+      approvalMode: agentDefaults.approvalMode ?? ui.approvalMode,
+      pinnedPaths: ask.pinnedPaths,
+      requiredSkillIds: ask.requiredSkillIds,
+    });
+  }
+
+  private postReviewFindings(): void {
+    this.post({
+      type: 'setReviewFindings',
+      findings: this.host.reviewFindings.getFindings().map((f) => ({
+        path: f.path,
+        content: f.content,
+        startLine: f.startLine,
+        endLine: f.endLine,
+        severity: f.severity,
+        category: f.category,
+        existingCode: f.existingCode,
+        suggestionCode: f.suggestionCode,
+        status: f.status === 'fixed' ? 'fixed' : 'open',
+      })),
+    });
+  }
+
+  private resolvePendingFixFindings(status: string): void {
+    if (this.pendingFixFindingKeys.length === 0) return;
+    const keys = this.pendingFixFindingKeys;
+    this.pendingFixFindingKeys = [];
+    if (status !== 'completed') return;
+    const marked = this.host.reviewFindings.markFixedByKeys(keys);
+    if (marked > 0) {
+      this.postReviewFindings();
+    }
   }
 
   /**
@@ -1430,20 +1563,45 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     this.runCancel?.cancel();
     this.runCancel?.dispose();
     this.runCancel = new this.vs.CancellationTokenSource();
-    const llmPrompt =
+    let llmPrompt =
       message.mode === 'review'
-        ? `Review the current git changes and suggest improvements / risks.\n\n${prompt}`
+        ? buildReviewLlmPrompt(prompt)
         : prompt;
     if (message.mode === 'review') {
       const root = this.effectiveRoot();
       if (root) {
+        const reviewDiff = await buildReviewDiff(root);
         this.post({
           type: 'setReviewDiff',
-          review: await buildReviewDiff(root),
+          review: reviewDiff,
         });
+        try {
+          const { ReviewPipeline, formatReviewPrepForPrompt } = await import(
+            '@mitii/sdk'
+          );
+          const files = await buildReviewFileDiffs(
+            root,
+            reviewDiff.files ?? [],
+          );
+          const prep = new ReviewPipeline().prepare({
+            schemaVersion: 1,
+            mode: 'workspace',
+            workspaceId: root,
+            files,
+          });
+          if (prep.selectedCount > 0) {
+            llmPrompt = `${llmPrompt}\n\n${formatReviewPrepForPrompt(prep)}`;
+          }
+        } catch {
+          // Review prep is best-effort in the host UI.
+        }
       }
     }
     this.post({ type: 'run.started', mode: message.mode, prompt });
+    if (message.mode === 'review') {
+      this.host.reviewFindings.beginRun();
+      this.post({ type: 'setReviewFindings', findings: [] });
+    }
     this.pendingRunTurns = [];
     this.pendingMcpAppEvents = [];
     this.liveStreamText = '';
@@ -1557,6 +1715,21 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           },
           onEvent: (event, activity) => {
             this.post({ type: 'run.event', event: activity });
+            if (
+              event?.type === 'tool_completed' &&
+              event.toolName === 'emit_review_finding'
+            ) {
+              this.host.reviewFindings.ingestToolEvent({
+                status: String(event.status ?? ''),
+                summary:
+                  typeof event.summary === 'string' ? event.summary : undefined,
+                outputPreview:
+                  typeof event.outputPreview === 'string'
+                    ? event.outputPreview
+                    : undefined,
+              });
+              this.postReviewFindings();
+            }
             if (event?.type === 'plan_ready' && event.plan) {
               const livePlan = planViewFromArtifact(event.plan);
               if (livePlan) {
@@ -1671,7 +1844,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       });
       if (outcome.result.status === 'cancelled') {
         this.post({ type: 'run.cancelled' });
+        this.pendingFixFindingKeys = [];
       }
+      this.resolvePendingFixFindings(outcome.result.status);
       const usage = this.recordUsage(
         outcome.result,
         llmPrompt,
@@ -1864,6 +2039,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         this.post({ type: 'setCheckpoints', checkpoints: checkpoints.slice(0, 30) });
       }
     } catch (error) {
+      this.pendingFixFindingKeys = [];
       const text = error instanceof Error ? error.message : String(error);
       const assistantText = `Error: ${text}`;
       this.lastAssistantText = assistantText;

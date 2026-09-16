@@ -10,12 +10,14 @@ import type {
 
 import {
   buildIncompleteAnswerRecoveryMessage,
+  buildIncompleteReviewRecoveryMessage,
   buildUnfulfilledExecuteRecoveryMessage,
   compactRecoveredAssistantContent,
   isClearMutationBlocker,
   isEmptyAssistantTurn,
   isTransitionalAssistantAnswer,
   requiresMutationForExecute,
+  requiresStructuredReviewFindings,
   resolveLoopTurnOutcome,
   shouldRecoverIncompleteAssistantTurn,
   synthesizeFallbackAnswer,
@@ -77,11 +79,12 @@ export function handleNoToolModelTurn(params: {
   } = params;
   let answer = session.answer;
   let pendingTextContinuation = session.pendingTextContinuation;
-  let incompleteAnswerRecoveries = session.incompleteAnswerRecoveries;
-  let unfulfilledExecuteRecoveries = session.unfulfilledExecuteRecoveries;
-  const successfulVerificationAfterMutation =
-    session.successfulVerificationAfterMutation;
-  const truncationRecoveries = session.truncationRecoveries;
+    let incompleteAnswerRecoveries = session.incompleteAnswerRecoveries;
+    let unfulfilledExecuteRecoveries = session.unfulfilledExecuteRecoveries;
+    let structuredReviewRecoveries = session.structuredReviewRecoveries;
+    const successfulVerificationAfterMutation =
+      session.successfulVerificationAfterMutation;
+    const truncationRecoveries = session.truncationRecoveries;
 
     if (turnContent.length > 0) {
       const turnAnswer = truncated
@@ -98,6 +101,69 @@ export function handleNoToolModelTurn(params: {
       } else {
         answer = turnAnswer;
       }
+    }
+
+    // Structured review must emit findings — prose-only is not a valid review.
+    if (
+      requiresStructuredReviewFindings(decision.reasonCodes) &&
+      session.emitReviewFindingCount === 0
+    ) {
+      if (
+        structuredReviewRecoveries <
+          thresholds.maxStructuredReviewRecoveries &&
+        budget.canStartModelCall()
+      ) {
+        structuredReviewRecoveries += 1;
+        reasonCodes.push("incomplete_review_recovered");
+        if (turnContent.trim().length > 0) {
+          messages.push({
+            role: "assistant",
+            content: compactRecoveredAssistantContent(
+              turnContent,
+              thresholds.maxRecoveredAnalysisChars,
+            ),
+          });
+        }
+        messages.push({
+          role: "user",
+          content: buildIncompleteReviewRecoveryMessage(),
+        });
+        warnings.push(
+          "Structured review ended without emit_review_finding; requesting findings.",
+        );
+        runtime.emit(bus, {
+          type: "warning",
+          runId,
+          message:
+            "Model finished review without emit_review_finding; continuing so findings can be emitted.",
+          at: runtime.isoNow(),
+        });
+        session.answer = answer;
+        session.pendingTextContinuation = pendingTextContinuation;
+        session.incompleteAnswerRecoveries = incompleteAnswerRecoveries;
+        session.unfulfilledExecuteRecoveries = unfulfilledExecuteRecoveries;
+        session.structuredReviewRecoveries = structuredReviewRecoveries;
+        return { kind: "continue" };
+      }
+      reasonCodes.push("incomplete_review");
+      session.answer = answer;
+      session.pendingTextContinuation = pendingTextContinuation;
+      session.incompleteAnswerRecoveries = incompleteAnswerRecoveries;
+      session.unfulfilledExecuteRecoveries = unfulfilledExecuteRecoveries;
+      session.structuredReviewRecoveries = structuredReviewRecoveries;
+      return {
+        kind: "return",
+        outcome: {
+          kind: "failed",
+          answer: answer || undefined,
+          extraReasons: ["incomplete_review"],
+          error: {
+            code: "incomplete_review",
+            message:
+              "The structured review ended without calling emit_review_finding.",
+          },
+        },
+      };
     }
 
     const incompleteAssistantTurn = shouldRecoverIncompleteAssistantTurn({
@@ -136,6 +202,7 @@ export function handleNoToolModelTurn(params: {
       session.pendingTextContinuation = pendingTextContinuation;
       session.incompleteAnswerRecoveries = incompleteAnswerRecoveries;
       session.unfulfilledExecuteRecoveries = unfulfilledExecuteRecoveries;
+      session.structuredReviewRecoveries = structuredReviewRecoveries;
       if (offered) {
         return { kind: "return", outcome: offered };
       }
@@ -188,6 +255,7 @@ export function handleNoToolModelTurn(params: {
       session.pendingTextContinuation = pendingTextContinuation;
       session.incompleteAnswerRecoveries = incompleteAnswerRecoveries;
       session.unfulfilledExecuteRecoveries = unfulfilledExecuteRecoveries;
+      session.structuredReviewRecoveries = structuredReviewRecoveries;
       return { kind: "return", outcome: {
         kind: "completed",
         answer,
@@ -233,6 +301,7 @@ export function handleNoToolModelTurn(params: {
         session.pendingTextContinuation = pendingTextContinuation;
         session.incompleteAnswerRecoveries = incompleteAnswerRecoveries;
         session.unfulfilledExecuteRecoveries = unfulfilledExecuteRecoveries;
+        session.structuredReviewRecoveries = structuredReviewRecoveries;
         return { kind: "continue" };
     }
 
@@ -255,6 +324,7 @@ export function handleNoToolModelTurn(params: {
       session.pendingTextContinuation = pendingTextContinuation;
       session.incompleteAnswerRecoveries = incompleteAnswerRecoveries;
       session.unfulfilledExecuteRecoveries = unfulfilledExecuteRecoveries;
+      session.structuredReviewRecoveries = structuredReviewRecoveries;
       if (offered) {
         return { kind: "return", outcome: offered };
       }
@@ -318,6 +388,7 @@ export function handleNoToolModelTurn(params: {
         session.pendingTextContinuation = pendingTextContinuation;
         session.incompleteAnswerRecoveries = incompleteAnswerRecoveries;
         session.unfulfilledExecuteRecoveries = unfulfilledExecuteRecoveries;
+        session.structuredReviewRecoveries = structuredReviewRecoveries;
         return { kind: "continue" };
     }
 
@@ -343,6 +414,7 @@ export function handleNoToolModelTurn(params: {
     session.pendingTextContinuation = pendingTextContinuation;
     session.incompleteAnswerRecoveries = incompleteAnswerRecoveries;
     session.unfulfilledExecuteRecoveries = unfulfilledExecuteRecoveries;
+    session.structuredReviewRecoveries = structuredReviewRecoveries;
     return {
       kind: "return",
       outcome: {

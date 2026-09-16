@@ -142,6 +142,7 @@ export {
 // ---------------------------------------------------------------------------
 export { createWorkspaceCheckpointStore } from './ports/checkpoints.js';
 export { createWorkspaceVerificationStore } from './ports/verificationRecords.js';
+export { createWorkspaceReviewStore } from './ports/reviewRecords.js';
 
 export {
   createWorkspaceMemoryStore,
@@ -286,6 +287,18 @@ export type {
   CompiledRecipeStart,
   CompileRecipeOptions,
 } from './recipes/recipeSpec.js';
+
+// Review → Agent fix recipe (host-owned; V8 review stays diagnose-only)
+export {
+  FIX_REVIEW_FINDINGS_RECIPE_ID,
+  FIX_REVIEW_FINDINGS_SKILL_ID,
+  buildFixReviewFindingsAsk,
+} from './recipes/fixReviewFindings.js';
+export type {
+  BuildFixReviewFindingsAskOptions,
+  FixReviewFindingInput,
+  FixReviewFindingsAsk,
+} from './recipes/fixReviewFindings.js';
 
 // ---------------------------------------------------------------------------
 // Prompt helpers — host-owned instruction files → MitiiStartInput.projectRules

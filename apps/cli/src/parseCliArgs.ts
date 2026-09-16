@@ -25,6 +25,7 @@ export interface ParsedCliArgs {
     | 'commit-message'
     | 'pr-summary'
     | 'changelog'
+    | 'review'
     | 'unknown'
     | 'error';
   prompt?: string;
@@ -54,6 +55,14 @@ export interface ParsedCliArgs {
   images?: string[];
   /** Prompt file path, or `-` for stdin. */
   promptFile?: string;
+  /** `mitii review` flags */
+  reviewPreview?: boolean;
+  reviewFrom?: string;
+  reviewTo?: string;
+  reviewCommit?: string;
+  reviewFormat?: 'json' | 'sarif';
+  reviewOutput?: string;
+  reviewEffort?: 'low' | 'medium' | 'high';
   unknownCommand?: string;
   errorMessage?: string;
   setupProvider?: string;
@@ -336,6 +345,82 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       flags.add('yes');
       continue;
     }
+    if (arg === '--preview' || arg === '-p') {
+      flags.add('preview');
+      continue;
+    }
+    if (arg === '--from') {
+      const taken = takeValue(args, i, '--from');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      (flags as Set<string>).add(`from:${taken.value}`);
+      i = taken.next;
+      continue;
+    }
+    if (arg === '--to') {
+      const taken = takeValue(args, i, '--to');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      (flags as Set<string>).add(`to:${taken.value}`);
+      i = taken.next;
+      continue;
+    }
+    if (arg === '--commit' || arg === '-c') {
+      const taken = takeValue(args, i, arg);
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      (flags as Set<string>).add(`commit:${taken.value}`);
+      i = taken.next;
+      continue;
+    }
+    if (arg === '--format') {
+      const taken = takeValue(args, i, '--format');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      if (taken.value !== 'json' && taken.value !== 'sarif') {
+        return {
+          command: 'error',
+          errorMessage: `mitii: --format must be json or sarif (got "${taken.value}")`,
+          rest: [],
+        };
+      }
+      (flags as Set<string>).add(`format:${taken.value}`);
+      i = taken.next;
+      continue;
+    }
+    if (arg === '--output') {
+      const taken = takeValue(args, i, '--output');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      (flags as Set<string>).add(`output:${taken.value}`);
+      i = taken.next;
+      continue;
+    }
+    if (arg === '--effort') {
+      const taken = takeValue(args, i, '--effort');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      if (
+        taken.value !== 'low' &&
+        taken.value !== 'medium' &&
+        taken.value !== 'high'
+      ) {
+        return {
+          command: 'error',
+          errorMessage: `mitii: --effort must be low, medium, or high`,
+          rest: [],
+        };
+      }
+      (flags as Set<string>).add(`effort:${taken.value}`);
+      i = taken.next;
+      continue;
+    }
     if (arg.startsWith('-')) {
       return {
         command: 'error',
@@ -387,6 +472,35 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       mode,
       loopPolicyJson,
       noLoopPolicy: flags.has('no-loop-policy'),
+      rest,
+    };
+  }
+  if (command === 'review') {
+    const flagValues = [...flags];
+    const from = flagValues.find((f) => f.startsWith('from:'))?.slice(5);
+    const to = flagValues.find((f) => f.startsWith('to:'))?.slice(3);
+    const commit = flagValues.find((f) => f.startsWith('commit:'))?.slice(7);
+    const format = flagValues.find((f) => f.startsWith('format:'))?.slice(7) as
+      | 'json'
+      | 'sarif'
+      | undefined;
+    const output = flagValues.find((f) => f.startsWith('output:'))?.slice(7);
+    const effort = flagValues.find((f) => f.startsWith('effort:'))?.slice(7) as
+      | 'low'
+      | 'medium'
+      | 'high'
+      | undefined;
+    return {
+      command: 'review',
+      cwd,
+      json: true,
+      reviewPreview: flags.has('preview'),
+      reviewFrom: from,
+      reviewTo: to,
+      reviewCommit: commit,
+      reviewFormat: format ?? 'json',
+      reviewOutput: output,
+      reviewEffort: effort,
       rest,
     };
   }

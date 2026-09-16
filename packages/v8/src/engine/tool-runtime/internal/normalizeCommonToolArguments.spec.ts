@@ -56,6 +56,34 @@ describe("normalizeCommonToolArguments", () => {
       normalizeCommonToolArguments("glob_files", { glob: "**/*.ts" }),
     ).toEqual({ pattern: "**/*.ts" });
   });
+
+  it("maps emit_review_finding aliases before Zod validation", () => {
+    const normalized = normalizeCommonToolArguments("emit_review_finding", {
+      file: "src/a.ts",
+      title: "Null check",
+      description: "Missing guard",
+      line: 12,
+      severity: "high",
+      category: "bug",
+    });
+    expect(normalized).toMatchObject({
+      path: "src/a.ts",
+      content: "Null check: Missing guard",
+      startLine: 12,
+      endLine: 12,
+      existingCode: expect.any(String),
+    });
+    expect((normalized as { file?: unknown }).file).toBeUndefined();
+  });
+
+  it("maps read_git_show rev alias to revision", () => {
+    expect(
+      normalizeCommonToolArguments("read_git_show", {
+        rev: "HEAD~1",
+        path: "a.ts",
+      }),
+    ).toEqual({ revision: "HEAD~1", path: "a.ts" });
+  });
 });
 
 describe("coerceArgumentsToSchema numbers", () => {

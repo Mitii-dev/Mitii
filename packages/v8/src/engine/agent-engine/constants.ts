@@ -133,6 +133,8 @@ export const AGENT_REASON_CODES = [
   "incomplete_answer_recovered",
   "incomplete_answer_fallback",
   "incomplete_execute",
+  "incomplete_review",
+  "incomplete_review_recovered",
   "unfulfilled_execute_recovered",
   "unfulfilled_execute_exhausted",
   "must_read_nudged",

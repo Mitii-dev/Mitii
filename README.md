@@ -15,7 +15,7 @@
   <a href="LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/License-AGPL_v3-blue.svg"></a>
   <a href="https://code.visualstudio.com/"><img alt="VS Code 1.124+" src="https://img.shields.io/badge/VS%20Code-1.124%2B-007ACC?logo=visualstudiocode"></a>
   <a href="https://nodejs.org/"><img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-339933?logo=node.js"></a>
-  <img alt="Version 2.9.55" src="https://img.shields.io/badge/version-2.9.55-111111">
+  <img alt="Version 2.9.57" src="https://img.shields.io/badge/version-2.9.57-111111">
   <a href="https://docs.mitii.dev"><img alt="Documentation" src="https://img.shields.io/badge/docs-docs.mitii.dev-ff751f"></a>
 </p>
 
@@ -32,7 +32,8 @@ Mitii understands a repository before it changes it. It combines local indexing,
 ## What Mitii provides
 
 - **Repository-aware context** - SQLite FTS5, symbols, vectors, repo maps, diagnostics, Git state, and explicitly attached files.
-- **Clear operating modes** - Ask for read-only analysis, Plan complex work, Agent applies changes, and Review inspects results.
+- **Clear operating modes** - Ask for read-only analysis, Plan complex work, Agent applies changes, and Review inspects working-tree diffs with structured findings.
+- **Structured code review** - Deterministic file selection, path rules, line-anchored findings (`emit_review_finding`), durable `ReviewRecord` under `.mitii/review/`, SARIF export, and CI PR comment posting.
 - **Evidence-assisted planning** - Plan mode can follow in-scope preflight diagnostics, discover first when evidence is thin, draft from the ask for scoped feature work, or ask clarifying questions when the request is too unclear.
 - **Controlled execution** - configurable approvals, dangerous-command blocking, workspace trust checks, and pre-write checkpoints.
 - **FIM autocomplete** - optional VS Code inline suggestions from a generic OpenAI-compatible `prompt` + `suffix` endpoint.

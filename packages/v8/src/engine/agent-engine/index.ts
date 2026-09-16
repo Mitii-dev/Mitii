@@ -140,6 +140,7 @@ export type {
   AgentEngineRepositoryContextPort,
   AgentEngineToolRuntimePort,
   AgentEngineVerificationPort,
+  AgentEngineReviewPort,
   RestorePoint,
   RestorePointSummary,
   AgentEngineRestoreInput,

@@ -58,6 +58,7 @@ import type {
 } from "../../../../modules/verification";
 
 import type { AgentEngineRunCheckpointStorePort } from "../../internal/RunCheckpoint";
+import type { AgentEngineReviewPort } from "./AgentEngineReviewPort";
 
 export interface AgentEngineClockPort {
   now(): Date;
@@ -201,6 +202,8 @@ export interface AgentEngineDependencies {
   repositoryContext?: AgentEngineRepositoryContextPort;
   tools?: AgentEngineToolRuntimePort;
   verification?: AgentEngineVerificationPort;
+  /** Optional structured code-review pipeline (Phase review). */
+  review?: AgentEngineReviewPort;
   checkpointStore?: AgentEngineRunCheckpointStorePort;
   /**
    * Optional restrict-only ToolAdversaryPort (Phase 3). Forwarded into tool

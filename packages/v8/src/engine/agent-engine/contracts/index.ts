@@ -89,4 +89,6 @@ export type {
   AgentEngineRepositoryContextPort,
   AgentEngineToolRuntimePort,
   AgentEngineVerificationPort,
+  ToolApprovalToken,
 } from "./ports/AgentEnginePorts";
+export type { AgentEngineReviewPort } from "./ports/AgentEngineReviewPort";

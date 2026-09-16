@@ -12,6 +12,10 @@ export type ModelLoopSession = {
   truncationRecoveries: number;
   incompleteAnswerRecoveries: number;
   unfulfilledExecuteRecoveries: number;
+  /** Successful emit_review_finding calls this run. */
+  emitReviewFindingCount: number;
+  /** Nudges when structured review ended without findings. */
+  structuredReviewRecoveries: number;
   pendingTextContinuation: string;
   emittedLoopPressureWarning: boolean;
   emittedLoopCompactionWarning: boolean;

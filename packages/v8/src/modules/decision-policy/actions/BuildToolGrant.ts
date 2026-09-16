@@ -25,6 +25,7 @@ import {
 } from "./BuildVerificationGrant";
 import { resolveMutationBudget } from "./ResolveMutationBudget";
 import { shouldElevateSharedScopeRisk } from "./ClassifySharedScopeRepair";
+import { looksLikeCodeReviewRequest } from "./ResolveRoute";
 
 export interface ToolGrantResolution {
   toolGrant: ToolGrant;
@@ -108,6 +109,13 @@ export function buildToolGrant(params: {
   ) {
     if (route === "diagnose") {
       reasonCodes.push("diagnosis_readonly");
+      if (
+        understanding.intent.classification.primaryTaskIntent === "review" ||
+        looksLikeCodeReviewRequest(params.message ?? "")
+      ) {
+        reasonCodes.push("review_pipeline_required");
+        reasonCodes.push("review_findings_structured");
+      }
     }
     if (mode === "ask") {
       reasonCodes.push("mode_ask_readonly");
