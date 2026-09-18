@@ -13,7 +13,7 @@ export default defineConfig({
   } },
   test: {
     environment: 'jsdom',
-    include: ['tests/**/*.test.tsx'],
+    include: ['tests/**/*.test.{ts,tsx}'],
     setupFiles: ['../../../vitest.setup.ts'],
     testTimeout: 30000,
   },

@@ -418,33 +418,22 @@ function needsFullIndexRefresh(index: IndexStatusSnapshot): boolean {
   return false;
 }
 
-/** Quick git-diff scan — findings only, not multi-axis code review. */
-const REVIEW_CHANGES_HOST_PREFIX =
-  'Scan the selected files in the current git changes (staged and unstaged). Start by calling read_git_status with includeDiff=true. Report only material bugs, regressions, and security issues introduced by the diff. You MUST call emit_review_finding at least once before finishing — once per high-signal issue with path, content, existingCode, severity, and category. If there are no material issues, emit a single low/info finding that says so. Prose-only analysis is not valid. Do NOT perform a multi-axis code-quality review (architecture, readability style nits, test-coverage coaching, or merge-readiness playbooks). Do NOT follow code-review-and-quality instructions even if a skill is present.';
-
-/** Thorough code review of the same git changes. */
+/** Thorough code review of git working-tree changes (Code Review button). */
 const REVIEW_CODE_HOST_PREFIX =
   'Perform a thorough code review of every selected file in the current git changes, including both staged and unstaged patches. Start by calling read_git_status with includeDiff=true. Assess correctness, readability, architecture, tests, and operational risk. You MUST call emit_review_finding at least once before finishing — once per high-signal issue with path, content, existingCode, severity, and category. If there are no material issues, emit a single low/info finding that says so. Prose-only analysis is not a valid review. Prefer high-signal findings over nits.';
 
 /** Avoid stacking identical review instructions from UI + host. */
-function buildReviewLlmPrompt(
-  userPrompt: string,
-  kind: 'changes' | 'code' = 'changes',
-): string {
-  const prefix =
-    kind === 'code' ? REVIEW_CODE_HOST_PREFIX : REVIEW_CHANGES_HOST_PREFIX;
+function buildReviewLlmPrompt(userPrompt: string): string {
   const trimmed = userPrompt.trim();
-  if (!trimmed) return prefix;
-  // Already host-built (e.g. resume / stacked) — keep as-is.
+  if (!trimmed) return REVIEW_CODE_HOST_PREFIX;
   if (
-    trimmed.startsWith('Scan the selected files in the current git changes') ||
     trimmed.startsWith(
       'Perform a thorough code review of every selected file in the current git changes',
     )
   ) {
     return trimmed;
   }
-  return `${prefix}\n\n${trimmed}`;
+  return `${REVIEW_CODE_HOST_PREFIX}\n\n${trimmed}`;
 }
 
 const EMBEDDING_SOURCES = [
@@ -1589,16 +1578,8 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     this.runCancel?.dispose();
     this.liveApprovalMode = undefined;
     this.runCancel = new this.vs.CancellationTokenSource();
-    const reviewKind =
-      message.mode === 'review'
-        ? message.reviewKind === 'code'
-          ? 'code'
-          : 'changes'
-        : undefined;
     let llmPrompt =
-      message.mode === 'review'
-        ? buildReviewLlmPrompt(prompt, reviewKind ?? 'changes')
-        : prompt;
+      message.mode === 'review' ? buildReviewLlmPrompt(prompt) : prompt;
     if (message.mode === 'review') {
       const root = this.effectiveRoot();
       if (root) {
@@ -1723,11 +1704,15 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         effort: message.effort,
         approvalMode: message.approvalMode,
         pinnedPaths: message.pinnedPaths,
-        requiredSkillIds: message.requiredSkillIds,
-        excludedSkillIds:
-          message.mode === 'review' && reviewKind !== 'code'
-            ? ['code-review-and-quality']
-            : undefined,
+        requiredSkillIds:
+          message.mode === 'review'
+            ? [
+                'code-review-and-quality',
+                ...(message.requiredSkillIds ?? []).filter(
+                  (id) => id !== 'code-review-and-quality',
+                ),
+              ].slice(0, 3)
+            : message.requiredSkillIds,
         requiredMcpServerIds: message.requiredMcpServerIds,
         workspaceId: this.getWorkspaceId(),
         workspaceState: this.host.workspaceState,

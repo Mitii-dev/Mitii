@@ -424,7 +424,8 @@ export function activate(context: ExtensionContext): void {
 
   const reviewChanges = async (): Promise<void> => {
     await vscode.commands.executeCommand('mitii.sidebar.focus');
-    sidebar?.post({ type: 'startReview', autoRun: true });
+    // Show git changes only — LLM Code Review is the separate bar button.
+    sidebar?.post({ type: 'startReview', autoRun: false });
   };
 
   const runWritingRecipe = async (

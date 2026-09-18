@@ -40,7 +40,11 @@ import { approvalModeUiPatch } from './approvalPresets';
 import { OnboardingPanel } from './components/OnboardingPanel';
 import { PendingPlanBanner } from './components/PendingPlanBanner';
 import { PlanFollowStrip } from './components/PlanPanel';
-import { WorkingTreeReviewBar } from './components/WorkingTreeReviewBar';
+import {
+  ComposerReviewStrip,
+  composerNeedsReviewStrip,
+  selectLatestRunChanges,
+} from './review/ComposerReviewStrip';
 import { SettingsErrorBoundary } from './components/SettingsErrorBoundary';
 import { SettingsPanel } from './components/SettingsPanel';
 import { WorkspaceBanner } from './components/WorkspaceBanner';
@@ -129,10 +133,7 @@ const EMPTY_TOKEN_USAGE: TokenUsageSnapshot = {
 };
 
 const REVIEW_SKILL_ID = 'code-review-and-quality';
-/** Quick diff scan — structured findings only, no quality skill. */
-const DEFAULT_REVIEW_PROMPT =
-  'Scan the working-tree diff for material bugs, regressions, and security issues only.';
-/** Thorough code review — attaches code-review-and-quality. */
+/** LLM code review of working-tree changes (Code Review button only). */
 const DEFAULT_CODE_REVIEW_PROMPT =
   'Perform a thorough code review of the current working-tree changes across correctness, readability, architecture, tests, and risk.';
 
@@ -960,9 +961,9 @@ export function App() {
   >([]);
   const [reviewBarExpandToken, setReviewBarExpandToken] = useState(0);
   const pendingAutoReviewRef = useRef<{ prompt?: string } | null>(null);
-  const runReviewRef = useRef<
-    ((promptOverride?: string, options?: { codeReview?: boolean }) => void) | null
-  >(null);
+  const runReviewRef = useRef<((promptOverride?: string) => void) | null>(
+    null,
+  );
   const [skillItems, setSkillItems] = useState<SkillCatalogItem[]>([]);
   const [automationSpecs, setAutomationSpecs] = useState<AutomationSpecView[]>(
     [],
@@ -1463,11 +1464,12 @@ export function App() {
           break;
         case 'startReview': {
           setNav('chat');
-          // Review is a composer action, not a chat mode.
+          // Review = show git changes only (not a chat mode / not LLM).
           if (modeRef.current === 'review') setMode('ask');
           setReviewBarExpandToken((n) => n + 1);
           postToHost({ type: 'refreshReviewDiff' });
-          if (msg.autoRun) {
+          // Optional auto-run is Code Review when the feature is enabled.
+          if (msg.autoRun && uiRef.current.features.codeReviewButton) {
             pendingAutoReviewRef.current = { prompt: msg.prompt };
           } else {
             pendingAutoReviewRef.current = null;
@@ -1728,14 +1730,11 @@ export function App() {
     setSuggestOpen(false);
   }, [prompt, running, mode, ui, approvalMode, pinned, pinnedSkillIds, pinnedMcpServerIds]);
 
-  const runReview = useCallback(
-    (promptOverride?: string, options?: { codeReview?: boolean }) => {
+  const runCodeReview = useCallback(
+    (promptOverride?: string) => {
       if (running) return;
-      const codeReview = options?.codeReview === true;
-      const fallback = codeReview
-        ? DEFAULT_CODE_REVIEW_PROMPT
-        : DEFAULT_REVIEW_PROMPT;
-      const text = (promptOverride ?? prompt).trim() || fallback;
+      const text =
+        (promptOverride ?? prompt).trim() || DEFAULT_CODE_REVIEW_PROMPT;
       stickToBottomRef.current = true;
       forceScrollToBottomRef.current = true;
       const defaults = modeDefaultsFromUi(ui, 'ask');
@@ -1745,21 +1744,18 @@ export function App() {
         depth: defaults.depth,
         effort: ui.effort,
       });
-      // Review button sends mode:'review'; keep Ask/Plan/Agent selection.
       if (mode === 'review') setMode('ask');
       setReviewBarExpandToken((n) => n + 1);
       postToHost({
         type: 'ask',
         prompt: text,
         mode: 'review',
-        reviewKind: codeReview ? 'code' : 'changes',
+        reviewKind: 'code',
         depth: intensity.depth,
         effort: intensity.effort,
         approvalMode: defaults.approvalMode,
         pinnedPaths: pinned.map((p) => p.path),
-        requiredSkillIds: codeReview
-          ? mergeReviewSkillIds(pinnedSkillIds)
-          : pinnedSkillIds.filter((id) => id !== REVIEW_SKILL_ID),
+        requiredSkillIds: mergeReviewSkillIds(pinnedSkillIds),
         requiredMcpServerIds: pinnedMcpServerIds,
       });
       setPrompt('');
@@ -1772,8 +1768,13 @@ export function App() {
   );
 
   useEffect(() => {
-    runReviewRef.current = runReview;
-  }, [runReview]);
+    runReviewRef.current = runCodeReview;
+  }, [runCodeReview]);
+
+  const showGitChanges = useCallback(() => {
+    setReviewBarExpandToken((n) => n + 1);
+    postToHost({ type: 'refreshReviewDiff' });
+  }, []);
 
   const executePendingPlan = useCallback(() => {
     if (running) return;
@@ -1993,7 +1994,6 @@ export function App() {
         path: file.path,
       });
     }
-    queueMicrotask(() => runReviewRef.current?.());
   }, []);
 
   const dismissFileChanges = useCallback((runId: string) => {
@@ -2680,9 +2680,13 @@ export function App() {
               ) : null}
               <div
                 className={`composer-box${
-                  (review?.files.length ?? 0) > 0 ||
-                  turns.some((t) => t.fileChanges) ||
-                  reviewFindings.length > 0
+                  composerNeedsReviewStrip({
+                    chatFileCount:
+                      selectLatestRunChanges(turns)?.files.length ?? 0,
+                    gitFileCount: review?.files.length ?? 0,
+                    findingsCount: reviewFindings.length,
+                    codeReviewEnabled: ui.features.codeReviewButton === true,
+                  })
                     ? ' composer-box--with-review'
                     : ''
                 }`}
@@ -2692,16 +2696,13 @@ export function App() {
                   } as CSSProperties
                 }
               >
-                <WorkingTreeReviewBar
+                <ComposerReviewStrip
                   review={review}
                   findings={reviewFindings}
-                  runChanges={
-                    [...turns]
-                      .reverse()
-                      .find((t) => t.fileChanges)?.fileChanges ?? null
-                  }
+                  turns={turns}
                   running={running}
                   expandSignal={reviewBarExpandToken}
+                  codeReviewEnabled={ui.features.codeReviewButton === true}
                   onRefresh={() => postToHost({ type: 'refreshReviewDiff' })}
                   onOpenFile={openFile}
                   onOpenDiff={(path) =>
@@ -2710,25 +2711,10 @@ export function App() {
                   onOpenFinding={(path, line) =>
                     postToHost({ type: 'openFile', path, line })
                   }
-                  onRunReview={() => runReview()}
-                  onRunCodeReview={
-                    ui.features.codeReviewButton
-                      ? () => runReview(undefined, { codeReview: true })
-                      : undefined
-                  }
-                  showCodeReview={ui.features.codeReviewButton === true}
-                  onUndoAll={() => {
-                    const changes = [...turns]
-                      .reverse()
-                      .find((t) => t.fileChanges)?.fileChanges;
-                    if (changes) undoFileChanges(changes.runId);
-                  }}
-                  onKeepAll={() => {
-                    const changes = [...turns]
-                      .reverse()
-                      .find((t) => t.fileChanges)?.fileChanges;
-                    if (changes) dismissFileChanges(changes.runId);
-                  }}
+                  onShowChanges={showGitChanges}
+                  onRunCodeReview={() => runCodeReview()}
+                  onUndoFileChanges={undoFileChanges}
+                  onDismissFileChanges={dismissFileChanges}
                   onDismissFindings={dismissReviewFindings}
                   onFixAllFindings={() => fixReviewFindings()}
                   onFixFinding={(index) => fixReviewFindings([index])}

@@ -27,5 +27,7 @@
     "wasms",
     "xenova"
   ],
-  "mitii.onboarding.completed": true
+  "mitii.onboarding.completed": true,
+  "mitii.provider.model": "my-qwen-64k:latest",
+  "mitii.provider.contextWindow": 45000
 }

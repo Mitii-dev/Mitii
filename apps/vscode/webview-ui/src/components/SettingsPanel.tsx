@@ -1417,7 +1417,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
             <div className="settings-panel">
               <SettingsSection
                 title="Working-tree review"
-                description="Review always checks your git changes. Code Review is an optional deeper pass."
+                description="Review opens your git changes. Code Review runs an LLM analysis of those changes."
               >
                 <label className="toggle">
                   <input
@@ -1432,10 +1432,9 @@ export function SettingsPanel(props: SettingsPanelProps) {
                   Show Code Review button
                 </label>
                 <p className="field-hint">
-                  When enabled, the review bar shows both{' '}
-                  <strong>Review</strong> (quick diff findings) and{' '}
-                  <strong>Code Review</strong> (thorough quality review with the
-                  code-review skill). Off by default.
+                  <strong>Review</strong> always lists staged/unstaged files.
+                  Enable this to also show <strong>Code Review</strong>, which
+                  runs the code-review skill over those changes. Off by default.
                 </p>
               </SettingsSection>
             </div>
