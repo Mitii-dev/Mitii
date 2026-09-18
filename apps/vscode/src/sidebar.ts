@@ -3456,6 +3456,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     let truncated = false;
     let indexMode: IndexStatusSnapshot['indexMode'] = 'full';
     let fallbackReason: string | undefined;
+    let embeddingIssue: string | undefined;
     let published;
     try {
       const full = await runFullWorkspaceIndex({
@@ -3518,6 +3519,11 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       }
       fileCount = full.fileCount;
       truncated = full.truncated;
+      if (full.vectorIndex.status !== 'ready') {
+        embeddingIssue =
+          full.vectorIndex.reason ??
+          `vector index ${full.vectorIndex.status}`;
+      }
       published = await client.publishRepositoryStateFromIndexing(full.indexing, {
         catalogRevisionByRoot: full.catalogRevisionByRoot,
         graphRevisionByRoot: full.graphRevisionByRoot,
@@ -3525,7 +3531,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       });
       if (full.status === 'unchanged') {
         this.channel.appendLine(
-          `[index] unchanged (up to date) at ${full.databasePath}; vector=${full.vectorIndex.status}${full.vectorIndex.profileId ? ` profile=${full.vectorIndex.profileId}` : ''}`,
+          `[index] unchanged (up to date) at ${full.databasePath}; vector=${full.vectorIndex.status}${full.vectorIndex.profileId ? ` profile=${full.vectorIndex.profileId}` : ''}${full.vectorIndex.reason ? ` reason=${full.vectorIndex.reason}` : ''}`,
         );
       } else {
         this.channel.appendLine(
@@ -3570,6 +3576,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       const snapshot = await buildWorkspaceSnapshot({
         workspaceRoot: root,
         workspaceId: this.getWorkspaceId(),
+        maxFiles: maximumIndexFiles,
       });
       fileCount = snapshot.fileCount;
       truncated = snapshot.truncated;
@@ -3590,6 +3597,12 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         )}\n`,
       );
       const descriptorStatus = indexStatusFromDescriptor(published.descriptor);
+      const baseMessage =
+        indexMode === 'host_snapshot'
+          ? `Indexed ${fileCount} files (host snapshot fallback: ${fallbackReason ?? 'full index unavailable'})`
+          : truncated
+            ? `Indexed ${fileCount} files (truncated)`
+            : `Indexed ${fileCount} files`;
       this.lastIndex = {
         fileCount,
         truncated,
@@ -3597,11 +3610,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         ...descriptorStatus,
         indexMode,
         message:
-          indexMode === 'host_snapshot'
-            ? `Indexed ${fileCount} files (host snapshot fallback: ${fallbackReason ?? 'full index unavailable'})`
-            : truncated
-              ? `Indexed ${fileCount} files (truncated)`
-              : `Indexed ${fileCount} files`,
+          embeddingIssue && indexMode !== 'host_snapshot'
+            ? `${baseMessage} · embeddings unavailable: ${embeddingIssue}`
+            : baseMessage,
       };
     } else {
       this.lastIndex = {

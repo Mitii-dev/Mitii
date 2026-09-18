@@ -10,7 +10,7 @@ import {
   type RunEvent,
   type TaskList,
 } from '@mitii/sdk';
-import { loadUserSafetyRules } from '@mitii/host';
+import { loadUserSafetyRules, resolveMaximumIndexFiles } from '@mitii/host';
 import type * as vscode from 'vscode';
 
 import { formatDiagnosticsPromptBlock } from './context/diagnosticsContext.js';
@@ -744,6 +744,11 @@ async function autoPublishFullOrSnapshot(options: {
     const snap = await buildWorkspaceSnapshot({
       workspaceRoot: options.workspaceRoot,
       workspaceId: options.workspaceId,
+      maxFiles: resolveMaximumIndexFiles(
+        options.vs.workspace
+          .getConfiguration('mitii')
+          .get<number>('workspace.maximumIndexFiles'),
+      ),
     });
     await options.client.publishRepositoryState(snap.candidate);
     options.channel.appendLine(

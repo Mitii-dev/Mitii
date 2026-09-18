@@ -10,6 +10,7 @@ import {
 } from '@mitii/v8';
 
 import { WORKSPACE_WALK_SKIP_DIR_NAMES, shouldSkipWorkspaceWalkFile } from '../internal/workspaceWalk.js';
+import { DEFAULT_MAXIMUM_INDEX_FILES } from './indexLimits.js';
 import { readIndexRuntimeMetadata } from './semanticIndex.js';
 
 export interface WorkspaceSnapshotOptions {
@@ -55,7 +56,9 @@ export function fingerprintWorkspaceIndexSnapshot(
 export async function buildWorkspaceSnapshot(
   options: WorkspaceSnapshotOptions,
 ): Promise<WorkspaceSnapshot> {
-  const maxFiles = options.maxFiles ?? 2_000;
+  // Match the full-index default so a temporary host_snapshot fallback is not
+  // stuck at a tiny 2k pin while embeddings/code indexes are unavailable.
+  const maxFiles = options.maxFiles ?? DEFAULT_MAXIMUM_INDEX_FILES;
   const entries: string[] = [];
   const relativePaths: string[] = [];
   let truncated = false;

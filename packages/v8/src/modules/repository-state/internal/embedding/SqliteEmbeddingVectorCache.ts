@@ -21,10 +21,16 @@ interface CacheRow {
   dimensions: number;
 }
 
+/**
+ * SQLite-backed embedding cache. Cache failures must never abort embedding
+ * synchronization — LanceDB is the source of truth for vectors.
+ */
 export class SqliteEmbeddingVectorCache
   implements EmbeddingVectorCachePort
 {
   private ready = false;
+  private disabled = false;
+  private readonly memory = new Map<string, readonly number[]>();
 
   constructor(
     private readonly database: SqliteDatabasePort,
@@ -34,11 +40,21 @@ export class SqliteEmbeddingVectorCache
     profileId: string,
     contentHash: string,
   ): readonly number[] | undefined {
-    this.ensureSchema();
+    const memoryKey = cacheKey(profileId, contentHash);
+    const mem = this.memory.get(memoryKey);
+    if (mem) return mem;
 
-    const row = this.database
-      .prepare(
-        `
+    if (this.disabled) {
+      return undefined;
+    }
+
+    try {
+      this.ensureSchema();
+      if (this.disabled) return undefined;
+
+      const row = this.database
+        .prepare(
+          `
           SELECT
             vector_json AS vectorJson,
             dimensions AS dimensions
@@ -47,14 +63,13 @@ export class SqliteEmbeddingVectorCache
             AND content_hash = ?
           LIMIT 1
         `,
-      )
-      .get(profileId, contentHash) as CacheRow | undefined;
+        )
+        .get(profileId, contentHash) as CacheRow | undefined;
 
-    if (!row) {
-      return undefined;
-    }
+      if (!row) {
+        return undefined;
+      }
 
-    try {
       const parsed = JSON.parse(row.vectorJson) as unknown;
       if (
         !Array.isArray(parsed) ||
@@ -66,6 +81,7 @@ export class SqliteEmbeddingVectorCache
 
       return parsed;
     } catch {
+      this.disabled = true;
       return undefined;
     }
   }
@@ -75,11 +91,20 @@ export class SqliteEmbeddingVectorCache
     contentHash: string,
     vector: readonly number[],
   ): void {
-    this.ensureSchema();
+    const memoryKey = cacheKey(profileId, contentHash);
+    this.memory.set(memoryKey, vector);
 
-    this.database
-      .prepare(
-        `
+    if (this.disabled) {
+      return;
+    }
+
+    try {
+      this.ensureSchema();
+      if (this.disabled) return;
+
+      this.database
+        .prepare(
+          `
           INSERT INTO embedding_vector_cache (
             profile_id,
             content_hash,
@@ -94,22 +119,34 @@ export class SqliteEmbeddingVectorCache
             vector_json = excluded.vector_json,
             updated_at = excluded.updated_at
         `,
-      )
-      .run(
-        profileId,
-        contentHash,
-        vector.length,
-        JSON.stringify(vector),
-        Date.now(),
-      );
+        )
+        .run(
+          profileId,
+          contentHash,
+          vector.length,
+          JSON.stringify(vector),
+          Date.now(),
+        );
+    } catch {
+      // Keep process-local memory cache; continue embedding without SQLite.
+      this.disabled = true;
+    }
   }
 
   private ensureSchema(): void {
-    if (this.ready) {
+    if (this.ready || this.disabled) {
       return;
     }
 
-    this.database.exec(CREATE_CACHE_TABLE);
-    this.ready = true;
+    try {
+      this.database.exec(CREATE_CACHE_TABLE);
+      this.ready = true;
+    } catch {
+      this.disabled = true;
+    }
   }
+}
+
+function cacheKey(profileId: string, contentHash: string): string {
+  return `${profileId}\0${contentHash}`;
 }

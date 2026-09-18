@@ -318,54 +318,89 @@ export class WorkspaceIndexingRootFinalizer {
       input.request
         .synchronizeEmbeddings
     ) {
+      // Keep synchronizing until the text-index revision is fully consumed.
+      // A single partial pass used to leave vectorIndex chronically degraded.
+      const maxEmbeddingPasses = 64;
       try {
-        const embedding =
-          await this.dependencies
-            .embedding
-            .synchronize({
-              workspace:
-                input.request
-                  .workspace,
-              rootId,
-              updatedAt:
-                input.request
-                  .indexedAt,
-              ...(input.request
-                .abortSignal
-                ? {
-                    abortSignal:
-                      input
-                        .request
-                        .abortSignal,
-                  }
-                : {}),
-            });
+        for (
+          let pass = 0;
+          pass < maxEmbeddingPasses;
+          pass += 1
+        ) {
+          if (
+            input.request.abortSignal
+              ?.aborted
+          ) {
+            embeddingStatus =
+              "cancelled";
+            break;
+          }
 
-        embeddingStatus =
-          embedding.status;
-        embeddingProfileId =
-          embedding
-            .profile.id;
-        initialTextRevision =
-          embedding
-            .initialTextRevision;
-        finalTextRevision =
-          embedding
-            .finalTextRevision;
-        latestTextRevision =
-          embedding
-            .latestTextRevision;
-        embeddedChunks =
-          embedding
-            .statistics
-            .chunksEmbedded;
-        vectorsDeleted =
-          embedding
-            .statistics
-            .vectorsDeleted;
+          const embedding =
+            await this.dependencies
+              .embedding
+              .synchronize({
+                workspace:
+                  input.request
+                    .workspace,
+                rootId,
+                updatedAt:
+                  input.request
+                    .indexedAt,
+                ...(input.request
+                  .abortSignal
+                  ? {
+                      abortSignal:
+                        input
+                          .request
+                          .abortSignal,
+                    }
+                  : {}),
+              });
+
+          embeddingStatus =
+            embedding.status;
+          embeddingProfileId =
+            embedding
+              .profile.id;
+          if (
+            initialTextRevision ===
+            undefined
+          ) {
+            initialTextRevision =
+              embedding
+                .initialTextRevision;
+          }
+          finalTextRevision =
+            embedding
+              .finalTextRevision;
+          latestTextRevision =
+            embedding
+              .latestTextRevision;
+          embeddedChunks +=
+            embedding
+              .statistics
+              .chunksEmbedded;
+          vectorsDeleted +=
+            embedding
+              .statistics
+              .vectorsDeleted;
+
+          if (
+            embedding.status !==
+            "partial"
+          ) {
+            break;
+          }
+        }
       } catch (
         error
       ) {
+        // Mark partial so publish/UI show degraded vectors instead of
+        // "never configured" (undefined embeddingStatus → unavailable).
+        embeddingStatus =
+          embeddingStatus ??
+          "partial";
         warnings.push(
           this.warning(
             rootId,
