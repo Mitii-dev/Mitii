@@ -27,6 +27,9 @@ interface WorkingTreeReviewBarProps {
   onOpenDiff: (path: string) => void;
   onOpenFinding?: (path: string, line?: number) => void;
   onRunReview: () => void;
+  /** Deeper code review — only when Settings → Features enables the button. */
+  onRunCodeReview?: () => void;
+  showCodeReview?: boolean;
   onUndoAll?: () => void;
   onKeepAll?: () => void;
   /** Clear sticky review findings (Problems + comments + chips). */
@@ -78,6 +81,8 @@ export function WorkingTreeReviewBar({
   onOpenDiff,
   onOpenFinding,
   onRunReview,
+  onRunCodeReview,
+  showCodeReview = false,
   onUndoAll,
   onKeepAll,
   onDismissFindings,
@@ -229,11 +234,22 @@ export function WorkingTreeReviewBar({
               type="button"
               className="wt-review__cta"
               disabled={running || fileCount === 0}
-              title="Run a structured read-only review — findings open in the editor"
+              title="Quick diff scan for bugs/regressions — not a full code review"
               onClick={onRunReview}
             >
               {running ? 'Reviewing…' : 'Review'}
             </button>
+            {showCodeReview && onRunCodeReview ? (
+              <button
+                type="button"
+                className="wt-review__cta wt-review__cta--code"
+                disabled={running || fileCount === 0}
+                title="Thorough code review (correctness, architecture, tests) via code-review skill"
+                onClick={onRunCodeReview}
+              >
+                {running ? 'Reviewing…' : 'Code Review'}
+              </button>
+            ) : null}
           </div>
         ) : (
           <div className="wt-review__actions">
@@ -283,8 +299,9 @@ export function WorkingTreeReviewBar({
           {tab === 'findings' ? (
             findings.length === 0 ? (
               <p className="wt-review__empty">
-                No findings yet. Click Review — issues appear on the code line
-                in the editor (and in Problems).
+                No findings yet. Click Review
+                {showCodeReview ? ' or Code Review' : ''} — issues appear on the
+                code line in the editor (and in Problems).
               </p>
             ) : (
               <ul className="wt-review__list">

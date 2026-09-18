@@ -45,7 +45,7 @@ For cloud providers, run **Mitii: Set Provider API Key** (stored in VS Code Secr
 | Command | Purpose |
 |---|---|
 | **Mitii: Open Chat** | Open the sidebar |
-| **Mitii: Review Working Tree Changes** | Switch to Review mode and run a structured review |
+| **Mitii: Review Working Tree Changes** | Run a structured review of git changes (Review button). Optional Code Review button when enabled under Settings → Features |
 | **Mitii: Index Workspace** | Rebuild repository index |
 | **Mitii: Show Settings** | Provider, index, MCP, workspace |
 | **Mitii: Toggle Autocomplete** | Enable or disable FIM inline suggestions |

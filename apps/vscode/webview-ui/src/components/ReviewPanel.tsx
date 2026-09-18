@@ -14,7 +14,7 @@ interface ReviewPanelProps {
 }
 
 const DEFAULT_REVIEW_HINT =
-  'Review mode is read-only. Run a review below or type a focus (bugs, security, tests). Do not use Agent for review.';
+  'Working-tree review is read-only. Use Run review on the Review bar (not a chat mode). Optional focus: bugs, security, tests.';
 
 function reviewStatusLabel(status: string): string {
   const normalized = status.trim() || '?';

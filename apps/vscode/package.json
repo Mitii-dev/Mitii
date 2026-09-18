@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
-  "version": "2.9.58",
+  "version": "2.9.59",
   "publisher": "mitii",
   "license": "AGPL-3.0-or-later",
   "icon": "media/mitii-logo.png",
@@ -1028,6 +1028,11 @@
           "default": true,
           "description": "Show live reasoning / thinking activity in the Mitii chat UI"
         },
+        "mitii.ui.features.codeReviewButton": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show the Code Review button on the working-tree review bar (in addition to Review). Off by default; enable under Settings → Features."
+        },
         "mitii.ui.reasoningPreviewMaxChars": {
           "type": "number",
           "default": 8000,
@@ -1365,6 +1370,33 @@
               }
             }
           }
+        },
+        "mitii.tokenBudget.visiblePlanMinUsableRatio": {
+          "type": "number",
+          "default": 0.35,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Visible-plan affordability threshold as a fraction of the context window."
+        },
+        "mitii.tokenBudget.changeImpactMinUsableRatio": {
+          "type": "number",
+          "default": 0.35,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Change-impact affordability threshold as a fraction of the context window."
+        },
+        "mitii.tokenBudget.maxPatchesPerCallCap": {
+          "type": "number",
+          "default": 96,
+          "minimum": 1,
+          "description": "Maximum patches allowed in one mutation call."
+        },
+        "mitii.loopPolicy.maxStructuredReviewRecoveries": {
+          "type": "number",
+          "default": 2,
+          "minimum": 0,
+          "maximum": 8,
+          "description": "Recovery attempts when a structured review ends without findings (0 disables)."
         }
       }
     }

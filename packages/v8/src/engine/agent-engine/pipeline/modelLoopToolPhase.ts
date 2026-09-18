@@ -108,6 +108,7 @@ export async function runModelLoopToolPhase(params: {
   mode: "ask" | "plan" | "agent" | undefined;
   projects: readonly ProjectDescriptor[] | undefined;
   requiredSkillIds: string[] | undefined;
+  excludedSkillIds: string[] | undefined;
   answer: string;
   changeImpactGate: { required: boolean; satisfied: boolean };
   thresholds: AgentEngineThresholds;
@@ -145,6 +146,7 @@ export async function runModelLoopToolPhase(params: {
     mode,
     projects,
     requiredSkillIds,
+    excludedSkillIds,
     answer,
     changeImpactGate,
     thresholds,
@@ -553,6 +555,7 @@ export async function runModelLoopToolPhase(params: {
     route: decision.route,
     windowPolicy: windowPolicy,
     requiredSkillIds: requiredSkillIds,
+    excludedSkillIds: excludedSkillIds,
   });
   if (grantExpansionOutcome.kind === "expansion_required") {
     session.decision = decision;

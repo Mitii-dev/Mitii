@@ -3778,9 +3778,12 @@ select.depth-select {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
+  min-width: 28px;
+  gap: 5px;
+  white-space: nowrap;
+  font-size: 11px;
   height: 28px;
-  padding: 0;
+  padding: 0 7px;
   border-radius: 6px;
   border: 1px solid var(--mitii-border-soft);
   background: transparent;
@@ -3789,6 +3792,13 @@ select.depth-select {
     border-color 120ms ease,
     color 120ms ease,
     background 120ms ease;
+}
+
+.indexing-chip--icon {
+  width: 28px;
+  min-width: 28px;
+  padding: 0;
+  gap: 0;
 }
 
 .indexing-chip:hover {
@@ -5396,12 +5406,22 @@ button.md-file-link.md-inline-code:hover {
   background: color-mix(in srgb, var(--mitii-ok) 18%, var(--mitii-panel));
 }
 
+.wt-review__cta--code {
+  border-color: color-mix(in srgb, #38bdf8 45%, var(--mitii-border-soft));
+  color: var(--mitii-text);
+  background: color-mix(in srgb, #38bdf8 14%, var(--mitii-panel));
+}
+
 .wt-review__cta:hover:not(:disabled) {
   background: color-mix(in srgb, var(--mitii-surface) 90%, var(--mitii-panel));
 }
 
 .wt-review__cta--fix:hover:not(:disabled) {
   background: color-mix(in srgb, var(--mitii-ok) 28%, var(--mitii-panel));
+}
+
+.wt-review__cta--code:hover:not(:disabled) {
+  background: color-mix(in srgb, #38bdf8 24%, var(--mitii-panel));
 }
 
 .wt-review__cta:disabled {

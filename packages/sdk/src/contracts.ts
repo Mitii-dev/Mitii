@@ -175,6 +175,10 @@ export const mitiiStartInputSchema = z
       .array(z.string().min(1).max(64))
       .max(MAX_REQUIRED_SKILLS)
       .optional(),
+    excludedSkillIds: z
+      .array(z.string().min(1).max(64))
+      .max(20)
+      .optional(),
     requiredMcpServerIds: z
       .array(z.string().min(1).max(64))
       .max(MAX_REQUIRED_MCP_SERVERS)

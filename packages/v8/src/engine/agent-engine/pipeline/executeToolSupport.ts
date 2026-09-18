@@ -205,6 +205,7 @@ export async function refreshAuthorityAfterTools(
   route: ExecutionDecision["route"];
   windowPolicy: WindowPolicy;
   requiredSkillIds?: readonly string[];
+  excludedSkillIds?: readonly string[];
 }): Promise<GrantRefreshOutcome> {
   const discoveredPaths = [
     ...new Set([
@@ -324,6 +325,7 @@ export async function refreshAuthorityAfterTools(
     budgetTokens: params.windowPolicy.skills.budgetTokens,
     maxSkills: params.windowPolicy.skills.maxSkills,
     requiredSkillIds: [...(params.requiredSkillIds ?? [])],
+    excludedSkillIds: [...(params.excludedSkillIds ?? [])],
     forbidLargeSkills:
       resolveWindowBudgetBand(params.windowPolicy.contextWindowTokens) ===
       "compact",

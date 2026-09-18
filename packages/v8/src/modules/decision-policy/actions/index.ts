@@ -1,6 +1,6 @@
 export { toolGrantsEquivalent } from "./CompareToolGrants";
 
-export { resolveRoute, isMutationIntent, isDiagnosisIntent, looksLikeAgentVerificationRequest } from "./ResolveRoute";
+export { resolveRoute, isMutationIntent, isDiagnosisIntent, looksLikeAgentVerificationRequest, looksLikeCodeReviewRequest } from "./ResolveRoute";
 export type { RouteResolution } from "./ResolveRoute";
 
 export { looksLikeWorkspaceBugReport } from "./LooksLikeWorkspaceBugReport";

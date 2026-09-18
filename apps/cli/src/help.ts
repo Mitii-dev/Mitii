@@ -46,7 +46,7 @@ Commands:
                    --format json|sarif Output shape (default json)
                    --output <path>     Write result to file
                    --effort low|medium|high  Prep effort band
-                   Full LLM review: VS Code Review mode, or:
+                   Full LLM review: VS Code Review button (git changes), or:
                      mitii ask "review these changes" --mode ask --skill code-review-and-quality
   status           Show latest persisted repository state
   export-session   Run ask and write secret-free JSON export

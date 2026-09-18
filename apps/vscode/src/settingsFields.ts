@@ -71,6 +71,7 @@ export const SETTINGS_NAV_ITEMS: readonly {
   { id: 'workspace', label: 'Workspace' },
   { id: 'modes', label: 'Modes' },
   { id: 'context', label: 'Context' },
+  { id: 'features', label: 'Features' },
   { id: 'integrations', label: 'MCP' },
   { id: 'debug', label: 'Developer' },
 ];
@@ -117,6 +118,7 @@ export type SettingsPage =
   | 'workspace'
   | 'modes'
   | 'context'
+  | 'features'
   | 'mcp'
   | 'developer';
 
@@ -246,9 +248,13 @@ export function applyUiPatch(
   base: UiSettingsSnapshot,
   patch: UiSettingsPatch,
 ): UiSettingsSnapshot {
+  const { features: _features, ...restPatch } = patch;
   return {
     ...base,
-    ...patch,
+    ...restPatch,
+    features: patch.features
+      ? { ...base.features, ...patch.features }
+      : base.features,
     contextToggles: patch.contextToggles
       ? { ...base.contextToggles, ...patch.contextToggles }
       : base.contextToggles,
@@ -865,6 +871,16 @@ export const SETTINGS_FIELDS: readonly SettingsFieldSpec[] = [
     kind: 'boolean',
     reflect: 'raw',
     sample: false,
+  },
+  {
+    id: 'ui.features.codeReviewButton',
+    page: 'features',
+    tab: 'features',
+    setting: 'ui.features.codeReviewButton',
+    label: 'Show Code Review button',
+    kind: 'boolean',
+    reflect: 'raw',
+    sample: true,
   },
   {
     id: 'ui.reasoningPreviewMaxChars',

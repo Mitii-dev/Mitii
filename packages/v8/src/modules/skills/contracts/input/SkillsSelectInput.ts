@@ -69,6 +69,14 @@ export const skillsSelectInputSchema = z
       .max(MAX_REQUIRED_SKILLS)
       .default([]),
     /**
+     * Skill ids that must not be auto-matched for this run.
+     * Required skills still win if explicitly attached.
+     */
+    excludedSkillIds: z
+      .array(z.string().min(1).max(64))
+      .max(20)
+      .default([]),
+    /**
      * When true, omit sizeClass L skills unless alwaysApply / required.
      * Engine sets this for compact no_cache windows.
      */

@@ -129,8 +129,12 @@ const EMPTY_TOKEN_USAGE: TokenUsageSnapshot = {
 };
 
 const REVIEW_SKILL_ID = 'code-review-and-quality';
+/** Quick diff scan — structured findings only, no quality skill. */
 const DEFAULT_REVIEW_PROMPT =
-  'Review the current working-tree changes. Prefer high-signal bugs and security issues.';
+  'Scan the working-tree diff for material bugs, regressions, and security issues only.';
+/** Thorough code review — attaches code-review-and-quality. */
+const DEFAULT_CODE_REVIEW_PROMPT =
+  'Perform a thorough code review of the current working-tree changes across correctness, readability, architecture, tests, and risk.';
 
 function mergeReviewSkillIds(ids: string[]): string[] {
   const without = ids.filter((id) => id !== REVIEW_SKILL_ID);
@@ -245,6 +249,7 @@ const DEFAULT_UI: UiSettingsSnapshot = {
   developerEnabled: false,
   debugLogging: false,
   modelIoLogging: false,
+  features: { codeReviewButton: false },
   tokenBudget: DEFAULT_TOKEN_BUDGET,
   loopPolicy: DEFAULT_LOOP_POLICY,
   policyLab: DEFAULT_POLICY_LAB,
@@ -299,6 +304,10 @@ function hydrateUiSnapshot(
   return {
     ...DEFAULT_UI,
     ...(raw ?? {}),
+    features: {
+      ...DEFAULT_UI.features,
+      ...(raw?.features ?? {}),
+    },
     modeDefaults: {
       ...DEFAULT_UI.modeDefaults,
       ...(raw?.modeDefaults ?? {}),
@@ -444,11 +453,15 @@ function mergeUiPatch(
     tokenBudget: _tb,
     loopPolicy: _lp,
     policyLab: _pl,
+    features: _features,
     ...scalarPatch
   } = patch;
   return {
     ...base,
     ...scalarPatch,
+    features: patch.features
+      ? { ...base.features, ...patch.features }
+      : base.features,
     contextToggles: patch.contextToggles
       ? { ...base.contextToggles, ...patch.contextToggles }
       : base.contextToggles,
@@ -907,6 +920,8 @@ export function App() {
   const [connectionMessage, setConnectionMessage] = useState<string | null>(
     null,
   );
+  const maximumIndexFilesDraftRef = useRef<number | undefined>(undefined);
+  const embeddingSourceDraftRef = useRef<SemanticIndexSource | undefined>(undefined);
   const [customModel, setCustomModel] = useState(false);
   const [index, setIndex] = useState<IndexStatusSnapshot>({
     fileCount: 0,
@@ -945,9 +960,9 @@ export function App() {
   >([]);
   const [reviewBarExpandToken, setReviewBarExpandToken] = useState(0);
   const pendingAutoReviewRef = useRef<{ prompt?: string } | null>(null);
-  const runReviewRef = useRef<((promptOverride?: string) => void) | null>(
-    null,
-  );
+  const runReviewRef = useRef<
+    ((promptOverride?: string, options?: { codeReview?: boolean }) => void) | null
+  >(null);
   const [skillItems, setSkillItems] = useState<SkillCatalogItem[]>([]);
   const [automationSpecs, setAutomationSpecs] = useState<AutomationSpecView[]>(
     [],
@@ -1071,6 +1086,23 @@ export function App() {
     [],
   );
 
+  const applyIndexStatus = useCallback((incoming: IndexStatusSnapshot) => {
+    const next = {
+      ...incoming,
+      ...(maximumIndexFilesDraftRef.current !== undefined
+        ? { maximumIndexFiles: maximumIndexFilesDraftRef.current }
+        : {}),
+      ...(embeddingSourceDraftRef.current
+        ? {
+            embeddingSource: embeddingSourceDraftRef.current,
+            embeddingEnabled: embeddingSourceDraftRef.current !== 'disabled',
+          }
+        : {}),
+    };
+    indexRef.current = next;
+    setIndex(next);
+  }, []);
+
   const applyBootstrap = useCallback((msg: HostToWebviewMessage) => {
     if (msg.type === 'bootstrap' || msg.type === 'settings') {
       setWorkspace(msg.workspace);
@@ -1176,7 +1208,7 @@ export function App() {
       settingsSavingRef.current = false;
       setSettingsSaving(false);
       if (msg.type === 'bootstrap') {
-        setIndex(msg.index);
+        applyIndexStatus(msg.index);
         setOnboardingRequired(msg.onboardingRequired);
         setHistory(msg.history);
         setActiveThreadId(msg.activeThreadId);
@@ -1250,7 +1282,7 @@ export function App() {
           applyBootstrap(msg);
           break;
         case 'index.status':
-          setIndex(msg.index);
+          applyIndexStatus(msg.index);
           break;
         case 'run.started': {
           setRunning(true);
@@ -1621,6 +1653,10 @@ export function App() {
           }));
           break;
         case 'settings.saved':
+          if (settingsSavingRef.current && msg.ok) {
+            embeddingSourceDraftRef.current = undefined;
+            maximumIndexFilesDraftRef.current = undefined;
+          }
           settingsSavingRef.current = false;
           setSettingsSaving(false);
           if (!msg.ok) {
@@ -1639,7 +1675,7 @@ export function App() {
       postToHost({ type: 'ready' });
     }
     return off;
-  }, [applyBootstrap, applyTokenUsage, markSuspensionResumed]);
+  }, [applyBootstrap, applyIndexStatus, applyTokenUsage, markSuspensionResumed]);
 
   useLayoutEffect(() => {
     const turnCountChanged = turns.length !== lastTurnCountRef.current;
@@ -1693,9 +1729,13 @@ export function App() {
   }, [prompt, running, mode, ui, approvalMode, pinned, pinnedSkillIds, pinnedMcpServerIds]);
 
   const runReview = useCallback(
-    (promptOverride?: string) => {
+    (promptOverride?: string, options?: { codeReview?: boolean }) => {
       if (running) return;
-      const text = (promptOverride ?? prompt).trim() || DEFAULT_REVIEW_PROMPT;
+      const codeReview = options?.codeReview === true;
+      const fallback = codeReview
+        ? DEFAULT_CODE_REVIEW_PROMPT
+        : DEFAULT_REVIEW_PROMPT;
+      const text = (promptOverride ?? prompt).trim() || fallback;
       stickToBottomRef.current = true;
       forceScrollToBottomRef.current = true;
       const defaults = modeDefaultsFromUi(ui, 'ask');
@@ -1705,18 +1745,21 @@ export function App() {
         depth: defaults.depth,
         effort: ui.effort,
       });
-      // Keep Ask/Plan/Agent selection; host maps mode:'review' → engine ask.
+      // Review button sends mode:'review'; keep Ask/Plan/Agent selection.
       if (mode === 'review') setMode('ask');
       setReviewBarExpandToken((n) => n + 1);
       postToHost({
         type: 'ask',
         prompt: text,
         mode: 'review',
+        reviewKind: codeReview ? 'code' : 'changes',
         depth: intensity.depth,
         effort: intensity.effort,
         approvalMode: defaults.approvalMode,
         pinnedPaths: pinned.map((p) => p.path),
-        requiredSkillIds: mergeReviewSkillIds(pinnedSkillIds),
+        requiredSkillIds: codeReview
+          ? mergeReviewSkillIds(pinnedSkillIds)
+          : pinnedSkillIds.filter((id) => id !== REVIEW_SKILL_ID),
         requiredMcpServerIds: pinnedMcpServerIds,
       });
       setPrompt('');
@@ -2305,6 +2348,12 @@ export function App() {
   const saveAllSettings = () => {
     (document.activeElement as HTMLElement | null)?.blur?.();
     const latestProvider = snapshotProvider();
+    if (latestProvider.type !== 'echo' && !latestProvider.model.trim()) {
+      setError('Choose a model before saving provider settings. Test connection to discover available models.');
+      setSettingsTab('model');
+      return;
+    }
+    setError(null);
     const latestUi = clearStaleModeModelDefaultsAfterProviderModelChange({
       ui: mergeUiPatch(
         uiRef.current,
@@ -2331,6 +2380,9 @@ export function App() {
       ui: latestUi,
       workspaceRootOverride: overrideDraft.trim() || null,
       workspaceMaximumIndexFiles: indexRef.current.maximumIndexFiles ?? 0,
+      ...(embeddingSourceDraftRef.current
+        ? { semanticIndex: { source: embeddingSourceDraftRef.current } }
+        : {}),
       mcp,
       approvalMode,
       profile: {
@@ -2659,6 +2711,12 @@ export function App() {
                     postToHost({ type: 'openFile', path, line })
                   }
                   onRunReview={() => runReview()}
+                  onRunCodeReview={
+                    ui.features.codeReviewButton
+                      ? () => runReview(undefined, { codeReview: true })
+                      : undefined
+                  }
+                  showCodeReview={ui.features.codeReviewButton === true}
                   onUndoAll={() => {
                     const changes = [...turns]
                       .reverse()
@@ -3060,6 +3118,7 @@ export function App() {
               0,
               Math.min(240000, Math.floor(value)),
             );
+            maximumIndexFilesDraftRef.current = maximumIndexFiles;
             indexRef.current = {
               ...indexRef.current,
               maximumIndexFiles,
@@ -3070,12 +3129,17 @@ export function App() {
             }));
           }}
           onEmbeddingSourceChange={(source: SemanticIndexSource) => {
+            embeddingSourceDraftRef.current = source;
+            indexRef.current = {
+              ...indexRef.current,
+              embeddingSource: source,
+              embeddingEnabled: source !== 'disabled',
+            };
             setIndex((current) => ({
               ...current,
               embeddingSource: source,
               embeddingEnabled: source !== 'disabled',
             }));
-            postToHost({ type: 'settings.set', semanticIndex: { source } });
           }}
           memories={memories}
           onAddMemory={(text) => postToHost({ type: 'addMemory', text })}

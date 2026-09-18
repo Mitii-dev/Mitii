@@ -153,7 +153,22 @@ export class SkillsPipeline {
         `${matched.nonMatchedCount} of ${catalog.length} catalog skill(s) did not match this request (path/intent/route/keyword/threshold) and were not considered.`,
       );
     }
-    const merged = mergeSkillCandidates(required.scored, matched.scored);
+    const excluded = new Set(
+      parsed.excludedSkillIds.map((id) => id.trim()).filter(Boolean),
+    );
+    const matchedWithoutExcluded =
+      excluded.size === 0
+        ? matched.scored
+        : matched.scored.filter((entry) => !excluded.has(entry.skill.id));
+    if (
+      excluded.size > 0 &&
+      matchedWithoutExcluded.length < matched.scored.length
+    ) {
+      warnings.push(
+        `Excluded ${matched.scored.length - matchedWithoutExcluded.length} auto-matched skill(s) for this run.`,
+      );
+    }
+    const merged = mergeSkillCandidates(required.scored, matchedWithoutExcluded);
     const conflicts = resolveSkillConflicts({ scored: merged });
     if (conflicts.conflictsResolved) {
       reasonCodes.push("conflicts_resolved");

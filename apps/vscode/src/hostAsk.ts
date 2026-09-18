@@ -166,6 +166,8 @@ export async function runAskInOutputChannel(options: {
   approvalMode?: string;
   pinnedPaths?: string[];
   requiredSkillIds?: string[];
+  /** Skills that must not be auto-matched for this run. */
+  excludedSkillIds?: string[];
   /** Attached MCP server ids for this turn (@mcp: / host pin). */
   requiredMcpServerIds?: string[];
   workspaceId?: string;
@@ -474,6 +476,9 @@ export async function runAskInOutputChannel(options: {
       ...(pinnedPaths.length > 0 ? { pinnedPaths } : {}),
       ...(options.requiredSkillIds && options.requiredSkillIds.length > 0
         ? { requiredSkillIds: [...options.requiredSkillIds] }
+        : {}),
+      ...(options.excludedSkillIds && options.excludedSkillIds.length > 0
+        ? { excludedSkillIds: [...options.excludedSkillIds] }
         : {}),
       ...(options.requiredMcpServerIds &&
       options.requiredMcpServerIds.length > 0

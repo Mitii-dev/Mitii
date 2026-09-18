@@ -71,7 +71,7 @@ mitii export-session "Summarize this repo" --out session.json --echo
 | `run --auto "<task>"` | Unattended CI run (agent + apply autonomy; no prompts) |
 | `session` | Interactive prompt loop with MITII banner |
 | `index` | Full workspace index + publish repository state |
-| `review` | Deterministic review prep / SARIF (`--preview`, `--from`/`--to`, `--commit`, `--format`, `--output`). For LLM findings use `mitii ask … --skill code-review-and-quality` or VS Code **Review** mode |
+| `review` | Deterministic review prep / SARIF (`--preview`, `--from`/`--to`, `--commit`, `--format`, `--output`). For LLM findings use `mitii ask … --skill code-review-and-quality` (recipe/skill) or the VS Code **Review** button for working-tree changes |
 | `status` | Show latest persisted repository state |
 | `export-session` | Run ask and write secret-free JSON export |
 | `connect` | Bridge Mitii into Telegram, Discord, or Slack |

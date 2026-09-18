@@ -77,6 +77,7 @@ export function SliderField({
         />
         <input
           className="slider-field__number"
+          aria-label={`${label} value`}
           type="number"
           inputMode="numeric"
           min={min}

@@ -103,9 +103,15 @@ function shortLabel(tone: IndexTone, index: IndexStatusSnapshot): string {
 
 function detailTooltip(index: IndexStatusSnapshot): string {
   const parts: string[] = [];
-  if (index.fileCount > 0) {
+  if (index.fileCount >= 0) {
     parts.push(`${index.fileCount.toLocaleString()} files indexed`);
   }
+  if (index.discoveredFileCount !== undefined) {
+    parts.push(
+      `${index.discoveredFileCount.toLocaleString()} files discovered in current scan`,
+    );
+  }
+  if (index.progressStage) parts.push(`Stage: ${index.progressStage}`);
   if (index.readiness) parts.push(`Readiness: ${index.readiness}`);
   if (index.scanCompleteness) parts.push(`Scan: ${index.scanCompleteness}`);
   if (index.indexMode) {
@@ -142,11 +148,11 @@ export function IndexingStatusBar({
   return (
     <button
       type="button"
-      className={`indexing-chip indexing-chip--${tone}`}
+      className={`indexing-chip indexing-chip--icon indexing-chip--${tone}`}
       onClick={onOpenSettings}
       onDoubleClick={onRefresh}
-      title={`${tooltip} — click for index settings · double-click to refresh`}
-      aria-label={`${label}. ${tooltip}. Open index settings.`}
+      title={`${tooltip} — click for workspace index details · double-click to refresh`}
+      aria-label={`${label}. ${tooltip}. Open workspace index settings.`}
     >
       <IconFolder width={15} height={15} />
     </button>

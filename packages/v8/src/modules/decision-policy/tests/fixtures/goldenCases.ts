@@ -923,12 +923,14 @@ const GOLDEN_DECISION_CASES_CORE: GoldenDecisionCase[] = [
     expected: {
       route: "diagnose",
       maximumWorkspaceEffect: "read",
-      reasonCodesIncludes: [
-        "diagnosis_readonly",
+      // Free-form review intent is diagnose-only — structured findings require
+      // Review-button / CLI prep markers (emit_review_finding / Review prep).
+      reasonCodesIncludes: ["diagnosis_readonly"],
+      reasonCodesExcludes: [
         "review_pipeline_required",
         "review_findings_structured",
       ],
-      allowedToolsIncludes: ["emit_review_finding", "read_file", "read_git_status"],
+      allowedToolsIncludes: ["read_file", "read_git_status"],
       allowedToolsExcludes: ["apply_patch"],
     },
   },

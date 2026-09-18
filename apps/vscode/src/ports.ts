@@ -26,19 +26,17 @@ import {
   createHostNetworkPort,
   createHostRepositoryGraphPort,
   createOptionalSearchPort,
-  createSandboxedProcessPort,
   createWorkspaceCheckpointStore,
   createWorkspaceKnowledgeGraph,
   createWorkspaceVerificationStore,
   detectSandboxBackend,
   resolveMemoryEmbeddingPort,
-  resolveSandboxPolicy,
-  resolveSandboxSettingsFromPreset,
   resolveProviderApiKey,
   type SandboxBackendPrefer,
 } from '@mitii/host';
 import type * as vscode from 'vscode';
 
+import { createLiveSandboxedProcessPort } from './liveSandboxProcess.js';
 import { VscodeDiagnosticsPort } from './diagnosticsPort.js';
 import { getSharedMcpManager } from './mcp/manager.js';
 import { defaultMcpSettings, readMcpSettings } from './mcpConfig.js';
@@ -280,25 +278,6 @@ export async function createVscodeClient(
     env: searchEnv,
   });
   const cfg = vs.workspace.getConfiguration('mitii');
-  const sandboxInspectEnabled = cfg.inspect<boolean>('safety.sandbox.enabled');
-  const sandboxInspectNetwork = cfg.inspect<string>('safety.sandbox.network');
-  const sandboxEnabledUnset =
-    sandboxInspectEnabled?.globalValue === undefined &&
-    sandboxInspectEnabled?.workspaceValue === undefined &&
-    sandboxInspectEnabled?.workspaceFolderValue === undefined;
-  const sandboxNetworkUnset =
-    sandboxInspectNetwork?.globalValue === undefined &&
-    sandboxInspectNetwork?.workspaceValue === undefined &&
-    sandboxInspectNetwork?.workspaceFolderValue === undefined;
-  const sandboxResolved = resolveSandboxSettingsFromPreset({
-    approvalMode: cfg.get<string>('safety.approvalMode') ?? 'guided',
-    ...(sandboxEnabledUnset
-      ? {}
-      : { enabled: cfg.get<boolean>('safety.sandbox.enabled') === true }),
-    ...(sandboxNetworkUnset
-      ? {}
-      : { network: cfg.get<string>('safety.sandbox.network') ?? 'deny' }),
-  });
   const sandboxBackendRaw = cfg.get<string>('safety.sandbox.backend') ?? 'auto';
   const sandboxPrefer: SandboxBackendPrefer =
     sandboxBackendRaw === 'docker' ||
@@ -314,13 +293,10 @@ export async function createVscodeClient(
     ? new ToolRuntimePipeline(
         {
           fileSystem,
-          process: createSandboxedProcessPort(
+          process: createLiveSandboxedProcessPort(
+            vs,
             new NodeProcessAdapter(),
-            resolveSandboxPolicy({
-              enabled: sandboxResolved.enabled,
-              network: sandboxResolved.network,
-              workspaceRoot,
-            }),
+            workspaceRoot,
             detectSandboxBackend({ prefer: sandboxPrefer }),
           ),
           network,

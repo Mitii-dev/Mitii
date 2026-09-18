@@ -109,10 +109,9 @@ export function buildToolGrant(params: {
   ) {
     if (route === "diagnose") {
       reasonCodes.push("diagnosis_readonly");
-      if (
-        understanding.intent.classification.primaryTaskIntent === "review" ||
-        looksLikeCodeReviewRequest(params.message ?? "")
-      ) {
+      // Structured findings only when the host/CLI injected review markers —
+      // never from free-form Ask/Plan/Agent text or a review intent label alone.
+      if (looksLikeCodeReviewRequest(params.message ?? "")) {
         reasonCodes.push("review_pipeline_required");
         reasonCodes.push("review_findings_structured");
       }
