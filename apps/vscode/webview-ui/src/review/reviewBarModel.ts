@@ -53,11 +53,12 @@ export function resolveReviewBarScope(
   const showFindingsUi = input.showCodeReview === true;
   const running = input.running === true;
 
+  // Hide when there is nothing to review — do not show "0 file changes"
+  // just because a run is in progress.
   const visible =
     chatFileCount > 0 ||
     (showFindingsUi && input.findingsCount > 0) ||
-    (showFindingsUi && gitFileCount > 0) ||
-    running;
+    (showFindingsUi && gitFileCount > 0);
 
   let summaryLabel: string;
   if (chatFileCount > 0) {

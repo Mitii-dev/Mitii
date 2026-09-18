@@ -72,6 +72,17 @@ describe('resolveReviewBarScope', () => {
     expect(scope.visible).toBe(false);
   });
 
+  it('hides the bar for 0 file changes even while a run is in progress', () => {
+    const scope = resolveReviewBarScope({
+      chatFiles: [],
+      gitFiles: [],
+      findingsCount: 0,
+      showCodeReview: false,
+      running: true,
+    });
+    expect(scope.visible).toBe(false);
+  });
+
   it('disables Code Review while a run is in progress', () => {
     const scope = resolveReviewBarScope({
       chatFiles: chat,

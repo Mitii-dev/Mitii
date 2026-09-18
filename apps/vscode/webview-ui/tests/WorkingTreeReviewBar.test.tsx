@@ -53,6 +53,23 @@ describe('WorkingTreeReviewBar', () => {
     expect(onRunCodeReview).toHaveBeenCalledTimes(1);
   });
 
+  it('renders nothing when there are 0 file changes', () => {
+    const { container } = render(
+      <WorkingTreeReviewBar
+        review={{ summary: '', files: [] }}
+        runChanges={null}
+        running
+        onRefresh={vi.fn()}
+        onOpenFile={vi.fn()}
+        onOpenDiff={vi.fn()}
+        onShowChanges={vi.fn()}
+      />,
+    );
+
+    expect(container.firstChild).toBeNull();
+    expect(screen.queryByLabelText('Working tree review')).toBeNull();
+  });
+
   it('hides Findings and Code Review when the feature is off', () => {
     render(
       <WorkingTreeReviewBar
