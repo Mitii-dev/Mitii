@@ -5,6 +5,7 @@ import {
   TOOL_EFFECTS,
   WORKSPACE_EFFECTS,
 } from "../../constants";
+import { approvalSkipCategorySchema } from "../shared/ApprovalSkip";
 
 export const workspaceEffectSchema = z.enum(WORKSPACE_EFFECTS);
 export const toolEffectSchema = z.enum(TOOL_EFFECTS);
@@ -72,6 +73,19 @@ export const toolGrantSchema = z
      * pass grant/catalog checks. Omitted/empty = all MCP tools under effect.
      */
     allowedMcpServerIds: z.array(z.string().min(1).max(64)).max(5).optional(),
+    /**
+     * Host UX: skip approval asks for these categories when the tool is
+     * already granted. Never invents tools. Copied from UserSafetyRules.
+     */
+    approvalSkipCategories: z.array(approvalSkipCategorySchema).optional(),
+    /**
+     * Paths that still require approval under auto-approve write skips.
+     */
+    protectedPathGlobs: z.array(z.string().min(1)).optional(),
+    /**
+     * Mutation relative paths must match this regex when set (mode profiles).
+     */
+    mutationRelativePathRegex: z.string().min(1).optional(),
   })
   .strict();
 

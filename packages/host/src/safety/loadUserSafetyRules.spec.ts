@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   loadUserSafetyRules,
+  withDefaultProtectedPaths,
   USER_SAFETY_RULES_FILENAME,
 } from "./loadUserSafetyRules.js";
 
@@ -35,6 +36,8 @@ describe("loadUserSafetyRules", () => {
         denyTools: ["delete_directory"],
         denyCommandPrefixes: ["rm"],
         approvalCeiling: "when_required",
+        autoApprove: { write: true, execute: false },
+        protectedPathGlobs: ["AGENTS.md"],
       }),
       "utf8",
     );
@@ -43,6 +46,21 @@ describe("loadUserSafetyRules", () => {
     expect(rules.denyTools).toContain("delete_directory");
     expect(rules.denyCommandPrefixes).toContain("rm");
     expect(rules.approvalCeiling).toBe("when_required");
+    expect(rules.autoApprove?.write).toBe(true);
+    expect(rules.protectedPathGlobs).toContain("AGENTS.md");
+  });
+
+  it("withDefaultProtectedPaths fills defaults when enabled and empty", () => {
+    const filled = withDefaultProtectedPaths({
+      enabled: true,
+      denyTools: [],
+      denyCommandPrefixes: [],
+      denyPathScopes: [],
+      denyNetworkHosts: [],
+      protectedPathGlobs: [],
+    });
+    expect(filled.protectedPathGlobs.length).toBeGreaterThan(0);
+    expect(filled.protectedPathGlobs).toContain(".mitii/**");
   });
 
   it("fails soft on invalid JSON", () => {

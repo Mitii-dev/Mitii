@@ -16,8 +16,8 @@ type RequiredPriorityBlock = {
 
 /**
  * Merge host-supplied instructions with Skills/Memory selections.
- * Host projectRules always win as-is. Selected skills/memory are appended
- * after host-supplied entries, deduped by id (host wins on collision).
+ * Host projectRules / environment always win as-is. Selected skills/memory
+ * are appended after host-supplied entries, deduped by id (host wins).
  */
 export function mergePromptInstructions(params: {
   host?: PromptInstructions;
@@ -27,12 +27,16 @@ export function mergePromptInstructions(params: {
   const projectRules = params.host?.projectRules
     ? [...params.host.projectRules]
     : undefined;
+  const environment = params.host?.environment
+    ? [...params.host.environment]
+    : undefined;
 
   const skills = mergeBlocks(params.host?.skills, params.skills);
   const memory = mergeBlocks(params.host?.memory, params.memory);
 
   if (
     (!projectRules || projectRules.length === 0) &&
+    (!environment || environment.length === 0) &&
     (!skills || skills.length === 0) &&
     (!memory || memory.length === 0)
   ) {
@@ -41,6 +45,7 @@ export function mergePromptInstructions(params: {
 
   return {
     ...(projectRules && projectRules.length > 0 ? { projectRules } : {}),
+    ...(environment && environment.length > 0 ? { environment } : {}),
     ...(skills && skills.length > 0 ? { skills } : {}),
     ...(memory && memory.length > 0 ? { memory } : {}),
   };

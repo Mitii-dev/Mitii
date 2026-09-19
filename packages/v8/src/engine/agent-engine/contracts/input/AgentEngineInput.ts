@@ -4,6 +4,7 @@ import { createUserRequestInputSchema } from "../../../../modules/request-intake
 import {
   APPROVAL_MODES,
   repositoryStateCapabilitySummarySchema,
+  userSafetyRulesSchema,
 } from "../../../../modules/decision-policy";
 import {
   modelMessageSchema,
@@ -112,18 +113,7 @@ export const agentEngineStartInputSchema = z
      * Tighten-only user safety rules (host-loaded from `.mitii/safety.json`).
      * Decision Policy intersects these onto the grant; they never widen.
      */
-    userSafetyRules: z
-      .object({
-        enabled: z.boolean().default(false),
-        denyTools: z.array(z.string().min(1)).default([]),
-        denyCommandPrefixes: z.array(z.string().min(1)).default([]),
-        allowCommandPrefixes: z.array(z.string().min(1)).optional(),
-        denyPathScopes: z.array(z.string().min(1)).default([]),
-        denyNetworkHosts: z.array(z.string().min(1)).default([]),
-        approvalCeiling: agentApprovalModeSchema.optional(),
-      })
-      .strict()
-      .optional(),
+    userSafetyRules: userSafetyRulesSchema.optional(),
     /**
      * Workspace-relative paths dirty before the run (user edits).
      * Used for dirty-overlap rejection on mutation tools.

@@ -5,6 +5,7 @@ import { MutationError } from "../internal/mutation";
 import { PathContainmentError } from "../internal/PathContainment";
 import { applyPatchInputSchema } from "../internal/ToolCatalog";
 import { describeCaughtError } from "../internal/describeCaughtError";
+import { assertMutationPathMatchesGrant } from "./AssertMutationPathMatchesGrant";
 import { resolveMutationPathScopes } from "./ResolveMutationPathScopes";
 
 export async function executeApplyPatch(params: {
@@ -29,6 +30,13 @@ export async function executeApplyPatch(params: {
   redacted: boolean;
 }> {
   const parsed = applyPatchInputSchema.parse(params.arguments);
+
+  for (const patch of parsed.patches) {
+    assertMutationPathMatchesGrant({
+      relativePath: patch.path,
+      grant: params.grant,
+    });
+  }
 
   try {
     const result = await params.transactions.applyPatches({

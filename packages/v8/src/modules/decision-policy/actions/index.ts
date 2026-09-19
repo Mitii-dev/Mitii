@@ -49,6 +49,7 @@ export type { InjectionScanResult } from "./ScanPromptInjection";
 export {
   intersectUserSafetyRules,
   grantNeverWidens,
+  resolveApprovalSkipCategories,
 } from "./IntersectUserSafetyRules";
 export type { IntersectUserSafetyResult } from "./IntersectUserSafetyRules";
 

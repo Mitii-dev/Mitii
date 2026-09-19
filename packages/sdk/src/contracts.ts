@@ -18,6 +18,7 @@ import {
   MAX_REQUIRED_MCP_SERVERS,
   REQUEST_ENVELOPE_LIMITS,
   SUPPORTED_IMAGE_MIME_TYPES,
+  userSafetyRulesSchema,
 } from '@mitii/v8';
 import type {
   AgentEngineResumeInput,
@@ -128,18 +129,7 @@ export const mitiiStartInputSchema = z
       })
       .strict()
       .optional(),
-    userSafetyRules: z
-      .object({
-        enabled: z.boolean().default(false),
-        denyTools: z.array(z.string().min(1)).default([]),
-        denyCommandPrefixes: z.array(z.string().min(1)).default([]),
-        allowCommandPrefixes: z.array(z.string().min(1)).optional(),
-        denyPathScopes: z.array(z.string().min(1)).default([]),
-        denyNetworkHosts: z.array(z.string().min(1)).default([]),
-        approvalCeiling: mitiiApprovalModeSchema.optional(),
-      })
-      .strict()
-      .optional(),
+    userSafetyRules: userSafetyRulesSchema.optional(),
     dirtyPaths: z.array(z.string().min(1)).optional(),
     explorationDepth: explorationDepthSchema.optional(),
     windowBudget: z
@@ -170,6 +160,20 @@ export const mitiiStartInputSchema = z
           .strict(),
       )
       .max(32)
+      .optional(),
+    /** Host IDE / session environment pulse → Prompt Construction environment. */
+    environment: z
+      .array(
+        z
+          .object({
+            id: z.string().min(1),
+            title: z.string().min(1).optional(),
+            content: z.string().min(1),
+            priority: z.number().int().nonnegative().optional(),
+          })
+          .strict(),
+      )
+      .max(8)
       .optional(),
     requiredSkillIds: z
       .array(z.string().min(1).max(64))

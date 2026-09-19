@@ -161,6 +161,10 @@ export {
   mutationBudgetSchema,
   userSafetyRulesSchema,
   DISABLED_USER_SAFETY_RULES,
+  APPROVAL_SKIP_CATEGORIES,
+  DEFAULT_PROTECTED_PATH_GLOBS,
+  approvalSkipCategorySchema,
+  userSafetyAutoApproveSchema,
   intersectUserSafetyRules,
   grantNeverWidens,
   formatEffectiveGrant,
@@ -169,6 +173,8 @@ export {
   VSCODE_APPROVAL_PRESETS,
   getApprovalPresetCopy,
   formatApprovalPresetHelp,
+  PROCESS_TOOL_IDS,
+  GITHUB_MUTATION_TOOL_IDS,
 } from "./modules/decision-policy";
 export type {
   ApprovalMode,
@@ -180,6 +186,8 @@ export type {
   ToolGrant,
   MutationBudget,
   UserSafetyRules,
+  ApprovalSkipCategory,
+  UserSafetyAutoApprove,
   ApprovalPresetCopy,
   VsCodeApprovalPreset,
 } from "./modules/decision-policy";
@@ -227,6 +235,9 @@ export {
   toolInvocationInputSchema,
   toolResultSchema,
   READ_ONLY_TOOL_IDS,
+  NETWORK_TOOL_IDS,
+  MUTATION_TOOL_IDS,
+  OPT_IN_MUTATION_TOOL_IDS,
   NodeWorkspaceFileSystemAdapter,
   NodeProcessAdapter,
   NodeNetworkAdapter,

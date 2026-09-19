@@ -10,9 +10,21 @@ import {
   type RunEvent,
   type TaskList,
 } from '@mitii/sdk';
-import { loadUserSafetyRules, resolveMaximumIndexFiles } from '@mitii/host';
+import {
+  compileModeProfile,
+  formatEnvironmentDetailsBlock,
+  loadModeProfiles,
+  loadProjectRules,
+  loadUserSafetyRules,
+  mergeUserSafetyRules,
+  observeRunToolEvent,
+  resolveMaximumIndexFiles,
+  withDefaultProtectedPaths,
+  type MemoryCaptureContext,
+} from '@mitii/host';
 import type * as vscode from 'vscode';
 
+import { collectVsCodeEnvironmentSnapshot } from './collectEnvironmentDetails.js';
 import { formatDiagnosticsPromptBlock } from './context/diagnosticsContext.js';
 import { captureEditorContext } from './context/editorContext.js';
 import {
@@ -50,11 +62,6 @@ import { deriveLiveTokenBudgetPreview } from './liveTokenBudgetPreview.js';
 import { readTokenBudgetPolicyOverrides } from './tokenBudgetSettings.js';
 import { readLoopPolicyThresholdOverrides } from './loopPolicySettings.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
-import {
-  loadProjectRules,
-  observeRunToolEvent,
-  type MemoryCaptureContext,
-} from '@mitii/host';
 import { rehydrateRepositoryStateFromDisk } from './rehydrateRepositoryState.js';
 import {
   normalizeMaximumOutputTokens,
@@ -440,6 +447,16 @@ export async function runAskInOutputChannel(options: {
     const projectRules = workspaceRoot
       ? await loadProjectRules({ workspaceRoot })
       : [];
+    const modeProfiles = workspaceRoot
+      ? loadModeProfiles(workspaceRoot)
+      : { profiles: [] as const };
+    const compiledMode = modeProfiles.active
+      ? compileModeProfile(modeProfiles.active)
+      : undefined;
+    const mergedProjectRules = [
+      ...projectRules,
+      ...(compiledMode?.projectRules ?? []),
+    ];
     const runStartedAt = new Date().toISOString();
     const loopPolicyThresholds = readLoopPolicyThresholdOverrides(cfg);
     const effort =
@@ -450,17 +467,33 @@ export async function runAskInOutputChannel(options: {
         : undefined;
     const userRulesEnabled =
       cfg.get<boolean>('safety.userRulesEnabled') === true;
-    const userSafetyRules = userRulesEnabled && workspaceRoot
-      ? loadUserSafetyRules(workspaceRoot)
-      : undefined;
+    const fileSafety =
+      userRulesEnabled && workspaceRoot
+        ? withDefaultProtectedPaths(loadUserSafetyRules(workspaceRoot))
+        : undefined;
+    const userSafetyRules = mergeUserSafetyRules(
+      fileSafety,
+      compiledMode?.userSafetyRules,
+    );
+    const effectiveMode = compiledMode
+      ? compiledMode.agentMode
+      : (options.mode ?? 'ask');
+    const environmentBlock = formatEnvironmentDetailsBlock(
+      collectVsCodeEnvironmentSnapshot({
+        workspaceRoot,
+        modeReminder: compiledMode
+          ? `${compiledMode.name} (${effectiveMode})`
+          : effectiveMode,
+      }),
+    );
     let run = client.start({
       prompt,
-      mode: options.mode ?? 'ask',
+      mode: effectiveMode,
       workspaceRoot,
       ...(options.sessionId ? { sessionId: options.sessionId } : {}),
       approvalMode: approvalPolicy.approvalMode,
       planApproval: approvalPolicy.planApproval,
-      ...(userSafetyRules?.enabled ? { userSafetyRules } : {}),
+      ...(userSafetyRules.enabled ? { userSafetyRules } : {}),
       budget: resolveRunBudget(vs),
       windowBudget: {
         ...(windowBudgetPolicy ? { policy: windowBudgetPolicy } : {}),
@@ -472,7 +505,10 @@ export async function runAskInOutputChannel(options: {
       ...(loopPolicyThresholds
         ? { loopPolicy: { thresholds: loopPolicyThresholds } }
         : {}),
-      ...(projectRules.length > 0 ? { projectRules: [...projectRules] } : {}),
+      ...(mergedProjectRules.length > 0
+        ? { projectRules: [...mergedProjectRules] }
+        : {}),
+      ...(environmentBlock ? { environment: [environmentBlock] } : {}),
       ...(pinnedPaths.length > 0 ? { pinnedPaths } : {}),
       ...(options.requiredSkillIds && options.requiredSkillIds.length > 0
         ? { requiredSkillIds: [...options.requiredSkillIds] }
@@ -515,7 +551,7 @@ export async function runAskInOutputChannel(options: {
     const sessionLog = openSessionLog(workspaceRoot, {
       at: runStartedAt,
       prompt: options.prompt,
-      mode: options.mode,
+      mode: effectiveMode,
       conversationCount: options.conversation?.length ?? 0,
       sessionId: options.sessionId,
       runId: run.runId,

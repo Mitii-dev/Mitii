@@ -9,10 +9,15 @@ import type {
 } from '@mitii/sdk';
 import {
   buildWritingRecipeAsk,
+  compileModeProfile,
+  formatEnvironmentDetailsBlock,
+  loadModeProfiles,
   loadProjectRules,
   loadUserSafetyRules,
   loadWorkspaceHooks,
+  mergeUserSafetyRules,
   resolveMitiiWritingRecipe,
+  withDefaultProtectedPaths,
 } from '@mitii/host';
 
 import {
@@ -309,29 +314,47 @@ export async function runAsk(options: {
   const projectRules = await loadProjectRules({
     workspaceRoot: options.cwd,
   });
-  const baseSafety = loadUserSafetyRules(options.cwd);
+  const modeProfiles = loadModeProfiles(options.cwd);
+  const compiledMode = modeProfiles.active
+    ? compileModeProfile(modeProfiles.active)
+    : undefined;
+  const mergedProjectRules = [
+    ...projectRules,
+    ...(compiledMode?.projectRules ?? []),
+  ];
+  const effectiveMode = compiledMode
+    ? compiledMode.agentMode
+    : mode;
+  const baseSafety = withDefaultProtectedPaths(
+    loadUserSafetyRules(options.cwd),
+  );
   const hooksEnabled =
     process.env.MITII_HOOKS === '1' || process.env.MITII_HOOKS === 'true';
   const hooks = await loadWorkspaceHooks({
     workspaceRoot: options.cwd,
     enabled: hooksEnabled,
   });
-  const userSafetyRules = {
-    ...baseSafety,
-    enabled:
-      baseSafety.enabled ||
-      hooks.denyTools.length > 0 ||
-      hooks.denyCommandPrefixes.length > 0,
-    denyTools: [
-      ...new Set([...(baseSafety.denyTools ?? []), ...hooks.denyTools]),
-    ],
-    denyCommandPrefixes: [
-      ...new Set([
-        ...(baseSafety.denyCommandPrefixes ?? []),
-        ...hooks.denyCommandPrefixes,
-      ]),
-    ],
-  };
+  const hooksSafety =
+    hooks.denyTools.length > 0 || hooks.denyCommandPrefixes.length > 0
+      ? {
+          enabled: true as const,
+          denyTools: hooks.denyTools,
+          denyCommandPrefixes: hooks.denyCommandPrefixes,
+          denyPathScopes: [] as string[],
+          denyNetworkHosts: [] as string[],
+          protectedPathGlobs: [] as string[],
+        }
+      : undefined;
+  const userSafetyRules = mergeUserSafetyRules(
+    baseSafety,
+    hooksSafety,
+    compiledMode?.userSafetyRules,
+  );
+  const environmentBlock = formatEnvironmentDetailsBlock({
+    modeReminder: compiledMode
+      ? `${compiledMode.name} (${effectiveMode})`
+      : effectiveMode,
+  });
   const hostConfig = loadMitiiHostConfig(options.cwd);
   let loopPolicyThresholds;
   try {
@@ -343,7 +366,7 @@ export async function runAsk(options: {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     io.writeStderr(`${message}\n`);
-    return { code: 2, mode };
+    return { code: 2, mode: effectiveMode };
   }
   if (loopPolicyThresholds && !options.json) {
     io.writeStderr(
@@ -376,7 +399,7 @@ export async function runAsk(options: {
     client,
     start: {
       prompt: options.prompt,
-      mode,
+      mode: effectiveMode,
       origin,
       ...(options.autonomyPreset
         ? { autonomyPreset: options.autonomyPreset }
@@ -385,7 +408,10 @@ export async function runAsk(options: {
       ...hostApproval,
       ...unattendedSteering,
       ...(userSafetyRules.enabled ? { userSafetyRules } : {}),
-      ...(projectRules.length > 0 ? { projectRules: [...projectRules] } : {}),
+      ...(mergedProjectRules.length > 0
+        ? { projectRules: [...mergedProjectRules] }
+        : {}),
+      ...(environmentBlock ? { environment: [environmentBlock] } : {}),
       ...(options.requiredSkillIds && options.requiredSkillIds.length > 0
         ? { requiredSkillIds: [...options.requiredSkillIds] }
         : {}),
@@ -395,7 +421,7 @@ export async function runAsk(options: {
       ...(options.conversation && options.conversation.length > 0
         ? { conversation: options.conversation }
         : {}),
-      ...(mode !== 'ask' && options.taskList
+      ...(effectiveMode !== 'ask' && options.taskList
         ? { taskList: options.taskList }
         : {}),
       ...(loopPolicyThresholds
@@ -410,6 +436,6 @@ export async function runAsk(options: {
     memoryCapture,
   });
   reportOutcome(io, machineReadable, outcome);
-  return { code: outcome.exitCode, mode, outcome };
+  return { code: outcome.exitCode, mode: effectiveMode, outcome };
 }
 
