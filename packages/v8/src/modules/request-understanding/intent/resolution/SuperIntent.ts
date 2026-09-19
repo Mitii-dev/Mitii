@@ -186,37 +186,67 @@ export class SuperIntent {
           llmClassification
             .confidence,
       });
+    const llmMeetsAuthority =
+      llmClassification.confidence >= INTENT_CONSTANTS.HIGH_CONFIDENCE;
     const acceptedHighConfidenceLlmAction =
       this.acceptsHighConfidenceLlmAction({
         interactionIntent,
         llmClassification,
       });
+    /** On rule↔LLM conflict, ≥70% LLM ballot is authoritative for the route. */
+    const llmWinsConflict = llmMeetsAuthority && Boolean(ruleClassification);
 
     /*
      * Ask and Plan modes deterministically resolve the interaction boundary.
-     * A raw classifier conflict matters only in Agent mode.
+     * A raw classifier conflict matters only in Agent mode — unless the LLM
+     * is ≥ HIGH_CONFIDENCE (e.g. act vs rule question → trust LLM act).
      */
     const interactionConflict =
       mode === "agent" &&
       rawInteractionConflict &&
-      !acceptedHighConfidenceLlmAction;
+      !acceptedHighConfidenceLlmAction &&
+      !llmWinsConflict;
 
     const interactionAgreement = !interactionConflict;
+    const ruleInteractionAgrees = Boolean(
+      ruleClassification &&
+        ruleClassification.interactionIntent ===
+          llmClassification.interactionIntent,
+    );
 
     let agreementBonusApplied = 0;
     let disagreementPenaltyApplied = 0;
 
     if (taskAgreement) {
+      // Rule + LLM same task → confidence grows.
       agreementBonusApplied = this.options.agreementBonus;
-
-      const agreedIntent = llmClassification.primaryTaskIntent;
-
       this.adjustIntentScore(
         combinedScores,
-        agreedIntent,
+        llmClassification.primaryTaskIntent,
         agreementBonusApplied,
       );
-    } else if (ruleClassification && !acceptedHighConfidenceLlmAction) {
+      if (ruleInteractionAgrees) {
+        // Full agreement (task + interaction) — grow a bit more.
+        const extra = this.options.agreementBonus * 0.5;
+        agreementBonusApplied = this.clamp(agreementBonusApplied + extra);
+        this.adjustIntentScore(
+          combinedScores,
+          llmClassification.primaryTaskIntent,
+          extra,
+        );
+      }
+    } else if (ruleClassification && llmWinsConflict) {
+      // Conflict + LLM ≥70%: lock the ballot to the LLM primary.
+      this.promoteLlmPrimary(combinedScores, llmClassification);
+    } else if (ruleClassification && ruleInteractionAgrees) {
+      // Same interaction, different task — mild confidence growth on LLM pick.
+      agreementBonusApplied = this.options.agreementBonus * 0.5;
+      this.adjustIntentScore(
+        combinedScores,
+        llmClassification.primaryTaskIntent,
+        agreementBonusApplied,
+      );
+    } else if (ruleClassification && !llmWinsConflict) {
       disagreementPenaltyApplied = this.options.disagreementPenalty;
 
       const currentWinner = this.getSortedScores(combinedScores)[0];
@@ -478,12 +508,12 @@ export class SuperIntent {
       llmConfidence >= INTENT_CONSTANTS.HIGH_CONFIDENCE &&
       this.isActionableTaskIntent(llmPrimaryIntent)
     ) {
+      // ≥70% LLM act beats a conflicting rule "question" (and similar).
       return "act";
     }
 
     /*
-     * In Agent mode, keep ambiguous read/write conflicts read-only unless
-     * the LLM strongly identifies an actionable task above.
+     * Below HIGH_CONFIDENCE, keep ambiguous read/write conflicts read-only.
      */
     if (ruleInteraction === "question" || llmInteraction === "question") {
       return "question";
@@ -509,6 +539,32 @@ export class SuperIntent {
       llmClassification.confidence >= INTENT_CONSTANTS.HIGH_CONFIDENCE &&
       this.isActionableTaskIntent(llmClassification.primaryTaskIntent)
     );
+  }
+
+  /**
+   * When the LLM is ≥ HIGH_CONFIDENCE and disagrees with rules, lock the
+   * combined primary to the LLM ballot so blend math cannot flip it.
+   */
+  private promoteLlmPrimary(
+    scores: Map<TaskIntent, SuperIntentScore>,
+    llmClassification: IntentClassification,
+  ): void {
+    const intent = llmClassification.primaryTaskIntent;
+    const existing = scores.get(intent);
+    const floor = llmClassification.confidence;
+    if (existing) {
+      scores.set(intent, {
+        ...existing,
+        score: this.clamp(Math.max(existing.score, floor)),
+      });
+      return;
+    }
+    scores.set(intent, {
+      intent,
+      score: this.clamp(floor),
+      ruleScore: 0,
+      llmScore: floor,
+    });
   }
 
   private isActionableTaskIntent(intent: TaskIntent): boolean {
@@ -664,7 +720,8 @@ export class SuperIntent {
         options: preferredSlot.options.map((option) => ({
           id: option.id,
           label: option.label,
-          description: option.description ?? "",
+          // Never emit "" — AgentRunResult rejects empty description strings.
+          description: option.description?.trim() || option.label,
           confidence: 0,
         })),
       };

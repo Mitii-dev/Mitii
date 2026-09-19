@@ -61,4 +61,25 @@ describe("isWholeRequestReadOnlyConstraint", () => {
       ),
     ).toBe(false);
   });
+
+  it("treats 'dont remove all … keep a few' style tweaks as writes, not read-only", () => {
+    expect(
+      isWholeRequestReadOnlyConstraint(
+        "dont remove all the starts keep few but not too many",
+      ),
+    ).toBe(false);
+    expect(
+      isWholeRequestReadOnlyConstraint(
+        "Don't remove all the stars — keep a few, but not too many",
+      ),
+    ).toBe(false);
+  });
+
+  it("still treats 'dont remove any files' as whole-request read-only", () => {
+    expect(
+      isWholeRequestReadOnlyConstraint(
+        "Explain the starfield. Don't remove any files.",
+      ),
+    ).toBe(true);
+  });
 });

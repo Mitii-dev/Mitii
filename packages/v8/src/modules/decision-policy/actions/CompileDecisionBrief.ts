@@ -31,6 +31,8 @@ const REASON_PLAYBOOKS: Partial<Record<DecisionReasonCode, string>> = {
     "Follow the classified interaction and task intent; do not reinterpret the grant.",
   policy_facts_heuristic_conflict_clarify:
     "Resolve the act-vs-explain / target ambiguity before mutating.",
+  policy_llm_authority_write:
+    "Trusted ≥70% act/mutation ballot — apply the write; soft don't-X / make-a-plan / dump heuristics are not a veto.",
   long_prompt_visible_plan:
     "Keep a concise visible plan aligned with executable Change/Verify work.",
   broad_repair_visible_plan:

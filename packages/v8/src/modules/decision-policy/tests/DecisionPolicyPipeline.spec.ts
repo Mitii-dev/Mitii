@@ -708,6 +708,137 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.toolGrant.maximumWorkspaceEffect).toBe("none");
   });
 
+  it("routes agent 'dont remove all … keep a few' follow-ups to execute", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message: "dont remove all the starts keep few but not too many",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "style",
+          interactionIntent: "act",
+          confidence: 0.92,
+          taskAnalysis: {
+            clarity: "clear",
+            scope: "single_location",
+            risk: "low",
+            recommendsRepositoryDiscovery: true,
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("execute");
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("write");
+    expect(decision.reasonCodes).toContain("mutation_execute");
+    expect(decision.reasonCodes).not.toContain("repository_grounded_answer");
+  });
+
+  it("lets ≥70% LLM act win over soft make-a-plan phrasing", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message: "Make a plan to fix auth, then implement it in src/auth.ts",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "bugfix",
+          interactionIntent: "act",
+          confidence: 0.9,
+          needsClarification: false,
+          recommendsClarification: false,
+          status: "accepted",
+          taskAnalysis: {
+            clarity: "clear",
+            scope: "single_location",
+            risk: "low",
+            targets: [
+              { kind: "file", value: "src/auth.ts", explicit: true },
+            ],
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("execute");
+    expect(decision.reasonCodes).toContain("mutation_execute");
+    expect(decision.reasonCodes).toContain("policy_llm_authority_write");
+    expect(decision.reasonCodes).not.toContain("explicit_plan_request");
+  });
+
+  it("keeps hard plan-only even when the ballot is act ≥70%", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message: "Plan only: outline how to implement the 10 APIs.",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "feature",
+          interactionIntent: "act",
+          confidence: 0.92,
+          needsClarification: false,
+          recommendsClarification: false,
+          status: "accepted",
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("plan");
+    expect(decision.reasonCodes).toContain("explicit_plan_request");
+    expect(decision.toolGrant.maximumWorkspaceEffect).not.toBe("write");
+  });
+
+  it("lets ≥70% LLM act win over soft do-not-change phrasing on follow-ups", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message:
+          "Make the starfield denser again. Do not change the architecture.",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "style",
+          interactionIntent: "act",
+          confidence: 0.92,
+          needsClarification: false,
+          recommendsClarification: false,
+          status: "accepted",
+          taskAnalysis: {
+            clarity: "clear",
+            scope: "single_location",
+            risk: "low",
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("execute");
+    expect(decision.reasonCodes).toContain("mutation_execute");
+    expect(decision.reasonCodes).toContain("policy_llm_authority_write");
+  });
+
+  it("keeps hard read-only overrides even when LLM ballot is act ≥70%", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message: "Explain the starfield. Do not change any files.",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "style",
+          interactionIntent: "act",
+          confidence: 0.92,
+          needsClarification: false,
+          recommendsClarification: false,
+          status: "accepted",
+          taskAnalysis: {
+            clarity: "clear",
+            scope: "single_location",
+            risk: "low",
+            recommendsRepositoryDiscovery: true,
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).not.toBe("execute");
+    expect(decision.toolGrant.maximumWorkspaceEffect).not.toBe("write");
+    expect(decision.reasonCodes).not.toContain("mutation_execute");
+    expect(decision.reasonCodes).not.toContain("policy_llm_authority_write");
+  });
+
   it("routes agent 'Can you implement…?' to execute with write tools", () => {
     const decision = new DecisionPolicyPipeline().decide(
       createInput({
@@ -806,15 +937,16 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.reasonCodes).not.toContain("repository_grounded_answer");
   });
 
-  it("routes pasted console runtime dumps without a fix ask to diagnose", () => {
+  it("routes pasted console runtime dumps without a trusted write ballot to diagnose", () => {
     const decision = new DecisionPolicyPipeline().decide(
       createInput({
         mode: "agent",
         message:
           "main.5773c013a841b85b4e93.js:97 Please, specify correct config params:  \nObject\nIs\t@\tmain.5773c013a841b85b4e93.js:97",
         understanding: createUnderstanding({
-          primaryTaskIntent: "bugfix",
-          interactionIntent: "act",
+          primaryTaskIntent: "diagnose",
+          interactionIntent: "question",
+          confidence: 0.55,
           taskAnalysis: {
             scope: "multi_file",
             complexity: "moderate",
@@ -831,6 +963,36 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.toolGrant.allowedTools).not.toContain("apply_patch");
     expect(decision.reasonCodes).toContain("diagnosis_readonly");
     expect(decision.reasonCodes).not.toContain("mutation_execute");
+  });
+
+  it("executes pasted dumps when the ballot is ≥70% act/bugfix", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message:
+          "main.5773c013a841b85b4e93.js:97 Please, specify correct config params:  \nObject\nIs\t@\tmain.5773c013a841b85b4e93.js:97",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "bugfix",
+          interactionIntent: "act",
+          confidence: 0.9,
+          needsClarification: false,
+          recommendsClarification: false,
+          status: "accepted",
+          taskAnalysis: {
+            scope: "multi_file",
+            complexity: "moderate",
+            risk: "low",
+            clarity: "clear",
+            recommendsRepositoryDiscovery: true,
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("execute");
+    expect(decision.reasonCodes).toContain("mutation_execute");
+    expect(decision.reasonCodes).toContain("policy_llm_authority_write");
+    expect(decision.reasonCodes).not.toContain("diagnosis_readonly");
   });
 
   it("still executes when a console dump is paired with an explicit fix ask", () => {
@@ -1196,6 +1358,65 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.route).toBe("execute");
     expect(decision.runDisposition).toBe("continue");
     expect(decision.toolGrant.maximumWorkspaceEffect).toBe("write");
+  });
+
+  it("clarifies agent style asks when understanding flags low-confidence ambiguity", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message:
+          "In the website landing page I see so many start which is not so profesional can you make it professional and Elegant",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "style",
+          interactionIntent: "act",
+          confidence: 0.72,
+          confidenceMargin: 0.2,
+          status: "clarification_required",
+          recommendsClarification: true,
+          needsClarification: true,
+          taskAnalysis: {
+            clarity: "unclear",
+            recommendsTaskClarification: true,
+            scope: "multi_file",
+            risk: "low",
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("clarify");
+    expect(decision.runDisposition).toBe("clarification_required");
+    expect(decision.reasonCodes).toContain("clarification_material");
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("none");
+  });
+
+  it("clarifies agent fallback question ballots under unclear + low confidence", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message:
+          "In the website landing page I see so many start which is not so profesional can you make it professional and Elegant",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "question",
+          interactionIntent: "question",
+          confidence: 0.45,
+          confidenceMargin: 0.45,
+          status: "accepted",
+          recommendsClarification: false,
+          needsClarification: false,
+          taskAnalysis: {
+            clarity: "unclear",
+            recommendsTaskClarification: false,
+            scope: "unknown",
+            risk: "low",
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("clarify");
+    expect(decision.runDisposition).toBe("clarification_required");
+    expect(decision.reasonCodes).toContain("clarification_material");
   });
 
   it("clarifies investigate-vs-fix forks even when the message looks actionable", () => {

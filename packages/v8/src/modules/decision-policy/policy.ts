@@ -7,7 +7,9 @@ export const DECISION_POLICY_THRESHOLDS = {
   lowIntentConfidence: 0.45,
   /**
    * When understanding already set needsClarification, still ask if confidence
-   * is below this (covers investigate-vs-fix forks around ~0.6).
+   * is below this (covers investigate-vs-fix forks and soft ambiguity).
+   * Kept slightly above HIGH_CONFIDENCE (0.70) so a 70% LLM route win does not
+   * silently skip an explicit clarify flag in the medium band.
    */
   clarifyWhenFlaggedBelowConfidence: 0.75,
   /** Above this margin, competing intents are treated as clear enough to proceed. */
@@ -15,8 +17,9 @@ export const DECISION_POLICY_THRESHOLDS = {
   /**
    * When policyFactsFirst is on, treat understanding as authoritative above
    * this confidence (and margin) except for documented safety overrides.
+   * Aligned with intent HIGH_CONFIDENCE (LLM wins rule conflicts at ≥0.70).
    */
-  factsFirstMinConfidence: 0.74,
+  factsFirstMinConfidence: 0.7,
   factsFirstMinMargin: 0.12,
   /** Estimated file count above which multi-file work gets an internal plan. */
   multiFilePlanThreshold: 2,

@@ -4,6 +4,7 @@ import {
   amendMessageWithClarification,
   buildClarificationPayload,
 } from "../buildClarificationPayload";
+import { clarificationOptionSchema } from "../../contracts/output/AgentRunResult";
 import type { RequestUnderstandingResult } from "../../../../modules/request-understanding";
 import {
   MITII_HOST_CONTEXT_MARKER,
@@ -109,6 +110,52 @@ describe("buildClarificationPayload", () => {
     );
     expect(payload.clarificationPrompt).toContain("unresolved reference");
     expect(payload.clarificationPrompt).not.toMatch(/^mode=/);
+  });
+
+  it("omits empty option descriptions so AgentRunResult validation succeeds", () => {
+    const understanding = baseUnderstanding();
+    understanding.intent.clarification = {
+      question: "What do you mean by 'so many start'?",
+      slotKind: "target",
+      options: [
+        {
+          id: "target:stars-ratings",
+          label: "stars/ratings",
+          description: "",
+          confidence: 0,
+        },
+        {
+          id: "target:cta-buttons",
+          label: "start or CTA buttons",
+          description: "   ",
+          confidence: 0,
+        },
+        {
+          id: "target:decorative",
+          label: "decorative elements",
+          description: "Sparkles and particles",
+          confidence: 0,
+        },
+      ],
+    };
+
+    const payload = buildClarificationPayload(understanding, undefined, {
+      ballotV2: true,
+    });
+
+    expect(payload.clarificationOptions).toEqual([
+      { id: "target:stars-ratings", label: "stars/ratings" },
+      { id: "target:cta-buttons", label: "start or CTA buttons" },
+      {
+        id: "target:decorative",
+        label: "decorative elements",
+        description: "Sparkles and particles",
+      },
+    ]);
+
+    for (const option of payload.clarificationOptions) {
+      expect(() => clarificationOptionSchema.parse(option)).not.toThrow();
+    }
   });
 });
 

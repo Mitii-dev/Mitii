@@ -14,6 +14,10 @@ import type { DiagnosticSummary } from "../../../contracts";
 import { resolveIntentClassifierMaximumOutputTokens } from "../../resolveIntentClassifierMaximumOutputTokens";
 import { LLM_INTENT_CLASSIFICATION_SYSTEM_PROMPT } from "./prompts";
 import { intersectRecommendedSkillTags } from "../../intersectRecommendedSkillTags";
+import {
+  coerceLlmClassificationJson,
+  stripTaskHints,
+} from "./coerceLlmClassification";
 
 
 export class LlmIntentClassifier {
@@ -233,14 +237,21 @@ export class LlmIntentClassifier {
           continue;
         }
 
-        const parsed: unknown =
-          JSON.parse(
-            candidate,
-          );
+        const parsed: unknown = JSON.parse(candidate);
+        const coerced = coerceLlmClassificationJson(parsed);
 
-        return this.normalizeClassification(
-          intentClassificationSchema.parse(parsed),
-        );
+        try {
+          return this.normalizeClassification(
+            intentClassificationSchema.parse(coerced),
+          );
+        } catch (hintsError) {
+          // Preserve core ballot (act/style + needsClarification) when only
+          // taskHints drifted — do not collapse to question fallback.
+          lastError = hintsError;
+          return this.normalizeClassification(
+            intentClassificationSchema.parse(stripTaskHints(coerced)),
+          );
+        }
       } catch (error) {
         lastError = error;
       }

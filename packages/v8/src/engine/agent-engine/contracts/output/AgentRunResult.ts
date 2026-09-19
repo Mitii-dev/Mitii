@@ -47,7 +47,14 @@ export const clarificationOptionSchema = z
   .object({
     id: z.string().min(1),
     label: z.string().min(1),
-    description: z.string().min(1).optional(),
+    // Coerce "" → undefined so slot ballots without descriptions do not fail the run.
+    description: z
+      .string()
+      .optional()
+      .transform((value) => {
+        const trimmed = value?.trim();
+        return trimmed && trimmed.length > 0 ? trimmed : undefined;
+      }),
   })
   .strict();
 

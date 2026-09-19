@@ -77,11 +77,7 @@ export function buildClarificationPayload(
     );
     return {
       clarificationPrompt: truncatePrompt(fromIntent.question),
-      clarificationOptions: sessionOptions.map((option) => ({
-        id: option.id,
-        label: option.label,
-        description: option.description,
-      })),
+      clarificationOptions: toUiOptions(sessionOptions),
       clarificationSession: {
         question: fromIntent.question,
         slotKind: fromIntent.slotKind ?? "intent",
@@ -107,11 +103,7 @@ export function buildClarificationPayload(
       clarificationPrompt: truncatePrompt(
         fromIntent?.question ?? "What outcome do you want from this request?",
       ),
-      clarificationOptions: sessionOptions.map((option) => ({
-        id: option.id,
-        label: option.label,
-        description: option.description,
-      })),
+      clarificationOptions: toUiOptions(sessionOptions),
       clarificationSession: {
         question:
           fromIntent?.question ?? "What outcome do you want from this request?",
@@ -143,6 +135,23 @@ export function buildClarificationPayload(
   };
 }
 
+/**
+ * UI / AgentRunResult require description to be absent or non-empty.
+ * Never emit "" — zod `.min(1).optional()` rejects empty strings.
+ */
+function toUiOptions(
+  options: readonly ClarificationSessionOption[],
+): ClarificationOptionPayload[] {
+  return options.map((option) => {
+    const description = option.description?.trim();
+    return {
+      id: option.id,
+      label: option.label,
+      ...(description ? { description } : {}),
+    };
+  });
+}
+
 function buildFromAmbiguousSlots(
   understanding: RequestUnderstandingResult,
 ): ClarificationPayload | undefined {
@@ -163,11 +172,7 @@ function buildFromAmbiguousSlots(
       clarificationPrompt: truncatePrompt(
         understanding.intent.clarification.question,
       ),
-      clarificationOptions: sessionOptions.map((option) => ({
-        id: option.id,
-        label: option.label,
-        description: option.description,
-      })),
+      clarificationOptions: toUiOptions(sessionOptions),
       clarificationSession: {
         question: understanding.intent.clarification.question,
         slotKind: understanding.intent.clarification.slotKind,
@@ -192,11 +197,7 @@ function buildFromAmbiguousSlots(
   );
   return {
     clarificationPrompt: truncatePrompt(preferred.question),
-    clarificationOptions: sessionOptions.map((option) => ({
-      id: option.id,
-      label: option.label,
-      description: option.description,
-    })),
+    clarificationOptions: toUiOptions(sessionOptions),
     clarificationSession: {
       question: preferred.question,
       slotKind: preferred.kind,
