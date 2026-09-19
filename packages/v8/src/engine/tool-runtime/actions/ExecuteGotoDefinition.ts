@@ -7,6 +7,8 @@ import {
   findReferencesOutputSchema,
   gotoDefinitionInputSchema,
   gotoDefinitionOutputSchema,
+  hoverSymbolInputSchema,
+  hoverSymbolOutputSchema,
 } from "../internal/ToolCatalog";
 
 export async function executeGotoDefinition(params: {
@@ -35,6 +37,48 @@ export async function executeFindReferences(params: {
     inputSchema: findReferencesInputSchema,
     outputSchema: findReferencesOutputSchema,
   });
+}
+
+export async function executeHoverSymbol(params: {
+  arguments: unknown;
+  grant: ToolGrant;
+  workspaceRoot: string;
+  codeNavigation?: CodeNavigationPort;
+}): Promise<{ output: unknown; truncated: boolean; redacted: boolean }> {
+  if (!params.codeNavigation) {
+    throw new ToolRuntimeError(
+      "misconfigured_ports",
+      "CodeNavigationPort is required for hover_symbol.",
+    );
+  }
+
+  const input = hoverSymbolInputSchema.parse(params.arguments);
+  const pipeline = new CodeNavigationPipeline({
+    navigation: params.codeNavigation,
+  });
+  const result = await pipeline.navigate({
+    schemaVersion: 1,
+    operation: "hover",
+    query: {
+      relativePath: input.path,
+      line: input.line,
+      column: input.column ?? 1,
+      ...(input.symbolName ? { symbolName: input.symbolName } : {}),
+    },
+  });
+
+  const output = hoverSymbolOutputSchema.parse({
+    path: input.path,
+    provider: result.provider,
+    ...(result.hover ? { hover: result.hover } : {}),
+    truncated: false,
+  });
+
+  return {
+    output,
+    truncated: false,
+    redacted: false,
+  };
 }
 
 async function executeCodeNavigationTool(params: {

@@ -198,6 +198,8 @@ export {
   promptConstructionResultSchema,
   promptInstructionBlockSchema,
   promptInstructionsSchema,
+  FRAGMENT_POLICY,
+  assembleFragments,
 } from "./modules/prompt-construction";
 export type {
   PromptConstructionInput,
@@ -205,6 +207,8 @@ export type {
   PromptBudgetReport,
   PromptInstructionBlock,
   PromptInstructions,
+  ContextualFragment,
+  RenderedFragment,
 } from "./modules/prompt-construction";
 
 export type {
@@ -584,6 +588,11 @@ export {
   composeReadOnlyAgentEngine,
   InMemoryRunCheckpointStore,
   FileRunCheckpointStore,
+  InMemoryContextEpochStore,
+  initializeContextEpoch,
+  reconcileContextEpoch,
+  replaceContextEpoch,
+  markContextEpochForReplacement,
   AgentEngineError,
   DEFAULT_TOOL_DEFINITIONS,
 } from "./engine/agent-engine";
@@ -599,6 +608,8 @@ export type {
   ResolvedPolicyLabOverrides,
   PromotePolicyLabInput,
   PromotePolicyLabResult,
+  ContextEpoch,
+  ContextEpochStorePort,
 } from "./engine/agent-engine";
 export type {
   AgentEngineStartInput,

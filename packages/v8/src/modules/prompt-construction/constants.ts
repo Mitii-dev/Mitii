@@ -50,6 +50,7 @@ export const PROMPT_REASON_CODES = [
   "conversation_compacted",
   "user_request_truncated",
   "blocked_required_overflow",
+  "fragment_review_threshold",
 ] as const;
 
 export const PROMPT_CONSTRUCTION_ERROR_CODES = [

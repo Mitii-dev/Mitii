@@ -1,28 +1,35 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  TOOL_LOOP_MAX_OUTPUT_TOKENS_BY_BAND,
-  resolveToolLoopMaxOutputTokens,
-} from "../../toolLoopOutputCaps";
+import { resolveWindowBudgetPolicy } from "../../policy";
+import { resolveToolLoopMaxOutputTokens } from "../../toolLoopOutputCaps";
 
 describe("toolLoopOutputCaps", () => {
-  it("scales ceilings by window band", () => {
-    expect(resolveToolLoopMaxOutputTokens(35_000)).toBe(
-      TOOL_LOOP_MAX_OUTPUT_TOKENS_BY_BAND.compact,
-    );
-    expect(resolveToolLoopMaxOutputTokens(45_000)).toBe(8_192);
-    expect(resolveToolLoopMaxOutputTokens(50_000)).toBe(10_240);
-    expect(resolveToolLoopMaxOutputTokens(65_000)).toBe(10_240);
-    expect(resolveToolLoopMaxOutputTokens(100_000)).toBe(12_288);
-    expect(resolveToolLoopMaxOutputTokens(200_000)).toBe(12_288);
+  it("scales continuously with context window × outputWindowCapRatio", () => {
+    for (const window of [30_000, 45_000, 65_000, 100_000, 200_000, 256_000]) {
+      const { policy } = resolveWindowBudgetPolicy({
+        contextWindowTokens: window,
+      });
+      expect(resolveToolLoopMaxOutputTokens(window)).toBe(
+        Math.floor(window * policy.outputWindowCapRatio),
+      );
+    }
   });
 
-  it("keeps compact below standard below wide", () => {
-    expect(TOOL_LOOP_MAX_OUTPUT_TOKENS_BY_BAND.compact).toBeLessThan(
-      TOOL_LOOP_MAX_OUTPUT_TOKENS_BY_BAND.standard,
+  it("grows as the advertised window grows", () => {
+    expect(resolveToolLoopMaxOutputTokens(30_000)).toBeLessThan(
+      resolveToolLoopMaxOutputTokens(65_000),
     );
-    expect(TOOL_LOOP_MAX_OUTPUT_TOKENS_BY_BAND.standard).toBeLessThan(
-      TOOL_LOOP_MAX_OUTPUT_TOKENS_BY_BAND.wide,
+    expect(resolveToolLoopMaxOutputTokens(65_000)).toBeLessThan(
+      resolveToolLoopMaxOutputTokens(128_000),
     );
+    expect(resolveToolLoopMaxOutputTokens(128_000)).toBeLessThan(
+      resolveToolLoopMaxOutputTokens(256_000),
+    );
+  });
+
+  it("honors host outputWindowCapRatio overrides", () => {
+    expect(
+      resolveToolLoopMaxOutputTokens(100_000, { outputWindowCapRatio: 0.1 }),
+    ).toBe(10_000);
   });
 });

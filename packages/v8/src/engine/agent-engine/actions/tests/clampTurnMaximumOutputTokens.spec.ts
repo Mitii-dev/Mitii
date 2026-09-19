@@ -33,8 +33,8 @@ describe("clampTurnMaximumOutputTokens", () => {
     ).toBe(1_900);
   });
 
-  it("caps tool-loop turns while still allowing larger patch batches", () => {
-    // Compact (<50k): 8k ceiling when leftover is larger.
+  it("caps tool-loop turns proportionally to the context window", () => {
+    // Compact: floor(45_000 × 0.3) when leftover is larger.
     expect(
       clampTurnMaximumOutputTokens({
         reservedOutputTokens: 29_999,
@@ -42,9 +42,9 @@ describe("clampTurnMaximumOutputTokens", () => {
         usedInputTokens: 20_000,
         toolLoop: true,
       }),
-    ).toBe(8_192);
+    ).toBe(13_500);
 
-    // Standard (50k–<100k): 10k ceiling.
+    // Standard: floor(65_000 × 0.28).
     expect(
       clampTurnMaximumOutputTokens({
         reservedOutputTokens: 29_999,
@@ -52,9 +52,9 @@ describe("clampTurnMaximumOutputTokens", () => {
         usedInputTokens: 10_000,
         toolLoop: true,
       }),
-    ).toBe(10_240);
+    ).toBe(18_200);
 
-    // Wide (≥100k): 12k ceiling — still far below full leftover.
+    // Wide: floor(128_000 × 0.25) — still below full leftover.
     expect(
       clampTurnMaximumOutputTokens({
         reservedOutputTokens: 49_999,
@@ -62,7 +62,7 @@ describe("clampTurnMaximumOutputTokens", () => {
         usedInputTokens: 20_000,
         toolLoop: true,
       }),
-    ).toBe(12_288);
+    ).toBe(32_000);
   });
 
   it("never collapses a usable leftover window to a 1-token turn", () => {

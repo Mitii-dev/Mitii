@@ -243,6 +243,7 @@ describe("model tool definition single source", () => {
     expect(readOnly).toContain("glob_files");
     expect(readOnly).toContain("goto_definition");
     expect(readOnly).toContain("find_references");
+    expect(readOnly).toContain("hover_symbol");
     expect(readOnly).toContain("analyze_change_impact");
     expect(readOnly).not.toContain("apply_patch");
     expect(readOnly).not.toContain("delete_file");

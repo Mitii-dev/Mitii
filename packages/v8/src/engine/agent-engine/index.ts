@@ -90,6 +90,24 @@ export type {
 } from "./internal/RunCheckpoint";
 
 export {
+  CONTEXT_EPOCH_SOURCE_KEYS,
+  InMemoryContextEpochStore,
+  buildContextEpochSnapshot,
+  extractBaselineSystemText,
+  hashContextText,
+  initializeContextEpoch,
+  markContextEpochForReplacement,
+  reconcileContextEpoch,
+  replaceContextEpoch,
+} from "./internal/context-epoch";
+export type {
+  ContextEpoch,
+  ContextEpochReconcileResult,
+  ContextEpochSnapshot,
+  ContextEpochStorePort,
+} from "./internal/context-epoch";
+
+export {
   agentEngineStartInputSchema,
   agentEngineResumeInputSchema,
   agentRunBudgetSchema,

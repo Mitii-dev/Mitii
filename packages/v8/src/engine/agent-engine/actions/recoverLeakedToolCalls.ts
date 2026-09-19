@@ -8,6 +8,7 @@ const SUPPORTED_LEAKED_TOOL_TAGS = new Set([
   "list_directory",
   "goto_definition",
   "find_references",
+  "hover_symbol",
   "analyze_change_impact",
 ]);
 
@@ -116,7 +117,7 @@ export function recoverLeakedToolCallsFromMarkup(params: {
 
   if (
     toolCalls.length === 0 &&
-    /<\s*(?:read_file|search_files|glob_files|list_directory|goto_definition|find_references|analyze_change_impact)\b/i.test(
+    /<\s*(?:read_file|search_files|glob_files|list_directory|goto_definition|find_references|hover_symbol|analyze_change_impact)\b/i.test(
       content,
     )
   ) {

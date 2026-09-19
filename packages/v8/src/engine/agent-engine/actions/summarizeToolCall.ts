@@ -69,6 +69,7 @@ export function summarizeToolCall(
         .join(" ");
     case "goto_definition":
     case "find_references":
+    case "hover_symbol":
       return [
         path ? `path=${path}` : undefined,
         typeof args.line === "number" ? `line=${args.line}` : undefined,

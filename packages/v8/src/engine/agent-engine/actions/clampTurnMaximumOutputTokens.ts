@@ -12,14 +12,15 @@ const MIN_TURN_OUTPUT_TOKENS = 256;
  * 2. Scaled leftover (`dynamicOutputWindowRatio`)
  * 3. Generation ceiling / host override (`reservedOutputTokens`)
  *
- * Tool-loop turns also apply a hard cap so local models cannot turn leftover
- * context into a long analysis budget instead of calling tools.
+ * Tool-loop turns also apply a window-proportional ceiling
+ * (`W × outputWindowCapRatio`) so leftover context cannot open a full
+ * analysis budget mid-loop while still scaling from ~30k to ~256k windows.
  */
 export function clampTurnMaximumOutputTokens(params: {
   reservedOutputTokens: number;
   contextWindowTokens: number;
   usedInputTokens: number;
-  /** Mid-loop / tool-capable turns use a tighter band-scaled ceiling. */
+  /** Mid-loop / tool-capable turns use a window-proportional ceiling. */
   toolLoop?: boolean;
 }): number {
   const contextWindowTokens = Math.max(1, Math.floor(params.contextWindowTokens));

@@ -78,6 +78,10 @@ function createRuntime(options?: {
           symbolName: "n",
         },
       ],
+      hover: async () => ({
+        contents: "const n: number",
+        language: "typescript",
+      }),
     },
     repoGraphs: {
       loadGraphs: async () => [createGraph()],
@@ -253,6 +257,20 @@ describe("ToolRuntimePipeline", () => {
       (references.output as { locations: Array<{ path?: string }> })
         .locations[0]?.path,
     ).toBe("src/other.ts");
+
+    const hover = await runtime.execute({
+      schemaVersion: 1,
+      callId: "nav3",
+      toolName: "hover_symbol",
+      arguments: { path: "src/util.ts", line: 1 },
+      grant,
+      workspaceRoot: WORKSPACE,
+    });
+    expect(hover.status).toBe("succeeded");
+    expect(
+      (hover.output as { hover?: { contents: string } }).hover?.contents
+        .length,
+    ).toBeGreaterThan(0);
 
     const impact = await runtime.execute({
       schemaVersion: 1,
