@@ -52,6 +52,12 @@ function markerVariant(item: ActivityEventPayload): string {
   return 'done';
 }
 
+const BRANCH_VARIANTS = ['arc', 'elbow', 'reach', 'twig'] as const;
+
+function branchVariant(index: number): (typeof BRANCH_VARIANTS)[number] {
+  return BRANCH_VARIANTS[index % BRANCH_VARIANTS.length]!;
+}
+
 function isActionKind(kind: ActivityEventPayload['kind']): boolean {
   return kind === 'tool' || kind === 'decision' || kind === 'warning' || kind === 'suspended';
 }
@@ -224,11 +230,12 @@ export function AgentTimeline({
       aria-label="Agent activity"
     >
       {events.map((item, index) => {
+        const branch = branchVariant(index);
         if (item.kind === 'mcp_app' && item.mcpApp) {
           return (
             <li
               key={item.id}
-              className="timeline__row timeline__row--done timeline__row--kind-mcp_app"
+              className={`timeline__row timeline__row--done timeline__row--kind-mcp_app timeline__row--branch-${branch}`}
             >
               <span className="timeline__marker" aria-hidden="true" />
               <div className="timeline__row-text timeline__row-text--block">
@@ -249,6 +256,7 @@ export function AgentTimeline({
               'timeline__row',
               `timeline__row--${markerVariant(item)}`,
               `timeline__row--kind-${item.kind}`,
+              `timeline__row--branch-${branch}`,
               item.kind === 'tool' ? 'timeline__row--tool' : '',
               isActiveThinking ? 'timeline__row--thinking-active' : '',
               isCommandEvent(item) ? 'timeline__row--command' : '',

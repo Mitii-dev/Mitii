@@ -40,11 +40,7 @@ import { approvalModeUiPatch } from './approvalPresets';
 import { OnboardingPanel } from './components/OnboardingPanel';
 import { PendingPlanBanner } from './components/PendingPlanBanner';
 import { PlanFollowStrip } from './components/PlanPanel';
-import {
-  ComposerReviewStrip,
-  composerNeedsReviewStrip,
-  selectLatestRunChanges,
-} from './review/ComposerReviewStrip';
+import { ComposerReviewStrip } from './review/ComposerReviewStrip';
 import { SettingsErrorBoundary } from './components/SettingsErrorBoundary';
 import { SettingsPanel } from './components/SettingsPanel';
 import { WorkspaceBanner } from './components/WorkspaceBanner';
@@ -57,7 +53,6 @@ import {
 import {
   enabledMcpSuggestItems,
   filterMcpSuggestions,
-  insertMcpMention,
   togglePinnedMcpServer,
 } from './mcpSuggest';
 import { detectMentionSuggest } from './mentionSuggest';
@@ -698,6 +693,17 @@ function uid(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
+/** Stable fingerprint of git working-tree paths for Code Review re-run gating. */
+function reviewGitFileKey(
+  files: readonly { path: string; status: string }[] | null | undefined,
+): string {
+  if (!files?.length) return '';
+  return [...files]
+    .map((f) => `${f.path}:${f.status}`)
+    .sort()
+    .join('|');
+}
+
 /** Operational budget/context notices — not actionable UI warnings. */
 function isNoiseWarning(detail: string): boolean {
   return /context (file|item) limit prevented|context token budget prevented|default token estimate was used|leftover context was smaller|turn output tokens reduced/i.test(
@@ -886,6 +892,12 @@ export function App() {
   const [pinnedMcpServerIds, setPinnedMcpServerIds] = useState<string[]>([]);
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [running, setRunning] = useState(false);
+  const [codeReviewRunning, setCodeReviewRunning] = useState(false);
+  const codeReviewRunningRef = useRef(false);
+  /** Git file fingerprint from the last completed code review; blocks re-run until dismiss or new files. */
+  const [codeReviewFileKey, setCodeReviewFileKey] = useState<string | null>(
+    null,
+  );
   const runningRef = useRef(false);
   runningRef.current = running;
   const [error, setError] = useState<string | null>(null);
@@ -946,6 +958,8 @@ export function App() {
   const pendingPlanRef = useRef<PlanView | null>(null);
 
   const [review, setReview] = useState<ReviewDiffView | null>(null);
+  const reviewRef = useRef<ReviewDiffView | null>(null);
+  reviewRef.current = review;
   const [reviewFindings, setReviewFindings] = useState<
     Array<{
       path: string;
@@ -1287,6 +1301,9 @@ export function App() {
           break;
         case 'run.started': {
           setRunning(true);
+          const isCodeReview = msg.mode === 'review';
+          setCodeReviewRunning(isCodeReview);
+          codeReviewRunningRef.current = isCodeReview;
           setError(null);
           setTokenUsage((prev) => ({ ...prev, live: true }));
           // Keep a pending-plan handoff visible, but clear stale plans for new runs.
@@ -1375,6 +1392,8 @@ export function App() {
         }
         case 'run.suspended': {
           setRunning(false);
+          codeReviewRunningRef.current = false;
+          setCodeReviewRunning(false);
           const id = activeAssistantId.current;
           if (!id) break;
           setTurns((prev) =>
@@ -1393,6 +1412,13 @@ export function App() {
           break;
         case 'run.result': {
           setRunning(false);
+          if (codeReviewRunningRef.current) {
+            setCodeReviewFileKey(
+              reviewGitFileKey(reviewRef.current?.files),
+            );
+          }
+          codeReviewRunningRef.current = false;
+          setCodeReviewRunning(false);
           const id = activeAssistantId.current;
           activeAssistantId.current = null;
           if (msg.plan !== undefined) setPlan(msg.plan ?? null);
@@ -1441,10 +1467,14 @@ export function App() {
         }
         case 'run.cancelled':
           setRunning(false);
+          codeReviewRunningRef.current = false;
+          setCodeReviewRunning(false);
           break;
         case 'error':
           setError(msg.message);
           setRunning(false);
+          codeReviewRunningRef.current = false;
+          setCodeReviewRunning(false);
           setSettingsSaving(false);
           break;
         case 'paths.results':
@@ -1596,6 +1626,11 @@ export function App() {
         }
         case 'setReviewFindings':
           setReviewFindings(msg.findings);
+          if (msg.findings.length > 0) {
+            setCodeReviewFileKey(
+              reviewGitFileKey(reviewRef.current?.files),
+            );
+          }
           break;
         case 'setMemories':
           setMemories(msg.memories);
@@ -1852,8 +1887,8 @@ export function App() {
   };
 
   const insertMention = (path: string) => {
-    const replaced = prompt.replace(/@([\w./_-]*)$/, `@${path} `);
-    setPrompt(replaced);
+    // Pin only — strip the trailing @partial from the prompt.
+    setPrompt((prev) => prev.replace(/@([\w./_-]*)$/, '').replace(/[ \t]+$/g, ''));
     dismissedAutoPinsRef.current.delete(path);
     setPinned((prev) => {
       const existing = prev.find((p) => p.path === path);
@@ -1871,17 +1906,12 @@ export function App() {
   };
 
   const insertSkillMention = (skillId: string) => {
-    let next = prompt.replace(
-      /@skill:?[a-z0-9_.-]*$/i,
-      `@skill:${skillId} `,
+    setPrompt((prev) =>
+      prev
+        .replace(/@skill:?[a-z0-9_.-]*$/i, '')
+        .replace(/@$/i, '')
+        .replace(/[ \t]+$/g, ''),
     );
-    if (next === prompt && /@$/i.test(prompt)) {
-      next = prompt.replace(/@$/i, `@skill:${skillId} `);
-    }
-    if (next === prompt) {
-      next = `${prompt.trimEnd()} @skill:${skillId} `;
-    }
-    setPrompt(next);
     setPinnedSkillIds((prev) =>
       prev.includes(skillId) ? prev : [...prev, skillId].slice(0, 3),
     );
@@ -1907,7 +1937,12 @@ export function App() {
 
   const selectMcp = (serverId: string) => {
     if (/@mcp:?[a-z0-9_-]*$/i.test(prompt) || /@$/i.test(prompt)) {
-      setPrompt(insertMcpMention(prompt, serverId));
+      setPrompt((prev) =>
+        prev
+          .replace(/@mcp:?[a-z0-9_-]*$/i, '')
+          .replace(/@$/i, '')
+          .replace(/[ \t]+$/g, ''),
+      );
     }
     setPinnedMcpServerIds((prev) => togglePinnedMcpServer(prev, serverId));
     setSuggestLoading(false);
@@ -2009,6 +2044,7 @@ export function App() {
 
   const dismissReviewFindings = useCallback(() => {
     setReviewFindings([]);
+    setCodeReviewFileKey(null);
     postToHost({ type: 'dismissReviewFindings' });
   }, []);
 
@@ -2661,7 +2697,14 @@ export function App() {
               bottomRef={bottomRef}
             />
 
-            <div className="composer-dock">
+            <div
+              className="composer-dock"
+              style={
+                {
+                  '--composer-mode-color': currentModeColor,
+                } as CSSProperties
+              }
+            >
               <PendingPlanBanner
                 visible={Boolean(pendingPlan) && mode !== 'agent'}
                 onExecuteInAgent={executePendingPlan}
@@ -2678,24 +2721,69 @@ export function App() {
                   onOpenPlanFile={openFile}
                 />
               ) : null}
-              <div
-                className={`composer-box${
-                  composerNeedsReviewStrip({
-                    chatFileCount:
-                      selectLatestRunChanges(turns)?.files.length ?? 0,
-                    gitFileCount: review?.files.length ?? 0,
-                    findingsCount: reviewFindings.length,
-                    codeReviewEnabled: ui.features.codeReviewButton === true,
-                  })
-                    ? ' composer-box--with-review'
-                    : ''
-                }`}
-                style={
-                  {
-                    '--composer-mode-color': currentModeColor,
-                  } as CSSProperties
-                }
-              >
+
+              {ui.features.codeReviewButton === true ? (
+                <div className="composer-code-review-row">
+                  <div className="composer-code-review-row__inner">
+                    {(review?.files.length ?? 0) > 0 ? (
+                      <span className="composer-git-count">
+                        {review!.files.length}{' '}
+                        {review!.files.length === 1 ? 'File' : 'Files'}
+                      </span>
+                    ) : null}
+                    {reviewFindings.length > 0 ? (
+                      <button
+                        type="button"
+                        className="composer-code-review-link"
+                        disabled={running}
+                        title="Clear review findings"
+                        onClick={() => dismissReviewFindings()}
+                      >
+                        Dismiss
+                      </button>
+                    ) : null}
+                    {reviewFindings.some((f) => f.status !== 'fixed') ? (
+                      <button
+                        type="button"
+                        className="composer-code-review-btn composer-code-review-btn--fix"
+                        disabled={running}
+                        title="Fix all open findings in Agent mode"
+                        onClick={() => fixReviewFindings()}
+                      >
+                        Fix all
+                      </button>
+                    ) : null}
+                    {(() => {
+                      const gitKey = reviewGitFileKey(review?.files);
+                      const hasGitFiles = (review?.files.length ?? 0) > 0;
+                      const blockedByPriorReview =
+                        codeReviewFileKey !== null &&
+                        codeReviewFileKey === gitKey;
+                      const canRunCodeReview =
+                        hasGitFiles &&
+                        !running &&
+                        !blockedByPriorReview;
+                      return (
+                        <button
+                          type="button"
+                          className="composer-code-review-btn"
+                          disabled={!canRunCodeReview}
+                          title={
+                            blockedByPriorReview
+                              ? 'Dismiss findings or wait for new git changes before running Code Review again'
+                              : 'LLM code review of all git working-tree changes'
+                          }
+                          onClick={() => runCodeReview()}
+                        >
+                          {codeReviewRunning ? 'Reviewing…' : 'Code Review'}
+                        </button>
+                      );
+                    })()}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="composer-box">
                 <ComposerReviewStrip
                   review={review}
                   findings={reviewFindings}
@@ -2882,7 +2970,7 @@ export function App() {
                   ref={promptTextareaRef}
                   rows={1}
                   value={prompt}
-                  placeholder="Message Mitii… @ for files, skills, MCP"
+                  placeholder="Message Mitii... @ for files, skills, MCP"
                   onChange={(e) => onPromptChange(e.target.value)}
                   onKeyDown={(e) => {
                     const activeSuggestions =
@@ -2945,7 +3033,7 @@ export function App() {
                   }}
                 />
                 <div className="composer-footer">
-                  <div className="composer-dropdown-row">
+                  <div className="composer-controls-row">
                     <ComposerControls
                       mode={mode}
                       approvalMode={approvalMode}
@@ -2958,31 +3046,6 @@ export function App() {
                       onApprovalModeChange={changeApprovalMode}
                       onThoroughnessChange={changeThoroughness}
                     />
-                  </div>
-                  <div className="composer-utility-row">
-                    <div className="composer-left">
-                      <div className="composer-meta-group">
-                        <TokenMeter usage={tokenUsage} placement="above" />
-                        <ModelQuickSelect
-                          label={selectedModelLabel}
-                          value={provider.model}
-                          custom={selectedModelIsCustom}
-                          options={modelOptions}
-                          onSelect={(model) => {
-                            setCustomModel(false);
-                            saveModel(model);
-                          }}
-                          onCustomMode={() => setCustomModel(true)}
-                          onDraftChange={(model) =>
-                            updateProvider((p) => ({ ...p, model }))
-                          }
-                          onCommitCustom={() => {
-                            const model = providerRef.current.model.trim();
-                            if (model) saveModel(model);
-                          }}
-                        />
-                      </div>
-                    </div>
                     <div className="composer-actions">
                       <IconButton
                         label="Attach skill"
@@ -3026,6 +3089,27 @@ export function App() {
                         </IconButton>
                       )}
                     </div>
+                  </div>
+                  <div className="composer-meta-row">
+                    <TokenMeter usage={tokenUsage} placement="above" />
+                    <ModelQuickSelect
+                      label={selectedModelLabel}
+                      value={provider.model}
+                      custom={selectedModelIsCustom}
+                      options={modelOptions}
+                      onSelect={(model) => {
+                        setCustomModel(false);
+                        saveModel(model);
+                      }}
+                      onCustomMode={() => setCustomModel(true)}
+                      onDraftChange={(model) =>
+                        updateProvider((p) => ({ ...p, model }))
+                      }
+                      onCommitCustom={() => {
+                        const model = providerRef.current.model.trim();
+                        if (model) saveModel(model);
+                      }}
+                    />
                   </div>
                 </div>
               </div>

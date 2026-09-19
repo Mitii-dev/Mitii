@@ -569,18 +569,30 @@ body.vscode-high-contrast .empty-state__logo--dark {
 }
 
 .timeline {
+  --timeline-trunk-x: 10px;
+  --timeline-branch: color-mix(
+    in srgb,
+    var(--turn-accent, var(--mitii-accent)) 42%,
+    var(--mitii-border-soft)
+  );
+  --timeline-branch-strong: color-mix(
+    in srgb,
+    var(--turn-accent, var(--mitii-accent)) 78%,
+    var(--mitii-border)
+  );
   position: relative;
   list-style: none;
   margin: 6px 0 10px;
-  padding: 3px 0 3px 22px;
+  padding: 2px 0 2px 34px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 14px;
   border-left: 0;
   width: 100%;
 }
 
 .timeline__row {
+  --branch-y: 0.55em;
   position: relative;
   display: flex;
   align-items: baseline;
@@ -588,66 +600,128 @@ body.vscode-high-contrast .empty-state__logo--dark {
   padding: 1px 0;
 }
 
+/*
+ * Tree trunk — continuous vertical stem through every step.
+ */
 .timeline__row::before {
   content: '';
   position: absolute;
   z-index: 1;
-  top: -3px;
-  bottom: -18px;
-  left: -16px;
+  top: -8px;
+  bottom: -14px;
+  left: calc(-1 * (34px - var(--timeline-trunk-x)));
   width: 1.5px;
   border-radius: 999px;
-  background: color-mix(
-    in srgb,
-    var(--turn-accent, var(--mitii-accent)) 22%,
-    var(--mitii-border-soft)
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--timeline-branch) 55%, transparent) 0%,
+    var(--timeline-branch) 18%,
+    var(--timeline-branch) 82%,
+    color-mix(in srgb, var(--timeline-branch) 55%, transparent) 100%
   );
   pointer-events: none;
-  transition: background 220ms ease, opacity 220ms ease;
+}
+
+.timeline__row:first-child::before {
+  top: var(--branch-y);
 }
 
 .timeline__row:last-child::before {
-  bottom: -3px;
+  bottom: calc(100% - var(--branch-y) - 1px);
 }
 
-.timeline__row--done::before {
-  background: color-mix(
-    in srgb,
-    var(--turn-accent, var(--mitii-accent)) 48%,
-    var(--mitii-border-soft)
-  );
-}
-
+.timeline__row--done::before,
 .timeline__row--active::before,
 .timeline__row--thinking-active::before {
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--turn-accent, var(--mitii-accent)) 12%, transparent) 0%,
-    color-mix(in srgb, var(--turn-accent, var(--mitii-accent)) 72%, transparent) 45%,
-    color-mix(in srgb, var(--turn-accent, var(--mitii-accent)) 12%, transparent) 100%
+    color-mix(in srgb, var(--timeline-branch-strong) 40%, transparent) 0%,
+    var(--timeline-branch-strong) 20%,
+    var(--timeline-branch-strong) 80%,
+    color-mix(in srgb, var(--timeline-branch-strong) 40%, transparent) 100%
   );
-  background-size: 100% 220%;
-  animation: timeline-rail-breathe 2.8s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
 }
 
-.timeline__row--warn::before {
-  background: color-mix(
+/*
+ * Branch arm — each step forks off the trunk.
+ * Four silhouettes cycle so the tree never reads as a flat list.
+ */
+.timeline__row::after {
+  content: '';
+  position: absolute;
+  z-index: 2;
+  left: calc(-1 * (34px - var(--timeline-trunk-x)));
+  top: var(--branch-y);
+  width: 14px;
+  height: 12px;
+  box-sizing: border-box;
+  border: 0;
+  border-left: 1.5px solid var(--timeline-branch);
+  border-bottom: 1.5px solid var(--timeline-branch);
+  border-radius: 0 0 0 9px;
+  background: transparent;
+  transform: translateY(-100%);
+  transform-origin: left bottom;
+  pointer-events: none;
+  transition:
+    border-color 200ms ease,
+    width 200ms ease,
+    height 200ms ease;
+}
+
+/* Arc — soft rounded fork */
+.timeline__row--branch-arc::after {
+  width: 15px;
+  height: 13px;
+  border-radius: 0 0 0 11px;
+}
+
+/* Elbow — crisp right angle */
+.timeline__row--branch-elbow::after {
+  width: 13px;
+  height: 10px;
+  border-radius: 0;
+}
+
+/* Reach — longer horizontal arm, shallow drop */
+.timeline__row--branch-reach::after {
+  width: 18px;
+  height: 8px;
+  border-radius: 0 0 0 6px;
+}
+
+/* Twig — short, dashed, slightly tilted */
+.timeline__row--branch-twig::after {
+  width: 11px;
+  height: 11px;
+  border-radius: 0 0 0 7px;
+  border-left-style: dashed;
+  border-bottom-style: dashed;
+  transform: translateY(-100%) rotate(-6deg);
+}
+
+.timeline__row--done::after,
+.timeline__row--active::after,
+.timeline__row--thinking-active::after {
+  border-color: var(--timeline-branch-strong);
+}
+
+.timeline__row--active::after,
+.timeline__row--thinking-active::after {
+  filter: drop-shadow(
+    0 0 3px color-mix(in srgb, var(--turn-accent, var(--mitii-accent)) 45%, transparent)
+  );
+  animation: timeline-branch-grow 1.8s ease-in-out infinite;
+}
+
+.timeline__row--warn::after {
+  border-color: color-mix(
     in srgb,
-    var(--turn-accent, var(--mitii-accent)) 42%,
-    var(--mitii-border-soft)
+    var(--turn-accent, var(--mitii-accent)) 70%,
+    var(--mitii-border)
   );
-}
-
-@keyframes timeline-rail-breathe {
-  0%,
-  100% {
-    background-position: 0 0%;
-    opacity: 0.72;
-  }
-  50% {
-    background-position: 0 100%;
-    opacity: 1;
-  }
+  border-left-style: solid;
+  border-bottom-style: solid;
 }
 
 .timeline__row--tool,
@@ -669,78 +743,154 @@ body.vscode-high-contrast .empty-state__logo--dark {
   background: transparent;
 }
 
+/* Leaf / node at the tip of each branch — shape follows step kind */
 .timeline__marker {
   position: absolute;
   z-index: 3;
-  left: -18.25px;
-  top: 0.5em;
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: color-mix(
-    in srgb,
-    var(--turn-accent, var(--mitii-accent)) 78%,
-    var(--mitii-panel)
-  );
+  left: -13px;
+  top: calc(var(--branch-y) - 4px);
+  width: 8px;
+  height: 8px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: var(--mitii-panel);
+  border: 1.5px solid
+    color-mix(in srgb, var(--turn-accent, var(--mitii-accent)) 55%, var(--mitii-border));
   box-shadow: 0 0 0 3px var(--mitii-panel);
   transition:
-    background 180ms ease,
-    box-shadow 180ms ease,
-    transform 180ms ease;
+    background 200ms ease,
+    border-color 200ms ease,
+    box-shadow 200ms ease,
+    transform 200ms ease;
+}
+
+.timeline__row--branch-elbow .timeline__marker {
+  left: -15px;
+}
+
+.timeline__row--branch-reach .timeline__marker {
+  left: -10px;
+}
+
+.timeline__row--branch-twig .timeline__marker {
+  left: -17px;
+}
+
+.timeline__row--kind-thinking .timeline__marker,
+.timeline__row--kind-context .timeline__marker,
+.timeline__row--kind-info .timeline__marker {
+  border-radius: 50%;
+  background: transparent;
+}
+
+.timeline__row--kind-tool .timeline__marker {
+  border-radius: 1.5px;
+  transform: rotate(45deg);
+}
+
+.timeline__row--kind-decision .timeline__marker {
+  border-radius: 2px;
+  width: 7px;
+  height: 7px;
+  top: calc(var(--branch-y) - 3.5px);
+}
+
+.timeline__row--command .timeline__marker {
+  border-radius: 1px;
+  transform: none;
+  width: 7px;
+  height: 7px;
+}
+
+.timeline__row--files .timeline__marker {
+  border-radius: 2px;
+  width: 9px;
+  height: 6px;
+  top: calc(var(--branch-y) - 3px);
+  transform: none;
+}
+
+.timeline__row--kind-warning .timeline__marker,
+.timeline__row--kind-suspended .timeline__marker,
+.timeline__row--warn .timeline__marker {
+  border-radius: 1px;
+  transform: rotate(45deg) scaleY(0.85);
+}
+
+.timeline__row--kind-mcp_app .timeline__marker {
+  border-radius: 50%;
+  width: 9px;
+  height: 9px;
+  top: calc(var(--branch-y) - 4.5px);
 }
 
 .timeline__row--done .timeline__marker {
   background: var(--turn-accent, var(--mitii-accent));
+  border-color: var(--turn-accent, var(--mitii-accent));
+  box-shadow:
+    0 0 0 3px var(--mitii-panel),
+    0 0 7px
+      color-mix(in srgb, var(--turn-accent, var(--mitii-accent)) 20%, transparent);
 }
 
 .timeline__row--active .timeline__marker,
 .timeline__row--thinking-active .timeline__marker {
   background: var(--turn-accent, var(--mitii-accent));
+  border-color: color-mix(
+    in srgb,
+    var(--turn-accent, var(--mitii-accent)) 65%,
+    #fff 35%
+  );
   box-shadow:
     0 0 0 3px var(--mitii-panel),
-    0 0 0 5px
-      color-mix(in srgb, var(--turn-accent, var(--mitii-accent)) 14%, transparent);
-  animation: timeline-marker-breathe 2.4s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+    0 0 10px
+      color-mix(in srgb, var(--turn-accent, var(--mitii-accent)) 38%, transparent);
+  animation: timeline-leaf-pulse 1.6s ease-in-out infinite;
+}
+
+.timeline__row--kind-tool.timeline__row--active .timeline__marker,
+.timeline__row--kind-tool.timeline__row--thinking-active .timeline__marker {
+  transform: rotate(45deg);
 }
 
 .timeline__row--warn .timeline__marker {
   background: var(--turn-accent, var(--mitii-accent));
+  border-color: var(--turn-accent, var(--mitii-accent));
 }
 
-.timeline__row--tool .timeline__marker {
-  top: 0.5em;
-}
-
-.timeline__row--thinking-active .timeline__marker {
-  top: 0.5em;
-}
-
-@keyframes timeline-marker-breathe {
+@keyframes timeline-branch-grow {
   0%,
   100% {
-    transform: scale(1);
-    box-shadow:
-      0 0 0 3px var(--mitii-panel),
-      0 0 0 5px
-        color-mix(in srgb, var(--turn-accent, var(--mitii-accent)) 12%, transparent);
+    opacity: 0.85;
   }
   50% {
-    transform: scale(1.08);
+    opacity: 1;
+  }
+}
+
+@keyframes timeline-leaf-pulse {
+  0%,
+  100% {
     box-shadow:
       0 0 0 3px var(--mitii-panel),
-      0 0 0 8px
-        color-mix(in srgb, var(--turn-accent, var(--mitii-accent)) 8%, transparent);
+      0 0 8px
+        color-mix(in srgb, var(--turn-accent, var(--mitii-accent)) 30%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 3px var(--mitii-panel),
+      0 0 14px
+        color-mix(in srgb, var(--turn-accent, var(--mitii-accent)) 55%, transparent);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .timeline__row--active::before,
-  .timeline__row--thinking-active::before,
+  .timeline__row--active::after,
+  .timeline__row--thinking-active::after,
   .timeline__row--active .timeline__marker,
   .timeline__row--thinking-active .timeline__marker {
     animation: none;
-    opacity: 1;
-    transform: none;
+    filter: none;
   }
 }
 
@@ -1313,14 +1463,123 @@ body.vscode-high-contrast .empty-state__logo--dark {
 .composer-footer {
   display: grid;
   gap: 8px;
-  padding: 9px 9px 8px;
-  border-top: 1px solid color-mix(in srgb, var(--mitii-border-soft) 76%, transparent);
+  padding: 8px 10px 9px;
+  border-top: 1px solid var(--mitii-border-soft);
   overflow: visible;
   position: relative;
   z-index: 60;
-  background: color-mix(in srgb, var(--mitii-panel-raised) 44%, transparent);
+  background: color-mix(in srgb, var(--mitii-panel-raised) 40%, transparent);
   min-width: 0;
   border-radius: 0 0 11px 11px;
+}
+
+.composer-controls-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+  overflow: visible;
+  position: relative;
+  z-index: 2;
+}
+
+.composer-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+  overflow: visible;
+  position: relative;
+  z-index: 2;
+}
+
+.composer-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  flex-wrap: nowrap;
+  overflow: visible;
+  position: relative;
+  z-index: 1;
+}
+
+.composer-code-review-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+  min-height: 22px;
+  padding: 0 2px;
+  margin-bottom: 6px;
+}
+
+.composer-code-review-row__inner {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: min(56%, 340px);
+  min-width: 168px;
+}
+
+.composer-git-count {
+  font-size: 11px;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--composer-mode-color, var(--mitii-accent)) 78%, var(--mitii-text));
+}
+
+.composer-code-review-link {
+  border: 0;
+  background: transparent;
+  color: var(--mitii-muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 0 2px;
+  cursor: pointer;
+}
+
+.composer-code-review-link:hover:not(:disabled) {
+  color: var(--mitii-text);
+}
+
+.composer-code-review-link:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.composer-code-review-btn {
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--composer-mode-color, var(--mitii-accent)) 45%, var(--mitii-border));
+  background: color-mix(in srgb, var(--composer-mode-color, var(--mitii-accent)) 78%, var(--mitii-panel));
+  color: #fff;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.composer-code-review-btn--fix {
+  border-color: color-mix(in srgb, var(--mitii-ok) 50%, var(--mitii-border));
+  background: color-mix(in srgb, var(--mitii-ok) 72%, var(--mitii-panel));
+}
+
+.composer-code-review-btn:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.composer-code-review-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .composer-dropdown-row {
@@ -1349,12 +1608,12 @@ body.vscode-high-contrast .empty-state__logo--dark {
 
 /* Model menu opens upward — keep it above mode/access controls. */
 .composer-footer:has(.model-quick-select__trigger[aria-expanded='true'])
-  .composer-dropdown-row {
+  .composer-controls-row {
   z-index: 1;
 }
 
 .composer-footer:has(.model-quick-select__trigger[aria-expanded='true'])
-  .composer-utility-row {
+  .composer-meta-row {
   z-index: 30;
 }
 
@@ -1363,12 +1622,12 @@ body.vscode-high-contrast .empty-state__logo--dark {
 }
 
 /* Token details panel opens upward over the mode/access/depth controls. */
-.composer-footer:has(.token-popover__panel) .composer-dropdown-row {
+.composer-footer:has(.token-popover__panel) .composer-controls-row {
   z-index: 1;
   pointer-events: none;
 }
 
-.composer-footer:has(.token-popover__panel) .composer-utility-row {
+.composer-footer:has(.token-popover__panel) .composer-meta-row {
   z-index: 5;
 }
 
@@ -1398,6 +1657,16 @@ body.vscode-high-contrast .empty-state__logo--dark {
 .composer-meta-group .model-quick-select {
   flex: 0 1 auto;
   max-width: min(42vw, 200px);
+}
+
+.composer-meta-row .model-quick-select {
+  flex: 0 1 auto;
+  max-width: min(52vw, 240px);
+  margin-left: auto;
+}
+
+.composer-meta-row .token-popover {
+  flex: 0 0 auto;
 }
 
 .composer-left .composer-dropdown--profile {
@@ -1450,12 +1719,12 @@ body.vscode-high-contrast .empty-state__logo--dark {
   gap: 5px;
   min-width: 0;
   max-width: 100%;
-  height: 25px;
-  border: 1px solid color-mix(in srgb, var(--mitii-border-soft) 78%, transparent);
+  height: 24px;
+  border: 1px solid var(--vscode-dropdown-border, var(--mitii-border-soft));
   border-radius: 6px;
-  background: color-mix(in srgb, var(--mitii-panel) 64%, transparent);
-  color: color-mix(in srgb, var(--mitii-text) 86%, var(--mitii-muted));
-  padding: 0 7px;
+  background: var(--vscode-dropdown-background, var(--mitii-panel));
+  color: var(--vscode-dropdown-foreground, var(--mitii-text));
+  padding: 0 8px;
   font: inherit;
   font-size: 10.5px;
   font-weight: 650;
@@ -1471,9 +1740,12 @@ body.vscode-high-contrast .empty-state__logo--dark {
 .model-quick-select__trigger:focus-visible,
 .model-quick-select__trigger[aria-expanded='true'] {
   outline: none;
-  color: var(--mitii-text);
-  border-color: color-mix(in srgb, var(--mitii-accent) 38%, var(--mitii-border));
-  background: color-mix(in srgb, var(--mitii-accent) 9%, var(--mitii-panel));
+  color: var(--vscode-dropdown-foreground, var(--mitii-text));
+  border-color: var(--vscode-focusBorder, var(--mitii-accent));
+  background: var(
+    --vscode-list-hoverBackground,
+    color-mix(in srgb, var(--mitii-text) 6%, var(--vscode-dropdown-background, var(--mitii-panel)))
+  );
 }
 
 .model-quick-select__trigger svg {
@@ -1500,9 +1772,10 @@ body.vscode-high-contrast .empty-state__logo--dark {
   max-height: min(360px, 54vh);
   overflow: auto;
   padding: 6px;
-  border: 1px solid color-mix(in srgb, var(--mitii-border) 82%, var(--mitii-text) 18%);
+  border: 1px solid var(--vscode-dropdown-border, var(--mitii-border));
   border-radius: 10px;
-  background: var(--vscode-quickInput-background, var(--mitii-panel));
+  background: var(--vscode-dropdown-background, var(--vscode-quickInput-background, var(--mitii-panel)));
+  color: var(--vscode-dropdown-foreground, var(--mitii-text));
   box-shadow:
     0 1px 0 color-mix(in srgb, #fff 5%, transparent) inset,
     0 18px 48px color-mix(in srgb, #000 34%, transparent);
@@ -1613,10 +1886,10 @@ body.vscode-high-contrast .empty-state__logo--dark {
   justify-content: space-between;
   gap: 4px;
   width: auto;
-  height: 25px;
+  height: 24px;
   min-width: 0;
   max-width: 100%;
-  padding: 0 17px 0 6px;
+  padding: 0 16px 0 7px;
   border: 1px solid var(--mitii-border-soft);
   border-radius: 6px;
   background: color-mix(in srgb, var(--mitii-panel-raised) 88%, transparent);
@@ -1637,21 +1910,31 @@ body.vscode-high-contrast .empty-state__logo--dark {
   box-shadow: none;
 }
 
+/* Outline chips — matches chat-box-design.svg (Agent / Full Access / High) */
 .composer-dropdown__button--link {
   justify-content: flex-start;
-  border-color: color-mix(in srgb, var(--composer-control-color) 20%, var(--mitii-border-soft));
-  background: color-mix(in srgb, var(--composer-control-color) 6%, var(--mitii-panel));
-  color: color-mix(in srgb, var(--composer-control-color) 82%, var(--mitii-text));
+  border-color: var(--composer-control-color);
+  background: transparent;
+  color: var(--composer-control-color);
   text-decoration: none;
   box-shadow: none;
+  padding: 0 14px 0 7px;
 }
 
 .composer-dropdown__button--link:hover,
 .composer-dropdown__button--link:focus-visible,
 .composer-dropdown__button--link[aria-expanded='true'] {
-  background: color-mix(in srgb, var(--composer-control-color) 12%, var(--mitii-panel));
-  border-color: color-mix(in srgb, var(--composer-control-color) 42%, var(--mitii-border));
-  color: var(--mitii-text);
+  background: color-mix(in srgb, var(--composer-control-color) 12%, transparent);
+  border-color: var(--composer-control-color);
+  color: color-mix(in srgb, var(--composer-control-color) 88%, #fff 12%);
+}
+
+.composer-dropdown__button--link .composer-dropdown__icon {
+  display: none;
+}
+
+.composer-dropdown__button--link .composer-dropdown__chevron {
+  color: color-mix(in srgb, var(--composer-control-color) 72%, transparent);
 }
 
 .composer-dropdown__value {
@@ -1863,31 +2146,30 @@ body.vscode-high-contrast .empty-state__logo--dark {
 .composer-box {
   position: relative;
   --composer-mode-color: var(--mitii-accent);
-  border: 1px solid color-mix(in srgb, var(--composer-mode-color) 28%, var(--mitii-border));
+  border: 1px solid var(--vscode-input-border, var(--mitii-border));
   border-radius: 12px;
-  background:
-    linear-gradient(
-      145deg,
-      color-mix(in srgb, var(--composer-mode-color) 4%, var(--mitii-panel-raised)),
-      color-mix(in srgb, var(--mitii-panel) 96%, transparent)
-    );
+  background: var(--vscode-input-background, var(--mitii-panel));
   display: flex;
   flex-direction: column;
   overflow: visible;
   box-shadow:
-    0 1px 0 color-mix(in srgb, #fff 5%, transparent) inset,
-    0 12px 36px color-mix(in srgb, #000 18%, transparent);
+    0 1px 0 color-mix(in srgb, #fff 4%, transparent) inset,
+    0 8px 24px color-mix(in srgb, #000 10%, transparent);
   transition:
     border-color 160ms ease,
     box-shadow 160ms ease;
 }
 
 .composer-box:focus-within {
-  border-color: color-mix(in srgb, var(--composer-mode-color) 68%, var(--mitii-border));
+  border-color: color-mix(
+    in srgb,
+    var(--vscode-focusBorder, var(--mitii-accent)) 70%,
+    var(--mitii-border)
+  );
   box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--composer-mode-color) 15%, transparent),
-    0 1px 0 color-mix(in srgb, #fff 6%, transparent) inset,
-    0 16px 42px color-mix(in srgb, #000 22%, transparent);
+    0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder, var(--mitii-accent)) 18%, transparent),
+    0 1px 0 color-mix(in srgb, #fff 5%, transparent) inset,
+    0 10px 28px color-mix(in srgb, #000 12%, transparent);
 }
 
 .composer-box textarea {
@@ -1907,7 +2189,7 @@ body.vscode-high-contrast .empty-state__logo--dark {
 }
 
 .composer-box textarea::placeholder {
-  color: color-mix(in srgb, var(--mitii-muted) 82%, transparent);
+  color: var(--vscode-input-placeholderForeground, var(--mitii-muted));
 }
 
 .composer-actions {
@@ -1918,6 +2200,7 @@ body.vscode-high-contrast .empty-state__logo--dark {
   flex-wrap: nowrap;
   justify-content: flex-end;
   flex: 0 0 auto;
+  margin-left: auto;
 }
 
 .depth-select {
@@ -5068,10 +5351,28 @@ button.md-file-link.md-inline-code:hover {
 .composer-box .context-panel {
   border: 0;
   border-bottom: 1px solid var(--mitii-border-soft);
-  border-radius: 11px 11px 0 0;
+  border-radius: 0;
   background: color-mix(in srgb, var(--pin-mode-color, var(--mitii-accent)) 5%, transparent);
   box-shadow: none;
   max-height: min(14vh, 96px);
+  padding: 6px 9px;
+}
+
+.wt-review--attached {
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--mitii-border-soft);
+  border-radius: 11px 11px 0 0;
+  background: var(--vscode-sideBar-background, var(--mitii-panel-raised));
+  color: var(--vscode-foreground, var(--mitii-text));
+}
+
+.composer-box:has(.wt-review--attached) .context-panel {
+  border-radius: 0;
+}
+
+.composer-box > .wt-review--attached:first-child {
+  border-radius: 11px 11px 0 0;
 }
 
 .context-panel--empty {
@@ -5282,10 +5583,18 @@ button.md-file-link.md-inline-code:hover {
   cursor: default;
 }
 
-/* Working-tree review strip — flush to top of composer box */
+/* Working-tree review block — standalone above the chat box, theme-driven */
 .wt-review {
   flex-shrink: 0;
   overflow: hidden;
+}
+
+.wt-review--standalone {
+  margin: 0 0 8px;
+  border: 1px solid var(--vscode-widget-border, var(--mitii-border));
+  border-radius: 10px;
+  background: var(--vscode-sideBar-background, var(--mitii-panel));
+  color: var(--vscode-foreground, var(--mitii-text));
 }
 
 .wt-review--attached {
@@ -5319,7 +5628,7 @@ button.md-file-link.md-inline-code:hover {
   gap: 6px;
   border: 0;
   background: transparent;
-  color: var(--mitii-text);
+  color: var(--vscode-foreground, var(--mitii-text));
   font-size: 12px;
   font-weight: 600;
   padding: 0;
@@ -5436,12 +5745,12 @@ button.md-file-link.md-inline-code:hover {
 
 .wt-review__cta {
   border: 1px solid var(--mitii-border-soft);
-  border-radius: 999px;
-  padding: 3px 11px;
-  font-size: 12px;
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--mitii-text);
-  background: color-mix(in srgb, var(--mitii-surface) 72%, var(--mitii-panel));
+  background: color-mix(in srgb, var(--mitii-panel-raised) 80%, var(--mitii-panel));
   cursor: pointer;
 }
 
@@ -5451,22 +5760,13 @@ button.md-file-link.md-inline-code:hover {
   background: color-mix(in srgb, var(--mitii-ok) 18%, var(--mitii-panel));
 }
 
-.wt-review__cta--code {
-  border-color: color-mix(in srgb, #38bdf8 45%, var(--mitii-border-soft));
-  color: var(--mitii-text);
-  background: color-mix(in srgb, #38bdf8 14%, var(--mitii-panel));
-}
-
 .wt-review__cta:hover:not(:disabled) {
   background: color-mix(in srgb, var(--mitii-surface) 90%, var(--mitii-panel));
+  border-color: color-mix(in srgb, var(--mitii-border) 80%, var(--mitii-text) 20%);
 }
 
 .wt-review__cta--fix:hover:not(:disabled) {
   background: color-mix(in srgb, var(--mitii-ok) 28%, var(--mitii-panel));
-}
-
-.wt-review__cta--code:hover:not(:disabled) {
-  background: color-mix(in srgb, #38bdf8 24%, var(--mitii-panel));
 }
 
 .wt-review__cta:disabled {

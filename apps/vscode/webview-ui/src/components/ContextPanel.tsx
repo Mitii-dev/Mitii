@@ -48,9 +48,6 @@ export function ContextPanel({
           : undefined
       }
     >
-      <div className="context-panel__label">
-        <span>{pins.length} pinned</span>
-      </div>
       <div className="pins">
         {pins.map((pin) => {
           const file = splitPath(pin.path);
