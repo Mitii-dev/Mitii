@@ -309,7 +309,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
     expect(result.reasonCodes).toContain("stall_continue_suspended");
     expect(result.reasonCodes).not.toContain("mutation_applied");
     expect(result.suspension?.continuePrompt ?? "").toContain(
-      "without applying the required workspace edits",
+      "more research before we can start making changes",
     );
     expect(result.answer ?? "").not.toContain("I still need the same file");
 
@@ -391,7 +391,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
     expect(result.reasonCodes).toContain("stall_continue_suspended");
     expect(result.reasonCodes).not.toContain("mutation_applied");
     expect(result.suspension?.continuePrompt ?? "").toMatch(
-      /read-only discovery|mutation recovery limit/i,
+      /more research|dig a little deeper/i,
     );
     expect(result.answer ?? "").not.toContain("Should not be reached");
   });
