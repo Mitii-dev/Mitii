@@ -1,5 +1,9 @@
 import type { ApprovalMode, ToolGrant } from "../contracts";
-import type { UserSafetyRules } from "../contracts/input/UserSafetyRules";
+import type {
+  ApprovalSkipCategory,
+  UserSafetyAutoApprove,
+  UserSafetyRules,
+} from "../contracts/input/UserSafetyRules";
 
 const APPROVAL_STRICTNESS: Record<ApprovalMode, number> = {
   every_mutation: 2,
@@ -18,6 +22,9 @@ export interface IntersectUserSafetyResult {
 /**
  * Intersect user safety rules onto a policy grant.
  * Never widens: only removes authority or raises approval strictness.
+ * autoApprove / protectedPathGlobs / mutationRelativePathRegex are copied
+ * onto the grant for Tool Runtime ask UX and path filters — they never
+ * add tools or effects.
  */
 export function intersectUserSafetyRules(
   grant: ToolGrant,
@@ -106,6 +113,25 @@ export function intersectUserSafetyRules(
     }
   }
 
+  const skipCategories = resolveApprovalSkipCategories(rules.autoApprove);
+  if (skipCategories.length > 0) {
+    next = { ...next, approvalSkipCategories: skipCategories };
+  }
+
+  if (rules.protectedPathGlobs.length > 0) {
+    next = {
+      ...next,
+      protectedPathGlobs: [...rules.protectedPathGlobs],
+    };
+  }
+
+  if (rules.mutationRelativePathRegex) {
+    next = {
+      ...next,
+      mutationRelativePathRegex: rules.mutationRelativePathRegex,
+    };
+  }
+
   // Drop write effects that no longer have matching tools.
   if (next.maximumWorkspaceEffect === "write") {
     const hasMutationTool = next.allowedTools.some((tool) =>
@@ -134,6 +160,31 @@ export function intersectUserSafetyRules(
   };
 }
 
+export function resolveApprovalSkipCategories(
+  autoApprove: UserSafetyAutoApprove | undefined,
+): ApprovalSkipCategory[] {
+  if (!autoApprove) {
+    return [];
+  }
+  const categories: ApprovalSkipCategory[] = [];
+  if (autoApprove.write) {
+    categories.push("write");
+  }
+  if (autoApprove.execute) {
+    categories.push("execute");
+  }
+  if (autoApprove.mcp) {
+    categories.push("mcp");
+  }
+  if (autoApprove.network) {
+    categories.push("network");
+  }
+  if (autoApprove.external) {
+    categories.push("external");
+  }
+  return categories;
+}
+
 function normalizeForCompare(grant: ToolGrant): unknown {
   return {
     ...grant,
@@ -146,12 +197,20 @@ function normalizeForCompare(grant: ToolGrant): unknown {
     networkHosts: grant.networkHosts
       ? [...grant.networkHosts].sort()
       : undefined,
+    approvalSkipCategories: grant.approvalSkipCategories
+      ? [...grant.approvalSkipCategories].sort()
+      : undefined,
+    protectedPathGlobs: grant.protectedPathGlobs
+      ? [...grant.protectedPathGlobs].sort()
+      : undefined,
   };
 }
 
 /**
  * Assert that `after` is a subset of `before` (never wider).
  * Used by tests and optional host diagnostics.
+ * approvalSkipCategories / protectedPathGlobs / mutationRelativePathRegex
+ * are UX/filter metadata and are excluded from the widen check.
  */
 export function grantNeverWidens(before: ToolGrant, after: ToolGrant): boolean {
   const beforeTools = new Set(before.allowedTools);

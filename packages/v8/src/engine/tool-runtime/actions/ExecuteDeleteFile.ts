@@ -5,6 +5,7 @@ import { MutationError } from "../internal/mutation";
 import { PathContainmentError } from "../internal/PathContainment";
 import { deleteFileInputSchema } from "../internal/ToolCatalog";
 import { describeCaughtError } from "../internal/describeCaughtError";
+import { assertMutationPathMatchesGrant } from "./AssertMutationPathMatchesGrant";
 import { resolveMutationPathScopes } from "./ResolveMutationPathScopes";
 
 export async function executeDeleteFile(params: {
@@ -25,6 +26,11 @@ export async function executeDeleteFile(params: {
   redacted: boolean;
 }> {
   const parsed = deleteFileInputSchema.parse(params.arguments);
+
+  assertMutationPathMatchesGrant({
+    relativePath: parsed.path,
+    grant: params.grant,
+  });
 
   try {
     const result = await params.transactions.deleteFile({

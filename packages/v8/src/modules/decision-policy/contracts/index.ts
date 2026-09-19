@@ -4,12 +4,18 @@ export {
   hostCapabilityFlagsSchema,
   userSafetyRulesSchema,
   DISABLED_USER_SAFETY_RULES,
+  approvalSkipCategorySchema,
+  userSafetyAutoApproveSchema,
+  APPROVAL_SKIP_CATEGORIES,
+  DEFAULT_PROTECTED_PATH_GLOBS,
 } from "./input/DecisionPolicyInput";
 export type {
   DecisionPolicyInput,
   RepositoryStateCapabilitySummary,
   HostCapabilityFlags,
   UserSafetyRules,
+  ApprovalSkipCategory,
+  UserSafetyAutoApprove,
 } from "./input/DecisionPolicyInput";
 
 export {

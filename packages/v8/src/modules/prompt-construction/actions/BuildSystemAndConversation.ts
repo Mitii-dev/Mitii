@@ -13,6 +13,7 @@ export function buildSystemInstructions(params: {
   projectRules: readonly PromptInstructionBlock[];
   skills: readonly PromptInstructionBlock[];
   memory: readonly PromptInstructionBlock[];
+  environment?: readonly PromptInstructionBlock[];
   estimator: TokenEstimatorPort;
   budgetTokens: number;
     planBudgetTokens?: number;
@@ -27,8 +28,9 @@ export function buildSystemInstructions(params: {
   includedRuleIds: string[];
   includedSkillIds: string[];
   includedMemoryIds: string[];
+  includedEnvironmentIds: string[];
   omitted: Array<{
-    section: "rules" | "skills" | "memory";
+    section: "rules" | "skills" | "memory" | "environment";
     id: string;
     tokens: number;
   }>;
@@ -61,18 +63,19 @@ export function buildSystemInstructions(params: {
   }
 
   const omitted: Array<{
-    section: "rules" | "skills" | "memory";
+    section: "rules" | "skills" | "memory" | "environment";
     id: string;
     tokens: number;
   }> = [];
   const includedRuleIds: string[] = [];
   const includedSkillIds: string[] = [];
   const includedMemoryIds: string[] = [];
+  const includedEnvironmentIds: string[] = [];
   let truncatedTokens = 0;
   let omittedTokens = 0;
 
   const appendBlocks = (
-    section: "rules" | "skills" | "memory",
+    section: "rules" | "skills" | "memory" | "environment",
     heading: string,
     blocks: readonly PromptInstructionBlock[],
     included: string[],
@@ -111,6 +114,12 @@ export function buildSystemInstructions(params: {
     }
   };
 
+  appendBlocks(
+    "environment",
+    "Environment",
+    params.environment ?? [],
+    includedEnvironmentIds,
+  );
   appendBlocks("rules", "Project rules", params.projectRules, includedRuleIds);
   appendBlocks("skills", "Skills", params.skills, includedSkillIds);
   appendBlocks("memory", "Memory", params.memory, includedMemoryIds);
@@ -124,6 +133,7 @@ export function buildSystemInstructions(params: {
     includedRuleIds,
     includedSkillIds,
     includedMemoryIds,
+    includedEnvironmentIds,
     omitted,
   };
 }

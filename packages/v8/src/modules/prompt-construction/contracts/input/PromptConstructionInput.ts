@@ -74,6 +74,11 @@ export const promptInstructionsSchema = z
     projectRules: z.array(promptInstructionBlockSchema).optional(),
     skills: z.array(promptInstructionBlockSchema).optional(),
     memory: z.array(promptInstructionBlockSchema).optional(),
+    /**
+     * Host IDE / session pulse (visible files, tabs, terminals, git).
+     * Injected each turn; omitted when the host supplies none.
+     */
+    environment: z.array(promptInstructionBlockSchema).optional(),
   })
   .strict();
 

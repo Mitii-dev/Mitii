@@ -375,6 +375,7 @@ export { formatDeliveryMessage } from './automation/delivery/formatMessage.js';
 // ---------------------------------------------------------------------------
 export {
   loadUserSafetyRules,
+  withDefaultProtectedPaths,
   USER_SAFETY_RULES_FILENAME,
   USER_SAFETY_RULES_EXAMPLE,
 } from './safety/loadUserSafetyRules.js';
@@ -383,6 +384,45 @@ export {
   listMarketplaceLite,
 } from './safety/marketplaceLite.js';
 export type { MarketplaceCatalogEntry } from './safety/marketplaceLite.js';
+
+// ---------------------------------------------------------------------------
+// Mode profiles — overlays on ask|plan|agent (grant intersect + prompt rules)
+// ---------------------------------------------------------------------------
+export {
+  MODE_PROFILE_SCHEMA_VERSION,
+  MODE_TOOL_GROUPS,
+  MODE_CATALOG_FILENAME,
+  MODE_CATALOG_EXAMPLE,
+  MODE_CATALOG_TOOL_IDS,
+  BUILTIN_MODE_PROFILES,
+  getBuiltinModeProfile,
+  compileModeProfile,
+  loadModeProfiles,
+  resolveModeProfile,
+  parseModeProfile,
+  mergeUserSafetyRules,
+  modeProfileSchema,
+  modeCatalogSchema,
+} from './modes/index.js';
+export type {
+  ModeToolGroup,
+  ModeProfile,
+  ModeCatalog,
+  CompiledModeProfile,
+  LoadModeProfilesResult,
+} from './modes/index.js';
+
+// ---------------------------------------------------------------------------
+// Environment details — IDE session pulse → Prompt Construction environment
+// ---------------------------------------------------------------------------
+export {
+  ENVIRONMENT_DETAILS_BLOCK_ID,
+  formatEnvironmentDetailsBlock,
+} from './environment/index.js';
+export type {
+  WorkspaceEnvironmentSnapshot,
+  EnvironmentInstructionBlock,
+} from './environment/index.js';
 export {
   createSandboxedProcessPort,
   detectSandboxBackend,

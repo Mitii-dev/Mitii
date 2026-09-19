@@ -94,6 +94,7 @@ export class PromptConstructionPipeline {
       projectRules: parsed.instructions?.projectRules ?? [],
       skills: parsed.instructions?.skills ?? [],
       memory: parsed.instructions?.memory ?? [],
+      environment: parsed.instructions?.environment ?? [],
       estimator: this.estimator,
       budgetTokens: systemBudget,
       planText: parsed.planText,
@@ -112,6 +113,15 @@ export class PromptConstructionPipeline {
         blockId: "system:decision-brief",
         section: "system",
         source: "system:decision-brief",
+        trust: "trusted_instruction",
+      });
+    }
+    for (const id of system.includedEnvironmentIds) {
+      provenance.push({
+        blockId: id,
+        // Fold into system section so budget weights stay stable.
+        section: "system",
+        source: `environment:${id}`,
         trust: "trusted_instruction",
       });
     }
@@ -141,7 +151,8 @@ export class PromptConstructionPipeline {
     }
     for (const omitted of system.omitted) {
       omissions.push({
-        section: omitted.section,
+        section:
+          omitted.section === "environment" ? "system" : omitted.section,
         reason: "budget",
         detail: `Omitted instruction block ${omitted.id}`,
         tokens: omitted.tokens,
@@ -164,12 +175,18 @@ export class PromptConstructionPipeline {
       system.includedMemoryIds,
       this.estimator,
     );
+    const environmentUsed = sumInstructionTokens(
+      parsed.instructions?.environment ?? [],
+      system.includedEnvironmentIds,
+      this.estimator,
+    );
     const systemCoreUsed = Math.max(
       0,
       system.usedTokens -
         rulesUsed -
         skillsUsed -
         memoryUsed -
+        environmentUsed -
         system.planUsedTokens,
     );
 

@@ -5,6 +5,7 @@ import { MutationError } from "../internal/mutation";
 import { PathContainmentError } from "../internal/PathContainment";
 import { moveFileInputSchema } from "../internal/ToolCatalog";
 import { describeCaughtError } from "../internal/describeCaughtError";
+import { assertMutationPathMatchesGrant } from "./AssertMutationPathMatchesGrant";
 import { resolveMutationPathScopes } from "./ResolveMutationPathScopes";
 
 export async function executeMoveFile(params: {
@@ -26,6 +27,15 @@ export async function executeMoveFile(params: {
   redacted: boolean;
 }> {
   const parsed = moveFileInputSchema.parse(params.arguments);
+
+  assertMutationPathMatchesGrant({
+    relativePath: parsed.from,
+    grant: params.grant,
+  });
+  assertMutationPathMatchesGrant({
+    relativePath: parsed.to,
+    grant: params.grant,
+  });
 
   try {
     const result = await params.transactions.moveFile({

@@ -35,8 +35,16 @@ export type HostCapabilityFlags = z.infer<typeof hostCapabilityFlagsSchema>;
 export {
   userSafetyRulesSchema,
   DISABLED_USER_SAFETY_RULES,
+  approvalSkipCategorySchema,
+  userSafetyAutoApproveSchema,
+  APPROVAL_SKIP_CATEGORIES,
+  DEFAULT_PROTECTED_PATH_GLOBS,
 } from "./UserSafetyRules";
-export type { UserSafetyRules } from "./UserSafetyRules";
+export type {
+  UserSafetyRules,
+  ApprovalSkipCategory,
+  UserSafetyAutoApprove,
+} from "./UserSafetyRules";
 
 export const decisionPolicyInputSchema = z
   .object({

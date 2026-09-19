@@ -129,18 +129,42 @@ export function toAgentEngineStartInput(
     logVerbosity: parsed.logVerbosity,
     requiredSkillIds,
     requiredMcpServerIds,
-    instructions:
-      parsed.projectRules && parsed.projectRules.length > 0
-        ? {
-            projectRules: parsed.projectRules.map((rule) => ({
-              id: rule.id,
-              content: rule.content,
-              ...(rule.title ? { title: rule.title } : {}),
-              priority: rule.priority ?? 100,
-            })),
-          }
-        : undefined,
+    instructions: buildStartInstructions(parsed),
   });
+}
+
+function buildStartInstructions(
+  parsed: MitiiStartInput,
+): AgentEngineStartInput['instructions'] {
+  const hasProjectRules =
+    parsed.projectRules !== undefined && parsed.projectRules.length > 0;
+  const hasEnvironment =
+    parsed.environment !== undefined && parsed.environment.length > 0;
+  if (!hasProjectRules && !hasEnvironment) {
+    return undefined;
+  }
+  return {
+    ...(hasProjectRules
+      ? {
+          projectRules: parsed.projectRules!.map((rule) => ({
+            id: rule.id,
+            content: rule.content,
+            ...(rule.title ? { title: rule.title } : {}),
+            priority: rule.priority ?? 100,
+          })),
+        }
+      : {}),
+    ...(hasEnvironment
+      ? {
+          environment: parsed.environment!.map((block) => ({
+            id: block.id,
+            content: block.content,
+            ...(block.title ? { title: block.title } : {}),
+            priority: block.priority ?? 100,
+          })),
+        }
+      : {}),
+  };
 }
 
 /**

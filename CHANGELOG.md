@@ -3,10 +3,21 @@
 ## [Unreleased]
 
 ### Added
+- **Mode profiles (`.mitii/modes.json`)** — Optional workspace overlays on Ask / Plan / Agent. Built-ins: `architect`, `code`, `ask`, `debug`. Custom profiles support role text, `toolGroups`, and `mutationRelativePathRegex`. Set `active` to apply a profile on every run; omit `active` to leave the UI/CLI mode control in charge. Hosted in `@mitii/host` (`loadModeProfiles`, `compileModeProfile`, `mergeUserSafetyRules`); wired in VS Code and CLI start paths.
+- **Workspace safety (`.mitii/safety.json`)** — Tighten-only deny tools/commands, command allowlists, `protectedPathGlobs`, category `autoApprove` (`write` / `execute` / `mcp` / `network` / `external`), optional `approvalCeiling` and `mutationRelativePathRegex`. VS Code requires `mitii.safety.userRulesEnabled: true`. Defaults for protected paths via `withDefaultProtectedPaths` / `DEFAULT_PROTECTED_PATH_GLOBS`.
+- **Environment details in prompts** — Hosts inject optional `instructions.environment` (visible files, open tabs, terminals, mode reminder). Prompt Construction budgets the block with the system section. VS Code collects IDE state; CLI passes a mode reminder. SDK: `MitiiStartInput.environment`.
+- **ToolGrant approval UX metadata** — `approvalSkipCategories`, `protectedPathGlobs`, and `mutationRelativePathRegex` on grants; Tool Runtime skips approval by category, always asks on protected paths, and enforces mutation path regex on apply_patch / delete / move.
+- Scaffold note for `.mitii/modes.json` / `modes.json.example` and docs for modes, safety, and environment (configuration, safety, plan-act, prompt-construction, VS Code settings, recent improvements).
 - Hardened large-repository indexing with explicit scan/index/cancel phases, partial-index status, progress detail, and "degraded but usable" messaging in the VS Code UI and CLI.
 - Expanded first-run onboarding into Echo, local Ollama/OpenAI-compatible, optional cloud key, and safety/index steps with connection testing at each provider stage.
 - Promoted `propose_file_scope` to the default Act contract in prompts so file reads and edits are scoped before model tool use.
 - Polished async local jobs with worker leases, job show/retry/cancel commands, worker limits, JSON worker events, and overnight-worker documentation.
+
+### Changed
+- `UserSafetyRules` / SDK start input use the shared V8 safety schema (including auto-approve and protected paths) instead of a duplicated subset.
+- `IntersectUserSafetyRules` copies host UX fields onto the grant without widening tools or effects; `grantNeverWidens` ignores those metadata fields.
+- Child-run safety fragments include `protectedPathGlobs` for schema compatibility.
+- Public `@mitii/v8` exports extended for mode compilation (`MUTATION_TOOL_IDS`, `NETWORK_TOOL_IDS`, `OPT_IN_MUTATION_TOOL_IDS`, `GITHUB_MUTATION_TOOL_IDS`, `PROCESS_TOOL_IDS`, approval-skip helpers).
 
 ## [2.7.54] - 2026-07-15
 

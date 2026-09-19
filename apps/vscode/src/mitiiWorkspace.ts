@@ -42,6 +42,8 @@ Local runtime data for this workspace. Safe to gitignore.
 | \`diff-preview/\` | Temporary diff preview files |
 | \`artifacts/excalidraw/\` | Saved Excalidraw diagrams (\`.excalidraw\`, \`.svg\`, \`.md\`) |
 | \`mcp.json\` | MCP install list (off by default; add from Settings store) |
+| \`modes.json\` | Optional mode overlays (architect/code/ask/debug + custom) |
+| \`safety.json\` | Tighten-only safety + optional autoApprove / protected paths |
 | \`profiles.json\` | Local model/provider profiles with secret fingerprints only |
 | \`last-repository-state.json\` | Last published index descriptor |
 | \`MITTII.local.md\` | Optional personal instructions (see \`.example\`) |
@@ -107,6 +109,23 @@ export function scaffoldMitiiWorkspace(workspaceRoot: string): string {
   const localExample = join(dir, 'MITTII.local.md.example');
   if (!existsSync(localExample)) {
     writeFileSync(localExample, LOCAL_RULES_EXAMPLE, 'utf8');
+  }
+
+  const modesExample = join(dir, 'modes.json.example');
+  if (!existsSync(modesExample)) {
+    writeFileSync(
+      modesExample,
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          active: 'code',
+          modes: [],
+        },
+        null,
+        2,
+      )}\n`,
+      'utf8',
+    );
   }
 
   ensureGitignoreEntries(workspaceRoot);
