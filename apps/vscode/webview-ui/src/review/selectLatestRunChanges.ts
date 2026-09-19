@@ -15,7 +15,7 @@ export function selectLatestRunChanges(
   return null;
 }
 
-/** Whether the composer should reserve space for the review strip. */
+/** Whether the standalone review block should render above the chat box. */
 export function composerNeedsReviewStrip(input: {
   chatFileCount: number;
   gitFileCount: number;
@@ -24,6 +24,5 @@ export function composerNeedsReviewStrip(input: {
 }): boolean {
   if (input.chatFileCount > 0) return true;
   if (input.findingsCount > 0 && input.codeReviewEnabled) return true;
-  if (input.codeReviewEnabled && input.gitFileCount > 0) return true;
   return false;
 }

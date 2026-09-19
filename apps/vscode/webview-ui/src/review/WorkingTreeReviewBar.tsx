@@ -38,8 +38,8 @@ interface WorkingTreeReviewBarProps {
 }
 
 /**
- * Flush review strip attached to the top of the composer box.
- * Review = this-chat diffs. Code Review = full git + findings (feature-gated).
+ * Review strip attached to the top of the chat input box.
+ * Review = this-chat diffs. Code Review CTA lives above the composer dock.
  */
 export function WorkingTreeReviewBar({
   review,
@@ -52,13 +52,13 @@ export function WorkingTreeReviewBar({
   onOpenDiff,
   onOpenFinding,
   onShowChanges,
-  onRunCodeReview,
+  onRunCodeReview: _onRunCodeReview,
   showCodeReview = false,
   onUndoAll,
   onKeepAll,
-  onDismissFindings,
+  onDismissFindings: _onDismissFindings,
   onFixFinding,
-  onFixAllFindings,
+  onFixAllFindings: _onFixAllFindings,
 }: WorkingTreeReviewBarProps) {
   const scope = useMemo(
     () =>
@@ -103,8 +103,6 @@ export function WorkingTreeReviewBar({
 
   const canUndoKeep =
     !reviewComplete && Boolean(runChanges && runChanges.files.length > 0);
-  const canFix =
-    hasOpenFindings && !running && Boolean(onFixAllFindings) && !reviewComplete;
 
   return (
     <div
@@ -150,24 +148,14 @@ export function WorkingTreeReviewBar({
         <ReviewBarActions
           reviewComplete={reviewComplete}
           canUndoKeep={canUndoKeep}
-          canFix={canFix}
           canExpandReview={scope.canExpandReview}
-          showCodeReview={scope.showFindingsUi}
-          codeReviewButtonLabel={scope.codeReviewButtonLabel}
-          canRunCodeReview={scope.canRunCodeReview}
           running={running}
-          hasFindings={scope.showFindingsUi && findings.length > 0}
           onUndoAll={onUndoAll}
           onKeepAll={onKeepAll}
-          onDismissFindings={
-            scope.showFindingsUi ? onDismissFindings : undefined
-          }
-          onFixAllFindings={scope.showFindingsUi ? onFixAllFindings : undefined}
           onShowChanges={() => {
             setExpanded(true);
             onShowChanges();
           }}
-          onRunCodeReview={onRunCodeReview}
           onCollapse={() => setExpanded(false)}
           onSelectFilesTab={() => setTab('files')}
         />

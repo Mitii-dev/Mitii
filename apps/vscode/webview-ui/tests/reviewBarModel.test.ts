@@ -49,16 +49,16 @@ describe('resolveReviewBarScope', () => {
     expect(scope.summaryLabel).toBe('2 file changes');
   });
 
-  it('stays visible for git-only dirty trees when Code Review is enabled', () => {
+  it('keeps Code Review metadata for the separate top CTA, but hides the review block for git-only trees', () => {
     const scope = resolveReviewBarScope({
       chatFiles: [],
       gitFiles: git,
       findingsCount: 0,
       showCodeReview: true,
     });
-    expect(scope.visible).toBe(true);
-    expect(scope.summaryLabel).toBe('4 git changes');
+    expect(scope.visible).toBe(false);
     expect(scope.canExpandReview).toBe(false);
+    expect(scope.canRunCodeReview).toBe(true);
     expect(scope.codeReviewButtonLabel).toBe('Code Review (4)');
   });
 
@@ -125,7 +125,7 @@ describe('selectLatestRunChanges', () => {
 });
 
 describe('composerNeedsReviewStrip', () => {
-  it('reserves composer space for chat edits or gated git/findings', () => {
+  it('reserves space for chat edits or findings, not git-only Code Review', () => {
     expect(
       composerNeedsReviewStrip({
         chatFileCount: 1,
@@ -147,6 +147,14 @@ describe('composerNeedsReviewStrip', () => {
         chatFileCount: 0,
         gitFileCount: 5,
         findingsCount: 0,
+        codeReviewEnabled: true,
+      }),
+    ).toBe(false);
+    expect(
+      composerNeedsReviewStrip({
+        chatFileCount: 0,
+        gitFileCount: 5,
+        findingsCount: 2,
         codeReviewEnabled: true,
       }),
     ).toBe(true);

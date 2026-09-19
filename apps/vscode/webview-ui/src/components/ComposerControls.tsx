@@ -331,7 +331,7 @@ export function ComposerControls({
   };
 
   return (
-    <div className="composer-dropdown-row" ref={rootRef} aria-label="Chat controls">
+    <div className="composer-controls" ref={rootRef} aria-label="Chat controls">
       {renderDropdown({
         id: 'mode',
         label: 'Mode',
