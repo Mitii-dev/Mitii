@@ -1,5 +1,8 @@
 import type { RequestUnderstandingResult } from "../../request-understanding";
-import { isWholeRequestReadOnlyConstraint } from "../../request-understanding/intent/isWholeRequestReadOnlyConstraint";
+import {
+  isHardWholeRequestReadOnlyConstraint,
+  isWholeRequestReadOnlyConstraint,
+} from "../../request-understanding/intent/isWholeRequestReadOnlyConstraint";
 
 import {
   DIAGNOSIS_TASK_INTENTS,
@@ -83,7 +86,9 @@ export function resolveRoute(params: {
   }
 
   // agent mode
-  if (interaction === "plan" || isExplicitPlanRequest(message)) {
+  // Hard "plan only" always wins. Soft "make a plan" yields to ≥70% act/mutation.
+  // Ballot interaction "plan" still routes to plan (LLM asked for plan-only).
+  if (isHardPlanOnlyRequest(message)) {
     reasonCodes.push("explicit_plan_request");
     return {
       route: "plan",
@@ -91,18 +96,41 @@ export function resolveRoute(params: {
       reasonCodes,
     };
   }
-
-  // SAFETY OVERRIDE (always): pasted dumps stay diagnose-first.
-  if (looksLikePastedRuntimeErrorDump(message)) {
-    if (factsFirst) {
-      reasonCodes.push("policy_facts_safety_override");
-    }
-    reasonCodes.push("diagnosis_readonly");
+  if (interaction === "plan") {
+    reasonCodes.push("explicit_plan_request");
     return {
-      route: "diagnose",
+      route: "plan",
       runDisposition: "continue",
       reasonCodes,
     };
+  }
+  if (isSoftExplicitPlanRequest(message)) {
+    if (!understandingTrustsWriteBallot(understanding)) {
+      reasonCodes.push("explicit_plan_request");
+      return {
+        route: "plan",
+        runDisposition: "continue",
+        reasonCodes,
+      };
+    }
+    reasonCodes.push("policy_llm_authority_write");
+  }
+
+  // Pasted dumps stay diagnose-first unless the ballot is a trusted write
+  // (≥70% act/mutation) — same authority rule as soft read-only / soft plan.
+  if (looksLikePastedRuntimeErrorDump(message)) {
+    if (!understandingTrustsWriteBallot(understanding)) {
+      if (factsFirst) {
+        reasonCodes.push("policy_facts_safety_override");
+      }
+      reasonCodes.push("diagnosis_readonly");
+      return {
+        route: "diagnose",
+        runDisposition: "continue",
+        reasonCodes,
+      };
+    }
+    reasonCodes.push("policy_llm_authority_write");
   }
 
   if (factsFirst) {
@@ -119,12 +147,10 @@ export function resolveRoute(params: {
   // ("Edit docs/…", "Can you fix that?", "implement…?"). Previously
   // isDiagnosisIntent ran first and stripped apply_patch for edit/fix asks
   // that understanding classified as investigate_symptom / diagnose.
-  if (
-    !isExplicitReadOnlyRequest(message) &&
-    (isMutationIntent(primary) ||
-      interaction === "act" ||
-      looksLikeAgentMutationRequest(message))
-  ) {
+  //
+  // Soft "don't remove…" keyword hits must not veto a ≥70% LLM act ballot
+  // (follow-ups included). Hard read-only ("no code changes") still wins.
+  if (shouldGrantMutationExecute({ understanding, message, reasonCodes })) {
     reasonCodes.push("mutation_execute");
     return {
       route: "execute",
@@ -143,8 +169,12 @@ export function resolveRoute(params: {
   }
 
   // "Run the tests / what is failing" must not fall through to direct_answer
-  // (zero tools). Diagnose grants run_readonly_command.
-  if (looksLikeAgentVerificationRequest(message)) {
+  // (zero tools). Diagnose grants run_readonly_command. Skip when a ≥70%
+  // write ballot already lost the mutation gate for other reasons.
+  if (
+    looksLikeAgentVerificationRequest(message) &&
+    !understandingTrustsWriteBallot(understanding)
+  ) {
     reasonCodes.push("verification_run_requested");
     reasonCodes.push("diagnosis_readonly");
     return {
@@ -166,7 +196,10 @@ export function resolveRoute(params: {
   // Agent mode must not collapse workspace symptoms into tool-less chat.
   // Prefer read-only diagnosis over direct_answer when the user reports
   // loading/hang/server issues without an explicit "fix it".
-  if (looksLikeWorkspaceRuntimeSymptom(message)) {
+  if (
+    looksLikeWorkspaceRuntimeSymptom(message) &&
+    !understandingTrustsWriteBallot(understanding)
+  ) {
     reasonCodes.push("workspace_symptom_diagnose");
     reasonCodes.push("diagnosis_readonly");
     return {
@@ -246,7 +279,7 @@ function resolveAgentRouteFactsFirst(params: {
   const interaction = intent.classification.interactionIntent;
 
   const understandingWantsWrite =
-    !isExplicitReadOnlyRequest(message) &&
+    !writeBlockedByReadOnlyConstraint(understanding, message, reasonCodes) &&
     (isMutationIntent(primary) || interaction === "act");
   const heuristicWantsWrite =
     !isExplicitReadOnlyRequest(message) &&
@@ -295,7 +328,10 @@ function resolveAgentRouteFactsFirst(params: {
     };
   }
 
-  if (looksLikeAgentVerificationRequest(message)) {
+  if (
+    looksLikeAgentVerificationRequest(message) &&
+    !understandingTrustsWriteBallot(understanding)
+  ) {
     reasonCodes.push("verification_run_requested");
     reasonCodes.push("diagnosis_readonly");
     return {
@@ -306,7 +342,11 @@ function resolveAgentRouteFactsFirst(params: {
   }
 
   // Soft heuristic only when understanding did not assert a clear path.
-  if (looksLikeWorkspaceRuntimeSymptom(message) && !understandingWantsWrite) {
+  if (
+    looksLikeWorkspaceRuntimeSymptom(message) &&
+    !understandingWantsWrite &&
+    !understandingTrustsWriteBallot(understanding)
+  ) {
     reasonCodes.push("workspace_symptom_diagnose");
     reasonCodes.push("diagnosis_readonly");
     return {
@@ -467,12 +507,18 @@ function requiresClarification(
 
   // Agent mode: clear actionable mutation asks should execute even when
   // understanding marks soft ambiguity (avoids stalling "implement X" work).
-  // Do NOT skip when alternatives fork read vs write (investigate vs fix).
+  // Do NOT skip when alternatives fork read vs write (investigate vs fix),
+  // or when clarity is unclear at/below low confidence (ask the user).
   if (
     mode === "agent" &&
     looksLikeAgentMutationRequest(message) &&
     !isBareAmbiguousMutationAsk(message) &&
-    !materialFork
+    !materialFork &&
+    !(
+      taskAnalysis.clarity === "unclear" &&
+      intent.classification.confidence <=
+        DECISION_POLICY_THRESHOLDS.lowIntentConfidence
+    )
   ) {
     return false;
   }
@@ -496,7 +542,7 @@ function requiresClarification(
 
   if (
     taskAnalysis.clarity === "unclear" &&
-    intent.classification.confidence <
+    intent.classification.confidence <=
       DECISION_POLICY_THRESHOLDS.lowIntentConfidence
   ) {
     return true;
@@ -630,10 +676,20 @@ function hasExplicitRepoTargets(
   );
 }
 
-function isExplicitPlanRequest(message: string): boolean {
-  return /\b(make\s+a\s+plan|create\s+a\s+plan|plan\s+only|write\s+a\s+plan|propose\s+a\s+plan)\b/i.test(
-    message,
+function isHardPlanOnlyRequest(message: string): boolean {
+  return /\bplan\s+only\b/i.test(
+    message.replace(/\nClarification:\s*[\s\S]*$/i, ""),
   );
+}
+
+function isSoftExplicitPlanRequest(message: string): boolean {
+  return /\b(make\s+a\s+plan|create\s+a\s+plan|write\s+a\s+plan|propose\s+a\s+plan)\b/i.test(
+    message.replace(/\nClarification:\s*[\s\S]*$/i, ""),
+  );
+}
+
+function isExplicitPlanRequest(message: string): boolean {
+  return isHardPlanOnlyRequest(message) || isSoftExplicitPlanRequest(message);
 }
 
 function looksLikeDocsMutation(message: string): boolean {
@@ -648,6 +704,76 @@ function looksLikeDocsMutation(message: string): boolean {
  */
 function isExplicitReadOnlyRequest(message: string): boolean {
   return isWholeRequestReadOnlyConstraint(message);
+}
+
+/**
+ * ≥70% LLM/understanding act or mutation ballot without a clarify flag.
+ * Same authority threshold as SuperIntent HIGH_CONFIDENCE — applies to
+ * follow-ups as well as first turns.
+ */
+function understandingTrustsWriteBallot(
+  understanding: RequestUnderstandingResult,
+): boolean {
+  const { intent } = understanding;
+  const classification = intent.classification;
+  if (
+    intent.status === "clarification_required" ||
+    intent.recommendsClarification ||
+    classification.needsClarification
+  ) {
+    return false;
+  }
+  if (
+    classification.confidence < DECISION_POLICY_THRESHOLDS.factsFirstMinConfidence
+  ) {
+    return false;
+  }
+  return (
+    classification.interactionIntent === "act" ||
+    isMutationIntent(classification.primaryTaskIntent)
+  );
+}
+
+/**
+ * Hard read-only always blocks writes. Soft keyword "read-only" hits yield to a
+ * trusted ≥70% write ballot (so "dont remove all… keep a few" cannot veto act).
+ */
+function writeBlockedByReadOnlyConstraint(
+  understanding: RequestUnderstandingResult,
+  message: string,
+  reasonCodes: DecisionReasonCode[],
+): boolean {
+  if (isHardWholeRequestReadOnlyConstraint(message)) {
+    return true;
+  }
+  if (!isExplicitReadOnlyRequest(message)) {
+    return false;
+  }
+  if (understandingTrustsWriteBallot(understanding)) {
+    reasonCodes.push("policy_llm_authority_write");
+    return false;
+  }
+  return true;
+}
+
+function shouldGrantMutationExecute(params: {
+  understanding: RequestUnderstandingResult;
+  message: string;
+  reasonCodes: DecisionReasonCode[];
+}): boolean {
+  const { understanding, message, reasonCodes } = params;
+  const primary = understanding.intent.classification.primaryTaskIntent;
+  const interaction = understanding.intent.classification.interactionIntent;
+
+  if (writeBlockedByReadOnlyConstraint(understanding, message, reasonCodes)) {
+    return false;
+  }
+
+  return (
+    isMutationIntent(primary) ||
+    interaction === "act" ||
+    looksLikeAgentMutationRequest(message)
+  );
 }
 
 /**
@@ -738,10 +864,12 @@ function looksLikeAgentMutationRequest(message: string): boolean {
     /(?:^|\b)(?:please\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+|i\s+want\s+you\s+to\s+|i\s+need\s+you\s+to\s+|i\s+need\s+|we\s+need\s+to\s+|let(?:'s|\s+us)\s+)?(?:start\s+(?:the\s+)?implem(?:entation|netation)|implement|build(?!\s+(?:logs?|errors?|output|failures?|status|artifacts?)\b)|create|design|develop|write|add|edit|fix|resolve|repair|patch|migrate|refactor|rewrite|convert|integrate|configure|optimize|redesign|replace|remove|delete|update|modify|change|generate|scaffold|install|upgrade)\b/i.test(
       text,
     ) ||
+    // Style / UX asks: "can you make it professional and elegant"
+    /\bmake\s+(?:it|this|that|the)\b/i.test(text) ||
     looksLikeContinuationArtifactRequest(text) ||
     // Imperative docs/code edits: "Edit docs/foo.md only: …"
     /^(?:please\s+|can\s+you\s+|could\s+you\s+)?edit\b/i.test(text) ||
-    // Seeded bugfix phrasing: "X uses Y. Change it to Z." / "says Foo. Fix it to Bar."
+    // Seeded bug fix phrasing: "X uses Y. Change it to Z." / "says Foo. Fix it to Bar."
     /\b(?:change|fix|update|set|switch|replace)\b[\s\S]{0,40}\bto\b/i.test(
       text,
     ) ||

@@ -206,17 +206,19 @@ export class IntentRouter {
   ): SuperIntentResult {
     const detail =
       error instanceof Error ? error.message.slice(0, 160) : String(error).slice(0, 160);
+    // Stay below Decision Policy lowIntentConfidence (0.45) so agent-mode
+    // unclear asks suspend for confirmation instead of tool-less chat.
     const classification = this.modePolicy.apply(mode, {
       interactionIntent: "question",
       primaryTaskIntent: "question",
       secondaryTaskIntents: [],
-      confidence: 0.45,
+      confidence: 0.4,
       alternatives: [],
-      needsClarification: false,
+      needsClarification: mode === "agent",
       reason: `LLM intent classifier failed; using safe question fallback (${detail}).`,
     });
     return {
-      status: "accepted",
+      status: mode === "agent" ? "clarification_required" : "accepted",
       classification,
       scores: [
         {
@@ -227,7 +229,7 @@ export class IntentRouter {
         },
       ],
       confidenceMargin: classification.confidence,
-      recommendsClarification: false,
+      recommendsClarification: mode === "agent",
       diagnostics: {
         llmPrimaryIntent: classification.primaryTaskIntent,
         llmInteractionIntent: classification.interactionIntent,

@@ -23,6 +23,7 @@ export type { TaskAnalysis } from "./task-analyzer/contracts/output/TaskAnalysis
 export { resolveFuzzyFileTargets } from "./task-analyzer/analyzer/resolveFuzzyFileTargets";
 export {
   isWholeRequestReadOnlyConstraint,
+  isHardWholeRequestReadOnlyConstraint,
 } from "./intent/isWholeRequestReadOnlyConstraint";
 export {
   resolveIntentClassifierMaximumOutputTokens,

@@ -171,6 +171,11 @@ export const DECISION_REASON_CODES = [
   "policy_facts_safety_override",
   /** Heuristic vs ballot conflict with material grant impact → clarify. */
   "policy_facts_heuristic_conflict_clarify",
+  /**
+   * Soft read-only / soft plan / soft dump heuristics lost to a ≥70% LLM
+   * act/mutation ballot (same authority rule as SuperIntent; follow-ups too).
+   */
+  "policy_llm_authority_write",
 ] as const;
 
 export const DECISION_POLICY_ERROR_CODES = [
