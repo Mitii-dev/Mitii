@@ -1,5 +1,6 @@
 import type { ExecutionDecision } from "../../../modules/decision-policy";
 import type { PromptCacheClass } from "../actions/resolvePromptCacheClass";
+import type { ContextEpoch } from "../internal/context-epoch";
 
 /**
  * Mutable counters and authority carried across model/tool loop turns.
@@ -41,6 +42,11 @@ export type ModelLoopSession = {
       }
     | undefined;
   lastPromptCacheClass: PromptCacheClass | undefined;
+  /**
+   * Active Context Epoch for this run (OpenCode formula: immutable baseline
+   * until compaction / replace). Undefined until first system baseline is seen.
+   */
+  contextEpoch: ContextEpoch | undefined;
 };
 
 export type { ModelLoopStepResult } from "./modelLoopStep";

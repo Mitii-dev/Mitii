@@ -69,6 +69,7 @@ export const READ_ONLY_TOOL_IDS = [
   "read_git_branches",
   "goto_definition",
   "find_references",
+  "hover_symbol",
   "analyze_change_impact",
   "emit_review_finding",
   "run_readonly_command",

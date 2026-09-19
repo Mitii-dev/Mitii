@@ -30,6 +30,7 @@ const DISCOVERY_TOOL_IDS = new Set<string>([
   "read_git_status",
   "goto_definition",
   "find_references",
+  "hover_symbol",
   "read_package_scripts",
 ]);
 

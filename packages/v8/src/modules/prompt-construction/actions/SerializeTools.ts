@@ -63,6 +63,7 @@ const TOOL_PACK_PRIORITY: Record<string, number> = {
   analyze_change_impact: 40,
   goto_definition: 35,
   find_references: 34,
+  hover_symbol: 33,
 };
 
 export function serializeTools(params: {

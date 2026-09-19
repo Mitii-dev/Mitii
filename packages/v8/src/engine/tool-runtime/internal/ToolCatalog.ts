@@ -246,6 +246,29 @@ export const gotoDefinitionOutputSchema = z
 
 export const findReferencesOutputSchema = gotoDefinitionOutputSchema;
 
+export const hoverSymbolInputSchema = z
+  .object({
+    path: z.string().min(1),
+    line: z.number().int().positive(),
+    column: z.number().int().positive().optional(),
+    symbolName: z.string().min(1).optional(),
+  })
+  .strict();
+
+export const hoverSymbolOutputSchema = z
+  .object({
+    path: z.string(),
+    provider: z.string(),
+    hover: z
+      .object({
+        contents: z.string(),
+        language: z.string().optional(),
+      })
+      .optional(),
+    truncated: z.boolean(),
+  })
+  .strict();
+
 export const analyzeChangeImpactInputSchema = z
   .object({
     path: z.string().min(1),

@@ -55,3 +55,21 @@ export {
   estimateTurnOutputHeadroom,
 } from "./turnOutputHeadroom";
 export type { TurnOutputHeadroom } from "./turnOutputHeadroom";
+
+export {
+  FRAGMENT_POLICY,
+  assembleFragments,
+  matchesMarkedFragment,
+  renderFragment,
+  BaseInstructionsFragment,
+  DecisionBriefFragment,
+  InstructionBlockFragment,
+  PlanGuidanceFragment,
+} from "./internal/fragments";
+export type {
+  ContextualFragment,
+  FragmentRole,
+  RenderedFragment,
+  AssembledFragments,
+  AssembledFragmentOmission,
+} from "./internal/fragments";

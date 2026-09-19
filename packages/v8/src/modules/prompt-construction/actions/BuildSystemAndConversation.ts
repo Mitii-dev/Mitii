@@ -6,6 +6,14 @@ import {
   DEFAULT_MIN_CONVERSATION_TURNS,
   TRUNCATION_MARKER,
 } from "../defaults";
+import {
+  assembleFragments,
+  BaseInstructionsFragment,
+  DecisionBriefFragment,
+  InstructionBlockFragment,
+  PlanGuidanceFragment,
+  type ContextualFragment,
+} from "../internal/fragments";
 import { PROMPT_CONSTRUCTION_THRESHOLDS } from "../policy";
 
 export function buildSystemInstructions(params: {
@@ -16,9 +24,9 @@ export function buildSystemInstructions(params: {
   environment?: readonly PromptInstructionBlock[];
   estimator: TokenEstimatorPort;
   budgetTokens: number;
-    planBudgetTokens?: number;
-    planText?: string;
-    decisionBriefText?: string;
+  planBudgetTokens?: number;
+  planText?: string;
+  decisionBriefText?: string;
 }): {
   content: string;
   usedTokens: number;
@@ -29,6 +37,7 @@ export function buildSystemInstructions(params: {
   includedSkillIds: string[];
   includedMemoryIds: string[];
   includedEnvironmentIds: string[];
+  reviewFlaggedFragmentIds: string[];
   omitted: Array<{
     section: "rules" | "skills" | "memory" | "environment";
     id: string;
@@ -38,102 +47,115 @@ export function buildSystemInstructions(params: {
   const core = buildCoreSystemPrompt(params.decision);
   const planGuidance = buildPlanGuidance(params.decision, params.planText);
   const briefText = params.decisionBriefText?.trim() ?? "";
-  const planUsedTokens = params.estimator.estimate(planGuidance);
-  let remaining = Math.max(
-    PROMPT_CONSTRUCTION_THRESHOLDS.minimumSystemTokens,
-    params.budgetTokens,
-  );
 
-  const parts: string[] = [core];
+  const fragments: ContextualFragment[] = [
+    new BaseInstructionsFragment(core),
+  ];
   if (briefText.length > 0) {
-    parts.push(briefText);
+    fragments.push(new DecisionBriefFragment(briefText));
   }
   if (planGuidance.length > 0) {
-    parts.push(planGuidance);
-  }
-  let usedTokens = params.estimator.estimate(core);
-  remaining -= usedTokens;
-  if (briefText.length > 0) {
-    const briefTokens = params.estimator.estimate(briefText);
-    usedTokens += briefTokens;
-    remaining -= briefTokens;
-  }
-  if (planGuidance.length > 0) {
-    remaining -= planUsedTokens;
+    fragments.push(new PlanGuidanceFragment(planGuidance));
   }
 
-  const omitted: Array<{
-    section: "rules" | "skills" | "memory" | "environment";
-    id: string;
-    tokens: number;
-  }> = [];
-  const includedRuleIds: string[] = [];
-  const includedSkillIds: string[] = [];
-  const includedMemoryIds: string[] = [];
-  const includedEnvironmentIds: string[] = [];
-  let truncatedTokens = 0;
-  let omittedTokens = 0;
-
-  const appendBlocks = (
+  const pushBlocks = (
     section: "rules" | "skills" | "memory" | "environment",
     heading: string,
+    kindNamespace: string,
     blocks: readonly PromptInstructionBlock[],
-    included: string[],
   ): void => {
     const sorted = [...blocks].sort((a, b) => b.priority - a.priority);
     for (const block of sorted) {
-      const piece = formatInstructionBlock(heading, block);
-      const tokens = params.estimator.estimate(piece);
-      if (tokens <= remaining) {
-        parts.push(piece);
-        included.push(block.id);
-        usedTokens += tokens;
-        remaining -= tokens;
-        continue;
-      }
-      if (remaining > 40 && tokens > remaining) {
-        const truncated = truncateToTokenBudget(
-          piece,
-          remaining,
-          params.estimator,
-        );
-        if (truncated.content.length > 0) {
-          parts.push(truncated.content);
-          included.push(block.id);
-          usedTokens += truncated.usedTokens;
-          truncatedTokens += truncated.truncatedTokens;
-          remaining -= truncated.usedTokens;
-        } else {
-          omitted.push({ section, id: block.id, tokens });
-          omittedTokens += tokens;
-        }
-        break;
-      }
-      omitted.push({ section, id: block.id, tokens });
-      omittedTokens += tokens;
+      fragments.push(
+        new InstructionBlockFragment(
+          block.id,
+          heading,
+          block,
+          section,
+          kindNamespace,
+        ),
+      );
     }
   };
 
-  appendBlocks(
+  pushBlocks(
     "environment",
     "Environment",
+    "environment",
     params.environment ?? [],
-    includedEnvironmentIds,
   );
-  appendBlocks("rules", "Project rules", params.projectRules, includedRuleIds);
-  appendBlocks("skills", "Skills", params.skills, includedSkillIds);
-  appendBlocks("memory", "Memory", params.memory, includedMemoryIds);
+  pushBlocks("rules", "Project rules", "project_rules", params.projectRules);
+  pushBlocks("skills", "Skills", "skills", params.skills);
+  pushBlocks("memory", "Memory", "memory", params.memory);
+
+  const assembled = assembleFragments({
+    fragments,
+    estimator: params.estimator,
+    budgetTokens: Math.max(
+      PROMPT_CONSTRUCTION_THRESHOLDS.minimumSystemTokens,
+      params.budgetTokens,
+    ),
+    truncateToBudget: (text, budget) =>
+      truncateToTokenBudget(text, budget, params.estimator),
+  });
+
+  const includedFragmentIds = new Set(
+    fragments
+      .filter((fragment) =>
+        assembled.included.some(
+          (rendered) => rendered.contentKind === fragment.contentKind(),
+        ),
+      )
+      .map((fragment) => fragment.id),
+  );
+
+  const includedRuleIds = params.projectRules
+    .filter((block) => includedFragmentIds.has(block.id))
+    .map((block) => block.id);
+  const includedSkillIds = params.skills
+    .filter((block) => includedFragmentIds.has(block.id))
+    .map((block) => block.id);
+  const includedMemoryIds = params.memory
+    .filter((block) => includedFragmentIds.has(block.id))
+    .map((block) => block.id);
+  const includedEnvironmentIds = (params.environment ?? [])
+    .filter((block) => includedFragmentIds.has(block.id))
+    .map((block) => block.id);
+
+  const omitted = assembled.omissions
+    .filter(
+      (entry) =>
+        entry.section === "rules" ||
+        entry.section === "skills" ||
+        entry.section === "memory" ||
+        entry.section === "environment",
+    )
+    .map((entry) => ({
+      section: entry.section as
+        | "rules"
+        | "skills"
+        | "memory"
+        | "environment",
+      id: entry.id,
+      tokens: entry.tokens,
+    }));
+
+  const planUsedTokens =
+    planGuidance.length > 0
+      ? params.estimator.estimate(planGuidance)
+      : 0;
 
   return {
-    content: parts.join("\n\n"),
-    usedTokens,
+    content: assembled.content,
+    usedTokens: assembled.usedTokens,
     planUsedTokens,
-    truncatedTokens,
-    omittedTokens,
+    truncatedTokens: assembled.truncatedTokens,
+    omittedTokens: assembled.omittedTokens,
     includedRuleIds,
     includedSkillIds,
     includedMemoryIds,
     includedEnvironmentIds,
+    reviewFlaggedFragmentIds: assembled.reviewFlaggedIds,
     omitted,
   };
 }
@@ -207,10 +229,11 @@ function buildToolGuidance(decision: ExecutionDecision): string {
   if (
     grant.allowedTools.includes("goto_definition") ||
     grant.allowedTools.includes("find_references") ||
+    grant.allowedTools.includes("hover_symbol") ||
     grant.allowedTools.includes("analyze_change_impact")
   ) {
     lines.push(
-      "When you need a symbol definition or its call sites, use goto_definition and find_references instead of grepping the workspace.",
+      "When you need a symbol definition, its call sites, or type/docs at a caret, use goto_definition, find_references, or hover_symbol instead of grepping the workspace.",
     );
   }
 
@@ -278,14 +301,6 @@ function buildPlanGuidance(
     return "Plan internally; do not emit a lengthy visible plan unless asked. Proceed to mutation tools for Change work in the same run.";
   }
   return "Do not produce a visible multi-step plan unless the user asks for one.";
-}
-
-function formatInstructionBlock(
-  heading: string,
-  block: PromptInstructionBlock,
-): string {
-  const title = block.title ?? block.id;
-  return `## ${heading}: ${title}\n${block.content}`;
 }
 
 export function truncateToTokenBudget(

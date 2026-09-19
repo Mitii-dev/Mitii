@@ -10,6 +10,7 @@ const OBSERVATION_TOOLS = new Set([
   "run_readonly_command",
   "goto_definition",
   "find_references",
+  "hover_symbol",
   "file_metadata",
 ]);
 

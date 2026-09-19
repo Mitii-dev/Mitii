@@ -24,6 +24,15 @@ import type { AgentReasonCode } from "../contracts";
 import { EventBus } from "../internal/EventBus";
 import type { RunBudgetTracker } from "../internal/RunBudget";
 import {
+  CONTEXT_EPOCH_SOURCE_KEYS,
+  extractBaselineSystemText,
+  initializeContextEpoch,
+  markContextEpochForReplacement,
+  reconcileContextEpoch,
+  replaceContextEpoch,
+  type ContextEpoch,
+} from "../internal/context-epoch";
+import {
   logVerbosityAtLeast,
   type AgentLogVerbosity,
 } from "../internal/logVerbosity";
@@ -42,6 +51,7 @@ export interface PrepareModelLoopTurnResult {
   compaction: ModelLoopCompactionResult;
   emittedLoopPressureWarning: boolean;
   emittedLoopCompactionWarning: boolean;
+  contextEpoch: ContextEpoch | undefined;
 }
 
 /**
@@ -68,6 +78,10 @@ export function prepareModelLoopTurn(params: {
   lastPromptCacheClass?: PromptCacheClass;
   emittedLoopPressureWarning: boolean;
   emittedLoopCompactionWarning: boolean;
+  contextEpoch?: ContextEpoch;
+  decisionRoute?: string;
+  decisionPlanningDepth?: string;
+  selectedSkillIds?: readonly string[];
 }): PrepareModelLoopTurnResult {
   const {
     runtime,
@@ -193,6 +207,18 @@ export function prepareModelLoopTurn(params: {
     }
   }
 
+  const contextEpoch = admitContextEpoch({
+    runId,
+    messages,
+    previous: params.contextEpoch,
+    compactionApplied: compaction.compacted,
+    reasonCodes,
+    nowMs: Date.now(),
+    decisionRoute: params.decisionRoute,
+    decisionPlanningDepth: params.decisionPlanningDepth,
+    selectedSkillIds: params.selectedSkillIds,
+  });
+
   upsertTrailingWorkingSet(messages, {
     taskList: params.taskListRef.current,
     mutationBudget: params.mutationBudget,
@@ -231,7 +257,84 @@ export function prepareModelLoopTurn(params: {
     compaction,
     emittedLoopPressureWarning,
     emittedLoopCompactionWarning,
+    contextEpoch,
   };
+}
+
+function admitContextEpoch(params: {
+  runId: string;
+  messages: ModelMessage[];
+  previous: ContextEpoch | undefined;
+  compactionApplied: boolean;
+  reasonCodes: AgentReasonCode[];
+  nowMs: number;
+  decisionRoute?: string;
+  decisionPlanningDepth?: string;
+  selectedSkillIds?: readonly string[];
+}): ContextEpoch | undefined {
+  const baseline = extractBaselineSystemText(params.messages);
+  if (!baseline) {
+    return params.previous;
+  }
+
+  const sources: Record<string, string> = {
+    [CONTEXT_EPOCH_SOURCE_KEYS.baselineSystem]: baseline,
+    [CONTEXT_EPOCH_SOURCE_KEYS.route]: params.decisionRoute ?? "",
+    [CONTEXT_EPOCH_SOURCE_KEYS.planningDepth]:
+      params.decisionPlanningDepth ?? "",
+    [CONTEXT_EPOCH_SOURCE_KEYS.skills]: (params.selectedSkillIds ?? []).join(
+      ",",
+    ),
+  };
+
+  if (!params.previous) {
+    const epoch = initializeContextEpoch({
+      runId: params.runId,
+      baselineSystemText: baseline,
+      sources,
+      nowMs: params.nowMs,
+    });
+    params.reasonCodes.push("context_epoch_initialized");
+    return epoch;
+  }
+
+  let epoch = params.previous;
+  if (params.compactionApplied) {
+    epoch = markContextEpochForReplacement(epoch);
+    if (!params.reasonCodes.includes("context_epoch_replace_requested")) {
+      params.reasonCodes.push("context_epoch_replace_requested");
+    }
+  }
+
+  const reconciled = reconcileContextEpoch({
+    epoch,
+    observedSources: sources,
+    baselineAvailable: true,
+  });
+
+  switch (reconciled.kind) {
+    case "unchanged":
+      if (!params.reasonCodes.includes("context_epoch_unchanged")) {
+        params.reasonCodes.push("context_epoch_unchanged");
+      }
+      return reconciled.epoch;
+    case "updated":
+      params.reasonCodes.push("context_epoch_updated");
+      return reconciled.epoch;
+    case "replace_blocked":
+      params.reasonCodes.push("context_epoch_replace_blocked");
+      return reconciled.epoch;
+    case "replace_ready": {
+      const replaced = replaceContextEpoch({
+        previous: reconciled.epoch,
+        baselineSystemText: baseline,
+        sources,
+        nowMs: params.nowMs,
+      });
+      params.reasonCodes.push("context_epoch_replaced");
+      return replaced;
+    }
+  }
 }
 
 function clampTurnOutput(

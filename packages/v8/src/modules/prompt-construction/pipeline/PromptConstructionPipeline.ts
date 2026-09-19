@@ -159,6 +159,12 @@ export class PromptConstructionPipeline {
         source: omitted.id,
       });
     }
+    if (system.reviewFlaggedFragmentIds.length > 0) {
+      reasonCodes.push("fragment_review_threshold");
+      warnings.push(
+        `Fragment(s) exceeded the ${1_000}-token review threshold: ${system.reviewFlaggedFragmentIds.join(", ")}.`,
+      );
+    }
 
     const rulesUsed = sumInstructionTokens(
       parsed.instructions?.projectRules ?? [],

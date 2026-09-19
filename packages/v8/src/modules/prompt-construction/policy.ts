@@ -53,6 +53,9 @@ export const PROMPT_CONSTRUCTION_THRESHOLDS = {
   mutationOutputHeadroomRatio: 0.7,
 } as const;
 
+/** Re-export Codex-derived fragment caps for module consumers. */
+export { FRAGMENT_POLICY } from "./internal/fragments/fragmentPolicy";
+
 /**
  * Patterns that attempt to smuggle authority through repository or tool text.
  * Matches never become instructions; content stays wrapped as untrusted evidence.

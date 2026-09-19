@@ -15,6 +15,7 @@ import { findReferencesTool } from "./findReferencesTool";
 import { createGithubIssueTool, createPullRequestTool } from "./githubMutationTools";
 import { globFilesTool } from "./globFilesTool";
 import { gotoDefinitionTool } from "./gotoDefinitionTool";
+import { hoverSymbolTool } from "./hoverSymbolTool";
 import { listDirectoryTool } from "./listDirectoryTool";
 import { directoryTreeTool } from "./directoryTreeTool";
 import { moveFileTool } from "./moveFileTool";
@@ -57,6 +58,7 @@ const BUILTIN_TOOLS_BASE: readonly RegisteredTool[] = [
   readGitBranchesTool,
   gotoDefinitionTool,
   findReferencesTool,
+  hoverSymbolTool,
   analyzeChangeImpactTool,
   emitReviewFindingTool,
   runReadonlyCommandTool,
@@ -139,6 +141,7 @@ export {
   readGitBranchesTool,
   gotoDefinitionTool,
   findReferencesTool,
+  hoverSymbolTool,
   analyzeChangeImpactTool,
   emitReviewFindingTool,
   runReadonlyCommandTool,

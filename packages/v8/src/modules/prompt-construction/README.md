@@ -15,6 +15,9 @@ Prompt Construction builds the provider-neutral `ModelRequest` that is sent thro
 - Adds filtered tool definitions.
 - Write-critical tools (`apply_patch`, delete/move, `run_command`, `update_todos`) pack first and are never dropped for tools-section budget when the grant already allows them. "Allowed tools:" prose is rewritten to match the schemas actually attached.
 - Reports budget, provenance, omissions, warnings, and reason codes.
+- Assembles trusted system text via typed **ContextualFragments** (Codex
+  fragment discipline): each injection has a stable `contentKind`, optional
+  markers, and a hard token cap (`FRAGMENT_POLICY.absoluteMaxTokens` = 10k).
 
 ## Structure
 
@@ -27,7 +30,10 @@ prompt-construction/
     output/                 PromptConstructionResult, budgets, provenance
     ports/                  TokenEstimatorPort
     errors/                 PromptConstructionErrors
-  internal/                 Token estimator and injection boundary helpers
+  internal/
+    fragments/              Typed ContextualFragment registry + assembly
+    CharacterTokenEstimator.ts
+    InjectionBoundary.ts
   tests/
 ```
 
