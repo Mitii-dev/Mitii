@@ -25,7 +25,8 @@ describe("tryOfferBudgetWallContinue", () => {
 
     expect(outcome?.kind).toBe("continue_required");
     expect(outcome?.wallReason).toBe("unfulfilled_execute");
-    expect(outcome?.rationale).toContain("more research");
+    expect(outcome?.rationale).toContain("workspace edit");
+    expect(outcome?.rationale).not.toContain("more research");
   });
 
   it("returns undefined when override cap is reached", () => {

@@ -58,23 +58,23 @@ export const MUTATION_BUDGET_PROFILES = {
     maxPatchesPerCall: 48,
     maxUniqueFilesPerCall: 32,
     maxPatchPayloadCharacters: 80_000,
-    preferredBatchSize: 12,
+    preferredBatchSize: 20,
     requireBatchedExecution: false,
   },
   /** Default agent execute path. */
   standard: {
-    maxPatchesPerCall: 36,
-    maxUniqueFilesPerCall: 24,
-    maxPatchPayloadCharacters: 48_000,
-    preferredBatchSize: 8,
+    maxPatchesPerCall: 40,
+    maxUniqueFilesPerCall: 28,
+    maxPatchPayloadCharacters: 56_000,
+    preferredBatchSize: 12,
     requireBatchedExecution: false,
   },
   /** Large / multi-file / high-complexity refactors — batch, but do not shrink below window effort. */
   tight: {
-    maxPatchesPerCall: 16,
-    maxUniqueFilesPerCall: 12,
-    maxPatchPayloadCharacters: 32_000,
-    preferredBatchSize: 8,
+    maxPatchesPerCall: 28,
+    maxUniqueFilesPerCall: 20,
+    maxPatchPayloadCharacters: 40_000,
+    preferredBatchSize: 12,
     requireBatchedExecution: true,
   },
 } as const;

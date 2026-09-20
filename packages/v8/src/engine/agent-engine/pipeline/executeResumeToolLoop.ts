@@ -69,6 +69,12 @@ export async function resumeToolLoopFromCheckpoint(
     onVerificationRecord?: (record: VerificationRecord) => void;
     /** Seeded after a Continue approval so the next stall can enforce the override cap. */
     continueOverrideCount?: number;
+    /**
+     * When true, the resumed loop starts already awaiting the first mutation
+     * (blocks broad rediscovery). Used after unfulfilled/exploration walls
+     * with zero workspace edits.
+     */
+    forceMutationOnResume?: boolean;
   },
 ): Promise<AgentRunResult> {
   const {
@@ -169,6 +175,7 @@ export async function resumeToolLoopFromCheckpoint(
     plan: checkpoint.plan,
     continueOverrideCount:
       params.continueOverrideCount ?? checkpoint.continueOverrideCount ?? 0,
+    forceMutationOnResume: params.forceMutationOnResume === true,
     thresholds: resolveLoopPolicyThresholds({
       contextWindowTokens: windowPolicy.contextWindowTokens,
       overrides: startInput.loopPolicy?.thresholds,

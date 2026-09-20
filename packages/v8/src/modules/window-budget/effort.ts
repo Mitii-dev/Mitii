@@ -53,7 +53,7 @@ export const WINDOW_BUDGET_EFFORT_OVERLAY: Record<
     maxVerificationRepairs: 0,
   },
   medium: {
-    maxUniqueFilesPerCall: 8,
+    maxUniqueFilesPerCall: 12,
     // Align with the VS Code host default (64). 40 let the first loop
     // consume every call before remaining-error repairs could start.
     maxModelCalls: 64,
@@ -66,7 +66,7 @@ export const WINDOW_BUDGET_EFFORT_OVERLAY: Record<
     maxVerificationRepairs: 8,
   },
   high: {
-    maxUniqueFilesPerCall: 12,
+    maxUniqueFilesPerCall: 20,
     maxModelCalls: 96,
     maxToolCalls: 192,
     compactionAutoWindowRatio: 0.9,

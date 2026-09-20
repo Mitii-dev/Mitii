@@ -122,6 +122,12 @@ export async function runModelToolLoop(
   thresholds?: AgentEngineThresholds;
   /** Seeded from checkpoint when resuming after a Continue approval. */
   continueOverrideCount?: number;
+  /**
+   * After Continue on an unfulfilled/exploration wall with zero edits, start
+   * the loop already awaiting the first mutation so broad rediscovery fails
+   * closed instead of repeating the research stall.
+   */
+  forceMutationOnResume?: boolean;
   /** Pre-mutation critic mode from steering flags (default off). */
   criticMode?: SteeringCriticMode;
 }): Promise<ToolLoopOutcome> {
@@ -158,6 +164,17 @@ export async function runModelToolLoop(
     satisfied: false,
   };
 
+  const forceMutationOnResume =
+    params.forceMutationOnResume === true &&
+    requiresMutationForExecute({
+      route: params.decision.route,
+      maximumWorkspaceEffect: params.decision.toolGrant.maximumWorkspaceEffect,
+      primaryTaskIntent:
+        params.understanding?.intent.classification.primaryTaskIntent,
+      reasonCodes: params.decision.reasonCodes,
+    }) &&
+    changedFiles.length === 0;
+
   const session: ModelLoopSession = {
     decision: params.decision,
     selectedSkillIds: [...(params.selectedSkillIds ?? [])],
@@ -177,10 +194,12 @@ export async function runModelToolLoop(
     continueOverrideCount: Math.max(0, params.continueOverrideCount ?? 0),
     rejectedMutationRecoveries: 0,
     rejectedToolRecoveries: 0,
-    readOnlyToolTurnsWithoutMutation: 0,
+    readOnlyToolTurnsWithoutMutation: forceMutationOnResume
+      ? thresholds.maxReadOnlyToolTurnsBeforeMutationNudge
+      : 0,
     readOnlyToolTurnsAfterMutation: 0,
     afterMutationReadOnlyNudges: 0,
-    awaitingReadOnlyMutationRetry: false,
+    awaitingReadOnlyMutationRetry: forceMutationOnResume,
     readOnlyMutationRetryAttempts: 0,
     postNudgeEvidenceReadTurns: 0,
     mutationBlockerAsked: false,
@@ -349,6 +368,42 @@ export async function runModelToolLoop(
     }
 
     if (turn.kind === "failed") {
+      const canRecoverProviderAsUnfulfilled =
+        isMutationRequired() &&
+        changedFiles.length === 0 &&
+        session.unfulfilledExecuteRecoveries <
+          thresholds.maxUnfulfilledExecuteRecoveries &&
+        budget.canStartModelCall() &&
+        (turn.errorCode === "provider_failed" ||
+          /timeout|aborted|abort/i.test(turn.errorMessage));
+      if (canRecoverProviderAsUnfulfilled) {
+        session.unfulfilledExecuteRecoveries += 1;
+        reasonCodes.push("unfulfilled_execute_recovered", "provider_failed");
+        runtime.emitStage(bus, runId, "model_running", "completed", [
+          "unfulfilled_execute_recovered",
+        ]);
+        if (turn.content.trim().length > 0) {
+          messages.push({
+            role: "assistant",
+            content: turn.content.slice(0, thresholds.maxRecoveredAnalysisChars),
+          });
+          session.answer = turn.content;
+        }
+        messages.push({
+          role: "user",
+          content: [
+            "The previous model turn failed or timed out while planning without applying a workspace edit.",
+            "Do not resume the essay. Call apply_patch/delete_file/move_file now on a bounded surface.",
+            "Targeted read_file of an active write/mustRead path is allowed only if required for an exact patch.",
+            "Do not call list_directory, glob_files, or search_files for broad rediscovery.",
+          ].join(" "),
+        });
+        warnings.push(
+          "Provider failed during an unfulfilled execute turn; recovering toward apply_patch.",
+        );
+        session.awaitingReadOnlyMutationRetry = true;
+        continue;
+      }
       reasonCodes.push("provider_failed");
       runtime.emitStage(bus, runId, "model_running", "completed", [
         "provider_failed",

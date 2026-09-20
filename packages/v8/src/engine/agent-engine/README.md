@@ -154,8 +154,8 @@ agent-engine/
   asks that look like `single_location` but name two packages).
 - Clone/port discovery remaps write surfaces and plan allowlists onto the
   **target** package; template `filesRead` stay evidence-only.
-- After the first-mutation nudge, up to **3** targeted `read_file` /
-  `read_many_files` batches are allowed before failing; broad list/glob/search
+- After the first-mutation nudge, up to **2** targeted `read_file` /
+  `read_many_files` batches are allowed before failing (compact: **1**); broad list/glob/search
   still fails immediately.
 - Trailing `<working_set>` is **always** re-upserted before each model call
   (including verification repair), so live checklist / mutation budget /
@@ -180,7 +180,7 @@ agent-engine/
   read/discovery tool calls from tag attributes and continue through normal
   Tool Runtime enforcement rather than immediately treating the turn as
   incomplete narration.
-- Execute + write + mutation-intent turns that produce text and no `apply_patch` are **unfulfilled execute**. The loop nudges up to twice (`unfulfilled_execute_recovered`, `maxUnfulfilledExecuteRecoveries: 2`) to prefer `apply_patch`, while allowing one targeted `read_file`/`read_many_files` of active write/mustRead paths. After recoveries exhaust (or a clear blocker with no mutations), the run suspends with `continue_required` instead of a silent fail — unless Continue overrides are already spent. Stale blocker narration is replaced after later mutations land.
+- Execute + write + mutation-intent turns that produce text and no `apply_patch` are **unfulfilled execute**. The loop nudges up to twice on standard/wide (`unfulfilled_execute_recovered`, `maxUnfulfilledExecuteRecoveries: 2`; compact: **1**) to prefer `apply_patch`, while allowing a few targeted `read_file`/`read_many_files` of active write/mustRead paths. After recoveries exhaust (or a clear blocker with no mutations), the run suspends with `continue_required` instead of a silent fail — unless Continue overrides are already spent. **Continue after an unfulfilled/exploration wall with zero edits forces the next loop into mutation-awaiting mode** (broad rediscovery fails closed). Provider timeouts mid-planning recover the same way when mutation is still required. Stale blocker narration is replaced after later mutations land.
 - Structured reviews (`review_findings_structured`) that produce text and **no** `emit_review_finding` are **incomplete review**. The loop nudges up to twice (`incomplete_review_recovered`, `maxStructuredReviewRecoveries: 2`); after recoveries exhaust, the run fails with `incomplete_review` instead of accepting prose-only as a completed review.
 - Rejected `apply_patch`/`delete_file`/`move_file` recoveries use a **separate** budget (`maxRejectedMutationRecoveries`, band-aware) so a stale-hunk → targeted read → retry cycle is not starved by the text-only unfulfilled-execute nudge.
 - **Window bands** select shipped loop/stall standards from the effective context window (`compact` &lt; 50k, `standard` &lt; 100k, `wide` ≥ 100k). Permanent values: [`policy/loopPolicyBands.ts`](./policy/loopPolicyBands.ts) and [`windowBudgetBands.ts`](../../modules/window-budget/windowBudgetBands.ts). Edit with `pnpm policy-admin` (HTML UI), then rebuild. Optional Custom host overrides stay local-only. See [`policy/README.md`](./policy/README.md).

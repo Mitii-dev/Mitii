@@ -309,7 +309,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
     expect(result.reasonCodes).toContain("stall_continue_suspended");
     expect(result.reasonCodes).not.toContain("mutation_applied");
     expect(result.suspension?.continuePrompt ?? "").toContain(
-      "more research before we can start making changes",
+      "first workspace edit",
     );
     expect(result.answer ?? "").not.toContain("I still need the same file");
 
@@ -391,7 +391,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
     expect(result.reasonCodes).toContain("stall_continue_suspended");
     expect(result.reasonCodes).not.toContain("mutation_applied");
     expect(result.suspension?.continuePrompt ?? "").toMatch(
-      /more research|dig a little deeper/i,
+      /workspace edit|apply the next workspace edit/i,
     );
     expect(result.answer ?? "").not.toContain("Should not be reached");
   });
@@ -546,7 +546,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
       }),
       llm: new ScriptedLlmPort(
         [
-          ...Array.from({ length: 6 }, (_, index) => ({
+          ...Array.from({ length: 4 }, (_, index) => ({
             toolCalls: [
               readPathCall(`call_read_${index}`, `src/file-${index}.ts`),
             ],
@@ -556,14 +556,8 @@ describe("AgentEnginePipeline stall and read dedup", () => {
             toolCalls: [readPathCall("call_read_after_nudge", "src/final.ts")],
           },
           {
-            content: "One more verification read.",
-            toolCalls: [
-              readPathCall("call_read_after_first_grace", "src/final-2.ts"),
-            ],
-          },
-          {
             content: "Applying the fix now.",
-            toolCalls: [patchCall("call_patch_after_second_grace")],
+            toolCalls: [patchCall("call_patch_after_evidence")],
           },
           { content: "Done." },
         ],
@@ -587,7 +581,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
             bytesProduced: 24,
             warnings: [],
             output: {
-              checkpointId: "ckpt_after_second_grace",
+              checkpointId: "ckpt_after_evidence",
               changedFiles: ["src/form.ts"],
             },
             audit: {
@@ -683,7 +677,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
     expect(result.reasonCodes).toContain("unfulfilled_execute_exhausted");
     expect(result.reasonCodes).toContain("stall_continue_suspended");
     expect(result.suspension?.continuePrompt ?? "").toMatch(
-      /rejected mutation|valid workspace edit/i,
+      /didn't land cleanly|workspace edit|apply_patch/i,
     );
     expect(result.usage.modelCalls).toBe(2);
     expect(result.answer ?? "").not.toContain("Should not be reached");

@@ -10,6 +10,7 @@ import type { ToolCapabilityDescriptor, ToolEffect } from "../contracts";
 import {
   DEFAULT_MAX_OUTPUT_BYTES,
   DEFAULT_TOOL_TIMEOUT_MS,
+  MAX_APPLY_PATCH_PATCHES,
 } from "../defaults";
 
 export const listDirectoryInputSchema = z
@@ -734,7 +735,7 @@ export const structuredPatchSchema = z
 
 export const applyPatchInputSchema = z
   .object({
-    patches: z.array(structuredPatchSchema).min(1).max(12),
+    patches: z.array(structuredPatchSchema).min(1).max(MAX_APPLY_PATCH_PATCHES),
   })
   .strict();
 

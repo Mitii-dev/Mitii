@@ -37,14 +37,16 @@ describe("buildBudgetWallRationale", () => {
     expect(rationale).toContain("24 file reads");
   });
 
-  it("frames unfulfilled execute walls as a redirect choice", () => {
+  it("frames unfulfilled execute walls as a mutation continue choice", () => {
     const rationale = buildBudgetWallRationale({
       reason: "unfulfilled_execute",
       changedFiles: [],
       mutationRequired: true,
     });
-    expect(rationale).toContain("more research");
-    expect(rationale).toContain("dig a little deeper");
+    expect(rationale).toContain("first workspace edit");
+    expect(rationale).toContain("apply the next workspace edit");
+    expect(rationale).not.toContain("more research");
+    expect(rationale).not.toContain("dig a little deeper");
   });
 
   it("frames budget exhaustion with extend copy", () => {
@@ -68,7 +70,7 @@ describe("buildBudgetWallRationale", () => {
 });
 
 describe("buildStallContinueRationale", () => {
-  it("frames zero-progress mutation stalls as a redirect choice", () => {
+  it("frames zero-progress mutation stalls as an edit continue choice", () => {
     const rationale = buildStallContinueRationale({
       changedFiles: [],
       fileReadCalls: 12,
@@ -76,8 +78,9 @@ describe("buildStallContinueRationale", () => {
       mutationRequired: true,
     });
 
-    expect(rationale).toContain("more research");
-    expect(rationale).toContain("dig a little deeper");
+    expect(rationale).toContain("first workspace edit");
+    expect(rationale).toContain("apply the next workspace edit");
+    expect(rationale).not.toContain("more research");
   });
 });
 
@@ -125,7 +128,8 @@ describe("buildBudgetWallResetMessage", () => {
     });
     expect(message).toContain("mutation recovery limit");
     expect(message).toContain("User guidance: Only touch src/LoginForm.tsx");
-    expect(message).toContain("Prefer apply_patch");
+    expect(message).toContain("MUST be apply_patch");
+    expect(message).toContain("Analysis-only turns are not allowed");
   });
 
   it("keeps stall wrapper for exploration", () => {
