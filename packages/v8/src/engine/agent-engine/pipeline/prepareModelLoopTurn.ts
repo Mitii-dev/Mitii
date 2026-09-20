@@ -32,6 +32,13 @@ import {
   type ContextEpoch,
 } from "../internal/context-epoch";
 import {
+  isSessionHistoryCheckpointContent,
+  looksReferentialSessionQuery,
+  resolveSessionHistoryProjectionBudgetChars,
+  retrieveSessionHistory,
+  type InMemorySessionHistoryArchive,
+} from "../internal/session-history";
+import {
   logVerbosityAtLeast,
   type AgentLogVerbosity,
 } from "../internal/logVerbosity";
@@ -54,9 +61,9 @@ export interface PrepareModelLoopTurnResult {
 }
 
 /**
- * Stub completed-task bodies, resolve cache-class compaction, upsert the
- * trailing working set, admit Context Epoch (OpenCode formulae), and clamp
- * per-turn output tokens.
+ * Stub completed-task bodies, resolve cache-class compaction, archive dropped
+ * Session History (OpenCode dual-store), hybrid-retrieve into conversationShare
+ * budget, upsert working set, admit Context Epoch, clamp output tokens.
  */
 export function prepareModelLoopTurn(params: {
   runtime: AgentEngineRuntime;
@@ -87,6 +94,8 @@ export function prepareModelLoopTurn(params: {
   memoryIds?: readonly string[];
   /** When true, working-set copy demands an immediate mutation. */
   mutationLocked?: boolean;
+  /** Durable archive for turns dropped from model projection. */
+  sessionHistoryArchive?: InMemorySessionHistoryArchive;
 }): PrepareModelLoopTurnResult {
   const {
     runtime,
@@ -182,6 +191,9 @@ export function prepareModelLoopTurn(params: {
         compaction.reinjectedEstablishedFacts
           ? "established-facts-reinjected"
           : null,
+        compaction.droppedMessages.length > 0
+          ? `archived-${compaction.droppedMessages.length}-turns`
+          : null,
       ].filter(Boolean);
       if (compaction.reinjectedEstablishedFacts) {
         reasonCodes.push("established_facts_reinjected");
@@ -204,6 +216,7 @@ export function prepareModelLoopTurn(params: {
                 hardTokens: compaction.thresholds.hardTokens,
                 stillOverHardCeiling:
                   compaction.usedTokens > compaction.thresholds.hardTokens,
+                droppedMessages: compaction.droppedMessages.length,
               },
             }
           : {}),
@@ -211,6 +224,16 @@ export function prepareModelLoopTurn(params: {
       });
     }
   }
+
+  applySessionHistoryHybrid({
+    runId,
+    messages,
+    archive: params.sessionHistoryArchive,
+    droppedMessages: compaction.droppedMessages,
+    windowPolicy: params.windowPolicy,
+    reasonCodes,
+    nowMs: Date.now(),
+  });
 
   const contextEpoch = applyContextEpochAdmission({
     runId,
@@ -271,6 +294,119 @@ export function prepareModelLoopTurn(params: {
     emittedLoopCompactionWarning,
     contextEpoch,
   };
+}
+
+/**
+ * OpenCode dual-store cutover + Mitii hybrid recall under conversationShare.
+ *
+ * 1. Archive dropped turns (durable; leave model projection).
+ * 2. Query = latest non-system user message.
+ * 3. After drop OR referential follow-up: RRF hybrid retrieve → upsert checkpoint.
+ */
+function applySessionHistoryHybrid(params: {
+  runId: string;
+  messages: ModelMessage[];
+  archive: InMemorySessionHistoryArchive | undefined;
+  droppedMessages: readonly ModelMessage[];
+  windowPolicy: WindowPolicy;
+  reasonCodes: AgentReasonCode[];
+  nowMs: number;
+}): void {
+  const archive = params.archive;
+  if (!archive) {
+    return;
+  }
+
+  if (params.droppedMessages.length > 0) {
+    const archived = archive.archiveDroppedMessages({
+      dropped: params.droppedMessages,
+      nowMs: params.nowMs,
+      runId: params.runId,
+    });
+    if (archived.length > 0) {
+      params.reasonCodes.push("session_history_archived");
+    }
+  }
+
+  if (archive.size() === 0) {
+    return;
+  }
+
+  const query = extractLatestUserQuery(params.messages);
+  if (!query) {
+    return;
+  }
+
+  const justDropped = params.droppedMessages.length > 0;
+  const referential = looksReferentialSessionQuery(query);
+  if (!justDropped && !referential) {
+    return;
+  }
+
+  const budgetChars = resolveSessionHistoryProjectionBudgetChars({
+    conversationTokens: params.windowPolicy.sections.conversationTokens,
+    droppedTurnSummaryChars:
+      params.windowPolicy.compaction.droppedTurnSummaryChars,
+  });
+
+  const retrieved = retrieveSessionHistory({
+    archive: archive.list(),
+    query,
+    budgetChars,
+    force: justDropped,
+  });
+
+  if (!retrieved.projectionText || retrieved.hits.length === 0) {
+    return;
+  }
+
+  params.reasonCodes.push("session_history_hybrid_retrieved");
+  upsertSessionHistoryCheckpoint(params.messages, retrieved.projectionText);
+  params.reasonCodes.push("session_history_projection_upserted");
+}
+
+function extractLatestUserQuery(
+  messages: readonly ModelMessage[],
+): string | undefined {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i];
+    if (
+      message?.role === "user" &&
+      typeof message.content === "string" &&
+      message.content.trim().length > 0 &&
+      !isSessionHistoryCheckpointContent(message.content) &&
+      !message.content.includes("<working_set") &&
+      !message.content.startsWith("[compacted prior context")
+    ) {
+      return message.content;
+    }
+  }
+  return undefined;
+}
+
+function upsertSessionHistoryCheckpoint(
+  messages: ModelMessage[],
+  projectionText: string,
+): void {
+  const existing = messages.findIndex(
+    (message) =>
+      message.role === "user" &&
+      isSessionHistoryCheckpointContent(message.content),
+  );
+  if (existing >= 0) {
+    messages[existing] = { role: "user", content: projectionText };
+    return;
+  }
+  // Insert after system / mid-conversation system messages (OpenCode: after
+  // settlement, before trailing working set which upsertTrailingWorkingSet owns).
+  let insertAt = 0;
+  while (
+    insertAt < messages.length &&
+    messages[insertAt]?.role === "system"
+  ) {
+    insertAt += 1;
+  }
+  messages.splice(insertAt, 0, { role: "user", content: projectionText });
 }
 
 function applyContextEpochAdmission(params: {

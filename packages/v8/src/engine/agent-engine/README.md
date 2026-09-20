@@ -83,6 +83,11 @@ agent-engine/
   message without rewriting the baseline. Compaction or route change starts a
   new epoch and strips prior mid-updates from projected history. See
   `internal/system-context/` and `internal/context-epoch/`.
+- **Session History hybrid (OpenCode dual-store + Mitii P4):** dropped turns
+  leave model projection but stay in a durable in-run archive. Hybrid retrieve
+  (lexical + locator + recency RRF) packs query-relevant hits under
+  `conversationShare` / dropped-summary budget as a
+  `<session_history_checkpoint>` user message. See `internal/session-history/`.
 - **Progressive tool schemas:** `filterToolDefinitions` exposes INDEX stubs
   for long-tail / MCP tools, while core discovery + mutation tools
   (`FULL_SCHEMA_TOOL_IDS`: read_file, search_files, run_readonly_command,

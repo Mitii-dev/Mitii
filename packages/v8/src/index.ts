@@ -607,6 +607,9 @@ export {
   composeMitiiSystemContext,
   initializeSystemContext,
   reconcileSystemContext,
+  InMemorySessionHistoryArchive,
+  retrieveSessionHistory,
+  looksReferentialSessionQuery,
   AgentEngineError,
   DEFAULT_TOOL_DEFINITIONS,
 } from "./engine/agent-engine";
@@ -628,6 +631,8 @@ export type {
   SystemContext,
   SystemContextSnapshot,
   ObservedContextSourceValues,
+  SessionHistoryRecord,
+  SessionHistoryRetrieveResult,
 } from "./engine/agent-engine";
 export type {
   AgentEngineStartInput,
