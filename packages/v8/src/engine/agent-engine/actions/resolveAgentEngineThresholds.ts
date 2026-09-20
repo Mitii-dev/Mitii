@@ -42,6 +42,7 @@ export const agentEngineThresholdsSchema = z
     reasoningProgressBudgetRatioWhenReasoningCapable: ratioSchema,
     maxFileReadsBeforeCodeIntelNudge: positiveIntSchema,
     maxCodeIntelAdoptionNudges: nonnegativeIntSchema,
+    maxReasoningProgressBudgetExceedancesBeforeMutationLock: nonnegativeIntSchema,
   })
   .strict();
 

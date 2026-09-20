@@ -107,7 +107,7 @@ describe("execute finish discipline (enterprise)", () => {
     });
     expect(reset).toMatch(/MUST be apply_patch/i);
     expect(reset).toMatch(/Analysis-only turns are not allowed/i);
-    expect(reset).toMatch(/up to five targeted read_file/i);
+    expect(reset).toMatch(/targeted read_file/i);
     expect(reset).not.toMatch(/dig a little deeper/i);
     expect(reset).not.toMatch(/Read tools are unavailable/i);
 

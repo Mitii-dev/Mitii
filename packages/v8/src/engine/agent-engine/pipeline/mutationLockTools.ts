@@ -69,6 +69,24 @@ export function filterToolsForMutationLock(
 }
 
 /**
+ * Evidence budget exhausted: advertise only mutating tools (+ update_todos)
+ * so the model cannot keep proposing read_file calls that fail closed.
+ */
+export function filterToolsForMutationOnly(
+  tools: readonly ModelToolDefinition[] | undefined,
+): ModelToolDefinition[] | undefined {
+  if (!tools || tools.length === 0) {
+    return tools as ModelToolDefinition[] | undefined;
+  }
+  const preferred = tools.filter(
+    (tool) =>
+      DEFAULT_MUTATING_TOOL_NAMES.has(tool.name) ||
+      isUpdateTodosTool(tool.name),
+  );
+  return preferred.length > 0 ? preferred : (tools as ModelToolDefinition[]);
+}
+
+/**
  * True when the loop should advertise the mutation-discipline tool set
  * (no broad rediscovery). Evidence-read turn caps are enforced separately.
  */
@@ -89,4 +107,28 @@ export function remainingPostNudgeEvidenceReads(params: {
     0,
     params.maxPostNudgeEvidenceReadTurns - params.postNudgeEvidenceReadTurns,
   );
+}
+
+/**
+ * Initial consumed evidence-read count when entering a mutation-locked loop.
+ *
+ * - First Continue (overrideCount === 1): full allowance (used = 0).
+ * - Later Continues: zero remaining (used = max) — BillBuddy 17:54 kept
+ *   rediscovering after the second Continue.
+ * - Verification repair lock: zero remaining (errors already in prompt).
+ */
+export function initialPostNudgeEvidenceReadsUsed(params: {
+  forceMutationOnResume: boolean;
+  forceMutationLock: boolean;
+  continueOverrideCount: number;
+  maxPostNudgeEvidenceReadTurns: number;
+}): number {
+  const max = params.maxPostNudgeEvidenceReadTurns;
+  if (params.forceMutationOnResume) {
+    return params.continueOverrideCount >= 2 ? max : 0;
+  }
+  if (params.forceMutationLock) {
+    return max;
+  }
+  return 0;
 }

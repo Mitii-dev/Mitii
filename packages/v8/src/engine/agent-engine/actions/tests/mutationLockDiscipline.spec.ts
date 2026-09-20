@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import type { ModelToolDefinition } from "../../../../modules/model-gateway";
 import {
   filterToolsForMutationLock,
+  filterToolsForMutationOnly,
+  initialPostNudgeEvidenceReadsUsed,
   isMutationLocked,
   remainingPostNudgeEvidenceReads,
 } from "../../pipeline/mutationLockTools";
@@ -60,29 +62,54 @@ describe("mutation lock after Continue (BillBuddy 22:38)", () => {
     ]);
   });
 
-  it("Continue leaves five evidence-read slots (max-5 consumed on compact)", () => {
+  it("Continue evidence budget: first full, later Continues spent", () => {
     expect(
-      remainingPostNudgeEvidenceReads({
-        postNudgeEvidenceReadTurns: Math.max(0, 6 - 5),
-        maxPostNudgeEvidenceReadTurns: 6,
+      initialPostNudgeEvidenceReadsUsed({
+        forceMutationOnResume: true,
+        forceMutationLock: false,
+        continueOverrideCount: 1,
+        maxPostNudgeEvidenceReadTurns: 2,
       }),
-    ).toBe(5);
+    ).toBe(0);
     expect(
       remainingPostNudgeEvidenceReads({
-        postNudgeEvidenceReadTurns: 6,
-        maxPostNudgeEvidenceReadTurns: 6,
+        postNudgeEvidenceReadTurns: 0,
+        maxPostNudgeEvidenceReadTurns: 2,
+      }),
+    ).toBe(2);
+    expect(
+      initialPostNudgeEvidenceReadsUsed({
+        forceMutationOnResume: true,
+        forceMutationLock: false,
+        continueOverrideCount: 2,
+        maxPostNudgeEvidenceReadTurns: 2,
+      }),
+    ).toBe(2);
+    expect(
+      remainingPostNudgeEvidenceReads({
+        postNudgeEvidenceReadTurns: 2,
+        maxPostNudgeEvidenceReadTurns: 2,
       }),
     ).toBe(0);
   });
 
-  it("Continue reset allows up to five targeted reads then patch", () => {
+  it("strips evidence reads when only mutation tools remain", () => {
+    const only = filterToolsForMutationOnly(tools);
+    expect(only?.map((tool) => tool.name).sort()).toEqual([
+      "apply_patch",
+      "delete_file",
+      "update_todos",
+    ]);
+  });
+
+  it("Continue reset allows remaining targeted reads then patch", () => {
     const reset = buildBudgetWallResetMessage({
       reason: "unfulfilled_execute",
       mutationRequired: true,
       changedFiles: [],
     });
     expect(reset).toMatch(/apply_patch/i);
-    expect(reset).toMatch(/up to five targeted read_file/i);
+    expect(reset).toMatch(/targeted read_file/i);
     expect(reset).not.toMatch(/Read tools are unavailable/i);
     expect(reset).toMatch(/list_directory|glob_files|search_files/i);
   });

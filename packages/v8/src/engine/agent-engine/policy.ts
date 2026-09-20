@@ -143,6 +143,11 @@ export const AGENT_ENGINE_THRESHOLDS = {
   maxFileReadsBeforeCodeIntelNudge: 8,
   /** Max code-intel adoption nudges per run (0 disables). */
   maxCodeIntelAdoptionNudges: 1,
+  /**
+   * After this many reasoning-progress budget trips with mutation still
+   * required and zero edits, force mutation lock with evidence reads spent.
+   */
+  maxReasoningProgressBudgetExceedancesBeforeMutationLock: 2,
 } as const;
 
 /**

@@ -77,7 +77,10 @@ import { createLoopFileReadTracker } from "../actions";
 import { tryOfferBudgetWallContinue } from "./tryOfferBudgetWallContinue";
 import {
   filterToolsForMutationLock,
+  filterToolsForMutationOnly,
+  initialPostNudgeEvidenceReadsUsed,
   isMutationLocked,
+  remainingPostNudgeEvidenceReads,
 } from "./mutationLockTools";
 import { filterToolsForAnswerLock } from "./diagnoseAnswerLock";
 
@@ -222,17 +225,17 @@ export async function runModelToolLoop(
     readOnlyToolTurnsAfterMutation: 0,
     afterMutationReadOnlyNudges: 0,
     awaitingReadOnlyMutationRetry: forceMutationLock,
-    // Continue: leave up to five targeted evidence-read batches so the model
-    // can load write/mustRead paths, then patch. Broad rediscovery stays stripped.
-    // Repair locks: tighter evidence budget — error list is already in the prompt.
+    // Continue / repair: evidence-read used count — first Continue keeps the
+    // full allowance; later Continues and verification repairs start spent.
     readOnlyMutationRetryAttempts: forceMutationLock
       ? thresholds.maxReadOnlyMutationRetryAttempts
       : 0,
-    postNudgeEvidenceReadTurns: forceMutationOnResume
-      ? Math.max(0, thresholds.maxPostNudgeEvidenceReadTurns - 5)
-      : params.forceMutationLock === true
-        ? Math.max(0, thresholds.maxPostNudgeEvidenceReadTurns - 2)
-        : 0,
+    postNudgeEvidenceReadTurns: initialPostNudgeEvidenceReadsUsed({
+      forceMutationOnResume,
+      forceMutationLock: params.forceMutationLock === true,
+      continueOverrideCount: Math.max(0, params.continueOverrideCount ?? 0),
+      maxPostNudgeEvidenceReadTurns: thresholds.maxPostNudgeEvidenceReadTurns,
+    }),
     consecutiveSameToolTurns: 0,
     lastUniformToolName: undefined,
     diagnoseAnswerNudges: 0,
@@ -241,6 +244,8 @@ export async function runModelToolLoop(
     fileBodyReadsWithoutCodeIntel: 0,
     codeIntelToolUses: 0,
     codeIntelAdoptionNudges: 0,
+    reasoningProgressBudgetExceedances: 0,
+    observedReasoningChannel: false,
     awaitingRejectedMutationRetry: undefined,
     lastPromptCacheClass: undefined,
     contextEpoch: runtime.contextEpochs.get(runId),
@@ -353,6 +358,10 @@ export async function runModelToolLoop(
       postNudgeEvidenceReadTurns: session.postNudgeEvidenceReadTurns,
       maxPostNudgeEvidenceReadTurns: thresholds.maxPostNudgeEvidenceReadTurns,
     });
+    const evidenceRemaining = remainingPostNudgeEvidenceReads({
+      postNudgeEvidenceReadTurns: session.postNudgeEvidenceReadTurns,
+      maxPostNudgeEvidenceReadTurns: thresholds.maxPostNudgeEvidenceReadTurns,
+    });
     const turnModelRequest: ModelRequest = session.awaitingAnswerOnly
       ? {
           ...params.request,
@@ -361,7 +370,10 @@ export async function runModelToolLoop(
       : mutationLocked
         ? {
             ...params.request,
-            tools: filterToolsForMutationLock(params.request.tools),
+            tools:
+              evidenceRemaining > 0
+                ? filterToolsForMutationLock(params.request.tools)
+                : filterToolsForMutationOnly(params.request.tools),
           }
         : params.request;
 
@@ -411,6 +423,11 @@ export async function runModelToolLoop(
     const { turnRequest, preservePrefix, promptCacheClass, compaction } =
       prepared;
 
+    const reasoningBudget = resolveReasoningProgressBudget({
+      thresholds,
+      supportsReasoning: runtime.deps.llm.capabilities.supportsReasoning,
+      observedReasoningChannel: session.observedReasoningChannel,
+    });
     const stickyMutable = estimateStickyMutableChars(turnRequest.messages);
     const turn = await consumeModelTurn(runtime, {
       llm: runtime.deps.llm,
@@ -418,15 +435,17 @@ export async function runModelToolLoop(
       runId,
       signal,
       bus,
-      maxReasoningCharsWithoutProgress: resolveReasoningProgressBudget({
-        thresholds,
-        supportsReasoning: runtime.deps.llm.capabilities.supportsReasoning,
-      }),
+      maxReasoningCharsWithoutProgress: reasoningBudget.baseChars,
+      tightReasoningCharsWhenChannelActive: reasoningBudget.tightChars,
     });
 
     if (turn.kind === "cancelled") {
       runtime.emitStage(bus, runId, "model_running", "completed", ["cancelled"]);
       return { kind: "cancelled" };
+    }
+
+    if (turn.kind === "completed" && turn.observedReasoningChannel) {
+      session.observedReasoningChannel = true;
     }
 
     if (turn.kind === "failed") {
@@ -487,6 +506,26 @@ export async function runModelToolLoop(
 
     if (turn.reasoningBudgetExceeded) {
       reasonCodes.push("reasoning_progress_budget_exceeded");
+      session.reasoningProgressBudgetExceedances += 1;
+      session.observedReasoningChannel = true;
+      // Repeated thinking-only burns with write still required: lock mutation
+      // and spend evidence reads so the next turns only see apply_patch*.
+      if (
+        isMutationRequired() &&
+        changedFiles.length === 0 &&
+        thresholds.maxReasoningProgressBudgetExceedancesBeforeMutationLock >
+          0 &&
+        session.reasoningProgressBudgetExceedances >=
+          thresholds.maxReasoningProgressBudgetExceedancesBeforeMutationLock
+      ) {
+        session.awaitingReadOnlyMutationRetry = true;
+        session.postNudgeEvidenceReadTurns =
+          thresholds.maxPostNudgeEvidenceReadTurns;
+        reasonCodes.push("unfulfilled_execute_recovered");
+        warnings.push(
+          "Repeated reasoning-only turns without tools; locking to mutation tools.",
+        );
+      }
     }
 
     const truncated = turn.finishReason === "length";

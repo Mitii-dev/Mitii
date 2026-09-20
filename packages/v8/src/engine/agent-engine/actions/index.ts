@@ -78,9 +78,11 @@ export type {
 } from "./resolveAgentEngineThresholds";
 export {
   resolveReasoningProgressBudget,
+  resolveReasoningProgressBudgetChars,
   shouldNudgeCodeIntelAdoption,
   buildCodeIntelAdoptionNudgeMessage,
 } from "./resolveReasoningAndCodeIntelNudges";
+export type { ReasoningProgressBudget } from "./resolveReasoningAndCodeIntelNudges";
 export {
   resolveLoopPolicyThresholds,
   resolveLoopPolicyBandThresholds,
