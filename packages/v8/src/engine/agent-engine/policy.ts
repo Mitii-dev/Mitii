@@ -106,6 +106,13 @@ export const AGENT_ENGINE_THRESHOLDS = {
   /** Stop repairing after this many consecutive non-improving verifies. */
   maxStalledVerificationRepairs: 2,
   /**
+   * Diagnose / repository_answer: consecutive turns that only call the same
+   * tool (e.g. read_diagnostics thrash) before nudging for a final answer.
+   */
+  maxRepeatedReadonlyToolTurnsBeforeAnswerNudge: 3,
+  /** One nudge, then strip tools so the next turn must answer. */
+  maxDiagnoseAnswerNudges: 1,
+  /**
    * When a recovered turn was a mid-work analysis dump, keep only this many
    * characters in the transcript so leftover output budget remains for patches.
    */

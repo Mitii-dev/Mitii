@@ -55,10 +55,10 @@ describe("deriveWindowPolicy", () => {
       schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
       contextWindowTokens: 200_000,
     });
-    // Compact band: 8-file mutation cap; ~30% output (ratio + window cap).
+    // Compact band: 8-file mutation cap; ~12% output (ratio + window cap).
     expect(at30k.mutation.maxUniqueFilesPerCall).toBe(8);
     expect(at30k.taskList.maxTasks).toBe(8);
-    expect(at30k.maximumOutputTokens).toBe(9_000);
+    expect(at30k.maximumOutputTokens).toBe(3_600);
     expect(at200k.mutation.maxUniqueFilesPerCall).toBe(12);
     expect(at200k.taskList.maxTasks).toBeGreaterThanOrEqual(10);
     expect(at200k.reasonCodes).toContain("mutation_effort_capped");
@@ -112,7 +112,7 @@ describe("deriveWindowPolicy", () => {
       maximumOutputTokens: 5_000,
     });
     expect(legacy.maximumOutputTokens).toBe(derived.maximumOutputTokens);
-    expect(legacy.maximumOutputTokens).toBeGreaterThan(5_000);
+    expect(legacy.maximumOutputTokens).toBe(4_200);
     expect(legacy.reasonCodes).toContain("output_legacy_default_ignored");
     expect(legacy.reasonCodes).toContain("output_derived_from_window");
     expect(legacy.reasonCodes).not.toContain("output_host_override");

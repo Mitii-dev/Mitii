@@ -318,7 +318,8 @@ export function synthesizeFallbackAnswer(params: {
     if (prior && !isTransitionalAssistantAnswer(prior)) {
       return `${prior}\n\nChanged files (${paths.length}): ${list}`;
     }
-    return `Completed workspace edits (${paths.length} file${
+    // Avoid implying the job is done — verification / checklist may still be open.
+    return `Workspace edits so far (${paths.length} file${
       paths.length === 1 ? "" : "s"
     }): ${list}`;
   }
@@ -542,16 +543,26 @@ export function selectUserFacingLoopAnswer(params: {
     params.fallbackSummary?.trim() ?? "",
   );
   const files = params.changedFiles ?? [];
+  const syntheticEdits =
+    /^(?:Completed workspace edits|Workspace edits so far|Stopping read-only turns to verify)[\s\S]*/i.test(
+      loop,
+    );
   const hideLoop =
     loop.length > 0 &&
     (isTransitionalAssistantAnswer(loop) ||
       isMidWorkAnalysisDump(loop) ||
       isUnfinishedInvestigationAnswer(loop) ||
       isDegenerateRepeatedAnswer(loop) ||
+      // Prefer verification summary over synthetic edit stubs (BillBuddy 00:33).
+      (syntheticEdits && summary.length > 0) ||
       // Early recovery blockers must not stick after later mutations.
       (files.length > 0 && isClearMutationBlockerAnswer(loop)));
 
   if (hideLoop || loop.length === 0) {
+    const salvaged = hideLoop ? salvageUserFacingAnswerSection(loop) : undefined;
+    if (salvaged && salvaged.length > 0) {
+      return salvaged;
+    }
     if (summary.length > 0) {
       return summary;
     }
@@ -567,6 +578,43 @@ export function selectUserFacingLoopAnswer(params: {
 
   const joined = [loop, summary].filter((part) => part.length > 0).join("\n\n");
   return joined.length > 0 ? joined : undefined;
+}
+
+/**
+ * When a mid-work dump hides a later clean report (e.g. "## Errors found"),
+ * keep the report so diagnose/ask runs do not end with an empty UI answer.
+ */
+export function salvageUserFacingAnswerSection(content: string): string | undefined {
+  const text = content.trim();
+  if (text.length < 80) {
+    return undefined;
+  }
+  const markers = [
+    /^##\s+Errors?\s+found\b/im,
+    /^##\s+Findings\b/im,
+    /^##\s+Summary\b/im,
+    /^(?:Errors?|Findings)\s+found\b/im,
+  ];
+  let start = -1;
+  for (const marker of markers) {
+    const match = marker.exec(text);
+    if (match?.index !== undefined) {
+      start = start < 0 ? match.index : Math.min(start, match.index);
+    }
+  }
+  if (start < 0) {
+    return undefined;
+  }
+  const slice = text.slice(start).trim();
+  if (
+    slice.length < 80 ||
+    isTransitionalAssistantAnswer(slice) ||
+    isMidWorkAnalysisDump(slice) ||
+    isUnfinishedInvestigationAnswer(slice)
+  ) {
+    return undefined;
+  }
+  return slice;
 }
 
 /** Strip untrusted-file compliance / ACK echoes from user-facing answers. */

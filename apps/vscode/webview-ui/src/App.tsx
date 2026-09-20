@@ -106,6 +106,21 @@ import {
   thoroughnessFromDepth,
   thoroughnessUiPatch,
 } from './thoroughness';
+import { appendActivitySegment } from './activitySegments';
+
+function appendTextSegment(segments: TurnSegment[], text: string): TurnSegment[] {
+  const last = segments[segments.length - 1];
+  if (last?.kind === 'text') {
+    const next = [...segments];
+    next[next.length - 1] = { ...last, text: `${last.text}${text}` };
+    return next;
+  }
+  return [...segments, { id: uid('seg'), kind: 'text', text, at: Date.now() }];
+}
+
+function uid(prefix: string): string {
+  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+}
 
 const EMPTY_TOKEN_USAGE: TokenUsageSnapshot = {
   sessionTotal: 0,
@@ -589,108 +604,6 @@ function clearStaleModeModelDefaultsAfterProviderModelChange(params: {
     };
   }
   return changed ? { ...params.ui, modeDefaults } : params.ui;
-}
-
-/** Tool titles switch from "Running X" (started) to plain "X" (completed) — normalize so both merge into one row. */
-function activityMergeKey(event: { kind: string; title: string }): string {
-  if (event.kind === 'tool') {
-    return `tool:${event.title.replace(/^Running\s+/, '')}`;
-  }
-  return `${event.kind}:${event.title}`;
-}
-
-function shouldReplaceActivity(
-  existing: { kind: string; title: string; status?: string },
-  incoming: { kind: string; title: string; status?: string },
-): boolean {
-  if (activityMergeKey(existing) !== activityMergeKey(incoming)) return false;
-  return Boolean(existing.status || incoming.status);
-}
-
-const MAX_SEGMENTS = 160;
-
-/**
- * Appends an activity event to the trailing run of activity segments.
- * Thinking deltas have no `status`, so they merge purely on contiguity with
- * the immediately preceding thinking entry (one growing "Thought" per
- * uninterrupted reasoning phase). Other kinds merge into a matching in-flight
- * entry further back (e.g. a tool's running→done transition) via
- * shouldReplaceActivity, so status updates don't spawn duplicate rows. Either
- * way the search never crosses a text segment boundary — once the model
- * resumes writing prose, a later event starts a fresh step.
- */
-function appendActivitySegment(
-  segments: TurnSegment[],
-  incoming: ActivityEventPayload,
-  reasoningPreviewMaxChars: number,
-): TurnSegment[] {
-  const last = segments[segments.length - 1];
-
-  if (
-    incoming.kind === 'thinking' &&
-    last?.kind === 'activity' &&
-    last.event.kind === 'thinking'
-  ) {
-    const detail = `${last.event.detail ?? ''}${incoming.detail ?? ''}`.slice(
-      -reasoningPreviewMaxChars,
-    );
-    const next = [...segments];
-    next[next.length - 1] = {
-      ...last,
-      // Keep the original start time so the eventual "Thought for Xs" reflects
-      // the whole reasoning phase, not just the gap since the last delta.
-      event: { ...last.event, ...incoming, detail, at: last.event.at },
-    };
-    return next;
-  }
-
-  if (incoming.kind !== 'thinking') {
-    let start = segments.length;
-    while (start > 0 && segments[start - 1]!.kind === 'activity') start -= 1;
-
-    for (let i = segments.length - 1; i >= start; i -= 1) {
-      const seg = segments[i]!;
-      if (
-        seg.kind !== 'activity' ||
-        seg.event.kind === 'thinking' ||
-        !shouldReplaceActivity(seg.event, incoming)
-      ) {
-        continue;
-      }
-      const next = [...segments];
-      next[i] = {
-        ...seg,
-        event: {
-          ...seg.event,
-          ...incoming,
-          detail: incoming.detail ?? seg.event.detail,
-          at: seg.event.at,
-        },
-      };
-      return next;
-    }
-  }
-
-  const next: TurnSegment[] = [
-    ...segments,
-    { id: uid('seg'), kind: 'activity', event: incoming },
-  ];
-  return next.length > MAX_SEGMENTS ? next.slice(-MAX_SEGMENTS) : next;
-}
-
-/** Appends a text delta, continuing the trailing text segment or starting a new one after an activity phase. */
-function appendTextSegment(segments: TurnSegment[], text: string): TurnSegment[] {
-  const last = segments[segments.length - 1];
-  if (last?.kind === 'text') {
-    const next = [...segments];
-    next[next.length - 1] = { ...last, text: `${last.text}${text}` };
-    return next;
-  }
-  return [...segments, { id: uid('seg'), kind: 'text', text, at: Date.now() }];
-}
-
-function uid(prefix: string): string {
-  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
 /** Stable fingerprint of git working-tree paths for Code Review re-run gating. */

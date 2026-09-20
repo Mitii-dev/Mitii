@@ -53,17 +53,22 @@ export const LOOP_POLICY_WINDOW_BAND_TABLE: Record<
     label: "Compact",
     rangeLabel: "< 50k",
     overrides: {
-      // Small windows fill fast: force the first mutation earlier, cut re-read
-      // thrash, keep recovered essays short, and allow a few extra stale-hunk
-      // retries so a bad patch does not stall the whole job.
+      // 30k–49k local windows: generous explore + evidence for multi-file
+      // feature work, still mutation-first after that. Keep recovered essays
+      // short and allow a few extra stale-hunk retries. Cap verification
+      // repair so simple TS API mismatches cannot burn 20+ minutes.
       explorationRereadMinCalls: 5,
       maxReadOnlyMutationRetryAttempts: 2,
-      maxReadOnlyToolTurnsBeforeMutationNudge: 3,
-      maxPostNudgeEvidenceReadTurns: 1,
-      maxUnfulfilledExecuteRecoveries: 1,
+      maxReadOnlyToolTurnsBeforeMutationNudge: 15,
+      maxPostNudgeEvidenceReadTurns: 6,
+      maxReadOnlyToolTurnsAfterMutationNudge: 4,
+      maxReadOnlyToolTurnsAfterMutationNudges: 2,
+      maxUnfulfilledExecuteRecoveries: 4,
       maxRecoveredAnalysisChars: 560,
       maxRejectedMutationRecoveries: 4,
       maxTruncationRecoveries: 4,
+      maxVerificationRepairAttempts: 4,
+      maxStalledVerificationRepairs: 1,
     },
   },
   standard: {
@@ -78,9 +83,9 @@ export const LOOP_POLICY_WINDOW_BAND_TABLE: Record<
     label: "Wide",
     rangeLabel: "≥ 100k",
     overrides: {
-      // Large windows: slightly more evidence room, still mutation-first.
-      maxReadOnlyToolTurnsBeforeMutationNudge: 5,
-      maxPostNudgeEvidenceReadTurns: 2,
+      // Large windows: more explore + evidence room than compact.
+      maxReadOnlyToolTurnsBeforeMutationNudge: 18,
+      maxPostNudgeEvidenceReadTurns: 8,
       maxRecoveredAnalysisChars: 640,
     },
   },

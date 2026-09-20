@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveLoopTurnOutcome, isUnfulfilledExecute } from "../resolveLoopTurnOutcome";
+import {
+  isPrematurePartialExecuteStop,
+  isSyntheticCompletedEditsFallback,
+  isUnfulfilledExecute,
+  resolveLoopTurnOutcome,
+} from "../resolveLoopTurnOutcome";
 import { isDegenerateRepeatedAnswer } from "../isIncompleteAssistantTurn";
 
 describe("resolveLoopTurnOutcome", () => {
@@ -173,5 +178,57 @@ describe("resolveLoopTurnOutcome", () => {
     });
     expect(outcome.disposition).toBe("recover_incomplete_narration");
     expect(outcome.recoveryMessage).toContain("read_file");
+  });
+});
+
+describe("premature partial execute stop (BillBuddy 00:13)", () => {
+  it("detects synthetic Completed workspace edits fallback", () => {
+    expect(
+      isSyntheticCompletedEditsFallback(
+        "Completed workspace edits (3 files): a.ts, b.ts, c.ts",
+      ),
+    ).toBe(true);
+    expect(
+      isSyntheticCompletedEditsFallback(
+        "## Phase 1 done\n\nNext I will rename Login pages.",
+      ),
+    ).toBe(false);
+  });
+
+  it("flags empty/synthetic stops after partial edits with open checklist", () => {
+    expect(
+      isPrematurePartialExecuteStop({
+        mutationRequired: true,
+        hasIncompleteChangeSurfaces: true,
+        content: "",
+        changedFileCount: 3,
+      }),
+    ).toBe(true);
+    expect(
+      isPrematurePartialExecuteStop({
+        mutationRequired: true,
+        hasIncompleteChangeSurfaces: true,
+        content:
+          "Completed workspace edits (3 files): test/shared/pages/SharedBasePage.ts, test/Desktop/pages/BasePage.ts, test/Tablet/pages/TabletBasePage.ts",
+        changedFileCount: 3,
+      }),
+    ).toBe(true);
+    expect(
+      isPrematurePartialExecuteStop({
+        mutationRequired: true,
+        hasIncompleteChangeSurfaces: true,
+        content:
+          "## Phase 1 complete\n\nSharedBasePage is in place. Next I will rename Login pages and add the shared Dine-in helper.",
+        changedFileCount: 3,
+      }),
+    ).toBe(false);
+    expect(
+      isPrematurePartialExecuteStop({
+        mutationRequired: true,
+        hasIncompleteChangeSurfaces: false,
+        content: "",
+        changedFileCount: 3,
+      }),
+    ).toBe(false);
   });
 });

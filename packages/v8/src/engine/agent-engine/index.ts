@@ -103,6 +103,7 @@ export {
   isMidConversationSystemContent,
   markContextEpochForReplacement,
   normalizeContextEpochSnapshot,
+  observedIdsFromContextEpoch,
   pinBaselineSystemMessage,
   reconcileContextEpoch,
   replaceContextEpoch,

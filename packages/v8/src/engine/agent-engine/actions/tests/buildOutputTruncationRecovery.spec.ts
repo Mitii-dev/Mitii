@@ -167,6 +167,37 @@ describe("buildOutputTruncationRecovery", () => {
     expect(plan!.recoveryMessage.content).toContain("apply_patch");
     expect(plan!.recoveryMessage.content).not.toContain("Continue exactly");
   });
+
+  it("recovers empty-content length burns (reasoning-only) toward apply_patch when mutation required", () => {
+    const plan = buildOutputTruncationRecovery({
+      finishReason: "length",
+      content: "",
+      toolCalls: [],
+      recoveryAttempt: 0,
+      requireMutation: true,
+      mutationBudget: tightBudget,
+    });
+    expect(plan).not.toBeNull();
+    expect(plan!.shouldRecover).toBe(true);
+    expect(plan!.recoveryKind).toBe("tool_call");
+    expect(plan!.assistantContent).toBe("");
+    expect(plan!.recoveryMessage.content).toContain("internal reasoning only");
+    expect(plan!.recoveryMessage.content).toContain("apply_patch");
+  });
+
+  it("recovers empty-content length burns without forcing apply_patch on non-mutation turns", () => {
+    const plan = buildOutputTruncationRecovery({
+      finishReason: "length",
+      content: "",
+      toolCalls: [],
+      recoveryAttempt: 0,
+      requireMutation: false,
+    });
+    expect(plan).not.toBeNull();
+    expect(plan!.recoveryKind).toBe("tool_call");
+    expect(plan!.recoveryMessage.content).toContain("short final answer");
+    expect(plan!.recoveryMessage.content).not.toContain("apply_patch");
+  });
 });
 
 describe("isCompleteToolCall", () => {

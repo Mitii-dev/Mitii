@@ -177,7 +177,7 @@ export function pinBaselineSystemMessage(
   return { pinned: true, rewritten: true };
 }
 
-/** Remove prior Mid-Conversation System Messages from projected history. */
+/** Remove prior mid-conversation epoch updates from projected history. */
 export function stripMidConversationSystemMessages(
   messages: ModelMessage[],
 ): number {
@@ -185,7 +185,8 @@ export function stripMidConversationSystemMessages(
   for (let i = messages.length - 1; i >= 0; i -= 1) {
     const message = messages[i];
     if (
-      message?.role === "system" &&
+      message &&
+      (message.role === "system" || message.role === "user") &&
       typeof message.content === "string" &&
       isMidConversationSystemContent(message.content)
     ) {
@@ -197,18 +198,78 @@ export function stripMidConversationSystemMessages(
 }
 
 /**
- * Append a Mid-Conversation System Message after tool/user settlement and
+ * Append a Mid-Conversation epoch update after tool/user settlement and
  * before trailing working-set (caller orders upsertWorkingSet after this).
+ *
+ * Projected as `user` (not `system`): OpenAI-compatible and many local
+ * providers reject non-leading system messages with
+ * "system message must be at the beginning". Markers preserve OpenCode
+ * epoch semantics for strip/baseline detection.
  */
 export function appendMidConversationSystemMessage(
   messages: ModelMessage[],
   wrappedText: string,
 ): void {
   const last = messages[messages.length - 1];
-  if (last?.role === "system" && last.content === wrappedText) {
+  if (
+    last &&
+    (last.role === "system" || last.role === "user") &&
+    last.content === wrappedText
+  ) {
     return;
   }
-  messages.push({ role: "system", content: wrappedText });
+  messages.push({ role: "user", content: wrappedText });
+}
+
+/**
+ * Restore observed instruction IDs from a persisted Context Epoch so resume
+ * does not emit a spurious "(none)" mid-update when loop params are omitted.
+ */
+export function observedIdsFromContextEpoch(epoch: ContextEpoch | undefined): {
+  skillIds: string[];
+  ruleIds: string[];
+  environmentIds: string[];
+  memoryIds: string[];
+} {
+  const empty = {
+    skillIds: [] as string[],
+    ruleIds: [] as string[],
+    environmentIds: [] as string[],
+    memoryIds: [] as string[],
+  };
+  if (!epoch) {
+    return empty;
+  }
+  const sources = normalizeContextEpochSnapshot(epoch.structuredSnapshot);
+  return {
+    skillIds: decodeEncodedIdArray(
+      sources[SYSTEM_CONTEXT_SOURCE_KEYS.skills]?.value,
+    ),
+    ruleIds: decodeEncodedIdArray(
+      sources[SYSTEM_CONTEXT_SOURCE_KEYS.rules]?.value,
+    ),
+    environmentIds: decodeEncodedIdArray(
+      sources[SYSTEM_CONTEXT_SOURCE_KEYS.environment]?.value,
+    ),
+    memoryIds: decodeEncodedIdArray(
+      sources[SYSTEM_CONTEXT_SOURCE_KEYS.memory]?.value,
+    ),
+  };
+}
+
+function decodeEncodedIdArray(raw: string | undefined): string[] {
+  if (!raw) {
+    return [];
+  }
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.filter((entry): entry is string => typeof entry === "string");
+  } catch {
+    return [];
+  }
 }
 
 export function baselinePrefixMatches(

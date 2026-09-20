@@ -280,7 +280,7 @@ describe("isIncompleteAssistantTurn", () => {
           "packages/mui-builder/.gitignore",
         ],
       }),
-    ).toMatch(/Completed workspace edits/);
+    ).toMatch(/Workspace edits so far/);
   });
 
   it("compacts recovered dumps with head, keep crumbs, and tail", () => {
@@ -363,7 +363,7 @@ describe("isIncompleteAssistantTurn", () => {
         loopAnswer: "",
         changedFiles: ["testConfig.ts", "Desktop.ts", "package.json"],
       }),
-    ).toMatch(/^Completed workspace edits \(3 files\):/);
+    ).toMatch(/^Workspace edits so far \(3 files\):/);
   });
 
   it("recovers empty and transitional finals", () => {
@@ -515,7 +515,7 @@ describe("isIncompleteAssistantTurn", () => {
         priorAnswer: "Let me check carefully:",
         changedFiles: ["test/a.ts"],
       }),
-    ).toContain("Completed workspace edits");
+    ).toContain("Workspace edits so far");
 
     expect(
       synthesizeFallbackAnswer({
@@ -523,7 +523,7 @@ describe("isIncompleteAssistantTurn", () => {
           "All selector naming is now consistent. Let me run the verification steps from the plan - lint and typecheck:",
         changedFiles: ["test/shared/pages/BasePage.ts"],
       }),
-    ).toMatch(/^Completed workspace edits/);
+    ).toMatch(/^Workspace edits so far/);
   });
 
   it("amends understanding message with prior conversation", () => {
@@ -536,7 +536,7 @@ describe("isIncompleteAssistantTurn", () => {
         },
         {
           role: "assistant",
-          content: "Completed workspace edits.\nChanged files (2): a.ts, b.ts",
+          content: "Workspace edits so far.\nChanged files (2): a.ts, b.ts",
         },
       ],
       (text) => {

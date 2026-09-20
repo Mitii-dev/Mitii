@@ -13,6 +13,8 @@ import {
 } from "./index";
 import {
   admitContextEpoch,
+  appendMidConversationSystemMessage,
+  observedIdsFromContextEpoch,
   pinBaselineSystemMessage,
   stripMidConversationSystemMessages,
 } from "./admitContextEpoch";
@@ -202,15 +204,76 @@ describe("admitContextEpoch (OpenCode Safe Provider-Turn Boundary)", () => {
     expect(updated?.stripPriorMidConversation).toBe(false);
 
     pinBaselineSystemMessage(messages, updated!.pinBaseline!);
-    appendAndStrip(messages, updated!.midConversationText!);
+    appendMidConversationSystemMessage(
+      messages,
+      updated!.midConversationText!,
+    );
     expect(messages[0]?.content).toBe(init!.epoch.baselineSystemText);
+    expect(messages.at(-1)?.role).toBe("user");
     expect(
       messages.some(
         (message) =>
-          message.role === "system" &&
+          (message.role === "user" || message.role === "system") &&
           isMidConversationSystemContent(message.content),
       ),
     ).toBe(true);
+    // Wire-safe: mid updates must not use system after the leading baseline.
+    expect(
+      messages.some(
+        (message, index) =>
+          index > 0 &&
+          message.role === "system" &&
+          isMidConversationSystemContent(message.content),
+      ),
+    ).toBe(false);
+  });
+
+  it("restores observed instruction ids from a persisted epoch", () => {
+    const messages = [
+      { role: "system" as const, content: "You are Mitii." },
+      { role: "user" as const, content: "hi" },
+    ];
+    const init = admitContextEpoch({
+      runId: "run_restore",
+      messages,
+      previous: undefined,
+      compactionApplied: false,
+      nowMs: 1,
+      observed: {
+        ...observed,
+        skillIds: ["skill-a", "skill-b"],
+        environmentIds: ["env-1"],
+        memoryIds: ["mem-1"],
+      },
+    });
+    const restored = observedIdsFromContextEpoch(init!.epoch);
+    expect(restored.skillIds).toEqual(["skill-a", "skill-b"]);
+    expect(restored.environmentIds).toEqual(["env-1"]);
+    expect(restored.memoryIds).toEqual(["mem-1"]);
+    expect(restored.ruleIds).toEqual(["rule-1"]);
+  });
+
+  it("never places mid-epoch updates as non-leading system (BillBuddy provider guard)", () => {
+    const messages = [
+      { role: "system" as const, content: "You are Mitii." },
+      { role: "user" as const, content: "hi" },
+      { role: "assistant" as const, content: "ok" },
+      {
+        role: "user" as const,
+        content:
+          "The user approved continuing after a mutation recovery limit. Your next action MUST be apply_patch.",
+      },
+    ];
+    appendMidConversationSystemMessage(
+      messages,
+      wrapMidConversationSystemText(
+        "Available skills are now: (none).\n\nEnvironment context blocks are now: (none).\n\nMemory instruction blocks are now: (none).",
+      ),
+    );
+    expect(messages.at(-1)?.role).toBe("user");
+    expect(
+      messages.filter((message, index) => index > 0 && message.role === "system"),
+    ).toHaveLength(0);
   });
 
   it("strips mid-conversation updates when compaction forces replace", () => {
@@ -219,7 +282,7 @@ describe("admitContextEpoch (OpenCode Safe Provider-Turn Boundary)", () => {
       { role: "system" as const, content: baseline },
       { role: "user" as const, content: "hi" },
       {
-        role: "system" as const,
+        role: "user" as const,
         content: wrapMidConversationSystemText("skills changed"),
       },
     ];
@@ -278,9 +341,3 @@ describe("admitContextEpoch (OpenCode Safe Provider-Turn Boundary)", () => {
   });
 });
 
-function appendAndStrip(
-  messages: { role: "system" | "user"; content: string }[],
-  mid: string,
-): void {
-  messages.push({ role: "system", content: mid });
-}

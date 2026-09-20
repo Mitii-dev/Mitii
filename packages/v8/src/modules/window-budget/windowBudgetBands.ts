@@ -49,12 +49,16 @@ export const WINDOW_BUDGET_BAND_TABLE: Record<
     label: "Compact",
     rangeLabel: "< 50k",
     overrides: {
-      // Small windows: enough room for a coherent multi-file slice without
-      // overflowing the tool-loop output budget.
+      // Small local windows: keep tool-loop max_tokens tight so models that
+      // pad/repeat until the ceiling do not burn the whole budget hallucinating.
+      // 30k × 0.12 = 3.6k; 45k × 0.12 = 5.4k → tool-loop hard-caps at 5k.
       maxUniqueFilesPerCallCap: 8,
-      outputMinTokens: 5120,
-      outputRatio: 0.3,
-      outputWindowCapRatio: 0.3,
+      outputMinTokens: 2_048,
+      outputRatio: 0.12,
+      outputWindowCapRatio: 0.12,
+      // Keep ~8-file batches at 30k even with the tighter output ratio:
+      // floor((30_000 × 0.12) / 450) = 8.
+      filesPerOutputTokens: 450,
       repositoryShare: 0.26,
       conversationShare: 0.4,
       planShare: 0.06,

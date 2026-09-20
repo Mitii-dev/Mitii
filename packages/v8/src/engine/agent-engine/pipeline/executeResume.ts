@@ -31,6 +31,7 @@ import type {
 } from "../actions";
 import type { BudgetWallReason } from "../actions/buildStallContinueRationale";
 import { ToolCallCache } from "../internal/ToolCallCache";
+import { observedIdsFromContextEpoch } from "../internal/context-epoch";
 import { AGENT_ENGINE_SCHEMA_VERSION } from "../constants";
 import {
   agentRunBudgetSchema,
@@ -691,6 +692,8 @@ export async function executeResume(
       toolGrant.mutationBudget,
     );
 
+    const epochObserved = observedIdsFromContextEpoch(checkpoint.contextEpoch);
+
     const loopOutcome = await runModelToolLoop(runtime, {
       runId,
       request: {
@@ -716,6 +719,10 @@ export async function executeResume(
       mutationCheckpointIds,
       taskListRef,
       establishedFacts,
+      selectedSkillIds: epochObserved.skillIds,
+      projectRuleIds: epochObserved.ruleIds,
+      environmentIds: epochObserved.environmentIds,
+      memoryFacts: epochObserved.memoryIds.map((id) => ({ id, content: "" })),
       windowPolicy,
       repoBuildStateBefore: checkpoint.repoBuildStateBefore,
       logVerbosity: startInput.logVerbosity,

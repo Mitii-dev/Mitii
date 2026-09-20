@@ -24,6 +24,8 @@ import type {
 
 import {
   buildVerificationRepairPrompt,
+  isPrematurePartialExecuteStop,
+  isSyntheticCompletedEditsFallback,
   requiresMutationForExecute,
   selectUserFacingLoopAnswer,
   shouldContinueVerificationRepair,
@@ -693,8 +695,17 @@ export async function finishAfterLoop(
         }) &&
         hasIncompleteChangeSurfaces(taskListRef.current) &&
         // Partial progress with an honest next-step answer may leave rows open.
-        // Fail only when the run stopped with no edits or a stuck blocker answer.
+        // Fail when: no edits, blocker stop, empty/synthetic fallback, or
+        // mid-work stop that never acknowledged remaining checklist work
+        // (BillBuddy 00:13 completed after one SharedBasePage batch).
         (loopChangedFiles.length === 0 ||
+          isPrematurePartialExecuteStop({
+            mutationRequired: true,
+            hasIncompleteChangeSurfaces: true,
+            content: loopAnswer ?? "",
+            changedFileCount: loopChangedFiles.length,
+          }) ||
+          isSyntheticCompletedEditsFallback(loopAnswer ?? "") ||
           /(?:^|\n)\s*(?:\*{0,2}|_{0,2})?\s*blocker(?:\*{0,2}|_{0,2})?\s*[:\-—]/im.test(
             loopAnswer ?? "",
           ) ||
@@ -848,6 +859,7 @@ export async function finishAfterLoop(
         windowPolicy,
         logVerbosity: input.logVerbosity,
         plan: params.loopContext?.plan,
+        forceMutationLock: true,
         thresholds: resolveLoopPolicyThresholds({
         contextWindowTokens: windowPolicy.contextWindowTokens,
         overrides: input.loopPolicy?.thresholds,

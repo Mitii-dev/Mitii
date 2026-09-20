@@ -173,6 +173,7 @@ export {
   synthesizeFallbackAnswer,
   compactRecoveredAssistantContent,
   selectUserFacingLoopAnswer,
+  salvageUserFacingAnswerSection,
   stripInjectionComplianceEchoes,
   amendMessageWithPriorConversation,
 } from "./isIncompleteAssistantTurn";
@@ -259,6 +260,8 @@ export {
 export {
   resolveLoopTurnOutcome,
   isUnfulfilledExecute,
+  isSyntheticCompletedEditsFallback,
+  isPrematurePartialExecuteStop,
   requiresMutationForExecute,
   buildUnfulfilledExecuteRecoveryMessage,
 } from "./resolveLoopTurnOutcome";

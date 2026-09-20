@@ -91,4 +91,8 @@ export const PLACEHOLDER_TEST_SCRIPT =
   /no test specified|error:\s*no test|exit\s+1/i;
 
 export const MISSING_TOOL_PATTERNS =
-  /\b(command not found|enoent|not recognized as an internal or external command|cannot find module|can't resolve|module not found)\b/i;
+  /\b(command not found|enoent|not recognized as an internal or external command|MODULE_NOT_FOUND|Error:\s*Cannot find module)\b/i;
+
+/** TypeScript/compiler diagnostics must never be reclassified as missing tools. */
+export const COMPILER_DIAGNOSTIC_EVIDENCE =
+  /\berror TS\d{3,5}\b|\.tsx?\(\d+,\d+\):\s*error\b/i;

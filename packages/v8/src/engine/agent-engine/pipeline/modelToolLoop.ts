@@ -72,6 +72,11 @@ import { runModelLoopToolPhase } from "./modelLoopToolPhase";
 import { resolveModelLoopAfterTools } from "./modelLoopAfterTools";
 import { createLoopFileReadTracker } from "../actions";
 import { tryOfferBudgetWallContinue } from "./tryOfferBudgetWallContinue";
+import {
+  filterToolsForMutationLock,
+  isMutationLocked,
+} from "./mutationLockTools";
+import { filterToolsForAnswerLock } from "./diagnoseAnswerLock";
 
 export async function runModelToolLoop(
   runtime: AgentEngineRuntime,
@@ -128,6 +133,11 @@ export async function runModelToolLoop(
    * closed instead of repeating the research stall.
    */
   forceMutationOnResume?: boolean;
+  /**
+   * Verification repair / remaining-error passes: lock tools to mutation +
+   * targeted reads even when files were already changed (BillBuddy 00:48).
+   */
+  forceMutationLock?: boolean;
   /** Pre-mutation critic mode from steering flags (default off). */
   criticMode?: SteeringCriticMode;
 }): Promise<ToolLoopOutcome> {
@@ -175,6 +185,10 @@ export async function runModelToolLoop(
     }) &&
     changedFiles.length === 0;
 
+  // Repair loops already have changed files — still lock to mutation tools.
+  const forceMutationLock =
+    forceMutationOnResume || params.forceMutationLock === true;
+
   const session: ModelLoopSession = {
     decision: params.decision,
     selectedSkillIds: [...(params.selectedSkillIds ?? [])],
@@ -194,14 +208,27 @@ export async function runModelToolLoop(
     continueOverrideCount: Math.max(0, params.continueOverrideCount ?? 0),
     rejectedMutationRecoveries: 0,
     rejectedToolRecoveries: 0,
-    readOnlyToolTurnsWithoutMutation: forceMutationOnResume
+    readOnlyToolTurnsWithoutMutation: forceMutationLock
       ? thresholds.maxReadOnlyToolTurnsBeforeMutationNudge
       : 0,
     readOnlyToolTurnsAfterMutation: 0,
     afterMutationReadOnlyNudges: 0,
-    awaitingReadOnlyMutationRetry: forceMutationOnResume,
-    readOnlyMutationRetryAttempts: 0,
-    postNudgeEvidenceReadTurns: 0,
+    awaitingReadOnlyMutationRetry: forceMutationLock,
+    // Continue: leave up to five targeted evidence-read batches so the model
+    // can load write/mustRead paths, then patch. Broad rediscovery stays stripped.
+    // Repair locks: tighter evidence budget — error list is already in the prompt.
+    readOnlyMutationRetryAttempts: forceMutationLock
+      ? thresholds.maxReadOnlyMutationRetryAttempts
+      : 0,
+    postNudgeEvidenceReadTurns: forceMutationOnResume
+      ? Math.max(0, thresholds.maxPostNudgeEvidenceReadTurns - 5)
+      : params.forceMutationLock === true
+        ? Math.max(0, thresholds.maxPostNudgeEvidenceReadTurns - 2)
+        : 0,
+    consecutiveSameToolTurns: 0,
+    lastUniformToolName: undefined,
+    diagnoseAnswerNudges: 0,
+    awaitingAnswerOnly: false,
     mutationBlockerAsked: false,
     awaitingRejectedMutationRetry: undefined,
     lastPromptCacheClass: undefined,
@@ -309,11 +336,28 @@ export async function runModelToolLoop(
     budget.recordModelCall();
     runtime.emitStage(bus, runId, "model_running", "started");
 
+    const mutationLocked = isMutationLocked({
+      awaitingReadOnlyMutationRetry: session.awaitingReadOnlyMutationRetry,
+      postNudgeEvidenceReadTurns: session.postNudgeEvidenceReadTurns,
+      maxPostNudgeEvidenceReadTurns: thresholds.maxPostNudgeEvidenceReadTurns,
+    });
+    const turnModelRequest: ModelRequest = session.awaitingAnswerOnly
+      ? {
+          ...params.request,
+          tools: filterToolsForAnswerLock(params.request.tools),
+        }
+      : mutationLocked
+        ? {
+            ...params.request,
+            tools: filterToolsForMutationLock(params.request.tools),
+          }
+        : params.request;
+
     const prepared = prepareModelLoopTurn({
       runtime,
       runId,
       bus,
-      request: params.request,
+      request: turnModelRequest,
       messages,
       budget,
       windowPolicy: params.windowPolicy,
@@ -336,6 +380,7 @@ export async function runModelToolLoop(
       projectRuleIds: session.projectRuleIds,
       environmentIds: session.environmentIds,
       memoryIds: params.memoryFacts?.map((fact) => fact.id) ?? [],
+      mutationLocked,
     });
     session.emittedLoopPressureWarning = prepared.emittedLoopPressureWarning;
     session.emittedLoopCompactionWarning = prepared.emittedLoopCompactionWarning;
@@ -482,6 +527,9 @@ export async function runModelToolLoop(
           recovery.assistantContent,
         );
         session.answer = session.pendingTextContinuation;
+      } else if (recovery.assistantContent.trim().length === 0) {
+        // Reasoning-burn recovery: clear any poisoned pending essay.
+        session.pendingTextContinuation = "";
       }
       messages.push({
         role: "assistant",

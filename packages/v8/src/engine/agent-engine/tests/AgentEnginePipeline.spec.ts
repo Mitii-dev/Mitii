@@ -272,7 +272,7 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     ).result;
 
     expect(result.status).toBe("completed");
-    expect(result.answer).toContain("Completed workspace edits");
+    expect(result.answer).toContain("Workspace edits so far");
     expect(result.answer).toContain("test/Tablet/pages/BasePage.ts");
     expect(result.reasonCodes).toContain("incomplete_answer_recovered");
     expect(result.reasonCodes).toContain("incomplete_answer_fallback");
@@ -1223,7 +1223,7 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     ]);
 
     expect(result.status).toBe("completed");
-    expect(result.answer).toContain("Completed workspace edits");
+    expect(result.answer).toContain("Workspace edits so far");
     expect(result.answer).toContain("src/field.ts");
     expect(result.reasonCodes).toContain("incomplete_answer_fallback");
     expect(result.evidence?.finalStopReason).toContain("Completed");

@@ -34,6 +34,8 @@ export const agentEngineThresholdsSchema = z
     continueBudgetModelCallBump: nonnegativeIntSchema,
     maxVerificationRepairAttempts: nonnegativeIntSchema,
     maxStalledVerificationRepairs: positiveIntSchema,
+    maxRepeatedReadonlyToolTurnsBeforeAnswerNudge: positiveIntSchema,
+    maxDiagnoseAnswerNudges: nonnegativeIntSchema,
     maxRecoveredAnalysisChars: positiveIntSchema,
   })
   .strict();

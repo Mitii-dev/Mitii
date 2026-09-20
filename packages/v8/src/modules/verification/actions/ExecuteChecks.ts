@@ -7,7 +7,7 @@ import type {
   VerificationCheckResult,
   VerificationToolExecutorPort,
 } from "../contracts";
-import { MISSING_TOOL_PATTERNS } from "../policy";
+import { MISSING_TOOL_PATTERNS, COMPILER_DIAGNOSTIC_EVIDENCE } from "../policy";
 import type { DiscoveredCheckCandidate } from "../internal/discovery";
 
 const MISCONFIGURED_PORT_PATTERNS =
@@ -105,6 +105,7 @@ export async function executeChecks(params: {
 
     if (
       outcome === "failed" &&
+      !COMPILER_DIAGNOSTIC_EVIDENCE.test(evidenceText) &&
       (MISSING_TOOL_PATTERNS.test(evidenceText) ||
         MISCONFIGURED_PORT_PATTERNS.test(evidenceText))
     ) {

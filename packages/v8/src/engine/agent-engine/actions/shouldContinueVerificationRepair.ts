@@ -109,5 +109,10 @@ export function nextStalledRepairCount(params: {
   if (params.currentAfterErrorCount < params.previousAfterErrorCount) {
     return 0;
   }
+  // Error count rose (BillBuddy 00:48: 2→4→7) — count as a full stall so
+  // compact bands with maxStalledVerificationRepairs=1 stop shotgun repairs.
+  if (params.currentAfterErrorCount > params.previousAfterErrorCount) {
+    return params.consecutiveStalledRepairs + 1;
+  }
   return params.consecutiveStalledRepairs + 1;
 }

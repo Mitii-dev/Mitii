@@ -14,6 +14,8 @@ export interface RecoverabilityWorkingSetInput {
   preflightDiagnostics?: string;
   establishedFacts?: readonly EstablishedFact[];
   maxEstablishedFactChars?: number;
+  /** Continue / exhausted-evidence lock: demand apply_patch, not more reads. */
+  mutationLocked?: boolean;
 }
 
 const COMPILER_QUEUE_FACT_ID = "error-queue:compiler";
@@ -31,6 +33,11 @@ export function serializeRecoverabilityWorkingSet(
   const checklist = serializeWorkingSetChecklistLines(params.taskList);
   if (checklist.length > 0) {
     sections.push("## Checklist", ...checklist);
+  } else if (params.mutationLocked) {
+    sections.push(
+      "## Checklist",
+      "Mutation required now. Prefer apply_patch/delete_file/move_file. Up to five targeted read_file batches of write/mustRead paths are allowed if contents are missing; then patch immediately. No list/glob/search.",
+    );
   } else {
     sections.push(
       "## Checklist",

@@ -165,6 +165,51 @@ export function isUnfulfilledExecute(input: {
   return true;
 }
 
+/**
+ * Synthetic fallback from {@link synthesizeFallbackAnswer} when the model
+ * stopped empty after some edits. Looks like success but often hides an
+ * unfinished multi-phase checklist (BillBuddy 00:13 POM refactor).
+ */
+export function isSyntheticCompletedEditsFallback(content: string): boolean {
+  return /^(?:Completed workspace edits|Workspace edits so far) \(\d+ files?\):/i.test(
+    content.trim(),
+  );
+}
+
+/**
+ * Partial mutations landed, but the model stopped with empty/mid-work/synthetic
+ * text while change checklist surfaces remain open. Must not mark the run
+ * completed (architecture-scale execute often needs many batches).
+ */
+export function isPrematurePartialExecuteStop(params: {
+  mutationRequired: boolean;
+  hasIncompleteChangeSurfaces: boolean;
+  content: string;
+  changedFileCount: number;
+}): boolean {
+  if (!params.mutationRequired || !params.hasIncompleteChangeSurfaces) {
+    return false;
+  }
+  if (params.changedFileCount <= 0) {
+    return false;
+  }
+  const text = params.content.trim();
+  if (text.length === 0) {
+    return true;
+  }
+  if (isSyntheticCompletedEditsFallback(text)) {
+    return true;
+  }
+  if (isClearMutationBlocker(text)) {
+    return false;
+  }
+  return shouldRecoverIncompleteAssistantTurn({
+    content: text,
+    toolCallCount: 0,
+    changedFileCount: params.changedFileCount,
+  });
+}
+
 function requiresMutationIntent(
   primaryTaskIntent: string,
   reasonCodes?: readonly string[],

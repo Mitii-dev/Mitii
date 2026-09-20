@@ -7,6 +7,10 @@ import type {
 } from "../../../modules/model-gateway";
 
 import { assembleToolCalls } from "../actions";
+import {
+  isMidWorkAnalysisDump,
+  isUnfinishedInvestigationAnswer,
+} from "../actions/isIncompleteAssistantTurn";
 import { EventBus } from "../internal/EventBus";
 
 import type { AgentEngineRuntime } from "./runtime";
@@ -124,9 +128,19 @@ export async function consumeModelTurn(
     return { kind: "cancelled" };
   }
 
-  // Some reasoning models stream only into reasoning; fall back so the UI
-  // still gets a usable answer.
-  const content = contentParts.join("") || reasoningParts.join("");
+  // Prefer the content channel. Only promote reasoning when it can stand as a
+  // user-facing answer — never for length-truncated reasoning burns (BillBuddy
+  // 23:45 emptied the UI after a 5k reasoning dump poisoned pending text).
+  const visibleContent = contentParts.join("");
+  const reasoning = reasoningParts.join("");
+  const content =
+    visibleContent ||
+    (reasoning &&
+    finishReason !== "length" &&
+    !isMidWorkAnalysisDump(reasoning) &&
+    !isUnfinishedInvestigationAnswer(reasoning)
+      ? reasoning
+      : "");
 
   return {
     kind: "completed",
