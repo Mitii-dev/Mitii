@@ -135,6 +135,8 @@ export const sourceAnalysisReferenceSchema = z
       "call",
       "construct",
       "type",
+      "extends",
+      "implements",
       "read",
       "write",
       "unknown",

@@ -92,6 +92,9 @@ export async function executeResume(
       `No suspended run checkpoint found for run "${runId}".`,
     );
   }
+  if (checkpoint.contextEpoch) {
+    runtime.contextEpochs.set(runId, checkpoint.contextEpoch);
+  }
 
   const requestId = checkpoint.requestId;
   const decision = input.approvalMode

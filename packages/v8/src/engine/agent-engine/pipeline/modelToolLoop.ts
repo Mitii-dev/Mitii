@@ -182,7 +182,7 @@ export async function runModelToolLoop(
     mutationBlockerAsked: false,
     awaitingRejectedMutationRetry: undefined,
     lastPromptCacheClass: undefined,
-    contextEpoch: undefined,
+    contextEpoch: runtime.contextEpochs.get(runId),
   };
 
   const isMutationRequired = () =>
@@ -315,6 +315,9 @@ export async function runModelToolLoop(
     session.emittedLoopCompactionWarning = prepared.emittedLoopCompactionWarning;
     session.lastPromptCacheClass = prepared.promptCacheClass;
     session.contextEpoch = prepared.contextEpoch;
+    if (prepared.contextEpoch) {
+      runtime.contextEpochs.set(runId, prepared.contextEpoch);
+    }
     const { turnRequest, preservePrefix, promptCacheClass, compaction } =
       prepared;
 
@@ -447,7 +450,7 @@ export async function runModelToolLoop(
     if (
       toolCalls.length === 0 &&
       turn.content.trim().length > 0 &&
-      /<\s*(?:read_file|read_many_files|search_files|glob_files|list_directory|goto_definition|find_references|hover_symbol|analyze_change_impact)\b/i.test(
+      /<\s*(?:read_file|read_many_files|search_files|glob_files|list_directory|goto_definition|find_references|hover_symbol|document_symbol|workspace_symbol|find_implementation|call_hierarchy|analyze_change_impact)\b/i.test(
         turn.content,
       )
     ) {

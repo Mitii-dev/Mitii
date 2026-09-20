@@ -22,6 +22,7 @@ import type {
 } from "../contracts";
 import { AgentEngineError } from "../contracts";
 import { EventBus } from "../internal/EventBus";
+import type { ContextEpoch } from "../internal/context-epoch";
 import { progressOf, planProgressOf, seedTaskListFromPlan, type TaskListRef } from "../internal/taskListRuntime";
 import { DEFAULT_TOOL_DEFINITIONS } from "../policy";
 
@@ -91,6 +92,8 @@ export interface AgentEngineRuntime {
     state: RepositoryStateReference | undefined,
   ): Promise<void>;
   resolveWindowPolicy(input: AgentEngineStartInput): WindowPolicy;
+  /** Active context epochs keyed by runId. Checkpoint saves read this map. */
+  readonly contextEpochs: Map<string, ContextEpoch>;
   syncTaskList(params: {
     mode: string;
     plan?: PlanArtifact;
@@ -152,6 +155,7 @@ export function createAgentEngineRuntime(
   tokenEstimator: TokenEstimatorPort = new CharacterTokenEstimator(),
 ): AgentEngineRuntime {
   const isoNow = (): string => deps.clock.now().toISOString();
+  const contextEpochs = new Map<string, ContextEpoch>();
 
   const emit = (bus: EventBus, event: RunEvent): void => {
     bus.push(event);
@@ -335,6 +339,7 @@ export function createAgentEngineRuntime(
     safeUnpin,
     resolveWindowPolicy,
     syncTaskList,
+    contextEpochs,
   };
 }
 

@@ -31,6 +31,10 @@ const DISCOVERY_TOOL_IDS = new Set<string>([
   "goto_definition",
   "find_references",
   "hover_symbol",
+  "document_symbol",
+  "workspace_symbol",
+  "find_implementation",
+  "call_hierarchy",
   "read_package_scripts",
 ]);
 

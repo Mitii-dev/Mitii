@@ -32,7 +32,7 @@ import {
 } from '@mitii/sdk';
 import {
   createFileSystemSkillsCatalog,
-  createHostCodeNavigationPort,
+  createHostLanguageServices,
   createHostLlmPorts,
   createHostNetworkPort,
   createHostRepositoryGraphPort,
@@ -187,6 +187,7 @@ async function createHostAcpClient(cwd: string): Promise<MitiiClient> {
   const search = createOptionalSearchPort(env);
   const git = new NodeGitAdapter();
   const knowledgeGraph = createWorkspaceKnowledgeGraph(cwd);
+  const language = createHostLanguageServices({ workspaceRoot: cwd });
   const tools = new ToolRuntimePipeline(
     {
       fileSystem,
@@ -205,7 +206,8 @@ async function createHostAcpClient(cwd: string): Promise<MitiiClient> {
       }),
       git,
       knowledgeGraph,
-      codeNavigation: createHostCodeNavigationPort({ workspaceRoot: cwd }),
+      codeNavigation: language.codeNavigation,
+      ...(language.diagnostics ? { diagnostics: language.diagnostics } : {}),
       repoGraphs: createHostRepositoryGraphPort({ workspaceRoot: cwd }),
       ...(search ? { search } : {}),
     },

@@ -398,13 +398,18 @@ export {
   codeNavigationInputSchema,
   codeNavigationResultSchema,
   CODE_NAVIGATION_SCHEMA_VERSION,
+  CODE_NAVIGATION_OPERATIONS,
 } from "./modules/code-navigation";
 export type {
   CodeNavigationInput,
   CodeNavigationResult,
   CodeNavigationPort,
+  CodeNavigationCapability,
   CodeNavigationQuery,
+  CodeNavigationDocumentQuery,
+  CodeNavigationWorkspaceQuery,
   CodeNavigationLocation,
+  CodeNavigationHover,
 } from "./modules/code-navigation";
 
 export { ChangeImpactPipeline } from "./modules/change-impact";

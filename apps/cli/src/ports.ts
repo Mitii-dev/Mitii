@@ -16,7 +16,7 @@ import {
 import { MemoryPipeline } from '@mitii/v8';
 import {
   createFileSystemSkillsCatalog,
-  createHostCodeNavigationPort,
+  createHostLanguageServices,
   createHostLlmPorts,
   createHostNetworkPort,
   createHostRepositoryGraphPort,
@@ -215,6 +215,7 @@ export async function createCliClient(options: {
   });
   const adversaryFailMode =
     env.MITII_ADVERSARY_FAIL === 'open' ? ('fail_open' as const) : ('fail_closed' as const);
+  const language = createHostLanguageServices({ workspaceRoot: options.cwd });
   const tools = new ToolRuntimePipeline(
     {
       fileSystem,
@@ -225,9 +226,8 @@ export async function createCliClient(options: {
       }),
       git,
       knowledgeGraph,
-      codeNavigation: createHostCodeNavigationPort({
-        workspaceRoot: options.cwd,
-      }),
+      codeNavigation: language.codeNavigation,
+      ...(language.diagnostics ? { diagnostics: language.diagnostics } : {}),
       repoGraphs,
       ...(search ? { search } : {}),
     },

@@ -64,6 +64,10 @@ const TOOL_PACK_PRIORITY: Record<string, number> = {
   goto_definition: 35,
   find_references: 34,
   hover_symbol: 33,
+  document_symbol: 32,
+  workspace_symbol: 31,
+  find_implementation: 30,
+  call_hierarchy: 29,
 };
 
 export function serializeTools(params: {

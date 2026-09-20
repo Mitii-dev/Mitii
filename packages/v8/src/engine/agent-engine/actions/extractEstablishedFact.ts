@@ -11,6 +11,10 @@ const OBSERVATION_TOOLS = new Set([
   "goto_definition",
   "find_references",
   "hover_symbol",
+  "document_symbol",
+  "workspace_symbol",
+  "find_implementation",
+  "call_hierarchy",
   "file_metadata",
 ]);
 

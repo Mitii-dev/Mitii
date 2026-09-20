@@ -70,14 +70,20 @@ export function summarizeToolCall(
     case "goto_definition":
     case "find_references":
     case "hover_symbol":
+    case "document_symbol":
+    case "find_implementation":
+    case "call_hierarchy":
       return [
         path ? `path=${path}` : undefined,
         typeof args.line === "number" ? `line=${args.line}` : undefined,
         typeof args.column === "number" ? `column=${args.column}` : undefined,
         typeof args.symbolName === "string" ? `symbol=${args.symbolName}` : undefined,
+        typeof args.direction === "string" ? `direction=${args.direction}` : undefined,
       ]
         .filter(Boolean)
         .join(" ");
+    case "workspace_symbol":
+      return typeof args.query === "string" ? `query=${args.query}` : undefined;
     case "read_diagnostics":
     case "read_git_status":
       return [
