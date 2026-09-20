@@ -477,6 +477,52 @@ describe("Tool Runtime Phase 8 mutations", () => {
     expect(unique.reasonCode).toBe("old_text_ambiguous");
   });
 
+  it("creates a new file even when diagnostics throw on the missing path", async () => {
+    const fs = new InMemoryFileSystemAdapter(
+      WORKSPACE,
+      directory({ src: directory({ "a.ts": file("const x = 1;\n") }) }),
+    );
+    const runtime = new ToolRuntimePipeline({
+      fileSystem: fs,
+      process: new InMemoryProcessAdapter(async () => ({
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        timedOut: false,
+        cancelled: false,
+        truncated: false,
+      })),
+      diagnostics: {
+        async readDiagnostics() {
+          throw new Error(
+            "Could not find source file: '/workspace/src/about/page.tsx'.",
+          );
+        },
+      },
+    });
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "create-new",
+      toolName: "apply_patch",
+      arguments: {
+        patches: [
+          {
+            path: "src/about/page.tsx",
+            oldText: "",
+            newText:
+              'export default function About() {\n  return "About this benchmark app";\n}\n',
+          },
+        ],
+      },
+      grant: createWriteGrant({ approvalMode: "never" }),
+      workspaceRoot: WORKSPACE,
+    });
+    expect(result.status).toBe("succeeded");
+    expect(result.reasonCode).toBeUndefined();
+    const written = await fs.readFile(`${WORKSPACE}/src/about/page.tsx`);
+    expect(written.content).toContain("About this benchmark app");
+  });
+
   it("rejects replaceAll with empty oldText", async () => {
     const { runtime } = createRuntime();
     const result = await runtime.execute({

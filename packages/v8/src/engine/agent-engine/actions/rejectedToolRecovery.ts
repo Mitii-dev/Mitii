@@ -43,6 +43,18 @@ export function buildRejectedMutationRecoveryMessage(params: {
       "oldText and newText were the same, so the file was not changed.",
       "Using attached currentContent, retry apply_patch with a newText that actually differs and fixes the listed diagnostic. Do not copy the same code.",
     );
+  } else if (
+    params.reasonCode === "execution_failed" &&
+    params.warnings.some((warning) =>
+      /could not find source file/i.test(warning),
+    )
+  ) {
+    // Host diagnostics port used to abort creates/edits with this message
+    // before writing. Retry the same apply_patch — do not mkdir via shell.
+    instructions.push(
+      "This was a host diagnostics failure, not a bad patch payload.",
+      "Retry the same apply_patch immediately (including creates with oldText=\"\"). Do not use mkdir, shell redirects, or node -e to write files.",
+    );
   } else {
     instructions.push(
       "When the rejected result includes currentContent, copy exact oldText from that content and retry apply_patch immediately. Do not spend a turn re-reading unless currentContent is missing.",

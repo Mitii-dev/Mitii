@@ -20,4 +20,21 @@ describe("buildRejectedMutationRecoveryMessage", () => {
     expect(message).toContain("newText that actually differs");
     expect(message).toContain("at most 4 targeted read");
   });
+
+  it("tells the model to retry apply_patch after host diagnostics source-file failures", () => {
+    const message = buildRejectedMutationRecoveryMessage({
+      toolName: "apply_patch",
+      status: "failed",
+      reasonCode: "execution_failed",
+      warnings: [
+        "Could not find source file: '/tmp/fixture/src/App.tsx'.",
+      ],
+      summary: "patches=1 paths=src/App.tsx",
+    });
+
+    expect(message).toContain("host diagnostics failure");
+    expect(message).toContain('oldText=""');
+    expect(message).not.toContain("copy exact oldText from that content");
+    expect(message).toContain("Do not use mkdir");
+  });
 });
