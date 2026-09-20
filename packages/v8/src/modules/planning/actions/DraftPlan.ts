@@ -302,7 +302,14 @@ function buildPhases(params: {
     skillPhaseHints,
     params.skipDiscover === true,
   );
-  if (executableSkillHints.length > 0) {
+  // Architecture-scale package asks must keep objective-shaped Change steps.
+  // Skill playbooks (security, git-commit, etc.) were replacing the checklist
+  // with "Validate and sanitize" / "Subject ≤72 chars" while preflight TS
+  // diagnostics stole step 1 (BillBuddy POM DeepSeek 70k run).
+  if (
+    executableSkillHints.length > 0 &&
+    !isArchitectureScaleAsk(evidence, objective)
+  ) {
     return injectDiscoveryStepsIntoChangePhase(
       injectDiagnosticStepsIntoChangePhase(
         buildSkillHintPhases({
@@ -319,6 +326,8 @@ function buildPhases(params: {
         buildEvidence,
         evidence.risk,
         params.maxFilesPerBatch,
+        evidence,
+        objective,
       ),
       discoveryBrief,
       evidence.risk,
@@ -630,6 +639,8 @@ function injectDiagnosticStepsIntoChangePhase(
   buildEvidence: PlanningBuildEvidence | undefined,
   risk: PlanStep["riskLevel"],
   maxFilesPerBatch?: number,
+  evidence?: PlanningTaskEvidence,
+  objective?: string,
 ): PlanPhase[] {
   const diagnosticSteps = buildDiagnosticChangeSteps(
     buildEvidence,
@@ -639,6 +650,11 @@ function injectDiagnosticStepsIntoChangePhase(
   if (diagnosticSteps.length === 0) {
     return phases;
   }
+
+  const preferArchitectureFirst =
+    evidence !== undefined &&
+    objective !== undefined &&
+    isArchitectureScaleAsk(evidence, objective);
 
   const changeIdx = phases.findIndex((phase) => isChangeLikePhase(phase.name));
   if (changeIdx >= 0) {
@@ -651,7 +667,11 @@ function injectDiagnosticStepsIntoChangePhase(
       );
       return {
         ...phase,
-        steps: mergeDiagnosticChangeSteps(diagnosticSteps, retained),
+        steps: mergeDiagnosticChangeSteps(
+          diagnosticSteps,
+          retained,
+          preferArchitectureFirst,
+        ),
       };
     });
   }
@@ -671,7 +691,7 @@ function injectDiagnosticStepsIntoChangePhase(
     successCriteria: [
       "Reported diagnostics are resolved without unrelated edits.",
     ],
-    steps: mergeDiagnosticChangeSteps(diagnosticSteps, []),
+    steps: mergeDiagnosticChangeSteps(diagnosticSteps, [], preferArchitectureFirst),
   };
 
   const next = [...phases];
@@ -953,47 +973,63 @@ function buildChangeSteps(
   }
 
   steps.push(...discoverySteps);
-  steps.push(...diagnosticSteps);
 
-  // Prefer concrete diagnostic/discovery rows over a package-wide mega-objective.
-  if (diagnosticSteps.length === 0 && discoverySteps.length === 0) {
-    if (discoveryFailed) {
-      steps.push(
-        step(
-          "step-open-questions",
-          "Resolve remaining open questions before changing files",
-          [],
-          "Discovery did not identify a concrete change surface. Answer the open questions instead of inventing file work.",
-          "Open questions are resolved or the user confirms the change surface.",
-          "low",
-        ),
-      );
-      return steps;
-    }
-    const architectureSteps = buildArchitectureChangeSteps(
-      evidence,
-      objective,
-      targetRefs,
-      processHints,
-    );
-    if (architectureSteps.length > 0) {
-      steps.push(...architectureSteps);
-    } else {
-      steps.push(
-        step(
-          "step-implement",
-          implementIntent,
-          targetRefs,
-          summarizeImplementAction(
-            objective,
-            targetRefs,
-            changeImpact,
-            processHints,
+  const architectureScale = isArchitectureScaleAsk(evidence, objective);
+  const architectureSteps = architectureScale
+    ? buildArchitectureChangeSteps(
+        evidence,
+        objective,
+        targetRefs,
+        processHints,
+      )
+    : [];
+
+  // Prefer concrete diagnostic/discovery rows for repair asks — but never let
+  // incidental preflight errors suppress architecture-scale objectives.
+  if (architectureSteps.length > 0) {
+    steps.push(...architectureSteps);
+    steps.push(...diagnosticSteps);
+  } else {
+    steps.push(...diagnosticSteps);
+    if (diagnosticSteps.length === 0 && discoverySteps.length === 0) {
+      if (discoveryFailed) {
+        steps.push(
+          step(
+            "step-open-questions",
+            "Resolve remaining open questions before changing files",
+            [],
+            "Discovery did not identify a concrete change surface. Answer the open questions instead of inventing file work.",
+            "Open questions are resolved or the user confirms the change surface.",
+            "low",
           ),
-          doneOutcome(evidence, shortObjective),
-          evidence.risk,
-        ),
+        );
+        return steps;
+      }
+      const fallbackArchitecture = buildArchitectureChangeSteps(
+        evidence,
+        objective,
+        targetRefs,
+        processHints,
       );
+      if (fallbackArchitecture.length > 0) {
+        steps.push(...fallbackArchitecture);
+      } else {
+        steps.push(
+          step(
+            "step-implement",
+            implementIntent,
+            targetRefs,
+            summarizeImplementAction(
+              objective,
+              targetRefs,
+              changeImpact,
+              processHints,
+            ),
+            doneOutcome(evidence, shortObjective),
+            evidence.risk,
+          ),
+        );
+      }
     }
   }
 
@@ -1018,18 +1054,37 @@ function buildChangeSteps(
  * checklist. Split into concrete file-scoped workstreams when the ask is broad
  * and targets already look multi-surface (shared / platforms / specs).
  */
-function buildArchitectureChangeSteps(
+function isArchitectureScaleAsk(
   evidence: PlanningTaskEvidence,
   objective: string,
-  targetRefs: readonly string[],
-  _processHints: readonly string[],
-): PlanStep[] {
+): boolean {
   const broadScope =
     evidence.scope === "package" ||
     evidence.scope === "repository" ||
     evidence.scope === "workspace" ||
     evidence.scope === "multi_file";
   if (!broadScope) {
+    return false;
+  }
+  const architectureIntent =
+    evidence.primaryIntent === "refactor" ||
+    evidence.primaryIntent === "migrate" ||
+    evidence.primaryIntent === "scaffold";
+  if (architectureIntent) {
+    return true;
+  }
+  // Numbered multi-goal objectives (shared → adapters → specs) even if intent
+  // was classified as feature.
+  return extractNumberedGoalSteps(objective, [], evidence.risk).length >= 2;
+}
+
+function buildArchitectureChangeSteps(
+  evidence: PlanningTaskEvidence,
+  objective: string,
+  targetRefs: readonly string[],
+  _processHints: readonly string[],
+): PlanStep[] {
+  if (!isArchitectureScaleAsk(evidence, objective)) {
     return [];
   }
 
