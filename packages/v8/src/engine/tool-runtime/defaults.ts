@@ -15,17 +15,17 @@ export const DEFAULT_GLOB_SKIP_DIRECTORY_NAMES = [
 ] as const;
 
 /** Absolute schema ceiling for apply_patch.patches length (catalog hard max). */
-export const MAX_APPLY_PATCH_PATCHES = 12;
+export const MAX_APPLY_PATCH_PATCHES = 20;
 
 /**
  * Fallback mutation budget when a write grant omits mutationBudget
  * (legacy callers / tests). Matches Decision Policy "standard" profile.
  */
 export const DEFAULT_FALLBACK_MUTATION_BUDGET = {
-  maxPatchesPerCall: 8,
-  maxUniqueFilesPerCall: 5,
-  maxPatchPayloadCharacters: 24_000,
-  preferredBatchSize: 8,
+  maxPatchesPerCall: 12,
+  maxUniqueFilesPerCall: 8,
+  maxPatchPayloadCharacters: 32_000,
+  preferredBatchSize: 12,
   requireBatchedExecution: false,
 } as const;
 

@@ -21,7 +21,8 @@ export const AGENT_ENGINE_THRESHOLDS = {
   maxIncompleteAnswerRecoveries: 2,
   /**
    * Max nudges when execute+write+mutation intent ends on a text-only
-   * diagnosis instead of apply_patch.
+   * diagnosis instead of apply_patch. Kept at 2 across all bands so a
+   * single stale-context miss can recover without enabling research essays.
    */
   maxUnfulfilledExecuteRecoveries: 2,
   /**
@@ -52,13 +53,13 @@ export const AGENT_ENGINE_THRESHOLDS = {
    * Targeted read_file / read_many_files batches allowed after the mutation
    * nudge before failing. Broad list/glob/search still fails immediately.
    */
-  maxPostNudgeEvidenceReadTurns: 3,
+  maxPostNudgeEvidenceReadTurns: 2,
   /**
    * Max successful read/search/tool turns in execute mode before requiring the
    * first mutation attempt. This catches broad investigation loops that never
-   * reach apply_patch.
+   * reach apply_patch. Shared across bands; compact may tighten further.
    */
-  maxReadOnlyToolTurnsBeforeMutationNudge: 6,
+  maxReadOnlyToolTurnsBeforeMutationNudge: 4,
   /**
    * After the first mutation, cap consecutive non-mutating tool turns so
    * glob/search cannot spin while the transcript is expensive.
@@ -75,15 +76,15 @@ export const AGENT_ENGINE_THRESHOLDS = {
    */
   verificationRepairModelCallReserveRatio: 0.2,
   /** Fallback preferred batch size when grant omits mutationBudget. */
-  defaultPreferredBatchSize: 8,
+  defaultPreferredBatchSize: 12,
   /** Fallback hard patch cap when grant omits mutationBudget. */
-  defaultMaxPatchesPerCall: 16,
+  defaultMaxPatchesPerCall: 24,
   /**
    * Flag context-loss re-reads when file-read calls exceed unique paths
    * by this ratio and at least `explorationRereadMinCalls` reads occurred.
    */
   explorationRereadRatio: 2,
-  explorationRereadMinCalls: 8,
+  explorationRereadMinCalls: 6,
   /** One mid-loop nudge, then stop the spin. */
   maxExplorationStallNudges: 1,
   /**

@@ -53,11 +53,14 @@ export const LOOP_POLICY_WINDOW_BAND_TABLE: Record<
     label: "Compact",
     rangeLabel: "< 50k",
     overrides: {
-      // Small windows fill fast: allow more reads before forcing a patch,
-      // more stale-hunk recoveries, and keep recovered essays shorter.
-      explorationRereadMinCalls: 12,
-      maxReadOnlyMutationRetryAttempts: 3,
-      maxReadOnlyToolTurnsBeforeMutationNudge: 10,
+      // Small windows fill fast: force the first mutation earlier, cut re-read
+      // thrash, keep recovered essays short, and allow a few extra stale-hunk
+      // retries so a bad patch does not stall the whole job.
+      explorationRereadMinCalls: 5,
+      maxReadOnlyMutationRetryAttempts: 2,
+      maxReadOnlyToolTurnsBeforeMutationNudge: 3,
+      maxPostNudgeEvidenceReadTurns: 1,
+      maxUnfulfilledExecuteRecoveries: 1,
       maxRecoveredAnalysisChars: 560,
       maxRejectedMutationRecoveries: 4,
       maxTruncationRecoveries: 4,
@@ -75,7 +78,9 @@ export const LOOP_POLICY_WINDOW_BAND_TABLE: Record<
     label: "Wide",
     rangeLabel: "≥ 100k",
     overrides: {
-      // Large windows: keep mutation effort-capped; leave room for recovered analysis / skills.
+      // Large windows: slightly more evidence room, still mutation-first.
+      maxReadOnlyToolTurnsBeforeMutationNudge: 5,
+      maxPostNudgeEvidenceReadTurns: 2,
       maxRecoveredAnalysisChars: 640,
     },
   },

@@ -74,13 +74,15 @@ export function buildBudgetWallRationale(params: {
     case "exploration_stall":
       lines.push(
         zeroProgressMutation
-          ? "We've been looking around, but this task still needs a bit more research before we can start making changes."
-          : "This task looks larger than expected, and we could use a little more time to understand it.",
+          ? "We've gathered enough context, but still need to land the first workspace edit."
+          : "This task looks larger than expected, and we could use a little more time to finish it.",
       );
       break;
     case "unfulfilled_execute":
       lines.push(
-        "We need a bit more research on this task before we can start implementing.",
+        zeroProgressMutation
+          ? "Ready to implement, but the first workspace edit has not landed yet."
+          : "Edits are in progress, but the last turn stopped without applying the next patch.",
       );
       break;
     case "rejected_mutation":
@@ -134,7 +136,9 @@ export function buildBudgetWallRationale(params: {
     params.reason === "incomplete_execute"
   ) {
     lines.push(
-      "Mind if we dig a little deeper first? You can also share any tips (like files to focus on), or we can stop here.",
+      zeroProgressMutation || params.reason === "unfulfilled_execute"
+        ? "Continue so we can apply the next workspace edit, share any files to focus on, or stop here."
+        : "Mind if we dig a little deeper first? You can also share any tips (like files to focus on), or we can stop here.",
     );
   } else if (params.reason === "budget_exhausted") {
     lines.push(
@@ -207,7 +211,7 @@ export function buildBudgetWallResetMessage(params: {
     case "unfulfilled_execute":
     case "rejected_mutation":
       parts.push(
-        "The user approved continuing after a mutation recovery limit. Do not repeat the same failed approach.",
+        "The user approved continuing after a mutation recovery limit. Your next action MUST be apply_patch, delete_file, or move_file on a bounded surface. Do not call list_directory, glob_files, search_files, or broad rediscovery. Targeted read_file of an active write/mustRead path is allowed only if required to form an exact patch, then patch immediately.",
       );
       break;
     case "incomplete_execute":
@@ -235,7 +239,7 @@ export function buildBudgetWallResetMessage(params: {
     params.reason !== "budget_exhausted"
   ) {
     parts.push(
-      "Prefer apply_patch/delete_file/move_file on a bounded surface, or stop with a clear blocker.",
+      "Call apply_patch/delete_file/move_file now, or stop with a clear blocker. Analysis-only turns are not allowed.",
     );
   } else if (
     params.reason === "exploration_stall" ||

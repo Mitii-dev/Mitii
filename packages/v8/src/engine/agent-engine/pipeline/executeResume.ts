@@ -480,6 +480,13 @@ export async function executeResume(
       const mutationRequired =
         checkpoint.decision.reasonCodes.includes("mutation_execute") ||
         checkpoint.decision.toolGrant.maximumWorkspaceEffect === "write";
+      const forceMutationOnResume =
+        mutationRequired &&
+        checkpoint.changedFiles.length === 0 &&
+        (wallReason === "unfulfilled_execute" ||
+          wallReason === "exploration_stall" ||
+          wallReason === "incomplete_execute" ||
+          wallReason === "rejected_mutation");
       const resetMessage = buildBudgetWallResetMessage({
         reason: wallReason,
         guidance,
@@ -545,6 +552,7 @@ export async function executeResume(
           verificationRecord = record;
         },
         continueOverrideCount: nextOverrideCount,
+        forceMutationOnResume,
       });
     }
 

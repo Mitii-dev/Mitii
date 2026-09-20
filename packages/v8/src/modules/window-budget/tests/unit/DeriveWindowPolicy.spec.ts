@@ -55,11 +55,11 @@ describe("deriveWindowPolicy", () => {
       schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
       contextWindowTokens: 200_000,
     });
-    // Compact band: 6-file mutation cap; ~30% output (ratio + window cap).
-    expect(at30k.mutation.maxUniqueFilesPerCall).toBe(6);
+    // Compact band: 8-file mutation cap; ~30% output (ratio + window cap).
+    expect(at30k.mutation.maxUniqueFilesPerCall).toBe(8);
     expect(at30k.taskList.maxTasks).toBe(8);
     expect(at30k.maximumOutputTokens).toBe(9_000);
-    expect(at200k.mutation.maxUniqueFilesPerCall).toBe(8);
+    expect(at200k.mutation.maxUniqueFilesPerCall).toBe(12);
     expect(at200k.taskList.maxTasks).toBeGreaterThanOrEqual(10);
     expect(at200k.reasonCodes).toContain("mutation_effort_capped");
     expect(at200k.reasonCodes).toContain("effort_medium");
@@ -214,8 +214,8 @@ describe("deriveWindowPolicy", () => {
     expect(medium.contextWindowTokens).toBe(200_000);
     expect(high.contextWindowTokens).toBe(200_000);
     expect(low.mutation.maxUniqueFilesPerCall).toBe(4);
-    expect(medium.mutation.maxUniqueFilesPerCall).toBe(8);
-    expect(high.mutation.maxUniqueFilesPerCall).toBe(12);
+    expect(medium.mutation.maxUniqueFilesPerCall).toBe(12);
+    expect(high.mutation.maxUniqueFilesPerCall).toBe(20);
     expect(low.run.maxModelCalls).toBe(24);
     expect(low.run.maxToolCalls).toBe(48);
     expect(medium.run.maxToolCalls).toBe(128);

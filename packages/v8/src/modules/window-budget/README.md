@@ -79,9 +79,9 @@ caps it so a 200k model does not keep 25-file patches. **Window bands**
 
 | Band | Window | Ship overlay |
 |---|---|---|
-| Compact | &lt; 50k | `maxUniqueFilesPerCallCap: 6`, skills share ↑, repo share ↓ |
-| Standard | 50k – &lt; 100k | Base `DEFAULT_WINDOW_BUDGET_POLICY` |
-| Wide | ≥ 100k | `maxSkillsCap: 6` |
+| Compact | &lt; 50k | `maxUniqueFilesPerCallCap: 8`, skills share ↑, repo share ↓ |
+| Standard | 50k – &lt; 100k | `maxUniqueFilesPerCallCap: 12` |
+| Wide | ≥ 100k | `maxUniqueFilesPerCallCap: 20`, `maxSkillsCap: 6` |
 
 ```text
 windowFiles            = (W × outputRatio) / filesPerOutputTokens
@@ -91,9 +91,9 @@ maxPatchPayloadCharacters = O × charsPerOutputToken × patchPayloadOutputRatio
 preferredBatchSize     = maxUniqueFilesPerCall
 ```
 
-Medium effort (the default): 30k → 6 files (compact band cap), 48k → 8 files
-(standard), 200k → 8 files (not 25; effort-capped). High effort raises the 200k
-cap to 12; low effort lowers it to 4.
+Medium effort (the default): 30k → 8 files (compact band cap), 65k → 12 files
+(standard), 200k → 12 files (effort-capped). High effort raises the 200k
+cap to 20; low effort lowers it to 4.
 
 Planning affordances follow **usable input**, scaled with the window so a 30k local cap still plans:
 

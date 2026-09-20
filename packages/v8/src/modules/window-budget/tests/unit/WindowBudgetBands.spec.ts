@@ -124,7 +124,7 @@ describe("deriveWindowPolicy band effects", () => {
       schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
       contextWindowTokens: 35_000,
     });
-    expect(result.mutation.maxUniqueFilesPerCall).toBeLessThanOrEqual(6);
+    expect(result.mutation.maxUniqueFilesPerCall).toBeLessThanOrEqual(8);
   });
 
   it("allows more skills on wide windows", () => {

@@ -12,7 +12,7 @@ describe("isExplorationRereadHeavy", () => {
   it("is false below the minimum call count", () => {
     expect(
       isExplorationRereadHeavy({
-        fileReadCalls: 7,
+        fileReadCalls: 5,
         uniqueFilePathsTouched: 1,
       }),
     ).toBe(false);
@@ -21,7 +21,7 @@ describe("isExplorationRereadHeavy", () => {
   it("is true when reads are at least 2x unique paths", () => {
     expect(
       isExplorationRereadHeavy({
-        fileReadCalls: 8,
+        fileReadCalls: 6,
         uniqueFilePathsTouched: 1,
       }),
     ).toBe(true);
@@ -36,8 +36,8 @@ describe("isExplorationRereadHeavy", () => {
   it("is false when reads stay below the ratio", () => {
     expect(
       isExplorationRereadHeavy({
-        fileReadCalls: 8,
-        uniqueFilePathsTouched: 5,
+        fileReadCalls: 6,
+        uniqueFilePathsTouched: 4,
       }),
     ).toBe(false);
   });
