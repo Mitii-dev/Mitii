@@ -1,6 +1,8 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { writeRunHtml, writeRunsIndex } from './html-report.mjs';
+import { enrichReportEnvironment, resolveAgentEnvironment } from './report-format.mjs';
+import { renderExportMarkdown } from './report-export-md.mjs';
 
 export function createRunReporter(options = {}) {
   const runId = options.runId ?? new Date().toISOString().replaceAll(/[:.]/g, '-');
@@ -9,11 +11,15 @@ export function createRunReporter(options = {}) {
   mkdirSync(casesDir, { recursive: true });
   const startedAt = options.startedAt ?? new Date();
   const collected = [];
+  const environment =
+    options.environment ??
+    resolveAgentEnvironment({ repoRoot: options.repoRoot });
 
   return {
     runId,
     runDir,
     casesDir,
+    environment,
     record(result, index, total) {
       collected[index] = result;
       const casePaths = writeCaseReport(result, casesDir, {
@@ -31,6 +37,8 @@ export function createRunReporter(options = {}) {
           expectedTotal: options.expectedTotal ?? total,
           expectedByDifficulty: options.expectedByDifficulty,
           suite: options.suite,
+          environment,
+          runId,
         }
       );
       const summaryPaths = writeReport(partial, join(runDir, 'summary.json'), {
@@ -48,6 +56,8 @@ export function createRunReporter(options = {}) {
         expectedTotal: options.expectedTotal ?? results.length,
         expectedByDifficulty: options.expectedByDifficulty,
         suite: options.suite,
+        environment,
+        runId,
       });
       const summaryPaths = writeReport(report, join(runDir, 'summary.json'), { runId });
       if (options.latestPath) {
@@ -143,6 +153,8 @@ export function buildReport(results, config, startedAt, finishedAt, meta = {}) {
     partial: Boolean(meta.partial),
     expectedTotal: meta.expectedTotal ?? results.length,
     completed: results.length,
+    runId: meta.runId ?? null,
+    environment: meta.environment ?? resolveAgentEnvironment({ repoRoot: meta.repoRoot }),
     gates,
     gateResults,
     overall,
@@ -175,22 +187,32 @@ export function writeCaseReport(result, casesDir, meta = {}) {
 
 export function writeReport(report, path, liveMeta = null) {
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${JSON.stringify(report, null, 2)}\n`);
+  const enriched = enrichReportEnvironment(report, {
+    repoRoot: liveMeta?.repoRoot,
+  });
+  if (liveMeta?.runId && !enriched.runId) enriched.runId = liveMeta.runId;
+  writeFileSync(path, `${JSON.stringify(enriched, null, 2)}\n`);
   const markdownPath = path.replace(/\.json$/i, '.md');
-  writeFileSync(markdownPath, renderSummaryMarkdown(report, liveMeta));
+  const briefPath = join(dirname(path), 'brief.md');
+  const markdown = renderExportMarkdown(enriched, {
+    runId: liveMeta?.runId ?? enriched.runId,
+  });
+  writeFileSync(markdownPath, markdown);
+  writeFileSync(briefPath, markdown);
   const htmlPath = path.replace(/\.json$/i, '.html');
   const live =
     liveMeta?.live
       ? { completed: liveMeta.completed, total: liveMeta.total }
       : null;
-  writeRunHtml(report, htmlPath, {
+  writeRunHtml(enriched, htmlPath, {
     runId: liveMeta?.runId,
     live,
     indexHref: /[/\\]runs[/\\][^/\\]+[/\\]summary\.html$/i.test(htmlPath)
       ? '../../index.html'
       : 'index.html',
+    markdown,
   });
-  return { json: path, markdown: markdownPath, html: htmlPath };
+  return { json: path, markdown: markdownPath, brief: briefPath, html: htmlPath };
 }
 
 function renderCaseMarkdown(result) {
@@ -231,40 +253,8 @@ function renderCaseMarkdown(result) {
   return `${lines.join('\n')}\n`;
 }
 
-function renderSummaryMarkdown(report, liveMeta) {
-  const rows = ['easy', 'medium', 'hard'].map((difficulty) => {
-    const item = report.difficulties[difficulty];
-    const gate =
-      report.gateResults[difficulty] === null ? 'N/A' : report.gateResults[difficulty] ? 'PASS' : 'FAIL';
-    return `| ${difficulty} | ${item.passed}/${item.total} | ${(item.caseScore * 100).toFixed(1)}% | ${(item.familyScore * 100).toFixed(1)}% | ${gate} |`;
-  });
-  const live =
-    liveMeta?.live
-      ? `\n_Live progress: ${liveMeta.completed}/${liveMeta.total} case reports written._\n`
-      : '';
-  const categoryRows = Object.entries(report.byCategory ?? {})
-    .map(([name, item]) => `| ${name} | ${item.passed}/${item.total} | ${(item.caseScore * 100).toFixed(1)}% |`)
-    .join('\n');
-  const usage = report.usageTotals ?? {};
-  const usageLine = [
-    usage.inputTokens != null ? `inTokens=${usage.inputTokens}` : null,
-    usage.outputTokens != null ? `outTokens=${usage.outputTokens}` : null,
-    usage.avgDurationMs != null ? `avgDurationMs=${Math.round(usage.avgDurationMs)}` : null,
-  ]
-    .filter(Boolean)
-    .join(' ');
-  return `# Benchmark Result
-
-## Signal: ${report.signal}
-${live}
-| Difficulty | Passed | Case score | Family-weighted score | Gate |
-|---|---:|---:|---:|---:|
-${rows.join('\n')}
-
-Overall family-weighted score: **${(report.overall.familyScore * 100).toFixed(1)}%**.
-${usageLine ? `\nRun usage: **${usageLine}**.\n` : ''}
-${categoryRows ? `## Categories\n\n| Category | Passed | Case score |\n|---|---:|---:|\n${categoryRows}\n` : ''}
-`;
+function escapeMd(value) {
+  return String(value).replaceAll('|', '\\|').replaceAll('\n', ' ');
 }
 
 function summarize(results) {
@@ -312,6 +302,11 @@ function sumUsage(results) {
   };
 }
 
-function escapeMd(value) {
-  return String(value).replaceAll('|', '\\|').replaceAll('\n', ' ');
-}
+export { renderExportMarkdown } from './report-export-md.mjs';
+export {
+  resolveAgentEnvironment,
+  enrichReportEnvironment,
+  fmtTokens,
+  fmtDuration,
+  fmtPct,
+} from './report-format.mjs';

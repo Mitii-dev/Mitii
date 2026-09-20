@@ -39,6 +39,12 @@ test('createRunReporter writes live summary after each case', () => {
     startedAt: new Date(),
     config: { gates: { overall: 0.5 } },
     suite: 'frontend',
+    environment: {
+      model: 'my-qwen-64k:latest',
+      provider: 'openai-compatible',
+      contextWindowTokens: 65536,
+      contextWindowLabel: '64K tokens',
+    },
   });
   const result = {
     id: 'fe-002-demo-v1',
@@ -58,19 +64,31 @@ test('createRunReporter writes live summary after each case', () => {
   const { casePaths, summaryPaths } = reporter.record(result, 0, 2);
   assert.equal(existsSync(casePaths.markdown), true);
   assert.equal(existsSync(summaryPaths.markdown), true);
+  assert.equal(existsSync(summaryPaths.brief), true);
   assert.equal(existsSync(summaryPaths.html), true);
   const summary = JSON.parse(readFileSync(summaryPaths.json, 'utf8'));
   assert.equal(summary.signal, 'RUNNING');
   assert.equal(summary.completed, 1);
+  assert.equal(summary.environment.model, 'my-qwen-64k:latest');
+  assert.equal(summary.environment.contextWindowLabel, '64K tokens');
+  const md = readFileSync(summaryPaths.markdown, 'utf8');
+  assert.match(md, /Mitii · Agent Evaluation Brief/);
+  assert.match(md, /my-qwen-64k:latest/);
+  assert.match(md, /64K tokens/);
+  assert.match(md, /## Setup/);
   const html = readFileSync(summaryPaths.html, 'utf8');
   assert.match(html, /Benchmark run/);
   assert.match(html, /fe-002-demo-v1/);
+  assert.match(html, /Export MD/);
+  assert.match(html, /my-qwen-64k:latest/);
+  assert.match(html, /64K tokens/);
 });
 
 test('sanitizeReportForViewer drops bulky stdout', () => {
   const sanitized = sanitizeReportForViewer({
     suite: 'frontend',
     signal: 'GO',
+    environment: { model: 'demo', contextWindowLabel: '32K tokens' },
     overall: { total: 1, passed: 1, failed: 0, caseScore: 1, familyScore: 1 },
     results: [
       {
@@ -85,9 +103,11 @@ test('sanitizeReportForViewer drops bulky stdout', () => {
   assert.equal(sanitized.results[0].stdout, undefined);
   assert.ok(sanitized.results[0].stdoutPreview.length < 1000);
   assert.ok(sanitized.results[0].checks[0].details.endsWith('…'));
+  assert.equal(sanitized.environment.model, 'demo');
+  assert.equal(sanitized.environment.contextWindowLabel, '32K tokens');
 });
 
-test('generateViewer writes index and per-run html', () => {
+test('generateViewer writes index, per-run html, and markdown', () => {
   const root = mkdtempSync(join(tmpdir(), 'solid-bench-viewer-'));
   const runId = '2026-01-01T00-00-00-000Z-abcd1234';
   const runDir = join(root, 'runs', runId);
@@ -101,6 +121,12 @@ test('generateViewer writes index and per-run html', () => {
       signal: 'GO',
       completed: 1,
       expectedTotal: 1,
+      environment: {
+        model: 'my-qwen-64k:latest',
+        provider: 'openai-compatible',
+        contextWindowTokens: 65536,
+        contextWindowLabel: '64K tokens',
+      },
       overall: { total: 1, passed: 1, failed: 0, caseScore: 1, familyScore: 1, avgDurationMs: 10 },
       difficulties: {},
       byCategory: {},
@@ -113,4 +139,11 @@ test('generateViewer writes index and per-run html', () => {
   assert.equal(written.length, 1);
   assert.match(readFileSync(indexPath, 'utf8'), /Benchmark runs/);
   assert.match(readFileSync(written[0], 'utf8'), /case-1/);
+  assert.match(readFileSync(written[0], 'utf8'), /Export MD/);
+  assert.match(readFileSync(written[0], 'utf8'), /64K tokens/);
+  const brief = readFileSync(join(runDir, 'brief.md'), 'utf8');
+  assert.match(brief, /## Setup/);
+  assert.match(brief, /my-qwen-64k:latest/);
+  assert.match(brief, /64K tokens/);
+  assert.equal(existsSync(join(runDir, 'summary.md')), true);
 });

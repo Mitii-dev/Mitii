@@ -1,6 +1,6 @@
 {
   "name": "@mitii/acp",
-  "version": "2.9.75",
+  "version": "2.9.76",
   "description": "Mitii ACP-lite stdio bridge (Phase 3). Decision Policy remains authority; V8 does not import ACP.",
   "license": "AGPL-3.0-or-later",
   "type": "module",
