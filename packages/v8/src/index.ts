@@ -200,6 +200,7 @@ export {
   promptInstructionsSchema,
   FRAGMENT_POLICY,
   assembleFragments,
+  MidConversationUpdateFragment,
 } from "./modules/prompt-construction";
 export type {
   PromptConstructionInput,
@@ -598,6 +599,12 @@ export {
   reconcileContextEpoch,
   replaceContextEpoch,
   markContextEpochForReplacement,
+  admitContextEpoch,
+  pinBaselineSystemMessage,
+  stripMidConversationSystemMessages,
+  composeMitiiSystemContext,
+  initializeSystemContext,
+  reconcileSystemContext,
   AgentEngineError,
   DEFAULT_TOOL_DEFINITIONS,
 } from "./engine/agent-engine";
@@ -615,6 +622,10 @@ export type {
   PromotePolicyLabResult,
   ContextEpoch,
   ContextEpochStorePort,
+  ContextEpochAdmitResult,
+  SystemContext,
+  SystemContextSnapshot,
+  ObservedContextSourceValues,
 } from "./engine/agent-engine";
 export type {
   AgentEngineStartInput,

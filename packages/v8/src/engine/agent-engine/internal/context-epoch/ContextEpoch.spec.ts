@@ -5,10 +5,17 @@ import {
   extractBaselineSystemText,
   hashContextText,
   initializeContextEpoch,
+  isMidConversationSystemContent,
   markContextEpochForReplacement,
   reconcileContextEpoch,
   replaceContextEpoch,
+  wrapMidConversationSystemText,
 } from "./index";
+import {
+  admitContextEpoch,
+  pinBaselineSystemMessage,
+  stripMidConversationSystemMessages,
+} from "./admitContextEpoch";
 
 describe("ContextEpoch formulae (OpenCode discipline)", () => {
   it("initializes an immutable baseline with hashed sources", () => {
@@ -52,7 +59,7 @@ describe("ContextEpoch formulae (OpenCode discipline)", () => {
     expect(result.kind).toBe("unchanged");
   });
 
-  it("emits updated for non-baseline source changes", () => {
+  it("emits updated for non-baseline source changes with mid-conversation text", () => {
     const epoch = initializeContextEpoch({
       runId: "run_1",
       baselineSystemText: "baseline",
@@ -75,6 +82,7 @@ describe("ContextEpoch formulae (OpenCode discipline)", () => {
       expect(result.changedSourceKeys).toContain(
         CONTEXT_EPOCH_SOURCE_KEYS.skills,
       );
+      expect(result.midConversationText.length).toBeGreaterThan(0);
     }
   });
 
@@ -124,12 +132,155 @@ describe("ContextEpoch formulae (OpenCode discipline)", () => {
     expect(next.replacementRequested).toBe(false);
   });
 
-  it("extracts the first non-empty system message as baseline text", () => {
+  it("extracts the first non-empty non-mid system message as baseline text", () => {
     expect(
       extractBaselineSystemText([
         { role: "user", content: "hi" },
         { role: "system", content: "  You are Mitii.  " },
       ]),
     ).toBe("  You are Mitii.  ");
+    expect(
+      extractBaselineSystemText([
+        {
+          role: "system",
+          content: wrapMidConversationSystemText("skills changed"),
+        },
+        { role: "system", content: "baseline" },
+      ]),
+    ).toBe("baseline");
+  });
+
+  it("recognizes marked mid-conversation system content", () => {
+    const wrapped = wrapMidConversationSystemText("Available skills are now: a.");
+    expect(isMidConversationSystemContent(wrapped)).toBe(true);
+    expect(isMidConversationSystemContent("You are Mitii.")).toBe(false);
   });
 });
+
+describe("admitContextEpoch (OpenCode Safe Provider-Turn Boundary)", () => {
+  const observed = {
+    route: "repository_answer",
+    planningDepth: "none",
+    skillIds: ["skill-a"] as string[],
+    ruleIds: ["rule-1"] as string[],
+    environmentIds: [] as string[],
+    memoryIds: [] as string[],
+  };
+
+  it("initializes, pins baseline, and reuses it when skills update mid-turn", () => {
+    const messages = [
+      { role: "system" as const, content: "You are Mitii.\nExecution route: repository_answer." },
+      { role: "user" as const, content: "hello" },
+    ];
+
+    const init = admitContextEpoch({
+      runId: "run_admit",
+      messages,
+      previous: undefined,
+      compactionApplied: false,
+      nowMs: 10,
+      observed,
+    });
+    expect(init?.epoch.baselineSystemText).toContain("You are Mitii.");
+    expect(init?.pinBaseline).toBe(init?.epoch.baselineSystemText);
+
+    messages[0] = {
+      role: "system",
+      content: "MUTATED SYSTEM SHOULD BE REPINNED",
+    };
+
+    const updated = admitContextEpoch({
+      runId: "run_admit",
+      messages,
+      previous: init!.epoch,
+      compactionApplied: false,
+      nowMs: 20,
+      observed: { ...observed, skillIds: ["skill-a", "skill-b"] },
+    });
+    expect(updated?.midConversationText).toBeTruthy();
+    expect(updated?.pinBaseline).toBe(init!.epoch.baselineSystemText);
+    expect(updated?.stripPriorMidConversation).toBe(false);
+
+    pinBaselineSystemMessage(messages, updated!.pinBaseline!);
+    appendAndStrip(messages, updated!.midConversationText!);
+    expect(messages[0]?.content).toBe(init!.epoch.baselineSystemText);
+    expect(
+      messages.some(
+        (message) =>
+          message.role === "system" &&
+          isMidConversationSystemContent(message.content),
+      ),
+    ).toBe(true);
+  });
+
+  it("strips mid-conversation updates when compaction forces replace", () => {
+    const baseline = "You are Mitii.\nbaseline epoch 1";
+    const messages = [
+      { role: "system" as const, content: baseline },
+      { role: "user" as const, content: "hi" },
+      {
+        role: "system" as const,
+        content: wrapMidConversationSystemText("skills changed"),
+      },
+    ];
+
+    const init = admitContextEpoch({
+      runId: "run_replace",
+      messages,
+      previous: undefined,
+      compactionApplied: false,
+      nowMs: 1,
+      observed,
+    });
+
+    const replaced = admitContextEpoch({
+      runId: "run_replace",
+      messages,
+      previous: init!.epoch,
+      compactionApplied: true,
+      nowMs: 2,
+      observed,
+    });
+    expect(replaced?.stripPriorMidConversation).toBe(true);
+    expect(replaced?.epoch.epochId).not.toBe(init!.epoch.epochId);
+
+    const removed = stripMidConversationSystemMessages(messages);
+    expect(removed).toBe(1);
+    pinBaselineSystemMessage(messages, replaced!.pinBaseline!);
+    expect(messages.every((m) => !isMidConversationSystemContent(m.content))).toBe(
+      true,
+    );
+  });
+
+  it("forces replace when route changes (baseline-incompatible)", () => {
+    const messages = [
+      { role: "system" as const, content: "You are Mitii." },
+      { role: "user" as const, content: "hi" },
+    ];
+    const init = admitContextEpoch({
+      runId: "run_route",
+      messages,
+      previous: undefined,
+      compactionApplied: false,
+      nowMs: 1,
+      observed,
+    });
+    const next = admitContextEpoch({
+      runId: "run_route",
+      messages,
+      previous: init!.epoch,
+      compactionApplied: false,
+      nowMs: 2,
+      observed: { ...observed, route: "agent" },
+    });
+    expect(next?.stripPriorMidConversation).toBe(true);
+    expect(next?.epoch.epochId).not.toBe(init!.epoch.epochId);
+  });
+});
+
+function appendAndStrip(
+  messages: { role: "system" | "user"; content: string }[],
+  mid: string,
+): void {
+  messages.push({ role: "system", content: mid });
+}

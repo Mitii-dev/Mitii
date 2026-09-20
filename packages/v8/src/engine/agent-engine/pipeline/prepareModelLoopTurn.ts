@@ -24,12 +24,11 @@ import type { AgentReasonCode } from "../contracts";
 import { EventBus } from "../internal/EventBus";
 import type { RunBudgetTracker } from "../internal/RunBudget";
 import {
-  CONTEXT_EPOCH_SOURCE_KEYS,
-  extractBaselineSystemText,
-  initializeContextEpoch,
-  markContextEpochForReplacement,
-  reconcileContextEpoch,
-  replaceContextEpoch,
+  admitContextEpoch,
+  appendMidConversationSystemMessage,
+  baselinePrefixMatches,
+  pinBaselineSystemMessage,
+  stripMidConversationSystemMessages,
   type ContextEpoch,
 } from "../internal/context-epoch";
 import {
@@ -56,7 +55,8 @@ export interface PrepareModelLoopTurnResult {
 
 /**
  * Stub completed-task bodies, resolve cache-class compaction, upsert the
- * trailing working set, and clamp per-turn output tokens.
+ * trailing working set, admit Context Epoch (OpenCode formulae), and clamp
+ * per-turn output tokens.
  */
 export function prepareModelLoopTurn(params: {
   runtime: AgentEngineRuntime;
@@ -82,6 +82,9 @@ export function prepareModelLoopTurn(params: {
   decisionRoute?: string;
   decisionPlanningDepth?: string;
   selectedSkillIds?: readonly string[];
+  projectRuleIds?: readonly string[];
+  environmentIds?: readonly string[];
+  memoryIds?: readonly string[];
 }): PrepareModelLoopTurnResult {
   const {
     runtime,
@@ -207,7 +210,7 @@ export function prepareModelLoopTurn(params: {
     }
   }
 
-  const contextEpoch = admitContextEpoch({
+  const contextEpoch = applyContextEpochAdmission({
     runId,
     messages,
     previous: params.contextEpoch,
@@ -217,6 +220,12 @@ export function prepareModelLoopTurn(params: {
     decisionRoute: params.decisionRoute,
     decisionPlanningDepth: params.decisionPlanningDepth,
     selectedSkillIds: params.selectedSkillIds,
+    projectRuleIds: params.projectRuleIds,
+    environmentIds: params.environmentIds,
+    memoryIds:
+      params.memoryIds ??
+      params.memoryFacts?.map((fact) => fact.id) ??
+      [],
   });
 
   upsertTrailingWorkingSet(messages, {
@@ -261,7 +270,7 @@ export function prepareModelLoopTurn(params: {
   };
 }
 
-function admitContextEpoch(params: {
+function applyContextEpochAdmission(params: {
   runId: string;
   messages: ModelMessage[];
   previous: ContextEpoch | undefined;
@@ -271,70 +280,79 @@ function admitContextEpoch(params: {
   decisionRoute?: string;
   decisionPlanningDepth?: string;
   selectedSkillIds?: readonly string[];
+  projectRuleIds?: readonly string[];
+  environmentIds?: readonly string[];
+  memoryIds?: readonly string[];
 }): ContextEpoch | undefined {
-  const baseline = extractBaselineSystemText(params.messages);
-  if (!baseline) {
+  const admitted = admitContextEpoch({
+    runId: params.runId,
+    messages: params.messages,
+    previous: params.previous,
+    compactionApplied: params.compactionApplied,
+    nowMs: params.nowMs,
+    observed: {
+      route: params.decisionRoute ?? "",
+      planningDepth: params.decisionPlanningDepth ?? "",
+      skillIds: params.selectedSkillIds ?? [],
+      ruleIds: params.projectRuleIds ?? [],
+      environmentIds: params.environmentIds ?? [],
+      memoryIds: params.memoryIds ?? [],
+    },
+  });
+
+  if (!admitted) {
     return params.previous;
   }
 
-  const sources: Record<string, string> = {
-    [CONTEXT_EPOCH_SOURCE_KEYS.baselineSystem]: baseline,
-    [CONTEXT_EPOCH_SOURCE_KEYS.route]: params.decisionRoute ?? "",
-    [CONTEXT_EPOCH_SOURCE_KEYS.planningDepth]:
-      params.decisionPlanningDepth ?? "",
-    [CONTEXT_EPOCH_SOURCE_KEYS.skills]: (params.selectedSkillIds ?? []).join(
-      ",",
-    ),
-  };
-
-  if (!params.previous) {
-    const epoch = initializeContextEpoch({
-      runId: params.runId,
-      baselineSystemText: baseline,
-      sources,
-      nowMs: params.nowMs,
-    });
-    params.reasonCodes.push("context_epoch_initialized");
-    return epoch;
-  }
-
-  let epoch = params.previous;
   if (params.compactionApplied) {
-    epoch = markContextEpochForReplacement(epoch);
     if (!params.reasonCodes.includes("context_epoch_replace_requested")) {
       params.reasonCodes.push("context_epoch_replace_requested");
     }
   }
 
-  const reconciled = reconcileContextEpoch({
-    epoch,
-    observedSources: sources,
-    baselineAvailable: true,
-  });
+  const isInit = !params.previous;
+  if (admitted.stripPriorMidConversation) {
+    const removed = stripMidConversationSystemMessages(params.messages);
+    if (removed > 0) {
+      params.reasonCodes.push("context_epoch_mid_updates_stripped");
+    }
+    params.reasonCodes.push("context_epoch_replaced");
+  } else if (isInit) {
+    params.reasonCodes.push("context_epoch_initialized");
+  } else if (admitted.midConversationText) {
+    params.reasonCodes.push("context_epoch_updated");
+    params.reasonCodes.push("context_epoch_mid_update_admitted");
+  } else if (admitted.epoch.replacementRequested) {
+    params.reasonCodes.push("context_epoch_replace_blocked");
+  } else if (!params.reasonCodes.includes("context_epoch_unchanged")) {
+    params.reasonCodes.push("context_epoch_unchanged");
+  }
 
-  switch (reconciled.kind) {
-    case "unchanged":
-      if (!params.reasonCodes.includes("context_epoch_unchanged")) {
-        params.reasonCodes.push("context_epoch_unchanged");
-      }
-      return reconciled.epoch;
-    case "updated":
-      params.reasonCodes.push("context_epoch_updated");
-      return reconciled.epoch;
-    case "replace_blocked":
-      params.reasonCodes.push("context_epoch_replace_blocked");
-      return reconciled.epoch;
-    case "replace_ready": {
-      const replaced = replaceContextEpoch({
-        previous: reconciled.epoch,
-        baselineSystemText: baseline,
-        sources,
-        nowMs: params.nowMs,
-      });
-      params.reasonCodes.push("context_epoch_replaced");
-      return replaced;
+  if (admitted.pinBaseline) {
+    const pin = pinBaselineSystemMessage(params.messages, admitted.pinBaseline);
+    if (pin.rewritten) {
+      params.reasonCodes.push("context_epoch_baseline_rewritten");
+    } else if (isInit || admitted.stripPriorMidConversation) {
+      params.reasonCodes.push("context_epoch_baseline_pinned");
     }
   }
+
+  if (admitted.midConversationText) {
+    appendMidConversationSystemMessage(
+      params.messages,
+      admitted.midConversationText,
+    );
+  }
+
+  if (
+    admitted.epoch &&
+    !baselinePrefixMatches(params.messages, admitted.epoch) &&
+    !params.reasonCodes.includes("context_cache_prefix_mismatch")
+  ) {
+    params.reasonCodes.push("context_cache_prefix_mismatch");
+  }
+
+  return admitted.epoch;
 }
 
 function clampTurnOutput(

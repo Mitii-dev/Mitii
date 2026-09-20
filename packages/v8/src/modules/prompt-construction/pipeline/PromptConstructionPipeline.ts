@@ -462,6 +462,10 @@ export class PromptConstructionPipeline {
 
     const messages: ModelMessage[] = [
       { role: "system", content: systemContent },
+      ...system.separateMessages.map((message) => ({
+        role: message.role as ModelMessage["role"],
+        content: message.content,
+      })),
       ...conversationResult.messages,
       {
         role: "user",

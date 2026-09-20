@@ -9,6 +9,10 @@ import type { ContextEpoch } from "../internal/context-epoch";
 export type ModelLoopSession = {
   decision: ExecutionDecision;
   selectedSkillIds: string[];
+  /** Project rule instruction ids for Context Epoch sources. */
+  projectRuleIds: string[];
+  /** Environment instruction ids for Context Epoch sources. */
+  environmentIds: string[];
   answer: string;
   truncationRecoveries: number;
   incompleteAnswerRecoveries: number;

@@ -100,6 +100,8 @@ export async function runModelToolLoop(
   memoryFacts?: readonly { id: string; content: string }[];
   establishedFacts?: EstablishedFact[];
   selectedSkillIds?: string[];
+  projectRuleIds?: string[];
+  environmentIds?: string[];
   requiredSkillIds?: string[];
   excludedSkillIds?: string[];
   taskListRef: TaskListRef;
@@ -159,6 +161,8 @@ export async function runModelToolLoop(
   const session: ModelLoopSession = {
     decision: params.decision,
     selectedSkillIds: [...(params.selectedSkillIds ?? [])],
+    projectRuleIds: [...(params.projectRuleIds ?? [])],
+    environmentIds: [...(params.environmentIds ?? [])],
     answer: "",
     truncationRecoveries: 0,
     incompleteAnswerRecoveries: 0,
@@ -310,6 +314,9 @@ export async function runModelToolLoop(
       decisionRoute: session.decision.route,
       decisionPlanningDepth: session.decision.planningDepth,
       selectedSkillIds: session.selectedSkillIds,
+      projectRuleIds: session.projectRuleIds,
+      environmentIds: session.environmentIds,
+      memoryIds: params.memoryFacts?.map((fact) => fact.id) ?? [],
     });
     session.emittedLoopPressureWarning = prepared.emittedLoopPressureWarning;
     session.emittedLoopCompactionWarning = prepared.emittedLoopCompactionWarning;
@@ -317,6 +324,12 @@ export async function runModelToolLoop(
     session.contextEpoch = prepared.contextEpoch;
     if (prepared.contextEpoch) {
       runtime.contextEpochs.set(runId, prepared.contextEpoch);
+      const store = runtime.deps.contextEpochStore;
+      if (store) {
+        void store.save(prepared.contextEpoch).catch(() => {
+          /* best-effort; checkpoint remains authoritative */
+        });
+      }
     }
     const { turnRequest, preservePrefix, promptCacheClass, compaction } =
       prepared;

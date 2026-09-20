@@ -18,6 +18,9 @@ Prompt Construction builds the provider-neutral `ModelRequest` that is sent thro
 - Assembles trusted system text via typed **ContextualFragments** (Codex
   fragment discipline): each injection has a stable `contentKind`, optional
   markers, and a hard token cap (`FRAGMENT_POLICY.absoluteMaxTokens` = 10k).
+  Environment/memory fragments are marked; `MidConversationUpdateFragment`
+  and `requiresSeparateMessage` fragments are appended as separate system
+  messages after the baseline system blob (provider-cache friendly).
 
 ## Structure
 

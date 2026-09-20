@@ -64,6 +64,7 @@ export {
   BaseInstructionsFragment,
   DecisionBriefFragment,
   InstructionBlockFragment,
+  MidConversationUpdateFragment,
   PlanGuidanceFragment,
 } from "./internal/fragments";
 export type {

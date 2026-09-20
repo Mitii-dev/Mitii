@@ -5,6 +5,7 @@ import { truncateToTokenBudget } from "../../actions/BuildSystemAndConversation"
 import {
   FRAGMENT_POLICY,
   InstructionBlockFragment,
+  MidConversationUpdateFragment,
   assembleFragments,
   matchesMarkedFragment,
   renderFragment,
@@ -99,6 +100,7 @@ describe("ContextualFragment formulae (Codex discipline)", () => {
     expect(fragment.maxTokens()).toBe(
       FRAGMENT_POLICY.additionalContextValueTokens,
     );
+    expect(fragment.markers()[0]).toContain("environment_fragment");
   });
 
   it("allows instruction fragments up to absoluteMaxTokens (Codex hard cap)", () => {
@@ -114,5 +116,34 @@ describe("ContextualFragment formulae (Codex discipline)", () => {
       "skills",
     );
     expect(fragment.maxTokens()).toBe(FRAGMENT_POLICY.absoluteMaxTokens);
+    expect(fragment.markers()).toEqual(["", ""]);
+  });
+
+  it("renders MidConversationUpdateFragment as a separate marked message", () => {
+    const fragment = new MidConversationUpdateFragment(
+      "Available skills are now: a, b.",
+    );
+    expect(fragment.requiresSeparateMessage()).toBe(true);
+    expect(fragment.contentKind()).toBe("generic.context_epoch_update");
+    const rendered = renderFragment(
+      fragment,
+      (text) => estimator.estimate(text),
+      (text, budget) => truncateToTokenBudget(text, budget, estimator),
+    );
+    expect(rendered.text.startsWith("<context_epoch_update>")).toBe(true);
+    expect(rendered.text.endsWith("</context_epoch_update>")).toBe(true);
+
+    const assembled = assembleFragments({
+      fragments: [
+        new BaseInstructionsFragment("core"),
+        fragment,
+      ],
+      estimator,
+      budgetTokens: 50_000,
+      truncateToBudget: (text, budget) =>
+        truncateToTokenBudget(text, budget, estimator),
+    });
+    expect(assembled.content).toBe("core");
+    expect(assembled.separateMessages).toHaveLength(1);
   });
 });

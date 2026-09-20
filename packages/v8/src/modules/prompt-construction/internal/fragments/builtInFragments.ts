@@ -52,6 +52,10 @@ export class InstructionBlockFragment implements ContextualFragment {
       | "environment"
       | "plan",
     private readonly kindNamespace: string,
+    private readonly options?: {
+      readonly marked?: boolean;
+      readonly separateMessage?: boolean;
+    },
   ) {}
 
   role(): FragmentRole {
@@ -63,15 +67,27 @@ export class InstructionBlockFragment implements ContextualFragment {
   }
 
   requiresSeparateMessage(): boolean {
-    return false;
+    return this.options?.separateMessage === true;
   }
 
   /**
-   * Unmarked by default so assembled system text stays compatible with the
-   * existing Mitii system message shape. contentKind still classifies the
-   * fragment for provenance and epoch snapshots.
+   * Environment / memory default to marked fragments (Codex discipline) so
+   * mid-session reinjection and epoch mid-updates can be recognized later.
+   * Rules/skills stay unmarked for classic single-system-blob compatibility
+   * unless `options.marked` is set.
    */
   markers(): readonly [string, string] {
+    if (this.options?.marked === false) {
+      return ["", ""] as const;
+    }
+    if (
+      this.options?.marked === true ||
+      this.sectionName === "environment" ||
+      this.sectionName === "memory"
+    ) {
+      const tag = this.sectionName;
+      return [`<${tag}_fragment id="${this.block.id}">`, `</${tag}_fragment>`] as const;
+    }
     return ["", ""] as const;
   }
 
@@ -94,6 +110,53 @@ export class InstructionBlockFragment implements ContextualFragment {
 
   section(): "rules" | "skills" | "memory" | "environment" | "plan" {
     return this.sectionName;
+  }
+
+  trust(): "trusted_instruction" {
+    return "trusted_instruction";
+  }
+}
+
+/**
+ * Mid-Conversation System Message fragment (OpenCode chronological admission).
+ * Always separate + marked so epoch admit can strip on replace.
+ */
+export class MidConversationUpdateFragment implements ContextualFragment {
+  public readonly id: string;
+
+  constructor(
+    private readonly bodyText: string,
+    idSuffix = "update",
+  ) {
+    this.id = `context_epoch:${idSuffix}`;
+  }
+
+  role(): FragmentRole {
+    return "system";
+  }
+
+  contentKind(): string {
+    return "generic.context_epoch_update";
+  }
+
+  requiresSeparateMessage(): boolean {
+    return true;
+  }
+
+  markers(): readonly [string, string] {
+    return ["<context_epoch_update>", "</context_epoch_update>"] as const;
+  }
+
+  body(): string {
+    return this.bodyText.trim();
+  }
+
+  maxTokens(): number {
+    return FRAGMENT_POLICY.absoluteMaxTokens;
+  }
+
+  section(): "system" {
+    return "system";
   }
 
   trust(): "trusted_instruction" {
