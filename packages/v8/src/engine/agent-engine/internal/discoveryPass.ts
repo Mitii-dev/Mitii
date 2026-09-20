@@ -40,6 +40,15 @@ const DISCOVERY_TOOL_IDS = new Set<string>([
 
 const FILE_READ_TOOLS = new Set(["read_file", "read_many_files"]);
 const SEARCH_TOOLS = new Set(["search_files", "glob_files"]);
+const SYMBOL_TOOLS = new Set([
+  "goto_definition",
+  "find_references",
+  "hover_symbol",
+  "document_symbol",
+  "workspace_symbol",
+  "find_implementation",
+  "call_hierarchy",
+]);
 
 export function createDiscoveryGrant(base: ToolGrant): ToolGrant {
   const allowed = base.allowedTools.filter(
@@ -188,13 +197,41 @@ export function recordDiscoveryToolUse(params: {
     );
     return;
   }
-  // list_directory / read_git_status / navigation: count the tool call but do
+  // list_directory / read_git_status / metadata: count the tool call but do
   // not promote directory children into change-surface searchHits.
   if (
     toolName === "list_directory" ||
     toolName === "read_git_status" ||
     toolName === "file_metadata"
   ) {
+    return;
+  }
+  if (SYMBOL_TOOLS.has(toolName)) {
+    const symbols = collectSymbolNames(args, params.resultOutput);
+    for (const path of paths) {
+      attachSymbolsToFileRead(collector, path, reason, symbols);
+      pushCappedUniqueByPath(
+        collector.searchHits,
+        { path, reason: `${reason} (symbol)` },
+        DISCOVERY_OBSERVATION_LIMITS.maxSearchHits,
+        () => {
+          collector.omittedSearchHits += 1;
+        },
+      );
+    }
+    // workspace_symbol may return names without paths — keep as notes via hits.
+    if (paths.length === 0 && symbols.length > 0) {
+      for (const symbol of symbols.slice(0, 8)) {
+        pushCappedUniqueByPath(
+          collector.searchHits,
+          { path: symbol, reason: `${toolName} symbol` },
+          DISCOVERY_OBSERVATION_LIMITS.maxSearchHits,
+          () => {
+            collector.omittedSearchHits += 1;
+          },
+        );
+      }
+    }
     return;
   }
   for (const path of paths) {
@@ -280,6 +317,102 @@ export function hasDiscoveryReadPath(
   }
   return collector.filesRead.some(
     (file) => normalizeDiscoveryPath(file.path) === normalized,
+  );
+}
+
+
+function collectSymbolNames(
+  args: Record<string, unknown>,
+  resultOutput: unknown,
+): string[] {
+  const values: string[] = [];
+  for (const key of ["symbol", "name", "query", "symbolName", "text"] as const) {
+    const value = asString(args[key]);
+    if (value && !looksLikePath(value)) {
+      values.push(value.slice(0, 200));
+    }
+  }
+  collectSymbolLikeValues(resultOutput, values, 0);
+  return unique(values).slice(0, 16);
+}
+
+function collectSymbolLikeValues(
+  value: unknown,
+  values: string[],
+  depth: number,
+): void {
+  if (depth > 4 || values.length >= 16 || value == null) {
+    return;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (
+      trimmed.length >= 2 &&
+      trimmed.length <= 200 &&
+      !looksLikePath(trimmed) &&
+      /^[A-Za-z_][\w.$:]*$/.test(trimmed)
+    ) {
+      values.push(trimmed);
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value.slice(0, 40)) {
+      collectSymbolLikeValues(item, values, depth + 1);
+    }
+    return;
+  }
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    for (const key of ["name", "symbol", "symbolName", "label", "text", "containerName"]) {
+      if (key in record) {
+        collectSymbolLikeValues(record[key], values, depth + 1);
+      }
+    }
+    if ("children" in record) {
+      collectSymbolLikeValues(record.children, values, depth + 1);
+    }
+    if ("symbols" in record) {
+      collectSymbolLikeValues(record.symbols, values, depth + 1);
+    }
+  }
+}
+
+function looksLikePath(value: string): boolean {
+  return /[\\/]/.test(value) || /\.\w{1,16}$/.test(value);
+}
+
+function attachSymbolsToFileRead(
+  collector: DiscoveryObservationCollector,
+  path: string,
+  reason: string,
+  symbols: readonly string[],
+): void {
+  const normalized = normalizeDiscoveryPath(path);
+  if (!normalized) {
+    return;
+  }
+  const existing = collector.filesRead.find(
+    (file) => normalizeDiscoveryPath(file.path) === normalized,
+  );
+  if (existing) {
+    const merged = unique([...(existing.symbols ?? []), ...symbols]).slice(0, 16);
+    if (merged.length > 0) {
+      existing.symbols = merged;
+    }
+    return;
+  }
+  pushCappedUniqueByPath(
+    collector.filesRead,
+    {
+      path,
+      reason,
+      ...(symbols.length > 0 ? { symbols: [...symbols].slice(0, 16) } : {}),
+    },
+    DISCOVERY_OBSERVATION_LIMITS.maxFilesRead,
+    () => {
+      collector.omittedFilesRead += 1;
+    },
   );
 }
 
@@ -376,12 +509,13 @@ export function buildDiscoveryPrompt(params: {
   return {
     system: [
       "You are doing a bounded read-only discovery pass.",
-      "Find the concrete files, symbols, and verification checks for the request.",
-      "Use only read/search tools. Do not mutate files, run writes, or draft a plan.",
+      "Find the concrete files, symbols/functions, and verification checks for the request.",
+      "Use only read/search/symbol tools. Do not mutate files, run writes, or draft a plan.",
       "When preferred paths are listed, read those first before exploring elsewhere.",
+      "After reading entrypoints, use document_symbol or goto_definition to name the key functions/types to change.",
       "If <pre_read_evidence> is present, those file bodies are already available — do not re-read them unless a nextStartLine/uncovered range is required.",
       params.shapedDiscovery?.discoverySystemHint,
-      "Stop after you have identified the smallest change surfaces.",
+      "Stop after you have identified concrete change surfaces (paths + symbols) and how to verify them.",
     ]
       .filter((part): part is string => Boolean(part))
       .join(" "),

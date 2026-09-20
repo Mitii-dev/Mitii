@@ -10,6 +10,11 @@ import {
   DEFAULT_MAX_PLAN_PHASES,
   DEFAULT_MAX_STEPS_PER_PHASE,
 } from "../defaults";
+import {
+  changeLikePhaseName,
+  isConcretePlanTargetRef,
+  isConcretePlanVerification,
+} from "../internal/concretePlanTargets";
 import { PLANNING_WORKING_SET_POLICY } from "../policy";
 
 export interface ValidatePlanResult {
@@ -21,6 +26,8 @@ export interface ValidatePlanResult {
 
 /**
  * Validate and lightly normalize a plan against depth/profile expectations.
+ * Plan / Agent-visible thorough plans require concrete Change targetRefs
+ * (files/symbols) — VTCode/Codex step-shape formula, Mitii-adapted.
  */
 export function validatePlan(params: {
   plan: PlanArtifact;
@@ -138,6 +145,23 @@ export function validatePlan(params: {
     }),
   };
 
+  const concreteness = enforceChangeStepConcreteness({
+    plan,
+    input,
+    strategy: params.strategy,
+  });
+  plan = concreteness.plan;
+  warnings.push(...concreteness.warnings);
+  reasonCodes.push(...concreteness.reasonCodes);
+  if (!concreteness.ok) {
+    return {
+      plan,
+      warnings,
+      reasonCodes: unique([...reasonCodes, "plan_blocked_invalid"]),
+      ok: false,
+    };
+  }
+
   reasonCodes.push("plan_validated");
   return {
     plan,
@@ -145,6 +169,124 @@ export function validatePlan(params: {
     reasonCodes: unique(reasonCodes),
     ok: true,
   };
+}
+
+function enforceChangeStepConcreteness(params: {
+  plan: PlanArtifact;
+  input: PlanningParsedInput;
+  strategy?: PlanStrategyDecision;
+}): {
+  plan: PlanArtifact;
+  warnings: string[];
+  reasonCodes: PlanningReasonCode[];
+  ok: boolean;
+} {
+  const warnings: string[] = [];
+  const reasonCodes: PlanningReasonCode[] = [];
+  if (!requiresConcreteChangeSteps(params.input, params.strategy)) {
+    return { plan: params.plan, warnings, reasonCodes, ok: true };
+  }
+
+  const changePhases = params.plan.phases.filter((phase) =>
+    changeLikePhaseName(phase.name),
+  );
+  if (changePhases.length === 0) {
+    // Clarify / open-question only plans have no Change phase — allowed.
+    return { plan: params.plan, warnings, reasonCodes, ok: true };
+  }
+
+  let missingTargets = 0;
+  let vagueTargets = 0;
+  let missingVerification = 0;
+  const phases = params.plan.phases.map((phase) => {
+    if (!changeLikePhaseName(phase.name)) {
+      return phase;
+    }
+    return {
+      ...phase,
+      steps: phase.steps.map((step) => {
+        const concreteRefs = step.targetRefs.filter(isConcretePlanTargetRef);
+        if (step.targetRefs.length === 0) {
+          missingTargets += 1;
+        } else if (concreteRefs.length === 0) {
+          vagueTargets += 1;
+        }
+        if (!isConcretePlanVerification(step.verification)) {
+          missingVerification += 1;
+        }
+        return concreteRefs.length === step.targetRefs.length
+          ? step
+          : { ...step, targetRefs: concreteRefs };
+      }),
+    };
+  });
+
+  if (missingTargets > 0) {
+    reasonCodes.push("plan_steps_missing_targets");
+  }
+  if (vagueTargets > 0) {
+    reasonCodes.push("plan_steps_vague_targets");
+  }
+  if (missingVerification > 0) {
+    reasonCodes.push("plan_steps_missing_verification");
+    warnings.push(
+      `${missingVerification} Change step(s) lack concrete verification checks.`,
+    );
+  }
+
+  // Hollow Change steps (no concrete path/symbol) block thorough plans.
+  const remainingConcrete = phases
+    .filter((phase) => changeLikePhaseName(phase.name))
+    .flatMap((phase) => phase.steps)
+    .filter((step) => step.targetRefs.some(isConcretePlanTargetRef));
+
+  if (remainingConcrete.length === 0) {
+    warnings.push(
+      "Thorough plan requires Change steps with concrete file or symbol targetRefs.",
+    );
+    return {
+      plan: { ...params.plan, phases },
+      warnings,
+      reasonCodes,
+      ok: false,
+    };
+  }
+
+  if (missingTargets > 0 || vagueTargets > 0) {
+    warnings.push(
+      "Dropped or flagged Change steps without concrete file/symbol targets.",
+    );
+  }
+
+  reasonCodes.push("plan_steps_concrete");
+  return {
+    plan: { ...params.plan, phases },
+    warnings,
+    reasonCodes,
+    ok: true,
+  };
+}
+
+function requiresConcreteChangeSteps(
+  input: PlanningParsedInput,
+  strategy?: PlanStrategyDecision,
+): boolean {
+  if (strategy?.strategy === "clarify") {
+    return false;
+  }
+  // Thin / failed discovery keeps open-question plans — do not demand
+  // concrete Change targetRefs that discovery could not supply.
+  const brief = input.discoveryBrief;
+  if (
+    brief &&
+    (brief.confidence === "low" || brief.proposedChangeSurfaces.length === 0)
+  ) {
+    return false;
+  }
+  if (input.mode === "plan") {
+    return true;
+  }
+  return input.planningDepth === "visible";
 }
 
 function unique(codes: readonly PlanningReasonCode[]): PlanningReasonCode[] {

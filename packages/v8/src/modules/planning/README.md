@@ -14,6 +14,8 @@ Planning creates structured plans when policy or user mode calls for visible pla
 - For `discover_and_plan` only: one model call turns already-gathered discovery evidence into Change+Verify steps (never a second Discover phase — discovery already ran). Skips that call when the brief is thin (`confidence: low` or no change surfaces) and falls back to the deterministic discovery skeleton if the call fails or returns nothing usable.
 - Incorporates optional skill hints, process hints, reviewed context, and prior plans.
 - Validates required plan sections, including stripping a stray Discover/Inspect/Explore phase if a `discoveryBrief` is present (discovery already ran; a model-drafted plan must not repeat it).
+- For Plan / Agent-visible thorough plans, Change steps must carry concrete file/symbol `targetRefs` (vague placeholders are stripped; hollow Change phases block validation). Thin discovery briefs skip this gate so open-question plans can ship.
+- For Plan / Agent-visible thorough plans, Change steps must carry concrete file/symbol `targetRefs` (vague placeholders are stripped; hollow Change phases block validation). Thin discovery briefs skip this gate so open-question plans can ship.
 - Compacts the plan to a token budget.
 - For `follow_evidence` and `discover_and_plan`, compiles Engine-supplied hop-1 `mustRead`/`affected` onto Change steps (`impactReports`). The model draft does not invent those paths.
 - Serializes plan artifacts for user answers or prompt injection, including a strategy-aware execution contract.
@@ -51,15 +53,16 @@ planning/
 - The public facade methods are async `PlanningPipeline.plan` and `PlanningPipeline.resolveStrategy` (test/host helper — normal runs let Engine call `resolvePlanStrategyRules` directly before deciding whether to run discovery), plus `compileDiscovery`.
 - Strategy rule table (`resolvePlanStrategyRules`, always resolves — no LLM, no fallback branch):
   1. clarity `unclear`/`ambiguous` -> `clarify` (Engine may upgrade cold Plan-mode asks to `discover_and_plan` via `applyPlanModeDiscoveryContract`)
-  2. repair intent plus in-scope diagnostics -> `follow_evidence`
-  3. repair + broad "fix all …" / package-wide verification ask -> `follow_evidence` (do not rediscover)
-  4. `explorationDepth === "quick"` -> `plan_from_ask`
-  5. Auto (not deep) with `knownPathHints` / explicit file targets -> `plan_from_ask` (skip rediscovery; Plan-mode follow-ups only when Engine contract keeps this)
-  6. Deep/Auto and wide scope/complexity (or `recommendsPlanning`, itself folded from understanding's `recommendsPlanning` OR `recommendsRepositoryDiscovery`) -> `discover_and_plan`
-  7. else -> `plan_from_ask`
-- Engine `applyPlanModeDiscoveryContract`: cold Plan-mode asks (no prior thread) and shaped-discovery profile matches force `discover_and_plan` before the discovery loop unless exploration is `quick` or strategy is `follow_evidence`. Follow-up Plan asks with `plan_from_ask` are preserved.
+  2. architecture-scale ask (refactor/migrate/scaffold + wide scope, or architecture/POM language) -> `discover_and_plan` (never `follow_evidence`)
+  3. repair intent plus in-scope diagnostics -> `follow_evidence`
+  4. repair + broad "fix all …" / package-wide verification ask -> `follow_evidence` (do not rediscover)
+  5. `explorationDepth === "quick"` -> `plan_from_ask`
+  6. Auto (not deep) with `knownPathHints` / explicit file targets -> `plan_from_ask` (skip rediscovery; Plan-mode follow-ups only when Engine contract keeps this)
+  7. Deep/Auto and wide scope/complexity (or `recommendsPlanning`, itself folded from understanding's `recommendsPlanning` OR `recommendsRepositoryDiscovery`) -> `discover_and_plan`
+  8. else -> `plan_from_ask`
+- Engine `applyPlanModeDiscoveryContract`: cold Plan-mode asks (no prior thread) and shaped-discovery profile matches force `discover_and_plan` before the discovery loop unless exploration is `quick`. Architecture / big-task asks also override incidental `follow_evidence`. Follow-up Plan asks with `plan_from_ask` are preserved.
 - Engine **Plan quality floor** (Plan mode, not `quick`): after the discovery pass, if evidence is not file-backed and non-thin (`filesRead ≥ 1`, change surfaces present, confidence not `low`), Engine emits `plan_mode_discovery_insufficient` and overrides strategy to `clarify` before calling `planning.plan`. Planning then drafts clarifying open questions instead of inventing Change steps. When evidence is sufficient, strategy stays `discover_and_plan` and the one-shot discovery draft call can run. Drafting also suppresses generic clarity/scope open-question templates when the discovery brief is already medium/high with change surfaces.
-- Repair detection uses a single shared predicate (`decision-policy`'s `isRepairIntentTaxonomy`), not words like `error` in the user sentence. The same predicate backs Decision Policy's preflight-capture gate and `DraftPlan`'s Discover/Change step wording, so all three cannot drift out of sync.
+- Repair detection uses `isRepairIntentTaxonomy` (bugfix/diagnose/compile — not refactor/migrate). Architecture intents use `isArchitectureIntentTaxonomy` / `isArchitecturePlanningAsk` so package redesigns are not swallowed by incidental diagnostics. The same repair predicate backs Decision Policy's Plan-mode preflight gate and `DraftPlan`'s Discover/Change step wording.
 - Engine owns strategy selection — it calls `resolvePlanStrategyRules` itself (not a port method) before deciding whether to run a discovery pass, then calls `planning.plan({ strategyOverride })`. Planning never runs a second classifier.
 - `follow_evidence` and `plan_from_ask` skip discovery entirely (`skipDiscover: true`). `discover_and_plan` runs Engine's bounded read-only discovery loop first; Planning then receives `discoveryBrief` and `skipDiscover: true` and either runs its one model call (see below) or falls back to the deterministic discovery skeleton.
 - Planning works without an injected LLM. Rules and deterministic drafting still return a plan; the `discover_and_plan` model call is skipped (not required) when no LLM is configured.
@@ -74,7 +77,7 @@ planning/
 
 - `PlanningPipeline`
 - `planningInputSchema`, `planningResultSchema`, `planArtifactSchema`, `planStrategyDecisionSchema`, `discoveryBriefSchema`, `explorationDepthSchema`
-- `resolvePlanStrategyRules`, `isRepairIntent`
+- `resolvePlanStrategyRules`, `isRepairIntent`, `isArchitecturePlanningAsk`
 - `compileDiscoveryBrief`, `inferPlanStrategyFromArtifact`, `serializePlanForPrompt`, `serializePlanText`, `formatPlanAsAnswer`
 - `PlanningError` and planning reason/error codes
 

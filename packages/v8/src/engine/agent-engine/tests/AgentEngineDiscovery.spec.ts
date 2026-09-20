@@ -290,9 +290,16 @@ describe("AgentEngine discovery (discover_and_plan)", () => {
                 path: "test/shared/config/testConfig.ts",
               }),
             },
+            {
+              id: "read_2",
+              name: "read_file",
+              arguments: JSON.stringify({
+                path: "test/shared/config/capabilities.ts",
+              }),
+            },
           ],
         },
-        { content: "Found the capabilities config." },
+        { content: "Found the capabilities config and related helpers." },
       ],
       createCapabilities({ supportsTools: true }),
     );
@@ -593,9 +600,14 @@ describe("AgentEngine discovery (discover_and_plan)", () => {
               name: "read_file",
               arguments: JSON.stringify({ path: "src/payments/client.ts" }),
             },
+            {
+              id: "read_2",
+              name: "read_file",
+              arguments: JSON.stringify({ path: "src/payments/retry.ts" }),
+            },
           ],
         },
-        { content: "Found the payment client entrypoint." },
+        { content: "Found the payment client entrypoint and retry helper." },
       ],
       createCapabilities({ supportsTools: true }),
     );

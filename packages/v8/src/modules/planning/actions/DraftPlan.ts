@@ -1093,8 +1093,8 @@ function buildArchitectureChangeSteps(
     return numbered.slice(0, DEFAULT_MAX_STEPS_PER_PHASE);
   }
 
-  // Gate on primary intent only — isRepairIntentTaxonomy treats "refactor" as
-  // repair (substring "fix"), which must not suppress architecture splits.
+  // Gate on primary intent only — architecture refactor/migrate must still
+  // split Change steps even when secondary repair intents are present.
   const architectureIntent =
     evidence.primaryIntent === "refactor" ||
     evidence.primaryIntent === "migrate" ||

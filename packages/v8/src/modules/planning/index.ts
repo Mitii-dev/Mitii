@@ -38,7 +38,14 @@ export type { PlanStrategyResolution } from "./pipeline/PlanningPipeline";
 export {
   resolvePlanStrategyRules,
   isRepairIntent,
+  isArchitecturePlanningAsk,
 } from "./actions/ResolvePlanStrategy";
+
+export {
+  changeLikePhaseName,
+  isConcretePlanTargetRef,
+  isConcretePlanVerification,
+} from "./internal/concretePlanTargets";
 
 export {
   planningInputSchema,

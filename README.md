@@ -15,7 +15,7 @@
   <a href="LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/License-AGPL_v3-blue.svg"></a>
   <a href="https://code.visualstudio.com/"><img alt="VS Code 1.124+" src="https://img.shields.io/badge/VS%20Code-1.124%2B-007ACC?logo=visualstudiocode"></a>
   <a href="https://nodejs.org/"><img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-339933?logo=node.js"></a>
-  <img alt="Version 2.9.77" src="https://img.shields.io/badge/version-2.9.77-111111">
+  <img alt="Version 2.9.78" src="https://img.shields.io/badge/version-2.9.78-111111">
   <a href="https://docs.mitii.dev"><img alt="Documentation" src="https://img.shields.io/badge/docs-docs.mitii.dev-ff751f"></a>
 </p>
 
@@ -276,4 +276,12 @@ Contributions are welcome. Keep changes focused and run `pnpm run typecheck` and
 
 ## License
 
-Mitii AI Agent is licensed under [AGPL-3.0-or-later](LICENSE). Contact the maintainer for commercial licensing outside the AGPL terms.
+Mitii AI Agent is **copyright codewithshinde** and licensed under
+[AGPL-3.0-or-later](LICENSE).
+
+Authorship, ownership, and courtesy *inspiration-only* acknowledgements
+(independent prior art — **not** copied or vendored third-party agent source)
+are in [NOTICE-REVIEW.md](NOTICE-REVIEW.md). Inspired projects have **no**
+authorship or ownership claim over Mitii.
+
+Contact the maintainer for commercial licensing outside the AGPL terms.
