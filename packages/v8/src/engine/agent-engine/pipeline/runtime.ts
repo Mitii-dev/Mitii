@@ -48,6 +48,7 @@ export type AgentEngineResolvedDeps = Required<
     | "tools"
     | "verification"
     | "checkpointStore"
+    | "contextEpochStore"
     | "toolDefinitions"
     | "taskListAutoAdvance"
     | "repoGraphs"
@@ -137,6 +138,7 @@ export function resolveAgentEngineDeps(
     tools: dependencies.tools,
     verification: dependencies.verification,
     checkpointStore: dependencies.checkpointStore,
+    contextEpochStore: dependencies.contextEpochStore,
     repoGraphs: dependencies.repoGraphs,
     toolDefinitions: dependencies.toolDefinitions,
     taskListAutoAdvance: dependencies.taskListAutoAdvance,

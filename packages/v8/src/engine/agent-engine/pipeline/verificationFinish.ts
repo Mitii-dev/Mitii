@@ -119,6 +119,8 @@ export async function finishAfterLoop(
     projects?: readonly ProjectDescriptor[];
     memoryFacts?: readonly { id: string; content: string }[];
     selectedSkillIds?: string[];
+    projectRuleIds?: string[];
+    environmentIds?: string[];
     requiredSkillIds?: string[];
     excludedSkillIds?: string[];
     establishedFacts: EstablishedFact[];
@@ -838,6 +840,8 @@ export async function finishAfterLoop(
         memoryFacts: params.loopContext?.memoryFacts,
         establishedFacts: params.loopContext?.establishedFacts ?? [],
         selectedSkillIds: params.loopContext?.selectedSkillIds,
+        projectRuleIds: params.loopContext?.projectRuleIds,
+        environmentIds: params.loopContext?.environmentIds,
         requiredSkillIds: params.loopContext?.requiredSkillIds,
         excludedSkillIds: params.loopContext?.excludedSkillIds,
         evidence,

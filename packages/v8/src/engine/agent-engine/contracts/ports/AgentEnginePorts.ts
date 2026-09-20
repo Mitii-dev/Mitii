@@ -58,6 +58,7 @@ import type {
 } from "../../../../modules/verification";
 
 import type { AgentEngineRunCheckpointStorePort } from "../../internal/RunCheckpoint";
+import type { ContextEpochStorePort } from "../../internal/context-epoch";
 import type { AgentEngineReviewPort } from "./AgentEngineReviewPort";
 
 export interface AgentEngineClockPort {
@@ -205,6 +206,13 @@ export interface AgentEngineDependencies {
   /** Optional structured code-review pipeline (Phase review). */
   review?: AgentEngineReviewPort;
   checkpointStore?: AgentEngineRunCheckpointStorePort;
+  /**
+   * Optional durable Context Epoch store (OpenCode session_context_epoch).
+   * When set, each admit persists the active epoch alongside the in-memory map.
+   * Checkpoints already embed `contextEpoch`; this port is for hosts that want
+   * an independent epoch table / process-local cache.
+   */
+  contextEpochStore?: ContextEpochStorePort;
   /**
    * Optional restrict-only ToolAdversaryPort (Phase 3). Forwarded into tool
    * execute options. Unset = no-op. Never widens grants.

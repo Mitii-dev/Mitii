@@ -38,6 +38,11 @@ export function buildSystemInstructions(params: {
   includedMemoryIds: string[];
   includedEnvironmentIds: string[];
   reviewFlaggedFragmentIds: string[];
+  separateMessages: Array<{
+    role: "system" | "developer" | "user";
+    content: string;
+    contentKind: string;
+  }>;
   omitted: Array<{
     section: "rules" | "skills" | "memory" | "environment";
     id: string;
@@ -156,6 +161,12 @@ export function buildSystemInstructions(params: {
     includedMemoryIds,
     includedEnvironmentIds,
     reviewFlaggedFragmentIds: assembled.reviewFlaggedIds,
+    /** Codex separate-message fragments (not folded into system blob). */
+    separateMessages: assembled.separateMessages.map((item) => ({
+      role: item.role,
+      content: item.text,
+      contentKind: item.contentKind,
+    })),
     omitted,
   };
 }

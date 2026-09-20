@@ -77,6 +77,12 @@ agent-engine/
   (`compactModelLoopMessagesFromWindowPolicy`): soft tool stubs → drop oldest
   turns → dropped-turn summary → hard tool compact → reinject facts/memory.
   `stagesApplied` records which stages mutated history.
+- **Context Epochs (OpenCode formulae):** each run freezes an immutable
+  baseline system prefix at epoch start. Mid-turn source changes (skills,
+  rules, environment, memory) admit a marked `<context_epoch_update>` system
+  message without rewriting the baseline. Compaction or route change starts a
+  new epoch and strips prior mid-updates from projected history. See
+  `internal/system-context/` and `internal/context-epoch/`.
 - **Progressive tool schemas:** `filterToolDefinitions` exposes INDEX stubs
   for long-tail / MCP tools, while core discovery + mutation tools
   (`FULL_SCHEMA_TOOL_IDS`: read_file, search_files, run_readonly_command,

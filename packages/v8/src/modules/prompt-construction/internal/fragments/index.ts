@@ -21,5 +21,6 @@ export {
   BaseInstructionsFragment,
   DecisionBriefFragment,
   InstructionBlockFragment,
+  MidConversationUpdateFragment,
   PlanGuidanceFragment,
 } from "./builtInFragments";

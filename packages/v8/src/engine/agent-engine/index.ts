@@ -91,21 +91,54 @@ export type {
 
 export {
   CONTEXT_EPOCH_SOURCE_KEYS,
+  MID_CONVERSATION_SYSTEM_MARKERS,
   InMemoryContextEpochStore,
+  admitContextEpoch,
+  appendMidConversationSystemMessage,
+  baselinePrefixMatches,
   buildContextEpochSnapshot,
   extractBaselineSystemText,
   hashContextText,
   initializeContextEpoch,
+  isMidConversationSystemContent,
   markContextEpochForReplacement,
+  normalizeContextEpochSnapshot,
+  pinBaselineSystemMessage,
   reconcileContextEpoch,
   replaceContextEpoch,
+  stripMidConversationSystemMessages,
+  wrapMidConversationSystemText,
 } from "./internal/context-epoch";
 export type {
+  AdmitContextEpochInput,
   ContextEpoch,
+  ContextEpochAdmitResult,
   ContextEpochReconcileResult,
   ContextEpochSnapshot,
   ContextEpochStorePort,
 } from "./internal/context-epoch";
+
+export {
+  SYSTEM_CONTEXT_SOURCE_KEYS,
+  SYSTEM_CONTEXT_UNAVAILABLE,
+  assertSystemContextKey,
+  combineSystemContexts,
+  composeMitiiSystemContext,
+  emptySystemContext,
+  encodeJson,
+  initializeSystemContext,
+  makeSystemContextSource,
+  reconcileSystemContext,
+  replaceSystemContext,
+} from "./internal/system-context";
+export type {
+  ObservedContextSourceValues,
+  SystemContext,
+  SystemContextGeneration,
+  SystemContextReconcileResult,
+  SystemContextSnapshot,
+  SystemContextSourceDefinition,
+} from "./internal/system-context";
 
 export {
   agentEngineStartInputSchema,
