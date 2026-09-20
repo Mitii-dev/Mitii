@@ -531,6 +531,9 @@ export async function runDiscoveryPass(
       const needsForcedTools =
         canForceTools && (needsFileEvidence || needsSymbolEvidence);
       budget.recordModelCall();
+      const discoveryReasoningBudget = resolveReasoningProgressBudget({
+        supportsReasoning: runtime.deps.llm.capabilities.supportsReasoning,
+      });
       const turnResult = await consumeModelTurn(runtime, {
         llm: runtime.deps.llm,
         request: {
@@ -548,9 +551,9 @@ export async function runDiscoveryPass(
         runId,
         signal,
         bus,
-        maxReasoningCharsWithoutProgress: resolveReasoningProgressBudget({
-          supportsReasoning: runtime.deps.llm.capabilities.supportsReasoning,
-        }),
+        maxReasoningCharsWithoutProgress: discoveryReasoningBudget.baseChars,
+        tightReasoningCharsWhenChannelActive:
+          discoveryReasoningBudget.tightChars,
       });
       if (turnResult.kind !== "completed") {
         stopReason = turnResult.kind === "cancelled" ? "aborted" : "model_error";

@@ -8,19 +8,14 @@ import {
 } from "../resolveReasoningAndCodeIntelNudges";
 
 describe("resolveReasoningProgressBudget", () => {
-  it("keeps the base budget when reasoning is not advertised", () => {
-    expect(
-      resolveReasoningProgressBudget({
-        supportsReasoning: false,
-      }),
-    ).toBe(AGENT_ENGINE_THRESHOLDS.maxReasoningCharsWithoutProgress);
-  });
-
-  it("tightens the budget for reasoning-capable models", () => {
+  it("keeps the base starting budget when reasoning is not advertised", () => {
     const budget = resolveReasoningProgressBudget({
-      supportsReasoning: true,
+      supportsReasoning: false,
     });
-    expect(budget).toBe(
+    expect(budget.baseChars).toBe(
+      AGENT_ENGINE_THRESHOLDS.maxReasoningCharsWithoutProgress,
+    );
+    expect(budget.tightChars).toBe(
       Math.max(
         2_000,
         Math.floor(
@@ -29,7 +24,19 @@ describe("resolveReasoningProgressBudget", () => {
         ),
       ),
     );
-    expect(budget).toBeLessThan(
+  });
+
+  it("starts tight when reasoning is advertised or already observed", () => {
+    const capable = resolveReasoningProgressBudget({
+      supportsReasoning: true,
+    });
+    const observed = resolveReasoningProgressBudget({
+      supportsReasoning: false,
+      observedReasoningChannel: true,
+    });
+    expect(capable.baseChars).toBe(capable.tightChars);
+    expect(observed.baseChars).toBe(observed.tightChars);
+    expect(capable.baseChars).toBeLessThan(
       AGENT_ENGINE_THRESHOLDS.maxReasoningCharsWithoutProgress,
     );
   });
@@ -42,7 +49,7 @@ describe("resolveReasoningProgressBudget", () => {
           maxReasoningCharsWithoutProgress: 10_000,
           reasoningProgressBudgetRatioWhenReasoningCapable: 0.2,
         },
-      }),
+      }).tightChars,
     ).toBe(2_000);
   });
 });

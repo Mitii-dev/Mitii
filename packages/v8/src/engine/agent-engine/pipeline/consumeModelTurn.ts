@@ -29,6 +29,11 @@ export async function consumeModelTurn(
      * length stop so recovery / mutation nudges can run.
      */
     maxReasoningCharsWithoutProgress?: number;
+    /**
+     * Once a reasoning_delta is seen this turn, shrink the cap to this value
+     * (when lower) so unknown thinking endpoints still trip early.
+     */
+    tightReasoningCharsWhenChannelActive?: number;
   },
 ): Promise<
   | {
@@ -44,6 +49,8 @@ export async function consumeModelTurn(
       finishReason?: string;
       /** True when the turn was cut short by the reasoning progress budget. */
       reasoningBudgetExceeded?: boolean;
+      /** True when any reasoning_delta arrived this turn. */
+      observedReasoningChannel?: boolean;
     }
   | { kind: "cancelled" }
   | {
@@ -54,9 +61,12 @@ export async function consumeModelTurn(
     }
 > {
   const { llm, request, runId, signal, bus } = params;
-  const maxReasoningChars =
+  let maxReasoningChars =
     params.maxReasoningCharsWithoutProgress ??
     AGENT_ENGINE_THRESHOLDS.maxReasoningCharsWithoutProgress;
+  const tightReasoningChars =
+    params.tightReasoningCharsWhenChannelActive ?? maxReasoningChars;
+  let observedReasoningChannel = false;
   const contentParts: string[] = [];
   const reasoningParts: string[] = [];
   const toolDeltas: ModelToolCallDelta[] = [];
@@ -120,6 +130,10 @@ export async function consumeModelTurn(
           contentParts.push(event.content);
           break;
         case "reasoning_delta":
+          observedReasoningChannel = true;
+          if (tightReasoningChars < maxReasoningChars) {
+            maxReasoningChars = tightReasoningChars;
+          }
           reasoningParts.push(event.reasoning);
           tripReasoningBudget();
           break;
@@ -215,6 +229,7 @@ export async function consumeModelTurn(
     usage,
     finishReason,
     reasoningBudgetExceeded: reasoningBudgetExceeded || undefined,
+    observedReasoningChannel: observedReasoningChannel || undefined,
   };
 }
 

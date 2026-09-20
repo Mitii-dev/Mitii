@@ -111,10 +111,12 @@ agent-engine/
   while stripping broad rediscovery (`workspace_symbol` included).
   `discovery_completed.qualityFloorMet` clarifies failed vs completed floors.
 - **Reasoning-burn recovery:** empty length-stops after mutations still nudge
-  `apply_patch` once when execute+write mutation remains required. Reasoning-capable
-  models use a tighter progress budget (`reasoningProgressBudgetRatioWhenReasoningCapable`).
-  After repeated file-body reads without symbol tools, a single generic code-intel
-  adoption nudge prefers granted navigation tools.
+  `apply_patch` once when execute+write mutation remains required. Reasoning
+  streams tighten the progress budget mid-turn (and on later turns once a
+  reasoning channel was observed), even when `supportsReasoning` is unset.
+  After repeated reasoning-only trips with write still required, the loop
+  locks to mutation tools. Second Continue spends the post-nudge evidence-read
+  budget so read thrash cannot restart.
 - **Host capability honesty:** `hostCapabilities.codeNavigation` /
   `diagnostics` flow from Tool Runtime ports into Decision Policy reason
   codes and prompt guidance (`code_navigation_available|degraded|unavailable`,

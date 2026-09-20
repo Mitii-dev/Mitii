@@ -37,7 +37,7 @@ function serializeMinimalWorkingSet(mutationLocked: boolean): string {
     "",
     "## Checklist",
     mutationLocked
-      ? "Mutation required now. Prefer apply_patch/delete_file/move_file. Up to five targeted read_file batches of write/mustRead paths are allowed if contents are missing; then patch immediately. No list/glob/search."
+      ? "Mutation required now. Prefer apply_patch/delete_file/move_file. Targeted read_file batches of write/mustRead paths are allowed while the evidence budget remains; then patch immediately. No list/glob/search."
       : "No live checklist yet. If this is a multi-step run, after the first read/diagnose tool turn call update_todos with type=replace. Each title must name a concrete file, failure, or user-visible behavior.",
     "</working_set>",
   ].join("\n");

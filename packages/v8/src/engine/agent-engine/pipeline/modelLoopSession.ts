@@ -54,6 +54,10 @@ export type ModelLoopSession = {
   codeIntelToolUses: number;
   /** How many code-intel adoption nudges were already injected. */
   codeIntelAdoptionNudges: number;
+  /** Reasoning-channel progress-budget trips this run. */
+  reasoningProgressBudgetExceedances: number;
+  /** True after any turn streamed a reasoning_delta. */
+  observedReasoningChannel: boolean;
   awaitingRejectedMutationRetry:
     | {
         allowTargetedDiscovery: boolean;

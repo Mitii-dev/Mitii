@@ -36,7 +36,7 @@ export function serializeRecoverabilityWorkingSet(
   } else if (params.mutationLocked) {
     sections.push(
       "## Checklist",
-      "Mutation required now. Prefer apply_patch/delete_file/move_file. Up to five targeted read_file batches of write/mustRead paths are allowed if contents are missing; then patch immediately. No list/glob/search.",
+      "Mutation required now. Prefer apply_patch/delete_file/move_file. Targeted read_file batches of write/mustRead paths are allowed while the evidence budget remains; then patch immediately. No list/glob/search.",
     );
   } else {
     sections.push(

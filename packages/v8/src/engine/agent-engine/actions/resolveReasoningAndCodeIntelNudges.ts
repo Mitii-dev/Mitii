@@ -1,9 +1,21 @@
 import type { AgentEngineThresholds } from "./resolveAgentEngineThresholds";
 import { AGENT_ENGINE_THRESHOLDS } from "../policy";
 
+export type ReasoningProgressBudget = {
+  /** Soft cap for turns that may not stream a reasoning channel. */
+  baseChars: number;
+  /**
+   * Once a reasoning_delta arrives (or the model advertises reasoning),
+   * shrink the in-turn cap to this value so thinking-only burns recover
+   * into tools sooner — even when capabilities.supportsReasoning is false.
+   */
+  tightChars: number;
+};
+
 /**
- * Effective reasoning-progress abort budget. Reasoning-capable models get a
- * tighter cap so thinking-only streams recover into tools sooner.
+ * Reasoning-progress abort budgets. Capability flag or prior observed
+ * reasoning both select the tight starting budget; otherwise the base
+ * starts high and consumeModelTurn shrinks mid-turn on first reasoning_delta.
  */
 export function resolveReasoningProgressBudget(params: {
   thresholds?: Pick<
@@ -12,14 +24,33 @@ export function resolveReasoningProgressBudget(params: {
     | "reasoningProgressBudgetRatioWhenReasoningCapable"
   >;
   supportsReasoning?: boolean;
-}): number {
+  /** Prior turns already streamed a reasoning channel this run. */
+  observedReasoningChannel?: boolean;
+}): ReasoningProgressBudget {
   const thresholds = params.thresholds ?? AGENT_ENGINE_THRESHOLDS;
   const base = thresholds.maxReasoningCharsWithoutProgress;
-  if (params.supportsReasoning !== true) {
-    return base;
-  }
   const ratio = thresholds.reasoningProgressBudgetRatioWhenReasoningCapable;
-  return Math.max(2_000, Math.floor(base * ratio));
+  const tight = Math.max(2_000, Math.floor(base * ratio));
+  const preferTight =
+    params.supportsReasoning === true ||
+    params.observedReasoningChannel === true;
+  return {
+    baseChars: preferTight ? tight : base,
+    tightChars: tight,
+  };
+}
+
+/** @deprecated Prefer {@link resolveReasoningProgressBudget}.baseChars */
+export function resolveReasoningProgressBudgetChars(params: {
+  thresholds?: Pick<
+    AgentEngineThresholds,
+    | "maxReasoningCharsWithoutProgress"
+    | "reasoningProgressBudgetRatioWhenReasoningCapable"
+  >;
+  supportsReasoning?: boolean;
+  observedReasoningChannel?: boolean;
+}): number {
+  return resolveReasoningProgressBudget(params).baseChars;
 }
 
 /**

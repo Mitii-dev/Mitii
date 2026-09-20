@@ -111,5 +111,50 @@ describe("consumeModelTurn reasoning progress budget", () => {
     expect(turn.reasoningBudgetExceeded).toBeUndefined();
     expect(turn.finishReason).toBe("tool_calls");
     expect(turn.toolCalls).toHaveLength(1);
+    expect(turn.observedReasoningChannel).toBe(true);
+  });
+
+  it("shrinks to the tight budget once reasoning_delta arrives", async () => {
+    const warnings: Array<{ code?: string }> = [];
+    const runtime = {
+      emit: (_bus: EventBus, event: { type: string; code?: string }) => {
+        if (event.type === "warning") {
+          warnings.push({ code: event.code });
+        }
+      },
+      isoNow: () => "2026-09-20T00:00:00.000Z",
+    } as unknown as AgentEngineRuntime;
+
+    // Base allows 12k; tight is 2k. First reasoning chunks trip at tight.
+    async function* flood(): AsyncIterable<ModelEvent> {
+      for (let i = 0; i < 20; i += 1) {
+        yield { type: "reasoning_delta", reasoning: "y".repeat(300) };
+      }
+      yield { type: "completed", finishReason: "stop" };
+    }
+
+    const turn = await consumeModelTurn(runtime, {
+      llm: {
+        id: "stub",
+        capabilities: {},
+        complete: flood,
+      } as unknown as LlmPort,
+      request: { messages: [{ role: "user", content: "edit" }] },
+      runId: "run_tight",
+      signal: new AbortController().signal,
+      bus: new EventBus(),
+      maxReasoningCharsWithoutProgress: 12_000,
+      tightReasoningCharsWhenChannelActive: 2_000,
+    });
+
+    expect(turn.kind).toBe("completed");
+    if (turn.kind !== "completed") {
+      return;
+    }
+    expect(turn.reasoningBudgetExceeded).toBe(true);
+    expect(turn.observedReasoningChannel).toBe(true);
+    expect(
+      warnings.some((w) => w.code === "reasoning_progress_budget_exceeded"),
+    ).toBe(true);
   });
 });
