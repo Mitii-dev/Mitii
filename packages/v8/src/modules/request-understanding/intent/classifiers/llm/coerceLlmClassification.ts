@@ -1,7 +1,14 @@
 /**
  * Soft-coerce common LLM shape drift so a near-valid ballot is not discarded.
  * Strict Zod still runs after this — coercion only maps known aliases / shapes.
+ *
+ * VTCode/Codex-shaped formulae (Mitii-adapted):
+ * - Ballot salvage: drop/remap invalid fields; never wipe a valid core ballot.
+ * - Alternatives whitelist: alternatives[].intent ∈ TASK_INTENTS only.
+ * - Interaction ≠ task: mode verbs never land in task intent slots.
  */
+
+import { INTENT_CONSTANTS } from "../../constants";
 
 const CLARITY_ALIASES: Record<string, "clear" | "partially_clear" | "unclear"> = {
   clear: "clear",
@@ -38,6 +45,36 @@ const SLOT_KINDS = new Set([
   "outcome",
   "intent",
 ]);
+
+const TASK_INTENT_SET = new Set<string>(INTENT_CONSTANTS.TASK_INTENTS);
+
+/** Interaction-only verbs that models sometimes put in task slots. */
+const INTERACTION_ONLY = new Set([
+  "plan",
+  "act",
+  "help",
+  "ask",
+  "agent",
+  "unknown",
+]);
+
+const INTERACTION_INTENTS = new Set([
+  "question",
+  "plan",
+  "act",
+  "help",
+  "unknown",
+]);
+
+/** Map interaction-only labels onto a safe task intent. */
+const INTERACTION_TO_TASK: Record<string, string> = {
+  plan: "question",
+  act: "feature",
+  help: "question",
+  ask: "question",
+  agent: "feature",
+  unknown: "question",
+};
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -188,8 +225,96 @@ function coerceTaskHints(raw: unknown): unknown {
   return next;
 }
 
+function normalizeTaskIntentLabel(raw: unknown): string | undefined {
+  if (typeof raw !== "string") {
+    return undefined;
+  }
+  const value = raw.trim().toLowerCase().replace(/\s+/g, "_");
+  if (!value) {
+    return undefined;
+  }
+  if (TASK_INTENT_SET.has(value)) {
+    return value;
+  }
+  if (INTERACTION_ONLY.has(value)) {
+    return INTERACTION_TO_TASK[value] ?? "question";
+  }
+  return undefined;
+}
+
+function coerceInteractionIntent(raw: unknown): string | undefined {
+  if (typeof raw !== "string") {
+    return undefined;
+  }
+  const value = raw.trim().toLowerCase();
+  if (INTERACTION_INTENTS.has(value)) {
+    return value;
+  }
+  // Task verbs mis-placed on interaction → act (executable) or question.
+  if (TASK_INTENT_SET.has(value) && value !== "question") {
+    return "act";
+  }
+  return undefined;
+}
+
+function coerceAlternatives(raw: unknown): unknown[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const out: Array<{ intent: string; confidence: number }> = [];
+  const seen = new Set<string>();
+  for (const item of raw.slice(0, INTENT_CONSTANTS.MAX_ALTERNATIVES + 2)) {
+    const record = asRecord(item);
+    if (!record) {
+      continue;
+    }
+    // Drop interaction-only verbs (plan/act/help) — do not remap into task
+    // alternatives (would invent noisy "question" chips).
+    if (
+      typeof record.intent === "string" &&
+      INTERACTION_ONLY.has(record.intent.trim().toLowerCase())
+    ) {
+      continue;
+    }
+    const intent = normalizeTaskIntentLabel(record.intent);
+    if (!intent || seen.has(intent)) {
+      continue;
+    }
+    const confidence =
+      typeof record.confidence === "number" && Number.isFinite(record.confidence)
+        ? Math.min(1, Math.max(0, record.confidence))
+        : 0;
+    seen.add(intent);
+    out.push({ intent, confidence });
+    if (out.length >= INTENT_CONSTANTS.MAX_ALTERNATIVES) {
+      break;
+    }
+  }
+  return out;
+}
+
+function coerceSecondaryIntents(raw: unknown, primary?: string): string[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const out: string[] = [];
+  const seen = new Set<string>(primary ? [primary] : []);
+  for (const item of raw.slice(0, INTENT_CONSTANTS.MAX_SECONDARY + 2)) {
+    const intent = normalizeTaskIntentLabel(item);
+    if (!intent || seen.has(intent)) {
+      continue;
+    }
+    seen.add(intent);
+    out.push(intent);
+    if (out.length >= INTENT_CONSTANTS.MAX_SECONDARY) {
+      break;
+    }
+  }
+  return out;
+}
+
 /**
- * Returns a shallow-cloned classification object with soft-coerced taskHints.
+ * Returns a shallow-cloned classification object with soft-coerced fields.
  * When hints remain unusable, strips them so the core ballot can still parse.
  */
 export function coerceLlmClassificationJson(parsed: unknown): unknown {
@@ -198,14 +323,38 @@ export function coerceLlmClassificationJson(parsed: unknown): unknown {
     return parsed;
   }
 
-  if (!("taskHints" in record) || record.taskHints === undefined) {
-    return parsed;
+  const next: Record<string, unknown> = { ...record };
+
+  const interaction = coerceInteractionIntent(record.interactionIntent);
+  if (interaction) {
+    next.interactionIntent = interaction;
   }
 
-  return {
-    ...record,
-    taskHints: coerceTaskHints(record.taskHints),
-  };
+  const primary = normalizeTaskIntentLabel(record.primaryTaskIntent);
+  if (primary) {
+    next.primaryTaskIntent = primary;
+  }
+
+  next.alternatives = coerceAlternatives(record.alternatives);
+  next.secondaryTaskIntents = coerceSecondaryIntents(
+    record.secondaryTaskIntents,
+    typeof next.primaryTaskIntent === "string"
+      ? next.primaryTaskIntent
+      : undefined,
+  );
+
+  // Drop alternatives that duplicate the primary.
+  if (typeof next.primaryTaskIntent === "string" && Array.isArray(next.alternatives)) {
+    next.alternatives = (
+      next.alternatives as Array<{ intent: string; confidence: number }>
+    ).filter((alt) => alt.intent !== next.primaryTaskIntent);
+  }
+
+  if ("taskHints" in record && record.taskHints !== undefined) {
+    next.taskHints = coerceTaskHints(record.taskHints);
+  }
+
+  return next;
 }
 
 /**
@@ -219,4 +368,40 @@ export function stripTaskHints(parsed: unknown): unknown {
   }
   const { taskHints: _ignored, ...rest } = record;
   return rest;
+}
+
+/** Drop alternatives so a near-valid core ballot can parse. */
+export function stripAlternatives(parsed: unknown): unknown {
+  const record = asRecord(parsed);
+  if (!record) {
+    return parsed;
+  }
+  return { ...record, alternatives: [] };
+}
+
+/** Drop secondary intents + alternatives (core ballot only). */
+export function stripSecondaryAndAlternatives(parsed: unknown): unknown {
+  const record = asRecord(parsed);
+  if (!record) {
+    return parsed;
+  }
+  return {
+    ...record,
+    secondaryTaskIntents: [],
+    alternatives: [],
+  };
+}
+
+/**
+ * Progressive salvage ladder for a near-valid ballot.
+ * Tries full coerce → strip alternatives → strip secondary → strip hints.
+ */
+export function salvageLlmClassificationStages(parsed: unknown): unknown[] {
+  const coerced = coerceLlmClassificationJson(parsed);
+  return [
+    coerced,
+    stripAlternatives(coerced),
+    stripSecondaryAndAlternatives(coerced),
+    stripTaskHints(stripSecondaryAndAlternatives(coerced)),
+  ];
 }

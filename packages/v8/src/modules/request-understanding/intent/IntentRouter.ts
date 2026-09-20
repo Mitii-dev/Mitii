@@ -206,19 +206,31 @@ export class IntentRouter {
   ): SuperIntentResult {
     const detail =
       error instanceof Error ? error.message.slice(0, 160) : String(error).slice(0, 160);
-    // Stay below Decision Policy lowIntentConfidence (0.45) so agent-mode
-    // unclear asks suspend for confirmation instead of tool-less chat.
+    // Agent: stay below Decision Policy lowIntentConfidence (0.45) so unclear
+    // asks suspend for confirmation instead of tool-less chat.
+    // Plan/Ask: pin interaction via ModeIntentPolicy and keep confidence at/above
+    // INTENT_LOW (0.6) so a parse failure does not invent an empty-option clarify.
+    const agentFallback = mode === "agent";
     const classification = this.modePolicy.apply(mode, {
-      interactionIntent: "question",
+      interactionIntent: mode === "plan" ? "plan" : "question",
       primaryTaskIntent: "question",
       secondaryTaskIntents: [],
-      confidence: 0.4,
-      alternatives: [],
-      needsClarification: mode === "agent",
-      reason: `LLM intent classifier failed; using safe question fallback (${detail}).`,
+      confidence: agentFallback ? 0.4 : 0.65,
+      // Chips when Agent must clarify — avoid empty free-text only.
+      alternatives: agentFallback
+        ? [
+            { intent: "bugfix", confidence: 0.28 },
+            { intent: "feature", confidence: 0.26 },
+            { intent: "refactor", confidence: 0.22 },
+          ]
+        : [],
+      needsClarification: agentFallback,
+      reason: `LLM intent classifier failed; using safe ${
+        mode === "plan" ? "plan" : "question"
+      } fallback (${detail}).`,
     });
     return {
-      status: mode === "agent" ? "clarification_required" : "accepted",
+      status: agentFallback ? "clarification_required" : "accepted",
       classification,
       scores: [
         {
@@ -229,7 +241,7 @@ export class IntentRouter {
         },
       ],
       confidenceMargin: classification.confidence,
-      recommendsClarification: mode === "agent",
+      recommendsClarification: agentFallback,
       diagnostics: {
         llmPrimaryIntent: classification.primaryTaskIntent,
         llmInteractionIntent: classification.interactionIntent,

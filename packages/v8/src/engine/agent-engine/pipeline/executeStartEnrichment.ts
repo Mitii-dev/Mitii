@@ -50,11 +50,15 @@ import {
   formatSkillPromptContent,
   buildSkillsReadyEvent,
 } from "../actions";
-import { applyPlanModeDiscoveryContract } from "../actions/planDiscoveryContract";
+import {
+  applyPlanModeDiscoveryContract,
+  isAgentWidePlanningScope,
+} from "../actions/planDiscoveryContract";
 import {
   clarifyAfterInsufficientPlanDiscovery,
   isPlanDiscoveryEvidenceSufficient,
   requiresPlanDiscoveryQualityFloor,
+  usesThoroughPlanDiscoveryEvidence,
 } from "../actions/planDiscoveryQuality";
 import type {
   AgentEngineStartInput,
@@ -562,23 +566,36 @@ export async function runStartEnrichment(
 
     // Engine owns strategy (rules only); Planning drafts against override.
     const strategyDecision = resolvePlanStrategyRules(planningInput);
+    const agentWideScope = isAgentWidePlanningScope(planningInput.evidence);
     const planContract = applyPlanModeDiscoveryContract({
       mode: envelope.mode,
       explorationDepth: input.explorationDepth,
       query: planningInput.query,
       conversation: input.conversation ?? [],
       strategy: strategyDecision,
+      planningDepth: decision.planningDepth,
+      agentWideScope,
     });
     let strategyOverride: PlanStrategyDecision = planContract.strategy;
     if (planContract.applied) {
-      reasonCodes.push("plan_mode_discovery_required");
+      reasonCodes.push(
+        envelope.mode === "agent"
+          ? "agent_big_task_discovery_required"
+          : "plan_mode_discovery_required",
+      );
     }
     let discoveryBrief = planningInput.discoveryBrief;
+    const thoroughEvidence = usesThoroughPlanDiscoveryEvidence({
+      mode: envelope.mode,
+      planningDepth: decision.planningDepth,
+    });
     const planQualityFloor = requiresPlanDiscoveryQualityFloor({
       mode: envelope.mode,
       explorationDepth: input.explorationDepth,
+      planningDepth: decision.planningDepth,
+      agentWideScope,
     });
-    // Post-contract strategy (Plan mode may upgrade to discover_and_plan).
+    // Post-contract strategy (Plan / Agent big-task may upgrade to discover_and_plan).
     if (strategyOverride.strategy === "discover_and_plan") {
       const discovery = await runDiscoveryPass(runtime, {
         runId,
@@ -599,6 +616,7 @@ export async function runStartEnrichment(
         windowPolicy,
         preferredPaths: knownPathHints,
         qualityFloor: planQualityFloor,
+        thoroughEvidence,
       });
       discoveryBrief = discovery.brief;
       recordDiscoveryEvidence(runEvidence, {
@@ -611,11 +629,14 @@ export async function runStartEnrichment(
       strategyOverride = { ...strategyOverride, skipDiscover: true };
       if (
         planQualityFloor &&
-        !isPlanDiscoveryEvidenceSufficient(discovery.brief)
+        !isPlanDiscoveryEvidenceSufficient(discovery.brief, {
+          thorough: thoroughEvidence,
+        })
       ) {
         reasonCodes.push("plan_mode_discovery_insufficient");
         strategyOverride = clarifyAfterInsufficientPlanDiscovery(
           strategyOverride.confidence,
+          { thorough: thoroughEvidence },
         );
       }
     }

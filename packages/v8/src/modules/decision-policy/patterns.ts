@@ -132,9 +132,12 @@ export const DECISION_POLICY_PATTERNS = {
 } as const;
 
 /**
- * Repair-shaped intent taxonomy, shared by Decision Policy (preflight build
- * gating) and Planning (strategy rules, discovery gating). Single source of
- * truth so the three call sites cannot drift out of sync.
+ * True repair intents (bugfix / diagnose / compile), shared by Decision Policy
+ * (preflight build gating) and Planning (follow_evidence strategy).
+ *
+ * Architecture intents (refactor / migrate / scaffold) are intentionally
+ * excluded — they use {@link isArchitectureIntentTaxonomy} so package-scale
+ * redesigns are not swallowed into follow_evidence by incidental diagnostics.
  */
 export function isRepairIntentTaxonomy(intents: readonly string[]): boolean {
   return intents
@@ -146,12 +149,28 @@ export function isRepairIntentTaxonomy(intents: readonly string[]): boolean {
         intent.includes("fix") ||
         intent === "debug" ||
         intent.includes("diagnos") ||
-        intent.includes("refactor") ||
-        intent.includes("migrat") ||
         intent.includes("lint") ||
         intent.includes("typeerror") ||
         intent.includes("type_error") ||
         intent.includes("compile"),
+    );
+}
+
+/**
+ * Architecture-scale task intents — discover_and_plan, not follow_evidence.
+ */
+export function isArchitectureIntentTaxonomy(
+  intents: readonly string[],
+): boolean {
+  return intents
+    .map((intent) => intent.trim().toLowerCase())
+    .filter(Boolean)
+    .some(
+      (intent) =>
+        intent === "refactor" ||
+        intent === "migrate" ||
+        intent === "scaffold" ||
+        intent.includes("migrat"),
     );
 }
 

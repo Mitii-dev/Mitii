@@ -212,4 +212,30 @@ describe("resolvePlanStrategyRules", () => {
 
     expect(decision.strategy).toBe("discover_and_plan");
   });
+
+  it("uses discover_and_plan for package-scale refactor even with incidental diagnostics", () => {
+    const decision = resolvePlanStrategyRules(
+      input({
+        query:
+          "Refactor the Page Object Model across test/ — shared base, Desktop/Tablet pages, specs",
+        evidence: {
+          ...input().evidence,
+          primaryIntent: "refactor",
+          scope: "package",
+          complexity: "complex",
+          recommendsPlanning: true,
+          recommendsVerification: false,
+          targets: [{ kind: "folder", value: "test", explicit: true }],
+        },
+      }),
+    );
+
+    expect(decision.strategy).toBe("discover_and_plan");
+    expect(decision.skipDiscover).toBe(false);
+  });
+
+  it("keeps follow_evidence for true bugfix with in-scope errors", () => {
+    const decision = resolvePlanStrategyRules(input());
+    expect(decision.strategy).toBe("follow_evidence");
+  });
 });

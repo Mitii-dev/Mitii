@@ -22,3 +22,30 @@ describe("hasDiscoveryReadPath", () => {
     expect(hasDiscoveryReadPath(collector, "wdio.conf.ts")).toBe(false);
   });
 });
+
+describe("recordDiscoveryToolUse symbols", () => {
+  it("attaches symbol names from document_symbol onto filesRead", () => {
+    const collector = createDiscoveryObservationCollector();
+    recordDiscoveryToolUse({
+      collector,
+      toolName: "read_file",
+      argumentsValue: { path: "src/payments/client.ts" },
+      resultOutput: { content: "export function pay() {}" },
+      status: "succeeded",
+    });
+    recordDiscoveryToolUse({
+      collector,
+      toolName: "document_symbol",
+      argumentsValue: { path: "src/payments/client.ts" },
+      resultOutput: {
+        symbols: [{ name: "pay" }, { name: "PaymentClient" }],
+      },
+      status: "succeeded",
+    });
+
+    const file = collector.filesRead.find(
+      (entry) => entry.path === "src/payments/client.ts",
+    );
+    expect(file?.symbols).toEqual(expect.arrayContaining(["pay", "PaymentClient"]));
+  });
+});

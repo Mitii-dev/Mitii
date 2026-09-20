@@ -1,5 +1,6 @@
 import {
   DECISION_POLICY_PATTERNS,
+  isArchitectureIntentTaxonomy,
   isRepairIntentTaxonomy,
 } from "../../decision-policy";
 import type {
@@ -66,6 +67,7 @@ export function resolvePlanStrategy(params: {
  * The single strategy rule table. Always resolves — no LLM, no fallback.
  *
  *   clarity unclear/ambiguous                 -> clarify
+ *   architecture-scale ask                    -> discover_and_plan (never follow_evidence)
  *   repair intent AND in-scope errors >= 1     -> follow_evidence
  *   repair + "fix all …" / wide package scope  -> follow_evidence
  *   explorationDepth === "quick"               -> plan_from_ask
@@ -96,7 +98,26 @@ export function resolvePlanStrategyRules(
     targets: input.evidence.targets,
     query: input.query,
   });
-  const repair = isRepairIntent(input);
+  const architectureAsk = isArchitecturePlanningAsk(input);
+  const repair = isRepairIntent(input) && !architectureAsk;
+
+  // Architecture / package redesign must discover — incidental diagnostics
+  // must not collapse the strategy to follow_evidence.
+  if (architectureAsk && hasWideScope(input)) {
+    return sanitizeStrategy(
+      {
+        schemaVersion: 1,
+        strategy: "discover_and_plan",
+        rationale:
+          "Architecture-scale ask requires discovery before drafting; diagnostics annotate Verify only.",
+        skipDiscover: false,
+        // Annotate Change/Verify with in-scope errors — never drive strategy.
+        useBuildEvidence: inScopeErrorCount >= 1,
+        confidence: 0.9,
+      },
+      input,
+    );
+  }
 
   if (repair && inScopeErrorCount >= 1) {
     return sanitizeStrategy(
@@ -148,7 +169,8 @@ export function resolvePlanStrategyRules(
   if (
     input.explorationDepth !== "deep" &&
     hasKnownFileSurfaces(input) &&
-    !repair
+    !repair &&
+    !architectureAsk
   ) {
     return sanitizeStrategy(
       {
@@ -271,6 +293,29 @@ function hasWideScope(input: PlanningParsedInput): boolean {
     input.evidence.complexity === "very_complex" ||
     input.evidence.recommendsPlanning === true
   );
+}
+
+/**
+ * Architecture-scale planning ask: refactor/migrate/scaffold on wide scope,
+ * or explicit architecture / POM / restructure language.
+ */
+export function isArchitecturePlanningAsk(input: PlanningParsedInput): boolean {
+  const intents = [
+    input.evidence.primaryIntent,
+    ...input.evidence.secondaryIntents,
+  ];
+  if (isArchitectureIntentTaxonomy(intents) && hasWideScope(input)) {
+    return true;
+  }
+  if (
+    hasWideScope(input) &&
+    /\b(?:architecture|restructure|reorganiz(?:e|ation)|page\s*objects?|\bpom\b|shared\s+base|cross-?platform)\b/i.test(
+      input.query,
+    )
+  ) {
+    return true;
+  }
+  return false;
 }
 
 /** Thin wrapper over the shared decision-policy repair-intent predicate. */

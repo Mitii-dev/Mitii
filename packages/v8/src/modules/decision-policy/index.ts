@@ -44,7 +44,11 @@ export {
 
 export { DecisionPolicyPipeline } from "./pipeline/DecisionPolicyPipeline";
 
-export { isRepairIntentTaxonomy, DECISION_POLICY_PATTERNS } from "./patterns";
+export {
+  isRepairIntentTaxonomy,
+  isArchitectureIntentTaxonomy,
+  DECISION_POLICY_PATTERNS,
+} from "./patterns";
 
 export {
   decisionPolicyInputSchema,

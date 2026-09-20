@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { intentClassificationSchema } from "../intent/schema";
 import {
   coerceLlmClassificationJson,
+  salvageLlmClassificationStages,
   stripTaskHints,
 } from "../intent/classifiers/llm/coerceLlmClassification";
 
@@ -85,5 +86,59 @@ describe("coerceLlmClassificationJson", () => {
     expect(parsed.needsClarification).toBe(true);
     expect(parsed.primaryTaskIntent).toBe("style");
     expect(parsed.taskHints).toBeUndefined();
+  });
+
+  it("drops invalid alternative intent 'plan' and keeps the refactor ballot", () => {
+    const raw = {
+      interactionIntent: "act",
+      primaryTaskIntent: "refactor",
+      secondaryTaskIntents: [],
+      confidence: 0.93,
+      alternatives: [
+        { intent: "feature", confidence: 0.25 },
+        { intent: "scaffold", confidence: 0.15 },
+        { intent: "plan", confidence: 0.08 },
+      ],
+      needsClarification: false,
+      reason: "POM architecture refactor across test/",
+    };
+
+    const coerced = coerceLlmClassificationJson(raw);
+    const parsed = intentClassificationSchema.parse(coerced);
+
+    expect(parsed.primaryTaskIntent).toBe("refactor");
+    expect(parsed.confidence).toBe(0.93);
+    expect(parsed.needsClarification).toBe(false);
+    expect(parsed.alternatives.map((a) => a.intent)).toEqual([
+      "feature",
+      "scaffold",
+    ]);
+    expect(parsed.alternatives.every((a) => a.intent !== "plan")).toBe(true);
+  });
+
+  it("remaps primaryTaskIntent 'plan' to question (interaction ≠ task)", () => {
+    const coerced = coerceLlmClassificationJson({
+      interactionIntent: "plan",
+      primaryTaskIntent: "plan",
+      confidence: 0.8,
+      needsClarification: false,
+      alternatives: [],
+    });
+    const parsed = intentClassificationSchema.parse(coerced);
+    expect(parsed.interactionIntent).toBe("plan");
+    expect(parsed.primaryTaskIntent).toBe("question");
+  });
+
+  it("salvage stages keep a valid core ballot when alternatives are toxic", () => {
+    const stages = salvageLlmClassificationStages({
+      interactionIntent: "act",
+      primaryTaskIntent: "refactor",
+      confidence: 0.93,
+      needsClarification: false,
+      alternatives: [{ intent: "plan", confidence: 0.08 }],
+    });
+    const parsed = intentClassificationSchema.parse(stages[0]);
+    expect(parsed.primaryTaskIntent).toBe("refactor");
+    expect(parsed.alternatives).toEqual([]);
   });
 });

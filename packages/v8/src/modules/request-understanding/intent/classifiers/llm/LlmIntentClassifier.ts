@@ -14,10 +14,7 @@ import type { DiagnosticSummary } from "../../../contracts";
 import { resolveIntentClassifierMaximumOutputTokens } from "../../resolveIntentClassifierMaximumOutputTokens";
 import { LLM_INTENT_CLASSIFICATION_SYSTEM_PROMPT } from "./prompts";
 import { intersectRecommendedSkillTags } from "../../intersectRecommendedSkillTags";
-import {
-  coerceLlmClassificationJson,
-  stripTaskHints,
-} from "./coerceLlmClassification";
+import { salvageLlmClassificationStages } from "./coerceLlmClassification";
 
 
 export class LlmIntentClassifier {
@@ -238,19 +235,16 @@ export class LlmIntentClassifier {
         }
 
         const parsed: unknown = JSON.parse(candidate);
-        const coerced = coerceLlmClassificationJson(parsed);
-
-        try {
-          return this.normalizeClassification(
-            intentClassificationSchema.parse(coerced),
-          );
-        } catch (hintsError) {
-          // Preserve core ballot (act/style + needsClarification) when only
-          // taskHints drifted — do not collapse to question fallback.
-          lastError = hintsError;
-          return this.normalizeClassification(
-            intentClassificationSchema.parse(stripTaskHints(coerced)),
-          );
+        // Ballot salvage: drop/remap invalid fields (e.g. alternatives.intent
+        // "plan") so a valid core ballot is never wiped to the 0.40 fallback.
+        for (const stage of salvageLlmClassificationStages(parsed)) {
+          try {
+            return this.normalizeClassification(
+              intentClassificationSchema.parse(stage),
+            );
+          } catch (stageError) {
+            lastError = stageError;
+          }
         }
       } catch (error) {
         lastError = error;

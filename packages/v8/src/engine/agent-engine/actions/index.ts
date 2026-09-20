@@ -187,7 +187,18 @@ export {
   deriveContextFocusFromUnderstanding,
   scopeDiscoveredContextPaths,
 } from "./contextFocus";
-export { applyPlanModeDiscoveryContract } from "./planDiscoveryContract";
+export {
+  applyPlanModeDiscoveryContract,
+  isAgentWidePlanningScope,
+} from "./planDiscoveryContract";
+export {
+  clarifyAfterInsufficientPlanDiscovery,
+  isPlanDiscoveryEvidenceSufficient,
+  isThoroughPlanDiscoveryEvidenceSufficient,
+  requiresPlanDiscoveryQualityFloor,
+  usesThoroughPlanDiscoveryEvidence,
+} from "./planDiscoveryQuality";
+export type { PlanningDepthForQuality } from "./planDiscoveryQuality";
 export {
   buildPlanningQuery,
   buildScopedRepoMapForPlanning,

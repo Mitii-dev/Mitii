@@ -283,6 +283,8 @@ export async function runDiscoveryPass(
   preferredPaths?: readonly string[];
   /** Plan mode (non-quick): require file-backed discovery before treating pass as success. */
   qualityFloor?: boolean;
+  /** Plan / Agent-visible: multi-file multi-surface thoroughness bar. */
+  thoroughEvidence?: boolean;
 }): Promise<{
   brief: DiscoveryBrief;
   failed: boolean;
@@ -305,6 +307,7 @@ export async function runDiscoveryPass(
     windowPolicy,
     preferredPaths = [],
     qualityFloor = false,
+    thoroughEvidence = false,
   } = params;
 
   runtime.emitStage(bus, runId, "discovery", "started");
@@ -438,8 +441,9 @@ export async function runDiscoveryPass(
       preferredPaths: seeds,
       shapedDiscovery: shapedProfile,
     });
-    const qualityFloorNudge =
-      "Plan quality floor: before finishing, read at least one concrete source/config file that discovery identified.";
+    const qualityFloorNudge = thoroughEvidence
+      ? "Plan quality floor (thorough): before finishing, read at least two concrete source/config files and identify key functions/symbols (document_symbol / goto_definition on entrypoints) plus change surfaces."
+      : "Plan quality floor: before finishing, read at least one concrete source/config file that discovery identified.";
     const preReadEvidence = formatDiscoveryPreReadEvidence(
       [...preReadByPath.entries()].map(([path, content]) => ({ path, content })),
       {
@@ -672,7 +676,7 @@ export async function runDiscoveryPass(
     }),
   );
   const failed = qualityFloor
-    ? !isPlanDiscoveryEvidenceSufficient(brief)
+    ? !isPlanDiscoveryEvidenceSufficient(brief, { thorough: thoroughEvidence })
     : brief.confidence === "low" && brief.proposedChangeSurfaces.length === 0;
   reasonCodes.push(failed ? "discovery_failed" : "discovery_completed");
   runtime.emit(bus, {
@@ -692,7 +696,9 @@ export async function runDiscoveryPass(
   if (failed) {
     warnings.push(
       qualityFloor
-        ? "Plan discovery did not gather file-backed change surfaces. Ask clarifying questions instead of inventing a hollow plan."
+        ? thoroughEvidence
+          ? "Thorough plan discovery did not gather multi-file change surfaces and symbols. Ask clarifying questions instead of inventing a hollow plan."
+          : "Plan discovery did not gather file-backed change surfaces. Ask clarifying questions instead of inventing a hollow plan."
         : "Discovery did not identify a concrete change surface. The plan lists open questions instead of invented file tasks.",
     );
   }

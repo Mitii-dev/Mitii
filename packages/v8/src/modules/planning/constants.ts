@@ -70,6 +70,10 @@ export const PLANNING_REASON_CODES = [
   "plan_discovery_draft_skipped_thin_brief",
   "plan_working_set_applied",
   "plan_strategy_known_paths",
+  "plan_steps_concrete",
+  "plan_steps_missing_targets",
+  "plan_steps_vague_targets",
+  "plan_steps_missing_verification",
 ] as const;
 
 export const PLANNING_ERROR_CODES = [

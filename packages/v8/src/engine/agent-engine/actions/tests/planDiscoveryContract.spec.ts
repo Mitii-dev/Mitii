@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import type { PlanStrategyDecision } from "../../../modules/planning";
-import { applyPlanModeDiscoveryContract } from "../planDiscoveryContract";
+import {
+  applyPlanModeDiscoveryContract,
+  isAgentWidePlanningScope,
+} from "../planDiscoveryContract";
 import { isPlanningFollowUp } from "../planningContext";
 
 const planFromAsk: PlanStrategyDecision = {
@@ -93,7 +96,7 @@ describe("applyPlanModeDiscoveryContract", () => {
     expect(result.strategy.strategy).toBe("clarify");
   });
 
-  it("does not override agent mode", () => {
+  it("does not override small Agent tasks without plan depth", () => {
     const result = applyPlanModeDiscoveryContract({
       mode: "agent",
       explorationDepth: "auto",
@@ -102,6 +105,35 @@ describe("applyPlanModeDiscoveryContract", () => {
       strategy: clarify,
     });
     expect(result.applied).toBe(false);
+  });
+
+  it("forces discover_and_plan for Agent visible big tasks", () => {
+    const result = applyPlanModeDiscoveryContract({
+      mode: "agent",
+      explorationDepth: "auto",
+      query: "Coordinate a multi-package release checklist update",
+      conversation: [],
+      strategy: planFromAsk,
+      planningDepth: "visible",
+    });
+    expect(result.applied).toBe(true);
+    expect(result.strategy.strategy).toBe("discover_and_plan");
+    expect(result.strategy.skipDiscover).toBe(false);
+    expect(["agent_big_task", result.rationale]).toContain(result.rationale);
+  });
+
+  it("forces discover_and_plan for Agent wide-internal tasks", () => {
+    const result = applyPlanModeDiscoveryContract({
+      mode: "agent",
+      explorationDepth: "auto",
+      query: "Refactor the payments package",
+      conversation: [],
+      strategy: clarify,
+      planningDepth: "internal",
+      agentWideScope: true,
+    });
+    expect(result.applied).toBe(true);
+    expect(result.strategy.strategy).toBe("discover_and_plan");
   });
 
   it("forces discover_and_plan for shaped browser test-runner cold plan asks", () => {
@@ -118,6 +150,17 @@ describe("applyPlanModeDiscoveryContract", () => {
   });
 });
 
+describe("isAgentWidePlanningScope", () => {
+  it("matches package/complex/recommendsPlanning", () => {
+    expect(isAgentWidePlanningScope({ scope: "package" })).toBe(true);
+    expect(isAgentWidePlanningScope({ complexity: "complex" })).toBe(true);
+    expect(isAgentWidePlanningScope({ recommendsPlanning: true })).toBe(true);
+    expect(
+      isAgentWidePlanningScope({ scope: "single_location", complexity: "simple" }),
+    ).toBe(false);
+  });
+});
+
 describe("BillBuddy-shaped regression", () => {
   it("matches the 09:50 cold plan prompt contract", () => {
     const rulesStrategy = clarify;
@@ -128,5 +171,69 @@ describe("BillBuddy-shaped regression", () => {
       strategy: rulesStrategy,
     });
     expect(contract.strategy.strategy).toBe("discover_and_plan");
+  });
+
+  it("overrides follow_evidence for Plan cold POM architecture asks", () => {
+    const followEvidence: PlanStrategyDecision = {
+      schemaVersion: 1,
+      strategy: "follow_evidence",
+      rationale: "incidental diagnostics",
+      skipDiscover: true,
+      useBuildEvidence: true,
+    };
+    const contract = applyPlanModeDiscoveryContract({
+      mode: "plan",
+      explorationDepth: "auto",
+      query:
+        "Plan a cross-platform Page Object Model refactor for test/ — shared base, platform pages, specs",
+      conversation: [],
+      strategy: followEvidence,
+    });
+    expect(contract.applied).toBe(true);
+    expect(contract.strategy.strategy).toBe("discover_and_plan");
+    expect(contract.strategy.skipDiscover).toBe(false);
+  });
+
+  it("overrides follow_evidence for Agent visible architecture asks", () => {
+    const followEvidence: PlanStrategyDecision = {
+      schemaVersion: 1,
+      strategy: "follow_evidence",
+      rationale: "incidental diagnostics",
+      skipDiscover: true,
+      useBuildEvidence: true,
+    };
+    const contract = applyPlanModeDiscoveryContract({
+      mode: "agent",
+      explorationDepth: "auto",
+      query: "Refactor the architecture of the test/ Page Object Model",
+      conversation: [],
+      strategy: followEvidence,
+      planningDepth: "visible",
+      agentWideScope: true,
+    });
+    expect(contract.applied).toBe(true);
+    expect(contract.strategy.strategy).toBe("discover_and_plan");
+    expect(contract.rationale).toBe("agent_architecture_overrides_follow_evidence");
+  });
+
+  it("keeps follow_evidence for Agent bugfix without architecture language", () => {
+    const followEvidence: PlanStrategyDecision = {
+      schemaVersion: 1,
+      strategy: "follow_evidence",
+      rationale: "in-scope errors",
+      skipDiscover: true,
+      useBuildEvidence: true,
+    };
+    const contract = applyPlanModeDiscoveryContract({
+      mode: "agent",
+      explorationDepth: "auto",
+      query: "Fix all TypeScript errors in packages/mui-builder",
+      conversation: [],
+      strategy: followEvidence,
+      planningDepth: "visible",
+      agentWideScope: true,
+    });
+    expect(contract.applied).toBe(false);
+    expect(contract.strategy.strategy).toBe("follow_evidence");
   });
 });

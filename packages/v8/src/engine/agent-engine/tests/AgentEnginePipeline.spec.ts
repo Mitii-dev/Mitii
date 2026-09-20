@@ -1727,7 +1727,29 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     };
 
     let modelCalls = 0;
-    const llm = new ScriptedLlmPort([{ content: "should not run yet" }]);
+    // Agent visible big-task now runs discovery before drafting; script two
+    // file reads so the thorough quality floor can pass, then suspend for approval.
+    const llm = new ScriptedLlmPort(
+      [
+        {
+          content: "",
+          toolCalls: [
+            {
+              id: "read_1",
+              name: "read_file",
+              arguments: JSON.stringify({ path: "src/auth/login.ts" }),
+            },
+            {
+              id: "read_2",
+              name: "read_file",
+              arguments: JSON.stringify({ path: "src/auth/session.ts" }),
+            },
+          ],
+        },
+        { content: "Found auth entrypoints." },
+      ],
+      createCapabilities({ supportsTools: true }),
+    );
     const original = llm.complete.bind(llm);
     llm.complete = async function* (...args) {
       modelCalls += 1;
@@ -1788,7 +1810,8 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     expect(result.planStrategy?.strategy).toBe("discover_and_plan");
     expect(result.evidence?.plan?.stepCount).toBe(1);
     expect(result.evidence?.plan?.evidenceLinkedStepCount).toBe(1);
-    expect(modelCalls).toBe(0);
+    expect(modelCalls).toBeGreaterThan(0);
+    expect(result.reasonCodes).toContain("agent_big_task_discovery_required");
     expect(result.reasonCodes).toContain("plan_approval_suspended");
 
     const resumedLlm = new ScriptedLlmPort([{ content: "Executed after plan." }]);
