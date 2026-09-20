@@ -40,6 +40,7 @@ import type { SteeringCriticMode } from "../steeringFlags";
 import { MUTATION_TOOL_IDS } from "../../tool-runtime";
 import { ToolCallCache } from "../internal/ToolCallCache";
 import { ReadLedger } from "../internal/ReadLedger";
+import { InMemorySessionHistoryArchive } from "../internal/session-history";
 import type {
   AgentReasonCode,
   RunEvidence,
@@ -233,6 +234,7 @@ export async function runModelToolLoop(
     awaitingRejectedMutationRetry: undefined,
     lastPromptCacheClass: undefined,
     contextEpoch: runtime.contextEpochs.get(runId),
+    sessionHistoryArchive: new InMemorySessionHistoryArchive(),
   };
 
   const isMutationRequired = () =>
@@ -381,6 +383,7 @@ export async function runModelToolLoop(
       environmentIds: session.environmentIds,
       memoryIds: params.memoryFacts?.map((fact) => fact.id) ?? [],
       mutationLocked,
+      sessionHistoryArchive: session.sessionHistoryArchive,
     });
     session.emittedLoopPressureWarning = prepared.emittedLoopPressureWarning;
     session.emittedLoopCompactionWarning = prepared.emittedLoopCompactionWarning;

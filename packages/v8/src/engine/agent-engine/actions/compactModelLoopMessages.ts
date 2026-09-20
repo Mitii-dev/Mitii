@@ -60,6 +60,11 @@ export interface ModelLoopCompactionResult {
   reinjectedEstablishedFacts: boolean;
   /** Ladder stages that mutated history this turn (provenance). */
   stagesApplied: CompactionLadderStage[];
+  /**
+   * Turns removed from model projection this compaction (OpenCode dual-store).
+   * Callers MUST archive these; they leave Session History projection only.
+   */
+  droppedMessages: ModelMessage[];
 }
 
 export function compactModelLoopMessages(params: {
@@ -152,6 +157,7 @@ export function compactModelLoopMessages(params: {
       reinjectedMemory: false,
       reinjectedEstablishedFacts: false,
       stagesApplied,
+      droppedMessages: [],
     };
   }
 
@@ -337,6 +343,7 @@ export function compactModelLoopMessages(params: {
     reinjectedMemory,
     reinjectedEstablishedFacts,
     stagesApplied,
+    droppedMessages: droppedForSummary.map(cloneMessage),
   };
 }
 

@@ -142,6 +142,22 @@ export type {
 } from "./internal/system-context";
 
 export {
+  SESSION_HISTORY_POLICY,
+  SESSION_HISTORY_PROJECTION_MARKERS,
+  InMemorySessionHistoryArchive,
+  looksReferentialSessionQuery,
+  resolveSessionHistoryProjectionBudgetChars,
+  retrieveSessionHistory,
+  isSessionHistoryCheckpointContent,
+} from "./internal/session-history";
+export type {
+  SessionHistoryArchivePort,
+  SessionHistoryRecord,
+  SessionHistoryRetrieveHit,
+  SessionHistoryRetrieveResult,
+} from "./internal/session-history";
+
+export {
   agentEngineStartInputSchema,
   agentEngineResumeInputSchema,
   agentRunBudgetSchema,

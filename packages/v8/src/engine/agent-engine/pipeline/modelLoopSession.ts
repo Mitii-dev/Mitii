@@ -1,6 +1,7 @@
 import type { ExecutionDecision } from "../../../modules/decision-policy";
 import type { PromptCacheClass } from "../actions/resolvePromptCacheClass";
 import type { ContextEpoch } from "../internal/context-epoch";
+import type { InMemorySessionHistoryArchive } from "../internal/session-history";
 
 /**
  * Mutable counters and authority carried across model/tool loop turns.
@@ -60,6 +61,11 @@ export type ModelLoopSession = {
    * until compaction / replace). Undefined until first system baseline is seen.
    */
   contextEpoch: ContextEpoch | undefined;
+  /**
+   * Durable Session History archive (OpenCode dual-store). Dropped turns leave
+   * model projection but remain searchable via hybrid session-history retrieve.
+   */
+  sessionHistoryArchive: InMemorySessionHistoryArchive;
 };
 
 export type { ModelLoopStepResult } from "./modelLoopStep";
