@@ -1,4 +1,5 @@
 import type { ExecutionDecision } from "../../../modules/decision-policy";
+import type { ContextEpoch } from "./context-epoch";
 import type {
   PlanArtifact,
   PlanStrategyDecision,
@@ -89,6 +90,11 @@ export interface AgentRunCheckpoint {
   excludedWaitMs?: number;
   /** Wall clock when this suspension began; resume credits the delta. */
   suspendedAtMs?: number;
+  /**
+   * OpenCode epoch formula persisted with the run so resume does not
+   * rebuild the baseline. `{ epochId, baseline, snapshot, createdAt }`.
+   */
+  contextEpoch?: ContextEpoch;
 }
 
 export interface AgentEngineRunCheckpointStorePort {

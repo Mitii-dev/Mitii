@@ -4,6 +4,8 @@ import { listModelToolDefinitions } from "../../internal/modelToolDefinitions";
 import type { RuntimeModelToolDefinition } from "../../internal/modelToolDefinitions";
 
 import { analyzeChangeImpactTool } from "./analyzeChangeImpactTool";
+import { callHierarchyTool } from "./callHierarchyTool";
+import { documentSymbolTool } from "./documentSymbolTool";
 import { emitReviewFindingTool } from "./emitReviewFindingTool";
 import { applyPatchTool } from "./applyPatchTool";
 import { deleteDirectoryTool } from "./deleteDirectoryTool";
@@ -11,6 +13,7 @@ import { deleteFileTool } from "./deleteFileTool";
 import { fetchDocsTool } from "./fetchDocsTool";
 import { fetchUrlTool } from "./fetchUrlTool";
 import { fileMetadataTool } from "./fileMetadataTool";
+import { findImplementationTool } from "./findImplementationTool";
 import { findReferencesTool } from "./findReferencesTool";
 import { createGithubIssueTool, createPullRequestTool } from "./githubMutationTools";
 import { globFilesTool } from "./globFilesTool";
@@ -39,6 +42,7 @@ import {
   memoryGraphSearchTool,
   memoryGraphUpdateTool,
 } from "./memoryGraphTools";
+import { workspaceSymbolTool } from "./workspaceSymbolTool";
 import { webSearchTool } from "./webSearchTool";
 import { describeToolTool } from "./describeToolTool";
 import { setBuiltinModelToolLookup } from "./builtinModelLookup";
@@ -59,6 +63,10 @@ const BUILTIN_TOOLS_BASE: readonly RegisteredTool[] = [
   gotoDefinitionTool,
   findReferencesTool,
   hoverSymbolTool,
+  documentSymbolTool,
+  workspaceSymbolTool,
+  findImplementationTool,
+  callHierarchyTool,
   analyzeChangeImpactTool,
   emitReviewFindingTool,
   runReadonlyCommandTool,
@@ -142,6 +150,10 @@ export {
   gotoDefinitionTool,
   findReferencesTool,
   hoverSymbolTool,
+  documentSymbolTool,
+  workspaceSymbolTool,
+  findImplementationTool,
+  callHierarchyTool,
   analyzeChangeImpactTool,
   emitReviewFindingTool,
   runReadonlyCommandTool,

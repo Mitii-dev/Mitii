@@ -35,7 +35,7 @@ import {
 } from '../config/providerPresets.js';
 import { createHostNetworkPort } from '../ports/network.js';
 import { createOptionalSearchPort } from '../ports/search.js';
-import { createHostCodeNavigationPort } from '../code-navigation/createHostCodeNavigationPort.js';
+import { createHostLanguageServices } from '../code-navigation/createHostLanguageServices.js';
 import { createHostRepositoryGraphPort } from '../repository-graph/loadWorkspaceGraphs.js';
 import { createHostRepositoryContext } from '../repository-context/createHostRepositoryContext.js';
 import { buildWorkspaceSnapshot } from '../indexing/fingerprintSnapshot.js';
@@ -266,6 +266,7 @@ async function createAutomationClient(options: {
   const mcpManager = getSharedMcpManager({ clientInfoName: 'mitii-automation' });
   const mcp = readMcpSettingsFromDisk(options.cwd);
   const mcpSnapshot = await mcpManager.sync(mcp, options.cwd);
+  const language = createHostLanguageServices({ workspaceRoot: options.cwd });
   const tools = new ToolRuntimePipeline(
     {
       fileSystem,
@@ -276,9 +277,8 @@ async function createAutomationClient(options: {
       }),
       git,
       knowledgeGraph,
-      codeNavigation: createHostCodeNavigationPort({
-        workspaceRoot: options.cwd,
-      }),
+      codeNavigation: language.codeNavigation,
+      ...(language.diagnostics ? { diagnostics: language.diagnostics } : {}),
       repoGraphs: createHostRepositoryGraphPort({
         workspaceRoot: options.cwd,
       }),

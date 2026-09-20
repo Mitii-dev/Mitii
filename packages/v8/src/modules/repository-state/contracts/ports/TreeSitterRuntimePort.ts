@@ -11,6 +11,8 @@ export type SourceReferenceKind =
   | "call"
   | "construct"
   | "type"
+  | "extends"
+  | "implements"
   | "read"
   | "write"
   | "unknown";

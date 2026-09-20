@@ -77,6 +77,8 @@ export type RepoGraphEdgeType =
   | "imports"
   | "calls"
   | "references"
+  | "extends"
+  | "implements"
   | "workspace_member"
   | "depends_on"
   | "development_depends_on";
@@ -176,6 +178,8 @@ export interface RepoGraphStatistics {
   importEdges: number;
   callEdges: number;
   referenceEdges: number;
+  /** Symbol-to-symbol extends + implements edges. Optional for older graphs. */
+  heritageEdges?: number;
   projectRelationshipEdges: number;
   unresolvedImports: number;
   omittedImportTargets: number;

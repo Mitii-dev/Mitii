@@ -62,6 +62,26 @@ function sampleGraph(): RepoGraph {
         startLine: 8,
         endLine: 20,
       },
+      {
+        id: "sym:port",
+        kind: "symbol",
+        symbolId: "sym:port",
+        fileId: "file:auth.ts",
+        name: "AuthPort",
+        symbolKind: "interface",
+        startLine: 14,
+        endLine: 16,
+      },
+      {
+        id: "sym:child",
+        kind: "symbol",
+        symbolId: "sym:child",
+        fileId: "file:login.ts",
+        name: "JwtAuth",
+        symbolKind: "class",
+        startLine: 22,
+        endLine: 30,
+      },
     ],
     edges: [
       {
@@ -72,6 +92,16 @@ function sampleGraph(): RepoGraph {
         weight: 1,
         evidenceCount: 1,
         evidence: [{ source: "code_index_reference", line: 10 }],
+        evidenceTruncated: false,
+      },
+      {
+        id: "edge:jwt-implements-port",
+        type: "implements",
+        fromNodeId: "sym:child",
+        toNodeId: "sym:port",
+        weight: 1,
+        evidenceCount: 1,
+        evidence: [{ source: "code_index_reference", detail: "implements", line: 22 }],
         evidenceTruncated: false,
       },
     ],
@@ -151,6 +181,60 @@ describe("CodeNavigationPipeline", () => {
       }),
     );
     expect(hover.hover?.contents).toContain("validateJwt");
+
+    const symbols = await pipeline.navigate(
+      codeNavigationInputSchema.parse({
+        schemaVersion: CODE_NAVIGATION_SCHEMA_VERSION,
+        operation: "document_symbols",
+        query: { relativePath: "src/auth.ts" },
+      }),
+    );
+    expect(symbols.locations.map((item) => item.symbolName)).toContain("validateJwt");
+
+    const graph = new GraphCodeNavigationAdapter({
+      loadGraphs: () => [sampleGraph()],
+    });
+    expect(graph.capability().status).toBe("degraded");
+    expect(graph.capability().reason).toBe("language_server_not_configured");
+  });
+
+  it("searches workspace symbols from the graph", async () => {
+    const pipeline = new CodeNavigationPipeline({
+      navigation: new GraphCodeNavigationAdapter({
+        loadGraphs: () => [sampleGraph()],
+      }),
+    });
+    const found = await pipeline.navigate({
+      schemaVersion: CODE_NAVIGATION_SCHEMA_VERSION,
+      operation: "workspace_symbols",
+      query: { query: "login" },
+    });
+    expect(found.status).toBe("resolved");
+    expect(found.locations[0]?.symbolName).toBe("login");
+
+    const implementations = await pipeline.navigate({
+      schemaVersion: CODE_NAVIGATION_SCHEMA_VERSION,
+      operation: "implementation",
+      query: { relativePath: "src/auth.ts", line: 14 },
+    });
+    expect(implementations.status).toBe("resolved");
+    expect(implementations.locations.map((item) => item.symbolName)).toContain("JwtAuth");
+
+    const callees = await pipeline.navigate({
+      schemaVersion: CODE_NAVIGATION_SCHEMA_VERSION,
+      operation: "call_hierarchy",
+      query: { relativePath: "src/login.ts", line: 8, direction: "outgoing" },
+    });
+    expect(callees.status).toBe("resolved");
+    expect(callees.reasonCodes).toContain("call_hierarchy_resolved");
+    expect(callees.locations.map((item) => item.symbolName)).toContain("validateJwt");
+
+    const callers = await pipeline.navigate({
+      schemaVersion: CODE_NAVIGATION_SCHEMA_VERSION,
+      operation: "call_hierarchy",
+      query: { relativePath: "src/auth.ts", line: 4, direction: "incoming" },
+    });
+    expect(callers.locations.map((item) => item.symbolName)).toContain("login");
   });
 
   it("uses the language-server port first and falls back to the graph", async () => {

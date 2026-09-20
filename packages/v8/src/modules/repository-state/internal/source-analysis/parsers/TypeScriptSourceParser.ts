@@ -607,6 +607,28 @@ export class TypeScriptSourceParser
     return references;
   }
 
+  private heritageKind(
+    node: ts.Identifier,
+  ): "extends" | "implements" | undefined {
+    let current: ts.Node | undefined = node.parent;
+    while (current) {
+      if (ts.isHeritageClause(current)) {
+        return current.token === ts.SyntaxKind.ImplementsKeyword
+          ? "implements"
+          : "extends";
+      }
+      if (
+        ts.isClassDeclaration(current) ||
+        ts.isClassExpression(current) ||
+        ts.isInterfaceDeclaration(current)
+      ) {
+        return undefined;
+      }
+      current = current.parent;
+    }
+    return undefined;
+  }
+
   private referenceKindOf(
     node: ts.Identifier,
   ): SourceReferenceKind {
@@ -624,6 +646,11 @@ export class TypeScriptSourceParser
       parent.expression === node
     ) {
       return "construct";
+    }
+
+    const heritage = this.heritageKind(node);
+    if (heritage) {
+      return heritage;
     }
 
     if (

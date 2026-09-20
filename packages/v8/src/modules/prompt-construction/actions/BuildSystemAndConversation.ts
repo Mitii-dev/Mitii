@@ -230,10 +230,14 @@ function buildToolGuidance(decision: ExecutionDecision): string {
     grant.allowedTools.includes("goto_definition") ||
     grant.allowedTools.includes("find_references") ||
     grant.allowedTools.includes("hover_symbol") ||
+    grant.allowedTools.includes("document_symbol") ||
+    grant.allowedTools.includes("workspace_symbol") ||
+    grant.allowedTools.includes("find_implementation") ||
+    grant.allowedTools.includes("call_hierarchy") ||
     grant.allowedTools.includes("analyze_change_impact")
   ) {
     lines.push(
-      "When you need a symbol definition, its call sites, or type/docs at a caret, use goto_definition, find_references, or hover_symbol instead of grepping the workspace.",
+      "When you need a symbol definition, its call sites, implementations, callers/callees, file symbols, or type/docs at a caret, use goto_definition, find_references, find_implementation, call_hierarchy, document_symbol, workspace_symbol, or hover_symbol instead of grepping the workspace.",
     );
   }
 

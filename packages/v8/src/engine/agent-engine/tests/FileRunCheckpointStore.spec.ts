@@ -98,6 +98,32 @@ describe("FileRunCheckpointStore", () => {
     }
   });
 
+  it("round-trips the context epoch with the checkpoint", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "mitii-checkpoints-epoch-"));
+    try {
+      const store = new FileRunCheckpointStore(directory);
+      const checkpoint = sampleCheckpoint({
+        contextEpoch: {
+          epochId: "epoch_run_abc-123_1",
+          runId: "run_abc-123",
+          baselineSystemText: "system baseline",
+          baselineHash: "abc",
+          structuredSnapshot: { sources: { "system.baseline": "abc" } },
+          createdAtMs: 1,
+          replacementRequested: false,
+        },
+      });
+      await store.save(checkpoint);
+      const loaded = await new FileRunCheckpointStore(directory).load(
+        checkpoint.runId,
+      );
+      expect(loaded?.contextEpoch?.epochId).toBe("epoch_run_abc-123_1");
+      expect(loaded?.contextEpoch?.baselineSystemText).toBe("system baseline");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("rejects empty directory", () => {
     expect(() => new FileRunCheckpointStore("  ")).toThrow(
       /non-empty directory/,

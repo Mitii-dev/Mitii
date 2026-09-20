@@ -186,6 +186,9 @@ export async function finishAfterLoop(
     await runtime.deps.checkpointStore.save({
       runId,
       requestId,
+      ...(runtime.contextEpochs.get(runId)
+        ? { contextEpoch: runtime.contextEpochs.get(runId) }
+        : {}),
       suspensionKind: "continue_required",
       input,
       decision,
@@ -269,6 +272,9 @@ export async function finishAfterLoop(
       await runtime.deps.checkpointStore.save({
         runId,
         requestId,
+        ...(runtime.contextEpochs.get(runId)
+          ? { contextEpoch: runtime.contextEpochs.get(runId) }
+          : {}),
         suspensionKind: "approval_required",
         input,
         decision,
@@ -343,6 +349,9 @@ export async function finishAfterLoop(
       await runtime.deps.checkpointStore.save({
         runId,
         requestId,
+        ...(runtime.contextEpochs.get(runId)
+          ? { contextEpoch: runtime.contextEpochs.get(runId) }
+          : {}),
         suspensionKind: "grant_expansion_required",
         input,
         decision,
@@ -432,6 +441,9 @@ export async function finishAfterLoop(
       await runtime.deps.checkpointStore.save({
         runId,
         requestId,
+        ...(runtime.contextEpochs.get(runId)
+          ? { contextEpoch: runtime.contextEpochs.get(runId) }
+          : {}),
         suspensionKind: "continue_required",
         input,
         decision,

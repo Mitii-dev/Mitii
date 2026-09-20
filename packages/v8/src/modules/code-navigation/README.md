@@ -36,7 +36,9 @@ code-navigation/
 ## Technical Details
 
 - The public facade method is `CodeNavigationPipeline.navigate`.
-- Operations include definition, references, and hover.
+- Operations include definition, references, hover, document symbols, workspace symbols, implementation, and call hierarchy.
+- Graph `implementation` walks `implements` and `extends` edges to subclasses and implementers. Call hierarchy walks `calls` edges. Hosts that attach a language server are preferred; other languages stay degraded. V8 does not spawn language servers.
+- Hosts report capability `available` | `degraded` | `unavailable`. V8 does not spawn language servers.
 - `GraphCodeNavigationAdapter` can use repository graph data.
 - `FallbackCodeNavigationAdapter` provides degraded behavior.
 - The module is read-only and never mutates workspace files.

@@ -59,7 +59,13 @@ export function buildSchemaSafeCompactedToolArguments(
     case "goto_definition":
     case "find_references":
     case "hover_symbol":
-      return compactObject(parsed, ["path", "line", "column"], ["path", "line"]);
+    case "find_implementation":
+    case "call_hierarchy":
+      return compactObject(parsed, ["path", "line", "column", "direction"], ["path", "line"]);
+    case "document_symbol":
+      return compactObject(parsed, ["path"], ["path"]);
+    case "workspace_symbol":
+      return compactObject(parsed, ["query"], ["query"]);
     case "analyze_change_impact":
       return compactObject(
         parsed,

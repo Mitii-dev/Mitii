@@ -941,6 +941,36 @@ export class RepoGraphBuilder {
         });
 
         if (
+          (reference.kind === "implements" ||
+            reference.kind === "extends") &&
+          reference.toSymbolId &&
+          nodes.has(reference.toSymbolId)
+        ) {
+          const heritageSource =
+            this.resolveReferenceSource(
+              reference,
+              sourceSymbolsByFileId,
+            ) ?? reference.fromFileId;
+          if (
+            heritageSource !==
+            reference.toSymbolId
+          ) {
+            edges.add({
+              type: reference.kind,
+              fromNodeId: heritageSource,
+              toNodeId: reference.toSymbolId,
+              evidence: {
+                source: "code_index_reference",
+                detail: reference.kind,
+                ...(reference.line !== undefined
+                  ? { line: reference.line }
+                  : {}),
+              },
+            });
+          }
+        }
+
+        if (
           !this.isCallReference(
             reference,
           ) ||
@@ -1599,6 +1629,8 @@ export class RepoGraphBuilder {
         countEdges("calls"),
       referenceEdges:
         countEdges("references"),
+      heritageEdges:
+        countEdges("extends", "implements"),
       projectRelationshipEdges:
         countEdges(
           "workspace_member",

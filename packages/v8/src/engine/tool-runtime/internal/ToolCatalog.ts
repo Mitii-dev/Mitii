@@ -269,6 +269,26 @@ export const hoverSymbolOutputSchema = z
   })
   .strict();
 
+export const documentSymbolInputSchema = z
+  .object({
+    path: z.string().min(1),
+  })
+  .strict();
+
+export const workspaceSymbolInputSchema = z
+  .object({
+    query: z.string().min(1),
+  })
+  .strict();
+
+export const findImplementationInputSchema = gotoDefinitionInputSchema;
+
+export const callHierarchyInputSchema = gotoDefinitionInputSchema.extend({
+  direction: z.enum(["incoming", "outgoing"]).optional(),
+});
+
+export const symbolLocationsOutputSchema = gotoDefinitionOutputSchema;
+
 export const analyzeChangeImpactInputSchema = z
   .object({
     path: z.string().min(1),

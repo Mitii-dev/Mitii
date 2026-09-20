@@ -5,6 +5,7 @@ export {
   CODE_NAVIGATION_PROVIDERS,
   CODE_NAVIGATION_REASON_CODES,
   CODE_NAVIGATION_ERROR_CODES,
+  CODE_NAVIGATION_CAPABILITY_STATUSES,
 } from "./constants";
 
 export {
@@ -36,9 +37,12 @@ export type {
   CodeNavigationQuery,
   CodeNavigationLocation,
   CodeNavigationHover,
+  CodeNavigationDocumentQuery,
+  CodeNavigationWorkspaceQuery,
   CodeNavigationResult,
   CodeNavigationStatus,
   CodeNavigationReasonCode,
   CodeNavigationErrorCode,
   CodeNavigationPort,
+  CodeNavigationCapability,
 } from "./contracts";

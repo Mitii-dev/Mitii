@@ -13,6 +13,8 @@ export const CHANGE_IMPACT_EDGE_TYPES = [
   "calls",
   "imports",
   "references",
+  "extends",
+  "implements",
   "depends_on",
   "development_depends_on",
 ] as const;

@@ -45,16 +45,45 @@ export const codeNavigationQuerySchema = z
     column: z.number().int().positive().default(1),
     symbolName: z.string().min(1).optional(),
     includeDeclaration: z.boolean().optional(),
+    direction: z.enum(["incoming", "outgoing"]).optional(),
   })
   .strict();
 
 export type CodeNavigationQuery = z.infer<typeof codeNavigationQuerySchema>;
 
+/** File-scoped symbol list. Line is not required. */
+export const codeNavigationDocumentQuerySchema = z
+  .object({
+    rootId: z.string().min(1).optional(),
+    relativePath: z.string().min(1),
+  })
+  .strict();
+
+export type CodeNavigationDocumentQuery = z.infer<
+  typeof codeNavigationDocumentQuerySchema
+>;
+
+/** Workspace symbol search. Query is a name fragment, not a caret. */
+export const codeNavigationWorkspaceQuerySchema = z
+  .object({
+    rootId: z.string().min(1).optional(),
+    query: z.string().min(1),
+  })
+  .strict();
+
+export type CodeNavigationWorkspaceQuery = z.infer<
+  typeof codeNavigationWorkspaceQuerySchema
+>;
+
 export const codeNavigationInputSchema = z
   .object({
     schemaVersion: z.literal(CODE_NAVIGATION_SCHEMA_VERSION),
     operation: codeNavigationOperationSchema,
-    query: codeNavigationQuerySchema,
+    query: z.union([
+      codeNavigationQuerySchema,
+      codeNavigationDocumentQuerySchema,
+      codeNavigationWorkspaceQuerySchema,
+    ]),
     maximumLocations: z
       .number()
       .int()

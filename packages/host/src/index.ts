@@ -129,6 +129,8 @@ export type {
 } from './repository-context/createHostRepositoryContext.js';
 
 export { createHostCodeNavigationPort } from './code-navigation/createHostCodeNavigationPort.js';
+export { createHostLanguageServices } from './code-navigation/createHostLanguageServices.js';
+export type { HostLanguageServices } from './code-navigation/createHostLanguageServices.js';
 export {
   createHostRepositoryGraphPort,
   loadWorkspaceGraphs,

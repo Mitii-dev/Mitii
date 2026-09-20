@@ -3,6 +3,8 @@ export {
   codeNavigationQuerySchema,
   codeNavigationLocationSchema,
   codeNavigationHoverSchema,
+  codeNavigationDocumentQuerySchema,
+  codeNavigationWorkspaceQuerySchema,
   codeNavigationOperationSchema,
 } from "./input/CodeNavigationInput";
 export type {
@@ -11,6 +13,8 @@ export type {
   CodeNavigationQuery,
   CodeNavigationLocation,
   CodeNavigationHover,
+  CodeNavigationDocumentQuery,
+  CodeNavigationWorkspaceQuery,
 } from "./input/CodeNavigationInput";
 
 export {
@@ -31,4 +35,4 @@ export {
 } from "./errors/CodeNavigationError";
 export type { CodeNavigationErrorCode } from "./errors/CodeNavigationError";
 
-export type { CodeNavigationPort } from "./ports/CodeNavigationPort";
+export type { CodeNavigationPort, CodeNavigationCapability } from "./ports/CodeNavigationPort";

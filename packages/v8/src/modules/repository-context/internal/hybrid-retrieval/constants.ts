@@ -164,6 +164,8 @@ export const HYBRID_RETRIEVAL_GRAPH_EDGE_TYPES = [
   "calls",
   "imports",
   "references",
+  "extends",
+  "implements",
 ] as const;
 
 export const HYBRID_RETRIEVAL_QUERY_STOP_WORDS =
