@@ -46,10 +46,12 @@ export function isPlanDiscoveryEvidenceSufficient(
     DiscoveryBrief,
     "filesRead" | "proposedChangeSurfaces" | "confidence"
   >,
-  options?: { thorough?: boolean },
+  options?: { thorough?: boolean; requireSymbolEvidence?: boolean },
 ): boolean {
   if (options?.thorough) {
-    return isThoroughPlanDiscoveryEvidenceSufficient(brief);
+    return isThoroughPlanDiscoveryEvidenceSufficient(brief, {
+      requireSymbolEvidence: options.requireSymbolEvidence === true,
+    });
   }
   return (
     brief.filesRead.length >= 1 &&
@@ -61,21 +63,31 @@ export function isPlanDiscoveryEvidenceSufficient(
 /**
  * Foolproof Plan / Agent-visible discovery: multi-file, multi-surface,
  * non-low confidence (matches CompileDiscoveryBrief high band intent).
+ * When `requireSymbolEvidence` is set (host code navigation usable), at least
+ * one read file must carry attached symbols from code-intelligence tools.
  */
 export function isThoroughPlanDiscoveryEvidenceSufficient(
   brief: Pick<
     DiscoveryBrief,
     "filesRead" | "proposedChangeSurfaces" | "confidence"
   >,
+  options?: { requireSymbolEvidence?: boolean },
 ): boolean {
   if (brief.confidence === "low") {
     return false;
   }
-  // Foolproof Plan: at least two concrete file reads and one change surface.
-  // Symbols on filesRead are preferred but not required (collector may lack LSP).
-  return (
-    brief.filesRead.length >= 2 && brief.proposedChangeSurfaces.length >= 1
-  );
+  if (
+    brief.filesRead.length < 2 ||
+    brief.proposedChangeSurfaces.length < 1
+  ) {
+    return false;
+  }
+  if (options?.requireSymbolEvidence === true) {
+    return brief.filesRead.some(
+      (file) => Array.isArray(file.symbols) && file.symbols.length > 0,
+    );
+  }
+  return true;
 }
 
 /** True when Plan (or Agent-visible) should use the thorough evidence bar. */
@@ -87,6 +99,55 @@ export function usesThoroughPlanDiscoveryEvidence(params: {
     return true;
   }
   return params.mode === "agent" && params.planningDepth === "visible";
+}
+
+/**
+ * Whether thorough discovery should require symbol attachment from
+ * code-intelligence tools (when those tools are granted and not unavailable).
+ * When the host cannot force tool_choice=required, callers should nudge but
+ * not hard-fail the quality floor on missing symbols.
+ */
+export function shouldRequireDiscoverySymbolEvidence(params: {
+  thorough: boolean;
+  allowedTools: readonly string[];
+  reasonCodes: readonly string[];
+  codeIntelligenceToolIds: readonly string[];
+  /** When false, return false so discovery soft-nudge instead of hard-fail. */
+  supportsForcedToolChoice?: boolean;
+}): boolean {
+  if (!params.thorough) {
+    return false;
+  }
+  if (params.supportsForcedToolChoice === false) {
+    return false;
+  }
+  if (params.reasonCodes.includes("code_navigation_unavailable")) {
+    return false;
+  }
+  return params.codeIntelligenceToolIds.some((id) =>
+    params.allowedTools.includes(id),
+  );
+}
+
+/**
+ * Soft preference for symbol tools during discovery (nudges only).
+ * True whenever nav tools are granted, even if forced tool choice is unavailable.
+ */
+export function shouldPreferDiscoverySymbolEvidence(params: {
+  thorough: boolean;
+  allowedTools: readonly string[];
+  reasonCodes: readonly string[];
+  codeIntelligenceToolIds: readonly string[];
+}): boolean {
+  if (!params.thorough) {
+    return false;
+  }
+  if (params.reasonCodes.includes("code_navigation_unavailable")) {
+    return false;
+  }
+  return params.codeIntelligenceToolIds.some((id) =>
+    params.allowedTools.includes(id),
+  );
 }
 
 export function clarifyAfterInsufficientPlanDiscovery(

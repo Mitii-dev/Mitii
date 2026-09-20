@@ -13,12 +13,24 @@ export {
   DEFAULT_CHANGE_IMPACT_MAXIMUM_AFFECTED_NODES,
   DEFAULT_CHANGE_IMPACT_MAXIMUM_PACKAGES,
   DEFAULT_CHANGE_IMPACT_MAXIMUM_EVIDENCE_PER_NODE,
+  DEFAULT_CHANGE_IMPACT_MODEL_FACING_AFFECTED_NODES,
+  DEFAULT_CHANGE_IMPACT_MODEL_FACING_EVIDENCE_PER_NODE,
+  DEFAULT_CHANGE_IMPACT_MODEL_FACING_AFFECTED_FILES,
 } from "./defaults";
 
 export { CHANGE_IMPACT_POLICY } from "./policy";
 
-export { ChangeImpactPipeline } from "./pipeline/ChangeImpactPipeline";
+export {
+  compactChangeImpactForModelFacing,
+  isChangeImpactToolOutput,
+} from "./actions/compactChangeImpactForModelFacing";
+export type {
+  ModelFacingAffectedNode,
+  ModelFacingAffectedFile,
+  ModelFacingPackage,
+} from "./actions/compactChangeImpactForModelFacing";
 
+export { ChangeImpactPipeline } from "./pipeline/ChangeImpactPipeline";
 export {
   changeImpactInputSchema,
   changeImpactSeedSchema,

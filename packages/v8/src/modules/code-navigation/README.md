@@ -39,6 +39,12 @@ code-navigation/
 - Operations include definition, references, hover, document symbols, workspace symbols, implementation, and call hierarchy.
 - Graph `implementation` walks `implements` and `extends` edges to subclasses and implementers. Call hierarchy walks `calls` edges. Hosts that attach a language server are preferred; other languages stay degraded. V8 does not spawn language servers.
 - Hosts report capability `available` | `degraded` | `unavailable`. V8 does not spawn language servers.
+- Tool Runtime exposes these operations as first-class agent tools
+  (`CODE_INTELLIGENCE_TOOL_IDS` in Decision Policy). Progressive disclosure
+  keeps full parameter schemas for that family.
+- VS Code hosts bridge `vscode.execute*Provider`; CLI/ACP may attach a
+  host-owned language service (for example TypeScript) or degrade to the
+  repo graph.
 - `GraphCodeNavigationAdapter` can use repository graph data.
 - `FallbackCodeNavigationAdapter` provides degraded behavior.
 - The module is read-only and never mutates workspace files.

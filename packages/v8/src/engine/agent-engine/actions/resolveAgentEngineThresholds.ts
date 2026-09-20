@@ -18,6 +18,7 @@ export const agentEngineThresholdsSchema = z
     maxUnfulfilledExecuteRecoveries: nonnegativeIntSchema,
     maxStructuredReviewRecoveries: nonnegativeIntSchema,
     maxRejectedMutationRecoveries: nonnegativeIntSchema,
+    maxChangeImpactNudges: nonnegativeIntSchema,
     maxMustReadNudges: nonnegativeIntSchema,
     maxReadOnlyMutationRetryAttempts: nonnegativeIntSchema,
     maxPostNudgeEvidenceReadTurns: nonnegativeIntSchema,
@@ -38,6 +39,9 @@ export const agentEngineThresholdsSchema = z
     maxDiagnoseAnswerNudges: nonnegativeIntSchema,
     maxRecoveredAnalysisChars: positiveIntSchema,
     maxReasoningCharsWithoutProgress: positiveIntSchema,
+    reasoningProgressBudgetRatioWhenReasoningCapable: ratioSchema,
+    maxFileReadsBeforeCodeIntelNudge: positiveIntSchema,
+    maxCodeIntelAdoptionNudges: nonnegativeIntSchema,
   })
   .strict();
 

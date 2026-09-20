@@ -221,6 +221,31 @@ describe("buildOutputTruncationRecovery", () => {
     ).toBeNull();
   });
 
+  it("recovers empty reasoning burns after mutations when mutation is still required", () => {
+    const plan = buildOutputTruncationRecovery({
+      finishReason: "length",
+      content: "",
+      toolCalls: [],
+      recoveryAttempt: 0,
+      requireMutation: true,
+      changedFileCount: 2,
+      mutationBudget: tightBudget,
+    });
+    expect(plan?.shouldRecover).toBe(true);
+    expect(plan?.recoveryKind).toBe("tool_call");
+    expect(plan?.recoveryMessage.content).toMatch(/apply_patch/i);
+    expect(
+      buildOutputTruncationRecovery({
+        finishReason: "length",
+        content: "",
+        toolCalls: [],
+        recoveryAttempt: 1,
+        requireMutation: true,
+        changedFileCount: 2,
+      }),
+    ).toBeNull();
+  });
+
   it("allows one incomplete-tool shrink after mutations, then stops", () => {
     const incomplete = {
       id: "c1",

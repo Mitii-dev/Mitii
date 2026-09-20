@@ -1,4 +1,5 @@
 import { appendFileSync, mkdirSync, readdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 
 import type {
@@ -103,6 +104,65 @@ function compactText(
   };
 }
 
+/**
+ * Stable short fingerprint of a tool input schema so model-io logs can prove
+ * full schemas were on the wire without storing the schema body.
+ */
+function fingerprintInputSchema(
+  schema: Readonly<Record<string, unknown>> | undefined,
+): {
+  fingerprint: string;
+  propertyCount: number;
+  requiredCount: number;
+  isStub: boolean;
+} {
+  const normalized = schema ?? {};
+  const properties =
+    normalized.properties &&
+    typeof normalized.properties === 'object' &&
+    !Array.isArray(normalized.properties)
+      ? (normalized.properties as Record<string, unknown>)
+      : {};
+  const required = Array.isArray(normalized.required)
+    ? normalized.required.filter((item): item is string => typeof item === 'string')
+    : [];
+  const propertyNames = Object.keys(properties).sort();
+  const canonical = JSON.stringify({
+    type: normalized.type ?? null,
+    properties: propertyNames,
+    required: [...required].sort(),
+  });
+  const fingerprint = createHash('sha256')
+    .update(canonical)
+    .digest('hex')
+    .slice(0, 12);
+  const isStub =
+    propertyNames.length === 0 &&
+    (normalized.type === 'object' || normalized.type === undefined);
+  return {
+    fingerprint,
+    propertyCount: propertyNames.length,
+    requiredCount: required.length,
+    isStub,
+  };
+}
+
+function sanitizeToolDefinition(
+  tool: ModelToolDefinition,
+): Record<string, unknown> {
+  const schemaMeta = fingerprintInputSchema(tool.inputSchema);
+  return {
+    name: tool.name,
+    description: tool.description
+      ? compactText(tool.description, 400).text
+      : undefined,
+    inputSchemaFingerprint: schemaMeta.fingerprint,
+    inputSchemaPropertyCount: schemaMeta.propertyCount,
+    inputSchemaRequiredCount: schemaMeta.requiredCount,
+    inputSchemaStub: schemaMeta.isStub || undefined,
+  };
+}
+
 function sanitizeMessage(message: ModelMessage): Record<string, unknown> {
   const base: Record<string, unknown> = { role: message.role };
   let anyRedacted = false;
@@ -149,14 +209,15 @@ function sanitizeMessage(message: ModelMessage): Record<string, unknown> {
 
 function sanitizeRequest(request: ModelRequest): Record<string, unknown> {
   const messages = request.messages.slice(0, MODEL_IO_LIMITS.maxMessagesLogged);
-  const tools = (request.tools ?? [])
+  const allTools = request.tools ?? [];
+  const tools = allTools
     .slice(0, MODEL_IO_LIMITS.maxToolDefsLogged)
-    .map((tool: ModelToolDefinition) => ({
-      name: tool.name,
-      description: tool.description
-        ? compactText(tool.description, 400).text
-        : undefined,
-    }));
+    .map((tool: ModelToolDefinition) => sanitizeToolDefinition(tool));
+  const fullSchemaToolCount = allTools.filter((tool) => {
+    const meta = fingerprintInputSchema(tool.inputSchema);
+    return !meta.isStub;
+  }).length;
+  const stubSchemaToolCount = allTools.length - fullSchemaToolCount;
 
   return {
     model: request.model,
@@ -167,8 +228,10 @@ function sanitizeRequest(request: ModelRequest): Record<string, unknown> {
     messageCount: request.messages.length,
     messagesTruncated: request.messages.length > messages.length,
     messages: messages.map(sanitizeMessage),
-    toolCount: request.tools?.length ?? 0,
-    toolsTruncated: (request.tools?.length ?? 0) > tools.length,
+    toolCount: allTools.length,
+    toolsTruncated: allTools.length > tools.length,
+    fullSchemaToolCount,
+    stubSchemaToolCount,
     tools,
   };
 }
@@ -436,5 +499,6 @@ export const __testing = {
   sanitizeRequest,
   compactText,
   redactSecrets,
+  fingerprintInputSchema,
   MODEL_IO_LIMITS,
 };

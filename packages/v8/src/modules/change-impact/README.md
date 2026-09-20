@@ -10,12 +10,16 @@ Change Impact estimates the blast radius of a code change by walking a repositor
 - Applies hop and node limits.
 - Summarizes affected nodes, files, and packages.
 - Reports truncation, unresolved seeds, stale graph signals, and warnings.
+- Exposes `compactChangeImpactForModelFacing` so Tool Runtime can ship a
+  files-first, budget-safe tool payload (top-N nodes/files, short evidence)
+  without discarding the full walk limits used for analysis.
 
 ## Structure
 
 ```text
 change-impact/
   pipeline/                 ChangeImpactPipeline
+  actions/                  Model-facing compact helpers
   contracts/
     input/                  ChangeImpactInput, ChangeImpactSeed
     output/                 ChangeImpactResult
@@ -37,6 +41,9 @@ change-impact/
 - Direction is usually dependencies or dependents.
 - Edge types are constrained to known repository graph relationships.
 - Limits protect very large graphs and set `truncated` when reached.
+- Model-facing defaults (`CHANGE_IMPACT_POLICY.modelFacing*`) keep tool
+  results sequencing-friendly under tool-result budgets; the walk may still
+  visit up to `maximumAffectedNodes`.
 - Normal unresolved/stale cases return structured results rather than throwing.
 
 ## Ownership Boundaries

@@ -41,6 +41,12 @@ describe('createHostLlmPorts', () => {
     expect(ports.runLlm.id).toBe('openai-compatible');
     expect(ports.runLlm.capabilities.supportsPromptCaching).toBe(true);
     expect(ports.understandingLlm.capabilities.supportsPromptCaching).toBe(true);
+    expect(ports.runLlm.capabilities.supportsForcedToolChoice).toBe(false);
+    expect(ports.runLlm.capabilities.supportsStructuredOutput).toBe(false);
+    expect(ports.runLlm.capabilities.supportsReasoning).toBe(true);
+    expect(ports.understandingLlm.capabilities.supportsStructuredOutput).toBe(
+      false,
+    );
   });
 
   it('constructs native anthropic and gemini ports', () => {

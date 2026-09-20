@@ -1,4 +1,10 @@
 import type { ToolGrant } from "../../../modules/decision-policy";
+import {
+  CHANGE_IMPACT_TOOL_IDS,
+  CODE_INTELLIGENCE_TOOL_IDS,
+  DIAGNOSTICS_TOOL_IDS,
+  MUTATION_TOOL_IDS,
+} from "../../../modules/decision-policy";
 import type { ModelToolDefinition } from "../../../modules/model-gateway";
 import {
   filterToolsByMcpAttach,
@@ -13,12 +19,11 @@ export { MCP_TOOL_NAME_PREFIX };
 export const DESCRIBE_TOOL_NAME = "describe_tool";
 
 /**
- * Built-ins that keep full model-facing schemas (not INDEX stubs).
- * Progressive disclosure still stubs long-tail / MCP tools so catalogs stay small.
- * Core discovery + mutation must advertise real params — models otherwise guess
- * Cursor/ripgrep shapes (`pattern`, `command`) and fail validation.
+ * Discovery and filesystem inspection tools that keep full progressive schemas.
+ * Derived families (code intelligence, diagnostics, change-impact, mutation)
+ * are composed in {@link buildFullSchemaToolIds} — do not hardcode those IDs here.
  */
-export const FULL_SCHEMA_TOOL_IDS: ReadonlySet<string> = new Set([
+export const CORE_DISCOVERY_FULL_SCHEMA_TOOL_IDS = [
   DESCRIBE_TOOL_NAME,
   "read_file",
   "read_many_files",
@@ -29,12 +34,43 @@ export const FULL_SCHEMA_TOOL_IDS: ReadonlySet<string> = new Set([
   "file_metadata",
   "run_readonly_command",
   "run_command",
-  "apply_patch",
-  "delete_file",
-  "delete_directory",
-  "move_file",
   "update_todos",
-]);
+] as const;
+
+/** Mutation tools that keep full progressive schemas (workspace write surface). */
+export const CORE_MUTATION_FULL_SCHEMA_TOOL_IDS = MUTATION_TOOL_IDS.filter(
+  (id) => id !== "memory_graph_update",
+);
+
+/**
+ * Build the progressive-disclosure full-schema allowlist from tool families.
+ * Callers may pass extra families for host/extension tools without editing
+ * the core set.
+ */
+export function buildFullSchemaToolIds(
+  extraFamilies: ReadonlyArray<ReadonlyArray<string>> = [],
+): ReadonlySet<string> {
+  const ids = new Set<string>([
+    ...CORE_DISCOVERY_FULL_SCHEMA_TOOL_IDS,
+    ...CORE_MUTATION_FULL_SCHEMA_TOOL_IDS,
+    ...CODE_INTELLIGENCE_TOOL_IDS,
+    ...DIAGNOSTICS_TOOL_IDS,
+    ...CHANGE_IMPACT_TOOL_IDS,
+  ]);
+  for (const family of extraFamilies) {
+    for (const id of family) {
+      ids.add(id);
+    }
+  }
+  return ids;
+}
+
+/**
+ * Built-ins that keep full schemas (not INDEX stubs).
+ * Progressive disclosure still stubs long-tail / MCP tools so catalogs stay small.
+ * Code intelligence, diagnostics, and change-impact are first-class families.
+ */
+export const FULL_SCHEMA_TOOL_IDS: ReadonlySet<string> = buildFullSchemaToolIds();
 
 /** Stub schema advertised for index entries (full schema via describe_tool). */
 export const TOOL_INDEX_INPUT_SCHEMA: Readonly<Record<string, unknown>> = {
@@ -74,14 +110,16 @@ export function isMcpAllowedByGrant(
 }
 
 /**
- * Compact model-facing index entry (progressive disclosure).
- * Core discovery/mutation keep full schemas; long-tail + MCP stay INDEX stubs
- * (hydrate via describe_tool). Execution always uses Tool Runtime Zod schemas.
+ * Compact progressive-disclosure index entry.
+ * Core discovery / mutation / code-intelligence keep full schemas; long-tail
+ * and MCP stay INDEX stubs (hydrate via describe_tool). Execution always uses
+ * Tool Runtime Zod schemas.
  */
 export function toToolIndexDefinition(
   tool: ModelToolDefinition,
+  fullSchemaIds: ReadonlySet<string> = FULL_SCHEMA_TOOL_IDS,
 ): ModelToolDefinition {
-  if (FULL_SCHEMA_TOOL_IDS.has(tool.name)) {
+  if (fullSchemaIds.has(tool.name)) {
     return tool;
   }
   const description =
@@ -100,8 +138,8 @@ export function toToolIndexDefinition(
 
 /**
  * Filter tool definitions by grant, then project to progressive INDEX stubs.
- * Always includes describe_tool when any tools are granted so the model can
- * hydrate full schemas. Model text cannot broaden the set.
+ * Always includes describe_tool when any tools are granted so full schemas can
+ * be hydrated. Grant text cannot broaden the set.
  *
  * Host-registered MCP tools (`mcp__*`) are exposed on Agent write grants, and
  * on Agent read grants when the tool does not require workspace writes.
@@ -114,6 +152,8 @@ export function filterToolDefinitions(params: {
   supportsTools: boolean;
   mode?: "ask" | "plan" | "agent";
   requiredMcpServerIds?: readonly string[];
+  /** Optional override / extension of the full-schema family set. */
+  fullSchemaToolIds?: ReadonlySet<string>;
 }): ModelToolDefinition[] {
   if (!params.supportsTools || params.grant.allowedTools.length === 0) {
     return [];
@@ -127,6 +167,7 @@ export function filterToolDefinitions(params: {
     params.requiredMcpServerIds ??
     params.grant.allowedMcpServerIds ??
     undefined;
+  const fullSchemaIds = params.fullSchemaToolIds ?? FULL_SCHEMA_TOOL_IDS;
 
   const filtered = catalog.filter((tool) => {
     if (allowed.has(tool.name)) {
@@ -142,7 +183,9 @@ export function filterToolDefinitions(params: {
   });
 
   const scoped = filterToolsByMcpAttach(filtered, attachIds);
-  const indexed = scoped.map(toToolIndexDefinition);
+  const indexed = scoped.map((tool) =>
+    toToolIndexDefinition(tool, fullSchemaIds),
+  );
 
   if (
     allowed.has(DESCRIBE_TOOL_NAME) &&

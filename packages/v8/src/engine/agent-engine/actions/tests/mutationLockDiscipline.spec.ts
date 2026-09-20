@@ -40,11 +40,19 @@ describe("mutation lock after Continue (BillBuddy 22:38)", () => {
     ).toBe(false);
   });
 
-  it("keeps targeted reads + mutation tools; strips list/glob/search/symbols", () => {
-    const locked = filterToolsForMutationLock(tools);
+  it("keeps targeted reads + caret code-intel + mutation tools; strips list/glob/search/workspace_symbol", () => {
+    const locked = filterToolsForMutationLock([
+      ...tools,
+      { name: "goto_definition", description: "g", inputSchema: {} },
+      { name: "workspace_symbol", description: "ws", inputSchema: {} },
+      { name: "analyze_change_impact", description: "ci", inputSchema: {} },
+    ]);
     expect(locked?.map((tool) => tool.name).sort()).toEqual([
+      "analyze_change_impact",
       "apply_patch",
       "delete_file",
+      "document_symbol",
+      "goto_definition",
       "read_diagnostics",
       "read_file",
       "read_many_files",

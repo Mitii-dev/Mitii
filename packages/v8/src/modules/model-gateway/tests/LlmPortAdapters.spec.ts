@@ -177,6 +177,50 @@ test("openai compatible port maps prompt cache hit and miss tokens", async () =>
   assert.equal(completed?.type === "completed" && completed.usage?.cacheMissTokens, 30);
 });
 
+test("openai compatible downgrades forced tool choice and skips unsupported response_format", async () => {
+  let body: Record<string, unknown> | undefined;
+  const fetchImpl: typeof fetch = async (_url, init) => {
+    body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+    return new Response(
+      JSON.stringify({
+        choices: [{ message: { content: "{}" }, finish_reason: "stop" }],
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+  };
+
+  const port = new OpenAiCompatibleLlmPort({
+    baseUrl: "https://api.deepseek.com/v1",
+    model: "deepseek-flash",
+    apiKey: "secret",
+    fetchImpl,
+    capabilities: {
+      supportsTools: true,
+      supportsForcedToolChoice: false,
+      supportsStructuredOutput: false,
+    },
+  });
+
+  await collectEvents(
+    port.complete({
+      messages: [{ role: "user", content: "ping" }],
+      stream: false,
+      tools: [
+        {
+          name: "read_file",
+          description: "Read",
+          inputSchema: { type: "object", properties: { path: { type: "string" } } },
+        },
+      ],
+      toolChoice: "required",
+      responseFormat: { type: "json_object" },
+    }),
+  );
+
+  assert.equal(body?.tool_choice, "auto");
+  assert.equal(body?.response_format, undefined);
+});
+
 test("openai compatible port maps SSE streaming chunks", async () => {
   const payload = [
     'data: {"choices":[{"delta":{"content":"hel"}}]}',

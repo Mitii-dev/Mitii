@@ -8,7 +8,7 @@ Model Gateway is the provider-neutral LLM boundary. It lets Agent Engine and Pro
 - Defines `LlmPort` for streaming completions and capability resolution.
 - Normalizes provider responses into `ModelEvent`.
 - Normalizes provider failures into `ModelError`.
-- Resolves model capabilities such as context window, tool support, streaming, reasoning, vision, and structured output.
+- Resolves model capabilities such as context window, tool support, streaming, reasoning, vision, structured output, and forced tool choice.
 
 ## Structure
 
@@ -35,6 +35,7 @@ model-gateway/
 
 - `EchoLlmPort` is deterministic and useful for tests.
 - `OpenAiCompatibleLlmPort` maps V8 requests to OpenAI-compatible APIs and defaults `capabilities.supportsPromptCaching` to `true` so `prompt_cache_hit_tokens` / `prompt_cache_miss_tokens` are recorded when the runtime reports them (Ollama, vLLM, DeepSeek). Hosts can opt out per adapter instance.
+- `OpenAiCompatibleLlmPort` only sends `response_format` when `supportsStructuredOutput` is true, and downgrades `tool_choice=required` to `auto` when `supportsForcedToolChoice` is false or request reasoning is enabled.
 - `AnthropicLlmPort` and `GeminiLlmPort` adapt provider-specific formats.
 - `AnthropicLlmPort` defaults `capabilities.supportsPromptCaching` to `true` (native Messages API support is GA on the stable `2023-06-01` version header, no beta flag needed) and adds `cache_control: {type: "ephemeral"}` breakpoints to the system prompt, the last tool definition, and the last content block of the last message. Anthropic matches the longest previously-cached prefix, so re-marking the tail every turn keeps a growing agentic conversation's stable history cached across turns without tracking what changed. Hosts can opt out per adapter instance via `capabilities.supportsPromptCaching: false`.
 - `ModelCapabilityResolver` fills defaults and validates output/context constraints.

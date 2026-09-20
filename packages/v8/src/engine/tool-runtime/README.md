@@ -86,6 +86,12 @@ tool-runtime/
   model-facing JSON Schema for a tool already in the grant. Cannot unlock
   tools Decision Policy did not grant. Agent Engine attaches INDEX stubs via
   `filterToolDefinitions`; execution still uses registered Zod schemas.
+  Code-intelligence, diagnostics, and change-impact families keep full schemas.
+- **Post-edit diagnostics:** after `apply_patch`, `collectPostEditDiagnostics`
+  settles the host `DiagnosticsPort` (optional `settleDiagnostics` or poll),
+  diffs against the pre-edit baseline, and attaches `newDiagnostics` plus
+  `postEditDiagnostics` (`requiresRepair` when new errors appear). Never
+  fails a successful write.
 - **`ToolAdversaryPort`:** optional restrict-only fence after ValidateGrant /
   shadow and before approval. BLOCK → `tool_not_allowed`; ASK →
   `approval_required`. Fail-closed by default. Never widens grants.

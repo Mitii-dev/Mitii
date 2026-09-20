@@ -770,6 +770,21 @@ export const applyPatchOutputSchema = z
           .strict(),
       )
       .optional(),
+    /**
+     * Structured post-edit diagnostics summary (settle + severity counts).
+     * Present when a DiagnosticsPort is injected and the patch changed files.
+     */
+    postEditDiagnostics: z
+      .object({
+        settled: z.boolean(),
+        errorCount: z.number().int().nonnegative(),
+        warningCount: z.number().int().nonnegative(),
+        infoCount: z.number().int().nonnegative(),
+        hintCount: z.number().int().nonnegative(),
+        requiresRepair: z.boolean(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

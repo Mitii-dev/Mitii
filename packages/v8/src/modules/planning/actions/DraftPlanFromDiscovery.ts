@@ -34,6 +34,8 @@ export async function draftPlanFromDiscovery(params: {
   llm: LlmPort;
 }): Promise<DraftPlanFromDiscoveryResult> {
   try {
+    const useStructured =
+      params.llm.capabilities.supportsStructuredOutput === true;
     const request = modelRequestSchema.parse({
       messages: [
         { role: "system", content: DISCOVERED_PLAN_SYSTEM },
@@ -54,12 +56,16 @@ export async function draftPlanFromDiscovery(params: {
         effort: "low",
         includeInResponse: false,
       },
-      responseFormat: {
-        type: "json_schema",
-        name: "discovered_plan_draft",
-        schema: DISCOVERED_PLAN_JSON_SCHEMA,
-        strict: true,
-      },
+      ...(useStructured
+        ? {
+            responseFormat: {
+              type: "json_schema" as const,
+              name: "discovered_plan_draft",
+              schema: DISCOVERED_PLAN_JSON_SCHEMA,
+              strict: true,
+            },
+          }
+        : {}),
     }) as ModelRequest;
     const text = await collectCompletionText({ llm: params.llm, request });
     const parsed = discoveredPlanDraftSchema.parse(parseLastJsonObject(text));

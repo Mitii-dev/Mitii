@@ -1,4 +1,5 @@
 import type { OpenAiCompatibleAuthHeader } from '@mitii/sdk';
+import type { ModelCapabilities } from '@mitii/v8';
 
 /**
  * UI / config preset id. `type` selects the host-constructed LlmPort adapter.
@@ -35,6 +36,20 @@ export interface ProviderPreset {
   authHeader?: OpenAiCompatibleAuthHeader;
   chatCompletionsPath?: string;
   notes?: string;
+  /**
+   * Default model capabilities for this preset. Host merges these under
+   * user/profile overrides so V8 stays provider-agnostic.
+   */
+  defaultCapabilities?: Partial<
+    Pick<
+      ModelCapabilities,
+      | 'supportsStructuredOutput'
+      | 'supportsReasoning'
+      | 'supportsForcedToolChoice'
+      | 'supportsPromptCaching'
+      | 'supportsTools'
+    >
+  >;
 }
 
 export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
@@ -106,6 +121,13 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
     model: 'deepseek-chat',
     models: ['deepseek-chat', 'deepseek-reasoner'],
     requiresApiKey: true,
+    notes:
+      'Thinking/reasoner endpoints reject tool_choice=required and some response_format types; Mitii disables forced tools and structured output for this preset.',
+    defaultCapabilities: {
+      supportsReasoning: true,
+      supportsForcedToolChoice: false,
+      supportsStructuredOutput: false,
+    },
   },
   {
     id: 'azure-openai',

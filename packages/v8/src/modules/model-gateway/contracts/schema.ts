@@ -418,6 +418,8 @@ export const modelCapabilitiesSchema =
       z.boolean(),
     supportsEmbeddings:
       z.boolean(),
+    supportsForcedToolChoice:
+      z.boolean().optional(),
     agenticTier:
       z.enum([
         "basic",

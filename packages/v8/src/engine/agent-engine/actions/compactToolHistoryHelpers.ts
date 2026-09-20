@@ -465,6 +465,34 @@ function summarizeToolOutput(output: unknown): string | undefined {
         .join("; "),
     );
   }
+  if (
+    Array.isArray(record.affectedFiles) ||
+    (Array.isArray(record.affected) && record.provider === "repo_graph")
+  ) {
+    const files = Array.isArray(record.affectedFiles)
+      ? record.affectedFiles
+      : [];
+    const filePreview = files
+      .slice(0, 6)
+      .map((file) => {
+        if (!file || typeof file !== "object") {
+          return "";
+        }
+        const item = file as Record<string, unknown>;
+        const path = typeof item.path === "string" ? item.path : undefined;
+        const hop = typeof item.hop === "number" ? `h${item.hop}` : undefined;
+        return [path, hop].filter(Boolean).join("@");
+      })
+      .filter(Boolean)
+      .join(", ");
+    const status = typeof record.status === "string" ? record.status : "impact";
+    const totals = `files=${files.length} nodes=${
+      Array.isArray(record.affected) ? record.affected.length : 0
+    }`;
+    return compactPreview(
+      `${status}; ${totals}${filePreview ? `; ${filePreview}` : ""}`,
+    );
+  }
   return compactPreview(JSON.stringify(record));
 }
 

@@ -160,6 +160,14 @@ export interface AgentEngineToolRuntimePort {
   /** Honest grant gating — omit / false when SearchPort is not injected. */
   hasSearchPort?(): boolean;
   hasDiagnosticsPort?(): boolean;
+  /** Host code-navigation capability when a CodeNavigationPort is injected. */
+  codeNavigationCapability?():
+    | {
+        status: "available" | "degraded" | "unavailable";
+        provider: "language_server" | "repo_graph" | "none";
+        reason: string;
+      }
+    | undefined;
 }
 
 export interface AgentEngineVerificationPort {

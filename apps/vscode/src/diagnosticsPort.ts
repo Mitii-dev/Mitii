@@ -1,5 +1,9 @@
 import { relative } from 'node:path';
-import type { DiagnosticItem, DiagnosticsPort } from '@mitii/sdk';
+import type {
+  DiagnosticItem,
+  DiagnosticsPort,
+  DiagnosticsSettleOptions,
+} from '@mitii/sdk';
 import type * as vscode from 'vscode';
 
 /**
@@ -51,6 +55,54 @@ export class VscodeDiagnosticsPort implements DiagnosticsPort {
     }
 
     return items;
+  }
+
+  /**
+   * Wait until Problems-panel diagnostics for the given paths are stable
+   * or the timeout elapses. Uses onDidChangeDiagnostics when available.
+   */
+  public async settleDiagnostics(
+    options: DiagnosticsSettleOptions,
+  ): Promise<void> {
+    const timeoutMs = Math.max(0, options.timeoutMs ?? 2_000);
+    if (timeoutMs === 0) {
+      return;
+    }
+
+    const root = options.workspaceRoot || this.workspaceRoot;
+    const paths = options.paths ?? [];
+
+    const matchesScope = (uri: vscode.Uri): boolean => {
+      if (uri.scheme !== 'file') return false;
+      if (paths.length === 0) return true;
+      const rel = toWorkspaceRelative(root, uri.fsPath);
+      if (!rel) return false;
+      return paths.some((p) => rel === p || rel.startsWith(`${p}/`));
+    };
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        subscription.dispose();
+        options.signal?.removeEventListener('abort', onAbort);
+        resolve();
+      };
+
+      const onAbort = () => finish();
+      options.signal?.addEventListener('abort', onAbort, { once: true });
+
+      const subscription = this.vs.languages.onDidChangeDiagnostics((event) => {
+        if (paths.length === 0 || event.uris.some(matchesScope)) {
+          // Debounce: wait one more microtask wave for analyzers to flush.
+          setTimeout(finish, options.pollIntervalMs ?? 50);
+        }
+      });
+
+      const timer = setTimeout(finish, timeoutMs);
+    });
   }
 }
 

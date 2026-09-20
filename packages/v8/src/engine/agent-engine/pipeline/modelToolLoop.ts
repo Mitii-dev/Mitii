@@ -33,6 +33,7 @@ import {
   evaluateMutationCritic,
   extractMutationTargetPaths,
   isCompleteToolCall,
+  resolveReasoningProgressBudget,
 } from "../actions";
 import type {
   EstablishedFact,
@@ -175,6 +176,11 @@ export async function runModelToolLoop(
       params.decision.toolGrant.allowedTools.includes("analyze_change_impact"),
     satisfied: false,
   };
+  const changeImpactNudgeBudget = {
+    remaining: changeImpactGate.required
+      ? thresholds.maxChangeImpactNudges
+      : 0,
+  };
 
   const forceMutationOnResume =
     params.forceMutationOnResume === true &&
@@ -232,6 +238,9 @@ export async function runModelToolLoop(
     diagnoseAnswerNudges: 0,
     awaitingAnswerOnly: false,
     mutationBlockerAsked: false,
+    fileBodyReadsWithoutCodeIntel: 0,
+    codeIntelToolUses: 0,
+    codeIntelAdoptionNudges: 0,
     awaitingRejectedMutationRetry: undefined,
     lastPromptCacheClass: undefined,
     contextEpoch: runtime.contextEpochs.get(runId),
@@ -409,8 +418,10 @@ export async function runModelToolLoop(
       runId,
       signal,
       bus,
-      maxReasoningCharsWithoutProgress:
-        thresholds.maxReasoningCharsWithoutProgress,
+      maxReasoningCharsWithoutProgress: resolveReasoningProgressBudget({
+        thresholds,
+        supportsReasoning: runtime.deps.llm.capabilities.supportsReasoning,
+      }),
     });
 
     if (turn.kind === "cancelled") {
@@ -736,6 +747,7 @@ export async function runModelToolLoop(
       windowPolicy: params.windowPolicy,
       loopFileReads,
       mustReadNudgeBudget,
+      changeImpactNudgeBudget,
       plan: params.plan,
       understanding: params.understanding,
       skillsQuery: params.skillsQuery,

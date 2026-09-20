@@ -684,6 +684,11 @@ export async function finishAfterLoop(
       if (repairAttempts > 0) {
         reasonCodes.push("verification_repair_succeeded");
       }
+      const userAnswer = selectUserFacingLoopAnswer({
+        loopAnswer,
+        changedFiles: loopChangedFiles,
+      });
+      const answerForIncompleteCheck = userAnswer ?? loopAnswer ?? "";
       const incompleteExecute =
         requiresMutationForExecute({
           route: decision.route,
@@ -698,24 +703,22 @@ export async function finishAfterLoop(
         // Fail when: no edits, blocker stop, empty/synthetic fallback, or
         // mid-work stop that never acknowledged remaining checklist work
         // (BillBuddy 00:13 completed after one SharedBasePage batch).
+        // Evaluate the user-facing answer (not raw loop text) so thin
+        // synthetic fallbacks still trip incomplete_execute.
         (loopChangedFiles.length === 0 ||
           isPrematurePartialExecuteStop({
             mutationRequired: true,
             hasIncompleteChangeSurfaces: true,
-            content: loopAnswer ?? "",
+            content: answerForIncompleteCheck,
             changedFileCount: loopChangedFiles.length,
           }) ||
-          isSyntheticCompletedEditsFallback(loopAnswer ?? "") ||
+          isSyntheticCompletedEditsFallback(answerForIncompleteCheck) ||
           /(?:^|\n)\s*(?:\*{0,2}|_{0,2})?\s*blocker(?:\*{0,2}|_{0,2})?\s*[:\-—]/im.test(
-            loopAnswer ?? "",
+            answerForIncompleteCheck,
           ) ||
           /\b(?:stop(?:ping)?\s+here\s+with\s+a\s+clear\s+blocker|have\s+to\s+stop\s+here\s+with\s+a\s+clear\s+blocker)\b/i.test(
-            loopAnswer ?? "",
+            answerForIncompleteCheck,
           ));
-      const userAnswer = selectUserFacingLoopAnswer({
-        loopAnswer,
-        changedFiles: loopChangedFiles,
-      });
       if (incompleteExecute && currentOutcome.kind === "completed") {
         const suspended = await suspendForBudgetWall({
           wallReason: "incomplete_checklist",

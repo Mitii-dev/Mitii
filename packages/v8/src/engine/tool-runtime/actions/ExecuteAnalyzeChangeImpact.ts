@@ -2,6 +2,7 @@ import {
   CHANGE_IMPACT_SCHEMA_VERSION,
   ChangeImpactPipeline,
   changeImpactResultSchema,
+  compactChangeImpactForModelFacing,
   type ChangeImpactInput,
 } from "../../../modules/change-impact";
 import type { RepoGraph } from "../../../modules/repository-state";
@@ -77,16 +78,7 @@ export async function executeAnalyzeChangeImpact(params: {
   } satisfies ChangeImpactInput);
 
   const parsed = changeImpactResultSchema.parse(result);
-  const output = analyzeChangeImpactOutputSchema.parse({
-    path: input.path,
-    provider: "repo_graph",
-    status: parsed.status,
-    resolvedSeeds: parsed.resolvedSeeds.map((seed) => ({
-      kind: seed.kind,
-      ...(seed.relativePath ? { path: seed.relativePath } : {}),
-      ...(seed.symbolName ? { symbolName: seed.symbolName } : {}),
-      ...(seed.symbolKind ? { symbolKind: seed.symbolKind } : {}),
-    })),
+  const slim = compactChangeImpactForModelFacing({
     affected: parsed.affected.map((node) => ({
       path: node.relativePath,
       ...(node.symbolName ? { symbolName: node.symbolName } : {}),
@@ -109,16 +101,47 @@ export async function executeAnalyzeChangeImpact(params: {
       hop: project.hop,
       ...(project.viaEdgeType ? { viaEdgeType: project.viaEdgeType } : {}),
     })),
-    truncated: parsed.truncated,
-    warnings: parsed.warnings,
-    reasonCodes: parsed.reasonCodes,
+  });
+
+  const output = analyzeChangeImpactOutputSchema.parse({
+    path: input.path,
+    provider: "repo_graph",
+    status: parsed.status,
+    resolvedSeeds: parsed.resolvedSeeds.map((seed) => ({
+      kind: seed.kind,
+      ...(seed.relativePath ? { path: seed.relativePath } : {}),
+      ...(seed.symbolName ? { symbolName: seed.symbolName } : {}),
+      ...(seed.symbolKind ? { symbolKind: seed.symbolKind } : {}),
+    })),
+    affected: slim.affected,
+    affectedFiles: slim.affectedFiles,
+    packagesAffected: slim.packagesAffected,
+    // Reflect graph walk + intentional model-facing caps in the payload;
+    // do not mark the ToolResult itself truncated (that surfaces as
+    // output_truncated and looks like a failed/cut tool call).
+    truncated: parsed.truncated || slim.modelFacingTruncated,
+    warnings: [
+      ...parsed.warnings,
+      ...(slim.modelFacingTruncated
+        ? [
+            {
+              code: "model_facing_truncated",
+              message: `Affected nodes/files capped for tool-result budget (kept ${slim.affected.length} nodes, ${slim.affectedFiles.length} files of ${slim.totalAffectedNodes}/${slim.totalAffectedFiles}).`,
+            },
+          ]
+        : []),
+    ],
+    reasonCodes: [
+      ...parsed.reasonCodes,
+      ...(slim.modelFacingTruncated ? ["model_facing_truncated"] : []),
+    ],
     graphRevision: parsed.graphRevision,
     codeIndexChangeToken: parsed.codeIndexChangeToken,
   });
 
   return {
     output,
-    truncated: parsed.truncated,
+    truncated: false,
     redacted: false,
   };
 }

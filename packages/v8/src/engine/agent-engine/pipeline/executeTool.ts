@@ -106,8 +106,14 @@ export async function executeOneTool(
   /** Shared remaining auto-advances for the current model turn (usually 0 or 1). */
   taskListAutoAdvanceBudget: { remaining: number };
   mutatingToolNames: ReadonlySet<string>;
-  /** Soft gate: require analyze_change_impact before first mutation when recommended. */
+  /**
+   * Soft-then-hard gate: withhold the first mutating tool call when
+   * change_impact_recommended until analyze_change_impact succeeds, subject
+   * to changeImpactNudgeBudget (mirrors must-read nudges).
+   */
   changeImpactGate?: { required: boolean; satisfied: boolean };
+  /** Remaining change-impact withholdals for this run (usually 0 or 1). */
+  changeImpactNudgeBudget?: { remaining: number };
   evidence?: RunEvidence;
   establishedFacts?: EstablishedFact[];
   windowPolicy: WindowPolicy;
@@ -138,6 +144,7 @@ export async function executeOneTool(
     taskListAutoAdvanceBudget,
     mutatingToolNames,
     changeImpactGate,
+    changeImpactNudgeBudget,
     evidence,
     establishedFacts,
     windowPolicy,
@@ -283,10 +290,76 @@ export async function executeOneTool(
   if (
     changeImpactGate?.required &&
     !changeImpactGate.satisfied &&
+    mutatingToolNames.has(toolCall.name) &&
+    (changeImpactNudgeBudget?.remaining ?? 0) > 0
+  ) {
+    changeImpactNudgeBudget!.remaining -= 1;
+    reasonCodes.push("change_impact_gate_blocked");
+    reasonCodes.push("change_impact_incomplete");
+    const message =
+      "analyze_change_impact is required before the first mutating edit on this run (change_impact_recommended). Call analyze_change_impact on the primary seed path, then retry the mutation.";
+    warnings.push(message);
+    const now = runtime.isoNow();
+    const result = toolResultSchema.parse({
+      schemaVersion: TOOL_RUNTIME_SCHEMA_VERSION,
+      callId: toolCall.id,
+      toolName: toolCall.name,
+      status: "rejected",
+      reasonCode: "change_impact_incomplete",
+      output: {
+        message,
+        requiredTool: "analyze_change_impact",
+      },
+      truncated: false,
+      redacted: false,
+      durationMs: 0,
+      bytesProduced: 0,
+      warnings: [message],
+      audit: {
+        callId: toolCall.id,
+        toolName: toolCall.name,
+        startedAt: now,
+        endedAt: now,
+        status: "rejected",
+        reasonCode: "change_impact_incomplete",
+        inputPreview: toolCall.name,
+        outputPreview: message,
+        bytesProduced: 0,
+        durationMs: 0,
+        truncated: false,
+        redacted: false,
+      },
+    });
+    toolCache.set(toolCall.id, result);
+    runtime.emit(bus, {
+      type: "tool_completed",
+      runId,
+      callId: toolCall.id,
+      toolName: toolCall.name,
+      status: result.status,
+      ...(summary ? { summary } : {}),
+      ...toolCompletionDiagnostics(result),
+      at: runtime.isoNow(),
+    });
+    return {
+      kind: "message",
+      message: {
+        role: "tool",
+        toolCallId: toolCall.id,
+        content: serializeToolResultForModel(result, {
+          maxContentChars: windowPolicy.compaction.toolResultContentChars,
+        }),
+      },
+    };
+  }
+
+  if (
+    changeImpactGate?.required &&
+    !changeImpactGate.satisfied &&
     mutatingToolNames.has(toolCall.name)
   ) {
     warnings.push(
-      "Proceeding with the mutating edit before analyze_change_impact. Call it on the primary seed when useful; do not block the batch.",
+      "Proceeding with the mutating edit before analyze_change_impact after the change-impact nudge budget was exhausted. Prefer calling it on the primary seed when useful.",
     );
   }
 

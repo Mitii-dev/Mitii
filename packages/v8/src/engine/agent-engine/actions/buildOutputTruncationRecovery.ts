@@ -77,8 +77,43 @@ export function buildOutputTruncationRecovery(params: {
   }
 
   // After mutations: allow at most one shrink-retry for incomplete tools, then
-  // finish. Never open a new wall-clock turn for reasoning/text continuation.
+  // finish — except empty reasoning-only burns while mutation is still required
+  // (reasoning-only thrash mid-checklist).
   if (mutationsLanded) {
+    const emptyReasoningBurn =
+      params.content.trim().length === 0 && incompleteToolCalls.length === 0;
+    if (
+      emptyReasoningBurn &&
+      params.requireMutation === true &&
+      params.successfulVerificationAfterMutation !== true &&
+      params.recoveryAttempt < 1
+    ) {
+      const preferred = escalatePreferredBatchSize(
+        params.mutationBudget?.preferredBatchSize ??
+          thresholds.defaultPreferredBatchSize,
+        params.recoveryAttempt,
+      );
+      const maxPatches = escalateMaxPatches(
+        params.mutationBudget?.maxPatchesPerCall ??
+          thresholds.defaultMaxPatchesPerCall,
+        params.recoveryAttempt,
+      );
+      return {
+        shouldRecover: true,
+        recoveryKind: "tool_call",
+        incompleteToolCalls: [],
+        assistantContent: "",
+        recoveryMessage: {
+          role: "user",
+          content: [
+            "Your previous turn hit the output token limit while writing internal reasoning only (no tools, no user-facing answer).",
+            "Do not continue that essay.",
+            `Checklist work remains. Call apply_patch now with a smaller batch: at most ${preferred} files (hard max ${maxPatches} patches).`,
+            "If you need one short read first, call read_file or document_symbol on the active write path only, then patch.",
+          ].join("\n"),
+        },
+      };
+    }
     if (incompleteToolCalls.length === 0) {
       return null;
     }

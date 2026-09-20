@@ -39,6 +39,7 @@ import {
   buildSyntheticPreflightGrant,
   inferDiscoveryTargetKind,
   extractFileReadPaths,
+  resolveReasoningProgressBudget,
 } from "../actions";
 import {
   collectShapedDiscoveryHits,
@@ -48,6 +49,8 @@ import {
 } from "../actions/shapedDiscovery";
 import {
   isPlanDiscoveryEvidenceSufficient,
+  shouldPreferDiscoverySymbolEvidence,
+  shouldRequireDiscoverySymbolEvidence,
 } from "../actions/planDiscoveryQuality";
 import type {
   AgentEngineStartInput,
@@ -62,6 +65,7 @@ import {
   discoveryBudgetRemaining,
   discoveryCanModelTurn,
   discoveryCanReadMore,
+  discoveryHasSymbolEvidence,
   formatDiscoveryPreReadEvidence,
   extractDiscoveryReadText,
   hasDiscoveryReadPath,
@@ -69,6 +73,7 @@ import {
   recordDiscoveryToolUse,
   toDiscoveryObservation,
 } from "../internal/discoveryPass";
+import { CODE_INTELLIGENCE_TOOL_IDS } from "../../../modules/decision-policy";
 import { EventBus } from "../internal/EventBus";
 import { RunBudgetTracker } from "../internal/RunBudget";
 import {
@@ -341,6 +346,26 @@ export async function runDiscoveryPass(
 
   let stopReason: "natural" | "turn_cap" | "budget_exhausted" | "aborted" | "model_error" =
     "natural";
+  const preferSymbolEvidence = shouldPreferDiscoverySymbolEvidence({
+    thorough: thoroughEvidence,
+    allowedTools: decision.toolGrant.allowedTools,
+    reasonCodes: decision.reasonCodes,
+    codeIntelligenceToolIds: CODE_INTELLIGENCE_TOOL_IDS,
+  });
+  const canForceTools =
+    runtime.deps.llm.capabilities.supportsForcedToolChoice !== false;
+  const requireSymbolEvidence = shouldRequireDiscoverySymbolEvidence({
+    thorough: thoroughEvidence,
+    allowedTools: decision.toolGrant.allowedTools,
+    reasonCodes: decision.reasonCodes,
+    codeIntelligenceToolIds: CODE_INTELLIGENCE_TOOL_IDS,
+    supportsForcedToolChoice: canForceTools,
+  });
+  if (preferSymbolEvidence && !requireSymbolEvidence) {
+    warnings.push(
+      "Code-intelligence tools are granted but this model cannot force tool_choice=required; discovery will nudge for symbols without failing the quality floor.",
+    );
+  }
   if (canLoop) {
     const grant = createDiscoveryGrant(decision.toolGrant);
     const tools = filterToolDefinitions({
@@ -442,8 +467,12 @@ export async function runDiscoveryPass(
       shapedDiscovery: shapedProfile,
     });
     const qualityFloorNudge = thoroughEvidence
-      ? "Plan quality floor (thorough): before finishing, read at least two concrete source/config files and identify key functions/symbols (document_symbol / goto_definition on entrypoints) plus change surfaces."
+      ? preferSymbolEvidence
+        ? "Plan quality floor (thorough): before finishing, read at least two concrete source/config files, call document_symbol or goto_definition on entrypoints to attach key symbols, and identify change surfaces."
+        : "Plan quality floor (thorough): before finishing, read at least two concrete source/config files and identify key functions/symbols (document_symbol / goto_definition on entrypoints) plus change surfaces."
       : "Plan quality floor: before finishing, read at least one concrete source/config file that discovery identified.";
+    const symbolEvidenceNudge =
+      "Symbol evidence still missing: call document_symbol or goto_definition on an entrypoint already read (or a preferred path) before finishing discovery.";
     const preReadEvidence = formatDiscoveryPreReadEvidence(
       [...preReadByPath.entries()].map(([path, content]) => ({ path, content })),
       {
@@ -461,6 +490,11 @@ export async function runDiscoveryPass(
         preReadEvidence,
         `Contents above were already read for: ${preReadPaths.join(", ")}. Do not call read_file again for those paths unless nextStartLine/uncovered lines are needed. Prefer read_file({ path, startLine: nextStartLine }) for remainder. Continue only if more surfaces are needed.`,
       );
+      if (preferSymbolEvidence) {
+        userParts.push(
+          "Entrypoints above are already read — call document_symbol or goto_definition on them next to name key types/functions.",
+        );
+      }
     } else if (seeds.length > 0) {
       userParts.push(
         `Already pre-read: ${seeds.join(", ")}. Continue only if more surfaces are needed.`,
@@ -476,6 +510,7 @@ export async function runDiscoveryPass(
 
     let turn = 0;
     let qualityFloorNudged = false;
+    let symbolEvidenceNudged = false;
     for (; turn < DISCOVERY_PASS_POLICY.maxModelTurns; turn += 1) {
       if (signal.aborted) {
         stopReason = "aborted";
@@ -485,8 +520,16 @@ export async function runDiscoveryPass(
         stopReason = "budget_exhausted";
         break;
       }
-      const needsForcedTools =
+      const needsFileEvidence =
         qualityFloor && collector.fileReads === 0 && tools.length > 0;
+      const needsSymbolEvidence =
+        qualityFloor &&
+        preferSymbolEvidence &&
+        collector.fileReads > 0 &&
+        !discoveryHasSymbolEvidence(collector) &&
+        tools.length > 0;
+      const needsForcedTools =
+        canForceTools && (needsFileEvidence || needsSymbolEvidence);
       budget.recordModelCall();
       const turnResult = await consumeModelTurn(runtime, {
         llm: runtime.deps.llm,
@@ -505,6 +548,9 @@ export async function runDiscoveryPass(
         runId,
         signal,
         bus,
+        maxReasoningCharsWithoutProgress: resolveReasoningProgressBudget({
+          supportsReasoning: runtime.deps.llm.capabilities.supportsReasoning,
+        }),
       });
       if (turnResult.kind !== "completed") {
         stopReason = turnResult.kind === "cancelled" ? "aborted" : "model_error";
@@ -528,6 +574,25 @@ export async function runDiscoveryPass(
           messages.push({
             role: "user",
             content: qualityFloorNudge,
+          });
+          continue;
+        }
+        if (
+          qualityFloor &&
+          preferSymbolEvidence &&
+          collector.fileReads > 0 &&
+          !discoveryHasSymbolEvidence(collector) &&
+          !symbolEvidenceNudged &&
+          turn + 1 < DISCOVERY_PASS_POLICY.maxModelTurns
+        ) {
+          symbolEvidenceNudged = true;
+          messages.push({
+            role: "assistant",
+            content: turnResult.content,
+          });
+          messages.push({
+            role: "user",
+            content: symbolEvidenceNudge,
           });
           continue;
         }
@@ -676,7 +741,10 @@ export async function runDiscoveryPass(
     }),
   );
   const failed = qualityFloor
-    ? !isPlanDiscoveryEvidenceSufficient(brief, { thorough: thoroughEvidence })
+    ? !isPlanDiscoveryEvidenceSufficient(brief, {
+        thorough: thoroughEvidence,
+        requireSymbolEvidence,
+      })
     : brief.confidence === "low" && brief.proposedChangeSurfaces.length === 0;
   reasonCodes.push(failed ? "discovery_failed" : "discovery_completed");
   runtime.emit(bus, {
@@ -688,6 +756,7 @@ export async function runDiscoveryPass(
     openQuestionCount: brief.openQuestions.length,
     brief,
     stopReason,
+    qualityFloorMet: !failed,
     at: runtime.isoNow(),
   });
   runtime.emitStage(bus, runId, "discovery", "completed", [

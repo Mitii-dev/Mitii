@@ -297,6 +297,20 @@ export async function runStartEarlyPipeline(
     planApproval: input.planApproval,
     hostCapabilities: {
       webSearch: runtime.deps.tools?.hasSearchPort?.() === true,
+      diagnostics: runtime.deps.tools?.hasDiagnosticsPort?.() === true,
+      ...((): {
+        codeNavigation?: "available" | "degraded" | "unavailable";
+        codeNavigationProvider?: "language_server" | "repo_graph" | "none";
+      } => {
+        const capability = runtime.deps.tools?.codeNavigationCapability?.();
+        if (!capability) {
+          return {};
+        }
+        return {
+          codeNavigation: capability.status,
+          codeNavigationProvider: capability.provider,
+        };
+      })(),
     },
     windowPolicy,
     userSafetyRules: input.userSafetyRules,

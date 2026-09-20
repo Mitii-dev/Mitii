@@ -14,6 +14,7 @@ import type {
   RequestUnderstandingResult,
 } from "../../../modules/request-understanding";
 import type { ToolResult } from "../../tool-runtime";
+import { CODE_INTELLIGENCE_TOOL_IDS } from "../../../modules/decision-policy";
 
 import {
   summarizeToolCall,
@@ -102,6 +103,7 @@ export async function runModelLoopToolPhase(params: {
   windowPolicy: WindowPolicy;
   loopFileReads: LoopFileReadTracker;
   mustReadNudgeBudget: { remaining: number };
+  changeImpactNudgeBudget: { remaining: number };
   plan: PlanArtifact | undefined;
   understanding: RequestUnderstandingResult | undefined;
   skillsQuery: string | undefined;
@@ -140,6 +142,7 @@ export async function runModelLoopToolPhase(params: {
     windowPolicy,
     loopFileReads,
     mustReadNudgeBudget,
+    changeImpactNudgeBudget,
     plan,
     understanding,
     skillsQuery,
@@ -407,13 +410,14 @@ export async function runModelLoopToolPhase(params: {
       taskListAutoAdvanceBudget,
       mutatingToolNames: DEFAULT_MUTATING_TOOL_NAMES,
       changeImpactGate,
-    evidence,
-    establishedFacts,
-    windowPolicy: windowPolicy,
-    loopFileReads,
-    mustReadNudgeBudget,
-    plan: plan,
-  });
+      evidence,
+      establishedFacts,
+      windowPolicy: windowPolicy,
+      loopFileReads,
+      mustReadNudgeBudget,
+      changeImpactNudgeBudget,
+      plan: plan,
+    });
 
     if (outcome.kind === "approval_required") {
       const approvalId = runtime.deps.idGenerator.next("appr");
@@ -448,6 +452,20 @@ export async function runModelLoopToolPhase(params: {
       successfulToolCount += 1;
       if (toolCall.name === "emit_review_finding") {
         session.emitReviewFindingCount += 1;
+      }
+      if (
+        toolCall.name === "read_file" ||
+        toolCall.name === "read_many_files"
+      ) {
+        session.fileBodyReadsWithoutCodeIntel += 1;
+      }
+      if (
+        (CODE_INTELLIGENCE_TOOL_IDS as readonly string[]).includes(
+          toolCall.name,
+        )
+      ) {
+        session.codeIntelToolUses += 1;
+        session.fileBodyReadsWithoutCodeIntel = 0;
       }
       if (toolCall.name === "web_search") {
         extraNetworkHosts.push(
@@ -509,7 +527,8 @@ export async function runModelLoopToolPhase(params: {
       result &&
       result.status !== "succeeded" &&
       result.reasonCode !== "approval_required" &&
-      result.reasonCode !== "must_read_incomplete"
+      result.reasonCode !== "must_read_incomplete" &&
+      result.reasonCode !== "change_impact_incomplete"
     ) {
       rejectedMutation = {
         toolName: toolCall.name,

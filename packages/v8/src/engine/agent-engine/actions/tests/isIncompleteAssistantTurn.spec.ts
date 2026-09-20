@@ -17,6 +17,7 @@ import {
   shouldRecoverIncompleteAssistantTurn,
   synthesizeFallbackAnswer,
 } from "../isIncompleteAssistantTurn";
+import { isSyntheticCompletedEditsFallback } from "../resolveLoopTurnOutcome";
 
 describe("isIncompleteAssistantTurn", () => {
   it("detects empty turns", () => {
@@ -364,6 +365,23 @@ describe("isIncompleteAssistantTurn", () => {
         changedFiles: ["testConfig.ts", "Desktop.ts", "package.json"],
       }),
     ).toMatch(/^Workspace edits so far \(3 files\):/);
+  });
+
+  it("user-facing synthetic edits still look incomplete for open checklists", () => {
+    const userAnswer = selectUserFacingLoopAnswer({
+      loopAnswer:
+        "Let me continue investigating the remaining checklist surfaces next.",
+      changedFiles: ["a.ts", "b.ts"],
+    });
+    expect(userAnswer).toMatch(/Workspace edits so far|Let me continue/i);
+    // When selection collapses to a synthetic stub, incomplete_execute must
+    // still see that stub (not the hidden mid-work dump).
+    const facing =
+      selectUserFacingLoopAnswer({
+        loopAnswer: "Workspace edits so far (2 files):\n- a.ts\n- b.ts",
+        changedFiles: ["a.ts", "b.ts"],
+      }) ?? "";
+    expect(isSyntheticCompletedEditsFallback(facing)).toBe(true);
   });
 
   it("recovers empty and transitional finals", () => {

@@ -48,6 +48,12 @@ export type ModelLoopSession = {
   /** Strip tools so the next model turn must answer. */
   awaitingAnswerOnly: boolean;
   mutationBlockerAsked: boolean;
+  /** Successful file-body tool uses since last code-intel tool (or run start). */
+  fileBodyReadsWithoutCodeIntel: number;
+  /** Successful code-intelligence tool uses this run. */
+  codeIntelToolUses: number;
+  /** How many code-intel adoption nudges were already injected. */
+  codeIntelAdoptionNudges: number;
   awaitingRejectedMutationRetry:
     | {
         allowTargetedDiscovery: boolean;

@@ -29,6 +29,7 @@ export interface CreateHostLlmPortsInput {
       | 'supportsVision'
       | 'supportsReasoning'
       | 'supportsPromptCaching'
+      | 'supportsForcedToolChoice'
     >
   >;
   fetchImpl?: typeof fetch;
@@ -55,7 +56,11 @@ export function createHostLlmPorts(
     : (preset?.type ?? 'echo');
   const model = input.model.trim() || preset?.model || 'echo';
   const baseUrl = input.baseUrl?.trim() || preset?.baseUrl || '';
-  const capabilities = input.capabilities;
+  const presetCapabilities = preset?.defaultCapabilities ?? {};
+  const capabilities = {
+    ...presetCapabilities,
+    ...input.capabilities,
+  };
   const shared = {
     model,
     ...(input.apiKey ? { apiKey: input.apiKey } : {}),
