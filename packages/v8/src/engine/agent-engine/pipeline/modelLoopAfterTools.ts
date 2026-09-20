@@ -37,6 +37,13 @@ import type { ModelLoopSession } from "./modelLoopSession";
 import type { ModelLoopStepResult } from "./modelLoopStep";
 import type { ToolPhaseBatchStats } from "./modelLoopToolPhase";
 import { tryOfferBudgetWallContinue } from "./tryOfferBudgetWallContinue";
+import {
+  DIAGNOSE_ANSWER_NUDGE_MESSAGE,
+  primaryToolNameIfUniform,
+  shouldLockDiagnoseAnswer,
+  shouldNudgeDiagnoseAnswer,
+  updateRepeatedReadonlyToolTurns,
+} from "./diagnoseAnswerLock";
 
 export function resolveModelLoopAfterTools(params: {
   runtime: AgentEngineRuntime;
@@ -96,6 +103,69 @@ export function resolveModelLoopAfterTools(params: {
   runtime.emitStage(bus, runId, "tool_running", "completed", [
     "tools_executed",
   ]);
+
+  // Diagnose / ask: break identical-tool thrash (e.g. read_diagnostics loops)
+  // once evidence already exists in the transcript.
+  if (!isMutationRequired() && toolCalls.length > 0) {
+    const uniform = primaryToolNameIfUniform(toolCalls);
+    const next = updateRepeatedReadonlyToolTurns({
+      previousToolName: session.lastUniformToolName,
+      previousCount: session.consecutiveSameToolTurns,
+      turnToolName: uniform,
+    });
+    session.lastUniformToolName = next.toolName;
+    session.consecutiveSameToolTurns = next.count;
+
+    if (
+      shouldNudgeDiagnoseAnswer({
+        mutationRequired: false,
+        consecutiveSameToolTurns: session.consecutiveSameToolTurns,
+        maxRepeatedReadonlyToolTurnsBeforeAnswerNudge:
+          thresholds.maxRepeatedReadonlyToolTurnsBeforeAnswerNudge,
+        diagnoseAnswerNudges: session.diagnoseAnswerNudges,
+        maxDiagnoseAnswerNudges: thresholds.maxDiagnoseAnswerNudges,
+      }) &&
+      budget.canStartModelCall()
+    ) {
+      session.diagnoseAnswerNudges += 1;
+      reasonCodes.push("incomplete_answer_recovered");
+      messages.push({
+        role: "user",
+        content: DIAGNOSE_ANSWER_NUDGE_MESSAGE,
+      });
+      warnings.push(
+        `Repeated ${uniform ?? "tool"} turns without an answer; requesting a final response.`,
+      );
+      session.answer = answer;
+      return { kind: "continue" };
+    }
+
+    if (
+      shouldLockDiagnoseAnswer({
+        mutationRequired: false,
+        consecutiveSameToolTurns: session.consecutiveSameToolTurns,
+        maxRepeatedReadonlyToolTurnsBeforeAnswerNudge:
+          thresholds.maxRepeatedReadonlyToolTurnsBeforeAnswerNudge,
+        diagnoseAnswerNudges: session.diagnoseAnswerNudges,
+        maxDiagnoseAnswerNudges: thresholds.maxDiagnoseAnswerNudges,
+      })
+    ) {
+      session.awaitingAnswerOnly = true;
+      reasonCodes.push("incomplete_answer_recovered");
+      messages.push({
+        role: "user",
+        content: DIAGNOSE_ANSWER_NUDGE_MESSAGE,
+      });
+      warnings.push(
+        "Stripped tools after repeated identical diagnostic turns; next turn must answer.",
+      );
+      session.answer = answer;
+      return { kind: "continue" };
+    }
+  } else if (isMutationRequired() || toolCalls.length === 0) {
+    session.consecutiveSameToolTurns = 0;
+    session.lastUniformToolName = undefined;
+  }
 
   if (
     isMutationRequired() &&
@@ -176,19 +246,22 @@ export function resolveModelLoopAfterTools(params: {
   ) {
     if (session.mutationBlockerAsked) {
       reasonCodes.push("unfulfilled_execute_exhausted");
-      const offered = tryOfferBudgetWallContinue({
-        wallReason: "unfulfilled_execute",
-        messages,
-        toolCache,
-        changedFiles,
-        mutationCheckpointIds,
-        answer,
-        decision,
-        continueOverrideCount: session.continueOverrideCount,
-        maxContinueOverrides: thresholds.maxContinueOverrides,
-        taskList: taskListRef.current,
-        mutationRequired: true,
-      });
+      const offered =
+        session.continueOverrideCount > 0
+          ? undefined
+          : tryOfferBudgetWallContinue({
+              wallReason: "unfulfilled_execute",
+              messages,
+              toolCache,
+              changedFiles,
+              mutationCheckpointIds,
+              answer,
+              decision,
+              continueOverrideCount: session.continueOverrideCount,
+              maxContinueOverrides: thresholds.maxContinueOverrides,
+              taskList: taskListRef.current,
+              mutationRequired: true,
+            });
       if (offered) {
         session.answer = answer;
         return { kind: "return", outcome: offered };
@@ -217,11 +290,16 @@ export function resolveModelLoopAfterTools(params: {
     ) {
       session.readOnlyMutationRetryAttempts += 1;
       reasonCodes.push("unfulfilled_execute_recovered");
+      const evidenceRemaining =
+        session.postNudgeEvidenceReadTurns <
+        thresholds.maxPostNudgeEvidenceReadTurns;
       messages.push({
         role: "user",
-        content:
-          "You read again instead of editing. Prefer apply_patch/delete_file/move_file with a bounded change on your next turn. You may use a few more targeted read_file/read_many_files turns for active-row write/mustRead paths only; broad list/glob/search rediscovery will fail the run. Or stop with a clear blocker.\n\n" +
-          buildUnfulfilledExecuteRecoveryMessage(grant.mutationBudget),
+        content: evidenceRemaining
+          ? "You read again instead of editing. Prefer apply_patch/delete_file/move_file with a bounded change on your next turn. You may use a few more targeted read_file/read_many_files turns for active-row write/mustRead paths only; broad list/glob/search rediscovery will fail the run. Or stop with a clear blocker.\n\n" +
+            buildUnfulfilledExecuteRecoveryMessage(grant.mutationBudget)
+          : "You read again instead of editing. Read tools are now locked. Your next action MUST be apply_patch/delete_file/move_file, or stop with a clear blocker. Do not call read_file, list_directory, glob_files, or search_files.\n\n" +
+            buildUnfulfilledExecuteRecoveryMessage(grant.mutationBudget),
       });
       warnings.push(
         "Model kept reading after the first-mutation nudge; granting another bounded chance before failing the run.",
@@ -536,14 +614,16 @@ export function resolveModelLoopAfterTools(params: {
       warnings.push(
         "Stopped further read-only turns after mutations so verification can use remaining model-call budget.",
       );
+      // Do not invent a "Completed workspace edits" success stub here — that
+      // poisoned BillBuddy 00:33/00:48 answers while checklist/verify remained open.
+      // Leave transitional/empty answers for verificationFinish / selectUserFacing.
       if (
         changedFiles.length > 0 &&
-        (answer.trim().length === 0 || isTransitionalAssistantAnswer(answer))
+        answer.trim().length === 0
       ) {
-        answer = synthesizeFallbackAnswer({
-          priorAnswer: answer,
-          changedFiles,
-        });
+        answer = `Stopping read-only turns to verify remaining work (${changedFiles.length} file${
+          changedFiles.length === 1 ? "" : "s"
+        } changed so far).`;
         reasonCodes.push("incomplete_answer_fallback");
       }
       session.answer = answer;

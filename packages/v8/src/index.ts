@@ -600,6 +600,8 @@ export {
   replaceContextEpoch,
   markContextEpochForReplacement,
   admitContextEpoch,
+  appendMidConversationSystemMessage,
+  observedIdsFromContextEpoch,
   pinBaselineSystemMessage,
   stripMidConversationSystemMessages,
   composeMitiiSystemContext,

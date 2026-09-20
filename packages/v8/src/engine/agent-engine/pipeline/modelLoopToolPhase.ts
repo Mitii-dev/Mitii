@@ -220,7 +220,9 @@ export async function runModelLoopToolPhase(params: {
       !hasBroadDiscovery &&
       session.postNudgeEvidenceReadTurns <
         thresholds.maxPostNudgeEvidenceReadTurns;
-    if (!allowEvidenceRead) {
+    if (workspaceCalls.length === 0) {
+      // update_todos-only: allow without consuming evidence budget.
+    } else if (!allowEvidenceRead) {
       const message =
         "The model tried to read/search again after the required mutation nudge.";
       warnings.push(message);
@@ -238,19 +240,24 @@ export async function runModelLoopToolPhase(params: {
       });
       session.decision = decision;
       session.selectedSkillIds = selectedSkillIds;
-      const offered = tryOfferBudgetWallContinue({
-        wallReason: "unfulfilled_execute",
-        messages,
-        toolCache,
-        changedFiles,
-        mutationCheckpointIds,
-        answer,
-        decision,
-        continueOverrideCount: session.continueOverrideCount,
-        maxContinueOverrides: thresholds.maxContinueOverrides,
-        taskList: taskListRef.current,
-        mutationRequired: true,
-      });
+      // After an approved Continue (overrideCount > 0), do not re-open the
+      // stall UI — the user already chose to finish with a mutation.
+      const offered =
+        session.continueOverrideCount > 0
+          ? undefined
+          : tryOfferBudgetWallContinue({
+              wallReason: "unfulfilled_execute",
+              messages,
+              toolCache,
+              changedFiles,
+              mutationCheckpointIds,
+              answer,
+              decision,
+              continueOverrideCount: session.continueOverrideCount,
+              maxContinueOverrides: thresholds.maxContinueOverrides,
+              taskList: taskListRef.current,
+              mutationRequired: true,
+            });
       if (offered) {
         return { kind: "return", outcome: offered };
       }
@@ -268,9 +275,10 @@ export async function runModelLoopToolPhase(params: {
           },
         },
       };
+    } else {
+      // Allow a few targeted evidence-read batches after the nudge; then lock.
+      session.postNudgeEvidenceReadTurns += 1;
     }
-    // Allow a few targeted evidence-read batches after the nudge; then fail.
-    session.postNudgeEvidenceReadTurns += 1;
   }
   if (needsWorkspaceTools && !runtime.deps.tools) {
     session.decision = decision;

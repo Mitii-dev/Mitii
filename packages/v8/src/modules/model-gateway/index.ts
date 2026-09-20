@@ -48,6 +48,7 @@ export { ModelCapabilityResolver } from "./ModelCapabilityResolver";
 export {
   EchoLlmPort,
   OpenAiCompatibleLlmPort,
+  projectOpenAiCompatibleMessages,
   AnthropicLlmPort,
   GeminiLlmPort,
 } from "./adapters";

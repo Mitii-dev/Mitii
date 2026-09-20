@@ -1,0 +1,81 @@
+import type { ModelToolDefinition } from "../../../modules/model-gateway";
+
+import { isUpdateTodosTool } from "../internal/updateTodosRuntime";
+import { DEFAULT_MUTATING_TOOL_NAMES } from "./executeToolSupport";
+
+/** Broad rediscovery — blocked while mutation discipline is active. */
+export const MUTATION_LOCK_BROAD_DISCOVERY_TOOLS = new Set([
+  "list_directory",
+  "directory_tree",
+  "glob_files",
+  "search_files",
+  "run_readonly_command",
+  "read_git_status",
+  "read_git_log",
+  "read_git_show",
+  "read_git_branches",
+  "file_metadata",
+  "document_symbol",
+  "workspace_symbol",
+]);
+
+/** Targeted evidence reads — kept available; turn caps enforce the budget. */
+export const MUTATION_LOCK_EVIDENCE_READ_TOOLS = new Set([
+  "read_file",
+  "read_many_files",
+  "read_diagnostics",
+]);
+
+/**
+ * While awaiting the first mutation, strip broad discovery tools so the model
+ * cannot restart exploration. Keep apply_patch* and targeted read_file so a
+ * missing write-path can still be loaded before the patch (BillBuddy 22:38).
+ */
+export function filterToolsForMutationLock(
+  tools: readonly ModelToolDefinition[] | undefined,
+): ModelToolDefinition[] | undefined {
+  if (!tools || tools.length === 0) {
+    return tools as ModelToolDefinition[] | undefined;
+  }
+  const filtered = tools.filter(
+    (tool) =>
+      DEFAULT_MUTATING_TOOL_NAMES.has(tool.name) ||
+      isUpdateTodosTool(tool.name) ||
+      MUTATION_LOCK_EVIDENCE_READ_TOOLS.has(tool.name) ||
+      !MUTATION_LOCK_BROAD_DISCOVERY_TOOLS.has(tool.name),
+  );
+  // Prefer an explicit allow-list when the catalog is large (MCP noise).
+  const preferred = tools.filter(
+    (tool) =>
+      DEFAULT_MUTATING_TOOL_NAMES.has(tool.name) ||
+      isUpdateTodosTool(tool.name) ||
+      MUTATION_LOCK_EVIDENCE_READ_TOOLS.has(tool.name),
+  );
+  if (preferred.length > 0) {
+    return preferred;
+  }
+  return filtered.length > 0 ? filtered : (tools as ModelToolDefinition[]);
+}
+
+/**
+ * True when the loop should advertise the mutation-discipline tool set
+ * (no broad rediscovery). Evidence-read turn caps are enforced separately.
+ */
+export function isMutationLocked(params: {
+  awaitingReadOnlyMutationRetry: boolean;
+  postNudgeEvidenceReadTurns: number;
+  maxPostNudgeEvidenceReadTurns: number;
+}): boolean {
+  return params.awaitingReadOnlyMutationRetry === true;
+}
+
+/** Evidence budget remaining after the mutation nudge / Continue. */
+export function remainingPostNudgeEvidenceReads(params: {
+  postNudgeEvidenceReadTurns: number;
+  maxPostNudgeEvidenceReadTurns: number;
+}): number {
+  return Math.max(
+    0,
+    params.maxPostNudgeEvidenceReadTurns - params.postNudgeEvidenceReadTurns,
+  );
+}

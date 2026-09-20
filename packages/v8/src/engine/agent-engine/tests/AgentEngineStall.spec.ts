@@ -396,6 +396,305 @@ describe("AgentEnginePipeline stall and read dedup", () => {
     expect(result.answer ?? "").not.toContain("Should not be reached");
   });
 
+  it("Continue after unfulfilled execute patches without further reads (BillBuddy 21:10)", async () => {
+    const deps = createStubDependencies({
+      decision: createDecision({
+        route: "execute",
+        toolGrant: createReadOnlyGrant({
+          maximumWorkspaceEffect: "write",
+          allowedTools: ["read_file", "apply_patch"],
+          allowedEffects: ["workspace_read", "workspace_write"],
+          approvalMode: "never",
+        }),
+        reasonCodes: ["mutation_execute"],
+      }),
+      llm: new ScriptedLlmPort(
+        [
+          // 4 reads → first-mutation nudge; 2 evidence reads; 1 locked read → Continue.
+          ...Array.from({ length: 4 }, (_, index) => ({
+            toolCalls: [
+              readPathCall(`call_read_${index}`, `src/file-${index}.ts`),
+            ],
+          })),
+          {
+            content: "One more evidence read.",
+            toolCalls: [readPathCall("call_evidence_1", "src/final.ts")],
+          },
+          {
+            content: "Second evidence read.",
+            toolCalls: [readPathCall("call_evidence_2", "src/final-2.ts")],
+          },
+          {
+            content: "Still reading after evidence budget.",
+            toolCalls: [readPathCall("call_locked_read", "src/final-3.ts")],
+          },
+          // Resume after Continue: mutation lock — patch immediately.
+          {
+            content: "Applying the fix now.",
+            toolCalls: [patchCall("call_patch_after_continue")],
+          },
+          { content: "Done after Continue." },
+        ],
+        stallCapabilities({ supportsTools: true }),
+      ),
+    });
+
+    const originalExecute = deps.tools!.execute.bind(deps.tools);
+    deps.tools = {
+      ...deps.tools!,
+      execute: async (input, options) => {
+        if (input.toolName === "apply_patch") {
+          return {
+            schemaVersion: TOOL_RUNTIME_SCHEMA_VERSION,
+            callId: input.callId,
+            toolName: input.toolName,
+            status: "succeeded",
+            truncated: false,
+            redacted: false,
+            durationMs: 1,
+            bytesProduced: 24,
+            warnings: [],
+            output: {
+              checkpointId: "ckpt_after_continue",
+              changedFiles: ["src/form.ts"],
+            },
+            audit: {
+              callId: input.callId,
+              toolName: input.toolName,
+              startedAt: "2026-07-25T12:00:00.000Z",
+              endedAt: "2026-07-25T12:00:00.001Z",
+              status: "succeeded",
+              inputPreview: "{}",
+              outputPreview: "{}",
+              bytesProduced: 24,
+              durationMs: 1,
+              truncated: false,
+              redacted: false,
+            },
+          } satisfies ToolResult;
+        }
+        return originalExecute(input, options);
+      },
+    };
+
+    const engine = new AgentEnginePipeline(deps);
+    const suspended = await engine.start(
+      agentEngineStartInputSchema.parse({
+        schemaVersion: 1,
+        request: {
+          sessionId: "sess_continue_force_mutation",
+          mode: "agent",
+          userMessage: "Fix all TypeScript errors",
+          workspace: { workspaceId: "ws_1" },
+        },
+        workspaceRoot: "/workspace",
+      }),
+    ).result;
+
+    expect(suspended.status).toBe("suspended");
+    expect(suspended.suspension?.kind).toBe("continue_required");
+
+    const resumed = await engine.resume({
+      schemaVersion: 1,
+      runId: suspended.runId,
+      continueDecision: { decision: "continue" },
+    }).result;
+
+    expect(resumed.status).toBe("completed");
+    expect(resumed.reasonCodes).toContain("stall_continue_approved");
+    expect(resumed.reasonCodes).toContain("mutation_applied");
+  });
+
+  it("Continue after unfulfilled execute rejects reads after two evidence shots", async () => {
+    const deps = createStubDependencies({
+      decision: createDecision({
+        route: "execute",
+        toolGrant: createReadOnlyGrant({
+          maximumWorkspaceEffect: "write",
+          allowedTools: ["read_file", "apply_patch"],
+          allowedEffects: ["workspace_read", "workspace_write"],
+          approvalMode: "never",
+        }),
+        reasonCodes: ["mutation_execute"],
+      }),
+      llm: new ScriptedLlmPort(
+        [
+          ...Array.from({ length: 4 }, (_, index) => ({
+            toolCalls: [
+              readPathCall(`call_read_${index}`, `src/file-${index}.ts`),
+            ],
+          })),
+          {
+            content: "One more evidence read.",
+            toolCalls: [readPathCall("call_evidence_1", "src/final.ts")],
+          },
+          {
+            content: "Second evidence read.",
+            toolCalls: [readPathCall("call_evidence_2", "src/final-2.ts")],
+          },
+          {
+            content: "Still reading after evidence budget.",
+            toolCalls: [readPathCall("call_locked_read", "src/final-3.ts")],
+          },
+          // Resume: two targeted evidence reads are allowed…
+          {
+            content: "Loading write path after Continue (1/2).",
+            toolCalls: [readPathCall("call_read_after_continue_1", "src/form.ts")],
+          },
+          {
+            content: "Loading related mustRead after Continue (2/2).",
+            toolCalls: [readPathCall("call_read_after_continue_2", "src/form2.ts")],
+          },
+          // …but a third read without patching fails closed.
+          {
+            content: "Still reading instead of patching.",
+            toolCalls: [readPathCall("call_read_after_continue_3", "src/nope.ts")],
+          },
+          { content: "Should not be reached after locked Continue." },
+        ],
+        stallCapabilities({ supportsTools: true }),
+      ),
+    });
+
+    const engine = new AgentEnginePipeline(deps);
+    const suspended = await engine.start(
+      agentEngineStartInputSchema.parse({
+        schemaVersion: 1,
+        request: {
+          sessionId: "sess_continue_rejects_read",
+          mode: "agent",
+          userMessage: "Fix all TypeScript errors",
+          workspace: { workspaceId: "ws_1" },
+        },
+        workspaceRoot: "/workspace",
+      }),
+    ).result;
+
+    expect(suspended.status).toBe("suspended");
+
+    const resumed = await engine.resume({
+      schemaVersion: 1,
+      runId: suspended.runId,
+      continueDecision: { decision: "continue" },
+    }).result;
+
+    expect(resumed.status).toBe("failed");
+    expect(resumed.error?.code).toBe("no_mutation_performed");
+    expect(resumed.reasonCodes).toContain("stall_continue_approved");
+    expect(resumed.reasonCodes).toContain("stall_continue_override_capped");
+    expect(resumed.answer ?? "").not.toContain("Should not be reached");
+  });
+
+  it("Continue allows one targeted read then a patch (BillBuddy 22:38)", async () => {
+    const deps = createStubDependencies({
+      decision: createDecision({
+        route: "execute",
+        toolGrant: createReadOnlyGrant({
+          maximumWorkspaceEffect: "write",
+          allowedTools: ["read_file", "apply_patch"],
+          allowedEffects: ["workspace_read", "workspace_write"],
+          approvalMode: "never",
+        }),
+        reasonCodes: ["mutation_execute"],
+      }),
+      llm: new ScriptedLlmPort(
+        [
+          ...Array.from({ length: 4 }, (_, index) => ({
+            toolCalls: [
+              readPathCall(`call_read_${index}`, `src/file-${index}.ts`),
+            ],
+          })),
+          {
+            content: "One more evidence read.",
+            toolCalls: [readPathCall("call_evidence_1", "src/final.ts")],
+          },
+          {
+            content: "Second evidence read.",
+            toolCalls: [readPathCall("call_evidence_2", "src/final-2.ts")],
+          },
+          {
+            content: "Still reading after evidence budget.",
+            toolCalls: [readPathCall("call_locked_read", "src/final-3.ts")],
+          },
+          {
+            content: "Reading the write path after Continue.",
+            toolCalls: [readPathCall("call_nav_read", "src/form.ts")],
+          },
+          {
+            content: "Applying the fix now.",
+            toolCalls: [patchCall("call_patch_after_targeted_read")],
+          },
+          { content: "Done after targeted read." },
+        ],
+        stallCapabilities({ supportsTools: true }),
+      ),
+    });
+
+    const originalExecute = deps.tools!.execute.bind(deps.tools);
+    deps.tools = {
+      ...deps.tools!,
+      execute: async (input, options) => {
+        if (input.toolName === "apply_patch") {
+          return {
+            schemaVersion: TOOL_RUNTIME_SCHEMA_VERSION,
+            callId: input.callId,
+            toolName: input.toolName,
+            status: "succeeded",
+            truncated: false,
+            redacted: false,
+            durationMs: 1,
+            bytesProduced: 24,
+            warnings: [],
+            output: {
+              checkpointId: "ckpt_after_targeted",
+              changedFiles: ["src/form.ts"],
+            },
+            audit: {
+              callId: input.callId,
+              toolName: input.toolName,
+              startedAt: "2026-07-25T12:00:00.000Z",
+              endedAt: "2026-07-25T12:00:00.001Z",
+              status: "succeeded",
+              inputPreview: "{}",
+              outputPreview: "{}",
+              bytesProduced: 24,
+              durationMs: 1,
+              truncated: false,
+              redacted: false,
+            },
+          } satisfies ToolResult;
+        }
+        return originalExecute(input, options);
+      },
+    };
+
+    const engine = new AgentEnginePipeline(deps);
+    const suspended = await engine.start(
+      agentEngineStartInputSchema.parse({
+        schemaVersion: 1,
+        request: {
+          sessionId: "sess_continue_targeted_read_patch",
+          mode: "agent",
+          userMessage: "Fix all TypeScript errors",
+          workspace: { workspaceId: "ws_1" },
+        },
+        workspaceRoot: "/workspace",
+      }),
+    ).result;
+
+    expect(suspended.status).toBe("suspended");
+
+    const resumed = await engine.resume({
+      schemaVersion: 1,
+      runId: suspended.runId,
+      continueDecision: { decision: "continue" },
+    }).result;
+
+    expect(resumed.status).toBe("completed");
+    expect(resumed.reasonCodes).toContain("stall_continue_approved");
+    expect(resumed.reasonCodes).toContain("mutation_applied");
+  });
+
   it("suspends with continue_required when a clear blocker arrives with no mutations", async () => {
     const deps = createStubDependencies({
       decision: createDecision({

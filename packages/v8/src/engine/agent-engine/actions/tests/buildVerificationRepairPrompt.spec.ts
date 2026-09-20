@@ -44,11 +44,49 @@ describe("buildVerificationRepairPrompt", () => {
     });
 
     expect(prompt).toContain("Call apply_patch now");
-    expect(prompt).toContain("Group remaining errors by code");
+    expect(prompt).toContain("Group by code/message");
+    expect(prompt).toContain("Do not call glob_files");
     expect(prompt).not.toContain("one repair attempt");
     expect(prompt).toContain("src/a.ts:1");
     expect(prompt).toContain("Expected x to be 3.");
     expect(prompt).not.toContain("full dump");
+  });
+
+  it("falls back to failed-check summaries when diagnostics are empty", () => {
+    const prompt = buildVerificationRepairPrompt({
+      changedFiles: ["src/a.ts"],
+      verification: {
+        schemaVersion: VERIFICATION_SCHEMA_VERSION,
+        status: "verification_failed",
+        stateToken: "tok",
+        affectedProjectIds: [],
+        checks: [
+          {
+            checkId: "workspace-root:typecheck:tsc",
+            kind: "typecheck",
+            projectId: "workspace-root",
+            label: "npx tsc --noEmit (workspace-root)",
+            argv: ["npx", "tsc", "--noEmit"],
+            evidenceSource: "script",
+            outcome: "failed",
+            summary: "npx tsc --noEmit (workspace-root) failed (exit 1).",
+          },
+        ],
+        diagnostics: [],
+        diff: {
+          reviewed: true,
+          staleStateRisk: false,
+          summary: "reviewed",
+          changedPaths: ["src/a.ts"],
+        },
+        warnings: [],
+        reasonCodes: ["checks_failed"],
+        durationMs: 1,
+      },
+    });
+    expect(prompt).toContain("Failed checks");
+    expect(prompt).toContain("workspace-root:typecheck:tsc");
+    expect(prompt).toContain("Do not call glob_files");
   });
 
   it("defers batch caps to the live working set", () => {

@@ -18,7 +18,7 @@ export function upsertTrailingWorkingSet(
 ): void {
   const content =
     serializeRecoverabilityWorkingSet(input ?? {}) ??
-    serializeMinimalWorkingSet();
+    serializeMinimalWorkingSet(input?.mutationLocked === true);
   const existing = messages.findIndex(
     (message) =>
       message.role === "user" && message.content.includes(WORKING_SET_MARKER),
@@ -30,13 +30,15 @@ export function upsertTrailingWorkingSet(
   messages.push(next);
 }
 
-function serializeMinimalWorkingSet(): string {
+function serializeMinimalWorkingSet(mutationLocked: boolean): string {
   return [
     WORKING_SET_MARKER,
     "Live execution state for this turn. Prefer this over dropped tool history.",
     "",
     "## Checklist",
-    "No live checklist yet. If this is a multi-step run, after the first read/diagnose tool turn call update_todos with type=replace. Each title must name a concrete file, failure, or user-visible behavior.",
+    mutationLocked
+      ? "Mutation required now. Prefer apply_patch/delete_file/move_file. Up to five targeted read_file batches of write/mustRead paths are allowed if contents are missing; then patch immediately. No list/glob/search."
+      : "No live checklist yet. If this is a multi-step run, after the first read/diagnose tool turn call update_todos with type=replace. Each title must name a concrete file, failure, or user-visible behavior.",
     "</working_set>",
   ].join("\n");
 }

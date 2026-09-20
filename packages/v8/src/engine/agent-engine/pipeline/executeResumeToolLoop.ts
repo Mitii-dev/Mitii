@@ -26,6 +26,8 @@ import { DEFAULT_TOOL_DEFINITIONS } from "../policy";
 import { resolveLoopPolicyThresholds } from "../actions/resolveLoopPolicyThresholds";
 import { resolveSteeringFeatureFlags } from "../steeringFlags";
 
+import { observedIdsFromContextEpoch } from "../internal/context-epoch";
+
 import type { AgentEngineRuntime } from "./runtime";
 import { runModelToolLoop } from "./modelToolLoop";
 import { finishAfterLoop } from "./verification";
@@ -143,6 +145,10 @@ export async function resumeToolLoopFromCheckpoint(
     toolGrant.mutationBudget,
   );
 
+  // Resume often omits skill/env/memory params; restore IDs from the frozen
+  // epoch so Continue does not admit a spurious "(none)" mid-update.
+  const epochObserved = observedIdsFromContextEpoch(checkpoint.contextEpoch);
+
   const loopOutcome = await runModelToolLoop(runtime, {
     runId,
     request: {
@@ -168,6 +174,10 @@ export async function resumeToolLoopFromCheckpoint(
     mutationCheckpointIds,
     taskListRef,
     establishedFacts,
+    selectedSkillIds: epochObserved.skillIds,
+    projectRuleIds: epochObserved.ruleIds,
+    environmentIds: epochObserved.environmentIds,
+    memoryFacts: epochObserved.memoryIds.map((id) => ({ id, content: "" })),
     windowPolicy,
     repoBuildStateBefore: checkpoint.repoBuildStateBefore,
     logVerbosity: startInput.logVerbosity,

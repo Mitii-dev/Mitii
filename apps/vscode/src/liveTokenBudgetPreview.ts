@@ -100,10 +100,11 @@ export const DEFAULT_WINDOW_BUDGET_NUMBERS: Record<string, number> = {
  */
 const WINDOW_BUDGET_BAND_OVERLAYS: Record<string, Record<string, number>> = {
   compact: {
-    maxUniqueFilesPerCallCap: 6,
-    outputMinTokens: 5120,
-    outputRatio: 0.3,
-    outputWindowCapRatio: 0.3,
+    maxUniqueFilesPerCallCap: 8,
+    outputMinTokens: 2_048,
+    outputRatio: 0.12,
+    outputWindowCapRatio: 0.12,
+    filesPerOutputTokens: 450,
     repositoryShare: 0.26,
     conversationShare: 0.4,
     planShare: 0.06,

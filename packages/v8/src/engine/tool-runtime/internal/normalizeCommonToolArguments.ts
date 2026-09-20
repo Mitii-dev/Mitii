@@ -38,7 +38,43 @@ export function normalizeCommonToolArguments(
     return normalizeReadGitShowArguments(value as Record<string, unknown>);
   }
 
+  if (toolName === "read_diagnostics") {
+    return normalizeReadDiagnosticsArguments(value as Record<string, unknown>);
+  }
+
   return value;
+}
+
+/**
+ * Models often send `path: "file.ts"` (singular) instead of `paths: [...]`.
+ * Map common aliases onto the real schema before strict Zod validation.
+ */
+function normalizeReadDiagnosticsArguments(
+  raw: Record<string, unknown>,
+): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...raw };
+  const hasPaths =
+    Array.isArray(next.paths) &&
+    next.paths.some((entry) => typeof entry === "string" && entry.length > 0);
+
+  if (!hasPaths) {
+    const singular =
+      typeof next.path === "string" && next.path.length > 0
+        ? next.path
+        : typeof next.file === "string" && next.file.length > 0
+          ? next.file
+          : undefined;
+    if (singular) {
+      next.paths = [singular];
+    } else if (typeof next.path === "string" && next.path.length === 0) {
+      // empty path → workspace-wide (omit paths)
+      delete next.paths;
+    }
+  }
+
+  delete next.path;
+  delete next.file;
+  return next;
 }
 
 function normalizeEmitReviewFindingArguments(

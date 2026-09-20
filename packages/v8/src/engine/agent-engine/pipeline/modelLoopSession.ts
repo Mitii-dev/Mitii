@@ -37,6 +37,15 @@ export type ModelLoopSession = {
   readOnlyMutationRetryAttempts: number;
   /** Count of allowed evidence-read batches after the mutation nudge. */
   postNudgeEvidenceReadTurns: number;
+  /**
+   * Diagnose/ask: consecutive turns that only invoked the same tool name
+   * (e.g. read_diagnostics thrash).
+   */
+  consecutiveSameToolTurns: number;
+  lastUniformToolName: string | undefined;
+  diagnoseAnswerNudges: number;
+  /** Strip tools so the next model turn must answer. */
+  awaitingAnswerOnly: boolean;
   mutationBlockerAsked: boolean;
   awaitingRejectedMutationRetry:
     | {

@@ -207,6 +207,17 @@ describe("ToolRuntimePipeline", () => {
     });
     expect(diags.status).toBe("succeeded");
 
+    const diagsPathAlias = await runtime.execute({
+      schemaVersion: 1,
+      callId: "d1-alias",
+      toolName: "read_diagnostics",
+      arguments: { path: "src/util.ts" },
+      grant,
+      workspaceRoot: WORKSPACE,
+    });
+    expect(diagsPathAlias.status).toBe("succeeded");
+    expect(diagsPathAlias.reasonCode).not.toBe("invalid_arguments");
+
     const missingPathDiags = await runtime.execute({
       schemaVersion: 1,
       callId: "d2",

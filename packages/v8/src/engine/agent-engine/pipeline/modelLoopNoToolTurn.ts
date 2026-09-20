@@ -15,7 +15,10 @@ import {
   compactRecoveredAssistantContent,
   isClearMutationBlocker,
   isEmptyAssistantTurn,
+  isMidWorkAnalysisDump,
+  isPrematurePartialExecuteStop,
   isTransitionalAssistantAnswer,
+  isUnfinishedInvestigationAnswer,
   requiresMutationForExecute,
   requiresStructuredReviewFindings,
   resolveLoopTurnOutcome,
@@ -33,7 +36,10 @@ import { appendTextContinuation } from "./appendTextContinuation";
 import type { ModelLoopSession } from "./modelLoopSession";
 import type { ModelLoopStepResult } from "./modelLoopStep";
 import { tryOfferBudgetWallContinue } from "./tryOfferBudgetWallContinue";
-import type { TaskListRef } from "../internal/taskListRuntime";
+import {
+  hasIncompleteChangeSurfaces,
+  type TaskListRef,
+} from "../internal/taskListRuntime";
 
 export function handleNoToolModelTurn(params: {
   runtime: AgentEngineRuntime;
@@ -91,10 +97,23 @@ export function handleNoToolModelTurn(params: {
         ? `${turnContent}\n\n…(output truncated — token limit reached)`
         : turnContent;
       if (pendingTextContinuation.length > 0) {
-        answer = appendTextContinuation(
-          pendingTextContinuation,
-          turnAnswer,
-        );
+        const pendingIsPoison =
+          isMidWorkAnalysisDump(pendingTextContinuation) ||
+          isUnfinishedInvestigationAnswer(pendingTextContinuation) ||
+          isTransitionalAssistantAnswer(pendingTextContinuation);
+        const turnIsCleanAnswer =
+          !shouldRecoverIncompleteAssistantTurn({
+            content: turnAnswer,
+            toolCallCount: 0,
+            changedFileCount: changedFiles.length,
+            fileReadCalls: budget.snapshot().fileReadCalls,
+          });
+        // BillBuddy 23:45: a later clean final answer must replace a poisoned
+        // reasoning-burn continuation instead of appending under it.
+        answer =
+          pendingIsPoison && turnIsCleanAnswer
+            ? turnAnswer
+            : appendTextContinuation(pendingTextContinuation, turnAnswer);
         if (!truncated) {
           pendingTextContinuation = "";
         }
@@ -342,7 +361,96 @@ export function handleNoToolModelTurn(params: {
           },
         },
       };
-    } else if (
+    }
+
+    // BillBuddy 00:13: first patch batch + empty/mid-work stop while the
+    // checklist still has open change surfaces must continue mutating.
+    const prematurePartialStop = isPrematurePartialExecuteStop({
+      mutationRequired,
+      hasIncompleteChangeSurfaces: hasIncompleteChangeSurfaces(
+        taskListRef?.current,
+      ),
+      content: turnContent || answer,
+      changedFileCount: changedFiles.length,
+    });
+    if (
+      prematurePartialStop &&
+      unfulfilledExecuteRecoveries <
+        thresholds.maxUnfulfilledExecuteRecoveries &&
+      budget.canStartModelCall()
+    ) {
+      unfulfilledExecuteRecoveries += 1;
+      reasonCodes.push("unfulfilled_execute_recovered");
+      if (turnContent.trim().length > 0) {
+        messages.push({
+          role: "assistant",
+          content: compactRecoveredAssistantContent(
+            turnContent,
+            thresholds.maxRecoveredAnalysisChars,
+          ),
+        });
+      }
+      messages.push({
+        role: "user",
+        content: [
+          "Change checklist surfaces are still open after the last patch batch.",
+          "Do not stop with analysis-only text or an empty turn.",
+          "Call apply_patch/delete_file/move_file for the next checklist surface now.",
+          "Targeted read_file of an active write/mustRead path is allowed only if required for an exact patch.",
+          "Or stop with a clear blocker naming what is missing.",
+        ].join(" "),
+      });
+      warnings.push(
+        "Execute stopped after partial edits while checklist surfaces remain open; requesting the next mutation batch.",
+      );
+      session.awaitingReadOnlyMutationRetry = true;
+      session.answer = answer;
+      session.pendingTextContinuation = pendingTextContinuation;
+      session.incompleteAnswerRecoveries = incompleteAnswerRecoveries;
+      session.unfulfilledExecuteRecoveries = unfulfilledExecuteRecoveries;
+      session.structuredReviewRecoveries = structuredReviewRecoveries;
+      return { kind: "continue" };
+    }
+    if (prematurePartialStop) {
+      reasonCodes.push("incomplete_execute");
+      const offered = tryOfferBudgetWallContinue({
+        wallReason: "incomplete_checklist",
+        messages,
+        toolCache,
+        changedFiles,
+        mutationCheckpointIds,
+        answer,
+        decision,
+        continueOverrideCount: session.continueOverrideCount,
+        maxContinueOverrides: thresholds.maxContinueOverrides,
+        taskList: taskListRef?.current,
+        mutationRequired: true,
+      });
+      session.answer = answer;
+      session.pendingTextContinuation = pendingTextContinuation;
+      session.incompleteAnswerRecoveries = incompleteAnswerRecoveries;
+      session.unfulfilledExecuteRecoveries = unfulfilledExecuteRecoveries;
+      session.structuredReviewRecoveries = structuredReviewRecoveries;
+      if (offered) {
+        return { kind: "return", outcome: offered };
+      }
+      reasonCodes.push("stall_continue_override_capped");
+      return {
+        kind: "return",
+        outcome: {
+          kind: "failed",
+          answer: answer || undefined,
+          extraReasons: ["incomplete_execute"],
+          error: {
+            code: "incomplete_execute",
+            message:
+              "The execute run stopped after partial edits while change checklist surfaces were still open.",
+          },
+        },
+      };
+    }
+
+    if (
       (incompleteAssistantTurn ||
         loopOutcome.disposition === "recover_incomplete_narration") &&
       incompleteAnswerRecoveries <

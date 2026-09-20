@@ -85,6 +85,8 @@ export function prepareModelLoopTurn(params: {
   projectRuleIds?: readonly string[];
   environmentIds?: readonly string[];
   memoryIds?: readonly string[];
+  /** When true, working-set copy demands an immediate mutation. */
+  mutationLocked?: boolean;
 }): PrepareModelLoopTurnResult {
   const {
     runtime,
@@ -231,6 +233,7 @@ export function prepareModelLoopTurn(params: {
   upsertTrailingWorkingSet(messages, {
     taskList: params.taskListRef.current,
     mutationBudget: params.mutationBudget,
+    mutationLocked: params.mutationLocked === true,
     preflightDiagnostics: buildPreflightDiagnosticRepairInstruction({
       diagnostics: params.repoBuildStateBefore?.diagnostics ?? [],
       totalErrorCount: params.repoBuildStateBefore?.summary.errorCount ?? 0,

@@ -19,7 +19,13 @@ export const readDiagnosticsTool: RegisteredTool = {
         paths: {
           type: "array",
           items: { type: "string" },
-          description: "Optional relative paths to filter diagnostics.",
+          description:
+            "Optional relative paths to filter diagnostics. Prefer this array form.",
+        },
+        path: {
+          type: "string",
+          description:
+            "Optional single relative path (alias for paths: [path]).",
         },
       },
     },

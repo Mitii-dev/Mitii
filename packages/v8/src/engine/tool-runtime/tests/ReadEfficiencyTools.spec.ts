@@ -267,6 +267,7 @@ describe("model tool definition single source", () => {
       type: "object",
       properties: {
         paths: { type: "array" },
+        path: { type: "string" },
       },
     });
 

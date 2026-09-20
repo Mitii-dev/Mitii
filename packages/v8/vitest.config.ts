@@ -41,6 +41,7 @@ export default defineConfig({
       'src/modules/model-gateway/tests/OpenAiCompatibleRetry.spec.ts',
       'src/modules/model-gateway/tests/AnthropicLlmPort.spec.ts',
       'src/modules/model-gateway/tests/GeminiLlmPort.spec.ts',
+      'src/modules/model-gateway/tests/projectOpenAiCompatibleMessages.spec.ts',
     ],
   },
 });

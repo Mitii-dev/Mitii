@@ -351,7 +351,7 @@ export class MutationTransactionRegistry {
       await params.fileSystem.lstat(toContained.absolutePath);
       throw new MutationError(
         "invalid_arguments",
-        `Destination already exists: "${toPath}".`,
+        `Destination already exists: "${toPath}". Call delete_file on the destination first, or choose a different to path.`,
       );
     } catch (error) {
       if (error instanceof MutationError) {

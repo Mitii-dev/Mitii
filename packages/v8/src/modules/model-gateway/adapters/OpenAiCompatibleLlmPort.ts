@@ -283,8 +283,8 @@ export class OpenAiCompatibleLlmPort implements LlmPort {
   ): Record<string, unknown> {
     const body: Record<string, unknown> = {
       model: request.model ?? this.config.model,
-      messages: request.messages.map((message) =>
-        this.formatMessage(message),
+      messages: projectOpenAiCompatibleMessages(request.messages).map(
+        (message) => this.formatMessage(message),
       ),
       temperature:
         request.temperature ?? MODEL_GATEWAY_DEFAULTS.TEMPERATURE,
@@ -631,4 +631,26 @@ export class OpenAiCompatibleLlmPort implements LlmPort {
       modelId: this.config.model,
     });
   }
+}
+
+/**
+ * OpenAI-compatible chat APIs require system messages only at the start of
+ * the conversation. Project any later `system` turns to `user` so mid-epoch
+ * updates (and legacy checkpoints) never trigger
+ * "system message must be at the beginning".
+ */
+export function projectOpenAiCompatibleMessages(
+  messages: readonly ModelMessage[],
+): ModelMessage[] {
+  let seenNonSystem = false;
+  return messages.map((message) => {
+    if (message.role !== "system") {
+      seenNonSystem = true;
+      return message;
+    }
+    if (!seenNonSystem) {
+      return message;
+    }
+    return { ...message, role: "user" as const };
+  });
 }

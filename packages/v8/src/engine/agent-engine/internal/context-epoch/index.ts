@@ -23,6 +23,7 @@ export {
   admitContextEpoch,
   appendMidConversationSystemMessage,
   baselinePrefixMatches,
+  observedIdsFromContextEpoch,
   pinBaselineSystemMessage,
   stripMidConversationSystemMessages,
   type AdmitContextEpochInput,

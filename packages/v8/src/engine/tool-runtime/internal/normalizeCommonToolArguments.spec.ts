@@ -84,6 +84,26 @@ describe("normalizeCommonToolArguments", () => {
       }),
     ).toEqual({ revision: "HEAD~1", path: "a.ts" });
   });
+
+  it("maps read_diagnostics path → paths and drops singular aliases", () => {
+    expect(
+      normalizeCommonToolArguments("read_diagnostics", {
+        path: "test/Desktop/pages/NavigationPage.ts",
+      }),
+    ).toEqual({ paths: ["test/Desktop/pages/NavigationPage.ts"] });
+    expect(
+      normalizeCommonToolArguments("read_diagnostics", {
+        file: "src/a.ts",
+      }),
+    ).toEqual({ paths: ["src/a.ts"] });
+    expect(
+      normalizeCommonToolArguments("read_diagnostics", {
+        paths: ["src/a.ts"],
+        path: "ignored.ts",
+      }),
+    ).toEqual({ paths: ["src/a.ts"] });
+    expect(normalizeCommonToolArguments("read_diagnostics", {})).toEqual({});
+  });
 });
 
 describe("coerceArgumentsToSchema numbers", () => {

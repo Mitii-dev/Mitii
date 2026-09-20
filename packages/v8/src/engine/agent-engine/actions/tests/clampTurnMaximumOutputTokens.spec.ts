@@ -34,7 +34,7 @@ describe("clampTurnMaximumOutputTokens", () => {
   });
 
   it("caps tool-loop turns proportionally to the context window", () => {
-    // Compact: floor(45_000 × 0.3) when leftover is larger.
+    // Compact: floor(45_000 × 0.12) = 5_400 then hard-capped at 5_000.
     expect(
       clampTurnMaximumOutputTokens({
         reservedOutputTokens: 29_999,
@@ -42,7 +42,17 @@ describe("clampTurnMaximumOutputTokens", () => {
         usedInputTokens: 20_000,
         toolLoop: true,
       }),
-    ).toBe(13_500);
+    ).toBe(5_000);
+
+    // Compact 30k: floor(30_000 × 0.12) = 3_600.
+    expect(
+      clampTurnMaximumOutputTokens({
+        reservedOutputTokens: 29_999,
+        contextWindowTokens: 30_000,
+        usedInputTokens: 10_000,
+        toolLoop: true,
+      }),
+    ).toBe(3_600);
 
     // Standard: floor(65_000 × 0.28).
     expect(

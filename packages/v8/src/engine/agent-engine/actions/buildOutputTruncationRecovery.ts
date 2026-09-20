@@ -3,6 +3,11 @@ import type { MutationBudget } from "../../../modules/decision-policy";
 
 import { AGENT_ENGINE_THRESHOLDS } from "../policy";
 import type { AgentEngineThresholds } from "./resolveAgentEngineThresholds";
+import {
+  isMidWorkAnalysisDump,
+  isTransitionalAssistantAnswer,
+  isUnfinishedInvestigationAnswer,
+} from "./isIncompleteAssistantTurn";
 
 export interface TruncationRecoveryPlan {
   /** Whether the Engine should discard tool calls and continue with a nudge. */
@@ -60,11 +65,23 @@ export function buildOutputTruncationRecovery(params: {
 
   if (incompleteToolCalls.length === 0) {
     const text = params.content.trim();
-    if (text.length === 0) {
-      return null;
-    }
 
-    if (params.requireMutation) {
+    // BillBuddy 00:48 / 23:45: length-stop with empty content is a reasoning-
+    // channel burn (consumeModelTurn refuses to promote reasoning on length).
+    // Recover immediately — do not fall through as a silent empty no-tool turn.
+    const emptyReasoningBurn = text.length === 0;
+
+    // BillBuddy 23:45: length-stop after a reasoning burn (content channel
+    // empty → consumeModelTurn falls back to reasoning) must not seed
+    // pendingTextContinuation with a mid-work essay that later hides the
+    // real answer via selectUserFacingLoopAnswer.
+    const reasoningBurn =
+      emptyReasoningBurn ||
+      isMidWorkAnalysisDump(text) ||
+      isUnfinishedInvestigationAnswer(text) ||
+      isTransitionalAssistantAnswer(text);
+
+    if (emptyReasoningBurn || params.requireMutation || reasoningBurn) {
       const preferred = escalatePreferredBatchSize(
         params.mutationBudget?.preferredBatchSize ??
           thresholds.defaultPreferredBatchSize,
@@ -75,25 +92,41 @@ export function buildOutputTruncationRecovery(params: {
           thresholds.defaultMaxPatchesPerCall,
         params.recoveryAttempt,
       );
+      const forcePatch = params.requireMutation === true;
       return {
         shouldRecover: true,
         recoveryKind: "tool_call",
         incompleteToolCalls: [],
-        assistantContent: params.content,
+        // Drop the burned essay so it cannot poison the final answer.
+        assistantContent: "",
         recoveryMessage: {
           role: "user",
-          content: [
-            "Your previous response was truncated because the output token limit was reached.",
-            "Do not continue the written analysis.",
-            params.recoveryAttempt === 0
-              ? `Call apply_patch now with a smaller batch: at most ${preferred} files (hard max ${maxPatches} patches).`
-              : params.recoveryAttempt === 1
-                ? `Previous retry was still truncated. Shrink further: at most ${preferred} file(s) and ${maxPatches} patch(es).`
-                : `Last recovery. One file, one minimal hunk (hard max ${maxPatches} patch).`,
-            "Leave remaining files for later turns.",
-          ].join("\n"),
+          content: reasoningBurn
+            ? [
+                emptyReasoningBurn
+                  ? "Your previous turn hit the output token limit while writing internal reasoning only (no tools, no user-facing answer)."
+                  : "Your previous turn hit the output token limit while writing internal analysis/reasoning, not a user-facing answer.",
+                "Do not continue that essay.",
+                forcePatch
+                  ? `Call apply_patch now with a smaller batch: at most ${preferred} files (hard max ${maxPatches} patches).`
+                  : "Give a short final answer to the user now (or call one essential tool). Do not restate your plan.",
+              ].join("\n")
+            : [
+                "Your previous response was truncated because the output token limit was reached.",
+                "Do not continue the written analysis.",
+                params.recoveryAttempt === 0
+                  ? `Call apply_patch now with a smaller batch: at most ${preferred} files (hard max ${maxPatches} patches).`
+                  : params.recoveryAttempt === 1
+                    ? `Previous retry was still truncated. Shrink further: at most ${preferred} file(s) and ${maxPatches} patch(es).`
+                    : `Last recovery. One file, one minimal hunk (hard max ${maxPatches} patch).`,
+                "Leave remaining files for later turns.",
+              ].join("\n"),
         },
       };
+    }
+
+    if (text.length === 0) {
+      return null;
     }
 
     return {

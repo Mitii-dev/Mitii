@@ -27,7 +27,10 @@ export type {
   WindowBudgetBand,
   WindowBudgetBandDefinition,
 } from "./windowBudgetBands";
-export { resolveToolLoopMaxOutputTokens } from "./toolLoopOutputCaps";
+export {
+  COMPACT_TOOL_LOOP_OUTPUT_HARD_CAP,
+  resolveToolLoopMaxOutputTokens,
+} from "./toolLoopOutputCaps";
 export {
   WINDOW_BUDGET_EFFORTS,
   DEFAULT_WINDOW_BUDGET_EFFORT,

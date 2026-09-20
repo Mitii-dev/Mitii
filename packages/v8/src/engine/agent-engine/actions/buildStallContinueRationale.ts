@@ -211,7 +211,7 @@ export function buildBudgetWallResetMessage(params: {
     case "unfulfilled_execute":
     case "rejected_mutation":
       parts.push(
-        "The user approved continuing after a mutation recovery limit. Your next action MUST be apply_patch, delete_file, or move_file on a bounded surface. Do not call list_directory, glob_files, search_files, or broad rediscovery. Targeted read_file of an active write/mustRead path is allowed only if required to form an exact patch, then patch immediately.",
+        "The user approved continuing after a mutation recovery limit. Your next action MUST be apply_patch, delete_file, or move_file on a bounded surface. Do not call list_directory, glob_files, or search_files. If write/mustRead file contents are not yet in context, you may use up to five targeted read_file/read_many_files batches on those paths only, then patch immediately.",
       );
       break;
     case "incomplete_execute":
