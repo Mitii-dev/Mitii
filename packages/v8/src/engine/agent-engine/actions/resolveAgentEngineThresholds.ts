@@ -37,6 +37,7 @@ export const agentEngineThresholdsSchema = z
     maxRepeatedReadonlyToolTurnsBeforeAnswerNudge: positiveIntSchema,
     maxDiagnoseAnswerNudges: nonnegativeIntSchema,
     maxRecoveredAnalysisChars: positiveIntSchema,
+    maxReasoningCharsWithoutProgress: positiveIntSchema,
   })
   .strict();
 

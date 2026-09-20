@@ -365,7 +365,13 @@ export function handleNoToolModelTurn(params: {
 
     // BillBuddy 00:13: first patch batch + empty/mid-work stop while the
     // checklist still has open change surfaces must continue mutating.
-    const prematurePartialStop = isPrematurePartialExecuteStop({
+    // Exception: a length-stop after mutations already chose finish-over-recover
+    // (wall-clock death spiral). Do not reopen another model turn.
+    const finishAfterTruncationMutation =
+      loopOutcome.reasonCode === "output_truncation_finish_after_mutation";
+    const prematurePartialStop =
+      !finishAfterTruncationMutation &&
+      isPrematurePartialExecuteStop({
       mutationRequired,
       hasIncompleteChangeSurfaces: hasIncompleteChangeSurfaces(
         taskListRef?.current,
@@ -451,6 +457,7 @@ export function handleNoToolModelTurn(params: {
     }
 
     if (
+      !finishAfterTruncationMutation &&
       (incompleteAssistantTurn ||
         loopOutcome.disposition === "recover_incomplete_narration") &&
       incompleteAnswerRecoveries <
@@ -509,13 +516,18 @@ export function handleNoToolModelTurn(params: {
       }) ||
       (changedFiles.length > 0 &&
         (answer.trim().length === 0 ||
-          isTransitionalAssistantAnswer(answer)))
+          isTransitionalAssistantAnswer(answer) ||
+          isMidWorkAnalysisDump(answer)))
     ) {
       answer = synthesizeFallbackAnswer({
         priorAnswer: answer,
         changedFiles,
       });
       reasonCodes.push("incomplete_answer_fallback");
+    }
+
+    if (finishAfterTruncationMutation) {
+      reasonCodes.push("output_truncation_finish_after_mutation");
     }
 
     session.answer = answer;

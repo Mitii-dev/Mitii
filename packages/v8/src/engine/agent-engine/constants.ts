@@ -144,6 +144,10 @@ export const AGENT_REASON_CODES = [
   "model_completed",
   "output_truncated",
   "output_truncation_recovered",
+  /** Length-stop after mutations already landed; finish instead of recovering. */
+  "output_truncation_finish_after_mutation",
+  /** Reasoning channel exceeded progress budget before content/tools; treated as length. */
+  "reasoning_progress_budget_exceeded",
   "incomplete_answer_recovered",
   "incomplete_answer_fallback",
   "incomplete_execute",

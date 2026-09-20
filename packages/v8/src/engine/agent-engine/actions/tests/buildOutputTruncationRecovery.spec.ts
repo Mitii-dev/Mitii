@@ -198,6 +198,73 @@ describe("buildOutputTruncationRecovery", () => {
     expect(plan!.recoveryMessage.content).toContain("short final answer");
     expect(plan!.recoveryMessage.content).not.toContain("apply_patch");
   });
+
+  it("does not recover text/reasoning burns after mutations already landed", () => {
+    expect(
+      buildOutputTruncationRecovery({
+        finishReason: "length",
+        content: "",
+        toolCalls: [],
+        recoveryAttempt: 0,
+        requireMutation: false,
+        changedFileCount: 2,
+      }),
+    ).toBeNull();
+    expect(
+      buildOutputTruncationRecovery({
+        finishReason: "length",
+        content: "Here is a long answer that got cut off mid-sent",
+        toolCalls: [],
+        recoveryAttempt: 0,
+        changedFileCount: 1,
+      }),
+    ).toBeNull();
+  });
+
+  it("allows one incomplete-tool shrink after mutations, then stops", () => {
+    const incomplete = {
+      id: "c1",
+      name: "apply_patch",
+      arguments: '{"patches":[{"path":"a.ts","oldText":"x"',
+    } as const;
+    const first = buildOutputTruncationRecovery({
+      finishReason: "length",
+      content: "",
+      toolCalls: [incomplete],
+      mutationBudget: tightBudget,
+      recoveryAttempt: 0,
+      changedFileCount: 1,
+    });
+    const second = buildOutputTruncationRecovery({
+      finishReason: "length",
+      content: "",
+      toolCalls: [incomplete],
+      mutationBudget: tightBudget,
+      recoveryAttempt: 1,
+      changedFileCount: 1,
+    });
+    expect(first?.shouldRecover).toBe(true);
+    expect(second).toBeNull();
+  });
+
+  it("never recovers after successful verification with mutations", () => {
+    expect(
+      buildOutputTruncationRecovery({
+        finishReason: "length",
+        content: "",
+        toolCalls: [
+          {
+            id: "c1",
+            name: "apply_patch",
+            arguments: '{"patches":[{"path":"a.ts","oldText":"x"',
+          },
+        ],
+        recoveryAttempt: 0,
+        changedFileCount: 1,
+        successfulVerificationAfterMutation: true,
+      }),
+    ).toBeNull();
+  });
 });
 
 describe("isCompleteToolCall", () => {

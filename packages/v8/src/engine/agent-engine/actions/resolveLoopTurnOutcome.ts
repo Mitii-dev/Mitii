@@ -77,6 +77,14 @@ export function resolveLoopTurnOutcome(
     if (unfulfilled) {
       return recoverOrExhaustUnfulfilled(input, "output_truncated");
     }
+    // Workspace already changed — finish rather than another continuation turn
+    // that can burn the remaining harness wall clock (benchmark exit 124).
+    if (input.changedFileCount > 0) {
+      return {
+        disposition: "complete_answer",
+        reasonCode: "output_truncation_finish_after_mutation",
+      };
+    }
     if (input.content.trim().length > 0) {
       return {
         disposition: "recover_truncated_text",

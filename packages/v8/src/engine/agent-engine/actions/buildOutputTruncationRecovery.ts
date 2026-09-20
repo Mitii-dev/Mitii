@@ -37,6 +37,14 @@ export function buildOutputTruncationRecovery(params: {
    * a mutation batch, not as essay continuation.
    */
   requireMutation?: boolean;
+  /**
+   * Files already mutated this run. After the first successful write, another
+   * multi-minute "short final answer" / essay recovery often burns the harness
+   * wall clock (benchmark exit 124) even though content checks already pass.
+   */
+  changedFileCount?: number;
+  /** Verification already passed after mutation — never open another recovery turn. */
+  successfulVerificationAfterMutation?: boolean;
   thresholds?: Pick<
     AgentEngineThresholds,
     | "maxTruncationRecoveries"
@@ -54,6 +62,11 @@ export function buildOutputTruncationRecovery(params: {
     return null;
   }
 
+  const mutationsLanded = (params.changedFileCount ?? 0) > 0;
+  if (params.successfulVerificationAfterMutation === true && mutationsLanded) {
+    return null;
+  }
+
   const incompleteToolCalls = params.toolCalls.filter(
     (call) => !isCompleteToolCall(call),
   );
@@ -61,6 +74,17 @@ export function buildOutputTruncationRecovery(params: {
   if (incompleteToolCalls.length === 0 && params.toolCalls.length > 0) {
     // Complete tool calls after a length stop are still executable.
     return null;
+  }
+
+  // After mutations: allow at most one shrink-retry for incomplete tools, then
+  // finish. Never open a new wall-clock turn for reasoning/text continuation.
+  if (mutationsLanded) {
+    if (incompleteToolCalls.length === 0) {
+      return null;
+    }
+    if (params.recoveryAttempt >= 1) {
+      return null;
+    }
   }
 
   if (incompleteToolCalls.length === 0) {

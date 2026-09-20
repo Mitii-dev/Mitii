@@ -117,6 +117,13 @@ export const AGENT_ENGINE_THRESHOLDS = {
    * characters in the transcript so leftover output budget remains for patches.
    */
   maxRecoveredAnalysisChars: 480,
+  /**
+   * Abort a model turn when the reasoning channel alone exceeds this many
+   * characters with no content or tool deltas yet. Local thinking models can
+   * stream unbounded reasoning that never hits max_tokens and burns the
+   * harness wall clock (benchmark exit 124) before the first tool call.
+   */
+  maxReasoningCharsWithoutProgress: 12_000,
 } as const;
 
 /**
