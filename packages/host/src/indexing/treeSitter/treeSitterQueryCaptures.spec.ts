@@ -9,7 +9,7 @@ import {
 } from './treeSitterQueryCaptures.js';
 
 describe('treeSitterQueryCaptures', () => {
-  it('accepts both Mitii and aider definition capture names', () => {
+  it('accepts both Mitii and legacy definition capture names', () => {
     expect(isSymbolNameCapture('name')).toBe(true);
     expect(isSymbolNameCapture('name.definition.function')).toBe(true);
     expect(isSymbolNameCapture('name.reference.call')).toBe(false);
@@ -19,7 +19,7 @@ describe('treeSitterQueryCaptures', () => {
     expect(isSymbolDefinitionCapture('name.definition.function')).toBe(false);
   });
 
-  it('maps aider reference captures onto Mitii reference kinds', () => {
+  it('maps legacy reference captures onto Mitii reference kinds', () => {
     expect(isReferenceNameCapture('reference.call')).toBe(true);
     expect(isReferenceNameCapture('name.reference.call')).toBe(true);
     expect(isReferenceNameCapture('name.definition.function')).toBe(false);

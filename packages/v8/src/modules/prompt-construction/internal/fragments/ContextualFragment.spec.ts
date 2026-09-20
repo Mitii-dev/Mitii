@@ -12,10 +12,10 @@ import {
   BaseInstructionsFragment,
 } from "./index";
 
-describe("ContextualFragment formulae (Codex discipline)", () => {
+describe("ContextualFragment formulae", () => {
   const estimator = new CharacterTokenEstimator();
 
-  it("caps a fragment at absoluteMaxTokens (Codex rule 4)", () => {
+  it("caps a fragment at absoluteMaxTokens", () => {
     const huge = "x".repeat(FRAGMENT_POLICY.absoluteMaxTokens * 8);
     const fragment = new BaseInstructionsFragment(huge);
     const rendered = renderFragment(
@@ -79,7 +79,7 @@ describe("ContextualFragment formulae (Codex discipline)", () => {
     );
   });
 
-  it("matches marked text only when both start and end markers are present (Codex)", () => {
+  it("matches marked text only when both start and end markers are present", () => {
     expect(matchesMarkedFragment("<a>", "</a>", "  <a>body</a>  ")).toBe(true);
     expect(matchesMarkedFragment("<a>", "</a>", "body</a>")).toBe(false);
     expect(matchesMarkedFragment("", "", "anything")).toBe(false);
@@ -103,7 +103,7 @@ describe("ContextualFragment formulae (Codex discipline)", () => {
     expect(fragment.markers()[0]).toContain("environment_fragment");
   });
 
-  it("allows instruction fragments up to absoluteMaxTokens (Codex hard cap)", () => {
+  it("allows instruction fragments up to absoluteMaxTokens", () => {
     const fragment = new InstructionBlockFragment(
       "skill-1",
       "Skills",

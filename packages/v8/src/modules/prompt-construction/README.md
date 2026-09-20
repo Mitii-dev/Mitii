@@ -15,12 +15,14 @@ Prompt Construction builds the provider-neutral `ModelRequest` that is sent thro
 - Adds filtered tool definitions.
 - Write-critical tools (`apply_patch`, delete/move, `run_command`, `update_todos`) pack first and are never dropped for tools-section budget when the grant already allows them. "Allowed tools:" prose is rewritten to match the schemas actually attached.
 - Reports budget, provenance, omissions, warnings, and reason codes.
-- Assembles trusted system text via typed **ContextualFragments** (Codex
-  fragment discipline): each injection has a stable `contentKind`, optional
-  markers, and a hard token cap (`FRAGMENT_POLICY.absoluteMaxTokens` = 10k).
-  Environment/memory fragments are marked; `MidConversationUpdateFragment`
-  and `requiresSeparateMessage` fragments are appended as separate system
+- Assembles trusted system text via typed **ContextualFragments**: each
+  injection has a stable `contentKind`, optional markers, and a hard token
+  cap (`FRAGMENT_POLICY.absoluteMaxTokens` = 10k). Environment/memory
+  fragments are marked; `MidConversationUpdateFragment` and
+  `requiresSeparateMessage` fragments are appended as separate system
   messages after the baseline system blob (provider-cache friendly).
+  Courtesy inspiration acknowledgement (not copied upstream source): see
+  `Mitii/NOTICE-REVIEW.md`.
 
 ## Structure
 

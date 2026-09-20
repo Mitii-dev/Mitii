@@ -4,9 +4,8 @@ Review produces a structured, evidence-backed review artifact (findings +
 severity + coverage) for a diff, commit range, workspace change set, or full
 file scan. It does **not** own mutation or post-mutation verification checks.
 
-Algorithms are inspired by [Open Code Review](https://github.com/alibaba/open-code-review)
-(Apache-2.0) and reimplemented under Mitii contracts. See
-`docs/architecture/ADR-review-module.md`.
+Third-party *inspiration* acknowledgement (not copied upstream source): see
+`Mitii/NOTICE-REVIEW.md` and `docs/architecture/ADR-review-module.md`.
 
 ## What This Module Does
 

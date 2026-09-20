@@ -31,8 +31,8 @@ Verify:
 
 # Playbook
 
-<!-- Source: https://github.com/addyosmani/agent-skills/tree/main/skills/code-review-and-quality -->
-<!-- Adapted for Mitii. Structured findings use the V8 review module (inspired by Open Code Review algorithms). -->
+<!-- Source skill playbook adapted for Mitii branding/workflow. -->
+<!-- Structured findings use the V8 review module — authorship & inspiration policy: Mitii/NOTICE-REVIEW.md. -->
 <!-- Override: <workspace>/.mitii/skills/code-review-and-quality/SKILL.md -->
 
 # Code Review and Quality

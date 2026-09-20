@@ -53,7 +53,7 @@ export const PROMPT_CONSTRUCTION_THRESHOLDS = {
   mutationOutputHeadroomRatio: 0.7,
 } as const;
 
-/** Re-export Codex-derived fragment caps for module consumers. */
+/** Re-export fragment caps for module consumers. */
 export { FRAGMENT_POLICY } from "./internal/fragments/fragmentPolicy";
 
 /**

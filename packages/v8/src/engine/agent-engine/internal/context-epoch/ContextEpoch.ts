@@ -20,7 +20,7 @@ export const CONTEXT_EPOCH_SOURCE_KEYS = {
   memory: "instructions/memory",
 } as const;
 
-/** Markers for Mid-Conversation System Messages (Codex-style marked fragments). */
+/** Markers for Mid-Conversation System Messages (marked fragments). */
 export const MID_CONVERSATION_SYSTEM_MARKERS = {
   start: "<context_epoch_update>",
   end: "</context_epoch_update>",

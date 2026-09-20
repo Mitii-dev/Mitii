@@ -2,7 +2,7 @@
  * Soft-coerce common LLM shape drift so a near-valid ballot is not discarded.
  * Strict Zod still runs after this — coercion only maps known aliases / shapes.
  *
- * VTCode/Codex-shaped formulae (Mitii-adapted):
+ * Ballot formulae:
  * - Ballot salvage: drop/remap invalid fields; never wipe a valid core ballot.
  * - Alternatives whitelist: alternatives[].intent ∈ TASK_INTENTS only.
  * - Interaction ≠ task: mode verbs never land in task intent slots.

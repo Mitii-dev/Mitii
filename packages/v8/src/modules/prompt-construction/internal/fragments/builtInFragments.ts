@@ -71,7 +71,7 @@ export class InstructionBlockFragment implements ContextualFragment {
   }
 
   /**
-   * Environment / memory default to marked fragments (Codex discipline) so
+   * Environment / memory default to marked fragments so
    * mid-session reinjection and epoch mid-updates can be recognized later.
    * Rules/skills stay unmarked for classic single-system-blob compatibility
    * unless `options.marked` is set.
@@ -97,7 +97,7 @@ export class InstructionBlockFragment implements ContextualFragment {
   }
 
   maxTokens(): number {
-    // Environment values keep Codex additional-context hard budget.
+    // Environment values keep the additional-context hard budget.
     // Rules/skills/memory use absolute max; review threshold only flags.
     if (this.sectionName === "environment") {
       return Math.min(
