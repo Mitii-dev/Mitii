@@ -32,6 +32,7 @@ import {
   recoverLeakedToolCallsFromMarkup,
   evaluateMutationCritic,
   extractMutationTargetPaths,
+  isCompleteToolCall,
 } from "../actions";
 import type {
   EstablishedFact,
@@ -408,6 +409,8 @@ export async function runModelToolLoop(
       runId,
       signal,
       bus,
+      maxReasoningCharsWithoutProgress:
+        thresholds.maxReasoningCharsWithoutProgress,
     });
 
     if (turn.kind === "cancelled") {
@@ -471,6 +474,10 @@ export async function runModelToolLoop(
       budget.addUsage(turn.usage);
     }
 
+    if (turn.reasoningBudgetExceeded) {
+      reasonCodes.push("reasoning_progress_budget_exceeded");
+    }
+
     const truncated = turn.finishReason === "length";
     runtime.emit(bus, {
       type: "model_turn",
@@ -518,6 +525,9 @@ export async function runModelToolLoop(
           params.understanding?.intent.classification.primaryTaskIntent,
         reasonCodes: session.decision.reasonCodes,
       }),
+      changedFileCount: changedFiles.length,
+      successfulVerificationAfterMutation:
+        session.successfulVerificationAfterMutation,
       thresholds,
     });
 
@@ -559,13 +569,23 @@ export async function runModelToolLoop(
       continue;
     }
 
+    if (
+      truncated &&
+      changedFiles.length > 0 &&
+      turn.toolCalls.every((call) => !isCompleteToolCall(call))
+    ) {
+      reasonCodes.push("output_truncation_finish_after_mutation");
+    }
+
     reasonCodes.push("model_completed");
     runtime.emitStage(bus, runId, "model_running", "completed", [
       "model_completed",
       ...(truncated ? (["output_truncated"] as const) : []),
     ]);
 
-    let toolCalls = turn.toolCalls;
+    let toolCalls = truncated
+      ? turn.toolCalls.filter((call) => isCompleteToolCall(call))
+      : turn.toolCalls;
     if (
       toolCalls.length === 0 &&
       turn.content.trim().length > 0 &&

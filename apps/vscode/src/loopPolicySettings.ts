@@ -250,6 +250,18 @@ const LOOP_POLICY_FIELD_SPECS: readonly Omit<
     step: 16,
     tier: 'advanced',
   },
+  {
+    key: 'maxReasoningCharsWithoutProgress',
+    group: 'Transcript',
+    label: 'Reasoning progress budget',
+    description:
+      'Abort a model turn when reasoning alone exceeds this many characters with no content or tools yet (prevents wall-clock burns).',
+    kind: 'int',
+    min: 1000,
+    max: 100000,
+    step: 500,
+    tier: 'advanced',
+  },
 ];
 
 export const LOOP_POLICY_FIELDS: readonly LoopPolicyFieldDescriptor[] =

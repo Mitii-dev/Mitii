@@ -406,6 +406,23 @@ export const LOOP_FIELDS = [
       'Example prompt: “Continue — implement the fix you were describing.”\n\nWhen it reaches this point: a recovered turn left a huge analysis dump in the transcript.\n\nWhat Mitii does: trims that dump to this many characters using head + high-signal middle lines (paths / TS errors / outcomes) + tail, so conclusions survive without keeping the whole essay.\n\nStable tip: on low content windows, keep this lower so the next turn can still emit a patch.',
   },
   {
+    key: 'maxReasoningCharsWithoutProgress',
+    group: '2 · Re-reads & progress',
+    label: 'Reasoning progress budget',
+    kind: 'int',
+    min: 1000,
+    max: 100000,
+    step: 500,
+    primary: true,
+    plain: 'Abort a model turn when the reasoning channel alone exceeds this many characters with no content or tools yet.',
+    whenHigher: 'Allows longer silent thinking.',
+    whenLower: 'Forces tools/answers sooner (helps wall-clock timeouts).',
+    example: 'Default 12000. Local thinking models can stream unbounded reasoning that never hits max_tokens.',
+    examplePrompt: 'Add scripts/lint.mjs and wire npm run lint.',
+    story:
+      'Example prompt: “Add a real lint script.”\n\nWhen it reaches this point: the model streams a huge reasoning channel with no tool call.\n\nWhat Mitii does: cuts the turn as output-truncated so truncation recovery can nudge apply_patch instead of burning the harness timeout.\n\nStable tip: keep this below what a 5-minute wall clock can stream; too high recreates exit 124 timeouts.',
+  },
+  {
     key: 'explorationRereadRatio',
     group: 'Advanced · stall',
     label: 'Re-read ratio',

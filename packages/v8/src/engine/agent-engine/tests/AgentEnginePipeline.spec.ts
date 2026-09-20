@@ -565,26 +565,18 @@ describe("AgentEnginePipeline (Phase 7)", () => {
             content: dump,
             finishReason: "length",
           },
+          // Must not be consumed: post-mutation length stops finish instead of
+          // opening another recovery turn that can burn wall clock.
           {
-            content: "",
-            toolCalls: [
-              {
-                id: "call_patch_2",
-                name: "apply_patch",
-                arguments: JSON.stringify({
-                  patches: [{ path: "src/b.ts", oldText: "u", newText: "v" }],
-                }),
-              },
-            ],
+            content: "should_not_run",
           },
-          { content: "Updated src/b.ts so the remaining type error is gone." },
         ]),
         toolResults: {
           apply_patch: {
             status: "succeeded",
             output: {
               checkpointId: "cp_post",
-              changedFiles: ["src/a.ts", "src/b.ts"],
+              changedFiles: ["src/a.ts"],
             },
           },
         },
@@ -604,10 +596,14 @@ describe("AgentEnginePipeline (Phase 7)", () => {
     ).result;
 
     expect(result.status).toBe("completed");
-    expect(result.reasonCodes).toContain("output_truncation_recovered");
     expect(result.reasonCodes).toContain("mutation_applied");
-    expect(result.answer).toContain("Updated src/b.ts");
+    expect(result.reasonCodes).toContain(
+      "output_truncation_finish_after_mutation",
+    );
+    expect(result.reasonCodes).not.toContain("output_truncation_recovered");
     expect(result.answer).not.toContain("Let me analyze the remaining errors");
+    expect(result.answer).not.toContain("should_not_run");
+    expect(result.answer).toMatch(/src\/a\.ts|workspace edits/i);
   });
 
   it("exhausts unfulfilled-execute recoveries then suspends for Continue/Stop", async () => {

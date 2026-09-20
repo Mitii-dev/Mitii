@@ -11,6 +11,7 @@ import {
   isMidWorkAnalysisDump,
   isUnfinishedInvestigationAnswer,
 } from "../actions/isIncompleteAssistantTurn";
+import { AGENT_ENGINE_THRESHOLDS } from "../policy";
 import { EventBus } from "../internal/EventBus";
 
 import type { AgentEngineRuntime } from "./runtime";
@@ -23,6 +24,11 @@ export async function consumeModelTurn(
     runId: string;
     signal: AbortSignal;
     bus: EventBus;
+    /**
+     * Soft cap on reasoning-only streaming before treating the turn as a
+     * length stop so recovery / mutation nudges can run.
+     */
+    maxReasoningCharsWithoutProgress?: number;
   },
 ): Promise<
   | {
@@ -36,6 +42,8 @@ export async function consumeModelTurn(
         cacheMissTokens?: number;
       };
       finishReason?: string;
+      /** True when the turn was cut short by the reasoning progress budget. */
+      reasoningBudgetExceeded?: boolean;
     }
   | { kind: "cancelled" }
   | {
@@ -46,6 +54,9 @@ export async function consumeModelTurn(
     }
 > {
   const { llm, request, runId, signal, bus } = params;
+  const maxReasoningChars =
+    params.maxReasoningCharsWithoutProgress ??
+    AGENT_ENGINE_THRESHOLDS.maxReasoningCharsWithoutProgress;
   const contentParts: string[] = [];
   const reasoningParts: string[] = [];
   const toolDeltas: ModelToolCallDelta[] = [];
@@ -58,14 +69,49 @@ export async function consumeModelTurn(
       }
     | undefined;
   let finishReason: string | undefined;
+  let reasoningBudgetExceeded = false;
+  const turnAbort = new AbortController();
+  const abortSignal =
+    typeof AbortSignal.any === "function"
+      ? AbortSignal.any([signal, turnAbort.signal])
+      : signal;
+
+  const reasoningLength = (): number => {
+    let total = 0;
+    for (const part of reasoningParts) {
+      total += part.length;
+    }
+    return total;
+  };
+
+  const tripReasoningBudget = (): void => {
+    if (reasoningBudgetExceeded) {
+      return;
+    }
+    if (contentParts.length > 0 || toolDeltas.length > 0) {
+      return;
+    }
+    if (reasoningLength() < maxReasoningChars) {
+      return;
+    }
+    reasoningBudgetExceeded = true;
+    try {
+      turnAbort.abort();
+    } catch {
+      // ignore
+    }
+  };
 
   try {
     for await (const event of llm.complete(request, {
       runId,
-      abortSignal: signal,
+      abortSignal,
     })) {
       if (signal.aborted) {
         return { kind: "cancelled" };
+      }
+      if (reasoningBudgetExceeded) {
+        break;
       }
       forwardModelEvent(runtime, bus, runId, event);
 
@@ -75,6 +121,7 @@ export async function consumeModelTurn(
           break;
         case "reasoning_delta":
           reasoningParts.push(event.reasoning);
+          tripReasoningBudget();
           break;
         case "tool_call_delta":
           toolDeltas.push(...event.toolCalls);
@@ -99,8 +146,14 @@ export async function consumeModelTurn(
           }
           break;
         case "cancelled":
+          if (reasoningBudgetExceeded) {
+            break;
+          }
           return { kind: "cancelled" };
         case "failed":
+          if (reasoningBudgetExceeded) {
+            break;
+          }
           return {
             kind: "failed",
             content: contentParts.join("") || reasoningParts.join(""),
@@ -115,17 +168,30 @@ export async function consumeModelTurn(
     if (signal.aborted) {
       return { kind: "cancelled" };
     }
-    return {
-      kind: "failed",
-      content: contentParts.join("") || reasoningParts.join(""),
-      errorCode: "provider_failed",
-      errorMessage:
-        error instanceof Error ? error.message : "Model invocation failed.",
-    };
+    if (!reasoningBudgetExceeded) {
+      return {
+        kind: "failed",
+        content: contentParts.join("") || reasoningParts.join(""),
+        errorCode: "provider_failed",
+        errorMessage:
+          error instanceof Error ? error.message : "Model invocation failed.",
+      };
+    }
   }
 
-  if (signal.aborted) {
+  if (signal.aborted && !reasoningBudgetExceeded) {
     return { kind: "cancelled" };
+  }
+
+  if (reasoningBudgetExceeded) {
+    finishReason = "length";
+    runtime.emit(bus, {
+      type: "warning",
+      runId,
+      message: `Reasoning channel exceeded ${maxReasoningChars} characters without content or tools; treating turn as output-truncated.`,
+      code: "reasoning_progress_budget_exceeded",
+      at: runtime.isoNow(),
+    });
   }
 
   // Prefer the content channel. Only promote reasoning when it can stand as a
@@ -148,6 +214,7 @@ export async function consumeModelTurn(
     toolCalls: assembleToolCalls(toolDeltas),
     usage,
     finishReason,
+    reasoningBudgetExceeded: reasoningBudgetExceeded || undefined,
   };
 }
 

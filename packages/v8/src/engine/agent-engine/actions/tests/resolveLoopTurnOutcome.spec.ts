@@ -179,6 +179,26 @@ describe("resolveLoopTurnOutcome", () => {
     expect(outcome.disposition).toBe("recover_incomplete_narration");
     expect(outcome.recoveryMessage).toContain("read_file");
   });
+
+  it("finishes truncated turns when mutations already landed", () => {
+    const outcome = resolveLoopTurnOutcome({
+      route: "execute",
+      maximumWorkspaceEffect: "write",
+      primaryTaskIntent: "bugfix",
+      toolCallCount: 0,
+      changedFileCount: 2,
+      content: "Almost done with the DTO typ",
+      finishReason: "length",
+      truncated: true,
+      recoveries: {
+        truncation: 1,
+        incompleteAnswer: 0,
+        unfulfilledExecute: 0,
+      },
+    });
+    expect(outcome.disposition).toBe("complete_answer");
+    expect(outcome.reasonCode).toBe("output_truncation_finish_after_mutation");
+  });
 });
 
 describe("premature partial execute stop (BillBuddy 00:13)", () => {
