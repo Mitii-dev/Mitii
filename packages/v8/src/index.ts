@@ -175,6 +175,9 @@ export {
   formatApprovalPresetHelp,
   PROCESS_TOOL_IDS,
   GITHUB_MUTATION_TOOL_IDS,
+  CODE_INTELLIGENCE_TOOL_IDS,
+  DIAGNOSTICS_TOOL_IDS,
+  CHANGE_IMPACT_TOOL_IDS,
 } from "./modules/decision-policy";
 export type {
   ApprovalMode,
@@ -190,6 +193,7 @@ export type {
   UserSafetyAutoApprove,
   ApprovalPresetCopy,
   VsCodeApprovalPreset,
+  HostCapabilityFlags,
 } from "./modules/decision-policy";
 
 export { PromptConstructionPipeline } from "./modules/prompt-construction";
@@ -278,6 +282,7 @@ export type {
   ToolExecutionResult,
   DiagnosticsPort,
   DiagnosticItem,
+  DiagnosticsSettleOptions,
   GitPort,
   ToolDefinition,
   NetworkPort,

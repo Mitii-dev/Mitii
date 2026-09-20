@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { serializeTools } from "../SerializeTools";
+import { packPriority, serializeTools } from "../SerializeTools";
 import type { ExecutionDecision } from "../../../decision-policy";
 import type { ModelCapabilities, ModelToolDefinition } from "../../../model-gateway";
 import type { TokenEstimatorPort } from "../../contracts";
@@ -149,6 +149,21 @@ describe("serializeTools MCP parity", () => {
     expect(names).toContain("apply_patch");
     expect(result.omissions.some((item) => item.detail === "budget")).toBe(
       true,
+    );
+  });
+
+  it("packs code-intelligence above text search", () => {
+    expect(packPriority("document_symbol")).toBeGreaterThan(
+      packPriority("search_files"),
+    );
+    expect(packPriority("goto_definition")).toBeGreaterThan(
+      packPriority("glob_files"),
+    );
+    expect(packPriority("analyze_change_impact")).toBeGreaterThan(
+      packPriority("read_git_status"),
+    );
+    expect(packPriority("read_file")).toBeGreaterThan(
+      packPriority("document_symbol"),
     );
   });
 });

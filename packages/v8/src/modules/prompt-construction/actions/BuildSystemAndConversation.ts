@@ -1,4 +1,9 @@
 import type { ExecutionDecision } from "../../decision-policy";
+import {
+  CHANGE_IMPACT_TOOL_IDS,
+  CODE_INTELLIGENCE_TOOL_IDS,
+  DIAGNOSTICS_TOOL_IDS,
+} from "../../decision-policy";
 import type { ModelMessage } from "../../model-gateway";
 
 import type { PromptInstructionBlock, TokenEstimatorPort } from "../contracts";
@@ -226,33 +231,54 @@ function buildToolGuidance(decision: ExecutionDecision): string {
   ];
 
   if (
+    CODE_INTELLIGENCE_TOOL_IDS.some((id) => grant.allowedTools.includes(id)) ||
+    CHANGE_IMPACT_TOOL_IDS.some((id) => grant.allowedTools.includes(id))
+  ) {
+    lines.push(
+      "For naming types, functions, call sites, implementations, or file symbols, use the granted code-intelligence tools (document_symbol, goto_definition, find_references, find_implementation, call_hierarchy, workspace_symbol, hover_symbol) before search_files or mass read_file.",
+    );
+    if (decision.reasonCodes.includes("code_navigation_degraded")) {
+      lines.push(
+        "Code navigation is degraded (repository graph only). Treat graph results as approximate; corroborate with search_files or read_file when precision matters.",
+      );
+    } else if (decision.reasonCodes.includes("code_navigation_unavailable")) {
+      lines.push(
+        "Code navigation is unavailable for this host. Prefer search_files, document reads, and repository map evidence over symbol tools.",
+      );
+    } else if (decision.reasonCodes.includes("code_navigation_available")) {
+      lines.push(
+        "Code navigation is available via the host language service. Prefer those tools for symbol resolution before text search.",
+      );
+    }
+  }
+
+  if (
     grant.allowedTools.includes("search_files") ||
     grant.allowedTools.includes("list_directory") ||
     grant.allowedTools.includes("glob_files")
   ) {
     lines.push(
-      "For discovery, prefer glob_files, search_files, and list_directory before mass read_file calls.",
+      "For path discovery (find which files exist), prefer glob_files, search_files, and list_directory before mass read_file calls.",
       "Use read_many_files for small batches of known paths instead of one read_file call per turn; use file_metadata before patching when freshness matters.",
       "Keep tool use efficient: stop once you have enough evidence to answer.",
     );
   }
 
-  if (
-    grant.allowedTools.includes("goto_definition") ||
-    grant.allowedTools.includes("find_references") ||
-    grant.allowedTools.includes("hover_symbol") ||
-    grant.allowedTools.includes("document_symbol") ||
-    grant.allowedTools.includes("workspace_symbol") ||
-    grant.allowedTools.includes("find_implementation") ||
-    grant.allowedTools.includes("call_hierarchy") ||
-    grant.allowedTools.includes("analyze_change_impact")
-  ) {
+  if (DIAGNOSTICS_TOOL_IDS.some((id) => grant.allowedTools.includes(id))) {
     lines.push(
-      "When you need a symbol definition, its call sites, implementations, callers/callees, file symbols, or type/docs at a caret, use goto_definition, find_references, find_implementation, call_hierarchy, document_symbol, workspace_symbol, or hover_symbol instead of grepping the workspace.",
+      "Use read_diagnostics to inspect workspace Problems / language-service diagnostics (optionally path-filtered).",
     );
+    if (
+      grant.maximumWorkspaceEffect === "write" &&
+      decision.reasonCodes.includes("diagnostics_port_available")
+    ) {
+      lines.push(
+        "After apply_patch, inspect postEditDiagnostics / newDiagnostics in the tool result. When requiresRepair is true, fix introduced errors before claiming the change is complete.",
+      );
+    }
   }
 
-  if (grant.allowedTools.includes("analyze_change_impact")) {
+  if (CHANGE_IMPACT_TOOL_IDS.some((id) => grant.allowedTools.includes(id))) {
     lines.push(
       "For blast-radius questions like what breaks, affected callers, or dependents of a change, use analyze_change_impact before broad text search.",
     );

@@ -19,9 +19,12 @@ import {
   snapshotLoopFileReads,
   isTransitionalAssistantAnswer,
   synthesizeFallbackAnswer,
+  shouldNudgeCodeIntelAdoption,
+  buildCodeIntelAdoptionNudgeMessage,
 } from "../actions";
 import type { LoopFileReadTracker } from "../actions";
 import type { AgentReasonCode } from "../contracts";
+import { CODE_INTELLIGENCE_TOOL_IDS } from "../../../modules/decision-policy";
 import { EventBus } from "../internal/EventBus";
 import { RunBudgetTracker } from "../internal/RunBudget";
 import {
@@ -103,6 +106,33 @@ export function resolveModelLoopAfterTools(params: {
   runtime.emitStage(bus, runId, "tool_running", "completed", [
     "tools_executed",
   ]);
+
+  const grantedCodeIntel = CODE_INTELLIGENCE_TOOL_IDS.filter((id) =>
+    grant.allowedTools.includes(id),
+  );
+  if (
+    shouldNudgeCodeIntelAdoption({
+      allowedTools: grant.allowedTools,
+      codeIntelligenceToolIds: CODE_INTELLIGENCE_TOOL_IDS,
+      successfulFileBodyReads: session.fileBodyReadsWithoutCodeIntel,
+      codeIntelToolUses: session.codeIntelToolUses,
+      nudgesUsed: session.codeIntelAdoptionNudges,
+      thresholds,
+    }) &&
+    budget.canStartModelCall()
+  ) {
+    session.codeIntelAdoptionNudges += 1;
+    reasonCodes.push("code_intel_adoption_nudged");
+    messages.push({
+      role: "user",
+      content: buildCodeIntelAdoptionNudgeMessage(grantedCodeIntel),
+    });
+    warnings.push(
+      "Nudged toward granted code-intelligence tools after repeated file-body reads.",
+    );
+    session.answer = answer;
+    return { kind: "continue" };
+  }
 
   // Diagnose / ask: break identical-tool thrash (e.g. read_diagnostics loops)
   // once evidence already exists in the transcript.

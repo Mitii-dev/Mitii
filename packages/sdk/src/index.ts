@@ -205,6 +205,7 @@ export type {
   SarifReport,
   DiagnosticsPort,
   DiagnosticItem,
+  DiagnosticsSettleOptions,
   GitPort,
   CodeNavigationPort,
   CodeNavigationQuery,

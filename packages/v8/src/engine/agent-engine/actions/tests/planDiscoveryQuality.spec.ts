@@ -5,6 +5,8 @@ import {
   isPlanDiscoveryEvidenceSufficient,
   isThoroughPlanDiscoveryEvidenceSufficient,
   requiresPlanDiscoveryQualityFloor,
+  shouldPreferDiscoverySymbolEvidence,
+  shouldRequireDiscoverySymbolEvidence,
   usesThoroughPlanDiscoveryEvidence,
 } from "../planDiscoveryQuality";
 
@@ -155,6 +157,95 @@ describe("isPlanDiscoveryEvidenceSufficient", () => {
         },
         { thorough: true },
       ),
+    ).toBe(true);
+  });
+
+  it("thorough + requireSymbolEvidence needs attached symbols on a read", () => {
+    expect(
+      isThoroughPlanDiscoveryEvidenceSufficient(
+        {
+          filesRead: [
+            { path: "a.ts", reason: "seed" },
+            { path: "b.ts", reason: "seed" },
+          ],
+          proposedChangeSurfaces: [
+            { path: "a.ts", actionHint: "Change", riskLevel: "low", evidence: "read" },
+          ],
+          confidence: "medium",
+        },
+        { requireSymbolEvidence: true },
+      ),
+    ).toBe(false);
+
+    expect(
+      isThoroughPlanDiscoveryEvidenceSufficient(
+        {
+          filesRead: [
+            {
+              path: "a.ts",
+              reason: "seed",
+              symbols: ["Foo"],
+            },
+            { path: "b.ts", reason: "seed" },
+          ],
+          proposedChangeSurfaces: [
+            { path: "a.ts", actionHint: "Change", riskLevel: "low", evidence: "read" },
+          ],
+          confidence: "medium",
+        },
+        { requireSymbolEvidence: true },
+      ),
+    ).toBe(true);
+  });
+});
+
+describe("shouldRequireDiscoverySymbolEvidence", () => {
+  it("requires symbol tools when thorough and navigation is available", () => {
+    expect(
+      shouldRequireDiscoverySymbolEvidence({
+        thorough: true,
+        allowedTools: ["read_file", "document_symbol", "goto_definition"],
+        reasonCodes: ["code_navigation_available"],
+        codeIntelligenceToolIds: ["document_symbol", "goto_definition"],
+      }),
+    ).toBe(true);
+    expect(
+      shouldRequireDiscoverySymbolEvidence({
+        thorough: true,
+        allowedTools: ["read_file", "document_symbol"],
+        reasonCodes: ["code_navigation_unavailable"],
+        codeIntelligenceToolIds: ["document_symbol"],
+      }),
+    ).toBe(false);
+    expect(
+      shouldRequireDiscoverySymbolEvidence({
+        thorough: false,
+        allowedTools: ["document_symbol"],
+        reasonCodes: [],
+        codeIntelligenceToolIds: ["document_symbol"],
+      }),
+    ).toBe(false);
+    expect(
+      shouldRequireDiscoverySymbolEvidence({
+        thorough: true,
+        allowedTools: ["document_symbol"],
+        reasonCodes: [],
+        codeIntelligenceToolIds: ["document_symbol"],
+        supportsForcedToolChoice: false,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("shouldPreferDiscoverySymbolEvidence", () => {
+  it("stays true when forced tool choice is unavailable", () => {
+    expect(
+      shouldPreferDiscoverySymbolEvidence({
+        thorough: true,
+        allowedTools: ["document_symbol"],
+        reasonCodes: [],
+        codeIntelligenceToolIds: ["document_symbol"],
+      }),
     ).toBe(true);
   });
 });

@@ -23,10 +23,25 @@ export type RepositoryStateCapabilitySummary = z.infer<
   typeof repositoryStateCapabilitySummarySchema
 >;
 
-/** Host-reported optional tool backends (honest grant gating). */
+/**
+ * Host-reported optional tool backends (honest grant gating + prompt guidance).
+ * Values come from injected ports — never invent capability from language IDs alone.
+ */
 export const hostCapabilityFlagsSchema = z
   .object({
     webSearch: z.boolean().optional(),
+    /** True when a DiagnosticsPort is injected. */
+    diagnostics: z.boolean().optional(),
+    /**
+     * Code-navigation capability from the host CodeNavigationPort.
+     * Omitting means the host did not report a capability (treat as unknown).
+     */
+    codeNavigation: z
+      .enum(["available", "degraded", "unavailable"])
+      .optional(),
+    codeNavigationProvider: z
+      .enum(["language_server", "repo_graph", "none"])
+      .optional(),
   })
   .strict();
 

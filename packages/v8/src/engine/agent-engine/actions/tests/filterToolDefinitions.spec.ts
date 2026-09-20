@@ -126,6 +126,83 @@ describe("filterToolDefinitions MCP gating", () => {
     });
   });
 
+  it("keeps full schemas for code-intelligence, diagnostics, and change-impact families", () => {
+    const navSchema = {
+      type: "object",
+      properties: {
+        path: { type: "string" },
+        line: { type: "integer" },
+      },
+      required: ["path", "line"],
+    };
+    const tools = filterToolDefinitions({
+      grant: grant({
+        allowedTools: [
+          "goto_definition",
+          "find_references",
+          "read_diagnostics",
+          "analyze_change_impact",
+          "get_current_time",
+        ],
+      }),
+      definitions: [
+        {
+          name: "goto_definition",
+          description: "goto",
+          inputSchema: navSchema,
+        },
+        {
+          name: "find_references",
+          description: "refs",
+          inputSchema: navSchema,
+        },
+        {
+          name: "read_diagnostics",
+          description: "diags",
+          inputSchema: {
+            type: "object",
+            properties: { paths: { type: "array" } },
+          },
+        },
+        {
+          name: "analyze_change_impact",
+          description: "impact",
+          inputSchema: {
+            type: "object",
+            properties: { path: { type: "string" } },
+            required: ["path"],
+          },
+        },
+        {
+          name: "get_current_time",
+          description: "Current time in a timezone for long-tail stub coverage in progressive disclosure tests.",
+          inputSchema: {
+            type: "object",
+            properties: { timezone: { type: "string" } },
+            required: ["timezone"],
+          },
+        },
+      ],
+      supportsTools: true,
+    });
+    for (const name of [
+      "goto_definition",
+      "find_references",
+      "read_diagnostics",
+      "analyze_change_impact",
+    ]) {
+      const tool = tools.find((t) => t.name === name);
+      expect(tool?.inputSchema).not.toMatchObject({
+        description: expect.stringContaining("Index stub"),
+      });
+      expect(tool?.inputSchema).toHaveProperty("properties");
+    }
+    const time = tools.find((t) => t.name === "get_current_time");
+    expect(time?.inputSchema).toMatchObject({
+      description: expect.stringContaining("Index stub"),
+    });
+  });
+
   it("exposes mcp__* tools when write is granted (INDEX stubbed)", () => {
     const tools = filterToolDefinitions({
       grant: grant({

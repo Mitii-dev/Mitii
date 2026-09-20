@@ -64,6 +64,60 @@ describe('modelIoLog', () => {
     expect(content.endsWith('…')).toBe(true);
   });
 
+  it('fingerprints tool input schemas without logging schema bodies', () => {
+    const full = __testing.sanitizeRequest({
+      messages: [],
+      tools: [
+        {
+          name: 'goto_definition',
+          description: 'Go to definition',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              path: { type: 'string' },
+              line: { type: 'number' },
+              column: { type: 'number' },
+            },
+            required: ['path', 'line'],
+          },
+        },
+        {
+          name: 'get_current_time',
+          description: 'Index stub',
+          inputSchema: { type: 'object', properties: {} },
+        },
+      ],
+    });
+
+    expect(full.fullSchemaToolCount).toBe(1);
+    expect(full.stubSchemaToolCount).toBe(1);
+    const tools = full.tools as Array<Record<string, unknown>>;
+    expect(tools[0]).toMatchObject({
+      name: 'goto_definition',
+      inputSchemaPropertyCount: 3,
+      inputSchemaRequiredCount: 2,
+    });
+    expect(typeof tools[0]?.inputSchemaFingerprint).toBe('string');
+    expect(String(tools[0]?.inputSchemaFingerprint).length).toBe(12);
+    expect(JSON.stringify(tools[0])).not.toContain('"properties"');
+    expect(tools[1]).toMatchObject({
+      name: 'get_current_time',
+      inputSchemaStub: true,
+      inputSchemaPropertyCount: 0,
+    });
+
+    const sameFingerprint = __testing.fingerprintInputSchema({
+      type: 'object',
+      properties: {
+        column: { type: 'number' },
+        line: { type: 'number' },
+        path: { type: 'string' },
+      },
+      required: ['line', 'path'],
+    });
+    expect(tools[0]?.inputSchemaFingerprint).toBe(sameFingerprint.fingerprint);
+  });
+
   it('writes request/response records when a sink is active', async () => {
     const root = mkdtempSync(join(tmpdir(), 'mitii-model-io-'));
 

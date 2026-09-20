@@ -51,7 +51,11 @@ export type {
   ProcessExecRequest,
   ProcessExecResult,
 } from "./ProcessPort";
-export type { DiagnosticsPort, DiagnosticItem } from "./DiagnosticsPort";
+export type {
+  DiagnosticsPort,
+  DiagnosticItem,
+  DiagnosticsSettleOptions,
+} from "./DiagnosticsPort";
 export type {
   GitPort,
   GitStatusResult,

@@ -1,5 +1,8 @@
 import type { ExecutionDecision } from "../../decision-policy";
 import {
+  CHANGE_IMPACT_TOOL_IDS,
+  CODE_INTELLIGENCE_TOOL_IDS,
+  DIAGNOSTICS_TOOL_IDS,
   MUTATION_TOOL_IDS,
   PROCESS_TOOL_IDS,
 } from "../../decision-policy/constants";
@@ -38,9 +41,14 @@ const WRITE_CRITICAL_TOOL_IDS = new Set<string>([
 ]);
 
 /**
+ * Base priorities for named tools. Family defaults (code intelligence,
+ * diagnostics, change-impact) are applied in {@link packPriority} so new
+ * family members inherit the correct band without editing this map.
+ *
  * Pack order when the tools section budget is tight. Higher = keep first.
- * Write-critical tools outrank optional discovery/nav so execute+write never
+ * Write-critical tools outrank optional discovery so execute+write never
  * advertises apply_patch in prose while omitting its schema.
+ * Code-intelligence sits above text search so symbol tools survive packing.
  */
 const TOOL_PACK_PRIORITY: Record<string, number> = {
   describe_tool: 110,
@@ -52,23 +60,33 @@ const TOOL_PACK_PRIORITY: Record<string, number> = {
   update_todos: 85,
   read_file: 70,
   read_many_files: 69,
-  search_files: 65,
-  glob_files: 64,
-  list_directory: 63,
-  file_metadata: 60,
+  // Code-intelligence band: 68..62 (see family defaults below)
+  search_files: 61,
+  glob_files: 60,
+  list_directory: 59,
+  file_metadata: 58,
   run_readonly_command: 55,
-  read_diagnostics: 50,
+  // Diagnostics / change-impact band applied via families
   read_git_status: 49,
   read_package_scripts: 48,
-  analyze_change_impact: 40,
-  goto_definition: 35,
-  find_references: 34,
-  hover_symbol: 33,
-  document_symbol: 32,
-  workspace_symbol: 31,
-  find_implementation: 30,
-  call_hierarchy: 29,
 };
+
+/** Preferred order inside the code-intelligence family (higher first). */
+const CODE_INTELLIGENCE_PACK_ORDER: readonly string[] = [
+  "document_symbol",
+  "goto_definition",
+  "find_references",
+  "find_implementation",
+  "call_hierarchy",
+  "hover_symbol",
+  "workspace_symbol",
+];
+
+const CODE_INTELLIGENCE_PRIORITY_BASE = 68;
+const DIAGNOSTICS_PRIORITY = 66;
+const CHANGE_IMPACT_PRIORITY = 65;
+const DEFAULT_PACK_PRIORITY = 45;
+const MCP_PACK_PRIORITY = 75;
 
 export function serializeTools(params: {
   decision: ExecutionDecision;
@@ -216,11 +234,28 @@ export function serializeTools(params: {
   };
 }
 
-function packPriority(name: string): number {
+/** Exported for tests — family-aware pack priority. */
+export function packPriority(name: string): number {
   if (name.startsWith("mcp__")) {
-    return 75;
+    return MCP_PACK_PRIORITY;
   }
-  return TOOL_PACK_PRIORITY[name] ?? 45;
+  if (Object.prototype.hasOwnProperty.call(TOOL_PACK_PRIORITY, name)) {
+    return TOOL_PACK_PRIORITY[name]!;
+  }
+  if ((DIAGNOSTICS_TOOL_IDS as readonly string[]).includes(name)) {
+    return DIAGNOSTICS_PRIORITY;
+  }
+  if ((CHANGE_IMPACT_TOOL_IDS as readonly string[]).includes(name)) {
+    return CHANGE_IMPACT_PRIORITY;
+  }
+  const codeIntelIndex = CODE_INTELLIGENCE_PACK_ORDER.indexOf(name);
+  if (codeIntelIndex >= 0) {
+    return CODE_INTELLIGENCE_PRIORITY_BASE - codeIntelIndex;
+  }
+  if ((CODE_INTELLIGENCE_TOOL_IDS as readonly string[]).includes(name)) {
+    return CODE_INTELLIGENCE_PRIORITY_BASE - CODE_INTELLIGENCE_PACK_ORDER.length;
+  }
+  return DEFAULT_PACK_PRIORITY;
 }
 
 function estimateTool(

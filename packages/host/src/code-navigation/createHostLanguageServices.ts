@@ -12,6 +12,7 @@ import type {
   CodeNavigationWorkspaceQuery,
   DiagnosticItem,
   DiagnosticsPort,
+  DiagnosticsSettleOptions,
 } from '@mitii/v8';
 import { CODE_NAVIGATION_OPERATIONS } from '@mitii/v8';
 
@@ -310,6 +311,21 @@ class TypeScriptLanguageService implements CodeNavigationPort, DiagnosticsPort {
       }
     }
     return items;
+  }
+
+  /**
+   * TypeScript language service diagnostics are synchronous once files are
+   * in the program — settle is a no-op after ensuring changed paths are open.
+   */
+  public async settleDiagnostics(
+    options: DiagnosticsSettleOptions,
+  ): Promise<void> {
+    for (const relativePath of options.paths ?? []) {
+      const absolute = this.absolute(relativePath);
+      if (absolute) {
+        this.openFiles.add(absolute);
+      }
+    }
   }
 
   private definitions(

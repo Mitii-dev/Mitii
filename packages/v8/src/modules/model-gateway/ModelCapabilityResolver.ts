@@ -76,6 +76,9 @@ export class ModelCapabilityResolver {
           .supportsEmbeddings ??
         MODEL_GATEWAY_DEFAULTS
           .SUPPORTS_EMBEDDINGS,
+      supportsForcedToolChoice:
+        input.supportsForcedToolChoice ??
+        MODEL_GATEWAY_DEFAULTS.SUPPORTS_FORCED_TOOL_CHOICE,
       ...(input.agenticTier
         ? {
             agenticTier:

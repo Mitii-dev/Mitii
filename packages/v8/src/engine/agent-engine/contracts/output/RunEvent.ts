@@ -183,6 +183,8 @@ export const runEventSchema = z.discriminatedUnion("type", [
           "model_error",
         ])
         .optional(),
+      /** False when the plan quality floor failed (stage reason discovery_failed). */
+      qualityFloorMet: z.boolean().optional(),
       at: z.string().datetime(),
     })
     .strict(),

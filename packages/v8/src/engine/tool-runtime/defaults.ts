@@ -14,6 +14,19 @@ export const DEFAULT_GLOB_SKIP_DIRECTORY_NAMES = [
   "node_modules",
 ] as const;
 
+/**
+ * Post-edit diagnostics settle: max wait for host analyzers after mutation.
+ * Hosts may return earlier when the diagnostic set is stable.
+ */
+export const DEFAULT_DIAGNOSTICS_SETTLE_TIMEOUT_MS = 2_000;
+/** Poll interval while waiting for diagnostic stability. */
+export const DEFAULT_DIAGNOSTICS_SETTLE_POLL_MS = 50;
+/**
+ * Consecutive identical snapshots required before treating diagnostics as
+ * settled (hosts that poll). Single-shot hosts ignore this.
+ */
+export const DEFAULT_DIAGNOSTICS_SETTLE_STABLE_READS = 2;
+
 /** Absolute schema ceiling for apply_patch.patches length (catalog hard max). */
 export const MAX_APPLY_PATCH_PATCHES = 20;
 

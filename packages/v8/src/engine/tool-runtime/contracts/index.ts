@@ -50,6 +50,7 @@ export type {
   ProcessExecResult,
   DiagnosticsPort,
   DiagnosticItem,
+  DiagnosticsSettleOptions,
   GitPort,
   GitStatusResult,
   GitDiffResult,

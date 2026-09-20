@@ -123,6 +123,9 @@ export const MODEL_GATEWAY_DEFAULTS = {
     false,
   SUPPORTS_EMBEDDINGS:
     false,
+  /** OpenAI-compatible default: forced tool_choice is allowed. */
+  SUPPORTS_FORCED_TOOL_CHOICE:
+    true,
   TEMPERATURE:
     0.2,
   /**

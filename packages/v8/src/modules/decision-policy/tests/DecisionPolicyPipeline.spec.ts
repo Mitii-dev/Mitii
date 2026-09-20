@@ -1561,6 +1561,43 @@ describe("DecisionPolicyPipeline", () => {
     expect(withPort.toolGrant.allowedTools).toContain("web_search");
   });
 
+  it("records host code-navigation and diagnostics capability reason codes", () => {
+    const available = new DecisionPolicyPipeline().decide({
+      ...createInput({
+        mode: "ask",
+        message: "What does LoginForm export?",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "question",
+          interactionIntent: "question",
+        }),
+      }),
+      hostCapabilities: {
+        diagnostics: true,
+        codeNavigation: "available",
+        codeNavigationProvider: "language_server",
+      },
+    });
+    expect(available.reasonCodes).toContain("diagnostics_port_available");
+    expect(available.reasonCodes).toContain("code_navigation_available");
+
+    const degraded = new DecisionPolicyPipeline().decide({
+      ...createInput({
+        mode: "ask",
+        message: "What does LoginForm export?",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "question",
+          interactionIntent: "question",
+        }),
+      }),
+      hostCapabilities: {
+        codeNavigation: "degraded",
+        codeNavigationProvider: "repo_graph",
+      },
+    });
+    expect(degraded.reasonCodes).toContain("code_navigation_degraded");
+    expect(degraded.reasonCodes).not.toContain("diagnostics_port_available");
+  });
+
   it("widen() merges network hosts from web_search results", () => {
     const pipeline = new DecisionPolicyPipeline();
     const base = pipeline.decide({

@@ -77,6 +77,11 @@ export type {
   AgentEngineThresholdsOverrides,
 } from "./resolveAgentEngineThresholds";
 export {
+  resolveReasoningProgressBudget,
+  shouldNudgeCodeIntelAdoption,
+  buildCodeIntelAdoptionNudgeMessage,
+} from "./resolveReasoningAndCodeIntelNudges";
+export {
   resolveLoopPolicyThresholds,
   resolveLoopPolicyBandThresholds,
 } from "./resolveLoopPolicyThresholds";
@@ -125,8 +130,11 @@ export {
   toToolIndexDefinition,
   isMcpToolName,
   isMcpAllowedByGrant,
+  buildFullSchemaToolIds,
   DESCRIBE_TOOL_NAME,
   FULL_SCHEMA_TOOL_IDS,
+  CORE_DISCOVERY_FULL_SCHEMA_TOOL_IDS,
+  CORE_MUTATION_FULL_SCHEMA_TOOL_IDS,
   TOOL_INDEX_INPUT_SCHEMA,
   MCP_TOOL_NAME_PREFIX,
 } from "./filterToolDefinitions";
@@ -196,6 +204,8 @@ export {
   isPlanDiscoveryEvidenceSufficient,
   isThoroughPlanDiscoveryEvidenceSufficient,
   requiresPlanDiscoveryQualityFloor,
+  shouldPreferDiscoverySymbolEvidence,
+  shouldRequireDiscoverySymbolEvidence,
   usesThoroughPlanDiscoveryEvidence,
 } from "./planDiscoveryQuality";
 export type { PlanningDepthForQuality } from "./planDiscoveryQuality";

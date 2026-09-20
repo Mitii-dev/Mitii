@@ -196,6 +196,9 @@ export class OpenAiCompatibleLlmPort implements LlmPort {
         config.capabilities?.supportsPromptCaching ?? true,
       supportsEmbeddings:
         config.capabilities?.supportsEmbeddings ?? false,
+      supportsForcedToolChoice:
+        config.capabilities?.supportsForcedToolChoice ??
+        MODEL_GATEWAY_DEFAULTS.SUPPORTS_FORCED_TOOL_CHOICE,
       ...(config.capabilities?.agenticTier
         ? { agenticTier: config.capabilities.agenticTier }
         : {}),
@@ -313,10 +316,17 @@ export class OpenAiCompatibleLlmPort implements LlmPort {
           parameters: tool.inputSchema,
         },
       }));
-      body.tool_choice = request.toolChoice ?? "auto";
+      const requestedChoice = request.toolChoice ?? "auto";
+      const reasoningActive = request.reasoning?.enabled === true;
+      const allowForced =
+        this.capabilities.supportsForcedToolChoice !== false && !reasoningActive;
+      body.tool_choice =
+        requestedChoice === "required" && !allowForced
+          ? "auto"
+          : requestedChoice;
     }
 
-    if (request.responseFormat) {
+    if (request.responseFormat && this.capabilities.supportsStructuredOutput) {
       if (request.responseFormat.type === "json_object") {
         body.response_format = { type: "json_object" };
       } else if (request.responseFormat.type === "json_schema") {

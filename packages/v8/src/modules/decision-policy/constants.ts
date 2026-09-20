@@ -52,6 +52,26 @@ export const VERIFICATION_EVIDENCE_KINDS = [
   "diff_review",
 ] as const;
 
+/**
+ * Symbol-level code intelligence tools (language service or repo-graph).
+ * Keep aligned with Tool Runtime catalog and Agent Engine progressive schemas.
+ */
+export const CODE_INTELLIGENCE_TOOL_IDS = [
+  "goto_definition",
+  "find_references",
+  "hover_symbol",
+  "document_symbol",
+  "workspace_symbol",
+  "find_implementation",
+  "call_hierarchy",
+] as const;
+
+/** Workspace diagnostics inspection tools. */
+export const DIAGNOSTICS_TOOL_IDS = ["read_diagnostics"] as const;
+
+/** Repository blast-radius analysis tools. */
+export const CHANGE_IMPACT_TOOL_IDS = ["analyze_change_impact"] as const;
+
 /** Tool catalog IDs Decision Policy may grant (must stay aligned with Tool Runtime). */
 export const READ_ONLY_TOOL_IDS = [
   "describe_tool",
@@ -62,19 +82,13 @@ export const READ_ONLY_TOOL_IDS = [
   "glob_files",
   "file_metadata",
   "search_files",
-  "read_diagnostics",
+  ...DIAGNOSTICS_TOOL_IDS,
   "read_git_status",
   "read_git_log",
   "read_git_show",
   "read_git_branches",
-  "goto_definition",
-  "find_references",
-  "hover_symbol",
-  "document_symbol",
-  "workspace_symbol",
-  "find_implementation",
-  "call_hierarchy",
-  "analyze_change_impact",
+  ...CODE_INTELLIGENCE_TOOL_IDS,
+  ...CHANGE_IMPACT_TOOL_IDS,
   "emit_review_finding",
   "run_readonly_command",
   "read_package_scripts",
@@ -125,6 +139,15 @@ export const DECISION_REASON_CODES = [
   "long_prompt_visible_plan",
   /** Prompt/engine should prefer analyze_change_impact before shared-surface mutations. */
   "change_impact_recommended",
+  /**
+   * Host reported code-navigation capability status for grant/prompt honesty
+   * (`available` | `degraded` | `unavailable`).
+   */
+  "code_navigation_available",
+  "code_navigation_degraded",
+  "code_navigation_unavailable",
+  /** Host injected a DiagnosticsPort for Problems / language-service diagnostics. */
+  "diagnostics_port_available",
   /** Execute route should capture scoped build/typecheck evidence before planning. */
   "preflight_build_recommended",
   /** Understanding risk was low but shared-scope repair elevated effective grant risk. */

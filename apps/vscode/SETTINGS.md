@@ -210,7 +210,7 @@ Keep this minimal. Permanent ship policy lives in `pnpm policy-admin`.
 | UI field | Setting | Save / reflect |
 |---|---|---|
 | Debug logging | `mitii.debug` | When on, Mitii shows the Output channel and prints verbose stacks. Locked until Access is enabled. |
-| Log model I/O | `mitii.developer.modelIo` | When on (and Access enabled), writes sanitized model request/response bodies to `.mitii/logs/*-model-io.jsonl`. Large; may include workspace content — keep local. Command **Mitii: Export Shareable Diagnostic** builds one redacted markdown file under `.mitii/logs/` for pasting into online chat help. |
+| Log model I/O | `mitii.developer.modelIo` | When on (and Access enabled), writes sanitized model request/response bodies to `.mitii/logs/*-model-io.jsonl`. Tool defs log name/description plus `inputSchemaFingerprint` / property counts (not full schemas). Large; may include workspace content — keep local. Command **Mitii: Export Shareable Diagnostic** builds one redacted markdown file under `.mitii/logs/` for pasting into online chat help. |
 
 ### Token budget (local)
 

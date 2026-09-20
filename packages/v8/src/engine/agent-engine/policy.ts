@@ -38,6 +38,12 @@ export const AGENT_ENGINE_THRESHOLDS = {
    */
   maxRejectedMutationRecoveries: 3,
   /**
+   * One withheld mutation when change_impact_recommended and
+   * analyze_change_impact has not yet succeeded on this run. A second attempt
+   * proceeds so this does not deadlock against unfulfilled_execute recovery.
+   */
+  maxChangeImpactNudges: 1,
+  /**
    * One withheld mutation when the active task's mustRead files are not yet
    * in this-loop reads or established facts. A second attempt proceeds so
    * this does not fight unfulfilled_execute recovery.
@@ -124,6 +130,19 @@ export const AGENT_ENGINE_THRESHOLDS = {
    * harness wall clock (benchmark exit 124) before the first tool call.
    */
   maxReasoningCharsWithoutProgress: 12_000,
+  /**
+   * When the model advertises reasoning support, apply this ratio to
+   * {@link maxReasoningCharsWithoutProgress} so thinking-only burns trip
+   * earlier and recover into tools instead of Continue thrash.
+   */
+  reasoningProgressBudgetRatioWhenReasoningCapable: 0.5,
+  /**
+   * After this many successful file-body reads without any granted
+   * code-intelligence tool, nudge once toward document_symbol / goto_definition.
+   */
+  maxFileReadsBeforeCodeIntelNudge: 8,
+  /** Max code-intel adoption nudges per run (0 disables). */
+  maxCodeIntelAdoptionNudges: 1,
 } as const;
 
 /**

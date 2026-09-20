@@ -91,6 +91,25 @@ export class ToolRuntimePipeline {
     return this.ports.diagnostics !== undefined;
   }
 
+  /** Host code-navigation capability when a CodeNavigationPort is injected. */
+  public codeNavigationCapability():
+    | {
+        status: "available" | "degraded" | "unavailable";
+        provider: "language_server" | "repo_graph" | "none";
+        reason: string;
+      }
+    | undefined {
+    const capability = this.ports.codeNavigation?.capability?.();
+    if (!capability) {
+      return undefined;
+    }
+    return {
+      status: capability.status,
+      provider: capability.provider,
+      reason: capability.reason,
+    };
+  }
+
   public async execute(
     input: ToolInvocationInput,
     options: ToolExecuteOptions = {},

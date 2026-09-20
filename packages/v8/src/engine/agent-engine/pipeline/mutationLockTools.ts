@@ -15,15 +15,26 @@ export const MUTATION_LOCK_BROAD_DISCOVERY_TOOLS = new Set([
   "read_git_show",
   "read_git_branches",
   "file_metadata",
-  "document_symbol",
+  /** Workspace-wide symbol search restarts exploration; caret tools stay. */
   "workspace_symbol",
 ]);
 
-/** Targeted evidence reads — kept available; turn caps enforce the budget. */
+/**
+ * Targeted evidence reads — kept available; turn caps enforce the budget.
+ * Includes caret/file code-intelligence so symbol resolution stays usable
+ * while broad rediscovery is locked.
+ */
 export const MUTATION_LOCK_EVIDENCE_READ_TOOLS = new Set([
   "read_file",
   "read_many_files",
   "read_diagnostics",
+  "goto_definition",
+  "find_references",
+  "hover_symbol",
+  "document_symbol",
+  "find_implementation",
+  "call_hierarchy",
+  "analyze_change_impact",
 ]);
 
 /**

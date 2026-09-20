@@ -1,3 +1,9 @@
+import {
+  CHANGE_IMPACT_TOOL_IDS,
+  CODE_INTELLIGENCE_TOOL_IDS,
+  DIAGNOSTICS_TOOL_IDS,
+} from "../../modules/decision-policy";
+
 /**
  * Stable identifiers for Tool Runtime.
  */
@@ -13,19 +19,13 @@ export const READ_ONLY_TOOL_IDS = [
   "glob_files",
   "file_metadata",
   "search_files",
-  "read_diagnostics",
+  ...DIAGNOSTICS_TOOL_IDS,
   "read_git_status",
   "read_git_log",
   "read_git_show",
   "read_git_branches",
-  "goto_definition",
-  "find_references",
-  "hover_symbol",
-  "document_symbol",
-  "workspace_symbol",
-  "find_implementation",
-  "call_hierarchy",
-  "analyze_change_impact",
+  ...CODE_INTELLIGENCE_TOOL_IDS,
+  ...CHANGE_IMPACT_TOOL_IDS,
   "run_readonly_command",
   "read_package_scripts",
   "sequential_thinking",
@@ -96,6 +96,7 @@ export const TOOL_REASON_CODES = [
   "identical_old_and_new",
   "patch_syntax_invalid",
   "must_read_incomplete",
+  "change_impact_incomplete",
   "already_read",
   "checkpoint_missing",
   "rollback_failed",

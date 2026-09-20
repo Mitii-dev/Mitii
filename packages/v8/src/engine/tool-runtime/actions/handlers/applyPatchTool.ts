@@ -7,7 +7,7 @@ import {
 import { MutationError } from "../../internal/mutation";
 import type { DiagnosticItem } from "../../contracts";
 import { executeApplyPatch } from "../ExecuteApplyPatch";
-import { filterNewDiagnostics } from "../filterNewDiagnostics";
+import { collectPostEditDiagnostics } from "../collectPostEditDiagnostics";
 
 export const applyPatchTool: RegisteredTool = {
   definition: defineTool({
@@ -80,24 +80,32 @@ export const applyPatchTool: RegisteredTool = {
       alreadyMutatedPaths: ctx.alreadyMutatedPaths,
     });
 
-    if (!diagnosticsPort) {
+    if (!diagnosticsPort || result.output.changedFiles.length === 0) {
       return result;
     }
 
-    const after = await safeReadDiagnostics(diagnosticsPort, {
+    const postEdit = await collectPostEditDiagnostics({
+      diagnostics: diagnosticsPort,
       workspaceRoot: ctx.workspaceRoot,
-      paths: result.output.changedFiles,
+      changedPaths: result.output.changedFiles,
+      baseline,
     });
-    const newDiagnostics = filterNewDiagnostics({ after, baseline });
-    if (newDiagnostics.length === 0) {
-      return result;
-    }
 
     return {
       ...result,
       output: {
         ...result.output,
-        newDiagnostics,
+        ...(postEdit.newDiagnostics.length > 0
+          ? { newDiagnostics: postEdit.newDiagnostics }
+          : {}),
+        postEditDiagnostics: {
+          settled: postEdit.settled,
+          errorCount: postEdit.errorCount,
+          warningCount: postEdit.warningCount,
+          infoCount: postEdit.infoCount,
+          hintCount: postEdit.hintCount,
+          requiresRepair: postEdit.requiresRepair,
+        },
       },
     };
   },

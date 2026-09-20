@@ -92,7 +92,7 @@ Prefer importing from `@mitii/host`. Do not import `internal/`.
 | `loadRecipeSpec` | Parameterized recipes | Load `.mitii/recipes/<id>.json` (schemaVersion: 1) |
 | `loadProjectRules` | SDK `projectRules` | `AGENTS.md`, `.mitii/rules`, `MITTII.local.md` |
 | `PROVIDER_PRESETS` / `getProviderPreset` | Host config only | Prefills base URL / model / adapter |
-| `createHostLlmPorts` | Host composition | Echo, OpenAI-compatible, Anthropic, Gemini |
+| `createHostLlmPorts` | Host composition | Echo, OpenAI-compatible, Anthropic, Gemini. Presets may set `defaultCapabilities` (e.g. disable forced tool choice + structured output for thinking endpoints). |
 | `testProviderConnection` | Host UX | Probe without starting a run |
 
 ## How hosts wire it

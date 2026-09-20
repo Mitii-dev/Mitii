@@ -103,4 +103,53 @@ describe("serializeToolResultForModel", () => {
     expect(parsed.output.stdout).toContain("b.tsx:14");
     expect(parsed.output).not.toHaveProperty("repairHint");
   });
+
+  it("keeps change-impact files-first under a tight model budget", () => {
+    const affected = Array.from({ length: 40 }, (_, index) => ({
+      path: `src/n${index}.ts`,
+      hop: 1,
+      viaEdgeType: "imports",
+      score: 1,
+      evidence: ["edge-a", "edge-b", "edge-c"],
+    }));
+    const affectedFiles = Array.from({ length: 25 }, (_, index) => ({
+      path: `src/f${index}.ts`,
+      hop: 1,
+      score: 1,
+      affectedNodeCount: 2,
+      reason: "imports seed",
+    }));
+
+    const serialized = serializeToolResultForModel(
+      {
+        ...toolResult({
+          path: "src/seed.ts",
+          provider: "repo_graph",
+          status: "partial",
+          resolvedSeeds: [{ kind: "file", path: "src/seed.ts" }],
+          affected,
+          affectedFiles,
+          packagesAffected: [],
+          truncated: false,
+          warnings: [],
+          reasonCodes: ["impact_resolved"],
+        }),
+        toolName: "analyze_change_impact",
+      },
+      { maxContentChars: 1_200 },
+    );
+
+    const parsed = JSON.parse(serialized) as {
+      output: {
+        affected: unknown[];
+        affectedFiles: unknown[];
+        truncated?: boolean;
+      };
+      outputTruncatedForModel?: boolean;
+    };
+
+    expect(parsed.output.affectedFiles.length).toBeGreaterThan(0);
+    expect(parsed.output.affected.length).toBeLessThanOrEqual(12);
+    expect(JSON.stringify(parsed.output).length).toBeLessThanOrEqual(1_400);
+  });
 });

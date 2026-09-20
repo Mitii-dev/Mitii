@@ -89,13 +89,36 @@ agent-engine/
   `conversationShare` / dropped-summary budget as a
   `<session_history_checkpoint>` user message. See `internal/session-history/`.
 - **Progressive tool schemas:** `filterToolDefinitions` exposes INDEX stubs
-  for long-tail / MCP tools, while core discovery + mutation tools
-  (`FULL_SCHEMA_TOOL_IDS`: read_file, search_files, run_readonly_command,
-  apply_patch, …) keep full parameter schemas. Models can still call
-  `describe_tool` for stubbed tools. Tool Runtime validates real Zod schemas
+  for long-tail / MCP tools, while core discovery, mutation, **code
+  intelligence**, **diagnostics**, and **change-impact** families keep full
+  parameter schemas (`buildFullSchemaToolIds` / `FULL_SCHEMA_TOOL_IDS`).
+  Hosts may extend families without editing the core set. `describe_tool`
+  still hydrates stubbed tools. Tool Runtime validates real Zod schemas
   at execute time — stubs never widen the grant. Common arg aliases
   (`pattern`→`query`, `command`→`argv`, numeric strings) are normalized in
   preflight.
+- **Change-impact gate:** when Decision Policy includes
+  `change_impact_recommended` and `analyze_change_impact` is granted, the
+  first mutating tool call is withheld (`change_impact_incomplete`) until
+  impact analysis succeeds, subject to `maxChangeImpactNudges` (default 1).
+  Tool output is files-first and model-facing capped so blast-radius fits
+  tool-result budgets (`model_facing_truncated` when capped).
+- **Code-intelligence bias:** pack priority keeps symbol tools above text
+  search; thorough discovery can require attached symbols when navigation
+  is available **and** the model supports forced tool choice; otherwise
+  discovery nudges for symbols without failing the quality floor (when
+  forced tool choice is unavailable). Mutation lock keeps caret/file nav + `analyze_change_impact`
+  while stripping broad rediscovery (`workspace_symbol` included).
+  `discovery_completed.qualityFloorMet` clarifies failed vs completed floors.
+- **Reasoning-burn recovery:** empty length-stops after mutations still nudge
+  `apply_patch` once when execute+write mutation remains required. Reasoning-capable
+  models use a tighter progress budget (`reasoningProgressBudgetRatioWhenReasoningCapable`).
+  After repeated file-body reads without symbol tools, a single generic code-intel
+  adoption nudge prefers granted navigation tools.
+- **Host capability honesty:** `hostCapabilities.codeNavigation` /
+  `diagnostics` flow from Tool Runtime ports into Decision Policy reason
+  codes and prompt guidance (`code_navigation_available|degraded|unavailable`,
+  `diagnostics_port_available`).
 - **ToolAdversaryPort (optional):** restrict-only fence after grant/shadow and
   before approval. Hosts inject via `composeReadOnlyAgentEngine({ adversary })`
   or `CreateMitiiClientOptions.adversary`. Decisions: ALLOW | ASK | BLOCK.

@@ -84,6 +84,9 @@ export class DecisionPolicyPipeline {
       understanding,
       repositoryState: parsed.repositoryState,
     });
+    const hostCapabilityCodes = resolveHostCapabilityReasonCodes(
+      parsed.hostCapabilities,
+    );
     const preflightBuild = resolvePreflightBuild({
       mode,
       route: routePlan.route,
@@ -95,6 +98,7 @@ export class DecisionPolicyPipeline {
       ...routePlan.reasonCodes,
       ...grantCompiled.reasonCodes,
       ...contextResult.reasonCodes,
+      ...hostCapabilityCodes,
       ...preflightBuild.reasonCodes,
       ...injection.reasonCodes,
       ...safetyResult.reasonCodes,
@@ -282,6 +286,32 @@ function resolveRepositoryContextNeed(params: {
     reasonCodes,
     warnings,
   };
+}
+
+function resolveHostCapabilityReasonCodes(
+  hostCapabilities: DecisionPolicyInput["hostCapabilities"],
+): DecisionReasonCode[] {
+  if (!hostCapabilities) {
+    return [];
+  }
+  const codes: DecisionReasonCode[] = [];
+  if (hostCapabilities.diagnostics === true) {
+    codes.push("diagnostics_port_available");
+  }
+  switch (hostCapabilities.codeNavigation) {
+    case "available":
+      codes.push("code_navigation_available");
+      break;
+    case "degraded":
+      codes.push("code_navigation_degraded");
+      break;
+    case "unavailable":
+      codes.push("code_navigation_unavailable");
+      break;
+    default:
+      break;
+  }
+  return codes;
 }
 
 function clampGrantAgainstInjection(

@@ -1,5 +1,10 @@
-import { READ_ONLY_TOOL_IDS } from "../../../modules/decision-policy";
-import type { ToolGrant } from "../../../modules/decision-policy";
+import {
+  CHANGE_IMPACT_TOOL_IDS,
+  CODE_INTELLIGENCE_TOOL_IDS,
+  DIAGNOSTICS_TOOL_IDS,
+  READ_ONLY_TOOL_IDS,
+  type ToolGrant,
+} from "../../../modules/decision-policy";
 import type {
   DiscoveryFileRef,
   DiscoveryObservation,
@@ -26,29 +31,16 @@ const DISCOVERY_TOOL_IDS = new Set<string>([
   "glob_files",
   "file_metadata",
   "search_files",
-  "read_diagnostics",
+  ...DIAGNOSTICS_TOOL_IDS,
   "read_git_status",
-  "goto_definition",
-  "find_references",
-  "hover_symbol",
-  "document_symbol",
-  "workspace_symbol",
-  "find_implementation",
-  "call_hierarchy",
+  ...CODE_INTELLIGENCE_TOOL_IDS,
+  ...CHANGE_IMPACT_TOOL_IDS,
   "read_package_scripts",
 ]);
 
 const FILE_READ_TOOLS = new Set(["read_file", "read_many_files"]);
 const SEARCH_TOOLS = new Set(["search_files", "glob_files"]);
-const SYMBOL_TOOLS = new Set([
-  "goto_definition",
-  "find_references",
-  "hover_symbol",
-  "document_symbol",
-  "workspace_symbol",
-  "find_implementation",
-  "call_hierarchy",
-]);
+const SYMBOL_TOOLS = new Set<string>([...CODE_INTELLIGENCE_TOOL_IDS]);
 
 export function createDiscoveryGrant(base: ToolGrant): ToolGrant {
   const allowed = base.allowedTools.filter(
@@ -317,6 +309,15 @@ export function hasDiscoveryReadPath(
   }
   return collector.filesRead.some(
     (file) => normalizeDiscoveryPath(file.path) === normalized,
+  );
+}
+
+/** True when at least one discovery file read has attached code-intel symbols. */
+export function discoveryHasSymbolEvidence(
+  collector: DiscoveryObservationCollector,
+): boolean {
+  return collector.filesRead.some(
+    (file) => Array.isArray(file.symbols) && file.symbols.length > 0,
   );
 }
 

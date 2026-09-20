@@ -28,6 +28,9 @@ export {
   DEFAULT_MAX_BYTES_PER_FILE_MANY,
   MAX_APPLY_PATCH_PATCHES,
   DEFAULT_FALLBACK_MUTATION_BUDGET,
+  DEFAULT_DIAGNOSTICS_SETTLE_TIMEOUT_MS,
+  DEFAULT_DIAGNOSTICS_SETTLE_POLL_MS,
+  DEFAULT_DIAGNOSTICS_SETTLE_STABLE_READS,
 } from "./defaults";
 
 export {
@@ -113,6 +116,7 @@ export type {
   ProcessExecResult,
   DiagnosticsPort,
   DiagnosticItem,
+  DiagnosticsSettleOptions,
   GitPort,
   NetworkPort,
   NetworkFetchRequest,

@@ -31,7 +31,7 @@ tests/
 | Review module | `packages/v8/src/modules/review/**/*.spec.ts` | Selection, rules, anchor, SARIF, ReviewRecord |
 | Review CI poster | `scripts/github-actions/post-mitii-review-comments.test.js` | IoU dedupe + sticky marker |
 | Behavioral evals | `packages/v8/src/engine/agent-engine/tests/behavioral/` | Real coding prompts → deny tools / mode seals (not prose) |
-| Progressive tools | `packages/v8/src/engine/tool-runtime/tests/DescribeTool.spec.ts`, `packages/v8/src/engine/agent-engine/actions/tests/filterToolDefinitions.spec.ts` | INDEX stubs + `describe_tool` grant-bound hydrate |
+| Progressive tools | `packages/v8/src/engine/tool-runtime/tests/DescribeTool.spec.ts`, `packages/v8/src/engine/agent-engine/actions/tests/filterToolDefinitions.spec.ts`, `packages/v8/src/engine/tool-runtime/actions/tests/collectPostEditDiagnostics.spec.ts` | INDEX stubs + full schemas for code-intelligence/diagnostics/change-impact + post-edit diagnostics settle |
 | RecipeSpec | `packages/host/src/recipes/recipeSpec.spec.ts` | Params compile; never emits ToolGrant fields |
 | Adversary | `tool-runtime/tests/Adversary.spec.ts` | BLOCK/ASK/fail-closed; unset = no-op |
 | Hooks / corpus / child | `packages/host/src/hooks`, `corpus`, `runtime` | Restrict-only hooks; corpus RAG opt-in; child mode ≤ parent |
