@@ -84,7 +84,7 @@ describe('WebTreeSitterRuntime', () => {
     ]);
   });
 
-  it('accepts aider-style python captures and attribute call references', async () => {
+  it('accepts legacy-style python captures and attribute call references', async () => {
     const runtime = await createDefaultTreeSitterRuntime();
     expect(runtime).toBeDefined();
 

@@ -1,5 +1,5 @@
 /**
- * Concrete target-ref predicates (VTCode/Codex-shaped formulae, Mitii-adapted).
+ * Concrete target-ref predicates (Mitii plan step-shape formula).
  * Rejects generic placeholders so Plan/Agent big-task plans stay file/symbol scoped.
  */
 

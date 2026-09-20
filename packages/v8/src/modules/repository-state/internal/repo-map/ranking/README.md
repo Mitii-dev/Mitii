@@ -19,5 +19,5 @@ published `RepoMap` entries.
   `repository-context` hybrid retrieval (`RepoMapRetrievalSource`, optional
   post-RRF boost). Context must **not** recompute PageRank.
 
-Inspired by Aider `repomap.py` (referencer→definer edges + personalization),
-adapted to Mitii’s published RepoGraph / RepoMap artifacts.
+Personalization uses referencer→definer edges. Courtesy inspiration
+acknowledgement (not copied upstream source): see `Mitii/NOTICE-REVIEW.md`.

@@ -1,7 +1,6 @@
 /**
- * Typed prompt injection (Codex fragment discipline, Mitii-shaped).
+ * Typed prompt injection (Mitii ContextualFragment discipline).
  *
- * Formulae injected from Codex `ContextualUserFragment`:
  * - Every injection is a typed fragment with stable contentKind + markers.
  * - `render()` concatenates markers + body with no extra separators.
  * - Unmarked fragments leave both markers empty and never match arbitrary text.
@@ -31,7 +30,7 @@ export interface ContextualFragment {
   role(): FragmentRole;
 
   /**
-   * Stable `feature.name` classification (Codex ContentItemKind formula).
+   * Stable `feature.name` classification for provenance / cache keys.
    * Use `generic.*` for shared fragments.
    */
   contentKind(): string;
@@ -45,7 +44,7 @@ export interface ContextualFragment {
   /** Exact fragment body (no markers). */
   body(): string;
 
-  /** Hard per-fragment token cap (Codex: nothing unbounded). */
+  /** Hard per-fragment token cap (nothing unbounded). */
   maxTokens(): number;
 
   /** Section used for Mitii budget / provenance accounting. */

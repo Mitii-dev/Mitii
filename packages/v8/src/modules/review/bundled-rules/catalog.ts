@@ -1,5 +1,5 @@
 /**
- * Mitii-owned bundled review rules (not copied from OCR rule_docs).
+ * Mitii-owned bundled review rules.
  * First-match-wins; keep most-specific patterns earlier.
  */
 export const BUNDLED_SYSTEM_RULES: ReadonlyArray<{

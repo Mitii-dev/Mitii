@@ -161,7 +161,7 @@ export function buildSystemInstructions(params: {
     includedMemoryIds,
     includedEnvironmentIds,
     reviewFlaggedFragmentIds: assembled.reviewFlaggedIds,
-    /** Codex separate-message fragments (not folded into system blob). */
+    /** Separate-message fragments (not folded into system blob). */
     separateMessages: assembled.separateMessages.map((item) => ({
       role: item.role,
       content: item.text,

@@ -27,7 +27,7 @@ export interface ValidatePlanResult {
 /**
  * Validate and lightly normalize a plan against depth/profile expectations.
  * Plan / Agent-visible thorough plans require concrete Change targetRefs
- * (files/symbols) — VTCode/Codex step-shape formula, Mitii-adapted.
+ * (files/symbols) — Mitii step-shape formula.
  */
 export function validatePlan(params: {
   plan: PlanArtifact;

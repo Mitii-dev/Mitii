@@ -25,7 +25,7 @@ export interface FileSelectionResult {
 
 /**
  * Pure pre-dispatch selection shared by preview and prepare.
- * Gate order (OCR-inspired): binary → user exclude → include override →
+ * Gate order: binary → user exclude → include override →
  * extension allowlist → default path → deleted → size ceiling.
  */
 export function selectReviewFiles(

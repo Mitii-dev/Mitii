@@ -1,31 +1,30 @@
 /**
- * Codex-derived fragment size formulae, adapted as Mitii prompt-construction policy.
+ * Mitii fragment size formulae for prompt-construction policy.
  *
- * Codex AGENTS.md (Model visible context):
- * 3. No unbounded items — every injection must have a bounded size and hard cap.
- * 4. No items larger than 10K tokens.
- * 5. Highlight new individual items that can cross >1k tokens as P0 review.
- *
- * Codex additional_context.rs:
- * - MAX_ADDITIONAL_CONTEXT_VALUE_TOKENS = 1_000
+ * - No unbounded items — every injection must have a bounded size and hard cap.
+ * - Absolute max per fragment: 10K tokens.
+ * - Items that can cross >1k tokens are review-sensitive (flagged, not rejected).
+ * - Additional-context / environment value bodies: 1_000 token hard budget.
  *
  * Important: reviewThreshold and soft defaults are NOT hard reject ceilings.
  * Only `absoluteMaxTokens` (and environment's additional-context budget) hard-cap
  * a fragment body. Soft defaults are hints for hosts/telemetry.
+ *
+ * Attribution / inspiration policy: see Mitii/NOTICE-REVIEW.md.
  */
 export const FRAGMENT_POLICY = {
-  /** Absolute hard cap per fragment (Codex rule 4). */
+  /** Absolute hard cap per fragment. */
   absoluteMaxTokens: 10_000,
 
   /**
-   * Fragments above this size are review-sensitive (Codex rule 5).
+   * Fragments above this size are review-sensitive.
    * Assembly still allows them up to absoluteMaxTokens but flags them.
    */
   reviewThresholdTokens: 1_000,
 
   /**
    * Cap for single additional-context / environment value bodies
-   * (Codex AdditionalContext truncate_middle budget).
+   * (truncate-middle budget).
    */
   additionalContextValueTokens: 1_000,
 

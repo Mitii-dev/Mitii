@@ -49,7 +49,7 @@ source-analysis/
 - `LanguageDetector` combines path and override evidence.
 - `SourceParserRegistry` chooses parser implementation.
 - TypeScript parsing is preferred for TS/TSX when available.
-- Tree-sitter queries live in `queries/`. The parser injects catalog strings into the host `TreeSitterRuntimePort`. Queries accept aider `@name.definition.*` / `@name.reference.*` captures as well as Mitii `@name` / `@definition` / `@reference.*`.
+- Tree-sitter queries live in `queries/`. The parser injects catalog strings into the host `TreeSitterRuntimePort`. Queries accept legacy `@name.definition.*` / `@name.reference.*` captures as well as Mitii `@name` / `@definition` / `@reference.*`.
 - Tree-sitter and regex paths provide broader/fallback coverage.
 - `SourceAnalysisNormalizer` keeps output deterministic.
 - Unsupported or failed analysis returns structured status/warnings where possible.

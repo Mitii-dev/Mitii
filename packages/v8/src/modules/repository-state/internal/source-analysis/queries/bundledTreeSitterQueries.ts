@@ -1,12 +1,13 @@
 /**
  * Bundled tags.scm sources injected by TreeSitterSourceParser.
  *
- * Adapted from aider's tree-sitter tags queries (MIT / Apache-2.0
- * grammar repos; see queries/README.md). Patterns are tuned for
- * web-tree-sitter grammars in `tree-sitter-wasms`:
+ * Patterns are tuned for web-tree-sitter grammars in `tree-sitter-wasms`:
  * - Prefer call/construct refs over blanket identifier reads.
  * - Tag `const`/`let` only when the value is a function.
- * - Keep aider capture names so the host runtime can inject either style.
+ * - Keep legacy `@name.definition.*` / `@name.reference.*` capture names so
+ *   the host runtime can inject either style.
+ *
+ * Inspiration acknowledgement (not copied upstream): see Mitii/NOTICE-REVIEW.md.
  */
 
 export const BUNDLED_TREE_SITTER_TAGS_QUERIES: Readonly<

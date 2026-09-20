@@ -1,6 +1,7 @@
 /**
- * Aider-style edit-format repair ladder as prompt / error hints.
+ * Edit-format repair ladder as prompt / error hints.
  * Does not replace Mitii `apply_patch` — only guides retries.
+ * Inspiration acknowledgement (not copied upstream): see Mitii/NOTICE-REVIEW.md.
  */
 
 export type EditFormatLadderStep =

@@ -28,14 +28,14 @@ export interface AssembledFragments {
   omittedTokens: number;
   included: RenderedFragment[];
   omissions: AssembledFragmentOmission[];
-  /** Fragments that crossed the Codex P0 review threshold. */
+  /** Fragments that crossed the P0 review threshold. */
   reviewFlaggedIds: string[];
-  /** Separate-message fragments (Codex requires_separate_message). */
+  /** Separate-message fragments (not folded into the system blob). */
   separateMessages: RenderedFragment[];
 }
 
 /**
- * Assemble typed fragments under a shared token budget with Codex hard caps.
+ * Assemble typed fragments under a shared token budget with hard per-fragment caps.
  *
  * Formulae:
  * - Each fragment is capped by `fragment.maxTokens()` before budget admission.

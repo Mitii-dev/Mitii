@@ -11,7 +11,7 @@ import type {
 import { reviewFindingSchema } from "../contracts";
 
 /**
- * Repair and normalize raw model finding payloads (OCR args-repair inspired).
+ * Repair and normalize raw model finding payloads.
  * Accepts a single finding, an array, or a JSON string of either.
  */
 export function repairFindingArgs(raw: unknown): {

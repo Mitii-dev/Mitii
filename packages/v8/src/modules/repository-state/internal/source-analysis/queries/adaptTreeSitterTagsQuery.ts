@@ -1,5 +1,5 @@
 /**
- * Adapts aider-style tags.scm queries for Mitii injection.
+ * Adapts legacy tags.scm query text for Mitii injection.
  *
  * V8 owns query text. The host WASM runtime compiles whatever string
  * TreeSitterSourceParser injects. This adapter:

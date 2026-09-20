@@ -57,13 +57,13 @@ export interface TreeSitterRuntimeParseInput {
   /**
    * Tree-sitter query capturing definitions. Accepted capture names:
    * - Mitii: `@name` plus optional `@definition`
-   * - Aider tags: `@name.definition.<kind>` plus optional `@definition.<kind>`
+   * - Legacy tags: `@name.definition.<kind>` plus optional `@definition.<kind>`
    */
   symbolQuery?: string;
   /**
    * Tree-sitter query capturing references. Accepted capture names:
    * - Mitii: `@reference.<kind>` (`call` | `construct` | `type` | `read` | `write`)
-   * - Aider tags: `@name.reference.<kind>` plus optional `@reference.<kind>`
+   * - Legacy tags: `@name.reference.<kind>` plus optional `@reference.<kind>`
    */
   referenceQuery?: string;
   maximumSymbols: number;

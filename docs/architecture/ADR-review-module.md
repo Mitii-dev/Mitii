@@ -11,11 +11,12 @@ captures git status/diff as post-mutation evidence. Neither produces a
 structured, coverage-guaranteed, line-anchored review artifact for IDE, CLI,
 or CI consumers.
 
-Open Code Review (Alibaba, Apache-2.0) demonstrates a deterministic
-engineering × agent hybrid for code review: file selection, bundling,
-path-matched rules, comment anchoring, and SARIF/CI posting. We will
-**reimplement** those algorithms in TypeScript under Mitii contracts — we
-will **not** vendor the Go CLI or drop in OCR prompts/`rule_docs`.
+Prior art in deterministic engineering × agent hybrid code review (file
+selection, bundling, path-matched rules, comment anchoring, SARIF-oriented
+output) informed this design as **inspiration only**. Mitii’s review module is
+**original Mitii TypeScript** under Mitii contracts — we do **not** vendor
+upstream CLIs or drop in upstream prompts/`rule_docs`. Authorship, ownership,
+and the inspiration-only policy are stated solely in `NOTICE-REVIEW.md`.
 
 ## Decision
 
@@ -29,9 +30,8 @@ will **not** vendor the Go CLI or drop in OCR prompts/`rule_docs`.
 3. Do not extend `verification` or rename `diff_review` into a judgment
    product. `ReviewRecord` is a separate durable artifact under
    `.mitii/review/`.
-4. Attribution: algorithms inspired by [Open Code Review](https://github.com/alibaba/open-code-review)
-   (Apache-2.0). Mitii owns all prompts, rule stubs, branding, and schemas
-   (`mitii.review/v1`).
+4. Attribution: see `NOTICE-REVIEW.md`. Mitii owns all prompts, rule stubs,
+   branding, and schemas (`mitii.review/v1`).
 
 ## Consequences
 

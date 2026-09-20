@@ -8,7 +8,7 @@ import { fingerprintGroup, normalizeRelativePath } from "../internal/pathUtils";
 import { batchScanFiles } from "../internal/scanBatch";
 
 /**
- * Heuristic grouping (OCR-inspired). P0: no LLM — bundle small change sets,
+ * Heuristic grouping. P0: no LLM — bundle small change sets,
  * otherwise one file per group, capped by maxFilesPerGroup / token budget.
  */
 export function groupReviewFiles(params: {
