@@ -5,6 +5,7 @@ import {
   defineTool,
 } from "../../internal/ToolCatalog";
 import { MutationError } from "../../internal/mutation";
+import type { DiagnosticItem } from "../../contracts";
 import { executeApplyPatch } from "../ExecuteApplyPatch";
 import { filterNewDiagnostics } from "../filterNewDiagnostics";
 
@@ -50,15 +51,22 @@ export const applyPatchTool: RegisteredTool = {
     }
 
     const parsed = applyPatchInputSchema.parse(ctx.arguments);
-    const changedPaths = [
-      ...new Set(parsed.patches.map((patch) => patch.path)),
+    // Creates use oldText "". Baseline diagnostics on those paths throw in the
+    // host TS service ("Could not find source file") and used to abort the
+    // write before executeApplyPatch ran — skip creates for baseline.
+    const existingPaths = [
+      ...new Set(
+        parsed.patches
+          .filter((patch) => patch.oldText !== "")
+          .map((patch) => patch.path),
+      ),
     ];
     const diagnosticsPort = ctx.ports.diagnostics;
     const baseline =
-      diagnosticsPort !== undefined
-        ? await diagnosticsPort.readDiagnostics({
+      diagnosticsPort !== undefined && existingPaths.length > 0
+        ? await safeReadDiagnostics(diagnosticsPort, {
             workspaceRoot: ctx.workspaceRoot,
-            paths: changedPaths,
+            paths: existingPaths,
           })
         : [];
 
@@ -76,7 +84,7 @@ export const applyPatchTool: RegisteredTool = {
       return result;
     }
 
-    const after = await diagnosticsPort.readDiagnostics({
+    const after = await safeReadDiagnostics(diagnosticsPort, {
       workspaceRoot: ctx.workspaceRoot,
       paths: result.output.changedFiles,
     });
@@ -94,3 +102,20 @@ export const applyPatchTool: RegisteredTool = {
     };
   },
 };
+
+async function safeReadDiagnostics(
+  port: {
+    readDiagnostics(params: {
+      workspaceRoot: string;
+      paths?: readonly string[];
+    }): Promise<readonly DiagnosticItem[]>;
+  },
+  params: { workspaceRoot: string; paths: readonly string[] },
+): Promise<DiagnosticItem[]> {
+  try {
+    return [...(await port.readDiagnostics(params))];
+  } catch {
+    // Never fail a successful mutation because diagnostics blew up.
+    return [];
+  }
+}

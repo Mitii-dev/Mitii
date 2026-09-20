@@ -116,6 +116,84 @@ describe('createHostLanguageServices', () => {
       }
     });
   });
+  it('does not attach a parent-directory tsconfig outside the workspace', async () => {
+    const { mkdir, writeFile: write, rm } = await import('node:fs/promises');
+    const parent = await mkdtemp(join(tmpdir(), 'mitii-parent-ts-'));
+    const workspaceRoot = join(parent, 'fixture-workspace');
+    try {
+      await write(
+        join(parent, 'tsconfig.json'),
+        JSON.stringify({
+          compilerOptions: { strict: true, noEmit: true },
+          include: ['src'],
+        }),
+      );
+      await mkdir(join(parent, 'src'), { recursive: true });
+      await write(join(parent, 'src/root.ts'), 'export const x = 1;\n');
+      await mkdir(workspaceRoot, { recursive: true });
+      await mkdir(join(workspaceRoot, 'src'), { recursive: true });
+      await write(
+        join(workspaceRoot, 'src/App.tsx'),
+        'export default function App() { return null; }\n',
+      );
+
+      const services = createHostLanguageServices({ workspaceRoot });
+      try {
+        expect(services.capability.status).toBe('degraded');
+        expect(services.diagnostics).toBeUndefined();
+      } finally {
+        services.dispose();
+      }
+    } finally {
+      await rm(parent, { recursive: true, force: true });
+    }
+  });
+
+  it('skips missing paths and does not throw (apply_patch create baseline)', () => {
+    return withWorkspace(async (workspaceRoot) => {
+      await writeFile(
+        join(workspaceRoot, 'tsconfig.json'),
+        JSON.stringify({
+          compilerOptions: {
+            strict: true,
+            target: 'ES2022',
+            module: 'ESNext',
+            moduleResolution: 'Bundler',
+            noEmit: true,
+            skipLibCheck: true,
+          },
+          include: ['src', 'app'],
+        }),
+      );
+      await writeFile(
+        join(workspaceRoot, 'src/greet.ts'),
+        'export function greet(name: string) {\n  return name;\n}\n',
+      );
+
+      const services = createHostLanguageServices({ workspaceRoot });
+      try {
+        const missing = await services.diagnostics?.readDiagnostics({
+          workspaceRoot,
+          paths: ['app/about/page.tsx'],
+        });
+        expect(missing).toEqual([]);
+
+        const { mkdir } = await import('node:fs/promises');
+        await mkdir(join(workspaceRoot, 'app/about'), { recursive: true });
+        await writeFile(
+          join(workspaceRoot, 'app/about/page.tsx'),
+          'export default function About() {\n  return "About this benchmark app";\n}\n',
+        );
+        const afterCreate = await services.diagnostics?.readDiagnostics({
+          workspaceRoot,
+          paths: ['app/about/page.tsx'],
+        });
+        expect(Array.isArray(afterCreate)).toBe(true);
+      } finally {
+        services.dispose();
+      }
+    });
+  });
 });
 
 async function withWorkspace(

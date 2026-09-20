@@ -1,4 +1,4 @@
-import { relative, resolve } from 'node:path';
+import { relative, resolve, sep } from 'node:path';
 import { statSync } from 'node:fs';
 
 import ts from 'typescript';
@@ -75,6 +75,13 @@ function tryCreateTypeScriptLanguageService(
       'tsconfig.json',
     );
     if (!configPath) return undefined;
+    // ts.findConfigFile walks parent directories. Benchmark fixtures without a
+    // local tsconfig (react-vite) previously attached Mitii's monorepo
+    // tsconfig, so every apply_patch diagnostics call threw
+    // "Could not find source file" and aborted the write.
+    if (!isPathInsideRoot(workspaceRoot, configPath)) {
+      return undefined;
+    }
     const read = ts.readConfigFile(configPath, ts.sys.readFile);
     if (read.error) return undefined;
     const parsed = ts.parseJsonConfigFileContent(
@@ -88,19 +95,35 @@ function tryCreateTypeScriptLanguageService(
   }
 }
 
+/** True when `candidate` is the root itself or a path under it. */
+function isPathInsideRoot(root: string, candidate: string): boolean {
+  const normalizedRoot = resolve(root);
+  const normalized = resolve(candidate);
+  if (normalized === normalizedRoot) return true;
+  const prefix = normalizedRoot.endsWith(sep)
+    ? normalizedRoot
+    : `${normalizedRoot}${sep}`;
+  return normalized.startsWith(prefix);
+}
+
 class TypeScriptLanguageService implements CodeNavigationPort, DiagnosticsPort {
   public readonly id = 'typescript-language-service';
   public readonly provider = 'language_server' as const;
   private readonly service: ts.LanguageService;
+  /** Files opened after create/write so they join the language-service program. */
+  private readonly openFiles = new Set<string>();
 
   constructor(
     private readonly workspaceRoot: string,
     parsed: ts.ParsedCommandLine,
   ) {
     const root = workspaceRoot;
+    const openFiles = this.openFiles;
     const host: ts.LanguageServiceHost = {
       getCompilationSettings: () => parsed.options,
-      getScriptFileNames: () => parsed.fileNames,
+      getScriptFileNames: () => [
+        ...new Set([...parsed.fileNames, ...openFiles]),
+      ],
       getScriptVersion: (fileName) => scriptVersion(fileName),
       getScriptSnapshot: (fileName) => {
         const text = ts.sys.readFile(fileName);
@@ -260,10 +283,27 @@ class TypeScriptLanguageService implements CodeNavigationPort, DiagnosticsPort {
       : this.service.getProgram()?.getRootFileNames() ?? [];
     const items: DiagnosticItem[] = [];
     for (const file of files) {
-      const diagnostics = [
-        ...this.service.getSyntacticDiagnostics(file),
-        ...this.service.getSemanticDiagnostics(file),
-      ];
+      // apply_patch create (oldText="") asks for a baseline before the file
+      // exists. TypeScript throws "Could not find source file" for paths not
+      // in the program — that must never abort the mutation (benchmark
+      // fe-feature-001/003/007).
+      if (!ts.sys.fileExists(file)) {
+        continue;
+      }
+      this.openFiles.add(file);
+      let diagnostics: readonly ts.Diagnostic[] = [];
+      try {
+        if (!this.service.getProgram()?.getSourceFile(file)) {
+          // Force a refresh so newly written files enter the program.
+          this.service.getProgram();
+        }
+        diagnostics = [
+          ...this.service.getSyntacticDiagnostics(file),
+          ...this.service.getSemanticDiagnostics(file),
+        ];
+      } catch {
+        continue;
+      }
       for (const diagnostic of diagnostics) {
         const item = this.toDiagnostic(diagnostic);
         if (item) items.push(item);
