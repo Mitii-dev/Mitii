@@ -23,7 +23,7 @@ export const PLANNING_PROCESS_META_STEP =
  * light/full enrichment mode — strategy-specific, runs at most once.
  */
 export const DISCOVERED_PLAN_POLICY = {
-  maxSteps: 10,
+  maxSteps: 16,
   maxRepoEntries: 40,
   maxDiagnostics: 16,
 } as const;

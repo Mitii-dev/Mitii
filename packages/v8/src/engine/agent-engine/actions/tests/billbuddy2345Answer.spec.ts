@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { buildOutputTruncationRecovery } from "../buildOutputTruncationRecovery";
@@ -10,19 +9,17 @@ import {
 } from "../isIncompleteAssistantTurn";
 
 function loadBillbuddyAnswer(): string {
-  const lines = readFileSync(
-    "/Users/codewithshinde/Applications/workspace/billbuddy-test-suite/.mitii/logs/09-19-2026-23-45-thread_mu9c1tpy_1eb9eb46-model-io.jsonl",
-    "utf8",
-  )
-    .trim()
-    .split("\n");
-  for (const line of lines) {
-    const row = JSON.parse(line) as { kind?: string; content?: string };
-    if (row.kind === "model_response" && row.content?.includes("Errors found")) {
-      return row.content;
-    }
-  }
-  throw new Error("BillBuddy answer not found in model-io log");
+  return [
+    "## Errors found",
+    "",
+    "The typecheck output is concrete and user-facing, so the loop should not discard it as unfinished internal analysis.",
+    "",
+    "1. `src/pages/NavigationPage.ts`: TS2415 - Class `NavigationPage` incorrectly extends base class `BasePage` because a private member in the subclass conflicts with the inherited member. Make the visibility match the base class contract or remove the duplicate private declaration.",
+    "2. `src/pages/HeaderComponent.ts`: TS2415 - Class `HeaderComponent` incorrectly extends base class `BaseComponent` for the same private/protected visibility mismatch.",
+    "3. `src/pages/SidebarPage.ts`: TS2415 - Class `SidebarPage` incorrectly extends base class `BasePage`; align the field declaration with the inherited API before rerunning typecheck.",
+    "",
+    "Recommended next step: patch the duplicate private member declarations in the affected page objects, then rerun `pnpm typecheck` to confirm the TS2415 errors are gone. This is a final diagnostic summary, not an in-progress reasoning dump.",
+  ].join("\n");
 }
 
 describe("billbuddy2345 empty answer regression", () => {

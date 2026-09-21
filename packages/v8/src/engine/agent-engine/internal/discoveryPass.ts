@@ -26,6 +26,7 @@ export const DISCOVERY_PASS_POLICY = {
 
 const DISCOVERY_TOOL_IDS = new Set<string>([
   "list_directory",
+  "directory_tree",
   "read_file",
   "read_many_files",
   "glob_files",
@@ -119,6 +120,11 @@ export function recordDiscoveryToolUse(params: {
   }
   const args = asRecord(params.argumentsValue);
   const argumentPaths = collectPaths(args);
+  const structuredPaths = collectStructuredToolPaths(
+    toolName,
+    args,
+    params.resultOutput,
+  );
   const outputPaths = collectPathsFromUnknown(params.resultOutput);
   const paths = unique([...argumentPaths, ...outputPaths]);
   const reason = inferReason(toolName, args);
@@ -189,10 +195,22 @@ export function recordDiscoveryToolUse(params: {
     );
     return;
   }
-  // list_directory / read_git_status / metadata: count the tool call but do
-  // not promote directory children into change-surface searchHits.
+  if (toolName === "list_directory" || toolName === "directory_tree") {
+    for (const path of structuredPaths) {
+      pushCappedUniqueByPath(
+        collector.searchHits,
+        { path, reason },
+        DISCOVERY_OBSERVATION_LIMITS.maxSearchHits,
+        () => {
+          collector.omittedSearchHits += 1;
+        },
+      );
+    }
+    return;
+  }
+  // read_git_status / metadata: count the tool call but do not promote broad
+  // repository metadata into change-surface searchHits.
   if (
-    toolName === "list_directory" ||
     toolName === "read_git_status" ||
     toolName === "file_metadata"
   ) {
@@ -553,6 +571,107 @@ function collectPaths(args: Record<string, unknown>): string[] {
 function collectPathsFromUnknown(value: unknown): string[] {
   const values: string[] = [];
   collectPathLikeValues(value, values, 0);
+  return unique(values);
+}
+
+function collectStructuredToolPaths(
+  toolName: string,
+  args: Record<string, unknown>,
+  output: unknown,
+): string[] {
+  if (toolName === "directory_tree") {
+    return collectDirectoryTreePaths(args, output);
+  }
+  if (toolName === "list_directory") {
+    return collectListDirectoryPaths(args, output);
+  }
+  return [];
+}
+
+function collectDirectoryTreePaths(
+  args: Record<string, unknown>,
+  output: unknown,
+): string[] {
+  const record = asRecord(output);
+  const root = normalizeDiscoveryPath(
+    asString(record.path) ?? asString(args.path) ?? "",
+  );
+  const values: string[] = [];
+  const tree = Array.isArray(record.tree)
+    ? record.tree
+    : Array.isArray(record.children)
+      ? record.children
+      : [];
+  for (const node of tree) {
+    collectTreeNodePaths(node, root, values);
+  }
+  return unique(values);
+}
+
+function collectTreeNodePaths(
+  node: unknown,
+  parentPath: string,
+  values: string[],
+): void {
+  const record = asRecord(node);
+  const explicitPath = normalizeDiscoveryPath(
+    asString(record.path) ?? asString(record.relativePath) ?? "",
+  );
+  const name = asString(record.name);
+  const path =
+    explicitPath ||
+    (parentPath && name ? `${parentPath}/${name}` : (name ?? ""));
+  const children = Array.isArray(record.children) ? record.children : [];
+  const kind = asString(record.kind)?.toLowerCase();
+  if (children.length > 0) {
+    for (const child of children) {
+      collectTreeNodePaths(child, path, values);
+    }
+    return;
+  }
+  if (kind === "file" || (kind !== "directory" && looksLikeRelativePath(path))) {
+    values.push(path);
+  }
+}
+
+function collectListDirectoryPaths(
+  args: Record<string, unknown>,
+  output: unknown,
+): string[] {
+  const record = asRecord(output);
+  const root = normalizeDiscoveryPath(
+    asString(record.path) ?? asString(args.path) ?? "",
+  );
+  const entries = Array.isArray(record.entries)
+    ? record.entries
+    : Array.isArray(record.files)
+      ? record.files
+      : [];
+  const values: string[] = [];
+  for (const entry of entries) {
+    if (typeof entry === "string") {
+      const path = normalizeDiscoveryPath(root ? `${root}/${entry}` : entry);
+      if (looksLikeRelativePath(path)) {
+        values.push(path);
+      }
+      continue;
+    }
+    const item = asRecord(entry);
+    const explicitPath = normalizeDiscoveryPath(
+      asString(item.path) ?? asString(item.relativePath) ?? "",
+    );
+    const name = asString(item.name);
+    const path =
+      explicitPath ||
+      (root && name ? `${root}/${name}` : (name ?? ""));
+    const kind = asString(item.kind)?.toLowerCase();
+    if (kind === "directory") {
+      continue;
+    }
+    if (kind === "file" || looksLikeRelativePath(path)) {
+      values.push(path);
+    }
+  }
   return unique(values);
 }
 

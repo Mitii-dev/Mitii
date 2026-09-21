@@ -32,6 +32,14 @@ function readPathCall(id: string, path: string) {
   };
 }
 
+function documentSymbolCall(id: string, path: string) {
+  return {
+    id,
+    name: "document_symbol",
+    arguments: JSON.stringify({ path }),
+  };
+}
+
 function patchCall(id: string) {
   return {
     id,
@@ -583,6 +591,122 @@ describe("AgentEnginePipeline stall and read dedup", () => {
     expect(resumed.reasonCodes).toContain("stall_continue_approved");
     expect(resumed.reasonCodes).toContain("stall_continue_override_capped");
     expect(resumed.answer ?? "").not.toContain("Should not be reached");
+  });
+
+  it("Continue allows targeted code-intel evidence then a patch", async () => {
+    const deps = createStubDependencies({
+      decision: createDecision({
+        route: "execute",
+        toolGrant: createReadOnlyGrant({
+          maximumWorkspaceEffect: "write",
+          allowedTools: ["read_file", "document_symbol", "apply_patch"],
+          allowedEffects: ["workspace_read", "workspace_write"],
+          approvalMode: "never",
+        }),
+        reasonCodes: ["mutation_execute"],
+      }),
+      llm: new ScriptedLlmPort(
+        [
+          ...Array.from({ length: 4 }, (_, index) => ({
+            toolCalls: [
+              readPathCall(`call_read_${index}`, `src/file-${index}.ts`),
+            ],
+          })),
+          {
+            content: "One more evidence read.",
+            toolCalls: [readPathCall("call_evidence_1", "src/final.ts")],
+          },
+          {
+            content: "Second evidence read.",
+            toolCalls: [readPathCall("call_evidence_2", "src/final-2.ts")],
+          },
+          {
+            content: "Still reading after evidence budget.",
+            toolCalls: [readPathCall("call_locked_read", "src/final-3.ts")],
+          },
+          {
+            content: "Checking the target symbols after Continue.",
+            toolCalls: [
+              documentSymbolCall("call_symbols_after_continue", "src/form.ts"),
+            ],
+          },
+          {
+            content: "Applying the fix now.",
+            toolCalls: [patchCall("call_patch_after_code_intel")],
+          },
+          { content: "Done after code-intel evidence." },
+        ],
+        stallCapabilities({ supportsTools: true }),
+      ),
+    });
+
+    const executedToolNames: string[] = [];
+    const originalExecute = deps.tools!.execute.bind(deps.tools);
+    deps.tools = {
+      ...deps.tools!,
+      execute: async (input, options) => {
+        executedToolNames.push(input.toolName);
+        if (input.toolName === "apply_patch") {
+          return {
+            schemaVersion: TOOL_RUNTIME_SCHEMA_VERSION,
+            callId: input.callId,
+            toolName: input.toolName,
+            status: "succeeded",
+            truncated: false,
+            redacted: false,
+            durationMs: 1,
+            bytesProduced: 24,
+            warnings: [],
+            output: {
+              checkpointId: "ckpt_after_code_intel",
+              changedFiles: ["src/form.ts"],
+            },
+            audit: {
+              callId: input.callId,
+              toolName: input.toolName,
+              startedAt: "2026-07-25T12:00:00.000Z",
+              endedAt: "2026-07-25T12:00:00.001Z",
+              status: "succeeded",
+              inputPreview: "{}",
+              outputPreview: "{}",
+              bytesProduced: 24,
+              durationMs: 1,
+              truncated: false,
+              redacted: false,
+            },
+          } satisfies ToolResult;
+        }
+        return originalExecute(input, options);
+      },
+    };
+
+    const engine = new AgentEnginePipeline(deps);
+    const suspended = await engine.start(
+      agentEngineStartInputSchema.parse({
+        schemaVersion: 1,
+        request: {
+          sessionId: "sess_continue_code_intel_then_patch",
+          mode: "agent",
+          userMessage: "Fix all TypeScript errors",
+          workspace: { workspaceId: "ws_1" },
+        },
+        workspaceRoot: "/workspace",
+      }),
+    ).result;
+
+    expect(suspended.status).toBe("suspended");
+
+    const resumed = await engine.resume({
+      schemaVersion: 1,
+      runId: suspended.runId,
+      continueDecision: { decision: "continue" },
+    }).result;
+
+    expect(resumed.status).toBe("completed");
+    expect(resumed.reasonCodes).toContain("stall_continue_approved");
+    expect(resumed.reasonCodes).toContain("mutation_applied");
+    expect(executedToolNames).toContain("document_symbol");
+    expect(executedToolNames.at(-1)).toBe("apply_patch");
   });
 
   it("Continue allows one targeted read then a patch (BillBuddy 22:38)", async () => {

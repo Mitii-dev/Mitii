@@ -8,6 +8,7 @@ import type {
 } from "../contracts";
 import { DEFAULT_MAX_STEPS_PER_PHASE } from "../defaults";
 import { filterBuildEvidenceToAskScope } from "../internal/evidenceScope";
+import { PLANNING_WORKING_SET_POLICY } from "../policy";
 import {
   remapPathThroughScaffoldMapping,
   resolveScaffoldPackageMapping,
@@ -59,8 +60,11 @@ function replacePhaseSteps(params: {
   }
   const fallbackRisk = params.phase.steps[0]?.riskLevel ?? "low";
   const fallbackTargets = params.phase.steps[0]?.targetRefs ?? [];
-  const steps: PlanStep[] = params.entries
-    .slice(0, DEFAULT_MAX_STEPS_PER_PHASE)
+  const limit = isChangeLikePhase(params.phase)
+    ? PLANNING_WORKING_SET_POLICY.maxBatchesOnPlan
+    : DEFAULT_MAX_STEPS_PER_PHASE;
+  const drafted: PlanStep[] = params.entries
+    .slice(0, limit)
     .map((entry, index) => ({
       id: `${params.phase.id}-draft-${index + 1}`.slice(0, 64),
       intent: entry.intent,
@@ -70,7 +74,16 @@ function replacePhaseSteps(params: {
       expectedOutcome: entry.expectedOutcome,
       riskLevel: fallbackRisk,
     }));
-  return { ...params.phase, steps };
+  const coveredTargets = new Set(
+    drafted.flatMap((step) => step.targetRefs.map(normalizePath)),
+  );
+  const backfill = params.phase.steps
+    .filter((step) => step.id.startsWith("step-change-surface-"))
+    .filter((step) =>
+      step.targetRefs.some((target) => !coveredTargets.has(normalizePath(target))),
+    )
+    .slice(0, Math.max(0, limit - drafted.length));
+  return { ...params.phase, steps: [...drafted, ...backfill].slice(0, limit) };
 }
 
 function groupByPhase(
@@ -166,6 +179,10 @@ function resolveScaffoldMappingForInput(input: PlanningParsedInput) {
 function phaseKind(phase: PlanPhase): DiscoveredPlanStep["phaseHint"] {
   const normalized = phase.name.toLowerCase();
   return /verify|test|check/.test(normalized) ? "verify" : "change";
+}
+
+function isChangeLikePhase(phase: PlanPhase): boolean {
+  return phaseKind(phase) === "change";
 }
 
 function pathOverlaps(a: string, b: string): boolean {

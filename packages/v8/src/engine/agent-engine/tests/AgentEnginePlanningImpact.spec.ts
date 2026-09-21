@@ -265,9 +265,23 @@ describe("AgentEngine discover_and_plan impact reports", () => {
               name: "read_file",
               arguments: JSON.stringify({ path: "src/auth/session.ts" }),
             },
+            {
+              id: "read_2",
+              name: "read_file",
+              arguments: JSON.stringify({ path: "src/auth/retry.ts" }),
+            },
           ],
         },
-        { content: "Found the session type error surface." },
+        {
+          content: "",
+          toolCalls: [
+            {
+              id: "symbols_1",
+              name: "document_symbol",
+              arguments: JSON.stringify({ path: "src/auth/session.ts" }),
+            },
+          ],
+        },
       ],
       createCapabilities({ supportsTools: true }),
     );
@@ -293,6 +307,14 @@ describe("AgentEngine discover_and_plan impact reports", () => {
           },
         }),
         llm,
+        toolResults: {
+          document_symbol: {
+            output: {
+              path: "src/auth/session.ts",
+              symbols: [{ name: "createSession" }],
+            },
+          },
+        },
         planning: {
           plan: async (input) => {
             captured.current = input;

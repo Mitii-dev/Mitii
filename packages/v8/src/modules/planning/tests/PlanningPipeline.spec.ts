@@ -518,6 +518,172 @@ describe("PlanningPipeline", () => {
     ]);
   });
 
+  it("keeps up to sixteen discovered package-port change surfaces on the plan", async () => {
+    const surfaces = Array.from(
+      { length: 16 },
+      (_, index) => `packages/mui-builder/src/file-${index + 1}.ts`,
+    );
+    const result = await pipeline.plan(
+      baseInput({
+        query:
+          "Create packages/mui-builder as a full port of packages/formik-form-builder",
+        budgetTokens: 6_000,
+        evidence: {
+          primaryIntent: "migrate",
+          secondaryIntents: ["scaffold"],
+          interactionIntent: "act",
+          scope: "package",
+          complexity: "complex",
+          risk: "medium",
+          clarity: "clear",
+          targets: [
+            {
+              kind: "folder",
+              value: "packages/mui-builder",
+              explicit: true,
+            },
+            {
+              kind: "folder",
+              value: "packages/formik-form-builder",
+              explicit: true,
+            },
+          ],
+          constraints: ["Use MUI Material instead of Joy"],
+          requestedOutcomes: ["A usable package port"],
+          recommendsPlanning: true,
+          recommendsVerification: true,
+          changeImpact: ["code", "config"],
+        },
+        discoveryBrief: {
+          schemaVersion: PLANNING_SCHEMA_VERSION,
+          objective:
+            "Create packages/mui-builder as a full port of packages/formik-form-builder",
+          filesRead: [
+            {
+              path: "packages/formik-form-builder/src/index.ts",
+              reason: "Template entry",
+            },
+          ],
+          targets: [
+            {
+              kind: "folder",
+              value: "packages/mui-builder",
+              reason: "Requested target package",
+              explicit: true,
+            },
+          ],
+          proposedChangeSurfaces: surfaces.map((path) => ({
+            path,
+            actionHint: "Create/adapt toward packages/mui-builder",
+            riskLevel: "low",
+            evidence: "Template package file",
+          })),
+          discoveredConstraints: [],
+          verificationHints: [{ kind: "typecheck", reason: "Typed package" }],
+          openQuestions: [],
+          confidence: "high",
+        },
+      }),
+    );
+
+    const changeSteps =
+      result.plan?.phases.find((phase) => phase.name === "Change")?.steps ?? [];
+    expect(result.strategy?.strategy).toBe("discover_and_plan");
+    expect(changeSteps).toHaveLength(16);
+    expect(changeSteps.map((step) => step.targetRefs[0])).toEqual(surfaces);
+  });
+
+  it("backfills discovered surfaces when the discovery draft is too short", async () => {
+    const surfaces = Array.from(
+      { length: 10 },
+      (_, index) => `packages/mui-builder/src/file-${index + 1}.ts`,
+    );
+    const draftingPipeline = new PlanningPipeline({
+      llm: fakeLlm([
+        JSON.stringify({
+          steps: [
+            {
+              phaseHint: "change",
+              intent: "Create the first ported file",
+              actionSummary: "Port the first discovered file",
+              targetRefs: [surfaces[0]],
+              expectedOutcome: "The first file is ported.",
+            },
+          ],
+        }),
+      ]),
+    });
+
+    const result = await draftingPipeline.plan(
+      baseInput({
+        query:
+          "Create packages/mui-builder as a full port of packages/formik-form-builder",
+        budgetTokens: 6_000,
+        evidence: {
+          primaryIntent: "migrate",
+          secondaryIntents: ["scaffold"],
+          interactionIntent: "act",
+          scope: "package",
+          complexity: "complex",
+          risk: "medium",
+          clarity: "clear",
+          targets: [
+            {
+              kind: "folder",
+              value: "packages/mui-builder",
+              explicit: true,
+            },
+            {
+              kind: "folder",
+              value: "packages/formik-form-builder",
+              explicit: true,
+            },
+          ],
+          constraints: [],
+          requestedOutcomes: ["A usable package port"],
+          recommendsPlanning: true,
+          recommendsVerification: true,
+          changeImpact: ["code"],
+        },
+        discoveryBrief: {
+          schemaVersion: PLANNING_SCHEMA_VERSION,
+          objective:
+            "Create packages/mui-builder as a full port of packages/formik-form-builder",
+          filesRead: [
+            {
+              path: "packages/formik-form-builder/src/index.ts",
+              reason: "Template entry",
+            },
+          ],
+          targets: [
+            {
+              kind: "folder",
+              value: "packages/mui-builder",
+              reason: "Requested target package",
+              explicit: true,
+            },
+          ],
+          proposedChangeSurfaces: surfaces.map((path) => ({
+            path,
+            actionHint: "Create/adapt toward packages/mui-builder",
+            riskLevel: "low",
+            evidence: "Template package file",
+          })),
+          discoveredConstraints: [],
+          verificationHints: [{ kind: "typecheck", reason: "Typed package" }],
+          openQuestions: [],
+          confidence: "high",
+        },
+      }),
+    );
+
+    const changeSteps =
+      result.plan?.phases.find((phase) => phase.name === "Change")?.steps ?? [];
+    expect(result.reasonCodes).toContain("plan_drafted_from_discovery");
+    expect(changeSteps).toHaveLength(10);
+    expect(changeSteps.map((step) => step.targetRefs[0])).toEqual(surfaces);
+  });
+
   it("keeps overflow diagnostic batches on the plan when maxDiagnosticSteps is smaller than the split", async () => {
     const files = Array.from(
       { length: 8 },

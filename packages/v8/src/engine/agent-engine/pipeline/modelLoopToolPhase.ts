@@ -52,6 +52,10 @@ import type { ModelLoopSession } from "./modelLoopSession";
 import type { ModelLoopStepResult } from "./modelLoopStep";
 import { tryOfferBudgetWallContinue } from "./tryOfferBudgetWallContinue";
 import { writeRestorePointAfterMutation } from "./writeRestorePoint";
+import {
+  MUTATION_LOCK_BROAD_DISCOVERY_TOOLS,
+  MUTATION_LOCK_EVIDENCE_READ_TOOLS,
+} from "./mutationLockTools";
 
 export type ToolPhaseBatchStats = {
   attemptedMutatingTool: boolean;
@@ -196,14 +200,6 @@ export async function runModelLoopToolPhase(params: {
   const requestedMutatingTool = toolCalls.some((call) =>
     DEFAULT_MUTATING_TOOL_NAMES.has(call.name),
   );
-  const BROAD_DISCOVERY_TOOLS = new Set([
-    "list_directory",
-    "glob_files",
-    "search_files",
-    "run_readonly_command",
-    "read_git_status",
-  ]);
-  const EVIDENCE_READ_TOOLS = new Set(["read_file", "read_many_files"]);
   if (
     needsWorkspaceTools &&
     session.awaitingReadOnlyMutationRetry &&
@@ -213,11 +209,13 @@ export async function runModelLoopToolPhase(params: {
       (call) => !isUpdateTodosTool(call.name),
     );
     const hasBroadDiscovery = workspaceCalls.some((call) =>
-      BROAD_DISCOVERY_TOOLS.has(call.name),
+      MUTATION_LOCK_BROAD_DISCOVERY_TOOLS.has(call.name),
     );
     const onlyEvidenceReads =
       workspaceCalls.length > 0 &&
-      workspaceCalls.every((call) => EVIDENCE_READ_TOOLS.has(call.name));
+      workspaceCalls.every((call) =>
+        MUTATION_LOCK_EVIDENCE_READ_TOOLS.has(call.name),
+      );
     const allowEvidenceRead =
       onlyEvidenceReads &&
       !hasBroadDiscovery &&

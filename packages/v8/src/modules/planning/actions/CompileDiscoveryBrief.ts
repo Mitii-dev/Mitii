@@ -11,7 +11,10 @@ import type {
   DiscoveryTarget,
   DiscoveryVerificationHint,
 } from "../contracts";
-import { remapScaffoldChangeSurfaces } from "./remapScaffoldChangeSurfaces";
+import {
+  remapScaffoldChangeSurfaces,
+  resolveScaffoldPackageMapping,
+} from "./remapScaffoldChangeSurfaces";
 
 const FILE_LIKE = /\.\w{1,16}$/;
 const TEST_LIKE = /(?:\.test|\.spec|\/tests?\/|\/__tests__\/)/i;
@@ -59,6 +62,7 @@ export function compileDiscoveryBrief(
   ]);
 
   const inferredSurfaces = inferChangeSurfaces({
+    objective: parsed.objective,
     filesRead,
     searchFiles,
     explicitTargets: parsed.explicitTargets,
@@ -98,6 +102,7 @@ export function compileDiscoveryBrief(
 }
 
 function inferChangeSurfaces(params: {
+  objective: string;
   filesRead: readonly DiscoveryFileRef[];
   searchFiles: readonly { path: string; reason: string }[];
   explicitTargets: readonly DiscoveryTarget[];
@@ -115,6 +120,11 @@ function inferChangeSurfaces(params: {
       .filter(Boolean),
   );
   const readPaths = new Set(params.filesRead.map((file) => file.path));
+  const scaffoldMapping = resolveScaffoldPackageMapping({
+    objective: params.objective,
+    explicitTargets: params.explicitTargets,
+    filesRead: params.filesRead,
+  });
 
   const ranked = uniqueByPath([
     ...params.filesRead.map((file) => ({
@@ -139,7 +149,11 @@ function inferChangeSurfaces(params: {
       return true;
     }
     // Manifests (package.json / tsconfig) are not edit surfaces unless targeted.
-    if (MANIFEST_CONFIG.test(item.path) && !explicitPaths.has(item.path)) {
+    if (
+      MANIFEST_CONFIG.test(item.path) &&
+      !explicitPaths.has(item.path) &&
+      !scaffoldMapping
+    ) {
       return false;
     }
     // Other config modules are first-class when read or explicitly targeted

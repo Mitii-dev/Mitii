@@ -70,7 +70,7 @@ export function renderDiscoveredPlanUserPrompt(params: {
             }
           : {}),
         targets: discoveryBrief.targets.slice(0, 20),
-        proposedChangeSurfaces: discoveryBrief.proposedChangeSurfaces.slice(0, 12),
+        proposedChangeSurfaces: discoveryBrief.proposedChangeSurfaces.slice(0, 16),
         discoveredConstraints: discoveryBrief.discoveredConstraints.slice(0, 10),
         verificationHints: discoveryBrief.verificationHints.slice(0, 10),
         openQuestions: discoveryBrief.openQuestions.slice(0, 8),
