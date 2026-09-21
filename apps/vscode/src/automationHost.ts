@@ -1,5 +1,6 @@
 import { AutomationService } from '@mitii/automation';
 
+import { openSqliteDatabase } from './nativeSqlite.js';
 import type {
   AutomationRunView,
   AutomationSpecView,
@@ -56,7 +57,11 @@ export function handleAutomationHostMessage(input: {
   post: (msg: HostToWebviewMessage) => void;
   workspaceRoot: string | undefined;
 }): void {
-  const service = new AutomationService({});
+  const service = new AutomationService({
+    // Bundled better-sqlite3 has no default .node next to extension.js; use the
+    // Electron-staged binding under dist/native (same path as workspace index).
+    openDatabase: openSqliteDatabase,
+  });
   try {
     if (input.message.type === 'requestAutomations') {
       // Reconcile workspace file specs so the panel mirrors `mitii serve`.

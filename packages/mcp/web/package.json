@@ -1,6 +1,6 @@
 {
   "name": "@mitii/mcp-web",
-  "version": "2.9.81",
+  "version": "2.9.82",
   "description": "Mitii MCP stdio server under packages/mcp/web: web_search, fetch_url, optional memory_search via search-kit (no v8).",
   "license": "AGPL-3.0-or-later",
   "type": "module",

@@ -18,7 +18,10 @@ import {
 import { ClaimRunner, type ClaimRunnerEvent } from './runner/claimRunner.js';
 import type { AutomationRunExecutor } from './runner/types.js';
 import { reconcileCronSpecsDir } from './specs/reconciler.js';
-import { SqliteAutomationStore } from './store/sqliteStore.js';
+import {
+  SqliteAutomationStore,
+  type OpenAutomationSqliteDatabase,
+} from './store/sqliteStore.js';
 import {
   createScheduleInputSchema,
   type AutomationRunRecord,
@@ -35,6 +38,8 @@ import {
 
 export interface AutomationServiceOptions {
   dbPath?: string;
+  /** VS Code / Electron hosts must inject the staged better-sqlite3 binding. */
+  openDatabase?: OpenAutomationSqliteDatabase;
   executor?: AutomationRunExecutor;
   pollIntervalMs?: number;
   claimLeaseSeconds?: number;
@@ -56,7 +61,9 @@ export class AutomationService {
 
   constructor(options: AutomationServiceOptions = {}) {
     const dbPath = resolveAutomationDbPath({ dbPath: options.dbPath });
-    this.store = new SqliteAutomationStore(dbPath);
+    this.store = new SqliteAutomationStore(dbPath, {
+      openDatabase: options.openDatabase,
+    });
     this.options = options;
     this.ingress = new EventIngress({ store: this.store });
   }
