@@ -1,0 +1,59 @@
+{
+  "name": "@mitii/desktop",
+  "version": "2.9.84",
+  "description": "Mitii Desktop — local coding agent with chat, settings, and repository index.",
+  "license": "AGPL-3.0-or-later",
+  "private": true,
+  "type": "module",
+  "main": "./dist/main/index.js",
+  "bin": {
+    "mitii-desktop-engine": "./bin/mitii-desktop-engine.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "pnpm run build:node && pnpm run build:renderer",
+    "build:node": "tsc -p tsconfig.json && node scripts/build-engine.cjs && node scripts/build-preload.cjs && node -e \"require('node:fs').accessSync('dist/engine/main.js'); require('node:fs').accessSync('dist/preload/index.cjs'); require('node:fs').accessSync('dist/main/index.js')\"",
+    "build:engine": "node scripts/build-engine.cjs",
+    "build:preload": "node scripts/build-preload.cjs",
+    "build:renderer": "vite build --config vite.renderer.config.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
+    "test": "vitest run",
+    "start": "env -u ELECTRON_RUN_AS_NODE electron .",
+    "dev": "pnpm run build && env -u ELECTRON_RUN_AS_NODE electron .",
+    "dev:echo": "pnpm run build && env -u ELECTRON_RUN_AS_NODE electron . --echo",
+    "rebuild:sqlite": "pnpm rebuild better-sqlite3",
+    "engine": "node bin/mitii-desktop-engine.js",
+    "engine:echo": "node bin/mitii-desktop-engine.js --echo"
+  },
+  "dependencies": {
+    "@mitii/host": "workspace:*",
+    "@mitii/mcp": "workspace:*",
+    "@mitii/sdk": "workspace:*",
+    "better-sqlite3": "^12.11.1",
+    "highlight.js": "^11.12.0",
+    "react-markdown": "^9.0.3",
+    "remark-gfm": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^34.5.8",
+    "esbuild": "^0.25.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.5.2",
+    "vite": "^5.4.11",
+    "vitest": "^3.2.7"
+  }
+}

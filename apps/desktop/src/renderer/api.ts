@@ -1,0 +1,689 @@
+/**
+ * Renderer → engine HTTP client (no Node; uses bridge for base URL).
+ */
+
+import {
+  MITII_DESKTOP_BRIDGE_KEY,
+  type MitiiDesktopBridge,
+} from '../shared/bridge.js';
+import {
+  extractAssistantAnswer,
+  extractAssistantDelta,
+  extractRunError,
+  extractRunStatus,
+} from '../shared/extract-run-text.js';
+import type {
+  DesktopAgentMode,
+  DesktopHealthResponse,
+  DesktopPromptStreamLine,
+} from '../shared/protocol.js';
+
+export function getDesktopBridge(): MitiiDesktopBridge | undefined {
+  return window[MITII_DESKTOP_BRIDGE_KEY];
+}
+
+function authHeaders(token?: string): Record<string, string> {
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+  };
+  if (token) headers.authorization = `Bearer ${token}`;
+  return headers;
+}
+
+export async function fetchHealth(
+  baseUrl: string,
+): Promise<DesktopHealthResponse> {
+  const res = await fetch(`${baseUrl}/health`);
+  if (!res.ok) throw new Error(`health_${res.status}`);
+  return (await res.json()) as DesktopHealthResponse;
+}
+
+export async function* streamNdjson(
+  url: string,
+  init: RequestInit,
+): AsyncGenerator<DesktopPromptStreamLine> {
+  const res = await fetch(url, init);
+  if (!res.ok || !res.body) {
+    const text = await res.text();
+    throw new Error(`stream_${res.status}:${text}`);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let newline = buffer.indexOf('\n');
+    while (newline >= 0) {
+      const line = buffer.slice(0, newline).trim();
+      buffer = buffer.slice(newline + 1);
+      if (line) {
+        yield JSON.parse(line) as DesktopPromptStreamLine;
+      }
+      newline = buffer.indexOf('\n');
+    }
+  }
+  const tail = buffer.trim();
+  if (tail) {
+    yield JSON.parse(tail) as DesktopPromptStreamLine;
+  }
+}
+
+export async function* streamPrompt(options: {
+  baseUrl: string;
+  prompt: string;
+  mode: DesktopAgentMode;
+  token?: string;
+  approvalPreset?: string;
+  thoroughness?: string;
+  pinnedPaths?: string[];
+  requiredSkillIds?: string[];
+  requiredMcpServerIds?: string[];
+}): AsyncGenerator<DesktopPromptStreamLine> {
+  yield* streamNdjson(`${options.baseUrl}/v1/prompt`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: JSON.stringify({
+      prompt: options.prompt,
+      mode: options.mode,
+      ...(options.approvalPreset
+        ? { approvalPreset: options.approvalPreset }
+        : {}),
+      ...(options.thoroughness ? { thoroughness: options.thoroughness } : {}),
+      ...(options.pinnedPaths?.length
+        ? { pinnedPaths: options.pinnedPaths }
+        : {}),
+      ...(options.requiredSkillIds?.length
+        ? { requiredSkillIds: options.requiredSkillIds }
+        : {}),
+      ...(options.requiredMcpServerIds?.length
+        ? { requiredMcpServerIds: options.requiredMcpServerIds }
+        : {}),
+    }),
+  });
+}
+
+export async function* streamResume(options: {
+  baseUrl: string;
+  token?: string;
+  mode?: DesktopAgentMode;
+  body: Record<string, unknown>;
+}): AsyncGenerator<DesktopPromptStreamLine> {
+  yield* streamNdjson(`${options.baseUrl}/v1/resume`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: JSON.stringify({
+      ...options.body,
+      ...(options.mode ? { mode: options.mode } : {}),
+    }),
+  });
+}
+
+export async function fetchSkills(options: {
+  baseUrl: string;
+  token?: string;
+}): Promise<
+  Array<{
+    id: string;
+    title: string;
+    description: string;
+    source?: 'workspace' | 'bundled';
+  }>
+> {
+  const res = await fetch(`${options.baseUrl}/v1/skills`, {
+    headers: authHeaders(options.token),
+  });
+  if (!res.ok) throw new Error(`skills_${res.status}`);
+  const json = (await res.json()) as {
+    skills: Array<{
+      id: string;
+      title: string;
+      description: string;
+      source?: 'workspace' | 'bundled';
+    }>;
+  };
+  return json.skills ?? [];
+}
+
+export async function fetchWorkspaceSkills(options: {
+  baseUrl: string;
+  token?: string;
+}): Promise<
+  Array<{
+    id: string;
+    title: string;
+    description: string;
+    source: 'workspace';
+  }>
+> {
+  const res = await fetch(`${options.baseUrl}/v1/skills/workspace`, {
+    headers: authHeaders(options.token),
+  });
+  if (!res.ok) throw new Error(`skills_ws_${res.status}`);
+  const json = (await res.json()) as {
+    skills: Array<{
+      id: string;
+      title: string;
+      description: string;
+      source: 'workspace';
+    }>;
+  };
+  return json.skills ?? [];
+}
+
+export async function fetchWorkspaceSkill(options: {
+  baseUrl: string;
+  token?: string;
+  id: string;
+}): Promise<{
+  id: string;
+  title: string;
+  description: string;
+  body: string;
+}> {
+  const res = await fetch(
+    `${options.baseUrl}/v1/skills/workspace?id=${encodeURIComponent(options.id)}`,
+    { headers: authHeaders(options.token) },
+  );
+  if (!res.ok) throw new Error(`skill_${res.status}`);
+  const json = (await res.json()) as {
+    skill: {
+      id: string;
+      title: string;
+      description: string;
+      body: string;
+    };
+  };
+  return json.skill;
+}
+
+export async function saveWorkspaceSkill(options: {
+  baseUrl: string;
+  token?: string;
+  id: string;
+  title?: string;
+  description?: string;
+  body: string;
+}): Promise<{ ok: boolean; id: string; path: string }> {
+  const res = await fetch(`${options.baseUrl}/v1/skills/workspace`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: JSON.stringify({
+      id: options.id,
+      title: options.title,
+      description: options.description,
+      body: options.body,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`skill_save_${res.status}:${text}`);
+  }
+  return (await res.json()) as Awaited<ReturnType<typeof saveWorkspaceSkill>>;
+}
+
+export async function fetchMcpServers(options: {
+  baseUrl: string;
+  token?: string;
+}): Promise<{
+  enabled: boolean;
+  servers: Array<{
+    id: string;
+    name: string;
+    enabled: boolean;
+    transport?: string;
+    builtin?: boolean;
+  }>;
+}> {
+  const res = await fetch(`${options.baseUrl}/v1/mcp`, {
+    headers: authHeaders(options.token),
+  });
+  if (!res.ok) throw new Error(`mcp_${res.status}`);
+  return (await res.json()) as Awaited<ReturnType<typeof fetchMcpServers>>;
+}
+
+export async function setMcpEnabled(options: {
+  baseUrl: string;
+  token?: string;
+  enabled?: boolean;
+  serverId?: string;
+}): Promise<{
+  ok: boolean;
+  enabled: boolean;
+  servers: Array<{ id: string; name: string; enabled: boolean }>;
+  restartRequired?: boolean;
+}> {
+  const res = await fetch(`${options.baseUrl}/v1/mcp`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: JSON.stringify({
+      enabled: options.enabled,
+      serverId: options.serverId,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`mcp_set_${res.status}:${text}`);
+  }
+  return (await res.json()) as Awaited<ReturnType<typeof setMcpEnabled>>;
+}
+
+export async function fetchRecipes(options: {
+  baseUrl: string;
+  token?: string;
+}): Promise<{
+  recipes: Array<{
+    id: string;
+    title: string;
+    description: string;
+    source: 'builtin' | 'workspace';
+    mode: 'ask' | 'plan' | 'agent';
+  }>;
+}> {
+  const res = await fetch(`${options.baseUrl}/v1/recipes`, {
+    headers: authHeaders(options.token),
+  });
+  if (!res.ok) throw new Error(`recipes_${res.status}`);
+  return (await res.json()) as Awaited<ReturnType<typeof fetchRecipes>>;
+}
+
+export async function saveRecipe(options: {
+  baseUrl: string;
+  token?: string;
+  recipe: Record<string, unknown>;
+}): Promise<{ ok: boolean; id: string; path: string }> {
+  const res = await fetch(`${options.baseUrl}/v1/recipes`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: JSON.stringify({ recipe: options.recipe }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`recipe_save_${res.status}:${text}`);
+  }
+  return (await res.json()) as Awaited<ReturnType<typeof saveRecipe>>;
+}
+
+export async function runRecipe(options: {
+  baseUrl: string;
+  token?: string;
+  id: string;
+  params?: Record<string, string>;
+  note?: string;
+}): Promise<{
+  ok: boolean;
+  compiled: {
+    recipeId: string;
+    title: string;
+    prompt: string;
+    mode: 'ask' | 'plan' | 'agent';
+    requiredSkillIds: string[];
+    label: string;
+  };
+}> {
+  const res = await fetch(`${options.baseUrl}/v1/recipes/run`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: JSON.stringify({
+      id: options.id,
+      params: options.params,
+      note: options.note,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`recipe_run_${res.status}:${text}`);
+  }
+  return (await res.json()) as Awaited<ReturnType<typeof runRecipe>>;
+}
+
+/** Prefer streamed deltas; fall back to result.answer (previews are truncated). */
+export function extractAssistantText(line: DesktopPromptStreamLine): string {
+  if (line.op === 'event') return extractAssistantDelta(line.event);
+  if (line.op === 'result') return extractAssistantAnswer(line.result);
+  return '';
+}
+
+export function finalizeAssistantText(
+  streamed: string,
+  line: DesktopPromptStreamLine,
+): string {
+  if (line.op !== 'result') return streamed;
+  const answer = extractAssistantAnswer(line.result);
+  if (answer) return answer;
+  const status = extractRunStatus(line.result);
+  const err = extractRunError(line.result);
+  if (err) return streamed || `Run failed: ${err}`;
+  if (status && status !== 'completed' && !streamed) {
+    return `Run ended with status=${status}`;
+  }
+  return streamed;
+}
+
+export async function testConnection(options: {
+  baseUrl: string;
+  token?: string;
+  type: string;
+  providerBaseUrl?: string;
+  model: string;
+  apiKey?: string;
+}): Promise<{ ok: boolean; message: string; models?: string[] }> {
+  const res = await fetch(`${options.baseUrl}/v1/provider/test`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: JSON.stringify({
+      type: options.type,
+      baseUrl: options.providerBaseUrl,
+      model: options.model,
+      apiKey: options.apiKey,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`test_${res.status}:${text}`);
+  }
+  return (await res.json()) as {
+    ok: boolean;
+    message: string;
+    models?: string[];
+  };
+}
+
+export async function fetchProfiles(options: {
+  baseUrl: string;
+  token?: string;
+}): Promise<{
+  activeProfileId: string;
+  profiles: Array<{
+    id: string;
+    name: string;
+    provider: {
+      type: string;
+      preset?: string;
+      baseUrl: string;
+      model: string;
+      contextWindow: number;
+      maximumOutputTokens: number;
+    };
+    hasSecret: boolean;
+  }>;
+}> {
+  const res = await fetch(`${options.baseUrl}/v1/profiles`, {
+    headers: authHeaders(options.token),
+  });
+  if (!res.ok) throw new Error(`profiles_${res.status}`);
+  return (await res.json()) as Awaited<ReturnType<typeof fetchProfiles>>;
+}
+
+export async function postProfiles(options: {
+  baseUrl: string;
+  token?: string;
+  body: Record<string, unknown>;
+}): Promise<unknown> {
+  const res = await fetch(`${options.baseUrl}/v1/profiles`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: JSON.stringify(options.body),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`profiles_${res.status}:${text}`);
+  }
+  return res.json();
+}
+
+export async function fetchHistory(options: {
+  baseUrl: string;
+  token?: string;
+}): Promise<{
+  threads: Array<{
+    id: string;
+    title: string;
+    updatedAt: string;
+    messages: Array<{
+      id: string;
+      role: 'user' | 'assistant';
+      text: string;
+      mode?: string;
+    }>;
+  }>;
+  activeThreadId?: string;
+}> {
+  const res = await fetch(`${options.baseUrl}/v1/history`, {
+    headers: authHeaders(options.token),
+  });
+  if (!res.ok) throw new Error(`history_${res.status}`);
+  return (await res.json()) as Awaited<ReturnType<typeof fetchHistory>>;
+}
+
+export async function postHistory(options: {
+  baseUrl: string;
+  token?: string;
+  body: Record<string, unknown>;
+}): Promise<Awaited<ReturnType<typeof fetchHistory>>> {
+  const res = await fetch(`${options.baseUrl}/v1/history`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: JSON.stringify(options.body),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`history_${res.status}:${text}`);
+  }
+  return (await res.json()) as Awaited<ReturnType<typeof fetchHistory>>;
+}
+
+export async function fetchIndexStatus(options: {
+  baseUrl: string;
+  token?: string;
+}): Promise<{
+  indexed: boolean;
+  fileCount: number;
+  truncated: boolean;
+  lastIndexedAt?: string;
+  message: string;
+}> {
+  const res = await fetch(`${options.baseUrl}/v1/index/status`, {
+    headers: authHeaders(options.token),
+  });
+  if (!res.ok) throw new Error(`index_${res.status}`);
+  return (await res.json()) as Awaited<ReturnType<typeof fetchIndexStatus>>;
+}
+
+export async function reindexWorkspace(options: {
+  baseUrl: string;
+  token?: string;
+  maximumFiles?: number;
+  semanticIndex?: Record<string, unknown>;
+}): Promise<{
+  status: string;
+  fileCount: number;
+  message: string;
+  statusSnapshot?: Awaited<ReturnType<typeof fetchIndexStatus>>;
+}> {
+  const res = await fetch(`${options.baseUrl}/v1/index/reindex`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: JSON.stringify({
+      maximumFiles: options.maximumFiles,
+      semanticIndex: options.semanticIndex,
+      force: true,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`reindex_${res.status}:${text}`);
+  }
+  return (await res.json()) as Awaited<ReturnType<typeof reindexWorkspace>>;
+}
+
+export async function fetchWorkspaceTree(options: {
+  baseUrl: string;
+  token?: string;
+  path?: string;
+}): Promise<{
+  path: string;
+  entries: Array<{ name: string; path: string; kind: 'file' | 'dir' }>;
+}> {
+  const qs = options.path
+    ? `?path=${encodeURIComponent(options.path)}`
+    : '';
+  const res = await fetch(`${options.baseUrl}/v1/workspace/tree${qs}`, {
+    headers: authHeaders(options.token),
+  });
+  if (!res.ok) throw new Error(`tree_${res.status}`);
+  return (await res.json()) as Awaited<ReturnType<typeof fetchWorkspaceTree>>;
+}
+
+export async function searchWorkspacePaths(options: {
+  baseUrl: string;
+  token?: string;
+  query: string;
+}): Promise<string[]> {
+  const res = await fetch(
+    `${options.baseUrl}/v1/workspace/search?q=${encodeURIComponent(options.query)}`,
+    { headers: authHeaders(options.token) },
+  );
+  if (!res.ok) throw new Error(`search_${res.status}`);
+  const json = (await res.json()) as { paths?: string[] };
+  return json.paths ?? [];
+}
+
+export async function fetchWorkspaceFile(options: {
+  baseUrl: string;
+  token?: string;
+  path: string;
+}): Promise<{
+  path: string;
+  content: string;
+  truncated: boolean;
+  size: number;
+}> {
+  const res = await fetch(
+    `${options.baseUrl}/v1/workspace/file?path=${encodeURIComponent(options.path)}`,
+    { headers: authHeaders(options.token) },
+  );
+  if (!res.ok) throw new Error(`file_${res.status}`);
+  return (await res.json()) as Awaited<ReturnType<typeof fetchWorkspaceFile>>;
+}
+
+export async function saveWorkspaceFile(options: {
+  baseUrl: string;
+  token?: string;
+  path: string;
+  content: string;
+}): Promise<{ ok: boolean; path: string; size: number }> {
+  const res = await fetch(`${options.baseUrl}/v1/workspace/file`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: JSON.stringify({ path: options.path, content: options.content }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`save_${res.status}:${text}`);
+  }
+  return (await res.json()) as Awaited<ReturnType<typeof saveWorkspaceFile>>;
+}
+
+export async function renameWorkspacePath(options: {
+  baseUrl: string;
+  token?: string;
+  path: string;
+  newName: string;
+}): Promise<{ ok: boolean; path: string; previousPath: string }> {
+  const res = await fetch(`${options.baseUrl}/v1/workspace/rename`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: JSON.stringify({ path: options.path, newName: options.newName }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`rename_${res.status}:${text}`);
+  }
+  return (await res.json()) as Awaited<ReturnType<typeof renameWorkspacePath>>;
+}
+
+export async function deleteWorkspacePaths(options: {
+  baseUrl: string;
+  token?: string;
+  paths: string[];
+}): Promise<{ ok: boolean; deleted: string[] }> {
+  const res = await fetch(`${options.baseUrl}/v1/workspace/delete`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: JSON.stringify({ paths: options.paths }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`delete_${res.status}:${text}`);
+  }
+  return (await res.json()) as Awaited<ReturnType<typeof deleteWorkspacePaths>>;
+}
+
+export async function fetchAbsoluteWorkspacePath(options: {
+  baseUrl: string;
+  token?: string;
+  path: string;
+}): Promise<string> {
+  const res = await fetch(
+    `${options.baseUrl}/v1/workspace/absolute?path=${encodeURIComponent(options.path)}`,
+    { headers: authHeaders(options.token) },
+  );
+  if (!res.ok) throw new Error(`abs_${res.status}`);
+  const json = (await res.json()) as { absolute?: string };
+  if (!json.absolute) throw new Error('abs_missing');
+  return json.absolute;
+}
+
+export async function fetchGitStatus(options: {
+  baseUrl: string;
+  token?: string;
+}): Promise<{
+  ok: boolean;
+  branch?: string;
+  summary: string;
+  files: Array<{ path: string; status: string }>;
+  statPreview?: string;
+  error?: string;
+}> {
+  const res = await fetch(`${options.baseUrl}/v1/git/status`, {
+    headers: authHeaders(options.token),
+  });
+  if (!res.ok) throw new Error(`git_${res.status}`);
+  return (await res.json()) as Awaited<ReturnType<typeof fetchGitStatus>>;
+}
+
+export async function fetchGitDiff(options: {
+  baseUrl: string;
+  token?: string;
+  path: string;
+}): Promise<{ path: string; diff: string }> {
+  const res = await fetch(
+    `${options.baseUrl}/v1/git/diff?path=${encodeURIComponent(options.path)}`,
+    { headers: authHeaders(options.token) },
+  );
+  if (!res.ok) throw new Error(`git_diff_${res.status}`);
+  return (await res.json()) as Awaited<ReturnType<typeof fetchGitDiff>>;
+}
+
+export async function fetchFileChanges(options: {
+  baseUrl: string;
+  token?: string;
+  paths: string[];
+}): Promise<import('../shared/fileChanges.js').DesktopFileChanges> {
+  const res = await fetch(`${options.baseUrl}/v1/git/file-changes`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: JSON.stringify({ paths: options.paths }),
+  });
+  if (!res.ok) throw new Error(`file_changes_${res.status}`);
+  return (await res.json()) as Awaited<ReturnType<typeof fetchFileChanges>>;
+}
+
+export function shortPath(path: string): string {
+  if (!path) return '—';
+  const parts = path.replace(/\\/g, '/').split('/').filter(Boolean);
+  if (parts.length <= 3) return path;
+  return `…/${parts.slice(-3).join('/')}`;
+}

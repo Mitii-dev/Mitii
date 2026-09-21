@@ -5,13 +5,13 @@ Current product package boundaries. Canonical V8 architecture: [`packages/v8/ARC
 ## Dependency graph
 
 ```text
-apps/vscode --+
-apps/cli    --+
-apps/daemon --+--> packages/host --> packages/sdk --> packages/v8
-apps/acp    --+         |
-                        +--> packages/automation
-                        +--> packages/mcp            # client @mitii/mcp
-                        `--> packages/search-kit
+apps/vscode  --+
+apps/cli     --+
+apps/daemon  --+--> packages/host --> packages/sdk --> packages/v8
+apps/acp     --+         |
+apps/desktop --+         +--> packages/automation
+                         +--> packages/mcp            # client @mitii/mcp
+                         `--> packages/search-kit
 packages/mcp/web -------> packages/search-kit        # server @mitii/mcp-web
 tests/* ----------------/
 ```
@@ -52,7 +52,8 @@ mitii/
 |   |-- vscode/               # VS Code extension (VSIX)
 |   |-- cli/                  # @mitii/cli (`mitii`)
 |   |-- daemon/               # @mitii/daemon
-|   `-- acp/                  # @mitii/acp (ACP-lite stdio bridge)
+|   |-- acp/                  # @mitii/acp (ACP-lite stdio bridge)
+|   `-- desktop/              # @mitii/desktop (Electron + local engine)
 |-- tests/
 |   `-- benchmark/            # @mitii/solid-benchmark
 |-- docs/
@@ -74,6 +75,7 @@ mitii/
 | CLI | `@mitii/cli` | `mitii` bin |
 | Daemon | `@mitii/daemon` | Long-lived serve |
 | ACP | `@mitii/acp` | ACP-lite stdio bridge |
+| Desktop | `@mitii/desktop` | Electron host + HTTP engine (private) |
 | VS Code | `mitii-ai-agent` | VSIX / Marketplace |
 | Benchmark | `@mitii/solid-benchmark` | `tests/benchmark` |
 | Root | private | Never published |

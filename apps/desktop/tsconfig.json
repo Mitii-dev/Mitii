@@ -1,0 +1,28 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "composite": false,
+    "noEmit": false,
+    "noEmitOnError": true,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+    "lib": ["ES2022"],
+    "jsx": "react-jsx"
+  },
+  "include": [
+    "src/shared/**/*",
+    "src/engine/**/*",
+    "src/main/**/*",
+    "src/preload/**/*"
+  ],
+  "exclude": [
+    "dist",
+    "node_modules",
+    "src/renderer/**/*",
+    "**/*.spec.ts",
+    "tests/**"
+  ]
+}

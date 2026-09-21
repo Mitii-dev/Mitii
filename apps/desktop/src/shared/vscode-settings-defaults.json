@@ -1,0 +1,215 @@
+{
+  "developer": {
+    "enabled": false,
+    "intensityOverrides": false,
+    "modelIo": false
+  },
+  "debug": false,
+  "tokenBudget": {
+    "enabled": false,
+    "outputRatio": 0.1,
+    "outputMinTokens": 1024,
+    "outputMaxTokens": 512000,
+    "outputWindowCapRatio": 0.2,
+    "toolSchemaFallbackTokens": 8000,
+    "toolSchemaFallbackWindowRatio": 0.2,
+    "minimumUsableInputTokens": 2048,
+    "loopSafetyRatio": 0.94,
+    "repositoryShare": 0.28,
+    "conversationShare": 0.4,
+    "planShare": 0.06,
+    "skillsShare": 0.04,
+    "planTokensCap": 32000,
+    "skillsTokensCap": 16000,
+    "repositoryTokensCap": 128000,
+    "compactionWarnRatio": 0.7,
+    "compactionAutoRatio": 0.8,
+    "compactionHardRatio": 0.92,
+    "keepRecentToolResultsRatio": 0.00008,
+    "keepRecentToolResultsMin": 3,
+    "keepRecentToolResultsMax": 16,
+    "compactedToolResultCharsRatio": 0.006,
+    "compactedToolResultCharsMin": 400,
+    "compactedToolResultCharsMax": 4000,
+    "compactedToolArgumentCharsRatio": 0.003,
+    "compactedToolArgumentCharsMin": 256,
+    "compactedToolArgumentCharsMax": 2000,
+    "toolResultContentCharsRatio": 0.015,
+    "toolResultContentCharsMin": 2000,
+    "toolResultContentCharsMax": 64000,
+    "droppedTurnSummaryCharsRatio": 0.01,
+    "droppedTurnSummaryCharsMin": 1200,
+    "droppedTurnSummaryCharsMax": 8000,
+    "establishedFactCharsRatio": 0.002,
+    "establishedFactCharsMin": 220,
+    "establishedFactCharsMax": 900,
+    "establishedFactCountRatio": 0.00015,
+    "establishedFactCountMin": 12,
+    "establishedFactCountMax": 48,
+    "establishedFactReinjectCharsRatio": 0.012,
+    "establishedFactReinjectCharsMin": 1600,
+    "establishedFactReinjectCharsMax": 8000,
+    "memoryReinjectCharsRatio": 0.006,
+    "memoryReinjectCharsMin": 800,
+    "memoryReinjectCharsMax": 4000,
+    "filesPerOutputTokens": 800,
+    "minUniqueFilesPerCall": 2,
+    "maxUniqueFilesPerCallCap": 48,
+    "patchPayloadOutputRatio": 0.6,
+    "charsPerOutputToken": 3,
+    "requireBatchedBelowOutputTokens": 4096,
+    "visiblePlanMinUsableTokens": 40000,
+    "changeImpactMinUsableTokens": 40000,
+    "diagnosticStepsBase": 2,
+    "diagnosticStepsPerUsable": 20000,
+    "diagnosticStepsMax": 8,
+    "maxModelCallsPerUsable": 2500,
+    "maxModelCallsMin": 48,
+    "maxModelCallsMax": 96,
+    "maxSkillsBase": 1,
+    "maxSkillsPerUsable": 30000,
+    "maxSkillsCap": 4,
+    "verificationChecksBase": 2,
+    "verificationChecksPerUsable": 40000,
+    "verificationChecksMax": 16,
+    "visiblePlanMinUsableRatio": 0.35,
+    "changeImpactMinUsableRatio": 0.35,
+    "maxPatchesPerCallCap": 96
+  },
+  "loopPolicy": {
+    "enabled": false,
+    "explorationRereadMinCalls": 8,
+    "explorationRereadRatio": 2,
+    "maxExplorationStallNudges": 1,
+    "maxReadOnlyToolTurnsBeforeMutationNudge": 6,
+    "maxReadOnlyMutationRetryAttempts": 2,
+    "maxReadOnlyToolTurnsAfterMutationNudge": 3,
+    "maxReadOnlyToolTurnsAfterMutationNudges": 1,
+    "maxTruncationRecoveries": 3,
+    "maxIncompleteAnswerRecoveries": 2,
+    "maxUnfulfilledExecuteRecoveries": 1,
+    "maxRejectedMutationRecoveries": 3,
+    "maxMustReadNudges": 1,
+    "verificationRepairModelCallReserveRatio": 0.2,
+    "maxVerificationRepairAttempts": 8,
+    "maxStalledVerificationRepairs": 2,
+    "defaultPreferredBatchSize": 8,
+    "defaultMaxPatchesPerCall": 16,
+    "maxRecoveredAnalysisChars": 480,
+    "maxStructuredReviewRecoveries": 2
+  },
+  "provider": {
+    "type": "echo",
+    "preset": "echo",
+    "baseUrl": "",
+    "model": "",
+    "contextWindow": 0,
+    "maximumOutputTokens": 0
+  },
+  "search": {
+    "searxngBaseUrl": ""
+  },
+  "autocomplete": {
+    "enabled": false,
+    "mode": "fim",
+    "provider": "openai-compatible",
+    "baseUrl": "",
+    "model": "",
+    "endpointPath": "completions",
+    "authHeader": "authorization",
+    "maxTokens": 96,
+    "debounceMs": 250,
+    "timeoutMs": 4000,
+    "prefixChars": 6000,
+    "suffixChars": 2000,
+    "temperature": 0.2
+  },
+  "semanticIndex": {
+    "enabled": true,
+    "source": "bundled",
+    "backend": "auto",
+    "model": "",
+    "dimensions": 0,
+    "normalized": true
+  },
+  "workspace": {
+    "rootPathOverride": "",
+    "maximumIndexFiles": 0
+  },
+  "skills": {
+    "workspace": {
+      "enabled": true
+    }
+  },
+  "ui": {
+    "showReasoning": true,
+    "features": {
+      "codeReviewButton": false
+    },
+    "reasoningPreviewMaxChars": 8000,
+    "depth": "auto",
+    "effort": "medium",
+    "modeDefaults": {
+      "ask": {
+        "thoroughness": "medium",
+        "depth": "auto",
+        "approvalMode": "guided",
+        "model": ""
+      },
+      "plan": {
+        "thoroughness": "high",
+        "depth": "deep",
+        "approvalMode": "guided",
+        "model": ""
+      },
+      "agent": {
+        "thoroughness": "medium",
+        "depth": "auto",
+        "approvalMode": "safe",
+        "model": ""
+      }
+    },
+    "contextToggles": {
+      "repoMap": false,
+      "diagnostics": true,
+      "gitDiff": false,
+      "editor": true,
+      "openTabs": false,
+      "memory": true
+    }
+  },
+  "agent": {
+    "taskListAutoAdvance": true
+  },
+  "scm": {
+    "commitMessageStyle": "conventional"
+  },
+  "safety": {
+    "approvalMode": "guided",
+    "sandbox": {
+      "enabled": null,
+      "network": null,
+      "backend": "auto"
+    }
+  },
+  "tools": {
+    "applyPatch": {
+      "fuzzyMatch": false
+    }
+  },
+  "runBudget": {
+    "unlimited": false,
+    "maxModelCalls": 64,
+    "maxToolCalls": 128,
+    "maxLoopIterations": 96,
+    "maxWallTimeMinutes": 30
+  },
+  "logVerbosity": "verbose",
+  "onboarding": {
+    "completed": false
+  },
+  "mcp": {
+    "enabled": false,
+    "servers": []
+  }
+}

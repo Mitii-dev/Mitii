@@ -40,7 +40,7 @@ V8 does not:
 
 ```text
 Application Hosts
-  VS Code | CLI | tests | future web/desktop
+  VS Code | CLI | Desktop | tests | future web
         |
         | inject ports, secrets, UI, persistence
         v
@@ -69,7 +69,7 @@ Repository packaging places this boundary in concrete packages:
 - Runtime: `packages/v8` (`@mitii/v8`) - live root is `packages/v8/src/`
 - Public API: `packages/sdk` (`@mitii/sdk`) - hosts and tests prefer this
 - Host kit: `packages/host` (`@mitii/host`)
-- Hosts: `apps/vscode`, `apps/cli` (optional `apps/daemon`)
+- Hosts: `apps/vscode`, `apps/cli`, `apps/desktop` (optional `apps/daemon`, `apps/acp`)
 - Consumers: `tests/` (benchmark), package-local `*.spec.ts`
 
 Authoritative packaging layout: `docs/REPO_LAYOUT.md`.
