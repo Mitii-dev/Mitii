@@ -26,6 +26,16 @@ import { AUTOMATION_SCHEMA_STATEMENTS } from './schema.js';
 
 type SqliteDb = Database.Database;
 
+/** Host-injected opener (VS Code passes Electron-native better-sqlite3 bindings). */
+export type OpenAutomationSqliteDatabase = (
+  filename: string,
+  options?: Database.Options,
+) => SqliteDb;
+
+export type SqliteAutomationStoreOptions = {
+  openDatabase?: OpenAutomationSqliteDatabase;
+};
+
 function boolToInt(value: boolean): number {
   return value ? 1 : 0;
 }
@@ -149,10 +159,13 @@ export class SqliteAutomationStore {
   readonly db: SqliteDb;
   readonly dbPath: string;
 
-  constructor(dbPath: string) {
+  constructor(dbPath: string, options: SqliteAutomationStoreOptions = {}) {
     mkdirSync(dirname(dbPath), { recursive: true });
     this.dbPath = dbPath;
-    this.db = new Database(dbPath);
+    const open =
+      options.openDatabase ??
+      ((filename, openOptions) => new Database(filename, openOptions));
+    this.db = open(dbPath);
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
     for (const statement of AUTOMATION_SCHEMA_STATEMENTS) {

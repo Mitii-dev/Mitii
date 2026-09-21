@@ -41,7 +41,11 @@ export {
 export type { ParsedCron } from './cron/next.js';
 
 export { SqliteAutomationStore } from './store/sqliteStore.js';
-export type { UpsertSpecInput } from './store/sqliteStore.js';
+export type {
+  OpenAutomationSqliteDatabase,
+  SqliteAutomationStoreOptions,
+  UpsertSpecInput,
+} from './store/sqliteStore.js';
 export { AUTOMATION_SCHEMA_STATEMENTS } from './store/schema.js';
 
 export {
