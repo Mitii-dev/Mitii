@@ -114,7 +114,7 @@ export const MODE_HINT: Record<AgentUiMode, string> = {
   ask: 'Explore and answer — read-only.',
   plan: 'Analyze and propose a structured plan.',
   agent: 'Implement changes with controlled execution.',
-  review: 'Structured working-tree review (use the Review bar above the chat).',
+  review: 'Git working-tree review via the Review button — not a chat mode.',
 };
 
 interface ComposerControlsProps {

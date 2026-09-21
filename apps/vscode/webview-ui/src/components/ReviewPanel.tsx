@@ -14,7 +14,7 @@ interface ReviewPanelProps {
 }
 
 const DEFAULT_REVIEW_HINT =
-  'Review mode is read-only. Run a review below or type a focus (bugs, security, tests). Do not use Agent for review.';
+  'Review shows git changes. Enable Settings → Features → Code Review to run an LLM analysis of those changes.';
 
 function reviewStatusLabel(status: string): string {
   const normalized = status.trim() || '?';
@@ -82,10 +82,10 @@ export function ReviewPanel({
               title={
                 files.length === 0
                   ? 'Make git changes first, then refresh'
-                  : 'Run a structured review of these changes'
+                  : 'Run an LLM code review of these changes'
               }
             >
-              {running ? 'Reviewing…' : 'Run review'}
+              {running ? 'Reviewing…' : 'Code Review'}
             </button>
           ) : null}
         </div>
@@ -94,8 +94,8 @@ export function ReviewPanel({
       {files.length === 0 ? (
         <div className="panel-empty">
           <p>
-            No working-tree diff. Edit files (or stage changes), click Refresh,
-            then Run review.
+            No working-tree diff. Edit files (or stage changes), then click
+            Refresh to see changes.
           </p>
         </div>
       ) : (

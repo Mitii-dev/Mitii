@@ -220,4 +220,20 @@ describe('host durable workspace kit', () => {
     );
     expect(snapshot.candidate.roots[0]?.rootId).toBe(root.split(/[\\/]/).pop());
   });
+
+  it('honors an explicit fingerprint maxFiles override', async () => {
+    await writeFile(join(root, 'a.ts'), 'a', 'utf8');
+    await writeFile(join(root, 'b.ts'), 'b', 'utf8');
+    await writeFile(join(root, 'c.ts'), 'c', 'utf8');
+    const snapshot = await buildWorkspaceSnapshot({
+      workspaceRoot: root,
+      workspaceId: 'ws_1',
+      maxFiles: 2,
+    });
+    expect(snapshot.fileCount).toBe(2);
+    expect(snapshot.truncated).toBe(true);
+    expect(snapshot.candidate.reasons?.[0]?.message).toContain(
+      'truncated after 2 files',
+    );
+  });
 });

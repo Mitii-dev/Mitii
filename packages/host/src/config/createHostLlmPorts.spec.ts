@@ -99,6 +99,27 @@ describe('resolveProviderApiKey', () => {
 });
 
 describe('testProviderConnection', () => {
+  it.each(['openai-compatible', 'anthropic', 'gemini'])('discovers %s models before selection without a generation request', async (type) => {
+    const requests: string[] = [];
+    const result = await testProviderConnection({
+      type, baseUrl: 'https://provider.example', model: '', apiKey: 'test-key',
+      fetchImpl: (async (url: RequestInfo | URL, init?: RequestInit) => {
+        requests.push(String(url));
+        expect(init?.method ?? 'GET').toBe('GET');
+        return new Response(JSON.stringify({ data: [{ id: 'test-model' }], models: [{ name: 'models/test-model' }] }));
+      }) as typeof fetch,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.models).toEqual(['test-model']);
+    expect(result.message).toContain('Choose a model');
+    expect(requests).toHaveLength(1);
+  });
+
+  it('does not claim success when discovery fails without a model', async () => {
+    const result = await testProviderConnection({ type: 'openai-compatible', baseUrl: 'https://provider.example', model: '', fetchImpl: (async () => new Response('', { status: 401 })) as typeof fetch });
+    expect(result.ok).toBe(false);
+  });
+
   it('accepts echo without a network call', async () => {
     const result = await testProviderConnection({
       type: 'echo',

@@ -10,7 +10,7 @@ import {
   type RunEvent,
   type TaskList,
 } from '@mitii/sdk';
-import { loadUserSafetyRules } from '@mitii/host';
+import { loadUserSafetyRules, resolveMaximumIndexFiles } from '@mitii/host';
 import type * as vscode from 'vscode';
 
 import { formatDiagnosticsPromptBlock } from './context/diagnosticsContext.js';
@@ -166,6 +166,8 @@ export async function runAskInOutputChannel(options: {
   approvalMode?: string;
   pinnedPaths?: string[];
   requiredSkillIds?: string[];
+  /** Skills that must not be auto-matched for this run. */
+  excludedSkillIds?: string[];
   /** Attached MCP server ids for this turn (@mcp: / host pin). */
   requiredMcpServerIds?: string[];
   workspaceId?: string;
@@ -475,6 +477,9 @@ export async function runAskInOutputChannel(options: {
       ...(options.requiredSkillIds && options.requiredSkillIds.length > 0
         ? { requiredSkillIds: [...options.requiredSkillIds] }
         : {}),
+      ...(options.excludedSkillIds && options.excludedSkillIds.length > 0
+        ? { excludedSkillIds: [...options.excludedSkillIds] }
+        : {}),
       ...(options.requiredMcpServerIds &&
       options.requiredMcpServerIds.length > 0
         ? { requiredMcpServerIds: [...options.requiredMcpServerIds] }
@@ -739,6 +744,11 @@ async function autoPublishFullOrSnapshot(options: {
     const snap = await buildWorkspaceSnapshot({
       workspaceRoot: options.workspaceRoot,
       workspaceId: options.workspaceId,
+      maxFiles: resolveMaximumIndexFiles(
+        options.vs.workspace
+          .getConfiguration('mitii')
+          .get<number>('workspace.maximumIndexFiles'),
+      ),
     });
     await options.client.publishRepositoryState(snap.candidate);
     options.channel.appendLine(

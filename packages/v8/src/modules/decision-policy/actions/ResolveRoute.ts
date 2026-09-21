@@ -358,12 +358,12 @@ function resolveAskRoute(params: {
 }): RouteResolution {
   const { primary, taskAnalysis, message, reasonCodes } = params;
 
-  // Host Review UI maps to ask mode; classifiers often label these as
-  // "question" once review prep is prepended. Keep the diagnose + structured
-  // findings path regardless.
-  if (isDiagnosisIntent(primary) || looksLikeCodeReviewRequest(message)) {
+  // Structured review is button/CLI-prep only (host markers). Free-form
+  // "code review" questions stay normal diagnose/answer — never force findings.
+  const structuredReview = looksLikeCodeReviewRequest(message);
+  if (isDiagnosisIntent(primary) || structuredReview) {
     reasonCodes.push("diagnosis_readonly");
-    if (primary === "review" || looksLikeCodeReviewRequest(message)) {
+    if (structuredReview) {
       reasonCodes.push("review_pipeline_required");
       reasonCodes.push("review_findings_structured");
     }
@@ -406,8 +406,8 @@ function resolveAskRoute(params: {
 }
 
 /**
- * Explicit code-review asks (VS Code Review mode, CLI, or free-form).
- * Matches host prefixes that include emit_review_finding / working-tree language.
+ * Structured git review is opt-in only: VS Code Review button / CLI prep.
+ * Matches host-injected markers — not free-form "code review" chat phrasing.
  */
 export function looksLikeCodeReviewRequest(message: string): boolean {
   const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
@@ -416,20 +416,6 @@ export function looksLikeCodeReviewRequest(message: string): boolean {
   }
 
   if (/\bemit_review_finding\b/i.test(text)) {
-    return true;
-  }
-
-  if (
-    /\b(?:code\s*review|review\s+(?:the\s+)?(?:current\s+)?(?:git\s+)?(?:working[- ]tree\s+)?(?:changes|diff|patch|pr|pull\s+request|commit))\b/i.test(
-      text,
-    )
-  ) {
-    return true;
-  }
-
-  if (
-    /\breview\b[\s\S]{0,80}\b(?:bugs?|security|findings?|severity)\b/i.test(text)
-  ) {
     return true;
   }
 

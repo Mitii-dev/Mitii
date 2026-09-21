@@ -390,6 +390,7 @@ export async function runStartEnrichment(
       budgetTokens: windowPolicy.skills.budgetTokens,
       maxSkills: windowPolicy.skills.maxSkills,
       requiredSkillIds: input.requiredSkillIds ?? [],
+      excludedSkillIds: input.excludedSkillIds ?? [],
       forbidLargeSkills:
         resolveWindowBudgetBand(windowPolicy.contextWindowTokens) === "compact",
       evidence: {

@@ -1,7 +1,7 @@
 {
   "name": "mitii-ai-agent",
   "description": "Private Mitii monorepo workspace orchestrator. Product packages: @mitii/v8, @mitii/sdk, @mitii/automation, @mitii/search-kit, @mitii/mcp, @mitii/mcp-web, @mitii/host, @mitii/cli, @mitii/daemon, @mitii/acp, apps/vscode.",
-  "version": "2.9.57",
+  "version": "2.9.66",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "author": {
@@ -47,7 +47,7 @@
     "typecheck:daemon": "pnpm --filter @mitii/daemon typecheck",
     "typecheck:acp": "pnpm --filter @mitii/acp typecheck",
     "typecheck:vscode": "pnpm --filter ./apps/vscode typecheck",
-    "test": "node scripts/ensure-node-native.mjs && vitest run",
+    "test": "node scripts/ensure-node-native.mjs && vitest run && pnpm run test:webview",
     "test:watch": "node scripts/ensure-node-native.mjs && vitest",
     "test:v8": "pnpm --filter @mitii/v8 test",
     "test:sdk": "pnpm --filter @mitii/sdk test",
@@ -89,11 +89,13 @@
     "log-viewer": "node tools/log-viewer/server.mjs",
     "audit:dependencies": "node scripts/audit-dependencies.mjs",
     "audit:engines": "node scripts/audit-package-engines.mjs",
-    "check:circular-deps": "node scripts/check-circular-deps.mjs"
+    "check:circular-deps": "node scripts/check-circular-deps.mjs",
+    "test:webview": "pnpm --filter @mitii/vscode-webview test"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.2.0",
     "@types/node": "^20.14.0",
+    "jsdom": "^26.1.0",
     "knip": "^6.21.0",
     "madge": "^8.0.0",
     "typescript": "^5.5.2",

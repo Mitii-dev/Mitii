@@ -178,6 +178,11 @@ export const agentEngineStartInputSchema = z
      */
     requiredSkillIds: z.array(z.string().min(1).max(64)).max(3).default([]),
     /**
+     * Skill ids that must not be auto-matched for this run.
+     * Explicit requiredSkillIds still win when listed there.
+     */
+    excludedSkillIds: z.array(z.string().min(1).max(64)).max(20).default([]),
+    /**
      * Explicitly attached MCP server ids for this run (@mcp:, host pin).
      * Empty = all enabled MCP servers under the grant (default).
      */

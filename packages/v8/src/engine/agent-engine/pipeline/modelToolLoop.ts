@@ -101,6 +101,7 @@ export async function runModelToolLoop(
   establishedFacts?: EstablishedFact[];
   selectedSkillIds?: string[];
   requiredSkillIds?: string[];
+  excludedSkillIds?: string[];
   taskListRef: TaskListRef;
   evidence?: RunEvidence;
   windowPolicy: WindowPolicy;
@@ -593,6 +594,7 @@ export async function runModelToolLoop(
       mode: params.mode,
       projects: params.projects,
       requiredSkillIds: params.requiredSkillIds,
+      excludedSkillIds: params.excludedSkillIds,
       answer: session.answer,
       changeImpactGate,
       thresholds,

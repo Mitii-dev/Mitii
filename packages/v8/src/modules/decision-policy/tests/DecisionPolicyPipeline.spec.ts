@@ -500,6 +500,50 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.reasonCodes).toContain("mode_ask_readonly");
   });
 
+  it("does not force structured review for free-form code-review questions", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "ask",
+        message:
+          "can you show the code on how it detects the unused files for code review?",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "review",
+          interactionIntent: "question",
+          taskAnalysis: {
+            scope: "repository",
+            clarity: "unclear",
+            recommendsRepositoryDiscovery: true,
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("diagnose");
+    expect(decision.reasonCodes).toContain("diagnosis_readonly");
+    expect(decision.reasonCodes).not.toContain("review_pipeline_required");
+    expect(decision.reasonCodes).not.toContain("review_findings_structured");
+  });
+
+  it("does not force structured review for free-form review phrasing without host markers", () => {
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "ask",
+        message: "Review the current git changes for bugs",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "review",
+          interactionIntent: "question",
+          taskAnalysis: {
+            scope: "multi_file",
+            recommendsRepositoryDiscovery: true,
+          },
+        }),
+      }),
+    );
+
+    expect(decision.reasonCodes).not.toContain("review_pipeline_required");
+    expect(decision.reasonCodes).not.toContain("review_findings_structured");
+  });
+
   it("routes ask-mode project questions to repository_answer with read tools", () => {
     const decision = new DecisionPolicyPipeline().decide(
       createInput({

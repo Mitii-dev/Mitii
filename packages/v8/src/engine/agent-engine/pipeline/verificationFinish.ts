@@ -120,6 +120,7 @@ export async function finishAfterLoop(
     memoryFacts?: readonly { id: string; content: string }[];
     selectedSkillIds?: string[];
     requiredSkillIds?: string[];
+    excludedSkillIds?: string[];
     establishedFacts: EstablishedFact[];
     plan?: PlanArtifact;
   };
@@ -826,6 +827,7 @@ export async function finishAfterLoop(
         establishedFacts: params.loopContext?.establishedFacts ?? [],
         selectedSkillIds: params.loopContext?.selectedSkillIds,
         requiredSkillIds: params.loopContext?.requiredSkillIds,
+        excludedSkillIds: params.loopContext?.excludedSkillIds,
         evidence,
         windowPolicy,
         logVerbosity: input.logVerbosity,

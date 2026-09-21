@@ -150,33 +150,46 @@ export class HostOnnxRuntimeSessionFactory implements OnnxRuntimeSessionFactory 
     input.abortSignal?.throwIfAborted();
     const preferred = resolvePreferredOnnxKind(input.preferredKind);
     const tryNative = preferred !== 'wasm';
+    const nativeErrors: string[] = [];
 
     if (tryNative) {
       const native = this.loadModule(ONNX_RUNTIME_NODE_PACKAGE);
       if (native?.InferenceSession && native.Tensor) {
-        const raw = await native.InferenceSession.create(input.modelPath, {
-          executionProviders: ['cpu'],
-        });
-        return {
-          session: wrapSession(raw),
-          resolution: describeOnnxExecutionProvider({
-            kind: 'native',
-            packageId: ONNX_RUNTIME_NODE_PACKAGE,
-          }),
-          createInt64Tensor: (values, dims) =>
-            new native.Tensor!(
-              'int64',
-              BigInt64Array.from(values.map((value) => BigInt(value))),
-              [...dims],
-            ),
-        };
+        try {
+          const raw = await native.InferenceSession.create(input.modelPath, {
+            executionProviders: ['cpu'],
+          });
+          return {
+            session: wrapSession(raw),
+            resolution: describeOnnxExecutionProvider({
+              kind: 'native',
+              packageId: ONNX_RUNTIME_NODE_PACKAGE,
+            }),
+            createInt64Tensor: (values, dims) =>
+              new native.Tensor!(
+                'int64',
+                BigInt64Array.from(values.map((value) => BigInt(value))),
+                [...dims],
+              ),
+          };
+        } catch (error) {
+          // ABI / native create failures are common in Extension Host — fall
+          // through to WASM so bundled embeddings still work.
+          nativeErrors.push(
+            error instanceof Error ? error.message : String(error),
+          );
+        }
       }
     }
 
     const wasm = this.loadModule(ONNX_RUNTIME_WEB_PACKAGE);
     if (!wasm?.InferenceSession || !wasm.Tensor) {
+      const nativeHint =
+        nativeErrors.length > 0
+          ? ` Native attempt failed: ${nativeErrors.join('; ')}.`
+          : '';
       throw new Error(
-        'ONNX Runtime is unavailable. Install optional native modules onnxruntime-node (preferred) or onnxruntime-web (WASM fallback) for this OS/CPU.',
+        `ONNX Runtime is unavailable. Install optional native modules onnxruntime-node (preferred) or onnxruntime-web (WASM fallback) for this OS/CPU.${nativeHint}`,
       );
     }
     configureWasmPaths(wasm, ONNX_RUNTIME_WEB_PACKAGE);

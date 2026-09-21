@@ -87,7 +87,7 @@ const MODE_LABELS: Record<AgentUiMode, string> = {
   ask: 'Ask mode',
   plan: 'Plan mode',
   agent: 'Agent mode',
-  review: 'Review mode',
+  review: 'Working-tree review',
 };
 
 export function MessageList({

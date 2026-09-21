@@ -41,8 +41,10 @@ export const EMBEDDING_DEFAULTS = {
   MAXIMUM_ALLOWED_CHANGES_PER_BATCH:
     10_000,
 
+  // High enough that a first full index of ~30k files can finish embeddings
+  // in one run instead of staying chronically "degraded"/partial.
   MAXIMUM_BATCHES_PER_RUN:
-    100,
+    2_000,
 
   MAXIMUM_ALLOWED_BATCHES_PER_RUN:
     10_000,

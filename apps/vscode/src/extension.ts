@@ -9,6 +9,7 @@ import {
   unwrapRecipeAnswer,
   type MitiiWritingRecipeId,
   IndexLockedError,
+  resolveMaximumIndexFiles,
 } from '@mitii/host';
 import { isSecurityConcern, WorkspaceIgnorePolicy } from '@mitii/v8';
 
@@ -378,6 +379,11 @@ export function activate(context: ExtensionContext): void {
           const snapshot = await buildWorkspaceSnapshot({
             workspaceRoot: root,
             workspaceId,
+            maxFiles: resolveMaximumIndexFiles(
+              vscode.workspace
+                .getConfiguration('mitii')
+                .get<number>('workspace.maximumIndexFiles'),
+            ),
           });
           fileCount = snapshot.fileCount;
           truncated = snapshot.truncated;
@@ -424,7 +430,8 @@ export function activate(context: ExtensionContext): void {
 
   const reviewChanges = async (): Promise<void> => {
     await vscode.commands.executeCommand('mitii.sidebar.focus');
-    sidebar?.post({ type: 'startReview', autoRun: true });
+    // Show git changes only — LLM Code Review is the separate bar button.
+    sidebar?.post({ type: 'startReview', autoRun: false });
   };
 
   const runWritingRecipe = async (

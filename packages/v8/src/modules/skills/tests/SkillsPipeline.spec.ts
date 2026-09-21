@@ -571,6 +571,45 @@ describe("SkillsPipeline", () => {
     ).toBe("required");
   });
 
+  it("excludes auto-matched skills listed in excludedSkillIds", async () => {
+    const pipeline = new SkillsPipeline({
+      catalog: new InMemorySkillsCatalog(catalog),
+    });
+
+    const included = await pipeline.select(
+      baseInput({
+        route: "execute",
+        query: "Fix the null check",
+        evidence: {
+          primaryIntent: "bugfix",
+          secondaryIntents: [],
+        },
+      }),
+    );
+    expect(included.instructions.map((block) => block.id)).toContain(
+      "bugfix-localize",
+    );
+
+    const excluded = await pipeline.select(
+      baseInput({
+        route: "execute",
+        query: "Fix the null check",
+        evidence: {
+          primaryIntent: "bugfix",
+          secondaryIntents: [],
+        },
+        excludedSkillIds: ["bugfix-localize"],
+      }),
+    );
+
+    expect(excluded.instructions.map((block) => block.id)).not.toContain(
+      "bugfix-localize",
+    );
+    expect(
+      excluded.warnings.some((warning) => warning.includes("Excluded")),
+    ).toBe(true);
+  });
+
   it("reports not_found omissions for missing required skills", async () => {
     const pipeline = new SkillsPipeline({
       catalog: new InMemorySkillsCatalog(catalog),

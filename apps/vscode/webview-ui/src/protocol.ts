@@ -16,6 +16,7 @@ export type SettingsTab =
   | 'modes'
   | 'context'
   | 'integrations'
+  | 'features'
   | 'debug';
 
 export type McpTransport = 'stdio' | 'sse' | 'streamable-http';
@@ -218,6 +219,8 @@ export type SemanticIndexSource =
   | 'disabled';
 
 export interface IndexStatusSnapshot {
+  discoveredFileCount?: number;
+  progressStage?: string;
   fileCount: number;
   truncated: boolean;
   maximumIndexFiles?: number;
@@ -248,6 +251,15 @@ export interface WorkspaceSnapshotInfo {
   displayRoot?: string;
 }
 
+/** Opt-in VS Code UI features (Settings → Features). */
+export interface UiFeaturesSnapshot {
+  /**
+   * When true, show a Code Review button beside Review on the working-tree bar.
+   * Default off — Review alone covers quick git-change review.
+   */
+  codeReviewButton: boolean;
+}
+
 export interface UiSettingsSnapshot {
   showReasoning: boolean;
   reasoningPreviewMaxChars: number;
@@ -273,6 +285,8 @@ export interface UiSettingsSnapshot {
    * key is a boolean leaf in VS Code settings.)
    */
   modelIoLogging: boolean;
+  /** Opt-in IDE features (VS Code only). */
+  features: UiFeaturesSnapshot;
   /** Window-proportional token budget tunables (Debug → developer). */
   tokenBudget: TokenBudgetSettingsSnapshot;
   /** Agent Engine loop/stall threshold tunables (Debug → developer). */
@@ -419,12 +433,14 @@ export type UiSettingsPatch = Partial<
     | 'tokenBudget'
     | 'loopPolicy'
     | 'policyLab'
+    | 'features'
   > & {
     contextToggles?: Partial<ContextToggles>;
     runBudget?: Partial<RunBudgetSettingsSnapshot>;
     modeDefaults?: Partial<
       Record<'ask' | 'plan' | 'agent', Partial<ModeDefaultSettingsSnapshot>>
     >;
+    features?: Partial<UiFeaturesSnapshot>;
     tokenBudget?: {
       enabled?: boolean;
       policy?: Record<string, number>;
@@ -684,6 +700,11 @@ export type WebviewToHostMessage =
       requiredSkillIds?: string[];
       /** Attached MCP server ids for this turn (@mcp: / pin chips). */
       requiredMcpServerIds?: string[];
+      /**
+       * When mode is review: `changes` = quick diff bug scan (default);
+       * `code` = thorough code-review-and-quality pass.
+       */
+      reviewKind?: 'changes' | 'code';
     }
   | { type: 'cancel' }
   | {
@@ -891,7 +912,7 @@ export type HostToWebviewMessage =
   | { type: 'paths.results'; requestId: string; suggestions: PathSuggestion[] }
   | { type: 'openSettings'; tab?: SettingsTab }
   | { type: 'setTab'; tab: UiNav }
-  /** Open chat in Review mode; optionally auto-start an LLM review. */
+  /** Run a working-tree review via the Review button (not a chat mode). */
   | { type: 'startReview'; autoRun?: boolean; prompt?: string }
   | { type: 'editorPin'; path: string; source?: ContextPinSource }
   | { type: 'editorUnpin'; path: string }

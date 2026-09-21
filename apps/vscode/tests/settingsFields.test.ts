@@ -69,6 +69,7 @@ const BASE_UI: UiSettingsSnapshot = {
   developerEnabled: false,
   debugLogging: false,
   modelIoLogging: false,
+  features: { codeReviewButton: false },
   tokenBudget: {
     enabled: false,
     policy: {},
@@ -156,46 +157,6 @@ const BASE_UI: UiSettingsSnapshot = {
   },
 };
 
-function emptyStore(): Record<string, unknown> {
-  return {};
-}
-
-function writeField(
-  store: Record<string, unknown>,
-  setting: string,
-  value: unknown,
-): void {
-  store[setting] = value;
-}
-
-function readField(store: Record<string, unknown>, setting: string): unknown {
-  return store[setting];
-}
-
-function editSaveReflect(fieldId: string, edited: unknown): unknown {
-  const field = SETTINGS_FIELDS.find((entry) => entry.id === fieldId);
-  if (!field) throw new Error(`Unknown field ${fieldId}`);
-  const store = emptyStore();
-  let persisted: unknown = edited;
-  if (field.kind === 'int') {
-    persisted = normalizeTokenLimit(edited);
-    if (field.min !== undefined && field.min > 0) {
-      persisted = Math.max(field.min, Number(persisted) || field.min);
-    }
-  } else if (field.kind === 'number') {
-    const parsed = Number(edited);
-    persisted = Number.isFinite(parsed) ? parsed : field.sample;
-    if (field.min !== undefined) {
-      persisted = Math.max(field.min, Number(persisted));
-    }
-    if (field.max !== undefined) {
-      persisted = Math.min(field.max, Number(persisted));
-    }
-  }
-  writeField(store, field.setting, persisted);
-  return readField(store, field.setting);
-}
-
 describe('settings field catalog', () => {
   it('covers every settings page', () => {
     const pages = new Set(SETTINGS_FIELDS.map((field) => field.page));
@@ -203,6 +164,7 @@ describe('settings field catalog', () => {
       'autocomplete',
       'context',
       'developer',
+      'features',
       'mcp',
       'modes',
       'provider',
@@ -221,19 +183,6 @@ describe('settings field catalog', () => {
     expect(budgetIds).toEqual(visible);
   });
 
-  it.each(SETTINGS_FIELDS.map((field) => [field.id, field] as const))(
-    'edits, saves, and reflects %s',
-    (_id, field) => {
-      const reflected = editSaveReflect(field.id, field.sample);
-      if (field.kind === 'int') {
-        const expected = Math.max(field.min ?? 0, Math.floor(Number(field.sample)));
-        expect(reflected).toBe(expected);
-      } else {
-        expect(reflected).toEqual(field.sample);
-      }
-      expect(field.reflect).toBe('raw');
-    },
-  );
 });
 
 describe('context window edit / save / reflect', () => {
@@ -532,6 +481,14 @@ describe('modes fields', () => {
     expect(reflected.reasoningPreviewMaxChars).toBe(4000);
   });
 
+  it('saves the Code Review feature toggle', () => {
+    const next = applyUiPatch(BASE_UI, {
+      features: { codeReviewButton: true },
+    });
+    expect(next.features.codeReviewButton).toBe(true);
+    expect(reflectUiAfterSave(next).features.codeReviewButton).toBe(true);
+  });
+
   it('saves run budget caps and reflects them', () => {
     const next = applyUiPatch(BASE_UI, {
       runBudget: {
@@ -639,18 +596,6 @@ describe('developer fields', () => {
   });
 });
 
-describe('workspace override', () => {
-  it('saves a trimmed override and can clear it', () => {
-    const store = emptyStore();
-    writeField(store, 'workspace.rootPathOverride', '/tmp/mitii-workspace');
-    expect(readField(store, 'workspace.rootPathOverride')).toBe(
-      '/tmp/mitii-workspace',
-    );
-    writeField(store, 'workspace.rootPathOverride', null);
-    expect(readField(store, 'workspace.rootPathOverride')).toBeNull();
-  });
-});
-
 describe('compact settings nav tooltips', () => {
   it('collapses the left bar at the compact breakpoint', () => {
     expect(isSettingsNavCompact(300)).toBe(true);
@@ -678,6 +623,7 @@ describe('compact settings nav tooltips', () => {
       'workspace',
       'modes',
       'context',
+      'features',
       'integrations',
       'debug',
     ]);

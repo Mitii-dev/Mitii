@@ -355,6 +355,15 @@ async function runFullWorkspaceIndexOnce(options: {
         resolvedSemantic.status === 'ready' && vectorIndex.status === 'ready'
           ? resolvedSemantic.provider.profile.id
           : 'unavailable',
+      ...(vectorIndex.status !== 'ready'
+        ? {
+            lastEmbeddingError:
+              vectorIndex.reason ??
+              (resolvedSemantic.status === 'unavailable'
+                ? resolvedSemantic.reason
+                : 'Embedding synchronization did not complete.'),
+          }
+        : {}),
       snapshotFingerprint,
       fileCount: snapshot.statistics.files,
       truncated: snapshot.status !== 'complete',

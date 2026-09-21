@@ -3,65 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { MitiiSidebarProvider } from '../src/sidebar';
 import type { UiSettingsSnapshot } from '../src/protocol';
 
-function createProviderHarness() {
-  const store = new Map<string, unknown>([
-    ['provider.type', 'echo'],
-    ['provider.preset', 'echo'],
-    ['provider.baseUrl', ''],
-    ['provider.model', 'echo'],
-  ]);
-  const updates: Array<{ key: string; value: unknown; target: unknown }> = [];
-  const cfg = {
-    get: (key: string, fallback?: unknown) =>
-      store.has(key) ? store.get(key) : fallback,
-    update: vi.fn(async (key: string, value: unknown, target: unknown) => {
-      updates.push({ key, value, target });
-      if (value === undefined) {
-        store.delete(key);
-      } else {
-        store.set(key, value);
-      }
-    }),
-  };
-  const vs = {
-    ConfigurationTarget: { Global: 'global', Workspace: 'workspace' },
-    ExtensionMode: { Development: 1 },
-    Uri: { file: (path: string) => ({ fsPath: path, scheme: 'file' }) },
-    workspace: {
-      workspaceFolders: [{ uri: { fsPath: '/tmp/workspace' } }],
-      getConfiguration: () => cfg,
-    },
-    window: {
-      showInformationMessage: vi.fn(),
-    },
-  };
-  const provider = new MitiiSidebarProvider(
-    vs as never,
-    { fsPath: '/tmp/ext', scheme: 'file' } as never,
-    async () => ({}) as never,
-    () => undefined,
-    () => 'workspace',
-    { appendLine: vi.fn(), show: vi.fn() } as never,
-    { get: vi.fn(async () => undefined) } as never,
-    vi.fn(),
-    async () => ({ fileCount: 0, truncated: false }),
-    {
-      extensionMode: 1 as never,
-      workspaceState: { get: vi.fn(), update: vi.fn() } as never,
-      inlineDiff: {} as never,
-      reviewFindings: {} as never,
-      onInlineDiffPending: vi.fn(),
-    },
-  );
-  (provider as unknown as { sendBootstrap: () => Promise<void> }).sendBootstrap =
-    async () => undefined;
-  (
-    provider as unknown as {
-      refreshDiscoveredModels: () => Promise<void>;
-    }
-  ).refreshDiscoveredModels = async () => undefined;
-  return { provider, updates, target: vs.ConfigurationTarget.Workspace };
-}
+import { createProviderHarness } from './helpers/settingsHarness';
 
 const UI_PATCH: Partial<UiSettingsSnapshot> = {
   showReasoning: false,
@@ -69,6 +11,7 @@ const UI_PATCH: Partial<UiSettingsSnapshot> = {
   intensityOverrides: true,
   debugLogging: true,
   modelIoLogging: true,
+  features: { codeReviewButton: true },
   reasoningPreviewMaxChars: 4000,
   depth: 'deep',
   effort: 'high',
@@ -181,6 +124,7 @@ describe('MitiiSidebarProvider settings persistence', () => {
       'autocomplete.suffixChars',
       'autocomplete.temperature',
       'ui.showReasoning',
+      'ui.features.codeReviewButton',
       'developer.enabled',
       'developer.intensityOverrides',
       'debug',

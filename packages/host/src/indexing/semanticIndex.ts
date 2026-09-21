@@ -111,6 +111,8 @@ export interface IndexRuntimeMetadata {
   lanceDbPath: string;
   embeddingProfile?: EmbeddingProfile;
   vectorRuntimeKey?: string;
+  /** Last probe/sync failure reason when vectors are unavailable or degraded. */
+  lastEmbeddingError?: string;
   snapshotFingerprint?: string;
   fileCount?: number;
   truncated?: boolean;

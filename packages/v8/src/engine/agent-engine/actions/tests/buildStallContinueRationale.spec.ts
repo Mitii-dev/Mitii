@@ -43,8 +43,8 @@ describe("buildBudgetWallRationale", () => {
       changedFiles: [],
       mutationRequired: true,
     });
-    expect(rationale).toContain("mutation recovery limit");
-    expect(rationale).toContain("narrow the task");
+    expect(rationale).toContain("more research");
+    expect(rationale).toContain("dig a little deeper");
   });
 
   it("frames budget exhaustion with extend copy", () => {
@@ -54,7 +54,7 @@ describe("buildBudgetWallRationale", () => {
       budgetMessage: "Model call budget exhausted.",
     });
     expect(rationale).toContain("Model call budget exhausted");
-    expect(rationale).toContain("extend the run budget");
+    expect(rationale).toContain("keep going a bit longer");
   });
 
   it("frames verification repair caps", () => {
@@ -63,7 +63,7 @@ describe("buildBudgetWallRationale", () => {
       changedFiles: ["src/a.ts"],
     });
     expect(rationale).toContain("Verification repairs are capped");
-    expect(rationale).toContain("another verification repair pass");
+    expect(rationale).toContain("another pass at fixing");
   });
 });
 
@@ -76,8 +76,8 @@ describe("buildStallContinueRationale", () => {
       mutationRequired: true,
     });
 
-    expect(rationale).toContain("without applying the required workspace edits");
-    expect(rationale).toContain("narrow the task");
+    expect(rationale).toContain("more research");
+    expect(rationale).toContain("dig a little deeper");
   });
 });
 

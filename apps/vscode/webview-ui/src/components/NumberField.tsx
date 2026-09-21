@@ -31,6 +31,7 @@ export function NumberField({
   const [draft, setDraft] = useState(String(safeValue));
   const draftRef = useRef(draft);
   const focusedRef = useRef(false);
+  const valueAtFocusRef = useRef(safeValue);
   draftRef.current = draft;
 
   useEffect(() => {
@@ -62,8 +63,14 @@ export function NumberField({
       return;
     }
     setDraft(String(bounded));
-    onDraftChange?.(bounded);
-    if (bounded !== safeValue) onCommit(bounded);
+    // Compare against the value when focus began so live parent updates
+    // (e.g. auto-scaled max output mirroring the draft) do not swallow commits.
+    if (bounded !== valueAtFocusRef.current) {
+      onDraftChange?.(bounded);
+      onCommit(bounded);
+      return;
+    }
+    onDraftChange?.(undefined);
   };
 
   return (
@@ -82,6 +89,7 @@ export function NumberField({
         value={draft}
         onFocus={() => {
           focusedRef.current = true;
+          valueAtFocusRef.current = safeValue;
         }}
         onChange={(e) => {
           const nextDraft = e.target.value;

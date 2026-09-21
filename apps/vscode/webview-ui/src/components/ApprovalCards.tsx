@@ -144,7 +144,7 @@ export function ApprovalCards({
     (isPlan
       ? 'Review the plan, then approve to continue or reject to stop.'
       : isContinue
-        ? 'This run hit a safety limit. Continue with a fresh approach, or stop with current progress.'
+        ? 'We need a bit more research before we can start implementing. Mind if we keep looking?'
         : isGrantExpansion
           ? 'Expand workspace access for additional paths, or keep the current grant.'
           : 'I need a bit more detail before continuing.');
@@ -154,7 +154,7 @@ export function ApprovalCards({
     : isPlan
       ? 'Plan approval required'
       : isContinue
-        ? 'Continue required'
+        ? 'A bit more research needed'
         : isGrantExpansion
           ? 'Workspace access expansion'
           : 'Approval required';
@@ -333,7 +333,7 @@ export function ApprovalCards({
             rows={2}
             value={clarifyText}
             onChange={(e) => onClarifyChange(e.target.value)}
-            placeholder="Optional: narrow the task or point to files…"
+            placeholder="Optional: any tips on where to look?"
           />
           <div className="card-actions">
             <button

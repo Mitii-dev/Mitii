@@ -44,9 +44,12 @@ const INTENT_PATTERNS: IntentRule[] = [
     confidence: 0.84,
   },
   {
+    // Diff/PR/change review asks only — bare "code review" as a topic is not
+    // a perform-review intent (those stay questions / diagnose without
+    // structured findings unless the Review button injects host markers).
     intent: "review",
     pattern:
-      /\b(?:review|critique)\b.*\b(?:diff|pr|pull request|patch|commit|code|changes|working[- ]tree|findings?)\b|\b(?:code\s*review|emit_review_finding)\b|\bgenerate\b.*\bpr\s+(?:description|summary)\b/i,
+      /\b(?:review|critique)\b.*\b(?:diff|pr|pull request|patch|commit|changes|working[- ]tree|findings?)\b|\bemit_review_finding\b|\bgenerate\b.*\bpr\s+(?:description|summary)\b/i,
     confidence: 0.86,
   },
   {

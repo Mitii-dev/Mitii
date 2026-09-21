@@ -74,23 +74,23 @@ export function buildBudgetWallRationale(params: {
     case "exploration_stall":
       lines.push(
         zeroProgressMutation
-          ? "The run stalled after repeated file re-reads without applying the required workspace edits."
-          : "This task looks large and the run stalled after repeated file re-reads.",
+          ? "We've been looking around, but this task still needs a bit more research before we can start making changes."
+          : "This task looks larger than expected, and we could use a little more time to understand it.",
       );
       break;
     case "unfulfilled_execute":
       lines.push(
-        "The run hit a mutation recovery limit without applying the required workspace edits.",
+        "We need a bit more research on this task before we can start implementing.",
       );
       break;
     case "rejected_mutation":
       lines.push(
-        "The run could not land a valid workspace edit after rejected mutation attempts.",
+        "Our first edit attempts didn't land cleanly — we'd like to take another careful look before trying again.",
       );
       break;
     case "incomplete_execute":
       lines.push(
-        "The execute run stopped with open change surfaces or a clear blocker before finishing.",
+        "We made some progress, but we're not quite finished yet and could use a little more time.",
       );
       break;
     case "budget_exhausted":
@@ -134,18 +134,18 @@ export function buildBudgetWallRationale(params: {
     params.reason === "incomplete_execute"
   ) {
     lines.push(
-      "Continue for a fresh approach (optionally narrow the task or point to files), or stop here.",
+      "Mind if we dig a little deeper first? You can also share any tips (like files to focus on), or we can stop here.",
     );
   } else if (params.reason === "budget_exhausted") {
     lines.push(
-      "Continue to extend the run budget once and keep working, or stop here with current progress.",
+      "Want us to keep going a bit longer, or stop here with what we have so far?",
     );
   } else if (params.reason === "verification_repair_capped") {
     lines.push(
-      "Continue for another verification repair pass, or stop here and keep the current changes.",
+      "Want us to take another pass at fixing the remaining issues, or stop here and keep the current changes?",
     );
   } else {
-    lines.push("Continue to keep working, or stop here.");
+    lines.push("Want us to keep going, or stop here?");
   }
 
   return lines.join(" ");

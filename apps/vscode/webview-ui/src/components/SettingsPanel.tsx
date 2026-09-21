@@ -47,6 +47,7 @@ import {
   IconModel,
   IconPlan,
   IconPlug,
+  IconReview,
 } from './Icons';
 import { NumberField } from './NumberField';
 import { TokenBudgetAllocation } from './TokenBudgetAllocation';
@@ -137,6 +138,7 @@ const NAV: {
   { id: 'workspace', label: 'Workspace', icon: <IconFolder /> },
   { id: 'modes', label: 'Modes', icon: <IconPlan /> },
   { id: 'context', label: 'Context', icon: <IconLayers /> },
+  { id: 'features', label: 'Features', icon: <IconReview /> },
   { id: 'integrations', label: 'MCP', icon: <IconPlug /> },
   { id: 'debug', label: 'Developer', icon: <IconBug /> },
 ];
@@ -161,6 +163,10 @@ const PAGE_COPY: Record<SettingsTab, { title: string; description: string }> = {
   context: {
     title: 'Context',
     description: 'What Mitii attaches to each turn.',
+  },
+  features: {
+    title: 'Features',
+    description: 'Opt-in IDE surfaces. Off by default until you enable them.',
   },
   integrations: {
     title: 'MCP',
@@ -490,15 +496,16 @@ export function SettingsPanel(props: SettingsPanelProps) {
     effective: provider.effectiveContextWindow,
     fallback: ui.tokenBudget.preview.contextWindowTokens,
   });
-  const storedMaxOutput = normalizeMaximumOutputTokens(
-    draftMaxOutput ?? provider.maximumOutputTokens,
+  const storedMaxOutput = normalizeMaximumOutputTokens(provider.maximumOutputTokens);
+  const previewMaxOutput = normalizeMaximumOutputTokens(
+    draftMaxOutput ?? storedMaxOutput,
   );
-  const autoMaxOutput = isAutoMaximumOutputTokens(storedMaxOutput);
+  const autoMaxOutput = isAutoMaximumOutputTokens(previewMaxOutput);
   const livePreview = useMemo(() => {
     try {
       return deriveLiveTokenBudgetPreview({
         contextWindowTokens: previewContextWindow,
-        maximumOutputTokens: storedMaxOutput,
+        maximumOutputTokens: previewMaxOutput,
         policy: ui.tokenBudget.enabled ? ui.tokenBudget.policy : undefined,
         runBudget: ui.runBudget,
       });
@@ -507,15 +514,17 @@ export function SettingsPanel(props: SettingsPanelProps) {
     }
   }, [
     previewContextWindow,
-    storedMaxOutput,
+    previewMaxOutput,
     ui.runBudget,
     ui.tokenBudget.enabled,
     ui.tokenBudget.policy,
     ui.tokenBudget.preview,
   ]);
+  // When max output is auto (0), show the window-derived reserve so it tracks
+  // context-window edits live. Typing a positive value pins an override.
   const displayMaxOutput = autoMaxOutput
     ? livePreview.maximumOutputTokens
-    : storedMaxOutput;
+    : previewMaxOutput;
 
   return (
     <div
@@ -617,7 +626,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
                   <select
                     id="model"
                     value={
-                      customModel || !options.includes(provider.model)
+                      customModel || (Boolean(provider.model.trim()) && !options.includes(provider.model))
                         ? '__custom__'
                         : provider.model
                     }
@@ -631,6 +640,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
                       onProviderChange((prev) => ({ ...prev, model: next }));
                     }}
                   >
+                    <option value="">Choose a model after testing connection…</option>
                     {options.map((id) => (
                       <option key={id} value={id}>
                         {id}
@@ -638,11 +648,12 @@ export function SettingsPanel(props: SettingsPanelProps) {
                     ))}
                     <option value="__custom__">Custom…</option>
                   </select>
-                  {customModel || !options.includes(provider.model) ? (
+                  {customModel || (Boolean(provider.model.trim()) && !options.includes(provider.model)) ? (
                     <input
                       className="settings-follow-input"
                       value={provider.model}
                       placeholder="custom model id"
+                      aria-label="Custom model ID"
                       onChange={(e) =>
                         onProviderChange((prev) => ({
                           ...prev,
@@ -741,16 +752,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
                     onDraftChange={setDraftMaxOutput}
                     onCommit={(value) => {
                       setDraftMaxOutput(undefined);
-                      // Keep auto (0) when the user accepts the derived reserve for
-                      // the current window; only store a hard override when they
-                      // pick a different number (or explicitly type 0).
-                      const next =
-                        value === 0
-                          ? 0
-                          : autoMaxOutput &&
-                              value === livePreview.maximumOutputTokens
-                            ? 0
-                            : normalizeMaximumOutputTokens(value);
+                      const next = normalizeMaximumOutputTokens(value);
                       onProviderChange((prev) => ({
                         ...prev,
                         maximumOutputTokens: next,
@@ -765,10 +767,12 @@ export function SettingsPanel(props: SettingsPanelProps) {
                           ? ` (currently ${provider.effectiveContextWindow.toLocaleString()} tokens)`
                           : ''
                       }.`
-                    : `Context window will save as ${provider.contextWindow.toLocaleString()} tokens.`}{' '}
+                    : `Context window will save as ${provider.contextWindow.toLocaleString()} tokens.`}
+                </p>
+                <p className="field-hint">
                   {autoMaxOutput
-                    ? `Max output follows the window (~${livePreview.maximumOutputTokens.toLocaleString()} tokens). Set a different number to hard-override.`
-                    : `Max output will save as ${storedMaxOutput.toLocaleString()} tokens.`}
+                    ? `Max output auto-scales with the window (${livePreview.maximumOutputTokens.toLocaleString()} tokens). Enter 0 to keep auto, or a positive number to override.`
+                    : `Max output will save as ${previewMaxOutput.toLocaleString()} tokens (fixed override). Set to 0 to resume auto-scaling.`}
                 </p>
                 {ui.tokenBudget.enabled ? (
                   <p className="field-hint">
@@ -1128,7 +1132,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
                 />
                 <KeyValueList
                   rows={[
-                    { label: 'Indexed items', value: index.fileCount },
+                    { label: 'Indexed files', value: index.fileCount },
+                    { label: 'Files discovered in current scan', value: index.discoveredFileCount ?? '—' },
+                    { label: 'Stage', value: index.progressStage ?? '—' },
+                    { label: 'File limit reached', value: index.truncated ? 'Yes — scan is incomplete' : 'No' },
+                    { label: 'Last indexed', value: index.lastIndexedAt ?? '—' },
                     { label: 'Readiness', value: index.readiness ?? '—' },
                     { label: 'Scan', value: index.scanCompleteness ?? '—' },
                     { label: 'Mode', value: formatIndexMode(index.indexMode) },
@@ -1402,6 +1410,33 @@ export function SettingsPanel(props: SettingsPanelProps) {
                 onClear={onClearCheckpoints}
                 onReviewChanges={onReviewCheckpointChanges}
               />
+            </div>
+          ) : null}
+
+          {activeTab === 'features' ? (
+            <div className="settings-panel">
+              <SettingsSection
+                title="Working-tree review"
+                description="Review opens your git changes. Code Review runs an LLM analysis of those changes."
+              >
+                <label className="toggle">
+                  <input
+                    type="checkbox"
+                    checked={ui.features.codeReviewButton === true}
+                    onChange={(e) =>
+                      onSaveUi({
+                        features: { codeReviewButton: e.target.checked },
+                      })
+                    }
+                  />
+                  Show Code Review button
+                </label>
+                <p className="field-hint">
+                  <strong>Review</strong> always lists staged/unstaged files.
+                  Enable this to also show <strong>Code Review</strong>, which
+                  runs the code-review skill over those changes. Off by default.
+                </p>
+              </SettingsSection>
             </div>
           ) : null}
 

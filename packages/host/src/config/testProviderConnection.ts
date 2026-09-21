@@ -43,7 +43,10 @@ export async function testProviderConnection(
   }
 
   if (!model.trim()) {
-    return { ok: false, message: 'Model is required.' };
+    const models = await listProviderModels(input);
+    return models.length > 0
+      ? { ok: true, message: 'Connected. Choose a model, then save settings.', models }
+      : { ok: false, message: 'Could not discover models. Check the endpoint and credentials, or enter a custom model to test.' };
   }
 
   if (type === 'anthropic') {

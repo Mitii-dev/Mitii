@@ -40,7 +40,11 @@ import { approvalModeUiPatch } from './approvalPresets';
 import { OnboardingPanel } from './components/OnboardingPanel';
 import { PendingPlanBanner } from './components/PendingPlanBanner';
 import { PlanFollowStrip } from './components/PlanPanel';
-import { WorkingTreeReviewBar } from './components/WorkingTreeReviewBar';
+import {
+  ComposerReviewStrip,
+  composerNeedsReviewStrip,
+  selectLatestRunChanges,
+} from './review/ComposerReviewStrip';
 import { SettingsErrorBoundary } from './components/SettingsErrorBoundary';
 import { SettingsPanel } from './components/SettingsPanel';
 import { WorkspaceBanner } from './components/WorkspaceBanner';
@@ -129,8 +133,9 @@ const EMPTY_TOKEN_USAGE: TokenUsageSnapshot = {
 };
 
 const REVIEW_SKILL_ID = 'code-review-and-quality';
-const DEFAULT_REVIEW_PROMPT =
-  'Review the current working-tree changes. Prefer high-signal bugs and security issues.';
+/** LLM code review of working-tree changes (Code Review button only). */
+const DEFAULT_CODE_REVIEW_PROMPT =
+  'Perform a thorough code review of the current working-tree changes across correctness, readability, architecture, tests, and risk.';
 
 function mergeReviewSkillIds(ids: string[]): string[] {
   const without = ids.filter((id) => id !== REVIEW_SKILL_ID);
@@ -245,6 +250,7 @@ const DEFAULT_UI: UiSettingsSnapshot = {
   developerEnabled: false,
   debugLogging: false,
   modelIoLogging: false,
+  features: { codeReviewButton: false },
   tokenBudget: DEFAULT_TOKEN_BUDGET,
   loopPolicy: DEFAULT_LOOP_POLICY,
   policyLab: DEFAULT_POLICY_LAB,
@@ -299,6 +305,10 @@ function hydrateUiSnapshot(
   return {
     ...DEFAULT_UI,
     ...(raw ?? {}),
+    features: {
+      ...DEFAULT_UI.features,
+      ...(raw?.features ?? {}),
+    },
     modeDefaults: {
       ...DEFAULT_UI.modeDefaults,
       ...(raw?.modeDefaults ?? {}),
@@ -444,11 +454,15 @@ function mergeUiPatch(
     tokenBudget: _tb,
     loopPolicy: _lp,
     policyLab: _pl,
+    features: _features,
     ...scalarPatch
   } = patch;
   return {
     ...base,
     ...scalarPatch,
+    features: patch.features
+      ? { ...base.features, ...patch.features }
+      : base.features,
     contextToggles: patch.contextToggles
       ? { ...base.contextToggles, ...patch.contextToggles }
       : base.contextToggles,
@@ -907,6 +921,8 @@ export function App() {
   const [connectionMessage, setConnectionMessage] = useState<string | null>(
     null,
   );
+  const maximumIndexFilesDraftRef = useRef<number | undefined>(undefined);
+  const embeddingSourceDraftRef = useRef<SemanticIndexSource | undefined>(undefined);
   const [customModel, setCustomModel] = useState(false);
   const [index, setIndex] = useState<IndexStatusSnapshot>({
     fileCount: 0,
@@ -1071,6 +1087,23 @@ export function App() {
     [],
   );
 
+  const applyIndexStatus = useCallback((incoming: IndexStatusSnapshot) => {
+    const next = {
+      ...incoming,
+      ...(maximumIndexFilesDraftRef.current !== undefined
+        ? { maximumIndexFiles: maximumIndexFilesDraftRef.current }
+        : {}),
+      ...(embeddingSourceDraftRef.current
+        ? {
+            embeddingSource: embeddingSourceDraftRef.current,
+            embeddingEnabled: embeddingSourceDraftRef.current !== 'disabled',
+          }
+        : {}),
+    };
+    indexRef.current = next;
+    setIndex(next);
+  }, []);
+
   const applyBootstrap = useCallback((msg: HostToWebviewMessage) => {
     if (msg.type === 'bootstrap' || msg.type === 'settings') {
       setWorkspace(msg.workspace);
@@ -1176,7 +1209,7 @@ export function App() {
       settingsSavingRef.current = false;
       setSettingsSaving(false);
       if (msg.type === 'bootstrap') {
-        setIndex(msg.index);
+        applyIndexStatus(msg.index);
         setOnboardingRequired(msg.onboardingRequired);
         setHistory(msg.history);
         setActiveThreadId(msg.activeThreadId);
@@ -1250,7 +1283,7 @@ export function App() {
           applyBootstrap(msg);
           break;
         case 'index.status':
-          setIndex(msg.index);
+          applyIndexStatus(msg.index);
           break;
         case 'run.started': {
           setRunning(true);
@@ -1431,11 +1464,12 @@ export function App() {
           break;
         case 'startReview': {
           setNav('chat');
-          // Review is a composer action, not a chat mode.
+          // Review = show git changes only (not a chat mode / not LLM).
           if (modeRef.current === 'review') setMode('ask');
           setReviewBarExpandToken((n) => n + 1);
           postToHost({ type: 'refreshReviewDiff' });
-          if (msg.autoRun) {
+          // Optional auto-run is Code Review when the feature is enabled.
+          if (msg.autoRun && uiRef.current.features.codeReviewButton) {
             pendingAutoReviewRef.current = { prompt: msg.prompt };
           } else {
             pendingAutoReviewRef.current = null;
@@ -1621,6 +1655,10 @@ export function App() {
           }));
           break;
         case 'settings.saved':
+          if (settingsSavingRef.current && msg.ok) {
+            embeddingSourceDraftRef.current = undefined;
+            maximumIndexFilesDraftRef.current = undefined;
+          }
           settingsSavingRef.current = false;
           setSettingsSaving(false);
           if (!msg.ok) {
@@ -1639,7 +1677,7 @@ export function App() {
       postToHost({ type: 'ready' });
     }
     return off;
-  }, [applyBootstrap, applyTokenUsage, markSuspensionResumed]);
+  }, [applyBootstrap, applyIndexStatus, applyTokenUsage, markSuspensionResumed]);
 
   useLayoutEffect(() => {
     const turnCountChanged = turns.length !== lastTurnCountRef.current;
@@ -1692,10 +1730,11 @@ export function App() {
     setSuggestOpen(false);
   }, [prompt, running, mode, ui, approvalMode, pinned, pinnedSkillIds, pinnedMcpServerIds]);
 
-  const runReview = useCallback(
+  const runCodeReview = useCallback(
     (promptOverride?: string) => {
       if (running) return;
-      const text = (promptOverride ?? prompt).trim() || DEFAULT_REVIEW_PROMPT;
+      const text =
+        (promptOverride ?? prompt).trim() || DEFAULT_CODE_REVIEW_PROMPT;
       stickToBottomRef.current = true;
       forceScrollToBottomRef.current = true;
       const defaults = modeDefaultsFromUi(ui, 'ask');
@@ -1705,13 +1744,13 @@ export function App() {
         depth: defaults.depth,
         effort: ui.effort,
       });
-      // Keep Ask/Plan/Agent selection; host maps mode:'review' → engine ask.
       if (mode === 'review') setMode('ask');
       setReviewBarExpandToken((n) => n + 1);
       postToHost({
         type: 'ask',
         prompt: text,
         mode: 'review',
+        reviewKind: 'code',
         depth: intensity.depth,
         effort: intensity.effort,
         approvalMode: defaults.approvalMode,
@@ -1729,8 +1768,13 @@ export function App() {
   );
 
   useEffect(() => {
-    runReviewRef.current = runReview;
-  }, [runReview]);
+    runReviewRef.current = runCodeReview;
+  }, [runCodeReview]);
+
+  const showGitChanges = useCallback(() => {
+    setReviewBarExpandToken((n) => n + 1);
+    postToHost({ type: 'refreshReviewDiff' });
+  }, []);
 
   const executePendingPlan = useCallback(() => {
     if (running) return;
@@ -1950,7 +1994,6 @@ export function App() {
         path: file.path,
       });
     }
-    queueMicrotask(() => runReviewRef.current?.());
   }, []);
 
   const dismissFileChanges = useCallback((runId: string) => {
@@ -2305,6 +2348,12 @@ export function App() {
   const saveAllSettings = () => {
     (document.activeElement as HTMLElement | null)?.blur?.();
     const latestProvider = snapshotProvider();
+    if (latestProvider.type !== 'echo' && !latestProvider.model.trim()) {
+      setError('Choose a model before saving provider settings. Test connection to discover available models.');
+      setSettingsTab('model');
+      return;
+    }
+    setError(null);
     const latestUi = clearStaleModeModelDefaultsAfterProviderModelChange({
       ui: mergeUiPatch(
         uiRef.current,
@@ -2331,6 +2380,9 @@ export function App() {
       ui: latestUi,
       workspaceRootOverride: overrideDraft.trim() || null,
       workspaceMaximumIndexFiles: indexRef.current.maximumIndexFiles ?? 0,
+      ...(embeddingSourceDraftRef.current
+        ? { semanticIndex: { source: embeddingSourceDraftRef.current } }
+        : {}),
       mcp,
       approvalMode,
       profile: {
@@ -2628,9 +2680,13 @@ export function App() {
               ) : null}
               <div
                 className={`composer-box${
-                  (review?.files.length ?? 0) > 0 ||
-                  turns.some((t) => t.fileChanges) ||
-                  reviewFindings.length > 0
+                  composerNeedsReviewStrip({
+                    chatFileCount:
+                      selectLatestRunChanges(turns)?.files.length ?? 0,
+                    gitFileCount: review?.files.length ?? 0,
+                    findingsCount: reviewFindings.length,
+                    codeReviewEnabled: ui.features.codeReviewButton === true,
+                  })
                     ? ' composer-box--with-review'
                     : ''
                 }`}
@@ -2640,16 +2696,13 @@ export function App() {
                   } as CSSProperties
                 }
               >
-                <WorkingTreeReviewBar
+                <ComposerReviewStrip
                   review={review}
                   findings={reviewFindings}
-                  runChanges={
-                    [...turns]
-                      .reverse()
-                      .find((t) => t.fileChanges)?.fileChanges ?? null
-                  }
+                  turns={turns}
                   running={running}
                   expandSignal={reviewBarExpandToken}
+                  codeReviewEnabled={ui.features.codeReviewButton === true}
                   onRefresh={() => postToHost({ type: 'refreshReviewDiff' })}
                   onOpenFile={openFile}
                   onOpenDiff={(path) =>
@@ -2658,19 +2711,10 @@ export function App() {
                   onOpenFinding={(path, line) =>
                     postToHost({ type: 'openFile', path, line })
                   }
-                  onRunReview={() => runReview()}
-                  onUndoAll={() => {
-                    const changes = [...turns]
-                      .reverse()
-                      .find((t) => t.fileChanges)?.fileChanges;
-                    if (changes) undoFileChanges(changes.runId);
-                  }}
-                  onKeepAll={() => {
-                    const changes = [...turns]
-                      .reverse()
-                      .find((t) => t.fileChanges)?.fileChanges;
-                    if (changes) dismissFileChanges(changes.runId);
-                  }}
+                  onShowChanges={showGitChanges}
+                  onRunCodeReview={() => runCodeReview()}
+                  onUndoFileChanges={undoFileChanges}
+                  onDismissFileChanges={dismissFileChanges}
                   onDismissFindings={dismissReviewFindings}
                   onFixAllFindings={() => fixReviewFindings()}
                   onFixFinding={(index) => fixReviewFindings([index])}
@@ -3060,6 +3104,7 @@ export function App() {
               0,
               Math.min(240000, Math.floor(value)),
             );
+            maximumIndexFilesDraftRef.current = maximumIndexFiles;
             indexRef.current = {
               ...indexRef.current,
               maximumIndexFiles,
@@ -3070,12 +3115,17 @@ export function App() {
             }));
           }}
           onEmbeddingSourceChange={(source: SemanticIndexSource) => {
+            embeddingSourceDraftRef.current = source;
+            indexRef.current = {
+              ...indexRef.current,
+              embeddingSource: source,
+              embeddingEnabled: source !== 'disabled',
+            };
             setIndex((current) => ({
               ...current,
               embeddingSource: source,
               embeddingEnabled: source !== 'disabled',
             }));
-            postToHost({ type: 'settings.set', semanticIndex: { source } });
           }}
           memories={memories}
           onAddMemory={(text) => postToHost({ type: 'addMemory', text })}

@@ -25,7 +25,7 @@ describe("tryOfferBudgetWallContinue", () => {
 
     expect(outcome?.kind).toBe("continue_required");
     expect(outcome?.wallReason).toBe("unfulfilled_execute");
-    expect(outcome?.rationale).toContain("mutation recovery limit");
+    expect(outcome?.rationale).toContain("more research");
   });
 
   it("returns undefined when override cap is reached", () => {

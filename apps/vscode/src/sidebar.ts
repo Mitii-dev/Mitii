@@ -418,20 +418,22 @@ function needsFullIndexRefresh(index: IndexStatusSnapshot): boolean {
   return false;
 }
 
-const REVIEW_HOST_PREFIX =
-  'Review every selected file in the current git changes, including both staged and unstaged patches. Start by calling read_git_status with includeDiff=true. You MUST call emit_review_finding at least once before finishing — once per high-signal issue with path, content, existingCode, severity, and category. If there are no material issues, emit a single low/info finding that says so. Prose-only analysis is not a valid review. Do not digress into filename-casing rabbit holes; account for every selected file while preferring high-signal findings.';
+/** Thorough code review of git working-tree changes (Code Review button). */
+const REVIEW_CODE_HOST_PREFIX =
+  'Perform a thorough code review of every selected file in the current git changes, including both staged and unstaged patches. Start by calling read_git_status with includeDiff=true. Assess correctness, readability, architecture, tests, and operational risk. You MUST call emit_review_finding at least once before finishing — once per high-signal issue with path, content, existingCode, severity, and category. If there are no material issues, emit a single low/info finding that says so. Prose-only analysis is not a valid review. Prefer high-signal findings over nits.';
 
 /** Avoid stacking identical review instructions from UI + host. */
 function buildReviewLlmPrompt(userPrompt: string): string {
   const trimmed = userPrompt.trim();
-  if (!trimmed) return REVIEW_HOST_PREFIX;
+  if (!trimmed) return REVIEW_CODE_HOST_PREFIX;
   if (
-    /\bemit_review_finding\b/i.test(trimmed) ||
-    /^Review the current (?:git |working-tree )/i.test(trimmed)
+    trimmed.startsWith(
+      'Perform a thorough code review of every selected file in the current git changes',
+    )
   ) {
     return trimmed;
   }
-  return `${REVIEW_HOST_PREFIX}\n\n${trimmed}`;
+  return `${REVIEW_CODE_HOST_PREFIX}\n\n${trimmed}`;
 }
 
 const EMBEDDING_SOURCES = [
@@ -461,6 +463,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
 
   private view?: vscode.WebviewView;
   private runCancel?: vscode.CancellationTokenSource;
+  private liveApprovalMode?: string;
   private pendingResume?: {
     resolve: (value: MitiiResumeInput | 'stop') => void;
   };
@@ -1481,6 +1484,17 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     resolve('stop');
   }
 
+  private waitForSuspensionResume(suspension: SuspensionPayload): Promise<MitiiResumeInput | 'stop'> {
+    this.lastSuspensionRunId = suspension.runId;
+    this.pendingSuspension = suspension;
+    this.post({ type: 'run.suspended', suspension });
+    return new Promise((resolve) => {
+      this.pendingResume = { resolve };
+      // Apply access changes made while a model/tool call was still in flight.
+      this.autoApprovePendingToolApprovalIfAllowed(this.liveApprovalMode);
+    });
+  }
+
   private autoApprovePendingToolApprovalIfAllowed(
     approvalMode: string | undefined,
   ): void {
@@ -1562,11 +1576,10 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     // workspace files and interleave in the same session log).
     this.runCancel?.cancel();
     this.runCancel?.dispose();
+    this.liveApprovalMode = undefined;
     this.runCancel = new this.vs.CancellationTokenSource();
     let llmPrompt =
-      message.mode === 'review'
-        ? buildReviewLlmPrompt(prompt)
-        : prompt;
+      message.mode === 'review' ? buildReviewLlmPrompt(prompt) : prompt;
     if (message.mode === 'review') {
       const root = this.effectiveRoot();
       if (root) {
@@ -1691,7 +1704,15 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         effort: message.effort,
         approvalMode: message.approvalMode,
         pinnedPaths: message.pinnedPaths,
-        requiredSkillIds: message.requiredSkillIds,
+        requiredSkillIds:
+          message.mode === 'review'
+            ? [
+                'code-review-and-quality',
+                ...(message.requiredSkillIds ?? []).filter(
+                  (id) => id !== 'code-review-and-quality',
+                ),
+              ].slice(0, 3)
+            : message.requiredSkillIds,
         requiredMcpServerIds: message.requiredMcpServerIds,
         workspaceId: this.getWorkspaceId(),
         workspaceState: this.host.workspaceState,
@@ -1833,12 +1854,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
                 this.post({ type: 'setPlan', plan: planView });
               }
             }
-            this.lastSuspensionRunId = suspension.runId;
-            this.pendingSuspension = suspension;
-            this.post({ type: 'run.suspended', suspension });
-            return new Promise<MitiiResumeInput | 'stop'>((resolve) => {
-              this.pendingResume = { resolve };
-            });
+            return this.waitForSuspensionResume(suspension);
           },
         },
       });
@@ -2190,6 +2206,8 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       ...this.lastIndex,
       message,
       readiness: 'indexing',
+      discoveredFileCount: undefined,
+      progressStage: undefined,
     };
     this.post({ type: 'index.status', index: this.lastIndex });
   }
@@ -2209,6 +2227,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       secretKey:
         (await this.secrets.get('mitii.provider.apiKey')) ?? undefined,
     });
+    this.discoveredModels = [];
     const result = await testProviderConnection({
       type: message.provider.type,
       baseUrl: message.provider.baseUrl,
@@ -2421,6 +2440,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
               ? error.message
               : 'Settings could not be saved.',
         });
+        return;
       }
       // Echo full state after the quick ack so Save never waits on bootstrap.
       await this.sendBootstrap();
@@ -2458,8 +2478,21 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     const target = this.configurationTarget();
     const update = async (key: string, value: unknown): Promise<void> => {
       if (configValuesEqual(cfg.get(key), value)) return;
-      await cfg.update(key, value, target);
+      try {
+        await cfg.update(key, value, target);
+      } catch (error) {
+        if (error instanceof Error && /not a registered configuration/i.test(error.message)) {
+          throw new Error(`${error.message} Reload the VS Code window to load the extension's updated settings schema, then save again.`);
+        }
+        throw error;
+      }
     };
+    const approvalMode = message.approvalMode ?? message.ui?.approvalMode;
+    if (approvalMode !== undefined) {
+      await update('safety.approvalMode', approvalMode);
+      if (this.runCancel) this.liveApprovalMode = approvalMode;
+      this.autoApprovePendingToolApprovalIfAllowed(approvalMode);
+    }
     if (message.provider) {
       await this.writeProviderSettings(message.provider);
     }
@@ -2472,6 +2505,12 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     if (message.ui) {
       if (message.ui.showReasoning !== undefined) {
         await update('ui.showReasoning', message.ui.showReasoning);
+      }
+      if (message.ui.features?.codeReviewButton !== undefined) {
+        await update(
+          'ui.features.codeReviewButton',
+          message.ui.features.codeReviewButton === true,
+        );
       }
       if (message.ui.developerEnabled !== undefined) {
         await update('developer.enabled', message.ui.developerEnabled);
@@ -2601,11 +2640,6 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         }
       }
     }
-    const approvalMode = message.approvalMode ?? message.ui?.approvalMode;
-    if (approvalMode !== undefined) {
-      await update('safety.approvalMode', approvalMode);
-      this.autoApprovePendingToolApprovalIfAllowed(approvalMode);
-    }
     if (message.workspaceRootOverride !== undefined) {
       await update('workspace.rootPathOverride', message.workspaceRootOverride);
     }
@@ -2709,6 +2743,10 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       Extract<WebviewToHostMessage, { type: 'settings.set' }>['provider']
     >,
   ): Promise<void> {
+    const type = provider.type ?? this.vs.workspace.getConfiguration('mitii').get<string>('provider.type');
+    if (type !== 'echo' && provider.model !== undefined && !provider.model.trim()) {
+      throw new Error('Choose a model before saving provider settings. Test connection to discover available models.');
+    }
     if (provider.type !== undefined) {
       await this.writeConfigValue('provider.type', provider.type);
     }
@@ -3157,6 +3195,10 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       developerEnabled: cfg.get<boolean>('developer.enabled') ?? false,
       debugLogging: cfg.get<boolean>('debug') ?? false,
       modelIoLogging: readModelIoLoggingEnabled(cfg),
+      features: {
+        codeReviewButton:
+          cfg.get<boolean>('ui.features.codeReviewButton') === true,
+      },
       tokenBudget: readTokenBudgetSettings(
         cfg,
         resolveContextWindow(this.vs),
@@ -3414,6 +3456,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     let truncated = false;
     let indexMode: IndexStatusSnapshot['indexMode'] = 'full';
     let fallbackReason: string | undefined;
+    let embeddingIssue: string | undefined;
     let published;
     try {
       const full = await runFullWorkspaceIndex({
@@ -3423,7 +3466,17 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         force: options.force === true,
         ...(options.filePaths?.length ? { filePaths: options.filePaths } : {}),
         ...(options.abortSignal ? { abortSignal: options.abortSignal } : {}),
-        ...(options.onProgress ? { onProgress: options.onProgress } : {}),
+        onProgress: (progress) => {
+          options.onProgress?.(progress);
+          this.lastIndex = {
+            ...this.lastIndex,
+            progressStage: progress.stage,
+            discoveredFileCount: progress.fileCount ?? this.lastIndex.discoveredFileCount,
+            readiness: 'indexing',
+            message: progress.message,
+          };
+          this.post({ type: 'index.status', index: this.lastIndex });
+        },
         semanticIndex: await resolveVsCodeSemanticIndexSettings(
           this.vs,
           this.secrets,
@@ -3466,6 +3519,11 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       }
       fileCount = full.fileCount;
       truncated = full.truncated;
+      if (full.vectorIndex.status !== 'ready') {
+        embeddingIssue =
+          full.vectorIndex.reason ??
+          `vector index ${full.vectorIndex.status}`;
+      }
       published = await client.publishRepositoryStateFromIndexing(full.indexing, {
         catalogRevisionByRoot: full.catalogRevisionByRoot,
         graphRevisionByRoot: full.graphRevisionByRoot,
@@ -3473,7 +3531,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       });
       if (full.status === 'unchanged') {
         this.channel.appendLine(
-          `[index] unchanged (up to date) at ${full.databasePath}; vector=${full.vectorIndex.status}${full.vectorIndex.profileId ? ` profile=${full.vectorIndex.profileId}` : ''}`,
+          `[index] unchanged (up to date) at ${full.databasePath}; vector=${full.vectorIndex.status}${full.vectorIndex.profileId ? ` profile=${full.vectorIndex.profileId}` : ''}${full.vectorIndex.reason ? ` reason=${full.vectorIndex.reason}` : ''}`,
         );
       } else {
         this.channel.appendLine(
@@ -3518,6 +3576,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       const snapshot = await buildWorkspaceSnapshot({
         workspaceRoot: root,
         workspaceId: this.getWorkspaceId(),
+        maxFiles: maximumIndexFiles,
       });
       fileCount = snapshot.fileCount;
       truncated = snapshot.truncated;
@@ -3538,6 +3597,12 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         )}\n`,
       );
       const descriptorStatus = indexStatusFromDescriptor(published.descriptor);
+      const baseMessage =
+        indexMode === 'host_snapshot'
+          ? `Indexed ${fileCount} files (host snapshot fallback: ${fallbackReason ?? 'full index unavailable'})`
+          : truncated
+            ? `Indexed ${fileCount} files (truncated)`
+            : `Indexed ${fileCount} files`;
       this.lastIndex = {
         fileCount,
         truncated,
@@ -3545,11 +3610,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         ...descriptorStatus,
         indexMode,
         message:
-          indexMode === 'host_snapshot'
-            ? `Indexed ${fileCount} files (host snapshot fallback: ${fallbackReason ?? 'full index unavailable'})`
-            : truncated
-              ? `Indexed ${fileCount} files (truncated)`
-              : `Indexed ${fileCount} files`,
+          embeddingIssue && indexMode !== 'host_snapshot'
+            ? `${baseMessage} · embeddings unavailable: ${embeddingIssue}`
+            : baseMessage,
       };
     } else {
       this.lastIndex = {

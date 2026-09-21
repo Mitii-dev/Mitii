@@ -61,12 +61,27 @@ jobs:
         with:
           path: dist-vsix
           merge-multiple: true
+      - name: Resolve release tag from package.json
+        id: meta
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ -z "$version" ]; then
+            echo "::error::Could not read version from package.json"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
       - name: Generate release notes
         run: cp CHANGELOG.md release-notes.md
-      - uses: softprops/action-gh-release@v2
+      # workflow_dispatch has no tag ref; create/update the GitHub Release from package.json.
+      - uses: softprops/action-gh-release@v3
         with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: ${{ steps.meta.outputs.tag }}
+          target_commitish: ${{ github.sha }}
           body_path: release-notes.md
           files: 'dist-vsix/*.vsix'
+          fail_on_unmatched_files: true
 
   publish-marketplace:
     needs: package
