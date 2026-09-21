@@ -683,7 +683,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
     expect(result.reasonCodes).toContain("unfulfilled_execute_exhausted");
     expect(result.reasonCodes).toContain("stall_continue_suspended");
     expect(result.suspension?.continuePrompt ?? "").toMatch(
-      /rejected mutation|valid workspace edit/i,
+      /didn't land cleanly|dig a little deeper/i,
     );
     expect(result.usage.modelCalls).toBe(2);
     expect(result.answer ?? "").not.toContain("Should not be reached");
