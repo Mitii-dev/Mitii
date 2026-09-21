@@ -1,4 +1,3 @@
-import { MUTATION_TASK_INTENTS } from "../../../modules/decision-policy";
 import type {
   ExecutionRoute,
   MutationBudget,
@@ -22,8 +21,6 @@ export const LOOP_TURN_DISPOSITIONS = [
 ] as const;
 
 export type LoopTurnDisposition = (typeof LOOP_TURN_DISPOSITIONS)[number];
-
-const MUTATION_INTENT_SET = new Set<string>(MUTATION_TASK_INTENTS);
 
 export interface ResolveLoopTurnOutcomeInput {
   route: ExecutionRoute;
@@ -151,16 +148,17 @@ export function isUnfulfilledExecute(input: {
   if (input.toolCallCount > 0) {
     return false;
   }
-  if (input.route !== "execute") {
-    return false;
-  }
-  if (input.maximumWorkspaceEffect !== "write") {
-    return false;
-  }
   if (input.changedFileCount > 0) {
     return false;
   }
-  if (!requiresMutationIntent(input.primaryTaskIntent, input.reasonCodes)) {
+  if (
+    !requiresMutationForExecute({
+      route: input.route,
+      maximumWorkspaceEffect: input.maximumWorkspaceEffect,
+      primaryTaskIntent: input.primaryTaskIntent,
+      reasonCodes: input.reasonCodes,
+    })
+  ) {
     return false;
   }
   // Recovery copy invites "stop with a clear blocker" when a workspace edit
@@ -168,8 +166,8 @@ export function isUnfulfilledExecute(input: {
   if (isClearMutationBlocker(input.content)) {
     return false;
   }
-  // Any other text-only stop on execute+write+mutation is unfulfilled: the
-  // model described work instead of calling apply_patch.
+  // Any other text-only stop on execute+write is unfulfilled: the model
+  // described work instead of calling apply_patch.
   return true;
 }
 
@@ -218,21 +216,6 @@ export function isPrematurePartialExecuteStop(params: {
   });
 }
 
-function requiresMutationIntent(
-  primaryTaskIntent: string,
-  reasonCodes?: readonly string[],
-): boolean {
-  if (MUTATION_INTENT_SET.has(primaryTaskIntent)) {
-    return true;
-  }
-  // Docs create/update on execute+write still requires a patch even though
-  // "docs" is also an answer taxonomy for explain-docs asks.
-  if (primaryTaskIntent === "docs") {
-    return true;
-  }
-  return reasonCodes?.includes("mutation_execute") === true;
-}
-
 /** Model claimed it cannot see the repo despite repository_answer/diagnose. */
 export function claimsMissingWorkspaceContext(content: string): boolean {
   const text = content.trim();
@@ -273,6 +256,12 @@ function needsWorkspaceGroundingRecovery(input: {
   return claimsMissingWorkspaceContext(input.content);
 }
 
+/**
+ * Execute + write grant always requires a workspace mutation. Intent taxonomy
+ * alone was too easy to misclassify (e.g. feature ask labeled as question),
+ * which let zero-edit runs exit 0 and fail benchmark workspace_changed checks.
+ * Ask/plan/diagnose/read-only grants stay exempt via route / effect gates.
+ */
 export function requiresMutationForExecute(input: {
   route: ExecutionRoute;
   maximumWorkspaceEffect: ToolGrant["maximumWorkspaceEffect"];
@@ -285,13 +274,7 @@ export function requiresMutationForExecute(input: {
   if (input.maximumWorkspaceEffect !== "write") {
     return false;
   }
-  if (input.reasonCodes?.includes("mutation_execute")) {
-    return true;
-  }
-  if (!input.primaryTaskIntent) {
-    return false;
-  }
-  return requiresMutationIntent(input.primaryTaskIntent, input.reasonCodes);
+  return true;
 }
 
 export function buildUnfulfilledExecuteRecoveryMessage(

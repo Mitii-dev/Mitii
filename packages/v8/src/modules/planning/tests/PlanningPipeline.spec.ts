@@ -518,9 +518,9 @@ describe("PlanningPipeline", () => {
     ]);
   });
 
-  it("keeps up to sixteen discovered package-port change surfaces on the plan", async () => {
+  it("keeps up to twelve discovered package-port change surfaces on the plan", async () => {
     const surfaces = Array.from(
-      { length: 16 },
+      { length: 12 },
       (_, index) => `packages/mui-builder/src/file-${index + 1}.ts`,
     );
     const result = await pipeline.plan(
@@ -589,7 +589,7 @@ describe("PlanningPipeline", () => {
     const changeSteps =
       result.plan?.phases.find((phase) => phase.name === "Change")?.steps ?? [];
     expect(result.strategy?.strategy).toBe("discover_and_plan");
-    expect(changeSteps).toHaveLength(16);
+    expect(changeSteps).toHaveLength(12);
     expect(changeSteps.map((step) => step.targetRefs[0])).toEqual(surfaces);
   });
 

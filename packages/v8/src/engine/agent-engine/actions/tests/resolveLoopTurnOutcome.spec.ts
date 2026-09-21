@@ -4,9 +4,46 @@ import {
   isPrematurePartialExecuteStop,
   isSyntheticCompletedEditsFallback,
   isUnfulfilledExecute,
+  requiresMutationForExecute,
   resolveLoopTurnOutcome,
 } from "../resolveLoopTurnOutcome";
 import { isDegenerateRepeatedAnswer } from "../isIncompleteAssistantTurn";
+
+describe("requiresMutationForExecute", () => {
+  it("requires mutation for any execute+write grant, even non-mutation intents", () => {
+    expect(
+      requiresMutationForExecute({
+        route: "execute",
+        maximumWorkspaceEffect: "write",
+        primaryTaskIntent: "question",
+      }),
+    ).toBe(true);
+    expect(
+      requiresMutationForExecute({
+        route: "execute",
+        maximumWorkspaceEffect: "write",
+        primaryTaskIntent: "feature",
+      }),
+    ).toBe(true);
+  });
+
+  it("does not require mutation for ask/plan/read-only routes", () => {
+    expect(
+      requiresMutationForExecute({
+        route: "repository_answer",
+        maximumWorkspaceEffect: "write",
+        primaryTaskIntent: "question",
+      }),
+    ).toBe(false);
+    expect(
+      requiresMutationForExecute({
+        route: "execute",
+        maximumWorkspaceEffect: "read",
+        primaryTaskIntent: "feature",
+      }),
+    ).toBe(false);
+  });
+});
 
 describe("resolveLoopTurnOutcome", () => {
   it("recovers execute+write+bugfix text-only turns as unfulfilled", () => {
@@ -93,6 +130,34 @@ describe("resolveLoopTurnOutcome", () => {
     });
     expect(outcome.disposition).toBe("complete_answer");
     expect(outcome.reasonCode).toBe("answer_produced");
+  });
+
+  it("treats misclassified question intent on execute+write as unfulfilled", () => {
+    expect(
+      isUnfulfilledExecute({
+        route: "execute",
+        maximumWorkspaceEffect: "write",
+        primaryTaskIntent: "question",
+        toolCallCount: 0,
+        changedFileCount: 0,
+        content: "Here is how you would add validatePassword.",
+      }),
+    ).toBe(true);
+
+    const outcome = resolveLoopTurnOutcome({
+      route: "execute",
+      maximumWorkspaceEffect: "write",
+      primaryTaskIntent: "question",
+      toolCallCount: 0,
+      changedFileCount: 0,
+      content: "Here is how you would add validatePassword.",
+      recoveries: {
+        truncation: 0,
+        incompleteAnswer: 0,
+        unfulfilledExecute: 0,
+      },
+    });
+    expect(outcome.disposition).toBe("recover_unfulfilled_execute");
   });
 
   it("does not force patches on repository_answer analysis", () => {

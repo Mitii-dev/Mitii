@@ -4,6 +4,7 @@ import {
   remapPathThroughScaffoldMapping,
   resolveScaffoldPackageMapping,
 } from "../actions/remapScaffoldChangeSurfaces";
+import { PLANNING_WORKING_SET_POLICY } from "../policy";
 
 export const DISCOVERED_PLAN_SYSTEM = [
   "You already looked at the repository through a bounded read-only discovery pass.",
@@ -70,7 +71,10 @@ export function renderDiscoveredPlanUserPrompt(params: {
             }
           : {}),
         targets: discoveryBrief.targets.slice(0, 20),
-        proposedChangeSurfaces: discoveryBrief.proposedChangeSurfaces.slice(0, 16),
+        proposedChangeSurfaces: discoveryBrief.proposedChangeSurfaces.slice(
+          0,
+          PLANNING_WORKING_SET_POLICY.maxBatchesOnPlan,
+        ),
         discoveredConstraints: discoveryBrief.discoveredConstraints.slice(0, 10),
         verificationHints: discoveryBrief.verificationHints.slice(0, 10),
         openQuestions: discoveryBrief.openQuestions.slice(0, 8),

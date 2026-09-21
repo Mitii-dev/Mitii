@@ -9,6 +9,27 @@ import type { ShapedDiscoveryProfile } from "./types";
 const DEFAULT_MIN_SEED_SCORE = 40;
 const DEFAULT_MAX_SEEDS = 4;
 
+/**
+ * True when `path` looks like a concrete file target (has an extension),
+ * not a bare directory. Used to skip broad shaped globs when the prompt
+ * already named the file to edit.
+ */
+export function isExplicitFilePathTarget(path: string): boolean {
+  const normalized = normalizePlanningPath(path);
+  if (!normalized || normalized === ".") {
+    return false;
+  }
+  if (!isSafeRelativePlanningPath(normalized)) {
+    return false;
+  }
+  return /\.[\w]{1,16}$/.test(normalized);
+}
+
+/** True when at least one preferred path is a concrete file. */
+export function hasExplicitFilePathTargets(paths: readonly string[]): boolean {
+  return paths.some(isExplicitFilePathTarget);
+}
+
 export function rankPathsForShapedDiscovery(
   profile: ShapedDiscoveryProfile,
   paths: readonly string[],

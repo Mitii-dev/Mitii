@@ -239,6 +239,8 @@ export {
   extractSearchPathsFromToolOutput,
   frontendComponentDiscoveryProfile,
   matchesBrowserTestRunnerQuery,
+  hasExplicitFilePathTargets,
+  isExplicitFilePathTarget,
   rankPathsForShapedDiscovery,
   resolveShapedDiscoveryProfile,
   selectShapedDiscoverySeeds,

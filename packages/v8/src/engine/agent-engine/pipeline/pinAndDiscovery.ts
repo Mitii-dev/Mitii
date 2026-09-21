@@ -43,6 +43,7 @@ import {
 } from "../actions";
 import {
   collectShapedDiscoveryHits,
+  hasExplicitFilePathTargets,
   rankPathsForShapedDiscovery,
   resolveShapedDiscoveryProfile,
   selectShapedDiscoverySeeds,
@@ -380,30 +381,40 @@ export async function runDiscoveryPass(
     const rankedPreferred = shapedProfile
       ? rankPathsForShapedDiscovery(shapedProfile, preferredPaths)
       : preferredPaths;
-    const globHits = shapedProfile
-      ? await collectShapedDiscoveryHits({
-          profile: shapedProfile,
-          shouldContinue: () =>
-            discoveryBudgetRemaining(collector) &&
-            collector.searches < DISCOVERY_PASS_POLICY.maxSearches &&
-            !signal.aborted,
-          executeTool: async (toolName, argumentsValue) => {
-            const result = await executeDiscoveryToolCall(runtime, {
-              runId,
-              bus,
-              budget,
-              collector,
-              grant,
-              workspaceRoot: workspaceRoot!,
-              pinnedState,
-              windowPolicy,
-              toolName,
-              argumentsValue,
-            });
-            return result?.output;
-          },
-        })
-      : [];
+    // When the prompt already names concrete files, skip broad shaped globs
+    // (**/routes/**/*.ts etc.) and seed-read those paths instead.
+    const skipShapedSearch = hasExplicitFilePathTargets([
+      ...rankedPreferred,
+      ...preferredPaths,
+    ]);
+    if (skipShapedSearch) {
+      reasonCodes.push("discovery_explicit_paths_skip_shaped_search");
+    }
+    const globHits =
+      shapedProfile && !skipShapedSearch
+        ? await collectShapedDiscoveryHits({
+            profile: shapedProfile,
+            shouldContinue: () =>
+              discoveryBudgetRemaining(collector) &&
+              collector.searches < DISCOVERY_PASS_POLICY.maxSearches &&
+              !signal.aborted,
+            executeTool: async (toolName, argumentsValue) => {
+              const result = await executeDiscoveryToolCall(runtime, {
+                runId,
+                bus,
+                budget,
+                collector,
+                grant,
+                workspaceRoot: workspaceRoot!,
+                pinnedState,
+                windowPolicy,
+                toolName,
+                argumentsValue,
+              });
+              return result?.output;
+            },
+          })
+        : [];
     const shapedSeeds = shapedProfile
       ? selectShapedDiscoverySeeds(shapedProfile, globHits, rankedPreferred)
       : [];

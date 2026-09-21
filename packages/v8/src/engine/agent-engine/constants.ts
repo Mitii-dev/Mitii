@@ -78,6 +78,8 @@ export const AGENT_REASON_CODES = [
   "discovery_completed",
   "discovery_failed",
   "discovery_skipped",
+  /** Prompt already named concrete files — shaped glob/search preflight skipped. */
+  "discovery_explicit_paths_skip_shaped_search",
   "plan_rejected",
   "plan_edited",
   "task_list_seeded",
