@@ -84,6 +84,9 @@ function shouldOverrideFollowEvidence(params: {
     return true;
   }
   if (params.mode === "plan") {
+    if (looksLikeRepairAsk(params.query)) {
+      return false;
+    }
     const followUp = isPlanningFollowUp(params.query, params.conversation);
     if (!followUp) {
       return true;
@@ -101,6 +104,12 @@ function shouldOverrideFollowEvidence(params: {
 
 function looksLikeArchitectureDiscoveryAsk(query: string): boolean {
   return /\b(?:architecture|restructure|reorganiz(?:e|ation)|page\s*objects?|\bpom\b|shared\s+base|cross-?platform|refactor\s+(?:the\s+)?(?:test|package|module|folder))\b/i.test(
+    query,
+  );
+}
+
+function looksLikeRepairAsk(query: string): boolean {
+  return /\b(?:fix|repair|resolve|clear|debug)\b[\s\S]{0,120}\b(?:errors?|erros?|diagnostics?|failing|failure|typecheck|type\s+(?:errors?|erros?)|ts\s+(?:errors?|erros?)|compile|compilation|build|tests?)\b|\b(?:typecheck|build|tests?)\b[\s\S]{0,80}\b(?:failing|failure|errors?|erros?)\b/i.test(
     query,
   );
 }

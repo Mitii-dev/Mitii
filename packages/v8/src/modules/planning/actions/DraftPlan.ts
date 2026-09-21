@@ -15,7 +15,10 @@ import type {
 import { isRepairIntentTaxonomy } from "../../decision-policy";
 import { PLANNING_SCHEMA_VERSION } from "../constants";
 import { DEFAULT_MAX_STEPS_PER_PHASE } from "../defaults";
-import { PLANNING_PROCESS_META_STEP } from "../policy";
+import {
+  PLANNING_PROCESS_META_STEP,
+  PLANNING_WORKING_SET_POLICY,
+} from "../policy";
 import { filterBuildEvidenceToAskScope } from "../internal/evidenceScope";
 import {
   buildDiagnosticChangeSteps,
@@ -628,7 +631,7 @@ function injectDiscoveryStepsIntoChangePhase(
       ...phase,
       steps: [...discoverySteps, ...retained].slice(
         0,
-        DEFAULT_MAX_STEPS_PER_PHASE,
+        PLANNING_WORKING_SET_POLICY.maxBatchesOnPlan,
       ),
     };
   });

@@ -102,7 +102,7 @@ const DISCOVERED_PLAN_JSON_SCHEMA = {
     },
     steps: {
       type: "array",
-      maxItems: 10,
+      maxItems: 16,
       items: {
         type: "object",
         additionalProperties: false,

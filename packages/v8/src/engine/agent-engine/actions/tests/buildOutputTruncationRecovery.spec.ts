@@ -246,6 +246,23 @@ describe("buildOutputTruncationRecovery", () => {
     ).toBeNull();
   });
 
+  it("keeps recovering empty reasoning burns after mutations when checklist work remains", () => {
+    const plan = buildOutputTruncationRecovery({
+      finishReason: "length",
+      content: "",
+      toolCalls: [],
+      recoveryAttempt: 1,
+      requireMutation: true,
+      changedFileCount: 2,
+      hasIncompleteChangeSurfaces: true,
+      mutationBudget: tightBudget,
+    });
+    expect(plan?.shouldRecover).toBe(true);
+    expect(plan?.recoveryKind).toBe("tool_call");
+    expect(plan?.recoveryMessage.content).toMatch(/Checklist work remains/);
+    expect(plan?.recoveryMessage.content).toMatch(/apply_patch/i);
+  });
+
   it("allows one incomplete-tool shrink after mutations, then stops", () => {
     const incomplete = {
       id: "c1",
@@ -270,6 +287,25 @@ describe("buildOutputTruncationRecovery", () => {
     });
     expect(first?.shouldRecover).toBe(true);
     expect(second).toBeNull();
+  });
+
+  it("keeps shrinking incomplete tools after mutations when checklist work remains", () => {
+    const incomplete = {
+      id: "c1",
+      name: "apply_patch",
+      arguments: '{"patches":[{"path":"a.ts","oldText":"x"',
+    } as const;
+    const second = buildOutputTruncationRecovery({
+      finishReason: "length",
+      content: "",
+      toolCalls: [incomplete],
+      mutationBudget: tightBudget,
+      recoveryAttempt: 1,
+      changedFileCount: 1,
+      hasIncompleteChangeSurfaces: true,
+    });
+    expect(second?.shouldRecover).toBe(true);
+    expect(second?.recoveryMessage.content).toContain("Shrink further");
   });
 
   it("never recovers after successful verification with mutations", () => {

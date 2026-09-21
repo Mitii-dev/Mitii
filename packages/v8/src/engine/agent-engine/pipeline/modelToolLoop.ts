@@ -53,6 +53,7 @@ import {
   type AgentLogVerbosity,
 } from "../internal/logVerbosity";
 import {
+  hasIncompleteChangeSurfaces,
   type TaskListRef,
 } from "../internal/taskListRuntime";
 import {
@@ -510,9 +511,12 @@ export async function runModelToolLoop(
       session.observedReasoningChannel = true;
       // Repeated thinking-only burns with write still required: lock mutation
       // and spend evidence reads so the next turns only see apply_patch*.
+      const incompleteChangeSurfaces = hasIncompleteChangeSurfaces(
+        params.taskListRef.current,
+      );
       if (
         isMutationRequired() &&
-        changedFiles.length === 0 &&
+        (changedFiles.length === 0 || incompleteChangeSurfaces) &&
         thresholds.maxReasoningProgressBudgetExceedancesBeforeMutationLock >
           0 &&
         session.reasoningProgressBudgetExceedances >=
@@ -576,6 +580,9 @@ export async function runModelToolLoop(
         reasonCodes: session.decision.reasonCodes,
       }),
       changedFileCount: changedFiles.length,
+      hasIncompleteChangeSurfaces: hasIncompleteChangeSurfaces(
+        params.taskListRef.current,
+      ),
       successfulVerificationAfterMutation:
         session.successfulVerificationAfterMutation,
       thresholds,

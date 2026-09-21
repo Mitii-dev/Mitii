@@ -39,6 +39,7 @@ export default defineConfig({
       'src/modules/repository-state/internal/embedding/tests/SqliteEmbeddingVectorCache.spec.ts',
       'src/modules/repository-state/pipeline/ws-indexing-pipeline/tests/FileProcessorStatFreshness.spec.ts',
       'src/modules/model-gateway/tests/OpenAiCompatibleRetry.spec.ts',
+      'src/modules/model-gateway/tests/LlmPortAdapters.spec.ts',
       'src/modules/model-gateway/tests/AnthropicLlmPort.spec.ts',
       'src/modules/model-gateway/tests/GeminiLlmPort.spec.ts',
       'src/modules/model-gateway/tests/projectOpenAiCompatibleMessages.spec.ts',

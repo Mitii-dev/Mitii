@@ -43,6 +43,11 @@ export function buildOutputTruncationRecovery(params: {
    * wall clock (benchmark exit 124) even though content checks already pass.
    */
   changedFileCount?: number;
+  /**
+   * Live checklist evidence that concrete write surfaces are still open. This
+   * overrides the post-mutation finish bias for package-scale batched work.
+   */
+  hasIncompleteChangeSurfaces?: boolean;
   /** Verification already passed after mutation — never open another recovery turn. */
   successfulVerificationAfterMutation?: boolean;
   thresholds?: Pick<
@@ -66,6 +71,7 @@ export function buildOutputTruncationRecovery(params: {
   if (params.successfulVerificationAfterMutation === true && mutationsLanded) {
     return null;
   }
+  const checklistWorkRemains = params.hasIncompleteChangeSurfaces === true;
 
   const incompleteToolCalls = params.toolCalls.filter(
     (call) => !isCompleteToolCall(call),
@@ -77,7 +83,8 @@ export function buildOutputTruncationRecovery(params: {
   }
 
   // After mutations: allow at most one shrink-retry for incomplete tools, then
-  // finish — except empty reasoning-only burns while mutation is still required
+  // finish — except when the live checklist still has concrete write surfaces
+  // open, or for empty reasoning-only burns while mutation is still required
   // (reasoning-only thrash mid-checklist).
   if (mutationsLanded) {
     const emptyReasoningBurn =
@@ -86,7 +93,7 @@ export function buildOutputTruncationRecovery(params: {
       emptyReasoningBurn &&
       params.requireMutation === true &&
       params.successfulVerificationAfterMutation !== true &&
-      params.recoveryAttempt < 1
+      (checklistWorkRemains || params.recoveryAttempt < 1)
     ) {
       const preferred = escalatePreferredBatchSize(
         params.mutationBudget?.preferredBatchSize ??
@@ -114,10 +121,10 @@ export function buildOutputTruncationRecovery(params: {
         },
       };
     }
-    if (incompleteToolCalls.length === 0) {
+    if (incompleteToolCalls.length === 0 && !checklistWorkRemains) {
       return null;
     }
-    if (params.recoveryAttempt >= 1) {
+    if (!checklistWorkRemains && params.recoveryAttempt >= 1) {
       return null;
     }
   }

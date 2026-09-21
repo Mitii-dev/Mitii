@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { describe, expect, it } from "vitest";
 
 import {
   EchoLlmPort,
@@ -34,7 +33,8 @@ async function collectEvents(
   return events;
 }
 
-test("echo llm port streams the last user message", async () => {
+describe("LlmPort adapters", () => {
+it("echo llm port streams the last user message", async () => {
   const port = new EchoLlmPort({ chunkCharacters: 8 });
   const content = await collectContent(
     port.complete({
@@ -45,12 +45,12 @@ test("echo llm port streams the last user message", async () => {
     }),
   );
 
-  assert.equal(content, "Echo: hello world");
-  assert.equal(port.id, "echo");
-  assert.ok((await port.countTokens!("abcd")) >= 1);
+  expect(content).toBe("Echo: hello world");
+  expect(port.id).toBe("echo");
+  expect(await port.countTokens!("abcd")).toBeGreaterThanOrEqual(1);
 });
 
-test("echo llm port cancels when abort signal is already aborted", async () => {
+it("echo llm port cancels when abort signal is already aborted", async () => {
   const port = new EchoLlmPort();
   const controller = new AbortController();
   controller.abort();
@@ -62,11 +62,11 @@ test("echo llm port cancels when abort signal is already aborted", async () => {
     ),
   );
 
-  assert.equal(events[0]?.type, "cancelled");
-  assert.equal(modelEventSchema.safeParse(events[0]).success, true);
+  expect(events[0]?.type).toBe("cancelled");
+  expect(modelEventSchema.safeParse(events[0]).success).toBe(true);
 });
 
-test("openai compatible port maps non-streaming responses", async () => {
+it("openai compatible port maps non-streaming responses", async () => {
   const fetchImpl: typeof fetch = async () =>
     new Response(
       JSON.stringify({
@@ -122,19 +122,18 @@ test("openai compatible port maps non-streaming responses", async () => {
     }),
   );
 
-  assert.equal(events[0]?.type, "content_delta");
-  assert.equal(events[0]?.type === "content_delta" && events[0].content, "pong");
-  assert.equal(events[1]?.type, "tool_call_delta");
-  assert.equal(
+  expect(events[0]?.type).toBe("content_delta");
+  expect(events[0]?.type === "content_delta" && events[0].content).toBe("pong");
+  expect(events[1]?.type).toBe("tool_call_delta");
+  expect(
     events[1]?.type === "tool_call_delta" && events[1].toolCalls[0]?.id,
-    "call-1",
-  );
+  ).toBe("call-1");
   const completed = events.find((event) => event.type === "completed");
-  assert.equal(completed?.type === "completed" && completed.finishReason, "tool_calls");
-  assert.equal(completed?.type === "completed" && completed.usage?.totalTokens, 5);
+  expect(completed?.type === "completed" && completed.finishReason).toBe("tool_calls");
+  expect(completed?.type === "completed" && completed.usage?.totalTokens).toBe(5);
 });
 
-test("openai compatible port maps prompt cache hit and miss tokens", async () => {
+it("openai compatible port maps prompt cache hit and miss tokens", async () => {
   const fetchImpl: typeof fetch = async () =>
     new Response(
       JSON.stringify({
@@ -173,11 +172,11 @@ test("openai compatible port maps prompt cache hit and miss tokens", async () =>
     }),
   );
   const completed = events.find((event) => event.type === "completed");
-  assert.equal(completed?.type === "completed" && completed.usage?.cacheHitTokens, 70);
-  assert.equal(completed?.type === "completed" && completed.usage?.cacheMissTokens, 30);
+  expect(completed?.type === "completed" && completed.usage?.cacheHitTokens).toBe(70);
+  expect(completed?.type === "completed" && completed.usage?.cacheMissTokens).toBe(30);
 });
 
-test("openai compatible downgrades forced tool choice and skips unsupported response_format", async () => {
+it("openai compatible downgrades forced tool choice and skips unsupported response_format", async () => {
   let body: Record<string, unknown> | undefined;
   const fetchImpl: typeof fetch = async (_url, init) => {
     body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
@@ -217,11 +216,11 @@ test("openai compatible downgrades forced tool choice and skips unsupported resp
     }),
   );
 
-  assert.equal(body?.tool_choice, "auto");
-  assert.equal(body?.response_format, undefined);
+  expect(body?.tool_choice).toBe("auto");
+  expect(body?.response_format).toBeUndefined();
 });
 
-test("openai compatible port maps SSE streaming chunks", async () => {
+it("openai compatible port maps SSE streaming chunks", async () => {
   const payload = [
     'data: {"choices":[{"delta":{"content":"hel"}}]}',
     'data: {"choices":[{"delta":{"content":"lo"}}]}',
@@ -248,10 +247,10 @@ test("openai compatible port maps SSE streaming chunks", async () => {
     }),
   );
 
-  assert.equal(content, "hello");
+  expect(content).toBe("hello");
 });
 
-test("openai compatible port derives output tokens from configured context", () => {
+it("openai compatible port derives output tokens from configured context", () => {
   const port = new OpenAiCompatibleLlmPort({
     baseUrl: "https://example.test/v1",
     model: "large-context-model",
@@ -261,11 +260,11 @@ test("openai compatible port derives output tokens from configured context", () 
     fetchImpl: async () => new Response("{}", { status: 200 }),
   });
 
-  assert.equal(port.capabilities.contextWindowTokens, 252_000);
-  assert.equal(port.capabilities.maximumOutputTokens, 63_000);
+  expect(port.capabilities.contextWindowTokens).toBe(252_000);
+  expect(port.capabilities.maximumOutputTokens).toBe(63_000);
 });
 
-test("openai compatible port maps authentication failures", async () => {
+it("openai compatible port maps authentication failures", async () => {
   const fetchImpl: typeof fetch = async () =>
     new Response("unauthorized", { status: 401 });
 
@@ -283,43 +282,40 @@ test("openai compatible port maps authentication failures", async () => {
     }),
   );
 
-  assert.equal(events[0]?.type, "failed");
-  assert.equal(
+  expect(events[0]?.type).toBe("failed");
+  expect(
     events[0]?.type === "failed" && events[0].error.code,
-    "authentication_failed",
-  );
-  assert.equal(
+  ).toBe("authentication_failed");
+  expect(
     events[0]?.type === "failed" && events[0].error.retryable,
-    false,
-  );
+  ).toBe(false);
 });
 
-test("openai compatible request bodies validate against modelRequestSchema", () => {
-  assert.equal(
+it("openai compatible request bodies validate against modelRequestSchema", () => {
+  expect(
     modelRequestSchema.safeParse({
       messages: [{ role: "user", content: "ok" }],
       toolChoice: "required",
     }).success,
-    false,
-  );
+  ).toBe(false);
 });
 
-test("provider support matrix lists only shipped adapters", () => {
-  assert.equal(MODEL_PROVIDER_SUPPORT.openai.status, "supported");
-  assert.equal(MODEL_PROVIDER_SUPPORT.ollama.status, "supported");
-  assert.equal(MODEL_PROVIDER_SUPPORT["openai-compatible"].status, "supported");
-  assert.equal(MODEL_PROVIDER_SUPPORT.openrouter.status, "supported");
-  assert.equal(MODEL_PROVIDER_SUPPORT.deepseek.status, "supported");
-  assert.equal(MODEL_PROVIDER_SUPPORT["lm-studio"].status, "supported");
-  assert.equal(MODEL_PROVIDER_SUPPORT["azure-openai"].status, "supported");
-  assert.equal(MODEL_PROVIDER_SUPPORT.anthropic.status, "supported");
-  assert.equal(MODEL_PROVIDER_SUPPORT.gemini.status, "supported");
-  assert.equal(modelEventSchema.safeParse({ type: "content_delta" }).success, false);
-  assert.equal(
+it("provider support matrix lists only shipped adapters", () => {
+  expect(MODEL_PROVIDER_SUPPORT.openai.status).toBe("supported");
+  expect(MODEL_PROVIDER_SUPPORT.ollama.status).toBe("supported");
+  expect(MODEL_PROVIDER_SUPPORT["openai-compatible"].status).toBe("supported");
+  expect(MODEL_PROVIDER_SUPPORT.openrouter.status).toBe("supported");
+  expect(MODEL_PROVIDER_SUPPORT.deepseek.status).toBe("supported");
+  expect(MODEL_PROVIDER_SUPPORT["lm-studio"].status).toBe("supported");
+  expect(MODEL_PROVIDER_SUPPORT["azure-openai"].status).toBe("supported");
+  expect(MODEL_PROVIDER_SUPPORT.anthropic.status).toBe("supported");
+  expect(MODEL_PROVIDER_SUPPORT.gemini.status).toBe("supported");
+  expect(modelEventSchema.safeParse({ type: "content_delta" }).success).toBe(false);
+  expect(
     modelEventSchema.safeParse({
       type: "content_delta",
       content: "x",
     }).success,
-    true,
-  );
+  ).toBe(true);
+});
 });

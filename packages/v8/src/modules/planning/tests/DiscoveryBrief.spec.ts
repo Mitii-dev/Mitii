@@ -162,6 +162,82 @@ describe("DiscoveryBrief contract", () => {
     ]);
   });
 
+  it("keeps package manifests as surfaces for package port asks", () => {
+    const compiled = compileDiscoveryBrief({
+      schemaVersion: 1,
+      objective:
+        "Create packages/mui-builder as a full port of packages/formik-form-builder",
+      filesRead: [
+        {
+          path: "packages/formik-form-builder/package.json",
+          reason: "Template package manifest",
+        },
+      ],
+      searchHits: [
+        {
+          path: "packages/formik-form-builder/tsconfig.json",
+          reason: "Template TypeScript config",
+        },
+        {
+          path: "packages/formik-form-builder/src/index.ts",
+          reason: "Template package entry",
+        },
+      ],
+      explicitTargets: [
+        {
+          kind: "folder",
+          value: "packages/mui-builder",
+          reason: "Requested package",
+          explicit: true,
+        },
+      ],
+    });
+
+    expect(compiled.proposedChangeSurfaces.map((item) => item.path)).toEqual([
+      "packages/mui-builder/package.json",
+      "packages/mui-builder/tsconfig.json",
+      "packages/mui-builder/src/index.ts",
+    ]);
+  });
+
+  it("retains up to sixteen package port surfaces for execution planning", () => {
+    const files = Array.from(
+      { length: 20 },
+      (_, index) => `packages/formik-form-builder/src/file-${index + 1}.ts`,
+    );
+    const compiled = compileDiscoveryBrief({
+      schemaVersion: 1,
+      objective:
+        "Create packages/mui-builder as a full port of packages/formik-form-builder",
+      filesRead: [
+        {
+          path: "packages/formik-form-builder/src/index.ts",
+          reason: "Template entry",
+        },
+      ],
+      searchHits: files.map((path) => ({
+        path,
+        reason: "Template package file",
+      })),
+      explicitTargets: [
+        {
+          kind: "folder",
+          value: "packages/mui-builder",
+          reason: "Requested package",
+          explicit: true,
+        },
+      ],
+    });
+
+    expect(compiled.proposedChangeSurfaces).toHaveLength(16);
+    expect(compiled.proposedChangeSurfaces[0]?.path).toBe(
+      "packages/mui-builder/src/index.ts",
+    );
+    expect(compiled.proposedChangeSurfaces.at(-1)?.path).toBe(
+      "packages/mui-builder/src/file-15.ts",
+    );
+  });
+
   it("exposes compileDiscovery on the Planning facade", () => {
     const pipeline = new PlanningPipeline();
     const brief = pipeline.compileDiscovery({

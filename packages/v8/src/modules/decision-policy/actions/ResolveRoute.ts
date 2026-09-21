@@ -116,10 +116,10 @@ export function resolveRoute(params: {
     reasonCodes.push("policy_llm_authority_write");
   }
 
-  // Pasted dumps stay diagnose-first unless the ballot is a trusted write
-  // (≥70% act/mutation) — same authority rule as soft read-only / soft plan.
+  // Pasted dumps stay diagnose-first by default. In policy-facts-first mode,
+  // a trusted ≥70% act/mutation ballot may override the dump heuristic.
   if (looksLikePastedRuntimeErrorDump(message)) {
-    if (!understandingTrustsWriteBallot(understanding)) {
+    if (!(factsFirst && understandingTrustsWriteBallot(understanding))) {
       if (factsFirst) {
         reasonCodes.push("policy_facts_safety_override");
       }

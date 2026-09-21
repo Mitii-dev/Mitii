@@ -149,6 +149,69 @@ describe("AgentEngine discovery (discover_and_plan)", () => {
     );
   });
 
+  it("records file leaves from directory_tree output for planning", () => {
+    const collector = createDiscoveryObservationCollector();
+
+    recordDiscoveryToolUse({
+      collector,
+      toolName: "directory_tree",
+      argumentsValue: { path: "packages/formik-form-builder" },
+      resultOutput: {
+        path: "packages/formik-form-builder",
+        tree: [
+          {
+            name: "src",
+            kind: "directory",
+            children: [
+              { name: "index.ts", kind: "file" },
+              {
+                name: "fields",
+                kind: "directory",
+                children: [
+                  { name: "field-select.tsx", kind: "file" },
+                ],
+              },
+            ],
+          },
+          { name: "package.json", kind: "file" },
+        ],
+      },
+      status: "succeeded",
+    });
+
+    expect(collector.searchHits.map((hit) => hit.path)).toEqual(
+      expect.arrayContaining([
+        "packages/formik-form-builder/src/index.ts",
+        "packages/formik-form-builder/src/fields/field-select.tsx",
+        "packages/formik-form-builder/package.json",
+      ]),
+    );
+  });
+
+  it("records file entries from list_directory output for planning", () => {
+    const collector = createDiscoveryObservationCollector();
+
+    recordDiscoveryToolUse({
+      collector,
+      toolName: "list_directory",
+      argumentsValue: { path: "packages/formik-form-builder/src" },
+      resultOutput: {
+        path: "packages/formik-form-builder/src",
+        entries: [
+          { name: "index.ts", kind: "file" },
+          { name: "fields", kind: "directory" },
+          { name: "form-builder.tsx", kind: "file" },
+        ],
+      },
+      status: "succeeded",
+    });
+
+    expect(collector.searchHits.map((hit) => hit.path)).toEqual([
+      "packages/formik-form-builder/src/index.ts",
+      "packages/formik-form-builder/src/form-builder.tsx",
+    ]);
+  });
+
   it("caps broad search hits before compiling discovery observations", () => {
     const collector = createDiscoveryObservationCollector();
 
@@ -607,7 +670,16 @@ describe("AgentEngine discovery (discover_and_plan)", () => {
             },
           ],
         },
-        { content: "Found the payment client entrypoint and retry helper." },
+        {
+          content: "",
+          toolCalls: [
+            {
+              id: "symbols_1",
+              name: "document_symbol",
+              arguments: JSON.stringify({ path: "src/payments/client.ts" }),
+            },
+          ],
+        },
       ],
       createCapabilities({ supportsTools: true }),
     );
@@ -634,6 +706,14 @@ describe("AgentEngine discovery (discover_and_plan)", () => {
           },
         }),
         llm,
+        toolResults: {
+          document_symbol: {
+            output: {
+              path: "src/payments/client.ts",
+              symbols: [{ name: "createCharge" }],
+            },
+          },
+        },
         planning: {
           plan: async (input) => {
             captured.push(input);
