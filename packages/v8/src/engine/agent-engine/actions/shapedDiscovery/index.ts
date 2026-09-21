@@ -11,6 +11,8 @@ export {
   extractSearchPathsFromToolOutput,
 } from "./toolOutput";
 export {
+  hasExplicitFilePathTargets,
+  isExplicitFilePathTarget,
   rankPathsForShapedDiscovery,
   selectShapedDiscoverySeeds,
 } from "./ranking";

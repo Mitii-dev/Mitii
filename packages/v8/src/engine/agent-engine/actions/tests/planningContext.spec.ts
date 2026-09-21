@@ -67,4 +67,15 @@ describe("extractPriorPathHints / collectPreferredPlanningPaths", () => {
     expect(paths).toContain("src/b.ts");
     expect(paths).toContain("src/c.ts");
   });
+
+  it("extracts concrete file paths named in the query", () => {
+    const paths = collectPreferredPlanningPaths({
+      query:
+        "Add a validatePassword(password) function to packages/shared/src/index.js that returns true only when the password is at least 8 characters long.",
+      evidenceTargets: [],
+      contextPaths: [],
+      priorPathHints: [],
+    });
+    expect(paths).toContain("packages/shared/src/index.js");
+  });
 });

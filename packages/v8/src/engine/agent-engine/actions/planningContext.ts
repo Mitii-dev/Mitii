@@ -253,7 +253,17 @@ export function collectPreferredPlanningPaths(params: {
     .map((target) => normalizePlanningPath(target.value));
   const context = (params.contextPaths ?? []).map(normalizePlanningPath);
   const prior = (params.priorPathHints ?? []).map(normalizePlanningPath);
-  const merged = uniqueStrings([...explicit, ...context, ...prior]).filter(
+  // Prompt-named paths (e.g. packages/shared/src/index.js) must seed discovery
+  // even when task analysis did not emit explicit file targets.
+  const fromQuery = params.query
+    ? extractFileLikePaths(params.query).map(normalizePlanningPath)
+    : [];
+  const merged = uniqueStrings([
+    ...explicit,
+    ...fromQuery,
+    ...context,
+    ...prior,
+  ]).filter(
     (path) =>
       isSafeRelativePlanningPath(path) &&
       path !== "." &&

@@ -13,6 +13,8 @@ import {
   databaseDiscoveryProfile,
   extractGlobPathsFromToolOutput,
   frontendComponentDiscoveryProfile,
+  hasExplicitFilePathTargets,
+  isExplicitFilePathTarget,
   matchesBrowserTestRunnerQuery,
   rankPathsForShapedDiscovery,
   resolveShapedDiscoveryProfile,
@@ -153,6 +155,17 @@ describe("profile discovery budget caps", () => {
       executeTool,
     });
     expect(executeTool).toHaveBeenCalledTimes(4);
+  });
+});
+
+describe("hasExplicitFilePathTargets", () => {
+  it("detects concrete file paths and rejects directories", () => {
+    expect(
+      hasExplicitFilePathTargets(["packages/shared/src/index.js"]),
+    ).toBe(true);
+    expect(hasExplicitFilePathTargets(["src/routes"])).toBe(false);
+    expect(hasExplicitFilePathTargets(["src/", "README.md"])).toBe(true);
+    expect(isExplicitFilePathTarget("server.js")).toBe(true);
   });
 });
 
