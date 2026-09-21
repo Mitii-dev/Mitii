@@ -17,6 +17,7 @@ const packageFiles = [
   'apps/cli/package.json',
   'apps/daemon/package.json',
   'apps/acp/package.json',
+  'apps/desktop/package.json',
   'apps/vscode/package.json',
 ];
 

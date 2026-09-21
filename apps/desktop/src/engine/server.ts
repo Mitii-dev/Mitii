@@ -1,0 +1,1046 @@
+/**
+ * Local HTTP engine for Mitii Desktop.
+ * Agent authority stays in MitiiClient (host-injected); this is transport only.
+ */
+
+import {
+  createServer,
+  type IncomingMessage,
+  type Server,
+  type ServerResponse,
+} from 'node:http';
+
+import {
+  createFileSystemSkillsCatalog,
+  listProviderModels,
+  testProviderConnection,
+} from '@mitii/host';
+import {
+  AGENT_ENGINE_SCHEMA_VERSION,
+  type MitiiClient,
+  type MitiiResumeInput,
+  type MitiiStartInput,
+} from '@mitii/sdk';
+import {
+  compileRecipeToStartInput,
+} from '@mitii/host';
+import {
+  defaultNewRecipeDraft,
+  defaultNewSkillDraft,
+  listMcpServers,
+  listRecipes,
+  listWorkspaceSkills,
+  loadDesktopRecipeSpec,
+  readWorkspaceSkill,
+  setMcpMasterEnabled,
+  setMcpServerEnabled,
+  writeRecipe,
+  writeWorkspaceSkill,
+} from './extensions.js';
+
+import {
+  MITII_DESKTOP_PROTOCOL,
+  MITII_DESKTOP_PROTOCOL_VERSION,
+  createPromptId,
+  parseDesktopPromptBody,
+  type DesktopHostMode,
+  type DesktopPromptStreamLine,
+} from '../shared/protocol.js';
+import { generateEngineToken } from '../shared/engine-token.js';
+import { isAllowedEngineBaseUrl } from '../shared/window-url-policy.js';
+import {
+  activateProfile,
+  deleteProfile,
+  hashSecret,
+  profileFromProvider,
+  readProfiles,
+  upsertProfile,
+  writeProfiles,
+  type DesktopProfileProvider,
+} from './profiles.js';
+import {
+  createThread,
+  deleteThread,
+  loadHistory,
+  saveHistory,
+  upsertThreadMessages,
+  type DesktopChatMessage,
+} from './history.js';
+import { getIndexStatus, reindexWorkspace } from './index-status.js';
+import { getGitFileDiff, getGitFileChangesSummary, getGitStatus } from './git-status.js';
+import {
+  listWorkspaceDir,
+  readWorkspaceFile,
+  renameWorkspaceEntry,
+  deleteWorkspaceEntries,
+  searchWorkspacePaths,
+  toAbsoluteWorkspacePath,
+  writeWorkspaceFile,
+} from './workspace-fs.js';
+
+const THOROUGHNESS_MAP = {
+  low: { depth: 'quick' as const, effort: 'low' as const },
+  medium: { depth: 'auto' as const, effort: 'medium' as const },
+  high: { depth: 'deep' as const, effort: 'high' as const },
+};
+
+const APPROVAL_PRESET_MAP = {
+  safe: {
+    approvalMode: 'every_mutation' as const,
+    planApproval: 'policy' as const,
+  },
+  guided: {
+    approvalMode: 'when_required' as const,
+    planApproval: 'policy' as const,
+  },
+  pilot: {
+    approvalMode: 'never' as const,
+    planApproval: 'never' as const,
+  },
+  builder: {
+    approvalMode: 'when_required' as const,
+    planApproval: 'policy' as const,
+  },
+};
+
+function resolveApprovalPreset(preset: string | undefined): {
+  approvalMode: 'never' | 'when_required' | 'every_mutation';
+  planApproval: 'policy' | 'never';
+} {
+  const key =
+    preset === 'safe' ||
+    preset === 'guided' ||
+    preset === 'pilot' ||
+    preset === 'builder'
+      ? preset
+      : 'guided';
+  return APPROVAL_PRESET_MAP[key];
+}
+
+function asStringArray(value: unknown, max: number): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out = value
+    .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    .map((item) => item.trim())
+    .slice(0, max);
+  return out.length > 0 ? out : undefined;
+}
+
+function buildStartInput(
+  body: Record<string, unknown>,
+  parsed: { prompt: string; mode?: 'ask' | 'plan' | 'agent'; id?: string },
+  workspaceRoot: string,
+): MitiiStartInput {
+  const approvalPreset =
+    typeof body.approvalPreset === 'string' ? body.approvalPreset : 'guided';
+  const policy = resolveApprovalPreset(approvalPreset);
+  const thoroughnessRaw =
+    typeof body.thoroughness === 'string' ? body.thoroughness : 'medium';
+  const thoroughness =
+    thoroughnessRaw === 'low' || thoroughnessRaw === 'high'
+      ? thoroughnessRaw
+      : 'medium';
+  const intensity = THOROUGHNESS_MAP[thoroughness];
+  const pinnedPaths = asStringArray(body.pinnedPaths, 32);
+  const requiredSkillIds = asStringArray(body.requiredSkillIds, 16);
+  const requiredMcpServerIds = asStringArray(body.requiredMcpServerIds, 16);
+
+  return {
+    prompt: parsed.prompt,
+    mode: parsed.mode ?? 'ask',
+    workspaceRoot,
+    approvalMode: policy.approvalMode,
+    planApproval: policy.planApproval,
+    explorationDepth: intensity.depth,
+    windowBudget: { effort: intensity.effort },
+    ...(pinnedPaths ? { pinnedPaths } : {}),
+    ...(requiredSkillIds ? { requiredSkillIds } : {}),
+    ...(requiredMcpServerIds ? { requiredMcpServerIds } : {}),
+  };
+}
+
+async function streamRun(
+  id: string,
+  mode: 'ask' | 'plan' | 'agent',
+  startOrResume: () => ReturnType<MitiiClient['start']>,
+  res: ServerResponse,
+): Promise<void> {
+  res.writeHead(200, {
+    'content-type': 'application/x-ndjson; charset=utf-8',
+    'cache-control': 'no-store',
+    'transfer-encoding': 'chunked',
+  });
+  writeNdjson(res, { op: 'ready', id, mode });
+  try {
+    const run = startOrResume();
+    for await (const event of run.events) {
+      writeNdjson(res, { op: 'event', id, event });
+    }
+    const result = await run.result;
+    writeNdjson(res, { op: 'result', id, result });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    writeNdjson(res, { op: 'error', id, error: 'run_failed', message });
+  }
+  res.end();
+}
+
+export { generateEngineToken };
+
+export interface EngineServerOptions {
+  client: MitiiClient;
+  mode: DesktopHostMode;
+  workspaceRoot: string;
+  host?: string;
+  port?: number;
+  /** Optional bearer token; when set, /v1/* requires Authorization: Bearer … */
+  token?: string;
+}
+
+export interface EngineServerHandle {
+  url: string;
+  host: string;
+  port: number;
+  token: string | undefined;
+  close: () => Promise<void>;
+}
+
+function readJsonBody(req: IncomingMessage): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    const max = 2 * 1024 * 1024;
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > max) {
+        reject(new Error('body_too_large'));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      const raw = Buffer.concat(chunks).toString('utf8').trim();
+      if (!raw) {
+        resolve({});
+        return;
+      }
+      try {
+        resolve(JSON.parse(raw) as unknown);
+      } catch {
+        reject(new Error('invalid_json'));
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
+function sendJson(res: ServerResponse, status: number, body: unknown): void {
+  const payload = JSON.stringify(body);
+  res.writeHead(status, {
+    'content-type': 'application/json; charset=utf-8',
+    'content-length': Buffer.byteLength(payload),
+    'cache-control': 'no-store',
+  });
+  res.end(payload);
+}
+
+function writeNdjson(res: ServerResponse, line: DesktopPromptStreamLine): void {
+  res.write(`${JSON.stringify(line)}\n`);
+}
+
+function authorize(
+  req: IncomingMessage,
+  token: string | undefined,
+): boolean {
+  if (!token) return true;
+  const header = req.headers.authorization;
+  if (typeof header !== 'string') return false;
+  const match = /^Bearer\s+(.+)$/i.exec(header.trim());
+  return Boolean(match && match[1] === token);
+}
+
+function requireAuth(
+  req: IncomingMessage,
+  res: ServerResponse,
+  token: string | undefined,
+): boolean {
+  if (authorize(req, token)) return true;
+  sendJson(res, 401, { op: 'error', error: 'unauthorized' });
+  return false;
+}
+
+function fallbackProviderFromEnv(): DesktopProfileProvider {
+  return {
+    type: process.env.MITII_PROVIDER ?? 'echo',
+    preset: process.env.MITII_PROVIDER_PRESET ?? process.env.MITII_PROVIDER ?? 'echo',
+    baseUrl: process.env.MITII_BASE_URL ?? '',
+    model: process.env.MITII_MODEL ?? '',
+    contextWindow: 0,
+    maximumOutputTokens: 0,
+  };
+}
+
+async function handlePrompt(
+  client: MitiiClient,
+  workspaceRoot: string,
+  body: unknown,
+  res: ServerResponse,
+): Promise<void> {
+  const parsed = parseDesktopPromptBody(body);
+  if ('error' in parsed) {
+    sendJson(res, 400, { op: 'error', error: parsed.error });
+    return;
+  }
+  const id = createPromptId(parsed.id);
+  const mode = parsed.mode ?? 'ask';
+  const record =
+    body && typeof body === 'object' && !Array.isArray(body)
+      ? (body as Record<string, unknown>)
+      : {};
+  const startInput = buildStartInput(record, parsed, workspaceRoot);
+  await streamRun(id, mode, () => client.start(startInput), res);
+}
+
+async function handleResume(
+  client: MitiiClient,
+  body: unknown,
+  res: ServerResponse,
+): Promise<void> {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    sendJson(res, 400, { op: 'error', error: 'expected_object' });
+    return;
+  }
+  const record = body as Record<string, unknown>;
+  const runId = typeof record.runId === 'string' ? record.runId.trim() : '';
+  if (!runId) {
+    sendJson(res, 400, { op: 'error', error: 'runId_required' });
+    return;
+  }
+  const id = createPromptId(
+    typeof record.id === 'string' ? record.id : undefined,
+  );
+  const mode =
+    record.mode === 'plan' || record.mode === 'agent' ? record.mode : 'ask';
+
+  const resume: MitiiResumeInput = {
+    schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+    runId,
+  };
+
+  if (record.approval && typeof record.approval === 'object') {
+    const a = record.approval as Record<string, unknown>;
+    const approvalId = typeof a.approvalId === 'string' ? a.approvalId : '';
+    const decision =
+      a.decision === 'approved' || a.decision === 'denied' ? a.decision : null;
+    if (approvalId && decision) {
+      resume.approval = { approvalId, decision };
+    }
+  }
+  if (typeof record.clarificationAnswer === 'string' && record.clarificationAnswer.trim()) {
+    resume.clarificationAnswer = record.clarificationAnswer.trim();
+  }
+  if (record.planDecision && typeof record.planDecision === 'object') {
+    const p = record.planDecision as Record<string, unknown>;
+    if (
+      p.decision === 'approved' ||
+      p.decision === 'rejected' ||
+      p.decision === 'edited'
+    ) {
+      resume.planDecision = { decision: p.decision };
+    }
+  }
+  if (record.grantExpansion && typeof record.grantExpansion === 'object') {
+    const g = record.grantExpansion as Record<string, unknown>;
+    const expansionId = typeof g.expansionId === 'string' ? g.expansionId : '';
+    const decision =
+      g.decision === 'approved' || g.decision === 'denied' ? g.decision : null;
+    if (expansionId && decision) {
+      resume.grantExpansion = { expansionId, decision };
+    }
+  }
+  if (record.continueDecision && typeof record.continueDecision === 'object') {
+    const c = record.continueDecision as Record<string, unknown>;
+    if (c.decision === 'continue' || c.decision === 'stop') {
+      resume.continueDecision = {
+        decision: c.decision,
+        ...(typeof c.guidance === 'string' && c.guidance.trim()
+          ? { guidance: c.guidance.trim() }
+          : {}),
+      };
+    }
+  }
+  if (typeof record.approvalPreset === 'string') {
+    resume.approvalMode = resolveApprovalPreset(record.approvalPreset)
+      .approvalMode;
+  }
+
+  const hasDecision = Boolean(
+    resume.approval ||
+      resume.clarificationAnswer ||
+      resume.planDecision ||
+      resume.grantExpansion ||
+      resume.continueDecision,
+  );
+  if (!hasDecision) {
+    sendJson(res, 400, { op: 'error', error: 'resume_decision_required' });
+    return;
+  }
+
+  await streamRun(id, mode, () => client.resume(resume), res);
+}
+
+export async function startEngineServer(
+  options: EngineServerOptions,
+): Promise<EngineServerHandle> {
+  const host = options.host ?? '127.0.0.1';
+  const port = options.port ?? 0;
+  const token = options.token;
+  const cwd = options.workspaceRoot;
+
+  const server: Server = createServer((req, res) => {
+    void (async () => {
+      const method = req.method ?? 'GET';
+      const url = new URL(req.url ?? '/', `http://${host}`);
+      const path = url.pathname;
+
+      if (method === 'GET' && path === '/health') {
+        sendJson(res, 200, {
+          ok: true,
+          protocol: MITII_DESKTOP_PROTOCOL,
+          version: MITII_DESKTOP_PROTOCOL_VERSION,
+          mode: options.mode,
+          workspaceRoot: cwd,
+        });
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/prompt') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          const body = await readJsonBody(req);
+          await handlePrompt(options.client, cwd, body, res);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          if (!res.headersSent) {
+            sendJson(res, 400, {
+              op: 'error',
+              error: message === 'invalid_json' ? 'invalid_json' : 'bad_request',
+              message,
+            });
+          } else {
+            writeNdjson(res, {
+              op: 'error',
+              error: 'bad_request',
+              message,
+            });
+            res.end();
+          }
+        }
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/resume') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          const body = await readJsonBody(req);
+          await handleResume(options.client, body, res);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          if (!res.headersSent) {
+            sendJson(res, 400, {
+              op: 'error',
+              error: message === 'invalid_json' ? 'invalid_json' : 'bad_request',
+              message,
+            });
+          } else {
+            writeNdjson(res, {
+              op: 'error',
+              error: 'bad_request',
+              message,
+            });
+            res.end();
+          }
+        }
+        return;
+      }
+
+      if (method === 'GET' && path === '/v1/skills') {
+        if (!requireAuth(req, res, token)) return;
+        const catalog = createFileSystemSkillsCatalog({
+          workspaceRoot: cwd,
+          contentMode: 'metadata',
+        });
+        const skills = await catalog.list();
+        const workspaceIds = new Set(
+          listWorkspaceSkills(cwd).map((s) => s.id),
+        );
+        sendJson(res, 200, {
+          skills: skills.map(
+            (s: { id: string; title: string; description?: string }) => ({
+              id: s.id,
+              title: s.title || s.id,
+              description: s.description ?? '',
+              source: workspaceIds.has(s.id) ? 'workspace' : 'bundled',
+            }),
+          ),
+          workspace: listWorkspaceSkills(cwd),
+        });
+        return;
+      }
+
+      if (method === 'GET' && path === '/v1/skills/workspace') {
+        if (!requireAuth(req, res, token)) return;
+        const id = url.searchParams.get('id')?.trim() ?? '';
+        if (!id) {
+          sendJson(res, 200, { skills: listWorkspaceSkills(cwd) });
+          return;
+        }
+        try {
+          sendJson(res, 200, { skill: readWorkspaceSkill(cwd, id) });
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          sendJson(res, 404, { ok: false, error: message });
+        }
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/skills/workspace') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          const body = (await readJsonBody(req)) as Record<string, unknown>;
+          const saved = writeWorkspaceSkill(cwd, {
+            id: typeof body.id === 'string' ? body.id : '',
+            title: typeof body.title === 'string' ? body.title : undefined,
+            description:
+              typeof body.description === 'string'
+                ? body.description
+                : undefined,
+            body: typeof body.body === 'string' ? body.body : '',
+          });
+          sendJson(res, 200, {
+            ok: true,
+            ...saved,
+            skill: readWorkspaceSkill(cwd, saved.id),
+            draft: defaultNewSkillDraft(),
+          });
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          sendJson(res, 400, { ok: false, error: message });
+        }
+        return;
+      }
+
+      if (method === 'GET' && path === '/v1/mcp') {
+        if (!requireAuth(req, res, token)) return;
+        sendJson(res, 200, listMcpServers(cwd));
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/mcp') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          const body = (await readJsonBody(req)) as Record<string, unknown>;
+          if (typeof body.enabled === 'boolean' && body.serverId == null) {
+            sendJson(res, 200, {
+              ok: true,
+              ...setMcpMasterEnabled(cwd, body.enabled),
+            });
+            return;
+          }
+          const serverId =
+            typeof body.serverId === 'string'
+              ? body.serverId
+              : typeof body.id === 'string'
+                ? body.id
+                : '';
+          if (!serverId || typeof body.enabled !== 'boolean') {
+            sendJson(res, 400, {
+              ok: false,
+              error: 'serverId_and_enabled_required',
+            });
+            return;
+          }
+          sendJson(res, 200, {
+            ok: true,
+            ...setMcpServerEnabled(cwd, serverId, body.enabled),
+            restartRequired: true,
+          });
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          sendJson(res, 400, { ok: false, error: message });
+        }
+        return;
+      }
+
+      if (method === 'GET' && path === '/v1/recipes') {
+        if (!requireAuth(req, res, token)) return;
+        sendJson(res, 200, {
+          recipes: listRecipes(cwd),
+          draft: defaultNewRecipeDraft(),
+        });
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/recipes') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          const body = (await readJsonBody(req)) as Record<string, unknown>;
+          const saved = writeRecipe(cwd, body.recipe ?? body);
+          sendJson(res, 200, { ok: true, ...saved });
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          sendJson(res, 400, { ok: false, error: message });
+        }
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/recipes/run') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          const body = (await readJsonBody(req)) as Record<string, unknown>;
+          const id = typeof body.id === 'string' ? body.id : '';
+          const params =
+            body.params && typeof body.params === 'object'
+              ? (body.params as Record<string, string>)
+              : {};
+          const note =
+            typeof body.note === 'string' ? body.note : undefined;
+          const spec = loadDesktopRecipeSpec(cwd, id);
+          const compiled = await compileRecipeToStartInput(spec, {
+            workspaceRoot: cwd,
+            params,
+            userNote: note,
+          });
+          sendJson(res, 200, { ok: true, compiled });
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          sendJson(res, 400, { ok: false, error: message });
+        }
+        return;
+      }
+
+      if (method === 'GET' && path === '/v1/workspace/tree') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          const rel = url.searchParams.get('path') ?? '';
+          const entries = await listWorkspaceDir(cwd, rel);
+          sendJson(res, 200, { path: rel, entries });
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          sendJson(res, 400, { ok: false, error: message });
+        }
+        return;
+      }
+
+      if (method === 'GET' && path === '/v1/workspace/search') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          const q = url.searchParams.get('q') ?? '';
+          const paths = await searchWorkspacePaths(cwd, q, 40);
+          sendJson(res, 200, { query: q, paths });
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          sendJson(res, 400, { ok: false, error: message });
+        }
+        return;
+      }
+
+      if (method === 'GET' && path === '/v1/workspace/file') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          const rel = url.searchParams.get('path') ?? '';
+          const file = await readWorkspaceFile(cwd, rel);
+          sendJson(res, 200, file);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          sendJson(res, 400, { ok: false, error: message });
+        }
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/workspace/file') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          const body = (await readJsonBody(req)) as Record<string, unknown>;
+          const rel = typeof body.path === 'string' ? body.path : '';
+          const content = typeof body.content === 'string' ? body.content : '';
+          const saved = await writeWorkspaceFile(cwd, rel, content);
+          sendJson(res, 200, { ok: true, ...saved });
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          sendJson(res, 400, { ok: false, error: message });
+        }
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/workspace/rename') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          const body = (await readJsonBody(req)) as Record<string, unknown>;
+          const rel = typeof body.path === 'string' ? body.path : '';
+          const newName = typeof body.newName === 'string' ? body.newName : '';
+          const renamed = await renameWorkspaceEntry(cwd, rel, newName);
+          sendJson(res, 200, { ok: true, ...renamed });
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          sendJson(res, 400, { ok: false, error: message });
+        }
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/workspace/delete') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          const body = (await readJsonBody(req)) as Record<string, unknown>;
+          const paths = Array.isArray(body.paths)
+            ? body.paths.filter((p): p is string => typeof p === 'string')
+            : typeof body.path === 'string'
+              ? [body.path]
+              : [];
+          const result = await deleteWorkspaceEntries(cwd, paths);
+          sendJson(res, 200, { ok: true, ...result });
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          sendJson(res, 400, { ok: false, error: message });
+        }
+        return;
+      }
+
+      if (method === 'GET' && path === '/v1/workspace/absolute') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          const rel = url.searchParams.get('path') ?? '';
+          sendJson(res, 200, {
+            path: rel,
+            absolute: toAbsoluteWorkspacePath(cwd, rel),
+          });
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          sendJson(res, 400, { ok: false, error: message });
+        }
+        return;
+      }
+
+      if (method === 'GET' && path === '/v1/git/status') {
+        if (!requireAuth(req, res, token)) return;
+        sendJson(res, 200, await getGitStatus(cwd));
+        return;
+      }
+
+      if (method === 'GET' && path === '/v1/git/diff') {
+        if (!requireAuth(req, res, token)) return;
+        const rel = url.searchParams.get('path') ?? '';
+        sendJson(res, 200, await getGitFileDiff(cwd, rel));
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/git/file-changes') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          const body = (await readJsonBody(req)) as { paths?: unknown };
+          const paths = Array.isArray(body.paths)
+            ? body.paths.filter((p): p is string => typeof p === 'string')
+            : [];
+          sendJson(res, 200, await getGitFileChangesSummary(cwd, paths));
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          sendJson(res, 400, { ok: false, error: message });
+        }
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/provider/test') {
+        if (!requireAuth(req, res, token)) return;
+        const body = (await readJsonBody(req)) as Record<string, unknown>;
+        const type = String(body.type ?? process.env.MITII_PROVIDER ?? 'echo');
+        const baseUrl =
+          typeof body.baseUrl === 'string'
+            ? body.baseUrl
+            : process.env.MITII_BASE_URL;
+        const model =
+          typeof body.model === 'string'
+            ? body.model
+            : (process.env.MITII_MODEL ?? '');
+        const apiKey =
+          typeof body.apiKey === 'string' && body.apiKey.trim()
+            ? body.apiKey.trim()
+            : process.env.MITII_API_KEY ??
+              process.env.MITII_ANTHROPIC_API_KEY ??
+              process.env.MITII_GEMINI_API_KEY;
+        const result = await testProviderConnection({
+          type,
+          ...(baseUrl ? { baseUrl } : {}),
+          model,
+          ...(apiKey ? { apiKey } : {}),
+        });
+        sendJson(res, 200, result);
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/provider/models') {
+        if (!requireAuth(req, res, token)) return;
+        const body = (await readJsonBody(req)) as Record<string, unknown>;
+        const type = String(body.type ?? process.env.MITII_PROVIDER ?? 'echo');
+        const baseUrl =
+          typeof body.baseUrl === 'string'
+            ? body.baseUrl
+            : process.env.MITII_BASE_URL;
+        const apiKey =
+          typeof body.apiKey === 'string' && body.apiKey.trim()
+            ? body.apiKey.trim()
+            : process.env.MITII_API_KEY ??
+              process.env.MITII_ANTHROPIC_API_KEY ??
+              process.env.MITII_GEMINI_API_KEY;
+        const models = await listProviderModels({
+          type,
+          ...(baseUrl ? { baseUrl } : {}),
+          ...(apiKey ? { apiKey } : {}),
+        });
+        sendJson(res, 200, { models });
+        return;
+      }
+
+      if (method === 'GET' && path === '/v1/profiles') {
+        if (!requireAuth(req, res, token)) return;
+        const hasSecret = Boolean(process.env.MITII_API_KEY?.trim());
+        const file = readProfiles(cwd, fallbackProviderFromEnv(), {
+          hasSecret,
+          secretHash: hashSecret(process.env.MITII_API_KEY),
+        });
+        sendJson(res, 200, file);
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/profiles') {
+        if (!requireAuth(req, res, token)) return;
+        const body = (await readJsonBody(req)) as Record<string, unknown>;
+        const action = String(body.action ?? 'upsert');
+        let file = readProfiles(cwd, fallbackProviderFromEnv(), {
+          hasSecret: Boolean(process.env.MITII_API_KEY?.trim()),
+          secretHash: hashSecret(process.env.MITII_API_KEY),
+        });
+
+        if (action === 'activate') {
+          const id = String(body.profileId ?? '');
+          const next = activateProfile(file, id);
+          if (!next) {
+            sendJson(res, 404, { ok: false, error: 'profile_not_found' });
+            return;
+          }
+          writeProfiles(cwd, next);
+          const active = next.profiles.find((p) => p.id === id)!;
+          sendJson(res, 200, { ok: true, profiles: next, active });
+          return;
+        }
+
+        if (action === 'delete') {
+          const id = String(body.profileId ?? '');
+          const next = deleteProfile(file, id);
+          if (!next) {
+            sendJson(res, 400, {
+              ok: false,
+              error: 'cannot_delete_last_or_missing',
+            });
+            return;
+          }
+          writeProfiles(cwd, next);
+          sendJson(res, 200, { ok: true, profiles: next });
+          return;
+        }
+
+        const provider = (body.provider ?? {}) as Record<string, unknown>;
+        const profile = profileFromProvider(
+          {
+            type: String(provider.type ?? 'echo'),
+            preset:
+              typeof provider.preset === 'string'
+                ? provider.preset
+                : String(provider.type ?? 'echo'),
+            baseUrl: String(provider.baseUrl ?? ''),
+            model: String(provider.model ?? ''),
+            contextWindow: Number(provider.contextWindow) || 0,
+            maximumOutputTokens: Number(provider.maximumOutputTokens) || 0,
+          },
+          {
+            id: typeof body.id === 'string' ? body.id : undefined,
+            name: typeof body.name === 'string' ? body.name : 'Profile',
+            hasSecret: Boolean(body.hasSecret ?? process.env.MITII_API_KEY),
+            secretHash: hashSecret(
+              typeof body.apiKey === 'string'
+                ? body.apiKey
+                : process.env.MITII_API_KEY,
+            ),
+          },
+        );
+        file = upsertProfile(file, profile);
+        writeProfiles(cwd, file);
+        sendJson(res, 200, { ok: true, profiles: file, profile });
+        return;
+      }
+
+      if (method === 'GET' && path === '/v1/history') {
+        if (!requireAuth(req, res, token)) return;
+        sendJson(res, 200, loadHistory(cwd));
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/history') {
+        if (!requireAuth(req, res, token)) return;
+        const body = (await readJsonBody(req)) as Record<string, unknown>;
+        const action = String(body.action ?? 'save');
+        let store = loadHistory(cwd);
+
+        if (action === 'new') {
+          store = createThread(
+            store,
+            typeof body.title === 'string' ? body.title : 'New chat',
+          );
+          saveHistory(cwd, store);
+          sendJson(res, 200, store);
+          return;
+        }
+
+        if (action === 'delete') {
+          store = deleteThread(store, String(body.threadId ?? ''));
+          saveHistory(cwd, store);
+          sendJson(res, 200, store);
+          return;
+        }
+
+        if (action === 'activate') {
+          const threadId = String(body.threadId ?? '');
+          if (!store.threads.some((t) => t.id === threadId)) {
+            sendJson(res, 404, { error: 'thread_not_found' });
+            return;
+          }
+          store = { ...store, activeThreadId: threadId };
+          saveHistory(cwd, store);
+          sendJson(res, 200, store);
+          return;
+        }
+
+        // save messages
+        const threadId = String(body.threadId ?? store.activeThreadId ?? '');
+        if (!threadId) {
+          store = createThread(store);
+        }
+        const id = threadId || store.activeThreadId!;
+        const messages = Array.isArray(body.messages)
+          ? (body.messages as DesktopChatMessage[])
+          : [];
+        store = upsertThreadMessages(
+          store,
+          id,
+          messages,
+          typeof body.title === 'string' ? body.title : undefined,
+        );
+        saveHistory(cwd, store);
+        sendJson(res, 200, store);
+        return;
+      }
+
+      if (method === 'GET' && path === '/v1/index/status') {
+        if (!requireAuth(req, res, token)) return;
+        sendJson(res, 200, getIndexStatus(cwd));
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/index/reindex') {
+        if (!requireAuth(req, res, token)) return;
+        const body = (await readJsonBody(req)) as Record<string, unknown>;
+        const maximumFiles =
+          typeof body.maximumFiles === 'number' && body.maximumFiles > 0
+            ? Math.floor(body.maximumFiles)
+            : undefined;
+        const semantic = body.semanticIndex as
+          | {
+              enabled?: boolean;
+              source?: string;
+              model?: string;
+              dimensions?: number;
+              normalized?: boolean;
+              baseUrl?: string;
+            }
+          | undefined;
+        const result = await reindexWorkspace({
+          workspaceRoot: cwd,
+          maximumFiles,
+          force: body.force !== false,
+          semanticIndex: semantic
+            ? {
+                enabled: semantic.enabled !== false,
+                source: semantic.source as never,
+                model: semantic.model ?? '',
+                dimensions: semantic.dimensions ?? 0,
+                normalized: semantic.normalized !== false,
+                baseUrl: semantic.baseUrl ?? process.env.MITII_BASE_URL ?? '',
+                apiKey: process.env.MITII_API_KEY,
+              }
+            : {
+                enabled: true,
+                source: 'bundled',
+                model: '',
+                dimensions: 0,
+                normalized: true,
+                baseUrl: '',
+              },
+        });
+        sendJson(res, 200, { ...result, statusSnapshot: getIndexStatus(cwd) });
+        return;
+      }
+
+      sendJson(res, 404, { op: 'error', error: 'not_found' });
+    })().catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!res.headersSent) {
+        sendJson(res, 500, { op: 'error', error: 'internal', message });
+      } else {
+        res.end();
+      }
+    });
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(port, host, () => resolve());
+  });
+
+  const address = server.address();
+  if (!address || typeof address === 'string') {
+    server.close();
+    throw new Error('engine_bind_failed');
+  }
+
+  const url = `http://${host}:${address.port}`;
+  if (!isAllowedEngineBaseUrl(url)) {
+    server.close();
+    throw new Error(`engine_url_not_allowed:${url}`);
+  }
+
+  return {
+    url,
+    host,
+    port: address.port,
+    token,
+    close: () =>
+      new Promise((resolve, reject) => {
+        server.close((err) => (err ? reject(err) : resolve()));
+      }),
+  };
+}

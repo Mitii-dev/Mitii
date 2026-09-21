@@ -29,5 +29,9 @@
   ],
   "mitii.onboarding.completed": true,
   "mitii.provider.model": "my-qwen-64k:latest",
-  "mitii.provider.contextWindow": 45000
+  "mitii.provider.contextWindow": 45000,
+  "mitii.safety.approvalMode": "pilot",
+  "mitii.ui.modeDefaults.ask.approvalMode": "pilot",
+  "mitii.ui.modeDefaults.ask.thoroughness": "high",
+  "mitii.ui.modeDefaults.ask.depth": "deep"
 }

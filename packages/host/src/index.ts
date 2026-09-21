@@ -1,5 +1,5 @@
 /**
- * @mitii/host — shared host kit for Mitii apps (CLI + VS Code).
+ * @mitii/host — shared host kit for Mitii apps (CLI + VS Code + Desktop).
  *
  * Dependency direction:
  *   apps → @mitii/host → @mitii/sdk → @mitii/v8
