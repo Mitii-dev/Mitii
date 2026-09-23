@@ -299,6 +299,58 @@ describe('semantic index enablement', () => {
     ).toBeUndefined();
   });
 
+  it('aligns empty desktop defaults to the persisted bundled profile', () => {
+    const aligned = alignSemanticSettingsWithPersistedProfile(
+      {
+        enabled: true,
+        source: 'bundled',
+        baseUrl: '',
+        model: '',
+        dimensions: 0,
+        normalized: true,
+      },
+      {
+        id: 'bundled:all-MiniLM-L6-v2:384:normalized',
+        providerId: 'bundled',
+        modelId: 'all-MiniLM-L6-v2',
+        dimensions: 384,
+        normalized: true,
+      },
+    );
+
+    expect(aligned).toEqual(
+      expect.objectContaining({
+        source: 'bundled',
+        backend: 'bundled',
+        model: 'all-MiniLM-L6-v2',
+        dimensions: 384,
+        normalized: true,
+      }),
+    );
+  });
+
+  it('rejects an explicit model that differs from the persisted profile', () => {
+    expect(
+      alignSemanticSettingsWithPersistedProfile(
+        {
+          enabled: true,
+          source: 'ollama',
+          baseUrl: 'http://localhost:11434/v1',
+          model: 'nomic-embed-text',
+          dimensions: 768,
+          normalized: true,
+        },
+        {
+          id: 'ollama:jina/jina-embeddings-v2-base-code:768:normalized',
+          providerId: 'ollama',
+          modelId: 'jina/jina-embeddings-v2-base-code',
+          dimensions: 768,
+          normalized: true,
+        },
+      ),
+    ).toBeUndefined();
+  });
+
   it('explains Ollama probe failures with a pull hint', async () => {
     const result = await probeEmbeddingProvider({
       enabled: true,

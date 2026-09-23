@@ -8,7 +8,19 @@ import {
 import {
   buildConversationCarry,
   collectStructuredCarryFromThread,
+  compactActivityForHistory,
+  compactFileChangesForHistory,
+  enrichAssistantCarryText,
 } from '../shared/conversationCarry.js';
+import {
+  extractPlanFromRunResult,
+  resolvePlanDisplayText,
+  resolvePlanHandoff,
+  resolvePlanStrategyHandoff,
+  type PlanArtifact,
+  type PlanStrategyDecision,
+  type TaskList,
+} from '../shared/planFormat.js';
 import type {
   DesktopShellSnapshot,
 } from '../shared/bridge.js';
@@ -18,9 +30,11 @@ import type {
 } from '../shared/protocol.js';
 import {
   DEFAULT_DESKTOP_SETTINGS,
+  PROVIDER_PRESET_OPTIONS,
   SETTINGS_TABS,
   mergeDesktopSettings,
   normalizeDesktopProviderModel,
+  type DesktopProviderPreset,
   type DesktopSettings,
   type SettingsTabId,
 } from '../shared/settings.js';
@@ -32,6 +46,7 @@ import {
   collectMutatedPathsFromEvent,
   type DesktopFileChanges,
 } from '../shared/fileChanges.js';
+import type { ReviewFinding } from '../shared/reviewFindings.js';
 import { breakdownFromPromptReady } from '../shared/contextUsage.js';
 import logoUrl from './assets/mitii-logo.svg';
 import { ActivityBarButton } from './ActivityBarButton.js';
@@ -44,6 +59,7 @@ import {
   IconFiles,
   IconGit,
   IconMcp,
+  IconModes,
   IconPlus,
   IconProvider,
   IconRecipes,
@@ -61,6 +77,7 @@ import {
 import {
   extractAssistantText,
   deleteHistoryThread,
+  fetchCheckpoints,
   fetchFileChanges,
   fetchHistory,
   fetchIndexStatus,
@@ -70,18 +87,35 @@ import {
   fetchSkills,
   finalizeAssistantText,
   getDesktopBridge,
+  listAutomations,
+  pauseAutomation,
+  pauseIndexing,
   postHistory,
   postProfiles,
   reindexWorkspace,
+  restoreCheckpoint,
+  resumeAutomation,
   searchWorkspacePaths,
   shortPath,
   streamPrompt,
   streamResume,
+  triggerAutomation,
   workspaceLabel,
 } from './api.js';
+import type {
+  AutomationRunView,
+  AutomationSpecView,
+} from './AutomationsPanel.js';
 import { ChatHistoryNav } from './ChatHistoryNav.js';
+import { ComposerReviewStrip } from './ComposerReviewStrip.js';
 import { IndexStatusChip } from './IndexStatusChip.js';
 import { FileChangesCard } from './FileChangesCard.js';
+import { OnboardingPanel } from './OnboardingPanel.js';
+import { PendingPlanBanner } from './PendingPlanBanner.js';
+import {
+  PlanFollowStrip,
+  type PlanFollowView,
+} from './PlanFollowStrip.js';
 import { IdentityPicker } from './IdentityPicker.js';
 import { ApprovalCard } from './ApprovalCard.js';
 import {
@@ -110,6 +144,13 @@ import {
 
 type View = 'chat' | 'settings';
 type ChatLayout = 'chat' | 'code';
+type WorkspaceSide =
+  | 'explorer'
+  | 'git'
+  | 'mcp'
+  | 'skills'
+  | 'recipes'
+  | 'automations';
 
 interface ChatMessage {
   id: string;
@@ -127,6 +168,80 @@ interface HistoryThread {
   updatedAt: string;
   messages: ChatMessage[];
   tokenUsage?: TokenUsageState;
+  pendingPlan?: PlanArtifact;
+  pendingPlanStrategy?: PlanStrategyDecision;
+  pendingTaskList?: TaskList;
+}
+
+function planArtifactToFollowView(
+  plan: PlanArtifact | null,
+  running: boolean,
+): PlanFollowView | null {
+  if (!plan) return null;
+  const steps: NonNullable<PlanFollowView['steps']> = [];
+  for (const phase of plan.phases) {
+    for (const step of phase.steps) {
+      steps.push({
+        id: step.id,
+        title: `${phase.name}: ${step.intent}`,
+        status: 'pending',
+        detail: step.actionSummary,
+      });
+      if (steps.length >= 24) break;
+    }
+    if (steps.length >= 24) break;
+  }
+  if (steps.length === 0) {
+    steps.push({
+      id: 'objective',
+      title: plan.objective,
+      status: 'pending',
+    });
+  }
+  if (running && steps[0]) {
+    steps[0] = { ...steps[0], status: 'active' };
+  }
+  return {
+    objective: plan.objective,
+    title: plan.objective.slice(0, 120),
+    steps,
+  };
+}
+
+function compactMessagesForHistory(messages: ChatMessage[]): ChatMessage[] {
+  return messages.map(({ streaming: _s, ...rest }) => {
+    if (rest.role !== 'assistant') return rest;
+    const changedPaths = rest.fileChanges?.files.map((f) => f.path) ?? [];
+    const compactedChanges = rest.fileChanges
+      ? compactFileChangesForHistory({
+          runId: rest.fileChanges.runId ?? rest.id,
+          files: rest.fileChanges.files,
+          totalAdditions: rest.fileChanges.totalAdditions,
+          totalDeletions: rest.fileChanges.totalDeletions,
+        })
+      : undefined;
+    const next: ChatMessage = {
+      ...rest,
+      text: enrichAssistantCarryText({
+        answer: rest.text,
+        changedPaths,
+      }),
+    };
+    if (rest.activity) {
+      next.activity = compactActivityForHistory(
+        rest.activity,
+      ) as DesktopActivityItem[];
+    }
+    if (compactedChanges) {
+      next.fileChanges = {
+        ...compactedChanges,
+        ...(rest.fileChanges?.runId
+          ? { runId: rest.fileChanges.runId }
+          : {}),
+      };
+    }
+    return next;
+  });
 }
 
 function serializeTokenUsage(usage: TokenUsageState): TokenUsageState {
@@ -245,9 +360,7 @@ export function App() {
     path: string;
     view?: 'file' | 'diff';
   } | null>(null);
-  const [workspaceSide, setWorkspaceSide] = useState<
-    'explorer' | 'git' | 'mcp' | 'skills' | 'recipes'
-  >('explorer');
+  const [workspaceSide, setWorkspaceSide] = useState<WorkspaceSide>('explorer');
   const [settingsTab, setSettingsTab] = useState<SettingsTabId>('profiles');
   const [picker, setPicker] = useState<'workspace' | 'profile' | null>(null);
   const [gitBadge, setGitBadge] = useState(0);
@@ -281,9 +394,26 @@ export function App() {
   const [modelsLoading, setModelsLoading] = useState(false);
   const modelsProfileRef = useRef<string>('');
   const [suspension, setSuspension] = useState<DesktopSuspension | null>(null);
+  const [pendingPlan, setPendingPlan] = useState<PlanArtifact | null>(null);
+  const [pendingPlanStrategy, setPendingPlanStrategy] =
+    useState<PlanStrategyDecision | null>(null);
+  const [pendingTaskList, setPendingTaskList] = useState<TaskList | null>(null);
   const [pinnedPaths, setPinnedPaths] = useState<string[]>([]);
   const [pinnedSkillIds, setPinnedSkillIds] = useState<string[]>([]);
   const [pinnedMcpIds, setPinnedMcpIds] = useState<string[]>([]);
+  const [reviewFindings, setReviewFindings] = useState<ReviewFinding[]>([]);
+  const [reviewDismissed, setReviewDismissed] = useState(false);
+  const [editorContext, setEditorContext] = useState<{
+    activePath: string | null;
+    openPaths: string[];
+  }>({ activePath: null, openPaths: [] });
+  const [automationSpecs, setAutomationSpecs] = useState<AutomationSpecView[]>(
+    [],
+  );
+  const [automationRuns, setAutomationRuns] = useState<AutomationRunView[]>([]);
+  const [automationsLoading, setAutomationsLoading] = useState(false);
+  const [automationsError, setAutomationsError] = useState<string | null>(null);
+  const indexSaveTimerRef = useRef<number | null>(null);
   const [skills, setSkills] = useState<
     Array<{ id: string; title: string; description: string }>
   >([]);
@@ -405,6 +535,9 @@ export function App() {
             setHistory(threads);
             setThreadId(activeId);
             setMessages([]);
+            setPendingPlan(null);
+            setPendingPlanStrategy(null);
+            setPendingTaskList(null);
             setTokenUsage(emptyTokenUsage());
             setSuspension(null);
             setView('chat');
@@ -451,8 +584,30 @@ export function App() {
           return active ? (active.messages as ChatMessage[]) : current;
         });
         if (workspaceChanged || pending) {
+          setPendingPlan(
+            (active?.pendingPlan as PlanArtifact | undefined) ?? null,
+          );
+          setPendingPlanStrategy(
+            (active?.pendingPlanStrategy as
+              | PlanStrategyDecision
+              | undefined) ?? null,
+          );
+          setPendingTaskList(
+            (active?.pendingTaskList as TaskList | undefined) ?? null,
+          );
           setTokenUsage(tokenUsageFromThread(active));
         } else {
+          if (active?.pendingPlan) {
+            setPendingPlan(active.pendingPlan as PlanArtifact);
+            setPendingPlanStrategy(
+              (active.pendingPlanStrategy as
+                | PlanStrategyDecision
+                | undefined) ?? null,
+            );
+            setPendingTaskList(
+              (active.pendingTaskList as TaskList | undefined) ?? null,
+            );
+          }
           setTokenUsage((current) => {
             if (
               current.sessionTotal > 0 ||
@@ -626,6 +781,12 @@ export function App() {
     nextMessages: ChatMessage[],
     activeId?: string,
     usage?: TokenUsageState,
+    planFields?: {
+      pendingPlan?: PlanArtifact | null;
+      pendingPlanStrategy?: PlanStrategyDecision | null;
+      pendingTaskList?: TaskList | null;
+      clearPendingPlan?: boolean;
+    },
   ) => {
     if (!engine) return;
     const tokenSnapshot = serializeTokenUsage(
@@ -636,9 +797,22 @@ export function App() {
       body: {
         action: 'save',
         threadId: activeId ?? threadId,
-        messages: nextMessages.map(({ streaming: _s, ...rest }) => rest),
+        messages: compactMessagesForHistory(nextMessages),
         title: nextMessages.find((m) => m.role === 'user')?.text.slice(0, 48),
         tokenUsage: tokenSnapshot,
+        ...(planFields?.clearPendingPlan
+          ? { clearPendingPlan: true }
+          : {
+              ...(planFields && 'pendingPlan' in planFields
+                ? { pendingPlan: planFields.pendingPlan }
+                : {}),
+              ...(planFields && 'pendingPlanStrategy' in planFields
+                ? { pendingPlanStrategy: planFields.pendingPlanStrategy }
+                : {}),
+              ...(planFields && 'pendingTaskList' in planFields
+                ? { pendingTaskList: planFields.pendingTaskList }
+                : {}),
+            }),
       },
     });
     setHistory(store.threads as HistoryThread[]);
@@ -669,16 +843,23 @@ export function App() {
     async (
       lines: AsyncIterable<DesktopPromptStreamLine>,
       assistantId: string,
+      options?: { formatPlanAnswer?: boolean },
     ): Promise<{
       assistant: string;
       activity: DesktopActivityItem[];
       suspension: DesktopSuspension | null;
       mutatedPaths: string[];
       tokenUsage: TokenUsageState;
+      plan?: PlanArtifact;
+      planStrategy?: PlanStrategyDecision;
+      taskList?: TaskList;
     }> => {
       let assistant = '';
       let activity: DesktopActivityItem[] = [];
       let nextSuspension: DesktopSuspension | null = null;
+      let resultPlan: PlanArtifact | undefined;
+      let resultPlanStrategy: PlanStrategyDecision | undefined;
+      let resultTaskList: TaskList | undefined;
       const mutated = new Set<string>();
       let usage: TokenUsageState = { ...tokenUsageRef.current, live: true };
 
@@ -742,6 +923,16 @@ export function App() {
           if (nextSuspension) {
             setSuspension(nextSuspension);
           }
+          const extracted = extractPlanFromRunResult(line.result);
+          resultPlan = extracted.plan;
+          resultPlanStrategy = extracted.planStrategy;
+          resultTaskList = extracted.taskList;
+          if (options?.formatPlanAnswer) {
+            assistant = resolvePlanDisplayText({
+              answer: assistant,
+              ...(resultPlan ? { plan: resultPlan } : {}),
+            });
+          }
           const activitySnapshot = activity;
           setMessages((prev) =>
             prev.map((m) =>
@@ -765,6 +956,9 @@ export function App() {
         suspension: nextSuspension,
         mutatedPaths: [...mutated],
         tokenUsage: { ...usage, live: false },
+        ...(resultPlan ? { plan: resultPlan } : {}),
+        ...(resultPlanStrategy ? { planStrategy: resultPlanStrategy } : {}),
+        ...(resultTaskList ? { taskList: resultTaskList } : {}),
       };
     },
     [],
@@ -798,6 +992,9 @@ export function App() {
     setHistoryLoading(true);
     setTokenUsage(emptyTokenUsage());
     setSuspension(null);
+    setPendingPlan(null);
+    setPendingPlanStrategy(null);
+    setPendingTaskList(null);
     setPinnedPaths([]);
     setPinnedSkillIds([]);
     setPinnedMcpIds([]);
@@ -840,6 +1037,52 @@ export function App() {
       setIndexProgress(null);
     }
   }, [engine]);
+
+  const pauseIndex = useCallback(async () => {
+    if (!engine) return;
+    try {
+      const result = await pauseIndexing(engine);
+      pushIndexStream(result.message || 'Indexing paused');
+      setIndexIndexing(false);
+      setIndexProgress(null);
+      await refreshIndexStatus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, [engine, pushIndexStream, refreshIndexStatus]);
+
+  const onFileSavedDebounced = useCallback(
+    (_path: string) => {
+      if (indexSaveTimerRef.current != null) {
+        window.clearTimeout(indexSaveTimerRef.current);
+      }
+      indexSaveTimerRef.current = window.setTimeout(() => {
+        indexSaveTimerRef.current = null;
+        void refreshIndexStatus();
+      }, 750);
+    },
+    [refreshIndexStatus],
+  );
+
+  const refreshAutomations = useCallback(async () => {
+    if (!engine) return;
+    setAutomationsLoading(true);
+    setAutomationsError(null);
+    try {
+      const data = await listAutomations(engine);
+      setAutomationSpecs(data.specs);
+      setAutomationRuns(data.runs);
+    } catch (err) {
+      setAutomationsError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAutomationsLoading(false);
+    }
+  }, [engine]);
+
+  useEffect(() => {
+    if (workspaceSide !== 'automations' || !engine) return;
+    void refreshAutomations();
+  }, [workspaceSide, engine, refreshAutomations]);
 
   const runReindex = useCallback(async () => {
     if (!engine || !snapshot) return;
@@ -1123,6 +1366,14 @@ export function App() {
     }
   };
 
+  const completeOnboarding = async () => {
+    const next = mergeDesktopSettings({
+      ...settings,
+      onboarding: { ...settings.onboarding, completed: true },
+    });
+    await onSaveSettings({ settings: next });
+  };
+
   const onSelectModel = async (model: string) => {
     if (!snapshot || !model.trim()) return;
     const normalized = normalizeDesktopProviderModel(
@@ -1290,6 +1541,47 @@ export function App() {
     }
   };
 
+  const onCreateProfileFromPreset = async (presetId: DesktopProviderPreset) => {
+    if (!engine) return;
+    const preset = PROVIDER_PRESET_OPTIONS.find((p) => p.id === presetId);
+    if (!preset) return;
+    setBusy(true);
+    try {
+      const name =
+        preset.label.replace(/\s*\(.*\)\s*$/, '').trim() || preset.label;
+      await postProfiles({
+        ...engine,
+        body: {
+          action: 'upsert',
+          name,
+          provider: {
+            type: preset.type,
+            preset: preset.id,
+            baseUrl: preset.baseUrl,
+            model: preset.model ?? '',
+            contextWindow: 0,
+            maximumOutputTokens: 0,
+          },
+          hasSecret: false,
+        },
+      });
+      const store = await fetchProfiles(engine);
+      setProfiles(store.profiles as ProfileRow[]);
+      const created =
+        store.profiles.find((p) => p.name === name) ??
+        store.profiles.find((p) => p.id === store.activeProfileId);
+      if (created) {
+        await onSelectProfile(created.id);
+        return;
+      }
+      setActiveProfileId(store.activeProfileId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const onNewChat = async () => {
     setSuspension(null);
     if (threadId) {
@@ -1309,6 +1601,9 @@ export function App() {
     setHistory(store.threads as HistoryThread[]);
     setThreadId(store.activeThreadId);
     setMessages([]);
+    setPendingPlan(null);
+    setPendingPlanStrategy(null);
+    setPendingTaskList(null);
     setTokenUsage(emptyTokenUsage());
     setView('chat');
   };
@@ -1328,6 +1623,16 @@ export function App() {
     setThreadId(id);
     const active = threads.find((t) => t.id === id);
     setMessages((active?.messages ?? []) as ChatMessage[]);
+    setPendingPlan(
+      (active?.pendingPlan as PlanArtifact | undefined) ?? null,
+    );
+    setPendingPlanStrategy(
+      (active?.pendingPlanStrategy as PlanStrategyDecision | undefined) ??
+        null,
+    );
+    setPendingTaskList(
+      (active?.pendingTaskList as TaskList | undefined) ?? null,
+    );
     setTokenUsage(
       tokenUsageFromThread(
         active,
@@ -1518,8 +1823,16 @@ export function App() {
     ],
   );
 
-  const onSubmit = useCallback(async () => {
-    const prompt = input.trim();
+  const onSubmit = useCallback(async (override?: {
+    prompt?: string;
+    mode?: DesktopAgentMode;
+    approvedPlan?: PlanArtifact;
+    approvedPlanStrategy?: PlanStrategyDecision | null;
+    taskList?: TaskList | null;
+    clearPendingPlanAfter?: boolean;
+  }) => {
+    const prompt = (override?.prompt ?? input).trim();
+    const runMode = override?.mode ?? mode;
     if (!prompt || !snapshot || busy) return;
     if (needsModel) {
       setError('Select a model in Settings, then Save.');
@@ -1529,17 +1842,41 @@ export function App() {
     setBusy(true);
     setError(null);
     setSuspension(null);
-    setInput('');
+    setReviewDismissed(false);
+    if (!override?.prompt) setInput('');
+
+    const autoPins: string[] = [];
+    const toggles = settings.ui.contextToggles;
+    if (toggles.editor && editorContext.activePath) {
+      autoPins.push(editorContext.activePath);
+    }
+    if (toggles.openTabs) {
+      for (const path of editorContext.openPaths) {
+        if (!autoPins.includes(path)) autoPins.push(path);
+      }
+    } else if (
+      toggles.editor &&
+      editorContext.openPaths.length === 1 &&
+      editorContext.openPaths[0] &&
+      !autoPins.includes(editorContext.openPaths[0])
+    ) {
+      autoPins.push(editorContext.openPaths[0]);
+    }
+    const submitPinnedPaths = [
+      ...pinnedPaths,
+      ...autoPins.filter((p) => !pinnedPaths.includes(p)),
+    ].slice(0, 32);
+
     const userId = `u_${Date.now()}`;
     const assistantId = `a_${Date.now()}`;
     const nextMessages: ChatMessage[] = [
       ...messages,
-      { id: userId, role: 'user', text: prompt, mode },
+      { id: userId, role: 'user', text: prompt, mode: runMode },
       {
         id: assistantId,
         role: 'assistant',
         text: '',
-        mode,
+        mode: runMode,
         activity: [],
         streaming: true,
       },
@@ -1558,13 +1895,37 @@ export function App() {
         setHistory(created.threads as HistoryThread[]);
       }
 
+      const approvedPlan =
+        override?.approvedPlan ??
+        resolvePlanHandoff({
+          mode: runMode,
+          pendingPlan,
+        });
+      const approvedPlanStrategy =
+        override && 'approvedPlanStrategy' in override
+          ? override.approvedPlanStrategy ?? undefined
+          : resolvePlanStrategyHandoff({
+              mode: runMode,
+              pendingPlanStrategy,
+            });
+      const taskList =
+        override && 'taskList' in override
+          ? override.taskList ?? undefined
+          : runMode === 'agent'
+            ? pendingTaskList ?? undefined
+            : undefined;
+
       const conversation = buildConversationCarry({
         messages: messages.map((m) => ({ role: m.role, text: m.text })),
         currentPrompt: prompt,
-        mode,
+        mode: runMode,
         structured:
-          mode === 'agent'
-            ? collectStructuredCarryFromThread({ messages })
+          runMode === 'agent'
+            ? collectStructuredCarryFromThread({
+                messages,
+                pendingPlan: approvedPlan ?? pendingPlan,
+                pendingTaskList: taskList ?? pendingTaskList,
+              })
             : undefined,
       });
 
@@ -1574,22 +1935,31 @@ export function App() {
         suspension: nextSuspension,
         mutatedPaths,
         tokenUsage: nextUsage,
+        plan: resultPlan,
+        planStrategy: resultPlanStrategy,
+        taskList: resultTaskList,
       } = await consumeStream(
         streamPrompt({
           baseUrl: snapshot.engineBaseUrl,
           prompt,
-          mode,
+          mode: runMode,
           model: snapshot.settings.provider.model,
           sessionId: activeThread,
           approvalPreset: approvalMode,
           thoroughness,
-          pinnedPaths,
+          pinnedPaths: submitPinnedPaths,
           requiredSkillIds: pinnedSkillIds,
           requiredMcpServerIds: pinnedMcpIds,
           ...(conversation.length > 0 ? { conversation } : {}),
+          ...(approvedPlan ? { approvedPlan } : {}),
+          ...(approvedPlanStrategy
+            ? { approvedPlanStrategy }
+            : {}),
+          ...(taskList ? { taskList } : {}),
           ...(snapshot.authToken ? { token: snapshot.authToken } : {}),
         }),
         assistantId,
+        { formatPlanAnswer: runMode === 'plan' },
       );
 
       const fileChanges = await resolveFileChanges(mutatedPaths);
@@ -1614,6 +1984,35 @@ export function App() {
         ),
       );
 
+      const usedPlanHandoff = Boolean(approvedPlan) && runMode === 'agent';
+      let planPersist:
+        | {
+            pendingPlan?: PlanArtifact | null;
+            pendingPlanStrategy?: PlanStrategyDecision | null;
+            pendingTaskList?: TaskList | null;
+            clearPendingPlan?: boolean;
+          }
+        | undefined;
+
+      if (runMode === 'plan' && resultPlan) {
+        setPendingPlan(resultPlan);
+        setPendingPlanStrategy(resultPlanStrategy ?? null);
+        setPendingTaskList(resultTaskList ?? null);
+        planPersist = {
+          pendingPlan: resultPlan,
+          pendingPlanStrategy: resultPlanStrategy ?? null,
+          pendingTaskList: resultTaskList ?? null,
+        };
+      } else if (usedPlanHandoff || override?.clearPendingPlanAfter) {
+        setPendingPlan(null);
+        setPendingPlanStrategy(null);
+        setPendingTaskList(null);
+        planPersist = { clearPendingPlan: true };
+      } else if (resultTaskList) {
+        setPendingTaskList(resultTaskList);
+        planPersist = { pendingTaskList: resultTaskList };
+      }
+
       await persistMessages(
         nextMessages.map((m) =>
           m.id === assistantId
@@ -1628,6 +2027,7 @@ export function App() {
         ),
         activeThread,
         nextUsage,
+        planPersist,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -1644,20 +2044,61 @@ export function App() {
     approvalMode,
     busy,
     consumeStream,
+    editorContext,
     engine,
     input,
     messages,
     mode,
     needsModel,
+    pendingPlan,
+    pendingPlanStrategy,
+    pendingTaskList,
     pinnedMcpIds,
     pinnedPaths,
     pinnedSkillIds,
     resolveFileChanges,
     scrollToBottom,
+    settings.ui.contextToggles,
     snapshot,
     thoroughness,
     threadId,
   ]);
+
+  const executePendingPlan = useCallback(() => {
+    if (!pendingPlan || busy) return;
+    setMode('agent');
+    void onSubmit({
+      prompt: 'Implement the pending plan.',
+      mode: 'agent',
+      approvedPlan: pendingPlan,
+      approvedPlanStrategy: pendingPlanStrategy,
+      taskList: pendingTaskList,
+      clearPendingPlanAfter: true,
+    });
+  }, [
+    busy,
+    onSubmit,
+    pendingPlan,
+    pendingPlanStrategy,
+    pendingTaskList,
+  ]);
+
+  const dismissPendingPlan = useCallback(() => {
+    setPendingPlan(null);
+    setPendingPlanStrategy(null);
+    setPendingTaskList(null);
+    if (!engine || !threadId) return;
+    void postHistory({
+      ...engine,
+      body: {
+        action: 'save',
+        threadId,
+        clearPendingPlan: true,
+      },
+    }).then((store) => {
+      setHistory(store.threads as HistoryThread[]);
+    });
+  }, [engine, threadId]);
 
   const onApproveSuspension = () => {
     if (!suspension) return;
@@ -1788,7 +2229,30 @@ export function App() {
     inCodeMode &&
     (workspaceSide === 'mcp' ||
       workspaceSide === 'skills' ||
-      workspaceSide === 'recipes');
+      workspaceSide === 'recipes' ||
+      workspaceSide === 'automations');
+
+  const planFollowView = planArtifactToFollowView(
+    pendingPlan,
+    busy && (mode === 'plan' || mode === 'agent'),
+  );
+  const latestAssistantWithChanges = [...messages]
+    .reverse()
+    .find(
+      (m) =>
+        m.role === 'assistant' &&
+        m.fileChanges &&
+        m.fileChanges.files.length > 0,
+    );
+  const latestFileChanges = reviewDismissed
+    ? undefined
+    : latestAssistantWithChanges?.fileChanges;
+  const latestReviewRunId =
+    latestFileChanges?.runId ?? latestAssistantWithChanges?.id;
+  const showComposerReview =
+    (latestFileChanges?.files.length ?? 0) > 0 ||
+    (!reviewDismissed && reviewFindings.length > 0);
+  const showOnboarding = settings.onboarding?.completed === false;
 
   const suggestMenu = pinMenu ? (
     <div
@@ -1993,6 +2457,23 @@ export function App() {
       ) : null}
 
       <div className="composer-dock">
+        <PendingPlanBanner
+          visible={Boolean(pendingPlan) && mode !== 'agent'}
+          busy={busy}
+          onExecuteInAgent={executePendingPlan}
+          onDismiss={dismissPendingPlan}
+        />
+        <PlanFollowStrip
+          plan={
+            mode === 'plan' || mode === 'agent' ? planFollowView : null
+          }
+          running={busy}
+          onOpenPlanFile={(path) => {
+            setLayout('code');
+            setWorkspaceSide('explorer');
+            setOpenPathRequest({ path, view: 'file' });
+          }}
+        />
         <form
           className="composer-box"
           ref={pinMenuRef}
@@ -2003,6 +2484,107 @@ export function App() {
           }}
         >
           {suggestMenu}
+          {showComposerReview ? (
+            <ComposerReviewStrip
+              findings={reviewDismissed ? [] : reviewFindings}
+              fileChangeCount={latestFileChanges?.files.length ?? 0}
+              runId={latestReviewRunId}
+              running={busy}
+              codeReviewEnabled={
+                settings.ui.features.codeReviewButton !== false
+              }
+              onShowChanges={() => {
+                setLayout('code');
+                setWorkspaceSide('git');
+                const first = latestFileChanges?.files[0]?.path;
+                if (first) {
+                  setOpenPathRequest({ path: first, view: 'diff' });
+                }
+              }}
+              onRunCodeReview={() => {
+                void onSubmit({
+                  prompt:
+                    'Review the current working-tree and recent Mitii file changes. Emit findings for bugs, regressions, and missing tests.',
+                  mode: 'agent',
+                });
+              }}
+              onUndoChanges={(runId) => {
+                void (async () => {
+                  if (!engine) {
+                    setError(
+                      'Engine offline — open Settings → Context → Checkpoints to restore.',
+                    );
+                    return;
+                  }
+                  try {
+                    const checkpoints = await fetchCheckpoints(engine);
+                    const match =
+                      checkpoints.find(
+                        (cp) =>
+                          cp.id === runId ||
+                          cp.label.includes(runId) ||
+                          (cp.changedPaths ?? []).some((p) =>
+                            (latestFileChanges?.files ?? []).some(
+                              (f) => f.path === p,
+                            ),
+                          ),
+                      ) ?? checkpoints[0];
+                    if (!match) {
+                      setError(
+                        'No checkpoint available — use Settings → Context → Checkpoints to restore.',
+                      );
+                      setSettingsTab('context');
+                      setView('settings');
+                      return;
+                    }
+                    await restoreCheckpoint({ ...engine, id: match.id });
+                    setReviewDismissed(true);
+                    setReviewFindings([]);
+                    setMessages((prev) =>
+                      prev.map((m) =>
+                        m.id === latestAssistantWithChanges?.id
+                          ? { ...m, fileChanges: undefined }
+                          : m,
+                      ),
+                    );
+                  } catch (err) {
+                    setError(
+                      err instanceof Error ? err.message : String(err),
+                    );
+                  }
+                })();
+              }}
+              onFixAll={() => {
+                const open = reviewFindings.filter(
+                  (f) => (f as { status?: string }).status !== 'fixed',
+                );
+                const listing =
+                  open.length > 0
+                    ? open
+                        .map(
+                          (f, i) =>
+                            `${i + 1}. ${f.path}${f.startLine ? `:${f.startLine}` : ''} — ${f.content}`,
+                        )
+                        .join('\n')
+                    : '(no structured findings — fix issues in the latest file changes)';
+                void onSubmit({
+                  prompt: `Fix all open code-review findings:\n${listing}`,
+                  mode: 'agent',
+                });
+              }}
+              onDismiss={() => {
+                setReviewFindings([]);
+                setReviewDismissed(true);
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === latestAssistantWithChanges?.id
+                      ? { ...m, fileChanges: undefined }
+                      : m,
+                  ),
+                );
+              }}
+            />
+          ) : null}
           {hasPins ? (
             <div className="composer-pins">
               {pinnedPaths.map((path) => (
@@ -2211,6 +2793,7 @@ export function App() {
             streamLines={indexStream}
             workspaceLabel={workspaceLabel(snapshot?.workspaceRoot ?? '')}
             onReindex={() => void runReindex()}
+            onPause={() => void pauseIndex()}
             onOpenSettings={() => {
               setSettingsTab('features');
               setView('settings');
@@ -2401,6 +2984,13 @@ export function App() {
                 >
                   <IconRecipes size={22} />
                 </ActivityBarButton>
+                <ActivityBarButton
+                  label="Automations"
+                  active={workspaceSide === 'automations'}
+                  onClick={() => setWorkspaceSide('automations')}
+                >
+                  <IconModes size={22} />
+                </ActivityBarButton>
               </>
             ) : null}
           </nav>
@@ -2480,6 +3070,49 @@ export function App() {
                   onGitCountChange={setGitBadge}
                   openPathRequest={openPathRequest}
                   onOpenPathHandled={() => setOpenPathRequest(null)}
+                  onEditorContextChange={setEditorContext}
+                  onFileSaved={onFileSavedDebounced}
+                  onReviewFindingsChange={(findings) => {
+                    setReviewFindings(findings);
+                    setReviewDismissed(false);
+                  }}
+                  automations={{
+                    specs: automationSpecs,
+                    runs: automationRuns,
+                    loading: automationsLoading,
+                    error: automationsError,
+                    onRefresh: () => void refreshAutomations(),
+                    onTrigger: (specId) => {
+                      if (!engine) return;
+                      void triggerAutomation({ ...engine, specId })
+                        .then(() => refreshAutomations())
+                        .catch((err) =>
+                          setAutomationsError(
+                            err instanceof Error ? err.message : String(err),
+                          ),
+                        );
+                    },
+                    onPause: (specId) => {
+                      if (!engine) return;
+                      void pauseAutomation({ ...engine, specId })
+                        .then(() => refreshAutomations())
+                        .catch((err) =>
+                          setAutomationsError(
+                            err instanceof Error ? err.message : String(err),
+                          ),
+                        );
+                    },
+                    onResume: (specId) => {
+                      if (!engine) return;
+                      void resumeAutomation({ ...engine, specId })
+                        .then(() => refreshAutomations())
+                        .catch((err) =>
+                          setAutomationsError(
+                            err instanceof Error ? err.message : String(err),
+                          ),
+                        );
+                    },
+                  }}
                   onUsePrompt={(prompt, nextMode) => {
                     setInput(prompt);
                     if (nextMode) setMode(nextMode);
@@ -2601,6 +3234,45 @@ export function App() {
             )}
           </div>
         </div>
+      ) : null}
+
+      {showOnboarding && view !== 'settings' ? (
+        <OnboardingPanel
+          workspaceRoot={snapshot?.workspaceRoot ?? ''}
+          workspaceCards={(snapshot?.recentWorkspaces ?? []).map((path) => ({
+            id: path,
+            title: workspaceLabel(path),
+            subtitle: shortPath(path),
+            active: path === snapshot?.workspaceRoot,
+          }))}
+          profiles={profiles.map((profile) => ({
+            id: profile.id,
+            name: profile.name,
+            subtitle: profile.provider.model || profile.provider.preset,
+          }))}
+          activeProfileId={activeProfileId}
+          indexing={indexIndexing}
+          indexed={Boolean(
+            indexStatus?.indexed && (indexStatus?.fileCount ?? 0) > 0,
+          )}
+          indexStatus={indexStatus?.message}
+          indexProgress={indexProgress}
+          busy={busy}
+          onPickWorkspace={() => void onPickWorkspace()}
+          onSelectWorkspace={(path) => void onSwitchWorkspace(path)}
+          onForgetWorkspace={(path) => void onForgetWorkspace(path)}
+          onSelectProfile={(id) => void onSelectProfile(id)}
+          onCreateProfileFromPreset={(preset) =>
+            void onCreateProfileFromPreset(preset)
+          }
+          onManageProfiles={() => {
+            setSettingsTab('profiles');
+            setView('settings');
+          }}
+          onStartIndex={() => void runReindex()}
+          onComplete={() => void completeOnboarding()}
+          onSkip={() => void completeOnboarding()}
+        />
       ) : null}
     </div>
   );

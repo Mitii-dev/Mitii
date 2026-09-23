@@ -3,14 +3,13 @@
  * Persists via Save → mitii-desktop.sqlite (global + per-workspace) + config.json/mcp.json + secrets.
  */
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 
 import {
   SETTINGS_TABS,
   catalogEntriesForPrefix,
-  getSettingAtPath,
   mergeDesktopSettings,
-  setSettingAtPath,
+  DEFAULT_DESKTOP_SETTINGS,
   type DesktopSettings,
   type SettingsTabId,
 } from '../shared/settings.js';
@@ -20,12 +19,15 @@ import {
   clearMemories,
   deleteCheckpoint,
   deleteMemory,
+  exportAuditPack,
+  exportSessionLog,
+  exportShareableDiagnostic,
   fetchCheckpoints,
   fetchIndexStatus,
   fetchMemories,
-  fetchProfiles,
   fetchProviderModels,
   getDesktopBridge,
+  openLatestSessionLog,
   pullOllamaEmbeddingModel,
   reindexWorkspace,
   restoreCheckpoint,
@@ -33,9 +35,20 @@ import {
   type MemoryItemView,
 } from './api.js';
 import type { DesktopStorageInfo } from '../shared/bridge.js';
+import {
+  deriveLiveTokenBudgetPreview,
+  isAutoMaximumOutputTokens,
+} from '../shared/liveTokenBudgetPreview.js';
 import { ProfileSettings } from './ProfileSettings.js';
 import { MemoryPanel } from './MemoryPanel.js';
 import { CheckpointPanel } from './CheckpointPanel.js';
+import {
+  LoopPolicyEditor,
+} from './LoopPolicyEditor.js';
+import {
+  TokenBudgetEditor,
+  type TokenBudgetFieldDescriptor,
+} from './TokenBudgetEditor.js';
 
 const NOMIC_EMBED_MODEL = 'nomic-embed-text';
 const DEFAULT_OLLAMA_V1 = 'http://127.0.0.1:11434/v1';
@@ -231,50 +244,52 @@ function MaximumIndexFilesField({
   );
 }
 
-function CatalogNumberFields({
-  draft,
-  prefix,
-  disabled,
-  onChange,
-}: {
-  draft: DesktopSettings;
-  prefix: string;
-  disabled?: boolean;
-  onChange: (next: DesktopSettings) => void;
-}) {
-  const entries = useMemo(
-    () =>
-      catalogEntriesForPrefix(prefix).filter((e) => {
-        const t = e.entry.type;
-        return t === 'number' || (Array.isArray(t) && t.includes('number'));
-      }),
-    [prefix],
-  );
-  return (
-    <div className="field-grid">
-      {entries.map(({ key, shortKey, entry }) => {
-        const value = getSettingAtPath(draft, key);
-        const n = typeof value === 'number' ? value : Number(entry.default) || 0;
-        return (
-          <Field key={key} id={key} label={shortKey} hint={entry.description}>
-            <input
-              id={key}
-              type="number"
-              disabled={disabled}
-              min={entry.minimum}
-              max={entry.maximum}
-              value={n}
-              onChange={(e) =>
-                onChange(
-                  setSettingAtPath(draft, key, Number(e.target.value) || 0),
-                )
-              }
-            />
-          </Field>
-        );
-      })}
-    </div>
-  );
+function numericPolicyRecord(
+  block: Record<string, unknown>,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [key, value] of Object.entries(block)) {
+    if (key === 'enabled') continue;
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+function catalogNumberDescriptors(
+  prefix: string,
+): TokenBudgetFieldDescriptor[] {
+  return catalogEntriesForPrefix(prefix)
+    .filter(({ shortKey, entry }) => {
+      if (shortKey === 'enabled') return false;
+      const t = entry.type;
+      return t === 'number' || (Array.isArray(t) && t.includes('number'));
+    })
+    .map(({ shortKey, entry }) => {
+      const max = entry.maximum;
+      const kind: TokenBudgetFieldDescriptor['kind'] =
+        typeof max === 'number' && max <= 1 ? 'ratio' : 'number';
+      return {
+        key: shortKey,
+        group: prefix === 'loopPolicy' ? 'Loop thresholds' : 'Token budget',
+        label: shortKey,
+        description: entry.description ?? '',
+        kind,
+        min: entry.minimum ?? 0,
+        ...(typeof max === 'number' ? { max } : {}),
+        step: kind === 'ratio' ? 0.01 : 1,
+        defaultValue:
+          typeof entry.default === 'number' ? entry.default : undefined,
+        tier:
+          prefix === 'loopPolicy' &&
+          /recover|repair|truncat|incomplete|unfulfilled|rejected/i.test(
+            shortKey,
+          )
+            ? 'advanced'
+            : 'simple',
+      };
+    });
 }
 
 export function SettingsPanel(props: SettingsPanelProps) {
@@ -293,14 +308,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const [clearSearchApiKey, setClearSearchApiKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  const [profiles, setProfiles] = useState<
-    Array<{
-      id: string;
-      name: string;
-      provider: { model: string; preset?: string; baseUrl?: string };
-    }>
-  >([]);
-  const [activeProfileId, setActiveProfileId] = useState('default');
   const [indexMessage, setIndexMessage] = useState('…');
   const [reindexing, setReindexing] = useState(false);
   const [nomicStatus, setNomicStatus] = useState<NomicInstallStatus>('checking');
@@ -324,6 +331,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
     { id: 'search' as const, label: 'Web search' },
     { id: 'index' as const, label: 'Semantic index' },
   ];
+
+  // Autocomplete is locked until desktop FIM lands — keep settings visible but inert.
 
   const refreshStorage = async () => {
     const bridge = getDesktopBridge();
@@ -350,13 +359,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
       baseUrl: props.engineBaseUrl,
       token: props.authToken,
     };
-    void fetchProfiles(opts)
-      .then((file) => {
-        setProfiles(file.profiles);
-        setActiveProfileId(file.activeProfileId);
-        /* profiles list kept for Features autocomplete */
-      })
-      .catch(() => undefined);
     void fetchIndexStatus(opts)
       .then((status) => setIndexMessage(status.message))
       .catch(() => setIndexMessage('Index unavailable'));
@@ -590,262 +592,62 @@ export function SettingsPanel(props: SettingsPanelProps) {
               {featureTab === 'autocomplete' ? (
                 <SettingsSection
                   title="Inline completion"
-                  description="Separate from Ask/Plan/Agent so you can use a fast FIM model."
+                  description="Desktop FIM / next-edit is not available yet. Settings are locked so nothing is silently half-enabled."
                 >
-                  <label className="checkbox-row">
-                    <input
-                      type="checkbox"
-                      checked={draft.autocomplete.enabled}
-                      onChange={(e) =>
-                        patch({
-                          autocomplete: {
-                            ...draft.autocomplete,
-                            enabled: e.target.checked,
-                          },
-                        })
-                      }
-                    />
-                    Enable autocomplete
-                  </label>
-                  <div className="field-grid">
-                    <Field
-                      id="acProfile"
-                      label="Profile"
-                      hint="Copies that profile’s model into autocomplete"
-                    >
-                      <select
-                        id="acProfile"
-                        value={
-                          profiles.some((p) => p.id === activeProfileId)
-                            ? activeProfileId
-                            : ''
-                        }
-                        onChange={(e) => {
-                          const id = e.target.value;
-                          const profile = profiles.find((p) => p.id === id);
-                          if (!profile) return;
-                          patch({
-                            autocomplete: {
-                              ...draft.autocomplete,
-                              model:
-                                profile.provider.model ||
-                                draft.autocomplete.model,
-                              baseUrl:
-                                profile.provider.baseUrl ||
-                                draft.autocomplete.baseUrl,
-                            },
-                          });
-                        }}
-                      >
-                        <option value="">Use active profile…</option>
-                        {profiles.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name}
-                            {p.provider.model ? ` · ${p.provider.model}` : ''}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
-                    <Field id="acProvider" label="Provider">
-                      <select
+                  <p className="settings-lock-banner" role="status">
+                    Coming soon — inline autocomplete is disabled in Desktop.
+                    Use the VS Code extension for FIM today.
+                  </p>
+                  <div className="developer-options is-locked">
+                    <label className="checkbox-row">
+                      <input type="checkbox" checked={false} disabled />
+                      Enable autocomplete
+                    </label>
+                    <div className="field-grid">
+                      <Field id="acMode" label="Mode">
+                        <input
+                          id="acMode"
+                          value={draft.autocomplete.mode}
+                          readOnly
+                          disabled
+                        />
+                      </Field>
+                      <Field
                         id="acProvider"
-                        value={draft.autocomplete.provider}
-                        onChange={(e) =>
-                          patch({
-                            autocomplete: {
-                              ...draft.autocomplete,
-                              provider: e.target.value as 'openai-compatible',
-                            },
-                          })
-                        }
+                        label="Provider"
+                        hint="Locked until Desktop FIM ships"
                       >
-                        <option value="openai-compatible">
-                          openai-compatible
-                        </option>
-                      </select>
-                    </Field>
-                    <Field id="acMode" label="Mode">
-                      <input
-                        id="acMode"
-                        value={draft.autocomplete.mode}
-                        readOnly
-                      />
-                    </Field>
-                    <Field
-                      id="acBase"
-                      label="Base URL"
-                      full
-                      hint="Empty inherits Provider base URL"
-                    >
-                      <input
+                        <input
+                          id="acProvider"
+                          value={draft.autocomplete.provider}
+                          readOnly
+                          disabled
+                        />
+                      </Field>
+                      <Field
                         id="acBase"
-                        value={draft.autocomplete.baseUrl}
-                        placeholder={draft.provider.baseUrl || 'inherit'}
-                        onChange={(e) =>
-                          patch({
-                            autocomplete: {
-                              ...draft.autocomplete,
-                              baseUrl: e.target.value,
-                            },
-                          })
-                        }
-                      />
-                    </Field>
-                    <Field
-                      id="acModel"
-                      label="Model"
-                      hint="Empty inherits Provider model"
-                    >
-                      <input
-                        id="acModel"
-                        value={draft.autocomplete.model}
-                        placeholder={draft.provider.model || 'inherit'}
-                        onChange={(e) =>
-                          patch({
-                            autocomplete: {
-                              ...draft.autocomplete,
-                              model: e.target.value,
-                            },
-                          })
-                        }
-                      />
-                    </Field>
-                    <Field id="acPath" label="Endpoint path">
-                      <input
-                        id="acPath"
-                        value={draft.autocomplete.endpointPath}
-                        onChange={(e) =>
-                          patch({
-                            autocomplete: {
-                              ...draft.autocomplete,
-                              endpointPath: e.target.value,
-                            },
-                          })
-                        }
-                      />
-                    </Field>
-                    <Field id="acAuth" label="Auth header">
-                      <select
-                        id="acAuth"
-                        value={draft.autocomplete.authHeader}
-                        onChange={(e) =>
-                          patch({
-                            autocomplete: {
-                              ...draft.autocomplete,
-                              authHeader: e.target
-                                .value as DesktopSettings['autocomplete']['authHeader'],
-                            },
-                          })
-                        }
+                        label="Base URL"
+                        full
+                        hint="Empty inherits Provider base URL"
                       >
-                        <option value="authorization">authorization</option>
-                        <option value="api-key">api-key</option>
-                        <option value="x-api-key">x-api-key</option>
-                      </select>
-                    </Field>
-                    <Field id="acMax" label="Max tokens">
-                      <input
-                        id="acMax"
-                        type="number"
-                        min={1}
-                        max={512}
-                        value={draft.autocomplete.maxTokens}
-                        onChange={(e) =>
-                          patch({
-                            autocomplete: {
-                              ...draft.autocomplete,
-                              maxTokens: Number(e.target.value) || 1,
-                            },
-                          })
-                        }
-                      />
-                    </Field>
-                    <Field id="acDebounce" label="Debounce (ms)">
-                      <input
-                        id="acDebounce"
-                        type="number"
-                        min={0}
-                        max={2000}
-                        value={draft.autocomplete.debounceMs}
-                        onChange={(e) =>
-                          patch({
-                            autocomplete: {
-                              ...draft.autocomplete,
-                              debounceMs: Number(e.target.value) || 0,
-                            },
-                          })
-                        }
-                      />
-                    </Field>
-                    <Field id="acTimeout" label="Timeout (ms)">
-                      <input
-                        id="acTimeout"
-                        type="number"
-                        min={250}
-                        max={30000}
-                        value={draft.autocomplete.timeoutMs}
-                        onChange={(e) =>
-                          patch({
-                            autocomplete: {
-                              ...draft.autocomplete,
-                              timeoutMs: Number(e.target.value) || 250,
-                            },
-                          })
-                        }
-                      />
-                    </Field>
-                    <Field id="acPrefix" label="Prefix chars">
-                      <input
-                        id="acPrefix"
-                        type="number"
-                        min={128}
-                        max={60000}
-                        value={draft.autocomplete.prefixChars}
-                        onChange={(e) =>
-                          patch({
-                            autocomplete: {
-                              ...draft.autocomplete,
-                              prefixChars: Number(e.target.value) || 128,
-                            },
-                          })
-                        }
-                      />
-                    </Field>
-                    <Field id="acSuffix" label="Suffix chars">
-                      <input
-                        id="acSuffix"
-                        type="number"
-                        min={0}
-                        max={60000}
-                        value={draft.autocomplete.suffixChars}
-                        onChange={(e) =>
-                          patch({
-                            autocomplete: {
-                              ...draft.autocomplete,
-                              suffixChars: Number(e.target.value) || 0,
-                            },
-                          })
-                        }
-                      />
-                    </Field>
-                    <Field id="acTemp" label="Temperature">
-                      <input
-                        id="acTemp"
-                        type="number"
-                        min={0}
-                        max={2}
-                        step={0.05}
-                        value={draft.autocomplete.temperature}
-                        onChange={(e) =>
-                          patch({
-                            autocomplete: {
-                              ...draft.autocomplete,
-                              temperature: Number(e.target.value) || 0,
-                            },
-                          })
-                        }
-                      />
-                    </Field>
+                        <input
+                          id="acBase"
+                          value={draft.autocomplete.baseUrl}
+                          placeholder={draft.provider.baseUrl || 'inherit'}
+                          disabled
+                          readOnly
+                        />
+                      </Field>
+                      <Field id="acModel" label="Model">
+                        <input
+                          id="acModel"
+                          value={draft.autocomplete.model}
+                          placeholder={draft.provider.model || 'inherit'}
+                          disabled
+                          readOnly
+                        />
+                      </Field>
+                    </div>
                   </div>
                 </SettingsSection>
               ) : null}
@@ -2054,11 +1856,41 @@ export function SettingsPanel(props: SettingsPanelProps) {
                 />
                 Enable custom token-budget overrides
               </label>
-              <CatalogNumberFields
-                draft={draft}
-                prefix="tokenBudget"
-                disabled={!draft.developer.enabled || !draft.tokenBudget.enabled}
-                onChange={setDraft}
+              <TokenBudgetEditor
+                fields={catalogNumberDescriptors('tokenBudget')}
+                policy={numericPolicyRecord(
+                  draft.tokenBudget as unknown as Record<string, unknown>,
+                )}
+                preview={deriveLiveTokenBudgetPreview({
+                  contextWindowTokens:
+                    draft.provider.contextWindow > 0
+                      ? draft.provider.contextWindow
+                      : 128_000,
+                  maximumOutputTokens: draft.provider.maximumOutputTokens,
+                  policy: draft.tokenBudget.enabled
+                    ? numericPolicyRecord(
+                        draft.tokenBudget as unknown as Record<string, unknown>,
+                      )
+                    : undefined,
+                  runBudget: draft.runBudget,
+                })}
+                customEnabled={draft.tokenBudget.enabled}
+                outputOverride={
+                  !isAutoMaximumOutputTokens(draft.provider.maximumOutputTokens)
+                }
+                disabled={
+                  !draft.developer.enabled || !draft.tokenBudget.enabled
+                }
+                onPolicyChange={(policyPatch) =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    tokenBudget: {
+                      ...prev.tokenBudget,
+                      enabled: true,
+                      ...policyPatch,
+                    },
+                  }))
+                }
               />
             </SettingsSection>
 
@@ -2082,12 +1914,164 @@ export function SettingsPanel(props: SettingsPanelProps) {
                 />
                 Enable loop policy overrides
               </label>
-              <CatalogNumberFields
-                draft={draft}
-                prefix="loopPolicy"
-                disabled={!draft.developer.enabled || !draft.loopPolicy.enabled}
-                onChange={setDraft}
+              <LoopPolicyEditor
+                fields={catalogNumberDescriptors('loopPolicy')}
+                thresholds={numericPolicyRecord(
+                  draft.loopPolicy as unknown as Record<string, unknown>,
+                )}
+                bandThresholds={numericPolicyRecord(
+                  DEFAULT_DESKTOP_SETTINGS.loopPolicy as unknown as Record<
+                    string,
+                    unknown
+                  >,
+                )}
+                customEnabled={draft.loopPolicy.enabled}
+                disabled={
+                  !draft.developer.enabled || !draft.loopPolicy.enabled
+                }
+                onThresholdsChange={(thresholdsPatch) =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    loopPolicy: {
+                      ...prev.loopPolicy,
+                      enabled: true,
+                      ...thresholdsPatch,
+                    },
+                  }))
+                }
               />
+            </SettingsSection>
+
+            <SettingsSection
+              title="Evidence"
+              description="Session logs and shareable diagnostics for support."
+            >
+              <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  disabled={!props.engineBaseUrl || props.busy}
+                  onClick={() => {
+                    if (!props.engineBaseUrl) return;
+                    void (async () => {
+                      try {
+                        const result = await openLatestSessionLog({
+                          baseUrl: props.engineBaseUrl!,
+                          token: props.authToken,
+                        });
+                        const bridge = getDesktopBridge();
+                        if (result.path && bridge?.revealInFolder) {
+                          await bridge.revealInFolder(result.path);
+                          setNote(`Opened session log: ${result.path}`);
+                        } else if (result.message) {
+                          setNote(result.message);
+                        } else {
+                          setNote('No session log path returned.');
+                        }
+                      } catch (err) {
+                        setNote(
+                          err instanceof Error ? err.message : String(err),
+                        );
+                      }
+                    })();
+                  }}
+                >
+                  Open session log
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  disabled={!props.engineBaseUrl || props.busy}
+                  onClick={() => {
+                    if (!props.engineBaseUrl) return;
+                    void (async () => {
+                      try {
+                        const result = await exportSessionLog({
+                          baseUrl: props.engineBaseUrl!,
+                          token: props.authToken,
+                        });
+                        const bridge = getDesktopBridge();
+                        if (result.path && bridge?.revealInFolder) {
+                          await bridge.revealInFolder(result.path);
+                        }
+                        setNote(
+                          result.path
+                            ? `Exported session log: ${result.path}`
+                            : 'Session log export finished.',
+                        );
+                      } catch (err) {
+                        setNote(
+                          err instanceof Error ? err.message : String(err),
+                        );
+                      }
+                    })();
+                  }}
+                >
+                  Export session log
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  disabled={!props.engineBaseUrl || props.busy}
+                  onClick={() => {
+                    if (!props.engineBaseUrl) return;
+                    void (async () => {
+                      try {
+                        const result = await exportShareableDiagnostic({
+                          baseUrl: props.engineBaseUrl!,
+                          token: props.authToken,
+                        });
+                        const bridge = getDesktopBridge();
+                        if (result.path && bridge?.revealInFolder) {
+                          await bridge.revealInFolder(result.path);
+                        }
+                        setNote(
+                          result.path
+                            ? `Exported diagnostic: ${result.path}`
+                            : 'Shareable diagnostic export finished.',
+                        );
+                      } catch (err) {
+                        setNote(
+                          err instanceof Error ? err.message : String(err),
+                        );
+                      }
+                    })();
+                  }}
+                >
+                  Export shareable diagnostic
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  disabled={!props.engineBaseUrl || props.busy}
+                  onClick={() => {
+                    if (!props.engineBaseUrl) return;
+                    void (async () => {
+                      try {
+                        const result = await exportAuditPack({
+                          baseUrl: props.engineBaseUrl!,
+                          token: props.authToken,
+                        });
+                        const bridge = getDesktopBridge();
+                        if (result.path && bridge?.revealInFolder) {
+                          await bridge.revealInFolder(result.path);
+                        }
+                        setNote(
+                          result.path
+                            ? `Exported audit pack: ${result.path}`
+                            : 'Audit pack export finished.',
+                        );
+                      } catch (err) {
+                        setNote(
+                          err instanceof Error ? err.message : String(err),
+                        );
+                      }
+                    })();
+                  }}
+                >
+                  Export audit pack
+                </button>
+              </div>
             </SettingsSection>
           </div>
         ) : null}

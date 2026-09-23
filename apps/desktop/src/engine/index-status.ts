@@ -25,6 +25,18 @@ export interface DesktopIndexStatus {
   embeddingError?: string;
 }
 
+/** Active reindex abort controller (module-level for pause route). */
+let activeReindexAbort: AbortController | undefined;
+
+/** Abort the in-flight reindex, if any. */
+export function pauseWorkspaceIndex(): { paused: boolean } {
+  if (!activeReindexAbort) {
+    return { paused: false };
+  }
+  activeReindexAbort.abort();
+  return { paused: true };
+}
+
 export function getIndexStatus(workspaceRoot: string): DesktopIndexStatus {
   const mitiiDir = join(workspaceRoot, '.mitii');
   const metaPath = join(mitiiDir, 'index-runtime.json');
@@ -66,55 +78,103 @@ export async function reindexWorkspace(options: {
   maximumFiles?: number;
   semanticIndex?: SemanticIndexSettings;
   force?: boolean;
+  abortSignal?: AbortSignal;
 }): Promise<{
   status: string;
   fileCount: number;
   truncated: boolean;
   message: string;
 }> {
-  const workspaceId = workspaceIdFromRoot(options.workspaceRoot);
-  const result = await runFullWorkspaceIndex({
-    mitiiDir: join(options.workspaceRoot, '.mitii'),
-    workspaceRoot: options.workspaceRoot,
-    workspaceId,
-    maximumFiles: options.maximumFiles,
-    semanticIndex: options.semanticIndex,
-    force: options.force ?? true,
-    openDatabase: ((
-      filename: string,
-      openOptions?: { readonly?: boolean; fileMustExist?: boolean },
-    ) => new Database(filename, openOptions)) as never,
-  });
+  // Replace any prior controller so pause always targets the latest run.
+  activeReindexAbort?.abort();
+  const controller = new AbortController();
+  activeReindexAbort = controller;
 
-  // Record index meta on the Desktop-owned multi-repo store when available.
-  const storePath = process.env.MITII_DESKTOP_STORE_PATH?.trim();
-  if (storePath && (result.status === 'indexed' || result.status === 'unchanged')) {
-    try {
-      const store = openDesktopStore(storePath);
-      try {
-        store.setWorkspaceIndexMeta(options.workspaceRoot, {
-          fileCount: result.fileCount,
-          updatedAt: new Date().toISOString(),
-        });
-      } finally {
-        store.close();
-      }
-    } catch {
-      /* non-fatal */
+  const onExternalAbort = (): void => {
+    controller.abort();
+  };
+  if (options.abortSignal) {
+    if (options.abortSignal.aborted) {
+      controller.abort();
+    } else {
+      options.abortSignal.addEventListener('abort', onExternalAbort, {
+        once: true,
+      });
     }
   }
 
-  return {
-    status: result.status,
-    fileCount: result.fileCount,
-    truncated: result.truncated,
-    message:
-      result.status === 'indexed'
-        ? `Indexed ${result.fileCount} files`
-        : result.status === 'unchanged'
-          ? 'Index unchanged'
-          : result.status === 'skipped'
-            ? `Skipped${result.skipReason ? ` (${result.skipReason})` : ''}`
-            : `Index ${result.status}`,
-  };
+  try {
+    const workspaceId = workspaceIdFromRoot(options.workspaceRoot);
+    const result = await runFullWorkspaceIndex({
+      mitiiDir: join(options.workspaceRoot, '.mitii'),
+      workspaceRoot: options.workspaceRoot,
+      workspaceId,
+      maximumFiles: options.maximumFiles,
+      semanticIndex: options.semanticIndex,
+      force: options.force ?? true,
+      abortSignal: controller.signal,
+      openDatabase: ((
+        filename: string,
+        openOptions?: { readonly?: boolean; fileMustExist?: boolean },
+      ) => new Database(filename, openOptions)) as never,
+    });
+
+    // Record index meta on the Desktop-owned multi-repo store when available.
+    const storePath = process.env.MITII_DESKTOP_STORE_PATH?.trim();
+    if (
+      storePath &&
+      (result.status === 'indexed' || result.status === 'unchanged')
+    ) {
+      try {
+        const store = openDesktopStore(storePath);
+        try {
+          store.setWorkspaceIndexMeta(options.workspaceRoot, {
+            fileCount: result.fileCount,
+            updatedAt: new Date().toISOString(),
+          });
+        } finally {
+          store.close();
+        }
+      } catch {
+        /* non-fatal */
+      }
+    }
+
+    return {
+      status: result.status,
+      fileCount: result.fileCount,
+      truncated: result.truncated,
+      message:
+        result.status === 'indexed'
+          ? `Indexed ${result.fileCount} files`
+          : result.status === 'unchanged'
+            ? 'Index unchanged'
+            : result.status === 'skipped'
+              ? `Skipped${result.skipReason ? ` (${result.skipReason})` : ''}`
+              : result.status === 'cancelled'
+                ? 'Index paused'
+                : `Index ${result.status}`,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (
+      controller.signal.aborted ||
+      /cancell?ed/i.test(message)
+    ) {
+      return {
+        status: 'cancelled',
+        fileCount: 0,
+        truncated: false,
+        message: 'Index paused',
+      };
+    }
+    throw error;
+  } finally {
+    if (options.abortSignal) {
+      options.abortSignal.removeEventListener('abort', onExternalAbort);
+    }
+    if (activeReindexAbort === controller) {
+      activeReindexAbort = undefined;
+    }
+  }
 }

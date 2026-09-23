@@ -39,17 +39,20 @@ export interface DesktopStoreSnapshot {
   settings: DesktopSettings;
 }
 
-const DEFAULT_PROFILE = profileFromProvider(
-  {
-    type: 'openai-compatible',
-    preset: 'ollama',
-    baseUrl: 'http://127.0.0.1:11434/v1',
-    model: '',
-    contextWindow: 0,
-    maximumOutputTokens: 0,
-  },
-  { id: 'default', name: 'Default' },
-);
+/** Lazy to avoid circular init with profiles.ts (profiles → openDesktopStore). */
+function defaultProfile(): DesktopProfile {
+  return profileFromProvider(
+    {
+      type: 'openai-compatible',
+      preset: 'ollama',
+      baseUrl: 'http://127.0.0.1:11434/v1',
+      model: '',
+      contextWindow: 0,
+      maximumOutputTokens: 0,
+    },
+    { id: 'default', name: 'Default' },
+  );
+}
 
 export function desktopStorePath(userDataPath: string): string {
   return join(userDataPath, 'mitii-desktop.sqlite');
@@ -331,18 +334,19 @@ export class DesktopStore {
     }>;
 
     if (rows.length === 0) {
+      const fallback = defaultProfile();
       this.setProfiles({
-        activeProfileId: DEFAULT_PROFILE.id,
-        profiles: [DEFAULT_PROFILE],
+        activeProfileId: fallback.id,
+        profiles: [fallback],
       });
       return {
-        activeProfileId: DEFAULT_PROFILE.id,
-        profiles: [DEFAULT_PROFILE],
+        activeProfileId: fallback.id,
+        profiles: [fallback],
       };
     }
 
     const profiles: DesktopProfile[] = rows.map((row) => {
-      let provider = DEFAULT_PROFILE.provider;
+      let provider = defaultProfile().provider;
       try {
         provider = JSON.parse(row.providerJson) as DesktopProfile['provider'];
       } catch {
@@ -361,7 +365,7 @@ export class DesktopStore {
     const active =
       rows.find((r) => r.isActive)?.id ??
       profiles[0]?.id ??
-      DEFAULT_PROFILE.id;
+      defaultProfile().id;
 
     return { activeProfileId: active, profiles };
   }

@@ -84,6 +84,9 @@ export async function* streamPrompt(options: {
   requiredMcpServerIds?: string[];
   /** Prior turns for Agent Engine (VS Code conversationCarry parity). */
   conversation?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  approvedPlan?: unknown;
+  approvedPlanStrategy?: unknown;
+  taskList?: unknown;
 }): AsyncGenerator<DesktopPromptStreamLine> {
   yield* streamNdjson(`${options.baseUrl}/v1/prompt`, {
     method: 'POST',
@@ -111,6 +114,11 @@ export async function* streamPrompt(options: {
       ...(options.conversation && options.conversation.length > 0
         ? { conversation: options.conversation }
         : {}),
+      ...(options.approvedPlan ? { approvedPlan: options.approvedPlan } : {}),
+      ...(options.approvedPlanStrategy
+        ? { approvedPlanStrategy: options.approvedPlanStrategy }
+        : {}),
+      ...(options.taskList ? { taskList: options.taskList } : {}),
     }),
   });
 }
@@ -1018,6 +1026,189 @@ export async function reindexWorkspace(options: {
     throw new Error(`reindex_${res.status}:${text}`);
   }
   return (await res.json()) as Awaited<ReturnType<typeof reindexWorkspace>>;
+}
+
+export async function pauseIndexing(options: {
+  baseUrl: string;
+  token?: string;
+}): Promise<{ ok: boolean; message?: string }> {
+  const res = await fetch(`${options.baseUrl}/v1/index/pause`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: '{}',
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`index_pause_${res.status}:${text}`);
+  }
+  return (await res.json()) as { ok: boolean; message?: string };
+}
+
+export interface AutomationSpecApiView {
+  specId: string;
+  title: string;
+  enabled: boolean;
+  triggerKind: string;
+  scheduleExpr?: string | null;
+  eventType?: string | null;
+  nextRunAt?: string | null;
+  autonomyPreset?: string | null;
+}
+
+export interface AutomationRunApiView {
+  runId: string;
+  specId: string;
+  status: string;
+  createdAt: string;
+  error?: string | null;
+}
+
+export async function listAutomations(options: {
+  baseUrl: string;
+  token?: string;
+}): Promise<{
+  specs: AutomationSpecApiView[];
+  runs: AutomationRunApiView[];
+}> {
+  const res = await fetch(`${options.baseUrl}/v1/automations`, {
+    headers: authHeaders(options.token),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`automations_${res.status}:${text}`);
+  }
+  const data = (await res.json()) as {
+    specs?: AutomationSpecApiView[];
+    runs?: AutomationRunApiView[];
+  };
+  return {
+    specs: Array.isArray(data.specs) ? data.specs : [],
+    runs: Array.isArray(data.runs) ? data.runs : [],
+  };
+}
+
+async function postAutomationAction(options: {
+  baseUrl: string;
+  token?: string;
+  path: string;
+  specId: string;
+}): Promise<{ ok: boolean }> {
+  const res = await fetch(`${options.baseUrl}${options.path}`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: JSON.stringify({ specId: options.specId }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`automations_action_${res.status}:${text}`);
+  }
+  return (await res.json()) as { ok: boolean };
+}
+
+export async function triggerAutomation(options: {
+  baseUrl: string;
+  token?: string;
+  specId: string;
+}): Promise<{ ok: boolean }> {
+  return postAutomationAction({
+    ...options,
+    path: '/v1/automations/trigger',
+  });
+}
+
+export async function pauseAutomation(options: {
+  baseUrl: string;
+  token?: string;
+  specId: string;
+}): Promise<{ ok: boolean }> {
+  return postAutomationAction({
+    ...options,
+    path: '/v1/automations/pause',
+  });
+}
+
+export async function resumeAutomation(options: {
+  baseUrl: string;
+  token?: string;
+  specId: string;
+}): Promise<{ ok: boolean }> {
+  return postAutomationAction({
+    ...options,
+    path: '/v1/automations/resume',
+  });
+}
+
+export async function openLatestSessionLog(options: {
+  baseUrl: string;
+  token?: string;
+}): Promise<{ path?: string; content?: string; message?: string }> {
+  const res = await fetch(
+    `${options.baseUrl}/v1/evidence/session-log/latest`,
+    { headers: authHeaders(options.token) },
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`session_log_latest_${res.status}:${text}`);
+  }
+  return (await res.json()) as {
+    path?: string;
+    content?: string;
+    message?: string;
+  };
+}
+
+export async function exportSessionLog(options: {
+  baseUrl: string;
+  token?: string;
+}): Promise<{ ok: boolean; path?: string }> {
+  const res = await fetch(
+    `${options.baseUrl}/v1/evidence/session-log/export`,
+    {
+      method: 'POST',
+      headers: authHeaders(options.token),
+      body: '{}',
+    },
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`session_log_export_${res.status}:${text}`);
+  }
+  return (await res.json()) as { ok: boolean; path?: string };
+}
+
+export async function exportShareableDiagnostic(options: {
+  baseUrl: string;
+  token?: string;
+}): Promise<{ ok: boolean; path?: string }> {
+  const res = await fetch(
+    `${options.baseUrl}/v1/evidence/shareable-diagnostic`,
+    {
+      method: 'POST',
+      headers: authHeaders(options.token),
+      body: '{}',
+    },
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`shareable_diagnostic_${res.status}:${text}`);
+  }
+  return (await res.json()) as { ok: boolean; path?: string };
+}
+
+export async function exportAuditPack(options: {
+  baseUrl: string;
+  token?: string;
+}): Promise<{ ok: boolean; path?: string }> {
+  const res = await fetch(`${options.baseUrl}/v1/evidence/audit-pack`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: '{}',
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`audit_pack_${res.status}:${text}`);
+  }
+  return (await res.json()) as { ok: boolean; path?: string };
 }
 
 export async function fetchWorkspaceTree(options: {

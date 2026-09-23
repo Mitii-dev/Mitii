@@ -112,6 +112,7 @@ interface IndexStatusChipProps {
   workspaceLabel?: string;
   reindexing?: boolean;
   onReindex: () => void;
+  onPause?: () => void;
   onOpenSettings?: () => void;
 }
 
@@ -204,14 +205,25 @@ export function IndexStatusChip(props: IndexStatusChipProps) {
                 <span className="index-status__repo">{props.workspaceLabel}</span>
               ) : null}
             </div>
-            <button
-              type="button"
-              className="btn btn-primary index-status__reindex"
-              disabled={indexing || props.reindexing}
-              onClick={() => props.onReindex()}
-            >
-              {indexing || props.reindexing ? 'Indexing…' : 'Reindex'}
-            </button>
+            <div className="index-status__head-actions">
+              {indexing && props.onPause ? (
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => props.onPause?.()}
+                >
+                  Pause
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="btn btn-primary index-status__reindex"
+                disabled={indexing || props.reindexing}
+                onClick={() => props.onReindex()}
+              >
+                {indexing || props.reindexing ? 'Indexing…' : 'Reindex'}
+              </button>
+            </div>
           </div>
 
           {indexing &&

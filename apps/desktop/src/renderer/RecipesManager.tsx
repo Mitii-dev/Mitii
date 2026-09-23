@@ -5,11 +5,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
+  IconLock,
   IconPlus,
   IconRefresh,
   IconSearch,
 } from './ActivityIcons.js';
 import { fetchRecipes, runRecipe, saveRecipe } from './api.js';
+
+const CREATE_RECIPE_LOCKED = true;
+const CREATE_RECIPE_LOCKED_HINT = 'Coming soon';
 
 interface RecipeRow {
   id: string;
@@ -129,21 +133,47 @@ export function RecipesManager(props: Props) {
         <div className="recipes-manager__title-block">
           <h2>Recipes</h2>
           <p>
-            Curated prompts that load into chat. Open a tile to use one, or
-            create a workspace recipe.
+            Curated prompts that load into chat. Open a tile to use one.
+            {CREATE_RECIPE_LOCKED
+              ? ' Custom workspace recipes are coming soon.'
+              : ' Or create a workspace recipe.'}
           </p>
         </div>
         <div className="recipes-manager__header-actions">
           {!creating ? (
-            <button
-              type="button"
-              className="btn-primary recipes-manager__add"
-              disabled={busy}
-              onClick={startCreate}
+            <span
+              className="recipes-manager__locked-hit"
+              title={
+                CREATE_RECIPE_LOCKED ? CREATE_RECIPE_LOCKED_HINT : undefined
+              }
             >
-              <IconPlus size={15} />
-              New recipe
-            </button>
+              <button
+                type="button"
+                className={`btn-primary recipes-manager__add${
+                  CREATE_RECIPE_LOCKED ? ' is-locked' : ''
+                }`}
+                disabled={busy && !CREATE_RECIPE_LOCKED}
+                aria-disabled={CREATE_RECIPE_LOCKED || busy}
+                tabIndex={CREATE_RECIPE_LOCKED ? -1 : undefined}
+                title={
+                  CREATE_RECIPE_LOCKED
+                    ? CREATE_RECIPE_LOCKED_HINT
+                    : 'New recipe'
+                }
+                onClick={
+                  CREATE_RECIPE_LOCKED
+                    ? (e) => e.preventDefault()
+                    : startCreate
+                }
+              >
+                {CREATE_RECIPE_LOCKED ? (
+                  <IconLock size={15} />
+                ) : (
+                  <IconPlus size={15} />
+                )}
+                New recipe
+              </button>
+            </span>
           ) : null}
           <button
             type="button"
@@ -156,7 +186,7 @@ export function RecipesManager(props: Props) {
         </div>
       </header>
 
-      {creating ? (
+      {creating && !CREATE_RECIPE_LOCKED ? (
         <div className="recipes-manager__editor">
           <label>
             Recipe JSON
@@ -226,20 +256,42 @@ export function RecipesManager(props: Props) {
                 </div>
               );
             })}
-            <button
-              type="button"
-              className="profile-tile profile-tile--add"
-              disabled={busy}
-              onClick={startCreate}
+            <span
+              className="recipes-manager__locked-hit"
+              title={
+                CREATE_RECIPE_LOCKED ? CREATE_RECIPE_LOCKED_HINT : undefined
+              }
             >
-              <span className="profile-tile__avatar" aria-hidden>
-                +
-              </span>
-              <span className="profile-tile__name">New recipe</span>
-              <span className="profile-tile__meta">
-                JSON recipe for this workspace
-              </span>
-            </button>
+              <button
+                type="button"
+                className={`profile-tile profile-tile--add${
+                  CREATE_RECIPE_LOCKED ? ' is-locked' : ''
+                }`}
+                disabled={busy && !CREATE_RECIPE_LOCKED}
+                aria-disabled={CREATE_RECIPE_LOCKED || busy}
+                tabIndex={CREATE_RECIPE_LOCKED ? -1 : undefined}
+                title={
+                  CREATE_RECIPE_LOCKED
+                    ? CREATE_RECIPE_LOCKED_HINT
+                    : 'New recipe'
+                }
+                onClick={
+                  CREATE_RECIPE_LOCKED
+                    ? (e) => e.preventDefault()
+                    : startCreate
+                }
+              >
+                <span className="profile-tile__avatar" aria-hidden>
+                  {CREATE_RECIPE_LOCKED ? <IconLock size={20} /> : '+'}
+                </span>
+                <span className="profile-tile__name">New recipe</span>
+                <span className="profile-tile__meta">
+                  {CREATE_RECIPE_LOCKED
+                    ? 'Coming soon'
+                    : 'JSON recipe for this workspace'}
+                </span>
+              </button>
+            </span>
           </div>
 
           {filtered.length === 0 && recipes.length > 0 ? (

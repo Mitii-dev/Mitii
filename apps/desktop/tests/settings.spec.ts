@@ -21,6 +21,13 @@ describe('desktop settings', () => {
     expect(SETTINGS_CATALOG['mitii.autocomplete.enabled']).toBeTruthy();
   });
 
+  it('forces autocomplete.enabled off (Desktop FIM not shipped)', () => {
+    const s = mergeDesktopSettings({
+      autocomplete: { enabled: true },
+    });
+    expect(s.autocomplete.enabled).toBe(false);
+  });
+
   it('merges nested defaults without clobbering siblings', () => {
     const s = mergeDesktopSettings({
       provider: { model: 'x' },

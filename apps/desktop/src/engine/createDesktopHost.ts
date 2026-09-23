@@ -59,6 +59,10 @@ import Database from 'better-sqlite3';
 import type { DesktopHostMode } from '../shared/protocol.js';
 import { resolveEffectiveContextWindow } from '../shared/contextWindow.js';
 import { ensureDesktopRepositoryState } from './ensureRepositoryState.js';
+import {
+  isModelIoLoggingEnabled,
+  wrapLlmPortForModelIo,
+} from './modelIoLog.js';
 import { workspaceIdFromRoot } from './workspace-id.js';
 
 interface MitiiDesktopConfig {
@@ -193,7 +197,10 @@ export function loadDesktopMitiiConfig(cwd: string): MitiiDesktopConfig {
   }
 }
 
-export function createEchoDesktopClient(cwd: string): MitiiClient {
+export function createEchoDesktopClient(
+  cwd: string,
+  env: NodeJS.ProcessEnv = process.env,
+): MitiiClient {
   const workspaceId = workspaceIdFromRoot(cwd);
   return createMitiiClient({
     understandingLlm: new DesktopUnderstandingLlmPort(),
@@ -202,6 +209,7 @@ export function createEchoDesktopClient(cwd: string): MitiiClient {
     defaultMode: 'ask',
     defaultSessionId: `desktop_${workspaceId}`,
     workspaceId,
+    taskListAutoAdvance: env.MITII_TASK_LIST_AUTO_ADVANCE !== '0',
   });
 }
 
@@ -360,9 +368,20 @@ export async function createHostDesktopClient(
     openDatabase,
   });
 
+  const developerEnabled =
+    readDesktopSettingsField(env, 'developer.enabled') === true;
+  const modelIoEnabled =
+    readDesktopSettingsField(env, 'developer.modelIo') === true;
+  const modelIoOn = isModelIoLoggingEnabled(developerEnabled, modelIoEnabled);
+  const understandingLlm = wrapLlmPortForModelIo(
+    llm.understandingLlm,
+    modelIoOn,
+  );
+  const runLlm = wrapLlmPortForModelIo(llm.runLlm, modelIoOn);
+
   const client = createMitiiClient({
-    understandingLlm: llm.understandingLlm,
-    runLlm: llm.runLlm,
+    understandingLlm,
+    runLlm,
     workspaceRoot: cwd,
     defaultMode:
       config.defaultMode === 'agent'
@@ -380,6 +399,7 @@ export async function createHostDesktopClient(
     ],
     enableInMemoryCheckpoints: false,
     checkpointStore: createWorkspaceCheckpointStore(cwd),
+    taskListAutoAdvance: env.MITII_TASK_LIST_AUTO_ADVANCE !== '0',
     ...(memoryOn
       ? {
           memoryStore: createWorkspaceMemoryStore(cwd, workspaceId),
@@ -412,7 +432,10 @@ export async function createDesktopClient(options: {
     env.MITII_FORCE_ECHO === '1' ||
     env.MITII_FORCE_ECHO === 'true';
   if (forceEcho) {
-    return { client: createEchoDesktopClient(options.cwd), mode: 'echo' };
+    return {
+      client: createEchoDesktopClient(options.cwd, env),
+      mode: 'echo',
+    };
   }
   return {
     client: await createHostDesktopClient(options.cwd, env),

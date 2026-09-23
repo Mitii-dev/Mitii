@@ -178,24 +178,34 @@ export function normalizeEmbeddingRequestBaseUrl(
   return root;
 }
 
+/**
+ * Align live semantic settings with the embedding profile that wrote LanceDB.
+ *
+ * Empty `model` / `dimensions: 0` mean “use source defaults” (same as indexing
+ * via resolveEmbeddingSource). Prefer the persisted profile so query vectors
+ * match the on-disk index instead of failing with profile_mismatch.
+ */
 export function alignSemanticSettingsWithPersistedProfile(
   settings: SemanticIndexSettings,
   profile: EmbeddingProfile,
 ): SemanticIndexSettings | undefined {
   const backend = settings.backend ?? settings.source ?? 'openai-compatible';
-  if (
-    backend !== profile.providerId ||
-    settings.model !== profile.modelId ||
-    settings.normalized !== profile.normalized
-  ) {
+  if (backend === 'disabled' || backend !== profile.providerId) {
     return undefined;
   }
-  if (settings.dimensions === profile.dimensions) {
-    return settings;
+  if (settings.normalized !== profile.normalized) {
+    return undefined;
+  }
+  const configuredModel = settings.model.trim();
+  if (configuredModel && configuredModel !== profile.modelId) {
+    return undefined;
   }
   return {
     ...settings,
+    backend: profile.providerId as EmbeddingBackend,
+    model: profile.modelId,
     dimensions: profile.dimensions,
+    normalized: profile.normalized,
   };
 }
 
