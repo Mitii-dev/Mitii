@@ -12,8 +12,10 @@ import {
 
 import {
   createFileSystemSkillsCatalog,
+  DEFAULT_OLLAMA_EMBEDDING_MODEL,
   listProviderModels,
   normalizeOllamaModelId,
+  pullOllamaModel,
   testProviderConnection,
 } from '@mitii/host';
 import {
@@ -1427,6 +1429,64 @@ export async function startEngineServer(
           ...(apiKey ? { apiKey } : {}),
         });
         sendJson(res, 200, { models });
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/ollama/pull') {
+        if (!requireAuth(req, res, token)) return;
+        const body = (await readJsonBody(req)) as Record<string, unknown>;
+        const model =
+          typeof body.model === 'string' && body.model.trim()
+            ? body.model.trim()
+            : DEFAULT_OLLAMA_EMBEDDING_MODEL;
+        const baseUrl =
+          typeof body.baseUrl === 'string' && body.baseUrl.trim()
+            ? body.baseUrl.trim()
+            : process.env.MITII_BASE_URL || 'http://127.0.0.1:11434/v1';
+
+        res.writeHead(200, {
+          'content-type': 'application/x-ndjson; charset=utf-8',
+          'cache-control': 'no-store',
+          'transfer-encoding': 'chunked',
+        });
+        res.write(
+          `${JSON.stringify({ op: 'start', model })}\n`,
+        );
+
+        const result = await pullOllamaModel({
+          model,
+          baseUrl,
+          onProgress: (progress) => {
+            res.write(
+              `${JSON.stringify({
+                op: 'progress',
+                status: progress.status,
+                ...(progress.percent !== undefined
+                  ? { percent: progress.percent }
+                  : {}),
+                ...(progress.total !== undefined ? { total: progress.total } : {}),
+                ...(progress.completed !== undefined
+                  ? { completed: progress.completed }
+                  : {}),
+              })}\n`,
+            );
+          },
+        });
+
+        if (result.ok) {
+          res.write(
+            `${JSON.stringify({ op: 'done', ok: true, model: result.model })}\n`,
+          );
+        } else {
+          res.write(
+            `${JSON.stringify({
+              op: 'done',
+              ok: false,
+              error: result.reason,
+            })}\n`,
+          );
+        }
+        res.end();
         return;
       }
 

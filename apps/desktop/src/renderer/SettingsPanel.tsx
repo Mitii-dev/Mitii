@@ -17,11 +17,44 @@ import {
 import {
   fetchIndexStatus,
   fetchProfiles,
+  fetchProviderModels,
   getDesktopBridge,
+  pullOllamaEmbeddingModel,
   reindexWorkspace,
 } from './api.js';
 import type { DesktopStorageInfo } from '../shared/bridge.js';
 import { ProfileSettings } from './ProfileSettings.js';
+
+const NOMIC_EMBED_MODEL = 'nomic-embed-text';
+const DEFAULT_OLLAMA_V1 = 'http://127.0.0.1:11434/v1';
+const OLLAMA_INSTALL_URL = 'https://ollama.com/download';
+
+type NomicInstallStatus =
+  | 'checking'
+  | 'ready'
+  | 'missing'
+  | 'downloading'
+  | 'unreachable';
+
+function resolveOllamaEmbeddingBaseUrl(providerBaseUrl?: string): string {
+  const trimmed = providerBaseUrl?.trim();
+  if (trimmed && /ollama|11434/i.test(trimmed)) {
+    return trimmed;
+  }
+  return DEFAULT_OLLAMA_V1;
+}
+
+function isNomicEmbedInstalled(models: readonly string[]): boolean {
+  const target = NOMIC_EMBED_MODEL;
+  return models.some((id) => {
+    const normalized = id.trim().toLowerCase().replace(/:latest$/, '');
+    return (
+      normalized === target ||
+      normalized.startsWith(`${target}:`) ||
+      target.startsWith(`${normalized}:`)
+    );
+  });
+}
 
 interface SettingsPanelProps {
   settings: DesktopSettings;
@@ -197,6 +230,9 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const [activeProfileId, setActiveProfileId] = useState('default');
   const [indexMessage, setIndexMessage] = useState('…');
   const [reindexing, setReindexing] = useState(false);
+  const [nomicStatus, setNomicStatus] = useState<NomicInstallStatus>('checking');
+  const [nomicProgress, setNomicProgress] = useState<number | undefined>();
+  const [nomicNote, setNomicNote] = useState<string | null>(null);
   const [storage, setStorage] = useState<DesktopStorageInfo | null>(null);
   const [storageBusy, setStorageBusy] = useState(false);
   const [storageNote, setStorageNote] = useState<string | null>(null);
@@ -249,10 +285,129 @@ export function SettingsPanel(props: SettingsPanelProps) {
       .catch(() => setIndexMessage('Index unavailable'));
   }, [props.engineBaseUrl, props.authToken, props.workspaceRoot]);
 
-  const page = PAGE_COPY[tab];
   const patch = (partial: unknown) => {
     setDraft((prev) => mergeDesktopSettings(partial, prev));
   };
+
+  const ollamaEmbeddingBaseUrl = resolveOllamaEmbeddingBaseUrl(
+    draft.provider.baseUrl,
+  );
+
+  const refreshNomicStatus = async () => {
+    if (!props.engineBaseUrl || nomicStatus === 'downloading') return;
+    setNomicStatus('checking');
+    try {
+      const models = await fetchProviderModels({
+        baseUrl: props.engineBaseUrl,
+        token: props.authToken,
+        type: 'openai-compatible',
+        providerBaseUrl: ollamaEmbeddingBaseUrl,
+      });
+      if (isNomicEmbedInstalled(models)) {
+        setNomicStatus('ready');
+        setNomicNote(null);
+        return;
+      }
+      // Empty catalog usually means Ollama is down; still offer download.
+      setNomicStatus(models.length === 0 ? 'unreachable' : 'missing');
+      setNomicNote(
+        models.length === 0
+          ? 'Ollama is not reachable. Install and start Ollama to download Nomic.'
+          : null,
+      );
+    } catch {
+      setNomicStatus('unreachable');
+      setNomicNote(
+        'Ollama is not reachable. Install and start Ollama to download Nomic.',
+      );
+    }
+  };
+
+  useEffect(() => {
+    if (!draft.semanticIndex.enabled || !props.engineBaseUrl) return;
+    if (featureTab !== 'index') return;
+    void refreshNomicStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refresh when index tab / engine / ollama URL change
+  }, [
+    draft.semanticIndex.enabled,
+    featureTab,
+    props.engineBaseUrl,
+    props.authToken,
+    ollamaEmbeddingBaseUrl,
+  ]);
+
+  const downloadNomic = async () => {
+    if (!props.engineBaseUrl || nomicStatus === 'downloading') return;
+    setNomicStatus('downloading');
+    setNomicProgress(undefined);
+    setNomicNote('Downloading Nomic Embed Text via Ollama…');
+    patch({
+      semanticIndex: {
+        ...draft.semanticIndex,
+        enabled: true,
+        source: 'ollama' as const,
+        backend: 'ollama' as const,
+        model: NOMIC_EMBED_MODEL,
+        dimensions: 0,
+        normalized: true,
+      },
+    });
+    try {
+      const result = await pullOllamaEmbeddingModel({
+        baseUrl: props.engineBaseUrl,
+        token: props.authToken,
+        model: NOMIC_EMBED_MODEL,
+        providerBaseUrl: ollamaEmbeddingBaseUrl,
+        onProgress: (progress) => {
+          if (progress.percent !== undefined) {
+            setNomicProgress(progress.percent);
+          }
+          setNomicNote(
+            progress.percent !== undefined
+              ? `Downloading Nomic… ${progress.percent}%`
+              : `Downloading Nomic… ${progress.status}`,
+          );
+        },
+      });
+      if (!result.ok) {
+        const unreachable = /ollama|reach|ECONNREFUSED|install/i.test(
+          result.error,
+        );
+        setNomicStatus(unreachable ? 'unreachable' : 'missing');
+        setNomicProgress(undefined);
+        setNomicNote(result.error);
+        return;
+      }
+      setNomicStatus('ready');
+      setNomicProgress(100);
+      setNomicNote(
+        'Nomic Embed Text is ready. Save settings, then reindex this workspace.',
+      );
+    } catch (err) {
+      setNomicStatus('unreachable');
+      setNomicProgress(undefined);
+      setNomicNote(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const useNomicNow = () => {
+    patch({
+      semanticIndex: {
+        ...draft.semanticIndex,
+        enabled: true,
+        source: 'ollama' as const,
+        backend: 'ollama' as const,
+        model: NOMIC_EMBED_MODEL,
+        dimensions: 0,
+        normalized: true,
+      },
+    });
+    setNomicNote(
+      'Using Nomic Embed Text. Save settings, then reindex this workspace.',
+    );
+  };
+
+  const page = PAGE_COPY[tab];
 
   const save = async () => {
     setSaving(true);
@@ -811,6 +966,95 @@ export function SettingsPanel(props: SettingsPanelProps) {
                         </p>
                       ) : null}
 
+                      <div className="embedding-upgrade field full">
+                        <div className="embedding-upgrade__copy">
+                          <p className="embedding-upgrade__title">
+                            Better accuracy (optional)
+                          </p>
+                          <p className="embedding-upgrade__body">
+                            Download Nomic Embed Text for stronger semantic
+                            search. ~274 MB via Ollama — not shipped with Mitii.
+                            Bundled MiniLM still works without this.
+                          </p>
+                          {nomicNote ? (
+                            <p className="field-help">{nomicNote}</p>
+                          ) : null}
+                          {nomicStatus === 'downloading' &&
+                          nomicProgress !== undefined ? (
+                            <div
+                              className="embedding-upgrade__bar"
+                              role="progressbar"
+                              aria-valuenow={nomicProgress}
+                              aria-valuemin={0}
+                              aria-valuemax={100}
+                            >
+                              <span style={{ width: `${nomicProgress}%` }} />
+                            </div>
+                          ) : null}
+                        </div>
+                        <div className="embedding-upgrade__actions">
+                          {nomicStatus === 'ready' ? (
+                            <>
+                              <span className="embedding-upgrade__badge">
+                                Ready
+                              </span>
+                              {draft.semanticIndex.source !== 'ollama' ||
+                              draft.semanticIndex.model.trim() !==
+                                NOMIC_EMBED_MODEL ? (
+                                <button
+                                  type="button"
+                                  className="btn btn-primary"
+                                  onClick={useNomicNow}
+                                >
+                                  Use Nomic
+                                </button>
+                              ) : null}
+                            </>
+                          ) : null}
+                          {nomicStatus === 'checking' ? (
+                            <span className="embedding-upgrade__badge">
+                              Checking…
+                            </span>
+                          ) : null}
+                          {nomicStatus === 'downloading' ? (
+                            <span className="embedding-upgrade__badge">
+                              {nomicProgress !== undefined
+                                ? `${nomicProgress}%`
+                                : 'Downloading…'}
+                            </span>
+                          ) : null}
+                          {nomicStatus === 'missing' ||
+                          nomicStatus === 'unreachable' ? (
+                            <>
+                              <button
+                                type="button"
+                                className="btn btn-primary"
+                                disabled={
+                                  !props.engineBaseUrl ||
+                                  nomicStatus === 'downloading'
+                                }
+                                onClick={() => void downloadNomic()}
+                              >
+                                Download
+                              </button>
+                              {nomicStatus === 'unreachable' ? (
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost"
+                                  onClick={() => {
+                                    void getDesktopBridge()?.openExternal(
+                                      OLLAMA_INSTALL_URL,
+                                    );
+                                  }}
+                                >
+                                  Install Ollama
+                                </button>
+                              ) : null}
+                            </>
+                          ) : null}
+                        </div>
+                      </div>
+
                       {draft.semanticIndex.source === 'ollama' ||
                       draft.semanticIndex.source === 'openai-compatible' ? (
                         <>
@@ -950,10 +1194,17 @@ export function SettingsPanel(props: SettingsPanelProps) {
                           semanticIndex: {
                             enabled: draft.semanticIndex.enabled,
                             source: draft.semanticIndex.source,
-                            model: draft.semanticIndex.model,
+                            model:
+                              draft.semanticIndex.model.trim() ||
+                              (draft.semanticIndex.source === 'ollama'
+                                ? NOMIC_EMBED_MODEL
+                                : ''),
                             dimensions: draft.semanticIndex.dimensions,
                             normalized: draft.semanticIndex.normalized,
-                            baseUrl: draft.provider.baseUrl,
+                            baseUrl:
+                              draft.semanticIndex.source === 'ollama'
+                                ? ollamaEmbeddingBaseUrl
+                                : draft.provider.baseUrl,
                           },
                         })
                           .then((result) => {

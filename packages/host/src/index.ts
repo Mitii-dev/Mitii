@@ -359,6 +359,17 @@ export type {
   ListProviderModelsInput,
 } from './config/testProviderConnection.js';
 
+export {
+  pullOllamaModel,
+  isOllamaModelInstalled,
+  resolveOllamaApiOrigin,
+} from './config/pullOllamaModel.js';
+export type {
+  OllamaPullProgress,
+  PullOllamaModelInput,
+  PullOllamaModelResult,
+} from './config/pullOllamaModel.js';
+
 // ---------------------------------------------------------------------------
 // Automation (Phase 1) — SDK executor for @mitii/automation ClaimRunner
 // ---------------------------------------------------------------------------
