@@ -11,10 +11,7 @@ export default defineConfig({
     emptyOutDir: true,
     sourcemap: true,
   },
-  resolve: {
-    alias: {
-      // Shared protocol/bridge types for the renderer bundle
-      '../shared': resolve(__dirname, 'src/shared'),
-    },
-  },
+  // Do NOT alias '../shared' — that string also matches @mitii/v8 relative
+  // imports (e.g. ../shared/content-hasher) and breaks the renderer build.
+  // Renderer files already reach src/shared via normal relative paths.
 });

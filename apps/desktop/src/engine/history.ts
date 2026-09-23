@@ -35,6 +35,10 @@ export interface DesktopChatThread {
   updatedAt: string;
   messages: DesktopChatMessage[];
   tokenUsage?: DesktopThreadTokenUsage;
+  /** Structured plan from Plan mode — handed to Agent on "Start building". */
+  pendingPlan?: unknown;
+  pendingPlanStrategy?: unknown;
+  pendingTaskList?: unknown;
 }
 
 export interface DesktopHistoryStore {
@@ -128,6 +132,13 @@ function normalizeThread(raw: unknown): DesktopChatThread | undefined {
           .filter((m): m is DesktopChatMessage => Boolean(m))
       : [],
     ...(tokenUsage ? { tokenUsage } : {}),
+    ...(obj.pendingPlan != null ? { pendingPlan: obj.pendingPlan } : {}),
+    ...(obj.pendingPlanStrategy != null
+      ? { pendingPlanStrategy: obj.pendingPlanStrategy }
+      : {}),
+    ...(obj.pendingTaskList != null
+      ? { pendingTaskList: obj.pendingTaskList }
+      : {}),
   };
 }
 
@@ -185,25 +196,71 @@ export function createThread(
   };
 }
 
+export interface UpsertThreadOptions {
+  title?: string;
+  tokenUsage?: DesktopThreadTokenUsage;
+  pendingPlan?: unknown | null;
+  pendingPlanStrategy?: unknown | null;
+  pendingTaskList?: unknown | null;
+  clearPendingPlan?: boolean;
+}
+
 export function upsertThreadMessages(
   store: DesktopHistoryStore,
   threadId: string,
   messages: DesktopChatMessage[],
-  title?: string,
-  tokenUsage?: DesktopThreadTokenUsage,
+  titleOrOptions?: string | UpsertThreadOptions,
+  tokenUsageArg?: DesktopThreadTokenUsage,
 ): DesktopHistoryStore {
+  const options: UpsertThreadOptions =
+    typeof titleOrOptions === 'string' || titleOrOptions === undefined
+      ? {
+          ...(titleOrOptions ? { title: titleOrOptions } : {}),
+          ...(tokenUsageArg ? { tokenUsage: tokenUsageArg } : {}),
+        }
+      : titleOrOptions;
+
+  const applyPending = (
+    thread: DesktopChatThread,
+  ): DesktopChatThread => {
+    if (options.clearPendingPlan) {
+      const {
+        pendingPlan: _p,
+        pendingPlanStrategy: _s,
+        pendingTaskList: _t,
+        ...rest
+      } = thread;
+      return rest;
+    }
+    const next: DesktopChatThread = { ...thread };
+    if (options.pendingPlan !== undefined) {
+      if (options.pendingPlan === null) delete next.pendingPlan;
+      else next.pendingPlan = options.pendingPlan;
+    }
+    if (options.pendingPlanStrategy !== undefined) {
+      if (options.pendingPlanStrategy === null) delete next.pendingPlanStrategy;
+      else next.pendingPlanStrategy = options.pendingPlanStrategy;
+    }
+    if (options.pendingTaskList !== undefined) {
+      if (options.pendingTaskList === null) delete next.pendingTaskList;
+      else next.pendingTaskList = options.pendingTaskList;
+    }
+    return next;
+  };
+
   const existing = store.threads.some((thread) => thread.id === threadId);
   if (!existing) {
-    const created: DesktopChatThread = {
+    const base: DesktopChatThread = {
       id: threadId,
       title:
-        title?.trim() ||
+        options.title?.trim() ||
         messages.find((m) => m.role === 'user')?.text.slice(0, 60) ||
         'Chat',
       updatedAt: new Date().toISOString(),
       messages,
-      ...(tokenUsage ? { tokenUsage } : {}),
+      ...(options.tokenUsage ? { tokenUsage: options.tokenUsage } : {}),
     };
+    const created = applyPending(base);
     return {
       threads: [created, ...store.threads].slice(0, 100),
       activeThreadId: threadId,
@@ -212,21 +269,22 @@ export function upsertThreadMessages(
   const threads = store.threads.map((thread) => {
     if (thread.id !== threadId) return thread;
     const nextTitle =
-      title?.trim() ||
+      options.title?.trim() ||
       thread.title ||
       messages.find((m) => m.role === 'user')?.text.slice(0, 60) ||
       'Chat';
-    return {
+    const withMessages: DesktopChatThread = {
       ...thread,
       title: nextTitle,
       messages,
       updatedAt: new Date().toISOString(),
-      ...(tokenUsage
-        ? { tokenUsage }
+      ...(options.tokenUsage
+        ? { tokenUsage: options.tokenUsage }
         : thread.tokenUsage
           ? { tokenUsage: thread.tokenUsage }
           : {}),
     };
+    return applyPending(withMessages);
   });
   return { threads, activeThreadId: threadId };
 }

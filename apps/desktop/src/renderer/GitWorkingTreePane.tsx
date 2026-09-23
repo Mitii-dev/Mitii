@@ -66,6 +66,8 @@ interface GitWorkingTreePaneProps {
   onUsePrompt?: (prompt: string, mode?: 'ask' | 'plan' | 'agent') => void;
   onStatusNote?: (note: string | null) => void;
   onError?: (error: string | null) => void;
+  /** Bubble Code Review findings to the chat composer strip. */
+  onFindingsChange?: (findings: ReviewFinding[]) => void;
 }
 
 export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
@@ -181,13 +183,33 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
     }
   };
 
-  const loadWritingRecipe = async (id: 'pr-summary' | 'changelog') => {
+  const loadWritingRecipe = async (
+    id: 'pr-summary' | 'changelog' | 'release-notes',
+    userNote?: string,
+  ) => {
     setBusy(true);
     props.onError?.(null);
     try {
-      const compiled = await runRecipe({ ...auth, id });
-      props.onUsePrompt?.(compiled.compiled.prompt, compiled.compiled.mode);
-      props.onStatusNote?.(`Loaded “${compiled.compiled.title}” into chat`);
+      const note =
+        userNote?.trim() ||
+        (id === 'release-notes'
+          ? 'Write release notes for the current working-tree changes: user-facing highlights, fixes, and breaking changes.'
+          : undefined);
+      const recipeId = id === 'release-notes' ? 'changelog' : id;
+      const compiled = await runRecipe({
+        ...auth,
+        id: recipeId,
+        ...(note ? { note } : {}),
+      });
+      // Prefer API `note`; if the engine ignored it, still frame the prompt.
+      const prompt =
+        note && !compiled.compiled.prompt.includes(note.slice(0, 40))
+          ? `${note}\n\n${compiled.compiled.prompt}`
+          : compiled.compiled.prompt;
+      props.onUsePrompt?.(prompt, compiled.compiled.mode);
+      props.onStatusNote?.(
+        `Loaded “${id === 'release-notes' ? 'Release notes' : compiled.compiled.title}” into chat`,
+      );
     } catch (err) {
       props.onError?.(err instanceof Error ? err.message : String(err));
     } finally {
@@ -199,6 +221,7 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
     setReviewBusy(true);
     setReviewError(null);
     setReviewFindings([]);
+    props.onFindingsChange?.([]);
     setReviewStatus('Reviewing…');
     const findings: ReviewFinding[] = [];
     try {
@@ -218,6 +241,7 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
           if (finding) {
             findings.push(finding);
             setReviewFindings([...findings]);
+            props.onFindingsChange?.([...findings]);
             setReviewStatus(
               `${findings.length} finding${findings.length === 1 ? '' : 's'}`,
             );
@@ -229,6 +253,7 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
           ? 'No findings'
           : `${findings.length} finding${findings.length === 1 ? '' : 's'}`,
       );
+      props.onFindingsChange?.(findings);
       void loadGit();
     } catch (err) {
       setReviewError(err instanceof Error ? err.message : String(err));
@@ -498,6 +523,14 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
               onClick={() => void loadWritingRecipe('changelog')}
             >
               Changelog
+            </button>
+            <button
+              type="button"
+              className="scm-text-btn"
+              disabled={busy}
+              onClick={() => void loadWritingRecipe('release-notes')}
+            >
+              Release notes
             </button>
           </div>
         </div>

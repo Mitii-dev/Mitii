@@ -146,9 +146,23 @@ export function mergeDesktopSettings(
   ),
 ): DesktopSettings {
   if (!isPlainObject(partial)) {
-    return structuredClone(base);
+    return lockAutocomplete(structuredClone(base));
   }
-  return deepMerge(base as Record<string, unknown>, partial) as DesktopSettings;
+  return lockAutocomplete(
+    deepMerge(base as Record<string, unknown>, partial) as DesktopSettings,
+  );
+}
+
+/** Desktop FIM is not shipped yet — keep autocomplete permanently off. */
+function lockAutocomplete(settings: DesktopSettings): DesktopSettings {
+  if (!settings.autocomplete.enabled) return settings;
+  return {
+    ...settings,
+    autocomplete: {
+      ...settings.autocomplete,
+      enabled: false,
+    },
+  };
 }
 
 function deepMerge(

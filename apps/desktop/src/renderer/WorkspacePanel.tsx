@@ -26,6 +26,7 @@ import {
 } from './api.js';
 import { CodeEditor } from './CodeEditor.js';
 import { GitWorkingTreePane } from './GitWorkingTreePane.js';
+import { AutomationsPanel } from './AutomationsPanel.js';
 import { McpManager } from './McpManager.js';
 import { RecipesManager } from './RecipesManager.js';
 import { SkillsManager } from './SkillsManager.js';
@@ -56,8 +57,28 @@ interface WorkspacePanelProps {
   /** Hide the internal Files/Git rail (parent activity bar owns those icons). */
   hideActivityRail?: boolean;
   /** Controlled explorer/git/extensions pane (used with hideActivityRail). */
-  side?: 'explorer' | 'git' | 'mcp' | 'skills' | 'recipes';
-  onSideChange?: (side: 'explorer' | 'git' | 'mcp' | 'skills' | 'recipes') => void;
+  side?: 'explorer' | 'git' | 'mcp' | 'skills' | 'recipes' | 'automations';
+  onSideChange?: (
+    side: 'explorer' | 'git' | 'mcp' | 'skills' | 'recipes' | 'automations',
+  ) => void;
+  /** Automations panel (activity bar). */
+  automations?: {
+    specs: import('./AutomationsPanel.js').AutomationSpecView[];
+    runs: import('./AutomationsPanel.js').AutomationRunView[];
+    loading?: boolean;
+    error?: string | null;
+    onRefresh: () => void;
+    onTrigger: (specId: string) => void;
+    onPause: (specId: string) => void;
+    onResume: (specId: string) => void;
+  };
+  /** Notify parent of open editor paths for context auto-pin. */
+  onEditorContextChange?: (ctx: {
+    activePath: string | null;
+    openPaths: string[];
+  }) => void;
+  /** Fired after a successful workspace file save (for index debounce). */
+  onFileSaved?: (path: string) => void;
   onGitCountChange?: (count: number) => void;
   /** Open this path when set (e.g. from chat file-changes card). */
   openPathRequest?: { path: string; view?: 'file' | 'diff' } | null;
@@ -69,6 +90,8 @@ interface WorkspacePanelProps {
   activeProfileName?: string | null;
   hasActiveProfile?: boolean;
   onOpenProfiles?: () => void;
+  /** Bubble Code Review findings to the chat composer strip. */
+  onReviewFindingsChange?: (findings: import('../shared/reviewFindings.js').ReviewFinding[]) => void;
 }
 
 type TreeEntry = { name: string; path: string; kind: 'file' | 'dir' };
@@ -162,11 +185,11 @@ function flattenVisible(
 
 export function WorkspacePanel(props: WorkspacePanelProps) {
   const [internalSide, setInternalSide] = useState<
-    'explorer' | 'git' | 'mcp' | 'skills' | 'recipes'
+    'explorer' | 'git' | 'mcp' | 'skills' | 'recipes' | 'automations'
   >('explorer');
   const side = props.side ?? internalSide;
   const setSide = (
-    next: 'explorer' | 'git' | 'mcp' | 'skills' | 'recipes',
+    next: 'explorer' | 'git' | 'mcp' | 'skills' | 'recipes' | 'automations',
   ) => {
     if (props.onSideChange) props.onSideChange(next);
     else setInternalSide(next);
@@ -180,6 +203,17 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(() => new Set());
   const [tabs, setTabs] = useState<OpenTab[]>([]);
   const [activePath, setActivePath] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!props.onEditorContextChange) return;
+    const openPaths = tabs
+      .filter((t) => t.mode === 'file' && !t.path.startsWith('diff:'))
+      .map((t) => t.path);
+    const active =
+      activePath && !activePath.startsWith('diff:') ? activePath : null;
+    props.onEditorContextChange({ activePath: active, openPaths });
+  }, [activePath, tabs, props.onEditorContextChange]);
+
   const [git, setGit] = useState<GitWorkingTreeSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -389,6 +423,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
       setNote('Saved');
       window.setTimeout(() => setNote(null), 1200);
       void loadGit();
+      props.onFileSaved?.(active.path);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -1014,7 +1049,10 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
 
   const workspaceLabel = workspaceFolderName(props.workspaceRoot);
   const extensionsFullscreen =
-    side === 'mcp' || side === 'skills' || side === 'recipes';
+    side === 'mcp' ||
+    side === 'skills' ||
+    side === 'recipes' ||
+    side === 'automations';
   const sideColumnWidth = extensionsFullscreen
     ? props.hideActivityRail
       ? 0
@@ -1245,6 +1283,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                 onUsePrompt={props.onUsePrompt}
                 onStatusNote={setNote}
                 onError={setError}
+                onFindingsChange={props.onReviewFindingsChange}
               />
             ) : null}
           </div>
@@ -1287,6 +1326,19 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
               baseUrl={props.baseUrl}
               token={props.token}
               onUsePrompt={props.onUsePrompt}
+            />
+          ) : side === 'automations' ? (
+            <AutomationsPanel
+              specs={props.automations?.specs ?? []}
+              runs={props.automations?.runs ?? []}
+              loading={props.automations?.loading}
+              error={props.automations?.error}
+              onRefresh={
+                props.automations?.onRefresh ?? (() => undefined)
+              }
+              onTrigger={props.automations?.onTrigger ?? (() => undefined)}
+              onPause={props.automations?.onPause ?? (() => undefined)}
+              onResume={props.automations?.onResume ?? (() => undefined)}
             />
           ) : (
             <>

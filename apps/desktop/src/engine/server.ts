@@ -9,6 +9,8 @@ import {
   type Server,
   type ServerResponse,
 } from 'node:http';
+import { copyFileSync, mkdirSync, readdirSync } from 'node:fs';
+import { basename, join } from 'node:path';
 
 import {
   createFileSystemSkillsCatalog,
@@ -24,6 +26,9 @@ import {
 } from '@mitii/host';
 import {
   AGENT_ENGINE_SCHEMA_VERSION,
+  planArtifactSchema,
+  planStrategyDecisionSchema,
+  taskListSchema,
   type MitiiClient,
   type MitiiResumeInput,
   type MitiiStartInput,
@@ -70,7 +75,22 @@ import {
   appendRunLog,
   resolveLogsDir,
 } from '../shared/project-logs.js';
-import { openSessionLog } from './sessionLog.js';
+import {
+  findLatestSessionLog,
+  openSessionLog,
+  writeSessionExport,
+} from './sessionLog.js';
+import {
+  findLatestModelIoLog,
+  isModelIoLoggingEnabled,
+  openModelIoLog,
+  setActiveModelIoSink,
+} from './modelIoLog.js';
+import { writeShareableDiagnostic } from './shareableDiagnostic.js';
+import {
+  buildDesktopStartExtras,
+  readDesktopSettingsJson,
+} from './startOptions.js';
 import {
   activateProfile,
   deleteProfile,
@@ -92,7 +112,17 @@ import {
   type DesktopChatMessage,
   type DesktopThreadTokenUsage,
 } from './history.js';
-import { getIndexStatus, reindexWorkspace } from './index-status.js';
+import {
+  getIndexStatus,
+  pauseWorkspaceIndex,
+  reindexWorkspace,
+} from './index-status.js';
+import {
+  listDesktopAutomations,
+  pauseDesktopAutomation,
+  resumeDesktopAutomation,
+  triggerDesktopAutomation,
+} from './automationHost.js';
 import {
   clearCheckpointLabels,
   deleteCheckpointLabel,
@@ -111,6 +141,7 @@ import {
   gitUnstage,
   listGitBranches,
 } from './git-working-tree.js';
+import { getGitStatus } from './git-status.js';
 import {
   copyWorkspaceEntries,
   createWorkspaceFile,
@@ -242,6 +273,18 @@ function buildStartInput(
   const requiredSkillIds = asStringArray(body.requiredSkillIds, 16);
   const requiredMcpServerIds = asStringArray(body.requiredMcpServerIds, 16);
   const conversation = parseConversation(body.conversation);
+  const approvedPlanParse = planArtifactSchema.safeParse(body.approvedPlan);
+  const approvedPlan = approvedPlanParse.success
+    ? approvedPlanParse.data
+    : undefined;
+  const strategyParse = planStrategyDecisionSchema.safeParse(
+    body.approvedPlanStrategy,
+  );
+  const approvedPlanStrategy = strategyParse.success
+    ? strategyParse.data
+    : undefined;
+  const taskListParse = taskListSchema.safeParse(body.taskList);
+  const taskList = taskListParse.success ? taskListParse.data : undefined;
   const modelRaw =
     (typeof body.model === 'string' && body.model.trim()
       ? body.model.trim()
@@ -253,6 +296,8 @@ function buildStartInput(
     ? normalizeOllamaModelId(modelRaw, process.env.MITII_BASE_URL)
     : undefined;
 
+  const extras = buildDesktopStartExtras(process.env);
+
   return {
     prompt: parsed.prompt,
     mode: parsed.mode ?? 'ask',
@@ -260,14 +305,74 @@ function buildStartInput(
     approvalMode: policy.approvalMode,
     planApproval: policy.planApproval,
     explorationDepth: intensity.depth,
-    windowBudget: { effort: intensity.effort },
+    windowBudget: {
+      effort: intensity.effort,
+      ...(extras.windowBudget?.policy
+        ? { policy: extras.windowBudget.policy }
+        : {}),
+      ...(extras.windowBudget?.maximumOutputTokens != null
+        ? { maximumOutputTokens: extras.windowBudget.maximumOutputTokens }
+        : {}),
+    },
     ...(parsed.sessionId ? { sessionId: parsed.sessionId } : {}),
     ...(model ? { model } : {}),
     ...(pinnedPaths ? { pinnedPaths } : {}),
     ...(requiredSkillIds ? { requiredSkillIds } : {}),
     ...(requiredMcpServerIds ? { requiredMcpServerIds } : {}),
     ...(conversation ? { conversation } : {}),
+    ...(approvedPlan ? { approvedPlan } : {}),
+    ...(approvedPlanStrategy ? { approvedPlanStrategy } : {}),
+    ...(taskList ? { taskList } : {}),
+    ...(extras.budget ? { budget: extras.budget } : {}),
+    ...(extras.loopPolicy ? { loopPolicy: extras.loopPolicy } : {}),
+    ...(extras.logVerbosity ? { logVerbosity: extras.logVerbosity } : {}),
   };
+}
+
+/** Optional host context blocks from ui.contextToggles (gitDiff today). */
+async function attachContextEnvironment(
+  startInput: MitiiStartInput,
+  workspaceRoot: string,
+): Promise<MitiiStartInput> {
+  const settings = readDesktopSettingsJson(process.env);
+  const ui = settings?.ui;
+  const toggles =
+    ui && typeof ui === 'object' && !Array.isArray(ui)
+      ? (ui as Record<string, unknown>).contextToggles
+      : undefined;
+  const gitDiffOn =
+    toggles &&
+    typeof toggles === 'object' &&
+    !Array.isArray(toggles) &&
+    (toggles as Record<string, unknown>).gitDiff === true;
+  if (!gitDiffOn) return startInput;
+
+  try {
+    const status = await getGitStatus(workspaceRoot);
+    if (!status.ok || status.files.length === 0) return startInput;
+    const lines = status.files
+      .slice(0, 40)
+      .map((f) => `${f.status} ${f.path}`);
+    const content = [
+      status.branch ? `Branch: ${status.branch}` : null,
+      status.summary,
+      ...lines,
+    ]
+      .filter(Boolean)
+      .join('\n');
+    const block = {
+      id: 'git-diff',
+      title: 'Git working tree',
+      content,
+      priority: 40,
+    };
+    return {
+      ...startInput,
+      environment: [...(startInput.environment ?? []), block],
+    };
+  } catch {
+    return startInput;
+  }
 }
 
 async function streamRun(
@@ -378,10 +483,12 @@ async function streamRun(
   });
 
   let sessionLog: ReturnType<typeof openSessionLog>;
+  let modelIoLog: ReturnType<typeof openModelIoLog>;
   try {
     const run = startOrResume();
+    const runStartedAt = new Date().toISOString();
     sessionLog = openSessionLog(meta?.workspaceRoot, {
-      at: new Date().toISOString(),
+      at: runStartedAt,
       prompt: meta?.prompt ?? '',
       mode,
       sessionId: meta?.sessionId ?? id,
@@ -392,27 +499,50 @@ async function streamRun(
       appendRunLog(logsDir, `session_log ${sessionLog.path}`);
     }
 
-    for await (const event of run.events) {
-      sessionLog?.appendEvent(event);
-      writeNdjson(res, { op: 'event', id, event });
+    const settings = readDesktopSettingsJson(process.env);
+    const developer = settings?.developer as Record<string, unknown> | undefined;
+    const modelIoOn = isModelIoLoggingEnabled(
+      developer?.enabled === true,
+      developer?.modelIo === true,
+    );
+    modelIoLog = modelIoOn
+      ? openModelIoLog(meta?.workspaceRoot, {
+          at: runStartedAt,
+          sessionId: meta?.sessionId ?? id,
+          runId: run.runId ?? id,
+        })
+      : undefined;
+    if (modelIoLog) {
+      setActiveModelIoSink(modelIoLog);
+      appendRunLog(logsDir, `model_io ${modelIoLog.path}`);
     }
-    const result = await run.result;
-    if (result.status !== 'suspended') {
-      sessionLog?.finish(result);
-    }
-    if (result.status === 'completed' && meta?.workspaceRoot) {
-      const promptLabel = (meta.prompt ?? 'run').trim() || 'run';
-      try {
-        await recordCheckpointLabel({
-          workspaceRoot: meta.workspaceRoot,
-          label: `After: ${promptLabel.slice(0, 40)}`,
-        });
-      } catch {
-        // Label snapshot is best-effort; never fail the run stream.
+
+    try {
+      for await (const event of run.events) {
+        sessionLog?.appendEvent(event);
+        writeNdjson(res, { op: 'event', id, event });
       }
+      const result = await run.result;
+      if (result.status !== 'suspended') {
+        sessionLog?.finish(result);
+      }
+      if (result.status === 'completed' && meta?.workspaceRoot) {
+        const promptLabel = (meta.prompt ?? 'run').trim() || 'run';
+        try {
+          await recordCheckpointLabel({
+            workspaceRoot: meta.workspaceRoot,
+            label: `After: ${promptLabel.slice(0, 40)}`,
+          });
+        } catch {
+          // Label snapshot is best-effort; never fail the run stream.
+        }
+      }
+      writeNdjson(res, { op: 'result', id, result });
+      appendRunLog(logsDir, `run_ok id=${id} status=${result.status}`);
+    } finally {
+      setActiveModelIoSink(undefined);
+      modelIoLog?.close();
     }
-    writeNdjson(res, { op: 'result', id, result });
-    appendRunLog(logsDir, `run_ok id=${id} status=${result.status}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     appendRunLog(logsDir, `run_failed id=${id} ${message}`, {
@@ -539,7 +669,10 @@ async function handlePrompt(
     body && typeof body === 'object' && !Array.isArray(body)
       ? (body as Record<string, unknown>)
       : {};
-  const startInput = buildStartInput(record, parsed, workspaceRoot);
+  const startInput = await attachContextEnvironment(
+    buildStartInput(record, parsed, workspaceRoot),
+    workspaceRoot,
+  );
   await streamRun(id, mode, () => client.start(startInput), res, {
     model: startInput.model,
     baseUrl: process.env.MITII_BASE_URL,
@@ -1780,15 +1913,56 @@ export async function startEngineServer(
             : undefined;
 
         if (messages) {
-          store = upsertThreadMessages(
-            store,
-            id,
-            messages,
-            typeof body.title === 'string' ? body.title : undefined,
+          store = upsertThreadMessages(store, id, messages, {
+            title:
+              typeof body.title === 'string' ? body.title : undefined,
             tokenUsage,
-          );
+            ...(body.clearPendingPlan === true
+              ? { clearPendingPlan: true }
+              : {
+                  ...(Object.prototype.hasOwnProperty.call(body, 'pendingPlan')
+                    ? { pendingPlan: body.pendingPlan }
+                    : {}),
+                  ...(Object.prototype.hasOwnProperty.call(
+                    body,
+                    'pendingPlanStrategy',
+                  )
+                    ? { pendingPlanStrategy: body.pendingPlanStrategy }
+                    : {}),
+                  ...(Object.prototype.hasOwnProperty.call(
+                    body,
+                    'pendingTaskList',
+                  )
+                    ? { pendingTaskList: body.pendingTaskList }
+                    : {}),
+                }),
+          });
         } else if (tokenUsage) {
           store = upsertThreadTokenUsage(store, id, tokenUsage);
+        } else if (
+          body.clearPendingPlan === true ||
+          Object.prototype.hasOwnProperty.call(body, 'pendingPlan')
+        ) {
+          const thread = store.threads.find((t) => t.id === id);
+          if (!thread) {
+            sendJson(res, 404, { error: 'thread_not_found' });
+            return;
+          }
+          store = upsertThreadMessages(store, id, thread.messages, {
+            clearPendingPlan: body.clearPendingPlan === true,
+            ...(Object.prototype.hasOwnProperty.call(body, 'pendingPlan')
+              ? { pendingPlan: body.pendingPlan }
+              : {}),
+            ...(Object.prototype.hasOwnProperty.call(
+              body,
+              'pendingPlanStrategy',
+            )
+              ? { pendingPlanStrategy: body.pendingPlanStrategy }
+              : {}),
+            ...(Object.prototype.hasOwnProperty.call(body, 'pendingTaskList')
+              ? { pendingTaskList: body.pendingTaskList }
+              : {}),
+          });
         } else {
           sendJson(res, 400, { error: 'messages_or_tokenUsage_required' });
           return;
@@ -1801,6 +1975,82 @@ export async function startEngineServer(
       if (method === 'GET' && path === '/v1/index/status') {
         if (!requireAuth(req, res, token)) return;
         sendJson(res, 200, getIndexStatus(cwd));
+        return;
+      }
+
+      if (method === 'GET' && path === '/v1/automations') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          sendJson(res, 200, listDesktopAutomations(cwd));
+        } catch (error) {
+          sendJson(res, 500, {
+            error: 'automations_failed',
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/automations/trigger') {
+        if (!requireAuth(req, res, token)) return;
+        const body = (await readJsonBody(req)) as Record<string, unknown>;
+        const specId = typeof body.specId === 'string' ? body.specId.trim() : '';
+        if (!specId) {
+          sendJson(res, 400, { error: 'specId_required' });
+          return;
+        }
+        try {
+          sendJson(res, 200, triggerDesktopAutomation(cwd, specId));
+        } catch (error) {
+          sendJson(res, 500, {
+            error: 'automations_trigger_failed',
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/automations/pause') {
+        if (!requireAuth(req, res, token)) return;
+        const body = (await readJsonBody(req)) as Record<string, unknown>;
+        const specId = typeof body.specId === 'string' ? body.specId.trim() : '';
+        if (!specId) {
+          sendJson(res, 400, { error: 'specId_required' });
+          return;
+        }
+        try {
+          sendJson(res, 200, pauseDesktopAutomation(cwd, specId));
+        } catch (error) {
+          sendJson(res, 500, {
+            error: 'automations_pause_failed',
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/automations/resume') {
+        if (!requireAuth(req, res, token)) return;
+        const body = (await readJsonBody(req)) as Record<string, unknown>;
+        const specId = typeof body.specId === 'string' ? body.specId.trim() : '';
+        if (!specId) {
+          sendJson(res, 400, { error: 'specId_required' });
+          return;
+        }
+        try {
+          sendJson(res, 200, resumeDesktopAutomation(cwd, specId));
+        } catch (error) {
+          sendJson(res, 500, {
+            error: 'automations_resume_failed',
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/index/pause') {
+        if (!requireAuth(req, res, token)) return;
+        sendJson(res, 200, pauseWorkspaceIndex());
         return;
       }
 
@@ -1845,6 +2095,104 @@ export async function startEngineServer(
               },
         });
         sendJson(res, 200, { ...result, statusSnapshot: getIndexStatus(cwd) });
+        return;
+      }
+
+      if (method === 'GET' && path === '/v1/evidence/session-log/latest') {
+        if (!requireAuth(req, res, token)) return;
+        const latest = findLatestSessionLog(cwd);
+        if (!latest) {
+          sendJson(res, 404, { error: 'not_found' });
+          return;
+        }
+        sendJson(res, 200, { path: latest });
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/evidence/session-log/export') {
+        if (!requireAuth(req, res, token)) return;
+        const body = (await readJsonBody(req)) as Record<string, unknown>;
+        const fallback =
+          resolveLogsDir(undefined, process.env) ?? join(cwd, '.mitii', 'logs');
+        const outPath = writeSessionExport(
+          cwd,
+          fallback,
+          body.payload ?? body,
+        );
+        sendJson(res, 200, { path: outPath });
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/evidence/shareable-diagnostic') {
+        if (!requireAuth(req, res, token)) return;
+        const body = (await readJsonBody(req)) as Record<string, unknown>;
+        const settings = readDesktopSettingsJson(process.env);
+        const developer = settings?.developer as
+          | Record<string, unknown>
+          | undefined;
+        const fallback =
+          resolveLogsDir(undefined, process.env) ?? join(cwd, '.mitii', 'logs');
+        const written = writeShareableDiagnostic({
+          workspaceRoot: cwd,
+          fallbackDir: fallback,
+          meta: {
+            providerType:
+              typeof body.providerType === 'string'
+                ? body.providerType
+                : process.env.MITII_PROVIDER,
+            model:
+              typeof body.model === 'string'
+                ? body.model
+                : process.env.MITII_MODEL,
+            baseUrl:
+              typeof body.baseUrl === 'string'
+                ? body.baseUrl
+                : process.env.MITII_BASE_URL,
+            mode: typeof body.mode === 'string' ? body.mode : undefined,
+            developerEnabled: developer?.enabled === true,
+            modelIoEnabled: developer?.modelIo === true,
+            contextWindowTokens:
+              typeof body.contextWindowTokens === 'number'
+                ? body.contextWindowTokens
+                : undefined,
+          },
+        });
+        sendJson(res, 200, written);
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/evidence/audit-pack') {
+        if (!requireAuth(req, res, token)) return;
+        const logsDir =
+          resolveLogsDir(undefined, process.env) ?? join(cwd, '.mitii', 'logs');
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const auditDir = join(logsDir, `audit-${stamp}`);
+        mkdirSync(auditDir, { recursive: true });
+        const copied: string[] = [];
+        const candidates = [
+          findLatestSessionLog(cwd),
+          findLatestModelIoLog(cwd),
+        ].filter((p): p is string => Boolean(p));
+        // Also include newest shareable diagnostic if present.
+        try {
+          const names = readdirSync(logsDir)
+            .filter((name) => name.startsWith('shareable-diagnostic-'))
+            .sort();
+          const last = names[names.length - 1];
+          if (last) candidates.push(join(logsDir, last));
+        } catch {
+          /* ignore */
+        }
+        for (const src of candidates) {
+          try {
+            const dest = join(auditDir, basename(src));
+            copyFileSync(src, dest);
+            copied.push(dest);
+          } catch {
+            /* skip missing */
+          }
+        }
+        sendJson(res, 200, { path: auditDir, copied });
         return;
       }
 
