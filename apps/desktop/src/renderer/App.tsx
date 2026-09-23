@@ -1765,6 +1765,11 @@ export function App() {
   const inCodeMode = view === 'chat' && chatLayout === 'code';
   const showHistorySide = view === 'chat' && chatLayout === 'chat';
   const showActivityBar = inCodeMode || view === 'settings';
+  const hideCodeChat =
+    inCodeMode &&
+    (workspaceSide === 'mcp' ||
+      workspaceSide === 'skills' ||
+      workspaceSide === 'recipes');
 
   const suggestMenu = pinMenu ? (
     <div
@@ -2418,7 +2423,11 @@ export function App() {
             }}
           />
         ) : inCodeMode ? (
-          <div className="code-mode">
+          <div
+            className={`code-mode${
+              hideCodeChat ? ' code-mode--extensions' : ''
+            }`}
+          >
             <div className="code-mode__workspace">
               {engine ? (
                 <WorkspacePanel
@@ -2438,6 +2447,7 @@ export function App() {
                     if (nextMode) setMode(nextMode);
                     setView('chat');
                     setLayout('code');
+                    setWorkspaceSide('explorer');
                   }}
                   onRestartEngine={async () => {
                     const bridge = getDesktopBridge();
@@ -2459,20 +2469,24 @@ export function App() {
                 </div>
               )}
             </div>
-            <ResizeHandle
-              value={codeChatWidth}
-              onChange={setCodeChatWidth}
-              min={280}
-              max={720}
-              reverse
-              label="Resize chat panel"
-            />
-            <div
-              className="code-mode__chat"
-              style={{ width: codeChatWidth, flex: '0 0 auto' }}
-            >
-              {chatPanel}
-            </div>
+            {hideCodeChat ? null : (
+              <>
+                <ResizeHandle
+                  value={codeChatWidth}
+                  onChange={setCodeChatWidth}
+                  min={280}
+                  max={720}
+                  reverse
+                  label="Resize chat panel"
+                />
+                <div
+                  className="code-mode__chat"
+                  style={{ width: codeChatWidth, flex: '0 0 auto' }}
+                >
+                  {chatPanel}
+                </div>
+              </>
+            )}
           </div>
         ) : (
           chatPanel

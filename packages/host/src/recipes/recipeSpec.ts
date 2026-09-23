@@ -5,6 +5,7 @@ import { basename, join } from 'node:path';
 import {
   buildWritingRecipeAsk,
   isMitiiWritingRecipeId,
+  type CommitMessageStyle,
   type MitiiWritingRecipeId,
 } from './gitWritingRecipes.js';
 
@@ -72,6 +73,8 @@ export interface CompileRecipeOptions {
   params?: Readonly<Record<string, string>>;
   /** Extra note appended after the rendered template. */
   userNote?: string;
+  /** Commit-message style when compiling a writing recipe. */
+  commitMessageStyle?: CommitMessageStyle;
 }
 
 /**
@@ -119,6 +122,9 @@ export async function compileRecipeToStartInput(
       workspaceRoot: options.workspaceRoot,
       recipe: parsed.writingRecipe as MitiiWritingRecipeId,
       userNote: prompt,
+      ...(options.commitMessageStyle
+        ? { commitMessageStyle: options.commitMessageStyle }
+        : {}),
     });
     prompt = writing.prompt;
     requiredSkillIds = [
