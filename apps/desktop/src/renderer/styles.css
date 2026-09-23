@@ -2670,6 +2670,10 @@ button:disabled {
   resize: vertical;
 }
 
+.maximum-index-files-custom {
+  margin-top: 8px;
+}
+
 .field-help {
   margin: 6px 0 0;
   font-size: 11px;
@@ -2735,6 +2739,121 @@ button:disabled {
   background: var(--mitii-text);
   border-radius: inherit;
   transition: width 160ms ease;
+}
+
+.context-panels {
+  display: grid;
+  gap: 16px;
+}
+
+.context-side-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--mitii-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--mitii-surface) 88%, var(--mitii-text) 3%);
+}
+
+.panel-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.panel-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.panel-empty {
+  margin: 0;
+  font-size: 12px;
+  color: var(--mitii-muted);
+}
+
+.memory-compose {
+  display: grid;
+  gap: 8px;
+}
+
+.memory-compose__input {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 8px 10px;
+  border: 1px solid var(--mitii-border);
+  border-radius: 8px;
+  background: var(--mitii-surface);
+  color: var(--mitii-text);
+}
+
+.memory-list,
+.checkpoint-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.memory-item,
+.checkpoint-item {
+  padding: 8px 10px;
+  border: 1px solid var(--mitii-border-soft, var(--mitii-border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mitii-surface) 70%, transparent);
+}
+
+.memory-item__meta,
+.checkpoint-item__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  color: var(--mitii-muted);
+}
+
+.memory-item__text {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.memory-item__delete {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: var(--mitii-muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.memory-item__delete:hover:not(:disabled) {
+  color: #b42318;
+}
+
+.checkpoint-item__label {
+  font-weight: 600;
+  color: var(--mitii-text);
+}
+
+.checkpoint-item__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
 }
 
 .storage-paths {

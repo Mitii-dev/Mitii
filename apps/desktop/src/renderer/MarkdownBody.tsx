@@ -1,6 +1,12 @@
-import { useEffect, useId, useState, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+
+import {
+  elementsToSvg,
+  isExcalidrawSource,
+  parseExcalidrawDocument,
+} from '../shared/excalidrawSvg.js';
 
 interface MarkdownBodyProps {
   text: string;
@@ -53,6 +59,54 @@ function CodeBlock({
       <pre className="md-pre">
         <code className={`language-${lang}`}>{text}</code>
       </pre>
+    </figure>
+  );
+}
+
+function ExcalidrawBlock({ text }: { text: string }) {
+  const [showSource, setShowSource] = useState(false);
+  const parsed = useMemo(() => parseExcalidrawDocument(text), [text]);
+
+  if (!parsed) {
+    return (
+      <figure className="md-diagram-card md-diagram-card--error">
+        <figcaption className="md-code-toolbar md-diagram-toolbar">
+          <span className="md-diagram-title">Excalidraw</span>
+          <span className="md-code-lang">parse error</span>
+          <CopyButton text={text} label="Source" />
+        </figcaption>
+        <p className="md-diagram-error">
+          Could not parse Excalidraw JSON (incomplete or invalid).
+        </p>
+        <CodeBlock language="json" text={text} />
+      </figure>
+    );
+  }
+
+  const title = parsed.title ?? 'Architecture diagram';
+  const svg = elementsToSvg(parsed.elements, title);
+  const svgDataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+
+  return (
+    <figure className="md-diagram-card mcp-app-card">
+      <figcaption className="md-code-toolbar md-diagram-toolbar">
+        <span className="md-diagram-title">{title}</span>
+        <span className="md-code-lang">excalidraw</span>
+        <div className="md-diagram-actions">
+          <button
+            type="button"
+            className="md-copy-button"
+            onClick={() => setShowSource((v) => !v)}
+          >
+            {showSource ? 'Hide source' : 'Source'}
+          </button>
+          <CopyButton text={text} label="Copy" />
+        </div>
+      </figcaption>
+      <div className="md-diagram-stage">
+        <img className="mcp-app-card__svg" src={svgDataUrl} alt={title} />
+      </div>
+      {showSource ? <CodeBlock language="excalidraw" text={text} /> : null}
     </figure>
   );
 }
@@ -165,6 +219,9 @@ export function MarkdownBody({ text }: MarkdownBodyProps) {
             const language = normalizeLanguage(
               className?.replace(/^language-/, ''),
             );
+            if (isExcalidrawSource(language, codeText)) {
+              return <ExcalidrawBlock text={codeText} />;
+            }
             if (isMermaidSource(language, codeText)) {
               return <MermaidBlock text={codeText} />;
             }

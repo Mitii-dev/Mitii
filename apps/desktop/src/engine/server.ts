@@ -13,7 +13,11 @@ import {
 import {
   createFileSystemSkillsCatalog,
   DEFAULT_OLLAMA_EMBEDDING_MODEL,
+  clearWorkspaceMemories,
+  commitWorkspaceMemory,
+  deleteWorkspaceMemory,
   listProviderModels,
+  listWorkspaceMemoriesForView,
   normalizeOllamaModelId,
   pullOllamaModel,
   testProviderConnection,
@@ -89,6 +93,13 @@ import {
   type DesktopThreadTokenUsage,
 } from './history.js';
 import { getIndexStatus, reindexWorkspace } from './index-status.js';
+import {
+  clearCheckpointLabels,
+  deleteCheckpointLabel,
+  loadCheckpointLabels,
+  recordCheckpointLabel,
+} from './checkpointLabels.js';
+import { workspaceIdFromRoot } from './workspace-id.js';
 import {
   getGitFileChangesSummary,
   getGitFileDiff,
@@ -361,6 +372,17 @@ async function streamRun(
     const result = await run.result;
     if (result.status !== 'suspended') {
       sessionLog?.finish(result);
+    }
+    if (result.status === 'completed' && meta?.workspaceRoot) {
+      const promptLabel = (meta.prompt ?? 'run').trim() || 'run';
+      try {
+        await recordCheckpointLabel({
+          workspaceRoot: meta.workspaceRoot,
+          label: `After: ${promptLabel.slice(0, 40)}`,
+        });
+      } catch {
+        // Label snapshot is best-effort; never fail the run stream.
+      }
     }
     writeNdjson(res, { op: 'result', id, result });
     appendRunLog(logsDir, `run_ok id=${id} status=${result.status}`);
@@ -1487,6 +1509,101 @@ export async function startEngineServer(
           );
         }
         res.end();
+        return;
+      }
+
+      if (method === 'GET' && path === '/v1/memory') {
+        if (!requireAuth(req, res, token)) return;
+        const workspaceId = workspaceIdFromRoot(cwd);
+        const memories = await listWorkspaceMemoriesForView(cwd, workspaceId);
+        sendJson(res, 200, { memories });
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/memory') {
+        if (!requireAuth(req, res, token)) return;
+        const body = (await readJsonBody(req)) as Record<string, unknown>;
+        const text = typeof body.text === 'string' ? body.text : '';
+        try {
+          const memories = await commitWorkspaceMemory({
+            workspaceRoot: cwd,
+            workspaceId: workspaceIdFromRoot(cwd),
+            content: text,
+          });
+          sendJson(res, 200, { memories });
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          sendJson(res, 400, { ok: false, error: message });
+        }
+        return;
+      }
+
+      if (method === 'DELETE' && path.startsWith('/v1/memory/')) {
+        if (!requireAuth(req, res, token)) return;
+        const id = decodeURIComponent(path.slice('/v1/memory/'.length));
+        if (!id || id === 'clear') {
+          sendJson(res, 400, { ok: false, error: 'memory_id_required' });
+          return;
+        }
+        const memories = await deleteWorkspaceMemory({
+          workspaceRoot: cwd,
+          workspaceId: workspaceIdFromRoot(cwd),
+          id,
+        });
+        sendJson(res, 200, { memories });
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/memory/clear') {
+        if (!requireAuth(req, res, token)) return;
+        await clearWorkspaceMemories({
+          workspaceRoot: cwd,
+          workspaceId: workspaceIdFromRoot(cwd),
+        });
+        sendJson(res, 200, { memories: [] });
+        return;
+      }
+
+      if (method === 'GET' && path === '/v1/checkpoints') {
+        if (!requireAuth(req, res, token)) return;
+        const checkpoints = await loadCheckpointLabels(cwd);
+        sendJson(res, 200, { checkpoints });
+        return;
+      }
+
+      if (method === 'DELETE' && path.startsWith('/v1/checkpoints/')) {
+        if (!requireAuth(req, res, token)) return;
+        const id = decodeURIComponent(path.slice('/v1/checkpoints/'.length));
+        if (!id) {
+          sendJson(res, 400, { ok: false, error: 'checkpoint_id_required' });
+          return;
+        }
+        const checkpoints = await deleteCheckpointLabel({
+          workspaceRoot: cwd,
+          id,
+        });
+        sendJson(res, 200, { checkpoints });
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/checkpoints/clear') {
+        if (!requireAuth(req, res, token)) return;
+        await clearCheckpointLabels(cwd);
+        sendJson(res, 200, { checkpoints: [] });
+        return;
+      }
+
+      if (method === 'POST' && path.startsWith('/v1/checkpoints/') && path.endsWith('/restore')) {
+        if (!requireAuth(req, res, token)) return;
+        const id = decodeURIComponent(
+          path.slice('/v1/checkpoints/'.length, -'/restore'.length),
+        );
+        // UI labels are not engine RestorePoints yet (same stub as VS Code panel).
+        sendJson(res, 200, {
+          ok: true,
+          message: `Checkpoint restore for ${id} is recorded. Full file restore uses engine RestorePoints when available for a run.`,
+        });
         return;
       }
 

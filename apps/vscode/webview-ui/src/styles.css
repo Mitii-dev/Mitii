@@ -4556,6 +4556,24 @@ button.md-file-link.md-inline-code:hover {
   background: color-mix(in srgb, var(--mitii-surface) 74%, var(--mitii-panel));
 }
 
+.md-diagram-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.md-diagram-error {
+  margin: 0;
+  padding: 10px 12px;
+  color: color-mix(in srgb, var(--mitii-danger) 82%, var(--mitii-text));
+  font-size: 12px;
+}
+
+.md-diagram-card--error .md-diagram-error {
+  border-bottom: 1px solid var(--mitii-border-soft);
+}
+
 .md-diagram-stage {
   overflow: auto;
   padding: 12px;

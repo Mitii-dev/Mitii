@@ -151,6 +151,16 @@ export {
   FileWorkspaceMemoryStore,
 } from './ports/memoryStore.js';
 export type { MemoryDeleteResult } from './ports/memoryStore.js';
+
+export {
+  listWorkspaceMemoriesForView,
+  commitWorkspaceMemory,
+  deleteWorkspaceMemory,
+  clearWorkspaceMemories,
+  workspaceMemoryScope,
+  memoryFactToView,
+} from './ports/workspaceMemoryUi.js';
+export type { MemoryItemView } from './ports/workspaceMemoryUi.js';
 export {
   createWorkspaceKnowledgeGraph,
   FileWorkspaceKnowledgeGraphStore,
