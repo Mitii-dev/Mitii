@@ -20,6 +20,7 @@ import type { DesktopShellSnapshot } from '../shared/bridge.js';
 import {
   mergeDesktopSettings,
   settingsToEngineEnv,
+  DEFAULT_DESKTOP_SETTINGS,
   type DesktopSettings,
 } from '../shared/settings.js';
 import { generateEngineToken } from '../shared/engine-token.js';
@@ -43,6 +44,7 @@ import {
   writeAppDataRedirect,
   writeRootStoragePath,
 } from './storage-locations.js';
+import { clearWorkspaceCache } from './clear-workspace-cache.js';
 import {
   deleteThread,
   loadHistory,
@@ -309,6 +311,57 @@ function registerIpc(): void {
       return { ok: false, reason: 'invalid_workspace' };
     }
     return applyWorkspace(workspaceRoot.trim());
+  });
+
+  ipcMain.handle(
+    'mitii:forget-workspace',
+    async (_event, workspaceRoot: unknown) => {
+      if (typeof workspaceRoot !== 'string' || !workspaceRoot.trim()) {
+        return { ok: false, reason: 'invalid_workspace' };
+      }
+      try {
+        const path = workspaceRoot.trim();
+        const { nextActive, snapshot: nextSnap } = store.forgetWorkspace(path);
+        if (nextActive) {
+          const applied = await applyWorkspace(nextActive);
+          if (!applied.ok) {
+            return { ok: false, reason: applied.reason, nextActive };
+          }
+          return { ok: true, nextActive };
+        }
+        await stopEngine();
+        state = stateFromStoreSnapshot(nextSnap, '');
+        return { ok: true, nextActive: '' };
+      } catch (error) {
+        return {
+          ok: false,
+          reason: error instanceof Error ? error.message : String(error),
+        };
+      }
+    },
+  );
+
+  ipcMain.handle('mitii:clear-workspace-cache', async () => {
+    const root = state.workspaceRoot?.trim();
+    if (!root) return { ok: false, reason: 'no_workspace' };
+    try {
+      const cleared = clearWorkspaceCache(root);
+      if (!cleared.ok) {
+        return { ok: false, reason: cleared.reason, removed: cleared.removed };
+      }
+      const defaults = mergeDesktopSettings(DEFAULT_DESKTOP_SETTINGS);
+      state.settings = defaults;
+      store.saveSettings(root, defaults);
+      writeWorkspaceCompatFiles(root, defaults);
+      ensureWorkspaceStorageLink(root);
+      await startEngine();
+      return { ok: true, removed: cleared.removed };
+    } catch (error) {
+      return {
+        ok: false,
+        reason: error instanceof Error ? error.message : String(error),
+      };
+    }
   });
 
   ipcMain.handle('mitii:save-settings', async (_event, input: unknown) => {

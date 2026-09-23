@@ -35,9 +35,20 @@ import {
   readWorkspaceSkill,
   setMcpMasterEnabled,
   setMcpServerEnabled,
+  addCustomMcpServer,
+  deleteMcpServer,
+  installBuiltinMcpServer,
+  deleteWorkspaceSkill,
   writeRecipe,
   writeWorkspaceSkill,
+  writeWorkspaceSkillMarkdown,
 } from './extensions.js';
+import {
+  formatSkillFrontmatterWithAi,
+  requireActiveDesktopProfile,
+} from './formatSkillFrontmatter.js';
+import { getSharedMcpManager } from '@mitii/mcp';
+import { persistExcalidrawFromToolResult } from './excalidrawArtifacts.js';
 
 import {
   MITII_DESKTOP_PROTOCOL,
@@ -71,7 +82,9 @@ import {
   loadHistory,
   saveHistory,
   upsertThreadMessages,
+  upsertThreadTokenUsage,
   type DesktopChatMessage,
+  type DesktopThreadTokenUsage,
 } from './history.js';
 import { getIndexStatus, reindexWorkspace } from './index-status.js';
 import { getGitFileDiff, getGitFileChangesSummary, getGitStatus } from './git-status.js';
@@ -211,6 +224,87 @@ async function streamRun(
     baseUrl: meta?.baseUrl ?? process.env.MITII_BASE_URL ?? '',
   });
 
+  const mcpManager = getSharedMcpManager({ clientInfoName: 'mitii-desktop' });
+  const workspaceRoot = meta?.workspaceRoot;
+  mcpManager.setToolResultListener(async (event) => {
+    if (!workspaceRoot) return;
+    if (event.toolName !== 'create_view' || event.result.isError) return;
+
+    const persisted = persistExcalidrawFromToolResult({
+      workspaceRoot,
+      event,
+      threadId: meta?.sessionId ?? id,
+    });
+    if (!persisted) {
+      appendRunLog(
+        logsDir,
+        '[mcp-app] create_view succeeded but no elements were available to persist',
+      );
+      return;
+    }
+
+    let html: string | undefined;
+    if (event.resourceUri) {
+      try {
+        const resource = await mcpManager.readResource(
+          event.serverId,
+          event.resourceUri,
+        );
+        const first = resource.contents[0];
+        if (first?.text) {
+          html = first.text;
+        } else if (first?.blob) {
+          html = Buffer.from(first.blob, 'base64').toString('utf8');
+        }
+      } catch (error) {
+        appendRunLog(
+          logsDir,
+          `[mcp-app] resources/read failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+
+    const svgDataUrl = `data:image/svg+xml;base64,${Buffer.from(
+      persisted.svg,
+      'utf8',
+    ).toString('base64')}`;
+
+    appendRunLog(
+      logsDir,
+      `[mcp-app] saved diagram → ${persisted.paths.relativeMd}`,
+    );
+
+    writeNdjson(res, {
+      op: 'event',
+      id,
+      event: {
+        type: 'mcp_app',
+        at: new Date().toISOString(),
+        detail: `Saved ${persisted.paths.relativeMd}`,
+        mcpApp: {
+          serverId: event.serverId,
+          tool: event.toolName,
+          title: persisted.title,
+          ...(persisted.paths.checkpointId
+            ? { checkpointId: persisted.paths.checkpointId }
+            : {}),
+          svgDataUrl,
+          ...(html ? { html } : {}),
+          paths: {
+            md: persisted.paths.relativeMd,
+            ...(persisted.paths.relativeDocsMd
+              ? { docsMd: persisted.paths.relativeDocsMd }
+              : {}),
+            excalidraw: persisted.paths.relativeExcalidraw,
+            svg: persisted.paths.relativeSvg,
+          },
+        },
+      },
+    });
+  });
+
   let sessionLog: ReturnType<typeof openSessionLog>;
   try {
     const run = startOrResume();
@@ -242,6 +336,8 @@ async function streamRun(
       baseUrl: meta?.baseUrl ?? process.env.MITII_BASE_URL ?? '',
     });
     writeNdjson(res, { op: 'error', id, error: 'run_failed', message });
+  } finally {
+    mcpManager.setToolResultListener(undefined);
   }
   res.end();
 }
@@ -573,7 +669,10 @@ export async function startEngineServer(
         if (!requireAuth(req, res, token)) return;
         const id = url.searchParams.get('id')?.trim() ?? '';
         if (!id) {
-          sendJson(res, 200, { skills: listWorkspaceSkills(cwd) });
+          sendJson(res, 200, {
+            skills: listWorkspaceSkills(cwd),
+            draft: defaultNewSkillDraft(),
+          });
           return;
         }
         try {
@@ -586,29 +685,142 @@ export async function startEngineServer(
         return;
       }
 
+      if (method === 'POST' && path === '/v1/skills/format') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          requireActiveDesktopProfile(cwd);
+          const body = (await readJsonBody(req)) as Record<string, unknown>;
+          const markdownOrBody =
+            typeof body.markdown === 'string'
+              ? body.markdown
+              : typeof body.body === 'string'
+                ? body.body
+                : '';
+          if (!markdownOrBody.trim()) {
+            sendJson(res, 400, { ok: false, error: 'body_required' });
+            return;
+          }
+          const formatted = await formatSkillFrontmatterWithAi({
+            workspaceRoot: cwd,
+            markdownOrBody,
+            ...(typeof body.id === 'string' ? { nameHint: body.id } : {}),
+            ...(typeof body.title === 'string'
+              ? { titleHint: body.title }
+              : {}),
+            ...(typeof body.description === 'string'
+              ? { descriptionHint: body.description }
+              : {}),
+            useAi: body.useAi !== false,
+          });
+          sendJson(res, 200, { ok: true, ...formatted });
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          const status =
+            message === 'active_profile_required' ? 403 : 400;
+          sendJson(res, status, { ok: false, error: message });
+        }
+        return;
+      }
+
       if (method === 'POST' && path === '/v1/skills/workspace') {
         if (!requireAuth(req, res, token)) return;
         try {
+          requireActiveDesktopProfile(cwd);
           const body = (await readJsonBody(req)) as Record<string, unknown>;
-          const saved = writeWorkspaceSkill(cwd, {
-            id: typeof body.id === 'string' ? body.id : '',
-            title: typeof body.title === 'string' ? body.title : undefined,
-            description:
-              typeof body.description === 'string'
-                ? body.description
-                : undefined,
-            body: typeof body.body === 'string' ? body.body : '',
+          const action =
+            typeof body.action === 'string' ? body.action.trim() : 'save';
+
+          if (action === 'delete') {
+            const id =
+              typeof body.id === 'string'
+                ? body.id
+                : typeof body.skillId === 'string'
+                  ? body.skillId
+                  : '';
+            const deleted = deleteWorkspaceSkill(cwd, id);
+            sendJson(res, 200, {
+              ok: true,
+              ...deleted,
+              skills: listWorkspaceSkills(cwd),
+            });
+            return;
+          }
+
+          const formatFrontmatter = body.formatFrontmatter !== false;
+          let markdown =
+            typeof body.markdown === 'string' ? body.markdown : '';
+          const rawBody =
+            typeof body.body === 'string' ? body.body : '';
+          const idHint =
+            typeof body.id === 'string' ? body.id : undefined;
+          const titleHint =
+            typeof body.title === 'string' ? body.title : undefined;
+          const descriptionHint =
+            typeof body.description === 'string'
+              ? body.description
+              : undefined;
+
+          let formatMeta:
+            | Awaited<ReturnType<typeof formatSkillFrontmatterWithAi>>
+            | undefined;
+
+          if (formatFrontmatter) {
+            formatMeta = await formatSkillFrontmatterWithAi({
+              workspaceRoot: cwd,
+              markdownOrBody: markdown || rawBody,
+              ...(idHint ? { nameHint: idHint } : {}),
+              ...(titleHint ? { titleHint } : {}),
+              ...(descriptionHint ? { descriptionHint } : {}),
+              useAi: body.useAi !== false,
+            });
+            markdown = formatMeta.markdown;
+          } else if (!markdown && rawBody) {
+            const saved = writeWorkspaceSkill(cwd, {
+              id: idHint || 'custom-skill',
+              title: titleHint,
+              description: descriptionHint,
+              body: rawBody,
+            });
+            sendJson(res, 200, {
+              ok: true,
+              ...saved,
+              skill: readWorkspaceSkill(cwd, saved.id),
+              draft: defaultNewSkillDraft(),
+            });
+            return;
+          }
+
+          if (!markdown.trim()) {
+            sendJson(res, 400, { ok: false, error: 'markdown_required' });
+            return;
+          }
+
+          const saved = writeWorkspaceSkillMarkdown(cwd, {
+            ...(idHint ? { id: idHint } : {}),
+            ...(formatMeta ? { id: formatMeta.id } : {}),
+            markdown,
           });
           sendJson(res, 200, {
             ok: true,
             ...saved,
             skill: readWorkspaceSkill(cwd, saved.id),
             draft: defaultNewSkillDraft(),
+            ...(formatMeta
+              ? {
+                  usedAi: formatMeta.usedAi,
+                  recipeId: formatMeta.recipeId,
+                  profileId: formatMeta.profileId,
+                  profileName: formatMeta.profileName,
+                }
+              : {}),
           });
         } catch (error) {
           const message =
             error instanceof Error ? error.message : String(error);
-          sendJson(res, 400, { ok: false, error: message });
+          const status =
+            message === 'active_profile_required' ? 403 : 400;
+          sendJson(res, status, { ok: false, error: message });
         }
         return;
       }
@@ -623,6 +835,103 @@ export async function startEngineServer(
         if (!requireAuth(req, res, token)) return;
         try {
           const body = (await readJsonBody(req)) as Record<string, unknown>;
+          const action =
+            typeof body.action === 'string' ? body.action.trim() : '';
+
+          if (action === 'install' || action === 'installBuiltin') {
+            const builtinId =
+              typeof body.builtinId === 'string'
+                ? body.builtinId
+                : typeof body.id === 'string'
+                  ? body.id
+                  : '';
+            if (!builtinId) {
+              sendJson(res, 400, { ok: false, error: 'builtinId_required' });
+              return;
+            }
+            sendJson(res, 200, {
+              ok: true,
+              ...installBuiltinMcpServer(cwd, builtinId),
+              restartRequired: true,
+            });
+            return;
+          }
+
+          if (action === 'add' || action === 'create') {
+            const transport =
+              body.transport === 'stdio' ||
+              body.transport === 'sse' ||
+              body.transport === 'streamable-http'
+                ? body.transport
+                : null;
+            if (!transport) {
+              sendJson(res, 400, { ok: false, error: 'transport_required' });
+              return;
+            }
+            const args = Array.isArray(body.args)
+              ? body.args
+                  .filter((v): v is string => typeof v === 'string')
+                  .map((v) => v.trim())
+                  .filter(Boolean)
+              : typeof body.args === 'string'
+                ? body.args
+                    .split(/\s+/)
+                    .map((v) => v.trim())
+                    .filter(Boolean)
+                : undefined;
+            const headers =
+              body.headers &&
+              typeof body.headers === 'object' &&
+              !Array.isArray(body.headers)
+                ? Object.fromEntries(
+                    Object.entries(body.headers as Record<string, unknown>)
+                      .filter(
+                        (entry): entry is [string, string] =>
+                          typeof entry[0] === 'string' &&
+                          typeof entry[1] === 'string',
+                      )
+                      .map(([k, v]) => [k, v]),
+                  )
+                : undefined;
+            sendJson(res, 200, {
+              ok: true,
+              ...addCustomMcpServer(cwd, {
+                id: typeof body.id === 'string' ? body.id : '',
+                name: typeof body.name === 'string' ? body.name : '',
+                transport,
+                ...(typeof body.command === 'string'
+                  ? { command: body.command }
+                  : {}),
+                ...(args ? { args } : {}),
+                ...(typeof body.cwd === 'string' ? { cwd: body.cwd } : {}),
+                ...(typeof body.url === 'string' ? { url: body.url } : {}),
+                ...(headers ? { headers } : {}),
+                enabled: body.enabled !== false,
+              }),
+              restartRequired: true,
+            });
+            return;
+          }
+
+          if (action === 'delete' || action === 'remove') {
+            const serverId =
+              typeof body.serverId === 'string'
+                ? body.serverId
+                : typeof body.id === 'string'
+                  ? body.id
+                  : '';
+            if (!serverId) {
+              sendJson(res, 400, { ok: false, error: 'serverId_required' });
+              return;
+            }
+            sendJson(res, 200, {
+              ok: true,
+              ...deleteMcpServer(cwd, serverId),
+              restartRequired: true,
+            });
+            return;
+          }
+
           if (typeof body.enabled === 'boolean' && body.serverId == null) {
             sendJson(res, 200, {
               ok: true,
@@ -1110,7 +1419,7 @@ export async function startEngineServer(
           return;
         }
 
-        // save messages
+        // save messages (+ optional tokenUsage)
         const threadId = String(body.threadId ?? store.activeThreadId ?? '');
         if (!threadId) {
           store = createThread(store);
@@ -1118,13 +1427,26 @@ export async function startEngineServer(
         const id = threadId || store.activeThreadId!;
         const messages = Array.isArray(body.messages)
           ? (body.messages as DesktopChatMessage[])
-          : [];
-        store = upsertThreadMessages(
-          store,
-          id,
-          messages,
-          typeof body.title === 'string' ? body.title : undefined,
-        );
+          : undefined;
+        const tokenUsage =
+          body.tokenUsage && typeof body.tokenUsage === 'object'
+            ? (body.tokenUsage as DesktopThreadTokenUsage)
+            : undefined;
+
+        if (messages) {
+          store = upsertThreadMessages(
+            store,
+            id,
+            messages,
+            typeof body.title === 'string' ? body.title : undefined,
+            tokenUsage,
+          );
+        } else if (tokenUsage) {
+          store = upsertThreadTokenUsage(store, id, tokenUsage);
+        } else {
+          sendJson(res, 400, { error: 'messages_or_tokenUsage_required' });
+          return;
+        }
         saveHistory(cwd, store);
         sendJson(res, 200, store);
         return;

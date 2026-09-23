@@ -8,7 +8,7 @@ Per-turn MCP server scoping, parallel to skill pins (`@skill:`).
 |---|---|
 | No pins / no `@mcp:` | All grant-allowed `mcp__*` tools stay visible (today’s behavior) |
 | `@mcp:excalidraw` and/or host `requiredMcpServerIds` | Only `mcp__excalidraw__*` tools are advertised |
-| Ask / Plan | MCP still hidden by grant rules |
+| Ask / Plan | MCP hidden unless the user attaches via `@mcp:` / pins (read-safe tools only) |
 
 Mentions are stripped from the user message before the engine runs.
 

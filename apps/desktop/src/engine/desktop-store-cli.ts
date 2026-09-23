@@ -131,6 +131,20 @@ async function main(): Promise<void> {
         );
         break;
       }
+      case 'forget-workspace': {
+        const path =
+          typeof input.workspaceRoot === 'string' ? input.workspaceRoot : '';
+        if (!path.trim()) fail('workspaceRoot required');
+        const nextActive = store.forgetWorkspace(path);
+        process.stdout.write(
+          `${JSON.stringify({
+            ok: true,
+            nextActive,
+            snapshot: store.snapshot(nextActive),
+          })}\n`,
+        );
+        break;
+      }
       default:
         fail(`unknown_op:${op}`);
     }

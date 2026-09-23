@@ -55,10 +55,10 @@ Registered tools use a stable prefix:
 mcp__{serverId}__{toolName}
 ```
 
-Unsafe characters in ids become `_`. Ask/Plan grants hide
-`mcp__*` tools; Agent write grants expose all MCP tools, and Agent
-read grants expose MCP tools that do not require workspace writes
-(V8 `filterToolDefinitions`).
+Unsafe characters in ids become `_`. Agent write grants expose all MCP
+tools, and Agent read grants expose MCP tools that do not require workspace
+writes (V8 `filterToolDefinitions`). Ask/Plan hide MCP unless the user
+explicitly attaches servers via `@mcp:` / pins (still read-safe only).
 
 ### Per-turn attach (`@mcp:`)
 

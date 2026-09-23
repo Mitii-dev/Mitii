@@ -357,6 +357,7 @@ export {
   isMcpToolAttached,
   filterToolsByMcpAttach,
   withMcpAttachOnGrant,
+  formatMcpAttachInstruction,
 } from "./modules/mcp-attach";
 
 export { MemoryPipeline } from "./modules/memory";

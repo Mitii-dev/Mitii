@@ -262,6 +262,21 @@ export class DesktopStore {
     }
   }
 
+  /**
+   * Hide a workspace from the connected list without deleting `.mitii` data
+   * or SQLite settings — re-adding restores chats, logs, and settings.
+   */
+  forgetWorkspace(path: string): string {
+    const trimmed = path.trim();
+    this.db.prepare(`DELETE FROM workspaces WHERE path = ?`).run(trimmed);
+    if (this.getActiveWorkspace() === trimmed) {
+      const next = this.listWorkspaces()[0]?.path ?? '';
+      this.setMeta('active_workspace', next);
+      return next;
+    }
+    return this.getActiveWorkspace();
+  }
+
   getWorkspaceSettings(workspacePath: string): DesktopSettings | null {
     const row = this.db
       .prepare(

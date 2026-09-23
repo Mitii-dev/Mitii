@@ -47,6 +47,8 @@ interface SettingsPanelProps {
   onProfilesChanged?: (activeName: string) => void;
   onIndexChanged?: () => void;
   onIndexStarted?: () => void;
+  /** After Delete Cache/Logs — parent should reload snapshot/settings. */
+  onWorkspaceCacheCleared?: () => void;
 }
 
 const PAGE_COPY: Record<SettingsTabId, { title: string; description: string }> =
@@ -1021,6 +1023,53 @@ export function SettingsPanel(props: SettingsPanelProps) {
                     }
                   />
                 </Field>
+              </div>
+            </SettingsSection>
+
+            <SettingsSection
+              title="Delete cache & logs"
+              description="Clears rebuildable project data: logs, memory, index, checkpoints, plans, and resets workspace settings to defaults. Chat history, profiles, skills, and rules stay. .mitii is not removed."
+            >
+              <div className="field-grid">
+                <div className="field full">
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    disabled={storageBusy || !props.workspaceRoot}
+                    onClick={() => {
+                      const bridge = getDesktopBridge();
+                      if (!bridge?.clearWorkspaceCache) return;
+                      const ok = window.confirm(
+                        'Delete cache, logs, memory, and index for this workspace?\n\nChat history and profiles are kept. Settings reset to defaults.',
+                      );
+                      if (!ok) return;
+                      setStorageBusy(true);
+                      setStorageNote(null);
+                      void bridge
+                        .clearWorkspaceCache()
+                        .then(async (result) => {
+                          if (!result.ok) {
+                            setStorageNote(result.reason ?? 'clear_failed');
+                            return;
+                          }
+                          const count = result.removed?.length ?? 0;
+                          setStorageNote(
+                            count > 0
+                              ? `Cleared ${count} cache item${count === 1 ? '' : 's'}.`
+                              : 'Nothing cached to clear.',
+                          );
+                          await refreshStorage();
+                          props.onWorkspaceCacheCleared?.();
+                        })
+                        .finally(() => setStorageBusy(false));
+                    }}
+                  >
+                    Delete cache & logs…
+                  </button>
+                  {storageNote && tab === 'workspaces' ? (
+                    <p className="field-help storage-note">{storageNote}</p>
+                  ) : null}
+                </div>
               </div>
             </SettingsSection>
           </div>

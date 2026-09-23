@@ -44,6 +44,9 @@ const bridge: MitiiDesktopBridge = {
     ipcRenderer.invoke('mitii:list-workspace-chat-summaries', workspaceRoots),
   deleteWorkspaceChat: (workspaceRoot: string, threadId: string) =>
     ipcRenderer.invoke('mitii:delete-workspace-chat', workspaceRoot, threadId),
+  forgetWorkspace: (workspaceRoot: string) =>
+    ipcRenderer.invoke('mitii:forget-workspace', workspaceRoot),
+  clearWorkspaceCache: () => ipcRenderer.invoke('mitii:clear-workspace-cache'),
 };
 
 contextBridge.exposeInMainWorld(MITII_DESKTOP_BRIDGE_KEY, bridge);

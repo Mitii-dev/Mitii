@@ -7,6 +7,9 @@ interface ModelQuickSelectProps {
   loading?: boolean;
   onChange: (model: string) => void;
   onOpen?: () => void;
+  /** Open Settings → Profiles for the active profile. */
+  onEditProfile?: () => void;
+  editProfileLabel?: string;
 }
 
 export function ModelQuickSelect({
@@ -16,6 +19,8 @@ export function ModelQuickSelect({
   loading,
   onChange,
   onOpen,
+  onEditProfile,
+  editProfileLabel = 'Edit profile…',
 }: ModelQuickSelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -109,6 +114,18 @@ export function ModelQuickSelect({
                 ? 'No models match that filter'
                 : 'No models for this profile — Test connection in Settings'}
             </div>
+          ) : null}
+          {onEditProfile ? (
+            <button
+              type="button"
+              className="model-quick-select__footer"
+              onClick={() => {
+                setOpen(false);
+                onEditProfile();
+              }}
+            >
+              {editProfileLabel}
+            </button>
           ) : null}
         </div>
       ) : null}

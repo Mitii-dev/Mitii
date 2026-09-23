@@ -1,7 +1,8 @@
 /**
- * Collapsible chat sidebar grouped by workspace / project.
+ * Chat sidebar for the active workspace only (single-project mode).
  */
 
+import { IconPlus, IconSwitch } from './ActivityIcons.js';
 import { workspaceLabel } from './api.js';
 
 export type ChatNavThread = {
@@ -10,43 +11,24 @@ export type ChatNavThread = {
   updatedAt?: string;
 };
 
-export type ChatNavGroup = {
-  workspaceRoot: string;
-  threads: ChatNavThread[];
-  active: boolean;
-};
-
 interface ChatHistoryNavProps {
-  groups: ChatNavGroup[];
+  workspaceRoot?: string;
+  threads: ChatNavThread[];
   activeThreadId?: string;
-  collapsed: Record<string, boolean>;
   busy?: boolean;
   loading?: boolean;
-  onToggleGroup: (workspaceRoot: string) => void;
-  onOpenThread: (workspaceRoot: string, threadId: string) => void;
-  onDeleteThread: (workspaceRoot: string, threadId: string) => void;
-  onNewChat: (workspaceRoot: string) => void;
-}
-
-function isGroupCollapsed(
-  collapsed: Record<string, boolean>,
-  root: string,
-  active: boolean,
-): boolean {
-  if (Object.prototype.hasOwnProperty.call(collapsed, root)) {
-    return Boolean(collapsed[root]);
-  }
-  return !active;
-}
-
-function projectInitial(label: string): string {
-  const clean = label.trim();
-  if (!clean) return '?';
-  return clean[0]!.toUpperCase();
+  onOpenThread: (threadId: string) => void;
+  onDeleteThread: (threadId: string) => void;
+  onNewChat: () => void;
+  onSwitchWorkspace: () => void;
 }
 
 export function ChatHistoryNav(props: ChatHistoryNavProps) {
-  if (props.loading && props.groups.length === 0) {
+  const label = props.workspaceRoot
+    ? workspaceLabel(props.workspaceRoot)
+    : 'No workspace';
+
+  if (props.loading && props.threads.length === 0 && !props.workspaceRoot) {
     return (
       <nav className="side-list side-list--grouped" aria-label="Chats" aria-busy>
         <div className="side-nav-loading">
@@ -57,127 +39,85 @@ export function ChatHistoryNav(props: ChatHistoryNavProps) {
     );
   }
 
-  if (props.groups.length === 0) {
-    return (
-      <nav className="side-list" aria-label="Chats">
-        <p className="side-empty">No projects yet</p>
-      </nav>
-    );
-  }
-
   return (
-    <nav className="side-list side-list--grouped" aria-label="Chats by project">
-      <div className="side-nav-label">Projects</div>
+    <nav className="side-list side-list--grouped" aria-label="Chats">
+      <div className="side-project-head">
+        <div className="side-project-head__meta" title={props.workspaceRoot}>
+          <span className="side-nav-label">Project</span>
+          <strong className="side-project-head__title">{label}</strong>
+        </div>
+        <div className="side-project-head__actions">
+          <button
+            type="button"
+            className="side-project-head__btn"
+            disabled={props.busy}
+            title="Switch workspace"
+            aria-label="Switch workspace"
+            onClick={props.onSwitchWorkspace}
+          >
+            <IconSwitch size={15} />
+            <span>Switch</span>
+          </button>
+          <button
+            type="button"
+            className="side-project-head__btn side-project-head__btn--primary"
+            disabled={props.busy || props.loading || !props.workspaceRoot}
+            title="New chat"
+            aria-label="New chat"
+            onClick={props.onNewChat}
+          >
+            <IconPlus size={15} />
+            <span>New</span>
+          </button>
+        </div>
+      </div>
+
       {props.loading ? (
         <div className="side-nav-loading side-nav-loading--inline" aria-busy>
           <span className="side-nav-spinner" aria-hidden />
           <span>Updating…</span>
         </div>
       ) : null}
-      {props.groups.map((group) => {
-        const collapsed = isGroupCollapsed(
-          props.collapsed,
-          group.workspaceRoot,
-          group.active,
-        );
-        const label = workspaceLabel(group.workspaceRoot);
-        return (
-          <section
-            key={group.workspaceRoot}
-            className={`side-group${group.active ? ' is-active' : ''}${collapsed ? ' is-collapsed' : ''}`}
-          >
-            <div className="side-group__head">
-              <button
-                type="button"
-                className="side-group__toggle"
-                aria-expanded={!collapsed}
-                title={group.workspaceRoot}
-                onClick={() => props.onToggleGroup(group.workspaceRoot)}
+
+      {!props.workspaceRoot ? (
+        <p className="side-empty">Open a workspace to start chatting</p>
+      ) : props.threads.length === 0 && !props.loading ? (
+        <p className="side-empty">No chats yet</p>
+      ) : (
+        <div className="side-group__threads side-group__threads--flat">
+          {props.threads.map((thread) => {
+            const selected = thread.id === props.activeThreadId;
+            return (
+              <div
+                key={thread.id}
+                className={`side-thread${selected ? ' is-active' : ''}`}
               >
-                <span className="side-group__chevron" aria-hidden>
-                  {collapsed ? '▸' : '▾'}
-                </span>
-                <span className="side-group__avatar" aria-hidden>
-                  {projectInitial(label)}
-                </span>
-                <span className="side-group__meta">
-                  <span className="side-group__title">{label}</span>
-                  <span className="side-group__count">
-                    {group.threads.length === 1
-                      ? '1 chat'
-                      : `${group.threads.length} chats`}
+                <button
+                  type="button"
+                  className="side-thread__open"
+                  disabled={props.busy || props.loading}
+                  onClick={() => props.onOpenThread(thread.id)}
+                >
+                  <span className="side-thread__dot" aria-hidden />
+                  <span className="side-thread__title">
+                    {thread.title || 'Chat'}
                   </span>
-                </span>
-              </button>
-              <button
-                type="button"
-                className="side-group__new"
-                disabled={props.busy || props.loading}
-                aria-label={`New chat in ${label}`}
-                title="New chat"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  props.onNewChat(group.workspaceRoot);
-                }}
-              >
-                +
-              </button>
-            </div>
-            {!collapsed ? (
-              <div className="side-group__threads">
-                {group.active && props.loading ? (
-                  <div className="side-nav-loading side-nav-loading--inline">
-                    <span className="side-nav-spinner" aria-hidden />
-                    <span>Loading chats…</span>
-                  </div>
-                ) : group.threads.length === 0 ? (
-                  <p className="side-empty">No chats yet</p>
-                ) : (
-                  group.threads.map((thread) => {
-                    const selected =
-                      group.active && thread.id === props.activeThreadId;
-                    return (
-                      <div
-                        key={thread.id}
-                        className={`side-thread${selected ? ' is-active' : ''}`}
-                      >
-                        <button
-                          type="button"
-                          className="side-thread__open"
-                          disabled={props.busy || props.loading}
-                          onClick={() =>
-                            props.onOpenThread(group.workspaceRoot, thread.id)
-                          }
-                        >
-                          <span className="side-thread__dot" aria-hidden />
-                          <span className="side-thread__title">
-                            {thread.title || 'Chat'}
-                          </span>
-                        </button>
-                        <button
-                          type="button"
-                          className="side-thread__delete"
-                          disabled={props.busy || props.loading}
-                          aria-label={`Delete ${thread.title || 'chat'}`}
-                          title="Delete chat"
-                          onClick={() =>
-                            props.onDeleteThread(
-                              group.workspaceRoot,
-                              thread.id,
-                            )
-                          }
-                        >
-                          ×
-                        </button>
-                      </div>
-                    );
-                  })
-                )}
+                </button>
+                <button
+                  type="button"
+                  className="side-thread__delete"
+                  disabled={props.busy || props.loading}
+                  aria-label={`Delete ${thread.title || 'chat'}`}
+                  title="Delete chat"
+                  onClick={() => props.onDeleteThread(thread.id)}
+                >
+                  ×
+                </button>
               </div>
-            ) : null}
-          </section>
-        );
-      })}
+            );
+          })}
+        </div>
+      )}
     </nav>
   );
 }

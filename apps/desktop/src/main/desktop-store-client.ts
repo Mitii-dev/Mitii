@@ -41,6 +41,10 @@ export interface DesktopStoreClient {
   ): void;
   getProfiles(): DesktopProfilesFile;
   setProfiles(profiles: DesktopProfilesFile): DesktopProfilesFile;
+  forgetWorkspace(workspaceRoot: string): {
+    nextActive: string;
+    snapshot: DesktopStoreSnapshot;
+  };
 }
 
 function runStoreCli(options: {
@@ -136,6 +140,16 @@ export function createDesktopStoreClient(options: {
         profiles: DesktopProfilesFile;
       };
       return raw.profiles;
+    },
+    forgetWorkspace(workspaceRoot) {
+      const raw = call('forget-workspace', { workspaceRoot }) as {
+        nextActive: string;
+        snapshot: DesktopStoreSnapshot;
+      };
+      return {
+        nextActive: raw.nextActive || '',
+        snapshot: normalizeSnapshot(raw.snapshot),
+      };
     },
   };
 }

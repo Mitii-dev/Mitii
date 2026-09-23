@@ -75,6 +75,15 @@ export function IconSettings(props: IconProps) {
   );
 }
 
+export function IconSearch(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="M16.5 16.5 21 21" />
+    </Svg>
+  );
+}
+
 export function IconPlus(props: IconProps) {
   return (
     <Svg {...props}>
@@ -143,6 +152,39 @@ export function IconWorkspace(props: IconProps) {
     <Svg {...props}>
       <path d="M3 9.5 12 4l9 5.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z" />
       <path d="M9 21V12h6v9" />
+    </Svg>
+  );
+}
+
+/** Arrows for switching workspace / profile. */
+export function IconSwitch(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M7 7h11" />
+      <path d="m14 3 4 4-4 4" />
+      <path d="M17 17H6" />
+      <path d="m10 13-4 4 4 4" />
+    </Svg>
+  );
+}
+
+export function IconUser(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="8" r="3.5" />
+      <path d="M5 20c1.6-3.2 4-4.8 7-4.8s5.4 1.6 7 4.8" />
+    </Svg>
+  );
+}
+
+export function IconTrash(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 7h16" />
+      <path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+      <path d="M6.5 7 7.5 19a1 1 0 0 0 1 1h7a1 1 0 0 0 1-1L17.5 7" />
+      <path d="M10 11v5" />
+      <path d="M14 11v5" />
     </Svg>
   );
 }

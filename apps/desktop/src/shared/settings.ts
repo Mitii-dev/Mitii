@@ -290,6 +290,20 @@ export function settingsToEngineEnv(
   if (settings.provider.baseUrl.trim()) {
     env.MITII_BASE_URL = settings.provider.baseUrl.trim();
   }
+  const contextWindow = Math.max(
+    0,
+    Math.floor(Number(settings.provider.contextWindow) || 0),
+  );
+  if (contextWindow > 0) {
+    env.MITII_CONTEXT_WINDOW = String(contextWindow);
+  }
+  const maxOut = Math.max(
+    0,
+    Math.floor(Number(settings.provider.maximumOutputTokens) || 0),
+  );
+  if (maxOut > 0) {
+    env.MITII_MAXIMUM_OUTPUT_TOKENS = String(maxOut);
+  }
   if (settings.search.searxngBaseUrl.trim()) {
     env.MITII_SEARXNG_URL = settings.search.searxngBaseUrl.trim();
   }

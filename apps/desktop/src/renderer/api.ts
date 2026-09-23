@@ -187,6 +187,9 @@ export async function fetchWorkspaceSkill(options: {
   title: string;
   description: string;
   body: string;
+  frontmatterYaml?: string | null;
+  markdown?: string;
+  path?: string;
 }> {
   const res = await fetch(
     `${options.baseUrl}/v1/skills/workspace?id=${encodeURIComponent(options.id)}`,
@@ -199,6 +202,9 @@ export async function fetchWorkspaceSkill(options: {
       title: string;
       description: string;
       body: string;
+      frontmatterYaml?: string | null;
+      markdown?: string;
+      path?: string;
     };
   };
   return json.skill;
@@ -207,19 +213,40 @@ export async function fetchWorkspaceSkill(options: {
 export async function saveWorkspaceSkill(options: {
   baseUrl: string;
   token?: string;
-  id: string;
+  id?: string;
   title?: string;
   description?: string;
-  body: string;
-}): Promise<{ ok: boolean; id: string; path: string }> {
+  body?: string;
+  markdown?: string;
+  formatFrontmatter?: boolean;
+  useAi?: boolean;
+}): Promise<{
+  ok: boolean;
+  id: string;
+  path: string;
+  skill?: {
+    id: string;
+    title: string;
+    description: string;
+    body: string;
+    markdown?: string;
+  };
+  usedAi?: boolean;
+  recipeId?: string;
+  profileName?: string;
+}> {
   const res = await fetch(`${options.baseUrl}/v1/skills/workspace`, {
     method: 'POST',
     headers: authHeaders(options.token),
     body: JSON.stringify({
+      action: 'save',
       id: options.id,
       title: options.title,
       description: options.description,
       body: options.body,
+      markdown: options.markdown,
+      formatFrontmatter: options.formatFrontmatter !== false,
+      useAi: options.useAi !== false,
     }),
   });
   if (!res.ok) {
@@ -227,6 +254,64 @@ export async function saveWorkspaceSkill(options: {
     throw new Error(`skill_save_${res.status}:${text}`);
   }
   return (await res.json()) as Awaited<ReturnType<typeof saveWorkspaceSkill>>;
+}
+
+export async function formatWorkspaceSkill(options: {
+  baseUrl: string;
+  token?: string;
+  id?: string;
+  title?: string;
+  description?: string;
+  body?: string;
+  markdown?: string;
+  useAi?: boolean;
+}): Promise<{
+  ok: boolean;
+  id: string;
+  title: string;
+  description: string;
+  body: string;
+  markdown: string;
+  usedAi: boolean;
+  recipeId: string;
+  profileName: string;
+}> {
+  const res = await fetch(`${options.baseUrl}/v1/skills/format`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: JSON.stringify({
+      id: options.id,
+      title: options.title,
+      description: options.description,
+      body: options.body,
+      markdown: options.markdown,
+      useAi: options.useAi !== false,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`skill_format_${res.status}:${text}`);
+  }
+  return (await res.json()) as Awaited<ReturnType<typeof formatWorkspaceSkill>>;
+}
+
+export async function deleteWorkspaceSkillApi(options: {
+  baseUrl: string;
+  token?: string;
+  id: string;
+}): Promise<{ ok: boolean; id: string }> {
+  const res = await fetch(`${options.baseUrl}/v1/skills/workspace`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: JSON.stringify({ action: 'delete', id: options.id }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`skill_delete_${res.status}:${text}`);
+  }
+  return (await res.json()) as Awaited<
+    ReturnType<typeof deleteWorkspaceSkillApi>
+  >;
 }
 
 export async function fetchMcpServers(options: {
@@ -241,12 +326,26 @@ export async function fetchMcpServers(options: {
     transport?: string;
     builtin?: boolean;
   }>;
+  catalog: Array<{
+    id: string;
+    name: string;
+    transport: string;
+    description: string;
+    installed: boolean;
+  }>;
 }> {
   const res = await fetch(`${options.baseUrl}/v1/mcp`, {
     headers: authHeaders(options.token),
   });
   if (!res.ok) throw new Error(`mcp_${res.status}`);
-  return (await res.json()) as Awaited<ReturnType<typeof fetchMcpServers>>;
+  const data = (await res.json()) as Partial<
+    Awaited<ReturnType<typeof fetchMcpServers>>
+  >;
+  return {
+    enabled: Boolean(data.enabled),
+    servers: Array.isArray(data.servers) ? data.servers : [],
+    catalog: Array.isArray(data.catalog) ? data.catalog : [],
+  };
 }
 
 export async function setMcpEnabled(options: {
@@ -258,6 +357,13 @@ export async function setMcpEnabled(options: {
   ok: boolean;
   enabled: boolean;
   servers: Array<{ id: string; name: string; enabled: boolean }>;
+  catalog?: Array<{
+    id: string;
+    name: string;
+    transport: string;
+    description: string;
+    installed: boolean;
+  }>;
   restartRequired?: boolean;
 }> {
   const res = await fetch(`${options.baseUrl}/v1/mcp`, {
@@ -273,6 +379,118 @@ export async function setMcpEnabled(options: {
     throw new Error(`mcp_set_${res.status}:${text}`);
   }
   return (await res.json()) as Awaited<ReturnType<typeof setMcpEnabled>>;
+}
+
+export async function installBuiltinMcp(options: {
+  baseUrl: string;
+  token?: string;
+  builtinId: string;
+}): Promise<{
+  ok: boolean;
+  enabled: boolean;
+  servers: Array<{ id: string; name: string; enabled: boolean }>;
+  catalog?: Array<{
+    id: string;
+    name: string;
+    transport: string;
+    description: string;
+    installed: boolean;
+  }>;
+  restartRequired?: boolean;
+}> {
+  const res = await fetch(`${options.baseUrl}/v1/mcp`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: JSON.stringify({
+      action: 'install',
+      builtinId: options.builtinId,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`mcp_install_${res.status}:${text}`);
+  }
+  return (await res.json()) as Awaited<ReturnType<typeof installBuiltinMcp>>;
+}
+
+export async function addCustomMcp(options: {
+  baseUrl: string;
+  token?: string;
+  id: string;
+  name: string;
+  transport: 'stdio' | 'sse' | 'streamable-http';
+  command?: string;
+  args?: string[];
+  cwd?: string;
+  url?: string;
+  headers?: Record<string, string>;
+  enabled?: boolean;
+}): Promise<{
+  ok: boolean;
+  enabled: boolean;
+  servers: Array<{ id: string; name: string; enabled: boolean }>;
+  catalog?: Array<{
+    id: string;
+    name: string;
+    transport: string;
+    description: string;
+    installed: boolean;
+  }>;
+  restartRequired?: boolean;
+}> {
+  const res = await fetch(`${options.baseUrl}/v1/mcp`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: JSON.stringify({
+      action: 'add',
+      id: options.id,
+      name: options.name,
+      transport: options.transport,
+      command: options.command,
+      args: options.args,
+      cwd: options.cwd,
+      url: options.url,
+      headers: options.headers,
+      enabled: options.enabled,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`mcp_add_${res.status}:${text}`);
+  }
+  return (await res.json()) as Awaited<ReturnType<typeof addCustomMcp>>;
+}
+
+export async function deleteMcpServer(options: {
+  baseUrl: string;
+  token?: string;
+  serverId: string;
+}): Promise<{
+  ok: boolean;
+  enabled: boolean;
+  servers: Array<{ id: string; name: string; enabled: boolean }>;
+  catalog?: Array<{
+    id: string;
+    name: string;
+    transport: string;
+    description: string;
+    installed: boolean;
+  }>;
+  restartRequired?: boolean;
+}> {
+  const res = await fetch(`${options.baseUrl}/v1/mcp`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: JSON.stringify({
+      action: 'delete',
+      serverId: options.serverId,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`mcp_delete_${res.status}:${text}`);
+  }
+  return (await res.json()) as Awaited<ReturnType<typeof deleteMcpServer>>;
 }
 
 export async function fetchRecipes(options: {

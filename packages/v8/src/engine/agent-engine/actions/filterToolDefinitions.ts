@@ -90,12 +90,18 @@ export function isMcpToolName(name: string): boolean {
  * Whether host MCP tools may appear under this grant.
  * - write: always (Agent execute)
  * - read + agent: yes (repository_answer still needs MCP Apps like Excalidraw)
- * - read + ask/plan: no
+ * - read + ask/plan: only when the user explicitly attached MCP (`@mcp:` / pins)
  * - none: no
+ *
+ * Write-requiring MCP tools are still filtered separately via
+ * `requiresWorkspaceWrite` on non-write grants.
  */
 export function isMcpAllowedByGrant(
   grant: Pick<ToolGrant, "allowedTools" | "maximumWorkspaceEffect">,
-  options?: { mode?: "ask" | "plan" | "agent" },
+  options?: {
+    mode?: "ask" | "plan" | "agent";
+    requiredMcpServerIds?: readonly string[];
+  },
 ): boolean {
   if (grant.allowedTools.length === 0) {
     return false;
@@ -104,7 +110,11 @@ export function isMcpAllowedByGrant(
     return true;
   }
   if (grant.maximumWorkspaceEffect === "read") {
-    return options?.mode === "agent";
+    if (options?.mode === "agent") {
+      return true;
+    }
+    // Explicit attach unlocks read-safe MCP (e.g. Excalidraw) in Ask/Plan.
+    return Boolean(options?.requiredMcpServerIds?.length);
   }
   return false;
 }
@@ -161,12 +171,15 @@ export function filterToolDefinitions(params: {
 
   const allowed = new Set(params.grant.allowedTools);
   const catalog = params.definitions ?? DEFAULT_READ_ONLY_TOOL_DEFINITIONS;
-  const mcpAllowed = isMcpAllowedByGrant(params.grant, { mode: params.mode });
-  const writeGrant = params.grant.maximumWorkspaceEffect === "write";
   const attachIds =
     params.requiredMcpServerIds ??
     params.grant.allowedMcpServerIds ??
     undefined;
+  const mcpAllowed = isMcpAllowedByGrant(params.grant, {
+    mode: params.mode,
+    requiredMcpServerIds: attachIds,
+  });
+  const writeGrant = params.grant.maximumWorkspaceEffect === "write";
   const fullSchemaIds = params.fullSchemaToolIds ?? FULL_SCHEMA_TOOL_IDS;
 
   const filtered = catalog.filter((tool) => {
