@@ -37,6 +37,8 @@ export interface DesktopActivityItem {
   title: string;
   detail?: string;
   status?: string;
+  /** When a thinking segment finished (for “Thought for Xs”). */
+  endedAt?: number;
   /** Paths mutated by write tools (apply_patch, etc.). */
   paths?: string[];
   /** Excalidraw / MCP App diagram card. */
@@ -342,17 +344,28 @@ export function appendActivity(
     return [...list, incoming].slice(-80);
   }
 
+  let working = list;
+  // Close any open brainstorming segment before tools / other activity.
+  if (last?.kind === 'thinking' && last.status === 'running') {
+    working = [...list];
+    working[working.length - 1] = {
+      ...last,
+      status: 'done',
+      endedAt: incoming.at,
+    };
+  }
+
   // Complete prior running tool when a completed tool with same name arrives
   if (
     incoming.kind === 'tool' &&
     incoming.status &&
     incoming.status !== 'running'
   ) {
-    for (let i = list.length - 1; i >= 0; i -= 1) {
-      const row = list[i]!;
+    for (let i = working.length - 1; i >= 0; i -= 1) {
+      const row = working[i]!;
       if (row.kind !== 'tool' || row.status !== 'running') continue;
       if (toolMergeKey(row.title) !== toolMergeKey(incoming.title)) continue;
-      const next = [...list];
+      const next = [...working];
       next[i] = {
         ...row,
         title: incoming.title,
@@ -365,22 +378,23 @@ export function appendActivity(
     }
   }
 
+  const lastWorking = working[working.length - 1];
   if (
-    last &&
-    last.kind === incoming.kind &&
-    last.title === incoming.title &&
+    lastWorking &&
+    lastWorking.kind === incoming.kind &&
+    lastWorking.title === incoming.title &&
     incoming.kind === 'tool' &&
-    last.status === 'running'
+    lastWorking.status === 'running'
   ) {
-    const next = [...list];
+    const next = [...working];
     next[next.length - 1] = {
-      ...last,
-      detail: incoming.detail ?? last.detail,
-      status: incoming.status ?? last.status,
+      ...lastWorking,
+      detail: incoming.detail ?? lastWorking.detail,
+      status: incoming.status ?? lastWorking.status,
       at: incoming.at,
     };
     return next;
   }
 
-  return [...list, incoming].slice(-80);
+  return [...working, incoming].slice(-80);
 }

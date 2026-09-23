@@ -10,6 +10,7 @@ import {
 
 interface MarkdownBodyProps {
   text: string;
+  streaming?: boolean;
 }
 
 function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) {
@@ -191,10 +192,12 @@ function MermaidBlock({ text }: { text: string }) {
   );
 }
 
-export function MarkdownBody({ text }: MarkdownBodyProps) {
-  if (!text.trim()) return null;
+export function MarkdownBody({ text, streaming }: MarkdownBodyProps) {
+  if (!text.trim()) {
+    return streaming ? <p className="md-pending">Working…</p> : null;
+  }
   return (
-    <div className="md">
+    <div className={`md${streaming ? ' md--streaming' : ''}`}>
       <div className="md-toolbar">
         <CopyButton text={text} label="Copy" />
       </div>
