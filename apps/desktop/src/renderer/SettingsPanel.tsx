@@ -15,19 +15,34 @@ import {
   type SettingsTabId,
 } from '../shared/settings.js';
 import {
+  addMemory,
+  clearCheckpoints,
+  clearMemories,
+  deleteCheckpoint,
+  deleteMemory,
+  fetchCheckpoints,
   fetchIndexStatus,
+  fetchMemories,
   fetchProfiles,
   fetchProviderModels,
   getDesktopBridge,
   pullOllamaEmbeddingModel,
   reindexWorkspace,
+  restoreCheckpoint,
+  type CheckpointItemView,
+  type MemoryItemView,
 } from './api.js';
 import type { DesktopStorageInfo } from '../shared/bridge.js';
 import { ProfileSettings } from './ProfileSettings.js';
+import { MemoryPanel } from './MemoryPanel.js';
+import { CheckpointPanel } from './CheckpointPanel.js';
 
 const NOMIC_EMBED_MODEL = 'nomic-embed-text';
 const DEFAULT_OLLAMA_V1 = 'http://127.0.0.1:11434/v1';
 const OLLAMA_INSTALL_URL = 'https://ollama.com/download';
+/** Host default when maximumIndexFiles is 0. */
+const DEFAULT_MAXIMUM_INDEX_FILES = 30_000;
+const MAXIMUM_INDEX_FILES_CAP = 240_000;
 
 type NomicInstallStatus =
   | 'checking'
@@ -158,6 +173,64 @@ function Field({
   );
 }
 
+function MaximumIndexFilesField({
+  id,
+  value,
+  onChange,
+}: {
+  id: string;
+  value: number;
+  onChange: (next: number) => void;
+}) {
+  const isCustom = value > 0;
+  const modeId = `${id}-mode`;
+  const customId = `${id}-custom`;
+  return (
+    <Field
+      id={modeId}
+      label="Maximum index files"
+      full
+      hint="Applies when reindexing this repo."
+    >
+      <select
+        id={modeId}
+        value={isCustom ? 'custom' : 'default'}
+        onChange={(e) => {
+          if (e.target.value === 'default') {
+            onChange(0);
+            return;
+          }
+          onChange(value > 0 ? value : DEFAULT_MAXIMUM_INDEX_FILES);
+        }}
+      >
+        <option value="default">
+          Default ({DEFAULT_MAXIMUM_INDEX_FILES.toLocaleString()})
+        </option>
+        <option value="custom">Custom</option>
+      </select>
+      {isCustom ? (
+        <input
+          id={customId}
+          className="maximum-index-files-custom"
+          type="number"
+          min={1}
+          max={MAXIMUM_INDEX_FILES_CAP}
+          value={value}
+          aria-label="Custom maximum index files"
+          onChange={(e) => {
+            const next = Math.floor(Number(e.target.value));
+            if (!Number.isFinite(next) || next <= 0) {
+              onChange(DEFAULT_MAXIMUM_INDEX_FILES);
+              return;
+            }
+            onChange(Math.min(MAXIMUM_INDEX_FILES_CAP, next));
+          }}
+        />
+      ) : null}
+    </Field>
+  );
+}
+
 function CatalogNumberFields({
   draft,
   prefix,
@@ -233,6 +306,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const [nomicStatus, setNomicStatus] = useState<NomicInstallStatus>('checking');
   const [nomicProgress, setNomicProgress] = useState<number | undefined>();
   const [nomicNote, setNomicNote] = useState<string | null>(null);
+  const [memories, setMemories] = useState<MemoryItemView[]>([]);
+  const [checkpoints, setCheckpoints] = useState<CheckpointItemView[]>([]);
+  const [contextBusy, setContextBusy] = useState(false);
+  const [contextNote, setContextNote] = useState<string | null>(null);
   const [storage, setStorage] = useState<DesktopStorageInfo | null>(null);
   const [storageBusy, setStorageBusy] = useState(false);
   const [storageNote, setStorageNote] = useState<string | null>(null);
@@ -284,6 +361,23 @@ export function SettingsPanel(props: SettingsPanelProps) {
       .then((status) => setIndexMessage(status.message))
       .catch(() => setIndexMessage('Index unavailable'));
   }, [props.engineBaseUrl, props.authToken, props.workspaceRoot]);
+
+  useEffect(() => {
+    if (tab !== 'context' || !props.engineBaseUrl) return;
+    const opts = {
+      baseUrl: props.engineBaseUrl,
+      token: props.authToken,
+    };
+    void Promise.all([fetchMemories(opts), fetchCheckpoints(opts)])
+      .then(([nextMemories, nextCheckpoints]) => {
+        setMemories(nextMemories);
+        setCheckpoints(nextCheckpoints);
+        setContextNote(null);
+      })
+      .catch((err: unknown) => {
+        setContextNote(err instanceof Error ? err.message : String(err));
+      });
+  }, [tab, props.engineBaseUrl, props.authToken, props.workspaceRoot]);
 
   const patch = (partial: unknown) => {
     setDraft((prev) => mergeDesktopSettings(partial, prev));
@@ -1029,10 +1123,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
                               <button
                                 type="button"
                                 className="btn btn-primary"
-                                disabled={
-                                  !props.engineBaseUrl ||
-                                  nomicStatus === 'downloading'
-                                }
+                                disabled={!props.engineBaseUrl}
                                 onClick={() => void downloadNomic()}
                               >
                                 Download
@@ -1124,27 +1215,18 @@ export function SettingsPanel(props: SettingsPanelProps) {
                         </>
                       ) : null}
 
-                      <Field
+                      <MaximumIndexFilesField
                         id="maxFiles"
-                        label="Maximum index files"
-                        hint="0 = use default. Applies when reindexing this repo."
-                      >
-                        <input
-                          id="maxFiles"
-                          type="number"
-                          min={0}
-                          max={240000}
-                          value={draft.workspace.maximumIndexFiles}
-                          onChange={(e) =>
-                            patch({
-                              workspace: {
-                                ...draft.workspace,
-                                maximumIndexFiles: Number(e.target.value) || 0,
-                              },
-                            })
-                          }
-                        />
-                      </Field>
+                        value={draft.workspace.maximumIndexFiles}
+                        onChange={(maximumIndexFiles) =>
+                          patch({
+                            workspace: {
+                              ...draft.workspace,
+                              maximumIndexFiles,
+                            },
+                          })
+                        }
+                      />
                     </div>
                   ) : (
                     <div className="field-grid">
@@ -1152,27 +1234,18 @@ export function SettingsPanel(props: SettingsPanelProps) {
                         Semantic search is off. You can still build a lexical
                         index for this repo.
                       </p>
-                      <Field
+                      <MaximumIndexFilesField
                         id="maxFilesOff"
-                        label="Maximum index files"
-                        hint="0 = use default"
-                      >
-                        <input
-                          id="maxFilesOff"
-                          type="number"
-                          min={0}
-                          max={240000}
-                          value={draft.workspace.maximumIndexFiles}
-                          onChange={(e) =>
-                            patch({
-                              workspace: {
-                                ...draft.workspace,
-                                maximumIndexFiles: Number(e.target.value) || 0,
-                              },
-                            })
-                          }
-                        />
-                      </Field>
+                        value={draft.workspace.maximumIndexFiles}
+                        onChange={(maximumIndexFiles) =>
+                          patch({
+                            workspace: {
+                              ...draft.workspace,
+                              maximumIndexFiles,
+                            },
+                          })
+                        }
+                      />
                     </div>
                   )}
 
@@ -1727,6 +1800,146 @@ export function SettingsPanel(props: SettingsPanelProps) {
                   {label}
                 </label>
               ))}
+            </SettingsSection>
+
+            <SettingsSection
+              title="Workspace memory & checkpoints"
+              description="Durable preferences for this repo, plus labels after successful runs. Save settings to apply the Memory toggle to new runs."
+            >
+              {contextNote ? (
+                <p className="field-help">{contextNote}</p>
+              ) : null}
+              {!props.engineBaseUrl ? (
+                <p className="field-help">
+                  Engine is offline — memory and checkpoints need a running
+                  engine.
+                </p>
+              ) : (
+                <div className="context-panels">
+                  <MemoryPanel
+                    memories={memories}
+                    busy={contextBusy}
+                    onAdd={async (text) => {
+                      if (!props.engineBaseUrl) return;
+                      setContextBusy(true);
+                      setContextNote(null);
+                      try {
+                        setMemories(
+                          await addMemory({
+                            baseUrl: props.engineBaseUrl,
+                            token: props.authToken,
+                            text,
+                          }),
+                        );
+                      } catch (err) {
+                        setContextNote(
+                          err instanceof Error ? err.message : String(err),
+                        );
+                      } finally {
+                        setContextBusy(false);
+                      }
+                    }}
+                    onDelete={async (id) => {
+                      if (!props.engineBaseUrl) return;
+                      setContextBusy(true);
+                      setContextNote(null);
+                      try {
+                        setMemories(
+                          await deleteMemory({
+                            baseUrl: props.engineBaseUrl,
+                            token: props.authToken,
+                            id,
+                          }),
+                        );
+                      } catch (err) {
+                        setContextNote(
+                          err instanceof Error ? err.message : String(err),
+                        );
+                      } finally {
+                        setContextBusy(false);
+                      }
+                    }}
+                    onClear={async () => {
+                      if (!props.engineBaseUrl) return;
+                      setContextBusy(true);
+                      setContextNote(null);
+                      try {
+                        await clearMemories({
+                          baseUrl: props.engineBaseUrl,
+                          token: props.authToken,
+                        });
+                        setMemories([]);
+                      } catch (err) {
+                        setContextNote(
+                          err instanceof Error ? err.message : String(err),
+                        );
+                      } finally {
+                        setContextBusy(false);
+                      }
+                    }}
+                  />
+                  <CheckpointPanel
+                    checkpoints={checkpoints}
+                    busy={contextBusy}
+                    onRestore={async (id) => {
+                      if (!props.engineBaseUrl) return;
+                      setContextBusy(true);
+                      try {
+                        const result = await restoreCheckpoint({
+                          baseUrl: props.engineBaseUrl,
+                          token: props.authToken,
+                          id,
+                        });
+                        setContextNote(result.message);
+                      } catch (err) {
+                        setContextNote(
+                          err instanceof Error ? err.message : String(err),
+                        );
+                      } finally {
+                        setContextBusy(false);
+                      }
+                    }}
+                    onDelete={async (id) => {
+                      if (!props.engineBaseUrl) return;
+                      setContextBusy(true);
+                      setContextNote(null);
+                      try {
+                        setCheckpoints(
+                          await deleteCheckpoint({
+                            baseUrl: props.engineBaseUrl,
+                            token: props.authToken,
+                            id,
+                          }),
+                        );
+                      } catch (err) {
+                        setContextNote(
+                          err instanceof Error ? err.message : String(err),
+                        );
+                      } finally {
+                        setContextBusy(false);
+                      }
+                    }}
+                    onClear={async () => {
+                      if (!props.engineBaseUrl) return;
+                      setContextBusy(true);
+                      setContextNote(null);
+                      try {
+                        await clearCheckpoints({
+                          baseUrl: props.engineBaseUrl,
+                          token: props.authToken,
+                        });
+                        setCheckpoints([]);
+                      } catch (err) {
+                        setContextNote(
+                          err instanceof Error ? err.message : String(err),
+                        );
+                      } finally {
+                        setContextBusy(false);
+                      }
+                    }}
+                  />
+                </div>
+              )}
             </SettingsSection>
           </div>
         ) : null}

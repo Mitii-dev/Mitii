@@ -38,14 +38,17 @@ import {
   createSandboxedProcessPort,
   createWorkspaceCheckpointStore,
   createWorkspaceKnowledgeGraph,
+  createWorkspaceMemoryStore,
   createWorkspaceVerificationStore,
   detectSandboxBackend,
   getProviderPreset,
   inferHostProviderType,
   isHostProviderType,
   normalizeOllamaModelId,
+  resolveMemoryEmbeddingPort,
   resolveProviderApiKey,
   resolveSandboxPolicy,
+  type SemanticIndexSettings,
 } from '@mitii/host';
 import {
   getSharedMcpManager,
@@ -313,12 +316,35 @@ export async function createHostDesktopClient(
     store: new InMemoryRepositoryStateStore(),
   });
   const workspaceId = config.workspaceId ?? workspaceIdFromRoot(cwd);
-  const semanticIndex = {
-    enabled: true,
-    source: 'bundled' as const,
-    model: '',
-    dimensions: 0,
-    normalized: true,
+  const memoryEnabled = readDesktopSettingsField(env, 'ui.contextToggles.memory');
+  const memoryOn = memoryEnabled !== false;
+  const semanticSourceRaw = readDesktopSettingsField(env, 'semanticIndex.source');
+  const semanticSource =
+    semanticSourceRaw === 'ollama' ||
+    semanticSourceRaw === 'openai-compatible' ||
+    semanticSourceRaw === 'disabled' ||
+    semanticSourceRaw === 'bundled'
+      ? semanticSourceRaw
+      : ('bundled' as const);
+  const semanticEnabled = readDesktopSettingsField(env, 'semanticIndex.enabled');
+  const semanticModel = readDesktopSettingsField(env, 'semanticIndex.model');
+  const semanticDimensions = readDesktopSettingsField(
+    env,
+    'semanticIndex.dimensions',
+  );
+  const semanticNormalized = readDesktopSettingsField(
+    env,
+    'semanticIndex.normalized',
+  );
+  const semanticIndex: SemanticIndexSettings = {
+    enabled: semanticEnabled !== false,
+    source: semanticSource,
+    model: typeof semanticModel === 'string' ? semanticModel : '',
+    dimensions:
+      typeof semanticDimensions === 'number' && semanticDimensions > 0
+        ? Math.floor(semanticDimensions)
+        : 0,
+    normalized: semanticNormalized !== false,
     baseUrl: baseUrl ?? '',
     ...(apiKey ? { apiKey } : {}),
   };
@@ -354,6 +380,12 @@ export async function createHostDesktopClient(
     ],
     enableInMemoryCheckpoints: false,
     checkpointStore: createWorkspaceCheckpointStore(cwd),
+    ...(memoryOn
+      ? {
+          memoryStore: createWorkspaceMemoryStore(cwd, workspaceId),
+          memoryEmbedding: resolveMemoryEmbeddingPort(semanticIndex),
+        }
+      : {}),
     skillsCatalog: createFileSystemSkillsCatalog({
       workspaceRoot: cwd,
       contentMode: 'metadata',
