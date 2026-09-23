@@ -47,6 +47,37 @@ describe("filterToolDefinitions MCP gating", () => {
     expect(tools[0]?.inputSchema).toEqual({ type: "object" });
   });
 
+  it("exposes attached read-safe mcp__* tools on ask read grants", () => {
+    const tools = filterToolDefinitions({
+      grant: grant({ maximumWorkspaceEffect: "read" }),
+      definitions: [
+        {
+          name: "read_file",
+          description: "read",
+          inputSchema: { type: "object" },
+        },
+        {
+          name: "mcp__excalidraw__create_view",
+          description: "draw",
+          inputSchema: { type: "object" },
+        },
+        {
+          name: "mcp__memory__store",
+          description: "mcp write",
+          inputSchema: { type: "object" },
+          requiresWorkspaceWrite: true,
+        },
+      ],
+      supportsTools: true,
+      mode: "ask",
+      requiredMcpServerIds: ["excalidraw"],
+    });
+    expect(tools.map((t) => t.name)).toEqual([
+      "read_file",
+      "mcp__excalidraw__create_view",
+    ]);
+  });
+
   it("exposes read-safe mcp__* tools on agent read grants", () => {
     const tools = filterToolDefinitions({
       grant: grant({ maximumWorkspaceEffect: "read" }),

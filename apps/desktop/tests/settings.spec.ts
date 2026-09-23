@@ -107,6 +107,22 @@ describe('desktop settings', () => {
     expect(file.model).toBe('qwen3.5:cloud');
   });
 
+  it('passes context window and max output into engine env', () => {
+    const env = settingsToEngineEnv(
+      mergeDesktopSettings({
+        provider: {
+          type: 'openai-compatible',
+          preset: 'ollama',
+          model: 'my-qwen-64k:latest',
+          contextWindow: 65_536,
+          maximumOutputTokens: 8_192,
+        },
+      }),
+    );
+    expect(env.MITII_CONTEXT_WINDOW).toBe('65536');
+    expect(env.MITII_MAXIMUM_OUTPUT_TOKENS).toBe('8192');
+  });
+
   it('get/set setting paths for catalog keys', () => {
     const base = mergeDesktopSettings(DEFAULT_DESKTOP_SETTINGS);
     expect(getSettingAtPath(base, 'mitii.provider.model')).toBe('');

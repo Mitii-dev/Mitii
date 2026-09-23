@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 
 import {
   appendActivity,
@@ -7,7 +7,6 @@ import {
 } from '../shared/activity.js';
 import type {
   DesktopShellSnapshot,
-  WorkspaceChatSummary,
 } from '../shared/bridge.js';
 import type {
   DesktopAgentMode,
@@ -46,6 +45,8 @@ import {
   IconRecipes,
   IconSettings,
   IconSkills,
+  IconSwitch,
+  IconUser,
   IconWorkspace,
 } from './ActivityIcons.js';
 import { ActivityTimeline } from './ActivityTimeline.js';
@@ -82,6 +83,7 @@ import {
   type ThoroughnessUi,
 } from './ComposerControls.js';
 import { MarkdownBody } from './MarkdownBody.js';
+import { McpAppCard, mcpAppsFromActivity } from './McpAppCard.js';
 import { ModelQuickSelect } from './ModelQuickSelect.js';
 import {
   detectMentionSuggest,
@@ -116,6 +118,57 @@ interface HistoryThread {
   title: string;
   updatedAt: string;
   messages: ChatMessage[];
+  tokenUsage?: TokenUsageState;
+}
+
+function serializeTokenUsage(usage: TokenUsageState): TokenUsageState {
+  const {
+    live: _live,
+    inputTokensTotal,
+    outputTokensTotal,
+    sessionTotal,
+    modelCalls,
+    toolCalls,
+    turnCount,
+    lastPromptTokens,
+    lastResponseTokens,
+    currentTurnTotal,
+    contextWindow,
+    durationMs,
+    contextBreakdown,
+  } = usage;
+  return {
+    inputTokensTotal,
+    outputTokensTotal,
+    sessionTotal:
+      sessionTotal || inputTokensTotal + outputTokensTotal,
+    modelCalls,
+    toolCalls,
+    turnCount,
+    lastPromptTokens,
+    lastResponseTokens,
+    currentTurnTotal,
+    contextWindow,
+    ...(typeof durationMs === 'number' && durationMs > 0
+      ? { durationMs }
+      : {}),
+    ...(contextBreakdown ? { contextBreakdown } : {}),
+  };
+}
+
+function tokenUsageFromThread(
+  thread: HistoryThread | undefined,
+  contextWindow = 0,
+): TokenUsageState {
+  if (!thread?.tokenUsage) {
+    return emptyTokenUsage(contextWindow);
+  }
+  const usage = serializeTokenUsage(thread.tokenUsage);
+  return {
+    ...usage,
+    contextWindow: usage.contextWindow || contextWindow,
+    live: false,
+  };
 }
 
 interface ProfileRow {
@@ -213,17 +266,12 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tokenUsage, setTokenUsage] = useState<TokenUsageState>(emptyTokenUsage);
+  const tokenUsageRef = useRef<TokenUsageState>(emptyTokenUsage());
   const [profiles, setProfiles] = useState<ProfileRow[]>([]);
   const [activeProfileId, setActiveProfileId] = useState('');
   const [knownModels, setKnownModels] = useState<string[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const modelsProfileRef = useRef<string>('');
-  const [collapsedWorkspaces, setCollapsedWorkspaces] = useState<
-    Record<string, boolean>
-  >({});
-  const [remoteHistories, setRemoteHistories] = useState<WorkspaceChatSummary[]>(
-    [],
-  );
   const [suspension, setSuspension] = useState<DesktopSuspension | null>(null);
   const [pinnedPaths, setPinnedPaths] = useState<string[]>([]);
   const [pinnedSkillIds, setPinnedSkillIds] = useState<string[]>([]);
@@ -394,6 +442,20 @@ export function App() {
           if (current.length > 0) return current;
           return active ? (active.messages as ChatMessage[]) : current;
         });
+        if (workspaceChanged || pending) {
+          setTokenUsage(tokenUsageFromThread(active));
+        } else {
+          setTokenUsage((current) => {
+            if (
+              current.sessionTotal > 0 ||
+              current.modelCalls > 0 ||
+              current.toolCalls > 0
+            ) {
+              return current;
+            }
+            return tokenUsageFromThread(active, current.contextWindow);
+          });
+        }
       })
       .catch(() => {
         if (workspaceChanged && !cancelled) setHistory([]);
@@ -548,11 +610,19 @@ export function App() {
     }
   }, [snapshot?.settings.provider.model, snapshot?.settings.provider.contextWindow]);
 
+  useEffect(() => {
+    tokenUsageRef.current = tokenUsage;
+  }, [tokenUsage]);
+
   const persistMessages = async (
     nextMessages: ChatMessage[],
     activeId?: string,
+    usage?: TokenUsageState,
   ) => {
     if (!engine) return;
+    const tokenSnapshot = serializeTokenUsage(
+      usage ?? tokenUsageRef.current,
+    );
     const store = await postHistory({
       ...engine,
       body: {
@@ -560,10 +630,31 @@ export function App() {
         threadId: activeId ?? threadId,
         messages: nextMessages.map(({ streaming: _s, ...rest }) => rest),
         title: nextMessages.find((m) => m.role === 'user')?.text.slice(0, 48),
+        tokenUsage: tokenSnapshot,
       },
     });
     setHistory(store.threads as HistoryThread[]);
     if (store.activeThreadId) setThreadId(store.activeThreadId);
+  };
+
+  const persistTokenUsageOnly = async (
+    activeId: string | undefined,
+    usage: TokenUsageState,
+  ) => {
+    if (!engine || !activeId) return;
+    try {
+      const store = await postHistory({
+        ...engine,
+        body: {
+          action: 'save',
+          threadId: activeId,
+          tokenUsage: serializeTokenUsage(usage),
+        },
+      });
+      setHistory(store.threads as HistoryThread[]);
+    } catch {
+      /* best-effort */
+    }
   };
 
   const consumeStream = useCallback(
@@ -575,11 +666,19 @@ export function App() {
       activity: DesktopActivityItem[];
       suspension: DesktopSuspension | null;
       mutatedPaths: string[];
+      tokenUsage: TokenUsageState;
     }> => {
       let assistant = '';
       let activity: DesktopActivityItem[] = [];
       let nextSuspension: DesktopSuspension | null = null;
       const mutated = new Set<string>();
+      let usage: TokenUsageState = { ...tokenUsageRef.current, live: true };
+
+      const pushUsage = (next: TokenUsageState) => {
+        usage = next;
+        tokenUsageRef.current = next;
+        setTokenUsage(next);
+      };
 
       for await (const line of lines) {
         if (line.op === 'error') {
@@ -588,24 +687,22 @@ export function App() {
         if (line.op === 'event') {
           const tokens = extractTurnTokens(line.event);
           if (tokens) {
-            setTokenUsage((prev) =>
-              addTurnTokens({ ...prev, live: true }, tokens.in, tokens.out),
-            );
+            pushUsage(addTurnTokens({ ...usage, live: true }, tokens.in, tokens.out));
           }
           const breakdown = breakdownFromPromptReady(line.event);
           if (breakdown) {
-            setTokenUsage((prev) => ({
-              ...prev,
+            pushUsage({
+              ...usage,
               contextBreakdown: breakdown,
-              contextWindow: breakdown.contextWindow || prev.contextWindow,
+              contextWindow: breakdown.contextWindow || usage.contextWindow,
               live: true,
-            }));
+            });
           }
           if (isToolCompleted(line.event)) {
-            setTokenUsage((prev) => ({
-              ...prev,
-              toolCalls: prev.toolCalls + 1,
-            }));
+            pushUsage({
+              ...usage,
+              toolCalls: usage.toolCalls + 1,
+            });
           }
           for (const path of collectMutatedPathsFromEvent(line.event)) {
             mutated.add(path);
@@ -650,7 +747,7 @@ export function App() {
                 : m,
             ),
           );
-          setTokenUsage((prev) => ({ ...prev, live: false }));
+          pushUsage({ ...usage, live: false });
         }
       }
 
@@ -659,6 +756,7 @@ export function App() {
         activity,
         suspension: nextSuspension,
         mutatedPaths: [...mutated],
+        tokenUsage: { ...usage, live: false },
       };
     },
     [],
@@ -844,7 +942,6 @@ export function App() {
         return;
       }
       // Expand the destination project in the sidebar.
-      setCollapsedWorkspaces((prev) => ({ ...prev, [workspaceRoot]: false }));
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -1187,6 +1284,9 @@ export function App() {
 
   const onNewChat = async () => {
     setSuspension(null);
+    if (threadId) {
+      await persistTokenUsageOnly(threadId, tokenUsageRef.current);
+    }
     if (!engine) {
       setMessages([]);
       setThreadId(undefined);
@@ -1205,139 +1305,77 @@ export function App() {
     setView('chat');
   };
 
-  const onNewChatInWorkspace = async (workspaceRoot: string) => {
-    if (workspaceRoot === snapshot?.workspaceRoot) {
-      await onNewChat();
-      return;
-    }
-    pendingNewChatRef.current = true;
-    pendingThreadRef.current = null;
-    setCollapsedWorkspaces((prev) => ({ ...prev, [workspaceRoot]: false }));
-    await onSwitchWorkspace(workspaceRoot);
-  };
-
   const onOpenThread = async (id: string) => {
     if (!engine) return;
     setSuspension(null);
+    if (threadId && threadId !== id) {
+      await persistTokenUsageOnly(threadId, tokenUsageRef.current);
+    }
     const store = await postHistory({
       ...engine,
       body: { action: 'activate', threadId: id },
     });
-    setHistory(store.threads as HistoryThread[]);
+    const threads = store.threads as HistoryThread[];
+    setHistory(threads);
     setThreadId(id);
-    setMessages(
-      (store.threads.find((t) => t.id === id)?.messages ??
-        []) as ChatMessage[],
+    const active = threads.find((t) => t.id === id);
+    setMessages((active?.messages ?? []) as ChatMessage[]);
+    setTokenUsage(
+      tokenUsageFromThread(
+        active,
+        typeof snapshot?.settings.provider.contextWindow === 'number'
+          ? snapshot.settings.provider.contextWindow
+          : 0,
+      ),
     );
-    setTokenUsage(emptyTokenUsage());
     setView('chat');
   };
 
-  const onDeleteThread = async (workspaceRoot: string, id: string) => {
-    const isActive = workspaceRoot === snapshot?.workspaceRoot;
-    const titleFromActive = history.find((t) => t.id === id)?.title?.trim();
-    const titleFromRemote = remoteHistories
-      .find((g) => g.workspaceRoot === workspaceRoot)
-      ?.threads.find((t) => t.id === id)?.title?.trim();
-    const label = titleFromActive || titleFromRemote || 'this chat';
+  const onDeleteThread = async (id: string) => {
+    if (!engine) return;
+    const label =
+      history.find((t) => t.id === id)?.title?.trim() || 'this chat';
     const ok = window.confirm(`Delete “${label}”? This cannot be undone.`);
     if (!ok) return;
 
-    if (isActive && engine) {
-      const store = await deleteHistoryThread({ ...engine, threadId: id });
-      setHistory(store.threads as HistoryThread[]);
-      const nextId = store.activeThreadId;
+    const store = await deleteHistoryThread({ ...engine, threadId: id });
+    setHistory(store.threads as HistoryThread[]);
+    const nextId = store.activeThreadId;
+    if (threadId === id) {
       setThreadId(nextId);
-      if (nextId) {
-        setMessages(
-          (store.threads.find((t) => t.id === nextId)?.messages ??
-            []) as ChatMessage[],
-        );
-      } else {
-        setMessages([]);
-      }
+      const next = store.threads.find((t) => t.id === nextId) as
+        | HistoryThread
+        | undefined;
+      setMessages((next?.messages ?? []) as ChatMessage[]);
       setSuspension(null);
-    } else {
-      const bridge = getDesktopBridge();
-      if (!bridge?.deleteWorkspaceChat) return;
-      const result = await bridge.deleteWorkspaceChat(workspaceRoot, id);
+      setTokenUsage(tokenUsageFromThread(next));
+    }
+  };
+
+  const onForgetWorkspace = async (workspaceRoot: string) => {
+    const bridge = getDesktopBridge();
+    if (!bridge?.forgetWorkspace) return;
+    const label = workspaceLabel(workspaceRoot);
+    const ok = window.confirm(
+      `Remove “${label}” from Mitii?\n\nProject files and .mitii data stay on disk. Re-add the folder later to restore chats and settings.`,
+    );
+    if (!ok) return;
+    setBusy(true);
+    setPicker(null);
+    try {
+      const result = await bridge.forgetWorkspace(workspaceRoot);
       if (!result.ok) {
-        setError(result.reason ?? 'Failed to delete chat');
+        setError(result.reason ?? 'Failed to remove workspace');
         return;
       }
+      resetChatForWorkspaceSwitch();
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
     }
-    setRemoteHistories((prev) =>
-      prev.map((group) =>
-        group.workspaceRoot === workspaceRoot
-          ? {
-              ...group,
-              threads: group.threads.filter((t) => t.id !== id),
-            }
-          : group,
-      ),
-    );
   };
-
-  const onOpenThreadInWorkspace = async (
-    workspaceRoot: string,
-    id: string,
-  ) => {
-    if (workspaceRoot === snapshot?.workspaceRoot) {
-      await onOpenThread(id);
-      return;
-    }
-    pendingThreadRef.current = id;
-    await onSwitchWorkspace(workspaceRoot);
-  };
-
-  const refreshRemoteHistories = useCallback(async () => {
-    const bridge = getDesktopBridge();
-    const roots = snapshot?.recentWorkspaces ?? [];
-    if (!bridge?.listWorkspaceChatSummaries || roots.length === 0) {
-      setRemoteHistories([]);
-      return;
-    }
-    try {
-      const rows = await bridge.listWorkspaceChatSummaries(roots);
-      setRemoteHistories(rows);
-    } catch {
-      /* non-fatal */
-    }
-  }, [snapshot?.recentWorkspaces]);
-
-  useEffect(() => {
-    void refreshRemoteHistories();
-  }, [refreshRemoteHistories, history]);
-
-  const chatNavGroups = useMemo(() => {
-    const roots =
-      snapshot?.recentWorkspaces?.length
-        ? snapshot.recentWorkspaces
-        : snapshot?.workspaceRoot
-          ? [snapshot.workspaceRoot]
-          : [];
-    const remoteMap = new Map(
-      remoteHistories.map((row) => [row.workspaceRoot, row.threads]),
-    );
-    return roots.map((workspaceRoot) => {
-      const active = workspaceRoot === snapshot?.workspaceRoot;
-      return {
-        workspaceRoot,
-        active,
-        threads: active
-          ? history.map((t) => ({
-              id: t.id,
-              title: t.title,
-              updatedAt: t.updatedAt,
-            }))
-          : (remoteMap.get(workspaceRoot) ?? []).map((t) => ({
-              id: t.id,
-              title: t.title,
-              updatedAt: t.updatedAt,
-            })),
-      };
-    });
-  }, [snapshot?.recentWorkspaces, snapshot?.workspaceRoot, history, remoteHistories]);
 
   const runResume = useCallback(
     async (body: Record<string, unknown>) => {
@@ -1381,6 +1419,7 @@ export function App() {
           activity,
           suspension: nextSuspension,
           mutatedPaths,
+          tokenUsage: nextUsage,
         } = await consumeStream(
           streamResume({
             baseUrl: snapshot.engineBaseUrl,
@@ -1445,7 +1484,7 @@ export function App() {
                 streaming: false,
               },
             ];
-        await persistMessages(withAssistant, threadId);
+        await persistMessages(withAssistant, threadId, nextUsage);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
         setMessages((prev) =>
@@ -1516,6 +1555,7 @@ export function App() {
         activity,
         suspension: nextSuspension,
         mutatedPaths,
+        tokenUsage: nextUsage,
       } = await consumeStream(
         streamPrompt({
           baseUrl: snapshot.engineBaseUrl,
@@ -1568,6 +1608,7 @@ export function App() {
             : m,
         ),
         activeThread,
+        nextUsage,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -1854,9 +1895,22 @@ export function App() {
               {m.role === 'assistant' ? (
                 <>
                   <ActivityTimeline
-                    items={m.activity ?? []}
+                    items={(m.activity ?? []).filter(
+                      (item) => item.kind !== 'mcp_app',
+                    )}
                     streaming={Boolean(m.streaming)}
                   />
+                  {mcpAppsFromActivity(m.activity).map((app, index) => (
+                    <McpAppCard
+                      key={`${app.title}-${app.paths.svg ?? app.paths.md ?? index}`}
+                      app={app}
+                      onOpenPath={(path) => {
+                        setLayout('code');
+                        setWorkspaceSide('explorer');
+                        setOpenPathRequest({ path, view: 'file' });
+                      }}
+                    />
+                  ))}
                   {m.fileChanges && m.fileChanges.files.length > 0 ? (
                     <FileChangesCard
                       changes={m.fileChanges}
@@ -2071,6 +2125,10 @@ export function App() {
                 onOpen={() => {
                   void refreshModelsForActiveProfile();
                 }}
+                onEditProfile={() => {
+                  setSettingsTab('profiles');
+                  setView('settings');
+                }}
               />
             </div>
           </div>
@@ -2126,6 +2184,7 @@ export function App() {
                 setPicker((v) => (v === 'profile' ? null : 'profile'))
               }
             >
+              <IconUser size={14} />
               <span className="top-select__label">Profile</span>
               <span className="top-select__value">
                 {activeProfile?.name ?? 'Default'}
@@ -2133,23 +2192,48 @@ export function App() {
               <span aria-hidden>▾</span>
             </button>
           </div>
-          <div className="top-select">
+          <div className="top-workspace-cluster">
+            <div className="top-select">
+              <button
+                type="button"
+                className="top-select__trigger top-select__trigger--repo"
+                disabled={busy}
+                aria-expanded={picker === 'workspace'}
+                title={snapshot?.workspaceRoot ?? 'Workspace'}
+                onClick={() =>
+                  setPicker((v) => (v === 'workspace' ? null : 'workspace'))
+                }
+              >
+                <IconWorkspace size={14} />
+                <span className="top-select__label">Workspace</span>
+                <span className="top-select__value">
+                  {workspaceLabel(snapshot?.workspaceRoot ?? '') ||
+                    'Select folder'}
+                </span>
+                <span aria-hidden>▾</span>
+              </button>
+            </div>
             <button
               type="button"
-              className="top-select__trigger top-select__trigger--repo"
+              className="top-icon-btn"
               disabled={busy}
-              aria-expanded={picker === 'workspace'}
-              title={snapshot?.workspaceRoot ?? 'Workspace'}
-              onClick={() =>
-                setPicker((v) => (v === 'workspace' ? null : 'workspace'))
-              }
+              title="Switch workspace"
+              aria-label="Switch workspace"
+              onClick={() => setPicker('workspace')}
             >
-              <span className="top-select__label">Workspace</span>
-              <span className="top-select__value">
-                {workspaceLabel(snapshot?.workspaceRoot ?? '') ||
-                  'Select folder'}
-              </span>
-              <span aria-hidden>▾</span>
+              <IconSwitch size={15} />
+              <span>Switch</span>
+            </button>
+            <button
+              type="button"
+              className="top-icon-btn top-icon-btn--accent"
+              disabled={busy}
+              title="Add workspace"
+              aria-label="Add workspace"
+              onClick={() => void onPickWorkspace()}
+            >
+              <IconPlus size={15} />
+              <span>New</span>
             </button>
           </div>
           </div>
@@ -2164,25 +2248,19 @@ export function App() {
               <img src={logoUrl} alt="Mitii" />
             </div>
             <ChatHistoryNav
-              groups={chatNavGroups}
+              workspaceRoot={snapshot?.workspaceRoot}
+              threads={history.map((t) => ({
+                id: t.id,
+                title: t.title,
+                updatedAt: t.updatedAt,
+              }))}
               activeThreadId={threadId}
-              collapsed={collapsedWorkspaces}
               busy={busy}
               loading={historyLoading}
-              onToggleGroup={(root) =>
-                setCollapsedWorkspaces((prev) => {
-                  const currently =
-                    Object.prototype.hasOwnProperty.call(prev, root)
-                      ? Boolean(prev[root])
-                      : root !== snapshot?.workspaceRoot;
-                  return { ...prev, [root]: !currently };
-                })
-              }
-              onOpenThread={(root, id) =>
-                void onOpenThreadInWorkspace(root, id)
-              }
-              onDeleteThread={(root, id) => void onDeleteThread(root, id)}
-              onNewChat={(root) => void onNewChatInWorkspace(root)}
+              onOpenThread={(id) => void onOpenThread(id)}
+              onDeleteThread={(id) => void onDeleteThread(id)}
+              onNewChat={() => void onNewChat()}
+              onSwitchWorkspace={() => setPicker('workspace')}
             />
             <div className="side-foot">
               <button type="button" onClick={() => setView('settings')}>
@@ -2335,6 +2413,9 @@ export function App() {
               pushIndexStream('Index status updated');
               void refreshIndexStatus();
             }}
+            onWorkspaceCacheCleared={() => {
+              void refresh();
+            }}
           />
         ) : inCodeMode ? (
           <div className="code-mode">
@@ -2363,6 +2444,12 @@ export function App() {
                     if (!bridge) return;
                     await bridge.restartEngine();
                     await refresh();
+                  }}
+                  activeProfileName={activeProfile?.name ?? null}
+                  hasActiveProfile={Boolean(activeProfileId && activeProfile)}
+                  onOpenProfiles={() => {
+                    setView('settings');
+                    setSettingsTab('profiles');
                   }}
                 />
               ) : (
@@ -2437,7 +2524,7 @@ export function App() {
             ) : (
               <IdentityPicker
                 title="Choose a workspace"
-                subtitle="Each workspace keeps its own chats and storage link."
+                subtitle="Only the selected workspace is active. Remove hides it from Mitii — .mitii data stays on disk."
                 cards={(snapshot?.recentWorkspaces ?? []).map((path) => ({
                   id: path,
                   title: workspaceLabel(path),
@@ -2447,6 +2534,8 @@ export function App() {
                 onSelect={(id) => void onSwitchWorkspace(id)}
                 onAdd={() => void onPickWorkspace()}
                 addLabel="Add workspace"
+                onRemove={(id) => void onForgetWorkspace(id)}
+                removeLabel="Remove"
                 footer={
                   <button
                     type="button"

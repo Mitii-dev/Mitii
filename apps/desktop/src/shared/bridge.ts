@@ -103,6 +103,16 @@ export interface MitiiDesktopBridge {
     workspaceRoot: string,
     threadId: string,
   ) => Promise<{ ok: boolean; reason?: string }>;
+  /** Hide workspace from the app list; keeps `.mitii` / project data on disk. */
+  forgetWorkspace: (
+    workspaceRoot: string,
+  ) => Promise<{ ok: boolean; nextActive?: string; reason?: string }>;
+  /** Delete logs, memory, index cache, and reset workspace settings. */
+  clearWorkspaceCache: () => Promise<{
+    ok: boolean;
+    removed?: string[];
+    reason?: string;
+  }>;
 }
 
 declare global {

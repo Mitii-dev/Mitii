@@ -27,6 +27,8 @@ import {
 } from './api.js';
 import { CodeEditor } from './CodeEditor.js';
 import { CodeExtensionsPane } from './CodeExtensionsPane.js';
+import { McpManager } from './McpManager.js';
+import { SkillsManager } from './SkillsManager.js';
 import { DiffView, gitStatusKind } from './DiffView.js';
 import {
   IconChevronDown,
@@ -67,6 +69,10 @@ interface WorkspacePanelProps {
   /** Insert a recipe prompt into the chat composer. */
   onUsePrompt?: (prompt: string, mode?: 'ask' | 'plan' | 'agent') => void;
   onRestartEngine?: () => Promise<void>;
+  /** Active provider profile (required to create/save skills). */
+  activeProfileName?: string | null;
+  hasActiveProfile?: boolean;
+  onOpenProfiles?: () => void;
 }
 
 type TreeEntry = { name: string; path: string; kind: 'file' | 'dir' };
@@ -1070,6 +1076,12 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     : [];
 
   const workspaceLabel = workspaceFolderName(props.workspaceRoot);
+  const extensionsFullscreen = side === 'mcp' || side === 'skills';
+  const sideColumnWidth = extensionsFullscreen
+    ? props.hideActivityRail
+      ? 0
+      : 44
+    : sideWidth;
 
   return (
     <div className={`workspace-view${props.embedded ? ' workspace-view--embedded' : ''}`}>
@@ -1077,12 +1089,16 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
         className="workspace-body"
         style={
           {
-            gridTemplateColumns: `${sideWidth}px 5px minmax(0, 1fr)`,
+            gridTemplateColumns: extensionsFullscreen
+              ? `${sideColumnWidth}px 0 minmax(0, 1fr)`
+              : `${sideWidth}px 5px minmax(0, 1fr)`,
           } as CSSProperties
         }
       >
         <aside
-          className={`workspace-side${props.hideActivityRail ? ' workspace-side--flush' : ''}`}
+          className={`workspace-side${props.hideActivityRail ? ' workspace-side--flush' : ''}${
+            extensionsFullscreen ? ' workspace-side--rail-only' : ''
+          }`}
         >
           {props.hideActivityRail ? null : (
             <div className="activity-rail" aria-label="Workspace views">
@@ -1113,6 +1129,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
             </div>
           )}
 
+          {extensionsFullscreen ? null : (
           <div className="workspace-pane">
             {side === 'explorer' ? (
               <>
@@ -1386,27 +1403,52 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                   </div>
                 </div>
               </div>
-            ) : (
+            ) : side === 'recipes' ? (
               <CodeExtensionsPane
                 baseUrl={props.baseUrl}
                 token={props.token}
-                side={side}
+                side="recipes"
                 onUsePrompt={props.onUsePrompt}
                 onRestartEngine={props.onRestartEngine}
               />
-            )}
+            ) : null}
           </div>
+          )}
         </aside>
 
-        <ResizeHandle
-          value={sideWidth}
-          onChange={setSideWidth}
-          min={160}
-          max={520}
-          label="Resize explorer"
-        />
+        {extensionsFullscreen ? (
+          <div aria-hidden className="workspace-resize-spacer" />
+        ) : (
+          <ResizeHandle
+            value={sideWidth}
+            onChange={setSideWidth}
+            min={160}
+            max={520}
+            label="Resize explorer"
+          />
+        )}
 
-        <section className="editor-shell">
+        <section
+          className={`editor-shell${
+            extensionsFullscreen ? ' editor-shell--extensions' : ''
+          }`}
+        >
+          {side === 'mcp' ? (
+            <McpManager
+              baseUrl={props.baseUrl}
+              token={props.token}
+              onRestartEngine={props.onRestartEngine}
+            />
+          ) : side === 'skills' ? (
+            <SkillsManager
+              baseUrl={props.baseUrl}
+              token={props.token}
+              activeProfileName={props.activeProfileName}
+              hasActiveProfile={Boolean(props.hasActiveProfile)}
+              onOpenProfiles={props.onOpenProfiles}
+            />
+          ) : (
+            <>
           {tabs.length > 0 ? (
             <div className="editor-tabs" role="tablist">
               {tabs.map((tab) => (
@@ -1521,6 +1563,8 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                 <pre className="workspace-stat">{git.statPreview}</pre>
               ) : null}
             </div>
+          )}
+            </>
           )}
         </section>
       </div>

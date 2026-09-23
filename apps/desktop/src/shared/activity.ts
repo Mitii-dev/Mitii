@@ -12,7 +12,23 @@ export type DesktopActivityKind =
   | 'thinking'
   | 'decision'
   | 'warning'
-  | 'suspended';
+  | 'suspended'
+  | 'mcp_app';
+
+export interface DesktopMcpAppPayload {
+  serverId: string;
+  tool: string;
+  title: string;
+  checkpointId?: string;
+  svgDataUrl?: string;
+  html?: string;
+  paths: {
+    md?: string;
+    docsMd?: string;
+    excalidraw?: string;
+    svg?: string;
+  };
+}
 
 export interface DesktopActivityItem {
   id: string;
@@ -23,6 +39,8 @@ export interface DesktopActivityItem {
   status?: string;
   /** Paths mutated by write tools (apply_patch, etc.). */
   paths?: string[];
+  /** Excalidraw / MCP App diagram card. */
+  mcpApp?: DesktopMcpAppPayload;
 }
 
 const STAGE_LABELS: Record<string, string> = {
@@ -246,6 +264,46 @@ export function runEventToActivity(event: unknown): DesktopActivityItem | null {
         detail: asString(e.message),
         status: 'failed',
       };
+    case 'mcp_app': {
+      const mcpApp = e.mcpApp;
+      if (!mcpApp || typeof mcpApp !== 'object') return null;
+      const app = mcpApp as Record<string, unknown>;
+      const title = asString(app.title) ?? 'Diagram';
+      const pathsRaw =
+        app.paths && typeof app.paths === 'object'
+          ? (app.paths as Record<string, unknown>)
+          : {};
+      return {
+        id,
+        at,
+        kind: 'mcp_app',
+        title,
+        detail: asString(e.detail),
+        status: 'succeeded',
+        mcpApp: {
+          serverId: asString(app.serverId) ?? 'excalidraw',
+          tool: asString(app.tool) ?? 'create_view',
+          title,
+          ...(asString(app.checkpointId)
+            ? { checkpointId: asString(app.checkpointId) }
+            : {}),
+          ...(asString(app.svgDataUrl)
+            ? { svgDataUrl: asString(app.svgDataUrl) }
+            : {}),
+          ...(asString(app.html) ? { html: asString(app.html) } : {}),
+          paths: {
+            ...(asString(pathsRaw.md) ? { md: asString(pathsRaw.md) } : {}),
+            ...(asString(pathsRaw.docsMd)
+              ? { docsMd: asString(pathsRaw.docsMd) }
+              : {}),
+            ...(asString(pathsRaw.excalidraw)
+              ? { excalidraw: asString(pathsRaw.excalidraw) }
+              : {}),
+            ...(asString(pathsRaw.svg) ? { svg: asString(pathsRaw.svg) } : {}),
+          },
+        },
+      };
+    }
     case 'terminal':
       return {
         id,

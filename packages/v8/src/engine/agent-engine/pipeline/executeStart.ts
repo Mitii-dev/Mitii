@@ -26,7 +26,7 @@ import {
   createInitialRunEvidence,
   finalizeRunEvidence,
 } from "../actions";
-import { withMcpAttachOnGrant } from "../../../modules/mcp-attach";
+import { withMcpAttachOnGrant, formatMcpAttachInstruction } from "../../../modules/mcp-attach";
 import type {
   EstablishedFact,
 } from "../actions";
@@ -339,6 +339,10 @@ export async function executeStart(
     );
 
     const projectRules = [...(input.instructions?.projectRules ?? [])];
+    const mcpAttachRule = formatMcpAttachInstruction(attachIds);
+    if (mcpAttachRule) {
+      projectRules.push(mcpAttachRule);
+    }
     const hostInstructions: PromptInstructions | undefined =
       projectRules.length > 0
         ? {

@@ -54,6 +54,7 @@ import {
 import Database from 'better-sqlite3';
 
 import type { DesktopHostMode } from '../shared/protocol.js';
+import { resolveEffectiveContextWindow } from '../shared/contextWindow.js';
 import { ensureDesktopRepositoryState } from './ensureRepositoryState.js';
 import { workspaceIdFromRoot } from './workspace-id.js';
 
@@ -64,6 +65,33 @@ interface MitiiDesktopConfig {
   baseUrl?: string;
   workspaceId?: string;
   defaultMode?: AgentMode;
+}
+
+function readPositiveInt(raw: unknown): number {
+  const n = typeof raw === 'string' ? Number(raw) : Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.floor(n);
+}
+
+/** Read nested provider.* from MITII_DESKTOP_SETTINGS_JSON when env keys are absent. */
+function readDesktopSettingsField(
+  env: NodeJS.ProcessEnv,
+  dotted: string,
+): unknown {
+  const json = env.MITII_DESKTOP_SETTINGS_JSON?.trim();
+  if (!json) return undefined;
+  try {
+    const root = JSON.parse(json) as Record<string, unknown>;
+    const parts = dotted.split('.');
+    let cur: unknown = root;
+    for (const part of parts) {
+      if (!cur || typeof cur !== 'object' || Array.isArray(cur)) return undefined;
+      cur = (cur as Record<string, unknown>)[part];
+    }
+    return cur;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Deterministic understanding for echo / smoke. */
@@ -205,6 +233,20 @@ export async function createHostDesktopClient(
   const baseUrl = env.MITII_BASE_URL ?? config.baseUrl ?? preset?.baseUrl;
   const apiKey = resolveProviderApiKey({ type, env });
 
+  const storedContextWindow = readPositiveInt(
+    env.MITII_CONTEXT_WINDOW ??
+      readDesktopSettingsField(env, 'provider.contextWindow'),
+  );
+  const contextWindowTokens = resolveEffectiveContextWindow(
+    storedContextWindow,
+    model,
+    type,
+  );
+  const hostMaximumOutputTokens = readPositiveInt(
+    env.MITII_MAXIMUM_OUTPUT_TOKENS ??
+      readDesktopSettingsField(env, 'provider.maximumOutputTokens'),
+  );
+
   const llm = forceEcho
     ? {
         understandingLlm: new DesktopUnderstandingLlmPort(),
@@ -216,6 +258,13 @@ export async function createHostDesktopClient(
         model,
         ...(baseUrl ? { baseUrl } : {}),
         ...(apiKey ? { apiKey } : {}),
+        capabilities: {
+          contextWindowTokens,
+          ...(hostMaximumOutputTokens > 0
+            ? { maximumOutputTokens: hostMaximumOutputTokens }
+            : {}),
+          supportsTools: true,
+        },
       });
 
   const mcpManager = getSharedMcpManager({ clientInfoName: 'mitii-desktop' });

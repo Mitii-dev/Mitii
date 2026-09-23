@@ -13,11 +13,28 @@ export interface DesktopChatMessage {
   status?: string;
 }
 
+/** Persisted token meter summary for a chat thread. */
+export interface DesktopThreadTokenUsage {
+  inputTokensTotal: number;
+  outputTokensTotal: number;
+  sessionTotal: number;
+  modelCalls: number;
+  toolCalls: number;
+  turnCount: number;
+  lastPromptTokens: number;
+  lastResponseTokens: number;
+  currentTurnTotal: number;
+  contextWindow: number;
+  durationMs?: number;
+  contextBreakdown?: unknown;
+}
+
 export interface DesktopChatThread {
   id: string;
   title: string;
   updatedAt: string;
   messages: DesktopChatMessage[];
+  tokenUsage?: DesktopThreadTokenUsage;
 }
 
 export interface DesktopHistoryStore {
@@ -54,11 +71,50 @@ function normalizeMessage(raw: unknown): DesktopChatMessage | undefined {
   } as DesktopChatMessage;
 }
 
+function normalizeTokenUsage(raw: unknown): DesktopThreadTokenUsage | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const obj = raw as Record<string, unknown>;
+  const num = (value: unknown): number => {
+    const n = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  };
+  const usage: DesktopThreadTokenUsage = {
+    inputTokensTotal: num(obj.inputTokensTotal),
+    outputTokensTotal: num(obj.outputTokensTotal),
+    sessionTotal: num(obj.sessionTotal),
+    modelCalls: num(obj.modelCalls),
+    toolCalls: num(obj.toolCalls),
+    turnCount: num(obj.turnCount),
+    lastPromptTokens: num(obj.lastPromptTokens),
+    lastResponseTokens: num(obj.lastResponseTokens),
+    currentTurnTotal: num(obj.currentTurnTotal),
+    contextWindow: num(obj.contextWindow),
+  };
+  if (typeof obj.durationMs === 'number' && obj.durationMs > 0) {
+    usage.durationMs = obj.durationMs;
+  }
+  if (obj.contextBreakdown && typeof obj.contextBreakdown === 'object') {
+    usage.contextBreakdown = obj.contextBreakdown;
+  }
+  // Drop empty summaries so old threads stay lean.
+  if (
+    usage.sessionTotal <= 0 &&
+    usage.inputTokensTotal <= 0 &&
+    usage.outputTokensTotal <= 0 &&
+    usage.modelCalls <= 0 &&
+    usage.toolCalls <= 0
+  ) {
+    return undefined;
+  }
+  return usage;
+}
+
 function normalizeThread(raw: unknown): DesktopChatThread | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const obj = raw as Record<string, unknown>;
   const id = String(obj.id ?? '').trim();
   if (!id) return undefined;
+  const tokenUsage = normalizeTokenUsage(obj.tokenUsage);
   return {
     id,
     title: String(obj.title ?? 'Chat').trim() || 'Chat',
@@ -71,6 +127,7 @@ function normalizeThread(raw: unknown): DesktopChatThread | undefined {
           .map(normalizeMessage)
           .filter((m): m is DesktopChatMessage => Boolean(m))
       : [],
+    ...(tokenUsage ? { tokenUsage } : {}),
   };
 }
 
@@ -133,6 +190,7 @@ export function upsertThreadMessages(
   threadId: string,
   messages: DesktopChatMessage[],
   title?: string,
+  tokenUsage?: DesktopThreadTokenUsage,
 ): DesktopHistoryStore {
   const existing = store.threads.some((thread) => thread.id === threadId);
   if (!existing) {
@@ -144,6 +202,7 @@ export function upsertThreadMessages(
         'Chat',
       updatedAt: new Date().toISOString(),
       messages,
+      ...(tokenUsage ? { tokenUsage } : {}),
     };
     return {
       threads: [created, ...store.threads].slice(0, 100),
@@ -162,9 +221,32 @@ export function upsertThreadMessages(
       title: nextTitle,
       messages,
       updatedAt: new Date().toISOString(),
+      ...(tokenUsage
+        ? { tokenUsage }
+        : thread.tokenUsage
+          ? { tokenUsage: thread.tokenUsage }
+          : {}),
     };
   });
   return { threads, activeThreadId: threadId };
+}
+
+/** Update only the token meter for a thread (keeps messages). */
+export function upsertThreadTokenUsage(
+  store: DesktopHistoryStore,
+  threadId: string,
+  tokenUsage: DesktopThreadTokenUsage,
+): DesktopHistoryStore {
+  const threads = store.threads.map((thread) => {
+    if (thread.id !== threadId) return thread;
+    return {
+      ...thread,
+      tokenUsage,
+      updatedAt: new Date().toISOString(),
+    };
+  });
+  if (!threads.some((t) => t.id === threadId)) return store;
+  return { ...store, threads };
 }
 
 export function deleteThread(
