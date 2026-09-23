@@ -82,6 +82,8 @@ export async function* streamPrompt(options: {
   pinnedPaths?: string[];
   requiredSkillIds?: string[];
   requiredMcpServerIds?: string[];
+  /** Prior turns for Agent Engine (VS Code conversationCarry parity). */
+  conversation?: Array<{ role: 'user' | 'assistant'; content: string }>;
 }): AsyncGenerator<DesktopPromptStreamLine> {
   yield* streamNdjson(`${options.baseUrl}/v1/prompt`, {
     method: 'POST',
@@ -105,6 +107,9 @@ export async function* streamPrompt(options: {
         : {}),
       ...(options.requiredMcpServerIds?.length
         ? { requiredMcpServerIds: options.requiredMcpServerIds }
+        : {}),
+      ...(options.conversation && options.conversation.length > 0
+        ? { conversation: options.conversation }
         : {}),
     }),
   });

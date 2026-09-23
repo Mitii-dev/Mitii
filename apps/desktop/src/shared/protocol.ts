@@ -31,6 +31,8 @@ export interface DesktopPromptRequest {
   model?: string;
   /** Chat thread id — used for VS Code–parity session JSONL filenames. */
   sessionId?: string;
+  /** Prior user/assistant turns for conversation carry. */
+  conversation?: Array<{ role: 'user' | 'assistant'; content: string }>;
 }
 
 /** NDJSON stream lines from POST /v1/prompt */

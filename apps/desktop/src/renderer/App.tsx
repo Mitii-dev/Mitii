@@ -5,6 +5,10 @@ import {
   runEventToActivity,
   type DesktopActivityItem,
 } from '../shared/activity.js';
+import {
+  buildConversationCarry,
+  collectStructuredCarryFromThread,
+} from '../shared/conversationCarry.js';
 import type {
   DesktopShellSnapshot,
 } from '../shared/bridge.js';
@@ -50,6 +54,10 @@ import {
   IconWorkspace,
 } from './ActivityIcons.js';
 import { ActivityTimeline } from './ActivityTimeline.js';
+import {
+  ThinkingBlock,
+  thinkingItemsFromActivity,
+} from './ThinkingBlock.js';
 import {
   extractAssistantText,
   deleteHistoryThread,
@@ -1550,6 +1558,16 @@ export function App() {
         setHistory(created.threads as HistoryThread[]);
       }
 
+      const conversation = buildConversationCarry({
+        messages: messages.map((m) => ({ role: m.role, text: m.text })),
+        currentPrompt: prompt,
+        mode,
+        structured:
+          mode === 'agent'
+            ? collectStructuredCarryFromThread({ messages })
+            : undefined,
+      });
+
       const {
         assistant,
         activity,
@@ -1568,6 +1586,7 @@ export function App() {
           pinnedPaths,
           requiredSkillIds: pinnedSkillIds,
           requiredMcpServerIds: pinnedMcpIds,
+          ...(conversation.length > 0 ? { conversation } : {}),
           ...(snapshot.authToken ? { token: snapshot.authToken } : {}),
         }),
         assistantId,
@@ -1901,9 +1920,21 @@ export function App() {
                 <>
                   <ActivityTimeline
                     items={(m.activity ?? []).filter(
-                      (item) => item.kind !== 'mcp_app',
+                      (item) =>
+                        item.kind !== 'mcp_app' && item.kind !== 'thinking',
                     )}
                     streaming={Boolean(m.streaming)}
+                  />
+                  <ThinkingBlock
+                    items={thinkingItemsFromActivity(m.activity)}
+                    streaming={Boolean(m.streaming)}
+                    endAt={
+                      m.streaming
+                        ? undefined
+                        : (m.activity ?? [])
+                            .filter((item) => item.kind !== 'thinking')
+                            .at(-1)?.at
+                    }
                   />
                   {mcpAppsFromActivity(m.activity).map((app, index) => (
                     <McpAppCard
@@ -1931,7 +1962,14 @@ export function App() {
                       }}
                     />
                   ) : null}
-                  {m.text ? <MarkdownBody text={m.text} /> : null}
+                  {m.text ? (
+                    <MarkdownBody
+                      text={m.text}
+                      streaming={Boolean(m.streaming)}
+                    />
+                  ) : m.streaming ? (
+                    <p className="md-pending">Working…</p>
+                  ) : null}
                 </>
               ) : (
                 <div className="turn__user">{m.text}</div>

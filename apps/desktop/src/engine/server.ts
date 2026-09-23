@@ -196,6 +196,27 @@ function readCommitMessageStyle(
   return undefined;
 }
 
+function parseConversation(
+  value: unknown,
+): MitiiStartInput['conversation'] | undefined {
+  if (!Array.isArray(value) || value.length === 0) return undefined;
+  const out: NonNullable<MitiiStartInput['conversation']> = [];
+  for (const item of value.slice(0, 200)) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+    const record = item as Record<string, unknown>;
+    const role = record.role === 'assistant' ? 'assistant' : 'user';
+    const content =
+      typeof record.content === 'string'
+        ? record.content.trim()
+        : typeof record.text === 'string'
+          ? record.text.trim()
+          : '';
+    if (!content) continue;
+    out.push({ role, content });
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 function buildStartInput(
   body: Record<string, unknown>,
   parsed: {
@@ -203,6 +224,7 @@ function buildStartInput(
     mode?: 'ask' | 'plan' | 'agent';
     id?: string;
     model?: string;
+    sessionId?: string;
   },
   workspaceRoot: string,
 ): MitiiStartInput {
@@ -219,6 +241,7 @@ function buildStartInput(
   const pinnedPaths = asStringArray(body.pinnedPaths, 32);
   const requiredSkillIds = asStringArray(body.requiredSkillIds, 16);
   const requiredMcpServerIds = asStringArray(body.requiredMcpServerIds, 16);
+  const conversation = parseConversation(body.conversation);
   const modelRaw =
     (typeof body.model === 'string' && body.model.trim()
       ? body.model.trim()
@@ -238,10 +261,12 @@ function buildStartInput(
     planApproval: policy.planApproval,
     explorationDepth: intensity.depth,
     windowBudget: { effort: intensity.effort },
+    ...(parsed.sessionId ? { sessionId: parsed.sessionId } : {}),
     ...(model ? { model } : {}),
     ...(pinnedPaths ? { pinnedPaths } : {}),
     ...(requiredSkillIds ? { requiredSkillIds } : {}),
     ...(requiredMcpServerIds ? { requiredMcpServerIds } : {}),
+    ...(conversation ? { conversation } : {}),
   };
 }
 
@@ -256,6 +281,7 @@ async function streamRun(
     workspaceRoot?: string;
     prompt?: string;
     sessionId?: string;
+    conversationCount?: number;
   },
 ): Promise<void> {
   res.writeHead(200, {
@@ -360,6 +386,7 @@ async function streamRun(
       mode,
       sessionId: meta?.sessionId ?? id,
       runId: run.runId ?? id,
+      conversationCount: meta?.conversationCount ?? 0,
     });
     if (sessionLog?.path) {
       appendRunLog(logsDir, `session_log ${sessionLog.path}`);
@@ -519,6 +546,7 @@ async function handlePrompt(
     workspaceRoot,
     prompt: parsed.prompt,
     sessionId: parsed.sessionId ?? id,
+    conversationCount: startInput.conversation?.length ?? 0,
   });
 }
 
