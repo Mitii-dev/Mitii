@@ -42,42 +42,95 @@ export const PROVIDER_PRESET_OPTIONS: Array<{
   id: DesktopProviderPreset;
   label: string;
   type: DesktopProviderType;
+  /** Default API base URL applied when the preset is selected. */
+  baseUrl: string;
+  /** Optional default model applied when the preset is selected. */
+  model?: string;
 }> = [
-  { id: 'echo', label: 'Echo (local stub)', type: 'echo' },
-  { id: 'ollama', label: 'Ollama', type: 'openai-compatible' },
-  { id: 'ollama-cloud', label: 'Ollama Cloud', type: 'openai-compatible' },
-  { id: 'lm-studio', label: 'LM Studio', type: 'openai-compatible' },
-  { id: 'openai', label: 'OpenAI', type: 'openai-compatible' },
-  { id: 'openrouter', label: 'OpenRouter', type: 'openai-compatible' },
-  { id: 'deepseek', label: 'DeepSeek', type: 'openai-compatible' },
-  { id: 'azure-openai', label: 'Azure OpenAI', type: 'openai-compatible' },
+  { id: 'echo', label: 'Echo (local stub)', type: 'echo', baseUrl: '', model: 'echo' },
+  {
+    id: 'ollama',
+    label: 'Ollama',
+    type: 'openai-compatible',
+    baseUrl: 'http://localhost:11434/v1',
+  },
+  {
+    id: 'ollama-cloud',
+    label: 'Ollama Cloud',
+    type: 'openai-compatible',
+    baseUrl: 'https://ollama.com/v1',
+  },
+  {
+    id: 'lm-studio',
+    label: 'LM Studio',
+    type: 'openai-compatible',
+    baseUrl: 'http://localhost:1234/v1',
+  },
+  {
+    id: 'openai',
+    label: 'OpenAI',
+    type: 'openai-compatible',
+    baseUrl: 'https://api.openai.com/v1',
+    model: 'gpt-4o-mini',
+  },
+  {
+    id: 'openrouter',
+    label: 'OpenRouter',
+    type: 'openai-compatible',
+    baseUrl: 'https://openrouter.ai/api/v1',
+    model: 'openai/gpt-4o-mini',
+  },
+  {
+    id: 'deepseek',
+    label: 'DeepSeek',
+    type: 'openai-compatible',
+    baseUrl: 'https://api.deepseek.com/v1',
+    model: 'deepseek-chat',
+  },
+  {
+    id: 'azure-openai',
+    label: 'Azure OpenAI',
+    type: 'openai-compatible',
+    baseUrl:
+      'https://YOUR_RESOURCE.openai.azure.com/openai/deployments/YOUR_DEPLOYMENT',
+    model: 'gpt-4o-mini',
+  },
   {
     id: 'openai-compatible',
     label: 'OpenAI-compatible (/v1)',
     type: 'openai-compatible',
+    baseUrl: 'http://localhost:11434/v1',
   },
-  { id: 'anthropic', label: 'Anthropic (Claude)', type: 'anthropic' },
-  { id: 'gemini', label: 'Gemini', type: 'gemini' },
+  {
+    id: 'anthropic',
+    label: 'Anthropic (Claude)',
+    type: 'anthropic',
+    baseUrl: 'https://api.anthropic.com',
+    model: 'claude-sonnet-4-5',
+  },
+  {
+    id: 'gemini',
+    label: 'Gemini',
+    type: 'gemini',
+    baseUrl: 'https://generativelanguage.googleapis.com',
+    model: 'gemini-2.5-flash',
+  },
 ];
 
 export type SettingsTabId =
-  | 'model'
-  | 'autocomplete'
-  | 'workspace'
-  | 'modes'
+  | 'storage'
+  | 'workspaces'
+  | 'profiles'
   | 'context'
   | 'features'
-  | 'integrations'
   | 'debug';
 
 export const SETTINGS_TABS: Array<{ id: SettingsTabId; label: string }> = [
-  { id: 'model', label: 'Provider' },
-  { id: 'autocomplete', label: 'Autocomplete' },
-  { id: 'workspace', label: 'Workspace' },
-  { id: 'modes', label: 'Modes' },
+  { id: 'storage', label: 'Storage' },
+  { id: 'workspaces', label: 'Workspaces' },
+  { id: 'profiles', label: 'Profiles' },
   { id: 'context', label: 'Context' },
   { id: 'features', label: 'Features' },
-  { id: 'integrations', label: 'MCP' },
   { id: 'debug', label: 'Developer' },
 ];
 
@@ -115,6 +168,32 @@ function deepMerge(
   return out;
 }
 
+function looksLikeOllamaUrl(baseUrl?: string): boolean {
+  if (!baseUrl?.trim()) return false;
+  return /ollama|11434/i.test(baseUrl);
+}
+
+/** Keep chat tags in sync with Ollama Cloud / local cloud-proxy aliases. */
+export function normalizeDesktopProviderModel(
+  model: string,
+  baseUrl?: string,
+): string {
+  const trimmed = model.trim();
+  if (!trimmed || !looksLikeOllamaUrl(baseUrl)) return trimmed;
+  if (/:cloud$/i.test(trimmed) || /:\d+b-cloud$/i.test(trimmed)) return trimmed;
+  const known: Record<string, string> = {
+    'qwen3.5:397b': 'qwen3.5:cloud',
+    'qwen3.5:397b-a17b': 'qwen3.5:cloud',
+  };
+  const alias = known[trimmed.toLowerCase()];
+  if (alias) return alias;
+  if (/ollama\.com/i.test(baseUrl ?? '')) {
+    const sized = trimmed.match(/^([a-z0-9._/-]+):(\d+b)$/i);
+    if (sized) return `${sized[1]}:${sized[2]}-cloud`;
+  }
+  return trimmed;
+}
+
 /** Map to `.mitii/config.json` (CLI/ACP compatible subset, no secrets). */
 export function settingsToMitiiConfigFile(
   settings: DesktopSettings,
@@ -124,7 +203,11 @@ export function settingsToMitiiConfigFile(
     providerPreset: settings.provider.preset,
     defaultMode: 'ask',
   };
-  if (settings.provider.model.trim()) payload.model = settings.provider.model.trim();
+  const model = normalizeDesktopProviderModel(
+    settings.provider.model,
+    settings.provider.baseUrl,
+  );
+  if (model) payload.model = model;
   if (settings.provider.baseUrl.trim()) {
     payload.baseUrl = settings.provider.baseUrl.trim();
   }
@@ -199,7 +282,10 @@ export function settingsToEngineEnv(
     MITII_PROVIDER_PRESET: String(settings.provider.preset),
   };
   if (settings.provider.model.trim()) {
-    env.MITII_MODEL = settings.provider.model.trim();
+    env.MITII_MODEL = normalizeDesktopProviderModel(
+      settings.provider.model,
+      settings.provider.baseUrl,
+    );
   }
   if (settings.provider.baseUrl.trim()) {
     env.MITII_BASE_URL = settings.provider.baseUrl.trim();

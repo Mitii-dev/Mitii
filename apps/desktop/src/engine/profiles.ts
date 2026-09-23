@@ -60,15 +60,22 @@ function slugify(name: string): string {
   );
 }
 
-function uniqueId(name: string, existing: readonly DesktopProfile[]): string {
+export function uniqueProfileId(
+  name: string,
+  existing: readonly DesktopProfile[],
+): string {
   const base = slugify(name);
   const ids = new Set(existing.map((p) => p.id));
-  if (!ids.has(base)) return base;
+  if (!ids.has(base) && base !== DEFAULT_ID) return base;
   for (let i = 2; i < 1000; i += 1) {
     const candidate = `${base}-${i}`;
     if (!ids.has(candidate)) return candidate;
   }
   return `${base}-${Date.now().toString(36)}`;
+}
+
+function uniqueId(name: string, existing: readonly DesktopProfile[]): string {
+  return uniqueProfileId(name, existing);
 }
 
 export function profileFromProvider(

@@ -82,6 +82,31 @@ describe('desktop settings', () => {
     );
   });
 
+  it('normalizes Ollama cloud size tags into MITII_MODEL', () => {
+    const env = settingsToEngineEnv(
+      mergeDesktopSettings({
+        provider: {
+          type: 'openai-compatible',
+          preset: 'ollama',
+          baseUrl: 'http://192.168.0.252:11434/v1',
+          model: 'qwen3.5:397b',
+        },
+      }),
+    );
+    expect(env.MITII_MODEL).toBe('qwen3.5:cloud');
+    const file = settingsToMitiiConfigFile(
+      mergeDesktopSettings({
+        provider: {
+          type: 'openai-compatible',
+          preset: 'ollama-cloud',
+          baseUrl: 'https://ollama.com/v1',
+          model: 'qwen3.5:397b',
+        },
+      }),
+    );
+    expect(file.model).toBe('qwen3.5:cloud');
+  });
+
   it('get/set setting paths for catalog keys', () => {
     const base = mergeDesktopSettings(DEFAULT_DESKTOP_SETTINGS);
     expect(getSettingAtPath(base, 'mitii.provider.model')).toBe('');

@@ -329,6 +329,8 @@ export {
   isHostProviderType,
   isLocalBaseUrl,
   isOllamaBaseUrl,
+  isOllamaCloudBaseUrl,
+  normalizeOllamaModelId,
 } from './config/providerPresets.js';
 export type {
   HostProviderType,

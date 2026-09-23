@@ -2,6 +2,8 @@ import {
   getProviderPreset,
   isLocalBaseUrl,
   isOllamaBaseUrl,
+  isOllamaCloudBaseUrl,
+  normalizeOllamaModelId,
   PROVIDER_PRESETS,
 } from './providerPresets.js';
 
@@ -180,10 +182,15 @@ async function listOpenAiCompatibleModels(
     const models = uniqueModelIds(
       data.data?.map((item) => item.id).filter((id): id is string => Boolean(id)) ??
         [],
-    );
+    ).map((id) => normalizeOllamaModelId(id, root));
     if (models.length > 0) {
-      return models;
+      return uniqueModelIds(models);
     }
+  }
+
+  // Hosted ollama.com has no local /api/tags catalog — stop after /models.
+  if (isOllamaCloudBaseUrl(root)) {
+    return [];
   }
 
   if (!isOllamaBaseUrl(root) && !isLocalBaseUrl(root)) {
@@ -201,7 +208,8 @@ async function listOpenAiCompatibleModels(
   return uniqueModelIds(
     (tags.models ?? [])
       .map((item) => item.name || item.model)
-      .filter((id): id is string => Boolean(id)),
+      .filter((id): id is string => Boolean(id))
+      .map((id) => normalizeOllamaModelId(id, root)),
   );
 }
 

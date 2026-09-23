@@ -20,6 +20,8 @@
     "src/shared/**/*"
   ],
   "exclude": [
-    "src/shared/engine-token.ts"
+    "src/shared/engine-token.ts",
+    "src/shared/storage-layout.ts",
+    "src/shared/project-logs.ts"
   ]
 }

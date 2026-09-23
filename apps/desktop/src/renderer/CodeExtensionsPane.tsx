@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
+import { IconRefresh } from './ActivityIcons.js';
 import {
   fetchMcpServers,
   fetchRecipes,
@@ -113,7 +114,7 @@ function McpPane(props: {
           title="Refresh"
           onClick={() => void reload()}
         >
-          ↻
+          <IconRefresh size={16} />
         </button>
       </div>
       <div className="ext-pane">
@@ -257,7 +258,7 @@ function SkillsPane(props: { baseUrl: string; token?: string }) {
             title="Refresh"
             onClick={() => void reload()}
           >
-            ↻
+          <IconRefresh size={16} />
           </button>
         </div>
       </div>
@@ -439,7 +440,7 @@ function RecipesPane(props: {
             title="Refresh"
             onClick={() => void reload()}
           >
-            ↻
+          <IconRefresh size={16} />
           </button>
         </div>
       </div>

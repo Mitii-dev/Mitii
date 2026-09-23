@@ -6,7 +6,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import {
-  PROVIDER_PRESET_OPTIONS,
   SETTINGS_TABS,
   catalogEntriesForPrefix,
   getSettingAtPath,
@@ -15,14 +14,14 @@ import {
   type DesktopSettings,
   type SettingsTabId,
 } from '../shared/settings.js';
-import { DEFAULT_DESKTOP_SETTINGS } from '../shared/vscode-settings-defaults.js';
 import {
   fetchIndexStatus,
   fetchProfiles,
-  postProfiles,
+  getDesktopBridge,
   reindexWorkspace,
-  testConnection,
 } from './api.js';
+import type { DesktopStorageInfo } from '../shared/bridge.js';
+import { ProfileSettings } from './ProfileSettings.js';
 
 interface SettingsPanelProps {
   settings: DesktopSettings;
@@ -47,25 +46,24 @@ interface SettingsPanelProps {
   onPickWorkspace?: () => void;
   onProfilesChanged?: (activeName: string) => void;
   onIndexChanged?: () => void;
+  onIndexStarted?: () => void;
 }
 
 const PAGE_COPY: Record<SettingsTabId, { title: string; description: string }> =
   {
-    model: {
-      title: 'Provider',
-      description: 'Connect a model first. Everything else depends on this.',
+    storage: {
+      title: 'Storage',
+      description:
+        'Root storage for all projects. Each project lives under projects/<name>--<id>/.',
     },
-    autocomplete: {
-      title: 'Autocomplete',
-      description: 'Inline FIM suggestions for editor hosts.',
+    workspaces: {
+      title: 'Workspaces',
+      description: 'Connected repositories and per-workspace index settings.',
     },
-    workspace: {
-      title: 'Workspace',
-      description: 'Folder and local index used for context.',
-    },
-    modes: {
-      title: 'Modes',
-      description: 'Defaults and run limits for Ask, Plan, and Agent.',
+    profiles: {
+      title: 'Profiles',
+      description:
+        'Provider, modes, and run budget. Open a tile to edit, or create a new profile.',
     },
     context: {
       title: 'Context',
@@ -73,20 +71,15 @@ const PAGE_COPY: Record<SettingsTabId, { title: string; description: string }> =
     },
     features: {
       title: 'Features',
-      description: 'Opt-in surfaces. Off by default until you enable them.',
-    },
-    integrations: {
-      title: 'MCP',
-      description: 'Optional servers. Off by default.',
+      description:
+        'Autocomplete, code review, commit messages, web search, and semantic index.',
     },
     debug: {
       title: 'Developer',
       description:
-        'Diagnostics and advanced controls. Leave off unless you need them.',
+        'Diagnostics and advanced controls. Applies to all profiles.',
     },
   };
-
-type ModeId = 'ask' | 'plan' | 'agent';
 
 function SettingsSection({
   title,
@@ -177,7 +170,7 @@ function CatalogNumberFields({
 }
 
 export function SettingsPanel(props: SettingsPanelProps) {
-  const [internalTab, setInternalTab] = useState<SettingsTabId>('model');
+  const [internalTab, setInternalTab] = useState<SettingsTabId>('profiles');
   const tab = props.tab ?? internalTab;
   const setTab = (next: SettingsTabId) => {
     if (props.onTabChange) props.onTabChange(next);
@@ -186,33 +179,54 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const [draft, setDraft] = useState<DesktopSettings>(() =>
     mergeDesktopSettings(props.settings),
   );
-  const [modeTab, setModeTab] = useState<ModeId>('ask');
   const [apiKey, setApiKey] = useState('');
   const [clearApiKey, setClearApiKey] = useState(false);
   const [searchApiKey, setSearchApiKey] = useState('');
   const [clearSearchApiKey, setClearSearchApiKey] = useState(false);
-  const [mcpJson, setMcpJson] = useState(() =>
-    JSON.stringify(props.settings.mcp.servers ?? [], null, 2),
-  );
-  const [mcpJsonError, setMcpJsonError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  const [testing, setTesting] = useState(false);
-  const [testNote, setTestNote] = useState<string | null>(null);
-  const [models, setModels] = useState<string[]>([]);
   const [profiles, setProfiles] = useState<
-    Array<{ id: string; name: string; provider: { model: string; preset?: string } }>
+    Array<{
+      id: string;
+      name: string;
+      provider: { model: string; preset?: string; baseUrl?: string };
+    }>
   >([]);
   const [activeProfileId, setActiveProfileId] = useState('default');
-  const [profileName, setProfileName] = useState('Default');
   const [indexMessage, setIndexMessage] = useState('…');
   const [reindexing, setReindexing] = useState(false);
+  const [storage, setStorage] = useState<DesktopStorageInfo | null>(null);
+  const [storageBusy, setStorageBusy] = useState(false);
+  const [storageNote, setStorageNote] = useState<string | null>(null);
+  const [featureTab, setFeatureTab] = useState<
+    'autocomplete' | 'review' | 'agent' | 'search' | 'index'
+  >('autocomplete');
+
+  const featureTabs = [
+    { id: 'autocomplete' as const, label: 'Inline completion' },
+    { id: 'review' as const, label: 'Working-tree review' },
+    { id: 'agent' as const, label: 'Commit & agent' },
+    { id: 'search' as const, label: 'Web search' },
+    { id: 'index' as const, label: 'Semantic index' },
+  ];
+
+  const refreshStorage = async () => {
+    const bridge = getDesktopBridge();
+    if (!bridge?.getStorageInfo) return;
+    try {
+      setStorage(await bridge.getStorageInfo());
+    } catch (err) {
+      setStorageNote(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  useEffect(() => {
+    void refreshStorage();
+  }, [props.workspaceRoot]);
 
   useEffect(() => {
     const next = mergeDesktopSettings(props.settings);
     setDraft(next);
-    setMcpJson(JSON.stringify(next.mcp.servers ?? [], null, 2));
-    setMcpJsonError(null);
   }, [props.settings]);
 
   useEffect(() => {
@@ -225,10 +239,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       .then((file) => {
         setProfiles(file.profiles);
         setActiveProfileId(file.activeProfileId);
-        const active =
-          file.profiles.find((p) => p.id === file.activeProfileId) ??
-          file.profiles[0];
-        if (active) setProfileName(active.name);
+        /* profiles list kept for Features autocomplete */
       })
       .catch(() => undefined);
     void fetchIndexStatus(opts)
@@ -236,59 +247,17 @@ export function SettingsPanel(props: SettingsPanelProps) {
       .catch(() => setIndexMessage('Index unavailable'));
   }, [props.engineBaseUrl, props.authToken, props.workspaceRoot]);
 
-  const presetMeta = useMemo(
-    () =>
-      PROVIDER_PRESET_OPTIONS.find((p) => p.id === draft.provider.preset) ??
-      PROVIDER_PRESET_OPTIONS[0]!,
-    [draft.provider.preset],
-  );
-
   const page = PAGE_COPY[tab];
-  const modeDefault = draft.ui.modeDefaults[modeTab];
-
-  const onPreset = (presetId: string) => {
-    const preset = PROVIDER_PRESET_OPTIONS.find((p) => p.id === presetId);
-    if (!preset) return;
-    setDraft((prev) => ({
-      ...prev,
-      provider: {
-        ...prev.provider,
-        preset: preset.id,
-        type: preset.type,
-      },
-    }));
-  };
-
   const patch = (partial: unknown) => {
     setDraft((prev) => mergeDesktopSettings(partial, prev));
   };
 
-  const applyMcpServers = (): DesktopSettings | null => {
-    try {
-      const parsed = JSON.parse(mcpJson) as unknown;
-      if (!Array.isArray(parsed)) {
-        setMcpJsonError('MCP servers must be a JSON array');
-        return null;
-      }
-      setMcpJsonError(null);
-      return mergeDesktopSettings(
-        { mcp: { ...draft.mcp, servers: parsed } },
-        draft,
-      );
-    } catch (err) {
-      setMcpJsonError(err instanceof Error ? err.message : String(err));
-      return null;
-    }
-  };
-
   const save = async () => {
-    const withMcp = applyMcpServers();
-    if (!withMcp) return;
     setSaving(true);
     setNote(null);
     try {
       await props.onSave({
-        settings: withMcp,
+        settings: draft,
         ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
         ...(clearApiKey ? { clearApiKey: true } : {}),
         ...(searchApiKey.trim() ? { searchApiKey: searchApiKey.trim() } : {}),
@@ -332,630 +301,685 @@ export function SettingsPanel(props: SettingsPanelProps) {
           <p>{page.description}</p>
         </header>
 
-        {tab === 'model' ? (
+        <div className="settings-main__body">
+
+        {tab === 'profiles' ? (
+          <ProfileSettings
+            draft={draft}
+            patch={patch}
+            setDraft={setDraft}
+            engineBaseUrl={props.engineBaseUrl}
+            authToken={props.authToken}
+            hasApiKey={props.hasApiKey}
+            busy={props.busy || saving}
+            onProfilesChanged={props.onProfilesChanged}
+            onPersistSettings={async (input) => {
+              await props.onSave(input);
+            }}
+          />
+        ) : null}
+
+        {tab === 'features' ? (
           <div className="settings-panel">
-            <SettingsSection
-              title="Connection"
-              description="Choose the provider and model Mitii will call."
-            >
-              <div className="field-grid">
-                <Field id="preset" label="Provider">
-                  <select
-                    id="preset"
-                    value={draft.provider.preset}
-                    onChange={(e) => onPreset(e.target.value)}
-                  >
-                    {PROVIDER_PRESET_OPTIONS.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.label}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field id="type" label="Adapter">
-                  <input id="type" value={presetMeta.type} readOnly />
-                </Field>
-                {draft.provider.type !== 'echo' ? (
-                  <Field
-                    id="baseUrl"
-                    label="Base URL"
-                    full
-                    hint={
-                      draft.provider.type === 'anthropic' ||
-                      draft.provider.type === 'gemini'
-                        ? 'Override only for a proxy or regional endpoint.'
-                        : 'Local hosts do not need an API key.'
-                    }
-                  >
+            <nav className="features-tabs" aria-label="Features">
+              {featureTabs.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`features-tab${featureTab === item.id ? ' is-active' : ''}`}
+                  aria-current={featureTab === item.id ? 'page' : undefined}
+                  onClick={() => setFeatureTab(item.id)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </nav>
+
+            <div className="features-tab-panel">
+              {featureTab === 'autocomplete' ? (
+                <SettingsSection
+                  title="Inline completion"
+                  description="Separate from Ask/Plan/Agent so you can use a fast FIM model."
+                >
+                  <label className="checkbox-row">
                     <input
-                      id="baseUrl"
-                      placeholder="http://localhost:11434/v1"
-                      value={draft.provider.baseUrl}
+                      type="checkbox"
+                      checked={draft.autocomplete.enabled}
                       onChange={(e) =>
                         patch({
-                          provider: {
-                            ...draft.provider,
-                            baseUrl: e.target.value,
+                          autocomplete: {
+                            ...draft.autocomplete,
+                            enabled: e.target.checked,
                           },
                         })
                       }
                     />
-                  </Field>
-                ) : null}
-                <Field id="model" label="Model" full>
-                  <input
-                    id="model"
-                    placeholder="qwen3-coder:30b"
-                    value={draft.provider.model}
-                    onChange={(e) =>
-                      patch({
-                        provider: { ...draft.provider, model: e.target.value },
-                      })
-                    }
-                  />
-                </Field>
-              </div>
-            </SettingsSection>
-
-            <SettingsSection title="Credentials">
-              <div className="field-grid">
-                <Field
-                  id="apiKey"
-                  label={`API key${props.hasApiKey ? ' (saved — leave blank to keep)' : ''}`}
-                  full
-                >
-                  <input
-                    id="apiKey"
-                    type="password"
-                    autoComplete="off"
-                    placeholder={
-                      props.hasApiKey ? '••••••••  (unchanged)' : 'Optional'
-                    }
-                    value={apiKey}
-                    disabled={clearApiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                  />
-                  <label className="checkbox-row">
-                    <input
-                      type="checkbox"
-                      checked={clearApiKey}
-                      onChange={(e) => setClearApiKey(e.target.checked)}
-                    />
-                    Clear saved API key
+                    Enable autocomplete
                   </label>
-                </Field>
-              </div>
-              <div className="settings-actions">
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  disabled={testing || !props.engineBaseUrl}
-                  onClick={() => {
-                    if (!props.engineBaseUrl) return;
-                    setTesting(true);
-                    setTestNote(null);
-                    void testConnection({
-                      baseUrl: props.engineBaseUrl,
-                      token: props.authToken,
-                      type: draft.provider.type,
-                      providerBaseUrl: draft.provider.baseUrl,
-                      model: draft.provider.model,
-                      apiKey: apiKey.trim() || undefined,
-                    })
-                      .then((result) => {
-                        setTestNote(
-                          result.ok
-                            ? result.message
-                            : `Failed: ${result.message}`,
-                        );
-                        if (result.models?.length) setModels(result.models);
-                      })
-                      .catch((err: unknown) => {
-                        setTestNote(
-                          err instanceof Error ? err.message : String(err),
-                        );
-                      })
-                      .finally(() => setTesting(false));
-                  }}
-                >
-                  {testing ? 'Testing…' : 'Test connection'}
-                </button>
-                {testNote ? <p className="field-help">{testNote}</p> : null}
-              </div>
-              {models.length > 0 ? (
-                <Field id="discoveredModels" label="Discovered models" full>
-                  <select
-                    id="discoveredModels"
-                    value={
-                      models.includes(draft.provider.model)
-                        ? draft.provider.model
-                        : ''
-                    }
-                    onChange={(e) =>
-                      patch({
-                        provider: {
-                          ...draft.provider,
-                          model: e.target.value,
-                        },
-                      })
-                    }
-                  >
-                    <option value="">Choose a model…</option>
-                    {models.map((id) => (
-                      <option key={id} value={id}>
-                        {id}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              ) : null}
-            </SettingsSection>
-
-            <SettingsSection
-              title="Profiles"
-              description="Saved globally in Mitii Desktop SQLite (shared across repos)."
-            >
-              <div className="field-grid">
-                <Field id="profileSelect" label="Active profile">
-                  <select
-                    id="profileSelect"
-                    value={activeProfileId}
-                    onChange={(e) => {
-                      const id = e.target.value;
-                      if (!props.engineBaseUrl) return;
-                      void postProfiles({
-                        baseUrl: props.engineBaseUrl,
-                        token: props.authToken,
-                        body: { action: 'activate', profileId: id },
-                      }).then(async (raw) => {
-                        const result = raw as {
-                          active?: {
-                            id: string;
-                            name: string;
-                            provider: DesktopSettings['provider'];
-                          };
-                          profiles?: typeof profiles;
-                        };
-                        if (result.profiles) setProfiles(result.profiles);
-                        if (result.active) {
-                          setActiveProfileId(result.active.id);
-                          setProfileName(result.active.name);
+                  <div className="field-grid">
+                    <Field
+                      id="acProfile"
+                      label="Profile"
+                      hint="Copies that profile’s model into autocomplete"
+                    >
+                      <select
+                        id="acProfile"
+                        value={
+                          profiles.some((p) => p.id === activeProfileId)
+                            ? activeProfileId
+                            : ''
+                        }
+                        onChange={(e) => {
+                          const id = e.target.value;
+                          const profile = profiles.find((p) => p.id === id);
+                          if (!profile) return;
                           patch({
-                            provider: {
-                              ...draft.provider,
-                              ...result.active.provider,
-                              type: result.active.provider
-                                .type as DesktopSettings['provider']['type'],
-                              preset: (result.active.provider.preset ??
-                                result.active.provider
-                                  .type) as DesktopSettings['provider']['preset'],
+                            autocomplete: {
+                              ...draft.autocomplete,
+                              model:
+                                profile.provider.model ||
+                                draft.autocomplete.model,
+                              baseUrl:
+                                profile.provider.baseUrl ||
+                                draft.autocomplete.baseUrl,
                             },
                           });
-                          props.onProfilesChanged?.(result.active.name);
+                        }}
+                      >
+                        <option value="">Use active profile…</option>
+                        {profiles.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                            {p.provider.model ? ` · ${p.provider.model}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field id="acProvider" label="Provider">
+                      <select
+                        id="acProvider"
+                        value={draft.autocomplete.provider}
+                        onChange={(e) =>
+                          patch({
+                            autocomplete: {
+                              ...draft.autocomplete,
+                              provider: e.target.value as 'openai-compatible',
+                            },
+                          })
                         }
-                      });
-                    }}
-                  >
-                    {profiles.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                        {p.provider.model ? ` · ${p.provider.model}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field id="profileName" label="Profile name">
-                  <input
-                    id="profileName"
-                    value={profileName}
-                    onChange={(e) => setProfileName(e.target.value)}
-                  />
-                </Field>
-              </div>
-              <div className="settings-actions">
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  disabled={!props.engineBaseUrl}
-                  onClick={() => {
-                    if (!props.engineBaseUrl) return;
-                    void postProfiles({
-                      baseUrl: props.engineBaseUrl,
-                      token: props.authToken,
-                      body: {
-                        action: 'upsert',
-                        id: activeProfileId,
-                        name: profileName || 'Default',
-                        provider: draft.provider,
-                        hasSecret: props.hasApiKey || Boolean(apiKey.trim()),
-                        apiKey: apiKey.trim() || undefined,
-                      },
-                    }).then((raw) => {
-                      const result = raw as {
-                        profiles?: { profiles: typeof profiles; activeProfileId: string };
-                        profile?: { id: string; name: string };
-                      };
-                      const file = result.profiles;
-                      if (file && Array.isArray((file as unknown as { profiles: typeof profiles }).profiles)) {
-                        // handled below
-                      }
-                      void fetchProfiles({
-                        baseUrl: props.engineBaseUrl!,
-                        token: props.authToken,
-                      }).then((f) => {
-                        setProfiles(f.profiles);
-                        setActiveProfileId(f.activeProfileId);
-                        props.onProfilesChanged?.(profileName || 'Default');
-                        setNote('Profile saved to Desktop SQLite (global).');
-                      });
-                    });
-                  }}
-                >
-                  Save as profile
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  disabled={!props.engineBaseUrl || profiles.length <= 1}
-                  onClick={() => {
-                    if (!props.engineBaseUrl) return;
-                    void postProfiles({
-                      baseUrl: props.engineBaseUrl,
-                      token: props.authToken,
-                      body: {
-                        action: 'delete',
-                        profileId: activeProfileId,
-                      },
-                    }).then(() =>
-                      fetchProfiles({
-                        baseUrl: props.engineBaseUrl!,
-                        token: props.authToken,
-                      }).then((f) => {
-                        setProfiles(f.profiles);
-                        setActiveProfileId(f.activeProfileId);
-                        const active =
-                          f.profiles.find((p) => p.id === f.activeProfileId) ??
-                          f.profiles[0];
-                        if (active) {
-                          setProfileName(active.name);
-                          props.onProfilesChanged?.(active.name);
+                      >
+                        <option value="openai-compatible">
+                          openai-compatible
+                        </option>
+                      </select>
+                    </Field>
+                    <Field id="acMode" label="Mode">
+                      <input
+                        id="acMode"
+                        value={draft.autocomplete.mode}
+                        readOnly
+                      />
+                    </Field>
+                    <Field
+                      id="acBase"
+                      label="Base URL"
+                      full
+                      hint="Empty inherits Provider base URL"
+                    >
+                      <input
+                        id="acBase"
+                        value={draft.autocomplete.baseUrl}
+                        placeholder={draft.provider.baseUrl || 'inherit'}
+                        onChange={(e) =>
+                          patch({
+                            autocomplete: {
+                              ...draft.autocomplete,
+                              baseUrl: e.target.value,
+                            },
+                          })
                         }
-                      }),
-                    );
-                  }}
-                >
-                  Delete profile
-                </button>
-              </div>
-            </SettingsSection>
+                      />
+                    </Field>
+                    <Field
+                      id="acModel"
+                      label="Model"
+                      hint="Empty inherits Provider model"
+                    >
+                      <input
+                        id="acModel"
+                        value={draft.autocomplete.model}
+                        placeholder={draft.provider.model || 'inherit'}
+                        onChange={(e) =>
+                          patch({
+                            autocomplete: {
+                              ...draft.autocomplete,
+                              model: e.target.value,
+                            },
+                          })
+                        }
+                      />
+                    </Field>
+                    <Field id="acPath" label="Endpoint path">
+                      <input
+                        id="acPath"
+                        value={draft.autocomplete.endpointPath}
+                        onChange={(e) =>
+                          patch({
+                            autocomplete: {
+                              ...draft.autocomplete,
+                              endpointPath: e.target.value,
+                            },
+                          })
+                        }
+                      />
+                    </Field>
+                    <Field id="acAuth" label="Auth header">
+                      <select
+                        id="acAuth"
+                        value={draft.autocomplete.authHeader}
+                        onChange={(e) =>
+                          patch({
+                            autocomplete: {
+                              ...draft.autocomplete,
+                              authHeader: e.target
+                                .value as DesktopSettings['autocomplete']['authHeader'],
+                            },
+                          })
+                        }
+                      >
+                        <option value="authorization">authorization</option>
+                        <option value="api-key">api-key</option>
+                        <option value="x-api-key">x-api-key</option>
+                      </select>
+                    </Field>
+                    <Field id="acMax" label="Max tokens">
+                      <input
+                        id="acMax"
+                        type="number"
+                        min={1}
+                        max={512}
+                        value={draft.autocomplete.maxTokens}
+                        onChange={(e) =>
+                          patch({
+                            autocomplete: {
+                              ...draft.autocomplete,
+                              maxTokens: Number(e.target.value) || 1,
+                            },
+                          })
+                        }
+                      />
+                    </Field>
+                    <Field id="acDebounce" label="Debounce (ms)">
+                      <input
+                        id="acDebounce"
+                        type="number"
+                        min={0}
+                        max={2000}
+                        value={draft.autocomplete.debounceMs}
+                        onChange={(e) =>
+                          patch({
+                            autocomplete: {
+                              ...draft.autocomplete,
+                              debounceMs: Number(e.target.value) || 0,
+                            },
+                          })
+                        }
+                      />
+                    </Field>
+                    <Field id="acTimeout" label="Timeout (ms)">
+                      <input
+                        id="acTimeout"
+                        type="number"
+                        min={250}
+                        max={30000}
+                        value={draft.autocomplete.timeoutMs}
+                        onChange={(e) =>
+                          patch({
+                            autocomplete: {
+                              ...draft.autocomplete,
+                              timeoutMs: Number(e.target.value) || 250,
+                            },
+                          })
+                        }
+                      />
+                    </Field>
+                    <Field id="acPrefix" label="Prefix chars">
+                      <input
+                        id="acPrefix"
+                        type="number"
+                        min={128}
+                        max={60000}
+                        value={draft.autocomplete.prefixChars}
+                        onChange={(e) =>
+                          patch({
+                            autocomplete: {
+                              ...draft.autocomplete,
+                              prefixChars: Number(e.target.value) || 128,
+                            },
+                          })
+                        }
+                      />
+                    </Field>
+                    <Field id="acSuffix" label="Suffix chars">
+                      <input
+                        id="acSuffix"
+                        type="number"
+                        min={0}
+                        max={60000}
+                        value={draft.autocomplete.suffixChars}
+                        onChange={(e) =>
+                          patch({
+                            autocomplete: {
+                              ...draft.autocomplete,
+                              suffixChars: Number(e.target.value) || 0,
+                            },
+                          })
+                        }
+                      />
+                    </Field>
+                    <Field id="acTemp" label="Temperature">
+                      <input
+                        id="acTemp"
+                        type="number"
+                        min={0}
+                        max={2}
+                        step={0.05}
+                        value={draft.autocomplete.temperature}
+                        onChange={(e) =>
+                          patch({
+                            autocomplete: {
+                              ...draft.autocomplete,
+                              temperature: Number(e.target.value) || 0,
+                            },
+                          })
+                        }
+                      />
+                    </Field>
+                  </div>
+                </SettingsSection>
+              ) : null}
 
-            <SettingsSection
-              title="Web search"
-              description="SearXNG preferred; optional Brave key for fallback."
-            >
-              <div className="field-grid">
-                <Field
-                  id="searx"
-                  label="SearXNG base URL"
-                  full
-                  hint="Base URL only (no /search). Instance must allow JSON."
+              {featureTab === 'review' ? (
+                <SettingsSection
+                  title="Working-tree review"
+                  description="Code Review runs an LLM analysis of git changes."
                 >
-                  <input
-                    id="searx"
-                    placeholder="http://127.0.0.1:8080"
-                    value={draft.search.searxngBaseUrl}
-                    onChange={(e) =>
-                      patch({ search: { searxngBaseUrl: e.target.value } })
-                    }
-                  />
-                </Field>
-                <Field
-                  id="searchKey"
-                  label={`Web search API key${props.hasSearchApiKey ? ' (saved)' : ''}`}
-                  full
-                >
-                  <input
-                    id="searchKey"
-                    type="password"
-                    autoComplete="off"
-                    placeholder={
-                      props.hasSearchApiKey
-                        ? '••••••••  (unchanged)'
-                        : 'Optional Brave / search key'
-                    }
-                    value={searchApiKey}
-                    disabled={clearSearchApiKey}
-                    onChange={(e) => setSearchApiKey(e.target.value)}
-                  />
                   <label className="checkbox-row">
                     <input
                       type="checkbox"
-                      checked={clearSearchApiKey}
-                      onChange={(e) => setClearSearchApiKey(e.target.checked)}
+                      checked={draft.ui.features.codeReviewButton}
+                      onChange={(e) =>
+                        patch({
+                          ui: {
+                            ...draft.ui,
+                            features: { codeReviewButton: e.target.checked },
+                          },
+                        })
+                      }
                     />
-                    Clear saved search API key
+                    Show Code Review button
                   </label>
-                </Field>
-              </div>
-            </SettingsSection>
+                </SettingsSection>
+              ) : null}
 
-            <SettingsSection
-              title="Token limits"
-              description="Context window drives retrieval, compaction, and verification. 0 = auto."
-            >
-              <div className="field-grid">
-                <Field id="ctx" label="Context window">
-                  <input
-                    id="ctx"
-                    type="number"
-                    min={0}
-                    value={draft.provider.contextWindow}
-                    onChange={(e) =>
-                      patch({
-                        provider: {
-                          ...draft.provider,
-                          contextWindow: Number(e.target.value) || 0,
-                        },
-                      })
-                    }
-                  />
-                </Field>
-                <Field id="maxOut" label="Max output tokens">
-                  <input
-                    id="maxOut"
-                    type="number"
-                    min={0}
-                    value={draft.provider.maximumOutputTokens}
-                    onChange={(e) =>
-                      patch({
-                        provider: {
-                          ...draft.provider,
-                          maximumOutputTokens: Number(e.target.value) || 0,
-                        },
-                      })
-                    }
-                  />
-                </Field>
-              </div>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={() =>
-                  patch({
-                    tokenBudget: structuredClone(
-                      DEFAULT_DESKTOP_SETTINGS.tokenBudget,
-                    ),
-                  })
-                }
-              >
-                Reset token-budget overrides
-              </button>
-            </SettingsSection>
+              {featureTab === 'agent' ? (
+                <SettingsSection title="Commit messages & agent">
+                  <div className="field-grid">
+                    <Field id="commitStyle" label="Commit message style">
+                      <select
+                        id="commitStyle"
+                        value={draft.scm.commitMessageStyle}
+                        onChange={(e) =>
+                          patch({
+                            scm: {
+                              commitMessageStyle: e.target
+                                .value as DesktopSettings['scm']['commitMessageStyle'],
+                            },
+                          })
+                        }
+                      >
+                        <option value="conventional">Conventional</option>
+                        <option value="plain">Plain</option>
+                      </select>
+                    </Field>
+                  </div>
+                  <label className="checkbox-row">
+                    <input
+                      type="checkbox"
+                      checked={draft.agent.taskListAutoAdvance}
+                      onChange={(e) =>
+                        patch({
+                          agent: { taskListAutoAdvance: e.target.checked },
+                        })
+                      }
+                    />
+                    Task list auto-advance
+                  </label>
+                  <label className="checkbox-row">
+                    <input
+                      type="checkbox"
+                      checked={draft.tools.applyPatch.fuzzyMatch}
+                      onChange={(e) =>
+                        patch({
+                          tools: {
+                            applyPatch: { fuzzyMatch: e.target.checked },
+                          },
+                        })
+                      }
+                    />
+                    Fuzzy match for apply_patch
+                  </label>
+                </SettingsSection>
+              ) : null}
+
+              {featureTab === 'search' ? (
+                <SettingsSection
+                  title="Web search"
+                  description="SearXNG preferred; optional Brave key for fallback."
+                >
+                  <div className="field-grid">
+                    <Field
+                      id="featSearx"
+                      label="SearXNG base URL"
+                      full
+                      hint="Base URL only (no /search). Instance must allow JSON."
+                    >
+                      <input
+                        id="featSearx"
+                        placeholder="http://127.0.0.1:8080"
+                        value={draft.search.searxngBaseUrl}
+                        onChange={(e) =>
+                          patch({ search: { searxngBaseUrl: e.target.value } })
+                        }
+                      />
+                    </Field>
+                    <Field
+                      id="featSearchKey"
+                      label={`Web search API key${props.hasSearchApiKey ? ' (saved)' : ''}`}
+                      full
+                    >
+                      <input
+                        id="featSearchKey"
+                        type="password"
+                        autoComplete="off"
+                        placeholder={
+                          props.hasSearchApiKey
+                            ? '••••••••  (unchanged)'
+                            : 'Optional Brave / search key'
+                        }
+                        value={searchApiKey}
+                        disabled={clearSearchApiKey}
+                        onChange={(e) => setSearchApiKey(e.target.value)}
+                      />
+                      <label className="checkbox-row">
+                        <input
+                          type="checkbox"
+                          checked={clearSearchApiKey}
+                          onChange={(e) =>
+                            setClearSearchApiKey(e.target.checked)
+                          }
+                        />
+                        Clear saved search API key
+                      </label>
+                    </Field>
+                  </div>
+                </SettingsSection>
+              ) : null}
+
+              {featureTab === 'index' ? (
+                <SettingsSection
+                  title="Semantic index"
+                  description="Status is per repository. Embedding options below are shared across all repos — only relevant fields show for your source."
+                >
+                  <p className="field-help">{indexMessage}</p>
+
+                  <label className="checkbox-row">
+                    <input
+                      type="checkbox"
+                      checked={draft.semanticIndex.enabled}
+                      onChange={(e) =>
+                        patch({
+                          semanticIndex: {
+                            ...draft.semanticIndex,
+                            enabled: e.target.checked,
+                            ...(e.target.checked
+                              ? draft.semanticIndex.source === 'disabled'
+                                ? {
+                                    source: 'bundled' as const,
+                                    backend: 'bundled' as const,
+                                  }
+                                : {}
+                              : {
+                                  source: 'disabled' as const,
+                                  backend: 'disabled' as const,
+                                }),
+                          },
+                        })
+                      }
+                    />
+                    Enable semantic workspace indexing
+                  </label>
+
+                  {draft.semanticIndex.enabled ? (
+                    <div className="field-grid">
+                      <Field
+                        id="embSource"
+                        label="Embedding source"
+                        full
+                        hint="Bundled MiniLM runs on-device. HTTP sources need a reachable embeddings API."
+                      >
+                        <select
+                          id="embSource"
+                          value={
+                            draft.semanticIndex.source === 'disabled'
+                              ? 'bundled'
+                              : draft.semanticIndex.source
+                          }
+                          onChange={(e) => {
+                            const source = e.target
+                              .value as DesktopSettings['semanticIndex']['source'];
+                            patch({
+                              semanticIndex: {
+                                ...draft.semanticIndex,
+                                source,
+                                backend:
+                                  source === 'bundled'
+                                    ? 'bundled'
+                                    : source === 'ollama'
+                                      ? 'ollama'
+                                      : source === 'openai-compatible'
+                                        ? 'openai-compatible'
+                                        : 'auto',
+                              },
+                            });
+                          }}
+                        >
+                          <option value="bundled">Bundled MiniLM</option>
+                          <option value="ollama">Ollama</option>
+                          <option value="openai-compatible">
+                            OpenAI-compatible
+                          </option>
+                        </select>
+                      </Field>
+
+                      {draft.semanticIndex.source === 'bundled' ? (
+                        <p className="field-help field full">
+                          Uses on-device MiniLM. Model URL and dimensions are not
+                          required.
+                        </p>
+                      ) : null}
+
+                      {draft.semanticIndex.source === 'ollama' ||
+                      draft.semanticIndex.source === 'openai-compatible' ? (
+                        <>
+                          <Field
+                            id="embModel"
+                            label="Embedding model"
+                            full
+                            hint={
+                              draft.semanticIndex.source === 'ollama'
+                                ? 'Empty defaults to nomic-embed-text'
+                                : 'Required for most OpenAI-compatible hosts'
+                            }
+                          >
+                            <input
+                              id="embModel"
+                              value={draft.semanticIndex.model}
+                              placeholder={
+                                draft.semanticIndex.source === 'ollama'
+                                  ? 'nomic-embed-text'
+                                  : 'text-embedding-3-small'
+                              }
+                              onChange={(e) =>
+                                patch({
+                                  semanticIndex: {
+                                    ...draft.semanticIndex,
+                                    model: e.target.value,
+                                  },
+                                })
+                              }
+                            />
+                          </Field>
+                          <Field
+                            id="embDim"
+                            label="Dimensions"
+                            hint="0 = model / probe default"
+                          >
+                            <input
+                              id="embDim"
+                              type="number"
+                              min={0}
+                              value={draft.semanticIndex.dimensions}
+                              onChange={(e) =>
+                                patch({
+                                  semanticIndex: {
+                                    ...draft.semanticIndex,
+                                    dimensions: Number(e.target.value) || 0,
+                                  },
+                                })
+                              }
+                            />
+                          </Field>
+                          <label className="checkbox-row field full">
+                            <input
+                              type="checkbox"
+                              checked={draft.semanticIndex.normalized}
+                              onChange={(e) =>
+                                patch({
+                                  semanticIndex: {
+                                    ...draft.semanticIndex,
+                                    normalized: e.target.checked,
+                                  },
+                                })
+                              }
+                            />
+                            Normalize embedding vectors
+                          </label>
+                        </>
+                      ) : null}
+
+                      <Field
+                        id="maxFiles"
+                        label="Maximum index files"
+                        hint="0 = use default. Applies when reindexing this repo."
+                      >
+                        <input
+                          id="maxFiles"
+                          type="number"
+                          min={0}
+                          max={240000}
+                          value={draft.workspace.maximumIndexFiles}
+                          onChange={(e) =>
+                            patch({
+                              workspace: {
+                                ...draft.workspace,
+                                maximumIndexFiles: Number(e.target.value) || 0,
+                              },
+                            })
+                          }
+                        />
+                      </Field>
+                    </div>
+                  ) : (
+                    <div className="field-grid">
+                      <p className="field-help field full">
+                        Semantic search is off. You can still build a lexical
+                        index for this repo.
+                      </p>
+                      <Field
+                        id="maxFilesOff"
+                        label="Maximum index files"
+                        hint="0 = use default"
+                      >
+                        <input
+                          id="maxFilesOff"
+                          type="number"
+                          min={0}
+                          max={240000}
+                          value={draft.workspace.maximumIndexFiles}
+                          onChange={(e) =>
+                            patch({
+                              workspace: {
+                                ...draft.workspace,
+                                maximumIndexFiles: Number(e.target.value) || 0,
+                              },
+                            })
+                          }
+                        />
+                      </Field>
+                    </div>
+                  )}
+
+                  <div className="settings-actions">
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      disabled={reindexing || !props.engineBaseUrl}
+                      onClick={() => {
+                        if (!props.engineBaseUrl) return;
+                        setReindexing(true);
+                        setIndexMessage('Indexing…');
+                        props.onIndexStarted?.();
+                        void reindexWorkspace({
+                          baseUrl: props.engineBaseUrl,
+                          token: props.authToken,
+                          maximumFiles:
+                            draft.workspace.maximumIndexFiles || undefined,
+                          semanticIndex: {
+                            enabled: draft.semanticIndex.enabled,
+                            source: draft.semanticIndex.source,
+                            model: draft.semanticIndex.model,
+                            dimensions: draft.semanticIndex.dimensions,
+                            normalized: draft.semanticIndex.normalized,
+                            baseUrl: draft.provider.baseUrl,
+                          },
+                        })
+                          .then((result) => {
+                            setIndexMessage(result.message);
+                            if (result.statusSnapshot) {
+                              setIndexMessage(result.statusSnapshot.message);
+                            }
+                            props.onIndexChanged?.();
+                          })
+                          .catch((err: unknown) => {
+                            setIndexMessage(
+                              err instanceof Error ? err.message : String(err),
+                            );
+                            props.onIndexChanged?.();
+                          })
+                          .finally(() => setReindexing(false));
+                      }}
+                    >
+                      {reindexing ? 'Indexing…' : 'Reindex workspace'}
+                    </button>
+                  </div>
+                </SettingsSection>
+              ) : null}
+            </div>
           </div>
         ) : null}
 
-        {tab === 'autocomplete' ? (
-          <div className="settings-panel">
-            <SettingsSection
-              title="Inline completion"
-              description="Separate from Ask/Plan/Agent so you can use a fast FIM model."
-            >
-              <label className="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={draft.autocomplete.enabled}
-                  onChange={(e) =>
-                    patch({
-                      autocomplete: {
-                        ...draft.autocomplete,
-                        enabled: e.target.checked,
-                      },
-                    })
-                  }
-                />
-                Enable autocomplete
-              </label>
-              <div className="field-grid">
-                <Field id="acProvider" label="Provider">
-                  <select
-                    id="acProvider"
-                    value={draft.autocomplete.provider}
-                    onChange={(e) =>
-                      patch({
-                        autocomplete: {
-                          ...draft.autocomplete,
-                          provider: e.target.value as 'openai-compatible',
-                        },
-                      })
-                    }
-                  >
-                    <option value="openai-compatible">openai-compatible</option>
-                  </select>
-                </Field>
-                <Field id="acMode" label="Mode">
-                  <input id="acMode" value={draft.autocomplete.mode} readOnly />
-                </Field>
-                <Field
-                  id="acBase"
-                  label="Base URL"
-                  full
-                  hint="Empty inherits Provider base URL"
-                >
-                  <input
-                    id="acBase"
-                    value={draft.autocomplete.baseUrl}
-                    placeholder={draft.provider.baseUrl || 'inherit'}
-                    onChange={(e) =>
-                      patch({
-                        autocomplete: {
-                          ...draft.autocomplete,
-                          baseUrl: e.target.value,
-                        },
-                      })
-                    }
-                  />
-                </Field>
-                <Field
-                  id="acModel"
-                  label="Model"
-                  hint="Empty inherits Provider model"
-                >
-                  <input
-                    id="acModel"
-                    value={draft.autocomplete.model}
-                    placeholder={draft.provider.model || 'inherit'}
-                    onChange={(e) =>
-                      patch({
-                        autocomplete: {
-                          ...draft.autocomplete,
-                          model: e.target.value,
-                        },
-                      })
-                    }
-                  />
-                </Field>
-                <Field id="acPath" label="Endpoint path">
-                  <input
-                    id="acPath"
-                    value={draft.autocomplete.endpointPath}
-                    onChange={(e) =>
-                      patch({
-                        autocomplete: {
-                          ...draft.autocomplete,
-                          endpointPath: e.target.value,
-                        },
-                      })
-                    }
-                  />
-                </Field>
-                <Field id="acAuth" label="Auth header">
-                  <select
-                    id="acAuth"
-                    value={draft.autocomplete.authHeader}
-                    onChange={(e) =>
-                      patch({
-                        autocomplete: {
-                          ...draft.autocomplete,
-                          authHeader: e.target
-                            .value as DesktopSettings['autocomplete']['authHeader'],
-                        },
-                      })
-                    }
-                  >
-                    <option value="authorization">authorization</option>
-                    <option value="api-key">api-key</option>
-                    <option value="x-api-key">x-api-key</option>
-                  </select>
-                </Field>
-                <Field id="acMax" label="Max tokens">
-                  <input
-                    id="acMax"
-                    type="number"
-                    min={1}
-                    max={512}
-                    value={draft.autocomplete.maxTokens}
-                    onChange={(e) =>
-                      patch({
-                        autocomplete: {
-                          ...draft.autocomplete,
-                          maxTokens: Number(e.target.value) || 1,
-                        },
-                      })
-                    }
-                  />
-                </Field>
-                <Field id="acDebounce" label="Debounce (ms)">
-                  <input
-                    id="acDebounce"
-                    type="number"
-                    min={0}
-                    max={2000}
-                    value={draft.autocomplete.debounceMs}
-                    onChange={(e) =>
-                      patch({
-                        autocomplete: {
-                          ...draft.autocomplete,
-                          debounceMs: Number(e.target.value) || 0,
-                        },
-                      })
-                    }
-                  />
-                </Field>
-                <Field id="acTimeout" label="Timeout (ms)">
-                  <input
-                    id="acTimeout"
-                    type="number"
-                    min={250}
-                    max={30000}
-                    value={draft.autocomplete.timeoutMs}
-                    onChange={(e) =>
-                      patch({
-                        autocomplete: {
-                          ...draft.autocomplete,
-                          timeoutMs: Number(e.target.value) || 250,
-                        },
-                      })
-                    }
-                  />
-                </Field>
-                <Field id="acPrefix" label="Prefix chars">
-                  <input
-                    id="acPrefix"
-                    type="number"
-                    min={128}
-                    max={60000}
-                    value={draft.autocomplete.prefixChars}
-                    onChange={(e) =>
-                      patch({
-                        autocomplete: {
-                          ...draft.autocomplete,
-                          prefixChars: Number(e.target.value) || 128,
-                        },
-                      })
-                    }
-                  />
-                </Field>
-                <Field id="acSuffix" label="Suffix chars">
-                  <input
-                    id="acSuffix"
-                    type="number"
-                    min={0}
-                    max={60000}
-                    value={draft.autocomplete.suffixChars}
-                    onChange={(e) =>
-                      patch({
-                        autocomplete: {
-                          ...draft.autocomplete,
-                          suffixChars: Number(e.target.value) || 0,
-                        },
-                      })
-                    }
-                  />
-                </Field>
-                <Field id="acTemp" label="Temperature">
-                  <input
-                    id="acTemp"
-                    type="number"
-                    min={0}
-                    max={2}
-                    step={0.05}
-                    value={draft.autocomplete.temperature}
-                    onChange={(e) =>
-                      patch({
-                        autocomplete: {
-                          ...draft.autocomplete,
-                          temperature: Number(e.target.value) || 0,
-                        },
-                      })
-                    }
-                  />
-                </Field>
-              </div>
-            </SettingsSection>
-          </div>
-        ) : null}
-
-        {tab === 'workspace' ? (
+        {tab === 'workspaces' ? (
           <div className="settings-panel">
             <SettingsSection title="Folder">
               <div className="field-grid">
@@ -999,595 +1023,372 @@ export function SettingsPanel(props: SettingsPanelProps) {
                 </Field>
               </div>
             </SettingsSection>
-
-            <SettingsSection
-              title="Semantic index"
-              description="Embeddings power semantic search. Reindex after changing source."
-            >
-              <label className="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={draft.semanticIndex.enabled}
-                  onChange={(e) =>
-                    patch({
-                      semanticIndex: {
-                        ...draft.semanticIndex,
-                        enabled: e.target.checked,
-                      },
-                    })
-                  }
-                />
-                Enable semantic workspace indexing
-              </label>
-              <div className="field-grid">
-                <Field id="embSource" label="Embedding source">
-                  <select
-                    id="embSource"
-                    value={draft.semanticIndex.source}
-                    onChange={(e) =>
-                      patch({
-                        semanticIndex: {
-                          ...draft.semanticIndex,
-                          source: e.target
-                            .value as DesktopSettings['semanticIndex']['source'],
-                        },
-                      })
-                    }
-                  >
-                    <option value="bundled">Bundled MiniLM</option>
-                    <option value="ollama">Ollama</option>
-                    <option value="openai-compatible">OpenAI-compatible</option>
-                    <option value="disabled">Disabled (lexical only)</option>
-                  </select>
-                </Field>
-                <Field id="embBackend" label="Backend (legacy alias)">
-                  <select
-                    id="embBackend"
-                    value={draft.semanticIndex.backend}
-                    onChange={(e) =>
-                      patch({
-                        semanticIndex: {
-                          ...draft.semanticIndex,
-                          backend: e.target
-                            .value as DesktopSettings['semanticIndex']['backend'],
-                        },
-                      })
-                    }
-                  >
-                    <option value="auto">Auto</option>
-                    <option value="bundled">Bundled</option>
-                    <option value="ollama">Ollama</option>
-                    <option value="openai-compatible">OpenAI-compatible</option>
-                    <option value="disabled">Disabled</option>
-                  </select>
-                </Field>
-                <Field id="embModel" label="Embedding model">
-                  <input
-                    id="embModel"
-                    value={draft.semanticIndex.model}
-                    onChange={(e) =>
-                      patch({
-                        semanticIndex: {
-                          ...draft.semanticIndex,
-                          model: e.target.value,
-                        },
-                      })
-                    }
-                  />
-                </Field>
-                <Field id="embDim" label="Dimensions (0 = model default)">
-                  <input
-                    id="embDim"
-                    type="number"
-                    min={0}
-                    value={draft.semanticIndex.dimensions}
-                    onChange={(e) =>
-                      patch({
-                        semanticIndex: {
-                          ...draft.semanticIndex,
-                          dimensions: Number(e.target.value) || 0,
-                        },
-                      })
-                    }
-                  />
-                </Field>
-                <Field id="maxFiles" label="Maximum index files">
-                  <input
-                    id="maxFiles"
-                    type="number"
-                    min={0}
-                    max={240000}
-                    value={draft.workspace.maximumIndexFiles}
-                    onChange={(e) =>
-                      patch({
-                        workspace: {
-                          ...draft.workspace,
-                          maximumIndexFiles: Number(e.target.value) || 0,
-                        },
-                      })
-                    }
-                  />
-                </Field>
-                <label className="checkbox-row field full">
-                  <input
-                    type="checkbox"
-                    checked={draft.semanticIndex.normalized}
-                    onChange={(e) =>
-                      patch({
-                        semanticIndex: {
-                          ...draft.semanticIndex,
-                          normalized: e.target.checked,
-                        },
-                      })
-                    }
-                  />
-                  Normalize embedding vectors
-                </label>
-              </div>
-              <p className="field-help">{indexMessage}</p>
-              <div className="settings-actions">
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  disabled={reindexing || !props.engineBaseUrl}
-                  onClick={() => {
-                    if (!props.engineBaseUrl) return;
-                    setReindexing(true);
-                    void reindexWorkspace({
-                      baseUrl: props.engineBaseUrl,
-                      token: props.authToken,
-                      maximumFiles: draft.workspace.maximumIndexFiles || undefined,
-                      semanticIndex: {
-                        enabled: draft.semanticIndex.enabled,
-                        source: draft.semanticIndex.source,
-                        model: draft.semanticIndex.model,
-                        dimensions: draft.semanticIndex.dimensions,
-                        normalized: draft.semanticIndex.normalized,
-                        baseUrl: draft.provider.baseUrl,
-                      },
-                    })
-                      .then((result) => {
-                        setIndexMessage(result.message);
-                        if (result.statusSnapshot) {
-                          setIndexMessage(result.statusSnapshot.message);
-                        }
-                        props.onIndexChanged?.();
-                      })
-                      .catch((err: unknown) => {
-                        setIndexMessage(
-                          err instanceof Error ? err.message : String(err),
-                        );
-                      })
-                      .finally(() => setReindexing(false));
-                  }}
-                >
-                  {reindexing ? 'Indexing…' : 'Reindex workspace'}
-                </button>
-              </div>
-            </SettingsSection>
-
-            <SettingsSection title="Skills">
-              <label className="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={draft.skills.workspace.enabled}
-                  onChange={(e) =>
-                    patch({
-                      skills: {
-                        workspace: { enabled: e.target.checked },
-                      },
-                    })
-                  }
-                />
-                Load workspace skills from `.mitii/skills`
-              </label>
-            </SettingsSection>
           </div>
         ) : null}
 
-        {tab === 'modes' ? (
+        {tab === 'storage' ? (
           <div className="settings-panel">
-            <SettingsSection title="Mode defaults">
-              <div className="mode-settings-tabs" role="tablist">
-                {(['ask', 'plan', 'agent'] as const).map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    role="tab"
-                    aria-selected={modeTab === m}
-                    className={`mode-settings-tab${modeTab === m ? ' is-active' : ''}`}
-                    onClick={() => setModeTab(m)}
-                  >
-                    {m[0]!.toUpperCase() + m.slice(1)}
-                  </button>
-                ))}
-              </div>
-              <p className="field-help">
-                {modeTab === 'ask'
-                  ? 'Ask stays lightweight: read, explain, and answer with minimal workspace impact.'
-                  : modeTab === 'plan'
-                    ? 'Plan focuses on structure: clarify scope, draft phases, and save a handoff-ready plan.'
-                    : 'Agent is execution-focused: use tools, edit files, and stop at approval and budget limits.'}
-              </p>
-              <div className="field-grid">
-                <Field id="approval" label="Approval mode">
-                  <select
-                    id="approval"
-                    value={
-                      modeDefault.approvalMode === 'builder'
-                        ? 'guided'
-                        : modeDefault.approvalMode
-                    }
-                    onChange={(e) => {
-                      const approvalMode = e.target
-                        .value as DesktopSettings['ui']['modeDefaults']['ask']['approvalMode'];
-                      patch({
-                        ui: {
-                          ...draft.ui,
-                          modeDefaults: {
-                            ...draft.ui.modeDefaults,
-                            [modeTab]: { ...modeDefault, approvalMode },
-                          },
-                        },
-                        safety: {
-                          ...draft.safety,
-                          approvalMode:
-                            modeTab === 'agent'
-                              ? approvalMode
-                              : draft.safety.approvalMode,
-                        },
-                      });
-                    }}
-                  >
-                    <option value="safe">Ask for approval</option>
-                    <option value="guided">Approve for me</option>
-                    <option value="pilot">Full access</option>
-                  </select>
-                </Field>
-                <Field
-                  id="modeModel"
-                  label="Default model"
-                  hint="Empty = use active Provider model"
-                >
-                  <input
-                    id="modeModel"
-                    value={modeDefault.model}
-                    placeholder={draft.provider.model || 'Use active model'}
-                    onChange={(e) =>
-                      patch({
-                        ui: {
-                          ...draft.ui,
-                          modeDefaults: {
-                            ...draft.ui.modeDefaults,
-                            [modeTab]: {
-                              ...modeDefault,
-                              model: e.target.value,
-                            },
-                          },
-                        },
-                      })
-                    }
-                  />
-                </Field>
-                <Field id="thoroughness" label="Thoroughness">
-                  <select
-                    id="thoroughness"
-                    value={modeDefault.thoroughness}
-                    onChange={(e) =>
-                      patch({
-                        ui: {
-                          ...draft.ui,
-                          modeDefaults: {
-                            ...draft.ui.modeDefaults,
-                            [modeTab]: {
-                              ...modeDefault,
-                              thoroughness: e.target
-                                .value as typeof modeDefault.thoroughness,
-                            },
-                          },
-                        },
-                      })
-                    }
-                  >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                  </select>
-                </Field>
-                <Field id="depthMode" label="Depth">
-                  <select
-                    id="depthMode"
-                    value={modeDefault.depth}
-                    onChange={(e) =>
-                      patch({
-                        ui: {
-                          ...draft.ui,
-                          modeDefaults: {
-                            ...draft.ui.modeDefaults,
-                            [modeTab]: {
-                              ...modeDefault,
-                              depth: e.target
-                                .value as typeof modeDefault.depth,
-                            },
-                          },
-                        },
-                      })
-                    }
-                  >
-                    <option value="auto">Auto</option>
-                    <option value="quick">Quick</option>
-                    <option value="deep">Deep</option>
-                  </select>
-                </Field>
-              </div>
-              <label className="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={draft.ui.showReasoning}
-                  onChange={(e) =>
-                    patch({
-                      ui: { ...draft.ui, showReasoning: e.target.checked },
-                    })
-                  }
-                />
-                Show reasoning stream
-              </label>
-              <div className="field-grid">
-                <Field id="previewChars" label="Reasoning preview chars">
-                  <input
-                    id="previewChars"
-                    type="number"
-                    min={500}
-                    max={50000}
-                    value={draft.ui.reasoningPreviewMaxChars}
-                    onChange={(e) =>
-                      patch({
-                        ui: {
-                          ...draft.ui,
-                          reasoningPreviewMaxChars:
-                            Number(e.target.value) || 500,
-                        },
-                      })
-                    }
-                  />
-                </Field>
-                <Field id="uiDepth" label="Global depth">
-                  <select
-                    id="uiDepth"
-                    value={draft.ui.depth}
-                    onChange={(e) =>
-                      patch({
-                        ui: {
-                          ...draft.ui,
-                          depth: e.target
-                            .value as DesktopSettings['ui']['depth'],
-                        },
-                      })
-                    }
-                  >
-                    <option value="auto">Auto</option>
-                    <option value="quick">Quick</option>
-                    <option value="deep">Deep</option>
-                  </select>
-                </Field>
-                <Field id="uiEffort" label="Global effort">
-                  <select
-                    id="uiEffort"
-                    value={draft.ui.effort}
-                    onChange={(e) =>
-                      patch({
-                        ui: {
-                          ...draft.ui,
-                          effort: e.target
-                            .value as DesktopSettings['ui']['effort'],
-                        },
-                      })
-                    }
-                  >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                  </select>
-                </Field>
-              </div>
-            </SettingsSection>
-
             <SettingsSection
-              title="Run budget"
-              description="Optional safety caps for one turn."
+              title="Storage"
+              description="Set a root folder once. Each project stores index, memory, skills, and chat history under Root/projects/<name>--<id>/, and the repo’s .mitii becomes a link."
             >
-              <label className="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={draft.runBudget.unlimited}
-                  onChange={(e) =>
-                    patch({
-                      runBudget: {
-                        ...draft.runBudget,
-                        unlimited: e.target.checked,
-                      },
-                    })
-                  }
-                />
-                Unlimited run budget
-              </label>
-              <div className="field-grid">
-                <Field id="maxModelCalls" label="Model calls">
-                  <input
-                    id="maxModelCalls"
-                    type="number"
-                    min={1}
-                    disabled={draft.runBudget.unlimited}
-                    value={draft.runBudget.maxModelCalls}
-                    onChange={(e) =>
-                      patch({
-                        runBudget: {
-                          ...draft.runBudget,
-                          maxModelCalls: Number(e.target.value) || 1,
-                        },
-                      })
-                    }
-                  />
-                </Field>
-                <Field id="maxToolCalls" label="Tool calls">
-                  <input
-                    id="maxToolCalls"
-                    type="number"
-                    min={1}
-                    disabled={draft.runBudget.unlimited}
-                    value={draft.runBudget.maxToolCalls}
-                    onChange={(e) =>
-                      patch({
-                        runBudget: {
-                          ...draft.runBudget,
-                          maxToolCalls: Number(e.target.value) || 1,
-                        },
-                      })
-                    }
-                  />
-                </Field>
-                <Field id="maxLoop" label="Loop iterations">
-                  <input
-                    id="maxLoop"
-                    type="number"
-                    min={1}
-                    disabled={draft.runBudget.unlimited}
-                    value={draft.runBudget.maxLoopIterations}
-                    onChange={(e) =>
-                      patch({
-                        runBudget: {
-                          ...draft.runBudget,
-                          maxLoopIterations: Number(e.target.value) || 1,
-                        },
-                      })
-                    }
-                  />
-                </Field>
-                <Field id="maxWall" label="Wall time (min)">
-                  <input
-                    id="maxWall"
-                    type="number"
-                    min={1}
-                    disabled={draft.runBudget.unlimited}
-                    value={draft.runBudget.maxWallTimeMinutes}
-                    onChange={(e) =>
-                      patch({
-                        runBudget: {
-                          ...draft.runBudget,
-                          maxWallTimeMinutes: Number(e.target.value) || 1,
-                        },
-                      })
-                    }
-                  />
-                </Field>
+              <div className="storage-paths">
+                <div className="storage-path-row">
+                  <div className="storage-path-row__meta">
+                    <strong>Root storage</strong>
+                    <span className="field-help">
+                      Parent for all projects
+                      {storage?.rootStorageCustom
+                        ? ' · active'
+                        : ' · not set (data stays inside each repo’s .mitii)'}
+                    </span>
+                    <code className="storage-path-row__path">
+                      {storage?.rootStoragePath ||
+                        storage?.rootStorageDefaultPath ||
+                        '…'}
+                    </code>
+                    {storage?.rootStorageCustom ? (
+                      <span className="field-help">
+                        Layout:{' '}
+                        <code>
+                          {`${storage.rootStoragePath || 'Root'}/projects/<project>--<id>/`}
+                        </code>
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="storage-path-row__actions">
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      disabled={!storage || storageBusy}
+                      onClick={() => {
+                        const bridge = getDesktopBridge();
+                        if (!storage || !bridge?.revealInFolder) return;
+                        const p =
+                          storage.rootStoragePath ||
+                          storage.rootStorageDefaultPath;
+                        void bridge.revealInFolder(p);
+                      }}
+                    >
+                      Reveal
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      disabled={storageBusy}
+                      onClick={() => {
+                        const bridge = getDesktopBridge();
+                        if (!bridge?.pickDirectory || !bridge.setRootStorageLocation)
+                          return;
+                        setStorageBusy(true);
+                        setStorageNote(null);
+                        void bridge
+                          .pickDirectory()
+                          .then(async (picked) => {
+                            if (!picked.ok || !picked.path) return;
+                            const result = await bridge.setRootStorageLocation(
+                              picked.path,
+                            );
+                            if (!result.ok) {
+                              setStorageNote(result.reason ?? 'failed');
+                              return;
+                            }
+                            setStorageNote(
+                              'Root storage set. Projects live under projects/<name>--<id>/.',
+                            );
+                            await refreshStorage();
+                          })
+                          .finally(() => setStorageBusy(false));
+                      }}
+                    >
+                      Choose…
+                    </button>
+                    {!storage?.rootStorageCustom ? (
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        disabled={storageBusy || !storage}
+                        onClick={() => {
+                          const bridge = getDesktopBridge();
+                          if (!bridge?.setRootStorageLocation || !storage)
+                            return;
+                          setStorageBusy(true);
+                          setStorageNote(null);
+                          void bridge
+                            .setRootStorageLocation(
+                              storage.rootStorageDefaultPath,
+                            )
+                            .then(async (result) => {
+                              if (!result.ok) {
+                                setStorageNote(result.reason ?? 'failed');
+                                return;
+                              }
+                              setStorageNote(
+                                'Using recommended root. Active project linked under projects/.',
+                              );
+                              await refreshStorage();
+                            })
+                            .finally(() => setStorageBusy(false));
+                        }}
+                      >
+                        Use recommended
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        disabled={storageBusy}
+                        onClick={() => {
+                          const bridge = getDesktopBridge();
+                          if (!bridge?.setRootStorageLocation) return;
+                          setStorageBusy(true);
+                          void bridge
+                            .setRootStorageLocation(null)
+                            .then(async (result) => {
+                              if (!result.ok) {
+                                setStorageNote(result.reason ?? 'failed');
+                                return;
+                              }
+                              setStorageNote(
+                                'Root storage cleared (legacy in-repo mode).',
+                              );
+                              await refreshStorage();
+                            })
+                            .finally(() => setStorageBusy(false));
+                        }}
+                      >
+                        Clear root
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="storage-path-row">
+                  <div className="storage-path-row__meta">
+                    <strong>App data</strong>
+                    <span className="field-help">
+                      Settings database, secrets
+                      {storage?.appDataCustom ? ' · custom' : ' · default'}
+                    </span>
+                    <code className="storage-path-row__path">
+                      {storage?.appDataPath ?? '…'}
+                    </code>
+                  </div>
+                  <div className="storage-path-row__actions">
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      disabled={!storage || storageBusy}
+                      onClick={() => {
+                        const bridge = getDesktopBridge();
+                        if (!storage || !bridge?.revealInFolder) return;
+                        void bridge.revealInFolder(storage.appDataPath);
+                      }}
+                    >
+                      Reveal
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      disabled={storageBusy}
+                      onClick={() => {
+                        const bridge = getDesktopBridge();
+                        if (!bridge?.pickDirectory || !bridge.setAppDataLocation)
+                          return;
+                        setStorageBusy(true);
+                        setStorageNote(null);
+                        void bridge
+                          .pickDirectory()
+                          .then(async (picked) => {
+                            if (!picked.ok || !picked.path) return;
+                            const result = await bridge.setAppDataLocation(
+                              picked.path,
+                            );
+                            if (!result.ok) {
+                              setStorageNote(result.reason ?? 'failed');
+                              return;
+                            }
+                            setStorageNote(
+                              'App data location saved. Restart Mitii Desktop to apply.',
+                            );
+                            await refreshStorage();
+                          })
+                          .finally(() => setStorageBusy(false));
+                      }}
+                    >
+                      Choose…
+                    </button>
+                    {storage?.appDataCustom ? (
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        disabled={storageBusy}
+                        onClick={() => {
+                          const bridge = getDesktopBridge();
+                          if (!bridge?.setAppDataLocation) return;
+                          setStorageBusy(true);
+                          void bridge
+                            .setAppDataLocation(null)
+                            .then(async (result) => {
+                              if (!result.ok) {
+                                setStorageNote(result.reason ?? 'failed');
+                                return;
+                              }
+                              setStorageNote(
+                                'Reset to default app data. Restart Mitii Desktop to apply.',
+                              );
+                              await refreshStorage();
+                            })
+                            .finally(() => setStorageBusy(false));
+                        }}
+                      >
+                        Use default
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="storage-path-row">
+                  <div className="storage-path-row__meta">
+                    <strong>
+                      {storage?.usesRootStorage
+                        ? `Project · ${storage.projectSlug || 'current'}`
+                        : 'Workspace data (.mitii)'}
+                    </strong>
+                    <span className="field-help">
+                      Index, memory, skills, chat history
+                      {storage?.usesRootStorage
+                        ? ` · under Root/projects/${storage.projectFolderName || '…'}`
+                        : storage?.workspaceDataIsLink
+                          ? ' · custom link'
+                          : ' · in-repo (set Root storage to move out)'}
+                    </span>
+                    <code className="storage-path-row__path">
+                      {storage?.workspaceDataTarget ?? '…'}
+                    </code>
+                    {storage?.usesRootStorage ? (
+                      <span className="field-help">
+                        Repo link: <code>{storage.workspaceDataPath}</code>
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="storage-path-row__actions">
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      disabled={!storage || storageBusy}
+                      onClick={() => {
+                        const bridge = getDesktopBridge();
+                        if (!storage || !bridge?.revealInFolder) return;
+                        void bridge.revealInFolder(storage.workspaceDataTarget);
+                      }}
+                    >
+                      Reveal
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      disabled={storageBusy || !props.workspaceRoot}
+                      onClick={() => {
+                        const bridge = getDesktopBridge();
+                        if (
+                          !bridge?.pickDirectory ||
+                          !bridge.setWorkspaceDataLocation
+                        )
+                          return;
+                        const ok = window.confirm(
+                          'Override this project’s data folder?\n\nExisting files are moved and .mitii becomes a link to the new location.',
+                        );
+                        if (!ok) return;
+                        setStorageBusy(true);
+                        setStorageNote(null);
+                        void bridge
+                          .pickDirectory()
+                          .then(async (picked) => {
+                            if (!picked.ok || !picked.path) return;
+                            const result =
+                              await bridge.setWorkspaceDataLocation(
+                                picked.path,
+                              );
+                            if (!result.ok) {
+                              setStorageNote(result.reason ?? 'failed');
+                              return;
+                            }
+                            setStorageNote(
+                              `Project data now at ${result.target ?? picked.path}`,
+                            );
+                            await refreshStorage();
+                          })
+                          .finally(() => setStorageBusy(false));
+                      }}
+                    >
+                      Choose…
+                    </button>
+                    {storage?.workspaceDataIsLink ? (
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        disabled={storageBusy}
+                        onClick={() => {
+                          const bridge = getDesktopBridge();
+                          if (!bridge?.setWorkspaceDataLocation) return;
+                          setStorageBusy(true);
+                          void bridge
+                            .setWorkspaceDataLocation(null)
+                            .then(async (result) => {
+                              if (!result.ok) {
+                                setStorageNote(result.reason ?? 'failed');
+                                return;
+                              }
+                              setStorageNote(
+                                storage?.usesRootStorage
+                                  ? 'Restored link to Root/projects/<name>/.'
+                                  : 'Workspace data restored under <repo>/.mitii',
+                              );
+                              await refreshStorage();
+                            })
+                            .finally(() => setStorageBusy(false));
+                        }}
+                      >
+                        Reset link
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="storage-path-row">
+                  <div className="storage-path-row__meta">
+                    <strong>Logs</strong>
+                    <span className="field-help">
+                      Chat session JSONL (same as VS Code):{' '}
+                      <code>MM-DD-YYYY-HH-MM-thread_….jsonl</code>. Also{' '}
+                      <code>engine.log</code> / <code>runs.log</code>.
+                    </span>
+                    <code className="storage-path-row__path">
+                      {storage?.logsPath ?? '…'}
+                    </code>
+                  </div>
+                  <div className="storage-path-row__actions">
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      disabled={!storage || storageBusy}
+                      onClick={() => {
+                        const bridge = getDesktopBridge();
+                        if (!storage || !bridge?.revealInFolder) return;
+                        void bridge.revealInFolder(storage.logsPath);
+                      }}
+                    >
+                      Reveal
+                    </button>
+                  </div>
+                </div>
               </div>
+              {storageNote ? (
+                <p className="field-help storage-note">{storageNote}</p>
+              ) : null}
             </SettingsSection>
 
-            <SettingsSection title="Safety & sandbox">
-              <div className="field-grid">
-                <Field id="safetyApproval" label="Global approval mode">
-                  <select
-                    id="safetyApproval"
-                    value={
-                      draft.safety.approvalMode === 'builder'
-                        ? 'guided'
-                        : draft.safety.approvalMode
-                    }
-                    onChange={(e) =>
-                      patch({
-                        safety: {
-                          ...draft.safety,
-                          approvalMode: e.target
-                            .value as DesktopSettings['safety']['approvalMode'],
-                        },
-                      })
-                    }
-                  >
-                    <option value="safe">Safe</option>
-                    <option value="guided">Guided</option>
-                    <option value="pilot">Pilot</option>
-                  </select>
-                </Field>
-                <Field id="sandboxBackend" label="Sandbox backend">
-                  <select
-                    id="sandboxBackend"
-                    value={draft.safety.sandbox.backend}
-                    onChange={(e) =>
-                      patch({
-                        safety: {
-                          ...draft.safety,
-                          sandbox: {
-                            ...draft.safety.sandbox,
-                            backend: e.target
-                              .value as DesktopSettings['safety']['sandbox']['backend'],
-                          },
-                        },
-                      })
-                    }
-                  >
-                    <option value="auto">Auto</option>
-                    <option value="seatbelt">Seatbelt</option>
-                    <option value="bubblewrap">Bubblewrap</option>
-                    <option value="docker">Docker</option>
-                    <option value="podman">Podman</option>
-                  </select>
-                </Field>
-                <Field id="sandboxEn" label="Sandbox enabled">
-                  <select
-                    id="sandboxEn"
-                    value={
-                      draft.safety.sandbox.enabled === null
-                        ? ''
-                        : draft.safety.sandbox.enabled
-                          ? '1'
-                          : '0'
-                    }
-                    onChange={(e) =>
-                      patch({
-                        safety: {
-                          ...draft.safety,
-                          sandbox: {
-                            ...draft.safety.sandbox,
-                            enabled:
-                              e.target.value === ''
-                                ? null
-                                : e.target.value === '1',
-                          },
-                        },
-                      })
-                    }
-                  >
-                    <option value="">Follow approval preset</option>
-                    <option value="1">On</option>
-                    <option value="0">Off</option>
-                  </select>
-                </Field>
-                <Field id="sandboxNet" label="Sandbox network">
-                  <select
-                    id="sandboxNet"
-                    value={draft.safety.sandbox.network ?? ''}
-                    onChange={(e) =>
-                      patch({
-                        safety: {
-                          ...draft.safety,
-                          sandbox: {
-                            ...draft.safety.sandbox,
-                            network:
-                              e.target.value === ''
-                                ? null
-                                : (e.target.value as 'deny' | 'allow'),
-                          },
-                        },
-                      })
-                    }
-                  >
-                    <option value="">Follow approval preset</option>
-                    <option value="deny">Deny</option>
-                    <option value="allow">Allow</option>
-                  </select>
-                </Field>
-              </div>
-            </SettingsSection>
           </div>
         ) : null}
 
@@ -1626,111 +1427,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
                   {label}
                 </label>
               ))}
-            </SettingsSection>
-          </div>
-        ) : null}
-
-        {tab === 'features' ? (
-          <div className="settings-panel">
-            <SettingsSection
-              title="Working-tree review"
-              description="Code Review runs an LLM analysis of git changes."
-            >
-              <label className="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={draft.ui.features.codeReviewButton}
-                  onChange={(e) =>
-                    patch({
-                      ui: {
-                        ...draft.ui,
-                        features: { codeReviewButton: e.target.checked },
-                      },
-                    })
-                  }
-                />
-                Show Code Review button
-              </label>
-            </SettingsSection>
-            <SettingsSection title="Agent & SCM">
-              <label className="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={draft.agent.taskListAutoAdvance}
-                  onChange={(e) =>
-                    patch({
-                      agent: { taskListAutoAdvance: e.target.checked },
-                    })
-                  }
-                />
-                Task list auto-advance
-              </label>
-              <div className="field-grid">
-                <Field id="commitStyle" label="Commit message style">
-                  <select
-                    id="commitStyle"
-                    value={draft.scm.commitMessageStyle}
-                    onChange={(e) =>
-                      patch({
-                        scm: {
-                          commitMessageStyle: e.target
-                            .value as DesktopSettings['scm']['commitMessageStyle'],
-                        },
-                      })
-                    }
-                  >
-                    <option value="conventional">Conventional</option>
-                    <option value="plain">Plain</option>
-                  </select>
-                </Field>
-              </div>
-              <label className="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={draft.tools.applyPatch.fuzzyMatch}
-                  onChange={(e) =>
-                    patch({
-                      tools: {
-                        applyPatch: { fuzzyMatch: e.target.checked },
-                      },
-                    })
-                  }
-                />
-                Fuzzy match for apply_patch
-              </label>
-            </SettingsSection>
-          </div>
-        ) : null}
-
-        {tab === 'integrations' ? (
-          <div className="settings-panel">
-            <SettingsSection
-              title="Servers"
-              description="JSON array of MCP server installs. Saved to `.mitii/mcp.json`."
-            >
-              <label className="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={draft.mcp.enabled}
-                  onChange={(e) =>
-                    patch({ mcp: { ...draft.mcp, enabled: e.target.checked } })
-                  }
-                />
-                Enable MCP
-              </label>
-              <Field id="mcpServers" label="Servers JSON" full>
-                <textarea
-                  id="mcpServers"
-                  className="settings-json"
-                  rows={12}
-                  value={mcpJson}
-                  onChange={(e) => setMcpJson(e.target.value)}
-                  spellCheck={false}
-                />
-              </Field>
-              {mcpJsonError ? (
-                <p className="field-help danger-text">{mcpJsonError}</p>
-              ) : null}
             </SettingsSection>
           </div>
         ) : null}
@@ -1883,35 +1579,41 @@ export function SettingsPanel(props: SettingsPanelProps) {
           </div>
         ) : null}
 
-        <div className="settings-actions sticky-actions">
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={saving || props.busy}
-            onClick={() => void save()}
-          >
-            {saving ? 'Saving…' : 'Save & apply'}
-          </button>
-          <button
-            type="button"
-            className="btn btn-ghost"
-            disabled={saving}
-            onClick={() => {
-              const next = mergeDesktopSettings(props.settings);
-              setDraft(next);
-              setMcpJson(JSON.stringify(next.mcp.servers ?? [], null, 2));
-              setApiKey('');
-              setClearApiKey(false);
-              setSearchApiKey('');
-              setClearSearchApiKey(false);
-              setMcpJsonError(null);
-              setNote(null);
-            }}
-          >
-            Reset draft
-          </button>
-          {note ? <p className="field-help">{note}</p> : null}
         </div>
+
+        {tab !== 'profiles' ? (
+          <div className="settings-footer">
+            <div className="settings-footer__actions">
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={saving || props.busy}
+                onClick={() => void save()}
+              >
+                {saving ? 'Saving…' : 'Save & apply'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={saving}
+                onClick={() => {
+                  const next = mergeDesktopSettings(props.settings);
+                  setDraft(next);
+                  setApiKey('');
+                  setClearApiKey(false);
+                  setSearchApiKey('');
+                  setClearSearchApiKey(false);
+                  setNote(null);
+                }}
+              >
+                Reset draft
+              </button>
+            </div>
+            {note ? (
+              <p className="field-help settings-footer__note">{note}</p>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );

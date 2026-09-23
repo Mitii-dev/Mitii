@@ -8,6 +8,11 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 import { isAllowedEngineBaseUrl } from '../shared/window-url-policy.js';
+import {
+  appendEngineLog,
+  appendProjectLog,
+  resolveLogsDir,
+} from '../shared/project-logs.js';
 
 export interface SpawnEngineOptions {
   cwd: string;
@@ -18,6 +23,8 @@ export interface SpawnEngineOptions {
   entryPath?: string;
   env?: Record<string, string | undefined>;
   readinessTimeoutMs?: number;
+  /** Project logs directory (Root/projects/…/logs). */
+  logsPath?: string;
 }
 
 export interface SpawnedEngine {
@@ -65,13 +72,24 @@ export async function spawnDesktopEngine(
   if (options.forceEcho) args.push('--echo');
   if (options.token) args.push('--token', options.token);
 
+  const logsPath = resolveLogsDir(options.logsPath, {
+    ...process.env,
+    ...options.env,
+  });
   const mergedEnv: NodeJS.ProcessEnv = {
     ...process.env,
     ...options.env,
     MITII_DESKTOP_CLIENT: 'desktop',
+    ...(logsPath ? { MITII_LOGS_PATH: logsPath } : {}),
   };
   delete mergedEnv.ELECTRON_RUN_AS_NODE;
   const nodeBinary = resolveEngineNodeBinary(mergedEnv);
+
+  appendProjectLog(
+    logsPath,
+    'engine.log',
+    `spawning engine node=${nodeBinary} cwd=${options.cwd} model=${mergedEnv.MITII_MODEL ?? ''} baseUrl=${mergedEnv.MITII_BASE_URL ?? ''}`,
+  );
 
   const child = spawn(nodeBinary, args, {
     cwd: options.cwd,
@@ -80,7 +98,7 @@ export async function spawnDesktopEngine(
   });
 
   const timeoutMs = options.readinessTimeoutMs ?? 30_000;
-  const url = await waitForListening(child, timeoutMs);
+  const url = await waitForListening(child, timeoutMs, logsPath);
 
   return {
     url,
@@ -107,6 +125,7 @@ export async function spawnDesktopEngine(
 function waitForListening(
   child: ChildProcess,
   timeoutMs: number,
+  logsPath?: string,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -114,12 +133,14 @@ function waitForListening(
       if (settled) return;
       settled = true;
       cleanup();
+      appendProjectLog(logsPath, 'engine.log', `ready_failed ${error.message}`);
       reject(error);
     };
     const ok = (url: string) => {
       if (settled) return;
       settled = true;
       cleanup();
+      appendProjectLog(logsPath, 'engine.log', `listening ${url}`);
       resolve(url);
     };
 
@@ -142,6 +163,7 @@ function waitForListening(
 
     const rl = createInterface({ input: stdout });
     rl.on('line', (line) => {
+      appendEngineLog(logsPath, 'stdout', line);
       const trimmed = line.trim();
       if (!trimmed.startsWith('{')) return;
       try {
@@ -159,7 +181,14 @@ function waitForListening(
     });
 
     stderr?.on('data', (chunk: Buffer) => {
-      process.stderr.write(`[mitii-desktop-engine] ${chunk.toString('utf8')}`);
+      const text = chunk.toString('utf8');
+      appendEngineLog(logsPath, 'stderr', text);
+      process.stderr.write(`[mitii-desktop-engine] ${text}`);
+    });
+
+    // Keep teeing after readiness so engine runtime errors land in engine.log.
+    child.stdout?.on('data', (chunk: Buffer) => {
+      if (settled) appendEngineLog(logsPath, 'stdout', chunk.toString('utf8'));
     });
 
     function cleanup(): void {
