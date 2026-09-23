@@ -621,48 +621,80 @@ export function McpManager(props: Props) {
               <h3>Installed</h3>
               <span>{filteredServers.length}</span>
             </div>
-            {filteredServers.length === 0 ? (
+            {filteredServers.length === 0 && servers.length > 0 ? (
               <p className="workspace-empty">
-                {servers.length === 0
-                  ? 'No MCP servers yet. Click Add MCP to install from the catalog or create a custom server.'
-                  : 'No installed servers match your search.'}
+                No installed servers match your search.
               </p>
             ) : (
-              <ul className="mcp-manager__list">
-                {filteredServers.map((server) => (
-                  <li key={server.id} className="mcp-manager__row">
-                    <div className="mcp-manager__card-main">
-                      <strong>{server.name}</strong>
-                      <small>
-                        {server.id}
-                        {server.transport ? ` · ${server.transport}` : ''}
-                        {server.builtin ? ' · builtin' : ' · custom'}
-                      </small>
-                    </div>
-                    <label className="ext-switch">
-                      <input
-                        type="checkbox"
-                        checked={server.enabled}
-                        disabled={busy}
-                        onChange={(e) =>
-                          void toggleServer(server.id, e.target.checked)
-                        }
-                      />
-                      <span>{server.enabled ? 'On' : 'Off'}</span>
-                    </label>
-                    <button
-                      type="button"
-                      className="icon-quiet mcp-manager__delete"
-                      title={`Delete ${server.id}`}
-                      aria-label={`Delete ${server.id}`}
-                      disabled={busy}
-                      onClick={() => void removeServer(server.id)}
+              <div className="profile-gallery mcp-manager__gallery">
+                {filteredServers.map((server) => {
+                  const initial = (server.name.trim()[0] || '?').toUpperCase();
+                  return (
+                    <div
+                      key={server.id}
+                      className={`profile-tile${server.enabled ? ' is-active' : ''}`}
                     >
-                      <IconTrash size={15} />
-                    </button>
-                  </li>
-                ))}
-              </ul>
+                      <label
+                        className="profile-tile__check"
+                        onClick={(e) => e.stopPropagation()}
+                        title={server.enabled ? 'Disable' : 'Enable'}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={server.enabled}
+                          disabled={busy}
+                          aria-label={`${server.enabled ? 'Disable' : 'Enable'} ${server.name}`}
+                          onChange={(e) =>
+                            void toggleServer(server.id, e.target.checked)
+                          }
+                        />
+                      </label>
+                      <div className="profile-tile__body profile-tile__body--static">
+                        <span className="profile-tile__avatar" aria-hidden>
+                          {initial}
+                        </span>
+                        <span className="profile-tile__name">{server.name}</span>
+                        <span className="profile-tile__meta">
+                          {server.id}
+                          {server.transport ? ` · ${server.transport}` : ''}
+                          {server.builtin ? ' · builtin' : ' · custom'}
+                        </span>
+                        {server.enabled ? (
+                          <span className="profile-tile__badge">On</span>
+                        ) : (
+                          <span className="profile-tile__badge profile-tile__badge--edit">
+                            Off
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        className="mcp-manager__tile-delete"
+                        title={`Delete ${server.id}`}
+                        aria-label={`Delete ${server.id}`}
+                        disabled={busy}
+                        onClick={() => void removeServer(server.id)}
+                      >
+                        <IconTrash size={14} />
+                      </button>
+                    </div>
+                  );
+                })}
+                <button
+                  type="button"
+                  className="profile-tile profile-tile--add"
+                  disabled={busy}
+                  onClick={openWizard}
+                >
+                  <span className="profile-tile__avatar" aria-hidden>
+                    +
+                  </span>
+                  <span className="profile-tile__name">Add MCP</span>
+                  <span className="profile-tile__meta">
+                    Catalog or custom server
+                  </span>
+                </button>
+              </div>
             )}
           </section>
 
@@ -678,31 +710,37 @@ export function McpManager(props: Props) {
                   : 'No catalog matches your search.'}
               </p>
             ) : (
-              <ul className="mcp-manager__list">
-                {availableCatalog.map((entry) => (
-                  <li key={entry.id} className="mcp-manager__row">
-                    <div className="mcp-manager__card-main">
-                      <strong>{entry.name}</strong>
-                      <small>
-                        {entry.id} · {entry.transport}
-                      </small>
-                      <p>{entry.description}</p>
+              <div className="profile-gallery mcp-manager__gallery">
+                {availableCatalog.map((entry) => {
+                  const initial = (entry.name.trim()[0] || '?').toUpperCase();
+                  return (
+                    <div key={entry.id} className="profile-tile">
+                      <button
+                        type="button"
+                        className="profile-tile__body"
+                        disabled={busy}
+                        onClick={() => {
+                          setSelectedBuiltin(entry.id);
+                          setWizardOpen(true);
+                          setWizardStep('catalog');
+                        }}
+                      >
+                        <span className="profile-tile__avatar" aria-hidden>
+                          {initial}
+                        </span>
+                        <span className="profile-tile__name">{entry.name}</span>
+                        <span className="profile-tile__meta">
+                          {entry.id} · {entry.transport}
+                          {entry.description ? ` · ${entry.description}` : ''}
+                        </span>
+                        <span className="profile-tile__badge profile-tile__badge--edit">
+                          Install
+                        </span>
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      className="btn-ghost"
-                      disabled={busy}
-                      onClick={() => {
-                        setSelectedBuiltin(entry.id);
-                        setWizardOpen(true);
-                        setWizardStep('catalog');
-                      }}
-                    >
-                      Install
-                    </button>
-                  </li>
-                ))}
-              </ul>
+                  );
+                })}
+              </div>
             )}
           </section>
         </div>

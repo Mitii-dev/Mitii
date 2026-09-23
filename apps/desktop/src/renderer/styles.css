@@ -147,12 +147,24 @@ button:disabled {
   align-self: stretch;
 }
 
+.resize-handle--horizontal {
+  width: auto;
+  height: 5px;
+  flex: 0 0 5px;
+  cursor: row-resize;
+  align-self: stretch;
+}
+
 .resize-handle::after {
   content: '';
   position: absolute;
   inset: 0 1px;
   background: transparent;
   transition: background 120ms ease;
+}
+
+.resize-handle--horizontal::after {
+  inset: 1px 0;
 }
 
 .resize-handle:hover::after,
@@ -602,6 +614,10 @@ button:disabled {
   min-height: 0;
   min-width: 0;
   height: 100%;
+}
+
+.code-mode--extensions .code-mode__workspace {
+  flex: 1 1 auto;
 }
 
 .code-mode__workspace {
@@ -3200,6 +3216,10 @@ button:disabled {
   cursor: pointer;
 }
 
+.profile-tile__body--static {
+  cursor: default;
+}
+
 .profile-tile--add {
   border-style: dashed;
   background: transparent;
@@ -3811,6 +3831,49 @@ button:disabled {
   gap: 6px;
 }
 
+.skills-manager__search--gallery {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  max-width: 360px;
+  padding: 8px 12px;
+  border: 1px solid var(--mitii-border);
+  border-radius: 10px;
+  background: var(--mitii-surface);
+  color: var(--mitii-muted);
+}
+
+.skills-manager__search--gallery input {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: var(--mitii-text);
+  font-size: 13px;
+  outline: none;
+}
+
+.skills-manager__gallery {
+  overflow: auto;
+  min-height: 0;
+  flex: 1;
+  align-content: start;
+  padding-bottom: 8px;
+}
+
+.skills-manager__editor--solo {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+  border: 1px solid var(--mitii-border);
+  border-radius: 12px;
+  background: var(--mitii-surface);
+  padding: 14px;
+}
+
 .skills-manager__banner {
   display: flex;
   flex-wrap: wrap;
@@ -4117,6 +4180,10 @@ button:disabled {
 .mcp-manager__body {
   display: grid;
   gap: 22px;
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding-bottom: 8px;
 }
 
 .mcp-manager__section-head {
@@ -4203,6 +4270,36 @@ button.mcp-manager__card {
 
 .mcp-manager__delete:hover {
   color: #b42318;
+}
+
+.mcp-manager__gallery {
+  margin-top: 4px;
+}
+
+.mcp-manager__tile-delete {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mitii-panel) 88%, transparent);
+  color: var(--mitii-muted);
+  cursor: pointer;
+}
+
+.mcp-manager__tile-delete:hover:not(:disabled) {
+  color: #b42318;
+  background: color-mix(in srgb, #c45c5c 12%, transparent);
+}
+
+.mcp-manager__tile-delete:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .mcp-wizard {
@@ -4314,6 +4411,123 @@ button.mcp-manager__card {
   .mcp-manager__header {
     flex-direction: column;
   }
+}
+
+.recipes-manager {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+  padding: 20px 24px 24px;
+}
+
+.recipes-manager__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.recipes-manager__title-block h2 {
+  margin: 0 0 6px;
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.recipes-manager__title-block p {
+  margin: 0;
+  max-width: 62ch;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--mitii-muted);
+}
+
+.recipes-manager__header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.recipes-manager__add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.recipes-manager__search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  max-width: 360px;
+  padding: 8px 12px;
+  border: 1px solid var(--mitii-border);
+  border-radius: 10px;
+  background: var(--mitii-surface);
+  color: var(--mitii-muted);
+}
+
+.recipes-manager__search input {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  color: var(--mitii-text);
+  font-size: 13px;
+  outline: none;
+}
+
+.recipes-manager__gallery {
+  overflow: auto;
+  min-height: 0;
+  flex: 1;
+  align-content: start;
+  padding-bottom: 8px;
+}
+
+.recipes-manager__editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid var(--mitii-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--mitii-surface) 96%, transparent);
+}
+
+.recipes-manager__editor label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--mitii-muted);
+}
+
+.recipes-manager__editor textarea {
+  width: 100%;
+  min-height: 280px;
+  padding: 10px 12px;
+  border: 1px solid var(--mitii-border);
+  border-radius: 8px;
+  background: var(--mitii-surface);
+  color: var(--mitii-text);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.recipes-manager__editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .ext-pane {
@@ -5163,84 +5377,506 @@ button.mcp-manager__card {
   gap: 4px;
 }
 
-.git-pane {
+
+/* —— Source Control (VS Code–style) —— */
+.scm-pane {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  background: var(--mitii-panel);
 }
 
-.git-pane__changes,
-.git-pane__review {
+.scm-pane__main {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  flex: 1 1 50%;
+  overflow: hidden;
 }
 
-.git-pane__changes {
-  border-bottom: 1px solid var(--mitii-border);
+.scm-pane__review {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 120px;
+  overflow: hidden;
+  border-top: 1px solid var(--mitii-border-soft);
+  background: color-mix(in srgb, var(--mitii-surface) 55%, var(--mitii-panel));
 }
 
-.git-pane__review {
-  background: color-mix(in srgb, var(--mitii-panel) 70%, var(--mitii-surface));
-}
-
-.git-review-btn {
-  font-size: 11px !important;
-  padding: 3px 8px !important;
-  font-weight: 650;
-}
-
-.git-review-status {
-  font-size: 10px;
-  font-weight: 500;
+.scm-pane__title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--mitii-muted);
-  text-transform: none;
-  letter-spacing: 0;
+  flex-shrink: 0;
 }
 
-.git-review-error {
-  color: var(--mitii-danger) !important;
+.scm-pane__title--sub {
+  padding-top: 6px;
 }
 
-.git-review-list {
+.scm-pane__title-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.scm-input {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 10px 8px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--mitii-border-soft);
+}
+
+.scm-input textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 72px;
+  max-height: 160px;
+  border: 1px solid var(--mitii-border);
+  border-radius: 2px;
+  background: var(--mitii-surface);
+  color: var(--mitii-text);
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  line-height: 1.45;
+  outline: none;
+}
+
+.scm-input textarea:focus {
+  border-color: var(--mitii-accent);
+}
+
+.scm-input__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.scm-input__toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.scm-input__recipes {
+  display: flex;
+  gap: 2px;
+}
+
+.scm-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--mitii-muted);
+  user-select: none;
+}
+
+.scm-commit-btn {
+  border: 0;
+  border-radius: 2px;
+  background: var(--mitii-accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.scm-commit-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.scm-text-btn {
+  border: 0;
+  background: transparent;
+  color: var(--mitii-muted);
+  font-size: 11px;
+  font-weight: 550;
+  padding: 3px 6px;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.scm-text-btn:hover:not(:disabled) {
+  color: var(--mitii-text);
+  background: color-mix(in srgb, var(--mitii-text) 8%, transparent);
+}
+
+.scm-text-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.scm-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--mitii-muted);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.scm-icon-btn:hover:not(:disabled) {
+  color: var(--mitii-text);
+  background: color-mix(in srgb, var(--mitii-text) 10%, transparent);
+}
+
+.scm-icon-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.scm-icon-btn--danger:hover:not(:disabled) {
+  color: var(--mitii-danger);
+}
+
+.scm-symbol {
+  font-size: 16px;
+  line-height: 1;
+  font-weight: 500;
+}
+
+.scm-branch {
+  padding: 4px 8px 6px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--mitii-border-soft);
+}
+
+.scm-branch__toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--mitii-text);
+  padding: 4px 4px;
+  border-radius: 3px;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.scm-branch__toggle:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--mitii-text) 6%, transparent);
+}
+
+.scm-branch__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.scm-branch__sync {
+  font-size: 11px;
+  color: var(--mitii-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.scm-branch__caret {
+  color: var(--mitii-muted);
+  font-size: 10px;
+}
+
+.scm-branch__menu {
+  margin-top: 4px;
+  border: 1px solid var(--mitii-border-soft);
+  background: var(--mitii-surface);
+  padding: 4px;
+  max-height: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.scm-branch__create {
+  display: flex;
+  gap: 4px;
+}
+
+.scm-branch__create input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--mitii-border);
+  background: var(--mitii-panel);
+  color: var(--mitii-text);
+  padding: 4px 6px;
+  font-size: 12px;
+  border-radius: 2px;
+}
+
+.scm-branch__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  max-height: 150px;
+}
+
+.scm-branch__list button {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: var(--mitii-text);
+  padding: 4px 6px;
+  font-size: 12px;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.scm-branch__list button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--mitii-accent) 14%, transparent);
+}
+
+.scm-branch__list button.is-current {
+  font-weight: 650;
+  color: var(--mitii-accent);
+}
+
+.scm-body {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 4px 6px 10px;
+  padding: 2px 0 8px;
+}
+
+.scm-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.scm-group__header {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px 2px 2px;
+  position: sticky;
+  top: 0;
+  background: var(--mitii-panel);
+  z-index: 1;
+}
+
+.scm-group__twistie {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--mitii-text);
+  padding: 3px 4px;
+  border-radius: 2px;
+  cursor: pointer;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.scm-group__twistie:hover {
+  background: color-mix(in srgb, var(--mitii-text) 6%, transparent);
+}
+
+.scm-group__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scm-group__count {
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--mitii-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.scm-resource-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 4px;
+}
+
+.scm-resource {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 22px;
+  padding: 0 8px 0 18px;
+  color: var(--mitii-text);
+}
+
+.scm-resource:hover,
+.scm-resource.is-active {
+  background: color-mix(in srgb, var(--mitii-accent) 12%, transparent);
+}
+
+.scm-resource__main {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  height: 100%;
+}
+
+.scm-resource__name {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 0;
+  max-width: 55%;
+}
+
+.scm-resource__path {
+  font-size: 12px;
+  color: var(--mitii-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.scm-resource__actions {
+  display: none;
+  align-items: center;
+  gap: 0;
+  flex-shrink: 0;
+}
+
+.scm-resource:hover .scm-resource__actions,
+.scm-resource.is-active .scm-resource__actions {
+  display: inline-flex;
+}
+
+.scm-resource__decor {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  width: 14px;
+  text-align: center;
+  flex-shrink: 0;
+  color: var(--mitii-muted);
+}
+
+.scm-resource__decor--added,
+.scm-resource--added .scm-resource__name {
+  color: #3f9c5a;
+}
+
+.scm-resource__decor--deleted,
+.scm-resource--deleted .scm-resource__name {
+  color: #d14d41;
+}
+
+.scm-resource__decor--modified {
+  color: #c69026;
+}
+
+.scm-resource__decor--renamed,
+.scm-resource__decor--copied {
+  color: #3b82c4;
+}
+
+.scm-empty {
+  margin: 0;
+  padding: 4px 18px 8px;
+  font-size: 12px;
+  color: var(--mitii-muted);
+}
+
+.scm-empty--center {
+  padding: 16px 14px;
+  text-align: center;
+}
+
+.scm-empty--error {
+  color: var(--mitii-danger);
+}
+
+.scm-review-status {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--mitii-muted);
+}
+
+.scm-review-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 8px 10px;
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.git-review-finding {
+.scm-finding {
   display: grid;
-  gap: 4px;
+  gap: 3px;
   text-align: left;
-  border: 1px solid var(--mitii-border-soft);
-  border-left-width: 3px;
-  border-radius: 8px;
+  border: 0;
+  border-left: 3px solid var(--mitii-border);
   background: var(--mitii-panel);
-  padding: 8px 9px;
+  padding: 7px 8px;
   color: var(--mitii-text);
+  cursor: pointer;
+  border-radius: 0 2px 2px 0;
 }
 
-.git-review-finding--critical,
-.git-review-finding--high {
+.scm-finding:hover {
+  background: color-mix(in srgb, var(--mitii-accent) 8%, var(--mitii-panel));
+}
+
+.scm-finding--critical,
+.scm-finding--high {
   border-left-color: #d14d41;
 }
 
-.git-review-finding--medium {
+.scm-finding--medium {
   border-left-color: #c69026;
 }
 
-.git-review-finding--low,
-.git-review-finding--info {
+.scm-finding--low,
+.scm-finding--info {
   border-left-color: #3b82c4;
 }
 
-.git-review-finding__sev {
+.scm-finding__sev {
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
@@ -5248,36 +5884,15 @@ button.mcp-manager__card {
   color: var(--mitii-muted);
 }
 
-.git-review-finding--critical .git-review-finding__sev,
-.git-review-finding--high .git-review-finding__sev {
-  color: #d14d41;
-}
-
-.git-review-finding__path {
+.scm-finding__path {
   font-family: var(--mono);
   font-size: 11px;
   color: var(--mitii-muted);
 }
 
-.git-review-finding__msg {
+.scm-finding__msg {
   font-size: 12px;
   line-height: 1.35;
-}
-
-.git-review-finding__code {
-  margin: 2px 0 0;
-  padding: 6px 8px;
-  border-radius: 6px;
-  background: color-mix(in srgb, #f85149 10%, var(--mitii-surface));
-  font-family: var(--mono);
-  font-size: 10.5px;
-  white-space: pre-wrap;
-  max-height: 80px;
-  overflow: auto;
-}
-
-.git-review-finding__code--suggest {
-  background: color-mix(in srgb, #3fb950 12%, var(--mitii-surface));
 }
 
 /* —— Workspace-grouped chat sidebar —— */

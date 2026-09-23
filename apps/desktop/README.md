@@ -38,6 +38,9 @@ Follows [`docs/REPO_LAYOUT.md`](../../docs/REPO_LAYOUT.md) and
 |---|---|
 | `GET /health` | `{ ok, protocol, version, mode, workspaceRoot }` |
 | `POST /v1/prompt` | Body `{ prompt, mode?, id? }` → NDJSON `ready` / `event` / `result` / `error` |
+| `GET /v1/git/status` | Working tree snapshot (`staged` / `changes` / `untracked`) |
+| `GET /v1/git/branches` | Local branch list + current |
+| `POST /v1/git/stage` · `/unstage` · `/discard` · `/commit` · `/checkout` | Safe argv-only mutations (Agent Working Tree UI) |
 
 Optional `Authorization: Bearer <token>` when the engine was started with `--token`.
 

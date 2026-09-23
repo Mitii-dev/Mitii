@@ -1,6 +1,6 @@
 {
   "name": "@mitii/search-kit",
-  "version": "2.9.87",
+  "version": "2.9.88",
   "description": "Mitii web retrieval kit: pluggable search providers, content resolvers, and URL safety. Host-neutral; no V8 dependency.",
   "license": "AGPL-3.0-or-later",
   "type": "module",

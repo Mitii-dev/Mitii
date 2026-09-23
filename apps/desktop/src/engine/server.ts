@@ -87,7 +87,17 @@ import {
   type DesktopThreadTokenUsage,
 } from './history.js';
 import { getIndexStatus, reindexWorkspace } from './index-status.js';
-import { getGitFileDiff, getGitFileChangesSummary, getGitStatus } from './git-status.js';
+import {
+  getGitFileChangesSummary,
+  getGitFileDiff,
+  getGitWorkingTree,
+  gitCheckout,
+  gitCommit,
+  gitDiscard,
+  gitStage,
+  gitUnstage,
+  listGitBranches,
+} from './git-working-tree.js';
 import {
   copyWorkspaceEntries,
   createWorkspaceFile,
@@ -148,6 +158,29 @@ function asStringArray(value: unknown, max: number): string[] | undefined {
     .map((item) => item.trim())
     .slice(0, max);
   return out.length > 0 ? out : undefined;
+}
+
+function asOptionalStringPaths(value: unknown): string[] | undefined {
+  if (value === undefined || value === null) return undefined;
+  return asStringArray(value, 200) ?? [];
+}
+
+function readCommitMessageStyle(
+  body: Record<string, unknown>,
+): 'conventional' | 'plain' | undefined {
+  if (body.commitMessageStyle === 'conventional' || body.commitMessageStyle === 'plain') {
+    return body.commitMessageStyle;
+  }
+  const json = process.env.MITII_DESKTOP_SETTINGS_JSON?.trim();
+  if (!json) return undefined;
+  try {
+    const root = JSON.parse(json) as { scm?: { commitMessageStyle?: unknown } };
+    const style = root.scm?.commitMessageStyle;
+    if (style === 'conventional' || style === 'plain') return style;
+  } catch {
+    /* ignore */
+  }
+  return undefined;
 }
 
 function buildStartInput(
@@ -999,11 +1032,13 @@ export async function startEngineServer(
               : {};
           const note =
             typeof body.note === 'string' ? body.note : undefined;
+          const commitMessageStyle = readCommitMessageStyle(body);
           const spec = loadDesktopRecipeSpec(cwd, id);
           const compiled = await compileRecipeToStartInput(spec, {
             workspaceRoot: cwd,
             params,
             userNote: note,
+            ...(commitMessageStyle ? { commitMessageStyle } : {}),
           });
           sendJson(res, 200, { ok: true, compiled });
         } catch (error) {
@@ -1211,7 +1246,7 @@ export async function startEngineServer(
 
       if (method === 'GET' && path === '/v1/git/status') {
         if (!requireAuth(req, res, token)) return;
-        sendJson(res, 200, await getGitStatus(cwd));
+        sendJson(res, 200, await getGitWorkingTree(cwd));
         return;
       }
 
@@ -1230,6 +1265,112 @@ export async function startEngineServer(
             ? body.paths.filter((p): p is string => typeof p === 'string')
             : [];
           sendJson(res, 200, await getGitFileChangesSummary(cwd, paths));
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          sendJson(res, 400, { ok: false, error: message });
+        }
+        return;
+      }
+
+      if (method === 'GET' && path === '/v1/git/branches') {
+        if (!requireAuth(req, res, token)) return;
+        sendJson(res, 200, await listGitBranches(cwd));
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/git/stage') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          const body = (await readJsonBody(req)) as { paths?: unknown };
+          const paths = asOptionalStringPaths(body.paths);
+          sendJson(res, 200, await gitStage(cwd, paths));
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          sendJson(res, 400, { ok: false, error: message });
+        }
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/git/unstage') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          const body = (await readJsonBody(req)) as { paths?: unknown };
+          const paths = asOptionalStringPaths(body.paths);
+          sendJson(res, 200, await gitUnstage(cwd, paths));
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          sendJson(res, 400, { ok: false, error: message });
+        }
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/git/discard') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          const body = (await readJsonBody(req)) as {
+            paths?: unknown;
+            includeUntracked?: unknown;
+          };
+          const paths = asOptionalStringPaths(body.paths) ?? [];
+          const includeUntracked = body.includeUntracked === true;
+          sendJson(
+            res,
+            200,
+            await gitDiscard(cwd, paths, { includeUntracked }),
+          );
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          sendJson(res, 400, { ok: false, error: message });
+        }
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/git/commit') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          const body = (await readJsonBody(req)) as {
+            message?: unknown;
+            all?: unknown;
+          };
+          const message =
+            typeof body.message === 'string' ? body.message : '';
+          sendJson(
+            res,
+            200,
+            await gitCommit(cwd, message, { all: body.all === true }),
+          );
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          sendJson(res, 400, { ok: false, error: message });
+        }
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/git/checkout') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          const body = (await readJsonBody(req)) as {
+            branch?: unknown;
+            create?: unknown;
+          };
+          const branch =
+            typeof body.branch === 'string' ? body.branch.trim() : '';
+          if (!branch) {
+            sendJson(res, 400, { ok: false, error: 'branch_required' });
+            return;
+          }
+          sendJson(
+            res,
+            200,
+            await gitCheckout(cwd, branch, {
+              create: body.create === true,
+            }),
+          );
         } catch (error) {
           const message =
             error instanceof Error ? error.message : String(error);

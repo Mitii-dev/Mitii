@@ -301,9 +301,9 @@ export function SkillsManager(props: Props) {
         </div>
       ) : null}
 
-      <div className="skills-manager__layout">
-        <aside className="skills-manager__sidebar">
-          <div className="skills-manager__search">
+      {!selectedId ? (
+        <>
+          <div className="skills-manager__search skills-manager__search--gallery">
             <IconSearch size={16} />
             <input
               type="search"
@@ -313,31 +313,31 @@ export function SkillsManager(props: Props) {
               aria-label="Search skills"
             />
           </div>
-          {filtered.length === 0 ? (
-            <p className="workspace-empty">
-              {skills.length === 0
-                ? 'No custom skills yet. Add one to teach Mitii repo-specific workflows.'
-                : 'No skills match your search.'}
-            </p>
-          ) : (
-            <ul className="skills-manager__list">
-              {filtered.map((skill) => (
-                <li key={skill.id}>
+
+          <div className="profile-gallery skills-manager__gallery">
+            {filtered.map((skill) => {
+              const initial = (skill.title.trim()[0] || '?').toUpperCase();
+              return (
+                <div key={skill.id} className="profile-tile">
                   <button
                     type="button"
-                    className={`skills-manager__row${
-                      selectedId === skill.id ? ' is-selected' : ''
-                    }`}
+                    className="profile-tile__body"
                     onClick={() => void openSkill(skill.id)}
                   >
-                    <div className="skills-manager__row-main">
-                      <strong>{skill.title}</strong>
-                      <small>{skill.description || skill.id}</small>
-                    </div>
+                    <span className="profile-tile__avatar" aria-hidden>
+                      {initial}
+                    </span>
+                    <span className="profile-tile__name">{skill.title}</span>
+                    <span className="profile-tile__meta">
+                      {skill.description || skill.id}
+                    </span>
+                    <span className="profile-tile__badge profile-tile__badge--edit">
+                      Open
+                    </span>
                   </button>
                   <button
                     type="button"
-                    className="icon-quiet skills-manager__delete"
+                    className="mcp-manager__tile-delete"
                     title={`Delete ${skill.id}`}
                     aria-label={`Delete ${skill.id}`}
                     disabled={busy || profileBlocked}
@@ -345,114 +345,125 @@ export function SkillsManager(props: Props) {
                   >
                     <IconTrash size={14} />
                   </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </aside>
+                </div>
+              );
+            })}
+            <button
+              type="button"
+              className="profile-tile profile-tile--add"
+              disabled={busy || profileBlocked}
+              title={
+                profileBlocked
+                  ? 'Active profile required'
+                  : 'Add a custom skill'
+              }
+              onClick={startNew}
+            >
+              <span className="profile-tile__avatar" aria-hidden>
+                +
+              </span>
+              <span className="profile-tile__name">New skill</span>
+              <span className="profile-tile__meta">
+                Markdown playbook for this workspace
+              </span>
+            </button>
+          </div>
 
-        <section className="skills-manager__editor">
-          {!selectedId ? (
-            <div className="skills-manager__empty">
-              <h3>Select or add a skill</h3>
-              <p>
-                Preview renders as Markdown. Edit the playbook body, then Save
-                — frontmatter is generated (or refreshed) automatically.
-              </p>
-            </div>
-          ) : (
-            <>
-              <div className="skills-manager__toolbar">
-                <div className="skills-manager__meta">
-                  <label>
-                    Id
-                    <input
-                      value={id}
-                      disabled={!isNew || busy}
-                      onChange={(e) => {
-                        setId(e.target.value);
-                        setDirty(true);
-                      }}
-                      spellCheck={false}
-                    />
-                  </label>
-                  <label>
-                    Title hint
-                    <input
-                      value={title}
-                      disabled={busy}
-                      onChange={(e) => {
-                        setTitle(e.target.value);
-                        setDirty(true);
-                      }}
-                    />
-                  </label>
-                </div>
-                <div className="skills-manager__modes" role="tablist">
-                  <button
-                    type="button"
-                    className={viewMode === 'preview' ? 'is-active' : undefined}
-                    onClick={() => setViewMode('preview')}
-                  >
-                    Preview
-                  </button>
-                  <button
-                    type="button"
-                    className={viewMode === 'edit' ? 'is-active' : undefined}
-                    onClick={() => setViewMode('edit')}
-                  >
-                    Edit
-                  </button>
-                </div>
-                <div className="skills-manager__actions">
-                  <button
-                    type="button"
-                    className="btn-ghost"
-                    disabled={busy || profileBlocked}
-                    onClick={() => void formatOnly()}
-                  >
-                    Format frontmatter
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-ghost"
-                    disabled={busy}
-                    onClick={closeEditor}
-                  >
-                    Close
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-primary"
-                    disabled={busy || profileBlocked || !markdown.trim()}
-                    onClick={() => void save()}
-                  >
-                    {busy ? 'Saving…' : dirty ? 'Save skill' : 'Saved'}
-                  </button>
-                </div>
-              </div>
-
-              {viewMode === 'preview' ? (
-                <div className="skills-manager__preview">
-                  <MarkdownBody text={markdown} />
-                </div>
-              ) : (
-                <textarea
-                  className="skills-manager__textarea"
-                  value={markdown}
-                  spellCheck={false}
-                  disabled={busy}
+          {filtered.length === 0 && skills.length > 0 ? (
+            <p className="workspace-empty">No skills match your search.</p>
+          ) : null}
+        </>
+      ) : (
+        <section className="skills-manager__editor skills-manager__editor--solo">
+          <div className="skills-manager__toolbar">
+            <div className="skills-manager__meta">
+              <label>
+                Id
+                <input
+                  value={id}
+                  disabled={!isNew || busy}
                   onChange={(e) => {
-                    setMarkdown(e.target.value);
+                    setId(e.target.value);
                     setDirty(true);
                   }}
-                  placeholder="# Playbook body (frontmatter is added on save)"
+                  spellCheck={false}
                 />
-              )}
-            </>
+              </label>
+              <label>
+                Title hint
+                <input
+                  value={title}
+                  disabled={busy}
+                  onChange={(e) => {
+                    setTitle(e.target.value);
+                    setDirty(true);
+                  }}
+                />
+              </label>
+            </div>
+            <div className="skills-manager__modes" role="tablist">
+              <button
+                type="button"
+                className={viewMode === 'preview' ? 'is-active' : undefined}
+                onClick={() => setViewMode('preview')}
+              >
+                Preview
+              </button>
+              <button
+                type="button"
+                className={viewMode === 'edit' ? 'is-active' : undefined}
+                onClick={() => setViewMode('edit')}
+              >
+                Edit
+              </button>
+            </div>
+            <div className="skills-manager__actions">
+              <button
+                type="button"
+                className="btn-ghost"
+                disabled={busy || profileBlocked}
+                onClick={() => void formatOnly()}
+              >
+                Format frontmatter
+              </button>
+              <button
+                type="button"
+                className="btn-ghost"
+                disabled={busy}
+                onClick={closeEditor}
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={busy || profileBlocked || !markdown.trim()}
+                onClick={() => void save()}
+              >
+                {busy ? 'Saving…' : dirty ? 'Save skill' : 'Saved'}
+              </button>
+            </div>
+          </div>
+
+          {viewMode === 'preview' ? (
+            <div className="skills-manager__preview">
+              <MarkdownBody text={markdown} />
+            </div>
+          ) : (
+            <textarea
+              className="skills-manager__textarea"
+              value={markdown}
+              spellCheck={false}
+              disabled={busy}
+              onChange={(e) => {
+                setMarkdown(e.target.value);
+                setDirty(true);
+              }}
+              placeholder="# Playbook body (frontmatter is added on save)"
+            />
           )}
         </section>
-      </div>
+      )}
 
       {note ? <p className="ext-note">{note}</p> : null}
       {profileError ? <p className="ext-error">{profileError}</p> : null}

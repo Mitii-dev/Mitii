@@ -23,13 +23,13 @@ import {
   moveWorkspacePaths,
   renameWorkspacePath,
   saveWorkspaceFile,
-  streamPrompt,
 } from './api.js';
 import { CodeEditor } from './CodeEditor.js';
-import { CodeExtensionsPane } from './CodeExtensionsPane.js';
+import { GitWorkingTreePane } from './GitWorkingTreePane.js';
 import { McpManager } from './McpManager.js';
+import { RecipesManager } from './RecipesManager.js';
 import { SkillsManager } from './SkillsManager.js';
-import { DiffView, gitStatusKind } from './DiffView.js';
+import { DiffView } from './DiffView.js';
 import {
   IconChevronDown,
   IconChevronRight,
@@ -45,11 +45,7 @@ import {
   IconRefresh,
 } from './ActivityIcons.js';
 import { ResizeHandle, usePersistedWidth } from './ResizeHandle.js';
-import {
-  CODE_REVIEW_PROMPT,
-  ingestReviewFinding,
-  type ReviewFinding,
-} from '../shared/reviewFindings.js';
+import type { GitWorkingTreeSnapshot } from '../shared/gitWorkingTree.js';
 
 interface WorkspacePanelProps {
   baseUrl: string;
@@ -76,7 +72,6 @@ interface WorkspacePanelProps {
 }
 
 type TreeEntry = { name: string; path: string; kind: 'file' | 'dir' };
-type GitFile = { path: string; status: string };
 
 interface OpenTab {
   path: string;
@@ -185,13 +180,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(() => new Set());
   const [tabs, setTabs] = useState<OpenTab[]>([]);
   const [activePath, setActivePath] = useState<string | null>(null);
-  const [git, setGit] = useState<{
-    ok: boolean;
-    summary: string;
-    branch?: string;
-    files: GitFile[];
-    statPreview?: string;
-  } | null>(null);
+  const [git, setGit] = useState<GitWorkingTreeSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -200,10 +189,6 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     min: 160,
     max: 520,
   });
-  const [reviewFindings, setReviewFindings] = useState<ReviewFinding[]>([]);
-  const [reviewBusy, setReviewBusy] = useState(false);
-  const [reviewStatus, setReviewStatus] = useState<string | null>(null);
-  const [reviewError, setReviewError] = useState<string | null>(null);
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(
     () => new Set(),
   );
@@ -261,9 +246,6 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     setExpanded(new Set());
     setChildrenByPath({});
     setWorkspaceRootOpen(true);
-    setReviewFindings([]);
-    setReviewStatus(null);
-    setReviewError(null);
     void loadDir('');
     void loadGit();
   }, [props.workspaceRoot, loadDir, loadGit]);
@@ -339,51 +321,6 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     // intentionally only react to openPathRequest
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.openPathRequest]);
-
-  const runCodeReview = async () => {
-    setReviewBusy(true);
-    setReviewError(null);
-    setReviewFindings([]);
-    setReviewStatus('Reviewing git changes…');
-    setSide('git');
-    const findings: ReviewFinding[] = [];
-    try {
-      for await (const line of streamPrompt({
-        baseUrl: props.baseUrl,
-        token: props.token,
-        prompt: CODE_REVIEW_PROMPT,
-        mode: 'agent',
-        approvalPreset: 'guided',
-        thoroughness: 'medium',
-        pinnedPaths: (git?.files ?? []).map((f) => f.path).slice(0, 24),
-      })) {
-        if (line.op === 'error') {
-          throw new Error(line.message ?? line.error);
-        }
-        if (line.op === 'event') {
-          const finding = ingestReviewFinding(line.event);
-          if (finding) {
-            findings.push(finding);
-            setReviewFindings([...findings]);
-            setReviewStatus(
-              `${findings.length} finding${findings.length === 1 ? '' : 's'}…`,
-            );
-          }
-        }
-      }
-      setReviewStatus(
-        findings.length === 0
-          ? 'Review finished — no findings emitted'
-          : `${findings.length} finding${findings.length === 1 ? '' : 's'}`,
-      );
-      void loadGit();
-    } catch (err) {
-      setReviewError(err instanceof Error ? err.message : String(err));
-      setReviewStatus(null);
-    } finally {
-      setReviewBusy(false);
-    }
-  };
 
   const openDiff = async (path: string) => {
     setError(null);
@@ -1076,7 +1013,8 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     : [];
 
   const workspaceLabel = workspaceFolderName(props.workspaceRoot);
-  const extensionsFullscreen = side === 'mcp' || side === 'skills';
+  const extensionsFullscreen =
+    side === 'mcp' || side === 'skills' || side === 'recipes';
   const sideColumnWidth = extensionsFullscreen
     ? props.hideActivityRail
       ? 0
@@ -1291,125 +1229,22 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                 </div>
               </>
             ) : side === 'git' ? (
-              <div className="git-pane">
-                <div className="git-pane__changes">
-                  <div className="workspace-pane__title">
-                    <span>Source Control</span>
-                    <div className="workspace-pane__actions">
-                      <button
-                        type="button"
-                        className="btn-ghost git-review-btn"
-                        disabled={reviewBusy || !(git?.files.length)}
-                        title="LLM code review of git changes"
-                        onClick={() => void runCodeReview()}
-                      >
-                        {reviewBusy ? 'Reviewing…' : 'Code Review'}
-                      </button>
-                      <button
-                        type="button"
-                        className="icon-quiet"
-                        title="Refresh"
-                        aria-label="Refresh"
-                        onClick={() => void loadGit()}
-                      >
-                        <IconRefresh size={16} />
-                      </button>
-                    </div>
-                  </div>
-                  <div className="workspace-git-summary">
-                    <strong>{git?.branch ?? 'Git'}</strong>
-                    <span>{git?.summary ?? 'Loading…'}</span>
-                  </div>
-                  <div className="explorer-tree">
-                    {(git?.files ?? []).map((file) => (
-                      <button
-                        key={file.path}
-                        type="button"
-                        className={`explorer-row explorer-row--git explorer-row--git-${gitStatusKind(file.status)}${
-                          activePath === `diff:${file.path}` ? ' is-active' : ''
-                        }`}
-                        style={{ paddingLeft: 10 }}
-                        onClick={() => void openDiff(file.path)}
-                        onDoubleClick={() => void openFile(file.path)}
-                        title="Click: diff · Double-click: open file"
-                      >
-                        <span
-                          className={`workspace-git-status workspace-git-status--${gitStatusKind(file.status)}`}
-                        >
-                          {file.status}
-                        </span>
-                        <span className="explorer-label">{file.path}</span>
-                      </button>
-                    ))}
-                    {git && git.files.length === 0 ? (
-                      <p className="workspace-empty">
-                        {git.ok ? 'Working tree clean' : git.summary}
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-
-                <div className="git-pane__review">
-                  <div className="workspace-pane__title">
-                    <span>Code Review</span>
-                    {reviewStatus ? (
-                      <span className="git-review-status">{reviewStatus}</span>
-                    ) : null}
-                  </div>
-                  {reviewError ? (
-                    <p className="workspace-empty git-review-error">
-                      {reviewError}
-                    </p>
-                  ) : null}
-                  <div className="git-review-list">
-                    {reviewFindings.length === 0 && !reviewBusy ? (
-                      <p className="workspace-empty">
-                        Run Code Review to analyze git changes. Findings appear
-                        here.
-                      </p>
-                    ) : null}
-                    {reviewFindings.map((finding, i) => (
-                      <button
-                        key={`${finding.path}:${finding.startLine ?? 0}:${i}`}
-                        type="button"
-                        className={`git-review-finding git-review-finding--${finding.severity}`}
-                        onClick={() => {
-                          void openDiff(finding.path);
-                        }}
-                        title={finding.path}
-                      >
-                        <span className="git-review-finding__sev">
-                          {finding.severity}
-                        </span>
-                        <span className="git-review-finding__path">
-                          {finding.path}
-                          {finding.startLine ? `:${finding.startLine}` : ''}
-                        </span>
-                        <span className="git-review-finding__msg">
-                          {finding.content}
-                        </span>
-                        {finding.existingCode ? (
-                          <pre className="git-review-finding__code">
-                            {finding.existingCode.slice(0, 400)}
-                          </pre>
-                        ) : null}
-                        {finding.suggestionCode ? (
-                          <pre className="git-review-finding__code git-review-finding__code--suggest">
-                            {finding.suggestionCode.slice(0, 400)}
-                          </pre>
-                        ) : null}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            ) : side === 'recipes' ? (
-              <CodeExtensionsPane
+              <GitWorkingTreePane
                 baseUrl={props.baseUrl}
                 token={props.token}
-                side="recipes"
+                activePath={activePath}
+                onOpenDiff={openDiff}
+                onOpenFile={openFile}
+                onGitCountChange={(count) => {
+                  props.onGitCountChange?.(count);
+                }}
+                onStatusSnapshot={(next) => {
+                  setGit(next);
+                  props.onGitCountChange?.(next.files.length);
+                }}
                 onUsePrompt={props.onUsePrompt}
-                onRestartEngine={props.onRestartEngine}
+                onStatusNote={setNote}
+                onError={setError}
               />
             ) : null}
           </div>
@@ -1446,6 +1281,12 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
               activeProfileName={props.activeProfileName}
               hasActiveProfile={Boolean(props.hasActiveProfile)}
               onOpenProfiles={props.onOpenProfiles}
+            />
+          ) : side === 'recipes' ? (
+            <RecipesManager
+              baseUrl={props.baseUrl}
+              token={props.token}
+              onUsePrompt={props.onUsePrompt}
             />
           ) : (
             <>
