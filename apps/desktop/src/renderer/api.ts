@@ -640,6 +640,90 @@ export async function fetchProviderModels(options: {
     : [];
 }
 
+export type OllamaPullStreamLine =
+  | { op: 'start'; model: string }
+  | {
+      op: 'progress';
+      status: string;
+      percent?: number;
+      total?: number;
+      completed?: number;
+    }
+  | { op: 'done'; ok: true; model: string }
+  | { op: 'done'; ok: false; error: string };
+
+/**
+ * Pull an Ollama model through the desktop engine (NDJSON progress).
+ * Used for optional embedding upgrades such as nomic-embed-text.
+ */
+export async function* streamOllamaPull(options: {
+  baseUrl: string;
+  token?: string;
+  model: string;
+  providerBaseUrl?: string;
+}): AsyncGenerator<OllamaPullStreamLine> {
+  const res = await fetch(`${options.baseUrl}/v1/ollama/pull`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: JSON.stringify({
+      model: options.model,
+      baseUrl: options.providerBaseUrl,
+    }),
+  });
+  if (!res.ok || !res.body) {
+    const text = await res.text();
+    throw new Error(`ollama_pull_${res.status}:${text}`);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let newline = buffer.indexOf('\n');
+    while (newline >= 0) {
+      const line = buffer.slice(0, newline).trim();
+      buffer = buffer.slice(newline + 1);
+      if (line) {
+        yield JSON.parse(line) as OllamaPullStreamLine;
+      }
+      newline = buffer.indexOf('\n');
+    }
+  }
+  const tail = buffer.trim();
+  if (tail) {
+    yield JSON.parse(tail) as OllamaPullStreamLine;
+  }
+}
+
+export async function pullOllamaEmbeddingModel(options: {
+  baseUrl: string;
+  token?: string;
+  model: string;
+  providerBaseUrl?: string;
+  onProgress?: (progress: {
+    status: string;
+    percent?: number;
+  }) => void;
+}): Promise<{ ok: true; model: string } | { ok: false; error: string }> {
+  let lastError = 'Ollama pull failed.';
+  for await (const line of streamOllamaPull(options)) {
+    if (line.op === 'progress') {
+      options.onProgress?.({
+        status: line.status,
+        ...(line.percent !== undefined ? { percent: line.percent } : {}),
+      });
+    } else if (line.op === 'done') {
+      if (line.ok) {
+        return { ok: true, model: line.model };
+      }
+      return { ok: false, error: line.error };
+    }
+  }
+  return { ok: false, error: lastError };
+}
+
 export async function fetchProfiles(options: {
   baseUrl: string;
   token?: string;
