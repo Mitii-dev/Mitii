@@ -205,6 +205,54 @@ export function isOllamaBaseUrl(baseUrl?: string): boolean {
   }
 }
 
+/** True when the OpenAI-compatible root is hosted Ollama Cloud (ollama.com). */
+export function isOllamaCloudBaseUrl(baseUrl?: string): boolean {
+  if (!baseUrl?.trim()) return false;
+  try {
+    const host = new URL(baseUrl).hostname.toLowerCase();
+    return host === 'ollama.com' || host.endsWith('.ollama.com');
+  } catch {
+    return /(?:^|\/\/)(?:[\w-]+\.)?ollama\.com\b/i.test(baseUrl);
+  }
+}
+
+/**
+ * Map catalog / UI model ids to the chat tag Ollama actually accepts.
+ *
+ * Cloud lists sometimes expose size tags (`qwen3.5:397b`) while chat requires
+ * the cloud alias (`qwen3.5:cloud` or `name:SIZE-cloud`). Local Ollama can
+ * proxy the same cloud aliases when configured with an API key.
+ */
+export function normalizeOllamaModelId(
+  model: string,
+  baseUrl?: string,
+): string {
+  const trimmed = model.trim();
+  if (!trimmed) return trimmed;
+  if (!isOllamaBaseUrl(baseUrl) && !isOllamaCloudBaseUrl(baseUrl)) {
+    return trimmed;
+  }
+
+  if (/:cloud$/i.test(trimmed) || /:\d+b-cloud$/i.test(trimmed)) {
+    return trimmed;
+  }
+
+  const knownAliases: Record<string, string> = {
+    'qwen3.5:397b': 'qwen3.5:cloud',
+    'qwen3.5:397b-a17b': 'qwen3.5:cloud',
+  };
+  const alias = knownAliases[trimmed.toLowerCase()];
+  if (alias) return alias;
+
+  // On ollama.com, bare size tags are not chat-callable — prefer :SIZE-cloud.
+  if (isOllamaCloudBaseUrl(baseUrl)) {
+    const sized = trimmed.match(/^([a-z0-9._/-]+):(\d+b)$/i);
+    if (sized) return `${sized[1]}:${sized[2]}-cloud`;
+  }
+
+  return trimmed;
+}
+
 export function isLocalBaseUrl(baseUrl?: string): boolean {
   if (!baseUrl?.trim()) return false;
   try {

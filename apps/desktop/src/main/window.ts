@@ -35,7 +35,7 @@ export function createMainWindow(
     title: 'Mitii',
     backgroundColor: '#0b0d10',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
-    trafficLightPosition: { x: 16, y: 16 },
+    trafficLightPosition: { x: 16, y: 14 },
     webPreferences: {
       preload: options.preloadPath,
       contextIsolation: true,

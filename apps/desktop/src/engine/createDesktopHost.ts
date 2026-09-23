@@ -43,6 +43,7 @@ import {
   getProviderPreset,
   inferHostProviderType,
   isHostProviderType,
+  normalizeOllamaModelId,
   resolveProviderApiKey,
   resolveSandboxPolicy,
 } from '@mitii/host';
@@ -197,8 +198,10 @@ export async function createHostDesktopClient(
     config.providerPreset ??
     (type === 'openai-compatible' ? 'ollama' : type);
   const preset = getProviderPreset(presetId);
-  const model =
-    env.MITII_MODEL ?? config.model ?? preset?.model ?? 'gpt-4o-mini';
+  const model = normalizeOllamaModelId(
+    env.MITII_MODEL ?? config.model ?? preset?.model ?? 'gpt-4o-mini',
+    env.MITII_BASE_URL ?? config.baseUrl ?? preset?.baseUrl,
+  );
   const baseUrl = env.MITII_BASE_URL ?? config.baseUrl ?? preset?.baseUrl;
   const apiKey = resolveProviderApiKey({ type, env });
 

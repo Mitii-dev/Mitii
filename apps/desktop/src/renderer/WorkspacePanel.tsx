@@ -10,20 +10,38 @@ import {
 } from 'react';
 
 import {
+  copyWorkspacePaths,
+  createWorkspaceFilePath,
+  createWorkspaceFolderPath,
   deleteWorkspacePaths,
   fetchAbsoluteWorkspacePath,
   fetchGitDiff,
   fetchGitStatus,
   fetchWorkspaceFile,
   fetchWorkspaceTree,
+  getDesktopBridge,
+  moveWorkspacePaths,
   renameWorkspacePath,
   saveWorkspaceFile,
-  shortPath,
   streamPrompt,
 } from './api.js';
 import { CodeEditor } from './CodeEditor.js';
 import { CodeExtensionsPane } from './CodeExtensionsPane.js';
 import { DiffView, gitStatusKind } from './DiffView.js';
+import {
+  IconChevronDown,
+  IconChevronRight,
+  IconCollapseAll,
+  IconEllipsis,
+  IconFile,
+  IconFiles,
+  IconFolder,
+  IconFolderOpen,
+  IconGit,
+  IconNewFile,
+  IconNewFolder,
+  IconRefresh,
+} from './ActivityIcons.js';
 import { ResizeHandle, usePersistedWidth } from './ResizeHandle.js';
 import {
   CODE_REVIEW_PROMPT,
@@ -68,6 +86,17 @@ type ContextMenuState = {
   paths: string[];
 };
 
+type ClipboardState = {
+  paths: string[];
+  mode: 'copy' | 'cut';
+};
+
+type CreateDraft = {
+  parent: string;
+  kind: 'file' | 'dir';
+  name: string;
+};
+
 function fileName(path: string): string {
   const parts = path.replace(/\\/g, '/').split('/');
   return parts[parts.length - 1] || path;
@@ -76,6 +105,36 @@ function fileName(path: string): string {
 function parentOf(path: string): string {
   const i = path.lastIndexOf('/');
   return i < 0 ? '' : path.slice(0, i);
+}
+
+/** Workspace folder name only (VS Code explorer root), not a truncated path. */
+function workspaceFolderName(workspaceRoot: string): string {
+  const parts = workspaceRoot.replace(/\\/g, '/').split('/').filter(Boolean);
+  return parts[parts.length - 1] || workspaceRoot || 'Workspace';
+}
+
+function remapUnder(oldPath: string, newPath: string, path: string): string {
+  if (path === oldPath) return newPath;
+  if (path.startsWith(`${oldPath}/`)) {
+    return `${newPath}${path.slice(oldPath.length)}`;
+  }
+  return path;
+}
+
+function isMacPlatform(): boolean {
+  return (
+    typeof navigator !== 'undefined' &&
+    /Mac|iPhone|iPad|iPod/i.test(navigator.platform)
+  );
+}
+
+function revealLabel(): string {
+  if (typeof navigator === 'undefined') return 'Reveal in File Manager';
+  if (/Mac|iPhone|iPad|iPod/i.test(navigator.platform)) {
+    return 'Reveal in Finder';
+  }
+  if (/Win/i.test(navigator.platform)) return 'Reveal in File Explorer';
+  return 'Reveal in File Manager';
 }
 
 function flattenVisible(
@@ -116,6 +175,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     Record<string, TreeEntry[]>
   >({});
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const [workspaceRootOpen, setWorkspaceRootOpen] = useState(true);
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(() => new Set());
   const [tabs, setTabs] = useState<OpenTab[]>([]);
   const [activePath, setActivePath] = useState<string | null>(null);
@@ -145,7 +205,10 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [createDraft, setCreateDraft] = useState<CreateDraft | null>(null);
+  const [clipboard, setClipboard] = useState<ClipboardState | null>(null);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
+  const createInputRef = useRef<HTMLInputElement | null>(null);
 
   const auth = { baseUrl: props.baseUrl, token: props.token };
   const active = tabs.find((t) => t.path === activePath) ?? null;
@@ -191,6 +254,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     setActivePath(null);
     setExpanded(new Set());
     setChildrenByPath({});
+    setWorkspaceRootOpen(true);
     setReviewFindings([]);
     setReviewStatus(null);
     setReviewError(null);
@@ -476,6 +540,107 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     renameInputRef.current?.select();
   }, [renamingPath]);
 
+  useEffect(() => {
+    if (!createDraft) return;
+    createInputRef.current?.focus();
+    createInputRef.current?.select();
+  }, [createDraft]);
+
+  const resolveTargetDir = useCallback(
+    (paths: string[]): string => {
+      if (paths.length === 0) return '';
+      const first = paths[0]!;
+      const entry = entryByPath.get(first);
+      if (entry?.kind === 'dir') return first;
+      return parentOf(first);
+    },
+    [entryByPath],
+  );
+
+  const applyPathMoves = useCallback(
+    (results: Array<{ from: string; to: string }>) => {
+      const moved = results.filter((r) => r.from !== r.to);
+      if (moved.length === 0) return;
+
+      setExpanded((prev) => {
+        const next = new Set<string>();
+        for (const p of prev) {
+          let cur = p;
+          for (const { from, to } of moved) cur = remapUnder(from, to, cur);
+          next.add(cur);
+        }
+        return next;
+      });
+
+      setChildrenByPath((prev) => {
+        const next: Record<string, TreeEntry[]> = {};
+        for (const [key, value] of Object.entries(prev)) {
+          let nextKey = key;
+          for (const { from, to } of moved) {
+            nextKey = remapUnder(from, to, nextKey);
+          }
+          next[nextKey] = value.map((entry) => {
+            let path = entry.path;
+            for (const { from, to } of moved) {
+              path = remapUnder(from, to, path);
+            }
+            return {
+              ...entry,
+              path,
+              name: fileName(path),
+            };
+          });
+        }
+        return next;
+      });
+
+      setTabs((prev) =>
+        prev.map((t) => {
+          if (t.mode === 'diff') {
+            const filePath = t.path.replace(/^diff:/, '');
+            let nextFile = filePath;
+            for (const { from, to } of moved) {
+              nextFile = remapUnder(from, to, nextFile);
+            }
+            return nextFile === filePath ? t : { ...t, path: `diff:${nextFile}` };
+          }
+          let path = t.path;
+          for (const { from, to } of moved) {
+            path = remapUnder(from, to, path);
+          }
+          return path === t.path ? t : { ...t, path };
+        }),
+      );
+
+      setActivePath((cur) => {
+        if (!cur) return cur;
+        if (cur.startsWith('diff:')) {
+          let filePath = cur.replace(/^diff:/, '');
+          for (const { from, to } of moved) {
+            filePath = remapUnder(from, to, filePath);
+          }
+          return `diff:${filePath}`;
+        }
+        let path = cur;
+        for (const { from, to } of moved) {
+          path = remapUnder(from, to, path);
+        }
+        return path;
+      });
+
+      setSelectedPaths((prev) => {
+        const next = new Set<string>();
+        for (const p of prev) {
+          let cur = p;
+          for (const { from, to } of moved) cur = remapUnder(from, to, cur);
+          next.add(cur);
+        }
+        return next;
+      });
+    },
+    [],
+  );
+
   const selectRange = (anchor: string, target: string) => {
     const paths = visibleEntries.map((e) => e.path);
     const a = paths.indexOf(anchor);
@@ -559,8 +724,140 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     await copyText(paths.map(fileName).join('\n'));
   };
 
+  const setClipboardFromSelection = (paths: string[], mode: 'copy' | 'cut') => {
+    if (paths.length === 0) return;
+    setClipboard({ paths: [...paths], mode });
+    setContextMenu(null);
+    setNote(mode === 'cut' ? 'Cut' : 'Copied');
+    window.setTimeout(() => setNote(null), 1000);
+  };
+
+  const cancelCut = () => {
+    if (clipboard?.mode === 'cut') setClipboard(null);
+  };
+
+  const beginCreate = async (kind: 'file' | 'dir', paths?: string[]) => {
+    setContextMenu(null);
+    setRenamingPath(null);
+    const parent = resolveTargetDir(paths ?? [...selectedPaths]);
+    setWorkspaceRootOpen(true);
+    if (parent) {
+      setExpanded((prev) => new Set(prev).add(parent));
+      if (!childrenByPath[parent]) await loadDir(parent);
+    }
+    setCreateDraft({
+      parent,
+      kind,
+      name: kind === 'file' ? 'untitled.txt' : 'New Folder',
+    });
+  };
+
+  const commitCreate = async () => {
+    if (!createDraft) return;
+    const name = createDraft.name.trim();
+    if (!name) {
+      setCreateDraft(null);
+      return;
+    }
+    const kind = createDraft.kind;
+    try {
+      const created =
+        kind === 'file'
+          ? await createWorkspaceFilePath({
+              ...auth,
+              parent: createDraft.parent,
+              name,
+            })
+          : await createWorkspaceFolderPath({
+              ...auth,
+              parent: createDraft.parent,
+              name,
+            });
+      setCreateDraft(null);
+      await refreshParents([created.path]);
+      setSelectedPaths(new Set([created.path]));
+      setSelectionAnchor(created.path);
+      if (kind === 'file') void openFile(created.path);
+      else setExpanded((prev) => new Set(prev).add(created.path));
+      void loadGit();
+      setNote(kind === 'file' ? 'File created' : 'Folder created');
+      window.setTimeout(() => setNote(null), 1200);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setCreateDraft(null);
+    }
+  };
+
+  const pasteClipboard = async (targetPaths?: string[]) => {
+    if (!clipboard || clipboard.paths.length === 0) return;
+    setContextMenu(null);
+    const mode = clipboard.mode;
+    const destDir = resolveTargetDir(targetPaths ?? [...selectedPaths]);
+    try {
+      const result =
+        mode === 'cut'
+          ? await moveWorkspacePaths({
+              ...auth,
+              paths: clipboard.paths,
+              destDir,
+            })
+          : await copyWorkspacePaths({
+              ...auth,
+              paths: clipboard.paths,
+              destDir,
+            });
+      if (mode === 'cut') {
+        applyPathMoves(result.results);
+        setClipboard(null);
+      }
+      const touched = [
+        ...clipboard.paths,
+        ...result.results.map((r) => r.to),
+        destDir,
+      ];
+      await refreshParents(touched);
+      if (destDir) {
+        setExpanded((prev) => new Set(prev).add(destDir));
+        await loadDir(destDir);
+      } else {
+        await loadDir('');
+      }
+      const created = result.results.map((r) => r.to);
+      if (created.length > 0) {
+        setSelectedPaths(new Set(created));
+        setSelectionAnchor(created[0] ?? null);
+      }
+      void loadGit();
+      setNote(mode === 'cut' ? 'Moved' : 'Pasted');
+      window.setTimeout(() => setNote(null), 1200);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const revealInOs = async (paths: string[]) => {
+    setContextMenu(null);
+    if (paths.length === 0) return;
+    const bridge = getDesktopBridge();
+    if (!bridge?.revealInFolder) {
+      setError('Reveal is unavailable in this shell');
+      return;
+    }
+    try {
+      const absolute = await fetchAbsoluteWorkspacePath({
+        ...auth,
+        path: paths[0]!,
+      });
+      const result = await bridge.revealInFolder(absolute);
+      if (!result.ok) setError(result.reason ?? 'reveal_failed');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   const beginRename = (path: string) => {
     setContextMenu(null);
+    setCreateDraft(null);
     setRenamingPath(path);
     setRenameValue(fileName(path));
   };
@@ -580,72 +877,9 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
       });
       const oldPath = renamingPath;
       setRenamingPath(null);
+      applyPathMoves([{ from: oldPath, to: result.path }]);
       setSelectedPaths(new Set([result.path]));
       setSelectionAnchor(result.path);
-      setExpanded((prev) => {
-        if (!prev.has(oldPath) && ![...prev].some((p) => p.startsWith(`${oldPath}/`))) {
-          return prev;
-        }
-        const next = new Set<string>();
-        for (const p of prev) {
-          if (p === oldPath) next.add(result.path);
-          else if (p.startsWith(`${oldPath}/`)) {
-            next.add(`${result.path}${p.slice(oldPath.length)}`);
-          } else next.add(p);
-        }
-        return next;
-      });
-      setChildrenByPath((prev) => {
-        const next: Record<string, TreeEntry[]> = {};
-        for (const [key, value] of Object.entries(prev)) {
-          let nextKey = key;
-          if (key === oldPath) nextKey = result.path;
-          else if (key.startsWith(`${oldPath}/`)) {
-            nextKey = `${result.path}${key.slice(oldPath.length)}`;
-          }
-          next[nextKey] = value.map((entry) => {
-            if (entry.path === oldPath || entry.path.startsWith(`${oldPath}/`)) {
-              return {
-                ...entry,
-                path:
-                  entry.path === oldPath
-                    ? result.path
-                    : `${result.path}${entry.path.slice(oldPath.length)}`,
-                name:
-                  entry.path === oldPath ? fileName(result.path) : entry.name,
-              };
-            }
-            return entry;
-          });
-        }
-        return next;
-      });
-      setTabs((prev) =>
-        prev.map((t) => {
-          if (t.mode === 'file' && t.path === oldPath) {
-            return { ...t, path: result.path };
-          }
-          if (t.mode === 'diff' && t.path === `diff:${oldPath}`) {
-            return { ...t, path: `diff:${result.path}` };
-          }
-          if (t.mode === 'file' && t.path.startsWith(`${oldPath}/`)) {
-            return {
-              ...t,
-              path: `${result.path}${t.path.slice(oldPath.length)}`,
-            };
-          }
-          return t;
-        }),
-      );
-      setActivePath((cur) => {
-        if (!cur) return cur;
-        if (cur === oldPath) return result.path;
-        if (cur === `diff:${oldPath}`) return `diff:${result.path}`;
-        if (cur.startsWith(`${oldPath}/`)) {
-          return `${result.path}${cur.slice(oldPath.length)}`;
-        }
-        return cur;
-      });
       await refreshParents([oldPath, result.path]);
       void loadGit();
     } catch (err) {
@@ -658,7 +892,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     setContextMenu(null);
     if (paths.length === 0) return;
     const label =
-      paths.length === 1 ? fileName(paths[0]) : `${paths.length} items`;
+      paths.length === 1 ? fileName(paths[0]!) : `${paths.length} items`;
     const ok = window.confirm(`Delete ${label}? This cannot be undone.`);
     if (!ok) return;
     try {
@@ -666,6 +900,12 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
       closeTabsMatching(paths);
       setSelectedPaths(new Set());
       setSelectionAnchor(null);
+      if (clipboard) {
+        const remaining = clipboard.paths.filter((p) => !paths.includes(p));
+        setClipboard(
+          remaining.length > 0 ? { ...clipboard, paths: remaining } : null,
+        );
+      }
       await refreshParents(paths);
       void loadGit();
       setNote('Deleted');
@@ -675,75 +915,148 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     }
   };
 
-  const renderTree = (entries: TreeEntry[], depth: number) =>
-    entries.map((entry) => {
-      const isOpen = expanded.has(entry.path);
-      const kids = childrenByPath[entry.path];
-      const isSelected = selectedPaths.has(entry.path);
-      const isActive =
-        active?.mode === 'file' && active.path === entry.path;
-      const isRenaming = renamingPath === entry.path;
-      return (
-        <div key={entry.path} className="explorer-node">
-          {isRenaming ? (
-            <div
-              className="explorer-row explorer-row--rename"
-              style={{ paddingLeft: 8 + depth * 12 }}
-            >
-              <span className="explorer-twist" aria-hidden />
-              <span
-                className={`explorer-icon explorer-icon--${entry.kind}`}
-                aria-hidden
-              />
-              <input
-                ref={renameInputRef}
-                className="explorer-rename"
-                value={renameValue}
-                onChange={(e) => setRenameValue(e.target.value)}
-                onBlur={() => void commitRename()}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    void commitRename();
-                  }
-                  if (e.key === 'Escape') {
-                    e.preventDefault();
-                    setRenamingPath(null);
-                  }
-                }}
-              />
-            </div>
+  const renderCreateRow = (parent: string, depth: number) => {
+    if (!createDraft || createDraft.parent !== parent) return null;
+    return (
+      <div
+        key={`__create__:${parent}`}
+        className="explorer-row explorer-row--rename"
+        style={{ paddingLeft: 4 + depth * 8 }}
+      >
+        <span className="explorer-twist" aria-hidden />
+        <span className="explorer-icon" aria-hidden>
+          {createDraft.kind === 'dir' ? (
+            <IconFolder size={16} />
           ) : (
-            <button
-              type="button"
-              className={`explorer-row${isSelected || isActive ? ' is-active' : ''}${isSelected ? ' is-selected' : ''}`}
-              style={{ paddingLeft: 8 + depth * 12 }}
-              onClick={(e) => onExplorerClick(entry, e)}
-              onContextMenu={(e) => onExplorerContextMenu(entry, e)}
-              title={entry.path}
-            >
-              <span className="explorer-twist" aria-hidden>
-                {entry.kind === 'dir'
-                  ? loadingDirs.has(entry.path)
-                    ? '…'
-                    : isOpen
-                      ? '▾'
-                      : '▸'
-                  : ''}
-              </span>
-              <span
-                className={`explorer-icon explorer-icon--${entry.kind}`}
-                aria-hidden
-              />
-              <span className="explorer-label">{entry.name}</span>
-            </button>
+            <IconFile size={16} />
           )}
-          {entry.kind === 'dir' && isOpen && kids
-            ? renderTree(kids, depth + 1)
-            : null}
-        </div>
-      );
-    });
+        </span>
+        <input
+          ref={createInputRef}
+          className="explorer-rename"
+          value={createDraft.name}
+          aria-label={
+            createDraft.kind === 'file' ? 'New file name' : 'New folder name'
+          }
+          onChange={(e) =>
+            setCreateDraft((prev) =>
+              prev ? { ...prev, name: e.target.value } : prev,
+            )
+          }
+          onBlur={() => void commitCreate()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              void commitCreate();
+            }
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              setCreateDraft(null);
+            }
+          }}
+          onClick={(e) => e.stopPropagation()}
+        />
+      </div>
+    );
+  };
+
+  const renderTree = (entries: TreeEntry[], depth: number, parentPath: string) => (
+    <>
+      {renderCreateRow(parentPath, depth)}
+      {entries.map((entry) => {
+        const isOpen = expanded.has(entry.path);
+        const kids = childrenByPath[entry.path];
+        const isSelected = selectedPaths.has(entry.path);
+        const isActive =
+          active?.mode === 'file' && active.path === entry.path;
+        const isRenaming = renamingPath === entry.path;
+        const isCut =
+          clipboard?.mode === 'cut' && clipboard.paths.includes(entry.path);
+        return (
+          <div key={entry.path} className="explorer-node">
+            {isRenaming ? (
+              <div
+                className="explorer-row explorer-row--rename"
+                style={{ paddingLeft: 4 + depth * 8 }}
+              >
+                <span className="explorer-twist" aria-hidden />
+                <span className="explorer-icon" aria-hidden>
+                  {entry.kind === 'dir' ? (
+                    <IconFolder size={16} />
+                  ) : (
+                    <IconFile size={16} />
+                  )}
+                </span>
+                <input
+                  ref={renameInputRef}
+                  className="explorer-rename"
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onBlur={() => void commitRename()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      void commitRename();
+                    }
+                    if (e.key === 'Escape') {
+                      e.preventDefault();
+                      setRenamingPath(null);
+                    }
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </div>
+            ) : (
+              <button
+                type="button"
+                className={`explorer-row${isSelected || isActive ? ' is-active' : ''}${
+                  isSelected ? ' is-selected' : ''
+                }${isCut ? ' is-cut' : ''}`}
+                style={{ paddingLeft: 4 + depth * 8 }}
+                onClick={(e) => onExplorerClick(entry, e)}
+                onContextMenu={(e) => onExplorerContextMenu(entry, e)}
+                title={entry.path}
+              >
+                <span className="explorer-twist" aria-hidden>
+                  {entry.kind === 'dir' ? (
+                    loadingDirs.has(entry.path) ? (
+                      <IconEllipsis size={12} />
+                    ) : isOpen ? (
+                      <IconChevronDown size={12} />
+                    ) : (
+                      <IconChevronRight size={12} />
+                    )
+                  ) : null}
+                </span>
+                <span
+                  className={`explorer-icon explorer-icon--${entry.kind}${
+                    entry.kind === 'dir' && isOpen ? ' is-open' : ''
+                  }`}
+                  aria-hidden
+                >
+                  {entry.kind === 'dir' ? (
+                    isOpen ? (
+                      <IconFolderOpen size={16} />
+                    ) : (
+                      <IconFolder size={16} />
+                    )
+                  ) : (
+                    <IconFile size={16} />
+                  )}
+                </span>
+                <span className="explorer-label">{entry.name}</span>
+              </button>
+            )}
+            {entry.kind === 'dir' && isOpen && kids
+              ? renderTree(kids, depth + 1, entry.path)
+              : entry.kind === 'dir' && isOpen
+                ? renderCreateRow(entry.path, depth + 1)
+                : null}
+          </div>
+        );
+      })}
+    </>
+  );
 
   const menuPaths = contextMenu?.paths ?? [];
   const menuSingle = menuPaths.length === 1 ? menuPaths[0] : null;
@@ -756,7 +1069,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
       ).split('/')
     : [];
 
-  const workspaceLabel = shortPath(props.workspaceRoot);
+  const workspaceLabel = workspaceFolderName(props.workspaceRoot);
 
   return (
     <div className={`workspace-view${props.embedded ? ' workspace-view--embedded' : ''}`}>
@@ -780,7 +1093,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                 aria-label="Explorer"
                 onClick={() => setSide('explorer')}
               >
-                <span aria-hidden>⧉</span>
+                <IconFiles size={20} />
               </button>
               <button
                 type="button"
@@ -792,7 +1105,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                   void loadGit();
                 }}
               >
-                <span aria-hidden>⎇</span>
+                <IconGit size={20} />
                 {git?.files.length ? (
                   <em className="activity-badge">{git.files.length}</em>
                 ) : null}
@@ -805,44 +1118,159 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
               <>
                 <div className="workspace-pane__title">
                   <span>Explorer</span>
-                  <button
-                    type="button"
-                    className="icon-quiet"
-                    title="Refresh"
-                    onClick={() => {
-                      setChildrenByPath({});
-                      void loadDir('');
-                    }}
-                  >
-                    ↻
-                  </button>
-                </div>
-                <div className="workspace-pane__root" title={props.workspaceRoot}>
-                  {workspaceLabel}
+                  <div className="workspace-pane__actions">
+                    <button
+                      type="button"
+                      className="icon-quiet"
+                      title="New File..."
+                      aria-label="New File"
+                      onClick={() => void beginCreate('file')}
+                    >
+                      <IconNewFile size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-quiet"
+                      title="New Folder..."
+                      aria-label="New Folder"
+                      onClick={() => void beginCreate('dir')}
+                    >
+                      <IconNewFolder size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-quiet"
+                      title="Refresh Explorer"
+                      aria-label="Refresh Explorer"
+                      onClick={() => {
+                        setChildrenByPath({});
+                        void loadDir('');
+                      }}
+                    >
+                      <IconRefresh size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-quiet"
+                      title="Collapse Folders in Explorer"
+                      aria-label="Collapse Folders in Explorer"
+                      onClick={() => {
+                        setExpanded(new Set());
+                        setWorkspaceRootOpen(true);
+                      }}
+                    >
+                      <IconCollapseAll size={16} />
+                    </button>
+                  </div>
                 </div>
                 <div
                   className="explorer-tree"
                   tabIndex={0}
+                  onContextMenu={(e) => {
+                    if (e.target !== e.currentTarget) return;
+                    e.preventDefault();
+                    setSelectedPaths(new Set());
+                    setSelectionAnchor(null);
+                    setContextMenu({ x: e.clientX, y: e.clientY, paths: [] });
+                  }}
                   onKeyDown={(e) => {
                     if (e.target instanceof HTMLInputElement) return;
+                    const mod = e.metaKey || e.ctrlKey;
+                    const paths = [...selectedPaths];
+                    if (mod && e.key.toLowerCase() === 'c' && paths.length > 0) {
+                      e.preventDefault();
+                      setClipboardFromSelection(paths, 'copy');
+                      return;
+                    }
+                    if (mod && e.key.toLowerCase() === 'x' && paths.length > 0) {
+                      e.preventDefault();
+                      setClipboardFromSelection(paths, 'cut');
+                      return;
+                    }
+                    if (mod && e.key.toLowerCase() === 'v') {
+                      e.preventDefault();
+                      void pasteClipboard(paths);
+                      return;
+                    }
+                    if (e.key === 'Escape') {
+                      cancelCut();
+                      setContextMenu(null);
+                      return;
+                    }
                     if (
-                      (e.key === 'Delete' || e.key === 'Backspace') &&
-                      selectedPaths.size > 0
+                      (e.key === 'Delete' ||
+                        (e.key === 'Backspace' && (e.metaKey || !isMacPlatform()))) &&
+                      paths.length > 0
                     ) {
                       e.preventDefault();
-                      void deleteSelected([...selectedPaths]);
+                      void deleteSelected(paths);
+                      return;
                     }
-                    if (e.key === 'F2' && selectedPaths.size === 1) {
+                    if (e.key === 'F2' && paths.length === 1) {
                       e.preventDefault();
-                      beginRename([...selectedPaths][0]);
+                      beginRename(paths[0]!);
+                      return;
+                    }
+                    if (
+                      isMacPlatform() &&
+                      e.key === 'Enter' &&
+                      paths.length === 1 &&
+                      !mod
+                    ) {
+                      e.preventDefault();
+                      beginRename(paths[0]!);
                     }
                   }}
                 >
-                  {rootEntries.length === 0 ? (
-                    <p className="workspace-empty">No files</p>
-                  ) : (
-                    renderTree(rootEntries, 0)
-                  )}
+                  <button
+                    type="button"
+                    className="explorer-row explorer-row--workspace-root"
+                    title={props.workspaceRoot}
+                    onClick={() => setWorkspaceRootOpen((v) => !v)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setSelectedPaths(new Set());
+                      setSelectionAnchor(null);
+                      setContextMenu({
+                        x: e.clientX,
+                        y: e.clientY,
+                        paths: [],
+                      });
+                    }}
+                  >
+                    <span className="explorer-twist" aria-hidden>
+                      {workspaceRootOpen ? (
+                        <IconChevronDown size={12} />
+                      ) : (
+                        <IconChevronRight size={12} />
+                      )}
+                    </span>
+                    <span
+                      className={`explorer-icon explorer-icon--dir${
+                        workspaceRootOpen ? ' is-open' : ''
+                      }`}
+                      aria-hidden
+                    >
+                      {workspaceRootOpen ? (
+                        <IconFolderOpen size={16} />
+                      ) : (
+                        <IconFolder size={16} />
+                      )}
+                    </span>
+                    <span className="explorer-label explorer-label--root">
+                      {workspaceLabel}
+                    </span>
+                  </button>
+                  {workspaceRootOpen
+                    ? rootEntries.length === 0 && !createDraft
+                      ? (
+                          <p className="workspace-empty">No files</p>
+                        )
+                      : (
+                          renderTree(rootEntries, 1, '')
+                        )
+                    : null}
                 </div>
               </>
             ) : side === 'git' ? (
@@ -864,9 +1292,10 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                         type="button"
                         className="icon-quiet"
                         title="Refresh"
+                        aria-label="Refresh"
                         onClick={() => void loadGit()}
                       >
-                        ↻
+                        <IconRefresh size={16} />
                       </button>
                     </div>
                   </div>
@@ -1104,6 +1533,21 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
           onClick={(e) => e.stopPropagation()}
           onContextMenu={(e) => e.preventDefault()}
         >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => void beginCreate('file', menuPaths)}
+          >
+            New File...
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => void beginCreate('dir', menuPaths)}
+          >
+            New Folder...
+          </button>
+          <hr />
           {menuSingle && menuEntry?.kind === 'file' ? (
             <button
               type="button"
@@ -1116,6 +1560,78 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
               Open
             </button>
           ) : null}
+          {menuPaths.length > 0 ? (
+            <>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => setClipboardFromSelection(menuPaths, 'cut')}
+              >
+                Cut
+                <kbd className="explorer-menu__kbd">{isMacPlatform() ? '⌘X' : 'Ctrl+X'}</kbd>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => setClipboardFromSelection(menuPaths, 'copy')}
+              >
+                Copy
+                <kbd className="explorer-menu__kbd">{isMacPlatform() ? '⌘C' : 'Ctrl+C'}</kbd>
+              </button>
+            </>
+          ) : null}
+          <button
+            type="button"
+            role="menuitem"
+            disabled={!clipboard}
+            onClick={() => void pasteClipboard(menuPaths)}
+          >
+            Paste
+            <kbd className="explorer-menu__kbd">{isMacPlatform() ? '⌘V' : 'Ctrl+V'}</kbd>
+          </button>
+          <hr />
+          {menuPaths.length > 0 ? (
+            <>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setContextMenu(null);
+                  void copyAbsolutePaths(menuPaths);
+                }}
+              >
+                Copy Path
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setContextMenu(null);
+                  void copyRelativePaths(menuPaths);
+                }}
+              >
+                Copy Relative Path
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setContextMenu(null);
+                  void copyNames(menuPaths);
+                }}
+              >
+                Copy Name
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => void revealInOs(menuPaths)}
+              >
+                {revealLabel()}
+              </button>
+              <hr />
+            </>
+          ) : null}
           {menuSingle ? (
             <button
               type="button"
@@ -1123,47 +1639,20 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
               onClick={() => beginRename(menuSingle)}
             >
               Rename
+              <kbd className="explorer-menu__kbd">{isMacPlatform() ? 'Enter' : 'F2'}</kbd>
             </button>
           ) : null}
-          <button
-            type="button"
-            role="menuitem"
-            className="explorer-menu__danger"
-            onClick={() => void deleteSelected(menuPaths)}
-          >
-            Delete
-          </button>
-          <hr />
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setContextMenu(null);
-              void copyAbsolutePaths(menuPaths);
-            }}
-          >
-            Copy Path
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setContextMenu(null);
-              void copyRelativePaths(menuPaths);
-            }}
-          >
-            Copy Relative Path
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              setContextMenu(null);
-              void copyNames(menuPaths);
-            }}
-          >
-            Copy Name
-          </button>
+          {menuPaths.length > 0 ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="explorer-menu__danger"
+              onClick={() => void deleteSelected(menuPaths)}
+            >
+              Delete
+              <kbd className="explorer-menu__kbd">{isMacPlatform() ? '⌘⌫' : 'Del'}</kbd>
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>

@@ -2,8 +2,18 @@
  * Safe workspace file tree + read/write for Desktop explorer.
  */
 
-import { rename, rm, readdir, readFile, stat, writeFile } from 'node:fs/promises';
-import { basename, dirname, join, relative, resolve, sep } from 'node:path';
+import {
+  access,
+  cp,
+  mkdir,
+  rename,
+  rm,
+  readdir,
+  readFile,
+  stat,
+  writeFile,
+} from 'node:fs/promises';
+import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path';
 
 const SKIP = new Set([
   '.git',
@@ -30,6 +40,47 @@ function assertInsideWorkspace(workspaceRoot: string, abs: string): string {
     throw new Error('path_outside_workspace');
   }
   return target;
+}
+
+async function pathExists(abs: string): Promise<boolean> {
+  try {
+    await access(abs);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function toRel(workspaceRoot: string, abs: string): string {
+  return relative(workspaceRoot, abs).split(sep).join('/') || basename(abs);
+}
+
+/** VS Code–style incremental naming: `a.ts` → `a copy.ts` → `a copy 2.ts`. */
+async function uniqueChildPath(dirAbs: string, baseName: string): Promise<string> {
+  const first = join(dirAbs, baseName);
+  if (!(await pathExists(first))) return first;
+  const ext = extname(baseName);
+  const stem = basename(baseName, ext);
+  for (let i = 0; i < 500; i += 1) {
+    const name = i === 0 ? `${stem} copy${ext}` : `${stem} copy ${i + 1}${ext}`;
+    const candidate = join(dirAbs, name);
+    if (!(await pathExists(candidate))) return candidate;
+  }
+  throw new Error('name_collision');
+}
+
+function assertValidSegment(name: string): string {
+  const trimmed = name.trim();
+  if (
+    !trimmed ||
+    trimmed.includes('/') ||
+    trimmed.includes('\\') ||
+    trimmed === '.' ||
+    trimmed === '..'
+  ) {
+    throw new Error('invalid_name');
+  }
+  return trimmed;
 }
 
 export function toAbsoluteWorkspacePath(
@@ -112,22 +163,60 @@ export async function writeWorkspaceFile(
   };
 }
 
+export async function createWorkspaceFile(
+  workspaceRoot: string,
+  parentRel: string,
+  name: string,
+  content = '',
+): Promise<{ path: string }> {
+  const baseName = assertValidSegment(name);
+  if (Buffer.byteLength(content, 'utf8') > 2 * 1024 * 1024) {
+    throw new Error('content_too_large');
+  }
+  const parentAbs = assertInsideWorkspace(
+    workspaceRoot,
+    parentRel.trim() ? join(workspaceRoot, parentRel) : workspaceRoot,
+  );
+  const parentInfo = await stat(parentAbs);
+  if (!parentInfo.isDirectory()) throw new Error('not_a_directory');
+  const destAbs = assertInsideWorkspace(
+    workspaceRoot,
+    join(parentAbs, baseName),
+  );
+  if (await pathExists(destAbs)) throw new Error('already_exists');
+  await mkdir(dirname(destAbs), { recursive: true });
+  await writeFile(destAbs, content, { flag: 'wx' });
+  return { path: toRel(workspaceRoot, destAbs) };
+}
+
+export async function createWorkspaceFolder(
+  workspaceRoot: string,
+  parentRel: string,
+  name: string,
+): Promise<{ path: string }> {
+  const baseName = assertValidSegment(name);
+  const parentAbs = assertInsideWorkspace(
+    workspaceRoot,
+    parentRel.trim() ? join(workspaceRoot, parentRel) : workspaceRoot,
+  );
+  const parentInfo = await stat(parentAbs);
+  if (!parentInfo.isDirectory()) throw new Error('not_a_directory');
+  const destAbs = assertInsideWorkspace(
+    workspaceRoot,
+    join(parentAbs, baseName),
+  );
+  if (await pathExists(destAbs)) throw new Error('already_exists');
+  await mkdir(destAbs, { recursive: false });
+  return { path: toRel(workspaceRoot, destAbs) };
+}
+
 export async function renameWorkspaceEntry(
   workspaceRoot: string,
   relPath: string,
   newName: string,
 ): Promise<{ path: string; previousPath: string }> {
   if (!relPath.trim()) throw new Error('path_required');
-  const trimmed = newName.trim();
-  if (
-    !trimmed ||
-    trimmed.includes('/') ||
-    trimmed.includes('\\') ||
-    trimmed === '.' ||
-    trimmed === '..'
-  ) {
-    throw new Error('invalid_name');
-  }
+  const trimmed = assertValidSegment(newName);
   const abs = assertInsideWorkspace(workspaceRoot, join(workspaceRoot, relPath));
   if (resolve(abs) === resolve(workspaceRoot)) {
     throw new Error('cannot_rename_workspace_root');
@@ -136,12 +225,11 @@ export async function renameWorkspaceEntry(
     workspaceRoot,
     join(dirname(abs), trimmed),
   );
+  if (await pathExists(destAbs)) throw new Error('already_exists');
   await rename(abs, destAbs);
   return {
-    previousPath:
-      relative(workspaceRoot, abs).split(sep).join('/') || basename(abs),
-    path:
-      relative(workspaceRoot, destAbs).split(sep).join('/') || basename(destAbs),
+    previousPath: toRel(workspaceRoot, abs),
+    path: toRel(workspaceRoot, destAbs),
   };
 }
 
@@ -161,11 +249,100 @@ export async function deleteWorkspaceEntries(
       throw new Error('cannot_delete_workspace_root');
     }
     await rm(abs, { recursive: true, force: false });
-    deleted.push(
-      relative(workspaceRoot, abs).split(sep).join('/') || basename(abs),
-    );
+    deleted.push(toRel(workspaceRoot, abs));
   }
   return { deleted };
+}
+
+function assertNotIntoSelf(srcAbs: string, destDirAbs: string): void {
+  const src = resolve(srcAbs);
+  const dest = resolve(destDirAbs);
+  const prefix = src.endsWith(sep) ? src : src + sep;
+  if (dest === src || dest.startsWith(prefix)) {
+    throw new Error('invalid_destination');
+  }
+}
+
+export async function copyWorkspaceEntries(
+  workspaceRoot: string,
+  sources: string[],
+  destDirRel: string,
+): Promise<{ results: Array<{ from: string; to: string }> }> {
+  const unique = [...new Set(sources.map((p) => p.trim()).filter(Boolean))];
+  if (unique.length === 0) throw new Error('path_required');
+  const destDirAbs = assertInsideWorkspace(
+    workspaceRoot,
+    destDirRel.trim() ? join(workspaceRoot, destDirRel) : workspaceRoot,
+  );
+  const destInfo = await stat(destDirAbs);
+  if (!destInfo.isDirectory()) throw new Error('not_a_directory');
+
+  const results: Array<{ from: string; to: string }> = [];
+  for (const relPath of unique) {
+    const srcAbs = assertInsideWorkspace(
+      workspaceRoot,
+      join(workspaceRoot, relPath),
+    );
+    if (resolve(srcAbs) === resolve(workspaceRoot)) {
+      throw new Error('cannot_copy_workspace_root');
+    }
+    assertNotIntoSelf(srcAbs, destDirAbs);
+    const destAbs = await uniqueChildPath(destDirAbs, basename(srcAbs));
+    assertInsideWorkspace(workspaceRoot, destAbs);
+    await cp(srcAbs, destAbs, {
+      recursive: true,
+      errorOnExist: true,
+      force: false,
+    });
+    results.push({
+      from: toRel(workspaceRoot, srcAbs),
+      to: toRel(workspaceRoot, destAbs),
+    });
+  }
+  return { results };
+}
+
+export async function moveWorkspaceEntries(
+  workspaceRoot: string,
+  sources: string[],
+  destDirRel: string,
+): Promise<{ results: Array<{ from: string; to: string }> }> {
+  const unique = [...new Set(sources.map((p) => p.trim()).filter(Boolean))];
+  if (unique.length === 0) throw new Error('path_required');
+  const destDirAbs = assertInsideWorkspace(
+    workspaceRoot,
+    destDirRel.trim() ? join(workspaceRoot, destDirRel) : workspaceRoot,
+  );
+  const destInfo = await stat(destDirAbs);
+  if (!destInfo.isDirectory()) throw new Error('not_a_directory');
+
+  const results: Array<{ from: string; to: string }> = [];
+  for (const relPath of unique) {
+    const srcAbs = assertInsideWorkspace(
+      workspaceRoot,
+      join(workspaceRoot, relPath),
+    );
+    if (resolve(srcAbs) === resolve(workspaceRoot)) {
+      throw new Error('cannot_move_workspace_root');
+    }
+    assertNotIntoSelf(srcAbs, destDirAbs);
+    // Same-folder move with identical name is a no-op.
+    if (resolve(dirname(srcAbs)) === resolve(destDirAbs)) {
+      results.push({
+        from: toRel(workspaceRoot, srcAbs),
+        to: toRel(workspaceRoot, srcAbs),
+      });
+      continue;
+    }
+    const destAbs = await uniqueChildPath(destDirAbs, basename(srcAbs));
+    assertInsideWorkspace(workspaceRoot, destAbs);
+    await rename(srcAbs, destAbs);
+    results.push({
+      from: toRel(workspaceRoot, srcAbs),
+      to: toRel(workspaceRoot, destAbs),
+    });
+  }
+  return { results };
 }
 
 /** Lightweight path search for `@` composer mentions (VS Code–style). */

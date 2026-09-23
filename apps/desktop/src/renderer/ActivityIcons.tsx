@@ -191,3 +191,122 @@ export function IconDeveloper(props: IconProps) {
     </Svg>
   );
 }
+
+/** View-title / tree icons — 16px VS Code codicon silhouettes. */
+
+function Svg16(props: IconProps & { children: ReactNode }) {
+  const size = props.size ?? 16;
+  return (
+    <svg
+      className={props.className}
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      {props.children}
+    </svg>
+  );
+}
+
+/** Codicon-like: new-file */
+export function IconNewFile(props: IconProps) {
+  return (
+    <Svg16 {...props}>
+      <path d="M2.5 1.5h6.2L13.5 6.3V14.5H2.5z" />
+      <path d="M8.5 1.5v5h5" />
+      <path d="M5.5 10.5h5" />
+      <path d="M8 8v5" />
+    </Svg16>
+  );
+}
+
+/** Codicon-like: new-folder */
+export function IconNewFolder(props: IconProps) {
+  return (
+    <Svg16 {...props}>
+      <path d="M1.5 3.5h4.2l1.3 1.5H14.5v8H1.5z" />
+      <path d="M6.5 9.5h5" />
+      <path d="M9 7v5" />
+    </Svg16>
+  );
+}
+
+/** Codicon-like: refresh */
+export function IconRefresh(props: IconProps) {
+  return (
+    <Svg16 {...props}>
+      <path d="M13.5 8a5.5 5.5 0 1 1-1.4-3.6" />
+      <path d="M13.5 2.5v3.2h-3.2" />
+    </Svg16>
+  );
+}
+
+/** Codicon-like: collapse-all */
+export function IconCollapseAll(props: IconProps) {
+  return (
+    <Svg16 {...props}>
+      <path d="M2 3.5h12" />
+      <path d="M2 8h12" />
+      <path d="M2 12.5h12" />
+      <path d="m5.5 6.2 2.5 2.3 2.5-2.3" />
+    </Svg16>
+  );
+}
+
+export function IconChevronRight(props: IconProps) {
+  return (
+    <Svg16 {...props} size={props.size ?? 12}>
+      <path d="m6 3.5 4 4.5-4 4.5" />
+    </Svg16>
+  );
+}
+
+export function IconChevronDown(props: IconProps) {
+  return (
+    <Svg16 {...props} size={props.size ?? 12}>
+      <path d="m3.5 6 4.5 4 4.5-4" />
+    </Svg16>
+  );
+}
+
+export function IconFolder(props: IconProps) {
+  return (
+    <Svg16 {...props}>
+      <path d="M1.5 3.5h4.2l1.3 1.5H14.5v8H1.5z" />
+    </Svg16>
+  );
+}
+
+export function IconFolderOpen(props: IconProps) {
+  return (
+    <Svg16 {...props}>
+      <path d="M1.5 4h4l1.2 1.4H10" />
+      <path d="M1.5 13.5 3.2 7h11.3l-1.5 6.5z" />
+    </Svg16>
+  );
+}
+
+export function IconFile(props: IconProps) {
+  return (
+    <Svg16 {...props}>
+      <path d="M3 1.5h6.2L13.5 5.8V14.5H3z" />
+      <path d="M9 1.5v4.5h4.5" />
+    </Svg16>
+  );
+}
+
+export function IconEllipsis(props: IconProps) {
+  return (
+    <Svg16 {...props} size={props.size ?? 12}>
+      <circle cx="3.5" cy="8" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="8" cy="8" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="12.5" cy="8" r="1.1" fill="currentColor" stroke="none" />
+    </Svg16>
+  );
+}

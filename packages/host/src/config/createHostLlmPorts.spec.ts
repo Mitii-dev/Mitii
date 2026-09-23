@@ -1,12 +1,38 @@
 import { describe, expect, it } from 'vitest';
 
 import { createHostLlmPorts } from './createHostLlmPorts.js';
-import { getProviderPreset } from './providerPresets.js';
+import {
+  getProviderPreset,
+  normalizeOllamaModelId,
+} from './providerPresets.js';
 import { inferHostProviderType, resolveProviderApiKey } from './resolveProviderApiKey.js';
 import {
   listProviderModels,
   testProviderConnection,
 } from './testProviderConnection.js';
+
+describe('normalizeOllamaModelId', () => {
+  it('maps qwen3.5:397b to the official cloud chat tag', () => {
+    expect(
+      normalizeOllamaModelId('qwen3.5:397b', 'https://ollama.com/v1'),
+    ).toBe('qwen3.5:cloud');
+    expect(
+      normalizeOllamaModelId('qwen3.5:397b', 'http://192.168.0.252:11434/v1'),
+    ).toBe('qwen3.5:cloud');
+  });
+
+  it('adds -cloud for other sized tags on ollama.com', () => {
+    expect(
+      normalizeOllamaModelId('minimax-m2.5:230b', 'https://ollama.com/v1'),
+    ).toBe('minimax-m2.5:230b-cloud');
+  });
+
+  it('leaves local size tags alone when not a known cloud alias', () => {
+    expect(
+      normalizeOllamaModelId('qwen3-coder:30b', 'http://localhost:11434/v1'),
+    ).toBe('qwen3-coder:30b');
+  });
+});
 
 describe('createHostLlmPorts', () => {
   it('constructs echo ports for the echo preset', () => {

@@ -27,6 +27,10 @@ export interface DesktopPromptRequest {
   id?: string;
   prompt: string;
   mode?: DesktopAgentMode;
+  /** Optional override; when omitted the engine uses MITII_MODEL. */
+  model?: string;
+  /** Chat thread id — used for VS Code–parity session JSONL filenames. */
+  sessionId?: string;
 }
 
 /** NDJSON stream lines from POST /v1/prompt */
@@ -51,10 +55,20 @@ export function parseDesktopPromptBody(
   if (!prompt) return { error: 'prompt_required' };
   const id = typeof record.id === 'string' && record.id.length > 0 ? record.id : undefined;
   const mode = isDesktopAgentMode(record.mode) ? record.mode : undefined;
+  const model =
+    typeof record.model === 'string' && record.model.trim()
+      ? record.model.trim()
+      : undefined;
+  const sessionId =
+    typeof record.sessionId === 'string' && record.sessionId.trim()
+      ? record.sessionId.trim()
+      : undefined;
   return {
     prompt,
     ...(id ? { id } : {}),
     ...(mode ? { mode } : {}),
+    ...(model ? { model } : {}),
+    ...(sessionId ? { sessionId } : {}),
   };
 }
 

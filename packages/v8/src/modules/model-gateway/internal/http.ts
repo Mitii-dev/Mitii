@@ -144,11 +144,12 @@ export function mapHttpStatusError(options: {
   }
 
   if (options.status === 404) {
+    const base = options.modelId
+      ? `${MODEL_GATEWAY_MESSAGES.MODEL_NOT_FOUND} (${options.modelId})`
+      : MODEL_GATEWAY_MESSAGES.MODEL_NOT_FOUND;
     return {
       code: "invalid_request",
-      message: options.modelId
-        ? `${MODEL_GATEWAY_MESSAGES.MODEL_NOT_FOUND} (${options.modelId})`
-        : MODEL_GATEWAY_MESSAGES.MODEL_NOT_FOUND,
+      message: preview ? `${base}: ${preview}` : base,
       retryable: false,
       providerCode: String(options.status),
     };

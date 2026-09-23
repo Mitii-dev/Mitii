@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 
 import {
   appendActivity,
   runEventToActivity,
   type DesktopActivityItem,
 } from '../shared/activity.js';
-import type { DesktopShellSnapshot } from '../shared/bridge.js';
+import type {
+  DesktopShellSnapshot,
+  WorkspaceChatSummary,
+} from '../shared/bridge.js';
 import type {
   DesktopAgentMode,
   DesktopPromptStreamLine,
@@ -14,6 +17,7 @@ import {
   DEFAULT_DESKTOP_SETTINGS,
   SETTINGS_TABS,
   mergeDesktopSettings,
+  normalizeDesktopProviderModel,
   type DesktopSettings,
   type SettingsTabId,
 } from '../shared/settings.js';
@@ -29,7 +33,6 @@ import { breakdownFromPromptReady } from '../shared/contextUsage.js';
 import logoUrl from './assets/mitii-logo.svg';
 import { ActivityBarButton } from './ActivityBarButton.js';
 import {
-  IconAutocomplete,
   IconChat,
   IconCode,
   IconContext,
@@ -38,7 +41,6 @@ import {
   IconFiles,
   IconGit,
   IconMcp,
-  IconModes,
   IconPlus,
   IconProvider,
   IconRecipes,
@@ -49,22 +51,29 @@ import {
 import { ActivityTimeline } from './ActivityTimeline.js';
 import {
   extractAssistantText,
+  deleteHistoryThread,
   fetchFileChanges,
   fetchHistory,
   fetchIndexStatus,
   fetchMcpServers,
   fetchProfiles,
+  fetchProviderModels,
   fetchSkills,
   finalizeAssistantText,
   getDesktopBridge,
   postHistory,
   postProfiles,
+  reindexWorkspace,
   searchWorkspacePaths,
   shortPath,
   streamPrompt,
   streamResume,
+  workspaceLabel,
 } from './api.js';
+import { ChatHistoryNav } from './ChatHistoryNav.js';
+import { IndexStatusChip } from './IndexStatusChip.js';
 import { FileChangesCard } from './FileChangesCard.js';
+import { IdentityPicker } from './IdentityPicker.js';
 import { ApprovalCard } from './ApprovalCard.js';
 import {
   ComposerControls,
@@ -112,7 +121,15 @@ interface HistoryThread {
 interface ProfileRow {
   id: string;
   name: string;
-  provider: { model: string; preset?: string };
+  provider: {
+    type?: string;
+    model: string;
+    preset?: string;
+    baseUrl?: string;
+    contextWindow?: number;
+    maximumOutputTokens?: number;
+  };
+  hasSecret?: boolean;
 }
 
 function extractTurnTokens(event: unknown): { in: number; out: number } | null {
@@ -136,13 +153,11 @@ const SETTINGS_TAB_ICONS: Record<
   SettingsTabId,
   (props: { size?: number }) => JSX.Element
 > = {
-  model: IconProvider,
-  autocomplete: IconAutocomplete,
-  workspace: IconWorkspace,
-  modes: IconModes,
+  storage: IconWorkspace,
+  workspaces: IconFiles,
+  profiles: IconProvider,
   context: IconContext,
   features: IconFeatures,
-  integrations: IconMcp,
   debug: IconDeveloper,
 };
 
@@ -172,7 +187,8 @@ export function App() {
   const [workspaceSide, setWorkspaceSide] = useState<
     'explorer' | 'git' | 'mcp' | 'skills' | 'recipes'
   >('explorer');
-  const [settingsTab, setSettingsTab] = useState<SettingsTabId>('model');
+  const [settingsTab, setSettingsTab] = useState<SettingsTabId>('profiles');
+  const [picker, setPicker] = useState<'workspace' | 'profile' | null>(null);
   const [gitBadge, setGitBadge] = useState(0);
   const [snapshot, setSnapshot] = useState<DesktopShellSnapshot | null>(null);
   const [mode, setMode] = useState<DesktopAgentMode>('ask');
@@ -182,15 +198,32 @@ export function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [threadId, setThreadId] = useState<string | undefined>();
   const [history, setHistory] = useState<HistoryThread[]>([]);
-  const [indexHint, setIndexHint] = useState('');
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [indexStatus, setIndexStatus] = useState<{
+    indexed: boolean;
+    fileCount: number;
+    truncated: boolean;
+    lastIndexedAt?: string;
+    message: string;
+    embeddingError?: string;
+  } | null>(null);
+  const [indexIndexing, setIndexIndexing] = useState(false);
+  const [indexProgress, setIndexProgress] = useState<number | null>(null);
+  const [indexStream, setIndexStream] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tokenUsage, setTokenUsage] = useState<TokenUsageState>(emptyTokenUsage);
   const [profiles, setProfiles] = useState<ProfileRow[]>([]);
   const [activeProfileId, setActiveProfileId] = useState('');
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [repoOpen, setRepoOpen] = useState(false);
   const [knownModels, setKnownModels] = useState<string[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const modelsProfileRef = useRef<string>('');
+  const [collapsedWorkspaces, setCollapsedWorkspaces] = useState<
+    Record<string, boolean>
+  >({});
+  const [remoteHistories, setRemoteHistories] = useState<WorkspaceChatSummary[]>(
+    [],
+  );
   const [suspension, setSuspension] = useState<DesktopSuspension | null>(null);
   const [pinnedPaths, setPinnedPaths] = useState<string[]>([]);
   const [pinnedSkillIds, setPinnedSkillIds] = useState<string[]>([]);
@@ -209,10 +242,11 @@ export function App() {
   const feedRef = useRef<HTMLDivElement>(null);
   const feedEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const profileRef = useRef<HTMLDivElement>(null);
-  const repoRef = useRef<HTMLDivElement>(null);
   const pinMenuRef = useRef<HTMLFormElement>(null);
   const searchReq = useRef(0);
+  const pendingThreadRef = useRef<string | null>(null);
+  const pendingNewChatRef = useRef(false);
+  const historyWorkspaceRef = useRef<string | undefined>(undefined);
 
   const engine = snapshot
     ? { baseUrl: snapshot.engineBaseUrl, token: snapshot.authToken }
@@ -246,28 +280,6 @@ export function App() {
     el.style.height = '0px';
     el.style.height = `${Math.min(160, Math.max(24, el.scrollHeight))}px`;
   }, [input]);
-
-  useEffect(() => {
-    if (!profileOpen) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (!profileRef.current?.contains(event.target as Node)) {
-        setProfileOpen(false);
-      }
-    };
-    window.addEventListener('pointerdown', onPointerDown);
-    return () => window.removeEventListener('pointerdown', onPointerDown);
-  }, [profileOpen]);
-
-  useEffect(() => {
-    if (!repoOpen) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (!repoRef.current?.contains(event.target as Node)) {
-        setRepoOpen(false);
-      }
-    };
-    window.addEventListener('pointerdown', onPointerDown);
-    return () => window.removeEventListener('pointerdown', onPointerDown);
-  }, [repoOpen]);
 
   useEffect(() => {
     if (!pinMenu) return;
@@ -305,42 +317,153 @@ export function App() {
     // History is workspace-scoped — only reload when the folder changes,
     // not when the engine restarts after settings save (that wiped the list).
     let cancelled = false;
+    const workspaceRoot = snapshot?.workspaceRoot;
+    const workspaceChanged = historyWorkspaceRef.current !== workspaceRoot;
+    if (workspaceChanged) {
+      historyWorkspaceRef.current = workspaceRoot;
+      setHistory([]);
+      setHistoryLoading(true);
+    } else {
+      setHistoryLoading(true);
+    }
+
     void fetchHistory(engine)
-      .then((store) => {
+      .then(async (store) => {
         if (cancelled) return;
-        const threads = store.threads as HistoryThread[];
-        setHistory((prev) =>
-          threads.length > 0 || prev.length === 0 ? threads : prev,
-        );
-        // Restore the active conversation on first load / workspace switch.
+        let threads = store.threads as HistoryThread[];
+        let activeId = store.activeThreadId ?? threads[0]?.id;
+        const pending = pendingThreadRef.current;
+        const wantNew = pendingNewChatRef.current;
+
+        if (wantNew) {
+          pendingNewChatRef.current = false;
+          pendingThreadRef.current = null;
+          try {
+            const created = await postHistory({
+              ...engine,
+              body: { action: 'new', title: 'New chat' },
+            });
+            if (cancelled) return;
+            threads = created.threads as HistoryThread[];
+            activeId = created.activeThreadId ?? threads[0]?.id;
+            setHistory(threads);
+            setThreadId(activeId);
+            setMessages([]);
+            setTokenUsage(emptyTokenUsage());
+            setSuspension(null);
+            setView('chat');
+            return;
+          } catch {
+            /* fall through to normal load */
+          }
+        }
+
+        if (pending && threads.some((t) => t.id === pending)) {
+          pendingThreadRef.current = null;
+          try {
+            const activated = await postHistory({
+              ...engine,
+              body: { action: 'activate', threadId: pending },
+            });
+            if (cancelled) return;
+            threads = activated.threads as HistoryThread[];
+            activeId = pending;
+          } catch {
+            pendingThreadRef.current = null;
+          }
+        } else if (pending) {
+          pendingThreadRef.current = null;
+        }
+
+        // Always replace after a workspace change; on engine-only restart,
+        // keep prior threads if the fetch raced empty.
+        setHistory((prev) => {
+          if (workspaceChanged) return threads;
+          return threads.length > 0 || prev.length === 0 ? threads : prev;
+        });
+        const active = threads.find((t) => t.id === activeId);
         setThreadId((current) => {
+          if (workspaceChanged || pending) return activeId;
           if (current) return current;
-          return store.activeThreadId ?? threads[0]?.id;
+          return activeId;
         });
         setMessages((current) => {
+          if (workspaceChanged || pending) {
+            return active ? (active.messages as ChatMessage[]) : [];
+          }
           if (current.length > 0) return current;
-          const activeId = store.activeThreadId ?? threads[0]?.id;
-          if (!activeId) return current;
-          const active = threads.find((t) => t.id === activeId);
           return active ? (active.messages as ChatMessage[]) : current;
         });
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (workspaceChanged && !cancelled) setHistory([]);
+      })
+      .finally(() => {
+        if (!cancelled) setHistoryLoading(false);
+      });
     void fetchIndexStatus(engine)
       .then((s) => {
         if (cancelled) return;
-        setIndexHint(s.indexed ? `${s.fileCount} indexed` : 'not indexed');
+        setIndexStatus({
+          indexed: s.indexed,
+          fileCount: s.fileCount,
+          truncated: s.truncated,
+          lastIndexedAt: s.lastIndexedAt,
+          message: s.message,
+          embeddingError: undefined,
+        });
+        setIndexIndexing(false);
+        setIndexProgress(null);
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!cancelled) setIndexStatus(null);
+      });
     void fetchProfiles(engine)
-      .then((store) => {
+      .then(async (store) => {
         if (cancelled) return;
         setProfiles(store.profiles as ProfileRow[]);
         setActiveProfileId(store.activeProfileId);
-        const models = store.profiles
-          .map((p) => p.provider.model)
-          .filter(Boolean);
-        setKnownModels((prev) => Array.from(new Set([...prev, ...models])));
+        const active =
+          store.profiles.find((p) => p.id === store.activeProfileId) ??
+          store.profiles[0];
+        if (!active) {
+          setKnownModels([]);
+          modelsProfileRef.current = '';
+          return;
+        }
+        modelsProfileRef.current = active.id;
+        setModelsLoading(true);
+        setKnownModels(
+          active.provider.model?.trim() ? [active.provider.model.trim()] : [],
+        );
+        try {
+          const listed = await fetchProviderModels({
+            ...engine,
+            type: active.provider.type || 'openai-compatible',
+            providerBaseUrl: active.provider.baseUrl,
+          });
+          if (cancelled || modelsProfileRef.current !== active.id) return;
+          const selected = active.provider.model?.trim();
+          const next = Array.from(
+            new Set([
+              ...(selected ? [selected] : []),
+              ...listed.map((id) => id.trim()).filter(Boolean),
+            ]),
+          );
+          setKnownModels(next);
+        } catch {
+          if (!cancelled && modelsProfileRef.current === active.id) {
+            setKnownModels(
+              active.provider.model?.trim()
+                ? [active.provider.model.trim()]
+                : [],
+            );
+          }
+        } finally {
+          if (!cancelled && modelsProfileRef.current === active.id) {
+            setModelsLoading(false);
+          }
+        }
       })
       .catch(() => undefined);
     void fetchSkills(engine)
@@ -565,24 +688,139 @@ export function App() {
   const resetChatForWorkspaceSwitch = () => {
     setMessages([]);
     setThreadId(undefined);
+    setHistory([]);
+    setHistoryLoading(true);
     setTokenUsage(emptyTokenUsage());
     setSuspension(null);
     setPinnedPaths([]);
     setPinnedSkillIds([]);
     setPinnedMcpIds([]);
+    setIndexStatus(null);
+    setIndexIndexing(false);
+    setIndexProgress(null);
+    setIndexStream([]);
   };
+
+  const pushIndexStream = useCallback((line: string) => {
+    const stamp = new Date().toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+    setIndexStream((prev) => {
+      const last = prev[prev.length - 1];
+      if (last && last.endsWith(line)) return prev;
+      return [...prev.slice(-80), `${stamp}  ${line}`];
+    });
+  }, []);
+
+  const refreshIndexStatus = useCallback(async () => {
+    if (!engine) return;
+    try {
+      const s = await fetchIndexStatus(engine);
+      setIndexStatus({
+        indexed: s.indexed,
+        fileCount: s.fileCount,
+        truncated: s.truncated,
+        lastIndexedAt: s.lastIndexedAt,
+        message: s.message,
+      });
+      return s;
+    } catch {
+      /* non-fatal */
+      return null;
+    } finally {
+      setIndexIndexing(false);
+      setIndexProgress(null);
+    }
+  }, [engine]);
+
+  const runReindex = useCallback(async () => {
+    if (!engine || !snapshot) return;
+    setIndexIndexing(true);
+    setIndexProgress(6);
+    setIndexStream([]);
+    pushIndexStream('Reindex started…');
+    const tick = window.setInterval(() => {
+      setIndexProgress((p) => {
+        if (p == null) return 12;
+        return Math.min(92, p + Math.random() * 10);
+      });
+    }, 400);
+    const poll = window.setInterval(() => {
+      void fetchIndexStatus(engine)
+        .then((s) => {
+          setIndexStatus({
+            indexed: s.indexed,
+            fileCount: s.fileCount,
+            truncated: s.truncated,
+            lastIndexedAt: s.lastIndexedAt,
+            message: s.message,
+          });
+          if (s.message) pushIndexStream(s.message);
+          if (s.fileCount > 0) {
+            pushIndexStream(`${s.fileCount.toLocaleString()} files scanned`);
+          }
+        })
+        .catch(() => undefined);
+    }, 900);
+    try {
+      const result = await reindexWorkspace({
+        ...engine,
+        maximumFiles: settings.workspace.maximumIndexFiles || undefined,
+        semanticIndex: {
+          enabled: settings.semanticIndex.enabled,
+          source: settings.semanticIndex.source,
+          model: settings.semanticIndex.model,
+          dimensions: settings.semanticIndex.dimensions,
+          normalized: settings.semanticIndex.normalized,
+          baseUrl: settings.provider.baseUrl,
+        },
+      });
+      setIndexProgress(100);
+      pushIndexStream(result.message || 'Reindex finished');
+      if (result.fileCount > 0) {
+        pushIndexStream(
+          `${result.fileCount.toLocaleString()} files in index`,
+        );
+      }
+      await refreshIndexStatus();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg);
+      pushIndexStream(`Error: ${msg}`);
+      setIndexIndexing(false);
+      setIndexProgress(null);
+    } finally {
+      window.clearInterval(tick);
+      window.clearInterval(poll);
+    }
+  }, [engine, snapshot, settings, refreshIndexStatus, pushIndexStream]);
+
+  useEffect(() => {
+    if (!indexIndexing) return;
+    const tick = window.setInterval(() => {
+      setIndexProgress((p) => {
+        if (p == null) return 10;
+        if (p >= 92) return p;
+        return p + Math.random() * 8;
+      });
+    }, 450);
+    return () => window.clearInterval(tick);
+  }, [indexIndexing]);
 
   const onPickWorkspace = async () => {
     const bridge = getDesktopBridge();
     if (!bridge) return;
     setBusy(true);
-    setRepoOpen(false);
+    setPicker(null);
     try {
       await bridge.pickWorkspace();
-      await refresh();
       resetChatForWorkspaceSwitch();
+      await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      setHistoryLoading(false);
     } finally {
       setBusy(false);
     }
@@ -592,21 +830,25 @@ export function App() {
     const bridge = getDesktopBridge();
     if (!bridge) return;
     if (workspaceRoot === snapshot?.workspaceRoot) {
-      setRepoOpen(false);
+      setPicker(null);
       return;
     }
     setBusy(true);
-    setRepoOpen(false);
+    setPicker(null);
     try {
+      resetChatForWorkspaceSwitch();
       const result = await bridge.setWorkspace(workspaceRoot);
       if (!result.ok) {
         setError(result.reason ?? 'Failed to switch repository');
+        setHistoryLoading(false);
         return;
       }
+      // Expand the destination project in the sidebar.
+      setCollapsedWorkspaces((prev) => ({ ...prev, [workspaceRoot]: false }));
       await refresh();
-      resetChatForWorkspaceSwitch();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      setHistoryLoading(false);
     } finally {
       setBusy(false);
     }
@@ -767,18 +1009,9 @@ export function App() {
     try {
       const result = await bridge.saveSettings(inputSave);
       if (!result.ok) throw new Error(result.reason ?? 'save_failed');
-      if (engine) {
-        await postProfiles({
-          ...engine,
-          body: {
-            action: 'upsert',
-            name: 'Default',
-            provider: inputSave.settings.provider,
-            hasSecret: Boolean(inputSave.apiKey) || snapshot?.hasApiKey,
-            apiKey: inputSave.apiKey,
-          },
-        }).catch(() => undefined);
-      }
+      // Profile upserts are owned by ProfileSettings (with the live engine
+      // token). Do not overwrite/create a "Default" profile here — that raced
+      // the engine restart and caused profile saves to fail with 401.
       await refresh();
     } finally {
       setBusy(false);
@@ -787,20 +1020,112 @@ export function App() {
 
   const onSelectModel = async (model: string) => {
     if (!snapshot || !model.trim()) return;
+    const normalized = normalizeDesktopProviderModel(
+      model,
+      settings.provider.baseUrl,
+    );
     const next = mergeDesktopSettings({
       ...settings,
-      provider: { ...settings.provider, model },
+      provider: { ...settings.provider, model: normalized },
     });
     await onSaveSettings({ settings: next });
-    setKnownModels((prev) =>
-      prev.includes(model) ? prev : [model, ...prev],
-    );
+    setKnownModels((prev) => {
+      if (prev.includes(normalized)) return prev;
+      return [normalized, ...prev];
+    });
   };
+
+  const onModeChange = (next: DesktopAgentMode) => {
+    setMode(next);
+    const defaults = settings.ui.modeDefaults[next];
+    if (!defaults) return;
+
+    const rawThorough = String(defaults.thoroughness ?? 'medium');
+    const nextThorough: ThoroughnessUi =
+      rawThorough === 'low' || rawThorough === 'quick'
+        ? 'low'
+        : rawThorough === 'high' || rawThorough === 'thorough'
+          ? 'high'
+          : 'medium';
+    setThoroughness(nextThorough);
+
+    const rawApproval = String(defaults.approvalMode ?? 'guided');
+    const nextApproval: ApprovalUiMode =
+      rawApproval === 'safe' ||
+      rawApproval === 'guided' ||
+      rawApproval === 'pilot'
+        ? rawApproval
+        : 'guided';
+    setApprovalMode(nextApproval);
+
+    const nextModel = defaults.model?.trim();
+    if (nextModel) {
+      void onSelectModel(nextModel);
+    }
+  };
+
+  const refreshModelsForActiveProfile = useCallback(
+    async (profile?: ProfileRow | null, engineOpts?: typeof engine) => {
+      const target =
+        profile ??
+        profiles.find((p) => p.id === activeProfileId) ??
+        profiles[0] ??
+        null;
+      const opts = engineOpts ?? engine;
+      if (!target || !opts) return;
+      const requestId = target.id;
+      modelsProfileRef.current = requestId;
+      setModelsLoading(true);
+      // Clear other profiles' models immediately — no mix-match.
+      setKnownModels(
+        target.provider.model?.trim() ? [target.provider.model.trim()] : [],
+      );
+      try {
+        const listed = await fetchProviderModels({
+          ...opts,
+          type: target.provider.type || 'openai-compatible',
+          providerBaseUrl: target.provider.baseUrl,
+        });
+        if (modelsProfileRef.current !== requestId) return;
+        const selected = normalizeDesktopProviderModel(
+          target.provider.model ?? '',
+          target.provider.baseUrl,
+        );
+        const next = Array.from(
+          new Set([
+            ...(selected ? [selected] : []),
+            ...listed
+              .map((id) =>
+                normalizeDesktopProviderModel(id.trim(), target.provider.baseUrl),
+              )
+              .filter(Boolean),
+          ]),
+        );
+        setKnownModels(next);
+      } catch {
+        if (modelsProfileRef.current === requestId) {
+          setKnownModels(
+            target.provider.model?.trim()
+              ? [target.provider.model.trim()]
+              : [],
+          );
+        }
+      } finally {
+        if (modelsProfileRef.current === requestId) {
+          setModelsLoading(false);
+        }
+      }
+    },
+    [activeProfileId, engine, profiles],
+  );
 
   const onSelectProfile = async (id: string) => {
     if (!engine) return;
-    setProfileOpen(false);
+    setPicker(null);
     setBusy(true);
+    setModelsLoading(true);
+    setKnownModels([]);
+    modelsProfileRef.current = id;
     try {
       await postProfiles({
         ...engine,
@@ -809,14 +1134,52 @@ export function App() {
       const store = await fetchProfiles(engine);
       setProfiles(store.profiles as ProfileRow[]);
       setActiveProfileId(store.activeProfileId);
-      const profile = store.profiles.find((p) => p.id === store.activeProfileId);
-      if (profile?.provider.model) {
-        await onSelectModel(profile.provider.model);
-      } else {
-        await refresh();
+      const profile =
+        store.profiles.find((p) => p.id === store.activeProfileId) ??
+        store.profiles.find((p) => p.id === id);
+      if (!profile) {
+        setKnownModels([]);
+        return;
       }
+
+      // Apply this profile's full provider (no leftover from the previous one).
+      const baseUrl = profile.provider.baseUrl ?? '';
+      const rawPreset = (profile.provider.preset ||
+        profile.provider.type ||
+        settings.provider.preset) as DesktopSettings['provider']['preset'];
+      const preset =
+        /ollama\.com/i.test(baseUrl) && rawPreset === 'ollama'
+          ? 'ollama-cloud'
+          : rawPreset;
+      const model = normalizeDesktopProviderModel(
+        profile.provider.model ?? '',
+        baseUrl,
+      );
+      const next = mergeDesktopSettings({
+        ...settings,
+        provider: {
+          ...settings.provider,
+          type: (profile.provider.type ||
+            settings.provider.type) as DesktopSettings['provider']['type'],
+          preset,
+          baseUrl,
+          model,
+          contextWindow: profile.provider.contextWindow ?? 0,
+          maximumOutputTokens: profile.provider.maximumOutputTokens ?? 0,
+        },
+      });
+      await onSaveSettings({ settings: next });
+
+      // Engine may have restarted — use fresh credentials for model list.
+      const bridge = getDesktopBridge();
+      const fresh = bridge ? await bridge.getSnapshot() : null;
+      const listEngine = fresh
+        ? { baseUrl: fresh.engineBaseUrl, token: fresh.authToken }
+        : engine;
+      await refreshModelsForActiveProfile(profile as ProfileRow, listEngine);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      setModelsLoading(false);
     } finally {
       setBusy(false);
     }
@@ -842,6 +1205,17 @@ export function App() {
     setView('chat');
   };
 
+  const onNewChatInWorkspace = async (workspaceRoot: string) => {
+    if (workspaceRoot === snapshot?.workspaceRoot) {
+      await onNewChat();
+      return;
+    }
+    pendingNewChatRef.current = true;
+    pendingThreadRef.current = null;
+    setCollapsedWorkspaces((prev) => ({ ...prev, [workspaceRoot]: false }));
+    await onSwitchWorkspace(workspaceRoot);
+  };
+
   const onOpenThread = async (id: string) => {
     if (!engine) return;
     setSuspension(null);
@@ -858,6 +1232,112 @@ export function App() {
     setTokenUsage(emptyTokenUsage());
     setView('chat');
   };
+
+  const onDeleteThread = async (workspaceRoot: string, id: string) => {
+    const isActive = workspaceRoot === snapshot?.workspaceRoot;
+    const titleFromActive = history.find((t) => t.id === id)?.title?.trim();
+    const titleFromRemote = remoteHistories
+      .find((g) => g.workspaceRoot === workspaceRoot)
+      ?.threads.find((t) => t.id === id)?.title?.trim();
+    const label = titleFromActive || titleFromRemote || 'this chat';
+    const ok = window.confirm(`Delete “${label}”? This cannot be undone.`);
+    if (!ok) return;
+
+    if (isActive && engine) {
+      const store = await deleteHistoryThread({ ...engine, threadId: id });
+      setHistory(store.threads as HistoryThread[]);
+      const nextId = store.activeThreadId;
+      setThreadId(nextId);
+      if (nextId) {
+        setMessages(
+          (store.threads.find((t) => t.id === nextId)?.messages ??
+            []) as ChatMessage[],
+        );
+      } else {
+        setMessages([]);
+      }
+      setSuspension(null);
+    } else {
+      const bridge = getDesktopBridge();
+      if (!bridge?.deleteWorkspaceChat) return;
+      const result = await bridge.deleteWorkspaceChat(workspaceRoot, id);
+      if (!result.ok) {
+        setError(result.reason ?? 'Failed to delete chat');
+        return;
+      }
+    }
+    setRemoteHistories((prev) =>
+      prev.map((group) =>
+        group.workspaceRoot === workspaceRoot
+          ? {
+              ...group,
+              threads: group.threads.filter((t) => t.id !== id),
+            }
+          : group,
+      ),
+    );
+  };
+
+  const onOpenThreadInWorkspace = async (
+    workspaceRoot: string,
+    id: string,
+  ) => {
+    if (workspaceRoot === snapshot?.workspaceRoot) {
+      await onOpenThread(id);
+      return;
+    }
+    pendingThreadRef.current = id;
+    await onSwitchWorkspace(workspaceRoot);
+  };
+
+  const refreshRemoteHistories = useCallback(async () => {
+    const bridge = getDesktopBridge();
+    const roots = snapshot?.recentWorkspaces ?? [];
+    if (!bridge?.listWorkspaceChatSummaries || roots.length === 0) {
+      setRemoteHistories([]);
+      return;
+    }
+    try {
+      const rows = await bridge.listWorkspaceChatSummaries(roots);
+      setRemoteHistories(rows);
+    } catch {
+      /* non-fatal */
+    }
+  }, [snapshot?.recentWorkspaces]);
+
+  useEffect(() => {
+    void refreshRemoteHistories();
+  }, [refreshRemoteHistories, history]);
+
+  const chatNavGroups = useMemo(() => {
+    const roots =
+      snapshot?.recentWorkspaces?.length
+        ? snapshot.recentWorkspaces
+        : snapshot?.workspaceRoot
+          ? [snapshot.workspaceRoot]
+          : [];
+    const remoteMap = new Map(
+      remoteHistories.map((row) => [row.workspaceRoot, row.threads]),
+    );
+    return roots.map((workspaceRoot) => {
+      const active = workspaceRoot === snapshot?.workspaceRoot;
+      return {
+        workspaceRoot,
+        active,
+        threads: active
+          ? history.map((t) => ({
+              id: t.id,
+              title: t.title,
+              updatedAt: t.updatedAt,
+            }))
+          : (remoteMap.get(workspaceRoot) ?? []).map((t) => ({
+              id: t.id,
+              title: t.title,
+              updatedAt: t.updatedAt,
+            })),
+      };
+    });
+  }, [snapshot?.recentWorkspaces, snapshot?.workspaceRoot, history, remoteHistories]);
 
   const runResume = useCallback(
     async (body: Record<string, unknown>) => {
@@ -909,6 +1389,7 @@ export function App() {
             body: {
               ...body,
               approvalPreset: approvalMode,
+              ...(threadId ? { sessionId: threadId } : {}),
             },
           }),
           assistantId,
@@ -1040,6 +1521,8 @@ export function App() {
           baseUrl: snapshot.engineBaseUrl,
           prompt,
           mode,
+          model: snapshot.settings.provider.model,
+          sessionId: activeThread,
           approvalPreset: approvalMode,
           thoroughness,
           pinnedPaths,
@@ -1342,121 +1825,6 @@ export function App() {
       className={`chat-view${inCodeMode ? ' chat-view--code' : ''}`}
       style={{ '--composer-mode-color': accent } as CSSProperties}
     >
-      <header className="chat-topbar">
-        <div className="chat-topbar__left">
-          <span className="chat-topbar__title">Mitii</span>
-          <span className="chat-topbar__mode" style={{ color: accent }}>
-            {mode === 'ask' ? 'Ask' : mode === 'plan' ? 'Plan' : 'Agent'}
-          </span>
-          <div className="layout-toggle" role="group" aria-label="Chat layout">
-            <button
-              type="button"
-              className={chatLayout === 'chat' ? 'is-active' : undefined}
-              onClick={() => setLayout('chat')}
-            >
-              Chat
-            </button>
-            <button
-              type="button"
-              className={chatLayout === 'code' ? 'is-active' : undefined}
-              onClick={() => setLayout('code')}
-            >
-              Code
-            </button>
-          </div>
-        </div>
-        <div className="chat-topbar__right">
-          <div className="top-select" ref={profileRef}>
-            <button
-              type="button"
-              className="top-select__trigger"
-              disabled={busy}
-              aria-expanded={profileOpen}
-              onClick={() => setProfileOpen((v) => !v)}
-            >
-              <span className="top-select__label">Profile</span>
-              <span className="top-select__value">
-                {activeProfile?.name ?? 'Default'}
-              </span>
-              <span aria-hidden>▾</span>
-            </button>
-            {profileOpen ? (
-              <div className="top-select__menu" role="listbox">
-                {profiles.length === 0 ? (
-                  <div className="top-select__empty">No profiles yet</div>
-                ) : (
-                  profiles.map((profile) => (
-                    <button
-                      key={profile.id}
-                      type="button"
-                      role="option"
-                      aria-selected={profile.id === activeProfileId}
-                      className={
-                        profile.id === activeProfileId
-                          ? 'is-selected'
-                          : undefined
-                      }
-                      onClick={() => void onSelectProfile(profile.id)}
-                    >
-                      {profile.name}
-                    </button>
-                  ))
-                )}
-              </div>
-            ) : null}
-          </div>
-          <div className="top-select" ref={repoRef}>
-            <button
-              type="button"
-              className="top-select__trigger top-select__trigger--repo"
-              disabled={busy}
-              aria-expanded={repoOpen}
-              title={snapshot?.workspaceRoot ?? 'Workspace'}
-              onClick={() => {
-                setProfileOpen(false);
-                setRepoOpen((v) => !v);
-              }}
-            >
-              <span className="top-select__label">Repo</span>
-              <span className="top-select__value">
-                {shortPath(snapshot?.workspaceRoot ?? 'Select folder')}
-              </span>
-              <span aria-hidden>▾</span>
-            </button>
-            {repoOpen ? (
-              <div className="top-select__menu top-select__menu--repo" role="listbox">
-                {(snapshot?.recentWorkspaces ?? []).length === 0 ? (
-                  <div className="top-select__empty">No repositories yet</div>
-                ) : (
-                  (snapshot?.recentWorkspaces ?? []).map((path) => (
-                    <button
-                      key={path}
-                      type="button"
-                      role="option"
-                      aria-selected={path === snapshot?.workspaceRoot}
-                      className={
-                        path === snapshot?.workspaceRoot ? 'is-selected' : undefined
-                      }
-                      title={path}
-                      onClick={() => void onSwitchWorkspace(path)}
-                    >
-                      {shortPath(path)}
-                    </button>
-                  ))
-                )}
-                <button
-                  type="button"
-                  className="top-select__menu-action"
-                  onClick={() => void onPickWorkspace()}
-                >
-                  Add repository…
-                </button>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </header>
-
       {error ? <div className="alert">{error}</div> : null}
 
       <div className="feed" ref={feedRef}>
@@ -1651,7 +2019,7 @@ export function App() {
                 approvalMode={approvalMode}
                 thoroughness={thoroughness}
                 disabled={busy}
-                onModeChange={setMode}
+                onModeChange={onModeChange}
                 onApprovalModeChange={setApprovalMode}
                 onThoroughnessChange={setThoroughness}
               />
@@ -1697,8 +2065,12 @@ export function App() {
               <ModelQuickSelect
                 model={modelLabel}
                 models={knownModels}
+                loading={modelsLoading}
                 disabled={busy}
                 onChange={(next) => void onSelectModel(next)}
+                onOpen={() => {
+                  void refreshModelsForActiveProfile();
+                }}
               />
             </div>
           </div>
@@ -1709,47 +2081,110 @@ export function App() {
 
   return (
     <div className={`app${inCodeMode ? ' app--code' : ''}`}>
+      <header className="app-topbar">
+        <div className="app-topbar__left">
+          <div className="layout-toggle" role="group" aria-label="Layout">
+            <button
+              type="button"
+              className={
+                view === 'chat' && chatLayout === 'chat' ? 'is-active' : undefined
+              }
+              onClick={() => setLayout('chat')}
+            >
+              Chat
+            </button>
+            <button
+              type="button"
+              className={inCodeMode ? 'is-active' : undefined}
+              onClick={() => setLayout('code')}
+            >
+              Code
+            </button>
+          </div>
+        </div>
+        <div className="app-topbar__right">
+          <IndexStatusChip
+            index={indexStatus}
+            indexing={indexIndexing}
+            progressPercent={indexProgress}
+            streamLines={indexStream}
+            workspaceLabel={workspaceLabel(snapshot?.workspaceRoot ?? '')}
+            onReindex={() => void runReindex()}
+            onOpenSettings={() => {
+              setSettingsTab('features');
+              setView('settings');
+            }}
+          />
+          <div className="status-icons status-icons--identity">
+          <div className="top-select">
+            <button
+              type="button"
+              className="top-select__trigger"
+              disabled={busy}
+              aria-expanded={picker === 'profile'}
+              onClick={() =>
+                setPicker((v) => (v === 'profile' ? null : 'profile'))
+              }
+            >
+              <span className="top-select__label">Profile</span>
+              <span className="top-select__value">
+                {activeProfile?.name ?? 'Default'}
+              </span>
+              <span aria-hidden>▾</span>
+            </button>
+          </div>
+          <div className="top-select">
+            <button
+              type="button"
+              className="top-select__trigger top-select__trigger--repo"
+              disabled={busy}
+              aria-expanded={picker === 'workspace'}
+              title={snapshot?.workspaceRoot ?? 'Workspace'}
+              onClick={() =>
+                setPicker((v) => (v === 'workspace' ? null : 'workspace'))
+              }
+            >
+              <span className="top-select__label">Workspace</span>
+              <span className="top-select__value">
+                {workspaceLabel(snapshot?.workspaceRoot ?? '') ||
+                  'Select folder'}
+              </span>
+              <span aria-hidden>▾</span>
+            </button>
+          </div>
+          </div>
+        </div>
+      </header>
+
+      <div className="app-body">
       {showHistorySide ? (
         <>
           <aside className="side" style={{ width: sideWidth, flex: '0 0 auto' }}>
             <div className="side-brand">
               <img src={logoUrl} alt="Mitii" />
             </div>
-            <button
-              type="button"
-              className="side-new"
-              disabled={busy}
-              onClick={() => void onNewChat()}
-            >
-              New chat
-            </button>
-            <nav className="side-list">
-              {history.map((thread) => (
-                <button
-                  key={thread.id}
-                  type="button"
-                  className={thread.id === threadId ? 'active' : undefined}
-                  onClick={() => void onOpenThread(thread.id)}
-                >
-                  {thread.title || 'Chat'}
-                </button>
-              ))}
-            </nav>
+            <ChatHistoryNav
+              groups={chatNavGroups}
+              activeThreadId={threadId}
+              collapsed={collapsedWorkspaces}
+              busy={busy}
+              loading={historyLoading}
+              onToggleGroup={(root) =>
+                setCollapsedWorkspaces((prev) => {
+                  const currently =
+                    Object.prototype.hasOwnProperty.call(prev, root)
+                      ? Boolean(prev[root])
+                      : root !== snapshot?.workspaceRoot;
+                  return { ...prev, [root]: !currently };
+                })
+              }
+              onOpenThread={(root, id) =>
+                void onOpenThreadInWorkspace(root, id)
+              }
+              onDeleteThread={(root, id) => void onDeleteThread(root, id)}
+              onNewChat={(root) => void onNewChatInWorkspace(root)}
+            />
             <div className="side-foot">
-              <span className="side-index">{indexHint || '—'}</span>
-              <button
-                type="button"
-                className="active"
-                onClick={() => setLayout('chat')}
-              >
-                Chat
-              </button>
-              <button
-                type="button"
-                onClick={() => setLayout('code')}
-              >
-                Code
-              </button>
               <button type="button" onClick={() => setView('settings')}>
                 Settings
               </button>
@@ -1890,13 +2325,15 @@ export function App() {
             hideSideNav
             onSave={onSaveSettings}
             onPickWorkspace={() => void onPickWorkspace()}
+            onIndexStarted={() => {
+              setIndexIndexing(true);
+              setIndexProgress(8);
+              setIndexStream([]);
+              pushIndexStream('Reindex started from settings…');
+            }}
             onIndexChanged={() => {
-              if (!engine) return;
-              void fetchIndexStatus(engine).then((s) =>
-                setIndexHint(
-                  s.indexed ? `${s.fileCount} indexed` : 'not indexed',
-                ),
-              );
+              pushIndexStream('Index status updated');
+              void refreshIndexStatus();
             }}
           />
         ) : inCodeMode ? (
@@ -1954,6 +2391,76 @@ export function App() {
           chatPanel
         )}
       </section>
+      </div>
+
+      {picker ? (
+        <div
+          className="identity-picker-overlay"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setPicker(null)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setPicker(null);
+          }}
+        >
+          <div
+            className="identity-picker-shell"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {picker === 'profile' ? (
+              <IdentityPicker
+                title="Who's coding?"
+                subtitle="Profiles own provider, modes, and budget."
+                cards={profiles.map((profile) => ({
+                  id: profile.id,
+                  title: profile.name,
+                  subtitle: profile.provider.model || profile.provider.preset,
+                  active: profile.id === activeProfileId,
+                }))}
+                onSelect={(id) => void onSelectProfile(id)}
+                onAdd={() => {
+                  setPicker(null);
+                  setSettingsTab('profiles');
+                  setView('settings');
+                }}
+                addLabel="Manage profiles"
+                footer={
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => setPicker(null)}
+                  >
+                    Cancel
+                  </button>
+                }
+              />
+            ) : (
+              <IdentityPicker
+                title="Choose a workspace"
+                subtitle="Each workspace keeps its own chats and storage link."
+                cards={(snapshot?.recentWorkspaces ?? []).map((path) => ({
+                  id: path,
+                  title: workspaceLabel(path),
+                  subtitle: shortPath(path),
+                  active: path === snapshot?.workspaceRoot,
+                }))}
+                onSelect={(id) => void onSwitchWorkspace(id)}
+                onAdd={() => void onPickWorkspace()}
+                addLabel="Add workspace"
+                footer={
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => setPicker(null)}
+                  >
+                    Cancel
+                  </button>
+                }
+              />
+            )}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

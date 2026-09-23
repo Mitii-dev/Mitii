@@ -1,21 +1,31 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 interface ModelQuickSelectProps {
   model: string;
   models: string[];
   disabled?: boolean;
+  loading?: boolean;
   onChange: (model: string) => void;
+  onOpen?: () => void;
 }
 
 export function ModelQuickSelect({
   model,
   models,
   disabled,
+  loading,
   onChange,
+  onOpen,
 }: ModelQuickSelectProps) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const rootRef = useRef<HTMLDivElement>(null);
-  const options = models.length > 0 ? models : model ? [model] : [];
+  const options = useMemo(() => {
+    const base = models.length > 0 ? models : model ? [model] : [];
+    const q = query.trim().toLowerCase();
+    if (!q) return base;
+    return base.filter((id) => id.toLowerCase().includes(q));
+  }, [models, model, query]);
 
   useEffect(() => {
     if (!open) return;
@@ -33,6 +43,10 @@ export function ModelQuickSelect({
     };
   }, [open]);
 
+  useEffect(() => {
+    if (!open) setQuery('');
+  }, [open]);
+
   return (
     <div className="model-quick-select" ref={rootRef}>
       <button
@@ -42,13 +56,31 @@ export function ModelQuickSelect({
         aria-expanded={open}
         disabled={disabled}
         title="Model"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          const next = !open;
+          setOpen(next);
+          if (next) onOpen?.();
+        }}
       >
-        <span>{model || 'Select model'}</span>
+        <span>{loading ? 'Loading models…' : model || 'Select model'}</span>
         <span aria-hidden>▾</span>
       </button>
       {open ? (
         <div className="model-quick-select__menu" role="listbox" aria-label="Model">
+          {models.length > 8 ? (
+            <input
+              className="model-quick-select__search"
+              type="search"
+              placeholder="Filter models…"
+              value={query}
+              autoFocus
+              onChange={(e) => setQuery(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : null}
+          {loading && models.length === 0 ? (
+            <div className="model-quick-select__empty">Fetching models…</div>
+          ) : null}
           {options.map((id) => (
             <button
               key={id}
@@ -71,9 +103,11 @@ export function ModelQuickSelect({
               ) : null}
             </button>
           ))}
-          {options.length === 0 ? (
+          {!loading && options.length === 0 ? (
             <div className="model-quick-select__empty">
-              Open Settings to pick a model
+              {query.trim()
+                ? 'No models match that filter'
+                : 'No models for this profile — Test connection in Settings'}
             </div>
           ) : null}
         </div>

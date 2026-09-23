@@ -11,10 +11,19 @@ export type DiffLineKind =
 export interface DiffLine {
   kind: DiffLineKind;
   text: string;
+  oldNo?: number;
+  newNo?: number;
 }
+
+const HUNK_RE = /^@@\s+-(\d+)(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@/;
 
 export function parseUnifiedDiff(diff: string): DiffLine[] {
   if (!diff) return [{ kind: 'empty', text: '' }];
+
+  let oldNo = 0;
+  let newNo = 0;
+  let inHunk = false;
+
   return diff.split('\n').map((text) => {
     if (
       text.startsWith('+++') ||
@@ -29,10 +38,36 @@ export function parseUnifiedDiff(diff: string): DiffLine[] {
     ) {
       return { kind: 'meta' as const, text };
     }
-    if (text.startsWith('@@')) return { kind: 'hunk' as const, text };
-    if (text.startsWith('+')) return { kind: 'add' as const, text };
-    if (text.startsWith('-')) return { kind: 'del' as const, text };
-    return { kind: 'ctx' as const, text };
+
+    if (text.startsWith('@@')) {
+      const match = HUNK_RE.exec(text);
+      if (match) {
+        oldNo = Number(match[1]);
+        newNo = Number(match[2]);
+        inHunk = true;
+      }
+      return { kind: 'hunk' as const, text };
+    }
+
+    if (!inHunk) {
+      return { kind: 'ctx' as const, text };
+    }
+
+    if (text.startsWith('+')) {
+      const line: DiffLine = { kind: 'add', text, newNo };
+      newNo += 1;
+      return line;
+    }
+    if (text.startsWith('-')) {
+      const line: DiffLine = { kind: 'del', text, oldNo };
+      oldNo += 1;
+      return line;
+    }
+
+    const line: DiffLine = { kind: 'ctx', text, oldNo, newNo };
+    oldNo += 1;
+    newNo += 1;
+    return line;
   });
 }
 
@@ -46,7 +81,17 @@ export function DiffView(props: { content: string }) {
           key={i}
           className={`workspace-diff__line workspace-diff__line--${line.kind}`}
         >
-          {line.text.length === 0 ? ' ' : line.text}
+          <span className="workspace-diff__gutter" aria-hidden>
+            <span className="workspace-diff__no">
+              {line.oldNo ?? ''}
+            </span>
+            <span className="workspace-diff__no">
+              {line.newNo ?? ''}
+            </span>
+          </span>
+          <span className="workspace-diff__text">
+            {line.text.length === 0 ? ' ' : line.text}
+          </span>
         </div>
       ))}
     </pre>

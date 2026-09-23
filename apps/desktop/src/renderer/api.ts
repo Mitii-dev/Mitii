@@ -75,6 +75,8 @@ export async function* streamPrompt(options: {
   prompt: string;
   mode: DesktopAgentMode;
   token?: string;
+  model?: string;
+  sessionId?: string;
   approvalPreset?: string;
   thoroughness?: string;
   pinnedPaths?: string[];
@@ -87,6 +89,10 @@ export async function* streamPrompt(options: {
     body: JSON.stringify({
       prompt: options.prompt,
       mode: options.mode,
+      ...(options.model?.trim() ? { model: options.model.trim() } : {}),
+      ...(options.sessionId?.trim()
+        ? { sessionId: options.sessionId.trim() }
+        : {}),
       ...(options.approvalPreset
         ? { approvalPreset: options.approvalPreset }
         : {}),
@@ -390,6 +396,32 @@ export async function testConnection(options: {
   };
 }
 
+export async function fetchProviderModels(options: {
+  baseUrl: string;
+  token?: string;
+  type: string;
+  providerBaseUrl?: string;
+  apiKey?: string;
+}): Promise<string[]> {
+  const res = await fetch(`${options.baseUrl}/v1/provider/models`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: JSON.stringify({
+      type: options.type,
+      baseUrl: options.providerBaseUrl,
+      apiKey: options.apiKey,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`models_${res.status}:${text}`);
+  }
+  const data = (await res.json()) as { models?: string[] };
+  return Array.isArray(data.models)
+    ? data.models.filter((id) => typeof id === 'string' && id.trim())
+    : [];
+}
+
 export async function fetchProfiles(options: {
   baseUrl: string;
   token?: string;
@@ -472,6 +504,18 @@ export async function postHistory(options: {
     throw new Error(`history_${res.status}:${text}`);
   }
   return (await res.json()) as Awaited<ReturnType<typeof fetchHistory>>;
+}
+
+export async function deleteHistoryThread(options: {
+  baseUrl: string;
+  token?: string;
+  threadId: string;
+}): Promise<Awaited<ReturnType<typeof fetchHistory>>> {
+  return postHistory({
+    baseUrl: options.baseUrl,
+    token: options.token,
+    body: { action: 'delete', threadId: options.threadId },
+  });
 }
 
 export async function fetchIndexStatus(options: {
@@ -621,6 +665,87 @@ export async function deleteWorkspacePaths(options: {
   return (await res.json()) as Awaited<ReturnType<typeof deleteWorkspacePaths>>;
 }
 
+export async function createWorkspaceFilePath(options: {
+  baseUrl: string;
+  token?: string;
+  parent: string;
+  name: string;
+  content?: string;
+}): Promise<{ ok: boolean; path: string }> {
+  const res = await fetch(`${options.baseUrl}/v1/workspace/create-file`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: JSON.stringify({
+      parent: options.parent,
+      name: options.name,
+      content: options.content ?? '',
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`create_file_${res.status}:${text}`);
+  }
+  return (await res.json()) as Awaited<
+    ReturnType<typeof createWorkspaceFilePath>
+  >;
+}
+
+export async function createWorkspaceFolderPath(options: {
+  baseUrl: string;
+  token?: string;
+  parent: string;
+  name: string;
+}): Promise<{ ok: boolean; path: string }> {
+  const res = await fetch(`${options.baseUrl}/v1/workspace/create-folder`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: JSON.stringify({ parent: options.parent, name: options.name }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`create_folder_${res.status}:${text}`);
+  }
+  return (await res.json()) as Awaited<
+    ReturnType<typeof createWorkspaceFolderPath>
+  >;
+}
+
+export async function copyWorkspacePaths(options: {
+  baseUrl: string;
+  token?: string;
+  paths: string[];
+  destDir: string;
+}): Promise<{ ok: boolean; results: Array<{ from: string; to: string }> }> {
+  const res = await fetch(`${options.baseUrl}/v1/workspace/copy`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: JSON.stringify({ paths: options.paths, destDir: options.destDir }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`copy_${res.status}:${text}`);
+  }
+  return (await res.json()) as Awaited<ReturnType<typeof copyWorkspacePaths>>;
+}
+
+export async function moveWorkspacePaths(options: {
+  baseUrl: string;
+  token?: string;
+  paths: string[];
+  destDir: string;
+}): Promise<{ ok: boolean; results: Array<{ from: string; to: string }> }> {
+  const res = await fetch(`${options.baseUrl}/v1/workspace/move`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: JSON.stringify({ paths: options.paths, destDir: options.destDir }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`move_${res.status}:${text}`);
+  }
+  return (await res.json()) as Awaited<ReturnType<typeof moveWorkspacePaths>>;
+}
+
 export async function fetchAbsoluteWorkspacePath(options: {
   baseUrl: string;
   token?: string;
@@ -686,4 +811,11 @@ export function shortPath(path: string): string {
   const parts = path.replace(/\\/g, '/').split('/').filter(Boolean);
   if (parts.length <= 3) return path;
   return `…/${parts.slice(-3).join('/')}`;
+}
+
+/** Leaf folder name for workspace grouping labels. */
+export function workspaceLabel(path: string): string {
+  if (!path) return 'Workspace';
+  const parts = path.replace(/\\/g, '/').split('/').filter(Boolean);
+  return parts[parts.length - 1] || path;
 }

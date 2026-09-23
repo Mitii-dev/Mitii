@@ -35,6 +35,20 @@ import {
 } from './desktop-store-client.js';
 import { installApplicationMenu } from './menu.js';
 import {
+  applyAppDataRedirectBeforeReady,
+  ensureWorkspaceStorageLink,
+  getStorageInfo,
+  relocateWorkspaceData,
+  resetWorkspaceDataToDefault,
+  writeAppDataRedirect,
+  writeRootStoragePath,
+} from './storage-locations.js';
+import {
+  deleteThread,
+  loadHistory,
+  saveHistory,
+} from '../engine/history.js';
+import {
   clearStoredApiKey,
   clearStoredSearchApiKey,
   hasStoredApiKey,
@@ -89,11 +103,13 @@ async function startEngine(): Promise<void> {
   if (forceEcho) env.MITII_FORCE_ECHO = '1';
   env.MITII_DESKTOP_STORE_PATH = store.dbPath;
 
+  const logsPath = getStorageInfo(state.workspaceRoot || process.cwd()).logsPath;
   engine = await spawnDesktopEngine({
     cwd: state.workspaceRoot,
     forceEcho,
     token: engineToken,
     env,
+    logsPath,
   });
   hostMode = forceEcho ? 'echo' : 'host';
 }
@@ -131,6 +147,18 @@ function registerIpc(): void {
     return { ok: true };
   });
 
+  ipcMain.handle('mitii:reveal-in-folder', async (_event, absolutePath: unknown) => {
+    if (typeof absolutePath !== 'string' || !absolutePath.trim()) {
+      return { ok: false, reason: 'invalid_path' };
+    }
+    try {
+      shell.showItemInFolder(absolutePath.trim());
+      return { ok: true };
+    } catch {
+      return { ok: false, reason: 'reveal_failed' };
+    }
+  });
+
   ipcMain.handle('mitii:pick-workspace', async () => {
     const openOptions: Electron.OpenDialogOptions = {
       properties: ['openDirectory', 'createDirectory'],
@@ -156,6 +184,125 @@ function registerIpc(): void {
     }
     return { ok: true, paths: result.filePaths };
   });
+
+  ipcMain.handle('mitii:pick-directory', async () => {
+    const openOptions: Electron.OpenDialogOptions = {
+      properties: ['openDirectory', 'createDirectory'],
+    };
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, openOptions)
+      : await dialog.showOpenDialog(openOptions);
+    if (result.canceled || result.filePaths.length === 0) {
+      return { ok: false, reason: 'cancelled' };
+    }
+    return { ok: true, path: result.filePaths[0] };
+  });
+
+  ipcMain.handle('mitii:get-storage-info', () =>
+    getStorageInfo(state.workspaceRoot || process.cwd()),
+  );
+
+  ipcMain.handle('mitii:set-app-data-location', (_event, path: unknown) => {
+    try {
+      if (path === null || path === '') {
+        writeAppDataRedirect(null);
+        return { ok: true, restartRequired: true };
+      }
+      if (typeof path !== 'string' || !path.trim()) {
+        return { ok: false, reason: 'invalid_path' };
+      }
+      writeAppDataRedirect(path.trim());
+      return { ok: true, restartRequired: true };
+    } catch (error) {
+      return {
+        ok: false,
+        reason: error instanceof Error ? error.message : String(error),
+      };
+    }
+  });
+
+  ipcMain.handle('mitii:set-root-storage-location', (_event, path: unknown) => {
+    try {
+      if (path === null || path === '') {
+        writeRootStoragePath(null);
+        if (state.workspaceRoot) {
+          ensureWorkspaceStorageLink(state.workspaceRoot);
+        }
+        return { ok: true };
+      }
+      if (typeof path !== 'string' || !path.trim()) {
+        return { ok: false, reason: 'invalid_path' };
+      }
+      writeRootStoragePath(path.trim());
+      if (state.workspaceRoot) {
+        ensureWorkspaceStorageLink(state.workspaceRoot);
+      }
+      return { ok: true };
+    } catch (error) {
+      return {
+        ok: false,
+        reason: error instanceof Error ? error.message : String(error),
+      };
+    }
+  });
+
+  ipcMain.handle(
+    'mitii:set-workspace-data-location',
+    (_event, path: unknown) => {
+      const root = state.workspaceRoot?.trim();
+      if (!root) return { ok: false, reason: 'no_workspace' };
+      if (path === null || path === '') {
+        return resetWorkspaceDataToDefault(root);
+      }
+      if (typeof path !== 'string' || !path.trim()) {
+        return { ok: false, reason: 'invalid_path' };
+      }
+      return relocateWorkspaceData(root, path.trim());
+    },
+  );
+
+  ipcMain.handle(
+    'mitii:list-workspace-chat-summaries',
+    (_event, workspaceRoots: unknown) => {
+      if (!Array.isArray(workspaceRoots)) return [];
+      return workspaceRoots
+        .filter((root): root is string => typeof root === 'string' && Boolean(root.trim()))
+        .map((workspaceRoot) => {
+          const store = loadHistory(workspaceRoot.trim());
+          return {
+            workspaceRoot: workspaceRoot.trim(),
+            threads: store.threads.map((t) => ({
+              id: t.id,
+              title: t.title,
+              updatedAt: t.updatedAt,
+            })),
+          };
+        });
+    },
+  );
+
+  ipcMain.handle(
+    'mitii:delete-workspace-chat',
+    (_event, workspaceRoot: unknown, threadId: unknown) => {
+      if (typeof workspaceRoot !== 'string' || !workspaceRoot.trim()) {
+        return { ok: false, reason: 'invalid_workspace' };
+      }
+      if (typeof threadId !== 'string' || !threadId.trim()) {
+        return { ok: false, reason: 'invalid_thread' };
+      }
+      try {
+        const root = workspaceRoot.trim();
+        const next = deleteThread(loadHistory(root), threadId.trim());
+        saveHistory(root, next);
+        return { ok: true };
+      } catch (error) {
+        return {
+          ok: false,
+          reason: error instanceof Error ? error.message : String(error),
+        };
+      }
+    },
+  );
 
   ipcMain.handle('mitii:set-workspace', async (_event, workspaceRoot: unknown) => {
     if (typeof workspaceRoot !== 'string' || !workspaceRoot.trim()) {
@@ -218,6 +365,7 @@ async function applyWorkspace(
   workspaceRoot: string,
 ): Promise<{ ok: boolean; workspaceRoot?: string; reason?: string }> {
   try {
+    ensureWorkspaceStorageLink(workspaceRoot);
     let settings = store.getWorkspaceSettings(workspaceRoot);
     if (!settings) {
       settings = loadWorkspaceSettings(workspaceRoot);
@@ -324,6 +472,9 @@ async function boot(): Promise<void> {
 async function shutdown(): Promise<void> {
   await stopEngine();
 }
+
+// Apply custom app-data path before any userData-dependent APIs.
+applyAppDataRedirectBeforeReady();
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {

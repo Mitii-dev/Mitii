@@ -10,6 +10,7 @@ import {
 import {
   getProviderPreset,
   isHostProviderType,
+  normalizeOllamaModelId,
   type HostProviderType,
 } from './providerPresets.js';
 
@@ -54,8 +55,14 @@ export function createHostLlmPorts(
   const type: HostProviderType = isHostProviderType(requested)
     ? requested
     : (preset?.type ?? 'echo');
-  const model = input.model.trim() || preset?.model || 'echo';
   const baseUrl = input.baseUrl?.trim() || preset?.baseUrl || '';
+  const model =
+    normalizeOllamaModelId(
+      input.model.trim() || preset?.model || 'echo',
+      baseUrl,
+    ) ||
+    preset?.model ||
+    'echo';
   const presetCapabilities = preset?.defaultCapabilities ?? {};
   const capabilities = {
     ...presetCapabilities,

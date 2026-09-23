@@ -2,6 +2,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  type CSSProperties,
   type KeyboardEvent,
   type UIEvent,
 } from 'react';
@@ -25,6 +26,8 @@ export function CodeEditor(props: CodeEditorProps) {
     () => Math.max(1, props.value.split('\n').length),
     [props.value],
   );
+
+  const gutterDigits = Math.max(2, String(lineCount).length);
 
   const html = useMemo(
     () => highlightCode(props.value, props.path),
@@ -58,10 +61,19 @@ export function CodeEditor(props: CodeEditorProps) {
   }, [props.path]);
 
   return (
-    <div className="code-editor">
+    <div
+      className="code-editor"
+      style={
+        {
+          '--code-gutter-ch': String(gutterDigits),
+        } as CSSProperties
+      }
+    >
       <div className="code-editor__gutter" ref={gutterRef} aria-hidden>
         {Array.from({ length: lineCount }, (_, i) => (
-          <span key={i}>{i + 1}</span>
+          <div key={i} className="code-editor__line-no">
+            {i + 1}
+          </div>
         ))}
       </div>
       <div className="code-editor__stack">

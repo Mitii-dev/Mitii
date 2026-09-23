@@ -13,6 +13,7 @@ import {
 import {
   createFileSystemSkillsCatalog,
   listProviderModels,
+  normalizeOllamaModelId,
   testProviderConnection,
 } from '@mitii/host';
 import {
@@ -49,11 +50,17 @@ import {
 import { generateEngineToken } from '../shared/engine-token.js';
 import { isAllowedEngineBaseUrl } from '../shared/window-url-policy.js';
 import {
+  appendRunLog,
+  resolveLogsDir,
+} from '../shared/project-logs.js';
+import { openSessionLog } from './sessionLog.js';
+import {
   activateProfile,
   deleteProfile,
   hashSecret,
   profileFromProvider,
   readProfiles,
+  uniqueProfileId,
   upsertProfile,
   writeProfiles,
   type DesktopProfileProvider,
@@ -69,7 +76,11 @@ import {
 import { getIndexStatus, reindexWorkspace } from './index-status.js';
 import { getGitFileDiff, getGitFileChangesSummary, getGitStatus } from './git-status.js';
 import {
+  copyWorkspaceEntries,
+  createWorkspaceFile,
+  createWorkspaceFolder,
   listWorkspaceDir,
+  moveWorkspaceEntries,
   readWorkspaceFile,
   renameWorkspaceEntry,
   deleteWorkspaceEntries,
@@ -128,7 +139,12 @@ function asStringArray(value: unknown, max: number): string[] | undefined {
 
 function buildStartInput(
   body: Record<string, unknown>,
-  parsed: { prompt: string; mode?: 'ask' | 'plan' | 'agent'; id?: string },
+  parsed: {
+    prompt: string;
+    mode?: 'ask' | 'plan' | 'agent';
+    id?: string;
+    model?: string;
+  },
   workspaceRoot: string,
 ): MitiiStartInput {
   const approvalPreset =
@@ -144,6 +160,16 @@ function buildStartInput(
   const pinnedPaths = asStringArray(body.pinnedPaths, 32);
   const requiredSkillIds = asStringArray(body.requiredSkillIds, 16);
   const requiredMcpServerIds = asStringArray(body.requiredMcpServerIds, 16);
+  const modelRaw =
+    (typeof body.model === 'string' && body.model.trim()
+      ? body.model.trim()
+      : undefined) ??
+    parsed.model ??
+    process.env.MITII_MODEL?.trim() ??
+    '';
+  const model = modelRaw
+    ? normalizeOllamaModelId(modelRaw, process.env.MITII_BASE_URL)
+    : undefined;
 
   return {
     prompt: parsed.prompt,
@@ -153,6 +179,7 @@ function buildStartInput(
     planApproval: policy.planApproval,
     explorationDepth: intensity.depth,
     windowBudget: { effort: intensity.effort },
+    ...(model ? { model } : {}),
     ...(pinnedPaths ? { pinnedPaths } : {}),
     ...(requiredSkillIds ? { requiredSkillIds } : {}),
     ...(requiredMcpServerIds ? { requiredMcpServerIds } : {}),
@@ -164,6 +191,13 @@ async function streamRun(
   mode: 'ask' | 'plan' | 'agent',
   startOrResume: () => ReturnType<MitiiClient['start']>,
   res: ServerResponse,
+  meta?: {
+    model?: string;
+    baseUrl?: string;
+    workspaceRoot?: string;
+    prompt?: string;
+    sessionId?: string;
+  },
 ): Promise<void> {
   res.writeHead(200, {
     'content-type': 'application/x-ndjson; charset=utf-8',
@@ -171,15 +205,42 @@ async function streamRun(
     'transfer-encoding': 'chunked',
   });
   writeNdjson(res, { op: 'ready', id, mode });
+  const logsDir = resolveLogsDir();
+  appendRunLog(logsDir, `run_start id=${id} mode=${mode}`, {
+    model: meta?.model ?? process.env.MITII_MODEL ?? '',
+    baseUrl: meta?.baseUrl ?? process.env.MITII_BASE_URL ?? '',
+  });
+
+  let sessionLog: ReturnType<typeof openSessionLog>;
   try {
     const run = startOrResume();
+    sessionLog = openSessionLog(meta?.workspaceRoot, {
+      at: new Date().toISOString(),
+      prompt: meta?.prompt ?? '',
+      mode,
+      sessionId: meta?.sessionId ?? id,
+      runId: run.runId ?? id,
+    });
+    if (sessionLog?.path) {
+      appendRunLog(logsDir, `session_log ${sessionLog.path}`);
+    }
+
     for await (const event of run.events) {
+      sessionLog?.appendEvent(event);
       writeNdjson(res, { op: 'event', id, event });
     }
     const result = await run.result;
+    if (result.status !== 'suspended') {
+      sessionLog?.finish(result);
+    }
     writeNdjson(res, { op: 'result', id, result });
+    appendRunLog(logsDir, `run_ok id=${id} status=${result.status}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    appendRunLog(logsDir, `run_failed id=${id} ${message}`, {
+      model: meta?.model ?? process.env.MITII_MODEL ?? '',
+      baseUrl: meta?.baseUrl ?? process.env.MITII_BASE_URL ?? '',
+    });
     writeNdjson(res, { op: 'error', id, error: 'run_failed', message });
   }
   res.end();
@@ -299,11 +360,18 @@ async function handlePrompt(
       ? (body as Record<string, unknown>)
       : {};
   const startInput = buildStartInput(record, parsed, workspaceRoot);
-  await streamRun(id, mode, () => client.start(startInput), res);
+  await streamRun(id, mode, () => client.start(startInput), res, {
+    model: startInput.model,
+    baseUrl: process.env.MITII_BASE_URL,
+    workspaceRoot,
+    prompt: parsed.prompt,
+    sessionId: parsed.sessionId ?? id,
+  });
 }
 
 async function handleResume(
   client: MitiiClient,
+  workspaceRoot: string,
   body: unknown,
   res: ServerResponse,
 ): Promise<void> {
@@ -322,6 +390,10 @@ async function handleResume(
   );
   const mode =
     record.mode === 'plan' || record.mode === 'agent' ? record.mode : 'ask';
+  const sessionId =
+    typeof record.sessionId === 'string' && record.sessionId.trim()
+      ? record.sessionId.trim()
+      : id;
 
   const resume: MitiiResumeInput = {
     schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
@@ -387,7 +459,13 @@ async function handleResume(
     return;
   }
 
-  await streamRun(id, mode, () => client.resume(resume), res);
+  await streamRun(id, mode, () => client.resume(resume), res, {
+    workspaceRoot,
+    sessionId,
+    prompt: typeof record.prompt === 'string' ? record.prompt : '(resume)',
+    model: process.env.MITII_MODEL,
+    baseUrl: process.env.MITII_BASE_URL,
+  });
 }
 
 export async function startEngineServer(
@@ -445,7 +523,7 @@ export async function startEngineServer(
         if (!requireAuth(req, res, token)) return;
         try {
           const body = await readJsonBody(req);
-          await handleResume(options.client, body, res);
+          await handleResume(options.client, cwd, body, res);
         } catch (error) {
           const message =
             error instanceof Error ? error.message : String(error);
@@ -685,6 +763,92 @@ export async function startEngineServer(
         return;
       }
 
+      if (method === 'POST' && path === '/v1/workspace/create-file') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          const body = (await readJsonBody(req)) as Record<string, unknown>;
+          const parent =
+            typeof body.parent === 'string'
+              ? body.parent
+              : typeof body.path === 'string'
+                ? body.path
+                : '';
+          const name = typeof body.name === 'string' ? body.name : '';
+          const content =
+            typeof body.content === 'string' ? body.content : '';
+          const created = await createWorkspaceFile(cwd, parent, name, content);
+          sendJson(res, 200, { ok: true, ...created });
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          sendJson(res, 400, { ok: false, error: message });
+        }
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/workspace/create-folder') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          const body = (await readJsonBody(req)) as Record<string, unknown>;
+          const parent =
+            typeof body.parent === 'string'
+              ? body.parent
+              : typeof body.path === 'string'
+                ? body.path
+                : '';
+          const name = typeof body.name === 'string' ? body.name : '';
+          const created = await createWorkspaceFolder(cwd, parent, name);
+          sendJson(res, 200, { ok: true, ...created });
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          sendJson(res, 400, { ok: false, error: message });
+        }
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/workspace/copy') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          const body = (await readJsonBody(req)) as Record<string, unknown>;
+          const paths = Array.isArray(body.paths)
+            ? body.paths.filter((p): p is string => typeof p === 'string')
+            : typeof body.path === 'string'
+              ? [body.path]
+              : [];
+          const destDir =
+            typeof body.destDir === 'string' ? body.destDir : '';
+          const result = await copyWorkspaceEntries(cwd, paths, destDir);
+          sendJson(res, 200, { ok: true, ...result });
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          sendJson(res, 400, { ok: false, error: message });
+        }
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/workspace/move') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          const body = (await readJsonBody(req)) as Record<string, unknown>;
+          const paths = Array.isArray(body.paths)
+            ? body.paths.filter((p): p is string => typeof p === 'string')
+            : typeof body.path === 'string'
+              ? [body.path]
+              : [];
+          const destDir =
+            typeof body.destDir === 'string' ? body.destDir : '';
+          const result = await moveWorkspaceEntries(cwd, paths, destDir);
+          sendJson(res, 200, { ok: true, ...result });
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          sendJson(res, 400, { ok: false, error: message });
+        }
+        return;
+      }
+
       if (method === 'POST' && path === '/v1/workspace/rename') {
         if (!requireAuth(req, res, token)) return;
         try {
@@ -865,6 +1029,14 @@ export async function startEngineServer(
         }
 
         const provider = (body.provider ?? {}) as Record<string, unknown>;
+        const requestedId =
+          typeof body.id === 'string' && body.id.trim()
+            ? body.id.trim()
+            : undefined;
+        const requestedName =
+          typeof body.name === 'string' && body.name.trim()
+            ? body.name.trim()
+            : 'Profile';
         const profile = profileFromProvider(
           {
             type: String(provider.type ?? 'echo'),
@@ -878,8 +1050,11 @@ export async function startEngineServer(
             maximumOutputTokens: Number(provider.maximumOutputTokens) || 0,
           },
           {
-            id: typeof body.id === 'string' ? body.id : undefined,
-            name: typeof body.name === 'string' ? body.name : 'Profile',
+            id:
+              requestedId ??
+              // New profiles must not reuse the reserved "default" id.
+              uniqueProfileId(requestedName, file.profiles),
+            name: requestedName,
             hasSecret: Boolean(body.hasSecret ?? process.env.MITII_API_KEY),
             secretHash: hashSecret(
               typeof body.apiKey === 'string'
