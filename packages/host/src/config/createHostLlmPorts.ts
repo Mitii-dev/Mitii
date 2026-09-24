@@ -34,6 +34,8 @@ export interface CreateHostLlmPortsInput {
     >
   >;
   fetchImpl?: typeof fetch;
+  /** `0` disables the per-request abort. Omit to use the gateway default. */
+  requestTimeoutMs?: number;
 }
 
 export interface HostLlmPorts {
@@ -72,6 +74,9 @@ export function createHostLlmPorts(
     model,
     ...(input.apiKey ? { apiKey: input.apiKey } : {}),
     ...(input.fetchImpl ? { fetchImpl: input.fetchImpl } : {}),
+    ...(typeof input.requestTimeoutMs === 'number'
+      ? { requestTimeoutMs: input.requestTimeoutMs }
+      : {}),
   };
 
   if (type === 'anthropic') {

@@ -25,7 +25,7 @@ import {
   fallbackSkillFrontmatter,
   normalizeSkillId,
   splitSkillMarkdown,
-} from './skillFrontmatterRecipe.js';
+} from './skills/frontmatterRecipe.js';
 
 export interface DesktopSkillSummary {
   id: string;

@@ -7,7 +7,7 @@ import {
   WorkingTreeReviewBar,
   type ReviewFindingChip,
   type RunFileChangesSummary,
-} from './WorkingTreeReviewBar.js';
+} from './git/WorkingTreeReviewBar.js';
 
 export type { ReviewFindingChip, RunFileChangesSummary };
 

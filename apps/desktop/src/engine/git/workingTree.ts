@@ -14,16 +14,16 @@ import {
   type GitBranchListSnapshot,
   type GitMutationResult,
   type GitWorkingTreeSnapshot,
-} from '../shared/gitWorkingTree.js';
+} from '../../shared/git/workingTree.js';
 import {
   appendPathsAfterDoubleDash,
   assertSafeGitArg,
   DesktopGitArgError,
-} from './gitArgSafety.js';
+} from './argSafety.js';
 import {
   getGitFileChangesSummary,
   getGitFileDiff,
-} from './git-status.js';
+} from './status.js';
 
 const execFileAsync = promisify(execFile);
 

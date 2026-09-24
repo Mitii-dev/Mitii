@@ -6,12 +6,18 @@ Powered by a local Mitii **engine** (same `@mitii/host` / `@mitii/sdk` stack as 
 Desktop does **not** reimplement Decision Policy, tools, or model routing. It
 injects the same `@mitii/host` / `@mitii/sdk` ports used by CLI and ACP.
 
+**Automations (enterprise):** Trigger → Agent → Delivery canvas that writes
+`.mitii/cron` specs and runs the same `@mitii/automation` claim/lease loop as
+`mitii-daemon`. See [AUTOMATIONS.md](./AUTOMATIONS.md).
+
 ```text
 Electron main ──spawn──► mitii-desktop-engine (HTTP loopback)
        │                         │
        │ IPC bridge              │ createDesktopClient()
        ▼                         ▼
    Renderer UI              @mitii/host → @mitii/sdk → @mitii/v8
+                                 │
+                                 └── @mitii/automation (schedules / events / runner)
 ```
 
 ## Architecture contract
@@ -41,6 +47,7 @@ Follows [`docs/REPO_LAYOUT.md`](../../docs/REPO_LAYOUT.md) and
 | `GET /v1/git/status` | Working tree snapshot (`staged` / `changes` / `untracked`) |
 | `GET /v1/git/branches` | Local branch list + current |
 | `POST /v1/git/stage` · `/unstage` · `/discard` · `/commit` · `/checkout` | Safe argv-only mutations (Agent Working Tree UI) |
+| `GET /v1/automations` · flow · templates · runner | Automation control plane (see [AUTOMATIONS.md](./AUTOMATIONS.md)) |
 
 Optional `Authorization: Bearer <token>` when the engine was started with `--token`.
 
@@ -82,18 +89,24 @@ The `start` / `dev` scripts unset it automatically.
 
 ## Layout
 
+Feature folders and contracts: **[`src/STRUCTURE.md`](./src/STRUCTURE.md)**.
+
 ```text
 apps/desktop/
 |-- src/
-|   |-- shared/          # protocol, settings, bridge, URL policy
-|   |-- engine/         # HTTP host + createDesktopClient
+|   |-- STRUCTURE.md     # Automations / MCP / Skills / Explorer / Git map
+|   |-- shared/          # DTOs (automations/, git/, protocol, settings, …)
+|   |-- engine/          # HTTP host + feature adapters
 |   |-- main/            # Electron main (spawn, state, secrets, IPC)
 |   |-- preload/         # contextBridge
-|   `-- renderer/        # React chat + settings
+|   `-- renderer/        # React by feature (shell/, automations/, mcp/, …)
 |-- tests/
+|-- AUTOMATIONS.md
 |-- bin/mitii-desktop-engine.js
 `-- README.md
 ```
+
+**Forbidden:** importing `apps/cli`, `apps/daemon`, `apps/acp`, or `apps/vscode`.
 
 ## Scripts
 

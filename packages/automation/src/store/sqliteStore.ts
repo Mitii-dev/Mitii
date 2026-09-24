@@ -158,6 +158,7 @@ export interface UpsertSpecInput {
 export class SqliteAutomationStore {
   readonly db: SqliteDb;
   readonly dbPath: string;
+  private closed = false;
 
   constructor(dbPath: string, options: SqliteAutomationStoreOptions = {}) {
     mkdirSync(dirname(dbPath), { recursive: true });
@@ -173,8 +174,19 @@ export class SqliteAutomationStore {
     }
   }
 
+  /** False after close() — heartbeats / late ticks must no-op. */
+  get isOpen(): boolean {
+    return !this.closed;
+  }
+
   close(): void {
-    this.db.close();
+    if (this.closed) return;
+    this.closed = true;
+    try {
+      this.db.close();
+    } catch {
+      /* already closed by host */
+    }
   }
 
   getSpec(specId: string): AutomationSpecRecord | undefined {
@@ -542,14 +554,19 @@ export class SqliteAutomationStore {
     claimToken: string;
     leaseSeconds: number;
   }): boolean {
-    const until = nowIso(new Date(Date.now() + input.leaseSeconds * 1000));
-    const result = this.db
-      .prepare(
-        `UPDATE automation_runs SET claim_until_at = ?, updated_at = ?
-         WHERE run_id = ? AND claim_token = ? AND status = 'running'`,
-      )
-      .run(until, nowIso(), input.runId, input.claimToken);
-    return result.changes > 0;
+    if (this.closed) return false;
+    try {
+      const until = nowIso(new Date(Date.now() + input.leaseSeconds * 1000));
+      const result = this.db
+        .prepare(
+          `UPDATE automation_runs SET claim_until_at = ?, updated_at = ?
+           WHERE run_id = ? AND claim_token = ? AND status = 'running'`,
+        )
+        .run(until, nowIso(), input.runId, input.claimToken);
+      return result.changes > 0;
+    } catch {
+      return false;
+    }
   }
 
   completeRun(input: {
@@ -593,6 +610,31 @@ export class SqliteAutomationStore {
       )
       .run(nowIso(), specId);
     return result.changes;
+  }
+
+  /**
+   * Cancel a single run. Queued → cancelled immediately.
+   * Running → marked cancelled (executor may still finish; lease reclaim later).
+   */
+  cancelRun(runId: string): AutomationRunRecord | undefined {
+    const run = this.getRun(runId);
+    if (!run) return undefined;
+    if (run.status !== 'queued' && run.status !== 'running') {
+      return run;
+    }
+    this.db
+      .prepare(
+        `UPDATE automation_runs SET
+           status = 'cancelled',
+           error = COALESCE(error, 'cancelled_by_operator'),
+           completed_at = COALESCE(completed_at, ?),
+           claim_token = NULL,
+           claim_until_at = NULL,
+           updated_at = ?
+         WHERE run_id = ? AND status IN ('queued', 'running')`,
+      )
+      .run(nowIso(), nowIso(), runId);
+    return this.getRun(runId);
   }
 
   listEventSpecsForType(eventType: string): AutomationSpecRecord[] {

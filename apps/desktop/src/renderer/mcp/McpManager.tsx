@@ -9,14 +9,14 @@ import {
   IconRefresh,
   IconSearch,
   IconTrash,
-} from './ActivityIcons.js';
+} from '../ActivityIcons.js';
 import {
   addCustomMcp,
   deleteMcpServer,
   fetchMcpServers,
   installBuiltinMcp,
   setMcpEnabled,
-} from './api.js';
+} from '../api.js';
 
 type Transport = 'stdio' | 'sse' | 'streamable-http';
 type WizardStep = 'source' | 'catalog' | 'custom-transport' | 'custom-details';

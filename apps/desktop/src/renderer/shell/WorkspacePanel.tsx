@@ -9,7 +9,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from 'react';
 
-import logoUrl from './assets/mitii-logo.svg';
+import logoUrl from '../assets/mitii-logo.svg';
 import {
   copyWorkspacePaths,
   createWorkspaceFilePath,
@@ -25,14 +25,14 @@ import {
   renameWorkspacePath,
   saveWorkspaceFile,
   streamWorkspaceEvents,
-} from './api.js';
-import { CodeEditor } from './CodeEditor.js';
-import { GitWorkingTreePane } from './GitWorkingTreePane.js';
-import { AutomationsPanel } from './AutomationsPanel.js';
-import { McpManager } from './McpManager.js';
-import { RecipesManager } from './RecipesManager.js';
-import { SkillsManager } from './SkillsManager.js';
-import { DiffView } from './DiffView.js';
+} from '../api.js';
+import { CodeEditor } from '../CodeEditor.js';
+import { GitWorkingTreePane } from '../git/GitWorkingTreePane.js';
+import { AutomationsPanel } from '../automations/AutomationsPanel.js';
+import { McpManager } from '../mcp/McpManager.js';
+import { RecipesManager } from '../recipes/RecipesManager.js';
+import { SkillsManager } from '../skills/SkillsManager.js';
+import { DiffView } from '../DiffView.js';
 import {
   IconChevronDown,
   IconChevronRight,
@@ -46,9 +46,9 @@ import {
   IconNewFile,
   IconNewFolder,
   IconRefresh,
-} from './ActivityIcons.js';
+} from '../ActivityIcons.js';
 import { ResizeHandle, usePersistedWidth } from './ResizeHandle.js';
-import type { GitWorkingTreeSnapshot } from '../shared/gitWorkingTree.js';
+import type { GitWorkingTreeSnapshot } from '../../shared/git/workingTree.js';
 
 interface WorkspacePanelProps {
   baseUrl: string;
@@ -65,14 +65,70 @@ interface WorkspacePanelProps {
   ) => void;
   /** Automations panel (activity bar). */
   automations?: {
-    specs: import('./AutomationsPanel.js').AutomationSpecView[];
-    runs: import('./AutomationsPanel.js').AutomationRunView[];
+    specs: import('../automations/AutomationsPanel.js').AutomationSpecView[];
+    runs: import('../automations/AutomationsPanel.js').AutomationRunView[];
+    runner?: import('../automations/AutomationsPanel.js').AutomationRunnerView | null;
+    templates?: import('../automations/AutomationsPanel.js').AutomationTemplateView[];
+    stats?: import('../automations/AutomationsPanel.js').AutomationsPanelProps['stats'];
     loading?: boolean;
     error?: string | null;
+    saving?: boolean;
     onRefresh: () => void;
     onTrigger: (specId: string) => void;
     onPause: (specId: string) => void;
     onResume: (specId: string) => void;
+    onDelete?: (specId: string) => void;
+    onLoadFlow?: (
+      specId: string,
+    ) => Promise<import('../../shared/automations/flow.js').AutomationFlowDocument>;
+    onSaveFlow?: (
+      flow: import('../../shared/automations/flow.js').AutomationFlowDocument,
+    ) => Promise<void>;
+    onApplyTemplate?: (templateId: string) => Promise<void>;
+    onStartRunner?: (opts?: {
+      webhookPort?: number;
+      webhookToken?: string;
+      githubWebhookSecret?: string;
+      installGitHook?: boolean;
+    }) => Promise<void>;
+    onStopRunner?: () => Promise<void>;
+    onOpenRun?: (runId: string) => void;
+    onCancelRun?: (runId: string) => void;
+    runDetail?: import('../automations/RunInspector.js').AutomationRunDetailView | null;
+    runDetailLoading?: boolean;
+    runDetailError?: string | null;
+    onCloseRunDetail?: () => void;
+    ingressEvents?: Array<{
+      eventId: string;
+      eventType: string;
+      source: string;
+      processingStatus: string;
+      occurredAt: string;
+      matchedSpecCount: number;
+      queuedRunCount: number;
+    }>;
+    gitHook?: import('../automations/WebhookSetup.js').GitHookView | null;
+    onInstallGitHook?: () => void;
+    onUninstallGitHook?: () => void;
+    onExport?: () => Promise<void>;
+    onImportJson?: (payload: {
+      specs: Array<Record<string, unknown>>;
+    }) => Promise<void>;
+    initialWebhookPort?: number;
+    initialWebhookToken?: string;
+    initialGithubSecret?: string;
+    connections?: import('../automations/AutomationsPanel.js').ConnectionRecordView[];
+    onActivateConnection?: (input: {
+      id: import('../../shared/automations/modules.js').ConnectionId;
+      secrets: Record<string, string>;
+      meta?: Record<string, string>;
+    }) => Promise<import('../automations/AutomationsPanel.js').ConnectionRecordView[]>;
+    onDeactivateConnection?: (
+      id: import('../../shared/automations/modules.js').ConnectionId,
+    ) => Promise<import('../automations/AutomationsPanel.js').ConnectionRecordView[]>;
+    onRefreshConnections?: () => void;
+    catalog?: import('../automations/FlowInspector.js').AutomationCatalog;
+    workspaceRoot?: string;
   };
   /** Notify parent of open editor paths for context auto-pin. */
   onEditorContextChange?: (ctx: {
@@ -98,7 +154,7 @@ interface WorkspacePanelProps {
   hasActiveProfile?: boolean;
   onOpenProfiles?: () => void;
   /** Bubble Code Review findings to the chat composer strip. */
-  onReviewFindingsChange?: (findings: import('../shared/reviewFindings.js').ReviewFinding[]) => void;
+  onReviewFindingsChange?: (findings: import('../../shared/reviewFindings.js').ReviewFinding[]) => void;
 }
 
 type TreeEntry = { name: string; path: string; kind: 'file' | 'dir' };
@@ -1482,14 +1538,47 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
             <AutomationsPanel
               specs={props.automations?.specs ?? []}
               runs={props.automations?.runs ?? []}
+              runner={props.automations?.runner}
+              templates={props.automations?.templates}
+              stats={props.automations?.stats}
               loading={props.automations?.loading}
               error={props.automations?.error}
+              saving={props.automations?.saving}
               onRefresh={
                 props.automations?.onRefresh ?? (() => undefined)
               }
               onTrigger={props.automations?.onTrigger ?? (() => undefined)}
               onPause={props.automations?.onPause ?? (() => undefined)}
               onResume={props.automations?.onResume ?? (() => undefined)}
+              onDelete={props.automations?.onDelete}
+              onLoadFlow={props.automations?.onLoadFlow}
+              onSaveFlow={props.automations?.onSaveFlow}
+              onApplyTemplate={props.automations?.onApplyTemplate}
+              onStartRunner={props.automations?.onStartRunner}
+              onStopRunner={props.automations?.onStopRunner}
+              onOpenRun={props.automations?.onOpenRun}
+              onCancelRun={props.automations?.onCancelRun}
+              runDetail={props.automations?.runDetail}
+              runDetailLoading={props.automations?.runDetailLoading}
+              runDetailError={props.automations?.runDetailError}
+              onCloseRunDetail={props.automations?.onCloseRunDetail}
+              ingressEvents={props.automations?.ingressEvents}
+              gitHook={props.automations?.gitHook}
+              onInstallGitHook={props.automations?.onInstallGitHook}
+              onUninstallGitHook={props.automations?.onUninstallGitHook}
+              onExport={props.automations?.onExport}
+              onImportJson={props.automations?.onImportJson}
+              initialWebhookPort={props.automations?.initialWebhookPort}
+              initialWebhookToken={props.automations?.initialWebhookToken}
+              initialGithubSecret={props.automations?.initialGithubSecret}
+              connections={props.automations?.connections}
+              onActivateConnection={props.automations?.onActivateConnection}
+              onDeactivateConnection={
+                props.automations?.onDeactivateConnection
+              }
+              onRefreshConnections={props.automations?.onRefreshConnections}
+              catalog={props.automations?.catalog}
+              workspaceRoot={props.automations?.workspaceRoot}
             />
           ) : (
             <>

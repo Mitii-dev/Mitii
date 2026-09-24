@@ -12,6 +12,17 @@ export interface AutomationExecuteInput {
   mode: AutomationAgentMode;
   autonomyPreset: AutomationAutonomyPreset;
   timeoutSeconds?: number;
+  /** Spec metadata_json (delivery, desktopFlow steps, …). Hosts may use it. */
+  metadataJson?: string | null;
+}
+
+export interface AutomationStepResult {
+  id: string;
+  kind: string;
+  status: 'done' | 'failed' | 'skipped';
+  summary?: string;
+  error?: string;
+  durationMs?: number;
 }
 
 export interface AutomationExecuteResult {
@@ -20,6 +31,8 @@ export interface AutomationExecuteResult {
   answer?: string;
   sessionId?: string;
   reportMarkdown?: string;
+  /** Deterministic pre-steps executed by the host (desktop enterprise). */
+  stepResults?: AutomationStepResult[];
 }
 
 /**

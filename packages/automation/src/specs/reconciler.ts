@@ -30,6 +30,8 @@ export interface ParsedCronMd {
   debounceSeconds?: number;
   dedupeWindowSeconds?: number;
   cooldownSeconds?: number;
+  /** Serialized metadata_json (delivery, desktopFlow, …). */
+  metadataJson?: string;
 }
 
 const MODE_SET = new Set(['ask', 'plan', 'agent']);
@@ -114,7 +116,44 @@ export function parseCronMarkdown(raw: string, filePath: string): ParsedCronMd {
     debounceSeconds: parseOptionalInt(frontmatter.debounceSeconds),
     dedupeWindowSeconds: parseOptionalInt(frontmatter.dedupeWindowSeconds),
     cooldownSeconds: parseOptionalInt(frontmatter.cooldownSeconds),
+    metadataJson: resolveMetadataJson(frontmatter),
   };
+}
+
+/**
+ * Accept `metadata: {…}` JSON and/or `delivery: […]` JSON in frontmatter.
+ */
+function resolveMetadataJson(
+  frontmatter: Record<string, string>,
+): string | undefined {
+  let base: Record<string, unknown> = {};
+  if (frontmatter.metadata?.trim()) {
+    const raw = frontmatter.metadata.trim();
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        base = { ...(parsed as Record<string, unknown>) };
+      } else {
+        throw new Error('metadata must be a JSON object');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`invalid metadata frontmatter: ${message}`);
+    }
+  }
+  if (frontmatter.delivery?.trim()) {
+    try {
+      const parsed = JSON.parse(frontmatter.delivery.trim()) as unknown;
+      if (!Array.isArray(parsed)) {
+        throw new Error('delivery must be a JSON array');
+      }
+      base = { ...base, delivery: parsed };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`invalid delivery frontmatter: ${message}`);
+    }
+  }
+  return Object.keys(base).length > 0 ? JSON.stringify(base) : undefined;
 }
 
 function inferTrigger(filePath: string, cron?: string): string {
@@ -258,6 +297,7 @@ export function reconcileCronSpecsDir(
         autonomyPreset: parsed.autonomyPreset,
         timeoutSeconds: parsed.timeoutSeconds ?? null,
         maxParallel: parsed.maxParallel ?? null,
+        metadataJson: parsed.metadataJson ?? null,
         source: 'file',
         nextRunAt: changed ? nextRunAt : undefined,
         bumpRevision: changed && Boolean(existing),

@@ -51,6 +51,7 @@ src/
 | 3 | delivery bus (webhook/slack/discord/telegram/github_*) |
 | 4 | incident evidence + CI log pull + ticket templates |
 | 5 | VS Code Automations panel + export/import |
+| 5b | Desktop flow canvas (Trigger→Agent→Delivery) + embedded runner |
 | 6 | lease/delivery/multi-DB hardening tests |
 
 ## Safety defaults

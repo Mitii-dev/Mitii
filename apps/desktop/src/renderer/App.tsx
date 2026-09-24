@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
 
 import {
   appendActivity,
@@ -51,7 +58,7 @@ import {
 import type { ReviewFinding } from '../shared/reviewFindings.js';
 import { breakdownFromPromptReady } from '../shared/contextUsage.js';
 import logoUrl from './assets/mitii-logo.svg';
-import { ActivityBarButton } from './ActivityBarButton.js';
+import { ActivityBarButton } from './shell/ActivityBarButton.js';
 import {
   IconChat,
   IconCode,
@@ -86,10 +93,27 @@ import {
   fetchMcpServers,
   fetchProfiles,
   fetchProviderModels,
+  fetchRecipes,
   fetchSkills,
   finalizeAssistantText,
   getDesktopBridge,
   listAutomations,
+  applyAutomationTemplate,
+  deleteAutomation,
+  fetchAutomationFlow,
+  listAutomationTemplates,
+  listAutomationEvents,
+  fetchAutomationRun,
+  fetchAutomationRunnerPrefs,
+  fetchGitCommitHook,
+  installGitCommitHookApi,
+  uninstallGitCommitHookApi,
+  fetchAutomationConnections,
+  activateAutomationConnection,
+  deactivateAutomationConnection,
+  cancelAutomationRun,
+  exportAutomations,
+  importAutomations,
   pauseAutomation,
   pauseIndexing,
   postHistory,
@@ -97,17 +121,22 @@ import {
   reindexWorkspace,
   restoreCheckpoint,
   resumeAutomation,
+  saveAutomationFlow,
   searchWorkspacePaths,
   shortPath,
+  startAutomationRunner,
+  stopAutomationRunner,
   streamPrompt,
   streamResume,
   triggerAutomation,
   workspaceLabel,
 } from './api.js';
 import type {
+  AutomationRunnerView,
   AutomationRunView,
   AutomationSpecView,
-} from './AutomationsPanel.js';
+  AutomationTemplateView,
+} from './automations/AutomationsPanel.js';
 import { ChatHistoryNav } from './ChatHistoryNav.js';
 import { ComposerReviewStrip } from './ComposerReviewStrip.js';
 import { IndexStatusChip } from './IndexStatusChip.js';
@@ -127,7 +156,7 @@ import {
   type ThoroughnessUi,
 } from './ComposerControls.js';
 import { MarkdownBody } from './MarkdownBody.js';
-import { McpAppCard, mcpAppsFromActivity } from './McpAppCard.js';
+import { McpAppCard, mcpAppsFromActivity } from './mcp/McpAppCard.js';
 import { ModelQuickSelect } from './ModelQuickSelect.js';
 import {
   detectMentionSuggest,
@@ -135,8 +164,8 @@ import {
   type MentionSuggestState,
 } from './mentionSuggest.js';
 import { SettingsPanel } from './SettingsPanel.js';
-import { ResizeHandle, usePersistedWidth } from './ResizeHandle.js';
-import { WorkspacePanel } from './WorkspacePanel.js';
+import { ResizeHandle, usePersistedWidth } from './shell/ResizeHandle.js';
+import { WorkspacePanel } from './shell/WorkspacePanel.js';
 import {
   addTurnTokens,
   emptyTokenUsage,
@@ -339,6 +368,11 @@ const SETTINGS_TAB_ICONS: Record<
   debug: IconDeveloper,
 };
 
+function repoLabel(path: string): string {
+  const name = path.replace(/\\/g, '/').split('/').filter(Boolean).pop();
+  return name || path;
+}
+
 export function App() {
   const [view, setView] = useState<View>('chat');
   const [chatLayout, setChatLayout] = useState<ChatLayout>(() => {
@@ -422,8 +456,53 @@ export function App() {
     [],
   );
   const [automationRuns, setAutomationRuns] = useState<AutomationRunView[]>([]);
+  const [automationRunner, setAutomationRunner] =
+    useState<AutomationRunnerView | null>(null);
+  const [automationTemplates, setAutomationTemplates] = useState<
+    AutomationTemplateView[]
+  >([]);
+  const [automationStats, setAutomationStats] = useState<{
+    specs: number;
+    enabled: number;
+    queued: number;
+    running: number;
+    done: number;
+    failed: number;
+  } | null>(null);
   const [automationsLoading, setAutomationsLoading] = useState(false);
+  const [automationsSaving, setAutomationsSaving] = useState(false);
   const [automationsError, setAutomationsError] = useState<string | null>(null);
+  const [automationRunDetail, setAutomationRunDetail] = useState<
+    import('./automations/RunInspector.js').AutomationRunDetailView | null
+  >(null);
+  const [automationRunDetailLoading, setAutomationRunDetailLoading] =
+    useState(false);
+  const [automationRunDetailError, setAutomationRunDetailError] = useState<
+    string | null
+  >(null);
+  const [automationIngressEvents, setAutomationIngressEvents] = useState<
+    Array<{
+      eventId: string;
+      eventType: string;
+      source: string;
+      processingStatus: string;
+      occurredAt: string;
+      matchedSpecCount: number;
+      queuedRunCount: number;
+    }>
+  >([]);
+  const [automationGitHook, setAutomationGitHook] = useState<
+    import('./automations/WebhookSetup.js').GitHookView | null
+  >(null);
+  const [automationWebhookPort, setAutomationWebhookPort] = useState(8787);
+  const [automationWebhookToken, setAutomationWebhookToken] = useState('');
+  const [automationGithubSecret, setAutomationGithubSecret] = useState('');
+  const [automationConnections, setAutomationConnections] = useState<
+    import('./automations/AutomationsPanel.js').ConnectionRecordView[]
+  >([]);
+  const [automationCatalog, setAutomationCatalog] = useState<
+    import('./automations/FlowInspector.js').AutomationCatalog
+  >({ profiles: [], mcpServers: [], skills: [], recipes: [] });
   const indexSaveTimerRef = useRef<number | null>(null);
   const [skills, setSkills] = useState<
     Array<{ id: string; title: string; description: string }>
@@ -445,9 +524,16 @@ export function App() {
   const pendingNewChatRef = useRef(false);
   const historyWorkspaceRef = useRef<string | undefined>(undefined);
 
-  const engine = snapshot
-    ? { baseUrl: snapshot.engineBaseUrl, token: snapshot.authToken }
-    : null;
+  const engineBaseUrl = snapshot?.engineBaseUrl ?? null;
+  const engineToken = snapshot?.authToken;
+  /** Stable identity — a fresh `{}` each render was re-firing automations refresh (UI flicker). */
+  const engine = useMemo(
+    () =>
+      engineBaseUrl
+        ? { baseUrl: engineBaseUrl, token: engineToken }
+        : null,
+    [engineBaseUrl, engineToken],
+  );
 
   const needsModel = !snapshot?.settings.provider.model?.trim();
   const settings =
@@ -1082,25 +1168,146 @@ export function App() {
     [refreshIndexStatus],
   );
 
-  const refreshAutomations = useCallback(async () => {
-    if (!engine) return;
-    setAutomationsLoading(true);
-    setAutomationsError(null);
-    try {
-      const data = await listAutomations(engine);
-      setAutomationSpecs(data.specs);
-      setAutomationRuns(data.runs);
-    } catch (err) {
-      setAutomationsError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setAutomationsLoading(false);
-    }
-  }, [engine]);
+  const automationsHydratedRef = useRef(false);
+
+  const refreshAutomations = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!engine) return;
+      const silent = opts?.silent ?? automationsHydratedRef.current;
+      if (!silent) {
+        setAutomationsLoading(true);
+      }
+      setAutomationsError(null);
+      try {
+        const [
+          data,
+          templatesRes,
+          eventsRes,
+          hookRes,
+          prefsRes,
+          connectionsRes,
+          skillsRes,
+          mcpRes,
+          recipesRes,
+          profilesRes,
+        ] = await Promise.all([
+          listAutomations(engine),
+          listAutomationTemplates(engine).catch(() => ({ templates: [] })),
+          listAutomationEvents(engine).catch(() => ({ events: [] })),
+          fetchGitCommitHook(engine).catch(() => ({ hook: null })),
+          fetchAutomationRunnerPrefs(engine).catch(() => null),
+          fetchAutomationConnections(engine).catch(() => ({
+            connections: [],
+          })),
+          fetchSkills(engine).catch(() => []),
+          fetchMcpServers(engine).catch(() => ({
+            enabled: false,
+            servers: [],
+            catalog: [],
+          })),
+          fetchRecipes(engine).catch(() => ({ recipes: [] })),
+          fetchProfiles(engine).catch(() => ({
+            activeProfileId: '',
+            profiles: [],
+          })),
+        ]);
+        setAutomationSpecs(data.specs);
+        setAutomationRuns(data.runs);
+        setAutomationRunner(data.runner ?? null);
+        setAutomationStats(data.stats ?? null);
+        setAutomationTemplates(templatesRes.templates);
+        setAutomationIngressEvents(eventsRes.events);
+        setAutomationGitHook(hookRes.hook);
+        setAutomationConnections(connectionsRes.connections);
+        setAutomationCatalog({
+          profiles: profilesRes.profiles.map((p) => ({
+            id: p.id,
+            name: p.name,
+            model: p.provider?.model,
+          })),
+          models: knownModels,
+          repositories: [
+            ...(snapshot?.workspaceRoot
+              ? [
+                  {
+                    path: snapshot.workspaceRoot,
+                    label: repoLabel(snapshot.workspaceRoot),
+                  },
+                ]
+              : []),
+            ...(snapshot?.recentWorkspaces ?? [])
+              .filter((path) => path && path !== snapshot?.workspaceRoot)
+              .map((path) => ({ path, label: repoLabel(path) })),
+          ],
+          mcpServers: mcpRes.servers
+            .filter((s) => s.enabled !== false)
+            .map((s) => ({ id: s.id, name: s.name })),
+          skills: skillsRes.map((s) => ({ id: s.id, title: s.title })),
+          recipes: recipesRes.recipes.map((r) => ({
+            id: r.id,
+            title: r.title,
+          })),
+        });
+        if (prefsRes) {
+          setAutomationWebhookPort(prefsRes.prefs.webhookPort);
+          setAutomationWebhookToken(prefsRes.secrets.webhookToken);
+          setAutomationGithubSecret(prefsRes.secrets.githubWebhookSecret);
+        }
+        automationsHydratedRef.current = true;
+      } catch (err) {
+        setAutomationsError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (!silent) {
+          setAutomationsLoading(false);
+        }
+      }
+    },
+    [engine, knownModels, snapshot?.workspaceRoot, snapshot?.recentWorkspaces],
+  );
+
+  const applyAutomationsSnapshot = useCallback(
+    (data: {
+      specs?: AutomationSpecView[];
+      runs?: AutomationRunView[];
+      runner?: AutomationRunnerView;
+      stats?: {
+        specs: number;
+        enabled: number;
+        queued: number;
+        running: number;
+        done: number;
+        failed: number;
+      };
+    }) => {
+      if (data.specs) setAutomationSpecs(data.specs);
+      if (data.runs) setAutomationRuns(data.runs);
+      if (data.runner) setAutomationRunner(data.runner);
+      if (data.stats) setAutomationStats(data.stats);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (workspaceSide !== 'automations' || !engine) return;
-    void refreshAutomations();
+    void refreshAutomations({ silent: automationsHydratedRef.current });
   }, [workspaceSide, engine, refreshAutomations]);
+
+  useEffect(() => {
+    const status = automationRunDetail?.run.status;
+    if (!engine || (status !== 'queued' && status !== 'running')) return;
+    const runId = automationRunDetail?.run.runId;
+    if (!runId) return;
+    const timer = window.setInterval(() => {
+      void fetchAutomationRun({ ...engine, runId })
+        .then((detail) => setAutomationRunDetail(detail))
+        .catch(() => undefined);
+    }, 1500);
+    return () => window.clearInterval(timer);
+  }, [
+    engine,
+    automationRunDetail?.run.runId,
+    automationRunDetail?.run.status,
+  ]);
 
   const runReindex = useCallback(async () => {
     if (!engine || !snapshot) return;
@@ -3142,23 +3349,41 @@ export function App() {
                     automations={{
                       specs: automationSpecs,
                       runs: automationRuns,
+                      runner: automationRunner,
+                      templates: automationTemplates,
+                      stats: automationStats,
                       loading: automationsLoading,
+                      saving: automationsSaving,
                       error: automationsError,
-                      onRefresh: () => void refreshAutomations(),
+                      onRefresh: () => void refreshAutomations({ silent: true }),
                       onTrigger: (specId) => {
                         if (!engine) return;
                         void triggerAutomation({ ...engine, specId })
-                          .then(() => refreshAutomations())
+                          .then(async (data) => {
+                            applyAutomationsSnapshot(data);
+                            const runId =
+                              data.triggeredRunId ??
+                              data.runs.find((run) => run.specId === specId)
+                                ?.runId;
+                            if (!runId) return;
+                            setAutomationRunDetailLoading(true);
+                            const detail = await fetchAutomationRun({
+                              ...engine,
+                              runId,
+                            });
+                            setAutomationRunDetail(detail);
+                          })
                           .catch((err) =>
                             setAutomationsError(
                               err instanceof Error ? err.message : String(err),
                             ),
-                          );
+                          )
+                          .finally(() => setAutomationRunDetailLoading(false));
                       },
                       onPause: (specId) => {
                         if (!engine) return;
                         void pauseAutomation({ ...engine, specId })
-                          .then(() => refreshAutomations())
+                          .then((data) => applyAutomationsSnapshot(data))
                           .catch((err) =>
                             setAutomationsError(
                               err instanceof Error ? err.message : String(err),
@@ -3168,12 +3393,225 @@ export function App() {
                       onResume: (specId) => {
                         if (!engine) return;
                         void resumeAutomation({ ...engine, specId })
-                          .then(() => refreshAutomations())
+                          .then((data) => applyAutomationsSnapshot(data))
                           .catch((err) =>
                             setAutomationsError(
                               err instanceof Error ? err.message : String(err),
                             ),
                           );
+                      },
+                      onDelete: (specId) => {
+                        if (!engine) return;
+                        void deleteAutomation({ ...engine, specId })
+                          .then((data) => applyAutomationsSnapshot(data))
+                          .catch((err) =>
+                            setAutomationsError(
+                              err instanceof Error ? err.message : String(err),
+                            ),
+                          );
+                      },
+                      onLoadFlow: async (specId) => {
+                        if (!engine) {
+                          throw new Error('engine_unavailable');
+                        }
+                        const { flow } = await fetchAutomationFlow({
+                          ...engine,
+                          specId,
+                        });
+                        return flow;
+                      },
+                      onSaveFlow: async (flow) => {
+                        if (!engine) {
+                          throw new Error('engine_unavailable');
+                        }
+                        setAutomationsSaving(true);
+                        try {
+                          const data = await saveAutomationFlow({
+                            ...engine,
+                            flow,
+                          });
+                          applyAutomationsSnapshot(data);
+                        } finally {
+                          setAutomationsSaving(false);
+                        }
+                      },
+                      onApplyTemplate: async (templateId) => {
+                        if (!engine) return;
+                        setAutomationsSaving(true);
+                        try {
+                          const data = await applyAutomationTemplate({
+                            ...engine,
+                            templateId,
+                          });
+                          applyAutomationsSnapshot(data);
+                        } catch (err) {
+                          setAutomationsError(
+                            err instanceof Error ? err.message : String(err),
+                          );
+                        } finally {
+                          setAutomationsSaving(false);
+                        }
+                      },
+                      onStartRunner: async (opts) => {
+                        if (!engine) return;
+                        try {
+                          const data = await startAutomationRunner({
+                            ...engine,
+                            webhookPort: opts?.webhookPort,
+                            webhookToken: opts?.webhookToken,
+                            githubWebhookSecret: opts?.githubWebhookSecret,
+                            installGitHook: opts?.installGitHook,
+                          });
+                          applyAutomationsSnapshot(data);
+                          await refreshAutomations();
+                        } catch (err) {
+                          setAutomationsError(
+                            err instanceof Error ? err.message : String(err),
+                          );
+                        }
+                      },
+                      onStopRunner: async () => {
+                        if (!engine) return;
+                        try {
+                          const data = await stopAutomationRunner(engine);
+                          applyAutomationsSnapshot(data);
+                        } catch (err) {
+                          setAutomationsError(
+                            err instanceof Error ? err.message : String(err),
+                          );
+                        }
+                      },
+                      onOpenRun: (runId) => {
+                        if (!engine) return;
+                        setAutomationRunDetailLoading(true);
+                        setAutomationRunDetailError(null);
+                        void fetchAutomationRun({ ...engine, runId })
+                          .then((detail) => {
+                            setAutomationRunDetail(detail);
+                          })
+                          .catch((err) => {
+                            setAutomationRunDetail(null);
+                            setAutomationRunDetailError(
+                              err instanceof Error ? err.message : String(err),
+                            );
+                          })
+                          .finally(() => setAutomationRunDetailLoading(false));
+                      },
+                      onCancelRun: (runId) => {
+                        if (!engine) return;
+                        void cancelAutomationRun({ ...engine, runId })
+                          .then(async (data) => {
+                            applyAutomationsSnapshot(data);
+                            const detail = await fetchAutomationRun({
+                              ...engine,
+                              runId,
+                            });
+                            setAutomationRunDetail(detail);
+                          })
+                          .catch((err) =>
+                            setAutomationsError(
+                              err instanceof Error ? err.message : String(err),
+                            ),
+                          );
+                      },
+                      runDetail: automationRunDetail,
+                      runDetailLoading: automationRunDetailLoading,
+                      runDetailError: automationRunDetailError,
+                      onCloseRunDetail: () => {
+                        setAutomationRunDetail(null);
+                        setAutomationRunDetailError(null);
+                      },
+                      ingressEvents: automationIngressEvents,
+                      gitHook: automationGitHook,
+                      onInstallGitHook: () => {
+                        if (!engine) return;
+                        void installGitCommitHookApi({
+                          ...engine,
+                          eventsUrl:
+                            automationRunner?.hooks?.events ?? undefined,
+                          webhookToken: automationWebhookToken || undefined,
+                        })
+                          .then((res) => setAutomationGitHook(res.hook))
+                          .catch((err) =>
+                            setAutomationsError(
+                              err instanceof Error ? err.message : String(err),
+                            ),
+                          );
+                      },
+                      onUninstallGitHook: () => {
+                        if (!engine) return;
+                        void uninstallGitCommitHookApi(engine)
+                          .then((res) => setAutomationGitHook(res.hook))
+                          .catch((err) =>
+                            setAutomationsError(
+                              err instanceof Error ? err.message : String(err),
+                            ),
+                          );
+                      },
+                      onExport: async () => {
+                        if (!engine) return;
+                        const payload = await exportAutomations(engine);
+                        const blob = new Blob(
+                          [JSON.stringify(payload, null, 2)],
+                          { type: 'application/json' },
+                        );
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `mitii-automations-${Date.now()}.json`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      },
+                      onImportJson: async ({ specs }) => {
+                        if (!engine) return;
+                        const data = await importAutomations({
+                          ...engine,
+                          specs,
+                        });
+                        applyAutomationsSnapshot(data);
+                        await refreshAutomations();
+                      },
+                      initialWebhookPort: automationWebhookPort,
+                      initialWebhookToken: automationWebhookToken,
+                      initialGithubSecret: automationGithubSecret,
+                      connections: automationConnections,
+                      catalog: automationCatalog,
+                      workspaceRoot: snapshot?.workspaceRoot,
+                      onActivateConnection: async (input) => {
+                        if (!engine) return [];
+                        const res = await activateAutomationConnection({
+                          ...engine,
+                          id: input.id,
+                          secrets: input.secrets,
+                          meta: input.meta,
+                        });
+                        setAutomationConnections(res.connections);
+                        if (
+                          input.id === 'github' &&
+                          input.secrets.webhookSecret
+                        ) {
+                          setAutomationGithubSecret(
+                            input.secrets.webhookSecret,
+                          );
+                        }
+                        return res.connections;
+                      },
+                      onDeactivateConnection: async (id) => {
+                        if (!engine) return [];
+                        const res = await deactivateAutomationConnection({
+                          ...engine,
+                          id,
+                        });
+                        setAutomationConnections(res.connections);
+                        return res.connections;
+                      },
+                      onRefreshConnections: () => {
+                        if (!engine) return;
+                        void fetchAutomationConnections(engine)
+                          .then((res) =>
+                            setAutomationConnections(res.connections),
+                          )
+                          .catch(() => undefined);
                       },
                     }}
                     onUsePrompt={(prompt, nextMode) => {

@@ -1046,6 +1046,7 @@ export async function pauseIndexing(options: {
 
 export interface AutomationSpecApiView {
   specId: string;
+  externalId?: string;
   title: string;
   enabled: boolean;
   triggerKind: string;
@@ -1053,6 +1054,7 @@ export interface AutomationSpecApiView {
   eventType?: string | null;
   nextRunAt?: string | null;
   autonomyPreset?: string | null;
+  mode?: string | null;
 }
 
 export interface AutomationRunApiView {
@@ -1061,15 +1063,37 @@ export interface AutomationRunApiView {
   status: string;
   createdAt: string;
   error?: string | null;
+  triggerKind?: string;
+}
+
+export interface AutomationRunnerApiView {
+  running: boolean;
+  workspaceRoot: string | null;
+  webhookUrl: string | null;
+  webhookPort: number | null;
+  startedAt: string | null;
+  lastError: string | null;
+}
+
+export interface AutomationsListResponse {
+  specs: AutomationSpecApiView[];
+  runs: AutomationRunApiView[];
+  runner?: AutomationRunnerApiView;
+  stats?: {
+    specs: number;
+    enabled: number;
+    queued: number;
+    running: number;
+    done: number;
+    failed: number;
+  };
+  triggeredRunId?: string;
 }
 
 export async function listAutomations(options: {
   baseUrl: string;
   token?: string;
-}): Promise<{
-  specs: AutomationSpecApiView[];
-  runs: AutomationRunApiView[];
-}> {
+}): Promise<AutomationsListResponse> {
   const res = await fetch(`${options.baseUrl}/v1/automations`, {
     headers: authHeaders(options.token),
   });
@@ -1077,13 +1101,12 @@ export async function listAutomations(options: {
     const text = await res.text();
     throw new Error(`automations_${res.status}:${text}`);
   }
-  const data = (await res.json()) as {
-    specs?: AutomationSpecApiView[];
-    runs?: AutomationRunApiView[];
-  };
+  const data = (await res.json()) as AutomationsListResponse;
   return {
     specs: Array.isArray(data.specs) ? data.specs : [],
     runs: Array.isArray(data.runs) ? data.runs : [],
+    runner: data.runner,
+    stats: data.stats,
   };
 }
 
@@ -1092,7 +1115,7 @@ async function postAutomationAction(options: {
   token?: string;
   path: string;
   specId: string;
-}): Promise<{ ok: boolean }> {
+}): Promise<AutomationsListResponse> {
   const res = await fetch(`${options.baseUrl}${options.path}`, {
     method: 'POST',
     headers: authHeaders(options.token),
@@ -1102,14 +1125,14 @@ async function postAutomationAction(options: {
     const text = await res.text();
     throw new Error(`automations_action_${res.status}:${text}`);
   }
-  return (await res.json()) as { ok: boolean };
+  return (await res.json()) as AutomationsListResponse;
 }
 
 export async function triggerAutomation(options: {
   baseUrl: string;
   token?: string;
   specId: string;
-}): Promise<{ ok: boolean }> {
+}): Promise<AutomationsListResponse> {
   return postAutomationAction({
     ...options,
     path: '/v1/automations/trigger',
@@ -1120,7 +1143,7 @@ export async function pauseAutomation(options: {
   baseUrl: string;
   token?: string;
   specId: string;
-}): Promise<{ ok: boolean }> {
+}): Promise<AutomationsListResponse> {
   return postAutomationAction({
     ...options,
     path: '/v1/automations/pause',
@@ -1131,11 +1154,407 @@ export async function resumeAutomation(options: {
   baseUrl: string;
   token?: string;
   specId: string;
-}): Promise<{ ok: boolean }> {
+}): Promise<AutomationsListResponse> {
   return postAutomationAction({
     ...options,
     path: '/v1/automations/resume',
   });
+}
+
+export async function deleteAutomation(options: {
+  baseUrl: string;
+  token?: string;
+  specId: string;
+}): Promise<AutomationsListResponse> {
+  return postAutomationAction({
+    ...options,
+    path: '/v1/automations/delete',
+  });
+}
+
+export async function fetchAutomationFlow(options: {
+  baseUrl: string;
+  token?: string;
+  specId: string;
+}): Promise<{ flow: import('../shared/automations/flow.js').AutomationFlowDocument }> {
+  const res = await fetch(
+    `${options.baseUrl}/v1/automations/flow/${encodeURIComponent(options.specId)}`,
+    { headers: authHeaders(options.token) },
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`automations_flow_${res.status}:${text}`);
+  }
+  return (await res.json()) as {
+    flow: import('../shared/automations/flow.js').AutomationFlowDocument;
+  };
+}
+
+export async function saveAutomationFlow(options: {
+  baseUrl: string;
+  token?: string;
+  flow: import('../shared/automations/flow.js').AutomationFlowDocument;
+}): Promise<AutomationsListResponse & { path?: string }> {
+  const res = await fetch(`${options.baseUrl}/v1/automations/flow`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: JSON.stringify({ flow: options.flow }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`automations_flow_save_${res.status}:${text}`);
+  }
+  return (await res.json()) as AutomationsListResponse & { path?: string };
+}
+
+export async function listAutomationTemplates(options: {
+  baseUrl: string;
+  token?: string;
+}): Promise<{
+  templates: Array<{
+    id: string;
+    title: string;
+    description: string;
+    category: string;
+  }>;
+}> {
+  const res = await fetch(`${options.baseUrl}/v1/automations/templates`, {
+    headers: authHeaders(options.token),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`automations_templates_${res.status}:${text}`);
+  }
+  return (await res.json()) as {
+    templates: Array<{
+      id: string;
+      title: string;
+      description: string;
+      category: string;
+    }>;
+  };
+}
+
+export async function applyAutomationTemplate(options: {
+  baseUrl: string;
+  token?: string;
+  templateId: string;
+}): Promise<AutomationsListResponse & { path?: string }> {
+  const res = await fetch(
+    `${options.baseUrl}/v1/automations/templates/apply`,
+    {
+      method: 'POST',
+      headers: authHeaders(options.token),
+      body: JSON.stringify({ templateId: options.templateId }),
+    },
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`automations_template_${res.status}:${text}`);
+  }
+  return (await res.json()) as AutomationsListResponse & { path?: string };
+}
+
+export async function startAutomationRunner(options: {
+  baseUrl: string;
+  token?: string;
+  webhookPort?: number;
+  webhookToken?: string;
+  githubWebhookSecret?: string;
+  installGitHook?: boolean;
+}): Promise<AutomationsListResponse & { hook?: unknown }> {
+  const res = await fetch(`${options.baseUrl}/v1/automations/runner/start`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: JSON.stringify({
+      webhookPort: options.webhookPort,
+      webhookToken: options.webhookToken,
+      githubWebhookSecret: options.githubWebhookSecret,
+      installGitHook: options.installGitHook === true,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`automations_runner_start_${res.status}:${text}`);
+  }
+  return (await res.json()) as AutomationsListResponse & { hook?: unknown };
+}
+
+export async function cancelAutomationRun(options: {
+  baseUrl: string;
+  token?: string;
+  runId: string;
+}): Promise<AutomationsListResponse> {
+  const res = await fetch(`${options.baseUrl}/v1/automations/runs/cancel`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: JSON.stringify({ runId: options.runId }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`automations_cancel_${res.status}:${text}`);
+  }
+  return (await res.json()) as AutomationsListResponse;
+}
+
+export async function exportAutomations(options: {
+  baseUrl: string;
+  token?: string;
+}): Promise<{
+  schemaVersion: number;
+  exportedAt: string;
+  specs: Array<Record<string, unknown>>;
+}> {
+  const res = await fetch(`${options.baseUrl}/v1/automations/export`, {
+    headers: authHeaders(options.token),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`automations_export_${res.status}:${text}`);
+  }
+  return (await res.json()) as {
+    schemaVersion: number;
+    exportedAt: string;
+    specs: Array<Record<string, unknown>>;
+  };
+}
+
+export async function importAutomations(options: {
+  baseUrl: string;
+  token?: string;
+  specs: Array<Record<string, unknown>>;
+}): Promise<AutomationsListResponse & { upserted?: number }> {
+  const res = await fetch(`${options.baseUrl}/v1/automations/import`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: JSON.stringify({ specs: options.specs }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`automations_import_${res.status}:${text}`);
+  }
+  return (await res.json()) as AutomationsListResponse & { upserted?: number };
+}
+
+export async function fetchAutomationRunnerPrefs(options: {
+  baseUrl: string;
+  token?: string;
+}): Promise<{
+  prefs: { webhookPort: number };
+  secrets: { webhookToken: string; githubWebhookSecret: string };
+}> {
+  const res = await fetch(`${options.baseUrl}/v1/automations/runner/prefs`, {
+    headers: authHeaders(options.token),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`automations_prefs_${res.status}:${text}`);
+  }
+  return (await res.json()) as {
+    prefs: { webhookPort: number };
+    secrets: { webhookToken: string; githubWebhookSecret: string };
+  };
+}
+
+export async function fetchGitCommitHook(options: {
+  baseUrl: string;
+  token?: string;
+}): Promise<{ hook: import('./automations/WebhookSetup.js').GitHookView }> {
+  const res = await fetch(`${options.baseUrl}/v1/automations/git-hook`, {
+    headers: authHeaders(options.token),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`automations_git_hook_${res.status}:${text}`);
+  }
+  return (await res.json()) as {
+    hook: import('./automations/WebhookSetup.js').GitHookView;
+  };
+}
+
+export async function installGitCommitHookApi(options: {
+  baseUrl: string;
+  token?: string;
+  eventsUrl?: string;
+  webhookToken?: string;
+}): Promise<{ hook: import('./automations/WebhookSetup.js').GitHookView }> {
+  const res = await fetch(
+    `${options.baseUrl}/v1/automations/git-hook/install`,
+    {
+      method: 'POST',
+      headers: authHeaders(options.token),
+      body: JSON.stringify({
+        eventsUrl: options.eventsUrl,
+        webhookToken: options.webhookToken,
+      }),
+    },
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`automations_git_hook_install_${res.status}:${text}`);
+  }
+  return (await res.json()) as {
+    hook: import('./automations/WebhookSetup.js').GitHookView;
+  };
+}
+
+export async function uninstallGitCommitHookApi(options: {
+  baseUrl: string;
+  token?: string;
+}): Promise<{ hook: import('./automations/WebhookSetup.js').GitHookView }> {
+  const res = await fetch(
+    `${options.baseUrl}/v1/automations/git-hook/uninstall`,
+    {
+      method: 'POST',
+      headers: authHeaders(options.token),
+      body: '{}',
+    },
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`automations_git_hook_uninstall_${res.status}:${text}`);
+  }
+  return (await res.json()) as {
+    hook: import('./automations/WebhookSetup.js').GitHookView;
+  };
+}
+
+export async function fetchAutomationConnections(options: {
+  baseUrl: string;
+  token?: string;
+}): Promise<{
+  connections: import('./automations/AutomationsPanel.js').ConnectionRecordView[];
+}> {
+  const res = await fetch(`${options.baseUrl}/v1/automations/connections`, {
+    headers: authHeaders(options.token),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`automations_connections_${res.status}:${text}`);
+  }
+  return (await res.json()) as {
+    connections: import('./automations/AutomationsPanel.js').ConnectionRecordView[];
+  };
+}
+
+export async function activateAutomationConnection(options: {
+  baseUrl: string;
+  token?: string;
+  id: string;
+  secrets?: Record<string, string>;
+  meta?: Record<string, string>;
+}): Promise<{
+  connections: import('./automations/AutomationsPanel.js').ConnectionRecordView[];
+}> {
+  const res = await fetch(
+    `${options.baseUrl}/v1/automations/connections/activate`,
+    {
+      method: 'POST',
+      headers: authHeaders(options.token),
+      body: JSON.stringify({
+        id: options.id,
+        secrets: options.secrets ?? {},
+        meta: options.meta,
+      }),
+    },
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`automations_connection_activate_${res.status}:${text}`);
+  }
+  return (await res.json()) as {
+    connections: import('./automations/AutomationsPanel.js').ConnectionRecordView[];
+  };
+}
+
+export async function deactivateAutomationConnection(options: {
+  baseUrl: string;
+  token?: string;
+  id: string;
+}): Promise<{
+  connections: import('./automations/AutomationsPanel.js').ConnectionRecordView[];
+}> {
+  const res = await fetch(
+    `${options.baseUrl}/v1/automations/connections/deactivate`,
+    {
+      method: 'POST',
+      headers: authHeaders(options.token),
+      body: JSON.stringify({ id: options.id }),
+    },
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`automations_connection_deactivate_${res.status}:${text}`);
+  }
+  return (await res.json()) as {
+    connections: import('./automations/AutomationsPanel.js').ConnectionRecordView[];
+  };
+}
+
+export async function fetchAutomationRun(options: {
+  baseUrl: string;
+  token?: string;
+  runId: string;
+}): Promise<import('./automations/RunInspector.js').AutomationRunDetailView> {
+  const res = await fetch(
+    `${options.baseUrl}/v1/automations/runs/${encodeURIComponent(options.runId)}`,
+    { headers: authHeaders(options.token) },
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`automations_run_${res.status}:${text}`);
+  }
+  return (await res.json()) as import('./automations/RunInspector.js').AutomationRunDetailView;
+}
+
+export async function listAutomationEvents(options: {
+  baseUrl: string;
+  token?: string;
+}): Promise<{
+  events: Array<{
+    eventId: string;
+    eventType: string;
+    source: string;
+    processingStatus: string;
+    occurredAt: string;
+    matchedSpecCount: number;
+    queuedRunCount: number;
+  }>;
+}> {
+  const res = await fetch(`${options.baseUrl}/v1/automations/events`, {
+    headers: authHeaders(options.token),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`automations_events_${res.status}:${text}`);
+  }
+  return (await res.json()) as {
+    events: Array<{
+      eventId: string;
+      eventType: string;
+      source: string;
+      processingStatus: string;
+      occurredAt: string;
+      matchedSpecCount: number;
+      queuedRunCount: number;
+    }>;
+  };
+}
+
+export async function stopAutomationRunner(options: {
+  baseUrl: string;
+  token?: string;
+}): Promise<AutomationsListResponse> {
+  const res = await fetch(`${options.baseUrl}/v1/automations/runner/stop`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: '{}',
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`automations_runner_stop_${res.status}:${text}`);
+  }
+  return (await res.json()) as AutomationsListResponse;
 }
 
 export async function openLatestSessionLog(options: {
@@ -1459,7 +1878,7 @@ export async function fetchAbsoluteWorkspacePath(options: {
 export async function fetchGitStatus(options: {
   baseUrl: string;
   token?: string;
-}): Promise<import('../shared/gitWorkingTree.js').GitWorkingTreeSnapshot> {
+}): Promise<import('../shared/git/workingTree.js').GitWorkingTreeSnapshot> {
   const res = await fetch(`${options.baseUrl}/v1/git/status`, {
     headers: authHeaders(options.token),
   });
@@ -1483,7 +1902,7 @@ export async function fetchGitDiff(options: {
 export async function fetchGitBranches(options: {
   baseUrl: string;
   token?: string;
-}): Promise<import('../shared/gitWorkingTree.js').GitBranchListSnapshot> {
+}): Promise<import('../shared/git/workingTree.js').GitBranchListSnapshot> {
   const res = await fetch(`${options.baseUrl}/v1/git/branches`, {
     headers: authHeaders(options.token),
   });
@@ -1498,7 +1917,7 @@ async function postGitMutation(
     path: string;
     body?: Record<string, unknown>;
   },
-): Promise<import('../shared/gitWorkingTree.js').GitMutationResult> {
+): Promise<import('../shared/git/workingTree.js').GitMutationResult> {
   const res = await fetch(`${options.baseUrl}${options.path}`, {
     method: 'POST',
     headers: authHeaders(options.token),
@@ -1517,7 +1936,7 @@ export async function gitStageFiles(options: {
   baseUrl: string;
   token?: string;
   paths?: string[];
-}): Promise<import('../shared/gitWorkingTree.js').GitMutationResult> {
+}): Promise<import('../shared/git/workingTree.js').GitMutationResult> {
   return postGitMutation({
     ...options,
     path: '/v1/git/stage',
@@ -1529,7 +1948,7 @@ export async function gitUnstageFiles(options: {
   baseUrl: string;
   token?: string;
   paths?: string[];
-}): Promise<import('../shared/gitWorkingTree.js').GitMutationResult> {
+}): Promise<import('../shared/git/workingTree.js').GitMutationResult> {
   return postGitMutation({
     ...options,
     path: '/v1/git/unstage',
@@ -1542,7 +1961,7 @@ export async function gitDiscardFiles(options: {
   token?: string;
   paths: string[];
   includeUntracked?: boolean;
-}): Promise<import('../shared/gitWorkingTree.js').GitMutationResult> {
+}): Promise<import('../shared/git/workingTree.js').GitMutationResult> {
   return postGitMutation({
     ...options,
     path: '/v1/git/discard',
@@ -1558,7 +1977,7 @@ export async function gitCommitChanges(options: {
   token?: string;
   message: string;
   all?: boolean;
-}): Promise<import('../shared/gitWorkingTree.js').GitMutationResult> {
+}): Promise<import('../shared/git/workingTree.js').GitMutationResult> {
   return postGitMutation({
     ...options,
     path: '/v1/git/commit',
@@ -1571,7 +1990,7 @@ export async function gitCheckoutBranch(options: {
   token?: string;
   branch: string;
   create?: boolean;
-}): Promise<import('../shared/gitWorkingTree.js').GitMutationResult> {
+}): Promise<import('../shared/git/workingTree.js').GitMutationResult> {
   return postGitMutation({
     ...options,
     path: '/v1/git/checkout',

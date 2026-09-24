@@ -57,11 +57,11 @@ import {
 import {
   createWorkspaceWatcher,
   type WorkspaceChangeEvent,
-} from './workspace-watch.js';
+} from './explorer/workspaceWatch.js';
 import {
   formatSkillFrontmatterWithAi,
   requireActiveDesktopProfile,
-} from './formatSkillFrontmatter.js';
+} from './skills/formatFrontmatter.js';
 import { getSharedMcpManager } from '@mitii/mcp';
 import { persistExcalidrawFromToolResult } from './excalidrawArtifacts.js';
 
@@ -122,11 +122,37 @@ import {
   reindexWorkspace,
 } from './index-status.js';
 import {
+  applyDesktopAutomationTemplate,
+  cancelDesktopAutomationRun,
+  deleteDesktopAutomation,
+  exportDesktopAutomations,
+  getDesktopAutomationFlow,
+  getDesktopAutomationRunDetail,
+  getDesktopAutomationRunnerStatus,
+  getDesktopGitCommitHookStatus,
+  getDesktopRunnerPrefs,
+  importDesktopAutomations,
+  ingestDesktopAutomationEvent,
+  installDesktopGitCommitHook,
+  listDesktopAutomationEvents,
+  listDesktopAutomationTemplates,
   listDesktopAutomations,
   pauseDesktopAutomation,
   resumeDesktopAutomation,
+  saveDesktopAutomationFlow,
+  saveDesktopRunnerPrefs,
+  startDesktopAutomationRunner,
+  stopDesktopAutomationRunner,
   triggerDesktopAutomation,
-} from './automationHost.js';
+  uninstallDesktopGitCommitHook,
+} from './automations/host.js';
+import type { AutomationFlowDocument } from '../shared/automations/flow.js';
+import type { ConnectionId } from '../shared/automations/modules.js';
+import {
+  activateConnection,
+  deactivateConnection,
+  readConnectionsState,
+} from './automations/connectionsStore.js';
 import {
   clearCheckpointLabels,
   deleteCheckpointLabel,
@@ -144,8 +170,8 @@ import {
   gitStage,
   gitUnstage,
   listGitBranches,
-} from './git-working-tree.js';
-import { getGitStatus } from './git-status.js';
+} from './git/workingTree.js';
+import { getGitStatus } from './git/status.js';
 import {
   copyWorkspaceEntries,
   createWorkspaceFile,
@@ -158,7 +184,7 @@ import {
   searchWorkspacePaths,
   toAbsoluteWorkspacePath,
   writeWorkspaceFile,
-} from './workspace-fs.js';
+} from './explorer/workspaceFs.js';
 
 const THOROUGHNESS_MAP = {
   low: { depth: 'quick' as const, effort: 'low' as const },
@@ -1578,11 +1604,27 @@ export async function startEngineServer(
           };
           const message =
             typeof body.message === 'string' ? body.message : '';
-          sendJson(
-            res,
-            200,
-            await gitCommit(cwd, message, { all: body.all === true }),
-          );
+          const commitResult = await gitCommit(cwd, message, {
+            all: body.all === true,
+          });
+          sendJson(res, 200, commitResult);
+          if (commitResult.ok) {
+            try {
+              ingestDesktopAutomationEvent(cwd, {
+                eventId: `git.commit.local:${Date.now()}`,
+                eventType: 'git.commit.local',
+                source: 'desktop',
+                subject: cwd,
+                workspaceRoot: cwd,
+                occurredAt: new Date().toISOString(),
+                payload: {
+                  message,
+                },
+              });
+            } catch {
+              /* automation ingest is best-effort */
+            }
+          }
         } catch (error) {
           const message =
             error instanceof Error ? error.message : String(error);
@@ -2046,6 +2088,443 @@ export async function startEngineServer(
         return;
       }
 
+      if (method === 'GET' && path === '/v1/automations/templates') {
+        if (!requireAuth(req, res, token)) return;
+        sendJson(res, 200, { templates: listDesktopAutomationTemplates() });
+        return;
+      }
+
+      if (method === 'GET' && path === '/v1/automations/runner') {
+        if (!requireAuth(req, res, token)) return;
+        sendJson(res, 200, { runner: getDesktopAutomationRunnerStatus() });
+        return;
+      }
+
+      if (method === 'GET' && path === '/v1/automations/events') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          sendJson(res, 200, {
+            events: listDesktopAutomationEvents({ limit: 40 }),
+          });
+        } catch (error) {
+          sendJson(res, 500, {
+            error: 'automations_events_failed',
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return;
+      }
+
+      if (method === 'GET' && path.startsWith('/v1/automations/runs/')) {
+        if (!requireAuth(req, res, token)) return;
+        const runId = decodeURIComponent(
+          path.slice('/v1/automations/runs/'.length),
+        ).trim();
+        if (!runId) {
+          sendJson(res, 400, { error: 'runId_required' });
+          return;
+        }
+        try {
+          sendJson(res, 200, getDesktopAutomationRunDetail(runId));
+        } catch (error) {
+          sendJson(res, 404, {
+            error: 'automations_run_not_found',
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return;
+      }
+
+      if (method === 'GET' && path === '/v1/automations/export') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          sendJson(res, 200, exportDesktopAutomations(cwd));
+        } catch (error) {
+          sendJson(res, 500, {
+            error: 'automations_export_failed',
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return;
+      }
+
+      if (method === 'GET' && path.startsWith('/v1/automations/flow/')) {
+        if (!requireAuth(req, res, token)) return;
+        const specId = decodeURIComponent(
+          path.slice('/v1/automations/flow/'.length),
+        ).trim();
+        if (!specId) {
+          sendJson(res, 400, { error: 'specId_required' });
+          return;
+        }
+        try {
+          sendJson(res, 200, getDesktopAutomationFlow(cwd, specId));
+        } catch (error) {
+          sendJson(res, 404, {
+            error: 'automations_flow_not_found',
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/automations/flow') {
+        if (!requireAuth(req, res, token)) return;
+        const body = (await readJsonBody(req)) as Record<string, unknown>;
+        const flow = body.flow as AutomationFlowDocument | undefined;
+        if (!flow || typeof flow !== 'object') {
+          sendJson(res, 400, { error: 'flow_required' });
+          return;
+        }
+        try {
+          sendJson(res, 200, saveDesktopAutomationFlow(cwd, flow));
+        } catch (error) {
+          sendJson(res, 400, {
+            error: 'automations_flow_save_failed',
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/automations/templates/apply') {
+        if (!requireAuth(req, res, token)) return;
+        const body = (await readJsonBody(req)) as Record<string, unknown>;
+        const templateId =
+          typeof body.templateId === 'string' ? body.templateId.trim() : '';
+        if (!templateId) {
+          sendJson(res, 400, { error: 'templateId_required' });
+          return;
+        }
+        try {
+          sendJson(
+            res,
+            200,
+            applyDesktopAutomationTemplate(cwd, templateId),
+          );
+        } catch (error) {
+          sendJson(res, 400, {
+            error: 'automations_template_failed',
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/automations/runner/start') {
+        if (!requireAuth(req, res, token)) return;
+        const body = (await readJsonBody(req)) as Record<string, unknown>;
+        const webhookPort =
+          typeof body.webhookPort === 'number' && body.webhookPort > 0
+            ? Math.floor(body.webhookPort)
+            : undefined;
+        const webhookToken =
+          typeof body.webhookToken === 'string'
+            ? body.webhookToken
+            : undefined;
+        const githubWebhookSecret =
+          typeof body.githubWebhookSecret === 'string'
+            ? body.githubWebhookSecret
+            : undefined;
+        try {
+          if (webhookPort) {
+            saveDesktopRunnerPrefs({
+              workspaceRoot: cwd,
+              webhookPort,
+              webhookToken,
+              githubWebhookSecret,
+            });
+          }
+          const result = await startDesktopAutomationRunner({
+            workspaceRoot: cwd,
+            webhookPort,
+            webhookToken,
+            githubWebhookSecret,
+            forceEcho: body.forceEcho === true || options.mode === 'echo',
+          });
+          if (body.installGitHook === true && result.runner.hooks.events) {
+            try {
+              installDesktopGitCommitHook({
+                workspaceRoot: cwd,
+                eventsUrl: result.runner.hooks.events,
+                webhookToken,
+              });
+            } catch {
+              /* hook is best-effort */
+            }
+          }
+          sendJson(res, 200, {
+            ...result,
+            hook: getDesktopGitCommitHookStatus(cwd),
+          });
+        } catch (error) {
+          sendJson(res, 500, {
+            error: 'automations_runner_start_failed',
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return;
+      }
+
+      if (method === 'GET' && path === '/v1/automations/runner/prefs') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          sendJson(res, 200, getDesktopRunnerPrefs(cwd));
+        } catch (error) {
+          sendJson(res, 500, {
+            error: 'automations_prefs_failed',
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/automations/runner/prefs') {
+        if (!requireAuth(req, res, token)) return;
+        const body = (await readJsonBody(req)) as Record<string, unknown>;
+        try {
+          sendJson(
+            res,
+            200,
+            saveDesktopRunnerPrefs({
+              workspaceRoot: cwd,
+              webhookPort:
+                typeof body.webhookPort === 'number'
+                  ? body.webhookPort
+                  : 8787,
+              webhookToken:
+                typeof body.webhookToken === 'string'
+                  ? body.webhookToken
+                  : undefined,
+              githubWebhookSecret:
+                typeof body.githubWebhookSecret === 'string'
+                  ? body.githubWebhookSecret
+                  : undefined,
+            }),
+          );
+        } catch (error) {
+          sendJson(res, 400, {
+            error: 'automations_prefs_save_failed',
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return;
+      }
+
+      if (method === 'GET' && path === '/v1/automations/git-hook') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          sendJson(res, 200, { hook: getDesktopGitCommitHookStatus(cwd) });
+        } catch (error) {
+          sendJson(res, 500, {
+            error: 'automations_git_hook_failed',
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return;
+      }
+
+      if (method === 'GET' && path === '/v1/automations/connections') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          sendJson(res, 200, readConnectionsState(cwd));
+        } catch (error) {
+          sendJson(res, 500, {
+            error: 'automations_connections_failed',
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/automations/connections/activate') {
+        if (!requireAuth(req, res, token)) return;
+        const body = (await readJsonBody(req)) as Record<string, unknown>;
+        const id = typeof body.id === 'string' ? body.id.trim() : '';
+        if (!id) {
+          sendJson(res, 400, { error: 'id_required' });
+          return;
+        }
+        try {
+          const secrets =
+            body.secrets &&
+            typeof body.secrets === 'object' &&
+            !Array.isArray(body.secrets)
+              ? (body.secrets as Record<string, string>)
+              : {};
+          const meta =
+            body.meta &&
+            typeof body.meta === 'object' &&
+            !Array.isArray(body.meta)
+              ? (body.meta as Record<string, string>)
+              : undefined;
+          const state = activateConnection({
+            workspaceRoot: cwd,
+            id: id as ConnectionId,
+            secrets,
+            meta,
+          });
+          // Keep runner prefs in sync for GitHub webhook HMAC
+          if (id === 'github' && typeof secrets.webhookSecret === 'string') {
+            const current = getDesktopRunnerPrefs(cwd);
+            saveDesktopRunnerPrefs({
+              workspaceRoot: cwd,
+              webhookPort: current.prefs.webhookPort,
+              webhookToken: current.secrets.webhookToken || undefined,
+              githubWebhookSecret: secrets.webhookSecret,
+            });
+          }
+          sendJson(res, 200, state);
+        } catch (error) {
+          sendJson(res, 400, {
+            error: 'automations_connection_activate_failed',
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return;
+      }
+
+      if (
+        method === 'POST' &&
+        path === '/v1/automations/connections/deactivate'
+      ) {
+        if (!requireAuth(req, res, token)) return;
+        const body = (await readJsonBody(req)) as Record<string, unknown>;
+        const id = typeof body.id === 'string' ? body.id.trim() : '';
+        if (!id) {
+          sendJson(res, 400, { error: 'id_required' });
+          return;
+        }
+        try {
+          sendJson(
+            res,
+            200,
+            deactivateConnection({
+              workspaceRoot: cwd,
+              id: id as ConnectionId,
+            }),
+          );
+        } catch (error) {
+          sendJson(res, 400, {
+            error: 'automations_connection_deactivate_failed',
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/automations/git-hook/install') {
+        if (!requireAuth(req, res, token)) return;
+        const body = (await readJsonBody(req)) as Record<string, unknown>;
+        try {
+          const runner = getDesktopAutomationRunnerStatus();
+          sendJson(
+            res,
+            200,
+            installDesktopGitCommitHook({
+              workspaceRoot: cwd,
+              eventsUrl:
+                typeof body.eventsUrl === 'string'
+                  ? body.eventsUrl
+                  : runner.hooks.events,
+              webhookToken:
+                typeof body.webhookToken === 'string'
+                  ? body.webhookToken
+                  : undefined,
+            }),
+          );
+        } catch (error) {
+          sendJson(res, 400, {
+            error: 'automations_git_hook_install_failed',
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/automations/git-hook/uninstall') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          sendJson(res, 200, uninstallDesktopGitCommitHook(cwd));
+        } catch (error) {
+          sendJson(res, 400, {
+            error: 'automations_git_hook_uninstall_failed',
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/automations/runs/cancel') {
+        if (!requireAuth(req, res, token)) return;
+        const body = (await readJsonBody(req)) as Record<string, unknown>;
+        const runId = typeof body.runId === 'string' ? body.runId.trim() : '';
+        if (!runId) {
+          sendJson(res, 400, { error: 'runId_required' });
+          return;
+        }
+        try {
+          sendJson(res, 200, cancelDesktopAutomationRun(cwd, runId));
+        } catch (error) {
+          sendJson(res, 400, {
+            error: 'automations_cancel_failed',
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/automations/runner/stop') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          sendJson(res, 200, stopDesktopAutomationRunner(cwd));
+        } catch (error) {
+          sendJson(res, 500, {
+            error: 'automations_runner_stop_failed',
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/automations/events/ingest') {
+        if (!requireAuth(req, res, token)) return;
+        const body = (await readJsonBody(req)) as Record<string, unknown>;
+        try {
+          sendJson(
+            res,
+            200,
+            ingestDesktopAutomationEvent(cwd, body as never),
+          );
+        } catch (error) {
+          sendJson(res, 400, {
+            error: 'automations_ingest_failed',
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/automations/import') {
+        if (!requireAuth(req, res, token)) return;
+        const body = (await readJsonBody(req)) as {
+          specs?: Array<Record<string, unknown>>;
+        };
+        if (!Array.isArray(body.specs)) {
+          sendJson(res, 400, { error: 'specs_required' });
+          return;
+        }
+        try {
+          sendJson(res, 200, importDesktopAutomations(cwd, { specs: body.specs }));
+        } catch (error) {
+          sendJson(res, 400, {
+            error: 'automations_import_failed',
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return;
+      }
+
       if (method === 'POST' && path === '/v1/automations/trigger') {
         if (!requireAuth(req, res, token)) return;
         const body = (await readJsonBody(req)) as Record<string, unknown>;
@@ -2055,7 +2534,7 @@ export async function startEngineServer(
           return;
         }
         try {
-          sendJson(res, 200, triggerDesktopAutomation(cwd, specId));
+          sendJson(res, 200, await triggerDesktopAutomation(cwd, specId));
         } catch (error) {
           sendJson(res, 500, {
             error: 'automations_trigger_failed',
@@ -2097,6 +2576,25 @@ export async function startEngineServer(
         } catch (error) {
           sendJson(res, 500, {
             error: 'automations_resume_failed',
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/automations/delete') {
+        if (!requireAuth(req, res, token)) return;
+        const body = (await readJsonBody(req)) as Record<string, unknown>;
+        const specId = typeof body.specId === 'string' ? body.specId.trim() : '';
+        if (!specId) {
+          sendJson(res, 400, { error: 'specId_required' });
+          return;
+        }
+        try {
+          sendJson(res, 200, deleteDesktopAutomation(cwd, specId));
+        } catch (error) {
+          sendJson(res, 500, {
+            error: 'automations_delete_failed',
             message: error instanceof Error ? error.message : String(error),
           });
         }

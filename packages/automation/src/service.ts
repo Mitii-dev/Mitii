@@ -229,6 +229,15 @@ export class AutomationService {
     this.store.deleteSpec(specId);
   }
 
+  /** Cancel one queued/running run (operator control). */
+  cancelRun(runId: string): AutomationRunRecord {
+    const run = this.store.cancelRun(runId);
+    if (!run) {
+      throw new Error(`Unknown run id: ${runId}`);
+    }
+    return run;
+  }
+
   trigger(specId: string): AutomationRunRecord {
     const spec = this.requireSpec(specId);
     if (!spec.enabled) {

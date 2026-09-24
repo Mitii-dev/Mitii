@@ -4,12 +4,12 @@ import {
   flattenWorkingTreeFiles,
   parseAheadBehind,
   parsePorcelainWorkingTree,
-} from '../src/shared/gitWorkingTree.js';
+} from '../src/shared/git/workingTree.js';
 import {
   appendPathsAfterDoubleDash,
   assertSafeGitArg,
   DesktopGitArgError,
-} from '../src/engine/gitArgSafety.js';
+} from '../src/engine/git/argSafety.js';
 
 describe('parsePorcelainWorkingTree', () => {
   it('splits staged, changes, and untracked', () => {

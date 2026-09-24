@@ -8,19 +8,19 @@ import { useCallback, useEffect, useState } from 'react';
 import type {
   GitWorkingTreeFile,
   GitWorkingTreeSnapshot,
-} from '../shared/gitWorkingTree.js';
+} from '../../shared/git/workingTree.js';
 import {
   CODE_REVIEW_PROMPT,
   ingestReviewFinding,
   type ReviewFinding,
-} from '../shared/reviewFindings.js';
+} from '../../shared/reviewFindings.js';
 import {
   IconChevronDown,
   IconChevronRight,
   IconGit,
   IconPlus,
   IconRefresh,
-} from './ActivityIcons.js';
+} from '../ActivityIcons.js';
 import {
   extractAssistantText,
   fetchGitBranches,
@@ -33,9 +33,9 @@ import {
   gitUnstageFiles,
   runRecipe,
   streamPrompt,
-} from './api.js';
-import { gitStatusKind } from './DiffView.js';
-import { ResizeHandle, usePersistedHeight } from './ResizeHandle.js';
+} from '../api.js';
+import { gitStatusKind } from '../DiffView.js';
+import { ResizeHandle, usePersistedHeight } from '../shell/ResizeHandle.js';
 
 function unwrapRecipeAnswer(answer: string): string {
   const trimmed = answer.trim();

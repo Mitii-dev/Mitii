@@ -62,6 +62,8 @@ export class ClaimRunner {
   private timer: NodeJS.Timeout | null = null;
   private stopped = true;
   private inFlight = 0;
+  /** Active lease heartbeats — must be cleared on stop() or closed DB crashes the host. */
+  private readonly heartbeats = new Set<NodeJS.Timeout>();
 
   constructor(options: ClaimRunnerOptions) {
     this.store = options.store;
@@ -95,6 +97,10 @@ export class ClaimRunner {
       clearInterval(this.timer);
       this.timer = null;
     }
+    for (const heartbeat of this.heartbeats) {
+      clearInterval(heartbeat);
+    }
+    this.heartbeats.clear();
   }
 
   async tick(): Promise<void> {
@@ -154,13 +160,19 @@ export class ClaimRunner {
     triggerEventId: string | null,
   ): Promise<void> {
     const heartbeat = setInterval(() => {
-      this.store.heartbeatClaim({
-        runId,
-        claimToken,
-        leaseSeconds: this.claimLeaseSeconds,
-      });
+      if (this.stopped) return;
+      try {
+        this.store.heartbeatClaim({
+          runId,
+          claimToken,
+          leaseSeconds: this.claimLeaseSeconds,
+        });
+      } catch {
+        // Store may already be closed during runner/engine shutdown.
+      }
     }, Math.max(10_000, Math.floor(this.claimLeaseSeconds * 1000 * 0.4)));
     heartbeat.unref?.();
+    this.heartbeats.add(heartbeat);
 
     const prompt = buildPromptWithEventContext({
       store: this.store,
@@ -179,6 +191,7 @@ export class ClaimRunner {
         mode: spec.mode ?? 'agent',
         autonomyPreset: spec.autonomyPreset ?? 'apply',
         timeoutSeconds: spec.timeoutSeconds ?? undefined,
+        metadataJson: spec.metadataJson,
       });
     } catch (error) {
       result = {
@@ -187,6 +200,18 @@ export class ClaimRunner {
       };
     } finally {
       clearInterval(heartbeat);
+      this.heartbeats.delete(heartbeat);
+    }
+
+    if (this.stopped) {
+      this.onEvent?.({
+        type: 'run_finished',
+        runId,
+        specId: spec.specId,
+        status: result.status === 'done' ? 'cancelled' : result.status,
+        error: result.error ?? 'runner_stopped',
+      });
+      return;
     }
 
     const reportPath = join(this.reportsDir, `${runId}.md`);
@@ -203,14 +228,22 @@ export class ClaimRunner {
       // report write failure should not block completion
     }
 
-    this.store.completeRun({
-      runId,
-      claimToken,
-      status: result.status,
-      error: result.error ?? null,
-      reportPath,
-      sessionId: result.sessionId ?? null,
-    });
+    try {
+      this.store.completeRun({
+        runId,
+        claimToken,
+        status: result.status,
+        error: result.error ?? null,
+        reportPath,
+        sessionId: result.sessionId ?? null,
+      });
+    } catch (error) {
+      this.onEvent?.({
+        type: 'error',
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
 
     try {
       const run = this.store.getRun(runId);
@@ -342,6 +375,24 @@ function defaultReport(input: {
   result: AutomationExecuteResult;
 }): string {
   const { runId, spec, result } = input;
+  const steps =
+    result.stepResults && result.stepResults.length > 0
+      ? [
+          '',
+          '## Deterministic steps',
+          ...result.stepResults.map((s) => {
+            const dur =
+              typeof s.durationMs === 'number' ? ` (${s.durationMs}ms)` : '';
+            const detail = s.error
+              ? ` — ${s.error}`
+              : s.summary
+                ? ` — ${s.summary}`
+                : '';
+            return `- **${s.kind}** \`${s.id}\`: ${s.status}${dur}${detail}`;
+          }),
+          '',
+        ].join('\n')
+      : '';
   return `# Automation run ${runId}
 
 - **Spec:** ${spec.title} (\`${spec.specId}\`)
@@ -349,7 +400,7 @@ function defaultReport(input: {
 - **Workspace:** ${spec.workspaceRoot ?? 'n/a'}
 - **Mode:** ${spec.mode ?? 'agent'}
 - **Autonomy:** ${spec.autonomyPreset ?? 'apply'}
-
+${steps}
 ## Error
 
 ${result.error ?? '_none_'}

@@ -138,9 +138,11 @@ On CI failure events, ClaimRunner pulls `gh run view --log` when possible and
 writes an evidence pack under `~/.mitii/automation/artifacts/<runId>/` with a
 stable `[mitii:<fingerprint>]` issue title hint.
 
-## VS Code and export
+## VS Code, Desktop, and export
 
 - Automations panel in the VS Code sidebar (list / trigger / pause / resume)
+- **Desktop** flow canvas (Trigger → Agent → Delivery) + embedded runner — see
+  [`apps/desktop/AUTOMATIONS.md`](../../apps/desktop/AUTOMATIONS.md)
 - `mitii schedule export` / `mitii schedule import`
 
 ## Hardening

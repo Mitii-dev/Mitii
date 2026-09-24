@@ -9,8 +9,8 @@ import {
   IconPlus,
   IconRefresh,
   IconSearch,
-} from './ActivityIcons.js';
-import { fetchRecipes, runRecipe, saveRecipe } from './api.js';
+} from '../ActivityIcons.js';
+import { fetchRecipes, runRecipe, saveRecipe } from '../api.js';
 
 const CREATE_RECIPE_LOCKED = true;
 const CREATE_RECIPE_LOCKED_HINT = 'Coming soon';

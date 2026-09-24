@@ -10,7 +10,7 @@ import {
   inferStatusFromDiff,
   type DesktopFileChangeEntry,
   type DesktopFileChanges,
-} from '../shared/fileChanges.js';
+} from '../../shared/fileChanges.js';
 
 const execFileAsync = promisify(execFile);
 

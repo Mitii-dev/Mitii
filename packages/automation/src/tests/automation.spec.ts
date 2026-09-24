@@ -99,6 +99,25 @@ describe('AutomationService + store', () => {
     expect(service.getSchedule(spec.specId)).toBeUndefined();
     service.close();
   });
+
+  it('cancels a queued run', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mitii-auto-'));
+    dirs.push(dir);
+    const service = new AutomationService({
+      dbPath: join(dir, 'cancel.db'),
+    });
+    const spec = service.createSchedule({
+      name: 'Cancel me',
+      cron: '0 9 * * *',
+      prompt: 'hi',
+      workspaceRoot: dir,
+    });
+    const run = service.trigger(spec.specId);
+    expect(run.status).toBe('queued');
+    const cancelled = service.cancelRun(run.runId);
+    expect(cancelled.status).toBe('cancelled');
+    service.close();
+  });
 });
 
 describe('SqliteAutomationStore lease reclaim', () => {
@@ -140,6 +159,24 @@ describe('SqliteAutomationStore lease reclaim', () => {
     expect(reclaimed?.runId).toBe('run_1');
     expect(reclaimed?.claimToken).toBe('new');
     store.close();
+  });
+});
+
+describe('SqliteAutomationStore close safety', () => {
+  it('heartbeatClaim no-ops after close (does not throw)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mitii-auto-'));
+    dirs.push(dir);
+    const store = new SqliteAutomationStore(join(dir, 'db.sqlite'));
+    store.close();
+    expect(store.isOpen).toBe(false);
+    expect(
+      store.heartbeatClaim({
+        runId: 'run_x',
+        claimToken: 'tok',
+        leaseSeconds: 60,
+      }),
+    ).toBe(false);
+    expect(() => store.close()).not.toThrow();
   });
 });
 
@@ -252,6 +289,27 @@ Triage this failure.
     expect(parsed.filtersJson).toBe(JSON.stringify({ conclusion: 'failure' }));
     expect(parsed.eventType).toBe('github.workflow_run.completed');
     expect(parsed.triggerKind).toBe('event');
+  });
+
+  it('round-trips serialize → parse with delivery metadata', async () => {
+    const { parseCronMarkdown } = await import('../specs/reconciler.js');
+    const { serializeCronMarkdown } = await import('../specs/serialize.js');
+    const raw = serializeCronMarkdown({
+      name: 'morning-health',
+      prompt: 'Summarize repo health.',
+      triggerKind: 'schedule',
+      cron: '0 9 * * MON-FRI',
+      timezone: 'America/Chicago',
+      mode: 'ask',
+      autonomyPreset: 'readonly',
+      delivery: [{ adapter: 'webhook', target: 'http://127.0.0.1:9/hook' }],
+      desktopFlow: { schemaVersion: 1 },
+    });
+    const parsed = parseCronMarkdown(raw, '/tmp/morning-health.cron.md');
+    expect(parsed.triggerKind).toBe('schedule');
+    expect(parsed.cron).toBe('0 9 * * MON-FRI');
+    expect(parsed.metadataJson).toContain('webhook');
+    expect(parsed.metadataJson).toContain('desktopFlow');
   });
 });
 

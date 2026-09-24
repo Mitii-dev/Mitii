@@ -67,8 +67,11 @@ export function createAutomationRunExecutor(
   const env = options.env ?? process.env;
   return {
     async execute(input: AutomationExecuteInput): Promise<AutomationExecuteResult> {
+      const overrides = readAgentOverrides(input.metadataJson);
+      const workspaceRoot = overrides.repository || input.workspaceRoot;
       const client = await createAutomationClient({
-        cwd: input.workspaceRoot,
+        cwd: workspaceRoot,
+        model: overrides.model,
         forceEcho: options.forceEcho,
         env,
         openDatabase: options.openDatabase,
@@ -84,7 +87,7 @@ export function createAutomationRunExecutor(
         mode: input.mode,
         origin: 'automation',
         autonomyPreset: input.autonomyPreset,
-        workspaceRoot: input.workspaceRoot,
+        workspaceRoot,
         ...(approvalMode ? { approvalMode } : {}),
         ...(planApproval ? { planApproval } : {}),
       });
@@ -132,7 +135,7 @@ export function createAutomationRunExecutor(
         if (result.status === 'failed') {
           return {
             status: 'failed',
-            error: result.error?.message ?? 'failed',
+            error: friendlyTimeout(result.error?.message ?? 'failed'),
             sessionId: result.runId,
             answer: result.answer,
           };
@@ -230,8 +233,42 @@ function buildAutoApproveResume(result: {
   return undefined;
 }
 
+function friendlyTimeout(message: string): string {
+  if (
+    /aborted due to timeout|timed out after|llm request timed out|operation was aborted/i.test(
+      message,
+    )
+  ) {
+    return 'The model request timed out before it finished. Trigger again, or choose a faster model.';
+  }
+  return message;
+}
+
+function readAgentOverrides(metadataJson: string | null | undefined): {
+  model?: string;
+  repository?: string;
+} {
+  if (!metadataJson?.trim()) return {};
+  try {
+    const meta = JSON.parse(metadataJson) as {
+      desktopFlow?: { agent?: { model?: unknown; repository?: unknown } };
+    };
+    const agent = meta.desktopFlow?.agent;
+    return {
+      model: typeof agent?.model === 'string' ? agent.model.trim() : undefined,
+      repository:
+        typeof agent?.repository === 'string'
+          ? agent.repository.trim()
+          : undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
 async function createAutomationClient(options: {
   cwd: string;
+  model?: string;
   forceEcho?: boolean;
   env: NodeJS.ProcessEnv;
   openDatabase?: OpenHostSqliteDatabase;
@@ -245,7 +282,8 @@ async function createAutomationClient(options: {
     'echo';
   const forceEcho = options.forceEcho === true || type === 'echo';
   const preset = getProviderPreset(type);
-  const model = env.MITII_MODEL ?? preset?.model ?? 'gpt-4o-mini';
+  const model =
+    options.model?.trim() || env.MITII_MODEL || preset?.model || 'gpt-4o-mini';
   const baseUrl = env.MITII_BASE_URL ?? preset?.baseUrl;
   const apiKey = resolveProviderApiKey({ type, env });
   const ports = createHostLlmPorts(
@@ -256,6 +294,9 @@ async function createAutomationClient(options: {
           model,
           ...(baseUrl ? { baseUrl } : {}),
           ...(apiKey ? { apiKey } : {}),
+          // Manual runs should finish a long answer instead of dying at the
+          // 3-minute gateway cap.
+          requestTimeoutMs: 0,
         },
   );
 

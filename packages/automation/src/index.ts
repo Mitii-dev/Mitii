@@ -63,6 +63,7 @@ export type {
   AutomationExecuteInput,
   AutomationExecuteResult,
   AutomationRunExecutor,
+  AutomationStepResult,
 } from './runner/types.js';
 
 export {
@@ -73,6 +74,9 @@ export type {
   ParsedCronMd,
   ReconcileResult,
 } from './specs/reconciler.js';
+
+export { serializeCronMarkdown } from './specs/serialize.js';
+export type { SerializeCronMarkdownInput } from './specs/serialize.js';
 
 export { AutomationService } from './service.js';
 export type { AutomationServiceOptions } from './service.js';
