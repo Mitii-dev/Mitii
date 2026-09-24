@@ -55,6 +55,10 @@ import {
   writeWorkspaceSkillMarkdown,
 } from './extensions.js';
 import {
+  createWorkspaceWatcher,
+  type WorkspaceChangeEvent,
+} from './workspace-watch.js';
+import {
   formatSkillFrontmatterWithAi,
   requireActiveDesktopProfile,
 } from './formatSkillFrontmatter.js';
@@ -789,6 +793,7 @@ export async function startEngineServer(
   const port = options.port ?? 0;
   const token = options.token;
   const cwd = options.workspaceRoot;
+  const workspaceWatcher = createWorkspaceWatcher(cwd);
 
   const server: Server = createServer((req, res) => {
     void (async () => {
@@ -1245,6 +1250,56 @@ export async function startEngineServer(
             error instanceof Error ? error.message : String(error);
           sendJson(res, 400, { ok: false, error: message });
         }
+        return;
+      }
+
+      if (method === 'GET' && path === '/v1/workspace/events') {
+        if (!requireAuth(req, res, token)) return;
+        res.writeHead(200, {
+          'content-type': 'application/x-ndjson; charset=utf-8',
+          'cache-control': 'no-store',
+          connection: 'keep-alive',
+          'x-accel-buffering': 'no',
+        });
+        res.write(
+          `${JSON.stringify({
+            type: 'ready',
+            at: Date.now(),
+            workspaceRoot: cwd,
+          })}\n`,
+        );
+        const onChange = (event: WorkspaceChangeEvent) => {
+          if (res.writableEnded) return;
+          try {
+            res.write(
+              `${JSON.stringify({
+                type: 'change',
+                at: event.at,
+                paths: event.paths,
+                kind: event.kind,
+              })}\n`,
+            );
+          } catch {
+            /* client gone */
+          }
+        };
+        const unsubscribe = workspaceWatcher.subscribe(onChange);
+        const heartbeat = setInterval(() => {
+          if (res.writableEnded) return;
+          try {
+            res.write(`${JSON.stringify({ type: 'ping', at: Date.now() })}\n`);
+          } catch {
+            /* ignore */
+          }
+        }, 25_000);
+        const cleanup = () => {
+          clearInterval(heartbeat);
+          unsubscribe();
+        };
+        req.on('close', cleanup);
+        req.on('error', cleanup);
+        res.on('close', cleanup);
+        res.on('error', cleanup);
         return;
       }
 
@@ -2231,6 +2286,7 @@ export async function startEngineServer(
     token,
     close: () =>
       new Promise((resolve, reject) => {
+        workspaceWatcher.close();
         server.close((err) => (err ? reject(err) : resolve()));
       }),
   };

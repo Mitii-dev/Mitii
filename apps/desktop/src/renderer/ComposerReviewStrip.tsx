@@ -1,19 +1,8 @@
 /**
- * WIRING.md — App.tsx
- * - import { ComposerReviewStrip } from './ComposerReviewStrip.js'
- * - Mount above composer when latest run has file changes and/or review findings:
- *   <ComposerReviewStrip
- *     findings={reviewFindings}
- *     fileChangeCount={latestRunChanges?.files.length ?? 0}
- *     runId={latestRunChanges?.runId}
- *     running={busy}
- *     codeReviewEnabled={settings.features?.codeReview !== false}
- *     onShowChanges={…} onRunCodeReview={…}
- *     onUndoChanges={…} onFixAll={…} onDismiss={…}
- *   />
- * - Findings: use ReviewFinding from shared/reviewFindings.ts (+ optional status).
+ * Expandable post-run changes panel for the composer dock.
  */
 
+import type { DesktopFileChangeEntry } from '../shared/fileChanges.js';
 import {
   WorkingTreeReviewBar,
   type ReviewFindingChip,
@@ -26,11 +15,13 @@ export interface ComposerReviewStripProps {
   findings: readonly ReviewFindingChip[];
   /** Count of files touched by the latest Mitii run. */
   fileChangeCount: number;
+  files?: readonly DesktopFileChangeEntry[];
   runId?: string;
+  totalAdditions?: number;
+  totalDeletions?: number;
   running?: boolean;
-  codeReviewEnabled?: boolean;
   onShowChanges: () => void;
-  onRunCodeReview?: () => void;
+  onOpenFile?: (path: string) => void;
   onUndoChanges?: (runId: string) => void;
   onFixAll?: () => void;
   onDismiss?: (runId?: string) => void;
@@ -39,36 +30,43 @@ export interface ComposerReviewStripProps {
 export function ComposerReviewStrip({
   findings,
   fileChangeCount,
+  files = [],
   runId,
+  totalAdditions = 0,
+  totalDeletions = 0,
   running = false,
-  codeReviewEnabled = false,
   onShowChanges,
-  onRunCodeReview,
+  onOpenFile,
   onUndoChanges,
   onFixAll,
   onDismiss,
 }: ComposerReviewStripProps) {
   const runChanges: RunFileChangesSummary | null =
     runId && fileChangeCount > 0
-      ? { runId, fileCount: fileChangeCount }
+      ? {
+          runId,
+          fileCount: fileChangeCount,
+          totalAdditions,
+          totalDeletions,
+        }
       : null;
 
   return (
     <WorkingTreeReviewBar
       fileChangeCount={fileChangeCount}
       findings={findings}
+      files={files}
       running={running}
-      codeReviewEnabled={codeReviewEnabled}
       runChanges={runChanges}
+      totalAdditions={totalAdditions}
+      totalDeletions={totalDeletions}
       onShowChanges={onShowChanges}
-      onRunCodeReview={codeReviewEnabled ? onRunCodeReview : undefined}
+      onOpenFile={onOpenFile}
       onUndoChanges={
         runId && onUndoChanges ? () => onUndoChanges(runId) : undefined
       }
       onFixAll={onFixAll}
-      onDismiss={
-        onDismiss ? () => onDismiss(runId) : undefined
-      }
+      onDismiss={onDismiss ? () => onDismiss(runId) : undefined}
     />
   );
 }

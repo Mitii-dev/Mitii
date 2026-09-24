@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 import type { DesktopShellSnapshot } from '../shared/bridge.js';
 import {
   mergeDesktopSettings,
+  settingsRequireEngineRestart,
   settingsToEngineEnv,
   DEFAULT_DESKTOP_SETTINGS,
   type DesktopSettings,
@@ -377,7 +378,23 @@ function registerIpc(): void {
     };
     if (!record.settings) return { ok: false, reason: 'missing_settings' };
     try {
-      state.settings = mergeDesktopSettings(record.settings);
+      const previous = state.settings;
+      const next = mergeDesktopSettings(record.settings);
+      const apiKeyChanged = Boolean(
+        record.clearApiKey ||
+          (typeof record.apiKey === 'string' && record.apiKey.trim()),
+      );
+      const searchApiKeyChanged = Boolean(
+        record.clearSearchApiKey ||
+          (typeof record.searchApiKey === 'string' &&
+            record.searchApiKey.trim()),
+      );
+      const restart = settingsRequireEngineRestart(previous, next, {
+        apiKeyChanged,
+        searchApiKeyChanged,
+      });
+
+      state.settings = next;
       store.saveSettings(state.workspaceRoot, state.settings);
       writeWorkspaceCompatFiles(state.workspaceRoot, state.settings);
       if (record.clearApiKey) clearStoredApiKey(userDataPath);
@@ -391,8 +408,10 @@ function registerIpc(): void {
       ) {
         writeStoredSearchApiKey(userDataPath, record.searchApiKey);
       }
-      await startEngine();
-      return { ok: true };
+      if (restart) {
+        await startEngine();
+      }
+      return { ok: true, restarted: restart };
     } catch (error) {
       return {
         ok: false,

@@ -361,3 +361,55 @@ export function IconEllipsis(props: IconProps) {
     </Svg16>
   );
 }
+
+/** Codicon-like: eye / view */
+export function IconEye(props: IconProps) {
+  return (
+    <Svg16 {...props}>
+      <path d="M1.5 8s2.8-4.5 6.5-4.5S14.5 8 14.5 8s-2.8 4.5-6.5 4.5S1.5 8 1.5 8z" />
+      <circle cx="8" cy="8" r="2.2" />
+    </Svg16>
+  );
+}
+
+/** Codicon-like: discard / undo */
+export function IconUndo(props: IconProps) {
+  return (
+    <Svg16 {...props}>
+      <path d="M4.5 7.5H11a3 3 0 0 1 0 6H9.5" />
+      <path d="M4.5 7.5 7 5" />
+      <path d="M4.5 7.5 7 10" />
+    </Svg16>
+  );
+}
+
+/** Codicon-like: wrench / fix */
+export function IconWrench(props: IconProps) {
+  return (
+    <Svg16 {...props}>
+      <path d="M10.2 2.8a3.2 3.2 0 0 0-4.3 4.3L2.5 10.5v3h3l3.4-3.4a3.2 3.2 0 0 0 4.3-4.3L11 7.5 10.2 2.8z" />
+    </Svg16>
+  );
+}
+
+/** Codicon-like: close */
+export function IconClose(props: IconProps) {
+  return (
+    <Svg16 {...props} size={props.size ?? 12}>
+      <path d="M4 4l8 8" />
+      <path d="M12 4 4 12" />
+    </Svg16>
+  );
+}
+
+/** Codicon-like: diff */
+export function IconDiff(props: IconProps) {
+  return (
+    <Svg16 {...props}>
+      <path d="M3.5 2.5h5.2L12.5 6.3V13.5H3.5z" />
+      <path d="M8.5 2.5v4h4" />
+      <path d="M6 9h4" />
+      <path d="M8 7v4" />
+    </Svg16>
+  );
+}

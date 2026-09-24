@@ -35,6 +35,7 @@ import {
   SETTINGS_TABS,
   mergeDesktopSettings,
   normalizeDesktopProviderModel,
+  settingsRequireEngineRestart,
   type DesktopProviderPreset,
   type DesktopSettings,
   type SettingsTabId,
@@ -361,6 +362,12 @@ export function App() {
     path: string;
     view?: 'file' | 'diff';
   } | null>(null);
+  /** Push agent write paths into WorkspacePanel immediately (explorer + SCM). */
+  const [workspaceInvalidate, setWorkspaceInvalidate] = useState<{
+    seq: number;
+    paths: string[];
+  } | null>(null);
+  const workspaceInvalidateSeq = useRef(0);
   const [workspaceSide, setWorkspaceSide] = useState<WorkspaceSide>('explorer');
   const [settingsTab, setSettingsTab] = useState<SettingsTabId>('profiles');
   const [picker, setPicker] = useState<'workspace' | 'profile' | null>(null);
@@ -386,6 +393,9 @@ export function App() {
   const [indexProgress, setIndexProgress] = useState<number | null>(null);
   const [indexStream, setIndexStream] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  /** True while an agent stream is in flight — survives settings/UI busy toggles. */
+  const runActiveRef = useRef(false);
+  const [settingsBusy, setSettingsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tokenUsage, setTokenUsage] = useState<TokenUsageState>(emptyTokenUsage);
   const tokenUsageRef = useRef<TokenUsageState>(emptyTokenUsage());
@@ -894,8 +904,15 @@ export function App() {
               toolCalls: usage.toolCalls + 1,
             });
           }
-          for (const path of collectMutatedPathsFromEvent(line.event)) {
-            mutated.add(path);
+          const writePaths = collectMutatedPathsFromEvent(line.event);
+          for (const path of writePaths) mutated.add(path);
+          // Mid-stream: refresh explorer/SCM as soon as write tools complete.
+          if (isToolCompleted(line.event) && writePaths.length > 0) {
+            workspaceInvalidateSeq.current += 1;
+            setWorkspaceInvalidate({
+              seq: workspaceInvalidateSeq.current,
+              paths: writePaths,
+            });
           }
           const item = runEventToActivity(line.event);
           if (item) {
@@ -1354,16 +1371,37 @@ export function App() {
   }) => {
     const bridge = getDesktopBridge();
     if (!bridge) throw new Error('bridge_missing');
-    setBusy(true);
+
+    const willRestart = settingsRequireEngineRestart(settings, inputSave.settings, {
+      apiKeyChanged: Boolean(
+        inputSave.clearApiKey || inputSave.apiKey?.trim(),
+      ),
+      searchApiKeyChanged: Boolean(
+        inputSave.clearSearchApiKey || inputSave.searchApiKey?.trim(),
+      ),
+    });
+    if (runActiveRef.current && willRestart) {
+      const ok = window.confirm(
+        'An agent run is in progress. Saving these settings restarts the engine and will stop the run. Continue?',
+      );
+      if (!ok) return;
+    }
+
+    // Do not clear the run's busy flag if a stream is still in flight.
+    setSettingsBusy(true);
     try {
       const result = await bridge.saveSettings(inputSave);
       if (!result.ok) throw new Error(result.reason ?? 'save_failed');
-      // Profile upserts are owned by ProfileSettings (with the live engine
-      // token). Do not overwrite/create a "Default" profile here — that raced
-      // the engine restart and caused profile saves to fail with 401.
+      if (result.restarted && runActiveRef.current) {
+        runActiveRef.current = false;
+        setBusy(false);
+        setError(
+          'Settings saved — engine restarted, so the previous agent run was interrupted.',
+        );
+      }
       await refresh();
     } finally {
-      setBusy(false);
+      setSettingsBusy(false);
     }
   };
 
@@ -1750,6 +1788,13 @@ export function App() {
 
         const mergedActivity = [...priorActivity, ...activity];
         const fileChanges = await resolveFileChanges(mutatedPaths);
+        if (mutatedPaths.length > 0) {
+          workspaceInvalidateSeq.current += 1;
+          setWorkspaceInvalidate({
+            seq: workspaceInvalidateSeq.current,
+            paths: mutatedPaths,
+          });
+        }
         let finalAssistant = assistant.trim()
           ? priorText
             ? `${priorText}\n\n${assistant}`
@@ -1841,6 +1886,7 @@ export function App() {
       return;
     }
     setBusy(true);
+    runActiveRef.current = true;
     setError(null);
     setSuspension(null);
     setReviewDismissed(false);
@@ -1964,6 +2010,13 @@ export function App() {
       );
 
       const fileChanges = await resolveFileChanges(mutatedPaths);
+      if (mutatedPaths.length > 0) {
+        workspaceInvalidateSeq.current += 1;
+        setWorkspaceInvalidate({
+          seq: workspaceInvalidateSeq.current,
+          paths: mutatedPaths,
+        });
+      }
 
       let finalAssistant = assistant;
       if (!finalAssistant.trim() && !nextSuspension) {
@@ -2045,6 +2098,7 @@ export function App() {
       );
       setTokenUsage((prev) => ({ ...prev, live: false }));
     } finally {
+      runActiveRef.current = false;
       setBusy(false);
     }
   }, [
@@ -2232,12 +2286,14 @@ export function App() {
   const inCodeMode = view === 'chat' && chatLayout === 'code';
   const showHistorySide = view === 'chat' && chatLayout === 'chat';
   const showActivityBar = inCodeMode || view === 'settings';
+  /** Hide chat chrome in Code mode for extension sides — keep DOM mounted. */
   const hideCodeChat =
-    inCodeMode &&
+    chatLayout === 'code' &&
     (workspaceSide === 'mcp' ||
       workspaceSide === 'skills' ||
       workspaceSide === 'recipes' ||
       workspaceSide === 'automations');
+  const settingsOpen = view === 'settings';
 
   const planFollowView = planArtifactToFollowView(
     pendingPlan,
@@ -2396,17 +2452,6 @@ export function App() {
                     )}
                     streaming={Boolean(m.streaming)}
                   />
-                  <ThinkingBlock
-                    items={thinkingItemsFromActivity(m.activity)}
-                    streaming={Boolean(m.streaming)}
-                    endAt={
-                      m.streaming
-                        ? undefined
-                        : (m.activity ?? [])
-                            .filter((item) => item.kind !== 'thinking')
-                            .at(-1)?.at
-                    }
-                  />
                   {mcpAppsFromActivity(m.activity).map((app, index) => (
                     <McpAppCard
                       key={`${app.title}-${app.paths.svg ?? app.paths.md ?? index}`}
@@ -2418,6 +2463,23 @@ export function App() {
                       }}
                     />
                   ))}
+                  {m.text ? (
+                    <MarkdownBody
+                      text={m.text}
+                      streaming={Boolean(m.streaming)}
+                    />
+                  ) : null}
+                  <ThinkingBlock
+                    items={thinkingItemsFromActivity(m.activity)}
+                    streaming={Boolean(m.streaming)}
+                    endAt={
+                      m.streaming
+                        ? undefined
+                        : (m.activity ?? [])
+                            .filter((item) => item.kind !== 'thinking')
+                            .at(-1)?.at
+                    }
+                  />
                   {m.fileChanges && m.fileChanges.files.length > 0 ? (
                     <FileChangesCard
                       changes={m.fileChanges}
@@ -2432,14 +2494,6 @@ export function App() {
                         );
                       }}
                     />
-                  ) : null}
-                  {m.text ? (
-                    <MarkdownBody
-                      text={m.text}
-                      streaming={Boolean(m.streaming)}
-                    />
-                  ) : m.streaming ? (
-                    <p className="md-pending">Working…</p>
                   ) : null}
                 </>
               ) : (
@@ -2487,6 +2541,108 @@ export function App() {
             setOpenPathRequest({ path, view: 'file' });
           }}
         />
+        {showComposerReview ? (
+          <ComposerReviewStrip
+            findings={reviewDismissed ? [] : reviewFindings}
+            fileChangeCount={latestFileChanges?.files.length ?? 0}
+            files={latestFileChanges?.files ?? []}
+            runId={latestReviewRunId}
+            totalAdditions={latestFileChanges?.totalAdditions ?? 0}
+            totalDeletions={latestFileChanges?.totalDeletions ?? 0}
+            running={busy}
+            onShowChanges={() => {
+              setLayout('code');
+              setWorkspaceSide('git');
+              const first = latestFileChanges?.files[0]?.path;
+              if (first) {
+                setOpenPathRequest({ path: first, view: 'diff' });
+              }
+            }}
+            onOpenFile={(path) => {
+              setLayout('code');
+              setWorkspaceSide('git');
+              setOpenPathRequest({ path, view: 'diff' });
+              setPinnedPaths((prev) =>
+                prev.includes(path) ? prev : [...prev, path].slice(0, 32),
+              );
+            }}
+            onUndoChanges={(runId) => {
+              void (async () => {
+                if (!engine) {
+                  setError(
+                    'Engine offline — open Settings → Context → Checkpoints to restore.',
+                  );
+                  return;
+                }
+                try {
+                  const checkpoints = await fetchCheckpoints(engine);
+                  const match =
+                    checkpoints.find(
+                      (cp) =>
+                        cp.id === runId ||
+                        cp.label.includes(runId) ||
+                        (cp.changedPaths ?? []).some((p) =>
+                          (latestFileChanges?.files ?? []).some(
+                            (f) => f.path === p,
+                          ),
+                        ),
+                    ) ?? checkpoints[0];
+                  if (!match) {
+                    setError(
+                      'No checkpoint available — use Settings → Context → Checkpoints to restore.',
+                    );
+                    setSettingsTab('context');
+                    setView('settings');
+                    return;
+                  }
+                  await restoreCheckpoint({ ...engine, id: match.id });
+                  setReviewDismissed(true);
+                  setReviewFindings([]);
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === latestAssistantWithChanges?.id
+                        ? { ...m, fileChanges: undefined }
+                        : m,
+                    ),
+                  );
+                } catch (err) {
+                  setError(
+                    err instanceof Error ? err.message : String(err),
+                  );
+                }
+              })();
+            }}
+            onFixAll={() => {
+              const open = reviewFindings.filter(
+                (f) => (f as { status?: string }).status !== 'fixed',
+              );
+              const listing =
+                open.length > 0
+                  ? open
+                      .map(
+                        (f, i) =>
+                          `${i + 1}. ${f.path}${f.startLine ? `:${f.startLine}` : ''} — ${f.content}`,
+                      )
+                      .join('\n')
+                  : '(no structured findings — fix issues in the latest file changes)';
+              void onSubmit({
+                prompt: `Fix all open code-review findings:\n${listing}`,
+                mode: 'agent',
+              });
+            }}
+            onDismiss={() => {
+              setReviewFindings([]);
+              setReviewDismissed(true);
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === latestAssistantWithChanges?.id
+                    ? { ...m, fileChanges: undefined }
+                    : m,
+                ),
+              );
+            }}
+          />
+        ) : null}
         <form
           className="composer-box"
           ref={pinMenuRef}
@@ -2497,107 +2653,6 @@ export function App() {
           }}
         >
           {suggestMenu}
-          {showComposerReview ? (
-            <ComposerReviewStrip
-              findings={reviewDismissed ? [] : reviewFindings}
-              fileChangeCount={latestFileChanges?.files.length ?? 0}
-              runId={latestReviewRunId}
-              running={busy}
-              codeReviewEnabled={
-                settings.ui.features.codeReviewButton !== false
-              }
-              onShowChanges={() => {
-                setLayout('code');
-                setWorkspaceSide('git');
-                const first = latestFileChanges?.files[0]?.path;
-                if (first) {
-                  setOpenPathRequest({ path: first, view: 'diff' });
-                }
-              }}
-              onRunCodeReview={() => {
-                void onSubmit({
-                  prompt:
-                    'Review the current working-tree and recent Mitii file changes. Emit findings for bugs, regressions, and missing tests.',
-                  mode: 'agent',
-                });
-              }}
-              onUndoChanges={(runId) => {
-                void (async () => {
-                  if (!engine) {
-                    setError(
-                      'Engine offline — open Settings → Context → Checkpoints to restore.',
-                    );
-                    return;
-                  }
-                  try {
-                    const checkpoints = await fetchCheckpoints(engine);
-                    const match =
-                      checkpoints.find(
-                        (cp) =>
-                          cp.id === runId ||
-                          cp.label.includes(runId) ||
-                          (cp.changedPaths ?? []).some((p) =>
-                            (latestFileChanges?.files ?? []).some(
-                              (f) => f.path === p,
-                            ),
-                          ),
-                      ) ?? checkpoints[0];
-                    if (!match) {
-                      setError(
-                        'No checkpoint available — use Settings → Context → Checkpoints to restore.',
-                      );
-                      setSettingsTab('context');
-                      setView('settings');
-                      return;
-                    }
-                    await restoreCheckpoint({ ...engine, id: match.id });
-                    setReviewDismissed(true);
-                    setReviewFindings([]);
-                    setMessages((prev) =>
-                      prev.map((m) =>
-                        m.id === latestAssistantWithChanges?.id
-                          ? { ...m, fileChanges: undefined }
-                          : m,
-                      ),
-                    );
-                  } catch (err) {
-                    setError(
-                      err instanceof Error ? err.message : String(err),
-                    );
-                  }
-                })();
-              }}
-              onFixAll={() => {
-                const open = reviewFindings.filter(
-                  (f) => (f as { status?: string }).status !== 'fixed',
-                );
-                const listing =
-                  open.length > 0
-                    ? open
-                        .map(
-                          (f, i) =>
-                            `${i + 1}. ${f.path}${f.startLine ? `:${f.startLine}` : ''} — ${f.content}`,
-                        )
-                        .join('\n')
-                    : '(no structured findings — fix issues in the latest file changes)';
-                void onSubmit({
-                  prompt: `Fix all open code-review findings:\n${listing}`,
-                  mode: 'agent',
-                });
-              }}
-              onDismiss={() => {
-                setReviewFindings([]);
-                setReviewDismissed(true);
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === latestAssistantWithChanges?.id
-                      ? { ...m, fileChanges: undefined }
-                      : m,
-                  ),
-                );
-              }}
-            />
-          ) : null}
           {hasPins ? (
             <div className="composer-pins">
               {pinnedPaths.map((path) => (
@@ -2799,6 +2854,20 @@ export function App() {
           </div>
         </div>
         <div className="app-topbar__right">
+          {busy ? (
+            <button
+              type="button"
+              className="run-status-chip"
+              title="Agent is running — click to return to chat"
+              onClick={() => {
+                setView('chat');
+                setWorkspaceSide('explorer');
+              }}
+            >
+              <span className="run-status-chip__dot" aria-hidden />
+              Running
+            </button>
+          ) : null}
           <IndexStatusChip
             index={indexStatus}
             indexing={indexIndexing}
@@ -2818,6 +2887,7 @@ export function App() {
               type="button"
               className="top-select__trigger"
               disabled={busy}
+              title={busy ? 'Agent is running' : 'Profile'}
               aria-expanded={picker === 'profile'}
               onClick={() =>
                 setPicker((v) => (v === 'profile' ? null : 'profile'))
@@ -2838,7 +2908,11 @@ export function App() {
                 className="top-select__trigger top-select__trigger--repo"
                 disabled={busy}
                 aria-expanded={picker === 'workspace'}
-                title={snapshot?.workspaceRoot ?? 'Workspace'}
+                title={
+                  busy
+                    ? 'Agent is running'
+                    : (snapshot?.workspaceRoot ?? 'Workspace')
+                }
                 onClick={() =>
                   setPicker((v) => (v === 'workspace' ? null : 'workspace'))
                 }
@@ -2856,8 +2930,8 @@ export function App() {
               type="button"
               className="top-icon-btn"
               disabled={busy}
-              title="Switch workspace"
-              aria-label="Switch workspace"
+              title={busy ? 'Agent is running' : 'Switch workspace'}
+              aria-label={busy ? 'Agent is running' : 'Switch workspace'}
               onClick={() => setPicker('workspace')}
             >
               <IconSwitch size={15} />
@@ -2867,8 +2941,8 @@ export function App() {
               type="button"
               className="top-icon-btn top-icon-btn--accent"
               disabled={busy}
-              title="Add workspace"
-              aria-label="Add workspace"
+              title={busy ? 'Agent is running' : 'Add workspace'}
+              aria-label={busy ? 'Agent is running' : 'Add workspace'}
               onClick={() => void onPickWorkspace()}
             >
               <IconPlus size={15} />
@@ -3033,148 +3107,154 @@ export function App() {
         </aside>
       ) : null}
 
-      <section className="main">
-        {view === 'settings' ? (
-          <SettingsPanel
-            key={snapshot?.workspaceRoot ?? 'settings'}
-            settings={settings}
-            workspaceRoot={snapshot?.workspaceRoot ?? ''}
-            hasApiKey={snapshot?.hasApiKey ?? false}
-            hasSearchApiKey={snapshot?.hasSearchApiKey ?? false}
-            busy={busy}
-            engineBaseUrl={snapshot?.engineBaseUrl}
-            authToken={snapshot?.authToken}
-            tab={settingsTab}
-            onTabChange={setSettingsTab}
-            hideSideNav
-            onSave={onSaveSettings}
-            onPickWorkspace={() => void onPickWorkspace()}
-            onIndexStarted={() => {
-              setIndexIndexing(true);
-              setIndexProgress(8);
-              setIndexStream([]);
-              pushIndexStream('Reindex started from settings…');
-            }}
-            onIndexChanged={() => {
-              pushIndexStream('Index status updated');
-              void refreshIndexStatus();
-            }}
-            onWorkspaceCacheCleared={() => {
-              void refresh();
-            }}
-          />
-        ) : inCodeMode ? (
-          <div
-            className={`code-mode${
-              hideCodeChat ? ' code-mode--extensions' : ''
-            }`}
-          >
-            <div className="code-mode__workspace">
-              {engine ? (
-                <WorkspacePanel
-                  key={snapshot?.workspaceRoot ?? 'workspace'}
-                  baseUrl={engine.baseUrl}
-                  token={engine.token}
-                  workspaceRoot={snapshot?.workspaceRoot ?? ''}
-                  embedded
-                  hideActivityRail
-                  side={workspaceSide}
-                  onSideChange={setWorkspaceSide}
-                  onGitCountChange={setGitBadge}
-                  openPathRequest={openPathRequest}
-                  onOpenPathHandled={() => setOpenPathRequest(null)}
-                  onEditorContextChange={setEditorContext}
-                  onFileSaved={onFileSavedDebounced}
-                  onReviewFindingsChange={(findings) => {
-                    setReviewFindings(findings);
-                    setReviewDismissed(false);
-                  }}
-                  automations={{
-                    specs: automationSpecs,
-                    runs: automationRuns,
-                    loading: automationsLoading,
-                    error: automationsError,
-                    onRefresh: () => void refreshAutomations(),
-                    onTrigger: (specId) => {
-                      if (!engine) return;
-                      void triggerAutomation({ ...engine, specId })
-                        .then(() => refreshAutomations())
-                        .catch((err) =>
-                          setAutomationsError(
-                            err instanceof Error ? err.message : String(err),
-                          ),
-                        );
-                    },
-                    onPause: (specId) => {
-                      if (!engine) return;
-                      void pauseAutomation({ ...engine, specId })
-                        .then(() => refreshAutomations())
-                        .catch((err) =>
-                          setAutomationsError(
-                            err instanceof Error ? err.message : String(err),
-                          ),
-                        );
-                    },
-                    onResume: (specId) => {
-                      if (!engine) return;
-                      void resumeAutomation({ ...engine, specId })
-                        .then(() => refreshAutomations())
-                        .catch((err) =>
-                          setAutomationsError(
-                            err instanceof Error ? err.message : String(err),
-                          ),
-                        );
-                    },
-                  }}
-                  onUsePrompt={(prompt, nextMode) => {
-                    setInput(prompt);
-                    if (nextMode) setMode(nextMode);
-                    setView('chat');
-                    setLayout('code');
-                    setWorkspaceSide('explorer');
-                  }}
-                  onRestartEngine={async () => {
-                    const bridge = getDesktopBridge();
-                    if (!bridge) return;
-                    await bridge.restartEngine();
-                    await refresh();
-                  }}
-                  activeProfileName={activeProfile?.name ?? null}
-                  hasActiveProfile={Boolean(activeProfileId && activeProfile)}
-                  onOpenProfiles={() => {
-                    setView('settings');
-                    setSettingsTab('profiles');
-                  }}
-                />
-              ) : (
-                <div className="workspace-hero">
-                  <h2>Repository</h2>
-                  <p>Engine is starting…</p>
-                </div>
-              )}
+      <section className={`main${settingsOpen ? ' main--settings' : ''}`}>
+        <div
+          className="main-surface"
+          aria-hidden={settingsOpen || undefined}
+        >
+          {chatLayout === 'code' ? (
+            <div
+              className={`code-mode${
+                hideCodeChat ? ' code-mode--extensions' : ''
+              }`}
+            >
+              <div className="code-mode__workspace">
+                {engine ? (
+                  <WorkspacePanel
+                    key={snapshot?.workspaceRoot ?? 'workspace'}
+                    baseUrl={engine.baseUrl}
+                    token={engine.token}
+                    workspaceRoot={snapshot?.workspaceRoot ?? ''}
+                    embedded
+                    hideActivityRail
+                    side={workspaceSide}
+                    onSideChange={setWorkspaceSide}
+                    onGitCountChange={setGitBadge}
+                    openPathRequest={openPathRequest}
+                    onOpenPathHandled={() => setOpenPathRequest(null)}
+                    workspaceInvalidate={workspaceInvalidate}
+                    onEditorContextChange={setEditorContext}
+                    onFileSaved={onFileSavedDebounced}
+                    onReviewFindingsChange={(findings) => {
+                      setReviewFindings(findings);
+                      setReviewDismissed(false);
+                    }}
+                    automations={{
+                      specs: automationSpecs,
+                      runs: automationRuns,
+                      loading: automationsLoading,
+                      error: automationsError,
+                      onRefresh: () => void refreshAutomations(),
+                      onTrigger: (specId) => {
+                        if (!engine) return;
+                        void triggerAutomation({ ...engine, specId })
+                          .then(() => refreshAutomations())
+                          .catch((err) =>
+                            setAutomationsError(
+                              err instanceof Error ? err.message : String(err),
+                            ),
+                          );
+                      },
+                      onPause: (specId) => {
+                        if (!engine) return;
+                        void pauseAutomation({ ...engine, specId })
+                          .then(() => refreshAutomations())
+                          .catch((err) =>
+                            setAutomationsError(
+                              err instanceof Error ? err.message : String(err),
+                            ),
+                          );
+                      },
+                      onResume: (specId) => {
+                        if (!engine) return;
+                        void resumeAutomation({ ...engine, specId })
+                          .then(() => refreshAutomations())
+                          .catch((err) =>
+                            setAutomationsError(
+                              err instanceof Error ? err.message : String(err),
+                            ),
+                          );
+                      },
+                    }}
+                    onUsePrompt={(prompt, nextMode) => {
+                      setInput(prompt);
+                      if (nextMode) setMode(nextMode);
+                      setView('chat');
+                      setLayout('code');
+                      setWorkspaceSide('explorer');
+                    }}
+                    onRestartEngine={async () => {
+                      const bridge = getDesktopBridge();
+                      if (!bridge) return;
+                      await bridge.restartEngine();
+                      await refresh();
+                    }}
+                    activeProfileName={activeProfile?.name ?? null}
+                    hasActiveProfile={Boolean(activeProfileId && activeProfile)}
+                    onOpenProfiles={() => {
+                      setView('settings');
+                      setSettingsTab('profiles');
+                    }}
+                  />
+                ) : (
+                  <div className="workspace-hero">
+                    <h2>Repository</h2>
+                    <p>Engine is starting…</p>
+                  </div>
+                )}
+              </div>
+              <ResizeHandle
+                value={codeChatWidth}
+                onChange={setCodeChatWidth}
+                min={280}
+                max={720}
+                reverse
+                label="Resize chat panel"
+              />
+              <div
+                className="code-mode__chat"
+                style={{ width: codeChatWidth, flex: '0 0 auto' }}
+                aria-hidden={hideCodeChat}
+              >
+                {chatPanel}
+              </div>
             </div>
-            {hideCodeChat ? null : (
-              <>
-                <ResizeHandle
-                  value={codeChatWidth}
-                  onChange={setCodeChatWidth}
-                  min={280}
-                  max={720}
-                  reverse
-                  label="Resize chat panel"
-                />
-                <div
-                  className="code-mode__chat"
-                  style={{ width: codeChatWidth, flex: '0 0 auto' }}
-                >
-                  {chatPanel}
-                </div>
-              </>
-            )}
+          ) : (
+            chatPanel
+          )}
+        </div>
+        {settingsOpen ? (
+          <div className="settings-layer">
+            <SettingsPanel
+              key={snapshot?.workspaceRoot ?? 'settings'}
+              settings={settings}
+              workspaceRoot={snapshot?.workspaceRoot ?? ''}
+              hasApiKey={snapshot?.hasApiKey ?? false}
+              hasSearchApiKey={snapshot?.hasSearchApiKey ?? false}
+              busy={settingsBusy}
+              engineBaseUrl={snapshot?.engineBaseUrl}
+              authToken={snapshot?.authToken}
+              tab={settingsTab}
+              onTabChange={setSettingsTab}
+              hideSideNav
+              onSave={onSaveSettings}
+              onPickWorkspace={() => void onPickWorkspace()}
+              onIndexStarted={() => {
+                setIndexIndexing(true);
+                setIndexProgress(8);
+                setIndexStream([]);
+                pushIndexStream('Reindex started from settings…');
+              }}
+              onIndexChanged={() => {
+                pushIndexStream('Index status updated');
+                void refreshIndexStatus();
+              }}
+              onWorkspaceCacheCleared={() => {
+                void refresh();
+              }}
+            />
           </div>
-        ) : (
-          chatPanel
-        )}
+        ) : null}
       </section>
       </div>
 

@@ -59,6 +59,8 @@ interface GitWorkingTreePaneProps {
   baseUrl: string;
   token?: string;
   activePath: string | null;
+  /** Increment to force an immediate status reload (agent / FS changes). */
+  refreshToken?: number;
   onOpenDiff: (path: string) => void | Promise<void>;
   onOpenFile: (path: string) => void | Promise<void>;
   onGitCountChange?: (count: number) => void;
@@ -125,6 +127,11 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
     void loadGit();
     void loadBranches();
   }, [loadGit, loadBranches]);
+
+  useEffect(() => {
+    if (!props.refreshToken) return;
+    void loadGit();
+  }, [props.refreshToken, loadGit]);
 
   const runMutation = async (
     action: () => Promise<{

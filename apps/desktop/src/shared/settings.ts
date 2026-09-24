@@ -373,6 +373,37 @@ export function settingsToEngineEnv(
   return env;
 }
 
+/**
+ * Whether applying `next` (and optional secret changes) must restart the
+ * desktop engine process. Renderer-only fields (ui / onboarding / autocomplete)
+ * do not force a restart so an in-flight chat run can keep streaming.
+ */
+export function settingsRequireEngineRestart(
+  previous: DesktopSettings,
+  next: DesktopSettings,
+  options: {
+    apiKeyChanged?: boolean;
+    searchApiKeyChanged?: boolean;
+  } = {},
+): boolean {
+  if (options.apiKeyChanged || options.searchApiKeyChanged) return true;
+
+  const stripRendererOnly = (settings: DesktopSettings): unknown => {
+    const clone = structuredClone(
+      settings as unknown as Record<string, unknown>,
+    );
+    delete clone.ui;
+    delete clone.onboarding;
+    delete clone.autocomplete;
+    return clone;
+  };
+
+  return (
+    JSON.stringify(stripRendererOnly(previous)) !==
+    JSON.stringify(stripRendererOnly(next))
+  );
+}
+
 export function catalogEntriesForPrefix(prefix: string): Array<{
   key: string;
   shortKey: string;
