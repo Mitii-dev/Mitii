@@ -1229,6 +1229,52 @@ export async function fetchWorkspaceTree(options: {
   return (await res.json()) as Awaited<ReturnType<typeof fetchWorkspaceTree>>;
 }
 
+export type WorkspaceEventsMessage =
+  | { type: 'ready'; at: number; workspaceRoot?: string }
+  | { type: 'ping'; at: number }
+  | {
+      type: 'change';
+      at: number;
+      paths: string[];
+      kind?: string;
+    };
+
+/** Long-lived NDJSON stream of workspace filesystem changes. */
+export async function* streamWorkspaceEvents(options: {
+  baseUrl: string;
+  token?: string;
+  signal?: AbortSignal;
+}): AsyncGenerator<WorkspaceEventsMessage> {
+  const res = await fetch(`${options.baseUrl}/v1/workspace/events`, {
+    headers: authHeaders(options.token),
+    signal: options.signal,
+  });
+  if (!res.ok || !res.body) {
+    throw new Error(`workspace_events_${res.status}`);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let newline = buffer.indexOf('\n');
+    while (newline >= 0) {
+      const line = buffer.slice(0, newline).trim();
+      buffer = buffer.slice(newline + 1);
+      if (line) {
+        try {
+          yield JSON.parse(line) as WorkspaceEventsMessage;
+        } catch {
+          /* skip bad line */
+        }
+      }
+      newline = buffer.indexOf('\n');
+    }
+  }
+}
+
 export async function searchWorkspacePaths(options: {
   baseUrl: string;
   token?: string;

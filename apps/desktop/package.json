@@ -1,6 +1,6 @@
 {
   "name": "@mitii/desktop",
-  "version": "2.9.93",
+  "version": "2.9.94",
   "description": "Mitii Desktop — local coding agent with chat, settings, and repository index.",
   "license": "AGPL-3.0-or-later",
   "private": true,

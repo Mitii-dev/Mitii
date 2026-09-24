@@ -24,6 +24,7 @@ import {
   moveWorkspacePaths,
   renameWorkspacePath,
   saveWorkspaceFile,
+  streamWorkspaceEvents,
 } from './api.js';
 import { CodeEditor } from './CodeEditor.js';
 import { GitWorkingTreePane } from './GitWorkingTreePane.js';
@@ -84,6 +85,11 @@ interface WorkspacePanelProps {
   /** Open this path when set (e.g. from chat file-changes card). */
   openPathRequest?: { path: string; view?: 'file' | 'diff' } | null;
   onOpenPathHandled?: () => void;
+  /**
+   * Bumped by the parent when the agent (or other host) mutates paths —
+   * explorer + SCM refresh immediately without waiting for FS watch.
+   */
+  workspaceInvalidate?: { seq: number; paths: string[] } | null;
   /** Insert a recipe prompt into the chat composer. */
   onUsePrompt?: (prompt: string, mode?: 'ask' | 'plan' | 'agent') => void;
   onRestartEngine?: () => Promise<void>;
@@ -468,13 +474,148 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
 
   const refreshParents = useCallback(
     async (paths: string[]) => {
-      const parents = new Set(paths.map(parentOf));
-      for (const parent of parents) {
-        await loadDir(parent);
+      const dirs = new Set<string>(['']);
+      for (const path of paths) {
+        if (!path || path === '.') continue;
+        let cur = parentOf(path);
+        for (;;) {
+          dirs.add(cur);
+          if (!cur) break;
+          const next = parentOf(cur);
+          if (next === cur) break;
+          cur = next;
+        }
+      }
+      for (const dir of expanded) {
+        if (
+          paths.some(
+            (p) => p === dir || (Boolean(p) && p.startsWith(`${dir}/`)),
+          )
+        ) {
+          dirs.add(dir);
+        }
+      }
+      const ordered = [...dirs].sort(
+        (a, b) =>
+          a.split('/').filter(Boolean).length -
+          b.split('/').filter(Boolean).length,
+      );
+      await Promise.all(ordered.map((dir) => loadDir(dir)));
+    },
+    [loadDir, expanded],
+  );
+
+  const tabsRef = useRef(tabs);
+  useEffect(() => {
+    tabsRef.current = tabs;
+  }, [tabs]);
+
+  const reloadCleanOpenFiles = useCallback(
+    async (paths: string[]) => {
+      if (paths.length === 0) return;
+      const affected = (tabPath: string) =>
+        paths.some(
+          (p) =>
+            !p ||
+            p === '.' ||
+            tabPath === p ||
+            tabPath.startsWith(`${p}/`),
+        );
+      const targets = tabsRef.current.filter(
+        (t) =>
+          t.mode === 'file' &&
+          t.content === t.savedContent &&
+          affected(t.path),
+      );
+      for (const tab of targets) {
+        try {
+          const file = await fetchWorkspaceFile({ ...auth, path: tab.path });
+          setTabs((prev) =>
+            prev.map((t) =>
+              t.path === tab.path && t.mode === 'file'
+                ? {
+                    ...t,
+                    content: file.content,
+                    savedContent: file.content,
+                    truncated: file.truncated,
+                  }
+                : t,
+            ),
+          );
+        } catch {
+          /* file may have been deleted — tree refresh handles removal */
+        }
       }
     },
-    [loadDir],
+    [props.baseUrl, props.token],
   );
+
+  const scmRefreshRef = useRef(0);
+  const [scmRefreshToken, setScmRefreshToken] = useState(0);
+  const gitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const treeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingPathsRef = useRef<Set<string>>(new Set());
+  const applyWorkspacePathsRef = useRef<(paths: string[]) => void>(
+    () => undefined,
+  );
+
+  const applyWorkspacePaths = useCallback(
+    (paths: string[]) => {
+      for (const path of paths) pendingPathsRef.current.add(path);
+      if (treeTimerRef.current) clearTimeout(treeTimerRef.current);
+      treeTimerRef.current = setTimeout(() => {
+        const batch = [...pendingPathsRef.current];
+        pendingPathsRef.current.clear();
+        void refreshParents(batch);
+        void reloadCleanOpenFiles(batch);
+      }, 50);
+      if (gitTimerRef.current) clearTimeout(gitTimerRef.current);
+      gitTimerRef.current = setTimeout(() => {
+        void loadGit();
+        scmRefreshRef.current += 1;
+        setScmRefreshToken(scmRefreshRef.current);
+      }, 80);
+    },
+    [refreshParents, reloadCleanOpenFiles, loadGit],
+  );
+  applyWorkspacePathsRef.current = applyWorkspacePaths;
+
+  // Live FS watch from the engine (external edits + agent writes on disk).
+  useEffect(() => {
+    const controller = new AbortController();
+    let cancelled = false;
+    void (async () => {
+      try {
+        for await (const msg of streamWorkspaceEvents({
+          baseUrl: props.baseUrl,
+          token: props.token,
+          signal: controller.signal,
+        })) {
+          if (cancelled) break;
+          if (msg.type === 'change' && msg.paths.length > 0) {
+            applyWorkspacePathsRef.current(msg.paths);
+          }
+        }
+      } catch {
+        /* aborted or engine down — agent invalidate still works */
+      }
+    })();
+    return () => {
+      cancelled = true;
+      controller.abort();
+      if (treeTimerRef.current) clearTimeout(treeTimerRef.current);
+      if (gitTimerRef.current) clearTimeout(gitTimerRef.current);
+    };
+  }, [props.baseUrl, props.token, props.workspaceRoot]);
+
+  // Immediate invalidate from agent write tools (faster than waiting on FS watch).
+  useEffect(() => {
+    const req = props.workspaceInvalidate;
+    if (!req || req.seq <= 0) return;
+    applyWorkspacePathsRef.current(
+      req.paths.length > 0 ? req.paths : ['.'],
+    );
+  }, [props.workspaceInvalidate]);
 
   const closeTabsMatching = useCallback((paths: string[]) => {
     const doomed = new Set(paths);
@@ -1137,8 +1278,16 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                       title="Refresh Explorer"
                       aria-label="Refresh Explorer"
                       onClick={() => {
-                        setChildrenByPath({});
-                        void loadDir('');
+                        void (async () => {
+                          await loadDir('');
+                          const dirs = [...expanded];
+                          for (const dir of dirs) {
+                            await loadDir(dir);
+                          }
+                          void loadGit();
+                          scmRefreshRef.current += 1;
+                          setScmRefreshToken(scmRefreshRef.current);
+                        })();
                       }}
                     >
                       <IconRefresh size={16} />
@@ -1272,6 +1421,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                 baseUrl={props.baseUrl}
                 token={props.token}
                 activePath={activePath}
+                refreshToken={scmRefreshToken}
                 onOpenDiff={openDiff}
                 onOpenFile={openFile}
                 onGitCountChange={(count) => {

@@ -81,7 +81,7 @@ export interface MitiiDesktopBridge {
     clearApiKey?: boolean;
     searchApiKey?: string;
     clearSearchApiKey?: boolean;
-  }) => Promise<{ ok: boolean; reason?: string }>;
+  }) => Promise<{ ok: boolean; reason?: string; restarted?: boolean }>;
   restartEngine: () => Promise<{ ok: boolean; reason?: string }>;
   revealInFolder: (
     absolutePath: string,

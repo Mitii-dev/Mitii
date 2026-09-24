@@ -25,20 +25,9 @@ function rowState(
 }
 
 export function ActivityTimeline({ items, streaming }: ActivityTimelineProps) {
-  if (items.length === 0 && !streaming) return null;
+  if (items.length === 0) return null;
 
-  const rows =
-    items.length > 0
-      ? items
-      : ([
-          {
-            id: 'working',
-            at: Date.now(),
-            kind: 'info',
-            title: 'Working…',
-            status: 'running',
-          },
-        ] as DesktopActivityItem[]);
+  const rows = items;
 
   return (
     <ol
@@ -73,7 +62,10 @@ export function ActivityTimeline({ items, streaming }: ActivityTimelineProps) {
               .filter(Boolean)
               .join(' ')}
           >
-            <span className="timeline__marker" aria-hidden />
+            <span
+              className={`timeline__marker${running ? ' timeline__marker--spin' : ''}`}
+              aria-hidden
+            />
             <span
               className={`timeline__row-text${
                 state === 'muted' ? ' timeline__row-text--muted' : ''
