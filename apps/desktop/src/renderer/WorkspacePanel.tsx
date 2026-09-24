@@ -9,6 +9,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from 'react';
 
+import logoUrl from './assets/mitii-logo.svg';
 import {
   copyWorkspacePaths,
   createWorkspaceFilePath,
@@ -1452,6 +1453,17 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                 Open a file from the tree. Edit in place —{' '}
                 <kbd>⌘S</kbd> / <kbd>Ctrl+S</kbd> to save.
               </p>
+              <div className="workspace-hero__brand">
+                <img
+                  className="workspace-hero__logo"
+                  src={logoUrl}
+                  alt="Mitii"
+                  width={120}
+                  height={120}
+                  decoding="async"
+                />
+                <span className="workspace-hero__wordmark">Mitii</span>
+              </div>
               {git?.statPreview ? (
                 <pre className="workspace-stat">{git.statPreview}</pre>
               ) : null}

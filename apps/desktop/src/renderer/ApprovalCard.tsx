@@ -22,12 +22,14 @@ export function ApprovalCard({
   onStop,
 }: ApprovalCardProps) {
   const [clarifyText, setClarifyText] = useState('');
+  const [planExpanded, setPlanExpanded] = useState(true);
   const isClarify = suspension.kind === 'clarification_required';
   const isPlan = suspension.kind === 'plan_approval_required';
   const isContinue = suspension.kind === 'continue_required';
   const isGrant = suspension.kind === 'grant_expansion_required';
   const approval = suspension.approval;
   const options = suspension.clarificationOptions ?? [];
+  const planSteps = suspension.plan?.steps ?? [];
 
   const title = isClarify
     ? 'Clarification needed'
@@ -70,7 +72,50 @@ export function ApprovalCard({
         </div>
       ) : null}
 
-      {suspension.planText ? (
+      {isPlan && suspension.plan ? (
+        <div className="approval-meta">
+          <span>{suspension.plan.objective}</span>
+          <span className="mono">
+            {planSteps.length} step{planSteps.length === 1 ? '' : 's'}
+          </span>
+        </div>
+      ) : null}
+
+      {isPlan ? (
+        <div className="approval-plan-panel">
+          <button
+            type="button"
+            className="approval-plan-panel__toggle"
+            onClick={() => setPlanExpanded((value) => !value)}
+            aria-expanded={planExpanded}
+          >
+            {planExpanded ? 'Collapse plan' : 'Expand plan'}
+          </button>
+          {planExpanded ? (
+            planSteps.length > 0 ? (
+              <ol className="approval-plan-panel__steps">
+                {planSteps.map((step, index) => (
+                  <li key={step.id}>
+                    <span className="approval-plan-panel__index">
+                      {index + 1}
+                    </span>
+                    <div className="approval-plan-panel__body">
+                      <strong>{step.title}</strong>
+                      {step.detail ? <p>{step.detail}</p> : null}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            ) : suspension.planText ? (
+              <pre className="approval-plan">{suspension.planText}</pre>
+            ) : (
+              <p className="approval-plan-panel__empty">
+                Plan details are in the chat reply above.
+              </p>
+            )
+          ) : null}
+        </div>
+      ) : suspension.planText ? (
         <pre className="approval-plan">{suspension.planText}</pre>
       ) : null}
 
@@ -157,7 +202,7 @@ export function ApprovalCard({
               disabled={busy}
               onClick={onApprove}
             >
-              Approve
+              {isPlan ? 'Approve plan' : 'Approve'}
             </button>
             <button type="button" className="btn" disabled={busy} onClick={onDeny}>
               Deny

@@ -7,7 +7,7 @@
  *   flatten PlanArtifact phases → steps with status).
  */
 
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 
 export type PlanFollowStepStatus =
   | 'pending'
@@ -103,7 +103,7 @@ export function PlanFollowStrip({
   running = false,
   onOpenPlanFile,
 }: PlanFollowStripProps) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const current = currentPlanStep(plan, running);
   if (!plan) return null;
 
@@ -112,7 +112,11 @@ export function PlanFollowStrip({
   const completedSteps = steps.filter((step) => step.status === 'done').length;
   const statusText = current?.complete ? 'Done' : running ? 'Running' : 'Ready';
   const showLoader = running && !current?.complete;
-  const headingText = current?.complete ? 'Plan complete' : 'Following plan';
+  const headingText = current?.complete
+    ? 'Plan complete'
+    : running
+      ? 'Following plan'
+      : 'Plan ready';
   const fallbackTitle = plan.objective || plan.title || 'Plan';
   const currentIsRunning =
     current &&
@@ -124,7 +128,11 @@ export function PlanFollowStrip({
   const activeStepId = currentIsRunning ? current.step.id : null;
 
   return (
-    <section className="plan-follow-strip" aria-label="Current plan step">
+    <section
+      className="plan-follow-strip"
+      aria-label="Current plan step"
+      style={{ '--plan-follow-accent': '#f59e0b' } as CSSProperties}
+    >
       <div className="plan-follow-strip__top">
         <div className="plan-follow-strip__heading">
           <span className="plan-follow-strip__eyebrow">{headingText}</span>

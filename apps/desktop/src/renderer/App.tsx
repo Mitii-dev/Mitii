@@ -17,6 +17,7 @@ import {
   resolvePlanDisplayText,
   resolvePlanHandoff,
   resolvePlanStrategyHandoff,
+  synthesizePlanArtifactFromAnswer,
   type PlanArtifact,
   type PlanStrategyDecision,
   type TaskList,
@@ -1994,12 +1995,18 @@ export function App() {
           }
         | undefined;
 
-      if (runMode === 'plan' && resultPlan) {
-        setPendingPlan(resultPlan);
+      const pendingFromRun =
+        runMode === 'plan'
+          ? resultPlan ??
+            synthesizePlanArtifactFromAnswer(finalAssistant)
+          : undefined;
+
+      if (pendingFromRun) {
+        setPendingPlan(pendingFromRun);
         setPendingPlanStrategy(resultPlanStrategy ?? null);
         setPendingTaskList(resultTaskList ?? null);
         planPersist = {
-          pendingPlan: resultPlan,
+          pendingPlan: pendingFromRun,
           pendingPlanStrategy: resultPlanStrategy ?? null,
           pendingTaskList: resultTaskList ?? null,
         };
@@ -2068,7 +2075,7 @@ export function App() {
     if (!pendingPlan || busy) return;
     setMode('agent');
     void onSubmit({
-      prompt: 'Implement the pending plan.',
+      prompt: `Implement the approved plan.\n\nObjective: ${pendingPlan.objective}`,
       mode: 'agent',
       approvedPlan: pendingPlan,
       approvedPlanStrategy: pendingPlanStrategy,
@@ -2458,16 +2465,22 @@ export function App() {
 
       <div className="composer-dock">
         <PendingPlanBanner
-          visible={Boolean(pendingPlan) && mode !== 'agent'}
+          visible={
+            Boolean(pendingPlan) &&
+            mode !== 'agent' &&
+            suspension?.kind !== 'plan_approval_required'
+          }
           busy={busy}
           onExecuteInAgent={executePendingPlan}
           onDismiss={dismissPendingPlan}
         />
         <PlanFollowStrip
           plan={
-            mode === 'plan' || mode === 'agent' ? planFollowView : null
+            pendingPlan && (mode === 'plan' || mode === 'agent')
+              ? planFollowView
+              : null
           }
-          running={busy}
+          running={busy && (mode === 'plan' || mode === 'agent')}
           onOpenPlanFile={(path) => {
             setLayout('code');
             setWorkspaceSide('explorer');

@@ -16,8 +16,7 @@ export function PendingPlanBanner({
   return (
     <div className="pending-plan-banner" role="status">
       <div className="pending-plan-banner__text">
-        <strong>Plan ready.</strong> Switch to Agent or start building to
-        implement it.
+        <strong>Plan ready.</strong> Execute in Agent to implement it.
       </div>
       <div className="pending-plan-banner__actions">
         <button
@@ -26,7 +25,7 @@ export function PendingPlanBanner({
           disabled={busy}
           onClick={onExecuteInAgent}
         >
-          Start building
+          Execute in Agent
         </button>
         {onDismiss ? (
           <button

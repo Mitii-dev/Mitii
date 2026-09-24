@@ -272,13 +272,109 @@ export function extractPlanFromRunResult(result: unknown): {
   taskList?: TaskList;
 } {
   if (!isRecord(result)) return {};
-  const plan = parsePlanArtifact(result.plan);
+  const fromTop = parsePlanArtifact(result.plan);
+  const suspension = isRecord(result.suspension) ? result.suspension : null;
+  const fromSuspension = suspension
+    ? parsePlanArtifact(suspension.plan)
+    : undefined;
+  const plan = fromTop ?? fromSuspension;
   const planStrategy = parsePlanStrategy(result.planStrategy);
   const taskList = parseTaskList(result.taskList);
   return {
     ...(plan ? { plan } : {}),
     ...(planStrategy ? { planStrategy } : {}),
     ...(taskList ? { taskList } : {}),
+  };
+}
+
+/**
+ * When the model returns plan markdown but no structured PlanArtifact,
+ * build a minimal artifact so the desktop can show the follow strip and
+ * offer “Execute in Agent” (VS Code planFromAnswer parity).
+ */
+export function synthesizePlanArtifactFromAnswer(
+  answer: string,
+): PlanArtifact | undefined {
+  const trimmed = answer.trim();
+  if (!trimmed) return undefined;
+
+  const looksLikePlan =
+    /^#\s+/m.test(trimmed) ||
+    /^Objective:\s*/im.test(trimmed) ||
+    /^##\s+Plan\b/im.test(trimmed) ||
+    /^Plan:\s*$/im.test(trimmed) ||
+    /^\d+\.\s+\S/m.test(trimmed);
+  if (!looksLikePlan) return undefined;
+
+  const objectiveMatch =
+    trimmed.match(/^#\s+(.+)$/m) ||
+    trimmed.match(/^Objective:\s*(.+)$/im);
+  const objective = (objectiveMatch?.[1] ?? 'Implementation plan')
+    .trim()
+    .slice(0, 200);
+
+  const stepLines = trimmed
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => /^[-*]\s+\S/.test(line) || /^\d+([.)]|\.\d+\.)\s+\S/.test(line))
+    .slice(0, 16);
+
+  const steps: PlanStep[] =
+    stepLines.length > 0
+      ? stepLines.map((line, index) => {
+          const title = line
+            .replace(/^[-*]\s+/, '')
+            .replace(/^\d+([.)]|\.\d+\.)\s+/, '')
+            .slice(0, 200);
+          return {
+            id: `step-${index + 1}`,
+            intent: title || `Step ${index + 1}`,
+            targetRefs: [],
+            actionSummary: title || `Step ${index + 1}`,
+            expectedOutcome: '',
+            riskLevel: 'low',
+          };
+        })
+      : [
+          {
+            id: 'step-1',
+            intent: 'See assistant reply for plan details',
+            targetRefs: [],
+            actionSummary: 'Follow the plan in the chat reply.',
+            expectedOutcome: '',
+            riskLevel: 'low',
+          },
+        ];
+
+  return {
+    schemaVersion: PLANNING_SCHEMA_VERSION,
+    objective,
+    assumptions: [],
+    openQuestions: [],
+    contextReviewed: [],
+    constraints: [],
+    dimensions: {
+      scope: 'unknown',
+      risk: 'unknown',
+      clarity: 'unknown',
+      complexity: 'unknown',
+      changeImpact: [],
+    },
+    phases: [
+      {
+        id: 'phase-1',
+        name: 'Plan',
+        purpose: 'Steps derived from the plan reply.',
+        dependencies: [],
+        successCriteria: [],
+        steps,
+      },
+    ],
+    risks: [],
+    alternatives: [],
+    verification: { checks: [], manualQa: [], commands: [] },
+    approvalRequired: true,
+    processHintsApplied: ['desktop_synthesize_from_answer'],
   };
 }
 
