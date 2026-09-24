@@ -891,10 +891,12 @@ button:disabled {
   margin: 0 auto 8px;
   width: 100%;
   padding: 8px 10px;
-  border: 1px solid color-mix(in srgb, #f59e0b 32%, var(--mitii-border));
+  border: 1px solid color-mix(in srgb, #f59e0b 40%, var(--mitii-border));
   border-radius: 10px;
-  background: color-mix(in srgb, #f59e0b 10%, var(--mitii-panel));
+  background: color-mix(in srgb, #f59e0b 12%, var(--mitii-panel));
   box-sizing: border-box;
+  flex-shrink: 0;
+  box-shadow: 0 1px 0 color-mix(in srgb, #fff 6%, transparent) inset;
 }
 
 .pending-plan-banner__text {
@@ -5613,6 +5615,35 @@ button.mcp-manager__card {
   background: var(--mitii-surface);
 }
 
+.workspace-hero__brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  margin-top: 36px;
+}
+
+.workspace-hero__logo {
+  width: 120px;
+  height: 120px;
+  display: block;
+  object-fit: contain;
+  object-position: center;
+  user-select: none;
+  -webkit-user-drag: none;
+  filter: drop-shadow(
+    0 10px 28px color-mix(in srgb, var(--mitii-brand) 28%, transparent)
+  );
+}
+
+.workspace-hero__wordmark {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  color: var(--mitii-text);
+}
+
 .workspace-hero .workspace-stat {
   margin-top: 16px;
   text-align: left;
@@ -6774,16 +6805,26 @@ button.mcp-manager__card {
 /* --- Desktop ↔ VS Code parity panels (minimal) --- */
 
 .plan-follow-strip {
+  --plan-follow-accent: #f59e0b;
   display: grid;
   gap: 8px;
   max-width: 780px;
   margin: 0 auto 8px;
   width: 100%;
-  padding: 8px 10px;
-  border: 1px solid color-mix(in srgb, var(--mitii-accent) 28%, var(--mitii-border));
+  padding: 10px 12px;
+  border: 1px solid
+    color-mix(in srgb, var(--plan-follow-accent) 42%, var(--mitii-border));
   border-radius: 10px;
-  background: color-mix(in srgb, var(--mitii-accent) 8%, var(--mitii-panel));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--plan-follow-accent) 16%, var(--mitii-panel)),
+    color-mix(in srgb, var(--plan-follow-accent) 8%, var(--mitii-panel))
+  );
   box-sizing: border-box;
+  flex-shrink: 0;
+  box-shadow:
+    0 1px 0 color-mix(in srgb, #fff 5%, transparent) inset,
+    0 8px 20px color-mix(in srgb, #000 8%, transparent);
 }
 
 .plan-follow-strip__top {
@@ -6801,9 +6842,11 @@ button.mcp-manager__card {
 }
 
 .plan-follow-strip__eyebrow {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--mitii-text);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--plan-follow-accent) 70%, var(--mitii-text));
 }
 
 .plan-follow-strip__progress,
@@ -6819,17 +6862,32 @@ button.mcp-manager__card {
   flex-shrink: 0;
 }
 
+.plan-follow-strip__actions .btn-ghost {
+  color: color-mix(in srgb, var(--plan-follow-accent) 78%, var(--mitii-text));
+}
+
 .plan-follow-strip__step {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  padding-top: 2px;
+  border-top: 1px solid
+    color-mix(in srgb, var(--plan-follow-accent) 20%, transparent);
 }
 
 .plan-follow-strip__title {
   font-size: 13px;
-  font-weight: 550;
+  font-weight: 600;
   color: var(--mitii-text);
+}
+
+.plan-follow-strip__state--following {
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--plan-follow-accent) 42%, transparent);
+  background: color-mix(in srgb, var(--plan-follow-accent) 14%, transparent);
+  color: color-mix(in srgb, var(--plan-follow-accent) 80%, var(--mitii-text));
 }
 
 .plan-follow-strip__state--done {
@@ -6841,7 +6899,7 @@ button.mcp-manager__card {
   height: 10px;
   border-radius: 50%;
   border: 1.5px solid var(--mitii-border);
-  border-top-color: var(--mitii-accent);
+  border-top-color: var(--plan-follow-accent);
   animation: plan-follow-spin 0.8s linear infinite;
 }
 
@@ -6857,31 +6915,94 @@ button.mcp-manager__card {
   padding: 0;
   display: grid;
   gap: 4px;
-  border-top: 1px solid var(--mitii-border);
+  border-top: 1px solid
+    color-mix(in srgb, var(--plan-follow-accent) 22%, var(--mitii-border));
   padding-top: 8px;
 }
 
 .plan-follow-strip__steps-item {
   display: grid;
-  grid-template-columns: 24px 1fr auto;
+  grid-template-columns: 22px 1fr auto;
   gap: 8px;
-  align-items: center;
-  font-size: 12px;
-  padding: 4px 0;
+  align-items: start;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-size: 12.5px;
 }
 
 .plan-follow-strip__steps-item--active {
-  font-weight: 600;
+  background: color-mix(in srgb, var(--plan-follow-accent) 14%, transparent);
 }
 
 .plan-follow-strip__steps-index {
   color: var(--mitii-muted);
-  font-variant-numeric: tabular-nums;
+  font-weight: 650;
 }
 
 .plan-follow-strip__steps-status {
   color: var(--mitii-muted);
   font-size: 11px;
+}
+
+.approval-plan-panel {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 4px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, #f59e0b 35%, var(--mitii-border));
+  border-radius: 10px;
+  background: color-mix(in srgb, #f59e0b 8%, var(--mitii-panel));
+}
+
+.approval-plan-panel__toggle {
+  justify-self: start;
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, #f59e0b 75%, var(--mitii-text));
+  font-size: 12px;
+  font-weight: 650;
+  padding: 2px 0;
+  cursor: pointer;
+}
+
+.approval-plan-panel__steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.approval-plan-panel__steps li {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 8px;
+  align-items: start;
+}
+
+.approval-plan-panel__index {
+  color: var(--mitii-muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.approval-plan-panel__body strong {
+  display: block;
+  font-size: 13px;
+  color: var(--mitii-text);
+}
+
+.approval-plan-panel__body p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--mitii-muted);
+  line-height: 1.4;
+}
+
+.approval-plan-panel__empty {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--mitii-muted);
 }
 
 .automations-panel {

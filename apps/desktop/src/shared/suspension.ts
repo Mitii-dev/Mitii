@@ -24,6 +24,11 @@ export interface DesktopSuspension {
   clarificationOptions?: ClarificationOption[];
   continuePrompt?: string;
   planText?: string;
+  /** Structured plan when kind is plan_approval_required. */
+  plan?: {
+    objective: string;
+    steps: Array<{ id: string; title: string; detail?: string }>;
+  };
   approval?: {
     approvalId: string;
     toolName: string;
@@ -102,14 +107,55 @@ export function extractSuspension(result: unknown): DesktopSuspension | null {
 
   const plan = s.plan;
   let planText: string | undefined;
+  let planView: DesktopSuspension['plan'];
   if (plan && typeof plan === 'object') {
     const p = plan as Record<string, unknown>;
+    const objective = asString(p.objective);
     const parts = [
-      asString(p.objective) ? `Objective: ${p.objective}` : undefined,
+      objective ? `Objective: ${objective}` : undefined,
       asString(p.scope) ? `Scope: ${p.scope}` : undefined,
       asString(p.summary) ? String(p.summary) : undefined,
     ].filter(Boolean);
     planText = parts.length > 0 ? parts.join('\n') : undefined;
+
+    const steps: NonNullable<DesktopSuspension['plan']>['steps'] = [];
+    if (Array.isArray(p.phases)) {
+      for (const phaseRaw of p.phases) {
+        if (!phaseRaw || typeof phaseRaw !== 'object') continue;
+        const phase = phaseRaw as Record<string, unknown>;
+        const phaseName =
+          typeof phase.name === 'string' ? phase.name : 'Phase';
+        if (!Array.isArray(phase.steps)) continue;
+        for (const stepRaw of phase.steps) {
+          if (!stepRaw || typeof stepRaw !== 'object') continue;
+          const step = stepRaw as Record<string, unknown>;
+          const intent =
+            typeof step.intent === 'string' ? step.intent.trim() : '';
+          if (!intent) continue;
+          steps.push({
+            id:
+              typeof step.id === 'string' && step.id.trim()
+                ? step.id
+                : `step-${steps.length + 1}`,
+            title: `${phaseName}: ${intent}`,
+            ...(typeof step.actionSummary === 'string'
+              ? { detail: step.actionSummary }
+              : {}),
+          });
+          if (steps.length >= 24) break;
+        }
+        if (steps.length >= 24) break;
+      }
+    }
+    if (objective || steps.length > 0) {
+      planView = {
+        objective: objective ?? 'Plan',
+        steps:
+          steps.length > 0
+            ? steps
+            : [{ id: 'objective', title: objective ?? 'Plan' }],
+      };
+    }
   }
 
   return {
@@ -124,6 +170,7 @@ export function extractSuspension(result: unknown): DesktopSuspension | null {
       ? { continuePrompt: asString(s.continuePrompt) }
       : {}),
     ...(planText ? { planText } : {}),
+    ...(planView ? { plan: planView } : {}),
     ...(approval ? { approval } : {}),
     ...(grantExpansion ? { grantExpansion } : {}),
   };
