@@ -28,7 +28,6 @@ import {
 } from './api.js';
 import { CodeEditor } from './CodeEditor.js';
 import { GitWorkingTreePane } from './GitWorkingTreePane.js';
-import { AutomationsPanel } from './AutomationsPanel.js';
 import { McpManager } from './McpManager.js';
 import { RecipesManager } from './RecipesManager.js';
 import { SkillsManager } from './SkillsManager.js';
@@ -59,21 +58,10 @@ interface WorkspacePanelProps {
   /** Hide the internal Files/Git rail (parent activity bar owns those icons). */
   hideActivityRail?: boolean;
   /** Controlled explorer/git/extensions pane (used with hideActivityRail). */
-  side?: 'explorer' | 'git' | 'mcp' | 'skills' | 'recipes' | 'automations';
+  side?: 'explorer' | 'git' | 'mcp' | 'skills' | 'recipes';
   onSideChange?: (
-    side: 'explorer' | 'git' | 'mcp' | 'skills' | 'recipes' | 'automations',
+    side: 'explorer' | 'git' | 'mcp' | 'skills' | 'recipes',
   ) => void;
-  /** Automations panel (activity bar). */
-  automations?: {
-    specs: import('./AutomationsPanel.js').AutomationSpecView[];
-    runs: import('./AutomationsPanel.js').AutomationRunView[];
-    loading?: boolean;
-    error?: string | null;
-    onRefresh: () => void;
-    onTrigger: (specId: string) => void;
-    onPause: (specId: string) => void;
-    onResume: (specId: string) => void;
-  };
   /** Notify parent of open editor paths for context auto-pin. */
   onEditorContextChange?: (ctx: {
     activePath: string | null;
@@ -192,11 +180,11 @@ function flattenVisible(
 
 export function WorkspacePanel(props: WorkspacePanelProps) {
   const [internalSide, setInternalSide] = useState<
-    'explorer' | 'git' | 'mcp' | 'skills' | 'recipes' | 'automations'
+    'explorer' | 'git' | 'mcp' | 'skills' | 'recipes'
   >('explorer');
   const side = props.side ?? internalSide;
   const setSide = (
-    next: 'explorer' | 'git' | 'mcp' | 'skills' | 'recipes' | 'automations',
+    next: 'explorer' | 'git' | 'mcp' | 'skills' | 'recipes',
   ) => {
     if (props.onSideChange) props.onSideChange(next);
     else setInternalSide(next);
@@ -1193,8 +1181,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
   const extensionsFullscreen =
     side === 'mcp' ||
     side === 'skills' ||
-    side === 'recipes' ||
-    side === 'automations';
+    side === 'recipes';
   const sideColumnWidth = extensionsFullscreen
     ? props.hideActivityRail
       ? 0
@@ -1477,19 +1464,6 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
               baseUrl={props.baseUrl}
               token={props.token}
               onUsePrompt={props.onUsePrompt}
-            />
-          ) : side === 'automations' ? (
-            <AutomationsPanel
-              specs={props.automations?.specs ?? []}
-              runs={props.automations?.runs ?? []}
-              loading={props.automations?.loading}
-              error={props.automations?.error}
-              onRefresh={
-                props.automations?.onRefresh ?? (() => undefined)
-              }
-              onTrigger={props.automations?.onTrigger ?? (() => undefined)}
-              onPause={props.automations?.onPause ?? (() => undefined)}
-              onResume={props.automations?.onResume ?? (() => undefined)}
             />
           ) : (
             <>

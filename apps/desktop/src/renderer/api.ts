@@ -50,23 +50,32 @@ export async function* streamNdjson(
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    let newline = buffer.indexOf('\n');
-    while (newline >= 0) {
-      const line = buffer.slice(0, newline).trim();
-      buffer = buffer.slice(newline + 1);
-      if (line) {
-        yield JSON.parse(line) as DesktopPromptStreamLine;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let newline = buffer.indexOf('\n');
+      while (newline >= 0) {
+        const line = buffer.slice(0, newline).trim();
+        buffer = buffer.slice(newline + 1);
+        if (line) {
+          yield JSON.parse(line) as DesktopPromptStreamLine;
+        }
+        newline = buffer.indexOf('\n');
       }
-      newline = buffer.indexOf('\n');
     }
-  }
-  const tail = buffer.trim();
-  if (tail) {
-    yield JSON.parse(tail) as DesktopPromptStreamLine;
+    const tail = buffer.trim();
+    if (tail) {
+      yield JSON.parse(tail) as DesktopPromptStreamLine;
+    }
+  } catch (error) {
+    try {
+      await reader.cancel();
+    } catch {
+      /* ignore */
+    }
+    throw error;
   }
 }
 
@@ -87,10 +96,12 @@ export async function* streamPrompt(options: {
   approvedPlan?: unknown;
   approvedPlanStrategy?: unknown;
   taskList?: unknown;
+  signal?: AbortSignal;
 }): AsyncGenerator<DesktopPromptStreamLine> {
   yield* streamNdjson(`${options.baseUrl}/v1/prompt`, {
     method: 'POST',
     headers: authHeaders(options.token),
+    signal: options.signal,
     body: JSON.stringify({
       prompt: options.prompt,
       mode: options.mode,
@@ -128,10 +139,12 @@ export async function* streamResume(options: {
   token?: string;
   mode?: DesktopAgentMode;
   body: Record<string, unknown>;
+  signal?: AbortSignal;
 }): AsyncGenerator<DesktopPromptStreamLine> {
   yield* streamNdjson(`${options.baseUrl}/v1/resume`, {
     method: 'POST',
     headers: authHeaders(options.token),
+    signal: options.signal,
     body: JSON.stringify({
       ...options.body,
       ...(options.mode ? { mode: options.mode } : {}),
@@ -1044,100 +1057,6 @@ export async function pauseIndexing(options: {
   return (await res.json()) as { ok: boolean; message?: string };
 }
 
-export interface AutomationSpecApiView {
-  specId: string;
-  title: string;
-  enabled: boolean;
-  triggerKind: string;
-  scheduleExpr?: string | null;
-  eventType?: string | null;
-  nextRunAt?: string | null;
-  autonomyPreset?: string | null;
-}
-
-export interface AutomationRunApiView {
-  runId: string;
-  specId: string;
-  status: string;
-  createdAt: string;
-  error?: string | null;
-}
-
-export async function listAutomations(options: {
-  baseUrl: string;
-  token?: string;
-}): Promise<{
-  specs: AutomationSpecApiView[];
-  runs: AutomationRunApiView[];
-}> {
-  const res = await fetch(`${options.baseUrl}/v1/automations`, {
-    headers: authHeaders(options.token),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`automations_${res.status}:${text}`);
-  }
-  const data = (await res.json()) as {
-    specs?: AutomationSpecApiView[];
-    runs?: AutomationRunApiView[];
-  };
-  return {
-    specs: Array.isArray(data.specs) ? data.specs : [],
-    runs: Array.isArray(data.runs) ? data.runs : [],
-  };
-}
-
-async function postAutomationAction(options: {
-  baseUrl: string;
-  token?: string;
-  path: string;
-  specId: string;
-}): Promise<{ ok: boolean }> {
-  const res = await fetch(`${options.baseUrl}${options.path}`, {
-    method: 'POST',
-    headers: authHeaders(options.token),
-    body: JSON.stringify({ specId: options.specId }),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`automations_action_${res.status}:${text}`);
-  }
-  return (await res.json()) as { ok: boolean };
-}
-
-export async function triggerAutomation(options: {
-  baseUrl: string;
-  token?: string;
-  specId: string;
-}): Promise<{ ok: boolean }> {
-  return postAutomationAction({
-    ...options,
-    path: '/v1/automations/trigger',
-  });
-}
-
-export async function pauseAutomation(options: {
-  baseUrl: string;
-  token?: string;
-  specId: string;
-}): Promise<{ ok: boolean }> {
-  return postAutomationAction({
-    ...options,
-    path: '/v1/automations/pause',
-  });
-}
-
-export async function resumeAutomation(options: {
-  baseUrl: string;
-  token?: string;
-  specId: string;
-}): Promise<{ ok: boolean }> {
-  return postAutomationAction({
-    ...options,
-    path: '/v1/automations/resume',
-  });
-}
-
 export async function openLatestSessionLog(options: {
   baseUrl: string;
   token?: string;
@@ -1279,14 +1198,31 @@ export async function searchWorkspacePaths(options: {
   baseUrl: string;
   token?: string;
   query: string;
-}): Promise<string[]> {
+}): Promise<Array<{ path: string; kind: 'file' | 'folder' }>> {
   const res = await fetch(
     `${options.baseUrl}/v1/workspace/search?q=${encodeURIComponent(options.query)}`,
     { headers: authHeaders(options.token) },
   );
   if (!res.ok) throw new Error(`search_${res.status}`);
-  const json = (await res.json()) as { paths?: string[] };
-  return json.paths ?? [];
+  const json = (await res.json()) as {
+    paths?: Array<string | { path?: string; kind?: string }>;
+  };
+  const raw = Array.isArray(json.paths) ? json.paths : [];
+  return raw
+    .map((entry) => {
+      if (typeof entry === 'string') {
+        return { path: entry, kind: 'file' as const };
+      }
+      const path = typeof entry.path === 'string' ? entry.path : '';
+      if (!path) return null;
+      return {
+        path,
+        kind: entry.kind === 'folder' ? ('folder' as const) : ('file' as const),
+      };
+    })
+    .filter((entry): entry is { path: string; kind: 'file' | 'folder' } =>
+      Boolean(entry),
+    );
 }
 
 export async function fetchWorkspaceFile(options: {
