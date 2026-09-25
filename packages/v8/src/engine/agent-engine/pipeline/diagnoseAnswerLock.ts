@@ -78,3 +78,19 @@ export function filterToolsForAnswerLock(
   }
   return [];
 }
+
+/**
+ * Model-request fields for an answer-only turn. Always pairs empty tools with
+ * toolChoice "none" — the gateway rejects any other choice when tools is empty.
+ */
+export function answerLockModelRequestFields(
+  tools: readonly ModelToolDefinition[] | undefined,
+): {
+  tools: ModelToolDefinition[] | undefined;
+  toolChoice: "none";
+} {
+  return {
+    tools: filterToolsForAnswerLock(tools),
+    toolChoice: "none",
+  };
+}
