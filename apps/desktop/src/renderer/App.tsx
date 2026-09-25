@@ -61,7 +61,6 @@ import {
   IconFiles,
   IconGit,
   IconMcp,
-  IconModes,
   IconPlus,
   IconProvider,
   IconRecipes,
@@ -89,25 +88,17 @@ import {
   fetchSkills,
   finalizeAssistantText,
   getDesktopBridge,
-  listAutomations,
-  pauseAutomation,
   pauseIndexing,
   postHistory,
   postProfiles,
   reindexWorkspace,
   restoreCheckpoint,
-  resumeAutomation,
   searchWorkspacePaths,
   shortPath,
   streamPrompt,
   streamResume,
-  triggerAutomation,
   workspaceLabel,
 } from './api.js';
-import type {
-  AutomationRunView,
-  AutomationSpecView,
-} from './AutomationsPanel.js';
 import { ChatHistoryNav } from './ChatHistoryNav.js';
 import { ComposerReviewStrip } from './ComposerReviewStrip.js';
 import { IndexStatusChip } from './IndexStatusChip.js';
@@ -151,8 +142,7 @@ type WorkspaceSide =
   | 'git'
   | 'mcp'
   | 'skills'
-  | 'recipes'
-  | 'automations';
+  | 'recipes';
 
 interface ChatMessage {
   id: string;
@@ -395,6 +385,7 @@ export function App() {
   const [busy, setBusy] = useState(false);
   /** True while an agent stream is in flight — survives settings/UI busy toggles. */
   const runActiveRef = useRef(false);
+  const runAbortRef = useRef<AbortController | null>(null);
   const [settingsBusy, setSettingsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tokenUsage, setTokenUsage] = useState<TokenUsageState>(emptyTokenUsage);
@@ -418,12 +409,6 @@ export function App() {
     activePath: string | null;
     openPaths: string[];
   }>({ activePath: null, openPaths: [] });
-  const [automationSpecs, setAutomationSpecs] = useState<AutomationSpecView[]>(
-    [],
-  );
-  const [automationRuns, setAutomationRuns] = useState<AutomationRunView[]>([]);
-  const [automationsLoading, setAutomationsLoading] = useState(false);
-  const [automationsError, setAutomationsError] = useState<string | null>(null);
   const indexSaveTimerRef = useRef<number | null>(null);
   const [skills, setSkills] = useState<
     Array<{ id: string; title: string; description: string }>
@@ -433,7 +418,9 @@ export function App() {
   >([]);
   const [pinMenu, setPinMenu] = useState(false);
   const [mention, setMention] = useState<MentionSuggestState | null>(null);
-  const [pathHits, setPathHits] = useState<string[]>([]);
+  const [pathHits, setPathHits] = useState<
+    Array<{ path: string; kind: 'file' | 'folder' }>
+  >([]);
   const [suggestIndex, setSuggestIndex] = useState(0);
   const [suggestLoading, setSuggestLoading] = useState(false);
   const feedRef = useRef<HTMLDivElement>(null);
@@ -1004,6 +991,7 @@ export function App() {
   );
 
   const resetChatForWorkspaceSwitch = () => {
+    stopRun();
     setMessages([]);
     setThreadId(undefined);
     setHistory([]);
@@ -1081,26 +1069,6 @@ export function App() {
     },
     [refreshIndexStatus],
   );
-
-  const refreshAutomations = useCallback(async () => {
-    if (!engine) return;
-    setAutomationsLoading(true);
-    setAutomationsError(null);
-    try {
-      const data = await listAutomations(engine);
-      setAutomationSpecs(data.specs);
-      setAutomationRuns(data.runs);
-    } catch (err) {
-      setAutomationsError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setAutomationsLoading(false);
-    }
-  }, [engine]);
-
-  useEffect(() => {
-    if (workspaceSide !== 'automations' || !engine) return;
-    void refreshAutomations();
-  }, [workspaceSide, engine, refreshAutomations]);
 
   const runReindex = useCallback(async () => {
     if (!engine || !snapshot) return;
@@ -1228,6 +1196,35 @@ export function App() {
     setSuggestLoading(false);
   };
 
+  const isAbortError = (err: unknown): boolean => {
+    if (!err) return false;
+    if (err instanceof DOMException && err.name === 'AbortError') return true;
+    if (err instanceof Error) {
+      return (
+        err.name === 'AbortError' ||
+        /abort(ed)?|user_cancelled|cancell?ed/i.test(err.message)
+      );
+    }
+    return false;
+  };
+
+  const beginRunAbort = (): AbortSignal => {
+    runAbortRef.current?.abort();
+    const controller = new AbortController();
+    runAbortRef.current = controller;
+    return controller.signal;
+  };
+
+  const clearRunAbort = (signal?: AbortSignal) => {
+    if (!runAbortRef.current) return;
+    if (signal && runAbortRef.current.signal !== signal) return;
+    runAbortRef.current = null;
+  };
+
+  const stopRun = () => {
+    runAbortRef.current?.abort();
+  };
+
   const updateMentionFromInput = (value: string) => {
     const next = detectMentionSuggest(value);
     setMention(next);
@@ -1268,6 +1265,7 @@ export function App() {
 
   type SuggestItem =
     | { kind: 'file'; path: string }
+    | { kind: 'folder'; path: string }
     | { kind: 'skill'; id: string; title: string; description: string }
     | { kind: 'mcp'; id: string; name: string; enabled: boolean };
 
@@ -1306,14 +1304,14 @@ export function App() {
       }
     }
     if (wantFiles) {
-      for (const path of pathHits) {
-        items.push({ kind: 'file', path });
+      for (const hit of pathHits) {
+        items.push({ kind: hit.kind, path: hit.path });
       }
     }
     return items.slice(0, 48);
   })();
 
-  const selectFileMention = (path: string) => {
+  const selectPathMention = (path: string) => {
     setInput((prev) => stripTrailingMention(prev));
     setPinnedPaths((prev) =>
       prev.includes(path) ? prev : [...prev, path].slice(0, 32),
@@ -1341,8 +1339,9 @@ export function App() {
   };
 
   const applySuggestItem = (item: SuggestItem) => {
-    if (item.kind === 'file') selectFileMention(item.path);
-    else if (item.kind === 'skill') selectSkillMention(item.id);
+    if (item.kind === 'file' || item.kind === 'folder') {
+      selectPathMention(item.path);
+    } else if (item.kind === 'skill') selectSkillMention(item.id);
     else selectMcpMention(item.id);
   };
 
@@ -1622,6 +1621,7 @@ export function App() {
   };
 
   const onNewChat = async () => {
+    stopRun();
     setSuspension(null);
     if (threadId) {
       await persistTokenUsageOnly(threadId, tokenUsageRef.current);
@@ -1733,6 +1733,8 @@ export function App() {
     async (body: Record<string, unknown>) => {
       if (!snapshot || busy) return;
       setBusy(true);
+      runActiveRef.current = true;
+      const signal = beginRunAbort();
       setError(null);
       setSuspension(null);
 
@@ -1776,6 +1778,7 @@ export function App() {
           streamResume({
             baseUrl: snapshot.engineBaseUrl,
             mode,
+            signal,
             ...(snapshot.authToken ? { token: snapshot.authToken } : {}),
             body: {
               ...body,
@@ -1845,7 +1848,9 @@ export function App() {
             ];
         await persistMessages(withAssistant, threadId, nextUsage);
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
+        if (!isAbortError(err)) {
+          setError(err instanceof Error ? err.message : String(err));
+        }
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantId ? { ...m, streaming: false } : m,
@@ -1853,6 +1858,8 @@ export function App() {
         );
         setTokenUsage((prev) => ({ ...prev, live: false }));
       } finally {
+        clearRunAbort(signal);
+        runActiveRef.current = false;
         setBusy(false);
       }
     },
@@ -1887,6 +1894,7 @@ export function App() {
     }
     setBusy(true);
     runActiveRef.current = true;
+    const signal = beginRunAbort();
     setError(null);
     setSuspension(null);
     setReviewDismissed(false);
@@ -1997,6 +2005,7 @@ export function App() {
           pinnedPaths: submitPinnedPaths,
           requiredSkillIds: pinnedSkillIds,
           requiredMcpServerIds: pinnedMcpIds,
+          signal,
           ...(conversation.length > 0 ? { conversation } : {}),
           ...(approvedPlan ? { approvedPlan } : {}),
           ...(approvedPlanStrategy
@@ -2090,7 +2099,9 @@ export function App() {
         planPersist,
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      if (!isAbortError(err)) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
       setMessages((prev) =>
         prev.map((m) =>
           m.id === assistantId ? { ...m, streaming: false } : m,
@@ -2098,6 +2109,7 @@ export function App() {
       );
       setTokenUsage((prev) => ({ ...prev, live: false }));
     } finally {
+      clearRunAbort(signal);
       runActiveRef.current = false;
       setBusy(false);
     }
@@ -2291,8 +2303,7 @@ export function App() {
     chatLayout === 'code' &&
     (workspaceSide === 'mcp' ||
       workspaceSide === 'skills' ||
-      workspaceSide === 'recipes' ||
-      workspaceSide === 'automations');
+      workspaceSide === 'recipes');
   const settingsOpen = view === 'settings';
 
   const planFollowView = planArtifactToFollowView(
@@ -2332,14 +2343,14 @@ export function App() {
         <button type="button" disabled>
           {mention?.query
             ? `No matches for “${mention.query}”`
-            : 'Type to filter files, skills, MCP'}
+            : 'Type to filter files, folders, skills, MCP'}
         </button>
       ) : null}
       {suggestItems.map((item, index) => {
-        if (item.kind === 'file') {
+        if (item.kind === 'file' || item.kind === 'folder') {
           return (
             <button
-              key={`file:${item.path}`}
+              key={`${item.kind}:${item.path}`}
               type="button"
               role="option"
               className={index === suggestIndex ? 'is-selected' : undefined}
@@ -2348,11 +2359,11 @@ export function App() {
               onClick={() => applySuggestItem(item)}
             >
               <span className="composer-attach__item-icon" aria-hidden>
-                ⌗
+                {item.kind === 'folder' ? '▤' : '⌗'}
               </span>
               <span>
                 {item.path}
-                <small>File</small>
+                <small>{item.kind === 'folder' ? 'Folder' : 'File'}</small>
               </span>
             </button>
           );
@@ -2702,7 +2713,7 @@ export function App() {
             ref={textareaRef}
             value={input}
             disabled={busy || !snapshot}
-            placeholder="Message Mitii…  @ to attach files, skills, MCP"
+            placeholder="Message Mitii…  @ to attach files, folders, skills, MCP"
             rows={1}
             onChange={(e) => {
               const next = e.target.value;
@@ -2771,23 +2782,38 @@ export function App() {
                 onThoroughnessChange={setThoroughness}
               />
               <div className="composer-actions">
-                <button
-                  type="submit"
-                  className="composer-send"
-                  style={
-                    {
-                      '--composer-control-color': accent,
-                    } as CSSProperties
-                  }
-                  disabled={busy || !input.trim()}
-                  title="Send"
-                  aria-label="Send"
-                >
-                  {busy ? (
-                    <span className="composer-send__busy" aria-hidden>
-                      …
-                    </span>
-                  ) : (
+                {busy ? (
+                  <button
+                    type="button"
+                    className="composer-send composer-send--stop"
+                    title="Stop"
+                    aria-label="Stop"
+                    onClick={stopRun}
+                  >
+                    <svg
+                      className="composer-send__icon"
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      aria-hidden
+                    >
+                      <rect x="6" y="6" width="12" height="12" rx="2" />
+                    </svg>
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    className="composer-send"
+                    style={
+                      {
+                        '--composer-control-color': accent,
+                      } as CSSProperties
+                    }
+                    disabled={!input.trim()}
+                    title="Send"
+                    aria-label="Send"
+                  >
                     <svg
                       className="composer-send__icon"
                       width="16"
@@ -2803,8 +2829,8 @@ export function App() {
                       <path d="M12 19V5" />
                       <path d="m5 12 7-7 7 7" />
                     </svg>
-                  )}
-                </button>
+                  </button>
+                )}
               </div>
             </div>
             <div className="composer-meta-row">
@@ -3071,13 +3097,6 @@ export function App() {
                 >
                   <IconRecipes size={22} />
                 </ActivityBarButton>
-                <ActivityBarButton
-                  label="Automations"
-                  active={workspaceSide === 'automations'}
-                  onClick={() => setWorkspaceSide('automations')}
-                >
-                  <IconModes size={22} />
-                </ActivityBarButton>
               </>
             ) : null}
           </nav>
@@ -3138,43 +3157,6 @@ export function App() {
                     onReviewFindingsChange={(findings) => {
                       setReviewFindings(findings);
                       setReviewDismissed(false);
-                    }}
-                    automations={{
-                      specs: automationSpecs,
-                      runs: automationRuns,
-                      loading: automationsLoading,
-                      error: automationsError,
-                      onRefresh: () => void refreshAutomations(),
-                      onTrigger: (specId) => {
-                        if (!engine) return;
-                        void triggerAutomation({ ...engine, specId })
-                          .then(() => refreshAutomations())
-                          .catch((err) =>
-                            setAutomationsError(
-                              err instanceof Error ? err.message : String(err),
-                            ),
-                          );
-                      },
-                      onPause: (specId) => {
-                        if (!engine) return;
-                        void pauseAutomation({ ...engine, specId })
-                          .then(() => refreshAutomations())
-                          .catch((err) =>
-                            setAutomationsError(
-                              err instanceof Error ? err.message : String(err),
-                            ),
-                          );
-                      },
-                      onResume: (specId) => {
-                        if (!engine) return;
-                        void resumeAutomation({ ...engine, specId })
-                          .then(() => refreshAutomations())
-                          .catch((err) =>
-                            setAutomationsError(
-                              err instanceof Error ? err.message : String(err),
-                            ),
-                          );
-                      },
                     }}
                     onUsePrompt={(prompt, nextMode) => {
                       setInput(prompt);

@@ -1,6 +1,6 @@
 {
   "name": "@mitii/mcp",
-  "version": "2.9.94",
+  "version": "2.9.95",
   "description": "Mitii MCP client kit: connect to MCP servers (stdio/SSE/streamable-HTTP) and register tools into V8 ToolRegistry. Does not expose Mitii as an MCP server.",
   "license": "AGPL-3.0-or-later",
   "type": "module",

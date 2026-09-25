@@ -346,13 +346,18 @@ export async function moveWorkspaceEntries(
 }
 
 /** Lightweight path search for `@` composer mentions (VS Code–style). */
+export type WorkspacePathSuggestion = {
+  path: string;
+  kind: 'file' | 'folder';
+};
+
 export async function searchWorkspacePaths(
   workspaceRoot: string,
   query: string,
   limit = 40,
-): Promise<string[]> {
+): Promise<WorkspacePathSuggestion[]> {
   const needle = query.trim().toLowerCase();
-  const matches: string[] = [];
+  const matches: WorkspacePathSuggestion[] = [];
   const queue: string[] = [''];
   let visited = 0;
   const maxVisit = 4_000;
@@ -369,7 +374,6 @@ export async function searchWorkspacePaths(
       visited += 1;
       if (entry.kind === 'dir') {
         queue.push(entry.path);
-        continue;
       }
       const hay = entry.path.toLowerCase();
       const name = entry.name.toLowerCase();
@@ -379,19 +383,23 @@ export async function searchWorkspacePaths(
         hay.includes(needle) ||
         hay.split('/').some((part) => part.startsWith(needle))
       ) {
-        matches.push(entry.path);
+        matches.push({
+          path: entry.path,
+          kind: entry.kind === 'dir' ? 'folder' : 'file',
+        });
         if (matches.length >= limit) break;
       }
     }
   }
 
   matches.sort((a, b) => {
-    const aName = a.split('/').pop() ?? a;
-    const bName = b.split('/').pop() ?? b;
+    const aName = a.path.split('/').pop() ?? a.path;
+    const bName = b.path.split('/').pop() ?? b.path;
     const aStarts = needle && aName.toLowerCase().startsWith(needle) ? 0 : 1;
     const bStarts = needle && bName.toLowerCase().startsWith(needle) ? 0 : 1;
     if (aStarts !== bStarts) return aStarts - bStarts;
-    return a.length - b.length || a.localeCompare(b);
+    if (a.kind !== b.kind) return a.kind === 'folder' ? -1 : 1;
+    return a.path.length - b.path.length || a.path.localeCompare(b.path);
   });
   return matches;
 }

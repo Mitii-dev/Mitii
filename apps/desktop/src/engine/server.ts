@@ -122,12 +122,6 @@ import {
   reindexWorkspace,
 } from './index-status.js';
 import {
-  listDesktopAutomations,
-  pauseDesktopAutomation,
-  resumeDesktopAutomation,
-  triggerDesktopAutomation,
-} from './automationHost.js';
-import {
   clearCheckpointLabels,
   deleteCheckpointLabel,
   loadCheckpointLabels,
@@ -392,6 +386,7 @@ async function streamRun(
     sessionId?: string;
     conversationCount?: number;
   },
+  req?: IncomingMessage,
 ): Promise<void> {
   res.writeHead(200, {
     'content-type': 'application/x-ndjson; charset=utf-8',
@@ -490,6 +485,18 @@ async function streamRun(
   let modelIoLog: ReturnType<typeof openModelIoLog>;
   try {
     const run = startOrResume();
+    const onClientGone = () => {
+      if (res.writableEnded) return;
+      appendRunLog(logsDir, `run_cancel id=${id} reason=user_cancelled`);
+      try {
+        run.cancel('user_cancelled');
+      } catch {
+        /* ignore */
+      }
+    };
+    req?.once('close', onClientGone);
+    res.once('close', onClientGone);
+
     const runStartedAt = new Date().toISOString();
     sessionLog = openSessionLog(meta?.workspaceRoot, {
       at: runStartedAt,
@@ -544,6 +551,8 @@ async function streamRun(
       writeNdjson(res, { op: 'result', id, result });
       appendRunLog(logsDir, `run_ok id=${id} status=${result.status}`);
     } finally {
+      req?.off('close', onClientGone);
+      res.off('close', onClientGone);
       setActiveModelIoSink(undefined);
       modelIoLog?.close();
     }
@@ -661,6 +670,7 @@ async function handlePrompt(
   workspaceRoot: string,
   body: unknown,
   res: ServerResponse,
+  req: IncomingMessage,
 ): Promise<void> {
   const parsed = parseDesktopPromptBody(body);
   if ('error' in parsed) {
@@ -684,7 +694,7 @@ async function handlePrompt(
     prompt: parsed.prompt,
     sessionId: parsed.sessionId ?? id,
     conversationCount: startInput.conversation?.length ?? 0,
-  });
+  }, req);
 }
 
 async function handleResume(
@@ -692,6 +702,7 @@ async function handleResume(
   workspaceRoot: string,
   body: unknown,
   res: ServerResponse,
+  req: IncomingMessage,
 ): Promise<void> {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     sendJson(res, 400, { op: 'error', error: 'expected_object' });
@@ -783,7 +794,7 @@ async function handleResume(
     prompt: typeof record.prompt === 'string' ? record.prompt : '(resume)',
     model: process.env.MITII_MODEL,
     baseUrl: process.env.MITII_BASE_URL,
-  });
+  }, req);
 }
 
 export async function startEngineServer(
@@ -816,7 +827,7 @@ export async function startEngineServer(
         if (!requireAuth(req, res, token)) return;
         try {
           const body = await readJsonBody(req);
-          await handlePrompt(options.client, cwd, body, res);
+          await handlePrompt(options.client, cwd, body, res, req);
         } catch (error) {
           const message =
             error instanceof Error ? error.message : String(error);
@@ -842,7 +853,7 @@ export async function startEngineServer(
         if (!requireAuth(req, res, token)) return;
         try {
           const body = await readJsonBody(req);
-          await handleResume(options.client, cwd, body, res);
+          await handleResume(options.client, cwd, body, res, req);
         } catch (error) {
           const message =
             error instanceof Error ? error.message : String(error);
@@ -2030,76 +2041,6 @@ export async function startEngineServer(
       if (method === 'GET' && path === '/v1/index/status') {
         if (!requireAuth(req, res, token)) return;
         sendJson(res, 200, getIndexStatus(cwd));
-        return;
-      }
-
-      if (method === 'GET' && path === '/v1/automations') {
-        if (!requireAuth(req, res, token)) return;
-        try {
-          sendJson(res, 200, listDesktopAutomations(cwd));
-        } catch (error) {
-          sendJson(res, 500, {
-            error: 'automations_failed',
-            message: error instanceof Error ? error.message : String(error),
-          });
-        }
-        return;
-      }
-
-      if (method === 'POST' && path === '/v1/automations/trigger') {
-        if (!requireAuth(req, res, token)) return;
-        const body = (await readJsonBody(req)) as Record<string, unknown>;
-        const specId = typeof body.specId === 'string' ? body.specId.trim() : '';
-        if (!specId) {
-          sendJson(res, 400, { error: 'specId_required' });
-          return;
-        }
-        try {
-          sendJson(res, 200, triggerDesktopAutomation(cwd, specId));
-        } catch (error) {
-          sendJson(res, 500, {
-            error: 'automations_trigger_failed',
-            message: error instanceof Error ? error.message : String(error),
-          });
-        }
-        return;
-      }
-
-      if (method === 'POST' && path === '/v1/automations/pause') {
-        if (!requireAuth(req, res, token)) return;
-        const body = (await readJsonBody(req)) as Record<string, unknown>;
-        const specId = typeof body.specId === 'string' ? body.specId.trim() : '';
-        if (!specId) {
-          sendJson(res, 400, { error: 'specId_required' });
-          return;
-        }
-        try {
-          sendJson(res, 200, pauseDesktopAutomation(cwd, specId));
-        } catch (error) {
-          sendJson(res, 500, {
-            error: 'automations_pause_failed',
-            message: error instanceof Error ? error.message : String(error),
-          });
-        }
-        return;
-      }
-
-      if (method === 'POST' && path === '/v1/automations/resume') {
-        if (!requireAuth(req, res, token)) return;
-        const body = (await readJsonBody(req)) as Record<string, unknown>;
-        const specId = typeof body.specId === 'string' ? body.specId.trim() : '';
-        if (!specId) {
-          sendJson(res, 400, { error: 'specId_required' });
-          return;
-        }
-        try {
-          sendJson(res, 200, resumeDesktopAutomation(cwd, specId));
-        } catch (error) {
-          sendJson(res, 500, {
-            error: 'automations_resume_failed',
-            message: error instanceof Error ? error.message : String(error),
-          });
-        }
         return;
       }
 

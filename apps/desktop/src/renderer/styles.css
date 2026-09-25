@@ -1111,6 +1111,15 @@ button[aria-disabled='true'] {
   opacity: 0.35;
 }
 
+.composer-send--stop {
+  background: var(--mitii-danger);
+  color: #fff;
+}
+
+.composer-send--stop:hover {
+  filter: brightness(1.05);
+}
+
 .composer-meta-row {
   display: flex;
   align-items: center;
@@ -7423,65 +7432,6 @@ button.mcp-manager__card {
   margin: 0;
   font-size: 12.5px;
   color: var(--mitii-muted);
-}
-
-.automations-panel {
-  padding: 12px 16px;
-  display: grid;
-  gap: 16px;
-}
-
-.automations-panel__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.automations-panel__title {
-  margin: 0;
-  font-size: 16px;
-}
-
-.automations-panel__subtitle,
-.automations-panel__empty,
-.automations-panel__muted {
-  margin: 4px 0 0;
-  font-size: 12px;
-  color: var(--mitii-muted);
-}
-
-.automations-panel__section-title {
-  margin: 0 0 8px;
-  font-size: 13px;
-}
-
-.automations-panel__list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.automations-panel__item {
-  border-top: 1px solid var(--mitii-border);
-  padding: 8px 0;
-  font-size: 12px;
-}
-
-.automations-panel__item-title {
-  font-weight: 600;
-}
-
-.automations-panel__item-actions {
-  margin-top: 6px;
-  display: flex;
-  gap: 8px;
-}
-
-.automations-panel__error {
-  color: color-mix(in srgb, #dc2626 80%, var(--mitii-text));
-  font-size: 12px;
-  margin: 0;
 }
 
 .onboarding-flow {
