@@ -83,7 +83,7 @@ import {
   isMutationLocked,
   remainingPostNudgeEvidenceReads,
 } from "./mutationLockTools";
-import { filterToolsForAnswerLock } from "./diagnoseAnswerLock";
+import { answerLockModelRequestFields } from "./diagnoseAnswerLock";
 
 export async function runModelToolLoop(
   runtime: AgentEngineRuntime,
@@ -366,7 +366,7 @@ export async function runModelToolLoop(
     const turnModelRequest: ModelRequest = session.awaitingAnswerOnly
       ? {
           ...params.request,
-          tools: filterToolsForAnswerLock(params.request.tools),
+          ...answerLockModelRequestFields(params.request.tools),
         }
       : mutationLocked
         ? {

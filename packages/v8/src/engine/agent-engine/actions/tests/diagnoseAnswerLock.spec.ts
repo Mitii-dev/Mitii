@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   DIAGNOSE_ANSWER_NUDGE_MESSAGE,
+  answerLockModelRequestFields,
   filterToolsForAnswerLock,
   primaryToolNameIfUniform,
   shouldLockDiagnoseAnswer,
@@ -95,6 +96,10 @@ describe("diagnoseAnswerLock (BillBuddy 23:34)", () => {
       { name: "read_file", description: "r", inputSchema: {} },
     ];
     expect(filterToolsForAnswerLock(tools)).toEqual([]);
+    expect(answerLockModelRequestFields(tools)).toEqual({
+      tools: [],
+      toolChoice: "none",
+    });
     expect(DIAGNOSE_ANSWER_NUDGE_MESSAGE).toMatch(/Answer the user now/i);
     expect(DIAGNOSE_ANSWER_NUDGE_MESSAGE).toMatch(/typecheck|command output/i);
   });
