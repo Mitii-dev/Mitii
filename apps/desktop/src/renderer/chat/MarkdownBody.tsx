@@ -6,7 +6,7 @@ import {
   elementsToSvg,
   isExcalidrawSource,
   parseExcalidrawDocument,
-} from '../shared/excalidrawSvg.js';
+} from '../../shared/excalidrawSvg.js';
 
 interface MarkdownBodyProps {
   text: string;

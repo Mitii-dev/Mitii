@@ -85,11 +85,22 @@ export type {
   WorkspaceIndexProgress,
   WorkspaceIndexProgressStage,
 } from './indexing/fullWorkspaceIndex.js';
+export { estimateIndexProgressPercent } from './indexing/fullWorkspaceIndex.js';
 export {
   IndexLockedError,
   acquireIndexLock,
+  isIndexLockHeld,
+  readIndexLockInfo,
+  readIndexProgress,
+  writeIndexProgress,
+  clearIndexProgress,
   INDEX_LOCK_FILE,
   INDEX_LOCK_STALE_MS,
+  INDEX_PROGRESS_FILE,
+} from './indexing/indexLock.js';
+export type {
+  IndexLockInfo,
+  IndexProgressSnapshot,
 } from './indexing/indexLock.js';
 export {
   DEFAULT_MAXIMUM_INDEX_FILES,

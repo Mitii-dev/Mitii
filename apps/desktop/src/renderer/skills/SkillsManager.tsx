@@ -9,15 +9,15 @@ import {
   IconRefresh,
   IconSearch,
   IconTrash,
-} from './ActivityIcons.js';
+} from '../ActivityIcons.js';
 import {
   deleteWorkspaceSkillApi,
   fetchWorkspaceSkill,
   fetchWorkspaceSkills,
   formatWorkspaceSkill,
   saveWorkspaceSkill,
-} from './api.js';
-import { MarkdownBody } from './MarkdownBody.js';
+} from '../api.js';
+import { MarkdownBody } from '../chat/MarkdownBody.js';
 
 interface SkillRow {
   id: string;

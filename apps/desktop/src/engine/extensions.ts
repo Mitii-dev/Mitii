@@ -12,10 +12,13 @@ import {
   type RecipeSpec,
 } from '@mitii/host';
 import {
+  applyBuiltinSecrets,
   createBuiltinMcpCatalog,
   getBuiltinCatalogEntry,
+  getBuiltinCatalogMeta,
   isMcpBuiltinId,
   readMcpSettingsFromDisk,
+  validateBuiltinSecrets,
   writeMcpSettingsToDisk,
   type McpServerConfig,
   type McpTransport,
@@ -25,7 +28,7 @@ import {
   fallbackSkillFrontmatter,
   normalizeSkillId,
   splitSkillMarkdown,
-} from './skillFrontmatterRecipe.js';
+} from './skills/frontmatterRecipe.js';
 
 export interface DesktopSkillSummary {
   id: string;
@@ -56,6 +59,15 @@ export function listMcpServers(workspaceRoot: string): {
     name: string;
     transport: string;
     description: string;
+    category: string;
+    secrets: Array<{
+      key: string;
+      label: string;
+      secret: boolean;
+      required: boolean;
+      placeholder?: string;
+      hint?: string;
+    }>;
     installed: boolean;
   }>;
 } {
@@ -68,13 +80,28 @@ export function listMcpServers(workspaceRoot: string): {
     builtin: Boolean(s.builtin),
   }));
   const installedIds = new Set(servers.map((s) => s.id.toLowerCase()));
-  const catalog = createBuiltinMcpCatalog(workspaceRoot).map((entry) => ({
-    id: entry.id ?? entry.name,
-    name: entry.name,
-    transport: entry.transport,
-    description: catalogDescription(entry.id ?? entry.name),
-    installed: installedIds.has((entry.id ?? entry.name).toLowerCase()),
-  }));
+  const catalog = createBuiltinMcpCatalog(workspaceRoot).map((entry) => {
+    const id = (entry.id ?? entry.name) as string;
+    const meta = isMcpBuiltinId(id) ? getBuiltinCatalogMeta(id) : null;
+    return {
+      id,
+      name: entry.name,
+      transport: entry.transport,
+      description: meta?.description ?? catalogDescription(id),
+      category: meta?.category ?? 'workspace',
+      secrets: meta?.secrets
+        ? meta.secrets.map((field) => ({
+            key: field.key,
+            label: field.label,
+            secret: Boolean(field.secret),
+            required: field.required !== false,
+            placeholder: field.placeholder,
+            hint: field.hint,
+          }))
+        : [],
+      installed: installedIds.has(id.toLowerCase()),
+    };
+  });
   return {
     enabled: mcp.enabled,
     servers,
@@ -83,20 +110,8 @@ export function listMcpServers(workspaceRoot: string): {
 }
 
 function catalogDescription(id: string): string {
-  switch (id) {
-    case 'filesystem':
-      return 'Bounded filesystem tools for this workspace.';
-    case 'sequential-thinking':
-      return 'Structured multi-step reasoning helper.';
-    case 'memory':
-      return 'External memory tools via MCP.';
-    case 'puppeteer':
-      return 'Browser automation via Puppeteer.';
-    case 'excalidraw':
-      return 'Hand-drawn architecture diagrams (mcp.excalidraw.com).';
-    default:
-      return 'Built-in Mitii MCP server.';
-  }
+  if (isMcpBuiltinId(id)) return getBuiltinCatalogMeta(id).description;
+  return 'Built-in Mitii MCP server.';
 }
 
 export function setMcpMasterEnabled(
@@ -144,20 +159,27 @@ function normalizeMcpId(raw: string): string {
 export function installBuiltinMcpServer(
   workspaceRoot: string,
   builtinId: string,
+  secrets?: Record<string, string>,
 ): ReturnType<typeof listMcpServers> {
   if (!isMcpBuiltinId(builtinId)) {
     throw new Error(`unknown_builtin_mcp:${builtinId}`);
   }
+  const secretError = validateBuiltinSecrets(builtinId, secrets);
+  if (secretError) throw new Error(`mcp_secret_required:${secretError}`);
+
   const mcp = readMcpSettingsFromDisk(workspaceRoot);
   const id = builtinId.trim().toLowerCase();
   if (mcp.servers.some((s) => (s.id ?? s.name).toLowerCase() === id)) {
     throw new Error(`mcp_already_installed:${id}`);
   }
-  const entry = {
-    ...getBuiltinCatalogEntry(builtinId, workspaceRoot),
-    enabled: true,
-    disabled: false,
-  };
+  const entry = applyBuiltinSecrets(
+    {
+      ...getBuiltinCatalogEntry(builtinId, workspaceRoot),
+      enabled: true,
+      disabled: false,
+    },
+    secrets,
+  );
   writeMcpSettingsToDisk(workspaceRoot, {
     enabled: true,
     servers: [...mcp.servers, entry],

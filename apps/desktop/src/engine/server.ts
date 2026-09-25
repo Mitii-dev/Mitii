@@ -57,11 +57,11 @@ import {
 import {
   createWorkspaceWatcher,
   type WorkspaceChangeEvent,
-} from './workspace-watch.js';
+} from './explorer/workspaceWatch.js';
 import {
   formatSkillFrontmatterWithAi,
   requireActiveDesktopProfile,
-} from './formatSkillFrontmatter.js';
+} from './skills/formatFrontmatter.js';
 import { getSharedMcpManager } from '@mitii/mcp';
 import { persistExcalidrawFromToolResult } from './excalidrawArtifacts.js';
 
@@ -131,15 +131,15 @@ import { workspaceIdFromRoot } from './workspace-id.js';
 import {
   getGitFileChangesSummary,
   getGitFileDiff,
-  getGitWorkingTree,
+  getGitWorkingTreeCoalesced,
   gitCheckout,
   gitCommit,
   gitDiscard,
   gitStage,
   gitUnstage,
   listGitBranches,
-} from './git-working-tree.js';
-import { getGitStatus } from './git-status.js';
+} from './git/workingTree.js';
+import { getGitStatus } from './git/status.js';
 import {
   copyWorkspaceEntries,
   createWorkspaceFile,
@@ -152,7 +152,7 @@ import {
   searchWorkspacePaths,
   toAbsoluteWorkspacePath,
   writeWorkspaceFile,
-} from './workspace-fs.js';
+} from './explorer/workspaceFs.js';
 
 const THOROUGHNESS_MAP = {
   low: { depth: 'quick' as const, effort: 'low' as const },
@@ -1083,9 +1083,35 @@ export async function startEngineServer(
               sendJson(res, 400, { ok: false, error: 'builtinId_required' });
               return;
             }
+            const secrets =
+              body.secrets &&
+              typeof body.secrets === 'object' &&
+              !Array.isArray(body.secrets)
+                ? Object.fromEntries(
+                    Object.entries(body.secrets as Record<string, unknown>)
+                      .filter(
+                        (entry): entry is [string, string] =>
+                          typeof entry[0] === 'string' &&
+                          typeof entry[1] === 'string',
+                      )
+                      .map(([k, v]) => [k, v]),
+                  )
+                : body.env &&
+                    typeof body.env === 'object' &&
+                    !Array.isArray(body.env)
+                  ? Object.fromEntries(
+                      Object.entries(body.env as Record<string, unknown>)
+                        .filter(
+                          (entry): entry is [string, string] =>
+                            typeof entry[0] === 'string' &&
+                            typeof entry[1] === 'string',
+                        )
+                        .map(([k, v]) => [k, v]),
+                    )
+                  : undefined;
             sendJson(res, 200, {
               ok: true,
-              ...installBuiltinMcpServer(cwd, builtinId),
+              ...installBuiltinMcpServer(cwd, builtinId, secrets),
               restartRequired: true,
             });
             return;
@@ -1497,7 +1523,28 @@ export async function startEngineServer(
 
       if (method === 'GET' && path === '/v1/git/status') {
         if (!requireAuth(req, res, token)) return;
-        sendJson(res, 200, await getGitWorkingTree(cwd));
+        try {
+          const wantStat = url.searchParams.get('stat') === '1';
+          sendJson(
+            res,
+            200,
+            await getGitWorkingTreeCoalesced(cwd, {
+              includeStatPreview: wantStat,
+            }),
+          );
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          sendJson(res, 500, {
+            ok: false,
+            summary: message,
+            staged: [],
+            changes: [],
+            untracked: [],
+            files: [],
+            error: message,
+          });
+        }
         return;
       }
 
@@ -2067,30 +2114,96 @@ export async function startEngineServer(
               baseUrl?: string;
             }
           | undefined;
-        const result = await reindexWorkspace({
-          workspaceRoot: cwd,
-          maximumFiles,
-          force: body.force !== false,
-          semanticIndex: semantic
-            ? {
-                enabled: semantic.enabled !== false,
-                source: semantic.source as never,
-                model: semantic.model ?? '',
-                dimensions: semantic.dimensions ?? 0,
-                normalized: semantic.normalized !== false,
-                baseUrl: semantic.baseUrl ?? process.env.MITII_BASE_URL ?? '',
-                apiKey: process.env.MITII_API_KEY,
-              }
-            : {
-                enabled: true,
-                source: 'bundled',
-                model: '',
-                dimensions: 0,
-                normalized: true,
-                baseUrl: '',
+        const stream =
+          body.stream === true ||
+          String(req.headers.accept ?? '').includes(
+            'application/x-ndjson',
+          );
+        const semanticIndex = semantic
+          ? {
+              enabled: semantic.enabled !== false,
+              source: semantic.source as never,
+              model: semantic.model ?? '',
+              dimensions: semantic.dimensions ?? 0,
+              normalized: semantic.normalized !== false,
+              baseUrl: semantic.baseUrl ?? process.env.MITII_BASE_URL ?? '',
+              apiKey: process.env.MITII_API_KEY,
+            }
+          : {
+              enabled: true,
+              source: 'bundled' as const,
+              model: '',
+              dimensions: 0,
+              normalized: true,
+              baseUrl: '',
+            };
+
+        if (stream) {
+          res.writeHead(200, {
+            'content-type': 'application/x-ndjson; charset=utf-8',
+            'cache-control': 'no-store',
+            connection: 'keep-alive',
+            'x-accel-buffering': 'no',
+          });
+          const writeLine = (obj: unknown) => {
+            if (res.writableEnded) return;
+            try {
+              res.write(`${JSON.stringify(obj)}\n`);
+            } catch {
+              /* client gone */
+            }
+          };
+          try {
+            const result = await reindexWorkspace({
+              workspaceRoot: cwd,
+              maximumFiles,
+              force: body.force !== false,
+              semanticIndex,
+              onProgress: (progress) => {
+                writeLine({
+                  type: 'progress',
+                  stage: progress.stage,
+                  message: progress.message,
+                  percent: progress.percent,
+                  fileCount: progress.fileCount,
+                });
               },
-        });
-        sendJson(res, 200, { ...result, statusSnapshot: getIndexStatus(cwd) });
+            });
+            writeLine({
+              type: 'result',
+              ...result,
+              statusSnapshot: getIndexStatus(cwd),
+            });
+          } catch (error) {
+            writeLine({
+              type: 'error',
+              message:
+                error instanceof Error ? error.message : String(error),
+              statusSnapshot: getIndexStatus(cwd),
+            });
+          }
+          res.end();
+          return;
+        }
+
+        try {
+          const result = await reindexWorkspace({
+            workspaceRoot: cwd,
+            maximumFiles,
+            force: body.force !== false,
+            semanticIndex,
+          });
+          sendJson(res, 200, { ...result, statusSnapshot: getIndexStatus(cwd) });
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          sendJson(res, 500, {
+            op: 'error',
+            error: 'internal',
+            message,
+            statusSnapshot: getIndexStatus(cwd),
+          });
+        }
         return;
       }
 

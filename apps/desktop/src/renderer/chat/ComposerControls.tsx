@@ -6,7 +6,7 @@ import {
   type CSSProperties,
 } from 'react';
 
-import type { DesktopAgentMode } from '../shared/protocol.js';
+import type { DesktopAgentMode } from '../../shared/protocol.js';
 
 export type ApprovalUiMode = 'safe' | 'guided' | 'pilot';
 export type ThoroughnessUi = 'low' | 'medium' | 'high';

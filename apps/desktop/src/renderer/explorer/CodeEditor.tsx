@@ -7,7 +7,7 @@ import {
   type UIEvent,
 } from 'react';
 
-import { highlightCode } from './codeHighlight.js';
+import { highlightCode } from '../codeHighlight.js';
 
 interface CodeEditorProps {
   path: string;

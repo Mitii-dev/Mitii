@@ -9,8 +9,8 @@ import { useState } from 'react';
 import type {
   DesktopFileChangeEntry,
   DesktopFileChanges,
-} from '../shared/fileChanges.js';
-import type { ReviewFinding } from '../shared/reviewFindings.js';
+} from '../../shared/fileChanges.js';
+import type { ReviewFinding } from '../../shared/reviewFindings.js';
 import {
   IconChevronDown,
   IconChevronRight,
@@ -21,8 +21,8 @@ import {
   IconGit,
   IconUndo,
   IconWrench,
-} from './ActivityIcons.js';
-import { DiffView } from './DiffView.js';
+} from '../ActivityIcons.js';
+import { DiffView } from '../explorer/DiffView.js';
 
 export type ReviewFindingChip = ReviewFinding & {
   status?: 'open' | 'fixed';

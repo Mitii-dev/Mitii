@@ -3627,6 +3627,63 @@ button[aria-disabled='true'] {
   gap: 6px;
 }
 
+.top-select__trigger--branch {
+  max-width: 200px;
+}
+
+.top-branch__sync {
+  font-size: 10px;
+  color: var(--mitii-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.top-select__menu--branch {
+  min-width: 220px;
+  max-height: 280px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.top-branch__create {
+  display: flex;
+  gap: 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--mitii-border-soft);
+  margin-bottom: 2px;
+}
+
+.top-branch__create input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--mitii-border);
+  background: var(--mitii-panel);
+  color: var(--mitii-text);
+  padding: 5px 8px;
+  font-size: 12px;
+  border-radius: 6px;
+}
+
+.top-branch__create-btn {
+  flex-shrink: 0;
+  border: 1px solid var(--mitii-border);
+  background: var(--mitii-surface);
+  color: var(--mitii-text);
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.top-branch__create-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--mitii-text) 6%, var(--mitii-surface));
+}
+
+.top-branch__create-btn:disabled {
+  opacity: 0.45;
+}
+
 .top-icon-btn {
   display: inline-flex;
   align-items: center;
@@ -3806,6 +3863,20 @@ button[aria-disabled='true'] {
   background: #e4a01a;
   border-radius: 999px;
   transition: width 200ms ease;
+}
+
+.index-status__progress--indeterminate .index-status__progress-track > span {
+  width: 35%;
+  animation: index-progress-indeterminate 1.2s ease-in-out infinite;
+}
+
+@keyframes index-progress-indeterminate {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
 }
 
 .index-status__progress-pct {
@@ -5080,6 +5151,39 @@ button.mcp-manager__card {
   font-weight: 600;
 }
 
+.mcp-wizard__hint {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--mitii-muted);
+  line-height: 1.45;
+}
+
+.mcp-wizard__hint code {
+  font-size: 11.5px;
+}
+
+.mcp-wizard__fields {
+  display: grid;
+  gap: 12px;
+}
+
+.mcp-wizard__fields label {
+  display: grid;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.mcp-wizard__fields input {
+  font-weight: 400;
+}
+
+.mcp-wizard__field-hint {
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--mitii-muted);
+}
+
 .mcp-wizard__choices {
   display: grid;
   gap: 10px;
@@ -6202,6 +6306,24 @@ button.mcp-manager__card {
   flex-shrink: 0;
 }
 
+.scm-pane__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 16px;
+  margin-left: 8px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mitii-accent) 22%, transparent);
+  color: var(--mitii-text);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  vertical-align: middle;
+}
+
 .scm-pane__title--sub {
   padding-top: 6px;
 }
@@ -6448,6 +6570,7 @@ button.mcp-manager__card {
   min-height: 0;
   overflow: auto;
   padding: 2px 0 8px;
+  outline: none;
 }
 
 .scm-group {
@@ -6521,6 +6644,14 @@ button.mcp-manager__card {
   background: color-mix(in srgb, var(--mitii-accent) 12%, transparent);
 }
 
+.scm-resource.is-selected {
+  background: color-mix(in srgb, var(--mitii-accent) 20%, transparent);
+}
+
+.scm-resource.is-selected.is-active {
+  background: color-mix(in srgb, var(--mitii-accent) 26%, transparent);
+}
+
 .scm-resource__main {
   display: flex;
   align-items: baseline;
@@ -6554,6 +6685,16 @@ button.mcp-manager__card {
   min-width: 0;
 }
 
+.scm-resource__rename {
+  font-size: 11px;
+  color: var(--mitii-muted);
+  opacity: 0.85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 1;
+}
+
 .scm-resource__actions {
   display: none;
   align-items: center;
@@ -6562,7 +6703,8 @@ button.mcp-manager__card {
 }
 
 .scm-resource:hover .scm-resource__actions,
-.scm-resource.is-active .scm-resource__actions {
+.scm-resource.is-active .scm-resource__actions,
+.scm-resource.is-selected .scm-resource__actions {
   display: inline-flex;
 }
 

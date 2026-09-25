@@ -106,7 +106,7 @@ export function createWorkspaceWatcher(workspaceRoot: string): WorkspaceWatcher 
     if (pendingKind === 'unknown') pendingKind = kind;
     else if (pendingKind !== kind) pendingKind = 'unknown';
     if (timer) clearTimeout(timer);
-    timer = setTimeout(flush, 80);
+    timer = setTimeout(flush, 150);
   };
 
   const onFsEvent = (eventType: string, filename: string | null) => {

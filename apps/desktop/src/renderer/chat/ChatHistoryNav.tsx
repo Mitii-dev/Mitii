@@ -2,8 +2,8 @@
  * Chat sidebar for the active workspace only (single-project mode).
  */
 
-import { IconPlus, IconSwitch } from './ActivityIcons.js';
-import { workspaceLabel } from './api.js';
+import { IconPlus, IconSwitch } from '../ActivityIcons.js';
+import { workspaceLabel } from '../api.js';
 
 export type ChatNavThread = {
   id: string;

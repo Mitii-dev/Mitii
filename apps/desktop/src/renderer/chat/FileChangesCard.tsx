@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
-import type { DesktopFileChanges } from '../shared/fileChanges.js';
-import { DiffView } from './DiffView.js';
+import type { DesktopFileChanges } from '../../shared/fileChanges.js';
+import { DiffView } from '../explorer/DiffView.js';
 
 interface FileChangesCardProps {
   changes: DesktopFileChanges;

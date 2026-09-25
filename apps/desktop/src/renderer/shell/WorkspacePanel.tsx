@@ -9,7 +9,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from 'react';
 
-import logoUrl from './assets/mitii-logo.svg';
+import logoUrl from '../assets/mitii-logo.svg';
 import {
   copyWorkspacePaths,
   createWorkspaceFilePath,
@@ -25,13 +25,13 @@ import {
   renameWorkspacePath,
   saveWorkspaceFile,
   streamWorkspaceEvents,
-} from './api.js';
-import { CodeEditor } from './CodeEditor.js';
-import { GitWorkingTreePane } from './GitWorkingTreePane.js';
-import { McpManager } from './McpManager.js';
-import { RecipesManager } from './RecipesManager.js';
-import { SkillsManager } from './SkillsManager.js';
-import { DiffView } from './DiffView.js';
+} from '../api.js';
+import { CodeEditor } from '../explorer/CodeEditor.js';
+import { GitWorkingTreePane } from '../git/GitWorkingTreePane.js';
+import { McpManager } from '../mcp/McpManager.js';
+import { RecipesManager } from '../recipes/RecipesManager.js';
+import { SkillsManager } from '../skills/SkillsManager.js';
+import { DiffView } from '../explorer/DiffView.js';
 import {
   IconChevronDown,
   IconChevronRight,
@@ -45,9 +45,9 @@ import {
   IconNewFile,
   IconNewFolder,
   IconRefresh,
-} from './ActivityIcons.js';
+} from '../ActivityIcons.js';
 import { ResizeHandle, usePersistedWidth } from './ResizeHandle.js';
-import type { GitWorkingTreeSnapshot } from '../shared/gitWorkingTree.js';
+import type { GitWorkingTreeSnapshot } from '../../shared/git/workingTree.js';
 
 interface WorkspacePanelProps {
   baseUrl: string;
@@ -86,7 +86,7 @@ interface WorkspacePanelProps {
   hasActiveProfile?: boolean;
   onOpenProfiles?: () => void;
   /** Bubble Code Review findings to the chat composer strip. */
-  onReviewFindingsChange?: (findings: import('../shared/reviewFindings.js').ReviewFinding[]) => void;
+  onReviewFindingsChange?: (findings: import('../../shared/reviewFindings.js').ReviewFinding[]) => void;
 }
 
 type TreeEntry = { name: string; path: string; kind: 'file' | 'dir' };
@@ -189,6 +189,8 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     if (props.onSideChange) props.onSideChange(next);
     else setInternalSide(next);
   };
+  const sideRef = useRef(side);
+  sideRef.current = side;
   const [rootEntries, setRootEntries] = useState<TreeEntry[]>([]);
   const [childrenByPath, setChildrenByPath] = useState<
     Record<string, TreeEntry[]>
@@ -263,9 +265,12 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     try {
       const next = await fetchGitStatus(auth);
       setGit(next);
-      props.onGitCountChange?.(next.files.length);
+      props.onGitCountChange?.(next.changeCount ?? next.files.length);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      // Engine blips during bulk AI writes ("Failed to fetch") — don't poison the UI.
+      if (/failed to fetch|networkerror|load failed/i.test(msg)) return;
+      setError(msg);
     }
   }, [props.baseUrl, props.token, props.onGitCountChange]);
 
@@ -556,13 +561,18 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
         pendingPathsRef.current.clear();
         void refreshParents(batch);
         void reloadCleanOpenFiles(batch);
-      }, 50);
+      }, 80);
+      // Longer debounce than the FS watcher — bulk AI writes must not stampede git.
       if (gitTimerRef.current) clearTimeout(gitTimerRef.current);
       gitTimerRef.current = setTimeout(() => {
-        void loadGit();
-        scmRefreshRef.current += 1;
-        setScmRefreshToken(scmRefreshRef.current);
-      }, 80);
+        if (sideRef.current === 'git') {
+          // SCM pane owns the status fetch; avoid a duplicate WorkspacePanel call.
+          scmRefreshRef.current += 1;
+          setScmRefreshToken(scmRefreshRef.current);
+        } else {
+          void loadGit();
+        }
+      }, 600);
     },
     [refreshParents, reloadCleanOpenFiles, loadGit],
   );
@@ -792,10 +802,28 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     else void openFile(entry.path);
   };
 
+  const onExplorerMouseDown = (
+    entry: TreeEntry,
+    e: ReactMouseEvent<HTMLButtonElement>,
+  ) => {
+    if (e.button !== 0) return;
+    if (!(e.metaKey || e.ctrlKey || e.shiftKey)) return;
+    // Handle modifier selection on mousedown so Ctrl/Shift aren't lost to focus/click races.
+    e.preventDefault();
+    onExplorerClick(entry, e);
+  };
+
   const onExplorerContextMenu = (
     entry: TreeEntry,
     e: ReactMouseEvent<HTMLButtonElement>,
   ) => {
+    // macOS Control+click opens the context menu; multi-select uses ⌘ there.
+    // On Win/Linux, Ctrl+click is multi-select — don't let a synthetic menu clear it.
+    if ((e.ctrlKey || e.metaKey) && !isMacPlatform()) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     e.preventDefault();
     e.stopPropagation();
     let paths = [...selectedPaths];
@@ -1121,7 +1149,14 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                   isSelected ? ' is-selected' : ''
                 }${isCut ? ' is-cut' : ''}`}
                 style={{ paddingLeft: 4 + depth * 8 }}
-                onClick={(e) => onExplorerClick(entry, e)}
+                onMouseDown={(e) => onExplorerMouseDown(entry, e)}
+                onClick={(e) => {
+                  if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                    e.preventDefault();
+                    return;
+                  }
+                  onExplorerClick(entry, e);
+                }}
                 onContextMenu={(e) => onExplorerContextMenu(entry, e)}
                 title={entry.path}
               >
@@ -1227,8 +1262,10 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                 }}
               >
                 <IconGit size={20} />
-                {git?.files.length ? (
-                  <em className="activity-badge">{git.files.length}</em>
+                {git?.changeCount || git?.files.length ? (
+                  <em className="activity-badge">
+                    {git.changeCount ?? git.files.length}
+                  </em>
                 ) : null}
               </button>
             </div>
@@ -1416,7 +1453,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                 }}
                 onStatusSnapshot={(next) => {
                   setGit(next);
-                  props.onGitCountChange?.(next.files.length);
+                  props.onGitCountChange?.(next.changeCount ?? next.files.length);
                 }}
                 onUsePrompt={props.onUsePrompt}
                 onStatusNote={setNote}

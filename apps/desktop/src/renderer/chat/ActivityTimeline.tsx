@@ -1,4 +1,4 @@
-import type { DesktopActivityItem } from '../shared/activity.js';
+import type { DesktopActivityItem } from '../../shared/activity.js';
 
 interface ActivityTimelineProps {
   items: DesktopActivityItem[];

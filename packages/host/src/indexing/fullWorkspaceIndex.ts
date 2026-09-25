@@ -31,6 +31,8 @@ import { fingerprintWorkspaceIndexSnapshot } from './fingerprintSnapshot.js';
 import {
   IndexLockedError,
   acquireIndexLock,
+  clearIndexProgress,
+  writeIndexProgress,
 } from './indexLock.js';
 import {
   MAXIMUM_INDEX_FILES,
@@ -65,6 +67,49 @@ export interface WorkspaceIndexProgress {
   stage: WorkspaceIndexProgressStage;
   message: string;
   fileCount?: number;
+  /** 0–100 estimate for UI (stage-based; not a fake timer). */
+  percent?: number;
+}
+
+/** Conservative stage weights — embedding/graph often dominate wall time. */
+export function estimateIndexProgressPercent(
+  stage: WorkspaceIndexProgressStage,
+): number {
+  switch (stage) {
+    case 'locking':
+      return 2;
+    case 'rebuilding_corrupt':
+      return 5;
+    case 'scanning':
+      return 12;
+    case 'indexing':
+      return 40;
+    case 'graph':
+      return 78;
+    case 'complete':
+      return 100;
+    case 'cancelled':
+      return 0;
+    default:
+      return 8;
+  }
+}
+
+function emitProgress(
+  mitiiDir: string,
+  onProgress: ((progress: WorkspaceIndexProgress) => void) | undefined,
+  progress: WorkspaceIndexProgress,
+): void {
+  const percent =
+    progress.percent ?? estimateIndexProgressPercent(progress.stage);
+  const next = { ...progress, percent };
+  writeIndexProgress(mitiiDir, {
+    stage: next.stage,
+    message: next.message,
+    percent,
+    ...(typeof next.fileCount === 'number' ? { fileCount: next.fileCount } : {}),
+  });
+  onProgress?.(next);
 }
 
 export interface FullWorkspaceIndexResult {
@@ -105,7 +150,7 @@ export async function runFullWorkspaceIndex(options: {
   onProgress?: (progress: WorkspaceIndexProgress) => void;
 }): Promise<FullWorkspaceIndexResult> {
   mkdirSync(options.mitiiDir, { recursive: true });
-  options.onProgress?.({
+  emitProgress(options.mitiiDir, options.onProgress, {
     stage: 'locking',
     message: 'Acquiring index lock',
   });
@@ -125,7 +170,22 @@ export async function runFullWorkspaceIndex(options: {
   }
 
   try {
-    return await runWithCorruptRetry(options);
+    const result = await runWithCorruptRetry(options);
+    emitProgress(options.mitiiDir, options.onProgress, {
+      stage: result.status === 'cancelled' ? 'cancelled' : 'complete',
+      message:
+        result.status === 'cancelled'
+          ? 'Indexing cancelled'
+          : result.status === 'unchanged'
+            ? 'Index unchanged'
+            : `Indexed ${result.fileCount} files`,
+      fileCount: result.fileCount,
+      percent: result.status === 'cancelled' ? 0 : 100,
+    });
+    if (result.status !== 'cancelled') {
+      clearIndexProgress(options.mitiiDir);
+    }
+    return result;
   } finally {
     lock.release();
   }
@@ -140,7 +200,7 @@ async function runWithCorruptRetry(
     if (!isCorruptIndexError(error)) {
       throw error;
     }
-    options.onProgress?.({
+    emitProgress(options.mitiiDir, options.onProgress, {
       stage: 'rebuilding_corrupt',
       message: 'Index store is corrupt; rebuilding',
     });
@@ -190,7 +250,7 @@ async function runFullWorkspaceIndexOnce(options: {
     });
 
     const maximumFiles = resolveMaximumIndexFiles(options.maximumFiles);
-    options.onProgress?.({
+    emitProgress(options.mitiiDir, options.onProgress, {
       stage: 'scanning',
       message: 'Scanning workspace files',
     });
@@ -214,7 +274,7 @@ async function runFullWorkspaceIndexOnce(options: {
 
     if (isUnchangedFullIndex(unchangedCheck)) {
       const metadata = unchangedCheck.metadata;
-      options.onProgress?.({
+      emitProgress(options.mitiiDir, options.onProgress, {
         stage: 'complete',
         message: 'Index already up to date',
         fileCount: metadata.fileCount,
@@ -271,7 +331,7 @@ async function runFullWorkspaceIndexOnce(options: {
     const cleanupMissing =
       snapshot.status === 'complete' && !options.filePaths?.length;
 
-    options.onProgress?.({
+    emitProgress(options.mitiiDir, options.onProgress, {
       stage: 'indexing',
       message: 'Indexing code and text',
       fileCount: snapshot.statistics.files,
@@ -293,7 +353,7 @@ async function runFullWorkspaceIndexOnce(options: {
     });
 
     if (indexing.status === 'cancelled' || options.abortSignal?.aborted) {
-      options.onProgress?.({
+      emitProgress(options.mitiiDir, options.onProgress, {
         stage: 'cancelled',
         message: 'Indexing cancelled',
         fileCount: snapshot.statistics.files,
@@ -326,7 +386,7 @@ async function runFullWorkspaceIndexOnce(options: {
       runtimeMetadataPath,
     });
 
-    options.onProgress?.({
+    emitProgress(options.mitiiDir, options.onProgress, {
       stage: 'graph',
       message: 'Building repository graph',
       fileCount: snapshot.statistics.files,
@@ -376,7 +436,7 @@ async function runFullWorkspaceIndexOnce(options: {
       generatedAt: new Date(indexing.indexedAt).toISOString(),
     });
 
-    options.onProgress?.({
+    emitProgress(options.mitiiDir, options.onProgress, {
       stage: 'complete',
       message: 'Index updated',
       fileCount: snapshot.statistics.files,

@@ -14,16 +14,16 @@ import {
   type GitBranchListSnapshot,
   type GitMutationResult,
   type GitWorkingTreeSnapshot,
-} from '../shared/gitWorkingTree.js';
+} from '../../shared/git/workingTree.js';
 import {
   appendPathsAfterDoubleDash,
   assertSafeGitArg,
   DesktopGitArgError,
-} from './gitArgSafety.js';
+} from './argSafety.js';
 import {
   getGitFileChangesSummary,
   getGitFileDiff,
-} from './git-status.js';
+} from './status.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -101,32 +101,41 @@ function runGitCommitWithMessage(
 
 export async function getGitWorkingTree(
   workspaceRoot: string,
+  options?: { includeStatPreview?: boolean },
 ): Promise<GitWorkingTreeSnapshot> {
   try {
-    const status = await runGit(workspaceRoot, [
-      'status',
-      '--porcelain=v1',
-      '-b',
-    ]);
+    // Match VS Code SCM: every untracked file (`-uall`), NUL-safe paths (`-z`).
+    const status = await runGit(
+      workspaceRoot,
+      ['status', '--porcelain=v1', '-z', '-uall', '-b'],
+      { timeoutMs: 45_000, maxBuffer: 16 * 1024 * 1024 },
+    );
     const parsed = parsePorcelainWorkingTree(status.stdout);
-    let statPreview: string | undefined;
-    try {
-      const diff = await runGit(workspaceRoot, ['diff', '--stat', 'HEAD']);
-      statPreview = diff.stdout.trim().slice(0, 4000) || undefined;
-    } catch {
-      statPreview = undefined;
-    }
     const files = flattenWorkingTreeFiles(parsed);
+    let statPreview: string | undefined;
+    // `git diff --stat` is expensive on large dirty trees and was blocking the
+    // engine during AI bulk writes — only compute when explicitly requested.
+    if (options?.includeStatPreview) {
+      try {
+        const diff = await runGit(workspaceRoot, ['diff', '--stat', 'HEAD'], {
+          timeoutMs: 8_000,
+        });
+        statPreview = diff.stdout.trim().slice(0, 4000) || undefined;
+      } catch {
+        statPreview = undefined;
+      }
+    }
     return {
       ok: true,
       ...(parsed.branch ? { branch: parsed.branch } : {}),
       summary: parsed.summary,
       ...(parsed.ahead !== undefined ? { ahead: parsed.ahead } : {}),
       ...(parsed.behind !== undefined ? { behind: parsed.behind } : {}),
-      staged: parsed.staged.slice(0, 80),
-      changes: parsed.changes.slice(0, 80),
-      untracked: parsed.untracked.slice(0, 80),
+      staged: parsed.staged,
+      changes: parsed.changes,
+      untracked: parsed.untracked,
       files,
+      changeCount: files.length,
       ...(statPreview ? { statPreview } : {}),
     };
   } catch (error) {
@@ -137,8 +146,53 @@ export async function getGitWorkingTree(
       changes: [],
       untracked: [],
       files: [],
+      changeCount: 0,
       error: error instanceof Error ? error.message : String(error),
     };
+  }
+}
+
+/** Coalesce concurrent status reads so bulk FS events don't stampede git. */
+const gitStatusInflight = new Map<string, Promise<GitWorkingTreeSnapshot>>();
+const gitStatusCache = new Map<
+  string,
+  { at: number; value: GitWorkingTreeSnapshot }
+>();
+const GIT_STATUS_CACHE_MS = 400;
+
+export async function getGitWorkingTreeCoalesced(
+  workspaceRoot: string,
+  options?: { includeStatPreview?: boolean; bypassCache?: boolean },
+): Promise<GitWorkingTreeSnapshot> {
+  const key = `${workspaceRoot}\0${options?.includeStatPreview ? '1' : '0'}`;
+  if (!options?.bypassCache) {
+    const cached = gitStatusCache.get(key);
+    if (cached && Date.now() - cached.at < GIT_STATUS_CACHE_MS) {
+      return cached.value;
+    }
+  }
+  let inflight = gitStatusInflight.get(key);
+  if (!inflight) {
+    inflight = getGitWorkingTree(workspaceRoot, options).finally(() => {
+      gitStatusInflight.delete(key);
+    });
+    gitStatusInflight.set(key, inflight);
+  }
+  const value = await inflight;
+  gitStatusCache.set(key, { at: Date.now(), value });
+  return value;
+}
+
+/** Drop cached status after mutations so the next read is fresh. */
+export function invalidateGitWorkingTreeCache(workspaceRoot?: string): void {
+  if (!workspaceRoot) {
+    gitStatusCache.clear();
+    return;
+  }
+  for (const key of gitStatusCache.keys()) {
+    if (key === workspaceRoot || key.startsWith(`${workspaceRoot}\0`)) {
+      gitStatusCache.delete(key);
+    }
   }
 }
 
@@ -146,7 +200,7 @@ export async function getGitWorkingTree(
 export async function getGitStatus(
   workspaceRoot: string,
 ): Promise<GitWorkingTreeSnapshot> {
-  return getGitWorkingTree(workspaceRoot);
+  return getGitWorkingTreeCoalesced(workspaceRoot);
 }
 
 export async function listGitBranches(
@@ -189,8 +243,15 @@ async function withStatus(
 ): Promise<GitMutationResult> {
   try {
     await mutate();
-    return { ok: true, status: await getGitWorkingTree(workspaceRoot) };
+    invalidateGitWorkingTreeCache(workspaceRoot);
+    return {
+      ok: true,
+      status: await getGitWorkingTreeCoalesced(workspaceRoot, {
+        bypassCache: true,
+      }),
+    };
   } catch (error) {
+    invalidateGitWorkingTreeCache(workspaceRoot);
     return {
       ok: false,
       error:
@@ -199,7 +260,9 @@ async function withStatus(
           : error instanceof Error
             ? error.message
             : String(error),
-      status: await getGitWorkingTree(workspaceRoot),
+      status: await getGitWorkingTreeCoalesced(workspaceRoot, {
+        bypassCache: true,
+      }),
     };
   }
 }

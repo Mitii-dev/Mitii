@@ -35,4 +35,20 @@ describe('index lock', () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it('clears a lock whose process is dead', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'mitii-index-lock-dead-'));
+    await mkdir(dir, { recursive: true });
+    try {
+      await writeFile(
+        join(dir, 'index.lock'),
+        `${JSON.stringify({ pid: 2_147_000_000, startedAt: Date.now() })}\n`,
+        'utf8',
+      );
+      const stolen = acquireIndexLock(dir);
+      stolen.release();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
