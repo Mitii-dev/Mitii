@@ -7,7 +7,7 @@
 export type McpTransport = 'stdio' | 'sse' | 'streamable-http';
 
 export interface McpServerConfig {
-  /** Stable id (builtins: filesystem, sequential-thinking, memory, puppeteer, excalidraw). */
+  /** Stable id (builtins: filesystem, github, gitea, brave-search, playwright, …). */
   id?: string;
   name: string;
   transport: McpTransport;

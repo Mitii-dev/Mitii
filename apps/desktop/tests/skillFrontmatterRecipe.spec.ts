@@ -5,7 +5,7 @@ import {
   fallbackSkillFrontmatter,
   parseFrontmatterFromModelText,
   splitSkillMarkdown,
-} from '../src/engine/skillFrontmatterRecipe.js';
+} from '../src/engine/skills/frontmatterRecipe.js';
 
 describe('skillFrontmatterRecipe', () => {
   it('preserves body when composing markdown', () => {

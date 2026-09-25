@@ -21,12 +21,12 @@ import {
   parseFrontmatterFromModelText,
   splitSkillMarkdown,
   type SkillFrontmatterFields,
-} from './skillFrontmatterRecipe.js';
+} from './frontmatterRecipe.js';
 import {
   readProfiles,
   type DesktopProfile,
   type DesktopProfileProvider,
-} from './profiles.js';
+} from '../profiles.js';
 
 export interface FormatSkillFrontmatterResult {
   id: string;

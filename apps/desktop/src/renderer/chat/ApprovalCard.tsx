@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import type { DesktopSuspension } from '../shared/suspension.js';
+import type { DesktopSuspension } from '../../shared/suspension.js';
 
 interface ApprovalCardProps {
   suspension: DesktopSuspension;

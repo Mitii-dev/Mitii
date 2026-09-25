@@ -2,12 +2,12 @@
  * Expandable post-run changes panel for the composer dock.
  */
 
-import type { DesktopFileChangeEntry } from '../shared/fileChanges.js';
+import type { DesktopFileChangeEntry } from '../../shared/fileChanges.js';
 import {
   WorkingTreeReviewBar,
   type ReviewFindingChip,
   type RunFileChangesSummary,
-} from './WorkingTreeReviewBar.js';
+} from '../git/WorkingTreeReviewBar.js';
 
 export type { ReviewFindingChip, RunFileChangesSummary };
 

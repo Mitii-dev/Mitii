@@ -51,7 +51,7 @@ import {
 import type { ReviewFinding } from '../shared/reviewFindings.js';
 import { breakdownFromPromptReady } from '../shared/contextUsage.js';
 import logoUrl from './assets/mitii-logo.svg';
-import { ActivityBarButton } from './ActivityBarButton.js';
+import { ActivityBarButton } from './shell/ActivityBarButton.js';
 import {
   IconChat,
   IconCode,
@@ -70,11 +70,12 @@ import {
   IconUser,
   IconWorkspace,
 } from './ActivityIcons.js';
-import { ActivityTimeline } from './ActivityTimeline.js';
+import { TopBranchSelect } from './git/TopBranchSelect.js';
+import { ActivityTimeline } from './chat/ActivityTimeline.js';
 import {
   ThinkingBlock,
   thinkingItemsFromActivity,
-} from './ThinkingBlock.js';
+} from './chat/ThinkingBlock.js';
 import {
   extractAssistantText,
   deleteHistoryThread,
@@ -99,35 +100,35 @@ import {
   streamResume,
   workspaceLabel,
 } from './api.js';
-import { ChatHistoryNav } from './ChatHistoryNav.js';
-import { ComposerReviewStrip } from './ComposerReviewStrip.js';
+import { ChatHistoryNav } from './chat/ChatHistoryNav.js';
+import { ComposerReviewStrip } from './chat/ComposerReviewStrip.js';
 import { IndexStatusChip } from './IndexStatusChip.js';
-import { FileChangesCard } from './FileChangesCard.js';
+import { FileChangesCard } from './chat/FileChangesCard.js';
 import { OnboardingPanel } from './OnboardingPanel.js';
-import { PendingPlanBanner } from './PendingPlanBanner.js';
+import { PendingPlanBanner } from './chat/PendingPlanBanner.js';
 import {
   PlanFollowStrip,
   type PlanFollowView,
-} from './PlanFollowStrip.js';
+} from './chat/PlanFollowStrip.js';
 import { IdentityPicker } from './IdentityPicker.js';
-import { ApprovalCard } from './ApprovalCard.js';
+import { ApprovalCard } from './chat/ApprovalCard.js';
 import {
   ComposerControls,
   modeAccent,
   type ApprovalUiMode,
   type ThoroughnessUi,
-} from './ComposerControls.js';
-import { MarkdownBody } from './MarkdownBody.js';
-import { McpAppCard, mcpAppsFromActivity } from './McpAppCard.js';
-import { ModelQuickSelect } from './ModelQuickSelect.js';
+} from './chat/ComposerControls.js';
+import { MarkdownBody } from './chat/MarkdownBody.js';
+import { McpAppCard, mcpAppsFromActivity } from './mcp/McpAppCard.js';
+import { ModelQuickSelect } from './chat/ModelQuickSelect.js';
 import {
   detectMentionSuggest,
   stripTrailingMention,
   type MentionSuggestState,
-} from './mentionSuggest.js';
+} from './chat/mentionSuggest.js';
 import { SettingsPanel } from './SettingsPanel.js';
-import { ResizeHandle, usePersistedWidth } from './ResizeHandle.js';
-import { WorkspacePanel } from './WorkspacePanel.js';
+import { ResizeHandle, usePersistedWidth } from './shell/ResizeHandle.js';
+import { WorkspacePanel } from './shell/WorkspacePanel.js';
 import {
   addTurnTokens,
   emptyTokenUsage,
@@ -378,10 +379,12 @@ export function App() {
     lastIndexedAt?: string;
     message: string;
     embeddingError?: string;
+    running?: boolean;
   } | null>(null);
   const [indexIndexing, setIndexIndexing] = useState(false);
   const [indexProgress, setIndexProgress] = useState<number | null>(null);
   const [indexStream, setIndexStream] = useState<string[]>([]);
+  const reindexInFlightRef = useRef(false);
   const [busy, setBusy] = useState(false);
   /** True while an agent stream is in flight — survives settings/UI busy toggles. */
   const runActiveRef = useRef(false);
@@ -633,10 +636,18 @@ export function App() {
           truncated: s.truncated,
           lastIndexedAt: s.lastIndexedAt,
           message: s.message,
-          embeddingError: undefined,
+          embeddingError: s.embeddingError,
+          running: s.running,
         });
-        setIndexIndexing(false);
-        setIndexProgress(null);
+        if (s.running) {
+          setIndexIndexing(true);
+          if (typeof s.progressPercent === 'number') {
+            setIndexProgress(s.progressPercent);
+          }
+        } else {
+          setIndexIndexing(false);
+          setIndexProgress(null);
+        }
       })
       .catch(() => {
         if (!cancelled) setIndexStatus(null);
@@ -1023,32 +1034,54 @@ export function App() {
     });
   }, []);
 
-  const refreshIndexStatus = useCallback(async () => {
-    if (!engine) return;
-    try {
-      const s = await fetchIndexStatus(engine);
+  const applyIndexStatus = useCallback(
+    (
+      s: Awaited<ReturnType<typeof fetchIndexStatus>>,
+      opts?: { clearIfIdle?: boolean },
+    ) => {
       setIndexStatus({
         indexed: s.indexed,
         fileCount: s.fileCount,
         truncated: s.truncated,
         lastIndexedAt: s.lastIndexedAt,
         message: s.message,
+        embeddingError: s.embeddingError,
+        running: s.running,
       });
+      if (s.running) {
+        setIndexIndexing(true);
+        if (typeof s.progressPercent === 'number') {
+          setIndexProgress(s.progressPercent);
+        }
+        if (s.progressMessage) pushIndexStream(s.progressMessage);
+        return;
+      }
+      if (opts?.clearIfIdle !== false && !reindexInFlightRef.current) {
+        setIndexIndexing(false);
+        setIndexProgress(null);
+      }
+    },
+    [pushIndexStream],
+  );
+
+  const refreshIndexStatus = useCallback(async () => {
+    if (!engine) return;
+    try {
+      const s = await fetchIndexStatus(engine);
+      applyIndexStatus(s);
       return s;
     } catch {
       /* non-fatal */
       return null;
-    } finally {
-      setIndexIndexing(false);
-      setIndexProgress(null);
     }
-  }, [engine]);
+  }, [engine, applyIndexStatus]);
 
   const pauseIndex = useCallback(async () => {
     if (!engine) return;
     try {
       const result = await pauseIndexing(engine);
       pushIndexStream(result.message || 'Indexing paused');
+      reindexInFlightRef.current = false;
       setIndexIndexing(false);
       setIndexProgress(null);
       await refreshIndexStatus();
@@ -1072,33 +1105,11 @@ export function App() {
 
   const runReindex = useCallback(async () => {
     if (!engine || !snapshot) return;
+    reindexInFlightRef.current = true;
     setIndexIndexing(true);
-    setIndexProgress(6);
+    setIndexProgress(2);
     setIndexStream([]);
     pushIndexStream('Reindex started…');
-    const tick = window.setInterval(() => {
-      setIndexProgress((p) => {
-        if (p == null) return 12;
-        return Math.min(92, p + Math.random() * 10);
-      });
-    }, 400);
-    const poll = window.setInterval(() => {
-      void fetchIndexStatus(engine)
-        .then((s) => {
-          setIndexStatus({
-            indexed: s.indexed,
-            fileCount: s.fileCount,
-            truncated: s.truncated,
-            lastIndexedAt: s.lastIndexedAt,
-            message: s.message,
-          });
-          if (s.message) pushIndexStream(s.message);
-          if (s.fileCount > 0) {
-            pushIndexStream(`${s.fileCount.toLocaleString()} files scanned`);
-          }
-        })
-        .catch(() => undefined);
-    }, 900);
     try {
       const result = await reindexWorkspace({
         ...engine,
@@ -1111,7 +1122,25 @@ export function App() {
           normalized: settings.semanticIndex.normalized,
           baseUrl: settings.provider.baseUrl,
         },
+        onProgress: (event) => {
+          if (typeof event.percent === 'number') {
+            setIndexProgress(Math.max(0, Math.min(99, event.percent)));
+          }
+          if (event.message) {
+            const detail =
+              typeof event.fileCount === 'number' && event.fileCount > 0
+                ? `${event.message} (${event.fileCount.toLocaleString()} files)`
+                : event.message;
+            pushIndexStream(detail);
+          }
+        },
       });
+      if (result.status === 'skipped') {
+        pushIndexStream(result.message || 'Indexing already running…');
+        // Attach to the other process via status polling (lock held).
+        await refreshIndexStatus();
+        return;
+      }
       setIndexProgress(100);
       pushIndexStream(result.message || 'Reindex finished');
       if (result.fileCount > 0) {
@@ -1119,30 +1148,47 @@ export function App() {
           `${result.fileCount.toLocaleString()} files in index`,
         );
       }
-      await refreshIndexStatus();
+      if (result.statusSnapshot) {
+        applyIndexStatus(result.statusSnapshot);
+      } else {
+        await refreshIndexStatus();
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      // Legacy 500 lock errors — treat as "already running".
+      if (/already running|index\.lock/i.test(msg)) {
+        pushIndexStream(
+          'Indexing already running — watching progress in the header…',
+        );
+        await refreshIndexStatus();
+        return;
+      }
       setError(msg);
       pushIndexStream(`Error: ${msg}`);
       setIndexIndexing(false);
       setIndexProgress(null);
     } finally {
-      window.clearInterval(tick);
-      window.clearInterval(poll);
+      reindexInFlightRef.current = false;
     }
-  }, [engine, snapshot, settings, refreshIndexStatus, pushIndexStream]);
+  }, [
+    engine,
+    snapshot,
+    settings,
+    refreshIndexStatus,
+    pushIndexStream,
+    applyIndexStatus,
+  ]);
 
+  // Keep header spinner honest while lock is held (local or another process).
   useEffect(() => {
-    if (!indexIndexing) return;
-    const tick = window.setInterval(() => {
-      setIndexProgress((p) => {
-        if (p == null) return 10;
-        if (p >= 92) return p;
-        return p + Math.random() * 8;
-      });
-    }, 450);
-    return () => window.clearInterval(tick);
-  }, [indexIndexing]);
+    if (!engine || !indexIndexing) return;
+    const poll = window.setInterval(() => {
+      void fetchIndexStatus(engine)
+        .then((s) => applyIndexStatus(s, { clearIfIdle: !reindexInFlightRef.current }))
+        .catch(() => undefined);
+    }, 1200);
+    return () => window.clearInterval(poll);
+  }, [engine, indexIndexing, applyIndexStatus]);
 
   const onPickWorkspace = async () => {
     const bridge = getDesktopBridge();
@@ -2952,6 +2998,19 @@ export function App() {
                 <span aria-hidden>▾</span>
               </button>
             </div>
+            <TopBranchSelect
+              baseUrl={engine?.baseUrl}
+              token={engine?.token}
+              workspaceRoot={snapshot?.workspaceRoot}
+              disabled={busy}
+              onChanged={() => {
+                workspaceInvalidateSeq.current += 1;
+                setWorkspaceInvalidate({
+                  seq: workspaceInvalidateSeq.current,
+                  paths: [],
+                });
+              }}
+            />
             <button
               type="button"
               className="top-icon-btn"

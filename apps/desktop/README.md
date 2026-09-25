@@ -82,18 +82,23 @@ The `start` / `dev` scripts unset it automatically.
 
 ## Layout
 
+Feature folders and contracts: **[`src/STRUCTURE.md`](./src/STRUCTURE.md)**.
+
 ```text
 apps/desktop/
 |-- src/
-|   |-- shared/          # protocol, settings, bridge, URL policy
-|   |-- engine/         # HTTP host + createDesktopClient
+|   |-- STRUCTURE.md     # Explorer / Git / MCP / Skills / Recipes / Chat map
+|   |-- shared/          # DTOs (git/, protocol, settings, …)
+|   |-- engine/          # HTTP host + feature adapters (explorer/, git/, skills/)
 |   |-- main/            # Electron main (spawn, state, secrets, IPC)
 |   |-- preload/         # contextBridge
-|   `-- renderer/        # React chat + settings
+|   `-- renderer/        # React by feature (shell/, explorer/, git/, mcp/, …)
 |-- tests/
 |-- bin/mitii-desktop-engine.js
 `-- README.md
 ```
+
+**Forbidden:** importing `apps/cli`, `apps/daemon`, `apps/acp`, or `apps/vscode`.
 
 ## Scripts
 

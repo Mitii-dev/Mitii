@@ -10,7 +10,11 @@ import {
   inferStatusFromDiff,
   type DesktopFileChangeEntry,
   type DesktopFileChanges,
-} from '../shared/fileChanges.js';
+} from '../../shared/fileChanges.js';
+import {
+  flattenWorkingTreeFiles,
+  parsePorcelainWorkingTree,
+} from '../../shared/git/workingTree.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -34,20 +38,15 @@ export async function getGitStatus(
   try {
     const status = await execFileAsync(
       'git',
-      ['status', '--porcelain', '-b'],
-      { cwd: workspaceRoot, timeout: 10_000 },
+      ['status', '--porcelain=v1', '-z', '-uall', '-b'],
+      { cwd: workspaceRoot, timeout: 45_000, maxBuffer: 16 * 1024 * 1024 },
     );
-    const lines = status.stdout.trim().split('\n').filter(Boolean);
-    const branchLine = lines.find((l) => l.startsWith('##')) ?? '';
-    const branch = branchLine.replace(/^##\s*/, '').split('...')[0]?.trim();
-    const files: GitChangeFile[] = [];
-    for (const line of lines) {
-      if (line.startsWith('##')) continue;
-      const code = line.slice(0, 2).trim() || '?';
-      const path =
-        line.slice(3).trim().replace(/ -> /, ' → ').split(' → ').pop() ?? '';
-      if (path) files.push({ path, status: code });
-    }
+    const parsed = parsePorcelainWorkingTree(String(status.stdout ?? ''));
+    const flat = flattenWorkingTreeFiles(parsed);
+    const files: GitChangeFile[] = flat.map((f) => ({
+      path: f.path,
+      status: f.status,
+    }));
     let statPreview: string | undefined;
     try {
       const diff = await execFileAsync('git', ['diff', '--stat', 'HEAD'], {
@@ -60,9 +59,9 @@ export async function getGitStatus(
     }
     return {
       ok: true,
-      ...(branch ? { branch } : {}),
-      summary: branchLine.replace(/^##\s*/, '') || 'Git repository',
-      files: files.slice(0, 80),
+      ...(parsed.branch ? { branch: parsed.branch } : {}),
+      summary: parsed.summary || 'Git repository',
+      files,
       ...(statPreview ? { statPreview } : {}),
     };
   } catch (error) {

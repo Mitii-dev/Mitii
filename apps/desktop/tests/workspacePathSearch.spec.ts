@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { searchWorkspacePaths } from '../src/engine/workspace-fs.js';
+import { searchWorkspacePaths } from '../src/engine/explorer/workspaceFs.js';
 
 describe('searchWorkspacePaths', () => {
   it('includes matching folders and files in @ mention results', async () => {

@@ -357,6 +357,15 @@ export async function fetchMcpServers(options: {
     name: string;
     transport: string;
     description: string;
+    category?: string;
+    secrets?: Array<{
+      key: string;
+      label: string;
+      secret?: boolean;
+      required?: boolean;
+      placeholder?: string;
+      hint?: string;
+    }>;
     installed: boolean;
   }>;
 }> {
@@ -411,6 +420,7 @@ export async function installBuiltinMcp(options: {
   baseUrl: string;
   token?: string;
   builtinId: string;
+  secrets?: Record<string, string>;
 }): Promise<{
   ok: boolean;
   enabled: boolean;
@@ -420,6 +430,15 @@ export async function installBuiltinMcp(options: {
     name: string;
     transport: string;
     description: string;
+    category?: string;
+    secrets?: Array<{
+      key: string;
+      label: string;
+      secret?: boolean;
+      required?: boolean;
+      placeholder?: string;
+      hint?: string;
+    }>;
     installed: boolean;
   }>;
   restartRequired?: boolean;
@@ -430,6 +449,7 @@ export async function installBuiltinMcp(options: {
     body: JSON.stringify({
       action: 'install',
       builtinId: options.builtinId,
+      ...(options.secrets ? { secrets: options.secrets } : {}),
     }),
   });
   if (!res.ok) {
@@ -1006,6 +1026,12 @@ export async function fetchIndexStatus(options: {
   truncated: boolean;
   lastIndexedAt?: string;
   message: string;
+  running?: boolean;
+  lockStartedAt?: number;
+  progressPercent?: number;
+  progressStage?: string;
+  progressMessage?: string;
+  embeddingError?: string;
 }> {
   const res = await fetch(`${options.baseUrl}/v1/index/status`, {
     headers: authHeaders(options.token),
@@ -1014,11 +1040,29 @@ export async function fetchIndexStatus(options: {
   return (await res.json()) as Awaited<ReturnType<typeof fetchIndexStatus>>;
 }
 
+export type IndexReindexProgressEvent = {
+  type: 'progress';
+  stage: string;
+  message: string;
+  percent?: number;
+  fileCount?: number;
+};
+
+export type IndexReindexResultEvent = {
+  type: 'result';
+  status: string;
+  fileCount: number;
+  message: string;
+  truncated?: boolean;
+  statusSnapshot?: Awaited<ReturnType<typeof fetchIndexStatus>>;
+};
+
 export async function reindexWorkspace(options: {
   baseUrl: string;
   token?: string;
   maximumFiles?: number;
   semanticIndex?: Record<string, unknown>;
+  onProgress?: (event: IndexReindexProgressEvent) => void;
 }): Promise<{
   status: string;
   fileCount: number;
@@ -1027,18 +1071,73 @@ export async function reindexWorkspace(options: {
 }> {
   const res = await fetch(`${options.baseUrl}/v1/index/reindex`, {
     method: 'POST',
-    headers: authHeaders(options.token),
+    headers: {
+      ...authHeaders(options.token),
+      Accept: 'application/x-ndjson',
+    },
     body: JSON.stringify({
       maximumFiles: options.maximumFiles,
       semanticIndex: options.semanticIndex,
       force: true,
+      stream: true,
     }),
   });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`reindex_${res.status}:${text}`);
   }
-  return (await res.json()) as Awaited<ReturnType<typeof reindexWorkspace>>;
+
+  const contentType = res.headers.get('content-type') ?? '';
+  if (!contentType.includes('ndjson') || !res.body) {
+    return (await res.json()) as Awaited<ReturnType<typeof reindexWorkspace>>;
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let result: IndexReindexResultEvent | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      let parsed: { type?: string } & Record<string, unknown>;
+      try {
+        parsed = JSON.parse(trimmed) as { type?: string } & Record<
+          string,
+          unknown
+        >;
+      } catch {
+        continue;
+      }
+      if (parsed.type === 'progress') {
+        options.onProgress?.(parsed as IndexReindexProgressEvent);
+      } else if (parsed.type === 'result') {
+        result = parsed as IndexReindexResultEvent;
+      } else if (parsed.type === 'error') {
+        throw new Error(
+          typeof parsed.message === 'string'
+            ? parsed.message
+            : 'reindex_failed',
+        );
+      }
+    }
+  }
+
+  if (!result) {
+    throw new Error('reindex_incomplete');
+  }
+  return {
+    status: result.status,
+    fileCount: result.fileCount,
+    message: result.message,
+    statusSnapshot: result.statusSnapshot,
+  };
 }
 
 export async function pauseIndexing(options: {
@@ -1395,7 +1494,7 @@ export async function fetchAbsoluteWorkspacePath(options: {
 export async function fetchGitStatus(options: {
   baseUrl: string;
   token?: string;
-}): Promise<import('../shared/gitWorkingTree.js').GitWorkingTreeSnapshot> {
+}): Promise<import('../shared/git/workingTree.js').GitWorkingTreeSnapshot> {
   const res = await fetch(`${options.baseUrl}/v1/git/status`, {
     headers: authHeaders(options.token),
   });
@@ -1419,7 +1518,7 @@ export async function fetchGitDiff(options: {
 export async function fetchGitBranches(options: {
   baseUrl: string;
   token?: string;
-}): Promise<import('../shared/gitWorkingTree.js').GitBranchListSnapshot> {
+}): Promise<import('../shared/git/workingTree.js').GitBranchListSnapshot> {
   const res = await fetch(`${options.baseUrl}/v1/git/branches`, {
     headers: authHeaders(options.token),
   });
@@ -1434,7 +1533,7 @@ async function postGitMutation(
     path: string;
     body?: Record<string, unknown>;
   },
-): Promise<import('../shared/gitWorkingTree.js').GitMutationResult> {
+): Promise<import('../shared/git/workingTree.js').GitMutationResult> {
   const res = await fetch(`${options.baseUrl}${options.path}`, {
     method: 'POST',
     headers: authHeaders(options.token),
@@ -1453,7 +1552,7 @@ export async function gitStageFiles(options: {
   baseUrl: string;
   token?: string;
   paths?: string[];
-}): Promise<import('../shared/gitWorkingTree.js').GitMutationResult> {
+}): Promise<import('../shared/git/workingTree.js').GitMutationResult> {
   return postGitMutation({
     ...options,
     path: '/v1/git/stage',
@@ -1465,7 +1564,7 @@ export async function gitUnstageFiles(options: {
   baseUrl: string;
   token?: string;
   paths?: string[];
-}): Promise<import('../shared/gitWorkingTree.js').GitMutationResult> {
+}): Promise<import('../shared/git/workingTree.js').GitMutationResult> {
   return postGitMutation({
     ...options,
     path: '/v1/git/unstage',
@@ -1478,7 +1577,7 @@ export async function gitDiscardFiles(options: {
   token?: string;
   paths: string[];
   includeUntracked?: boolean;
-}): Promise<import('../shared/gitWorkingTree.js').GitMutationResult> {
+}): Promise<import('../shared/git/workingTree.js').GitMutationResult> {
   return postGitMutation({
     ...options,
     path: '/v1/git/discard',
@@ -1494,7 +1593,7 @@ export async function gitCommitChanges(options: {
   token?: string;
   message: string;
   all?: boolean;
-}): Promise<import('../shared/gitWorkingTree.js').GitMutationResult> {
+}): Promise<import('../shared/git/workingTree.js').GitMutationResult> {
   return postGitMutation({
     ...options,
     path: '/v1/git/commit',
@@ -1507,7 +1606,7 @@ export async function gitCheckoutBranch(options: {
   token?: string;
   branch: string;
   create?: boolean;
-}): Promise<import('../shared/gitWorkingTree.js').GitMutationResult> {
+}): Promise<import('../shared/git/workingTree.js').GitMutationResult> {
   return postGitMutation({
     ...options,
     path: '/v1/git/checkout',

@@ -241,6 +241,13 @@ export function IndexStatusChip(props: IndexStatusChipProps) {
                 {Math.round(props.progressPercent)}%
               </span>
             </div>
+          ) : indexing ? (
+            <div className="index-status__progress index-status__progress--indeterminate">
+              <div className="index-status__progress-track">
+                <span />
+              </div>
+              <span className="index-status__progress-pct">…</span>
+            </div>
           ) : null}
 
           <div className="index-status__meta">{meta.join(' · ')}</div>

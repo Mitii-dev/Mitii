@@ -9,17 +9,22 @@ import {
   IconRefresh,
   IconSearch,
   IconTrash,
-} from './ActivityIcons.js';
+} from '../ActivityIcons.js';
 import {
   addCustomMcp,
   deleteMcpServer,
   fetchMcpServers,
   installBuiltinMcp,
   setMcpEnabled,
-} from './api.js';
+} from '../api.js';
 
 type Transport = 'stdio' | 'sse' | 'streamable-http';
-type WizardStep = 'source' | 'catalog' | 'custom-transport' | 'custom-details';
+type WizardStep =
+  | 'source'
+  | 'catalog'
+  | 'catalog-secrets'
+  | 'custom-transport'
+  | 'custom-details';
 
 interface McpServerRow {
   id: string;
@@ -29,11 +34,22 @@ interface McpServerRow {
   builtin?: boolean;
 }
 
+interface CatalogSecretField {
+  key: string;
+  label: string;
+  secret?: boolean;
+  required?: boolean;
+  placeholder?: string;
+  hint?: string;
+}
+
 interface CatalogRow {
   id: string;
   name: string;
   transport: string;
   description: string;
+  category?: string;
+  secrets?: CatalogSecretField[];
   installed: boolean;
 }
 
@@ -54,6 +70,15 @@ const EMPTY_CUSTOM = {
   headersText: '',
 };
 
+const CATEGORY_LABEL: Record<string, string> = {
+  workspace: 'Workspace',
+  reasoning: 'Reasoning',
+  browser: 'Browser',
+  vcs: 'Git / VCS',
+  search: 'Search',
+  diagrams: 'Diagrams',
+};
+
 export function McpManager(props: Props) {
   const auth = { baseUrl: props.baseUrl, token: props.token };
   const [enabled, setEnabled] = useState(false);
@@ -67,6 +92,7 @@ export function McpManager(props: Props) {
   const [wizardStep, setWizardStep] = useState<WizardStep>('source');
   const [custom, setCustom] = useState(EMPTY_CUSTOM);
   const [selectedBuiltin, setSelectedBuiltin] = useState<string | null>(null);
+  const [secretDraft, setSecretDraft] = useState<Record<string, string>>({});
 
   const applySnapshot = (next: {
     enabled: boolean;
@@ -134,14 +160,21 @@ export function McpManager(props: Props) {
       (c) =>
         c.name.toLowerCase().includes(q) ||
         c.id.toLowerCase().includes(q) ||
-        c.description.toLowerCase().includes(q),
+        c.description.toLowerCase().includes(q) ||
+        (c.category ?? '').toLowerCase().includes(q),
     );
   }, [catalog, q]);
+
+  const selectedCatalogEntry = useMemo(
+    () => catalog.find((c) => c.id === selectedBuiltin) ?? null,
+    [catalog, selectedBuiltin],
+  );
 
   const openWizard = () => {
     setWizardOpen(true);
     setWizardStep('source');
     setSelectedBuiltin(null);
+    setSecretDraft({});
     setCustom({
       ...EMPTY_CUSTOM,
       id: `mcp-${Date.now().toString(36)}`,
@@ -154,6 +187,7 @@ export function McpManager(props: Props) {
     setWizardOpen(false);
     setWizardStep('source');
     setSelectedBuiltin(null);
+    setSecretDraft({});
   };
 
   const toggleMaster = async (next: boolean) => {
@@ -203,21 +237,63 @@ export function McpManager(props: Props) {
     }
   };
 
-  const installSelectedBuiltin = async () => {
-    if (!selectedBuiltin) return;
+  const installBuiltin = async (
+    builtinId: string,
+    secrets?: Record<string, string>,
+  ) => {
     setBusy(true);
     try {
       const result = await installBuiltinMcp({
         ...auth,
-        builtinId: selectedBuiltin,
+        builtinId,
+        ...(secrets ? { secrets } : {}),
       });
-      await afterMutation(result, `Installed ${selectedBuiltin}`);
+      await afterMutation(result, `Installed ${builtinId}`);
       closeWizard();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
+  };
+
+  const beginCatalogInstall = (entry: CatalogRow) => {
+    setError(null);
+    setSelectedBuiltin(entry.id);
+    if ((entry.secrets ?? []).length > 0) {
+      const draft: Record<string, string> = {};
+      for (const field of entry.secrets ?? []) draft[field.key] = '';
+      setSecretDraft(draft);
+      setWizardOpen(true);
+      setWizardStep('catalog-secrets');
+      return;
+    }
+    void installBuiltin(entry.id);
+  };
+
+  const installSelectedBuiltin = async () => {
+    if (!selectedBuiltin) return;
+    const entry = catalog.find((c) => c.id === selectedBuiltin);
+    if (entry && (entry.secrets?.length ?? 0) > 0) {
+      const draft: Record<string, string> = {};
+      for (const field of entry.secrets ?? []) draft[field.key] = '';
+      setSecretDraft(draft);
+      setWizardStep('catalog-secrets');
+      return;
+    }
+    await installBuiltin(selectedBuiltin);
+  };
+
+  const confirmCatalogSecrets = async () => {
+    if (!selectedBuiltin || !selectedCatalogEntry) return;
+    for (const field of selectedCatalogEntry.secrets ?? []) {
+      if (field.required === false) continue;
+      if (!(secretDraft[field.key] ?? '').trim()) {
+        setError(`${field.label} is required`);
+        return;
+      }
+    }
+    await installBuiltin(selectedBuiltin, secretDraft);
   };
 
   const createCustom = async () => {
@@ -324,6 +400,7 @@ export function McpManager(props: Props) {
             <span
               className={
                 wizardStep === 'catalog' ||
+                wizardStep === 'catalog-secrets' ||
                 wizardStep === 'custom-transport' ||
                 wizardStep === 'custom-details'
                   ? 'is-active'
@@ -334,7 +411,9 @@ export function McpManager(props: Props) {
             </span>
             <span
               className={
-                wizardStep === 'catalog' || wizardStep === 'custom-details'
+                wizardStep === 'catalog' ||
+                wizardStep === 'catalog-secrets' ||
+                wizardStep === 'custom-details'
                   ? 'is-active'
                   : ''
               }
@@ -354,7 +433,7 @@ export function McpManager(props: Props) {
                 >
                   <strong>From catalog</strong>
                   <span>
-                    Install a Mitii built-in (Excalidraw, Filesystem, Memory, …)
+                    Essentials: GitHub, Gitea, Brave, Playwright, Filesystem, …
                   </span>
                 </button>
                 <button
@@ -401,7 +480,13 @@ export function McpManager(props: Props) {
                         <div className="mcp-manager__card-main">
                           <strong>{entry.name}</strong>
                           <small>
-                            {entry.id} · {entry.transport}
+                            {CATEGORY_LABEL[entry.category ?? ''] ??
+                              entry.category ??
+                              'Catalog'}{' '}
+                            · {entry.id} · {entry.transport}
+                            {(entry.secrets?.length ?? 0) > 0
+                              ? ' · needs key'
+                              : ''}
                           </small>
                           <p>{entry.description}</p>
                         </div>
@@ -423,6 +508,68 @@ export function McpManager(props: Props) {
                   className="btn-primary"
                   disabled={busy || !selectedBuiltin}
                   onClick={() => void installSelectedBuiltin()}
+                >
+                  {(selectedCatalogEntry?.secrets?.length ?? 0) > 0
+                    ? 'Continue'
+                    : 'Install & enable'}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {wizardStep === 'catalog-secrets' && selectedCatalogEntry ? (
+            <div className="mcp-wizard__panel">
+              <h3>Configure {selectedCatalogEntry.name}</h3>
+              <p className="mcp-wizard__hint">
+                Add your key once — Mitii writes it into{' '}
+                <code>.mitii/mcp.json</code> env and enables the server.
+              </p>
+              <div className="mcp-wizard__fields">
+                {(selectedCatalogEntry.secrets ?? []).map((field) => (
+                  <label key={field.key}>
+                    {field.label}
+                    {field.required === false ? ' (optional)' : ''}
+                    <input
+                      type={field.secret ? 'password' : 'text'}
+                      value={secretDraft[field.key] ?? ''}
+                      placeholder={field.placeholder}
+                      autoComplete="off"
+                      spellCheck={false}
+                      onChange={(e) =>
+                        setSecretDraft((prev) => ({
+                          ...prev,
+                          [field.key]: e.target.value,
+                        }))
+                      }
+                    />
+                    {field.hint ? (
+                      <span className="mcp-wizard__field-hint">{field.hint}</span>
+                    ) : null}
+                  </label>
+                ))}
+              </div>
+              <div className="mcp-wizard__footer">
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => {
+                    setError(null);
+                    if (
+                      availableCatalog.some((c) => c.id === selectedBuiltin)
+                    ) {
+                      setWizardStep('catalog');
+                    } else {
+                      closeWizard();
+                    }
+                  }}
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={busy}
+                  onClick={() => void confirmCatalogSecrets()}
                 >
                   Install & enable
                 </button>
@@ -700,7 +847,7 @@ export function McpManager(props: Props) {
 
           <section className="mcp-manager__section">
             <div className="mcp-manager__section-head">
-              <h3>Available in catalog</h3>
+              <h3>Essentials catalog</h3>
               <span>{availableCatalog.length}</span>
             </div>
             {availableCatalog.length === 0 ? (
@@ -713,28 +860,33 @@ export function McpManager(props: Props) {
               <div className="profile-gallery mcp-manager__gallery">
                 {availableCatalog.map((entry) => {
                   const initial = (entry.name.trim()[0] || '?').toUpperCase();
+                  const needsKey = (entry.secrets?.length ?? 0) > 0;
                   return (
                     <div key={entry.id} className="profile-tile">
                       <button
                         type="button"
                         className="profile-tile__body"
                         disabled={busy}
-                        onClick={() => {
-                          setSelectedBuiltin(entry.id);
-                          setWizardOpen(true);
-                          setWizardStep('catalog');
-                        }}
+                        title={
+                          needsKey
+                            ? `Add key and install ${entry.name}`
+                            : `Install ${entry.name}`
+                        }
+                        onClick={() => beginCatalogInstall(entry)}
                       >
                         <span className="profile-tile__avatar" aria-hidden>
                           {initial}
                         </span>
                         <span className="profile-tile__name">{entry.name}</span>
                         <span className="profile-tile__meta">
-                          {entry.id} · {entry.transport}
+                          {CATEGORY_LABEL[entry.category ?? ''] ??
+                            entry.category ??
+                            'Catalog'}
+                          {needsKey ? ' · needs key' : ''}
                           {entry.description ? ` · ${entry.description}` : ''}
                         </span>
                         <span className="profile-tile__badge profile-tile__badge--edit">
-                          Install
+                          {needsKey ? 'Add key' : 'Add'}
                         </span>
                       </button>
                     </div>

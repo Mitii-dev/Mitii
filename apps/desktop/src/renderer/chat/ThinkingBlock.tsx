@@ -6,7 +6,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-import type { DesktopActivityItem } from '../shared/activity.js';
+import type { DesktopActivityItem } from '../../shared/activity.js';
 
 interface ThinkingBlockProps {
   items: DesktopActivityItem[];
