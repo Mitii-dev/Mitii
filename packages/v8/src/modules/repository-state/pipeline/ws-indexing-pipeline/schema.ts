@@ -208,6 +208,9 @@ export const workspaceIndexingPipelineInputSchema =
     synchronizeEmbeddings:
       z.boolean()
         .optional(),
+    finalizeOnly:
+      z.boolean()
+        .optional(),
     abortSignal:
       z.custom<AbortSignal>(
         (value) =>

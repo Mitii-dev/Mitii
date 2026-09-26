@@ -151,6 +151,8 @@ export interface IndexProgressSnapshot {
   message: string;
   percent: number;
   fileCount?: number;
+  lexicalReady?: boolean;
+  embeddingPhase?: string;
   updatedAt: number;
 }
 
@@ -196,6 +198,10 @@ export function readIndexProgress(
         typeof parsed.updatedAt === 'number' ? parsed.updatedAt : Date.now(),
       ...(typeof parsed.fileCount === 'number'
         ? { fileCount: parsed.fileCount }
+        : {}),
+      ...(parsed.lexicalReady === true ? { lexicalReady: true } : {}),
+      ...(typeof parsed.embeddingPhase === 'string'
+        ? { embeddingPhase: parsed.embeddingPhase }
         : {}),
     };
   } catch {

@@ -1032,6 +1032,8 @@ export async function fetchIndexStatus(options: {
   progressStage?: string;
   progressMessage?: string;
   embeddingError?: string;
+  lexicalReady?: boolean;
+  embeddingPhase?: string;
 }> {
   const res = await fetch(`${options.baseUrl}/v1/index/status`, {
     headers: authHeaders(options.token),
@@ -1046,6 +1048,8 @@ export type IndexReindexProgressEvent = {
   message: string;
   percent?: number;
   fileCount?: number;
+  lexicalReady?: boolean;
+  embeddingPhase?: string;
 };
 
 export type IndexReindexResultEvent = {
@@ -1061,6 +1065,10 @@ export async function reindexWorkspace(options: {
   baseUrl: string;
   token?: string;
   maximumFiles?: number;
+  concurrency?: number;
+  /** Full rebuild — only when user clicks Rebuild. Default false. */
+  force?: boolean;
+  filePaths?: readonly string[];
   semanticIndex?: Record<string, unknown>;
   onProgress?: (event: IndexReindexProgressEvent) => void;
 }): Promise<{
@@ -1074,11 +1082,14 @@ export async function reindexWorkspace(options: {
     headers: {
       ...authHeaders(options.token),
       Accept: 'application/x-ndjson',
+      'content-type': 'application/json',
     },
     body: JSON.stringify({
       maximumFiles: options.maximumFiles,
+      concurrency: options.concurrency,
       semanticIndex: options.semanticIndex,
-      force: true,
+      force: options.force === true,
+      ...(options.filePaths?.length ? { filePaths: options.filePaths } : {}),
       stream: true,
     }),
   });

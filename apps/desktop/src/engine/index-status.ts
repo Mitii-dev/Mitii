@@ -35,6 +35,9 @@ export interface DesktopIndexStatus {
   progressPercent?: number;
   progressStage?: string;
   progressMessage?: string;
+  /** FTS/symbols usable while embeddings may still run. */
+  lexicalReady?: boolean;
+  embeddingPhase?: string;
 }
 
 /** Active reindex abort controller (module-level for pause route). */
@@ -67,6 +70,10 @@ export function getIndexStatus(workspaceRoot: string): DesktopIndexStatus {
                 progressPercent: progress.percent,
                 progressStage: progress.stage,
                 progressMessage: progress.message,
+                ...(progress.lexicalReady ? { lexicalReady: true } : {}),
+                ...(progress.embeddingPhase
+                  ? { embeddingPhase: progress.embeddingPhase }
+                  : {}),
               }
             : {
                 progressPercent: 8,
@@ -119,18 +126,44 @@ export function getIndexStatus(workspaceRoot: string): DesktopIndexStatus {
 export async function reindexWorkspace(options: {
   workspaceRoot: string;
   maximumFiles?: number;
+  concurrency?: number;
   semanticIndex?: SemanticIndexSettings;
+  /** Full rebuild. Default false — fingerprint-aware incremental/unchanged. */
   force?: boolean;
+  filePaths?: readonly string[];
+  /**
+   * When false, do not abort an in-flight index (FS incremental).
+   * User Refresh/Rebuild keep the default (preempt current run).
+   */
+  preempt?: boolean;
   abortSignal?: AbortSignal;
   onProgress?: (progress: WorkspaceIndexProgress) => void;
+  onLexicalReady?: (
+    partial: Awaited<ReturnType<typeof runFullWorkspaceIndex>>,
+  ) => void | Promise<void>;
 }): Promise<{
   status: string;
   fileCount: number;
   truncated: boolean;
   message: string;
 }> {
-  // Replace any prior controller so pause always targets the latest run.
-  activeReindexAbort?.abort();
+  // Replace any prior controller so pause always targets the latest run —
+  // unless this is a non-preempting incremental refresh.
+  if (options.preempt === false) {
+    if (activeReindexAbort) {
+      const status = getIndexStatus(options.workspaceRoot);
+      return {
+        status: 'skipped',
+        fileCount: status.fileCount,
+        truncated: status.truncated,
+        message:
+          status.progressMessage ??
+          'Indexing already running — incremental refresh deferred.',
+      };
+    }
+  } else {
+    activeReindexAbort?.abort();
+  }
   const controller = new AbortController();
   activeReindexAbort = controller;
   const mitiiDir = join(options.workspaceRoot, '.mitii');
@@ -155,8 +188,10 @@ export async function reindexWorkspace(options: {
       workspaceRoot: options.workspaceRoot,
       workspaceId,
       maximumFiles: options.maximumFiles,
+      concurrency: options.concurrency,
       semanticIndex: options.semanticIndex,
-      force: options.force ?? true,
+      force: options.force === true,
+      ...(options.filePaths?.length ? { filePaths: options.filePaths } : {}),
       abortSignal: controller.signal,
       onProgress: (progress) => {
         options.onProgress?.({
@@ -166,6 +201,9 @@ export async function reindexWorkspace(options: {
             estimateIndexProgressPercent(progress.stage),
         });
       },
+      ...(options.onLexicalReady
+        ? { onLexicalReady: options.onLexicalReady }
+        : {}),
       openDatabase: ((
         filename: string,
         openOptions?: { readonly?: boolean; fileMustExist?: boolean },

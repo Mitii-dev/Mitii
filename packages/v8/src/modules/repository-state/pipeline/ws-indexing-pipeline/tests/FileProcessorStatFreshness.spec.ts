@@ -62,6 +62,7 @@ const request = (
   failureMode: "best_effort",
   cleanupMissing: false,
   synchronizeEmbeddings: false,
+  finalizeOnly: false,
 });
 
 describe("WorkspaceIndexingFileProcessor catalog freshness", () => {

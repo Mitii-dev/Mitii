@@ -27,8 +27,12 @@ export const WORKSPACE_INDEXING_PIPELINE_IDS = {
 export const WORKSPACE_INDEXING_PIPELINE_DEFAULTS = {
   MAXIMUM_FILES:
     50_000,
+  /**
+   * File-processing pool size. Hosts SHOULD override via
+   * `resolveIndexConcurrency` (typically 4–8 from CPU count).
+   */
   CONCURRENCY:
-    2,
+    6,
   MAXIMUM_REPORTED_FILE_RESULTS:
     2_000,
   FAILURE_MODE:

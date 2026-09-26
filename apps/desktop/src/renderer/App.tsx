@@ -380,8 +380,11 @@ export function App() {
     message: string;
     embeddingError?: string;
     running?: boolean;
+    lexicalReady?: boolean;
+    embeddingPhase?: string;
   } | null>(null);
   const [indexIndexing, setIndexIndexing] = useState(false);
+  const [indexEmbeddingBg, setIndexEmbeddingBg] = useState(false);
   const [indexProgress, setIndexProgress] = useState<number | null>(null);
   const [indexStream, setIndexStream] = useState<string[]>([]);
   const reindexInFlightRef = useRef(false);
@@ -1047,9 +1050,18 @@ export function App() {
         message: s.message,
         embeddingError: s.embeddingError,
         running: s.running,
+        lexicalReady: s.lexicalReady,
+        embeddingPhase: s.embeddingPhase,
       });
       if (s.running) {
         setIndexIndexing(true);
+        const embeddingBg =
+          s.progressStage === 'embedding' ||
+          s.progressStage === 'lexical_ready' ||
+          s.embeddingPhase === 'running' ||
+          s.embeddingPhase === 'pending' ||
+          Boolean(s.lexicalReady);
+        setIndexEmbeddingBg(embeddingBg);
         if (typeof s.progressPercent === 'number') {
           setIndexProgress(s.progressPercent);
         }
@@ -1058,6 +1070,7 @@ export function App() {
       }
       if (opts?.clearIfIdle !== false && !reindexInFlightRef.current) {
         setIndexIndexing(false);
+        setIndexEmbeddingBg(false);
         setIndexProgress(null);
       }
     },
@@ -1083,6 +1096,7 @@ export function App() {
       pushIndexStream(result.message || 'Indexing paused');
       reindexInFlightRef.current = false;
       setIndexIndexing(false);
+      setIndexEmbeddingBg(false);
       setIndexProgress(null);
       await refreshIndexStatus();
     } catch (err) {
@@ -1103,16 +1117,19 @@ export function App() {
     [refreshIndexStatus],
   );
 
-  const runReindex = useCallback(async () => {
+  const runReindex = useCallback(async (opts?: { force?: boolean }) => {
     if (!engine || !snapshot) return;
+    const force = opts?.force === true;
     reindexInFlightRef.current = true;
     setIndexIndexing(true);
+    setIndexEmbeddingBg(false);
     setIndexProgress(2);
     setIndexStream([]);
-    pushIndexStream('Reindex started…');
+    pushIndexStream(force ? 'Full rebuild started…' : 'Index refresh started…');
     try {
       const result = await reindexWorkspace({
         ...engine,
+        force,
         maximumFiles: settings.workspace.maximumIndexFiles || undefined,
         semanticIndex: {
           enabled: settings.semanticIndex.enabled,
@@ -1126,6 +1143,13 @@ export function App() {
           if (typeof event.percent === 'number') {
             setIndexProgress(Math.max(0, Math.min(99, event.percent)));
           }
+          const embeddingBg =
+            event.stage === 'embedding' ||
+            event.stage === 'lexical_ready' ||
+            event.embeddingPhase === 'running' ||
+            event.embeddingPhase === 'pending' ||
+            Boolean(event.lexicalReady);
+          setIndexEmbeddingBg(embeddingBg);
           if (event.message) {
             const detail =
               typeof event.fileCount === 'number' && event.fileCount > 0
@@ -1142,7 +1166,7 @@ export function App() {
         return;
       }
       setIndexProgress(100);
-      pushIndexStream(result.message || 'Reindex finished');
+      pushIndexStream(result.message || (force ? 'Rebuild finished' : 'Refresh finished'));
       if (result.fileCount > 0) {
         pushIndexStream(
           `${result.fileCount.toLocaleString()} files in index`,
@@ -1166,6 +1190,7 @@ export function App() {
       setError(msg);
       pushIndexStream(`Error: ${msg}`);
       setIndexIndexing(false);
+      setIndexEmbeddingBg(false);
       setIndexProgress(null);
     } finally {
       reindexInFlightRef.current = false;
@@ -2943,10 +2968,11 @@ export function App() {
           <IndexStatusChip
             index={indexStatus}
             indexing={indexIndexing}
+            embeddingBackground={indexEmbeddingBg}
             progressPercent={indexProgress}
             streamLines={indexStream}
             workspaceLabel={workspaceLabel(snapshot?.workspaceRoot ?? '')}
-            onReindex={() => void runReindex()}
+            onReindex={(opts) => void runReindex(opts)}
             onPause={() => void pauseIndex()}
             onOpenSettings={() => {
               setSettingsTab('features');

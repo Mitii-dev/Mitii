@@ -105,7 +105,16 @@ export type {
 export {
   DEFAULT_MAXIMUM_INDEX_FILES,
   MAXIMUM_INDEX_FILES,
+  DEFAULT_INDEX_SCAN_TIMEOUT_MS,
+  MAXIMUM_INDEX_SCAN_TIMEOUT_MS,
+  DEFAULT_INDEX_CONCURRENCY,
+  MINIMUM_INDEX_CONCURRENCY,
+  MAXIMUM_INDEX_CONCURRENCY,
+  RECOMMENDED_INDEX_CONCURRENCY_MIN,
+  RECOMMENDED_INDEX_CONCURRENCY_MAX,
   resolveMaximumIndexFiles,
+  resolveIndexScanTimeoutMs,
+  resolveIndexConcurrency,
 } from './indexing/indexLimits.js';
 export { isSecurityConcern, WorkspaceIgnorePolicy, WS_CONSTANTS } from '@mitii/v8';
 

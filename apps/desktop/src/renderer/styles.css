@@ -3738,12 +3738,36 @@ button[aria-disabled='true'] {
   color: #e4a01a;
 }
 
+.status-icon--embedding {
+  color: #3d9cf0;
+}
+
 .status-icon--warn {
   color: #e2555d;
 }
 
 .status-icon--idle {
   color: var(--mitii-muted);
+}
+
+.status-icon__pulse {
+  pointer-events: none;
+  position: absolute;
+  inset: 1px;
+  border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, currentColor 45%, transparent);
+  animation: index-pulse 1.6s ease-out infinite;
+}
+
+@keyframes index-pulse {
+  0% {
+    transform: scale(0.92);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1.25);
+    opacity: 0;
+  }
 }
 
 .status-icon__ring {
@@ -3823,6 +3847,10 @@ button[aria-disabled='true'] {
 
 .index-status__pill--indexing {
   color: #e4a01a;
+}
+
+.index-status__pill--embedding {
+  color: #3d9cf0;
 }
 
 .index-status__pill--warn {

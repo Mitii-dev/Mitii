@@ -22,7 +22,9 @@ import {
   listWorkspaceMemoriesForView,
   normalizeOllamaModelId,
   pullOllamaModel,
+  resolveIndexConcurrency,
   testProviderConnection,
+  type SemanticIndexSettings,
 } from '@mitii/host';
 import {
   AGENT_ENGINE_SCHEMA_VERSION,
@@ -58,6 +60,7 @@ import {
   createWorkspaceWatcher,
   type WorkspaceChangeEvent,
 } from './explorer/workspaceWatch.js';
+import { startIncrementalWorkspaceIndex } from './explorer/incrementalIndex.js';
 import {
   formatSkillFrontmatterWithAi,
   requireActiveDesktopProfile,
@@ -805,6 +808,58 @@ export async function startEngineServer(
   const token = options.token;
   const cwd = options.workspaceRoot;
   const workspaceWatcher = createWorkspaceWatcher(cwd);
+  const resolveDesktopSemanticIndex = (): SemanticIndexSettings | undefined => {
+    const normalizeSource = (
+      raw: string | undefined,
+    ): SemanticIndexSettings['source'] => {
+      if (raw === 'ollama' || raw === 'bundled' || raw === 'disabled') return raw;
+      if (raw === 'openai-compatible' || raw === 'openai_compatible') {
+        return 'openai-compatible';
+      }
+      return 'bundled';
+    };
+    try {
+      const settings = readDesktopSettingsJson();
+      const semantic = settings?.semanticIndex as
+        | {
+            enabled?: boolean;
+            source?: string;
+            model?: string;
+            dimensions?: number;
+            normalized?: boolean;
+          }
+        | undefined;
+      const provider = settings?.provider as { baseUrl?: string } | undefined;
+      return {
+        enabled: semantic?.enabled !== false,
+        source: normalizeSource(semantic?.source),
+        model: semantic?.model ?? '',
+        dimensions: semantic?.dimensions ?? 0,
+        normalized: semantic?.normalized !== false,
+        baseUrl: provider?.baseUrl ?? process.env.MITII_BASE_URL ?? '',
+        apiKey: process.env.MITII_API_KEY,
+      };
+    } catch {
+      return {
+        enabled: true,
+        source: 'bundled',
+        model: '',
+        dimensions: 0,
+        normalized: true,
+        baseUrl: '',
+      };
+    }
+  };
+  const resolveDesktopIndexConcurrency = (): number =>
+    // Leave headroom on the shared engine thread for explorer HTTP.
+    Math.min(4, resolveIndexConcurrency());
+
+  const incrementalIndex = startIncrementalWorkspaceIndex({
+    workspaceRoot: cwd,
+    watcher: workspaceWatcher,
+    resolveSemanticIndex: resolveDesktopSemanticIndex,
+    resolveConcurrency: resolveDesktopIndexConcurrency,
+  });
 
   const server: Server = createServer((req, res) => {
     void (async () => {
@@ -2119,6 +2174,16 @@ export async function startEngineServer(
           String(req.headers.accept ?? '').includes(
             'application/x-ndjson',
           );
+        const force = body.force === true;
+        const concurrency =
+          typeof body.concurrency === 'number' && body.concurrency > 0
+            ? Math.min(32, Math.floor(body.concurrency))
+            : resolveDesktopIndexConcurrency();
+        const filePaths = Array.isArray(body.filePaths)
+          ? body.filePaths.filter(
+              (p): p is string => typeof p === 'string' && p.length > 0,
+            )
+          : undefined;
         const semanticIndex = semantic
           ? {
               enabled: semantic.enabled !== false,
@@ -2157,7 +2222,9 @@ export async function startEngineServer(
             const result = await reindexWorkspace({
               workspaceRoot: cwd,
               maximumFiles,
-              force: body.force !== false,
+              concurrency,
+              force,
+              ...(filePaths?.length ? { filePaths } : {}),
               semanticIndex,
               onProgress: (progress) => {
                 writeLine({
@@ -2166,6 +2233,8 @@ export async function startEngineServer(
                   message: progress.message,
                   percent: progress.percent,
                   fileCount: progress.fileCount,
+                  lexicalReady: progress.lexicalReady,
+                  embeddingPhase: progress.embeddingPhase,
                 });
               },
             });
@@ -2190,7 +2259,9 @@ export async function startEngineServer(
           const result = await reindexWorkspace({
             workspaceRoot: cwd,
             maximumFiles,
-            force: body.force !== false,
+            concurrency,
+            force,
+            ...(filePaths?.length ? { filePaths } : {}),
             semanticIndex,
           });
           sendJson(res, 200, { ...result, statusSnapshot: getIndexStatus(cwd) });
@@ -2340,6 +2411,7 @@ export async function startEngineServer(
     token,
     close: () =>
       new Promise((resolve, reject) => {
+        incrementalIndex.dispose();
         workspaceWatcher.close();
         server.close((err) => (err ? reject(err) : resolve()));
       }),

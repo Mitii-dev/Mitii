@@ -160,23 +160,37 @@ function flattenVisible(
   entries: TreeEntry[],
   childrenByPath: Record<string, TreeEntry[]>,
   expanded: Set<string>,
-): TreeEntry[] {
-  const out: TreeEntry[] = [];
-  const walk = (list: TreeEntry[]) => {
+  createDraft: CreateDraft | null,
+): Array<
+  | { type: 'entry'; entry: TreeEntry; depth: number }
+  | { type: 'create'; parent: string; depth: number }
+> {
+  const out: Array<
+    | { type: 'entry'; entry: TreeEntry; depth: number }
+    | { type: 'create'; parent: string; depth: number }
+  > = [];
+  const walk = (list: TreeEntry[], depth: number, parentPath: string) => {
+    if (createDraft?.parent === parentPath) {
+      out.push({ type: 'create', parent: parentPath, depth });
+    }
     for (const entry of list) {
-      out.push(entry);
-      if (
-        entry.kind === 'dir' &&
-        expanded.has(entry.path) &&
-        childrenByPath[entry.path]
-      ) {
-        walk(childrenByPath[entry.path]);
+      out.push({ type: 'entry', entry, depth });
+      if (entry.kind === 'dir' && expanded.has(entry.path)) {
+        const kids = childrenByPath[entry.path];
+        if (kids) {
+          walk(kids, depth + 1, entry.path);
+        } else if (createDraft?.parent === entry.path) {
+          out.push({ type: 'create', parent: entry.path, depth: depth + 1 });
+        }
       }
     }
   };
-  walk(entries);
+  walk(entries, 1, '');
   return out;
 }
+
+const EXPLORER_ROW_HEIGHT = 22;
+const EXPLORER_OVERSCAN = 16;
 
 export function WorkspacePanel(props: WorkspacePanelProps) {
   const [internalSide, setInternalSide] = useState<
@@ -309,10 +323,27 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
       setSide('explorer');
       return;
     }
+    // Optimistic tab so clicks feel instant while the engine may be busy indexing.
+    setTabs((prev) => {
+      const without = prev.filter((t) => t.path !== path);
+      return [
+        ...without,
+        {
+          path,
+          content: '',
+          savedContent: '',
+          truncated: false,
+          mode: 'file' as const,
+        },
+      ];
+    });
+    setActivePath(path);
+    setSide('explorer');
+    setNote('Opening…');
     try {
       const file = await fetchWorkspaceFile({ ...auth, path });
       setTabs((prev) => {
-        const without = prev.filter((t) => t.path !== path);
+        const without = prev.filter((t) => t.path !== path && t.path !== file.path);
         return [
           ...without,
           {
@@ -325,7 +356,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
         ];
       });
       setActivePath(file.path);
-      setSide('explorer');
+      setNote(null);
       // Expand parents so the file is visible in the tree.
       const parts = file.path.split('/');
       const parents: string[] = [];
@@ -341,6 +372,9 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
         if (!childrenByPath[p]) void loadDir(p);
       }
     } catch (err) {
+      setTabs((prev) => prev.filter((t) => t.path !== path));
+      setActivePath((cur) => (cur === path ? null : cur));
+      setNote(null);
       setError(err instanceof Error ? err.message : String(err));
     }
   };
@@ -454,9 +488,37 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     }
   };
 
+  const [explorerScrollTop, setExplorerScrollTop] = useState(0);
+  const [explorerViewportH, setExplorerViewportH] = useState(480);
+  const explorerTreeRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const el = explorerTreeRef.current;
+    if (!el) return;
+    const sync = () => setExplorerViewportH(el.clientHeight || 480);
+    sync();
+    const ro =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(sync)
+        : null;
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  }, [side, workspaceRootOpen, props.workspaceRoot]);
+
+  const visibleRows = useMemo(
+    () => flattenVisible(rootEntries, childrenByPath, expanded, createDraft),
+    [rootEntries, childrenByPath, expanded, createDraft],
+  );
+
   const visibleEntries = useMemo(
-    () => flattenVisible(rootEntries, childrenByPath, expanded),
-    [rootEntries, childrenByPath, expanded],
+    () =>
+      visibleRows
+        .filter(
+          (row): row is { type: 'entry'; entry: TreeEntry; depth: number } =>
+            row.type === 'entry',
+        )
+        .map((row) => row.entry),
+    [visibleRows],
   );
 
   const entryByPath = useMemo(() => {
@@ -493,7 +555,12 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
           a.split('/').filter(Boolean).length -
           b.split('/').filter(Boolean).length,
       );
-      await Promise.all(ordered.map((dir) => loadDir(dir)));
+      // Batch directory reloads so large FS bursts stay responsive.
+      const concurrency = 6;
+      for (let i = 0; i < ordered.length; i += concurrency) {
+        const chunk = ordered.slice(i, i + concurrency);
+        await Promise.all(chunk.map((dir) => loadDir(dir)));
+      }
     },
     [loadDir, expanded],
   );
@@ -561,7 +628,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
         pendingPathsRef.current.clear();
         void refreshParents(batch);
         void reloadCleanOpenFiles(batch);
-      }, 80);
+      }, 200);
       // Longer debounce than the FS watcher — bulk AI writes must not stampede git.
       if (gitTimerRef.current) clearTimeout(gitTimerRef.current);
       gitTimerRef.current = setTimeout(() => {
@@ -1096,110 +1163,137 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     );
   };
 
-  const renderTree = (entries: TreeEntry[], depth: number, parentPath: string) => (
-    <>
-      {renderCreateRow(parentPath, depth)}
-      {entries.map((entry) => {
-        const isOpen = expanded.has(entry.path);
-        const kids = childrenByPath[entry.path];
-        const isSelected = selectedPaths.has(entry.path);
-        const isActive =
-          active?.mode === 'file' && active.path === entry.path;
-        const isRenaming = renamingPath === entry.path;
-        const isCut =
-          clipboard?.mode === 'cut' && clipboard.paths.includes(entry.path);
-        return (
-          <div key={entry.path} className="explorer-node">
-            {isRenaming ? (
-              <div
-                className="explorer-row explorer-row--rename"
-                style={{ paddingLeft: 4 + depth * 8 }}
-              >
-                <span className="explorer-twist" aria-hidden />
-                <span className="explorer-icon" aria-hidden>
-                  {entry.kind === 'dir' ? (
-                    <IconFolder size={16} />
-                  ) : (
-                    <IconFile size={16} />
-                  )}
-                </span>
-                <input
-                  ref={renameInputRef}
-                  className="explorer-rename"
-                  value={renameValue}
-                  onChange={(e) => setRenameValue(e.target.value)}
-                  onBlur={() => void commitRename()}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      void commitRename();
-                    }
-                    if (e.key === 'Escape') {
-                      e.preventDefault();
-                      setRenamingPath(null);
-                    }
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                />
-              </div>
+  const renderFlatEntry = (entry: TreeEntry, depth: number) => {
+    const isOpen = expanded.has(entry.path);
+    const isSelected = selectedPaths.has(entry.path);
+    const isActive = active?.mode === 'file' && active.path === entry.path;
+    const isRenaming = renamingPath === entry.path;
+    const isCut =
+      clipboard?.mode === 'cut' && clipboard.paths.includes(entry.path);
+
+    if (isRenaming) {
+      return (
+        <div
+          key={entry.path}
+          className="explorer-row explorer-row--rename"
+          style={{ paddingLeft: 4 + depth * 8, height: EXPLORER_ROW_HEIGHT }}
+        >
+          <span className="explorer-twist" aria-hidden />
+          <span className="explorer-icon" aria-hidden>
+            {entry.kind === 'dir' ? (
+              <IconFolder size={16} />
             ) : (
-              <button
-                type="button"
-                className={`explorer-row${isSelected || isActive ? ' is-active' : ''}${
-                  isSelected ? ' is-selected' : ''
-                }${isCut ? ' is-cut' : ''}`}
-                style={{ paddingLeft: 4 + depth * 8 }}
-                onMouseDown={(e) => onExplorerMouseDown(entry, e)}
-                onClick={(e) => {
-                  if (e.metaKey || e.ctrlKey || e.shiftKey) {
-                    e.preventDefault();
-                    return;
-                  }
-                  onExplorerClick(entry, e);
-                }}
-                onContextMenu={(e) => onExplorerContextMenu(entry, e)}
-                title={entry.path}
-              >
-                <span className="explorer-twist" aria-hidden>
-                  {entry.kind === 'dir' ? (
-                    loadingDirs.has(entry.path) ? (
-                      <IconEllipsis size={12} />
-                    ) : isOpen ? (
-                      <IconChevronDown size={12} />
-                    ) : (
-                      <IconChevronRight size={12} />
-                    )
-                  ) : null}
-                </span>
-                <span
-                  className={`explorer-icon explorer-icon--${entry.kind}${
-                    entry.kind === 'dir' && isOpen ? ' is-open' : ''
-                  }`}
-                  aria-hidden
-                >
-                  {entry.kind === 'dir' ? (
-                    isOpen ? (
-                      <IconFolderOpen size={16} />
-                    ) : (
-                      <IconFolder size={16} />
-                    )
-                  ) : (
-                    <IconFile size={16} />
-                  )}
-                </span>
-                <span className="explorer-label">{entry.name}</span>
-              </button>
+              <IconFile size={16} />
             )}
-            {entry.kind === 'dir' && isOpen && kids
-              ? renderTree(kids, depth + 1, entry.path)
-              : entry.kind === 'dir' && isOpen
-                ? renderCreateRow(entry.path, depth + 1)
-                : null}
-          </div>
-        );
-      })}
-    </>
-  );
+          </span>
+          <input
+            ref={renameInputRef}
+            className="explorer-rename"
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onBlur={() => void commitRename()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                void commitRename();
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                setRenamingPath(null);
+              }
+            }}
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <button
+        key={entry.path}
+        type="button"
+        className={`explorer-row${isSelected || isActive ? ' is-active' : ''}${
+          isSelected ? ' is-selected' : ''
+        }${isCut ? ' is-cut' : ''}`}
+        style={{ paddingLeft: 4 + depth * 8, height: EXPLORER_ROW_HEIGHT }}
+        onMouseDown={(e) => onExplorerMouseDown(entry, e)}
+        onClick={(e) => {
+          if (e.metaKey || e.ctrlKey || e.shiftKey) {
+            e.preventDefault();
+            return;
+          }
+          onExplorerClick(entry, e);
+        }}
+        onContextMenu={(e) => onExplorerContextMenu(entry, e)}
+        title={entry.path}
+      >
+        <span className="explorer-twist" aria-hidden>
+          {entry.kind === 'dir' ? (
+            loadingDirs.has(entry.path) ? (
+              <IconEllipsis size={12} />
+            ) : isOpen ? (
+              <IconChevronDown size={12} />
+            ) : (
+              <IconChevronRight size={12} />
+            )
+          ) : null}
+        </span>
+        <span
+          className={`explorer-icon explorer-icon--${entry.kind}${
+            entry.kind === 'dir' && isOpen ? ' is-open' : ''
+          }`}
+          aria-hidden
+        >
+          {entry.kind === 'dir' ? (
+            isOpen ? (
+              <IconFolderOpen size={16} />
+            ) : (
+              <IconFolder size={16} />
+            )
+          ) : (
+            <IconFile size={16} />
+          )}
+        </span>
+        <span className="explorer-label">{entry.name}</span>
+      </button>
+    );
+  };
+
+  const renderVirtualTree = () => {
+    const total = visibleRows.length;
+    const start = Math.max(
+      0,
+      Math.floor(explorerScrollTop / EXPLORER_ROW_HEIGHT) - EXPLORER_OVERSCAN,
+    );
+    const visibleCount =
+      Math.ceil(explorerViewportH / EXPLORER_ROW_HEIGHT) + EXPLORER_OVERSCAN * 2;
+    const end = Math.min(total, start + visibleCount);
+    const slice = visibleRows.slice(start, end);
+    return (
+      <div
+        className="explorer-tree__virtual"
+        style={{
+          height: Math.max(total, 1) * EXPLORER_ROW_HEIGHT,
+          position: 'relative',
+        }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            top: start * EXPLORER_ROW_HEIGHT,
+            left: 0,
+            right: 0,
+          }}
+        >
+          {slice.map((row) =>
+            row.type === 'create'
+              ? renderCreateRow(row.parent, row.depth)
+              : renderFlatEntry(row.entry, row.depth),
+          )}
+        </div>
+      </div>
+    );
+  };
 
   const menuPaths = contextMenu?.paths ?? [];
   const menuSingle = menuPaths.length === 1 ? menuPaths[0] : null;
@@ -1331,8 +1425,12 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                   </div>
                 </div>
                 <div
+                  ref={explorerTreeRef}
                   className="explorer-tree"
                   tabIndex={0}
+                  onScroll={(e) => {
+                    setExplorerScrollTop(e.currentTarget.scrollTop);
+                  }}
                   onContextMenu={(e) => {
                     if (e.target !== e.currentTarget) return;
                     e.preventDefault();
@@ -1435,7 +1533,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                           <p className="workspace-empty">No files</p>
                         )
                       : (
-                          renderTree(rootEntries, 1, '')
+                          renderVirtualTree()
                         )
                     : null}
                 </div>
