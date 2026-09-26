@@ -831,7 +831,7 @@ export async function startEngineServer(
         | undefined;
       const provider = settings?.provider as { baseUrl?: string } | undefined;
       return {
-        enabled: semantic?.enabled !== false,
+        enabled: semantic?.enabled === true,
         source: normalizeSource(semantic?.source),
         model: semantic?.model ?? '',
         dimensions: semantic?.dimensions ?? 0,
@@ -841,7 +841,7 @@ export async function startEngineServer(
       };
     } catch {
       return {
-        enabled: true,
+        enabled: false,
         source: 'bundled',
         model: '',
         dimensions: 0,
@@ -2186,7 +2186,7 @@ export async function startEngineServer(
           : undefined;
         const semanticIndex = semantic
           ? {
-              enabled: semantic.enabled !== false,
+              enabled: semantic.enabled === true,
               source: semantic.source as never,
               model: semantic.model ?? '',
               dimensions: semantic.dimensions ?? 0,
@@ -2195,7 +2195,7 @@ export async function startEngineServer(
               apiKey: process.env.MITII_API_KEY,
             }
           : {
-              enabled: true,
+              enabled: false,
               source: 'bundled' as const,
               model: '',
               dimensions: 0,

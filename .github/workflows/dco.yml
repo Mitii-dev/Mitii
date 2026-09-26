@@ -1,0 +1,11 @@
+name: DCO
+
+on:
+  pull_request:
+
+jobs:
+  dco:
+    name: sign-off
+    runs-on: ubuntu-latest
+    steps:
+      - uses: KineticCafe/actions-dco@v1

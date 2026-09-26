@@ -1093,16 +1093,38 @@ export function App() {
     if (!engine) return;
     try {
       const result = await pauseIndexing(engine);
-      pushIndexStream(result.message || 'Indexing paused');
-      reindexInFlightRef.current = false;
-      setIndexIndexing(false);
-      setIndexEmbeddingBg(false);
-      setIndexProgress(null);
-      await refreshIndexStatus();
+      pushIndexStream(result.message);
+      if (!result.paused) {
+        await refreshIndexStatus();
+        return;
+      }
+      // Don't flip UI to idle immediately — abort waits for the current file.
+      // Poll until the lock clears so Pause doesn't look like a no-op.
+      pushIndexStream('Stopping…');
+      for (let i = 0; i < 40; i += 1) {
+        await new Promise((r) => window.setTimeout(r, 400));
+        const s = await fetchIndexStatus(engine);
+        if (!s.running) {
+          reindexInFlightRef.current = false;
+          setIndexIndexing(false);
+          setIndexEmbeddingBg(false);
+          setIndexProgress(null);
+          applyIndexStatus(s);
+          pushIndexStream('Index paused — FTS/symbols kept; embeddings may be partial.');
+          return;
+        }
+        applyIndexStatus(s, { clearIfIdle: false });
+        if (typeof s.progressPercent === 'number') {
+          setIndexProgress(s.progressPercent);
+        }
+      }
+      pushIndexStream(
+        'Still stopping — wait for the current file batch to finish.',
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [engine, pushIndexStream, refreshIndexStatus]);
+  }, [engine, pushIndexStream, refreshIndexStatus, applyIndexStatus]);
 
   const onFileSavedDebounced = useCallback(
     (_path: string) => {
@@ -2972,6 +2994,7 @@ export function App() {
             progressPercent={indexProgress}
             streamLines={indexStream}
             workspaceLabel={workspaceLabel(snapshot?.workspaceRoot ?? '')}
+            embeddingSource={settings.semanticIndex.source}
             onReindex={(opts) => void runReindex(opts)}
             onPause={() => void pauseIndex()}
             onOpenSettings={() => {

@@ -781,8 +781,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
 
               {featureTab === 'index' ? (
                 <SettingsSection
-                  title="Semantic index"
-                  description="Status is per repository. Embedding options below are shared across all repos — only relevant fields show for your source."
+                  title="Workspace index"
+                  description="FTS + symbols (lexical) always run and keep the project searchable. Semantic vectors are optional — enable below to add MiniLM or an HTTP embedding model; the header chip then shows progress and a rough time estimate."
                 >
                   <p className="field-help">{indexMessage}</p>
 
@@ -810,8 +810,14 @@ export function SettingsPanel(props: SettingsPanelProps) {
                         })
                       }
                     />
-                    Enable semantic workspace indexing
+                    Enable semantic (vector) indexing
                   </label>
+                  <p className="field-help">
+                    Off by default. When on, embeddings run after FTS/symbols
+                    (Bundled MiniLM on-device, or Ollama / OpenAI-compatible).
+                    Expect roughly 1–3 minutes per 1k files for MiniLM; HTTP
+                    sources are slower.
+                  </p>
 
                   {draft.semanticIndex.enabled ? (
                     <div className="field-grid">

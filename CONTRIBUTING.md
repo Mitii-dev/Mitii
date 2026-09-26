@@ -10,6 +10,8 @@ Maintainer: **codewithshinde** - [codewithshinde@gmail.com](mailto:codewithshind
 
 Mitii is released under [AGPL-3.0-or-later](LICENSE). By contributing code, you agree that your contributions will be licensed under the same terms. If that doesn't work for your employer or use case, reach out before investing a large amount of time.
 
+All commits must be signed off under the [Developer Certificate of Origin](DCO) (see [Sign your work](#sign-your-work-developer-certificate-of-origin) below).
+
 For bugs and feature ideas, open an [issue](https://github.com/Mitii-dev/Mitii/issues) first when the change is non-trivial - saves everyone a rework loop.
 
 ---
@@ -183,6 +185,36 @@ chore: bump vitest to 1.6
 
 The pre-commit hook may stage a version bump in `package.json`. Include that in your commit if it runs.
 
+### Sign your work (Developer Certificate of Origin)
+
+We require a [Developer Certificate of Origin](https://developercertificate.org/) (DCO) sign-off on every commit. By signing off, you certify the statements in [DCO](DCO) — in short: you created the contribution (or have the right to submit it) under AGPL-3.0-or-later, and you are not violating employer or contract restrictions.
+
+Sign off with `-s` / `--signoff` (uses your configured `user.name` and `user.email`):
+
+```bash
+git commit -s -m "feat: add session log export command"
+```
+
+That appends a trailer like:
+
+```text
+Signed-off-by: Jane Doe <jane.doe@example.com>
+```
+
+The name and email should match the commit author. Pull requests are checked by the `DCO` GitHub Action; unsigned commits will fail CI.
+
+If you forgot to sign off:
+
+```bash
+# last commit only
+git commit --amend -s --no-edit
+
+# several commits since main
+git rebase --signoff main
+```
+
+Then force-push your branch if it was already pushed.
+
 ### Code style
 
 - TypeScript strict mode - `pnpm run typecheck` must pass
@@ -211,9 +243,10 @@ The pre-commit hook may stage a version bump in `package.json`. Include that in 
 
 1. Fork and branch from `main`
 2. Make your change; keep the diff focused
-3. Run `pnpm run typecheck` and `pnpm test`
-4. Manually smoke-test in the Extension Development Host if you touched agent behavior or UI
-5. Open a PR against `main` with:
+3. Sign off every commit (`git commit -s`) — see [Sign your work](#sign-your-work-developer-certificate-of-origin)
+4. Run `pnpm run typecheck` and `pnpm test`
+5. Manually smoke-test in the Extension Development Host if you touched agent behavior or UI
+6. Open a PR against `main` with:
    - What changed and why (2-4 sentences is fine)
    - How you tested it
    - Screenshots or a short recording for UI changes
