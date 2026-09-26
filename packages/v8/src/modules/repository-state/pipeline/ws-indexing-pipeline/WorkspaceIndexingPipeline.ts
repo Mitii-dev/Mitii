@@ -26,6 +26,10 @@ import {
   WorkspaceIndexingRootFinalizer,
 } from "./WorkspaceIndexingRootFinalizer";
 
+import {
+  yieldIndexingEventLoop,
+} from "./yieldEventLoop";
+
 import type {
   NormalizedWorkspaceIndexingPipelineInput,
   WorkspaceIndexingFileResult,
@@ -99,16 +103,20 @@ export class WorkspaceIndexingPipeline {
     }
 
     const selection =
-      await this.selector
-        .select(
-          request,
-        );
+      request.finalizeOnly
+        ? this.emptyFinalizeSelection()
+        : await this.selector
+            .select(
+              request,
+            );
 
     const fileResults =
-      await this.processFiles(
-        request,
-        selection,
-      );
+      request.finalizeOnly
+        ? []
+        : await this.processFiles(
+            request,
+            selection,
+          );
 
     const cleanupWarnings:
       WorkspaceIndexingWarning[] =
@@ -233,6 +241,24 @@ export class WorkspaceIndexingPipeline {
     );
   }
 
+  private emptyFinalizeSelection():
+    WorkspaceIndexingFileSelection {
+    return {
+      availableFiles:
+        0,
+      selected:
+        [],
+      skipped:
+        [],
+      truncated:
+        false,
+      warnings:
+        [],
+      retainedRelativePathsByRoot:
+        new Map(),
+    };
+  }
+
   private async processFiles(
     request:
       NormalizedWorkspaceIndexingPipelineInput,
@@ -254,6 +280,8 @@ export class WorkspaceIndexingPipeline {
       0;
     let stopped =
       false;
+    let processed =
+      0;
 
     const worker =
       async () => {
@@ -297,6 +325,12 @@ export class WorkspaceIndexingPipeline {
 
           results[index] =
             result;
+          processed +=
+            1;
+
+          await yieldIndexingEventLoop(
+            processed,
+          );
 
           if (
             request

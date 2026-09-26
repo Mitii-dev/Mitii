@@ -4,7 +4,9 @@
  */
 
 import { watch, type FSWatcher } from 'node:fs';
-import { relative, resolve, sep } from 'node:path';
+import { join, relative, resolve, sep } from 'node:path';
+
+import { isIndexLockHeld } from '@mitii/host';
 
 export type WorkspaceChangeKind =
   | 'add'
@@ -43,6 +45,10 @@ const IGNORE_DIR_NAMES = new Set([
   'venv',
 ]);
 
+const COALESCE_MS_IDLE = 220;
+/** While indexing holds the lock, back off explorer refresh storms. */
+const COALESCE_MS_INDEXING = 480;
+
 function shouldIgnoreRel(relPath: string): boolean {
   if (!relPath) return false;
   const parts = relPath.split(/[/\\]/).filter(Boolean);
@@ -61,17 +67,21 @@ export interface WorkspaceWatcher {
 }
 
 /**
- * Start watching `workspaceRoot`. Events are coalesced (~80ms) so bursts of
- * writes produce one update with all unique relative paths.
+ * Start watching `workspaceRoot`. Events are coalesced so bursts of writes
+ * produce one update with all unique relative paths.
  */
 export function createWorkspaceWatcher(workspaceRoot: string): WorkspaceWatcher {
   const root = resolve(workspaceRoot);
+  const mitiiDir = join(root, '.mitii');
   const listeners = new Set<Listener>();
   const pending = new Set<string>();
   let pendingKind: WorkspaceChangeKind = 'unknown';
   let timer: ReturnType<typeof setTimeout> | null = null;
   let closed = false;
   let watcher: FSWatcher | null = null;
+
+  const coalesceMs = () =>
+    isIndexLockHeld(mitiiDir).held ? COALESCE_MS_INDEXING : COALESCE_MS_IDLE;
 
   const flush = () => {
     timer = null;
@@ -106,7 +116,7 @@ export function createWorkspaceWatcher(workspaceRoot: string): WorkspaceWatcher 
     if (pendingKind === 'unknown') pendingKind = kind;
     else if (pendingKind !== kind) pendingKind = 'unknown';
     if (timer) clearTimeout(timer);
-    timer = setTimeout(flush, 150);
+    timer = setTimeout(flush, coalesceMs());
   };
 
   const onFsEvent = (eventType: string, filename: string | null) => {

@@ -2,6 +2,10 @@ import {
   WORKSPACE_INDEXING_PIPELINE_IDS,
 } from "./constants";
 
+import {
+  yieldIndexingEventLoop,
+} from "./yieldEventLoop";
+
 import type {
   WorkspaceIndexingRootFinalizerDependencies,
   WorkspaceIndexingRootFinalizerInput,
@@ -392,6 +396,11 @@ export class WorkspaceIndexingRootFinalizer {
           ) {
             break;
           }
+
+          await yieldIndexingEventLoop(
+            pass + 1,
+            1,
+          );
         }
       } catch (
         error

@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
-  "version": "2.9.97",
+  "version": "2.9.98",
   "publisher": "mitii",
   "license": "AGPL-3.0-or-later",
   "icon": "media/mitii-logo.png",
@@ -963,8 +963,8 @@
         },
         "mitii.semanticIndex.enabled": {
           "type": "boolean",
-          "default": true,
-          "description": "Enable semantic workspace indexing. Bundled MiniLM works with any chat provider. HTTP embedding sources fail closed to lexical indexing if the probe fails."
+          "default": false,
+          "description": "Enable optional semantic (vector) indexing after FTS/symbols. Off by default — lexical search stays available. Bundled MiniLM works with any chat provider; HTTP embedding sources fail closed to lexical indexing if the probe fails."
         },
         "mitii.semanticIndex.source": {
           "type": "string",
@@ -1017,6 +1017,13 @@
           "minimum": 0,
           "maximum": 240000,
           "description": "Maximum files to include in the workspace index. 0 uses the default (30,000). Raise up to 240,000 for very large repos. Ignore rules still skip build artifacts and secrets. Retrieval still scales from the model context window, not this file cap."
+        },
+        "mitii.workspace.indexConcurrency": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 32,
+          "description": "Parallel file workers for workspace indexing. 0 auto-selects from CPU count (typically 4–8). Override with MITII_INDEX_CONCURRENCY for headless hosts."
         },
         "mitii.skills.workspace.enabled": {
           "type": "boolean",

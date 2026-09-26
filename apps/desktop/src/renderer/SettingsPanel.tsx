@@ -1054,16 +1054,18 @@ export function SettingsPanel(props: SettingsPanelProps) {
                   <div className="settings-actions">
                     <button
                       type="button"
-                      className="btn btn-primary"
+                      className="btn btn-ghost"
                       disabled={reindexing || !props.engineBaseUrl}
+                      title="Fingerprint-aware refresh (no full rebuild)"
                       onClick={() => {
                         if (!props.engineBaseUrl) return;
                         setReindexing(true);
-                        setIndexMessage('Indexing…');
+                        setIndexMessage('Refreshing index…');
                         props.onIndexStarted?.();
                         void reindexWorkspace({
                           baseUrl: props.engineBaseUrl,
                           token: props.authToken,
+                          force: false,
                           maximumFiles:
                             draft.workspace.maximumIndexFiles || undefined,
                           semanticIndex: {
@@ -1098,7 +1100,57 @@ export function SettingsPanel(props: SettingsPanelProps) {
                           .finally(() => setReindexing(false));
                       }}
                     >
-                      {reindexing ? 'Indexing…' : 'Reindex workspace'}
+                      {reindexing ? 'Indexing…' : 'Refresh index'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      disabled={reindexing || !props.engineBaseUrl}
+                      title="Force a full rebuild of the workspace index"
+                      onClick={() => {
+                        if (!props.engineBaseUrl) return;
+                        setReindexing(true);
+                        setIndexMessage('Rebuilding index…');
+                        props.onIndexStarted?.();
+                        void reindexWorkspace({
+                          baseUrl: props.engineBaseUrl,
+                          token: props.authToken,
+                          force: true,
+                          maximumFiles:
+                            draft.workspace.maximumIndexFiles || undefined,
+                          semanticIndex: {
+                            enabled: draft.semanticIndex.enabled,
+                            source: draft.semanticIndex.source,
+                            model:
+                              draft.semanticIndex.model.trim() ||
+                              (draft.semanticIndex.source === 'ollama'
+                                ? NOMIC_EMBED_MODEL
+                                : ''),
+                            dimensions: draft.semanticIndex.dimensions,
+                            normalized: draft.semanticIndex.normalized,
+                            baseUrl:
+                              draft.semanticIndex.source === 'ollama'
+                                ? ollamaEmbeddingBaseUrl
+                                : draft.provider.baseUrl,
+                          },
+                        })
+                          .then((result) => {
+                            setIndexMessage(result.message);
+                            if (result.statusSnapshot) {
+                              setIndexMessage(result.statusSnapshot.message);
+                            }
+                            props.onIndexChanged?.();
+                          })
+                          .catch((err: unknown) => {
+                            setIndexMessage(
+                              err instanceof Error ? err.message : String(err),
+                            );
+                            props.onIndexChanged?.();
+                          })
+                          .finally(() => setReindexing(false));
+                      }}
+                    >
+                      {reindexing ? 'Indexing…' : 'Rebuild index'}
                     </button>
                   </div>
                 </SettingsSection>

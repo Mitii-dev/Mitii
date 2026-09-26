@@ -1,6 +1,6 @@
 /**
  * Mobile-style status icon for workspace index (top bar).
- * Icon-only; click opens popover with live stream + Reindex.
+ * Icon-only; click opens popover with live stream + Refresh / Rebuild.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -12,16 +12,29 @@ export type DesktopIndexSnapshot = {
   lastIndexedAt?: string;
   message: string;
   embeddingError?: string;
+  lexicalReady?: boolean;
+  embeddingPhase?: string;
 };
 
-export type IndexChipTone = 'idle' | 'indexing' | 'ready' | 'warn';
+export type IndexChipTone =
+  | 'idle'
+  | 'indexing'
+  | 'embedding'
+  | 'ready'
+  | 'warn';
 
 export function resolveIndexTone(
   index: DesktopIndexSnapshot | null,
   indexing: boolean,
+  embeddingBackground?: boolean,
 ): IndexChipTone {
+  if (indexing && embeddingBackground) return 'embedding';
   if (indexing) return 'indexing';
   if (!index) return 'idle';
+  if (index.embeddingError && !index.lexicalReady) return 'warn';
+  if (index.embeddingPhase === 'running' || index.embeddingPhase === 'pending') {
+    return 'embedding';
+  }
   if (index.embeddingError) return 'warn';
   if (!index.indexed || index.fileCount <= 0) return 'idle';
   if (index.truncated) return 'warn';
@@ -30,13 +43,14 @@ export function resolveIndexTone(
 
 function toneLabel(tone: IndexChipTone): string {
   if (tone === 'indexing') return 'Indexing';
+  if (tone === 'embedding') return 'Embeddings';
   if (tone === 'warn') return 'Index warning';
   if (tone === 'ready') return 'Indexed';
   return 'Not indexed';
 }
 
 function IndexGlyph({ tone }: { tone: IndexChipTone }) {
-  if (tone === 'indexing') {
+  if (tone === 'indexing' || tone === 'embedding') {
     return (
       <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden>
         <circle
@@ -49,7 +63,13 @@ function IndexGlyph({ tone }: { tone: IndexChipTone }) {
           strokeDasharray="8 18"
           className="index-status__spin"
         />
-        <circle cx="8" cy="8" r="2" fill="currentColor" opacity="0.85" />
+        <circle
+          cx="8"
+          cy="8"
+          r="2"
+          fill="currentColor"
+          opacity={tone === 'embedding' ? 0.55 : 0.85}
+        />
       </svg>
     );
   }
@@ -111,7 +131,8 @@ interface IndexStatusChipProps {
   streamLines?: string[];
   workspaceLabel?: string;
   reindexing?: boolean;
-  onReindex: () => void;
+  embeddingBackground?: boolean;
+  onReindex: (opts?: { force?: boolean }) => void;
   onPause?: () => void;
   onOpenSettings?: () => void;
 }
@@ -121,7 +142,8 @@ export function IndexStatusChip(props: IndexStatusChipProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const streamRef = useRef<HTMLDivElement>(null);
   const indexing = Boolean(props.indexing);
-  const tone = resolveIndexTone(props.index, indexing);
+  const embeddingBg = Boolean(props.embeddingBackground);
+  const tone = resolveIndexTone(props.index, indexing, embeddingBg);
   const label = toneLabel(tone);
   const stream = props.streamLines ?? [];
 
@@ -146,8 +168,11 @@ export function IndexStatusChip(props: IndexStatusChipProps) {
     streamRef.current.scrollTop = streamRef.current.scrollHeight;
   }, [open, stream, props.progressPercent]);
 
+  const wasIndexingRef = useRef(false);
   useEffect(() => {
-    if (indexing) setOpen(true);
+    // Auto-open once when indexing begins; allow dismiss while it continues.
+    if (indexing && !wasIndexingRef.current) setOpen(true);
+    wasIndexingRef.current = indexing;
   }, [indexing]);
 
   const meta: string[] = [];
@@ -157,6 +182,10 @@ export function IndexStatusChip(props: IndexStatusChipProps) {
         ? `${props.index.fileCount.toLocaleString()} files`
         : 'No files yet',
     );
+    if (props.index.lexicalReady || tone === 'embedding') {
+      meta.push('Search ready');
+    }
+    if (tone === 'embedding') meta.push('Embeddings…');
     if (props.index.truncated) meta.push('Truncated');
     if (props.index.embeddingError) meta.push('Embedding issue');
     if (props.index.lastIndexedAt) {
@@ -165,6 +194,8 @@ export function IndexStatusChip(props: IndexStatusChipProps) {
   } else {
     meta.push('Status unavailable');
   }
+
+  const busy = indexing || props.reindexing;
 
   return (
     <div
@@ -181,7 +212,7 @@ export function IndexStatusChip(props: IndexStatusChipProps) {
         onClick={() => setOpen((v) => !v)}
       >
         <IndexGlyph tone={tone} />
-        {indexing &&
+        {busy &&
         props.progressPercent != null &&
         props.progressPercent >= 0 ? (
           <span className="status-icon__ring" aria-hidden>
@@ -191,6 +222,9 @@ export function IndexStatusChip(props: IndexStatusChipProps) {
               }}
             />
           </span>
+        ) : null}
+        {tone === 'embedding' ? (
+          <span className="status-icon__pulse" aria-hidden />
         ) : null}
       </button>
 
@@ -217,16 +251,26 @@ export function IndexStatusChip(props: IndexStatusChipProps) {
               ) : null}
               <button
                 type="button"
-                className="btn btn-primary index-status__reindex"
-                disabled={indexing || props.reindexing}
-                onClick={() => props.onReindex()}
+                className="btn btn-ghost"
+                disabled={busy}
+                title="Refresh only what changed"
+                onClick={() => props.onReindex({ force: false })}
               >
-                {indexing || props.reindexing ? 'Indexing…' : 'Reindex'}
+                {busy ? 'Working…' : 'Refresh'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary index-status__reindex"
+                disabled={busy}
+                title="Full rebuild of the workspace index"
+                onClick={() => props.onReindex({ force: true })}
+              >
+                Rebuild
               </button>
             </div>
           </div>
 
-          {indexing &&
+          {busy &&
           props.progressPercent != null &&
           props.progressPercent >= 0 ? (
             <div className="index-status__progress" aria-hidden>
@@ -241,7 +285,7 @@ export function IndexStatusChip(props: IndexStatusChipProps) {
                 {Math.round(props.progressPercent)}%
               </span>
             </div>
-          ) : indexing ? (
+          ) : busy ? (
             <div className="index-status__progress index-status__progress--indeterminate">
               <div className="index-status__progress-track">
                 <span />
@@ -255,9 +299,9 @@ export function IndexStatusChip(props: IndexStatusChipProps) {
           <div className="index-status__stream" ref={streamRef}>
             {stream.length === 0 ? (
               <div className="index-status__stream-empty">
-                {indexing
+                {busy
                   ? 'Waiting for index updates…'
-                  : 'Click Reindex to build or refresh this workspace index.'}
+                  : 'Refresh updates what changed. Rebuild forces a full reindex.'}
               </div>
             ) : (
               stream.map((line, i) => (

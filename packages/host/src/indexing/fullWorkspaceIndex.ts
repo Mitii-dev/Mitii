@@ -36,6 +36,7 @@ import {
 } from './indexLock.js';
 import {
   MAXIMUM_INDEX_FILES,
+  resolveIndexConcurrency,
   resolveIndexScanTimeoutMs,
   resolveMaximumIndexFiles,
 } from './indexLimits.js';
@@ -58,6 +59,8 @@ export type WorkspaceIndexProgressStage =
   | 'locking'
   | 'scanning'
   | 'indexing'
+  | 'lexical_ready'
+  | 'embedding'
   | 'graph'
   | 'complete'
   | 'cancelled'
@@ -69,6 +72,13 @@ export interface WorkspaceIndexProgress {
   fileCount?: number;
   /** 0–100 estimate for UI (stage-based; not a fake timer). */
   percent?: number;
+  /**
+   * True when FTS/symbols (+ graph) are published and the project is usable
+   * while embeddings may still be running.
+   */
+  lexicalReady?: boolean;
+  /** Embedding phase lifecycle for premium status UI. */
+  embeddingPhase?: 'idle' | 'pending' | 'running' | 'ready' | 'degraded' | 'unavailable';
 }
 
 /** Conservative stage weights — embedding/graph often dominate wall time. */
@@ -81,11 +91,15 @@ export function estimateIndexProgressPercent(
     case 'rebuilding_corrupt':
       return 5;
     case 'scanning':
-      return 12;
+      return 10;
     case 'indexing':
-      return 40;
+      return 32;
     case 'graph':
-      return 78;
+      return 48;
+    case 'lexical_ready':
+      return 55;
+    case 'embedding':
+      return 72;
     case 'complete':
       return 100;
     case 'cancelled':
@@ -108,6 +122,8 @@ function emitProgress(
     message: next.message,
     percent,
     ...(typeof next.fileCount === 'number' ? { fileCount: next.fileCount } : {}),
+    ...(next.lexicalReady ? { lexicalReady: true } : {}),
+    ...(next.embeddingPhase ? { embeddingPhase: next.embeddingPhase } : {}),
   });
   onProgress?.(next);
 }
@@ -143,11 +159,18 @@ export async function runFullWorkspaceIndex(options: {
   workspaceId: string;
   openDatabase: OpenHostSqliteDatabase;
   maximumFiles?: number;
+  /** File-processing concurrency (1–32). Defaults via resolveIndexConcurrency. */
+  concurrency?: number;
   semanticIndex?: SemanticIndexSettings;
   force?: boolean;
   filePaths?: readonly string[];
   abortSignal?: AbortSignal;
   onProgress?: (progress: WorkspaceIndexProgress) => void;
+  /**
+   * Fired after FTS/symbols (+ graph) are durable so hosts can publish a
+   * usable state while embeddings continue (degraded vectors until done).
+   */
+  onLexicalReady?: (partial: FullWorkspaceIndexResult) => void | Promise<void>;
 }): Promise<FullWorkspaceIndexResult> {
   mkdirSync(options.mitiiDir, { recursive: true });
   emitProgress(options.mitiiDir, options.onProgress, {
@@ -218,11 +241,13 @@ async function runFullWorkspaceIndexOnce(options: {
   workspaceId: string;
   openDatabase: OpenHostSqliteDatabase;
   maximumFiles?: number;
+  concurrency?: number;
   semanticIndex?: SemanticIndexSettings;
   force?: boolean;
   filePaths?: readonly string[];
   abortSignal?: AbortSignal;
   onProgress?: (progress: WorkspaceIndexProgress) => void;
+  onLexicalReady?: (partial: FullWorkspaceIndexResult) => void | Promise<void>;
 }): Promise<FullWorkspaceIndexResult> {
   if (options.abortSignal?.aborted) {
     throw new Error('Workspace indexing was cancelled.');
@@ -330,14 +355,19 @@ async function runFullWorkspaceIndexOnce(options: {
 
     const cleanupMissing =
       snapshot.status === 'complete' && !options.filePaths?.length;
+    const concurrency = resolveIndexConcurrency(options.concurrency);
+    const shouldSyncEmbeddings = indexingRuntime.synchronizeEmbeddings;
 
     emitProgress(options.mitiiDir, options.onProgress, {
       stage: 'indexing',
-      message: 'Indexing code and text',
+      message: `Indexing code and text (${concurrency} workers)`,
       fileCount: snapshot.statistics.files,
+      embeddingPhase: shouldSyncEmbeddings ? 'pending' : 'unavailable',
     });
 
-    const indexing = await indexingRuntime.pipeline.execute({
+    // Phase 1 — FTS/symbols only. Publish mid-run so the project is usable
+    // while embeddings continue (ARCHITECTURE §9–10 capability independence).
+    const lexicalIndexing = await indexingRuntime.pipeline.execute({
       workspace: options.workspaceId,
       snapshot,
       indexedAt: Date.now(),
@@ -347,12 +377,13 @@ async function runFullWorkspaceIndexOnce(options: {
         MAXIMUM_INDEX_FILES,
       ),
       cleanupMissing,
+      concurrency,
       ...(options.filePaths?.length ? { filePaths: options.filePaths } : {}),
-      synchronizeEmbeddings: indexingRuntime.synchronizeEmbeddings,
+      synchronizeEmbeddings: false,
       ...(options.abortSignal ? { abortSignal: options.abortSignal } : {}),
     });
 
-    if (indexing.status === 'cancelled' || options.abortSignal?.aborted) {
+    if (lexicalIndexing.status === 'cancelled' || options.abortSignal?.aborted) {
       emitProgress(options.mitiiDir, options.onProgress, {
         stage: 'cancelled',
         message: 'Indexing cancelled',
@@ -360,7 +391,7 @@ async function runFullWorkspaceIndexOnce(options: {
       });
       return {
         status: 'cancelled',
-        indexing,
+        indexing: lexicalIndexing,
         fileCount: snapshot.statistics.files,
         truncated: snapshot.status !== 'complete',
         databasePath,
@@ -379,17 +410,12 @@ async function runFullWorkspaceIndexOnce(options: {
       };
     }
 
-    const vectorIndex = resolveVectorIndexStatus({
-      semanticRuntime: resolvedSemantic,
-      indexing,
-      lanceDbPath,
-      runtimeMetadataPath,
-    });
-
     emitProgress(options.mitiiDir, options.onProgress, {
       stage: 'graph',
       message: 'Building repository graph',
       fileCount: snapshot.statistics.files,
+      lexicalReady: false,
+      embeddingPhase: shouldSyncEmbeddings ? 'pending' : 'unavailable',
     });
 
     const graphMap = await buildGraphMapArtifacts({
@@ -400,46 +426,207 @@ async function runFullWorkspaceIndexOnce(options: {
       fileSystem,
       previousMetadata,
       force: options.force === true || formatMismatch,
-      dirtyRootIds: dirtyRootIdsFromIndexing(indexing),
+      dirtyRootIds: dirtyRootIdsFromIndexing(lexicalIndexing),
     });
+
+    const degradedVector: FullWorkspaceIndexResult['vectorIndex'] =
+      shouldSyncEmbeddings
+        ? {
+            status: 'degraded',
+            profileId: resolvedSemantic.status === 'ready'
+              ? resolvedSemantic.provider.profile.id
+              : undefined,
+            reason: 'Embeddings syncing in background.',
+            lanceDbPath,
+            runtimeMetadataPath,
+          }
+        : resolveVectorIndexStatus({
+            semanticRuntime: resolvedSemantic,
+            indexing: lexicalIndexing,
+            lanceDbPath,
+            runtimeMetadataPath,
+          });
 
     writeIndexRuntimeMetadata(runtimeMetadataPath, {
       schemaVersion: 1,
       workspaceId: options.workspaceId,
       sqlitePath: databasePath,
       lanceDbPath,
-      ...(resolvedSemantic.status === 'ready' && vectorIndex.status === 'ready'
-        ? { embeddingProfile: resolvedSemantic.provider.profile }
-        : {}),
-      vectorRuntimeKey:
-        resolvedSemantic.status === 'ready' && vectorIndex.status === 'ready'
+      vectorRuntimeKey: shouldSyncEmbeddings
+        ? 'pending'
+        : resolvedSemantic.status === 'ready'
           ? resolvedSemantic.provider.profile.id
           : 'unavailable',
-      ...(vectorIndex.status !== 'ready'
-        ? {
-            lastEmbeddingError:
-              vectorIndex.reason ??
-              (resolvedSemantic.status === 'unavailable'
-                ? resolvedSemantic.reason
-                : 'Embedding synchronization did not complete.'),
-          }
-        : {}),
+      ...(shouldSyncEmbeddings
+        ? { lastEmbeddingError: 'Embeddings syncing in background.' }
+        : resolvedSemantic.status === 'unavailable'
+          ? { lastEmbeddingError: resolvedSemantic.reason }
+          : {}),
       snapshotFingerprint,
       fileCount: snapshot.statistics.files,
       truncated: snapshot.status !== 'complete',
-      lastIndexingResult: indexing,
+      lastIndexingResult: lexicalIndexing,
       textIndexSchemaVersion: REPOSITORY_INDEX_FORMAT.textIndexSchemaVersion,
       textPipelineVersion: REPOSITORY_INDEX_FORMAT.textPipelineVersion,
       graphBuilderVersion: REPOSITORY_INDEX_FORMAT.graphBuilderVersion,
       treeSitterRuntime: treeSitter.status,
       ...graphMap,
-      generatedAt: new Date(indexing.indexedAt).toISOString(),
+      generatedAt: new Date(lexicalIndexing.indexedAt).toISOString(),
     });
+
+    const lexicalPartial: FullWorkspaceIndexResult = {
+      status: 'indexed',
+      indexing: lexicalIndexing,
+      fileCount: snapshot.statistics.files,
+      truncated: snapshot.status !== 'complete',
+      databasePath,
+      vectorIndex: degradedVector,
+      treeSitter,
+      ...graphMap,
+    };
+
+    emitProgress(options.mitiiDir, options.onProgress, {
+      stage: 'lexical_ready',
+      message: shouldSyncEmbeddings
+        ? 'Search ready — embeddings running in background'
+        : 'Index ready',
+      fileCount: snapshot.statistics.files,
+      lexicalReady: true,
+      embeddingPhase: shouldSyncEmbeddings ? 'pending' : degradedVector.status,
+      percent: estimateIndexProgressPercent('lexical_ready'),
+    });
+
+    try {
+      await options.onLexicalReady?.(lexicalPartial);
+    } catch {
+      // Host publish failures must not abort embedding sync.
+    }
+
+    let indexing = lexicalIndexing;
+    let vectorIndex = degradedVector;
+
+    if (shouldSyncEmbeddings && !options.abortSignal?.aborted) {
+      emitProgress(options.mitiiDir, options.onProgress, {
+        stage: 'embedding',
+        message: 'Building embeddings',
+        fileCount: snapshot.statistics.files,
+        lexicalReady: true,
+        embeddingPhase: 'running',
+      });
+
+      const embeddingPass = await indexingRuntime.pipeline.execute({
+        workspace: options.workspaceId,
+        snapshot,
+        indexedAt: Date.now(),
+        maximumFiles,
+        maximumReportedFileResults: Math.min(
+          maximumFiles,
+          MAXIMUM_INDEX_FILES,
+        ),
+        cleanupMissing: false,
+        concurrency,
+        finalizeOnly: true,
+        synchronizeEmbeddings: true,
+        ...(options.abortSignal ? { abortSignal: options.abortSignal } : {}),
+      });
+
+      if (
+        embeddingPass.status === 'cancelled' ||
+        options.abortSignal?.aborted
+      ) {
+        // Lexical indexes remain usable; vectors stay degraded.
+        writeIndexRuntimeMetadata(runtimeMetadataPath, {
+          schemaVersion: 1,
+          workspaceId: options.workspaceId,
+          sqlitePath: databasePath,
+          lanceDbPath,
+          vectorRuntimeKey: 'unavailable',
+          lastEmbeddingError: 'Embedding synchronization was cancelled.',
+          snapshotFingerprint,
+          fileCount: snapshot.statistics.files,
+          truncated: snapshot.status !== 'complete',
+          lastIndexingResult: lexicalIndexing,
+          textIndexSchemaVersion: REPOSITORY_INDEX_FORMAT.textIndexSchemaVersion,
+          textPipelineVersion: REPOSITORY_INDEX_FORMAT.textPipelineVersion,
+          graphBuilderVersion: REPOSITORY_INDEX_FORMAT.graphBuilderVersion,
+          treeSitterRuntime: treeSitter.status,
+          ...graphMap,
+          generatedAt: new Date(lexicalIndexing.indexedAt).toISOString(),
+        });
+        emitProgress(options.mitiiDir, options.onProgress, {
+          stage: 'complete',
+          message: 'Search ready (embeddings paused)',
+          fileCount: snapshot.statistics.files,
+          lexicalReady: true,
+          embeddingPhase: 'degraded',
+          percent: 100,
+        });
+        return {
+          ...lexicalPartial,
+          vectorIndex: {
+            ...degradedVector,
+            status: 'degraded',
+            reason: 'Embedding synchronization was cancelled.',
+          },
+        };
+      }
+
+      indexing = mergeLexicalAndEmbeddingResults(
+        lexicalIndexing,
+        embeddingPass,
+      );
+      vectorIndex = resolveVectorIndexStatus({
+        semanticRuntime: resolvedSemantic,
+        indexing,
+        lanceDbPath,
+        runtimeMetadataPath,
+      });
+
+      writeIndexRuntimeMetadata(runtimeMetadataPath, {
+        schemaVersion: 1,
+        workspaceId: options.workspaceId,
+        sqlitePath: databasePath,
+        lanceDbPath,
+        ...(resolvedSemantic.status === 'ready' && vectorIndex.status === 'ready'
+          ? { embeddingProfile: resolvedSemantic.provider.profile }
+          : {}),
+        vectorRuntimeKey:
+          resolvedSemantic.status === 'ready' && vectorIndex.status === 'ready'
+            ? resolvedSemantic.provider.profile.id
+            : 'unavailable',
+        ...(vectorIndex.status !== 'ready'
+          ? {
+              lastEmbeddingError:
+                vectorIndex.reason ??
+                (resolvedSemantic.status === 'unavailable'
+                  ? resolvedSemantic.reason
+                  : 'Embedding synchronization did not complete.'),
+            }
+          : {}),
+        snapshotFingerprint,
+        fileCount: snapshot.statistics.files,
+        truncated: snapshot.status !== 'complete',
+        lastIndexingResult: indexing,
+        textIndexSchemaVersion: REPOSITORY_INDEX_FORMAT.textIndexSchemaVersion,
+        textPipelineVersion: REPOSITORY_INDEX_FORMAT.textPipelineVersion,
+        graphBuilderVersion: REPOSITORY_INDEX_FORMAT.graphBuilderVersion,
+        treeSitterRuntime: treeSitter.status,
+        ...graphMap,
+        generatedAt: new Date(indexing.indexedAt).toISOString(),
+      });
+    }
 
     emitProgress(options.mitiiDir, options.onProgress, {
       stage: 'complete',
-      message: 'Index updated',
+      message:
+        vectorIndex.status === 'ready'
+          ? 'Index updated'
+          : vectorIndex.status === 'degraded'
+            ? 'Index updated (embeddings degraded)'
+            : 'Index updated',
       fileCount: snapshot.statistics.files,
+      lexicalReady: true,
+      embeddingPhase: vectorIndex.status,
     });
 
     return {
@@ -696,6 +883,71 @@ function vectorIndexFromMetadata(input: {
   return {
     status: 'unavailable',
     reason: 'Semantic index is disabled or not configured.',
+  };
+}
+
+function mergeLexicalAndEmbeddingResults(
+  lexical: WorkspaceIndexingPipelineResult,
+  embedding: WorkspaceIndexingPipelineResult,
+): WorkspaceIndexingPipelineResult {
+  const embeddingByRoot = new Map(
+    embedding.rootResults.map((root) => [root.rootId, root]),
+  );
+
+  const rootResults = lexical.rootResults.map((root) => {
+    const emb = embeddingByRoot.get(root.rootId);
+    if (!emb) return root;
+
+    const embeddingWarnings = emb.warnings.filter(
+      (warning) => warning.stage === 'embedding',
+    );
+    const structuralPartial =
+      root.status === 'partial' ||
+      emb.status === 'partial' ||
+      emb.embeddingStatus === 'partial';
+
+    return {
+      ...root,
+      status:
+        emb.status === 'cancelled' || root.status === 'cancelled'
+          ? ('cancelled' as const)
+          : structuralPartial
+            ? ('partial' as const)
+            : root.status === 'skipped' && emb.status === 'complete'
+              ? ('complete' as const)
+              : root.status,
+      ...(emb.embeddingStatus
+        ? { embeddingStatus: emb.embeddingStatus }
+        : {}),
+      ...(emb.embeddingProfileId
+        ? { embeddingProfileId: emb.embeddingProfileId }
+        : {}),
+      ...(emb.initialTextRevision !== undefined
+        ? { initialTextRevision: emb.initialTextRevision }
+        : {}),
+      ...(emb.finalTextRevision !== undefined
+        ? { finalTextRevision: emb.finalTextRevision }
+        : {}),
+      ...(emb.latestTextRevision !== undefined
+        ? { latestTextRevision: emb.latestTextRevision }
+        : {}),
+      embeddedChunks: emb.embeddedChunks,
+      vectorsDeleted: emb.vectorsDeleted,
+      warnings: [...root.warnings, ...embeddingWarnings],
+    };
+  });
+
+  return {
+    ...lexical,
+    rootResults,
+    warnings: [
+      ...lexical.warnings,
+      ...embedding.warnings.filter((warning) => warning.stage === 'embedding'),
+    ],
+    statistics: {
+      ...lexical.statistics,
+      embeddedChunks: embedding.statistics.embeddedChunks,
+    },
   };
 }
 
