@@ -345,7 +345,7 @@ export async function createHostDesktopClient(
     'semanticIndex.normalized',
   );
   const semanticIndex: SemanticIndexSettings = {
-    enabled: semanticEnabled !== false,
+    enabled: semanticEnabled === true,
     source: semanticSource,
     model: typeof semanticModel === 'string' ? semanticModel : '',
     dimensions:

@@ -1154,17 +1154,33 @@ export async function reindexWorkspace(options: {
 export async function pauseIndexing(options: {
   baseUrl: string;
   token?: string;
-}): Promise<{ ok: boolean; message?: string }> {
+}): Promise<{ paused: boolean; message: string }> {
   const res = await fetch(`${options.baseUrl}/v1/index/pause`, {
     method: 'POST',
-    headers: authHeaders(options.token),
+    headers: {
+      ...authHeaders(options.token),
+      'content-type': 'application/json',
+    },
     body: '{}',
   });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`index_pause_${res.status}:${text}`);
   }
-  return (await res.json()) as { ok: boolean; message?: string };
+  const body = (await res.json()) as {
+    paused?: boolean;
+    ok?: boolean;
+    message?: string;
+  };
+  const paused = body.paused === true || body.ok === true;
+  return {
+    paused,
+    message:
+      body.message ??
+      (paused
+        ? 'Pause requested — finishing the current file, then stopping.'
+        : 'No active index run to pause.'),
+  };
 }
 
 export async function openLatestSessionLog(options: {

@@ -44,12 +44,21 @@ export interface DesktopIndexStatus {
 let activeReindexAbort: AbortController | undefined;
 
 /** Abort the in-flight reindex, if any. */
-export function pauseWorkspaceIndex(): { paused: boolean } {
+export function pauseWorkspaceIndex(): {
+  paused: boolean;
+  message: string;
+} {
   if (!activeReindexAbort) {
-    return { paused: false };
+    return {
+      paused: false,
+      message: 'No active index run to pause.',
+    };
   }
   activeReindexAbort.abort();
-  return { paused: true };
+  return {
+    paused: true,
+    message: 'Pause requested — finishing the current file, then stopping.',
+  };
 }
 
 export function getIndexStatus(workspaceRoot: string): DesktopIndexStatus {

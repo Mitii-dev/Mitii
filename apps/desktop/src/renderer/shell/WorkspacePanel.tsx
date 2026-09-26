@@ -97,6 +97,8 @@ interface OpenTab {
   savedContent: string;
   truncated: boolean;
   mode: 'file' | 'diff';
+  /** True while the first fetch is in flight (skip FS reload races). */
+  loading?: boolean;
 }
 
 type ContextMenuState = {
@@ -318,7 +320,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     setError(null);
     setNote(null);
     const existing = tabs.find((t) => t.path === path && t.mode === 'file');
-    if (existing) {
+    if (existing && !existing.loading) {
       setActivePath(path);
       setSide('explorer');
       return;
@@ -334,6 +336,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
           savedContent: '',
           truncated: false,
           mode: 'file' as const,
+          loading: true,
         },
       ];
     });
@@ -352,6 +355,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
             savedContent: file.content,
             truncated: file.truncated,
             mode: 'file',
+            loading: false,
           },
         ];
       });
@@ -584,6 +588,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
       const targets = tabsRef.current.filter(
         (t) =>
           t.mode === 'file' &&
+          !t.loading &&
           t.content === t.savedContent &&
           affected(t.path),
       );
@@ -1689,6 +1694,13 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
 
               {active.mode === 'diff' ? (
                 <DiffView content={active.content} />
+              ) : active.loading ? (
+                <div className="workspace-hero workspace-hero--opening">
+                  <p>Opening {fileName(active.path)}…</p>
+                  <p className="field-help">
+                    If indexing is running, this may take a moment.
+                  </p>
+                </div>
               ) : (
                 <CodeEditor
                   path={active.path}

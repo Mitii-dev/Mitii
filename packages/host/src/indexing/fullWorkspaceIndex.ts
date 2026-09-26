@@ -506,10 +506,17 @@ async function runFullWorkspaceIndexOnce(options: {
     let vectorIndex = degradedVector;
 
     if (shouldSyncEmbeddings && !options.abortSignal?.aborted) {
+      const fileCount = snapshot.statistics.files;
+      const filesPerSec =
+        options.semanticIndex?.source === 'ollama' ||
+        options.semanticIndex?.source === 'openai-compatible'
+          ? 12
+          : 45;
+      const etaMin = Math.max(1, Math.ceil(fileCount / filesPerSec / 60));
       emitProgress(options.mitiiDir, options.onProgress, {
         stage: 'embedding',
-        message: 'Building embeddings',
-        fileCount: snapshot.statistics.files,
+        message: `Building embeddings (~${etaMin} min for ${fileCount.toLocaleString()} files)`,
+        fileCount,
         lexicalReady: true,
         embeddingPhase: 'running',
       });

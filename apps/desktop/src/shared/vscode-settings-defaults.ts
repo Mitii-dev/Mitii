@@ -130,7 +130,7 @@ export const DEFAULT_DESKTOP_SETTINGS = {
     "temperature": 0.2
   },
   "semanticIndex": {
-    "enabled": true,
+    "enabled": false,
     "source": "bundled",
     "backend": "auto",
     "model": "",
@@ -943,8 +943,8 @@ export const SETTINGS_CATALOG: Record<string, SettingsCatalogEntry> = {
   },
   "mitii.semanticIndex.enabled": {
     "type": "boolean",
-    "description": "Enable semantic workspace indexing. Bundled MiniLM works with any chat provider. HTTP embedding sources fail closed to lexical indexing if the probe fails.",
-    "default": true
+    "description": "Enable optional semantic (vector) indexing after FTS/symbols. Off by default — lexical search stays available. Bundled MiniLM or an HTTP embedding API. Expects a separate embedding pass with a time estimate in the index status chip.",
+    "default": false
   },
   "mitii.semanticIndex.source": {
     "type": "string",

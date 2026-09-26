@@ -49,6 +49,18 @@ function toneLabel(tone: IndexChipTone): string {
   return 'Not indexed';
 }
 
+/** Rough wall-time for the embedding pass (MiniLM vs HTTP). */
+export function estimateEmbeddingMinutes(
+  fileCount: number,
+  source?: string,
+): number {
+  const n = Math.max(0, fileCount);
+  // Conservative files/sec on a laptop while sharing the engine thread.
+  const filesPerSec =
+    source === 'ollama' || source === 'openai-compatible' ? 12 : 45;
+  return Math.max(1, Math.ceil(n / filesPerSec / 60));
+}
+
 function IndexGlyph({ tone }: { tone: IndexChipTone }) {
   if (tone === 'indexing' || tone === 'embedding') {
     return (
@@ -132,6 +144,8 @@ interface IndexStatusChipProps {
   workspaceLabel?: string;
   reindexing?: boolean;
   embeddingBackground?: boolean;
+  /** Embedding source for ETA copy (bundled / ollama / openai-compatible). */
+  embeddingSource?: string;
   onReindex: (opts?: { force?: boolean }) => void;
   onPause?: () => void;
   onOpenSettings?: () => void;
@@ -183,9 +197,16 @@ export function IndexStatusChip(props: IndexStatusChipProps) {
         : 'No files yet',
     );
     if (props.index.lexicalReady || tone === 'embedding') {
-      meta.push('Search ready');
+      meta.push('FTS/symbols ready');
     }
-    if (tone === 'embedding') meta.push('Embeddings…');
+    if (tone === 'embedding') {
+      meta.push('Embeddings…');
+      const eta = estimateEmbeddingMinutes(
+        props.index.fileCount,
+        props.embeddingSource,
+      );
+      meta.push(`~${eta} min left`);
+    }
     if (props.index.truncated) meta.push('Truncated');
     if (props.index.embeddingError) meta.push('Embedding issue');
     if (props.index.lastIndexedAt) {

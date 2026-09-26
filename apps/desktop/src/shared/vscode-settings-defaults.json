@@ -125,7 +125,7 @@
     "temperature": 0.2
   },
   "semanticIndex": {
-    "enabled": true,
+    "enabled": false,
     "source": "bundled",
     "backend": "auto",
     "model": "",

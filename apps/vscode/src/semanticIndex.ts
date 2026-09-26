@@ -22,7 +22,7 @@ export async function resolveVsCodeSemanticIndexSettings(
   secrets: vscode.SecretStorage,
 ): Promise<SemanticIndexSettings> {
   const cfg = vs.workspace.getConfiguration('mitii');
-  const requested = cfg.get<boolean>('semanticIndex.enabled') ?? true;
+  const requested = cfg.get<boolean>('semanticIndex.enabled') ?? false;
   const baseUrl =
     cfg.get<string>('provider.baseUrl')?.trim() ||
     'http://localhost:11434/v1';
