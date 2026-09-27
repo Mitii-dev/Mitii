@@ -24,6 +24,11 @@ import {
   pullOllamaModel,
   resolveIndexConcurrency,
   testProviderConnection,
+  compileRecipeToStartInput,
+  isDatabaseUiMode,
+  mapUiModeToAgentMode,
+  mergeUserSafetyRules,
+  resolveDatabaseModeStart,
   type SemanticIndexSettings,
 } from '@mitii/host';
 import {
@@ -35,9 +40,6 @@ import {
   type MitiiResumeInput,
   type MitiiStartInput,
 } from '@mitii/sdk';
-import {
-  compileRecipeToStartInput,
-} from '@mitii/host';
 import {
   defaultNewRecipeDraft,
   defaultNewSkillDraft,
@@ -253,7 +255,7 @@ function buildStartInput(
   body: Record<string, unknown>,
   parsed: {
     prompt: string;
-    mode?: 'ask' | 'plan' | 'agent';
+    mode?: 'ask' | 'plan' | 'agent' | 'database';
     id?: string;
     model?: string;
     sessionId?: string;
@@ -271,8 +273,8 @@ function buildStartInput(
       : 'medium';
   const intensity = THOROUGHNESS_MAP[thoroughness];
   const pinnedPaths = asStringArray(body.pinnedPaths, 32);
-  const requiredSkillIds = asStringArray(body.requiredSkillIds, 16);
-  const requiredMcpServerIds = asStringArray(body.requiredMcpServerIds, 16);
+  let requiredSkillIds = asStringArray(body.requiredSkillIds, 16);
+  let requiredMcpServerIds = asStringArray(body.requiredMcpServerIds, 16);
   const conversation = parseConversation(body.conversation);
   const approvedPlanParse = planArtifactSchema.safeParse(body.approvedPlan);
   const approvedPlan = approvedPlanParse.success
@@ -298,10 +300,36 @@ function buildStartInput(
     : undefined;
 
   const extras = buildDesktopStartExtras(process.env);
+  const uiMode = parsed.mode ?? 'ask';
+  const agentMode = mapUiModeToAgentMode(uiMode);
+
+  let projectRules: MitiiStartInput['projectRules'];
+  let userSafetyRules: MitiiStartInput['userSafetyRules'];
+  if (isDatabaseUiMode(uiMode)) {
+    const db = resolveDatabaseModeStart({
+      workspaceRoot,
+      preferredServerIds: requiredMcpServerIds,
+    });
+    requiredSkillIds = [
+      ...new Set([
+        ...(requiredSkillIds ?? []),
+        ...db.startFields.requiredSkillIds,
+      ]),
+    ].slice(0, 3);
+    requiredMcpServerIds =
+      db.startFields.requiredMcpServerIds.length > 0
+        ? db.startFields.requiredMcpServerIds
+        : undefined;
+    projectRules = db.startFields.projectRules;
+    userSafetyRules = mergeUserSafetyRules(
+      undefined,
+      db.startFields.userSafetyRules,
+    );
+  }
 
   return {
     prompt: parsed.prompt,
-    mode: parsed.mode ?? 'ask',
+    mode: agentMode,
     workspaceRoot,
     approvalMode: policy.approvalMode,
     planApproval: policy.planApproval,
@@ -320,6 +348,8 @@ function buildStartInput(
     ...(pinnedPaths ? { pinnedPaths } : {}),
     ...(requiredSkillIds ? { requiredSkillIds } : {}),
     ...(requiredMcpServerIds ? { requiredMcpServerIds } : {}),
+    ...(projectRules ? { projectRules } : {}),
+    ...(userSafetyRules?.enabled ? { userSafetyRules } : {}),
     ...(conversation ? { conversation } : {}),
     ...(approvedPlan ? { approvedPlan } : {}),
     ...(approvedPlanStrategy ? { approvedPlanStrategy } : {}),
@@ -681,7 +711,8 @@ async function handlePrompt(
     return;
   }
   const id = createPromptId(parsed.id);
-  const mode = parsed.mode ?? 'ask';
+  const uiMode = parsed.mode ?? 'ask';
+  const streamMode = mapUiModeToAgentMode(uiMode);
   const record =
     body && typeof body === 'object' && !Array.isArray(body)
       ? (body as Record<string, unknown>)
@@ -690,7 +721,7 @@ async function handlePrompt(
     buildStartInput(record, parsed, workspaceRoot),
     workspaceRoot,
   );
-  await streamRun(id, mode, () => client.start(startInput), res, {
+  await streamRun(id, streamMode, () => client.start(startInput), res, {
     model: startInput.model,
     baseUrl: process.env.MITII_BASE_URL,
     workspaceRoot,

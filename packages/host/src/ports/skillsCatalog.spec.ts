@@ -366,6 +366,7 @@ Full body.
         'test-driven-development',
         'debugging-and-error-recovery',
         'api-db-runtime-debug',
+        'nl-sql-analyst',
         'debug-systematic',
         'code-review-and-quality',
         'fix-review-findings',

@@ -56,6 +56,25 @@ describe('mcpServerEffects', () => {
       }),
     ).toBe(true);
   });
+
+  it('marks sqlite/postgres/mongo readonly builtins as non-write', () => {
+    for (const id of [
+      'sqlite-readonly',
+      'postgres-readonly',
+      'mongo-readonly',
+    ]) {
+      expect(readOnlyMcpServer(id)).toBe(true);
+      expect(
+        mcpServerRequiresWorkspaceWrite({
+          name: id,
+          id,
+          transport: 'stdio',
+          command: 'node',
+          enabled: true,
+        }),
+      ).toBe(false);
+    }
+  });
 });
 
 describe('McpManager', () => {

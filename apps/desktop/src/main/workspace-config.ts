@@ -4,6 +4,10 @@
  * Full Desktop settings + profiles + connected repos live in
  * `<userData>/mitii-desktop.sqlite` (see desktop-store.ts).
  * These JSON files remain so CLI/ACP tools can still read provider/MCP config.
+ *
+ * MCP install list source of truth: `.mitii/mcp.json` (written by the MCP
+ * manager via `writeMcpSettingsToDisk`). SQLite `settings.mcp` is a mirror
+ * and must not wipe a non-empty on-disk install on boot / settings save.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -28,6 +32,61 @@ export function mcpSettingsPath(workspaceRoot: string): string {
 /** @deprecated Prefer SQLite desktop store; kept for one-shot JSON migration. */
 export function desktopSettingsPath(workspaceRoot: string): string {
   return join(workspaceRoot, '.mitii', 'desktop-settings.json');
+}
+
+export type McpCompatFile = {
+  enabled: boolean;
+  servers: unknown[];
+};
+
+/** Read `.mitii/mcp.json` when present. */
+export function readMcpCompatFromDisk(
+  workspaceRoot: string,
+): McpCompatFile | null {
+  const mcpPath = mcpSettingsPath(workspaceRoot);
+  if (!existsSync(mcpPath)) return null;
+  try {
+    const raw = JSON.parse(readFileSync(mcpPath, 'utf8')) as {
+      enabled?: boolean;
+      servers?: unknown[];
+    };
+    return {
+      enabled: Boolean(raw.enabled),
+      servers: Array.isArray(raw.servers) ? raw.servers : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * When SQLite/settings still has the empty default MCP list, adopt the
+ * on-disk install (and connection env) so boot/save do not treat MCP as
+ * uninstalled.
+ */
+export function reconcileMcpSettingsFromDisk(
+  workspaceRoot: string,
+  settings: DesktopSettings,
+): DesktopSettings {
+  const settingsServers = Array.isArray(settings.mcp?.servers)
+    ? settings.mcp.servers
+    : [];
+  if (settingsServers.length > 0) {
+    return settings;
+  }
+  const disk = readMcpCompatFromDisk(workspaceRoot);
+  if (!disk || disk.servers.length === 0) {
+    return settings;
+  }
+  return mergeDesktopSettings(
+    {
+      mcp: {
+        enabled: disk.enabled,
+        servers: disk.servers,
+      },
+    },
+    settings,
+  );
 }
 
 /**
@@ -85,34 +144,36 @@ export function loadWorkspaceSettings(
     }
   }
 
-  const mcpPath = mcpSettingsPath(workspaceRoot);
-  if (existsSync(mcpPath)) {
-    try {
-      const raw = JSON.parse(readFileSync(mcpPath, 'utf8')) as {
-        enabled?: boolean;
-        servers?: unknown[];
-      };
-      settings = mergeDesktopSettings(
-        {
-          mcp: {
-            enabled: Boolean(raw.enabled),
-            servers: Array.isArray(raw.servers) ? raw.servers : [],
-          },
+  const diskMcp = readMcpCompatFromDisk(workspaceRoot);
+  if (diskMcp) {
+    settings = mergeDesktopSettings(
+      {
+        mcp: {
+          enabled: diskMcp.enabled,
+          servers: diskMcp.servers,
         },
-        settings,
-      );
-    } catch {
-      // keep
-    }
+      },
+      settings,
+    );
   }
 
   return settings;
 }
 
-/** Write CLI/ACP-compatible config.json + mcp.json (no secrets). */
+export type WriteWorkspaceCompatOptions = {
+  /**
+   * When true, overwrite `.mitii/mcp.json` even if settings.mcp.servers is
+   * empty (used by clear-workspace-cache). Default: preserve a non-empty
+   * on-disk MCP install when settings still have the empty default.
+   */
+  replaceMcp?: boolean;
+};
+
+/** Write CLI/ACP-compatible config.json + mcp.json. */
 export function writeWorkspaceCompatFiles(
   workspaceRoot: string,
   settings: DesktopSettings,
+  options?: WriteWorkspaceCompatOptions,
 ): { configPath: string; mcpPath: string } {
   const mitiiDir = join(workspaceRoot, '.mitii');
   mkdirSync(mitiiDir, { recursive: true });
@@ -141,12 +202,30 @@ export function writeWorkspaceCompatFiles(
   writeFileSync(configPath, `${JSON.stringify(nextConfig, null, 2)}\n`, 'utf8');
 
   const mcpPath = mcpSettingsPath(workspaceRoot);
+  const fromSettings: McpCompatFile = {
+    enabled: Boolean(settings.mcp.enabled),
+    servers: Array.isArray(settings.mcp.servers) ? settings.mcp.servers : [],
+  };
+  const replaceMcp = options?.replaceMcp === true;
+  const disk = readMcpCompatFromDisk(workspaceRoot);
+
+  let toWrite: McpCompatFile = fromSettings;
+  if (!replaceMcp && fromSettings.servers.length === 0) {
+    if (disk && disk.servers.length > 0) {
+      // Keep MCP manager installs + connection env across boot / settings save.
+      toWrite = disk;
+    } else if (disk) {
+      // Disk already empty / disabled — leave file as-is.
+      toWrite = disk;
+    }
+  }
+
   writeFileSync(
     mcpPath,
     `${JSON.stringify(
       {
-        enabled: Boolean(settings.mcp.enabled),
-        servers: Array.isArray(settings.mcp.servers) ? settings.mcp.servers : [],
+        enabled: Boolean(toWrite.enabled),
+        servers: Array.isArray(toWrite.servers) ? toWrite.servers : [],
       },
       null,
       2,

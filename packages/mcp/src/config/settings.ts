@@ -121,15 +121,34 @@ export function parseMcp(raw: unknown, workspaceRoot?: string): McpSettings {
   return { enabled, servers };
 }
 
-/** Keep filesystem builtin rooted at the current workspace when installed. */
+/** Keep filesystem / first-party DB builtins pointed at resolvable launchers. */
 function refreshBuiltinArgs(
   server: McpServerConfig,
   workspaceRoot?: string,
 ): McpServerConfig {
-  if (server.id === 'filesystem' && workspaceRoot && isMcpBuiltinId(server.id)) {
+  const id = server.id ?? '';
+  if (!isMcpBuiltinId(id)) return server;
+
+  if (id === 'filesystem' && workspaceRoot) {
     const catalog = getBuiltinCatalogEntry('filesystem', workspaceRoot);
     return { ...server, args: catalog.args, command: catalog.command };
   }
+
+  if (
+    id === 'sqlite-readonly' ||
+    id === 'postgres-readonly' ||
+    id === 'mongo-readonly'
+  ) {
+    const catalog = getBuiltinCatalogEntry(id, workspaceRoot);
+    return {
+      ...server,
+      command: catalog.command,
+      args: catalog.args,
+      // Preserve user secrets / overrides; fill defaults from catalog.
+      env: { ...(catalog.env ?? {}), ...(server.env ?? {}) },
+    };
+  }
+
   return server;
 }
 

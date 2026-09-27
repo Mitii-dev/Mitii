@@ -468,6 +468,30 @@ export type {
 } from './modes/index.js';
 
 // ---------------------------------------------------------------------------
+// Database mode — UI "database" → Ask + MCP pins + nl-sql-analyst
+// ---------------------------------------------------------------------------
+export {
+  DATABASE_MODE_SLUG,
+  DATABASE_MCP_BUILTIN_IDS,
+  NL_SQL_ANALYST_SKILL_ID,
+  listInstalledDatabaseMcpServers,
+  listInstalledDatabaseMcpServerIds,
+  isMcpMasterEnabled,
+  buildDatabaseConnectGuidance,
+  resolveDatabaseModeStart,
+  isDatabaseUiMode,
+  mapUiModeToAgentMode,
+} from './database-mode/index.js';
+export type {
+  DatabaseMcpBuiltinId,
+  DatabaseModeConnectionStatus,
+  DatabaseMcpServerRef,
+  DatabaseModeStartFields,
+  DatabaseModeStartResult,
+  ResolveDatabaseModeStartOptions,
+} from './database-mode/index.js';
+
+// ---------------------------------------------------------------------------
 // Environment details — IDE session pulse → Prompt Construction environment
 // ---------------------------------------------------------------------------
 export {

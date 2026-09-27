@@ -39,7 +39,7 @@ export interface ParsedCliArgs {
   /** Unattended CI: `mitii run --auto`. */
   auto?: boolean;
   exportPath?: string;
-  mode?: AgentMode;
+  mode?: AgentMode | 'database';
   origin?: UserRequestOrigin;
   autonomyPreset?: MitiiAutonomyPreset;
   /** Path or id for `.mitii/agents/<id>.md`. */
@@ -100,7 +100,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   let autoClarify: string | undefined;
   let autoApproval: 'approved' | 'denied' | undefined;
   let exportPath: string | undefined;
-  let mode: AgentMode | undefined;
+  let mode: AgentMode | 'database' | undefined;
   let origin: UserRequestOrigin | undefined;
   let autonomyPreset: MitiiAutonomyPreset | undefined;
   let agent: string | undefined;
@@ -189,12 +189,17 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       if ('error' in taken) {
         return { command: 'error', errorMessage: taken.error, rest: [] };
       }
-      if (taken.value === 'ask' || taken.value === 'plan' || taken.value === 'agent') {
+      if (
+        taken.value === 'ask' ||
+        taken.value === 'plan' ||
+        taken.value === 'agent' ||
+        taken.value === 'database'
+      ) {
         mode = taken.value;
       } else {
         return {
           command: 'error',
-          errorMessage: `mitii: --mode must be ask, plan, or agent (got "${taken.value}")`,
+          errorMessage: `mitii: --mode must be ask, plan, agent, or database (got "${taken.value}")`,
           rest: [],
         };
       }

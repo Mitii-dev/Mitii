@@ -1,4 +1,30 @@
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
+
 import type { McpServerConfig } from '../contracts/types.js';
+
+/**
+ * Prefer a workspace-linked `@mitii/mcp-*-readonly` bin (monorepo / local),
+ * else fall back to `npx -y` for published installs.
+ */
+export function resolveReadonlyStdioLauncher(params: {
+  packageName: string;
+  binFile: string;
+}): { command: string; args: string[] } {
+  try {
+    const require = createRequire(import.meta.url);
+    const pkgJson = require.resolve(`${params.packageName}/package.json`);
+    return {
+      command: process.execPath,
+      args: [join(dirname(pkgJson), 'bin', params.binFile)],
+    };
+  } catch {
+    return {
+      command: 'npx',
+      args: ['-y', params.packageName],
+    };
+  }
+}
 
 /**
  * Built-in MCP server catalog (store).
@@ -17,6 +43,7 @@ export const MCP_BUILTIN_IDS = [
   'excalidraw',
   'sqlite-readonly',
   'postgres-readonly',
+  'mongo-readonly',
 ] as const;
 
 export type McpBuiltinId = (typeof MCP_BUILTIN_IDS)[number];
@@ -159,7 +186,7 @@ export const MCP_CATALOG_META: Record<McpBuiltinId, McpCatalogMeta> = {
     id: 'postgres-readonly',
     category: 'database',
     description:
-      'Restricted read-only Postgres probes via postgres-mcp (--access-mode=restricted).',
+      'Read-only Postgres probes (list_tables, describe_table, SELECT query) via @mitii/mcp-postgres-readonly.',
     secrets: [
       {
         key: 'DATABASE_URI',
@@ -168,6 +195,22 @@ export const MCP_CATALOG_META: Record<McpBuiltinId, McpCatalogMeta> = {
         required: true,
         placeholder: 'postgresql://user:pass@localhost:5432/mydb',
         hint: 'Same database the API process uses. Prefer a read-only DB role when possible.',
+      },
+    ],
+  },
+  'mongo-readonly': {
+    id: 'mongo-readonly',
+    category: 'database',
+    description:
+      'Read-only MongoDB probes (list_collections, describe_collection, query, aggregate, count) via @mitii/mcp-mongo-readonly.',
+    secrets: [
+      {
+        key: 'MCP_MONGODB_URI',
+        label: 'MongoDB connection URI',
+        secret: true,
+        required: true,
+        placeholder: 'mongodb://user:pass@localhost:27017/mydb',
+        hint: 'mongodb:// or mongodb+srv:// URI. Prefer a read-only DB user. Atlas supported.',
       },
     ],
   },
@@ -270,8 +313,10 @@ export function createBuiltinMcpCatalog(
       id: 'sqlite-readonly',
       name: 'SQLite (read-only)',
       transport: 'stdio',
-      command: 'npx',
-      args: ['-y', '@mitii/mcp-sqlite-readonly'],
+      ...resolveReadonlyStdioLauncher({
+        packageName: '@mitii/mcp-sqlite-readonly',
+        binFile: 'mitii-mcp-sqlite-readonly.js',
+      }),
       builtin: true,
       enabled: false,
     },
@@ -279,8 +324,21 @@ export function createBuiltinMcpCatalog(
       id: 'postgres-readonly',
       name: 'Postgres (read-only)',
       transport: 'stdio',
-      command: 'uvx',
-      args: ['postgres-mcp', '--access-mode=restricted'],
+      ...resolveReadonlyStdioLauncher({
+        packageName: '@mitii/mcp-postgres-readonly',
+        binFile: 'mitii-mcp-postgres-readonly.js',
+      }),
+      builtin: true,
+      enabled: false,
+    },
+    {
+      id: 'mongo-readonly',
+      name: 'MongoDB (read-only)',
+      transport: 'stdio',
+      ...resolveReadonlyStdioLauncher({
+        packageName: '@mitii/mcp-mongo-readonly',
+        binFile: 'mitii-mcp-mongo-readonly.js',
+      }),
       builtin: true,
       enabled: false,
     },

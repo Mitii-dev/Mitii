@@ -10,7 +10,7 @@ import type {
 } from "../contracts";
 import { resolvePlanGate } from "./ResolvePlanGate";
 import { resolvePlanningDepth } from "./ResolvePlanningDepth";
-import { resolveRoute } from "./ResolveRoute";
+import { resolveRoute, type RouteResolution } from "./ResolveRoute";
 
 export interface RoutePlanResult {
   route: ExecutionRoute;
@@ -22,6 +22,31 @@ export interface RoutePlanResult {
 
 function isUnattendedOrigin(origin: UserRequestOrigin | undefined): boolean {
   return origin === "automation" || origin === "api";
+}
+
+/**
+ * Explicit MCP attach (Database mode / `@mcp:` pins) means the user expects
+ * live tools this turn. Do not collapse to tool-less direct_answer.
+ */
+function groundRouteForMcpAttach(
+  routeResult: RouteResolution,
+  requiredMcpServerIds: readonly string[] | undefined,
+): RouteResolution {
+  if (!requiredMcpServerIds || requiredMcpServerIds.length === 0) {
+    return routeResult;
+  }
+  if (routeResult.route !== "direct_answer") {
+    return routeResult;
+  }
+  return {
+    route: "repository_answer",
+    runDisposition: "continue",
+    reasonCodes: [
+      ...routeResult.reasonCodes,
+      "mcp_attach_required",
+      "repository_grounded_answer",
+    ],
+  };
 }
 
 /**
@@ -38,6 +63,11 @@ export function planRoute(params: {
   origin?: UserRequestOrigin;
   /** Prefer high-confidence understanding over looksLike* heuristics. */
   policyFactsFirst?: boolean;
+  /**
+   * When non-empty, upgrade tool-less `direct_answer` to `repository_answer`
+   * so attached MCP tools stay on a read grant.
+   */
+  requiredMcpServerIds?: readonly string[];
 }): RoutePlanResult {
   const unattended = isUnattendedOrigin(params.origin);
   let routeResult = resolveRoute({
@@ -62,6 +92,7 @@ export function planRoute(params: {
     });
     originReasonCodes.push("automation_clarify_suppressed");
   }
+  routeResult = groundRouteForMcpAttach(routeResult, params.requiredMcpServerIds);
   const depthResult = resolvePlanningDepth({
     mode: params.mode,
     route: routeResult.route,

@@ -44,7 +44,10 @@ import {
   detectSandboxBackend,
   getProviderPreset,
   inferHostProviderType,
+  isDatabaseUiMode,
   isHostProviderType,
+  mapUiModeToAgentMode,
+  resolveDatabaseModeStart,
   resolveProviderApiKey,
   resolveSandboxPolicy,
 } from '@mitii/host';
@@ -57,7 +60,8 @@ interface AcpRequest {
   op: string;
   id?: string;
   prompt?: string;
-  mode?: AgentMode;
+  /** Engine mode, or UI overlay `database` (maps to ask + DB MCP pins). */
+  mode?: AgentMode | 'database';
 }
 
 interface MitiiAcpConfig {
@@ -272,7 +276,8 @@ function parseLine(line: string): AcpRequest | { error: string } {
     mode:
       record.mode === 'ask' ||
       record.mode === 'plan' ||
-      record.mode === 'agent'
+      record.mode === 'agent' ||
+      record.mode === 'database'
         ? record.mode
         : undefined,
   };
@@ -293,10 +298,28 @@ async function handlePrompt(
     return;
   }
   const mode = req.mode ?? 'ask';
+  const workspaceRoot = process.cwd();
+  const databaseOverlay = isDatabaseUiMode(mode)
+    ? resolveDatabaseModeStart({ workspaceRoot })
+    : null;
+  const agentMode = mapUiModeToAgentMode(mode);
   const run = client.start({
     prompt,
-    mode,
-    workspaceRoot: process.cwd(),
+    mode: agentMode,
+    workspaceRoot,
+    ...(databaseOverlay
+      ? {
+          requiredSkillIds: databaseOverlay.startFields.requiredSkillIds,
+          requiredMcpServerIds:
+            databaseOverlay.startFields.requiredMcpServerIds,
+          projectRules: databaseOverlay.startFields.projectRules,
+          ...(databaseOverlay.startFields.userSafetyRules.enabled
+            ? {
+                userSafetyRules: databaseOverlay.startFields.userSafetyRules,
+              }
+            : {}),
+        }
+      : {}),
   });
   for await (const event of run.events) {
     writeLine({ op: 'event', id, event });

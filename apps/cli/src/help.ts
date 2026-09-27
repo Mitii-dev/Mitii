@@ -104,7 +104,7 @@ Options:
   --approve / --deny Non-interactive approval: resume mutation/plan gates;
                      --approve also skips plan-gate on start (headless)
   --out <file>       Session export path (export-session)
-  --mode <mode>      ask | plan | agent
+  --mode <mode>      ask | plan | agent | database
   --origin <origin>  user | automation | api
   --autonomy <preset> readonly | propose | apply | apply_and_pr
   --skill <id>       Force-attach a skill for this run (repeat up to 3 times)

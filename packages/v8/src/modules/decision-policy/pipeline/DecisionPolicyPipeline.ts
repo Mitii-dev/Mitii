@@ -52,6 +52,7 @@ export class DecisionPolicyPipeline {
       windowPolicy: parsed.windowPolicy,
       origin: parsed.envelope.origin,
       policyFactsFirst: parsed.policyFactsFirst === true,
+      requiredMcpServerIds: parsed.requiredMcpServerIds,
     });
     const grantCompiled = compileGrant({
       mode,
@@ -61,6 +62,7 @@ export class DecisionPolicyPipeline {
       approvalMode: parsed.approvalMode,
       allowWebSearch: parsed.hostCapabilities?.webSearch === true,
       windowPolicy: parsed.windowPolicy,
+      requiredMcpServerIds: parsed.requiredMcpServerIds,
     });
 
     // Injection must never broaden the grant. Clamp write away if injection

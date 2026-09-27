@@ -138,7 +138,13 @@ export function createInput(
     "mode" | "message" | "understanding" | "repositoryState"
   > &
     Partial<
-      Pick<DecisionPolicyInput, "approvalMode" | "planApproval" | "windowPolicy">
+      Pick<
+        DecisionPolicyInput,
+        | "approvalMode"
+        | "planApproval"
+        | "windowPolicy"
+        | "requiredMcpServerIds"
+      >
     >,
 ): DecisionPolicyInput {
   return {
@@ -149,6 +155,7 @@ export function createInput(
     approvalMode: fixture.approvalMode,
     planApproval: fixture.planApproval,
     windowPolicy: fixture.windowPolicy,
+    requiredMcpServerIds: fixture.requiredMcpServerIds,
   };
 }
 

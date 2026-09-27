@@ -1,0 +1,56 @@
+{
+  "name": "@mitii/mcp-postgres-readonly",
+  "version": "2.9.100",
+  "description": "Mitii MCP stdio server: read-only Postgres list_tables, describe_table, and SELECT query probes.",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "mitii-mcp-postgres-readonly": "./bin/mitii-mcp-postgres-readonly.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mitii-dev/Mitii.git",
+    "directory": "packages/mcp/postgres-readonly"
+  },
+  "homepage": "https://github.com/Mitii-dev/Mitii/tree/main/packages/mcp/postgres-readonly",
+  "bugs": {
+    "url": "https://github.com/Mitii-dev/Mitii/issues"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json && node -e \"require('node:fs').accessSync('dist/index.js')\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node bin/mitii-mcp-postgres-readonly.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/pg": "^8.15.4",
+    "typescript": "^5.5.2",
+    "vitest": "^3.2.7"
+  }
+}

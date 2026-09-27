@@ -2,19 +2,41 @@
 
 ```text
 packages/mcp/
-|-- src/                 # @mitii/mcp — MCP **client** (Mitii calls servers)
-|-- web/                 # @mitii/mcp-web — MCP **server** (others call Mitii)
-|   `-- src/memory/      # optional memory_search (shareable facts only)
-|-- README.md            # this file (umbrella)
+|-- src/                      # @mitii/mcp — MCP **client** core (Mitii calls servers)
+|   |-- contracts/
+|   |-- config/               # settings + builtins catalog
+|   |-- transports/
+|   |-- manager/
+|   `-- index.ts
+|-- web/                      # @mitii/mcp-web — MCP **server** (others call Mitii)
+|-- sqlite-readonly/          # @mitii/mcp-sqlite-readonly — first-party DB server
+|-- postgres-readonly/        # @mitii/mcp-postgres-readonly — first-party DB server
+|-- mongo-readonly/           # @mitii/mcp-mongo-readonly — first-party DB server
+|-- README.md                 # this file (umbrella)
 `-- ARCHITECTURE.md
 ```
 
 | Package | Path | Role |
 |---|---|---|
-| `@mitii/mcp` | `packages/mcp` | Client: `.mitii/mcp.json`, transports, `mcp__*` registry |
+| `@mitii/mcp` | `packages/mcp` (`src/`) | Client core: `.mitii/mcp.json`, transports, `mcp__*` registry |
 | `@mitii/mcp-web` | `packages/mcp/web` | Server: `web_search`, `fetch_url`, optional `memory_search` |
+| `@mitii/mcp-sqlite-readonly` | `packages/mcp/sqlite-readonly` | Read-only SQLite MCP |
+| `@mitii/mcp-postgres-readonly` | `packages/mcp/postgres-readonly` | Read-only Postgres MCP |
+| `@mitii/mcp-mongo-readonly` | `packages/mcp/mongo-readonly` | Read-only MongoDB MCP |
 
 App hosts may keep **thin adapters** (e.g. `apps/vscode/src/mcp/`) that only wire VS Code UI → `@mitii/mcp`. Product logic stays under `packages/mcp`.
+
+## Database catalog (Database mode)
+
+Install from **Settings → Integrations → MCP** (category **Database**):
+
+| Catalog id | Package | Env |
+|---|---|---|
+| `sqlite-readonly` | `@mitii/mcp-sqlite-readonly` | `SQLITE_PATH` |
+| `postgres-readonly` | `@mitii/mcp-postgres-readonly` | `DATABASE_URI` |
+| `mongo-readonly` | `@mitii/mcp-mongo-readonly` | `MCP_MONGODB_URI` |
+
+All three are **first-party**, disabled until installed, and read-only.
 
 ## Per-turn MCP attach
 
@@ -23,31 +45,15 @@ Users can pin / `@mcp:excalidraw` like skills. Mentions are parsed in
 `filterToolDefinitions`. This client package still registers all enabled
 servers; V8 scopes which `mcp__*` tools the model sees for that run.
 
-## MCP memory (`memory_search`)
-
-Lives at **`packages/mcp/web/src/memory/`** — not in the V8 memory module and not in the client.
-
-| Env | Purpose |
-|---|---|
-| `MITII_MCP_WEB_MEMORY=1` | Opt-in: list + handle `memory_search` |
-| `MITII_WORKSPACE_ROOT` | Workspace bound for `facts.json` |
-| `MITII_MEMORY_FACTS_PATH` | Optional override (still must stay under workspace) |
-
-Disabled by default. Soft-parses `.mitii/memory/facts.json`; **private** facts never returned. No `@mitii/v8` dependency.
-
-```bash
-pnpm --filter @mitii/mcp-web test
-# or
-cd packages/mcp/web && pnpm test
-```
-
 ## Scripts
 
 ```bash
 pnpm --filter @mitii/mcp build
 pnpm --filter @mitii/mcp-web build
+pnpm --filter @mitii/mcp-sqlite-readonly build
+pnpm --filter @mitii/mcp-postgres-readonly build
+pnpm --filter @mitii/mcp-mongo-readonly build
 pnpm --filter @mitii/mcp test
-pnpm --filter @mitii/mcp-web test
 ```
 
-See [web/README.md](./web/README.md) and [web/src/memory/README.md](./web/src/memory/README.md).
+See [ARCHITECTURE.md](./ARCHITECTURE.md), [web/README.md](./web/README.md).
