@@ -365,12 +365,50 @@ Full body.
         'incremental-implementation',
         'test-driven-development',
         'debugging-and-error-recovery',
+        'api-db-runtime-debug',
+        'debug-systematic',
         'code-review-and-quality',
         'fix-review-findings',
         'security-and-hardening',
         'git-workflow-and-versioning',
       ]),
     );
+
+    const apiDb = skills.find((skill) => skill.id === 'api-db-runtime-debug');
+    expect(apiDb?.priority).toBe(195);
+    expect(apiDb?.conflictGroup).toBe('debug');
+  });
+
+  it('prefers api-db-runtime-debug over debug-systematic for empty API data', async () => {
+    const pipeline = new SkillsPipeline({
+      catalog: createFileSystemSkillsCatalog({
+        workspaceRoot: root,
+      }),
+    });
+
+    const result = await pipeline.select({
+      schemaVersion: SKILLS_SCHEMA_VERSION,
+      query:
+        'GET /v2/api/users returns no users no matter what I do — check database vs adapter vs DTO',
+      mode: 'agent',
+      route: 'diagnose',
+      evidence: {
+        primaryIntent: 'bugfix',
+        secondaryIntents: ['diagnose'],
+      },
+    });
+
+    expect(result.status).toBe('selected');
+    const debugIds = result.instructions
+      .map((skill) => skill.id)
+      .filter((id) =>
+        ['api-db-runtime-debug', 'debug-systematic', 'debugging-and-error-recovery'].includes(
+          id,
+        ),
+      );
+    expect(debugIds).toContain('api-db-runtime-debug');
+    expect(debugIds).not.toContain('debug-systematic');
+    expect(debugIds).not.toContain('debugging-and-error-recovery');
   });
 
   it('selects the bundled planning skill for plan requests', async () => {

@@ -77,6 +77,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   vcs: 'Git / VCS',
   search: 'Search',
   diagrams: 'Diagrams',
+  database: 'Database',
 };
 
 export function McpManager(props: Props) {
