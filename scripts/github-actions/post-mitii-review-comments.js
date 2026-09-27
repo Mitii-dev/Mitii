@@ -1,8 +1,7 @@
 /**
  * Post Mitii review findings as GitHub PR review comments.
  *
- * Inspired by Open Code Review's poster strategy (batching, sticky summary,
- * IoU dedupe) but rewritten for Mitii ReviewResult JSON.
+ * Supports batching, sticky summary, and IoU dedupe for Mitii ReviewResult JSON.
  *
  * Usage (actions/github-script):
  *   const { postMitiiReviewComments } = require('./scripts/github-actions/post-mitii-review-comments.js');

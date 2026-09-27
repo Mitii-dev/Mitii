@@ -1,8 +1,8 @@
 import type { ModeProfile } from "./modeProfileSchema.js";
 
 /**
- * Built-in mode overlays inspired by Roo Code modes, adapted to Mitii
- * ask/plan/agent + Decision Policy. Hosts MAY override via `.mitii/modes.json`.
+ * Built-in mode overlays for Mitii ask/plan/agent + Decision Policy.
+ * Hosts MAY override via `.mitii/modes.json`.
  */
 export const BUILTIN_MODE_PROFILES: readonly ModeProfile[] = [
   {

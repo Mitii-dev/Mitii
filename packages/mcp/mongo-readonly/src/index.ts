@@ -5,7 +5,7 @@
  * - MCP_MONGODB_URI or MONGODB_URI (required) — mongodb:// or mongodb+srv://
  * - MONGO_MAX_DOCS (optional, default 50) — cap on query/aggregate docs
  *
- * Inspired by mcp-mongo-server read-only mode (list / schema / query / aggregate / count).
+ * Tools: list, schema, query, aggregate, count.
  * Writes and dangerous aggregation stages are always rejected.
  */
 

@@ -27,4 +27,4 @@ MCP_MONGODB_URI=mongodb://localhost:27017/mydb node bin/mitii-mcp-mongo-readonly
 
 Catalog id: `mongo-readonly` → `npx -y @mitii/mcp-mongo-readonly`.
 
-Inspired by [mcp-mongo-server](https://github.com/kiliczsh/mcp-mongo-server) read-only mode; Mitii ships its own AGPL server so Database mode does not depend on an external npx package.
+Mitii ships its own AGPL read-only MongoDB MCP server so Database mode does not depend on an external npx package.
