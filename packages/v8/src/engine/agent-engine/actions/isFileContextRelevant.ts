@@ -20,9 +20,8 @@ export interface FileContextRelevanceOptions {
 
 /**
  * Whether a workspace-relative path is relevant to the user message.
- * Adapted from legacy CE `contextRelevance.isFileContextRelevant` — uses
- * path/basename/stem overlap and shared identifier expansion (no parallel
- * file-mention regex).
+ * Uses path/basename/stem overlap and shared identifier expansion
+ * (no parallel file-mention regex).
  */
 export function isFileContextRelevant(
   userMessage: string,
