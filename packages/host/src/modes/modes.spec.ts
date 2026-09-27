@@ -21,11 +21,31 @@ describe("mode profiles", () => {
     }
   });
 
-  it("ships builtin architect/code/ask/debug overlays", () => {
+  it("ships builtin architect/code/ask/debug/database overlays", () => {
     const slugs = BUILTIN_MODE_PROFILES.map((profile) => profile.slug);
     expect(slugs).toEqual(
-      expect.arrayContaining(["architect", "code", "ask", "debug"]),
+      expect.arrayContaining([
+        "architect",
+        "code",
+        "ask",
+        "debug",
+        "database",
+      ]),
     );
+  });
+
+  it("database mode is ask-readonly with mcp and without edit", () => {
+    const database = BUILTIN_MODE_PROFILES.find(
+      (profile) => profile.slug === "database",
+    )!;
+    expect(database.agentMode).toBe("ask");
+    expect(database.toolGroups).toEqual(
+      expect.arrayContaining(["read", "mcp", "command"]),
+    );
+    expect(database.toolGroups).not.toContain("edit");
+    const compiled = compileModeProfile(database);
+    expect(compiled.agentMode).toBe("ask");
+    expect(compiled.userSafetyRules.denyTools?.length ?? 0).toBeGreaterThan(0);
   });
 
   it("debug mode instructs API→DB evidence ladder", () => {

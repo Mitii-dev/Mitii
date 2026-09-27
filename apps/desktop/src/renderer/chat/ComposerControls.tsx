@@ -23,6 +23,7 @@ const MODE_COLORS = {
   ask: '#22c55e',
   plan: '#f59e0b',
   agent: '#ef4444',
+  database: '#06b6d4',
 } as const;
 
 const MODES: ComposerOption<DesktopAgentMode>[] = [
@@ -43,6 +44,12 @@ const MODES: ComposerOption<DesktopAgentMode>[] = [
     label: 'Agent',
     description: 'Implement changes with controlled execution',
     color: MODE_COLORS.agent,
+  },
+  {
+    id: 'database',
+    label: 'Database',
+    description: 'Query connected DBs via MCP — read-only',
+    color: MODE_COLORS.database,
   },
 ];
 

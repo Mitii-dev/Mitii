@@ -20,7 +20,7 @@ export function normalizeApproval(value: string): ApprovalUiMode {
  * `safe`) and Full access appears to reset after reload.
  */
 export function approvalModeUiPatch(params: {
-  mode: 'ask' | 'plan' | 'agent' | 'review';
+  mode: 'ask' | 'plan' | 'agent' | 'review' | 'database';
   approvalMode: string;
 }): {
   approvalMode: ApprovalUiMode;

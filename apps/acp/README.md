@@ -29,7 +29,7 @@ One JSON object per line on stdin / stdout.
 |---|---|
 | → | `{ "op": "ping", "id"?: string }` |
 | ← | `{ "op": "pong", "id"?: string }` |
-| → | `{ "op": "prompt", "id", "prompt", "mode"?: "ask"\|"plan"\|"agent" }` |
+| → | `{ "op": "prompt", "id", "prompt", "mode"?: "ask"\|"plan"\|"agent"\|"database" }` |
 | ← | `{ "op": "event", "id", "event" }` (per RunEvent) |
 | ← | `{ "op": "result", "id", "result" }` |
 

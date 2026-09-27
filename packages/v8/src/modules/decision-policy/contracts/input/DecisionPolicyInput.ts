@@ -85,6 +85,12 @@ export const decisionPolicyInputSchema = z
      * heuristics except documented safety overrides.
      */
     policyFactsFirst: z.boolean().optional(),
+    /**
+     * Host-attached MCP server ids for this turn (`@mcp:` pins, Database mode,
+     * etc.). When non-empty, Decision Policy avoids tool-less `direct_answer`
+     * so attached MCP tools remain grantable.
+     */
+    requiredMcpServerIds: z.array(z.string().min(1).max(64)).max(5).optional(),
   })
   .strict();
 

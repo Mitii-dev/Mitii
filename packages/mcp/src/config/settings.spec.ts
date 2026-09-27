@@ -29,4 +29,27 @@ describe('@mitii/mcp', () => {
     expect(settings.servers[0]?.transport).toBe('sse');
     expect(settings.servers[0]?.url).toBe('https://example.com/sse');
   });
+
+  it('refreshes mongo-readonly npx launcher to a resolvable local bin when linked', () => {
+    const settings = parseMcp({
+      enabled: true,
+      servers: [
+        {
+          id: 'mongo-readonly',
+          name: 'MongoDB (read-only)',
+          transport: 'stdio',
+          command: 'npx',
+          args: ['-y', '@mitii/mcp-mongo-readonly'],
+          enabled: true,
+          builtin: true,
+          env: { MCP_MONGODB_URI: 'mongodb://localhost:27017/test' },
+        },
+      ],
+    });
+    const server = settings.servers[0]!;
+    expect(server.env?.MCP_MONGODB_URI).toBe('mongodb://localhost:27017/test');
+    // Prefer workspace node+bin; fall back stays npx.
+    const joined = `${server.command} ${(server.args ?? []).join(' ')}`;
+    expect(joined).toMatch(/mcp-mongo-readonly/);
+  });
 });

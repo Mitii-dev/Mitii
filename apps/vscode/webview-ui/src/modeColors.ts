@@ -6,6 +6,7 @@ export const MODE_COLORS: Record<AgentUiMode, string> = {
   plan: '#f59e0b',
   agent: '#ef4444',
   review: '#38bdf8',
+  database: '#06b6d4',
 };
 
 export function modeColor(mode: AgentUiMode): string {

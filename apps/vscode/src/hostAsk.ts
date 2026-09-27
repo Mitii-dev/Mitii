@@ -13,11 +13,14 @@ import {
 import {
   compileModeProfile,
   formatEnvironmentDetailsBlock,
+  isDatabaseUiMode,
   loadModeProfiles,
   loadProjectRules,
   loadUserSafetyRules,
+  mapUiModeToAgentMode,
   mergeUserSafetyRules,
   observeRunToolEvent,
+  resolveDatabaseModeStart,
   resolveMaximumIndexFiles,
   withDefaultProtectedPaths,
   type MemoryCaptureContext,
@@ -167,7 +170,7 @@ export async function runAskInOutputChannel(options: {
   prompt: string;
   workspaceRoot?: string;
   channel: vscode.OutputChannel;
-  mode?: 'ask' | 'plan' | 'agent';
+  mode?: 'ask' | 'plan' | 'agent' | 'database';
   depth?: string;
   effort?: string;
   approvalMode?: string;
@@ -450,12 +453,22 @@ export async function runAskInOutputChannel(options: {
     const modeProfiles = workspaceRoot
       ? loadModeProfiles(workspaceRoot)
       : { profiles: [] as const };
-    const compiledMode = modeProfiles.active
-      ? compileModeProfile(modeProfiles.active)
-      : undefined;
+    const databaseOverlay =
+      workspaceRoot && isDatabaseUiMode(options.mode)
+        ? resolveDatabaseModeStart({
+            workspaceRoot,
+            preferredServerIds: options.requiredMcpServerIds,
+          })
+        : undefined;
+    const compiledMode = databaseOverlay
+      ? undefined
+      : modeProfiles.active
+        ? compileModeProfile(modeProfiles.active)
+        : undefined;
     const mergedProjectRules = [
       ...projectRules,
       ...(compiledMode?.projectRules ?? []),
+      ...(databaseOverlay?.startFields.projectRules ?? []),
     ];
     const runStartedAt = new Date().toISOString();
     const loopPolicyThresholds = readLoopPolicyThresholdOverrides(cfg);
@@ -474,18 +487,33 @@ export async function runAskInOutputChannel(options: {
     const userSafetyRules = mergeUserSafetyRules(
       fileSafety,
       compiledMode?.userSafetyRules,
+      databaseOverlay?.startFields.userSafetyRules,
     );
-    const effectiveMode = compiledMode
-      ? compiledMode.agentMode
-      : (options.mode ?? 'ask');
+    const effectiveMode = databaseOverlay
+      ? 'ask'
+      : compiledMode
+        ? compiledMode.agentMode
+        : mapUiModeToAgentMode(options.mode);
     const environmentBlock = formatEnvironmentDetailsBlock(
       collectVsCodeEnvironmentSnapshot({
         workspaceRoot,
-        modeReminder: compiledMode
-          ? `${compiledMode.name} (${effectiveMode})`
-          : effectiveMode,
+        modeReminder: databaseOverlay
+          ? `Database (${effectiveMode})`
+          : compiledMode
+            ? `${compiledMode.name} (${effectiveMode})`
+            : effectiveMode,
       }),
     );
+    const mergedRequiredSkillIds = [
+      ...new Set([
+        ...(options.requiredSkillIds ?? []),
+        ...(databaseOverlay?.startFields.requiredSkillIds ?? []),
+      ]),
+    ].slice(0, 3);
+    const mergedRequiredMcpServerIds =
+      databaseOverlay && databaseOverlay.startFields.requiredMcpServerIds.length > 0
+        ? databaseOverlay.startFields.requiredMcpServerIds
+        : options.requiredMcpServerIds;
     let run = client.start({
       prompt,
       mode: effectiveMode,
@@ -510,15 +538,15 @@ export async function runAskInOutputChannel(options: {
         : {}),
       ...(environmentBlock ? { environment: [environmentBlock] } : {}),
       ...(pinnedPaths.length > 0 ? { pinnedPaths } : {}),
-      ...(options.requiredSkillIds && options.requiredSkillIds.length > 0
-        ? { requiredSkillIds: [...options.requiredSkillIds] }
+      ...(mergedRequiredSkillIds.length > 0
+        ? { requiredSkillIds: mergedRequiredSkillIds }
         : {}),
       ...(options.excludedSkillIds && options.excludedSkillIds.length > 0
         ? { excludedSkillIds: [...options.excludedSkillIds] }
         : {}),
-      ...(options.requiredMcpServerIds &&
-      options.requiredMcpServerIds.length > 0
-        ? { requiredMcpServerIds: [...options.requiredMcpServerIds] }
+      ...(mergedRequiredMcpServerIds &&
+      mergedRequiredMcpServerIds.length > 0
+        ? { requiredMcpServerIds: [...mergedRequiredMcpServerIds] }
         : {}),
       ...(options.conversation && options.conversation.length > 0
         ? { conversation: options.conversation }

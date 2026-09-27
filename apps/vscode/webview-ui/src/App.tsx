@@ -39,6 +39,7 @@ import {
 import { approvalModeUiPatch } from './approvalPresets';
 import { OnboardingPanel } from './components/OnboardingPanel';
 import { PendingPlanBanner } from './components/PendingPlanBanner';
+import { DatabaseModeBanner } from './components/DatabaseModeBanner';
 import { PlanFollowStrip } from './components/PlanPanel';
 import { ComposerReviewStrip } from './review/ComposerReviewStrip';
 import { SettingsErrorBoundary } from './components/SettingsErrorBoundary';
@@ -431,7 +432,8 @@ function hydrateUiSnapshot(
 }
 
 function settingsModeFor(mode: AgentUiMode): SettingsMode {
-  return mode === 'plan' || mode === 'agent' ? mode : 'ask';
+  if (mode === 'plan' || mode === 'agent') return mode;
+  return 'ask';
 }
 
 function modeDefaultsFromUi(ui: UiSettingsSnapshot, mode: AgentUiMode) {
@@ -1652,7 +1654,8 @@ export function App() {
     if (!text || running) return;
     stickToBottomRef.current = true;
     forceScrollToBottomRef.current = true;
-    const uiMode = mode === 'review' ? 'ask' : mode;
+    const uiMode =
+      mode === 'review' ? 'ask' : mode === 'database' ? 'database' : mode;
     const defaults = modeDefaultsFromUi(ui, uiMode);
     const intensity = resolveRunIntensity({
       intensityOverrides: ui.intensityOverrides === true,
@@ -2627,6 +2630,7 @@ export function App() {
                   postToHost({ type: 'clearPendingPlan' });
                 }}
               />
+              <DatabaseModeBanner visible={mode === 'database'} />
               {followingPlan ? (
                 <PlanFollowStrip
                   plan={plan}

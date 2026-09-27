@@ -190,6 +190,30 @@ Unknown RestorePoint schema versions are ignored. Clear with
 - **Writing recipes:** `buildWritingRecipeAsk({ recipe: 'commit-message' | 'pr-summary' | 'changelog', workspaceRoot })` gathers git context and returns `requiredSkillIds` for VS Code SCM helpers and CLI.
 - **Parameterized recipes:** `RecipeSpec` (`schemaVersion: 1`) under `.mitii/recipes/<id>.json`. `compileRecipeToStartInput` fills `prompt` / `mode` / `requiredSkillIds` / `autonomyPreset` only — Decision Policy still owns grants. CLI: `mitii recipe run <id> --param k=v`.
 
+## Database mode
+
+Read-only NL→SQL overlay for Desktop, VS Code, CLI, and ACP. See [`src/database-mode/README.md`](./src/database-mode/README.md) and [`ARCHITECTURE.md`](./src/database-mode/ARCHITECTURE.md).
+
+```ts
+import {
+  isDatabaseUiMode,
+  resolveDatabaseModeStart,
+  mapUiModeToAgentMode,
+} from '@mitii/host';
+
+if (isDatabaseUiMode(uiMode)) {
+  const overlay = resolveDatabaseModeStart({ workspaceRoot });
+  client.start({
+    mode: mapUiModeToAgentMode(uiMode), // 'ask'
+    ...overlay.startFields,
+  });
+}
+```
+
+- Builtin profile slug: `database` (ask + read/mcp/command; no edit)
+- Forced skill: `nl-sql-analyst`
+- Pins installed DB MCP via `requiredMcpServerIds` (Ask MCP grant); plain Ask is unchanged
+
 ## Index pin and reuse
 
 `buildWorkspaceSnapshot` / `resolveFingerprintRootId` set `roots[0].rootId` to the workspace directory basename (not a hardcoded `"workspace"`). That keeps fingerprint identity stable across republish.

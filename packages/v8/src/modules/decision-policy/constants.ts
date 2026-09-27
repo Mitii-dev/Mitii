@@ -204,6 +204,12 @@ export const DECISION_REASON_CODES = [
    * act/mutation ballot (same authority rule as SuperIntent; follow-ups too).
    */
   "policy_llm_authority_write",
+  /**
+   * Host attached MCP server(s) (`requiredMcpServerIds` / `@mcp:` / Database
+   * mode). Tool-less direct_answer is upgraded to repository_answer so pinned
+   * MCP tools stay available for follow-up queries.
+   */
+  "mcp_attach_required",
 ] as const;
 
 export const DECISION_POLICY_ERROR_CODES = [

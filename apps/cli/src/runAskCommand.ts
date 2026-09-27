@@ -11,11 +11,14 @@ import {
   buildWritingRecipeAsk,
   compileModeProfile,
   formatEnvironmentDetailsBlock,
+  isDatabaseUiMode,
   loadModeProfiles,
   loadProjectRules,
   loadUserSafetyRules,
   loadWorkspaceHooks,
+  mapUiModeToAgentMode,
   mergeUserSafetyRules,
+  resolveDatabaseModeStart,
   resolveMitiiWritingRecipe,
   withDefaultProtectedPaths,
 } from '@mitii/host';
@@ -54,7 +57,7 @@ export function resolveAskPrompt(
   cwd: string,
 ): {
   prompt: string;
-  mode?: AgentMode;
+  mode?: AgentMode | 'database';
   origin?: UserRequestOrigin;
   autonomyPreset?: MitiiAutonomyPreset;
   autoApproval?: 'approved' | 'denied';
@@ -271,7 +274,7 @@ export async function runAsk(options: {
   forceEcho: boolean;
   autoClarify?: string;
   autoApproval?: 'approved' | 'denied';
-  mode?: AgentMode;
+  mode?: AgentMode | 'database';
   origin?: UserRequestOrigin;
   autonomyPreset?: MitiiAutonomyPreset;
   requiredSkillIds?: string[];
@@ -291,13 +294,13 @@ export async function runAsk(options: {
     forceEcho: options.forceEcho,
   });
   const io = options.io ?? createDefaultSessionIo();
-  const mode = options.mode ?? ports.defaultMode;
+  const uiMode = options.mode ?? ports.defaultMode;
   const origin = options.origin ?? 'user';
   const machineReadable =
     options.json === true || options.streamJson === true;
   if (!machineReadable) {
     io.writeStderr(
-      `[mitii] provider=${ports.providerLabel} mode=${mode} origin=${origin}\n`,
+      `[mitii] provider=${ports.providerLabel} mode=${uiMode} origin=${origin}\n`,
     );
   }
 
@@ -315,16 +318,24 @@ export async function runAsk(options: {
     workspaceRoot: options.cwd,
   });
   const modeProfiles = loadModeProfiles(options.cwd);
-  const compiledMode = modeProfiles.active
-    ? compileModeProfile(modeProfiles.active)
+  const databaseOverlay = isDatabaseUiMode(uiMode)
+    ? resolveDatabaseModeStart({ workspaceRoot: options.cwd })
     : undefined;
+  const compiledMode = databaseOverlay
+    ? undefined
+    : modeProfiles.active
+      ? compileModeProfile(modeProfiles.active)
+      : undefined;
   const mergedProjectRules = [
     ...projectRules,
     ...(compiledMode?.projectRules ?? []),
+    ...(databaseOverlay?.startFields.projectRules ?? []),
   ];
-  const effectiveMode = compiledMode
-    ? compiledMode.agentMode
-    : mode;
+  const effectiveMode = databaseOverlay
+    ? 'ask'
+    : compiledMode
+      ? compiledMode.agentMode
+      : mapUiModeToAgentMode(uiMode);
   const baseSafety = withDefaultProtectedPaths(
     loadUserSafetyRules(options.cwd),
   );
@@ -349,12 +360,23 @@ export async function runAsk(options: {
     baseSafety,
     hooksSafety,
     compiledMode?.userSafetyRules,
+    databaseOverlay?.startFields.userSafetyRules,
   );
   const environmentBlock = formatEnvironmentDetailsBlock({
-    modeReminder: compiledMode
-      ? `${compiledMode.name} (${effectiveMode})`
-      : effectiveMode,
+    modeReminder: databaseOverlay
+      ? `Database (${effectiveMode})`
+      : compiledMode
+        ? `${compiledMode.name} (${effectiveMode})`
+        : effectiveMode,
   });
+  const mergedRequiredSkillIds = [
+    ...new Set([
+      ...(options.requiredSkillIds ?? []),
+      ...(databaseOverlay?.startFields.requiredSkillIds ?? []),
+    ]),
+  ].slice(0, 3);
+  const mergedRequiredMcpServerIds =
+    databaseOverlay?.startFields.requiredMcpServerIds ?? [];
   const hostConfig = loadMitiiHostConfig(options.cwd);
   let loopPolicyThresholds;
   try {
@@ -412,8 +434,11 @@ export async function runAsk(options: {
         ? { projectRules: [...mergedProjectRules] }
         : {}),
       ...(environmentBlock ? { environment: [environmentBlock] } : {}),
-      ...(options.requiredSkillIds && options.requiredSkillIds.length > 0
-        ? { requiredSkillIds: [...options.requiredSkillIds] }
+      ...(mergedRequiredSkillIds.length > 0
+        ? { requiredSkillIds: mergedRequiredSkillIds }
+        : {}),
+      ...(mergedRequiredMcpServerIds.length > 0
+        ? { requiredMcpServerIds: mergedRequiredMcpServerIds }
         : {}),
       ...(options.attachments && options.attachments.length > 0
         ? { attachments: [...options.attachments] }

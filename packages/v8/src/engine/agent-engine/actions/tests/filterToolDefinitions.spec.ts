@@ -78,6 +78,62 @@ describe("filterToolDefinitions MCP gating", () => {
     ]);
   });
 
+  it("exposes attached mongo-readonly tools on ask read grants", () => {
+    const tools = filterToolDefinitions({
+      grant: grant({ maximumWorkspaceEffect: "read" }),
+      definitions: [
+        {
+          name: "read_file",
+          description: "read",
+          inputSchema: { type: "object" },
+        },
+        {
+          name: "mcp__mongo-readonly__list_collections",
+          description: "list",
+          inputSchema: { type: "object" },
+        },
+        {
+          name: "mcp__mongo-readonly__query",
+          description: "query",
+          inputSchema: { type: "object" },
+        },
+      ],
+      supportsTools: true,
+      mode: "ask",
+      requiredMcpServerIds: ["mongo-readonly"],
+    });
+    expect(tools.map((t) => t.name).sort()).toEqual(
+      [
+        "mcp__mongo-readonly__list_collections",
+        "mcp__mongo-readonly__query",
+        "read_file",
+      ].sort(),
+    );
+  });
+
+  it("hides attached mongo tools tagged requiresWorkspaceWrite on ask", () => {
+    const tools = filterToolDefinitions({
+      grant: grant({ maximumWorkspaceEffect: "read" }),
+      definitions: [
+        {
+          name: "read_file",
+          description: "read",
+          inputSchema: { type: "object" },
+        },
+        {
+          name: "mcp__mongo-readonly__list_collections",
+          description: "list",
+          inputSchema: { type: "object" },
+          requiresWorkspaceWrite: true,
+        },
+      ],
+      supportsTools: true,
+      mode: "ask",
+      requiredMcpServerIds: ["mongo-readonly"],
+    });
+    expect(tools.map((t) => t.name)).toEqual(["read_file"]);
+  });
+
   it("exposes read-safe mcp__* tools on agent read grants", () => {
     const tools = filterToolDefinitions({
       grant: grant({ maximumWorkspaceEffect: "read" }),

@@ -1026,6 +1026,121 @@ button[aria-disabled='true'] {
   flex-shrink: 0;
 }
 
+.database-mode-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  max-width: 780px;
+  margin: 0 auto 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--mitii-border-soft);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mitii-panel-raised) 88%, var(--mitii-panel));
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.database-mode-banner--ok {
+  border-color: color-mix(in srgb, var(--mitii-ok) 22%, var(--mitii-border));
+  background: color-mix(in srgb, var(--mitii-ok) 5%, var(--mitii-panel));
+}
+
+.database-mode-banner--warn {
+  border-color: color-mix(in srgb, var(--mitii-warn) 22%, var(--mitii-border));
+  background: color-mix(in srgb, var(--mitii-warn) 5%, var(--mitii-panel));
+}
+
+.database-mode-banner--muted {
+  border-color: var(--mitii-border-soft);
+}
+
+.database-mode-banner__main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.database-mode-banner__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--mitii-muted);
+}
+
+.database-mode-banner__dot--ok {
+  background: var(--mitii-ok);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mitii-ok) 18%, transparent);
+}
+
+.database-mode-banner__dot--warn {
+  background: var(--mitii-warn);
+}
+
+.database-mode-banner__dot--muted {
+  background: var(--mitii-muted);
+  opacity: 0.7;
+}
+
+.database-mode-banner__copy {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--mitii-muted);
+}
+
+.database-mode-banner__title {
+  font-weight: 600;
+  color: var(--mitii-text);
+  letter-spacing: 0.01em;
+}
+
+.database-mode-banner__sep {
+  color: color-mix(in srgb, var(--mitii-muted) 55%, transparent);
+  font-weight: 400;
+}
+
+.database-mode-banner__detail {
+  color: var(--mitii-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.database-mode-banner__action {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--mitii-muted);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+}
+
+.database-mode-banner__action:hover {
+  color: var(--mitii-text);
+  background: color-mix(in srgb, var(--mitii-text) 4%, transparent);
+  border-color: var(--mitii-border-soft);
+}
+
+.database-mode-banner__action:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--mitii-accent) 45%, transparent);
+  outline-offset: 1px;
+}
+
 .composer-box {
   --composer-mode-color: var(--mitii-accent);
   position: relative;

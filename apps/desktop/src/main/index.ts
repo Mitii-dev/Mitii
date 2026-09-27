@@ -69,6 +69,7 @@ import {
 } from './window.js';
 import {
   loadWorkspaceSettings,
+  reconcileMcpSettingsFromDisk,
   writeWorkspaceCompatFiles,
 } from './workspace-config.js';
 
@@ -353,7 +354,7 @@ function registerIpc(): void {
       const defaults = mergeDesktopSettings(DEFAULT_DESKTOP_SETTINGS);
       state.settings = defaults;
       store.saveSettings(root, defaults);
-      writeWorkspaceCompatFiles(root, defaults);
+      writeWorkspaceCompatFiles(root, defaults, { replaceMcp: true });
       ensureWorkspaceStorageLink(root);
       await startEngine();
       return { ok: true, removed: cleared.removed };
@@ -379,7 +380,7 @@ function registerIpc(): void {
     if (!record.settings) return { ok: false, reason: 'missing_settings' };
     try {
       const previous = state.settings;
-      const next = mergeDesktopSettings(record.settings);
+      let next = mergeDesktopSettings(record.settings);
       const apiKeyChanged = Boolean(
         record.clearApiKey ||
           (typeof record.apiKey === 'string' && record.apiKey.trim()),
@@ -394,6 +395,9 @@ function registerIpc(): void {
         searchApiKeyChanged,
       });
 
+      // MCP installs live in `.mitii/mcp.json`; adopt them when the renderer
+      // still holds the empty default so Save does not wipe mongo/sqlite pins.
+      next = reconcileMcpSettingsFromDisk(state.workspaceRoot, next);
       state.settings = next;
       store.saveSettings(state.workspaceRoot, state.settings);
       writeWorkspaceCompatFiles(state.workspaceRoot, state.settings);
@@ -442,6 +446,7 @@ async function applyWorkspace(
     if (!settings) {
       settings = loadWorkspaceSettings(workspaceRoot);
     }
+    settings = reconcileMcpSettingsFromDisk(workspaceRoot, settings);
     store.setWorkspace(workspaceRoot, settings);
     store.saveSettings(workspaceRoot, settings);
     try {
@@ -511,8 +516,9 @@ async function boot(): Promise<void> {
     let settings = store.getWorkspaceSettings(state.workspaceRoot);
     if (!settings) {
       settings = loadWorkspaceSettings(state.workspaceRoot, state.settings);
-      store.saveSettings(state.workspaceRoot, settings);
     }
+    settings = reconcileMcpSettingsFromDisk(state.workspaceRoot, settings);
+    store.saveSettings(state.workspaceRoot, settings);
     state.settings = settings;
     try {
       writeWorkspaceCompatFiles(state.workspaceRoot, state.settings);

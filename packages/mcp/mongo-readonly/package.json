@@ -1,0 +1,55 @@
+{
+  "name": "@mitii/mcp-mongo-readonly",
+  "version": "2.9.100",
+  "description": "Mitii MCP stdio server: read-only MongoDB list_collections, describe_collection, query, aggregate, count.",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "mitii-mcp-mongo-readonly": "./bin/mitii-mcp-mongo-readonly.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mitii-dev/Mitii.git",
+    "directory": "packages/mcp/mongo-readonly"
+  },
+  "homepage": "https://github.com/Mitii-dev/Mitii/tree/main/packages/mcp/mongo-readonly",
+  "bugs": {
+    "url": "https://github.com/Mitii-dev/Mitii/issues"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json && node -e \"require('node:fs').accessSync('dist/index.js')\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node bin/mitii-mcp-mongo-readonly.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "mongodb": "^6.17.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.2",
+    "vitest": "^3.2.7"
+  }
+}

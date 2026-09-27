@@ -9,7 +9,7 @@
 export const MITII_DESKTOP_PROTOCOL = 'mitii-desktop/v1' as const;
 export const MITII_DESKTOP_PROTOCOL_VERSION = 1 as const;
 
-export type DesktopAgentMode = 'ask' | 'plan' | 'agent';
+export type DesktopAgentMode = 'ask' | 'plan' | 'agent' | 'database';
 
 export type DesktopHostMode = 'echo' | 'host';
 
@@ -43,7 +43,12 @@ export type DesktopPromptStreamLine =
   | { op: 'error'; id?: string; error: string; message?: string };
 
 export function isDesktopAgentMode(value: unknown): value is DesktopAgentMode {
-  return value === 'ask' || value === 'plan' || value === 'agent';
+  return (
+    value === 'ask' ||
+    value === 'plan' ||
+    value === 'agent' ||
+    value === 'database'
+  );
 }
 
 export function parseDesktopPromptBody(

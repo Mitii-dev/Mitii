@@ -315,6 +315,7 @@ export async function runStartEarlyPipeline(
     windowPolicy,
     userSafetyRules: input.userSafetyRules,
     policyFactsFirst: steering.policyFactsFirst,
+    requiredMcpServerIds: input.requiredMcpServerIds,
   });
   shared.route = decision.route;
   shared.planningDepth = decision.planningDepth;

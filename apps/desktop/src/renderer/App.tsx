@@ -107,6 +107,10 @@ import { FileChangesCard } from './chat/FileChangesCard.js';
 import { OnboardingPanel } from './OnboardingPanel.js';
 import { PendingPlanBanner } from './chat/PendingPlanBanner.js';
 import {
+  DatabaseModeBanner,
+  isDatabaseMcpServer,
+} from './chat/DatabaseModeBanner.js';
+import {
   PlanFollowStrip,
   type PlanFollowView,
 } from './chat/PlanFollowStrip.js';
@@ -422,6 +426,8 @@ export function App() {
   const [mcpServers, setMcpServers] = useState<
     Array<{ id: string; name: string; enabled: boolean }>
   >([]);
+  const [mcpMasterEnabled, setMcpMasterEnabled] = useState(false);
+  const [mcpStatusReady, setMcpStatusReady] = useState(false);
   const [pinMenu, setPinMenu] = useState(false);
   const [mention, setMention] = useState<MentionSuggestState | null>(null);
   const [pathHits, setPathHits] = useState<
@@ -710,13 +716,47 @@ export function App() {
       .catch(() => undefined);
     void fetchMcpServers(engine)
       .then((payload) => {
-        if (!cancelled) setMcpServers(payload.servers ?? []);
+        if (!cancelled) {
+          setMcpMasterEnabled(Boolean(payload.enabled));
+          setMcpServers(payload.servers ?? []);
+          setMcpStatusReady(true);
+        }
       })
       .catch(() => undefined);
     return () => {
       cancelled = true;
     };
   }, [snapshot?.workspaceRoot, snapshot?.engineBaseUrl]);
+
+  // Keep Database mode banner in sync with MCP installs (especially while MCP panel is open).
+  useEffect(() => {
+    if (!engine || mode !== 'database') return;
+    let cancelled = false;
+    const refresh = () => {
+      void fetchMcpServers(engine)
+        .then((payload) => {
+          if (cancelled) return;
+          setMcpMasterEnabled(Boolean(payload.enabled));
+          setMcpServers(payload.servers ?? []);
+          setMcpStatusReady(true);
+        })
+        .catch(() => undefined);
+    };
+    refresh();
+    const handle =
+      workspaceSide === 'mcp'
+        ? window.setInterval(refresh, 2_500)
+        : undefined;
+    return () => {
+      cancelled = true;
+      if (handle !== undefined) window.clearInterval(handle);
+    };
+  }, [
+    mode,
+    workspaceSide,
+    snapshot?.workspaceRoot,
+    snapshot?.engineBaseUrl,
+  ]);
 
   // Persist open chat when leaving the chat view so tab switches never lose it.
   useEffect(() => {
@@ -2631,6 +2671,27 @@ export function App() {
           busy={busy}
           onExecuteInAgent={executePendingPlan}
           onDismiss={dismissPendingPlan}
+        />
+        <DatabaseModeBanner
+          visible={mode === 'database'}
+          status={
+            !mcpStatusReady
+              ? 'loading'
+              : !mcpMasterEnabled
+                ? 'mcp_disabled'
+                : mcpServers.some(
+                      (s) => s.enabled && isDatabaseMcpServer(s),
+                    )
+                  ? 'connected'
+                  : 'disconnected'
+          }
+          servers={mcpServers
+            .filter((s) => s.enabled && isDatabaseMcpServer(s))
+            .map((s) => ({ id: s.id, name: s.name }))}
+          onOpenMcp={() => {
+            setLayout('code');
+            setWorkspaceSide('mcp');
+          }}
         />
         <PlanFollowStrip
           plan={

@@ -89,12 +89,18 @@ Hosts still own:
 - Settings UI and SecretStorage
 - Passing `registry` + `toolDefinitions` into SDK client creation
 
-## Sibling package
+## Sibling packages
 
-MCP **server** (search / fetch / optional `memory_search`) lives next door:
+MCP **servers** live next to the client core under `packages/mcp/`:
 
 ```text
-packages/mcp/web/   →  @mitii/mcp-web
+packages/mcp/
+  src/                 →  @mitii/mcp          (client core)
+  web/                 →  @mitii/mcp-web
+  sqlite-readonly/     →  @mitii/mcp-sqlite-readonly
+  postgres-readonly/   →  @mitii/mcp-postgres-readonly
+  mongo-readonly/      →  @mitii/mcp-mongo-readonly
 ```
 
-The server must not import this client package (keeps it free of v8).
+Server packages must not import `@mitii/mcp` / `@mitii/v8` (stdio-only, AGPL).
+Catalog entries in `src/config/builtins.ts` launch them via `npx -y @mitii/mcp-*-readonly`.

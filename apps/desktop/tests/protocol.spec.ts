@@ -18,6 +18,7 @@ describe('mitii-desktop protocol', () => {
     expect(isDesktopAgentMode('ask')).toBe(true);
     expect(isDesktopAgentMode('plan')).toBe(true);
     expect(isDesktopAgentMode('agent')).toBe(true);
+    expect(isDesktopAgentMode('database')).toBe(true);
     expect(isDesktopAgentMode('review')).toBe(false);
     expect(isDesktopAgentMode(null)).toBe(false);
   });

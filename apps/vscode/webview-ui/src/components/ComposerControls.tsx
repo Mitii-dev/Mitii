@@ -35,7 +35,7 @@ interface ComposerOption<T extends string> {
   warning?: boolean;
 }
 
-const MODES: ComposerOption<'ask' | 'plan' | 'agent'>[] = [
+const MODES: ComposerOption<'ask' | 'plan' | 'agent' | 'database'>[] = [
   {
     id: 'ask',
     label: 'Ask',
@@ -56,6 +56,13 @@ const MODES: ComposerOption<'ask' | 'plan' | 'agent'>[] = [
     description: 'Implement changes with controlled execution',
     color: MODE_COLORS.agent,
     icon: <IconAgent />,
+  },
+  {
+    id: 'database',
+    label: 'Database',
+    description: 'Query connected DBs via MCP — read-only',
+    color: MODE_COLORS.database,
+    icon: <IconAsk />,
   },
 ];
 
@@ -115,6 +122,7 @@ export const MODE_HINT: Record<AgentUiMode, string> = {
   plan: 'Analyze and propose a structured plan.',
   agent: 'Implement changes with controlled execution.',
   review: 'Git working-tree review via the Review button — not a chat mode.',
+  database: 'Query connected databases via MCP — read-only.',
 };
 
 interface ComposerControlsProps {
@@ -139,8 +147,8 @@ export function ComposerControls({
 }: ComposerControlsProps) {
   const [openSelect, setOpenSelect] = useState<ComposerSelectId | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
-  const composerMode: 'ask' | 'plan' | 'agent' =
-    mode === 'plan' || mode === 'agent' ? mode : 'ask';
+  const composerMode: 'ask' | 'plan' | 'agent' | 'database' =
+    mode === 'plan' || mode === 'agent' || mode === 'database' ? mode : 'ask';
   const modeOptions = MODES;
   const activeMode =
     modeOptions.find((m) => m.id === composerMode) ?? modeOptions[0]!;

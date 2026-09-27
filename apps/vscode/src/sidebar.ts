@@ -1552,16 +1552,21 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     const prompt = String(message.prompt ?? '').trim();
     if (!prompt) return;
     const activeThread = await this.ensureActiveThread(prompt);
-    const mode = message.mode === 'review' ? 'ask' : (message.mode ?? 'ask');
+    const mode =
+      message.mode === 'review'
+        ? 'ask'
+        : message.mode === 'database'
+          ? 'database'
+          : (message.mode ?? 'ask');
     const engineMode =
-      mode === 'plan' || mode === 'agent' ? mode : 'ask';
+      mode === 'plan' || mode === 'agent' || mode === 'database' ? mode : 'ask';
     const conversation = buildConversationCarry({
       messages: (activeThread?.messages ?? []).map((m) => ({
         role: m.role,
         text: m.text,
       })),
       currentPrompt: prompt,
-      mode: engineMode,
+      mode: engineMode === 'database' ? 'ask' : engineMode,
       structured:
         engineMode === 'agent'
           ? collectStructuredCarryFromThread(activeThread ?? {})
@@ -1683,11 +1688,11 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     try {
       const client = await this.ensureClient();
       const approvedPlan = resolvePlanHandoff({
-        mode: engineMode,
+        mode: engineMode === 'database' ? 'ask' : engineMode,
         pendingPlan: activeThread?.pendingPlan,
       });
       const approvedPlanStrategy = resolvePlanStrategyHandoff({
-        mode: engineMode,
+        mode: engineMode === 'database' ? 'ask' : engineMode,
         pendingPlanStrategy: activeThread?.pendingPlanStrategy,
       });
       const carriedTaskList =

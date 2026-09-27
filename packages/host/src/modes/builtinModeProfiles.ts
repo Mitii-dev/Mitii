@@ -62,6 +62,20 @@ export const BUILTIN_MODE_PROFILES: readonly ModeProfile[] = [
       "1. Reproduce or confirm the failure with read/diagnostic tools.\n2. Localize the root cause before proposing a patch.\n3. Apply the smallest fix that addresses the cause.\n4. Verify with granted commands (tests/typecheck) when available.\n5. When the symptom is empty or wrong API data (e.g. GET /users returns []): probe API → DB schema → DB data (read-only MCP or run_readonly_command) before apply_patch; fill an evidence ledger for no-data / not-initialized / adapter / DTO / config; fix only the surviving hypothesis; re-probe the API to verify.",
     source: "builtin",
   },
+  {
+    slug: "database",
+    name: "Database",
+    description: "Ask natural-language questions against a connected read-only database",
+    whenToUse:
+      "Use when exploring or querying workspace data via MCP (counts, joins, lookups) without changing application code.",
+    agentMode: "ask",
+    toolGroups: ["read", "mcp", "command"],
+    roleDefinition:
+      "You are Mitii in Database mode: a read-only data analyst. Answer with live schema discovery and SELECT queries. Never modify application code, schema, or rows.",
+    customInstructions:
+      "1. Prefer MCP DB tools (mcp__sqlite-readonly__*, mcp__postgres-readonly__*, mcp__mongo-readonly__*, or other pinned DB MCP).\n2. SQL ladder: list_tables → describe_table → sample SELECT → analytical SELECT. Mongo ladder: list collections / schema → sample query → aggregate/count. Refuse writes.\n3. SQL: SELECT / WITH…SELECT only. Mongo: query / aggregate / count only (no insert/update/createIndex).\n4. Show a short answer, a markdown table (capped rows), and the SQL or Mongo filter/pipeline used.\n5. If no database MCP is connected, explain how to connect — do not invent results.\n6. Redact secrets; minimize PII in samples.",
+    source: "builtin",
+  },
 ];
 
 export function getBuiltinModeProfile(

@@ -4658,6 +4658,25 @@ button.md-file-link.md-inline-code:hover {
   flex-shrink: 0;
 }
 
+.database-mode-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 9px;
+  border: 1px solid color-mix(in srgb, #06b6d4 40%, var(--mitii-border));
+  border-radius: 8px;
+  background: color-mix(in srgb, #06b6d4 12%, var(--mitii-panel));
+  flex-shrink: 0;
+  box-shadow: 0 1px 0 color-mix(in srgb, #fff 4%, transparent) inset;
+}
+
+.database-mode-banner__text {
+  font-size: 12px;
+  color: var(--mitii-text);
+  line-height: 1.35;
+}
+
 .plan-follow {
   --plan-follow-accent: var(--mitii-accent);
   display: grid;

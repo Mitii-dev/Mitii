@@ -31,6 +31,7 @@ export {
   getBuiltinCatalogMeta,
   applyBuiltinSecrets,
   validateBuiltinSecrets,
+  resolveReadonlyStdioLauncher,
   type McpBuiltinId,
   type McpCatalogCategory,
   type McpCatalogMeta,

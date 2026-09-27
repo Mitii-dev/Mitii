@@ -3,7 +3,7 @@
  * Keep free of vscode / React imports so the webview can mirror these types.
  */
 
-export type AgentUiMode = 'ask' | 'plan' | 'agent' | 'review';
+export type AgentUiMode = 'ask' | 'plan' | 'agent' | 'review' | 'database';
 export type AgentUiDepth = 'auto' | 'quick' | 'deep';
 export type AgentUiEffort = 'low' | 'medium' | 'high';
 /** Clubbed customer control → maps to depth + effort unless intensity overrides. */
