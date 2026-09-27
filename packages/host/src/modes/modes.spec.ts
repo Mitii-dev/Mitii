@@ -28,6 +28,12 @@ describe("mode profiles", () => {
     );
   });
 
+  it("debug mode instructs API→DB evidence ladder", () => {
+    const debug = BUILTIN_MODE_PROFILES.find((profile) => profile.slug === "debug")!;
+    expect(debug.customInstructions).toMatch(/API → DB schema → DB data/i);
+    expect(debug.customInstructions).toMatch(/evidence ledger/i);
+  });
+
   it("compiles architect to plan mode with markdown mutation regex", () => {
     const architect = BUILTIN_MODE_PROFILES.find(
       (profile) => profile.slug === "architect",

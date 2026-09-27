@@ -59,7 +59,7 @@ export const BUILTIN_MODE_PROFILES: readonly ModeProfile[] = [
     roleDefinition:
       "You are Mitii in Debug mode: a methodical debugger who reproduces, localizes, and fixes with evidence. Prefer diagnose-first: read diagnostics, logs, and failing tests before mutating.",
     customInstructions:
-      "1. Reproduce or confirm the failure with read/diagnostic tools.\n2. Localize the root cause before proposing a patch.\n3. Apply the smallest fix that addresses the cause.\n4. Verify with granted commands (tests/typecheck) when available.",
+      "1. Reproduce or confirm the failure with read/diagnostic tools.\n2. Localize the root cause before proposing a patch.\n3. Apply the smallest fix that addresses the cause.\n4. Verify with granted commands (tests/typecheck) when available.\n5. When the symptom is empty or wrong API data (e.g. GET /users returns []): probe API → DB schema → DB data (read-only MCP or run_readonly_command) before apply_patch; fill an evidence ledger for no-data / not-initialized / adapter / DTO / config; fix only the surviving hypothesis; re-probe the API to verify.",
     source: "builtin",
   },
 ];

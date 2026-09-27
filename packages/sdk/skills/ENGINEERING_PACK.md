@@ -13,6 +13,7 @@ These are **bundled defaults** under `packages/sdk/skills/`. Edit them in place.
 | `incremental-implementation` | build | feature, refactor, migrate, scaffold |
 | `test-driven-development` | verify | test, bugfix, feature, refactor |
 | `debugging-and-error-recovery` | debug | bugfix, diagnose, trace |
+| `api-db-runtime-debug` | debug | bugfix, diagnose, trace (API + DB probes; priority 195) |
 | `code-review-and-quality` | review | review, audit, refactor |
 | `fix-review-findings` | build | bugfix, refactor (recipe: Fix / Fix all) |
 | `security-and-hardening` | review | security, audit, feature |

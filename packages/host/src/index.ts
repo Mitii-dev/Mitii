@@ -332,6 +332,16 @@ export type {
   FixReviewFindingsAsk,
 } from './recipes/fixReviewFindings.js';
 
+// API + DB data-path debug recipe
+export {
+  DEBUG_API_DATA_PATH_RECIPE_ID,
+  DEBUG_API_DATA_PATH_SKILL_ID,
+  buildDebugApiDataPathAsk,
+  debugApiDataPathToSpec,
+  isDebugApiDataPathRecipeId,
+} from './recipes/debugApiDataPath.js';
+export type { DebugApiDataPathParams } from './recipes/debugApiDataPath.js';
+
 // ---------------------------------------------------------------------------
 // Prompt helpers — host-owned instruction files → MitiiStartInput.projectRules
 // ---------------------------------------------------------------------------

@@ -16,6 +16,7 @@ Use the format documented in `docs/SKILLS_FORMAT.md`.
 - Core defaults: `safety-always`, `ask-concise`, `bugfix-localize`, `planning-default`
 - Writing recipes: `git-commit-message`, `git-pr-summary`, `release-changelog`
   (VS Code SCM / CLI `commit-message` | `pr-summary` | `changelog` force-attach these)
+- Data-path debug: `api-db-runtime-debug` (recipe `debug-api-data-path`; Debug mode)
 - Engineering starter 8 (adapted from addyosmani/agent-skills): see `ENGINEERING_PACK.md`
 
 Edit any `SKILL.md` in place. To override without editing the pack, place a

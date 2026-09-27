@@ -15,6 +15,8 @@ export const MCP_BUILTIN_IDS = [
   'gitea',
   'brave-search',
   'excalidraw',
+  'sqlite-readonly',
+  'postgres-readonly',
 ] as const;
 
 export type McpBuiltinId = (typeof MCP_BUILTIN_IDS)[number];
@@ -25,7 +27,8 @@ export type McpCatalogCategory =
   | 'browser'
   | 'vcs'
   | 'search'
-  | 'diagrams';
+  | 'diagrams'
+  | 'database';
 
 /** Secret / config field collected before one-click install. */
 export interface McpCatalogSecretField {
@@ -136,6 +139,38 @@ export const MCP_CATALOG_META: Record<McpBuiltinId, McpCatalogMeta> = {
     description: 'Hand-drawn architecture diagrams (mcp.excalidraw.com).',
     secrets: [],
   },
+  'sqlite-readonly': {
+    id: 'sqlite-readonly',
+    category: 'database',
+    description:
+      'Read-only SQLite probes (list_tables, describe_table, SELECT query) via @mitii/mcp-sqlite-readonly.',
+    secrets: [
+      {
+        key: 'SQLITE_PATH',
+        label: 'SQLite database path',
+        secret: false,
+        required: true,
+        placeholder: './data/app.db',
+        hint: 'Absolute or workspace-relative path to the .db / .sqlite file the app uses.',
+      },
+    ],
+  },
+  'postgres-readonly': {
+    id: 'postgres-readonly',
+    category: 'database',
+    description:
+      'Restricted read-only Postgres probes via postgres-mcp (--access-mode=restricted).',
+    secrets: [
+      {
+        key: 'DATABASE_URI',
+        label: 'Postgres connection URI',
+        secret: true,
+        required: true,
+        placeholder: 'postgresql://user:pass@localhost:5432/mydb',
+        hint: 'Same database the API process uses. Prefer a read-only DB role when possible.',
+      },
+    ],
+  },
 };
 
 export function getBuiltinCatalogMeta(id: McpBuiltinId): McpCatalogMeta {
@@ -228,6 +263,24 @@ export function createBuiltinMcpCatalog(
       name: 'Excalidraw',
       transport: 'streamable-http',
       url: 'https://mcp.excalidraw.com',
+      builtin: true,
+      enabled: false,
+    },
+    {
+      id: 'sqlite-readonly',
+      name: 'SQLite (read-only)',
+      transport: 'stdio',
+      command: 'npx',
+      args: ['-y', '@mitii/mcp-sqlite-readonly'],
+      builtin: true,
+      enabled: false,
+    },
+    {
+      id: 'postgres-readonly',
+      name: 'Postgres (read-only)',
+      transport: 'stdio',
+      command: 'uvx',
+      args: ['postgres-mcp', '--access-mode=restricted'],
       builtin: true,
       enabled: false,
     },

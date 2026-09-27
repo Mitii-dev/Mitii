@@ -6,7 +6,9 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { join } from 'node:path';
 
 import {
+  DEBUG_API_DATA_PATH_RECIPE_ID,
   MITII_WRITING_RECIPES,
+  debugApiDataPathToSpec,
   recipeSpecSchema,
   writingRecipeToSpec,
   type RecipeSpec,
@@ -503,13 +505,24 @@ function recipesDir(workspaceRoot: string): string {
 }
 
 export function listRecipes(workspaceRoot: string): DesktopRecipeSummary[] {
-  const builtin: DesktopRecipeSummary[] = MITII_WRITING_RECIPES.map((r) => ({
+  const writing: DesktopRecipeSummary[] = MITII_WRITING_RECIPES.map((r) => ({
     id: r.id,
     title: r.title,
     description: `Built-in writing recipe (${r.command})`,
     source: 'builtin' as const,
     mode: 'ask' as const,
   }));
+
+  const debugApi = debugApiDataPathToSpec();
+  const builtinExtra: DesktopRecipeSummary[] = [
+    {
+      id: debugApi.id,
+      title: debugApi.title,
+      description: debugApi.description ?? 'Probe API + DB before fixing empty responses',
+      source: 'builtin',
+      mode: debugApi.mode,
+    },
+  ];
 
   const custom: DesktopRecipeSummary[] = [];
   const dir = recipesDir(workspaceRoot);
@@ -534,7 +547,7 @@ export function listRecipes(workspaceRoot: string): DesktopRecipeSummary[] {
     }
   }
 
-  return [...builtin, ...custom];
+  return [...writing, ...builtinExtra, ...custom];
 }
 
 export function writeRecipe(
@@ -557,6 +570,9 @@ export function loadDesktopRecipeSpec(
   if (!trimmed) throw new Error('recipe_id_required');
   const builtin = MITII_WRITING_RECIPES.find((r) => r.id === trimmed);
   if (builtin) return writingRecipeToSpec(builtin.id);
+  if (trimmed === DEBUG_API_DATA_PATH_RECIPE_ID) {
+    return debugApiDataPathToSpec();
+  }
   const path = join(recipesDir(workspaceRoot), `${trimmed}.json`);
   if (!existsSync(path)) throw new Error(`recipe_not_found:${trimmed}`);
   return recipeSpecSchema.parse(JSON.parse(readFileSync(path, 'utf8')));
