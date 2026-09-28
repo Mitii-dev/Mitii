@@ -194,6 +194,7 @@ export async function runModelToolLoop(
       primaryTaskIntent:
         params.understanding?.intent.classification.primaryTaskIntent,
       reasonCodes: params.decision.reasonCodes,
+      allowedTools: params.decision.toolGrant.allowedTools,
     }) &&
     changedFiles.length === 0;
 
@@ -260,6 +261,7 @@ export async function runModelToolLoop(
       primaryTaskIntent:
         params.understanding?.intent.classification.primaryTaskIntent,
       reasonCodes: session.decision.reasonCodes,
+      allowedTools: session.decision.toolGrant.allowedTools,
     });
 
   while (true) {
@@ -578,6 +580,7 @@ export async function runModelToolLoop(
         primaryTaskIntent:
           params.understanding?.intent.classification.primaryTaskIntent,
         reasonCodes: session.decision.reasonCodes,
+        allowedTools: grant.allowedTools,
       }),
       changedFileCount: changedFiles.length,
       hasIncompleteChangeSurfaces: hasIncompleteChangeSurfaces(

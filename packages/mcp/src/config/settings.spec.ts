@@ -30,7 +30,7 @@ describe('@mitii/mcp', () => {
     expect(settings.servers[0]?.url).toBe('https://example.com/sse');
   });
 
-  it('refreshes mongo-readonly npx launcher to a resolvable local bin when linked', () => {
+  it('migrates legacy mongo-readonly to mongo and refreshes launcher', () => {
     const settings = parseMcp({
       enabled: true,
       servers: [
@@ -47,9 +47,11 @@ describe('@mitii/mcp', () => {
       ],
     });
     const server = settings.servers[0]!;
+    expect(server.id).toBe('mongo');
+    expect(server.name).toBe('MongoDB');
     expect(server.env?.MCP_MONGODB_URI).toBe('mongodb://localhost:27017/test');
-    // Prefer workspace node+bin; fall back stays npx.
     const joined = `${server.command} ${(server.args ?? []).join(' ')}`;
     expect(joined).toMatch(/mcp-mongo/);
+    expect(joined).not.toMatch(/mongo-readonly/);
   });
 });

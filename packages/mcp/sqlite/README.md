@@ -1,26 +1,26 @@
-# @mitii/mcp-sqlite-readonly
+# `@mitii/mcp-sqlite`
 
-Read-only SQLite MCP server for Mitii data-path debugging.
+First-party Mitii MCP **stdio** server for SQLite (Database mode).
 
-## Tools
+## Access mode
 
-| Tool | Description |
-|------|-------------|
-| `list_tables` | List user tables |
-| `describe_table` | Column info for one table |
-| `query` | SELECT-only query with row cap |
+| `MCP_DB_ACCESS` | Tools |
+|-----------------|-------|
+| `readonly` (default) | `list_tables`, `describe_table`, `query` (SELECT only) |
+| `readwrite` | + `execute_write` |
 
 ## Environment
 
 | Var | Required | Description |
 |-----|----------|-------------|
 | `SQLITE_PATH` | yes | Path to the SQLite file |
+| `MCP_DB_ACCESS` | no | `readonly` (default) or `readwrite` |
 | `SQLITE_MAX_ROWS` | no | Max rows returned (default 50, max 200) |
 
 ## Run
 
 ```bash
-SQLITE_PATH=./app.db node bin/mitii-mcp-sqlite-readonly.js
+SQLITE_PATH=./app.db MCP_DB_ACCESS=readonly node bin/mitii-mcp-sqlite.js
 ```
 
-Or via npx / Mitii MCP catalog entry `sqlite-readonly`.
+Catalog id: `sqlite`.

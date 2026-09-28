@@ -43,6 +43,28 @@ describe("requiresMutationForExecute", () => {
       }),
     ).toBe(false);
   });
+
+  it("does not require workspace mutation when file-edit tools are denied (Database readwrite)", () => {
+    expect(
+      requiresMutationForExecute({
+        route: "execute",
+        maximumWorkspaceEffect: "write",
+        primaryTaskIntent: "mock",
+        allowedTools: ["read_file", "run_command"],
+      }),
+    ).toBe(false);
+    expect(
+      isUnfulfilledExecute({
+        route: "execute",
+        maximumWorkspaceEffect: "write",
+        primaryTaskIntent: "mock",
+        toolCallCount: 0,
+        changedFileCount: 0,
+        content: "Inserted 5 users. Cannot apply_patch for TS errors.",
+        allowedTools: ["read_file", "run_command"],
+      }),
+    ).toBe(false);
+  });
 });
 
 describe("resolveLoopTurnOutcome", () => {

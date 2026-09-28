@@ -7,8 +7,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "mitii-mcp-sqlite": "./bin/mitii-mcp-sqlite.js",
-    "mitii-mcp-sqlite-readonly": "./bin/mitii-mcp-sqlite-readonly.js"
+    "mitii-mcp-sqlite": "./bin/mitii-mcp-sqlite.js"
   },
   "exports": {
     ".": {

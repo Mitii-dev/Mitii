@@ -78,7 +78,7 @@ describe("filterToolDefinitions MCP gating", () => {
     ]);
   });
 
-  it("exposes attached mongo-readonly tools on ask read grants", () => {
+  it("exposes attached mongo tools on ask read grants", () => {
     const tools = filterToolDefinitions({
       grant: grant({ maximumWorkspaceEffect: "read" }),
       definitions: [
@@ -88,24 +88,24 @@ describe("filterToolDefinitions MCP gating", () => {
           inputSchema: { type: "object" },
         },
         {
-          name: "mcp__mongo-readonly__list_collections",
+          name: "mcp__mongo__list_collections",
           description: "list",
           inputSchema: { type: "object" },
         },
         {
-          name: "mcp__mongo-readonly__query",
+          name: "mcp__mongo__query",
           description: "query",
           inputSchema: { type: "object" },
         },
       ],
       supportsTools: true,
       mode: "ask",
-      requiredMcpServerIds: ["mongo-readonly"],
+      requiredMcpServerIds: ["mongo"],
     });
     expect(tools.map((t) => t.name).sort()).toEqual(
       [
-        "mcp__mongo-readonly__list_collections",
-        "mcp__mongo-readonly__query",
+        "mcp__mongo__list_collections",
+        "mcp__mongo__query",
         "read_file",
       ].sort(),
     );
@@ -121,7 +121,7 @@ describe("filterToolDefinitions MCP gating", () => {
           inputSchema: { type: "object" },
         },
         {
-          name: "mcp__mongo-readonly__list_collections",
+          name: "mcp__mongo__list_collections",
           description: "list",
           inputSchema: { type: "object" },
           requiresWorkspaceWrite: true,
@@ -129,7 +129,7 @@ describe("filterToolDefinitions MCP gating", () => {
       ],
       supportsTools: true,
       mode: "ask",
-      requiredMcpServerIds: ["mongo-readonly"],
+      requiredMcpServerIds: ["mongo"],
     });
     expect(tools.map((t) => t.name)).toEqual(["read_file"]);
   });

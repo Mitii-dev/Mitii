@@ -197,6 +197,7 @@ export function handleNoToolModelTurn(params: {
       primaryTaskIntent:
         understanding?.intent.classification.primaryTaskIntent,
       reasonCodes: decision.reasonCodes,
+      allowedTools: grant.allowedTools,
     });
     if (
       mutationRequired &&
@@ -252,6 +253,7 @@ export function handleNoToolModelTurn(params: {
       truncated,
       mutationBudget: grant.mutationBudget,
       reasonCodes: decision.reasonCodes,
+      allowedTools: grant.allowedTools,
       fileReadCalls: budget.snapshot().fileReadCalls,
       recoveries: {
         truncation: truncationRecoveries,

@@ -722,14 +722,14 @@ describe("DecisionPolicyPipeline", () => {
             recommendsVerification: false,
           },
         }),
-        requiredMcpServerIds: ["mongo-readonly"],
+        requiredMcpServerIds: ["mongo"],
       }),
     );
 
     expect(decision.route).toBe("repository_answer");
     expect(decision.toolGrant.maximumWorkspaceEffect).toBe("read");
     expect(decision.toolGrant.allowedTools.length).toBeGreaterThan(0);
-    expect(decision.toolGrant.allowedMcpServerIds).toEqual(["mongo-readonly"]);
+    expect(decision.toolGrant.allowedMcpServerIds).toEqual(["mongo"]);
     expect(decision.reasonCodes).toContain("mcp_attach_required");
     expect(decision.reasonCodes).toContain("repository_grounded_answer");
   });

@@ -6,9 +6,17 @@ import {
   createBuiltinMcpCatalog,
   getBuiltinCatalogEntry,
   isMcpBuiltinId,
+  migrateLegacyDatabaseMcpId,
+  type McpBuiltinId,
 } from './builtins.js';
 
 export const MCP_FILE = 'mcp.json';
+
+const CANONICAL_DB_DISPLAY_NAMES: Readonly<Record<string, string>> = {
+  sqlite: 'SQLite',
+  postgres: 'Postgres',
+  mongo: 'MongoDB',
+};
 
 /** Empty store install — MCP off until the user opts in. */
 export function defaultMcpSettings(): McpSettings {
@@ -31,17 +39,24 @@ function parseServer(entry: unknown): McpServerConfig | undefined {
   if (!name) return undefined;
   const idRaw = typeof s.id === 'string' ? s.id.trim() : '';
   const id =
-    idRaw ||
-    name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '') ||
-    `server-${Math.random().toString(36).slice(2, 8)}`;
+    migrateLegacyDatabaseMcpId(
+      idRaw ||
+        name
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '') ||
+        `server-${Math.random().toString(36).slice(2, 8)}`,
+    );
   const transport = String(s.transport ?? 'stdio');
   const enabled = isServerEnabled(s as Partial<McpServerConfig>);
+  const displayName =
+    CANONICAL_DB_DISPLAY_NAMES[id] &&
+    (/read-?only/i.test(name) || name.toLowerCase().endsWith('(legacy)'))
+      ? CANONICAL_DB_DISPLAY_NAMES[id]!
+      : name;
   return {
     id,
-    name,
+    name: displayName,
     transport:
       transport === 'sse' ||
       transport === 'streamable-http' ||
@@ -126,22 +141,20 @@ function refreshBuiltinArgs(
   server: McpServerConfig,
   workspaceRoot?: string,
 ): McpServerConfig {
-  const id = server.id ?? '';
-  if (!isMcpBuiltinId(id)) return server;
+  const id = migrateLegacyDatabaseMcpId(server.id ?? '');
+  if (!isMcpBuiltinId(id)) return server.id === id ? server : { ...server, id };
 
   if (id === 'filesystem' && workspaceRoot) {
     const catalog = getBuiltinCatalogEntry('filesystem', workspaceRoot);
-    return { ...server, args: catalog.args, command: catalog.command };
+    return { ...server, id, args: catalog.args, command: catalog.command };
   }
 
-  if (
-    id === 'sqlite-readonly' ||
-    id === 'postgres-readonly' ||
-    id === 'mongo-readonly'
-  ) {
-    const catalog = getBuiltinCatalogEntry(id, workspaceRoot);
+  if (id === 'sqlite' || id === 'postgres' || id === 'mongo') {
+    const catalog = getBuiltinCatalogEntry(id as McpBuiltinId, workspaceRoot);
     return {
       ...server,
+      id,
+      name: CANONICAL_DB_DISPLAY_NAMES[id] ?? server.name,
       command: catalog.command,
       args: catalog.args,
       // Preserve user secrets / overrides; fill defaults from catalog.
@@ -149,7 +162,7 @@ function refreshBuiltinArgs(
     };
   }
 
-  return server;
+  return server.id === id ? server : { ...server, id };
 }
 
 /** Store catalog available for install (not the user's installed list). */

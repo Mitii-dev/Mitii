@@ -252,6 +252,7 @@ export async function runVerificationGate(
         maximumWorkspaceEffect: decision.toolGrant.maximumWorkspaceEffect,
         primaryTaskIntent,
         reasonCodes: decision.reasonCodes,
+        allowedTools: decision.toolGrant.allowedTools,
       }),
       canVerify,
       missingInfrastructure,

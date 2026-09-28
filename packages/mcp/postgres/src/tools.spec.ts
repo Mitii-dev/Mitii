@@ -6,7 +6,7 @@ import {
   resolveDatabaseUri,
 } from './tools.js';
 
-describe('@mitii/mcp-postgres-readonly tools', () => {
+describe('@mitii/mcp-postgres tools', () => {
   it('exposes list_tables, describe_table, query', () => {
     expect(TOOL_DEFINITIONS.map((t) => t.name)).toEqual([
       'list_tables',

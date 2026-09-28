@@ -1,14 +1,7 @@
 import type { McpServerConfig } from '../contracts/types.js';
 
-/** First-party Mitii DB MCP catalog ids (canonical + legacy). */
-const DATABASE_MCP_BUILTIN_IDS = new Set([
-  'sqlite',
-  'postgres',
-  'mongo',
-  'sqlite-readonly',
-  'postgres-readonly',
-  'mongo-readonly',
-]);
+/** First-party Mitii DB MCP catalog ids. */
+const DATABASE_MCP_BUILTIN_IDS = new Set(['sqlite', 'postgres', 'mongo']);
 
 /** Tool names that mutate the database (not the workspace). */
 const DB_WRITE_TOOL_NAMES = new Set([
@@ -48,12 +41,9 @@ export function mcpServerRequiresWorkspaceWrite(
 export function readOnlyMcpServer(serverId: string): boolean {
   const id = serverId.trim().toLowerCase();
   if (!id) return false;
+  // Canonical DB ids don't mutate the workspace tree (DB writes are per-tool).
   if (DATABASE_MCP_BUILTIN_IDS.has(id)) return true;
   if (id.includes('readonly') || id.includes('read-only') || id.endsWith('-ro')) {
-    return true;
-  }
-  // Canonical DB ids without -readonly still don't mutate the workspace tree.
-  if (id === 'sqlite' || id === 'postgres' || id === 'mongo') {
     return true;
   }
   return (

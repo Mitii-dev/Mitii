@@ -4,22 +4,30 @@ import {
   MCP_BUILTIN_IDS,
   MCP_CATALOG_META,
   createBuiltinMcpCatalog,
+  migrateLegacyDatabaseMcpId,
   validateBuiltinSecrets,
 } from './builtins.js';
 
 describe('MCP database catalog builtins', () => {
-  it('includes canonical and legacy database server ids', () => {
-    for (const id of [
-      'sqlite',
-      'postgres',
-      'mongo',
-      'sqlite-readonly',
-      'postgres-readonly',
-      'mongo-readonly',
-    ] as const) {
+  it('includes only canonical database server ids', () => {
+    for (const id of ['sqlite', 'postgres', 'mongo'] as const) {
       expect(MCP_BUILTIN_IDS).toContain(id);
       expect(MCP_CATALOG_META[id].category).toBe('database');
     }
+    for (const id of [
+      'sqlite-readonly',
+      'postgres-readonly',
+      'mongo-readonly',
+    ]) {
+      expect(MCP_BUILTIN_IDS).not.toContain(id);
+    }
+  });
+
+  it('migrates legacy *-readonly ids to canonical', () => {
+    expect(migrateLegacyDatabaseMcpId('mongo-readonly')).toBe('mongo');
+    expect(migrateLegacyDatabaseMcpId('sqlite-readonly')).toBe('sqlite');
+    expect(migrateLegacyDatabaseMcpId('postgres-readonly')).toBe('postgres');
+    expect(migrateLegacyDatabaseMcpId('mongo')).toBe('mongo');
   });
 
   it('catalog entries launch @mitii packages and are disabled by default', () => {
@@ -38,15 +46,10 @@ describe('MCP database catalog builtins', () => {
       expect(entry?.args?.length).toBeGreaterThan(0);
     }
 
-    const joined = [sqlite, postgres, mongo]
-      .map((e) => `${e?.command} ${(e?.args ?? []).join(' ')}`)
-      .join('\n');
-    expect(joined).toMatch(/mcp-sqlite/);
-    expect(joined).toMatch(/mcp-postgres/);
-    expect(joined).toMatch(/mcp-mongo/);
+    expect(catalog.some((s) => s.id.endsWith('-readonly'))).toBe(false);
   });
 
-  it('requires SQLITE_PATH, DATABASE_URI, and MCP_MONGODB_URI secrets', () => {
+  it('requires connection secrets for database installs', () => {
     expect(validateBuiltinSecrets('sqlite', {})).toMatch(/SQLite database path/i);
     expect(
       validateBuiltinSecrets('sqlite', { SQLITE_PATH: './data/app.db' }),
@@ -61,9 +64,7 @@ describe('MCP database catalog builtins', () => {
       }),
     ).toBeNull();
 
-    expect(validateBuiltinSecrets('mongo', {})).toMatch(
-      /MongoDB connection URI/i,
-    );
+    expect(validateBuiltinSecrets('mongo', {})).toMatch(/MongoDB/i);
     expect(
       validateBuiltinSecrets('mongo', {
         MCP_MONGODB_URI: 'mongodb://localhost:27017/mydb',

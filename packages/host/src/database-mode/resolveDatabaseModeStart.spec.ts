@@ -94,17 +94,17 @@ describe('database-mode', () => {
     expect(result.dbAccess).toBe('readwrite');
     expect(result.startFields.mode).toBe('agent');
     expect(result.startFields.requiredMcpServerIds).toEqual(['sqlite']);
-    expect(result.startFields.approvalMode).toBe('every_mutation');
+    expect(result.startFields.approvalMode).toBe('never');
     expect(result.startFields.userSafetyRules.retainWriteEffect).toBe(true);
   });
 
-  it('pins legacy sqlite-readonly when connected (readonly → ask)', () => {
+  it('pins sqlite when connected (readonly → ask)', () => {
     const root = workspaceWithMcp({
       enabled: true,
       servers: [
         {
-          id: 'sqlite-readonly',
-          name: 'SQLite (read-only)',
+          id: 'sqlite',
+          name: 'SQLite',
           transport: 'stdio',
           enabled: true,
           builtin: true,
@@ -115,7 +115,7 @@ describe('database-mode', () => {
     const result = resolveDatabaseModeStart({ workspaceRoot: root });
     expect(result.connectionStatus).toBe('connected');
     expect(result.startFields.mode).toBe('ask');
-    expect(result.startFields.requiredMcpServerIds).toEqual(['sqlite-readonly']);
+    expect(result.startFields.requiredMcpServerIds).toEqual(['sqlite']);
     expect(result.startFields.projectRules.some((r) => r.id.startsWith('mode-'))).toBe(
       true,
     );
@@ -123,19 +123,19 @@ describe('database-mode', () => {
     expect(result.startFields.userSafetyRules.retainWriteEffect).not.toBe(true);
   });
 
-  it('prefers preferredServerIds subset', () => {
+  it('migrates legacy preferredServerIds and pins canonical ids', () => {
     const root = workspaceWithMcp({
       enabled: true,
       servers: [
         {
-          id: 'sqlite-readonly',
+          id: 'sqlite',
           name: 'SQLite',
           transport: 'stdio',
           enabled: true,
           builtin: true,
         },
         {
-          id: 'postgres-readonly',
+          id: 'postgres',
           name: 'Postgres',
           transport: 'stdio',
           enabled: true,
@@ -147,7 +147,7 @@ describe('database-mode', () => {
       workspaceRoot: root,
       preferredServerIds: ['postgres-readonly'],
     });
-    expect(result.startFields.requiredMcpServerIds).toEqual(['postgres-readonly']);
+    expect(result.startFields.requiredMcpServerIds).toEqual(['postgres']);
   });
 
   it('detects custom mongo-named servers', () => {
@@ -166,7 +166,27 @@ describe('database-mode', () => {
     expect(servers.map((s) => s.id)).toEqual(['my-mongo']);
   });
 
-  it('pins catalog mongo-readonly as builtin database MCP', () => {
+  it('pins catalog mongo as builtin database MCP', () => {
+    const root = workspaceWithMcp({
+      enabled: true,
+      servers: [
+        {
+          id: 'mongo',
+          name: 'MongoDB',
+          transport: 'stdio',
+          enabled: true,
+          builtin: true,
+          env: { MCP_MONGODB_URI: 'mongodb://localhost:27017/app' },
+        },
+      ],
+    });
+    const result = resolveDatabaseModeStart({ workspaceRoot: root });
+    expect(result.connectionStatus).toBe('connected');
+    expect(result.startFields.requiredMcpServerIds).toEqual(['mongo']);
+    expect(result.installedDatabaseServers[0]?.builtin).toBe(true);
+  });
+
+  it('migrates legacy mongo-readonly on disk to mongo when listing', () => {
     const root = workspaceWithMcp({
       enabled: true,
       servers: [
@@ -180,9 +200,8 @@ describe('database-mode', () => {
         },
       ],
     });
-    const result = resolveDatabaseModeStart({ workspaceRoot: root });
-    expect(result.connectionStatus).toBe('connected');
-    expect(result.startFields.requiredMcpServerIds).toEqual(['mongo-readonly']);
-    expect(result.installedDatabaseServers[0]?.builtin).toBe(true);
+    const servers = listInstalledDatabaseMcpServers(root);
+    expect(servers.map((s) => s.id)).toEqual(['mongo']);
+    expect(servers[0]?.builtin).toBe(true);
   });
 });

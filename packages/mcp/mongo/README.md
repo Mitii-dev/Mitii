@@ -19,8 +19,7 @@ Aligned with MCP-Ref `mcp-mongo-server` (query/aggregate/count/insert/update/cre
 
 ## Catalog
 
-- Canonical id: `mongo`
-- Legacy alias: `mongo-readonly` (same package; prefer setting `MCP_DB_ACCESS`)
+- Catalog id: `mongo`
 
 ```bash
 MCP_MONGODB_URI=mongodb://localhost:27017/mydb MCP_DB_ACCESS=readonly \

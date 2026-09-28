@@ -1,3 +1,5 @@
+import { migrateLegacyDatabaseMcpId } from '@mitii/mcp';
+
 import { getBuiltinModeProfile } from '../modes/builtinModeProfiles.js';
 import { compileModeProfile } from '../modes/compileModeProfile.js';
 
@@ -60,7 +62,9 @@ export function resolveDatabaseModeStart(
     connectionStatus = 'connected';
   }
 
-  const preferred = options.preferredServerIds?.map((id) => id.trim()).filter(Boolean);
+  const preferred = options.preferredServerIds
+    ?.map((id) => migrateLegacyDatabaseMcpId(id))
+    .filter(Boolean);
   let pinned: string[] = [];
   if (connectionStatus === 'connected') {
     if (preferred && preferred.length > 0) {
@@ -84,10 +88,11 @@ export function resolveDatabaseModeStart(
     dbAccess === 'readwrite'
       ? [
           'DB access: read & write.',
-          'You may use write MCP tools (insert/update/delete/create_index/execute_write) after confirming intent.',
+          'You may use write MCP tools (insert/update/delete/create_index/execute_write) for the user request.',
           'Still refuse DDL unless the user explicitly asks for schema changes via create_index.',
           'Never apply_patch or edit application code in Database mode.',
-          'Show the mutation summary and affected count.',
+          'After the database work succeeds, show the mutation summary and affected count, then stop.',
+          'Ignore prior coding tasks, TypeScript errors, or file-edit requests from earlier turns in this thread.',
         ].join(' ')
       : [
           'DB access: read-only.',
@@ -135,8 +140,10 @@ export function resolveDatabaseModeStart(
       requiredMcpServerIds: pinned,
       projectRules,
       userSafetyRules,
+      // Read & write is the user's consent for DB mutations; do not also gate
+      // every insert behind every_mutation (Approval UI is hidden in Database).
       ...(dbAccess === 'readwrite'
-        ? { approvalMode: 'every_mutation' as const }
+        ? { approvalMode: 'never' as const }
         : {}),
     },
   };
