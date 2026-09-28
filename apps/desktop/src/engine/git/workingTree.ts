@@ -389,3 +389,39 @@ export async function gitCheckout(
     }
   });
 }
+
+/**
+ * Stash selected paths (`git stash push [--include-untracked] [-- path…]`).
+ * Use `includeUntracked` when any path is untracked.
+ */
+export async function gitStash(
+  workspaceRoot: string,
+  paths: readonly string[],
+  options?: { includeUntracked?: boolean; message?: string },
+): Promise<GitMutationResult> {
+  const list = sanitizePaths(paths);
+  if (list.length === 0) {
+    return { ok: false, error: 'paths_required' };
+  }
+  const message = options?.message?.trim();
+  if (message) {
+    try {
+      assertSafeGitArg(message, 'git stash message');
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+  return withStatus(workspaceRoot, async () => {
+    const args = ['stash', 'push'];
+    if (options?.includeUntracked) {
+      args.push('--include-untracked');
+    }
+    if (message) {
+      args.push('-m', message);
+    }
+    await runGit(workspaceRoot, appendPathsAfterDoubleDash(args, list));
+  });
+}

@@ -402,6 +402,15 @@ export function IconClose(props: IconProps) {
   );
 }
 
+/** Codicon-like: stop (filled square) */
+export function IconStop(props: IconProps) {
+  return (
+    <Svg16 {...props} size={props.size ?? 14}>
+      <rect x="4" y="4" width="8" height="8" rx="0.5" fill="currentColor" stroke="none" />
+    </Svg16>
+  );
+}
+
 /** Codicon-like: diff */
 export function IconDiff(props: IconProps) {
   return (

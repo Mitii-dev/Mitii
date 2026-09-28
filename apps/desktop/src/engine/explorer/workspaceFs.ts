@@ -2,6 +2,7 @@
  * Safe workspace file tree + read/write for Desktop explorer.
  */
 
+import type { Dirent } from 'node:fs';
 import {
   access,
   cp,
@@ -24,6 +25,23 @@ const SKIP = new Set([
   'coverage',
   '.turbo',
   '.cache',
+  'out',
+  'target',
+  '.venv',
+  'venv',
+  '__pycache__',
+  '.pnpm-store',
+  'vendor',
+]);
+
+/** Extra top-level skips for multi-repo workspaces (…/ai-agents with *-ref clones). */
+const TOP_LEVEL_SEARCH_SKIP = new Set([
+  'desktop-ref',
+  'agents-ref',
+  'mcp-ref',
+  'vscode-main',
+  'n8n-master',
+  'gitea-main',
 ]);
 
 export interface WorkspaceTreeEntry {
@@ -351,55 +369,134 @@ export type WorkspacePathSuggestion = {
   kind: 'file' | 'folder';
 };
 
+const PATH_SEARCH_MAX_VISITS = 12_000;
+const PATH_SEARCH_TIME_BUDGET_MS = 1_800;
+
+/** Drop cached `@` path catalogs (kept for API compatibility; search is live). */
+export function invalidateWorkspacePathCatalog(_workspaceRoot?: string): void {
+  // Live BFS search — nothing to invalidate.
+}
+
+function shouldSkipSearchName(name: string, depth: number): boolean {
+  if (SKIP.has(name)) return true;
+  if (name === '.env' || name.startsWith('.env.')) return true;
+  if (depth === 0 && TOP_LEVEL_SEARCH_SKIP.has(name.toLowerCase())) return true;
+  // Multi-repo sandboxes often dump clones as `*-ref` / `*-main` beside the product.
+  if (depth === 0 && /-(ref|main)$/i.test(name)) return true;
+  return false;
+}
+
+/** Normalize `@request intake` / `request_intake` → comparable tokens. */
+export function normalizePathSearchNeedle(query: string): string {
+  return query
+    .trim()
+    .toLowerCase()
+    .replace(/^@/, '')
+    .replace(/[\s_]+/g, '-');
+}
+
+function pathMatchesNeedle(path: string, needle: string): boolean {
+  if (!needle) return true;
+  const hay = path.toLowerCase();
+  const name = hay.split('/').pop() ?? hay;
+  const nameNorm = name.replace(/[\s_]+/g, '-');
+  const hayNorm = hay.replace(/[\s_]+/g, '-');
+  return (
+    nameNorm.includes(needle) ||
+    hayNorm.includes(needle) ||
+    nameNorm.split('-').some((part) => part.startsWith(needle)) ||
+    hayNorm.split('/').some((part) => part.startsWith(needle))
+  );
+}
+
+function scorePathSuggestion(
+  item: WorkspacePathSuggestion,
+  needle: string,
+): number {
+  const path = item.path.toLowerCase().replace(/[\s_]+/g, '-');
+  const name = path.split('/').pop() ?? path;
+  let score = item.kind === 'folder' ? 2 : 0;
+  if (!needle) return score - item.path.split('/').length * 0.1;
+  if (name === needle) score += 100;
+  if (name.startsWith(needle)) score += 60;
+  if (path.endsWith(`/${needle}`)) score += 50;
+  if (path.includes(`/${needle}`)) score += 20;
+  if (path.startsWith(needle)) score += 40;
+  return score - item.path.split('/').length * 0.2;
+}
+
+/**
+ * Query-first BFS for `@` mentions.
+ * Avoids filling a catalog from huge sibling clones (desktop-ref, …) before
+ * ever reaching product folders like `Mitii/.../request-intake`.
+ */
 export async function searchWorkspacePaths(
   workspaceRoot: string,
   query: string,
   limit = 40,
 ): Promise<WorkspacePathSuggestion[]> {
-  const needle = query.trim().toLowerCase();
+  const needle = normalizePathSearchNeedle(query);
+  const root = resolve(workspaceRoot);
   const matches: WorkspacePathSuggestion[] = [];
-  const queue: string[] = [''];
-  let visited = 0;
-  const maxVisit = 4_000;
+  const seen = new Set<string>();
+  const queue: Array<{ abs: string; depth: number }> = [{ abs: root, depth: 0 }];
+  let visits = 0;
+  const started = Date.now();
 
-  while (queue.length > 0 && matches.length < limit && visited < maxVisit) {
-    const dir = queue.shift()!;
-    let entries: WorkspaceTreeEntry[];
+  while (queue.length > 0) {
+    if (matches.length >= limit * 3) break;
+    if (visits >= PATH_SEARCH_MAX_VISITS) break;
+    if (Date.now() - started > PATH_SEARCH_TIME_BUDGET_MS) break;
+
+    const { abs, depth } = queue.shift()!;
+    let names: Dirent[];
     try {
-      entries = await listWorkspaceDir(workspaceRoot, dir);
+      names = await readdir(abs, { withFileTypes: true });
     } catch {
       continue;
     }
-    for (const entry of entries) {
-      visited += 1;
-      if (entry.kind === 'dir') {
-        queue.push(entry.path);
+
+    // Empty query: prefer a shallow folder list (composer “@” picker).
+    if (!needle && depth >= 3 && matches.length >= limit) {
+      continue;
+    }
+
+    for (const entry of names) {
+      visits += 1;
+      if (shouldSkipSearchName(entry.name, depth)) continue;
+
+      const full = join(abs, entry.name);
+      const rel =
+        relative(root, full).split(sep).join('/') || entry.name;
+      if (seen.has(rel)) continue;
+      seen.add(rel);
+
+      const kind = entry.isDirectory()
+        ? ('folder' as const)
+        : entry.isFile()
+          ? ('file' as const)
+          : null;
+      if (!kind) continue;
+
+      if (pathMatchesNeedle(rel, needle)) {
+        matches.push({ path: rel, kind });
       }
-      const hay = entry.path.toLowerCase();
-      const name = entry.name.toLowerCase();
-      if (
-        !needle ||
-        name.includes(needle) ||
-        hay.includes(needle) ||
-        hay.split('/').some((part) => part.startsWith(needle))
-      ) {
-        matches.push({
-          path: entry.path,
-          kind: entry.kind === 'dir' ? 'folder' : 'file',
-        });
-        if (matches.length >= limit) break;
+
+      if (kind === 'folder') {
+        // Always walk folders so deep names like request-intake are reachable.
+        // For empty query, stop descending once we have enough shallow hits.
+        if (!needle && depth >= 2 && matches.length >= limit) {
+          continue;
+        }
+        queue.push({ abs: full, depth: depth + 1 });
       }
     }
   }
 
-  matches.sort((a, b) => {
-    const aName = a.path.split('/').pop() ?? a.path;
-    const bName = b.path.split('/').pop() ?? b.path;
-    const aStarts = needle && aName.toLowerCase().startsWith(needle) ? 0 : 1;
-    const bStarts = needle && bName.toLowerCase().startsWith(needle) ? 0 : 1;
-    if (aStarts !== bStarts) return aStarts - bStarts;
-    if (a.kind !== b.kind) return a.kind === 'folder' ? -1 : 1;
-    return a.path.length - b.path.length || a.path.localeCompare(b.path);
-  });
-  return matches;
+  return matches
+    .sort(
+      (a, b) =>
+        scorePathSuggestion(b, needle) - scorePathSuggestion(a, needle),
+    )
+    .slice(0, limit);
 }

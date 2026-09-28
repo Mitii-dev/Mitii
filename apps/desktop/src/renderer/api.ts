@@ -1628,6 +1628,24 @@ export async function gitCommitChanges(options: {
   });
 }
 
+export async function gitStashFiles(options: {
+  baseUrl: string;
+  token?: string;
+  paths: string[];
+  includeUntracked?: boolean;
+  message?: string;
+}): Promise<import('../shared/git/workingTree.js').GitMutationResult> {
+  return postGitMutation({
+    ...options,
+    path: '/v1/git/stash',
+    body: {
+      paths: options.paths,
+      includeUntracked: options.includeUntracked === true,
+      ...(options.message ? { message: options.message } : {}),
+    },
+  });
+}
+
 export async function gitCheckoutBranch(options: {
   baseUrl: string;
   token?: string;
