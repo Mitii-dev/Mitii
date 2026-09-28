@@ -50,6 +50,6 @@ describe('@mitii/mcp', () => {
     expect(server.env?.MCP_MONGODB_URI).toBe('mongodb://localhost:27017/test');
     // Prefer workspace node+bin; fall back stays npx.
     const joined = `${server.command} ${(server.args ?? []).join(' ')}`;
-    expect(joined).toMatch(/mcp-mongo-readonly/);
+    expect(joined).toMatch(/mcp-mongo/);
   });
 });

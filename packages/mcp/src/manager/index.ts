@@ -11,5 +11,6 @@ export type {
 } from './mcpManagerTypes.js';
 export {
   mcpServerRequiresWorkspaceWrite,
+  isMcpDbWriteToolName,
   readOnlyMcpServer,
 } from './mcpServerEffects.js';

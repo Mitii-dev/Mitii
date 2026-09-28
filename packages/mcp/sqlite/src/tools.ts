@@ -1,12 +1,18 @@
 import { existsSync } from 'node:fs';
 import Database from 'better-sqlite3';
 
+import {
+  assertWriteAllowed,
+  resolveDbAccessMode,
+  type DbAccessMode,
+} from './access.js';
+
 const TABLE_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-export const TOOL_DEFINITIONS = [
+const READ_TOOL_DEFINITIONS = [
   {
     name: 'list_tables',
-    description: 'List user-defined SQLite tables (read-only).',
+    description: 'List user-defined SQLite tables.',
     inputSchema: {
       type: 'object',
       properties: {},
@@ -15,7 +21,7 @@ export const TOOL_DEFINITIONS = [
   },
   {
     name: 'describe_table',
-    description: 'Describe columns for a SQLite table (read-only).',
+    description: 'Describe columns for a SQLite table.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -30,7 +36,7 @@ export const TOOL_DEFINITIONS = [
   {
     name: 'query',
     description:
-      'Run a read-only SELECT query and return rows plus column names. Mutations are rejected.',
+      'Run a SELECT query and return rows plus column names. Mutations are rejected here — use execute_write.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -46,21 +52,46 @@ export const TOOL_DEFINITIONS = [
   },
 ] as const;
 
-export function listToolDefinitions(): ReadonlyArray<{
+const WRITE_TOOL_DEFINITIONS = [
+  {
+    name: 'execute_write',
+    description:
+      'Run a single INSERT / UPDATE / DELETE statement (readwrite access only). DDL is rejected.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sql: {
+          type: 'string',
+          description: 'INSERT, UPDATE, or DELETE statement',
+        },
+      },
+      required: ['sql'],
+    },
+  },
+] as const;
+
+export const TOOL_DEFINITIONS = [
+  ...READ_TOOL_DEFINITIONS,
+  ...WRITE_TOOL_DEFINITIONS,
+] as const;
+
+export function listToolDefinitions(
+  access: DbAccessMode = resolveDbAccessMode(),
+): ReadonlyArray<{
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
 }> {
-  return TOOL_DEFINITIONS;
+  if (access === 'readwrite') return TOOL_DEFINITIONS;
+  return READ_TOOL_DEFINITIONS;
 }
 
-/** Reject non-SELECT / multi-statement SQL. */
+/** Reject non-SELECT / multi-statement SQL for the query tool. */
 export function rejectMutationSql(sql: string): void {
   const normalized = sql.trim().toLowerCase();
   if (!normalized.startsWith('select') && !normalized.startsWith('with')) {
     throw new Error('Only SELECT (or WITH … SELECT) queries are allowed');
   }
-  // Block stacked statements (e.g. "SELECT 1; DROP TABLE x")
   const withoutStrings = stripSqlStrings(normalized);
   if (withoutStrings.includes(';')) {
     const parts = withoutStrings
@@ -84,6 +115,43 @@ export function rejectMutationSql(sql: string): void {
     'pragma ',
     'vacuum',
     'reindex',
+  ]) {
+    if (withoutStrings.includes(banned)) {
+      throw new Error(`Disallowed SQL keyword near: ${banned.trim()}`);
+    }
+  }
+}
+
+/** Allow only single-statement DML (no DDL). */
+export function assertDmlSql(sql: string): void {
+  const normalized = sql.trim().toLowerCase();
+  if (
+    !normalized.startsWith('insert') &&
+    !normalized.startsWith('update') &&
+    !normalized.startsWith('delete')
+  ) {
+    throw new Error('Only INSERT, UPDATE, or DELETE are allowed');
+  }
+  const withoutStrings = stripSqlStrings(normalized);
+  if (withoutStrings.includes(';')) {
+    const parts = withoutStrings
+      .split(';')
+      .map((p) => p.trim())
+      .filter(Boolean);
+    if (parts.length > 1) {
+      throw new Error('Multiple SQL statements are not allowed');
+    }
+  }
+  for (const banned of [
+    'drop ',
+    'alter ',
+    'create ',
+    'attach ',
+    'detach ',
+    'pragma ',
+    'vacuum',
+    'reindex',
+    'truncate ',
   ]) {
     if (withoutStrings.includes(banned)) {
       throw new Error(`Disallowed SQL keyword near: ${banned.trim()}`);
@@ -130,12 +198,24 @@ export function openReadonlyDatabase(
   return db;
 }
 
+export function openWritableDatabase(
+  env: NodeJS.ProcessEnv = process.env,
+): Database.Database {
+  const path = resolveSqlitePath(env);
+  return new Database(path, { readonly: false, fileMustExist: true });
+}
+
 export async function handleToolCall(
   name: string,
   args: Record<string, unknown>,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
   try {
+    const access = resolveDbAccessMode(env);
+    if (name === 'execute_write') {
+      assertWriteAllowed(access, name);
+    }
+
     if (name === 'list_tables') {
       const db = openReadonlyDatabase(env);
       try {
@@ -204,6 +284,28 @@ export async function handleToolCall(
             : stmt.columns().map((c) => c.name);
         return textResult(
           JSON.stringify({ limit: safeLimit, columns, rows }, null, 2),
+        );
+      } finally {
+        db.close();
+      }
+    }
+
+    if (name === 'execute_write') {
+      const sql = typeof args.sql === 'string' ? args.sql.trim() : '';
+      if (!sql) return textResult('sql is required', true);
+      assertDmlSql(sql);
+      const db = openWritableDatabase(env);
+      try {
+        const info = db.prepare(sql.replace(/;+\s*$/, '')).run();
+        return textResult(
+          JSON.stringify(
+            {
+              changes: info.changes,
+              lastInsertRowid: Number(info.lastInsertRowid),
+            },
+            null,
+            2,
+          ),
         );
       } finally {
         db.close();

@@ -473,6 +473,8 @@ export type {
 export {
   DATABASE_MODE_SLUG,
   DATABASE_MCP_BUILTIN_IDS,
+  DATABASE_DB_ACCESS_MODES,
+  MCP_DB_ACCESS_ENV_KEY,
   NL_SQL_ANALYST_SKILL_ID,
   listInstalledDatabaseMcpServers,
   listInstalledDatabaseMcpServerIds,
@@ -481,9 +483,11 @@ export {
   resolveDatabaseModeStart,
   isDatabaseUiMode,
   mapUiModeToAgentMode,
+  applyDatabaseAccessToMcpSettings,
 } from './database-mode/index.js';
 export type {
   DatabaseMcpBuiltinId,
+  DatabaseDbAccess,
   DatabaseModeConnectionStatus,
   DatabaseMcpServerRef,
   DatabaseModeStartFields,

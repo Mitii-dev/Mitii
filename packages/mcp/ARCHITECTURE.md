@@ -22,85 +22,30 @@ implementation. V8 stays free of JSON-RPC / process spawn / HTTP SSE.
  ToolRuntimePipeline + Decision Policy
 ```
 
-## Dependency graph
+## Sibling packages (DB servers)
 
 ```text
-apps/vscode --+
-apps/cli -----+--> @mitii/mcp --> @mitii/v8
-apps/acp -----+
-@mitii/host --+   (automation executor)
+packages/mcp/
+  src/           → @mitii/mcp              (client core)
+  web/           → @mitii/mcp-web
+  sqlite/        → @mitii/mcp-sqlite
+  postgres/      → @mitii/mcp-postgres
+  mongo/         → @mitii/mcp-mongo
 ```
 
-Forbidden:
+Access mode (all three DB servers):
 
-- `@mitii/mcp` → sdk | host | apps
-- `@mitii/v8` → `@mitii/mcp`
+| `MCP_DB_ACCESS` | Behavior |
+|-----------------|----------|
+| `readonly` (default) | Discovery + SELECT / find / aggregate / count |
+| `readwrite` | + DML (`execute_write` or insert/update/delete/create_index) |
 
-## Module layout
+Database mode UI exposes **Read-only** / **Read & write** and stamps `MCP_DB_ACCESS` onto installed DB servers. Write tools are tagged `requiresWorkspaceWrite` per-tool so Ask grants keep discovery tools.
 
-```text
-src/
-  contracts/     # types only
-  config/        # settings + builtins catalog
-  transports/    # McpClient implementations
-  manager/       # sync + ToolRegistry bridge
-  index.ts
-```
+Legacy catalog ids `*-readonly` still install and map to the same packages.
 
 ## Tool naming
-
-Registered tools use a stable prefix:
 
 ```text
 mcp__{serverId}__{toolName}
 ```
-
-Unsafe characters in ids become `_`. Agent write grants expose all MCP
-tools, and Agent read grants expose MCP tools that do not require workspace
-writes (V8 `filterToolDefinitions`). Ask/Plan hide MCP unless the user
-explicitly attaches servers via `@mcp:` / pins (still read-safe only).
-
-### Per-turn attach (`@mcp:`)
-
-Hosts may pass `requiredMcpServerIds` (pins / `@mcp:excalidraw`). When
-non-empty, V8 scopes the catalog and grant to those server ids only.
-Empty = all enabled servers under the grant. Parsing lives in
-`packages/v8/src/modules/mcp-attach/` (V8 must not import this package).
-
-## Manager layout
-
-```text
-manager/
-  McpManager.ts              sync / snapshot / dispose
-  createMcpClient.ts         transport factory
-  registerMcpServerTools.ts  mcp__* ToolRegistry bridge
-  mcpServerEffects.ts        write vs read-only tagging
-  mcpManagerTypes.ts         snapshot + result event types
-  sharedMcpManager.ts        host singleton
-  toolName.ts
-```
-
-## Host responsibilities
-
-Hosts still own:
-
-- Workspace trust gates (VS Code)
-- Secret / env injection into server `env` / `headers`
-- Settings UI and SecretStorage
-- Passing `registry` + `toolDefinitions` into SDK client creation
-
-## Sibling packages
-
-MCP **servers** live next to the client core under `packages/mcp/`:
-
-```text
-packages/mcp/
-  src/                 →  @mitii/mcp          (client core)
-  web/                 →  @mitii/mcp-web
-  sqlite-readonly/     →  @mitii/mcp-sqlite-readonly
-  postgres-readonly/   →  @mitii/mcp-postgres-readonly
-  mongo-readonly/      →  @mitii/mcp-mongo-readonly
-```
-
-Server packages must not import `@mitii/mcp` / `@mitii/v8` (stdio-only, AGPL).
-Catalog entries in `src/config/builtins.ts` launch them via `npx -y @mitii/mcp-*-readonly`.

@@ -73,7 +73,32 @@ describe('database-mode', () => {
     expect(listInstalledDatabaseMcpServers(root)).toEqual([]);
   });
 
-  it('pins installed sqlite-readonly when connected', () => {
+  it('pins installed sqlite when connected; readwrite maps to agent', () => {
+    const root = workspaceWithMcp({
+      enabled: true,
+      servers: [
+        {
+          id: 'sqlite',
+          name: 'SQLite',
+          transport: 'stdio',
+          enabled: true,
+          builtin: true,
+        },
+      ],
+    });
+    const result = resolveDatabaseModeStart({
+      workspaceRoot: root,
+      dbAccess: 'readwrite',
+    });
+    expect(result.connectionStatus).toBe('connected');
+    expect(result.dbAccess).toBe('readwrite');
+    expect(result.startFields.mode).toBe('agent');
+    expect(result.startFields.requiredMcpServerIds).toEqual(['sqlite']);
+    expect(result.startFields.approvalMode).toBe('every_mutation');
+    expect(result.startFields.userSafetyRules.retainWriteEffect).toBe(true);
+  });
+
+  it('pins legacy sqlite-readonly when connected (readonly → ask)', () => {
     const root = workspaceWithMcp({
       enabled: true,
       servers: [
@@ -89,11 +114,13 @@ describe('database-mode', () => {
     });
     const result = resolveDatabaseModeStart({ workspaceRoot: root });
     expect(result.connectionStatus).toBe('connected');
+    expect(result.startFields.mode).toBe('ask');
     expect(result.startFields.requiredMcpServerIds).toEqual(['sqlite-readonly']);
     expect(result.startFields.projectRules.some((r) => r.id.startsWith('mode-'))).toBe(
       true,
     );
     expect(result.startFields.userSafetyRules.enabled).toBe(true);
+    expect(result.startFields.userSafetyRules.retainWriteEffect).not.toBe(true);
   });
 
   it('prefers preferredServerIds subset', () => {

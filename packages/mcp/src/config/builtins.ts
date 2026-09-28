@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import type { McpServerConfig } from '../contracts/types.js';
 
 /**
- * Prefer a workspace-linked `@mitii/mcp-*-readonly` bin (monorepo / local),
+ * Prefer a workspace-linked `@mitii/mcp-*` DB bin (monorepo / local),
  * else fall back to `npx -y` for published installs.
  */
 export function resolveReadonlyStdioLauncher(params: {
@@ -26,6 +26,9 @@ export function resolveReadonlyStdioLauncher(params: {
   }
 }
 
+/** @deprecated Alias — same as resolveReadonlyStdioLauncher. */
+export const resolveDbStdioLauncher = resolveReadonlyStdioLauncher;
+
 /**
  * Built-in MCP server catalog (store).
  * Not installed by default — hosts add entries into `McpSettings.servers`
@@ -41,6 +44,10 @@ export const MCP_BUILTIN_IDS = [
   'gitea',
   'brave-search',
   'excalidraw',
+  'sqlite',
+  'postgres',
+  'mongo',
+  /** @deprecated Prefer sqlite / postgres / mongo */
   'sqlite-readonly',
   'postgres-readonly',
   'mongo-readonly',
@@ -170,7 +177,7 @@ export const MCP_CATALOG_META: Record<McpBuiltinId, McpCatalogMeta> = {
     id: 'sqlite-readonly',
     category: 'database',
     description:
-      'Read-only SQLite probes (list_tables, describe_table, SELECT query) via @mitii/mcp-sqlite-readonly.',
+      'Legacy id for SQLite — prefer "sqlite". Access via MCP_DB_ACCESS=readonly|readwrite.',
     secrets: [
       {
         key: 'SQLITE_PATH',
@@ -178,7 +185,7 @@ export const MCP_CATALOG_META: Record<McpBuiltinId, McpCatalogMeta> = {
         secret: false,
         required: true,
         placeholder: './data/app.db',
-        hint: 'Absolute or workspace-relative path to the .db / .sqlite file the app uses.',
+        hint: 'Absolute or workspace-relative path to the .db / .sqlite file.',
       },
     ],
   },
@@ -186,7 +193,7 @@ export const MCP_CATALOG_META: Record<McpBuiltinId, McpCatalogMeta> = {
     id: 'postgres-readonly',
     category: 'database',
     description:
-      'Read-only Postgres probes (list_tables, describe_table, SELECT query) via @mitii/mcp-postgres-readonly.',
+      'Legacy id for Postgres — prefer "postgres". Access via MCP_DB_ACCESS=readonly|readwrite.',
     secrets: [
       {
         key: 'DATABASE_URI',
@@ -194,7 +201,7 @@ export const MCP_CATALOG_META: Record<McpBuiltinId, McpCatalogMeta> = {
         secret: true,
         required: true,
         placeholder: 'postgresql://user:pass@localhost:5432/mydb',
-        hint: 'Same database the API process uses. Prefer a read-only DB role when possible.',
+        hint: 'Prefer a least-privilege DB role.',
       },
     ],
   },
@@ -202,7 +209,7 @@ export const MCP_CATALOG_META: Record<McpBuiltinId, McpCatalogMeta> = {
     id: 'mongo-readonly',
     category: 'database',
     description:
-      'Read-only MongoDB probes (list_collections, describe_collection, query, aggregate, count) via @mitii/mcp-mongo-readonly.',
+      'Legacy id for MongoDB — prefer "mongo". Access via MCP_DB_ACCESS=readonly|readwrite.',
     secrets: [
       {
         key: 'MCP_MONGODB_URI',
@@ -210,7 +217,55 @@ export const MCP_CATALOG_META: Record<McpBuiltinId, McpCatalogMeta> = {
         secret: true,
         required: true,
         placeholder: 'mongodb://user:pass@localhost:27017/mydb',
-        hint: 'mongodb:// or mongodb+srv:// URI. Prefer a read-only DB user. Atlas supported.',
+        hint: 'mongodb:// or mongodb+srv:// URI. Atlas supported.',
+      },
+    ],
+  },
+  sqlite: {
+    id: 'sqlite',
+    category: 'database',
+    description:
+      'SQLite via @mitii/mcp-sqlite. Read-only or read/write (MCP_DB_ACCESS). Tools: list_tables, describe_table, query, execute_write.',
+    secrets: [
+      {
+        key: 'SQLITE_PATH',
+        label: 'SQLite database path',
+        secret: false,
+        required: true,
+        placeholder: './data/app.db',
+        hint: 'Absolute or workspace-relative path to the .db / .sqlite file.',
+      },
+    ],
+  },
+  postgres: {
+    id: 'postgres',
+    category: 'database',
+    description:
+      'Postgres via @mitii/mcp-postgres. Read-only or read/write (MCP_DB_ACCESS). Tools: list_tables, describe_table, query, execute_write.',
+    secrets: [
+      {
+        key: 'DATABASE_URI',
+        label: 'Postgres connection URI',
+        secret: true,
+        required: true,
+        placeholder: 'postgresql://user:pass@localhost:5432/mydb',
+        hint: 'Prefer a least-privilege DB role.',
+      },
+    ],
+  },
+  mongo: {
+    id: 'mongo',
+    category: 'database',
+    description:
+      'MongoDB via @mitii/mcp-mongo. Read-only or read/write (MCP_DB_ACCESS). Tools: list/describe/query/aggregate/count + insert/update/delete/create_index.',
+    secrets: [
+      {
+        key: 'MCP_MONGODB_URI',
+        label: 'MongoDB connection URI',
+        secret: true,
+        required: true,
+        placeholder: 'mongodb://user:pass@localhost:27017/mydb',
+        hint: 'mongodb:// or mongodb+srv:// URI. Atlas supported.',
       },
     ],
   },
@@ -310,34 +365,67 @@ export function createBuiltinMcpCatalog(
       enabled: false,
     },
     {
-      id: 'sqlite-readonly',
-      name: 'SQLite (read-only)',
+      id: 'sqlite',
+      name: 'SQLite',
       transport: 'stdio',
       ...resolveReadonlyStdioLauncher({
-        packageName: '@mitii/mcp-sqlite-readonly',
-        binFile: 'mitii-mcp-sqlite-readonly.js',
+        packageName: '@mitii/mcp-sqlite',
+        binFile: 'mitii-mcp-sqlite.js',
+      }),
+      builtin: true,
+      enabled: false,
+    },
+    {
+      id: 'postgres',
+      name: 'Postgres',
+      transport: 'stdio',
+      ...resolveReadonlyStdioLauncher({
+        packageName: '@mitii/mcp-postgres',
+        binFile: 'mitii-mcp-postgres.js',
+      }),
+      builtin: true,
+      enabled: false,
+    },
+    {
+      id: 'mongo',
+      name: 'MongoDB',
+      transport: 'stdio',
+      ...resolveReadonlyStdioLauncher({
+        packageName: '@mitii/mcp-mongo',
+        binFile: 'mitii-mcp-mongo.js',
+      }),
+      builtin: true,
+      enabled: false,
+    },
+    {
+      id: 'sqlite-readonly',
+      name: 'SQLite (legacy)',
+      transport: 'stdio',
+      ...resolveReadonlyStdioLauncher({
+        packageName: '@mitii/mcp-sqlite',
+        binFile: 'mitii-mcp-sqlite.js',
       }),
       builtin: true,
       enabled: false,
     },
     {
       id: 'postgres-readonly',
-      name: 'Postgres (read-only)',
+      name: 'Postgres (legacy)',
       transport: 'stdio',
       ...resolveReadonlyStdioLauncher({
-        packageName: '@mitii/mcp-postgres-readonly',
-        binFile: 'mitii-mcp-postgres-readonly.js',
+        packageName: '@mitii/mcp-postgres',
+        binFile: 'mitii-mcp-postgres.js',
       }),
       builtin: true,
       enabled: false,
     },
     {
       id: 'mongo-readonly',
-      name: 'MongoDB (read-only)',
+      name: 'MongoDB (legacy)',
       transport: 'stdio',
       ...resolveReadonlyStdioLauncher({
-        packageName: '@mitii/mcp-mongo-readonly',
-        binFile: 'mitii-mcp-mongo-readonly.js',
+        packageName: '@mitii/mcp-mongo',
+        binFile: 'mitii-mcp-mongo.js',
       }),
       builtin: true,
       enabled: false,
@@ -371,12 +459,23 @@ export function applyBuiltinSecrets(
   entry: McpServerConfig,
   secrets: Record<string, string> | undefined,
 ): McpServerConfig {
-  if (!secrets || Object.keys(secrets).length === 0) return entry;
   const env = { ...(entry.env ?? {}) };
-  for (const [key, value] of Object.entries(secrets)) {
-    const trimmed = value.trim();
-    if (trimmed) env[key] = trimmed;
+  const id = (entry.id ?? entry.name).toLowerCase();
+  const isDb =
+    id === 'sqlite' ||
+    id === 'postgres' ||
+    id === 'mongo' ||
+    id.endsWith('-readonly');
+  if (isDb && !env.MCP_DB_ACCESS) {
+    env.MCP_DB_ACCESS = 'readonly';
   }
+  if (secrets) {
+    for (const [key, value] of Object.entries(secrets)) {
+      const trimmed = value.trim();
+      if (trimmed) env[key] = trimmed;
+    }
+  }
+  if (Object.keys(env).length === 0) return entry;
   return { ...entry, env };
 }
 

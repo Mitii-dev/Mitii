@@ -42,6 +42,7 @@ export function mergeUserSafetyRules(
   let mutationRelativePathRegex =
     enabledParts[0]?.mutationRelativePathRegex;
   let autoApprove = enabledParts[0]?.autoApprove;
+  let retainWriteEffect = enabledParts[0]?.retainWriteEffect;
   for (const part of enabledParts.slice(1)) {
     if (part.approvalCeiling) {
       approvalCeiling = part.approvalCeiling;
@@ -51,6 +52,9 @@ export function mergeUserSafetyRules(
     }
     if (part.autoApprove) {
       autoApprove = { ...autoApprove, ...part.autoApprove };
+    }
+    if (part.retainWriteEffect === true) {
+      retainWriteEffect = true;
     }
   }
 
@@ -65,6 +69,7 @@ export function mergeUserSafetyRules(
     ...(approvalCeiling ? { approvalCeiling } : {}),
     ...(mutationRelativePathRegex ? { mutationRelativePathRegex } : {}),
     ...(autoApprove ? { autoApprove } : {}),
+    ...(retainWriteEffect === true ? { retainWriteEffect: true } : {}),
   };
 }
 

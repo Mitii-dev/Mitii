@@ -29,6 +29,7 @@ import {
   mapUiModeToAgentMode,
   mergeUserSafetyRules,
   resolveDatabaseModeStart,
+  applyDatabaseAccessToMcpSettings,
   type SemanticIndexSettings,
 } from '@mitii/host';
 import {
@@ -302,15 +303,26 @@ function buildStartInput(
 
   const extras = buildDesktopStartExtras(process.env);
   const uiMode = parsed.mode ?? 'ask';
-  const agentMode = mapUiModeToAgentMode(uiMode);
+  const dbAccessRaw =
+    typeof body.dbAccess === 'string' ? body.dbAccess.trim().toLowerCase() : '';
+  const dbAccess =
+    dbAccessRaw === 'readwrite' ||
+    dbAccessRaw === 'read_write' ||
+    dbAccessRaw === 'rw'
+      ? 'readwrite'
+      : 'readonly';
 
+  let agentMode = mapUiModeToAgentMode(uiMode);
   let projectRules: MitiiStartInput['projectRules'];
   let userSafetyRules: MitiiStartInput['userSafetyRules'];
+  let approvalMode = policy.approvalMode;
   if (isDatabaseUiMode(uiMode)) {
     const db = resolveDatabaseModeStart({
       workspaceRoot,
       preferredServerIds: requiredMcpServerIds,
+      dbAccess,
     });
+    agentMode = db.startFields.mode;
     requiredSkillIds = [
       ...new Set([
         ...(requiredSkillIds ?? []),
@@ -326,13 +338,16 @@ function buildStartInput(
       undefined,
       db.startFields.userSafetyRules,
     );
+    if (db.startFields.approvalMode) {
+      approvalMode = db.startFields.approvalMode;
+    }
   }
 
   return {
     prompt: parsed.prompt,
     mode: agentMode,
     workspaceRoot,
-    approvalMode: policy.approvalMode,
+    approvalMode,
     planApproval: policy.planApproval,
     explorationDepth: intensity.depth,
     windowBudget: {
@@ -1200,6 +1215,26 @@ export async function startEngineServer(
               ok: true,
               ...installBuiltinMcpServer(cwd, builtinId, secrets),
               restartRequired: true,
+            });
+            return;
+          }
+
+          if (action === 'setDatabaseAccess' || action === 'setDbAccess') {
+            const raw =
+              typeof body.dbAccess === 'string'
+                ? body.dbAccess.trim().toLowerCase()
+                : '';
+            const dbAccess =
+              raw === 'readwrite' || raw === 'read_write' || raw === 'rw'
+                ? 'readwrite'
+                : 'readonly';
+            const result = applyDatabaseAccessToMcpSettings(cwd, dbAccess);
+            sendJson(res, 200, {
+              ok: true,
+              dbAccess,
+              ...result,
+              ...listMcpServers(cwd),
+              restartRequired: result.changed,
             });
             return;
           }

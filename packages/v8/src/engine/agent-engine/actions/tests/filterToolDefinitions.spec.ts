@@ -168,6 +168,40 @@ describe("filterToolDefinitions MCP gating", () => {
     expect(tools.map((t) => t.name)).toEqual(["read_file"]);
   });
 
+  it("exposes mongo insert on write grants (Database readwrite)", () => {
+    const tools = filterToolDefinitions({
+      grant: grant({ maximumWorkspaceEffect: "write" }),
+      definitions: [
+        {
+          name: "read_file",
+          description: "read",
+          inputSchema: { type: "object" },
+        },
+        {
+          name: "mcp__mongo__list_collections",
+          description: "list",
+          inputSchema: { type: "object" },
+        },
+        {
+          name: "mcp__mongo__insert",
+          description: "insert",
+          inputSchema: { type: "object" },
+          requiresWorkspaceWrite: true,
+        },
+      ],
+      supportsTools: true,
+      mode: "agent",
+      requiredMcpServerIds: ["mongo"],
+    });
+    expect(tools.map((t) => t.name).sort()).toEqual(
+      [
+        "mcp__mongo__insert",
+        "mcp__mongo__list_collections",
+        "read_file",
+      ].sort(),
+    );
+  });
+
   it("injects describe_tool and keeps full schemas for core tools", () => {
     const tools = filterToolDefinitions({
       grant: grant({

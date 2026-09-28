@@ -1,6 +1,6 @@
 {
   "name": "@mitii/automation",
-  "version": "2.9.103",
+  "version": "2.9.104",
   "description": "Mitii automation control plane: schedules, event ingress, claim/lease runner, webhooks (Phases 1–2).",
   "license": "AGPL-3.0-or-later",
   "type": "module",

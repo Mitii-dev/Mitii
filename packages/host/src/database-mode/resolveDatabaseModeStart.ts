@@ -5,6 +5,7 @@ import { buildDatabaseConnectGuidance } from './connectGuidance.js';
 import {
   DATABASE_MODE_SLUG,
   NL_SQL_ANALYST_SKILL_ID,
+  type DatabaseDbAccess,
 } from './constants.js';
 import type {
   DatabaseModeConnectionStatus,
@@ -18,13 +19,31 @@ import {
 
 const DEFAULT_MAX_PINNED = 3;
 
+function normalizeDbAccess(
+  value: string | undefined | null,
+): DatabaseDbAccess {
+  const raw = (value ?? 'readonly').trim().toLowerCase();
+  if (
+    raw === 'readwrite' ||
+    raw === 'read_write' ||
+    raw === 'read-write' ||
+    raw === 'rw' ||
+    raw === 'write'
+  ) {
+    return 'readwrite';
+  }
+  return 'readonly';
+}
+
 /**
  * Compile MitiiStartInput overlay for UI mode "database".
- * Always maps to Ask + nl-sql-analyst + optional MCP pins.
+ * readonly → Ask + nl-sql-analyst + MCP pins.
+ * readwrite → Agent (write grant for DB MCP mutations) + same pins / skill.
  */
 export function resolveDatabaseModeStart(
   options: ResolveDatabaseModeStartOptions,
 ): DatabaseModeStartResult {
+  const dbAccess = normalizeDbAccess(options.dbAccess);
   const maxPinned = Math.max(
     1,
     Math.min(5, options.maxPinnedServers ?? DEFAULT_MAX_PINNED),
@@ -61,6 +80,21 @@ export function resolveDatabaseModeStart(
   const compiled = compileModeProfile(profile);
   const connectGuidance = buildDatabaseConnectGuidance(connectionStatus);
 
+  const accessGuidance =
+    dbAccess === 'readwrite'
+      ? [
+          'DB access: read & write.',
+          'You may use write MCP tools (insert/update/delete/create_index/execute_write) after confirming intent.',
+          'Still refuse DDL unless the user explicitly asks for schema changes via create_index.',
+          'Never apply_patch or edit application code in Database mode.',
+          'Show the mutation summary and affected count.',
+        ].join(' ')
+      : [
+          'DB access: read-only.',
+          'Prefer discovery + SELECT / find / aggregate / count.',
+          'Refuse INSERT/UPDATE/DELETE and schema mutations.',
+        ].join(' ');
+
   const projectRules = [
     ...compiled.projectRules,
     {
@@ -69,18 +103,41 @@ export function resolveDatabaseModeStart(
       content: `Connection status: ${connectionStatus}.\n${connectGuidance}`,
       priority: 275,
     },
+    {
+      id: 'database-mode-access',
+      title: 'Database access tier',
+      content: accessGuidance,
+      priority: 276,
+    },
   ];
+
+  const agentMode = dbAccess === 'readwrite' ? 'agent' : 'ask';
+
+  const userSafetyRules =
+    dbAccess === 'readwrite'
+      ? {
+          ...compiled.userSafetyRules,
+          // Keep write grant after denying apply_patch so MCP insert/update/
+          // delete (requiresWorkspaceWrite) stay visible to the model.
+          retainWriteEffect: true,
+        }
+      : compiled.userSafetyRules;
 
   return {
     connectionStatus,
+    dbAccess,
     installedDatabaseServers: installed,
     connectGuidance,
     startFields: {
-      mode: 'ask',
+      mode: agentMode,
+      dbAccess,
       requiredSkillIds: [NL_SQL_ANALYST_SKILL_ID],
       requiredMcpServerIds: pinned,
       projectRules,
-      userSafetyRules: compiled.userSafetyRules,
+      userSafetyRules,
+      ...(dbAccess === 'readwrite'
+        ? { approvalMode: 'every_mutation' as const }
+        : {}),
     },
   };
 }
@@ -91,7 +148,9 @@ export function isDatabaseUiMode(mode: string | undefined | null): boolean {
 }
 
 /**
- * Map UI mode to V8 AgentMode. Database → ask; others pass through when valid.
+ * Map UI mode to V8 AgentMode when db access is not provided.
+ * Database defaults to ask; callers with readwrite should use
+ * resolveDatabaseModeStart().startFields.mode instead.
  */
 export function mapUiModeToAgentMode(
   uiMode: string | undefined | null,

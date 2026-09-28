@@ -132,7 +132,9 @@ export function intersectUserSafetyRules(
     };
   }
 
-  // Drop write effects that no longer have matching tools.
+  // Drop file-scoped write budget when no file-mutation tools remain.
+  // Database readwrite sets retainWriteEffect so MCP DB mutations stay on a
+  // write grant without apply_patch / delete_file.
   if (next.maximumWorkspaceEffect === "write") {
     const hasMutationTool = next.allowedTools.some((tool) =>
       ["apply_patch", "delete_file", "delete_directory", "move_file"].includes(
@@ -140,12 +142,20 @@ export function intersectUserSafetyRules(
       ),
     );
     if (!hasMutationTool) {
-      next = {
-        ...next,
-        maximumWorkspaceEffect: "read",
-        mutationBudget: undefined,
-        mutationPathScopes: undefined,
-      };
+      if (rules.retainWriteEffect === true) {
+        next = {
+          ...next,
+          mutationBudget: undefined,
+          mutationPathScopes: undefined,
+        };
+      } else {
+        next = {
+          ...next,
+          maximumWorkspaceEffect: "read",
+          mutationBudget: undefined,
+          mutationPathScopes: undefined,
+        };
+      }
     }
   }
 
