@@ -141,6 +141,7 @@ import {
   gitCommit,
   gitDiscard,
   gitStage,
+  gitStash,
   gitUnstage,
   listGitBranches,
 } from './git/workingTree.js';
@@ -1726,6 +1727,33 @@ export async function startEngineServer(
             res,
             200,
             await gitCommit(cwd, message, { all: body.all === true }),
+          );
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          sendJson(res, 400, { ok: false, error: message });
+        }
+        return;
+      }
+
+      if (method === 'POST' && path === '/v1/git/stash') {
+        if (!requireAuth(req, res, token)) return;
+        try {
+          const body = (await readJsonBody(req)) as {
+            paths?: unknown;
+            includeUntracked?: unknown;
+            message?: unknown;
+          };
+          const paths = asOptionalStringPaths(body.paths) ?? [];
+          const stashMessage =
+            typeof body.message === 'string' ? body.message : undefined;
+          sendJson(
+            res,
+            200,
+            await gitStash(cwd, paths, {
+              includeUntracked: body.includeUntracked === true,
+              ...(stashMessage ? { message: stashMessage } : {}),
+            }),
           );
         } catch (error) {
           const message =

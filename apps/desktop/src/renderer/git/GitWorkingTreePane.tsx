@@ -6,6 +6,8 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
+  useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
 } from 'react';
@@ -24,29 +26,49 @@ import {
   IconChevronRight,
   IconPlus,
   IconRefresh,
+  IconStop,
 } from '../ActivityIcons.js';
 import {
+  createWorkspaceFilePath,
   extractAssistantText,
   fetchGitStatus,
+  fetchWorkspaceFile,
   finalizeAssistantText,
   gitCommitChanges,
   gitDiscardFiles,
   gitStageFiles,
+  gitStashFiles,
   gitUnstageFiles,
   runRecipe,
+  saveWorkspaceFile,
   streamPrompt,
 } from '../api.js';
 import { gitStatusKind } from '../explorer/DiffView.js';
 import { ResizeHandle, usePersistedHeight } from '../shell/ResizeHandle.js';
+import { mergeChangelogSection, unwrapRecipeAnswer } from './changelogMerge.js';
 
-type ScmGroupKey = 'staged' | 'changes' | 'untracked';
+type ScmGroupKey = 'staged' | 'changes';
 
-function unwrapRecipeAnswer(answer: string): string {
-  const trimmed = answer.trim();
-  const fenced = trimmed.match(/^```(?:\w+)?\r?\n([\s\S]*?)\r?\n```$/);
-  if (fenced?.[1]) return fenced[1].trim();
-  return trimmed;
-}
+type ScmJob =
+  | 'commit-message'
+  | 'changelog'
+  | 'release-notes'
+  | 'pr-summary'
+  | 'code-review';
+
+const JOB_LABEL: Record<ScmJob, string> = {
+  'commit-message': 'Commit message',
+  changelog: 'Changelog',
+  'release-notes': 'Release notes',
+  'pr-summary': 'PR summary',
+  'code-review': 'Code Review',
+};
+
+type ContextMenuState = {
+  x: number;
+  y: number;
+  paths: string[];
+};
 
 function fileLeaf(path: string): string {
   const parts = path.replace(/\\/g, '/').split('/');
@@ -57,6 +79,26 @@ function fileDir(path: string): string {
   const norm = path.replace(/\\/g, '/');
   const i = norm.lastIndexOf('/');
   return i <= 0 ? '' : norm.slice(0, i);
+}
+
+async function upsertWorkspaceMarkdown(
+  auth: { baseUrl: string; token?: string },
+  relPath: string,
+  content: string,
+): Promise<void> {
+  try {
+    await saveWorkspaceFile({ ...auth, path: relPath, content });
+  } catch {
+    const slash = relPath.lastIndexOf('/');
+    const parent = slash >= 0 ? relPath.slice(0, slash) : '';
+    const name = slash >= 0 ? relPath.slice(slash + 1) : relPath;
+    await createWorkspaceFilePath({
+      ...auth,
+      parent,
+      name,
+      content,
+    });
+  }
 }
 
 interface GitWorkingTreePaneProps {
@@ -81,16 +123,12 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
   const [git, setGit] = useState<GitWorkingTreeSnapshot | null>(null);
   const [commitMessage, setCommitMessage] = useState('');
   const [busy, setBusy] = useState(false);
-  const [genBusy, setGenBusy] = useState(false);
-  const [reviewBusy, setReviewBusy] = useState(false);
+  const [activeJob, setActiveJob] = useState<ScmJob | null>(null);
   const [reviewFindings, setReviewFindings] = useState<ReviewFinding[]>([]);
-  const [reviewStatus, setReviewStatus] = useState<string | null>(null);
   const [reviewError, setReviewError] = useState<string | null>(null);
-  const [commitAll, setCommitAll] = useState(false);
   const [openGroups, setOpenGroups] = useState({
     staged: true,
     changes: true,
-    untracked: true,
   });
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(
     () => new Set(),
@@ -99,10 +137,35 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
   const [selectionGroup, setSelectionGroup] = useState<ScmGroupKey | null>(
     null,
   );
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(
+    null,
+  );
+  const [moreOpen, setMoreOpen] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+  const moreRef = useRef<HTMLDivElement | null>(null);
   const [changesHeight, setChangesHeight] = usePersistedHeight(
     'mitii.desktop.gitChangesHeight',
     { initial: 420, min: 200, max: 900 },
   );
+
+  const changeFiles = useMemo(() => {
+    const dirty = git?.changes ?? [];
+    const untracked = git?.untracked ?? [];
+    return [...dirty, ...untracked].sort((a, b) =>
+      a.path.localeCompare(b.path),
+    );
+  }, [git?.changes, git?.untracked]);
+
+  const untrackedPathSet = useMemo(
+    () => new Set((git?.untracked ?? []).map((f) => f.path)),
+    [git?.untracked],
+  );
+
+  const fileByPath = useMemo(() => {
+    const map = new Map<string, GitWorkingTreeFile>();
+    for (const f of git?.files ?? []) map.set(f.path, f);
+    return map;
+  }, [git?.files]);
 
   const applyStatus = useCallback(
     (next: GitWorkingTreeSnapshot) => {
@@ -185,6 +248,54 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
     void loadGit();
   }, [props.refreshToken, loadGit]);
 
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close();
+    };
+    window.addEventListener('click', close);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('click', close);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [contextMenu]);
+
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (moreRef.current && !moreRef.current.contains(e.target as Node)) {
+        setMoreOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', onDoc);
+    return () => window.removeEventListener('mousedown', onDoc);
+  }, [moreOpen]);
+
+  const stopJob = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setActiveJob(null);
+    props.onStatusNote?.('Stopped');
+    window.setTimeout(() => props.onStatusNote?.(null), 1200);
+  }, [props.onStatusNote]);
+
+  const beginJob = (job: ScmJob) => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setActiveJob(job);
+    return controller;
+  };
+
+  const endJob = (controller: AbortController) => {
+    if (abortRef.current === controller) {
+      abortRef.current = null;
+      setActiveJob(null);
+    }
+  };
+
   const runMutation = async (
     action: () => Promise<{
       ok: boolean;
@@ -211,17 +322,30 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
     }
   };
 
-  const generateCommitMessage = async () => {
-    setGenBusy(true);
+  const streamRecipeText = async (
+    job: ScmJob,
+    recipeId: 'commit-message' | 'pr-summary' | 'changelog',
+    note?: string,
+  ): Promise<string> => {
+    const controller = beginJob(job);
     props.onError?.(null);
     try {
-      const compiled = await runRecipe({ ...auth, id: 'commit-message' });
+      const compiled = await runRecipe({
+        ...auth,
+        id: recipeId,
+        ...(note ? { note } : {}),
+      });
+      const prompt =
+        note && !compiled.compiled.prompt.includes(note.slice(0, 40))
+          ? `${note}\n\n${compiled.compiled.prompt}`
+          : compiled.compiled.prompt;
       let text = '';
       for await (const line of streamPrompt({
         ...auth,
-        prompt: compiled.compiled.prompt,
+        prompt,
         mode: compiled.compiled.mode,
         requiredSkillIds: compiled.compiled.requiredSkillIds,
+        signal: controller.signal,
       })) {
         if (line.op === 'error') {
           throw new Error(line.message ?? line.error);
@@ -230,57 +354,98 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
         if (delta) text += delta;
         text = finalizeAssistantText(text, line);
       }
-      const message = unwrapRecipeAnswer(text);
+      return unwrapRecipeAnswer(text);
+    } finally {
+      endJob(controller);
+    }
+  };
+
+  const generateCommitMessage = async () => {
+    try {
+      const message = await streamRecipeText(
+        'commit-message',
+        'commit-message',
+      );
       if (!message) throw new Error('Empty commit message from model');
       setCommitMessage(message);
       props.onStatusNote?.('Commit message generated');
     } catch (err) {
+      if (err instanceof Error && /abort/i.test(err.message)) return;
       props.onError?.(err instanceof Error ? err.message : String(err));
-    } finally {
-      setGenBusy(false);
     }
   };
 
-  const loadWritingRecipe = async (
-    id: 'pr-summary' | 'changelog' | 'release-notes',
-    userNote?: string,
-  ) => {
-    setBusy(true);
-    props.onError?.(null);
+  const runChangelogUpdate = async () => {
     try {
-      const note =
-        userNote?.trim() ||
-        (id === 'release-notes'
-          ? 'Write release notes for the current working-tree changes: user-facing highlights, fixes, and breaking changes.'
-          : undefined);
-      const recipeId = id === 'release-notes' ? 'changelog' : id;
-      const compiled = await runRecipe({
-        ...auth,
-        id: recipeId,
-        ...(note ? { note } : {}),
-      });
-      // Prefer API `note`; if the engine ignored it, still frame the prompt.
-      const prompt =
-        note && !compiled.compiled.prompt.includes(note.slice(0, 40))
-          ? `${note}\n\n${compiled.compiled.prompt}`
-          : compiled.compiled.prompt;
-      props.onUsePrompt?.(prompt, compiled.compiled.mode);
+      const section = await streamRecipeText(
+        'changelog',
+        'changelog',
+        'Draft a Keep a Changelog section for the current working-tree changes. Final reply must be ONLY the markdown section.',
+      );
+      if (!section) throw new Error('Empty changelog from model');
+
+      let existing: string | null = null;
+      try {
+        const file = await fetchWorkspaceFile({
+          ...auth,
+          path: 'CHANGELOG.md',
+        });
+        existing = file.content;
+      } catch {
+        existing = null;
+      }
+
+      const next = mergeChangelogSection(existing, section);
+      await upsertWorkspaceMarkdown(auth, 'CHANGELOG.md', next);
       props.onStatusNote?.(
-        `Loaded “${id === 'release-notes' ? 'Release notes' : compiled.compiled.title}” into chat`,
+        existing ? 'Updated CHANGELOG.md' : 'Created CHANGELOG.md',
+      );
+      void loadGit();
+      void props.onOpenFile('CHANGELOG.md');
+    } catch (err) {
+      if (err instanceof Error && /abort/i.test(err.message)) return;
+      props.onError?.(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const runReleaseNotes = async () => {
+    try {
+      const section = await streamRecipeText(
+        'release-notes',
+        'changelog',
+        'Frame as release notes: summary highlights, breaking changes, and upgrade notes as a Keep a Changelog section. Final reply must be ONLY the markdown.',
+      );
+      if (!section) throw new Error('Empty release notes from model');
+      const content = `# Release notes\n\n${section.trim()}\n`;
+      await upsertWorkspaceMarkdown(auth, 'RELEASE-NOTES.md', content);
+      props.onStatusNote?.('Wrote RELEASE-NOTES.md');
+      void loadGit();
+      void props.onOpenFile('RELEASE-NOTES.md');
+    } catch (err) {
+      if (err instanceof Error && /abort/i.test(err.message)) return;
+      props.onError?.(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const runPrSummary = async () => {
+    try {
+      const text = await streamRecipeText('pr-summary', 'pr-summary');
+      if (!text) throw new Error('Empty PR summary from model');
+      await navigator.clipboard.writeText(text);
+      props.onStatusNote?.(
+        'PR summary copied — paste into Create PR when ready',
       );
     } catch (err) {
+      if (err instanceof Error && /abort/i.test(err.message)) return;
       props.onError?.(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
     }
   };
 
   const runCodeReview = async () => {
-    setReviewBusy(true);
+    const controller = beginJob('code-review');
     setReviewError(null);
     setReviewFindings([]);
     props.onFindingsChange?.([]);
-    setReviewStatus('Reviewing…');
     const findings: ReviewFinding[] = [];
     try {
       for await (const line of streamPrompt({
@@ -290,6 +455,7 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
         approvalPreset: 'guided',
         thoroughness: 'medium',
         pinnedPaths: (git?.files ?? []).map((f) => f.path).slice(0, 24),
+        signal: controller.signal,
       })) {
         if (line.op === 'error') {
           throw new Error(line.message ?? line.error);
@@ -300,26 +466,50 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
             findings.push(finding);
             setReviewFindings([...findings]);
             props.onFindingsChange?.([...findings]);
-            setReviewStatus(
-              `${findings.length} finding${findings.length === 1 ? '' : 's'}`,
-            );
           }
         }
       }
-      setReviewStatus(
-        findings.length === 0
-          ? 'No findings'
-          : `${findings.length} finding${findings.length === 1 ? '' : 's'}`,
-      );
       props.onFindingsChange?.(findings);
       void loadGit();
     } catch (err) {
+      if (err instanceof Error && /abort/i.test(err.message)) return;
       setReviewError(err instanceof Error ? err.message : String(err));
-      setReviewStatus(null);
     } finally {
-      setReviewBusy(false);
+      endJob(controller);
     }
   };
+
+  const openContextMenu = (
+    e: ReactMouseEvent,
+    group: ScmGroupKey,
+    files: GitWorkingTreeFile[],
+    path: string,
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    let paths: string[];
+    if (selectedPaths.has(path) && selectedPaths.size > 1) {
+      const groupPaths = new Set(files.map((f) => f.path));
+      paths = [...selectedPaths].filter((p) => groupPaths.has(p));
+      if (paths.length === 0) paths = [path];
+    } else {
+      paths = [path];
+      setSelectedPaths(new Set([path]));
+      setSelectionAnchor(path);
+      setSelectionGroup(group);
+    }
+    setContextMenu({ x: e.clientX, y: e.clientY, paths });
+  };
+
+  const menuPaths = contextMenu?.paths ?? [];
+  const menuHasStaged = menuPaths.some(
+    (p) => fileByPath.get(p)?.group === 'staged',
+  );
+  const menuHasUnstaged = menuPaths.some((p) => {
+    const g = fileByPath.get(p)?.group;
+    return g === 'changes' || g === 'untracked';
+  });
+  const menuHasUntracked = menuPaths.some((p) => untrackedPathSet.has(p));
 
   const toggleGroup = (key: keyof typeof openGroups) => {
     setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -360,7 +550,7 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
             <button
               type="button"
               className="scm-icon-btn"
-              disabled={busy}
+              disabled={busy || Boolean(activeJob)}
               title={`${actions.primaryTitle} all`}
               aria-label={`${actions.primaryTitle} all`}
               onClick={actions.onPrimaryAll}
@@ -388,6 +578,9 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
                     className={`scm-resource scm-resource--${gitStatusKind(file.status)}${
                       active ? ' is-active' : ''
                     }${selected ? ' is-selected' : ''}`}
+                    onContextMenu={(e) =>
+                      openContextMenu(e, key, files, file.path)
+                    }
                   >
                     <button
                       type="button"
@@ -411,7 +604,10 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
                         <span className="scm-resource__path">{dir}</span>
                       ) : null}
                       {file.renameFrom ? (
-                        <span className="scm-resource__rename" title={file.renameFrom}>
+                        <span
+                          className="scm-resource__rename"
+                          title={file.renameFrom}
+                        >
                           ← {fileLeaf(file.renameFrom)}
                         </span>
                       ) : null}
@@ -420,7 +616,7 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
                       <button
                         type="button"
                         className="scm-icon-btn"
-                        disabled={busy}
+                        disabled={busy || Boolean(activeJob)}
                         title={
                           selected && selectedPaths.size > 1
                             ? `${actions.primaryTitle} selected`
@@ -441,7 +637,7 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
                         <button
                           type="button"
                           className="scm-icon-btn scm-icon-btn--danger"
-                          disabled={busy}
+                          disabled={busy || Boolean(activeJob)}
                           title={
                             selected && selectedPaths.size > 1
                               ? `${actions.dangerTitle} selected`
@@ -475,10 +671,30 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
     );
   };
 
+  const jobRunning = Boolean(activeJob);
   const canCommit =
     Boolean(commitMessage.trim()) &&
-    (Boolean(git?.staged.length) || commitAll) &&
-    !busy;
+    Boolean(git?.staged.length) &&
+    !busy &&
+    !jobRunning;
+
+  const findingsCount = reviewFindings.length;
+  const codeReviewLabel =
+    findingsCount > 0 ? `Code Review (${findingsCount})` : 'Code Review';
+
+  const doCommit = () => {
+    const message = commitMessage.trim();
+    void runMutation(
+      () =>
+        gitCommitChanges({
+          ...auth,
+          message,
+        }),
+      'Committed',
+    ).then(() => {
+      setCommitMessage('');
+    });
+  };
 
   return (
     <div className="scm-pane">
@@ -487,23 +703,41 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
         style={{ flex: `0 0 ${changesHeight}px` }}
       >
         <header className="scm-pane__title">
-          <span>
-            Source Control
-            {git?.ok && (git.changeCount ?? git.files.length) > 0 ? (
-              <span className="scm-pane__badge" title="Changed files">
-                {git.changeCount ?? git.files.length}
+          <span className="scm-pane__title-left">
+            <span>
+              Source Control
+              {git?.ok && (git.changeCount ?? git.files.length) > 0 ? (
+                <span className="scm-pane__badge" title="Changed files">
+                  {git.changeCount ?? git.files.length}
+                </span>
+              ) : null}
+            </span>
+            {activeJob ? (
+              <span className="scm-pane__running" aria-live="polite">
+                {JOB_LABEL[activeJob]}…
               </span>
             ) : null}
           </span>
           <div className="scm-pane__title-actions">
+            {activeJob ? (
+              <button
+                type="button"
+                className="scm-icon-btn scm-icon-btn--stop"
+                title={`Stop ${JOB_LABEL[activeJob]}`}
+                aria-label={`Stop ${JOB_LABEL[activeJob]}`}
+                onClick={stopJob}
+              >
+                <IconStop size={13} />
+              </button>
+            ) : null}
             <button
               type="button"
               className="scm-text-btn"
-              disabled={reviewBusy || !(git?.files.length)}
-              title="LLM code review"
+              disabled={jobRunning || !(git?.files.length)}
+              title="LLM code review of working-tree changes"
               onClick={() => void runCodeReview()}
             >
-              {reviewBusy ? 'Reviewing…' : 'Review'}
+              {activeJob === 'code-review' ? 'Code Review…' : codeReviewLabel}
             </button>
             <button
               type="button"
@@ -526,65 +760,30 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
             onChange={(e) => setCommitMessage(e.target.value)}
             placeholder="Message (Ctrl+Enter to commit)"
             rows={4}
-            disabled={busy || genBusy}
+            disabled={busy || jobRunning}
             onKeyDown={(e) => {
               if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && canCommit) {
                 e.preventDefault();
-                const message = commitMessage.trim();
-                void runMutation(
-                  () =>
-                    gitCommitChanges({
-                      ...auth,
-                      message,
-                      all: commitAll,
-                    }),
-                  'Committed',
-                ).then(() => {
-                  setCommitMessage('');
-                  setCommitAll(false);
-                });
+                doCommit();
               }
             }}
           />
           <div className="scm-input__toolbar">
-            <label className="scm-check">
-              <input
-                type="checkbox"
-                checked={commitAll}
-                disabled={busy}
-                onChange={(e) => setCommitAll(e.target.checked)}
-              />
-              <span>Stage all &amp; commit</span>
-            </label>
             <div className="scm-input__toolbar-right">
               <button
                 type="button"
                 className="scm-text-btn"
-                disabled={busy || genBusy || !(git?.files.length)}
+                disabled={busy || jobRunning || !(git?.files.length)}
                 title="Generate commit message"
                 onClick={() => void generateCommitMessage()}
               >
-                {genBusy ? '…' : 'Generate'}
+                {activeJob === 'commit-message' ? '…' : 'Generate'}
               </button>
               <button
                 type="button"
                 className="scm-commit-btn"
                 disabled={!canCommit}
-                onClick={() => {
-                  const message = commitMessage.trim();
-                  void runMutation(
-                    () =>
-                      gitCommitChanges({
-                        ...auth,
-                        message,
-                        all: commitAll,
-                      }),
-                    'Committed',
-                  ).then(() => {
-                    setCommitMessage('');
-                    setCommitAll(false);
-                  });
-                }}
+                onClick={doCommit}
               >
                 Commit
               </button>
@@ -594,27 +793,51 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
             <button
               type="button"
               className="scm-text-btn"
-              disabled={busy}
-              onClick={() => void loadWritingRecipe('pr-summary')}
+              disabled={busy || jobRunning}
+              title="Generate and update CHANGELOG.md"
+              onClick={() => void runChangelogUpdate()}
             >
-              PR summary
+              {activeJob === 'changelog' ? 'Changelog…' : 'Changelog'}
             </button>
-            <button
-              type="button"
-              className="scm-text-btn"
-              disabled={busy}
-              onClick={() => void loadWritingRecipe('changelog')}
-            >
-              Changelog
-            </button>
-            <button
-              type="button"
-              className="scm-text-btn"
-              disabled={busy}
-              onClick={() => void loadWritingRecipe('release-notes')}
-            >
-              Release notes
-            </button>
+            <div className="scm-more" ref={moreRef}>
+              <button
+                type="button"
+                className="scm-text-btn"
+                disabled={busy || jobRunning}
+                aria-expanded={moreOpen}
+                aria-haspopup="menu"
+                title="More writing actions"
+                onClick={() => setMoreOpen((v) => !v)}
+              >
+                More
+              </button>
+              {moreOpen ? (
+                <div className="scm-more__menu explorer-menu" role="menu">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMoreOpen(false);
+                      void runPrSummary();
+                    }}
+                  >
+                    PR summary
+                    <span className="scm-more__hint">Copy to clipboard</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMoreOpen(false);
+                      void runReleaseNotes();
+                    }}
+                  >
+                    Release notes
+                    <span className="scm-more__hint">Write RELEASE-NOTES.md</span>
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
 
@@ -622,7 +845,10 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
           className="scm-body"
           tabIndex={0}
           onKeyDown={(e) => {
-            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+            if (
+              e.target instanceof HTMLInputElement ||
+              e.target instanceof HTMLTextAreaElement
+            ) {
               return;
             }
             const mod = e.metaKey || e.ctrlKey;
@@ -645,74 +871,38 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
             primaryTitle: 'Unstage',
             primarySymbol: '−',
             onPrimary: (paths) => {
-              void runMutation(() =>
-                gitUnstageFiles({ ...auth, paths }),
-              );
+              void runMutation(() => gitUnstageFiles({ ...auth, paths }));
             },
             onPrimaryAll: () => {
               void runMutation(() => gitUnstageFiles({ ...auth }));
             },
           })}
-          {renderGroup('changes', 'Changes', git?.changes ?? [], {
+          {renderGroup('changes', 'Changes', changeFiles, {
             primaryTitle: 'Stage',
             primarySymbol: '+',
             onPrimary: (paths) => {
-              void runMutation(() =>
-                gitStageFiles({ ...auth, paths }),
-              );
+              void runMutation(() => gitStageFiles({ ...auth, paths }));
             },
             onPrimaryAll: () => {
               void runMutation(() =>
                 gitStageFiles({
                   ...auth,
-                  paths: (git?.changes ?? []).map((f) => f.path),
+                  paths: changeFiles.map((f) => f.path),
                 }),
               );
             },
             dangerTitle: 'Discard',
             onDanger: (paths) => {
+              const hasJunk = paths.some((p) => untrackedPathSet.has(p));
               const label =
-                paths.length === 1
-                  ? paths[0]
-                  : `${paths.length} files`;
-              if (!window.confirm(`Discard changes to ${label}?`)) return;
-              void runMutation(() =>
-                gitDiscardFiles({ ...auth, paths }),
-              );
-            },
-          })}
-          {renderGroup('untracked', 'Untracked Files', git?.untracked ?? [], {
-            primaryTitle: 'Stage',
-            primarySymbol: '+',
-            onPrimary: (paths) => {
-              void runMutation(() =>
-                gitStageFiles({ ...auth, paths }),
-              );
-            },
-            onPrimaryAll: () => {
-              void runMutation(() =>
-                gitStageFiles({
-                  ...auth,
-                  paths: (git?.untracked ?? []).map((f) => f.path),
-                }),
-              );
-            },
-            dangerTitle: 'Delete',
-            onDanger: (paths) => {
-              const label =
-                paths.length === 1
-                  ? paths[0]
-                  : `${paths.length} untracked files`;
-              if (
-                !window.confirm(`Permanently delete ${label}?`)
-              ) {
-                return;
-              }
+                paths.length === 1 ? paths[0] : `${paths.length} files`;
+              const verb = hasJunk ? 'Discard / delete' : 'Discard changes to';
+              if (!window.confirm(`${verb} ${label}?`)) return;
               void runMutation(() =>
                 gitDiscardFiles({
                   ...auth,
                   paths,
-                  includeUntracked: true,
+                  includeUntracked: hasJunk,
                 }),
               );
             },
@@ -740,18 +930,25 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
 
       <div className="scm-pane__review">
         <header className="scm-pane__title scm-pane__title--sub">
-          <span>Code Review</span>
-          {reviewStatus ? (
-            <span className="scm-review-status">{reviewStatus}</span>
+          <span>
+            {findingsCount > 0
+              ? `Code Review (${findingsCount})`
+              : 'Code Review'}
+          </span>
+          {activeJob === 'code-review' ? (
+            <span className="scm-review-status">Running…</span>
+          ) : findingsCount === 0 && !reviewError ? (
+            <span className="scm-review-status">No findings yet</span>
           ) : null}
         </header>
         {reviewError ? (
           <p className="scm-empty scm-empty--error">{reviewError}</p>
         ) : null}
         <div className="scm-review-list">
-          {reviewFindings.length === 0 && !reviewBusy ? (
+          {findingsCount === 0 && activeJob !== 'code-review' ? (
             <p className="scm-empty">
-              Run Review to analyze working-tree changes.
+              Run Code Review to analyze working-tree changes. Findings appear
+              here.
             </p>
           ) : null}
           {reviewFindings.map((finding, i) => (
@@ -762,16 +959,95 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
               onClick={() => void props.onOpenDiff(finding.path)}
               title={finding.path}
             >
-              <span className="scm-finding__sev">{finding.severity}</span>
+              <div className="scm-finding__meta">
+                <span className="scm-finding__sev">{finding.severity}</span>
+                {finding.category ? (
+                  <span className="scm-finding__cat">{finding.category}</span>
+                ) : null}
+              </div>
               <span className="scm-finding__path">
                 {finding.path}
                 {finding.startLine ? `:${finding.startLine}` : ''}
               </span>
               <span className="scm-finding__msg">{finding.content}</span>
+              {finding.existingCode ? (
+                <pre className="scm-finding__code">{finding.existingCode}</pre>
+              ) : null}
+              {finding.suggestionCode ? (
+                <pre className="scm-finding__code scm-finding__code--suggest">
+                  {finding.suggestionCode}
+                </pre>
+              ) : null}
             </button>
           ))}
         </div>
       </div>
+
+      {contextMenu ? (
+        <div
+          className="explorer-menu scm-context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          role="menu"
+          onClick={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            disabled={!menuHasUnstaged || busy || jobRunning}
+            onClick={() => {
+              const paths = menuPaths.filter((p) => {
+                const g = fileByPath.get(p)?.group;
+                return g === 'changes' || g === 'untracked';
+              });
+              setContextMenu(null);
+              if (paths.length === 0) return;
+              void runMutation(() => gitStageFiles({ ...auth, paths }));
+            }}
+          >
+            Stage
+            {menuPaths.length > 1 ? ` (${menuPaths.length})` : ''}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={!menuHasStaged || busy || jobRunning}
+            onClick={() => {
+              const paths = menuPaths.filter(
+                (p) => fileByPath.get(p)?.group === 'staged',
+              );
+              setContextMenu(null);
+              if (paths.length === 0) return;
+              void runMutation(() => gitUnstageFiles({ ...auth, paths }));
+            }}
+          >
+            Unstage
+            {menuPaths.length > 1 ? ` (${menuPaths.length})` : ''}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={menuPaths.length === 0 || busy || jobRunning}
+            onClick={() => {
+              const paths = [...menuPaths];
+              setContextMenu(null);
+              if (paths.length === 0) return;
+              void runMutation(
+                () =>
+                  gitStashFiles({
+                    ...auth,
+                    paths,
+                    includeUntracked: menuHasUntracked,
+                  }),
+                `Stashed ${paths.length} path${paths.length === 1 ? '' : 's'}`,
+              );
+            }}
+          >
+            Stash
+            {menuPaths.length > 1 ? ` (${menuPaths.length})` : ''}
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

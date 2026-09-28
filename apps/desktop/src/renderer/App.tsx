@@ -1481,7 +1481,7 @@ export function App() {
   const openAtSuggest = () => {
     const el = textareaRef.current;
     const value = input;
-    const needsAt = !/(?:^|\s)@[\w./_-]*$/.test(value);
+    const needsAt = !/(?:^|\s)@[\w./_\- ]*$/.test(value);
     const next = needsAt
       ? `${value}${value && !/\s$/.test(value) ? ' ' : ''}@`
       : value;

@@ -1,5 +1,39 @@
 # Changelog
 
+## [2.9.67] - 2026-09-27
+
+### Added
+- Git working tree pane: unified AI job runner for commit message, changelog, release notes, PR summary, and code review generation, with a single active-job state and a Stop button (new `IconStop`) to abort in-flight generation.
+- Right-click context menu on working tree files for running AI jobs against a selected set of paths.
+- "More" overflow menu in the working tree pane toolbar for secondary actions.
+- `gitStash` engine API (`git stash push` with pathspec, optional `--include-untracked`, and optional stash message) with path and message sanitization.
+- `POST /v1/git/stash` engine server endpoint (auth-protected) and `gitStashFiles` renderer API client.
+- `changelogMerge` utility (`mergeChangelogSection`, `unwrapRecipeAnswer`) to merge generated Keep a Changelog sections into an existing `CHANGELOG.md`, plus unit tests (`changelogMerge.spec.ts`).
+- Upsert behavior for generated markdown: saves to an existing workspace file or creates it (including parent path) when missing.
+
+### Changed
+- Working tree pane now merges untracked files into the "Changes" group (separate "Untracked" group removed) and sorts the combined list by path.
+- Replaced separate `genBusy`/`reviewBusy` states with a single `activeJob` state and `AbortController`-based cancellation across all AI jobs.
+- Recipe prompts now accept an optional note that is prepended when not already present in the compiled prompt.
+
+### Fixed
+- Stash message input is validated via `assertSafeGitArg` to prevent shell/argument injection through the stash label.
+
+## [2.9.67] - 2025-01-15
+
+### Added
+- **Git: stash selected files** — New `gitStash` engine API (`git stash push` with optional `--include-untracked` and message) exposed via `POST /v1/git/stash`, with path sanitization and stash-message argument safety checks; renderer client `gitStashFiles` and a "Stash" action in the Git working-tree pane.
+- **Changelog generation with merge** — New `changelogMerge` module (`mergeChangelogSection`, `unwrapRecipeAnswer`) that merges a generated Keep a Changelog section into `CHANGELOG.md` (upserting the file if missing), plus unit tests (`changelogMerge.spec.ts`).
+- **Unified SCM job runner with Stop** — Commit message, changelog, release notes, PR summary, and code review now share a single job state with an abortable stream (`AbortController`) and a new Stop button (`IconStop`) to cancel in-flight generation.
+- **File context menu** — Right-click context menu on working-tree files for multi-file actions, with click-outside and Escape dismissal.
+
+### Changed
+- **Git pane: merged "Untracked" into "Changes"** — Staged and Changes groups now cover all dirty and untracked files (sorted), simplifying selection and per-file actions; untracked files are detected per-path for stash behavior.
+- **Changelog output saved to workspace** — Generated changelog sections are written back to `CHANGELOG.md` (create-or-update) instead of only being displayed.
+
+### Fixed
+- Recipe answer unwrapping (fenced-code-block stripping) centralized in `changelogMerge` to avoid duplicated, inconsistent parsing in the Git pane.
+
 ## [Unreleased]
 
 ### Added
