@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { memoryInstructionBlockSchema } from "../../../memory";
 
 import { executionDecisionSchema } from "../../../decision-policy";
 import {
@@ -15,6 +16,7 @@ export const promptInstructionBlockSchema = z
     title: z.string().min(1).optional(),
     content: z.string().min(1),
     priority: z.number().int().nonnegative().default(100),
+    memoryProvenance: memoryInstructionBlockSchema.shape.provenance.optional(),
   })
   .strict();
 

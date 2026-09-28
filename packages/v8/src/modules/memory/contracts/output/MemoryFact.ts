@@ -77,6 +77,17 @@ export const memoryFactSchema = z
     accessCount: z.number().int().nonnegative().default(0),
     lastAccessedAt: z.string().datetime().optional(),
     accessLog: z.array(z.string().datetime()).max(20).default([]),
+    pinned: z.boolean().optional(),
+    claimKey: z.string().min(1).max(512).optional(),
+    evidence: z.array(z.object({
+      id: z.string().min(1),
+      kind: z.enum(["user_statement", "tool_result", "verification", "repository"]),
+      verified: z.boolean().default(false),
+    }).strict()).max(32).optional(),
+    applicability: z.object({
+      fileHashes: z.record(z.string(), z.string().regex(/^[a-f0-9]{64}$/)),
+    }).strict().optional(),
+    validation: z.enum(["valid", "needs_revalidation"]).optional(),
   })
   .strict();
 

@@ -1,6 +1,7 @@
 import type * as vscode from 'vscode';
 import {
   MEMORY_SCHEMA_VERSION,
+  MemoryContentPolicy,
   MemoryPipeline,
   memoryFactSchema,
   type MemoryFact,
@@ -31,20 +32,13 @@ export interface MemoryItemView {
 }
 
 interface MemoryEnvelope {
-  storageVersion: 1 | 2;
-  facts: MemoryFact[];
+  storageVersion: number;
+  facts: unknown[];
 }
 
 /**
- * VS Code durable adapter for V8 Memory.
- *
- * The webview used to store `{ id, text, createdAt }` directly. This adapter
- * migrates that shadow format into canonical MemoryFact records and then keeps
- * the engine-facing store as the source of truth.
- */
-/**
  * Serializes RMW so concurrent commits/deletes cannot last-write-wins
- * (same pattern as FileWorkspaceMemoryStore / servers-main memory).
+ * (same pattern as FileWorkspaceMemoryStore).
  */
 class MutationQueue {
   private chain: Promise<unknown> = Promise.resolve();
@@ -65,8 +59,15 @@ export interface MemoryDeleteResult {
   message: string;
 }
 
+/**
+ * VS Code durable adapter for V8 Memory.
+ *
+ * Migrates legacy `{ id, text, createdAt }` into canonical MemoryFact records.
+ * Corrupt or unsupported envelopes reject without wiping memento state.
+ */
 export class VsCodeMementoMemoryStore implements MemoryStorePort {
   private readonly mutations = new MutationQueue();
+  private readonly policy = new MemoryContentPolicy();
 
   constructor(
     private readonly state: vscode.Memento,
@@ -90,12 +91,54 @@ export class VsCodeMementoMemoryStore implements MemoryStorePort {
           'Memory commit rejected: fact failed schema validation.',
         );
       }
-      const facts = await this.readFacts();
+      const facts = await this.readFacts(true);
       const next = [
         ...facts.filter((existing) => existing.id !== parsed.id),
-        parsed,
+        this.policy.fact(parsed),
       ];
       await this.writeFacts(next);
+    });
+  }
+
+  public async transact<T>(
+    scope: MemoryScope,
+    decide: (facts: readonly MemoryFact[]) => {
+      facts: readonly MemoryFact[];
+      result: T;
+    },
+  ): Promise<T> {
+    return this.mutations.enqueue(async () => {
+      const current = await this.readFacts(true);
+      const decision = decide(
+        current.filter((row) => scopesCompatible(row.scope, scope)),
+      );
+      const changed: MemoryFact[] = memoryFactSchema
+        .array()
+        .parse(decision.facts)
+        .map((row: MemoryFact) => this.policy.fact(row));
+      if (
+        changed.some(
+          (row: MemoryFact) =>
+            !scopesCompatible(row.scope, scope) ||
+            current.some(
+              (old) =>
+                old.id === row.id && !scopesCompatible(old.scope, scope),
+            ),
+        )
+      ) {
+        throw new Error('Memory transaction scope mismatch.');
+      }
+      if (new Set(changed.map((row: MemoryFact) => row.id)).size !== changed.length) {
+        throw new Error('Duplicate transaction IDs.');
+      }
+      if (changed.length) {
+        const ids = new Set(changed.map((row: MemoryFact) => row.id));
+        await this.writeFacts([
+          ...current.filter((row) => !ids.has(row.id)),
+          ...changed,
+        ]);
+      }
+      return decision.result;
     });
   }
 
@@ -112,7 +155,7 @@ export class VsCodeMementoMemoryStore implements MemoryStorePort {
     }
     return this.mutations.enqueue(async () => {
       const wanted = new Set(ids);
-      const facts = await this.readFacts();
+      const facts = await this.readFacts(true);
       await this.writeFacts(
         facts.map((fact) =>
           wanted.has(fact.id) ? touchAccess(fact, at) : fact,
@@ -123,7 +166,7 @@ export class VsCodeMementoMemoryStore implements MemoryStorePort {
 
   public async delete(id: string): Promise<MemoryDeleteResult> {
     return this.mutations.enqueue(async () => {
-      const facts = await this.readFacts();
+      const facts = await this.readFacts(true);
       const existed = facts.some((fact) => fact.id === id);
       if (!existed) {
         return {
@@ -143,7 +186,7 @@ export class VsCodeMementoMemoryStore implements MemoryStorePort {
 
   public async clear(scope?: MemoryScope): Promise<void> {
     return this.mutations.enqueue(async () => {
-      const facts = await this.readFacts();
+      const facts = await this.readFacts(true);
       await this.writeFacts(
         scope
           ? facts.filter((fact) => !scopesCompatible(fact.scope, scope))
@@ -164,36 +207,58 @@ export class VsCodeMementoMemoryStore implements MemoryStorePort {
       }));
   }
 
-  private async readFacts(): Promise<MemoryFact[]> {
+  private async readFacts(forMutation = false): Promise<MemoryFact[]> {
     const raw = this.state.get<unknown>(MEMORY_KEY);
     if (!raw) return [];
-
-    if (isEnvelope(raw)) {
-      return raw.facts
-        .map((fact) => parseFact(fact, this.workspaceId))
-        .filter((fact): fact is MemoryFact => fact !== null);
-    }
 
     if (Array.isArray(raw)) {
       const facts = raw
         .filter(isLegacyMemoryItem)
         .map((item) => legacyItemToFact(item, this.workspaceId))
-        .filter((fact): fact is MemoryFact => fact !== null);
-      await this.writeFacts(facts);
+        .filter((fact): fact is MemoryFact => fact !== null)
+        .map((fact) => this.policy.fact(fact));
+      if (forMutation) {
+        await this.writeFacts(facts);
+      }
       return facts;
     }
 
-    await this.writeFacts([]);
-    return [];
+    if (!isEnvelope(raw)) {
+      throw new Error(
+        'Memory storage contains an invalid envelope. Recover the original memento value before retrying.',
+      );
+    }
+    if (!SUPPORTED_STORAGE_VERSIONS.has(raw.storageVersion)) {
+      throw new Error(
+        'Memory storage uses an unsupported version. Open it with a compatible Mitii version before retrying.',
+      );
+    }
+
+    const facts = raw.facts
+      .map((fact) => parseFact(fact, this.workspaceId))
+      .filter((fact): fact is MemoryFact => fact !== null);
+    if (
+      forMutation &&
+      (facts.length !== raw.facts.length ||
+        new Set(facts.map((fact) => fact.id)).size !== facts.length)
+    ) {
+      throw new Error(
+        'Memory storage contains invalid facts or duplicate IDs. Recover before modifying memory.',
+      );
+    }
+    return facts;
   }
 
   private async writeFacts(facts: readonly MemoryFact[]): Promise<void> {
-    const validated = facts
-      .map((fact) => parseFact(fact, this.workspaceId))
-      .filter((fact): fact is MemoryFact => fact !== null);
+    const result = memoryFactSchema.array().safeParse(facts);
+    if (!result.success) {
+      throw new Error(
+        'Memory mutation rejected: a fact failed schema validation.',
+      );
+    }
     const envelope: MemoryEnvelope = {
       storageVersion: STORAGE_VERSION,
-      facts: validated,
+      facts: result.data.map((row: MemoryFact) => this.policy.fact(row)),
     };
     await this.state.update(MEMORY_KEY, envelope);
   }
@@ -295,76 +360,40 @@ function legacyItemToFact(
   );
 }
 
-function normalizeDateTime(value: string): string {
+function normalizeDateTime(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
   const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime())
-    ? new Date().toISOString()
-    : parsed.toISOString();
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString();
 }
 
 function isEnvelope(value: unknown): value is MemoryEnvelope {
-  if (!value || typeof value !== 'object') return false;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const candidate = value as Partial<MemoryEnvelope>;
   return (
     typeof candidate.storageVersion === 'number' &&
-    SUPPORTED_STORAGE_VERSIONS.has(candidate.storageVersion) &&
     Array.isArray(candidate.facts)
   );
 }
 
 /**
  * Coerce host/disk records into MemoryFact shape, then validate with Zod.
- * Corrupt entries are dropped rather than reaching the Engine.
+ * Invalid rows return null so mutations can refuse before discarding them.
  */
 function parseFact(raw: unknown, workspaceId: string): MemoryFact | null {
-  if (!raw || typeof raw !== 'object') return null;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const fact = raw as Record<string, unknown>;
-  const createdAt =
-    typeof fact.createdAt === 'string'
-      ? normalizeDateTime(fact.createdAt)
-      : new Date().toISOString();
-  const expiresAt =
-    typeof fact.expiresAt === 'string'
-      ? normalizeDateTime(fact.expiresAt)
-      : undefined;
-
   const result = memoryFactSchema.safeParse({
-    id: fact.id,
-    content: fact.content,
-    scope: fact.scope ?? workspaceScope(workspaceId),
-    tags: Array.isArray(fact.tags) ? fact.tags : [],
-    privacy: fact.privacy ?? HOST_DEFAULT_PRIVACY,
-    createdAt,
-    ...(expiresAt ? { expiresAt } : {}),
-    source:
-      typeof fact.source === 'string' && fact.source.trim().length > 0
-        ? fact.source
-        : 'user',
-    ...(typeof fact.type === 'string' ? { type: fact.type } : {}),
-    ...(typeof fact.title === 'string' && fact.title.trim().length > 0
-      ? { title: fact.title }
-      : {}),
-    concepts: Array.isArray(fact.concepts)
-      ? fact.concepts
-      : Array.isArray(fact.tags)
-        ? fact.tags
-        : [],
-    files: Array.isArray(fact.files) ? fact.files : [],
-    ...(typeof fact.importance === 'number' ? { importance: fact.importance } : {}),
-    sourceIds: Array.isArray(fact.sourceIds) ? fact.sourceIds : [],
-    ...(typeof fact.version === 'number' ? { version: fact.version } : {}),
-    ...(typeof fact.isLatest === 'boolean' ? { isLatest: fact.isLatest } : {}),
-    supersedes: Array.isArray(fact.supersedes) ? fact.supersedes : [],
-    ...(typeof fact.contentHash === 'string' && fact.contentHash.trim().length > 0
-      ? { contentHash: fact.contentHash }
-      : {}),
-    ...(typeof fact.accessCount === 'number' ? { accessCount: fact.accessCount } : {}),
-    ...(typeof fact.lastAccessedAt === 'string'
-      ? { lastAccessedAt: normalizeDateTime(fact.lastAccessedAt) }
-      : {}),
-    accessLog: Array.isArray(fact.accessLog)
-      ? fact.accessLog.filter((item): item is string => typeof item === 'string')
-      : [],
+    ...fact,
+    scope: fact.scope === undefined ? workspaceScope(workspaceId) : fact.scope,
+    privacy: fact.privacy === undefined ? HOST_DEFAULT_PRIVACY : fact.privacy,
+    concepts: fact.concepts === undefined ? fact.tags : fact.concepts,
+    createdAt: normalizeDateTime(fact.createdAt),
+    ...(fact.expiresAt === undefined
+      ? {}
+      : { expiresAt: normalizeDateTime(fact.expiresAt) }),
+    ...(fact.lastAccessedAt === undefined
+      ? {}
+      : { lastAccessedAt: normalizeDateTime(fact.lastAccessedAt) }),
   });
 
   return result.success ? result.data : null;

@@ -79,7 +79,7 @@ Prefer importing from `@mitii/host`. Do not import `internal/`.
 | `createWorkspaceCheckpointStore` | SDK checkpoint store | `.mitii/checkpoints/` |
 | `createWorkspaceVerificationStore` | Verification record store | `.mitii/verification/` |
 | `createWorkspaceReviewStore` | Review record store | `.mitii/review/` |
-| `createWorkspaceMemoryStore` | V8 `MemoryStorePort` | `.mitii/memory/facts.json` (mutation queue + atomic rename + honest deletes) |
+| `createWorkspaceMemoryStore` | V8 `MemoryStorePort` | `.mitii/memory/facts.json` (queue, file locks, `transact`, recovery guards, honest deletes) |
 | `listPendingMemories` / `approvePendingMemory` | Memory approve queue | `.mitii/memory/pending.json` — `autoPromote` default false |
 | `narrowChildStartInput` | Child-run helper | Mode ≤ parent; deny-only `userSafetyRules`; `enabled` default off |
 | `createWorkspaceKnowledgeGraph` | V8 `KnowledgeGraphPort` | `.mitii/memory/graph.jsonl` (entities/relations beside facts) |
@@ -150,7 +150,22 @@ await client.start({ /* ... */, projectRules });
 
 **Semantic retrieval** is off unless the host passes `semanticIndex.enabled` (and a ready embedding profile). When disabled, repository context logs `semantic_index_disabled` and falls back to path-based discovery.
 
-**Memory** persists under `.mitii/memory/facts.json` when `createWorkspaceMemoryStore` is injected. Writes are serialized (mutation queue), crash-safe (temp + rename), and soft-fail malformed facts on load. `delete` returns `{ id, deleted, message }` so missing ids are honest no-ops. An empty store is a cold start (`memory_empty`), not a missing adapter. Reusable package facts are only available after a prior run committed them.
+**Memory** persists under `.mitii/memory/facts.json` when `createWorkspaceMemoryStore` is injected. The adapter accepts validated facts and returns validated facts through `query`/`list`; `delete` returns `{ id, deleted, message }`. Mutations read and validate the stored envelope and every row before replacing the file using a same-directory temporary file and rename. A per-instance mutation queue serializes calls through one adapter object; exclusive directory locks coordinate separate instances and processes on the same facts file. `transact` applies a scoped decision and writes its full change set under that same lock.
+
+A missing file is a cold start. A corrupt or unsupported envelope is an error, never an empty writable store. Supported storage versions are 1 and 2; absent legacy scope/privacy fields retain their existing defaults, and valid date offsets normalize to UTC. Invalid metadata is no longer silently replaced with defaults. Valid rows in a partially damaged envelope remain readable, but commits, deletes, and access updates reject until recovery, including when duplicate IDs or unknown fact fields would otherwise be discarded. Failed write validation never filters a fact out of the replacement envelope.
+
+`MemoryStorageError`, `memoryStorageErrorCodeSchema`, and the inferred `MemoryStorageErrorCode` are public exports. Error messages contain no stored payloads:
+
+| Code | Meaning |
+|---|---|
+| `memory_storage_corrupt` | Invalid JSON or envelope shape; reads and mutations reject |
+| `memory_storage_version_unsupported` | Unsupported storage version; reads and mutations reject |
+| `memory_storage_recovery_required` | Invalid rows or duplicate IDs; valid rows remain readable but mutations reject |
+| `memory_storage_invalid_fact` | An incoming or updated fact fails validation; mutation rejects |
+
+Filesystem errors other than a missing file propagate unchanged. The memory pipeline can still return recoverable facts when access updates fail, with an access-touch warning. These guards apply to the file fact adapter; pending drafts and observations share atomic write + lock helpers and content sanitization, while graph persistence and VS Code Memento have separate owners with matching content-policy expectations.
+
+For recovery, stop writers, preserve a copy of the original file, and restore a verified supported envelope from a backup or explicitly repair its invalid rows. Do not substitute an empty file. Unsupported versions need a compatible Mitii version or an explicit migration. The next operation rechecks disk, so a repaired file can be used without recreating the adapter. Automatic repair, backups, and schema migration are not performed by this adapter. A crashed writer's lock directory is retained until recovered; other writers fail after a short wait rather than taking over a stale lock.
 
 ## Naming note: `WorkspaceSnapshot`
 

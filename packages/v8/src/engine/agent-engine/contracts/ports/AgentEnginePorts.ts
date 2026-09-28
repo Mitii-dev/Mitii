@@ -105,6 +105,7 @@ export interface AgentEngineSkillsPort {
 export interface AgentEngineMemoryPort {
   retrieve(input: MemoryRetrieveInput): Promise<MemoryRetrieveResult>;
   commit?(input: MemoryCommitInput): Promise<MemoryCommitResult>;
+  recordAccess?(ids: readonly string[], at: string): Promise<void>;
 }
 
 export interface AgentEnginePlanningPort {

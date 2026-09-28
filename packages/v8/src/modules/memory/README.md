@@ -1,16 +1,17 @@
 # Memory
 
-Memory retrieves and commits durable facts scoped to a user, workspace, or project. It supplies relevant prior preferences to Prompt Construction as instruction blocks.
+Memory retrieves and commits durable facts scoped to a user, workspace, or project. Recalled facts are rendered by Prompt Construction as untrusted evidence, not system instructions.
 
 ## What This Module Does
 
 - Retrieves candidate memory facts from an injected store.
-- Filters by scope, privacy, expiry, requester, and superseded versions.
+- Filters by scope, privacy, expiry, requester identity, validation state, and superseded versions.
 - Ranks with BM25 fused with file-target hits and an optional embedding port.
 - Mixes access-based retention so cold facts lose rank without a hard 30-day delete.
 - Applies a token budget and max-fact limit; may append a file-based workspace profile.
-- Returns prompt-ready memory instruction blocks.
-- Commits structured facts after privacy redact, hash reinforce, and Jaccard supersede.
+- Returns prompt-ready memory instruction blocks for evidence rendering.
+- Commits structured facts after privacy redact, hash reinforce, and explicit `replacesId` correction.
+- Exposes `MemoryContentPolicy` so hosts sanitize titles, bodies, and graph observations before persist.
 
 ## Structure
 
@@ -32,8 +33,8 @@ memory/
 
 ## Types And Contracts
 
-- `MemoryRetrieveInput`: query, scope, requester user id, budget, max facts, optional file targets/concepts, and optional time.
-- `MemoryCommitInput`: content, scope, tags, type, concepts, files, importance, privacy, source, expiry, and optional time.
+- `MemoryRetrieveInput`: query, scope, requester user id, origin, budget, max facts, optional file targets/concepts, and optional time.
+- `MemoryCommitInput`: content, scope, tags, type, concepts, files, importance, privacy, source, expiry, optional `replacesId`, and optional time.
 - `MemoryScope`: user, workspace, or project with required matching id.
 - `MemoryFact`: structured stored content (type, concepts, files, version, provenance) with metadata.
 - `MemoryRetrieveResult`: instruction blocks, omissions, token usage, warnings, reason codes, and duration.
@@ -41,17 +42,17 @@ memory/
 
 ## Technical Details
 
-- The public methods are `retrieve` and `commit`.
-- Privacy levels are `private` and `shareable`.
+- The public methods are `retrieve`, `commit`, and `consolidate`.
+- Privacy levels are `private` and `shareable`. Private facts require both a stored owner and `requesterUserId`; missing identity denies recall.
 - Fact types are `pattern`, `preference`, `architecture`, `bug`, `workflow`, and `fact`.
-- Expired and superseded (`isLatest: false`) facts are filtered out during retrieval.
-- Retrieve ranks with BM25 + file-target + optional vector RRF fusion; it still returns instruction blocks, not store rows.
-- Commits redact secrets, reject 5-minute exact duplicates, reinforce older hashes, and supersede Jaccard > 0.7 near-duplicates.
+- Expired, `needs_revalidation`, and superseded (`isLatest: false`) facts are filtered out during retrieval.
+- Retrieve ranks with BM25 + file-target + optional vector RRF fusion; final selection can diversify by source.
+- Commits redact secrets, reject 5-minute exact duplicates, reinforce matching hashes when privacy/applicability agree, and supersede only when `replacesId` names an eligible latest fact. Atomic stores implement `transact`.
 - `InMemoryMemoryStore` supports tests and simple hosts. Hosts own observation files, eviction, and audit logs.
 - Optional `MemoryEmbeddingPort` stays host-injected. No model runtime lives in this module.
-- **Host durability (enterprise):** `FileWorkspaceMemoryStore` / VS Code Memento adapters serialize RMW behind a mutation queue, write via unique temp + rename, soft-skip malformed facts on load, and return honest `{ deleted, message }` delete results. This is host ownership — not part of `MemoryStorePort` contracts.
-- **Host leases:** `FileWorkspaceMemoryLeaseStore` (`.mitii/memory/leases.json`) gates `memory:consolidate` and `memory:approve_pending` with TTL acquire/release/renew (agentmemory-inspired). `approvePendingMemory` and `runMemoryConsolidateWithLease` use these leases.
-- **Knowledge graph (beside facts):** optional `KnowledgeGraphPort` / `KnowledgeGraphManager` stores entities, relations, and observations (JSONL on disk via host). Tools: `memory_graph_search`, `memory_graph_open`, `memory_graph_update`. Does not replace BM25 fact retrieve — use graph for who/owns/depends; facts for prefs/patterns.
+- **Host durability:** `FileWorkspaceMemoryStore` / VS Code Memento adapters serialize RMW, validate envelopes before mutation, refuse corrupt/partial writes that would discard rows, and return honest `{ deleted, message }` delete results. File adapters also use exclusive locks and `transact`.
+- **Host leases:** `FileWorkspaceMemoryLeaseStore` (`.mitii/memory/leases.json`) gates `memory:consolidate` and `memory:approve_pending` with TTL acquire/release/renew. `approvePendingMemory` and `runMemoryConsolidateWithLease` use these leases.
+- **Knowledge graph (beside facts):** optional `KnowledgeGraphPort` / `KnowledgeGraphManager` stores entities, relations, and observations (JSONL on disk via host). Observations are sanitized through `MemoryContentPolicy`. Tools: `memory_graph_search`, `memory_graph_open`, `memory_graph_update`. Does not replace BM25 fact retrieve — use graph for who/owns/depends; facts for prefs/patterns.
 
 ## Ownership Boundaries
 

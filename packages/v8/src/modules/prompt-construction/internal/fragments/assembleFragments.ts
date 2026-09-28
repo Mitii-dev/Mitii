@@ -104,7 +104,7 @@ export function assembleFragments(params: {
       continue;
     }
 
-    if (remaining > 40 && rendered.tokens > remaining) {
+    if (fragment.section() !== "memory" && remaining > 40 && rendered.tokens > remaining) {
       const truncated = params.truncateToBudget(rendered.text, remaining);
       if (truncated.content.length > 0) {
         const admitted: RenderedFragment = {
@@ -149,8 +149,9 @@ export function assembleFragments(params: {
       separateMessages.push(rendered);
     } else {
       parts.push(rendered.text);
-      included.push(rendered);
+
     }
+    included.push(rendered);
     usedTokens += rendered.tokens;
     truncatedTokens += rendered.truncatedTokens;
     remaining -= rendered.tokens;

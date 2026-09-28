@@ -1,32 +1,25 @@
+import { commitMemory, consolidateMemory } from "../actions/MutateMemory";
 import {
   applyMemoryBudget,
   estimateTokens,
   filterMemoryCandidates,
-  prepareMemoryCommit,
   scoreMemoryRelevance,
 } from "../actions";
 import { MEMORY_SCHEMA_VERSION } from "../constants";
 import {
   MemoryError,
-  memoryCommitInputSchema,
-  memoryCommitResultSchema,
-  memoryConsolidateInputSchema,
-  memoryConsolidateResultSchema,
   memoryFactSchema,
   memoryRetrieveInputSchema,
   memoryRetrieveResultSchema,
 } from "../contracts";
 import type {
   MemoryCommitInput,
-  MemoryCommitParsedInput,
   MemoryCommitResult,
   MemoryConsolidateInput,
-  MemoryConsolidateParsedInput,
   MemoryConsolidateResult,
   MemoryEmbeddingPort,
   MemoryFact,
   MemoryIdGeneratorPort,
-  MemoryInstructionBlock,
   MemoryReasonCode,
   MemoryRetrieveInput,
   MemoryRetrieveParsedInput,
@@ -138,6 +131,7 @@ export class MemoryPipeline {
       scope: parsed.scope,
       requesterUserId: parsed.requesterUserId,
       now,
+      origin: parsed.origin,
     });
     if (filtered.staleFiltered) {
       reasonCodes.push("stale_memory_filtered");
@@ -157,6 +151,7 @@ export class MemoryPipeline {
       maxFacts: parsed.maxFacts,
       now,
       embedding: this.embedding,
+      signal: parsed.signal,
     });
     if (ranked.embeddingWarning) {
       warnings.push(ranked.embeddingWarning);
@@ -206,7 +201,7 @@ export class MemoryPipeline {
         reasonCodes.push("budget_omitted_memory");
       }
 
-      await this.touchAccess(
+      if (!parsed.deferAccess) await this.touchAccess(
         layered.instructions
           .map((block) => block.id)
           .filter((id) => !id.startsWith("mem-l") && id !== MEMORY_PROFILE_ID),
@@ -280,7 +275,7 @@ export class MemoryPipeline {
       reasonCodes.push("memory_bm25_only");
     }
 
-    await this.touchAccess(
+    if (!parsed.deferAccess) await this.touchAccess(
       budgeted.instructions
         .map((block) => block.id)
         .filter((id) => id !== MEMORY_PROFILE_ID),
@@ -305,175 +300,15 @@ export class MemoryPipeline {
   }
 
   public async commit(input: MemoryCommitInput): Promise<MemoryCommitResult> {
-    const startedMs = Date.now();
-
-    let parsed: MemoryCommitParsedInput;
-    try {
-      parsed = memoryCommitInputSchema.parse(input);
-    } catch (error) {
-      throw new MemoryError(
-        "invalid_input",
-        "Memory commit input failed schema validation.",
-        {
-          cause: error instanceof Error ? error.message : String(error),
-        },
-      );
-    }
-
-    const now = parsed.now ? new Date(parsed.now) : new Date();
-    const existing = this.store.list
-      ? [...(await this.store.list(parsed.scope))].map((fact) =>
-          memoryFactSchema.parse(fact),
-        )
-      : [];
-    const prepared = prepareMemoryCommit({
-      input: parsed,
-      id: this.idGenerator.next("mem"),
-      now,
-      existing,
-    });
-
-    if (!prepared.ok) {
-      const reasonCodes: MemoryReasonCode[] =
-        prepared.reason === "duplicate"
-          ? ["memory_duplicate", "commit_rejected"]
-          : ["commit_rejected"];
-      return memoryCommitResultSchema.parse({
-        schemaVersion: MEMORY_SCHEMA_VERSION,
-        status: "rejected",
-        warnings:
-          prepared.reason === "retention"
-            ? ["Commit rejected: expiry must be in the future."]
-            : prepared.reason === "duplicate"
-              ? ["Commit rejected: duplicate fact within the dedup window."]
-              : ["Commit rejected: empty content."],
-        reasonCodes,
-        durationMs: Date.now() - startedMs,
-      });
-    }
-
-    try {
-      if (prepared.superseded) {
-        await this.store.commit(prepared.superseded);
-      }
-      await this.store.commit(prepared.fact);
-    } catch (error) {
-      throw new MemoryError(
-        "store_failed",
-        "Memory store commit failed.",
-        {
-          cause: error instanceof Error ? error.message : String(error),
-        },
-      );
-    }
-
-    const reasonCodes: MemoryReasonCode[] = ["memory_committed"];
-    const warnings: string[] = [];
-    if (prepared.redacted) {
-      reasonCodes.push("privacy_redacted");
-      warnings.push("Secrets or <private> spans were redacted before persist.");
-    }
-    if (prepared.reinforced) {
-      reasonCodes.push("memory_reinforced");
-    }
-    if (prepared.superseded) {
-      reasonCodes.push("memory_superseded");
-    }
-
-    return memoryCommitResultSchema.parse({
-      schemaVersion: MEMORY_SCHEMA_VERSION,
-      status: "committed",
-      memoryId: prepared.fact.id,
-      expiresAt: prepared.fact.expiresAt,
-      warnings,
-      reasonCodes: unique(reasonCodes),
-      durationMs: Date.now() - startedMs,
-    });
+    return commitMemory(this.store, this.idGenerator, input);
   }
 
-  /**
-   * Merge near-duplicate facts in a scope (whitespace-normalized content)
-   * and supersede older duplicates via the store commit path.
-   */
-  public async consolidate(
-    input: MemoryConsolidateInput,
-  ): Promise<MemoryConsolidateResult> {
-    const startedMs = Date.now();
-    let parsed: MemoryConsolidateParsedInput;
-    try {
-      parsed = memoryConsolidateInputSchema.parse(input);
-    } catch (error) {
-      throw new MemoryError(
-        "invalid_input",
-        "Memory consolidate input failed schema validation.",
-        {
-          cause: error instanceof Error ? error.message : String(error),
-        },
-      );
-    }
+  public async consolidate(input: MemoryConsolidateInput): Promise<MemoryConsolidateResult> {
+    return consolidateMemory(this.store, input);
+  }
 
-    const warnings: string[] = [];
-    let rawFacts: MemoryFact[] = [];
-    try {
-      if (this.store.list) {
-        rawFacts = [...(await this.store.list(parsed.scope))].map((fact) =>
-          memoryFactSchema.parse(fact),
-        );
-      } else {
-        rawFacts = (
-          await this.store.query({ scope: parsed.scope, query: "" })
-        ).map((fact) => memoryFactSchema.parse(fact));
-      }
-    } catch (error) {
-      throw new MemoryError(
-        "store_failed",
-        "Memory store list/query failed during consolidate.",
-        {
-          cause: error instanceof Error ? error.message : String(error),
-        },
-      );
-    }
-
-    const latest = rawFacts.filter((fact) => fact.isLatest !== false);
-    const groups = new Map<string, MemoryFact[]>();
-    for (const fact of latest) {
-      const key = normalizeConsolidateContent(fact.content);
-      if (!key) continue;
-      const bucket = groups.get(key) ?? [];
-      bucket.push(fact);
-      groups.set(key, bucket);
-    }
-
-    let merged = 0;
-    let superseded = 0;
-    for (const group of groups.values()) {
-      if (group.length < 2) continue;
-      group.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
-      const keeper = group[0]!;
-      for (const older of group.slice(1)) {
-        try {
-          await this.store.commit({ ...older, isLatest: false });
-          superseded += 1;
-          merged += 1;
-        } catch (error) {
-          warnings.push(
-            `Failed to supersede ${older.id} (kept ${keeper.id}): ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
-        }
-      }
-    }
-
-    return memoryConsolidateResultSchema.parse({
-      schemaVersion: MEMORY_SCHEMA_VERSION,
-      scanned: latest.length,
-      merged,
-      superseded,
-      warnings,
-      reasonCodes: unique(["memory_consolidated"]),
-      durationMs: Date.now() - startedMs,
-    });
+  public async recordAccess(ids: readonly string[], at: string): Promise<void> {
+    if (this.store.recordAccess) await this.store.recordAccess([...new Set(ids)], at);
   }
 
   private async touchAccess(
@@ -498,131 +333,9 @@ export class MemoryPipeline {
 
 const MEMORY_PROFILE_ID = "mem-profile";
 
-function normalizeConsolidateContent(content: string): string {
-  return content.replace(/\s+/g, " ").trim().toLowerCase();
-}
-
-function buildLayeredInstructions(params: {
-  scored: ReadonlyArray<{ fact: MemoryFact; score: number }>;
-  budgetTokens: number;
-  maxFacts: number;
-}): {
-  instructions: MemoryInstructionBlock[];
-  omissions: Array<{ memoryId: string; reason: "budget"; tokens?: number }>;
-  layers: {
-    l1Index: MemoryInstructionBlock[];
-    l2Timeline: MemoryInstructionBlock[];
-    l3Facts: MemoryInstructionBlock[];
-  };
-  budgetOmitted: boolean;
-} {
-  const l1Budget = Math.max(1, Math.floor(params.budgetTokens * 0.3));
-  const l2Budget = Math.max(1, Math.floor(params.budgetTokens * 0.3));
-  const l3Budget = Math.max(
-    1,
-    params.budgetTokens - l1Budget - l2Budget,
-  );
-  const omissions: Array<{
-    memoryId: string;
-    reason: "budget";
-    tokens?: number;
-  }> = [];
-  let budgetOmitted = false;
-
-  const l1Index: MemoryInstructionBlock[] = [];
-  let l1Used = 0;
-  for (const entry of params.scored) {
-    if (l1Index.length >= params.maxFacts) break;
-    const summary = clipIndexSummary(entry.fact);
-    const tokens = estimateTokens(summary);
-    if (l1Used + tokens > l1Budget) {
-      omissions.push({ memoryId: entry.fact.id, reason: "budget", tokens });
-      budgetOmitted = true;
-      continue;
-    }
-    l1Index.push(
-      toBlock(entry.fact, summary, entry.score, `mem-l1-${entry.fact.id}`),
-    );
-    l1Used += tokens;
-  }
-
-  const timelineSorted = [...params.scored].sort((a, b) => {
-    const aAt = Date.parse(a.fact.lastAccessedAt ?? a.fact.createdAt);
-    const bAt = Date.parse(b.fact.lastAccessedAt ?? b.fact.createdAt);
-    return bAt - aAt;
-  });
-  const l2Timeline: MemoryInstructionBlock[] = [];
-  let l2Used = 0;
-  for (const entry of timelineSorted) {
-    if (l2Timeline.length >= params.maxFacts) break;
-    const line = clipTimelineLine(entry.fact);
-    const tokens = estimateTokens(line);
-    if (l2Used + tokens > l2Budget) {
-      budgetOmitted = true;
-      continue;
-    }
-    l2Timeline.push(
-      toBlock(entry.fact, line, entry.score, `mem-l2-${entry.fact.id}`),
-    );
-    l2Used += tokens;
-  }
-
-  const l3Facts: MemoryInstructionBlock[] = [];
-  let l3Used = 0;
-  for (const entry of params.scored) {
-    if (l3Facts.length >= params.maxFacts) break;
-    const content = entry.fact.content.trim();
-    const tokens = estimateTokens(content);
-    if (l3Used + tokens > l3Budget) {
-      omissions.push({ memoryId: entry.fact.id, reason: "budget", tokens });
-      budgetOmitted = true;
-      continue;
-    }
-    l3Facts.push(toBlock(entry.fact, content, entry.score, entry.fact.id));
-    l3Used += tokens;
-  }
-
-  return {
-    instructions: [...l1Index, ...l2Timeline, ...l3Facts],
-    omissions,
-    layers: { l1Index, l2Timeline, l3Facts },
-    budgetOmitted,
-  };
-}
-
-function clipIndexSummary(fact: MemoryFact): string {
-  const title = fact.title?.trim() || fact.type;
-  const body = fact.content.trim().replace(/\s+/g, " ");
-  const clip = body.length > 120 ? `${body.slice(0, 117)}…` : body;
-  return `[index] ${title}: ${clip}`;
-}
-
-function clipTimelineLine(fact: MemoryFact): string {
-  const at = fact.lastAccessedAt ?? fact.createdAt;
-  const title = fact.title?.trim() || fact.content.trim().slice(0, 60);
-  return `[timeline ${at}] ${title}`;
-}
-
-function toBlock(
-  fact: MemoryFact,
-  content: string,
-  score: number,
-  id: string,
-): MemoryInstructionBlock {
-  return {
-    id,
-    title: fact.title ?? `Memory (${fact.scope.kind})`,
-    content,
-    priority: Math.round(score * 100),
-    provenance: {
-      memoryId: fact.id,
-      source: "memory",
-      scopeKind: fact.scope.kind,
-      score,
-      privacy: fact.privacy,
-      createdAt: fact.createdAt,
-    },
-  };
+function buildLayeredInstructions(params: Parameters<typeof applyMemoryBudget>[0]) {
+  const selected = applyMemoryBudget(params);
+  return { ...selected, layers: { l1Index: [], l2Timeline: [], l3Facts: selected.instructions } };
 }
 
 function appendWorkspaceProfile(params: {

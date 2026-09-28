@@ -1,6 +1,7 @@
-const PRIVATE_TAG_RE = /<private>[\s\S]*?<\/private>/gi;
+const PRIVATE_TAG_RE = /<private>(?:[\s\S]*?<\/private>|[\s\S]*$)/gi;
 
 const SECRET_PATTERNS: readonly RegExp[] = [
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g,
   /(?:api[_-]?key|secret|token|password|credential|auth)[\s]*[=:]\s*["']?[A-Za-z0-9_\-/.+]{20,}["']?/gi,
   /Bearer\s+[A-Za-z0-9._\-+/=]{20,}/gi,
   /sk-proj-[A-Za-z0-9\-_]{20,}/g,

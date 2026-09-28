@@ -20,6 +20,7 @@ export const PROMPT_TRUST_LEVELS = [
   "conversation",
   "untrusted_repository_content",
   "untrusted_tool_content",
+  "untrusted_memory_content",
 ] as const;
 
 export const PROMPT_OMISSION_REASONS = [

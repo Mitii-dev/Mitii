@@ -477,6 +477,12 @@ export async function executeStart(
       at: runtime.isoNow(),
     });
 
+    if (runtime.deps.memory?.recordAccess) {
+      const included = promptResult.provenance.filter(row => row.section === "memory").map(row => row.blockId);
+      try { await runtime.deps.memory.recordAccess(included, runtime.isoNow()); }
+      catch { warnings.push("Memory inclusion feedback could not be recorded."); }
+    }
+
     // --- Model / tool loop ---
     const messages: ModelMessage[] = [...promptResult.request.messages];
     const toolCache = new ToolCallCache();
