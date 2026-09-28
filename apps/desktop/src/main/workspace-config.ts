@@ -63,17 +63,16 @@ export function readMcpCompatFromDisk(
  * When SQLite/settings still has the empty default MCP list, adopt the
  * on-disk install (and connection env) so boot/save do not treat MCP as
  * uninstalled.
+ *
+ * When disk already has servers, disk is the source of truth for installs +
+ * env (MCP manager / Database access stamps `.mitii/mcp.json` directly).
+ * Preferring settings here caused Read & write (`MCP_DB_ACCESS`) to be
+ * overwritten back to readonly on engine restart.
  */
 export function reconcileMcpSettingsFromDisk(
   workspaceRoot: string,
   settings: DesktopSettings,
 ): DesktopSettings {
-  const settingsServers = Array.isArray(settings.mcp?.servers)
-    ? settings.mcp.servers
-    : [];
-  if (settingsServers.length > 0) {
-    return settings;
-  }
   const disk = readMcpCompatFromDisk(workspaceRoot);
   if (!disk || disk.servers.length === 0) {
     return settings;
@@ -209,15 +208,24 @@ export function writeWorkspaceCompatFiles(
   const replaceMcp = options?.replaceMcp === true;
   const disk = readMcpCompatFromDisk(workspaceRoot);
 
-  let toWrite: McpCompatFile = fromSettings;
-  if (!replaceMcp && fromSettings.servers.length === 0) {
-    if (disk && disk.servers.length > 0) {
-      // Keep MCP manager installs + connection env across boot / settings save.
-      toWrite = disk;
-    } else if (disk) {
-      // Disk already empty / disabled — leave file as-is.
-      toWrite = disk;
-    }
+  // `.mitii/mcp.json` is the source of truth for installed servers + env
+  // (written by MCP manager and Database Read & write). Never clobber a
+  // non-empty disk install with a stale settings mirror on boot/save.
+  let toWrite: McpCompatFile;
+  if (replaceMcp) {
+    toWrite = fromSettings;
+  } else if (disk && disk.servers.length > 0) {
+    toWrite = {
+      enabled:
+        typeof settings.mcp?.enabled === 'boolean'
+          ? Boolean(settings.mcp.enabled)
+          : disk.enabled,
+      servers: disk.servers,
+    };
+  } else if (fromSettings.servers.length > 0) {
+    toWrite = fromSettings;
+  } else {
+    toWrite = disk ?? fromSettings;
   }
 
   writeFileSync(

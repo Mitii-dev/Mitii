@@ -1,6 +1,6 @@
 {
   "name": "@mitii/mcp",
-  "version": "2.9.105",
+  "version": "2.9.106",
   "description": "Mitii MCP client kit: connect to MCP servers (stdio/SSE/streamable-HTTP) and register tools into V8 ToolRegistry. Does not expose Mitii as an MCP server.",
   "license": "AGPL-3.0-or-later",
   "type": "module",
@@ -46,6 +46,7 @@
   "optionalDependencies": {
     "@mitii/mcp-mongo": "workspace:*",
     "@mitii/mcp-postgres": "workspace:*",
+    "@mitii/mcp-sql": "workspace:*",
     "@mitii/mcp-sqlite": "workspace:*"
   },
   "devDependencies": {

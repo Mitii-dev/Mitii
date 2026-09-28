@@ -10,6 +10,7 @@ export {
   getBuiltinCatalogMeta,
   applyBuiltinSecrets,
   validateBuiltinSecrets,
+  composeDbConnectionUri,
   resolveReadonlyStdioLauncher,
   resolveDbStdioLauncher,
   type McpBuiltinId,

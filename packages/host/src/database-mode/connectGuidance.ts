@@ -10,21 +10,21 @@ export function buildDatabaseConnectGuidance(
     case 'mcp_disabled':
       return [
         'Database mode needs MCP enabled.',
-        'Enable mitii.mcp.enabled (Settings → Integrations), then install sqlite, postgres, or mongo from the catalog',
-        'and set SQLITE_PATH, DATABASE_URI, or MCP_MONGODB_URI.',
+        'Enable mitii.mcp.enabled (Settings → Integrations), then install sqlite, postgres, mongo, or sql from the catalog',
+        'and set SQLITE_PATH, DATABASE_URI, MCP_MONGODB_URI, or SQL_MCP_URI.',
         'Until then, do not invent query results — explain how to connect.',
       ].join(' ');
     case 'disconnected':
       return [
         'No database MCP server is connected for this workspace.',
-        'Install and enable sqlite (SQLITE_PATH), postgres (DATABASE_URI), or mongo (MCP_MONGODB_URI)',
+        'Install and enable sqlite (SQLITE_PATH), postgres (DATABASE_URI), mongo (MCP_MONGODB_URI), or sql (SQL_MCP_URI)',
         'under Settings → Integrations → MCP, or add a custom DB MCP in .mitii/mcp.json.',
         'You may read schema.prisma / migrations as hints only — live answers require MCP.',
       ].join(' ');
     case 'connected':
       return [
         'Database MCP is connected. Prefer mcp__* discovery + query tools',
-        '(SQL: list_tables / describe_table / query; Mongo: resources or collection schema + query / aggregate / count).',
+        '(SQL: list_tables / describe_table / sample_rows / query / explain_query; Mongo: resources or collection schema + query / aggregate / count).',
         'Respect the DB access tier (read-only vs read & write). Present results as a short summary plus a markdown table. Show the filter/pipeline/SQL used.',
       ].join(' ');
   }

@@ -19,7 +19,7 @@ interface DatabaseModeBannerProps {
   onOpenMcp?: () => void;
 }
 
-const DATABASE_BUILTIN_IDS = new Set(['sqlite', 'postgres', 'mongo']);
+const DATABASE_BUILTIN_IDS = new Set(['sqlite', 'postgres', 'mongo', 'sql']);
 
 /** Match host `listInstalledDatabaseMcpServers` classification for UI. */
 export function isDatabaseMcpServer(server: {

@@ -9,8 +9,6 @@ First-party Mitii MCP **stdio** server for MongoDB (Database mode).
 | `readonly` (default) | `list_collections`, `describe_collection`, `query`, `aggregate`, `count`, `server_info` |
 | `readwrite` | + `insert`, `update`, `delete`, `create_index` |
 
-Aligned with MCP-Ref `mcp-mongo-server` (query/aggregate/count/insert/update/createIndex) plus Mitii discovery tools and a safe `delete`.
-
 ## Env
 
 - `MCP_MONGODB_URI` or `MONGODB_URI` (required)

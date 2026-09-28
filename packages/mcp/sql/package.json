@@ -1,17 +1,21 @@
 {
-  "name": "@mitii/sdk",
-  "version": "2.9.106",
-  "description": "Host-neutral Mitii programmatic API over @mitii/v8 Agent Engine.",
+  "name": "@mitii/mcp-sql",
+  "version": "2.9.100",
+  "description": "Mitii MCP stdio server for multi-dialect SQL (Postgres/MySQL/MariaDB/SQLite) — readonly or readwrite via MCP_DB_ACCESS.",
   "license": "AGPL-3.0-or-later",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "mitii-mcp-sql": "./bin/mitii-mcp-sql.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "publishConfig": {
     "access": "public"
@@ -19,15 +23,15 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Mitii-dev/Mitii.git",
-    "directory": "packages/sdk"
+    "directory": "packages/mcp/sql"
   },
-  "homepage": "https://github.com/Mitii-dev/Mitii/tree/main/packages/sdk",
+  "homepage": "https://github.com/Mitii-dev/Mitii/tree/main/packages/mcp/sql",
   "bugs": {
     "url": "https://github.com/Mitii-dev/Mitii/issues"
   },
   "files": [
+    "bin",
     "dist",
-    "skills",
     "README.md",
     "LICENSE"
   ],
@@ -35,16 +39,20 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && node -e \"require('node:fs').accessSync('dist/index.js')\"",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json && node -e \"require('node:fs').accessSync('dist/index.js')\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node bin/mitii-mcp-sql.js",
     "test": "vitest run"
   },
   "dependencies": {
-    "@mitii/v8": "workspace:*",
-    "zod": "^3.23.8"
+    "better-sqlite3": "^12.11.1",
+    "mysql2": "^3.14.1",
+    "pg": "^8.16.3"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^20.14.0",
+    "@types/pg": "^8.15.4",
     "typescript": "^5.5.2",
     "vitest": "^3.2.7"
   }

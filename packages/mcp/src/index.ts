@@ -33,6 +33,7 @@ export {
   getBuiltinCatalogMeta,
   applyBuiltinSecrets,
   validateBuiltinSecrets,
+  composeDbConnectionUri,
   resolveReadonlyStdioLauncher,
   type McpBuiltinId,
   type McpCatalogCategory,

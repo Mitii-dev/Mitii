@@ -8,8 +8,6 @@
  *
  * Read tools: list_collections, describe_collection, query, aggregate, count, server_info
  * Write tools (readwrite only): insert, update, delete, create_index
- *
- * Capability set aligned with MCP-Ref/mcp-mongo-server (+ Mitii discovery ladder).
  */
 
 export {

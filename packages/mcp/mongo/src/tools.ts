@@ -19,7 +19,7 @@ const FORBIDDEN_AGG_OPERATORS = new Set([
   '$where',
 ]);
 
-/** Read tools always available (aligned with mcp-mongo-server + Mitii discovery ladder). */
+/** Read tools always available (Mitii discovery + query ladder). */
 const READ_TOOL_DEFINITIONS = [
   {
     name: 'list_collections',
@@ -113,7 +113,7 @@ const READ_TOOL_DEFINITIONS = [
   },
 ] as const;
 
-/** Write tools (mcp-mongo-server) — only when MCP_DB_ACCESS=readwrite. */
+/** Write tools — only when MCP_DB_ACCESS=readwrite. */
 const WRITE_TOOL_DEFINITIONS = [
   {
     name: 'insert',
@@ -241,7 +241,7 @@ export function resolveMaxDocs(env: NodeJS.ProcessEnv = process.env): number {
 
 /**
  * Reject aggregation stages that write or run server-side JS
- * (aligned with mcp-mongo-server --read-only).
+ * (readonly / readwrite safety for Mitii Database mode).
  */
 export function rejectForbiddenPipeline(pipeline: unknown[]): void {
   const found = findAggOperator(pipeline, FORBIDDEN_AGG_OPERATORS);
@@ -315,7 +315,7 @@ function validateCollectionName(name: string): string {
   return name;
 }
 
-/** Convert 24-char hex strings to ObjectId (auto mode from mcp-mongo-server). */
+/** Convert 24-char hex strings to ObjectId when auto-detecting ids. */
 function convertObjectIds(value: unknown, depth = 0): unknown {
   if (depth > MAX_OBJECT_DEPTH) return value;
   if (typeof value === 'string' && OBJECT_ID_RE.test(value)) {

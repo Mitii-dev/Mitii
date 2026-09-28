@@ -17,6 +17,12 @@ import {
   installBuiltinMcp,
   setMcpEnabled,
 } from '../api.js';
+import {
+  DatabaseMcpSecretsForm,
+  validateDatabaseMcpDraft,
+  type DbConnectMethod,
+} from './DatabaseMcpSecretsForm.js';
+import type { CatalogSecretField } from './mcpCatalogTypes.js';
 
 type Transport = 'stdio' | 'sse' | 'streamable-http';
 type WizardStep =
@@ -32,15 +38,6 @@ interface McpServerRow {
   enabled: boolean;
   transport?: string;
   builtin?: boolean;
-}
-
-interface CatalogSecretField {
-  key: string;
-  label: string;
-  secret?: boolean;
-  required?: boolean;
-  placeholder?: string;
-  hint?: string;
 }
 
 interface CatalogRow {
@@ -94,6 +91,8 @@ export function McpManager(props: Props) {
   const [custom, setCustom] = useState(EMPTY_CUSTOM);
   const [selectedBuiltin, setSelectedBuiltin] = useState<string | null>(null);
   const [secretDraft, setSecretDraft] = useState<Record<string, string>>({});
+  const [dbConnectMethod, setDbConnectMethod] =
+    useState<DbConnectMethod>('uri');
 
   const applySnapshot = (next: {
     enabled: boolean;
@@ -265,6 +264,9 @@ export function McpManager(props: Props) {
       const draft: Record<string, string> = {};
       for (const field of entry.secrets ?? []) draft[field.key] = '';
       setSecretDraft(draft);
+      setDbConnectMethod(
+        entry.id === 'sqlite' ? 'fields' : 'uri',
+      );
       setWizardOpen(true);
       setWizardStep('catalog-secrets');
       return;
@@ -279,6 +281,9 @@ export function McpManager(props: Props) {
       const draft: Record<string, string> = {};
       for (const field of entry.secrets ?? []) draft[field.key] = '';
       setSecretDraft(draft);
+      setDbConnectMethod(
+        entry.id === 'sqlite' ? 'fields' : 'uri',
+      );
       setWizardStep('catalog-secrets');
       return;
     }
@@ -287,9 +292,55 @@ export function McpManager(props: Props) {
 
   const confirmCatalogSecrets = async () => {
     if (!selectedBuiltin || !selectedCatalogEntry) return;
+    const draft = secretDraft;
+    const isDatabase = selectedCatalogEntry.category === 'database';
+
+    if (isDatabase) {
+      const err = validateDatabaseMcpDraft(
+        selectedBuiltin,
+        dbConnectMethod,
+        draft,
+      );
+      if (err) {
+        setError(err);
+        return;
+      }
+      // Only send keys for the chosen method so we do not mix URI + fields.
+      const payload: Record<string, string> = {};
+      if (selectedBuiltin === 'sqlite') {
+        payload.SQLITE_PATH = draft.SQLITE_PATH ?? '';
+      } else if (dbConnectMethod === 'uri') {
+        if (selectedBuiltin === 'postgres') {
+          payload.DATABASE_URI = draft.DATABASE_URI ?? '';
+        } else if (selectedBuiltin === 'mongo') {
+          payload.MCP_MONGODB_URI = draft.MCP_MONGODB_URI ?? '';
+        } else if (selectedBuiltin === 'sql') {
+          if (draft.SQL_MCP_DIALECT?.trim()) {
+            payload.SQL_MCP_DIALECT = draft.SQL_MCP_DIALECT;
+          }
+          payload.SQL_MCP_URI = draft.SQL_MCP_URI ?? '';
+        }
+      } else {
+        for (const key of [
+          'SQL_MCP_DIALECT',
+          'MITII_DB_HOST',
+          'MITII_DB_PORT',
+          'MITII_DB_USER',
+          'MITII_DB_PASSWORD',
+          'MITII_DB_NAME',
+          'MITII_DB_PATH',
+        ]) {
+          const v = draft[key]?.trim();
+          if (v) payload[key] = v;
+        }
+      }
+      await installBuiltin(selectedBuiltin, payload);
+      return;
+    }
+
     for (const field of selectedCatalogEntry.secrets ?? []) {
       if (field.required === false) continue;
-      if (!(secretDraft[field.key] ?? '').trim()) {
+      if (!(draft[field.key] ?? '').trim()) {
         setError(`${field.label} is required`);
         return;
       }
@@ -521,34 +572,50 @@ export function McpManager(props: Props) {
           {wizardStep === 'catalog-secrets' && selectedCatalogEntry ? (
             <div className="mcp-wizard__panel">
               <h3>Configure {selectedCatalogEntry.name}</h3>
-              <p className="mcp-wizard__hint">
-                Add your key once — Mitii writes it into{' '}
-                <code>.mitii/mcp.json</code> env and enables the server.
-              </p>
-              <div className="mcp-wizard__fields">
-                {(selectedCatalogEntry.secrets ?? []).map((field) => (
-                  <label key={field.key}>
-                    {field.label}
-                    {field.required === false ? ' (optional)' : ''}
-                    <input
-                      type={field.secret ? 'password' : 'text'}
-                      value={secretDraft[field.key] ?? ''}
-                      placeholder={field.placeholder}
-                      autoComplete="off"
-                      spellCheck={false}
-                      onChange={(e) =>
-                        setSecretDraft((prev) => ({
-                          ...prev,
-                          [field.key]: e.target.value,
-                        }))
-                      }
-                    />
-                    {field.hint ? (
-                      <span className="mcp-wizard__field-hint">{field.hint}</span>
-                    ) : null}
-                  </label>
-                ))}
-              </div>
+              {selectedCatalogEntry.category === 'database' &&
+              selectedBuiltin ? (
+                <DatabaseMcpSecretsForm
+                  builtinId={selectedBuiltin}
+                  fields={selectedCatalogEntry.secrets ?? []}
+                  draft={secretDraft}
+                  onChange={setSecretDraft}
+                  method={dbConnectMethod}
+                  onMethodChange={setDbConnectMethod}
+                />
+              ) : (
+                <>
+                  <p className="mcp-wizard__hint">
+                    Add your key once — Mitii writes it into{' '}
+                    <code>.mitii/mcp.json</code> env and enables the server.
+                  </p>
+                  <div className="mcp-wizard__fields">
+                    {(selectedCatalogEntry.secrets ?? []).map((field) => (
+                      <label key={field.key}>
+                        {field.label}
+                        {field.required === false ? ' (optional)' : ''}
+                        <input
+                          type={field.secret ? 'password' : 'text'}
+                          value={secretDraft[field.key] ?? ''}
+                          placeholder={field.placeholder}
+                          autoComplete="off"
+                          spellCheck={false}
+                          onChange={(e) =>
+                            setSecretDraft((prev) => ({
+                              ...prev,
+                              [field.key]: e.target.value,
+                            }))
+                          }
+                        />
+                        {field.hint ? (
+                          <span className="mcp-wizard__field-hint">
+                            {field.hint}
+                          </span>
+                        ) : null}
+                      </label>
+                    ))}
+                  </div>
+                </>
+              )}
               <div className="mcp-wizard__footer">
                 <button
                   type="button"

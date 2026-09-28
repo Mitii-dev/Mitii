@@ -5331,6 +5331,123 @@ button.mcp-manager__card {
   color: var(--mitii-muted);
 }
 
+.mcp-db-form {
+  display: grid;
+  gap: 14px;
+}
+
+.mcp-db-form__intro {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--mitii-muted);
+}
+
+.mcp-db-form__methods {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--mitii-panel) 88%, transparent);
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 80%, transparent);
+}
+
+.mcp-db-form__method {
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--mitii-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.mcp-db-form__method.is-active {
+  color: var(--mitii-fg, inherit);
+  background: color-mix(in srgb, var(--mitii-surface, #fff) 92%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--mitii-border) 70%, transparent);
+}
+
+.mcp-db-form__stack,
+.mcp-db-form__grid {
+  display: grid;
+  gap: 12px;
+}
+
+.mcp-db-form__grid {
+  grid-template-columns: 1fr 1fr;
+}
+
+.mcp-db-form__grid--dialect {
+  grid-template-columns: 1fr;
+}
+
+.mcp-db-form__span-2 {
+  grid-column: 1 / -1;
+}
+
+.mcp-db-form__field {
+  display: grid;
+  gap: 5px;
+  font-size: 12px;
+}
+
+.mcp-db-form__label {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.mcp-db-form__req {
+  color: color-mix(in srgb, #c45c5c 85%, var(--mitii-fg));
+}
+
+.mcp-db-form__opt {
+  font-weight: 500;
+  font-size: 10px;
+  color: var(--mitii-muted);
+}
+
+.mcp-db-form__field input,
+.mcp-db-form__field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 85%, transparent);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--mitii-panel) 94%, transparent);
+  color: inherit;
+  font: inherit;
+  font-weight: 400;
+}
+
+.mcp-db-form__field textarea {
+  resize: vertical;
+  min-height: 72px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+}
+
+.mcp-db-form__hint {
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--mitii-muted);
+  line-height: 1.35;
+}
+
+@media (max-width: 560px) {
+  .mcp-db-form__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mcp-db-form__span-2 {
+    grid-column: auto;
+  }
+}
+
 .mcp-wizard__choices {
   display: grid;
   gap: 10px;

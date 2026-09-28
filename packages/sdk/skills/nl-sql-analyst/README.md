@@ -17,5 +17,5 @@ Bundled skill for Mitii **Database** mode.
 ## Related
 
 - Host: `packages/host/src/database-mode/`
-- MCP: `@mitii/mcp-sqlite`, `@mitii/mcp-postgres`, `@mitii/mcp-mongo`
+- MCP: `@mitii/mcp-sqlite`, `@mitii/mcp-postgres`, `@mitii/mcp-mongo`, `@mitii/mcp-sql`
 - Debug (API empty data): `api-db-runtime-debug` (different skill)
