@@ -41,7 +41,7 @@ Use this when the user reports empty or wrong API data (for example `GET /v2/api
 1. **Stop the line** — do not add features while the failure is unexplained.
 2. **Probe before mutate** — do **not** call `apply_patch` (or other code mutations) until you have recorded **API** and **DB** probe results in the evidence ledger.
 3. **One hypothesis at a time** — falsify with the cheapest discriminating probe.
-4. **Prefer MCP DB tools** when connected (`mcp__sqlite__*`, `mcp__postgres__*`, or `mcp__mongo__*`). Otherwise use `run_readonly_command` / L3 scripts / ephemeral probes under `.mitii/probes/<taskId>/`.
+4. **Prefer MCP DB tools** when connected (`mcp__sqlite__*`, `mcp__postgres__*`, `mcp__mongo__*`, or `mcp__sql__*`). Otherwise use `run_readonly_command` / L3 scripts / ephemeral probes under `.mitii/probes/<taskId>/`.
 5. **Respect DB access** — refuse INSERT/UPDATE/DELETE/DDL on read-only tiers; use write MCP tools only when `MCP_DB_ACCESS=readwrite` / Database Read & write.
 6. **No secrets in commits** — never write credentials into the repo; redact connection strings in chat.
 

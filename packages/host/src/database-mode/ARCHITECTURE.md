@@ -13,7 +13,7 @@ UI mode "database" + DB access (readonly | readwrite)
        approvalMode: never when readwrite (DB access is consent)
      })
   → V8 Agent Engine
-  → mcp__{sqlite|postgres|mongo}__*
+  → mcp__{sqlite|postgres|mongo|sql}__*
 ```
 
 ## DB access (not workspace approval)
@@ -29,5 +29,5 @@ Write tools are tagged `requiresWorkspaceWrite` per-tool.
 
 ## Packages
 
-- `@mitii/mcp-sqlite` / `@mitii/mcp-postgres` / `@mitii/mcp-mongo`
+- `@mitii/mcp-sqlite` / `@mitii/mcp-postgres` / `@mitii/mcp-mongo` / `@mitii/mcp-sql`
 - Legacy catalog ids `*-readonly` still work

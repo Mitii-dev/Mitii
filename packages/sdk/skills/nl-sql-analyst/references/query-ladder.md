@@ -7,7 +7,7 @@
 3. `describe_table` for 1–4 candidates
 4. Optional: `SELECT * FROM t LIMIT 5` to confirm units/dates
 
-## Mongo discover (mongo / mcp-mongo-server)
+## Mongo discover (`@mitii/mcp-mongo`)
 
 1. List collections (MCP resources or equivalent)
 2. Read inferred schema for 1–4 candidates

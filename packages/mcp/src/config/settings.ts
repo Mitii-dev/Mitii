@@ -16,6 +16,7 @@ const CANONICAL_DB_DISPLAY_NAMES: Readonly<Record<string, string>> = {
   sqlite: 'SQLite',
   postgres: 'Postgres',
   mongo: 'MongoDB',
+  sql: 'SQL',
 };
 
 /** Empty store install — MCP off until the user opts in. */
@@ -149,7 +150,12 @@ function refreshBuiltinArgs(
     return { ...server, id, args: catalog.args, command: catalog.command };
   }
 
-  if (id === 'sqlite' || id === 'postgres' || id === 'mongo') {
+  if (
+    id === 'sqlite' ||
+    id === 'postgres' ||
+    id === 'mongo' ||
+    id === 'sql'
+  ) {
     const catalog = getBuiltinCatalogEntry(id as McpBuiltinId, workspaceRoot);
     return {
       ...server,

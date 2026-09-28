@@ -12,6 +12,7 @@ packages/mcp/
 |-- sqlite/                   # @mitii/mcp-sqlite — first-party DB server
 |-- postgres/                 # @mitii/mcp-postgres — first-party DB server
 |-- mongo/                    # @mitii/mcp-mongo — first-party DB server
+|-- sql/                      # @mitii/mcp-sql — multi-dialect SQL server
 |-- README.md                 # this file (umbrella)
 `-- ARCHITECTURE.md
 ```
@@ -23,6 +24,7 @@ packages/mcp/
 | `@mitii/mcp-sqlite` | `packages/mcp/sqlite` | SQLite MCP (`MCP_DB_ACCESS=readonly\|readwrite`) |
 | `@mitii/mcp-postgres` | `packages/mcp/postgres` | Postgres MCP (`MCP_DB_ACCESS`) |
 | `@mitii/mcp-mongo` | `packages/mcp/mongo` | MongoDB MCP (`MCP_DB_ACCESS`) |
+| `@mitii/mcp-sql` | `packages/mcp/sql` | Multi-dialect SQL MCP (Postgres/MySQL/MariaDB/SQLite) |
 
 App hosts may keep **thin adapters** (e.g. `apps/vscode/src/mcp/`) that only wire VS Code UI → `@mitii/mcp`. Product logic stays under `packages/mcp`.
 
@@ -30,11 +32,14 @@ App hosts may keep **thin adapters** (e.g. `apps/vscode/src/mcp/`) that only wir
 
 Install from **Settings → Integrations → MCP** (category **Database**):
 
-| Catalog id | Package | Env |
+| Catalog id | Package | Env written |
 |---|---|---|
 | `sqlite` | `@mitii/mcp-sqlite` | `SQLITE_PATH` + `MCP_DB_ACCESS` |
 | `postgres` | `@mitii/mcp-postgres` | `DATABASE_URI` + `MCP_DB_ACCESS` |
 | `mongo` | `@mitii/mcp-mongo` | `MCP_MONGODB_URI` + `MCP_DB_ACCESS` |
+| `sql` | `@mitii/mcp-sql` | `SQL_MCP_URI` (+ `SQL_MCP_DIALECT`) + `MCP_DB_ACCESS` |
+
+Install UI collects **host / port / user / password / database** (plus dialect for `sql`; path for SQLite). Mitii composes those into the URI env vars above. An optional **Full connection URI** field overrides the structured fields when set.
 
 Access tier is controlled by `MCP_DB_ACCESS=readonly|readwrite` (Database mode UI) — not by separate catalog ids.
 
@@ -55,6 +60,7 @@ pnpm --filter @mitii/mcp-web build
 pnpm --filter @mitii/mcp-sqlite build
 pnpm --filter @mitii/mcp-postgres build
 pnpm --filter @mitii/mcp-mongo build
+pnpm --filter @mitii/mcp-sql build
 pnpm --filter @mitii/mcp test
 ```
 

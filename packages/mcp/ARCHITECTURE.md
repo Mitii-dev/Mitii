@@ -31,9 +31,10 @@ packages/mcp/
   sqlite/        → @mitii/mcp-sqlite
   postgres/      → @mitii/mcp-postgres
   mongo/         → @mitii/mcp-mongo
+  sql/           → @mitii/mcp-sql          (multi-dialect)
 ```
 
-Access mode (all three DB servers):
+Access mode (all first-party DB servers):
 
 | `MCP_DB_ACCESS` | Behavior |
 |-----------------|----------|

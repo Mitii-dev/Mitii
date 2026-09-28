@@ -505,6 +505,96 @@ export function App() {
     setError(null);
   }, []);
 
+  /**
+   * Serialize engine restarts (Read & write / MCP install). First Database
+   * message used to race a still-dying engine URL → Failed to fetch; retry
+   * worked because the new engine was up. Chain + health wait fixes that.
+   */
+  const engineRestartChainRef = useRef(Promise.resolve());
+
+  const restartEngineAndRefresh = useCallback(async (): Promise<DesktopShellSnapshot> => {
+    const run = async (): Promise<DesktopShellSnapshot> => {
+      const bridge = getDesktopBridge();
+      if (!bridge?.restartEngine) {
+        throw new Error('Engine restart unavailable');
+      }
+      const result = await bridge.restartEngine();
+      if (result && result.ok === false) {
+        throw new Error(result.reason || 'Engine restart failed');
+      }
+      const nextSnap = await bridge.getSnapshot();
+      setSnapshot(nextSnap);
+      const healthUrl = `${nextSnap.engineBaseUrl.replace(/\/$/, '')}/health`;
+      const deadline = Date.now() + 20_000;
+      while (Date.now() < deadline) {
+        try {
+          const res = await fetch(healthUrl, {
+            headers: nextSnap.authToken
+              ? { authorization: `Bearer ${nextSnap.authToken}` }
+              : undefined,
+          });
+          if (res.ok) return nextSnap;
+        } catch {
+          /* engine still booting */
+        }
+        await new Promise((r) => setTimeout(r, 120));
+      }
+      return nextSnap;
+    };
+    const queued = engineRestartChainRef.current.then(run, run);
+    engineRestartChainRef.current = queued.then(
+      () => undefined,
+      () => undefined,
+    );
+    return queued;
+  }, []);
+
+  const ensureDatabaseAccessReady = useCallback(
+    async (
+      access: DatabaseAccessUiMode,
+    ): Promise<{
+      engine: { baseUrl: string; token: string };
+      snapshot: DesktopShellSnapshot;
+    }> => {
+      // Finish any restart already kicked off by the access dropdown.
+      await engineRestartChainRef.current;
+
+      const bridge = getDesktopBridge();
+      if (!bridge) {
+        throw new Error('Desktop bridge missing. Rebuild and relaunch.');
+      }
+      let snap = await bridge.getSnapshot();
+      setSnapshot(snap);
+      const eng = {
+        baseUrl: snap.engineBaseUrl,
+        token: snap.authToken ?? '',
+      };
+      const accessResult = await setDatabaseMcpAccess({
+        ...eng,
+        dbAccess: access,
+      });
+      await fetchMcpServers(eng)
+        .then((payload) => {
+          setMcpMasterEnabled(Boolean(payload.enabled));
+          setMcpServers(payload.servers ?? []);
+        })
+        .catch(() => undefined);
+
+      if (accessResult.restartRequired) {
+        snap = await restartEngineAndRefresh();
+      }
+
+      return {
+        engine: {
+          baseUrl: snap.engineBaseUrl,
+          token: snap.authToken ?? '',
+        },
+        snapshot: snap,
+      };
+    },
+    [restartEngineAndRefresh],
+  );
+
   useEffect(() => {
     void refresh().catch((err: unknown) => {
       setError(err instanceof Error ? err.message : String(err));
@@ -1567,30 +1657,40 @@ export function App() {
 
   const onModeChange = (next: DesktopAgentMode) => {
     setMode(next);
-    const defaults = settings.ui.modeDefaults[next];
-    if (!defaults) return;
+    if (next === 'ask' || next === 'plan' || next === 'agent') {
+      const defaults = settings.ui.modeDefaults[next];
+      if (defaults) {
+        const rawThorough = String(defaults.thoroughness ?? 'medium');
+        const nextThorough: ThoroughnessUi =
+          rawThorough === 'low' || rawThorough === 'quick'
+            ? 'low'
+            : rawThorough === 'high' || rawThorough === 'thorough'
+              ? 'high'
+              : 'medium';
+        setThoroughness(nextThorough);
 
-    const rawThorough = String(defaults.thoroughness ?? 'medium');
-    const nextThorough: ThoroughnessUi =
-      rawThorough === 'low' || rawThorough === 'quick'
-        ? 'low'
-        : rawThorough === 'high' || rawThorough === 'thorough'
-          ? 'high'
-          : 'medium';
-    setThoroughness(nextThorough);
+        const rawApproval = String(defaults.approvalMode ?? 'guided');
+        const nextApproval: ApprovalUiMode =
+          rawApproval === 'safe' ||
+          rawApproval === 'guided' ||
+          rawApproval === 'pilot'
+            ? rawApproval
+            : 'guided';
+        setApprovalMode(nextApproval);
 
-    const rawApproval = String(defaults.approvalMode ?? 'guided');
-    const nextApproval: ApprovalUiMode =
-      rawApproval === 'safe' ||
-      rawApproval === 'guided' ||
-      rawApproval === 'pilot'
-        ? rawApproval
-        : 'guided';
-    setApprovalMode(nextApproval);
+        const nextModel = defaults.model?.trim();
+        if (nextModel) {
+          void onSelectModel(nextModel);
+        }
+      }
+    }
 
-    const nextModel = defaults.model?.trim();
-    if (nextModel) {
-      void onSelectModel(nextModel);
+    // Stamp MCP_DB_ACCESS when entering Database mode so Read & write is not
+    // stuck on a stale readonly MCP process from install.
+    if (next === 'database') {
+      void ensureDatabaseAccessReady(dbAccess).catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : String(err));
+      });
     }
   };
 
@@ -2077,10 +2177,23 @@ export function App() {
     setMessages(nextMessages);
     requestAnimationFrame(() => scrollToBottom(true));
     try {
+      // Ensure MCP_DB_ACCESS matches the composer control and wait out any
+      // in-flight engine restart from the Read & write dropdown (first-message race).
+      let promptEngine = engine;
+      let promptSnapshot = snapshot;
+      if (mode === 'database') {
+        const ready = await ensureDatabaseAccessReady(dbAccess);
+        promptEngine = ready.engine;
+        promptSnapshot = ready.snapshot;
+      }
+      if (!promptEngine || !promptSnapshot) {
+        throw new Error('Engine is not ready. Try again in a moment.');
+      }
+
       let activeThread = threadId;
-      if (!activeThread && engine) {
+      if (!activeThread && promptEngine) {
         const created = await postHistory({
-          ...engine,
+          ...promptEngine,
           body: { action: 'new', title: prompt.slice(0, 48) },
         });
         activeThread = created.activeThreadId;
@@ -2088,32 +2201,41 @@ export function App() {
         setHistory(created.threads as HistoryThread[]);
       }
 
+      const carryMode: 'ask' | 'plan' | 'agent' =
+        runMode === 'database'
+          ? dbAccess === 'readwrite'
+            ? 'agent'
+            : 'ask'
+          : runMode === 'plan' || runMode === 'agent'
+            ? runMode
+            : 'ask';
+
       const approvedPlan =
         override?.approvedPlan ??
         resolvePlanHandoff({
-          mode: runMode,
+          mode: carryMode,
           pendingPlan,
         });
       const approvedPlanStrategy =
         override && 'approvedPlanStrategy' in override
           ? override.approvedPlanStrategy ?? undefined
           : resolvePlanStrategyHandoff({
-              mode: runMode,
+              mode: carryMode,
               pendingPlanStrategy,
             });
       const taskList =
         override && 'taskList' in override
           ? override.taskList ?? undefined
-          : runMode === 'agent'
+          : carryMode === 'agent'
             ? pendingTaskList ?? undefined
             : undefined;
 
       const conversation = buildConversationCarry({
         messages: messages.map((m) => ({ role: m.role, text: m.text })),
         currentPrompt: prompt,
-        mode: runMode,
+        mode: carryMode,
         structured:
-          runMode === 'agent'
+          carryMode === 'agent'
             ? collectStructuredCarryFromThread({
                 messages,
                 pendingPlan: approvedPlan ?? pendingPlan,
@@ -2133,10 +2255,10 @@ export function App() {
         taskList: resultTaskList,
       } = await consumeStream(
         streamPrompt({
-          baseUrl: snapshot.engineBaseUrl,
+          baseUrl: promptSnapshot.engineBaseUrl,
           prompt,
           mode: runMode,
-          model: snapshot.settings.provider.model,
+          model: promptSnapshot.settings.provider.model,
           sessionId: activeThread,
           approvalPreset: approvalMode,
           thoroughness,
@@ -2151,7 +2273,9 @@ export function App() {
             ? { approvedPlanStrategy }
             : {}),
           ...(taskList ? { taskList } : {}),
-          ...(snapshot.authToken ? { token: snapshot.authToken } : {}),
+          ...(promptSnapshot.authToken
+            ? { token: promptSnapshot.authToken }
+            : {}),
         }),
         assistantId,
         { formatPlanAnswer: runMode === 'plan' },
@@ -2258,7 +2382,9 @@ export function App() {
     consumeStream,
     dbAccess,
     editorContext,
+    dbAccess,
     engine,
+    ensureDatabaseAccessReady,
     input,
     messages,
     mode,
@@ -2944,31 +3070,11 @@ export function App() {
                 onApprovalModeChange={setApprovalMode}
                 onDbAccessChange={(next) => {
                   setDbAccess(next);
-                  if (!engine) return;
-                  void setDatabaseMcpAccess({
-                    ...engine,
-                    dbAccess: next,
-                  })
-                    .then(async (result) => {
-                      await fetchMcpServers(engine).then((payload) => {
-                        setMcpMasterEnabled(Boolean(payload.enabled));
-                        setMcpServers(payload.servers ?? []);
-                      });
-                      if (result.restartRequired) {
-                        const bridge = getDesktopBridge();
-                        if (bridge?.restartEngine) {
-                          await bridge.restartEngine();
-                          // New engine URL/token — refresh or UI keeps
-                          // calling the dead process ("Failed to fetch").
-                          await refresh();
-                        }
-                      }
-                    })
-                    .catch((err: unknown) => {
-                      setError(
-                        err instanceof Error ? err.message : String(err),
-                      );
-                    });
+                  void ensureDatabaseAccessReady(next).catch((err: unknown) => {
+                    setError(
+                      err instanceof Error ? err.message : String(err),
+                    );
+                  });
                 }}
                 onThoroughnessChange={setThoroughness}
               />

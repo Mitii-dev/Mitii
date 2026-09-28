@@ -18,6 +18,7 @@ export const DATABASE_MCP_BUILTIN_IDS = [
   'sqlite',
   'postgres',
   'mongo',
+  'sql',
 ] as const;
 
 export type DatabaseMcpBuiltinId = (typeof DATABASE_MCP_BUILTIN_IDS)[number];

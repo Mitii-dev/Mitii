@@ -46,7 +46,7 @@ Use when the user is in **Database** mode or asks analytical questions against a
    - **Read-only** — never INSERT/UPDATE/DELETE/DDL; never Mongo insert/update/delete/createIndex. SELECT / WITH…SELECT and Mongo query/aggregate/count only.
    - **Read & write** — after confirming intent, use `execute_write` (SQL) or `insert` / `update` / `delete` / `create_index` (Mongo). Still refuse DROP/TRUNCATE unless explicitly requested. Show a short mutation summary and affected count.
 3. **Discover before inventing** — call discovery tools before writing filters or SQL.
-4. **Prefer MCP** — `mcp__sqlite__*`, `mcp__postgres__*`, `mcp__mongo__*` (and legacy `*-readonly` ids when installed).
+4. **Prefer MCP** — `mcp__sqlite__*`, `mcp__postgres__*`, `mcp__mongo__*`, `mcp__sql__*` (and legacy `*-readonly` ids when installed).
 5. **Show your work** — final answer includes: short NL summary, markdown table (capped), and the SQL or Mongo filter/pipeline.
 6. **Disconnected** — if tools fail or no MCP is pinned, tell the user how to connect; do not fabricate rows.
 

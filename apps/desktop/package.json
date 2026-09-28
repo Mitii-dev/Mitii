@@ -1,6 +1,6 @@
 {
   "name": "@mitii/desktop",
-  "version": "2.9.105",
+  "version": "2.9.106",
   "description": "Mitii Desktop — local coding agent with chat, settings, and repository index.",
   "license": "AGPL-3.0-or-later",
   "private": true,
@@ -38,6 +38,7 @@
     "@mitii/mcp": "workspace:*",
     "@mitii/mcp-mongo": "workspace:*",
     "@mitii/mcp-postgres": "workspace:*",
+    "@mitii/mcp-sql": "workspace:*",
     "@mitii/mcp-sqlite": "workspace:*",
     "@mitii/sdk": "workspace:*",
     "better-sqlite3": "^12.11.1",

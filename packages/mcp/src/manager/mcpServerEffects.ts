@@ -1,7 +1,12 @@
 import type { McpServerConfig } from '../contracts/types.js';
 
 /** First-party Mitii DB MCP catalog ids. */
-const DATABASE_MCP_BUILTIN_IDS = new Set(['sqlite', 'postgres', 'mongo']);
+const DATABASE_MCP_BUILTIN_IDS = new Set([
+  'sqlite',
+  'postgres',
+  'mongo',
+  'sql',
+]);
 
 /** Tool names that mutate the database (not the workspace). */
 const DB_WRITE_TOOL_NAMES = new Set([
