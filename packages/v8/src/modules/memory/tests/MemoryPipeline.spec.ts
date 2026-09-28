@@ -106,6 +106,23 @@ describe("MemoryPipeline", () => {
     expect(result.instructions).toEqual([]);
   });
 
+  it("filters private memory when requester identity is missing", async () => {
+    const pipeline = new MemoryPipeline({
+      store: new InMemoryMemoryStore(seed),
+    });
+
+    const result = await pipeline.retrieve({
+      schemaVersion: MEMORY_SCHEMA_VERSION,
+      query: "pnpm credentials",
+      scope: { kind: "user", userId: "alice" },
+      now,
+    });
+
+    expect(result.status).toBe("empty");
+    expect(result.reasonCodes).toContain("privacy_filtered");
+    expect(result.instructions).toEqual([]);
+  });
+
   it("omits memory that exceeds the dedicated budget", async () => {
     const pipeline = new MemoryPipeline({
       store: new InMemoryMemoryStore(seed),
@@ -284,7 +301,7 @@ describe("MemoryPipeline", () => {
     expect(store.list()[0]?.content).not.toContain("sk-ant-");
   });
 
-  it("supersedes a near-duplicate latest fact", async () => {
+  it("keeps near-duplicate facts unless replacesId is explicit", async () => {
     const store = new InMemoryMemoryStore([
       {
         id: "m-old-pnpm",
@@ -296,12 +313,13 @@ describe("MemoryPipeline", () => {
         source: "user",
       },
     ]);
+    let seq = 0;
     const pipeline = new MemoryPipeline({
       store,
-      idGenerator: { next: () => "mem_next" },
+      idGenerator: { next: () => `mem_next_${++seq}` },
     });
 
-    const result = await pipeline.commit({
+    const withoutTarget = await pipeline.commit({
       schemaVersion: MEMORY_SCHEMA_VERSION,
       content: "This workspace uses pnpm for package management and lockfiles.",
       scope: { kind: "workspace", workspaceId: "ws" },
@@ -309,14 +327,48 @@ describe("MemoryPipeline", () => {
       now,
     });
 
-    expect(result.status).toBe("committed");
-    expect(result.reasonCodes).toContain("memory_superseded");
+    expect(withoutTarget.status).toBe("committed");
+    expect(withoutTarget.reasonCodes).not.toContain("memory_superseded");
+    expect(store.list().find((fact) => fact.id === "m-old-pnpm")?.isLatest).not.toBe(
+      false,
+    );
+
+    const withTarget = await pipeline.commit({
+      schemaVersion: MEMORY_SCHEMA_VERSION,
+      content: "This workspace uses pnpm for package management and lockfiles only.",
+      scope: { kind: "workspace", workspaceId: "ws" },
+      privacy: "shareable",
+      replacesId: "m-old-pnpm",
+      now: "2026-07-26T12:06:00.000Z",
+    });
+
+    expect(withTarget.status).toBe("committed");
+    expect(withTarget.reasonCodes).toContain("memory_superseded");
     expect(store.list().find((fact) => fact.id === "m-old-pnpm")?.isLatest).toBe(
       false,
     );
-    expect(store.list().find((fact) => fact.id === "mem_next")?.supersedes).toEqual(
+    expect(store.list().find((fact) => fact.id === "mem_next_2")?.supersedes).toEqual(
       ["m-old-pnpm"],
     );
+  });
+
+  it("rejects correction when replacesId is missing from the store", async () => {
+    const pipeline = new MemoryPipeline({
+      store: new InMemoryMemoryStore(),
+      idGenerator: { next: () => "mem_missing" },
+    });
+
+    const result = await pipeline.commit({
+      schemaVersion: MEMORY_SCHEMA_VERSION,
+      content: "Corrected preference.",
+      scope: { kind: "workspace", workspaceId: "ws" },
+      privacy: "shareable",
+      replacesId: "does-not-exist",
+      now,
+    });
+
+    expect(result.status).toBe("rejected");
+    expect(result.reasonCodes).toContain("commit_rejected");
   });
 
   it("rejects an exact duplicate inside the dedup window", async () => {
@@ -374,7 +426,7 @@ describe("MemoryPipeline", () => {
     expect(result.instructions.map((block) => block.id)).toContain("m-pnpm");
   });
 
-  it("returns layered L1/L2/L3 partitions when mode is layered", async () => {
+  it("returns unique facts once when mode is layered", async () => {
     const pipeline = new MemoryPipeline({
       store: new InMemoryMemoryStore(seed),
     });
@@ -389,9 +441,12 @@ describe("MemoryPipeline", () => {
 
     expect(result.reasonCodes).toContain("memory_layered");
     expect(result.layers).toBeDefined();
-    expect(result.layers!.l1Index.length).toBeGreaterThan(0);
+    expect(result.layers!.l1Index).toEqual([]);
+    expect(result.layers!.l2Timeline).toEqual([]);
     expect(result.layers!.l3Facts.some((b) => b.id === "m-pnpm")).toBe(true);
-    expect(result.instructions.length).toBeGreaterThan(0);
+    expect(result.instructions.map((block) => block.id)).toEqual(
+      result.layers!.l3Facts.map((block) => block.id),
+    );
   });
 
   it("consolidates whitespace-normalized duplicates", async () => {

@@ -29,7 +29,6 @@ export const MEMORY_THRESHOLDS = {
   bm25RelativeFloor: 0.2,
   /** Drop BM25 hits that cover fewer distinct query terms than this (or the query size, whichever is smaller). */
   minCoveredQueryTerms: 2,
-  jaccardSupersede: 0.7,
   dedupWindowMs: 5 * 60 * 1000,
   maxAccessLog: DEFAULT_MAX_ACCESS_LOG,
   embedMaxChars: DEFAULT_EMBED_MAX_CHARS,

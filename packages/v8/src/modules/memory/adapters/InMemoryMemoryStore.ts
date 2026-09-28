@@ -35,6 +35,18 @@ export class InMemoryMemoryStore implements MemoryStorePort {
     this.facts.set(parsed.id, parsed);
   }
 
+  public transact<T>(scope: MemoryScope, decide: (facts: readonly MemoryFact[]) => {
+    facts: readonly MemoryFact[]; result: T;
+  }): T {
+    const decision = decide(this.list(scope).map(row => structuredClone(row)));
+    const facts = memoryFactSchema.array().parse(decision.facts);
+    for (const fact of facts) {
+      if (!scopesCompatible(fact.scope, scope)) throw new Error("Memory transaction scope mismatch.");
+    }
+    for (const fact of facts) this.facts.set(fact.id, fact);
+    return decision.result;
+  }
+
   public list(scope?: MemoryScope): readonly MemoryFact[] {
     const facts = [...this.facts.values()];
     return scope

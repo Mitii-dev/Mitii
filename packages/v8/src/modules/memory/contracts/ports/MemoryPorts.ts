@@ -13,7 +13,14 @@ export interface MemoryStorePort {
 
   commit(fact: MemoryFact): Promise<void> | void;
 
-  /** Needed for Jaccard supersede / hash reinforce. Hosts already persist lists. */
+  /** Execute a synchronous decision against current scoped rows and persist its
+   * complete write set atomically. Never await external I/O inside the decision. */
+  transact?<T>(scope: MemoryScope, decide: (facts: readonly MemoryFact[]) => {
+    facts: readonly MemoryFact[];
+    result: T;
+  }): Promise<T> | T;
+
+  /** Optional listing for hosts that expose scoped inventory outside retrieve. */
   list?(scope?: MemoryScope): Promise<readonly MemoryFact[]> | readonly MemoryFact[];
 
   /** Increment access timestamps after a successful retrieve. */
@@ -32,8 +39,10 @@ export interface MemoryIdGeneratorPort {
  * Must not pull model runtimes into `@mitii/v8`.
  */
 export interface MemoryEmbeddingPort {
+  readonly profileId?: string;
   readonly dimensions: number;
-  embed(text: string): Promise<Float32Array> | Float32Array;
+  embed(text: string, signal?: AbortSignal): Promise<Float32Array> | Float32Array;
+  embedBatch?(texts: readonly string[], signal?: AbortSignal): Promise<readonly Float32Array[]>;
 }
 
 export type { MemoryCommitInput };

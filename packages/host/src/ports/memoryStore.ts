@@ -1,15 +1,18 @@
-import { randomBytes } from 'node:crypto';
-import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { atomicMemoryWrite, withMemoryFileLock } from './memoryFileIO.js';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { z } from 'zod';
 
 import {
   memoryFactSchema,
+  MemoryContentPolicy,
   type MemoryFact,
   type MemoryFactDraft,
   type MemoryStorePort,
 } from '@mitii/v8';
 
 import { appendMemoryAudit } from './memoryAudit.js';
+import { MemoryStorageError } from './memoryStoreErrors.js';
 
 const STORAGE_VERSION = 2;
 const SUPPORTED_STORAGE_VERSIONS = new Set([1, 2]);
@@ -18,10 +21,12 @@ const MAX_ACCESS_LOG = 20;
 
 type MemoryScope = MemoryFact['scope'];
 
-interface MemoryEnvelope {
-  storageVersion: 1 | 2;
-  facts: MemoryFact[];
-}
+const memoryEnvelopeSchema = z.object({
+  storageVersion: z.number().int().positive(),
+  facts: z.array(z.unknown()),
+}).strict();
+
+type MemoryEnvelope = z.infer<typeof memoryEnvelopeSchema>;
 
 export interface MemoryDeleteResult {
   id: string;
@@ -30,8 +35,8 @@ export interface MemoryDeleteResult {
 }
 
 /**
- * Serializes read-modify-write mutations so concurrent commits/deletes from one
- * agent turn cannot last-write-wins or corrupt the envelope (servers-main memory pattern).
+ * Serializes read-modify-write mutations through this store instance.
+ * File locks coordinate separate instances and processes.
  */
 class MutationQueue {
   private chain: Promise<unknown> = Promise.resolve();
@@ -51,9 +56,10 @@ class MutationQueue {
  * Shared by CLI (and any non-Memento host).
  *
  * Persistence guarantees:
- * - Same-directory temp + rename (crash-safe)
- * - Mutation queue (no concurrent RMW races)
- * - Soft-fail load (skip malformed facts; never wipe the store)
+ * - Same-directory temp + rename (atomic file replacement)
+ * - Per-instance mutation queue and exclusive file locks
+ * - Read valid rows from partial data; reject mutations that would discard rows
+ * - Reject corrupt and unsupported envelopes without changing their bytes
  * - Honest deletes (`deleted: false` when id missing)
  */
 export class FileWorkspaceMemoryStore implements MemoryStorePort {
@@ -81,20 +87,38 @@ export class FileWorkspaceMemoryStore implements MemoryStorePort {
   }
 
   public async commit(fact: MemoryFactDraft): Promise<void> {
-    return this.mutations.enqueue(async () => {
+    return this.mutations.enqueue(() => withMemoryFileLock(this.filePath, async () => {
       const parsed = parseFact(fact, this.workspaceId);
       if (!parsed) {
-        throw new Error(
-          'Memory commit rejected: fact failed schema validation.',
-        );
+        throw new MemoryStorageError('memory_storage_invalid_fact');
       }
-      const facts = await this.readFacts();
+      const facts = await this.readFacts(true);
       const next = [
         ...facts.filter((existing) => existing.id !== parsed.id),
         parsed,
       ];
       await this.writeFacts(next);
-    });
+    }));
+  }
+
+  public async transact<T>(scope: MemoryScope, decide: (facts: readonly MemoryFact[]) => {
+    facts: readonly MemoryFact[]; result: T;
+  }): Promise<T> {
+    return this.mutations.enqueue(() => withMemoryFileLock(this.filePath, async () => {
+      const current = await this.readFacts(true);
+      const decision = decide(current.filter(row => scopesCompatible(row.scope, scope)));
+      const changed = memoryFactSchema.array().parse(decision.facts).map(row => new MemoryContentPolicy().fact(row));
+      if (changed.some(row => !scopesCompatible(row.scope, scope) ||
+        current.some(old => old.id === row.id && !scopesCompatible(old.scope, scope)))) {
+        throw new Error('Memory transaction scope mismatch.');
+      }
+      if (new Set(changed.map(row => row.id)).size !== changed.length) throw new Error('Duplicate transaction IDs.');
+      if (changed.length) {
+        const ids = new Set(changed.map(row => row.id));
+        await this.writeFacts([...current.filter(row => !ids.has(row.id)), ...changed]);
+      }
+      return decision.result;
+    }));
   }
 
   public async list(scope?: MemoryScope): Promise<readonly MemoryFact[]> {
@@ -108,22 +132,22 @@ export class FileWorkspaceMemoryStore implements MemoryStorePort {
     if (ids.length === 0) {
       return;
     }
-    return this.mutations.enqueue(async () => {
+    return this.mutations.enqueue(() => withMemoryFileLock(this.filePath, async () => {
       const wanted = new Set(ids);
-      const facts = await this.readFacts();
+      const facts = await this.readFacts(true);
       const next = facts.map((fact) =>
         wanted.has(fact.id) ? touchAccess(fact, at) : fact,
       );
       await this.writeFacts(next);
-    });
+    }));
   }
 
   public async delete(
     id: string,
     reason = 'user_delete',
   ): Promise<MemoryDeleteResult> {
-    return this.mutations.enqueue(async () => {
-      const facts = await this.readFacts();
+    return this.mutations.enqueue(() => withMemoryFileLock(this.filePath, async () => {
+      const facts = await this.readFacts(true);
       const existed = facts.some((fact) => fact.id === id);
       if (!existed) {
         return {
@@ -145,10 +169,10 @@ export class FileWorkspaceMemoryStore implements MemoryStorePort {
         deleted: true,
         message: `Deleted memory id "${id}".`,
       };
-    });
+    }));
   }
 
-  private async readFacts(): Promise<MemoryFact[]> {
+  private async readFacts(forMutation = false): Promise<MemoryFact[]> {
     let raw: string;
     try {
       raw = await readFile(this.filePath, 'utf8');
@@ -163,40 +187,39 @@ export class FileWorkspaceMemoryStore implements MemoryStorePort {
     try {
       parsed = JSON.parse(raw);
     } catch {
-      // Soft-fail: corrupt envelope must not wipe durable memory on next write.
-      return [];
+      throw new MemoryStorageError('memory_storage_corrupt');
     }
 
-    if (!isEnvelope(parsed)) {
-      return [];
+    const envelope = memoryEnvelopeSchema.safeParse(parsed);
+    if (!envelope.success) {
+      throw new MemoryStorageError('memory_storage_corrupt');
+    }
+    if (!SUPPORTED_STORAGE_VERSIONS.has(envelope.data.storageVersion)) {
+      throw new MemoryStorageError('memory_storage_version_unsupported');
     }
 
-    return parsed.facts
+    const facts = envelope.data.facts
       .map((fact) => parseFact(fact, this.workspaceId))
       .filter((fact): fact is MemoryFact => fact !== null);
+    if (forMutation && (
+      facts.length !== envelope.data.facts.length ||
+      new Set(facts.map(fact => fact.id)).size !== facts.length
+    )) {
+      throw new MemoryStorageError('memory_storage_recovery_required');
+    }
+    return facts;
   }
 
   private async writeFacts(facts: readonly MemoryFact[]): Promise<void> {
-    const validated = facts
-      .map((fact) => parseFact(fact, this.workspaceId))
-      .filter((fact): fact is MemoryFact => fact !== null);
+    const result = memoryFactSchema.array().safeParse(facts);
+    if (!result.success) {
+      throw new MemoryStorageError('memory_storage_invalid_fact');
+    }
     const envelope: MemoryEnvelope = {
       storageVersion: STORAGE_VERSION,
-      facts: validated,
+      facts: result.data.map(row => new MemoryContentPolicy().fact(row)),
     };
-    await mkdir(dirname(this.filePath), { recursive: true });
-    const tempPath = `${this.filePath}.${process.pid}.${randomBytes(8).toString('hex')}.tmp`;
-    try {
-      await writeFile(
-        tempPath,
-        `${JSON.stringify(envelope, null, 2)}\n`,
-        'utf8',
-      );
-      await rename(tempPath, this.filePath);
-    } catch (error) {
-      await unlink(tempPath).catch(() => undefined);
-      throw error;
-    }
+    await atomicMemoryWrite(this.filePath, `${JSON.stringify(envelope, null, 2)}\n`);
   }
 }
 
@@ -208,74 +231,27 @@ export function createWorkspaceMemoryStore(
 }
 
 function parseFact(raw: unknown, workspaceId: string): MemoryFact | null {
-  if (!raw || typeof raw !== 'object') return null;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const fact = raw as Record<string, unknown>;
-  const createdAt =
-    typeof fact.createdAt === 'string'
-      ? normalizeDateTime(fact.createdAt)
-      : new Date().toISOString();
-  const expiresAt =
-    typeof fact.expiresAt === 'string'
-      ? normalizeDateTime(fact.expiresAt)
-      : undefined;
-
+  // Fill absent legacy fields only. Invalid metadata and unknown fields must
+  // survive to validation so a mutation cannot silently normalize them away.
   const result = memoryFactSchema.safeParse({
-    id: fact.id,
-    content: fact.content,
-    scope: fact.scope ?? { kind: 'workspace', workspaceId },
-    tags: Array.isArray(fact.tags) ? fact.tags : [],
-    privacy: fact.privacy ?? 'shareable',
-    createdAt,
-    ...(expiresAt ? { expiresAt } : {}),
-    source:
-      typeof fact.source === 'string' && fact.source.trim().length > 0
-        ? fact.source
-        : 'user',
-    ...(typeof fact.type === 'string' ? { type: fact.type } : {}),
-    ...(typeof fact.title === 'string' && fact.title.trim().length > 0
-      ? { title: fact.title }
-      : {}),
-    concepts: Array.isArray(fact.concepts)
-      ? fact.concepts
-      : Array.isArray(fact.tags)
-        ? fact.tags
-        : [],
-    files: Array.isArray(fact.files) ? fact.files : [],
-    ...(typeof fact.importance === 'number' ? { importance: fact.importance } : {}),
-    sourceIds: Array.isArray(fact.sourceIds) ? fact.sourceIds : [],
-    ...(typeof fact.version === 'number' ? { version: fact.version } : {}),
-    ...(typeof fact.isLatest === 'boolean' ? { isLatest: fact.isLatest } : {}),
-    supersedes: Array.isArray(fact.supersedes) ? fact.supersedes : [],
-    ...(typeof fact.contentHash === 'string' && fact.contentHash.trim().length > 0
-      ? { contentHash: fact.contentHash }
-      : {}),
-    ...(typeof fact.accessCount === 'number' ? { accessCount: fact.accessCount } : {}),
-    ...(typeof fact.lastAccessedAt === 'string'
-      ? { lastAccessedAt: normalizeDateTime(fact.lastAccessedAt) }
-      : {}),
-    accessLog: Array.isArray(fact.accessLog)
-      ? fact.accessLog.filter((item): item is string => typeof item === 'string')
-      : [],
+    ...fact,
+    scope: fact.scope === undefined ? { kind: 'workspace', workspaceId } : fact.scope,
+    privacy: fact.privacy === undefined ? 'shareable' : fact.privacy,
+    concepts: fact.concepts === undefined ? fact.tags : fact.concepts,
+    createdAt: normalizeDateTime(fact.createdAt),
+    ...(fact.expiresAt === undefined ? {} : { expiresAt: normalizeDateTime(fact.expiresAt) }),
+    ...(fact.lastAccessedAt === undefined ? {} : { lastAccessedAt: normalizeDateTime(fact.lastAccessedAt) }),
   });
 
   return result.success ? result.data : null;
 }
 
-function normalizeDateTime(value: string): string {
+function normalizeDateTime(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
   const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime())
-    ? new Date().toISOString()
-    : parsed.toISOString();
-}
-
-function isEnvelope(value: unknown): value is MemoryEnvelope {
-  if (!value || typeof value !== 'object') return false;
-  const candidate = value as Partial<MemoryEnvelope>;
-  return (
-    typeof candidate.storageVersion === 'number' &&
-    SUPPORTED_STORAGE_VERSIONS.has(candidate.storageVersion) &&
-    Array.isArray(candidate.facts)
-  );
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toISOString();
 }
 
 function scopesCompatible(fact: MemoryScope, request: MemoryScope): boolean {

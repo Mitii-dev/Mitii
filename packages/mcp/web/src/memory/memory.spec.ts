@@ -32,6 +32,44 @@ describe('mcp-web memory soft parse', () => {
     expect(ranked.map((f) => f.id)).toEqual(['a']);
   });
 
+  it('excludes expired and superseded shareable facts from ranking', () => {
+    const now = new Date('2026-09-28T00:00:00.000Z');
+    const facts = softParseFactsEnvelope(
+      JSON.stringify({
+        storageVersion: 2,
+        facts: [
+          {
+            id: 'active',
+            content: 'prefer vitest',
+            privacy: 'shareable',
+            tags: ['test'],
+          },
+          {
+            id: 'expired',
+            content: 'prefer vitest for old branch',
+            privacy: 'shareable',
+            expiresAt: '2026-01-01T00:00:00.000Z',
+            tags: ['test'],
+          },
+          {
+            id: 'old',
+            content: 'prefer vitest previously',
+            privacy: 'shareable',
+            isLatest: false,
+            tags: ['test'],
+          },
+        ],
+      }),
+    );
+    expect(facts.find((f) => f.id === 'expired')?.expiresAt).toBe(
+      '2026-01-01T00:00:00.000Z',
+    );
+    expect(facts.find((f) => f.id === 'old')?.isLatest).toBe(false);
+    expect(rankShareableFacts(facts, 'vitest', 5, now).map((f) => f.id)).toEqual([
+      'active',
+    ]);
+  });
+
   it('returns empty on corrupt JSON', () => {
     expect(softParseFactsEnvelope('{not-json')).toEqual([]);
   });

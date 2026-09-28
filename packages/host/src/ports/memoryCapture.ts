@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import {
   MEMORY_SCHEMA_VERSION,
@@ -47,11 +47,7 @@ export async function observeWorkspaceEvent(
   const now = input.now ?? new Date();
   const autoPromote = input.autoPromote === true;
   const draft = buildSyntheticMemoryDraft(input);
-  const hash = createHash('sha256')
-    .update(
-      `${input.toolName ?? ''}:${JSON.stringify(input.toolInput ?? '').slice(0, 500)}`,
-    )
-    .digest('hex');
+  const hash = createHash('sha256').update(JSON.stringify([input.toolName, draft.content, draft.files])).digest('hex');
 
   const store = new FileWorkspaceObservationStore(input.workspaceRoot);
   const duplicate = await store.findRecentHash(hash, DEDUP_WINDOW_MS, now);
@@ -64,7 +60,7 @@ export async function observeWorkspaceEvent(
     };
   }
 
-  const observationId = `obs_${now.getTime().toString(36)}`;
+  const observationId = `obs_${randomUUID()}`;
   let promotedMemoryId: string | undefined;
   let pendingMemoryId: string | undefined;
 
@@ -84,13 +80,15 @@ export async function observeWorkspaceEvent(
       importance: draft.importance,
       privacy: 'shareable',
       source: 'observe',
+      sourceIds: [observationId],
+      evidence: [{ id: observationId, kind: input.verified ? 'verification' : 'user_statement', verified: input.verified === true }],
       now: now.toISOString(),
     });
     if (result.status === 'committed') {
       promotedMemoryId = result.memoryId;
     }
   } else if (draft.promotable && !autoPromote) {
-    pendingMemoryId = `pend_${now.getTime().toString(36)}`;
+    pendingMemoryId = `pend_${randomUUID()}`;
     await appendPendingMemory(input.workspaceRoot, {
       id: pendingMemoryId,
       createdAt: now.toISOString(),

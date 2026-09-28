@@ -23,6 +23,7 @@ export {
 } from "./defaults";
 
 export { MemoryPipeline } from "./pipeline/MemoryPipeline";
+export { MemoryContentPolicy } from "./MemoryContentPolicy";
 export type { MemoryPipelineDependencies } from "./pipeline/MemoryPipeline";
 
 export {

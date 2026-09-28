@@ -171,6 +171,11 @@ export {
   FileWorkspaceMemoryStore,
 } from './ports/memoryStore.js';
 export type { MemoryDeleteResult } from './ports/memoryStore.js';
+export {
+  MemoryStorageError,
+  memoryStorageErrorCodeSchema,
+} from './ports/memoryStoreErrors.js';
+export type { MemoryStorageErrorCode } from './ports/memoryStoreErrors.js';
 
 export {
   listWorkspaceMemoriesForView,

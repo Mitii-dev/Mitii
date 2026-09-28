@@ -146,7 +146,7 @@ export class PromptConstructionPipeline {
         blockId: id,
         section: "memory",
         source: `memory:${id}`,
-        trust: "trusted_instruction",
+        trust: "untrusted_memory_content",
       });
     }
     for (const omitted of system.omitted) {

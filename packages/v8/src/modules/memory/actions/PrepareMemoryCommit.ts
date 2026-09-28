@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import type { MemoryCommitParsedInput, MemoryFact } from "../contracts";
 import { deriveConcepts } from "../internal/deriveConcepts";
-import { jaccardSimilarity } from "../internal/jaccard";
+import { MemoryContentPolicy } from "../MemoryContentPolicy";
 import { redactMemoryContent } from "../internal/privacy";
 import { MEMORY_THRESHOLDS } from "../policy";
 
@@ -14,7 +14,7 @@ export type PreparedMemoryCommit =
       reinforced: boolean;
       redacted: boolean;
     }
-  | { ok: false; reason: "retention" | "empty" | "duplicate" };
+  | { ok: false; reason: "retention" | "empty" | "duplicate" | "invalid_correction" };
 
 /**
  * Apply privacy, fingerprint, reinforce, and supersede policy before persist.
@@ -43,8 +43,11 @@ export function prepareMemoryCommit(params: {
       fact.isLatest !== false && scopesEqual(fact.scope, params.input.scope),
   );
 
-  const exact = scoped.find((fact) => fact.contentHash === contentHash);
-  if (exact) {
+  const exact = scoped.find((fact) => fact.contentHash === contentHash &&
+    fact.privacy === params.input.privacy && fact.scope.userId === params.input.scope.userId &&
+    JSON.stringify(fact.applicability) === JSON.stringify(params.input.applicability) &&
+    (!fact.expiresAt || Date.parse(fact.expiresAt) > params.now.getTime()));
+  if (exact && !params.input.replacesId) {
     const ageMs = params.now.getTime() - Date.parse(exact.createdAt);
     if (Number.isFinite(ageMs) && ageMs >= 0 && ageMs < MEMORY_THRESHOLDS.dedupWindowMs) {
       return { ok: false, reason: "duplicate" };
@@ -59,7 +62,8 @@ export function prepareMemoryCommit(params: {
         accessLog: [...exact.accessLog, createdAt].slice(
           -MEMORY_THRESHOLDS.maxAccessLog,
         ),
-        importance: Math.min(10, exact.importance + 1),
+        importance: Math.max(exact.importance, params.input.importance),
+        sourceIds: [...new Set([...exact.sourceIds, ...params.input.sourceIds])],
         contentHash,
       },
       reinforced: true,
@@ -67,13 +71,10 @@ export function prepareMemoryCommit(params: {
     };
   }
 
-  let superseded: MemoryFact | undefined;
-  for (const existing of scoped) {
-    if (jaccardSimilarity(content, existing.content) > MEMORY_THRESHOLDS.jaccardSupersede) {
-      superseded = existing;
-      break;
-    }
-  }
+  const superseded = params.input.replacesId
+    ? scoped.find(row => row.id === params.input.replacesId && row.scope.userId === params.input.scope.userId &&
+      row.privacy === params.input.privacy) : undefined;
+  if (params.input.replacesId && !superseded) return { ok: false, reason: "invalid_correction" };
 
   const concepts = deriveConcepts({
     tags: params.input.tags,
@@ -88,7 +89,7 @@ export function prepareMemoryCommit(params: {
 
   return {
     ok: true,
-    fact: {
+    fact: new MemoryContentPolicy().fact({
       id: params.id,
       content,
       scope: params.input.scope,
@@ -109,7 +110,11 @@ export function prepareMemoryCommit(params: {
       contentHash,
       accessCount: 0,
       accessLog: [],
-    },
+      ...(params.input.pinned !== undefined ? { pinned: params.input.pinned } : {}),
+      ...(params.input.claimKey ? { claimKey: params.input.claimKey } : {}),
+      ...(params.input.evidence ? { evidence: params.input.evidence } : {}),
+      ...(params.input.applicability ? { applicability: params.input.applicability } : {}),
+    }),
     superseded: superseded
       ? { ...superseded, isLatest: false }
       : undefined,
@@ -120,7 +125,7 @@ export function prepareMemoryCommit(params: {
 
 export function fingerprintContent(content: string): string {
   return createHash("sha256")
-    .update(content.trim().toLowerCase())
+    .update(content.trim())
     .digest("hex")
     .slice(0, 16);
 }

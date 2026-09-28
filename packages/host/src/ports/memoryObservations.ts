@@ -1,23 +1,19 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { MemoryContentPolicy } from '@mitii/v8';
+import { z } from 'zod';
+import { atomicMemoryWrite, withMemoryFileLock } from './memoryFileIO.js';
+import { join } from 'node:path';
 
 export const MAX_OBSERVATIONS_PER_WORKSPACE = 10_000;
 
-export interface MemoryObservation {
-  id: string;
-  createdAt: string;
-  toolName?: string;
-  hookType?: string;
-  content: string;
-  files: string[];
-  hash: string;
-  promotedMemoryId?: string;
-}
-
-interface ObservationEnvelope {
-  storageVersion: 2;
-  observations: MemoryObservation[];
-}
+const memoryObservationSchema = z.object({
+  id: z.string().min(1), createdAt: z.string().datetime(), toolName: z.string().optional(),
+  hookType: z.string().optional(), content: z.string().max(16_000), files: z.array(z.string()),
+  hash: z.string().min(1), promotedMemoryId: z.string().optional(),
+}).strict();
+export type MemoryObservation = z.infer<typeof memoryObservationSchema>;
+const observationEnvelopeSchema = z.object({ storageVersion: z.literal(2),
+  observations: z.array(memoryObservationSchema) }).strict();
 
 export interface EvictObservationsResult {
   kept: MemoryObservation[];
@@ -48,11 +44,14 @@ export class FileWorkspaceObservationStore {
     observation: MemoryObservation,
     max = MAX_OBSERVATIONS_PER_WORKSPACE,
   ): Promise<EvictObservationsResult> {
+    return withMemoryFileLock(this.filePath, async () => {
+    observation = memoryObservationSchema.parse(observation);
     const current = await this.read();
     const next = [...current, observation];
     const evicted = evictOldestObservations(next, max);
     await this.write(evicted.kept);
     return evicted;
+    });
   }
 
   public async findRecentHash(
@@ -80,26 +79,19 @@ export class FileWorkspaceObservationStore {
       }
       throw error;
     }
-    try {
-      const parsed = JSON.parse(raw) as Partial<ObservationEnvelope>;
-      if (parsed.storageVersion !== 2 || !Array.isArray(parsed.observations)) {
-        return [];
-      }
-      return parsed.observations.filter(isObservation);
-    } catch {
-      return [];
-    }
+    return observationEnvelopeSchema.parse(JSON.parse(raw)).observations;
   }
 
   private async write(observations: readonly MemoryObservation[]): Promise<void> {
-    const envelope: ObservationEnvelope = {
-      storageVersion: 2,
-      observations: [...observations],
-    };
-    await mkdir(dirname(this.filePath), { recursive: true });
-    const tempPath = `${this.filePath}.${process.pid}.tmp`;
-    await writeFile(tempPath, `${JSON.stringify(envelope, null, 2)}\n`, 'utf8');
-    await rename(tempPath, this.filePath);
+    const policy = new MemoryContentPolicy();
+    const envelope = observationEnvelopeSchema.parse({ storageVersion: 2,
+      observations: observations.map(row => ({ ...row, content: policy.sanitize(row.content),
+        files: row.files.map(value => policy.sanitize(value)),
+        ...(row.toolName ? { toolName: policy.sanitize(row.toolName) } : {}),
+        ...(row.hookType ? { hookType: policy.sanitize(row.hookType) } : {}),
+      })),
+    });
+    await atomicMemoryWrite(this.filePath, `${JSON.stringify(envelope, null, 2)}\n`);
   }
 }
 
@@ -120,16 +112,3 @@ export function evictOldestObservations(
   };
 }
 
-function isObservation(value: unknown): value is MemoryObservation {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-  const item = value as Partial<MemoryObservation>;
-  return (
-    typeof item.id === 'string' &&
-    typeof item.createdAt === 'string' &&
-    typeof item.content === 'string' &&
-    typeof item.hash === 'string' &&
-    Array.isArray(item.files)
-  );
-}

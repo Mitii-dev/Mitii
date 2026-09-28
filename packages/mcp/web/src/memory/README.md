@@ -10,6 +10,7 @@ Read-only **shareable** facts search over `<workspace>/.mitii/memory/facts.json`
 | Workspace root | Requires `MITII_WORKSPACE_ROOT` |
 | Path traversal | `realpath` must stay under workspace; only `facts.json` |
 | Privacy | Soft-parse locally; **private** facts never returned |
+| Eligibility | Shareable ranking also excludes superseded (`isLatest: false`) and expired facts |
 | No V8 | Soft schema only — package must not import `@mitii/v8` |
 
 ## Env

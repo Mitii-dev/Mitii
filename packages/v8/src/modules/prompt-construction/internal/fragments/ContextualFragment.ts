@@ -61,7 +61,8 @@ export interface ContextualFragment {
     | "trusted_instruction"
     | "conversation"
     | "untrusted_repository_content"
-    | "untrusted_tool_content";
+    | "untrusted_tool_content"
+    | "untrusted_memory_content";
 }
 
 export function renderFragment(

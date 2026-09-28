@@ -449,7 +449,10 @@ export async function runStartEnrichment(
       query: extractPrimaryUserMessage(envelope.message),
       scope: { kind: "workspace", workspaceId },
       now: runtime.isoNow(),
-      mode: "layered",
+      mode: "default",
+      deferAccess: true,
+      signal,
+      origin: envelope.origin === "user" ? "user" : "automation",
       ...(memoryFileTargets.length > 0
         ? { fileTargets: memoryFileTargets }
         : {}),
@@ -468,7 +471,9 @@ export async function runStartEnrichment(
       title: block.title,
       content: block.content,
       priority: block.priority,
+      memoryProvenance: block.provenance,
     }));
+    warnings.push(...memoryResult.warnings);
     reasonCodes.push(
       memoryResult.instructions.length > 0
         ? "memory_retrieved"

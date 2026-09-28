@@ -1,3 +1,4 @@
+import { MemoryContentPolicy } from "../MemoryContentPolicy";
 import type { MemoryFactType } from "../contracts";
 
 export interface SyntheticObservationInput {
@@ -6,6 +7,8 @@ export interface SyntheticObservationInput {
   toolInput?: unknown;
   toolOutput?: unknown;
   userPrompt?: string;
+  runId?: string;
+  verified?: boolean;
 }
 
 export interface SyntheticObservation {
@@ -27,22 +30,23 @@ export function buildSyntheticMemoryDraft(
   input: SyntheticObservationInput,
 ): SyntheticObservation {
   const toolName = input.toolName ?? input.hookType ?? "observation";
-  const inputText = stringify(input.toolInput);
-  const outputText = stringify(input.toolOutput);
-  const prompt = input.userPrompt?.trim() ?? "";
+  const policy = new MemoryContentPolicy();
+  const inputText = policy.sanitize(stringify(input.toolInput));
+  const outputText = policy.sanitize(stringify(input.toolOutput));
+  const prompt = policy.sanitize(input.userPrompt?.trim() ?? "");
   const narrative = truncate(
     [prompt, inputText, outputText].filter((part) => part.length > 0).join(" | "),
     400,
   );
   const files = extractFiles(input.toolInput);
   const type = inferMemoryType(toolName, input.hookType, narrative);
-  const promotable = shouldPromote(type, narrative);
+  const promotable = shouldPromote(type, prompt) || (type === "bug" && input.verified === true);
 
   return {
     type,
-    title: truncate(toolName, 80),
+    title: truncate(policy.sanitize(toolName), 80),
     content: narrative.length > 0 ? narrative : toolName,
-    files,
+    files: files.map(file => policy.sanitize(file)),
     concepts: files.map((file) => file.replace(/^.*\//, "")).slice(0, 6),
     importance: type === "bug" ? 7 : 5,
     promotable,
@@ -74,9 +78,7 @@ export function inferMemoryType(
 }
 
 function shouldPromote(type: MemoryFactType, narrative: string): boolean {
-  if (type === "bug" || type === "preference") {
-    return true;
-  }
+  if (type === "bug") return false;
   return /\b(always|never|prefer|do not|don't)\b/i.test(narrative);
 }
 
