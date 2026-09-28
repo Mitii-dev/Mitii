@@ -7,8 +7,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "mitii-mcp-postgres": "./bin/mitii-mcp-postgres.js",
-    "mitii-mcp-postgres-readonly": "./bin/mitii-mcp-postgres-readonly.js"
+    "mitii-mcp-postgres": "./bin/mitii-mcp-postgres.js"
   },
   "exports": {
     ".": {

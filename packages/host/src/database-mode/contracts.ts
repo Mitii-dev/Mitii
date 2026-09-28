@@ -37,8 +37,11 @@ export interface DatabaseModeStartFields {
   }>;
   /** Tighten-only safety from the database mode profile (merge with workspace). */
   userSafetyRules: UserSafetyRules;
-  /** Suggested approval when dbAccess is readwrite. */
-  approvalMode?: 'when_required' | 'every_mutation';
+  /**
+   * Read & write: `never` — DB access dropdown is the user's consent
+   * (Approval control is hidden in Database mode).
+   */
+  approvalMode?: 'never' | 'when_required' | 'every_mutation';
 }
 
 export interface DatabaseModeStartResult {

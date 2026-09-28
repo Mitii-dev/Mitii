@@ -727,8 +727,6 @@ async function handlePrompt(
     return;
   }
   const id = createPromptId(parsed.id);
-  const uiMode = parsed.mode ?? 'ask';
-  const streamMode = mapUiModeToAgentMode(uiMode);
   const record =
     body && typeof body === 'object' && !Array.isArray(body)
       ? (body as Record<string, unknown>)
@@ -737,6 +735,9 @@ async function handlePrompt(
     buildStartInput(record, parsed, workspaceRoot),
     workspaceRoot,
   );
+  // Log / NDJSON mode must match V8 start (Database+readwrite → agent), not
+  // mapUiModeToAgentMode which always maps UI "database" → ask.
+  const streamMode = startInput.mode ?? mapUiModeToAgentMode(parsed.mode ?? 'ask');
   await streamRun(id, streamMode, () => client.start(startInput), res, {
     model: startInput.model,
     baseUrl: process.env.MITII_BASE_URL,

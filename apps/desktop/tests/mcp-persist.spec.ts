@@ -40,8 +40,8 @@ describe('MCP persist across settings save / boot', () => {
           enabled: true,
           servers: [
             {
-              id: 'mongo-readonly',
-              name: 'MongoDB (read-only)',
+              id: 'mongo',
+              name: 'MongoDB',
               transport: 'stdio',
               command: 'node',
               args: ['bin.js'],
@@ -69,7 +69,7 @@ describe('MCP persist across settings save / boot', () => {
     };
     expect(disk.enabled).toBe(true);
     expect(disk.servers).toHaveLength(1);
-    expect(disk.servers[0]?.id).toBe('mongo-readonly');
+    expect(disk.servers[0]?.id).toBe('mongo');
     expect(disk.servers[0]?.env?.MCP_MONGODB_URI).toBe(
       'mongodb://localhost:27017/app',
     );
@@ -81,7 +81,7 @@ describe('MCP persist across settings save / boot', () => {
       join(root, '.mitii', 'mcp.json'),
       `${JSON.stringify({
         enabled: true,
-        servers: [{ id: 'sqlite-readonly', name: 'SQLite', transport: 'stdio' }],
+        servers: [{ id: 'sqlite', name: 'SQLite', transport: 'stdio' }],
       })}\n`,
       'utf8',
     );
@@ -94,7 +94,7 @@ describe('MCP persist across settings save / boot', () => {
     expect(reconciled.mcp.servers).toHaveLength(1);
     expect(
       (reconciled.mcp.servers[0] as { id?: string }).id,
-    ).toBe('sqlite-readonly');
+    ).toBe('sqlite');
   });
 
   it('replaceMcp: true allows clearing MCP on workspace cache reset', () => {
@@ -104,7 +104,7 @@ describe('MCP persist across settings save / boot', () => {
       mcpPath,
       `${JSON.stringify({
         enabled: true,
-        servers: [{ id: 'mongo-readonly', name: 'Mongo', transport: 'stdio' }],
+        servers: [{ id: 'mongo', name: 'MongoDB', transport: 'stdio' }],
       })}\n`,
       'utf8',
     );

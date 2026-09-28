@@ -22,6 +22,29 @@ export const LOOP_TURN_DISPOSITIONS = [
 
 export type LoopTurnDisposition = (typeof LOOP_TURN_DISPOSITIONS)[number];
 
+/** Workspace file-edit tools that satisfy execute+write discipline. */
+export const WORKSPACE_FILE_MUTATION_TOOL_IDS = [
+  "apply_patch",
+  "delete_file",
+  "delete_directory",
+  "move_file",
+] as const;
+
+/**
+ * True when the grant still exposes at least one workspace file-edit tool.
+ * When false (e.g. Database readwrite: apply_patch denied, MCP DB writes only),
+ * execute+write must not chase apply_patch recoveries.
+ */
+export function grantAllowsWorkspaceFileMutation(
+  allowedTools: readonly string[] | undefined,
+): boolean {
+  if (allowedTools === undefined) {
+    return true;
+  }
+  const allowed = new Set(allowedTools);
+  return WORKSPACE_FILE_MUTATION_TOOL_IDS.some((id) => allowed.has(id));
+}
+
 export interface ResolveLoopTurnOutcomeInput {
   route: ExecutionRoute;
   maximumWorkspaceEffect: ToolGrant["maximumWorkspaceEffect"];
@@ -34,6 +57,8 @@ export interface ResolveLoopTurnOutcomeInput {
   mutationBudget?: MutationBudget;
   /** Optional grant/decision reason codes (e.g. mutation_execute). */
   reasonCodes?: readonly string[];
+  /** Grant tool ids — used to skip apply_patch chase when file edits are denied. */
+  allowedTools?: readonly string[];
   /** Cumulative file reads this run — used for repository_answer grounding. */
   fileReadCalls?: number;
   recoveries: {
@@ -144,6 +169,7 @@ export function isUnfulfilledExecute(input: {
   changedFileCount: number;
   content: string;
   reasonCodes?: readonly string[];
+  allowedTools?: readonly string[];
 }): boolean {
   if (input.toolCallCount > 0) {
     return false;
@@ -157,6 +183,7 @@ export function isUnfulfilledExecute(input: {
       maximumWorkspaceEffect: input.maximumWorkspaceEffect,
       primaryTaskIntent: input.primaryTaskIntent,
       reasonCodes: input.reasonCodes,
+      allowedTools: input.allowedTools,
     })
   ) {
     return false;
@@ -257,21 +284,28 @@ function needsWorkspaceGroundingRecovery(input: {
 }
 
 /**
- * Execute + write grant always requires a workspace mutation. Intent taxonomy
- * alone was too easy to misclassify (e.g. feature ask labeled as question),
- * which let zero-edit runs exit 0 and fail benchmark workspace_changed checks.
+ * Execute + write grant requires a workspace file mutation when file-edit
+ * tools are still on the grant. Intent taxonomy alone was too easy to
+ * misclassify (e.g. feature ask labeled as question), which let zero-edit
+ * runs exit 0 and fail benchmark workspace_changed checks.
  * Ask/plan/diagnose/read-only grants stay exempt via route / effect gates.
+ * Database readwrite (retainWriteEffect, apply_patch denied) is exempt so
+ * successful MCP inserts are not chased with apply_patch recoveries.
  */
 export function requiresMutationForExecute(input: {
   route: ExecutionRoute;
   maximumWorkspaceEffect: ToolGrant["maximumWorkspaceEffect"];
   primaryTaskIntent?: string;
   reasonCodes?: readonly string[];
+  allowedTools?: readonly string[];
 }): boolean {
   if (input.route !== "execute") {
     return false;
   }
   if (input.maximumWorkspaceEffect !== "write") {
+    return false;
+  }
+  if (!grantAllowsWorkspaceFileMutation(input.allowedTools)) {
     return false;
   }
   return true;

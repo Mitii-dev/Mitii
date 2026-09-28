@@ -27,6 +27,8 @@ export {
   createBuiltinMcpCatalog,
   createBuiltinMcpServers,
   isMcpBuiltinId,
+  migrateLegacyDatabaseMcpId,
+  LEGACY_DATABASE_MCP_ID_MAP,
   getBuiltinCatalogEntry,
   getBuiltinCatalogMeta,
   applyBuiltinSecrets,

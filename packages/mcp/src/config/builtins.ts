@@ -47,10 +47,6 @@ export const MCP_BUILTIN_IDS = [
   'sqlite',
   'postgres',
   'mongo',
-  /** @deprecated Prefer sqlite / postgres / mongo */
-  'sqlite-readonly',
-  'postgres-readonly',
-  'mongo-readonly',
 ] as const;
 
 export type McpBuiltinId = (typeof MCP_BUILTIN_IDS)[number];
@@ -172,54 +168,6 @@ export const MCP_CATALOG_META: Record<McpBuiltinId, McpCatalogMeta> = {
     category: 'diagrams',
     description: 'Hand-drawn architecture diagrams (mcp.excalidraw.com).',
     secrets: [],
-  },
-  'sqlite-readonly': {
-    id: 'sqlite-readonly',
-    category: 'database',
-    description:
-      'Legacy id for SQLite — prefer "sqlite". Access via MCP_DB_ACCESS=readonly|readwrite.',
-    secrets: [
-      {
-        key: 'SQLITE_PATH',
-        label: 'SQLite database path',
-        secret: false,
-        required: true,
-        placeholder: './data/app.db',
-        hint: 'Absolute or workspace-relative path to the .db / .sqlite file.',
-      },
-    ],
-  },
-  'postgres-readonly': {
-    id: 'postgres-readonly',
-    category: 'database',
-    description:
-      'Legacy id for Postgres — prefer "postgres". Access via MCP_DB_ACCESS=readonly|readwrite.',
-    secrets: [
-      {
-        key: 'DATABASE_URI',
-        label: 'Postgres connection URI',
-        secret: true,
-        required: true,
-        placeholder: 'postgresql://user:pass@localhost:5432/mydb',
-        hint: 'Prefer a least-privilege DB role.',
-      },
-    ],
-  },
-  'mongo-readonly': {
-    id: 'mongo-readonly',
-    category: 'database',
-    description:
-      'Legacy id for MongoDB — prefer "mongo". Access via MCP_DB_ACCESS=readonly|readwrite.',
-    secrets: [
-      {
-        key: 'MCP_MONGODB_URI',
-        label: 'MongoDB connection URI',
-        secret: true,
-        required: true,
-        placeholder: 'mongodb://user:pass@localhost:27017/mydb',
-        hint: 'mongodb:// or mongodb+srv:// URI. Atlas supported.',
-      },
-    ],
   },
   sqlite: {
     id: 'sqlite',
@@ -397,44 +345,24 @@ export function createBuiltinMcpCatalog(
       builtin: true,
       enabled: false,
     },
-    {
-      id: 'sqlite-readonly',
-      name: 'SQLite (legacy)',
-      transport: 'stdio',
-      ...resolveReadonlyStdioLauncher({
-        packageName: '@mitii/mcp-sqlite',
-        binFile: 'mitii-mcp-sqlite.js',
-      }),
-      builtin: true,
-      enabled: false,
-    },
-    {
-      id: 'postgres-readonly',
-      name: 'Postgres (legacy)',
-      transport: 'stdio',
-      ...resolveReadonlyStdioLauncher({
-        packageName: '@mitii/mcp-postgres',
-        binFile: 'mitii-mcp-postgres.js',
-      }),
-      builtin: true,
-      enabled: false,
-    },
-    {
-      id: 'mongo-readonly',
-      name: 'MongoDB (legacy)',
-      transport: 'stdio',
-      ...resolveReadonlyStdioLauncher({
-        packageName: '@mitii/mcp-mongo',
-        binFile: 'mitii-mcp-mongo.js',
-      }),
-      builtin: true,
-      enabled: false,
-    },
   ];
 }
 
 /** @deprecated Use createBuiltinMcpCatalog — name kept for older imports. */
 export const createBuiltinMcpServers = createBuiltinMcpCatalog;
+
+/** Map retired catalog ids onto canonical sqlite / postgres / mongo. */
+export const LEGACY_DATABASE_MCP_ID_MAP: Readonly<Record<string, McpBuiltinId>> =
+  {
+    'sqlite-readonly': 'sqlite',
+    'postgres-readonly': 'postgres',
+    'mongo-readonly': 'mongo',
+  };
+
+export function migrateLegacyDatabaseMcpId(id: string): string {
+  const mapped = LEGACY_DATABASE_MCP_ID_MAP[id.trim().toLowerCase()];
+  return mapped ?? id;
+}
 
 export function isMcpBuiltinId(id: string | undefined): id is McpBuiltinId {
   return (
@@ -460,12 +388,10 @@ export function applyBuiltinSecrets(
   secrets: Record<string, string> | undefined,
 ): McpServerConfig {
   const env = { ...(entry.env ?? {}) };
-  const id = (entry.id ?? entry.name).toLowerCase();
-  const isDb =
-    id === 'sqlite' ||
-    id === 'postgres' ||
-    id === 'mongo' ||
-    id.endsWith('-readonly');
+  const id = migrateLegacyDatabaseMcpId(
+    (entry.id ?? entry.name).toLowerCase(),
+  );
+  const isDb = id === 'sqlite' || id === 'postgres' || id === 'mongo';
   if (isDb && !env.MCP_DB_ACCESS) {
     env.MCP_DB_ACCESS = 'readonly';
   }

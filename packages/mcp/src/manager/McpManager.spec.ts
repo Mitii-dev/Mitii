@@ -58,14 +58,7 @@ describe('mcpServerEffects', () => {
   });
 
   it('marks sqlite/postgres/mongo DB builtins as workspace-non-write', () => {
-    for (const id of [
-      'sqlite',
-      'postgres',
-      'mongo',
-      'sqlite-readonly',
-      'postgres-readonly',
-      'mongo-readonly',
-    ]) {
+    for (const id of ['sqlite', 'postgres', 'mongo']) {
       expect(readOnlyMcpServer(id)).toBe(true);
       expect(
         mcpServerRequiresWorkspaceWrite({

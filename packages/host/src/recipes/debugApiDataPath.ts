@@ -47,7 +47,7 @@ Use systematic API + DB runtime evidence (skill api-db-runtime-debug):
 
 1. Probe the API (status + body). Treat 200 with an empty list as a semantic failure.
 2. Probe DB schema (tables / migrations for {{tableOrEntity}}).
-3. Probe DB data (COUNT + sample rows, read-only — prefer mcp__sqlite-readonly__* or mcp__postgres-readonly__*).
+3. Probe DB data (COUNT + sample rows, read-only — prefer mcp__sqlite__* or mcp__postgres__*).
 4. Fill an evidence ledger for: no data, DB not initialized, adapter not connected, DTO/mapping, config/pull wiring.
 5. Do not apply_patch until API and DB probes are recorded.
 6. Fix only the surviving hypothesis; re-probe the API to verify.

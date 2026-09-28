@@ -287,6 +287,8 @@ export {
   isUnfulfilledExecute,
   isSyntheticCompletedEditsFallback,
   isPrematurePartialExecuteStop,
+  grantAllowsWorkspaceFileMutation,
+  WORKSPACE_FILE_MUTATION_TOOL_IDS,
   requiresMutationForExecute,
   buildUnfulfilledExecuteRecoveryMessage,
 } from "./resolveLoopTurnOutcome";

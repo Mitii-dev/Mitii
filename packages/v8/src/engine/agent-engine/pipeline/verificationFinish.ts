@@ -697,6 +697,7 @@ export async function finishAfterLoop(
             params.loopContext?.understanding?.intent.classification
               .primaryTaskIntent,
           reasonCodes: decision.reasonCodes,
+          allowedTools: decision.toolGrant.allowedTools,
         }) &&
         hasIncompleteChangeSurfaces(taskListRef.current) &&
         // Partial progress with an honest next-step answer may leave rows open.
