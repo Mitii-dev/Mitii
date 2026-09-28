@@ -10,6 +10,8 @@ import type { DesktopAgentMode } from '../../shared/protocol.js';
 
 export type ApprovalUiMode = 'safe' | 'guided' | 'pilot';
 export type ThoroughnessUi = 'low' | 'medium' | 'high';
+/** Database mode privilege — replaces workspace approval in Database mode. */
+export type DatabaseAccessUiMode = 'readonly' | 'readwrite';
 
 interface ComposerOption<T extends string> {
   id: T;
@@ -48,7 +50,7 @@ const MODES: ComposerOption<DesktopAgentMode>[] = [
   {
     id: 'database',
     label: 'Database',
-    description: 'Query connected DBs via MCP — read-only',
+    description: 'Query connected DBs via MCP',
     color: MODE_COLORS.database,
   },
 ];
@@ -75,6 +77,22 @@ const APPROVAL_OPTIONS: ComposerOption<ApprovalUiMode>[] = [
   },
 ];
 
+const DATABASE_ACCESS_OPTIONS: ComposerOption<DatabaseAccessUiMode>[] = [
+  {
+    id: 'readonly',
+    label: 'Read-only',
+    description: 'Schema discovery and SELECT / find / aggregate only',
+    color: '#38bdf8',
+  },
+  {
+    id: 'readwrite',
+    label: 'Read & write',
+    description: 'Allow INSERT / UPDATE / DELETE via MCP (approval on writes)',
+    color: '#f59e0b',
+    warning: true,
+  },
+];
+
 const THOROUGHNESS_OPTIONS: ComposerOption<ThoroughnessUi>[] = [
   {
     id: 'low',
@@ -96,7 +114,7 @@ const THOROUGHNESS_OPTIONS: ComposerOption<ThoroughnessUi>[] = [
   },
 ];
 
-type SelectId = 'mode' | 'approval' | 'thoroughness';
+type SelectId = 'mode' | 'approval' | 'dbAccess' | 'thoroughness';
 
 export function modeAccent(mode: DesktopAgentMode): string {
   return MODE_COLORS[mode] ?? MODE_COLORS.ask;
@@ -105,20 +123,24 @@ export function modeAccent(mode: DesktopAgentMode): string {
 interface ComposerControlsProps {
   mode: DesktopAgentMode;
   approvalMode: ApprovalUiMode;
+  dbAccess?: DatabaseAccessUiMode;
   thoroughness: ThoroughnessUi;
   disabled?: boolean;
   onModeChange: (mode: DesktopAgentMode) => void;
   onApprovalModeChange: (mode: ApprovalUiMode) => void;
+  onDbAccessChange?: (mode: DatabaseAccessUiMode) => void;
   onThoroughnessChange: (value: ThoroughnessUi) => void;
 }
 
 export function ComposerControls({
   mode,
   approvalMode,
+  dbAccess = 'readonly',
   thoroughness,
   disabled,
   onModeChange,
   onApprovalModeChange,
+  onDbAccessChange,
   onThoroughnessChange,
 }: ComposerControlsProps) {
   const [openSelect, setOpenSelect] = useState<SelectId | null>(null);
@@ -126,9 +148,13 @@ export function ComposerControls({
   const activeMode = MODES.find((m) => m.id === mode) ?? MODES[0]!;
   const activeApproval =
     APPROVAL_OPTIONS.find((o) => o.id === approvalMode) ?? APPROVAL_OPTIONS[1]!;
+  const activeDbAccess =
+    DATABASE_ACCESS_OPTIONS.find((o) => o.id === dbAccess) ??
+    DATABASE_ACCESS_OPTIONS[0]!;
   const activeThoroughness =
     THOROUGHNESS_OPTIONS.find((o) => o.id === thoroughness) ??
     THOROUGHNESS_OPTIONS[1]!;
+  const isDatabase = mode === 'database';
 
   useEffect(() => {
     if (!openSelect) return;
@@ -295,14 +321,23 @@ export function ComposerControls({
         options: MODES,
         onChange: onModeChange,
       })}
-      {renderDropdown({
-        id: 'approval',
-        label: 'Approval',
-        value: approvalMode,
-        selected: activeApproval,
-        options: APPROVAL_OPTIONS,
-        onChange: onApprovalModeChange,
-      })}
+      {isDatabase && onDbAccessChange
+        ? renderDropdown({
+            id: 'dbAccess',
+            label: 'DB access',
+            value: dbAccess,
+            selected: activeDbAccess,
+            options: DATABASE_ACCESS_OPTIONS,
+            onChange: onDbAccessChange,
+          })
+        : renderDropdown({
+            id: 'approval',
+            label: 'Approval',
+            value: approvalMode,
+            selected: activeApproval,
+            options: APPROVAL_OPTIONS,
+            onChange: onApprovalModeChange,
+          })}
       {renderDropdown({
         id: 'thoroughness',
         label: 'Thoroughness',

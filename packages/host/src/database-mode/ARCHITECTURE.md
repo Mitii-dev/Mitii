@@ -1,39 +1,32 @@
 # Database mode — architecture
 
-## Request path (unchanged V8 spine)
+## Request path
 
 ```text
-UI mode "database"
-  → Host resolveDatabaseModeStart
-  → SDK start({ mode: "ask", requiredMcpServerIds, requiredSkillIds, projectRules })
-  → V8 Agent Engine (Intake → Decision Policy → Prompt → Model loop → Tool Runtime)
-  → mcp__{db}__list_tables | describe_table | query
+UI mode "database" + DB access (readonly | readwrite)
+  → Host resolveDatabaseModeStart({ dbAccess })
+  → SDK start({
+       mode: readonly → ask | readwrite → agent,
+       requiredMcpServerIds,
+       requiredSkillIds: nl-sql-analyst,
+       projectRules,
+       approvalMode: every_mutation when readwrite
+     })
+  → V8 Agent Engine
+  → mcp__{sqlite|postgres|mongo}__*
 ```
 
-Debug / Code / Architect / Ask / Plan / Agent **without** UI mode `database` do not call this module → **no behavior change**.
+## DB access (not workspace approval)
 
-## Why Ask + requiredMcpServerIds
+| Tier | Agent mode | MCP tools |
+|------|------------|-----------|
+| Read-only | Ask | Discovery + SELECT / find / aggregate / count |
+| Read & write | Agent (no code-edit groups) | + execute_write / insert / update / delete / create_index |
 
-V8 `filterToolDefinitions` / `isMcpAllowedByGrant`:
+`MCP_DB_ACCESS` is stamped onto installed DB servers in `.mitii/mcp.json`.
+Write tools are tagged `requiresWorkspaceWrite` per-tool.
 
-| Grant | MCP tools |
-|-------|-----------|
-| Agent write | Allowed |
-| Ask/Plan read | Only when `requiredMcpServerIds` non-empty |
+## Packages
 
-Database mode uses **Ask** (readonly Decision Policy) and pins DB MCP ids so tools appear without `@mcp:` for every message.
-
-## Non-breakage
-
-| Surface | Guarantee |
-|---------|-----------|
-| Default Ask | No auto pin |
-| Debug | Separate skill `api-db-runtime-debug` |
-| Mode profiles `.mitii/modes.json` | Builtin `database` available; `active` still opt-in |
-| Mutations | Profile omits `edit` tool group |
-
-## References
-
-- MCP-Ref `sql-mcp-server` usage scenarios (list → describe → query)
-- MCP-Ref `nlqueries` connect-then-ask product shape
-- Mitii `@mitii/mcp-sqlite-readonly` + `@mitii/mcp-postgres-readonly` + `@mitii/mcp-mongo-readonly`
+- `@mitii/mcp-sqlite` / `@mitii/mcp-postgres` / `@mitii/mcp-mongo`
+- Legacy catalog ids `*-readonly` still work

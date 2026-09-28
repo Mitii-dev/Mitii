@@ -122,6 +122,23 @@ describe("intersectUserSafetyRules", () => {
     expect(grantNeverWidens(before, after.toolGrant)).toBe(true);
   });
 
+  it("retains write effect when retainWriteEffect is set (Database readwrite)", () => {
+    const before = baseWriteGrant();
+    const after = intersectUserSafetyRules(before, {
+      enabled: true,
+      denyTools: ["apply_patch", "delete_file", "delete_directory", "move_file"],
+      denyCommandPrefixes: [],
+      denyPathScopes: [],
+      denyNetworkHosts: [],
+      protectedPathGlobs: [],
+      retainWriteEffect: true,
+    });
+    expect(after.toolGrant.maximumWorkspaceEffect).toBe("write");
+    expect(after.toolGrant.mutationBudget).toBeUndefined();
+    expect(after.toolGrant.allowedTools).not.toContain("apply_patch");
+    expect(grantNeverWidens(before, after.toolGrant)).toBe(true);
+  });
+
   it("never lowers approval strictness via ceiling", () => {
     const before = baseWriteGrant({ approvalMode: "every_mutation" });
     const after = intersectUserSafetyRules(before, {

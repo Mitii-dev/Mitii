@@ -120,15 +120,15 @@ importers:
       '@mitii/mcp':
         specifier: workspace:*
         version: link:../../packages/mcp
-      '@mitii/mcp-mongo-readonly':
+      '@mitii/mcp-mongo':
         specifier: workspace:*
-        version: link:../../packages/mcp/mongo-readonly
-      '@mitii/mcp-postgres-readonly':
+        version: link:../../packages/mcp/mongo
+      '@mitii/mcp-postgres':
         specifier: workspace:*
-        version: link:../../packages/mcp/postgres-readonly
-      '@mitii/mcp-sqlite-readonly':
+        version: link:../../packages/mcp/postgres
+      '@mitii/mcp-sqlite':
         specifier: workspace:*
-        version: link:../../packages/mcp/sqlite-readonly
+        version: link:../../packages/mcp/sqlite
       '@mitii/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -369,17 +369,17 @@ importers:
         specifier: ^3.2.7
         version: 3.2.7(@types/debug@4.1.13)(@types/node@20.19.43)(jsdom@26.1.0)
     optionalDependencies:
-      '@mitii/mcp-mongo-readonly':
+      '@mitii/mcp-mongo':
         specifier: workspace:*
-        version: link:mongo-readonly
-      '@mitii/mcp-postgres-readonly':
+        version: link:mongo
+      '@mitii/mcp-postgres':
         specifier: workspace:*
-        version: link:postgres-readonly
-      '@mitii/mcp-sqlite-readonly':
+        version: link:postgres
+      '@mitii/mcp-sqlite':
         specifier: workspace:*
-        version: link:sqlite-readonly
+        version: link:sqlite
 
-  packages/mcp/mongo-readonly:
+  packages/mcp/mongo:
     dependencies:
       mongodb:
         specifier: ^6.17.0
@@ -395,7 +395,7 @@ importers:
         specifier: ^3.2.7
         version: 3.2.7(@types/debug@4.1.13)(@types/node@20.19.43)(jsdom@26.1.0)
 
-  packages/mcp/postgres-readonly:
+  packages/mcp/postgres:
     dependencies:
       pg:
         specifier: ^8.16.3
@@ -414,7 +414,7 @@ importers:
         specifier: ^3.2.7
         version: 3.2.7(@types/debug@4.1.13)(@types/node@20.19.43)(jsdom@26.1.0)
 
-  packages/mcp/sqlite-readonly:
+  packages/mcp/sqlite:
     dependencies:
       better-sqlite3:
         specifier: ^12.11.1

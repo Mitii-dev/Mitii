@@ -2,6 +2,7 @@
  * Minimal MCP stdio server (JSON-RPC + Content-Length framing).
  */
 
+import { resolveDbAccessMode } from './access.js';
 import { handleToolCall, listToolDefinitions } from './tools.js';
 
 interface JsonRpcMessage {
@@ -9,10 +10,13 @@ interface JsonRpcMessage {
   id?: number | string | null;
   method?: string;
   params?: unknown;
+  result?: unknown;
+  error?: { code: number; message: string };
 }
 
-export async function runMcpPostgresReadonlyServer(): Promise<void> {
+export async function runMcpSqliteServer(): Promise<void> {
   let buffer = Buffer.alloc(0);
+  const access = resolveDbAccessMode();
 
   const respond = (message: Record<string, unknown>) => {
     const payload = Buffer.from(JSON.stringify(message), 'utf8');
@@ -40,8 +44,9 @@ export async function runMcpPostgresReadonlyServer(): Promise<void> {
           protocolVersion: '2024-11-05',
           capabilities: { tools: {} },
           serverInfo: {
-            name: 'mitii-mcp-postgres-readonly',
+            name: 'mitii-mcp-sqlite',
             version: '2.9.100',
+            title: `Mitii SQLite (${access})`,
           },
         },
       });
@@ -56,7 +61,7 @@ export async function runMcpPostgresReadonlyServer(): Promise<void> {
       respond({
         jsonrpc: '2.0',
         id: message.id ?? null,
-        result: { tools: listToolDefinitions() },
+        result: { tools: listToolDefinitions(access) },
       });
       return;
     }
@@ -126,3 +131,6 @@ export async function runMcpPostgresReadonlyServer(): Promise<void> {
 
   process.stdin.resume();
 }
+
+/** @deprecated Use runMcpSqliteServer */
+export const runMcpSqliteReadonlyServer = runMcpSqliteServer;

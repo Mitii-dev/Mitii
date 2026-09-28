@@ -14,10 +14,15 @@ interface DatabaseModeBannerProps {
   status: DatabaseModeBannerStatus;
   /** Connected database MCP servers (enabled). */
   servers?: readonly DatabaseModeServerRef[];
+  /** Composer DB access tier. */
+  dbAccess?: 'readonly' | 'readwrite';
   onOpenMcp?: () => void;
 }
 
 const DATABASE_BUILTIN_IDS = new Set([
+  'sqlite',
+  'postgres',
+  'mongo',
   'sqlite-readonly',
   'postgres-readonly',
   'mongo-readonly',
@@ -54,6 +59,7 @@ export function DatabaseModeBanner({
   visible,
   status,
   servers = [],
+  dbAccess = 'readonly',
   onOpenMcp,
 }: DatabaseModeBannerProps) {
   if (!visible) return null;
@@ -64,6 +70,7 @@ export function DatabaseModeBanner({
     ? shortServerLabel(primary.name, primary.id) +
       (extra > 0 ? ` +${extra}` : '')
     : null;
+  const accessLabel = dbAccess === 'readwrite' ? 'Read & write' : 'Read-only';
 
   let tone: 'ok' | 'warn' | 'muted' = 'muted';
   let title = 'Database';
@@ -71,24 +78,24 @@ export function DatabaseModeBanner({
   let actionLabel: string | null = 'MCP';
 
   if (status === 'connected' && serverLabel) {
-    tone = 'ok';
+    tone = dbAccess === 'readwrite' ? 'warn' : 'ok';
     title = 'Connected';
-    detail = `${serverLabel} · read-only`;
+    detail = `${serverLabel} · ${accessLabel}`;
     actionLabel = 'Manage';
   } else if (status === 'mcp_disabled') {
     tone = 'warn';
     title = 'MCP off';
-    detail = 'Enable MCP, then install a read-only database server.';
+    detail = 'Enable MCP, then install a database server (SQLite, Postgres, or MongoDB).';
     actionLabel = 'Open MCP';
   } else if (status === 'disconnected') {
     tone = 'warn';
     title = 'Not connected';
-    detail = 'Install SQLite, Postgres, or MongoDB (read-only).';
+    detail = 'Install SQLite, Postgres, or MongoDB.';
     actionLabel = 'Open MCP';
   } else if (status === 'connected' && !serverLabel) {
     tone = 'warn';
     title = 'Not connected';
-    detail = 'Install SQLite, Postgres, or MongoDB (read-only).';
+    detail = 'Install SQLite, Postgres, or MongoDB.';
     actionLabel = 'Open MCP';
   }
 

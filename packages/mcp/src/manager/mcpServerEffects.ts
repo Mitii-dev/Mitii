@@ -1,11 +1,37 @@
 import type { McpServerConfig } from '../contracts/types.js';
 
-/** First-party Mitii DB MCP servers — always read-only probes. */
-const DATABASE_READONLY_BUILTIN_IDS = new Set([
+/** First-party Mitii DB MCP catalog ids (canonical + legacy). */
+const DATABASE_MCP_BUILTIN_IDS = new Set([
+  'sqlite',
+  'postgres',
+  'mongo',
   'sqlite-readonly',
   'postgres-readonly',
   'mongo-readonly',
 ]);
+
+/** Tool names that mutate the database (not the workspace). */
+const DB_WRITE_TOOL_NAMES = new Set([
+  'insert',
+  'update',
+  'delete',
+  'create_index',
+  'createindex',
+  'execute_write',
+]);
+
+/**
+ * True when an MCP tool name is a DB mutation (insert/update/delete/…).
+ * Used so mixed access DB servers can expose read tools on Ask grants while
+ * write tools still require a write grant.
+ */
+export function isMcpDbWriteToolName(toolName: string): boolean {
+  const name = toolName.trim().toLowerCase();
+  if (!name) return false;
+  // Strip mcp__server__ prefix if present
+  const bare = name.includes('__') ? name.split('__').pop()! : name;
+  return DB_WRITE_TOOL_NAMES.has(bare);
+}
 
 /** Servers / transports that do not mutate the workspace. */
 export function mcpServerRequiresWorkspaceWrite(
@@ -18,13 +44,16 @@ export function mcpServerRequiresWorkspaceWrite(
   return !readOnlyMcpServer(id);
 }
 
-/** Servers known to be side-effect free (no workspace mutation). */
+/** Servers known to be side-effect free for the *workspace* (DB writes are per-tool). */
 export function readOnlyMcpServer(serverId: string): boolean {
   const id = serverId.trim().toLowerCase();
   if (!id) return false;
-  if (DATABASE_READONLY_BUILTIN_IDS.has(id)) return true;
-  // Catalog / custom DB connectors: *-readonly, *read-only*, etc.
+  if (DATABASE_MCP_BUILTIN_IDS.has(id)) return true;
   if (id.includes('readonly') || id.includes('read-only') || id.endsWith('-ro')) {
+    return true;
+  }
+  // Canonical DB ids without -readonly still don't mutate the workspace tree.
+  if (id === 'sqlite' || id === 'postgres' || id === 'mongo') {
     return true;
   }
   return (

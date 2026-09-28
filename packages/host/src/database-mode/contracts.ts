@@ -1,6 +1,9 @@
 import type { UserSafetyRules } from '@mitii/v8';
 
-import type { DatabaseMcpBuiltinId } from './constants.js';
+import type {
+  DatabaseDbAccess,
+  DatabaseMcpBuiltinId,
+} from './constants.js';
 
 export type DatabaseModeConnectionStatus =
   | 'connected'
@@ -16,8 +19,12 @@ export interface DatabaseMcpServerRef {
 }
 
 export interface DatabaseModeStartFields {
-  /** Always Ask for Decision Policy readonly path. */
-  mode: 'ask';
+  /**
+   * readonly → Ask (read grant).
+   * readwrite → Agent (write grant for DB mutation MCP tools; no code edit groups).
+   */
+  mode: 'ask' | 'agent';
+  dbAccess: DatabaseDbAccess;
   requiredSkillIds: string[];
   /** Empty when disconnected — Ask MCP tools stay hidden (V8 contract). */
   requiredMcpServerIds: string[];
@@ -30,10 +37,13 @@ export interface DatabaseModeStartFields {
   }>;
   /** Tighten-only safety from the database mode profile (merge with workspace). */
   userSafetyRules: UserSafetyRules;
+  /** Suggested approval when dbAccess is readwrite. */
+  approvalMode?: 'when_required' | 'every_mutation';
 }
 
 export interface DatabaseModeStartResult {
   connectionStatus: DatabaseModeConnectionStatus;
+  dbAccess: DatabaseDbAccess;
   installedDatabaseServers: readonly DatabaseMcpServerRef[];
   /** Human-readable connect hint for UI empty states. */
   connectGuidance: string;
@@ -42,6 +52,8 @@ export interface DatabaseModeStartResult {
 
 export interface ResolveDatabaseModeStartOptions {
   workspaceRoot: string;
+  /** Read-only (default) or read & write DB privilege. */
+  dbAccess?: DatabaseDbAccess;
   /**
    * Optional explicit server ids to pin (subset of installed).
    * When omitted, all installed database MCP servers are pinned (capped).

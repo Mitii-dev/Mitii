@@ -1,13 +1,14 @@
 {
-  "name": "@mitii/mcp-postgres-readonly",
+  "name": "@mitii/mcp-sqlite",
   "version": "2.9.100",
-  "description": "Mitii MCP stdio server: read-only Postgres list_tables, describe_table, and SELECT query probes.",
+  "description": "Mitii MCP stdio server for SQLite — readonly or readwrite via MCP_DB_ACCESS.",
   "license": "AGPL-3.0-or-later",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "mitii-mcp-postgres-readonly": "./bin/mitii-mcp-postgres-readonly.js"
+    "mitii-mcp-sqlite": "./bin/mitii-mcp-sqlite.js",
+    "mitii-mcp-sqlite-readonly": "./bin/mitii-mcp-sqlite-readonly.js"
   },
   "exports": {
     ".": {
@@ -23,9 +24,9 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Mitii-dev/Mitii.git",
-    "directory": "packages/mcp/postgres-readonly"
+    "directory": "packages/mcp/sqlite"
   },
-  "homepage": "https://github.com/Mitii-dev/Mitii/tree/main/packages/mcp/postgres-readonly",
+  "homepage": "https://github.com/Mitii-dev/Mitii/tree/main/packages/mcp/sqlite",
   "bugs": {
     "url": "https://github.com/Mitii-dev/Mitii/issues"
   },
@@ -41,15 +42,15 @@
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json && node -e \"require('node:fs').accessSync('dist/index.js')\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "start": "node bin/mitii-mcp-postgres-readonly.js",
+    "start": "node bin/mitii-mcp-sqlite.js",
     "test": "vitest run"
   },
   "dependencies": {
-    "pg": "^8.16.3"
+    "better-sqlite3": "^12.11.1"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.14.0",
-    "@types/pg": "^8.15.4",
     "typescript": "^5.5.2",
     "vitest": "^3.2.7"
   }

@@ -1,13 +1,19 @@
 import pg from 'pg';
 
+import {
+  assertWriteAllowed,
+  resolveDbAccessMode,
+  type DbAccessMode,
+} from './access.js';
+
 const { Client } = pg;
 
 const IDENT_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-export const TOOL_DEFINITIONS = [
+const READ_TOOL_DEFINITIONS = [
   {
     name: 'list_tables',
-    description: 'List user-defined Postgres tables in the public schema (read-only).',
+    description: 'List user-defined Postgres tables in the public schema.',
     inputSchema: {
       type: 'object',
       properties: {},
@@ -16,7 +22,7 @@ export const TOOL_DEFINITIONS = [
   },
   {
     name: 'describe_table',
-    description: 'Describe columns for a Postgres table (read-only).',
+    description: 'Describe columns for a Postgres table.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -36,7 +42,7 @@ export const TOOL_DEFINITIONS = [
   {
     name: 'query',
     description:
-      'Run a read-only SELECT query and return rows plus column names. Mutations are rejected.',
+      'Run a SELECT query and return rows plus column names. Mutations are rejected here — use execute_write.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -52,15 +58,40 @@ export const TOOL_DEFINITIONS = [
   },
 ] as const;
 
-export function listToolDefinitions(): ReadonlyArray<{
+const WRITE_TOOL_DEFINITIONS = [
+  {
+    name: 'execute_write',
+    description:
+      'Run a single INSERT / UPDATE / DELETE statement (readwrite access only). DDL is rejected.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        sql: {
+          type: 'string',
+          description: 'INSERT, UPDATE, or DELETE statement',
+        },
+      },
+      required: ['sql'],
+    },
+  },
+] as const;
+
+export const TOOL_DEFINITIONS = [
+  ...READ_TOOL_DEFINITIONS,
+  ...WRITE_TOOL_DEFINITIONS,
+] as const;
+
+export function listToolDefinitions(
+  access: DbAccessMode = resolveDbAccessMode(),
+): ReadonlyArray<{
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
 }> {
-  return TOOL_DEFINITIONS;
+  if (access === 'readwrite') return TOOL_DEFINITIONS;
+  return READ_TOOL_DEFINITIONS;
 }
 
-/** Reject non-SELECT / multi-statement SQL. */
 export function rejectMutationSql(sql: string): void {
   const normalized = sql.trim().toLowerCase();
   if (!normalized.startsWith('select') && !normalized.startsWith('with')) {
@@ -80,6 +111,44 @@ export function rejectMutationSql(sql: string): void {
     'insert ',
     'update ',
     'delete ',
+    'drop ',
+    'alter ',
+    'create ',
+    'truncate ',
+    'grant ',
+    'revoke ',
+    'copy ',
+    'call ',
+    'do ',
+    'vacuum',
+    'reindex',
+  ]) {
+    if (withoutStrings.includes(banned)) {
+      throw new Error(`Disallowed SQL keyword near: ${banned.trim()}`);
+    }
+  }
+}
+
+export function assertDmlSql(sql: string): void {
+  const normalized = sql.trim().toLowerCase();
+  if (
+    !normalized.startsWith('insert') &&
+    !normalized.startsWith('update') &&
+    !normalized.startsWith('delete')
+  ) {
+    throw new Error('Only INSERT, UPDATE, or DELETE are allowed');
+  }
+  const withoutStrings = stripSqlStrings(normalized);
+  if (withoutStrings.includes(';')) {
+    const parts = withoutStrings
+      .split(';')
+      .map((p) => p.trim())
+      .filter(Boolean);
+    if (parts.length > 1) {
+      throw new Error('Multiple SQL statements are not allowed');
+    }
+  }
+  for (const banned of [
     'drop ',
     'alter ',
     'create ',
@@ -147,12 +216,14 @@ function textResult(
 
 async function withClient<T>(
   env: NodeJS.ProcessEnv,
+  readOnly: boolean,
   fn: (client: pg.Client) => Promise<T>,
 ): Promise<T> {
   const client = new Client({
     connectionString: resolveDatabaseUri(env),
-    // Prefer read-only session when the role allows it; mutations still blocked in SQL.
-    options: '-c default_transaction_read_only=on',
+    ...(readOnly
+      ? { options: '-c default_transaction_read_only=on' }
+      : {}),
   });
   try {
     await client.connect();
@@ -168,8 +239,13 @@ export async function handleToolCall(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
   try {
+    const access = resolveDbAccessMode(env);
+    if (name === 'execute_write') {
+      assertWriteAllowed(access, name);
+    }
+
     if (name === 'list_tables') {
-      return await withClient(env, async (client) => {
+      return await withClient(env, true, async (client) => {
         const result = await client.query<{ table_name: string }>(
           `SELECT table_name
            FROM information_schema.tables
@@ -197,7 +273,7 @@ export async function handleToolCall(
           : 'public';
       const safeTable = validateIdent(tableName, 'table name');
       const safeSchema = validateIdent(schema, 'schema name');
-      return await withClient(env, async (client) => {
+      return await withClient(env, true, async (client) => {
         const result = await client.query(
           `SELECT column_name, data_type, is_nullable, column_default
            FROM information_schema.columns
@@ -220,12 +296,31 @@ export async function handleToolCall(
           : maxRows;
       const safeLimit = Math.max(0, Math.min(requested, maxRows));
       const wrappedSql = `SELECT * FROM (${sql.replace(/;+\s*$/, '')}) AS mitii_q LIMIT ${safeLimit}`;
-      return await withClient(env, async (client) => {
+      return await withClient(env, true, async (client) => {
         const result = await client.query(wrappedSql);
         const columns = result.fields.map((f) => f.name);
         return textResult(
           JSON.stringify(
             { limit: safeLimit, columns, rows: result.rows },
+            null,
+            2,
+          ),
+        );
+      });
+    }
+
+    if (name === 'execute_write') {
+      const sql = typeof args.sql === 'string' ? args.sql.trim() : '';
+      if (!sql) return textResult('sql is required', true);
+      assertDmlSql(sql);
+      return await withClient(env, false, async (client) => {
+        const result = await client.query(sql.replace(/;+\s*$/, ''));
+        return textResult(
+          JSON.stringify(
+            {
+              rowCount: result.rowCount,
+              command: result.command,
+            },
             null,
             2,
           ),

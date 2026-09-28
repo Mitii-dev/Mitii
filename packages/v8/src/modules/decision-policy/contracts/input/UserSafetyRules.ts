@@ -66,6 +66,13 @@ export const userSafetyRulesSchema = z
      * regex (e.g. Architect mode: `\\.md$`). Tighten-only.
      */
     mutationRelativePathRegex: z.string().min(1).optional(),
+    /**
+     * When true, keep `maximumWorkspaceEffect: "write"` even after all
+     * file-mutation tools are denied. Used by Database readwrite so MCP DB
+     * insert/update/delete stay visible without apply_patch. Does not add
+     * tools or effects — only prevents demoting an existing write grant.
+     */
+    retainWriteEffect: z.boolean().optional(),
   })
   .strict();
 

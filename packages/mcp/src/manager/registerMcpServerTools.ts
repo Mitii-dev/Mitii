@@ -13,6 +13,7 @@ import {
   preferStructuredOutput,
   type McpManagerOptions,
 } from './mcpManagerTypes.js';
+import { isMcpDbWriteToolName } from './mcpServerEffects.js';
 
 export interface RegisterMcpServerToolsParams {
   serverId: string;
@@ -56,17 +57,20 @@ export function registerMcpServerTools(
       toolUiResourceUri.set(`${serverId}::${tool.name}`, listedResourceUri);
     }
 
+    const toolNeedsWorkspaceWrite =
+      requiresWorkspaceWrite || isMcpDbWriteToolName(tool.name);
+
     toolDefinitions.push({
       name,
       description: `[MCP:${serverName}] ${description}`,
       inputSchema,
-      ...(requiresWorkspaceWrite ? { requiresWorkspaceWrite: true } : {}),
+      ...(toolNeedsWorkspaceWrite ? { requiresWorkspaceWrite: true } : {}),
     });
 
     registered.push({
       definition: defineTool({
         name,
-        effects: requiresWorkspaceWrite
+        effects: toolNeedsWorkspaceWrite
           ? (['workspace_read', 'workspace_write'] as const)
           : (['workspace_read'] as const),
         backend: 'mcp',

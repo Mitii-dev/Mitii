@@ -2,6 +2,7 @@
  * Minimal MCP stdio server (JSON-RPC + Content-Length framing).
  */
 
+import { resolveDbAccessMode } from './access.js';
 import { handleToolCall, listToolDefinitions } from './tools.js';
 
 interface JsonRpcMessage {
@@ -13,8 +14,9 @@ interface JsonRpcMessage {
   error?: { code: number; message: string };
 }
 
-export async function runMcpMongoReadonlyServer(): Promise<void> {
+export async function runMcpMongoServer(): Promise<void> {
   let buffer = Buffer.alloc(0);
+  const access = resolveDbAccessMode();
 
   const respond = (message: Record<string, unknown>) => {
     const payload = Buffer.from(JSON.stringify(message), 'utf8');
@@ -41,7 +43,11 @@ export async function runMcpMongoReadonlyServer(): Promise<void> {
         result: {
           protocolVersion: '2024-11-05',
           capabilities: { tools: {} },
-          serverInfo: { name: 'mitii-mcp-mongo-readonly', version: '2.9.100' },
+          serverInfo: {
+            name: 'mitii-mcp-mongo',
+            version: '2.9.100',
+            title: `Mitii MongoDB (${access})`,
+          },
         },
       });
       return;
@@ -55,7 +61,7 @@ export async function runMcpMongoReadonlyServer(): Promise<void> {
       respond({
         jsonrpc: '2.0',
         id: message.id ?? null,
-        result: { tools: listToolDefinitions() },
+        result: { tools: listToolDefinitions(access) },
       });
       return;
     }
@@ -125,3 +131,6 @@ export async function runMcpMongoReadonlyServer(): Promise<void> {
 
   process.stdin.resume();
 }
+
+/** @deprecated Use runMcpMongoServer */
+export const runMcpMongoReadonlyServer = runMcpMongoServer;

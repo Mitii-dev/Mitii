@@ -10,7 +10,7 @@ import {
   rejectMutationSql,
 } from './tools.js';
 
-describe('@mitii/mcp-sqlite-readonly tools', () => {
+describe('@mitii/mcp-sqlite tools', () => {
   const tempDirs: string[] = [];
 
   afterEach(async () => {
@@ -21,7 +21,7 @@ describe('@mitii/mcp-sqlite-readonly tools', () => {
   });
 
   async function createDb(): Promise<string> {
-    const dir = await mkdtemp(join(tmpdir(), 'mitii-sqlite-ro-'));
+    const dir = await mkdtemp(join(tmpdir(), 'mitii-sqlite-'));
     tempDirs.push(dir);
     const path = join(dir, 'app.db');
     const db = new Database(path);
@@ -32,11 +32,12 @@ describe('@mitii/mcp-sqlite-readonly tools', () => {
     return path;
   }
 
-  it('exposes list_tables, describe_table, query', () => {
+  it('exposes read tools plus execute_write', () => {
     expect(TOOL_DEFINITIONS.map((t) => t.name)).toEqual([
       'list_tables',
       'describe_table',
       'query',
+      'execute_write',
     ]);
   });
 
@@ -86,6 +87,28 @@ describe('@mitii/mcp-sqlite-readonly tools', () => {
     );
     expect(result.isError).toBe(true);
     expect(result.content[0]?.text).toMatch(/Only SELECT/i);
+  });
+
+  it('rejects execute_write when access is readonly', async () => {
+    const path = await createDb();
+    const result = await handleToolCall(
+      'execute_write',
+      { sql: "INSERT INTO users (name) VALUES ('c')" },
+      { SQLITE_PATH: path, MCP_DB_ACCESS: 'readonly' },
+    );
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toMatch(/readwrite/);
+  });
+
+  it('execute_write inserts when access is readwrite', async () => {
+    const path = await createDb();
+    const result = await handleToolCall(
+      'execute_write',
+      { sql: "INSERT INTO users (name) VALUES ('c')" },
+      { SQLITE_PATH: path, MCP_DB_ACCESS: 'readwrite' },
+    );
+    expect(result.isError).toBeUndefined();
+    expect(result.content[0]?.text).toMatch(/"changes":\s*1/);
   });
 
   it('requires SQLITE_PATH', async () => {

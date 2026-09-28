@@ -84,6 +84,7 @@ import {
   fetchHistory,
   fetchIndexStatus,
   fetchMcpServers,
+  setDatabaseMcpAccess,
   fetchProfiles,
   fetchProviderModels,
   fetchSkills,
@@ -120,6 +121,7 @@ import {
   ComposerControls,
   modeAccent,
   type ApprovalUiMode,
+  type DatabaseAccessUiMode,
   type ThoroughnessUi,
 } from './chat/ComposerControls.js';
 import { MarkdownBody } from './chat/MarkdownBody.js';
@@ -370,6 +372,7 @@ export function App() {
   const [snapshot, setSnapshot] = useState<DesktopShellSnapshot | null>(null);
   const [mode, setMode] = useState<DesktopAgentMode>('ask');
   const [approvalMode, setApprovalMode] = useState<ApprovalUiMode>('guided');
+  const [dbAccess, setDbAccess] = useState<DatabaseAccessUiMode>('readonly');
   const [thoroughness, setThoroughness] = useState<ThoroughnessUi>('medium');
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -1916,6 +1919,7 @@ export function App() {
             body: {
               ...body,
               approvalPreset: approvalMode,
+              ...(mode === 'database' ? { dbAccess } : {}),
               ...(threadId ? { sessionId: threadId } : {}),
             },
           }),
@@ -2000,6 +2004,7 @@ export function App() {
       approvalMode,
       busy,
       consumeStream,
+      dbAccess,
       messages,
       mode,
       resolveFileChanges,
@@ -2135,6 +2140,7 @@ export function App() {
           sessionId: activeThread,
           approvalPreset: approvalMode,
           thoroughness,
+          ...(mode === 'database' ? { dbAccess } : {}),
           pinnedPaths: submitPinnedPaths,
           requiredSkillIds: pinnedSkillIds,
           requiredMcpServerIds: pinnedMcpIds,
@@ -2250,6 +2256,7 @@ export function App() {
     approvalMode,
     busy,
     consumeStream,
+    dbAccess,
     editorContext,
     engine,
     input,
@@ -2688,6 +2695,7 @@ export function App() {
           servers={mcpServers
             .filter((s) => s.enabled && isDatabaseMcpServer(s))
             .map((s) => ({ id: s.id, name: s.name }))}
+          dbAccess={dbAccess}
           onOpenMcp={() => {
             setLayout('code');
             setWorkspaceSide('mcp');
@@ -2929,10 +2937,39 @@ export function App() {
               <ComposerControls
                 mode={mode}
                 approvalMode={approvalMode}
+                dbAccess={dbAccess}
                 thoroughness={thoroughness}
                 disabled={busy}
                 onModeChange={onModeChange}
                 onApprovalModeChange={setApprovalMode}
+                onDbAccessChange={(next) => {
+                  setDbAccess(next);
+                  if (!engine) return;
+                  void setDatabaseMcpAccess({
+                    ...engine,
+                    dbAccess: next,
+                  })
+                    .then(async (result) => {
+                      await fetchMcpServers(engine).then((payload) => {
+                        setMcpMasterEnabled(Boolean(payload.enabled));
+                        setMcpServers(payload.servers ?? []);
+                      });
+                      if (result.restartRequired) {
+                        const bridge = getDesktopBridge();
+                        if (bridge?.restartEngine) {
+                          await bridge.restartEngine();
+                          // New engine URL/token — refresh or UI keeps
+                          // calling the dead process ("Failed to fetch").
+                          await refresh();
+                        }
+                      }
+                    })
+                    .catch((err: unknown) => {
+                      setError(
+                        err instanceof Error ? err.message : String(err),
+                      );
+                    });
+                }}
                 onThoroughnessChange={setThoroughness}
               />
               <div className="composer-actions">

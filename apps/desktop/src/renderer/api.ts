@@ -88,6 +88,8 @@ export async function* streamPrompt(options: {
   sessionId?: string;
   approvalPreset?: string;
   thoroughness?: string;
+  /** Database mode privilege (readonly | readwrite). */
+  dbAccess?: 'readonly' | 'readwrite';
   pinnedPaths?: string[];
   requiredSkillIds?: string[];
   requiredMcpServerIds?: string[];
@@ -113,6 +115,7 @@ export async function* streamPrompt(options: {
         ? { approvalPreset: options.approvalPreset }
         : {}),
       ...(options.thoroughness ? { thoroughness: options.thoroughness } : {}),
+      ...(options.dbAccess ? { dbAccess: options.dbAccess } : {}),
       ...(options.pinnedPaths?.length
         ? { pinnedPaths: options.pinnedPaths }
         : {}),
@@ -414,6 +417,32 @@ export async function setMcpEnabled(options: {
     throw new Error(`mcp_set_${res.status}:${text}`);
   }
   return (await res.json()) as Awaited<ReturnType<typeof setMcpEnabled>>;
+}
+
+export async function setDatabaseMcpAccess(options: {
+  baseUrl: string;
+  token?: string;
+  dbAccess: 'readonly' | 'readwrite';
+}): Promise<{
+  ok: boolean;
+  dbAccess: string;
+  changed: boolean;
+  serverIds: string[];
+  restartRequired?: boolean;
+}> {
+  const res = await fetch(`${options.baseUrl}/v1/mcp`, {
+    method: 'POST',
+    headers: authHeaders(options.token),
+    body: JSON.stringify({
+      action: 'setDatabaseAccess',
+      dbAccess: options.dbAccess,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`mcp_db_access_${res.status}:${text}`);
+  }
+  return (await res.json()) as Awaited<ReturnType<typeof setDatabaseMcpAccess>>;
 }
 
 export async function installBuiltinMcp(options: {
