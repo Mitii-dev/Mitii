@@ -75,17 +75,24 @@ export const LOOP_POLICY_WINDOW_BAND_TABLE: Record<
     id: "standard",
     label: "Standard",
     rangeLabel: "50k – < 100k",
-    // Empty on purpose: base `AGENT_ENGINE_THRESHOLDS` are the standard band.
-    overrides: {},
+    // Mid windows (e.g. 65k demos): do not starve explore relative to compact.
+    // Base nudge of 4 was failing repair runs before the first apply_patch.
+    overrides: {
+      maxReadOnlyToolTurnsBeforeMutationNudge: 12,
+      maxPostNudgeEvidenceReadTurns: 6,
+      maxUnfulfilledExecuteRecoveries: 3,
+      maxReadOnlyMutationRetryAttempts: 3,
+    },
   },
   wide: {
     id: "wide",
     label: "Wide",
     rangeLabel: "≥ 100k",
     overrides: {
-      // Large windows: more explore + evidence room than compact.
+      // Large windows: more explore + evidence room than compact/standard.
       maxReadOnlyToolTurnsBeforeMutationNudge: 18,
       maxPostNudgeEvidenceReadTurns: 8,
+      maxUnfulfilledExecuteRecoveries: 3,
       maxRecoveredAnalysisChars: 640,
     },
   },

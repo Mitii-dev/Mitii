@@ -36,7 +36,7 @@ export function ApprovalCard({
     : isPlan
       ? 'Plan approval required'
       : isContinue
-        ? 'A bit more research needed'
+        ? 'Continue to finish edits'
         : isGrant
           ? 'Workspace access expansion'
           : 'Approval required';

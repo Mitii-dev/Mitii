@@ -85,6 +85,50 @@ describe("normalizeCommonToolArguments", () => {
     ).toEqual({ revision: "HEAD~1", path: "a.ts" });
   });
 
+  it("maps read_file line_start/line_end aliases and drops them", () => {
+    const normalized = normalizeCommonToolArguments("read_file", {
+      path: "test/Desktop/components/HeaderComponent.ts",
+      line_start: 1,
+      line_end: 40,
+    });
+    expect(normalized).toEqual({
+      path: "test/Desktop/components/HeaderComponent.ts",
+      startLine: 1,
+      endLine: 40,
+    });
+  });
+
+  it("treats empty search_files path as workspace default", () => {
+    const normalized = normalizeCommonToolArguments("search_files", {
+      query: "Header.selectors",
+      path: "",
+      maxMatches: 20,
+    });
+    expect(normalized).toEqual({
+      query: "Header.selectors",
+      maxMatches: 20,
+    });
+    expect(
+      searchFilesInputSchema.parse(
+        coerceArgumentsToSchema(normalized, searchFilesInputSchema),
+      ),
+    ).toMatchObject({ query: "Header.selectors", path: "." });
+  });
+
+  it("maps search_files mode=filename onto literal", () => {
+    const normalized = normalizeCommonToolArguments("search_files", {
+      query: "Header",
+      path: "test/Desktop/selectors",
+      mode: "filename",
+    });
+    expect(normalized).toMatchObject({ mode: "literal" });
+    expect(
+      searchFilesInputSchema.parse(
+        coerceArgumentsToSchema(normalized, searchFilesInputSchema),
+      ),
+    ).toMatchObject({ mode: "literal" });
+  });
+
   it("maps read_diagnostics path → paths and drops singular aliases", () => {
     expect(
       normalizeCommonToolArguments("read_diagnostics", {
@@ -103,6 +147,33 @@ describe("normalizeCommonToolArguments", () => {
       }),
     ).toEqual({ paths: ["src/a.ts"] });
     expect(normalizeCommonToolArguments("read_diagnostics", {})).toEqual({});
+  });
+
+  it("maps analyze_change_impact edgeTypes aliases and drops empties", () => {
+    expect(
+      normalizeCommonToolArguments("analyze_change_impact", {
+        path: "src/a.ts",
+        edgeTypes: ["import", "call", ""],
+      }),
+    ).toEqual({
+      path: "src/a.ts",
+      edgeTypes: ["imports", "calls"],
+    });
+    expect(
+      normalizeCommonToolArguments("analyze_change_impact", {
+        path: "src/a.ts",
+        edgeTypes: [],
+      }),
+    ).toEqual({ path: "src/a.ts" });
+    expect(
+      normalizeCommonToolArguments("analyze_change_impact", {
+        path: "src/a.ts",
+        edgeTypes: "imports",
+      }),
+    ).toEqual({
+      path: "src/a.ts",
+      edgeTypes: ["imports"],
+    });
   });
 });
 

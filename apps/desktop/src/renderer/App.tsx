@@ -102,6 +102,7 @@ import {
   streamResume,
   workspaceLabel,
 } from './api.js';
+import { isTransientEngineNetworkError } from './engineNetwork.js';
 import { ChatHistoryNav } from './chat/ChatHistoryNav.js';
 import { ComposerReviewStrip } from './chat/ComposerReviewStrip.js';
 import { IndexStatusChip } from './IndexStatusChip.js';
@@ -381,6 +382,11 @@ export function App() {
   const [snapshot, setSnapshot] = useState<DesktopShellSnapshot | null>(null);
   const [mode, setMode] = useState<DesktopAgentMode>('ask');
   const [approvalMode, setApprovalMode] = useState<ApprovalUiMode>('guided');
+  const approvalModeRef = useRef<ApprovalUiMode>(approvalMode);
+  approvalModeRef.current = approvalMode;
+  /** Pilot auto-Continue without flashing the stall card. */
+  const [pendingAutoContinue, setPendingAutoContinue] =
+    useState<DesktopSuspension | null>(null);
   const [dbAccess, setDbAccess] = useState<DatabaseAccessUiMode>('readonly');
   const [thoroughness, setThoroughness] = useState<ThoroughnessUi>('medium');
   const [input, setInput] = useState('');
@@ -526,6 +532,28 @@ export function App() {
    */
   const engineRestartChainRef = useRef(Promise.resolve());
 
+  const waitForEngineHealth = useCallback(
+    async (snap: DesktopShellSnapshot, timeoutMs = 20_000): Promise<boolean> => {
+      const healthUrl = `${snap.engineBaseUrl.replace(/\/$/, '')}/health`;
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        try {
+          const res = await fetch(healthUrl, {
+            headers: snap.authToken
+              ? { authorization: `Bearer ${snap.authToken}` }
+              : undefined,
+          });
+          if (res.ok) return true;
+        } catch {
+          /* engine still booting */
+        }
+        await new Promise((r) => setTimeout(r, 120));
+      }
+      return false;
+    },
+    [],
+  );
+
   const restartEngineAndRefresh = useCallback(async (): Promise<DesktopShellSnapshot> => {
     const run = async (): Promise<DesktopShellSnapshot> => {
       const bridge = getDesktopBridge();
@@ -538,21 +566,7 @@ export function App() {
       }
       const nextSnap = await bridge.getSnapshot();
       setSnapshot(nextSnap);
-      const healthUrl = `${nextSnap.engineBaseUrl.replace(/\/$/, '')}/health`;
-      const deadline = Date.now() + 20_000;
-      while (Date.now() < deadline) {
-        try {
-          const res = await fetch(healthUrl, {
-            headers: nextSnap.authToken
-              ? { authorization: `Bearer ${nextSnap.authToken}` }
-              : undefined,
-          });
-          if (res.ok) return nextSnap;
-        } catch {
-          /* engine still booting */
-        }
-        await new Promise((r) => setTimeout(r, 120));
-      }
+      await waitForEngineHealth(nextSnap, 20_000);
       return nextSnap;
     };
     const queued = engineRestartChainRef.current.then(run, run);
@@ -561,7 +575,35 @@ export function App() {
       () => undefined,
     );
     return queued;
-  }, []);
+  }, [waitForEngineHealth]);
+
+  /**
+   * Always refresh the live engine URL before a prompt. Mode/model switches
+   * restart the engine; chatting against a stale port surfaces as
+   * "Engine briefly unreachable".
+   */
+  const ensureEngineReadyForPrompt = useCallback(async (): Promise<{
+    engine: { baseUrl: string; token: string };
+    snapshot: DesktopShellSnapshot;
+  }> => {
+    await engineRestartChainRef.current;
+    const bridge = getDesktopBridge();
+    if (!bridge) {
+      throw new Error('Desktop bridge missing. Rebuild and relaunch.');
+    }
+    let nextSnap = await bridge.getSnapshot();
+    setSnapshot(nextSnap);
+    if (!(await waitForEngineHealth(nextSnap, 8_000))) {
+      nextSnap = await restartEngineAndRefresh();
+    }
+    return {
+      engine: {
+        baseUrl: nextSnap.engineBaseUrl,
+        token: nextSnap.authToken,
+      },
+      snapshot: nextSnap,
+    };
+  }, [restartEngineAndRefresh, waitForEngineHealth]);
 
   const ensureDatabaseAccessReady = useCallback(
     async (
@@ -1087,7 +1129,16 @@ export function App() {
           assistant = finalizeAssistantText(assistant, line);
           nextSuspension = extractSuspension(line.result);
           if (nextSuspension) {
-            setSuspension(nextSuspension);
+            // Pilot: queue silent auto-Continue — do not paint the stall card
+            // (avoids "Clarification / more research" flicker).
+            if (
+              nextSuspension.kind === 'continue_required' &&
+              approvalModeRef.current === 'pilot'
+            ) {
+              setPendingAutoContinue(nextSuspension);
+            } else {
+              setSuspension(nextSuspension);
+            }
           }
           const extracted = extractPlanFromRunResult(line.result);
           resultPlan = extracted.plan;
@@ -1456,6 +1507,23 @@ export function App() {
     return false;
   };
 
+  /** Stop / cancel often surfaces as Failed to fetch instead of AbortError. */
+  const shouldIgnoreRunError = (
+    err: unknown,
+    signal?: AbortSignal,
+  ): boolean => {
+    if (isAbortError(err)) return true;
+    if (signal?.aborted || runAbortRef.current?.signal.aborted) return true;
+    return false;
+  };
+
+  const runErrorMessage = (err: unknown): string => {
+    if (isTransientEngineNetworkError(err)) {
+      return 'Engine was restarting or busy — retry the message.';
+    }
+    return err instanceof Error ? err.message : String(err);
+  };
+
   const beginRunAbort = (): AbortSignal => {
     runAbortRef.current?.abort();
     const controller = new AbortController();
@@ -1647,6 +1715,22 @@ export function App() {
         );
       }
       await refresh();
+      if (result.restarted) {
+        // Serialize behind chat prompts so the next message does not hit a
+        // dead port while the new engine is binding.
+        const wait = (async () => {
+          const next = await bridge.getSnapshot();
+          setSnapshot(next);
+          await waitForEngineHealth(next, 20_000);
+        })();
+        engineRestartChainRef.current = engineRestartChainRef.current
+          .then(() => wait)
+          .then(
+            () => undefined,
+            () => undefined,
+          );
+        await wait;
+      }
     } finally {
       setSettingsBusy(false);
     }
@@ -1702,7 +1786,15 @@ export function App() {
 
         const nextModel = defaults.model?.trim();
         if (nextModel) {
-          void onSelectModel(nextModel);
+          // Queue on the restart chain so an immediate Send cannot race the
+          // model-switch engine reboot (Failed to fetch / unreachable banner).
+          const pending = onSelectModel(nextModel);
+          engineRestartChainRef.current = engineRestartChainRef.current
+            .then(() => pending)
+            .then(
+              () => undefined,
+              () => undefined,
+            );
         }
       }
     }
@@ -2026,27 +2118,45 @@ export function App() {
       requestAnimationFrame(() => scrollToBottom(true));
 
       try {
+        const ready = await ensureEngineReadyForPrompt();
+        const runResumeStream = (snap: DesktopShellSnapshot) =>
+          consumeStream(
+            streamResume({
+              baseUrl: snap.engineBaseUrl,
+              mode,
+              signal,
+              ...(snap.authToken ? { token: snap.authToken } : {}),
+              body: {
+                ...body,
+                approvalPreset: approvalMode,
+                ...(mode === 'database' ? { dbAccess } : {}),
+                ...(threadId ? { sessionId: threadId } : {}),
+              },
+            }),
+            assistantId,
+          );
+
+        let streamResult: Awaited<ReturnType<typeof runResumeStream>>;
+        try {
+          streamResult = await runResumeStream(ready.snapshot);
+        } catch (err) {
+          if (
+            shouldIgnoreRunError(err, signal) ||
+            !isTransientEngineNetworkError(err)
+          ) {
+            throw err;
+          }
+          const retried = await ensureEngineReadyForPrompt();
+          streamResult = await runResumeStream(retried.snapshot);
+        }
+
         const {
           assistant,
           activity,
           suspension: nextSuspension,
           mutatedPaths,
           tokenUsage: nextUsage,
-        } = await consumeStream(
-          streamResume({
-            baseUrl: snapshot.engineBaseUrl,
-            mode,
-            signal,
-            ...(snapshot.authToken ? { token: snapshot.authToken } : {}),
-            body: {
-              ...body,
-              approvalPreset: approvalMode,
-              ...(mode === 'database' ? { dbAccess } : {}),
-              ...(threadId ? { sessionId: threadId } : {}),
-            },
-          }),
-          assistantId,
-        );
+        } = streamResult;
 
         const mergedActivity = [...priorActivity, ...activity];
         const fileChanges = await resolveFileChanges(mutatedPaths);
@@ -2107,8 +2217,8 @@ export function App() {
             ];
         await persistMessages(withAssistant, threadId, nextUsage);
       } catch (err) {
-        if (!isAbortError(err)) {
-          setError(err instanceof Error ? err.message : String(err));
+        if (!shouldIgnoreRunError(err, signal)) {
+          setError(runErrorMessage(err));
         }
         setMessages((prev) =>
           prev.map((m) =>
@@ -2127,6 +2237,7 @@ export function App() {
       busy,
       consumeStream,
       dbAccess,
+      ensureEngineReadyForPrompt,
       messages,
       mode,
       resolveFileChanges,
@@ -2199,14 +2310,17 @@ export function App() {
     setMessages(nextMessages);
     requestAnimationFrame(() => scrollToBottom(true));
     try {
-      // Ensure MCP_DB_ACCESS matches the composer control and wait out any
-      // in-flight engine restart from the Read & write dropdown (first-message race).
+      // Always refresh the live engine URL — model/settings saves restart the
+      // process and chatting against a stale port looks like "unreachable".
       let promptEngine = engine;
       let promptSnapshot = snapshot;
+      const ready = await ensureEngineReadyForPrompt();
+      promptEngine = ready.engine;
+      promptSnapshot = ready.snapshot;
       if (mode === 'database') {
-        const ready = await ensureDatabaseAccessReady(dbAccess);
-        promptEngine = ready.engine;
-        promptSnapshot = ready.snapshot;
+        const dbReady = await ensureDatabaseAccessReady(dbAccess);
+        promptEngine = dbReady.engine;
+        promptSnapshot = dbReady.snapshot;
       }
       if (!promptEngine || !promptSnapshot) {
         throw new Error('Engine is not ready. Try again in a moment.');
@@ -2266,6 +2380,48 @@ export function App() {
             : undefined,
       });
 
+      const runPromptStream = (snap: DesktopShellSnapshot) =>
+        consumeStream(
+          streamPrompt({
+            baseUrl: snap.engineBaseUrl,
+            prompt,
+            mode: runMode,
+            model: snap.settings.provider.model,
+            sessionId: activeThread,
+            approvalPreset: approvalMode,
+            thoroughness,
+            ...(mode === 'database' ? { dbAccess } : {}),
+            pinnedPaths: submitPinnedPaths,
+            requiredSkillIds: pinnedSkillIds,
+            requiredMcpServerIds: pinnedMcpIds,
+            signal,
+            ...(conversation.length > 0 ? { conversation } : {}),
+            ...(approvedPlan ? { approvedPlan } : {}),
+            ...(approvedPlanStrategy
+              ? { approvedPlanStrategy }
+              : {}),
+            ...(taskList ? { taskList } : {}),
+            ...(snap.authToken ? { token: snap.authToken } : {}),
+          }),
+          assistantId,
+          { formatPlanAnswer: runMode === 'plan' },
+        );
+
+      let streamResult: Awaited<ReturnType<typeof runPromptStream>>;
+      try {
+        streamResult = await runPromptStream(promptSnapshot);
+      } catch (err) {
+        if (
+          shouldIgnoreRunError(err, signal) ||
+          !isTransientEngineNetworkError(err)
+        ) {
+          throw err;
+        }
+        const retried = await ensureEngineReadyForPrompt();
+        promptSnapshot = retried.snapshot;
+        streamResult = await runPromptStream(promptSnapshot);
+      }
+
       const {
         assistant,
         activity,
@@ -2275,33 +2431,7 @@ export function App() {
         plan: resultPlan,
         planStrategy: resultPlanStrategy,
         taskList: resultTaskList,
-      } = await consumeStream(
-        streamPrompt({
-          baseUrl: promptSnapshot.engineBaseUrl,
-          prompt,
-          mode: runMode,
-          model: promptSnapshot.settings.provider.model,
-          sessionId: activeThread,
-          approvalPreset: approvalMode,
-          thoroughness,
-          ...(mode === 'database' ? { dbAccess } : {}),
-          pinnedPaths: submitPinnedPaths,
-          requiredSkillIds: pinnedSkillIds,
-          requiredMcpServerIds: pinnedMcpIds,
-          signal,
-          ...(conversation.length > 0 ? { conversation } : {}),
-          ...(approvedPlan ? { approvedPlan } : {}),
-          ...(approvedPlanStrategy
-            ? { approvedPlanStrategy }
-            : {}),
-          ...(taskList ? { taskList } : {}),
-          ...(promptSnapshot.authToken
-            ? { token: promptSnapshot.authToken }
-            : {}),
-        }),
-        assistantId,
-        { formatPlanAnswer: runMode === 'plan' },
-      );
+      } = streamResult;
 
       const fileChanges = await resolveFileChanges(mutatedPaths);
       if (mutatedPaths.length > 0) {
@@ -2384,8 +2514,8 @@ export function App() {
         planPersist,
       );
     } catch (err) {
-      if (!isAbortError(err)) {
-        setError(err instanceof Error ? err.message : String(err));
+      if (!shouldIgnoreRunError(err, signal)) {
+        setError(runErrorMessage(err));
       }
       setMessages((prev) =>
         prev.map((m) =>
@@ -2407,6 +2537,7 @@ export function App() {
     dbAccess,
     engine,
     ensureDatabaseAccessReady,
+    ensureEngineReadyForPrompt,
     input,
     messages,
     mode,
@@ -2533,6 +2664,19 @@ export function App() {
       },
     });
   };
+
+  // Pilot: auto-Continue stall walls without flashing the ApprovalCard.
+  useEffect(() => {
+    if (!pendingAutoContinue) return;
+    if (pendingAutoContinue.kind !== 'continue_required') return;
+    if (busy) return;
+    const runId = pendingAutoContinue.runId;
+    setPendingAutoContinue(null);
+    void runResume({
+      runId,
+      continueDecision: { decision: 'continue' },
+    });
+  }, [pendingAutoContinue, busy, runResume]);
 
   const onStopSuspension = () => {
     if (!suspension) return;

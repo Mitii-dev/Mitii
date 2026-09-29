@@ -276,22 +276,19 @@ export function resolveModelLoopAfterTools(params: {
   ) {
     if (session.mutationBlockerAsked) {
       reasonCodes.push("unfulfilled_execute_exhausted");
-      const offered =
-        session.continueOverrideCount > 0
-          ? undefined
-          : tryOfferBudgetWallContinue({
-              wallReason: "unfulfilled_execute",
-              messages,
-              toolCache,
-              changedFiles,
-              mutationCheckpointIds,
-              answer,
-              decision,
-              continueOverrideCount: session.continueOverrideCount,
-              maxContinueOverrides: thresholds.maxContinueOverrides,
-              taskList: taskListRef.current,
-              mutationRequired: true,
-            });
+      const offered = tryOfferBudgetWallContinue({
+        wallReason: "unfulfilled_execute",
+        messages,
+        toolCache,
+        changedFiles,
+        mutationCheckpointIds,
+        answer,
+        decision,
+        continueOverrideCount: session.continueOverrideCount,
+        maxContinueOverrides: thresholds.maxContinueOverrides,
+        taskList: taskListRef.current,
+        mutationRequired: true,
+      });
       if (offered) {
         session.answer = answer;
         return { kind: "return", outcome: offered };
@@ -405,7 +402,11 @@ export function resolveModelLoopAfterTools(params: {
       session.rejectedToolRecoveries += 1;
       messages.push({
         role: "user",
-        content: buildRejectedToolRecoveryMessage(rejectedTool),
+        content: buildRejectedToolRecoveryMessage({
+          ...rejectedTool,
+          mutationRequired:
+            isMutationRequired() || session.awaitingReadOnlyMutationRetry,
+        }),
       });
       warnings.push(
         `All requested tools were ${rejectedTool.status}; requesting corrected tool arguments or a patch.`,

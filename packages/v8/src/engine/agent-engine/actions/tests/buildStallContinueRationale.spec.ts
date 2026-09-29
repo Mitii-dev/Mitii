@@ -132,6 +132,19 @@ describe("buildBudgetWallResetMessage", () => {
     expect(message).toContain("Analysis-only turns are not allowed");
   });
 
+  it("re-anchors Continue with preflight diagnostics when provided", () => {
+    const message = buildBudgetWallResetMessage({
+      reason: "unfulfilled_execute",
+      mutationRequired: true,
+      changedFiles: [],
+      preflightDiagnostics:
+        "- src/a.ts:1 TS2304: Cannot find name 'HeaderSelectors'.",
+    });
+    expect(message).toContain("preflight diagnostics");
+    expect(message).toContain("HeaderSelectors");
+    expect(message).toContain("do not restart broad discovery");
+  });
+
   it("keeps stall wrapper for exploration", () => {
     const message = buildStallContinueResetMessage({
       guidance: "focus on tests",

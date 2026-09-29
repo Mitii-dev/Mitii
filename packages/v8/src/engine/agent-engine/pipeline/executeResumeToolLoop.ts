@@ -77,6 +77,11 @@ export async function resumeToolLoopFromCheckpoint(
      * with zero workspace edits.
      */
     forceMutationOnResume?: boolean;
+    /**
+     * When true, resume under full mutation lock (evidence budget spent) with
+     * remaining-after diagnostics — used when Continue fires mid-repair.
+     */
+    forceMutationLock?: boolean;
   },
 ): Promise<AgentRunResult> {
   const {
@@ -186,6 +191,7 @@ export async function resumeToolLoopFromCheckpoint(
     continueOverrideCount:
       params.continueOverrideCount ?? checkpoint.continueOverrideCount ?? 0,
     forceMutationOnResume: params.forceMutationOnResume === true,
+    forceMutationLock: params.forceMutationLock === true,
     thresholds: resolveLoopPolicyThresholds({
       contextWindowTokens: windowPolicy.contextWindowTokens,
       overrides: startInput.loopPolicy?.thresholds,

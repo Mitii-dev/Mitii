@@ -25,6 +25,7 @@ import {
   mergePromptInstructions,
   createInitialRunEvidence,
   finalizeRunEvidence,
+  shouldForcePreflightRepairLock,
 } from "../actions";
 import { withMcpAttachOnGrant, formatMcpAttachInstruction } from "../../../modules/mcp-attach";
 import type {
@@ -498,6 +499,18 @@ export async function executeStart(
       overrides: input.loopPolicy?.thresholds,
     }).thresholds;
 
+    const preflightRepairLock = shouldForcePreflightRepairLock({
+      route: decisionWithAttach.route,
+      maximumWorkspaceEffect:
+        decisionWithAttach.toolGrant.maximumWorkspaceEffect,
+      preflightErrorCount:
+        shared.repoBuildStateBefore?.summary.errorCount ?? 0,
+      changedFilesCount: changedFiles.length,
+    });
+    if (preflightRepairLock) {
+      reasonCodes.push("preflight_repair_lock");
+    }
+
     const loopOutcome = await runModelToolLoop(runtime, {
       runId,
       request: promptResult.request,
@@ -535,6 +548,9 @@ export async function executeStart(
       plan: shared.runPlan,
       thresholds,
       criticMode: steering.criticMode,
+      // Same session shape as Continue-with-zero-edits: strip broad discovery,
+      // keep targeted reads + apply_patch so repair starts on preflight errors.
+      forceMutationOnResume: preflightRepairLock,
     });
 
     return await finishAfterLoop(runtime, {

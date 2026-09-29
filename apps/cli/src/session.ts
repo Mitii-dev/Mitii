@@ -83,6 +83,11 @@ export interface DriveRunOptions {
   autoClarify?: string;
   /** Non-interactive approval decision. */
   autoApproval?: 'approved' | 'denied';
+  /**
+   * Non-interactive continue_required decision. When unset, `--approve`
+   * (`autoApproval: approved`) also auto-continues stall walls.
+   */
+  autoContinue?: 'continue' | 'stop';
   io: SessionIo;
   /** Optional host capture after mutating / failed tools. */
   memoryCapture?: MemoryCaptureContext;
@@ -139,7 +144,8 @@ export function buildResumeInput(
   decision:
     | { kind: 'clarification'; answer: string }
     | { kind: 'approval'; decision: 'approved' | 'denied' }
-    | { kind: 'plan'; decision: 'approved' | 'rejected' },
+    | { kind: 'plan'; decision: 'approved' | 'rejected' }
+    | { kind: 'continue'; decision: 'continue' | 'stop'; guidance?: string },
 ): MitiiResumeInput | null {
   if (result.status !== 'suspended' || !result.suspension) {
     return null;
@@ -181,6 +187,20 @@ export function buildResumeInput(
       schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
       runId: result.runId,
       planDecision: { decision: decision.decision },
+    };
+  }
+
+  if (
+    decision.kind === 'continue' &&
+    result.suspension.kind === 'continue_required'
+  ) {
+    return {
+      schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+      runId: result.runId,
+      continueDecision: {
+        decision: decision.decision,
+        ...(decision.guidance ? { guidance: decision.guidance } : {}),
+      },
     };
   }
 
@@ -299,6 +319,38 @@ async function resolveSuspension(
     return resume ?? 'stop';
   }
 
+  if (suspension.kind === 'continue_required') {
+    const auto =
+      options.autoContinue ??
+      (options.autoApproval === 'approved'
+        ? 'continue'
+        : options.autoApproval === 'denied'
+          ? 'stop'
+          : undefined);
+    const decision =
+      auto ??
+      (await (async () => {
+        const raw = await options.io.prompt(
+          `Continue after stall? [Y/n] `,
+        );
+        const normalized = raw.trim().toLowerCase();
+        if (normalized === 'n' || normalized === 'no') return 'stop' as const;
+        return 'continue' as const;
+      })());
+    if (decision === 'stop') {
+      const resume = buildResumeInput(result, {
+        kind: 'continue',
+        decision: 'stop',
+      });
+      return resume ?? 'stop';
+    }
+    const resume = buildResumeInput(result, {
+      kind: 'continue',
+      decision: 'continue',
+    });
+    return resume ?? 'stop';
+  }
+
   return 'stop';
 }
 
@@ -381,7 +433,11 @@ export async function driveRun(
       (suspensionKind === 'approval_required' &&
         Boolean(options.autoApproval)) ||
       (suspensionKind === 'plan_approval_required' &&
-        Boolean(options.autoApproval));
+        Boolean(options.autoApproval)) ||
+      (suspensionKind === 'continue_required' &&
+        (Boolean(options.autoContinue) ||
+          options.autoApproval === 'approved' ||
+          options.autoApproval === 'denied'));
 
     // Non-interactive JSON / stream-json: only auto-resume the suspension kind
     // that has a matching flag. `--approve` must not open an interactive

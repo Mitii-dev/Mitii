@@ -36,8 +36,8 @@ Runtime entry point: `resolveLoopPolicyThresholds({ contextWindowTokens, overrid
 | Band | Window | Intent |
 |---|---|---|
 | `compact` | &lt; 50k | More read/retry patience; shorter recovered essays |
-| `standard` | 50k – &lt; 100k | Base `AGENT_ENGINE_THRESHOLDS` as-is |
-| `wide` | ≥ 100k | Same pressure as base; slightly larger recovered analysis budget |
+| `standard` | 50k – &lt; 100k | Mid-window patience (12 read turns before mutation nudge; 6 evidence reads) |
+| `wide` | ≥ 100k | Same pressure as standard; slightly larger explore + recovered analysis |
 
 ## Policy Admin (ship defaults)
 

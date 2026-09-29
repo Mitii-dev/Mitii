@@ -178,7 +178,7 @@ export function shouldOfferBudgetWallContinue(params: {
   continueOverrideCount?: number;
   maxContinueOverrides?: number;
 }): boolean {
-  const maxOverrides = params.maxContinueOverrides ?? 2;
+  const maxOverrides = params.maxContinueOverrides ?? 4;
   return (params.continueOverrideCount ?? 0) < maxOverrides;
 }
 
@@ -199,6 +199,8 @@ export function buildBudgetWallResetMessage(params: {
   guidance?: string;
   mutationRequired: boolean;
   changedFiles: readonly string[];
+  /** Optional preflight diagnostic batch to re-anchor Continue resumes. */
+  preflightDiagnostics?: string;
 }): string {
   const parts: string[] = [];
 
@@ -230,6 +232,14 @@ export function buildBudgetWallResetMessage(params: {
         "The user approved another verification repair pass. Fix remaining errors with bounded patches; do not restart broad exploration.",
       );
       break;
+  }
+
+  const diagnostics = params.preflightDiagnostics?.trim();
+  if (diagnostics) {
+    parts.push(
+      "Use these preflight diagnostics as the next patch targets; do not restart broad discovery:\n" +
+        diagnostics,
+    );
   }
 
   if (

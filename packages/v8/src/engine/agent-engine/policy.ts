@@ -94,10 +94,21 @@ export const AGENT_ENGINE_THRESHOLDS = {
   /** One mid-loop nudge, then stop the spin. */
   maxExplorationStallNudges: 1,
   /**
+   * Max recoveries when the model proposes read/search under mutation lock
+   * instead of apply_patch. Injects a hard diagnostic-driven patch nudge
+   * without opening Continue UI (avoids Pilot thrash).
+   */
+  maxMutationLockRecoveries: 5,
+  /**
+   * Max automatic create-file stub batches from TS2307 diagnostics when the
+   * model refuses to apply_patch under mutation lock.
+   */
+  maxMutationLockAutoStubBatches: 2,
+  /**
    * Max user-approved Continue overrides after exploration stall walls.
    * Further stalls fall back to terminal fail/complete.
    */
-  maxContinueOverrides: 2,
+  maxContinueOverrides: 4,
   /**
    * Extra model calls granted when the user Continues after budget_exhausted.
    * Without this, resume would immediately re-hit the same ceiling.

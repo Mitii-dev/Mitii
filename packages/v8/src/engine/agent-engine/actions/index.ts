@@ -103,6 +103,9 @@ export {
 } from "./buildStallContinueRationale";
 export type { BudgetWallReason } from "./buildStallContinueRationale";
 export { buildPreflightDiagnosticRepairInstruction } from "./buildPreflightDiagnosticRepairInstruction";
+export { buildForcedMutationNudgeMessage } from "./buildForcedMutationNudgeMessage";
+export { buildMissingModuleStubPatches } from "./buildMissingModuleStubPatches";
+export { shouldForcePreflightRepairLock } from "./shouldForcePreflightRepairLock";
 export { buildVerificationRepairPrompt } from "./buildVerificationRepairPrompt";
 export { formatVerificationFailureAnswer, formatVerificationEvidence } from "./formatVerificationNarration";
 export { summarizeToolCall } from "./summarizeToolCall";

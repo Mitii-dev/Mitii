@@ -34,6 +34,7 @@ import {
   extractMutationTargetPaths,
   isCompleteToolCall,
   resolveReasoningProgressBudget,
+  buildForcedMutationNudgeMessage,
 } from "../actions";
 import type {
   EstablishedFact,
@@ -177,7 +178,11 @@ export async function runModelToolLoop(
   const changeImpactGate = {
     required:
       params.decision.reasonCodes.includes("change_impact_recommended") &&
-      params.decision.toolGrant.allowedTools.includes("analyze_change_impact"),
+      params.decision.toolGrant.allowedTools.includes("analyze_change_impact") &&
+      // Preflight / verification repair already has diagnostics — do not block
+      // the first apply_patch (incl. auto-stub) behind analyze_change_impact.
+      params.forceMutationLock !== true &&
+      params.forceMutationOnResume !== true,
     satisfied: false,
   };
   const changeImpactNudgeBudget = {
@@ -201,6 +206,11 @@ export async function runModelToolLoop(
   // Repair loops already have changed files — still lock to mutation tools.
   const forceMutationLock =
     forceMutationOnResume || params.forceMutationLock === true;
+  // Continue / verification already exhausted free explore; preflight lock only
+  // strips broad discovery and should still allow a normal evidence→patch ramp.
+  const resumeAlreadyNudged =
+    params.forceMutationLock === true ||
+    Math.max(0, params.continueOverrideCount ?? 0) > 0;
 
   const session: ModelLoopSession = {
     decision: params.decision,
@@ -221,7 +231,7 @@ export async function runModelToolLoop(
     continueOverrideCount: Math.max(0, params.continueOverrideCount ?? 0),
     rejectedMutationRecoveries: 0,
     rejectedToolRecoveries: 0,
-    readOnlyToolTurnsWithoutMutation: forceMutationLock
+    readOnlyToolTurnsWithoutMutation: resumeAlreadyNudged
       ? thresholds.maxReadOnlyToolTurnsBeforeMutationNudge
       : 0,
     readOnlyToolTurnsAfterMutation: 0,
@@ -229,7 +239,7 @@ export async function runModelToolLoop(
     awaitingReadOnlyMutationRetry: forceMutationLock,
     // Continue / repair: evidence-read used count — first Continue keeps the
     // full allowance; later Continues and verification repairs start spent.
-    readOnlyMutationRetryAttempts: forceMutationLock
+    readOnlyMutationRetryAttempts: resumeAlreadyNudged
       ? thresholds.maxReadOnlyMutationRetryAttempts
       : 0,
     postNudgeEvidenceReadTurns: initialPostNudgeEvidenceReadsUsed({
@@ -238,6 +248,11 @@ export async function runModelToolLoop(
       continueOverrideCount: Math.max(0, params.continueOverrideCount ?? 0),
       maxPostNudgeEvidenceReadTurns: thresholds.maxPostNudgeEvidenceReadTurns,
     }),
+    mutationLockRecoveries: 0,
+    mutationLockAutoStubBatches: 0,
+    forceMutationToolChoice:
+      (forceMutationOnResume && !resumeAlreadyNudged) ||
+      params.forceMutationLock === true,
     consecutiveSameToolTurns: 0,
     lastUniformToolName: undefined,
     diagnoseAnswerNudges: 0,
@@ -253,6 +268,23 @@ export async function runModelToolLoop(
     contextEpoch: runtime.contextEpochs.get(runId),
     sessionHistoryArchive: new InMemorySessionHistoryArchive(),
   };
+
+  // Preflight repair lock: seed the first turn with concrete diagnostic targets
+  // so local models do not open with open-ended Header.selectors hunting.
+  // Verification repair and mid-repair Continue already inject remaining errors
+  // via buildVerificationRepairPrompt / buildBudgetWallResetMessage.
+  if (
+    forceMutationOnResume &&
+    !resumeAlreadyNudged &&
+    (params.repoBuildStateBefore?.summary.errorCount ?? 0) > 0
+  ) {
+    const seed = buildForcedMutationNudgeMessage({
+      diagnostics: params.repoBuildStateBefore?.diagnostics,
+      totalErrorCount: params.repoBuildStateBefore?.summary.errorCount,
+      pathScopes: params.decision.toolGrant.pathScopes,
+    });
+    messages.push({ role: "user", content: seed });
+  }
 
   const isMutationRequired = () =>
     requiresMutationForExecute({
@@ -365,6 +397,13 @@ export async function runModelToolLoop(
       postNudgeEvidenceReadTurns: session.postNudgeEvidenceReadTurns,
       maxPostNudgeEvidenceReadTurns: thresholds.maxPostNudgeEvidenceReadTurns,
     });
+    const mutationOnly =
+      mutationLocked && evidenceRemaining <= 0 && !session.awaitingAnswerOnly;
+    const forceToolChoice =
+      mutationOnly || session.forceMutationToolChoice === true;
+    if (session.forceMutationToolChoice) {
+      session.forceMutationToolChoice = false;
+    }
     const turnModelRequest: ModelRequest = session.awaitingAnswerOnly
       ? {
           ...params.request,
@@ -377,6 +416,10 @@ export async function runModelToolLoop(
               evidenceRemaining > 0
                 ? filterToolsForMutationLock(params.request.tools)
                 : filterToolsForMutationOnly(params.request.tools),
+            ...(forceToolChoice &&
+            runtime.deps.llm.capabilities.supportsForcedToolChoice !== false
+              ? { toolChoice: "required" as const }
+              : {}),
           }
         : params.request;
 
@@ -808,6 +851,7 @@ export async function runModelToolLoop(
       changeImpactGate,
       thresholds,
       requestId: params.requestId ?? runId,
+      repoBuildStateBefore: params.repoBuildStateBefore,
     });
     if (toolPhase.kind !== "batch_done") {
       if (toolPhase.kind === "return") {

@@ -26,6 +26,10 @@ import {
   saveWorkspaceFile,
   streamWorkspaceEvents,
 } from '../api.js';
+import {
+  isTransientEngineNetworkError,
+  withEngineFetchRetry,
+} from '../engineNetwork.js';
 import { MarkdownBody } from '../chat/MarkdownBody.js';
 import { CodeEditor } from '../explorer/CodeEditor.js';
 import { GitWorkingTreePane } from '../git/GitWorkingTreePane.js';
@@ -272,7 +276,9 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     async (path: string) => {
       setLoadingDirs((prev) => new Set(prev).add(path));
       try {
-        const result = await fetchWorkspaceTree({ ...auth, path });
+        const result = await withEngineFetchRetry(() =>
+          fetchWorkspaceTree({ ...auth, path }),
+        );
         if (!path) setRootEntries(result.entries);
         else {
           setChildrenByPath((prev) => ({
@@ -281,6 +287,8 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
           }));
         }
       } catch (err) {
+        // Keep prior tree during bulk AI writes / engine blips.
+        if (isTransientEngineNetworkError(err)) return;
         setError(err instanceof Error ? err.message : String(err));
       } finally {
         setLoadingDirs((prev) => {
@@ -295,14 +303,13 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
 
   const loadGit = useCallback(async () => {
     try {
-      const next = await fetchGitStatus(auth);
+      const next = await withEngineFetchRetry(() => fetchGitStatus(auth));
       setGit(next);
       props.onGitCountChange?.(next.changeCount ?? next.files.length);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      // Engine blips during bulk AI writes ("Failed to fetch") — don't poison the UI.
-      if (/failed to fetch|networkerror|load failed/i.test(msg)) return;
-      setError(msg);
+      // Engine blips during bulk AI writes — don't poison the UI.
+      if (isTransientEngineNetworkError(err)) return;
+      setError(err instanceof Error ? err.message : String(err));
     }
   }, [props.baseUrl, props.token, props.onGitCountChange]);
 

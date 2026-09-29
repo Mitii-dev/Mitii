@@ -152,6 +152,8 @@ export function buildRejectedToolRecoveryMessage(params: {
   reasonCode?: ToolResult["reasonCode"];
   warnings: readonly string[];
   summary?: string;
+  /** When true, push apply_patch instead of another read/search attempt. */
+  mutationRequired?: boolean;
 }): string {
   const reason = params.reasonCode ? ` (${params.reasonCode})` : "";
   const summary = params.summary ? `\nAttempt: ${params.summary}` : "";
@@ -159,6 +161,22 @@ export function buildRejectedToolRecoveryMessage(params: {
     params.warnings.length > 0
       ? `\nTool warning: ${params.warnings.slice(0, 3).join(" ")}`
       : "";
+
+  const pathMissing = params.warnings.some((warning) =>
+    /path does not exist|cannot be resolved/i.test(warning),
+  );
+
+  if (params.mutationRequired === true) {
+    return [
+      `The requested tool ${params.toolName} was ${params.status}${reason}.`,
+      `${summary}${warnings}`,
+      pathMissing
+        ? "That path is missing. Create or fix it with apply_patch (do not glob/search for alternatives)."
+        : "Do not repeat rejected tool calls.",
+      "Your next tool call MUST be apply_patch, delete_file, or move_file — or stop with a one-line Blocker.",
+      "Do not end the turn with more read/search calls.",
+    ].join("\n");
+  }
 
   return [
     `The requested tool ${params.toolName} was ${params.status}${reason}.`,

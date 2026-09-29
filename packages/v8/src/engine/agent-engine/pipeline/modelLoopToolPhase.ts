@@ -21,6 +21,8 @@ import {
   extractCompilerErrorPaths,
   extractOutOfScopePaths,
   isSuccessfulVerificationToolResult,
+  buildForcedMutationNudgeMessage,
+  buildMissingModuleStubPatches,
 } from "../actions";
 import type {
   EstablishedFact,
@@ -29,6 +31,7 @@ import type {
   AgentReasonCode,
   RunEvidence,
 } from "../contracts";
+import type { RepoBuildState } from "../../../modules/verification";
 import { EventBus } from "../internal/EventBus";
 import { RunBudgetTracker } from "../internal/RunBudget";
 import { ReadLedger } from "../internal/ReadLedger";
@@ -120,6 +123,8 @@ export async function runModelLoopToolPhase(params: {
   thresholds: AgentEngineThresholds;
   /** Correlates RestorePoints with the originating request. */
   requestId: string;
+  /** Preflight build/typecheck snapshot for forced mutation nudges. */
+  repoBuildStateBefore?: RepoBuildState;
 }): Promise<ModelLoopStepResult | { kind: "batch_done"; stats: ToolPhaseBatchStats }> {
   const {
     runtime,
@@ -158,13 +163,16 @@ export async function runModelLoopToolPhase(params: {
     changeImpactGate,
     thresholds,
     requestId,
+    repoBuildStateBefore,
   } = params;
   let decision = session.decision;
   let grant = decision.toolGrant;
   let selectedSkillIds = session.selectedSkillIds;
+  let effectiveToolCalls: ModelToolCall[] = [...toolCalls];
+  let turnContentForTools = turnContent;
 
   // Tool phase
-  const needsWorkspaceTools = toolCalls.some(
+  const needsWorkspaceTools = effectiveToolCalls.some(
     (call) => !isUpdateTodosTool(call.name),
   );
   if (needsWorkspaceTools && grant.allowedTools.length === 0) {
@@ -197,7 +205,7 @@ export async function runModelLoopToolPhase(params: {
       },
     };
   }
-  const requestedMutatingTool = toolCalls.some((call) =>
+  const requestedMutatingTool = effectiveToolCalls.some((call) =>
     DEFAULT_MUTATING_TOOL_NAMES.has(call.name),
   );
   if (
@@ -205,7 +213,7 @@ export async function runModelLoopToolPhase(params: {
     session.awaitingReadOnlyMutationRetry &&
     !requestedMutatingTool
   ) {
-    const workspaceCalls = toolCalls.filter(
+    const workspaceCalls = effectiveToolCalls.filter(
       (call) => !isUpdateTodosTool(call.name),
     );
     const hasBroadDiscovery = workspaceCalls.some((call) =>
@@ -221,13 +229,54 @@ export async function runModelLoopToolPhase(params: {
       !hasBroadDiscovery &&
       session.postNudgeEvidenceReadTurns <
         thresholds.maxPostNudgeEvidenceReadTurns;
+    const stubs = buildMissingModuleStubPatches({
+      diagnostics: repoBuildStateBefore?.diagnostics ?? [],
+      pathScopes: decision.toolGrant.pathScopes,
+      maxPatches: 6,
+    });
+    const canAutoStub =
+      stubs.length > 0 &&
+      session.mutationLockAutoStubBatches <
+        thresholds.maxMutationLockAutoStubBatches &&
+      Boolean(runtime.deps.tools);
     if (workspaceCalls.length === 0) {
       // update_todos-only: allow without consuming evidence budget.
+    } else if (canAutoStub) {
+      // Prefer creating known-missing modules over burning evidence reads on
+      // paths preflight already proved absent (BillBuddy Header.selectors).
+      session.mutationLockAutoStubBatches += 1;
+      session.postNudgeEvidenceReadTurns =
+        thresholds.maxPostNudgeEvidenceReadTurns;
+      session.forceMutationToolChoice = true;
+      reasonCodes.push("mutation_lock_auto_stub");
+      warnings.push(
+        `Mutation lock auto-creating ${stubs.length} missing module stub(s) from preflight TS2307 diagnostics.`,
+      );
+      const callId = `auto_stub_${session.mutationLockAutoStubBatches}`;
+      effectiveToolCalls = [
+        {
+          id: callId,
+          name: "apply_patch",
+          arguments: JSON.stringify({
+            patches: stubs.map((stub) => ({
+              path: stub.path,
+              oldText: stub.oldText,
+              newText: stub.newText,
+            })),
+          }),
+        },
+      ];
+      turnContentForTools =
+        "Creating missing modules from preflight diagnostics.";
+      messages.push({
+        role: "user",
+        content:
+          "The model kept rediscovering instead of editing. Mitii is creating missing modules from preflight diagnostics now; continue with apply_patch for remaining errors afterward.",
+      });
     } else if (!allowEvidenceRead) {
       const message =
         "The model tried to read/search again after the required mutation nudge.";
       warnings.push(message);
-      reasonCodes.push("unfulfilled_execute_exhausted");
       runtime.emit(bus, {
         type: "warning",
         runId,
@@ -235,30 +284,50 @@ export async function runModelLoopToolPhase(params: {
         code: "read_only_after_mutation_nudge",
         data: {
           route: decision.route,
-          requestedTools: toolCalls.map((call) => call.name).join(", "),
+          requestedTools: effectiveToolCalls.map((call) => call.name).join(", "),
         },
         at: runtime.isoNow(),
       });
       session.decision = decision;
       session.selectedSkillIds = selectedSkillIds;
-      // After an approved Continue (overrideCount > 0), do not re-open the
-      // stall UI — the user already chose to finish with a mutation.
-      const offered =
-        session.continueOverrideCount > 0
-          ? undefined
-          : tryOfferBudgetWallContinue({
-              wallReason: "unfulfilled_execute",
-              messages,
-              toolCache,
-              changedFiles,
-              mutationCheckpointIds,
-              answer,
-              decision,
-              continueOverrideCount: session.continueOverrideCount,
-              maxContinueOverrides: thresholds.maxContinueOverrides,
-              taskList: taskListRef.current,
-              mutationRequired: true,
-            });
+
+      if (
+        session.mutationLockRecoveries <
+          thresholds.maxMutationLockRecoveries &&
+        budget.canStartModelCall()
+      ) {
+        session.mutationLockRecoveries += 1;
+        session.postNudgeEvidenceReadTurns =
+          thresholds.maxPostNudgeEvidenceReadTurns;
+        session.forceMutationToolChoice = true;
+        reasonCodes.push("mutation_lock_recovered");
+        messages.push({
+          role: "user",
+          content: buildForcedMutationNudgeMessage({
+            diagnostics: repoBuildStateBefore?.diagnostics,
+            totalErrorCount: repoBuildStateBefore?.summary.errorCount,
+            pathScopes: decision.toolGrant.pathScopes,
+            requestedTools: workspaceCalls.map((call) => call.name),
+          }),
+        });
+        session.answer = answer;
+        return { kind: "continue" };
+      }
+
+      reasonCodes.push("unfulfilled_execute_exhausted");
+      const offered = tryOfferBudgetWallContinue({
+        wallReason: "unfulfilled_execute",
+        messages,
+        toolCache,
+        changedFiles,
+        mutationCheckpointIds,
+        answer,
+        decision,
+        continueOverrideCount: session.continueOverrideCount,
+        maxContinueOverrides: thresholds.maxContinueOverrides,
+        taskList: taskListRef.current,
+        mutationRequired: true,
+      });
       if (offered) {
         return { kind: "return", outcome: offered };
       }
@@ -316,8 +385,8 @@ export async function runModelLoopToolPhase(params: {
 
   messages.push({
     role: "assistant",
-    content: turnContent,
-    toolCalls,
+    content: turnContentForTools,
+    toolCalls: effectiveToolCalls,
   });
 
   runtime.emitStage(bus, runId, "tool_running", "started");
@@ -351,7 +420,7 @@ export async function runModelLoopToolPhase(params: {
       }
     | undefined;
 
-  for (const toolCall of toolCalls) {
+  for (const toolCall of effectiveToolCalls) {
     if (signal.aborted) {
       return { kind: "return", outcome: { kind: "cancelled" } };
     }

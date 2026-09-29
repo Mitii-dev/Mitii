@@ -745,8 +745,11 @@ describe("AgentEngine task list", () => {
           route: "execute",
           planningDepth: "none",
           repositoryContextRequired: false,
-          toolGrant: createWriteGrant(),
-          // Alias coverage only — do not require a workspace mutation.
+          // Alias coverage only — read grant so open checklist does not
+          // suspend as incomplete_execute / continue_required.
+          toolGrant: createReadOnlyGrant({
+            allowedTools: ["update_todos", "read_file"],
+          }),
           reasonCodes: ["execute_route"],
         }),
         llm,
@@ -789,8 +792,9 @@ describe("AgentEngine task list", () => {
           route: "execute",
           planningDepth: "none",
           repositoryContextRequired: false,
-          toolGrant: createWriteGrant(),
-          // Alias coverage only — do not require a workspace mutation.
+          toolGrant: createReadOnlyGrant({
+            allowedTools: ["update_todos", "read_file"],
+          }),
           reasonCodes: ["execute_route"],
         }),
         llm,

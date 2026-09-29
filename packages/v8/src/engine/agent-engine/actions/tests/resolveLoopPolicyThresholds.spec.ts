@@ -74,10 +74,20 @@ describe("resolveLoopPolicyThresholds", () => {
     );
   });
 
-  it("keeps base standards for the standard band", () => {
+  it("applies standard-band overrides for mid windows", () => {
     const resolved = resolveLoopPolicyBandThresholds(75_000);
     expect(resolved.band).toBe("standard");
-    expect(resolved.thresholds).toEqual({ ...AGENT_ENGINE_THRESHOLDS });
+    expect(resolved.thresholds.maxReadOnlyToolTurnsBeforeMutationNudge).toBe(
+      LOOP_POLICY_WINDOW_BAND_TABLE.standard.overrides
+        .maxReadOnlyToolTurnsBeforeMutationNudge,
+    );
+    expect(resolved.thresholds.maxPostNudgeEvidenceReadTurns).toBe(
+      LOOP_POLICY_WINDOW_BAND_TABLE.standard.overrides
+        .maxPostNudgeEvidenceReadTurns,
+    );
+    expect(resolved.thresholds.maxContinueOverrides).toBe(
+      AGENT_ENGINE_THRESHOLDS.maxContinueOverrides,
+    );
   });
 
   it("applies wide-band overrides", () => {
