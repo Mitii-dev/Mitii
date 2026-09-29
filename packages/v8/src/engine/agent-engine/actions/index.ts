@@ -246,12 +246,15 @@ export {
   extractSearchPathsFromToolOutput,
   frontendComponentDiscoveryProfile,
   matchesBrowserTestRunnerQuery,
+  monorepoDiscoveryProfile,
   hasExplicitFilePathTargets,
   isExplicitFilePathTarget,
   rankPathsForShapedDiscovery,
   resolveShapedDiscoveryProfile,
+  securityDiscoveryProfile,
   selectShapedDiscoverySeeds,
   SHAPED_DISCOVERY_PROFILES,
+  testingDiscoveryProfile,
 } from "./shapedDiscovery";
 export type { CreateShapedDiscoveryProfileInput, PathScoreRule, ShapedDiscoveryProfile } from "./shapedDiscovery";
 export {

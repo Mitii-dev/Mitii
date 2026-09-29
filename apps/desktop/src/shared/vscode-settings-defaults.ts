@@ -184,7 +184,8 @@ export const DEFAULT_DESKTOP_SETTINGS = {
     }
   },
   "agent": {
-    "taskListAutoAdvance": true
+    "taskListAutoAdvance": true,
+    "engineImplementation": "v8"
   },
   "scm": {
     "commitMessageStyle": "conventional"
@@ -1148,6 +1149,12 @@ export const SETTINGS_CATALOG: Record<string, SettingsCatalogEntry> = {
     "type": "boolean",
     "description": "Product default ON: after a successful built-in mutating tool in Agent mode, mark matching checklist items done (by changed path) and activate the next pending change item. Unmatched mutations still advance the active item at most once per model turn. The SDK/engine library default remains off when hosts do not pass taskListAutoAdvance.",
     "default": true
+  },
+  "mitii.engine.implementation": {
+    "type": "string",
+    "enum": ["legacy", "v8"],
+    "description": "Agent orchestrator implementation. `v8` is the Phase 5 default (thin rewrite). `legacy` keeps the prior Agent Engine as fallback — do not resume a run after flipping this setting.",
+    "default": "v8"
   },
   "mitii.ui.contextToggles.repoMap": {
     "type": "boolean",

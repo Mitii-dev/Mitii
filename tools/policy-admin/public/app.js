@@ -387,7 +387,12 @@ function renderBudget() {
 
 function helpLiveBlock(field, kind, preview) {
   const bandId = state.band;
-  const base = kind === 'window' ? state.data.baseWindow : state.data.baseLoop;
+  const base =
+    kind === 'window'
+      ? state.data.baseWindow
+      : kind === 'v8Loop'
+        ? state.data.baseV8Loop ?? {}
+        : state.data.baseLoop;
   const value = effectiveValue(kind, bandId, field.key, base);
   const isRatio = field.kind === 'ratio';
   const uiValue = isRatio ? ratioToPct(value) : value;
@@ -550,25 +555,34 @@ function renderAll(clearStatus = true) {
   renderBudget();
   const windowPrimary = state.data.windowFields.filter((f) => f.primary);
   const loopPrimary = state.data.loopFields.filter((f) => f.primary);
+  const v8Primary = (state.data.v8LoopFields ?? []).filter((f) => f.primary);
   const advanced = [
     ...state.data.windowFields.filter((f) => !f.primary).map((f) => ({ ...f, _kind: 'window' })),
     ...state.data.loopFields.filter((f) => !f.primary).map((f) => ({ ...f, _kind: 'loop' })),
+    ...(state.data.v8LoopFields ?? [])
+      .filter((f) => !f.primary)
+      .map((f) => ({ ...f, _kind: 'v8Loop' })),
   ];
 
   renderFieldList('#window-fields', windowPrimary, 'window', state.data.baseWindow);
   renderFieldList('#loop-fields', loopPrimary, 'loop', state.data.baseLoop);
+  const v8Root = $('#v8-loop-fields');
+  if (v8Root) {
+    renderFieldList('#v8-loop-fields', v8Primary, 'v8Loop', state.data.baseV8Loop ?? {});
+  }
 
   const advRoot = $('#advanced-fields');
   advRoot.innerHTML = '';
   for (const field of advanced) {
     const kind = field._kind;
     const { _kind, ...clean } = field;
-    renderField(
-      clean,
-      kind,
-      kind === 'window' ? state.data.baseWindow : state.data.baseLoop,
-      advRoot,
-    );
+    const base =
+      kind === 'window'
+        ? state.data.baseWindow
+        : kind === 'v8Loop'
+          ? state.data.baseV8Loop ?? {}
+          : state.data.baseLoop;
+    renderField(clean, kind, base, advRoot);
   }
 
   if (clearStatus) showStatus('');
@@ -587,6 +601,8 @@ async function load() {
   $('#preview-window').value = String(state.previewWindow);
   $('#path-loop').textContent = data.paths.loop;
   $('#path-window').textContent = data.paths.window;
+  const pathV8 = $('#path-v8');
+  if (pathV8 && data.paths.v8Loop) pathV8.textContent = data.paths.v8Loop;
   renderTabs();
   renderAll(false);
   showStatus('');

@@ -125,6 +125,18 @@ const BASE_UI: UiSettingsSnapshot = {
     },
     fields: [...LOOP_POLICY_FIELDS],
   },
+  v8LoopPolicy: {
+    enabled: false,
+    thresholds: {},
+    bandThresholds: {},
+    band: {
+      id: 'compact',
+      label: 'Compact',
+      rangeLabel: '< 50k',
+      contextWindowTokens: 32_768,
+    },
+    fields: [],
+  },
   policyLab: {
     enabled: false,
     filePath: 'packages/v8/.../loopPolicyBands.ts + windowBudgetBands.ts',

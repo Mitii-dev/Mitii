@@ -179,7 +179,8 @@
     }
   },
   "agent": {
-    "taskListAutoAdvance": true
+    "taskListAutoAdvance": true,
+    "engineImplementation": "v8"
   },
   "scm": {
     "commitMessageStyle": "conventional"

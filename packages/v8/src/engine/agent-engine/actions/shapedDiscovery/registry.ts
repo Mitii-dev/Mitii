@@ -5,6 +5,9 @@ import { buildConfigDiscoveryProfile } from "./profiles/buildConfig";
 import { ciCdDiscoveryProfile } from "./profiles/ciCd";
 import { databaseDiscoveryProfile } from "./profiles/database";
 import { frontendComponentDiscoveryProfile } from "./profiles/frontendComponent";
+import { monorepoDiscoveryProfile } from "./profiles/monorepo";
+import { securityDiscoveryProfile } from "./profiles/security";
+import { testingDiscoveryProfile } from "./profiles/testing";
 import type { ShapedDiscoveryProfile } from "./types";
 
 /**
@@ -12,11 +15,14 @@ import type { ShapedDiscoveryProfile } from "./types";
  * When priorities tie, the earlier entry wins (stable sort).
  */
 export const SHAPED_DISCOVERY_PROFILES: readonly ShapedDiscoveryProfile[] = [
+  securityDiscoveryProfile,
+  monorepoDiscoveryProfile,
   browserTestRunnerDiscoveryProfile,
   ciCdDiscoveryProfile,
   authDiscoveryProfile,
   apiBackendDiscoveryProfile,
   databaseDiscoveryProfile,
+  testingDiscoveryProfile,
   frontendComponentDiscoveryProfile,
   buildConfigDiscoveryProfile,
 ];

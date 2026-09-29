@@ -157,6 +157,17 @@ export const agentEngineStartInputSchema = z
       .strict()
       .optional(),
     /**
+     * Optional host lab overrides for v8-engine knobs (Phase 6).
+     * Merged after v8 band tables. Ignored by legacy agent-engine.
+     * Keys must match V8_ENGINE_THRESHOLDS; unknown keys stripped at resolve.
+     */
+    v8LoopPolicy: z
+      .object({
+        thresholds: z.record(z.string(), z.number()).optional(),
+      })
+      .strict()
+      .optional(),
+    /**
      * Developer-facing diagnostic detail level for this run's RunEvent
      * stream. See AGENT_LOG_VERBOSITIES. Defaults to "verbose" so bugs are
      * discoverable; hosts can turn this down when log volume matters more

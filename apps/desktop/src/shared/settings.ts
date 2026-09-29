@@ -332,6 +332,11 @@ export function settingsToEngineEnv(
   if (!settings.agent.taskListAutoAdvance) {
     env.MITII_TASK_LIST_AUTO_ADVANCE = '0';
   }
+  if (settings.agent.engineImplementation === 'legacy') {
+    env.MITII_ENGINE_IMPLEMENTATION = 'legacy';
+  } else {
+    env.MITII_ENGINE_IMPLEMENTATION = 'v8';
+  }
   if (settings.tools.applyPatch.fuzzyMatch) {
     env.MITII_APPLY_PATCH_FUZZY = '1';
   }

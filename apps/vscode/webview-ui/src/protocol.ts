@@ -291,6 +291,8 @@ export interface UiSettingsSnapshot {
   tokenBudget: TokenBudgetSettingsSnapshot;
   /** Agent Engine loop/stall threshold tunables (Debug → developer). */
   loopPolicy: LoopPolicySettingsSnapshot;
+  /** V8-engine knobs (Debug → developer). Active when engine.implementation is v8. */
+  v8LoopPolicy: LoopPolicySettingsSnapshot;
   /** Policy Admin — edits shipped V8 band tables (Save writes source). */
   policyLab: PolicyLabSettingsSnapshot;
 }
@@ -432,6 +434,7 @@ export type UiSettingsPatch = Partial<
     | 'modeDefaults'
     | 'tokenBudget'
     | 'loopPolicy'
+    | 'v8LoopPolicy'
     | 'policyLab'
     | 'features'
   > & {
@@ -446,6 +449,12 @@ export type UiSettingsPatch = Partial<
       policy?: Record<string, number>;
     };
     loopPolicy?: {
+      enabled?: boolean;
+      thresholds?: Record<string, number>;
+      bandThresholds?: Record<string, number>;
+      band?: LoopPolicyBandSnapshot;
+    };
+    v8LoopPolicy?: {
       enabled?: boolean;
       thresholds?: Record<string, number>;
       bandThresholds?: Record<string, number>;
@@ -794,6 +803,7 @@ export type WebviewToHostMessage =
   | { type: 'settings.clearSearchApiKey' }
   | { type: 'settings.resetTokenBudget' }
   | { type: 'settings.resetLoopPolicy' }
+  | { type: 'settings.resetV8LoopPolicy' }
   | {
       type: 'settings.savePolicyLab';
       policyLab: PolicyLabSettingsSnapshot;

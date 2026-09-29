@@ -64,6 +64,7 @@ import { readModelIoLoggingEnabled } from './modelIoSettings.js';
 import { deriveLiveTokenBudgetPreview } from './liveTokenBudgetPreview.js';
 import { readTokenBudgetPolicyOverrides } from './tokenBudgetSettings.js';
 import { readLoopPolicyThresholdOverrides } from './loopPolicySettings.js';
+import { readV8LoopPolicyThresholdOverrides } from './v8LoopPolicySettings.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
 import { rehydrateRepositoryStateFromDisk } from './rehydrateRepositoryState.js';
 import {
@@ -472,6 +473,7 @@ export async function runAskInOutputChannel(options: {
     ];
     const runStartedAt = new Date().toISOString();
     const loopPolicyThresholds = readLoopPolicyThresholdOverrides(cfg);
+    const v8LoopPolicyThresholds = readV8LoopPolicyThresholdOverrides(cfg);
     const effort =
       options.effort === 'low' ||
       options.effort === 'high' ||
@@ -532,6 +534,9 @@ export async function runAskInOutputChannel(options: {
       },
       ...(loopPolicyThresholds
         ? { loopPolicy: { thresholds: loopPolicyThresholds } }
+        : {}),
+      ...(v8LoopPolicyThresholds
+        ? { v8LoopPolicy: { thresholds: v8LoopPolicyThresholds } }
         : {}),
       ...(mergedProjectRules.length > 0
         ? { projectRules: [...mergedProjectRules] }

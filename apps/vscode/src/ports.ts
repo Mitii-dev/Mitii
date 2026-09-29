@@ -369,6 +369,14 @@ export async function createVscodeClient(
       vs.workspace
         .getConfiguration('mitii')
         .get<boolean>('agent.taskListAutoAdvance') ?? true,
+    engineImplementation: (() => {
+      const raw = vs.workspace
+        .getConfiguration('mitii')
+        .get<string>('engine.implementation');
+      if (raw === 'legacy') return 'legacy';
+      if (raw === 'v8') return 'v8';
+      return 'v8';
+    })(),
     ...(workspaceRoot
       ? { checkpointStore: createWorkspaceCheckpointStore(workspaceRoot) }
       : {}),

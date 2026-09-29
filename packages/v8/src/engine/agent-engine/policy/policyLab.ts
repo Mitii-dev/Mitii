@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { windowBudgetPolicyOverridesSchema } from "../../../modules/window-budget/contracts";
 import { agentEngineThresholdsOverridesSchema } from "../actions/resolveAgentEngineThresholds";
+import { v8EngineThresholdsOverridesSchema } from "../../v8-engine/policy";
 
 /**
  * Policy Lab schema version. Bump only when the file shape breaks.
@@ -26,6 +27,15 @@ const bandWindowMapSchema = z
   .strict()
   .default({});
 
+const bandV8LoopMapSchema = z
+  .object({
+    compact: v8EngineThresholdsOverridesSchema.optional(),
+    standard: v8EngineThresholdsOverridesSchema.optional(),
+    wide: v8EngineThresholdsOverridesSchema.optional(),
+  })
+  .strict()
+  .default({});
+
 /**
  * Workspace lab file (`.mitii/policy-lab.json`).
  *
@@ -42,6 +52,8 @@ export const policyLabFileSchema = z
     previewContextWindowTokens: z.number().int().positive().optional(),
     loop: bandLoopMapSchema,
     window: bandWindowMapSchema,
+    /** Phase 6: v8-engine ship knobs per band. */
+    v8Loop: bandV8LoopMapSchema,
   })
   .strict();
 
@@ -52,6 +64,7 @@ export const EMPTY_POLICY_LAB: PolicyLabFile = {
   enabled: false,
   loop: {},
   window: {},
+  v8Loop: {},
 };
 
 /**

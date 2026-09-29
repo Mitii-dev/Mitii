@@ -1,5 +1,6 @@
 import type { AgentEngineThresholdsOverrides } from "../actions/resolveAgentEngineThresholds";
 import type { WindowBudgetPolicyOverrides } from "../../../modules/window-budget/contracts";
+import type { V8EngineThresholdsOverrides } from "../../v8-engine/policy";
 import {
   resolveWindowBudgetBand,
   type WindowBudgetBand,
@@ -20,6 +21,7 @@ export interface ResolvedPolicyLabOverrides {
   band: LoopPolicyWindowBand & WindowBudgetBand;
   loopOverrides: AgentEngineThresholdsOverrides | undefined;
   windowOverrides: WindowBudgetPolicyOverrides | undefined;
+  v8LoopOverrides: V8EngineThresholdsOverrides | undefined;
 }
 
 /**
@@ -41,21 +43,26 @@ export function resolvePolicyLabOverrides(
       band: activeBand,
       loopOverrides: undefined,
       windowOverrides: undefined,
+      v8LoopOverrides: undefined,
     };
   }
 
   const loopRaw = lab.loop[activeBand];
   const windowRaw = lab.window[activeBand];
+  const v8Raw = lab.v8Loop?.[activeBand];
   const loopOverrides =
     loopRaw && Object.keys(loopRaw).length > 0 ? loopRaw : undefined;
   const windowOverrides =
     windowRaw && Object.keys(windowRaw).length > 0 ? windowRaw : undefined;
+  const v8LoopOverrides =
+    v8Raw && Object.keys(v8Raw).length > 0 ? v8Raw : undefined;
 
   return {
     enabled: true,
     band: activeBand,
     loopOverrides,
     windowOverrides,
+    v8LoopOverrides,
   };
 }
 

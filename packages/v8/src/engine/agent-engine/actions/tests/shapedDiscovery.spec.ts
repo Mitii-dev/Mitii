@@ -23,13 +23,16 @@ import {
 } from "../shapedDiscovery";
 
 describe("SHAPED_DISCOVERY_PROFILES registry", () => {
-  it("registers all domain profiles from project-goals/ref/profiles.md", () => {
+  it("registers domain profiles including Phase 6 monorepo/security/testing", () => {
     expect(SHAPED_DISCOVERY_PROFILES.map((profile) => profile.id)).toEqual([
+      "security",
+      "monorepo",
       "browser_test_runner",
       "ci_cd",
       "auth",
       "api_backend",
       "database",
+      "testing",
       "frontend_component",
       "build_config",
     ]);
@@ -51,11 +54,13 @@ describe("resolveShapedDiscoveryProfile", () => {
     ).toBeUndefined();
   });
 
-  it("does not match pure unit-test runner asks", () => {
+  it("does not match pure unit-test runner asks to the browser profile", () => {
     expect(
-      resolveShapedDiscoveryProfile("add jest unit tests for login service"),
-    ).toBeUndefined();
-    expect(resolveShapedDiscoveryProfile("fix vitest configuration")).toBeUndefined();
+      resolveShapedDiscoveryProfile("add jest unit tests for login service")?.id,
+    ).toBe("testing");
+    expect(resolveShapedDiscoveryProfile("fix vitest configuration")?.id).toBe(
+      "testing",
+    );
   });
 
   it("resolves additional domain profiles", () => {
