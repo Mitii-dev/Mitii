@@ -19,7 +19,8 @@ Tool Runtime never decides that a tool should be allowed. It only enforces the g
 
 ```text
 tool-runtime/
-  pipeline/                 ToolRuntimePipeline and execution helpers
+  catalog/                  Zod schemas by family (≤600); defineTool
+  pipeline/                 ToolRuntimePipeline + preflight stages
   contracts/
     input/                  ToolInvocationInput
     output/                 ToolResult, ToolCapability
@@ -27,8 +28,9 @@ tool-runtime/
     errors/                 ToolRuntimeErrors
   actions/                  Grant validation, mutation batch validation, built-ins
   adapters/                 Node and in-memory host adapters
-  internal/                 Registry, shadow authorization, sanitization, budgets
-  tests/                    Registry, grant, mutation, network, command tests
+  constants.ts              ONE built-in ID list (Decision Policy re-exports)
+  internal/                 Registry, shadow, normalize/, sanitization, budgets
+  tests/                    Registry, grant, mutation, ID-contract, network tests
 ```
 
 ## Main Types
@@ -55,9 +57,24 @@ tool-runtime/
   string `maxMatches`, `run_readonly_command`/`run_command` `command` →
   `argv`, and numeric strings for ZodNumber fields.
 - Process execution always goes through `ProcessPort`.
+  Soft file-edit guard: `run_readonly_command` always rejects argv that looks
+  like file mutation (`rm`, `mv`, mutating `git`/`npm` subcommands, redirects).
+  `run_command` applies the same heuristic when `softBlockMutatingCommands` is
+  set on execute options (plan-mode defense). Not a shell interpreter.
+- Mutation tools serialize concurrent calls that touch the same relative path
+  (per-path queue). Distinct paths still run in parallel.
+- `apply_patch` accepts optional `dryRun: true` to validate/preview without
+  writing (`checkpointId: "dry_run"`); post-edit diagnostics are skipped.
 - Network access always goes through `NetworkPort` and host allow-lists.
 - Output is bounded by the minimum of tool, grant, and session limits.
-- `search_files.path` may be a file or a directory. Adapters MUST stat the
+  When the serialized result still exceeds that budget, Tool Runtime replaces
+  the payload with a head/tail `_mitiiBounded` preview and optionally stores
+  the full UTF-8 blob via `ToolOutputSpillPort` (`outputSpill`). Hosts inject
+  `InMemoryToolOutputSpillAdapter` by default; durable disk spill is optional.
+- **Host port checklist (parity):** VS Code / CLI / Desktop / ACP / automation
+  all inject `createHostNetworkPort` + `NodeGitAdapter` + optional
+  `createOptionalSearchPort` (omit SearchPort → Decision Policy hides
+  `web_search`). `hasSearchPort()` gates honest grant expansion.- `search_files.path` may be a file or a directory. Adapters MUST stat the
   root before `readdir`; a file root returns that single file.
 - `search_files` stays line-oriented and returns structured matches. Its
   contract supports `mode: "auto" | "literal" | "regex"` so hosts and models
@@ -97,6 +114,11 @@ tool-runtime/
 - **`ToolAdversaryPort`:** optional restrict-only fence after ValidateGrant /
   shadow and before approval. BLOCK → `tool_not_allowed`; ASK →
   `approval_required`. Fail-closed by default. Never widens grants.
+  High-risk set (`ADVERSARY_HIGH_RISK_TOOL_IDS`): `run_command`, deletes,
+  network fetch/search, and GitHub writes. **`apply_patch` is intentionally
+  omitted** — mutation budget, path scopes, exact-patch reason codes, and
+  approval already cover write risk; adversary would only add latency/noise on
+  the hottest path. Hosts may still wrap `apply_patch` via approval modes.
 
 ## Ownership Boundaries
 

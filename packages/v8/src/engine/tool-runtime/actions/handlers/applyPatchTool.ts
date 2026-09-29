@@ -6,15 +6,23 @@ import {
 } from "../../internal/ToolCatalog";
 import { MutationError } from "../../internal/mutation";
 import type { DiagnosticItem } from "../../contracts";
+import {
+  DEFAULT_FALLBACK_MUTATION_BUDGET,
+  MAX_APPLY_PATCH_PATCHES,
+} from "../../defaults";
 import { executeApplyPatch } from "../ExecuteApplyPatch";
 import { collectPostEditDiagnostics } from "../collectPostEditDiagnostics";
+
+/** Model nudge = preferredBatchSize; Zod / grant hard max = MAX_APPLY_PATCH_PATCHES. */
+const APPLY_PATCH_MODEL_MAX_ITEMS =
+  DEFAULT_FALLBACK_MUTATION_BUDGET.preferredBatchSize;
 
 export const applyPatchTool: RegisteredTool = {
   definition: defineTool({
     name: "apply_patch",
     effects: ["workspace_write"],
     description:
-      "Apply structured oldText/newText patches inside a recoverable transaction. Arguments MUST be `{ \"patches\": [ { \"path\", \"oldText\", \"newText\" } ] }` — `patches` is a JSON array (not a string). Do not send a flat `{ path, oldText, newText }` object. Default is exact unique oldText match (no regex). Set replaceAll=true to replace every exact occurrence in that file. Set fuzzyMatch=true for bounded recovery when exact oldText is missing (trim / indent / ±5 line window); ambiguous fuzzy hits return patch_fuzzy_ambiguous. Batch to the mutation budget on this grant (preferredBatchSize / maxUniqueFilesPerCall; catalog max 20 unique files). Use minimal hunks — never rewrite many whole files in one response; continue across turns for large refactors. Create new files with oldText=\"\". Distinct rejections: old_text_not_found, old_text_ambiguous, patch_fuzzy_ambiguous, patch_target_missing, patch_hash_mismatch, identical_old_and_new, patch_syntax_invalid. For deletes use delete_file/delete_directory; for renames/moves use move_file.",
+      `Apply structured oldText/newText patches inside a recoverable transaction. Arguments MUST be \`{ "patches": [ { "path", "oldText", "newText" } ] }\` — \`patches\` is a JSON array (not a string). Do not send a flat \`{ path, oldText, newText }\` object. Default is exact unique oldText match (no regex). Set replaceAll=true to replace every exact occurrence in that file. Set fuzzyMatch=true for bounded recovery when exact oldText is missing (trim / indent / ±5 line window); ambiguous fuzzy hits return patch_fuzzy_ambiguous. Set dryRun=true to validate and preview without writing (checkpointId "dry_run"). Batch to the mutation budget on this grant (preferredBatchSize ${APPLY_PATCH_MODEL_MAX_ITEMS} / maxUniqueFilesPerCall; catalog hard max ${MAX_APPLY_PATCH_PATCHES}). Use minimal hunks — never rewrite many whole files in one response; continue across turns for large refactors. Create new files with oldText="". Distinct rejections: old_text_not_found, old_text_ambiguous, patch_fuzzy_ambiguous, patch_target_missing, patch_hash_mismatch, identical_old_and_new, patch_syntax_invalid. For deletes use delete_file/delete_directory; for renames/moves use move_file.`,
     inputSchema: applyPatchInputSchema,
     outputSchema: applyPatchOutputSchema,
     modelInputSchema: {
@@ -35,8 +43,9 @@ export const applyPatchTool: RegisteredTool = {
             required: ["path", "oldText", "newText"],
           },
           minItems: 1,
-          maxItems: 12,
+          maxItems: APPLY_PATCH_MODEL_MAX_ITEMS,
         },
+        dryRun: { type: "boolean" },
       },
       required: ["patches"],
     },
@@ -51,6 +60,17 @@ export const applyPatchTool: RegisteredTool = {
     }
 
     const parsed = applyPatchInputSchema.parse(ctx.arguments);
+    if (parsed.dryRun === true) {
+      return executeApplyPatch({
+        arguments: ctx.arguments,
+        grant: ctx.grant,
+        workspaceRoot: ctx.workspaceRoot,
+        fileSystem: ctx.ports.fileSystem,
+        transactions: ctx.transactions,
+        dirtyPaths: ctx.dirtyPaths,
+        alreadyMutatedPaths: ctx.alreadyMutatedPaths,
+      });
+    }
     // Creates use oldText "". Baseline diagnostics on those paths throw in the
     // host TS service ("Could not find source file") and used to abort the
     // write before executeApplyPatch ran — skip creates for baseline.

@@ -105,6 +105,7 @@ export {
   WorkspaceFileSystemManifestReader,
   InMemoryManifestReader,
   InMemoryDiagnosticsAdapter,
+  InMemoryToolOutputSpillAdapter,
   NodeWorkspaceFileSystemAdapter,
   NodeProcessAdapter,
   NodeNetworkAdapter,

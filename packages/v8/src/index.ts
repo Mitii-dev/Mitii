@@ -134,6 +134,12 @@ export type {
   NetworkPort, NetworkFetchRequest, NetworkFetchResult,
   SearchPort, RepositoryGraphPort, ProcessPort,
   ProcessExecRequest, ProcessExecResult,
+  ToolOutputSpillPort, ToolOutputSpillStoreRequest, ToolOutputSpillStoreResult,
+} from "./engine/tool-runtime";
+export {
+  InMemoryToolOutputSpillAdapter,
+  boundToolOutput,
+  isMitiiBoundedToolOutput,
 } from "./engine/tool-runtime";
 export { VerificationPipeline } from "./modules/verification";
 export {

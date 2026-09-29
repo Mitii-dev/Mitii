@@ -3,6 +3,7 @@ import type { ToolGrant } from "../../../modules/decision-policy";
 import type { ProcessPort } from "../contracts";
 import { validateReadonlyCommand } from "../internal/CommandPolicy";
 import { sanitizeTextOutput } from "../internal/OutputSanitizer";
+import { assertSoftNonMutatingCommand } from "../internal/softMutatingCommandGuard";
 import {
   runReadonlyCommandInputSchema,
   runReadonlyCommandOutputSchema,
@@ -28,6 +29,8 @@ export async function executeRunReadonlyCommand(params: {
     argv: input.argv,
     commandRules: params.grant.commandRules,
   });
+  // Readonly tool: always soft-block file-edit looking argv (plan-mode defense).
+  assertSoftNonMutatingCommand(validated.argv);
 
   const result = await params.process.execFile({
     argv: validated.argv,

@@ -3,6 +3,7 @@ import type { ToolGrant } from "../../../modules/decision-policy";
 import type { ProcessPort } from "../contracts";
 import { validateReadonlyCommand } from "../internal/CommandPolicy";
 import { sanitizeTextOutput } from "../internal/OutputSanitizer";
+import { assertSoftNonMutatingCommand } from "../internal/softMutatingCommandGuard";
 import {
   runCommandInputSchema,
   runCommandOutputSchema,
@@ -23,6 +24,8 @@ export async function executeRunCommand(params: {
   timeoutMs: number;
   maxOutputBytes: number;
   signal?: AbortSignal;
+  /** When true, apply soft file-edit heuristic (plan-mode defense). */
+  softBlockMutatingCommands?: boolean;
 }): Promise<{
   output: unknown;
   truncated: boolean;
@@ -61,6 +64,9 @@ export async function executeRunCommand(params: {
     argv: input.argv,
     commandRules: params.grant.commandRules,
   });
+  if (params.softBlockMutatingCommands === true) {
+    assertSoftNonMutatingCommand(validated.argv);
+  }
 
   const result = await params.process.execFile({
     argv: validated.argv,
