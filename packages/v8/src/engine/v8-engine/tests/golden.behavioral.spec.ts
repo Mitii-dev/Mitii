@@ -10,13 +10,13 @@ import {
   truncationWarningMessage,
 } from "../actions";
 import { V8EnginePipeline } from "../pipeline/V8EnginePipeline";
-import { InMemoryRunCheckpointStore } from "../../agent-engine/adapters";
+import { InMemoryRunCheckpointStore } from "../adapters";
 import {
   createDecision,
   createReadOnlyGrant,
   createStubDependencies,
   ScriptedLlmPort,
-} from "../../agent-engine/tests/fixtures/stubs";
+} from "../tests/fixtures/stubs";
 
 describe("v8-engine golden — user paths vs preflight", () => {
   it("does not force preflight repair lock for a multi-test dump vs unrelated CSS diagnostics", () => {

@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
-  "version": "2.9.111",
+  "version": "2.9.112",
   "publisher": "mitii",
   "license": "AGPL-3.0-or-later",
   "icon": "media/mitii-logo.png",
@@ -1245,7 +1245,7 @@
             "v8"
           ],
           "default": "v8",
-          "description": "Agent orchestrator implementation. `v8` is the Phase 5 default (thin rewrite). `legacy` keeps the prior Agent Engine as fallback — do not resume a run after flipping this setting."
+          "description": "Agent orchestrator. Only `v8` exists after Phase 10 (`agent-engine/` deleted). `legacy` is accepted for host compatibility and always resolves to `v8`."
         },
         "mitii.ui.contextToggles.repoMap": {
           "type": "boolean",

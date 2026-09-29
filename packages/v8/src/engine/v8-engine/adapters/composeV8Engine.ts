@@ -25,8 +25,8 @@ import type {
   AgentEngineClockPort,
   AgentEngineIdGeneratorPort,
 } from "../contracts";
-import type { AgentEngineRunCheckpointStorePort } from "../../agent-engine/internal/RunCheckpoint";
-import { createAgentEngineReviewPort } from "../../agent-engine/adapters/createAgentEngineReviewPort";
+import type { AgentEngineRunCheckpointStorePort } from "../internal/RunCheckpoint";
+import { createReviewPort } from "./createReviewPort";
 import { V8EnginePipeline } from "../pipeline/V8EnginePipeline";
 
 export interface ComposeV8EngineOptions {
@@ -122,7 +122,7 @@ export function composeV8Engine(
     repoGraphs: options.repoGraphs,
     verification: options.verification,
     review: options.review
-      ? createAgentEngineReviewPort(options.review)
+      ? createReviewPort(options.review)
       : undefined,
     checkpointStore: options.checkpointStore,
     toolDefinitions: options.toolDefinitions,

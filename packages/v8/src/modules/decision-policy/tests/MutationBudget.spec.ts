@@ -39,6 +39,7 @@ describe("ResolveMutationBudget", () => {
 
     const planning = resolveMutationBudget({
       understanding: createUnderstanding({
+        primaryTaskIntent: "docs",
         taskAnalysis: {
           scope: "package",
           complexity: "moderate",
@@ -48,6 +49,22 @@ describe("ResolveMutationBudget", () => {
       }),
     });
     expect(planning.profile).toBe("tight");
+  });
+
+  it("keeps bugfix on standard when planning is recommended but the file span is small", () => {
+    const result = resolveMutationBudget({
+      understanding: createUnderstanding({
+        primaryTaskIntent: "bugfix",
+        taskAnalysis: {
+          scope: "multi_file",
+          complexity: "complex",
+          estimatedFilesAffected: { minimum: 2, maximum: 6 },
+          recommendsPlanning: true,
+        },
+      }),
+    });
+    expect(result.profile).toBe("standard");
+    expect(result.reasonCodes).toContain("mutation_budget_standard");
   });
 
   it("selects standard for moderate execute work", () => {

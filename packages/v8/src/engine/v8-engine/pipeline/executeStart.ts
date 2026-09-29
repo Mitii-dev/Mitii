@@ -5,27 +5,27 @@ import type {
 } from "../../../modules/planning";
 import {
   PROMPT_CONSTRUCTION_SCHEMA_VERSION,
+  mergePromptInstructions,
   type PromptInstructions,
 } from "../../../modules/prompt-construction";
 import {
   compileDecisionBrief,
   formatDecisionBriefForPrompt,
 } from "../../../modules/decision-policy";
-import { resolveSteeringFeatureFlags } from "../../agent-engine/steeringFlags";
+import { resolveSteeringFeatureFlags } from "../legacy/steeringFlags";
 import {
   annotateMutationToolDefinitions,
   applyExplorationSignal,
   clampRunBudget,
   toRunUsage,
-  mergePromptInstructions,
   createInitialRunEvidence,
   finalizeRunEvidence,
-} from "../../agent-engine/actions";
+} from "../actions";
 import { filterToolDefinitions } from "../actions/progressiveTools";
 import { withMcpAttachOnGrant, formatMcpAttachInstruction } from "../../../modules/mcp-attach";
-import type { EstablishedFact } from "../../agent-engine/actions";
-import { ToolCallCache } from "../../agent-engine/internal/ToolCallCache";
-import { AGENT_ENGINE_SCHEMA_VERSION } from "../../agent-engine/constants";
+import type { EstablishedFact } from "../actions";
+import { ToolCallCache } from "../internal/ToolCallCache";
+import { AGENT_ENGINE_SCHEMA_VERSION } from "../legacy/constants";
 import {
   agentRunBudgetSchema,
   agentRunResultSchema,
@@ -35,24 +35,24 @@ import type {
   AgentReasonCode,
   AgentRunResult,
 } from "../contracts";
-import { EventBus } from "../../agent-engine/internal/EventBus";
-import { RunBudgetTracker } from "../../agent-engine/internal/RunBudget";
-import { logVerbosityAtLeast } from "../../agent-engine/internal/logVerbosity";
+import { EventBus } from "../internal/EventBus";
+import { RunBudgetTracker } from "../internal/RunBudget";
+import { logVerbosityAtLeast } from "../internal/logVerbosity";
 import {
   attachTaskListTool,
   type TaskListRef,
-} from "../../agent-engine/internal/taskListRuntime";
-import { DEFAULT_TOOL_DEFINITIONS } from "../../agent-engine/policy";
+} from "../internal/taskListRuntime";
+import { DEFAULT_TOOL_DEFINITIONS } from "../legacy/policy";
 import { extractPrimaryUserMessage } from "../../../modules/request-understanding/intent/extractPrimaryUserMessage";
 
-import type { AgentEngineRuntime } from "../../agent-engine/pipeline/runtime";
-import { resolveWorkspaceId } from "../../agent-engine/pipeline/runtime";
-import { finishAfterLoop, persistVerificationArtifact } from "../../agent-engine/pipeline/verification";
+import type { AgentEngineRuntime } from "./runtime";
+import { resolveWorkspaceId } from "./runtime";
+import { finishAfterLoop, persistVerificationArtifact } from "./verification";
 import {
   runStartEarlyPipeline,
   type ExecuteStartSharedState,
-} from "../../agent-engine/pipeline/executeStartEarlyPipeline";
-import { runStartEnrichment } from "../../agent-engine/pipeline/executeStartEnrichment";
+} from "./executeStartEarlyPipeline";
+import { runStartEnrichment } from "./executeStartEnrichment";
 
 import { shouldForcePreflightRepairLock } from "../actions/userPathPriority";
 import { runV8ModelLoop } from "./modelLoop";
@@ -539,6 +539,10 @@ export async function executeV8Start(
       thresholdOverrides: input.v8LoopPolicy?.thresholds,
       criticMode: steering.criticMode,
       understanding,
+      repoBuildStateBefore: shared.repoBuildStateBefore,
+      memoryFacts,
+      logVerbosity: input.logVerbosity,
+      selectedSkillIds: selectedSkills?.map((block) => block.id) ?? [],
     });
 
     return await finishAfterLoop(runtime, {

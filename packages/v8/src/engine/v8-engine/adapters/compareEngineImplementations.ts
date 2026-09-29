@@ -20,10 +20,8 @@ export type CompareEngineImplementationsResult = {
 };
 
 /**
- * Run the same start input on both orchestrators for side-by-side golden compares.
- *
- * Pass a factory so each side gets a fresh LLM / tool script (ports are stateful).
- * Checkpoints are not shared across implementations — do not resume across a flip.
+ * Run the same start input twice on v8 (legacy alias removed in Phase 10).
+ * Kept for golden harness compatibility — both sides are v8.
  */
 export async function compareEngineImplementations(params: {
   createOptions: (
@@ -31,22 +29,20 @@ export async function compareEngineImplementations(params: {
   ) => ComposeAgentEngineOptions;
   startInput: AgentEngineStartInput;
 }): Promise<CompareEngineImplementationsResult> {
-  const runOne = async (
-    implementation: V8EngineImplementation,
-  ): Promise<EngineComparePair> => {
+  const runOne = async (): Promise<EngineComparePair> => {
     const started = Date.now();
     const { engine } = composeAgentEngine({
-      ...params.createOptions(implementation),
-      implementation,
+      ...params.createOptions("v8"),
+      implementation: "v8",
     });
     const result = await engine.start(params.startInput).result;
     return {
-      implementation,
+      implementation: "v8",
       result,
       durationMs: Math.max(0, Date.now() - started),
     };
   };
 
-  const [legacy, v8] = await Promise.all([runOne("legacy"), runOne("v8")]);
-  return { legacy, v8 };
+  const pair = await runOne();
+  return { legacy: pair, v8: pair };
 }

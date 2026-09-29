@@ -3,6 +3,8 @@
  * Keep free of vscode / React imports so the webview can mirror these types.
  */
 
+import type { V8LoopPolicySettingsSnapshot } from './v8LoopPolicySettings.js';
+
 export type AgentUiMode = 'ask' | 'plan' | 'agent' | 'review' | 'database';
 export type AgentUiDepth = 'auto' | 'quick' | 'deep';
 export type AgentUiEffort = 'low' | 'medium' | 'high';
@@ -292,7 +294,7 @@ export interface UiSettingsSnapshot {
   /** Agent Engine loop/stall threshold tunables (Debug → developer). */
   loopPolicy: LoopPolicySettingsSnapshot;
   /** V8-engine knobs (Debug → developer). Active when engine.implementation is v8. */
-  v8LoopPolicy: LoopPolicySettingsSnapshot;
+  v8LoopPolicy: V8LoopPolicySettingsSnapshot;
   /** Policy Admin — edits shipped V8 band tables (Save writes source). */
   policyLab: PolicyLabSettingsSnapshot;
 }

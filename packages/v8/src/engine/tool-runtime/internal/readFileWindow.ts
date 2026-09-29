@@ -142,7 +142,7 @@ export function selectLineWindow(request: LineWindowRequest): LineWindowResult {
     const capped = requestedStart - 1 + maxLines;
     if (capped < endExclusive) {
       endExclusive = capped;
-      reason = reason ?? "max_lines";
+      reason = "max_lines";
     }
   }
 
@@ -193,24 +193,28 @@ export function selectLineWindow(request: LineWindowRequest): LineWindowResult {
   const reachedLastLoadedLine = endLine >= lines.length;
   const reachedFileEof = textIsComplete && reachedLastLoadedLine;
 
-  // Explicit mid-file range: more of the file exists beyond endLine.
-  const rangeLeavesRemainder =
-    reason === "line_range" &&
-    textIsComplete &&
+  // An explicit start/end that was fully returned is not a grant cut.
+  // eof and nextStartLine still say the file continues past the window.
+  const requestedRangeSatisfied =
     requestedEnd !== undefined &&
-    requestedEnd < lines.length;
+    endIndex >= Math.min(requestedEnd, lines.length) &&
+    reason !== "model_budget" &&
+    reason !== "max_lines" &&
+    reason !== "byte_cap";
+  if (requestedRangeSatisfied && textIsComplete) {
+    reason = undefined;
+  } else if (!textIsComplete && reason !== "model_budget" && reason !== "max_lines") {
+    reason = "byte_cap";
+  }
 
   const truncated =
     reason === "model_budget" ||
     reason === "max_lines" ||
-    reason === "byte_cap" ||
-    rangeLeavesRemainder ||
-    !reachedFileEof ||
-    (reason === "line_range" && rangeLeavesRemainder);
+    reason === "byte_cap";
 
   // EOF only when the window includes the last line of a complete file.
-  // A mid-file line_range is not EOF even if that range itself is complete.
-  const eof = reachedFileEof && !rangeLeavesRemainder;
+  // A mid-file explicit range is not EOF even when that range was fully returned.
+  const eof = reachedFileEof;
 
   const nextStartLine = eof ? undefined : endLine + 1;
 

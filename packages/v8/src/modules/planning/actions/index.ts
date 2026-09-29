@@ -30,3 +30,6 @@ export {
   inferPlanStrategyFromArtifact,
 } from "./CompactPlan";
 export type { CompactPlanResult } from "./CompactPlan";
+
+export { mapUnderstandingToPlanningEvidence } from "./mapUnderstandingToPlanningEvidence";
+export { collectPlanningImpactReports } from "./collectPlanningImpactReports";

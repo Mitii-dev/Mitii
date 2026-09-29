@@ -15,9 +15,9 @@ import {
   createAgentEngineRuntime,
   createRunHandle,
   resolveAgentEngineDeps,
-} from "../../agent-engine/pipeline/runtime";
-import type { AgentEngineRuntime } from "../../agent-engine/pipeline/runtime";
-import { executeRestore } from "../../agent-engine/pipeline/executeRestore";
+} from "./runtime";
+import type { AgentEngineRuntime } from "./runtime";
+import { executeRestore } from "./executeRestore";
 import { executeV8Start } from "./executeStart";
 import { executeV8Resume } from "./executeResume";
 

@@ -724,8 +724,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
                         })
                       }
                     >
-                      <option value="v8">V8 (default)</option>
-                      <option value="legacy">Legacy (fallback)</option>
+                      <option value="v8">V8 (sole orchestrator)</option>
+                      <option value="legacy">Legacy (alias → v8)</option>
                     </select>
                   </Field>
                   <label className="checkbox-row">

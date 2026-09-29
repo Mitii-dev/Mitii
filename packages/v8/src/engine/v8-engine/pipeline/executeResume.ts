@@ -4,10 +4,8 @@ import {
   applyExplorationSignal,
   clampRunBudget,
   toRunUsage,
-} from "../../agent-engine/actions";
-import { buildBudgetWallResetMessage } from "../../agent-engine/actions/buildStallContinueRationale";
-import type { BudgetWallReason } from "../../agent-engine/actions/buildStallContinueRationale";
-import { AGENT_ENGINE_SCHEMA_VERSION } from "../../agent-engine/constants";
+} from "../actions";
+import { AGENT_ENGINE_SCHEMA_VERSION } from "../legacy/constants";
 import {
   AgentEngineError,
   agentRunBudgetSchema,
@@ -15,31 +13,28 @@ import {
 } from "../contracts";
 import type {
   AgentEngineResumeInput,
-  AgentEngineStartInput,
   AgentReasonCode,
   AgentRunResult,
 } from "../contracts";
-import { EventBus } from "../../agent-engine/internal/EventBus";
-import { RunBudgetTracker } from "../../agent-engine/internal/RunBudget";
-import type { TaskListRef } from "../../agent-engine/internal/taskListRuntime";
-import type { AgentEngineRuntime } from "../../agent-engine/pipeline/runtime";
-import { resolveWorkspaceId } from "../../agent-engine/pipeline/runtime";
+import { EventBus } from "../internal/EventBus";
+import { RunBudgetTracker } from "../internal/RunBudget";
+import type { TaskListRef } from "../internal/taskListRuntime";
+import type { AgentEngineRuntime } from "./runtime";
+import { resolveWorkspaceId } from "./runtime";
+import { persistVerificationArtifact } from "./verification";
 import {
-  commitMutations,
-  persistVerificationArtifact,
-} from "../../agent-engine/pipeline/verification";
-import {
-  DEFAULT_MUTATING_TOOL_NAMES,
-  executeOneTool,
-} from "../../agent-engine/pipeline/executeTool";
-import { ReadLedger } from "../../agent-engine/internal/ReadLedger";
-import { ToolCallCache } from "../../agent-engine/internal/ToolCallCache";
-
-import { executeV8Start } from "./executeStart";
-import { resumeV8ToolLoopFromCheckpoint } from "./resumeToolLoop";
+  handleApprovalResume,
+  handleClarificationResume,
+  handleContinueResume,
+  handleGrantExpansionResume,
+  handlePlanApprovalResume,
+  type ResumeFinish,
+  type ResumeHandlerContext,
+} from "./executeResumeHandlers";
 
 /**
- * Resume a suspended v8-engine run (Continue / clarify / plan / approval).
+ * Resume a suspended v8-engine run (Continue / clarify / plan / approval /
+ * grant expansion).
  */
 export async function executeV8Resume(
   runtime: AgentEngineRuntime,
@@ -112,21 +107,7 @@ export async function executeV8Resume(
     excludedWaitMs,
   );
 
-  const finish = (
-    partial: Omit<
-      AgentRunResult,
-      | "schemaVersion"
-      | "runId"
-      | "requestId"
-      | "usage"
-      | "durationMs"
-      | "warnings"
-      | "reasonCodes"
-    > & {
-      reasonCodes?: AgentReasonCode[];
-      warnings?: string[];
-    },
-  ): AgentRunResult => {
+  const finish: ResumeFinish = (partial) => {
     const usageSnap = budget.snapshot();
     const finalReasonCodes = [...(partial.reasonCodes ?? reasonCodes)];
     const finalWarnings = [...warnings, ...(partial.warnings ?? [])];
@@ -195,245 +176,58 @@ export async function executeV8Resume(
     });
   };
 
+  const ctx: ResumeHandlerContext = {
+    runtime,
+    runId,
+    requestId,
+    input,
+    checkpoint,
+    startInput,
+    decision,
+    bus,
+    signal,
+    getCancelReason,
+    budget,
+    reasonCodes,
+    warnings,
+    taskListRef,
+    windowPolicy,
+    pinnedState,
+    finish,
+    cancelledResult,
+    repoBuildStateAfter,
+    setRepoBuildStateAfter: (state) => {
+      repoBuildStateAfter = state;
+    },
+    setVerificationRecord: (record) => {
+      verificationRecord = record;
+    },
+    resumeBudget: resumeBudgetClamp.budget,
+    excludedWaitMs,
+  };
+
   try {
     if (signal.aborted) {
       return await cancelledResult();
     }
 
-    if (checkpoint.suspensionKind === "clarification_required") {
-      if (!input.clarificationAnswer) {
+    switch (checkpoint.suspensionKind) {
+      case "clarification_required":
+        return await handleClarificationResume(ctx);
+      case "plan_approval_required":
+        return await handlePlanApprovalResume(ctx);
+      case "grant_expansion_required":
+        return await handleGrantExpansionResume(ctx);
+      case "continue_required":
+        return await handleContinueResume(ctx);
+      case "approval_required":
+        return await handleApprovalResume(ctx);
+      default:
         throw new AgentEngineError(
           "invalid_input",
-          "Resuming a clarification-required run requires clarificationAnswer.",
+          `V8 Engine resume does not handle suspension kind "${checkpoint.suspensionKind}".`,
         );
-      }
-      await runtime.deps.checkpointStore.delete(runId);
-      reasonCodes.push("resume_complete");
-      const amended: AgentEngineStartInput = {
-        ...startInput,
-        request: {
-          ...startInput.request,
-          userMessage: `${startInput.request.userMessage}\n\nClarification: ${input.clarificationAnswer}`,
-        },
-        conversation: [
-          ...startInput.conversation,
-          { role: "user", content: input.clarificationAnswer },
-        ],
-      };
-      return executeV8Start(runtime, {
-        runId,
-        input: amended,
-        bus,
-        signal,
-        getCancelReason,
-      });
     }
-
-    if (checkpoint.suspensionKind === "plan_approval_required") {
-      if (!input.planDecision) {
-        throw new AgentEngineError(
-          "invalid_input",
-          "Resuming a plan-approval run requires planDecision.",
-        );
-      }
-      if (input.planDecision.decision === "rejected") {
-        await runtime.deps.checkpointStore.delete(runId);
-        await runtime.safeUnpin(runId, pinnedState);
-        reasonCodes.push("plan_rejected", "resume_complete");
-        return finish({
-          status: "cancelled",
-          reasonCodes,
-          error: { code: "cancelled", message: "Plan rejected by user." },
-        });
-      }
-      await runtime.deps.checkpointStore.delete(runId);
-      reasonCodes.push("resume_complete");
-      const plan =
-        input.planDecision.decision === "edited"
-          ? input.planDecision.plan
-          : (input.planDecision.plan ?? checkpoint.plan);
-      return executeV8Start(runtime, {
-        runId,
-        input: startInput,
-        bus,
-        signal,
-        getCancelReason,
-        approvedPlan: plan,
-        approvedPlanStrategy: checkpoint.planStrategy,
-        skipPlanGate: true,
-        planSource: "resume_approval",
-      });
-    }
-
-    if (checkpoint.suspensionKind === "continue_required") {
-      if (!input.continueDecision) {
-        throw new AgentEngineError(
-          "invalid_input",
-          "Resuming a continue-required run requires continueDecision.",
-        );
-      }
-      if (input.continueDecision.decision === "stop") {
-        await runtime.deps.checkpointStore.delete(runId);
-        commitMutations(runtime, checkpoint.mutationCheckpointIds, {
-          runId,
-          bus,
-          warnings,
-          logVerbosity: startInput.logVerbosity,
-        });
-        await runtime.safeUnpin(runId, pinnedState);
-        reasonCodes.push("stall_continue_stopped", "resume_complete");
-        return finish({
-          status: "completed",
-          answer: checkpoint.continuePartialAnswer,
-          reasonCodes,
-        });
-      }
-
-      reasonCodes.push("stall_continue_approved", "resume_complete");
-      const nextOverrideCount = (checkpoint.continueOverrideCount ?? 0) + 1;
-      const wallReason: BudgetWallReason =
-        checkpoint.continueWallReason ?? "exploration_stall";
-      const mutationRequired =
-        decision.toolGrant.maximumWorkspaceEffect === "write";
-      const resetMessage = buildBudgetWallResetMessage({
-        reason: wallReason,
-        guidance: input.continueDecision.guidance?.trim(),
-        mutationRequired,
-        changedFiles: checkpoint.changedFiles,
-      });
-      await runtime.deps.checkpointStore.delete(runId);
-      return resumeV8ToolLoopFromCheckpoint(runtime, {
-        runId,
-        requestId,
-        checkpoint: {
-          ...checkpoint,
-          continueOverrideCount: nextOverrideCount,
-        },
-        startInput,
-        decision,
-        bus,
-        signal,
-        budget,
-        reasonCodes,
-        warnings,
-        taskListRef,
-        windowPolicy,
-        pinnedState,
-        finish,
-        cancelledResult,
-        repoBuildStateAfter,
-        onRepoBuildStateAfter: (state) => {
-          repoBuildStateAfter = state;
-        },
-        onVerificationRecord: (record) => {
-          verificationRecord = record;
-        },
-        continueOverrideCount: nextOverrideCount,
-        prependMessages: [{ role: "user", content: resetMessage }],
-      });
-    }
-
-    if (checkpoint.suspensionKind === "approval_required") {
-      if (!input.approval || !checkpoint.pendingApproval) {
-        throw new AgentEngineError(
-          "invalid_input",
-          "Resuming an approval-required run requires approval.",
-        );
-      }
-      if (input.approval.decision === "denied") {
-        await runtime.deps.checkpointStore.delete(runId);
-        await runtime.safeUnpin(runId, pinnedState);
-        reasonCodes.push("approval_denied", "resume_complete");
-        return finish({
-          status: "failed",
-          reasonCodes,
-          error: {
-            code: "approval_denied",
-            message: "Mutation approval denied.",
-          },
-        });
-      }
-
-      reasonCodes.push("resume_complete");
-      const toolCache = ToolCallCache.fromEntries(checkpoint.toolCacheEntries);
-      const messages = [...checkpoint.messages];
-      const changedFiles = [...checkpoint.changedFiles];
-      const mutationCheckpointIds = [...checkpoint.mutationCheckpointIds];
-      const pending = checkpoint.pendingApproval;
-      const outcome = await executeOneTool(runtime, {
-        runId,
-        toolCall: {
-          id: pending.callId,
-          name: pending.toolName,
-          arguments: JSON.stringify(pending.arguments ?? {}),
-        },
-        grant: decision.toolGrant,
-        pinnedState,
-        workspaceRoot: startInput.workspaceRoot ?? ".",
-        bus,
-        signal,
-        toolCache,
-        readLedger: new ReadLedger(),
-        budget,
-        warnings,
-        reasonCodes,
-        dirtyPaths: startInput.dirtyPaths,
-        changedFiles,
-        mutationCheckpointIds,
-        approvalToken: {
-          approvalId: pending.approvalId,
-          fingerprint: pending.fingerprint,
-          decision: "approved",
-        },
-        taskListRef,
-        taskListAutoAdvance: runtime.deps.taskListAutoAdvance === true,
-        taskListAutoAdvanceBudget: { remaining: 0 },
-        mutatingToolNames: DEFAULT_MUTATING_TOOL_NAMES,
-        windowPolicy,
-      });
-      if (outcome.kind === "message") {
-        messages.push(outcome.message);
-      }
-      await runtime.deps.checkpointStore.delete(runId);
-      return resumeV8ToolLoopFromCheckpoint(runtime, {
-        runId,
-        requestId,
-        checkpoint: {
-          ...checkpoint,
-          messages,
-          toolCacheEntries: toolCache.entries(),
-          changedFiles,
-          mutationCheckpointIds,
-          pendingApproval: undefined,
-        },
-        startInput,
-        decision,
-        bus,
-        signal,
-        budget,
-        reasonCodes,
-        warnings,
-        taskListRef,
-        windowPolicy,
-        pinnedState,
-        finish,
-        cancelledResult,
-        repoBuildStateAfter,
-        onRepoBuildStateAfter: (state) => {
-          repoBuildStateAfter = state;
-        },
-        onVerificationRecord: (record) => {
-          verificationRecord = record;
-        },
-        continueOverrideCount: checkpoint.continueOverrideCount,
-      });
-    }
-
-    // grant_expansion_required and unknown kinds
-    throw new AgentEngineError(
-      "invalid_input",
-      `V8 Engine resume does not yet handle suspension kind "${checkpoint.suspensionKind}".`,
-    );
   } catch (error) {
     if (error instanceof AgentEngineError) {
       throw error;
@@ -452,3 +246,6 @@ export async function executeV8Resume(
     });
   }
 }
+
+/** Alias for hosts / legacy re-exports that expect `executeResume`. */
+export const executeResume = executeV8Resume;

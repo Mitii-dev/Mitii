@@ -1153,7 +1153,7 @@ export const SETTINGS_CATALOG: Record<string, SettingsCatalogEntry> = {
   "mitii.engine.implementation": {
     "type": "string",
     "enum": ["legacy", "v8"],
-    "description": "Agent orchestrator implementation. `v8` is the Phase 5 default (thin rewrite). `legacy` keeps the prior Agent Engine as fallback — do not resume a run after flipping this setting.",
+    "description": "Agent orchestrator. Only `v8` exists after Phase 10 (`agent-engine/` deleted). `legacy` is accepted for host compatibility and always resolves to `v8`.",
     "default": "v8"
   },
   "mitii.ui.contextToggles.repoMap": {

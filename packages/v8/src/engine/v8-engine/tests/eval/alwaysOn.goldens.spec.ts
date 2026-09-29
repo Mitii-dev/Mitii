@@ -10,22 +10,32 @@ import {
   shouldForcePreflightRepairLock,
   truncationWarningMessage,
 } from "../../actions";
+import {
+  shouldLockDiagnoseAnswer,
+  shouldNudgeDiagnoseAnswer,
+} from "../../modules/diagnose-answer";
+import {
+  applyPlanModeDiscoveryContract,
+  isPlanDiscoveryEvidenceSufficient,
+  requiresPlanDiscoveryQualityFloor,
+} from "../../modules/plan-discovery";
 import { V8EnginePipeline } from "../../pipeline/V8EnginePipeline";
-import { InMemoryRunCheckpointStore } from "../../../agent-engine/adapters";
+import { InMemoryRunCheckpointStore } from "../../adapters";
 import {
   createDecision,
   createReadOnlyGrant,
   createStubDependencies,
   ScriptedLlmPort,
   createCapabilities,
-} from "../../../agent-engine/tests/fixtures/stubs";
+} from "../fixtures/stubs";
 import { V8_ENGINE_PROMOTION } from "../../promotion";
 
 describe("v8-engine always-on goldens (§7.2)", () => {
-  it("promotion default is v8 with legacy rollback documented", () => {
+  it("promotion default is v8; legacy is alias-only after Phase 10", () => {
     expect(V8_ENGINE_PROMOTION.defaultImplementation).toBe("v8");
     expect(V8_ENGINE_PROMOTION.status).toBe("promoted");
-    expect(V8_ENGINE_PROMOTION.rollback.settingValue).toBe("legacy");
+    expect(V8_ENGINE_PROMOTION.rollback.settingValue).toBe("v8");
+    expect(V8_ENGINE_PROMOTION.rollback.note).toMatch(/legacy aliases to v8/i);
     expect(V8_ENGINE_PROMOTION.soakDaysRequired).toBeGreaterThanOrEqual(7);
   });
 
@@ -247,5 +257,81 @@ describe("v8-engine always-on goldens (§7.2)", () => {
     expect(result.status).toBe("completed");
     expect(result.usage.toolCalls).toBe(0);
     expect(result.answer).toContain("null check");
+  });
+
+  it("G8b: diagnose answer lock strips tools after repeated identical turns", () => {
+    expect(
+      shouldNudgeDiagnoseAnswer({
+        mutationRequired: false,
+        consecutiveSameToolTurns: 3,
+        maxRepeatedReadonlyToolTurnsBeforeAnswerNudge: 3,
+        diagnoseAnswerNudges: 0,
+        maxDiagnoseAnswerNudges: 1,
+      }),
+    ).toBe(true);
+    expect(
+      shouldLockDiagnoseAnswer({
+        mutationRequired: false,
+        consecutiveSameToolTurns: 4,
+        maxRepeatedReadonlyToolTurnsBeforeAnswerNudge: 3,
+        diagnoseAnswerNudges: 1,
+        maxDiagnoseAnswerNudges: 1,
+      }),
+    ).toBe(true);
+    expect(
+      shouldLockDiagnoseAnswer({
+        mutationRequired: true,
+        consecutiveSameToolTurns: 10,
+        maxRepeatedReadonlyToolTurnsBeforeAnswerNudge: 3,
+        diagnoseAnswerNudges: 0,
+        maxDiagnoseAnswerNudges: 1,
+      }),
+    ).toBe(false);
+  });
+
+  it("G9: plan discovery contract + quality floor", () => {
+    const cold = applyPlanModeDiscoveryContract({
+      mode: "plan",
+      query: "Plan a monorepo restructure of the auth package",
+      conversation: [],
+      strategy: {
+        schemaVersion: 1,
+        strategy: "plan_from_ask",
+        rationale: "test",
+        skipDiscover: true,
+        useBuildEvidence: false,
+      },
+    });
+    expect(cold.applied).toBe(true);
+    expect(cold.strategy.strategy).toBe("discover_and_plan");
+    expect(cold.strategy.skipDiscover).toBe(false);
+
+    expect(
+      requiresPlanDiscoveryQualityFloor({
+        mode: "plan",
+        explorationDepth: "auto",
+      }),
+    ).toBe(true);
+    expect(
+      isPlanDiscoveryEvidenceSufficient({
+        filesRead: [{ path: "src/a.ts", reason: "seed" }],
+        proposedChangeSurfaces: [
+          {
+            path: "src/a.ts",
+            actionHint: "Change",
+            riskLevel: "low",
+            evidence: "read",
+          },
+        ],
+        confidence: "medium",
+      }),
+    ).toBe(true);
+    expect(
+      isPlanDiscoveryEvidenceSufficient({
+        filesRead: [],
+        proposedChangeSurfaces: [],
+        confidence: "low",
+      }),
+    ).toBe(false);
   });
 });

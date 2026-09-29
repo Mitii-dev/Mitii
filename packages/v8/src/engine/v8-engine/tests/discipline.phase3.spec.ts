@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import { V8EnginePipeline } from "../pipeline/V8EnginePipeline";
-import { InMemoryRunCheckpointStore } from "../../agent-engine/adapters";
+import { InMemoryRunCheckpointStore } from "../adapters";
 import {
   createDecision,
   createReadOnlyGrant,
   createStubDependencies,
   ScriptedLlmPort,
   createCapabilities,
-} from "../../agent-engine/tests/fixtures/stubs";
+} from "../tests/fixtures/stubs";
 import { V8_ENGINE_THRESHOLDS } from "../policy";
 
 describe("v8-engine Phase 3 discipline", () => {

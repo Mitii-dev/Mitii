@@ -32,10 +32,24 @@ describe("selectLineWindow", () => {
     expect(window.content).toBe("L2\nL3");
     expect(window.startLine).toBe(2);
     expect(window.endLine).toBe(3);
-    expect(window.truncated).toBe(true);
-    expect(window.truncationReason).toBe("line_range");
+    expect(window.truncated).toBe(false);
+    expect(window.truncationReason).toBeUndefined();
     expect(window.nextStartLine).toBe(4);
     expect(window.eof).toBe(false);
+  });
+
+  it("still truncates when maxLines cuts the requested window", () => {
+    const window = selectLineWindow({
+      text,
+      startLine: 1,
+      endLine: 5,
+      maxLines: 2,
+      textIsComplete: true,
+    });
+    expect(window.content).toBe("L1\nL2");
+    expect(window.truncated).toBe(true);
+    expect(window.truncationReason).toBe("max_lines");
+    expect(window.nextStartLine).toBe(3);
   });
 
   it("clips on line boundaries for maxChars and sets model_budget", () => {
