@@ -1,6 +1,6 @@
 /**
  * Agent Working Tree pane — VS Code–style SCM layout (commit, recipes).
- * Branch switching lives in the top bar beside Workspace.
+ * Branch switching lives in the Explorer footer.
  */
 
 import {
@@ -116,10 +116,13 @@ interface GitWorkingTreePaneProps {
   onError?: (error: string | null) => void;
   /** Bubble Code Review findings to the chat composer strip. */
   onFindingsChange?: (findings: ReviewFinding[]) => void;
+  /** When false, hide Code Review button + findings pane (settings). */
+  showCodeReview?: boolean;
 }
 
 export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
   const auth = { baseUrl: props.baseUrl, token: props.token };
+  const showCodeReview = props.showCodeReview === true;
   const [git, setGit] = useState<GitWorkingTreeSnapshot | null>(null);
   const [commitMessage, setCommitMessage] = useState('');
   const [busy, setBusy] = useState(false);
@@ -147,6 +150,14 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
     'mitii.desktop.gitChangesHeight',
     { initial: 420, min: 200, max: 900 },
   );
+
+  useEffect(() => {
+    if (showCodeReview) return;
+    setReviewFindings([]);
+    setReviewError(null);
+    props.onFindingsChange?.([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showCodeReview]);
 
   const changeFiles = useMemo(() => {
     const dirty = git?.changes ?? [];
@@ -697,10 +708,12 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
   };
 
   return (
-    <div className="scm-pane">
+    <div className={`scm-pane${showCodeReview ? '' : ' scm-pane--no-review'}`}>
       <div
         className="scm-pane__main"
-        style={{ flex: `0 0 ${changesHeight}px` }}
+        style={
+          showCodeReview ? { flex: `0 0 ${changesHeight}px` } : { flex: '1 1 auto' }
+        }
       >
         <header className="scm-pane__title">
           <span className="scm-pane__title-left">
@@ -730,15 +743,17 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
                 <IconStop size={13} />
               </button>
             ) : null}
-            <button
-              type="button"
-              className="scm-text-btn"
-              disabled={jobRunning || !(git?.files.length)}
-              title="LLM code review of working-tree changes"
-              onClick={() => void runCodeReview()}
-            >
-              {activeJob === 'code-review' ? 'Code Review…' : codeReviewLabel}
-            </button>
+            {showCodeReview ? (
+              <button
+                type="button"
+                className="scm-text-btn"
+                disabled={jobRunning || !(git?.files.length)}
+                title="LLM code review of working-tree changes"
+                onClick={() => void runCodeReview()}
+              >
+                {activeJob === 'code-review' ? 'Code Review…' : codeReviewLabel}
+              </button>
+            ) : null}
             <button
               type="button"
               className="scm-icon-btn"
@@ -919,69 +934,73 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
         </div>
       </div>
 
-      <ResizeHandle
-        orientation="horizontal"
-        value={changesHeight}
-        onChange={setChangesHeight}
-        min={200}
-        max={900}
-        label="Resize source control and review"
-      />
+      {showCodeReview ? (
+        <>
+          <ResizeHandle
+            orientation="horizontal"
+            value={changesHeight}
+            onChange={setChangesHeight}
+            min={200}
+            max={900}
+            label="Resize source control and review"
+          />
 
-      <div className="scm-pane__review">
-        <header className="scm-pane__title scm-pane__title--sub">
-          <span>
-            {findingsCount > 0
-              ? `Code Review (${findingsCount})`
-              : 'Code Review'}
-          </span>
-          {activeJob === 'code-review' ? (
-            <span className="scm-review-status">Running…</span>
-          ) : findingsCount === 0 && !reviewError ? (
-            <span className="scm-review-status">No findings yet</span>
-          ) : null}
-        </header>
-        {reviewError ? (
-          <p className="scm-empty scm-empty--error">{reviewError}</p>
-        ) : null}
-        <div className="scm-review-list">
-          {findingsCount === 0 && activeJob !== 'code-review' ? (
-            <p className="scm-empty">
-              Run Code Review to analyze working-tree changes. Findings appear
-              here.
-            </p>
-          ) : null}
-          {reviewFindings.map((finding, i) => (
-            <button
-              key={`${finding.path}:${finding.startLine ?? 0}:${i}`}
-              type="button"
-              className={`scm-finding scm-finding--${finding.severity}`}
-              onClick={() => void props.onOpenDiff(finding.path)}
-              title={finding.path}
-            >
-              <div className="scm-finding__meta">
-                <span className="scm-finding__sev">{finding.severity}</span>
-                {finding.category ? (
-                  <span className="scm-finding__cat">{finding.category}</span>
-                ) : null}
-              </div>
-              <span className="scm-finding__path">
-                {finding.path}
-                {finding.startLine ? `:${finding.startLine}` : ''}
+          <div className="scm-pane__review">
+            <header className="scm-pane__title scm-pane__title--sub">
+              <span>
+                {findingsCount > 0
+                  ? `Code Review (${findingsCount})`
+                  : 'Code Review'}
               </span>
-              <span className="scm-finding__msg">{finding.content}</span>
-              {finding.existingCode ? (
-                <pre className="scm-finding__code">{finding.existingCode}</pre>
+              {activeJob === 'code-review' ? (
+                <span className="scm-review-status">Running…</span>
+              ) : findingsCount === 0 && !reviewError ? (
+                <span className="scm-review-status">No findings yet</span>
               ) : null}
-              {finding.suggestionCode ? (
-                <pre className="scm-finding__code scm-finding__code--suggest">
-                  {finding.suggestionCode}
-                </pre>
+            </header>
+            {reviewError ? (
+              <p className="scm-empty scm-empty--error">{reviewError}</p>
+            ) : null}
+            <div className="scm-review-list">
+              {findingsCount === 0 && activeJob !== 'code-review' ? (
+                <p className="scm-empty">
+                  Run Code Review to analyze working-tree changes. Findings appear
+                  here.
+                </p>
               ) : null}
-            </button>
-          ))}
-        </div>
-      </div>
+              {reviewFindings.map((finding, i) => (
+                <button
+                  key={`${finding.path}:${finding.startLine ?? 0}:${i}`}
+                  type="button"
+                  className={`scm-finding scm-finding--${finding.severity}`}
+                  onClick={() => void props.onOpenDiff(finding.path)}
+                  title={finding.path}
+                >
+                  <div className="scm-finding__meta">
+                    <span className="scm-finding__sev">{finding.severity}</span>
+                    {finding.category ? (
+                      <span className="scm-finding__cat">{finding.category}</span>
+                    ) : null}
+                  </div>
+                  <span className="scm-finding__path">
+                    {finding.path}
+                    {finding.startLine ? `:${finding.startLine}` : ''}
+                  </span>
+                  <span className="scm-finding__msg">{finding.content}</span>
+                  {finding.existingCode ? (
+                    <pre className="scm-finding__code">{finding.existingCode}</pre>
+                  ) : null}
+                  {finding.suggestionCode ? (
+                    <pre className="scm-finding__code scm-finding__code--suggest">
+                      {finding.suggestionCode}
+                    </pre>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      ) : null}
 
       {contextMenu ? (
         <div

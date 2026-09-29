@@ -1,57 +1,86 @@
 :root {
-  color-scheme: light dark;
-  --mitii-brand: #ff751f;
-  --mitii-brand-soft: #ffbd59;
+  color-scheme: light;
+  /* Cloudflare-inspired tokens — orange brand, warm charcoal, restrained surfaces */
+  --mitii-brand: #f6821f;
+  --mitii-brand-hover: #e2700b;
+  --mitii-brand-soft: #faad3f;
+  --mitii-brand-tint: #fdf3e7;
   --mitii-accent: var(--mitii-brand);
-  --mitii-surface: #f4f4f5;
+  --mitii-surface: #f7f7f7;
   --mitii-panel: #ffffff;
-  --mitii-panel-raised: #fafafa;
-  --mitii-border: #e4e4e7;
-  --mitii-border-soft: #ececef;
-  --mitii-text: #18181b;
-  --mitii-muted: #71717a;
-  --mitii-chat-fg: #27272a;
-  --mitii-danger: #b42318;
-  --mitii-ok: #16a34a;
+  --mitii-panel-raised: #ffffff;
+  --mitii-border: #e0e0e0;
+  --mitii-border-soft: #ededed;
+  --mitii-text: #1d1f20;
+  --mitii-muted: #696969;
+  --mitii-chat-fg: #36393a;
+  --mitii-danger: #b52831;
+  --mitii-ok: #0d9488;
   --mitii-warn: #d97706;
   --mitii-radius: 4px;
-  --mitii-radius-lg: 8px;
-  --mitii-font-ui: 'Source Sans 3', 'Segoe UI', system-ui, sans-serif;
+  --mitii-radius-lg: 6px;
+  --mitii-font-ui: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
   --mitii-font-tool: var(--mitii-font-ui);
   --mitii-font-file: 'IBM Plex Mono', ui-monospace, monospace;
-  --mitii-font-thinking: 'IBM Plex Sans', 'Source Sans 3', sans-serif;
+  --mitii-font-thinking: var(--mitii-font-ui);
   --mitii-font-mono: 'IBM Plex Mono', ui-monospace, monospace;
-  --mitii-shadow-soft: 0 8px 24px color-mix(in srgb, #000 8%, transparent);
+  --mitii-shadow-soft: 0 1px 2px color-mix(in srgb, #000 6%, transparent),
+    0 8px 24px color-mix(in srgb, #000 6%, transparent);
   --bg: var(--mitii-panel);
   --panel: var(--mitii-surface);
   --surface: var(--mitii-panel);
   --line: var(--mitii-border);
   --text: var(--mitii-text);
   --muted: var(--mitii-muted);
-  --accent: var(--mitii-text);
+  --accent: var(--mitii-brand);
   --danger: var(--mitii-danger);
   --font: var(--mitii-font-ui);
   --mono: var(--mitii-font-mono);
   font-family: var(--font);
   color: var(--text);
   background: var(--bg);
-  font-size: 14px;
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --mitii-surface: #121214;
-    --mitii-panel: #0c0c0e;
-    --mitii-panel-raised: #161618;
-    --mitii-border: #27272a;
-    --mitii-border-soft: #1f1f23;
-    --mitii-text: #f4f4f5;
-    --mitii-muted: #a1a1aa;
-    --mitii-chat-fg: #e4e4e7;
-    --mitii-danger: #f97066;
-    --mitii-shadow-soft: 0 8px 24px color-mix(in srgb, #000 45%, transparent);
-    --accent: var(--mitii-text);
-  }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --mitii-brand: #f6821f;
+  --mitii-brand-hover: #faad3f;
+  --mitii-brand-soft: #faad3f;
+  --mitii-brand-tint: color-mix(in srgb, #f6821f 18%, #15171a);
+  --mitii-surface: #1d1f20;
+  --mitii-panel: #15171a;
+  --mitii-panel-raised: #262a2e;
+  --mitii-border: #3a3f44;
+  --mitii-border-soft: #2e3338;
+  --mitii-text: #e4e6e7;
+  --mitii-muted: #9ba1a6;
+  --mitii-chat-fg: #e4e6e7;
+  --mitii-danger: #f97066;
+  --mitii-ok: #2dd4bf;
+  --mitii-warn: #fbbf24;
+  --mitii-shadow-soft: 0 1px 2px color-mix(in srgb, #000 35%, transparent),
+    0 12px 28px color-mix(in srgb, #000 40%, transparent);
+  --accent: var(--mitii-brand);
+}
+
+/* Light: left chrome stays pure white (Cloudflare panel surface). */
+:root[data-theme="light"] .side,
+:root[data-theme="light"] .workspace-side,
+:root[data-theme="light"] .workspace-pane,
+:root[data-theme="light"] .activity-bar,
+:root[data-theme="light"] .activity-bar--settings,
+:root[data-theme="light"] .activity-rail {
+  background: var(--mitii-panel);
+}
+
+/* Dark: activity chrome uses elevated surface, not black-washed mixes. */
+:root[data-theme="dark"] .activity-bar,
+:root[data-theme="dark"] .activity-bar--settings,
+:root[data-theme="dark"] .activity-rail {
+  background: var(--mitii-surface);
 }
 
 * {
@@ -102,7 +131,7 @@ button[aria-disabled='true'] {
   flex: 0 0 48px;
   height: 48px;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: space-between;
   gap: 16px;
   padding: 0 16px 0 78px;
@@ -122,6 +151,10 @@ button[aria-disabled='true'] {
   align-items: center;
   gap: 10px;
   min-width: 0;
+}
+
+.app-topbar__left {
+  align-items: stretch;
 }
 
 .app-topbar__right {
@@ -239,7 +272,7 @@ button[aria-disabled='true'] {
   align-items: center;
   gap: 8px;
   padding: 12px 0 14px;
-  background: color-mix(in srgb, var(--mitii-surface) 68%, #000 32%);
+  background: var(--mitii-surface);
   border-right: 1px solid color-mix(in srgb, var(--mitii-border) 85%, transparent);
   overflow: visible;
   z-index: 20;
@@ -376,7 +409,7 @@ button[aria-disabled='true'] {
 }
 
 .activity-bar--settings {
-  background: color-mix(in srgb, var(--mitii-surface) 62%, #000 38%);
+  background: var(--mitii-surface);
 }
 
 .activity-bar--settings .activity-bar__nav {
@@ -603,6 +636,7 @@ button[aria-disabled='true'] {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: var(--mitii-panel);
 }
 
 .main--settings .main-surface {
@@ -693,28 +727,53 @@ button[aria-disabled='true'] {
 
 .layout-toggle {
   display: inline-flex;
-  align-items: center;
+  align-items: stretch;
+  align-self: stretch;
   gap: 0;
-  margin-left: 10px;
-  border: 1px solid var(--mitii-border);
-  border-radius: 8px;
-  overflow: hidden;
-  background: var(--mitii-surface);
+  margin: 0 0 -1px 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  overflow: visible;
+  background: transparent;
 }
 
 .layout-toggle button {
-  border: 0;
+  position: relative;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 7px 7px 0 0;
   background: transparent;
-  padding: 4px 10px;
-  font-size: 11px;
+  margin-top: 10px;
+  padding: 0 16px;
+  font-size: 12px;
   font-weight: 650;
   color: var(--mitii-muted);
+  box-shadow: none;
+}
+
+.layout-toggle button:hover:not(.is-active) {
+  color: var(--mitii-text);
+  background: color-mix(in srgb, var(--mitii-text) 5%, transparent);
 }
 
 .layout-toggle button.is-active {
   background: var(--mitii-panel);
   color: var(--mitii-text);
-  box-shadow: inset 0 0 0 1px var(--mitii-border);
+  border-color: var(--mitii-border);
+  border-bottom-color: var(--mitii-panel);
+  box-shadow: none;
+}
+
+.layout-toggle button.is-active::after {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 0;
+  height: 2px;
+  background: var(--mitii-brand);
+  border-radius: 2px 2px 0 0;
 }
 
 .code-mode {
@@ -790,17 +849,19 @@ button[aria-disabled='true'] {
   align-items: center;
   gap: 6px;
   max-width: 220px;
+  height: 30px;
   border: 1px solid var(--mitii-border);
-  background: var(--mitii-panel-raised);
-  border-radius: 999px;
-  padding: 5px 10px;
+  background: var(--mitii-panel);
+  border-radius: var(--mitii-radius-lg);
+  padding: 0 10px;
   font-size: 12px;
   color: var(--mitii-text);
 }
 
 .top-select__trigger:hover,
 .top-select__trigger[aria-expanded='true'] {
-  border-color: color-mix(in srgb, var(--mitii-accent) 40%, var(--mitii-border));
+  background: color-mix(in srgb, var(--mitii-text) 6%, var(--mitii-panel));
+  border-color: color-mix(in srgb, var(--mitii-text) 18%, var(--mitii-border));
 }
 
 .top-select__label {
@@ -3810,20 +3871,21 @@ button[aria-disabled='true'] {
   height: 30px;
   padding: 0 10px;
   border: 1px solid var(--mitii-border);
-  border-radius: 8px;
-  background: var(--mitii-surface);
+  border-radius: var(--mitii-radius-lg);
+  background: var(--mitii-panel);
   color: var(--mitii-text);
   font-size: 12px;
   font-weight: 600;
 }
 
 .top-icon-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--mitii-text) 6%, var(--mitii-surface));
+  background: color-mix(in srgb, var(--mitii-text) 6%, var(--mitii-panel));
 }
 
 .top-icon-btn--accent {
-  background: color-mix(in srgb, var(--mitii-brand) 14%, var(--mitii-surface));
-  border-color: color-mix(in srgb, var(--mitii-brand) 35%, var(--mitii-border));
+  background: color-mix(in srgb, var(--mitii-brand) 16%, var(--mitii-panel));
+  border-color: color-mix(in srgb, var(--mitii-brand) 40%, var(--mitii-border));
+  color: var(--mitii-text);
 }
 
 .top-icon-btn:disabled {
@@ -4408,41 +4470,86 @@ button[aria-disabled='true'] {
 .btn,
 .btn-ghost,
 .btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: auto;
   border: 1px solid var(--mitii-border);
-  background: var(--mitii-surface);
-  border-radius: 8px;
-  padding: 7px 12px;
+  background: var(--mitii-panel);
+  color: var(--mitii-text);
+  border-radius: var(--mitii-radius-lg);
+  padding: 6px 12px;
   font-size: 12px;
   font-weight: 550;
+  line-height: 1.2;
+}
+
+.btn:hover:not(:disabled),
+.btn-ghost:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--mitii-text) 6%, var(--mitii-panel));
 }
 
 .btn-ghost {
   background: transparent;
 }
 
+.btn-ghost:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--mitii-text) 6%, transparent);
+}
+
 .btn-primary {
-  background: var(--mitii-text);
-  color: var(--mitii-panel);
+  background: var(--mitii-brand);
+  color: #fff;
   border-color: transparent;
   font-weight: 650;
 }
 
+.btn-primary:hover:not(:disabled) {
+  background: var(--mitii-brand-hover);
+}
+
 .btn-danger {
-  border: 1px solid color-mix(in srgb, #c45c5c 55%, var(--mitii-border));
-  background: color-mix(in srgb, #c45c5c 12%, var(--mitii-surface));
-  color: #b42318;
-  border-radius: 8px;
-  padding: 7px 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: auto;
+  border: 1px solid color-mix(in srgb, var(--mitii-danger) 45%, var(--mitii-border));
+  background: color-mix(in srgb, var(--mitii-danger) 10%, var(--mitii-panel));
+  color: var(--mitii-danger);
+  border-radius: var(--mitii-radius-lg);
+  padding: 6px 12px;
   font-size: 12px;
   font-weight: 650;
+  line-height: 1.2;
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: color-mix(in srgb, #c45c5c 20%, var(--mitii-surface));
+  background: color-mix(in srgb, var(--mitii-danger) 18%, var(--mitii-panel));
 }
 
 .btn-danger:disabled {
   opacity: 0.5;
+}
+
+.btn--compact {
+  padding: 4px 10px;
+  font-size: 11px;
+  border-radius: 5px;
+  min-height: 26px;
+}
+
+.settings-inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-inline-actions .storage-note {
+  flex: 1 1 100%;
+  margin: 0;
 }
 
 .mono-input {
@@ -4491,7 +4598,7 @@ button[aria-disabled='true'] {
   flex-shrink: 0;
   padding: 8px 4px;
   border-right: 1px solid var(--mitii-border);
-  background: color-mix(in srgb, var(--mitii-surface) 88%, #000 12%);
+  background: var(--mitii-surface);
 }
 
 .activity-rail button {
@@ -5808,16 +5915,16 @@ button.mcp-manager__card {
   background: transparent;
 }
 
-@media (prefers-color-scheme: light) {
-  .explorer-icon--dir,
-  .explorer-icon--dir.is-open {
+
+  :root[data-theme="light"] .explorer-icon--dir,
+:root[data-theme="light"] .explorer-icon--dir.is-open {
     color: #c18401;
   }
 
-  .explorer-icon--file {
+  :root[data-theme="light"] .explorer-icon--file {
     color: #3b7dd8;
   }
-}
+
 
 .explorer-label {
   min-width: 0;
@@ -6157,52 +6264,52 @@ button.mcp-manager__card {
   font-weight: 700;
 }
 
-@media (prefers-color-scheme: dark) {
-  .hljs-keyword,
-  .hljs-selector-tag,
-  .hljs-built_in,
-  .hljs-name,
-  .hljs-tag {
+
+  :root[data-theme="dark"] .hljs-keyword,
+:root[data-theme="dark"] .hljs-selector-tag,
+:root[data-theme="dark"] .hljs-built_in,
+:root[data-theme="dark"] .hljs-name,
+:root[data-theme="dark"] .hljs-tag {
     color: #ff7b72;
   }
 
-  .hljs-string,
-  .hljs-title,
-  .hljs-section,
-  .hljs-attribute,
-  .hljs-literal,
-  .hljs-template-tag,
-  .hljs-template-variable,
-  .hljs-type,
-  .hljs-addition {
+  :root[data-theme="dark"] .hljs-string,
+:root[data-theme="dark"] .hljs-title,
+:root[data-theme="dark"] .hljs-section,
+:root[data-theme="dark"] .hljs-attribute,
+:root[data-theme="dark"] .hljs-literal,
+:root[data-theme="dark"] .hljs-template-tag,
+:root[data-theme="dark"] .hljs-template-variable,
+:root[data-theme="dark"] .hljs-type,
+:root[data-theme="dark"] .hljs-addition {
     color: #a5d6ff;
   }
 
-  .hljs-comment,
-  .hljs-quote,
-  .hljs-deletion,
-  .hljs-meta {
+  :root[data-theme="dark"] .hljs-comment,
+:root[data-theme="dark"] .hljs-quote,
+:root[data-theme="dark"] .hljs-deletion,
+:root[data-theme="dark"] .hljs-meta {
     color: #8b949e;
   }
 
-  .hljs-number,
-  .hljs-symbol,
-  .hljs-bullet,
-  .hljs-link,
-  .hljs-regexp,
-  .hljs-variable,
-  .hljs-params {
+  :root[data-theme="dark"] .hljs-number,
+:root[data-theme="dark"] .hljs-symbol,
+:root[data-theme="dark"] .hljs-bullet,
+:root[data-theme="dark"] .hljs-link,
+:root[data-theme="dark"] .hljs-regexp,
+:root[data-theme="dark"] .hljs-variable,
+:root[data-theme="dark"] .hljs-params {
     color: #ffa657;
   }
 
-  .hljs-attr,
-  .hljs-selector-id,
-  .hljs-selector-class,
-  .hljs-selector-attr,
-  .hljs-selector-pseudo {
+  :root[data-theme="dark"] .hljs-attr,
+:root[data-theme="dark"] .hljs-selector-id,
+:root[data-theme="dark"] .hljs-selector-class,
+:root[data-theme="dark"] .hljs-selector-attr,
+:root[data-theme="dark"] .hljs-selector-pseudo {
     color: #7ee787;
   }
-}
+
 
 .workspace-diff,
 .workspace-stat {
@@ -6291,29 +6398,29 @@ button.mcp-manager__card {
   color: color-mix(in srgb, var(--mitii-chat-fg) 88%, var(--mitii-muted));
 }
 
-@media (prefers-color-scheme: dark) {
-  .workspace-diff__line--add {
+
+  :root[data-theme="dark"] .workspace-diff__line--add {
     background: color-mix(in srgb, #3fb950 18%, transparent);
     color: #aff5b4;
   }
 
-  .workspace-diff__line--del {
+  :root[data-theme="dark"] .workspace-diff__line--del {
     background: color-mix(in srgb, #f85149 16%, transparent);
     color: #ffdcd7;
   }
 
-  .workspace-git-status--added {
+  :root[data-theme="dark"] .workspace-git-status--added {
     color: #3fb950;
   }
 
-  .workspace-git-status--deleted {
+  :root[data-theme="dark"] .workspace-git-status--deleted {
     color: #f85149;
   }
 
-  .workspace-git-status--modified {
+  :root[data-theme="dark"] .workspace-git-status--modified {
     color: #d29922;
   }
-}
+
 
 .workspace-hero {
   margin: auto;
@@ -8499,4 +8606,328 @@ button.mcp-manager__card {
   cursor: pointer;
   font-size: 13px;
   font-weight: 550;
+}
+
+
+/* ── Editor tab row + markdown preview ─────────────────── */
+.editor-tabs-row {
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--mitii-border);
+  background: color-mix(in srgb, var(--mitii-surface) 80%, transparent);
+  min-height: 32px;
+}
+
+.editor-tabs-row .editor-tabs {
+  flex: 1;
+  min-width: 0;
+  border-bottom: 0;
+  background: transparent;
+}
+
+.editor-tabs__action {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  border: 0;
+  border-left: 1px solid var(--mitii-border-soft);
+  background: transparent;
+  color: var(--mitii-muted);
+}
+
+.editor-tabs__action:hover {
+  color: var(--mitii-text);
+  background: color-mix(in srgb, var(--mitii-text) 6%, transparent);
+}
+
+.editor-tabs__action.is-active {
+  color: var(--mitii-text);
+  background: color-mix(in srgb, var(--mitii-accent) 12%, transparent);
+}
+
+.editor-tab.is-preview .editor-tab__label {
+  font-style: italic;
+}
+
+.editor-banner {
+  flex-shrink: 0;
+  padding: 4px 12px;
+  font-size: 11px;
+  color: var(--mitii-warn);
+  background: color-mix(in srgb, var(--mitii-warn) 10%, transparent);
+  border-bottom: 1px solid var(--mitii-border-soft);
+}
+
+.md-file-preview {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 20px 32px;
+  background: var(--mitii-panel);
+}
+
+/* ── Explorer branch footer (compact status strip) ─────── */
+.explorer-branch {
+  position: relative;
+  flex-shrink: 0;
+  height: 26px;
+  border-top: 1px solid var(--mitii-border);
+  background: color-mix(in srgb, var(--mitii-surface) 92%, var(--mitii-panel));
+}
+
+.explorer-branch__toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--mitii-text);
+  padding: 0 6px;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.explorer-branch__toggle:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--mitii-text) 6%, transparent);
+}
+
+.explorer-branch__toggle:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.explorer-branch__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.explorer-branch__sync {
+  font-size: 10px;
+  color: var(--mitii-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.explorer-branch__caret {
+  color: var(--mitii-muted);
+  font-size: 9px;
+}
+
+.explorer-branch__menu {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: calc(100% + 2px);
+  z-index: 40;
+  border: 1px solid var(--mitii-border);
+  background: var(--mitii-panel);
+  box-shadow: var(--mitii-shadow-soft);
+  padding: 6px;
+  max-height: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.explorer-branch__create {
+  display: flex;
+  gap: 4px;
+}
+
+.explorer-branch__create input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--mitii-border);
+  background: var(--mitii-surface);
+  color: var(--mitii-text);
+  padding: 4px 6px;
+  font-size: 11px;
+  border-radius: 2px;
+}
+
+.explorer-branch__create-btn {
+  border: 0;
+  background: color-mix(in srgb, var(--mitii-text) 10%, transparent);
+  color: var(--mitii-text);
+  padding: 4px 8px;
+  font-size: 11px;
+  border-radius: 2px;
+}
+
+.explorer-branch__create-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--mitii-text) 16%, transparent);
+}
+
+.explorer-branch__create-btn:disabled {
+  opacity: 0.5;
+}
+
+.explorer-branch__list {
+  overflow: auto;
+  max-height: 160px;
+  display: flex;
+  flex-direction: column;
+}
+
+.explorer-branch__list button {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: var(--mitii-text);
+  padding: 4px 6px;
+  font-size: 11px;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.explorer-branch__list button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--mitii-accent) 14%, transparent);
+}
+
+.explorer-branch__list button.is-selected {
+  font-weight: 650;
+  color: var(--mitii-accent);
+}
+
+.explorer-branch__empty {
+  margin: 0;
+  padding: 6px;
+  font-size: 11px;
+  color: var(--mitii-muted);
+}
+
+/* ── Code-mode recent chat history menu ────────────────── */
+.top-history {
+  position: relative;
+}
+
+.top-history__menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 50;
+  min-width: 220px;
+  max-width: 280px;
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--mitii-border);
+  background: var(--mitii-panel);
+  box-shadow: var(--mitii-shadow-soft);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.top-history__menu button {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: var(--mitii-text);
+  padding: 7px 10px;
+  font-size: 12px;
+  border-radius: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.top-history__menu button:hover,
+.top-history__menu button.is-active {
+  background: color-mix(in srgb, var(--mitii-text) 8%, transparent);
+}
+
+.top-history__more {
+  border-top: 1px solid var(--mitii-border-soft) !important;
+  margin-top: 2px;
+  color: var(--mitii-muted) !important;
+  font-weight: 600;
+}
+
+.top-history__empty {
+  margin: 0;
+  padding: 10px;
+  font-size: 12px;
+  color: var(--mitii-muted);
+}
+
+/* ── Workspace switch full-screen loader ───────────────── */
+.workspace-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--mitii-panel) 92%, transparent);
+  backdrop-filter: blur(6px);
+}
+
+.workspace-loader__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  min-width: 240px;
+  padding: 28px 32px;
+  border: 1px solid var(--mitii-border);
+  border-radius: 12px;
+  background: var(--mitii-panel);
+  box-shadow: var(--mitii-shadow-soft);
+}
+
+.workspace-loader__logo {
+  display: block;
+  width: 72px;
+  height: 72px;
+}
+
+.workspace-loader__brand {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--mitii-text);
+}
+
+.workspace-loader__label {
+  margin: 0;
+  font-size: 13px;
+  color: var(--mitii-muted);
+  text-align: center;
+}
+
+.workspace-loader__track {
+  width: 180px;
+  height: 4px;
+  margin-top: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--mitii-text) 10%, var(--mitii-panel));
+}
+
+.workspace-loader__bar {
+  width: 40%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--mitii-brand);
+  animation: mitii-loader-slide 1.1s ease-in-out infinite;
+}
+
+@keyframes mitii-loader-slide {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
 }

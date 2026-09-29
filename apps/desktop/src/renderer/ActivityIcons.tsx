@@ -422,3 +422,45 @@ export function IconDiff(props: IconProps) {
     </Svg16>
   );
 }
+
+/** Codicon-like: history / clock */
+export function IconHistory(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.5V12l3 2" />
+    </Svg>
+  );
+}
+
+/** Sun — switch to light theme */
+export function IconSun(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="3.5" />
+      <path d="M12 2.5v2.2M12 19.3v2.2M4.6 6.5l1.6 1.5M17.8 16l1.6 1.5M2.5 12h2.2M19.3 12h2.2M4.6 17.5l1.6-1.5M17.8 8l1.6-1.5" />
+    </Svg>
+  );
+}
+
+/** Moon — switch to dark theme */
+export function IconMoon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M19 13.5A7.5 7.5 0 1 1 10.5 5 6 6 0 0 0 19 13.5z" />
+    </Svg>
+  );
+}
+
+/** Open markdown preview (VS Code–style split/preview) */
+export function IconOpenPreview(props: IconProps) {
+  return (
+    <Svg16 {...props}>
+      <path d="M2 2.5h5.5V13.5H2z" />
+      <path d="M8.5 2.5H14V13.5H8.5z" />
+      <path d="M10 5.5h2.5" />
+      <path d="M10 8h2.5" />
+      <path d="M10 10.5h1.5" />
+    </Svg16>
+  );
+}
