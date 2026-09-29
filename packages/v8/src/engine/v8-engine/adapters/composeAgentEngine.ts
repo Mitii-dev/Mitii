@@ -7,10 +7,6 @@ import type {
   RestorePointSummary,
 } from "../contracts";
 import type { V8EngineImplementation } from "../constants";
-import {
-  composeReadOnlyAgentEngine,
-  type ComposeReadOnlyAgentEngineOptions,
-} from "../../agent-engine/adapters/composeReadOnlyAgentEngine";
 import { composeV8Engine } from "./composeV8Engine";
 import type { ComposeV8EngineOptions } from "./composeV8Engine";
 import {
@@ -18,7 +14,7 @@ import {
   isKnownV8EngineImplementation,
 } from "../promotion";
 
-/** Shared host surface for legacy AgentEnginePipeline and V8EnginePipeline. */
+/** Shared host surface for V8EnginePipeline. */
 export type MitiiAgentEngine = {
   start(input: AgentEngineStartInput): AgentRunHandle;
   resume(input: AgentEngineResumeInput): AgentRunHandle;
@@ -26,14 +22,13 @@ export type MitiiAgentEngine = {
   listRestorePoints(runId: string): Promise<RestorePointSummary[]>;
 };
 
-export type ComposeAgentEngineOptions = ComposeReadOnlyAgentEngineOptions &
-  ComposeV8EngineOptions & {
-    /**
-     * Which orchestrator to wire. When omitted, uses Phase 5 default (`v8`).
-     * Hosts map `mitii.engine.implementation` here.
-     */
-    implementation?: V8EngineImplementation;
-  };
+export type ComposeAgentEngineOptions = ComposeV8EngineOptions & {
+  /**
+   * Which orchestrator to wire. When omitted, uses default (`v8`).
+   * `legacy` is removed in Phase 10 — unknown values fall back to `v8` with a warning.
+   */
+  implementation?: V8EngineImplementation | "legacy";
+};
 
 export type ComposedAgentEngine = {
   implementation: V8EngineImplementation;
@@ -41,22 +36,16 @@ export type ComposedAgentEngine = {
 };
 
 /**
- * Compose legacy or v8 engine with the same dependency bag.
- * Default is `v8` (Phase 5); pass `implementation: "legacy"` for Agent Engine.
+ * Compose the v8 engine. Legacy `implementation: "legacy"` is accepted for
+ * host settings compatibility but always resolves to v8 (Phase 10).
  */
 export function composeAgentEngine(
   options: ComposeAgentEngineOptions,
 ): ComposedAgentEngine {
   const implementation = parseV8EngineImplementation(options.implementation);
-  if (implementation === "v8") {
-    return {
-      implementation,
-      engine: composeV8Engine(options),
-    };
-  }
   return {
     implementation,
-    engine: composeReadOnlyAgentEngine(options),
+    engine: composeV8Engine(options),
   };
 }
 
@@ -64,6 +53,9 @@ export function composeAgentEngine(
 export function parseV8EngineImplementation(
   value: unknown,
 ): V8EngineImplementation {
+  if (value === "legacy") {
+    return "v8";
+  }
   if (isKnownV8EngineImplementation(value)) {
     return value;
   }
@@ -81,3 +73,12 @@ export function isMitiiAgentEngine(
     typeof (value as MitiiAgentEngine).restore === "function"
   );
 }
+
+/** @deprecated Phase 10 — use composeAgentEngine; returns v8 engine only. */
+export function composeReadOnlyAgentEngine(
+  options: ComposeAgentEngineOptions,
+): MitiiAgentEngine {
+  return composeAgentEngine(options).engine;
+}
+
+export type ComposeReadOnlyAgentEngineOptions = ComposeAgentEngineOptions;

@@ -1,8 +1,10 @@
 # Tool Runtime
 
-Tool Runtime is the enforcement and execution layer for tools. It receives model-requested tool calls from Agent Engine, validates them against the current `ToolGrant`, executes through host ports, and returns a bounded `ToolResult` with audit information.
+Tool Runtime is the enforcement and execution layer for tools. It receives model-requested tool calls from the v8 engine, validates them against the current `ToolGrant`, executes through host ports, and returns a bounded `ToolResult` with audit information.
 
 Tool Runtime never decides that a tool should be allowed. It only enforces the grant it receives.
+
+**Ownership / compare plan:** [`project-goals/tool-runtime-ownership-plan.md`](../../../../project-goals/tool-runtime-ownership-plan.md) (agents-ref Tier A map, Keep-power vs dual-catalog phases).
 
 ## Responsibilities
 
@@ -46,7 +48,7 @@ tool-runtime/
 - `StructuralShadowGrantAuthorizer` can evaluate a Cedar-shaped structural grant in parallel with normal validation.
 - Mutation batches enforce `maxPatchesPerCall`, `maxUniqueFilesPerCall`, and `maxPatchPayloadCharacters`. Exceeding those caps fails preflight with `mutation_budget_exceeded` (not a generic `limit_exceeded`).
 - Mutation tools (`apply_patch`, delete, move) authorize against `grant.mutationPathScopes` when present; discovery tools keep `grant.pathScopes`.
-- `apply_patch` keeps exact `oldText` matching (no fuzzy match, no regex). Default requires a unique occurrence. Optional `replaceAll: true` replaces every exact occurrence in that file; empty `oldText` still means create or full-file replace and rejects `replaceAll`. Distinct reason codes describe why a hunk failed: `old_text_not_found`, `old_text_ambiguous`, `patch_target_missing`, `patch_hash_mismatch`, `identical_old_and_new`, `patch_syntax_invalid`. Retryable conflicts, including no-op `identical_old_and_new`, attach clipped `currentContent` in the tool result. `patch_conflict` remains as a legacy umbrella for older hosts.
+- `apply_patch` defaults to exact `oldText` matching (no regex). Optional `replaceAll: true` replaces every exact occurrence in that file; empty `oldText` still means create or full-file replace and rejects `replaceAll`. Optional `fuzzyMatch=true` (or host `fuzzyMatchDefault`) enables bounded recovery when exact oldText is missing (trim / indent / ±5 line window); ambiguous fuzzy hits return `patch_fuzzy_ambiguous`. Distinct reason codes describe why a hunk failed: `old_text_not_found`, `old_text_ambiguous`, `patch_fuzzy_ambiguous`, `patch_target_missing`, `patch_hash_mismatch`, `identical_old_and_new`, `patch_syntax_invalid`. Retryable conflicts, including no-op `identical_old_and_new`, attach clipped `currentContent` in the tool result. `patch_conflict` remains as a legacy umbrella for older hosts.
 - Preflight coerces common model mis-encodings for `apply_patch`: a flat `{ path, oldText, newText }` object is wrapped into `{ patches: [...] }`, and a JSON-string `patches` value is parsed into an array before schema validation.
 - Preflight also normalizes common discovery/command aliases via
   `normalizeCommonToolArguments`: `search_files.pattern` → `query`,

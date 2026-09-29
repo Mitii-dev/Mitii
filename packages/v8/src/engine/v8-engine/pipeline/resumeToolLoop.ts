@@ -5,27 +5,27 @@ import type { VerificationRecord } from "../../../modules/verification";
 
 import {
   annotateMutationToolDefinitions,
-} from "../../agent-engine/actions";
+} from "../actions";
 import { filterToolDefinitions } from "../actions/progressiveTools";
-import type { EstablishedFact } from "../../agent-engine/actions";
+import type { EstablishedFact } from "../actions";
 import { withMcpAttachOnGrant } from "../../../modules/mcp-attach";
-import { ToolCallCache } from "../../agent-engine/internal/ToolCallCache";
+import { ToolCallCache } from "../internal/ToolCallCache";
 import type {
   AgentEngineStartInput,
   AgentReasonCode,
   AgentRunResult,
 } from "../contracts";
-import type { AgentRunCheckpoint } from "../../agent-engine/internal/RunCheckpoint";
-import { EventBus } from "../../agent-engine/internal/EventBus";
-import { RunBudgetTracker } from "../../agent-engine/internal/RunBudget";
+import type { AgentRunCheckpoint } from "../internal/RunCheckpoint";
+import { EventBus } from "../internal/EventBus";
+import { RunBudgetTracker } from "../internal/RunBudget";
 import {
   attachTaskListTool,
   type TaskListRef,
-} from "../../agent-engine/internal/taskListRuntime";
-import { DEFAULT_TOOL_DEFINITIONS } from "../../agent-engine/policy";
-import type { AgentEngineRuntime } from "../../agent-engine/pipeline/runtime";
-import { finishAfterLoop } from "../../agent-engine/pipeline/verification";
-import { resolveSteeringFeatureFlags } from "../../agent-engine/steeringFlags";
+} from "../internal/taskListRuntime";
+import { DEFAULT_TOOL_DEFINITIONS } from "../legacy/policy";
+import type { AgentEngineRuntime } from "./runtime";
+import { finishAfterLoop } from "./verification";
+import { resolveSteeringFeatureFlags } from "../legacy/steeringFlags";
 
 import { runV8ModelLoop } from "./modelLoop";
 
@@ -153,6 +153,8 @@ export async function resumeV8ToolLoopFromCheckpoint(
     continueOverrideCount: params.continueOverrideCount,
     thresholdOverrides: startInput.v8LoopPolicy?.thresholds,
     criticMode: resolveSteeringFeatureFlags(startInput.steering).criticMode,
+    repoBuildStateBefore: checkpoint.repoBuildStateBefore,
+    logVerbosity: startInput.logVerbosity,
   });
 
   return finishAfterLoop(runtime, {

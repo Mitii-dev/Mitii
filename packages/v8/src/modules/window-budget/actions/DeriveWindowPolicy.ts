@@ -5,6 +5,7 @@ import {
 import {
   WINDOW_BUDGET_EFFORT_OVERLAY,
   resolveEffortCompactionCeilings,
+  scaleEffortCallBudget,
   resolveWindowBudgetEffort,
 } from "../effort";
 import {
@@ -221,7 +222,10 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
     policy.maxTasksBase,
     policy.maxTasksCap,
   );
-  const maxModelCalls = overlay.maxModelCalls;
+  const maxModelCalls = scaleEffortCallBudget(
+    overlay.maxModelCalls,
+    windowTokens,
+  );
   const maxSkills = clampInt(
     policy.maxSkillsBase +
       Math.floor(usableInputTokens / policy.maxSkillsPerUsable),
@@ -291,7 +295,7 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
     },
     run: {
       maxModelCalls,
-      maxToolCalls: overlay.maxToolCalls,
+      maxToolCalls: scaleEffortCallBudget(overlay.maxToolCalls, windowTokens),
       maxVerificationRepairs: overlay.maxVerificationRepairs,
     },
     skills: {

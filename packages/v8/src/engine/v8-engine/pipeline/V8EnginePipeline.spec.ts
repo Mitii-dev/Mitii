@@ -9,7 +9,7 @@ import {
   ScriptedLlmPort,
   createCapabilities,
   createReadOnlyGrant,
-} from "../../agent-engine/tests/fixtures/stubs";
+} from "../tests/fixtures/stubs";
 
 function askStartInput() {
   return {

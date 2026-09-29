@@ -12,22 +12,28 @@ import type {
 } from "../../../modules/repository-state";
 import type { RequestUnderstandingResult } from "../../../modules/request-understanding";
 import type { WindowPolicy } from "../../../modules/window-budget";
+import type { RepoBuildState } from "../../../modules/verification";
 
 import type {
   AgentReasonCode,
   RunEvidence,
-} from "../../agent-engine/contracts";
-import type { EstablishedFact } from "../../agent-engine/actions";
-import { EventBus } from "../../agent-engine/internal/EventBus";
-import { ReadLedger } from "../../agent-engine/internal/ReadLedger";
-import { RunBudgetTracker } from "../../agent-engine/internal/RunBudget";
-import { ToolCallCache } from "../../agent-engine/internal/ToolCallCache";
-import type { TaskListRef } from "../../agent-engine/internal/taskListRuntime";
-import { consumeModelTurn } from "../../agent-engine/pipeline/consumeModelTurn";
-import { tryOfferBudgetWallContinue } from "../../agent-engine/pipeline/tryOfferBudgetWallContinue";
-import type { AgentEngineRuntime } from "../../agent-engine/pipeline/runtime";
-import type { ToolLoopOutcome } from "../../agent-engine/pipeline/types";
-import type { SteeringCriticMode } from "../../agent-engine/steeringFlags";
+} from "../contracts";
+import type { EstablishedFact } from "../actions";
+import type { PromptCacheClass } from "../actions/resolvePromptCacheClass";
+import { createLoopFileReadTracker } from "../actions";
+import { EventBus } from "../internal/EventBus";
+import { ReadLedger } from "../internal/ReadLedger";
+import { RunBudgetTracker } from "../internal/RunBudget";
+import { ToolCallCache } from "../internal/ToolCallCache";
+import type { ContextEpoch } from "../internal/context-epoch";
+import { InMemorySessionHistoryArchive } from "../internal/session-history";
+import type { AgentLogVerbosity } from "../internal/logVerbosity";
+import type { TaskListRef } from "../internal/taskListRuntime";
+import { consumeModelTurn } from "./consumeModelTurn";
+import { tryOfferBudgetWallContinue } from "./tryOfferBudgetWallContinue";
+import type { AgentEngineRuntime } from "./runtime";
+import type { ToolLoopOutcome } from "./types";
+import type { SteeringCriticMode } from "../legacy/steeringFlags";
 
 import type { V8EngineThresholdsOverrides } from "../policy";
 import { V8_ENGINE_THRESHOLDS } from "../policy";
@@ -51,6 +57,18 @@ import {
   unfulfilledExecuteNudgeMessage,
 } from "../actions/mutationNudge";
 import { runV8MutationCritic } from "../actions/mutationCritic";
+import {
+  buildRejectedMutationRecoveryMessage,
+} from "../actions/rejectedMutationRecovery";
+import {
+  DIAGNOSE_ANSWER_NUDGE_MESSAGE,
+  answerLockModelRequestFields,
+  primaryToolNameIfUniform,
+  shouldLockDiagnoseAnswer,
+  shouldNudgeDiagnoseAnswer,
+  updateRepeatedReadonlyToolTurns,
+} from "../modules/diagnose-answer";
+import { prepareTurn } from "./prepareTurn";
 import { settleToolBatch } from "./settleTools";
 
 function pickV8ThresholdOverrides(
@@ -99,11 +117,18 @@ export type V8ModelLoopParams = {
   /** Pre-mutation critic mode from steering (default off). */
   criticMode?: SteeringCriticMode;
   understanding?: RequestUnderstandingResult;
+  repoBuildStateBefore?: RepoBuildState;
+  memoryFacts?: readonly { id: string; content: string }[];
+  logVerbosity?: AgentLogVerbosity;
+  selectedSkillIds?: readonly string[];
+  projectRuleIds?: readonly string[];
+  environmentIds?: readonly string[];
 };
 
 /**
  * Thin model/tool loop with Phase 3 discipline:
- * ToolLoopGuard, soft mutation nudge (no evidence spend), truncation/reasoning rails.
+ * prepareTurn (compaction/working set), ToolLoopGuard, soft mutation nudge
+ * (no evidence spend), rejected-mutation recovery, truncation/reasoning rails.
  */
 export async function runV8ModelLoop(
   runtime: AgentEngineRuntime,
@@ -136,16 +161,31 @@ export async function runV8ModelLoop(
   let decision = params.decision;
   let answer = "";
   let truncationRecoveriesUsed = 0;
+  let reasoningAbortRecoveriesUsed = 0;
   let readOnlyTurnsWithoutMutation = 0;
   let unfulfilledExecuteRecoveries = 0;
+  let rejectedMutationRecoveries = 0;
+  let emittedLoopPressureWarning = false;
+  let emittedLoopCompactionWarning = false;
+  let lastPromptCacheClass: PromptCacheClass | undefined;
+  let contextEpoch: ContextEpoch | undefined =
+    runtime.contextEpochs.get(runId);
+  const sessionHistoryArchive = new InMemorySessionHistoryArchive();
+  const logVerbosity: AgentLogVerbosity = params.logVerbosity ?? "standard";
   const continueOverrideCount = params.continueOverrideCount ?? 0;
   let forceFinalOnly = false;
+  let awaitingAnswerOnly = false;
+  let consecutiveSameToolTurns = 0;
+  let lastUniformToolName: string | undefined;
+  let diagnoseAnswerNudges = 0;
   const mutationNeeded = requiresMutation(decision);
   const readLedger = new ReadLedger();
   const thresholds = resolveV8LoopPolicyThresholds({
     contextWindowTokens: params.windowPolicy.contextWindowTokens,
     overrides: pickV8ThresholdOverrides(params.thresholdOverrides),
   }).thresholds;
+  const mustReadNudgeBudget = { remaining: thresholds.maxMustReadNudges };
+  const loopFileReads = createLoopFileReadTracker();
   const criticMode: SteeringCriticMode = params.criticMode ?? "off";
   const toolLoopGuard = new ToolLoopGuard({
     softIdenticalLimit: thresholds.toolLoopSoftIdentical,
@@ -206,17 +246,67 @@ export async function runV8ModelLoop(
 
     const offerTools =
       !forceFinalOnly &&
+      !awaitingAnswerOnly &&
       !toolLoopGuard.isForcingFinalResponse() &&
       decision.toolGrant.allowedTools.length > 0;
-    const turnRequest: ModelRequest = {
+    const answerLock = awaitingAnswerOnly
+      ? answerLockModelRequestFields(request.tools)
+      : undefined;
+    const baseRequest: ModelRequest = {
       ...request,
-      messages: [...messages],
-      tools: offerTools ? request.tools : undefined,
+      ...(answerLock
+        ? answerLock
+        : {
+            tools: offerTools ? request.tools : undefined,
+          }),
     };
+
+    const prepared = prepareTurn({
+      runtime,
+      runId,
+      bus,
+      request: baseRequest,
+      messages,
+      budget,
+      windowPolicy,
+      taskListRef,
+      grantPathScopes: decision.toolGrant.pathScopes,
+      mutationBudget: decision.toolGrant.mutationBudget,
+      repoBuildStateBefore: params.repoBuildStateBefore,
+      memoryFacts: params.memoryFacts,
+      establishedFacts,
+      reasonCodes,
+      warnings,
+      logVerbosity,
+      lastPromptCacheClass,
+      emittedLoopPressureWarning,
+      emittedLoopCompactionWarning,
+      contextEpoch,
+      decisionRoute: decision.route,
+      decisionPlanningDepth: decision.planningDepth,
+      selectedSkillIds: params.selectedSkillIds,
+      projectRuleIds: params.projectRuleIds,
+      environmentIds: params.environmentIds,
+      memoryIds: params.memoryFacts?.map((fact) => fact.id) ?? [],
+      sessionHistoryArchive,
+    });
+    emittedLoopPressureWarning = prepared.emittedLoopPressureWarning;
+    emittedLoopCompactionWarning = prepared.emittedLoopCompactionWarning;
+    lastPromptCacheClass = prepared.promptCacheClass;
+    contextEpoch = prepared.contextEpoch;
+    if (prepared.contextEpoch) {
+      runtime.contextEpochs.set(runId, prepared.contextEpoch);
+      const store = runtime.deps.contextEpochStore;
+      if (store) {
+        void store.save(prepared.contextEpoch).catch(() => {
+          /* best-effort; checkpoint remains authoritative */
+        });
+      }
+    }
 
     const turn = await consumeModelTurn(runtime, {
       llm,
-      request: turnRequest,
+      request: prepared.turnRequest,
       runId,
       signal,
       bus,
@@ -318,29 +408,45 @@ export async function runV8ModelLoop(
       incompleteToolCalls: discardedCount > 0 && toolCalls.length === 0,
       truncationRecoveriesUsed,
       maxTruncationRecoveries: thresholds.maxTruncationRecoveries,
+      reasoningAbortRecoveriesUsed,
+      maxReasoningAbortRecoveries: thresholds.maxReasoningAbortRecoveries,
       requireMutation: mutationNeeded,
     });
 
     if (recovery.resetCounter) {
       truncationRecoveriesUsed = 0;
+      reasoningAbortRecoveriesUsed = 0;
     }
 
-    if (recovery.kind === "reasoning_abort" && recovery.shouldRecover) {
-      warnings.push(
-        truncationWarningMessage({ reasoningBudgetExceeded: true }),
-      );
-      reasonCodes.push("model_completed");
-      messages.push({
-        role: "assistant",
-        content: turn.content || "(reasoning only — no tools or answer)",
-      });
-      if (recovery.message) {
-        messages.push({ role: "user", content: recovery.message });
+    if (recovery.kind === "reasoning_abort") {
+      if (recovery.countReasoningAbort) {
+        reasoningAbortRecoveriesUsed += 1;
       }
-      runtime.emitStage(bus, runId, "model_running", "completed", [
-        "model_completed",
-      ]);
-      continue;
+      reasonCodes.push("reasoning_progress_budget_exceeded");
+      if (recovery.shouldRecover) {
+        warnings.push(
+          truncationWarningMessage({ reasoningBudgetExceeded: true }),
+        );
+        reasonCodes.push("model_completed");
+        messages.push({
+          role: "assistant",
+          content: turn.content || "(reasoning only — no tools or answer)",
+        });
+        if (recovery.message) {
+          messages.push({ role: "user", content: recovery.message });
+        }
+        runtime.emitStage(bus, runId, "model_running", "completed", [
+          "model_completed",
+          "reasoning_progress_budget_exceeded",
+        ]);
+        continue;
+      }
+      // Soft recoveries exhausted — ask the host to Continue rather than
+      // thrashing more reasoning-only turns.
+      return offerContinue(
+        mutationNeeded ? "unfulfilled_execute" : "exploration_stall",
+        turn.content || answer,
+      );
     }
 
     if (
@@ -367,12 +473,14 @@ export async function runV8ModelLoop(
     }
 
     reasonCodes.push("model_completed");
-    if (truncated) {
+    if (truncated && turn.reasoningBudgetExceeded !== true) {
       reasonCodes.push("output_truncated");
     }
     runtime.emitStage(bus, runId, "model_running", "completed", [
       "model_completed",
-      ...(truncated ? (["output_truncated"] as const) : []),
+      ...(truncated && turn.reasoningBudgetExceeded !== true
+        ? (["output_truncated"] as const)
+        : []),
     ]);
 
     if (toolCalls.length > 0) {
@@ -469,6 +577,8 @@ export async function runV8ModelLoop(
         windowPolicy,
         answer,
         toolLoopGuard,
+        mustReadNudgeBudget,
+        loopFileReads,
       });
       if (settled.kind === "return") {
         return settled.outcome;
@@ -485,6 +595,33 @@ export async function runV8ModelLoop(
       if (settled.stats.succeededMutating) {
         readOnlyTurnsWithoutMutation = 0;
         unfulfilledExecuteRecoveries = 0;
+        rejectedMutationRecoveries = 0;
+        consecutiveSameToolTurns = 0;
+        lastUniformToolName = undefined;
+      } else if (
+        mutationNeeded &&
+        changedFiles.length === 0 &&
+        settled.stats.rejectedMutation &&
+        rejectedMutationRecoveries < thresholds.maxRejectedMutationRecoveries &&
+        budget.canStartModelCall()
+      ) {
+        rejectedMutationRecoveries += 1;
+        const rejected = settled.stats.rejectedMutation;
+        const maxTargetedDiscoveryToolCalls =
+          decision.toolGrant.mutationBudget?.maxUniqueFilesPerCall ??
+          thresholds.preferredBatchSize;
+        reasonCodes.push("tool_failed");
+        warnings.push(
+          `Mutation tool ${rejected.toolName} ${rejected.status}; requesting a corrected edit.`,
+        );
+        messages.push({
+          role: "user",
+          content: buildRejectedMutationRecoveryMessage({
+            ...rejected,
+            maxTargetedDiscoveryToolCalls,
+            defaultPreferredBatchSize: thresholds.preferredBatchSize,
+          }),
+        });
       } else if (mutationNeeded && batchIsReadonlyTools(toolCalls)) {
         readOnlyTurnsWithoutMutation += 1;
         if (
@@ -500,6 +637,59 @@ export async function runV8ModelLoop(
           });
           readOnlyTurnsWithoutMutation = 0;
         }
+      } else if (!mutationNeeded && settled.stats.readonlyOnly) {
+        const uniform = primaryToolNameIfUniform(toolCalls);
+        const next = updateRepeatedReadonlyToolTurns({
+          previousToolName: lastUniformToolName,
+          previousCount: consecutiveSameToolTurns,
+          turnToolName: uniform,
+        });
+        lastUniformToolName = next.toolName;
+        consecutiveSameToolTurns = next.count;
+
+        if (
+          shouldNudgeDiagnoseAnswer({
+            mutationRequired: false,
+            consecutiveSameToolTurns,
+            maxRepeatedReadonlyToolTurnsBeforeAnswerNudge:
+              thresholds.maxRepeatedReadonlyToolTurnsBeforeAnswerNudge,
+            diagnoseAnswerNudges,
+            maxDiagnoseAnswerNudges: thresholds.maxDiagnoseAnswerNudges,
+          }) &&
+          budget.canStartModelCall()
+        ) {
+          diagnoseAnswerNudges += 1;
+          reasonCodes.push("incomplete_answer_recovered");
+          messages.push({
+            role: "user",
+            content: DIAGNOSE_ANSWER_NUDGE_MESSAGE,
+          });
+          warnings.push(
+            `Repeated ${uniform ?? "tool"} turns without an answer; requesting a final response.`,
+          );
+        } else if (
+          shouldLockDiagnoseAnswer({
+            mutationRequired: false,
+            consecutiveSameToolTurns,
+            maxRepeatedReadonlyToolTurnsBeforeAnswerNudge:
+              thresholds.maxRepeatedReadonlyToolTurnsBeforeAnswerNudge,
+            diagnoseAnswerNudges,
+            maxDiagnoseAnswerNudges: thresholds.maxDiagnoseAnswerNudges,
+          })
+        ) {
+          awaitingAnswerOnly = true;
+          reasonCodes.push("incomplete_answer_recovered");
+          messages.push({
+            role: "user",
+            content: DIAGNOSE_ANSWER_NUDGE_MESSAGE,
+          });
+          warnings.push(
+            "Stripped tools after repeated identical diagnostic turns; next turn must answer.",
+          );
+        }
+      } else if (!mutationNeeded) {
+        consecutiveSameToolTurns = 0;
+        lastUniformToolName = undefined;
       }
 
       if (toolLoopGuard.isForcingFinalResponse()) {
