@@ -35,6 +35,7 @@ import {
   applyUpdateTodosArguments,
   buildUpdateTodosToolResult,
   isUpdateTodosTool,
+  markTaskListUpdated,
   maybeAutoAdvanceTaskList,
   maybeRefillTaskListFromPlan,
   planProgressOf,
@@ -315,6 +316,7 @@ export async function finishExecuteOneTool(
       }
       if (taskListRef) {
         taskListRef.current = nextList;
+        markTaskListUpdated(taskListRef, budget.snapshot().modelCalls);
       }
       reasonCodes.push("task_list_updated");
       // Always emit, including clear/empty, so hosts can drop a stale checklist.
@@ -487,6 +489,7 @@ export async function finishExecuteOneTool(
     }
     if (autoAdvanced.advanced && autoAdvanced.taskList && taskListRef) {
       taskListRef.current = autoAdvanced.taskList;
+      markTaskListUpdated(taskListRef, budget.snapshot().modelCalls);
       taskListAutoAdvanceBudget.remaining = Math.max(
         0,
         taskListAutoAdvanceBudget.remaining - 1,

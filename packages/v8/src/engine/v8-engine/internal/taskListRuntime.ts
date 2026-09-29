@@ -28,6 +28,8 @@ export {
   type TaskListRef,
   ensureCompletedPlanStepIds,
   recordCompletedPlanSteps,
+  markTaskListUpdated,
+  shouldRemindTodoUpdate,
   planProgressOf,
   attachTaskListTool,
   isUpdateTodosTool,

@@ -27,6 +27,8 @@ export const TASK_LIST_REASON_CODES = [
   "task_list_unchanged",
   "task_list_invalid",
   "task_list_empty",
+  "task_list_status_transition_invalid",
+  "task_list_title_clipped",
 ] as const;
 
 export const TASK_LIST_ERROR_CODES = [
