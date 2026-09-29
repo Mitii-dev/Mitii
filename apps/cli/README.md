@@ -163,7 +163,7 @@ GitHub is different:
 | `--cwd <path>` | Workspace root (default: current directory) |
 | `--mode ask\|plan\|agent` | Same modes as CLI (`ask` default - safest for chat) |
 | `--echo` | Force Echo LLM (local smoke, no API key) |
-| `--approve` | Auto-approve mutation/plan gates (**default** for connectors) |
+| `--approve` | Auto-approve mutation/plan gates and auto-Continue stall walls (`continue_required`) (**default** for connectors) |
 | `--deny` | Do not auto-approve; suspended turns stop instead |
 | `--allowed-user-id <id>` | Allowlist platform user id (repeatable). **Recommended** |
 | `--stop` | Stop a running connector for this channel/cwd |

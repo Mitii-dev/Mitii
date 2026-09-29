@@ -29,6 +29,10 @@ import {
   IconStop,
 } from '../ActivityIcons.js';
 import {
+  isTransientEngineNetworkError,
+  withEngineFetchRetry,
+} from '../engineNetwork.js';
+import {
   createWorkspaceFilePath,
   extractAssistantText,
   fetchGitStatus,
@@ -241,12 +245,13 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
 
   const loadGit = useCallback(async () => {
     try {
-      const next = await fetchGitStatus(auth);
+      const next = await withEngineFetchRetry(() => fetchGitStatus(auth));
       applyStatus(next);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (/failed to fetch|networkerror|load failed/i.test(msg)) return;
-      props.onError?.(msg);
+      if (isTransientEngineNetworkError(err)) return;
+      props.onError?.(
+        err instanceof Error ? err.message : String(err),
+      );
     }
   }, [props.baseUrl, props.token, applyStatus, props.onError]);
 

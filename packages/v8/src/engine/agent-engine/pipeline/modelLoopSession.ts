@@ -39,6 +39,15 @@ export type ModelLoopSession = {
   /** Count of allowed evidence-read batches after the mutation nudge. */
   postNudgeEvidenceReadTurns: number;
   /**
+   * Recoveries after the model proposed read/search while mutation-locked.
+   * Caps Continue thrash; injects forced apply_patch nudges instead.
+   */
+  mutationLockRecoveries: number;
+  /** Auto create-file stub batches applied under mutation lock. */
+  mutationLockAutoStubBatches: number;
+  /** Force toolChoice=required on the next mutation-only model turn. */
+  forceMutationToolChoice: boolean;
+  /**
    * Diagnose/ask: consecutive turns that only invoked the same tool name
    * (e.g. read_diagnostics thrash).
    */

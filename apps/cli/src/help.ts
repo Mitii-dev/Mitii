@@ -101,8 +101,8 @@ Options:
   --stream-json      NDJSON: one line per RunEvent, then a result line
   --echo             Force EchoLlmPort even when API keys are set
   --clarify <text>   Non-interactive clarification resume
-  --approve / --deny Non-interactive approval: resume mutation/plan gates;
-                     --approve also skips plan-gate on start (headless)
+  --approve / --deny Non-interactive approval: resume mutation/plan gates
+                     and Continue stall walls; --approve also skips plan-gate on start (headless)
   --out <file>       Session export path (export-session)
   --mode <mode>      ask | plan | agent | database
   --origin <origin>  user | automation | api

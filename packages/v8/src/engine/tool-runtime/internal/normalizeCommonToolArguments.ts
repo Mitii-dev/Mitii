@@ -42,7 +42,77 @@ export function normalizeCommonToolArguments(
     return normalizeReadDiagnosticsArguments(value as Record<string, unknown>);
   }
 
+  if (toolName === "read_file" || toolName === "read_many_files") {
+    return normalizeReadFileArguments(value as Record<string, unknown>);
+  }
+
+  if (toolName === "analyze_change_impact") {
+    return normalizeAnalyzeChangeImpactArguments(
+      value as Record<string, unknown>,
+    );
+  }
+
   return value;
+}
+
+/**
+ * Models often send snake_case line ranges (line_start / line_end) or omit a
+ * usable path. Map onto the camelCase schema before strict Zod validation.
+ */
+function normalizeReadFileArguments(
+  raw: Record<string, unknown>,
+): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...raw };
+
+  if (
+    (next.path === undefined || next.path === "") &&
+    typeof next.file === "string" &&
+    next.file.length > 0
+  ) {
+    next.path = next.file;
+  }
+
+  if (next.startLine === undefined) {
+    const fromSnake =
+      toPositiveInt(next.line_start) ??
+      toPositiveInt(next.start_line) ??
+      toPositiveInt(next.lineStart);
+    if (fromSnake !== undefined) {
+      next.startLine = fromSnake;
+    }
+  }
+  if (next.endLine === undefined) {
+    const fromSnake =
+      toPositiveInt(next.line_end) ??
+      toPositiveInt(next.end_line) ??
+      toPositiveInt(next.lineEnd);
+    if (fromSnake !== undefined) {
+      next.endLine = fromSnake;
+    }
+  }
+  if (next.maxLines === undefined) {
+    const fromSnake =
+      toPositiveInt(next.max_lines) ?? toPositiveInt(next.maxLines);
+    if (fromSnake !== undefined) {
+      next.maxLines = fromSnake;
+    }
+  }
+
+  delete next.file;
+  delete next.line_start;
+  delete next.line_end;
+  delete next.start_line;
+  delete next.end_line;
+  delete next.max_lines;
+  // Drop unrecognized camel aliases that would fail .strict()
+  if ("lineStart" in next && next.startLine !== undefined) {
+    delete next.lineStart;
+  }
+  if ("lineEnd" in next && next.endLine !== undefined) {
+    delete next.lineEnd;
+  }
+
+  return next;
 }
 
 /**
@@ -257,6 +327,27 @@ function normalizeSearchFilesArguments(
     delete next.case_sensitive;
   }
 
+  // Explicit empty path fails min(1); treat as workspace-wide default.
+  if (typeof next.path === "string" && next.path.trim().length === 0) {
+    delete next.path;
+  }
+
+  // Models invent modes like "filename" / "files" — map onto the real enum.
+  if (typeof next.mode === "string") {
+    const mode = next.mode.trim().toLowerCase();
+    if (mode === "filename" || mode === "files" || mode === "name") {
+      next.mode = "literal";
+    } else if (mode === "regexp" || mode === "re") {
+      next.mode = "regex";
+    } else if (
+      mode !== "auto" &&
+      mode !== "literal" &&
+      mode !== "regex"
+    ) {
+      delete next.mode;
+    }
+  }
+
   return next;
 }
 
@@ -305,6 +396,75 @@ function normalizeGlobFilesArguments(
     next.pattern = next.glob;
   }
   delete next.glob;
+  return next;
+}
+
+const EDGE_TYPE_ALIASES: Record<string, string> = {
+  import: "imports",
+  imported: "imports",
+  call: "calls",
+  called: "calls",
+  reference: "references",
+  refs: "references",
+  extend: "extends",
+  extended: "extends",
+  implement: "implements",
+  implemented: "implements",
+  depends: "depends_on",
+  depend: "depends_on",
+  dependency: "depends_on",
+  development_depends: "development_depends_on",
+  dev_depends_on: "development_depends_on",
+};
+
+const VALID_EDGE_TYPES = new Set([
+  "calls",
+  "imports",
+  "references",
+  "extends",
+  "implements",
+  "depends_on",
+  "development_depends_on",
+]);
+
+/**
+ * Models often send singular edge type names (`import`) or empty arrays.
+ * Map onto CHANGE_IMPACT_EDGE_TYPES before strict Zod validation.
+ */
+function normalizeAnalyzeChangeImpactArguments(
+  raw: Record<string, unknown>,
+): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...raw };
+  if (Array.isArray(next.edgeTypes)) {
+    const mapped = next.edgeTypes
+      .map((entry) => {
+        if (typeof entry !== "string") return undefined;
+        const trimmed = entry.trim();
+        if (!trimmed) return undefined;
+        if (VALID_EDGE_TYPES.has(trimmed)) return trimmed;
+        const alias = EDGE_TYPE_ALIASES[trimmed.toLowerCase()];
+        return alias && VALID_EDGE_TYPES.has(alias) ? alias : undefined;
+      })
+      .filter((entry): entry is string => Boolean(entry));
+    const deduped = [...new Set(mapped)];
+    if (deduped.length > 0) {
+      next.edgeTypes = deduped;
+    } else {
+      delete next.edgeTypes;
+    }
+  } else if (typeof next.edgeTypes === "string") {
+    const trimmed = next.edgeTypes.trim();
+    const alias =
+      (VALID_EDGE_TYPES.has(trimmed) ? trimmed : undefined) ??
+      EDGE_TYPE_ALIASES[trimmed.toLowerCase()];
+    if (alias && VALID_EDGE_TYPES.has(alias)) {
+      next.edgeTypes = [alias];
+    } else {
+      delete next.edgeTypes;
+    }
+  } else if (next.edgeTypes !== undefined) {
+    delete next.edgeTypes;
+  }
   return next;
 }
 

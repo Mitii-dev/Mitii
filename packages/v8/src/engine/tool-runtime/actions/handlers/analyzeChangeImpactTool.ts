@@ -52,6 +52,8 @@ export const analyzeChangeImpactTool: RegisteredTool = {
               "calls",
               "imports",
               "references",
+              "extends",
+              "implements",
               "depends_on",
               "development_depends_on",
             ],

@@ -33,16 +33,15 @@ describe("execute finish discipline (enterprise)", () => {
     expect(wide.band).toBe("wide");
 
     expect(compact.thresholds.maxReadOnlyToolTurnsBeforeMutationNudge).toBe(15);
-    expect(standard.thresholds.maxReadOnlyToolTurnsBeforeMutationNudge).toBe(
-      AGENT_ENGINE_THRESHOLDS.maxReadOnlyToolTurnsBeforeMutationNudge,
-    );
+    expect(standard.thresholds.maxReadOnlyToolTurnsBeforeMutationNudge).toBe(12);
     expect(wide.thresholds.maxReadOnlyToolTurnsBeforeMutationNudge).toBe(18);
 
     expect(compact.thresholds.maxUnfulfilledExecuteRecoveries).toBe(4);
-    expect(standard.thresholds.maxUnfulfilledExecuteRecoveries).toBe(2);
+    expect(standard.thresholds.maxUnfulfilledExecuteRecoveries).toBe(3);
     expect(compact.thresholds.maxPostNudgeEvidenceReadTurns).toBe(6);
-    expect(standard.thresholds.maxPostNudgeEvidenceReadTurns).toBe(2);
+    expect(standard.thresholds.maxPostNudgeEvidenceReadTurns).toBe(6);
     expect(wide.thresholds.maxPostNudgeEvidenceReadTurns).toBe(8);
+    expect(AGENT_ENGINE_THRESHOLDS.maxContinueOverrides).toBe(4);
     expect(compact.thresholds.maxVerificationRepairAttempts).toBe(4);
     expect(compact.thresholds.maxStalledVerificationRepairs).toBe(1);
     expect(compact.thresholds.maxReadOnlyToolTurnsAfterMutationNudges).toBe(2);
@@ -52,6 +51,12 @@ describe("execute finish discipline (enterprise)", () => {
       wide.thresholds.maxReadOnlyToolTurnsBeforeMutationNudge,
     ).toBeGreaterThanOrEqual(
       compact.thresholds.maxReadOnlyToolTurnsBeforeMutationNudge,
+    );
+    // Standard mid-windows stay at least as patient as compact on evidence.
+    expect(
+      standard.thresholds.maxPostNudgeEvidenceReadTurns,
+    ).toBeGreaterThanOrEqual(
+      compact.thresholds.maxPostNudgeEvidenceReadTurns,
     );
   });
 

@@ -212,7 +212,7 @@ export async function finishAfterLoop(
       excludedWaitMs: budget.getExcludedWaitMs(),
       suspendedAtMs: Date.now(),
       repoBuildStateBefore,
-      repoBuildStateAfter: params.repoBuildStateAfter,
+      repoBuildStateAfter: afterState ?? params.repoBuildStateAfter,
       ...(taskListRef.current ? { taskList: taskListRef.current } : {}),
       ...(taskListRef.completedPlanStepIds &&
       taskListRef.completedPlanStepIds.length > 0
@@ -467,7 +467,7 @@ export async function finishAfterLoop(
         excludedWaitMs: budget.getExcludedWaitMs(),
         suspendedAtMs: Date.now(),
         repoBuildStateBefore,
-        repoBuildStateAfter: params.repoBuildStateAfter,
+        repoBuildStateAfter: afterState ?? params.repoBuildStateAfter,
         ...(taskListRef.current ? { taskList: taskListRef.current } : {}),
         ...(taskListRef.completedPlanStepIds &&
         taskListRef.completedPlanStepIds.length > 0
@@ -861,6 +861,9 @@ export async function finishAfterLoop(
         excludedSkillIds: params.loopContext?.excludedSkillIds,
         evidence,
         windowPolicy,
+        // Remaining-after diagnostics — lock nudges must target the 1 left,
+        // not the stale preflight list (BillBuddy 00:03: 22→1 then thrash).
+        repoBuildStateBefore: afterState ?? repoBuildStateBefore,
         logVerbosity: input.logVerbosity,
         plan: params.loopContext?.plan,
         forceMutationLock: true,

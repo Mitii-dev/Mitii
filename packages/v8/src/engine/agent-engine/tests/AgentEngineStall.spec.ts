@@ -56,7 +56,7 @@ function patchCall(id: string) {
   };
 }
 
-/** Standard band (≥50k) so assertions match base AGENT_ENGINE_THRESHOLDS. */
+/** Standard band window; loop patience is pinned via {@link STALL_LOOP_POLICY}. */
 function stallCapabilities(
   overrides: Parameters<typeof createCapabilities>[0] = {},
 ) {
@@ -65,6 +65,23 @@ function stallCapabilities(
     ...overrides,
   });
 }
+
+/**
+ * Historical base-band stall numbers (4-read nudge / 2 evidence).
+ * Ship standard band is more patient; tests pin this for deterministic scripts.
+ */
+const STALL_LOOP_POLICY = {
+  thresholds: {
+    maxReadOnlyToolTurnsBeforeMutationNudge: 4,
+    maxPostNudgeEvidenceReadTurns: 2,
+    maxUnfulfilledExecuteRecoveries: 2,
+    maxReadOnlyMutationRetryAttempts: 2,
+    maxContinueOverrides: 2,
+    // Keep Continue/fail assertions; production uses in-loop lock recovery.
+    maxMutationLockRecoveries: 0,
+    maxMutationLockAutoStubBatches: 0,
+  },
+} as const;
 
 function listDirectoryCall(id: string, path = "src") {
   return {
@@ -107,6 +124,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           workspace: { workspaceId: "ws_1" },
         },
         workspaceRoot: "/workspace",
+        loopPolicy: STALL_LOOP_POLICY,
       }),
     ).result;
 
@@ -164,6 +182,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           workspace: { workspaceId: "ws_1" },
         },
         workspaceRoot: "/workspace",
+        loopPolicy: STALL_LOOP_POLICY,
       }),
     ).result;
 
@@ -258,6 +277,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           workspace: { workspaceId: "ws_1" },
         },
         workspaceRoot: "/workspace",
+        loopPolicy: STALL_LOOP_POLICY,
       }),
     ).result;
 
@@ -308,6 +328,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           workspace: { workspaceId: "ws_1" },
         },
         workspaceRoot: "/workspace",
+        loopPolicy: STALL_LOOP_POLICY,
       }),
     ).result;
 
@@ -389,6 +410,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           workspace: { workspaceId: "ws_1" },
         },
         workspaceRoot: "/workspace",
+        loopPolicy: STALL_LOOP_POLICY,
       }),
     ).result;
 
@@ -496,6 +518,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           workspace: { workspaceId: "ws_1" },
         },
         workspaceRoot: "/workspace",
+        loopPolicy: STALL_LOOP_POLICY,
       }),
     ).result;
 
@@ -575,6 +598,15 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           workspace: { workspaceId: "ws_1" },
         },
         workspaceRoot: "/workspace",
+        loopPolicy: {
+          thresholds: {
+            maxReadOnlyToolTurnsBeforeMutationNudge: 4,
+            maxPostNudgeEvidenceReadTurns: 2,
+            maxContinueOverrides: 1,
+            maxMutationLockRecoveries: 0,
+            maxMutationLockAutoStubBatches: 0,
+          },
+        },
       }),
     ).result;
 
@@ -691,6 +723,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           workspace: { workspaceId: "ws_1" },
         },
         workspaceRoot: "/workspace",
+        loopPolicy: STALL_LOOP_POLICY,
       }),
     ).result;
 
@@ -803,6 +836,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           workspace: { workspaceId: "ws_1" },
         },
         workspaceRoot: "/workspace",
+        loopPolicy: STALL_LOOP_POLICY,
       }),
     ).result;
 
@@ -858,6 +892,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           workspace: { workspaceId: "ws_1" },
         },
         workspaceRoot: "/workspace",
+        loopPolicy: STALL_LOOP_POLICY,
       }),
     ).result;
 
@@ -947,6 +982,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           workspace: { workspaceId: "ws_1" },
         },
         workspaceRoot: "/workspace",
+        loopPolicy: STALL_LOOP_POLICY,
       }),
     ).result;
 
@@ -1037,6 +1073,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           workspace: { workspaceId: "ws_1" },
         },
         workspaceRoot: "/workspace",
+        loopPolicy: STALL_LOOP_POLICY,
       }),
     ).result;
 
@@ -1091,6 +1128,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           workspace: { workspaceId: "ws_1" },
         },
         workspaceRoot: "/workspace",
+        loopPolicy: STALL_LOOP_POLICY,
       }),
     ).result;
 
@@ -1219,6 +1257,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           workspace: { workspaceId: "ws_1" },
         },
         workspaceRoot: "/workspace",
+        loopPolicy: STALL_LOOP_POLICY,
       }),
     ).result;
 
@@ -1346,6 +1385,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           workspace: { workspaceId: "ws_1" },
         },
         workspaceRoot: "/workspace",
+        loopPolicy: STALL_LOOP_POLICY,
       }),
     ).result;
 
@@ -1480,6 +1520,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           workspace: { workspaceId: "ws_1" },
         },
         workspaceRoot: "/workspace",
+        loopPolicy: STALL_LOOP_POLICY,
       }),
     ).result;
 
@@ -1600,6 +1641,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           workspace: { workspaceId: "ws_1" },
         },
         workspaceRoot: "/workspace",
+        loopPolicy: STALL_LOOP_POLICY,
       }),
     ).result;
 
@@ -1689,6 +1731,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           workspace: { workspaceId: "ws_1" },
         },
         workspaceRoot: "/workspace",
+        loopPolicy: STALL_LOOP_POLICY,
       }),
     ).result;
 
@@ -1798,6 +1841,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           workspace: { workspaceId: "ws_1" },
         },
         workspaceRoot: "/workspace",
+        loopPolicy: STALL_LOOP_POLICY,
       }),
     ).result;
 
@@ -1932,6 +1976,7 @@ describe("AgentEnginePipeline stall and read dedup", () => {
           workspace: { workspaceId: "ws_1" },
         },
         workspaceRoot: "/workspace",
+        loopPolicy: STALL_LOOP_POLICY,
       }),
     ).result;
 

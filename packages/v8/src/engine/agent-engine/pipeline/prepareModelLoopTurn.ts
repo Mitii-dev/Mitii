@@ -261,10 +261,18 @@ export function prepareModelLoopTurn(params: {
       diagnostics: params.repoBuildStateBefore?.diagnostics ?? [],
       totalErrorCount: params.repoBuildStateBefore?.summary.errorCount ?? 0,
       pathScopes: params.grantPathScopes,
-      maxDiagnostics: params.windowPolicy.planning.maxDiagnosticSteps,
+      maxDiagnostics: Math.max(
+        params.windowPolicy.planning.maxDiagnosticSteps,
+        (params.repoBuildStateBefore?.summary.errorCount ?? 0) >= 20 ? 24 : 0,
+      ),
       maxChars: Math.min(
-        params.windowPolicy.compaction.establishedFactReinjectChars,
-        2_400,
+        Math.max(
+          params.windowPolicy.compaction.establishedFactReinjectChars,
+          (params.repoBuildStateBefore?.summary.errorCount ?? 0) >= 20
+            ? 4_800
+            : 2_400,
+        ),
+        6_000,
       ),
     }),
     establishedFacts: params.establishedFacts,

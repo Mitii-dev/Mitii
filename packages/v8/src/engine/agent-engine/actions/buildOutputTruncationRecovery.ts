@@ -174,7 +174,10 @@ export function buildOutputTruncationRecovery(params: {
                   : "Your previous turn hit the output token limit while writing internal analysis/reasoning, not a user-facing answer.",
                 "Do not continue that essay.",
                 forcePatch
-                  ? `Call apply_patch now with a smaller batch: at most ${preferred} files (hard max ${maxPatches} patches).`
+                  ? [
+                      `Call apply_patch now with a smaller batch: at most ${preferred} files (hard max ${maxPatches} patches).`,
+                      "Do not call read_file, search_files, list_directory, or analyze_change_impact on this turn — patch the remaining diagnostic errors already in context.",
+                    ].join(" ")
                   : "Give a short final answer to the user now (or call one essential tool). Do not restate your plan.",
               ].join("\n")
             : [

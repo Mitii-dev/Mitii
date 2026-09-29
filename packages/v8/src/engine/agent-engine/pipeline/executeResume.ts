@@ -17,6 +17,7 @@ import {
   annotateMutationToolDefinitions,
   applyExplorationSignal,
   buildBudgetWallResetMessage,
+  buildPreflightDiagnosticRepairInstruction,
   clampRunBudget,
   toRunUsage,
   filterToolDefinitions,
@@ -481,6 +482,13 @@ export async function executeResume(
       const mutationRequired =
         checkpoint.decision.reasonCodes.includes("mutation_execute") ||
         checkpoint.decision.toolGrant.maximumWorkspaceEffect === "write";
+      const remainingBuildState =
+        checkpoint.repoBuildStateAfter ?? checkpoint.repoBuildStateBefore;
+      const remainingErrorCount =
+        remainingBuildState?.summary.errorCount ?? 0;
+      // Zero-edit Continue: force first mutation. Mid-repair Continue with
+      // remaining typecheck errors: re-enter mutation lock on the after-state
+      // list so rediscovery cannot restart (BillBuddy 00:03: 22→1 thrash).
       const forceMutationOnResume =
         mutationRequired &&
         checkpoint.changedFiles.length === 0 &&
@@ -488,16 +496,37 @@ export async function executeResume(
           wallReason === "exploration_stall" ||
           wallReason === "incomplete_execute" ||
           wallReason === "rejected_mutation");
+      const forceMutationLockOnResume =
+        mutationRequired &&
+        remainingErrorCount > 0 &&
+        (wallReason === "unfulfilled_execute" ||
+          wallReason === "incomplete_execute" ||
+          wallReason === "incomplete_checklist" ||
+          wallReason === "verification_repair_capped");
+      const preflightDiagnostics = buildPreflightDiagnosticRepairInstruction({
+        diagnostics: remainingBuildState?.diagnostics ?? [],
+        totalErrorCount: remainingErrorCount,
+        pathScopes: checkpoint.decision.toolGrant.pathScopes ?? ["."],
+        maxDiagnostics: Math.max(
+          12,
+          remainingErrorCount >= 20 ? 24 : 12,
+        ),
+        maxChars: 4_800,
+      });
       const resetMessage = buildBudgetWallResetMessage({
         reason: wallReason,
         guidance,
         mutationRequired,
         changedFiles: checkpoint.changedFiles,
+        preflightDiagnostics,
       });
       const resumedCheckpoint = {
         ...checkpoint,
         continueOverrideCount: nextOverrideCount,
         continueWallReason: wallReason,
+        // Prefer remaining-after for the next loop's diagnostic nudges.
+        repoBuildStateBefore:
+          remainingBuildState ?? checkpoint.repoBuildStateBefore,
         messages: [
           ...checkpoint.messages,
           { role: "user" as const, content: resetMessage },
@@ -554,6 +583,7 @@ export async function executeResume(
         },
         continueOverrideCount: nextOverrideCount,
         forceMutationOnResume,
+        forceMutationLock: forceMutationLockOnResume,
       });
     }
 
