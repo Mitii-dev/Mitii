@@ -123,6 +123,7 @@ interface SettingsPanelProps {
   onSaveAll: () => void;
   onResetTokenBudget: () => void;
   onResetLoopPolicy: () => void;
+  onResetV8LoopPolicy: () => void;
   saving: boolean;
 }
 
@@ -402,6 +403,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     onSaveAll,
     onResetTokenBudget,
     onResetLoopPolicy,
+    onResetV8LoopPolicy,
     saving,
   } = props;
   const [modeSettingsTab, setModeSettingsTab] =
@@ -1630,6 +1632,60 @@ export function SettingsPanel(props: SettingsPanelProps) {
                     <p className="field-hint">
                       Using shipped {ui.loopPolicy.band.label} band. Turn Custom
                       on only to lab-test local deltas.
+                    </p>
+                  )}
+                </div>
+              </SettingsSection>
+
+              <SettingsSection
+                title="V8 engine knobs (local)"
+                description={`Active band: ${ui.v8LoopPolicy.band.label} (${ui.v8LoopPolicy.band.rangeLabel}). Applies when mitii.engine.implementation is v8. Ship via pnpm policy-admin §4.`}
+              >
+                <div
+                  className={`developer-options${
+                    ui.developerEnabled ? '' : ' is-locked'
+                  }`}
+                >
+                  <label className="toggle">
+                    <input
+                      type="checkbox"
+                      checked={ui.v8LoopPolicy.enabled}
+                      disabled={!ui.developerEnabled}
+                      onChange={(e) =>
+                        onSaveUi({
+                          v8LoopPolicy: { enabled: e.target.checked },
+                        })
+                      }
+                    />
+                    Custom v8 loop policy
+                  </label>
+                  <div className="row">
+                    <button
+                      type="button"
+                      className="btn ghost"
+                      onClick={onResetV8LoopPolicy}
+                      disabled={!ui.developerEnabled}
+                    >
+                      Reset to ship band
+                    </button>
+                  </div>
+                  {ui.v8LoopPolicy.enabled ? (
+                    <LoopPolicyEditor
+                      fields={ui.v8LoopPolicy.fields}
+                      thresholds={ui.v8LoopPolicy.thresholds}
+                      bandThresholds={ui.v8LoopPolicy.bandThresholds}
+                      customEnabled={ui.v8LoopPolicy.enabled}
+                      disabled={!ui.developerEnabled}
+                      onThresholdsChange={(patch) =>
+                        onSaveUi({
+                          v8LoopPolicy: { enabled: true, thresholds: patch },
+                        })
+                      }
+                    />
+                  ) : (
+                    <p className="field-hint">
+                      Using shipped {ui.v8LoopPolicy.band.label} v8 band. Turn
+                      Custom on only to lab-test local deltas.
                     </p>
                   )}
                 </div>

@@ -143,6 +143,11 @@ import {
   readLoopPolicySettings,
 } from './loopPolicySettings.js';
 import {
+  V8_LOOP_POLICY_FIELDS,
+  v8LoopPolicyResetKeys,
+  readV8LoopPolicySettings,
+} from './v8LoopPolicySettings.js';
+import {
   readPolicyLabSettings,
   readShipBandTables,
   saveShipBandsFromUi,
@@ -1051,6 +1056,9 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         return;
       case 'settings.resetLoopPolicy':
         await this.resetLoopPolicyToDefaults();
+        return;
+      case 'settings.resetV8LoopPolicy':
+        await this.resetV8LoopPolicyToDefaults();
         return;
       case 'settings.savePolicyLab':
         await this.savePolicyLabFromUi(message.policyLab);
@@ -2635,6 +2643,30 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           }
         }
       }
+      if (message.ui.v8LoopPolicy) {
+        if (message.ui.v8LoopPolicy.enabled !== undefined) {
+          await update('v8LoopPolicy.enabled', message.ui.v8LoopPolicy.enabled);
+        }
+        const v8Enabled =
+          message.ui.v8LoopPolicy.enabled ??
+          cfg.get<boolean>('v8LoopPolicy.enabled') === true;
+        if (message.ui.v8LoopPolicy.thresholds && v8Enabled) {
+          for (const field of V8_LOOP_POLICY_FIELDS) {
+            const value = message.ui.v8LoopPolicy.thresholds[field.key];
+            if (typeof value !== 'number' || !Number.isFinite(value)) {
+              continue;
+            }
+            const bounded = Math.max(
+              field.min,
+              Math.min(field.max ?? Number.POSITIVE_INFINITY, value),
+            );
+            await update(
+              `v8LoopPolicy.${field.key}`,
+              field.kind === 'int' ? Math.floor(bounded) : bounded,
+            );
+          }
+        }
+      }
       if (message.ui.contextToggles) {
         for (const [key, value] of Object.entries(message.ui.contextToggles)) {
           if (value === undefined) continue;
@@ -2738,6 +2770,15 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     const cfg = this.vs.workspace.getConfiguration('mitii');
     const target = this.configurationTarget();
     for (const key of loopPolicyResetKeys()) {
+      await cfg.update(key, undefined, target);
+    }
+    await this.sendBootstrap();
+  }
+
+  private async resetV8LoopPolicyToDefaults(): Promise<void> {
+    const cfg = this.vs.workspace.getConfiguration('mitii');
+    const target = this.configurationTarget();
+    for (const key of v8LoopPolicyResetKeys()) {
       await cfg.update(key, undefined, target);
     }
     await this.sendBootstrap();
@@ -3210,6 +3251,10 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         cfg.get<number>('provider.maximumOutputTokens'),
       ),
       loopPolicy: readLoopPolicySettings(cfg, resolveContextWindow(this.vs)),
+      v8LoopPolicy: readV8LoopPolicySettings(
+        cfg,
+        resolveContextWindow(this.vs),
+      ),
       policyLab: readPolicyLabSettings(
         resolveContextWindow(this.vs),
         this.policyLabEditBand,

@@ -23,6 +23,9 @@ export { buildConfigDiscoveryProfile } from "./profiles/buildConfig";
 export { ciCdDiscoveryProfile } from "./profiles/ciCd";
 export { databaseDiscoveryProfile } from "./profiles/database";
 export { frontendComponentDiscoveryProfile } from "./profiles/frontendComponent";
+export { monorepoDiscoveryProfile } from "./profiles/monorepo";
+export { securityDiscoveryProfile } from "./profiles/security";
+export { testingDiscoveryProfile } from "./profiles/testing";
 export { matchesBrowserTestRunnerQuery } from "./profiles/browserTestRunner";
 export {
   SHAPED_DISCOVERY_PROFILES,

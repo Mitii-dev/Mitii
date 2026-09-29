@@ -210,6 +210,11 @@ export function createEchoDesktopClient(
     defaultSessionId: `desktop_${workspaceId}`,
     workspaceId,
     taskListAutoAdvance: env.MITII_TASK_LIST_AUTO_ADVANCE !== '0',
+    engineImplementation:
+      env.MITII_ENGINE_IMPLEMENTATION === 'legacy' ||
+      readDesktopSettingsField(env, 'agent.engineImplementation') === 'legacy'
+        ? 'legacy'
+        : 'v8',
   });
 }
 
@@ -400,6 +405,11 @@ export async function createHostDesktopClient(
     enableInMemoryCheckpoints: false,
     checkpointStore: createWorkspaceCheckpointStore(cwd),
     taskListAutoAdvance: env.MITII_TASK_LIST_AUTO_ADVANCE !== '0',
+    engineImplementation:
+      env.MITII_ENGINE_IMPLEMENTATION === 'legacy' ||
+      readDesktopSettingsField(env, 'agent.engineImplementation') === 'legacy'
+        ? 'legacy'
+        : 'v8',
     ...(memoryOn
       ? {
           memoryStore: createWorkspaceMemoryStore(cwd, workspaceId),

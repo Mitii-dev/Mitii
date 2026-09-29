@@ -1,0 +1,493 @@
+{
+  "schemaVersion": 1,
+  "title": "v8-engine curated-40 product eval catalog",
+  "description": "Day-1 product eval slice from the 500 prompts. Always-on CI uses stubbed golden scenarios; this catalog drives nightly/manual live or recorded evals.",
+  "count": 40,
+  "passBar": {
+    "mutationOrCorrectAsk": true,
+    "forbidContinueOnlyPassWhenMutationRequired": true,
+    "noLivePaidApisInUnitCi": true
+  },
+  "prompts": [
+    {
+      "id": 1,
+      "bucket": "api_security_path",
+      "prompt": "Build a RESTful endpoint in Express.js for batch user creation with transaction rollback on error.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 7,
+      "bucket": "api_security_path",
+      "prompt": "Build an Express route that proxies requests to an external API with retry logic and exponential backoff.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 21,
+      "bucket": "api_security_path",
+      "prompt": "Write an Express endpoint validating Webhook signatures using HMAC-SHA256 from Stripe.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 64,
+      "bucket": "api_security_path",
+      "prompt": "Create an Express file management route preventing Directory Traversal attacks on path arguments.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 82,
+      "bucket": "nextjs_auth_webhooks",
+      "prompt": "Create a Server Action in Next.js 14 handling form submission, Zod validation, and revalidation.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 94,
+      "bucket": "nextjs_auth_webhooks",
+      "prompt": "Write a Next.js Middleware verifying JWT cookies and enforcing RBAC route protection.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 102,
+      "bucket": "nextjs_auth_webhooks",
+      "prompt": "Implement a Next.js Route Handler handling Stripe Webhooks and updating DB records.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 241,
+      "bucket": "ts_compiler_bugfix",
+      "prompt": "Fix TS2322: Type 'string | null' is not assignable to type 'string' in a strictly typed React prop.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 242,
+      "bucket": "ts_compiler_bugfix",
+      "prompt": "Fix TS2339: Property 'id' does not exist on type 'User | Record<string, unknown>'.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 243,
+      "bucket": "ts_compiler_bugfix",
+      "prompt": "Fix TS2345: Argument of type 'number' is not assignable to parameter of type 'string' in generic function.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 244,
+      "bucket": "ts_compiler_bugfix",
+      "prompt": "Fix TS2353: Object literal may only specify known properties, and 'extraParam' does not exist in type 'RequestOptions'.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 245,
+      "bucket": "ts_compiler_bugfix",
+      "prompt": "Fix TS2532: Object is possibly 'undefined' when accessing deeply nested object properties.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 246,
+      "bucket": "ts_compiler_bugfix",
+      "prompt": "Fix TS2554: Expected 2 arguments, but got 1 in a overloaded function signature.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 247,
+      "bucket": "ts_compiler_bugfix",
+      "prompt": "Fix TS2769: No overload matches this call when instantiating a custom event handler interface.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 248,
+      "bucket": "ts_compiler_bugfix",
+      "prompt": "Fix TS7006: Parameter 'e' implicitly has an 'any' type in an inline event listener function.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 249,
+      "bucket": "ts_compiler_bugfix",
+      "prompt": "Fix TS2322: Type '() => void' is not assignable to type 'Promise' in async prop signatures.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 250,
+      "bucket": "ts_compiler_bugfix",
+      "prompt": "Fix TS2538: Type 'symbol' cannot be used as an index type in mapped type keys.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 321,
+      "bucket": "monorepo_build_verify",
+      "prompt": "Write a Vite configuration file configuring path aliases, SVGR plugins, and build chunk splits.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 322,
+      "bucket": "monorepo_build_verify",
+      "prompt": "Create a Webpack 5 configuration setup handling TypeScript, CSS Modules, and Asset Modules.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 323,
+      "bucket": "monorepo_build_verify",
+      "prompt": "Write a Turborepo `turbo.json` configuration pipeline managing caching and task execution dependencies.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 324,
+      "bucket": "monorepo_build_verify",
+      "prompt": "Build a GitHub Actions workflow building, testing, and deploying a Next.js app to Vercel.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 325,
+      "bucket": "monorepo_build_verify",
+      "prompt": "Write a Dockerfile for a multi-stage production build of a Node.js NestJS microservice.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 326,
+      "bucket": "monorepo_build_verify",
+      "prompt": "Create a Docker Compose file spinning up Postgres, Redis, and a NestJS API application node.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 327,
+      "bucket": "monorepo_build_verify",
+      "prompt": "Write an esbuild script compiling a TypeScript CLI tool into a single standalone bundle file.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 328,
+      "bucket": "monorepo_build_verify",
+      "prompt": "Create an ESLint flat configuration file (`eslint.config.js`) enforcing TypeScript and React rules.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 329,
+      "bucket": "monorepo_build_verify",
+      "prompt": "Write a Prettier configuration file resolving formatting rule conflicts with ESLint.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 330,
+      "bucket": "monorepo_build_verify",
+      "prompt": "Build a GitHub Actions workflow running matrix testing across Node.js versions 18, 20, and 22.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 401,
+      "bucket": "testing_mocks",
+      "prompt": "Write a Vitest unit test suite testing a complex React custom hook using `@testing-library/react`.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 403,
+      "bucket": "testing_mocks",
+      "prompt": "Write a Jest test mocking external fetch API calls using `msw` (Mock Service Worker).",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 405,
+      "bucket": "testing_mocks",
+      "prompt": "Write a Vitest unit test for a NestJS service mocking Prisma DB client database queries.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 407,
+      "bucket": "testing_mocks",
+      "prompt": "Write a Jest test asserting that a custom React component meets WAI-ARIA accessibility rules using `jest-axe`.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 409,
+      "bucket": "testing_mocks",
+      "prompt": "Write a Playwright E2E test intercepting API route responses to inject server failure states.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 411,
+      "bucket": "testing_mocks",
+      "prompt": "Write a MSW handler setup mocking RESTful API endpoints for local development and testing.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 413,
+      "bucket": "testing_mocks",
+      "prompt": "Write a Vitest test mocking system time using `vi.useFakeTimers()` to verify countdown timers.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 415,
+      "bucket": "testing_mocks",
+      "prompt": "Write a Jest test asserting React component re-render counts during state updates.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 471,
+      "bucket": "security_fixes",
+      "prompt": "Implement a Data Encryption at Rest module encrypting database fields using AES-256-CBC.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 473,
+      "bucket": "security_fixes",
+      "prompt": "Create a Content Security Policy (CSP) header generator permitting dynamic inline script nonces.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 475,
+      "bucket": "security_fixes",
+      "prompt": "Create a Security Middleware preventing Cross-Site Request Forgery (CSRF) via Double Submit Cookie patterns.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 477,
+      "bucket": "security_fixes",
+      "prompt": "Implement a Rate Limiter middleware storing client request counts inside Redis key clusters.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    },
+    {
+      "id": 479,
+      "bucket": "security_fixes",
+      "prompt": "Write a JWT validation module verifying issuer, audience, and expiration constraints.",
+      "expectedRoute": "execute",
+      "passBar": {
+        "mutationRequired": true,
+        "acceptContinueWithoutMutation": false,
+        "notes": "Stub or live eval: require completed mutation or correct ask answer; never green on Continue alone when mutation required."
+      },
+      "source": "project-goals/agent-engine-test-prompts.md"
+    }
+  ]
+}

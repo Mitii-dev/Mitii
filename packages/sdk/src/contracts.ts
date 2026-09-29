@@ -146,6 +146,12 @@ export const mitiiStartInputSchema = z
       })
       .strict()
       .optional(),
+    v8LoopPolicy: z
+      .object({
+        thresholds: z.record(z.string(), z.number()).optional(),
+      })
+      .strict()
+      .optional(),
     logVerbosity: z.enum(AGENT_LOG_VERBOSITIES).optional(),
     pinnedPaths: z.array(z.string().min(1)).max(32).optional(),
     projectRules: z
