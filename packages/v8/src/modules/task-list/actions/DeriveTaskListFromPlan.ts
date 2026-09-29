@@ -9,6 +9,7 @@ import {
 import { resolveMaxTasks, TASK_LIST_POLICY } from "../policy";
 import type { TaskItem, TaskListApplyResult } from "../contracts";
 import { taskListApplyResultSchema, taskListSchema } from "../contracts";
+import { clipTaskTitle } from "./ApplyTaskListUpdate";
 
 /**
  * Compact a PlanArtifact into a live working list.
@@ -144,10 +145,19 @@ export function buildTaskItem(params: {
   index: number;
   existing: readonly TaskItem[];
 }): TaskItem {
-  const title = `${params.phaseName}: ${params.step.intent}`.slice(
-    0,
-    DEFAULT_MAX_TASK_TITLE_CHARS,
+  // Titles are intent-only — phase labels stay on the plan, not the live desk.
+  const rawTitle = stripProcessPhasePrefix(
+    params.step.intent.trim() || params.phaseName,
   );
+  const pathHint = params.step.targetRefs[0];
+  const withPath =
+    pathHint &&
+    /\.\w{1,16}$/.test(pathHint) &&
+    !rawTitle.includes(pathHint) &&
+    !rawTitle.includes(basename(pathHint))
+      ? `${rawTitle} ${basename(pathHint)}`
+      : rawTitle;
+  const title = clipTaskTitle(withPath).title.slice(0, DEFAULT_MAX_TASK_TITLE_CHARS);
   const detailParts = [
     params.step.targetRefs.length > 0
       ? `Scope: ${params.step.targetRefs.slice(0, DEFAULT_MAX_TASK_PATHS).join(", ")}`
@@ -179,6 +189,24 @@ export function buildTaskItem(params: {
     ...(mustRead.length > 0 ? { mustRead } : {}),
     ...(affected.length > 0 ? { affected } : {}),
   };
+}
+
+/**
+ * Drop Discover/Change/Verify-style prefixes if a host or older derive path
+ * still stamped them — live titles must name work, not process labels.
+ */
+function stripProcessPhasePrefix(intent: string): string {
+  const stripped = intent.replace(
+    /^(?:discover|change|verify|implement|fix|build|explore|investigate)\s*:\s*/i,
+    "",
+  );
+  return stripped.trim().length > 0 ? stripped.trim() : intent;
+}
+
+function basename(path: string): string {
+  const normalized = path.replace(/\\/g, "/");
+  const parts = normalized.split("/");
+  return parts[parts.length - 1] || path;
 }
 
 function uniquePaths(paths: readonly string[]): string[] {

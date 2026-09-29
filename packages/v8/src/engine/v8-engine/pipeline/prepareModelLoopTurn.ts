@@ -44,6 +44,7 @@ import {
 } from "../internal/logVerbosity";
 import {
   collectCompletedTaskPaths,
+  shouldRemindTodoUpdate,
   type TaskListRef,
 } from "../internal/taskListRuntime";
 import { upsertTrailingWorkingSet } from "../internal/workingSetRuntime";
@@ -257,6 +258,11 @@ export function prepareModelLoopTurn(params: {
     taskList: params.taskListRef.current,
     mutationBudget: params.mutationBudget,
     mutationLocked: params.mutationLocked === true,
+    remindTodoUpdate: shouldRemindTodoUpdate({
+      taskList: params.taskListRef.current,
+      lastUpdatedAtModelCall: params.taskListRef.lastUpdatedAtModelCall,
+      currentModelCall: usageSnapshot.modelCalls,
+    }),
     preflightDiagnostics: buildPreflightDiagnosticRepairInstruction({
       diagnostics: params.repoBuildStateBefore?.diagnostics ?? [],
       totalErrorCount: params.repoBuildStateBefore?.summary.errorCount ?? 0,

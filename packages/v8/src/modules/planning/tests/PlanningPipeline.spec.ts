@@ -192,6 +192,71 @@ describe("PlanningPipeline", () => {
       result.plan?.phases.flatMap((phase) => phase.successCriteria) ?? [];
     expect(doneWhen.some((item) => item.includes("@packages/"))).toBe(false);
     expect(doneWhen.some((item) => item.startsWith("Done when:"))).toBe(false);
+    const verifyStep = result.plan?.phases
+      .find((phase) => phase.name === "Verify")
+      ?.steps[0];
+    expect(verifyStep?.verification).toMatch(/lint/);
+    expect(verifyStep?.verification).toMatch(/typecheck/);
+    expect(verifyStep?.actionSummary).toMatch(/focused tests/);
+  });
+
+  it("expands Verify into one step per discovery command", async () => {
+    const result = await pipeline.plan(
+      baseInput({
+        query: "Add SSO login without breaking password login",
+        discoveryBrief: {
+          schemaVersion: 1,
+          objective: "Add SSO login",
+          filesRead: [
+            { path: "src/auth/login.ts", reason: "Login surface" },
+          ],
+          targets: [
+            {
+              kind: "file",
+              value: "src/auth/login.ts",
+              reason: "Primary surface",
+              explicit: true,
+            },
+          ],
+          proposedChangeSurfaces: [
+            {
+              path: "src/auth/login.ts",
+              actionHint: "Wire SSO",
+              riskLevel: "medium",
+              evidence: "Login entry",
+            },
+          ],
+          discoveredConstraints: [],
+          verificationHints: [
+            {
+              kind: "typecheck",
+              reason: "Typed package",
+              command: "pnpm typecheck",
+            },
+            {
+              kind: "test",
+              reason: "Auth tests",
+              command: "pnpm test -- src/auth",
+            },
+          ],
+          openQuestions: [],
+          confidence: "high",
+        },
+        strategyOverride: {
+          schemaVersion: 1,
+          strategy: "discover_and_plan",
+          rationale: "test",
+          skipDiscover: true,
+          useBuildEvidence: false,
+        },
+      }),
+    );
+    const verifySteps =
+      result.plan?.phases.find((phase) => phase.name === "Verify")?.steps ?? [];
+    expect(verifySteps.map((step) => step.intent)).toEqual([
+      "Run pnpm typecheck in src/auth/login.ts",
+      "Run pnpm test -- src/auth in src/auth/login.ts",
+    ]);
   });
 
   it("keeps destination package path in port/create objectives", async () => {
@@ -950,11 +1015,57 @@ describe("PlanningPipeline", () => {
 
     expect(result.strategy?.strategy).toBe("plan_from_ask");
     expect(result.reasonCodes).not.toContain("plan_working_set_applied");
+    expect(result.reasonCodes).not.toContain("plan_working_set_empty");
     expect(
       result.plan?.phases
         .flatMap((phase) => phase.steps)
         .some((step) => (step.mustRead?.length ?? 0) > 0),
     ).toBe(false);
+  });
+
+  it("emits plan_working_set_empty when hop-1 reports are missing on follow_evidence", async () => {
+    const result = await pipeline.plan(
+      baseInput({
+        query: "@packages/mui-builder fix all the ts errors",
+        evidence: {
+          primaryIntent: "bugfix",
+          secondaryIntents: [],
+          interactionIntent: "act",
+          scope: "package",
+          complexity: "moderate",
+          risk: "low",
+          clarity: "clear",
+          targets: [
+            { kind: "folder", value: "packages/mui-builder", explicit: true },
+          ],
+          constraints: [],
+          requestedOutcomes: [
+            "Resolve all TypeScript compilation/type errors in the target package",
+          ],
+          recommendsPlanning: true,
+          recommendsVerification: false,
+          changeImpact: ["code"],
+        },
+        processHints: [],
+        buildEvidence: {
+          phase: "before",
+          summary: "1 error",
+          failedChecks: ["typecheck"],
+          diagnostics: [
+            {
+              path: "packages/mui-builder/src/Button.tsx",
+              severity: "error",
+              message: "Type error",
+              startLine: 1,
+              code: "TS2322",
+            },
+          ],
+        },
+      }),
+    );
+    expect(result.strategy?.strategy).toBe("follow_evidence");
+    expect(result.reasonCodes).toContain("plan_working_set_empty");
+    expect(result.reasonCodes).not.toContain("plan_working_set_applied");
   });
 
   it("does not let out-of-scope build diagnostics hijack a feature plan", async () => {

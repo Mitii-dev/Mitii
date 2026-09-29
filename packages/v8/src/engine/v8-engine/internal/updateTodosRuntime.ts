@@ -2,6 +2,7 @@ import type { ModelToolDefinition } from "../../../modules/model-gateway";
 import type { PlanArtifact } from "../../../modules/planning";
 import {
   MAX_TASKS_CAP,
+  TASK_LIST_POLICY,
   TaskListPipeline,
   UPDATE_TODOS_TOOL_ALIASES,
   UPDATE_TODOS_TOOL_NAME,
@@ -30,7 +31,7 @@ const UPDATE_TODOS_ITEM_SCHEMA = {
     title: {
       type: "string",
       description:
-        "Short concrete work title (file, failure, or user-visible behavior).",
+        "Short concrete work title (about 5–7 words) naming a file, failure, or user-visible behavior.",
     },
     content: {
       type: "string",
@@ -59,15 +60,20 @@ export const UPDATE_TODOS_TOOL_DEFINITION: ModelToolDefinition = {
   name: UPDATE_TODOS_TOOL_NAME,
   description:
     `Create or update the live working checklist for this run (max ${MAX_TASKS_CAP} items; often 8 on small windows). ` +
+    "Use when the work has 3+ concrete steps, spans multiple files, or mixes diagnose/change/verify. " +
+    "Once the ask is clear, capture explicit requirements and implied follow-through immediately. " +
     "If this is a multi-step run and the list is empty after the first read/diagnose tool turn, " +
     "call update_todos with type=replace and concrete titles naming a file, failure, or user-visible behavior. " +
     "Pass checklist rows as items (preferred) or todos; each row needs title (or content). " +
     "Aliases accepted: update_todo, update_todo_list, task_list_update, update_task_list. " +
-    "Keep exactly one item active. Before finishing a slice, patch the active item to done and the next pending item to active. " +
+    "Keep exactly one item active — calls with multiple active items are rejected. " +
+    "Progress statuses follow pending → active → done (or skipped/blocked); do not jump from done/skipped into blocked. " +
+    "Prefer short titles (~5–7 words) that still name a concrete file or failure. " +
+    "Before finishing a slice, patch the active item to done and the next pending item to active; do not batch completions. " +
     "Do not copy Discover/Change/Verify process labels or skill playbook bullets into titles. " +
     "If a plan-derived list is still process-shaped, replace it; otherwise prefer patch by id (stable ids / sourceRef). " +
     "Use clear to drop the list. Do not mark remaining items done just because the turn is ending. " +
-    "Skip this tool for trivial single-step work.",
+    "Skip this tool for trivial single-step work or pure Q&A.",
   inputSchema: {
     type: "object",
     additionalProperties: false,
@@ -104,6 +110,53 @@ export interface TaskListRef {
    * completed Change/Verify rows never return as pending.
    */
   completedPlanStepIds?: string[];
+  /**
+   * Model-call counter when the live checklist last changed (seed, tool
+   * update, or auto-advance). Used for stale-update reminders.
+   */
+  lastUpdatedAtModelCall?: number;
+}
+
+/** Record that the live checklist changed on this model-call watermark. */
+export function markTaskListUpdated(
+  ref: TaskListRef,
+  modelCall?: number,
+): void {
+  if (modelCall !== undefined && Number.isFinite(modelCall) && modelCall >= 0) {
+    ref.lastUpdatedAtModelCall = Math.floor(modelCall);
+  }
+}
+
+/**
+ * True when open checklist items exist and enough model turns have passed
+ * without an update_todos / seed / auto-advance change.
+ */
+export function shouldRemindTodoUpdate(params: {
+  taskList?: TaskList;
+  lastUpdatedAtModelCall?: number;
+  currentModelCall: number;
+  intervalTurns?: number;
+}): boolean {
+  const interval =
+    params.intervalTurns ?? TASK_LIST_POLICY.todoUpdateRemindIntervalTurns;
+  if (interval <= 0) {
+    return false;
+  }
+  const list = params.taskList;
+  if (!list || list.items.length === 0 || list.purpose === "discovery") {
+    return false;
+  }
+  const hasOpen = list.items.some(
+    (item) => item.status === "pending" || item.status === "active" || item.status === "blocked",
+  );
+  if (!hasOpen) {
+    return false;
+  }
+  const last = params.lastUpdatedAtModelCall;
+  if (last === undefined) {
+    return params.currentModelCall >= interval;
+  }
+  return params.currentModelCall - last >= interval;
 }
 
 export function ensureCompletedPlanStepIds(ref: TaskListRef): string[] {
@@ -168,6 +221,11 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
+/**
+ * Attach the live checklist tool for Agent execute only.
+ * Plan / Ask modes never get update_todos — Plan seeds a derived desk from the
+ * plan artifact; the model must not rewrite the execution checklist there.
+ */
 export function attachTaskListTool(params: {
   mode: string;
   tools: ModelToolDefinition[];
@@ -249,6 +307,7 @@ export function seedTaskListFromPlan(params: {
     return { seeded: false, source: "plan" };
   }
   params.taskListRef.current = derived.taskList;
+  markTaskListUpdated(params.taskListRef, 0);
   return { seeded: true, source: "plan" };
 }
 

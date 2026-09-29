@@ -16,6 +16,8 @@ export interface RecoverabilityWorkingSetInput {
   maxEstablishedFactChars?: number;
   /** Continue / exhausted-evidence lock: demand apply_patch, not more reads. */
   mutationLocked?: boolean;
+  /** Soft nudge when the checklist has gone stale without update_todos. */
+  remindTodoUpdate?: boolean;
 }
 
 const COMPILER_QUEUE_FACT_ID = "error-queue:compiler";
@@ -33,6 +35,11 @@ export function serializeRecoverabilityWorkingSet(
   const checklist = serializeWorkingSetChecklistLines(params.taskList);
   if (checklist.length > 0) {
     sections.push("## Checklist", ...checklist);
+    if (params.remindTodoUpdate) {
+      sections.push(
+        "Checklist may be stale. Patch update_todos now: mark finished work done, keep exactly one item active, and add any missing concrete file-scoped rows.",
+      );
+    }
   } else if (params.mutationLocked) {
     sections.push(
       "## Checklist",

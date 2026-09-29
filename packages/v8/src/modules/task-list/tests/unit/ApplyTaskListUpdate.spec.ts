@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { TASK_LIST_SCHEMA_VERSION, TaskListPipeline } from "../../index";
+import { clipTaskTitle } from "../../actions/ApplyTaskListUpdate";
 import { taskListApplyInputSchema, taskListSchema } from "../../contracts";
 
 function seed(pipeline: TaskListPipeline) {
@@ -45,7 +46,7 @@ describe("applyTaskListUpdate", () => {
     expect(result.reasonCodes).toContain("task_list_patched");
   });
 
-  it("keeps at most one active item on replace", () => {
+  it("rejects replace when more than one item is active", () => {
     const result = pipeline.apply(
       taskListApplyInputSchema.parse({
         schemaVersion: 1,
@@ -59,10 +60,69 @@ describe("applyTaskListUpdate", () => {
         },
       }),
     );
-    expect(result.status).toBe("applied");
-    const statuses = result.taskList!.items.map((item) => item.status);
-    expect(statuses.filter((status) => status === "active")).toHaveLength(1);
-    expect(taskListSchema.parse(result.taskList).items[1]?.status).toBe("active");
+    expect(result.status).toBe("rejected");
+    expect(result.reasonCodes).toContain("task_list_invalid");
+    expect(result.warnings.some((warning) => /at most 1 task can be active/i.test(warning))).toBe(
+      true,
+    );
+  });
+
+  it("rejects patch that would leave multiple active items", () => {
+    const current = seed(pipeline);
+    const result = pipeline.apply(
+      taskListApplyInputSchema.parse({
+        schemaVersion: 1,
+        current,
+        source: "agent",
+        operation: {
+          type: "patch",
+          items: [{ id: "three", status: "active" }],
+        },
+      }),
+    );
+    expect(result.status).toBe("rejected");
+    expect(result.reasonCodes).toContain("task_list_invalid");
+  });
+
+  it("rejects illegal status transitions such as done → blocked", () => {
+    const current = seed(pipeline);
+    const result = pipeline.apply(
+      taskListApplyInputSchema.parse({
+        schemaVersion: 1,
+        current,
+        source: "agent",
+        operation: {
+          type: "patch",
+          items: [{ id: "one", status: "blocked" }],
+        },
+      }),
+    );
+    expect(result.status).toBe("rejected");
+    expect(result.reasonCodes).toContain("task_list_status_transition_invalid");
+  });
+
+  it("allows pending → active → done progress patches", () => {
+    const current = seed(pipeline);
+    const activated = pipeline.apply(
+      taskListApplyInputSchema.parse({
+        schemaVersion: 1,
+        current,
+        source: "agent",
+        operation: {
+          type: "patch",
+          items: [
+            { id: "two", status: "done" },
+            { id: "three", status: "active" },
+          ],
+        },
+      }),
+    );
+    expect(activated.status).toBe("applied");
+    expect(activated.taskList?.items.map((item) => item.status)).toEqual([
+      "done",
+      "done",
+      "active",
+    ]);
   });
 
   it("caps replace at eight items", () => {
@@ -146,5 +206,17 @@ describe("applyTaskListUpdate", () => {
     ]);
     expect(list.items[0]?.status).toBe("active");
     expect(list.items.filter((item) => item.status === "done")).toHaveLength(0);
+  });
+});
+
+describe("clipTaskTitle", () => {
+  it("keeps short titles and preserves a path token when clipping", () => {
+    expect(clipTaskTitle("Fix Login.ts").title).toBe("Fix Login.ts");
+    const long =
+      "Thoroughly update the authentication session helper for edge cases in src/auth/session.ts today";
+    const clipped = clipTaskTitle(long);
+    expect(clipped.clipped).toBe(true);
+    expect(clipped.title.split(" ").length).toBeLessThanOrEqual(7);
+    expect(clipped.title).toMatch(/session\.ts/);
   });
 });

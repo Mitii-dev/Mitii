@@ -32,6 +32,7 @@ import {
 import {
   completePlanStepsFromDiagnostics,
   hasIncompleteChangeSurfaces,
+  markTaskListUpdated,
   planProgressOf,
   type TaskListRef,
 } from "../internal/taskListRuntime";
@@ -421,6 +422,7 @@ export async function finishAfterLoop(
       taskListRef.current = diagnosticAdvance.taskList;
     }
     if (diagnosticAdvance.advanced) {
+      markTaskListUpdated(taskListRef, budget.snapshot().modelCalls);
       reasonCodes.push("task_list_auto_advanced", "task_list_updated");
       if (diagnosticAdvance.refilled) {
         reasonCodes.push("task_list_refilled");

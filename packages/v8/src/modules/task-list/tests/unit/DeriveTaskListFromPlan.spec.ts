@@ -121,7 +121,7 @@ describe("deriveTaskListFromPlan", () => {
     };
     const result = pipeline.deriveFromPlan(plan);
     expect(result.taskList?.items.map((item) => item.title)).toEqual([
-      "Verify: Run typecheck on the package",
+      "Run typecheck on the package index.ts",
     ]);
     expect(result.taskList?.items[0]?.status).toBe("active");
   });
@@ -229,8 +229,8 @@ describe("deriveTaskListFromPlan", () => {
 
     const result = pipeline.deriveFromPlan(plan);
     expect(result.taskList?.items.map((item) => item.title)).toEqual([
-      "Change: Update widget behavior",
-      "Verify: Verify widget behavior",
+      "Update widget behavior widget.ts",
+      "Verify widget behavior widget.test.ts",
     ]);
     expect(result.taskList?.items.map((item) => item.status)).toEqual([
       "active",
@@ -313,7 +313,7 @@ describe("deriveTaskListFromPlan", () => {
     const result = pipeline.deriveFromPlan(plan);
     expect(result.status).toBe("applied");
     expect(result.taskList?.items.map((item) => item.title)).toEqual([
-      "Discover: Inspect failure evidence",
+      "Inspect failure evidence failure.log",
     ]);
     expect(result.taskList?.items[0]?.status).toBe("active");
   });
