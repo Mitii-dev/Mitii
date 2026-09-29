@@ -499,6 +499,7 @@ export async function executeStart(
       overrides: input.loopPolicy?.thresholds,
     }).thresholds;
 
+    const userPrompt = extractPrimaryUserMessage(envelope.message);
     const preflightRepairLock = shouldForcePreflightRepairLock({
       route: decisionWithAttach.route,
       maximumWorkspaceEffect:
@@ -506,6 +507,10 @@ export async function executeStart(
       preflightErrorCount:
         shared.repoBuildStateBefore?.summary.errorCount ?? 0,
       changedFilesCount: changedFiles.length,
+      userPrompt,
+      diagnosticPaths: (shared.repoBuildStateBefore?.diagnostics ?? [])
+        .filter((diagnostic) => diagnostic.severity === "error")
+        .map((diagnostic) => diagnostic.path),
     });
     if (preflightRepairLock) {
       reasonCodes.push("preflight_repair_lock");
@@ -516,7 +521,7 @@ export async function executeStart(
       request: promptResult.request,
       decision: decisionWithAttach,
       understanding,
-      skillsQuery: extractPrimaryUserMessage(envelope.message),
+      skillsQuery: userPrompt,
       mode: envelope.mode,
       requestId: shared.requestId,
       projects: input.projects,
@@ -583,7 +588,7 @@ export async function executeStart(
       windowPolicy,
       loopContext: {
         understanding,
-        skillsQuery: extractPrimaryUserMessage(envelope.message),
+        skillsQuery: userPrompt,
         mode: envelope.mode,
         projects: input.projects,
         memoryFacts,

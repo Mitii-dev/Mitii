@@ -139,14 +139,18 @@ export const AGENT_ENGINE_THRESHOLDS = {
    * characters with no content or tool deltas yet. Local thinking models can
    * stream unbounded reasoning that never hits max_tokens and burns the
    * harness wall clock (benchmark exit 124) before the first tool call.
+   *
+   * DeepSeek / GLM-class models routinely need ~10–20k reasoning chars before
+   * the first tool delta; 12k×0.5 (=6k) aborted mid-think and spun truncation
+   * recovery without ever patching (09-29 DeepSeek 65k / GLM 150k logs).
    */
-  maxReasoningCharsWithoutProgress: 12_000,
+  maxReasoningCharsWithoutProgress: 28_000,
   /**
    * When the model advertises reasoning support, apply this ratio to
-   * {@link maxReasoningCharsWithoutProgress} so thinking-only burns trip
-   * earlier and recover into tools instead of Continue thrash.
+   * {@link maxReasoningCharsWithoutProgress}. Kept high enough that a normal
+   * tool-bound think completes; still aborts true unbounded essays.
    */
-  reasoningProgressBudgetRatioWhenReasoningCapable: 0.5,
+  reasoningProgressBudgetRatioWhenReasoningCapable: 0.75,
   /**
    * After this many successful file-body reads without any granted
    * code-intelligence tool, nudge once toward document_symbol / goto_definition.
@@ -156,9 +160,10 @@ export const AGENT_ENGINE_THRESHOLDS = {
   maxCodeIntelAdoptionNudges: 1,
   /**
    * After this many reasoning-progress budget trips with mutation still
-   * required and zero edits, force mutation lock with evidence reads spent.
+   * required, force mutation discipline. Evidence reads stay available so the
+   * model can load named write targets before apply_patch.
    */
-  maxReasoningProgressBudgetExceedancesBeforeMutationLock: 2,
+  maxReasoningProgressBudgetExceedancesBeforeMutationLock: 3,
 } as const;
 
 /**

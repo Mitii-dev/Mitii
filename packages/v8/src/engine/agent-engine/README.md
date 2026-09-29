@@ -114,9 +114,13 @@ agent-engine/
   `apply_patch` once when execute+write mutation remains required. Reasoning
   streams tighten the progress budget mid-turn (and on later turns once a
   reasoning channel was observed), even when `supportsReasoning` is unset.
+  Capable models start with ≥12k reasoning chars (shipped: 28k × 0.75 ≈ 21k)
+  so DeepSeek/GLM can finish a tool-bound think before abort; the warning
+  distinguishes reasoning-progress aborts from `maximumOutputTokens` cuts.
   After repeated reasoning-only trips with write still required, the loop
-  locks to mutation tools. Second Continue spends the post-nudge evidence-read
-  budget so read thrash cannot restart.
+  locks to mutation tools while **keeping** targeted `read_file` evidence
+  reads. Second Continue still spends the post-nudge evidence-read budget so
+  broad rediscovery cannot restart.
 - **Host capability honesty:** `hostCapabilities.codeNavigation` /
   `diagnostics` flow from Tool Runtime ports into Decision Policy reason
   codes and prompt guidance (`code_navigation_available|degraded|unavailable`,
@@ -214,7 +218,7 @@ agent-engine/
 - Structured reviews (`review_findings_structured`) that produce text and **no** `emit_review_finding` are **incomplete review**. The loop nudges up to twice (`incomplete_review_recovered`, `maxStructuredReviewRecoveries: 2`); after recoveries exhaust, the run fails with `incomplete_review` instead of accepting prose-only as a completed review.
 - Rejected `apply_patch`/`delete_file`/`move_file` recoveries use a **separate** budget (`maxRejectedMutationRecoveries`, band-aware) so a stale-hunk → targeted read → retry cycle is not starved by the text-only unfulfilled-execute nudge.
 - **Window bands** select shipped loop/stall standards from the effective context window (`compact` &lt; 50k, `standard` &lt; 100k, `wide` ≥ 100k). Mid-window `standard` keeps explore patience (12 read turns / 6 evidence reads) so 65k demos are not starved vs compact. Permanent values: [`policy/loopPolicyBands.ts`](./policy/loopPolicyBands.ts) and [`windowBudgetBands.ts`](../../modules/window-budget/windowBudgetBands.ts). Edit with `pnpm policy-admin` (HTML UI), then rebuild. Optional Custom host overrides stay local-only. See [`policy/README.md`](./policy/README.md).
-- When preflight already captured build/typecheck errors, execute+write starts under **preflight repair lock** (`preflight_repair_lock`): broad rediscovery tools are stripped, a forced diagnostic `apply_patch` seed is injected, mutation-only turns use `toolChoice=required` when supported, further read/search under the lock recover in-loop (`mutation_lock_recovered`), and TS2307 missing modules can be auto-created (`mutation_lock_auto_stub`) so the run lands the first edit instead of Continue thrash.
+- When preflight already captured build/typecheck errors **and those paths are the user's request** (or the request names no files), execute+write starts under **preflight repair lock** (`preflight_repair_lock`): broad rediscovery tools are stripped, a forced diagnostic `apply_patch` seed is injected, mutation-only turns use `toolChoice=required` when supported, further read/search under the lock recover in-loop (`mutation_lock_recovered`) without spending the targeted `read_file` budget, and TS2307 missing modules can be auto-created (`mutation_lock_auto_stub`) so the run lands the first edit instead of Continue thrash. A pasted test-failure dump that cites other files does not lock onto unrelated preflight errors, and those errors are omitted from the mutation nudge.
 - After verification clears most errors but leaves some remaining, repair and Continue resume re-anchor on **remaining-after diagnostics** (`repoBuildStateAfter`) under mutation lock — not the stale preflight list — so the last 1–N errors stay edit-driven instead of rediscovery thrash.
 - `apply_patch` failures use distinct reason codes (`old_text_not_found`, `old_text_ambiguous`, `patch_target_missing`, `patch_hash_mismatch`, `identical_old_and_new`, `patch_syntax_invalid`). Retryable codes (including no-op `identical_old_and_new`) attach current file content so the model can copy exact `oldText` without a separate re-read. Targeted discovery after a rejected mutation follows those codes, not warning-string matching. `patch_conflict` remains as a legacy umbrella. Optional `replaceAll` replaces every exact occurrence; the default remains unique match.
 - Compiler/tsc tool output is grouped by error code and asks for a class-wide batch, not one diagnostic at a time.

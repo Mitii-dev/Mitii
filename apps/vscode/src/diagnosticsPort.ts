@@ -70,7 +70,7 @@ export class VscodeDiagnosticsPort implements DiagnosticsPort {
     }
 
     const root = options.workspaceRoot || this.workspaceRoot;
-    const paths = options.paths ?? [];
+    const paths: readonly string[] = options.paths ?? [];
 
     const matchesScope = (uri: vscode.Uri): boolean => {
       if (uri.scheme !== 'file') return false;

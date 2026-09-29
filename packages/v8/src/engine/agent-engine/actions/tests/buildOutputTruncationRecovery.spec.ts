@@ -185,6 +185,24 @@ describe("buildOutputTruncationRecovery", () => {
     expect(plan!.recoveryMessage.content).toContain("apply_patch");
   });
 
+  it("blames the reasoning progress budget, not max_tokens, when that aborted the turn", () => {
+    const plan = buildOutputTruncationRecovery({
+      finishReason: "length",
+      content: "",
+      toolCalls: [],
+      recoveryAttempt: 0,
+      requireMutation: true,
+      reasoningBudgetExceeded: true,
+      mutationBudget: tightBudget,
+    });
+    expect(plan).not.toBeNull();
+    expect(plan!.recoveryMessage.content).toContain("internal reasoning");
+    expect(plan!.recoveryMessage.content).toContain("apply_patch");
+    expect(plan!.recoveryMessage.content).toContain("targeted read_file");
+    expect(plan!.recoveryMessage.content).not.toContain("output token limit");
+    expect(plan!.recoveryMessage.content).not.toContain("maximumOutputTokens");
+  });
+
   it("recovers empty-content length burns without forcing apply_patch on non-mutation turns", () => {
     const plan = buildOutputTruncationRecovery({
       finishReason: "length",

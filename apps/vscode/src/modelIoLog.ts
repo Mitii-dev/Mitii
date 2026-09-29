@@ -209,7 +209,7 @@ function sanitizeMessage(message: ModelMessage): Record<string, unknown> {
 
 function sanitizeRequest(request: ModelRequest): Record<string, unknown> {
   const messages = request.messages.slice(0, MODEL_IO_LIMITS.maxMessagesLogged);
-  const allTools = request.tools ?? [];
+  const allTools: readonly ModelToolDefinition[] = request.tools ?? [];
   const tools = allTools
     .slice(0, MODEL_IO_LIMITS.maxToolDefsLogged)
     .map((tool: ModelToolDefinition) => sanitizeToolDefinition(tool));

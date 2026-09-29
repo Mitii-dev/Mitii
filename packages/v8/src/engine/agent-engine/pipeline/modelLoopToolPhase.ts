@@ -297,8 +297,9 @@ export async function runModelLoopToolPhase(params: {
         budget.canStartModelCall()
       ) {
         session.mutationLockRecoveries += 1;
-        session.postNudgeEvidenceReadTurns =
-          thresholds.maxPostNudgeEvidenceReadTurns;
+        // A rejected search/list must not zero the targeted read_file budget.
+        // Spending it here made every later read fail after one search, so
+        // the model never saw the files the user actually named.
         session.forceMutationToolChoice = true;
         reasonCodes.push("mutation_lock_recovered");
         messages.push({
@@ -308,6 +309,7 @@ export async function runModelLoopToolPhase(params: {
             totalErrorCount: repoBuildStateBefore?.summary.errorCount,
             pathScopes: decision.toolGrant.pathScopes,
             requestedTools: workspaceCalls.map((call) => call.name),
+            userPrompt: skillsQuery,
           }),
         });
         session.answer = answer;

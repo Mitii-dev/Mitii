@@ -38,6 +38,11 @@ export function buildOutputTruncationRecovery(params: {
    */
   requireMutation?: boolean;
   /**
+   * True when consumeModelTurn aborted on the reasoning-progress budget
+   * (not provider max_tokens). Recovery copy must not blame output limits.
+   */
+  reasoningBudgetExceeded?: boolean;
+  /**
    * Files already mutated this run. After the first successful write, another
    * multi-minute "short final answer" / essay recovery often burns the harness
    * wall clock (benchmark exit 124) even though content checks already pass.
@@ -86,6 +91,7 @@ export function buildOutputTruncationRecovery(params: {
   // finish — except when the live checklist still has concrete write surfaces
   // open, or for empty reasoning-only burns while mutation is still required
   // (reasoning-only thrash mid-checklist).
+  const reasoningAbort = params.reasoningBudgetExceeded === true;
   if (mutationsLanded) {
     const emptyReasoningBurn =
       params.content.trim().length === 0 && incompleteToolCalls.length === 0;
@@ -112,12 +118,15 @@ export function buildOutputTruncationRecovery(params: {
         assistantContent: "",
         recoveryMessage: {
           role: "user",
-          content: [
-            "Your previous turn hit the output token limit while writing internal reasoning only (no tools, no user-facing answer).",
-            "Do not continue that essay.",
-            `Checklist work remains. Call apply_patch now with a smaller batch: at most ${preferred} files (hard max ${maxPatches} patches).`,
-            "If you need one short read first, call read_file or document_symbol on the active write path only, then patch.",
-          ].join("\n"),
+          content: buildReasoningOrTruncationNudge({
+            reasoningAbort,
+            emptyReasoningBurn: true,
+            forcePatch: true,
+            preferred,
+            maxPatches,
+            recoveryAttempt: params.recoveryAttempt,
+            checklistWorkRemains: true,
+          }),
         },
       };
     }
@@ -168,18 +177,15 @@ export function buildOutputTruncationRecovery(params: {
         recoveryMessage: {
           role: "user",
           content: reasoningBurn
-            ? [
-                emptyReasoningBurn
-                  ? "Your previous turn hit the output token limit while writing internal reasoning only (no tools, no user-facing answer)."
-                  : "Your previous turn hit the output token limit while writing internal analysis/reasoning, not a user-facing answer.",
-                "Do not continue that essay.",
-                forcePatch
-                  ? [
-                      `Call apply_patch now with a smaller batch: at most ${preferred} files (hard max ${maxPatches} patches).`,
-                      "Do not call read_file, search_files, list_directory, or analyze_change_impact on this turn — patch the remaining diagnostic errors already in context.",
-                    ].join(" ")
-                  : "Give a short final answer to the user now (or call one essential tool). Do not restate your plan.",
-              ].join("\n")
+            ? buildReasoningOrTruncationNudge({
+                reasoningAbort,
+                emptyReasoningBurn,
+                forcePatch,
+                preferred,
+                maxPatches,
+                recoveryAttempt: params.recoveryAttempt,
+                checklistWorkRemains: checklistWorkRemains,
+              })
             : [
                 "Your previous response was truncated because the output token limit was reached.",
                 "Do not continue the written analysis.",
@@ -269,6 +275,54 @@ function escalateMaxPatches(maxPatches: number, recoveryAttempt: number): number
     return Math.max(1, Math.floor(maxPatches / 2));
   }
   return 1;
+}
+
+function buildReasoningOrTruncationNudge(params: {
+  reasoningAbort: boolean;
+  emptyReasoningBurn: boolean;
+  forcePatch: boolean;
+  preferred: number;
+  maxPatches: number;
+  recoveryAttempt: number;
+  checklistWorkRemains: boolean;
+}): string {
+  const opener = params.reasoningAbort
+    ? params.emptyReasoningBurn
+      ? "Your previous turn spent the whole budget on internal reasoning and never emitted a tool call or user-facing answer."
+      : "Your previous turn spent too long on internal reasoning instead of a tool call or user-facing answer."
+    : params.emptyReasoningBurn
+      ? "Your previous turn hit the output token limit while writing internal reasoning only (no tools, no user-facing answer)."
+      : "Your previous turn hit the output token limit while writing internal analysis/reasoning, not a user-facing answer.";
+
+  const lines = [opener, "Do not continue that essay."];
+  if (params.forcePatch) {
+    if (params.checklistWorkRemains) {
+      lines.push(
+        `Checklist work remains. Call apply_patch now with a bounded batch: at most ${params.preferred} files (hard max ${params.maxPatches} patches).`,
+      );
+      lines.push(
+        "If you need one short read first, call read_file or document_symbol on a path already named in the request or checklist, then patch.",
+      );
+    } else if (params.reasoningAbort) {
+      // Reasoning abort: allow a targeted read — the model often never loaded
+      // the write target because thinking burned the turn (DeepSeek/GLM logs).
+      lines.push(
+        `Call apply_patch now with a bounded batch: at most ${params.preferred} files (hard max ${params.maxPatches} patches).`,
+      );
+      lines.push(
+        "A single targeted read_file/document_symbol of the write target is allowed if its contents are missing; then patch. Do not resume broad search.",
+      );
+    } else {
+      lines.push(
+        `Call apply_patch now with a smaller batch: at most ${params.preferred} files (hard max ${params.maxPatches} patches). Do not call read_file, search_files, list_directory, or analyze_change_impact on this turn — patch the remaining diagnostic errors already in context.`,
+      );
+    }
+  } else {
+    lines.push(
+      "Give a short final answer to the user now (or call one essential tool). Do not restate your plan.",
+    );
+  }
+  return lines.join("\n");
 }
 
 function buildTextContinuationNudge(recoveryAttempt: number): string {
