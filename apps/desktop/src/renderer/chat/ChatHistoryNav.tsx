@@ -2,7 +2,7 @@
  * Chat sidebar for the active workspace only (single-project mode).
  */
 
-import { IconPlus, IconSwitch } from '../ActivityIcons.js';
+import { IconPlus } from '../ActivityIcons.js';
 import { workspaceLabel } from '../api.js';
 
 export type ChatNavThread = {
@@ -20,7 +20,6 @@ interface ChatHistoryNavProps {
   onOpenThread: (threadId: string) => void;
   onDeleteThread: (threadId: string) => void;
   onNewChat: () => void;
-  onSwitchWorkspace: () => void;
 }
 
 const RUNNING_HINT = 'Agent is running — wait for the current reply';
@@ -54,20 +53,6 @@ export function ChatHistoryNav(props: ChatHistoryNavProps) {
           <strong className="side-project-head__title">{label}</strong>
         </div>
         <div className="side-project-head__actions">
-          <button
-            type="button"
-            className={`side-project-head__btn${locked ? ' is-locked' : ''}`}
-            aria-disabled={locked || undefined}
-            title={locked ? RUNNING_HINT : 'Switch workspace'}
-            aria-label={locked ? RUNNING_HINT : 'Switch workspace'}
-            onClick={() => {
-              if (locked) return;
-              props.onSwitchWorkspace();
-            }}
-          >
-            <IconSwitch size={15} />
-            <span>Switch</span>
-          </button>
           <button
             type="button"
             className={`side-project-head__btn side-project-head__btn--primary${

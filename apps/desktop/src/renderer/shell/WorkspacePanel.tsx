@@ -26,8 +26,10 @@ import {
   saveWorkspaceFile,
   streamWorkspaceEvents,
 } from '../api.js';
+import { MarkdownBody } from '../chat/MarkdownBody.js';
 import { CodeEditor } from '../explorer/CodeEditor.js';
 import { GitWorkingTreePane } from '../git/GitWorkingTreePane.js';
+import { TopBranchSelect } from '../git/TopBranchSelect.js';
 import { McpManager } from '../mcp/McpManager.js';
 import { RecipesManager } from '../recipes/RecipesManager.js';
 import { SkillsManager } from '../skills/SkillsManager.js';
@@ -44,10 +46,15 @@ import {
   IconGit,
   IconNewFile,
   IconNewFolder,
+  IconOpenPreview,
   IconRefresh,
 } from '../ActivityIcons.js';
 import { ResizeHandle, usePersistedWidth } from './ResizeHandle.js';
 import type { GitWorkingTreeSnapshot } from '../../shared/git/workingTree.js';
+
+function isMarkdownPath(path: string): boolean {
+  return /\.(md|mdx|markdown)$/i.test(path);
+}
 
 interface WorkspacePanelProps {
   baseUrl: string;
@@ -87,6 +94,10 @@ interface WorkspacePanelProps {
   onOpenProfiles?: () => void;
   /** Bubble Code Review findings to the chat composer strip. */
   onReviewFindingsChange?: (findings: import('../../shared/reviewFindings.js').ReviewFinding[]) => void;
+  /** Disable branch switching while the agent is running. */
+  agentBusy?: boolean;
+  /** Show Code Review UI when settings.ui.features.codeReviewButton is on. */
+  showCodeReview?: boolean;
 }
 
 type TreeEntry = { name: string; path: string; kind: 'file' | 'dir' };
@@ -99,6 +110,11 @@ interface OpenTab {
   mode: 'file' | 'diff';
   /** True while the first fetch is in flight (skip FS reload races). */
   loading?: boolean;
+  /**
+   * Preview tabs (single-click) are replaced by the next preview open.
+   * Double-click, edit, or explicit pin clears this.
+   */
+  preview?: boolean;
 }
 
 type ContextMenuState = {
@@ -216,6 +232,8 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(() => new Set());
   const [tabs, setTabs] = useState<OpenTab[]>([]);
   const [activePath, setActivePath] = useState<string | null>(null);
+  const [mdPreview, setMdPreview] = useState(false);
+  const autoSaveTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!props.onEditorContextChange) return;
@@ -229,8 +247,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
 
   const [git, setGit] = useState<GitWorkingTreeSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [note, setNote] = useState<string | null>(null);
+  const [, setNote] = useState<string | null>(null);
   const [sideWidth, setSideWidth] = usePersistedWidth('mitii.desktop.explorerWidth', {
     initial: 260,
     min: 160,
@@ -250,7 +267,6 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
 
   const auth = { baseUrl: props.baseUrl, token: props.token };
   const active = tabs.find((t) => t.path === activePath) ?? null;
-  const dirty = Boolean(active && active.content !== active.savedContent);
 
   const loadDir = useCallback(
     async (path: string) => {
@@ -316,20 +332,36 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     }
   };
 
-  const openFile = async (path: string) => {
+  const openFile = async (
+    path: string,
+    opts?: { preview?: boolean; pin?: boolean },
+  ) => {
     setError(null);
     setNote(null);
+    const asPreview = opts?.pin ? false : opts?.preview !== false;
     const existing = tabs.find((t) => t.path === path && t.mode === 'file');
     if (existing && !existing.loading) {
       setActivePath(path);
       setSide('explorer');
+      if (!asPreview && existing.preview) {
+        setTabs((prev) =>
+          prev.map((t) =>
+            t.path === path && t.mode === 'file'
+              ? { ...t, preview: false }
+              : t,
+          ),
+        );
+      }
       return;
     }
     // Optimistic tab so clicks feel instant while the engine may be busy indexing.
     setTabs((prev) => {
-      const without = prev.filter((t) => t.path !== path);
+      let next = prev.filter((t) => t.path !== path);
+      if (asPreview) {
+        next = next.filter((t) => !(t.preview && t.mode === 'file'));
+      }
       return [
-        ...without,
+        ...next,
         {
           path,
           content: '',
@@ -337,6 +369,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
           truncated: false,
           mode: 'file' as const,
           loading: true,
+          preview: asPreview,
         },
       ];
     });
@@ -346,7 +379,12 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     try {
       const file = await fetchWorkspaceFile({ ...auth, path });
       setTabs((prev) => {
-        const without = prev.filter((t) => t.path !== path && t.path !== file.path);
+        let without = prev.filter(
+          (t) => t.path !== path && t.path !== file.path,
+        );
+        if (asPreview) {
+          without = without.filter((t) => !(t.preview && t.mode === 'file'));
+        }
         return [
           ...without,
           {
@@ -354,8 +392,9 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
             content: file.content,
             savedContent: file.content,
             truncated: file.truncated,
-            mode: 'file',
+            mode: 'file' as const,
             loading: false,
+            preview: asPreview,
           },
         ];
       });
@@ -383,16 +422,13 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     }
   };
 
-  useEffect(() => {
-    const req = props.openPathRequest;
-    const path = req?.path?.trim();
-    if (!path) return;
-    const open =
-      req?.view === 'diff' ? openDiff(path) : openFile(path);
-    void open.finally(() => props.onOpenPathHandled?.());
-    // intentionally only react to openPathRequest
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.openPathRequest]);
+  const pinTab = useCallback((path: string) => {
+    setTabs((prev) =>
+      prev.map((t) =>
+        t.path === path && t.mode === 'file' ? { ...t, preview: false } : t,
+      ),
+    );
+  }, []);
 
   const openDiff = async (path: string) => {
     setError(null);
@@ -422,6 +458,17 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     }
   };
 
+  useEffect(() => {
+    const req = props.openPathRequest;
+    const path = req?.path?.trim();
+    if (!path) return;
+    const open =
+      req?.view === 'diff' ? openDiff(path) : openFile(path, { pin: true });
+    void open.finally(() => props.onOpenPathHandled?.());
+    // intentionally only react to openPathRequest
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.openPathRequest]);
+
   const closeTab = (path: string) => {
     const tab = tabs.find((t) => t.path === path);
     if (tab && tab.content !== tab.savedContent) {
@@ -437,37 +484,67 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     });
   };
 
-  const saveActive = async () => {
-    if (!active || active.mode !== 'file' || !dirty) return;
-    if (active.truncated) {
+  const saveActive = async (targetPath?: string) => {
+    const tab =
+      (targetPath
+        ? tabsRef.current.find((t) => t.path === targetPath)
+        : null) ??
+      tabsRef.current.find((t) => t.path === activePath) ??
+      null;
+    if (!tab || tab.mode !== 'file') return;
+    if (tab.content === tab.savedContent) return;
+    if (tab.truncated) {
       setError('File was truncated on open — cannot save safely.');
       return;
     }
-    setSaving(true);
+    if (tab.loading) return;
     setError(null);
     try {
       await saveWorkspaceFile({
         ...auth,
-        path: active.path,
-        content: active.content,
+        path: tab.path,
+        content: tab.content,
       });
       setTabs((prev) =>
         prev.map((t) =>
-          t.path === active.path
-            ? { ...t, savedContent: t.content }
-            : t,
+          t.path === tab.path ? { ...t, savedContent: t.content } : t,
         ),
       );
-      setNote('Saved');
-      window.setTimeout(() => setNote(null), 1200);
       void loadGit();
-      props.onFileSaved?.(active.path);
+      props.onFileSaved?.(tab.path);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSaving(false);
     }
   };
+
+  // Debounced autosave for dirty file tabs (⌘Z/⌘⇧Z still use native textarea undo).
+  useEffect(() => {
+    if (autoSaveTimerRef.current != null) {
+      window.clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+    const dirtyTabs = tabs.filter(
+      (t) =>
+        t.mode === 'file' &&
+        !t.loading &&
+        !t.truncated &&
+        t.content !== t.savedContent,
+    );
+    if (dirtyTabs.length === 0) return;
+    autoSaveTimerRef.current = window.setTimeout(() => {
+      autoSaveTimerRef.current = null;
+      for (const t of dirtyTabs) {
+        void saveActive(t.path);
+      }
+    }, 800);
+    return () => {
+      if (autoSaveTimerRef.current != null) {
+        window.clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabs]);
 
   const onEditorKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
@@ -483,7 +560,9 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
         active!.content.slice(0, start) + '  ' + active!.content.slice(end);
       setTabs((prev) =>
         prev.map((t) =>
-          t.path === active!.path ? { ...t, content: next } : t,
+          t.path === active!.path
+            ? { ...t, content: next, preview: false }
+            : t,
         ),
       );
       requestAnimationFrame(() => {
@@ -871,7 +950,18 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     setSelectedPaths(new Set([entry.path]));
     setSelectionAnchor(entry.path);
     if (entry.kind === 'dir') void toggleDir(entry.path);
-    else void openFile(entry.path);
+    else void openFile(entry.path, { preview: true });
+  };
+
+  const onExplorerDoubleClick = (
+    entry: TreeEntry,
+    e: ReactMouseEvent<HTMLButtonElement>,
+  ) => {
+    if (entry.kind !== 'file') return;
+    e.preventDefault();
+    setSelectedPaths(new Set([entry.path]));
+    setSelectionAnchor(entry.path);
+    void openFile(entry.path, { pin: true });
   };
 
   const onExplorerMouseDown = (
@@ -985,7 +1075,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
       await refreshParents([created.path]);
       setSelectedPaths(new Set([created.path]));
       setSelectionAnchor(created.path);
-      if (kind === 'file') void openFile(created.path);
+      if (kind === 'file') void openFile(created.path, { pin: true });
       else setExpanded((prev) => new Set(prev).add(created.path));
       void loadGit();
       setNote(kind === 'file' ? 'File created' : 'Folder created');
@@ -1229,6 +1319,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
           }
           onExplorerClick(entry, e);
         }}
+        onDoubleClick={(e) => onExplorerDoubleClick(entry, e)}
         onContextMenu={(e) => onExplorerContextMenu(entry, e)}
         title={entry.path}
       >
@@ -1304,14 +1395,17 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
   const menuSingle = menuPaths.length === 1 ? menuPaths[0] : null;
   const menuEntry = menuSingle ? entryByPath.get(menuSingle) : undefined;
 
-  const crumbs = active
-    ? (active.mode === 'diff'
-        ? active.path.replace(/^diff:/, '')
-        : active.path
-      ).split('/')
-    : [];
-
   const workspaceLabel = workspaceFolderName(props.workspaceRoot);
+  const activeIsMarkdown =
+    Boolean(active) &&
+    active!.mode === 'file' &&
+    isMarkdownPath(active!.path);
+  const showMdPreview = activeIsMarkdown && mdPreview;
+
+  useEffect(() => {
+    if (!activeIsMarkdown) setMdPreview(false);
+  }, [activeIsMarkdown, activePath]);
+
   const extensionsFullscreen =
     side === 'mcp' ||
     side === 'skills' ||
@@ -1542,6 +1636,18 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                         )
                     : null}
                 </div>
+                <TopBranchSelect
+                  placement="explorer"
+                  baseUrl={props.baseUrl}
+                  token={props.token}
+                  workspaceRoot={props.workspaceRoot}
+                  disabled={props.agentBusy}
+                  onChanged={() => {
+                    void loadGit();
+                    scmRefreshRef.current += 1;
+                    setScmRefreshToken(scmRefreshRef.current);
+                  }}
+                />
               </>
             ) : side === 'git' ? (
               <GitWorkingTreePane
@@ -1549,8 +1655,9 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                 token={props.token}
                 activePath={activePath}
                 refreshToken={scmRefreshToken}
+                showCodeReview={props.showCodeReview}
                 onOpenDiff={openDiff}
-                onOpenFile={openFile}
+                onOpenFile={(path) => openFile(path, { pin: true })}
                 onGitCountChange={(count) => {
                   props.onGitCountChange?.(count);
                 }}
@@ -1608,36 +1715,57 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
           ) : (
             <>
           {tabs.length > 0 ? (
-            <div className="editor-tabs" role="tablist">
-              {tabs.map((tab) => (
-                <div
-                  key={tab.path}
-                  className={`editor-tab${
-                    tab.path === activePath ? ' is-active' : ''
-                  }${tab.content !== tab.savedContent ? ' is-dirty' : ''}`}
-                  role="tab"
-                  aria-selected={tab.path === activePath}
+            <div className="editor-tabs-row">
+              <div className="editor-tabs" role="tablist">
+                {tabs.map((tab) => (
+                  <div
+                    key={tab.path}
+                    className={`editor-tab${
+                      tab.path === activePath ? ' is-active' : ''
+                    }${tab.content !== tab.savedContent ? ' is-dirty' : ''}${
+                      tab.preview ? ' is-preview' : ''
+                    }`}
+                    role="tab"
+                    aria-selected={tab.path === activePath}
+                  >
+                    <button
+                      type="button"
+                      className="editor-tab__label"
+                      onClick={() => setActivePath(tab.path)}
+                      onDoubleClick={() => {
+                        if (tab.mode === 'file') pinTab(tab.path);
+                      }}
+                      title={tab.path}
+                    >
+                      {tab.mode === 'diff'
+                        ? `${fileName(tab.path.replace(/^diff:/, ''))} (diff)`
+                        : fileName(tab.path)}
+                    </button>
+                    <button
+                      type="button"
+                      className="editor-tab__close"
+                      aria-label={`Close ${tab.path}`}
+                      onClick={() => closeTab(tab.path)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+              {activeIsMarkdown ? (
+                <button
+                  type="button"
+                  className={`editor-tabs__action${
+                    mdPreview ? ' is-active' : ''
+                  }`}
+                  title={mdPreview ? 'Show source' : 'Open preview'}
+                  aria-label={mdPreview ? 'Show source' : 'Open preview'}
+                  aria-pressed={mdPreview}
+                  onClick={() => setMdPreview((v) => !v)}
                 >
-                  <button
-                    type="button"
-                    className="editor-tab__label"
-                    onClick={() => setActivePath(tab.path)}
-                    title={tab.path}
-                  >
-                    {tab.mode === 'diff'
-                      ? `${fileName(tab.path.replace(/^diff:/, ''))} (diff)`
-                      : fileName(tab.path)}
-                  </button>
-                  <button
-                    type="button"
-                    className="editor-tab__close"
-                    aria-label={`Close ${tab.path}`}
-                    onClick={() => closeTab(tab.path)}
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
+                  <IconOpenPreview size={16} />
+                </button>
+              ) : null}
             </div>
           ) : null}
 
@@ -1645,53 +1773,11 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
 
           {active ? (
             <>
-              <div className="editor-breadcrumb">
-                <div className="editor-breadcrumb__path">
-                  {crumbs.map((part, i) => (
-                    <span key={`${part}-${i}`}>
-                      {i > 0 ? (
-                        <span className="editor-breadcrumb__sep">/</span>
-                      ) : null}
-                      <span
-                        className={
-                          i === crumbs.length - 1
-                            ? 'editor-breadcrumb__current'
-                            : undefined
-                        }
-                      >
-                        {part}
-                      </span>
-                    </span>
-                  ))}
+              {active.truncated ? (
+                <div className="editor-banner">
+                  Truncated on open — read-only
                 </div>
-                <div className="editor-breadcrumb__actions">
-                  {note ? <span className="editor-note">{note}</span> : null}
-                  {active.truncated ? (
-                    <span className="editor-note">truncated · read-only</span>
-                  ) : null}
-                  {active.mode === 'diff' ? (
-                    <button
-                      type="button"
-                      className="btn-ghost"
-                      onClick={() =>
-                        void openFile(active.path.replace(/^diff:/, ''))
-                      }
-                    >
-                      Open file
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      className="btn-primary"
-                      disabled={!dirty || saving || active.truncated}
-                      onClick={() => void saveActive()}
-                    >
-                      {saving ? 'Saving…' : dirty ? 'Save' : 'Saved'}
-                    </button>
-                  )}
-                </div>
-              </div>
-
+              ) : null}
               {active.mode === 'diff' ? (
                 <DiffView content={active.content} />
               ) : active.loading ? (
@@ -1701,6 +1787,10 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                     If indexing is running, this may take a moment.
                   </p>
                 </div>
+              ) : showMdPreview ? (
+                <div className="md-file-preview">
+                  <MarkdownBody text={active.content} />
+                </div>
               ) : (
                 <CodeEditor
                   path={active.path}
@@ -1709,7 +1799,9 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                   onChange={(content) => {
                     setTabs((prev) =>
                       prev.map((t) =>
-                        t.path === active.path ? { ...t, content } : t,
+                        t.path === active.path
+                          ? { ...t, content, preview: false }
+                          : t,
                       ),
                     );
                   }}
@@ -1721,8 +1813,8 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
             <div className="workspace-hero">
               <h2>EXPLORER</h2>
               <p>
-                Open a file from the tree. Edit in place —{' '}
-                <kbd>⌘S</kbd> / <kbd>Ctrl+S</kbd> to save.
+                Single-click to preview a file. Double-click to keep it open.
+                Edits autosave — <kbd>⌘Z</kbd> / <kbd>Ctrl+Z</kbd> to undo.
               </p>
               <div className="workspace-hero__brand">
                 <img
@@ -1774,7 +1866,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
               role="menuitem"
               onClick={() => {
                 setContextMenu(null);
-                void openFile(menuSingle);
+                void openFile(menuSingle, { pin: true });
               }}
             >
               Open

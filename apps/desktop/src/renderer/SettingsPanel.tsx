@@ -1180,10 +1180,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
                   />
                 </Field>
                 {props.onPickWorkspace ? (
-                  <div className="field full">
+                  <div className="settings-inline-actions">
                     <button
                       type="button"
-                      className="btn btn-primary"
+                      className="btn btn-primary btn--compact"
                       onClick={props.onPickWorkspace}
                     >
                       Open folder…
@@ -1216,11 +1216,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
               title="Delete cache & logs"
               description="Clears rebuildable project data: logs, memory, index, checkpoints, plans, and resets workspace settings to defaults. Chat history, profiles, skills, and rules stay. .mitii is not removed."
             >
-              <div className="field-grid">
-                <div className="field full">
+              <div className="settings-inline-actions">
                   <button
                     type="button"
-                    className="btn btn-danger"
+                    className="btn btn-danger btn--compact"
                     disabled={storageBusy || !props.workspaceRoot}
                     onClick={() => {
                       const bridge = getDesktopBridge();
@@ -1255,7 +1254,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
                   {storageNote && tab === 'workspaces' ? (
                     <p className="field-help storage-note">{storageNote}</p>
                   ) : null}
-                </div>
               </div>
             </SettingsSection>
           </div>

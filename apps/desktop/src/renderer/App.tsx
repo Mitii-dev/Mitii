@@ -66,11 +66,12 @@ import {
   IconRecipes,
   IconSettings,
   IconSkills,
-  IconSwitch,
+  IconHistory,
+  IconMoon,
+  IconSun,
   IconUser,
   IconWorkspace,
 } from './ActivityIcons.js';
-import { TopBranchSelect } from './git/TopBranchSelect.js';
 import { ActivityTimeline } from './chat/ActivityTimeline.js';
 import {
   ThinkingBlock,
@@ -141,6 +142,11 @@ import {
   TokenMeter,
   type TokenUsageState,
 } from './TokenMeter.js';
+import {
+  persistTheme,
+  resolveTheme,
+  type DesktopTheme,
+} from './theme.js';
 
 type View = 'chat' | 'settings';
 type ChatLayout = 'chat' | 'code';
@@ -346,6 +352,9 @@ export function App() {
       return 'chat';
     }
   });
+  const [theme, setTheme] = useState<DesktopTheme>(() => resolveTheme());
+  const [historyMenuOpen, setHistoryMenuOpen] = useState(false);
+  const historyMenuRef = useRef<HTMLDivElement>(null);
   const [sideWidth, setSideWidth] = usePersistedWidth('mitii.desktop.sideWidth', {
     initial: 232,
     min: 160,
@@ -396,6 +405,11 @@ export function App() {
   const [indexStream, setIndexStream] = useState<string[]>([]);
   const reindexInFlightRef = useRef(false);
   const [busy, setBusy] = useState(false);
+  /** Full-screen loader while switching / opening a workspace. */
+  const [workspaceLoading, setWorkspaceLoading] = useState(false);
+  const [workspaceLoadingLabel, setWorkspaceLoadingLabel] = useState(
+    'Loading workspace…',
+  );
   /** True while an agent stream is in flight — survives settings/UI busy toggles. */
   const runActiveRef = useRef(false);
   const runAbortRef = useRef<AbortController | null>(null);
@@ -1374,6 +1388,8 @@ export function App() {
     const bridge = getDesktopBridge();
     if (!bridge) return;
     setBusy(true);
+    setWorkspaceLoading(true);
+    setWorkspaceLoadingLabel('Opening workspace…');
     setPicker(null);
     try {
       await bridge.pickWorkspace();
@@ -1384,6 +1400,7 @@ export function App() {
       setHistoryLoading(false);
     } finally {
       setBusy(false);
+      setWorkspaceLoading(false);
     }
   };
 
@@ -1395,6 +1412,10 @@ export function App() {
       return;
     }
     setBusy(true);
+    setWorkspaceLoading(true);
+    setWorkspaceLoadingLabel(
+      `Loading ${workspaceLabel(workspaceRoot) || 'workspace'}…`,
+    );
     setPicker(null);
     try {
       resetChatForWorkspaceSwitch();
@@ -1411,6 +1432,7 @@ export function App() {
       setHistoryLoading(false);
     } finally {
       setBusy(false);
+      setWorkspaceLoading(false);
     }
   };
 
@@ -2561,6 +2583,28 @@ export function App() {
     }
   };
 
+  const toggleTheme = () => {
+    const next: DesktopTheme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(next);
+    persistTheme(next);
+  };
+
+  useEffect(() => {
+    if (!historyMenuOpen) return;
+    const onDoc = (event: MouseEvent) => {
+      if (!historyMenuRef.current?.contains(event.target as Node)) {
+        setHistoryMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [historyMenuOpen]);
+
+  const recentHistory = [...history]
+    .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''))
+    .slice(0, 5);
+  const hasMoreHistory = history.length > 5;
+
   const inCodeMode = view === 'chat' && chatLayout === 'code';
   const showHistorySide = view === 'chat' && chatLayout === 'chat';
   const showActivityBar = inCodeMode || view === 'settings';
@@ -2589,9 +2633,14 @@ export function App() {
     : latestAssistantWithChanges?.fileChanges;
   const latestReviewRunId =
     latestFileChanges?.runId ?? latestAssistantWithChanges?.id;
+  const codeReviewEnabled = Boolean(
+    settings.ui?.features?.codeReviewButton,
+  );
+  const activeReviewFindings =
+    codeReviewEnabled && !reviewDismissed ? reviewFindings : [];
   const showComposerReview =
     (latestFileChanges?.files.length ?? 0) > 0 ||
-    (!reviewDismissed && reviewFindings.length > 0);
+    activeReviewFindings.length > 0;
   const showOnboarding = settings.onboarding?.completed === false;
 
   const suggestMenu = pinMenu ? (
@@ -2842,7 +2891,7 @@ export function App() {
         />
         {showComposerReview ? (
           <ComposerReviewStrip
-            findings={reviewDismissed ? [] : reviewFindings}
+            findings={activeReviewFindings}
             fileChangeCount={latestFileChanges?.files.length ?? 0}
             files={latestFileChanges?.files ?? []}
             runId={latestReviewRunId}
@@ -2912,7 +2961,7 @@ export function App() {
               })();
             }}
             onFixAll={() => {
-              const open = reviewFindings.filter(
+              const open = activeReviewFindings.filter(
                 (f) => (f as { status?: string }).status !== 'fixed',
               );
               const listing =
@@ -3155,6 +3204,28 @@ export function App() {
 
   return (
     <div className={`app${inCodeMode ? ' app--code' : ''}`}>
+      {workspaceLoading ? (
+        <div className="workspace-loader" role="status" aria-live="polite">
+          <div className="workspace-loader__card">
+            <img
+              className="workspace-loader__logo"
+              src={logoUrl}
+              alt=""
+              width={72}
+              height={72}
+              decoding="async"
+            />
+            <strong className="workspace-loader__brand">Mitii</strong>
+            <p className="workspace-loader__label">{workspaceLoadingLabel}</p>
+            <div
+              className="workspace-loader__track"
+              aria-hidden
+            >
+              <div className="workspace-loader__bar" />
+            </div>
+          </div>
+        </div>
+      ) : null}
       <header className="app-topbar">
         <div className="app-topbar__left">
           <div className="layout-toggle" role="group" aria-label="Layout">
@@ -3251,29 +3322,68 @@ export function App() {
                 <span aria-hidden>▾</span>
               </button>
             </div>
-            <TopBranchSelect
-              baseUrl={engine?.baseUrl}
-              token={engine?.token}
-              workspaceRoot={snapshot?.workspaceRoot}
-              disabled={busy}
-              onChanged={() => {
-                workspaceInvalidateSeq.current += 1;
-                setWorkspaceInvalidate({
-                  seq: workspaceInvalidateSeq.current,
-                  paths: [],
-                });
-              }}
-            />
+            {inCodeMode ? (
+              <div className="top-history" ref={historyMenuRef}>
+                <button
+                  type="button"
+                  className="top-icon-btn"
+                  disabled={busy}
+                  title={busy ? 'Agent is running' : 'Recent chats'}
+                  aria-label={busy ? 'Agent is running' : 'Recent chats'}
+                  aria-expanded={historyMenuOpen}
+                  onClick={() => setHistoryMenuOpen((v) => !v)}
+                >
+                  <IconHistory size={15} />
+                </button>
+                {historyMenuOpen ? (
+                  <div className="top-history__menu" role="menu">
+                    {recentHistory.length === 0 ? (
+                      <p className="top-history__empty">No chats yet</p>
+                    ) : (
+                      recentHistory.map((thread) => (
+                        <button
+                          key={thread.id}
+                          type="button"
+                          role="menuitem"
+                          className={
+                            thread.id === threadId ? 'is-active' : undefined
+                          }
+                          onClick={() => {
+                            setHistoryMenuOpen(false);
+                            void onOpenThread(thread.id);
+                          }}
+                        >
+                          {thread.title || 'Chat'}
+                        </button>
+                      ))
+                    )}
+                    {hasMoreHistory ? (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="top-history__more"
+                        onClick={() => {
+                          setHistoryMenuOpen(false);
+                          setLayout('chat');
+                        }}
+                      >
+                        More…
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             <button
               type="button"
               className="top-icon-btn"
-              disabled={busy}
-              title={busy ? 'Agent is running' : 'Switch workspace'}
-              aria-label={busy ? 'Agent is running' : 'Switch workspace'}
-              onClick={() => setPicker('workspace')}
+              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              aria-label={
+                theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'
+              }
+              onClick={toggleTheme}
             >
-              <IconSwitch size={15} />
-              <span>Switch</span>
+              {theme === 'dark' ? <IconSun size={15} /> : <IconMoon size={15} />}
             </button>
             <button
               type="button"
@@ -3311,7 +3421,6 @@ export function App() {
               onOpenThread={(id) => void onOpenThread(id)}
               onDeleteThread={(id) => void onDeleteThread(id)}
               onNewChat={() => void onNewChat()}
-              onSwitchWorkspace={() => setPicker('workspace')}
             />
             <div className="side-foot">
               <button type="button" onClick={() => setView('settings')}>
@@ -3466,7 +3575,10 @@ export function App() {
                     workspaceInvalidate={workspaceInvalidate}
                     onEditorContextChange={setEditorContext}
                     onFileSaved={onFileSavedDebounced}
+                    agentBusy={busy}
+                    showCodeReview={codeReviewEnabled}
                     onReviewFindingsChange={(findings) => {
+                      if (!codeReviewEnabled) return;
                       setReviewFindings(findings);
                       setReviewDismissed(false);
                     }}

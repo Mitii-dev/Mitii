@@ -1,5 +1,5 @@
 /**
- * Top-bar git branch switcher — sits beside the workspace control.
+ * Git branch switcher — header (legacy) or explorer footer.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -18,9 +18,12 @@ interface TopBranchSelectProps {
   disabled?: boolean;
   /** Fired after a successful checkout/create so SCM can refresh. */
   onChanged?: () => void;
+  /** Compact strip at the bottom of the Explorer pane. */
+  placement?: 'header' | 'explorer';
 }
 
 export function TopBranchSelect(props: TopBranchSelectProps) {
+  const placement = props.placement ?? 'header';
   const [branch, setBranch] = useState<string | null>(null);
   const [ahead, setAhead] = useState(0);
   const [behind, setBehind] = useState(0);
@@ -113,6 +116,91 @@ export function TopBranchSelect(props: TopBranchSelectProps) {
       : null;
 
   const locked = Boolean(props.disabled || busy || !auth);
+
+  if (placement === 'explorer') {
+    return (
+      <div className="explorer-branch" ref={rootRef}>
+        <button
+          type="button"
+          className="explorer-branch__toggle"
+          disabled={locked || !ok}
+          aria-expanded={open}
+          title={
+            !auth
+              ? 'Open a workspace'
+              : !ok
+                ? 'No git repository'
+                : 'Switch or create branch'
+          }
+          onClick={() => {
+            if (locked || !ok) return;
+            setOpen((v) => {
+              const next = !v;
+              if (next) void loadBranches();
+              return next;
+            });
+          }}
+        >
+          <IconGit size={12} />
+          <span className="explorer-branch__name">
+            {branch ?? (ok ? '…' : '—')}
+          </span>
+          {syncLabel ? (
+            <span className="explorer-branch__sync">{syncLabel}</span>
+          ) : null}
+          <span className="explorer-branch__caret" aria-hidden>
+            ▾
+          </span>
+        </button>
+        {open ? (
+          <div className="explorer-branch__menu" role="listbox">
+            <div className="explorer-branch__create">
+              <input
+                value={newBranch}
+                placeholder="Create branch…"
+                disabled={busy}
+                autoFocus
+                onChange={(e) => setNewBranch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newBranch.trim()) {
+                    e.preventDefault();
+                    void runCheckout(newBranch, true);
+                  }
+                  if (e.key === 'Escape') setOpen(false);
+                }}
+              />
+              <button
+                type="button"
+                className="explorer-branch__create-btn"
+                disabled={busy || !newBranch.trim()}
+                onClick={() => void runCheckout(newBranch, true)}
+              >
+                Create
+              </button>
+            </div>
+            {branches.length === 0 ? (
+              <p className="explorer-branch__empty">No branches found</p>
+            ) : (
+              <div className="explorer-branch__list">
+                {branches.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    role="option"
+                    className={name === branch ? 'is-selected' : undefined}
+                    disabled={busy || name === branch}
+                    onClick={() => void runCheckout(name, false)}
+                  >
+                    {name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div className="top-select top-branch" ref={rootRef}>
