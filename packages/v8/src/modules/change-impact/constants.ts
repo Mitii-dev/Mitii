@@ -9,6 +9,20 @@ export const CHANGE_IMPACT_STATUSES = [
 
 export const CHANGE_IMPACT_DIRECTIONS = ["dependents", "dependencies"] as const;
 
+/**
+ * How a file seed expands into graph nodes before the walk.
+ * - `file`: file node only (plus project when includePackages).
+ * - `file_exports`: file + exported / externally-referenced symbols (default).
+ * - `file_all_symbols`: file + every symbol in the file (legacy wide expand).
+ */
+export const CHANGE_IMPACT_SEED_EXPANSIONS = [
+  "file",
+  "file_exports",
+  "file_all_symbols",
+] as const;
+
+export const CHANGE_IMPACT_FILE_BUCKETS = ["prod", "test"] as const;
+
 export const CHANGE_IMPACT_EDGE_TYPES = [
   "calls",
   "imports",
@@ -29,6 +43,9 @@ export const CHANGE_IMPACT_REASON_CODES = [
   "graph_stale",
   "hop_limit_reached",
   "node_limit_reached",
+  "path_limit_reached",
+  "seed_soft_resolved",
+  "lsp_enriched",
 ] as const;
 
 export const CHANGE_IMPACT_ERROR_CODES = [
@@ -40,4 +57,6 @@ export const CHANGE_IMPACT_WARNING_CODES = [
   "graph_partial",
   "seed_file_only",
   "evidence_truncated",
+  "seed_soft_matched",
+  "lsp_enriched",
 ] as const;
