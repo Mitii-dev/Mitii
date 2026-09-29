@@ -282,6 +282,7 @@ export async function runModelToolLoop(
       diagnostics: params.repoBuildStateBefore?.diagnostics,
       totalErrorCount: params.repoBuildStateBefore?.summary.errorCount,
       pathScopes: params.decision.toolGrant.pathScopes,
+      userPrompt: params.skillsQuery,
     });
     messages.push({ role: "user", content: seed });
   }
@@ -554,8 +555,10 @@ export async function runModelToolLoop(
       reasonCodes.push("reasoning_progress_budget_exceeded");
       session.reasoningProgressBudgetExceedances += 1;
       session.observedReasoningChannel = true;
-      // Repeated thinking-only burns with write still required: lock mutation
-      // and spend evidence reads so the next turns only see apply_patch*.
+      // Repeated thinking-only burns with write still required: enter mutation
+      // discipline, but keep targeted evidence reads so named write targets
+      // can still be loaded (spending the budget here caused read thrash on
+      // DeepSeek/GLM after two 6k reasoning aborts).
       const incompleteChangeSurfaces = hasIncompleteChangeSurfaces(
         params.taskListRef.current,
       );
@@ -568,16 +571,15 @@ export async function runModelToolLoop(
           thresholds.maxReasoningProgressBudgetExceedancesBeforeMutationLock
       ) {
         session.awaitingReadOnlyMutationRetry = true;
-        session.postNudgeEvidenceReadTurns =
-          thresholds.maxPostNudgeEvidenceReadTurns;
         reasonCodes.push("unfulfilled_execute_recovered");
         warnings.push(
-          "Repeated reasoning-only turns without tools; locking to mutation tools.",
+          "Repeated reasoning-only turns without tools; locking to mutation tools while keeping targeted reads.",
         );
       }
     }
 
     const truncated = turn.finishReason === "length";
+    const reasoningAbort = turn.reasoningBudgetExceeded === true;
     runtime.emit(bus, {
       type: "model_turn",
       runId,
@@ -598,16 +600,30 @@ export async function runModelToolLoop(
 
     if (truncated) {
       reasonCodes.push("output_truncated");
-      warnings.push(
-        "Model output stopped early because the output token limit was reached.",
-      );
-      runtime.emit(bus, {
-        type: "warning",
-        runId,
-        message:
-          "Response truncated: output token limit reached. Retrying with a smaller mutation batch when tools were incomplete; otherwise raise mitii.provider.maximumOutputTokens.",
-        at: runtime.isoNow(),
-      });
+      if (reasoningAbort) {
+        warnings.push(
+          "Model turn aborted after excess internal reasoning with no tools; recovering toward a tool call (not an output-token limit).",
+        );
+        runtime.emit(bus, {
+          type: "warning",
+          runId,
+          message:
+            "Reasoning progress budget exceeded before any tool call. Do not raise mitii.provider.maximumOutputTokens for this — call a tool on the next turn.",
+          code: "reasoning_progress_budget_exceeded",
+          at: runtime.isoNow(),
+        });
+      } else {
+        warnings.push(
+          "Model output stopped early because the output token limit was reached.",
+        );
+        runtime.emit(bus, {
+          type: "warning",
+          runId,
+          message:
+            "Response truncated: output token limit reached. Retrying with a smaller mutation batch when tools were incomplete; otherwise raise mitii.provider.maximumOutputTokens.",
+          at: runtime.isoNow(),
+        });
+      }
     }
 
     const grant = session.decision.toolGrant;
@@ -617,6 +633,7 @@ export async function runModelToolLoop(
       toolCalls: turn.toolCalls,
       mutationBudget: grant.mutationBudget,
       recoveryAttempt: session.truncationRecoveries,
+      reasoningBudgetExceeded: reasoningAbort,
       requireMutation: requiresMutationForExecute({
         route: session.decision.route,
         maximumWorkspaceEffect: grant.maximumWorkspaceEffect,

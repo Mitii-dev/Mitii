@@ -30,7 +30,9 @@ export function resolveReasoningProgressBudget(params: {
   const thresholds = params.thresholds ?? AGENT_ENGINE_THRESHOLDS;
   const base = thresholds.maxReasoningCharsWithoutProgress;
   const ratio = thresholds.reasoningProgressBudgetRatioWhenReasoningCapable;
-  const tight = Math.max(2_000, Math.floor(base * ratio));
+  // Floor high enough for a short tool-bound think on DeepSeek/GLM; the
+  // ratio still scales with the base for larger windows / overrides.
+  const tight = Math.max(12_000, Math.floor(base * ratio));
   const preferTight =
     params.supportsReasoning === true ||
     params.observedReasoningChannel === true;

@@ -17,7 +17,7 @@ describe("resolveReasoningProgressBudget", () => {
     );
     expect(budget.tightChars).toBe(
       Math.max(
-        2_000,
+        12_000,
         Math.floor(
           AGENT_ENGINE_THRESHOLDS.maxReasoningCharsWithoutProgress *
             AGENT_ENGINE_THRESHOLDS.reasoningProgressBudgetRatioWhenReasoningCapable,
@@ -50,7 +50,16 @@ describe("resolveReasoningProgressBudget", () => {
           reasoningProgressBudgetRatioWhenReasoningCapable: 0.2,
         },
       }).tightChars,
-    ).toBe(2_000);
+    ).toBe(12_000);
+  });
+
+  it("gives reasoning-capable models enough room for a tool-bound think", () => {
+    const budget = resolveReasoningProgressBudget({
+      supportsReasoning: true,
+    });
+    // DeepSeek/GLM routinely need >6k reasoning chars before the first tool.
+    expect(budget.baseChars).toBeGreaterThanOrEqual(12_000);
+    expect(budget.tightChars).toBeGreaterThanOrEqual(12_000);
   });
 });
 

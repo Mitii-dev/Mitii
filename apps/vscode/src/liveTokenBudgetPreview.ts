@@ -100,7 +100,7 @@ export const DEFAULT_WINDOW_BUDGET_NUMBERS: Record<string, number> = {
  */
 const WINDOW_BUDGET_BAND_OVERLAYS: Record<string, Record<string, number>> = {
   compact: {
-    maxUniqueFilesPerCallCap: 8,
+    maxUniqueFilesPerCallCap: 12,
     outputMinTokens: 2_048,
     outputRatio: 0.12,
     outputWindowCapRatio: 0.12,
@@ -112,7 +112,7 @@ const WINDOW_BUDGET_BAND_OVERLAYS: Record<string, Record<string, number>> = {
     maxSkillsCap: 4,
   },
   standard: {
-    maxUniqueFilesPerCallCap: 8,
+    maxUniqueFilesPerCallCap: 20,
     outputMinTokens: 8192,
     outputRatio: 0.22,
     outputWindowCapRatio: 0.28,
@@ -123,7 +123,7 @@ const WINDOW_BUDGET_BAND_OVERLAYS: Record<string, Record<string, number>> = {
     maxSkillsCap: 4,
   },
   wide: {
-    maxUniqueFilesPerCallCap: 12,
+    maxUniqueFilesPerCallCap: 32,
     outputMinTokens: 10_240,
     outputRatio: 0.18,
     outputWindowCapRatio: 0.25,
@@ -156,7 +156,7 @@ export function resolveLiveWindowBudgetBand(
  * Compaction ceilings scale with the context window (settings source of truth).
  */
 const MEDIUM_WINDOW_BUDGET_EFFORT = {
-  maxUniqueFilesPerCall: 8,
+  maxUniqueFilesPerCall: 12,
   maxModelCalls: 64,
   compactionAutoWindowRatio: 0.8,
   compactionHardWindowRatio: 1,
