@@ -10,6 +10,7 @@ import {
   ToolRuntimePipeline,
   VerificationPipeline,
   WorkspaceFileSystemManifestReader,
+  InMemoryToolOutputSpillAdapter,
   createMitiiClient,
   type MitiiClient,
   type MitiiResumeInput,
@@ -282,6 +283,7 @@ async function createAutomationClient(options: {
       repoGraphs: createHostRepositoryGraphPort({
         workspaceRoot: options.cwd,
       }),
+      outputSpill: new InMemoryToolOutputSpillAdapter(),
       ...(search ? { search } : {}),
     },
     { registry: mcpManager.createRegistry() },

@@ -29,6 +29,11 @@ export interface ToolExecutionContext {
    * schemas for host-registered `mcp__*` tools.
    */
   registry?: ToolRegistry;
+  /**
+   * When true, run_command applies the soft file-edit heuristic (plan-mode
+   * defense). run_readonly_command always applies it.
+   */
+  softBlockMutatingCommands?: boolean;
 }
 
 export interface ToolExecutionResult {

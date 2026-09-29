@@ -1,13 +1,25 @@
-import {
-  CHANGE_IMPACT_TOOL_IDS,
-  CODE_INTELLIGENCE_TOOL_IDS,
-  DIAGNOSTICS_TOOL_IDS,
-} from "../../modules/decision-policy";
-
 /**
  * Stable identifiers for Tool Runtime.
+ * Built-in tool ID lists are the single source of truth; Decision Policy re-exports them.
  */
 export const TOOL_RUNTIME_SCHEMA_VERSION = 1 as const;
+
+/** Symbol-level code intelligence tools (language service or repo-graph). */
+export const CODE_INTELLIGENCE_TOOL_IDS = [
+  "goto_definition",
+  "find_references",
+  "hover_symbol",
+  "document_symbol",
+  "workspace_symbol",
+  "find_implementation",
+  "call_hierarchy",
+] as const;
+
+/** Workspace diagnostics inspection tools. */
+export const DIAGNOSTICS_TOOL_IDS = ["read_diagnostics"] as const;
+
+/** Repository blast-radius analysis tools. */
+export const CHANGE_IMPACT_TOOL_IDS = ["analyze_change_impact"] as const;
 
 /** Read-only tools Decision Policy may grant. */
 export const READ_ONLY_TOOL_IDS = [
@@ -26,6 +38,7 @@ export const READ_ONLY_TOOL_IDS = [
   "read_git_branches",
   ...CODE_INTELLIGENCE_TOOL_IDS,
   ...CHANGE_IMPACT_TOOL_IDS,
+  "emit_review_finding",
   "run_readonly_command",
   "read_package_scripts",
   "sequential_thinking",
@@ -54,8 +67,17 @@ export const MUTATION_TOOL_IDS = [
   "memory_graph_update",
 ] as const;
 
+/** External GitHub write tools (require `gh` auth in the environment). */
+export const GITHUB_MUTATION_TOOL_IDS = [
+  "create_github_issue",
+  "create_pull_request",
+] as const;
+
+/** Process tools that may change workspace state through repository scripts. */
+export const PROCESS_TOOL_IDS = ["run_command"] as const;
+
 /** Opt-in mutating process tool (not in default MUTATION_TOOL_IDS). */
-export const OPT_IN_MUTATION_TOOL_IDS = ["run_command"] as const;
+export const OPT_IN_MUTATION_TOOL_IDS = PROCESS_TOOL_IDS;
 
 export const TOOL_BACKENDS = ["local", "host", "mcp"] as const;
 

@@ -6,6 +6,7 @@ import type { GitPort } from "./GitPort";
 import type { NetworkPort } from "./NetworkPort";
 import type { ProcessPort } from "./ProcessPort";
 import type { SearchPort } from "./SearchPort";
+import type { ToolOutputSpillPort } from "./ToolOutputSpillPort";
 import type { WorkspaceFileSystemPort } from "./WorkspaceFileSystemPort";
 
 export interface ToolRuntimePorts {
@@ -15,6 +16,8 @@ export interface ToolRuntimePorts {
   git?: GitPort;
   network?: NetworkPort;
   search?: SearchPort;
+  /** Optional full-payload store when model-facing output is byte-bounded. */
+  outputSpill?: ToolOutputSpillPort;
   codeNavigation?: CodeNavigationPort;
   repoGraphs?: RepositoryGraphPort;
   /** Optional relational memory beside MemoryFact pipeline. */
@@ -77,4 +80,9 @@ export type {
   WebSearchHit,
   WebSearchResult,
 } from "./SearchPort";
+export type {
+  ToolOutputSpillPort,
+  ToolOutputSpillStoreRequest,
+  ToolOutputSpillStoreResult,
+} from "./ToolOutputSpillPort";
 export type { RepoGraph };

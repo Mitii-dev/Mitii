@@ -2991,7 +2991,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       await this.handleSettingsSet({
         type: 'settings.set',
         provider: profile.provider,
-        ui: profile.ui,
+        ui: profile.ui as any,
         approvalMode: profile.ui.approvalMode,
       });
       return;

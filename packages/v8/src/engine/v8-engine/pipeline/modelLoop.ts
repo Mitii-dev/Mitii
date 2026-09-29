@@ -20,7 +20,10 @@ import type {
 } from "../contracts";
 import type { EstablishedFact } from "../actions";
 import type { PromptCacheClass } from "../actions/resolvePromptCacheClass";
-import { createLoopFileReadTracker } from "../actions";
+import {
+  createLoopFileReadTracker,
+  estimateStickyMutableChars,
+} from "../actions";
 import { EventBus } from "../internal/EventBus";
 import { ReadLedger } from "../internal/ReadLedger";
 import { RunBudgetTracker } from "../internal/RunBudget";
@@ -332,6 +335,27 @@ export async function runV8ModelLoop(
     }
 
     const truncated = turn.finishReason === "length";
+    const stickyMutable = estimateStickyMutableChars(
+      prepared.turnRequest.messages,
+    );
+    runtime.emit(bus, {
+      type: "model_turn",
+      runId,
+      turnIndex: Math.max(0, budget.snapshot().modelCalls - 1),
+      inputTokens: turn.usage?.inputTokens,
+      outputTokens: turn.usage?.outputTokens,
+      cacheHitTokens: turn.usage?.cacheHitTokens,
+      cacheMissTokens: turn.usage?.cacheMissTokens,
+      finishReason: turn.finishReason,
+      truncated: truncated || undefined,
+      preservePrefix: prepared.preservePrefix,
+      promptCacheClass: prepared.promptCacheClass,
+      stickyInputChars: stickyMutable.stickyChars,
+      mutableInputChars: stickyMutable.mutableChars,
+      compactionPressure: prepared.compaction.pressure,
+      at: runtime.isoNow(),
+    });
+
     const { complete: toolCalls, discardedCount } = discardIncompleteToolCalls(
       turn.toolCalls,
     );
