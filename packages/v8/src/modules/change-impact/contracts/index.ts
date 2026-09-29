@@ -6,6 +6,7 @@ export {
   changeImpactCaretSeedSchema,
   changeImpactEdgeTypeSchema,
   changeImpactDirectionSchema,
+  changeImpactSeedExpansionSchema,
 } from "./input/ChangeImpactInput";
 export type {
   ChangeImpactInput,
@@ -18,9 +19,13 @@ export {
   changeImpactStatusSchema,
   changeImpactReasonCodeSchema,
   changeImpactWarningCodeSchema,
+  changeImpactFileBucketSchema,
   changeImpactResolvedSeedSchema,
   changeImpactAffectedNodeSchema,
   changeImpactAffectedFileSchema,
+  changeImpactDirectNeighborCountsSchema,
+  changeImpactChainLinkSchema,
+  changeImpactChainSchema,
   changeImpactPackageSchema,
   changeImpactWarningSchema,
 } from "./output/ChangeImpactResult";
@@ -29,6 +34,7 @@ export type {
   ChangeImpactStatus,
   ChangeImpactReasonCode,
   ChangeImpactWarningCode,
+  ChangeImpactFileBucket,
 } from "./output/ChangeImpactResult";
 
 export {

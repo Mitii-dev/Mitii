@@ -7,12 +7,16 @@ Change Impact estimates the blast radius of a code change by walking a repositor
 - Validates change-impact input.
 - Resolves a file/symbol/caret seed against a `RepoGraph`.
 - Traverses dependency or dependent edges.
-- Applies hop and node limits.
-- Summarizes affected nodes, files, and packages.
-- Reports truncation, unresolved seeds, stale graph signals, and warnings.
+- Applies hop, node, and path/chain limits; retains best same-hop edge/score.
+- Summarizes affected nodes, files (prod/test buckets), packages, and impact chains.
+- Reports truncation, unresolved seeds, stale graph signals, hop-1 neighbor counts, and warnings.
+- Defaults file seeds to `file_exports` (exported or externally referenced symbols) instead of exploding every symbol.
+- Soft-resolves symbol seeds (case/qualified name + optional text-occurrence hints) before falling back to file-level expand.
+- Optionally multiplies walk scores by published RepoMap importance (PageRank/composite) — never recomputes ranking.
+- Exposes `mergeNavigationEnrichment` so Tool Runtime can merge live code-nav/LSP hits when the graph walk is empty or partial.
 - Exposes `compactChangeImpactForModelFacing` so Tool Runtime can ship a
-  files-first, budget-safe tool payload (top-N nodes/files, short evidence)
-  without discarding the full walk limits used for analysis.
+  files-first, budget-safe tool payload (top-N nodes/files, short evidence, prod-first,
+  prefix-collapsed chains) without discarding the full walk limits used for analysis.
 
 ## Structure
 

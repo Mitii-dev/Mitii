@@ -3,7 +3,9 @@ import { z } from "zod";
 import {
   CHANGE_IMPACT_DIRECTIONS,
   CHANGE_IMPACT_EDGE_TYPES,
+  CHANGE_IMPACT_FILE_BUCKETS,
   CHANGE_IMPACT_POLICY,
+  CHANGE_IMPACT_SEED_EXPANSIONS,
   CHANGE_IMPACT_STATUSES,
 } from "../../../../modules/change-impact";
 
@@ -109,7 +111,14 @@ export const analyzeChangeImpactInputSchema = z
       .positive()
       .max(CHANGE_IMPACT_POLICY.maximumAffectedNodesCap)
       .optional(),
+    maximumPaths: z
+      .number()
+      .int()
+      .positive()
+      .max(CHANGE_IMPACT_POLICY.maximumPathsCap)
+      .optional(),
     includePackages: z.boolean().optional(),
+    seedExpansion: z.enum(CHANGE_IMPACT_SEED_EXPANSIONS).optional(),
     direction: z.enum(CHANGE_IMPACT_DIRECTIONS).optional(),
     edgeTypes: z
       .array(z.enum(CHANGE_IMPACT_EDGE_TYPES))
@@ -164,6 +173,7 @@ export const analyzeChangeImpactOutputSchema = z
           score: z.number(),
           affectedNodeCount: z.number().int().positive(),
           reason: z.string(),
+          bucket: z.enum(CHANGE_IMPACT_FILE_BUCKETS).optional(),
         })
         .strict(),
     ),
@@ -177,6 +187,14 @@ export const analyzeChangeImpactOutputSchema = z
         })
         .strict(),
     ),
+    chains: z.array(z.string()).optional(),
+    directNeighborCounts: z
+      .object({
+        nodes: z.number().int().nonnegative(),
+        files: z.number().int().nonnegative(),
+      })
+      .strict()
+      .optional(),
     truncated: z.boolean(),
     warnings: z.array(
       z

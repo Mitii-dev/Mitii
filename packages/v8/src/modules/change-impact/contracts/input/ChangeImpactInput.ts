@@ -5,6 +5,7 @@ import {
   CHANGE_IMPACT_DIRECTIONS,
   CHANGE_IMPACT_EDGE_TYPES,
   CHANGE_IMPACT_SCHEMA_VERSION,
+  CHANGE_IMPACT_SEED_EXPANSIONS,
 } from "../../constants";
 import { CHANGE_IMPACT_POLICY } from "../../policy";
 
@@ -45,6 +46,9 @@ export const changeImpactSeedSchema = z.discriminatedUnion("kind", [
 
 export const changeImpactEdgeTypeSchema = z.enum(CHANGE_IMPACT_EDGE_TYPES);
 export const changeImpactDirectionSchema = z.enum(CHANGE_IMPACT_DIRECTIONS);
+export const changeImpactSeedExpansionSchema = z.enum(
+  CHANGE_IMPACT_SEED_EXPANSIONS,
+);
 
 const repoGraphReferenceSchema = z.custom<RepoGraph>(
   (value) =>
@@ -76,7 +80,38 @@ export const changeImpactInputSchema = z
       .positive()
       .max(CHANGE_IMPACT_POLICY.maximumAffectedNodesCap)
       .default(CHANGE_IMPACT_POLICY.maximumAffectedNodes),
+    maximumPaths: z
+      .number()
+      .int()
+      .positive()
+      .max(CHANGE_IMPACT_POLICY.maximumPathsCap)
+      .default(CHANGE_IMPACT_POLICY.maximumPaths),
     includePackages: z.boolean().default(true),
+    seedExpansion: changeImpactSeedExpansionSchema.default(
+      CHANGE_IMPACT_POLICY.seedExpansion,
+    ),
+    /**
+     * Optional published RepoMap importance by relative path (PageRank or
+     * composite score). Never recomputed here — hosts pass published values.
+     */
+    importanceByRelativePath: z
+      .record(z.string().min(1), z.number().nonnegative())
+      .optional(),
+    /**
+     * Host text-search / occurrence hints (1-based lines) used when exact
+     * symbol seed resolution fails.
+     */
+    textOccurrenceHints: z
+      .array(
+        z
+          .object({
+            line: z.number().int().positive(),
+            symbolName: z.string().min(1).optional(),
+          })
+          .strict(),
+      )
+      .max(40)
+      .optional(),
     repoGraph: repoGraphReferenceSchema,
     codeIndexChangeToken: z.string().min(1).optional(),
   })

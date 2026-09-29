@@ -38,6 +38,17 @@ export interface RepositoryGraphPort {
   expectedCodeIndexChangeToken?: (
     graph: RepoGraph,
   ) => string | undefined | Promise<string | undefined>;
+  /**
+   * Optional published RepoMap importance by relative path (PageRank or
+   * composite). Change-impact only applies these scores — it never recomputes.
+   */
+  loadImportanceByRelativePath?: () =>
+    | ReadonlyMap<string, number>
+    | Readonly<Record<string, number>>
+    | Promise<
+        ReadonlyMap<string, number> | Readonly<Record<string, number>> | undefined
+      >
+    | undefined;
 }
 
 export type {
