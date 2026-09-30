@@ -39,6 +39,22 @@ request-intake/
 6. Validate + build envelope
 
 Meta commands with non-agent lifecycle set `shortCircuitMeta` via `intakeDetailed` so the engine can exit before pin/understand.
+
+## Host Contract (selection / open tabs)
+
+Intake never calls IDE APIs. Hosts must pre-fill structured refs on `CreateUserRequestInput`:
+
+| Host signal | Envelope field |
+|-------------|----------------|
+| Active editor selection | `referencedArtifacts[]` with `kind: "selection"`, `path`, `startLine`, `endLine` |
+| Explicit @-picker / drag files | `referencedArtifacts[]` with `kind: "file"` or `"folder"` |
+| Open / visible tabs (optional) | additional `kind: "file"` refs (cap with envelope limits) |
+| Pasted / attached images | `attachments[]` (mime allowlist + size caps) |
+| Mid-run steer / follow-up | `turnKind: "steer" \| "follow_up" \| "continue"` (+ optional `parentRequestId`) |
+| Session new/resume | `sessionAction` — classify only; host owns storage |
+
+Intake will also parse `@path` and whole-message bare paths into artifacts, but **selection ranges and open-tab sets are host-only**.
+
 ## Types And Contracts
 
 - `CreateUserRequestInput`: boundary input with `sessionId`, `mode`, `userMessage`, optional `requestId`, `origin`, `referencedArtifacts`, `workspace`, and `correlation`.

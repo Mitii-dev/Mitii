@@ -71,6 +71,7 @@ export class RequestUnderstandingPipeline {
       userMessage,
       referencedArtifacts: envelope.referencedArtifacts,
       diagnosticSummary: options.diagnosticSummary,
+      turnKind: envelope.turnKind,
     });
 
     const taskAnalysis = this.taskAnalyzer.analyze({

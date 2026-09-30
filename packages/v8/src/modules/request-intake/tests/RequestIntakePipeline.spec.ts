@@ -224,4 +224,14 @@ describe("extractMentionArtifacts", () => {
       }),
     ]);
   });
+
+  it("promotes a bare path message to a file artifact", () => {
+    expect(extractMentionArtifacts("src/LoginForm.tsx")).toEqual([
+      expect.objectContaining({
+        path: "src/LoginForm.tsx",
+        kind: "file",
+        name: "LoginForm.tsx",
+      }),
+    ]);
+  });
 });
