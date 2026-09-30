@@ -59,7 +59,10 @@ import {
 import Database from 'better-sqlite3';
 
 import type { DesktopHostMode } from '../shared/protocol.js';
-import { resolveEffectiveContextWindow } from '../shared/contextWindow.js';
+import {
+  inferMaximumOutputTokensFromModelId,
+  resolveEffectiveContextWindow,
+} from '../shared/contextWindow.js';
 import { ensureDesktopRepositoryState } from './ensureRepositoryState.js';
 import {
   isModelIoLoggingEnabled,
@@ -264,6 +267,13 @@ export async function createHostDesktopClient(
     env.MITII_MAXIMUM_OUTPUT_TOKENS ??
       readDesktopSettingsField(env, 'provider.maximumOutputTokens'),
   );
+  // Capabilities advertise the provider hard max (settings override, else
+  // model inference). Window Budget still uses only the explicit host setting
+  // for planning O — inferred max must not become a false output override.
+  const capabilityMaximumOutputTokens =
+    hostMaximumOutputTokens > 0
+      ? hostMaximumOutputTokens
+      : (inferMaximumOutputTokensFromModelId(model) ?? 0);
 
   const llm = forceEcho
     ? {
@@ -278,8 +288,8 @@ export async function createHostDesktopClient(
         ...(apiKey ? { apiKey } : {}),
         capabilities: {
           contextWindowTokens,
-          ...(hostMaximumOutputTokens > 0
-            ? { maximumOutputTokens: hostMaximumOutputTokens }
+          ...(capabilityMaximumOutputTokens > 0
+            ? { maximumOutputTokens: capabilityMaximumOutputTokens }
             : {}),
           supportsTools: true,
         },

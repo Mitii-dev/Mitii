@@ -230,9 +230,10 @@ export class AnthropicLlmPort implements LlmPort {
     stream: boolean,
   ): Record<string, unknown> {
     const { system, messages } = this.mapMessages(request.messages);
-    const maxTokens =
-      request.maximumOutputTokens ??
-      this.capabilities.maximumOutputTokens;
+    const maxTokens = Math.min(
+      request.maximumOutputTokens ?? this.capabilities.maximumOutputTokens,
+      this.capabilities.maximumOutputTokens,
+    );
     const caching = this.capabilities.supportsPromptCaching;
 
     const body: Record<string, unknown> = {

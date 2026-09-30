@@ -53,6 +53,7 @@ import {
 } from './modelIoLog.js';
 import { readModelIoLoggingEnabled } from './modelIoSettings.js';
 import {
+  inferMaximumOutputTokensFromModelId,
   normalizeMaximumOutputTokens,
   resolveEffectiveContextWindow,
 } from './settingsFields.js';
@@ -180,6 +181,10 @@ export async function resolveVscodePorts(
     providerType,
   );
   const hostMaximumOutputTokens = resolveHostMaximumOutputTokens(cfg);
+  const capabilityMaximumOutputTokens =
+    hostMaximumOutputTokens > 0
+      ? hostMaximumOutputTokens
+      : (inferMaximumOutputTokensFromModelId(model) ?? 0);
   const ports = createHostLlmPorts({
     type: providerType,
     preset: presetId,
@@ -188,10 +193,11 @@ export async function resolveVscodePorts(
     ...(secretKey ? { apiKey: secretKey } : {}),
     capabilities: {
       contextWindowTokens,
-      // Only forward a real host override. Omitting lets the adapter advertise
-      // a capability default without Window Budget treating it as an override.
-      ...(hostMaximumOutputTokens > 0
-        ? { maximumOutputTokens: hostMaximumOutputTokens }
+      // Capabilities advertise the provider hard max. Window Budget still
+      // receives only the explicit host setting via start input — inferred
+      // max must not become a false output_host_override.
+      ...(capabilityMaximumOutputTokens > 0
+        ? { maximumOutputTokens: capabilityMaximumOutputTokens }
         : {}),
       supportsTools: true,
     },

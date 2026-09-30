@@ -40,6 +40,17 @@ export function inferContextWindowFromModelId(model: string): number | undefined
   return undefined;
 }
 
+/** Provider hard max completion tokens from model id, when known. */
+export function inferMaximumOutputTokensFromModelId(
+  model: string,
+): number | undefined {
+  const id = model.trim().toLowerCase();
+  if (!id) return undefined;
+  if (id.includes('deepseek-v4')) return 65_536;
+  if (id.includes('deepseek')) return 8_192;
+  return undefined;
+}
+
 /**
  * Effective context window: **settings value wins** when positive.
  * Only when stored is 0 (auto) do we fall back to model preset → provider → default.
