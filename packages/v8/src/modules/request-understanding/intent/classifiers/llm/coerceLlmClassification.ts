@@ -405,3 +405,40 @@ export function salvageLlmClassificationStages(parsed: unknown): unknown[] {
     stripTaskHints(stripSecondaryAndAlternatives(coerced)),
   ];
 }
+
+/**
+ * Fingerprint of the system-prompt example object. Models sometimes echo it
+ * as their only JSON payload — reject so we do not stamp canned targets.
+ */
+export function isPromptExemplarClassification(parsed: unknown): boolean {
+  const record = asRecord(parsed);
+  if (!record) {
+    return false;
+  }
+  if (record.interactionIntent !== "plan") {
+    return false;
+  }
+  if (record.primaryTaskIntent !== "bugfix") {
+    return false;
+  }
+  const reason =
+    typeof record.reason === "string" ? record.reason.toLowerCase() : "";
+  if (
+    reason.includes("step-by-step strategy") &&
+    reason.includes("failing tests")
+  ) {
+    return true;
+  }
+  const hints = asRecord(record.taskHints);
+  const targets = hints?.targets;
+  if (!Array.isArray(targets)) {
+    return false;
+  }
+  return targets.some((target) => {
+    const item = asRecord(target);
+    return (
+      typeof item?.value === "string" &&
+      item.value.replace(/\\/g, "/") === "src/auth/service.ts"
+    );
+  });
+}

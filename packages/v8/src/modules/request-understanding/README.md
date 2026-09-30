@@ -103,8 +103,8 @@ Request Understanding result returns a result like this:
   "intent": {
     "status": "accepted",
     "classification": {
-      "primaryTaskIntent": "implementation",
-      "interactionIntent": "execute"
+      "primaryTaskIntent": "feature",
+      "interactionIntent": "act"
     },
     "confidenceMargin": 0.42,
     "recommendsClarification": false
@@ -116,7 +116,7 @@ Request Understanding result returns a result like this:
     "clarity": "clear",
     "targets": [{ "kind": "file", "value": "src/LoginForm.tsx", "explicit": true }],
     "requestedOutcomes": ["disable button while login request is pending", "show loading label"],
-    "recommendsRepositoryDiscovery": true,
+    "recommendsRepositoryDiscovery": false,
     "recommendsPlanning": false,
     "recommendsVerification": true,
     "confidence": 0.86

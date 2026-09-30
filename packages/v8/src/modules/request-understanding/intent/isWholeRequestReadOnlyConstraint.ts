@@ -66,7 +66,17 @@ export function isWholeRequestReadOnlyConstraint(message: string): boolean {
   );
 }
 
-function hasMutatingPrimaryAsk(text: string): boolean {
+const MUTATION_VERB_PATTERN =
+  /\b(?:fix|resolve|repair|patch|correct|implement|add|build|create|design|develop|write|edit|replace|change|update|modify|remove|delete|refactor|restructure|rewrite|migrate|convert|configure|optimize|scaffold|generate)\b/gi;
+
+const NEGATION_BEFORE_VERB_PATTERN =
+  /\b(?:do\s+not|don't|dont|never|avoid|without)(?:\s+\w+){0,3}\s*$/i;
+
+/**
+ * True when the ask opens with (or is structured as) a mutating command.
+ * Shared with rule interaction detection.
+ */
+export function hasMutatingPrimaryAsk(text: string): boolean {
   if (
     /^(?:please\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+|i\s+want\s+you\s+to\s+|i\s+need\s+you\s+to\s+)?(?:fix|implement|add|build|create|design|develop|write|edit|replace|change|update|modify|remove|delete|refactor|restructure|rewrite|migrate|convert|configure|optimize|scaffold|generate|patch|repair|resolve)\b/i.test(
       text,
@@ -98,5 +108,31 @@ function hasMutatingPrimaryAsk(text: string): boolean {
     return true;
   }
 
+  return false;
+}
+
+/**
+ * True when the message contains at least one mutation verb that is not
+ * locally negated ("do not fix", "without implementing").
+ * Used so "Explain the crash and fix it" resolves to act, not question.
+ */
+export function hasNonNegatedMutationVerb(message: string): boolean {
+  const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
+  if (!text) {
+    return false;
+  }
+
+  const pattern = new RegExp(
+    MUTATION_VERB_PATTERN.source,
+    MUTATION_VERB_PATTERN.flags,
+  );
+  for (const match of text.matchAll(pattern)) {
+    const index = match.index ?? 0;
+    const before = text.slice(Math.max(0, index - 40), index);
+    if (NEGATION_BEFORE_VERB_PATTERN.test(before)) {
+      continue;
+    }
+    return true;
+  }
   return false;
 }

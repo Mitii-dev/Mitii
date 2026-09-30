@@ -195,6 +195,17 @@ export class SuperIntent {
       });
     /** On rule↔LLM conflict, ≥70% LLM ballot is authoritative for the route. */
     const llmWinsConflict = llmMeetsAuthority && Boolean(ruleClassification);
+    /**
+     * A single strong heuristic (≥0.85) holds the task primary unless the LLM
+     * ballot is also ≥0.85. Prevents a bare 0.70 LLM vote from flooring over
+     * an unambiguous rule match.
+     */
+    const strongRuleHoldsTask =
+      Boolean(ruleClassification) &&
+      (ruleClassification?.confidence ?? 0) >= 0.85 &&
+      llmClassification.confidence < 0.85 &&
+      ruleClassification!.primaryTaskIntent !==
+        llmClassification.primaryTaskIntent;
 
     /*
      * Ask and Plan modes deterministically resolve the interaction boundary.
@@ -236,8 +247,13 @@ export class SuperIntent {
         );
       }
     } else if (ruleClassification && llmWinsConflict) {
-      // Conflict + LLM ≥70%: lock the ballot to the LLM primary.
-      this.promoteLlmPrimary(combinedScores, llmClassification);
+      if (strongRuleHoldsTask) {
+        // Strong rule holds task primary; do not floor the LLM ballot.
+        this.promoteRulePrimary(combinedScores, ruleClassification);
+      } else {
+        // Conflict + LLM ≥70%: lock the ballot to the LLM primary.
+        this.promoteLlmPrimary(combinedScores, llmClassification);
+      }
     } else if (ruleClassification && ruleInteractionAgrees) {
       // Same interaction, different task — mild confidence growth on LLM pick.
       agreementBonusApplied = this.options.agreementBonus * 0.5;
@@ -564,6 +580,32 @@ export class SuperIntent {
       score: this.clamp(floor),
       ruleScore: 0,
       llmScore: floor,
+    });
+  }
+
+  /**
+   * Lock the combined primary to a strong rule ballot so a weaker LLM vote
+   * cannot flip an unambiguous natural-language match.
+   */
+  private promoteRulePrimary(
+    scores: Map<TaskIntent, SuperIntentScore>,
+    ruleClassification: IntentClassification,
+  ): void {
+    const intent = ruleClassification.primaryTaskIntent;
+    const existing = scores.get(intent);
+    const floor = ruleClassification.confidence;
+    if (existing) {
+      scores.set(intent, {
+        ...existing,
+        score: this.clamp(Math.max(existing.score, floor)),
+      });
+      return;
+    }
+    scores.set(intent, {
+      intent,
+      score: this.clamp(floor),
+      ruleScore: floor,
+      llmScore: 0,
     });
   }
 

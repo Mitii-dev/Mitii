@@ -14,7 +14,7 @@ import type { DiagnosticSummary } from "../../../contracts";
 import { resolveIntentClassifierMaximumOutputTokens } from "../../resolveIntentClassifierMaximumOutputTokens";
 import { LLM_INTENT_CLASSIFICATION_SYSTEM_PROMPT } from "./prompts";
 import { intersectRecommendedSkillTags } from "../../intersectRecommendedSkillTags";
-import { salvageLlmClassificationStages } from "./coerceLlmClassification";
+import { salvageLlmClassificationStages, isPromptExemplarClassification } from "./coerceLlmClassification";
 
 
 export class LlmIntentClassifier {
@@ -235,6 +235,12 @@ export class LlmIntentClassifier {
         }
 
         const parsed: unknown = JSON.parse(candidate);
+        if (isPromptExemplarClassification(parsed)) {
+          lastError = new Error(
+            "Intent classifier echoed the system-prompt exemplar; skipping.",
+          );
+          continue;
+        }
         // Ballot salvage: drop/remap invalid fields (e.g. alternatives.intent
         // "plan") so a valid core ballot is never wiped to the 0.40 fallback.
         for (const stage of salvageLlmClassificationStages(parsed)) {

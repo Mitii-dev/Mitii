@@ -68,6 +68,12 @@ export const taskAnalyzerInputSchema = z.object({
    * resolve basename / partial file targets after explicit extraction.
    */
   candidateRelativePaths: z.array(z.string().min(1)).optional(),
+  /**
+   * Intake turn kind — continuation turns soften clarity forced by intent flags.
+   */
+  turnKind: z
+    .enum(["new", "continue", "steer", "follow_up", "recover"])
+    .optional(),
 });
 
 export type TaskAnalyzerInput = z.infer<typeof taskAnalyzerInputSchema>;

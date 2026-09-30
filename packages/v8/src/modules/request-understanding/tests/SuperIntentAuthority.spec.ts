@@ -50,7 +50,7 @@ describe("SuperIntent 70% LLM authority", () => {
     expect(result.status).toBe("accepted");
   });
 
-  it("trusts LLM act over rule question at ≥70% confidence", () => {
+  it("trusts LLM act over rule question at ≥85% when rule is also strong", () => {
     const result = resolver.resolve({
       mode: "agent",
       ruleResult: {
@@ -59,6 +59,62 @@ describe("SuperIntent 70% LLM authority", () => {
           interactionIntent: "question",
           primaryTaskIntent: "question",
           confidence: 0.85,
+        }),
+      },
+      llmResult: {
+        source: "llm",
+        classification: classification({
+          interactionIntent: "act",
+          primaryTaskIntent: "style",
+          confidence: 0.86,
+          needsClarification: false,
+        }),
+      },
+    });
+
+    expect(result.classification.interactionIntent).toBe("act");
+    expect(result.classification.primaryTaskIntent).toBe("style");
+    expect(result.diagnostics.interactionConflict).toBe(false);
+    expect(result.diagnostics.disagreementPenaltyApplied).toBe(0);
+    expect(result.status).toBe("accepted");
+  });
+
+  it("lets a strong ≥0.85 rule hold task primary against a bare 0.70 LLM ballot", () => {
+    const result = resolver.resolve({
+      mode: "agent",
+      ruleResult: {
+        source: "heuristic_rule",
+        classification: classification({
+          interactionIntent: "act",
+          primaryTaskIntent: "bugfix",
+          confidence: 0.88,
+        }),
+      },
+      llmResult: {
+        source: "llm",
+        classification: classification({
+          interactionIntent: "act",
+          primaryTaskIntent: "feature",
+          confidence: 0.7,
+          needsClarification: false,
+        }),
+      },
+    });
+
+    expect(result.classification.primaryTaskIntent).toBe("bugfix");
+    expect(result.classification.confidence).toBeGreaterThanOrEqual(0.88);
+    expect(result.status).toBe("accepted");
+  });
+
+  it("trusts LLM act over rule question at ≥70% confidence when rule is weaker", () => {
+    const result = resolver.resolve({
+      mode: "agent",
+      ruleResult: {
+        source: "heuristic_rule",
+        classification: classification({
+          interactionIntent: "question",
+          primaryTaskIntent: "question",
+          confidence: 0.6,
         }),
       },
       llmResult: {
@@ -75,7 +131,6 @@ describe("SuperIntent 70% LLM authority", () => {
     expect(result.classification.interactionIntent).toBe("act");
     expect(result.classification.primaryTaskIntent).toBe("style");
     expect(result.diagnostics.interactionConflict).toBe(false);
-    expect(result.diagnostics.disagreementPenaltyApplied).toBe(0);
     expect(result.status).toBe("accepted");
   });
 

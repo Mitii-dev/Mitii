@@ -80,13 +80,11 @@ export class RequestUnderstandingPipeline {
       referencedArtifacts: envelope.referencedArtifacts.map((artifact) => ({
         name: artifact.name,
         path: artifact.path,
-        kind:
-          artifact.kind === "symbol"
-            ? "selection"
-            : artifact.kind,
+        kind: artifact.kind,
         extension: artifact.extension,
         language: artifact.language,
       })),
+      turnKind: envelope.turnKind,
       ...(options.candidateRelativePaths &&
       options.candidateRelativePaths.length > 0
         ? { candidateRelativePaths: [...options.candidateRelativePaths] }
