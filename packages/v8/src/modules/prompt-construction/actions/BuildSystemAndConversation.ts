@@ -7,7 +7,11 @@ import {
 } from "../../decision-policy";
 import type { ModelMessage } from "../../model-gateway";
 
-import type { PromptInstructionBlock, TokenEstimatorPort } from "../contracts";
+import type {
+  PromptExtraFragment,
+  PromptInstructionBlock,
+  TokenEstimatorPort,
+} from "../contracts";
 import {
   DEFAULT_MIN_CONVERSATION_TURNS,
   TRUNCATION_MARKER,
@@ -16,6 +20,7 @@ import {
   assembleFragments,
   BaseInstructionsFragment,
   DecisionBriefFragment,
+  ExtraInstructionFragment,
   InstructionBlockFragment,
   PlanGuidanceFragment,
   type ContextualFragment,
@@ -28,6 +33,7 @@ export function buildSystemInstructions(params: {
   skills: readonly PromptInstructionBlock[];
   memory: readonly PromptInstructionBlock[];
   environment?: readonly PromptInstructionBlock[];
+  extraFragments?: readonly PromptExtraFragment[];
   estimator: TokenEstimatorPort;
   budgetTokens: number;
   planBudgetTokens?: number;
@@ -43,6 +49,7 @@ export function buildSystemInstructions(params: {
   includedSkillIds: string[];
   includedMemoryIds: string[];
   includedEnvironmentIds: string[];
+  includedExtraIds: string[];
   reviewFlaggedFragmentIds: string[];
   separateMessages: Array<{
     role: "system" | "developer" | "user";
@@ -50,7 +57,7 @@ export function buildSystemInstructions(params: {
     contentKind: string;
   }>;
   omitted: Array<{
-    section: "rules" | "skills" | "memory" | "environment";
+    section: "rules" | "skills" | "memory" | "environment" | "system" | "plan";
     id: string;
     tokens: number;
   }>;
@@ -97,6 +104,14 @@ export function buildSystemInstructions(params: {
   );
   pushBlocks("rules", "Project rules", "project_rules", params.projectRules);
   pushBlocks("skills", "Skills", "skills", params.skills);
+
+  const extras = [...(params.extraFragments ?? [])].sort(
+    (a, b) => b.priority - a.priority,
+  );
+  for (const extra of extras) {
+    fragments.push(new ExtraInstructionFragment(extra));
+  }
+
   for (const block of params.memory) fragments.push(new MemoryEvidenceFragment(block));
 
   const assembled = assembleFragments({
@@ -132,6 +147,9 @@ export function buildSystemInstructions(params: {
   const includedEnvironmentIds = (params.environment ?? [])
     .filter((block) => includedFragmentIds.has(block.id))
     .map((block) => block.id);
+  const includedExtraIds = extras
+    .filter((block) => includedFragmentIds.has(block.id))
+    .map((block) => block.id);
 
   const omitted = assembled.omissions
     .filter(
@@ -139,14 +157,18 @@ export function buildSystemInstructions(params: {
         entry.section === "rules" ||
         entry.section === "skills" ||
         entry.section === "memory" ||
-        entry.section === "environment",
+        entry.section === "environment" ||
+        entry.section === "system" ||
+        entry.section === "plan",
     )
     .map((entry) => ({
       section: entry.section as
         | "rules"
         | "skills"
         | "memory"
-        | "environment",
+        | "environment"
+        | "system"
+        | "plan",
       id: entry.id,
       tokens: entry.tokens,
     }));
@@ -166,6 +188,7 @@ export function buildSystemInstructions(params: {
     includedSkillIds,
     includedMemoryIds,
     includedEnvironmentIds,
+    includedExtraIds,
     reviewFlaggedFragmentIds: assembled.reviewFlaggedIds,
     /** Separate-message fragments (not folded into system blob). */
     separateMessages: assembled.separateMessages.map((item) => ({

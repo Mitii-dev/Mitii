@@ -531,4 +531,65 @@ describe("PromptConstructionPipeline", () => {
       ),
     ).toBe(true);
   });
+
+  it("injects serializable extraFragments into the system blob with provenance", () => {
+    const result = new PromptConstructionPipeline().construct(
+      createPromptInput({
+        extraFragments: [
+          {
+            id: "locale-en",
+            role: "system",
+            contentKind: "host.preferred_language",
+            section: "system",
+            trust: "trusted_instruction",
+            content: "Speak in English unless the user asks otherwise.",
+            priority: 50,
+          },
+        ],
+      }),
+    );
+
+    expect(result.request.messages[0]?.content).toContain(
+      "Speak in English unless the user asks otherwise.",
+    );
+    expect(result.reasonCodes).toContain("extra_fragments_injected");
+    expect(
+      result.provenance.some(
+        (entry) =>
+          entry.blockId === "locale-en" &&
+          entry.source === "extra:host.preferred_language",
+      ),
+    ).toBe(true);
+  });
+
+  it("admits separate-message extraFragments as user role when requested", () => {
+    const result = new PromptConstructionPipeline().construct(
+      createPromptInput({
+        extraFragments: [
+          {
+            id: "epoch-hint",
+            role: "user",
+            contentKind: "generic.context_epoch_update",
+            section: "system",
+            trust: "trusted_instruction",
+            content: "Environment context blocks are now: env-1.",
+            separateMessage: true,
+            marked: true,
+            priority: 10,
+          },
+        ],
+      }),
+    );
+
+    const separate = result.request.messages.find(
+      (message) =>
+        message.role === "user" &&
+        message.content.includes("Environment context blocks are now"),
+    );
+    expect(separate).toBeDefined();
+    expect(result.request.messages[0]?.role).toBe("system");
+    expect(result.request.messages[0]?.content).not.toContain(
+      "Environment context blocks are now",
+    );
+  });
 });

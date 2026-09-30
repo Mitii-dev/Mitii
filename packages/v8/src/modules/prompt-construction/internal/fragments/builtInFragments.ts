@@ -1,6 +1,7 @@
 import type { PromptInstructionBlock } from "../../contracts";
 import { FRAGMENT_POLICY } from "./fragmentPolicy";
 import type { ContextualFragment, FragmentRole } from "./ContextualFragment";
+import { MID_CONVERSATION_UPDATE_MARKERS } from "./midConversationMarkers";
 
 export class BaseInstructionsFragment implements ContextualFragment {
   public readonly id = "system:core";
@@ -118,8 +119,12 @@ export class InstructionBlockFragment implements ContextualFragment {
 }
 
 /**
- * Mid-Conversation System Message fragment (OpenCode chronological admission).
- * Always separate + marked so epoch admit can strip on replace.
+ * Mid-conversation context-epoch update (OpenCode chronological admission).
+ *
+ * Always a separate **user** message (not trailing system) so the leading
+ * system baseline stays a stable provider-cache prefix. Marked so epoch
+ * admit can strip on replace. Prefer `wrapMidConversationUpdateText` when
+ * only wrapping text for the engine admit path.
  */
 export class MidConversationUpdateFragment implements ContextualFragment {
   public readonly id: string;
@@ -132,7 +137,7 @@ export class MidConversationUpdateFragment implements ContextualFragment {
   }
 
   role(): FragmentRole {
-    return "system";
+    return "user";
   }
 
   contentKind(): string {
@@ -144,7 +149,10 @@ export class MidConversationUpdateFragment implements ContextualFragment {
   }
 
   markers(): readonly [string, string] {
-    return ["<context_epoch_update>", "</context_epoch_update>"] as const;
+    return [
+      `${MID_CONVERSATION_UPDATE_MARKERS.start}\n`,
+      `\n${MID_CONVERSATION_UPDATE_MARKERS.end}`,
+    ] as const;
   }
 
   body(): string {

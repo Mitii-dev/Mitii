@@ -97,12 +97,13 @@ export type {
 export { PromptConstructionPipeline } from "./modules/prompt-construction";
 export {
   promptConstructionInputSchema, promptConstructionResultSchema, promptInstructionBlockSchema,
-  promptInstructionsSchema, FRAGMENT_POLICY, assembleFragments,
-  MidConversationUpdateFragment,
+  promptInstructionsSchema, promptExtraFragmentSchema, FRAGMENT_POLICY, assembleFragments,
+  MidConversationUpdateFragment, ExtraInstructionFragment,
+  MID_CONVERSATION_UPDATE_MARKERS, wrapMidConversationUpdateText,
 } from "./modules/prompt-construction";
 export type {
   PromptConstructionInput, PromptConstructionResult, PromptBudgetReport,
-  PromptInstructionBlock, PromptInstructions, ContextualFragment,
+  PromptInstructionBlock, PromptInstructions, PromptExtraFragment, ContextualFragment,
   RenderedFragment,
 } from "./modules/prompt-construction";
 export type {

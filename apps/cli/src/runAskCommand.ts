@@ -363,6 +363,7 @@ export async function runAsk(options: {
     databaseOverlay?.startFields.userSafetyRules,
   );
   const environmentBlock = formatEnvironmentDetailsBlock({
+    todayDate: new Date().toLocaleDateString("en-CA"),
     modeReminder: databaseOverlay
       ? `Database (${effectiveMode})`
       : compiledMode

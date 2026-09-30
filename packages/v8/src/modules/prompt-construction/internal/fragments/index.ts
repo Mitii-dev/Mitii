@@ -24,3 +24,10 @@ export {
   MidConversationUpdateFragment,
   PlanGuidanceFragment,
 } from "./builtInFragments";
+export { ExtraInstructionFragment } from "./ExtraInstructionFragment";
+export {
+  MID_CONVERSATION_UPDATE_MARKERS,
+  MID_CONVERSATION_SYSTEM_MARKERS,
+  wrapMidConversationUpdateText,
+  wrapMidConversationSystemText,
+} from "./midConversationMarkers";

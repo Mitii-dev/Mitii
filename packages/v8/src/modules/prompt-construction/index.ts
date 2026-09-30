@@ -20,6 +20,7 @@ export {
   promptOmissionSchema,
   promptInstructionBlockSchema,
   promptInstructionsSchema,
+  promptExtraFragmentSchema,
   promptRepositoryBlockSchema,
   promptRepositoryContextSchema,
   promptSectionSchema,
@@ -39,6 +40,7 @@ export type {
   PromptOmission,
   PromptInstructionBlock,
   PromptInstructions,
+  PromptExtraFragment,
   PromptRepositoryBlock,
   PromptRepositoryContext,
   PromptSection,
@@ -66,6 +68,11 @@ export {
   InstructionBlockFragment,
   MidConversationUpdateFragment,
   PlanGuidanceFragment,
+  ExtraInstructionFragment,
+  MID_CONVERSATION_UPDATE_MARKERS,
+  MID_CONVERSATION_SYSTEM_MARKERS,
+  wrapMidConversationUpdateText,
+  wrapMidConversationSystemText,
 } from "./internal/fragments";
 export type {
   ContextualFragment,
