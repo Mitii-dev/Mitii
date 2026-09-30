@@ -3,7 +3,10 @@ import type { ToolGrant } from "../../../modules/decision-policy";
 import type { ProcessPort } from "../contracts";
 import { validateReadonlyCommand } from "../internal/CommandPolicy";
 import { sanitizeTextOutput } from "../internal/OutputSanitizer";
-import { assertSoftNonMutatingCommand } from "../internal/softMutatingCommandGuard";
+import {
+  assertSoftNonMutatingCommand,
+  assertNoTempScriptWriteHelper,
+} from "../internal/softMutatingCommandGuard";
 import {
   runCommandInputSchema,
   runCommandOutputSchema,
@@ -64,6 +67,8 @@ export async function executeRunCommand(params: {
     argv: input.argv,
     commandRules: params.grant.commandRules,
   });
+  // Always block .tmp script write helpers — apply_patch is the mutation path.
+  assertNoTempScriptWriteHelper(validated.argv);
   if (params.softBlockMutatingCommands === true) {
     assertSoftNonMutatingCommand(validated.argv);
   }

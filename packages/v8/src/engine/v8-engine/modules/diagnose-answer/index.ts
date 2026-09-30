@@ -95,3 +95,18 @@ export function answerLockModelRequestFields(
     toolChoice: "none",
   };
 }
+
+/**
+ * When the loop withholds tools (force-final, answer lock, empty grant), the
+ * request must use toolChoice "none". Leaving "auto" with zero tools fails
+ * gateway validation.
+ */
+export function toolsOffModelRequestFields(): {
+  tools: undefined;
+  toolChoice: "none";
+} {
+  return {
+    tools: undefined,
+    toolChoice: "none",
+  };
+}

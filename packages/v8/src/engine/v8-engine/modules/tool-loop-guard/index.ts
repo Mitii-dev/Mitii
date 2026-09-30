@@ -1,6 +1,9 @@
 /**
  * Guard against identical tool-batch thrash: soft nudge → force final → reject.
  * Signatures cover tool name + stable arguments (and optional result payloads).
+ *
+ * Read/search windows (startLine/endLine/maxLines/…) are stripped so re-reading
+ * the same path with a sliding line range still counts as the same batch.
  */
 
 export type ToolLoopCall = {
@@ -40,13 +43,33 @@ export type ToolLoopGuardOptions = {
   forcedRejectLimit?: number;
 };
 
+/** Volatile window / pagination keys that should not defeat path thrash detection. */
+const VOLATILE_ARG_KEYS = new Set([
+  "startLine",
+  "endLine",
+  "maxLines",
+  "head",
+  "tail",
+  "maxMatches",
+  "maxResults",
+  "maxCount",
+  "maxBytes",
+  "maxBytesPerFile",
+  "maxLinesPerFile",
+  "offset",
+  "limit",
+  "caseSensitive",
+]);
+
 export function buildToolLoopCallSignature(calls: readonly ToolLoopCall[]): string {
   return calls
     .map((call) => {
       const args =
         call.arguments === undefined
           ? ""
-          : stableSerialize(normalizeArguments(call.arguments));
+          : stableSerialize(
+              canonicalizeArgumentsForLoop(call.name, call.arguments),
+            );
       return `${call.name}:${args}`;
     })
     .sort()
@@ -174,6 +197,53 @@ export function forceFinalToolLoopMessage(repeatCount: number): string {
     `Tool loop detected after ${repeatCount} identical batches.`,
     "Do not call tools. Give a short final answer or stop with a Blocker.",
   ].join("\n");
+}
+
+/**
+ * Drop volatile read windows so `read_file` of the same path with different
+ * line ranges still shares a signature. Keep query/mode/path for search.
+ */
+export function canonicalizeArgumentsForLoop(
+  toolName: string,
+  value: unknown,
+): unknown {
+  const parsed = normalizeArguments(value);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return parsed;
+  }
+  const record = { ...(parsed as Record<string, unknown>) };
+
+  if (
+    toolName === "read_file" ||
+    toolName === "read_many_files" ||
+    toolName === "search_files" ||
+    toolName === "glob_files" ||
+    toolName === "list_directory" ||
+    toolName === "read_git_show" ||
+    toolName === "read_git_log"
+  ) {
+    for (const key of VOLATILE_ARG_KEYS) {
+      delete record[key];
+    }
+  }
+
+  if (toolName === "apply_patch" && Array.isArray(record.patches)) {
+    // Signature on target paths + rejection-prone shape, not full hunk bodies
+    // (bodies vary while the model retries the same file wipe).
+    record.patches = (record.patches as unknown[]).map((entry) => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        return entry;
+      }
+      const patch = entry as Record<string, unknown>;
+      return {
+        path: patch.path,
+        emptyOldText: patch.oldText === "",
+        replaceAll: patch.replaceAll === true,
+      };
+    });
+  }
+
+  return record;
 }
 
 function normalizeArguments(value: unknown): unknown {

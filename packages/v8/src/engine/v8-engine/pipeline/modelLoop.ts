@@ -66,6 +66,7 @@ import {
 import {
   DIAGNOSE_ANSWER_NUDGE_MESSAGE,
   answerLockModelRequestFields,
+  toolsOffModelRequestFields,
   primaryToolNameIfUniform,
   shouldLockDiagnoseAnswer,
   shouldNudgeDiagnoseAnswer,
@@ -262,6 +263,7 @@ export async function runV8ModelLoop(
     }
 
     budget.recordModelCall();
+    budget.recordLoopIteration();
     runtime.emitStage(bus, runId, "model_running", "started");
 
     const offerTools =
@@ -269,16 +271,14 @@ export async function runV8ModelLoop(
       !awaitingAnswerOnly &&
       !toolLoopGuard.isForcingFinalResponse() &&
       decision.toolGrant.allowedTools.length > 0;
-    const answerLock = awaitingAnswerOnly
+    const toolFields = awaitingAnswerOnly
       ? answerLockModelRequestFields(request.tools)
-      : undefined;
+      : offerTools
+        ? { tools: request.tools }
+        : toolsOffModelRequestFields();
     const baseRequest: ModelRequest = {
       ...request,
-      ...(answerLock
-        ? answerLock
-        : {
-            tools: offerTools ? request.tools : undefined,
-          }),
+      ...toolFields,
     };
 
     const prepared = prepareTurn({

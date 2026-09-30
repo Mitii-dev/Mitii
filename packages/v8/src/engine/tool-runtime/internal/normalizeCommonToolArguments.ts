@@ -6,6 +6,7 @@ import {
   normalizeGlobFilesArguments,
   normalizeReadDiagnosticsArguments,
   normalizeReadFileArguments,
+  normalizeReadGitLogArguments,
   normalizeReadGitShowArguments,
   normalizeSearchFilesArguments,
 } from "./normalize/discovery";
@@ -41,6 +42,10 @@ export function normalizeCommonToolArguments(
 
   if (toolName === "read_git_show") {
     return normalizeReadGitShowArguments(value as Record<string, unknown>);
+  }
+
+  if (toolName === "read_git_log") {
+    return normalizeReadGitLogArguments(value as Record<string, unknown>);
   }
 
   if (toolName === "read_diagnostics") {

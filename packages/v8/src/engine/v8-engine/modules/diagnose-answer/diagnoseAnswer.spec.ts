@@ -7,6 +7,7 @@ import {
   primaryToolNameIfUniform,
   shouldLockDiagnoseAnswer,
   shouldNudgeDiagnoseAnswer,
+  toolsOffModelRequestFields,
   updateRepeatedReadonlyToolTurns,
 } from "./index";
 import type { ModelToolDefinition } from "../../../../modules/model-gateway";
@@ -98,6 +99,10 @@ describe("diagnoseAnswerLock (BillBuddy 23:34)", () => {
     expect(filterToolsForAnswerLock(tools)).toEqual([]);
     expect(answerLockModelRequestFields(tools)).toEqual({
       tools: [],
+      toolChoice: "none",
+    });
+    expect(toolsOffModelRequestFields()).toEqual({
+      tools: undefined,
       toolChoice: "none",
     });
     expect(DIAGNOSE_ANSWER_NUDGE_MESSAGE).toMatch(/Answer the user now/i);

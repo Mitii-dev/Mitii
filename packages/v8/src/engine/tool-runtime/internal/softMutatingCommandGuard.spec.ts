@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { CommandPolicyError } from "./CommandPolicy";
-import { assertSoftNonMutatingCommand } from "./softMutatingCommandGuard";
+import {
+  assertNoTempScriptWriteHelper,
+  assertSoftNonMutatingCommand,
+} from "./softMutatingCommandGuard";
 
 describe("assertSoftNonMutatingCommand", () => {
   it("allows read-only git and package scripts", () => {
@@ -41,5 +44,24 @@ describe("assertSoftNonMutatingCommand", () => {
     expect(() =>
       assertSoftNonMutatingCommand(["echo", "hi", ">", "out.txt"]),
     ).toThrow(/redirect/i);
+  });
+
+  it("rejects temp script write helpers", () => {
+    expect(() =>
+      assertSoftNonMutatingCommand(["bun", ".tmp-fix-sidebar.js"]),
+    ).toThrow(/temp\/script write helper/i);
+    expect(() =>
+      assertNoTempScriptWriteHelper([
+        "npm",
+        "exec",
+        "--yes",
+        "--",
+        "node",
+        ".tmp-fix-sidebar.js",
+      ]),
+    ).toThrow(/temp\/script write helper/i);
+    expect(() =>
+      assertNoTempScriptWriteHelper(["node", "scripts/build.js"]),
+    ).not.toThrow();
   });
 });

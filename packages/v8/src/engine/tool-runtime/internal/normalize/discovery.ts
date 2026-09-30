@@ -107,6 +107,56 @@ export function normalizeReadGitShowArguments(
   }
   delete next.rev;
   delete next.ref;
+  // Models invent output caps; drop them so .strict() does not reject.
+  delete next.maxBytes;
+  delete next.maxLines;
+  delete next.maxLength;
+  delete next.head;
+  delete next.tail;
+  return next;
+}
+
+/**
+ * Map common invented keys onto read_git_log schema before strict Zod.
+ * maxResults → maxCount; singular path → paths[].
+ */
+export function normalizeReadGitLogArguments(
+  raw: Record<string, unknown>,
+): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...raw };
+
+  if (next.maxCount === undefined) {
+    const fromAlias =
+      toPositiveInt(next.maxResults) ??
+      toPositiveInt(next.max_count) ??
+      toPositiveInt(next.limit) ??
+      toPositiveInt(next.n);
+    if (fromAlias !== undefined) {
+      next.maxCount = fromAlias;
+    }
+  }
+
+  const hasPaths =
+    Array.isArray(next.paths) &&
+    next.paths.some((entry) => typeof entry === "string" && entry.length > 0);
+  if (!hasPaths) {
+    const singular =
+      typeof next.path === "string" && next.path.length > 0
+        ? next.path
+        : typeof next.file === "string" && next.file.length > 0
+          ? next.file
+          : undefined;
+    if (singular) {
+      next.paths = [singular];
+    }
+  }
+
+  delete next.maxResults;
+  delete next.max_count;
+  delete next.limit;
+  delete next.n;
+  delete next.path;
+  delete next.file;
   return next;
 }
 export function normalizeSearchFilesArguments(
