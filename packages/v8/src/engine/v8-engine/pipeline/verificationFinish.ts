@@ -120,6 +120,7 @@ export async function finishAfterLoop(
     selectedSkillIds?: string[];
     projectRuleIds?: string[];
     environmentIds?: string[];
+    instructionBodies?: import("../internal/system-context").InstructionBodiesByKind;
     requiredSkillIds?: string[];
     excludedSkillIds?: string[];
     establishedFacts: EstablishedFact[];

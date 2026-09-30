@@ -52,6 +52,7 @@ export type PrepareTurnParams = {
   selectedSkillIds?: readonly string[];
   projectRuleIds?: readonly string[];
   environmentIds?: readonly string[];
+  instructionBodies?: import("../internal/system-context").InstructionBodiesByKind;
   memoryIds?: readonly string[];
   sessionHistoryArchive?: InMemorySessionHistoryArchive;
 };

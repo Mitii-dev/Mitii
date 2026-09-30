@@ -29,3 +29,9 @@ export {
   composeMitiiSystemContext,
   type ObservedContextSourceValues,
 } from "./builtins";
+export {
+  CONTEXT_EPOCH_BODY_POLICY,
+  truncateMidConversationUpdateText,
+  type InstructionBodiesByKind,
+  type InstructionSourceState,
+} from "./instructionSourceBodies";

@@ -92,6 +92,8 @@ export function prepareModelLoopTurn(params: {
   selectedSkillIds?: readonly string[];
   projectRuleIds?: readonly string[];
   environmentIds?: readonly string[];
+  /** Optional bodies for epoch mid-update content deltas (no memory). */
+  instructionBodies?: import("../internal/system-context").InstructionBodiesByKind;
   memoryIds?: readonly string[];
   /** When true, working-set copy demands an immediate mutation. */
   mutationLocked?: boolean;
@@ -248,6 +250,7 @@ export function prepareModelLoopTurn(params: {
     selectedSkillIds: params.selectedSkillIds,
     projectRuleIds: params.projectRuleIds,
     environmentIds: params.environmentIds,
+    instructionBodies: params.instructionBodies,
     memoryIds:
       params.memoryIds ??
       params.memoryFacts?.map((fact) => fact.id) ??
@@ -435,6 +438,7 @@ function applyContextEpochAdmission(params: {
   selectedSkillIds?: readonly string[];
   projectRuleIds?: readonly string[];
   environmentIds?: readonly string[];
+  instructionBodies?: import("../internal/system-context").InstructionBodiesByKind;
   memoryIds?: readonly string[];
 }): ContextEpoch | undefined {
   const admitted = admitContextEpoch({
@@ -450,6 +454,9 @@ function applyContextEpochAdmission(params: {
       ruleIds: params.projectRuleIds ?? [],
       environmentIds: params.environmentIds ?? [],
       memoryIds: params.memoryIds ?? [],
+      ...(params.instructionBodies
+        ? { bodies: params.instructionBodies }
+        : {}),
     },
   });
 

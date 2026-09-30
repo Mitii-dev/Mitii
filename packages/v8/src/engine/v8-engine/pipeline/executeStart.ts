@@ -16,6 +16,7 @@ import { resolveSteeringFeatureFlags } from "../legacy/steeringFlags";
 import {
   annotateMutationToolDefinitions,
   applyExplorationSignal,
+  buildInstructionBodies,
   clampRunBudget,
   toRunUsage,
   createInitialRunEvidence,
@@ -516,6 +517,12 @@ export async function executeV8Start(
       );
     }
 
+    const instructionBodies = buildInstructionBodies({
+      skills: selectedSkills,
+      rules: projectRules,
+      environment: instructions?.environment,
+    });
+
     const loopOutcome = await runV8ModelLoop(runtime, {
       runId,
       requestId: shared.requestId,
@@ -546,6 +553,11 @@ export async function executeV8Start(
       memoryFacts,
       logVerbosity: input.logVerbosity,
       selectedSkillIds: selectedSkills?.map((block) => block.id) ?? [],
+      projectRuleIds: projectRules.map((block) => block.id),
+      environmentIds: (instructions?.environment ?? []).map(
+        (block) => block.id,
+      ),
+      instructionBodies,
     });
 
     return await finishAfterLoop(runtime, {
@@ -589,6 +601,7 @@ export async function executeV8Start(
         environmentIds: (instructions?.environment ?? []).map(
           (block) => block.id,
         ),
+        instructionBodies,
         establishedFacts,
         plan: shared.runPlan,
       },
