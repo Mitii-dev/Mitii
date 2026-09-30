@@ -45,7 +45,10 @@ export {
   formatApprovalPresetHelp,
   compileDecisionBrief,
   formatDecisionBriefForPrompt,
+  selectGrantProfile,
+  GRANT_PROFILES,
 } from "./actions";
+export type { GrantProfile } from "./actions";
 
 export { DecisionPolicyPipeline } from "./pipeline/DecisionPolicyPipeline";
 

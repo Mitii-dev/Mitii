@@ -39,10 +39,13 @@ decision-policy/
 
 ## Technical Details
 
+- **Grant profiles:** `BuildToolGrant` selects exactly one profile from mode×route — `none` | `network_only` | `readonly` | `agent_execute`. Ask/plan never get `agent_execute`. Only **agent + route `execute`** grants `apply_patch` (and other mutation tools). Profile is emitted as `grant_profile_*` reason codes for audit.
+- **Authority ladder:** Intake (mode / turnKind / artifacts) → Request Understanding ballot (SuperIntent ≥0.70 LLM / ≥0.85 strong rule; TurnKind clears soft clarify and promotes plan-approval → act) → Decision Policy authorizes route + grant. Soft `looksLike*` heuristics lose to a trusted ≥0.70 write ballot; hard plan-only / hard read-only still win.
+- **Facts-first default:** When understanding is high-confidence (≥0.70 + margin, accepted, no clarify), route resolution prefers the ballot over classic heuristics. Set `policyFactsFirst: false` only as a kill-switch. Continuation turns (`steer` / `follow_up` / `continue` / `recover`) emit `turn_continuation` and do not re-suspend on soft Task Analyzer clarity alone.
 - Ask and plan modes cannot receive write grants.
 - Optional `userSafetyRules` (from `.mitii/safety.json`) may only tighten a grant after mode seals and injection clamp — never widen.
 - Agent (and ask) "run the tests / can you test" requests route to `diagnose` with `run_readonly_command`. Implement/fix phrasing still wins over a mention of running tests.
-- Agent clarify gate: clear "implement/fix …" asks still execute when understanding only has soft ambiguity. Material forks (diagnose vs mutation alternatives, investigate-vs-fix ambiguity questions, or `needsClarification` with confidence below 0.75) route to `clarify` instead of guessing.
+- Agent clarify gate: clear "implement/fix …" asks still execute when understanding only has soft ambiguity. Material forks (diagnose vs mutation alternatives, investigate-vs-fix ambiguity questions, or `needsClarification` with confidence below 0.75) route to `clarify` instead of guessing. On continuation turns, material heuristic↔ballot conflict prefers safe `diagnose` over re-clarify.
 - Intent ballot: rule↔LLM agreement grows confidence; on conflict, LLM ≥ 0.70 wins the route (e.g. LLM `act` over rule `question`) unless `needsClarification` is set. The same ≥0.70 write ballot also wins soft Decision Policy keyword hits on follow-ups (soft read-only, soft "make a plan", pasted dumps, verification/symptom when they would steal the route). Hard overrides still win: `plan only`, "no code/file changes".
 - Soft workspace symptoms (stuck loading / hang with server or localhost) route to `diagnose` in Agent mode — never tool-less `direct_answer`.
 - Injection scanning never broadens authority.

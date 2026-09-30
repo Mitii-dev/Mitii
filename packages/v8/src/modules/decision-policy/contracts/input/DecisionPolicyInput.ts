@@ -81,8 +81,9 @@ export const decisionPolicyInputSchema = z
      */
     userSafetyRules: userSafetyRulesSchema.optional(),
     /**
-     * When true, prefer high-confidence understanding over looksLike*
-     * heuristics except documented safety overrides.
+     * Prefer high-confidence understanding over looksLike* heuristics
+     * (except documented safety overrides). Default on when omitted;
+     * set false to force the classic heuristic path (kill-switch).
      */
     policyFactsFirst: z.boolean().optional(),
     /**

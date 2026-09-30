@@ -32,9 +32,79 @@ import {
 } from "./ClassifySharedScopeRepair";
 import { looksLikeCodeReviewRequest } from "./ResolveRoute";
 
+/**
+ * Discrete grant profiles. Mode + route select exactly one; layers then add
+ * network / process / approval / scopes. Ask/plan never select agent_execute.
+ *
+ * | Profile        | Max effect | apply_patch? |
+ * |----------------|------------|--------------|
+ * | none           | none       | no           |
+ * | network_only   | read       | no           |
+ * | readonly       | read       | no           |
+ * | agent_execute  | write      | yes          |
+ */
+export const GRANT_PROFILES = [
+  "none",
+  "network_only",
+  "readonly",
+  "agent_execute",
+] as const;
+
+export type GrantProfile = (typeof GRANT_PROFILES)[number];
+
 export interface ToolGrantResolution {
   toolGrant: ToolGrant;
   reasonCodes: DecisionReasonCode[];
+  /** Selected profile — debug / decision_made honesty. */
+  grantProfile: GrantProfile;
+}
+
+/**
+ * Mode seal + route → grant profile.
+ * Agent mode alone is not enough for write: only agent + execute → agent_execute.
+ */
+export function selectGrantProfile(params: {
+  mode: "ask" | "plan" | "agent";
+  route: ExecutionRoute;
+  /** When true, direct_answer may become network_only instead of none. */
+  hasNetworkTools: boolean;
+}): GrantProfile {
+  const { mode, route, hasNetworkTools } = params;
+
+  if (route === "clarify") {
+    return "none";
+  }
+
+  // Ask / plan are hard seals: never agent_execute regardless of route.
+  if (mode === "ask" || mode === "plan") {
+    if (route === "direct_answer") {
+      return hasNetworkTools ? "network_only" : "none";
+    }
+    return "readonly";
+  }
+
+  // Agent mode
+  if (route === "direct_answer") {
+    return hasNetworkTools ? "network_only" : "none";
+  }
+  if (route === "execute") {
+    return "agent_execute";
+  }
+  // diagnose | repository_answer | plan
+  return "readonly";
+}
+
+function profileReasonCode(profile: GrantProfile): DecisionReasonCode {
+  switch (profile) {
+    case "none":
+      return "grant_profile_none";
+    case "network_only":
+      return "grant_profile_network_only";
+    case "readonly":
+      return "grant_profile_readonly";
+    case "agent_execute":
+      return "grant_profile_agent_execute";
+  }
 }
 
 export function buildToolGrant(params: {
@@ -52,114 +122,174 @@ export function buildToolGrant(params: {
   const reasonCodes: DecisionReasonCode[] = [];
   const changeImpactAffordable =
     params.windowPolicy?.planning.changeImpactAffordable !== false;
-  const readOnlyTools = READ_ONLY_TOOL_IDS.filter(
-    (toolId) => toolId !== "analyze_change_impact" || changeImpactAffordable,
-  );
+  const readOnlyTools = filterReadOnlyTools(changeImpactAffordable);
   const pathScopes = resolvePathScopes(understanding);
   const mutationPathScopes = resolveMutationPathScopes(
     understanding,
     params.message,
   );
-  const commandRules = [
-    {
-      prefixes: [...DEFAULT_AGENT_READONLY_COMMAND_PREFIXES],
-      allowShellMetacharacters: false,
-    },
-  ];
 
-  if (route === "clarify" || route === "direct_answer") {
-    // Cursor-like: external product/docs asks still need web_search even when
-    // the route is tool-light direct_answer (no repository grounding).
-    if (route === "direct_answer") {
-      const network = resolveNetworkAuthority({
-        understanding,
-        message: params.message,
-        allowNetwork: true,
-        allowWebSearch: params.allowWebSearch === true,
-      });
-      if (network.allowedTools.length > 0) {
-        return {
-          toolGrant: {
-            maximumWorkspaceEffect: "read",
-            allowedTools: [...network.allowedTools],
-            allowedEffects: [...network.allowedEffects],
-            pathScopes,
-            networkHosts: network.networkHosts,
-            approvalMode: "never",
-            limits: { ...DEFAULT_READ_ONLY_TOOL_GRANT_LIMITS },
-          },
-          reasonCodes: [...reasonCodes, ...network.reasonCodes],
-        };
-      }
-    }
-    return {
-      toolGrant: {
-        maximumWorkspaceEffect: "none",
-        allowedTools: [],
-        allowedEffects: [],
-        pathScopes,
-        approvalMode: "never",
-        limits: { ...DEFAULT_NONE_TOOL_GRANT_LIMITS },
-      },
-      reasonCodes,
-    };
+  const network = resolveNetworkAuthority({
+    understanding,
+    message: params.message,
+    allowNetwork: true,
+    allowWebSearch: params.allowWebSearch === true,
+  });
+
+  const grantProfile = selectGrantProfile({
+    mode,
+    route,
+    hasNetworkTools: network.allowedTools.length > 0,
+  });
+  reasonCodes.push(profileReasonCode(grantProfile));
+
+  appendModeAndRouteReasonCodes({
+    mode,
+    route,
+    message: params.message ?? "",
+    reasonCodes,
+  });
+
+  switch (grantProfile) {
+    case "none":
+      return {
+        grantProfile,
+        reasonCodes,
+        toolGrant: buildNoneGrant(pathScopes),
+      };
+    case "network_only":
+      reasonCodes.push(...network.reasonCodes);
+      return {
+        grantProfile,
+        reasonCodes,
+        toolGrant: buildNetworkOnlyGrant({
+          pathScopes,
+          network,
+        }),
+      };
+    case "readonly":
+      reasonCodes.push(...network.reasonCodes);
+      return {
+        grantProfile,
+        reasonCodes,
+        toolGrant: buildReadonlyGrant({
+          readOnlyTools,
+          pathScopes,
+          network,
+        }),
+      };
+    case "agent_execute":
+      return {
+        grantProfile,
+        ...buildAgentExecuteGrant({
+          understanding,
+          message: params.message,
+          approvalMode: params.approvalMode,
+          windowPolicy: params.windowPolicy,
+          changeImpactAffordable,
+          readOnlyTools,
+          pathScopes,
+          mutationPathScopes,
+          network,
+          reasonCodes,
+        }),
+      };
   }
+}
 
-  if (
-    route === "repository_answer" ||
-    route === "diagnose" ||
-    route === "plan" ||
-    mode === "ask" ||
-    mode === "plan"
-  ) {
-    if (route === "diagnose") {
-      reasonCodes.push("diagnosis_readonly");
-      // Structured findings only when the host/CLI injected review markers —
-      // never from free-form Ask/Plan/Agent text or a review intent label alone.
-      if (looksLikeCodeReviewRequest(params.message ?? "")) {
-        reasonCodes.push("review_pipeline_required");
-        reasonCodes.push("review_findings_structured");
-      }
-    }
-    if (mode === "ask") {
-      reasonCodes.push("mode_ask_readonly");
-    }
-    if (mode === "plan") {
-      reasonCodes.push("mode_plan_only");
-    }
+function filterReadOnlyTools(changeImpactAffordable: boolean): string[] {
+  return READ_ONLY_TOOL_IDS.filter(
+    (toolId) => toolId !== "analyze_change_impact" || changeImpactAffordable,
+  );
+}
 
-    const network = resolveNetworkAuthority({
-      understanding,
-      message: params.message,
-      allowNetwork: true,
-      allowWebSearch: params.allowWebSearch === true,
-    });
-
-    return {
-      toolGrant: {
-        maximumWorkspaceEffect: "read",
-        allowedTools: [
-          ...readOnlyTools,
-          ...network.allowedTools,
-        ],
-        // process_execute is required so Tool Runtime can run argv-only
-        // read-only commands covered by commandRules; it is not write authority.
-        allowedEffects: [
-          "workspace_read",
-          "process_execute",
-          ...network.allowedEffects,
-        ],
-        pathScopes,
-        commandRules,
-        networkHosts: network.networkHosts,
-        approvalMode: "never",
-        limits: { ...DEFAULT_READ_ONLY_TOOL_GRANT_LIMITS },
-      },
-      reasonCodes: [...reasonCodes, ...network.reasonCodes],
-    };
+function appendModeAndRouteReasonCodes(params: {
+  mode: "ask" | "plan" | "agent";
+  route: ExecutionRoute;
+  message: string;
+  reasonCodes: DecisionReasonCode[];
+}): void {
+  if (params.route === "diagnose") {
+    params.reasonCodes.push("diagnosis_readonly");
+    if (looksLikeCodeReviewRequest(params.message)) {
+      params.reasonCodes.push("review_pipeline_required");
+      params.reasonCodes.push("review_findings_structured");
+    }
   }
+  if (params.mode === "ask") {
+    params.reasonCodes.push("mode_ask_readonly");
+  }
+  if (params.mode === "plan") {
+    params.reasonCodes.push("mode_plan_only");
+  }
+}
 
-  // execute in agent mode
+function buildNoneGrant(pathScopes: string[]): ToolGrant {
+  return {
+    maximumWorkspaceEffect: "none",
+    allowedTools: [],
+    allowedEffects: [],
+    pathScopes,
+    approvalMode: "never",
+    limits: { ...DEFAULT_NONE_TOOL_GRANT_LIMITS },
+  };
+}
+
+function buildNetworkOnlyGrant(params: {
+  pathScopes: string[];
+  network: NetworkAuthority;
+}): ToolGrant {
+  return {
+    maximumWorkspaceEffect: "read",
+    allowedTools: [...params.network.allowedTools],
+    allowedEffects: [...params.network.allowedEffects],
+    pathScopes: params.pathScopes,
+    networkHosts: params.network.networkHosts,
+    approvalMode: "never",
+    limits: { ...DEFAULT_READ_ONLY_TOOL_GRANT_LIMITS },
+  };
+}
+
+function buildReadonlyGrant(params: {
+  readOnlyTools: string[];
+  pathScopes: string[];
+  network: NetworkAuthority;
+}): ToolGrant {
+  return {
+    maximumWorkspaceEffect: "read",
+    allowedTools: [...params.readOnlyTools, ...params.network.allowedTools],
+    // process_execute enables argv-only run_readonly_command — not write.
+    allowedEffects: [
+      "workspace_read",
+      "process_execute",
+      ...params.network.allowedEffects,
+    ],
+    pathScopes: params.pathScopes,
+    commandRules: [
+      {
+        prefixes: [...DEFAULT_AGENT_READONLY_COMMAND_PREFIXES],
+        allowShellMetacharacters: false,
+      },
+    ],
+    networkHosts: params.network.networkHosts,
+    approvalMode: "never",
+    limits: { ...DEFAULT_READ_ONLY_TOOL_GRANT_LIMITS },
+  };
+}
+
+function buildAgentExecuteGrant(params: {
+  understanding: RequestUnderstandingResult;
+  message?: string;
+  approvalMode?: ApprovalMode;
+  windowPolicy?: WindowPolicy;
+  changeImpactAffordable: boolean;
+  readOnlyTools: string[];
+  pathScopes: string[];
+  mutationPathScopes: string[] | undefined;
+  network: NetworkAuthority;
+  reasonCodes: DecisionReasonCode[];
+}): Omit<ToolGrantResolution, "grantProfile"> {
+  const { understanding, reasonCodes } = params;
   let risk = understanding.taskAnalysis.risk;
   if (
     shouldElevateSharedScopeRisk({
@@ -172,7 +302,7 @@ export function buildToolGrant(params: {
     reasonCodes.push("shared_scope_risk_elevated");
   }
   if (
-    changeImpactAffordable &&
+    params.changeImpactAffordable &&
     shouldRecommendChangeImpact({
       route: "execute",
       primaryTaskIntent: understanding.intent.classification.primaryTaskIntent,
@@ -182,10 +312,10 @@ export function buildToolGrant(params: {
   ) {
     reasonCodes.push("change_impact_recommended");
   }
+
   const defaultApprovalMode =
     risk === "high" || risk === "critical" ? "every_mutation" : "when_required";
   const approvalMode = params.approvalMode ?? defaultApprovalMode;
-
   if (defaultApprovalMode === "every_mutation") {
     reasonCodes.push("high_risk_approval");
   }
@@ -201,37 +331,30 @@ export function buildToolGrant(params: {
     message: params.message,
   });
   reasonCodes.push(...mutation.reasonCodes);
+
   const processExecution = resolveProcessExecutionAuthority({
     understanding,
     verificationRequired:
       understanding.taskAnalysis.recommendsVerification === true,
   });
   reasonCodes.push(...processExecution.reasonCodes);
+  reasonCodes.push(...params.network.reasonCodes);
 
-  const network = resolveNetworkAuthority({
-    understanding,
-    message: params.message,
-    allowNetwork: true,
-    allowWebSearch: params.allowWebSearch === true,
-  });
-
-  // Full-access / headless approve (`approvalMode: never`): keep *read*
-  // pathScopes workspace-wide so discovery still works, but preserve narrow
-  // mutationPathScopes from explicit targets (docs-only / single-folder asks).
-  // Companion writes still widen via path_out_of_scope recovery.
-  const writePathScopes = approvalMode === "never" ? ["."] : pathScopes;
-  const writeMutationPathScopes = mutationPathScopes;
+  // Full-access (`approvalMode: never`): workspace-wide read discovery;
+  // keep narrow mutationPathScopes from explicit targets.
+  const writePathScopes = approvalMode === "never" ? ["."] : params.pathScopes;
 
   return {
+    reasonCodes,
     toolGrant: {
       maximumWorkspaceEffect: "write",
       allowedTools: [
-        ...readOnlyTools,
+        ...params.readOnlyTools,
         ...MUTATION_TOOL_IDS,
         ...GITHUB_MUTATION_TOOL_IDS,
         ...GIT_MUTATION_TOOL_IDS,
         ...processExecution.allowedTools,
-        ...network.allowedTools,
+        ...params.network.allowedTools,
       ],
       allowedEffects: [
         "workspace_read",
@@ -239,17 +362,18 @@ export function buildToolGrant(params: {
         "process_execute",
         "external_write",
         "git_write",
-        ...network.allowedEffects,
+        ...params.network.allowedEffects,
       ],
       pathScopes: writePathScopes,
-      ...(writeMutationPathScopes ? { mutationPathScopes: writeMutationPathScopes } : {}),
+      ...(params.mutationPathScopes
+        ? { mutationPathScopes: params.mutationPathScopes }
+        : {}),
       commandRules: processExecution.commandRules,
-      networkHosts: network.networkHosts,
+      networkHosts: params.network.networkHosts,
       approvalMode,
       limits: { ...DEFAULT_TOOL_GRANT_LIMITS },
       mutationBudget: mutation.mutationBudget,
     },
-    reasonCodes: [...reasonCodes, ...network.reasonCodes],
   };
 }
 
@@ -307,9 +431,7 @@ function resolvePathScopes(
 
   const { taskAnalysis } = understanding;
 
-  // Discovery-heavy work must keep workspace-wide read access. Narrowing
-  // pathScopes to a few chat-mentioned files rejects search_files/glob/list
-  // outside those exact paths (seen when prior turns leaked into targets).
+  // Discovery-heavy work must keep workspace-wide read access.
   if (
     taskAnalysis.recommendsRepositoryDiscovery ||
     taskAnalysis.scope === "repository" ||
@@ -331,8 +453,6 @@ function resolvePathScopes(
       continue;
     }
     if (target.kind === "file") {
-      // File scopes only allow that exact path; use the parent directory so
-      // siblings and nearby discovery tools still work.
       scopes.add(parentDirectoryScope(target.value));
     }
   }
@@ -408,7 +528,6 @@ export function isExplicitWebSearchAsk(
     /\b(search\s+(?:the\s+)?(?:web|internet|docs?|documentation)|look\s+up|google)\b/i.test(
       message,
     ) ||
-    // "check … online", "search online", "look up online"
     /\b(?:check|find|search|look(?:\s+up)?)\b[\s\w,-]{0,48}\bonline\b/i.test(
       message,
     ) ||
@@ -417,9 +536,8 @@ export function isExplicitWebSearchAsk(
 }
 
 /**
- * Cursor-like: external product / vendor / compatibility / “latest” facts that
- * should not be answered from model memory alone when SearchPort is available.
- * Tight enough to skip pure in-repo explanation asks.
+ * External product / vendor / compatibility / “latest” facts that should not
+ * be answered from model memory alone when SearchPort is available.
  */
 export function needsLiveWebEvidence(
   message: string,
@@ -429,7 +547,6 @@ export function needsLiveWebEvidence(
   if (!LIVE_WEB_EVIDENCE_INTENTS.has(intent)) {
     return false;
   }
-  // In-repo code explanation / local file asks stay offline.
   if (
     /\b(?:this\s+(?:file|function|class|module|repo|code)|in\s+(?:the\s+)?(?:codebase|workspace|repository)|src\/|[\w.-]+\.(?:ts|tsx|js|jsx|py|go|rs|java))\b/i.test(
       message,
@@ -437,7 +554,6 @@ export function needsLiveWebEvidence(
   ) {
     return false;
   }
-  // Security / dependency asks that request online or published advisories.
   if (
     (intent === "security" || intent === "dependency") &&
     /\b(?:vulnerabilit(?:y|ies)|cves?|advisories?|ghsa|nvd|osv)\b/i.test(
@@ -480,21 +596,23 @@ function parentDirectoryScope(filePath: string): string {
   return normalized.slice(0, slash);
 }
 
+interface NetworkAuthority {
+  allowedTools: string[];
+  allowedEffects: Array<"network_access">;
+  networkHosts: string[];
+  reasonCodes: DecisionReasonCode[];
+}
+
 /**
  * Grant fetch_url / web_search when the request has concrete http(s) URLs,
- * an explicit search ask, or Cursor-like live-web evidence needs.
+ * an explicit search ask, or live-web evidence needs.
  */
 function resolveNetworkAuthority(params: {
   understanding: RequestUnderstandingResult;
   message?: string;
   allowNetwork: boolean;
   allowWebSearch: boolean;
-}): {
-  allowedTools: string[];
-  allowedEffects: Array<"network_access">;
-  networkHosts: string[];
-  reasonCodes: DecisionReasonCode[];
-} {
+}): NetworkAuthority {
   if (!params.allowNetwork) {
     return {
       allowedTools: [],
@@ -521,13 +639,9 @@ function resolveNetworkAuthority(params: {
   }
 
   const allowedTools: string[] = [];
-  // Concrete hosts or a search grant: allow fetch so the model can deepen hits
-  // once networkHosts are widened after web_search (or from message URLs).
   if (hosts.length > 0 || (params.allowWebSearch && wantsSearch)) {
     allowedTools.push("fetch_url", "fetch_docs");
   }
-  // web_search only when host enabled SearchPort AND search/live-web evidence.
-  // Presence of a URL alone does not open unrestricted search.
   if (params.allowWebSearch && wantsSearch) {
     allowedTools.push("web_search");
   }
@@ -544,7 +658,6 @@ function resolveNetworkAuthority(params: {
   return {
     allowedTools,
     allowedEffects: ["network_access"],
-    // Search without hosts keeps an empty allowlist until tool-phase widen.
     networkHosts: hosts,
     reasonCodes: ["network_access_granted"],
   };

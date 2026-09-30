@@ -111,6 +111,11 @@ export const DECISION_REASON_CODES = [
   "direct_knowledge_answer",
   "repository_grounded_answer",
   "mutation_execute",
+  /** Tool grant profile selected by BuildToolGrant (audit / debug). */
+  "grant_profile_none",
+  "grant_profile_network_only",
+  "grant_profile_readonly",
+  "grant_profile_agent_execute",
   /** Workspace-grounded bug report promoted to execute (may still be diagnose-first). */
   "workspace_bug_execute",
   /** Agent reported a runtime symptom (loading/hang) — diagnose with tools, not tool-less chat. */

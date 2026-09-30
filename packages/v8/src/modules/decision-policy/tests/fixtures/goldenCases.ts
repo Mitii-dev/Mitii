@@ -29,10 +29,11 @@ const GOLDEN_DECISION_CASES_CORE: GoldenDecisionCase[] = [
       },
     }),
     expected: {
-      route: "diagnose",
-      maximumWorkspaceEffect: "read",
-      reasonCodesIncludes: ["diagnosis_readonly"],
-      reasonCodesExcludes: ["mutation_execute"],
+      // Trusted ≥0.70 write ballot overrides pasted-dump diagnose-first.
+      route: "execute",
+      maximumWorkspaceEffect: "write",
+      reasonCodesIncludes: ["mutation_execute", "policy_llm_authority_write"],
+      reasonCodesExcludes: ["diagnosis_readonly"],
     },
   },
   {
