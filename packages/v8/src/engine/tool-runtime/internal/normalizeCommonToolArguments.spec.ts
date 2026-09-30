@@ -85,6 +85,26 @@ describe("normalizeCommonToolArguments", () => {
     ).toEqual({ revision: "HEAD~1", path: "a.ts" });
   });
 
+  it("strips invented read_git_show maxBytes/maxLines and maps read_git_log aliases", () => {
+    expect(
+      normalizeCommonToolArguments("read_git_show", {
+        revision: "HEAD~1",
+        path: "a.ts",
+        maxBytes: 5000,
+        maxLines: 100,
+      }),
+    ).toEqual({ revision: "HEAD~1", path: "a.ts" });
+    expect(
+      normalizeCommonToolArguments("read_git_log", {
+        maxResults: 10,
+        path: "apps/vscode/src/sidebar.ts",
+      }),
+    ).toEqual({
+      maxCount: 10,
+      paths: ["apps/vscode/src/sidebar.ts"],
+    });
+  });
+
   it("maps read_file line_start/line_end aliases and drops them", () => {
     const normalized = normalizeCommonToolArguments("read_file", {
       path: "test/Desktop/components/HeaderComponent.ts",

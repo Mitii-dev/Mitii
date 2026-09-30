@@ -43,6 +43,11 @@ export function buildRejectedMutationRecoveryMessage(params: {
       "oldText and newText were the same, so the file was not changed.",
       "Using attached currentContent, retry apply_patch with a newText that actually differs and fixes the listed diagnostic. Do not copy the same code.",
     );
+  } else if (params.reasonCode === "patch_too_destructive") {
+    instructions.push(
+      "Empty oldText would wipe most of an existing file — that is blocked.",
+      "Using attached currentContent, copy a minimal exact oldText hunk and set newText to the local fix only. Do not stub the whole file or write via shell/node scripts.",
+    );
   } else if (
     params.reasonCode === "execution_failed" &&
     params.warnings.some((warning) =>

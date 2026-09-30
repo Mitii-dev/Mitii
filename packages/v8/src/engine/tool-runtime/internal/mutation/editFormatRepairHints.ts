@@ -83,10 +83,20 @@ export function buildEditFormatRepairHints(params: {
         message: `File hash changed for ${path}. Re-read current content, then retry apply_patch with fresh oldText.`,
       });
       break;
+    case 'patch_too_destructive':
+      hints.push({
+        step: 'exact_old_text',
+        message: `Empty oldText would wipe most of ${path}. Copy a minimal exact oldText hunk from currentContent and set newText to the local change only.`,
+      });
+      hints.push({
+        step: 'smaller_hunk',
+        message: 'Do not stub or rewrite the whole file unless the user explicitly asked for a full rewrite of a small file.',
+      });
+      break;
     default:
       hints.push({
         step: 'exact_old_text',
-        message: `Retry apply_patch on ${path} with exact oldText from currentContent. Climb: exact → more context → smaller hunk → (optional fuzzy) → full replace only as last resort.`,
+        message: `Retry apply_patch on ${path} with exact oldText from currentContent. Climb: exact → more context → smaller hunk → (optional fuzzy). Avoid empty-oldText full replace on large existing files.`,
       });
   }
 
@@ -106,4 +116,4 @@ export function formatEditFormatRepairHints(
 
 /** Short system guidance when write tools are granted. */
 export const EDIT_FORMAT_LADDER_SYSTEM_HINT =
-  'When apply_patch fails: (1) re-read and copy exact oldText, (2) add surrounding context if ambiguous, (3) use smaller hunks, (4) only then rely on fuzzyMatch if enabled, (5) full-file replace (empty oldText) is last resort. Never switch to inventing a different edit format in chat.';
+  'When apply_patch fails: (1) re-read and copy exact oldText, (2) add surrounding context if ambiguous, (3) use smaller hunks, (4) only then rely on fuzzyMatch if enabled. Empty oldText full-file replace is only for creating new files or small files; large existing files reject destructive empty-oldText wipes. Never invent a different edit format in chat.';

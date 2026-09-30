@@ -79,6 +79,19 @@ const PM_MUTATING_SUBCOMMANDS = new Set([
   "publish",
 ]);
 
+const SCRIPT_RUNNERS = new Set([
+  "node",
+  "nodejs",
+  "bun",
+  "tsx",
+  "ts-node",
+  "deno",
+  "python",
+  "python3",
+  "ruby",
+  "perl",
+]);
+
 /**
  * Soft-reject argv that appears to mutate files.
  * Call after grant prefix validation — never widens allow.
@@ -127,6 +140,26 @@ export function assertSoftNonMutatingCommand(argv: readonly string[]): void {
       );
     }
   }
+
+  if (looksLikeTempScriptWriteHelper(argv)) {
+    throwSoft(
+      `Refusing temp/script write helper (${argv.join(" ")}). ` +
+        "Use apply_patch for source edits — do not bypass via node/bun/npm exec of a .tmp script.",
+    );
+  }
+}
+
+/**
+ * Always-on guard for run_command (write grants): reject temp script helpers
+ * even when softBlockMutatingCommands is off.
+ */
+export function assertNoTempScriptWriteHelper(argv: readonly string[]): void {
+  if (looksLikeTempScriptWriteHelper(argv)) {
+    throwSoft(
+      `Refusing temp/script write helper (${argv.join(" ")}). ` +
+        "Use apply_patch for source edits — do not bypass via node/bun/npm exec of a .tmp script.",
+    );
+  }
 }
 
 function throwSoft(message: string): never {
@@ -151,4 +184,55 @@ function firstNonFlag(parts: readonly string[]): string | undefined {
 /** Detect argv tokens that act as shell redirects (`>`, `>>`, `1>`). */
 function looksLikeOutputRedirect(argv: readonly string[]): boolean {
   return argv.some((part) => /^(?:\d*)>{1,2}$/.test(part) || part === ">>");
+}
+
+/**
+ * Production bypass: after apply_patch failures, models write `.tmp-fix-*.js`
+ * and run it via `node` / `bun` / `npm exec -- node` to mutate source.
+ */
+function looksLikeTempScriptWriteHelper(argv: readonly string[]): boolean {
+  const joined = argv.join(" ");
+  if (/\.tmp[-_]?(?:fix|patch|write|edit)/i.test(joined)) {
+    return true;
+  }
+  if (/\.tmp[A-Za-z0-9._-]+\.(?:js|mjs|cjs|ts|py)$/i.test(joined)) {
+    return true;
+  }
+
+  const head = basenameCommand(argv[0] ?? "").toLowerCase();
+  if (SCRIPT_RUNNERS.has(head)) {
+    for (const part of argv.slice(1)) {
+      if (isTempOrWriteHelperScript(part)) {
+        return true;
+      }
+    }
+  }
+
+  if (
+    head === "npm" ||
+    head === "pnpm" ||
+    head === "yarn" ||
+    head === "npx" ||
+    head === "bun"
+  ) {
+    const sub = firstNonFlag(argv.slice(1))?.toLowerCase();
+    if (sub === "exec" || sub === "dlx" || sub === "x") {
+      for (const part of argv.slice(1)) {
+        if (isTempOrWriteHelperScript(part)) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+function isTempOrWriteHelperScript(token: string): boolean {
+  const base = basenameCommand(token);
+  return (
+    /^\.tmp/i.test(base) ||
+    /^(?:fix|patch|write|edit)[-_].*\.(?:js|mjs|cjs|ts|py)$/i.test(base) ||
+    /\.tmp[-_].*\.(?:js|mjs|cjs|ts|py)$/i.test(base)
+  );
 }

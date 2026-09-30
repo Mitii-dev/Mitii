@@ -87,4 +87,26 @@ describe("ToolLoopGuard", () => {
     };
     expect(guard.observeCalls([other]).type).toBe("allow");
   });
+
+  it("treats same-path read windows as identical (path-scoped)", () => {
+    const guard = new ToolLoopGuard({
+      softIdenticalLimit: 3,
+      hardIdenticalLimit: 6,
+    });
+    const windowA = {
+      name: "read_file",
+      arguments: { path: "apps/vscode/src/sidebar.ts", startLine: 1, endLine: 80 },
+    };
+    const windowB = {
+      name: "read_file",
+      arguments: {
+        path: "apps/vscode/src/sidebar.ts",
+        startLine: 80,
+        endLine: 160,
+      },
+    };
+    expect(guard.observeCalls([windowA]).type).toBe("allow");
+    expect(guard.observeCalls([windowB]).type).toBe("allow");
+    expect(guard.observeCalls([windowA]).type).toBe("soft");
+  });
 });

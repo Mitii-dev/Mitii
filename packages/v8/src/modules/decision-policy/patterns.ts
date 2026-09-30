@@ -67,7 +67,7 @@ const WORKSPACE_PATH_ROOT_ALTERNATION = WORKSPACE_PATH_ROOT_SEGMENTS.join("|");
 
 /** Explicit failure / breakage phrasing (natural language + compiler/runtime). */
 export const WORKSPACE_BUG_FAILURE_LANGUAGE =
-  /\b(?:issue|bug|error|fail(?:s|ed|ing)?|unable|not\s+working|doesn'?t\s+work|broken|crash(?:es|ed|ing)?|blank|preview\s+(?:is\s+)?(?:not|never)|(?:no|never)\s+preview|doesn'?t\s+load|load(?:ing)?\s+(?:issue|error|fail|broken)|render(?:ing)?\s+(?:issue|error|fail|broken)|has already been declared|is not defined|cannot read propert(?:y|ies)|cannot find (?:name|module)|still\s+(?:broken|failing)|traceback|stack\s*trace|exit\s+code|non-?zero|compilation\s+failed|build\s+failed|test(?:s)?\s+fail|undefined\s+reference|unresolved\s+import|does\s+not\s+compile|panic!)\b/i;
+  /\b(?:issue|bug|error|fail(?:s|ed|ing)?|unable|not\s+working|doesn'?t\s+work|broken|crash(?:es|ed|ing)?|blank|preview\s+(?:is\s+)?(?:not|never)|(?:no|never)\s+preview|doesn'?t\s+load|load(?:ing)?\s+(?:issue|error|fail|broken)|render(?:ing)?\s+(?:issue|error|fail|broken)|has already been declared|is not defined|cannot read propert(?:y|ies)|cannot find (?:name|module)|still\s+(?:broken|failing)|traceback|stack\s*trace|exit\s+code|non-?zero|compilation\s+failed|build\s+failed|test(?:s)?\s+fail|failed\s+tests?|undefined\s+reference|unresolved\s+import|does\s+not\s+compile|panic!|❯\s*FAIL\b|\bFAIL\s+\S+\.(?:test|spec)\.[jt]sx?\b|AssertionError|TS\d{3,5})\b/i;
 
 /**
  * Well-known runtime / language error tokens across common ecosystems.

@@ -547,6 +547,32 @@ describe("Tool Runtime Phase 8 mutations", () => {
     expect(result.reasonCode).toBe("invalid_arguments");
   });
 
+  it("rejects destructive empty-oldText wipe of a large existing file", async () => {
+    const { runtime, fs } = createRuntime();
+    const large = `${"x".repeat(5_000)}\n`;
+    await fs.writeFile(`${WORKSPACE}/src/big.ts`, large);
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "wipe-big",
+      toolName: "apply_patch",
+      arguments: {
+        patches: [
+          {
+            path: "src/big.ts",
+            oldText: "",
+            newText: "// @ts-nocheck\n",
+          },
+        ],
+      },
+      grant: createWriteGrant({ approvalMode: "never" }),
+      workspaceRoot: WORKSPACE,
+    });
+    expect(result.status).toBe("rejected");
+    expect(result.reasonCode).toBe("patch_too_destructive");
+    const still = await fs.readFile(`${WORKSPACE}/src/big.ts`);
+    expect(still.content).toBe(large);
+  });
+
   it("rejects write grant without write effect", async () => {
     const { runtime } = createRuntime();
     const result = await runtime.execute({

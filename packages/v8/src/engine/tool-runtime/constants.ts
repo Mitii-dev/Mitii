@@ -118,6 +118,7 @@ export const TOOL_REASON_CODES = [
   "patch_hash_mismatch",
   "identical_old_and_new",
   "patch_syntax_invalid",
+  "patch_too_destructive",
   "must_read_incomplete",
   "change_impact_incomplete",
   "already_read",
@@ -140,6 +141,7 @@ export const PATCH_CURRENT_CONTENT_REASON_CODES = [
   "patch_hash_mismatch",
   "patch_syntax_invalid",
   "identical_old_and_new",
+  "patch_too_destructive",
 ] as const;
 
 /**
@@ -154,6 +156,7 @@ export const PATCH_TARGETED_DISCOVERY_REASON_CODES = [
   "patch_target_missing",
   "patch_hash_mismatch",
   "identical_old_and_new",
+  "patch_too_destructive",
 ] as const;
 
 export function isPatchCurrentContentReason(
