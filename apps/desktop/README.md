@@ -78,7 +78,7 @@ node node_modules/electron/cli.js --version
 `electron` is listed under `onlyBuiltDependencies` in `pnpm-workspace.yaml`.
 
 If `ELECTRON_RUN_AS_NODE` is set, Electron will not create a BrowserWindow.
-The `start` / `dev` scripts unset it automatically.
+The `start` / `dev` scripts clear it via `scripts/run-electron.cjs` (cross-platform; Unix `env -u` is not available on Windows).
 
 ## Layout
 
