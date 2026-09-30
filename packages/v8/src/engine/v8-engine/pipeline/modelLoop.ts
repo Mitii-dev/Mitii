@@ -128,6 +128,7 @@ export type V8ModelLoopParams = {
   selectedSkillIds?: readonly string[];
   projectRuleIds?: readonly string[];
   environmentIds?: readonly string[];
+  instructionBodies?: import("../internal/system-context").InstructionBodiesByKind;
 };
 
 /**
@@ -310,6 +311,7 @@ export async function runV8ModelLoop(
       selectedSkillIds: params.selectedSkillIds,
       projectRuleIds: params.projectRuleIds,
       environmentIds: params.environmentIds,
+      instructionBodies: params.instructionBodies,
       memoryIds: params.memoryFacts?.map((fact) => fact.id) ?? [],
       sessionHistoryArchive,
     });

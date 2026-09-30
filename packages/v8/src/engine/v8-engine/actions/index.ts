@@ -180,6 +180,7 @@ export {
 } from "./serializeRecoverabilityWorkingSet";
 export type { RecoverabilityWorkingSetInput } from "./serializeRecoverabilityWorkingSet";
 export { estimateMutationPayloadCharacters } from "./estimateMutationPayloadCharacters";
+export { buildInstructionBodies } from "./buildInstructionBodies";
 export {
   compactModelLoopMessages,
   compactModelLoopMessagesFromWindowPolicy,

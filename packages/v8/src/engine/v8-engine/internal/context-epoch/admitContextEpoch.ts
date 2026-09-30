@@ -9,6 +9,10 @@ import {
   type SystemContextSnapshot,
 } from "../system-context";
 import {
+  decodeInstructionSourceState,
+  truncateMidConversationUpdateText,
+} from "../system-context/instructionSourceBodies";
+import {
   extractBaselineSystemText,
   hashContextText,
   initializeContextEpoch,
@@ -105,7 +109,9 @@ export function admitContextEpoch(
       return {
         epoch: next,
         pinBaseline: epoch.baselineSystemText,
-        midConversationText: wrapMidConversationSystemText(reconciled.text),
+        midConversationText: wrapMidConversationSystemText(
+          truncateMidConversationUpdateText(reconciled.text),
+        ),
         stripPriorMidConversation: false,
       };
     }
@@ -242,19 +248,30 @@ export function observedIdsFromContextEpoch(epoch: ContextEpoch | undefined): {
   }
   const sources = normalizeContextEpochSnapshot(epoch.structuredSnapshot);
   return {
-    skillIds: decodeEncodedIdArray(
+    skillIds: decodeInstructionIds(
       sources[SYSTEM_CONTEXT_SOURCE_KEYS.skills]?.value,
     ),
-    ruleIds: decodeEncodedIdArray(
+    ruleIds: decodeInstructionIds(
       sources[SYSTEM_CONTEXT_SOURCE_KEYS.rules]?.value,
     ),
-    environmentIds: decodeEncodedIdArray(
+    environmentIds: decodeInstructionIds(
       sources[SYSTEM_CONTEXT_SOURCE_KEYS.environment]?.value,
     ),
     memoryIds: decodeEncodedIdArray(
       sources[SYSTEM_CONTEXT_SOURCE_KEYS.memory]?.value,
     ),
   };
+}
+
+function decodeInstructionIds(raw: string | undefined): string[] {
+  if (!raw) {
+    return [];
+  }
+  const state = decodeInstructionSourceState(raw);
+  if (state) {
+    return [...state.ids];
+  }
+  return decodeEncodedIdArray(raw);
 }
 
 function decodeEncodedIdArray(raw: string | undefined): string[] {

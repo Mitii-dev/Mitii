@@ -86,6 +86,7 @@ export async function handleVerificationFailed(params: {
     selectedSkillIds?: string[];
     projectRuleIds?: string[];
     environmentIds?: string[];
+    instructionBodies?: import("../internal/system-context").InstructionBodiesByKind;
     requiredSkillIds?: string[];
     excludedSkillIds?: string[];
     plan?: import("../../../modules/planning").PlanArtifact;
@@ -270,6 +271,7 @@ export async function handleVerificationFailed(params: {
       selectedSkillIds: loopContext?.selectedSkillIds,
       projectRuleIds: loopContext?.projectRuleIds,
       environmentIds: loopContext?.environmentIds,
+      instructionBodies: loopContext?.instructionBodies,
       evidence,
       windowPolicy,
       continueOverrideCount,
