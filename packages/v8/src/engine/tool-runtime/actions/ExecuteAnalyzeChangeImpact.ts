@@ -198,10 +198,22 @@ async function loadImportanceRecord(
   if (!repoGraphs.loadImportanceByRelativePath) return undefined;
   const loaded = await repoGraphs.loadImportanceByRelativePath();
   if (!loaded) return undefined;
-  if (loaded instanceof Map) {
+  // ReadonlyMap is an interface — instanceof Map alone does not narrow it away
+  // for the Record spread below.
+  if (isStringNumberMap(loaded)) {
     return Object.fromEntries(loaded.entries());
   }
-  return { ...loaded };
+  return { ...(loaded as Readonly<Record<string, number>>) };
+}
+
+function isStringNumberMap(
+  value: ReadonlyMap<string, number> | Readonly<Record<string, number>>,
+): value is ReadonlyMap<string, number> {
+  return (
+    typeof (value as ReadonlyMap<string, number>).entries === "function" &&
+    typeof (value as ReadonlyMap<string, number>).get === "function" &&
+    typeof (value as ReadonlyMap<string, number>).forEach === "function"
+  );
 }
 
 async function collectTextOccurrenceHints(params: {
