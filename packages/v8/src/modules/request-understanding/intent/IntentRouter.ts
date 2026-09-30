@@ -3,7 +3,7 @@ import type {
 } from "../../model-gateway";
 import { LlmIntentClassifier, RuleIntentClassifier } from "./classifiers";
 import { extractPrimaryUserMessage } from "./extractPrimaryUserMessage";
-import { ModeIntentPolicy } from "./policy";
+import { ModeIntentPolicy, TurnKindIntentPolicy } from "./policy";
 import { SuperIntent } from "./resolution";
 import { INTENT_CONSTANTS } from "./constants";
 import {
@@ -23,6 +23,7 @@ export class IntentRouter {
   private readonly llmClassifier:
     LlmIntentClassifierPort;
   private readonly modePolicy: ModeIntentPolicy;
+  private readonly turnKindPolicy: TurnKindIntentPolicy;
 
   constructor(
     provider: LlmPort,
@@ -35,6 +36,7 @@ export class IntentRouter {
       dependencies.llmClassifier ?? new LlmIntentClassifier(provider);
 
     this.modePolicy = new ModeIntentPolicy();
+    this.turnKindPolicy = new TurnKindIntentPolicy();
   }
 
   async classify(input: IntentClassificationInput): Promise<SuperIntentResult> {
@@ -64,7 +66,10 @@ export class IntentRouter {
 
     // Explicit slash/exact intents are authoritative — skip the LLM round-trip.
     if (ruleResult?.source === "explicit_rule") {
-      return this.buildExplicitRuleResult(normalizedInput.mode, ruleResult);
+      return this.applyTurnKind(
+        normalizedInput.turnKind,
+        this.buildExplicitRuleResult(normalizedInput.mode, ruleResult),
+      );
     }
 
     // 2. Attempt LLM classification (fall back to rule/safe default on failure).
@@ -80,9 +85,15 @@ export class IntentRouter {
       };
     } catch (error) {
       if (ruleResult) {
-        return this.buildFallbackResult(normalizedInput.mode, ruleResult, error);
+        return this.applyTurnKind(
+          normalizedInput.turnKind,
+          this.buildFallbackResult(normalizedInput.mode, ruleResult, error),
+        );
       }
-      return this.buildSafeFallbackResult(normalizedInput.mode, error);
+      return this.applyTurnKind(
+        normalizedInput.turnKind,
+        this.buildSafeFallbackResult(normalizedInput.mode, error),
+      );
     }
 
     // 3. Resolve final classification using SuperIntent.
@@ -93,7 +104,7 @@ export class IntentRouter {
       llmResult,
     });
 
-    return result;
+    return this.applyTurnKind(normalizedInput.turnKind, result);
   }
 
   private normalizeInput(input: IntentClassificationInput): {
@@ -101,12 +112,32 @@ export class IntentRouter {
     userMessage: string;
     referencedArtifacts: readonly ReferencedArtifact[];
     diagnosticSummary: IntentClassificationInput["diagnosticSummary"];
+    turnKind: IntentClassificationInput["turnKind"];
   } {
     return {
       mode: input.mode,
       userMessage: extractPrimaryUserMessage(input.userMessage),
       referencedArtifacts: input.referencedArtifacts ?? [],
       diagnosticSummary: input.diagnosticSummary,
+      turnKind: input.turnKind,
+    };
+  }
+
+  private applyTurnKind(
+    turnKind: IntentClassificationInput["turnKind"],
+    result: SuperIntentResult,
+  ): SuperIntentResult {
+    const classification = this.turnKindPolicy.apply(
+      turnKind,
+      result.classification,
+    );
+    if (classification === result.classification) {
+      return result;
+    }
+    return {
+      ...result,
+      classification,
+      recommendsClarification: classification.needsClarification,
     };
   }
 

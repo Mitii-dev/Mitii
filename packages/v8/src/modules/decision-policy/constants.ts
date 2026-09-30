@@ -142,6 +142,11 @@ export const DECISION_REASON_CODES = [
   /** Request originated from an API client rather than an interactive user. */
   "api_origin",
   /**
+   * Intake turnKind is a continuation (steer / follow_up / continue / recover),
+   * not a fresh new request — prefer acting over re-clarifying.
+   */
+  "turn_continuation",
+  /**
    * Unattended origin would have clarified; Decision Policy continued with the
    * best-effort non-clarify route instead of suspending for interactive input.
    */

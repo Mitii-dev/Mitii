@@ -21,6 +21,7 @@ import type {
   ToolGrant,
 } from "../contracts";
 import { extractPrimaryUserMessage } from "../../request-understanding/intent/extractPrimaryUserMessage";
+import { isContinuationTurnKind } from "../../request-understanding/intent/policy/TurnKindIntentPolicy";
 
 export class DecisionPolicyPipeline {
   public decide(input: DecisionPolicyInput): ExecutionDecision {
@@ -104,6 +105,9 @@ export class DecisionPolicyPipeline {
       ...preflightBuild.reasonCodes,
       ...injection.reasonCodes,
       ...safetyResult.reasonCodes,
+      ...(isContinuationTurnKind(parsed.envelope.turnKind)
+        ? (["turn_continuation"] as const)
+        : []),
     ]);
     const trace = buildDecisionTrace({
       reasonCodes,

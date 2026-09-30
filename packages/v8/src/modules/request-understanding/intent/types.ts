@@ -1,5 +1,6 @@
 import type {
   AgentMode,
+  RequestTurnKind,
 } from "../../request-intake";
 
 import type {
@@ -44,6 +45,8 @@ export interface IntentClassificationInput {
   referencedArtifacts?: readonly ReferencedArtifact[];
   /** Capped preflight-diagnostic hint. LLM classifier only — rule classifier ignores it. */
   diagnosticSummary?: DiagnosticSummary;
+  /** Intake turn kind — continuation turns soften clarification. */
+  turnKind?: RequestTurnKind;
 }
 
 export interface IntentRouterDependencies {
