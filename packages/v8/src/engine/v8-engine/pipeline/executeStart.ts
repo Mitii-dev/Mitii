@@ -203,6 +203,9 @@ export async function executeV8Start(
       }),
       suspension: partial.suspension,
       pinnedState: partial.pinnedState ?? shared.pinnedState,
+      ...(partial.sessionControl
+        ? { sessionControl: partial.sessionControl }
+        : {}),
       reasonCodes: finalReasonCodes,
       warnings: finalWarnings,
       usage: toRunUsage(usageSnap),

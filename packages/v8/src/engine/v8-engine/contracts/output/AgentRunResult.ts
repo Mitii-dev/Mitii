@@ -15,6 +15,7 @@ import {
   verificationRecordSchema,
 } from "../../../../modules/verification";
 import { runEvidenceSchema } from "./RunEvidence";
+import { modelMessageSchema } from "../../../../modules/model-gateway";
 
 import {
   AGENT_ENGINE_SCHEMA_VERSION,
@@ -26,6 +27,34 @@ import {
 export const agentRunStatusSchema = z.enum(AGENT_RUN_STATUSES);
 export const agentSuspensionKindSchema = z.enum(AGENT_SUSPENSION_KINDS);
 export const agentReasonCodeSchema = z.enum(AGENT_REASON_CODES);
+
+export const sessionControlResultSchema = z
+  .object({
+    command: z.string().min(1),
+    lifecycle: z.enum([
+      "side_channel",
+      "stop",
+      "finalize",
+      "agent_turn",
+      "agent_turn_with_args",
+    ]),
+    answer: z.string(),
+    sessionAction: z.enum(["new", "clear"]).optional(),
+    compactedConversation: z.array(modelMessageSchema).optional(),
+    compactStats: z
+      .object({
+        beforeMessages: z.number().int().nonnegative(),
+        afterMessages: z.number().int().nonnegative(),
+        omittedTokens: z.number().int().nonnegative(),
+        pressure: z.string().min(1),
+        stagesApplied: z.array(z.string()),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
+export type SessionControlRunResult = z.infer<typeof sessionControlResultSchema>;
 
 export const agentRunUsageSchema = z
   .object({
@@ -113,6 +142,11 @@ export const agentRunResultSchema = z
     evidence: runEvidenceSchema.optional(),
     suspension: agentRunSuspensionSchema.optional(),
     pinnedState: repositoryStateReferenceSchema.optional(),
+    /**
+     * Intake meta-command outcome (/compact, /new, /help, …).
+     * Hosts persist `compactedConversation` when present.
+     */
+    sessionControl: sessionControlResultSchema.optional(),
     reasonCodes: z.array(agentReasonCodeSchema).min(1),
     warnings: z.array(z.string()),
     usage: agentRunUsageSchema,

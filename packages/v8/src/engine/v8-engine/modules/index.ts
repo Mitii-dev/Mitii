@@ -11,3 +11,4 @@ export * from "./complete-tool-calls";
 export * from "./tool-content-paths";
 export * from "./diagnose-answer";
 export * from "./plan-discovery";
+export * from "./session-control";

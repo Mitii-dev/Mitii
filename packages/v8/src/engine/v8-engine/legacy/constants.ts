@@ -58,6 +58,14 @@ export const AGENT_REASON_CODES = [
   "intake_meta_command",
   /** `@path` mentions were parsed into referencedArtifacts at intake. */
   "intake_mentions_extracted",
+  /** Session-control handled /stop at intake. */
+  "session_control_stop",
+  /** Session-control handled /new or /clear (host should reset transcript). */
+  "session_control_finalized",
+  /** Session-control compacted host conversation at intake. */
+  "session_control_compacted",
+  /** Session-control side channel (/help /status /resume). */
+  "session_control_side_channel",
   "understanding_complete",
   "decision_complete",
   "grant_narrowed",

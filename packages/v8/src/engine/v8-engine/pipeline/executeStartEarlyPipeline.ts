@@ -42,6 +42,8 @@ import {
   extractMentionedPaths,
   collectUnderstandingCandidatePaths,
 } from "../actions";
+import { handleMetaCommand } from "../modules/session-control";
+import type { SessionControlRunResult } from "../contracts/output/AgentRunResult";
 import { resolveSteeringFeatureFlags } from "../legacy/steeringFlags";
 import type {
   AgentEngineStartInput,
@@ -117,6 +119,7 @@ export async function runStartEarlyPipeline(
     answer?: string;
     suspension?: AgentRunResult["suspension"];
     pinnedState?: RepositoryStateReference;
+    sessionControl?: SessionControlRunResult;
     reasonCodes?: AgentReasonCode[];
     warnings?: string[];
     error?: { code: string; message: string };
@@ -176,27 +179,60 @@ export async function runStartEarlyPipeline(
       ));
   if (shortCircuitMeta && envelope.metaCommand) {
     reasonCodes.push("intake_meta_command");
-    const meta = envelope.metaCommand;
-    warnings.push(`meta_command:${meta.name}:${meta.lifecycle}`);
-    if (meta.lifecycle === "stop") {
-      return {
-        kind: "terminal",
-        result: finish({
-          status: "cancelled",
-          reasonCodes,
-          error: {
-            code: "cancelled",
-            message: `Meta command /${meta.name} stopped the run at intake.`,
-          },
-        }),
-      };
+    const handled = handleMetaCommand({
+      meta: envelope.metaCommand,
+      conversation: input.conversation,
+      estimator: runtime.tokenEstimator,
+      windowPolicy,
+      sessionId: envelope.sessionId,
+    });
+    reasonCodes.push(
+      ...(handled.reasonCodes as AgentReasonCode[]).filter(
+        (code) => !reasonCodes.includes(code),
+      ),
+    );
+    if (handled.warnings.length > 0) {
+      warnings.push(...handled.warnings);
     }
+    warnings.push(
+      `meta_command:${handled.command}:${handled.lifecycle}`,
+    );
+
+    const sessionControl: SessionControlRunResult = {
+      command: handled.command,
+      lifecycle: handled.lifecycle,
+      answer: handled.answer,
+      ...(handled.sessionAction
+        ? { sessionAction: handled.sessionAction }
+        : {}),
+      ...(handled.compactedConversation
+        ? {
+            compactedConversation: [
+              ...handled.compactedConversation,
+            ] as SessionControlRunResult["compactedConversation"],
+          }
+        : {}),
+      ...(handled.compactStats
+        ? {
+            compactStats: {
+              beforeMessages: handled.compactStats.beforeMessages,
+              afterMessages: handled.compactStats.afterMessages,
+              omittedTokens: handled.compactStats.omittedTokens,
+              pressure: handled.compactStats.pressure,
+              stagesApplied: [...handled.compactStats.stagesApplied],
+            },
+          }
+        : {}),
+    };
+
     return {
       kind: "terminal",
       result: finish({
-        status: "completed",
-        answer: `/${meta.name}${meta.args ? ` ${meta.args}` : ""}`,
+        status: handled.status,
+        answer: handled.answer,
+        sessionControl,
         reasonCodes,
+        ...(handled.error ? { error: handled.error } : {}),
       }),
     };
   }
