@@ -204,6 +204,8 @@ export const AGENT_REASON_CODES = [
   "verification_record_build_failed",
   /** LLM verification-summary narration failed or was rejected; a template fallback was used. */
   "verification_narration_failed",
+  /** Optional LLM verification critique failed or was rejected; gate decision unchanged. */
+  "verification_critique_failed",
   /** A hard/blocked verification rejection was kept rather than repaired (see rejectKind on the event). */
   "verification_rejected_kept",
   /** A host policy (planApproval: never) suppressed a plan gate that risk analysis required. */
@@ -254,6 +256,7 @@ export const AGENT_EVENT_TYPES = [
   "verification_comparison",
   "verification_record_saved",
   "verification_summary_ready",
+  "verification_critique_ready",
   "verification_retry_available",
   "terminal",
 ] as const;

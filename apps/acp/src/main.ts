@@ -42,6 +42,7 @@ import {
   createWorkspaceCheckpointStore,
   createWorkspaceKnowledgeGraph,
   createWorkspaceVerificationStore,
+  createOptionalVerificationSyntaxPort,
   detectSandboxBackend,
   getProviderPreset,
   inferHostProviderType,
@@ -226,6 +227,9 @@ async function createHostAcpClient(cwd: string): Promise<MitiiClient> {
       workspaceRoot: cwd,
     }),
     records: createWorkspaceVerificationStore(cwd),
+    ...(await createOptionalVerificationSyntaxPort().then((syntax) =>
+      syntax ? { syntax } : {},
+    )),
   });
   const repositoryState = new RepositoryStatePipeline({
     store: new InMemoryRepositoryStateStore(),

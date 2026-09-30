@@ -201,6 +201,8 @@ export const agentEngineStartInputSchema = z
         policyFactsFirst: z.boolean().optional(),
         decisionBrief: z.boolean().optional(),
         criticMode: z.enum(["off", "shadow", "enforce"]).optional(),
+        /** Advisory LLM critique after evidence gate; never overrides the gate. */
+        verificationLlmCritique: z.boolean().optional(),
       })
       .strict()
       .optional(),

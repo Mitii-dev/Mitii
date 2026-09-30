@@ -10,6 +10,7 @@ import type {
 
 import {
   buildVerificationRepairPrompt,
+  loadDiagnosticSourceLines,
   selectUserFacingLoopAnswer,
   shouldContinueVerificationRepair,
   nextStalledRepairCount,
@@ -227,6 +228,10 @@ export async function handleVerificationFailed(params: {
         comparison: verificationOutcome.comparison,
         changedFiles: loopChangedFiles,
         mutationBudget: decision.toolGrant.mutationBudget,
+        sourceLines: await loadRepairSourceLines({
+          workspaceRoot: input.workspaceRoot,
+          verification: verificationOutcome.verification,
+        }),
         ...(repairPrep.activeItem
           ? {
               activeBatch: {
@@ -428,4 +433,22 @@ export async function handleVerificationFailed(params: {
       ? verificationOutcome.error
       : undefined,
   }) };
+}
+
+async function loadRepairSourceLines(params: {
+  workspaceRoot: string | undefined;
+  verification: import("../../../modules/verification").VerificationResult | undefined;
+}): Promise<ReadonlyMap<string, string> | undefined> {
+  if (!params.workspaceRoot || !params.verification) {
+    return undefined;
+  }
+  try {
+    const lines = await loadDiagnosticSourceLines({
+      workspaceRoot: params.workspaceRoot,
+      diagnostics: params.verification.diagnostics,
+    });
+    return lines.size > 0 ? lines : undefined;
+  } catch {
+    return undefined;
+  }
 }

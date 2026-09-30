@@ -14,6 +14,11 @@ export interface SteeringFeatureFlags {
   decisionBrief: boolean;
   /** Pre-mutation critic: off | shadow (log only) | enforce (narrow/pause). */
   criticMode: SteeringCriticMode;
+  /**
+   * Optional post-gate LLM verification critique (VTCode-style).
+   * Advisory only — never overrides decideVerificationGate. Default off.
+   */
+  verificationLlmCritique: boolean;
 }
 
 export const DEFAULT_STEERING_FEATURE_FLAGS: SteeringFeatureFlags = {
@@ -21,6 +26,7 @@ export const DEFAULT_STEERING_FEATURE_FLAGS: SteeringFeatureFlags = {
   policyFactsFirst: false,
   decisionBrief: false,
   criticMode: "off",
+  verificationLlmCritique: false,
 };
 
 export function resolveSteeringFeatureFlags(
@@ -42,5 +48,8 @@ export function resolveSteeringFeatureFlags(
     criticMode: STEERING_CRITIC_MODES.includes(criticMode)
       ? criticMode
       : "off",
+    verificationLlmCritique:
+      overrides.verificationLlmCritique ??
+      DEFAULT_STEERING_FEATURE_FLAGS.verificationLlmCritique,
   };
 }

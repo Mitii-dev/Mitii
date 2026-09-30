@@ -61,6 +61,8 @@ createMitiiClient({
 **V8 knobs:** ship bands in `policy/bands.ts` (edit via `pnpm policy-admin`). Local Custom: `mitii.v8LoopPolicy.*`.
 
 **Mutation critic:** `steering: { criticMode: "off" | "shadow" | "enforce" }` (default off).
+**Verification LLM critique:** `steering: { verificationLlmCritique: true }` (default off).
+Advisory only after the evidence gate — never overrides `decideVerificationGate`.
 
 ## Eval
 
