@@ -175,6 +175,10 @@ export {
 // ---------------------------------------------------------------------------
 export { createWorkspaceCheckpointStore } from './ports/checkpoints.js';
 export { createWorkspaceVerificationStore } from './ports/verificationRecords.js';
+export {
+  createTreeSitterVerificationSyntaxPort,
+  createOptionalVerificationSyntaxPort,
+} from './ports/verificationSyntax.js';
 export { createWorkspaceReviewStore } from './ports/reviewRecords.js';
 
 export {

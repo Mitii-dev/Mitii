@@ -27,6 +27,7 @@ import {
   createWorkspaceVerificationStore,
   createWorkspaceMemoryStore,
   createWorkspaceKnowledgeGraph,
+  createOptionalVerificationSyntaxPort,
   createHeuristicAdversary,
   detectSandboxBackend,
   getProviderPreset,
@@ -242,6 +243,9 @@ export async function createCliClient(options: {
       workspaceRoot: options.cwd,
     }),
     records: createWorkspaceVerificationStore(options.cwd),
+    ...(await createOptionalVerificationSyntaxPort().then((syntax) =>
+      syntax ? { syntax } : {},
+    )),
   });
   const repositoryState = new RepositoryStatePipeline({
     store: new InMemoryRepositoryStateStore(),

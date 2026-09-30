@@ -20,6 +20,18 @@ export type {
   MutationCriticResult,
   MutationCriticVerdict,
 } from "./evaluateMutationCritic";
+export {
+  parseVerificationCritique,
+  formatVerificationCritiqueWarnings,
+  VERIFICATION_CRITIQUE_DECISIONS,
+  VERIFICATION_CRITIQUE_SEVERITIES,
+} from "./parseVerificationCritique";
+export type {
+  VerificationCritiqueDecision,
+  VerificationCritiqueIssue,
+  VerificationCritiqueResult,
+  VerificationCritiqueSeverity,
+} from "./parseVerificationCritique";
 export { extractFileReadPaths } from "./extractFileReadPaths";
 export {
   requiresStructuredReviewFindings,
@@ -111,6 +123,10 @@ export {
   preflightDiagnosticsForUserRequest,
 } from "./shouldForcePreflightRepairLock";
 export { buildVerificationRepairPrompt } from "./buildVerificationRepairPrompt";
+export {
+  diagnosticSourceLineKey,
+  loadDiagnosticSourceLines,
+} from "./loadDiagnosticSourceLines";
 export { formatVerificationFailureAnswer, formatVerificationEvidence } from "./formatVerificationNarration";
 export { summarizeToolCall } from "./summarizeToolCall";
 export { truncateForEvent } from "./truncateForEvent";

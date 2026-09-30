@@ -47,7 +47,8 @@ export type {
   SqliteTextIndexModule, TextIndexSqliteDatabasePort, SourceImportKind,
   SourceLanguageId, SourceReferenceKind, TreeSitterRuntimeImport,
   TreeSitterRuntimeParseInput, TreeSitterRuntimeParseResult, TreeSitterRuntimePort,
-  TreeSitterRuntimeReference, TreeSitterRuntimeSymbol, RepositoryIndexFormat,
+  TreeSitterRuntimeReference, TreeSitterRuntimeSymbol, TreeSitterRuntimeSyntaxError,
+  RepositoryIndexFormat,
 } from "./modules/repository-state";
 export { RepositoryContextPipeline } from "./modules/repository-context";
 export {
@@ -152,7 +153,9 @@ export type {
   VerificationInput, VerificationResult, VerificationStatus,
   RepoBuildState, RepoBuildStateComparison, VerificationRecord,
   VerificationRecordStorePort, VerificationToolExecutorPort, VerificationManifestReaderPort,
+  VerificationSyntaxPort, VerificationSyntaxFinding,
 } from "./modules/verification";
+export { SYNTAX_PORT_EVIDENCE } from "./modules/verification";
 export {
   SkillsPipeline,
 } from "./modules/skills";

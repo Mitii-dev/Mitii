@@ -286,6 +286,7 @@ export async function finishAfterLoop(
           },
           evidence,
           windowPolicy,
+          signal: params.signal,
         });
         commitMutations(runtime, currentOutcome.mutationCheckpointIds, {
           runId,
@@ -378,6 +379,7 @@ export async function finishAfterLoop(
       },
       evidence,
       windowPolicy,
+      signal: params.signal,
     });
 
     const recordStatus: VerificationRecordStatus =

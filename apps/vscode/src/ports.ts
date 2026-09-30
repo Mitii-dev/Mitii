@@ -30,6 +30,7 @@ import {
   createWorkspaceCheckpointStore,
   createWorkspaceKnowledgeGraph,
   createWorkspaceVerificationStore,
+  createOptionalVerificationSyntaxPort,
   detectSandboxBackend,
   resolveMemoryEmbeddingPort,
   resolveProviderApiKey,
@@ -325,6 +326,9 @@ export async function createVscodeClient(
             workspaceRoot,
           }),
           records: createWorkspaceVerificationStore(workspaceRoot),
+          ...(await createOptionalVerificationSyntaxPort().then((syntax) =>
+            syntax ? { syntax } : {},
+          )),
         })
       : undefined;
 

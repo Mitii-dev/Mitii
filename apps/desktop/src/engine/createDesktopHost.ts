@@ -41,6 +41,7 @@ import {
   createWorkspaceKnowledgeGraph,
   createWorkspaceMemoryStore,
   createWorkspaceVerificationStore,
+  createOptionalVerificationSyntaxPort,
   detectSandboxBackend,
   getProviderPreset,
   inferHostProviderType,
@@ -326,6 +327,9 @@ export async function createHostDesktopClient(
       workspaceRoot: cwd,
     }),
     records: createWorkspaceVerificationStore(cwd),
+    ...(await createOptionalVerificationSyntaxPort().then((syntax) =>
+      syntax ? { syntax } : {},
+    )),
   });
   const repositoryState = new RepositoryStatePipeline({
     store: new InMemoryRepositoryStateStore(),
