@@ -536,6 +536,10 @@ function clampTurnOutput(
     contextWindowTokens: windowPolicy.contextWindowTokens,
     usedInputTokens,
     toolLoop: Boolean(turnRequest.tools && turnRequest.tools.length > 0),
+    // Answer-lock / no-tool turns drop the tool-loop ceiling; still must not
+    // exceed the provider's advertised max (DeepSeek/Ollama reject otherwise).
+    providerMaximumOutputTokens:
+      runtime.deps.llm.capabilities.maximumOutputTokens,
   });
   const previousOutputTokens =
     turnRequest.maximumOutputTokens ?? generationCeiling;
