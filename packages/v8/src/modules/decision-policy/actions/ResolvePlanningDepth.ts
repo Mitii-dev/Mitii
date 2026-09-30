@@ -8,7 +8,10 @@ import type {
   PlanningDepth,
 } from "../contracts";
 import { DECISION_POLICY_THRESHOLDS } from "../policy";
-import { isBroadSharedScopeRepair } from "./ClassifySharedScopeRepair";
+import {
+  isBroadSharedScopeRepair,
+  shouldRecommendChangeImpact,
+} from "./ClassifySharedScopeRepair";
 
 export interface PlanningDepthResolution {
   planningDepth: PlanningDepth;
@@ -26,6 +29,15 @@ export function resolvePlanningDepth(params: {
   const { taskAnalysis, intent } = understanding;
   const reasonCodes: DecisionReasonCode[] = [];
   const primary = intent.classification.primaryTaskIntent;
+
+  appendChangeImpactRecommend({
+    reasonCodes,
+    route,
+    primaryTaskIntent: primary,
+    taskAnalysis,
+    message,
+    windowPolicy: params.windowPolicy,
+  });
 
   if (
     route === "clarify" ||
@@ -62,13 +74,6 @@ export function resolvePlanningDepth(params: {
     } else {
       reasonCodes.push("large_implementation_visible_plan");
     }
-    if (
-      mode === "agent" &&
-      route === "execute" &&
-      isChangeImpactAffordable(params.windowPolicy)
-    ) {
-      reasonCodes.push("change_impact_recommended");
-    }
     return {
       planningDepth: isVisiblePlanAffordable(params.windowPolicy)
         ? "visible"
@@ -77,8 +82,6 @@ export function resolvePlanningDepth(params: {
     };
   }
 
-  // Agent execute on shared-scope repair: visible plan + checklist seed
-  // when the window can afford the extra prompt and turn.
   if (
     mode === "agent" &&
     route === "execute" &&
@@ -88,9 +91,6 @@ export function resolvePlanningDepth(params: {
       message,
     })
   ) {
-    if (isChangeImpactAffordable(params.windowPolicy)) {
-      reasonCodes.push("change_impact_recommended");
-    }
     if (isVisiblePlanAffordable(params.windowPolicy)) {
       reasonCodes.push("broad_repair_visible_plan");
       return { planningDepth: "visible", reasonCodes };
@@ -99,8 +99,6 @@ export function resolvePlanningDepth(params: {
     return { planningDepth: "internal", reasonCodes };
   }
 
-  // Long structured execute briefs → plan. Length alone never changes route
-  // (repository_answer); this only upgrades planningDepth on execute.
   if (mode === "agent" && route === "execute") {
     const longPrompt = resolveLongPromptPlanningDepth({
       message,
@@ -135,6 +133,32 @@ export function resolvePlanningDepth(params: {
   return { planningDepth: "none", reasonCodes };
 }
 
+function appendChangeImpactRecommend(params: {
+  reasonCodes: DecisionReasonCode[];
+  route: ExecutionRoute;
+  primaryTaskIntent: string;
+  taskAnalysis: RequestUnderstandingResult["taskAnalysis"];
+  message: string;
+  windowPolicy?: WindowPolicy;
+}): void {
+  if (!isChangeImpactAffordable(params.windowPolicy)) {
+    return;
+  }
+  if (
+    !shouldRecommendChangeImpact({
+      route: params.route,
+      primaryTaskIntent: params.primaryTaskIntent,
+      taskAnalysis: params.taskAnalysis,
+      message: params.message,
+    })
+  ) {
+    return;
+  }
+  if (!params.reasonCodes.includes("change_impact_recommended")) {
+    params.reasonCodes.push("change_impact_recommended");
+  }
+}
+
 function isSimpleLocalized(
   taskAnalysis: RequestUnderstandingResult["taskAnalysis"],
 ): boolean {
@@ -151,10 +175,6 @@ function isSimpleLocalized(
   return lowComplexity && localized && lowRisk && taskAnalysis.risk !== "critical";
 }
 
-/**
- * Large greenfield or full-package implementation that should not run as a
- * silent internal multi-file execute (e.g. "implement the entire package").
- */
 function isLargeImplementationScale(
   taskAnalysis: RequestUnderstandingResult["taskAnalysis"],
   primary: string,
@@ -217,8 +237,6 @@ function isArchitectureScale(
   ) {
     return true;
   }
-  // Explicit project/folder restructure is architecture-scale even when
-  // scope classifiers under-read "this project" as single_location.
   if (
     primary === "refactor" &&
     /\b(?:restructure|reorganize)\b/i.test(message) &&

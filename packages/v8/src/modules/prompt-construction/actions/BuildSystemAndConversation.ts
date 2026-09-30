@@ -281,16 +281,22 @@ function buildToolGuidance(decision: ExecutionDecision): string {
 
   if (CHANGE_IMPACT_TOOL_IDS.some((id) => grant.allowedTools.includes(id))) {
     lines.push(
-      "For blast-radius questions like what breaks, affected callers, or dependents of a change, use analyze_change_impact before broad text search.",
+      "For blast-radius questions like what breaks, affected callers, dependents, or shared type/interface changes, use analyze_change_impact before broad text search.",
     );
     if (
       decision.reasonCodes.includes("change_impact_recommended") ||
       decision.planningDepth === "visible"
     ) {
-      lines.push(
-        "Before the first mutating edit on shared or multi-file repair work, call analyze_change_impact on the primary seed path (file or symbol) and use the affected files to sequence patches.",
-        "Do not rely on reactive apply_patch loops alone for package-wide error cleanup.",
-      );
+      if (grant.maximumWorkspaceEffect === "write") {
+        lines.push(
+          "Before the first mutating edit on shared types/APIs, typecheck fan-out, or multi-file repair, call analyze_change_impact on the primary seed path (file or symbol) and use the affected files to sequence patches.",
+          "Do not rely on reactive apply_patch loops alone for package-wide error cleanup.",
+        );
+      } else {
+        lines.push(
+          "Prefer analyze_change_impact when analyzing who depends on a symbol, type, or file before answering with a file list from text search alone.",
+        );
+      }
     }
   }
 

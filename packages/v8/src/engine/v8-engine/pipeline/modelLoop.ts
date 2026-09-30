@@ -188,6 +188,23 @@ export async function runV8ModelLoop(
     overrides: pickV8ThresholdOverrides(params.thresholdOverrides),
   }).thresholds;
   const mustReadNudgeBudget = { remaining: thresholds.maxMustReadNudges };
+  const changeImpactRecommended = decision.reasonCodes.includes(
+    "change_impact_recommended",
+  );
+  const changeImpactGate = {
+    required:
+      changeImpactRecommended &&
+      decision.toolGrant.maximumWorkspaceEffect === "write",
+    satisfied: !(
+      changeImpactRecommended &&
+      decision.toolGrant.maximumWorkspaceEffect === "write"
+    ),
+  };
+  const changeImpactNudgeBudget = {
+    remaining: changeImpactGate.required
+      ? thresholds.maxChangeImpactNudges
+      : 0,
+  };
   const loopFileReads = createLoopFileReadTracker();
   const criticMode: SteeringCriticMode = params.criticMode ?? "off";
   const toolLoopGuard = new ToolLoopGuard({
@@ -602,6 +619,8 @@ export async function runV8ModelLoop(
         answer,
         toolLoopGuard,
         mustReadNudgeBudget,
+        changeImpactGate,
+        changeImpactNudgeBudget,
         loopFileReads,
       });
       if (settled.kind === "return") {

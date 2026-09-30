@@ -11,6 +11,7 @@ export type { PlanningDepthResolution } from "./ResolvePlanningDepth";
 export {
   isBroadSharedScopeRepair,
   shouldElevateSharedScopeRisk,
+  shouldRecommendChangeImpact,
 } from "./ClassifySharedScopeRepair";
 
 export { resolvePlanGate } from "./ResolvePlanGate";
