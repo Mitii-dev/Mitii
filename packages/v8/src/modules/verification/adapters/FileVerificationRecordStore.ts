@@ -1,5 +1,5 @@
-import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { lstat, mkdir, readFile, readdir, realpath, rename, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 
 import { verificationRecordSchema } from "../contracts";
 import type {
@@ -18,6 +18,7 @@ const LATEST_PREFIX = "latest-";
  *
  * Writes are atomic (temp file + rename). A per-workspace latest pointer
  * lets a later run reload the snapshot without scanning chat history.
+ * The leaf directory must be a real directory (not a symlink).
  */
 export class FileVerificationRecordStore
   implements VerificationRecordStorePort
@@ -32,19 +33,25 @@ export class FileVerificationRecordStore
         "FileVerificationRecordStore requires a non-empty directory.",
       );
     }
-    this.directory = trimmed;
+    this.directory = resolve(trimmed);
   }
 
   public async save(record: VerificationRecord): Promise<void> {
     const parsed = verificationRecordSchema.parse(record);
-    await mkdir(this.directory, { recursive: true });
-    await writeAtomic(this.pathFor(parsed.recordId), parsed);
+    const directory = await ensureSafeDirectory(this.directory);
+    await writeAtomic(join(directory, `${sanitizeId(parsed.recordId)}${RECORD_FILE_SUFFIX}`), parsed);
     if (parsed.workspaceId) {
-      await writeAtomic(this.latestPathFor(parsed.workspaceId), {
-        recordId: parsed.recordId,
-        updatedAt: parsed.updatedAt,
-        workspaceId: parsed.workspaceId,
-      });
+      await writeAtomic(
+        join(
+          directory,
+          `${LATEST_PREFIX}${sanitizeId(parsed.workspaceId)}${RECORD_FILE_SUFFIX}`,
+        ),
+        {
+          recordId: parsed.recordId,
+          updatedAt: parsed.updatedAt,
+          workspaceId: parsed.workspaceId,
+        },
+      );
     }
   }
 
@@ -77,11 +84,16 @@ export class FileVerificationRecordStore
     workspaceId: string,
   ): Promise<VerificationRecord | undefined> {
     let names: string[];
+    let directory: string;
     try {
-      names = await readdir(this.directory);
+      directory = await ensureSafeDirectory(this.directory);
+      names = await readdir(directory);
     } catch (error) {
       if (isNotFound(error)) {
         return undefined;
+      }
+      if (error instanceof VerificationError) {
+        throw error;
       }
       throw new VerificationError(
         "store_failed",
@@ -96,7 +108,7 @@ export class FileVerificationRecordStore
       if (!name.endsWith(RECORD_FILE_SUFFIX) || name.startsWith(LATEST_PREFIX)) {
         continue;
       }
-      const record = await readRecordFile(join(this.directory, name));
+      const record = await readRecordFile(join(directory, name));
       if (record?.workspaceId === workspaceId) {
         matches.push(record);
       }
@@ -121,12 +133,66 @@ export class FileVerificationRecordStore
   }
 }
 
+/**
+ * Ensure the store leaf is a real directory (not a symlink), then return its
+ * realpath for writes. Parent path aliases (e.g. macOS `/tmp`) are allowed.
+ */
+async function ensureSafeDirectory(directory: string): Promise<string> {
+  const absolute = resolve(directory);
+  try {
+    await mkdir(absolute, { recursive: true, mode: 0o700 });
+  } catch (error) {
+    if (!isExist(error)) {
+      throw new VerificationError(
+        "store_failed",
+        "Failed to create the verification record directory.",
+        {
+          cause: error instanceof Error ? error.message : String(error),
+        },
+      );
+    }
+  }
+
+  try {
+    const leaf = await lstat(absolute);
+    if (leaf.isSymbolicLink()) {
+      throw new VerificationError(
+        "store_failed",
+        "Verification record directory must not be a symbolic link.",
+        { cause: absolute },
+      );
+    }
+    if (!leaf.isDirectory()) {
+      throw new VerificationError(
+        "store_failed",
+        "Verification record path must be a directory.",
+        { cause: absolute },
+      );
+    }
+    return await realpath(absolute);
+  } catch (error) {
+    if (error instanceof VerificationError) {
+      throw error;
+    }
+    throw new VerificationError(
+      "store_failed",
+      "Failed to inspect the verification record directory.",
+      {
+        cause: error instanceof Error ? error.message : String(error),
+      },
+    );
+  }
+}
+
 async function writeAtomic(
   path: string,
   value: unknown,
 ): Promise<void> {
   const tempPath = `${path}${TEMP_FILE_SUFFIX}`;
-  await writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  await writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, {
+    encoding: "utf8",
+    mode: 0o600,
+  });
   await rename(tempPath, path);
 }
 
@@ -182,5 +248,14 @@ function isNotFound(error: unknown): boolean {
     error !== null &&
     "code" in error &&
     (error as { code?: unknown }).code === "ENOENT"
+  );
+}
+
+function isExist(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "EEXIST"
   );
 }
