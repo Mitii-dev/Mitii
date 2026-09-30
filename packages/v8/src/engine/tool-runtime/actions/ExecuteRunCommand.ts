@@ -4,6 +4,10 @@ import type { ProcessPort } from "../contracts";
 import { validateReadonlyCommand } from "../internal/CommandPolicy";
 import { sanitizeTextOutput } from "../internal/OutputSanitizer";
 import {
+  assertSoftNonMutatingCommand,
+  assertNoTempScriptWriteHelper,
+} from "../internal/softMutatingCommandGuard";
+import {
   runCommandInputSchema,
   runCommandOutputSchema,
 } from "../internal/ToolCatalog";
@@ -23,6 +27,8 @@ export async function executeRunCommand(params: {
   timeoutMs: number;
   maxOutputBytes: number;
   signal?: AbortSignal;
+  /** When true, apply soft file-edit heuristic (plan-mode defense). */
+  softBlockMutatingCommands?: boolean;
 }): Promise<{
   output: unknown;
   truncated: boolean;
@@ -61,6 +67,11 @@ export async function executeRunCommand(params: {
     argv: input.argv,
     commandRules: params.grant.commandRules,
   });
+  // Always block .tmp script write helpers — apply_patch is the mutation path.
+  assertNoTempScriptWriteHelper(validated.argv);
+  if (params.softBlockMutatingCommands === true) {
+    assertSoftNonMutatingCommand(validated.argv);
+  }
 
   const result = await params.process.execFile({
     argv: validated.argv,

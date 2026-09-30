@@ -1,3 +1,5 @@
+import * as path from "node:path";
+
 import type { ToolGrant } from "../../../modules/decision-policy";
 
 import type { WorkspaceFileSystemPort } from "../contracts";
@@ -11,10 +13,17 @@ import {
 } from "../internal/PathContainment";
 import { sanitizeTextOutput } from "../internal/OutputSanitizer";
 import { resolveSearchPattern } from "../internal/SearchPattern";
+import { shouldSkipSearchWalkEntry } from "../internal/SearchWalkIgnore";
 import {
   searchFilesInputSchema,
   searchFilesOutputSchema,
 } from "../internal/ToolCatalog";
+
+/**
+ * Safety stop for a workspace walk. The old 500-file preload returned
+ * empty matches for symbols that existed later in the tree.
+ */
+const MAX_SEARCH_FILES_VISITED = 20_000;
 
 export async function executeSearchFiles(params: {
   arguments: unknown;
@@ -40,47 +49,31 @@ export async function executeSearchFiles(params: {
   });
 
   const maxMatches = input.maxMatches ?? DEFAULT_MAX_SEARCH_MATCHES;
-  const files = await collectSearchFiles({
-    fileSystem: params.fileSystem,
-    contained,
-    workspaceRoot: params.workspaceRoot,
-  });
-
   const pattern = resolveSearchPattern({
     query: input.query,
     mode: input.mode,
     caseSensitive: input.caseSensitive,
   });
   const matches: Array<{ path: string; line: number; text: string }> = [];
-  let truncated = false;
-  let redacted = false;
   const warnings = pattern.warning ? [pattern.warning] : [];
 
-  for (const file of files) {
-    if (!isPathWithinGrant(file.relativePath, params.grant.pathScopes)) {
-      continue;
-    }
-    const lines = file.content.split(/\r?\n/);
-    for (let i = 0; i < lines.length; i += 1) {
-      const line = lines[i] ?? "";
-      if (!pattern.matches(line)) {
-        continue;
-      }
-      const sanitized = sanitizeTextOutput(line, 2_000);
-      redacted = redacted || sanitized.redacted;
-      matches.push({
-        path: file.relativePath,
-        line: i + 1,
-        text: sanitized.text,
-      });
-      if (matches.length >= maxMatches) {
-        truncated = true;
-        break;
-      }
-    }
-    if (truncated) {
-      break;
-    }
+  const rootStat = await params.fileSystem.lstat(contained.realPath);
+  const visit = await walkSearch({
+    fileSystem: params.fileSystem,
+    realPath: contained.realPath,
+    relativePath: contained.relativePath,
+    kind: rootStat.kind,
+    pathScopes: params.grant.pathScopes,
+    maxMatches,
+    matchesLine: (line) => pattern.matches(line),
+    matches,
+  });
+  const truncated = visit.truncated;
+  const redacted = visit.redacted;
+  if (visit.hitVisitCap) {
+    warnings.push(
+      `Search stopped after visiting ${MAX_SEARCH_FILES_VISITED} files. Pass a narrower path to keep looking.`,
+    );
   }
 
   const output = searchFilesOutputSchema.parse({
@@ -109,37 +102,110 @@ export async function executeSearchFiles(params: {
   return { output, truncated, redacted, warnings };
 }
 
-async function collectSearchFiles(params: {
+async function walkSearch(params: {
   fileSystem: WorkspaceFileSystemPort;
-  contained: { relativePath: string; realPath: string };
-  workspaceRoot: string;
-}): Promise<Array<{ relativePath: string; content: string }>> {
-  const stat = await params.fileSystem.lstat(params.contained.realPath);
-  if (stat.kind === "file") {
-    return fallbackReadSingle(params.fileSystem, params.contained);
-  }
-  if (params.fileSystem.readTextFilesUnder) {
-    return params.fileSystem.readTextFilesUnder(params.contained.realPath, {
-      workspaceRoot: params.workspaceRoot,
-      maxFiles: 500,
-      maxFileBytes: DEFAULT_MAX_SEARCH_FILE_BYTES,
-    });
-  }
-  return fallbackReadSingle(params.fileSystem, params.contained);
-}
+  realPath: string;
+  relativePath: string;
+  kind: "file" | "directory" | "symlink" | "other";
+  pathScopes: readonly string[];
+  maxMatches: number;
+  matchesLine: (line: string) => boolean;
+  matches: Array<{ path: string; line: number; text: string }>;
+}): Promise<{ filesVisited: number; truncated: boolean; redacted: boolean; hitVisitCap: boolean }> {
+  let filesVisited = 0;
+  let truncated = false;
+  let redacted = false;
+  let hitVisitCap = false;
 
-async function fallbackReadSingle(
-  fileSystem: WorkspaceFileSystemPort,
-  contained: { relativePath: string; realPath: string },
-): Promise<Array<{ relativePath: string; content: string }>> {
-  const stat = await fileSystem.lstat(contained.realPath);
-  if (stat.kind !== "file") {
-    return [];
+  const scanFile = async (realPath: string, relativePath: string): Promise<void> => {
+    if (params.matches.length >= params.maxMatches || hitVisitCap) {
+      return;
+    }
+    if (!isPathWithinGrant(relativePath, params.pathScopes)) {
+      return;
+    }
+    if (filesVisited >= MAX_SEARCH_FILES_VISITED) {
+      hitVisitCap = true;
+      truncated = true;
+      return;
+    }
+    const stat = await params.fileSystem.lstat(realPath);
+    if (stat.kind !== "file" || stat.sizeBytes > DEFAULT_MAX_SEARCH_FILE_BYTES) {
+      return;
+    }
+    filesVisited += 1;
+    const read = await params.fileSystem.readFile(realPath, {
+      maxBytes: DEFAULT_MAX_SEARCH_FILE_BYTES,
+    });
+    const lines = read.content.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i] ?? "";
+      if (!params.matchesLine(line)) {
+        continue;
+      }
+      const sanitized = sanitizeTextOutput(line, 2_000);
+      redacted = redacted || sanitized.redacted;
+      params.matches.push({
+        path: relativePath,
+        line: i + 1,
+        text: sanitized.text,
+      });
+      if (params.matches.length >= params.maxMatches) {
+        truncated = true;
+        return;
+      }
+    }
+  };
+
+  const walkDir = async (realPath: string, relativePath: string): Promise<void> => {
+    if (params.matches.length >= params.maxMatches || hitVisitCap) {
+      return;
+    }
+    let entries;
+    try {
+      entries = await params.fileSystem.listDirectory(realPath);
+    } catch {
+      return;
+    }
+    const ordered = [...entries].sort((left, right) =>
+      left.name.localeCompare(right.name),
+    );
+    for (const entry of ordered) {
+      if (params.matches.length >= params.maxMatches || hitVisitCap) {
+        return;
+      }
+      if (entry.name === ".git" || entry.name === "node_modules" || entry.kind === "symlink") {
+        continue;
+      }
+      const childReal = path.join(realPath, entry.name);
+      const childRelative =
+        relativePath === "." || relativePath === ""
+          ? entry.name
+          : `${relativePath.replace(/\/+$/, "")}/${entry.name}`;
+      if (
+        shouldSkipSearchWalkEntry({
+          name: entry.name,
+          relativePath: childRelative,
+          isDirectory: entry.kind === "directory",
+        })
+      ) {
+        continue;
+      }
+      if (entry.kind === "directory") {
+        await walkDir(childReal, childRelative);
+      } else if (entry.kind === "file") {
+        await scanFile(childReal, childRelative);
+      }
+    }
+  };
+
+  if (params.kind === "file") {
+    await scanFile(params.realPath, params.relativePath);
+  } else if (params.kind === "directory") {
+    await walkDir(params.realPath, params.relativePath);
   }
-  const read = await fileSystem.readFile(contained.realPath, {
-    maxBytes: DEFAULT_MAX_SEARCH_FILE_BYTES,
-  });
-  return [{ relativePath: contained.relativePath, content: read.content }];
+
+  return { filesVisited, truncated, redacted, hitVisitCap };
 }
 
 function isPathWithinGrant(

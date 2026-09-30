@@ -7,6 +7,7 @@ import type {
   VerificationDiagnostic,
   VerificationRecord,
 } from "../contracts";
+import { packDiagnosticsForModel } from "./NormalizeDiagnostics";
 
 /**
  * Deterministic user-facing verification summary. Counts and lists come from
@@ -116,11 +117,20 @@ function formatDiagnosticLines(
   if (diagnostics.length === 0) {
     return [];
   }
-  return diagnostics.slice(0, DEFAULT_SUMMARY_DIAGNOSTICS).map((diagnostic) => {
+  const packed = packDiagnosticsForModel({
+    diagnostics,
+    maxTotal: DEFAULT_SUMMARY_DIAGNOSTICS,
+    errorsOnly: true,
+  });
+  const lines = packed.diagnostics.map((diagnostic) => {
     const line = diagnostic.startLine ? `:${diagnostic.startLine}` : "";
     const code = diagnostic.code ? ` ${diagnostic.code}` : "";
     return `  ${label}: ${diagnostic.path}${line}${code} ${diagnostic.message.slice(0, 200)}`;
   });
+  if (packed.omittedCount > 0) {
+    lines.push(`  ${label}: …and ${packed.omittedCount} more omitted`);
+  }
+  return lines;
 }
 
 function diagnosticIdentityKey(diagnostic: VerificationDiagnostic): string {

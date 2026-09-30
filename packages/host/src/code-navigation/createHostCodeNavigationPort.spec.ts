@@ -48,6 +48,7 @@ describe('createHostCodeNavigationPort', () => {
         line: 6,
       });
       expect(locations[0]?.symbolName).toBe('validateJwt');
+      expect(port.provider).toBe('repo_graph');
     } finally {
       await rm(workspaceRoot, { recursive: true, force: true });
     }

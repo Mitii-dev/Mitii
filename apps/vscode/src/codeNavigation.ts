@@ -7,13 +7,29 @@ import type {
   CodeNavigationQuery,
   CodeNavigationWorkspaceQuery,
 } from '@mitii/v8';
-import { CODE_NAVIGATION_OPERATIONS } from '@mitii/v8';
+
+type CodeNavigationCallOptions = { signal?: AbortSignal };
+import {
+  CODE_NAVIGATION_OPERATIONS,
+  CODE_NAVIGATION_POLICY,
+  createRequestLimiter,
+} from '@mitii/v8';
 import type * as vscode from 'vscode';
 
 export function createVsCodeCodeNavigationPort(
   vs: typeof vscode,
   workspaceRoot: string,
 ): CodeNavigationPort {
+  const limit = createRequestLimiter({
+    limit: CODE_NAVIGATION_POLICY.requestLimit,
+    timeoutMs: CODE_NAVIGATION_POLICY.requestTimeoutMs,
+  });
+
+  const run = <T>(
+    creator: () => Thenable<T> | Promise<T>,
+    signal?: AbortSignal,
+  ): Promise<T> => limit(() => Promise.resolve(creator()), signal);
+
   return {
     id: 'vscode-language-server',
     provider: 'language_server',
@@ -25,33 +41,85 @@ export function createVsCodeCodeNavigationPort(
         operations: CODE_NAVIGATION_OPERATIONS,
       };
     },
-    definition: async (input: CodeNavigationQuery) => {
-      const locations = await vs.commands.executeCommand<
-        readonly vscode.Location[] | undefined
-      >(
-        'vscode.executeDefinitionProvider',
-        toUri(workspaceRoot, input.relativePath, vs),
-        toPosition(input.line, input.column, vs),
-      );
-      return mapLocations(locations, workspaceRoot);
+    prepare: async (
+      relativePath: string,
+      options?: CodeNavigationCallOptions,
+    ) => {
+      try {
+        await run(
+          () =>
+            vs.workspace.openTextDocument(
+              toUri(workspaceRoot, relativePath, vs),
+            ),
+          options?.signal,
+        );
+      } catch {
+        // Missing files stay empty; navigation will report no_locations.
+      }
     },
-    references: async (input: CodeNavigationQuery) => {
-      const locations = await vs.commands.executeCommand<
-        readonly vscode.Location[] | undefined
-      >(
-        'vscode.executeReferenceProvider',
-        toUri(workspaceRoot, input.relativePath, vs),
-        toPosition(input.line, input.column, vs),
+    definition: async (
+      input: CodeNavigationQuery,
+      options?: CodeNavigationCallOptions,
+    ) => {
+      const locations = await run(
+        () =>
+          vs.commands.executeCommand<
+            readonly (vscode.Location | vscode.LocationLink)[] | undefined
+          >(
+            'vscode.executeDefinitionProvider',
+            toUri(workspaceRoot, input.relativePath, vs),
+            toPosition(input.line, input.column, vs),
+          ),
+        options?.signal,
       );
-      return mapLocations(locations, workspaceRoot);
+      return mapLocations(locations, workspaceRoot, vs);
     },
-    hover: async (input: CodeNavigationQuery) => {
-      const hovers = await vs.commands.executeCommand<
-        readonly vscode.Hover[] | undefined
-      >(
-        'vscode.executeHoverProvider',
-        toUri(workspaceRoot, input.relativePath, vs),
-        toPosition(input.line, input.column, vs),
+    typeDefinition: async (
+      input: CodeNavigationQuery,
+      options?: CodeNavigationCallOptions,
+    ) => {
+      const locations = await run(
+        () =>
+          vs.commands.executeCommand<
+            readonly (vscode.Location | vscode.LocationLink)[] | undefined
+          >(
+            'vscode.executeTypeDefinitionProvider',
+            toUri(workspaceRoot, input.relativePath, vs),
+            toPosition(input.line, input.column, vs),
+          ),
+        options?.signal,
+      );
+      return mapLocations(locations, workspaceRoot, vs);
+    },
+    references: async (
+      input: CodeNavigationQuery,
+      options?: CodeNavigationCallOptions,
+    ) => {
+      const locations = await run(
+        () =>
+          vs.commands.executeCommand<
+            readonly (vscode.Location | vscode.LocationLink)[] | undefined
+          >(
+            'vscode.executeReferenceProvider',
+            toUri(workspaceRoot, input.relativePath, vs),
+            toPosition(input.line, input.column, vs),
+          ),
+        options?.signal,
+      );
+      return mapLocations(locations, workspaceRoot, vs);
+    },
+    hover: async (
+      input: CodeNavigationQuery,
+      options?: CodeNavigationCallOptions,
+    ) => {
+      const hovers = await run(
+        () =>
+          vs.commands.executeCommand<readonly vscode.Hover[] | undefined>(
+            'vscode.executeHoverProvider',
+            toUri(workspaceRoot, input.relativePath, vs),
+            toPosition(input.line, input.column, vs),
+          ),
+        options?.signal,
       );
       const contents = hovers
         ?.flatMap((hover) => hover.contents)
@@ -60,53 +128,93 @@ export function createVsCodeCodeNavigationPort(
         .join('\n\n');
       return contents ? { contents } : undefined;
     },
-    documentSymbols: async (input: CodeNavigationDocumentQuery) => {
-      const symbols = await vs.commands.executeCommand<
-        readonly vscode.DocumentSymbol[] | readonly vscode.SymbolInformation[] | undefined
-      >(
-        'vscode.executeDocumentSymbolProvider',
-        toUri(workspaceRoot, input.relativePath, vs),
+    documentSymbols: async (
+      input: CodeNavigationDocumentQuery,
+      options?: CodeNavigationCallOptions,
+    ) => {
+      const symbols = await run(
+        () =>
+          vs.commands.executeCommand<
+            | readonly vscode.DocumentSymbol[]
+            | readonly vscode.SymbolInformation[]
+            | undefined
+          >(
+            'vscode.executeDocumentSymbolProvider',
+            toUri(workspaceRoot, input.relativePath, vs),
+          ),
+        options?.signal,
       );
       return flattenDocumentSymbols(symbols, input.relativePath, workspaceRoot);
     },
-    workspaceSymbols: async (input: CodeNavigationWorkspaceQuery) => {
-      const symbols = await vs.commands.executeCommand<
-        readonly vscode.SymbolInformation[] | undefined
-      >('vscode.executeWorkspaceSymbolProvider', input.query);
+    workspaceSymbols: async (
+      input: CodeNavigationWorkspaceQuery,
+      options?: CodeNavigationCallOptions,
+    ) => {
+      const symbols = await run(
+        () =>
+          vs.commands.executeCommand<
+            readonly vscode.SymbolInformation[] | undefined
+          >('vscode.executeWorkspaceSymbolProvider', input.query),
+        options?.signal,
+      );
       return mapSymbolInformation(symbols, workspaceRoot);
     },
-    implementation: async (input: CodeNavigationQuery) => {
-      const locations = await vs.commands.executeCommand<
-        readonly vscode.Location[] | undefined
-      >(
-        'vscode.executeImplementationProvider',
-        toUri(workspaceRoot, input.relativePath, vs),
-        toPosition(input.line, input.column, vs),
+    implementation: async (
+      input: CodeNavigationQuery,
+      options?: CodeNavigationCallOptions,
+    ) => {
+      const locations = await run(
+        () =>
+          vs.commands.executeCommand<
+            readonly (vscode.Location | vscode.LocationLink)[] | undefined
+          >(
+            'vscode.executeImplementationProvider',
+            toUri(workspaceRoot, input.relativePath, vs),
+            toPosition(input.line, input.column, vs),
+          ),
+        options?.signal,
       );
-      return mapLocations(locations, workspaceRoot);
+      return mapLocations(locations, workspaceRoot, vs);
     },
-    callHierarchy: async (input: CodeNavigationQuery) => {
-      const items = await vs.commands.executeCommand<
-        readonly vscode.CallHierarchyItem[] | undefined
-      >(
-        'vscode.prepareCallHierarchy',
-        toUri(workspaceRoot, input.relativePath, vs),
-        toPosition(input.line, input.column, vs),
+    callHierarchy: async (
+      input: CodeNavigationQuery,
+      options?: CodeNavigationCallOptions,
+    ) => {
+      const items = await run(
+        () =>
+          vs.commands.executeCommand<
+            readonly vscode.CallHierarchyItem[] | undefined
+          >(
+            'vscode.prepareCallHierarchy',
+            toUri(workspaceRoot, input.relativePath, vs),
+            toPosition(input.line, input.column, vs),
+          ),
+        options?.signal,
       );
       const root = items?.[0];
       if (!root) return [];
       if ((input.direction ?? 'outgoing') === 'incoming') {
-        const calls = await vs.commands.executeCommand<
-          readonly vscode.CallHierarchyIncomingCall[] | undefined
-        >('vscode.provideIncomingCalls', root);
+        const calls = await run(
+          () =>
+            vs.commands.executeCommand<
+              readonly vscode.CallHierarchyIncomingCall[] | undefined
+            >('vscode.provideIncomingCalls', root),
+          options?.signal,
+        );
         return (calls ?? []).flatMap((call) =>
           mapHierarchyItem(call.from, workspaceRoot),
         );
       }
-      const calls = await vs.commands.executeCommand<
-        readonly vscode.CallHierarchyOutgoingCall[] | undefined
-      >('vscode.provideOutgoingCalls', root);
-      return (calls ?? []).flatMap((call) => mapHierarchyItem(call.to, workspaceRoot));
+      const calls = await run(
+        () =>
+          vs.commands.executeCommand<
+            readonly vscode.CallHierarchyOutgoingCall[] | undefined
+          >('vscode.provideOutgoingCalls', root),
+        options?.signal,
+      );
+      return (calls ?? []).flatMap((call) =>
+        mapHierarchyItem(call.to, workspaceRoot),
+      );
     },
   };
 }
@@ -129,9 +237,26 @@ function toPosition(
   return new vs.Position(Math.max(0, line - 1), Math.max(0, column - 1));
 }
 
+function isLocationLink(
+  value: vscode.Location | vscode.LocationLink,
+): value is vscode.LocationLink {
+  return 'targetUri' in value;
+}
+
+/** Normalize Location | LocationLink the way IDE providers actually return them. */
+function toLocation(
+  value: vscode.Location | vscode.LocationLink,
+  vs: typeof vscode,
+): vscode.Location {
+  return isLocationLink(value)
+    ? new vs.Location(value.targetUri, value.targetRange)
+    : value;
+}
+
 function mapLocations(
-  locations: readonly vscode.Location[] | undefined,
+  locations: readonly (vscode.Location | vscode.LocationLink)[] | undefined,
   workspaceRoot: string,
+  vs: typeof vscode,
 ): Array<{
   relativePath: string;
   startLine: number;
@@ -141,7 +266,8 @@ function mapLocations(
 }> {
   if (!locations?.length) return [];
   const mapped = [];
-  for (const location of locations) {
+  for (const entry of locations) {
+    const location = toLocation(entry, vs);
     if (location.uri.scheme !== 'file') continue;
     const relativePath = relative(workspaceRoot, location.uri.fsPath).replace(
       /\\/g,
@@ -178,7 +304,10 @@ function mapHierarchyItem(
   symbolKind?: string;
 }> {
   if (item.uri.scheme !== 'file') return [];
-  const relativePath = relative(workspaceRoot, item.uri.fsPath).replace(/\\/g, '/');
+  const relativePath = relative(workspaceRoot, item.uri.fsPath).replace(
+    /\\/g,
+    '/',
+  );
   if (!relativePath || relativePath.startsWith('../') || relativePath === '..') {
     return [];
   }
@@ -255,10 +384,10 @@ function mapSymbolInformation(
   const mapped = [];
   for (const symbol of symbols) {
     if (symbol.location.uri.scheme !== 'file') continue;
-    const relativePath = relative(workspaceRoot, symbol.location.uri.fsPath).replace(
-      /\\/g,
-      '/',
-    );
+    const relativePath = relative(
+      workspaceRoot,
+      symbol.location.uri.fsPath,
+    ).replace(/\\/g, '/');
     if (!relativePath || relativePath.startsWith('../') || relativePath === '..') {
       continue;
     }

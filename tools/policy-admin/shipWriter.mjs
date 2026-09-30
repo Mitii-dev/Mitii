@@ -9,6 +9,8 @@ export const LOOP_REL =
   'packages/v8/src/engine/agent-engine/policy/loopPolicyBands.ts';
 export const WINDOW_REL =
   'packages/v8/src/modules/window-budget/windowBudgetBands.ts';
+export const V8_LOOP_REL =
+  'packages/v8/src/engine/v8-engine/policy/bands.ts';
 
 const BAND_META = {
   compact: {
@@ -272,12 +274,109 @@ export function listWindowBudgetBands(): readonly WindowBudgetBandDefinition[] {
 export function writeShipBandSources({ monorepoRoot, tables }) {
   const loopPath = join(monorepoRoot, LOOP_REL);
   const windowPath = join(monorepoRoot, WINDOW_REL);
-  if (!existsSync(loopPath) || !existsSync(windowPath)) {
+  const v8Path = join(monorepoRoot, V8_LOOP_REL);
+  if (!existsSync(loopPath) || !existsSync(windowPath) || !existsSync(v8Path)) {
     throw new Error(`Ship band sources not found under ${monorepoRoot}`);
   }
   writeFileSync(loopPath, renderLoopPolicyBandsSource(tables), 'utf8');
   writeFileSync(windowPath, renderWindowBudgetBandsSource(tables), 'utf8');
-  return { monorepoRoot, loopPath, windowPath };
+  writeFileSync(v8Path, renderV8EngineBandsSource(tables), 'utf8');
+  return { monorepoRoot, loopPath, windowPath, v8Path };
+}
+
+export function renderV8EngineBandsSource(tables) {
+  const entries = ['compact', 'standard', 'wide']
+    .map((band) =>
+      renderBandEntry(
+        band,
+        tables.v8Loop?.[band] ?? {},
+        'Empty on purpose: base `V8_ENGINE_THRESHOLDS` are the standard band.',
+      ),
+    )
+    .join('\n');
+
+  return `import type { V8EngineThresholdsOverrides } from "../policy";
+import { resolveV8EngineThresholds, type V8EngineThresholds } from "../policy";
+
+/**
+ * Window bands for shipped v8-engine knobs.
+ * Same cutoffs as loop/window policy (compact < 50k, standard < 100k, else wide).
+ * Edit via \`pnpm policy-admin\` or this file.
+ */
+export const V8_ENGINE_BANDS = ["compact", "standard", "wide"] as const;
+export type V8EngineBand = (typeof V8_ENGINE_BANDS)[number];
+
+export const V8_ENGINE_BAND_CEILINGS = {
+  compactMaxExclusive: 50_000,
+  standardMaxExclusive: 100_000,
+} as const;
+
+export interface V8EngineBandDefinition {
+  id: V8EngineBand;
+  label: string;
+  rangeLabel: string;
+  overrides: V8EngineThresholdsOverrides;
+}
+
+export const V8_ENGINE_BAND_TABLE: Record<
+  V8EngineBand,
+  V8EngineBandDefinition
+> = {
+${entries}
+};
+
+export function resolveV8EngineBand(
+  contextWindowTokens: number,
+): V8EngineBand {
+  const w = Math.floor(contextWindowTokens);
+  if (!Number.isFinite(w) || w < V8_ENGINE_BAND_CEILINGS.compactMaxExclusive) {
+    return "compact";
+  }
+  if (w < V8_ENGINE_BAND_CEILINGS.standardMaxExclusive) {
+    return "standard";
+  }
+  return "wide";
+}
+
+export function v8EngineBandDefinition(
+  band: V8EngineBand,
+): V8EngineBandDefinition {
+  return V8_ENGINE_BAND_TABLE[band];
+}
+
+export function listV8EngineBands(): readonly V8EngineBandDefinition[] {
+  return V8_ENGINE_BANDS.map((id) => V8_ENGINE_BAND_TABLE[id]);
+}
+
+export type ResolveV8LoopPolicyInput = {
+  contextWindowTokens: number;
+  overrides?: V8EngineThresholdsOverrides;
+};
+
+export type ResolvedV8LoopPolicy = {
+  band: V8EngineBand;
+  contextWindowTokens: number;
+  thresholds: V8EngineThresholds;
+};
+
+/**
+ * Merge order: V8_ENGINE_THRESHOLDS → band overrides → optional host Custom.
+ */
+export function resolveV8LoopPolicyThresholds(
+  input: ResolveV8LoopPolicyInput,
+): ResolvedV8LoopPolicy {
+  const band = resolveV8EngineBand(input.contextWindowTokens);
+  const bandOverrides = V8_ENGINE_BAND_TABLE[band].overrides;
+  return {
+    band,
+    contextWindowTokens: input.contextWindowTokens,
+    thresholds: resolveV8EngineThresholds({
+      ...bandOverrides,
+      ...(input.overrides ?? {}),
+    }),
+  };
+}
+`;
 }
 
 export function deltasFromBase(values, base) {

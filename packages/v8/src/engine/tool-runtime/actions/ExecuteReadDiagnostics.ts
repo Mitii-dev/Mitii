@@ -3,6 +3,11 @@ import type { ToolGrant } from "../../../modules/decision-policy";
 import type { DiagnosticsPort, WorkspaceFileSystemPort } from "../contracts";
 import { ToolRuntimeError } from "../contracts";
 import {
+  DEFAULT_DIAGNOSTICS_SETTLE_POLL_MS,
+  DEFAULT_DIAGNOSTICS_SETTLE_STABLE_READS,
+  DEFAULT_DIAGNOSTICS_SETTLE_TIMEOUT_MS,
+} from "../defaults";
+import {
   PathContainmentError,
   resolveContainedPath,
 } from "../internal/PathContainment";
@@ -10,6 +15,7 @@ import {
   readDiagnosticsInputSchema,
   readDiagnosticsOutputSchema,
 } from "../internal/ToolCatalog";
+import { settleDiagnosticsPort } from "./collectPostEditDiagnostics";
 
 export async function executeReadDiagnostics(params: {
   arguments: unknown;
@@ -17,6 +23,7 @@ export async function executeReadDiagnostics(params: {
   workspaceRoot: string;
   fileSystem: WorkspaceFileSystemPort;
   diagnostics?: DiagnosticsPort;
+  signal?: AbortSignal;
 }): Promise<{
   output: unknown;
   truncated: boolean;
@@ -69,6 +76,21 @@ export async function executeReadDiagnostics(params: {
       redacted: false,
       warnings: deniedWarnings,
     };
+  }
+
+  // IDE hosts need a settle window so LSP updates land before we snapshot.
+  // Synchronous adapters no-op quickly via settleDiagnosticsPort.
+  try {
+    await settleDiagnosticsPort(params.diagnostics, {
+      workspaceRoot: params.workspaceRoot,
+      paths: input.paths ? scopedPaths : undefined,
+      timeoutMs: DEFAULT_DIAGNOSTICS_SETTLE_TIMEOUT_MS,
+      pollIntervalMs: DEFAULT_DIAGNOSTICS_SETTLE_POLL_MS,
+      stableReads: DEFAULT_DIAGNOSTICS_SETTLE_STABLE_READS,
+      signal: params.signal,
+    });
+  } catch {
+    // Settle failures must not block the read — stale is better than empty.
   }
 
   const diagnostics = await params.diagnostics.readDiagnostics({

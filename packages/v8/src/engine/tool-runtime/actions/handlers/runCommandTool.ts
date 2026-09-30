@@ -43,6 +43,7 @@ export const runCommandTool: RegisteredTool = {
       timeoutMs: ctx.timeoutMs,
       maxOutputBytes: ctx.maxOutputBytes,
       signal: ctx.signal,
+      softBlockMutatingCommands: ctx.softBlockMutatingCommands,
     });
     return {
       ...result,

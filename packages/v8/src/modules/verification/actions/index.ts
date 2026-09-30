@@ -13,7 +13,7 @@ export type { SelectProportionalChecksResult } from "./SelectProportionalChecks"
 export { executeChecks } from "./ExecuteChecks";
 export type { ExecuteChecksResult } from "./ExecuteChecks";
 
-export { normalizeDiagnostics } from "./NormalizeDiagnostics";
+export { normalizeDiagnostics, packDiagnosticsForModel } from "./NormalizeDiagnostics";
 
 export { inspectDiffAndStaleRisk } from "./InspectDiffAndStaleRisk";
 export type { InspectDiffAndStaleRiskResult } from "./InspectDiffAndStaleRisk";

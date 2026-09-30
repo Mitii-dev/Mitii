@@ -23,12 +23,19 @@ export interface SelectProportionalChecksResult {
  * Decision Policy `tests` evidence is satisfied by typecheck / unit scripts
  * instead (see EVIDENCE_TO_CHECK). Explicit "run the e2e suite" asks use
  * agent tools, not this proportional verifier.
+ *
+ * Package-scoped tests: when changed files live under `apps/` or `packages/`,
+ * only run `test` checks for those touched packages. A vscode settings paste
+ * must never drag in `packages/v8:test` unless `packages/v8` was edited and
+ * tests evidence was required.
  */
 export function selectProportionalChecks(params: {
   candidates: readonly DiscoveredCheckCandidate[];
   verification: VerificationRequirement;
   changeScope: VerificationChangeScope;
   maxChecks?: number;
+  /** Workspace-relative paths mutated this turn (package-touch filter). */
+  changedFiles?: readonly string[];
 }): SelectProportionalChecksResult {
   const requiredKinds = new Set<VerificationCheckKind>();
   for (const evidence of params.verification.minimumEvidence) {
@@ -37,10 +44,22 @@ export function selectProportionalChecks(params: {
     }
   }
 
+  const changedFiles = params.changedFiles ?? [];
+  const touchedPackageRoots = packageRootsFromChangedFiles(changedFiles);
+
   const byPriority = [...params.candidates].sort((a, b) => {
     const aRequired = requiredKinds.has(a.kind) ? 0 : 1;
     const bRequired = requiredKinds.has(b.kind) ? 0 : 1;
     if (aRequired !== bRequired) return aRequired - bRequired;
+    // Prefer checks that touch the changed package over sibling packages.
+    const aTouch = packageTouchRank(a, touchedPackageRoots);
+    const bTouch = packageTouchRank(b, touchedPackageRoots);
+    if (aTouch !== bTouch) return aTouch - bTouch;
+    // Prefer package/inferred projects over workspace-root so localized
+    // one-per-kind selection keeps the check that matches changed files.
+    const aScope = projectScopeRank(a);
+    const bScope = projectScopeRank(b);
+    if (aScope !== bScope) return aScope - bScope;
     // Prefer non-browser tests ahead of e2e when both are candidates.
     if (a.kind === "test" && b.kind === "test") {
       const aE2e = isBrowserE2eCandidate(a) ? 1 : 0;
@@ -52,10 +71,14 @@ export function selectProportionalChecks(params: {
     );
   });
 
-  // Localized: one check per kind; broader scopes may keep multiple projects.
+  // Localized/module: one check per kind even when that kind is required —
+  // otherwise workspace-root + inferred typecheck both run and root noise
+  // reopens verification repair after the package check already passed.
   const selected: DiscoveredCheckCandidate[] = [];
   const seenKinds = new Set<VerificationCheckKind>();
   const omitted: DiscoveredCheckCandidate[] = [];
+  const narrowScope =
+    params.changeScope === "localized" || params.changeScope === "module";
 
   for (const candidate of byPriority) {
     if (candidate.kind === "test" && !requiredKinds.has("test")) {
@@ -66,15 +89,22 @@ export function selectProportionalChecks(params: {
       omitted.push(candidate);
       continue;
     }
+    if (
+      isUnrelatedPackageCandidate({
+        candidate,
+        touchedPackageRoots,
+        kind: candidate.kind,
+        narrowScope,
+      })
+    ) {
+      omitted.push(candidate);
+      continue;
+    }
     if (selected.length >= (params.maxChecks ?? DEFAULT_MAX_CHECKS)) {
       omitted.push(candidate);
       continue;
     }
-    if (
-      (params.changeScope === "localized" || params.changeScope === "module") &&
-      seenKinds.has(candidate.kind) &&
-      !requiredKinds.has(candidate.kind)
-    ) {
+    if (narrowScope && seenKinds.has(candidate.kind)) {
       omitted.push(candidate);
       continue;
     }
@@ -95,4 +125,144 @@ export function isBrowserE2eCandidate(
     ...(candidate.argv ?? []),
   ].join(" ");
   return BROWSER_E2E_TEST_PATTERN.test(haystack);
+}
+
+/**
+ * Lower rank is preferred. Package/inferred checks beat workspace-root so a
+ * single typecheck slot covers the changed package, not the monorepo root.
+ */
+export function projectScopeRank(candidate: DiscoveredCheckCandidate): number {
+  const projectId = (candidate.projectId ?? "").replace(/\\/g, "/");
+  const checkId = candidate.checkId.replace(/\\/g, "/");
+  if (
+    projectId.startsWith("inferred:") ||
+    checkId.startsWith("inferred:") ||
+    /^(apps|packages)\//.test(projectId)
+  ) {
+    return 0;
+  }
+  if (isWorkspaceRootCandidate(candidate)) {
+    return 2;
+  }
+  return 1;
+}
+
+/**
+ * Extract `apps/<name>` / `packages/<name>` roots from changed paths.
+ */
+export function packageRootsFromChangedFiles(
+  changedFiles: readonly string[],
+): string[] {
+  const roots = new Set<string>();
+  for (const file of changedFiles) {
+    const root = packageRootFromPath(file);
+    if (root) {
+      roots.add(root);
+    }
+  }
+  return [...roots];
+}
+
+/**
+ * Project root for a candidate (`apps/vscode`, `packages/v8`, …), or
+ * undefined for workspace-root / unknown.
+ */
+export function packageRootFromCandidate(
+  candidate: DiscoveredCheckCandidate,
+): string | undefined {
+  const fromProject = packageRootFromPath(
+    (candidate.projectId ?? "").replace(/^inferred:/, ""),
+  );
+  if (fromProject) {
+    return fromProject;
+  }
+  const checkId = candidate.checkId.replace(/\\/g, "/").replace(/^inferred:/, "");
+  return packageRootFromPath(checkId);
+}
+
+function packageRootFromPath(path: string): string | undefined {
+  const normalized = path.replace(/\\/g, "/").replace(/^\.\//, "");
+  const match = /^(apps|packages)\/[^/]+/.exec(normalized);
+  return match?.[0];
+}
+
+/**
+ * 0 = candidate package is among touched roots, 1 = unknown/workspace-root,
+ * 2 = different apps/packages sibling (demote hard).
+ */
+function packageTouchRank(
+  candidate: DiscoveredCheckCandidate,
+  touchedPackageRoots: readonly string[],
+): number {
+  if (touchedPackageRoots.length === 0) {
+    return 1;
+  }
+  const root = packageRootFromCandidate(candidate);
+  if (!root) {
+    return 1;
+  }
+  return touchedPackageRoots.some((touched) => packageRootsOverlap(root, touched))
+    ? 0
+    : 2;
+}
+
+/**
+ * Drop checks that belong to a sibling package the change did not touch.
+ *
+ * - `test`: always package-scoped when any `apps/`/`packages/` file changed.
+ * - Other kinds: same rule on narrow scopes so a vscode paste does not run
+ *   `packages/v8` typecheck/lint just because that package has scripts.
+ * - Workspace-root `test` is omitted when package-local changes exist.
+ */
+function isUnrelatedPackageCandidate(params: {
+  candidate: DiscoveredCheckCandidate;
+  touchedPackageRoots: readonly string[];
+  kind: VerificationCheckKind;
+  narrowScope: boolean;
+}): boolean {
+  const { candidate, touchedPackageRoots, kind, narrowScope } = params;
+  if (touchedPackageRoots.length === 0) {
+    return false;
+  }
+
+  const enforce =
+    kind === "test" ||
+    (narrowScope &&
+      (kind === "typecheck" ||
+        kind === "lint" ||
+        kind === "format" ||
+        kind === "build" ||
+        kind === "syntax"));
+  if (!enforce) {
+    return false;
+  }
+
+  const root = packageRootFromCandidate(candidate);
+  if (!root) {
+    // Workspace-root / unknown: never run root tests for package-local edits.
+    return kind === "test";
+  }
+
+  return !touchedPackageRoots.some((touched) =>
+    packageRootsOverlap(root, touched),
+  );
+}
+
+function packageRootsOverlap(a: string, b: string): boolean {
+  return a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
+}
+
+function isWorkspaceRootCandidate(candidate: DiscoveredCheckCandidate): boolean {
+  const projectId = (candidate.projectId ?? "").toLowerCase();
+  if (
+    projectId === "workspace-root" ||
+    projectId === "root" ||
+    projectId === "."
+  ) {
+    return true;
+  }
+  const checkId = candidate.checkId.toLowerCase();
+  return (
+    checkId.startsWith("workspace-root:") || checkId.startsWith("root:")
+  );
 }

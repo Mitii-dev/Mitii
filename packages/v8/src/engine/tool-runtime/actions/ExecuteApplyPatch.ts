@@ -46,6 +46,7 @@ export async function executeApplyPatch(params: {
       patches: parsed.patches,
       dirtyPaths: params.dirtyPaths,
       alreadyMutatedPaths: params.alreadyMutatedPaths,
+      dryRun: parsed.dryRun === true,
     });
     return {
       output: result,

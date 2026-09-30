@@ -74,3 +74,9 @@ export type {
   AssembledFragments,
   AssembledFragmentOmission,
 } from "./internal/fragments";
+
+/** Bridge maps (Phase 9.2) — context → prompt slice / instruction merge. */
+export {
+  mapContextToPromptSlice,
+  mergePromptInstructions,
+} from "./actions";

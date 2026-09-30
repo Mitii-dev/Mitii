@@ -109,11 +109,20 @@ function selectProfile(
     return "standard";
   }
 
+  // Pasted failures are bugfixes that recommend a plan because the prompt
+  // is long. Planning alone must not force the tight batch profile — that
+  // stalled on a single file while the rest of the failures were unread.
+  // A large estimated file span still uses tight.
+  const planningForcesTight =
+    taskAnalysis.recommendsPlanning === true && primary !== "bugfix";
+  const complexityForcesTight =
+    tightScope && tightComplexity && primary !== "bugfix";
+
   if (
     primary === "refactor" ||
     largeFileSpan ||
-    (tightScope && tightComplexity) ||
-    taskAnalysis.recommendsPlanning
+    complexityForcesTight ||
+    planningForcesTight
   ) {
     return "tight";
   }

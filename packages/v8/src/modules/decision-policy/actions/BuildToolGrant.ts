@@ -24,7 +24,10 @@ import {
   DEFAULT_VERIFICATION_COMMAND_PREFIXES,
 } from "./BuildVerificationGrant";
 import { resolveMutationBudget } from "./ResolveMutationBudget";
-import { shouldElevateSharedScopeRisk } from "./ClassifySharedScopeRepair";
+import {
+  shouldElevateSharedScopeRisk,
+  shouldRecommendChangeImpact,
+} from "./ClassifySharedScopeRepair";
 import { looksLikeCodeReviewRequest } from "./ResolveRoute";
 
 export interface ToolGrantResolution {
@@ -165,9 +168,17 @@ export function buildToolGrant(params: {
   ) {
     risk = "medium";
     reasonCodes.push("shared_scope_risk_elevated");
-    if (changeImpactAffordable) {
-      reasonCodes.push("change_impact_recommended");
-    }
+  }
+  if (
+    changeImpactAffordable &&
+    shouldRecommendChangeImpact({
+      route: "execute",
+      primaryTaskIntent: understanding.intent.classification.primaryTaskIntent,
+      taskAnalysis: understanding.taskAnalysis,
+      message: params.message ?? "",
+    })
+  ) {
+    reasonCodes.push("change_impact_recommended");
   }
   const defaultApprovalMode =
     risk === "high" || risk === "critical" ? "every_mutation" : "when_required";

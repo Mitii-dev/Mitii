@@ -75,5 +75,12 @@ export {
   taskPathsMatch,
 } from "./serialize";
 
+export {
+  applyTaskListUpdate,
+  clipTaskTitle,
+  isTerminalTaskStatus,
+  isValidStatusTransition,
+} from "./actions/ApplyTaskListUpdate";
+
 export { collectConcretePlanStepCandidates } from "./planStepCandidates";
 

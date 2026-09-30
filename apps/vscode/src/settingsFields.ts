@@ -297,6 +297,22 @@ export function applyUiPatch(
           fields: base.loopPolicy.fields,
         }
       : base.loopPolicy,
+    v8LoopPolicy: patch.v8LoopPolicy
+      ? {
+          ...base.v8LoopPolicy,
+          ...patch.v8LoopPolicy,
+          thresholds: {
+            ...base.v8LoopPolicy.thresholds,
+            ...(patch.v8LoopPolicy.thresholds ?? {}),
+          },
+          bandThresholds: {
+            ...base.v8LoopPolicy.bandThresholds,
+            ...(patch.v8LoopPolicy.bandThresholds ?? {}),
+          },
+          band: patch.v8LoopPolicy.band ?? base.v8LoopPolicy.band,
+          fields: base.v8LoopPolicy.fields,
+        }
+      : base.v8LoopPolicy,
     policyLab: patch.policyLab
       ? {
           ...base.policyLab,

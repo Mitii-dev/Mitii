@@ -5,7 +5,7 @@
  *   pnpm policy-admin
  *   → http://127.0.0.1:8787
  *
- * Save writes packages/v8 loopPolicyBands.ts + windowBudgetBands.ts.
+ * Save writes packages/v8 loopPolicyBands.ts + windowBudgetBands.ts + v8-engine/policy/bands.ts.
  * Rebuild @mitii/v8 yourself before packaging.
  */
 import { createServer } from 'node:http';
@@ -17,6 +17,7 @@ import {
   BANDS,
   LOOP_FIELDS,
   WINDOW_FIELDS,
+  V8_LOOP_FIELDS,
   asNumberRecord,
 } from './catalog.mjs';
 import { writeShipBandSources, deltasFromBase } from './shipWriter.mjs';
@@ -39,6 +40,11 @@ const POLICY_SRC = join(ROOT, 'packages/v8/src/engine/agent-engine/policy.ts');
 const DEFAULTS_SRC = join(
   ROOT,
   'packages/v8/src/modules/window-budget/defaults.ts',
+);
+const V8_POLICY_SRC = join(ROOT, 'packages/v8/src/engine/v8-engine/policy.ts');
+const V8_BANDS_SRC = join(
+  ROOT,
+  'packages/v8/src/engine/v8-engine/policy/bands.ts',
 );
 
 /** Parse `export const NAME[: Type] = { ... }` from a TS source file. */
@@ -140,6 +146,7 @@ function emptyMaps() {
   return {
     loop: { compact: {}, standard: {}, wide: {} },
     window: { compact: {}, standard: {}, wide: {} },
+    v8Loop: { compact: {}, standard: {}, wide: {} },
   };
 }
 
@@ -149,6 +156,7 @@ function readState() {
     WINDOW_SRC,
     'WINDOW_BUDGET_BAND_TABLE',
   );
+  const v8Table = extractConstObject(V8_BANDS_SRC, 'V8_ENGINE_BAND_TABLE');
   const AGENT_ENGINE_THRESHOLDS = extractConstObject(
     POLICY_SRC,
     'AGENT_ENGINE_THRESHOLDS',
@@ -157,15 +165,21 @@ function readState() {
     DEFAULTS_SRC,
     'DEFAULT_WINDOW_BUDGET_POLICY',
   );
+  const V8_ENGINE_THRESHOLDS = extractConstObject(
+    V8_POLICY_SRC,
+    'V8_ENGINE_THRESHOLDS',
+  );
 
   const tables = emptyMaps();
   for (const band of ['compact', 'standard', 'wide']) {
     tables.loop[band] = bandOverrides(loopTable, band);
     tables.window[band] = bandOverrides(windowTable, band);
+    tables.v8Loop[band] = bandOverrides(v8Table, band);
   }
 
   const baseLoop = asNumberRecord(AGENT_ENGINE_THRESHOLDS);
   const baseWindow = asNumberRecord(DEFAULT_WINDOW_BUDGET_POLICY);
+  const baseV8Loop = asNumberRecord(V8_ENGINE_THRESHOLDS);
 
   const previews = {};
   for (const band of BANDS) {
@@ -183,13 +197,16 @@ function readState() {
     bands: BANDS,
     loopFields: LOOP_FIELDS,
     windowFields: WINDOW_FIELDS,
+    v8LoopFields: V8_LOOP_FIELDS,
     baseLoop,
     baseWindow,
+    baseV8Loop,
     tables,
     previews,
     paths: {
       loop: 'packages/v8/src/engine/agent-engine/policy/loopPolicyBands.ts',
       window: 'packages/v8/src/modules/window-budget/windowBudgetBands.ts',
+      v8Loop: 'packages/v8/src/engine/v8-engine/policy/bands.ts',
     },
   };
 }
@@ -223,11 +240,12 @@ async function readBody(req) {
   return JSON.parse(raw);
 }
 
-function cleanTables(tables, baseLoop, baseWindow) {
+function cleanTables(tables, baseLoop, baseWindow, baseV8Loop) {
   const out = emptyMaps();
   for (const band of ['compact', 'standard', 'wide']) {
     out.loop[band] = deltasFromBase(tables.loop?.[band], baseLoop);
     out.window[band] = deltasFromBase(tables.window?.[band], baseWindow);
+    out.v8Loop[band] = deltasFromBase(tables.v8Loop?.[band], baseV8Loop);
   }
   return out;
 }
@@ -248,7 +266,15 @@ const server = createServer(async (req, res) => {
       const baseWindow = asNumberRecord(
         extractConstObject(DEFAULTS_SRC, 'DEFAULT_WINDOW_BUDGET_POLICY'),
       );
-      const tables = cleanTables(body.tables ?? {}, baseLoop, baseWindow);
+      const baseV8Loop = asNumberRecord(
+        extractConstObject(V8_POLICY_SRC, 'V8_ENGINE_THRESHOLDS'),
+      );
+      const tables = cleanTables(
+        body.tables ?? {},
+        baseLoop,
+        baseWindow,
+        baseV8Loop,
+      );
       const written = writeShipBandSources({ monorepoRoot: ROOT, tables });
       return sendJson(res, 200, {
         ok: true,

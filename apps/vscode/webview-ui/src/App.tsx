@@ -98,6 +98,7 @@ import type {
 } from './protocol';
 import { modeColor } from './modeColors';
 import { TokenMeter } from './TokenMeter';
+import type { ModelCostRates } from './modelPricing';
 import { resolveDisplayedAssistantText } from './assistantDisplay';
 import type { ChatMessageView } from './protocol';
 import SYMBOL_LOGO from '../../media/mitii-logo.png';
@@ -139,6 +140,8 @@ const EMPTY_TOKEN_USAGE: TokenUsageSnapshot = {
   turnCount: 0,
   contextWindow: 32768,
   estimated: true,
+  cacheHitTokens: 0,
+  cacheMissTokens: 0,
   turns: [],
   live: false,
 };
@@ -264,6 +267,7 @@ const DEFAULT_UI: UiSettingsSnapshot = {
   features: { codeReviewButton: false },
   tokenBudget: DEFAULT_TOKEN_BUDGET,
   loopPolicy: DEFAULT_LOOP_POLICY,
+  v8LoopPolicy: DEFAULT_LOOP_POLICY,
   policyLab: DEFAULT_POLICY_LAB,
 };
 
@@ -358,6 +362,22 @@ function hydrateUiSnapshot(
       band: raw?.loopPolicy?.band ?? DEFAULT_LOOP_POLICY.band,
       fields: raw?.loopPolicy?.fields?.length
         ? raw.loopPolicy.fields
+        : DEFAULT_LOOP_POLICY.fields,
+    },
+    v8LoopPolicy: {
+      ...DEFAULT_LOOP_POLICY,
+      ...(raw?.v8LoopPolicy ?? {}),
+      thresholds: {
+        ...DEFAULT_LOOP_POLICY.thresholds,
+        ...(raw?.v8LoopPolicy?.thresholds ?? {}),
+      },
+      bandThresholds: {
+        ...DEFAULT_LOOP_POLICY.bandThresholds,
+        ...(raw?.v8LoopPolicy?.bandThresholds ?? {}),
+      },
+      band: raw?.v8LoopPolicy?.band ?? DEFAULT_LOOP_POLICY.band,
+      fields: raw?.v8LoopPolicy?.fields?.length
+        ? raw.v8LoopPolicy.fields
         : DEFAULT_LOOP_POLICY.fields,
     },
     policyLab: {
@@ -465,6 +485,7 @@ function mergeUiPatch(
     runBudget: _rb,
     tokenBudget: _tb,
     loopPolicy: _lp,
+    v8LoopPolicy: _v8,
     policyLab: _pl,
     features: _features,
     ...scalarPatch
@@ -526,6 +547,22 @@ function mergeUiPatch(
           fields: base.loopPolicy.fields,
         }
       : base.loopPolicy,
+    v8LoopPolicy: patch.v8LoopPolicy
+      ? {
+          ...base.v8LoopPolicy,
+          ...patch.v8LoopPolicy,
+          thresholds: {
+            ...base.v8LoopPolicy.thresholds,
+            ...(patch.v8LoopPolicy.thresholds ?? {}),
+          },
+          bandThresholds: {
+            ...base.v8LoopPolicy.bandThresholds,
+            ...(patch.v8LoopPolicy.bandThresholds ?? {}),
+          },
+          band: patch.v8LoopPolicy.band ?? base.v8LoopPolicy.band,
+          fields: base.v8LoopPolicy.fields,
+        }
+      : base.v8LoopPolicy,
     policyLab: patch.policyLab
       ? {
           ...base.policyLab,
@@ -843,6 +880,7 @@ export function App() {
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [tokenUsage, setTokenUsage] =
     useState<TokenUsageSnapshot>(EMPTY_TOKEN_USAGE);
+  const [costRates, setCostRates] = useState<ModelCostRates | null>(null);
   const [testingConnection, setTestingConnection] = useState(false);
   const [refreshingModels, setRefreshingModels] = useState(false);
   const [connectionMessage, setConnectionMessage] = useState<string | null>(
@@ -1617,6 +1655,9 @@ export function App() {
           break;
         case 'tokenUsage':
           applyTokenUsage(msg.usage);
+          break;
+        case 'modelPricing':
+          setCostRates(msg.rates);
           break;
         default:
           break;
@@ -3008,7 +3049,11 @@ export function App() {
                     </div>
                   </div>
                   <div className="composer-meta-row">
-                    <TokenMeter usage={tokenUsage} placement="above" />
+                    <TokenMeter
+                      usage={tokenUsage}
+                      placement="above"
+                      costRates={costRates}
+                    />
                     <ModelQuickSelect
                       label={selectedModelLabel}
                       value={provider.model}
@@ -3154,6 +3199,9 @@ export function App() {
           }
           onResetLoopPolicy={() =>
             postToHost({ type: 'settings.resetLoopPolicy' })
+          }
+          onResetV8LoopPolicy={() =>
+            postToHost({ type: 'settings.resetV8LoopPolicy' })
           }
           saving={settingsSaving}
         />

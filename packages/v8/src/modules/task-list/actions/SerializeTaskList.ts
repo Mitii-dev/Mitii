@@ -1,6 +1,7 @@
 import { TASK_LIST_SCHEMA_VERSION } from "../constants";
 import type { TaskItem, TaskItemStatus, TaskList } from "../contracts";
 import { taskListSchema } from "../contracts";
+import { TASK_LIST_POLICY } from "../policy";
 
 const STATUS_MARK: Record<TaskItemStatus, string> = {
   pending: " ",
@@ -19,6 +20,10 @@ const MARK_STATUS: Record<string, TaskItemStatus> = {
   "-": "skipped",
   "!": "blocked",
 };
+
+const OPEN_STATUS = new Set<TaskItemStatus>(
+  TASK_LIST_POLICY.workingSetOpenStatuses,
+);
 
 /**
  * Serialize a task list to Cursor-style markdown checkboxes.
@@ -49,6 +54,7 @@ export function serializeTaskListForPrompt(taskList: TaskList): string {
     "Live working list for this run. Use update_todos to keep it current as soon as the work is concrete.",
     "If this is a multi-step run and the list is empty after the first read/diagnose tool turn, call update_todos type=replace with concrete titles naming a file, failure, or behavior.",
     "Keep exactly one item active. Before finishing a slice, patch the active item to done and the next pending item to active.",
+    "Prefer short titles (~5–7 words) that still name a concrete file, failure, or behavior.",
     "Do not copy Discover/Change/Verify process labels into titles. If a plan-derived list is still process-shaped, replace it with type=replace and items (or todos) using title (or content); otherwise prefer patch by id.",
     "Do not mark remaining items done just because the turn is ending. Skip update_todos only for trivial single-step work.",
   ];
@@ -67,17 +73,23 @@ export function serializeTaskListForPrompt(taskList: TaskList): string {
 export const WORKING_SET_MARKER = '<working_set trust="instruction">';
 
 /**
- * Checklist rows only (no outer wrapper). Used by the unified recoverability
- * block and the legacy loop serializer.
+ * Open checklist rows only (pending / active / blocked). Terminal done/skipped
+ * rows are omitted so loop reinjection after compaction cannot revive finished work.
  */
 export function serializeWorkingSetChecklistLines(taskList?: TaskList): string[] {
   if (!taskList || taskList.items.length === 0) {
     return [];
   }
+  const openItems = taskList.items.filter((item) =>
+    OPEN_STATUS.has(item.status),
+  );
+  if (openItems.length === 0) {
+    return [];
+  }
   const lines = [
     "Live checklist. Active row is the current batch — load its write files before patching.",
   ];
-  for (const item of taskList.items) {
+  for (const item of openItems) {
     const suffix =
       item.status === "active"
         ? activeWorkingSetLines(item)
@@ -96,6 +108,7 @@ export function serializeWorkingSetChecklistLines(taskList?: TaskList): string[]
 /**
  * Trailing live table for the model loop. Compaction may drop this; Engine
  * re-upserts it at the end of messages before each model call.
+ * Only open items are reinjected (done/skipped stay out of the loop context).
  */
 export function serializeWorkingSetForLoop(taskList?: TaskList): string | undefined {
   const checklist = serializeWorkingSetChecklistLines(taskList);
@@ -132,7 +145,8 @@ export function serializeTaskListGuidance(taskList?: TaskList): string {
   }
   return [
     "<task_list trust=\"instruction\">",
-    "No live working list yet. If this is a multi-step run, after the first read/diagnose tool turn call update_todos with type=replace.",
+    "No live working list yet. Once the task is clear, immediately call update_todos with type=replace and capture both explicit requirements and implied follow-through (tests, callers, verification).",
+    "If this is a multi-step run, do that after the first read/diagnose tool turn at latest.",
     "Each title must name a concrete file, failure, or user-visible behavior.",
     "Do not copy Discover/Change/Verify process labels or skill playbook bullets into titles.",
     "Keep exactly one item active. Before finishing a slice, patch the active item to done and the next pending item to active.",

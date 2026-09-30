@@ -57,6 +57,7 @@
           <footer class="foot foot--rail">
             <span>Writes <code id="path-loop"></code></span>
             <span><code id="path-window"></code></span>
+            <span><code id="path-v8"></code></span>
             <span>Then <code>pnpm --filter @mitii/v8 build</code></span>
           </footer>
         </aside>
@@ -84,6 +85,17 @@
               </p>
             </div>
             <div id="loop-fields" class="fields"></div>
+          </section>
+
+          <section class="card knobs-card" id="section-v8">
+            <div class="section-head">
+              <h2 class="section-title">4 · V8 engine knobs</h2>
+              <p class="panel-intro">
+                Thin-loop ship knobs for <code>mitii.engine.implementation = v8</code>.
+                Saves to <code>v8-engine/policy/bands.ts</code>.
+              </p>
+            </div>
+            <div id="v8-loop-fields" class="fields"></div>
           </section>
 
           <details class="card advanced-block" id="section-advanced">

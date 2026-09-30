@@ -7,6 +7,8 @@ import {
   codeNavigationResultSchema,
 } from "../contracts";
 import type {
+  CodeNavigationCallOptions,
+  CodeNavigationHover,
   CodeNavigationInput,
   CodeNavigationLocation,
   CodeNavigationParsedInput,
@@ -14,6 +16,7 @@ import type {
   CodeNavigationReasonCode,
   CodeNavigationResult,
 } from "../contracts";
+import { DEFAULT_MAX_HOVER_CHARACTERS } from "../defaults";
 
 export interface CodeNavigationPipelineDependencies {
   navigation?: CodeNavigationPort;
@@ -30,6 +33,7 @@ export class CodeNavigationPipeline {
 
   public async navigate(
     input: CodeNavigationInput,
+    options: CodeNavigationCallOptions = {},
   ): Promise<CodeNavigationResult> {
     let parsed: CodeNavigationParsedInput;
     try {
@@ -52,6 +56,7 @@ export class CodeNavigationPipeline {
         operation: parsed.operation,
         provider: "none",
         locations: [],
+        truncated: false,
         warnings: [
           {
             code: "language_server_failed",
@@ -63,14 +68,28 @@ export class CodeNavigationPipeline {
     }
 
     try {
+      throwIfAborted(options.signal);
+      const callOptions: CodeNavigationCallOptions = {
+        ...(options.signal ? { signal: options.signal } : {}),
+      };
+      const relativePath =
+        "relativePath" in parsed.query ? parsed.query.relativePath : undefined;
+      if (relativePath) {
+        await port.prepare?.(relativePath, callOptions);
+      }
+
       if (parsed.operation === "hover") {
         if (!("line" in parsed.query)) {
           return unavailable(parsed.operation, port, "Hover requires a caret query.");
         }
-        const hover = await port.hover?.(parsed.query);
+        const rawHover = await port.hover?.(parsed.query, callOptions);
+        const { hover, truncated } = clampHover(rawHover);
         const reasonCodes: CodeNavigationReasonCode[] = hover
           ? ["hover_resolved"]
           : ["no_locations"];
+        if (truncated) {
+          reasonCodes.push("hover_truncated");
+        }
         if (port.provider === "repo_graph") {
           reasonCodes.push("repo_graph_fallback");
         }
@@ -81,6 +100,7 @@ export class CodeNavigationPipeline {
           provider: port.provider,
           locations: [],
           ...(hover ? { hover } : {}),
+          truncated,
           warnings: [],
           reasonCodes,
         });
@@ -94,15 +114,23 @@ export class CodeNavigationPipeline {
             "Document symbols require a relative path.",
           );
         }
-        const locations = (
-          (await port.documentSymbols?.({
-            relativePath: parsed.query.relativePath,
-            ...("rootId" in parsed.query && parsed.query.rootId
-              ? { rootId: parsed.query.rootId }
-              : {}),
-          })) ?? []
-        ).slice(0, parsed.maximumLocations);
-        return locationsResult(parsed.operation, port, locations, "document_symbols_resolved");
+        const raw =
+          (await port.documentSymbols?.(
+            {
+              relativePath: parsed.query.relativePath,
+              ...("rootId" in parsed.query && parsed.query.rootId
+                ? { rootId: parsed.query.rootId }
+                : {}),
+            },
+            callOptions,
+          )) ?? [];
+        return locationsResult(
+          parsed.operation,
+          port,
+          raw,
+          parsed.maximumLocations,
+          "document_symbols_resolved",
+        );
       }
 
       if (parsed.operation === "workspace_symbols") {
@@ -113,47 +141,70 @@ export class CodeNavigationPipeline {
             "Workspace symbols require a query.",
           );
         }
-        const locations = (
-          (await port.workspaceSymbols?.({
-            query: parsed.query.query,
-            ...("rootId" in parsed.query && parsed.query.rootId
-              ? { rootId: parsed.query.rootId }
-              : {}),
-          })) ?? []
-        ).slice(0, parsed.maximumLocations);
-        return locationsResult(parsed.operation, port, locations, "workspace_symbols_resolved");
+        const raw =
+          (await port.workspaceSymbols?.(
+            {
+              query: parsed.query.query,
+              ...("rootId" in parsed.query && parsed.query.rootId
+                ? { rootId: parsed.query.rootId }
+                : {}),
+            },
+            callOptions,
+          )) ?? [];
+        return locationsResult(
+          parsed.operation,
+          port,
+          raw,
+          parsed.maximumLocations,
+          "workspace_symbols_resolved",
+        );
       }
 
       if (!("line" in parsed.query)) {
         return unavailable(parsed.operation, port, "This operation requires a caret query.");
       }
 
-      const locations = (
+      const raw =
         parsed.operation === "definition"
-          ? await port.definition(parsed.query)
-          : parsed.operation === "implementation"
-            ? ((await port.implementation?.(parsed.query)) ?? [])
-            : parsed.operation === "call_hierarchy"
-              ? ((await port.callHierarchy?.(parsed.query)) ?? [])
-              : await port.references(parsed.query)
-      ).slice(0, parsed.maximumLocations);
+          ? await port.definition(parsed.query, callOptions)
+          : parsed.operation === "type_definition"
+            ? ((await port.typeDefinition?.(parsed.query, callOptions)) ?? [])
+            : parsed.operation === "implementation"
+              ? ((await port.implementation?.(parsed.query, callOptions)) ?? [])
+              : parsed.operation === "call_hierarchy"
+                ? ((await port.callHierarchy?.(parsed.query, callOptions)) ?? [])
+                : await port.references(parsed.query, callOptions);
 
       const resolvedCode: CodeNavigationReasonCode =
         parsed.operation === "definition"
           ? "definition_resolved"
-          : parsed.operation === "implementation"
-            ? "implementation_resolved"
-            : parsed.operation === "call_hierarchy"
-              ? "call_hierarchy_resolved"
-              : "references_resolved";
-      return locationsResult(parsed.operation, port, locations, resolvedCode);
+          : parsed.operation === "type_definition"
+            ? "type_definition_resolved"
+            : parsed.operation === "implementation"
+              ? "implementation_resolved"
+              : parsed.operation === "call_hierarchy"
+                ? "call_hierarchy_resolved"
+                : "references_resolved";
+      return locationsResult(
+        parsed.operation,
+        port,
+        raw,
+        parsed.maximumLocations,
+        resolvedCode,
+      );
     } catch (error) {
+      if (isAbortError(error) || options.signal?.aborted) {
+        throw error instanceof Error
+          ? error
+          : Object.assign(new Error(String(error)), { name: "AbortError" });
+      }
       return codeNavigationResultSchema.parse({
         schemaVersion: CODE_NAVIGATION_SCHEMA_VERSION,
         status: "unavailable",
         operation: parsed.operation,
         provider: port.provider,
         locations: [],
+        truncated: false,
         warnings: [
           {
             code:
@@ -173,15 +224,37 @@ export class CodeNavigationPipeline {
   }
 }
 
+function clampHover(
+  hover: CodeNavigationHover | undefined,
+): { hover: CodeNavigationHover | undefined; truncated: boolean } {
+  if (!hover) return { hover: undefined, truncated: false };
+  if (hover.contents.length <= DEFAULT_MAX_HOVER_CHARACTERS) {
+    return { hover, truncated: false };
+  }
+  return {
+    hover: {
+      ...hover,
+      contents: `${hover.contents.slice(0, DEFAULT_MAX_HOVER_CHARACTERS)}…`,
+    },
+    truncated: true,
+  };
+}
+
 function locationsResult(
   operation: CodeNavigationParsedInput["operation"],
   port: CodeNavigationPort,
-  locations: readonly CodeNavigationLocation[],
+  raw: readonly CodeNavigationLocation[],
+  maximumLocations: number,
   resolvedCode: CodeNavigationReasonCode,
 ): CodeNavigationResult {
+  const truncated = raw.length > maximumLocations;
+  const locations = truncated ? raw.slice(0, maximumLocations) : raw;
   const reasonCodes: CodeNavigationReasonCode[] = locations.length
     ? [resolvedCode]
     : ["no_locations"];
+  if (truncated) {
+    reasonCodes.push("locations_truncated");
+  }
   if (port.provider === "repo_graph") {
     reasonCodes.push("repo_graph_fallback");
   }
@@ -191,6 +264,7 @@ function locationsResult(
     operation,
     provider: port.provider,
     locations,
+    truncated,
     warnings: [],
     reasonCodes,
   });
@@ -207,6 +281,7 @@ function unavailable(
     operation,
     provider: port.provider,
     locations: [],
+    truncated: false,
     warnings: [
       {
         code:
@@ -221,4 +296,25 @@ function unavailable(
         ? ["repo_graph_fallback"]
         : ["language_server_unavailable"],
   });
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (!signal?.aborted) return;
+  const error = new Error("Code navigation aborted");
+  error.name = "AbortError";
+  throw error;
+}
+
+function isAbortError(error: unknown): boolean {
+  if (
+    error instanceof Error &&
+    (error.name === "AbortError" || error.name === "RequestLimiterAbortError")
+  ) {
+    return true;
+  }
+  return (
+    typeof DOMException !== "undefined" &&
+    error instanceof DOMException &&
+    error.name === "AbortError"
+  );
 }

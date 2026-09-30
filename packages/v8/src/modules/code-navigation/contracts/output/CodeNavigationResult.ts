@@ -39,6 +39,7 @@ export const codeNavigationResultSchema = z
     provider: codeNavigationProviderSchema,
     locations: z.array(codeNavigationLocationSchema),
     hover: codeNavigationHoverSchema.optional(),
+    truncated: z.boolean().default(false),
     warnings: z.array(codeNavigationWarningSchema),
     reasonCodes: z.array(codeNavigationReasonCodeSchema).min(1),
   })

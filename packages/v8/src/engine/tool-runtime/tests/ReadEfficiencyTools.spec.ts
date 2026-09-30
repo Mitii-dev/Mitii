@@ -242,6 +242,7 @@ describe("model tool definition single source", () => {
     const readOnly = listBuiltinReadOnlyModelToolDefinitions().map((t) => t.name);
     expect(readOnly).toContain("glob_files");
     expect(readOnly).toContain("goto_definition");
+    expect(readOnly).toContain("find_type_definition");
     expect(readOnly).toContain("find_references");
     expect(readOnly).toContain("hover_symbol");
     expect(readOnly).toContain("document_symbol");
@@ -305,6 +306,56 @@ describe("model tool definition single source", () => {
     expect(output.matches.length).toBeGreaterThan(0);
     expect(output.matches[0]?.path).toBe("src/util.ts");
     expect(output.matches[0]?.text).toContain("export const n");
+  });
+
+  it("search_files finds a match past the first 500 files", async () => {
+    const children: Record<string, ReturnType<typeof file>> = {};
+    for (let index = 0; index < 620; index += 1) {
+      const name = `n${String(index).padStart(4, "0")}.ts`;
+      children[name] =
+        index === 610
+          ? file("export const NeedlePastFiveHundred = 1;\n")
+          : file("export const filler = 1;\n");
+    }
+    const runtime = new ToolRuntimePipeline({
+      fileSystem: new InMemoryFileSystemAdapter(
+        WORKSPACE,
+        directory({ bucket: directory(children) }),
+      ),
+      process: new InMemoryProcessAdapter(async () => ({
+        exitCode: 0,
+        stdout: "",
+        stderr: "",
+        timedOut: false,
+        cancelled: false,
+        truncated: false,
+      })),
+      diagnostics: new InMemoryDiagnosticsAdapter([]),
+      git: new InMemoryGitAdapter({
+        branch: "main",
+        staged: [],
+        unstaged: [],
+        untracked: [],
+        raw: "",
+      }),
+    });
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "s-deep",
+      toolName: "search_files",
+      arguments: { query: "NeedlePastFiveHundred", path: "." },
+      grant: createReadOnlyGrant(),
+      workspaceRoot: WORKSPACE,
+    });
+    expect(result.status).toBe("succeeded");
+    const output = result.output as {
+      matches: Array<{ path: string }>;
+      truncated: boolean;
+    };
+    expect(output.truncated).toBe(false);
+    expect(output.matches.map((match) => match.path)).toEqual([
+      "bucket/n0610.ts",
+    ]);
   });
 
   it("search_files accepts Cursor-style pattern + string maxMatches aliases", async () => {

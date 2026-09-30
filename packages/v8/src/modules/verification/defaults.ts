@@ -1,5 +1,7 @@
 export const DEFAULT_MAX_CHECKS = 8;
 export const DEFAULT_MAX_DIAGNOSTICS = 200;
+/** Cap per path when packaging diagnostics for model/repair context. */
+export const DEFAULT_MAX_DIAGNOSTICS_PER_FILE = 20;
 export const DEFAULT_DIFF_PREVIEW_CHARS = 8_000;
 export const DEFAULT_SUMMARY_DIAGNOSTICS = 12;
 export const DEFAULT_SUMMARY_CHARS = 4_000;

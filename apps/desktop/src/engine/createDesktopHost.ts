@@ -20,6 +20,7 @@ import {
   ToolRuntimePipeline,
   VerificationPipeline,
   WorkspaceFileSystemManifestReader,
+  InMemoryToolOutputSpillAdapter,
   type AgentMode,
   type LlmPort,
   type MitiiClient,
@@ -210,6 +211,11 @@ export function createEchoDesktopClient(
     defaultSessionId: `desktop_${workspaceId}`,
     workspaceId,
     taskListAutoAdvance: env.MITII_TASK_LIST_AUTO_ADVANCE !== '0',
+    engineImplementation:
+      env.MITII_ENGINE_IMPLEMENTATION === 'legacy' ||
+      readDesktopSettingsField(env, 'agent.engineImplementation') === 'legacy'
+        ? 'legacy'
+        : 'v8',
   });
 }
 
@@ -308,6 +314,7 @@ export async function createHostDesktopClient(
       codeNavigation: language.codeNavigation,
       ...(language.diagnostics ? { diagnostics: language.diagnostics } : {}),
       repoGraphs: createHostRepositoryGraphPort({ workspaceRoot: cwd }),
+      outputSpill: new InMemoryToolOutputSpillAdapter(),
       ...(search ? { search } : {}),
     },
     { registry: mcpManager.createRegistry() },
@@ -400,6 +407,11 @@ export async function createHostDesktopClient(
     enableInMemoryCheckpoints: false,
     checkpointStore: createWorkspaceCheckpointStore(cwd),
     taskListAutoAdvance: env.MITII_TASK_LIST_AUTO_ADVANCE !== '0',
+    engineImplementation:
+      env.MITII_ENGINE_IMPLEMENTATION === 'legacy' ||
+      readDesktopSettingsField(env, 'agent.engineImplementation') === 'legacy'
+        ? 'legacy'
+        : 'v8',
     ...(memoryOn
       ? {
           memoryStore: createWorkspaceMemoryStore(cwd, workspaceId),

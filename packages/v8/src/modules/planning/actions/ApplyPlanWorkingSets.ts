@@ -32,7 +32,10 @@ export function applyPlanWorkingSets(params: {
 
   const reports = params.input.impactReports ?? [];
   if (reports.length === 0) {
-    return { plan: params.plan, reasonCodes: [] };
+    return {
+      plan: params.plan,
+      reasonCodes: ["plan_working_set_empty"],
+    };
   }
 
   const reportsBySeed = new Map<string, { mustRead: string[]; affected: string[] }>();
@@ -45,7 +48,10 @@ export function applyPlanWorkingSets(params: {
     reportsBySeed.set(seed, existing);
   }
   if (reportsBySeed.size === 0) {
-    return { plan: params.plan, reasonCodes: [] };
+    return {
+      plan: params.plan,
+      reasonCodes: ["plan_working_set_empty"],
+    };
   }
 
   let applied = false;
@@ -88,7 +94,10 @@ export function applyPlanWorkingSets(params: {
   });
 
   if (!applied) {
-    return { plan: params.plan, reasonCodes: [] };
+    return {
+      plan: params.plan,
+      reasonCodes: ["plan_working_set_empty"],
+    };
   }
 
   return {

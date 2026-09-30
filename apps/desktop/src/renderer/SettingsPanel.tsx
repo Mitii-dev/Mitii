@@ -710,6 +710,24 @@ export function SettingsPanel(props: SettingsPanelProps) {
                     />
                     Task list auto-advance
                   </label>
+                  <Field id="engineImpl" label="Engine implementation">
+                    <select
+                      id="engineImpl"
+                      value={draft.agent.engineImplementation}
+                      onChange={(e) =>
+                        patch({
+                          agent: {
+                            engineImplementation: e.target.value as
+                              | 'legacy'
+                              | 'v8',
+                          },
+                        })
+                      }
+                    >
+                      <option value="v8">V8 (sole orchestrator)</option>
+                      <option value="legacy">Legacy (alias → v8)</option>
+                    </select>
+                  </Field>
                   <label className="checkbox-row">
                     <input
                       type="checkbox"

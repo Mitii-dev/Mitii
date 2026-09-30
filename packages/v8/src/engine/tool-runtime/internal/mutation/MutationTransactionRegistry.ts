@@ -17,6 +17,7 @@ import {
   requireRmdir,
   restoreFileCopyCheckpoint,
 } from "./checkpoint";
+import { withPathMutationQueue } from "./pathMutationQueue";
 import { MutationError } from "./types";
 import { describeCaughtError } from "../describeCaughtError";
 import type {
@@ -29,6 +30,8 @@ export interface MutationTransactionApplyResult {
   checkpointId: string;
   changedFiles: string[];
   applied: AppliedPatchRecord[];
+  /** True when patches were validated but not written. */
+  dryRun?: boolean;
 }
 
 export interface MutationPathResult {
@@ -68,6 +71,8 @@ export class MutationTransactionRegistry {
     dirtyPaths?: readonly string[];
     alreadyMutatedPaths?: readonly string[];
     nowIso?: string;
+    /** Validate and preview only — do not write or register a checkpoint. */
+    dryRun?: boolean;
   }): Promise<MutationTransactionApplyResult> {
     const relativePaths = [
       ...new Set(
@@ -75,6 +80,24 @@ export class MutationTransactionRegistry {
       ),
     ];
 
+    return withPathMutationQueue(relativePaths, () =>
+      this.applyPatchesUnlocked(params, relativePaths),
+    );
+  }
+
+  private async applyPatchesUnlocked(
+    params: {
+      workspaceRoot: string;
+      pathScopes: readonly string[];
+      fileSystem: WorkspaceFileSystemPort;
+      patches: readonly StructuredPatch[];
+      dirtyPaths?: readonly string[];
+      alreadyMutatedPaths?: readonly string[];
+      nowIso?: string;
+      dryRun?: boolean;
+    },
+    relativePaths: string[],
+  ): Promise<MutationTransactionApplyResult> {
     assertNoDirtyOverlap({
       targetPaths: relativePaths,
       dirtyPaths: params.dirtyPaths ?? [],
@@ -131,6 +154,23 @@ export class MutationTransactionRegistry {
       } catch (error) {
         throw attachPatchFailureContent(error, relativePath, current);
       }
+    }
+
+    const appliedPreview: AppliedPatchRecord[] = [...proposed.entries()].map(
+      ([relativePath, next]) => ({
+        path: relativePath,
+        created: next.created,
+        bytesWritten: Buffer.byteLength(next.content, "utf8"),
+      }),
+    );
+
+    if (params.dryRun === true) {
+      return {
+        checkpointId: "dry_run",
+        changedFiles: appliedPreview.map((entry) => entry.path),
+        applied: appliedPreview,
+        dryRun: true,
+      };
     }
 
     const checkpointId = this.idGenerator();
@@ -195,6 +235,23 @@ export class MutationTransactionRegistry {
     nowIso?: string;
   }): Promise<MutationPathResult> {
     const relativePath = normalizeRelativePath(params.path);
+    return withPathMutationQueue([relativePath], () =>
+      this.deleteFileUnlocked(params, relativePath),
+    );
+  }
+
+  private async deleteFileUnlocked(
+    params: {
+      workspaceRoot: string;
+      pathScopes: readonly string[];
+      fileSystem: WorkspaceFileSystemPort;
+      path: string;
+      dirtyPaths?: readonly string[];
+      alreadyMutatedPaths?: readonly string[];
+      nowIso?: string;
+    },
+    relativePath: string,
+  ): Promise<MutationPathResult> {
     if (relativePath === ".") {
       throw new MutationError(
         "path_escape",
@@ -292,19 +349,21 @@ export class MutationTransactionRegistry {
       alreadyMutatedPaths: params.alreadyMutatedPaths,
     });
 
-    return this.runRecoverableMutation({
-      workspaceRoot: params.workspaceRoot,
-      fileSystem: params.fileSystem,
-      relativePaths: nestedFiles.length > 0 ? nestedFiles : [relativePath],
-      changedFiles: [relativePath, ...nestedFiles],
-      nowIso: params.nowIso,
-      mutate: async () => {
-        await requireRmdir(params.fileSystem)(contained.absolutePath, {
-          recursive,
-        });
-      },
-      failureMessage: "delete_directory failed",
-    });
+    return withPathMutationQueue(targetPaths, () =>
+      this.runRecoverableMutation({
+        workspaceRoot: params.workspaceRoot,
+        fileSystem: params.fileSystem,
+        relativePaths: nestedFiles.length > 0 ? nestedFiles : [relativePath],
+        changedFiles: [relativePath, ...nestedFiles],
+        nowIso: params.nowIso,
+        mutate: async () => {
+          await requireRmdir(params.fileSystem)(contained.absolutePath, {
+            recursive,
+          });
+        },
+        failureMessage: "delete_directory failed",
+      }),
+    );
   }
 
   public async moveFile(params: {
@@ -394,20 +453,22 @@ export class MutationTransactionRegistry {
       ]),
     ];
 
-    return this.runRecoverableMutation({
-      workspaceRoot: params.workspaceRoot,
-      fileSystem: params.fileSystem,
-      relativePaths: checkpointPaths,
-      changedFiles: [...new Set([fromPath, toPath, ...destinationFiles])],
-      nowIso: params.nowIso,
-      mutate: async () => {
-        await requireRename(params.fileSystem)(
-          fromContained.absolutePath,
-          toContained.absolutePath,
-        );
-      },
-      failureMessage: "move_file failed",
-    });
+    return withPathMutationQueue(checkpointPaths, () =>
+      this.runRecoverableMutation({
+        workspaceRoot: params.workspaceRoot,
+        fileSystem: params.fileSystem,
+        relativePaths: checkpointPaths,
+        changedFiles: [...new Set([fromPath, toPath, ...destinationFiles])],
+        nowIso: params.nowIso,
+        mutate: async () => {
+          await requireRename(params.fileSystem)(
+            fromContained.absolutePath,
+            toContained.absolutePath,
+          );
+        },
+        failureMessage: "move_file failed",
+      }),
+    );
   }
 
   public async rollback(params: {

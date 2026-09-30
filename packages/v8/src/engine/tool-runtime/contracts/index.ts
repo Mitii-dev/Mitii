@@ -68,4 +68,9 @@ export type {
   WebSearchResult,
   KnowledgeGraphPort,
 } from "./ports/ToolRuntimePorts";
+export type {
+  ToolOutputSpillPort,
+  ToolOutputSpillStoreRequest,
+  ToolOutputSpillStoreResult,
+} from "./ports/ToolOutputSpillPort";
 export type { CodeNavigationPort } from "../../../modules/code-navigation";

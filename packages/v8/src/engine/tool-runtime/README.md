@@ -1,8 +1,10 @@
 # Tool Runtime
 
-Tool Runtime is the enforcement and execution layer for tools. It receives model-requested tool calls from Agent Engine, validates them against the current `ToolGrant`, executes through host ports, and returns a bounded `ToolResult` with audit information.
+Tool Runtime is the enforcement and execution layer for tools. It receives model-requested tool calls from the v8 engine, validates them against the current `ToolGrant`, executes through host ports, and returns a bounded `ToolResult` with audit information.
 
 Tool Runtime never decides that a tool should be allowed. It only enforces the grant it receives.
+
+**Ownership / compare plan:** [`project-goals/tool-runtime-ownership-plan.md`](../../../../project-goals/tool-runtime-ownership-plan.md) (agents-ref Tier A map, Keep-power vs dual-catalog phases).
 
 ## Responsibilities
 
@@ -17,7 +19,8 @@ Tool Runtime never decides that a tool should be allowed. It only enforces the g
 
 ```text
 tool-runtime/
-  pipeline/                 ToolRuntimePipeline and execution helpers
+  catalog/                  Zod schemas by family (≤600); defineTool
+  pipeline/                 ToolRuntimePipeline + preflight stages
   contracts/
     input/                  ToolInvocationInput
     output/                 ToolResult, ToolCapability
@@ -25,8 +28,9 @@ tool-runtime/
     errors/                 ToolRuntimeErrors
   actions/                  Grant validation, mutation batch validation, built-ins
   adapters/                 Node and in-memory host adapters
-  internal/                 Registry, shadow authorization, sanitization, budgets
-  tests/                    Registry, grant, mutation, network, command tests
+  constants.ts              ONE built-in ID list (Decision Policy re-exports)
+  internal/                 Registry, shadow, normalize/, sanitization, budgets
+  tests/                    Registry, grant, mutation, ID-contract, network tests
 ```
 
 ## Main Types
@@ -46,16 +50,31 @@ tool-runtime/
 - `StructuralShadowGrantAuthorizer` can evaluate a Cedar-shaped structural grant in parallel with normal validation.
 - Mutation batches enforce `maxPatchesPerCall`, `maxUniqueFilesPerCall`, and `maxPatchPayloadCharacters`. Exceeding those caps fails preflight with `mutation_budget_exceeded` (not a generic `limit_exceeded`).
 - Mutation tools (`apply_patch`, delete, move) authorize against `grant.mutationPathScopes` when present; discovery tools keep `grant.pathScopes`.
-- `apply_patch` keeps exact `oldText` matching (no fuzzy match, no regex). Default requires a unique occurrence. Optional `replaceAll: true` replaces every exact occurrence in that file; empty `oldText` still means create or full-file replace and rejects `replaceAll`. Distinct reason codes describe why a hunk failed: `old_text_not_found`, `old_text_ambiguous`, `patch_target_missing`, `patch_hash_mismatch`, `identical_old_and_new`, `patch_syntax_invalid`. Retryable conflicts, including no-op `identical_old_and_new`, attach clipped `currentContent` in the tool result. `patch_conflict` remains as a legacy umbrella for older hosts.
+- `apply_patch` defaults to exact `oldText` matching (no regex). Optional `replaceAll: true` replaces every exact occurrence in that file; empty `oldText` still means create or full-file replace and rejects `replaceAll`. Optional `fuzzyMatch=true` (or host `fuzzyMatchDefault`) enables bounded recovery when exact oldText is missing (trim / indent / ±5 line window); ambiguous fuzzy hits return `patch_fuzzy_ambiguous`. Distinct reason codes describe why a hunk failed: `old_text_not_found`, `old_text_ambiguous`, `patch_fuzzy_ambiguous`, `patch_target_missing`, `patch_hash_mismatch`, `identical_old_and_new`, `patch_syntax_invalid`. Retryable conflicts, including no-op `identical_old_and_new`, attach clipped `currentContent` in the tool result. `patch_conflict` remains as a legacy umbrella for older hosts.
 - Preflight coerces common model mis-encodings for `apply_patch`: a flat `{ path, oldText, newText }` object is wrapped into `{ patches: [...] }`, and a JSON-string `patches` value is parsed into an array before schema validation.
 - Preflight also normalizes common discovery/command aliases via
   `normalizeCommonToolArguments`: `search_files.pattern` → `query`,
   string `maxMatches`, `run_readonly_command`/`run_command` `command` →
   `argv`, and numeric strings for ZodNumber fields.
 - Process execution always goes through `ProcessPort`.
+  Soft file-edit guard: `run_readonly_command` always rejects argv that looks
+  like file mutation (`rm`, `mv`, mutating `git`/`npm` subcommands, redirects).
+  `run_command` applies the same heuristic when `softBlockMutatingCommands` is
+  set on execute options (plan-mode defense). Not a shell interpreter.
+- Mutation tools serialize concurrent calls that touch the same relative path
+  (per-path queue). Distinct paths still run in parallel.
+- `apply_patch` accepts optional `dryRun: true` to validate/preview without
+  writing (`checkpointId: "dry_run"`); post-edit diagnostics are skipped.
 - Network access always goes through `NetworkPort` and host allow-lists.
 - Output is bounded by the minimum of tool, grant, and session limits.
-- `search_files.path` may be a file or a directory. Adapters MUST stat the
+  When the serialized result still exceeds that budget, Tool Runtime replaces
+  the payload with a head/tail `_mitiiBounded` preview and optionally stores
+  the full UTF-8 blob via `ToolOutputSpillPort` (`outputSpill`). Hosts inject
+  `InMemoryToolOutputSpillAdapter` by default; durable disk spill is optional.
+- **Host port checklist (parity):** VS Code / CLI / Desktop / ACP / automation
+  all inject `createHostNetworkPort` + `NodeGitAdapter` + optional
+  `createOptionalSearchPort` (omit SearchPort → Decision Policy hides
+  `web_search`). `hasSearchPort()` gates honest grant expansion.- `search_files.path` may be a file or a directory. Adapters MUST stat the
   root before `readdir`; a file root returns that single file.
 - `search_files` stays line-oriented and returns structured matches. Its
   contract supports `mode: "auto" | "literal" | "regex"` so hosts and models
@@ -95,6 +114,11 @@ tool-runtime/
 - **`ToolAdversaryPort`:** optional restrict-only fence after ValidateGrant /
   shadow and before approval. BLOCK → `tool_not_allowed`; ASK →
   `approval_required`. Fail-closed by default. Never widens grants.
+  High-risk set (`ADVERSARY_HIGH_RISK_TOOL_IDS`): `run_command`, deletes,
+  network fetch/search, and GitHub writes. **`apply_patch` is intentionally
+  omitted** — mutation budget, path scopes, exact-patch reason codes, and
+  approval already cover write risk; adversary would only add latency/noise on
+  the hottest path. Hosts may still wrap `apply_patch` via approval modes.
 
 ## Ownership Boundaries
 
