@@ -4,7 +4,6 @@ import { relative, resolve, sep } from 'node:path';
 
 import bundledTs from 'typescript';
 import type {
-  CodeNavigationCallOptions,
   CodeNavigationCapability,
   CodeNavigationDocumentQuery,
   CodeNavigationHover,
@@ -26,6 +25,8 @@ import {
 } from './createStdioLspCodeNavigationPort.js';
 
 const MAX_LOCATIONS = 40;
+
+type CodeNavigationCallOptions = { signal?: AbortSignal };
 
 type TsApi = typeof bundledTs;
 

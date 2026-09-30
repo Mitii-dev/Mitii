@@ -7,10 +7,12 @@ import {
   isExcalidrawSource,
   parseExcalidrawDocument,
 } from '../../shared/excalidrawSvg.js';
+import { inlineCodeAsFileRef, parseFileRef } from './fileLinks.js';
 
 interface MarkdownBodyProps {
   text: string;
   streaming?: boolean;
+  onOpenFile?: (path: string, line?: number, column?: number) => void;
 }
 
 function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) {
@@ -192,7 +194,7 @@ function MermaidBlock({ text }: { text: string }) {
   );
 }
 
-export function MarkdownBody({ text, streaming }: MarkdownBodyProps) {
+export function MarkdownBody({ text, streaming, onOpenFile }: MarkdownBodyProps) {
   if (!text.trim()) {
     return streaming ? <p className="md-pending">Working…</p> : null;
   }
@@ -204,15 +206,68 @@ export function MarkdownBody({ text, streaming }: MarkdownBodyProps) {
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          a: ({ href, children }) => (
-            <a href={href} target="_blank" rel="noreferrer">
-              {children}
-            </a>
-          ),
+          a: ({ href, children }) => {
+            const safeHttp =
+              href && /^(https?:|mailto:|#)/i.test(href) ? href : undefined;
+            if (safeHttp) {
+              return (
+                <a href={safeHttp} target="_blank" rel="noreferrer">
+                  {children}
+                </a>
+              );
+            }
+            const fileRef = href ? parseFileRef(href) : null;
+            if (fileRef && onOpenFile) {
+              return (
+                <button
+                  type="button"
+                  className="md-file-link"
+                  title={`Open ${fileRef.path}`}
+                  onClick={() =>
+                    onOpenFile(fileRef.path, fileRef.line, fileRef.column)
+                  }
+                >
+                  {children}
+                </button>
+              );
+            }
+            const textRef =
+              typeof children === 'string' ? parseFileRef(children) : null;
+            if (textRef && onOpenFile) {
+              return (
+                <button
+                  type="button"
+                  className="md-file-link"
+                  title={`Open ${textRef.path}`}
+                  onClick={() =>
+                    onOpenFile(textRef.path, textRef.line, textRef.column)
+                  }
+                >
+                  {children}
+                </button>
+              );
+            }
+            return <span>{children}</span>;
+          },
           code: ({ className, children, ...props }) => {
             const inline = !className;
             const codeText = String(children ?? '').replace(/\n$/, '');
             if (inline) {
+              const fileRef = onOpenFile ? inlineCodeAsFileRef(codeText) : null;
+              if (fileRef) {
+                return (
+                  <button
+                    type="button"
+                    className="md-file-link md-code-inline"
+                    title={`Open ${fileRef.path}`}
+                    onClick={() =>
+                      onOpenFile?.(fileRef.path, fileRef.line, fileRef.column)
+                    }
+                  >
+                    {codeText}
+                  </button>
+                );
+              }
               return (
                 <code className="md-code-inline" {...props}>
                   {children}

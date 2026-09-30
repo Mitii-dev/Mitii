@@ -41,6 +41,11 @@ export function selectProportionalChecks(params: {
     const aRequired = requiredKinds.has(a.kind) ? 0 : 1;
     const bRequired = requiredKinds.has(b.kind) ? 0 : 1;
     if (aRequired !== bRequired) return aRequired - bRequired;
+    // Prefer package/inferred projects over workspace-root so localized
+    // one-per-kind selection keeps the check that matches changed files.
+    const aScope = projectScopeRank(a);
+    const bScope = projectScopeRank(b);
+    if (aScope !== bScope) return aScope - bScope;
     // Prefer non-browser tests ahead of e2e when both are candidates.
     if (a.kind === "test" && b.kind === "test") {
       const aE2e = isBrowserE2eCandidate(a) ? 1 : 0;
@@ -52,10 +57,14 @@ export function selectProportionalChecks(params: {
     );
   });
 
-  // Localized: one check per kind; broader scopes may keep multiple projects.
+  // Localized/module: one check per kind even when that kind is required —
+  // otherwise workspace-root + inferred typecheck both run and root noise
+  // reopens verification repair after the package check already passed.
   const selected: DiscoveredCheckCandidate[] = [];
   const seenKinds = new Set<VerificationCheckKind>();
   const omitted: DiscoveredCheckCandidate[] = [];
+  const narrowScope =
+    params.changeScope === "localized" || params.changeScope === "module";
 
   for (const candidate of byPriority) {
     if (candidate.kind === "test" && !requiredKinds.has("test")) {
@@ -70,11 +79,7 @@ export function selectProportionalChecks(params: {
       omitted.push(candidate);
       continue;
     }
-    if (
-      (params.changeScope === "localized" || params.changeScope === "module") &&
-      seenKinds.has(candidate.kind) &&
-      !requiredKinds.has(candidate.kind)
-    ) {
+    if (narrowScope && seenKinds.has(candidate.kind)) {
       omitted.push(candidate);
       continue;
     }
@@ -95,4 +100,39 @@ export function isBrowserE2eCandidate(
     ...(candidate.argv ?? []),
   ].join(" ");
   return BROWSER_E2E_TEST_PATTERN.test(haystack);
+}
+
+/**
+ * Lower rank is preferred. Package/inferred checks beat workspace-root so a
+ * single typecheck slot covers the changed package, not the monorepo root.
+ */
+export function projectScopeRank(candidate: DiscoveredCheckCandidate): number {
+  const projectId = (candidate.projectId ?? "").replace(/\\/g, "/");
+  const checkId = candidate.checkId.replace(/\\/g, "/");
+  if (
+    projectId.startsWith("inferred:") ||
+    checkId.startsWith("inferred:") ||
+    /^(apps|packages)\//.test(projectId)
+  ) {
+    return 0;
+  }
+  if (isWorkspaceRootCandidate(candidate)) {
+    return 2;
+  }
+  return 1;
+}
+
+function isWorkspaceRootCandidate(candidate: DiscoveredCheckCandidate): boolean {
+  const projectId = (candidate.projectId ?? "").toLowerCase();
+  if (
+    projectId === "workspace-root" ||
+    projectId === "root" ||
+    projectId === "."
+  ) {
+    return true;
+  }
+  const checkId = candidate.checkId.toLowerCase();
+  return (
+    checkId.startsWith("workspace-root:") || checkId.startsWith("root:")
+  );
 }

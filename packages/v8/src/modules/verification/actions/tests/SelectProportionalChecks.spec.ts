@@ -91,4 +91,63 @@ describe("selectProportionalChecks", () => {
       "root:test:desktop:test",
     );
   });
+
+  it("localized scope keeps one typecheck and prefers inferred package over workspace-root", () => {
+    const rootTypecheck: DiscoveredCheckCandidate = {
+      ...typecheck,
+      checkId: "workspace-root:typecheck:typecheck",
+      projectId: "workspace-root",
+      label: "pnpm typecheck (workspace-root)",
+    };
+    const packageTypecheck: DiscoveredCheckCandidate = {
+      ...typecheck,
+      checkId: "inferred:apps/desktop:typecheck:typecheck",
+      projectId: "inferred:apps/desktop",
+      label: "pnpm typecheck (inferred:apps/desktop)",
+    };
+    const result = selectProportionalChecks({
+      candidates: [rootTypecheck, packageTypecheck],
+      verification: {
+        required: true,
+        minimumEvidence: ["diagnostics", "typecheck"],
+        allowUnavailable: false,
+      },
+      changeScope: "localized",
+    });
+
+    expect(result.selected.map((c) => c.checkId)).toEqual([
+      "inferred:apps/desktop:typecheck:typecheck",
+    ]);
+    expect(result.omitted.map((c) => c.checkId)).toContain(
+      "workspace-root:typecheck:typecheck",
+    );
+  });
+
+  it("cross_cutting may still select multiple typechecks across projects", () => {
+    const rootTypecheck: DiscoveredCheckCandidate = {
+      ...typecheck,
+      checkId: "workspace-root:typecheck:typecheck",
+      projectId: "workspace-root",
+    };
+    const packageTypecheck: DiscoveredCheckCandidate = {
+      ...typecheck,
+      checkId: "inferred:packages/host:typecheck:typecheck",
+      projectId: "inferred:packages/host",
+    };
+    const result = selectProportionalChecks({
+      candidates: [rootTypecheck, packageTypecheck],
+      verification: {
+        required: true,
+        minimumEvidence: ["typecheck"],
+        allowUnavailable: false,
+      },
+      changeScope: "cross_cutting",
+      maxChecks: 4,
+    });
+
+    expect(result.selected.map((c) => c.checkId)).toEqual([
+      "inferred:packages/host:typecheck:typecheck",
+      "workspace-root:typecheck:typecheck",
+    ]);
+  });
 });

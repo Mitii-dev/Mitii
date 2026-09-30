@@ -124,6 +124,10 @@ export { shouldCaptureUnconditionalAgentPreflight } from "./shouldCaptureUncondi
 export {
   decideVerificationGate,
   isUserGoalComplete,
+  packageCompileEvidencePassed,
+  failuresAreIgnorableWhenPackagePassed,
+  isPackageScopedCheck,
+  isWorkspaceRootCheck,
 } from "./decideVerificationGate";
 export type { VerificationGateDecision } from "./decideVerificationGate";
 export { mapContextToPromptSlice } from "./mapContextToPromptSlice";
