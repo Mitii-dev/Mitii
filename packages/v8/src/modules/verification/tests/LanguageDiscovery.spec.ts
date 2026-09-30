@@ -96,6 +96,38 @@ line-length = 100
     ]);
   });
 
+  it("uses fatal-only ruff select for localized Python discovery", async () => {
+    const manifests = new InMemoryManifestReader({
+      "pyproject.toml": `[tool.ruff]\nline-length = 100\n`,
+    });
+    const localized = await discoverCandidatesForProject({
+      project: project({ projectId: "py", primaryLanguageId: "python" }),
+      changedFiles: ["app.py"],
+      manifests,
+      changeScope: "localized",
+    });
+    const lint = localized.candidates.find((c) => c.kind === "lint");
+    expect(lint?.argv).toEqual([
+      "ruff",
+      "check",
+      "--select",
+      "E9,F821,F822,F823,F401",
+      ".",
+    ]);
+
+    const broad = await discoverCandidatesForProject({
+      project: project({ projectId: "py", primaryLanguageId: "python" }),
+      changedFiles: ["app.py"],
+      manifests,
+      changeScope: "cross_cutting",
+    });
+    expect(broad.candidates.find((c) => c.kind === "lint")?.argv).toEqual([
+      "ruff",
+      "check",
+      ".",
+    ]);
+  });
+
   it("discovers Go checks only with go.mod", async () => {
     const missing = await discoverCandidatesForProject({
       project: project({ projectId: "go", primaryLanguageId: "go" }),

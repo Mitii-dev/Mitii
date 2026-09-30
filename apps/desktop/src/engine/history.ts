@@ -25,6 +25,8 @@ export interface DesktopThreadTokenUsage {
   lastResponseTokens: number;
   currentTurnTotal: number;
   contextWindow: number;
+  cacheHitTokens?: number;
+  cacheMissTokens?: number;
   durationMs?: number;
   contextBreakdown?: unknown;
 }
@@ -94,6 +96,12 @@ function normalizeTokenUsage(raw: unknown): DesktopThreadTokenUsage | undefined 
     currentTurnTotal: num(obj.currentTurnTotal),
     contextWindow: num(obj.contextWindow),
   };
+  if (typeof obj.cacheHitTokens === 'number' && obj.cacheHitTokens > 0) {
+    usage.cacheHitTokens = obj.cacheHitTokens;
+  }
+  if (typeof obj.cacheMissTokens === 'number' && obj.cacheMissTokens > 0) {
+    usage.cacheMissTokens = obj.cacheMissTokens;
+  }
   if (typeof obj.durationMs === 'number' && obj.durationMs > 0) {
     usage.durationMs = obj.durationMs;
   }

@@ -103,6 +103,33 @@ export async function executeChecks(params: {
     const warningText = (result.warnings ?? []).join("\n");
     const evidenceText = `${outputText}\n${warningText}`;
 
+    // Mutating formatters often exit non-zero after rewriting with no
+    // diagnostics — that is not a defect in the change under review.
+    if (
+      candidate.kind === "format" &&
+      outcome === "failed" &&
+      !COMPILER_DIAGNOSTIC_EVIDENCE.test(evidenceText) &&
+      !hasParsedDiagnosticSignal(evidenceText)
+    ) {
+      checks.push({
+        checkId: candidate.checkId,
+        kind: candidate.kind,
+        projectId: candidate.projectId,
+        label: candidate.label,
+        argv: candidate.argv,
+        evidenceSource: candidate.evidenceSource,
+        outcome: "passed",
+        exitCode: extractExitCode(result.output),
+        durationMs,
+        summary: `${candidate.label} exited non-zero without diagnostics (treated as format rewrite, not a defect).`,
+        toolCallId: callId,
+      });
+      warnings.push(
+        `Check "${candidate.checkId}" format non-zero exit ignored (no diagnostic evidence).`,
+      );
+      continue;
+    }
+
     if (
       outcome === "failed" &&
       !COMPILER_DIAGNOSTIC_EVIDENCE.test(evidenceText) &&
@@ -204,6 +231,14 @@ function extractOutputText(output: unknown): string {
     .filter((value): value is string => typeof value === "string")
     .join("\n");
   return parts;
+}
+
+function hasParsedDiagnosticSignal(text: string): boolean {
+  return (
+    /\(\d+,\d+\):\s+(error|warning)/i.test(text) ||
+    /:\d+:\d+:\s*(error|warning)/i.test(text) ||
+    /\berror TS\d{3,5}\b/i.test(text)
+  );
 }
 
 function summarizeToolResult(

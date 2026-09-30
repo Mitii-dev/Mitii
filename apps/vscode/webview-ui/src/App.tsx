@@ -98,6 +98,7 @@ import type {
 } from './protocol';
 import { modeColor } from './modeColors';
 import { TokenMeter } from './TokenMeter';
+import type { ModelCostRates } from './modelPricing';
 import { resolveDisplayedAssistantText } from './assistantDisplay';
 import type { ChatMessageView } from './protocol';
 import SYMBOL_LOGO from '../../media/mitii-logo.png';
@@ -139,6 +140,8 @@ const EMPTY_TOKEN_USAGE: TokenUsageSnapshot = {
   turnCount: 0,
   contextWindow: 32768,
   estimated: true,
+  cacheHitTokens: 0,
+  cacheMissTokens: 0,
   turns: [],
   live: false,
 };
@@ -877,6 +880,7 @@ export function App() {
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [tokenUsage, setTokenUsage] =
     useState<TokenUsageSnapshot>(EMPTY_TOKEN_USAGE);
+  const [costRates, setCostRates] = useState<ModelCostRates | null>(null);
   const [testingConnection, setTestingConnection] = useState(false);
   const [refreshingModels, setRefreshingModels] = useState(false);
   const [connectionMessage, setConnectionMessage] = useState<string | null>(
@@ -1651,6 +1655,9 @@ export function App() {
           break;
         case 'tokenUsage':
           applyTokenUsage(msg.usage);
+          break;
+        case 'modelPricing':
+          setCostRates(msg.rates);
           break;
         default:
           break;
@@ -3042,7 +3049,11 @@ export function App() {
                     </div>
                   </div>
                   <div className="composer-meta-row">
-                    <TokenMeter usage={tokenUsage} placement="above" />
+                    <TokenMeter
+                      usage={tokenUsage}
+                      placement="above"
+                      costRates={costRates}
+                    />
                     <ModelQuickSelect
                       label={selectedModelLabel}
                       value={provider.model}

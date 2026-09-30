@@ -16,6 +16,7 @@ import {
   resolveProviderApiKey,
   IndexLockedError,
   buildFixReviewFindingsAsk,
+  resolveModelCostRates,
 } from '@mitii/host';
 import type { SkillDescriptor } from '@mitii/v8';
 
@@ -300,6 +301,8 @@ function emptyTokenUsage(contextWindow = DEFAULT_CONTEXT_WINDOW): TokenUsageSnap
     turnCount: 0,
     contextWindow,
     estimated: true,
+    cacheHitTokens: 0,
+    cacheMissTokens: 0,
     turns: [],
     live: false,
   };
@@ -2277,11 +2280,15 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     at: string;
     inputTokens?: number;
     outputTokens?: number;
+    cacheHitTokens?: number;
+    cacheMissTokens?: number;
     finishReason?: string;
     truncated?: boolean;
   }): void {
     const input = event.inputTokens ?? 0;
     const output = event.outputTokens ?? 0;
+    const cacheHit = event.cacheHitTokens ?? 0;
+    const cacheMiss = event.cacheMissTokens ?? 0;
     const estimated =
       event.inputTokens === undefined && event.outputTokens === undefined;
     this.pendingRunTurns = [
@@ -2291,6 +2298,8 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         at: event.at,
         inputTokens: input,
         outputTokens: output,
+        ...(cacheHit > 0 ? { cacheHitTokens: cacheHit } : {}),
+        ...(cacheMiss > 0 ? { cacheMissTokens: cacheMiss } : {}),
         finishReason: event.finishReason,
         truncated: event.truncated,
         estimated,
@@ -2304,7 +2313,23 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       (sum, t) => sum + t.outputTokens,
       0,
     );
+    const pendingCacheHit = this.pendingRunTurns.reduce(
+      (sum, t) => sum + (t.cacheHitTokens ?? 0),
+      0,
+    );
+    const pendingCacheMiss = this.pendingRunTurns.reduce(
+      (sum, t) => sum + (t.cacheMissTokens ?? 0),
+      0,
+    );
     const last = this.pendingRunTurns[this.pendingRunTurns.length - 1]!;
+    const baseCacheHit = this.runBaseTurns.reduce(
+      (sum, t) => sum + (t.cacheHitTokens ?? 0),
+      0,
+    );
+    const baseCacheMiss = this.runBaseTurns.reduce(
+      (sum, t) => sum + (t.cacheMissTokens ?? 0),
+      0,
+    );
     this.tokenUsage = {
       ...this.tokenUsage,
       inputTokensTotal: this.runBaseInputTokens + pendingInput,
@@ -2319,6 +2344,8 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       currentTurnOutputTokens: last.outputTokens,
       lastPromptTokens: last.inputTokens,
       lastResponseTokens: last.outputTokens,
+      cacheHitTokens: baseCacheHit + pendingCacheHit,
+      cacheMissTokens: baseCacheMiss + pendingCacheMiss,
       contextWindow: resolveContextWindow(this.vs),
       turns: [...this.runBaseTurns, ...this.pendingRunTurns].slice(-40),
       live: true,
@@ -3769,6 +3796,23 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
       ),
       checkpoints: loadCheckpoints(this.host.workspaceState),
     });
+    void this.refreshModelPricing(provider);
+  }
+
+  private async refreshModelPricing(
+    provider?: ProviderSettingsSnapshot,
+  ): Promise<void> {
+    try {
+      const snap = provider ?? (await this.readProvider());
+      const rates = await resolveModelCostRates({
+        presetOrType: snap.preset || snap.type,
+        modelId: snap.model,
+        baseUrl: snap.baseUrl,
+      });
+      this.post({ type: 'modelPricing', rates });
+    } catch {
+      this.post({ type: 'modelPricing', rates: null });
+    }
   }
 
   private renderHtml(webview: vscode.Webview): string {

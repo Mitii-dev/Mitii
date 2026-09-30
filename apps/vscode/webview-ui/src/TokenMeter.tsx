@@ -1,11 +1,17 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 
 import type { ContextUsageNode, TokenUsageSnapshot } from './protocol';
 import { IconTokens } from './components/Icons';
+import {
+  estimateSessionCost,
+  formatUsd,
+  type ModelCostRates,
+} from './modelPricing';
 
 interface TokenMeterProps {
   usage: TokenUsageSnapshot;
   placement?: 'above' | 'below';
+  costRates?: ModelCostRates | null;
 }
 
 const CONTEXT_SLICE_COLORS: Record<string, string> = {
@@ -101,7 +107,11 @@ function topLevelSegments(
     .filter((entry) => entry.tokens > 0);
 }
 
-export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
+export function TokenMeter({
+  usage,
+  placement = 'above',
+  costRates = null,
+}: TokenMeterProps) {
   const [open, setOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
   const inputTotal = usage.inputTokensTotal;
@@ -118,6 +128,34 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
     : 'Latest call';
   const runTotal = usage.currentTurnTotal;
   const tree = breakdown?.tree;
+  const cacheHitTokens = usage.cacheHitTokens ?? 0;
+  const cacheMissTokens = usage.cacheMissTokens ?? 0;
+  const estimate = useMemo(
+    () =>
+      estimateSessionCost(costRates, {
+        inputTokens: inputTotal,
+        outputTokens: outputTotal,
+        cacheHitTokens,
+        cacheMissTokens,
+      }),
+    [costRates, inputTotal, outputTotal, cacheHitTokens, cacheMissTokens],
+  );
+  const cacheDenom =
+    cacheHitTokens + cacheMissTokens > 0
+      ? cacheHitTokens + cacheMissTokens
+      : inputTotal;
+  const cacheRatio =
+    cacheHitTokens > 0 && cacheDenom > 0
+      ? Math.min(1, cacheHitTokens / cacheDenom)
+      : null;
+  const showCacheSection =
+    cacheHitTokens > 0 ||
+    cacheMissTokens > 0 ||
+    Boolean(estimate?.usedCachePricing);
+  const showCost =
+    Boolean(estimate) &&
+    (sessionTotal > 0 || inputTotal > 0 || outputTotal > 0 || Boolean(usage.live));
+  const displayEstimate = showCost ? estimate : null;
   const treeRows = tree ? flattenTree(tree) : [];
   const segmentRows = tree
     ? topLevelSegments(tree)
@@ -136,6 +174,10 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
     usage.live ? 'Live · updating cumulative chat totals' : null,
     `This chat: ${sessionTotal.toLocaleString()} tokens (input + output)`,
     `Input: ${inputTotal.toLocaleString()} · Output: ${outputTotal.toLocaleString()}`,
+    cacheHitTokens > 0
+      ? `Cache hit: ${cacheHitTokens.toLocaleString()} tokens`
+      : null,
+    estimate ? `Est. cost: ${formatUsd(estimate.totalUsd)}` : null,
     `Latest call: ${latestInput.toLocaleString()} in · ${latestOutput.toLocaleString()} out`,
     usage.contextWindow > 0
       ? `Model window: ${usage.contextWindow.toLocaleString()} tokens`
@@ -148,6 +190,8 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
   ]
     .filter(Boolean)
     .join('\n');
+
+  const toggle = () => setOpen((value) => !value);
 
   useEffect(() => {
     if (!open) return;
@@ -169,59 +213,178 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
 
   return (
     <div
-      className={`token-popover token-popover--${placement}`}
+      className={`token-meter-cluster token-popover--${placement}`}
       ref={popoverRef}
     >
-      <button
-        type="button"
-        className={`token-chip${open ? ' token-chip--active' : ''}${usage.live ? ' token-chip--live' : ''}`}
-        title={tooltip}
-        aria-label="Chat token usage"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-      >
-        <span className="token-chip__glyph" aria-hidden="true">
-          <IconTokens width={14} height={14} />
-        </span>
-        {usage.live ? (
-          <span className="token-chip__live" aria-label="Updating live" />
-        ) : null}
-        <span>{formatCompact(sessionTotal)}</span>
-        <span className="token-chip__sep">·</span>
-        <span
-          className="token-chip__io"
-          aria-label={
-            `Input ${inputTotal.toLocaleString()} tokens, output ${outputTotal.toLocaleString()} tokens`
-          }
+      <div className={`token-popover token-popover--${placement}`}>
+        <button
+          type="button"
+          className={`token-chip${open ? ' token-chip--active' : ''}${usage.live ? ' token-chip--live' : ''}`}
+          title={tooltip}
+          aria-label="Chat token usage"
+          aria-expanded={open}
+          onClick={toggle}
         >
-          <span aria-hidden="true">↑</span>
-          <span>{formatCompact(inputTotal)}</span>
-          <span aria-hidden="true">↓</span>
-          <span>{formatCompact(outputTotal)}</span>
-        </span>
-      </button>
-      {open ? (
-        <div
-          className="token-popover__panel token-popover__panel--wide"
-          role="dialog"
-          aria-label="Token usage details"
-        >
-          <div className="token-popover__header">
-            <span>
-              {usage.live ? 'Live chat token monitor' : 'Chat token summary'}
-            </span>
-            <strong>
-              {usage.live
-                ? 'Live'
-                : breakdown?.source === 'prompt_budget'
-                  ? 'Budget'
-                  : usage.estimated
-                    ? 'Estimated'
-                    : 'Reported'}
-            </strong>
-          </div>
+          <span className="token-chip__glyph" aria-hidden="true">
+            <IconTokens width={14} height={14} />
+          </span>
+          {usage.live ? (
+            <span className="token-chip__live" aria-label="Updating live" />
+          ) : null}
+          <span>{formatCompact(sessionTotal)}</span>
+          <span className="token-chip__sep">·</span>
+          <span
+            className="token-chip__io"
+            aria-label={
+              `Input ${inputTotal.toLocaleString()} tokens, output ${outputTotal.toLocaleString()} tokens`
+            }
+          >
+            <span aria-hidden="true">↑</span>
+            <span>{formatCompact(inputTotal)}</span>
+            <span aria-hidden="true">↓</span>
+            <span>{formatCompact(outputTotal)}</span>
+          </span>
+        </button>
+        {open ? (
+          <div
+            className="token-popover__panel token-popover__panel--wide"
+            role="dialog"
+            aria-label="Token usage details"
+          >
+            <div className="token-popover__header">
+              <span>
+                {usage.live ? 'Live chat token monitor' : 'Chat token summary'}
+              </span>
+              <strong>
+                {usage.live
+                  ? 'Live'
+                  : breakdown?.source === 'prompt_budget'
+                    ? 'Budget'
+                    : usage.estimated
+                      ? 'Estimated'
+                      : 'Reported'}
+              </strong>
+            </div>
 
-          {!usage.live ? (
+            {(displayEstimate || showCacheSection) && (
+              <section
+                className="token-analytics"
+                aria-label="Cost and cache analytics"
+              >
+                <div className="token-analytics__grid">
+                  {displayEstimate ? (
+                    <div className="token-stat-card token-stat-card--cost">
+                      <div className="token-stat-card__label">
+                        <span className="token-chip__dot token-chip__dot--cost" />
+                        Est. cost
+                      </div>
+                      <div className="token-stat-card__value">
+                        {formatUsd(displayEstimate.totalUsd)}
+                      </div>
+                      <div className="token-stat-card__meta">
+                        models.dev · not billed
+                      </div>
+                    </div>
+                  ) : null}
+                  {displayEstimate ? (
+                    <div className="token-stat-card">
+                      <div className="token-stat-card__label">Input / out</div>
+                      <div className="token-stat-card__value token-stat-card__value--split">
+                        <span>{formatUsd(displayEstimate.inputUsd)}</span>
+                        <span className="token-stat-card__sep">/</span>
+                        <span>{formatUsd(displayEstimate.outputUsd)}</span>
+                      </div>
+                      <div className="token-stat-card__meta">
+                        @ {displayEstimate.rates.input}/
+                        {displayEstimate.rates.output} per 1M
+                      </div>
+                    </div>
+                  ) : null}
+                  {showCacheSection ? (
+                    <div className="token-stat-card token-stat-card--cache">
+                      <div className="token-stat-card__label">
+                        <span className="token-chip__dot token-chip__dot--cache" />
+                        Cache hit
+                      </div>
+                      <div className="token-stat-card__value">
+                        {cacheRatio !== null ? formatPct(cacheRatio) : '—'}
+                      </div>
+                      <div className="token-stat-card__meta">
+                        {cacheHitTokens > 0
+                          ? `${formatCompact(cacheHitTokens)} cached`
+                          : 'Not reported by provider'}
+                      </div>
+                    </div>
+                  ) : null}
+                  {displayEstimate?.usedCachePricing ? (
+                    <div className="token-stat-card token-stat-card--savings">
+                      <div className="token-stat-card__label">Cache savings</div>
+                      <div className="token-stat-card__value">
+                        {formatUsd(displayEstimate.cacheSavingsUsd)}
+                      </div>
+                      <div className="token-stat-card__meta">
+                        vs full input rate
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+                {showCacheSection &&
+                (cacheHitTokens > 0 || cacheMissTokens > 0) ? (
+                  <div className="token-cache-bar" aria-label="Cache composition">
+                    <div className="token-cache-bar__track">
+                      {(() => {
+                        const hit = cacheHitTokens;
+                        const miss =
+                          cacheMissTokens > 0
+                            ? cacheMissTokens
+                            : Math.max(0, inputTotal - hit);
+                        const total = hit + miss;
+                        const hitShare = total > 0 ? hit / total : 0;
+                        const missShare = total > 0 ? miss / total : 0;
+                        return (
+                          <>
+                            {hitShare > 0 ? (
+                              <span
+                                className="token-cache-bar__hit"
+                                style={{ width: `${hitShare * 100}%` }}
+                              />
+                            ) : null}
+                            {missShare > 0 ? (
+                              <span
+                                className="token-cache-bar__miss"
+                                style={{ width: `${missShare * 100}%` }}
+                              />
+                            ) : null}
+                          </>
+                        );
+                      })()}
+                    </div>
+                    <div className="token-cache-bar__legend">
+                      <span>
+                        <i className="token-cache-bar__swatch token-cache-bar__swatch--hit" />
+                        Hit {formatCompact(cacheHitTokens)}
+                      </span>
+                      <span>
+                        <i className="token-cache-bar__swatch token-cache-bar__swatch--miss" />
+                        Miss{' '}
+                        {formatCompact(
+                          cacheMissTokens > 0
+                            ? cacheMissTokens
+                            : Math.max(0, inputTotal - cacheHitTokens),
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                ) : displayEstimate && !displayEstimate.usedCachePricing ? (
+                  <div className="token-popover__summary token-popover__summary--note">
+                    Provider did not report cache hits. Cost uses full input
+                    rates (may overestimate when caching is active).
+                  </div>
+                ) : null}
+              </section>
+            )}
+
+            {!usage.live ? (
             <dl className="token-popover__stats token-popover__stats--primary token-popover__stats--first">
               <div>
                 <dt>Total tokens</dt>
@@ -496,6 +659,43 @@ export function TokenMeter({ usage, placement = 'above' }: TokenMeterProps) {
           )}
         </div>
       ) : null}
+      </div>
+      {(displayEstimate || cacheRatio !== null) && (
+        <div className="token-chip-group" role="group" aria-label="Cost and cache">
+          {displayEstimate ? (
+            <button
+              type="button"
+              className={`token-chip token-chip--cost${open ? ' token-chip--active' : ''}${
+                usage.live ? ' token-chip--live' : ''
+              }`}
+              title={`Estimated session cost: ${formatUsd(displayEstimate.totalUsd)}`}
+              aria-label={`Estimated cost ${formatUsd(displayEstimate.totalUsd)}`}
+              aria-expanded={open}
+              onClick={toggle}
+            >
+              <span className="token-chip__dot token-chip__dot--cost" aria-hidden />
+              <span className="token-chip__cost-value">
+                {formatUsd(displayEstimate.totalUsd)}
+              </span>
+              <span className="token-chip__badge">est</span>
+            </button>
+          ) : null}
+          {cacheRatio !== null ? (
+            <button
+              type="button"
+              className={`token-chip token-chip--cache${open ? ' token-chip--active' : ''}`}
+              title={`Cache hit rate: ${formatPct(cacheRatio)}`}
+              aria-label={`Cache hit ${formatPct(cacheRatio)}`}
+              aria-expanded={open}
+              onClick={toggle}
+            >
+              <span className="token-chip__dot token-chip__dot--cache" aria-hidden />
+              <span>{formatPct(cacheRatio)}</span>
+              <span className="token-chip__badge">cache</span>
+            </button>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }

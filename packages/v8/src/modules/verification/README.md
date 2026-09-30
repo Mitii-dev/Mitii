@@ -10,6 +10,10 @@ Verification gathers evidence after a change. It maps changed files to projects,
 - Discovers applicable checks.
 - Selects proportional checks for the change scope. `test` checks (including
   `desktop:test` / WDIO) run only when `minimumEvidence` includes `tests`.
+- Package-scopes tests (and localized typecheck/lint/build) to touched
+  `apps/` / `packages/` roots from `changedFiles`. A vscode settings paste
+  must never drag in `packages/v8:test` unless that package was edited and
+  tests were requested.
 - Executes checks through `VerificationToolExecutorPort`.
 - Normalizes diagnostics and compares against optional baseline diagnostics.
 - Inspects diff/stale-state risk.

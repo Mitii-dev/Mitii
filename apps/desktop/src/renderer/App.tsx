@@ -87,6 +87,7 @@ import {
   fetchMcpServers,
   setDatabaseMcpAccess,
   fetchProfiles,
+  fetchModelPricing,
   fetchProviderModels,
   fetchSkills,
   finalizeAssistantText,
@@ -148,6 +149,10 @@ import {
   resolveTheme,
   type DesktopTheme,
 } from './theme.js';
+import {
+  isPricedCloudProvider,
+  type ModelCostRates,
+} from '../shared/modelPricing.js';
 
 type View = 'chat' | 'settings';
 type ChatLayout = 'chat' | 'code';
@@ -263,6 +268,8 @@ function serializeTokenUsage(usage: TokenUsageState): TokenUsageState {
     lastResponseTokens,
     currentTurnTotal,
     contextWindow,
+    cacheHitTokens,
+    cacheMissTokens,
     durationMs,
     contextBreakdown,
   } = usage;
@@ -278,6 +285,8 @@ function serializeTokenUsage(usage: TokenUsageState): TokenUsageState {
     lastResponseTokens,
     currentTurnTotal,
     contextWindow,
+    cacheHitTokens: cacheHitTokens ?? 0,
+    cacheMissTokens: cacheMissTokens ?? 0,
     ...(typeof durationMs === 'number' && durationMs > 0
       ? { durationMs }
       : {}),
@@ -296,6 +305,8 @@ function tokenUsageFromThread(
   return {
     ...usage,
     contextWindow: usage.contextWindow || contextWindow,
+    cacheHitTokens: usage.cacheHitTokens ?? 0,
+    cacheMissTokens: usage.cacheMissTokens ?? 0,
     live: false,
   };
 }
@@ -314,13 +325,29 @@ interface ProfileRow {
   hasSecret?: boolean;
 }
 
-function extractTurnTokens(event: unknown): { in: number; out: number } | null {
+function extractTurnTokens(
+  event: unknown,
+): {
+  in: number;
+  out: number;
+  cacheHit?: number;
+  cacheMiss?: number;
+} | null {
   if (!event || typeof event !== 'object') return null;
   const e = event as Record<string, unknown>;
   if (e.type !== 'model_turn') return null;
   const input = typeof e.inputTokens === 'number' ? e.inputTokens : 0;
   const output = typeof e.outputTokens === 'number' ? e.outputTokens : 0;
-  return { in: input, out: output };
+  return {
+    in: input,
+    out: output,
+    ...(typeof e.cacheHitTokens === 'number'
+      ? { cacheHit: e.cacheHitTokens }
+      : {}),
+    ...(typeof e.cacheMissTokens === 'number'
+      ? { cacheMiss: e.cacheMissTokens }
+      : {}),
+  };
 }
 
 function isToolCompleted(event: unknown): boolean {
@@ -423,6 +450,7 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [tokenUsage, setTokenUsage] = useState<TokenUsageState>(emptyTokenUsage);
   const tokenUsageRef = useRef<TokenUsageState>(emptyTokenUsage());
+  const [costRates, setCostRates] = useState<ModelCostRates | null>(null);
   const [profiles, setProfiles] = useState<ProfileRow[]>([]);
   const [activeProfileId, setActiveProfileId] = useState('');
   const [knownModels, setKnownModels] = useState<string[]>([]);
@@ -477,6 +505,43 @@ export function App() {
   const modelLabel =
     settings.provider.model.trim() || settings.provider.preset || 'Model';
   const accent = modeAccent(mode);
+
+  useEffect(() => {
+    const preset = settings.provider.preset || settings.provider.type;
+    const model = settings.provider.model;
+    const providerBaseUrl = settings.provider.baseUrl;
+    if (
+      !isPricedCloudProvider(preset, providerBaseUrl) ||
+      !model.trim() ||
+      !engine
+    ) {
+      setCostRates(null);
+      return;
+    }
+    let cancelled = false;
+    void fetchModelPricing({
+      ...engine,
+      preset,
+      model,
+      providerBaseUrl,
+    })
+      .then((result) => {
+        if (!cancelled) setCostRates(result.rates);
+      })
+      .catch(() => {
+        if (!cancelled) setCostRates(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    engine?.baseUrl,
+    engine?.token,
+    settings.provider.preset,
+    settings.provider.type,
+    settings.provider.model,
+    settings.provider.baseUrl,
+  ]);
   const activeProfile =
     profiles.find((p) => p.id === activeProfileId) ?? profiles[0];
 
@@ -1077,7 +1142,12 @@ export function App() {
         if (line.op === 'event') {
           const tokens = extractTurnTokens(line.event);
           if (tokens) {
-            pushUsage(addTurnTokens({ ...usage, live: true }, tokens.in, tokens.out));
+            pushUsage(
+              addTurnTokens({ ...usage, live: true }, tokens.in, tokens.out, {
+                hit: tokens.cacheHit,
+                miss: tokens.cacheMiss,
+              }),
+            );
           }
           const breakdown = breakdownFromPromptReady(line.event);
           if (breakdown) {
@@ -3329,7 +3399,7 @@ export function App() {
               </div>
             </div>
             <div className="composer-meta-row">
-              <TokenMeter usage={tokenUsage} />
+              <TokenMeter usage={tokenUsage} costRates={costRates} />
               <ModelQuickSelect
                 model={modelLabel}
                 models={knownModels}
