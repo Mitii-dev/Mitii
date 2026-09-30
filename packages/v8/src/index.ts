@@ -3,11 +3,17 @@ export { UserRequestEnvelopeBuilder } from "./modules/request-intake";
 export type {
   UserRequestEnvelope, CreateUserRequestInput, AgentMode,
   UserRequestOrigin, RequestImageAttachment,
+  RequestMetaCommand, RequestTurnKind, RequestSessionAction,
+  MetaCommandLifecycle, RequestIntakeResult,
 } from "./modules/request-intake";
 export {
   agentModeSchema, userRequestEnvelopeSchema, createUserRequestInputSchema,
-  requestImageAttachmentSchema, USER_REQUEST_ORIGINS, REQUEST_ENVELOPE_DEFAULTS,
+  requestImageAttachmentSchema, requestMetaCommandSchema,
+  USER_REQUEST_ORIGINS, REQUEST_ENVELOPE_DEFAULTS,
   REQUEST_ENVELOPE_LIMITS, SUPPORTED_IMAGE_MIME_TYPES,
+  REQUEST_TURN_KINDS, META_COMMAND_LIFECYCLES,
+  sanitizeUserMessage, classifyLeadingCommand, extractMentionArtifacts,
+  normalizeAttachments,
 } from "./modules/request-intake";
 export { RequestUnderstandingPipeline } from "./modules/request-understanding";
 export type {

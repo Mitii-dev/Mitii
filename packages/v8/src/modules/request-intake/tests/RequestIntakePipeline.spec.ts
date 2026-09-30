@@ -4,6 +4,9 @@ import { createUserRequestInputSchema } from "../contracts/input/CreateUserReque
 import { agentModeSchema } from "../interaction-mode/schema";
 import { RequestIntakePipeline } from "../pipeline/RequestIntakePipeline";
 import { userRequestEnvelopeSchema } from "../request-envelope/schema";
+import { extractMentionArtifacts } from "../mention-extract";
+import { classifyLeadingCommand, parseLeadingCommand } from "../command-classify";
+import { sanitizeUserMessage } from "../sanitize";
 
 const NOW = Date.parse("2026-07-25T12:00:00.000Z");
 
@@ -26,6 +29,7 @@ describe("RequestIntakePipeline", () => {
     expect(result.mode).toBe("agent");
     expect(result.message).toBe("Explain the bug.");
     expect(result.requestId).toBe("request-intake-1");
+    expect(result.turnKind).toBe("new");
     expect(userRequestEnvelopeSchema.safeParse(result).success).toBe(true);
   });
 
@@ -74,6 +78,7 @@ describe("RequestIntakePipeline", () => {
       correlation: {
         traceId: "trace-1",
       },
+      turnKind: "steer",
     });
     expect(valid.success).toBe(true);
   });
@@ -118,5 +123,105 @@ describe("RequestIntakePipeline", () => {
         userMessage: "   ",
       }),
     ).toThrow();
+  });
+
+  it("injects @path mentions into referencedArtifacts", () => {
+    const result = createPipeline().intake({
+      sessionId: "session-1",
+      mode: "agent",
+      userMessage: "Fix @src/LoginForm.tsx:10-20 please",
+    });
+
+    expect(result.referencedArtifacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: "src/LoginForm.tsx",
+          kind: "selection",
+          startLine: 10,
+          endLine: 20,
+        }),
+      ]),
+    );
+    expect(result.message).toContain("@src/LoginForm.tsx:10-20");
+  });
+
+  it("resolves mode from leading /plan slash", () => {
+    const result = createPipeline().intake({
+      sessionId: "session-1",
+      mode: "agent",
+      userMessage: "/plan redesign the auth flow",
+    });
+
+    expect(result.mode).toBe("plan");
+    expect(result.message).toBe("redesign the auth flow");
+    expect(result.messageOriginal).toBe("/plan redesign the auth flow");
+  });
+
+  it("classifies /stop as meta short-circuit", () => {
+    const detailed = createPipeline().intakeDetailed({
+      sessionId: "session-1",
+      mode: "agent",
+      userMessage: "/stop",
+    });
+
+    expect(detailed.shortCircuitMeta).toBe(true);
+    expect(detailed.envelope.metaCommand).toEqual({
+      name: "stop",
+      args: "",
+      lifecycle: "stop",
+    });
+  });
+
+  it("preserves host turnKind", () => {
+    const result = createPipeline().intake({
+      sessionId: "session-1",
+      mode: "agent",
+      userMessage: "Keep going on the patch",
+      turnKind: "steer",
+      parentRequestId: "request-parent-1",
+    });
+
+    expect(result.turnKind).toBe("steer");
+    expect(result.parentRequestId).toBe("request-parent-1");
+  });
+});
+
+describe("sanitizeUserMessage", () => {
+  it("trims and strips control characters", () => {
+    expect(sanitizeUserMessage("  hello\u0000world  ")).toBe("helloworld");
+  });
+});
+
+describe("parseLeadingCommand", () => {
+  it("parses name and args", () => {
+    expect(parseLeadingCommand("/compact")).toEqual({
+      name: "compact",
+      args: "",
+      matchedPrefix: "/compact",
+    });
+    expect(parseLeadingCommand("/resume abc")).toEqual({
+      name: "resume",
+      args: "abc",
+      matchedPrefix: "/resume abc",
+    });
+  });
+
+  it("ignores comment-like prefixes", () => {
+    expect(classifyLeadingCommand("// not a command").kind).toBe("none");
+  });
+});
+
+describe("extractMentionArtifacts", () => {
+  it("skips bare @handles without path signals", () => {
+    expect(extractMentionArtifacts("ping @alice about this")).toEqual([]);
+  });
+
+  it("extracts quoted paths", () => {
+    expect(extractMentionArtifacts('see @"src/a b.ts"')).toEqual([
+      expect.objectContaining({
+        path: "src/a b.ts",
+        kind: "file",
+      }),
+    ]);
   });
 });

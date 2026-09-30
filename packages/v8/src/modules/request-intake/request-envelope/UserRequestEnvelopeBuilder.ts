@@ -11,11 +11,28 @@ import {
 import type { CreateUserRequestInput } from "../contracts/input/CreateUserRequestInput";
 import type {
   RequestArtifactReference,
+  RequestImageAttachment,
+  RequestMetaCommand,
+  RequestSessionAction,
+  RequestTurnKind,
   UserRequestCorrelation,
   UserRequestEnvelope,
   UserRequestEnvelopeBuilderDependencies,
   UserRequestWorkspaceScope,
 } from "./types";
+import type { AgentMode } from "../interaction-mode/types";
+
+export interface BuildEnvelopeFields {
+  mode: AgentMode;
+  message: string;
+  messageOriginal?: string;
+  referencedArtifacts: RequestArtifactReference[];
+  attachments?: RequestImageAttachment[];
+  turnKind: RequestTurnKind;
+  sessionAction?: RequestSessionAction;
+  parentRequestId?: string;
+  metaCommand?: RequestMetaCommand;
+}
 
 export class UserRequestEnvelopeBuilder {
   public readonly id =
@@ -30,6 +47,7 @@ export class UserRequestEnvelopeBuilder {
   public build(
     input:
       CreateUserRequestInput,
+    overrides?: Partial<BuildEnvelopeFields>,
   ): UserRequestEnvelope {
     const requestId =
       input.requestId
@@ -42,6 +60,34 @@ export class UserRequestEnvelopeBuilder {
         )
         .trim();
 
+    const mode = overrides?.mode ?? input.mode;
+    const message =
+      overrides?.message ??
+      input.userMessage.trim();
+    const referencedArtifacts =
+      overrides?.referencedArtifacts ??
+      (input.referencedArtifacts ?? []).map((artifact) =>
+        this.normalizeArtifact(artifact),
+      );
+    const attachments =
+      overrides?.attachments ??
+      input.attachments;
+    const turnKind =
+      overrides?.turnKind ??
+      input.turnKind ??
+      REQUEST_ENVELOPE_DEFAULTS.TURN_KIND;
+    const sessionAction =
+      overrides?.sessionAction ??
+      input.sessionAction;
+    const parentRequestId =
+      overrides?.parentRequestId ??
+      input.parentRequestId?.trim();
+    const metaCommand =
+      overrides?.metaCommand ??
+      input.metaCommand;
+    const messageOriginal =
+      overrides?.messageOriginal;
+
     const result:
       UserRequestEnvelope = {
       schemaVersion:
@@ -50,25 +96,15 @@ export class UserRequestEnvelopeBuilder {
       sessionId:
         input.sessionId
           .trim(),
-      mode:
-        input.mode,
+      mode,
       origin:
         input.origin ??
         REQUEST_ENVELOPE_DEFAULTS
           .ORIGIN,
-      message:
-        input.userMessage
-          .trim(),
+      message,
       referencedArtifacts:
-        (
-          input
-            .referencedArtifacts ??
-          []
-        ).map(
-          (artifact) =>
-            this.normalizeArtifact(
-              artifact,
-            ),
+        referencedArtifacts.map((artifact) =>
+          this.normalizeArtifact(artifact),
         ),
       ...(input.workspace
         ? {
@@ -86,13 +122,25 @@ export class UserRequestEnvelopeBuilder {
               ),
           }
         : {}),
-      ...(input.attachments &&
-      input.attachments.length >
+      ...(attachments &&
+      attachments.length >
         0
         ? {
-            attachments:
-              input.attachments,
+            attachments,
           }
+        : {}),
+      ...(messageOriginal
+        ? { messageOriginal }
+        : {}),
+      turnKind,
+      ...(sessionAction
+        ? { sessionAction }
+        : {}),
+      ...(parentRequestId
+        ? { parentRequestId }
+        : {}),
+      ...(metaCommand
+        ? { metaCommand }
         : {}),
       createdAt:
         this.toIsoDate(

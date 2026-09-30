@@ -54,6 +54,10 @@ export const AGENT_ACTIVE_STAGES = [
 export const AGENT_REASON_CODES = [
   "run_started",
   "intake_complete",
+  /** Leading slash classified as non-agent meta; run short-circuited at intake. */
+  "intake_meta_command",
+  /** `@path` mentions were parsed into referencedArtifacts at intake. */
+  "intake_mentions_extracted",
   "understanding_complete",
   "decision_complete",
   "grant_narrowed",
