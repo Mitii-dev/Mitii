@@ -5,6 +5,7 @@ import type {
   VerificationManifestReaderPort,
 } from "../../contracts";
 import { PYTHON_FATAL_RUFF_SELECT } from "../../policy";
+import { syntaxCandidatesForChangedFiles } from "./syntaxCandidates";
 import {
   commandCandidate,
   joinRoot,
@@ -14,11 +15,19 @@ import {
 export async function discoverPythonChecks(params: {
   project: ProjectDescriptor;
   manifests: VerificationManifestReaderPort;
+  changedFiles?: readonly string[];
   /** Narrow scopes prefer fatal-only ruff; broader scopes use full check. */
   changeScope?: VerificationChangeScope;
 }): Promise<ProjectDiscoveryResult> {
   const root = params.project.rootPath;
-  const candidates = [];
+  const candidates = [
+    ...syntaxCandidatesForChangedFiles({
+      projectId: params.project.projectId,
+      languageId: "python",
+      projectRoot: root,
+      changedFiles: params.changedFiles ?? [],
+    }),
+  ];
   const warnings: string[] = [];
 
   const pyproject = joinRoot(root, "pyproject.toml");

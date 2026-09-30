@@ -14,6 +14,9 @@ Verification gathers evidence after a change. It maps changed files to projects,
   `apps/` / `packages/` roots from `changedFiles`. A vscode settings paste
   must never drag in `packages/v8:test` unless that package was edited and
   tests were requested.
+- Discovers cheap `syntax` candidates for changed `.py` / `.js` / `.sh`
+  files (`py_compile`, `node --check`, `bash -n`) without inventing full
+  suites. Syntax never satisfies typecheck evidence.
 - Executes checks through `VerificationToolExecutorPort`.
 - Normalizes diagnostics and compares against optional baseline diagnostics.
 - Inspects diff/stale-state risk.
