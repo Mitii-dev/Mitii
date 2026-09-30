@@ -8,7 +8,7 @@ export type SteeringCriticMode = (typeof STEERING_CRITIC_MODES)[number];
 export interface SteeringFeatureFlags {
   /** Situation slots, closed skill-tag intersect, structured option resume. */
   understandingBallotV2: boolean;
-  /** Prefer high-confidence understanding over looksLike* (except safety). */
+  /** Prefer high-confidence understanding over looksLike* (except safety). Default on. */
   policyFactsFirst: boolean;
   /** Inject deterministic DecisionBrief into the system prompt. */
   decisionBrief: boolean;
@@ -23,7 +23,8 @@ export interface SteeringFeatureFlags {
 
 export const DEFAULT_STEERING_FEATURE_FLAGS: SteeringFeatureFlags = {
   understandingBallotV2: false,
-  policyFactsFirst: false,
+  /** Default on: high-confidence Understanding drives Decision Policy route. */
+  policyFactsFirst: true,
   decisionBrief: false,
   criticMode: "off",
   verificationLlmCritique: false,

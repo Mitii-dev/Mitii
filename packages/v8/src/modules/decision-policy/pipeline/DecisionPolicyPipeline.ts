@@ -52,7 +52,9 @@ export class DecisionPolicyPipeline {
       planApproval: parsed.planApproval,
       windowPolicy: parsed.windowPolicy,
       origin: parsed.envelope.origin,
-      policyFactsFirst: parsed.policyFactsFirst === true,
+      // undefined/true → facts-first when high-confidence; false = kill-switch.
+      policyFactsFirst: parsed.policyFactsFirst,
+      turnKind: parsed.envelope.turnKind,
       requiredMcpServerIds: parsed.requiredMcpServerIds,
     });
     const grantCompiled = compileGrant({

@@ -24,8 +24,15 @@ export type { RoutePlanResult } from "./RoutePlanner";
 export { compileGrant } from "./GrantCompiler";
 export type { CompiledGrantResult } from "./GrantCompiler";
 
-export { buildToolGrant, extractNetworkHosts, isExplicitWebSearchAsk, needsLiveWebEvidence } from "./BuildToolGrant";
-export type { ToolGrantResolution } from "./BuildToolGrant";
+export {
+  buildToolGrant,
+  extractNetworkHosts,
+  isExplicitWebSearchAsk,
+  needsLiveWebEvidence,
+  selectGrantProfile,
+  GRANT_PROFILES,
+} from "./BuildToolGrant";
+export type { ToolGrantResolution, GrantProfile } from "./BuildToolGrant";
 
 export { looksLikeVcsHistoryRewrite } from "./DetectVcsHistoryRewrite";
 
