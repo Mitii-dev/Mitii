@@ -18,6 +18,26 @@ export function resolveMaxTasks(maxTasks?: number): number {
 export const TASK_LIST_POLICY = {
   maxTasks: DEFAULT_MAX_TASKS,
   maxActiveItems: 1,
+  /**
+   * When more than maxActiveItems are marked active:
+   * - reject: fail the whole apply (strict tool contract)
+   * - demote: keep the last active, queue the rest as pending
+   */
+  multipleActivePolicy: "reject" as "reject" | "demote",
+  /**
+   * Status patch transitions:
+   * - reject: illegal jumps fail the whole patch
+   * - warn: apply anyway and surface a warning
+   * - off: no transition checks
+   */
+  statusTransitionPolicy: "reject" as "reject" | "warn" | "off",
+  /** Soft preferred title length for derived / agent checklist rows. */
+  preferredTitleWords: 7,
+  /**
+   * Statuses kept when re-injecting the live working set into the model loop.
+   * Terminal rows (done/skipped) are omitted so compaction cannot revive them.
+   */
+  workingSetOpenStatuses: ["pending", "active", "blocked"] as const,
   /** Prefer plan phases that describe concrete implementation or verification work. */
   preferredPhaseNames: /^(change|verify|implement|fix|build)$/i,
   /** Deprioritize discovery-only phases unless the plan contains no executable work. */
@@ -32,6 +52,12 @@ export const TASK_LIST_POLICY = {
    * workspace mutation tools only, not arbitrary MCP/custom tools.
    */
   autoAdvanceOnMutationSuccess: false,
+  /**
+   * Soft remind the model to patch update_todos when it has been this many
+   * model turns since the last checklist change and open items remain.
+   * Set to 0 to disable.
+   */
+  todoUpdateRemindIntervalTurns: 6,
   /**
    * Never auto-advance Discover/Verify/design (or explore) process rows from a
    * random successful patch — those need real evidence / model patches.

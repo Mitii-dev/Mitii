@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import {
+  CHANGE_IMPACT_FILE_BUCKETS,
   CHANGE_IMPACT_REASON_CODES,
   CHANGE_IMPACT_SCHEMA_VERSION,
   CHANGE_IMPACT_STATUSES,
@@ -19,6 +20,7 @@ export const changeImpactReasonCodeSchema = z.enum(
 export const changeImpactWarningCodeSchema = z.enum(
   CHANGE_IMPACT_WARNING_CODES,
 );
+export const changeImpactFileBucketSchema = z.enum(CHANGE_IMPACT_FILE_BUCKETS);
 
 export const changeImpactResolvedSeedSchema = z
   .object({
@@ -27,6 +29,8 @@ export const changeImpactResolvedSeedSchema = z
     relativePath: z.string().min(1).optional(),
     symbolName: z.string().min(1).optional(),
     symbolKind: z.string().min(1).optional(),
+    /** 1-based start line when the seed resolved to a symbol (for LSP enrich). */
+    startLine: z.number().int().positive().optional(),
   })
   .strict();
 
@@ -52,6 +56,32 @@ export const changeImpactAffectedFileSchema = z
     score: z.number(),
     affectedNodeIds: z.array(z.string().min(1)).min(1),
     reason: z.string().min(1),
+    bucket: changeImpactFileBucketSchema.default("prod"),
+  })
+  .strict();
+
+/** Hop-1 neighbor counts, independent of maximumHops used for the full walk. */
+export const changeImpactDirectNeighborCountsSchema = z
+  .object({
+    nodes: z.number().int().nonnegative(),
+    files: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const changeImpactChainLinkSchema = z
+  .object({
+    nodeId: z.string().min(1),
+    relativePath: z.string().min(1).optional(),
+    symbolName: z.string().min(1).optional(),
+  })
+  .strict();
+
+export const changeImpactChainSchema = z
+  .object({
+    links: z.array(changeImpactChainLinkSchema).min(2),
+    hop: z.number().int().positive(),
+    score: z.number(),
+    viaEdgeType: changeImpactEdgeTypeSchema.optional(),
   })
   .strict();
 
@@ -81,6 +111,8 @@ export const changeImpactResultSchema = z
     affected: z.array(changeImpactAffectedNodeSchema),
     affectedFiles: z.array(changeImpactAffectedFileSchema),
     packagesAffected: z.array(changeImpactPackageSchema).default([]),
+    chains: z.array(changeImpactChainSchema).default([]),
+    directNeighborCounts: changeImpactDirectNeighborCountsSchema,
     truncated: z.boolean(),
     warnings: z.array(changeImpactWarningSchema),
     reasonCodes: z.array(changeImpactReasonCodeSchema).min(1),
@@ -96,4 +128,7 @@ export type ChangeImpactReasonCode = z.infer<
 >;
 export type ChangeImpactWarningCode = z.infer<
   typeof changeImpactWarningCodeSchema
+>;
+export type ChangeImpactFileBucket = z.infer<
+  typeof changeImpactFileBucketSchema
 >;

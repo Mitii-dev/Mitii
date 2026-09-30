@@ -1,6 +1,10 @@
 import type { ProjectDescriptor } from "../../../repository-state";
 
-import type { VerificationManifestReaderPort } from "../../contracts";
+import type {
+  VerificationChangeScope,
+  VerificationManifestReaderPort,
+} from "../../contracts";
+import { PYTHON_FATAL_RUFF_SELECT } from "../../policy";
 import {
   commandCandidate,
   joinRoot,
@@ -10,6 +14,8 @@ import {
 export async function discoverPythonChecks(params: {
   project: ProjectDescriptor;
   manifests: VerificationManifestReaderPort;
+  /** Narrow scopes prefer fatal-only ruff; broader scopes use full check. */
+  changeScope?: VerificationChangeScope;
 }): Promise<ProjectDiscoveryResult> {
   const root = params.project.rootPath;
   const candidates = [];
@@ -62,14 +68,28 @@ export async function discoverPythonChecks(params: {
       );
     }
     if (/\[tool\.ruff\]/i.test(text) || /ruff/i.test(text)) {
+      const narrow =
+        params.changeScope === "localized" || params.changeScope === "module";
+      const target = root === "." ? "." : root;
+      const argv = narrow
+        ? [
+            "ruff",
+            "check",
+            "--select",
+            PYTHON_FATAL_RUFF_SELECT.join(","),
+            target,
+          ]
+        : ["ruff", "check", target];
       candidates.push(
         commandCandidate({
           projectId: params.project.projectId,
           kind: "lint",
-          label: `ruff check (${params.project.projectId})`,
+          label: narrow
+            ? `ruff check fatal (${params.project.projectId})`
+            : `ruff check (${params.project.projectId})`,
           evidenceSource: `manifest:${pyproject}#tool.ruff`,
           languageId: "python",
-          argv: root === "." ? ["ruff", "check", "."] : ["ruff", "check", root],
+          argv,
           mayBeUnavailable: true,
         }),
       );

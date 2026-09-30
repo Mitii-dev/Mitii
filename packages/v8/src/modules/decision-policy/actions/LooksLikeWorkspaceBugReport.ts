@@ -31,6 +31,34 @@ export function looksLikeWorkspaceBugReport(message: string): boolean {
   return hasWorkspaceBugAnchor(text);
 }
 
+/**
+ * Pasted vitest / jest / playwright failure dumps (Failed Tests N, FAIL path,
+ * AssertionError stacks). Agent mode should execute these without a clarify
+ * gate even when the LLM marks clarity unclear.
+ */
+export function looksLikePastedTestFailureDump(message: string): boolean {
+  const text = message.trim();
+  if (text.length < 24) {
+    return false;
+  }
+
+  const hasDumpHeader =
+    /\bFailed\s+Tests?\s+\d+/i.test(text) ||
+    /\bFAIL\s+\S+\.(?:test|spec)\.[jt]sx?\b/i.test(text) ||
+    /❯\s*FAIL\b/i.test(text) ||
+    /\b(?:\d+\s+failed|\d+\s+failing)\b/i.test(text);
+
+  if (!hasDumpHeader) {
+    return false;
+  }
+
+  return (
+    hasWorkspaceBugAnchor(text) ||
+    WORKSPACE_BUG_REPO_PATH.test(text) ||
+    /\bAssertionError\b|\bExpected:|\bReceived:|\bTS\d{3,5}\b/i.test(text)
+  );
+}
+
 function hasWorkspaceBugFailureSignal(text: string): boolean {
   if (WORKSPACE_BUG_FAILURE_LANGUAGE.test(text)) {
     return true;

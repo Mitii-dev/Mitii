@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import type { ProjectDescriptor } from "../../repository-state";
-import { normalizeDiagnostics } from "../actions/NormalizeDiagnostics";
+import {
+  normalizeDiagnostics,
+  packDiagnosticsForModel,
+} from "../actions/NormalizeDiagnostics";
 import type { VerificationCheckResult } from "../contracts";
 
 const PROJECT: ProjectDescriptor = {
@@ -163,5 +166,40 @@ describe("normalizeDiagnostics", () => {
     });
 
     expect(diagnostics[0]?.path).toBe("src/x.ts");
+  });
+
+  it("packs errors first with a per-file cap and omit count", () => {
+    const packed = packDiagnosticsForModel({
+      diagnostics: [
+        {
+          path: "a.ts",
+          severity: "warning",
+          message: "warn",
+        },
+        {
+          path: "a.ts",
+          severity: "error",
+          message: "err1",
+          startLine: 1,
+        },
+        {
+          path: "a.ts",
+          severity: "error",
+          message: "err2",
+          startLine: 2,
+        },
+        {
+          path: "b.ts",
+          severity: "error",
+          message: "err3",
+        },
+      ],
+      maxTotal: 2,
+      maxPerFile: 1,
+      errorsOnly: true,
+    });
+
+    expect(packed.diagnostics.map((d) => d.message)).toEqual(["err1", "err3"]);
+    expect(packed.omittedCount).toBe(1);
   });
 });

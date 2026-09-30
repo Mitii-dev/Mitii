@@ -53,71 +53,18 @@ export const VERIFICATION_EVIDENCE_KINDS = [
 ] as const;
 
 /**
- * Symbol-level code intelligence tools (language service or repo-graph).
- * Keep aligned with Tool Runtime catalog and Agent Engine progressive schemas.
+ * Built-in tool ID lists — owned by Tool Runtime (`engine/tool-runtime/constants`).
+ * Decision Policy re-exports so grants cannot drift from the enforce catalog (R7/R10).
  */
-export const CODE_INTELLIGENCE_TOOL_IDS = [
-  "goto_definition",
-  "find_references",
-  "hover_symbol",
-  "document_symbol",
-  "workspace_symbol",
-  "find_implementation",
-  "call_hierarchy",
-] as const;
-
-/** Workspace diagnostics inspection tools. */
-export const DIAGNOSTICS_TOOL_IDS = ["read_diagnostics"] as const;
-
-/** Repository blast-radius analysis tools. */
-export const CHANGE_IMPACT_TOOL_IDS = ["analyze_change_impact"] as const;
-
-/** Tool catalog IDs Decision Policy may grant (must stay aligned with Tool Runtime). */
-export const READ_ONLY_TOOL_IDS = [
-  "describe_tool",
-  "list_directory",
-  "directory_tree",
-  "read_file",
-  "read_many_files",
-  "glob_files",
-  "file_metadata",
-  "search_files",
-  ...DIAGNOSTICS_TOOL_IDS,
-  "read_git_status",
-  "read_git_log",
-  "read_git_show",
-  "read_git_branches",
-  ...CODE_INTELLIGENCE_TOOL_IDS,
-  ...CHANGE_IMPACT_TOOL_IDS,
-  "emit_review_finding",
-  "run_readonly_command",
-  "read_package_scripts",
-  "sequential_thinking",
-  "get_current_time",
-  "convert_time",
-  "memory_graph_search",
-  "memory_graph_open",
-] as const;
-
-/** Process tools that may change workspace state through repository scripts. */
-export const PROCESS_TOOL_IDS = [
-  "run_command",
-] as const;
-
-/** Executable mutation tools for direct workspace mutations. */
-export const MUTATION_TOOL_IDS = [
-  "apply_patch",
-  "delete_file",
-  "delete_directory",
-  "move_file",
-  "memory_graph_update",
-] as const;
-
-/** External GitHub write tools (require `gh` auth in the environment). */
-export const GITHUB_MUTATION_TOOL_IDS = [
-  "create_github_issue",
-  "create_pull_request",
-] as const;
+export {
+  CHANGE_IMPACT_TOOL_IDS,
+  CODE_INTELLIGENCE_TOOL_IDS,
+  DIAGNOSTICS_TOOL_IDS,
+  GITHUB_MUTATION_TOOL_IDS,
+  MUTATION_TOOL_IDS,
+  PROCESS_TOOL_IDS,
+  READ_ONLY_TOOL_IDS,
+} from "../../engine/tool-runtime/constants";
 
 export const DECISION_REASON_CODES = [
   "mode_ask_readonly",

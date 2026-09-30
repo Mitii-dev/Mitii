@@ -38,6 +38,7 @@ export const readDiagnosticsTool: RegisteredTool = {
       workspaceRoot: ctx.workspaceRoot,
       fileSystem: ctx.ports.fileSystem,
       diagnostics: ctx.ports.diagnostics,
+      signal: ctx.signal,
     });
   },
 };

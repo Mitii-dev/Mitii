@@ -10,7 +10,10 @@ import {
 } from "../constants";
 import type { DecisionReasonCode, ExecutionRoute } from "../contracts";
 import { DECISION_POLICY_THRESHOLDS } from "../policy";
-import { looksLikeWorkspaceBugReport } from "./LooksLikeWorkspaceBugReport";
+import {
+  looksLikePastedTestFailureDump,
+  looksLikeWorkspaceBugReport,
+} from "./LooksLikeWorkspaceBugReport";
 
 export interface RouteResolution {
   route: ExecutionRoute;
@@ -499,6 +502,13 @@ function requiresClarification(
   }
 
   if (looksLikeAgentVerificationRequest(message)) {
+    return false;
+  }
+
+  // Pasted vitest/jest failure dumps are already actionable — do not stall
+  // agent mode behind clarify when the LLM marks clarity unclear. Keep
+  // investigate-vs-fix forks clarifying (those are not paste dumps).
+  if (mode === "agent" && looksLikePastedTestFailureDump(message)) {
     return false;
   }
 

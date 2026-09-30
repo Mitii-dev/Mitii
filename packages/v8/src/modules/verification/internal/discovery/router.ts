@@ -1,6 +1,9 @@
 import type { ProjectDescriptor } from "../../../repository-state";
 
-import type { VerificationManifestReaderPort } from "../../contracts";
+import type {
+  VerificationChangeScope,
+  VerificationManifestReaderPort,
+} from "../../contracts";
 import { discoverNodeChecks } from "./nodeDiscovery";
 import { discoverPythonChecks } from "./pythonDiscovery";
 import { discoverGoChecks } from "./goDiscovery";
@@ -19,6 +22,7 @@ export async function discoverCandidatesForProject(params: {
   project: ProjectDescriptor;
   changedFiles: readonly string[];
   manifests: VerificationManifestReaderPort;
+  changeScope?: VerificationChangeScope;
 }): Promise<ProjectDiscoveryResult> {
   const language = params.project.primaryLanguageId;
 

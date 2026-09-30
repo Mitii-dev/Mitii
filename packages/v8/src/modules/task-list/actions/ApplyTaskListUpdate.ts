@@ -71,6 +71,7 @@ export function applyTaskListUpdate(
   const items = current.items.map((item) => ({ ...item }));
   const byId = new Map(items.map((item) => [item.id, item]));
   const warnings: string[] = [];
+  const reasonCodesExtra: TaskListReasonCode[] = [];
 
   for (const patch of input.operation.items) {
     const existing = byId.get(patch.id);
@@ -82,17 +83,44 @@ export function applyTaskListUpdate(
       });
     }
     if (patch.title) {
-      existing.title = patch.title.slice(0, DEFAULT_MAX_TASK_TITLE_CHARS);
+      existing.title = clipTaskTitle(patch.title).title;
     }
     if (patch.detail) {
       existing.detail = patch.detail;
     }
-    if (patch.status) {
+    if (patch.status && patch.status !== existing.status) {
+      const transition = validateStatusTransition(existing.status, patch.status);
+      if (!transition.ok) {
+        if (TASK_LIST_POLICY.statusTransitionPolicy === "reject") {
+          return parsedResult({
+            status: "rejected",
+            warnings: [
+              `Invalid status transition for "${patch.id}": ${existing.status} → ${patch.status}.`,
+            ],
+            reasonCodes: [
+              "task_list_invalid",
+              "task_list_status_transition_invalid",
+            ],
+          });
+        }
+        if (TASK_LIST_POLICY.statusTransitionPolicy === "warn") {
+          warnings.push(
+            `Unusual status transition for "${patch.id}": ${existing.status} → ${patch.status}.`,
+          );
+          reasonCodesExtra.push("task_list_status_transition_invalid");
+        }
+      }
       existing.status = patch.status;
     }
   }
 
-  normalizeActive(items, warnings);
+  if (!normalizeActive(items, warnings)) {
+    return parsedResult({
+      status: "rejected",
+      warnings,
+      reasonCodes: ["task_list_invalid"],
+    });
+  }
 
   const next: TaskList = {
     schemaVersion: TASK_LIST_SCHEMA_VERSION,
@@ -113,14 +141,14 @@ export function applyTaskListUpdate(
 
   const unchanged = sameList(current, validated.data);
   const reasonCodes: TaskListReasonCode[] = unchanged
-    ? ["task_list_unchanged"]
-    : ["task_list_patched", "task_list_applied"];
+    ? ["task_list_unchanged", ...reasonCodesExtra]
+    : ["task_list_patched", "task_list_applied", ...reasonCodesExtra];
 
   return parsedResult({
-    status: unchanged ? "applied" : "applied",
+    status: "applied",
     taskList: validated.data,
     warnings,
-    reasonCodes,
+    reasonCodes: uniqueReasonCodes(reasonCodes),
   });
 }
 
@@ -151,7 +179,7 @@ function buildItems(
     used.add(id);
     items.push({
       id,
-      title,
+      title: clipTaskTitle(title).title,
       status: draft.status ?? "pending",
       ...(draft.detail ? { detail: draft.detail } : {}),
     });
@@ -161,7 +189,9 @@ function buildItems(
     return { ok: false, warnings: ["Replace requires at least one task."] };
   }
 
-  normalizeActive(items, warnings);
+  if (!normalizeActive(items, warnings)) {
+    return { ok: false, warnings };
+  }
 
   const taskList: TaskList = {
     schemaVersion: TASK_LIST_SCHEMA_VERSION,
@@ -180,12 +210,22 @@ function buildItems(
   return { ok: true, taskList: validated.data, warnings };
 }
 
-function normalizeActive(items: TaskItem[], warnings: string[]): void {
+/**
+ * Enforce at-most-one active item.
+ * Returns false when multipleActivePolicy is reject and the list violates it.
+ */
+function normalizeActive(items: TaskItem[], warnings: string[]): boolean {
   const activeIndexes = items
     .map((item, index) => (item.status === "active" ? index : -1))
     .filter((index) => index >= 0);
   if (activeIndexes.length <= TASK_LIST_POLICY.maxActiveItems) {
-    return;
+    return true;
+  }
+  if (TASK_LIST_POLICY.multipleActivePolicy === "reject") {
+    warnings.push(
+      `At most ${TASK_LIST_POLICY.maxActiveItems} task can be active; got ${activeIndexes.length}.`,
+    );
+    return false;
   }
   const keep = activeIndexes[activeIndexes.length - 1]!;
   for (const index of activeIndexes) {
@@ -194,6 +234,7 @@ function normalizeActive(items: TaskItem[], warnings: string[]): void {
     }
   }
   warnings.push("Only one task can be active; earlier active items were queued.");
+  return true;
 }
 
 function slugId(value: string): string {
@@ -254,4 +295,68 @@ function parsedResult(value: {
 
 export function isTerminalTaskStatus(status: TaskItemStatus): boolean {
   return status === "done" || status === "skipped";
+}
+
+/**
+ * Forward progress + reopen. Terminal rows may return to pending/active;
+ * done/skipped may not jump sideways into blocked without reopening.
+ */
+export function isValidStatusTransition(
+  from: TaskItemStatus,
+  to: TaskItemStatus,
+): boolean {
+  if (from === to) {
+    return true;
+  }
+  const allowed: Record<TaskItemStatus, readonly TaskItemStatus[]> = {
+    pending: ["active", "done", "skipped", "blocked"],
+    active: ["pending", "done", "skipped", "blocked"],
+    blocked: ["pending", "active", "done", "skipped"],
+    done: ["pending", "active"],
+    skipped: ["pending", "active"],
+  };
+  return allowed[from].includes(to);
+}
+
+function validateStatusTransition(
+  from: TaskItemStatus,
+  to: TaskItemStatus,
+): { ok: boolean } {
+  if (TASK_LIST_POLICY.statusTransitionPolicy === "off") {
+    return { ok: true };
+  }
+  return { ok: isValidStatusTransition(from, to) };
+}
+
+/**
+ * Soft short-title clip. Keeps path tokens intact when present so file-scoped
+ * rows stay concrete after word-budget trimming.
+ */
+export function clipTaskTitle(
+  raw: string,
+  maxWords: number = TASK_LIST_POLICY.preferredTitleWords,
+): { title: string; clipped: boolean } {
+  const trimmed = raw.trim().replace(/\s+/g, " ").slice(0, DEFAULT_MAX_TASK_TITLE_CHARS);
+  if (trimmed.length === 0) {
+    return { title: trimmed, clipped: false };
+  }
+  const words = trimmed.split(" ");
+  if (words.length <= maxWords) {
+    return { title: trimmed, clipped: false };
+  }
+  const pathToken = words.find((word) => /\.\w{1,16}\b/.test(word) || /[/\\]/.test(word));
+  const head = words.slice(0, maxWords);
+  if (pathToken && !head.some((word) => word === pathToken)) {
+    head[head.length - 1] = pathToken;
+  }
+  return {
+    title: head.join(" ").slice(0, DEFAULT_MAX_TASK_TITLE_CHARS),
+    clipped: true,
+  };
+}
+
+function uniqueReasonCodes(
+  codes: readonly TaskListReasonCode[],
+): TaskListReasonCode[] {
+  return [...new Set(codes)];
 }

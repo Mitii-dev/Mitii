@@ -45,6 +45,7 @@ export async function discoverApplicableChecks(params: {
       project,
       changedFiles: params.changedFiles,
       manifests: params.manifests,
+      changeScope: params.changeScope,
     });
     for (const candidate of discovered.candidates) {
       if (!allowed.has(candidate.kind)) {

@@ -20,3 +20,4 @@ export { InMemoryGitAdapter } from "./InMemoryGitAdapter";
 export { NodeGitAdapter } from "./NodeGitAdapter";
 export { NodeNetworkAdapter } from "./NodeNetworkAdapter";
 export { InMemoryNetworkAdapter } from "./InMemoryNetworkAdapter";
+export { InMemoryToolOutputSpillAdapter } from "./InMemoryToolOutputSpillAdapter";

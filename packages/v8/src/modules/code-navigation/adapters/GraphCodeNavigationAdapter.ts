@@ -8,6 +8,7 @@ import {
 } from "../constants";
 import { CODE_NAVIGATION_POLICY } from "../policy";
 import type {
+  CodeNavigationCallOptions,
   CodeNavigationCapability,
   CodeNavigationDocumentQuery,
   CodeNavigationHover,
@@ -42,6 +43,7 @@ export class GraphCodeNavigationAdapter implements CodeNavigationPort {
 
   public async definition(
     input: CodeNavigationQuery,
+    _options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
     const symbols = await this.resolveSymbols(input);
     return this.uniqueLocations(
@@ -49,8 +51,25 @@ export class GraphCodeNavigationAdapter implements CodeNavigationPort {
     );
   }
 
+  public async typeDefinition(
+    input: CodeNavigationQuery,
+    _options?: CodeNavigationCallOptions,
+  ): Promise<readonly CodeNavigationLocation[]> {
+    // Graph has no typed-expression edges; degrade to the symbol at the caret
+    // when it looks type-like, otherwise empty (language server preferred).
+    const symbols = await this.resolveSymbols(input);
+    const typed = symbols.filter((symbol) =>
+      isTypeLikeSymbolKind(symbol.node.symbolKind),
+    );
+    const chosen = typed.length > 0 ? typed : symbols;
+    return this.uniqueLocations(
+      chosen.map((symbol) => this.toLocation(symbol.file, symbol.node)),
+    );
+  }
+
   public async references(
     input: CodeNavigationQuery,
+    _options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
     const graphs = await this.options.loadGraphs();
     const symbols = await this.resolveSymbols(input, graphs);
@@ -92,6 +111,7 @@ export class GraphCodeNavigationAdapter implements CodeNavigationPort {
 
   public async hover(
     input: CodeNavigationQuery,
+    _options?: CodeNavigationCallOptions,
   ): Promise<CodeNavigationHover | undefined> {
     const [symbol] = await this.resolveSymbols(input);
     if (!symbol) return undefined;
@@ -104,6 +124,7 @@ export class GraphCodeNavigationAdapter implements CodeNavigationPort {
 
   public async documentSymbols(
     input: CodeNavigationDocumentQuery,
+    _options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
     const graphs = await this.options.loadGraphs();
     const normalizedPath = normalizeRelativePath(input.relativePath);
@@ -123,6 +144,7 @@ export class GraphCodeNavigationAdapter implements CodeNavigationPort {
 
   public async workspaceSymbols(
     input: CodeNavigationWorkspaceQuery,
+    _options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
     const graphs = await this.options.loadGraphs();
     const needle = input.query.trim().toLowerCase();
@@ -142,6 +164,7 @@ export class GraphCodeNavigationAdapter implements CodeNavigationPort {
 
   public async implementation(
     input: CodeNavigationQuery,
+    _options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
     const graphs = await this.options.loadGraphs();
     const symbols = await this.resolveSymbols(input, graphs);
@@ -149,7 +172,7 @@ export class GraphCodeNavigationAdapter implements CodeNavigationPort {
     const locations: CodeNavigationLocation[] = [];
     const seen = new Set(frontier);
 
-    for (let hop = 0; hop < 2 && frontier.size > 0; hop += 1) {
+    for (let hop = 0; hop < CODE_NAVIGATION_POLICY.graphHopDepth && frontier.size > 0; hop += 1) {
       const next = new Set<string>();
       for (const graph of graphs) {
         const files = fileIndex(graph);
@@ -173,6 +196,7 @@ export class GraphCodeNavigationAdapter implements CodeNavigationPort {
 
   public async callHierarchy(
     input: CodeNavigationQuery,
+    _options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
     const graphs = await this.options.loadGraphs();
     const symbols = await this.resolveSymbols(input, graphs);
@@ -181,7 +205,7 @@ export class GraphCodeNavigationAdapter implements CodeNavigationPort {
     const locations: CodeNavigationLocation[] = [];
     const seen = new Set<string>();
 
-    for (let hop = 0; hop < 2 && frontier.size > 0; hop += 1) {
+    for (let hop = 0; hop < CODE_NAVIGATION_POLICY.graphHopDepth && frontier.size > 0; hop += 1) {
       const next = new Set<string>();
       for (const graph of graphs) {
         const files = fileIndex(graph);
@@ -259,9 +283,21 @@ export class GraphCodeNavigationAdapter implements CodeNavigationPort {
         coversLine(match.node, input.line),
     );
     if (positional.length > 0) {
-      positional.sort(
-        (left, right) => span(left.node) - span(right.node),
-      );
+      const column = input.column ?? 1;
+      positional.sort((left, right) => {
+        // Prefer symbols whose declaration starts on the caret line (name site).
+        const leftOnLine = left.node.startLine === input.line ? 0 : 1;
+        const rightOnLine = right.node.startLine === input.line ? 0 : 1;
+        if (leftOnLine !== rightOnLine) return leftOnLine - rightOnLine;
+        // Tighter span wins; with an explicit column, prefer smaller bodies.
+        const spanDelta = span(left.node) - span(right.node);
+        if (spanDelta !== 0) return spanDelta;
+        if (column > 1) {
+          // Without symbol columns on the graph, break ties by declaration order.
+          return (left.node.startLine ?? 0) - (right.node.startLine ?? 0);
+        }
+        return 0;
+      });
       return [positional[0]!];
     }
     return matches;
@@ -305,7 +341,11 @@ export class GraphCodeNavigationAdapter implements CodeNavigationPort {
 
 export class FallbackCodeNavigationAdapter implements CodeNavigationPort {
   public readonly id = "fallback-code-navigation";
-  public readonly provider: "language_server" | "repo_graph";
+  /**
+   * Reflects the provider that answered the most recent navigation call.
+   * Sequential tool-loop use only — not safe across concurrent navigate().
+   */
+  public provider: "language_server" | "repo_graph";
 
   constructor(
     private readonly options: {
@@ -318,32 +358,65 @@ export class FallbackCodeNavigationAdapter implements CodeNavigationPort {
 
   public async definition(
     input: CodeNavigationQuery,
+    options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
     return this.firstNonEmpty(
-      () => this.options.primary.definition(input),
-      () => this.options.fallback.definition(input),
+      () => this.options.primary.definition(input, options),
+      () => this.options.fallback.definition(input, options),
     );
+  }
+
+  public async typeDefinition(
+    input: CodeNavigationQuery,
+    options?: CodeNavigationCallOptions,
+  ): Promise<readonly CodeNavigationLocation[]> {
+    return this.firstNonEmpty(
+      () =>
+        this.options.primary.typeDefinition?.(input, options) ??
+        Promise.resolve([]),
+      () =>
+        this.options.fallback.typeDefinition?.(input, options) ??
+        Promise.resolve([]),
+    );
+  }
+
+  public async prepare(
+    relativePath: string,
+    options?: CodeNavigationCallOptions,
+  ): Promise<void> {
+    try {
+      await this.options.primary.prepare?.(relativePath, options);
+    } catch {
+      // Primary prepare failure must not block graph fallback.
+    }
+    await this.options.fallback.prepare?.(relativePath, options);
   }
 
   public async references(
     input: CodeNavigationQuery,
+    options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
     return this.firstNonEmpty(
-      () => this.options.primary.references(input),
-      () => this.options.fallback.references(input),
+      () => this.options.primary.references(input, options),
+      () => this.options.fallback.references(input, options),
     );
   }
 
   public async hover(
     input: CodeNavigationQuery,
+    options?: CodeNavigationCallOptions,
   ): Promise<CodeNavigationHover | undefined> {
     try {
-      const hover = await this.options.primary.hover?.(input);
-      if (hover) return hover;
+      const hover = await this.options.primary.hover?.(input, options);
+      if (hover) {
+        this.provider = this.options.primary.provider;
+        return hover;
+      }
     } catch {
       // Fall through to graph hover.
     }
-    return this.options.fallback.hover?.(input);
+    this.provider = this.options.fallback.provider;
+    return this.options.fallback.hover?.(input, options);
   }
 
   public capability(): CodeNavigationCapability {
@@ -359,37 +432,57 @@ export class FallbackCodeNavigationAdapter implements CodeNavigationPort {
 
   public async documentSymbols(
     input: CodeNavigationDocumentQuery,
+    options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
     return this.firstNonEmpty(
-      () => this.options.primary.documentSymbols?.(input) ?? Promise.resolve([]),
-      () => this.options.fallback.documentSymbols?.(input) ?? Promise.resolve([]),
+      () =>
+        this.options.primary.documentSymbols?.(input, options) ??
+        Promise.resolve([]),
+      () =>
+        this.options.fallback.documentSymbols?.(input, options) ??
+        Promise.resolve([]),
     );
   }
 
   public async workspaceSymbols(
     input: CodeNavigationWorkspaceQuery,
+    options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
     return this.firstNonEmpty(
-      () => this.options.primary.workspaceSymbols?.(input) ?? Promise.resolve([]),
-      () => this.options.fallback.workspaceSymbols?.(input) ?? Promise.resolve([]),
+      () =>
+        this.options.primary.workspaceSymbols?.(input, options) ??
+        Promise.resolve([]),
+      () =>
+        this.options.fallback.workspaceSymbols?.(input, options) ??
+        Promise.resolve([]),
     );
   }
 
   public async implementation(
     input: CodeNavigationQuery,
+    options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
     return this.firstNonEmpty(
-      () => this.options.primary.implementation?.(input) ?? Promise.resolve([]),
-      () => this.options.fallback.implementation?.(input) ?? Promise.resolve([]),
+      () =>
+        this.options.primary.implementation?.(input, options) ??
+        Promise.resolve([]),
+      () =>
+        this.options.fallback.implementation?.(input, options) ??
+        Promise.resolve([]),
     );
   }
 
   public async callHierarchy(
     input: CodeNavigationQuery,
+    options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
     return this.firstNonEmpty(
-      () => this.options.primary.callHierarchy?.(input) ?? Promise.resolve([]),
-      () => this.options.fallback.callHierarchy?.(input) ?? Promise.resolve([]),
+      () =>
+        this.options.primary.callHierarchy?.(input, options) ??
+        Promise.resolve([]),
+      () =>
+        this.options.fallback.callHierarchy?.(input, options) ??
+        Promise.resolve([]),
     );
   }
 
@@ -399,10 +492,14 @@ export class FallbackCodeNavigationAdapter implements CodeNavigationPort {
   ): Promise<readonly CodeNavigationLocation[]> {
     try {
       const locations = await primary();
-      if (locations.length > 0) return locations;
+      if (locations.length > 0) {
+        this.provider = this.options.primary.provider;
+        return locations;
+      }
     } catch {
       // Language servers can fail closed; graph remains available.
     }
+    this.provider = this.options.fallback.provider;
     return fallback();
   }
 }
@@ -438,6 +535,17 @@ function coversLine(
   if (!symbol.startLine) return false;
   const end = symbol.endLine ?? symbol.startLine;
   return line >= symbol.startLine && line <= end;
+}
+
+function isTypeLikeSymbolKind(kind: string): boolean {
+  const normalized = kind.toLowerCase();
+  return (
+    normalized.includes("class") ||
+    normalized.includes("interface") ||
+    normalized.includes("enum") ||
+    normalized.includes("type") ||
+    normalized.includes("struct")
+  );
 }
 
 function span(symbol: RepoGraphSymbolNode): number {

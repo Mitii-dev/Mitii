@@ -18,6 +18,11 @@ export interface CodeNavigationCapability {
   operations: readonly (typeof CODE_NAVIGATION_OPERATIONS)[number][];
 }
 
+/** Optional per-call controls (tool abort, turn cancel). */
+export interface CodeNavigationCallOptions {
+  signal?: AbortSignal;
+}
+
 /**
  * Host-injected navigation. VS Code uses language-server commands; CLI may
  * attach a host-owned language service or degrade to the repo graph.
@@ -29,28 +34,52 @@ export interface CodeNavigationPort {
 
   capability?(): CodeNavigationCapability;
 
+  /**
+   * Ensure the document is known to the language service before caret queries
+   * (opencode touchFile / didOpen pattern). Optional — graph adapters no-op.
+   */
+  prepare?(
+    relativePath: string,
+    options?: CodeNavigationCallOptions,
+  ): Promise<void>;
+
   definition(
     input: CodeNavigationQuery,
+    options?: CodeNavigationCallOptions,
+  ): Promise<readonly CodeNavigationLocation[]>;
+
+  /**
+   * Go to the type of the symbol at the caret (vscode type definition /
+   * TypeScript getTypeDefinitionAtPosition).
+   */
+  typeDefinition?(
+    input: CodeNavigationQuery,
+    options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]>;
 
   references(
     input: CodeNavigationQuery,
+    options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]>;
 
   hover?(
     input: CodeNavigationQuery,
+    options?: CodeNavigationCallOptions,
   ): Promise<CodeNavigationHover | undefined>;
 
   documentSymbols?(
     input: CodeNavigationDocumentQuery,
+    options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]>;
 
   workspaceSymbols?(
     input: CodeNavigationWorkspaceQuery,
+    options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]>;
 
   implementation?(
     input: CodeNavigationQuery,
+    options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]>;
 
   /**
@@ -59,5 +88,6 @@ export interface CodeNavigationPort {
    */
   callHierarchy?(
     input: CodeNavigationQuery,
+    options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]>;
 }

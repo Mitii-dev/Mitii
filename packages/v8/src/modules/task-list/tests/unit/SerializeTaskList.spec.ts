@@ -107,10 +107,47 @@ describe("serializeTaskList", () => {
     expect(serializeWorkingSetForLoop(undefined)).toBeUndefined();
   });
 
+  it("omits done and skipped rows from the loop working set", () => {
+    const mixed = taskListSchema.parse({
+      schemaVersion: 1,
+      source: "plan",
+      items: [
+        { id: "a", title: "Fix Login.ts", status: "done", write: ["src/Login.ts"] },
+        {
+          id: "b",
+          title: "Fix types.ts",
+          status: "active",
+          write: ["src/types.ts"],
+        },
+        { id: "c", title: "Skipped polish", status: "skipped" },
+        { id: "d", title: "Verify Login.ts", status: "pending" },
+      ],
+    });
+    const block = serializeWorkingSetForLoop(mixed);
+    expect(block).toContain("b: Fix types.ts");
+    expect(block).toContain("d: Verify Login.ts");
+    expect(block).not.toContain("a: Fix Login.ts");
+    expect(block).not.toContain("c: Skipped polish");
+  });
+
+  it("drops the loop working set when every item is terminal", () => {
+    const done = taskListSchema.parse({
+      schemaVersion: 1,
+      source: "agent",
+      items: [
+        { id: "a", title: "Done A", status: "done" },
+        { id: "b", title: "Skipped B", status: "skipped" },
+      ],
+    });
+    expect(serializeWorkingSetForLoop(done)).toBeUndefined();
+  });
+
   it("asks agent to create concrete tasks when no list exists", () => {
     const guidance = serializeTaskListGuidance();
     expect(guidance).toContain("No live working list yet");
     expect(guidance).toContain("update_todos");
+    expect(guidance).toContain("immediately call update_todos");
+    expect(guidance).toContain("explicit requirements and implied follow-through");
     expect(guidance).toContain("after the first read/diagnose tool turn");
     expect(guidance).toContain("concrete file, failure, or user-visible behavior");
     expect(guidance).toContain("Keep exactly one item active");

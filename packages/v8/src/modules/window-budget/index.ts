@@ -37,6 +37,7 @@ export {
   WINDOW_BUDGET_EFFORT_OVERLAY,
   resolveWindowBudgetEffort,
   resolveEffortCompactionCeilings,
+  scaleEffortCallBudget,
 } from "./effort";
 export type {
   WindowBudgetEffort,

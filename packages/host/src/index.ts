@@ -152,6 +152,17 @@ export { createHostCodeNavigationPort } from './code-navigation/createHostCodeNa
 export { createHostLanguageServices } from './code-navigation/createHostLanguageServices.js';
 export type { HostLanguageServices } from './code-navigation/createHostLanguageServices.js';
 export {
+  createStdioLspCodeNavigationPort,
+  StdioLspCodeNavigationPort,
+} from './code-navigation/createStdioLspCodeNavigationPort.js';
+export type {
+  StdioLspServerConfig,
+  CreateStdioLspCodeNavigationPortOptions,
+} from './code-navigation/createStdioLspCodeNavigationPort.js';
+export { resolveLspSpawnInvocation } from './code-navigation/stdio-lsp/resolveLspSpawn.js';
+export type { LspSpawnInvocation } from './code-navigation/stdio-lsp/resolveLspSpawn.js';
+export { discoverStdioLspServers } from './code-navigation/stdio-lsp/discoverStdioLspServers.js';
+export {
   createHostRepositoryGraphPort,
   loadWorkspaceGraphs,
   resolveExpectedCodeIndexChangeToken,
@@ -414,6 +425,26 @@ export type {
   PullOllamaModelInput,
   PullOllamaModelResult,
 } from './config/pullOllamaModel.js';
+
+export {
+  MODELS_DEV_API_URL,
+  modelsDevProviderId,
+  isPricedCloudProvider,
+  lookupModelCostRates,
+  estimateSessionCost,
+  formatUsd,
+  clearModelsDevPricingCache,
+  getCachedModelsDevCatalog,
+  fetchModelsDevCatalog,
+  resolveModelCostRates,
+} from './config/modelPricing.js';
+export type {
+  ModelCostRates,
+  TokenCostUsage,
+  SessionCostEstimate,
+  ModelsDevCatalog,
+  ModelsDevPricingCache,
+} from './config/modelPricing.js';
 
 // ---------------------------------------------------------------------------
 // Automation (Phase 1) — SDK executor for @mitii/automation ClaimRunner

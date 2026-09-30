@@ -126,6 +126,7 @@ export function toAgentEngineStartInput(
     explorationDepth: parsed.explorationDepth,
     windowBudget: parsed.windowBudget,
     loopPolicy: parsed.loopPolicy,
+    v8LoopPolicy: parsed.v8LoopPolicy,
     logVerbosity: parsed.logVerbosity,
     requiredSkillIds,
     requiredMcpServerIds,

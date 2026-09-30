@@ -30,6 +30,7 @@ import {
   mergeUserSafetyRules,
   resolveDatabaseModeStart,
   applyDatabaseAccessToMcpSettings,
+  resolveModelCostRates,
   type SemanticIndexSettings,
 } from '@mitii/host';
 import {
@@ -1852,6 +1853,27 @@ export async function startEngineServer(
           ...(apiKey ? { apiKey } : {}),
         });
         sendJson(res, 200, result);
+        return;
+      }
+
+      if (method === 'GET' && path === '/v1/model-pricing') {
+        if (!requireAuth(req, res, token)) return;
+        const preset =
+          url.searchParams.get('preset') ??
+          url.searchParams.get('type') ??
+          undefined;
+        const model = url.searchParams.get('model') ?? undefined;
+        const baseUrl = url.searchParams.get('baseUrl') ?? undefined;
+        try {
+          const rates = await resolveModelCostRates({
+            presetOrType: preset,
+            modelId: model,
+            baseUrl,
+          });
+          sendJson(res, 200, { rates });
+        } catch {
+          sendJson(res, 200, { rates: null });
+        }
         return;
       }
 

@@ -48,6 +48,8 @@ export const PLANNING_WORKING_SET_POLICY = {
    * Must stay within planPhaseSchema.steps.max (20).
    */
   maxBatchesOnPlan: 12,
+  /** Cap Verify phase steps when commands / check kinds expand the matrix. */
+  maxVerifySteps: 4,
   dependencyEdgeTypes: ["imports", "depends_on"] as const,
   dependentEdgeTypes: ["imports", "calls", "references"] as const,
 } as const;

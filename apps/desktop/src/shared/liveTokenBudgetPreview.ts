@@ -152,7 +152,7 @@ const WINDOW_BUDGET_BAND_OVERLAYS: Record<string, Record<string, number>> = {
     maxSkillsCap: 4,
   },
   standard: {
-    maxUniqueFilesPerCallCap: 8,
+    maxUniqueFilesPerCallCap: 12,
     outputMinTokens: 8192,
     outputRatio: 0.22,
     outputWindowCapRatio: 0.28,
@@ -163,7 +163,7 @@ const WINDOW_BUDGET_BAND_OVERLAYS: Record<string, Record<string, number>> = {
     maxSkillsCap: 4,
   },
   wide: {
-    maxUniqueFilesPerCallCap: 12,
+    maxUniqueFilesPerCallCap: 20,
     outputMinTokens: 10_240,
     outputRatio: 0.18,
     outputWindowCapRatio: 0.25,
@@ -178,6 +178,15 @@ const WINDOW_BUDGET_BAND_OVERLAYS: Record<string, Record<string, number>> = {
     toolResultContentCharsMax: 96_000,
   },
 };
+
+/** Keep aligned with scaleEffortCallBudget in window-budget/effort.ts. */
+function scaleEffortCallBudget(base: number, contextWindowTokens: number): number {
+  const window = Math.floor(contextWindowTokens);
+  const calls = Math.max(1, Math.floor(base));
+  if (!Number.isFinite(window) || window < 50_000) return calls;
+  if (window < 100_000) return Math.max(calls, Math.round(calls * 1.5));
+  return calls * 2;
+}
 
 export function resolveLiveWindowBudgetBand(
   contextWindowTokens: number,
@@ -514,7 +523,10 @@ export function deriveLiveTokenBudgetPreview(
     policyNumber(policy, 'maxTasksBase'),
     policyNumber(policy, 'maxTasksCap'),
   );
-  const maxModelCalls = MEDIUM_WINDOW_BUDGET_EFFORT.maxModelCalls;
+  const maxModelCalls = scaleEffortCallBudget(
+    MEDIUM_WINDOW_BUDGET_EFFORT.maxModelCalls,
+    windowTokens,
+  );
   const maxSkills = clampInt(
     policyNumber(policy, 'maxSkillsBase') +
       Math.floor(usableInputTokens / policyNumber(policy, 'maxSkillsPerUsable')),

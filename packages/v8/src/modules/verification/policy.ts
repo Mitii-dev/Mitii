@@ -96,3 +96,16 @@ export const MISSING_TOOL_PATTERNS =
 /** TypeScript/compiler diagnostics must never be reclassified as missing tools. */
 export const COMPILER_DIAGNOSTIC_EVIDENCE =
   /\berror TS\d{3,5}\b|\.tsx?\(\d+,\d+\):\s*error\b/i;
+
+/**
+ * Fatal/runtime-like Ruff rules for localized edits — prefer these over full
+ * style lint so verification repair is not flooded with formatting noise.
+ * Broader scopes keep project-default `ruff check`.
+ */
+export const PYTHON_FATAL_RUFF_SELECT = [
+  "E9",
+  "F821",
+  "F822",
+  "F823",
+  "F401",
+] as const;

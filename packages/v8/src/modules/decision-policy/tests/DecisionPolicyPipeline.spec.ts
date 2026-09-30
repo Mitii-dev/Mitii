@@ -992,8 +992,8 @@ describe("DecisionPolicyPipeline", () => {
   });
 
   it("executes pasted dumps when the ballot is ≥70% act/bugfix", () => {
-    const decision = new DecisionPolicyPipeline().decide(
-      createInput({
+    const decision = new DecisionPolicyPipeline().decide({
+      ...createInput({
         mode: "agent",
         message:
           "main.5773c013a841b85b4e93.js:97 Please, specify correct config params:  \nObject\nIs\t@\tmain.5773c013a841b85b4e93.js:97",
@@ -1013,7 +1013,9 @@ describe("DecisionPolicyPipeline", () => {
           },
         }),
       }),
-    );
+      // Dump heuristic yields only under policy-facts-first + trusted write ballot.
+      policyFactsFirst: true,
+    });
 
     expect(decision.route).toBe("execute");
     expect(decision.reasonCodes).toContain("mutation_execute");

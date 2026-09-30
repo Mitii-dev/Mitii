@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { looksLikeWorkspaceBugReport } from "../actions/LooksLikeWorkspaceBugReport";
+import {
+  looksLikePastedTestFailureDump,
+  looksLikeWorkspaceBugReport,
+} from "../actions/LooksLikeWorkspaceBugReport";
 
 describe("looksLikeWorkspaceBugReport", () => {
   it("matches exact not-working workspace reports", () => {
@@ -51,5 +54,18 @@ describe("looksLikeWorkspaceBugReport", () => {
         "build failed in backend/api/handlers/main.go",
       ),
     ).toBe(true);
+  });
+
+  it("matches pasted Failed Tests / vitest FAIL dumps with repo paths", () => {
+    const dump = [
+      "Failed Tests 11",
+      "FAIL  apps/vscode/tests/settingsRoundTrip.test.ts > settings round trip",
+      "AssertionError: expected 1 to be 0",
+    ].join("\n");
+    expect(looksLikeWorkspaceBugReport(dump)).toBe(true);
+    expect(looksLikePastedTestFailureDump(dump)).toBe(true);
+    expect(
+      looksLikePastedTestFailureDump("Fix the auth bug in src/auth/login.ts"),
+    ).toBe(false);
   });
 });

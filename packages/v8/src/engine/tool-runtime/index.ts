@@ -1,8 +1,13 @@
 export {
   TOOL_RUNTIME_SCHEMA_VERSION,
+  CODE_INTELLIGENCE_TOOL_IDS,
+  DIAGNOSTICS_TOOL_IDS,
+  CHANGE_IMPACT_TOOL_IDS,
   READ_ONLY_TOOL_IDS,
   NETWORK_TOOL_IDS,
   MUTATION_TOOL_IDS,
+  GITHUB_MUTATION_TOOL_IDS,
+  PROCESS_TOOL_IDS,
   OPT_IN_MUTATION_TOOL_IDS,
   TOOL_BACKENDS,
   TOOL_RESULT_STATUSES,
@@ -124,6 +129,9 @@ export type {
   SearchPort,
   RepositoryGraphPort,
   CodeNavigationPort,
+  ToolOutputSpillPort,
+  ToolOutputSpillStoreRequest,
+  ToolOutputSpillStoreResult,
 } from "./contracts";
 
 export {
@@ -139,8 +147,21 @@ export {
   NodeGitAdapter,
   NodeNetworkAdapter,
   InMemoryNetworkAdapter,
+  InMemoryToolOutputSpillAdapter,
 } from "./adapters";
 export type { ProcessHandler } from "./adapters";
+
+export {
+  boundToolOutput,
+  headTailPreview,
+  isMitiiBoundedToolOutput,
+  BOUNDED_OUTPUT_MARKER,
+} from "./output";
+export type {
+  BoundToolOutputParams,
+  BoundToolOutputResult,
+  MitiiBoundedToolOutput,
+} from "./output";
 
 export type {
   MutationCheckpoint,

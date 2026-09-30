@@ -1,0 +1,680 @@
+import { AGENT_ENGINE_THRESHOLDS } from "../legacy/policy";
+
+/**
+ * Detect empty or transitional assistant turns that must not end a run.
+ * Models often narrate ("Let me check…") then stop or return blank after tools.
+ */
+
+const TRANSITIONAL_OPENERS =
+  /^(?:okay[,.]?\s+|ok[,.]?\s+|sure[,.]?\s+|alright[,.]?\s+|right[,.]?\s+)?(?:let me|i(?:'ll| will)|i(?:'m| am) going to|now let me|next[,]? (?:i(?:'ll| will)|let me)|i need to|i should)\b/i;
+
+const TRANSITIONAL_INTENT =
+  /\b(?:let me|i(?:'ll| will)|i(?:'m| am) going to)\b/i;
+
+const TRANSITIONAL_CLOSERS =
+  /(?::|\.\.\.|…)\s*$/;
+
+/** Trailing intent after a short prior sentence: ". Let me …" / ", I'll …" */
+const TRAILING_INTENT_CLAUSE =
+  /[.!,;]\s*(?:let me|i(?:'ll| will)|i(?:'m| am) going to)\b[\s\S]{0,160}$/i;
+
+const PSEUDO_TOOL_REQUEST =
+  /<user_request\b[^>]*>\s*(?:read|open|inspect|look at)\b[\s\S]{0,800}<\/user_request>/i;
+
+const LITERAL_TOOL_TAG_REQUEST =
+  /<(?:read_file|read_many_files|search_files|glob_files|list_directory|goto_definition|find_type_definition|find_references|hover_symbol|document_symbol|workspace_symbol|find_implementation|call_hierarchy|analyze_change_impact)\b[^>]*>(?:\s*<\/(?:read_file|read_many_files|search_files|glob_files|list_directory|goto_definition|find_type_definition|find_references|hover_symbol|document_symbol|workspace_symbol|find_implementation|call_hierarchy|analyze_change_impact)>)?/i;
+
+/**
+ * Provider / model tool XML that leaked into assistant text instead of a
+ * structured tool call (seen when output truncates mid-tool).
+ */
+const LEAKED_TOOL_CALL_MARKUP =
+  /<\/?(?:tool_call|function|parameter|tool_request|invoke)\b/i;
+
+const READ_FILES_REQUEST =
+  /^(?:i(?:'ll| will)|let me|i need to|i should)\b[\s\S]{0,240}\b(?:read|open|inspect|look at)\b[\s\S]{0,240}\b(?:files?|models?|services?|routes?)\b/i;
+
+/**
+ * Long monologues that still end by announcing the next investigation step
+ * ("But first, let me check…") are not final answers — regardless of length.
+ */
+const ENDS_WITH_CONTINUE_INVESTIGATION =
+  /(?:^|[.!\n])\s*(?:wait[,.]?\s+)?(?:(?:but\s+)?(?:first|actually)[,.]?\s+)?(?:let me|i(?:'ll| will)|i(?:'m| am) going to|i need to|i should)\b[\s\S]{0,220}(?:check|look(?:\s+at)?|read|inspect|search|try|build|run|see|verify|examine|investigate|open|find|re-?read|start|begin|continue|implement|fix|apply|patch)\b[\s\S]{0,200}$/i;
+
+const PLANNING_PHRASE =
+  /\b(?:let me|i(?:'ll| will)|i(?:'m| am) going to|i need to|i should|here(?:'|’)s my (?:plan|final plan)|let me think)\b/gi;
+
+const ANALYSIS_OPENER =
+  /^(?:let me analyze|let me think|ok(?:ay)?[,.]?\s+let me|here(?:'|’)s my (?:plan|final plan))\b/i;
+
+const PAST_TENSE_OUTCOME =
+  /\b(?:i (?:fixed|updated|changed|patched|cleared|removed|added)|verification (?:passed|failed)|edits were kept|completed workspace edits)\b/i;
+
+export function isEmptyAssistantTurn(params: {
+  content: string;
+  toolCallCount: number;
+}): boolean {
+  return params.content.trim().length === 0 && params.toolCallCount === 0;
+}
+
+/**
+ * True when a long answer is the same heading / numbered item repeating.
+ * Generic degeneracy detector — not tied to a package or error message.
+ */
+export function isDegenerateRepeatedAnswer(content: string): boolean {
+  const text = content.trim();
+  if (text.length < 2_000) {
+    return false;
+  }
+
+  const numbered =
+    text.match(/^\d+\.\s+\*{0,2}[^\n]{8,160}/gm)?.map((line) =>
+      line.replace(/^\d+\.\s+/, "").replace(/\*+/g, "").trim().toLowerCase(),
+    ) ?? [];
+  if (numbered.length >= 12) {
+    const unique = new Set(numbered);
+    if (unique.size <= Math.max(3, Math.floor(numbered.length * 0.25))) {
+      return true;
+    }
+  }
+
+  const paragraphs = text
+    .split(/\n{2,}/)
+    .map((part) => part.replace(/\s+/g, " ").trim().toLowerCase())
+    .filter((part) => part.length >= 80);
+  if (paragraphs.length >= 6) {
+    const counts = new Map<string, number>();
+    for (const paragraph of paragraphs) {
+      const key = paragraph.slice(0, 220);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    const maxCount = Math.max(0, ...counts.values());
+    if (maxCount >= 3) {
+      return true;
+    }
+  }
+
+  const windows: string[] = [];
+  const windowSize = 80;
+  for (let index = 0; index + windowSize <= Math.min(text.length, 8_000); index += 40) {
+    windows.push(text.slice(index, index + windowSize));
+  }
+  if (windows.length < 8) {
+    return false;
+  }
+  const uniqueWindows = new Set(windows);
+  return uniqueWindows.size <= Math.max(3, Math.floor(windows.length * 0.2));
+}
+
+const PACKAGE_SCRIPT_CLAIM =
+  /\b(?:npm|pnpm|yarn|bun)\s+run\b|\bnpx\s+wdio\b|\bwdio\s+run\b/i;
+
+/**
+ * True when the answer names package scripts without having read the repo.
+ * Short unverified claims are suspicious; long how-to guides that mention
+ * `npx wdio` / `npm run` as instructions are not incomplete turns.
+ */
+export function claimsPackageScriptsWithoutEvidence(content: string): boolean {
+  return PACKAGE_SCRIPT_CLAIM.test(content);
+}
+
+/** Substantial instructional answers (copy-paste guides) with fences or steps. */
+export function looksLikeInstructionalAnswer(content: string): boolean {
+  const text = content.trim();
+  const fenceCount = (text.match(/```/g) ?? []).length;
+  if (fenceCount >= 2 && text.length >= 400) {
+    return true;
+  }
+  if (text.length < 600) {
+    return false;
+  }
+  return (
+    /^#{1,3}\s+/m.test(text) &&
+    /\b(?:change|step|file|replace|find|edit|apply)\b/i.test(text)
+  );
+}
+
+/**
+ * Some reasoning models respond with an instruction-shaped request for the
+ * user/runtime to read files, but without issuing real tool calls. That is not
+ * a final answer.
+ */
+export function isPseudoToolRequestAnswer(content: string): boolean {
+  const text = content.trim();
+  if (text.length === 0) return false;
+  if (PSEUDO_TOOL_REQUEST.test(text)) return true;
+  if (LITERAL_TOOL_TAG_REQUEST.test(text)) return true;
+  if (hasLeakedToolCallMarkup(text)) return true;
+  if (READ_FILES_REQUEST.test(text) && /(?:^|\n)\s*-\s+\S+/m.test(text)) {
+    return true;
+  }
+  return false;
+}
+
+export function hasLeakedToolCallMarkup(content: string): boolean {
+  return LEAKED_TOOL_CALL_MARKUP.test(content);
+}
+
+/**
+ * True when the assistant text looks like mid-work narration rather than a
+ * user-facing final answer (and no tools were requested this turn).
+ */
+export function isTransitionalAssistantAnswer(content: string): boolean {
+  const text = content.trim();
+  if (text.length === 0) return true;
+  if (isPseudoToolRequestAnswer(text)) return true;
+  if (isUnfinishedInvestigationAnswer(text)) return true;
+  if (isMidWorkAnalysisDump(text)) return true;
+  if (isDegenerateRepeatedAnswer(text)) return true;
+  if (text.length > 600) return false;
+
+  const singleBeat = text.split(/\n+/).filter((line) => line.trim().length > 0)
+    .length <= 2;
+  if (!singleBeat) return false;
+
+  if (TRANSITIONAL_OPENERS.test(text) && TRANSITIONAL_CLOSERS.test(text)) {
+    return true;
+  }
+
+  // Short "Let me …" / "Now …" without a concrete conclusion.
+  if (
+    TRANSITIONAL_OPENERS.test(text) &&
+    text.length < 180 &&
+    !/[.!]["']?\s*$/.test(text)
+  ) {
+    return true;
+  }
+
+  // Mid-text intent that still ends unfinished ("… Let me run …:")
+  if (TRANSITIONAL_INTENT.test(text) && TRANSITIONAL_CLOSERS.test(text)) {
+    return true;
+  }
+
+  // Conclusion sentence that trails into another intent clause.
+  if (text.length < 280 && TRAILING_INTENT_CLAUSE.test(text)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Long investigation dumps that still announce the next look/check step.
+ * Unlike short transitional narration, these are often >600 chars, so the
+ * length short-circuit must not hide them.
+ */
+export function isUnfinishedInvestigationAnswer(content: string): boolean {
+  const text = content.trim();
+  if (text.length === 0) return false;
+  if (hasLeakedToolCallMarkup(text)) return true;
+
+  const cleaned = text
+    .replace(/<\/?(?:tool_call|function|parameter|tool_request|invoke)\b[^>]*>/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (cleaned.length === 0) return true;
+
+  return ENDS_WITH_CONTINUE_INVESTIGATION.test(cleaned);
+}
+
+/**
+ * Long first-person planning essays are not user-facing answers. Truncated
+ * remaining-error turns often spend the output budget restating a plan
+ * instead of calling apply_patch; length alone must not make them "final".
+ */
+export function isMidWorkAnalysisDump(content: string): boolean {
+  const text = content.trim();
+  if (text.length < 800) {
+    return false;
+  }
+  if (PAST_TENSE_OUTCOME.test(text) && text.length < 4_000) {
+    return false;
+  }
+
+  const planning = text.match(PLANNING_PHRASE) ?? [];
+  if (planning.length >= 8) {
+    return true;
+  }
+  if (ANALYSIS_OPENER.test(text) && planning.length >= 4) {
+    return true;
+  }
+
+  const fenceCount = (text.match(/```/g) ?? []).length;
+  return fenceCount % 2 === 1 && text.length > 1_200;
+}
+
+export function shouldRecoverIncompleteAssistantTurn(params: {
+  content: string;
+  toolCallCount: number;
+  changedFileCount: number;
+  fileReadCalls?: number;
+}): boolean {
+  if (params.toolCallCount > 0) return false;
+  if (isEmptyAssistantTurn(params)) return true;
+  if (isPseudoToolRequestAnswer(params.content)) return true;
+  if (isDegenerateRepeatedAnswer(params.content)) return true;
+  if (isUnfinishedInvestigationAnswer(params.content)) return true;
+  if (isMidWorkAnalysisDump(params.content)) return true;
+  if (
+    (params.fileReadCalls ?? 0) === 0 &&
+    claimsPackageScriptsWithoutEvidence(params.content) &&
+    !looksLikeInstructionalAnswer(params.content)
+  ) {
+    return true;
+  }
+  // Defense in depth: blank stored answer after mutations must not complete.
+  if (params.content.trim().length === 0 && params.changedFileCount > 0) {
+    return true;
+  }
+  if (
+    isTransitionalAssistantAnswer(params.content) &&
+    (params.changedFileCount > 0 || params.content.trim().length < 180)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+export function buildIncompleteAnswerRecoveryMessage(params: {
+  changedFiles: readonly string[];
+  emptyTurn: boolean;
+}): string {
+  const changed =
+    params.changedFiles.length > 0
+      ? `\nChanged files so far: ${params.changedFiles.slice(0, 40).join(", ")}${
+          params.changedFiles.length > 40 ? ", …" : ""
+        }`
+      : "";
+
+  if (params.emptyTurn) {
+    return [
+      "Your previous model turn returned no content and no tool calls.",
+      "Continue the task. If work is done, give a concise final answer to the user covering what changed and what remains.",
+      "Do not end with only a narration like \"Let me check…\".",
+      changed,
+    ]
+      .filter((part) => part.length > 0)
+      .join("\n");
+  }
+
+  return [
+    "Your previous reply looked like mid-task narration or an incomplete tool attempt, not a final answer.",
+    "Continue: call needed tools (including apply_patch when a fix is required), or finish with a clear user-facing summary of the outcome.",
+    "Do not end on transitional phrases like \"Let me…\", \"Actually…\", or leaked tool markup.",
+    changed,
+  ]
+    .filter((part) => part.length > 0)
+    .join("\n");
+}
+
+export function synthesizeFallbackAnswer(params: {
+  priorAnswer?: string;
+  changedFiles: readonly string[];
+}): string {
+  const prior = params.priorAnswer?.trim() ?? "";
+  const paths = params.changedFiles;
+  if (paths.length > 0) {
+    const list = paths.slice(0, 40).join(", ") + (paths.length > 40 ? ", …" : "");
+    if (prior && !isTransitionalAssistantAnswer(prior)) {
+      return `${prior}\n\nChanged files (${paths.length}): ${list}`;
+    }
+    // Avoid implying the job is done — verification / checklist may still be open.
+    return `Workspace edits so far (${paths.length} file${
+      paths.length === 1 ? "" : "s"
+    }): ${list}`;
+  }
+  if (prior && !isTransitionalAssistantAnswer(prior)) {
+    return prior;
+  }
+  return (
+    prior ||
+    "I stopped without a complete final answer. Please ask a follow-up if you want me to continue."
+  );
+}
+
+const RECOVERED_OMIT_ELLIPSIS = "…";
+const RECOVERED_OMIT_FOOTER =
+  "(omitted mid-work analysis; continue with tools)";
+
+/** Paths, diagnostics, and outcome crumbs worth keeping from a dump middle. */
+const RECOVERED_KEEP_SIGNAL =
+  /\b[\w./@+-]+\.(?:ts|tsx|js|jsx|mjs|cjs|mts|cts|py|go|rs|java|kt|swift|md|json|yml|yaml|css|scss)\b|\bTS\d{3,5}\b|\berror\s+TS\d*\b|\b(?:root\s+cause|remaining\s+errors?|fixed|updated|changed|patched|cleared|removed|added)\b/i;
+
+const RECOVERED_PLANNING_LINE =
+  /^(?:okay[,.]?\s+|ok[,.]?\s+)?(?:let me|i(?:'ll| will)|i(?:'m| am) going to|i need to|i should|here(?:'|’)s my (?:plan|final plan))\b/i;
+
+function isRecoveredKeepWorthyLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (trimmed.length < 12 || trimmed.length > 220) {
+    return false;
+  }
+  if (!RECOVERED_KEEP_SIGNAL.test(trimmed)) {
+    return false;
+  }
+  // Pure planning narration even if it mentions a path once — skip.
+  if (
+    RECOVERED_PLANNING_LINE.test(trimmed) &&
+    !/\bTS\d{3,5}\b|\berror\s+TS/i.test(trimmed)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function sliceRecoveredHead(text: string, budget: number): string {
+  if (budget <= 0 || text.length === 0) {
+    return "";
+  }
+  if (text.length <= budget) {
+    return text;
+  }
+  const raw = text.slice(0, budget);
+  const lastBreak = Math.max(raw.lastIndexOf("\n"), raw.lastIndexOf(" "));
+  if (lastBreak >= Math.floor(budget * 0.55)) {
+    return raw.slice(0, lastBreak).trimEnd();
+  }
+  return raw.trimEnd();
+}
+
+function sliceRecoveredTail(text: string, budget: number): string {
+  if (budget <= 0 || text.length === 0) {
+    return "";
+  }
+  if (text.length <= budget) {
+    return text;
+  }
+  const raw = text.slice(text.length - budget);
+  const newline = raw.indexOf("\n");
+  if (newline >= 0 && newline <= Math.floor(budget * 0.5)) {
+    return raw.slice(newline + 1).trimStart();
+  }
+  const space = raw.indexOf(" ");
+  if (space >= 0 && space <= Math.floor(budget * 0.35)) {
+    return raw.slice(space + 1).trimStart();
+  }
+  return raw.trimStart();
+}
+
+/**
+ * Prefer concrete paths / errors / outcomes from the omitted middle so the
+ * next turn does not lose the useful crumbs of a long planning dump.
+ */
+function extractRecoveredKeepLines(
+  middle: string,
+  budget: number,
+  alreadyPresent: string,
+): string {
+  if (budget < 16 || middle.trim().length === 0) {
+    return "";
+  }
+  const selected: string[] = [];
+  let used = 0;
+  const seen = new Set<string>();
+  for (const line of middle.split("\n")) {
+    if (!isRecoveredKeepWorthyLine(line)) {
+      continue;
+    }
+    const trimmed = line.trim();
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    if (alreadyPresent.includes(trimmed)) {
+      continue;
+    }
+    const cost = trimmed.length + (selected.length > 0 ? 1 : 0);
+    if (used + cost > budget) {
+      continue;
+    }
+    seen.add(key);
+    selected.push(trimmed);
+    used += cost;
+    if (selected.length >= 8) {
+      break;
+    }
+  }
+  return selected.join("\n");
+}
+
+/**
+ * Keep mid-work analysis out of the live transcript so leftover output
+ * tokens stay available for apply_patch instead of another essay.
+ *
+ * Dumps are compacted with head + high-signal middle crumbs + tail (not
+ * head-only), so conclusions and concrete file/error notes survive.
+ */
+export function compactRecoveredAssistantContent(
+  content: string,
+  maxRecoveredAnalysisChars: number = AGENT_ENGINE_THRESHOLDS.maxRecoveredAnalysisChars,
+): string {
+  const text = content.trim();
+  if (text.length === 0) {
+    return text;
+  }
+  const dump =
+    isMidWorkAnalysisDump(text) ||
+    isUnfinishedInvestigationAnswer(text) ||
+    isDegenerateRepeatedAnswer(text);
+  if (!dump) {
+    return text;
+  }
+  const maxChars = Math.max(32, Math.floor(maxRecoveredAnalysisChars));
+  if (text.length <= maxChars) {
+    return text;
+  }
+
+  const footer = `\n${RECOVERED_OMIT_ELLIPSIS}\n${RECOVERED_OMIT_FOOTER}`;
+  const budget = Math.max(1, maxChars - footer.length);
+
+  // Tiny budgets: fall back to a short head prefix.
+  if (budget < 64) {
+    const head = sliceRecoveredHead(text, budget);
+    const compacted = `${head}${footer}`;
+    return compacted.length <= maxChars
+      ? compacted
+      : compacted.slice(0, Math.max(1, maxChars - 1)) + RECOVERED_OMIT_ELLIPSIS;
+  }
+
+  let headBudget = Math.floor(budget * 0.42);
+  let tailBudget = Math.floor(budget * 0.42);
+  let keepBudget = budget - headBudget - tailBudget;
+
+  let head = sliceRecoveredHead(text, headBudget);
+  let tail = sliceRecoveredTail(text, tailBudget);
+
+  // If head/tail overlap, the text is short relative to budget — head only.
+  if (head.length + tail.length >= text.length) {
+    const only = sliceRecoveredHead(text, budget);
+    return `${only}${footer}`.slice(0, maxChars);
+  }
+
+  const headEnd = head.length;
+  const tailStart = text.length - tail.length;
+  const middle =
+    tailStart > headEnd ? text.slice(headEnd, tailStart) : "";
+  const keep = extractRecoveredKeepLines(
+    middle,
+    keepBudget,
+    `${head}\n${tail}`,
+  );
+
+  const sections = [head];
+  if (keep.length > 0) {
+    sections.push(RECOVERED_OMIT_ELLIPSIS, keep);
+  }
+  sections.push(RECOVERED_OMIT_ELLIPSIS, tail);
+  let body = sections.join("\n");
+
+  // Fit body into budget: drop keep first, then shrink head/tail evenly.
+  if (body.length > budget) {
+    body = [head, RECOVERED_OMIT_ELLIPSIS, tail].join("\n");
+  }
+  if (body.length > budget) {
+    const shrink = body.length - budget;
+    const shrinkHead = Math.ceil(shrink / 2);
+    const shrinkTail = Math.max(0, shrink - shrinkHead);
+    headBudget = Math.max(24, headBudget - shrinkHead);
+    tailBudget = Math.max(24, tailBudget - shrinkTail);
+    head = sliceRecoveredHead(text, headBudget);
+    tail = sliceRecoveredTail(text, tailBudget);
+    body = [head, RECOVERED_OMIT_ELLIPSIS, tail].join("\n");
+  }
+  if (body.length > budget) {
+    body = sliceRecoveredHead(text, budget);
+  }
+
+  const compacted = `${body}${footer}`;
+  return compacted.length <= maxChars
+    ? compacted
+    : compacted.slice(0, Math.max(1, maxChars - 1)) + RECOVERED_OMIT_ELLIPSIS;
+}
+
+/**
+ * Prefer a verification summary (or a short changed-files fallback) over a
+ * truncated planning dump when the run ends.
+ */
+export function selectUserFacingLoopAnswer(params: {
+  loopAnswer?: string;
+  fallbackSummary?: string;
+  changedFiles?: readonly string[];
+}): string | undefined {
+  const loop = stripInjectionComplianceEchoes(params.loopAnswer?.trim() ?? "");
+  const summary = stripInjectionComplianceEchoes(
+    params.fallbackSummary?.trim() ?? "",
+  );
+  const files = params.changedFiles ?? [];
+  const syntheticEdits =
+    /^(?:Completed workspace edits|Workspace edits so far|Stopping read-only turns to verify)[\s\S]*/i.test(
+      loop,
+    );
+  const hideLoop =
+    loop.length > 0 &&
+    (isTransitionalAssistantAnswer(loop) ||
+      isMidWorkAnalysisDump(loop) ||
+      isUnfinishedInvestigationAnswer(loop) ||
+      isDegenerateRepeatedAnswer(loop) ||
+      // Prefer verification summary over synthetic edit stubs (BillBuddy 00:33).
+      (syntheticEdits && summary.length > 0) ||
+      // Early recovery blockers must not stick after later mutations.
+      (files.length > 0 && isClearMutationBlockerAnswer(loop)));
+
+  if (hideLoop || loop.length === 0) {
+    const salvaged = hideLoop ? salvageUserFacingAnswerSection(loop) : undefined;
+    if (salvaged && salvaged.length > 0) {
+      return salvaged;
+    }
+    if (summary.length > 0) {
+      return summary;
+    }
+    if (files.length > 0) {
+      return synthesizeFallbackAnswer({
+        // Drop stale mid-work / blocker narration once disk edits exist.
+        priorAnswer: hideLoop ? "" : loop,
+        changedFiles: files,
+      });
+    }
+    return undefined;
+  }
+
+  const joined = [loop, summary].filter((part) => part.length > 0).join("\n\n");
+  return joined.length > 0 ? joined : undefined;
+}
+
+/**
+ * When a mid-work dump hides a later clean report (e.g. "## Errors found"),
+ * keep the report so diagnose/ask runs do not end with an empty UI answer.
+ */
+export function salvageUserFacingAnswerSection(content: string): string | undefined {
+  const text = content.trim();
+  if (text.length < 80) {
+    return undefined;
+  }
+  const markers = [
+    /^##\s+Errors?\s+found\b/im,
+    /^##\s+Findings\b/im,
+    /^##\s+Summary\b/im,
+    /^(?:Errors?|Findings)\s+found\b/im,
+  ];
+  let start = -1;
+  for (const marker of markers) {
+    const match = marker.exec(text);
+    if (match?.index !== undefined) {
+      start = start < 0 ? match.index : Math.min(start, match.index);
+    }
+  }
+  if (start < 0) {
+    return undefined;
+  }
+  const slice = text.slice(start).trim();
+  if (
+    slice.length < 80 ||
+    isTransitionalAssistantAnswer(slice) ||
+    isMidWorkAnalysisDump(slice) ||
+    isUnfinishedInvestigationAnswer(slice)
+  ) {
+    return undefined;
+  }
+  return slice;
+}
+
+/** Strip untrusted-file compliance / ACK echoes from user-facing answers. */
+export function stripInjectionComplianceEchoes(text: string): string {
+  if (!text) return text;
+  return text
+    .replace(/\bMITII_INJECTION_ACK_[A-Za-z0-9_-]+\b/g, "[redacted-injection-token]")
+    .replace(/\[?\s*SYSTEM\s*:[^\n\]]*\]?/gi, "[redacted-untrusted-directive]")
+    .replace(/\bconfirm(?:\s+your)?\s+compliance\b[^.!\n]*/gi, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function isClearMutationBlockerAnswer(content: string): boolean {
+  return (
+    /(?:^|\n)\s*(?:\*{0,2}|_{0,2})?\s*blocker(?:\*{0,2}|_{0,2})?\s*[:\-—]/im.test(
+      content,
+    ) ||
+    /\b(?:stop(?:ping)?\s+here\s+with\s+a\s+clear\s+blocker|have\s+to\s+stop\s+here\s+with\s+a\s+clear\s+blocker)\b/i.test(
+      content,
+    )
+  );
+}
+
+/**
+ * Give Request Understanding a short prior-turn window so follow-ups like
+ * "did you clear the old files?" classify as questions about prior work.
+ * The live prompt construction path still uses the raw user message.
+ */
+export function amendMessageWithPriorConversation(
+  message: string,
+  conversation: readonly { role: string; content: string }[],
+  extractPrimary: (text: string) => string = (text) => text,
+): string {
+  const primary = (extractPrimary(message) || message).trim();
+  const recent = conversation
+    .filter(
+      (entry) =>
+        (entry.role === "user" || entry.role === "assistant") &&
+        entry.content.trim().length > 0,
+    )
+    .slice(-4);
+  if (recent.length === 0) {
+    return primary;
+  }
+
+  const lines = recent.map((entry) => {
+    const clipped =
+      entry.content.length > 600
+        ? `${entry.content.slice(0, 599)}…`
+        : entry.content;
+    return `${entry.role}: ${clipped}`;
+  });
+
+  return [
+    "Prior conversation (for intent routing only; not the live user request):",
+    ...lines,
+    "",
+    // Keep in sync with extractCurrentUserRequestForAnalysis.
+    "Current user request:",
+    primary,
+  ].join("\n");
+}

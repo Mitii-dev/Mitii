@@ -37,7 +37,20 @@ export const analyzeChangeImpactTool: RegisteredTool = {
         },
         maximumHops: { type: "integer", minimum: 1, maximum: 6 },
         maximumAffectedNodes: { type: "integer", minimum: 1, maximum: 200 },
+        maximumPaths: {
+          type: "integer",
+          minimum: 1,
+          maximum: 500,
+          description:
+            "Cap on enumerated impact chains (separate from affected-node budget).",
+        },
         includePackages: { type: "boolean" },
+        seedExpansion: {
+          type: "string",
+          enum: ["file", "file_exports", "file_all_symbols"],
+          description:
+            "How a file seed expands: file only, exported/externally-referenced symbols (default), or every symbol.",
+        },
         direction: {
           type: "string",
           enum: ["dependents", "dependencies"],
@@ -68,6 +81,9 @@ export const analyzeChangeImpactTool: RegisteredTool = {
     return executeAnalyzeChangeImpact({
       arguments: ctx.arguments,
       repoGraphs: ctx.ports.repoGraphs,
+      codeNavigation: ctx.ports.codeNavigation,
+      fileSystem: ctx.ports.fileSystem,
+      workspaceRoot: ctx.workspaceRoot,
       dirtyPaths: ctx.dirtyPaths,
       alreadyMutatedPaths: ctx.alreadyMutatedPaths,
     });

@@ -80,7 +80,15 @@ export function preflightStructuredPatch(params: {
   }
 
   if (patch.oldText === "") {
-    // Full-file replace of an existing file.
+    // Full-file replace of an existing file. Allow for small files / intentional
+    // rewrites; reject catastrophic shrinks that wipe substantial sources
+    // (empty oldText + stub newText was a production failure mode).
+    assertSafeFullFileReplace({
+      path: patch.path,
+      currentContent,
+      newText: patch.newText,
+      fuzzyMatch,
+    });
     return {
       ok: true,
       proposedContent: patch.newText,
@@ -136,6 +144,37 @@ export function preflightStructuredPatch(params: {
     created: false,
     fuzzyApplied: true,
   };
+}
+
+/**
+ * Existing files larger than this may only be fully replaced (empty oldText)
+ * when the new content is not a severe shrink.
+ */
+export const FULL_FILE_REPLACE_SAFE_BYTES = 4_096;
+
+/** Reject empty-oldText replaces that shrink a large file below this ratio. */
+export const FULL_FILE_REPLACE_MIN_KEEP_RATIO = 0.5;
+
+function assertSafeFullFileReplace(params: {
+  path: string;
+  currentContent: string;
+  newText: string;
+  fuzzyMatch: boolean;
+}): void {
+  const existingBytes = Buffer.byteLength(params.currentContent, "utf8");
+  if (existingBytes <= FULL_FILE_REPLACE_SAFE_BYTES) {
+    return;
+  }
+  const newBytes = Buffer.byteLength(params.newText, "utf8");
+  if (newBytes >= existingBytes * FULL_FILE_REPLACE_MIN_KEEP_RATIO) {
+    return;
+  }
+  patchFailure(
+    "patch_too_destructive",
+    `Refusing empty-oldText full-file replace for "${params.path}" — existing file is ${existingBytes} bytes and newText is only ${newBytes} bytes. Use a minimal hunk with exact oldText from currentContent instead of wiping the file.`,
+    params.path,
+    params.fuzzyMatch,
+  );
 }
 
 /**

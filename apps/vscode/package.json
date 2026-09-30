@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
-  "version": "2.9.110",
+  "version": "2.9.122",
   "publisher": "mitii",
   "license": "AGPL-3.0-or-later",
   "icon": "media/mitii-logo.png",
@@ -707,6 +707,67 @@
           "default": false,
           "description": "Use custom Agent Engine loop/stall thresholds from mitii.loopPolicy.* instead of shipped working standards. Requires developer settings."
         },
+        "mitii.v8LoopPolicy.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use custom v8-engine knobs from mitii.v8LoopPolicy.* instead of shipped V8 band standards. Requires developer settings."
+        },
+        "mitii.v8LoopPolicy.maxReadOnlyTurnsBeforeMutationNudge": {
+          "type": "number",
+          "default": 12,
+          "minimum": 1,
+          "maximum": 32,
+          "description": "v8: soft nudge after this many readonly tool turns with zero mutations."
+        },
+        "mitii.v8LoopPolicy.toolLoopSoftIdentical": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "maximum": 12,
+          "description": "v8: identical name+args batches before soft change-approach notice."
+        },
+        "mitii.v8LoopPolicy.toolLoopHardIdentical": {
+          "type": "number",
+          "default": 6,
+          "minimum": 2,
+          "maximum": 20,
+          "description": "v8: identical batches before force-final."
+        },
+        "mitii.v8LoopPolicy.maxTruncationRecoveries": {
+          "type": "number",
+          "default": 3,
+          "minimum": 0,
+          "maximum": 8,
+          "description": "v8: provider length recoveries (resets on tool progress)."
+        },
+        "mitii.v8LoopPolicy.maxReasoningCharsWithoutProgress": {
+          "type": "number",
+          "default": 28000,
+          "minimum": 1000,
+          "maximum": 100000,
+          "description": "v8: reasoning progress budget before honest abort."
+        },
+        "mitii.v8LoopPolicy.maxUnfulfilledExecuteRecoveries": {
+          "type": "number",
+          "default": 2,
+          "minimum": 0,
+          "maximum": 8,
+          "description": "v8: text-only turns toward apply_patch when mutation required."
+        },
+        "mitii.v8LoopPolicy.maxContinueOverrides": {
+          "type": "number",
+          "default": 4,
+          "minimum": 0,
+          "maximum": 12,
+          "description": "v8: user Continue overrides after stall walls."
+        },
+        "mitii.v8LoopPolicy.preferredBatchSize": {
+          "type": "number",
+          "default": 12,
+          "minimum": 1,
+          "maximum": 32,
+          "description": "v8: preferred apply_patch batch size."
+        },
         "mitii.loopPolicy.explorationRereadMinCalls": {
           "type": "number",
           "default": 8,
@@ -815,6 +876,13 @@
           "default": 480,
           "minimum": 64,
           "description": "Max characters kept from mid-work analysis dumps in the transcript."
+        },
+        "mitii.loopPolicy.maxReasoningCharsWithoutProgress": {
+          "type": "number",
+          "default": 28000,
+          "minimum": 1000,
+          "maximum": 100000,
+          "description": "Abort a model turn when reasoning alone exceeds this many characters with no content or tools yet."
         },
         "mitii.provider.type": {
           "type": "string",
@@ -1176,6 +1244,15 @@
           "type": "boolean",
           "default": true,
           "description": "Product default ON: after a successful built-in mutating tool in Agent mode, mark matching checklist items done (by changed path) and activate the next pending change item. Unmatched mutations still advance the active item at most once per model turn. The SDK/engine library default remains off when hosts do not pass taskListAutoAdvance."
+        },
+        "mitii.engine.implementation": {
+          "type": "string",
+          "enum": [
+            "legacy",
+            "v8"
+          ],
+          "default": "v8",
+          "description": "Agent orchestrator. Only `v8` exists after Phase 10 (`agent-engine/` deleted). `legacy` is accepted for host compatibility and always resolves to `v8`."
         },
         "mitii.ui.contextToggles.repoMap": {
           "type": "boolean",

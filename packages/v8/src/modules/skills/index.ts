@@ -55,3 +55,11 @@ export {
   mergeRequiredSkillIds,
   normalizeSkillId,
 } from "./parseRequiredSkillMentions";
+
+/** Bridge maps (Phase 9.2) — understanding → skill evidence. */
+export {
+  mapUnderstandingToSkillEvidence,
+  deriveSkillRepoEvidence,
+  formatSkillPromptContent,
+} from "./actions";
+export type { SkillRepoEvidence } from "./actions";

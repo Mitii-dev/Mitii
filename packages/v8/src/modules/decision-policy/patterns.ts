@@ -67,7 +67,7 @@ const WORKSPACE_PATH_ROOT_ALTERNATION = WORKSPACE_PATH_ROOT_SEGMENTS.join("|");
 
 /** Explicit failure / breakage phrasing (natural language + compiler/runtime). */
 export const WORKSPACE_BUG_FAILURE_LANGUAGE =
-  /\b(?:issue|bug|error|fail(?:s|ed|ing)?|unable|not\s+working|doesn'?t\s+work|broken|crash(?:es|ed|ing)?|blank|preview\s+(?:is\s+)?(?:not|never)|(?:no|never)\s+preview|doesn'?t\s+load|load(?:ing)?\s+(?:issue|error|fail|broken)|render(?:ing)?\s+(?:issue|error|fail|broken)|has already been declared|is not defined|cannot read propert(?:y|ies)|cannot find (?:name|module)|still\s+(?:broken|failing)|traceback|stack\s*trace|exit\s+code|non-?zero|compilation\s+failed|build\s+failed|test(?:s)?\s+fail|undefined\s+reference|unresolved\s+import|does\s+not\s+compile|panic!)\b/i;
+  /\b(?:issue|bug|error|fail(?:s|ed|ing)?|unable|not\s+working|doesn'?t\s+work|broken|crash(?:es|ed|ing)?|blank|preview\s+(?:is\s+)?(?:not|never)|(?:no|never)\s+preview|doesn'?t\s+load|load(?:ing)?\s+(?:issue|error|fail|broken)|render(?:ing)?\s+(?:issue|error|fail|broken)|has already been declared|is not defined|cannot read propert(?:y|ies)|cannot find (?:name|module)|still\s+(?:broken|failing)|traceback|stack\s*trace|exit\s+code|non-?zero|compilation\s+failed|build\s+failed|test(?:s)?\s+fail|failed\s+tests?|undefined\s+reference|unresolved\s+import|does\s+not\s+compile|panic!|❯\s*FAIL\b|\bFAIL\s+\S+\.(?:test|spec)\.[jt]sx?\b|AssertionError|TS\d{3,5})\b/i;
 
 /**
  * Well-known runtime / language error tokens across common ecosystems.
@@ -126,9 +126,27 @@ export const WORKSPACE_BUG_LOCALHOST =
 export const BROAD_REPAIR_REQUEST =
   /\b(?:fix|resolve|clear|eliminate)\s+all\b|\ball\s+(?:errors?|failures?|diagnostics?|warnings?)\b|\bacross\s+(?:the\s+)?(?:package|module|workspace|repository|codebase)\b|\bpackage[- ]wide\b|\bmulti[- ]file\s+(?:fix|repair|cleanup)\b/i;
 
+/**
+ * Shared type / API surface edits — dependents often live outside the seed file
+ * even when scope classifiers say single_location.
+ */
+export const SHARED_SURFACE_EDIT_REQUEST =
+  /\b(?:export\s+(?:type|interface|enum|class|function|const)|(?:public\s+)?(?:type|interface|enum)\b|type\s+alias|api\s+surface|public\s+api|breaking\s+change|rename\s+(?:the\s+)?(?:type|interface|export|symbol|method|function)|(?:change|update|modify|widen|narrow)\s+(?:the\s+)?(?:type|interface|signature|export)|(?:add|remove)\s+(?:a\s+)?(?:field|property|method)\s+(?:to|from)\s+(?:the\s+)?(?:type|interface))\b/i;
+
+/** Compile / typecheck fan-out language (host-language-neutral tokens). */
+export const TYPECHECK_FANOUT_REQUEST =
+  /\b(?:typescript|typecheck|type[- ]check|\btsc\b|compilation\s+errors?|compile\s+errors?|type\s+errors?|TS\d{3,5})\b/i;
+
+/** Explicit blast-radius / dependents analysis asks. */
+export const BLAST_RADIUS_ANALYSIS_REQUEST =
+  /\b(?:what\s+breaks|who\s+(?:calls|imports|depends|uses)|dependents?|dependencies\s+of|blast\s*radius|affected\s+(?:files?|callers?|modules?)|impact\s+of\s+(?:this\s+)?(?:change|edit|rename)|what\s+depends\s+on|callers?\s+of|importers?\s+of)\b/i;
+
 /** Grouped pattern catalog for decision actions. */
 export const DECISION_POLICY_PATTERNS = {
   broadRepairRequest: BROAD_REPAIR_REQUEST,
+  sharedSurfaceEditRequest: SHARED_SURFACE_EDIT_REQUEST,
+  typecheckFanoutRequest: TYPECHECK_FANOUT_REQUEST,
+  blastRadiusAnalysisRequest: BLAST_RADIUS_ANALYSIS_REQUEST,
 } as const;
 
 /**

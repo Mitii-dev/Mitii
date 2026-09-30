@@ -8,6 +8,7 @@ import {
   findImplementationInputSchema,
   findReferencesInputSchema,
   findReferencesOutputSchema,
+  findTypeDefinitionInputSchema,
   gotoDefinitionInputSchema,
   gotoDefinitionOutputSchema,
   hoverSymbolInputSchema,
@@ -21,6 +22,7 @@ export async function executeGotoDefinition(params: {
   grant: ToolGrant;
   workspaceRoot: string;
   codeNavigation?: CodeNavigationPort;
+  signal?: AbortSignal;
 }): Promise<{ output: unknown; truncated: boolean; redacted: boolean }> {
   return executeCodeNavigationTool({
     ...params,
@@ -30,11 +32,27 @@ export async function executeGotoDefinition(params: {
   });
 }
 
+export async function executeFindTypeDefinition(params: {
+  arguments: unknown;
+  grant: ToolGrant;
+  workspaceRoot: string;
+  codeNavigation?: CodeNavigationPort;
+  signal?: AbortSignal;
+}): Promise<{ output: unknown; truncated: boolean; redacted: boolean }> {
+  return executeCodeNavigationTool({
+    ...params,
+    operation: "type_definition",
+    inputSchema: findTypeDefinitionInputSchema,
+    outputSchema: symbolLocationsOutputSchema,
+  });
+}
+
 export async function executeFindReferences(params: {
   arguments: unknown;
   grant: ToolGrant;
   workspaceRoot: string;
   codeNavigation?: CodeNavigationPort;
+  signal?: AbortSignal;
 }): Promise<{ output: unknown; truncated: boolean; redacted: boolean }> {
   return executeCodeNavigationTool({
     ...params,
@@ -49,6 +67,7 @@ export async function executeHoverSymbol(params: {
   grant: ToolGrant;
   workspaceRoot: string;
   codeNavigation?: CodeNavigationPort;
+  signal?: AbortSignal;
 }): Promise<{ output: unknown; truncated: boolean; redacted: boolean }> {
   if (!params.codeNavigation) {
     throw new ToolRuntimeError(
@@ -61,27 +80,31 @@ export async function executeHoverSymbol(params: {
   const pipeline = new CodeNavigationPipeline({
     navigation: params.codeNavigation,
   });
-  const result = await pipeline.navigate({
-    schemaVersion: 1,
-    operation: "hover",
-    query: {
-      relativePath: input.path,
-      line: input.line,
-      column: input.column ?? 1,
-      ...(input.symbolName ? { symbolName: input.symbolName } : {}),
+  const result = await pipeline.navigate(
+    {
+      schemaVersion: 1,
+      operation: "hover",
+      query: {
+        relativePath: input.path,
+        line: input.line,
+        column: input.column ?? 1,
+        ...(input.symbolName ? { symbolName: input.symbolName } : {}),
+      },
     },
-  });
+    params.signal ? { signal: params.signal } : {},
+  );
 
+  const truncated = result.truncated;
   const output = hoverSymbolOutputSchema.parse({
     path: input.path,
     provider: result.provider,
     ...(result.hover ? { hover: result.hover } : {}),
-    truncated: false,
+    truncated,
   });
 
   return {
     output,
-    truncated: false,
+    truncated,
     redacted: false,
   };
 }
@@ -91,6 +114,7 @@ export async function executeDocumentSymbol(params: {
   grant: ToolGrant;
   workspaceRoot: string;
   codeNavigation?: CodeNavigationPort;
+  signal?: AbortSignal;
 }): Promise<{ output: unknown; truncated: boolean; redacted: boolean }> {
   return executeSymbolList({
     ...params,
@@ -105,6 +129,7 @@ export async function executeWorkspaceSymbol(params: {
   grant: ToolGrant;
   workspaceRoot: string;
   codeNavigation?: CodeNavigationPort;
+  signal?: AbortSignal;
 }): Promise<{ output: unknown; truncated: boolean; redacted: boolean }> {
   return executeSymbolList({
     ...params,
@@ -119,6 +144,7 @@ export async function executeFindImplementation(params: {
   grant: ToolGrant;
   workspaceRoot: string;
   codeNavigation?: CodeNavigationPort;
+  signal?: AbortSignal;
 }): Promise<{ output: unknown; truncated: boolean; redacted: boolean }> {
   return executeCodeNavigationTool({
     ...params,
@@ -133,6 +159,7 @@ export async function executeCallHierarchy(params: {
   grant: ToolGrant;
   workspaceRoot: string;
   codeNavigation?: CodeNavigationPort;
+  signal?: AbortSignal;
 }): Promise<{ output: unknown; truncated: boolean; redacted: boolean }> {
   return executeCodeNavigationTool({
     ...params,
@@ -147,6 +174,7 @@ async function executeSymbolList(params: {
   grant: ToolGrant;
   workspaceRoot: string;
   codeNavigation?: CodeNavigationPort;
+  signal?: AbortSignal;
   operation: "document_symbols" | "workspace_symbols";
   inputSchema:
     | typeof documentSymbolInputSchema
@@ -164,11 +192,15 @@ async function executeSymbolList(params: {
     "path" in input
       ? { relativePath: input.path }
       : { query: input.query };
-  const result = await pipeline.navigate({
-    schemaVersion: 1,
-    operation: params.operation,
-    query,
-  });
+  const result = await pipeline.navigate(
+    {
+      schemaVersion: 1,
+      operation: params.operation,
+      query,
+    },
+    params.signal ? { signal: params.signal } : {},
+  );
+  const truncated = result.truncated;
   const output = symbolLocationsOutputSchema.parse({
     path: "path" in input ? input.path : input.query,
     provider: result.provider,
@@ -180,9 +212,9 @@ async function executeSymbolList(params: {
       ...(location.symbolKind ? { symbolKind: location.symbolKind } : {}),
       ...(location.preview ? { preview: location.preview } : {}),
     })),
-    truncated: false,
+    truncated,
   });
-  return { output, truncated: false, redacted: false };
+  return { output, truncated, redacted: false };
 }
 
 async function executeCodeNavigationTool(params: {
@@ -190,9 +222,11 @@ async function executeCodeNavigationTool(params: {
   grant: ToolGrant;
   workspaceRoot: string;
   codeNavigation?: CodeNavigationPort;
-  operation: "definition" | "references" | "implementation" | "call_hierarchy";
+  signal?: AbortSignal;
+  operation: "definition" | "type_definition" | "references" | "implementation" | "call_hierarchy";
   inputSchema:
     | typeof gotoDefinitionInputSchema
+    | typeof findTypeDefinitionInputSchema
     | typeof findReferencesInputSchema
     | typeof findImplementationInputSchema
     | typeof callHierarchyInputSchema;
@@ -201,7 +235,7 @@ async function executeCodeNavigationTool(params: {
   if (!params.codeNavigation) {
     throw new ToolRuntimeError(
       "misconfigured_ports",
-      "CodeNavigationPort is required for goto_definition, find_references, and find_implementation.",
+      "CodeNavigationPort is required for goto_definition, find_type_definition, find_references, and find_implementation.",
     );
   }
 
@@ -209,25 +243,29 @@ async function executeCodeNavigationTool(params: {
   const pipeline = new CodeNavigationPipeline({
     navigation: params.codeNavigation,
   });
-  const result = await pipeline.navigate({
-    schemaVersion: 1,
-    operation: params.operation,
-    query: {
-      relativePath: input.path,
-      line: input.line,
-      column: input.column ?? 1,
-      ...(input.symbolName ? { symbolName: input.symbolName } : {}),
-      ...("direction" in input &&
-      (input.direction === "incoming" || input.direction === "outgoing")
-        ? { direction: input.direction }
-        : {}),
-      ...("includeDeclaration" in input &&
-      typeof input.includeDeclaration === "boolean"
-        ? { includeDeclaration: input.includeDeclaration }
-        : {}),
+  const result = await pipeline.navigate(
+    {
+      schemaVersion: 1,
+      operation: params.operation,
+      query: {
+        relativePath: input.path,
+        line: input.line,
+        column: input.column ?? 1,
+        ...(input.symbolName ? { symbolName: input.symbolName } : {}),
+        ...("direction" in input &&
+        (input.direction === "incoming" || input.direction === "outgoing")
+          ? { direction: input.direction }
+          : {}),
+        ...("includeDeclaration" in input &&
+        typeof input.includeDeclaration === "boolean"
+          ? { includeDeclaration: input.includeDeclaration }
+          : {}),
+      },
     },
-  });
+    params.signal ? { signal: params.signal } : {},
+  );
 
+  const truncated = result.truncated;
   const output = params.outputSchema.parse({
     path: input.path,
     provider: result.provider,
@@ -239,12 +277,12 @@ async function executeCodeNavigationTool(params: {
       ...(location.symbolKind ? { symbolKind: location.symbolKind } : {}),
       ...(location.preview ? { preview: location.preview } : {}),
     })),
-    truncated: false,
+    truncated,
   });
 
   return {
     output,
-    truncated: false,
+    truncated,
     redacted: false,
   };
 }

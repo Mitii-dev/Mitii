@@ -3,6 +3,8 @@
  * Keep free of vscode / React imports so the webview can mirror these types.
  */
 
+import type { V8LoopPolicySettingsSnapshot } from './v8LoopPolicySettings.js';
+
 export type AgentUiMode = 'ask' | 'plan' | 'agent' | 'review' | 'database';
 export type AgentUiDepth = 'auto' | 'quick' | 'deep';
 export type AgentUiEffort = 'low' | 'medium' | 'high';
@@ -183,6 +185,8 @@ export interface TokenUsageTurn {
   at: string;
   inputTokens: number;
   outputTokens: number;
+  cacheHitTokens?: number;
+  cacheMissTokens?: number;
   finishReason?: string;
   truncated?: boolean;
   estimated?: boolean;
@@ -205,6 +209,10 @@ export interface TokenUsageSnapshot {
   contextWindow: number;
   estimated: boolean;
   durationMs?: number;
+  /** Cumulative prompt-cache hits when the provider reports them. */
+  cacheHitTokens?: number;
+  /** Cumulative prompt-cache misses when reported. */
+  cacheMissTokens?: number;
   /** Per model-call I/O within the session (live during a run). */
   turns: TokenUsageTurn[];
   live?: boolean;
@@ -291,6 +299,8 @@ export interface UiSettingsSnapshot {
   tokenBudget: TokenBudgetSettingsSnapshot;
   /** Agent Engine loop/stall threshold tunables (Debug → developer). */
   loopPolicy: LoopPolicySettingsSnapshot;
+  /** V8-engine knobs (Debug → developer). Active when engine.implementation is v8. */
+  v8LoopPolicy: V8LoopPolicySettingsSnapshot;
   /** Policy Admin — edits shipped V8 band tables (Save writes source). */
   policyLab: PolicyLabSettingsSnapshot;
 }
@@ -432,6 +442,7 @@ export type UiSettingsPatch = Partial<
     | 'modeDefaults'
     | 'tokenBudget'
     | 'loopPolicy'
+    | 'v8LoopPolicy'
     | 'policyLab'
     | 'features'
   > & {
@@ -446,6 +457,12 @@ export type UiSettingsPatch = Partial<
       policy?: Record<string, number>;
     };
     loopPolicy?: {
+      enabled?: boolean;
+      thresholds?: Record<string, number>;
+      bandThresholds?: Record<string, number>;
+      band?: LoopPolicyBandSnapshot;
+    };
+    v8LoopPolicy?: {
       enabled?: boolean;
       thresholds?: Record<string, number>;
       bandThresholds?: Record<string, number>;
@@ -794,6 +811,7 @@ export type WebviewToHostMessage =
   | { type: 'settings.clearSearchApiKey' }
   | { type: 'settings.resetTokenBudget' }
   | { type: 'settings.resetLoopPolicy' }
+  | { type: 'settings.resetV8LoopPolicy' }
   | {
       type: 'settings.savePolicyLab';
       policyLab: PolicyLabSettingsSnapshot;
@@ -891,6 +909,16 @@ export type HostToWebviewMessage =
     }
   | { type: 'provider.models'; models: string[] }
   | { type: 'tokenUsage'; usage: TokenUsageSnapshot }
+  | {
+      type: 'modelPricing';
+      rates: {
+        input: number;
+        output: number;
+        cacheRead?: number;
+        cacheWrite?: number;
+        reasoning?: number;
+      } | null;
+    }
   | { type: 'run.started'; mode: AgentUiMode; prompt: string }
   | { type: 'run.event'; event: ActivityEventPayload }
   | { type: 'run.delta'; text: string }
