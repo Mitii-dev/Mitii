@@ -29,7 +29,21 @@ export interface CodeNavigationPort {
 
   capability?(): CodeNavigationCapability;
 
+  /**
+   * Ensure the document is known to the language service before caret queries
+   * (opencode touchFile / didOpen pattern). Optional — graph adapters no-op.
+   */
+  prepare?(relativePath: string): Promise<void>;
+
   definition(
+    input: CodeNavigationQuery,
+  ): Promise<readonly CodeNavigationLocation[]>;
+
+  /**
+   * Go to the type of the symbol at the caret (vscode type definition /
+   * TypeScript getTypeDefinitionAtPosition).
+   */
+  typeDefinition?(
     input: CodeNavigationQuery,
   ): Promise<readonly CodeNavigationLocation[]>;
 

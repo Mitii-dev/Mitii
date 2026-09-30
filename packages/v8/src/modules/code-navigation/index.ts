@@ -11,7 +11,19 @@ export {
 export {
   DEFAULT_MAX_CODE_NAVIGATION_LOCATIONS,
   DEFAULT_MAX_HOVER_CHARACTERS,
+  DEFAULT_GRAPH_HOP_DEPTH,
+  DEFAULT_NAVIGATION_REQUEST_LIMIT,
+  DEFAULT_NAVIGATION_REQUEST_TIMEOUT_MS,
 } from "./defaults";
+
+export { CODE_NAVIGATION_POLICY } from "./policy";
+
+export {
+  createRequestLimiter,
+  RequestLimiterTimeoutError,
+  RequestLimiterAbortError,
+} from "./internal/createRequestLimiter";
+export type { RequestLimiter } from "./internal/createRequestLimiter";
 
 export { CodeNavigationPipeline } from "./pipeline/CodeNavigationPipeline";
 export type { CodeNavigationPipelineDependencies } from "./pipeline/CodeNavigationPipeline";

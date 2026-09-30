@@ -242,6 +242,7 @@ describe("model tool definition single source", () => {
     const readOnly = listBuiltinReadOnlyModelToolDefinitions().map((t) => t.name);
     expect(readOnly).toContain("glob_files");
     expect(readOnly).toContain("goto_definition");
+    expect(readOnly).toContain("find_type_definition");
     expect(readOnly).toContain("find_references");
     expect(readOnly).toContain("hover_symbol");
     expect(readOnly).toContain("document_symbol");

@@ -269,6 +269,7 @@ describe("CodeNavigationPipeline", () => {
     );
     expect(definition.provider).toBe("language_server");
     expect(definition.locations[0]?.symbolName).toBe("validateJwt");
+    expect(definition.truncated).toBe(false);
 
     const references = await pipeline.navigate(
       codeNavigationInputSchema.parse({
@@ -278,5 +279,86 @@ describe("CodeNavigationPipeline", () => {
       }),
     );
     expect(references.locations.length).toBeGreaterThan(0);
+    expect(references.provider).toBe("repo_graph");
+    expect(references.reasonCodes).toContain("repo_graph_fallback");
+  });
+
+  it("reports truncation when locations exceed maximumLocations", async () => {
+    const port: CodeNavigationPort = {
+      id: "many",
+      provider: "language_server",
+      definition: async () =>
+        Array.from({ length: 5 }, (_, index) => ({
+          relativePath: `src/file${index}.ts`,
+          startLine: index + 1,
+          symbolName: `sym${index}`,
+        })),
+      references: async () => [],
+    };
+    const pipeline = new CodeNavigationPipeline({ navigation: port });
+    const result = await pipeline.navigate({
+      schemaVersion: CODE_NAVIGATION_SCHEMA_VERSION,
+      operation: "definition",
+      query: { relativePath: "src/file0.ts", line: 1 },
+      maximumLocations: 2,
+    });
+    expect(result.status).toBe("resolved");
+    expect(result.locations).toHaveLength(2);
+    expect(result.truncated).toBe(true);
+    expect(result.reasonCodes).toContain("locations_truncated");
+  });
+
+  it("clamps oversized hover contents", async () => {
+    const port: CodeNavigationPort = {
+      id: "hover",
+      provider: "language_server",
+      definition: async () => [],
+      references: async () => [],
+      hover: async () => ({
+        contents: "x".repeat(5_000),
+        language: "typescript",
+      }),
+    };
+    const pipeline = new CodeNavigationPipeline({ navigation: port });
+    const result = await pipeline.navigate({
+      schemaVersion: CODE_NAVIGATION_SCHEMA_VERSION,
+      operation: "hover",
+      query: { relativePath: "src/a.ts", line: 1 },
+    });
+    expect(result.status).toBe("resolved");
+    expect(result.truncated).toBe(true);
+    expect(result.reasonCodes).toContain("hover_truncated");
+    expect(result.hover?.contents.length).toBeLessThanOrEqual(4_001);
+  });
+
+  it("resolves type_definition and calls prepare before caret ops", async () => {
+    const prepared: string[] = [];
+    const port: CodeNavigationPort = {
+      id: "typed",
+      provider: "language_server",
+      prepare: async (relativePath) => {
+        prepared.push(relativePath);
+      },
+      definition: async () => [],
+      typeDefinition: async () => [
+        {
+          relativePath: "src/types.ts",
+          startLine: 2,
+          symbolName: "User",
+          symbolKind: "interface",
+        },
+      ],
+      references: async () => [],
+    };
+    const pipeline = new CodeNavigationPipeline({ navigation: port });
+    const result = await pipeline.navigate({
+      schemaVersion: CODE_NAVIGATION_SCHEMA_VERSION,
+      operation: "type_definition",
+      query: { relativePath: "src/main.ts", line: 4, column: 10 },
+    });
+    expect(prepared).toEqual(["src/main.ts"]);
+    expect(result.status).toBe("resolved");
+    expect(result.reasonCodes).toContain("type_definition_resolved");
+    expect(result.locations[0]?.symbolName).toBe("User");
   });
 });

@@ -236,7 +236,7 @@ function buildToolGuidance(decision: ExecutionDecision): string {
     CHANGE_IMPACT_TOOL_IDS.some((id) => grant.allowedTools.includes(id))
   ) {
     lines.push(
-      "For naming types, functions, call sites, implementations, or file symbols, use the granted code-intelligence tools (document_symbol, goto_definition, find_references, find_implementation, call_hierarchy, workspace_symbol, hover_symbol) before search_files or mass read_file.",
+      "For naming types, functions, call sites, implementations, or file symbols, use the granted code-intelligence tools (document_symbol, goto_definition, find_type_definition, find_references, find_implementation, call_hierarchy, workspace_symbol, hover_symbol) before search_files or mass read_file.",
     );
     if (decision.reasonCodes.includes("code_navigation_degraded")) {
       lines.push(

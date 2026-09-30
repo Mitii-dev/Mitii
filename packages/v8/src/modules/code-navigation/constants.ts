@@ -2,6 +2,7 @@ export const CODE_NAVIGATION_SCHEMA_VERSION = 1 as const;
 
 export const CODE_NAVIGATION_OPERATIONS = [
   "definition",
+  "type_definition",
   "references",
   "hover",
   "document_symbols",
@@ -31,6 +32,7 @@ export const CODE_NAVIGATION_PROVIDERS = [
 
 export const CODE_NAVIGATION_REASON_CODES = [
   "definition_resolved",
+  "type_definition_resolved",
   "references_resolved",
   "hover_resolved",
   "document_symbols_resolved",
@@ -41,6 +43,8 @@ export const CODE_NAVIGATION_REASON_CODES = [
   "language_server_unavailable",
   "repo_graph_fallback",
   "port_unavailable",
+  "locations_truncated",
+  "hover_truncated",
 ] as const;
 
 export const CODE_NAVIGATION_ERROR_CODES = [

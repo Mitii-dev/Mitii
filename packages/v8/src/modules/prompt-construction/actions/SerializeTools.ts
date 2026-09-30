@@ -75,6 +75,7 @@ const TOOL_PACK_PRIORITY: Record<string, number> = {
 const CODE_INTELLIGENCE_PACK_ORDER: readonly string[] = [
   "document_symbol",
   "goto_definition",
+  "find_type_definition",
   "find_references",
   "find_implementation",
   "call_hierarchy",

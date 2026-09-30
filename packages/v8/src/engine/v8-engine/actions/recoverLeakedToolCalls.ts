@@ -7,6 +7,7 @@ const SUPPORTED_LEAKED_TOOL_TAGS = new Set([
   "glob_files",
   "list_directory",
   "goto_definition",
+  "find_type_definition",
   "find_references",
   "hover_symbol",
   "document_symbol",
@@ -121,7 +122,7 @@ export function recoverLeakedToolCallsFromMarkup(params: {
 
   if (
     toolCalls.length === 0 &&
-      /<\s*(?:read_file|search_files|glob_files|list_directory|goto_definition|find_references|hover_symbol|document_symbol|workspace_symbol|find_implementation|call_hierarchy|analyze_change_impact)\b/i.test(
+      /<\s*(?:read_file|search_files|glob_files|list_directory|goto_definition|find_type_definition|find_references|hover_symbol|document_symbol|workspace_symbol|find_implementation|call_hierarchy|analyze_change_impact)\b/i.test(
       content,
     )
   ) {
