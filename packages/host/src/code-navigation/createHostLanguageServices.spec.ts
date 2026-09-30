@@ -194,6 +194,95 @@ describe('createHostLanguageServices', () => {
       }
     });
   });
+  it('resolves definitions for all identifiers on a line when column defaults to 1', () => {
+    return withWorkspace(async (workspaceRoot) => {
+      await writeFile(
+        join(workspaceRoot, 'tsconfig.json'),
+        JSON.stringify({
+          compilerOptions: {
+            strict: true,
+            target: 'ES2022',
+            module: 'ESNext',
+            moduleResolution: 'Bundler',
+            noEmit: true,
+            skipLibCheck: true,
+          },
+          include: ['src'],
+        }),
+      );
+      await writeFile(
+        join(workspaceRoot, 'src/util.ts'),
+        'export function helper() {\n  return 1;\n}\n',
+      );
+      await writeFile(
+        join(workspaceRoot, 'src/main.ts'),
+        'import { helper } from "./util";\nexport const value = helper();\n',
+      );
+
+      const services = createHostLanguageServices({ workspaceRoot });
+      try {
+        const defs = await services.codeNavigation.definition({
+          relativePath: 'src/main.ts',
+          line: 1,
+          column: 1,
+        });
+        expect(
+          defs.some(
+            (item) =>
+              item.relativePath.endsWith('util.ts') ||
+              item.symbolName === 'helper',
+          ),
+        ).toBe(true);
+      } finally {
+        services.dispose();
+      }
+    });
+  });
+
+  it('resolves type definitions via the TypeScript language service', () => {
+    return withWorkspace(async (workspaceRoot) => {
+      await writeFile(
+        join(workspaceRoot, 'tsconfig.json'),
+        JSON.stringify({
+          compilerOptions: {
+            strict: true,
+            target: 'ES2022',
+            module: 'ESNext',
+            moduleResolution: 'Bundler',
+            noEmit: true,
+            skipLibCheck: true,
+          },
+          include: ['src'],
+        }),
+      );
+      await writeFile(
+        join(workspaceRoot, 'src/types.ts'),
+        'export interface User {\n  id: string;\n}\n',
+      );
+      await writeFile(
+        join(workspaceRoot, 'src/use.ts'),
+        'import type { User } from "./types";\nexport function take(user: User) {\n  return user.id;\n}\n',
+      );
+
+      const services = createHostLanguageServices({ workspaceRoot });
+      try {
+        const typed = await services.codeNavigation.typeDefinition?.({
+          relativePath: 'src/use.ts',
+          line: 2,
+          column: 28,
+        });
+        expect(
+          typed?.some(
+            (item) =>
+              item.relativePath.endsWith('types.ts') ||
+              item.symbolName === 'User',
+          ),
+        ).toBe(true);
+      } finally {
+        services.dispose();
+      }
+    });
+  });
 });
 
 async function withWorkspace(

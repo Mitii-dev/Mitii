@@ -57,6 +57,7 @@ export function buildSchemaSafeCompactedToolArguments(
     case "read_diagnostics":
       return compactObject(parsed, ["paths"], []);
     case "goto_definition":
+    case "find_type_definition":
     case "find_references":
     case "hover_symbol":
     case "find_implementation":

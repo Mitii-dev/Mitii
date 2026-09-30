@@ -9,6 +9,7 @@ const OBSERVATION_TOOLS = new Set([
   "analyze_change_impact",
   "run_readonly_command",
   "goto_definition",
+  "find_type_definition",
   "find_references",
   "hover_symbol",
   "document_symbol",

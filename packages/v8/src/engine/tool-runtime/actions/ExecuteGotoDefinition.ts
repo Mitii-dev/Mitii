@@ -8,6 +8,7 @@ import {
   findImplementationInputSchema,
   findReferencesInputSchema,
   findReferencesOutputSchema,
+  findTypeDefinitionInputSchema,
   gotoDefinitionInputSchema,
   gotoDefinitionOutputSchema,
   hoverSymbolInputSchema,
@@ -27,6 +28,20 @@ export async function executeGotoDefinition(params: {
     operation: "definition",
     inputSchema: gotoDefinitionInputSchema,
     outputSchema: gotoDefinitionOutputSchema,
+  });
+}
+
+export async function executeFindTypeDefinition(params: {
+  arguments: unknown;
+  grant: ToolGrant;
+  workspaceRoot: string;
+  codeNavigation?: CodeNavigationPort;
+}): Promise<{ output: unknown; truncated: boolean; redacted: boolean }> {
+  return executeCodeNavigationTool({
+    ...params,
+    operation: "type_definition",
+    inputSchema: findTypeDefinitionInputSchema,
+    outputSchema: symbolLocationsOutputSchema,
   });
 }
 
@@ -72,16 +87,17 @@ export async function executeHoverSymbol(params: {
     },
   });
 
+  const truncated = result.truncated;
   const output = hoverSymbolOutputSchema.parse({
     path: input.path,
     provider: result.provider,
     ...(result.hover ? { hover: result.hover } : {}),
-    truncated: false,
+    truncated,
   });
 
   return {
     output,
-    truncated: false,
+    truncated,
     redacted: false,
   };
 }
@@ -169,6 +185,7 @@ async function executeSymbolList(params: {
     operation: params.operation,
     query,
   });
+  const truncated = result.truncated;
   const output = symbolLocationsOutputSchema.parse({
     path: "path" in input ? input.path : input.query,
     provider: result.provider,
@@ -180,9 +197,9 @@ async function executeSymbolList(params: {
       ...(location.symbolKind ? { symbolKind: location.symbolKind } : {}),
       ...(location.preview ? { preview: location.preview } : {}),
     })),
-    truncated: false,
+    truncated,
   });
-  return { output, truncated: false, redacted: false };
+  return { output, truncated, redacted: false };
 }
 
 async function executeCodeNavigationTool(params: {
@@ -190,9 +207,10 @@ async function executeCodeNavigationTool(params: {
   grant: ToolGrant;
   workspaceRoot: string;
   codeNavigation?: CodeNavigationPort;
-  operation: "definition" | "references" | "implementation" | "call_hierarchy";
+  operation: "definition" | "type_definition" | "references" | "implementation" | "call_hierarchy";
   inputSchema:
     | typeof gotoDefinitionInputSchema
+    | typeof findTypeDefinitionInputSchema
     | typeof findReferencesInputSchema
     | typeof findImplementationInputSchema
     | typeof callHierarchyInputSchema;
@@ -201,7 +219,7 @@ async function executeCodeNavigationTool(params: {
   if (!params.codeNavigation) {
     throw new ToolRuntimeError(
       "misconfigured_ports",
-      "CodeNavigationPort is required for goto_definition, find_references, and find_implementation.",
+      "CodeNavigationPort is required for goto_definition, find_type_definition, find_references, and find_implementation.",
     );
   }
 
@@ -228,6 +246,7 @@ async function executeCodeNavigationTool(params: {
     },
   });
 
+  const truncated = result.truncated;
   const output = params.outputSchema.parse({
     path: input.path,
     provider: result.provider,
@@ -239,12 +258,12 @@ async function executeCodeNavigationTool(params: {
       ...(location.symbolKind ? { symbolKind: location.symbolKind } : {}),
       ...(location.preview ? { preview: location.preview } : {}),
     })),
-    truncated: false,
+    truncated,
   });
 
   return {
     output,
-    truncated: false,
+    truncated,
     redacted: false,
   };
 }

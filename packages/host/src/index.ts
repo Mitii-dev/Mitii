@@ -152,6 +152,14 @@ export { createHostCodeNavigationPort } from './code-navigation/createHostCodeNa
 export { createHostLanguageServices } from './code-navigation/createHostLanguageServices.js';
 export type { HostLanguageServices } from './code-navigation/createHostLanguageServices.js';
 export {
+  createStdioLspCodeNavigationPort,
+  StdioLspCodeNavigationPort,
+} from './code-navigation/createStdioLspCodeNavigationPort.js';
+export type {
+  StdioLspServerConfig,
+  CreateStdioLspCodeNavigationPortOptions,
+} from './code-navigation/createStdioLspCodeNavigationPort.js';
+export {
   createHostRepositoryGraphPort,
   loadWorkspaceGraphs,
   resolveExpectedCodeIndexChangeToken,

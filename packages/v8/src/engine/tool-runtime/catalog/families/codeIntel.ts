@@ -87,6 +87,8 @@ export const workspaceSymbolInputSchema = z
 
 export const findImplementationInputSchema = gotoDefinitionInputSchema;
 
+export const findTypeDefinitionInputSchema = gotoDefinitionInputSchema;
+
 export const callHierarchyInputSchema = gotoDefinitionInputSchema.extend({
   direction: z.enum(["incoming", "outgoing"]).optional(),
 });

@@ -15,6 +15,7 @@ import { fetchUrlTool } from "./fetchUrlTool";
 import { fileMetadataTool } from "./fileMetadataTool";
 import { findImplementationTool } from "./findImplementationTool";
 import { findReferencesTool } from "./findReferencesTool";
+import { findTypeDefinitionTool } from "./findTypeDefinitionTool";
 import { createGithubIssueTool, createPullRequestTool } from "./githubMutationTools";
 import { globFilesTool } from "./globFilesTool";
 import { gotoDefinitionTool } from "./gotoDefinitionTool";
@@ -61,6 +62,7 @@ const BUILTIN_TOOLS_BASE: readonly RegisteredTool[] = [
   readGitShowTool,
   readGitBranchesTool,
   gotoDefinitionTool,
+  findTypeDefinitionTool,
   findReferencesTool,
   hoverSymbolTool,
   documentSymbolTool,
@@ -148,6 +150,7 @@ export {
   readGitShowTool,
   readGitBranchesTool,
   gotoDefinitionTool,
+  findTypeDefinitionTool,
   findReferencesTool,
   hoverSymbolTool,
   documentSymbolTool,

@@ -68,6 +68,7 @@ export function summarizeToolCall(
         .filter(Boolean)
         .join(" ");
     case "goto_definition":
+    case "find_type_definition":
     case "find_references":
     case "hover_symbol":
     case "document_symbol":

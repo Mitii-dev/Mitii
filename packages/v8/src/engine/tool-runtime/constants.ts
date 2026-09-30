@@ -7,6 +7,7 @@ export const TOOL_RUNTIME_SCHEMA_VERSION = 1 as const;
 /** Symbol-level code intelligence tools (language service or repo-graph). */
 export const CODE_INTELLIGENCE_TOOL_IDS = [
   "goto_definition",
+  "find_type_definition",
   "find_references",
   "hover_symbol",
   "document_symbol",
