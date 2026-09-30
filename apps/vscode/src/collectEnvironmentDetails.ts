@@ -51,6 +51,7 @@ export function collectVsCodeEnvironmentSnapshot(params: {
     });
 
   return {
+    todayDate: new Date().toLocaleDateString("en-CA"),
     ...(visibleFiles.length > 0 ? { visibleFiles } : {}),
     ...(openTabs.length > 0 ? { openTabs } : {}),
     ...(terminalSummaries.length > 0 ? { terminalSummaries } : {}),

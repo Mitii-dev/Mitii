@@ -8,7 +8,10 @@ import {
   modelToolDefinitionSchema,
 } from "../../../model-gateway";
 
-import { PROMPT_CONSTRUCTION_SCHEMA_VERSION } from "../../constants";
+import {
+  PROMPT_CONSTRUCTION_SCHEMA_VERSION,
+  PROMPT_TRUST_LEVELS,
+} from "../../constants";
 
 export const promptInstructionBlockSchema = z
   .object({
@@ -23,6 +26,36 @@ export const promptInstructionBlockSchema = z
 export type PromptInstructionBlock = z.infer<
   typeof promptInstructionBlockSchema
 >;
+
+export const promptExtraFragmentSectionSchema = z.enum([
+  "system",
+  "rules",
+  "skills",
+  "memory",
+  "plan",
+  "environment",
+]);
+
+/**
+ * Serializable typed injection for Prompt Construction (INJ-O).
+ * Mapped to ContextualFragment adapters inside buildSystemInstructions.
+ */
+export const promptExtraFragmentSchema = z
+  .object({
+    id: z.string().min(1),
+    role: z.enum(["system", "developer", "user"]).default("system"),
+    contentKind: z.string().min(1),
+    section: promptExtraFragmentSectionSchema,
+    trust: z.enum(PROMPT_TRUST_LEVELS).default("trusted_instruction"),
+    content: z.string().min(1),
+    maxTokens: z.number().int().positive().optional(),
+    marked: z.boolean().optional(),
+    separateMessage: z.boolean().optional(),
+    priority: z.number().int().nonnegative().default(100),
+  })
+  .strict();
+
+export type PromptExtraFragment = z.infer<typeof promptExtraFragmentSchema>;
 
 export const promptRepositoryBlockSchema = z
   .object({
@@ -112,6 +145,11 @@ export const promptConstructionInputSchema = z
     conversation: z.array(modelMessageSchema).default([]),
     repositoryContext: promptRepositoryContextSchema.optional(),
     instructions: promptInstructionsSchema.optional(),
+    /**
+     * Optional typed injections beyond built-in rules/skills/memory/env.
+     * Assembled under the shared system budget with hard per-fragment caps.
+     */
+    extraFragments: z.array(promptExtraFragmentSchema).optional(),
     /**
      * Serialized trusted plan block from Planning (already wrapped / instruction-safe).
      * Optional — omitted when planningDepth is none or planning was skipped.

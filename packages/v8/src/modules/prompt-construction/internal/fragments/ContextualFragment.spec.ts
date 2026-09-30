@@ -119,17 +119,19 @@ describe("ContextualFragment formulae", () => {
     expect(fragment.markers()).toEqual(["", ""]);
   });
 
-  it("renders MidConversationUpdateFragment as a separate marked message", () => {
+  it("renders MidConversationUpdateFragment as a separate marked user message", () => {
     const fragment = new MidConversationUpdateFragment(
       "Available skills are now: a, b.",
     );
     expect(fragment.requiresSeparateMessage()).toBe(true);
+    expect(fragment.role()).toBe("user");
     expect(fragment.contentKind()).toBe("generic.context_epoch_update");
     const rendered = renderFragment(
       fragment,
       (text) => estimator.estimate(text),
       (text, budget) => truncateToTokenBudget(text, budget, estimator),
     );
+    expect(rendered.role).toBe("user");
     expect(rendered.text.startsWith("<context_epoch_update>")).toBe(true);
     expect(rendered.text.endsWith("</context_epoch_update>")).toBe(true);
 
@@ -145,5 +147,6 @@ describe("ContextualFragment formulae", () => {
     });
     expect(assembled.content).toBe("core");
     expect(assembled.separateMessages).toHaveLength(1);
+    expect(assembled.separateMessages[0]?.role).toBe("user");
   });
 });

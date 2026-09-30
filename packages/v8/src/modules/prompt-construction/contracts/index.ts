@@ -2,6 +2,8 @@ export {
   promptConstructionInputSchema,
   promptInstructionBlockSchema,
   promptInstructionsSchema,
+  promptExtraFragmentSchema,
+  promptExtraFragmentSectionSchema,
   promptRepositoryBlockSchema,
   promptRepositoryContextSchema,
 } from "./input/PromptConstructionInput";
@@ -9,6 +11,7 @@ export type {
   PromptConstructionInput,
   PromptInstructionBlock,
   PromptInstructions,
+  PromptExtraFragment,
   PromptRepositoryBlock,
   PromptRepositoryContext,
 } from "./input/PromptConstructionInput";
