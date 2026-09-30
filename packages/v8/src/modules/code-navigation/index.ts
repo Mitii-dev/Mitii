@@ -57,4 +57,5 @@ export type {
   CodeNavigationErrorCode,
   CodeNavigationPort,
   CodeNavigationCapability,
+  CodeNavigationCallOptions,
 } from "./contracts";

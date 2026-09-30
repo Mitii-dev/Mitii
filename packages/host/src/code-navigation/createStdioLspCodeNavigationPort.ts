@@ -1,6 +1,7 @@
 import { extname, resolve } from "node:path";
 
 import type {
+  CodeNavigationCallOptions,
   CodeNavigationCapability,
   CodeNavigationDocumentQuery,
   CodeNavigationHover,
@@ -144,7 +145,11 @@ export class StdioLspCodeNavigationPort implements CodeNavigationPort {
     };
   }
 
-  public async prepare(relativePath: string): Promise<void> {
+  public async prepare(
+    relativePath: string,
+    options?: CodeNavigationCallOptions,
+  ): Promise<void> {
+    throwIfAborted(options?.signal);
     const client = await this.clientForPath(relativePath);
     if (!client) return;
     await this.openDocument(client, relativePath);
@@ -152,19 +157,23 @@ export class StdioLspCodeNavigationPort implements CodeNavigationPort {
 
   public async definition(
     input: CodeNavigationQuery,
+    options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
-    return this.positionRequest(input, "textDocument/definition");
+    return this.positionRequest(input, "textDocument/definition", options);
   }
 
   public async typeDefinition(
     input: CodeNavigationQuery,
+    options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
-    return this.positionRequest(input, "textDocument/typeDefinition");
+    return this.positionRequest(input, "textDocument/typeDefinition", options);
   }
 
   public async references(
     input: CodeNavigationQuery,
+    options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
+    throwIfAborted(options?.signal);
     const client = await this.clientForPath(input.relativePath);
     if (!client) return [];
     await this.openDocument(client, input.relativePath);
@@ -181,13 +190,16 @@ export class StdioLspCodeNavigationPort implements CodeNavigationPort {
           includeDeclaration: input.includeDeclaration !== false,
         },
       },
+      options?.signal,
     );
     return mapLspLocations(result, this.state.workspaceRoot, MAX_LOCATIONS);
   }
 
   public async hover(
     input: CodeNavigationQuery,
+    options?: CodeNavigationCallOptions,
   ): Promise<CodeNavigationHover | undefined> {
+    throwIfAborted(options?.signal);
     const client = await this.clientForPath(input.relativePath);
     if (!client) return undefined;
     await this.openDocument(client, input.relativePath);
@@ -195,13 +207,16 @@ export class StdioLspCodeNavigationPort implements CodeNavigationPort {
     const result = await client.request(
       "textDocument/hover",
       toTextDocumentPosition(absolute, input.line, input.column ?? 1),
+      options?.signal,
     );
     return mapHover(result);
   }
 
   public async documentSymbols(
     input: CodeNavigationDocumentQuery,
+    options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
+    throwIfAborted(options?.signal);
     const client = await this.clientForPath(input.relativePath);
     if (!client) return [];
     await this.openDocument(client, input.relativePath);
@@ -209,6 +224,7 @@ export class StdioLspCodeNavigationPort implements CodeNavigationPort {
     const result = await client.request(
       "textDocument/documentSymbol",
       toTextDocumentIdentifier(absolute),
+      options?.signal,
     );
     return mapDocumentSymbols(
       result,
@@ -220,15 +236,19 @@ export class StdioLspCodeNavigationPort implements CodeNavigationPort {
 
   public async workspaceSymbols(
     input: CodeNavigationWorkspaceQuery,
+    options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
+    throwIfAborted(options?.signal);
     // Prefer any live client; workspace/symbol is workspace-scoped.
     const client =
       [...this.state.clients.values()][0] ??
       (await this.startAnyClient());
     if (!client) return [];
-    const result = await client.request("workspace/symbol", {
-      query: input.query,
-    });
+    const result = await client.request(
+      "workspace/symbol",
+      { query: input.query },
+      options?.signal,
+    );
     return mapLspSymbolInformations(
       result,
       this.state.workspaceRoot,
@@ -238,13 +258,16 @@ export class StdioLspCodeNavigationPort implements CodeNavigationPort {
 
   public async implementation(
     input: CodeNavigationQuery,
+    options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
-    return this.positionRequest(input, "textDocument/implementation");
+    return this.positionRequest(input, "textDocument/implementation", options);
   }
 
   public async callHierarchy(
     input: CodeNavigationQuery,
+    options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
+    throwIfAborted(options?.signal);
     const client = await this.clientForPath(input.relativePath);
     if (!client) return [];
     await this.openDocument(client, input.relativePath);
@@ -252,6 +275,7 @@ export class StdioLspCodeNavigationPort implements CodeNavigationPort {
     const prepared = await client.request<unknown>(
       "textDocument/prepareCallHierarchy",
       toTextDocumentPosition(absolute, input.line, input.column ?? 1),
+      options?.signal,
     );
     const items = Array.isArray(prepared) ? prepared : prepared ? [prepared] : [];
     const root = items[0];
@@ -260,7 +284,11 @@ export class StdioLspCodeNavigationPort implements CodeNavigationPort {
       (input.direction ?? "outgoing") === "incoming"
         ? "callHierarchy/incomingCalls"
         : "callHierarchy/outgoingCalls";
-    const calls = await client.request<unknown>(method, { item: root });
+    const calls = await client.request<unknown>(
+      method,
+      { item: root },
+      options?.signal,
+    );
     if (!Array.isArray(calls)) return [];
     const locations: CodeNavigationLocation[] = [];
     for (const call of calls) {
@@ -309,7 +337,9 @@ export class StdioLspCodeNavigationPort implements CodeNavigationPort {
   private async positionRequest(
     input: CodeNavigationQuery,
     method: string,
+    options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
+    throwIfAborted(options?.signal);
     const client = await this.clientForPath(input.relativePath);
     if (!client) return [];
     await this.openDocument(client, input.relativePath);
@@ -317,6 +347,7 @@ export class StdioLspCodeNavigationPort implements CodeNavigationPort {
     const result = await client.request(
       method,
       toTextDocumentPosition(absolute, input.line, input.column ?? 1),
+      options?.signal,
     );
     return mapLspLocations(result, this.state.workspaceRoot, MAX_LOCATIONS);
   }
@@ -384,4 +415,12 @@ function languageIdForExtension(extension: string): string {
     default:
       return extension.replace(/^\./, "") || "plaintext";
   }
+}
+
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (!signal?.aborted) return;
+  const error = new Error('Code navigation aborted');
+  error.name = 'AbortError';
+  throw error;
 }

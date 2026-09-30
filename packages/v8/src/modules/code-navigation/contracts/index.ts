@@ -35,4 +35,4 @@ export {
 } from "./errors/CodeNavigationError";
 export type { CodeNavigationErrorCode } from "./errors/CodeNavigationError";
 
-export type { CodeNavigationPort, CodeNavigationCapability } from "./ports/CodeNavigationPort";
+export type { CodeNavigationPort, CodeNavigationCapability, CodeNavigationCallOptions } from "./ports/CodeNavigationPort";

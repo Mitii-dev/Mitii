@@ -91,6 +91,39 @@ describe("createStdioLspCodeNavigationPort", () => {
       await rm(workspaceRoot, { recursive: true, force: true });
     }
   });
+
+  it("rejects per-request definition when the call signal is already aborted", async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "mitii-stdio-req-abort-"));
+    try {
+      await mkdir(join(workspaceRoot, "src"), { recursive: true });
+      await writeFile(join(workspaceRoot, "src/mod.py"), "value = 1\n", "utf8");
+      const port = createStdioLspCodeNavigationPort({
+        workspaceRoot,
+        servers: [
+          {
+            id: "fake-py",
+            command: process.execPath,
+            args: [fakeServer],
+            extensions: [".py"],
+          },
+        ],
+      });
+      try {
+        const controller = new AbortController();
+        controller.abort();
+        await expect(
+          port.definition(
+            { relativePath: "src/mod.py", line: 1, column: 1 },
+            { signal: controller.signal },
+          ),
+        ).rejects.toMatchObject({ name: "AbortError" });
+      } finally {
+        await port.dispose();
+      }
+    } finally {
+      await rm(workspaceRoot, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("createHostLanguageServices + lspServers", () => {
