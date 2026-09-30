@@ -33,6 +33,7 @@ export const callHierarchyTool: RegisteredTool = {
       grant: ctx.grant,
       workspaceRoot: ctx.workspaceRoot,
       codeNavigation: ctx.ports.codeNavigation,
+      signal: ctx.signal,
     });
   },
 };

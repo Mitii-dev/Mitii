@@ -159,6 +159,9 @@ export type {
   StdioLspServerConfig,
   CreateStdioLspCodeNavigationPortOptions,
 } from './code-navigation/createStdioLspCodeNavigationPort.js';
+export { resolveLspSpawnInvocation } from './code-navigation/stdio-lsp/resolveLspSpawn.js';
+export type { LspSpawnInvocation } from './code-navigation/stdio-lsp/resolveLspSpawn.js';
+export { discoverStdioLspServers } from './code-navigation/stdio-lsp/discoverStdioLspServers.js';
 export {
   createHostRepositoryGraphPort,
   loadWorkspaceGraphs,

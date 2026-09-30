@@ -361,4 +361,26 @@ describe("CodeNavigationPipeline", () => {
     expect(result.reasonCodes).toContain("type_definition_resolved");
     expect(result.locations[0]?.symbolName).toBe("User");
   });
+
+  it("rethrows AbortError when the navigate signal is already aborted", async () => {
+    const port: CodeNavigationPort = {
+      id: "test",
+      provider: "language_server",
+      definition: async () => [{ relativePath: "a.ts", startLine: 1 }],
+      references: async () => [],
+    };
+    const pipeline = new CodeNavigationPipeline({ navigation: port });
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      pipeline.navigate(
+        {
+          schemaVersion: CODE_NAVIGATION_SCHEMA_VERSION,
+          operation: "definition",
+          query: { relativePath: "a.ts", line: 1, column: 1 },
+        },
+        { signal: controller.signal },
+      ),
+    ).rejects.toMatchObject({ name: "AbortError" });
+  });
 });

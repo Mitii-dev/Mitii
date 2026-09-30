@@ -4,6 +4,7 @@ import { relative, resolve, sep } from 'node:path';
 
 import bundledTs from 'typescript';
 import type {
+  CodeNavigationCallOptions,
   CodeNavigationCapability,
   CodeNavigationDocumentQuery,
   CodeNavigationHover,
@@ -140,74 +141,104 @@ class PreferTypeScriptThenStdioPort implements CodeNavigationPort {
     );
   }
 
-  public async prepare(relativePath: string): Promise<void> {
+  public async prepare(
+    relativePath: string,
+    options?: CodeNavigationCallOptions,
+  ): Promise<void> {
     if (isTypeScriptPath(relativePath)) {
-      await this.typescript.prepare?.(relativePath);
+      await this.typescript.prepare?.(relativePath, options);
       return;
     }
-    await this.stdio.prepare?.(relativePath);
+    await this.stdio.prepare?.(relativePath, options);
   }
 
-  public async definition(input: CodeNavigationQuery) {
+  public async definition(
+    input: CodeNavigationQuery,
+    options?: CodeNavigationCallOptions,
+  ) {
     if (isTypeScriptPath(input.relativePath)) {
-      const locations = await this.typescript.definition(input);
+      const locations = await this.typescript.definition(input, options);
       if (locations.length > 0) return locations;
     }
-    return this.stdio.definition(input);
+    return this.stdio.definition(input, options);
   }
 
-  public async typeDefinition(input: CodeNavigationQuery) {
+  public async typeDefinition(
+    input: CodeNavigationQuery,
+    options?: CodeNavigationCallOptions,
+  ) {
     if (isTypeScriptPath(input.relativePath)) {
-      const locations = await this.typescript.typeDefinition?.(input);
+      const locations = await this.typescript.typeDefinition?.(input, options);
       if (locations && locations.length > 0) return locations;
     }
-    return this.stdio.typeDefinition?.(input) ?? [];
+    return this.stdio.typeDefinition?.(input, options) ?? [];
   }
 
-  public async references(input: CodeNavigationQuery) {
+  public async references(
+    input: CodeNavigationQuery,
+    options?: CodeNavigationCallOptions,
+  ) {
     if (isTypeScriptPath(input.relativePath)) {
-      const locations = await this.typescript.references(input);
+      const locations = await this.typescript.references(input, options);
       if (locations.length > 0) return locations;
     }
-    return this.stdio.references(input);
+    return this.stdio.references(input, options);
   }
 
-  public async hover(input: CodeNavigationQuery) {
+  public async hover(
+    input: CodeNavigationQuery,
+    options?: CodeNavigationCallOptions,
+  ) {
     if (isTypeScriptPath(input.relativePath)) {
-      const hover = await this.typescript.hover?.(input);
+      const hover = await this.typescript.hover?.(input, options);
       if (hover) return hover;
     }
-    return this.stdio.hover?.(input);
+    return this.stdio.hover?.(input, options);
   }
 
-  public async documentSymbols(input: CodeNavigationDocumentQuery) {
+  public async documentSymbols(
+    input: CodeNavigationDocumentQuery,
+    options?: CodeNavigationCallOptions,
+  ) {
     if (isTypeScriptPath(input.relativePath)) {
-      const locations = await this.typescript.documentSymbols?.(input);
+      const locations = await this.typescript.documentSymbols?.(
+        input,
+        options,
+      );
       if (locations && locations.length > 0) return locations;
     }
-    return this.stdio.documentSymbols?.(input) ?? [];
+    return this.stdio.documentSymbols?.(input, options) ?? [];
   }
 
-  public async workspaceSymbols(input: CodeNavigationWorkspaceQuery) {
-    const primary = await this.typescript.workspaceSymbols?.(input);
+  public async workspaceSymbols(
+    input: CodeNavigationWorkspaceQuery,
+    options?: CodeNavigationCallOptions,
+  ) {
+    const primary = await this.typescript.workspaceSymbols?.(input, options);
     if (primary && primary.length > 0) return primary;
-    return this.stdio.workspaceSymbols?.(input) ?? [];
+    return this.stdio.workspaceSymbols?.(input, options) ?? [];
   }
 
-  public async implementation(input: CodeNavigationQuery) {
+  public async implementation(
+    input: CodeNavigationQuery,
+    options?: CodeNavigationCallOptions,
+  ) {
     if (isTypeScriptPath(input.relativePath)) {
-      const locations = await this.typescript.implementation?.(input);
+      const locations = await this.typescript.implementation?.(input, options);
       if (locations && locations.length > 0) return locations;
     }
-    return this.stdio.implementation?.(input) ?? [];
+    return this.stdio.implementation?.(input, options) ?? [];
   }
 
-  public async callHierarchy(input: CodeNavigationQuery) {
+  public async callHierarchy(
+    input: CodeNavigationQuery,
+    options?: CodeNavigationCallOptions,
+  ) {
     if (isTypeScriptPath(input.relativePath)) {
-      const locations = await this.typescript.callHierarchy?.(input);
+      const locations = await this.typescript.callHierarchy?.(input, options);
       if (locations && locations.length > 0) return locations;
     }
-    return this.stdio.callHierarchy?.(input) ?? [];
+    return this.stdio.callHierarchy?.(input, options) ?? [];
   }
 }
 
@@ -327,7 +358,11 @@ class TypeScriptLanguageService implements CodeNavigationPort, DiagnosticsPort {
     this.service.dispose();
   }
 
-  public async prepare(relativePath: string): Promise<void> {
+  public async prepare(
+    relativePath: string,
+    options?: CodeNavigationCallOptions,
+  ): Promise<void> {
+    throwIfAborted(options?.signal);
     const file = this.absolute(relativePath);
     if (this.ts.sys.fileExists(file)) {
       this.openFiles.add(file);
@@ -338,70 +373,97 @@ class TypeScriptLanguageService implements CodeNavigationPort, DiagnosticsPort {
 
   public async definition(
     input: CodeNavigationQuery,
+    options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
-    return this.limit(() =>
-      Promise.resolve(
-        this.definitions(input, (file, position) =>
-          this.service.getDefinitionAtPosition(file, position),
+    return this.limit(
+      () =>
+        Promise.resolve(
+          this.definitions(input, (file, position) =>
+            this.service.getDefinitionAtPosition(file, position),
+          ),
         ),
-      ),
+      options?.signal,
     );
   }
 
   public async typeDefinition(
     input: CodeNavigationQuery,
+    options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
-    return this.limit(() =>
-      Promise.resolve(
-        this.definitions(input, (file, position) =>
-          this.service.getTypeDefinitionAtPosition(file, position),
+    return this.limit(
+      () =>
+        Promise.resolve(
+          this.definitions(input, (file, position) =>
+            this.service.getTypeDefinitionAtPosition(file, position),
+          ),
         ),
-      ),
+      options?.signal,
     );
   }
 
   public async references(
     input: CodeNavigationQuery,
+    options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
-    return this.limit(() =>
-      Promise.resolve(this.collectReferences(input)),
+    return this.limit(
+      () => Promise.resolve(this.collectReferences(input)),
+      options?.signal,
     );
   }
 
   public async hover(
     input: CodeNavigationQuery,
+    options?: CodeNavigationCallOptions,
   ): Promise<CodeNavigationHover | undefined> {
-    return this.limit(() => Promise.resolve(this.collectHover(input)));
+    return this.limit(
+      () => Promise.resolve(this.collectHover(input)),
+      options?.signal,
+    );
   }
 
   public async documentSymbols(
     input: CodeNavigationDocumentQuery,
+    options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
-    return this.limit(() => Promise.resolve(this.collectDocumentSymbols(input)));
+    return this.limit(
+      () => Promise.resolve(this.collectDocumentSymbols(input)),
+      options?.signal,
+    );
   }
 
   public async workspaceSymbols(
     input: CodeNavigationWorkspaceQuery,
+    options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
-    return this.limit(() => Promise.resolve(this.collectWorkspaceSymbols(input)));
+    return this.limit(
+      () => Promise.resolve(this.collectWorkspaceSymbols(input)),
+      options?.signal,
+    );
   }
 
   public async implementation(
     input: CodeNavigationQuery,
+    options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
-    return this.limit(() =>
-      Promise.resolve(
-        this.definitions(input, (file, position) =>
-          this.service.getImplementationAtPosition(file, position),
+    return this.limit(
+      () =>
+        Promise.resolve(
+          this.definitions(input, (file, position) =>
+            this.service.getImplementationAtPosition(file, position),
+          ),
         ),
-      ),
+      options?.signal,
     );
   }
 
   public async callHierarchy(
     input: CodeNavigationQuery,
+    options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
-    return this.limit(() => Promise.resolve(this.collectCallHierarchy(input)));
+    return this.limit(
+      () => Promise.resolve(this.collectCallHierarchy(input)),
+      options?.signal,
+    );
   }
 
   public async readDiagnostics(params: {
@@ -756,4 +818,11 @@ function toRelative(workspaceRoot: string, fileName: string): string | undefined
   const value = relative(workspaceRoot, fileName).replace(/\\/g, '/');
   if (!value || value.startsWith('../') || value === '..') return undefined;
   return value;
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (!signal?.aborted) return;
+  const error = new Error('Code navigation aborted');
+  error.name = 'AbortError';
+  throw error;
 }

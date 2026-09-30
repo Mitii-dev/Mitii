@@ -22,6 +22,7 @@ export async function executeGotoDefinition(params: {
   grant: ToolGrant;
   workspaceRoot: string;
   codeNavigation?: CodeNavigationPort;
+  signal?: AbortSignal;
 }): Promise<{ output: unknown; truncated: boolean; redacted: boolean }> {
   return executeCodeNavigationTool({
     ...params,
@@ -36,6 +37,7 @@ export async function executeFindTypeDefinition(params: {
   grant: ToolGrant;
   workspaceRoot: string;
   codeNavigation?: CodeNavigationPort;
+  signal?: AbortSignal;
 }): Promise<{ output: unknown; truncated: boolean; redacted: boolean }> {
   return executeCodeNavigationTool({
     ...params,
@@ -50,6 +52,7 @@ export async function executeFindReferences(params: {
   grant: ToolGrant;
   workspaceRoot: string;
   codeNavigation?: CodeNavigationPort;
+  signal?: AbortSignal;
 }): Promise<{ output: unknown; truncated: boolean; redacted: boolean }> {
   return executeCodeNavigationTool({
     ...params,
@@ -64,6 +67,7 @@ export async function executeHoverSymbol(params: {
   grant: ToolGrant;
   workspaceRoot: string;
   codeNavigation?: CodeNavigationPort;
+  signal?: AbortSignal;
 }): Promise<{ output: unknown; truncated: boolean; redacted: boolean }> {
   if (!params.codeNavigation) {
     throw new ToolRuntimeError(
@@ -76,16 +80,19 @@ export async function executeHoverSymbol(params: {
   const pipeline = new CodeNavigationPipeline({
     navigation: params.codeNavigation,
   });
-  const result = await pipeline.navigate({
-    schemaVersion: 1,
-    operation: "hover",
-    query: {
-      relativePath: input.path,
-      line: input.line,
-      column: input.column ?? 1,
-      ...(input.symbolName ? { symbolName: input.symbolName } : {}),
+  const result = await pipeline.navigate(
+    {
+      schemaVersion: 1,
+      operation: "hover",
+      query: {
+        relativePath: input.path,
+        line: input.line,
+        column: input.column ?? 1,
+        ...(input.symbolName ? { symbolName: input.symbolName } : {}),
+      },
     },
-  });
+    params.signal ? { signal: params.signal } : {},
+  );
 
   const truncated = result.truncated;
   const output = hoverSymbolOutputSchema.parse({
@@ -107,6 +114,7 @@ export async function executeDocumentSymbol(params: {
   grant: ToolGrant;
   workspaceRoot: string;
   codeNavigation?: CodeNavigationPort;
+  signal?: AbortSignal;
 }): Promise<{ output: unknown; truncated: boolean; redacted: boolean }> {
   return executeSymbolList({
     ...params,
@@ -121,6 +129,7 @@ export async function executeWorkspaceSymbol(params: {
   grant: ToolGrant;
   workspaceRoot: string;
   codeNavigation?: CodeNavigationPort;
+  signal?: AbortSignal;
 }): Promise<{ output: unknown; truncated: boolean; redacted: boolean }> {
   return executeSymbolList({
     ...params,
@@ -135,6 +144,7 @@ export async function executeFindImplementation(params: {
   grant: ToolGrant;
   workspaceRoot: string;
   codeNavigation?: CodeNavigationPort;
+  signal?: AbortSignal;
 }): Promise<{ output: unknown; truncated: boolean; redacted: boolean }> {
   return executeCodeNavigationTool({
     ...params,
@@ -149,6 +159,7 @@ export async function executeCallHierarchy(params: {
   grant: ToolGrant;
   workspaceRoot: string;
   codeNavigation?: CodeNavigationPort;
+  signal?: AbortSignal;
 }): Promise<{ output: unknown; truncated: boolean; redacted: boolean }> {
   return executeCodeNavigationTool({
     ...params,
@@ -163,6 +174,7 @@ async function executeSymbolList(params: {
   grant: ToolGrant;
   workspaceRoot: string;
   codeNavigation?: CodeNavigationPort;
+  signal?: AbortSignal;
   operation: "document_symbols" | "workspace_symbols";
   inputSchema:
     | typeof documentSymbolInputSchema
@@ -180,11 +192,14 @@ async function executeSymbolList(params: {
     "path" in input
       ? { relativePath: input.path }
       : { query: input.query };
-  const result = await pipeline.navigate({
-    schemaVersion: 1,
-    operation: params.operation,
-    query,
-  });
+  const result = await pipeline.navigate(
+    {
+      schemaVersion: 1,
+      operation: params.operation,
+      query,
+    },
+    params.signal ? { signal: params.signal } : {},
+  );
   const truncated = result.truncated;
   const output = symbolLocationsOutputSchema.parse({
     path: "path" in input ? input.path : input.query,
@@ -207,6 +222,7 @@ async function executeCodeNavigationTool(params: {
   grant: ToolGrant;
   workspaceRoot: string;
   codeNavigation?: CodeNavigationPort;
+  signal?: AbortSignal;
   operation: "definition" | "type_definition" | "references" | "implementation" | "call_hierarchy";
   inputSchema:
     | typeof gotoDefinitionInputSchema
@@ -227,24 +243,27 @@ async function executeCodeNavigationTool(params: {
   const pipeline = new CodeNavigationPipeline({
     navigation: params.codeNavigation,
   });
-  const result = await pipeline.navigate({
-    schemaVersion: 1,
-    operation: params.operation,
-    query: {
-      relativePath: input.path,
-      line: input.line,
-      column: input.column ?? 1,
-      ...(input.symbolName ? { symbolName: input.symbolName } : {}),
-      ...("direction" in input &&
-      (input.direction === "incoming" || input.direction === "outgoing")
-        ? { direction: input.direction }
-        : {}),
-      ...("includeDeclaration" in input &&
-      typeof input.includeDeclaration === "boolean"
-        ? { includeDeclaration: input.includeDeclaration }
-        : {}),
+  const result = await pipeline.navigate(
+    {
+      schemaVersion: 1,
+      operation: params.operation,
+      query: {
+        relativePath: input.path,
+        line: input.line,
+        column: input.column ?? 1,
+        ...(input.symbolName ? { symbolName: input.symbolName } : {}),
+        ...("direction" in input &&
+        (input.direction === "incoming" || input.direction === "outgoing")
+          ? { direction: input.direction }
+          : {}),
+        ...("includeDeclaration" in input &&
+        typeof input.includeDeclaration === "boolean"
+          ? { includeDeclaration: input.includeDeclaration }
+          : {}),
+      },
     },
-  });
+    params.signal ? { signal: params.signal } : {},
+  );
 
   const truncated = result.truncated;
   const output = params.outputSchema.parse({

@@ -8,6 +8,7 @@ import {
   type LspInputBuffer,
 } from "./framing.js";
 import { PendingRequestRegistry } from "./PendingRequestRegistry.js";
+import { resolveLspSpawnInvocation } from "./resolveLspSpawn.js";
 
 export type StdioLspServerCapabilities = {
   hoverProvider?: boolean | object;
@@ -74,11 +75,16 @@ export class StdioLspClient {
     options: { abortSignal?: AbortSignal } = {},
   ): Promise<StdioLspClient> {
     throwIfAborted(options.abortSignal);
-    const child = spawn(launch.command, [...(launch.args ?? [])], {
+    const invocation = resolveLspSpawnInvocation({
+      command: launch.command,
+      args: launch.args,
+    });
+    const child = spawn(invocation.command, invocation.args, {
       cwd: launch.cwd,
       env: { ...process.env, ...launch.env },
       stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true,
+      windowsHide: invocation.windowsHide,
+      shell: invocation.shell,
     });
     if (!child.stdin || !child.stdout) {
       child.kill("SIGKILL");
@@ -275,9 +281,15 @@ function settleAfter(ms: number): Promise<void> {
 }
 
 function abortError(signal?: AbortSignal): Error {
-  return signal?.reason instanceof Error
-    ? signal.reason
-    : new Error("LSP request aborted");
+  if (signal?.reason instanceof Error) {
+    if (!signal.reason.name || signal.reason.name === "Error") {
+      signal.reason.name = "AbortError";
+    }
+    return signal.reason;
+  }
+  const error = new Error("LSP request aborted");
+  error.name = "AbortError";
+  return error;
 }
 
 function throwIfAborted(signal?: AbortSignal): void {
