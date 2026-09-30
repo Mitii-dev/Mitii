@@ -9,10 +9,10 @@ import {
 const REASON_PLAYBOOKS: Partial<Record<DecisionReasonCode, string>> = {
   mutation_execute:
     "Apply required edits with granted mutation tools; do not ask to switch modes when write tools are listed.",
+  change_impact_recommended:
+    "Call analyze_change_impact on the primary seed (file or symbol) before the first mutating edit when changing shared types/APIs or multi-file surfaces; use affected files to sequence patches.",
   diagnosis_readonly:
     "Inspect and report findings only; do not claim you applied edits on this route.",
-  change_impact_recommended:
-    "Before the first mutating edit on shared surfaces, call analyze_change_impact on the primary seed and sequence patches from affected files.",
   clarification_material:
     "Ask the missing decision; do not guess act vs explain or invent targets.",
   grant_narrowed:

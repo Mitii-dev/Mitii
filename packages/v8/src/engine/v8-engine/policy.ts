@@ -53,6 +53,12 @@ export const V8_ENGINE_THRESHOLDS = {
    * lock — remaining is a soft budget only.
    */
   maxMustReadNudges: 1,
+  /**
+   * Soft withhold of the first mutating edit when change_impact_recommended
+   * and analyze_change_impact has not yet succeeded on this run. A second
+   * attempt proceeds so this does not deadlock against unfulfilled_execute.
+   */
+  maxChangeImpactNudges: 1,
   /** User Continue overrides after stall / loop_detected walls. */
   maxContinueOverrides: 4,
   /** Remaining-error verification repairs after the first mutate loop. */
@@ -101,6 +107,7 @@ export const v8EngineThresholdsSchema = z
     maxUnfulfilledExecuteRecoveries: nonnegativeIntSchema,
     maxRejectedMutationRecoveries: nonnegativeIntSchema,
     maxMustReadNudges: nonnegativeIntSchema,
+    maxChangeImpactNudges: nonnegativeIntSchema,
     maxContinueOverrides: nonnegativeIntSchema,
     maxVerificationRepairAttempts: nonnegativeIntSchema,
     preferredBatchSize: positiveIntSchema,

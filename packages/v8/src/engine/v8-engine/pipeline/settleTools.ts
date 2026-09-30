@@ -81,6 +81,12 @@ export async function settleToolBatch(params: {
   toolLoopGuard?: ToolLoopGuard;
   /** Soft must-read nudge budget (mutated in place by executeOneTool). */
   mustReadNudgeBudget: { remaining: number };
+  /**
+   * Soft change-impact gate (mutated in place). Armed when decision recommends
+   * analyze_change_impact on a write grant; persists across tool batches.
+   */
+  changeImpactGate: { required: boolean; satisfied: boolean };
+  changeImpactNudgeBudget: { remaining: number };
   loopFileReads?: LoopFileReadTracker;
 }): Promise<SettleToolsResult> {
   const {
@@ -111,6 +117,8 @@ export async function settleToolBatch(params: {
     answer,
     toolLoopGuard,
     mustReadNudgeBudget,
+    changeImpactGate,
+    changeImpactNudgeBudget,
     loopFileReads,
   } = params;
 
@@ -174,8 +182,6 @@ export async function settleToolBatch(params: {
   const taskListAutoAdvanceBudget = {
     remaining: runtime.deps.taskListAutoAdvance === true ? 1 : 0,
   };
-  const changeImpactNudgeBudget = { remaining: 0 };
-  const changeImpactGate = { required: false, satisfied: true };
 
   const results: ToolLoopResult[] = [];
   let succeededMutating = false;
