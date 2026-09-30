@@ -4,8 +4,16 @@ const INTENT_PATTERNS: IntentRule[] = [
   {
     intent: "bugfix",
     pattern:
-      /\b(?:fix|resolve|repair|patch|correct)\b.*\b(?:bugs?|issues?|errors?|erros|defect|crash|exception|failing tests?|regression|broken behavior|ts(?:cript)?\s+err(?:ors?|os)|diagnostics?)\b|\b(?:SyntaxError|TypeError|ReferenceError|RangeError|NameError|AttributeError|ImportError|ModuleNotFoundError|[A-Z][A-Za-z0-9]*(?:Error|Exception))\b|\b(?:has already been declared|is not defined|cannot read propert(?:y|ies) of undefined|undefined reference|unresolved import|traceback|panic:)\b/i,
+      /\b(?:fix|resolve|repair|patch|correct)\b.*\b(?:bugs?|issues?|errors?|erros|defect|crash|exception|failing tests?|regression|broken behavior|ts(?:cript)?\s+err(?:ors?|os)|diagnostics?)\b|\b(?:bugs?|issues?|errors?|defect|crash|exception|regression)\b[\s\S]{0,120}\b(?:fix|resolve|repair|patch|correct)\b|\b(?:SyntaxError|TypeError|ReferenceError|RangeError|NameError|AttributeError|ImportError|ModuleNotFoundError|[A-Z][A-Za-z0-9]*(?:Error|Exception))\b|\b(?:has already been declared|is not defined|cannot read propert(?:y|ies) of undefined|undefined reference|unresolved import|traceback|panic:)\b/i,
     confidence: 0.88,
+  },
+  {
+    // Leading fix/repair/patch against a concrete UI/file/symbol target when
+    // no explicit defect noun is present ("Fix the login button").
+    intent: "bugfix",
+    pattern:
+      /^(?:please\s+|can\s+you\s+|could\s+you\s+)?(?:fix|repair|patch)\b[\s\S]{0,120}(?:\b(?:button|form|modal|dialog|page|screen|component|hook|endpoint|route|handler|widget|label|menu|icon|badge)\b|[`'"][^`'"]{1,80}[`'"]|\b[\w.-]+\.[A-Za-z][A-Za-z0-9]{0,10}\b)/i,
+    confidence: 0.8,
   },
   {
     intent: "feature",
@@ -109,7 +117,7 @@ const INTENT_PATTERNS: IntentRule[] = [
   {
     intent: "style",
     pattern:
-      /\b(?:style|redesign|restyle|make)\b.*\b(?:component|page|layout|responsive|accessible)\b|\b(?:add|update|fix)\b.*\b(?:css|tailwind classes?|responsive layout|animations?|framer motion)\b/i,
+      /\b(?:style|redesign|restyle)\b.*\b(?:component|page|layout|responsive|accessible)\b|\b(?:add|update|fix)\b.*\b(?:css|tailwind classes?|responsive layout|animations?|framer motion)\b/i,
     confidence: 0.82,
   },
   {

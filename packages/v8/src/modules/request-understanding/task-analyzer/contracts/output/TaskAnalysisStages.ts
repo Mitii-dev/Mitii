@@ -20,6 +20,7 @@ export const ReferencedArtifactKindSchema = z.enum([
   "folder",
   "attachment",
   "selection",
+  "symbol",
 ]);
 
 export const ReferencedArtifactSchema = z.object({
@@ -71,6 +72,11 @@ export const TaskClarityAnalyzerInputSchema = z.object({
   intentConfidence: z.number().min(0).max(1),
   confidenceMargin: z.number().min(0).max(1),
   intentRequiresClarification: z.boolean(),
+  /**
+   * When true (continuation / steer / follow_up), do not force strong-unclear
+   * solely from intent clarification or low intent confidence.
+   */
+  continuationTurn: z.boolean().optional(),
 });
 
 export const TaskScopeSignalSchema = z.object({

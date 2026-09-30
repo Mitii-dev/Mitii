@@ -55,6 +55,26 @@ export class TaskTargetExtractor {
     seen: Set<string>,
   ): void {
     for (const artifact of artifacts) {
+      if (artifact.kind === "symbol") {
+        const symbolName = artifact.name.trim();
+        if (symbolName) {
+          this.addTarget(targets, seen, {
+            kind: "symbol",
+            value: symbolName,
+            explicit: false,
+          });
+        }
+        const path = artifact.path?.trim();
+        if (path) {
+          this.addTarget(targets, seen, {
+            kind: "file",
+            value: path,
+            explicit: false,
+          });
+        }
+        continue;
+      }
+
       const value = artifact.path?.trim() || artifact.name.trim();
 
       if (!value) {
@@ -244,6 +264,9 @@ export class TaskTargetExtractor {
 
       case "folder":
         return "folder";
+
+      case "symbol":
+        return "symbol";
 
       case "selection":
         return artifact.path ? "file" : "symbol";

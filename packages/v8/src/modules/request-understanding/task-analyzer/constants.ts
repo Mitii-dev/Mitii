@@ -271,7 +271,8 @@ const CONSTRAINT_PATTERNS = [
   },
   {
     kind: "restriction",
-    pattern: /\b(?:only|without|avoid|no)\b[^.!?;\n]{1,180}/gi,
+    pattern:
+      /\b(?:only|without|avoid)\b[^.!?;\n]{1,180}|\bno\s+(?:code|file)?\s*(?:changes?|edits?|modifications?|files?|tests?)\b[^.!?;\n]{0,120}/gi,
     confidence: 0.85,
   },
   {
@@ -396,6 +397,7 @@ const RISK_PATTERNS = [
     score: 4,
     risk: "high",
     evidence: "Payment or billing functionality was detected.",
+    requiresAct: true,
   },
   {
     pattern:
@@ -403,6 +405,7 @@ const RISK_PATTERNS = [
     score: 4,
     risk: "high",
     evidence: "Authentication or authorization functionality was detected.",
+    requiresAct: true,
   },
   {
     pattern:
@@ -417,6 +420,7 @@ const RISK_PATTERNS = [
     score: 4,
     risk: "high",
     evidence: "A database or data migration was detected.",
+    requiresAct: true,
   },
   {
     pattern:

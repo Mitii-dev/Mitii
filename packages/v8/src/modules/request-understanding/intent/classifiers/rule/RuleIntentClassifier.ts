@@ -2,7 +2,11 @@
 import { INTENT_CONSTANTS } from '../../constants';
 import { IntentClassification } from '../../schema';
 import { TaskIntent } from '../../types';
-import { isWholeRequestReadOnlyConstraint } from '../../isWholeRequestReadOnlyConstraint';
+import {
+  hasNonNegatedMutationVerb,
+  isHardWholeRequestReadOnlyConstraint,
+  isWholeRequestReadOnlyConstraint,
+} from '../../isWholeRequestReadOnlyConstraint';
 import { PATTERNS } from './RulePatterns';
 
 /**
@@ -16,7 +20,6 @@ import { PATTERNS } from './RulePatterns';
  *
  * Returns null when:
  * - No intent matches.
- * - Multiple task intents match.
  * - The interaction intent is unclear.
  * - LLM classification is safer.
  */
@@ -102,31 +105,83 @@ export class RuleIntentClassifier {
       return null;
     }
 
-    // Multiple matches require semantic resolution by the LLM.
-    if (matchedRules.length > 1) {
-      return null;
-    }
-
     // Task matched, but mutation/planning behavior remains unclear.
     if (!interactionIntent) {
       return null;
     }
 
-    const matchedRule =
-      matchedRules[0];
+    // Single unambiguous match.
+    if (matchedRules.length === 1) {
+      const matchedRule = matchedRules[0];
+      if (!matchedRule) {
+        return null;
+      }
 
-    if (!matchedRule) {
+      return this.buildClassification({
+        intent: matchedRule.intent,
+        interactionIntent,
+        confidence: matchedRule.confidence,
+        reason:
+          `Matched one unambiguous natural-language heuristic ` +
+          `for ${matchedRule.intent}.`,
+      });
+    }
+
+    // Multiple matches: keep a weak heuristic channel for SuperIntent
+    // instead of dropping the rule ballot entirely.
+    const byIntent = new Map<
+      TaskIntent,
+      { intent: TaskIntent; confidence: number }
+    >();
+    for (const rule of matchedRules) {
+      const existing = byIntent.get(rule.intent);
+      if (!existing || rule.confidence > existing.confidence) {
+        byIntent.set(rule.intent, {
+          intent: rule.intent,
+          confidence: rule.confidence,
+        });
+      }
+    }
+    const sorted = [...byIntent.values()].sort(
+      (first, second) => second.confidence - first.confidence,
+    );
+    const primary = sorted[0];
+    if (!primary) {
       return null;
     }
 
-    return this.buildClassification({
-      intent: matchedRule.intent,
+    // Same intent matched via multiple patterns — still unambiguous.
+    if (sorted.length === 1) {
+      return this.buildClassification({
+        intent: primary.intent,
+        interactionIntent,
+        confidence: primary.confidence,
+        reason:
+          `Matched natural-language heuristic(s) ` +
+          `for ${primary.intent}.`,
+      });
+    }
+
+    const alternatives = sorted.slice(1, INTENT_CONSTANTS.MAX_ALTERNATIVES + 1).map(
+      (rule) => ({
+        intent: rule.intent,
+        confidence: Math.max(0.35, rule.confidence - 0.15),
+      }),
+    );
+
+    return {
       interactionIntent,
-      confidence: matchedRule.confidence,
+      primaryTaskIntent: primary.intent,
+      secondaryTaskIntents: alternatives
+        .map((alternative) => alternative.intent)
+        .slice(0, INTENT_CONSTANTS.MAX_SECONDARY),
+      confidence: Math.max(0.55, primary.confidence - 0.15),
+      alternatives,
+      needsClarification: false,
       reason:
-        `Matched one unambiguous natural-language heuristic ` +
-        `for ${matchedRule.intent}.`,
-    });
+        `Matched ${sorted.length} natural-language heuristics; ` +
+        `using ${primary.intent} as the primary with alternatives.`,
+    };
   };
 
   /**
@@ -159,16 +214,22 @@ export class RuleIntentClassifier {
    *
    * Precedence is important:
    * 1. Explicit plan-only constraint
-   * 2. Explicit no-change constraint
-   * 3. Question-shaped request
-   * 4. Explicit modification request
-   * 5. Read-only investigation
+   * 2. Hard whole-request no-change constraint
+   * 3. Soft whole-request read-only
+   * 4. Question-shaped + later non-negated act → act ("explain and fix")
+   * 5. Question-shaped request
+   * 6. Explicit modification request
+   * 7. Read-only investigation
    */
   private detectInteractionIntent(
     text: string,
   ): IntentClassification['interactionIntent'] | null {
     if (PATTERNS.PLAN_PATTERN.test(text)) {
       return 'plan';
+    }
+
+    if (isHardWholeRequestReadOnlyConstraint(text)) {
+      return 'question';
     }
 
     // Whole-request read-only only — scoped "Do not refactor Tablet…" must
@@ -178,6 +239,10 @@ export class RuleIntentClassifier {
     }
 
     if (PATTERNS.QUESTION_PATTERN.test(text)) {
+      // Trailing / embedded non-negated mutation beats a leading explain/how.
+      if (hasNonNegatedMutationVerb(text)) {
+        return 'act';
+      }
       return 'question';
     }
 

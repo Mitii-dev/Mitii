@@ -69,6 +69,7 @@ export class IntentRouter {
       return this.applyTurnKind(
         normalizedInput.turnKind,
         this.buildExplicitRuleResult(normalizedInput.mode, ruleResult),
+        normalizedInput.userMessage,
       );
     }
 
@@ -88,11 +89,13 @@ export class IntentRouter {
         return this.applyTurnKind(
           normalizedInput.turnKind,
           this.buildFallbackResult(normalizedInput.mode, ruleResult, error),
+          normalizedInput.userMessage,
         );
       }
       return this.applyTurnKind(
         normalizedInput.turnKind,
         this.buildSafeFallbackResult(normalizedInput.mode, error),
+        normalizedInput.userMessage,
       );
     }
 
@@ -104,7 +107,11 @@ export class IntentRouter {
       llmResult,
     });
 
-    return this.applyTurnKind(normalizedInput.turnKind, result);
+    return this.applyTurnKind(
+      normalizedInput.turnKind,
+      result,
+      normalizedInput.userMessage,
+    );
   }
 
   private normalizeInput(input: IntentClassificationInput): {
@@ -126,18 +133,40 @@ export class IntentRouter {
   private applyTurnKind(
     turnKind: IntentClassificationInput["turnKind"],
     result: SuperIntentResult,
+    userMessage?: string,
   ): SuperIntentResult {
     const classification = this.turnKindPolicy.apply(
       turnKind,
       result.classification,
+      { userMessage },
     );
-    if (classification === result.classification) {
+    // Always re-sync status / clarification with needsClarification so Decision
+    // Policy does not suspend on a stale clarification_required after steer.
+    if (
+      classification === result.classification &&
+      classification.needsClarification === result.recommendsClarification &&
+      (classification.needsClarification
+        ? result.status === "clarification_required"
+        : result.status === "accepted")
+    ) {
       return result;
     }
+
+    if (!classification.needsClarification) {
+      return {
+        ...result,
+        classification,
+        recommendsClarification: false,
+        status: "accepted",
+        clarification: undefined,
+      };
+    }
+
     return {
       ...result,
       classification,
-      recommendsClarification: classification.needsClarification,
+      recommendsClarification: true,
+      status: "clarification_required",
     };
   }
 
@@ -173,10 +202,12 @@ export class IntentRouter {
           ? { matchedRule: ruleResult.matchedRule }
           : {}),
         rulePrimaryIntent: ruleResult.classification.primaryTaskIntent,
+        // Schema requires llmPrimaryIntent; LLM was skipped — mirror rule only.
         llmPrimaryIntent: classification.primaryTaskIntent,
         ruleInteractionIntent: ruleResult.classification.interactionIntent,
         llmInteractionIntent: classification.interactionIntent,
-        taskAgreement: true,
+        // No LLM ballot was cast — do not claim agreement.
+        taskAgreement: false,
         interactionAgreement: true,
         interactionConflict: false,
         agreementBonusApplied: 0,
