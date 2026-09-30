@@ -950,6 +950,33 @@ export async function restoreCheckpoint(options: {
   return (await res.json()) as { ok: boolean; message: string };
 }
 
+export async function fetchModelPricing(options: {
+  baseUrl: string;
+  token?: string;
+  preset?: string;
+  model?: string;
+  providerBaseUrl?: string;
+}): Promise<{
+  rates: {
+    input: number;
+    output: number;
+    cacheRead?: number;
+    cacheWrite?: number;
+    reasoning?: number;
+  } | null;
+}> {
+  const params = new URLSearchParams();
+  if (options.preset) params.set('preset', options.preset);
+  if (options.model) params.set('model', options.model);
+  if (options.providerBaseUrl) params.set('baseUrl', options.providerBaseUrl);
+  const res = await fetch(
+    `${options.baseUrl}/v1/model-pricing?${params.toString()}`,
+    { headers: authHeaders(options.token) },
+  );
+  if (!res.ok) return { rates: null };
+  return (await res.json()) as Awaited<ReturnType<typeof fetchModelPricing>>;
+}
+
 export async function fetchProfiles(options: {
   baseUrl: string;
   token?: string;

@@ -2,6 +2,7 @@ import type {
   RepoBuildStateComparison,
   VerificationResult,
 } from "../../../modules/verification";
+import { packDiagnosticsForModel } from "../../../modules/verification/actions/NormalizeDiagnostics";
 
 const DEFAULT_MAX_DIAGNOSTICS = 16;
 const DEFAULT_MESSAGE_CHARS = 180;
@@ -33,18 +34,22 @@ export function buildVerificationRepairPrompt(params: {
   };
 }): string {
   const maxDiagnostics =
-    params.activeBatch !== undefined ? 8 : (params.maxDiagnostics ?? DEFAULT_MAX_DIAGNOSTICS);
-  const diagnostics = (params.verification?.diagnostics ?? [])
-    .filter((diagnostic) => diagnostic.severity === "error")
-    .slice(0, maxDiagnostics)
-    .map((diagnostic) => {
-      const line = diagnostic.startLine ? `:${diagnostic.startLine}` : "";
-      const message = diagnostic.message.replace(/\s+/g, " ").trim().slice(
-        0,
-        DEFAULT_MESSAGE_CHARS,
-      );
-      return `- ${diagnostic.path}${line} ${message}`;
-    });
+    params.activeBatch !== undefined
+      ? 8
+      : (params.maxDiagnostics ?? DEFAULT_MAX_DIAGNOSTICS);
+  const packed = packDiagnosticsForModel({
+    diagnostics: params.verification?.diagnostics ?? [],
+    maxTotal: maxDiagnostics,
+    errorsOnly: true,
+  });
+  const diagnostics = packed.diagnostics.map((diagnostic) => {
+    const line = diagnostic.startLine ? `:${diagnostic.startLine}` : "";
+    const message = diagnostic.message.replace(/\s+/g, " ").trim().slice(
+      0,
+      DEFAULT_MESSAGE_CHARS,
+    );
+    return `- ${diagnostic.path}${line} ${message}`;
+  });
 
   const failedCheckLines = (params.verification?.checks ?? [])
     .filter((check) => check.outcome === "failed")
@@ -71,9 +76,20 @@ export function buildVerificationRepairPrompt(params: {
         ? "Use the live working-set mutation budget. Remaining errors go on the next turn."
         : "Prefer minimal patches. Then stop so verification can run again.";
 
+  const omitFooter =
+    packed.omittedCount > 0
+      ? `…and ${packed.omittedCount} more error(s) omitted; fix the listed items first.`
+      : undefined;
+
   const errorBlock =
     diagnostics.length > 0
-      ? `Remaining errors (fix these exact items; do not rediscover):\n${diagnostics.join("\n")}`
+      ? [
+          "Remaining errors (fix these exact items; do not rediscover):",
+          ...diagnostics,
+          omitFooter,
+        ]
+          .filter((line): line is string => Boolean(line))
+          .join("\n")
       : failedCheckLines.length > 0
         ? `Failed checks (no structured diagnostics; fix from these summaries):\n${failedCheckLines.join("\n")}`
         : "No structured diagnostics were attached; inspect only the changed files named above and fix the verification failure.";

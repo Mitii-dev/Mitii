@@ -3,11 +3,24 @@ import type {
   VerificationCheckResult,
   VerificationDiagnostic,
 } from "../contracts";
-import { DEFAULT_MAX_DIAGNOSTICS } from "../defaults";
+import {
+  DEFAULT_MAX_DIAGNOSTICS,
+  DEFAULT_MAX_DIAGNOSTICS_PER_FILE,
+} from "../defaults";
+
+const SEVERITY_RANK: Record<VerificationDiagnostic["severity"], number> = {
+  error: 0,
+  warning: 1,
+  info: 2,
+  hint: 3,
+};
 
 /**
  * Normalize diagnostics from Tool Runtime read_diagnostics output and from
  * common compiler/test text patterns in check stdout/stderr.
+ *
+ * Results are severity-sorted (errors first) and capped globally. Call
+ * `packDiagnosticsForModel` for the tighter per-file model/repair subset.
  */
 export function normalizeDiagnostics(params: {
   checks: readonly VerificationCheckResult[];
@@ -47,10 +60,64 @@ export function normalizeDiagnostics(params: {
     );
   }
 
-  return filterBaselineDiagnostics({
-    diagnostics,
-    baselineDiagnostics: params.baselineDiagnostics,
-  }).slice(0, DEFAULT_MAX_DIAGNOSTICS);
+  return prioritizeDiagnostics(
+    filterBaselineDiagnostics({
+      diagnostics,
+      baselineDiagnostics: params.baselineDiagnostics,
+    }),
+  ).slice(0, DEFAULT_MAX_DIAGNOSTICS);
+}
+
+/**
+ * Model/repair packaging: errors-first, per-path cap, omit footer count.
+ * Durable records and gate decisions should keep the fuller normalize set.
+ */
+export function packDiagnosticsForModel(params: {
+  diagnostics: readonly VerificationDiagnostic[];
+  maxTotal?: number;
+  maxPerFile?: number;
+  errorsOnly?: boolean;
+}): {
+  diagnostics: VerificationDiagnostic[];
+  omittedCount: number;
+} {
+  const maxTotal = params.maxTotal ?? DEFAULT_MAX_DIAGNOSTICS_PER_FILE * 4;
+  const maxPerFile = params.maxPerFile ?? DEFAULT_MAX_DIAGNOSTICS_PER_FILE;
+  const source = params.errorsOnly
+    ? params.diagnostics.filter((diagnostic) => diagnostic.severity === "error")
+    : params.diagnostics;
+  const prioritized = prioritizeDiagnostics(source);
+  const perFile = new Map<string, number>();
+  const packed: VerificationDiagnostic[] = [];
+
+  for (const diagnostic of prioritized) {
+    if (packed.length >= maxTotal) {
+      break;
+    }
+    const count = perFile.get(diagnostic.path) ?? 0;
+    if (count >= maxPerFile) {
+      continue;
+    }
+    perFile.set(diagnostic.path, count + 1);
+    packed.push(diagnostic);
+  }
+
+  return {
+    diagnostics: packed,
+    omittedCount: Math.max(0, source.length - packed.length),
+  };
+}
+
+export function prioritizeDiagnostics(
+  diagnostics: readonly VerificationDiagnostic[],
+): VerificationDiagnostic[] {
+  return [...diagnostics].sort((a, b) => {
+    const severity = SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity];
+    if (severity !== 0) return severity;
+    const path = a.path.localeCompare(b.path);
+    if (path !== 0) return path;
+    return (a.startLine ?? 0) - (b.startLine ?? 0);
+  });
 }
 
 function buildProjectRootLookup(
@@ -255,9 +322,9 @@ function extractCombinedText(output: unknown): string {
 
 function diagnosticIdentityKey(diagnostic: VerificationDiagnostic): string {
   return [
-    diagnostic.path,
+    normalizeSlashes(diagnostic.path).toLowerCase(),
     diagnostic.severity,
-    diagnostic.message,
+    diagnostic.message.replace(/\s+/g, " ").trim(),
     diagnostic.startLine ?? "",
     diagnostic.startColumn ?? "",
     diagnostic.endLine ?? "",

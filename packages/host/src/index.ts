@@ -426,6 +426,26 @@ export type {
   PullOllamaModelResult,
 } from './config/pullOllamaModel.js';
 
+export {
+  MODELS_DEV_API_URL,
+  modelsDevProviderId,
+  isPricedCloudProvider,
+  lookupModelCostRates,
+  estimateSessionCost,
+  formatUsd,
+  clearModelsDevPricingCache,
+  getCachedModelsDevCatalog,
+  fetchModelsDevCatalog,
+  resolveModelCostRates,
+} from './config/modelPricing.js';
+export type {
+  ModelCostRates,
+  TokenCostUsage,
+  SessionCostEstimate,
+  ModelsDevCatalog,
+  ModelsDevPricingCache,
+} from './config/modelPricing.js';
+
 // ---------------------------------------------------------------------------
 // Automation (Phase 1) — SDK executor for @mitii/automation ClaimRunner
 // ---------------------------------------------------------------------------
