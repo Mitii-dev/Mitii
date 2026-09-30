@@ -29,6 +29,7 @@ import {
   markPlanEvidenceStepsDone,
   resolveLoopPolicyThresholds,
 } from "../actions";
+import { isClearMutationBlocker } from "../actions/isClearMutationBlocker";
 import {
   completePlanStepsFromDiagnostics,
   hasIncompleteChangeSurfaces,
@@ -453,7 +454,9 @@ export async function finishAfterLoop(
         changedFiles: loopChangedFiles,
       });
       const answerForIncompleteCheck = userAnswer ?? loopAnswer ?? "";
+      const clearBlocker = isClearMutationBlocker(answerForIncompleteCheck);
       const incompleteExecute =
+        !clearBlocker &&
         requiresMutationForExecute({
           route: decision.route,
           maximumWorkspaceEffect: decision.toolGrant.maximumWorkspaceEffect,
@@ -465,11 +468,9 @@ export async function finishAfterLoop(
         }) &&
         hasIncompleteChangeSurfaces(taskListRef.current) &&
         // Partial progress with an honest next-step answer may leave rows open.
-        // Fail when: no edits, blocker stop, empty/synthetic fallback, or
-        // mid-work stop that never acknowledged remaining checklist work
-        // (BillBuddy 00:13 completed after one SharedBasePage batch).
-        // Evaluate the user-facing answer (not raw loop text) so thin
-        // synthetic fallbacks still trip incomplete_execute.
+        // Fail when: no edits, empty/synthetic fallback, or mid-work stop that
+        // never acknowledged remaining checklist work.
+        // Clear blockers (cannot edit / grant insufficient) are terminal — not incomplete.
         (loopChangedFiles.length === 0 ||
           isPrematurePartialExecuteStop({
             mutationRequired: true,
@@ -477,13 +478,7 @@ export async function finishAfterLoop(
             content: answerForIncompleteCheck,
             changedFileCount: loopChangedFiles.length,
           }) ||
-          isSyntheticCompletedEditsFallback(answerForIncompleteCheck) ||
-          /(?:^|\n)\s*(?:\*{0,2}|_{0,2})?\s*blocker(?:\*{0,2}|_{0,2})?\s*[:\-—]/im.test(
-            answerForIncompleteCheck,
-          ) ||
-          /\b(?:stop(?:ping)?\s+here\s+with\s+a\s+clear\s+blocker|have\s+to\s+stop\s+here\s+with\s+a\s+clear\s+blocker)\b/i.test(
-            answerForIncompleteCheck,
-          ));
+          isSyntheticCompletedEditsFallback(answerForIncompleteCheck));
       if (incompleteExecute && currentOutcome.kind === "completed") {
         const suspended = await suspendForBudgetWallLocal({
           wallReason: "incomplete_checklist",

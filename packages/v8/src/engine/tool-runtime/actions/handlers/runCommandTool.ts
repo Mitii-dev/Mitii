@@ -18,7 +18,7 @@ export const runCommandTool: RegisteredTool = {
     backend: "local",
     status: "available",
     description:
-      "Run an authorized mutating command as argv (no shell). Requires write grant, approval when configured, and matching commandRules prefixes.",
+      "Run an authorized mutating command as argv (no shell). Requires write grant, approval when configured, and matching commandRules prefixes. Default git prefixes are read-only (git status/diff/log/show/blame/ls-files). For DCO / Signed-off-by history rewrite use git_signoff_range — do not attempt git commit/rebase/stash via this tool.",
     inputSchema: runCommandInputSchema,
     outputSchema: runCommandOutputSchema,
     modelInputSchema: {

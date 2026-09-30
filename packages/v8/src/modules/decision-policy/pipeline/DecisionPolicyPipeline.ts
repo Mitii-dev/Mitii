@@ -340,7 +340,8 @@ function clampGrantAgainstInjection(
               tool !== "delete_file" &&
               tool !== "delete_directory" &&
               tool !== "move_file" &&
-              tool !== "run_command",
+              tool !== "run_command" &&
+              tool !== "git_signoff_range",
           ),
           allowedEffects: grant.allowedEffects.filter(
             (effect) =>
@@ -363,6 +364,9 @@ function clampGrantAgainstInjection(
     clamped: true,
     toolGrant: {
       ...grant,
+      allowedTools: grant.allowedTools.filter(
+        (tool) => tool !== "git_signoff_range",
+      ),
       allowedEffects: grant.allowedEffects.filter(
         (effect) =>
           effect !== "git_write" &&

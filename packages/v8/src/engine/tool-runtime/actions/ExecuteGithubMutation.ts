@@ -321,13 +321,13 @@ export function isProtectedBranch(ref: string): boolean {
 
 /**
  * Block `git push` (and force-push) targeting protected default branches.
+ * Does not apply to `git stash push` (subcommand is stash, not push).
  */
 export function assertSafeGitPushArgv(argv: string[]): void {
   if (argv.length < 2) return;
   if (argv[0] !== "git") return;
-  const pushIdx = argv.findIndex((a) => a === "push");
-  if (pushIdx < 0) return;
-  const rest = argv.slice(pushIdx + 1).filter((a) => !a.startsWith("-"));
+  if (argv[1] !== "push") return;
+  const rest = argv.slice(2).filter((a) => !a.startsWith("-"));
   // Forms: git push, git push origin, git push origin main, git push origin HEAD:main
   for (const part of rest) {
     const ref = part.includes(":") ? part.split(":").pop()! : part;

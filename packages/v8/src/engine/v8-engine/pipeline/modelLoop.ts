@@ -53,6 +53,7 @@ import {
   truncationWarningMessage,
 } from "../actions/truncationRecovery";
 import { discardIncompleteToolCalls } from "../actions/completeToolCalls";
+import { isClearMutationBlocker } from "../actions/isClearMutationBlocker";
 import {
   batchIsReadonlyTools,
   requiresMutation,
@@ -183,6 +184,8 @@ export async function runV8ModelLoop(
   let lastUniformToolName: string | undefined;
   let diagnoseAnswerNudges = 0;
   const mutationNeeded = requiresMutation(decision);
+  const vcsHistoryRewrite = decision.reasonCodes.includes("vcs_history_rewrite");
+  let gitWriteSucceeded = false;
   const readLedger = new ReadLedger();
   const thresholds = resolveV8LoopPolicyThresholds({
     contextWindowTokens: params.windowPolicy.contextWindowTokens,
@@ -635,7 +638,10 @@ export async function runV8ModelLoop(
         });
       }
 
-      if (settled.stats.succeededMutating) {
+      if (settled.stats.succeededMutating || settled.stats.succeededGitWrite) {
+        if (settled.stats.succeededGitWrite) {
+          gitWriteSucceeded = true;
+        }
         readOnlyTurnsWithoutMutation = 0;
         unfulfilledExecuteRecoveries = 0;
         rejectedMutationRecoveries = 0;
@@ -644,6 +650,7 @@ export async function runV8ModelLoop(
       } else if (
         mutationNeeded &&
         changedFiles.length === 0 &&
+        !gitWriteSucceeded &&
         settled.stats.rejectedMutation &&
         rejectedMutationRecoveries < thresholds.maxRejectedMutationRecoveries &&
         budget.canStartModelCall()
@@ -676,7 +683,9 @@ export async function runV8ModelLoop(
           );
           messages.push({
             role: "user",
-            content: softMutationNudgeMessage(readOnlyTurnsWithoutMutation),
+            content: softMutationNudgeMessage(readOnlyTurnsWithoutMutation, {
+              vcsHistoryRewrite,
+            }),
           });
           readOnlyTurnsWithoutMutation = 0;
         }
@@ -751,7 +760,23 @@ export async function runV8ModelLoop(
     answer = turn.content;
     messages.push({ role: "assistant", content: turn.content });
 
-    if (mutationNeeded && changedFiles.length === 0) {
+    const mutationStillNeeded =
+      mutationNeeded && changedFiles.length === 0 && !gitWriteSucceeded;
+
+    if (mutationStillNeeded) {
+      // Honest "cannot edit" / grant/policy blockers must not open Continue.
+      if (isClearMutationBlocker(answer)) {
+        reasonCodes.push("answer_produced");
+        return {
+          kind: "completed",
+          answer,
+          changedFiles,
+          mutationCheckpointIds,
+          messages,
+          toolCache,
+          decision,
+        };
+      }
       unfulfilledExecuteRecoveries += 1;
       if (
         unfulfilledExecuteRecoveries <=
@@ -760,14 +785,14 @@ export async function runV8ModelLoop(
         warnings.push("Unfulfilled execute: nudging for apply_patch.");
         messages.push({
           role: "user",
-          content: unfulfilledExecuteNudgeMessage(),
+          content: unfulfilledExecuteNudgeMessage({ vcsHistoryRewrite }),
         });
         continue;
       }
       return offerContinue("unfulfilled_execute", answer);
     }
 
-    if (changedFiles.length > 0) {
+    if (changedFiles.length > 0 || gitWriteSucceeded) {
       reasonCodes.push("mutation_applied");
     }
     if (answer.trim().length > 0) {

@@ -5,6 +5,7 @@ import {
   MUTATION_TASK_INTENTS,
   MUTATION_TOOL_IDS,
   GITHUB_MUTATION_TOOL_IDS,
+  GIT_MUTATION_TOOL_IDS,
   PROCESS_TOOL_IDS,
   READ_ONLY_TOOL_IDS,
 } from "../constants";
@@ -23,6 +24,7 @@ import {
   DEFAULT_AGENT_READONLY_COMMAND_PREFIXES,
   DEFAULT_VERIFICATION_COMMAND_PREFIXES,
 } from "./BuildVerificationGrant";
+import { looksLikeVcsHistoryRewrite } from "./DetectVcsHistoryRewrite";
 import { resolveMutationBudget } from "./ResolveMutationBudget";
 import {
   shouldElevateSharedScopeRisk,
@@ -189,6 +191,10 @@ export function buildToolGrant(params: {
   }
   reasonCodes.push("mutation_execute");
 
+  if (looksLikeVcsHistoryRewrite(params.message ?? "")) {
+    reasonCodes.push("vcs_history_rewrite");
+  }
+
   const mutation = resolveMutationBudget({
     understanding,
     windowPolicy: params.windowPolicy,
@@ -223,6 +229,7 @@ export function buildToolGrant(params: {
         ...readOnlyTools,
         ...MUTATION_TOOL_IDS,
         ...GITHUB_MUTATION_TOOL_IDS,
+        ...GIT_MUTATION_TOOL_IDS,
         ...processExecution.allowedTools,
         ...network.allowedTools,
       ],

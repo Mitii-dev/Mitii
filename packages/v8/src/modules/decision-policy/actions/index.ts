@@ -27,6 +27,8 @@ export type { CompiledGrantResult } from "./GrantCompiler";
 export { buildToolGrant, extractNetworkHosts, isExplicitWebSearchAsk, needsLiveWebEvidence } from "./BuildToolGrant";
 export type { ToolGrantResolution } from "./BuildToolGrant";
 
+export { looksLikeVcsHistoryRewrite } from "./DetectVcsHistoryRewrite";
+
 export {
   buildVerificationGrant,
   DEFAULT_VERIFICATION_COMMAND_PREFIXES,
