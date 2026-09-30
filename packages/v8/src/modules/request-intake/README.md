@@ -40,6 +40,12 @@ request-intake/
 
 Meta commands with non-agent lifecycle set `shortCircuitMeta` via `intakeDetailed` so the engine can exit before pin/understand.
 
+Engine `session-control` then **handles** classified commands:
+- `/compact` — force-compacts `start.conversation` and returns `result.sessionControl.compactedConversation` for the host to persist
+- `/new` `/clear` — returns `sessionAction` so the host clears transcript storage
+- `/stop` — cancelled run
+- `/help` `/status` `/resume` — side-channel answers (host owns resume storage)
+
 ## Host Contract (selection / open tabs)
 
 Intake never calls IDE APIs. Hosts must pre-fill structured refs on `CreateUserRequestInput`:
