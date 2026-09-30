@@ -5,6 +5,7 @@ import {
   CODE_INTELLIGENCE_TOOL_IDS as TR_CODE_INTEL,
   DIAGNOSTICS_TOOL_IDS as TR_DIAGNOSTICS,
   GITHUB_MUTATION_TOOL_IDS as TR_GITHUB,
+  GIT_MUTATION_TOOL_IDS as TR_GIT,
   MUTATION_TOOL_IDS as TR_MUTATION,
   PROCESS_TOOL_IDS as TR_PROCESS,
   READ_ONLY_TOOL_IDS as TR_READ_ONLY,
@@ -14,6 +15,7 @@ import {
   CODE_INTELLIGENCE_TOOL_IDS as DP_CODE_INTEL,
   DIAGNOSTICS_TOOL_IDS as DP_DIAGNOSTICS,
   GITHUB_MUTATION_TOOL_IDS as DP_GITHUB,
+  GIT_MUTATION_TOOL_IDS as DP_GIT,
   MUTATION_TOOL_IDS as DP_MUTATION,
   PROCESS_TOOL_IDS as DP_PROCESS,
   READ_ONLY_TOOL_IDS as DP_READ_ONLY,
@@ -29,6 +31,7 @@ describe("builtin tool ID contract (TR ↔ Decision Policy)", () => {
     expect(DP_READ_ONLY).toBe(TR_READ_ONLY);
     expect(DP_MUTATION).toBe(TR_MUTATION);
     expect(DP_GITHUB).toBe(TR_GITHUB);
+    expect(DP_GIT).toBe(TR_GIT);
     expect(DP_PROCESS).toBe(TR_PROCESS);
     expect(DP_CODE_INTEL).toBe(TR_CODE_INTEL);
     expect(DP_DIAGNOSTICS).toBe(TR_DIAGNOSTICS);
@@ -49,9 +52,15 @@ describe("builtin tool ID contract (TR ↔ Decision Policy)", () => {
     }
   });
 
+  it("lists git_signoff_range as a dedicated git mutation tool", () => {
+    expect(TR_GIT).toEqual(["git_signoff_range"]);
+    expect(TR_MUTATION).not.toContain("git_signoff_range");
+  });
+
   it("keeps apply_patch out of adversary high-risk (grant/budget owns writes)", () => {
     expect(ADVERSARY_HIGH_RISK_TOOL_IDS).not.toContain("apply_patch");
     expect(ADVERSARY_HIGH_RISK_TOOL_IDS).toContain("run_command");
     expect(ADVERSARY_HIGH_RISK_TOOL_IDS).toContain("create_pull_request");
+    expect(ADVERSARY_HIGH_RISK_TOOL_IDS).toContain("git_signoff_range");
   });
 });

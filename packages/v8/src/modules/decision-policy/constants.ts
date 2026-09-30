@@ -61,6 +61,7 @@ export {
   CODE_INTELLIGENCE_TOOL_IDS,
   DIAGNOSTICS_TOOL_IDS,
   GITHUB_MUTATION_TOOL_IDS,
+  GIT_MUTATION_TOOL_IDS,
   MUTATION_TOOL_IDS,
   PROCESS_TOOL_IDS,
   READ_ONLY_TOOL_IDS,
@@ -118,6 +119,11 @@ export const DECISION_REASON_CODES = [
   "mutation_budget_standard",
   "mutation_budget_tight",
   "process_execution_granted",
+  /**
+   * User asked to fix DCO / Signed-off-by / rewrite commit metadata.
+   * Prefer `git_signoff_range` over apply_patch on workflow files.
+   */
+  "vcs_history_rewrite",
   "verification_required",
   "verification_not_required",
   /** Agent/ask asked to run tests or inspect pass/fail — diagnose with process tools. */

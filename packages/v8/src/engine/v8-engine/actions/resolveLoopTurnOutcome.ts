@@ -305,6 +305,11 @@ export function requiresMutationForExecute(input: {
   if (input.maximumWorkspaceEffect !== "write") {
     return false;
   }
+  // DCO / Signed-off-by tasks mutate git objects via git_signoff_range, not
+  // workspace files — do not chase apply_patch or fail no_mutation_performed.
+  if (input.reasonCodes?.includes("vcs_history_rewrite")) {
+    return false;
+  }
   if (!grantAllowsWorkspaceFileMutation(input.allowedTools)) {
     return false;
   }

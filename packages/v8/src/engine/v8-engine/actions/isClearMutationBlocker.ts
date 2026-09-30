@@ -24,6 +24,10 @@ const NO_CODE_FIX =
 const EVIDENCE_STARVED =
   /\b(?:only\s+hold\s+truncated|token-mangled|cannot\s+produce[\s\S]{0,40}faithful|need\s+to\s+(?:read|load)\b[\s\S]{0,80}\b(?:template|source|reference)|forbids?\s+the\s+read\s+tools|write-only\s+turn\s+budget)\b/i;
 
+/** Grant/policy cannot rewrite git history via apply_patch or allowed run_command. */
+const COMMAND_POLICY_OR_VCS_BLOCKER =
+  /\b(?:command_not_allowed|read-only\s+git|git\s+(?:commit|rebase|stash|push)\b[\s\S]{0,80}\b(?:reject|not\s+(?:allowed|permitted|covered|granted))|cannot\s+(?:rewrite|amend)\s+(?:git\s+)?(?:commit|history)|no\s+patchable\s+workspace\s+file|apply_patch\s+cannot\b[\s\S]{0,60}\bcommit\s+metadata|editing\s+\.github\/workflows\/dco\.yml\s+would\s+not)\b/i;
+
 export function isClearMutationBlocker(content: string): boolean {
   const text = content.trim();
   if (text.length < 40) {
@@ -42,6 +46,7 @@ export function isClearMutationBlocker(content: string): boolean {
     MISSING_EXTERNAL_PREREQ,
     NO_CODE_FIX,
     EVIDENCE_STARVED,
+    COMMAND_POLICY_OR_VCS_BLOCKER,
   ].filter((pattern) => pattern.test(text)).length;
   return signals >= 1 && text.length >= 80;
 }
