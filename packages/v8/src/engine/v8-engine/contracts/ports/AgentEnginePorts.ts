@@ -29,7 +29,11 @@ import type {
   UnpinRepositoryStateInput,
   UnpinRepositoryStateResult,
 } from "../../../../modules/repository-state";
-import type { CreateUserRequestInput, UserRequestEnvelope } from "../../../../modules/request-intake";
+import type {
+  CreateUserRequestInput,
+  RequestIntakeResult,
+  UserRequestEnvelope,
+} from "../../../../modules/request-intake";
 import type {
   DiagnosticSummary,
   RequestUnderstandingOptions,
@@ -71,6 +75,8 @@ export interface AgentEngineIdGeneratorPort {
 
 export interface AgentEngineIntakePort {
   intake(input: CreateUserRequestInput): UserRequestEnvelope;
+  /** Optional detailed intake with short-circuit + warnings. */
+  intakeDetailed?(input: CreateUserRequestInput): RequestIntakeResult;
 }
 
 export interface AgentEngineUnderstandingPort {

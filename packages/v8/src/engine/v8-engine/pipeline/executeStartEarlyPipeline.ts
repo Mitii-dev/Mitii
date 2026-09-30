@@ -141,10 +141,65 @@ export async function runStartEarlyPipeline(
 
   // --- Intake ---
   runtime.emitStage(bus, runId, "received", "started");
-  const envelope = runtime.deps.intake.intake(input.request);
+  const intakeDetailed = runtime.deps.intake.intakeDetailed?.bind(
+    runtime.deps.intake,
+  );
+  const intakeResult = intakeDetailed
+    ? intakeDetailed(input.request)
+    : {
+        envelope: runtime.deps.intake.intake(input.request),
+        warnings: [] as string[],
+        shortCircuitMeta: false,
+      };
+  const envelope = intakeResult.envelope;
   shared.requestId = envelope.requestId;
   reasonCodes.push("intake_complete");
+  if (intakeResult.warnings.length > 0) {
+    warnings.push(...intakeResult.warnings);
+  }
+  if (
+    (envelope.referencedArtifacts?.length ?? 0) > 0 &&
+    /\B@[^\s]/.test(envelope.message)
+  ) {
+    reasonCodes.push("intake_mentions_extracted");
+  }
   runtime.emitStage(bus, runId, "received", "completed", ["intake_complete"]);
+
+  // Meta slash commands (stop/new/clear/compact/…) never enter understand/pin.
+  const shortCircuitMeta =
+    intakeResult.shortCircuitMeta ||
+    (envelope.metaCommand !== undefined &&
+      envelope.metaCommand.lifecycle !== "agent_turn" &&
+      !(
+        envelope.metaCommand.lifecycle === "agent_turn_with_args" &&
+        envelope.metaCommand.args.trim().length > 0
+      ));
+  if (shortCircuitMeta && envelope.metaCommand) {
+    reasonCodes.push("intake_meta_command");
+    const meta = envelope.metaCommand;
+    warnings.push(`meta_command:${meta.name}:${meta.lifecycle}`);
+    if (meta.lifecycle === "stop") {
+      return {
+        kind: "terminal",
+        result: finish({
+          status: "cancelled",
+          reasonCodes,
+          error: {
+            code: "cancelled",
+            message: `Meta command /${meta.name} stopped the run at intake.`,
+          },
+        }),
+      };
+    }
+    return {
+      kind: "terminal",
+      result: finish({
+        status: "completed",
+        answer: `/${meta.name}${meta.args ? ` ${meta.args}` : ""}`,
+        reasonCodes,
+      }),
+    };
+  }
 
   if (signal.aborted) {
     return { kind: "terminal", result: await cancelledResult() };

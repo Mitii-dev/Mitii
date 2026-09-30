@@ -7,10 +7,14 @@ import {
 } from "../interaction-mode";
 
 import {
+  META_COMMAND_LIFECYCLES,
+  REQUEST_ENVELOPE_DEFAULTS,
   REQUEST_ENVELOPE_LIMITS,
   REQUEST_ENVELOPE_MESSAGES,
   REQUEST_ENVELOPE_PATTERNS,
   REQUEST_ENVELOPE_SCHEMA_VERSION,
+  REQUEST_SESSION_ACTIONS,
+  REQUEST_TURN_KINDS,
   SUPPORTED_IMAGE_MIME_TYPES,
   USER_REQUEST_ORIGINS,
 } from "./constants";
@@ -229,6 +233,24 @@ export const userRequestCorrelationSchema =
       },
     );
 
+export const requestMetaCommandSchema =
+  z.object({
+    name:
+      z.string()
+        .min(1)
+        .max(64),
+    args:
+      z.string()
+        .max(
+          REQUEST_ENVELOPE_LIMITS
+            .MAXIMUM_MESSAGE_CHARACTERS,
+        ),
+    lifecycle:
+      z.enum(
+        META_COMMAND_LIFECYCLES,
+      ),
+  }).strict();
+
 export const userRequestEnvelopeSchema =
   z.object({
     schemaVersion:
@@ -274,6 +296,32 @@ export const userRequestEnvelopeSchema =
             .MAXIMUM_ATTACHMENTS,
         )
         .optional(),
+    messageOriginal:
+      z.string()
+        .max(
+          REQUEST_ENVELOPE_LIMITS
+            .MAXIMUM_MESSAGE_CHARACTERS,
+        )
+        .optional(),
+    turnKind:
+      z.enum(
+        REQUEST_TURN_KINDS,
+      )
+        .default(
+          REQUEST_ENVELOPE_DEFAULTS
+            .TURN_KIND,
+        ),
+    sessionAction:
+      z.enum(
+        REQUEST_SESSION_ACTIONS,
+      )
+        .optional(),
+    parentRequestId:
+      identifierSchema
+        .optional(),
+    metaCommand:
+      requestMetaCommandSchema
+        .optional(),
     createdAt:
       z.string()
         .datetime({
@@ -291,7 +339,8 @@ export const userRequestEnvelopeSchema =
             .trim() &&
           request
             .referencedArtifacts
-            .length === 0
+            .length === 0 &&
+          !request.metaCommand
         ) {
           context.addIssue({
             code:

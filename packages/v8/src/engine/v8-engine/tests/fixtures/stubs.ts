@@ -300,8 +300,39 @@ export function createStubDependencies(options: {
         workspace: input.workspace,
         correlation: input.correlation,
         attachments: input.attachments,
+        turnKind: input.turnKind ?? "new",
+        sessionAction: input.sessionAction,
+        parentRequestId: input.parentRequestId,
+        metaCommand: input.metaCommand,
         createdAt: "2026-07-25T12:00:00.000Z",
       }),
+      intakeDetailed: (input: CreateUserRequestInput) => {
+        const envelope: UserRequestEnvelope = {
+          schemaVersion: 1,
+          requestId: input.requestId ?? "req_test",
+          sessionId: input.sessionId,
+          mode: input.mode,
+          origin: input.origin ?? "user",
+          message: input.userMessage,
+          referencedArtifacts: input.referencedArtifacts ?? [],
+          workspace: input.workspace,
+          correlation: input.correlation,
+          attachments: input.attachments,
+          turnKind: input.turnKind ?? "new",
+          sessionAction: input.sessionAction,
+          parentRequestId: input.parentRequestId,
+          metaCommand: input.metaCommand,
+          createdAt: "2026-07-25T12:00:00.000Z",
+        };
+        const shortCircuitMeta =
+          envelope.metaCommand !== undefined &&
+          envelope.metaCommand.lifecycle !== "agent_turn" &&
+          !(
+            envelope.metaCommand.lifecycle === "agent_turn_with_args" &&
+            envelope.metaCommand.args.trim().length > 0
+          );
+        return { envelope, warnings: [], shortCircuitMeta };
+      },
     },
     understanding: {
       understand: async () => understanding,

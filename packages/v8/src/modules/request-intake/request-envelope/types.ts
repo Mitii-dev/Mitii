@@ -14,6 +14,44 @@ export type RequestArtifactKind =
   | "selection"
   | "symbol";
 
+/**
+ * How this intake relates to an in-flight or prior turn.
+ * Hosts set this; intake defaults to `new`.
+ */
+export type RequestTurnKind =
+  | "new"
+  | "continue"
+  | "steer"
+  | "follow_up"
+  | "recover";
+
+/**
+ * Session-level action requested at the intake boundary.
+ * Classification only — session storage stays with the host.
+ */
+export type RequestSessionAction =
+  | "continue"
+  | "new"
+  | "resume";
+
+/**
+ * Lifecycle for a classified leading slash command.
+ * Intake never executes the command — it only labels how the host/engine
+ * should participate in the turn.
+ */
+export type MetaCommandLifecycle =
+  | "side_channel"
+  | "stop"
+  | "finalize"
+  | "agent_turn"
+  | "agent_turn_with_args";
+
+export interface RequestMetaCommand {
+  name: string;
+  args: string;
+  lifecycle: MetaCommandLifecycle;
+}
+
 export interface RequestArtifactReference {
   id?: string;
 
@@ -48,8 +86,14 @@ export interface UserRequestCorrelation {
   clientRequestId?: string;
 }
 
+export type SupportedImageMimeType =
+  | "image/png"
+  | "image/jpeg"
+  | "image/webp"
+  | "image/gif";
+
 export interface RequestImageAttachment {
-  mimeType: string;
+  mimeType: SupportedImageMimeType;
   data: string;
   name?: string;
 }
@@ -69,6 +113,19 @@ export interface UserRequestEnvelope {
   workspace?: UserRequestWorkspaceScope;
   correlation?: UserRequestCorrelation;
   attachments?: RequestImageAttachment[];
+
+  /** Present when intake mutated the message (mode/command strip). */
+  messageOriginal?: string;
+
+  turnKind: RequestTurnKind;
+  sessionAction?: RequestSessionAction;
+  parentRequestId?: string;
+
+  /**
+   * Leading slash command classified at intake.
+   * Non-agent lifecycles should short-circuit before understand/pin work.
+   */
+  metaCommand?: RequestMetaCommand;
 
   createdAt: string;
 }
