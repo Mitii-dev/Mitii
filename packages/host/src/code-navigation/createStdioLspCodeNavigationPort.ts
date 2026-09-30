@@ -1,7 +1,6 @@
 import { extname, resolve } from "node:path";
 
 import type {
-  CodeNavigationCallOptions,
   CodeNavigationCapability,
   CodeNavigationDocumentQuery,
   CodeNavigationHover,
@@ -24,6 +23,8 @@ import {
 } from "./stdio-lsp/mapLspResults.js";
 
 const MAX_LOCATIONS = CODE_NAVIGATION_POLICY.maximumLocations;
+
+type CodeNavigationCallOptions = { signal?: AbortSignal };
 
 export interface StdioLspServerConfig {
   /** Stable id used in logs and tool capability reason. */
@@ -81,7 +82,8 @@ export function createStdioLspCodeNavigationPort(
     const config = configs.get(serverId);
     if (!config) return undefined;
 
-    const task = (async () => {
+    const holder: { task?: Promise<StdioLspClient | undefined> } = {};
+    holder.task = (async () => {
       try {
         const client = await StdioLspClient.start(
           {
@@ -101,13 +103,13 @@ export function createStdioLspCodeNavigationPort(
         broken.add(serverId);
         return undefined;
       } finally {
-        if (spawning.get(serverId) === task) {
+        if (spawning.get(serverId) === holder.task) {
           spawning.delete(serverId);
         }
       }
     })();
-    spawning.set(serverId, task);
-    return task;
+    spawning.set(serverId, holder.task);
+    return holder.task;
   };
 
   return new StdioLspCodeNavigationPort({

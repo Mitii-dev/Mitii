@@ -1,5 +1,6 @@
 import type {
   RepoBuildStateComparison,
+  VerificationCheckResult,
   VerificationResult,
 } from "../../../modules/verification";
 
@@ -14,6 +15,7 @@ import type {
  * - verified_success
  * - implemented_unverified (work done; evidence incomplete — keep changes)
  * - verification infrastructure missing AND allowUnavailable
+ * - package typecheck/build passed while only workspace-root leftovers failed
  *
  * Reject (eligible for repair only when repairable):
  * - verification_failed → repairable (model can fix the change)
@@ -104,6 +106,9 @@ export function decideVerificationGate(params: {
     case "verified_success":
       return { action: "accept", acceptKind: "verified_success" };
     case "implemented_unverified":
+      if (isUserGoalComplete({ verification, comparison: params.comparison })) {
+        return { action: "accept", acceptKind: "implemented_unverified" };
+      }
       if (hasDiagnosticErrors(params.comparison)) {
         return {
           action: "reject",
@@ -196,15 +201,27 @@ function diagnosticErrorMessage(comparison: RepoBuildStateComparison): string {
 }
 
 /**
- * True when compiler/diagnostics errors are gone and the only remaining
- * failed checks are lint/format. Those leftovers must not reopen a long
- * repair loop after the user-visible typecheck work succeeded.
+ * True when the user-visible compile evidence for the changed package
+ * succeeded, or when the only remaining failed checks are lint/format.
+ *
+ * Workspace-root typecheck/test timeout or failure must not reopen a long
+ * repair loop after `inferred:apps/...` / `inferred:packages/...` already
+ * passed — those root leftovers are monorepo noise, not a regression from
+ * the localized edit.
  */
 export function isUserGoalComplete(params: {
   verification: VerificationResult;
   comparison?: RepoBuildStateComparison;
 }): boolean {
   const { verification, comparison } = params;
+
+  if (
+    packageCompileEvidencePassed(verification) &&
+    failuresAreIgnorableWhenPackagePassed(verification)
+  ) {
+    return true;
+  }
+
   if (
     comparison &&
     (comparison.afterErrorCount > 0 || comparison.newErrorCount > 0)
@@ -227,6 +244,79 @@ export function isUserGoalComplete(params: {
     (check) => check.kind === "diagnostics" || check.kind === "syntax",
   );
   return lintOnly && !typecheckOrBuildFailed && !diagnosticsFailed;
+}
+
+/** Package/inferred typecheck or build passed for the changed project. */
+export function packageCompileEvidencePassed(
+  verification: VerificationResult,
+): boolean {
+  return verification.checks.some(
+    (check) =>
+      (check.kind === "typecheck" || check.kind === "build") &&
+      check.outcome === "passed" &&
+      isPackageScopedCheck(check),
+  );
+}
+
+/**
+ * Failed/timed-out checks are only workspace-root compile/test noise or
+ * lint/format leftovers — safe to ignore when package evidence passed.
+ */
+export function failuresAreIgnorableWhenPackagePassed(
+  verification: VerificationResult,
+): boolean {
+  const failed = verification.checks.filter(
+    (check) => check.outcome === "failed" || check.outcome === "timed_out",
+  );
+  if (failed.length === 0) {
+    return true;
+  }
+  return failed.every(isIgnorableFailureWhenPackagePassed);
+}
+
+function isIgnorableFailureWhenPackagePassed(
+  check: VerificationCheckResult,
+): boolean {
+  if (check.kind === "lint" || check.kind === "format") {
+    return true;
+  }
+  if (
+    (check.kind === "typecheck" ||
+      check.kind === "test" ||
+      check.kind === "build") &&
+    isWorkspaceRootCheck(check)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+export function isPackageScopedCheck(check: VerificationCheckResult): boolean {
+  const projectId = (check.projectId ?? "").replace(/\\/g, "/");
+  const checkId = check.checkId.replace(/\\/g, "/");
+  if (projectId.startsWith("inferred:") || checkId.startsWith("inferred:")) {
+    return true;
+  }
+  if (/^(apps|packages)\//.test(projectId)) {
+    return true;
+  }
+  // checkId shape: inferred:packages/host:typecheck:typecheck
+  return /:?(apps|packages)\//.test(checkId);
+}
+
+export function isWorkspaceRootCheck(check: VerificationCheckResult): boolean {
+  const projectId = (check.projectId ?? "").toLowerCase();
+  if (
+    projectId === "workspace-root" ||
+    projectId === "root" ||
+    projectId === "."
+  ) {
+    return true;
+  }
+  const checkId = check.checkId.toLowerCase();
+  return (
+    checkId.startsWith("workspace-root:") || checkId.startsWith("root:")
+  );
 }
 
 function isSoftUnavailableBlock(

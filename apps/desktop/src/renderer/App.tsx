@@ -2937,6 +2937,11 @@ export function App() {
                     <MarkdownBody
                       text={m.text}
                       streaming={Boolean(m.streaming)}
+                      onOpenFile={(path) => {
+                        setLayout('code');
+                        setWorkspaceSide('explorer');
+                        setOpenPathRequest({ path, view: 'file' });
+                      }}
                     />
                   ) : null}
                   <ThinkingBlock

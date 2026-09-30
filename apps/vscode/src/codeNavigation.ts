@@ -1,13 +1,14 @@
 import { relative } from 'node:path';
 
 import type {
-  CodeNavigationCallOptions,
   CodeNavigationCapability,
   CodeNavigationDocumentQuery,
   CodeNavigationPort,
   CodeNavigationQuery,
   CodeNavigationWorkspaceQuery,
 } from '@mitii/v8';
+
+type CodeNavigationCallOptions = { signal?: AbortSignal };
 import {
   CODE_NAVIGATION_OPERATIONS,
   CODE_NAVIGATION_POLICY,
