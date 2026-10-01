@@ -106,7 +106,7 @@ import {
 import { isTransientEngineNetworkError } from './engineNetwork.js';
 import { ChatHistoryNav } from './chat/ChatHistoryNav.js';
 import { ComposerReviewStrip } from './chat/ComposerReviewStrip.js';
-import { IndexStatusChip } from './IndexStatusChip.js';
+import { IndexStatusChip, type DesktopIndexSnapshot } from './IndexStatusChip.js';
 import { FileChangesCard } from './chat/FileChangesCard.js';
 import { OnboardingPanel } from './OnboardingPanel.js';
 import { PendingPlanBanner } from './chat/PendingPlanBanner.js';
@@ -431,6 +431,7 @@ export function App() {
     running?: boolean;
     lexicalReady?: boolean;
     embeddingPhase?: string;
+    health?: DesktopIndexSnapshot['health'];
   } | null>(null);
   const [indexIndexing, setIndexIndexing] = useState(false);
   const [indexEmbeddingBg, setIndexEmbeddingBg] = useState(false);
@@ -861,6 +862,7 @@ export function App() {
           message: s.message,
           embeddingError: s.embeddingError,
           running: s.running,
+          ...(s.health ? { health: s.health } : {}),
         });
         if (s.running) {
           setIndexIndexing(true);
@@ -1320,6 +1322,7 @@ export function App() {
         running: s.running,
         lexicalReady: s.lexicalReady,
         embeddingPhase: s.embeddingPhase,
+        ...(s.health ? { health: s.health } : {}),
       });
       if (s.running) {
         setIndexIndexing(true);

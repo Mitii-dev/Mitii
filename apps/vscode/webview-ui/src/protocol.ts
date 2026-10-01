@@ -249,6 +249,29 @@ export interface IndexStatusSnapshot {
   embeddingSource?: SemanticIndexSource;
   embeddingModel?: string;
   embeddingEnabled?: boolean;
+  /** Shared Code/FTS/Embeddings pipeline board from @mitii/host. */
+  pipelineHealth?: {
+    overall: string;
+    running?: boolean;
+    pipelines: {
+      codeIndex: { status: string; reason?: string; revision?: string };
+      textFts: { status: string; reason?: string; revision?: string };
+      embeddings: {
+        status: string;
+        reason?: string;
+        profileId?: string;
+      };
+      graph: { status: string; reason?: string };
+      map: { status: string; reason?: string };
+      treeSitter: { status: string; reason?: string };
+    };
+    native: {
+      sqlite: string;
+      lancedb: string;
+      onnx: string;
+    };
+    lastError?: string;
+  };
 }
 
 export interface WorkspaceSnapshotInfo {

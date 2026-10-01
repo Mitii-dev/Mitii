@@ -50,7 +50,7 @@ Apps still own environment-specific pieces: secrets, settings UI, MCP, diagnosti
 src/
   index.ts                 # public barrel - import from `@mitii/host`
   sqlite/                  # injection contract for openDatabase
-  indexing/                # embeddings, full index, fingerprint snapshot
+  indexing/                # embeddings, full index, fingerprint snapshot, pipeline health
     bundled-embedding/     # on-device MiniLM source (native ONNX + WASM)
     treeSitter/            # web-tree-sitter runtime; V8 injects query text
   repository-context/      # createHostRepositoryContext
@@ -73,6 +73,7 @@ Prefer importing from `@mitii/host`. Do not import `internal/`.
 | `createBundledMiniLmEmbeddingProvider` | V8 `EmbeddingProvider` | On-device MiniLM (native ONNX, WASM fallback) |
 | `createLanceDbConnection` | V8 `LanceDbConnectionPort` | Optional `@lancedb/lancedb` vector store |
 | `runFullWorkspaceIndex` | Orchestrates V8 index runtime | Writes `.mitii/repository-index.sqlite`, LanceDB, graph/map |
+| `readIndexPipelineHealth` / `formatIndexPipelineHealthLines` | Index observability | Code / FTS5 / Embeddings / Graph / native status from `.mitii/` |
 | `runCorpusIndex` / `CorpusRetrievalSource` | Optional corpus RAG | Indexes `.mitii/corpus/` markdown/text → `index.json`; hybrid `additionalSources` when `corpusEnabled` |
 | `buildWorkspaceSnapshot` | Builds `PublishRepositoryStateInput` | Fingerprint-only; indexes marked unavailable. `roots[0].rootId` is the workspace directory basename. |
 | `createHostRepositoryContext` | V8 `RepositoryContextPipeline` | Hybrid retrieve + file-map fallback. File-map fallback honors `folderPrefix`. Optional `corpusEnabled` (default false). |
@@ -147,6 +148,8 @@ await client.start({ /* ... */, projectRules });
 ```
 
 **Indexing:** prefer `runFullWorkspaceIndex` -> publish repository state. If that has not run, fall back to `buildWorkspaceSnapshot` (honest fingerprint: indexes unavailable).
+
+**Index pipeline health:** call `readIndexPipelineHealth({ workspaceRoot })` (or CLI `mitii index --status`) to see which pipeline is ready vs failed: Code Index, Text FTS5, Embeddings, Graph/Map, Tree-sitter, and native sqlite / LanceDB / ONNX. Overall is `ready`, `lexical_only`, `running`, `failed`, or `missing`.
 
 **Semantic retrieval** is off unless the host passes `semanticIndex.enabled` (and a ready embedding profile). When disabled, repository context logs `semantic_index_disabled` and falls back to path-based discovery.
 

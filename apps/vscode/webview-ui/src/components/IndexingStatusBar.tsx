@@ -119,14 +119,27 @@ function detailTooltip(index: IndexStatusSnapshot): string {
       `Mode: ${index.indexMode === 'full' ? 'full code/text' : 'host snapshot'}`,
     );
   }
-  for (const capability of index.capabilities ?? []) {
-    const label =
-      CAPABILITY_LABELS[capability.capability] ?? capability.capability;
+  if (index.pipelineHealth) {
+    const p = index.pipelineHealth.pipelines;
+    parts.push(`Health: ${index.pipelineHealth.overall}`);
+    parts.push(`Code: ${p.codeIndex.status}`);
+    parts.push(`FTS: ${p.textFts.status}`);
     parts.push(
-      capability.capability === 'vectorIndex' && capability.status === 'degraded'
-        ? `${label}: degraded — reindex to restore semantic search`
-        : `${label}: ${capability.status}`,
+      `Embeddings: ${p.embeddings.status}${p.embeddings.reason ? ` (${p.embeddings.reason})` : ''}`,
     );
+    parts.push(
+      `Native: sqlite=${index.pipelineHealth.native.sqlite} lancedb=${index.pipelineHealth.native.lancedb} onnx=${index.pipelineHealth.native.onnx}`,
+    );
+  } else {
+    for (const capability of index.capabilities ?? []) {
+      const label =
+        CAPABILITY_LABELS[capability.capability] ?? capability.capability;
+      parts.push(
+        capability.capability === 'vectorIndex' && capability.status === 'degraded'
+          ? `${label}: degraded — reindex to restore semantic search`
+          : `${label}: ${capability.status}`,
+      );
+    }
   }
   if (index.truncated) parts.push('Scan truncated');
   if (index.message) parts.push(index.message);

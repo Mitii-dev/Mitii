@@ -103,6 +103,19 @@ export type {
   IndexProgressSnapshot,
 } from './indexing/indexLock.js';
 export {
+  INDEX_PIPELINE_HEALTH_SCHEMA_VERSION,
+  readIndexPipelineHealth,
+  formatIndexPipelineHealthLines,
+} from './indexing/indexPipelineHealth.js';
+export type {
+  IndexOverallHealth,
+  IndexPipelineEntry,
+  IndexPipelineHealth,
+  IndexPipelineStatus,
+  IndexNativeHealth,
+  ReadIndexPipelineHealthOptions,
+} from './indexing/indexPipelineHealth.js';
+export {
   DEFAULT_MAXIMUM_INDEX_FILES,
   MAXIMUM_INDEX_FILES,
   DEFAULT_INDEX_SCAN_TIMEOUT_MS,

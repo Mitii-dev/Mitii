@@ -1090,6 +1090,18 @@ export async function fetchIndexStatus(options: {
   embeddingError?: string;
   lexicalReady?: boolean;
   embeddingPhase?: string;
+  health?: {
+    overall: string;
+    pipelines: {
+      codeIndex: { status: string; reason?: string };
+      textFts: { status: string; reason?: string };
+      embeddings: { status: string; reason?: string; profileId?: string };
+      graph: { status: string };
+      map: { status: string };
+      treeSitter: { status: string };
+    };
+    native: { sqlite: string; lancedb: string; onnx: string };
+  };
 }> {
   const res = await fetch(`${options.baseUrl}/v1/index/status`, {
     headers: authHeaders(options.token),

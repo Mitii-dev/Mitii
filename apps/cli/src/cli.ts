@@ -27,6 +27,10 @@ import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
 import { loadMitiiHostConfig } from './config.js';
 import { resolveCliSemanticIndexSettings } from './semanticIndex.js';
 import {
+  formatIndexPipelineHealthLines,
+  readIndexPipelineHealth,
+} from '@mitii/host';
+import {
   loadPersistedRepositoryState,
   persistLatestRepositoryState,
 } from './stateCache.js';
@@ -171,6 +175,31 @@ function writeRepositoryCapabilityLines(
   }
 }
 
+function writeIndexHealthLines(io: SessionIo, cwd: string): void {
+  const health = readIndexPipelineHealth({ workspaceRoot: cwd });
+  for (const line of formatIndexPipelineHealthLines(health)) {
+    io.writeStdout(`${line}\n`);
+  }
+}
+
+async function runIndexStatus(options: {
+  cwd: string;
+  json: boolean;
+  io: SessionIo;
+}): Promise<number> {
+  const health = readIndexPipelineHealth({ workspaceRoot: options.cwd });
+  if (options.json) {
+    options.io.writeStdout(`${serializeCliJson({ health })}\n`);
+  } else {
+    for (const line of formatIndexPipelineHealthLines(health)) {
+      options.io.writeStdout(`${line}\n`);
+    }
+  }
+  if (health.overall === 'missing') return 1;
+  if (health.overall === 'failed') return 1;
+  return 0;
+}
+
 async function runIndex(options: {
   cwd: string;
   json: boolean;
@@ -253,12 +282,14 @@ async function runIndex(options: {
     persistLatestRepositoryState(options.cwd, published.descriptor);
   }
   if (options.json) {
+    const health = readIndexPipelineHealth({ workspaceRoot: options.cwd });
     options.io.writeStdout(
       `${serializeCliJson({
         published,
         fileCount,
         truncated,
         indexMode,
+        health,
         ...(indexingDiagnostics ? { indexing: indexingDiagnostics } : {}),
         ...(published.status === 'published'
           ? {
@@ -281,6 +312,7 @@ async function runIndex(options: {
       );
     }
     writeRepositoryCapabilityLines(options.io, published.descriptor);
+    writeIndexHealthLines(options.io, options.cwd);
     for (const reason of published.descriptor.reasons) {
       options.io.writeStderr(`[mitii] ${reason.code}: ${reason.message}\n`);
     }
@@ -306,27 +338,31 @@ async function runStatus(options: {
   const latest =
     (await client.getLatestRepositoryState(ports.workspaceId)) ??
     loadPersistedRepositoryState(options.cwd);
+  const health = readIndexPipelineHealth({ workspaceRoot: options.cwd });
   if (options.json) {
     options.io.writeStdout(
       `${serializeCliJson({
         latest,
+        health,
         ...(latest
           ? { capabilitySummary: summarizeRepositoryCapabilities(latest) }
           : {}),
       })}\n`,
     );
-    return latest ? 0 : 1;
+    return latest || health.overall !== 'missing' ? 0 : 1;
   }
   if (!latest) {
     options.io.writeStderr(
       '[mitii] no published repository state — run `mitii index` first\n',
     );
-    return 1;
+    writeIndexHealthLines(options.io, options.cwd);
+    return health.overall === 'missing' ? 1 : 0;
   }
   options.io.writeStdout(
     `status workspaceId=${latest.workspaceId} readiness=${latest.readiness} scan=${latest.scanCompleteness} stateToken=${latest.stateToken.slice(0, 16)}…\n`,
   );
   writeRepositoryCapabilityLines(options.io, latest);
+  writeIndexHealthLines(options.io, options.cwd);
   for (const reason of latest.reasons) {
     options.io.writeStderr(`[mitii] ${reason.code}: ${reason.message}\n`);
   }
@@ -478,6 +514,13 @@ export async function main(
       return code;
     }
     case 'index':
+      if (parsed.indexStatus === true) {
+        return runIndexStatus({
+          cwd,
+          json: parsed.json === true,
+          io: sessionIo,
+        });
+      }
       return runIndex({
         cwd,
         json: parsed.json === true,
