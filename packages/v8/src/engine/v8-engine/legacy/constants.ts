@@ -183,6 +183,8 @@ export const AGENT_REASON_CODES = [
   "step_mutate_readiness_gated",
   /** Active checklist step evidence loaded (or gate budget spent); demand apply_patch. */
   "step_mutate_patch_required",
+  /** Discovery tools stripped; mutate (+ optional targeted reads) only until patch lands. */
+  "step_mutate_lock_armed",
   "code_intel_adoption_nudged",
   "tools_executed",
   "mutation_applied",

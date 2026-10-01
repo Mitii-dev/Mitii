@@ -4,12 +4,20 @@ import {
   buildStepEvidenceGateMessage,
   buildStepPatchRequiredMessage,
   evaluateActiveStepMutateReadiness,
+  filterToolsForMutateLock,
+  mutateLockModelRequestFields,
+  resolveMutateLockAllowTargetedReads,
   resolveMutateReadinessBudget,
   resolveStepReadonlyTurnsBeforeGate,
   shouldDemandEvidenceBeforePatch,
+  shouldRearmMutateLockOnContinue,
 } from "./index";
 import type { TaskList } from "../../../../modules/task-list";
-import { createLoopFileReadTracker, recordLoopFileReads } from "../../actions/isExplorationRereadHeavy";
+import type { ModelToolDefinition } from "../../../../modules/model-gateway";
+import {
+  createLoopFileReadTracker,
+  recordLoopFileReads,
+} from "../../actions/isExplorationRereadHeavy";
 
 function taskList(items: TaskList["items"]): TaskList {
   return {
@@ -22,8 +30,12 @@ function taskList(items: TaskList["items"]): TaskList {
 
 describe("mutateReadiness (per-step evidence → patch)", () => {
   it("sizes small/medium/large budgets for token efficiency", () => {
-    expect(resolveMutateReadinessBudget("small").readonlyTurnsBeforeGate).toBe(2);
-    expect(resolveMutateReadinessBudget("medium").readonlyTurnsBeforeGate).toBe(4);
+    expect(resolveMutateReadinessBudget("small").readonlyTurnsBeforeGate).toBe(
+      2,
+    );
+    expect(resolveMutateReadinessBudget("medium").readonlyTurnsBeforeGate).toBe(
+      4,
+    );
     expect(resolveMutateReadinessBudget("large").maxEvidencePaths).toBe(6);
     expect(
       resolveStepReadonlyTurnsBeforeGate({
@@ -58,11 +70,13 @@ describe("mutateReadiness (per-step evidence → patch)", () => {
       "packages/v8/tests/architecture/v8-module-boundaries.test.ts",
     );
     expect(unread.estFilesThisStep).toBeGreaterThanOrEqual(1);
-    expect(shouldDemandEvidenceBeforePatch({
-      readiness: unread,
-      evidenceGateNudges: 0,
-      maxEvidenceGateNudgesBeforePatchDemand: 2,
-    })).toBe(true);
+    expect(
+      shouldDemandEvidenceBeforePatch({
+        readiness: unread,
+        evidenceGateNudges: 0,
+        maxEvidenceGateNudgesBeforePatchDemand: 2,
+      }),
+    ).toBe(true);
 
     const gate = buildStepEvidenceGateMessage(unread);
     expect(gate).toMatch(/enough_to_patch: false/);
@@ -80,11 +94,13 @@ describe("mutateReadiness (per-step evidence → patch)", () => {
       maxEvidencePaths: 5,
     });
     expect(ready.ready).toBe(true);
-    expect(shouldDemandEvidenceBeforePatch({
-      readiness: ready,
-      evidenceGateNudges: 0,
-      maxEvidenceGateNudgesBeforePatchDemand: 2,
-    })).toBe(false);
+    expect(
+      shouldDemandEvidenceBeforePatch({
+        readiness: ready,
+        evidenceGateNudges: 0,
+        maxEvidenceGateNudgesBeforePatchDemand: 2,
+      }),
+    ).toBe(false);
 
     const patchMsg = buildStepPatchRequiredMessage(ready);
     expect(patchMsg).toMatch(/enough_to_patch: true/);
@@ -101,5 +117,72 @@ describe("mutateReadiness (per-step evidence → patch)", () => {
     });
     expect(readiness.ready).toBe(true);
     expect(readiness.missingPaths).toEqual([]);
+  });
+
+  it("strips discovery tools under mutate lock but keeps apply_patch", () => {
+    const tools = [
+      { name: "apply_patch", description: "patch", inputSchema: {} },
+      { name: "read_file", description: "read", inputSchema: {} },
+      { name: "search_files", description: "search", inputSchema: {} },
+      { name: "list_directory", description: "list", inputSchema: {} },
+      { name: "run_command", description: "cmd", inputSchema: {} },
+      { name: "analyze_change_impact", description: "impact", inputSchema: {} },
+      { name: "glob_files", description: "glob", inputSchema: {} },
+    ] as ModelToolDefinition[];
+
+    const withReads = filterToolsForMutateLock(tools, {
+      allowTargetedReads: true,
+    });
+    expect(withReads?.map((t) => t.name).sort()).toEqual([
+      "analyze_change_impact",
+      "apply_patch",
+      "read_file",
+    ]);
+
+    const mutateOnly = filterToolsForMutateLock(tools, {
+      allowTargetedReads: false,
+    });
+    expect(mutateOnly?.map((t) => t.name).sort()).toEqual([
+      "analyze_change_impact",
+      "apply_patch",
+    ]);
+
+    const forced = mutateLockModelRequestFields(tools, {
+      allowTargetedReads: false,
+    });
+    expect(forced.toolChoice).toBe("required");
+
+    const soft = mutateLockModelRequestFields(tools, {
+      allowTargetedReads: true,
+    });
+    expect(soft.toolChoice).toBe("auto");
+
+    expect(
+      resolveMutateLockAllowTargetedReads({
+        readinessReady: true,
+        evidenceGateActive: false,
+      }),
+    ).toBe(false);
+    expect(
+      resolveMutateLockAllowTargetedReads({
+        readinessReady: false,
+        evidenceGateActive: true,
+      }),
+    ).toBe(true);
+
+    expect(
+      shouldRearmMutateLockOnContinue({
+        wallReason: "unfulfilled_execute",
+        changedFileCount: 0,
+        mutationRequired: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldRearmMutateLockOnContinue({
+        wallReason: "unfulfilled_execute",
+        changedFileCount: 2,
+        mutationRequired: true,
+      }),
+    ).toBe(false);
   });
 });
