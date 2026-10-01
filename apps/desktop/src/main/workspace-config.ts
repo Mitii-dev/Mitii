@@ -215,8 +215,11 @@ export function writeWorkspaceCompatFiles(
   if (replaceMcp) {
     toWrite = fromSettings;
   } else if (disk && disk.servers.length > 0) {
+    // Empty settings.mcp is a stale mirror — keep disk servers and enabled.
+    // Only apply settings.enabled when settings also lists servers.
     toWrite = {
       enabled:
+        fromSettings.servers.length > 0 &&
         typeof settings.mcp?.enabled === 'boolean'
           ? Boolean(settings.mcp.enabled)
           : disk.enabled,
