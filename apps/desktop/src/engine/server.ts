@@ -83,7 +83,9 @@ import {
 import { generateEngineToken } from '../shared/engine-token.js';
 import { isAllowedEngineBaseUrl } from '../shared/window-url-policy.js';
 import {
+  appendDesktopLog,
   appendRunLog,
+  errorMessage,
   resolveLogsDir,
 } from '../shared/project-logs.js';
 import {
@@ -2361,10 +2363,17 @@ export async function startEngineServer(
               statusSnapshot: getIndexStatus(cwd),
             });
           } catch (error) {
+            const message = errorMessage(error);
+            appendDesktopLog(
+              resolveLogsDir(undefined, process.env) ??
+                join(cwd, '.mitii', 'logs'),
+              'indexing',
+              `reindex_stream_failed ${message}`,
+              { level: 'error', mirrorRuns: true },
+            );
             writeLine({
               type: 'error',
-              message:
-                error instanceof Error ? error.message : String(error),
+              message,
               statusSnapshot: getIndexStatus(cwd),
             });
           }
@@ -2383,8 +2392,14 @@ export async function startEngineServer(
           });
           sendJson(res, 200, { ...result, statusSnapshot: getIndexStatus(cwd) });
         } catch (error) {
-          const message =
-            error instanceof Error ? error.message : String(error);
+          const message = errorMessage(error);
+          appendDesktopLog(
+            resolveLogsDir(undefined, process.env) ??
+              join(cwd, '.mitii', 'logs'),
+            'indexing',
+            `reindex_failed ${message}`,
+            { level: 'error', mirrorRuns: true },
+          );
           sendJson(res, 500, {
             op: 'error',
             error: 'internal',
@@ -2495,7 +2510,26 @@ export async function startEngineServer(
 
       sendJson(res, 404, { op: 'error', error: 'not_found' });
     })().catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = errorMessage(error);
+      const logsDir =
+        resolveLogsDir(undefined, process.env) ?? join(cwd, '.mitii', 'logs');
+      const failedMethod = req.method ?? 'GET';
+      let failedPath = '/';
+      try {
+        failedPath = new URL(req.url ?? '/', `http://${host}`).pathname;
+      } catch {
+        failedPath = req.url ?? '/';
+      }
+      appendDesktopLog(
+        logsDir,
+        'engine',
+        `route_failed ${failedMethod} ${failedPath} ${message}`,
+        {
+          level: 'error',
+          mirrorRuns: true,
+          extra: { method: failedMethod, path: failedPath },
+        },
+      );
       if (!res.headersSent) {
         sendJson(res, 500, { op: 'error', error: 'internal', message });
       } else {
