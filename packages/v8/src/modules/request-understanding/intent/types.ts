@@ -19,6 +19,7 @@ import type {
   InteractionIntent,
   AmbiguousSlotKind,
 } from "./schema";
+import type { RulePrior, UnderstandingEvidencePack } from "./evidence";
 export type TaskIntent = (typeof INTENT_CONSTANTS.TASK_INTENTS)[number];
 
 export interface IntentDefinition {
@@ -47,6 +48,8 @@ export interface IntentClassificationInput {
   diagnosticSummary?: DiagnosticSummary;
   /** Intake turn kind — continuation turns soften clarification. */
   turnKind?: RequestTurnKind;
+  /** Investigator evidence pack for the Officer LLM (advisory priors + facts). */
+  evidence?: UnderstandingEvidencePack;
 }
 
 export interface IntentRouterDependencies {
@@ -60,6 +63,8 @@ export interface RuleIntentClassifierPort {
   classifyMessage(
     message: string,
   ): IntentClassification | null;
+  /** Top heuristic hits for the Officer evidence pack (advisory only). */
+  listPriors?(message: string): RulePrior[];
 }
 
 export interface LlmIntentClassifierPort {
@@ -72,6 +77,8 @@ export type ReferencedArtifact =
   RequestArtifactReference;
 
 export type IntentClassifierSource = "explicit_rule" | "heuristic_rule" | "llm";
+
+export type OfficerFallbackKind = "rule" | "safe";
 
 export interface IntentClassifierResult {
   source: IntentClassifierSource;
@@ -139,6 +146,9 @@ export interface SuperIntentDiagnostics {
 
   minimumConfidence: number;
   minimumMargin: number;
+
+  /** Set when the Officer LLM call failed and a non-LLM path was used. */
+  officerFallback?: OfficerFallbackKind;
 }
 
 export interface SuperIntentResult {

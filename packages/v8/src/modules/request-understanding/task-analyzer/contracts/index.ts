@@ -15,6 +15,8 @@ export {
   TaskScopeSchema,
   TaskTargetKindSchema,
   TaskTargetSchema,
+  TaskSizeSchema,
+  PlanningHintSchema,
 } from "./output/TaskAnalysis";
 export type {
   EstimatedFileImpact,
@@ -26,6 +28,8 @@ export type {
   TaskRisk,
   TaskScope,
   TaskTarget,
+  TaskSize,
+  PlanningHint,
 } from "./output/TaskAnalysis";
 
 export {

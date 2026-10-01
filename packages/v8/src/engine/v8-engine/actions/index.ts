@@ -219,6 +219,7 @@ export {
   salvageUserFacingAnswerSection,
   stripInjectionComplianceEchoes,
   amendMessageWithPriorConversation,
+  buildUnderstandingHistoryDigest,
 } from "./isIncompleteAssistantTurn";
 
 export { recoverLeakedToolCallsFromMarkup } from "./recoverLeakedToolCalls";

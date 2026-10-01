@@ -2,6 +2,7 @@
 import { INTENT_CONSTANTS } from '../../constants';
 import { IntentClassification } from '../../schema';
 import { TaskIntent } from '../../types';
+import type { RulePrior } from '../../evidence';
 import {
   hasNonNegatedMutationVerb,
   isHardWholeRequestReadOnlyConstraint,
@@ -182,6 +183,71 @@ export class RuleIntentClassifier {
         `Matched ${sorted.length} natural-language heuristics; ` +
         `using ${primary.intent} as the primary with alternatives.`,
     };
+  };
+
+  /**
+   * Top heuristic / explicit hits for the Officer evidence pack.
+   * Returns priors even when interaction is unclear (classifyMessage → null).
+   */
+  listPriors = (message: string): RulePrior[] => {
+    const text = message.trim();
+    if (!text) {
+      return [];
+    }
+
+    const classified = this.classifyMessage(text);
+    if (classified && classified.confidence === 1) {
+      return [
+        {
+          intent: classified.primaryTaskIntent,
+          interactionIntent: classified.interactionIntent,
+          confidence: 1,
+          source: "explicit_rule",
+          ...(classified.reason ? { reason: classified.reason } : {}),
+        },
+      ];
+    }
+
+    if (classified) {
+      const priors: RulePrior[] = [
+        {
+          intent: classified.primaryTaskIntent,
+          interactionIntent: classified.interactionIntent,
+          confidence: classified.confidence,
+          source: "heuristic_rule",
+          ...(classified.reason ? { reason: classified.reason } : {}),
+        },
+      ];
+      for (const alternative of classified.alternatives.slice(0, 2)) {
+        priors.push({
+          intent: alternative.intent,
+          confidence: alternative.confidence,
+          source: "heuristic_rule",
+        });
+      }
+      return priors.slice(0, 3);
+    }
+
+    // Soft priors when interaction was unclear but task patterns matched.
+    const matchedRules = PATTERNS.INTENT_PATTERNS.filter((rule) =>
+      rule.pattern.test(text),
+    );
+    const byIntent = new Map<TaskIntent, number>();
+    for (const rule of matchedRules) {
+      const existing = byIntent.get(rule.intent) ?? 0;
+      if (rule.confidence > existing) {
+        byIntent.set(rule.intent, rule.confidence);
+      }
+    }
+    return [...byIntent.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([intent, confidence]) => ({
+        intent,
+        confidence,
+        source: "heuristic_rule" as const,
+        reason: `Matched heuristic for ${intent} (interaction unclear).`,
+      }));
   };
 
   /**

@@ -678,3 +678,39 @@ export function amendMessageWithPriorConversation(
     primary,
   ].join("\n");
 }
+
+/**
+ * Compact history for the RU Officer evidence pack (≤ ~400 tokens).
+ * Prefer this over stuffing the full amended message into evidence.history.
+ */
+export function buildUnderstandingHistoryDigest(
+  conversation: readonly { role: string; content: string }[],
+  options?: { priorRoute?: string; priorTaskSize?: string },
+): string | undefined {
+  const recent = conversation
+    .filter(
+      (entry) =>
+        (entry.role === "user" || entry.role === "assistant") &&
+        entry.content.trim().length > 0,
+    )
+    .slice(-4);
+  if (recent.length === 0 && !options?.priorRoute && !options?.priorTaskSize) {
+    return undefined;
+  }
+
+  const lines: string[] = [`prior_turns=${recent.length}`];
+  if (options?.priorRoute) {
+    lines.push(`prior_route=${options.priorRoute}`);
+  }
+  if (options?.priorTaskSize) {
+    lines.push(`prior_task_size=${options.priorTaskSize}`);
+  }
+  for (const entry of recent) {
+    const clipped =
+      entry.content.length > 180
+        ? `${entry.content.slice(0, 179)}…`
+        : entry.content.trim();
+    lines.push(`${entry.role}: ${clipped.replace(/\s+/g, " ")}`);
+  }
+  return lines.join("\n").slice(0, 4000);
+}

@@ -133,10 +133,10 @@ export function resolveRoute(params: {
     reasonCodes.push("policy_llm_authority_write");
   }
 
-  // Pasted dumps stay diagnose-first by default. A trusted ≥70% act/mutation
-  // ballot overrides the dump heuristic (same authority as SuperIntent).
+  // Pasted dumps stay diagnose-first by default. Officer write intent
+  // (trusted ≥70% ballot, or soft act+mutation on test-failure pastes) wins.
   if (looksLikePastedRuntimeErrorDump(message)) {
-    if (!understandingTrustsWriteBallot(understanding)) {
+    if (!officerAuthorizesWriteDespiteDump(understanding, message)) {
       reasonCodes.push("policy_facts_safety_override");
       reasonCodes.push("diagnosis_readonly");
       return {
@@ -804,6 +804,37 @@ function understandingTrustsWriteBallot(
 }
 
 /**
+ * Dump heuristic override: full write ballot, or soft Officer act+mutation on
+ * structured test-failure pastes (vitest/jest) at ≥0.60 when status is accepted.
+ */
+function officerAuthorizesWriteDespiteDump(
+  understanding: RequestUnderstandingResult,
+  message: string,
+): boolean {
+  if (understandingTrustsWriteBallot(understanding)) {
+    return true;
+  }
+  if (!looksLikePastedTestFailureReport(message)) {
+    return false;
+  }
+  const { intent } = understanding;
+  const classification = intent.classification;
+  if (intent.status !== "accepted") {
+    return false;
+  }
+  if (classification.needsClarification) {
+    return false;
+  }
+  if (classification.confidence < 0.6) {
+    return false;
+  }
+  return (
+    classification.interactionIntent === "act" &&
+    isMutationIntent(classification.primaryTaskIntent)
+  );
+}
+
+/**
  * Hard read-only always blocks writes. Soft keyword "read-only" hits yield to a
  * trusted ≥70% write ballot (so "dont remove all… keep a few" cannot veto act).
  */
@@ -1029,6 +1060,23 @@ function looksLikePastedRuntimeErrorDump(message: string): boolean {
     .length >= 2;
 
   return hasStackFrame || hasConsoleObjectDump || multiLine;
+}
+
+/**
+ * Structured unit-test failure pastes (vitest / jest / Failed Tests N).
+ * Soft Officer act+bugfix may execute these even when confidence is 0.60–0.69.
+ */
+function looksLikePastedTestFailureReport(message: string): boolean {
+  const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
+  if (text.length < 24) {
+    return false;
+  }
+  return (
+    /Failed Tests?\s+\d+/i.test(text) ||
+    /\bFAIL\s+\S+\.(?:test|spec)\.[jt]sx?\b/i.test(text) ||
+    /\bAssertionError\b/.test(text) ||
+    /⎯+.*Failed Tests/i.test(text)
+  );
 }
 
 /**

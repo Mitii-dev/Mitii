@@ -2,13 +2,16 @@
 
 Request Understanding converts a normalized `UserRequestEnvelope` into structured task evidence. It tells policy and planning what the user appears to want, but it does not grant authority.
 
+**Authority model (Evidence → Officer):** Investigators (rules, size draft, artifacts, attachments meta, MCP ids, skill tags, history digest) build an evidence pack. The **Officer LLM** is the sole judge of interaction/task intent (except explicit slash / exact intent). SuperIntent no longer lets strong heuristics override the LLM primary. Decision Policy issues the warrant later — it must not re-investigate.
+
 ## What This Module Does
 
-- Extracts the primary user message from the envelope.
-- Classifies task and interaction intent.
-- Resolves a Super Intent result with confidence and clarification signals.
-- Runs Task Analyzer to derive scope, complexity, risk, clarity, targets, constraints, and requested outcomes.
-- Recommends whether repository discovery, planning, verification, or clarification may be needed.
+- Builds an investigator **evidence pack** before classification.
+- Runs heuristic rules as **advisory priors** (not silent winners).
+- Classifies task and interaction intent via the Officer LLM.
+- Resolves a thin Super Intent result (coerce, mode remaps, turnKind, diagnostics).
+- Runs Task Analyzer for scope/complexity/risk/clarity plus **`taskSize`** / **`planningHint`**.
+- Mode-shaped clarification guidance in the Officer prompt (ask ≠ agent).
 
 ## Structure
 
@@ -18,24 +21,28 @@ request-understanding/
   contracts/
     input/                  RequestUnderstandingPipelineInput
     output/                 RequestUnderstandingResult
-  intent/                   Intent router, rule/LLM classifiers, resolution
-  task-analyzer/            Dimension extraction and task analysis contracts
-  tests/                    Pipeline, intent, and target extraction tests
+  intent/
+    evidence/               Evidence pack + sizeDraft builders
+    classifiers/            Rule (priors) + LLM (Officer)
+    resolution/             SuperIntent (thin)
+  task-analyzer/            Dimension extraction and contracts
+  tests/
 ```
 
 ## Types And Contracts
 
 - `RequestUnderstandingPipelineInput`: the `UserRequestEnvelope`.
-- `RequestUnderstandingResult`: `{ intent, taskAnalysis }`.
-- `intent`: Super Intent result with status, classification, scores, confidence margin, clarification recommendation, and diagnostics.
-- `TaskAnalysis`: scope, complexity, risk, clarity, targets, constraints, requested outcomes, recommendations, estimated file impact, signals, and confidence.
+- `RequestUnderstandingResult`: `{ intent, taskAnalysis, evidence? }`.
+- `UnderstandingEvidencePack`: mode, turnKind, message stats, artifacts, images meta, MCP, skill tags, rulePriors, sizeDraft, optional history.
+- `intent`: Super Intent result with status, classification, scores, confidence margin, clarification, diagnostics (`officerFallback` when LLM failed).
+- `TaskAnalysis`: existing dimensions + `taskSize` (`small|medium|large`) + `planningHint` (`none|short|medium|long`).
 
 ## Technical Details
 
-- The public facade method is `RequestUnderstandingPipeline.understand`.
-- Rule classifiers provide deterministic intent signals.
-- Optional LLM classification can enrich the intent result.
-- Task analysis focuses on dimensions, not hard-coded task templates.
+- Facade: `RequestUnderstandingPipeline.understand` (options may include `historyDigest`, `requiredMcpServerIds`, diagnostics).
+- Explicit `/bugfix` (confidence 1) skips the Officer LLM.
+- Rule↔LLM task conflict → **LLM primary wins**; agreement can still boost confidence.
+- `taskSize` / `planningHint` prefer Officer `taskHints`, else sizeDraft, else complexity map.
 - Recommendations are advisory; Decision Policy decides route and grants.
 
 ## Ownership Boundaries

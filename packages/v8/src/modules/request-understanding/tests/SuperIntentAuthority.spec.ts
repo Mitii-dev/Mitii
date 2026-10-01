@@ -79,7 +79,7 @@ describe("SuperIntent 70% LLM authority", () => {
     expect(result.status).toBe("accepted");
   });
 
-  it("lets a strong ≥0.85 rule hold task primary against a bare 0.70 LLM ballot", () => {
+  it("lets Officer LLM primary win over a strong ≥0.85 rule on task conflict", () => {
     const result = resolver.resolve({
       mode: "agent",
       ruleResult: {
@@ -101,8 +101,8 @@ describe("SuperIntent 70% LLM authority", () => {
       },
     });
 
-    expect(result.classification.primaryTaskIntent).toBe("bugfix");
-    expect(result.classification.confidence).toBeGreaterThanOrEqual(0.88);
+    expect(result.classification.primaryTaskIntent).toBe("feature");
+    expect(result.classification.confidence).toBeGreaterThanOrEqual(0.7);
     expect(result.status).toBe("accepted");
   });
 

@@ -18,7 +18,10 @@ import type {
   TaskComplexity,
   TaskScope,
   TaskTarget,
+  TaskSize,
+  PlanningHint,
 } from "../../contracts";
+import { defaultPlanningHintForSize } from "../../../intent/evidence/sizeDraft";
 
 export class RulewiseTaskAnalyzer {
   private readonly targetExtractor: TaskTargetExtractor;
@@ -233,6 +236,18 @@ export class RulewiseTaskAnalyzer {
           complexityResult.complexity === "complex" ||
           complexityResult.complexity === "very_complex"));
 
+    const { taskSize, planningHint } = this.resolveTaskSizeAndPlanningHint({
+      officerTaskSize: taskHints?.taskSize,
+      officerPlanningHint: taskHints?.planningHint,
+      sizeDraft: input.sizeDraft?.taskSize,
+      complexity: complexityResult.complexity,
+      interactionIntent,
+      recommendsPlanning,
+    });
+
+    const recommendsPlanningNormalized =
+      recommendsPlanning || planningHint !== "none";
+
     const recommendsTaskClarification =
       input.intent.recommendsClarification ||
       (isActionable && clarity === "unclear");
@@ -261,9 +276,11 @@ export class RulewiseTaskAnalyzer {
       requestedOutcomes,
 
       recommendsRepositoryDiscovery,
-      recommendsPlanning,
+      recommendsPlanning: recommendsPlanningNormalized,
       recommendsVerification,
       recommendsTaskClarification,
+      taskSize,
+      planningHint,
 
       estimatedFilesAffected: this.estimateFilesAffected(
         scopeResult.scope,
@@ -273,6 +290,48 @@ export class RulewiseTaskAnalyzer {
       signals: allSignals,
       confidence: overallConfidence,
     };
+  }
+
+  private resolveTaskSizeAndPlanningHint(params: {
+    officerTaskSize?: TaskSize;
+    officerPlanningHint?: PlanningHint;
+    sizeDraft?: TaskSize;
+    complexity: TaskComplexity;
+    interactionIntent: string;
+    recommendsPlanning: boolean;
+  }): { taskSize: TaskSize; planningHint: PlanningHint } {
+    const fromComplexity = ((): TaskSize => {
+      switch (params.complexity) {
+        case "trivial":
+        case "simple":
+          return "small";
+        case "moderate":
+          return "medium";
+        case "complex":
+        case "very_complex":
+          return "large";
+      }
+    })();
+
+    const taskSize =
+      params.officerTaskSize ?? params.sizeDraft ?? fromComplexity;
+
+    let planningHint =
+      params.officerPlanningHint ?? defaultPlanningHintForSize(taskSize);
+
+    if (params.interactionIntent === "plan" && planningHint === "none") {
+      planningHint = taskSize === "large" ? "long" : "short";
+    }
+    if (taskSize === "small" && params.interactionIntent !== "plan") {
+      planningHint = params.officerPlanningHint === "none" || !params.officerPlanningHint
+        ? "none"
+        : planningHint;
+      if (!params.officerPlanningHint && !params.recommendsPlanning) {
+        planningHint = "none";
+      }
+    }
+
+    return { taskSize, planningHint };
   }
 
   /**

@@ -168,6 +168,11 @@ export const DECISION_REASON_CODES = [
    */
   "policy_llm_authority_write",
   /**
+   * RU Officer taskSize / planningHint drove plan-then-finish depth
+   * (medium+ → internal/visible; not route=plan).
+   */
+  "officer_task_size_plan",
+  /**
    * Host attached MCP server(s) (`requiredMcpServerIds` / `@mcp:` / Database
    * mode). Tool-less direct_answer is upgraded to repository_answer so pinned
    * MCP tools stay available for follow-up queries.
