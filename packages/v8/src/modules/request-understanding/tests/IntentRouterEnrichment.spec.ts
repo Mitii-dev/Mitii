@@ -119,6 +119,7 @@ describe("IntentRouter enrichment", () => {
     expect(provider.callCount).toBe(0);
     expect(result.classification.primaryTaskIntent).toBe("bugfix");
     expect(result.diagnostics.ruleSource).toBe("explicit_rule");
+    expect(result.diagnostics.taskAgreement).toBe(false);
     expect(result.classification.confidence).toBe(1);
   });
 
@@ -196,7 +197,7 @@ describe("IntentRouter enrichment", () => {
 });
 
 describe("TaskAnalyzer hint merge", () => {
-  it("merges LLM targets that deterministic extraction missed", () => {
+  it("merges LLM targets that deterministic extraction missed as non-explicit without a repo map", () => {
     const analyzer = new TaskAnalyzer();
     const analysis = analyzer.analyze({
       userMessage: "Fix the edge case in the utility helper",
@@ -213,14 +214,107 @@ describe("TaskAnalyzer hint merge", () => {
       }),
     });
 
-    expect(
-      analysis.targets.some(
-        (target) =>
-          target.kind === "file" && target.value === "src/hidden/util.ts",
-      ),
-    ).toBe(true);
+    const hinted = analysis.targets.find(
+      (target) =>
+        target.kind === "file" && target.value === "src/hidden/util.ts",
+    );
+    expect(hinted).toBeDefined();
+    expect(hinted?.explicit).toBe(false);
     expect(analysis.constraints).toContain("Do not change public APIs");
     expect(analysis.requestedOutcomes).toContain("Utility edge case passes");
     expect(analysis.clarity).toBe("unclear");
+  });
+
+  it("keeps LLM file hints explicit when they match the repo-map candidates", () => {
+    const analyzer = new TaskAnalyzer();
+    const analysis = analyzer.analyze({
+      userMessage: "Fix the edge case in the utility helper",
+      intent: baseIntent({
+        taskHints: {
+          targets: [
+            { kind: "file", value: "src/hidden/util.ts", explicit: true },
+          ],
+          constraints: [],
+          requestedOutcomes: [],
+          recommendedSkillTags: [],
+        },
+      }),
+      candidateRelativePaths: ["src/hidden/util.ts", "src/other.ts"],
+    });
+
+    const hinted = analysis.targets.find(
+      (target) => target.value === "src/hidden/util.ts",
+    );
+    expect(hinted?.explicit).toBe(true);
+  });
+
+  it("emits both symbol and file targets for symbol artifacts", () => {
+    const analyzer = new TaskAnalyzer();
+    const analysis = analyzer.analyze({
+      userMessage: "Fix the null check",
+      intent: baseIntent(),
+      referencedArtifacts: [
+        {
+          kind: "symbol",
+          name: "signIn",
+          path: "src/LoginForm.tsx",
+        },
+      ],
+    });
+
+    expect(
+      analysis.targets.some(
+        (target) => target.kind === "symbol" && target.value === "signIn",
+      ),
+    ).toBe(true);
+    expect(
+      analysis.targets.some(
+        (target) =>
+          target.kind === "file" && target.value === "src/LoginForm.tsx",
+      ),
+    ).toBe(true);
+  });
+});
+
+describe("RuleIntentClassifier interaction and multi-match", () => {
+  const classifier = new RuleIntentClassifier();
+
+  it("treats explain-and-fix as act", () => {
+    const result = classifier.classifyMessage(
+      "Explain the crash and fix it in parse.ts",
+    );
+    expect(result?.interactionIntent).toBe("act");
+    expect(result?.primaryTaskIntent).toBe("bugfix");
+  });
+
+  it("keeps explain-only and do-not-fix as question", () => {
+    expect(
+      classifier.classifyMessage("Do not fix it; explain the crash")
+        ?.interactionIntent,
+    ).toBe("question");
+  });
+
+  it("keeps a weak heuristic when multiple task patterns match", () => {
+    const result = classifier.classifyMessage(
+      "Add an API endpoint and write unit tests for it",
+    );
+    expect(result).not.toBeNull();
+    expect(result?.primaryTaskIntent).toMatch(/feature|test/);
+    expect(
+      [result?.primaryTaskIntent, ...(result?.alternatives.map((a) => a.intent) ?? [])],
+    ).toEqual(expect.arrayContaining(["feature", "test"]));
+  });
+
+  it("matches Fix the login button as bugfix", () => {
+    const result = classifier.classifyMessage("Fix the login button");
+    expect(result?.primaryTaskIntent).toBe("bugfix");
+    expect(result?.interactionIntent).toBe("act");
+  });
+
+  it("does not classify Make this component faster as style", () => {
+    const result = classifier.classifyMessage(
+      "Make this component faster",
+    );
+    expect(result?.primaryTaskIntent).not.toBe("style");
   });
 });

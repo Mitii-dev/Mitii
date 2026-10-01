@@ -10,16 +10,30 @@ import {
   estimateIndexProgressPercent,
   IndexLockedError,
   isIndexLockHeld,
+  readIndexPipelineHealth,
   readIndexProgress,
   readIndexRuntimeMetadata,
   runFullWorkspaceIndex,
+  type IndexPipelineHealth,
   type SemanticIndexSettings,
   type WorkspaceIndexProgress,
 } from '@mitii/host';
 import Database from 'better-sqlite3';
 
+import {
+  appendDesktopLog,
+  errorMessage,
+  resolveLogsDir,
+} from '../shared/project-logs.js';
 import { workspaceIdFromRoot } from './workspace-id.js';
 import { openDesktopStore } from './desktop-store.js';
+
+function indexLogsDir(workspaceRoot: string): string | undefined {
+  return (
+    resolveLogsDir(undefined, process.env) ??
+    join(workspaceRoot, '.mitii', 'logs')
+  );
+}
 
 export interface DesktopIndexStatus {
   indexed: boolean;
@@ -38,6 +52,8 @@ export interface DesktopIndexStatus {
   /** FTS/symbols usable while embeddings may still run. */
   lexicalReady?: boolean;
   embeddingPhase?: string;
+  /** Shared pipeline board (Code / FTS / Embeddings / native). */
+  health?: IndexPipelineHealth;
 }
 
 /** Active reindex abort controller (module-level for pause route). */
@@ -65,6 +81,7 @@ export function getIndexStatus(workspaceRoot: string): DesktopIndexStatus {
   const mitiiDir = join(workspaceRoot, '.mitii');
   const lock = isIndexLockHeld(mitiiDir);
   const progress = lock.held ? readIndexProgress(mitiiDir) : undefined;
+  const health = readIndexPipelineHealth({ workspaceRoot });
 
   const metaPath = join(mitiiDir, 'index-runtime.json');
   const meta = readIndexRuntimeMetadata(metaPath);
@@ -97,12 +114,13 @@ export function getIndexStatus(workspaceRoot: string): DesktopIndexStatus {
     if (existsSync(sqliteFallback)) {
       return {
         indexed: true,
-        fileCount: 0,
-        truncated: false,
+        fileCount: health.counts.files,
+        truncated: health.counts.truncated,
         message: runningFields.running
           ? runningFields.progressMessage ?? 'Indexing in progress…'
           : 'Index database present (metadata missing). Reindex recommended.',
         sqlitePath: sqliteFallback,
+        health,
         ...runningFields,
       };
     }
@@ -113,6 +131,7 @@ export function getIndexStatus(workspaceRoot: string): DesktopIndexStatus {
       message: runningFields.running
         ? runningFields.progressMessage ?? 'Indexing in progress…'
         : 'No index yet. Click Reindex to build workspace context.',
+      health,
       ...runningFields,
     };
   }
@@ -125,9 +144,12 @@ export function getIndexStatus(workspaceRoot: string): DesktopIndexStatus {
       ? runningFields.progressMessage ?? 'Indexing in progress…'
       : meta.lastEmbeddingError
         ? `Indexed with embedding issue: ${meta.lastEmbeddingError}`
-        : `Indexed ${meta.fileCount ?? 0} files`,
+        : health.overall === 'lexical_only'
+          ? `Lexical ready (${meta.fileCount ?? 0} files); embeddings ${health.pipelines.embeddings.status}`
+          : `Indexed ${meta.fileCount ?? 0} files`,
     sqlitePath: meta.sqlitePath,
     embeddingError: meta.lastEmbeddingError,
+    health,
     ...runningFields,
   };
 }
@@ -192,6 +214,19 @@ export async function reindexWorkspace(options: {
 
   try {
     const workspaceId = workspaceIdFromRoot(options.workspaceRoot);
+    const logsDir = indexLogsDir(options.workspaceRoot);
+    const scoped = Boolean(options.filePaths?.length);
+    appendDesktopLog(logsDir, 'indexing', 'start', {
+      mirrorRuns: true,
+      extra: {
+        force: options.force === true,
+        scoped,
+        pathCount: options.filePaths?.length ?? 0,
+        maximumFiles: options.maximumFiles,
+        semanticEnabled: options.semanticIndex?.enabled === true,
+      },
+    });
+
     const result = await runFullWorkspaceIndex({
       mitiiDir,
       workspaceRoot: options.workspaceRoot,
@@ -216,7 +251,18 @@ export async function reindexWorkspace(options: {
       openDatabase: ((
         filename: string,
         openOptions?: { readonly?: boolean; fileMustExist?: boolean },
-      ) => new Database(filename, openOptions)) as never,
+      ) => {
+        try {
+          return new Database(filename, openOptions);
+        } catch (error) {
+          appendDesktopLog(logsDir, 'sqlite', `open_failed ${errorMessage(error)}`, {
+            level: 'error',
+            mirrorRuns: true,
+            extra: { path: filename },
+          });
+          throw error;
+        }
+      }) as never,
     });
 
     // Record index meta on the Desktop-owned multi-repo store when available.
@@ -235,29 +281,54 @@ export async function reindexWorkspace(options: {
         } finally {
           store.close();
         }
-      } catch {
-        /* non-fatal */
+      } catch (error) {
+        appendDesktopLog(
+          logsDir,
+          'store',
+          `index_meta_write_failed ${errorMessage(error)}`,
+          {
+            level: 'warn',
+            extra: { storePath, workspaceRoot: options.workspaceRoot },
+          },
+        );
       }
     }
+
+    const message =
+      result.status === 'indexed'
+        ? `Indexed ${result.fileCount} files`
+        : result.status === 'unchanged'
+          ? 'Index unchanged'
+          : result.status === 'skipped'
+            ? `Skipped${result.skipReason ? ` (${result.skipReason})` : ''}`
+            : result.status === 'cancelled'
+              ? 'Index paused'
+              : `Index ${result.status}`;
+
+    appendDesktopLog(logsDir, 'indexing', `finished ${result.status}`, {
+      level: result.status === 'cancelled' ? 'warn' : 'info',
+      mirrorRuns: true,
+      extra: {
+        fileCount: result.fileCount,
+        truncated: result.truncated,
+        message,
+      },
+    });
 
     return {
       status: result.status,
       fileCount: result.fileCount,
       truncated: result.truncated,
-      message:
-        result.status === 'indexed'
-          ? `Indexed ${result.fileCount} files`
-          : result.status === 'unchanged'
-            ? 'Index unchanged'
-            : result.status === 'skipped'
-              ? `Skipped${result.skipReason ? ` (${result.skipReason})` : ''}`
-              : result.status === 'cancelled'
-                ? 'Index paused'
-                : `Index ${result.status}`,
+      message,
     };
   } catch (error) {
+    const logsDir = indexLogsDir(options.workspaceRoot);
     if (error instanceof IndexLockedError) {
       const status = getIndexStatus(options.workspaceRoot);
+      appendDesktopLog(logsDir, 'indexing', 'skipped_locked', {
+        level: 'warn',
+        mirrorRuns: true,
+      });
       return {
         status: 'skipped',
         fileCount: status.fileCount,
@@ -267,8 +338,12 @@ export async function reindexWorkspace(options: {
           'Indexing already running — watch the header icon for progress.',
       };
     }
-    const message = error instanceof Error ? error.message : String(error);
+    const message = errorMessage(error);
     if (controller.signal.aborted || /cancell?ed/i.test(message)) {
+      appendDesktopLog(logsDir, 'indexing', 'cancelled', {
+        level: 'warn',
+        mirrorRuns: true,
+      });
       return {
         status: 'cancelled',
         fileCount: 0,
@@ -276,6 +351,11 @@ export async function reindexWorkspace(options: {
         message: 'Index paused',
       };
     }
+    appendDesktopLog(logsDir, 'indexing', `failed ${message}`, {
+      level: 'error',
+      mirrorRuns: true,
+      extra: { workspaceRoot: options.workspaceRoot },
+    });
     throw error;
   } finally {
     if (options.abortSignal) {

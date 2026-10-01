@@ -21,6 +21,7 @@ import type {
   ToolGrant,
 } from "../contracts";
 import { extractPrimaryUserMessage } from "../../request-understanding/intent/extractPrimaryUserMessage";
+import { isContinuationTurnKind } from "../../request-understanding/intent/policy/TurnKindIntentPolicy";
 
 export class DecisionPolicyPipeline {
   public decide(input: DecisionPolicyInput): ExecutionDecision {
@@ -51,7 +52,9 @@ export class DecisionPolicyPipeline {
       planApproval: parsed.planApproval,
       windowPolicy: parsed.windowPolicy,
       origin: parsed.envelope.origin,
-      policyFactsFirst: parsed.policyFactsFirst === true,
+      // undefined/true → facts-first when high-confidence; false = kill-switch.
+      policyFactsFirst: parsed.policyFactsFirst,
+      turnKind: parsed.envelope.turnKind,
       requiredMcpServerIds: parsed.requiredMcpServerIds,
     });
     const grantCompiled = compileGrant({
@@ -104,6 +107,9 @@ export class DecisionPolicyPipeline {
       ...preflightBuild.reasonCodes,
       ...injection.reasonCodes,
       ...safetyResult.reasonCodes,
+      ...(isContinuationTurnKind(parsed.envelope.turnKind)
+        ? (["turn_continuation"] as const)
+        : []),
     ]);
     const trace = buildDecisionTrace({
       reasonCodes,
@@ -340,7 +346,8 @@ function clampGrantAgainstInjection(
               tool !== "delete_file" &&
               tool !== "delete_directory" &&
               tool !== "move_file" &&
-              tool !== "run_command",
+              tool !== "run_command" &&
+              tool !== "git_signoff_range",
           ),
           allowedEffects: grant.allowedEffects.filter(
             (effect) =>
@@ -363,6 +370,9 @@ function clampGrantAgainstInjection(
     clamped: true,
     toolGrant: {
       ...grant,
+      allowedTools: grant.allowedTools.filter(
+        (tool) => tool !== "git_signoff_range",
+      ),
       allowedEffects: grant.allowedEffects.filter(
         (effect) =>
           effect !== "git_write" &&

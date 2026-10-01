@@ -1,8 +1,11 @@
 import type {
   RepoBuildStateComparison,
+  VerificationDiagnostic,
   VerificationResult,
 } from "../../../modules/verification";
-import { packDiagnosticsForModel } from "../../../modules/verification/actions/NormalizeDiagnostics";
+import { packDiagnosticsForModel } from "../../../modules/verification";
+
+import { diagnosticSourceLineKey } from "./loadDiagnosticSourceLines";
 
 const DEFAULT_MAX_DIAGNOSTICS = 16;
 const DEFAULT_MESSAGE_CHARS = 180;
@@ -20,6 +23,11 @@ export function buildVerificationRepairPrompt(params: {
   comparison?: RepoBuildStateComparison;
   changedFiles: readonly string[];
   maxDiagnostics?: number;
+  /**
+   * Optional source line text keyed by `diagnosticSourceLineKey(path, line)`.
+   * Loaded by the engine before packaging — never stored on the durable record.
+   */
+  sourceLines?: ReadonlyMap<string, string>;
   mutationBudget?: {
     maxPatchesPerCall: number;
     maxUniqueFilesPerCall: number;
@@ -42,14 +50,9 @@ export function buildVerificationRepairPrompt(params: {
     maxTotal: maxDiagnostics,
     errorsOnly: true,
   });
-  const diagnostics = packed.diagnostics.map((diagnostic) => {
-    const line = diagnostic.startLine ? `:${diagnostic.startLine}` : "";
-    const message = diagnostic.message.replace(/\s+/g, " ").trim().slice(
-      0,
-      DEFAULT_MESSAGE_CHARS,
-    );
-    return `- ${diagnostic.path}${line} ${message}`;
-  });
+  const diagnostics = packed.diagnostics.flatMap((diagnostic) =>
+    formatDiagnosticRepairLines(diagnostic, params.sourceLines),
+  );
 
   const failedCheckLines = (params.verification?.checks ?? [])
     .filter((check) => check.outcome === "failed")
@@ -107,4 +110,26 @@ export function buildVerificationRepairPrompt(params: {
   ]
     .filter((line): line is string => Boolean(line))
     .join("\n");
+}
+
+function formatDiagnosticRepairLines(
+  diagnostic: VerificationDiagnostic,
+  sourceLines: ReadonlyMap<string, string> | undefined,
+): string[] {
+  const line = diagnostic.startLine ? `:${diagnostic.startLine}` : "";
+  const message = diagnostic.message.replace(/\s+/g, " ").trim().slice(
+    0,
+    DEFAULT_MESSAGE_CHARS,
+  );
+  const header = `- ${diagnostic.path}${line} ${message}`;
+  if (!diagnostic.startLine || !sourceLines) {
+    return [header];
+  }
+  const snippet = sourceLines.get(
+    diagnosticSourceLineKey(diagnostic.path, diagnostic.startLine),
+  );
+  if (!snippet) {
+    return [header];
+  }
+  return [header, `  | ${snippet}`];
 }

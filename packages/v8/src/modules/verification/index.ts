@@ -70,13 +70,21 @@ export type {
   VerificationErrorCode,
   VerificationToolExecutorPort,
   VerificationManifestReaderPort,
+  VerificationSyntaxPort,
+  VerificationSyntaxFinding,
   VerificationRecordStorePort,
 } from "./contracts";
+
+export { SYNTAX_PORT_EVIDENCE } from "./contracts";
 
 export {
   buildVerificationRecord,
   buildVerificationUserSummary,
 } from "./records";
+
+export {
+  packDiagnosticsForModel,
+} from "./actions";
 
 export {
   InMemoryManifestReader,

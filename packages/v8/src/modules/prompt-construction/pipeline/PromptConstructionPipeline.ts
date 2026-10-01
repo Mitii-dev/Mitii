@@ -95,6 +95,9 @@ export class PromptConstructionPipeline {
       skills: parsed.instructions?.skills ?? [],
       memory: parsed.instructions?.memory ?? [],
       environment: parsed.instructions?.environment ?? [],
+      extraFragments: parsed.extraFragments ?? [],
+      injectSkillCatalogL1: parsed.injectSkillCatalogL1 === true,
+      skillCatalogL1: parsed.skillCatalogL1 ?? [],
       estimator: this.estimator,
       budgetTokens: systemBudget,
       planText: parsed.planText,
@@ -141,6 +144,15 @@ export class PromptConstructionPipeline {
         trust: "trusted_instruction",
       });
     }
+    if (system.skillCatalogL1Injected) {
+      provenance.push({
+        blockId: "system:skill-catalog-l1",
+        section: "skills",
+        source: "skills:catalog_l1",
+        trust: "trusted_instruction",
+      });
+      reasonCodes.push("skill_catalog_l1_injected");
+    }
     for (const id of system.includedMemoryIds) {
       provenance.push({
         blockId: id,
@@ -149,10 +161,39 @@ export class PromptConstructionPipeline {
         trust: "untrusted_memory_content",
       });
     }
+    const extraById = new Map(
+      (parsed.extraFragments ?? []).map((fragment) => [fragment.id, fragment]),
+    );
+    for (const id of system.includedExtraIds) {
+      const extra = extraById.get(id);
+      const section =
+        !extra || extra.section === "environment"
+          ? "system"
+          : extra.section === "plan"
+            ? "plan"
+            : extra.section === "rules" ||
+                extra.section === "skills" ||
+                extra.section === "memory"
+              ? extra.section
+              : "system";
+      provenance.push({
+        blockId: id,
+        section,
+        source: `extra:${extra?.contentKind ?? id}`,
+        trust: extra?.trust ?? "trusted_instruction",
+      });
+    }
+    if (system.includedExtraIds.length > 0) {
+      reasonCodes.push("extra_fragments_injected");
+    }
     for (const omitted of system.omitted) {
       omissions.push({
         section:
-          omitted.section === "environment" ? "system" : omitted.section,
+          omitted.section === "environment" || omitted.section === "system"
+            ? "system"
+            : omitted.section === "plan"
+              ? "plan"
+              : omitted.section,
         reason: "budget",
         detail: `Omitted instruction block ${omitted.id}`,
         tokens: omitted.tokens,
@@ -171,11 +212,12 @@ export class PromptConstructionPipeline {
       system.includedRuleIds,
       this.estimator,
     );
-    const skillsUsed = sumInstructionTokens(
-      parsed.instructions?.skills ?? [],
-      system.includedSkillIds,
-      this.estimator,
-    );
+    const skillsUsed =
+      sumInstructionTokens(
+        parsed.instructions?.skills ?? [],
+        system.includedSkillIds,
+        this.estimator,
+      ) + system.skillCatalogL1UsedTokens;
     const memoryUsed = sumInstructionTokens(
       parsed.instructions?.memory ?? [],
       system.includedMemoryIds,

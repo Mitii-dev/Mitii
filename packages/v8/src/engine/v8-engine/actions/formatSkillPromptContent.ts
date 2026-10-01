@@ -1,2 +1,2 @@
 /** Bridged to domain package. */
-export * from "../../../modules/skills/actions/formatSkillPromptContent";
+export { formatSkillPromptContent } from "../../../modules/skills";

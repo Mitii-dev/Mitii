@@ -61,6 +61,7 @@ export {
   CODE_INTELLIGENCE_TOOL_IDS,
   DIAGNOSTICS_TOOL_IDS,
   GITHUB_MUTATION_TOOL_IDS,
+  GIT_MUTATION_TOOL_IDS,
   MUTATION_TOOL_IDS,
   PROCESS_TOOL_IDS,
   READ_ONLY_TOOL_IDS,
@@ -110,6 +111,11 @@ export const DECISION_REASON_CODES = [
   "direct_knowledge_answer",
   "repository_grounded_answer",
   "mutation_execute",
+  /** Tool grant profile selected by BuildToolGrant (audit / debug). */
+  "grant_profile_none",
+  "grant_profile_network_only",
+  "grant_profile_readonly",
+  "grant_profile_agent_execute",
   /** Workspace-grounded bug report promoted to execute (may still be diagnose-first). */
   "workspace_bug_execute",
   /** Agent reported a runtime symptom (loading/hang) — diagnose with tools, not tool-less chat. */
@@ -118,6 +124,11 @@ export const DECISION_REASON_CODES = [
   "mutation_budget_standard",
   "mutation_budget_tight",
   "process_execution_granted",
+  /**
+   * User asked to fix DCO / Signed-off-by / rewrite commit metadata.
+   * Prefer `git_signoff_range` over apply_patch on workflow files.
+   */
+  "vcs_history_rewrite",
   "verification_required",
   "verification_not_required",
   /** Agent/ask asked to run tests or inspect pass/fail — diagnose with process tools. */
@@ -136,6 +147,11 @@ export const DECISION_REASON_CODES = [
   /** Request originated from an API client rather than an interactive user. */
   "api_origin",
   /**
+   * Intake turnKind is a continuation (steer / follow_up / continue / recover),
+   * not a fresh new request — prefer acting over re-clarifying.
+   */
+  "turn_continuation",
+  /**
    * Unattended origin would have clarified; Decision Policy continued with the
    * best-effort non-clarify route instead of suspending for interactive input.
    */
@@ -151,6 +167,11 @@ export const DECISION_REASON_CODES = [
    * act/mutation ballot (same authority rule as SuperIntent; follow-ups too).
    */
   "policy_llm_authority_write",
+  /**
+   * RU Officer taskSize / planningHint drove plan-then-finish depth
+   * (medium+ → internal/visible; not route=plan).
+   */
+  "officer_task_size_plan",
   /**
    * Host attached MCP server(s) (`requiredMcpServerIds` / `@mcp:` / Database
    * mode). Tool-less direct_answer is upgraded to repository_answer so pinned

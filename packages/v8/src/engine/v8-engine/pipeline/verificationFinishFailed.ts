@@ -10,6 +10,8 @@ import type {
 
 import {
   buildVerificationRepairPrompt,
+  loadDiagnosticSourceLines,
+  resolveFailedVerificationTerminalStatus,
   selectUserFacingLoopAnswer,
   shouldContinueVerificationRepair,
   nextStalledRepairCount,
@@ -81,10 +83,14 @@ export async function handleVerificationFailed(params: {
     mode?: "ask" | "plan" | "agent";
     projects?: readonly import("../../../modules/repository-state").ProjectDescriptor[];
     memoryFacts?: readonly { id: string; content: string }[];
+    memoryQuery?: string;
+    memoryWorkspaceId?: string;
+    memoryFileTargets?: readonly string[];
     establishedFacts?: import("../actions").EstablishedFact[];
     selectedSkillIds?: string[];
     projectRuleIds?: string[];
     environmentIds?: string[];
+    instructionBodies?: import("../internal/system-context").InstructionBodiesByKind;
     requiredSkillIds?: string[];
     excludedSkillIds?: string[];
     plan?: import("../../../modules/planning").PlanArtifact;
@@ -227,6 +233,10 @@ export async function handleVerificationFailed(params: {
         comparison: verificationOutcome.comparison,
         changedFiles: loopChangedFiles,
         mutationBudget: decision.toolGrant.mutationBudget,
+        sourceLines: await loadRepairSourceLines({
+          workspaceRoot: input.workspaceRoot,
+          verification: verificationOutcome.verification,
+        }),
         ...(repairPrep.activeItem
           ? {
               activeBatch: {
@@ -261,10 +271,14 @@ export async function handleVerificationFailed(params: {
       mutationCheckpointIds: loopMutationIds,
       taskListRef,
       memoryFacts: loopContext?.memoryFacts,
+      memoryQuery: loopContext?.memoryQuery,
+      memoryWorkspaceId: loopContext?.memoryWorkspaceId,
+      memoryFileTargets: loopContext?.memoryFileTargets,
       establishedFacts: loopContext?.establishedFacts ?? [],
       selectedSkillIds: loopContext?.selectedSkillIds,
       projectRuleIds: loopContext?.projectRuleIds,
       environmentIds: loopContext?.environmentIds,
+      instructionBodies: loopContext?.instructionBodies,
       evidence,
       windowPolicy,
       continueOverrideCount,
@@ -414,9 +428,15 @@ export async function handleVerificationFailed(params: {
   }
   await runtime.safeUnpin(runId, pinnedState);
   reasonCodes.push("answer_produced");
-  const keptMutationsWithFailedVerification = loopChangedFiles.length > 0;
+  const status = resolveFailedVerificationTerminalStatus({
+    changedFileCount: loopChangedFiles.length,
+    rejectKind: verificationOutcome.rejectKind,
+  });
+  if (status === "failed" && verificationOutcome.rejectKind === "no_mutation_performed") {
+    reasonCodes.push("no_mutation_performed", "incomplete_execute");
+  }
   return { kind: "return", result: finish({
-    status: keptMutationsWithFailedVerification ? "failed" : "completed",
+    status,
     answer: selectUserFacingLoopAnswer({
       loopAnswer:
         "answer" in currentOutcome ? currentOutcome.answer : loopAnswer,
@@ -424,8 +444,24 @@ export async function handleVerificationFailed(params: {
       changedFiles: loopChangedFiles,
     }),
     reasonCodes,
-    error: keptMutationsWithFailedVerification
-      ? verificationOutcome.error
-      : undefined,
+    error: status === "failed" ? verificationOutcome.error : undefined,
   }) };
+}
+
+async function loadRepairSourceLines(params: {
+  workspaceRoot: string | undefined;
+  verification: import("../../../modules/verification").VerificationResult | undefined;
+}): Promise<ReadonlyMap<string, string> | undefined> {
+  if (!params.workspaceRoot || !params.verification) {
+    return undefined;
+  }
+  try {
+    const lines = await loadDiagnosticSourceLines({
+      workspaceRoot: params.workspaceRoot,
+      diagnostics: params.verification.diagnostics,
+    });
+    return lines.size > 0 ? lines : undefined;
+  } catch {
+    return undefined;
+  }
 }

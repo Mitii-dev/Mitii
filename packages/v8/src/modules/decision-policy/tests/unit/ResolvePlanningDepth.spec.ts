@@ -131,4 +131,56 @@ describe("resolvePlanningDepth", () => {
 
     expect(result.planningDepth).toBe("none");
   });
+
+  it("honors Officer medium taskSize with short planningHint as internal", () => {
+    const understanding = createUnderstanding({
+      primaryTaskIntent: "bugfix",
+      taskAnalysis: {
+        scope: "single_location",
+        complexity: "simple",
+        risk: "low",
+        taskSize: "medium",
+        planningHint: "short",
+      },
+    });
+
+    const result = resolvePlanningDepth({
+      mode: "agent",
+      route: "execute",
+      understanding,
+      message: "Fix the failing tests",
+      windowPolicy: {
+        planning: { visiblePlanAffordable: true, changeImpactAffordable: true },
+      } as never,
+    });
+
+    expect(result.planningDepth).toBe("internal");
+    expect(result.reasonCodes).toContain("officer_task_size_plan");
+  });
+
+  it("honors Officer large taskSize as visible when affordable", () => {
+    const understanding = createUnderstanding({
+      primaryTaskIntent: "feature",
+      taskAnalysis: {
+        scope: "multi_file",
+        complexity: "moderate",
+        risk: "low",
+        taskSize: "large",
+        planningHint: "long",
+      },
+    });
+
+    const result = resolvePlanningDepth({
+      mode: "agent",
+      route: "execute",
+      understanding,
+      message: "Implement the settings flow",
+      windowPolicy: {
+        planning: { visiblePlanAffordable: true, changeImpactAffordable: true },
+      } as never,
+    });
+
+    expect(result.planningDepth).toBe("visible");
+    expect(result.reasonCodes).toContain("officer_task_size_plan");
+  });
 });

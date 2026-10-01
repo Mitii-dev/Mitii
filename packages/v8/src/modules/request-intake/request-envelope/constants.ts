@@ -1,4 +1,7 @@
 import type {
+  MetaCommandLifecycle,
+  RequestSessionAction,
+  RequestTurnKind,
   UserRequestOrigin,
 } from "./types";
 
@@ -17,11 +20,35 @@ export const USER_REQUEST_ORIGINS = [
   "automation",
   "api",
 ] as const satisfies
-  readonly UserRequestOrigin[];
+    readonly UserRequestOrigin[];
+
+export const REQUEST_TURN_KINDS = [
+  "new",
+  "continue",
+  "steer",
+  "follow_up",
+  "recover",
+] as const satisfies readonly RequestTurnKind[];
+
+export const REQUEST_SESSION_ACTIONS = [
+  "continue",
+  "new",
+  "resume",
+] as const satisfies readonly RequestSessionAction[];
+
+export const META_COMMAND_LIFECYCLES = [
+  "side_channel",
+  "stop",
+  "finalize",
+  "agent_turn",
+  "agent_turn_with_args",
+] as const satisfies readonly MetaCommandLifecycle[];
 
 export const REQUEST_ENVELOPE_DEFAULTS = {
   ORIGIN:
     "user" as UserRequestOrigin,
+  TURN_KIND:
+    "new" as RequestTurnKind,
 } as const;
 
 export const REQUEST_ENVELOPE_LIMITS = {

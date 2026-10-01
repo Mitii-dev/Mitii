@@ -531,4 +531,117 @@ describe("PromptConstructionPipeline", () => {
       ),
     ).toBe(true);
   });
+
+  it("injects serializable extraFragments into the system blob with provenance", () => {
+    const result = new PromptConstructionPipeline().construct(
+      createPromptInput({
+        extraFragments: [
+          {
+            id: "locale-en",
+            role: "system",
+            contentKind: "host.preferred_language",
+            section: "system",
+            trust: "trusted_instruction",
+            content: "Speak in English unless the user asks otherwise.",
+            priority: 50,
+          },
+        ],
+      }),
+    );
+
+    expect(result.request.messages[0]?.content).toContain(
+      "Speak in English unless the user asks otherwise.",
+    );
+    expect(result.reasonCodes).toContain("extra_fragments_injected");
+    expect(
+      result.provenance.some(
+        (entry) =>
+          entry.blockId === "locale-en" &&
+          entry.source === "extra:host.preferred_language",
+      ),
+    ).toBe(true);
+  });
+
+  it("admits separate-message extraFragments as user role when requested", () => {
+    const result = new PromptConstructionPipeline().construct(
+      createPromptInput({
+        extraFragments: [
+          {
+            id: "epoch-hint",
+            role: "user",
+            contentKind: "generic.context_epoch_update",
+            section: "system",
+            trust: "trusted_instruction",
+            content: "Environment context blocks are now: env-1.",
+            separateMessage: true,
+            marked: true,
+            priority: 10,
+          },
+        ],
+      }),
+    );
+
+    const separate = result.request.messages.find(
+      (message) =>
+        message.role === "user" &&
+        message.content.includes("Environment context blocks are now"),
+    );
+    expect(separate).toBeDefined();
+    expect(result.request.messages[0]?.role).toBe("system");
+    expect(result.request.messages[0]?.content).not.toContain(
+      "Environment context blocks are now",
+    );
+  });
+
+  it("injects optional L1 skill catalog when flag is on", () => {
+    const result = new PromptConstructionPipeline().construct(
+      createPromptInput({
+        injectSkillCatalogL1: true,
+        skillCatalogL1: [
+          {
+            id: "bugfix",
+            name: "Bugfix",
+            description: "Localize and fix defects with a tight loop.",
+          },
+          {
+            id: "review",
+            name: "Review",
+            description: "Review diffs for correctness and risk.",
+          },
+        ],
+      }),
+    );
+
+    const system = result.request.messages[0]?.content ?? "";
+    expect(system).toContain("<available_skills>");
+    expect(system).toContain("<name>Bugfix</name>");
+    expect(system).toContain("Localize and fix defects");
+    expect(result.reasonCodes).toContain("skill_catalog_l1_injected");
+    expect(
+      result.provenance.some(
+        (entry) =>
+          entry.blockId === "system:skill-catalog-l1" &&
+          entry.section === "skills",
+      ),
+    ).toBe(true);
+  });
+
+  it("does not inject L1 skill catalog when flag is off", () => {
+    const result = new PromptConstructionPipeline().construct(
+      createPromptInput({
+        skillCatalogL1: [
+          {
+            id: "bugfix",
+            name: "Bugfix",
+            description: "Localize and fix defects with a tight loop.",
+          },
+        ],
+      }),
+    );
+
+    expect(result.request.messages[0]?.content).not.toContain(
+      "<available_skills>",
+    );
+    expect(result.reasonCodes).not.toContain("skill_catalog_l1_injected");
+  });
 });

@@ -9,6 +9,8 @@ import {
 const REASON_PLAYBOOKS: Partial<Record<DecisionReasonCode, string>> = {
   mutation_execute:
     "Apply required edits with granted mutation tools; do not ask to switch modes when write tools are listed.",
+  vcs_history_rewrite:
+    "Use git_signoff_range to add Signed-off-by trailers (rebase/amend). Do not edit .github/workflows/dco.yml or apply_patch for commit metadata. If the tool is unavailable, stop with a Blocker and the exact outside git commands.",
   change_impact_recommended:
     "Call analyze_change_impact on the primary seed (file or symbol) before the first mutating edit when changing shared types/APIs or multi-file surfaces; use affected files to sequence patches.",
   diagnosis_readonly:

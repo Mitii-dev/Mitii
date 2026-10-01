@@ -55,6 +55,8 @@ import {
 import { finishExecuteOneTool } from "./executeToolFinish";
 export {
   DEFAULT_MUTATING_TOOL_NAMES,
+  GIT_WRITE_TOOL_NAMES,
+  isGitWriteToolName,
   safeJsonParse,
   toolCompletionDiagnostics,
   truncateForLogField,

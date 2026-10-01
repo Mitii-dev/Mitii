@@ -31,6 +31,10 @@ export function formatEnvironmentDetailsBlock(
   const maxTerminals = options?.maxTerminals ?? DEFAULT_MAX_TERMINALS;
   const parts: string[] = [];
 
+  if (snapshot.todayDate?.trim()) {
+    parts.push(`Today's date: ${snapshot.todayDate.trim()}`);
+  }
+
   if (snapshot.modeReminder?.trim()) {
     parts.push(`Active mode: ${snapshot.modeReminder.trim()}`);
   }

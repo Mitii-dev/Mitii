@@ -373,6 +373,61 @@ describe("Tool Runtime Phase 8 mutations", () => {
     );
   });
 
+  it("allows TS edits that keep the same measured bracket score (string braces)", async () => {
+    const before = 'const msg = "{ already open in string";\nexport const n = 1;\n';
+    const { runtime, fs } = createRuntime(
+      directory({ src: directory({ "noise.ts": file(before) }) }),
+    );
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "m4g",
+      toolName: "apply_patch",
+      arguments: {
+        patches: [
+          {
+            path: "src/noise.ts",
+            oldText: "export const n = 1;",
+            newText: "export const n = 2;",
+          },
+        ],
+      },
+      grant: createWriteGrant({ approvalMode: "never" }),
+      workspaceRoot: WORKSPACE,
+    });
+
+    expect(result.status).toBe("succeeded");
+    expect(
+      (await fs.readFile(`${WORKSPACE}/src/noise.ts`)).content,
+    ).toContain("export const n = 2;");
+  });
+
+  it("rejects TS edits that worsen bracket balance vs previous content", async () => {
+    const before = "export function f() {\n  return 1;\n}\n";
+    const { runtime } = createRuntime(
+      directory({ src: directory({ "bal.ts": file(before) }) }),
+    );
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "m4h",
+      toolName: "apply_patch",
+      arguments: {
+        patches: [
+          {
+            path: "src/bal.ts",
+            oldText: "export function f() {\n  return 1;\n}\n",
+            newText: "export function f() {\n  return 1;\n",
+          },
+        ],
+      },
+      grant: createWriteGrant({ approvalMode: "never" }),
+      workspaceRoot: WORKSPACE,
+    });
+
+    expect(result.status).toBe("rejected");
+    expect(result.reasonCode).toBe("patch_syntax_invalid");
+    expect(result.warnings.join(" ")).toMatch(/braces|Bracket imbalance/i);
+  });
+
   it("classifies which patch reason codes attach content vs targeted discovery", () => {
     expect(isPatchCurrentContentReason("old_text_not_found")).toBe(true);
     expect(isPatchCurrentContentReason("old_text_ambiguous")).toBe(true);

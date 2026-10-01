@@ -29,6 +29,7 @@ import {
   markPlanEvidenceStepsDone,
   resolveLoopPolicyThresholds,
 } from "../actions";
+import { isClearMutationBlocker } from "../actions/isClearMutationBlocker";
 import {
   completePlanStepsFromDiagnostics,
   hasIncompleteChangeSurfaces,
@@ -116,9 +117,13 @@ export async function finishAfterLoop(
     mode?: "ask" | "plan" | "agent";
     projects?: readonly ProjectDescriptor[];
     memoryFacts?: readonly { id: string; content: string }[];
+    memoryQuery?: string;
+    memoryWorkspaceId?: string;
+    memoryFileTargets?: readonly string[];
     selectedSkillIds?: string[];
     projectRuleIds?: string[];
     environmentIds?: string[];
+    instructionBodies?: import("../internal/system-context").InstructionBodiesByKind;
     requiredSkillIds?: string[];
     excludedSkillIds?: string[];
     establishedFacts: EstablishedFact[];
@@ -286,6 +291,7 @@ export async function finishAfterLoop(
           },
           evidence,
           windowPolicy,
+          signal: params.signal,
         });
         commitMutations(runtime, currentOutcome.mutationCheckpointIds, {
           runId,
@@ -378,6 +384,7 @@ export async function finishAfterLoop(
       },
       evidence,
       windowPolicy,
+      signal: params.signal,
     });
 
     const recordStatus: VerificationRecordStatus =
@@ -450,38 +457,32 @@ export async function finishAfterLoop(
         loopAnswer,
         changedFiles: loopChangedFiles,
       });
-      const answerForIncompleteCheck = userAnswer ?? loopAnswer ?? "";
+      const answerForIncompleteCheck = userAnswer;
+      const clearBlocker = isClearMutationBlocker(answerForIncompleteCheck);
+      const mutationRequired = requiresMutationForExecute({
+        route: decision.route,
+        maximumWorkspaceEffect: decision.toolGrant.maximumWorkspaceEffect,
+        primaryTaskIntent:
+          params.loopContext?.understanding?.intent.classification
+            .primaryTaskIntent,
+        reasonCodes: decision.reasonCodes,
+        allowedTools: decision.toolGrant.allowedTools,
+      });
+      const checklistOpen = hasIncompleteChangeSurfaces(taskListRef.current);
+      // Mutate-or-fail: execute+write with zero landings is incomplete even
+      // when the checklist never materialized change-surface rows.
       const incompleteExecute =
-        requiresMutationForExecute({
-          route: decision.route,
-          maximumWorkspaceEffect: decision.toolGrant.maximumWorkspaceEffect,
-          primaryTaskIntent:
-            params.loopContext?.understanding?.intent.classification
-              .primaryTaskIntent,
-          reasonCodes: decision.reasonCodes,
-          allowedTools: decision.toolGrant.allowedTools,
-        }) &&
-        hasIncompleteChangeSurfaces(taskListRef.current) &&
-        // Partial progress with an honest next-step answer may leave rows open.
-        // Fail when: no edits, blocker stop, empty/synthetic fallback, or
-        // mid-work stop that never acknowledged remaining checklist work
-        // (BillBuddy 00:13 completed after one SharedBasePage batch).
-        // Evaluate the user-facing answer (not raw loop text) so thin
-        // synthetic fallbacks still trip incomplete_execute.
+        !clearBlocker &&
+        mutationRequired &&
         (loopChangedFiles.length === 0 ||
-          isPrematurePartialExecuteStop({
-            mutationRequired: true,
-            hasIncompleteChangeSurfaces: true,
-            content: answerForIncompleteCheck,
-            changedFileCount: loopChangedFiles.length,
-          }) ||
-          isSyntheticCompletedEditsFallback(answerForIncompleteCheck) ||
-          /(?:^|\n)\s*(?:\*{0,2}|_{0,2})?\s*blocker(?:\*{0,2}|_{0,2})?\s*[:\-—]/im.test(
-            answerForIncompleteCheck,
-          ) ||
-          /\b(?:stop(?:ping)?\s+here\s+with\s+a\s+clear\s+blocker|have\s+to\s+stop\s+here\s+with\s+a\s+clear\s+blocker)\b/i.test(
-            answerForIncompleteCheck,
-          ));
+          (checklistOpen &&
+            (isPrematurePartialExecuteStop({
+              mutationRequired: true,
+              hasIncompleteChangeSurfaces: true,
+              content: answerForIncompleteCheck,
+              changedFileCount: loopChangedFiles.length,
+            }) ||
+              isSyntheticCompletedEditsFallback(answerForIncompleteCheck))));
       if (incompleteExecute && currentOutcome.kind === "completed") {
         const suspended = await suspendForBudgetWallLocal({
           wallReason: "incomplete_checklist",
@@ -489,7 +490,7 @@ export async function finishAfterLoop(
           toolCache: currentOutcome.toolCache,
           changedFiles: loopChangedFiles,
           mutationCheckpointIds: loopMutationIds,
-          answer: userAnswer ?? "",
+          answer: userAnswer,
           mutationRequired: true,
         }, decision, afterState);
         if (suspended) {
@@ -511,7 +512,13 @@ export async function finishAfterLoop(
           },
         });
       }
-      reasonCodes.push("answer_produced");
+      const loopWasEmpty = !(loopAnswer?.trim());
+      const usedStockFallback =
+        loopWasEmpty &&
+        /I stopped without a complete final answer/i.test(userAnswer);
+      reasonCodes.push(
+        usedStockFallback ? "incomplete_answer_fallback" : "answer_produced",
+      );
       return finish({
         status: "completed",
         answer: userAnswer,

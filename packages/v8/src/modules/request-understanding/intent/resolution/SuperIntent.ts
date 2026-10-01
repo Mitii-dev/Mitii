@@ -193,9 +193,6 @@ export class SuperIntent {
         interactionIntent,
         llmClassification,
       });
-    /** On rule↔LLM conflict, ≥70% LLM ballot is authoritative for the route. */
-    const llmWinsConflict = llmMeetsAuthority && Boolean(ruleClassification);
-
     /*
      * Ask and Plan modes deterministically resolve the interaction boundary.
      * A raw classifier conflict matters only in Agent mode — unless the LLM
@@ -205,7 +202,7 @@ export class SuperIntent {
       mode === "agent" &&
       rawInteractionConflict &&
       !acceptedHighConfidenceLlmAction &&
-      !llmWinsConflict;
+      !(llmMeetsAuthority && Boolean(ruleClassification));
 
     const interactionAgreement = !interactionConflict;
     const ruleInteractionAgrees = Boolean(
@@ -235,29 +232,9 @@ export class SuperIntent {
           extra,
         );
       }
-    } else if (ruleClassification && llmWinsConflict) {
-      // Conflict + LLM ≥70%: lock the ballot to the LLM primary.
+    } else if (ruleClassification) {
+      // Officer authority: lock task primary to the LLM ballot. Rules are priors.
       this.promoteLlmPrimary(combinedScores, llmClassification);
-    } else if (ruleClassification && ruleInteractionAgrees) {
-      // Same interaction, different task — mild confidence growth on LLM pick.
-      agreementBonusApplied = this.options.agreementBonus * 0.5;
-      this.adjustIntentScore(
-        combinedScores,
-        llmClassification.primaryTaskIntent,
-        agreementBonusApplied,
-      );
-    } else if (ruleClassification && !llmWinsConflict) {
-      disagreementPenaltyApplied = this.options.disagreementPenalty;
-
-      const currentWinner = this.getSortedScores(combinedScores)[0];
-
-      if (currentWinner) {
-        this.adjustIntentScore(
-          combinedScores,
-          currentWinner.intent,
-          -disagreementPenaltyApplied,
-        );
-      }
     }
 
     const sortedScores = this.getSortedScores(combinedScores);

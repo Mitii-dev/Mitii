@@ -14,6 +14,18 @@ export type DesktopIndexSnapshot = {
   embeddingError?: string;
   lexicalReady?: boolean;
   embeddingPhase?: string;
+  health?: {
+    overall: string;
+    pipelines: {
+      codeIndex: { status: string; reason?: string };
+      textFts: { status: string; reason?: string };
+      embeddings: { status: string; reason?: string; profileId?: string };
+      graph: { status: string };
+      map: { status: string };
+      treeSitter: { status: string };
+    };
+    native: { sqlite: string; lancedb: string; onnx: string };
+  };
 };
 
 export type IndexChipTone =
@@ -316,6 +328,38 @@ export function IndexStatusChip(props: IndexStatusChipProps) {
           ) : null}
 
           <div className="index-status__meta">{meta.join(' · ')}</div>
+
+          {props.index?.health ? (
+            <div className="index-status__pipelines" aria-label="Index pipelines">
+              <div>
+                Overall: {props.index.health.overall}
+              </div>
+              <div>
+                Code {props.index.health.pipelines.codeIndex.status}
+                {' · '}
+                FTS {props.index.health.pipelines.textFts.status}
+                {' · '}
+                Embeddings {props.index.health.pipelines.embeddings.status}
+                {props.index.health.pipelines.embeddings.reason
+                  ? ` (${props.index.health.pipelines.embeddings.reason})`
+                  : ''}
+              </div>
+              <div>
+                Graph {props.index.health.pipelines.graph.status}
+                {' · '}
+                Map {props.index.health.pipelines.map.status}
+                {' · '}
+                Tree-sitter {props.index.health.pipelines.treeSitter.status}
+              </div>
+              <div>
+                Native sqlite={props.index.health.native.sqlite}
+                {' · '}
+                lancedb={props.index.health.native.lancedb}
+                {' · '}
+                onnx={props.index.health.native.onnx}
+              </div>
+            </div>
+          ) : null}
 
           <div className="index-status__stream" ref={streamRef}>
             {stream.length === 0 ? (

@@ -17,6 +17,7 @@ import { findImplementationTool } from "./findImplementationTool";
 import { findReferencesTool } from "./findReferencesTool";
 import { findTypeDefinitionTool } from "./findTypeDefinitionTool";
 import { createGithubIssueTool, createPullRequestTool } from "./githubMutationTools";
+import { gitSignoffRangeTool } from "./gitSignoffRangeTool";
 import { globFilesTool } from "./globFilesTool";
 import { gotoDefinitionTool } from "./gotoDefinitionTool";
 import { hoverSymbolTool } from "./hoverSymbolTool";
@@ -86,6 +87,7 @@ const BUILTIN_TOOLS_BASE: readonly RegisteredTool[] = [
   runCommandTool,
   createGithubIssueTool,
   createPullRequestTool,
+  gitSignoffRangeTool,
   fetchUrlTool,
   fetchDocsTool,
   webSearchTool,
@@ -126,7 +128,8 @@ export function listBuiltinReadOnlyModelToolDefinitions(): RuntimeModelToolDefin
       tool.name !== "memory_graph_update" &&
       tool.name !== "run_command" &&
       tool.name !== "create_github_issue" &&
-      tool.name !== "create_pull_request",
+      tool.name !== "create_pull_request" &&
+      tool.name !== "git_signoff_range",
   );
 }
 
@@ -174,6 +177,7 @@ export {
   runCommandTool,
   createGithubIssueTool,
   createPullRequestTool,
+  gitSignoffRangeTool,
   fetchUrlTool,
   fetchDocsTool,
   webSearchTool,

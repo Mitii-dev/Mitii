@@ -44,7 +44,7 @@ describe("SystemContext formulae (OpenCode discipline)", () => {
       expect(result.generation.baseline).toBe("FULL SYSTEM BASELINE");
       expect(
         result.generation.snapshot[SYSTEM_CONTEXT_SOURCE_KEYS.skills]?.value,
-      ).toBe(JSON.stringify(["s1"]));
+      ).toContain('"ids":["s1"]');
     }
   });
 
@@ -100,6 +100,95 @@ describe("SystemContext formulae (OpenCode discipline)", () => {
     if (result.kind === "updated") {
       expect(result.text).toContain("skills");
       expect(result.changedKeys).toContain(SYSTEM_CONTEXT_SOURCE_KEYS.skills);
+    }
+  });
+
+  it("reconcile emits Updated with body snippets when environment content changes", () => {
+    const initial = composeMitiiSystemContext({
+      route: "ask",
+      planningDepth: "none",
+      skillIds: [],
+      ruleIds: [],
+      environmentIds: ["environment-details"],
+      memoryIds: [],
+      bodies: {
+        environment: {
+          "environment-details": "Visible files:\n- a.ts",
+        },
+      },
+    });
+    const init = initializeSystemContext(initial, "baseline");
+    expect(init.kind).toBe("ready");
+    if (init.kind !== "ready") {
+      return;
+    }
+    const next = composeMitiiSystemContext({
+      route: "ask",
+      planningDepth: "none",
+      skillIds: [],
+      ruleIds: [],
+      environmentIds: ["environment-details"],
+      memoryIds: [],
+      bodies: {
+        environment: {
+          "environment-details": "Visible files:\n- b.ts\nToday's date: 2026-09-30",
+        },
+      },
+    });
+    const result = reconcileSystemContext({
+      context: next,
+      previous: init.generation.snapshot,
+    });
+    expect(result.kind).toBe("updated");
+    if (result.kind === "updated") {
+      expect(result.changedKeys).toContain(
+        SYSTEM_CONTEXT_SOURCE_KEYS.environment,
+      );
+      expect(result.text).toContain("### environment-details");
+      expect(result.text).toContain("b.ts");
+      expect(result.text).not.toMatch(/memory_evidence|grant apply_patch/i);
+    }
+  });
+
+  it("reconcile skill updates prefer added skill bodies", () => {
+    const initial = composeMitiiSystemContext({
+      route: "ask",
+      planningDepth: "none",
+      skillIds: ["a"],
+      ruleIds: [],
+      environmentIds: [],
+      memoryIds: [],
+      bodies: {
+        skills: { a: "Skill A body ".repeat(20) },
+      },
+    });
+    const init = initializeSystemContext(initial, "baseline");
+    expect(init.kind).toBe("ready");
+    if (init.kind !== "ready") {
+      return;
+    }
+    const next = composeMitiiSystemContext({
+      route: "ask",
+      planningDepth: "none",
+      skillIds: ["a", "b"],
+      ruleIds: [],
+      environmentIds: [],
+      memoryIds: [],
+      bodies: {
+        skills: {
+          a: "Skill A body ".repeat(20),
+          b: "Skill B unique guidance for patches.",
+        },
+      },
+    });
+    const result = reconcileSystemContext({
+      context: next,
+      previous: init.generation.snapshot,
+    });
+    expect(result.kind).toBe("updated");
+    if (result.kind === "updated") {
+      expect(result.text).toContain("### b");
+      expect(result.text).toContain("Skill B unique");
     }
   });
 

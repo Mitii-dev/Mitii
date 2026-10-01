@@ -126,6 +126,7 @@ export function createEnvelope(
     sessionId: "sess_decision_fixture",
     mode,
     origin: "user",
+    turnKind: "new",
     message,
     referencedArtifacts: [],
     createdAt: "2026-07-25T12:00:00.000Z",

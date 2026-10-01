@@ -4,6 +4,7 @@ import {
   coerceLlmClassificationJson,
   salvageLlmClassificationStages,
   stripTaskHints,
+  isPromptExemplarClassification,
 } from "../intent/classifiers/llm/coerceLlmClassification";
 
 describe("coerceLlmClassificationJson", () => {
@@ -140,5 +141,33 @@ describe("coerceLlmClassificationJson", () => {
     const parsed = intentClassificationSchema.parse(stages[0]);
     expect(parsed.primaryTaskIntent).toBe("refactor");
     expect(parsed.alternatives).toEqual([]);
+  });
+
+  it("detects the system-prompt exemplar fingerprint", () => {
+    expect(
+      isPromptExemplarClassification({
+        interactionIntent: "plan",
+        primaryTaskIntent: "bugfix",
+        confidence: 0.9,
+        needsClarification: false,
+        reason:
+          "The user wants a step-by-step strategy to resolve the failing tests.",
+        taskHints: {
+          targets: [
+            { kind: "file", value: "src/auth/service.ts", explicit: true },
+          ],
+        },
+      }),
+    ).toBe(true);
+
+    expect(
+      isPromptExemplarClassification({
+        interactionIntent: "act",
+        primaryTaskIntent: "feature",
+        confidence: 0.9,
+        needsClarification: false,
+        reason: "Add a new endpoint.",
+      }),
+    ).toBe(false);
   });
 });

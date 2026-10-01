@@ -19,8 +19,13 @@ Prompt Construction builds the provider-neutral `ModelRequest` that is sent thro
   injection has a stable `contentKind`, optional markers, and a hard token
   cap (`FRAGMENT_POLICY.absoluteMaxTokens` = 10k). Environment/memory
   fragments are marked; `MidConversationUpdateFragment` and
-  `requiresSeparateMessage` fragments are appended as separate system
-  messages after the baseline system blob (provider-cache friendly).
+  `requiresSeparateMessage` fragments are appended as separate messages
+  after the baseline system blob (provider-cache friendly). Mid-conversation
+  epoch updates use **user** role + `<context_epoch_update>` markers (shared
+  with engine admit). Callers may pass serializable `extraFragments` without
+  forking core assembly. Optional L1 skill catalog
+  (`injectSkillCatalogL1` + `skillCatalogL1`, default off) injects a
+  name+description awareness strip under a hard ~400-token cap.
   Courtesy inspiration acknowledgement (not copied upstream source): see
   `Mitii/NOTICE-REVIEW.md`.
 
@@ -44,7 +49,7 @@ prompt-construction/
 
 ## Types And Contracts
 
-- `PromptConstructionInput`: decision, user message, conversation, optional repository context, instructions, plan text, tools, model capabilities, model options, and output reserve.
+- `PromptConstructionInput`: decision, user message, conversation, optional repository context, instructions, optional `extraFragments`, plan text, tools, model capabilities, model options, and output reserve.
 - `PromptConstructionResult`: status, `ModelRequest`, budget report, provenance entries, omissions, warnings, and reason codes.
 - `PromptRepositoryContext`: state token plus prompt-safe blocks.
 - `PromptInstructions`: project rules, skills, and memory instruction blocks.

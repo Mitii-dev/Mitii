@@ -72,10 +72,22 @@ export interface TreeSitterRuntimeParseInput {
   abortSignal?: AbortSignal;
 }
 
+/** Tree-sitter ERROR / missing-node finding (not a type diagnostic). */
+export interface TreeSitterRuntimeSyntaxError {
+  startLine: number;
+  startColumn?: number;
+  endLine?: number;
+  endColumn?: number;
+  message: string;
+  kind: "error" | "missing";
+}
+
 export interface TreeSitterRuntimeParseResult {
   symbols: readonly TreeSitterRuntimeSymbol[];
   imports?: readonly TreeSitterRuntimeImport[];
   references?: readonly TreeSitterRuntimeReference[];
+  /** Present when the runtime walks ERROR / missing nodes. */
+  syntaxErrors?: readonly TreeSitterRuntimeSyntaxError[];
   warnings?: readonly string[];
 }
 

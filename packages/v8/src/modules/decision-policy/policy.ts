@@ -15,9 +15,9 @@ export const DECISION_POLICY_THRESHOLDS = {
   /** Above this margin, competing intents are treated as clear enough to proceed. */
   minimumIntentMargin: 0.12,
   /**
-   * When policyFactsFirst is on, treat understanding as authoritative above
-   * this confidence (and margin) except for documented safety overrides.
-   * Aligned with intent HIGH_CONFIDENCE (LLM wins rule conflicts at ≥0.70).
+   * Treat understanding as authoritative above this confidence (and margin)
+   * unless policyFactsFirst is explicitly false. Aligned with intent
+   * HIGH_CONFIDENCE (LLM wins rule conflicts at ≥0.70).
    */
   factsFirstMinConfidence: 0.7,
   factsFirstMinMargin: 0.12,

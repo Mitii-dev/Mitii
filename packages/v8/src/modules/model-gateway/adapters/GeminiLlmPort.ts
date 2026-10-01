@@ -227,11 +227,10 @@ export class GeminiLlmPort implements LlmPort {
       temperature:
         request.temperature ?? MODEL_GATEWAY_DEFAULTS.TEMPERATURE,
     };
-    if (request.maximumOutputTokens !== undefined) {
-      generationConfig.maxOutputTokens = request.maximumOutputTokens;
-    } else {
-      generationConfig.maxOutputTokens = this.capabilities.maximumOutputTokens;
-    }
+    generationConfig.maxOutputTokens = Math.min(
+      request.maximumOutputTokens ?? this.capabilities.maximumOutputTokens,
+      this.capabilities.maximumOutputTokens,
+    );
 
     if (request.responseFormat?.type === "json_object") {
       generationConfig.responseMimeType = "application/json";

@@ -120,6 +120,34 @@ describe("RequestUnderstandingPipeline", () => {
     expect(result.taskAnalysis.recommendsRepositoryDiscovery).toBe(false);
   });
 
+  it("attaches investigator evidence with MCP ids and history digest", async () => {
+    const pipeline = new RequestUnderstandingPipeline(
+      new StaticLlmPort({
+        interactionIntent: "act",
+        primaryTaskIntent: "bugfix",
+        secondaryTaskIntents: [],
+        confidence: 0.9,
+        alternatives: [],
+        needsClarification: false,
+        taskHints: {
+          taskSize: "medium",
+          planningHint: "short",
+        },
+      }),
+    );
+
+    const result = await pipeline.understand(envelope(), {
+      historyDigest: "prior_turns=1\nuser: earlier ask",
+      requiredMcpServerIds: ["github"],
+    });
+
+    expect(result.evidence).toBeDefined();
+    expect(result.evidence?.mcp.requiredServerIds).toEqual(["github"]);
+    expect(result.evidence?.history?.digest).toContain("prior_turns=1");
+    expect(result.taskAnalysis.taskSize).toBe("medium");
+    expect(result.taskAnalysis.planningHint).toBe("short");
+  });
+
   it("rejects empty envelopes", async () => {
     const pipeline = new RequestUnderstandingPipeline(
       new StaticLlmPort({

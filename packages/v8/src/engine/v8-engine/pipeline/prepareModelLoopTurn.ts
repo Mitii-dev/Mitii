@@ -13,6 +13,9 @@ import {
   clampTurnMaximumOutputTokens,
   compactModelLoopMessagesFromWindowPolicy,
   estimateModelMessagesTokens,
+  refreshMemoryFactsForCompaction,
+  resolveCompactionPressure,
+  resolveCompactionThresholds,
   resolvePromptCacheClass,
   shouldPreserveModelLoopPrefix,
   stubToolResultsForCompletedPaths,
@@ -59,6 +62,8 @@ export interface PrepareModelLoopTurnResult {
   emittedLoopPressureWarning: boolean;
   emittedLoopCompactionWarning: boolean;
   contextEpoch: ContextEpoch | undefined;
+  /** Facts used for this turn's compact reinject (may be freshly retrieved). */
+  memoryFacts?: readonly { id: string; content: string }[];
 }
 
 /**
@@ -66,7 +71,7 @@ export interface PrepareModelLoopTurnResult {
  * Session History (OpenCode dual-store), hybrid-retrieve into conversationShare
  * budget, upsert working set, admit Context Epoch, clamp output tokens.
  */
-export function prepareModelLoopTurn(params: {
+export async function prepareModelLoopTurn(params: {
   runtime: AgentEngineRuntime;
   runId: string;
   bus: EventBus;
@@ -79,6 +84,11 @@ export function prepareModelLoopTurn(params: {
   mutationBudget?: MutationBudget;
   repoBuildStateBefore?: RepoBuildState;
   memoryFacts?: readonly { id: string; content: string }[];
+  /** Query + workspace for fresh Memory retrieve under auto/hard pressure. */
+  memoryQuery?: string;
+  memoryWorkspaceId?: string;
+  memoryFileTargets?: readonly string[];
+  abortSignal?: AbortSignal;
   establishedFacts: EstablishedFact[];
   reasonCodes: AgentReasonCode[];
   warnings: string[];
@@ -92,12 +102,14 @@ export function prepareModelLoopTurn(params: {
   selectedSkillIds?: readonly string[];
   projectRuleIds?: readonly string[];
   environmentIds?: readonly string[];
+  /** Optional bodies for epoch mid-update content deltas (no memory). */
+  instructionBodies?: import("../internal/system-context").InstructionBodiesByKind;
   memoryIds?: readonly string[];
   /** When true, working-set copy demands an immediate mutation. */
   mutationLocked?: boolean;
   /** Durable archive for turns dropped from model projection. */
   sessionHistoryArchive?: InMemorySessionHistoryArchive;
-}): PrepareModelLoopTurnResult {
+}): Promise<PrepareModelLoopTurnResult> {
   const {
     runtime,
     runId,
@@ -147,12 +159,67 @@ export function prepareModelLoopTurn(params: {
     );
   }
   const preservePrefix = shouldPreserveModelLoopPrefix(promptCacheClass);
+
+  let memoryFacts = params.memoryFacts
+    ? [...params.memoryFacts]
+    : undefined;
+  const preCompactUsed = estimateModelMessagesTokens(
+    messages,
+    runtime.tokenEstimator,
+  );
+  const preCompactThresholds = resolveCompactionThresholds({
+    budgetTokens: loopInputBudgetTokens,
+    warnRatio: params.windowPolicy.compaction.warnRatio,
+    autoRatio: params.windowPolicy.compaction.autoRatio,
+    hardRatio: params.windowPolicy.compaction.hardRatio,
+    autoMaxTokens: params.windowPolicy.compaction.autoMaxTokens,
+    hardMaxTokens: params.windowPolicy.compaction.hardMaxTokens,
+    preservePrefix,
+  });
+  const preCompactPressure = resolveCompactionPressure({
+    usedTokens: preCompactUsed,
+    thresholds: preCompactThresholds,
+  });
+  if (preCompactPressure === "auto" || preCompactPressure === "hard") {
+    const refresh = await refreshMemoryFactsForCompaction({
+      memory: runtime.deps.memory,
+      workspaceId: params.memoryWorkspaceId,
+      query: params.memoryQuery,
+      maxChars: params.windowPolicy.compaction.memoryReinjectChars,
+      previous: memoryFacts ?? [],
+      pressure: preCompactPressure,
+      now: runtime.isoNow(),
+      fileTargets: params.memoryFileTargets,
+      signal: params.abortSignal,
+    });
+    if (refresh.refreshed) {
+      memoryFacts = refresh.facts;
+      reasonCodes.push("memory_refreshed_for_compaction");
+      runtime.emit(bus, {
+        type: "warning",
+        runId,
+        message: `Refreshed ${refresh.facts.length} memory fact(s) before ${preCompactPressure} compaction reinject.`,
+        code: "memory_refreshed_for_compaction",
+        ...(logVerbosityAtLeast(logVerbosity, "standard")
+          ? {
+              data: {
+                pressure: preCompactPressure,
+                factCount: refresh.facts.length,
+                maxChars: params.windowPolicy.compaction.memoryReinjectChars,
+              },
+            }
+          : {}),
+        at: runtime.isoNow(),
+      });
+    }
+  }
+
   const compaction = compactModelLoopMessagesFromWindowPolicy({
     messages,
     estimator: runtime.tokenEstimator,
     budgetTokens: loopInputBudgetTokens,
     compaction: params.windowPolicy.compaction,
-    memoryFacts: params.memoryFacts,
+    memoryFacts,
     establishedFacts: params.establishedFacts,
     preservePrefix,
     skipEstablishedFactsReinject: true,
@@ -199,6 +266,9 @@ export function prepareModelLoopTurn(params: {
       if (compaction.reinjectedEstablishedFacts) {
         reasonCodes.push("established_facts_reinjected");
       }
+      if (compaction.reinjectedMemory) {
+        reasonCodes.push("memory_reinjected");
+      }
       warnings.push(
         "Compacted previous tool call history to keep follow-up model calls within the context budget.",
       );
@@ -218,6 +288,9 @@ export function prepareModelLoopTurn(params: {
                 stillOverHardCeiling:
                   compaction.usedTokens > compaction.thresholds.hardTokens,
                 droppedMessages: compaction.droppedMessages.length,
+                stagesApplied: compaction.stagesApplied.join(","),
+                reinjectedMemory: compaction.reinjectedMemory,
+                memoryFactCount: memoryFacts?.length ?? 0,
               },
             }
           : {}),
@@ -248,9 +321,10 @@ export function prepareModelLoopTurn(params: {
     selectedSkillIds: params.selectedSkillIds,
     projectRuleIds: params.projectRuleIds,
     environmentIds: params.environmentIds,
+    instructionBodies: params.instructionBodies,
     memoryIds:
       params.memoryIds ??
-      params.memoryFacts?.map((fact) => fact.id) ??
+      memoryFacts?.map((fact) => fact.id) ??
       [],
   });
 
@@ -307,6 +381,7 @@ export function prepareModelLoopTurn(params: {
     emittedLoopPressureWarning,
     emittedLoopCompactionWarning,
     contextEpoch,
+    memoryFacts,
   };
 }
 
@@ -435,6 +510,7 @@ function applyContextEpochAdmission(params: {
   selectedSkillIds?: readonly string[];
   projectRuleIds?: readonly string[];
   environmentIds?: readonly string[];
+  instructionBodies?: import("../internal/system-context").InstructionBodiesByKind;
   memoryIds?: readonly string[];
 }): ContextEpoch | undefined {
   const admitted = admitContextEpoch({
@@ -450,6 +526,9 @@ function applyContextEpochAdmission(params: {
       ruleIds: params.projectRuleIds ?? [],
       environmentIds: params.environmentIds ?? [],
       memoryIds: params.memoryIds ?? [],
+      ...(params.instructionBodies
+        ? { bodies: params.instructionBodies }
+        : {}),
     },
   });
 
@@ -536,6 +615,10 @@ function clampTurnOutput(
     contextWindowTokens: windowPolicy.contextWindowTokens,
     usedInputTokens,
     toolLoop: Boolean(turnRequest.tools && turnRequest.tools.length > 0),
+    // Answer-lock / no-tool turns drop the tool-loop ceiling; still must not
+    // exceed the provider's advertised max (DeepSeek/Ollama reject otherwise).
+    providerMaximumOutputTokens:
+      runtime.deps.llm.capabilities.maximumOutputTokens,
   });
   const previousOutputTokens =
     turnRequest.maximumOutputTokens ?? generationCeiling;

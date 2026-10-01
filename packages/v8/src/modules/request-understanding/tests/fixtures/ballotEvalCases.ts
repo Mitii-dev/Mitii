@@ -113,6 +113,51 @@ export const BALLOT_EVAL_CASES: BallotEvalCase[] = [
     ],
   },
   {
+    id: "vitest-fail-paste-execute",
+    description:
+      "Failed Tests N paste with Officer act+bugfix should execute (plan-then-finish), not dump-diagnose",
+    mode: "agent",
+    message: [
+      "Failed Tests 2",
+      "FAIL apps/vscode/tests/sidebarSettingsPersistence.test.ts > case",
+      "AssertionError: expected false to be true",
+      " ❯ apps/vscode/tests/sidebarSettingsPersistence.test.ts:257:31",
+    ].join("\n"),
+    expectations: [
+      {
+        kind: "route_or_clarify",
+        preferredRoutes: ["execute"],
+        forbiddenSilentRoutes: [],
+      },
+    ],
+  },
+  {
+    id: "ask-mode-fix-clarify-not-act",
+    description: "Ask mode 'fix this bug?' must not silently execute",
+    mode: "ask",
+    message: "fix this bug?",
+    expectations: [
+      {
+        kind: "route_or_clarify",
+        preferredRoutes: ["clarify", "diagnose", "repository_answer", "direct_answer"],
+        forbiddenSilentRoutes: ["execute"],
+      },
+    ],
+  },
+  {
+    id: "plan-mode-implement-stays-plan",
+    description: "Plan mode implement ask stays plan route",
+    mode: "plan",
+    message: "implement auth for the settings sidebar",
+    expectations: [
+      {
+        kind: "route_or_clarify",
+        preferredRoutes: ["plan"],
+        forbiddenSilentRoutes: ["execute"],
+      },
+    ],
+  },
+  {
     id: "open-vocab-tag-drop",
     description: "Freeform tags outside closed vocab must be dropped",
     mode: "agent",

@@ -29,7 +29,7 @@ const PUBLIC_MODULES = [
 ] as const;
 
 const PUBLIC_ENGINE_COMPONENTS = [
-  'agent-engine',
+  'v8-engine',
   'tool-runtime',
 ] as const;
 
@@ -49,8 +49,10 @@ const FORBIDDEN_V8_IMPORT_PATTERNS = [
   /from ['"].*webview(?:-ui)?(?:\/|['"])/,
   /from ['"]@mitii\/sdk['"]/,
   /from ['"].*(?:^|\/)(?:apps\/|packages\/sdk)(?:\/|['"])/,
-  /from ['"].*(?:^|\/)(?:kernel|interfaces|features|composition)(?:\/|['"])/,
-  /from ['"](?:\.\.\/)+(?:kernel|interfaces|features|composition|adapters)(?:\/|['"])/,
+  // Absolute / package-style paths only. Module-local `./adapters` and
+  // `../adapters` folders are intentional Mitii layout — do not flag them.
+  /from ['"](?!\.\.?\/)(?:.*\/)?(?:kernel|interfaces|features|composition)(?:\/|['"])/,
+  /from ['"](?:\.\.\/)+(?:kernel|interfaces|features|composition)(?:\/|['"])/,
 ] as const;
 
 describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
@@ -149,11 +151,12 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
     expect(index).not.toContain('export *');
   });
 
-  it('keeps agent-engine actions private at the module root', () => {
+  it('keeps v8-engine actions private at the module root', () => {
     const index = readFileSync(
-      join(engineRoot, 'agent-engine/index.ts'),
+      join(engineRoot, 'v8-engine/index.ts'),
       'utf8',
     );
+    expect(index).toContain('V8EnginePipeline');
     expect(index).toContain('AgentEnginePipeline');
     expect(index).toContain('agentRunResultSchema');
     expect(index).not.toContain('export * from "./actions"');
@@ -252,12 +255,12 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
     expect(index).not.toContain('scanPromptInjection');
   });
 
-  it('blocks other modules from importing agent-engine', () => {
+  it('blocks other modules from importing deleted agent-engine paths', () => {
     const violations: string[] = [];
 
     for (const file of listRuntimeTypeScriptFiles()) {
       const owningUnit = owningPublicUnit(file);
-      if (owningUnit === 'agent-engine') continue;
+      if (owningUnit === 'v8-engine') continue;
 
       const content = readFileSync(file, 'utf8');
       for (const [index, line] of content.split(/\r?\n/).entries()) {
@@ -387,7 +390,8 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
       const indexPath = join(publicRoot, 'index.ts');
       const content = readFileSync(indexPath, 'utf8');
       for (const [index, line] of content.split(/\r?\n/).entries()) {
-        if (!/^\s*export\s+/.test(line)) {
+        // Type-only re-exports may surface public types owned beside actions.
+        if (!/^\s*export\s+/.test(line) || /^\s*export\s+type\s+/.test(line)) {
           continue;
         }
         if (
@@ -611,13 +615,19 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
       join(repoRoot, 'apps/cli/src'),
       join(repoRoot, 'apps/vscode/src'),
     ];
+    // Ban the old repo-root / package vault `legacy/` trees. The intentional
+    // Phase-10 compat shim at `engine/v8-engine/legacy/` is allowed.
     const legacyImportPatterns = [
       /from ['"].*(?:^|\/)legacy(?:\/|['"])/,
       /from ['"].*(?:^|\/)(?:src\/kernel|src\/interfaces|src\/composition)(?:\/|['"])/,
       /require\(['"].*(?:^|\/)legacy(?:\/|['"])/,
     ] as const;
     for (const root of productRoots) {
-      expect(scanImports(root, legacyImportPatterns)).toEqual([]);
+      expect(
+        scanImports(root, legacyImportPatterns).filter(
+          (line) => !line.includes(`${sep}engine${sep}v8-engine${sep}`),
+        ),
+      ).toEqual([]);
     }
   });
 

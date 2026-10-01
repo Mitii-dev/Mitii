@@ -43,9 +43,15 @@ import {
   type TaskListRef,
 } from "../internal/taskListRuntime";
 import { markPlanEvidenceStepsDone } from "../actions/runEvidence";
+import { WORKSPACE_FILE_MUTATION_TOOL_IDS } from "../actions/resolveLoopTurnOutcome";
 import type { AgentEngineRuntime } from "./runtime";
 import type { ToolCallOutcome } from "./types";
 import { toolCompletionDiagnostics } from "./executeToolSupport";
+
+/** File edits only — not run_command (git diff was wrongly change-impact gated). */
+function isChangeImpactGatedToolName(name: string): boolean {
+  return (WORKSPACE_FILE_MUTATION_TOOL_IDS as readonly string[]).includes(name);
+}
 
 export type ExecuteToolContinueContext = {
   toolCall: ModelToolCall;
@@ -126,7 +132,7 @@ export async function finishExecuteOneTool(
   if (
     changeImpactGate?.required &&
     !changeImpactGate.satisfied &&
-    mutatingToolNames.has(toolCall.name) &&
+    isChangeImpactGatedToolName(toolCall.name) &&
     (changeImpactNudgeBudget?.remaining ?? 0) > 0
   ) {
     changeImpactNudgeBudget!.remaining -= 1;
@@ -192,7 +198,7 @@ export async function finishExecuteOneTool(
   if (
     changeImpactGate?.required &&
     !changeImpactGate.satisfied &&
-    mutatingToolNames.has(toolCall.name)
+    isChangeImpactGatedToolName(toolCall.name)
   ) {
     warnings.push(
       "Proceeding with the mutating edit before analyze_change_impact after the change-impact nudge budget was exhausted. Prefer calling it on the primary seed when useful.",

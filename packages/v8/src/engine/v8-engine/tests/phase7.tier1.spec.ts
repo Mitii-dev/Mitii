@@ -53,6 +53,51 @@ describe("v8-engine golden T10 — rejected mutation recovery", () => {
     ).toBe(true);
   });
 
+  it("allows targeted discovery when patches.N.path is Required", () => {
+    expect(
+      allowsTargetedDiscoveryAfterRejectedMutation({
+        toolName: "apply_patch",
+        reasonCode: "invalid_arguments",
+        warnings: ["patches.0.path: Required"],
+      }),
+    ).toBe(true);
+    const message = buildRejectedMutationRecoveryMessage({
+      toolName: "apply_patch",
+      status: "rejected",
+      reasonCode: "invalid_arguments",
+      warnings: ["patches.0.path: Required"],
+      summary: "patches=1",
+    });
+    expect(message).toMatch(/path/i);
+    expect(message).toMatch(/apply_patch/i);
+  });
+
+  it("recovery copy steers after patch_syntax_invalid and change_impact_incomplete", () => {
+    const syntax = buildRejectedMutationRecoveryMessage({
+      toolName: "apply_patch",
+      status: "rejected",
+      reasonCode: "patch_syntax_invalid",
+      warnings: ["Bracket imbalance after patch"],
+      summary: "patches=1 paths=src/a.ts",
+      maxTargetedDiscoveryToolCalls: 4,
+      defaultPreferredBatchSize: V8_ENGINE_THRESHOLDS.preferredBatchSize,
+    });
+    expect(syntax).toMatch(/syntax check|bracket balance/i);
+    expect(syntax).toMatch(/smaller exact oldText/i);
+
+    const impact = buildRejectedMutationRecoveryMessage({
+      toolName: "apply_patch",
+      status: "rejected",
+      reasonCode: "change_impact_incomplete",
+      warnings: ["analyze_change_impact is required"],
+      summary: "patches=1 paths=src/a.ts",
+      maxTargetedDiscoveryToolCalls: 4,
+      defaultPreferredBatchSize: V8_ENGINE_THRESHOLDS.preferredBatchSize,
+    });
+    expect(impact).toContain("analyze_change_impact");
+    expect(impact).toMatch(/retry the same apply_patch/i);
+  });
+
   it("retries apply_patch after a rejected stale hunk instead of giving up", async () => {
     let applyCalls = 0;
     const deps = createStubDependencies({

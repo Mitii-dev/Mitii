@@ -3,7 +3,7 @@ import type {
 } from "../../model-gateway";
 import { LlmIntentClassifier, RuleIntentClassifier } from "./classifiers";
 import { extractPrimaryUserMessage } from "./extractPrimaryUserMessage";
-import { ModeIntentPolicy } from "./policy";
+import { ModeIntentPolicy, TurnKindIntentPolicy } from "./policy";
 import { SuperIntent } from "./resolution";
 import { INTENT_CONSTANTS } from "./constants";
 import {
@@ -23,6 +23,7 @@ export class IntentRouter {
   private readonly llmClassifier:
     LlmIntentClassifierPort;
   private readonly modePolicy: ModeIntentPolicy;
+  private readonly turnKindPolicy: TurnKindIntentPolicy;
 
   constructor(
     provider: LlmPort,
@@ -35,6 +36,7 @@ export class IntentRouter {
       dependencies.llmClassifier ?? new LlmIntentClassifier(provider);
 
     this.modePolicy = new ModeIntentPolicy();
+    this.turnKindPolicy = new TurnKindIntentPolicy();
   }
 
   async classify(input: IntentClassificationInput): Promise<SuperIntentResult> {
@@ -64,7 +66,11 @@ export class IntentRouter {
 
     // Explicit slash/exact intents are authoritative — skip the LLM round-trip.
     if (ruleResult?.source === "explicit_rule") {
-      return this.buildExplicitRuleResult(normalizedInput.mode, ruleResult);
+      return this.applyTurnKind(
+        normalizedInput.turnKind,
+        this.buildExplicitRuleResult(normalizedInput.mode, ruleResult),
+        normalizedInput.userMessage,
+      );
     }
 
     // 2. Attempt LLM classification (fall back to rule/safe default on failure).
@@ -72,7 +78,10 @@ export class IntentRouter {
     try {
       const llmClassification = await this.modePolicy.apply(
         normalizedInput.mode,
-        await this.llmClassifier.classify(normalizedInput),
+        await this.llmClassifier.classify({
+          ...normalizedInput,
+          ...(input.evidence ? { evidence: input.evidence } : {}),
+        }),
       );
       llmResult = {
         source: "llm",
@@ -80,9 +89,17 @@ export class IntentRouter {
       };
     } catch (error) {
       if (ruleResult) {
-        return this.buildFallbackResult(normalizedInput.mode, ruleResult, error);
+        return this.applyTurnKind(
+          normalizedInput.turnKind,
+          this.buildFallbackResult(normalizedInput.mode, ruleResult, error),
+          normalizedInput.userMessage,
+        );
       }
-      return this.buildSafeFallbackResult(normalizedInput.mode, error);
+      return this.applyTurnKind(
+        normalizedInput.turnKind,
+        this.buildSafeFallbackResult(normalizedInput.mode, error),
+        normalizedInput.userMessage,
+      );
     }
 
     // 3. Resolve final classification using SuperIntent.
@@ -93,7 +110,11 @@ export class IntentRouter {
       llmResult,
     });
 
-    return result;
+    return this.applyTurnKind(
+      normalizedInput.turnKind,
+      result,
+      normalizedInput.userMessage,
+    );
   }
 
   private normalizeInput(input: IntentClassificationInput): {
@@ -101,12 +122,54 @@ export class IntentRouter {
     userMessage: string;
     referencedArtifacts: readonly ReferencedArtifact[];
     diagnosticSummary: IntentClassificationInput["diagnosticSummary"];
+    turnKind: IntentClassificationInput["turnKind"];
   } {
     return {
       mode: input.mode,
       userMessage: extractPrimaryUserMessage(input.userMessage),
       referencedArtifacts: input.referencedArtifacts ?? [],
       diagnosticSummary: input.diagnosticSummary,
+      turnKind: input.turnKind,
+    };
+  }
+
+  private applyTurnKind(
+    turnKind: IntentClassificationInput["turnKind"],
+    result: SuperIntentResult,
+    userMessage?: string,
+  ): SuperIntentResult {
+    const classification = this.turnKindPolicy.apply(
+      turnKind,
+      result.classification,
+      { userMessage },
+    );
+    // Always re-sync status / clarification with needsClarification so Decision
+    // Policy does not suspend on a stale clarification_required after steer.
+    if (
+      classification === result.classification &&
+      classification.needsClarification === result.recommendsClarification &&
+      (classification.needsClarification
+        ? result.status === "clarification_required"
+        : result.status === "accepted")
+    ) {
+      return result;
+    }
+
+    if (!classification.needsClarification) {
+      return {
+        ...result,
+        classification,
+        recommendsClarification: false,
+        status: "accepted",
+        clarification: undefined,
+      };
+    }
+
+    return {
+      ...result,
+      classification,
+      recommendsClarification: true,
+      status: "clarification_required",
     };
   }
 
@@ -142,10 +205,12 @@ export class IntentRouter {
           ? { matchedRule: ruleResult.matchedRule }
           : {}),
         rulePrimaryIntent: ruleResult.classification.primaryTaskIntent,
+        // Schema requires llmPrimaryIntent; LLM was skipped — mirror rule only.
         llmPrimaryIntent: classification.primaryTaskIntent,
         ruleInteractionIntent: ruleResult.classification.interactionIntent,
         llmInteractionIntent: classification.interactionIntent,
-        taskAgreement: true,
+        // No LLM ballot was cast — do not claim agreement.
+        taskAgreement: false,
         interactionAgreement: true,
         interactionConflict: false,
         agreementBonusApplied: 0,
@@ -196,6 +261,7 @@ export class IntentRouter {
         disagreementPenaltyApplied: 0,
         minimumConfidence: INTENT_CONSTANTS.SCORE_DEFAULT_OPTIONS.minimumConfidence,
         minimumMargin: INTENT_CONSTANTS.SCORE_DEFAULT_OPTIONS.minimumMargin,
+        officerFallback: "rule",
       },
     };
   }
@@ -252,6 +318,7 @@ export class IntentRouter {
         disagreementPenaltyApplied: 0,
         minimumConfidence: INTENT_CONSTANTS.SCORE_DEFAULT_OPTIONS.minimumConfidence,
         minimumMargin: INTENT_CONSTANTS.SCORE_DEFAULT_OPTIONS.minimumMargin,
+        officerFallback: "safe",
       },
     };
   }

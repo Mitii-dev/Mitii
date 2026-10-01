@@ -27,4 +27,10 @@ describe("assertSafeGitPushArgv", () => {
       GrantValidationError,
     );
   });
+
+  it("does not treat git stash push as git push", () => {
+    expect(() =>
+      assertSafeGitPushArgv(["git", "stash", "push", "-m", "wip"]),
+    ).not.toThrow();
+  });
 });

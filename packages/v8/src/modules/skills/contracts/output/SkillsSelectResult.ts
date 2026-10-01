@@ -45,11 +45,26 @@ export const skillOmissionSchema = z
 
 export type SkillOmission = z.infer<typeof skillOmissionSchema>;
 
+export const skillCatalogL1EntrySchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    description: z.string().min(1),
+  })
+  .strict();
+
+export type SkillCatalogL1Entry = z.infer<typeof skillCatalogL1EntrySchema>;
+
 export const skillsSelectResultSchema = z
   .object({
     schemaVersion: z.literal(SKILLS_SCHEMA_VERSION),
     status: z.enum(SKILL_SELECTION_STATUSES),
     instructions: z.array(skillInstructionBlockSchema),
+    /**
+     * Optional L1 awareness strip (name+description). Present only when
+     * includeCatalogL1 was requested on input.
+     */
+    catalogL1: z.array(skillCatalogL1EntrySchema).max(50).optional(),
     omissions: z.array(skillOmissionSchema),
     required: z.array(z.string().min(1).max(160)).max(20).default([]),
     requiredCount: z.number().int().nonnegative().default(0),

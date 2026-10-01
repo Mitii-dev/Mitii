@@ -1613,7 +1613,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
                     <span className="field-help">
                       Chat session JSONL (same as VS Code):{' '}
                       <code>MM-DD-YYYY-HH-MM-thread_….jsonl</code>. Also{' '}
-                      <code>engine.log</code> / <code>runs.log</code>.
+                      <code>engine.log</code> / <code>runs.log</code>, plus
+                      dated product errors in{' '}
+                      <code>desktop-YYYY-MM-DD.log</code> (settings, SQLite,
+                      indexing, boot).
                     </span>
                     <code className="storage-path-row__path">
                       {storage?.logsPath ?? '…'}

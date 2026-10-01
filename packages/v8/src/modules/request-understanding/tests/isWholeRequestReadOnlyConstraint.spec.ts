@@ -82,4 +82,23 @@ describe("isWholeRequestReadOnlyConstraint", () => {
       ),
     ).toBe(true);
   });
+
+  it("does not treat mid-prompt scoped don't-change + fix as read-only", () => {
+    const cascadeStyle = [
+      "src/types/domain.ts's Order.total was just widened from number to",
+      "{ amount: number; currency: string }, but none of the consumers were updated,",
+      "so typecheck fails. Trace every broken consumer — so don't change files that",
+      "don't need it — and fix each one so tsc --noEmit is clean.",
+      "Do not cast to any or add @ts-ignore, and do not revert Order.total.",
+    ].join(" ");
+    expect(isWholeRequestReadOnlyConstraint(cascadeStyle)).toBe(false);
+  });
+
+  it("still treats bare explain + don't change any files as read-only", () => {
+    expect(
+      isWholeRequestReadOnlyConstraint(
+        "Explain the auth architecture — do not change any files",
+      ),
+    ).toBe(true);
+  });
 });

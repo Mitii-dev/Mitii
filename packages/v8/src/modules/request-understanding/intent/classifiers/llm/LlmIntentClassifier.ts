@@ -14,7 +14,11 @@ import type { DiagnosticSummary } from "../../../contracts";
 import { resolveIntentClassifierMaximumOutputTokens } from "../../resolveIntentClassifierMaximumOutputTokens";
 import { LLM_INTENT_CLASSIFICATION_SYSTEM_PROMPT } from "./prompts";
 import { intersectRecommendedSkillTags } from "../../intersectRecommendedSkillTags";
-import { salvageLlmClassificationStages } from "./coerceLlmClassification";
+import { salvageLlmClassificationStages, isPromptExemplarClassification } from "./coerceLlmClassification";
+import {
+  formatEvidencePackForPrompt,
+  type UnderstandingEvidencePack,
+} from "../../evidence";
 
 
 export class LlmIntentClassifier {
@@ -48,6 +52,7 @@ export class LlmIntentClassifier {
             message,
             referencedArtifacts,
             input.diagnosticSummary,
+            input.evidence,
           ),
         },
       ],
@@ -74,6 +79,7 @@ export class LlmIntentClassifier {
     message: string,
     referencedArtifacts: readonly ReferencedArtifact[],
     diagnosticSummary?: DiagnosticSummary,
+    evidence?: UnderstandingEvidencePack,
   ): string {
     const sections: string[] = [
       '<message_to_classify trust="untrusted-data">',
@@ -81,31 +87,42 @@ export class LlmIntentClassifier {
       "</message_to_classify>",
     ];
 
-    if (referencedArtifacts.length > 0) {
+    if (evidence) {
       sections.push(
         "",
-        '<referenced_artifacts trust="untrusted-data">',
-        JSON.stringify(referencedArtifacts, null, 2),
-        "</referenced_artifacts>",
+        "<investigator_evidence trust=\"computed-advisory\">",
+        "Advisory case file for the Officer. Priors and sizeDraft may be wrong — override when needed.",
+        formatEvidencePackForPrompt(evidence),
+        "</investigator_evidence>",
       );
-    }
+    } else {
+      // Legacy path when callers omit evidence (tests / older hosts).
+      if (referencedArtifacts.length > 0) {
+        sections.push(
+          "",
+          '<referenced_artifacts trust="untrusted-data">',
+          JSON.stringify(referencedArtifacts, null, 2),
+          "</referenced_artifacts>",
+        );
+      }
 
-    if (diagnosticSummary && diagnosticSummary.errorCount > 0) {
-      sections.push(
-        "",
-        '<preflight_diagnostics trust="untrusted-data">',
-        "Evidence only — do not choose a route or grant from this, only whether the ask reads as a repair.",
-        JSON.stringify(
-          {
-            errorCount: diagnosticSummary.errorCount,
-            inScopeErrorCount: diagnosticSummary.inScopeErrorCount,
-            diagnostics: diagnosticSummary.diagnostics,
-          },
-          null,
-          2,
-        ),
-        "</preflight_diagnostics>",
-      );
+      if (diagnosticSummary && diagnosticSummary.errorCount > 0) {
+        sections.push(
+          "",
+          '<preflight_diagnostics trust="untrusted-data">',
+          "Evidence only — do not choose a route or grant from this, only whether the ask reads as a repair.",
+          JSON.stringify(
+            {
+              errorCount: diagnosticSummary.errorCount,
+              inScopeErrorCount: diagnosticSummary.inScopeErrorCount,
+              diagnostics: diagnosticSummary.diagnostics,
+            },
+            null,
+            2,
+          ),
+          "</preflight_diagnostics>",
+        );
+      }
     }
 
     return sections.join("\n");
@@ -235,6 +252,12 @@ export class LlmIntentClassifier {
         }
 
         const parsed: unknown = JSON.parse(candidate);
+        if (isPromptExemplarClassification(parsed)) {
+          lastError = new Error(
+            "Intent classifier echoed the system-prompt exemplar; skipping.",
+          );
+          continue;
+        }
         // Ballot salvage: drop/remap invalid fields (e.g. alternatives.intent
         // "plan") so a valid core ballot is never wiped to the 0.40 fallback.
         for (const stage of salvageLlmClassificationStages(parsed)) {

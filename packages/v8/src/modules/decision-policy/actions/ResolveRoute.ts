@@ -1,8 +1,10 @@
+import type { RequestTurnKind } from "../../request-intake";
 import type { RequestUnderstandingResult } from "../../request-understanding";
 import {
   isHardWholeRequestReadOnlyConstraint,
   isWholeRequestReadOnlyConstraint,
 } from "../../request-understanding/intent/isWholeRequestReadOnlyConstraint";
+import { isContinuationTurnKind } from "../../request-understanding/intent/policy/TurnKindIntentPolicy";
 
 import {
   DIAGNOSIS_TASK_INTENTS,
@@ -42,21 +44,28 @@ export function resolveRoute(params: {
    */
   suppressClarification?: boolean;
   /**
-   * Prefer high-confidence understanding over looksLike* except safety overrides.
+   * Prefer high-confidence understanding over looksLike* except safety
+   * overrides. Default on when omitted; set false to force classic path.
    */
   policyFactsFirst?: boolean;
+  /** Intake turn kind — continuation turns prefer ballot over soft clarify. */
+  turnKind?: RequestTurnKind;
 }): RouteResolution {
   const { mode, understanding, message } = params;
   const { intent, taskAnalysis } = understanding;
   const primary = intent.classification.primaryTaskIntent;
   const interaction = intent.classification.interactionIntent;
   const reasonCodes: DecisionReasonCode[] = [];
+  const continuation = isContinuationTurnKind(params.turnKind);
+  // High-confidence understanding is authoritative unless the host kill-switches
+  // facts-first (`policyFactsFirst: false`). Aligns with SuperIntent ≥0.70.
   const factsFirst =
-    params.policyFactsFirst === true && isHighConfidenceUnderstanding(understanding);
+    params.policyFactsFirst !== false &&
+    isHighConfidenceUnderstanding(understanding);
 
   if (
     !params.suppressClarification &&
-    requiresClarification(understanding, message, mode)
+    requiresClarification(understanding, message, mode, continuation)
   ) {
     reasonCodes.push("clarification_material");
     return {
@@ -90,7 +99,9 @@ export function resolveRoute(params: {
 
   // agent mode
   // Hard "plan only" always wins. Soft "make a plan" yields to ≥70% act/mutation.
-  // Ballot interaction "plan" still routes to plan (LLM asked for plan-only).
+  // Ballot interaction "plan" still routes to plan (LLM asked for plan-only),
+  // except continuation turns where Request Understanding already promoted
+  // plan-approval phrases ("go ahead") to act — trust that ballot.
   if (isHardPlanOnlyRequest(message)) {
     reasonCodes.push("explicit_plan_request");
     return {
@@ -100,12 +111,15 @@ export function resolveRoute(params: {
     };
   }
   if (interaction === "plan") {
-    reasonCodes.push("explicit_plan_request");
-    return {
-      route: "plan",
-      runDisposition: "continue",
-      reasonCodes,
-    };
+    if (!(continuation && understandingTrustsWriteBallot(understanding))) {
+      reasonCodes.push("explicit_plan_request");
+      return {
+        route: "plan",
+        runDisposition: "continue",
+        reasonCodes,
+      };
+    }
+    reasonCodes.push("policy_llm_authority_write");
   }
   if (isSoftExplicitPlanRequest(message)) {
     if (!understandingTrustsWriteBallot(understanding)) {
@@ -119,13 +133,11 @@ export function resolveRoute(params: {
     reasonCodes.push("policy_llm_authority_write");
   }
 
-  // Pasted dumps stay diagnose-first by default. In policy-facts-first mode,
-  // a trusted ≥70% act/mutation ballot may override the dump heuristic.
+  // Pasted dumps stay diagnose-first by default. Officer write intent
+  // (trusted ≥70% ballot, or soft act+mutation on test-failure pastes) wins.
   if (looksLikePastedRuntimeErrorDump(message)) {
-    if (!(factsFirst && understandingTrustsWriteBallot(understanding))) {
-      if (factsFirst) {
-        reasonCodes.push("policy_facts_safety_override");
-      }
+    if (!officerAuthorizesWriteDespiteDump(understanding, message)) {
+      reasonCodes.push("policy_facts_safety_override");
       reasonCodes.push("diagnosis_readonly");
       return {
         route: "diagnose",
@@ -143,6 +155,7 @@ export function resolveRoute(params: {
       message,
       reasonCodes,
       suppressClarification: params.suppressClarification === true,
+      continuation,
     });
   }
 
@@ -268,13 +281,14 @@ function isHighConfidenceUnderstanding(
 /**
  * Facts-first agent routing: understanding drives route; looksLike* are weak
  * priors. Material heuristic-vs-ballot conflict → clarify (or safe diagnose
- * when clarification is suppressed).
+ * when clarification is suppressed / continuation turn).
  */
 function resolveAgentRouteFactsFirst(params: {
   understanding: RequestUnderstandingResult;
   message: string;
   reasonCodes: DecisionReasonCode[];
   suppressClarification: boolean;
+  continuation?: boolean;
 }): RouteResolution {
   const { understanding, message, reasonCodes, suppressClarification } = params;
   const { intent, taskAnalysis } = understanding;
@@ -295,9 +309,45 @@ function resolveAgentRouteFactsFirst(params: {
     (primary === "docs" && !looksLikeDocsMutation(message));
 
   // Material conflict: heuristic wants write, ballot wants read.
+  // Clear mutation / workspace-bug phrasing beats a stale question ballot
+  // (classic product rule). Soft "just explain" codas and diagnose/help
+  // ballots keep read authority; remaining ambiguous conflicts clarify.
   if (heuristicWantsWrite && understandingWantsRead && !understandingWantsWrite) {
+    const explainOnlyCoda =
+      /\bjust\s+explain\b|\bexplain\s+(?:only|for\s+now)\b|\bwithout\s+(?:changing|editing|fixing|modifying)\b/i.test(
+        message,
+      );
+    const clearMutationAsk =
+      !explainOnlyCoda &&
+      (looksLikeAgentMutationRequest(message) ||
+        (looksLikeWorkspaceBugReport(message) &&
+          !isDiagnosisIntent(primary) &&
+          interaction !== "help"));
+    if (clearMutationAsk) {
+      reasonCodes.push("policy_facts_heuristic_conflict_clarify");
+      if (looksLikeWorkspaceBugReport(message)) {
+        reasonCodes.push("workspace_bug_execute");
+      } else {
+        reasonCodes.push("mutation_execute");
+      }
+      return {
+        route: "execute",
+        runDisposition: "continue",
+        reasonCodes,
+      };
+    }
+    // Diagnose/help ballot + soft failure language → diagnose, not clarify.
+    if (isDiagnosisIntent(primary) || interaction === "help") {
+      reasonCodes.push("policy_facts_heuristic_conflict_clarify");
+      reasonCodes.push("diagnosis_readonly");
+      return {
+        route: "diagnose",
+        runDisposition: "continue",
+        reasonCodes,
+      };
+    }
     reasonCodes.push("policy_facts_heuristic_conflict_clarify");
-    if (!suppressClarification) {
+    if (!suppressClarification && !params.continuation) {
       reasonCodes.push("clarification_material");
       return {
         route: "clarify",
@@ -494,6 +544,7 @@ function requiresClarification(
   understanding: RequestUnderstandingResult,
   message: string,
   mode: "ask" | "plan" | "agent",
+  continuationTurn = false,
 ): boolean {
   // Resume already amended the user ask with a clarification answer — do not
   // suspend again for the same ambiguity.
@@ -533,6 +584,8 @@ function requiresClarification(
     return false;
   }
 
+  // Explicit intent clarify flags still win — Request Understanding clears
+  // these on continuation turns via TurnKindIntentPolicy when appropriate.
   if (intent.status === "clarification_required") {
     return true;
   }
@@ -541,6 +594,12 @@ function requiresClarification(
   }
   if (intent.classification.needsClarification) {
     return true;
+  }
+
+  // Continuation: soft clarity / task-analyzer ambiguity alone must not
+  // re-suspend mid-run after Understanding deferred clarification.
+  if (continuationTurn) {
+    return false;
   }
 
   if (
@@ -740,6 +799,37 @@ function understandingTrustsWriteBallot(
   }
   return (
     classification.interactionIntent === "act" ||
+    isMutationIntent(classification.primaryTaskIntent)
+  );
+}
+
+/**
+ * Dump heuristic override: full write ballot, or soft Officer act+mutation on
+ * structured test-failure pastes (vitest/jest) at ≥0.60 when status is accepted.
+ */
+function officerAuthorizesWriteDespiteDump(
+  understanding: RequestUnderstandingResult,
+  message: string,
+): boolean {
+  if (understandingTrustsWriteBallot(understanding)) {
+    return true;
+  }
+  if (!looksLikePastedTestFailureReport(message)) {
+    return false;
+  }
+  const { intent } = understanding;
+  const classification = intent.classification;
+  if (intent.status !== "accepted") {
+    return false;
+  }
+  if (classification.needsClarification) {
+    return false;
+  }
+  if (classification.confidence < 0.6) {
+    return false;
+  }
+  return (
+    classification.interactionIntent === "act" &&
     isMutationIntent(classification.primaryTaskIntent)
   );
 }
@@ -970,6 +1060,23 @@ function looksLikePastedRuntimeErrorDump(message: string): boolean {
     .length >= 2;
 
   return hasStackFrame || hasConsoleObjectDump || multiLine;
+}
+
+/**
+ * Structured unit-test failure pastes (vitest / jest / Failed Tests N).
+ * Soft Officer act+bugfix may execute these even when confidence is 0.60–0.69.
+ */
+function looksLikePastedTestFailureReport(message: string): boolean {
+  const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
+  if (text.length < 24) {
+    return false;
+  }
+  return (
+    /Failed Tests?\s+\d+/i.test(text) ||
+    /\bFAIL\s+\S+\.(?:test|spec)\.[jt]sx?\b/i.test(text) ||
+    /\bAssertionError\b/.test(text) ||
+    /⎯+.*Failed Tests/i.test(text)
+  );
 }
 
 /**

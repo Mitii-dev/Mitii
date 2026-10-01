@@ -503,6 +503,18 @@ export const runEventSchema = z.discriminatedUnion("type", [
     .strict(),
   z
     .object({
+      type: z.literal("verification_critique_ready"),
+      runId: z.string().min(1),
+      decision: z.enum(["approve", "reject", "uncertain"]),
+      issueCount: z.number().int().nonnegative(),
+      criticalIssueCount: z.number().int().nonnegative(),
+      /** Evidence gate action that remains authoritative. */
+      gateAction: z.enum(["accept", "reject"]),
+      at: z.string().datetime(),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("verification_retry_available"),
       runId: z.string().min(1),
       recordId: z.string().min(1),

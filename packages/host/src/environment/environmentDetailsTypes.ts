@@ -3,6 +3,11 @@
  * V8 stays host-neutral — apps fill this from VS Code / CLI.
  */
 export interface WorkspaceEnvironmentSnapshot {
+  /**
+   * Local calendar date for the host (ISO `YYYY-MM-DD`).
+   * Injected so the model has a stable “today” without a tool call.
+   */
+  todayDate?: string;
   /** Workspace-relative visible editor paths. */
   visibleFiles?: readonly string[];
   /** Workspace-relative open tab paths. */

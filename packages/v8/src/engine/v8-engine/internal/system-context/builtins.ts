@@ -1,12 +1,12 @@
 /**
  * Built-in Context Sources for Mitii v8-engine epochs.
  * Formulae from OpenCode builtins (environment / instructions) adapted to
- * Mitii decision + instruction identity (ids), not drop-in Effect layers.
+ * Mitii decision + instruction identity (ids + content digests), not drop-in
+ * Effect layers. Memory stays ids-only (bodies are untrusted / reinject path).
  */
 
 import {
   decodeJsonString,
-  decodeJsonStringArray,
   encodeJson,
   makeSystemContextSource,
   combineSystemContexts,
@@ -15,6 +15,16 @@ import {
 } from "./SystemContext";
 import type { SystemContextUnavailable } from "./types";
 import { SYSTEM_CONTEXT_UNAVAILABLE } from "./types";
+import {
+  buildInstructionSourceState,
+  decodeInstructionSourceState,
+  encodeInstructionSourceState,
+  formatInstructionSourceBaseline,
+  formatInstructionSourceUpdate,
+  instructionSourceStatesEquivalent,
+  type InstructionBodiesByKind,
+  type InstructionSourceState,
+} from "./instructionSourceBodies";
 
 export const SYSTEM_CONTEXT_SOURCE_KEYS = {
   route: "system/route",
@@ -32,6 +42,11 @@ export interface ObservedContextSourceValues {
   readonly ruleIds: readonly string[];
   readonly environmentIds: readonly string[];
   readonly memoryIds: readonly string[];
+  /**
+   * Optional truncated bodies for mid-update rendering.
+   * Never include memory bodies here (untrusted path).
+   */
+  readonly bodies?: InstructionBodiesByKind;
   /**
    * When set, that source loads as Unavailable (stale-while-revalidate).
    * Keys are SYSTEM_CONTEXT_SOURCE_KEYS values.
@@ -69,9 +84,18 @@ export function composeMitiiSystemContext(
   observed: ObservedContextSourceValues,
 ): SystemContext {
   const unavailable = observed.unavailableKeys;
-  const skillIds = sortedIds(observed.skillIds);
-  const ruleIds = sortedIds(observed.ruleIds);
-  const environmentIds = sortedIds(observed.environmentIds);
+  const skillState = buildInstructionSourceState(
+    observed.skillIds,
+    observed.bodies?.skills,
+  );
+  const ruleState = buildInstructionSourceState(
+    observed.ruleIds,
+    observed.bodies?.rules,
+  );
+  const environmentState = buildInstructionSourceState(
+    observed.environmentIds,
+    observed.bodies?.environment,
+  );
   const memoryIds = sortedIds(observed.memoryIds);
 
   return combineSystemContexts([
@@ -106,64 +130,101 @@ export function composeMitiiSystemContext(
       update: (_previous, depth) =>
         `Planning depth is now: ${depth || "(unset)"}.`,
     }),
-    makeSystemContextSource({
+    makeSystemContextSource<InstructionSourceState>({
       key: SYSTEM_CONTEXT_SOURCE_KEYS.skills,
-      encode: encodeJson,
-      decode: decodeJsonStringArray,
-      equivalent: (a, b) =>
-        a.length === b.length && a.every((id, index) => id === b[index]),
+      encode: encodeInstructionSourceState,
+      decode: decodeInstructionSourceState,
+      equivalent: instructionSourceStatesEquivalent,
       load: () =>
         maybeUnavailable(
           SYSTEM_CONTEXT_SOURCE_KEYS.skills,
           unavailable,
-          skillIds,
+          skillState,
         ),
-      baseline: (ids) =>
-        `Available skills for this agent: ${formatIdList(ids)}.`,
-      update: (_previous, ids) =>
-        `Available skills are now: ${formatIdList(ids)}.`,
+      baseline: (state) =>
+        formatInstructionSourceBaseline({
+          kind: "skills",
+          state,
+          bodies: observed.bodies?.skills,
+        }),
+      update: (previous, current) =>
+        formatInstructionSourceUpdate({
+          kind: "skills",
+          previous,
+          current,
+          bodies: observed.bodies?.skills,
+        }),
       removed: () => "Previously loaded skills no longer apply.",
     }),
-    makeSystemContextSource({
+    makeSystemContextSource<InstructionSourceState>({
       key: SYSTEM_CONTEXT_SOURCE_KEYS.rules,
-      encode: encodeJson,
-      decode: decodeJsonStringArray,
-      equivalent: (a, b) =>
-        a.length === b.length && a.every((id, index) => id === b[index]),
+      encode: encodeInstructionSourceState,
+      decode: decodeInstructionSourceState,
+      equivalent: instructionSourceStatesEquivalent,
       load: () =>
         maybeUnavailable(
           SYSTEM_CONTEXT_SOURCE_KEYS.rules,
           unavailable,
-          ruleIds,
+          ruleState,
         ),
-      baseline: (ids) =>
-        `Project instruction rules in effect: ${formatIdList(ids)}.`,
-      update: (_previous, ids) =>
-        `Project instruction rules are now: ${formatIdList(ids)}.`,
+      baseline: (state) =>
+        formatInstructionSourceBaseline({
+          kind: "rules",
+          state,
+          bodies: observed.bodies?.rules,
+        }),
+      update: (previous, current) =>
+        formatInstructionSourceUpdate({
+          kind: "rules",
+          previous,
+          current,
+          bodies: observed.bodies?.rules,
+        }),
       removed: () => "Previously loaded project rules no longer apply.",
     }),
-    makeSystemContextSource({
+    makeSystemContextSource<InstructionSourceState>({
       key: SYSTEM_CONTEXT_SOURCE_KEYS.environment,
-      encode: encodeJson,
-      decode: decodeJsonStringArray,
-      equivalent: (a, b) =>
-        a.length === b.length && a.every((id, index) => id === b[index]),
+      encode: encodeInstructionSourceState,
+      decode: decodeInstructionSourceState,
+      equivalent: instructionSourceStatesEquivalent,
       load: () =>
         maybeUnavailable(
           SYSTEM_CONTEXT_SOURCE_KEYS.environment,
           unavailable,
-          environmentIds,
+          environmentState,
         ),
-      baseline: (ids) =>
-        `Environment context blocks: ${formatIdList(ids)}.`,
-      update: (_previous, ids) =>
-        `Environment context blocks are now: ${formatIdList(ids)}.`,
+      baseline: (state) =>
+        formatInstructionSourceBaseline({
+          kind: "environment",
+          state,
+          bodies: observed.bodies?.environment,
+        }),
+      update: (previous, current) =>
+        formatInstructionSourceUpdate({
+          kind: "environment",
+          previous,
+          current,
+          bodies: observed.bodies?.environment,
+        }),
       removed: () => "Previously loaded environment context no longer applies.",
     }),
     makeSystemContextSource({
       key: SYSTEM_CONTEXT_SOURCE_KEYS.memory,
       encode: encodeJson,
-      decode: decodeJsonStringArray,
+      decode: (raw) => {
+        try {
+          const parsed: unknown = JSON.parse(raw);
+          if (!Array.isArray(parsed)) {
+            return undefined;
+          }
+          if (!parsed.every((item) => typeof item === "string")) {
+            return undefined;
+          }
+          return parsed as string[];
+        } catch {
+          return undefined;
+        }
+      },
       equivalent: (a, b) =>
         a.length === b.length && a.every((id, index) => id === b[index]),
       load: () =>

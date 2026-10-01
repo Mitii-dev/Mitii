@@ -20,6 +20,18 @@ export type {
   MutationCriticResult,
   MutationCriticVerdict,
 } from "./evaluateMutationCritic";
+export {
+  parseVerificationCritique,
+  formatVerificationCritiqueWarnings,
+  VERIFICATION_CRITIQUE_DECISIONS,
+  VERIFICATION_CRITIQUE_SEVERITIES,
+} from "./parseVerificationCritique";
+export type {
+  VerificationCritiqueDecision,
+  VerificationCritiqueIssue,
+  VerificationCritiqueResult,
+  VerificationCritiqueSeverity,
+} from "./parseVerificationCritique";
 export { extractFileReadPaths } from "./extractFileReadPaths";
 export {
   requiresStructuredReviewFindings,
@@ -111,6 +123,10 @@ export {
   preflightDiagnosticsForUserRequest,
 } from "./shouldForcePreflightRepairLock";
 export { buildVerificationRepairPrompt } from "./buildVerificationRepairPrompt";
+export {
+  diagnosticSourceLineKey,
+  loadDiagnosticSourceLines,
+} from "./loadDiagnosticSourceLines";
 export { formatVerificationFailureAnswer, formatVerificationEvidence } from "./formatVerificationNarration";
 export { summarizeToolCall } from "./summarizeToolCall";
 export { truncateForEvent } from "./truncateForEvent";
@@ -123,6 +139,7 @@ export {
 export { shouldCaptureUnconditionalAgentPreflight } from "./shouldCaptureUnconditionalAgentPreflight";
 export {
   decideVerificationGate,
+  resolveFailedVerificationTerminalStatus,
   isUserGoalComplete,
   packageCompileEvidencePassed,
   failuresAreIgnorableWhenPackagePassed,
@@ -164,6 +181,12 @@ export {
 } from "./serializeRecoverabilityWorkingSet";
 export type { RecoverabilityWorkingSetInput } from "./serializeRecoverabilityWorkingSet";
 export { estimateMutationPayloadCharacters } from "./estimateMutationPayloadCharacters";
+export { buildInstructionBodies } from "./buildInstructionBodies";
+export {
+  refreshMemoryFactsForCompaction,
+  clipMemoryFacts,
+} from "./refreshMemoryFactsForCompaction";
+export type { MemoryFact } from "./refreshMemoryFactsForCompaction";
 export {
   compactModelLoopMessages,
   compactModelLoopMessagesFromWindowPolicy,
@@ -197,6 +220,7 @@ export {
   salvageUserFacingAnswerSection,
   stripInjectionComplianceEchoes,
   amendMessageWithPriorConversation,
+  buildUnderstandingHistoryDigest,
 } from "./isIncompleteAssistantTurn";
 
 export { recoverLeakedToolCallsFromMarkup } from "./recoverLeakedToolCalls";
@@ -351,8 +375,30 @@ export {
   requiresMutation,
   batchIncludesMutatingTool,
   batchIsReadonlyTools,
+  hasPlanDraftedThisRun,
+  resolveReadonlyTurnsBeforeMutationNudge,
+  shouldEscalateReadonlyThrashToContinue,
   softMutationNudgeMessage,
+  readonlyThrashPartialAnswer,
   unfulfilledExecuteNudgeMessage,
 } from "../modules/mutation-nudge";
+export {
+  resolveMutateReadinessBudget,
+  resolveStepReadonlyTurnsBeforeGate,
+  evaluateActiveStepMutateReadiness,
+  shouldDemandEvidenceBeforePatch,
+  buildStepEvidenceGateMessage,
+  buildStepPatchRequiredMessage,
+  filterToolsForMutateLock,
+  mutateLockModelRequestFields,
+  resolveMutateLockAllowTargetedReads,
+  isMutateLockAllowedToolName,
+  shouldRearmMutateLockOnContinue,
+} from "../modules/mutate-readiness";
+export type {
+  MutateReadinessBudget,
+  MutateReadinessTaskSize,
+  ActiveStepMutateReadiness,
+} from "../modules/mutate-readiness";
 export { runV8MutationCritic } from "../modules/mutation-critic";
 export type { V8MutationCriticDecision } from "../modules/mutation-critic";

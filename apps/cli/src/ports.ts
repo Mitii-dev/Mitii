@@ -27,11 +27,13 @@ import {
   createWorkspaceVerificationStore,
   createWorkspaceMemoryStore,
   createWorkspaceKnowledgeGraph,
+  createOptionalVerificationSyntaxPort,
   createHeuristicAdversary,
   detectSandboxBackend,
   getProviderPreset,
   inferHostProviderType,
   isHostProviderType,
+  resolveHostContextWindowTokens,
   resolveMemoryEmbeddingPort,
   resolveProviderApiKey,
   resolveSandboxPolicy,
@@ -147,6 +149,15 @@ export function resolveCliPorts(
     model,
     ...(baseUrl ? { baseUrl } : {}),
     ...(apiKey ? { apiKey } : {}),
+    capabilities: {
+      contextWindowTokens: resolveHostContextWindowTokens({
+        env,
+        model,
+        providerType: type,
+        configContextWindowTokens: config.contextWindowTokens,
+      }),
+      supportsTools: true,
+    },
   });
   return {
     understandingLlm: ports.understandingLlm,
@@ -242,6 +253,9 @@ export async function createCliClient(options: {
       workspaceRoot: options.cwd,
     }),
     records: createWorkspaceVerificationStore(options.cwd),
+    ...(await createOptionalVerificationSyntaxPort().then((syntax) =>
+      syntax ? { syntax } : {},
+    )),
   });
   const repositoryState = new RepositoryStatePipeline({
     store: new InMemoryRepositoryStateStore(),

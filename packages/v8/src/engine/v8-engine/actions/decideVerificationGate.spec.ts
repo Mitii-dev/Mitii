@@ -6,6 +6,7 @@ import type {
 } from "../../../modules/verification";
 import {
   decideVerificationGate,
+  resolveFailedVerificationTerminalStatus,
   isUserGoalComplete,
   packageCompileEvidencePassed,
 } from "./decideVerificationGate";
@@ -256,5 +257,56 @@ describe("decideVerificationGate / isUserGoalComplete", () => {
         verification,
       }).action,
     ).toBe("reject");
+  });
+
+  it("rejects mutation-required execute with zero file changes", () => {
+    const decision = decideVerificationGate({
+      verificationRequired: false,
+      allowUnavailable: true,
+      changedFileCount: 0,
+      mutationRequired: true,
+      canVerify: false,
+    });
+    expect(decision).toEqual({
+      action: "reject",
+      repairable: false,
+      rejectKind: "no_mutation_performed",
+      error: {
+        code: "no_mutation_performed",
+        message:
+          "The task required workspace edits, but the model completed without changing any files.",
+      },
+    });
+  });
+});
+
+describe("resolveFailedVerificationTerminalStatus", () => {
+  it("fails when mutation was required but never performed", () => {
+    expect(
+      resolveFailedVerificationTerminalStatus({
+        changedFileCount: 0,
+        rejectKind: "no_mutation_performed",
+      }),
+    ).toBe("failed");
+  });
+
+  it("fails when edits were kept after a failed verification", () => {
+    expect(
+      resolveFailedVerificationTerminalStatus({
+        changedFileCount: 2,
+        rejectKind: "verification_failed",
+      }),
+    ).toBe("failed");
+  });
+
+  it("does not invent success for no_mutation via the zero-file branch", () => {
+    // Regression: previously `changedFileCount === 0` mapped to completed,
+    // which turned gate reject(no_mutation_performed) into a false green exit.
+    expect(
+      resolveFailedVerificationTerminalStatus({
+        changedFileCount: 0,
+        rejectKind: "no_mutation_performed",
+      }),
+    ).not.toBe("completed");
   });
 });

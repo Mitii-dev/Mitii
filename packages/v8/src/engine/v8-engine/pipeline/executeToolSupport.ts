@@ -40,6 +40,16 @@ export const DEFAULT_MUTATING_TOOL_NAMES = new Set(
   DEFAULT_MUTATION_TOOL_DEFINITIONS.map((tool) => tool.name),
 );
 
+/** Process-level git history / PR tools that satisfy execute without file diffs. */
+export const GIT_WRITE_TOOL_NAMES = new Set([
+  "git_signoff_range",
+  "create_pull_request",
+]);
+
+export function isGitWriteToolName(name: string): boolean {
+  return GIT_WRITE_TOOL_NAMES.has(name);
+}
+
 export function safeJsonParse(value: string): unknown {
   try {
     return value.trim().length > 0 ? JSON.parse(value) : {};

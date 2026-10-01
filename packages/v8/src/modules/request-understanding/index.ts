@@ -24,6 +24,8 @@ export { resolveFuzzyFileTargets } from "./task-analyzer/analyzer/resolveFuzzyFi
 export {
   isWholeRequestReadOnlyConstraint,
   isHardWholeRequestReadOnlyConstraint,
+  hasMutatingPrimaryAsk,
+  hasNonNegatedMutationVerb,
 } from "./intent/isWholeRequestReadOnlyConstraint";
 export {
   resolveIntentClassifierMaximumOutputTokens,

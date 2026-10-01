@@ -54,6 +54,18 @@ export const AGENT_ACTIVE_STAGES = [
 export const AGENT_REASON_CODES = [
   "run_started",
   "intake_complete",
+  /** Leading slash classified as non-agent meta; run short-circuited at intake. */
+  "intake_meta_command",
+  /** `@path` mentions were parsed into referencedArtifacts at intake. */
+  "intake_mentions_extracted",
+  /** Session-control handled /stop at intake. */
+  "session_control_stop",
+  /** Session-control handled /new or /clear (host should reset transcript). */
+  "session_control_finalized",
+  /** Session-control compacted host conversation at intake. */
+  "session_control_compacted",
+  /** Session-control side channel (/help /status /resume). */
+  "session_control_side_channel",
   "understanding_complete",
   "decision_complete",
   "grant_narrowed",
@@ -144,6 +156,8 @@ export const AGENT_REASON_CODES = [
   "session_history_hybrid_retrieved",
   "session_history_projection_upserted",
   "established_facts_reinjected",
+  "memory_refreshed_for_compaction",
+  "memory_reinjected",
   "completed_task_results_stubbed",
   "context_retrieved",
   "context_skipped",
@@ -158,11 +172,21 @@ export const AGENT_REASON_CODES = [
   "incomplete_answer_recovered",
   "incomplete_answer_fallback",
   "incomplete_execute",
+  /** Verification gate: execute+write finished with zero workspace file mutations. */
+  "no_mutation_performed",
   "incomplete_review",
   "incomplete_review_recovered",
   "unfulfilled_execute_recovered",
   "unfulfilled_execute_exhausted",
   "must_read_nudged",
+  "soft_mutation_nudged",
+  "readonly_thrash_continue",
+  /** Active checklist step: load named RequiredEvidenceBeforePatch, then patch. */
+  "step_mutate_readiness_gated",
+  /** Active checklist step evidence loaded (or gate budget spent); demand apply_patch. */
+  "step_mutate_patch_required",
+  /** Discovery tools stripped; mutate (+ optional targeted reads) only until patch lands. */
+  "step_mutate_lock_armed",
   "code_intel_adoption_nudged",
   "tools_executed",
   "mutation_applied",
@@ -204,6 +228,8 @@ export const AGENT_REASON_CODES = [
   "verification_record_build_failed",
   /** LLM verification-summary narration failed or was rejected; a template fallback was used. */
   "verification_narration_failed",
+  /** Optional LLM verification critique failed or was rejected; gate decision unchanged. */
+  "verification_critique_failed",
   /** A hard/blocked verification rejection was kept rather than repaired (see rejectKind on the event). */
   "verification_rejected_kept",
   /** A host policy (planApproval: never) suppressed a plan gate that risk analysis required. */
@@ -254,6 +280,7 @@ export const AGENT_EVENT_TYPES = [
   "verification_comparison",
   "verification_record_saved",
   "verification_summary_ready",
+  "verification_critique_ready",
   "verification_retry_available",
   "terminal",
 ] as const;

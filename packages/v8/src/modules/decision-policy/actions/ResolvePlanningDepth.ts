@@ -65,6 +65,19 @@ export function resolvePlanningDepth(params: {
     return { planningDepth: "visible", reasonCodes };
   }
 
+  // Officer taskSize / planningHint → plan-then-finish (before localized shortcuts).
+  const officerPlan = resolveOfficerTaskSizePlanningDepth({
+    taskAnalysis,
+    windowPolicy: params.windowPolicy,
+  });
+  if (officerPlan && mode === "agent" && route === "execute") {
+    reasonCodes.push(...officerPlan.reasonCodes);
+    return {
+      planningDepth: officerPlan.planningDepth,
+      reasonCodes,
+    };
+  }
+
   if (
     isArchitectureScale(taskAnalysis, primary, message) ||
     isLargeImplementationScale(taskAnalysis, primary, message)
@@ -173,6 +186,47 @@ function isSimpleLocalized(
     taskAnalysis.risk === "low" || taskAnalysis.risk === "medium";
 
   return lowComplexity && localized && lowRisk && taskAnalysis.risk !== "critical";
+}
+
+/**
+ * Map RU Officer taskSize / planningHint to planningDepth.
+ * Returns null when Officer left small/none (let classic heuristics decide).
+ */
+function resolveOfficerTaskSizePlanningDepth(params: {
+  taskAnalysis: RequestUnderstandingResult["taskAnalysis"];
+  windowPolicy?: WindowPolicy;
+}): PlanningDepthResolution | null {
+  const { taskAnalysis } = params;
+  const size = taskAnalysis.taskSize;
+  const hint = taskAnalysis.planningHint;
+
+  // Only fire when Officer (or sizeDraft) set an explicit band/hint.
+  // Do not steal architecture / large-implementation visible plans from
+  // recommendsPlanning alone.
+  const explicitOfficerSignal =
+    hint === "short" ||
+    hint === "medium" ||
+    hint === "long" ||
+    size === "medium" ||
+    size === "large";
+
+  if (!explicitOfficerSignal) {
+    return null;
+  }
+
+  const wantVisible = hint === "long" || size === "large";
+
+  if (wantVisible && isVisiblePlanAffordable(params.windowPolicy)) {
+    return {
+      planningDepth: "visible",
+      reasonCodes: ["officer_task_size_plan"],
+    };
+  }
+
+  return {
+    planningDepth: "internal",
+    reasonCodes: ["officer_task_size_plan", "multi_file_internal_plan"],
+  };
 }
 
 function isLargeImplementationScale(

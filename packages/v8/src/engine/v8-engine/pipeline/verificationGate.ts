@@ -31,8 +31,10 @@ import {
   applyVerificationAcceptSideEffects,
   commitMutations,
   emitVerificationCompleted,
+  tryCritiqueVerification,
 } from "./verificationArtifacts";
 export { isVerificationRetryAsk } from "./verificationRetryAsk";
+import { resolveSteeringFeatureFlags } from "../legacy/steeringFlags";
 
 export function captureBuildStateFromVerificationResult(
   runtime: AgentEngineRuntime,
@@ -102,6 +104,7 @@ export async function runVerificationGate(
     evidence?: RunEvidence;
     windowPolicy: WindowPolicy;
     logVerbosity?: AgentLogVerbosity;
+    signal?: AbortSignal;
   },
 ): Promise<VerificationGateOutcome> {
   const {
@@ -120,6 +123,8 @@ export async function runVerificationGate(
     evidence,
     windowPolicy,
   } = params;
+  const signal = params.signal ?? new AbortController().signal;
+  const steering = resolveSteeringFeatureFlags(input.steering);
 
   const missingInfrastructure: string[] = [];
   if (runtime.deps.verification === undefined) {
@@ -235,6 +240,20 @@ export async function runVerificationGate(
     missingInfrastructure,
     verification: verificationResult,
     comparison,
+  });
+
+  // Optional LLM critique is advisory only — never changes decisionOutcome.
+  await tryCritiqueVerification(runtime, {
+    enabled: steering.verificationLlmCritique,
+    bus,
+    runId,
+    gateAction: decisionOutcome.action,
+    verification: verificationResult,
+    comparison,
+    changedFiles,
+    warnings,
+    signal,
+    logVerbosity: params.logVerbosity ?? input.logVerbosity,
   });
 
   if (decisionOutcome.action === "accept") {
