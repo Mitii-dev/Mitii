@@ -43,6 +43,15 @@ export function buildRejectedMutationRecoveryMessage(params: {
       "oldText and newText were the same, so the file was not changed.",
       "Using attached currentContent, retry apply_patch with a newText that actually differs and fixes the listed diagnostic. Do not copy the same code.",
     );
+  } else if (params.reasonCode === "patch_syntax_invalid") {
+    instructions.push(
+      "The proposed edit failed a lightweight syntax check (JSON parse or worsened bracket balance).",
+      "Using attached currentContent, retry with a smaller exact oldText/newText hunk. Do not rewrite large regions. Do not bypass via shell/node scripts.",
+    );
+  } else if (params.reasonCode === "change_impact_incomplete") {
+    instructions.push(
+      "Call analyze_change_impact on the primary seed path once, then retry the same apply_patch. Do not keep mutating without that call while the gate is active.",
+    );
   } else if (params.reasonCode === "patch_too_destructive") {
     instructions.push(
       "Empty oldText would wipe most of an existing file — that is blocked.",
