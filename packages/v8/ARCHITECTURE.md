@@ -76,7 +76,7 @@ Authoritative packaging layout: `docs/REPO_LAYOUT.md`.
 
 Dependency direction MUST remain `apps -> host -> sdk -> v8` (apps may also import sdk/v8 types carefully). V8 MUST NOT import host or SDK packages.
 
-Runtime orchestration belongs to `packages/v8/src/engine/agent-engine/`. Tool execution
+Runtime orchestration belongs to `packages/v8/src/engine/v8-engine/`. Tool execution
 belongs to the tool-runtime engine package path. Business facades remain under
 `modules/`.
 
@@ -93,7 +93,7 @@ belongs to the tool-runtime engine package path. Business facades remain under
 | `model-gateway` | Model invocation -> model-event stream | Provider selection, capability negotiation, normalized streaming, usage, retry classification | Tool execution or run policy |
 | `tool-runtime` | Authorized tool call -> tool result | Tool catalog, schema validation, permissions, path/command/network enforcement, timeout, audit, mutation transaction | Choosing the task route |
 | `verification` | Change/result + state + policy -> verification result | Affected-project selection, applicable checks, diagnostics/diff evidence, completion recommendation | Direct shell bypass |
-| `agent-engine` | Start/resume request -> run handle | State machine, sequencing, model/tool loop, cancellation, suspension/resume, checkpoints, events, terminal result | Internals owned by other modules |
+| `v8-engine` | Start/resume request -> run handle | State machine, sequencing, model/tool loop, cancellation, suspension/resume, checkpoints, events, terminal result | Internals owned by other modules |
 | `skills` | Task evidence + budget -> selected instructions | Selection, conflicts, provenance, instruction budgeting | General prompt construction |
 | `memory` | Scoped query/commit -> memory result | Retrieval, relevance, retention, provenance, privacy | Run orchestration |
 | `planning` | Task evidence + decision depth (+ optional skills/process hints) -> `PlanArtifact` | Dimension-driven plan drafting, validation, compaction, serialization | Route authority, tool execution, hard-coded plan types |
