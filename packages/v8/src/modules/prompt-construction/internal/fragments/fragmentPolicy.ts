@@ -42,4 +42,13 @@ export const FRAGMENT_POLICY = {
 
   /** Soft default for a single repository evidence block. */
   repositoryBlockPreferredTokens: 4_000,
+
+  /**
+   * Hard cap for optional L1 skill catalog strip (name+description only).
+   * Default inject is off — keep this small for 30k windows.
+   */
+  skillCatalogL1MaxTokens: 400,
+
+  /** Max catalog entries rendered into the L1 strip. */
+  skillCatalogL1MaxEntries: 40,
 } as const;

@@ -18,6 +18,8 @@ Skills selects relevant instruction blocks from a skill catalog. It helps the mo
 - Hydrates selected skill bodies.
 - Enforces a dedicated token budget with rank-preserving packing.
 - Prefers a compact L1 body when the full playbook does not fit.
+- Optionally returns a name+description `catalogL1` slice when
+  `includeCatalogL1` is set (for PC awareness inject; default off).
 - Returns prompt-ready instruction blocks with provenance.
 
 ## Structure
@@ -37,11 +39,11 @@ skills/
 
 ## Types And Contracts
 
-- `SkillsSelectInput`: query, mode, route, task evidence, budget, and max skill count.
+- `SkillsSelectInput`: query, mode, route, task evidence, budget, max skill count, and optional `includeCatalogL1`.
 - `SkillTaskEvidence`: primary intent, secondary intents, scope, complexity, risk, recommendations, paths, tags, languages, and project kinds.
 - `SkillDescriptor`: skill metadata plus body.
 - `SkillInstructionBlock`: prompt-ready instruction content with provenance.
-- `SkillsSelectResult`: status, instructions, omissions, token usage, warnings, reason codes, and duration.
+- `SkillsSelectResult`: status, instructions, optional `catalogL1`, omissions, token usage, warnings, reason codes, and duration.
 
 ## Technical Details
 

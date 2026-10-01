@@ -631,4 +631,27 @@ describe("SkillsPipeline", () => {
       ]),
     );
   });
+
+  it("returns L1 catalog slice when includeCatalogL1 is set", async () => {
+    const pipeline = new SkillsPipeline({
+      catalog: new InMemorySkillsCatalog(catalog),
+    });
+
+    const withCatalog = await pipeline.select(
+      baseInput({ includeCatalogL1: true }),
+    );
+    expect(withCatalog.reasonCodes).toContain("catalog_l1_included");
+    expect(withCatalog.catalogL1?.length).toBeGreaterThan(0);
+    expect(withCatalog.catalogL1?.[0]).toEqual(
+      expect.objectContaining({
+        id: expect.any(String),
+        name: expect.any(String),
+        description: expect.any(String),
+      }),
+    );
+
+    const withoutCatalog = await pipeline.select(baseInput());
+    expect(withoutCatalog.catalogL1).toBeUndefined();
+    expect(withoutCatalog.reasonCodes).not.toContain("catalog_l1_included");
+  });
 });

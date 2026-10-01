@@ -23,7 +23,9 @@ Prompt Construction builds the provider-neutral `ModelRequest` that is sent thro
   after the baseline system blob (provider-cache friendly). Mid-conversation
   epoch updates use **user** role + `<context_epoch_update>` markers (shared
   with engine admit). Callers may pass serializable `extraFragments` without
-  forking core assembly.
+  forking core assembly. Optional L1 skill catalog
+  (`injectSkillCatalogL1` + `skillCatalogL1`, default off) injects a
+  name+description awareness strip under a hard ~400-token cap.
   Courtesy inspiration acknowledgement (not copied upstream source): see
   `Mitii/NOTICE-REVIEW.md`.
 

@@ -82,6 +82,9 @@ export async function handleVerificationFailed(params: {
     mode?: "ask" | "plan" | "agent";
     projects?: readonly import("../../../modules/repository-state").ProjectDescriptor[];
     memoryFacts?: readonly { id: string; content: string }[];
+    memoryQuery?: string;
+    memoryWorkspaceId?: string;
+    memoryFileTargets?: readonly string[];
     establishedFacts?: import("../actions").EstablishedFact[];
     selectedSkillIds?: string[];
     projectRuleIds?: string[];
@@ -267,6 +270,9 @@ export async function handleVerificationFailed(params: {
       mutationCheckpointIds: loopMutationIds,
       taskListRef,
       memoryFacts: loopContext?.memoryFacts,
+      memoryQuery: loopContext?.memoryQuery,
+      memoryWorkspaceId: loopContext?.memoryWorkspaceId,
+      memoryFileTargets: loopContext?.memoryFileTargets,
       establishedFacts: loopContext?.establishedFacts ?? [],
       selectedSkillIds: loopContext?.selectedSkillIds,
       projectRuleIds: loopContext?.projectRuleIds,

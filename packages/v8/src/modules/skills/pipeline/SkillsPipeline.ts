@@ -8,6 +8,9 @@ import {
 import { KeywordSkillSimilarity } from "../KeywordSkillSimilarity";
 import { SKILLS_SCHEMA_VERSION } from "../constants";
 import {
+  DEFAULT_SKILL_CATALOG_L1_MAX_ENTRIES,
+} from "../defaults";
+import {
   SkillsError,
   skillBodySchema,
   skillDescriptorSchema,
@@ -18,6 +21,7 @@ import {
 import type { HydratedScoredSkill, ScoredSkill } from "../actions";
 import type {
   SkillBody,
+  SkillCatalogL1Entry,
   SkillIndexEntry,
   SkillsCatalogPort,
   SkillsSelectInput,
@@ -94,6 +98,12 @@ export class SkillsPipeline {
     const catalog = rawCatalog.map((entry) => skillIndexEntrySchema.parse(entry));
     const reasonCodes: SkillReasonCode[] = [];
     const warnings: string[] = [];
+    const catalogL1 = parsed.includeCatalogL1
+      ? buildCatalogL1(catalog)
+      : undefined;
+    if (catalogL1 && catalogL1.length > 0) {
+      reasonCodes.push("catalog_l1_included");
+    }
 
     if (catalog.length === 0) {
       reasonCodes.push("catalog_empty");
@@ -101,6 +111,7 @@ export class SkillsPipeline {
         schemaVersion: SKILLS_SCHEMA_VERSION,
         status: "empty",
         instructions: [],
+        ...(catalogL1 ? { catalogL1 } : {}),
         omissions: [],
         required: [],
         requiredCount: 0,
@@ -219,6 +230,7 @@ export class SkillsPipeline {
         schemaVersion: SKILLS_SCHEMA_VERSION,
         status: "empty",
         instructions: [],
+        ...(catalogL1 ? { catalogL1 } : {}),
         omissions,
         required: required.resolvedIds,
         requiredCount: requiredInInstructions.length,
@@ -236,6 +248,7 @@ export class SkillsPipeline {
       schemaVersion: SKILLS_SCHEMA_VERSION,
       status: "selected",
       instructions: budgeted.instructions,
+      ...(catalogL1 ? { catalogL1 } : {}),
       omissions,
       required: required.resolvedIds,
       requiredCount: requiredInInstructions.length,
@@ -323,4 +336,17 @@ function resolveMaxSkills(
     default:
       return parsed.maxSkills;
   }
+}
+
+function buildCatalogL1(
+  catalog: readonly SkillIndexEntry[],
+): SkillCatalogL1Entry[] {
+  return catalog
+    .filter((entry) => entry.id.trim() && entry.title.trim())
+    .slice(0, DEFAULT_SKILL_CATALOG_L1_MAX_ENTRIES)
+    .map((entry) => ({
+      id: entry.id,
+      name: entry.title,
+      description: (entry.description ?? entry.title).trim() || entry.title,
+    }));
 }

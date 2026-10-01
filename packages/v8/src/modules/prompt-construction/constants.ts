@@ -53,6 +53,7 @@ export const PROMPT_REASON_CODES = [
   "blocked_required_overflow",
   "fragment_review_threshold",
   "extra_fragments_injected",
+  "skill_catalog_l1_injected",
 ] as const;
 
 export const PROMPT_CONSTRUCTION_ERROR_CODES = [

@@ -12,6 +12,11 @@ export interface SteeringFeatureFlags {
   policyFactsFirst: boolean;
   /** Inject deterministic DecisionBrief into the system prompt. */
   decisionBrief: boolean;
+  /**
+   * Inject optional L1 skill catalog strip (name+description only) into PC.
+   * Default off for 30k windows — selected L2 bodies remain the primary path.
+   */
+  injectSkillCatalogL1: boolean;
   /** Pre-mutation critic: off | shadow (log only) | enforce (narrow/pause). */
   criticMode: SteeringCriticMode;
   /**
@@ -26,6 +31,7 @@ export const DEFAULT_STEERING_FEATURE_FLAGS: SteeringFeatureFlags = {
   /** Default on: high-confidence Understanding drives Decision Policy route. */
   policyFactsFirst: true,
   decisionBrief: false,
+  injectSkillCatalogL1: false,
   criticMode: "off",
   verificationLlmCritique: false,
 };
@@ -46,6 +52,9 @@ export function resolveSteeringFeatureFlags(
       DEFAULT_STEERING_FEATURE_FLAGS.policyFactsFirst,
     decisionBrief:
       overrides.decisionBrief ?? DEFAULT_STEERING_FEATURE_FLAGS.decisionBrief,
+    injectSkillCatalogL1:
+      overrides.injectSkillCatalogL1 ??
+      DEFAULT_STEERING_FEATURE_FLAGS.injectSkillCatalogL1,
     criticMode: STEERING_CRITIC_MODES.includes(criticMode)
       ? criticMode
       : "off",

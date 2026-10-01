@@ -4,6 +4,9 @@ export const DEFAULT_SKILLS_BUDGET_TOKENS = 2400;
 /** Hard cap on how many skills may be selected for one turn. */
 export const DEFAULT_MAX_SKILLS = 2;
 
+/** Max L1 catalog entries returned when includeCatalogL1 is set. */
+export const DEFAULT_SKILL_CATALOG_L1_MAX_ENTRIES = 40;
+
 /** Characters-per-token estimate used when no estimator is injected. */
 export const DEFAULT_CHARACTERS_PER_TOKEN = 4;
 

@@ -26,6 +26,11 @@ export {
 } from "./builtInFragments";
 export { ExtraInstructionFragment } from "./ExtraInstructionFragment";
 export {
+  SkillCatalogFragment,
+  formatSkillCatalogL1,
+} from "./SkillCatalogFragment";
+export type { SkillCatalogL1Entry } from "./SkillCatalogFragment";
+export {
   MID_CONVERSATION_UPDATE_MARKERS,
   MID_CONVERSATION_SYSTEM_MARKERS,
   wrapMidConversationUpdateText,

@@ -124,6 +124,9 @@ export type V8ModelLoopParams = {
   understanding?: RequestUnderstandingResult;
   repoBuildStateBefore?: RepoBuildState;
   memoryFacts?: readonly { id: string; content: string }[];
+  memoryQuery?: string;
+  memoryWorkspaceId?: string;
+  memoryFileTargets?: readonly string[];
   logVerbosity?: AgentLogVerbosity;
   selectedSkillIds?: readonly string[];
   projectRuleIds?: readonly string[];
@@ -178,6 +181,9 @@ export async function runV8ModelLoop(
     runtime.contextEpochs.get(runId);
   const sessionHistoryArchive = new InMemorySessionHistoryArchive();
   const logVerbosity: AgentLogVerbosity = params.logVerbosity ?? "standard";
+  let memoryFacts = params.memoryFacts
+    ? [...params.memoryFacts]
+    : undefined;
   const continueOverrideCount = params.continueOverrideCount ?? 0;
   let forceFinalOnly = false;
   let awaitingAnswerOnly = false;
@@ -285,7 +291,7 @@ export async function runV8ModelLoop(
       ...toolFields,
     };
 
-    const prepared = prepareTurn({
+    const prepared = await prepareTurn({
       runtime,
       runId,
       bus,
@@ -297,7 +303,11 @@ export async function runV8ModelLoop(
       grantPathScopes: decision.toolGrant.pathScopes,
       mutationBudget: decision.toolGrant.mutationBudget,
       repoBuildStateBefore: params.repoBuildStateBefore,
-      memoryFacts: params.memoryFacts,
+      memoryFacts,
+      memoryQuery: params.memoryQuery,
+      memoryWorkspaceId: params.memoryWorkspaceId,
+      memoryFileTargets: params.memoryFileTargets,
+      abortSignal: signal,
       establishedFacts,
       reasonCodes,
       warnings,
@@ -312,9 +322,12 @@ export async function runV8ModelLoop(
       projectRuleIds: params.projectRuleIds,
       environmentIds: params.environmentIds,
       instructionBodies: params.instructionBodies,
-      memoryIds: params.memoryFacts?.map((fact) => fact.id) ?? [],
+      memoryIds: memoryFacts?.map((fact) => fact.id) ?? [],
       sessionHistoryArchive,
     });
+    if (prepared.memoryFacts) {
+      memoryFacts = [...prepared.memoryFacts];
+    }
     emittedLoopPressureWarning = prepared.emittedLoopPressureWarning;
     emittedLoopCompactionWarning = prepared.emittedLoopCompactionWarning;
     lastPromptCacheClass = prepared.promptCacheClass;

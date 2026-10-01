@@ -182,6 +182,11 @@ export type { RecoverabilityWorkingSetInput } from "./serializeRecoverabilityWor
 export { estimateMutationPayloadCharacters } from "./estimateMutationPayloadCharacters";
 export { buildInstructionBodies } from "./buildInstructionBodies";
 export {
+  refreshMemoryFactsForCompaction,
+  clipMemoryFacts,
+} from "./refreshMemoryFactsForCompaction";
+export type { MemoryFact } from "./refreshMemoryFactsForCompaction";
+export {
   compactModelLoopMessages,
   compactModelLoopMessagesFromWindowPolicy,
   stubToolResultsForCompletedPaths,

@@ -156,6 +156,8 @@ export const AGENT_REASON_CODES = [
   "session_history_hybrid_retrieved",
   "session_history_projection_upserted",
   "established_facts_reinjected",
+  "memory_refreshed_for_compaction",
+  "memory_reinjected",
   "completed_task_results_stubbed",
   "context_retrieved",
   "context_skipped",

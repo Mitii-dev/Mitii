@@ -117,6 +117,9 @@ export async function finishAfterLoop(
     mode?: "ask" | "plan" | "agent";
     projects?: readonly ProjectDescriptor[];
     memoryFacts?: readonly { id: string; content: string }[];
+    memoryQuery?: string;
+    memoryWorkspaceId?: string;
+    memoryFileTargets?: readonly string[];
     selectedSkillIds?: string[];
     projectRuleIds?: string[];
     environmentIds?: string[];
