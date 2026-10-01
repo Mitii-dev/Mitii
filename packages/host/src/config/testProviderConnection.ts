@@ -303,19 +303,32 @@ async function testOpenAiCompatibleConnection(
   try {
     const models = await listOpenAiCompatibleModels(root, headers, fetchImpl);
     if (models.length > 0) {
-      const hasModel =
-        models.length === 0 ||
-        models.some((m) => m === model || m.startsWith(`${model}:`) || model.startsWith(m));
-      if (!hasModel && models.length > 0) {
+      // Catalog ids are cloud-normalized (e.g. gemma4:31b → gemma4:31b-cloud).
+      // Compare the draft model after the same rewrite so size tags still match.
+      const normalizedModel = normalizeOllamaModelId(model, root);
+      const hasModel = models.some(
+        (m) =>
+          m === model ||
+          m === normalizedModel ||
+          m.startsWith(`${model}:`) ||
+          m.startsWith(`${normalizedModel}:`) ||
+          model.startsWith(m) ||
+          normalizedModel.startsWith(m),
+      );
+      if (!hasModel) {
         return {
           ok: false,
           message: `Connected, but model "${model}" not found. Available: ${models.slice(0, 8).join(', ')}`,
           models,
         };
       }
+      const displayModel =
+        normalizedModel !== model && models.includes(normalizedModel)
+          ? normalizedModel
+          : model;
       return {
         ok: true,
-        message: `Connected to ${root}. Model "${model}"${models.length ? ' found' : ' (could not list models)'}.`,
+        message: `Connected to ${root}. Model "${displayModel}" found.`,
         models,
       };
     }

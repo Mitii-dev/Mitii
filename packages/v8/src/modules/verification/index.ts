@@ -83,6 +83,10 @@ export {
 } from "./records";
 
 export {
+  packDiagnosticsForModel,
+} from "./actions";
+
+export {
   InMemoryManifestReader,
   WorkspaceFileSystemManifestReader,
   InMemoryVerificationRecordStore,

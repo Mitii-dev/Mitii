@@ -1,2 +1,2 @@
 /** Bridged to domain package. */
-export * from "../../../modules/planning/actions/collectPlanningImpactReports";
+export { collectPlanningImpactReports } from "../../../modules/planning";
