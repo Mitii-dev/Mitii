@@ -21,6 +21,9 @@ const builtins = new Set([
 const externals = new Set([
   '@lancedb/lancedb',
   'better-sqlite3',
+  // web-tree-sitter uses __dirname in Parser.init; bundling into ESM breaks it.
+  'web-tree-sitter',
+  'tree-sitter-wasms',
   'typescript',
   'vscode',
   'electron',

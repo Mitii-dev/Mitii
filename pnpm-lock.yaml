@@ -72,6 +72,12 @@ importers:
       better-sqlite3:
         specifier: ^12.11.1
         version: 12.11.1
+      tree-sitter-wasms:
+        specifier: ^0.1.13
+        version: 0.1.13
+      web-tree-sitter:
+        specifier: ^0.24.7
+        version: 0.24.7
     devDependencies:
       '@types/node':
         specifier: ^20.14.0
@@ -150,6 +156,12 @@ importers:
       remark-gfm:
         specifier: ^4.0.0
         version: 4.0.1
+      tree-sitter-wasms:
+        specifier: ^0.1.13
+        version: 0.1.13
+      web-tree-sitter:
+        specifier: ^0.24.7
+        version: 0.24.7
     devDependencies:
       '@types/better-sqlite3':
         specifier: ^7.6.12
@@ -9340,8 +9352,7 @@ snapshots:
     dependencies:
       punycode: 2.3.1
 
-  tree-sitter-wasms@0.1.13:
-    optional: true
+  tree-sitter-wasms@0.1.13: {}
 
   trim-lines@3.0.1: {}
 
@@ -9563,8 +9574,7 @@ snapshots:
   web-streams-polyfill@4.0.0-beta.3:
     optional: true
 
-  web-tree-sitter@0.24.7:
-    optional: true
+  web-tree-sitter@0.24.7: {}
 
   webidl-conversions@3.0.1:
     optional: true

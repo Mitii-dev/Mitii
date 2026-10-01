@@ -11,6 +11,11 @@ import { isIndexLockHeld, type SemanticIndexSettings } from '@mitii/host';
 
 import type { WorkspaceChangeEvent, WorkspaceWatcher } from './workspaceWatch.js';
 import { reindexWorkspace } from '../index-status.js';
+import {
+  appendDesktopLog,
+  errorMessage,
+  resolveLogsDir,
+} from '../../shared/project-logs.js';
 
 const INCREMENTAL_INDEX_DEBOUNCE_MS = 750;
 const MAX_PATHS_PER_FLUSH = 400;
@@ -65,8 +70,22 @@ export function startIncrementalWorkspaceIndex(options: {
           semanticIndex: options.resolveSemanticIndex(),
           onProgress: options.onProgress,
         });
-      } catch {
-        /* lock contention / transient — next FS event retries */
+      } catch (error) {
+        const message = errorMessage(error);
+        // Lock contention is expected; only log unexpected failures.
+        if (!/already running|index\.lock|IndexLocked/i.test(message)) {
+          appendDesktopLog(
+            resolveLogsDir(undefined, process.env) ??
+              join(options.workspaceRoot, '.mitii', 'logs'),
+            'indexing',
+            `incremental_failed ${message}`,
+            {
+              level: 'error',
+              mirrorRuns: true,
+              extra: { pathCount: filePaths.length },
+            },
+          );
+        }
       }
     };
 

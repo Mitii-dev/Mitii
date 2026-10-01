@@ -1804,6 +1804,9 @@ export function App() {
           );
         await wait;
       }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setError(`Settings save failed: ${message}`);
     } finally {
       setSettingsBusy(false);
     }
