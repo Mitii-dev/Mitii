@@ -1,2 +1,2 @@
 /** Bridged to domain package. */
-export * from "../../../modules/prompt-construction/actions/mergePromptInstructions";
+export { mergePromptInstructions } from "../../../modules/prompt-construction";

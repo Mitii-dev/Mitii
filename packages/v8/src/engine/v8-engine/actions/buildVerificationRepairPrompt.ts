@@ -3,7 +3,7 @@ import type {
   VerificationDiagnostic,
   VerificationResult,
 } from "../../../modules/verification";
-import { packDiagnosticsForModel } from "../../../modules/verification/actions/NormalizeDiagnostics";
+import { packDiagnosticsForModel } from "../../../modules/verification";
 
 import { diagnosticSourceLineKey } from "./loadDiagnosticSourceLines";
 

@@ -1,2 +1,3 @@
 /** Bridged to domain package. */
-export * from "../../../modules/skills/actions/deriveSkillRepoEvidence";
+export { deriveSkillRepoEvidence } from "../../../modules/skills";
+export type { SkillRepoEvidence } from "../../../modules/skills";

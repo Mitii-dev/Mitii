@@ -1,2 +1,2 @@
 /** Bridged to domain package. */
-export * from "../../../modules/planning/actions/mapUnderstandingToPlanningEvidence";
+export { mapUnderstandingToPlanningEvidence } from "../../../modules/planning";
