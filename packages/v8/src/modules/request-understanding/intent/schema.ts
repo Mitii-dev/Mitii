@@ -40,6 +40,9 @@ export const ambiguousSlotSchema = z
   })
   .strict();
 
+export const taskSizeSchema = z.enum(['small', 'medium', 'large']);
+export const planningHintSchema = z.enum(['none', 'short', 'medium', 'long']);
+
 /**
  * Optional evidence hints from the understanding LLM call.
  * Recommendations only — never grants, routes, or selected skill IDs.
@@ -78,6 +81,10 @@ export const understandingTaskHintsSchema = z
      * Prefer over intent-chip alternatives when present.
      */
     ambiguousSlots: z.array(ambiguousSlotSchema).max(4).default([]),
+    /** Officer-estimated task band for plan-then-finish consumers. */
+    taskSize: taskSizeSchema.optional(),
+    /** Officer planning depth hint — not a route or grant. */
+    planningHint: planningHintSchema.optional(),
   })
   .strict();
 
@@ -99,6 +106,8 @@ export type InteractionIntent = z.infer<typeof InteractionIntentEnum>;
 export type UnderstandingTaskHints = z.infer<
   typeof understandingTaskHintsSchema
 >;
+export type TaskSize = z.infer<typeof taskSizeSchema>;
+export type PlanningHint = z.infer<typeof planningHintSchema>;
 export type AmbiguousSlotKind = z.infer<typeof ambiguousSlotKindSchema>;
 export type AmbiguousSlotOption = z.infer<typeof ambiguousSlotOptionSchema>;
 export type AmbiguousSlot = z.infer<typeof ambiguousSlotSchema>;

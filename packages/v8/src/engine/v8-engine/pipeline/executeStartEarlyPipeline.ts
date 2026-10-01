@@ -38,6 +38,7 @@ import {
   buildClarificationPayload,
   shouldCaptureUnconditionalAgentPreflight,
   amendMessageWithPriorConversation,
+  buildUnderstandingHistoryDigest,
   buildDiagnosticSummary,
   extractMentionedPaths,
   collectUnderstandingCandidatePaths,
@@ -352,10 +353,17 @@ export async function runStartEarlyPipeline(
     referencedArtifacts: understandingEnvelope.referencedArtifacts,
     userMessage: extractPrimaryUserMessage(understandingEnvelope.message),
   });
+  const historyDigest = buildUnderstandingHistoryDigest(
+    input.conversation ?? [],
+  );
   const understandingRaw = await runtime.deps.understanding.understand(
     understandingEnvelope,
     {
       ...(diagnosticSummary ? { diagnosticSummary } : {}),
+      ...(historyDigest ? { historyDigest } : {}),
+      ...(input.requiredMcpServerIds && input.requiredMcpServerIds.length > 0
+        ? { requiredMcpServerIds: [...input.requiredMcpServerIds] }
+        : {}),
     },
   );
   const understanding = applyClarificationResolutionOverlay(

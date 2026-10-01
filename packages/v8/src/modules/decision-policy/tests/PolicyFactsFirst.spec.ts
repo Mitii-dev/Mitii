@@ -56,6 +56,38 @@ describe("policyFactsFirst routing", () => {
     expect(decision.reasonCodes).not.toContain("policy_facts_safety_override");
   });
 
+  it("lets soft Officer act+bugfix win on vitest failure pastes below 0.70", () => {
+    const decision = pipeline.decide(
+      createDecisionInput({
+        mode: "agent",
+        message: [
+          "Failed Tests 2",
+          "FAIL apps/vscode/tests/sidebarSettingsPersistence.test.ts > case",
+          "AssertionError: expected false to be true",
+          " ❯ apps/vscode/tests/sidebarSettingsPersistence.test.ts:257:31",
+        ].join("\n"),
+        understanding: createUnderstanding({
+          primaryTaskIntent: "bugfix",
+          interactionIntent: "act",
+          confidence: 0.65,
+          confidenceMargin: 0.2,
+          needsClarification: false,
+          recommendsClarification: false,
+          status: "accepted",
+          taskAnalysis: {
+            taskSize: "medium",
+            planningHint: "short",
+            clarity: "unclear",
+          },
+        }),
+      }),
+    );
+    expect(decision.route).toBe("execute");
+    expect(decision.reasonCodes).toContain("policy_llm_authority_write");
+    expect(decision.reasonCodes).not.toContain("policy_facts_safety_override");
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("write");
+  });
+
   it("keeps pasted dump diagnose when the ballot is not a trusted write", () => {
     const decision = pipeline.decide(
       createDecisionInput({

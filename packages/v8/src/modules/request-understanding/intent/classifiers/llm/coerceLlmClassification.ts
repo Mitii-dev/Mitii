@@ -222,6 +222,29 @@ function coerceTaskHints(raw: unknown): unknown {
     next.ambiguousSlots = slots ?? [];
   }
 
+  if (typeof hints.taskSize === "string") {
+    const size = hints.taskSize.trim().toLowerCase();
+    if (size === "small" || size === "medium" || size === "large") {
+      next.taskSize = size;
+    } else {
+      delete next.taskSize;
+    }
+  }
+
+  if (typeof hints.planningHint === "string") {
+    const hint = hints.planningHint.trim().toLowerCase();
+    if (
+      hint === "none" ||
+      hint === "short" ||
+      hint === "medium" ||
+      hint === "long"
+    ) {
+      next.planningHint = hint;
+    } else {
+      delete next.planningHint;
+    }
+  }
+
   return next;
 }
 

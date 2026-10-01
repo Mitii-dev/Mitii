@@ -40,8 +40,9 @@ decision-policy/
 ## Technical Details
 
 - **Grant profiles:** `BuildToolGrant` selects exactly one profile from mode×route — `none` | `network_only` | `readonly` | `agent_execute`. Ask/plan never get `agent_execute`. Only **agent + route `execute`** grants `apply_patch` (and other mutation tools). Profile is emitted as `grant_profile_*` reason codes for audit.
-- **Authority ladder:** Intake (mode / turnKind / artifacts) → Request Understanding ballot (SuperIntent ≥0.70 LLM / ≥0.85 strong rule; TurnKind clears soft clarify and promotes plan-approval → act) → Decision Policy authorizes route + grant. Soft `looksLike*` heuristics lose to a trusted ≥0.70 write ballot; hard plan-only / hard read-only still win.
+- **Authority ladder:** Intake (mode / turnKind / artifacts) → Request Understanding Officer ballot (LLM ≥0.70; TurnKind clears soft clarify) → Decision Policy authorizes route + grant. Soft `looksLike*` heuristics lose to a trusted write ballot; **vitest/jest failure pastes** also yield to accepted act+mutation at ≥0.60. Hard plan-only / hard read-only still win.
 - **Facts-first default:** When understanding is high-confidence (≥0.70 + margin, accepted, no clarify), route resolution prefers the ballot over classic heuristics. Set `policyFactsFirst: false` only as a kill-switch. Continuation turns (`steer` / `follow_up` / `continue` / `recover`) emit `turn_continuation` and do not re-suspend on soft Task Analyzer clarity alone.
+- **Officer plan-then-finish:** RU `taskSize` / `planningHint` (`medium`/`short` → internal; `large`/`long` → visible when affordable) emit `officer_task_size_plan` on agent execute — still **route execute**, not plan-only.
 - Ask and plan modes cannot receive write grants.
 - Optional `userSafetyRules` (from `.mitii/safety.json`) may only tighten a grant after mode seals and injection clamp — never widen.
 - Agent (and ask) "run the tests / can you test" requests route to `diagnose` with `run_readonly_command`. Implement/fix phrasing still wins over a mention of running tests.

@@ -47,6 +47,7 @@ const superIntentDiagnosticsSchema = z.object({
   disagreementPenaltyApplied: z.number(),
   minimumConfidence: z.number(),
   minimumMargin: z.number(),
+  officerFallback: z.enum(["rule", "safe"]).optional(),
 });
 
 export const superIntentResultSchema = z.object({
@@ -73,6 +74,13 @@ export const taskAnalyzerInputSchema = z.object({
    */
   turnKind: z
     .enum(["new", "continue", "steer", "follow_up", "recover"])
+    .optional(),
+  /** Investigator size draft when Officer did not emit taskSize. */
+  sizeDraft: z
+    .object({
+      taskSize: z.enum(["small", "medium", "large"]),
+      reasons: z.array(z.string()).max(12),
+    })
     .optional(),
 });
 

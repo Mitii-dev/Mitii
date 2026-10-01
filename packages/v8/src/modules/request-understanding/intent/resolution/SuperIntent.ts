@@ -193,20 +193,6 @@ export class SuperIntent {
         interactionIntent,
         llmClassification,
       });
-    /** On rule↔LLM conflict, ≥70% LLM ballot is authoritative for the route. */
-    const llmWinsConflict = llmMeetsAuthority && Boolean(ruleClassification);
-    /**
-     * A single strong heuristic (≥0.85) holds the task primary unless the LLM
-     * ballot is also ≥0.85. Prevents a bare 0.70 LLM vote from flooring over
-     * an unambiguous rule match.
-     */
-    const strongRuleHoldsTask =
-      Boolean(ruleClassification) &&
-      (ruleClassification?.confidence ?? 0) >= 0.85 &&
-      llmClassification.confidence < 0.85 &&
-      ruleClassification!.primaryTaskIntent !==
-        llmClassification.primaryTaskIntent;
-
     /*
      * Ask and Plan modes deterministically resolve the interaction boundary.
      * A raw classifier conflict matters only in Agent mode — unless the LLM
@@ -216,7 +202,7 @@ export class SuperIntent {
       mode === "agent" &&
       rawInteractionConflict &&
       !acceptedHighConfidenceLlmAction &&
-      !llmWinsConflict;
+      !(llmMeetsAuthority && Boolean(ruleClassification));
 
     const interactionAgreement = !interactionConflict;
     const ruleInteractionAgrees = Boolean(
@@ -246,34 +232,9 @@ export class SuperIntent {
           extra,
         );
       }
-    } else if (ruleClassification && llmWinsConflict) {
-      if (strongRuleHoldsTask) {
-        // Strong rule holds task primary; do not floor the LLM ballot.
-        this.promoteRulePrimary(combinedScores, ruleClassification);
-      } else {
-        // Conflict + LLM ≥70%: lock the ballot to the LLM primary.
-        this.promoteLlmPrimary(combinedScores, llmClassification);
-      }
-    } else if (ruleClassification && ruleInteractionAgrees) {
-      // Same interaction, different task — mild confidence growth on LLM pick.
-      agreementBonusApplied = this.options.agreementBonus * 0.5;
-      this.adjustIntentScore(
-        combinedScores,
-        llmClassification.primaryTaskIntent,
-        agreementBonusApplied,
-      );
-    } else if (ruleClassification && !llmWinsConflict) {
-      disagreementPenaltyApplied = this.options.disagreementPenalty;
-
-      const currentWinner = this.getSortedScores(combinedScores)[0];
-
-      if (currentWinner) {
-        this.adjustIntentScore(
-          combinedScores,
-          currentWinner.intent,
-          -disagreementPenaltyApplied,
-        );
-      }
+    } else if (ruleClassification) {
+      // Officer authority: lock task primary to the LLM ballot. Rules are priors.
+      this.promoteLlmPrimary(combinedScores, llmClassification);
     }
 
     const sortedScores = this.getSortedScores(combinedScores);

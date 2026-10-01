@@ -78,7 +78,10 @@ export class IntentRouter {
     try {
       const llmClassification = await this.modePolicy.apply(
         normalizedInput.mode,
-        await this.llmClassifier.classify(normalizedInput),
+        await this.llmClassifier.classify({
+          ...normalizedInput,
+          ...(input.evidence ? { evidence: input.evidence } : {}),
+        }),
       );
       llmResult = {
         source: "llm",
@@ -258,6 +261,7 @@ export class IntentRouter {
         disagreementPenaltyApplied: 0,
         minimumConfidence: INTENT_CONSTANTS.SCORE_DEFAULT_OPTIONS.minimumConfidence,
         minimumMargin: INTENT_CONSTANTS.SCORE_DEFAULT_OPTIONS.minimumMargin,
+        officerFallback: "rule",
       },
     };
   }
@@ -314,6 +318,7 @@ export class IntentRouter {
         disagreementPenaltyApplied: 0,
         minimumConfidence: INTENT_CONSTANTS.SCORE_DEFAULT_OPTIONS.minimumConfidence,
         minimumMargin: INTENT_CONSTANTS.SCORE_DEFAULT_OPTIONS.minimumMargin,
+        officerFallback: "safe",
       },
     };
   }
