@@ -388,6 +388,11 @@ export {
   shouldDemandEvidenceBeforePatch,
   buildStepEvidenceGateMessage,
   buildStepPatchRequiredMessage,
+  filterToolsForMutateLock,
+  mutateLockModelRequestFields,
+  resolveMutateLockAllowTargetedReads,
+  isMutateLockAllowedToolName,
+  shouldRearmMutateLockOnContinue,
 } from "../modules/mutate-readiness";
 export type {
   MutateReadinessBudget,
