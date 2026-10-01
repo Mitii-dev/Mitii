@@ -11,6 +11,7 @@ export {
 export {
   DEFAULT_SKILLS_BUDGET_TOKENS,
   DEFAULT_MAX_SKILLS,
+  DEFAULT_SKILL_CATALOG_L1_MAX_ENTRIES,
   DEFAULT_CHARACTERS_PER_TOKEN,
   DEFAULT_MIN_SKILL_SCORE,
   DEFAULT_MIN_USEFUL_SKILL_TOKENS,
@@ -25,6 +26,7 @@ export {
   skillDescriptorSchema,
   skillInstructionBlockSchema,
   skillOmissionSchema,
+  skillCatalogL1EntrySchema,
   skillsSelectResultSchema,
   skillsErrorCodeSchema,
   skillBodySchema,
@@ -40,6 +42,7 @@ export type {
   SkillIndexEntry,
   SkillInstructionBlock,
   SkillOmission,
+  SkillCatalogL1Entry,
   SkillResourceManifest,
   SkillsSelectResult,
   SkillReasonCode,

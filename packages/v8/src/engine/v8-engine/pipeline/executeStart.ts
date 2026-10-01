@@ -20,6 +20,7 @@ import {
   clampRunBudget,
   toRunUsage,
   createInitialRunEvidence,
+  extractMemoryFileTargets,
   finalizeRunEvidence,
 } from "../actions";
 import { filterToolDefinitions } from "../actions/progressiveTools";
@@ -308,6 +309,7 @@ export async function executeV8Start(
       decision,
       repositoryContext,
       selectedSkills,
+      skillCatalogL1,
       selectedMemory,
       planText,
     } = enrichment.state;
@@ -385,6 +387,10 @@ export async function executeV8Start(
       instructions,
       planText,
       ...(decisionBriefText ? { decisionBriefText } : {}),
+      injectSkillCatalogL1: steering.injectSkillCatalogL1,
+      ...(steering.injectSkillCatalogL1 && skillCatalogL1
+        ? { skillCatalogL1: [...skillCatalogL1] }
+        : {}),
       tools,
       capabilities: runtime.deps.llm.capabilities,
       model: input.model,
@@ -551,6 +557,9 @@ export async function executeV8Start(
       understanding,
       repoBuildStateBefore: shared.repoBuildStateBefore,
       memoryFacts,
+      memoryQuery: userPrompt,
+      memoryWorkspaceId: envelope.workspace?.workspaceId,
+      memoryFileTargets: extractMemoryFileTargets(understanding),
       logVerbosity: input.logVerbosity,
       selectedSkillIds: selectedSkills?.map((block) => block.id) ?? [],
       projectRuleIds: projectRules.map((block) => block.id),
@@ -594,6 +603,9 @@ export async function executeV8Start(
         mode: envelope.mode,
         projects: input.projects,
         memoryFacts,
+        memoryQuery: userPrompt,
+        memoryWorkspaceId: envelope.workspace?.workspaceId,
+        memoryFileTargets: extractMemoryFileTargets(understanding),
         requiredSkillIds: input.requiredSkillIds ?? [],
         excludedSkillIds: input.excludedSkillIds ?? [],
         selectedSkillIds: selectedSkills?.map((block) => block.id) ?? [],

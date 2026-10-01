@@ -76,7 +76,6 @@ export {
 } from "./serialize";
 
 export {
-  applyTaskListUpdate,
   clipTaskTitle,
   isTerminalTaskStatus,
   isValidStatusTransition,

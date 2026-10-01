@@ -2,6 +2,7 @@ import type { ExecutionDecision } from "../../../modules/decision-policy";
 import type {
   PromptInstructions,
   PromptRepositoryContext,
+  PromptSkillCatalogL1Entry,
 } from "../../../modules/prompt-construction";
 import type { UserRequestEnvelope } from "../../../modules/request-intake";
 import type { RequestUnderstandingResult } from "../../../modules/request-understanding";
@@ -13,6 +14,7 @@ export type StartEnrichmentContinue = {
   decision: ExecutionDecision;
   repositoryContext: PromptRepositoryContext | undefined;
   selectedSkills: PromptInstructions["skills"];
+  skillCatalogL1: readonly PromptSkillCatalogL1Entry[] | undefined;
   selectedMemory: PromptInstructions["memory"];
   planText: string | undefined;
 };

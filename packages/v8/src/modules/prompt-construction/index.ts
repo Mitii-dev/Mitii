@@ -21,6 +21,7 @@ export {
   promptInstructionBlockSchema,
   promptInstructionsSchema,
   promptExtraFragmentSchema,
+  promptSkillCatalogL1EntrySchema,
   promptRepositoryBlockSchema,
   promptRepositoryContextSchema,
   promptSectionSchema,
@@ -41,6 +42,7 @@ export type {
   PromptInstructionBlock,
   PromptInstructions,
   PromptExtraFragment,
+  PromptSkillCatalogL1Entry,
   PromptRepositoryBlock,
   PromptRepositoryContext,
   PromptSection,
@@ -69,6 +71,8 @@ export {
   MidConversationUpdateFragment,
   PlanGuidanceFragment,
   ExtraInstructionFragment,
+  SkillCatalogFragment,
+  formatSkillCatalogL1,
   MID_CONVERSATION_UPDATE_MARKERS,
   MID_CONVERSATION_SYSTEM_MARKERS,
   wrapMidConversationUpdateText,
@@ -80,6 +84,7 @@ export type {
   RenderedFragment,
   AssembledFragments,
   AssembledFragmentOmission,
+  SkillCatalogL1Entry,
 } from "./internal/fragments";
 
 /** Bridge maps (Phase 9.2) — context → prompt slice / instruction merge. */

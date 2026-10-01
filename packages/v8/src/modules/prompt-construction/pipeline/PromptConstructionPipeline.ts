@@ -96,6 +96,8 @@ export class PromptConstructionPipeline {
       memory: parsed.instructions?.memory ?? [],
       environment: parsed.instructions?.environment ?? [],
       extraFragments: parsed.extraFragments ?? [],
+      injectSkillCatalogL1: parsed.injectSkillCatalogL1 === true,
+      skillCatalogL1: parsed.skillCatalogL1 ?? [],
       estimator: this.estimator,
       budgetTokens: systemBudget,
       planText: parsed.planText,
@@ -141,6 +143,15 @@ export class PromptConstructionPipeline {
         source: `skills:${id}`,
         trust: "trusted_instruction",
       });
+    }
+    if (system.skillCatalogL1Injected) {
+      provenance.push({
+        blockId: "system:skill-catalog-l1",
+        section: "skills",
+        source: "skills:catalog_l1",
+        trust: "trusted_instruction",
+      });
+      reasonCodes.push("skill_catalog_l1_injected");
     }
     for (const id of system.includedMemoryIds) {
       provenance.push({
@@ -201,11 +212,12 @@ export class PromptConstructionPipeline {
       system.includedRuleIds,
       this.estimator,
     );
-    const skillsUsed = sumInstructionTokens(
-      parsed.instructions?.skills ?? [],
-      system.includedSkillIds,
-      this.estimator,
-    );
+    const skillsUsed =
+      sumInstructionTokens(
+        parsed.instructions?.skills ?? [],
+        system.includedSkillIds,
+        this.estimator,
+      ) + system.skillCatalogL1UsedTokens;
     const memoryUsed = sumInstructionTokens(
       parsed.instructions?.memory ?? [],
       system.includedMemoryIds,

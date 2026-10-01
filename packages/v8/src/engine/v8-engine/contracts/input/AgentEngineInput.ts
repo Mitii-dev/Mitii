@@ -200,6 +200,8 @@ export const agentEngineStartInputSchema = z
         understandingBallotV2: z.boolean().optional(),
         policyFactsFirst: z.boolean().optional(),
         decisionBrief: z.boolean().optional(),
+        /** Optional L1 skill catalog strip in system prompt; default off. */
+        injectSkillCatalogL1: z.boolean().optional(),
         criticMode: z.enum(["off", "shadow", "enforce"]).optional(),
         /** Advisory LLM critique after evidence gate; never overrides the gate. */
         verificationLlmCritique: z.boolean().optional(),

@@ -592,4 +592,56 @@ describe("PromptConstructionPipeline", () => {
       "Environment context blocks are now",
     );
   });
+
+  it("injects optional L1 skill catalog when flag is on", () => {
+    const result = new PromptConstructionPipeline().construct(
+      createPromptInput({
+        injectSkillCatalogL1: true,
+        skillCatalogL1: [
+          {
+            id: "bugfix",
+            name: "Bugfix",
+            description: "Localize and fix defects with a tight loop.",
+          },
+          {
+            id: "review",
+            name: "Review",
+            description: "Review diffs for correctness and risk.",
+          },
+        ],
+      }),
+    );
+
+    const system = result.request.messages[0]?.content ?? "";
+    expect(system).toContain("<available_skills>");
+    expect(system).toContain("<name>Bugfix</name>");
+    expect(system).toContain("Localize and fix defects");
+    expect(result.reasonCodes).toContain("skill_catalog_l1_injected");
+    expect(
+      result.provenance.some(
+        (entry) =>
+          entry.blockId === "system:skill-catalog-l1" &&
+          entry.section === "skills",
+      ),
+    ).toBe(true);
+  });
+
+  it("does not inject L1 skill catalog when flag is off", () => {
+    const result = new PromptConstructionPipeline().construct(
+      createPromptInput({
+        skillCatalogL1: [
+          {
+            id: "bugfix",
+            name: "Bugfix",
+            description: "Localize and fix defects with a tight loop.",
+          },
+        ],
+      }),
+    );
+
+    expect(result.request.messages[0]?.content).not.toContain(
+      "<available_skills>",
+    );
+    expect(result.reasonCodes).not.toContain("skill_catalog_l1_injected");
+  });
 });

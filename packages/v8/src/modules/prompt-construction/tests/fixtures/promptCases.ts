@@ -161,6 +161,8 @@ export function createPromptInput(
     repositoryContext: overrides.repositoryContext,
     instructions: overrides.instructions,
     extraFragments: overrides.extraFragments,
+    injectSkillCatalogL1: overrides.injectSkillCatalogL1,
+    skillCatalogL1: overrides.skillCatalogL1,
     planText: overrides.planText,
     decisionBriefText: overrides.decisionBriefText,
     tools: overrides.tools,

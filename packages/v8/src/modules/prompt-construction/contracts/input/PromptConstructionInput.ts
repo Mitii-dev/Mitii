@@ -129,6 +129,18 @@ export const promptImageAttachmentSchema = z
 
 export type PromptImageAttachment = z.infer<typeof promptImageAttachmentSchema>;
 
+export const promptSkillCatalogL1EntrySchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    description: z.string().min(1),
+  })
+  .strict();
+
+export type PromptSkillCatalogL1Entry = z.infer<
+  typeof promptSkillCatalogL1EntrySchema
+>;
+
 /**
  * Boundary input for Prompt Construction.
  *
@@ -150,6 +162,13 @@ export const promptConstructionInputSchema = z
      * Assembled under the shared system budget with hard per-fragment caps.
      */
     extraFragments: z.array(promptExtraFragmentSchema).optional(),
+    /**
+     * When true, inject an L1 skill catalog strip (name+description only).
+     * Default false for 30k windows — selected L2 bodies remain the primary path.
+     */
+    injectSkillCatalogL1: z.boolean().default(false),
+    /** Catalog entries for L1 strip; ignored unless injectSkillCatalogL1 is true. */
+    skillCatalogL1: z.array(promptSkillCatalogL1EntrySchema).max(50).optional(),
     /**
      * Serialized trusted plan block from Planning (already wrapped / instruction-safe).
      * Optional — omitted when planningDepth is none or planning was skipped.
