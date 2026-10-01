@@ -56,14 +56,32 @@ import { discardIncompleteToolCalls } from "../actions/completeToolCalls";
 import { isClearMutationBlocker } from "../actions/isClearMutationBlocker";
 import {
   batchIsReadonlyTools,
+  hasPlanDraftedThisRun,
+  readonlyThrashPartialAnswer,
   requiresMutation,
+  resolveReadonlyTurnsBeforeMutationNudge,
+  shouldEscalateReadonlyThrashToContinue,
   softMutationNudgeMessage,
   unfulfilledExecuteNudgeMessage,
 } from "../actions/mutationNudge";
+import {
+  buildStepEvidenceGateMessage,
+  buildStepPatchRequiredMessage,
+  evaluateActiveStepMutateReadiness,
+  resolveMutateReadinessBudget,
+  resolveStepReadonlyTurnsBeforeGate,
+  shouldDemandEvidenceBeforePatch,
+} from "../modules/mutate-readiness";
 import { runV8MutationCritic } from "../actions/mutationCritic";
 import {
   buildRejectedMutationRecoveryMessage,
 } from "../actions/rejectedMutationRecovery";
+import {
+  buildIncompleteAnswerRecoveryMessage,
+  compactRecoveredAssistantContent,
+  synthesizeFallbackAnswer,
+} from "../actions/isIncompleteAssistantTurn";
+import { resolveLoopTurnOutcome } from "../actions/resolveLoopTurnOutcome";
 import {
   DIAGNOSE_ANSWER_NUDGE_MESSAGE,
   answerLockModelRequestFields,
@@ -190,6 +208,11 @@ export async function runV8ModelLoop(
   let consecutiveSameToolTurns = 0;
   let lastUniformToolName: string | undefined;
   let diagnoseAnswerNudges = 0;
+  let incompleteAnswerRecoveries = 0;
+  let softMutationNudges = 0;
+  let evidenceGateNudges = 0;
+  let readonlyTurnsOnActiveStep = 0;
+  let lastActiveStepId: string | undefined;
   const mutationNeeded = requiresMutation(decision);
   const vcsHistoryRewrite = decision.reasonCodes.includes("vcs_history_rewrite");
   let gitWriteSucceeded = false;
@@ -198,6 +221,28 @@ export async function runV8ModelLoop(
     contextWindowTokens: params.windowPolicy.contextWindowTokens,
     overrides: pickV8ThresholdOverrides(params.thresholdOverrides),
   }).thresholds;
+  const planDraftedThisRun = hasPlanDraftedThisRun({
+    planningDepth: decision.planningDepth,
+    reasonCodes,
+  });
+  const taskSize =
+    params.understanding?.taskAnalysis?.taskSize ??
+    (planDraftedThisRun ? "medium" : "small");
+  const mutateReadinessBudget = resolveMutateReadinessBudget(taskSize);
+  const stepReadonlyTurnsBeforeGate = resolveStepReadonlyTurnsBeforeGate({
+    taskSize,
+    hasPlan: planDraftedThisRun,
+    maxReadOnlyTurnsBeforeMutationNudgeAfterPlan:
+      thresholds.maxReadOnlyTurnsBeforeMutationNudgeAfterPlan,
+  });
+  const readonlyTurnsBeforeMutationNudge =
+    resolveReadonlyTurnsBeforeMutationNudge({
+      hasPlan: planDraftedThisRun,
+      maxReadOnlyTurnsBeforeMutationNudge:
+        thresholds.maxReadOnlyTurnsBeforeMutationNudge,
+      maxReadOnlyTurnsBeforeMutationNudgeAfterPlan:
+        thresholds.maxReadOnlyTurnsBeforeMutationNudgeAfterPlan,
+    });
   const mustReadNudgeBudget = { remaining: thresholds.maxMustReadNudges };
   const changeImpactRecommended = decision.reasonCodes.includes(
     "change_impact_recommended",
@@ -473,8 +518,10 @@ export async function runV8ModelLoop(
     });
 
     if (recovery.resetCounter) {
+      // Tool progress clears provider length recoveries only. Reasoning-abort
+      // Continue walls must stay sticky across read-only tool spam or the
+      // model can reason-abort → read → reset forever without mutating.
       truncationRecoveriesUsed = 0;
-      reasoningAbortRecoveriesUsed = 0;
     }
 
     if (recovery.kind === "reasoning_abort") {
@@ -494,6 +541,83 @@ export async function runV8ModelLoop(
         if (recovery.message) {
           messages.push({ role: "user", content: recovery.message });
         }
+        // Count reasoning-only burns toward per-step evidence→patch pressure.
+        if (mutationNeeded && changedFiles.length === 0 && !gitWriteSucceeded) {
+          const activeStep = taskListRef.current?.items.find(
+            (item) => item.status === "active",
+          );
+          if (activeStep?.id !== lastActiveStepId) {
+            lastActiveStepId = activeStep?.id;
+            readonlyTurnsOnActiveStep = 0;
+            evidenceGateNudges = 0;
+          }
+          readOnlyTurnsWithoutMutation += 1;
+          readonlyTurnsOnActiveStep += 1;
+          const gateTurns = Math.min(
+            stepReadonlyTurnsBeforeGate,
+            readonlyTurnsBeforeMutationNudge,
+          );
+          if (readonlyTurnsOnActiveStep >= gateTurns) {
+            const readiness = evaluateActiveStepMutateReadiness({
+              taskList: taskListRef.current,
+              loopFileReads,
+              establishedFacts,
+              maxEvidencePaths: mutateReadinessBudget.maxEvidencePaths,
+            });
+            if (
+              shouldDemandEvidenceBeforePatch({
+                readiness,
+                evidenceGateNudges,
+                maxEvidenceGateNudgesBeforePatchDemand:
+                  mutateReadinessBudget.maxEvidenceGateNudgesBeforePatchDemand,
+              })
+            ) {
+              evidenceGateNudges += 1;
+              reasonCodes.push("step_mutate_readiness_gated");
+              messages.push({
+                role: "user",
+                content: buildStepEvidenceGateMessage(readiness),
+              });
+            } else {
+              softMutationNudges += 1;
+              reasonCodes.push(
+                readiness.activeItemId
+                  ? "step_mutate_patch_required"
+                  : "soft_mutation_nudged",
+              );
+              messages.push({
+                role: "user",
+                content:
+                  readiness.activeItemId || readiness.writePaths.length > 0
+                    ? buildStepPatchRequiredMessage(readiness)
+                    : softMutationNudgeMessage(gateTurns, {
+                        vcsHistoryRewrite,
+                        hasPlan: planDraftedThisRun,
+                      }),
+              });
+              if (
+                shouldEscalateReadonlyThrashToContinue({
+                  softMutationNudges,
+                  maxSoftMutationNudgesBeforeContinue:
+                    thresholds.maxSoftMutationNudgesBeforeContinue,
+                  changedFileCount: changedFiles.length,
+                  gitWriteSucceeded,
+                })
+              ) {
+                reasonCodes.push("readonly_thrash_continue");
+                return offerContinue(
+                  "unfulfilled_execute",
+                  readonlyThrashPartialAnswer({
+                    hasPlan: planDraftedThisRun,
+                    fileReadCalls: loopFileReads.calls,
+                  }),
+                );
+              }
+            }
+            readonlyTurnsOnActiveStep = 0;
+            readOnlyTurnsWithoutMutation = 0;
+          }
+        }
         runtime.emitStage(bus, runId, "model_running", "completed", [
           "model_completed",
           "reasoning_progress_budget_exceeded",
@@ -504,7 +628,12 @@ export async function runV8ModelLoop(
       // thrashing more reasoning-only turns.
       return offerContinue(
         mutationNeeded ? "unfulfilled_execute" : "exploration_stall",
-        turn.content || answer,
+        mutationNeeded && changedFiles.length === 0
+          ? readonlyThrashPartialAnswer({
+              hasPlan: planDraftedThisRun,
+              fileReadCalls: loopFileReads.calls,
+            })
+          : turn.content || answer,
       );
     }
 
@@ -658,8 +787,12 @@ export async function runV8ModelLoop(
           gitWriteSucceeded = true;
         }
         readOnlyTurnsWithoutMutation = 0;
+        readonlyTurnsOnActiveStep = 0;
         unfulfilledExecuteRecoveries = 0;
         rejectedMutationRecoveries = 0;
+        softMutationNudges = 0;
+        evidenceGateNudges = 0;
+        reasoningAbortRecoveriesUsed = 0;
         consecutiveSameToolTurns = 0;
         lastUniformToolName = undefined;
       } else if (
@@ -688,21 +821,103 @@ export async function runV8ModelLoop(
           }),
         });
       } else if (mutationNeeded && batchIsReadonlyTools(toolCalls)) {
+        const activeStep = taskListRef.current?.items.find(
+          (item) => item.status === "active",
+        );
+        const activeStepId = activeStep?.id;
+        if (activeStepId !== lastActiveStepId) {
+          lastActiveStepId = activeStepId;
+          readonlyTurnsOnActiveStep = 0;
+          evidenceGateNudges = 0;
+        }
         readOnlyTurnsWithoutMutation += 1;
-        if (
-          readOnlyTurnsWithoutMutation >=
-          thresholds.maxReadOnlyTurnsBeforeMutationNudge
-        ) {
-          warnings.push(
-            `Soft mutation nudge after ${readOnlyTurnsWithoutMutation} read-only turns.`,
-          );
-          messages.push({
-            role: "user",
-            content: softMutationNudgeMessage(readOnlyTurnsWithoutMutation, {
-              vcsHistoryRewrite,
-            }),
+        readonlyTurnsOnActiveStep += 1;
+
+        const gateTurns = Math.min(
+          stepReadonlyTurnsBeforeGate,
+          readonlyTurnsBeforeMutationNudge,
+        );
+        if (readonlyTurnsOnActiveStep >= gateTurns) {
+          const readiness = evaluateActiveStepMutateReadiness({
+            taskList: taskListRef.current,
+            loopFileReads,
+            establishedFacts,
+            maxEvidencePaths: mutateReadinessBudget.maxEvidencePaths,
           });
-          readOnlyTurnsWithoutMutation = 0;
+
+          if (
+            shouldDemandEvidenceBeforePatch({
+              readiness,
+              evidenceGateNudges,
+              maxEvidenceGateNudgesBeforePatchDemand:
+                mutateReadinessBudget.maxEvidenceGateNudgesBeforePatchDemand,
+            })
+          ) {
+            evidenceGateNudges += 1;
+            reasonCodes.push("step_mutate_readiness_gated");
+            const gateMessage = buildStepEvidenceGateMessage(readiness);
+            warnings.push(
+              `Step evidence gate: ${readiness.missingPaths.length} path(s) still needed before patch.`,
+            );
+            runtime.emit(bus, {
+              type: "warning",
+              runId,
+              message: `Step evidence gate for "${readiness.activeTitle ?? readiness.activeItemId ?? "active step"}"; load named paths then patch. Edits are not done.`,
+              at: runtime.isoNow(),
+            });
+            messages.push({ role: "user", content: gateMessage });
+            readonlyTurnsOnActiveStep = 0;
+            readOnlyTurnsWithoutMutation = 0;
+          } else {
+            softMutationNudges += 1;
+            reasonCodes.push(
+              readiness.ready || readiness.missingPaths.length === 0
+                ? "step_mutate_patch_required"
+                : "soft_mutation_nudged",
+            );
+            const patchMessage =
+              readiness.activeItemId || readiness.writePaths.length > 0
+                ? buildStepPatchRequiredMessage(readiness)
+                : softMutationNudgeMessage(readonlyTurnsOnActiveStep || gateTurns, {
+                    vcsHistoryRewrite,
+                    hasPlan: planDraftedThisRun,
+                  });
+            warnings.push(
+              `Soft mutation / step patch demand after ${gateTurns} read-only turns on active step.`,
+            );
+            runtime.emit(bus, {
+              type: "warning",
+              runId,
+              message:
+                "Evidence for this step is sufficient (or gate budget spent); call apply_patch now. Edits are not done until it lands.",
+              at: runtime.isoNow(),
+            });
+            messages.push({ role: "user", content: patchMessage });
+            readonlyTurnsOnActiveStep = 0;
+            readOnlyTurnsWithoutMutation = 0;
+
+            if (
+              shouldEscalateReadonlyThrashToContinue({
+                softMutationNudges,
+                maxSoftMutationNudgesBeforeContinue:
+                  thresholds.maxSoftMutationNudgesBeforeContinue,
+                changedFileCount: changedFiles.length,
+                gitWriteSucceeded,
+              })
+            ) {
+              reasonCodes.push("readonly_thrash_continue");
+              warnings.push(
+                "Read-only thrash after soft mutation nudges; offering Continue without claiming edits are done.",
+              );
+              return offerContinue(
+                "unfulfilled_execute",
+                readonlyThrashPartialAnswer({
+                  hasPlan: planDraftedThisRun,
+                  fileReadCalls: loopFileReads.calls,
+                }),
+              );
+            }
+          }
         }
       } else if (!mutationNeeded && settled.stats.readonlyOnly) {
         const uniform = primaryToolNameIfUniform(toolCalls);
@@ -804,14 +1019,85 @@ export async function runV8ModelLoop(
         });
         continue;
       }
-      return offerContinue("unfulfilled_execute", answer);
+      return offerContinue(
+        "unfulfilled_execute",
+        answer.trim().length > 0
+          ? answer
+          : readonlyThrashPartialAnswer({
+              hasPlan: planDraftedThisRun,
+              fileReadCalls: loopFileReads.calls,
+            }),
+      );
+    }
+
+    const turnOutcome = resolveLoopTurnOutcome({
+      route: decision.route,
+      maximumWorkspaceEffect: decision.toolGrant.maximumWorkspaceEffect,
+      primaryTaskIntent:
+        params.understanding?.intent.classification.primaryTaskIntent ??
+        "question",
+      toolCallCount: 0,
+      changedFileCount: changedFiles.length,
+      content: turn.content,
+      finishReason: turn.finishReason,
+      truncated,
+      mutationBudget: decision.toolGrant.mutationBudget,
+      reasonCodes: decision.reasonCodes,
+      allowedTools: decision.toolGrant.allowedTools,
+      fileReadCalls: loopFileReads.calls,
+      recoveries: {
+        truncation: truncationRecoveriesUsed,
+        incompleteAnswer: incompleteAnswerRecoveries,
+        unfulfilledExecute: unfulfilledExecuteRecoveries,
+      },
+      thresholds: {
+        maxIncompleteAnswerRecoveries:
+          thresholds.maxIncompleteAnswerRecoveries,
+        maxUnfulfilledExecuteRecoveries:
+          thresholds.maxUnfulfilledExecuteRecoveries,
+      },
+    });
+
+    if (turnOutcome.disposition === "recover_incomplete_narration") {
+      incompleteAnswerRecoveries += 1;
+      reasonCodes.push(turnOutcome.reasonCode);
+      messages.pop();
+      messages.push({
+        role: "assistant",
+        content:
+          compactRecoveredAssistantContent(turn.content) ||
+          turn.content ||
+          "(empty turn)",
+      });
+      messages.push({
+        role: "user",
+        content:
+          turnOutcome.recoveryMessage ??
+          buildIncompleteAnswerRecoveryMessage({
+            changedFiles,
+            emptyTurn: turn.content.trim().length === 0,
+          }),
+      });
+      warnings.push(
+        turn.content.trim().length === 0
+          ? "Empty assistant turn; requesting a real answer or tool call."
+          : "Incomplete narration; requesting a final user-facing answer.",
+      );
+      continue;
+    }
+
+    if (turnOutcome.reasonCode === "incomplete_answer_fallback") {
+      answer = synthesizeFallbackAnswer({
+        priorAnswer: turn.content,
+        changedFiles,
+      });
+      reasonCodes.push("incomplete_answer_fallback");
+    } else if (answer.trim().length > 0) {
+      reasonCodes.push("answer_produced");
     }
 
     if (changedFiles.length > 0 || gitWriteSucceeded) {
       reasonCodes.push("mutation_applied");
-    }
-    if (answer.trim().length > 0) {
-      reasonCodes.push("answer_produced");
     }
 
     return {

@@ -457,7 +457,7 @@ export async function finishAfterLoop(
         loopAnswer,
         changedFiles: loopChangedFiles,
       });
-      const answerForIncompleteCheck = userAnswer ?? loopAnswer ?? "";
+      const answerForIncompleteCheck = userAnswer;
       const clearBlocker = isClearMutationBlocker(answerForIncompleteCheck);
       const incompleteExecute =
         !clearBlocker &&
@@ -490,7 +490,7 @@ export async function finishAfterLoop(
           toolCache: currentOutcome.toolCache,
           changedFiles: loopChangedFiles,
           mutationCheckpointIds: loopMutationIds,
-          answer: userAnswer ?? "",
+          answer: userAnswer,
           mutationRequired: true,
         }, decision, afterState);
         if (suspended) {
@@ -512,7 +512,13 @@ export async function finishAfterLoop(
           },
         });
       }
-      reasonCodes.push("answer_produced");
+      const loopWasEmpty = !(loopAnswer?.trim());
+      const usedStockFallback =
+        loopWasEmpty &&
+        /I stopped without a complete final answer/i.test(userAnswer);
+      reasonCodes.push(
+        usedStockFallback ? "incomplete_answer_fallback" : "answer_produced",
+      );
       return finish({
         status: "completed",
         answer: userAnswer,

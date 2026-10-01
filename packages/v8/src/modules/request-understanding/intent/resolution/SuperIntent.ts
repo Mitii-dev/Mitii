@@ -544,32 +544,6 @@ export class SuperIntent {
     });
   }
 
-  /**
-   * Lock the combined primary to a strong rule ballot so a weaker LLM vote
-   * cannot flip an unambiguous natural-language match.
-   */
-  private promoteRulePrimary(
-    scores: Map<TaskIntent, SuperIntentScore>,
-    ruleClassification: IntentClassification,
-  ): void {
-    const intent = ruleClassification.primaryTaskIntent;
-    const existing = scores.get(intent);
-    const floor = ruleClassification.confidence;
-    if (existing) {
-      scores.set(intent, {
-        ...existing,
-        score: this.clamp(Math.max(existing.score, floor)),
-      });
-      return;
-    }
-    scores.set(intent, {
-      intent,
-      score: this.clamp(floor),
-      ruleScore: floor,
-      llmScore: 0,
-    });
-  }
-
   private isActionableTaskIntent(intent: TaskIntent): boolean {
     switch (intent) {
       case "bugfix":

@@ -307,6 +307,18 @@ export function buildIncompleteAnswerRecoveryMessage(params: {
     .join("\n");
 }
 
+const EMPTY_RUN_FALLBACK =
+  "I stopped without a complete final answer. Please ask a follow-up if you want me to continue.";
+
+function priorIsUsableFinalAnswer(prior: string): boolean {
+  if (prior.length === 0) return false;
+  if (isTransitionalAssistantAnswer(prior)) return false;
+  if (isUnfinishedInvestigationAnswer(prior)) return false;
+  if (isMidWorkAnalysisDump(prior)) return false;
+  if (isDegenerateRepeatedAnswer(prior)) return false;
+  return true;
+}
+
 export function synthesizeFallbackAnswer(params: {
   priorAnswer?: string;
   changedFiles: readonly string[];
@@ -315,7 +327,7 @@ export function synthesizeFallbackAnswer(params: {
   const paths = params.changedFiles;
   if (paths.length > 0) {
     const list = paths.slice(0, 40).join(", ") + (paths.length > 40 ? ", …" : "");
-    if (prior && !isTransitionalAssistantAnswer(prior)) {
+    if (priorIsUsableFinalAnswer(prior)) {
       return `${prior}\n\nChanged files (${paths.length}): ${list}`;
     }
     // Avoid implying the job is done — verification / checklist may still be open.
@@ -323,13 +335,21 @@ export function synthesizeFallbackAnswer(params: {
       paths.length === 1 ? "" : "s"
     }): ${list}`;
   }
-  if (prior && !isTransitionalAssistantAnswer(prior)) {
+  if (priorIsUsableFinalAnswer(prior)) {
     return prior;
   }
-  return (
-    prior ||
-    "I stopped without a complete final answer. Please ask a follow-up if you want me to continue."
-  );
+  if (prior.length > 0) {
+    const compacted = compactRecoveredAssistantContent(prior);
+    const usable = compacted.trim();
+    if (
+      usable.length >= 40 &&
+      !isTransitionalAssistantAnswer(usable) &&
+      !isUnfinishedInvestigationAnswer(usable)
+    ) {
+      return usable;
+    }
+  }
+  return EMPTY_RUN_FALLBACK;
 }
 
 const RECOVERED_OMIT_ELLIPSIS = "…";
@@ -537,7 +557,7 @@ export function selectUserFacingLoopAnswer(params: {
   loopAnswer?: string;
   fallbackSummary?: string;
   changedFiles?: readonly string[];
-}): string | undefined {
+}): string {
   const loop = stripInjectionComplianceEchoes(params.loopAnswer?.trim() ?? "");
   const summary = stripInjectionComplianceEchoes(
     params.fallbackSummary?.trim() ?? "",
@@ -566,18 +586,22 @@ export function selectUserFacingLoopAnswer(params: {
     if (summary.length > 0) {
       return summary;
     }
-    if (files.length > 0) {
-      return synthesizeFallbackAnswer({
-        // Drop stale mid-work / blocker narration once disk edits exist.
-        priorAnswer: hideLoop ? "" : loop,
-        changedFiles: files,
-      });
-    }
-    return undefined;
+    // Never leave the host with answerChars:0 on a completed diagnose/ask
+    // stop — mid-work dumps and empty stops still get a synthetic fallback.
+    return synthesizeFallbackAnswer({
+      // Drop stale mid-work / blocker narration once disk edits exist.
+      priorAnswer: hideLoop && files.length > 0 ? "" : loop,
+      changedFiles: files,
+    });
   }
 
   const joined = [loop, summary].filter((part) => part.length > 0).join("\n\n");
-  return joined.length > 0 ? joined : undefined;
+  return joined.length > 0
+    ? joined
+    : synthesizeFallbackAnswer({
+        priorAnswer: loop,
+        changedFiles: files,
+      });
 }
 
 /**
