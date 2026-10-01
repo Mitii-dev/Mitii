@@ -3,6 +3,7 @@ export * from "./user-path-priority";
 export * from "./tool-loop-guard";
 export * from "./truncation";
 export * from "./mutation-nudge";
+export * from "./mutate-readiness";
 export * from "./mutation-critic";
 export * from "./rejected-mutation";
 export * from "./progressive-tools";

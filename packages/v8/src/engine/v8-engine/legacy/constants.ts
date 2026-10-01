@@ -177,6 +177,12 @@ export const AGENT_REASON_CODES = [
   "unfulfilled_execute_recovered",
   "unfulfilled_execute_exhausted",
   "must_read_nudged",
+  "soft_mutation_nudged",
+  "readonly_thrash_continue",
+  /** Active checklist step: load named RequiredEvidenceBeforePatch, then patch. */
+  "step_mutate_readiness_gated",
+  /** Active checklist step evidence loaded (or gate budget spent); demand apply_patch. */
+  "step_mutate_patch_required",
   "code_intel_adoption_nudged",
   "tools_executed",
   "mutation_applied",

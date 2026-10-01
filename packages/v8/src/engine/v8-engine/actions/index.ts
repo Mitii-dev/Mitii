@@ -374,8 +374,25 @@ export {
   requiresMutation,
   batchIncludesMutatingTool,
   batchIsReadonlyTools,
+  hasPlanDraftedThisRun,
+  resolveReadonlyTurnsBeforeMutationNudge,
+  shouldEscalateReadonlyThrashToContinue,
   softMutationNudgeMessage,
+  readonlyThrashPartialAnswer,
   unfulfilledExecuteNudgeMessage,
 } from "../modules/mutation-nudge";
+export {
+  resolveMutateReadinessBudget,
+  resolveStepReadonlyTurnsBeforeGate,
+  evaluateActiveStepMutateReadiness,
+  shouldDemandEvidenceBeforePatch,
+  buildStepEvidenceGateMessage,
+  buildStepPatchRequiredMessage,
+} from "../modules/mutate-readiness";
+export type {
+  MutateReadinessBudget,
+  MutateReadinessTaskSize,
+  ActiveStepMutateReadiness,
+} from "../modules/mutate-readiness";
 export { runV8MutationCritic } from "../modules/mutation-critic";
 export type { V8MutationCriticDecision } from "../modules/mutation-critic";
