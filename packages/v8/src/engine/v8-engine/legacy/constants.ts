@@ -172,6 +172,8 @@ export const AGENT_REASON_CODES = [
   "incomplete_answer_recovered",
   "incomplete_answer_fallback",
   "incomplete_execute",
+  /** Verification gate: execute+write finished with zero workspace file mutations. */
+  "no_mutation_performed",
   "incomplete_review",
   "incomplete_review_recovered",
   "unfulfilled_execute_recovered",

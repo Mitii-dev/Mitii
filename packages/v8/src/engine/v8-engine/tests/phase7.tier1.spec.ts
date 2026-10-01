@@ -53,6 +53,25 @@ describe("v8-engine golden T10 — rejected mutation recovery", () => {
     ).toBe(true);
   });
 
+  it("allows targeted discovery when patches.N.path is Required", () => {
+    expect(
+      allowsTargetedDiscoveryAfterRejectedMutation({
+        toolName: "apply_patch",
+        reasonCode: "invalid_arguments",
+        warnings: ["patches.0.path: Required"],
+      }),
+    ).toBe(true);
+    const message = buildRejectedMutationRecoveryMessage({
+      toolName: "apply_patch",
+      status: "rejected",
+      reasonCode: "invalid_arguments",
+      warnings: ["patches.0.path: Required"],
+      summary: "patches=1",
+    });
+    expect(message).toMatch(/path/i);
+    expect(message).toMatch(/apply_patch/i);
+  });
+
   it("recovery copy steers after patch_syntax_invalid and change_impact_incomplete", () => {
     const syntax = buildRejectedMutationRecoveryMessage({
       toolName: "apply_patch",

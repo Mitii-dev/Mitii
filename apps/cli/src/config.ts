@@ -28,6 +28,11 @@ export interface MitiiHostConfig {
   workspaceId?: string;
   defaultMode?: 'ask' | 'plan' | 'agent';
   /**
+   * Explicit context window for the run LLM (tokens). When unset, CLI infers
+   * from MITII_CONTEXT_WINDOW / model tags / provider defaults.
+   */
+  contextWindowTokens?: number;
+  /**
    * Optional lab loop/stall overrides (power users / benchmarks).
    * Leave unset or enabled:false for shipped window-band standards.
    */
@@ -99,6 +104,12 @@ function parseConfigObject(raw: Record<string, unknown>): MitiiHostConfig {
       safe.defaultMode === 'agent'
         ? safe.defaultMode
         : undefined,
+    contextWindowTokens:
+      typeof safe.contextWindowTokens === 'number' &&
+      Number.isFinite(safe.contextWindowTokens) &&
+      safe.contextWindowTokens > 0
+        ? Math.floor(safe.contextWindowTokens)
+        : undefined,
     loopPolicy: parseLoopPolicyConfig(safe.loopPolicy),
   };
 }
@@ -167,6 +178,9 @@ export function saveMitiiHostConfig(
   }
   if (merged.workspaceId) payload.workspaceId = merged.workspaceId;
   if (merged.defaultMode) payload.defaultMode = merged.defaultMode;
+  if (merged.contextWindowTokens !== undefined) {
+    payload.contextWindowTokens = merged.contextWindowTokens;
+  }
   const loopPolicyPayload = serializeLoopPolicyConfig(merged.loopPolicy);
   if (loopPolicyPayload) payload.loopPolicy = loopPolicyPayload;
 

@@ -459,30 +459,30 @@ export async function finishAfterLoop(
       });
       const answerForIncompleteCheck = userAnswer;
       const clearBlocker = isClearMutationBlocker(answerForIncompleteCheck);
+      const mutationRequired = requiresMutationForExecute({
+        route: decision.route,
+        maximumWorkspaceEffect: decision.toolGrant.maximumWorkspaceEffect,
+        primaryTaskIntent:
+          params.loopContext?.understanding?.intent.classification
+            .primaryTaskIntent,
+        reasonCodes: decision.reasonCodes,
+        allowedTools: decision.toolGrant.allowedTools,
+      });
+      const checklistOpen = hasIncompleteChangeSurfaces(taskListRef.current);
+      // Mutate-or-fail: execute+write with zero landings is incomplete even
+      // when the checklist never materialized change-surface rows.
       const incompleteExecute =
         !clearBlocker &&
-        requiresMutationForExecute({
-          route: decision.route,
-          maximumWorkspaceEffect: decision.toolGrant.maximumWorkspaceEffect,
-          primaryTaskIntent:
-            params.loopContext?.understanding?.intent.classification
-              .primaryTaskIntent,
-          reasonCodes: decision.reasonCodes,
-          allowedTools: decision.toolGrant.allowedTools,
-        }) &&
-        hasIncompleteChangeSurfaces(taskListRef.current) &&
-        // Partial progress with an honest next-step answer may leave rows open.
-        // Fail when: no edits, empty/synthetic fallback, or mid-work stop that
-        // never acknowledged remaining checklist work.
-        // Clear blockers (cannot edit / grant insufficient) are terminal — not incomplete.
+        mutationRequired &&
         (loopChangedFiles.length === 0 ||
-          isPrematurePartialExecuteStop({
-            mutationRequired: true,
-            hasIncompleteChangeSurfaces: true,
-            content: answerForIncompleteCheck,
-            changedFileCount: loopChangedFiles.length,
-          }) ||
-          isSyntheticCompletedEditsFallback(answerForIncompleteCheck));
+          (checklistOpen &&
+            (isPrematurePartialExecuteStop({
+              mutationRequired: true,
+              hasIncompleteChangeSurfaces: true,
+              content: answerForIncompleteCheck,
+              changedFileCount: loopChangedFiles.length,
+            }) ||
+              isSyntheticCompletedEditsFallback(answerForIncompleteCheck))));
       if (incompleteExecute && currentOutcome.kind === "completed") {
         const suspended = await suspendForBudgetWallLocal({
           wallReason: "incomplete_checklist",
