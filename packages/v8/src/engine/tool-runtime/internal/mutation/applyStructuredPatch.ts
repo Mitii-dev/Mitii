@@ -379,10 +379,17 @@ function lineOffset(lines: readonly string[], lineIndex: number): number {
 /**
  * Lightweight post-edit parse gates for common formats.
  * Never claims semantic correctness — only blocks obvious broken writes.
+ *
+ * For JS/TS, compare bracket balance to the pre-edit file when available.
+ * Many real files look "unbalanced" to a naive `{`/`}` count because of
+ * strings, regexes, and templates — rejecting those falsely blocks every
+ * apply_patch (seen on architecture test files). Only reject when the patch
+ * *worsens* the measured imbalance vs the previous content.
  */
 export function validatePostEditSyntax(
   relativePath: string,
   content: string,
+  previousContent?: string,
 ): void {
   if (/\.json$/i.test(relativePath)) {
     try {
@@ -393,20 +400,142 @@ export function validatePostEditSyntax(
         `Invalid JSON after patch for "${relativePath}": ${String(error)}`,
       );
     }
+    return;
   }
 
   if (!/\.(?:tsx?|jsx?|mjs|cjs)$/i.test(relativePath)) {
     return;
   }
 
-  const braces = countChar(content, "{") - countChar(content, "}");
-  const parens = countChar(content, "(") - countChar(content, ")");
-  if (braces !== 0 || parens !== 0) {
+  const proposed = measureBracketImbalance(stripJsNoiseForBracketScan(content));
+  if (previousContent !== undefined) {
+    const previous = measureBracketImbalance(
+      stripJsNoiseForBracketScan(previousContent),
+    );
+    if (proposed.score > previous.score) {
+      throw new MutationError(
+        "patch_syntax_invalid",
+        `Bracket imbalance after patch for "${relativePath}" ` +
+          `(braces ${previous.braces}→${proposed.braces}, ` +
+          `parens ${previous.parens}→${proposed.parens}). ` +
+          "Retry with a smaller hunk that preserves matching brackets.",
+      );
+    }
+    return;
+  }
+
+  // New file / unknown previous: only reject clear total imbalance.
+  if (proposed.braces !== 0 || proposed.parens !== 0) {
     throw new MutationError(
       "patch_syntax_invalid",
       `Bracket imbalance after patch for "${relativePath}".`,
     );
   }
+}
+
+function measureBracketImbalance(content: string): {
+  braces: number;
+  parens: number;
+  score: number;
+} {
+  const braces = countChar(content, "{") - countChar(content, "}");
+  const parens = countChar(content, "(") - countChar(content, ")");
+  return {
+    braces,
+    parens,
+    score: Math.abs(braces) + Math.abs(parens),
+  };
+}
+
+/**
+ * Strip comments and quoted/template string bodies so brace counts ignore
+ * literals. Not a full lexer — good enough for a soft gate.
+ */
+export function stripJsNoiseForBracketScan(source: string): string {
+  const out: string[] = [];
+  let i = 0;
+  const n = source.length;
+  while (i < n) {
+    const c = source[i]!;
+    const next = source[i + 1];
+
+    if (c === "/" && next === "/") {
+      i += 2;
+      while (i < n && source[i] !== "\n") {
+        i += 1;
+      }
+      continue;
+    }
+    if (c === "/" && next === "*") {
+      i += 2;
+      while (i + 1 < n && !(source[i] === "*" && source[i + 1] === "/")) {
+        i += 1;
+      }
+      i = Math.min(n, i + 2);
+      continue;
+    }
+
+    if (c === '"' || c === "'" || c === "`") {
+      const quote = c;
+      i += 1;
+      while (i < n) {
+        if (source[i] === "\\") {
+          i += 2;
+          continue;
+        }
+        if (quote === "`" && source[i] === "$" && source[i + 1] === "{") {
+          // Keep ${...} expression text for brace counting inside templates.
+          out.push("${");
+          i += 2;
+          let depth = 1;
+          while (i < n && depth > 0) {
+            const ch = source[i]!;
+            if (ch === "{") {
+              depth += 1;
+              out.push(ch);
+              i += 1;
+              continue;
+            }
+            if (ch === "}") {
+              depth -= 1;
+              out.push(ch);
+              i += 1;
+              continue;
+            }
+            if (ch === '"' || ch === "'" || ch === "`") {
+              const inner = ch;
+              i += 1;
+              while (i < n) {
+                if (source[i] === "\\") {
+                  i += 2;
+                  continue;
+                }
+                if (source[i] === inner) {
+                  i += 1;
+                  break;
+                }
+                i += 1;
+              }
+              continue;
+            }
+            out.push(ch);
+            i += 1;
+          }
+          continue;
+        }
+        if (source[i] === quote) {
+          i += 1;
+          break;
+        }
+        i += 1;
+      }
+      continue;
+    }
+
+    out.push(c);
+    i += 1;
+  }
+  return out.join("");
 }
 
 function countChar(content: string, char: string): number {
