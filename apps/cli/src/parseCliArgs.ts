@@ -76,6 +76,8 @@ export interface ParsedCliArgs {
   loopPolicyJson?: string;
   /** Force window-band standards even if config enables loopPolicy. */
   noLoopPolicy?: boolean;
+  /** `mitii index --status` — report pipeline health without reindexing. */
+  indexStatus?: boolean;
   /** Passthrough args after `connect` (channel + channel flags). */
   rest: string[];
 }
@@ -144,6 +146,10 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
     }
     if (arg === '--json') {
       flags.add('json');
+      continue;
+    }
+    if (arg === '--status') {
+      flags.add('status');
       continue;
     }
     if (arg === '--stream-json') {
@@ -477,6 +483,9 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       mode,
       loopPolicyJson,
       noLoopPolicy: flags.has('no-loop-policy'),
+      ...(command === 'index' && flags.has('status')
+        ? { indexStatus: true }
+        : {}),
       rest,
     };
   }

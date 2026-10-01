@@ -10,9 +10,11 @@ import {
   estimateIndexProgressPercent,
   IndexLockedError,
   isIndexLockHeld,
+  readIndexPipelineHealth,
   readIndexProgress,
   readIndexRuntimeMetadata,
   runFullWorkspaceIndex,
+  type IndexPipelineHealth,
   type SemanticIndexSettings,
   type WorkspaceIndexProgress,
 } from '@mitii/host';
@@ -38,6 +40,8 @@ export interface DesktopIndexStatus {
   /** FTS/symbols usable while embeddings may still run. */
   lexicalReady?: boolean;
   embeddingPhase?: string;
+  /** Shared pipeline board (Code / FTS / Embeddings / native). */
+  health?: IndexPipelineHealth;
 }
 
 /** Active reindex abort controller (module-level for pause route). */
@@ -65,6 +69,7 @@ export function getIndexStatus(workspaceRoot: string): DesktopIndexStatus {
   const mitiiDir = join(workspaceRoot, '.mitii');
   const lock = isIndexLockHeld(mitiiDir);
   const progress = lock.held ? readIndexProgress(mitiiDir) : undefined;
+  const health = readIndexPipelineHealth({ workspaceRoot });
 
   const metaPath = join(mitiiDir, 'index-runtime.json');
   const meta = readIndexRuntimeMetadata(metaPath);
@@ -97,12 +102,13 @@ export function getIndexStatus(workspaceRoot: string): DesktopIndexStatus {
     if (existsSync(sqliteFallback)) {
       return {
         indexed: true,
-        fileCount: 0,
-        truncated: false,
+        fileCount: health.counts.files,
+        truncated: health.counts.truncated,
         message: runningFields.running
           ? runningFields.progressMessage ?? 'Indexing in progress…'
           : 'Index database present (metadata missing). Reindex recommended.',
         sqlitePath: sqliteFallback,
+        health,
         ...runningFields,
       };
     }
@@ -113,6 +119,7 @@ export function getIndexStatus(workspaceRoot: string): DesktopIndexStatus {
       message: runningFields.running
         ? runningFields.progressMessage ?? 'Indexing in progress…'
         : 'No index yet. Click Reindex to build workspace context.',
+      health,
       ...runningFields,
     };
   }
@@ -125,9 +132,12 @@ export function getIndexStatus(workspaceRoot: string): DesktopIndexStatus {
       ? runningFields.progressMessage ?? 'Indexing in progress…'
       : meta.lastEmbeddingError
         ? `Indexed with embedding issue: ${meta.lastEmbeddingError}`
-        : `Indexed ${meta.fileCount ?? 0} files`,
+        : health.overall === 'lexical_only'
+          ? `Lexical ready (${meta.fileCount ?? 0} files); embeddings ${health.pipelines.embeddings.status}`
+          : `Indexed ${meta.fileCount ?? 0} files`,
     sqlitePath: meta.sqlitePath,
     embeddingError: meta.lastEmbeddingError,
+    health,
     ...runningFields,
   };
 }

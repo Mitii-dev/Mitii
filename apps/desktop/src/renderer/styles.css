@@ -4447,6 +4447,15 @@ button.md-file-link.md-code-inline:hover {
   line-height: 1.35;
 }
 
+.index-status__pipelines {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--mitii-muted);
+  line-height: 1.45;
+  display: grid;
+  gap: 2px;
+}
+
 .index-status__stream {
   max-height: 160px;
   overflow: auto;

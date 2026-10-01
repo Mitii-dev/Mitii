@@ -1142,6 +1142,34 @@ export function SettingsPanel(props: SettingsPanelProps) {
                     { label: 'Readiness', value: index.readiness ?? '—' },
                     { label: 'Scan', value: index.scanCompleteness ?? '—' },
                     { label: 'Mode', value: formatIndexMode(index.indexMode) },
+                    {
+                      label: 'Pipeline health',
+                      value: index.pipelineHealth?.overall ?? '—',
+                    },
+                    {
+                      label: 'Code Index',
+                      value: index.pipelineHealth
+                        ? `${index.pipelineHealth.pipelines.codeIndex.status}${index.pipelineHealth.pipelines.codeIndex.reason ? ` (${index.pipelineHealth.pipelines.codeIndex.reason})` : ''}`
+                        : '—',
+                    },
+                    {
+                      label: 'Text FTS5',
+                      value: index.pipelineHealth
+                        ? `${index.pipelineHealth.pipelines.textFts.status}${index.pipelineHealth.pipelines.textFts.reason ? ` (${index.pipelineHealth.pipelines.textFts.reason})` : ''}`
+                        : '—',
+                    },
+                    {
+                      label: 'Embeddings',
+                      value: index.pipelineHealth
+                        ? `${index.pipelineHealth.pipelines.embeddings.status}${index.pipelineHealth.pipelines.embeddings.reason ? ` (${index.pipelineHealth.pipelines.embeddings.reason})` : ''}`
+                        : '—',
+                    },
+                    {
+                      label: 'Native modules',
+                      value: index.pipelineHealth
+                        ? `sqlite=${index.pipelineHealth.native.sqlite} · lancedb=${index.pipelineHealth.native.lancedb} · onnx=${index.pipelineHealth.native.onnx}`
+                        : '—',
+                    },
                   ]}
                 />
                 {capabilityDetails(index).length > 0 ? (

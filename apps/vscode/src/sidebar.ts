@@ -17,6 +17,7 @@ import {
   IndexLockedError,
   buildFixReviewFindingsAsk,
   resolveModelCostRates,
+  readIndexPipelineHealth,
 } from '@mitii/host';
 import type { SkillDescriptor } from '@mitii/v8';
 
@@ -3417,11 +3418,26 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         this.vs,
         this.secrets,
       );
+      const root = this.effectiveRoot();
+      const health = root
+        ? readIndexPipelineHealth({ workspaceRoot: root })
+        : undefined;
       return {
         ...index,
         embeddingSource: semantic.source ?? (semantic.enabled ? 'bundled' : 'disabled'),
         embeddingModel: semantic.model,
         embeddingEnabled: semantic.enabled,
+        ...(health
+          ? {
+              pipelineHealth: {
+                overall: health.overall,
+                running: health.running,
+                pipelines: health.pipelines,
+                native: health.native,
+                ...(health.lastError ? { lastError: health.lastError } : {}),
+              },
+            }
+          : {}),
       };
     } catch {
       return index;

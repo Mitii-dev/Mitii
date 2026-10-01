@@ -54,6 +54,7 @@ mitii -v                     # or: mitii --version / mitii version
 mitii ask "What is recursion?" --echo
 mitii run --auto "run tests and fix failures" --echo
 mitii index
+mitii index --status --json
 mitii status --json
 mitii session
 mitii export-session "Summarize this repo" --out session.json --echo
@@ -70,9 +71,9 @@ mitii export-session "Summarize this repo" --out session.json --echo
 | `changelog` | Draft Keep a Changelog entry (auto-attaches `release-changelog`) |
 | `run --auto "<task>"` | Unattended CI run (agent + apply autonomy; no prompts) |
 | `session` | Interactive prompt loop with MITII banner |
-| `index` | Full workspace index + publish repository state |
+| `index` | Full workspace index + publish; `--status` shows Code/FTS/Embeddings pipeline health (no reindex) |
 | `review` | Deterministic review prep / SARIF (`--preview`, `--from`/`--to`, `--commit`, `--format`, `--output`). For LLM findings use `mitii ask … --skill code-review-and-quality` (recipe/skill) or the VS Code **Review** button for working-tree changes |
-| `status` | Show latest persisted repository state |
+| `status` | Show latest persisted repository state + index pipeline health |
 | `export-session` | Run ask and write secret-free JSON export |
 | `connect` | Bridge Mitii into Telegram, Discord, or Slack |
 | `schedule` | CRUD / trigger / history for automation schedules |
