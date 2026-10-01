@@ -74,6 +74,12 @@ export const GITHUB_MUTATION_TOOL_IDS = [
   "create_pull_request",
 ] as const;
 
+/**
+ * Local git history rewrite tools (DCO / Signed-off-by).
+ * Granted on agent execute writes; argv-only, protected-branch guarded.
+ */
+export const GIT_MUTATION_TOOL_IDS = ["git_signoff_range"] as const;
+
 /** Process tools that may change workspace state through repository scripts. */
 export const PROCESS_TOOL_IDS = ["run_command"] as const;
 

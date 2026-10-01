@@ -99,6 +99,7 @@ export type {
   TreeSitterRuntimePort,
   TreeSitterRuntimeReference,
   TreeSitterRuntimeSymbol,
+  TreeSitterRuntimeSyntaxError,
 } from "./ports/TreeSitterRuntimePort";
 
 export {

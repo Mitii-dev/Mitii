@@ -3,11 +3,17 @@ export { UserRequestEnvelopeBuilder } from "./modules/request-intake";
 export type {
   UserRequestEnvelope, CreateUserRequestInput, AgentMode,
   UserRequestOrigin, RequestImageAttachment,
+  RequestMetaCommand, RequestTurnKind, RequestSessionAction,
+  MetaCommandLifecycle, RequestIntakeResult,
 } from "./modules/request-intake";
 export {
   agentModeSchema, userRequestEnvelopeSchema, createUserRequestInputSchema,
-  requestImageAttachmentSchema, USER_REQUEST_ORIGINS, REQUEST_ENVELOPE_DEFAULTS,
+  requestImageAttachmentSchema, requestMetaCommandSchema,
+  USER_REQUEST_ORIGINS, REQUEST_ENVELOPE_DEFAULTS,
   REQUEST_ENVELOPE_LIMITS, SUPPORTED_IMAGE_MIME_TYPES,
+  REQUEST_TURN_KINDS, META_COMMAND_LIFECYCLES,
+  sanitizeUserMessage, classifyLeadingCommand, extractMentionArtifacts,
+  normalizeAttachments,
 } from "./modules/request-intake";
 export { RequestUnderstandingPipeline } from "./modules/request-understanding";
 export type {
@@ -47,7 +53,8 @@ export type {
   SqliteTextIndexModule, TextIndexSqliteDatabasePort, SourceImportKind,
   SourceLanguageId, SourceReferenceKind, TreeSitterRuntimeImport,
   TreeSitterRuntimeParseInput, TreeSitterRuntimeParseResult, TreeSitterRuntimePort,
-  TreeSitterRuntimeReference, TreeSitterRuntimeSymbol, RepositoryIndexFormat,
+  TreeSitterRuntimeReference, TreeSitterRuntimeSymbol, TreeSitterRuntimeSyntaxError,
+  RepositoryIndexFormat,
 } from "./modules/repository-state";
 export { RepositoryContextPipeline } from "./modules/repository-context";
 export {
@@ -90,12 +97,13 @@ export type {
 export { PromptConstructionPipeline } from "./modules/prompt-construction";
 export {
   promptConstructionInputSchema, promptConstructionResultSchema, promptInstructionBlockSchema,
-  promptInstructionsSchema, FRAGMENT_POLICY, assembleFragments,
-  MidConversationUpdateFragment,
+  promptInstructionsSchema, promptExtraFragmentSchema, FRAGMENT_POLICY, assembleFragments,
+  MidConversationUpdateFragment, ExtraInstructionFragment,
+  MID_CONVERSATION_UPDATE_MARKERS, wrapMidConversationUpdateText,
 } from "./modules/prompt-construction";
 export type {
   PromptConstructionInput, PromptConstructionResult, PromptBudgetReport,
-  PromptInstructionBlock, PromptInstructions, ContextualFragment,
+  PromptInstructionBlock, PromptInstructions, PromptExtraFragment, ContextualFragment,
   RenderedFragment,
 } from "./modules/prompt-construction";
 export type {
@@ -152,7 +160,9 @@ export type {
   VerificationInput, VerificationResult, VerificationStatus,
   RepoBuildState, RepoBuildStateComparison, VerificationRecord,
   VerificationRecordStorePort, VerificationToolExecutorPort, VerificationManifestReaderPort,
+  VerificationSyntaxPort, VerificationSyntaxFinding,
 } from "./modules/verification";
+export { SYNTAX_PORT_EVIDENCE } from "./modules/verification";
 export {
   SkillsPipeline,
 } from "./modules/skills";

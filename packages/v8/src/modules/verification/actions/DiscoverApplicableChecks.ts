@@ -5,17 +5,21 @@ import type {
   VerificationCheckKind,
   VerificationManifestReaderPort,
 } from "../contracts";
+import { SYNTAX_PORT_EVIDENCE } from "../contracts";
 import { CHECK_KINDS_BY_SCOPE, CHECK_KIND_PRIORITY } from "../policy";
 import {
   discoverCandidatesForProject,
   type DiscoveredCheckCandidate,
 } from "../internal/discovery";
+import { readVerificationScriptHints } from "../internal/readVerificationScriptHints";
 
 export type { DiscoveredCheckCandidate };
 
 export interface DiscoverApplicableChecksResult {
   candidates: DiscoveredCheckCandidate[];
   warnings: string[];
+  /** Script/token hints from AGENTS.md etc. — never invent checks from these. */
+  scriptHints: string[];
 }
 
 /**
@@ -27,6 +31,8 @@ export async function discoverApplicableChecks(params: {
   changeScope: VerificationChangeScope;
   changedFiles: readonly string[];
   manifests: VerificationManifestReaderPort;
+  /** When true, emit a port-backed tree-sitter syntax candidate. */
+  syntaxPortAvailable?: boolean;
 }): Promise<DiscoverApplicableChecksResult> {
   const allowed = new Set<VerificationCheckKind>(
     CHECK_KINDS_BY_SCOPE[params.changeScope],
@@ -51,6 +57,14 @@ export async function discoverApplicableChecks(params: {
       if (!allowed.has(candidate.kind)) {
         continue;
       }
+      // Prefer host tree-sitter over spawned py_compile/node --check/bash -n.
+      if (
+        params.syntaxPortAvailable &&
+        candidate.kind === "syntax" &&
+        candidate.evidenceSource !== SYNTAX_PORT_EVIDENCE
+      ) {
+        continue;
+      }
       if (seen.has(candidate.checkId)) {
         continue;
       }
@@ -60,7 +74,26 @@ export async function discoverApplicableChecks(params: {
     warnings.push(...discovered.warnings);
   }
 
-  // Always allow diagnostics + diff_review as Tool Runtime backed checks when in scope.
+  if (
+    params.syntaxPortAvailable &&
+    allowed.has("syntax") &&
+    !seen.has("syntax:port")
+  ) {
+    candidates.unshift({
+      checkId: "syntax:port",
+      kind: "syntax",
+      label: "Tree-sitter syntax check",
+      evidenceSource: SYNTAX_PORT_EVIDENCE,
+      toolName: "run_readonly_command",
+      toolArguments: {
+        paths:
+          params.changedFiles.length > 0 ? [...params.changedFiles] : undefined,
+      },
+      languageId: "unknown" as LanguageId,
+    });
+    seen.add("syntax:port");
+  }
+
   if (allowed.has("diagnostics") && !seen.has("diagnostics:workspace")) {
     candidates.push({
       checkId: "diagnostics:workspace",
@@ -97,8 +130,11 @@ export async function discoverApplicableChecks(params: {
     return ai - bi;
   });
 
+  const scriptHints = await readVerificationScriptHints(params.manifests);
+
   return {
     candidates,
+    scriptHints,
     warnings: suppressCoveredRootDiscoveryWarnings({
       warnings,
       candidates,
@@ -194,10 +230,6 @@ const CANDIDATE_FILE_LIKE = /\.\w{1,16}$/;
 function candidatePackageRoots(filePath: string): string[] {
   const normalized = normalizePath(filePath);
   const parts = normalized.split("/").filter(Boolean);
-  // Only strip the last segment when it looks like a file (has an
-  // extension). A folder-shaped path — e.g. an explicit "packages/x"
-  // target with no file component — is itself a valid candidate root and
-  // must not be discarded before the walk-up.
   if (
     parts.length > 0 &&
     CANDIDATE_FILE_LIKE.test(parts[parts.length - 1]!)

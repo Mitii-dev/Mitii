@@ -306,4 +306,27 @@ describe('testProviderConnection', () => {
       (await testProviderConnection({ type: 'gemini', model: 'gemini-2.5-flash' })).ok,
     ).toBe(false);
   });
+
+  it('matches ollama.com sized draft models to cloud-normalized catalog ids', async () => {
+    const result = await testProviderConnection({
+      type: 'openai-compatible',
+      baseUrl: 'https://ollama.com/v1',
+      model: 'gemma4:31b',
+      fetchImpl: (async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === 'https://ollama.com/v1/models') {
+          return new Response(
+            JSON.stringify({
+              data: [{ id: 'gemma4:31b' }, { id: 'qwen3.8:27b' }],
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response('unexpected', { status: 500 });
+      }) as typeof fetch,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.models).toEqual(['gemma4:31b-cloud', 'qwen3.8:27b-cloud']);
+    expect(result.message).toContain('gemma4:31b-cloud');
+  });
 });

@@ -25,7 +25,7 @@ export class TaskComplexityAnalyzer {
 
     if (!normalizedText) {
       return {
-        complexity: "simple",
+        complexity: "trivial",
         score: 0,
         signals: [
           {
@@ -57,7 +57,11 @@ export class TaskComplexityAnalyzer {
     );
     const normalizedScore = Math.max(0, score);
     return {
-      complexity: this.mapScoreToComplexity(normalizedScore, thresholds),
+      complexity: this.mapScoreToComplexity(
+        normalizedScore,
+        thresholds,
+        signals,
+      ),
       score: normalizedScore,
       signals,
     };
@@ -416,6 +420,7 @@ export class TaskComplexityAnalyzer {
   private mapScoreToComplexity(
     score: number,
     thresholds: typeof TASK_ANALYZER_CONSTANTS.THRESHOLDS,
+    signals: readonly TaskComplexitySignal[],
   ): TaskComplexity {
     if (score >= thresholds.COMPLEXITY.VERY_COMPLEX) {
       return "very_complex";
@@ -427,6 +432,17 @@ export class TaskComplexityAnalyzer {
 
     if (score >= thresholds.COMPLEXITY.MODERATE) {
       return "moderate";
+    }
+
+    // Empty / no action signals → trivial (distinct from a simple one-step ask).
+    const hasActionSignal = signals.some(
+      (signal) =>
+        signal.name === "single_action" ||
+        signal.name === "multiple_actions" ||
+        signal.name === "many_actions",
+    );
+    if (score <= 0 && !hasActionSignal) {
+      return "trivial";
     }
 
     return "simple";

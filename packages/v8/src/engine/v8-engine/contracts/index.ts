@@ -16,6 +16,7 @@ export {
   agentRunUsageSchema,
   agentReasonCodeSchema,
   agentSuspensionKindSchema,
+  sessionControlResultSchema,
 } from "./output/AgentRunResult";
 export type {
   AgentRunResult,
@@ -24,6 +25,7 @@ export type {
   AgentRunUsage,
   AgentReasonCode,
   AgentSuspensionKind,
+  SessionControlRunResult,
 } from "./output/AgentRunResult";
 
 export {

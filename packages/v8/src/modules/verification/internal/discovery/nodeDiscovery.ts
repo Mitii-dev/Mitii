@@ -2,6 +2,7 @@ import type { ProjectDescriptor } from "../../../repository-state";
 
 import type { VerificationManifestReaderPort } from "../../contracts";
 import { NODE_SCRIPT_CANDIDATES, PLACEHOLDER_TEST_SCRIPT } from "../../policy";
+import { syntaxCandidatesForChangedFiles } from "./syntaxCandidates";
 import {
   joinRoot,
   packageManagerArgv,
@@ -17,6 +18,7 @@ interface PackageJson {
 export async function discoverNodeChecks(params: {
   project: ProjectDescriptor;
   manifests: VerificationManifestReaderPort;
+  changedFiles?: readonly string[];
 }): Promise<ProjectDiscoveryResult> {
   const pkgPath = joinRoot(params.project.rootPath, "package.json");
   const raw = await params.manifests.readText(pkgPath);
@@ -47,7 +49,14 @@ export async function discoverNodeChecks(params: {
         manifests: params.manifests,
       })),
   );
-  const candidates: DiscoveredCheckCandidate[] = [];
+  const candidates: DiscoveredCheckCandidate[] = [
+    ...syntaxCandidatesForChangedFiles({
+      projectId: params.project.projectId,
+      languageId: params.project.primaryLanguageId,
+      projectRoot: params.project.rootPath,
+      changedFiles: params.changedFiles ?? [],
+    }),
+  ];
   const warnings: string[] = [];
 
   for (const [kind, names] of Object.entries(NODE_SCRIPT_CANDIDATES) as Array<
@@ -139,7 +148,9 @@ export async function discoverNodeChecks(params: {
     }
   }
 
-  if (candidates.length === 0) {
+  if (
+    candidates.filter((candidate) => candidate.kind !== "syntax").length === 0
+  ) {
     warnings.push(
       `package.json at "${pkgPath}" for project "${params.project.projectId}" has no discoverable typecheck/lint/test/build scripts.`,
     );

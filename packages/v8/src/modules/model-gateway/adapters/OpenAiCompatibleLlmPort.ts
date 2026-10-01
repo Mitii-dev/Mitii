@@ -300,7 +300,12 @@ export class OpenAiCompatibleLlmPort implements LlmPort {
     }
 
     if (request.maximumOutputTokens !== undefined) {
-      body.max_tokens = request.maximumOutputTokens;
+      // Never send more than the advertised provider max — leftover-context
+      // clamping can otherwise overshoot and get a 400 from Ollama/DeepSeek.
+      body.max_tokens = Math.min(
+        request.maximumOutputTokens,
+        this.capabilities.maximumOutputTokens,
+      );
     }
 
     if (

@@ -38,10 +38,13 @@ import {
   buildClarificationPayload,
   shouldCaptureUnconditionalAgentPreflight,
   amendMessageWithPriorConversation,
+  buildUnderstandingHistoryDigest,
   buildDiagnosticSummary,
   extractMentionedPaths,
   collectUnderstandingCandidatePaths,
 } from "../actions";
+import { handleMetaCommand } from "../modules/session-control";
+import type { SessionControlRunResult } from "../contracts/output/AgentRunResult";
 import { resolveSteeringFeatureFlags } from "../legacy/steeringFlags";
 import type {
   AgentEngineStartInput,
@@ -117,6 +120,7 @@ export async function runStartEarlyPipeline(
     answer?: string;
     suspension?: AgentRunResult["suspension"];
     pinnedState?: RepositoryStateReference;
+    sessionControl?: SessionControlRunResult;
     reasonCodes?: AgentReasonCode[];
     warnings?: string[];
     error?: { code: string; message: string };
@@ -141,10 +145,98 @@ export async function runStartEarlyPipeline(
 
   // --- Intake ---
   runtime.emitStage(bus, runId, "received", "started");
-  const envelope = runtime.deps.intake.intake(input.request);
+  const intakeDetailed = runtime.deps.intake.intakeDetailed?.bind(
+    runtime.deps.intake,
+  );
+  const intakeResult = intakeDetailed
+    ? intakeDetailed(input.request)
+    : {
+        envelope: runtime.deps.intake.intake(input.request),
+        warnings: [] as string[],
+        shortCircuitMeta: false,
+      };
+  const envelope = intakeResult.envelope;
   shared.requestId = envelope.requestId;
   reasonCodes.push("intake_complete");
+  if (intakeResult.warnings.length > 0) {
+    warnings.push(...intakeResult.warnings);
+  }
+  if (
+    (envelope.referencedArtifacts?.length ?? 0) > 0 &&
+    /\B@[^\s]/.test(envelope.message)
+  ) {
+    reasonCodes.push("intake_mentions_extracted");
+  }
   runtime.emitStage(bus, runId, "received", "completed", ["intake_complete"]);
+
+  // Meta slash commands (stop/new/clear/compact/…) never enter understand/pin.
+  const shortCircuitMeta =
+    intakeResult.shortCircuitMeta ||
+    (envelope.metaCommand !== undefined &&
+      envelope.metaCommand.lifecycle !== "agent_turn" &&
+      !(
+        envelope.metaCommand.lifecycle === "agent_turn_with_args" &&
+        envelope.metaCommand.args.trim().length > 0
+      ));
+  if (shortCircuitMeta && envelope.metaCommand) {
+    reasonCodes.push("intake_meta_command");
+    const handled = handleMetaCommand({
+      meta: envelope.metaCommand,
+      conversation: input.conversation,
+      estimator: runtime.tokenEstimator,
+      windowPolicy,
+      sessionId: envelope.sessionId,
+    });
+    reasonCodes.push(
+      ...(handled.reasonCodes as AgentReasonCode[]).filter(
+        (code) => !reasonCodes.includes(code),
+      ),
+    );
+    if (handled.warnings.length > 0) {
+      warnings.push(...handled.warnings);
+    }
+    warnings.push(
+      `meta_command:${handled.command}:${handled.lifecycle}`,
+    );
+
+    const sessionControl: SessionControlRunResult = {
+      command: handled.command,
+      lifecycle: handled.lifecycle,
+      answer: handled.answer,
+      ...(handled.sessionAction
+        ? { sessionAction: handled.sessionAction }
+        : {}),
+      ...(handled.compactedConversation
+        ? {
+            compactedConversation: [
+              ...handled.compactedConversation,
+            ] as SessionControlRunResult["compactedConversation"],
+          }
+        : {}),
+      ...(handled.compactStats
+        ? {
+            compactStats: {
+              beforeMessages: handled.compactStats.beforeMessages,
+              afterMessages: handled.compactStats.afterMessages,
+              omittedTokens: handled.compactStats.omittedTokens,
+              pressure: handled.compactStats.pressure,
+              stagesApplied: [...handled.compactStats.stagesApplied],
+            },
+          }
+        : {}),
+    };
+
+    return {
+      kind: "terminal",
+      result: finish({
+        status: handled.status,
+        answer: handled.answer,
+        sessionControl,
+        reasonCodes,
+        ...(handled.error ? { error: handled.error } : {}),
+      }),
+    };
+  }
 
   if (signal.aborted) {
     return { kind: "terminal", result: await cancelledResult() };
@@ -261,10 +353,17 @@ export async function runStartEarlyPipeline(
     referencedArtifacts: understandingEnvelope.referencedArtifacts,
     userMessage: extractPrimaryUserMessage(understandingEnvelope.message),
   });
+  const historyDigest = buildUnderstandingHistoryDigest(
+    input.conversation ?? [],
+  );
   const understandingRaw = await runtime.deps.understanding.understand(
     understandingEnvelope,
     {
       ...(diagnosticSummary ? { diagnosticSummary } : {}),
+      ...(historyDigest ? { historyDigest } : {}),
+      ...(input.requiredMcpServerIds && input.requiredMcpServerIds.length > 0
+        ? { requiredMcpServerIds: [...input.requiredMcpServerIds] }
+        : {}),
     },
   );
   const understanding = applyClarificationResolutionOverlay(

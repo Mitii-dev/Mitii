@@ -10,7 +10,8 @@ import { z } from "zod";
  *
  * Related fields may share the table (tool-loop identical-call/result +
  * forced-reject; preferredBatchSize + maxPatchesPerCall; must-read soft;
- * ask/diagnose repeated-tool nudge + answer lock).
+ * ask/diagnose repeated-tool nudge + answer lock; incomplete-answer recoveries;
+ * post-plan mutation nudge + soft-nudge Continue escalate).
  *
  * Do not reintroduce Dropped legacy keys (see V8_ENGINE_DROPPED_LEGACY_KEYS).
  */
@@ -59,6 +60,18 @@ export const V8_ENGINE_THRESHOLDS = {
    * attempt proceeds so this does not deadlock against unfulfilled_execute.
    */
   maxChangeImpactNudges: 1,
+  /**
+   * Soft nudge after this many read-only tool turns with zero mutations when
+   * a plan was already drafted this run (visible/internal). Tighter than the
+   * general maxReadOnlyTurnsBeforeMutationNudge so plan-then-finish does not
+   * rediscover forever.
+   */
+  maxReadOnlyTurnsBeforeMutationNudgeAfterPlan: 4,
+  /**
+   * Soft mutation nudges allowed before offering host Continue (unfulfilled).
+   * Does not claim edits are done — asks to continue patching or stop.
+   */
+  maxSoftMutationNudgesBeforeContinue: 2,
   /** User Continue overrides after stall / loop_detected walls. */
   maxContinueOverrides: 4,
   /** Remaining-error verification repairs after the first mutate loop. */
@@ -73,6 +86,11 @@ export const V8_ENGINE_THRESHOLDS = {
   maxRepeatedReadonlyToolTurnsBeforeAnswerNudge: 3,
   /** Ask/diagnose: soft answer nudges before stripping tools (answer lock). */
   maxDiagnoseAnswerNudges: 1,
+  /**
+   * Soft recoveries when a text-only stop is empty, transitional, or a mid-work
+   * dump — nudges once more before synthesizing a fallback answer.
+   */
+  maxIncompleteAnswerRecoveries: 2,
 } as const;
 
 /**
@@ -108,12 +126,15 @@ export const v8EngineThresholdsSchema = z
     maxRejectedMutationRecoveries: nonnegativeIntSchema,
     maxMustReadNudges: nonnegativeIntSchema,
     maxChangeImpactNudges: nonnegativeIntSchema,
+    maxReadOnlyTurnsBeforeMutationNudgeAfterPlan: positiveIntSchema,
+    maxSoftMutationNudgesBeforeContinue: nonnegativeIntSchema,
     maxContinueOverrides: nonnegativeIntSchema,
     maxVerificationRepairAttempts: nonnegativeIntSchema,
     preferredBatchSize: positiveIntSchema,
     maxPatchesPerCall: positiveIntSchema,
     maxRepeatedReadonlyToolTurnsBeforeAnswerNudge: positiveIntSchema,
     maxDiagnoseAnswerNudges: nonnegativeIntSchema,
+    maxIncompleteAnswerRecoveries: nonnegativeIntSchema,
   })
   .strict();
 

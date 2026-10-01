@@ -16,9 +16,11 @@ import { resolveSteeringFeatureFlags } from "../legacy/steeringFlags";
 import {
   annotateMutationToolDefinitions,
   applyExplorationSignal,
+  buildInstructionBodies,
   clampRunBudget,
   toRunUsage,
   createInitialRunEvidence,
+  extractMemoryFileTargets,
   finalizeRunEvidence,
 } from "../actions";
 import { filterToolDefinitions } from "../actions/progressiveTools";
@@ -203,6 +205,9 @@ export async function executeV8Start(
       }),
       suspension: partial.suspension,
       pinnedState: partial.pinnedState ?? shared.pinnedState,
+      ...(partial.sessionControl
+        ? { sessionControl: partial.sessionControl }
+        : {}),
       reasonCodes: finalReasonCodes,
       warnings: finalWarnings,
       usage: toRunUsage(usageSnap),
@@ -304,6 +309,7 @@ export async function executeV8Start(
       decision,
       repositoryContext,
       selectedSkills,
+      skillCatalogL1,
       selectedMemory,
       planText,
     } = enrichment.state;
@@ -381,6 +387,10 @@ export async function executeV8Start(
       instructions,
       planText,
       ...(decisionBriefText ? { decisionBriefText } : {}),
+      injectSkillCatalogL1: steering.injectSkillCatalogL1,
+      ...(steering.injectSkillCatalogL1 && skillCatalogL1
+        ? { skillCatalogL1: [...skillCatalogL1] }
+        : {}),
       tools,
       capabilities: runtime.deps.llm.capabilities,
       model: input.model,
@@ -513,6 +523,12 @@ export async function executeV8Start(
       );
     }
 
+    const instructionBodies = buildInstructionBodies({
+      skills: selectedSkills,
+      rules: projectRules,
+      environment: instructions?.environment,
+    });
+
     const loopOutcome = await runV8ModelLoop(runtime, {
       runId,
       requestId: shared.requestId,
@@ -541,8 +557,16 @@ export async function executeV8Start(
       understanding,
       repoBuildStateBefore: shared.repoBuildStateBefore,
       memoryFacts,
+      memoryQuery: userPrompt,
+      memoryWorkspaceId: envelope.workspace?.workspaceId,
+      memoryFileTargets: extractMemoryFileTargets(understanding),
       logVerbosity: input.logVerbosity,
       selectedSkillIds: selectedSkills?.map((block) => block.id) ?? [],
+      projectRuleIds: projectRules.map((block) => block.id),
+      environmentIds: (instructions?.environment ?? []).map(
+        (block) => block.id,
+      ),
+      instructionBodies,
     });
 
     return await finishAfterLoop(runtime, {
@@ -579,6 +603,9 @@ export async function executeV8Start(
         mode: envelope.mode,
         projects: input.projects,
         memoryFacts,
+        memoryQuery: userPrompt,
+        memoryWorkspaceId: envelope.workspace?.workspaceId,
+        memoryFileTargets: extractMemoryFileTargets(understanding),
         requiredSkillIds: input.requiredSkillIds ?? [],
         excludedSkillIds: input.excludedSkillIds ?? [],
         selectedSkillIds: selectedSkills?.map((block) => block.id) ?? [],
@@ -586,6 +613,7 @@ export async function executeV8Start(
         environmentIds: (instructions?.environment ?? []).map(
           (block) => block.id,
         ),
+        instructionBodies,
         establishedFacts,
         plan: shared.runPlan,
       },

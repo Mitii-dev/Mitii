@@ -9,6 +9,7 @@ import {
   resolveFuzzyFileTargets,
 } from "../../analyzer";
 import { TASK_ANALYZER_CONSTANTS } from "../../constants";
+import { isContinuationTurnKind } from "../../../intent/policy/TurnKindIntentPolicy";
 import type {
   TaskAnalysis,
   TaskAnalysisSignal,
@@ -17,7 +18,10 @@ import type {
   TaskComplexity,
   TaskScope,
   TaskTarget,
+  TaskSize,
+  PlanningHint,
 } from "../../contracts";
+import { defaultPlanningHintForSize } from "../../../intent/evidence/sizeDraft";
 
 export class RulewiseTaskAnalyzer {
   private readonly targetExtractor: TaskTargetExtractor;
@@ -68,6 +72,7 @@ export class RulewiseTaskAnalyzer {
       targetResult.targets,
       taskHints?.targets,
       allSignals,
+      input.candidateRelativePaths ?? [],
     );
     const fuzzy = resolveFuzzyFileTargets(
       mergedTargets,
@@ -175,6 +180,8 @@ export class RulewiseTaskAnalyzer {
       intentConfidence: classification.confidence,
 
       confidenceMargin: input.intent.confidenceMargin,
+
+      continuationTurn: isContinuationTurnKind(input.turnKind),
     });
     const clarity = this.mergeClarity(
       clarityResult.clarity,
@@ -229,6 +236,18 @@ export class RulewiseTaskAnalyzer {
           complexityResult.complexity === "complex" ||
           complexityResult.complexity === "very_complex"));
 
+    const { taskSize, planningHint } = this.resolveTaskSizeAndPlanningHint({
+      officerTaskSize: taskHints?.taskSize,
+      officerPlanningHint: taskHints?.planningHint,
+      sizeDraft: input.sizeDraft?.taskSize,
+      complexity: complexityResult.complexity,
+      interactionIntent,
+      recommendsPlanning,
+    });
+
+    const recommendsPlanningNormalized =
+      recommendsPlanning || planningHint !== "none";
+
     const recommendsTaskClarification =
       input.intent.recommendsClarification ||
       (isActionable && clarity === "unclear");
@@ -257,9 +276,11 @@ export class RulewiseTaskAnalyzer {
       requestedOutcomes,
 
       recommendsRepositoryDiscovery,
-      recommendsPlanning,
+      recommendsPlanning: recommendsPlanningNormalized,
       recommendsVerification,
       recommendsTaskClarification,
+      taskSize,
+      planningHint,
 
       estimatedFilesAffected: this.estimateFilesAffected(
         scopeResult.scope,
@@ -271,28 +292,101 @@ export class RulewiseTaskAnalyzer {
     };
   }
 
+  private resolveTaskSizeAndPlanningHint(params: {
+    officerTaskSize?: TaskSize;
+    officerPlanningHint?: PlanningHint;
+    sizeDraft?: TaskSize;
+    complexity: TaskComplexity;
+    interactionIntent: string;
+    recommendsPlanning: boolean;
+  }): { taskSize: TaskSize; planningHint: PlanningHint } {
+    const fromComplexity = ((): TaskSize => {
+      switch (params.complexity) {
+        case "trivial":
+        case "simple":
+          return "small";
+        case "moderate":
+          return "medium";
+        case "complex":
+        case "very_complex":
+          return "large";
+      }
+    })();
+
+    const taskSize =
+      params.officerTaskSize ?? params.sizeDraft ?? fromComplexity;
+
+    let planningHint =
+      params.officerPlanningHint ?? defaultPlanningHintForSize(taskSize);
+
+    if (params.interactionIntent === "plan" && planningHint === "none") {
+      planningHint = taskSize === "large" ? "long" : "short";
+    }
+    if (taskSize === "small" && params.interactionIntent !== "plan") {
+      planningHint = params.officerPlanningHint === "none" || !params.officerPlanningHint
+        ? "none"
+        : planningHint;
+      if (!params.officerPlanningHint && !params.recommendsPlanning) {
+        planningHint = "none";
+      }
+    }
+
+    return { taskSize, planningHint };
+  }
+
   /**
    * Deterministic targets win on duplicates; LLM hints only add missing ones.
+   * Unverified file hints are demoted or dropped when a repo-map is present.
    */
   private mergeTargets(
     deterministic: readonly TaskTarget[],
     hinted: readonly TaskTarget[] | undefined,
     signals: TaskAnalysisSignal[],
+    candidateRelativePaths: readonly string[],
   ): TaskTarget[] {
     const merged = [...deterministic];
     const seen = new Set(
       deterministic.map((target) => this.targetKey(target)),
     );
+    const hasRepoMap = candidateRelativePaths.length > 0;
+    const normalizedCandidates = hasRepoMap
+      ? new Set(
+          candidateRelativePaths.map((path) =>
+            path.trim().replace(/\\/g, "/").replace(/^\.\//, "").toLowerCase(),
+          ),
+        )
+      : null;
 
     for (const hint of hinted ?? []) {
       const value = hint.value.trim();
       if (!value) {
         continue;
       }
+
+      let explicit = hint.explicit;
+      if (hint.kind === "file") {
+        if (normalizedCandidates) {
+          const key = value.replace(/\\/g, "/").replace(/^\.\//, "").toLowerCase();
+          const inMap =
+            normalizedCandidates.has(key) ||
+            [...normalizedCandidates].some(
+              (candidate) =>
+                candidate.endsWith(`/${key}`) || candidate === key,
+            );
+          if (!inMap) {
+            // Fuzzy may still resolve basename-only hints later; keep as
+            // non-explicit so Decision Policy does not treat them as repo targets.
+            explicit = false;
+          }
+        } else {
+          explicit = false;
+        }
+      }
+
       const candidate: TaskTarget = {
         kind: hint.kind,
         value,
-        explicit: hint.explicit,
+        explicit,
       };
       const key = this.targetKey(candidate);
       if (seen.has(key)) {
@@ -303,8 +397,10 @@ export class RulewiseTaskAnalyzer {
       signals.push({
         type: "scope",
         value: `${candidate.kind}:${candidate.value}`,
-        weight: 0.5,
-        evidence: `LLM task hint added ${candidate.kind} target: ${candidate.value}`,
+        weight: candidate.explicit ? 0.5 : 0.35,
+        evidence: candidate.explicit
+          ? `LLM task hint added ${candidate.kind} target: ${candidate.value}`
+          : `LLM task hint added unverified ${candidate.kind} target: ${candidate.value}`,
       });
     }
 

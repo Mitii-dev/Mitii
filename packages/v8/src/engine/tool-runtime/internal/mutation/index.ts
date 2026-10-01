@@ -10,6 +10,7 @@ export {
 } from "./checkpoint";
 export {
   preflightStructuredPatch,
+  stripJsNoiseForBracketScan,
   validatePostEditSyntax,
 } from "./applyStructuredPatch";
 export { MutationTransactionRegistry } from "./MutationTransactionRegistry";

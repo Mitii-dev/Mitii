@@ -201,6 +201,23 @@ describe('WebTreeSitterRuntime', () => {
     expect(result.symbols.map((symbol) => symbol.name)).toContain('should_charge');
   });
 
+  it('reports syntaxErrors for broken Python', async () => {
+    const runtime = await createDefaultTreeSitterRuntime();
+    expect(runtime).toBeDefined();
+
+    const result = await runtime!.parse({
+      language: 'python',
+      relativePath: 'broken.py',
+      content: 'def broken(\n',
+      maximumSymbols: 0,
+      maximumImports: 0,
+      maximumReferences: 0,
+    });
+
+    expect((result.syntaxErrors ?? []).length).toBeGreaterThan(0);
+    expect(result.syntaxErrors?.[0]?.startLine).toBeGreaterThan(0);
+  });
+
   it('records a warning instead of throwing when a query cannot compile', async () => {
     const runtime = await createDefaultTreeSitterRuntime();
     expect(runtime).toBeDefined();

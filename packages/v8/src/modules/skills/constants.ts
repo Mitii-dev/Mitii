@@ -37,6 +37,7 @@ export const SKILL_REASON_CODES = [
   "skills_truncated_to_budget",
   "conflicts_resolved",
   "catalog_empty",
+  "catalog_l1_included",
 ] as const;
 
 /** Maximum explicitly attached skills per run (prompt, CLI, or host field). */

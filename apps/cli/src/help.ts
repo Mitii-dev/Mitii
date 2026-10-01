@@ -15,6 +15,7 @@ Usage:
   mitii run --auto "<task>" [options]
   mitii session [options]
   mitii index [--cwd <path>] [--json]
+  mitii index --status [--cwd <path>] [--json]
   mitii review [--preview] [--from <ref> --to <ref>] [--commit <hash>] [--format json|sarif] [--output <path>] [--effort low|medium|high]
   mitii status [--cwd <path>] [--json]
   mitii export-session <prompt> --out <file> [--echo]
@@ -39,6 +40,7 @@ Commands:
   run --auto       Unattended CI run (agent + apply autonomy; no prompts)
   session          Interactive REPL (MITII banner + prompts)
   index            Full workspace index + publish repository state
+                   --status            Show Code/FTS/Embeddings pipeline health (no reindex)
   review           Deterministic review preview/prepare (+ SARIF); LLM findings via ask
                    --preview           Selection preview only (no prepare)
                    --from/--to <ref>   Diff range (required together unless --commit)
@@ -48,7 +50,7 @@ Commands:
                    --effort low|medium|high  Prep effort band
                    Full LLM review: VS Code Review button (git changes), or:
                      mitii ask "review these changes" --mode ask --skill code-review-and-quality
-  status           Show latest persisted repository state
+  status           Show latest persisted repository state + index pipeline health
   export-session   Run ask and write secret-free JSON export
   restore          Undo Agent file mutations to a RestorePoint (or --list)
   recipe           Run a parameterized RecipeSpec (prompt/mode/skills only)

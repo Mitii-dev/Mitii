@@ -158,6 +158,32 @@ export const createPullRequestInputSchema = z
   })
   .strict();
 
+/** Add Signed-off-by to every commit after `base` (exclusive) via rebase --exec. */
+export const gitSignoffRangeInputSchema = z
+  .object({
+    /** Exclusive base ref/sha (e.g. merge-base or the commit named in the DCO error). */
+    base: z.string().min(1).max(256),
+    /** When true, `git push --force-with-lease` current branch to remote after rebase. */
+    push: z.boolean().optional(),
+    /** Remote name for push (default origin). */
+    remote: z.string().min(1).max(64).optional(),
+  })
+  .strict();
+
+export const gitSignoffRangeOutputSchema = z
+  .object({
+    argv: z.array(z.string()),
+    exitCode: z.number().nullable(),
+    stdout: z.string(),
+    stderr: z.string(),
+    truncated: z.boolean(),
+    stashed: z.boolean().optional(),
+    pushed: z.boolean().optional(),
+    branch: z.string().optional(),
+    signedOffCount: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+
 export const githubMutationOutputSchema = z
   .object({
     argv: z.array(z.string()),

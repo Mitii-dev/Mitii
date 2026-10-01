@@ -7,6 +7,10 @@ import type {
   ContextEpochReconcileResult,
   ContextEpochSnapshot,
 } from "./types";
+import {
+  MID_CONVERSATION_UPDATE_MARKERS,
+  wrapMidConversationUpdateText,
+} from "../../../../modules/prompt-construction";
 
 /** OpenCode-style privileged system context source keys Mitii tracks. */
 export const CONTEXT_EPOCH_SOURCE_KEYS = {
@@ -20,11 +24,11 @@ export const CONTEXT_EPOCH_SOURCE_KEYS = {
   memory: "instructions/memory",
 } as const;
 
-/** Markers for Mid-Conversation System Messages (marked fragments). */
-export const MID_CONVERSATION_SYSTEM_MARKERS = {
-  start: "<context_epoch_update>",
-  end: "</context_epoch_update>",
-} as const;
+/**
+ * Markers for mid-conversation updates (canonical copy lives in prompt-construction).
+ * Projected as user-role messages — not trailing system — for provider cache safety.
+ */
+export const MID_CONVERSATION_SYSTEM_MARKERS = MID_CONVERSATION_UPDATE_MARKERS;
 
 export function hashContextText(text: string): string {
   // FNV-1a 32-bit — fast, stable, no crypto dependency in the runtime path.
@@ -249,6 +253,5 @@ export function isMidConversationSystemContent(content: string): boolean {
 }
 
 export function wrapMidConversationSystemText(text: string): string {
-  const body = text.trim();
-  return `${MID_CONVERSATION_SYSTEM_MARKERS.start}\n${body}\n${MID_CONVERSATION_SYSTEM_MARKERS.end}`;
+  return wrapMidConversationUpdateText(text);
 }

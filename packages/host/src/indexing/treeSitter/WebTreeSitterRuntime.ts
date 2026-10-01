@@ -10,6 +10,7 @@ import type {
   TreeSitterRuntimePort,
   TreeSitterRuntimeReference,
   TreeSitterRuntimeSymbol,
+  TreeSitterRuntimeSyntaxError,
 } from '@mitii/v8';
 
 import {
@@ -33,6 +34,11 @@ type TreeSitterNode = {
   startPosition: TreeSitterPoint;
   endPosition: TreeSitterPoint;
   parent: TreeSitterNode | null;
+  childCount?: number;
+  child?: (index: number) => TreeSitterNode | null;
+  isMissing?: boolean | (() => boolean);
+  hasError?: boolean | (() => boolean);
+  isError?: boolean | (() => boolean);
 };
 
 type TreeSitterQueryCapture = {
@@ -182,6 +188,7 @@ export class WebTreeSitterRuntime implements TreeSitterRuntimePort {
           symbols: [],
           imports: [],
           references: [],
+          syntaxErrors: [],
           warnings: ['parse returned no syntax tree'],
         };
       }
@@ -210,16 +217,83 @@ export class WebTreeSitterRuntime implements TreeSitterRuntimePort {
           })
         : [];
 
+      const syntaxErrors = (() => {
+        try {
+          return this.collectSyntaxErrors({
+            rootNode: tree.rootNode,
+            abortSignal: input.abortSignal,
+          });
+        } catch (error) {
+          warnings.push(
+            `syntax error walk failed: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+          return [] as TreeSitterRuntimeSyntaxError[];
+        }
+      })();
+
       return {
         symbols,
         imports: [],
         references,
+        syntaxErrors,
         warnings,
       };
     } finally {
       tree?.delete?.();
       parser.delete?.();
     }
+  }
+
+  private collectSyntaxErrors(options: {
+    rootNode: TreeSitterNode;
+    abortSignal?: AbortSignal;
+    maximum?: number;
+  }): TreeSitterRuntimeSyntaxError[] {
+    const maximum = options.maximum ?? 50;
+    const errors: TreeSitterRuntimeSyntaxError[] = [];
+    const stack: TreeSitterNode[] = [options.rootNode];
+
+    while (stack.length > 0 && errors.length < maximum) {
+      this.throwIfAborted(options.abortSignal);
+      const node = stack.pop()!;
+      const missing = invokeNodeFlag(node.isMissing);
+      const isErrorNode =
+        missing ||
+        node.type === 'ERROR' ||
+        invokeNodeFlag(node.isError);
+
+      if (isErrorNode) {
+        const snippet = (node.text ?? '').replace(/\s+/g, ' ').slice(0, 80);
+        errors.push({
+          startLine: node.startPosition.row + 1,
+          startColumn: node.startPosition.column + 1,
+          endLine: node.endPosition.row + 1,
+          endColumn: node.endPosition.column + 1,
+          kind: missing ? 'missing' : 'error',
+          message: missing
+            ? `Missing syntax near "${snippet || node.type}"`
+            : `Syntax error near "${snippet || node.type}"`,
+        });
+        // Do not descend into ERROR subtrees — parent span is enough.
+        continue;
+      }
+
+      if (!invokeNodeFlag(node.hasError)) {
+        continue;
+      }
+
+      const count = node.childCount ?? 0;
+      for (let index = count - 1; index >= 0; index -= 1) {
+        const child = node.child?.(index);
+        if (child) {
+          stack.push(child);
+        }
+      }
+    }
+
+    return errors;
   }
 
   private async ensureInit(
@@ -572,6 +646,19 @@ export class WebTreeSitterRuntime implements TreeSitterRuntimePort {
     error.name = 'AbortError';
     throw error;
   }
+}
+
+function invokeNodeFlag(
+  value: boolean | (() => boolean) | undefined,
+): boolean {
+  if (typeof value === 'function') {
+    try {
+      return Boolean(value());
+    } catch {
+      return false;
+    }
+  }
+  return Boolean(value);
 }
 
 function treeSitterAssetRoots(): string[] {

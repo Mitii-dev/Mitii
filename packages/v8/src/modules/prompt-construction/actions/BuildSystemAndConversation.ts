@@ -7,7 +7,12 @@ import {
 } from "../../decision-policy";
 import type { ModelMessage } from "../../model-gateway";
 
-import type { PromptInstructionBlock, TokenEstimatorPort } from "../contracts";
+import type {
+  PromptExtraFragment,
+  PromptInstructionBlock,
+  PromptSkillCatalogL1Entry,
+  TokenEstimatorPort,
+} from "../contracts";
 import {
   DEFAULT_MIN_CONVERSATION_TURNS,
   TRUNCATION_MARKER,
@@ -16,8 +21,11 @@ import {
   assembleFragments,
   BaseInstructionsFragment,
   DecisionBriefFragment,
+  ExtraInstructionFragment,
   InstructionBlockFragment,
   PlanGuidanceFragment,
+  SkillCatalogFragment,
+  formatSkillCatalogL1,
   type ContextualFragment,
 } from "../internal/fragments";
 import { PROMPT_CONSTRUCTION_THRESHOLDS } from "../policy";
@@ -28,6 +36,9 @@ export function buildSystemInstructions(params: {
   skills: readonly PromptInstructionBlock[];
   memory: readonly PromptInstructionBlock[];
   environment?: readonly PromptInstructionBlock[];
+  extraFragments?: readonly PromptExtraFragment[];
+  injectSkillCatalogL1?: boolean;
+  skillCatalogL1?: readonly PromptSkillCatalogL1Entry[];
   estimator: TokenEstimatorPort;
   budgetTokens: number;
   planBudgetTokens?: number;
@@ -43,6 +54,9 @@ export function buildSystemInstructions(params: {
   includedSkillIds: string[];
   includedMemoryIds: string[];
   includedEnvironmentIds: string[];
+  includedExtraIds: string[];
+  skillCatalogL1Injected: boolean;
+  skillCatalogL1UsedTokens: number;
   reviewFlaggedFragmentIds: string[];
   separateMessages: Array<{
     role: "system" | "developer" | "user";
@@ -50,7 +64,7 @@ export function buildSystemInstructions(params: {
     contentKind: string;
   }>;
   omitted: Array<{
-    section: "rules" | "skills" | "memory" | "environment";
+    section: "rules" | "skills" | "memory" | "environment" | "system" | "plan";
     id: string;
     tokens: number;
   }>;
@@ -97,6 +111,24 @@ export function buildSystemInstructions(params: {
   );
   pushBlocks("rules", "Project rules", "project_rules", params.projectRules);
   pushBlocks("skills", "Skills", "skills", params.skills);
+
+  let skillCatalogL1Injected = false;
+  if (
+    params.injectSkillCatalogL1 === true &&
+    params.skillCatalogL1 &&
+    params.skillCatalogL1.length > 0
+  ) {
+    fragments.push(new SkillCatalogFragment(params.skillCatalogL1));
+    skillCatalogL1Injected = true;
+  }
+
+  const extras = [...(params.extraFragments ?? [])].sort(
+    (a, b) => b.priority - a.priority,
+  );
+  for (const extra of extras) {
+    fragments.push(new ExtraInstructionFragment(extra));
+  }
+
   for (const block of params.memory) fragments.push(new MemoryEvidenceFragment(block));
 
   const assembled = assembleFragments({
@@ -132,6 +164,21 @@ export function buildSystemInstructions(params: {
   const includedEnvironmentIds = (params.environment ?? [])
     .filter((block) => includedFragmentIds.has(block.id))
     .map((block) => block.id);
+  const includedExtraIds = extras
+    .filter((block) => includedFragmentIds.has(block.id))
+    .map((block) => block.id);
+
+  if (
+    skillCatalogL1Injected &&
+    !includedFragmentIds.has("system:skill-catalog-l1")
+  ) {
+    skillCatalogL1Injected = false;
+  }
+  const skillCatalogL1UsedTokens = skillCatalogL1Injected
+    ? params.estimator.estimate(
+        formatSkillCatalogL1(params.skillCatalogL1 ?? []),
+      )
+    : 0;
 
   const omitted = assembled.omissions
     .filter(
@@ -139,14 +186,18 @@ export function buildSystemInstructions(params: {
         entry.section === "rules" ||
         entry.section === "skills" ||
         entry.section === "memory" ||
-        entry.section === "environment",
+        entry.section === "environment" ||
+        entry.section === "system" ||
+        entry.section === "plan",
     )
     .map((entry) => ({
       section: entry.section as
         | "rules"
         | "skills"
         | "memory"
-        | "environment",
+        | "environment"
+        | "system"
+        | "plan",
       id: entry.id,
       tokens: entry.tokens,
     }));
@@ -166,6 +217,9 @@ export function buildSystemInstructions(params: {
     includedSkillIds,
     includedMemoryIds,
     includedEnvironmentIds,
+    includedExtraIds,
+    skillCatalogL1Injected,
+    skillCatalogL1UsedTokens,
     reviewFlaggedFragmentIds: assembled.reviewFlaggedIds,
     /** Separate-message fragments (not folded into system blob). */
     separateMessages: assembled.separateMessages.map((item) => ({

@@ -1,4 +1,7 @@
-import type { UserRequestOrigin } from "../../request-intake";
+import type {
+  RequestTurnKind,
+  UserRequestOrigin,
+} from "../../request-intake";
 import type { RequestUnderstandingResult } from "../../request-understanding";
 import type { WindowPolicy } from "../../window-budget";
 
@@ -61,8 +64,13 @@ export function planRoute(params: {
   windowPolicy?: WindowPolicy;
   /** When automation/api, suppress interactive clarify and continue best-effort. */
   origin?: UserRequestOrigin;
-  /** Prefer high-confidence understanding over looksLike* heuristics. */
+  /**
+   * Prefer high-confidence understanding over looksLike* heuristics.
+   * Default on when omitted; pass false to force the classic heuristic path.
+   */
   policyFactsFirst?: boolean;
+  /** Intake turn kind — continuation prefers ballot over soft re-clarify. */
+  turnKind?: RequestTurnKind;
   /**
    * When non-empty, upgrade tool-less `direct_answer` to `repository_answer`
    * so attached MCP tools stay on a read grant.
@@ -75,6 +83,7 @@ export function planRoute(params: {
     understanding: params.understanding,
     message: params.message,
     policyFactsFirst: params.policyFactsFirst,
+    turnKind: params.turnKind,
   });
   const originReasonCodes: DecisionReasonCode[] = [];
   if (params.origin === "automation") {
@@ -89,6 +98,7 @@ export function planRoute(params: {
       message: params.message,
       suppressClarification: true,
       policyFactsFirst: params.policyFactsFirst,
+      turnKind: params.turnKind,
     });
     originReasonCodes.push("automation_clarify_suppressed");
   }

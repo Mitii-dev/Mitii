@@ -145,7 +145,11 @@ export class MutationTransactionRegistry {
           currentContent: current,
           fuzzyMatch: this.fuzzyMatchDefault,
         });
-        validatePostEditSyntax(relativePath, preflight.proposedContent);
+        validatePostEditSyntax(
+          relativePath,
+          preflight.proposedContent,
+          current,
+        );
         proposed.set(relativePath, {
           content: preflight.proposedContent,
           created:

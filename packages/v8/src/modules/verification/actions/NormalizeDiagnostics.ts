@@ -49,6 +49,18 @@ export function normalizeDiagnostics(params: {
       continue;
     }
 
+    if (check.kind === "syntax") {
+      const fromPort = fromSyntaxPortFindings(check.checkId, output);
+      if (fromPort.length > 0) {
+        diagnostics.push(
+          ...fromPort.map((diagnostic) =>
+            resolveDiagnosticPath(diagnostic, projectRoot),
+          ),
+        );
+        continue;
+      }
+    }
+
     if (check.kind === "diff_review") {
       continue;
     }
@@ -211,6 +223,41 @@ function fromDiagnosticsTool(
         typeof record.code === "string" || typeof record.code === "number"
           ? String(record.code)
           : undefined,
+      checkId,
+    });
+  }
+  return result;
+}
+
+function fromSyntaxPortFindings(
+  checkId: string,
+  output: unknown,
+): VerificationDiagnostic[] {
+  if (!output || typeof output !== "object") return [];
+  const findings = (output as { findings?: unknown }).findings;
+  if (!Array.isArray(findings)) return [];
+
+  const result: VerificationDiagnostic[] = [];
+  for (const item of findings) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as Record<string, unknown>;
+    if (typeof record.path !== "string" || typeof record.message !== "string") {
+      continue;
+    }
+    if (typeof record.startLine !== "number") {
+      continue;
+    }
+    result.push({
+      path: record.path,
+      severity: "error",
+      message: record.message,
+      startLine: record.startLine,
+      startColumn:
+        typeof record.startColumn === "number" ? record.startColumn : undefined,
+      endLine: typeof record.endLine === "number" ? record.endLine : undefined,
+      endColumn:
+        typeof record.endColumn === "number" ? record.endColumn : undefined,
+      source: "tree-sitter",
       checkId,
     });
   }

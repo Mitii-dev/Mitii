@@ -10,8 +10,16 @@ describe("formatEnvironmentDetailsBlock", () => {
     expect(formatEnvironmentDetailsBlock({})).toBeUndefined();
   });
 
+  it("formats today's date when provided", () => {
+    const block = formatEnvironmentDetailsBlock({
+      todayDate: "2026-09-30",
+    });
+    expect(block?.content).toContain("Today's date: 2026-09-30");
+  });
+
   it("formats visible files, tabs, terminals, and mode", () => {
     const block = formatEnvironmentDetailsBlock({
+      todayDate: "2026-09-30",
       modeReminder: "Code (agent)",
       visibleFiles: ["src/a.ts", "src/b.ts"],
       openTabs: ["README.md"],
@@ -19,6 +27,7 @@ describe("formatEnvironmentDetailsBlock", () => {
       gitStatusSummary: "main…dirty",
     });
     expect(block?.id).toBe(ENVIRONMENT_DETAILS_BLOCK_ID);
+    expect(block?.content).toContain("Today's date: 2026-09-30");
     expect(block?.content).toContain("Active mode: Code (agent)");
     expect(block?.content).toContain("src/a.ts");
     expect(block?.content).toContain("README.md");

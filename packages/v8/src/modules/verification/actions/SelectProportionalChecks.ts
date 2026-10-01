@@ -36,6 +36,11 @@ export function selectProportionalChecks(params: {
   maxChecks?: number;
   /** Workspace-relative paths mutated this turn (package-touch filter). */
   changedFiles?: readonly string[];
+  /**
+   * Soft script tokens from AGENTS.md / similar. Only reorders already
+   * discovered candidates — never invents checks.
+   */
+  scriptHints?: readonly string[];
 }): SelectProportionalChecksResult {
   const requiredKinds = new Set<VerificationCheckKind>();
   for (const evidence of params.verification.minimumEvidence) {
@@ -46,11 +51,17 @@ export function selectProportionalChecks(params: {
 
   const changedFiles = params.changedFiles ?? [];
   const touchedPackageRoots = packageRootsFromChangedFiles(changedFiles);
+  const scriptHints = new Set(
+    (params.scriptHints ?? []).map((hint) => hint.toLowerCase()),
+  );
 
   const byPriority = [...params.candidates].sort((a, b) => {
     const aRequired = requiredKinds.has(a.kind) ? 0 : 1;
     const bRequired = requiredKinds.has(b.kind) ? 0 : 1;
     if (aRequired !== bRequired) return aRequired - bRequired;
+    const aHint = scriptHintRank(a, scriptHints);
+    const bHint = scriptHintRank(b, scriptHints);
+    if (aHint !== bHint) return aHint - bHint;
     // Prefer checks that touch the changed package over sibling packages.
     const aTouch = packageTouchRank(a, touchedPackageRoots);
     const bTouch = packageTouchRank(b, touchedPackageRoots);
@@ -250,6 +261,30 @@ function isUnrelatedPackageCandidate(params: {
 
 function packageRootsOverlap(a: string, b: string): boolean {
   return a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
+}
+
+/** 0 = matches an AGENTS.md script hint; 1 = no match. */
+function scriptHintRank(
+  candidate: DiscoveredCheckCandidate,
+  hints: ReadonlySet<string>,
+): number {
+  if (hints.size === 0) {
+    return 1;
+  }
+  const haystack = [
+    candidate.checkId,
+    candidate.label,
+    candidate.evidenceSource,
+    ...(candidate.argv ?? []),
+  ]
+    .join(" ")
+    .toLowerCase();
+  for (const hint of hints) {
+    if (haystack.includes(hint)) {
+      return 0;
+    }
+  }
+  return 1;
 }
 
 function isWorkspaceRootCandidate(candidate: DiscoveredCheckCandidate): boolean {

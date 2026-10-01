@@ -11,6 +11,9 @@ describe('CLI commands (index/status)', () => {
     expect(parseCliArgs(['node', 'mitii', 'index', '--json']).command).toBe(
       'index',
     );
+    expect(
+      parseCliArgs(['node', 'mitii', 'index', '--status', '--json']).indexStatus,
+    ).toBe(true);
     expect(parseCliArgs(['node', 'mitii', 'status']).command).toBe('status');
     expect(parseCliArgs(['node', 'mitii', 'session']).command).toBe('session');
     const exported = parseCliArgs([
@@ -25,6 +28,35 @@ describe('CLI commands (index/status)', () => {
     expect(exported.command).toBe('export-session');
     expect(exported.prompt).toBe('hello');
     expect(exported.exportPath).toBe('/tmp/out.json');
+  });
+
+  it('reports pipeline health via index --status without reindexing', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mitii-cli-index-status-'));
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const io = createDefaultSessionIo();
+    io.writeStdout = (c) => {
+      stdout.push(c);
+    };
+    io.writeStderr = (c) => {
+      stderr.push(c);
+    };
+    io.prompt = async () => '';
+
+    try {
+      const code = await main(
+        ['node', 'mitii', 'index', '--status', '--cwd', dir, '--json'],
+        io,
+      );
+      expect(code).toBe(1);
+      const payload = JSON.parse(stdout.join('')) as {
+        health: { overall: string; pipelines: { codeIndex: { status: string } } };
+      };
+      expect(payload.health.overall).toBe('missing');
+      expect(payload.health.pipelines.codeIndex.status).toBe('missing');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('indexes and reads status via SDK repository state', async () => {
@@ -108,8 +140,19 @@ describe('CLI commands (index/status)', () => {
       const statusPayload = JSON.parse(stdout.join('')) as {
         latest: { readiness: string; workspaceId: string } | null;
         capabilitySummary?: Array<{ capability: string; status: string }>;
+        health?: {
+          overall: string;
+          pipelines: {
+            codeIndex: { status: string };
+            textFts: { status: string };
+            embeddings: { status: string };
+          };
+        };
       };
       expect(statusPayload.latest?.readiness).toBeTruthy();
+      expect(statusPayload.health?.overall).toBeTruthy();
+      expect(statusPayload.health?.pipelines.codeIndex.status).toBeTruthy();
+      expect(statusPayload.health?.pipelines.textFts.status).toBeTruthy();
       const statusVector = statusPayload.capabilitySummary?.find(
         (entry) => entry.capability === 'vectorIndex',
       );

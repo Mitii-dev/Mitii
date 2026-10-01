@@ -106,7 +106,7 @@ import {
 import { isTransientEngineNetworkError } from './engineNetwork.js';
 import { ChatHistoryNav } from './chat/ChatHistoryNav.js';
 import { ComposerReviewStrip } from './chat/ComposerReviewStrip.js';
-import { IndexStatusChip } from './IndexStatusChip.js';
+import { IndexStatusChip, type DesktopIndexSnapshot } from './IndexStatusChip.js';
 import { FileChangesCard } from './chat/FileChangesCard.js';
 import { OnboardingPanel } from './OnboardingPanel.js';
 import { PendingPlanBanner } from './chat/PendingPlanBanner.js';
@@ -431,6 +431,7 @@ export function App() {
     running?: boolean;
     lexicalReady?: boolean;
     embeddingPhase?: string;
+    health?: DesktopIndexSnapshot['health'];
   } | null>(null);
   const [indexIndexing, setIndexIndexing] = useState(false);
   const [indexEmbeddingBg, setIndexEmbeddingBg] = useState(false);
@@ -861,6 +862,7 @@ export function App() {
           message: s.message,
           embeddingError: s.embeddingError,
           running: s.running,
+          ...(s.health ? { health: s.health } : {}),
         });
         if (s.running) {
           setIndexIndexing(true);
@@ -1320,6 +1322,7 @@ export function App() {
         running: s.running,
         lexicalReady: s.lexicalReady,
         embeddingPhase: s.embeddingPhase,
+        ...(s.health ? { health: s.health } : {}),
       });
       if (s.running) {
         setIndexIndexing(true);
@@ -1801,6 +1804,9 @@ export function App() {
           );
         await wait;
       }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setError(`Settings save failed: ${message}`);
     } finally {
       setSettingsBusy(false);
     }
@@ -2957,6 +2963,23 @@ export function App() {
       className={`chat-view${inCodeMode ? ' chat-view--code' : ''}`}
       style={{ '--composer-mode-color': accent } as CSSProperties}
     >
+      {inCodeMode ? (
+        <div className="chat-topbar">
+          <div className="chat-topbar__left">
+            <span className="chat-topbar__title">Chat</span>
+          </div>
+          <button
+            type="button"
+            className="chat-topbar__new"
+            disabled={busy}
+            title={busy ? 'Agent is running' : 'New chat'}
+            aria-label={busy ? 'Agent is running' : 'New chat'}
+            onClick={() => void onNewChat()}
+          >
+            <IconPlus size={16} />
+          </button>
+        </div>
+      ) : null}
       {error ? <div className="alert">{error}</div> : null}
 
       <div className="feed" ref={feedRef}>
@@ -3447,6 +3470,9 @@ export function App() {
       ) : null}
       <header className="app-topbar">
         <div className="app-topbar__left">
+          <div className="app-topbar__brand" title="Mitii">
+            <img src={logoUrl} alt="Mitii" width={22} height={22} />
+          </div>
           <div className="layout-toggle" role="group" aria-label="Layout">
             <button
               type="button"
@@ -3624,9 +3650,6 @@ export function App() {
       {showHistorySide ? (
         <>
           <aside className="side" style={{ width: sideWidth, flex: '0 0 auto' }}>
-            <div className="side-brand">
-              <img src={logoUrl} alt="Mitii" />
-            </div>
             <ChatHistoryNav
               workspaceRoot={snapshot?.workspaceRoot}
               threads={history.map((t) => ({
@@ -3662,19 +3685,6 @@ export function App() {
           className={`activity-bar${view === 'settings' ? ' activity-bar--settings' : ''}`}
           aria-label={view === 'settings' ? 'Settings' : 'Activity bar'}
         >
-          <div className="activity-bar__brand">
-            <img src={logoUrl} alt="Mitii" />
-          </div>
-          {view !== 'settings' ? (
-            <ActivityBarButton
-              className="activity-bar__new"
-              label="New chat"
-              disabled={busy}
-              onClick={() => void onNewChat()}
-            >
-              <IconPlus size={20} />
-            </ActivityBarButton>
-          ) : null}
           <nav
             className="activity-bar__nav"
             aria-label={view === 'settings' ? 'Settings sections' : 'Views'}

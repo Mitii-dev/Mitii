@@ -43,6 +43,29 @@ export type VerificationGateDecision =
       verification?: VerificationResult;
     };
 
+/**
+ * Terminal run status after a verification gate rejection.
+ *
+ * Kept edits after a failed verify still fail the task (honest).
+ * `no_mutation_performed` must also fail — never report completed when the
+ * gate required a workspace mutation that never landed (fe-bugfix-018-class).
+ */
+export function resolveFailedVerificationTerminalStatus(params: {
+  changedFileCount: number;
+  rejectKind: Extract<
+    VerificationGateDecision,
+    { action: "reject" }
+  >["rejectKind"];
+}): "failed" | "completed" {
+  if (params.rejectKind === "no_mutation_performed") {
+    return "failed";
+  }
+  if (params.changedFileCount > 0) {
+    return "failed";
+  }
+  return "completed";
+}
+
 export function decideVerificationGate(params: {
   verificationRequired: boolean;
   allowUnavailable: boolean;

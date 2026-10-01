@@ -23,6 +23,7 @@ import {
   type TaskListRef,
 } from "../internal/taskListRuntime";
 import { DEFAULT_TOOL_DEFINITIONS } from "../legacy/policy";
+import { shouldRearmMutateLockOnContinue } from "../modules/mutate-readiness";
 import type { AgentEngineRuntime } from "./runtime";
 import { finishAfterLoop } from "./verification";
 import { resolveSteeringFeatureFlags } from "../legacy/steeringFlags";
@@ -155,6 +156,14 @@ export async function resumeV8ToolLoopFromCheckpoint(
     criticMode: resolveSteeringFeatureFlags(startInput.steering).criticMode,
     repoBuildStateBefore: checkpoint.repoBuildStateBefore,
     logVerbosity: startInput.logVerbosity,
+    armMutateLockOnStart: shouldRearmMutateLockOnContinue({
+      wallReason: checkpoint.continueWallReason,
+      changedFileCount: changedFiles.length,
+      mutationRequired:
+        decisionWithAttach.reasonCodes.includes("mutation_execute") ||
+        decisionWithAttach.toolGrant.maximumWorkspaceEffect === "write",
+      reasonCodes,
+    }),
   });
 
   return finishAfterLoop(runtime, {

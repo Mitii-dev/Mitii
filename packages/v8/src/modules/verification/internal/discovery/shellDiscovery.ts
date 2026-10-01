@@ -1,6 +1,7 @@
 import type { ProjectDescriptor } from "../../../repository-state";
 
 import type { VerificationManifestReaderPort } from "../../contracts";
+import { syntaxCandidatesForChangedFiles } from "./syntaxCandidates";
 import {
   commandCandidate,
   joinRoot,
@@ -9,7 +10,7 @@ import {
 
 /**
  * Shell verification only when project evidence declares shellcheck/shfmt.
- * Never invent a universal shell test command.
+ * Changed `.sh` files may still get a cheap `bash -n` syntax candidate.
  */
 export async function discoverShellChecks(params: {
   project: ProjectDescriptor;
@@ -19,7 +20,14 @@ export async function discoverShellChecks(params: {
   const root = params.project.rootPath;
   const packageJson = joinRoot(root, "package.json");
   const makefile = joinRoot(root, "Makefile");
-  const candidates = [];
+  const candidates = [
+    ...syntaxCandidatesForChangedFiles({
+      projectId: params.project.projectId,
+      languageId: "shell",
+      projectRoot: root,
+      changedFiles: params.changedFiles,
+    }),
+  ];
   const warnings: string[] = [];
 
   const pkgRaw = await params.manifests.readText(packageJson);
@@ -46,7 +54,8 @@ export async function discoverShellChecks(params: {
   }
 
   if (
-    candidates.length === 0 &&
+    candidates.filter((candidate) => candidate.kind !== "syntax").length ===
+      0 &&
     (await params.manifests.exists(makefile))
   ) {
     const text = (await params.manifests.readText(makefile)) ?? "";

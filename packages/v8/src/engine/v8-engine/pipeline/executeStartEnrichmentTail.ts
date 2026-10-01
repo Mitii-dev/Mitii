@@ -17,6 +17,7 @@ import {
 import type {
   PromptInstructions,
   PromptRepositoryContext,
+  PromptSkillCatalogL1Entry,
 } from "../../../modules/prompt-construction";
 import type { UserRequestEnvelope } from "../../../modules/request-intake";
 import { extractPrimaryUserMessage } from "../../../modules/request-understanding/intent/extractPrimaryUserMessage";
@@ -63,7 +64,7 @@ import type { AgentEngineRuntime } from "./runtime";
 import { runDiscoveryPass } from "./pinAndDiscovery";
 import type { ExecuteStartSharedState } from "./executeStartEarlyPipeline";
 import type { StartEnrichmentOutcome } from "./executeStartEnrichmentTypes";
-
+import { resolveSteeringFeatureFlags } from "../legacy/steeringFlags";
 export async function finishEnrichmentSkillsMemoryPlan(
   runtime: AgentEngineRuntime,
   params: {
@@ -134,6 +135,9 @@ export async function finishEnrichmentSkillsMemoryPlan(
 
   // --- Skills (optional) ---
   let selectedSkills: PromptInstructions["skills"];
+  let skillCatalogL1: readonly PromptSkillCatalogL1Entry[] | undefined;
+  const injectSkillCatalogL1 =
+    resolveSteeringFeatureFlags(input.steering).injectSkillCatalogL1 === true;
   if (runtime.deps.skills) {
     runtime.emitStage(bus, runId, "skills_ready", "started");
     const understandingSkillEvidence = mapUnderstandingToSkillEvidence(
@@ -159,6 +163,7 @@ export async function finishEnrichmentSkillsMemoryPlan(
       excludedSkillIds: input.excludedSkillIds ?? [],
       forbidLargeSkills:
         resolveWindowBudgetBand(windowPolicy.contextWindowTokens) === "compact",
+      includeCatalogL1: injectSkillCatalogL1,
       evidence: {
         ...understandingSkillEvidence,
         paths: skillEvidencePaths,
@@ -170,6 +175,13 @@ export async function finishEnrichmentSkillsMemoryPlan(
       content: formatSkillPromptContent(block),
       priority: block.priority,
     }));
+    if (
+      injectSkillCatalogL1 &&
+      skillsResult.catalogL1 &&
+      skillsResult.catalogL1.length > 0
+    ) {
+      skillCatalogL1 = skillsResult.catalogL1;
+    }
     if (skillsResult.warnings.length > 0 && logVerbosityAtLeast(input.logVerbosity, "verbose")) {
       warnings.push(...skillsResult.warnings);
     }
@@ -581,6 +593,7 @@ export async function finishEnrichmentSkillsMemoryPlan(
       decision,
       repositoryContext,
       selectedSkills,
+      skillCatalogL1,
       selectedMemory,
       planText,
     },

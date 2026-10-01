@@ -26,6 +26,7 @@ import {
 } from '@mitii/mcp';
 
 import { createHostLlmPorts } from '../config/createHostLlmPorts.js';
+import { resolveHostContextWindowTokens } from '../config/resolveEffectiveContextWindow.js';
 import {
   inferHostProviderType,
   resolveProviderApiKey,
@@ -44,6 +45,7 @@ import { createFileSystemSkillsCatalog } from '../ports/skillsCatalog.js';
 import { createWorkspaceCheckpointStore } from '../ports/checkpoints.js';
 import { createWorkspaceKnowledgeGraph } from '../ports/knowledgeGraphStore.js';
 import { createWorkspaceVerificationStore } from '../ports/verificationRecords.js';
+import { createOptionalVerificationSyntaxPort } from '../ports/verificationSyntax.js';
 import type { OpenHostSqliteDatabase } from '../sqlite/types.js';
 
 const AUTOMATION_WORKSPACE_ID = 'automation_workspace';
@@ -257,6 +259,14 @@ async function createAutomationClient(options: {
           model,
           ...(baseUrl ? { baseUrl } : {}),
           ...(apiKey ? { apiKey } : {}),
+          capabilities: {
+            contextWindowTokens: resolveHostContextWindowTokens({
+              env,
+              model,
+              providerType: type,
+            }),
+            supportsTools: true,
+          },
         },
   );
 
@@ -295,6 +305,9 @@ async function createAutomationClient(options: {
       workspaceRoot: options.cwd,
     }),
     records: createWorkspaceVerificationStore(options.cwd),
+    ...(await createOptionalVerificationSyntaxPort().then((syntax) =>
+      syntax ? { syntax } : {},
+    )),
   });
   const repositoryState = new RepositoryStatePipeline({
     store: new InMemoryRepositoryStateStore(),

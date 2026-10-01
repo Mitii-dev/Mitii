@@ -1,4 +1,8 @@
-import type { AgentMode, UserRequestOrigin } from "../../../request-intake";
+import type {
+  AgentMode,
+  RequestTurnKind,
+  UserRequestOrigin,
+} from "../../../request-intake";
 import {
   WINDOW_BUDGET_SCHEMA_VERSION,
   deriveWindowPolicy,
@@ -61,7 +65,7 @@ export function createDecisionInput(
     | "planApproval"
     | "hostCapabilities"
     | "windowPolicy"
-  > & { origin?: UserRequestOrigin },
+  > & { origin?: UserRequestOrigin; turnKind?: RequestTurnKind },
 ): DecisionPolicyInput {
   return {
     schemaVersion: DECISION_POLICY_SCHEMA_VERSION,
@@ -71,6 +75,7 @@ export function createDecisionInput(
       sessionId: "sess_decision_fixture",
       mode: fixture.mode,
       origin: fixture.origin ?? "user",
+      turnKind: fixture.turnKind ?? "new",
       message: fixture.message,
       referencedArtifacts: [],
       createdAt: "2026-07-25T12:00:00.000Z",

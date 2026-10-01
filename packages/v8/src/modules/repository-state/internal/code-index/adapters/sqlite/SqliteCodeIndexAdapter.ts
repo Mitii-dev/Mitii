@@ -18,6 +18,7 @@ import {
   codeIndexFileQueryResultSchema,
   codeIndexImportSchema,
   codeIndexReferenceSchema,
+  codeIndexRelativePathSchema,
   codeIndexSymbolQuerySchema,
   codeIndexSymbolSchema,
 } from "../../schema";
@@ -507,11 +508,9 @@ export class SqliteCodeIndexAdapter
           }
 
           const candidatePath =
-            row.targetRelativePath
-              ? this.normalizePath(
-                  row.targetRelativePath,
-                )
-              : undefined;
+            this._toCanonicalRelativePath(
+              row.targetRelativePath,
+            );
 
           const targetIsCurrent =
             row.targetFileId !== null &&
@@ -1144,6 +1143,30 @@ export class SqliteCodeIndexAdapter
       .replace(/\/+$/, "");
   }
 
+  /**
+   * Returns a schema-safe workspace-relative path, or undefined when the
+   * stored value is absolute / non-canonical (e.g. `/tmp/foo` shell scripts).
+   * Graph build must not fail the whole index on those rows.
+   */
+  private _toCanonicalRelativePath(
+    value: string | null | undefined,
+  ): string | undefined {
+    if (!value) {
+      return undefined;
+    }
+
+    const normalized =
+      this.normalizePath(value);
+    const parsed =
+      codeIndexRelativePathSchema.safeParse(
+        normalized,
+      );
+
+    return parsed.success
+      ? parsed.data
+      : undefined;
+  }
+
   private isWithinFolder(
     relativePath: string,
     folderPrefix: string,
@@ -1225,14 +1248,55 @@ export class SqliteCodeIndexAdapter
       CodeIndexError["operation"],
     cause: unknown,
   ): CodeIndexError {
+    const causeMessage =
+      this.formatCauseMessage(cause);
     return new CodeIndexError(
-      message,
+      causeMessage
+        ? `${message} ${causeMessage}`
+        : message,
       {
         operation,
         adapterId: this.id,
         cause,
       },
     );
+  }
+
+  private formatCauseMessage(
+    cause: unknown,
+  ): string | undefined {
+    if (!cause) {
+      return undefined;
+    }
+
+    if (cause instanceof Error) {
+      const zodIssues = (
+        cause as Error & {
+          issues?: ReadonlyArray<{
+            path: ReadonlyArray<
+              string | number
+            >;
+            message: string;
+          }>;
+        }
+      ).issues;
+
+      if (
+        Array.isArray(zodIssues) &&
+        zodIssues.length > 0
+      ) {
+        const first = zodIssues[0]!;
+        const path =
+          first.path.length > 0
+            ? `${first.path.join(".")}: `
+            : "";
+        return `(${path}${first.message})`;
+      }
+
+      return `(${cause.message})`;
+    }
+
+    return `(${String(cause)})`;
   }
 
   private isAbortError(

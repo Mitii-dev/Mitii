@@ -103,6 +103,19 @@ export type {
   IndexProgressSnapshot,
 } from './indexing/indexLock.js';
 export {
+  INDEX_PIPELINE_HEALTH_SCHEMA_VERSION,
+  readIndexPipelineHealth,
+  formatIndexPipelineHealthLines,
+} from './indexing/indexPipelineHealth.js';
+export type {
+  IndexOverallHealth,
+  IndexPipelineEntry,
+  IndexPipelineHealth,
+  IndexPipelineStatus,
+  IndexNativeHealth,
+  ReadIndexPipelineHealthOptions,
+} from './indexing/indexPipelineHealth.js';
+export {
   DEFAULT_MAXIMUM_INDEX_FILES,
   MAXIMUM_INDEX_FILES,
   DEFAULT_INDEX_SCAN_TIMEOUT_MS,
@@ -175,6 +188,10 @@ export {
 // ---------------------------------------------------------------------------
 export { createWorkspaceCheckpointStore } from './ports/checkpoints.js';
 export { createWorkspaceVerificationStore } from './ports/verificationRecords.js';
+export {
+  createTreeSitterVerificationSyntaxPort,
+  createOptionalVerificationSyntaxPort,
+} from './ports/verificationSyntax.js';
 export { createWorkspaceReviewStore } from './ports/reviewRecords.js';
 
 export {
@@ -399,6 +416,14 @@ export type {
   CreateHostLlmPortsInput,
   HostLlmPorts,
 } from './config/createHostLlmPorts.js';
+
+export {
+  DEFAULT_CONTEXT_WINDOW,
+  inferContextWindowFromModelId,
+  parseContextWindowTokens,
+  resolveEffectiveContextWindow,
+  resolveHostContextWindowTokens,
+} from './config/resolveEffectiveContextWindow.js';
 
 export {
   inferHostProviderType,

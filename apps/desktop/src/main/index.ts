@@ -72,6 +72,10 @@ import {
   reconcileMcpSettingsFromDisk,
   writeWorkspaceCompatFiles,
 } from './workspace-config.js';
+import {
+  appendDesktopLog,
+  errorMessage,
+} from '../shared/project-logs.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const distRoot = join(__dirname, '..');
@@ -83,6 +87,24 @@ let hostMode = '';
 let state: DesktopPersistedState;
 let userDataPath = '';
 let store: DesktopStoreClient;
+
+function desktopLogsDir(workspaceRoot?: string): string {
+  const root =
+    workspaceRoot?.trim() ||
+    state?.workspaceRoot?.trim() ||
+    process.env.MITII_DESKTOP_CWD?.trim() ||
+    process.cwd();
+  return getStorageInfo(root).logsPath;
+}
+
+function logDesktop(
+  category: Parameters<typeof appendDesktopLog>[1],
+  message: string,
+  options?: Parameters<typeof appendDesktopLog>[3],
+  workspaceRoot?: string,
+): void {
+  appendDesktopLog(desktopLogsDir(workspaceRoot), category, message, options);
+}
 
 async function stopEngine(): Promise<void> {
   if (engine) {
@@ -107,15 +129,27 @@ async function startEngine(): Promise<void> {
   if (forceEcho) env.MITII_FORCE_ECHO = '1';
   env.MITII_DESKTOP_STORE_PATH = store.dbPath;
 
-  const logsPath = getStorageInfo(state.workspaceRoot || process.cwd()).logsPath;
-  engine = await spawnDesktopEngine({
-    cwd: state.workspaceRoot,
-    forceEcho,
-    token: engineToken,
-    env,
-    logsPath,
-  });
-  hostMode = forceEcho ? 'echo' : 'host';
+  const logsPath = desktopLogsDir();
+  try {
+    engine = await spawnDesktopEngine({
+      cwd: state.workspaceRoot,
+      forceEcho,
+      token: engineToken,
+      env,
+      logsPath,
+    });
+    hostMode = forceEcho ? 'echo' : 'host';
+    logDesktop('engine', `started url=${engine.url} mode=${hostMode}`, {
+      extra: { cwd: state.workspaceRoot },
+    });
+  } catch (error) {
+    logDesktop('engine', `start_failed ${errorMessage(error)}`, {
+      level: 'error',
+      extra: { cwd: state.workspaceRoot, dbPath: store.dbPath },
+      mirrorRuns: true,
+    });
+    throw error;
+  }
 }
 
 function snapshot(): DesktopShellSnapshot {
@@ -210,18 +244,23 @@ function registerIpc(): void {
     try {
       if (path === null || path === '') {
         writeAppDataRedirect(null);
+        logDesktop('storage', 'app_data_redirect_cleared');
         return { ok: true, restartRequired: true };
       }
       if (typeof path !== 'string' || !path.trim()) {
         return { ok: false, reason: 'invalid_path' };
       }
       writeAppDataRedirect(path.trim());
+      logDesktop('storage', 'app_data_redirect_set', {
+        extra: { path: path.trim() },
+      });
       return { ok: true, restartRequired: true };
     } catch (error) {
-      return {
-        ok: false,
-        reason: error instanceof Error ? error.message : String(error),
-      };
+      const reason = errorMessage(error);
+      logDesktop('storage', `app_data_redirect_failed ${reason}`, {
+        level: 'error',
+      });
+      return { ok: false, reason };
     }
   });
 
@@ -232,6 +271,7 @@ function registerIpc(): void {
         if (state.workspaceRoot) {
           ensureWorkspaceStorageLink(state.workspaceRoot);
         }
+        logDesktop('storage', 'root_storage_cleared');
         return { ok: true };
       }
       if (typeof path !== 'string' || !path.trim()) {
@@ -241,12 +281,16 @@ function registerIpc(): void {
       if (state.workspaceRoot) {
         ensureWorkspaceStorageLink(state.workspaceRoot);
       }
+      logDesktop('storage', 'root_storage_set', {
+        extra: { path: path.trim() },
+      });
       return { ok: true };
     } catch (error) {
-      return {
-        ok: false,
-        reason: error instanceof Error ? error.message : String(error),
-      };
+      const reason = errorMessage(error);
+      logDesktop('storage', `root_storage_failed ${reason}`, {
+        level: 'error',
+      });
+      return { ok: false, reason };
     }
   });
 
@@ -357,17 +401,22 @@ function registerIpc(): void {
       writeWorkspaceCompatFiles(root, defaults, { replaceMcp: true });
       ensureWorkspaceStorageLink(root);
       await startEngine();
+      logDesktop('storage', 'workspace_cache_cleared', {
+        extra: { workspaceRoot: root, removed: cleared.removed },
+      });
       return { ok: true, removed: cleared.removed };
     } catch (error) {
-      return {
-        ok: false,
-        reason: error instanceof Error ? error.message : String(error),
-      };
+      const reason = errorMessage(error);
+      logDesktop('storage', `clear_cache_failed ${reason}`, {
+        level: 'error',
+      });
+      return { ok: false, reason };
     }
   });
 
   ipcMain.handle('mitii:save-settings', async (_event, input: unknown) => {
     if (!input || typeof input !== 'object') {
+      logDesktop('settings', 'save_failed invalid_payload', { level: 'error' });
       return { ok: false, reason: 'invalid_payload' };
     }
     const record = input as {
@@ -377,7 +426,10 @@ function registerIpc(): void {
       searchApiKey?: string;
       clearSearchApiKey?: boolean;
     };
-    if (!record.settings) return { ok: false, reason: 'missing_settings' };
+    if (!record.settings) {
+      logDesktop('settings', 'save_failed missing_settings', { level: 'error' });
+      return { ok: false, reason: 'missing_settings' };
+    }
     try {
       const previous = state.settings;
       let next = mergeDesktopSettings(record.settings);
@@ -400,7 +452,15 @@ function registerIpc(): void {
       next = reconcileMcpSettingsFromDisk(state.workspaceRoot, next);
       state.settings = next;
       store.saveSettings(state.workspaceRoot, state.settings);
-      writeWorkspaceCompatFiles(state.workspaceRoot, state.settings);
+      try {
+        writeWorkspaceCompatFiles(state.workspaceRoot, state.settings);
+      } catch (compatError) {
+        logDesktop(
+          'settings',
+          `compat_write_failed ${errorMessage(compatError)}`,
+          { level: 'warn', extra: { workspaceRoot: state.workspaceRoot } },
+        );
+      }
       if (record.clearApiKey) clearStoredApiKey(userDataPath);
       else if (typeof record.apiKey === 'string' && record.apiKey.trim()) {
         writeStoredApiKey(userDataPath, record.apiKey);
@@ -415,12 +475,24 @@ function registerIpc(): void {
       if (restart) {
         await startEngine();
       }
+      logDesktop('settings', 'save_ok', {
+        extra: {
+          workspaceRoot: state.workspaceRoot,
+          restarted: restart,
+          providerType: next.provider.type,
+        },
+      });
       return { ok: true, restarted: restart };
     } catch (error) {
-      return {
-        ok: false,
-        reason: error instanceof Error ? error.message : String(error),
-      };
+      const reason = errorMessage(error);
+      logDesktop('settings', `save_failed ${reason}`, {
+        level: 'error',
+        extra: {
+          workspaceRoot: state.workspaceRoot,
+          dbPath: store.dbPath,
+        },
+      });
+      return { ok: false, reason };
     }
   });
 
@@ -429,10 +501,9 @@ function registerIpc(): void {
       await startEngine();
       return { ok: true };
     } catch (error) {
-      return {
-        ok: false,
-        reason: error instanceof Error ? error.message : String(error),
-      };
+      const reason = errorMessage(error);
+      logDesktop('engine', `restart_failed ${reason}`, { level: 'error' });
+      return { ok: false, reason };
     }
   });
 }
@@ -451,8 +522,13 @@ async function applyWorkspace(
     store.saveSettings(workspaceRoot, settings);
     try {
       writeWorkspaceCompatFiles(workspaceRoot, settings);
-    } catch {
-      /* ignore */
+    } catch (compatError) {
+      logDesktop(
+        'workspace',
+        `compat_write_failed ${errorMessage(compatError)}`,
+        { level: 'warn' },
+        workspaceRoot,
+      );
     }
     syncIndexMetaFromDisk(workspaceRoot);
     state = stateFromStoreSnapshot(
@@ -460,12 +536,22 @@ async function applyWorkspace(
       workspaceRoot,
     );
     await startEngine();
+    logDesktop('workspace', 'applied', {
+      extra: { workspaceRoot },
+    }, workspaceRoot);
     return { ok: true, workspaceRoot };
   } catch (error) {
-    return {
-      ok: false,
-      reason: error instanceof Error ? error.message : String(error),
-    };
+    const reason = errorMessage(error);
+    logDesktop(
+      'workspace',
+      `apply_failed ${reason}`,
+      {
+        level: 'error',
+        extra: { workspaceRoot, dbPath: store.dbPath },
+      },
+      workspaceRoot,
+    );
+    return { ok: false, reason };
   }
 }
 
@@ -485,8 +571,13 @@ function syncIndexMetaFromDisk(workspaceRoot: string): void {
           ? raw.generatedAt
           : new Date().toISOString(),
     });
-  } catch {
-    /* ignore */
+  } catch (error) {
+    logDesktop(
+      'sqlite',
+      `index_meta_sync_failed ${errorMessage(error)}`,
+      { level: 'warn', extra: { workspaceRoot } },
+      workspaceRoot,
+    );
   }
 }
 
@@ -503,29 +594,54 @@ async function boot(): Promise<void> {
       workspaceRoot: fallbackCwd,
     });
     state = stateFromStoreSnapshot(store.snapshot(fallbackCwd), fallbackCwd);
+    logDesktop('store', 'migrate_ok', {
+      extra: { dbPath: store.dbPath, workspaceRoot: state.workspaceRoot },
+    }, fallbackCwd);
   } catch (error) {
+    const message = errorMessage(error);
     console.error(
-      `[mitii-desktop] store migrate failed, using defaults: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `[mitii-desktop] store migrate failed, using defaults: ${message}`,
+    );
+    logDesktop(
+      'store',
+      `migrate_failed ${message}`,
+      {
+        level: 'error',
+        extra: { dbPath: store.dbPath, workspaceRoot: fallbackCwd },
+      },
+      fallbackCwd,
     );
     state = defaultDesktopState(fallbackCwd);
   }
 
   if (state.workspaceRoot) {
-    let settings = store.getWorkspaceSettings(state.workspaceRoot);
-    if (!settings) {
-      settings = loadWorkspaceSettings(state.workspaceRoot, state.settings);
-    }
-    settings = reconcileMcpSettingsFromDisk(state.workspaceRoot, settings);
-    store.saveSettings(state.workspaceRoot, settings);
-    state.settings = settings;
     try {
-      writeWorkspaceCompatFiles(state.workspaceRoot, state.settings);
-    } catch {
-      /* ignore */
+      let settings = store.getWorkspaceSettings(state.workspaceRoot);
+      if (!settings) {
+        settings = loadWorkspaceSettings(state.workspaceRoot, state.settings);
+      }
+      settings = reconcileMcpSettingsFromDisk(state.workspaceRoot, settings);
+      store.saveSettings(state.workspaceRoot, settings);
+      state.settings = settings;
+      try {
+        writeWorkspaceCompatFiles(state.workspaceRoot, state.settings);
+      } catch (compatError) {
+        logDesktop(
+          'settings',
+          `compat_write_failed ${errorMessage(compatError)}`,
+          { level: 'warn' },
+        );
+      }
+      syncIndexMetaFromDisk(state.workspaceRoot);
+    } catch (error) {
+      logDesktop('sqlite', `workspace_load_failed ${errorMessage(error)}`, {
+        level: 'error',
+        extra: {
+          workspaceRoot: state.workspaceRoot,
+          dbPath: store.dbPath,
+        },
+      });
     }
-    syncIndexMetaFromDisk(state.workspaceRoot);
   }
 
   await startEngine();
@@ -538,6 +654,14 @@ async function boot(): Promise<void> {
     devServerUrl: process.env.MITII_DESKTOP_DEV_SERVER,
   });
 
+  logDesktop('boot', 'ready', {
+    extra: {
+      store: store.dbPath,
+      engine: engine?.url,
+      cwd: state.workspaceRoot,
+      logsPath: desktopLogsDir(),
+    },
+  });
   console.error(
     `[mitii-desktop] store=${store.dbPath} engine=${engine?.url} cwd=${state.workspaceRoot}`,
   );
@@ -567,8 +691,20 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     void boot().catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = errorMessage(error);
       console.error(`[mitii-desktop] boot failed: ${message}`);
+      try {
+        appendDesktopLog(
+          getStorageInfo(
+            process.env.MITII_DESKTOP_CWD?.trim() || process.cwd(),
+          ).logsPath,
+          'boot',
+          `failed ${message}`,
+          { level: 'error' },
+        );
+      } catch {
+        /* ignore */
+      }
       app.exit(1);
     });
   });

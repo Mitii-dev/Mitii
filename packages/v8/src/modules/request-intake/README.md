@@ -5,8 +5,11 @@ Request Intake is the first V8 module a user request passes through. It validate
 ## What This Module Does
 
 - Validates the incoming request shape.
-- Requires meaningful content through a message or referenced artifacts.
-- Normalizes mode, origin, workspace scope, referenced artifacts, and correlation metadata.
+- Requires meaningful content through a message, referenced artifacts, or a meta command.
+- Sanitizes user text and classifies leading slash commands (mode + meta lifecycle).
+- Extracts `@path` mentions into `referencedArtifacts` (paths only — no content load).
+- Normalizes image attachments (mime allowlist + size caps).
+- Normalizes mode, origin, turn kind, workspace scope, referenced artifacts, and correlation metadata.
 - Assigns request ids and timestamps through injected ports.
 - Produces the stable envelope consumed by Request Understanding and Decision Policy.
 
@@ -14,13 +17,49 @@ Request Intake is the first V8 module a user request passes through. It validate
 
 ```text
 request-intake/
-  pipeline/                 RequestIntakePipeline
+  pipeline/                 RequestIntakePipeline (staged inject)
   contracts/
     input/                  CreateUserRequestInput
   request-envelope/         UserRequestEnvelopeBuilder and envelope types
-  interaction-mode/         AgentMode schema and constants
+  interaction-mode/         AgentMode schema + mode resolve
+  sanitize/                 Message sanitize
+  command-classify/         Leading slash parse + meta lifecycle
+  mention-extract/          @path → artifact stubs
+  attachment-normalize/     Image attachment policy
   tests/                    Pipeline and envelope tests
 ```
+
+## Intake Stages (inject order)
+
+1. Sanitize
+2. Command classify (`/stop|/new|/plan|…`)
+3. Mention extract → `referencedArtifacts`
+4. Attachment normalize
+5. Mode resolve (slash overrides host when `/ask|/plan|/agent`)
+6. Validate + build envelope
+
+Meta commands with non-agent lifecycle set `shortCircuitMeta` via `intakeDetailed` so the engine can exit before pin/understand.
+
+Engine `session-control` then **handles** classified commands:
+- `/compact` — force-compacts `start.conversation` and returns `result.sessionControl.compactedConversation` for the host to persist
+- `/new` `/clear` — returns `sessionAction` so the host clears transcript storage
+- `/stop` — cancelled run
+- `/help` `/status` `/resume` — side-channel answers (host owns resume storage)
+
+## Host Contract (selection / open tabs)
+
+Intake never calls IDE APIs. Hosts must pre-fill structured refs on `CreateUserRequestInput`:
+
+| Host signal | Envelope field |
+|-------------|----------------|
+| Active editor selection | `referencedArtifacts[]` with `kind: "selection"`, `path`, `startLine`, `endLine` |
+| Explicit @-picker / drag files | `referencedArtifacts[]` with `kind: "file"` or `"folder"` |
+| Open / visible tabs (optional) | additional `kind: "file"` refs (cap with envelope limits) |
+| Pasted / attached images | `attachments[]` (mime allowlist + size caps) |
+| Mid-run steer / follow-up | `turnKind: "steer" \| "follow_up" \| "continue"` (+ optional `parentRequestId`) |
+| Session new/resume | `sessionAction` — classify only; host owns storage |
+
+Intake will also parse `@path` and whole-message bare paths into artifacts, but **selection ranges and open-tab sets are host-only**.
 
 ## Types And Contracts
 

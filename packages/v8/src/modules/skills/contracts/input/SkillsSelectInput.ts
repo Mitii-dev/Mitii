@@ -81,6 +81,11 @@ export const skillsSelectInputSchema = z
      * Engine sets this for compact no_cache windows.
      */
     forbidLargeSkills: z.boolean().optional(),
+    /**
+     * When true, return a name+description catalog slice for optional PC L1 inject.
+     * Does not change L2 body selection. Default false (30k-friendly).
+     */
+    includeCatalogL1: z.boolean().default(false),
   })
   .strict();
 

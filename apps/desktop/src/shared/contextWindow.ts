@@ -28,6 +28,17 @@ const MODEL_CONTEXT_PRESETS: ReadonlyArray<{ match: RegExp; window: number }> = 
 ];
 
 /**
+ * Known model families → hard maximum completion tokens.
+ * Used when `provider.maximumOutputTokens` is auto (0) so leftover-context
+ * clamping cannot request more than the gateway will accept.
+ */
+const MODEL_MAX_OUTPUT_PRESETS: ReadonlyArray<{ match: RegExp; max: number }> = [
+  // Ollama Cloud / DeepSeek V4 advertise 64k completion.
+  { match: /deepseek-v4/i, max: 65_536 },
+  { match: /deepseek/i, max: 8_192 },
+];
+
+/**
  * Infer from model id tags like `my-qwen-64k:latest` or `…:65536`.
  */
 export function inferContextWindowFromModelId(
@@ -50,6 +61,18 @@ export function inferContextWindowFromModelId(
 
   for (const preset of MODEL_CONTEXT_PRESETS) {
     if (preset.match.test(id)) return preset.window;
+  }
+  return undefined;
+}
+
+/** Provider hard max completion tokens from model id, when known. */
+export function inferMaximumOutputTokensFromModelId(
+  model: string,
+): number | undefined {
+  const id = model.trim().toLowerCase();
+  if (!id) return undefined;
+  for (const preset of MODEL_MAX_OUTPUT_PRESETS) {
+    if (preset.match.test(id)) return preset.max;
   }
   return undefined;
 }

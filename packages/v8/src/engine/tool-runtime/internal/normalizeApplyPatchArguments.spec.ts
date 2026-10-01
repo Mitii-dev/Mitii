@@ -105,6 +105,39 @@ describe("normalizeApplyPatchArguments", () => {
       ],
     });
   });
+
+  it("promotes filePath / file aliases onto path", () => {
+    expect(
+      normalizeApplyPatchArguments({
+        patches: [
+          {
+            filePath: "src/routes/login.js",
+            oldText: "",
+            newText: "export {}",
+          },
+        ],
+      }),
+    ).toEqual({
+      patches: [
+        {
+          filePath: "src/routes/login.js",
+          path: "src/routes/login.js",
+          oldText: "",
+          newText: "export {}",
+        },
+      ],
+    });
+
+    expect(
+      normalizeApplyPatchArguments({
+        file: "src/a.ts",
+        oldText: "a",
+        newText: "b",
+      }),
+    ).toEqual({
+      patches: [{ path: "src/a.ts", oldText: "a", newText: "b" }],
+    });
+  });
 });
 
 describe("coerceArgumentsToSchema apply_patch arrays", () => {

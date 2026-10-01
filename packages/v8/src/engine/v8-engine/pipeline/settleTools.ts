@@ -20,6 +20,7 @@ import { ToolCallCache } from "../internal/ToolCallCache";
 import type { TaskListRef } from "../internal/taskListRuntime";
 import {
   DEFAULT_MUTATING_TOOL_NAMES,
+  GIT_WRITE_TOOL_NAMES,
   executeOneTool,
 } from "./executeTool";
 import { writeRestorePointAfterMutation } from "./writeRestorePoint";
@@ -38,6 +39,8 @@ export type RejectedMutationInfo = {
 
 export type SettleBatchStats = {
   succeededMutating: boolean;
+  /** Succeeded git_write tool (e.g. git_signoff_range) — satisfies VCS-only execute. */
+  succeededGitWrite: boolean;
   readonlyOnly: boolean;
   results: ToolLoopResult[];
   /** Last failed mutating tool in this batch (if any). */
@@ -185,6 +188,7 @@ export async function settleToolBatch(params: {
 
   const results: ToolLoopResult[] = [];
   let succeededMutating = false;
+  let succeededGitWrite = false;
   let rejectedMutation: RejectedMutationInfo | undefined;
 
   for (const toolCall of toolCalls) {
@@ -275,6 +279,10 @@ export async function settleToolBatch(params: {
     });
 
     const isMutating = DEFAULT_MUTATING_TOOL_NAMES.has(toolCall.name);
+    const isGitWrite = GIT_WRITE_TOOL_NAMES.has(toolCall.name);
+    if (success && isGitWrite) {
+      succeededGitWrite = true;
+    }
     if (success && isMutating) {
       succeededMutating = true;
       if (mutationCheckpointIds.length > mutationIdsBefore) {
@@ -330,10 +338,12 @@ export async function settleToolBatch(params: {
     decision,
     stats: {
       succeededMutating,
+      succeededGitWrite,
       readonlyOnly: toolCalls.every(
         (call) =>
           call.name === "update_todos" ||
-          !DEFAULT_MUTATING_TOOL_NAMES.has(call.name),
+          (!DEFAULT_MUTATING_TOOL_NAMES.has(call.name) &&
+            !GIT_WRITE_TOOL_NAMES.has(call.name)),
       ),
       results,
       rejectedMutation,

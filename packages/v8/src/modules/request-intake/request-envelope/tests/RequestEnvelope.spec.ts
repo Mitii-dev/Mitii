@@ -129,6 +129,8 @@ test(
             "Explain this.",
           referencedArtifacts:
             [],
+          turnKind:
+            "new",
           metadata: {
             apiKey:
               "must-not-be-accepted",
@@ -178,6 +180,7 @@ test(
       origin: "user" as const,
       message: "Look at this.",
       referencedArtifacts: [],
+      turnKind: "new" as const,
       createdAt: "2026-07-25T12:00:00.000Z",
     };
 

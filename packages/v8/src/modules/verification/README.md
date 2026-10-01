@@ -14,12 +14,26 @@ Verification gathers evidence after a change. It maps changed files to projects,
   `apps/` / `packages/` roots from `changedFiles`. A vscode settings paste
   must never drag in `packages/v8:test` unless that package was edited and
   tests were requested.
+- Discovers cheap `syntax` candidates for changed `.py` / `.js` / `.sh`
+  files (`py_compile`, `node --check`, `bash -n`) without inventing full
+  suites. When a host wires `VerificationSyntaxPort` (tree-sitter ERROR /
+  missing nodes), that port replaces spawned syntax checks. Syntax never
+  satisfies typecheck evidence.
+- Soft-reorders discovered checks using script tokens from `AGENTS.md` /
+  similar instruction files — never invents argv from those hints.
+- Preflights `mayBeUnavailable` binaries via Tool Runtime (`binary --version`)
+  before running the full check; missing PATH tools become `unavailable`.
+- Repair prompts may include one source line per diagnostic (loaded by the
+  engine; not stored on the durable record).
 - Executes checks through `VerificationToolExecutorPort`.
 - Normalizes diagnostics and compares against optional baseline diagnostics.
 - Inspects diff/stale-state risk.
 - Returns final verification status and evidence.
 - Builds a durable `VerificationRecord` (before / after / comparison) that is stored outside the model transcript.
 - Produces a deterministic user summary from that record. An optional engine LLM narrative may wrap it; it must not replace the counts.
+- Optional engine LLM critique (`steering.verificationLlmCritique`) is advisory
+  only after the evidence gate — APPROVE/REJECT keywords never flip
+  `decideVerificationGate`.
 
 ## Structure
 

@@ -47,6 +47,7 @@ const superIntentDiagnosticsSchema = z.object({
   disagreementPenaltyApplied: z.number(),
   minimumConfidence: z.number(),
   minimumMargin: z.number(),
+  officerFallback: z.enum(["rule", "safe"]).optional(),
 });
 
 export const superIntentResultSchema = z.object({
@@ -68,6 +69,19 @@ export const taskAnalyzerInputSchema = z.object({
    * resolve basename / partial file targets after explicit extraction.
    */
   candidateRelativePaths: z.array(z.string().min(1)).optional(),
+  /**
+   * Intake turn kind — continuation turns soften clarity forced by intent flags.
+   */
+  turnKind: z
+    .enum(["new", "continue", "steer", "follow_up", "recover"])
+    .optional(),
+  /** Investigator size draft when Officer did not emit taskSize. */
+  sizeDraft: z
+    .object({
+      taskSize: z.enum(["small", "medium", "large"]),
+      reasons: z.array(z.string()).max(12),
+    })
+    .optional(),
 });
 
 export type TaskAnalyzerInput = z.infer<typeof taskAnalyzerInputSchema>;

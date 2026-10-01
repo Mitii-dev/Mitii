@@ -56,9 +56,13 @@ export {
 } from "./internal/classifyImpactBucket";
 export type { ChangeImpactFileBucket as ImpactPathBucket } from "./internal/classifyImpactBucket";
 
-export { resolveSoftSymbolMatches } from "./internal/resolveSoftSymbolMatches";
+export {
+  resolveSoftSymbolMatches,
+} from "./internal/resolveSoftSymbolMatches";
 
-export { collapseChainPrefixes } from "./internal/collectBoundedChains";
+export {
+  collapseChainPrefixes,
+} from "./internal/collectBoundedChains";
 
 export { ChangeImpactPipeline } from "./pipeline/ChangeImpactPipeline";
 export {

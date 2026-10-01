@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   FileVerificationRecordStore,
   InMemoryVerificationRecordStore,
+  VerificationError,
   buildVerificationRecord,
 } from "../..";
 import type { RepoBuildState } from "../..";
@@ -77,6 +78,30 @@ describe("VerificationRecordStore", () => {
       expect(latest?.recordId).toBe("run_disk");
     } finally {
       await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a leaf directory that is a symbolic link", async () => {
+    const parent = await mkdtemp(join(tmpdir(), "mitii-verify-parent-"));
+    const real = join(parent, "real");
+    const linked = join(parent, "linked");
+    try {
+      await mkdir(real);
+      await symlink(real, linked);
+      const store = new FileVerificationRecordStore(linked);
+      await expect(
+        store.save(
+          buildVerificationRecord({
+            runId: "run_link",
+            requestId: "req_link",
+            workspaceId: "ws_link",
+            status: "captured_before",
+            before: buildState("before"),
+          }),
+        ),
+      ).rejects.toBeInstanceOf(VerificationError);
+    } finally {
+      await rm(parent, { recursive: true, force: true });
     }
   });
 });

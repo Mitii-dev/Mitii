@@ -1,2 +1,2 @@
 /** Bridged to domain package. */
-export * from "../../../modules/prompt-construction/actions/mapContextToPromptSlice";
+export { mapContextToPromptSlice } from "../../../modules/prompt-construction";
