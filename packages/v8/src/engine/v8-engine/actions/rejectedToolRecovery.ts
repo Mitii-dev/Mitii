@@ -52,6 +52,16 @@ export function buildRejectedMutationRecoveryMessage(params: {
     instructions.push(
       "Call analyze_change_impact on the primary seed path once, then retry the same apply_patch. Do not keep mutating without that call while the gate is active.",
     );
+  } else if (
+    params.reasonCode === "invalid_arguments" &&
+    params.warnings.some((warning) =>
+      /patches\.\d+\.path|path[:\s].*required|required.*path/i.test(warning),
+    )
+  ) {
+    instructions.push(
+      "Each patch entry needs a non-empty path (workspace-relative file path).",
+      "Do not omit path. Prefer { patches: [{ path, oldText, newText }] }. If you used filePath/file/filename, map it to path and retry.",
+    );
   } else if (params.reasonCode === "patch_too_destructive") {
     instructions.push(
       "Empty oldText would wipe most of an existing file — that is blocked.",
@@ -127,7 +137,10 @@ export function allowsTargetedDiscoveryAfterRejectedMutation(params: {
       details.includes("old text") ||
       details.includes("not found") ||
       details.includes("does not exist") ||
-      details.includes("missing"))
+      details.includes("missing") ||
+      // Zod: "patches.0.path: Required" — path field absent/empty.
+      /patches\.\d+\.path/.test(details) ||
+      (details.includes("path") && details.includes("required")))
   ) {
     return true;
   }

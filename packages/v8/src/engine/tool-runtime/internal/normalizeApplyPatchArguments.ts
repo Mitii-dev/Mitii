@@ -24,11 +24,29 @@ function coerceOptionalBoolean(value: unknown): boolean | undefined {
   return undefined;
 }
 
+/**
+ * Models often put the file path under filePath / file / filename / target
+ * instead of `path`. Promote the first non-empty string alias onto `path`.
+ */
+function coalescePatchPath(entry: Record<string, unknown>): void {
+  if (typeof entry.path === "string" && entry.path.trim().length > 0) {
+    return;
+  }
+  for (const key of ["filePath", "file_path", "file", "filename", "target"] as const) {
+    const value = entry[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      entry.path = value.trim();
+      return;
+    }
+  }
+}
+
 function sanitizePatchEntry(value: unknown): unknown {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return value;
   }
   const entry = { ...(value as Record<string, unknown>) };
+  coalescePatchPath(entry);
   const hash = entry.expectedHash;
   if (typeof hash !== "string" || hash.length === 0) {
     delete entry.expectedHash;
@@ -73,6 +91,7 @@ export function normalizeApplyPatchArguments(value: unknown): unknown {
   }
 
   if (!("patches" in args) || args.patches === undefined) {
+    coalescePatchPath(args);
     if (
       typeof args.path === "string" &&
       args.path.trim().length > 0 &&
@@ -85,6 +104,11 @@ export function normalizeApplyPatchArguments(value: unknown): unknown {
         newText,
         expectedHash,
         replaceAll,
+        filePath: _filePath,
+        file_path: _file_path,
+        file: _file,
+        filename: _filename,
+        target: _target,
         ...rest
       } = args;
       const patch: Record<string, unknown> = { path, oldText, newText };

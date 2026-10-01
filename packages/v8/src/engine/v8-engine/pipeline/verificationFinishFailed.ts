@@ -11,6 +11,7 @@ import type {
 import {
   buildVerificationRepairPrompt,
   loadDiagnosticSourceLines,
+  resolveFailedVerificationTerminalStatus,
   selectUserFacingLoopAnswer,
   shouldContinueVerificationRepair,
   nextStalledRepairCount,
@@ -427,9 +428,15 @@ export async function handleVerificationFailed(params: {
   }
   await runtime.safeUnpin(runId, pinnedState);
   reasonCodes.push("answer_produced");
-  const keptMutationsWithFailedVerification = loopChangedFiles.length > 0;
+  const status = resolveFailedVerificationTerminalStatus({
+    changedFileCount: loopChangedFiles.length,
+    rejectKind: verificationOutcome.rejectKind,
+  });
+  if (status === "failed" && verificationOutcome.rejectKind === "no_mutation_performed") {
+    reasonCodes.push("no_mutation_performed", "incomplete_execute");
+  }
   return { kind: "return", result: finish({
-    status: keptMutationsWithFailedVerification ? "failed" : "completed",
+    status,
     answer: selectUserFacingLoopAnswer({
       loopAnswer:
         "answer" in currentOutcome ? currentOutcome.answer : loopAnswer,
@@ -437,9 +444,7 @@ export async function handleVerificationFailed(params: {
       changedFiles: loopChangedFiles,
     }),
     reasonCodes,
-    error: keptMutationsWithFailedVerification
-      ? verificationOutcome.error
-      : undefined,
+    error: status === "failed" ? verificationOutcome.error : undefined,
   }) };
 }
 

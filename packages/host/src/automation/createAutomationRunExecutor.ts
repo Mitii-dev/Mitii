@@ -26,6 +26,7 @@ import {
 } from '@mitii/mcp';
 
 import { createHostLlmPorts } from '../config/createHostLlmPorts.js';
+import { resolveHostContextWindowTokens } from '../config/resolveEffectiveContextWindow.js';
 import {
   inferHostProviderType,
   resolveProviderApiKey,
@@ -258,6 +259,14 @@ async function createAutomationClient(options: {
           model,
           ...(baseUrl ? { baseUrl } : {}),
           ...(apiKey ? { apiKey } : {}),
+          capabilities: {
+            contextWindowTokens: resolveHostContextWindowTokens({
+              env,
+              model,
+              providerType: type,
+            }),
+            supportsTools: true,
+          },
         },
   );
 

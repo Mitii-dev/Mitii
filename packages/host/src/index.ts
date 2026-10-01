@@ -405,6 +405,14 @@ export type {
 } from './config/createHostLlmPorts.js';
 
 export {
+  DEFAULT_CONTEXT_WINDOW,
+  inferContextWindowFromModelId,
+  parseContextWindowTokens,
+  resolveEffectiveContextWindow,
+  resolveHostContextWindowTokens,
+} from './config/resolveEffectiveContextWindow.js';
+
+export {
   inferHostProviderType,
   resolveProviderApiKey,
 } from './config/resolveProviderApiKey.js';

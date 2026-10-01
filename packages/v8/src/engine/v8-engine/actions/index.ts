@@ -139,6 +139,7 @@ export {
 export { shouldCaptureUnconditionalAgentPreflight } from "./shouldCaptureUnconditionalAgentPreflight";
 export {
   decideVerificationGate,
+  resolveFailedVerificationTerminalStatus,
   isUserGoalComplete,
   packageCompileEvidencePassed,
   failuresAreIgnorableWhenPackagePassed,

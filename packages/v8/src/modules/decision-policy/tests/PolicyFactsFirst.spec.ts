@@ -202,4 +202,39 @@ describe("turnKind continuation routing", () => {
     expect(decision.route).toBe("execute");
     expect(decision.reasonCodes).toContain("turn_continuation");
   });
+
+  it("executes type-cascade style asks despite mid-prompt don't-change scoped constraints", () => {
+    // Regression: soft "don't change files that…" used to veto whole-request write
+    // when the ballot was below facts-first trust, collapsing to repository_answer.
+    const decision = pipeline.decide(
+      createDecisionInput({
+        mode: "agent",
+        message: [
+          "src/types/domain.ts's Order.total was just widened from number to",
+          "{ amount: number; currency: string }, but consumers were not updated,",
+          "so typecheck fails. Trace every broken consumer — don't change files",
+          "that don't need it — and fix each one so tsc --noEmit is clean.",
+          "Do not cast to any or add @ts-ignore, and do not revert Order.total.",
+        ].join(" "),
+        understanding: createUnderstanding({
+          primaryTaskIntent: "bugfix",
+          interactionIntent: "act",
+          // Below facts-first write-trust threshold so soft read-only used to win.
+          confidence: 0.55,
+          confidenceMargin: 0.1,
+          needsClarification: false,
+          recommendsClarification: false,
+          status: "accepted",
+          taskAnalysis: {
+            scope: "multi_file",
+            clarity: "clear",
+            recommendsRepositoryDiscovery: true,
+          },
+        }),
+      }),
+    );
+    expect(decision.route).toBe("execute");
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("write");
+    expect(decision.reasonCodes).not.toContain("repository_grounded_answer");
+  });
 });
