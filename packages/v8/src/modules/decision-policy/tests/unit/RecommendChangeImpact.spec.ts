@@ -170,9 +170,9 @@ describe("resolvePlanningDepth change-impact recommend", () => {
       } as never,
     });
 
-    expect(result.planningDepth).toBe("none");
+    expect(result.planningDepth).toBe("internal");
     expect(result.reasonCodes).toContain("change_impact_recommended");
-    expect(result.reasonCodes).toContain("simple_localized_no_visible_plan");
+    expect(result.reasonCodes).toContain("officer_task_size_plan");
   });
 
   it("flags change_impact_recommended on repository_answer blast-radius asks", () => {

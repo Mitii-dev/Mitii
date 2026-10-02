@@ -2,6 +2,10 @@
  * Per active checklist step: evidence → patch readiness budgets.
  * Table is the source of truth: taskSize × window band.
  * "Turns" means model/tool-loop turns (not individual tool calls).
+ *
+ * Happy-path budgets are separate from the evidence-recovery valve
+ * (see evidenceRecovery.ts): numbers define the envelope; the gate
+ * defines what happens when reality isn't the happy path.
  */
 import type { WindowBudgetBand } from "../../../../modules/window-budget";
 import { resolveWindowBudgetBand } from "../../../../modules/window-budget";
@@ -15,14 +19,19 @@ export type MutateReadinessBudget = {
   maxEvidencePaths: number;
   /**
    * How many times we may demand named reads before escalating to
-   * “patch now” even if some paths are still missing (soft, not a hard lock).
+   * recovery / clarify (not unbounded patch-hope).
    */
   maxEvidenceGateNudgesBeforePatchDemand: number;
+  /** One capped recovery after happy-path gate budget (turns). */
+  evidenceRecoveryTurns: number;
+  /** Cap on local paths during recovery (must stay file-local). */
+  evidenceRecoveryMaxPaths: number;
 };
 
 /**
  * Per-step bind budgets (post-plan execute).
- * Medium defaults locked for P1; Small/Large scaled to stay below Medium/Large discovery.
+ * Medium locked: Compact 5/10/4 · Standard 4/8/3 · Wide 3/8/3
+ * Recovery valve shared: 2 turns / 4 paths (never +10 searches).
  *
  * cells = turns / paths / nudges
  */
@@ -32,53 +41,71 @@ const BIND_BUDGET_TABLE: Record<
 > = {
   small: {
     compact: {
-      readonlyTurnsBeforeGate: 2,
-      maxEvidencePaths: 4,
+      readonlyTurnsBeforeGate: 3,
+      maxEvidencePaths: 6,
       maxEvidenceGateNudgesBeforePatchDemand: 2,
+      evidenceRecoveryTurns: 2,
+      evidenceRecoveryMaxPaths: 4,
     },
     standard: {
       readonlyTurnsBeforeGate: 2,
       maxEvidencePaths: 4,
       maxEvidenceGateNudgesBeforePatchDemand: 2,
+      evidenceRecoveryTurns: 2,
+      evidenceRecoveryMaxPaths: 4,
     },
     wide: {
       readonlyTurnsBeforeGate: 2,
       maxEvidencePaths: 4,
       maxEvidenceGateNudgesBeforePatchDemand: 2,
+      evidenceRecoveryTurns: 1,
+      evidenceRecoveryMaxPaths: 3,
     },
   },
   medium: {
     compact: {
-      readonlyTurnsBeforeGate: 3,
-      maxEvidencePaths: 8,
-      maxEvidenceGateNudgesBeforePatchDemand: 2,
+      readonlyTurnsBeforeGate: 5,
+      maxEvidencePaths: 10,
+      maxEvidenceGateNudgesBeforePatchDemand: 4,
+      evidenceRecoveryTurns: 2,
+      evidenceRecoveryMaxPaths: 4,
     },
     standard: {
-      readonlyTurnsBeforeGate: 3,
+      readonlyTurnsBeforeGate: 4,
       maxEvidencePaths: 8,
-      maxEvidenceGateNudgesBeforePatchDemand: 2,
+      maxEvidenceGateNudgesBeforePatchDemand: 3,
+      evidenceRecoveryTurns: 2,
+      evidenceRecoveryMaxPaths: 4,
     },
     wide: {
-      readonlyTurnsBeforeGate: 2,
+      readonlyTurnsBeforeGate: 3,
       maxEvidencePaths: 8,
-      maxEvidenceGateNudgesBeforePatchDemand: 2,
+      maxEvidenceGateNudgesBeforePatchDemand: 3,
+      evidenceRecoveryTurns: 2,
+      evidenceRecoveryMaxPaths: 4,
     },
   },
   large: {
     compact: {
-      readonlyTurnsBeforeGate: 4,
-      maxEvidencePaths: 12,
-      maxEvidenceGateNudgesBeforePatchDemand: 2,
+      readonlyTurnsBeforeGate: 6,
+      maxEvidencePaths: 14,
+      maxEvidenceGateNudgesBeforePatchDemand: 4,
+      evidenceRecoveryTurns: 2,
+      evidenceRecoveryMaxPaths: 4,
     },
     standard: {
-      readonlyTurnsBeforeGate: 3,
+      readonlyTurnsBeforeGate: 5,
       maxEvidencePaths: 12,
-      maxEvidenceGateNudgesBeforePatchDemand: 2,
+      maxEvidenceGateNudgesBeforePatchDemand: 3,
+      evidenceRecoveryTurns: 2,
+      evidenceRecoveryMaxPaths: 4,
     },
     wide: {
-      readonlyTurnsBeforeGate: 3,
+      readonlyTurnsBeforeGate: 4,
       maxEvidencePaths: 12,
-      maxEvidenceGateNudgesBeforePatchDemand: 2,
+      maxEvidenceGateNudgesBeforePatchDemand: 3,
+      evidenceRecoveryTurns: 2,
+      evidenceRecoveryMaxPaths: 4,
     },
   },
 };

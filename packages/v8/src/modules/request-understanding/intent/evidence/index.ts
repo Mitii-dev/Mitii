@@ -18,6 +18,9 @@ export {
   countApproxWords,
   countDistinctFailPaths,
   defaultPlanningHintForSize,
+  countApproxTokens,
+  TOKEN_MEDIUM_CANDIDATE,
+  TOKEN_LARGE_CANDIDATE,
   looksLikePasteDump,
   looksLikeTestFailurePaste,
 } from "./sizeDraft";

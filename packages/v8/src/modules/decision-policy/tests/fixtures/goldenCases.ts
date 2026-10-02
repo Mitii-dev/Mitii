@@ -52,7 +52,7 @@ const GOLDEN_DECISION_CASES_CORE: GoldenDecisionCase[] = [
     }),
     expected: {
       route: "execute",
-      planningDepth: "none",
+      planningDepth: "internal",
       maximumWorkspaceEffect: "write",
       reasonCodesIncludes: ["mutation_execute"],
       forbidVisiblePlan: true,
@@ -182,7 +182,7 @@ const GOLDEN_DECISION_CASES_CORE: GoldenDecisionCase[] = [
     }),
     expected: {
       route: "execute",
-      planningDepth: "none",
+      planningDepth: "internal",
       maximumWorkspaceEffect: "write",
       reasonCodesIncludes: ["workspace_bug_execute", "mutation_execute"],
       forbidVisiblePlan: true,
@@ -383,10 +383,10 @@ const GOLDEN_DECISION_CASES_CORE: GoldenDecisionCase[] = [
     }),
     expected: {
       route: "execute",
-      planningDepth: "none",
+      planningDepth: "internal",
       planGate: "none",
       maximumWorkspaceEffect: "write",
-      reasonCodesIncludes: ["simple_localized_no_visible_plan"],
+      reasonCodesIncludes: ["officer_task_size_plan"],
     },
   },
   {
@@ -904,7 +904,7 @@ const GOLDEN_DECISION_CASES_CORE: GoldenDecisionCase[] = [
     }),
     expected: {
       route: "execute",
-      planningDepth: "none",
+      planningDepth: "internal",
       maximumWorkspaceEffect: "write",
       mutationPathScopes: ["app"],
       forbidVisiblePlan: true,

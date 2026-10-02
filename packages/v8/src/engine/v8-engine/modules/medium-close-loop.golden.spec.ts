@@ -86,9 +86,11 @@ describe("P1 Medium close-loop goldens", () => {
     expect(discovery.maxFileReads).toBe(8);
 
     const bind = resolveMutateReadinessBudget("medium", "standard");
-    expect(bind.readonlyTurnsBeforeGate).toBe(3);
+    expect(bind.readonlyTurnsBeforeGate).toBe(4);
     expect(bind.maxEvidencePaths).toBe(8);
-    expect(bind.maxEvidenceGateNudgesBeforePatchDemand).toBe(2);
+    expect(bind.maxEvidenceGateNudgesBeforePatchDemand).toBe(3);
+    expect(bind.evidenceRecoveryTurns).toBe(2);
+    expect(bind.evidenceRecoveryMaxPaths).toBe(4);
   });
 
   it("yields a concrete checklist after one seed recovery — never silent invent", () => {

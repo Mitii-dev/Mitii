@@ -85,4 +85,38 @@ describe("userPathPriority", () => {
       }),
     ).toBe(true);
   });
+
+  it("defers preflight when the ask has no file cites and is not fix-build", () => {
+    expect(
+      preflightErrorsMatchUserRequest({
+        userPrompt:
+          "upon clicking Index settings its should redirect properly to semantic tab",
+        diagnosticPaths: ["apps/desktop/src/renderer/styles.css"],
+      }),
+    ).toBe(false);
+    expect(
+      preflightDiagnosticsForUserRequest(
+        [{ path: "apps/desktop/src/renderer/styles.css", message: "padding" }],
+        "upon clicking Index settings its should redirect properly to semantic tab",
+      ),
+    ).toEqual([]);
+    expect(
+      shouldForcePreflightRepairLock({
+        route: "execute",
+        maximumWorkspaceEffect: "write",
+        preflightErrorCount: 2,
+        userPrompt: "upon clicking Index settings redirect to semantic tab",
+        diagnosticPaths: ["apps/desktop/src/renderer/styles.css"],
+      }),
+    ).toBe(false);
+  });
+
+  it("invites preflight when the user asks to fix typecheck/build", () => {
+    expect(
+      preflightErrorsMatchUserRequest({
+        userPrompt: "fix all typecheck errors",
+        diagnosticPaths: ["src/a.ts"],
+      }),
+    ).toBe(true);
+  });
 });

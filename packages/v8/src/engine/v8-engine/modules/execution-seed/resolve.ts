@@ -103,9 +103,13 @@ export function resolveExecutionSeed(params: {
   const hasArtifact = artifactPaths.length > 0 && !hasUser;
   const fixBuildAsk = FIX_BUILD_ASK.test(prompt);
   const citedInPrompt = citedRepoPathsFromPrompt(prompt).length > 0;
+  // Preflight steers seed only when the user invited repair or cited overlapping paths.
   const trustDiagnostics =
     diagnosticPaths.length > 0 &&
-    (fixBuildAsk || !citedInPrompt || hasOverlap(userPaths, diagnosticPaths));
+    (fixBuildAsk ||
+      (citedInPrompt && hasOverlap(userPaths, diagnosticPaths)));
+
+  const trustedCauseNotes = trustDiagnostics ? causeNotes : [];
 
   if (hasUser && trustDiagnostics) {
     return {
@@ -114,7 +118,7 @@ export function resolveExecutionSeed(params: {
         EXECUTION_SEED_MAX_PATHS,
       ),
       symbols,
-      causeNotes,
+      causeNotes: trustedCauseNotes,
       confidence: "trusted",
       source: "mixed",
     };
@@ -123,7 +127,7 @@ export function resolveExecutionSeed(params: {
     return {
       paths: userPaths.slice(0, EXECUTION_SEED_MAX_PATHS),
       symbols,
-      causeNotes,
+      causeNotes: [],
       confidence: "trusted",
       source: "user",
     };
@@ -132,7 +136,7 @@ export function resolveExecutionSeed(params: {
     return {
       paths: artifactPaths.slice(0, EXECUTION_SEED_MAX_PATHS),
       symbols,
-      causeNotes,
+      causeNotes: trustedCauseNotes,
       confidence: "trusted",
       source: "artifact",
     };
@@ -141,7 +145,7 @@ export function resolveExecutionSeed(params: {
     return {
       paths: diagnosticPaths.slice(0, EXECUTION_SEED_MAX_PATHS),
       symbols,
-      causeNotes,
+      causeNotes: trustedCauseNotes,
       confidence: "trusted",
       source: "diagnostic",
     };
@@ -150,7 +154,7 @@ export function resolveExecutionSeed(params: {
     return {
       paths: diagnosticPaths.slice(0, EXECUTION_SEED_MAX_PATHS),
       symbols,
-      causeNotes,
+      causeNotes: [],
       confidence: "weak",
       source: diagnosticPaths.length > 0 ? "diagnostic" : "none",
     };

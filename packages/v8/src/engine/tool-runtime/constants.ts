@@ -103,6 +103,8 @@ export const TOOL_REASON_CODES = [
   "invalid_arguments",
   "effect_not_granted",
   "path_out_of_scope",
+  /** Hard-denied vendored/generated path (node_modules, .git, dist, …). */
+  "path_hard_denied",
   "path_escape",
   "symlink_escape",
   "command_not_allowed",

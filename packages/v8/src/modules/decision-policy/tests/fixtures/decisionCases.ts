@@ -181,7 +181,7 @@ export const DECISION_EVALUATION_CASES: DecisionCaseFixture[] = [
     }),
     expected: {
       route: "execute",
-      planningDepth: "none",
+      planningDepth: "internal",
       maximumWorkspaceEffect: "write",
       forbidVisiblePlan: true,
     },
@@ -202,7 +202,7 @@ export const DECISION_EVALUATION_CASES: DecisionCaseFixture[] = [
     }),
     expected: {
       route: "execute",
-      planningDepth: "none",
+      planningDepth: "internal",
       forbidVisiblePlan: true,
     },
   },
@@ -308,7 +308,7 @@ export const DECISION_EVALUATION_CASES: DecisionCaseFixture[] = [
     }),
     expected: {
       route: "execute",
-      planningDepth: "none",
+      planningDepth: "internal",
       forbidVisiblePlan: true,
     },
   },
@@ -616,7 +616,7 @@ export const DECISION_EVALUATION_CASES: DecisionCaseFixture[] = [
     expected: {
       route: "execute",
       maximumWorkspaceEffect: "write",
-      planningDepth: "none",
+      planningDepth: "internal",
     },
   },
   {

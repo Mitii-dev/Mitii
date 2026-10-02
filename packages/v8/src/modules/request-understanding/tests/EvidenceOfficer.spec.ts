@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   computeSizeDraft,
+  countApproxTokens,
   countApproxWords,
+  defaultPlanningHintForSize,
   looksLikePasteDump,
   looksLikeTestFailurePaste,
+  TOKEN_MEDIUM_CANDIDATE,
 } from "../intent/evidence/sizeDraft";
 import { buildUnderstandingEvidencePack } from "../intent/evidence/buildUnderstandingEvidencePack";
 import { RuleIntentClassifier } from "../intent/classifiers/rule/RuleIntentClassifier";
@@ -20,26 +23,41 @@ describe("sizeDraft investigator", () => {
     expect(draft.reasons).toContain("single_short_ask");
   });
 
-  it("elevates pinned folder to at least medium", () => {
+  it("does not elevate size for pinned folder alone (scope root only)", () => {
     const draft = computeSizeDraft({
       text: "rename the helper",
       pinnedFolder: true,
       pinnedFileCount: 0,
     });
-    expect(draft.taskSize).toBe("medium");
-    expect(draft.reasons).toContain("pinned_folder");
+    expect(draft.taskSize).toBe("small");
+    expect(draft.reasons).toContain("pinned_folder_scope_only");
+    expect(draft.reasons).not.toContain("pinned_folder");
   });
 
-  it("elevates long pastes and test failure dumps to medium+", () => {
-    const words = Array.from({ length: 320 }, (_, i) => `w${i}`).join(" ");
+  it("uses token bands as medium/large candidates", () => {
+    const mediumText = "x".repeat(TOKEN_MEDIUM_CANDIDATE * 4);
+    expect(countApproxTokens(mediumText)).toBeGreaterThanOrEqual(
+      TOKEN_MEDIUM_CANDIDATE,
+    );
     expect(
       computeSizeDraft({
-        text: words,
+        text: mediumText,
         pinnedFolder: false,
         pinnedFileCount: 0,
       }).taskSize,
     ).toBe("medium");
 
+    const largeText = "y".repeat(2100 * 4);
+    expect(
+      computeSizeDraft({
+        text: largeText,
+        pinnedFolder: false,
+        pinnedFileCount: 0,
+      }).taskSize,
+    ).toBe("large");
+  });
+
+  it("elevates test failure dumps to medium+", () => {
     const dump = [
       "Failed Tests 2",
       "FAIL apps/vscode/tests/a.test.ts > case",
@@ -56,9 +74,16 @@ describe("sizeDraft investigator", () => {
     expect(draft.taskSize).toBe("medium");
   });
 
-  it("counts approximate words", () => {
+  it("defaults small planning hint to short", () => {
+    expect(defaultPlanningHintForSize("small")).toBe("short");
+    expect(defaultPlanningHintForSize("medium")).toBe("short");
+    expect(defaultPlanningHintForSize("large")).toBe("long");
+  });
+
+  it("counts approximate words and tokens", () => {
     expect(countApproxWords("one two three")).toBe(3);
     expect(countApproxWords("")).toBe(0);
+    expect(countApproxTokens("abcd")).toBe(1);
   });
 });
 

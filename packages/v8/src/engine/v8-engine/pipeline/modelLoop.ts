@@ -65,8 +65,11 @@ import {
   unfulfilledExecuteNudgeMessage,
 } from "../actions/mutationNudge";
 import {
+  buildEvidenceClarifyMessage,
+  buildEvidenceRecoveryMessage,
   buildStepEvidenceGateMessage,
   buildStepPatchRequiredMessage,
+  decideEvidenceRecovery,
   evaluateActiveStepMutateReadiness,
   mutateLockModelRequestFields,
   resolveMutateLockAllowTargetedReads,
@@ -223,6 +226,7 @@ export async function runV8ModelLoop(
   let incompleteAnswerRecoveries = 0;
   let softMutationNudges = 0;
   let evidenceGateNudges = 0;
+  let evidenceRecoveryUsed = false;
   let readonlyTurnsOnActiveStep = 0;
   let lastActiveStepId: string | undefined;
   const mutationNeeded = requiresMutation(decision);
@@ -603,6 +607,7 @@ export async function runV8ModelLoop(
             lastActiveStepId = activeStep?.id;
             readonlyTurnsOnActiveStep = 0;
             evidenceGateNudges = 0;
+            evidenceRecoveryUsed = false;
           }
           readOnlyTurnsWithoutMutation += 1;
           readonlyTurnsOnActiveStep += 1;
@@ -657,47 +662,87 @@ export async function runV8ModelLoop(
                 );
               }
             } else {
-              softMutationNudges += 1;
               const ready =
                 readiness.ready || readiness.missingPaths.length === 0;
-              reasonCodes.push(
-                readiness.activeItemId || ready
-                  ? "step_mutate_patch_required"
-                  : "soft_mutation_nudged",
-                "step_mutate_lock_armed",
-              );
-              awaitingMutateOnly = true;
-              mutateLockAllowTargetedReads = resolveMutateLockAllowTargetedReads({
-                readinessReady: ready,
-                evidenceGateActive: false,
-              });
-              messages.push({
-                role: "user",
-                content:
-                  readiness.activeItemId || readiness.writePaths.length > 0
-                    ? buildStepPatchRequiredMessage(readiness)
-                    : softMutationNudgeMessage(gateTurns, {
-                        vcsHistoryRewrite,
-                        hasPlan: planDraftedThisRun,
-                      }),
-              });
-              if (
-                shouldEscalateReadonlyThrashToContinue({
-                  softMutationNudges,
-                  maxSoftMutationNudgesBeforeContinue:
-                    thresholds.maxSoftMutationNudgesBeforeContinue,
-                  changedFileCount: changedFiles.length,
-                  gitWriteSucceeded,
-                })
-              ) {
-                reasonCodes.push("readonly_thrash_continue");
-                return offerContinue(
-                  "unfulfilled_execute",
-                  readonlyThrashPartialAnswer({
-                    hasPlan: planDraftedThisRun,
-                    fileReadCalls: loopFileReads.calls,
-                  }),
+              if (!ready) {
+                const recovery = decideEvidenceRecovery({
+                  missingPaths: readiness.missingPaths,
+                  recoveryAlreadyUsed: evidenceRecoveryUsed,
+                  maxRecoveryPaths:
+                    mutateReadinessBudget.evidenceRecoveryMaxPaths,
+                });
+                if (recovery.kind === "recovery") {
+                  evidenceRecoveryUsed = true;
+                  evidenceGateNudges = 0;
+                  reasonCodes.push(
+                    "evidence_recovery_armed",
+                    "step_mutate_readiness_gated",
+                    "step_mutate_lock_armed",
+                  );
+                  awaitingMutateOnly = true;
+                  mutateLockAllowTargetedReads =
+                    resolveMutateLockAllowTargetedReads({
+                      readinessReady: false,
+                      evidenceGateActive: true,
+                    });
+                  messages.push({
+                    role: "user",
+                    content: buildEvidenceRecoveryMessage({
+                      paths: recovery.paths,
+                      recoveryTurns:
+                        mutateReadinessBudget.evidenceRecoveryTurns,
+                    }),
+                  });
+                } else {
+                  reasonCodes.push(
+                    "evidence_recovery_exhausted",
+                    "readonly_thrash_continue",
+                  );
+                  return offerContinue(
+                    "unfulfilled_execute",
+                    buildEvidenceClarifyMessage(recovery.rationale),
+                  );
+                }
+              } else {
+                softMutationNudges += 1;
+                reasonCodes.push(
+                  "step_mutate_patch_required",
+                  "step_mutate_lock_armed",
                 );
+                awaitingMutateOnly = true;
+                mutateLockAllowTargetedReads =
+                  resolveMutateLockAllowTargetedReads({
+                    readinessReady: true,
+                    evidenceGateActive: false,
+                  });
+                messages.push({
+                  role: "user",
+                  content:
+                    readiness.activeItemId || readiness.writePaths.length > 0
+                      ? buildStepPatchRequiredMessage(readiness)
+                      : softMutationNudgeMessage(gateTurns, {
+                          vcsHistoryRewrite,
+                          hasPlan: planDraftedThisRun,
+                        }),
+                });
+                if (
+                  shouldEscalateReadonlyThrashToContinue({
+                    softMutationNudges,
+                    maxSoftMutationNudgesBeforeContinue:
+                      thresholds.maxSoftMutationNudgesBeforeContinue,
+                    changedFileCount: changedFiles.length,
+                    gitWriteSucceeded,
+                  })
+                ) {
+                  reasonCodes.push("readonly_thrash_continue");
+                  return offerContinue(
+                    "unfulfilled_execute",
+                    readonlyThrashPartialAnswer({
+                      hasPlan: planDraftedThisRun,
+                      fileReadCalls: loopFileReads.calls,
+                    }),
+                  );
+                }
               }
             }
             readonlyTurnsOnActiveStep = 0;
@@ -919,6 +964,7 @@ export async function runV8ModelLoop(
           lastActiveStepId = activeStepId;
           readonlyTurnsOnActiveStep = 0;
           evidenceGateNudges = 0;
+          evidenceRecoveryUsed = false;
         }
         readOnlyTurnsWithoutMutation += 1;
         readonlyTurnsOnActiveStep += 1;
@@ -982,60 +1028,110 @@ export async function runV8ModelLoop(
               );
             }
           } else {
-            softMutationNudges += 1;
             const ready =
               readiness.ready || readiness.missingPaths.length === 0;
-            reasonCodes.push(
-              ready ? "step_mutate_patch_required" : "soft_mutation_nudged",
-              "step_mutate_lock_armed",
-            );
-            awaitingMutateOnly = true;
-            mutateLockAllowTargetedReads = resolveMutateLockAllowTargetedReads({
-              readinessReady: ready,
-              evidenceGateActive: false,
-            });
-            const patchMessage =
-              readiness.activeItemId || readiness.writePaths.length > 0
-                ? buildStepPatchRequiredMessage(readiness)
-                : softMutationNudgeMessage(readonlyTurnsOnActiveStep || gateTurns, {
-                    vcsHistoryRewrite,
-                    hasPlan: planDraftedThisRun,
+            if (!ready) {
+              const recovery = decideEvidenceRecovery({
+                missingPaths: readiness.missingPaths,
+                recoveryAlreadyUsed: evidenceRecoveryUsed,
+                maxRecoveryPaths:
+                  mutateReadinessBudget.evidenceRecoveryMaxPaths,
+              });
+              if (recovery.kind === "recovery") {
+                evidenceRecoveryUsed = true;
+                evidenceGateNudges = 0;
+                reasonCodes.push(
+                  "evidence_recovery_armed",
+                  "step_mutate_readiness_gated",
+                  "step_mutate_lock_armed",
+                );
+                awaitingMutateOnly = true;
+                mutateLockAllowTargetedReads =
+                  resolveMutateLockAllowTargetedReads({
+                    readinessReady: false,
+                    evidenceGateActive: true,
                   });
-            warnings.push(
-              `Soft mutation / step patch demand after ${gateTurns} read-only turns on active step (mutate lock armed).`,
-            );
-            runtime.emit(bus, {
-              type: "warning",
-              runId,
-              message: ready
-                ? "Mutate lock: discovery stripped; call apply_patch now (targeted reads off). Edits are not done until it lands."
-                : "Mutate lock: discovery stripped; targeted reads allowed then apply_patch. Edits are not done until it lands.",
-              at: runtime.isoNow(),
-            });
-            messages.push({ role: "user", content: patchMessage });
-            readonlyTurnsOnActiveStep = 0;
-            readOnlyTurnsWithoutMutation = 0;
-
-            if (
-              shouldEscalateReadonlyThrashToContinue({
-                softMutationNudges,
-                maxSoftMutationNudgesBeforeContinue:
-                  thresholds.maxSoftMutationNudgesBeforeContinue,
-                changedFileCount: changedFiles.length,
-                gitWriteSucceeded,
-              })
-            ) {
-              reasonCodes.push("readonly_thrash_continue");
+                warnings.push(
+                  `Evidence recovery: ${recovery.paths.length} local path(s); no open-world search.`,
+                );
+                messages.push({
+                  role: "user",
+                  content: buildEvidenceRecoveryMessage({
+                    paths: recovery.paths,
+                    recoveryTurns: mutateReadinessBudget.evidenceRecoveryTurns,
+                  }),
+                });
+                readonlyTurnsOnActiveStep = 0;
+                readOnlyTurnsWithoutMutation = 0;
+              } else {
+                reasonCodes.push(
+                  "evidence_recovery_exhausted",
+                  "readonly_thrash_continue",
+                );
+                warnings.push(
+                  "Evidence recovery exhausted; clarifying instead of unbounded search.",
+                );
+                return offerContinue(
+                  "unfulfilled_execute",
+                  buildEvidenceClarifyMessage(recovery.rationale),
+                );
+              }
+            } else {
+              softMutationNudges += 1;
+              reasonCodes.push(
+                "step_mutate_patch_required",
+                "step_mutate_lock_armed",
+              );
+              awaitingMutateOnly = true;
+              mutateLockAllowTargetedReads = resolveMutateLockAllowTargetedReads({
+                readinessReady: true,
+                evidenceGateActive: false,
+              });
+              const patchMessage =
+                readiness.activeItemId || readiness.writePaths.length > 0
+                  ? buildStepPatchRequiredMessage(readiness)
+                  : softMutationNudgeMessage(
+                      readonlyTurnsOnActiveStep || gateTurns,
+                      {
+                        vcsHistoryRewrite,
+                        hasPlan: planDraftedThisRun,
+                      },
+                    );
               warnings.push(
-                "Read-only thrash after soft mutation nudges; offering Continue without claiming edits are done.",
+                `Step patch demand after ${gateTurns} read-only turns on active step (mutate lock armed).`,
               );
-              return offerContinue(
-                "unfulfilled_execute",
-                readonlyThrashPartialAnswer({
-                  hasPlan: planDraftedThisRun,
-                  fileReadCalls: loopFileReads.calls,
-                }),
-              );
+              runtime.emit(bus, {
+                type: "warning",
+                runId,
+                message:
+                  "Mutate lock: discovery stripped; call apply_patch now (targeted reads off). Edits are not done until it lands.",
+                at: runtime.isoNow(),
+              });
+              messages.push({ role: "user", content: patchMessage });
+              readonlyTurnsOnActiveStep = 0;
+              readOnlyTurnsWithoutMutation = 0;
+
+              if (
+                shouldEscalateReadonlyThrashToContinue({
+                  softMutationNudges,
+                  maxSoftMutationNudgesBeforeContinue:
+                    thresholds.maxSoftMutationNudgesBeforeContinue,
+                  changedFileCount: changedFiles.length,
+                  gitWriteSucceeded,
+                })
+              ) {
+                reasonCodes.push("readonly_thrash_continue");
+                warnings.push(
+                  "Read-only thrash after soft mutation nudges; offering Continue without claiming edits are done.",
+                );
+                return offerContinue(
+                  "unfulfilled_execute",
+                  readonlyThrashPartialAnswer({
+                    hasPlan: planDraftedThisRun,
+                    fileReadCalls: loopFileReads.calls,
+                  }),
+                );
+              }
             }
           }
         }
