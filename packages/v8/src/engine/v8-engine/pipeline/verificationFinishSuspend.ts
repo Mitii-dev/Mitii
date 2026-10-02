@@ -12,6 +12,7 @@ import type {
 import { EventBus } from "../internal/EventBus";
 import { RunBudgetTracker } from "../internal/RunBudget";
 import type { TaskListRef } from "../internal/taskListRuntime";
+import type { ExecutionSeed } from "../modules/execution-seed";
 import type { AgentEngineRuntime } from "./runtime";
 import type { ToolLoopOutcome } from "./types";
 
@@ -42,6 +43,8 @@ type Common = {
   taskListRef: TaskListRef;
   repoBuildStateBefore?: RepoBuildState;
   repoBuildStateAfter?: RepoBuildState;
+  /** Refined seed to persist across Continue so resume does not drop binding. */
+  executionSeed?: ExecutionSeed;
 };
 
 export async function finishIfGrantExpansionRequired(
@@ -175,6 +178,7 @@ export async function finishIfContinueRequired(
     repoBuildStateAfter,
     afterState,
     plan,
+    executionSeed,
   } = params;
 
     if (!runtime.deps.checkpointStore) {
@@ -235,6 +239,7 @@ export async function finishIfContinueRequired(
         ? { completedPlanStepIds: [...taskListRef.completedPlanStepIds] }
         : {}),
       ...(plan ? { plan: plan } : {}),
+      ...(executionSeed ? { executionSeed } : {}),
     });
 
     runtime.emit(bus, {

@@ -126,6 +126,18 @@ export function readonlyThrashPartialAnswer(params: {
   );
 }
 
+/**
+ * After analyze_change_impact satisfies the gate, demand the withheld patch
+ * immediately — do not escalate to Continue on the same turn.
+ */
+export function changeImpactRetryPatchMessage(): string {
+  return [
+    "analyze_change_impact succeeded; the change-impact gate is satisfied.",
+    "Retry apply_patch now for the intended write path(s).",
+    "Do not keep rediscovering. Workspace edits are NOT done until that patch lands.",
+  ].join("\n");
+}
+
 export function unfulfilledExecuteNudgeMessage(opts?: {
   vcsHistoryRewrite?: boolean;
 }): string {

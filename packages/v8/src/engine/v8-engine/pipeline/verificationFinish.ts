@@ -178,6 +178,7 @@ export async function finishAfterLoop(
     continueOverrideCount,
     maxContinueOverrides: thresholds.maxContinueOverrides,
     plan: params.loopContext?.plan,
+    executionSeed: params.loopContext?.executionSeed,
   });
   const suspendForBudgetWallLocal = async (
     opts: Parameters<typeof suspendForBudgetWall>[1],
@@ -266,6 +267,7 @@ export async function finishAfterLoop(
         repoBuildStateAfter: params.repoBuildStateAfter,
         afterState,
         plan: params.loopContext?.plan,
+        executionSeed: params.loopContext?.executionSeed,
       });
     }
 

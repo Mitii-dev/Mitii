@@ -31,6 +31,7 @@ export type MutateReadinessBudget = {
 /**
  * Per-step bind budgets (post-plan execute).
  * Medium locked: Compact 5/10/4 · Standard 4/8/3 · Wide 3/8/3
+ * Small: Compact/Standard 4/6/2 · Wide 3/5/2 (room to bind shell App.tsx)
  * Recovery valve shared: 2 turns / 4 paths (never +10 searches).
  *
  * cells = turns / paths / nudges
@@ -41,22 +42,22 @@ const BIND_BUDGET_TABLE: Record<
 > = {
   small: {
     compact: {
-      readonlyTurnsBeforeGate: 3,
-      maxEvidencePaths: 6,
+      readonlyTurnsBeforeGate: 6,
+      maxEvidencePaths: 8,
       maxEvidenceGateNudgesBeforePatchDemand: 2,
       evidenceRecoveryTurns: 2,
       evidenceRecoveryMaxPaths: 4,
     },
     standard: {
-      readonlyTurnsBeforeGate: 2,
-      maxEvidencePaths: 4,
+      readonlyTurnsBeforeGate: 6,
+      maxEvidencePaths: 8,
       maxEvidenceGateNudgesBeforePatchDemand: 2,
       evidenceRecoveryTurns: 2,
       evidenceRecoveryMaxPaths: 4,
     },
     wide: {
-      readonlyTurnsBeforeGate: 2,
-      maxEvidencePaths: 4,
+      readonlyTurnsBeforeGate: 3,
+      maxEvidencePaths: 5,
       maxEvidenceGateNudgesBeforePatchDemand: 2,
       evidenceRecoveryTurns: 1,
       evidenceRecoveryMaxPaths: 3,
@@ -121,17 +122,24 @@ export function resolveMutateReadinessBudget(
 
 /**
  * Prefer the tighter of size-shaped gate and post-plan soft-nudge threshold.
+ * When a trusted execution seed is already bound, keep the size×band envelope
+ * — do not collapse to free-discovery (2) / after-plan (2) or App.tsx binding
+ * starves and mutate lock fires before the handler is read.
  */
 export function resolveStepReadonlyTurnsBeforeGate(params: {
   taskSize?: MutateReadinessTaskSize | string;
   hasPlan: boolean;
   maxReadOnlyTurnsBeforeMutationNudgeAfterPlan: number;
   windowBandOrTokens?: WindowBudgetBand | number;
+  seedTrusted?: boolean;
 }): number {
   const sizeBudget = resolveMutateReadinessBudget(
     params.taskSize,
     params.windowBandOrTokens,
   );
+  if (params.seedTrusted) {
+    return sizeBudget.readonlyTurnsBeforeGate;
+  }
   if (!params.hasPlan) {
     return sizeBudget.readonlyTurnsBeforeGate;
   }

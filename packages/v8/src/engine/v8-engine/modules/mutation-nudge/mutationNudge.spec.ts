@@ -8,6 +8,7 @@ import {
   resolveReadonlyTurnsBeforeMutationNudge,
   shouldEscalateReadonlyThrashToContinue,
   readonlyThrashPartialAnswer,
+  changeImpactRetryPatchMessage,
 } from "./index";
 import { createDecision, createReadOnlyGrant } from "../../tests/fixtures/stubs";
 
@@ -127,5 +128,12 @@ describe("mutationNudge", () => {
     expect(partial.toLowerCase()).not.toMatch(
       /mutations? (are|were) done|edits (are|were) complete|finished successfully/,
     );
+  });
+
+  it("demands apply_patch retry after change impact is satisfied", () => {
+    const message = changeImpactRetryPatchMessage();
+    expect(message).toMatch(/analyze_change_impact succeeded/i);
+    expect(message).toMatch(/retry apply_patch/i);
+    expect(message).toMatch(/NOT done/i);
   });
 });
