@@ -9,7 +9,9 @@ These are **bundled defaults** under `packages/sdk/skills/`. Edit them in place.
 | Skill | Conflict group | Primary intents |
 |---|---|---|
 | `spec-driven-development` | define | feature, scaffold, migrate, question |
-| `planning-and-task-breakdown` | planning | feature, bugfix, … (plan-heavy) |
+| `planning-default` | planning | plan (S default Discover/Change/Verify) |
+| `medium-planning` | planning | feature, bugfix, … (medium bounded plan; priority 200) |
+| `planning-and-task-breakdown` | planning | feature, bugfix, … (plan-heavy L) |
 | `incremental-implementation` | build | feature, refactor, migrate, scaffold |
 | `test-driven-development` | verify | test, bugfix, feature, refactor |
 | `debugging-and-error-recovery` | debug | bugfix, diagnose, trace |

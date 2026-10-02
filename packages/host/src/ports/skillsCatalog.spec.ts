@@ -412,7 +412,7 @@ Full body.
     expect(debugIds).not.toContain('debugging-and-error-recovery');
   });
 
-  it('selects the bundled planning skill for plan requests', async () => {
+  it('selects the bundled medium planning skill for plan requests', async () => {
     const pipeline = new SkillsPipeline({
       catalog: createFileSystemSkillsCatalog({
         workspaceRoot: root,
@@ -431,16 +431,18 @@ Full body.
     });
 
     expect(result.status).toBe('selected');
-    // Engineering pack planning skill shares conflictGroup "planning" and
-    // outranks planning-default (priority 190 > 180).
+    // conflictGroup "planning": medium-planning (200) outranks
+    // planning-and-task-breakdown (190) and planning-default (180).
     expect(result.instructions.map((skill) => skill.id)).toEqual(
-      expect.arrayContaining(['planning-and-task-breakdown']),
+      expect.arrayContaining(['medium-planning']),
     );
     expect(
-      result.instructions.find(
-        (skill) => skill.id === 'planning-and-task-breakdown',
-      )?.content,
+      result.instructions.find((skill) => skill.id === 'medium-planning')
+        ?.content,
     ).toContain('# Planning');
+    expect(result.instructions.map((skill) => skill.id)).not.toContain(
+      'planning-and-task-breakdown',
+    );
   });
 });
 

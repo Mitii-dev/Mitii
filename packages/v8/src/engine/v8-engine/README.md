@@ -64,6 +64,24 @@ createMitiiClient({
 **Verification LLM critique:** `steering: { verificationLlmCritique: true }` (default off).
 Advisory only after the evidence gate — never overrides `decideVerificationGate`.
 
+## Medium close-loop (P1)
+
+When Officer `taskSize=medium`:
+
+```text
+preferred medium-planning (soft)
+  → discover_and_plan (known paths still discover)
+  → bounded seed-first discovery (taskSize × window band)
+  → concrete Change steps → non-empty plan-derived task list
+  → per-step bind (not a second discovery) → READY → patch
+```
+
+**Budgets (two envelopes, one philosophy):**
+- **Discovery (pre-plan):** model/tool-loop turns × file reads by size×band (Medium standard: 4 turns / 8 paths). Free pre-seed discovery stays 2; post-READY discovery stays 0.
+- **Per-step bind (post-plan):** Medium compact/standard 3 turns / 8 paths / 2 nudges; wide 2 / 8 / 2.
+
+**Failure ladder:** sufficient → plan; local gap → one seed-informed targetRefs recovery; still empty → `task_list_plan_not_concrete` (clarify/suspend — never invent an executable row from seed alone); scope blown → escalate (not +5 forever).
+
 ## Eval
 
 - Always-on: `pnpm --filter @mitii/v8 run test:v8-engine`

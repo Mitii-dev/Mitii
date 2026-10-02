@@ -4,8 +4,11 @@ import {
   formatExecutionSeedForPrompt,
   isExecutionSeedTrusted,
   resolveExecutionSeed,
+  applyExecutionSeedToTaskList,
+  ensureConcreteTaskListFromPlan,
 } from "./index";
 import type { RequestUnderstandingResult } from "../../../../modules/request-understanding";
+import type { PlanArtifact } from "../../../../modules/planning";
 
 function understandingWithTargets(
   targets: Array<{ kind: "file" | "folder" | "symbol"; value: string; explicit: boolean }>,
@@ -128,8 +131,7 @@ describe("resolveExecutionSeed", () => {
 });
 
 describe("applyExecutionSeedToTaskList", () => {
-  it("fills empty write/mustRead on the active step from trusted seed", async () => {
-    const { applyExecutionSeedToTaskList } = await import("./applyExecutionSeedToTaskList");
+  it("fills empty write/mustRead on the active step from trusted seed", () => {
     const seed = resolveExecutionSeed({
       userPrompt: "fix apps/desktop/src/renderer/SettingsPanel.tsx",
       understanding: understandingWithTargets([
@@ -162,5 +164,89 @@ describe("applyExecutionSeedToTaskList", () => {
     expect(result.taskList?.items[0]?.mustRead).toEqual([
       "apps/desktop/src/renderer/SettingsPanel.tsx",
     ]);
+  });
+});
+
+function hollowMediumPlan(): PlanArtifact {
+  return {
+    schemaVersion: 1,
+    objective: "Add retry support",
+    approvalRequired: false,
+    phases: [
+      {
+        id: "change",
+        name: "Change",
+        steps: [
+          {
+            id: "c1",
+            intent: "Add retry to API client",
+            targetRefs: [],
+            actionSummary: "Implement retries",
+          },
+        ],
+      },
+    ],
+  } as PlanArtifact;
+}
+
+describe("ensureConcreteTaskListFromPlan", () => {
+  it("recovers Change targetRefs from trusted seed once then derives rows", () => {
+    const seed = resolveExecutionSeed({
+      userPrompt: "Update src/api/client.ts",
+      understanding: understandingWithTargets([
+        {
+          kind: "file",
+          value: "src/api/client.ts",
+          explicit: true,
+        },
+      ]),
+    });
+    const result = ensureConcreteTaskListFromPlan({
+      plan: hollowMediumPlan(),
+      seed,
+      allowSeedRecovery: true,
+    });
+    expect(result.recovered).toBe(true);
+    expect(result.concrete).toBe(true);
+    expect(result.taskList?.items[0]?.write).toContain("src/api/client.ts");
+  });
+
+  it("does not invent an executable row when seed cannot recover Change steps", () => {
+    const plan: PlanArtifact = {
+      schemaVersion: 1,
+      objective: "Explore architecture",
+      approvalRequired: false,
+      phases: [
+        {
+          id: "discover",
+          name: "Discover",
+          steps: [
+            {
+              id: "d1",
+              intent: "Survey the repository",
+              targetRefs: [],
+            },
+          ],
+        },
+      ],
+    } as PlanArtifact;
+    const seed = resolveExecutionSeed({
+      userPrompt: "Update src/api/client.ts",
+      understanding: understandingWithTargets([
+        {
+          kind: "file",
+          value: "src/api/client.ts",
+          explicit: true,
+        },
+      ]),
+    });
+    const result = ensureConcreteTaskListFromPlan({
+      plan,
+      seed,
+      allowSeedRecovery: true,
+    });
+    expect(result.recovered).toBe(false);
+    expect(result.concrete).toBe(false);
+    expect(result.taskList).toBeUndefined();
   });
 });

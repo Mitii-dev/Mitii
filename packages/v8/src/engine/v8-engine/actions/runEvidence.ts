@@ -5,7 +5,6 @@ import type { ToolResult } from "../../tool-runtime";
 import type { AgentReasonCode, AgentRunStatus, RunEvidence } from "../contracts";
 import type { VerificationGateDecision } from "./decideVerificationGate";
 import {
-  DISCOVERY_PASS_POLICY,
   createDiscoveryObservationCollector,
 } from "../internal/discovery/index";
 import { uniqueStrings } from "./planningContext";
@@ -86,13 +85,13 @@ export function recordDiscoveryEvidence(
         .filter((value): value is string => Boolean(value)),
     ),
     skipped:
-      params.collector.toolCalls >= DISCOVERY_PASS_POLICY.maxToolCalls
+      params.collector.toolCalls >= params.collector.budget.maxToolCalls
         ? ["Discovery stopped at the tool-call budget."]
         : [],
     capacity: {
-      fileBudget: DISCOVERY_PASS_POLICY.maxFileReads,
-      searchBudget: DISCOVERY_PASS_POLICY.maxSearches,
-      toolCallBudget: DISCOVERY_PASS_POLICY.maxToolCalls,
+      fileBudget: params.collector.budget.maxFileReads,
+      searchBudget: params.collector.budget.maxSearches,
+      toolCallBudget: params.collector.budget.maxToolCalls,
       filesRead: params.collector.fileReads,
       searchesRun: params.collector.searches,
       toolCallsUsed: params.collector.toolCalls,

@@ -22,6 +22,7 @@ export const SKILL_OMISSION_REASONS = [
 
 export const SKILL_SELECTION_KINDS = [
   "required",
+  "preferred",
   "matched",
   "always_apply",
 ] as const;
@@ -31,6 +32,7 @@ export const SKILL_REASON_CODES = [
   "skills_required",
   "skills_required_not_found",
   "skills_required_partial",
+  "skills_preferred",
   "no_matching_skills",
   "budget_omitted_skills",
   "skills_compacted",
@@ -42,6 +44,9 @@ export const SKILL_REASON_CODES = [
 
 /** Maximum explicitly attached skills per run (prompt, CLI, or host field). */
 export const MAX_REQUIRED_SKILLS = 3;
+
+/** Soft-preferred skill ids (Engine size/route boost); missing ids are ignored. */
+export const MAX_PREFERRED_SKILLS = 3;
 
 export const SKILLS_ERROR_CODES = [
   "invalid_input",

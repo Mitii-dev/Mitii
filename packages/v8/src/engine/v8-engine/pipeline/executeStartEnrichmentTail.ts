@@ -17,18 +17,11 @@ import {
 import type {
   PromptInstructions,
   PromptRepositoryContext,
-  PromptSkillCatalogL1Entry,
 } from "../../../modules/prompt-construction";
 import type { UserRequestEnvelope } from "../../../modules/request-intake";
 import { extractPrimaryUserMessage } from "../../../modules/request-understanding/intent/extractPrimaryUserMessage";
 import type { RequestUnderstandingResult } from "../../../modules/request-understanding";
-import {
-  SKILLS_SCHEMA_VERSION,
-  formatSkillPromptContent,
-  mapUnderstandingToSkillEvidence,
-} from "../../../modules/skills";
 import type { WindowPolicy } from "../../../modules/window-budget";
-import { resolveWindowBudgetBand } from "../../../modules/window-budget";
 
 import {
   extractMemoryFileTargets,
@@ -39,7 +32,7 @@ import {
   toPlanningBuildEvidence,
   recordDiscoveryEvidence,
   recordPlanEvidence,
-  buildSkillsReadyEvent,
+  selectSkillsForEnrichment,
 } from "../actions";
 import {
   applyPlanModeDiscoveryContract,
@@ -49,7 +42,10 @@ import {
   requiresPlanDiscoveryQualityFloor,
   usesThoroughPlanDiscoveryEvidence,
 } from "../modules/plan-discovery";
-import { applyExecutionSeedToTaskList } from "../modules/execution-seed";
+import {
+  applyExecutionSeedToTaskList,
+  applyPostPlanTaskListGate,
+} from "../modules/execution-seed";
 import type {
   AgentEngineStartInput,
   AgentReasonCode,
@@ -65,7 +61,6 @@ import type { AgentEngineRuntime } from "./runtime";
 import { runDiscoveryPass } from "./pinAndDiscovery";
 import type { ExecuteStartSharedState } from "./executeStartEarlyPipeline";
 import type { StartEnrichmentOutcome } from "./executeStartEnrichmentTypes";
-import { resolveSteeringFeatureFlags } from "../legacy/steeringFlags";
 export async function finishEnrichmentSkillsMemoryPlan(
   runtime: AgentEngineRuntime,
   params: {
@@ -135,78 +130,19 @@ export async function finishEnrichmentSkillsMemoryPlan(
   let { understanding, decision } = params;
 
   // --- Skills (optional) ---
-  let selectedSkills: PromptInstructions["skills"];
-  let skillCatalogL1: readonly PromptSkillCatalogL1Entry[] | undefined;
-  const injectSkillCatalogL1 =
-    resolveSteeringFeatureFlags(input.steering).injectSkillCatalogL1 === true;
-  if (runtime.deps.skills) {
-    runtime.emitStage(bus, runId, "skills_ready", "started");
-    const understandingSkillEvidence = mapUnderstandingToSkillEvidence(
-      understanding,
-      {
-        projects: input.projects,
-        extraPaths: [...(input.dirtyPaths ?? []), ...contextPaths],
-      },
-    );
-    const skillEvidencePaths = [
-      ...new Set(understandingSkillEvidence.paths),
-    ]
-      .filter((path) => path.trim().length > 0)
-      .slice(0, 50);
-    const skillsResult = await runtime.deps.skills.select({
-      schemaVersion: SKILLS_SCHEMA_VERSION,
-      query: extractPrimaryUserMessage(envelope.message),
-      mode: envelope.mode,
-      route: decision.route,
-      budgetTokens: windowPolicy.skills.budgetTokens,
-      maxSkills: windowPolicy.skills.maxSkills,
-      requiredSkillIds: input.requiredSkillIds ?? [],
-      excludedSkillIds: input.excludedSkillIds ?? [],
-      forbidLargeSkills:
-        resolveWindowBudgetBand(windowPolicy.contextWindowTokens) === "compact",
-      includeCatalogL1: injectSkillCatalogL1,
-      evidence: {
-        ...understandingSkillEvidence,
-        paths: skillEvidencePaths,
-      },
-    });
-    selectedSkills = skillsResult.instructions.map((block) => ({
-      id: block.id,
-      title: block.title,
-      content: formatSkillPromptContent(block),
-      priority: block.priority,
-    }));
-    if (
-      injectSkillCatalogL1 &&
-      skillsResult.catalogL1 &&
-      skillsResult.catalogL1.length > 0
-    ) {
-      skillCatalogL1 = skillsResult.catalogL1;
-    }
-    if (skillsResult.warnings.length > 0 && logVerbosityAtLeast(input.logVerbosity, "verbose")) {
-      warnings.push(...skillsResult.warnings);
-    }
-    reasonCodes.push(
-      skillsResult.instructions.length > 0
-        ? "skills_selected"
-        : "skills_skipped",
-    );
-    runtime.emit(
-      bus,
-      buildSkillsReadyEvent({
-        runId,
-        skillsResult,
-        at: runtime.isoNow(),
-      }),
-    );
-    runtime.emitStage(bus, runId, "skills_ready", "completed", [
-      skillsResult.instructions.length > 0
-        ? "skills_selected"
-        : "skills_skipped",
-    ]);
-  } else {
-    reasonCodes.push("skills_skipped");
-  }
+  const { selectedSkills, skillCatalogL1 } = await selectSkillsForEnrichment({
+    runtime,
+    runId,
+    input,
+    bus,
+    windowPolicy,
+    reasonCodes,
+    warnings,
+    envelope,
+    understanding,
+    decision,
+    contextPaths,
+  });
 
   if (signal.aborted) {
     await runtime.safeUnpin(runId, shared.pinnedState);
@@ -329,7 +265,7 @@ export async function finishEnrichmentSkillsMemoryPlan(
       buildEvidence: shared.repoBuildStateBefore
         ? toPlanningBuildEvidence(shared.repoBuildStateBefore)
         : undefined,
-      skills: selectedSkills?.map((block) => ({
+      skills: selectedSkills?.map((block: { id: string; title?: string; content: string; priority?: number }) => ({
         id: block.id,
         title: block.title,
         content: block.content,
@@ -405,6 +341,7 @@ export async function finishEnrichmentSkillsMemoryPlan(
         thoroughEvidence,
         seedFirstDiscovery: mediumOrLarge,
         preferSymbols: mediumOrLarge,
+        taskSize,
       });
       discoveryBrief = discovery.brief;
       recordDiscoveryEvidence(runEvidence, {
@@ -482,14 +419,28 @@ export async function finishEnrichmentSkillsMemoryPlan(
       runtime.emitStage(bus, runId, "plan_ready", "completed", [
         "plan_drafted",
       ]);
-      syncTaskListOnce();
-      const seededAfterPlan = applyExecutionSeedToTaskList({
-        taskList: taskListRef.current,
+      const taskListGate = await applyPostPlanTaskListGate({
+        runtime,
+        mediumOrLarge,
+        mode: envelope.mode,
+        plan: planningResult.plan,
+        planStrategy: planningResult.strategy,
         seed: shared.executionSeed,
+        shared,
+        taskListRef,
+        reasonCodes,
+        warnings,
+        syncTaskListOnce,
+        bus,
+        runId,
+        input,
+        decision,
+        budget,
+        startedMs,
+        finish,
       });
-      if (seededAfterPlan.applied && seededAfterPlan.taskList) {
-        taskListRef.current = seededAfterPlan.taskList;
-        reasonCodes.push("execution_seed_task_list_bound");
+      if (taskListGate.kind === "terminal") {
+        return taskListGate;
       }
 
       if (
