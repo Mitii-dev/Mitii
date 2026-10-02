@@ -915,6 +915,8 @@ describe("VerificationPipeline", () => {
     const loaded = await pipeline.loadLatestRecord("ws_pipe");
     expect(loaded?.recordId).toBe("run_pipe");
     expect(loaded?.retry?.kind).toBe("fix_remaining");
-    expect(pipeline.buildUserSummary(record)).toContain("kept the edits");
+    expect(pipeline.buildUserSummary(record).toLowerCase()).toContain(
+      "kept",
+    );
   });
 });

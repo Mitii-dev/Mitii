@@ -199,6 +199,9 @@ export class VerificationPipeline {
       cancelled: executed.cancelled || Boolean(options.signal?.aborted),
       staleStateRisk: inspection.diff.staleStateRisk,
       stateUnavailable: false,
+      diagnostics: allDiagnostics,
+      changedFiles: parsed.changedFiles,
+      askScopePaths: parsed.changedFiles,
     });
 
     const reasonCodes = uniqueReasonCodes([

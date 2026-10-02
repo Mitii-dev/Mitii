@@ -4,6 +4,8 @@ import {
   type RepoBuildStateComparison,
   type RepoBuildStateComparisonReason,
 } from "../contracts";
+import { filterActionableDiagnostics } from "./FilterActionableDiagnostics";
+import { projectLocalCompilePassed } from "./AssessTaskRelevantEvidence";
 
 export function compareRepoBuildStates(params: {
   before?: RepoBuildState;
@@ -11,14 +13,33 @@ export function compareRepoBuildStates(params: {
 }): RepoBuildStateComparison {
   const before = params.before;
   const after = params.after;
-  const afterKeys = new Set(after.diagnostics.map(diagnosticKey));
+
+  const dropPhantom = projectLocalCompilePassed(after.checks);
+  const beforeActionable = filterActionableDiagnostics({
+    diagnostics: before?.diagnostics ?? [],
+    dropPhantomSecondary: dropPhantom,
+    keepSyntheticTestPaths: false,
+  }).actionable;
+  const afterFiltered = filterActionableDiagnostics({
+    diagnostics: after.diagnostics,
+    dropPhantomSecondary: dropPhantom,
+    keepSyntheticTestPaths: false,
+  });
+  const afterActionable = afterFiltered.actionable;
+  const ignoredResiduals =
+    afterFiltered.omitted.length > 0 ||
+    (before !== undefined &&
+      (before.diagnostics.length !== beforeActionable.length ||
+        after.diagnostics.length !== afterActionable.length));
+
+  const afterKeys = new Set(afterActionable.map(diagnosticKey));
   const beforeErrorKeys = new Set(
-    (before?.diagnostics ?? [])
+    beforeActionable
       .filter((diag) => diag.severity === "error")
       .map(diagnosticKey),
   );
   const afterErrorKeys = new Set(
-    after.diagnostics
+    afterActionable
       .filter((diag) => diag.severity === "error")
       .map(diagnosticKey),
   );
@@ -34,12 +55,12 @@ export function compareRepoBuildStates(params: {
   ).length;
 
   const beforeWarningKeys = new Set(
-    (before?.diagnostics ?? [])
+    beforeActionable
       .filter((diag) => diag.severity === "warning")
       .map(diagnosticKey),
   );
   const afterWarningKeys = new Set(
-    after.diagnostics
+    afterActionable
       .filter((diag) => diag.severity === "warning")
       .map(diagnosticKey),
   );
@@ -50,14 +71,19 @@ export function compareRepoBuildStates(params: {
     (key) => !afterKeys.has(key),
   ).length;
 
+  const afterErrorCount = afterErrorKeys.size;
+  const beforeErrorCount = beforeErrorKeys.size;
+
   const reasonCodes: RepoBuildStateComparisonReason[] = [];
   if (!before) reasonCodes.push("no_before_state");
   if (clearedErrorCount > 0) reasonCodes.push("errors_cleared");
-  if (remainingErrorCount > 0 || after.summary.errorCount > 0) {
+  if (remainingErrorCount > 0 || afterErrorCount > 0) {
     reasonCodes.push("errors_remaining");
   }
   if (newErrorCount > 0) reasonCodes.push("new_errors_introduced");
-  if (after.summary.warningCount > 0) reasonCodes.push("warnings_remaining");
+  if (afterActionable.some((diag) => diag.severity === "warning")) {
+    reasonCodes.push("warnings_remaining");
+  }
   if (before && newWarningCount > 0) {
     reasonCodes.push("new_warnings_introduced");
   }
@@ -67,10 +93,13 @@ export function compareRepoBuildStates(params: {
   if (after.summary.failedCheckIds.length > 0) {
     reasonCodes.push("checks_still_failing");
   }
+  if (ignoredResiduals) {
+    reasonCodes.push("non_actionable_residuals_ignored");
+  }
 
   return repoBuildStateComparisonSchema.parse({
-    beforeErrorCount: before?.summary.errorCount ?? 0,
-    afterErrorCount: after.summary.errorCount,
+    beforeErrorCount,
+    afterErrorCount,
     clearedErrorCount,
     newErrorCount,
     remainingErrorCount,

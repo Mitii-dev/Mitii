@@ -1,11 +1,13 @@
 import type { VerificationRequirement } from "../../decision-policy";
 
 import type {
+  VerificationDiagnostic,
   VerificationReasonCode,
   VerificationStatus,
 } from "../contracts";
 import type { VerificationCheckResult } from "../contracts";
 import { assessEvidenceCoverage } from "../internal/evidencePolicy";
+import { assessTaskRelevantEvidence } from "./AssessTaskRelevantEvidence";
 
 export interface CompletionRecommendation {
   status: VerificationStatus;
@@ -17,9 +19,10 @@ export interface CompletionRecommendation {
  *
  * Outcome segregation (do not conflate these):
  * - verified_success: required evidence covered by passed checks; no defects
- * - verification_failed: a check failed or timed out (defect in the change)
- * - implemented_unverified: no defects, but required evidence could not be
- *   obtained (missing scripts/tools) or state is stale
+ * - verification_failed: a check failed or timed out with ask-scoped defects
+ * - implemented_unverified: no ask-scoped defects, but required evidence could
+ *   not be obtained, state is stale, OR task-relevant compile passed with only
+ *   harness / phantom / workspace-root residuals
  * - blocked: hard infrastructure/policy blocker (unavailable pinned state,
  *   or zero runnable checks when policy forbids unverified completion)
  * - cancelled: run aborted
@@ -34,6 +37,10 @@ export function recommendCompletion(params: {
   cancelled: boolean;
   staleStateRisk: boolean;
   stateUnavailable: boolean;
+  /** Normalized diagnostics — used to separate harness noise from defects. */
+  diagnostics?: readonly VerificationDiagnostic[];
+  changedFiles?: readonly string[];
+  askScopePaths?: readonly string[];
 }): CompletionRecommendation {
   if (params.stateUnavailable) {
     return {
@@ -68,17 +75,26 @@ export function recommendCompletion(params: {
     };
   }
 
-  // Defects in the change — never treat as success or "unavailable".
-  if (coverage.hasFailed) {
+  // Defects vs residual noise — task-relevant compile can soft-accept.
+  if (coverage.hasFailed || coverage.hasTimedOut) {
+    const assessment = assessTaskRelevantEvidence({
+      verification: params.verification,
+      checks: params.checks,
+      diagnostics: params.diagnostics,
+      changedFiles: params.changedFiles,
+      askScopePaths: params.askScopePaths,
+    });
+    if (assessment.shouldAccept) {
+      return {
+        status: "implemented_unverified",
+        reasonCodes: assessment.reasonCodes,
+      };
+    }
     return {
       status: "verification_failed",
-      reasonCodes: ["checks_failed"],
-    };
-  }
-  if (coverage.hasTimedOut) {
-    return {
-      status: "verification_failed",
-      reasonCodes: ["checks_timed_out"],
+      reasonCodes: coverage.hasTimedOut
+        ? ["checks_timed_out"]
+        : ["checks_failed"],
     };
   }
 

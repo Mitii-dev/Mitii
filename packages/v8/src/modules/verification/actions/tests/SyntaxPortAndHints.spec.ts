@@ -115,8 +115,11 @@ describe("selectProportionalChecks — scriptHints", () => {
       scriptHints: ["test:unit"],
     });
 
-    expect(result.selected.map((c) => c.checkId)).toEqual([
+    // Required `tests` evidence is not truncated by maxChecks; hint ranking
+    // must still put the AGENTS.md-preferred script first.
+    expect(result.selected[0]?.checkId).toBe("root:test:test:unit");
+    expect(result.selected.map((c) => c.checkId)).toContain(
       "root:test:test:unit",
-    ]);
+    );
   });
 });

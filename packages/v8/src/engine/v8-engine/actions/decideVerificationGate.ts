@@ -1,11 +1,13 @@
-import type {
-  RepoBuildStateComparison,
-  VerificationCheckResult,
-  VerificationDiagnostic,
-  VerificationResult,
+import {
+  assessTaskRelevantEvidence,
+  isPhantomSecondaryDiagnostic,
+  isWorkspaceRootCheckId,
+  projectLocalCompilePassed,
+  type RepoBuildStateComparison,
+  type VerificationCheckResult,
+  type VerificationDiagnostic,
+  type VerificationResult,
 } from "../../../modules/verification";
-
-import { filterDiagnosticsToAskScope } from "./buildVerificationRepairPrompt";
 
 /**
  * Pure decision for how Agent Engine should treat a Verification result.
@@ -18,9 +20,9 @@ import { filterDiagnosticsToAskScope } from "./buildVerificationRepairPrompt";
  * - verified_success
  * - implemented_unverified (work done; evidence incomplete — keep changes)
  * - verification infrastructure missing AND allowUnavailable
- * - package typecheck/build passed while only workspace-root / syntax / test
- *   leftovers failed (vitest harness + syntax:port noise must not reopen repair)
- * - ask/changed paths have no actionable in-scope diagnostic errors
+ * - task-relevant project-local typecheck/build passed with only harness /
+ *   phantom / workspace-root residuals (Verification `assessTaskRelevantEvidence`)
+ * - before→after actionable compare shows no new in-scope errors
  *
  * Reject (eligible for repair only when repairable):
  * - verification_failed → repairable (model can fix the change)
@@ -147,7 +149,7 @@ export function decideVerificationGate(params: {
       if (isUserGoalComplete(goalParams)) {
         return { action: "accept", acceptKind: "implemented_unverified" };
       }
-      if (hasDiagnosticErrors(params.comparison)) {
+      if (hasActionableNewOrRemainingErrors(params.comparison)) {
         return {
           action: "reject",
           repairable: true,
@@ -178,14 +180,10 @@ export function decideVerificationGate(params: {
       };
     case "blocked":
       if (isSoftUnavailableBlock(verification, params.allowUnavailable)) {
-        // Compatibility guard for older verification results that reported
-        // missing evidence as blocked even though no check failed. Keep the
-        // user's changes as implemented-but-unverified instead of rolling back.
         return { action: "accept", acceptKind: "implemented_unverified" };
       }
       return {
         action: "reject",
-        // State/grant blockers are not fixed by rewriting application code.
         repairable: false,
         rejectKind: "blocked",
         verification,
@@ -221,13 +219,11 @@ export function decideVerificationGate(params: {
   }
 }
 
-function hasDiagnosticErrors(
+/** Only *new* actionable errors reopen repair — not absolute after counts. */
+function hasActionableNewOrRemainingErrors(
   comparison: RepoBuildStateComparison | undefined,
 ): comparison is RepoBuildStateComparison {
-  return (
-    comparison !== undefined &&
-    (comparison.afterErrorCount > 0 || comparison.newErrorCount > 0)
-  );
+  return comparison !== undefined && comparison.newErrorCount > 0;
 }
 
 function diagnosticErrorMessage(comparison: RepoBuildStateComparison): string {
@@ -239,20 +235,11 @@ function diagnosticErrorMessage(comparison: RepoBuildStateComparison): string {
 }
 
 /**
- * True when the user-visible compile evidence for the changed package
- * succeeded, or when the only remaining failed checks are leftover noise.
+ * True when Verification's task-relevant evidence assessor says accept, or
+ * when the actionable before→after compare shows no new regressions.
  *
- * Workspace-root typecheck/test timeout or failure, package test harness
- * failures, and syntax:port phantoms must not reopen a long repair loop after
- * `inferred:apps/...` / `inferred:packages/...` typecheck/build already
- * passed — those leftovers are monorepo/harness noise, not a regression from
- * the localized edit.
- *
- * Also true when:
- * - ask/changed paths have zero actionable in-scope diagnostic errors
- *   (node_modules / phantom JSX/--jsx ignored when package tsc passed), or
- * - the before→after comparison shows **no new errors** (pre-existing
- *   remaining bugs stay optional — do not auto-repair them).
+ * Residual classification (harness / phantom / workspace-root) is owned by
+ * `@mitii/v8` Verification — this gate only orchestrates accept vs repair.
  */
 export function isUserGoalComplete(params: {
   verification: VerificationResult;
@@ -262,194 +249,125 @@ export function isUserGoalComplete(params: {
 }): boolean {
   const { verification, comparison } = params;
   const changedCount = params.changedFiles?.length ?? 0;
-  const packageCompilePassed = packageCompileEvidencePassed(verification);
 
+  const assessment = assessTaskRelevantEvidence({
+    verification: {
+      required: true,
+      minimumEvidence: [],
+      allowUnavailable: true,
+    },
+    checks: verification.checks,
+    diagnostics: verification.diagnostics,
+    changedFiles: params.changedFiles,
+    askScopePaths: params.askScopePaths,
+  });
+  if (assessment.shouldAccept && assessment.authoritativeCompilePassed) {
+    return true;
+  }
   if (
-    packageCompilePassed &&
-    failuresAreIgnorableWhenPackagePassed(verification)
+    assessment.shouldAccept &&
+    verification.reasonCodes.some((code) =>
+      code.startsWith("residual_") || code === "task_relevant_evidence_passed",
+    )
   ) {
     return true;
   }
 
-  if (askScopedDiagnosticsClean(params)) {
-    return true;
-  }
-
-  // Compare-only: edits landed and this change introduced no new diagnostics.
-  // Remaining pre-existing errors are offered optionally, not repaired here.
+  // Compare-only: edits landed and actionable compare introduced no new errors.
   if (changedCount > 0 && comparison && comparison.newErrorCount === 0) {
     return true;
   }
 
-  // New errors exist — only block when we cannot prove they are out of ask scope.
-  // When package compile already passed, comparison floods from vitest/syntax:port
-  // (before=0 → after=200) must not force repair; ask-scope / ignorable already
-  // decided above.
   if (comparison && comparison.newErrorCount > 0) {
     return false;
   }
 
   if (comparison && comparison.afterErrorCount > 0) {
-    // after>0 with new===0 already accepted above when we have changes.
     return changedCount > 0;
   }
 
-  const failed = verification.checks.filter(
-    (check) => check.outcome === "failed" || check.outcome === "timed_out",
-  );
-  if (failed.length === 0) {
-    return comparison !== undefined && comparison.afterErrorCount === 0;
-  }
-  const lintOnly = failed.every(
-    (check) => check.kind === "lint" || check.kind === "format",
-  );
-  const typecheckOrBuildFailed = failed.some(
-    (check) => check.kind === "typecheck" || check.kind === "build",
-  );
-  const diagnosticsFailed = failed.some(
-    (check) => check.kind === "diagnostics" || check.kind === "syntax",
-  );
-  return lintOnly && !typecheckOrBuildFailed && !diagnosticsFailed;
+  return assessment.shouldAccept;
+}
+
+/** @deprecated Prefer `isPhantomSecondaryDiagnostic` from verification. */
+export function isPhantomConfigDiagnostic(
+  diagnostic: VerificationDiagnostic,
+): boolean {
+  return isPhantomSecondaryDiagnostic({
+    code: diagnostic.code,
+    message: diagnostic.message,
+  });
+}
+
+/** Project-local typecheck/build passed — thin wrapper over Verification. */
+export function packageCompileEvidencePassed(
+  verification: VerificationResult,
+): boolean {
+  return projectLocalCompilePassed(verification.checks);
 }
 
 /**
- * Changed/seed paths have no actionable error diagnostics after ask-scope
- * filtering. Hard-denied trees and (when package tsc passed) phantom config
- * diagnostics do not reopen repair.
+ * Failed/timed-out checks are leftover noise once project-local compile passed.
+ * Delegates to Verification assessor (does not blanket-ignore ask-scoped tests
+ * when actionable source diagnostics remain).
  */
+export function failuresAreIgnorableWhenPackagePassed(
+  verification: VerificationResult,
+): boolean {
+  if (!projectLocalCompilePassed(verification.checks)) {
+    return false;
+  }
+  const assessment = assessTaskRelevantEvidence({
+    verification: {
+      required: true,
+      minimumEvidence: [],
+      allowUnavailable: true,
+    },
+    checks: verification.checks,
+    diagnostics: verification.diagnostics,
+  });
+  return assessment.shouldAccept;
+}
+
+/** @deprecated Prefer project-local compile via `projectLocalCompilePassed`. */
+export function isPackageScopedCheck(check: VerificationCheckResult): boolean {
+  return !isWorkspaceRootCheck(check);
+}
+
+export function isWorkspaceRootCheck(check: VerificationCheckResult): boolean {
+  return isWorkspaceRootCheckId({
+    checkId: check.checkId,
+    projectId: check.projectId,
+  });
+}
+
 export function askScopedDiagnosticsClean(params: {
   verification: VerificationResult;
   askScopePaths?: readonly string[];
   changedFiles?: readonly string[];
 }): boolean {
-  const scopePaths = [
-    ...(params.askScopePaths ?? []),
-    ...(params.changedFiles ?? []),
-  ].filter((path) => path.trim().length > 0);
-  if (scopePaths.length === 0) {
+  const changed = params.changedFiles ?? [];
+  if (changed.length === 0) {
     return false;
   }
-  if ((params.changedFiles ?? []).length === 0) {
-    return false;
-  }
-  const packageCompilePassed = packageCompileEvidencePassed(params.verification);
-  const diagnostics = (params.verification.diagnostics ?? []).filter(
-    (item) =>
-      !(packageCompilePassed && isPhantomConfigDiagnostic(item)),
-  );
-  const scoped = filterDiagnosticsToAskScope(diagnostics, scopePaths);
-  return !scoped.some(
-    (item) =>
-      item.severity === "error" ||
-      (item.severity as string | undefined) === "fatal",
-  );
-}
-
-/**
- * Config/harness phantoms that contradict a passing package typecheck/build.
- * syntax:port and mis-scoped tsserver often emit these on changed files even
- * when `pnpm typecheck` for the package already passed.
- */
-export function isPhantomConfigDiagnostic(
-  diagnostic: VerificationDiagnostic,
-): boolean {
-  const code = (diagnostic.code ?? "").toUpperCase();
-  if (code === "TS17004") {
-    return true;
-  }
-  const message = (diagnostic.message ?? "").toLowerCase();
-  if (
-    message.includes("cannot use jsx unless") &&
-    message.includes("--jsx")
-  ) {
-    return true;
-  }
-  // syntax:port often re-emits implicit-any on files the package tsc already
-  // accepted — not an actionable ask regression.
-  if (code === "TS7006") {
-    return true;
-  }
-  return false;
-}
-
-/** Package/inferred typecheck or build passed for the changed project. */
-export function packageCompileEvidencePassed(
-  verification: VerificationResult,
-): boolean {
-  return verification.checks.some(
-    (check) =>
-      (check.kind === "typecheck" || check.kind === "build") &&
-      check.outcome === "passed" &&
-      isPackageScopedCheck(check),
-  );
-}
-
-/**
- * Failed/timed-out checks are leftover noise once package typecheck/build
- * passed: lint/format, syntax:port, workspace-root compile/test, and package
- * test harness failures (vitest node_modules frames).
- */
-export function failuresAreIgnorableWhenPackagePassed(
-  verification: VerificationResult,
-): boolean {
-  const failed = verification.checks.filter(
-    (check) => check.outcome === "failed" || check.outcome === "timed_out",
-  );
-  if (failed.length === 0) {
-    return true;
-  }
-  return failed.every(isIgnorableFailureWhenPackagePassed);
-}
-
-function isIgnorableFailureWhenPackagePassed(
-  check: VerificationCheckResult,
-): boolean {
-  if (check.kind === "lint" || check.kind === "format") {
-    return true;
-  }
-  // syntax:port is not authoritative next to a passing package typecheck.
-  if (check.kind === "syntax") {
-    return true;
-  }
-  // Package/inferred tests often fail on harness frames under node_modules —
-  // not a localized compile regression. Keep edits; do not thrash repair.
-  if (check.kind === "test") {
-    return true;
-  }
-  if (
-    (check.kind === "typecheck" || check.kind === "build") &&
-    isWorkspaceRootCheck(check)
-  ) {
-    return true;
-  }
-  return false;
-}
-
-export function isPackageScopedCheck(check: VerificationCheckResult): boolean {
-  const projectId = (check.projectId ?? "").replace(/\\/g, "/");
-  const checkId = check.checkId.replace(/\\/g, "/");
-  if (projectId.startsWith("inferred:") || checkId.startsWith("inferred:")) {
-    return true;
-  }
-  if (/^(apps|packages)\//.test(projectId)) {
-    return true;
-  }
-  // checkId shape: inferred:packages/host:typecheck:typecheck
-  return /:?(apps|packages)\//.test(checkId);
-}
-
-export function isWorkspaceRootCheck(check: VerificationCheckResult): boolean {
-  const projectId = (check.projectId ?? "").toLowerCase();
-  if (
-    projectId === "workspace-root" ||
-    projectId === "root" ||
-    projectId === "."
-  ) {
-    return true;
-  }
-  const checkId = check.checkId.toLowerCase();
+  const assessment = assessTaskRelevantEvidence({
+    verification: {
+      required: true,
+      minimumEvidence: [],
+      allowUnavailable: true,
+    },
+    checks: params.verification.checks,
+    diagnostics: params.verification.diagnostics,
+    changedFiles: changed,
+    askScopePaths: params.askScopePaths ?? changed,
+  });
   return (
-    checkId.startsWith("workspace-root:") || checkId.startsWith("root:")
+    assessment.authoritativeCompilePassed &&
+    assessment.actionableDiagnostics.filter(
+      (item) =>
+        item.severity === "error" ||
+        (item.severity as string | undefined) === "fatal",
+    ).length === 0
   );
 }
 

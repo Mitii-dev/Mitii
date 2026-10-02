@@ -93,6 +93,45 @@ describe("recommendCompletion", () => {
     expect(result.reasonCodes).toEqual(["checks_failed"]);
   });
 
+  it("soft-accepts when project typecheck passed and only test harness failed", () => {
+    const result = recommendCompletion({
+      verification: {
+        required: true,
+        minimumEvidence: ["typecheck"],
+        allowUnavailable: false,
+      },
+      checks: [
+        check({
+          checkId: "pkg:typecheck:typecheck",
+          kind: "typecheck",
+          projectId: "pkg",
+          outcome: "passed",
+        }),
+        check({
+          checkId: "pkg:test:test",
+          kind: "test",
+          projectId: "pkg",
+          outcome: "failed",
+        }),
+      ],
+      cancelled: false,
+      staleStateRisk: false,
+      stateUnavailable: false,
+      diagnostics: [
+        {
+          path: "node_modules/vitest/dist/x.js",
+          severity: "error",
+          message: "20",
+          startLine: 1,
+        },
+      ],
+      changedFiles: ["pkg/src/a.ts"],
+    });
+
+    expect(result.status).toBe("implemented_unverified");
+    expect(result.reasonCodes).toContain("task_relevant_evidence_passed");
+  });
+
   it("returns verified_success when required evidence is covered", () => {
     const result = recommendCompletion({
       verification: {

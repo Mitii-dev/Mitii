@@ -46,6 +46,8 @@ export const repoBuildStateComparisonReasonSchema = z.enum([
   "warnings_cleared",
   "checks_still_failing",
   "no_before_state",
+  /** Harness/denied/phantom residuals were excluded before delta counts. */
+  "non_actionable_residuals_ignored",
 ]);
 
 export const repoBuildStateComparisonSchema = z

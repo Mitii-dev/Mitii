@@ -86,6 +86,13 @@ function isNomicEmbedInstalled(models: readonly string[]): boolean {
   });
 }
 
+export type FeatureTabId =
+  | 'autocomplete'
+  | 'review'
+  | 'agent'
+  | 'search'
+  | 'index';
+
 interface SettingsPanelProps {
   settings: DesktopSettings;
   workspaceRoot: string;
@@ -97,6 +104,9 @@ interface SettingsPanelProps {
   /** Controlled settings category (from activity bar). */
   tab?: SettingsTabId;
   onTabChange?: (tab: SettingsTabId) => void;
+  /** Controlled feature sub-tab (e.g. Semantic index). */
+  featureTab?: FeatureTabId;
+  onFeatureTabChange?: (tab: FeatureTabId) => void;
   /** Hide the internal text nav when the activity bar owns categories. */
   hideSideNav?: boolean;
   onSave: (input: {
@@ -322,9 +332,13 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const [storage, setStorage] = useState<DesktopStorageInfo | null>(null);
   const [storageBusy, setStorageBusy] = useState(false);
   const [storageNote, setStorageNote] = useState<string | null>(null);
-  const [featureTab, setFeatureTab] = useState<
-    'autocomplete' | 'review' | 'agent' | 'search' | 'index'
-  >('autocomplete');
+  const [internalFeatureTab, setInternalFeatureTab] =
+    useState<FeatureTabId>('autocomplete');
+  const featureTab = props.featureTab ?? internalFeatureTab;
+  const setFeatureTab = (next: FeatureTabId) => {
+    if (props.onFeatureTabChange) props.onFeatureTabChange(next);
+    else setInternalFeatureTab(next);
+  };
 
   const featureTabs = [
     { id: 'autocomplete' as const, label: 'Inline completion' },
