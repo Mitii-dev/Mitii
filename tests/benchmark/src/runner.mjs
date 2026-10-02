@@ -57,7 +57,12 @@ export async function runCases(cases, rootDir, config, options = {}) {
   }
 
   if (!(options.keepWorkspaces ?? config.run.keepWorkspaces)) {
-    rmSync(workRoot, { recursive: true, force: true });
+    const keepForTimeout = results.some((entry) =>
+      (entry?.checks ?? []).some((check) => check?.timedOut)
+    );
+    if (!keepForTimeout) {
+      rmSync(workRoot, { recursive: true, force: true });
+    }
   }
   return results;
 }
@@ -123,13 +128,10 @@ async function runOneCase(testCase, index, total, rootDir, workRoot, config, opt
     onStderr: (chunk) => options.onCaseStderr?.(testCase, chunk),
   });
   const output = execution.stdout;
-  if (options.keepWorkspaces) {
-    // Full agent transcript for post-mortem (ignored by workspace diff via .mitii/).
-    const mitiiDir = join(workspace, '.mitii');
-    mkdirSync(mitiiDir, { recursive: true });
-    writeFileSync(join(mitiiDir, 'benchmark-agent.stdout'), execution.stdout ?? '');
-    writeFileSync(join(mitiiDir, 'benchmark-agent.stderr'), execution.stderr ?? '');
-  }
+  const failedRun =
+    execution.timedOut ||
+    execution.aborted ||
+    execution.exitCode !== 0;
   stage('verify', `Running ${testCase.checks.length} check(s)`);
   const after = snapshotTree(workspace, config.run.ignoreChanges);
   const checks = [];
@@ -143,14 +145,20 @@ async function runOneCase(testCase, index, total, rootDir, workRoot, config, opt
     }));
   }
   const usage = extractUsage(execution.stdout);
-  const failedRun =
-    execution.timedOut ||
-    execution.aborted ||
-    execution.exitCode !== 0;
   const passed =
     !execution.timedOut &&
     !execution.aborted &&
     checks.every((check) => check.passed);
+  const keepWorkspace =
+    Boolean(options.keepWorkspaces) || checks.some((check) => check.timedOut);
+  // Retain full agent transcript for post-mortem on agent failure, explicit keep,
+  // or grade-time command timeout (workspace also kept — see runCases cleanup).
+  if (keepWorkspace || failedRun || !passed) {
+    const mitiiDir = join(workspace, '.mitii');
+    mkdirSync(mitiiDir, { recursive: true });
+    writeFileSync(join(mitiiDir, 'benchmark-agent.stdout'), execution.stdout ?? '');
+    writeFileSync(join(mitiiDir, 'benchmark-agent.stderr'), execution.stderr ?? '');
+  }
   stage(passed ? 'passed' : 'failed', passed ? 'All checks passed' : (execution.timedOut ? 'Timed out' : 'Checks failed'));
   return baseResult(testCase, {
     passed,
@@ -164,9 +172,9 @@ async function runOneCase(testCase, index, total, rootDir, workRoot, config, opt
     durationMs: execution.durationMs,
     usage,
     exitCode: execution.exitCode,
-    stdout: sliceStdoutForReport(execution.stdout, failedRun),
-    stderr: execution.stderr.slice(0, failedRun ? 8000 : 4000),
-    workspace: options.keepWorkspaces ? workspace : null,
+    stdout: sliceStdoutForReport(execution.stdout, failedRun || !passed),
+    stderr: execution.stderr.slice(0, failedRun || !passed ? 8000 : 4000),
+    workspace: keepWorkspace ? workspace : null,
   });
 }
 

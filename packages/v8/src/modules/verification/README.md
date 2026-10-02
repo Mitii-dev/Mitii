@@ -10,6 +10,8 @@ Verification gathers evidence after a change. It maps changed files to projects,
 - Discovers applicable checks.
 - Selects proportional checks for the change scope. `test` checks (including
   `desktop:test` / WDIO) run only when `minimumEvidence` includes `tests`.
+  Required evidence kinds (typecheck/build/…) are never truncated by the
+  window `maxVerificationChecks` floor (often 2 on small context windows).
 - Package-scopes tests (and localized typecheck/lint/build) to touched
   `apps/` / `packages/` roots from `changedFiles`. A vscode settings paste
   must never drag in `packages/v8:test` unless that package was edited and

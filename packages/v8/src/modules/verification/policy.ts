@@ -10,7 +10,17 @@ export const CHECK_KINDS_BY_SCOPE: Record<
   VerificationChangeScope,
   readonly VerificationCheckKind[]
 > = {
-  localized: ["syntax", "diagnostics", "typecheck", "lint", "test", "diff_review"],
+  // Include build on narrow scopes: App Router / framework static generation
+  // defects (e.g. non-server form actions) are invisible to tsc alone.
+  localized: [
+    "syntax",
+    "diagnostics",
+    "typecheck",
+    "lint",
+    "test",
+    "build",
+    "diff_review",
+  ],
   module: [
     "syntax",
     "diagnostics",
@@ -18,6 +28,7 @@ export const CHECK_KINDS_BY_SCOPE: Record<
     "lint",
     "format",
     "test",
+    "build",
     "diff_review",
   ],
   cross_cutting: [
