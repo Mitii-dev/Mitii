@@ -35,7 +35,7 @@ and the inspiration-only policy are stated solely in `NOTICE-REVIEW.md`.
 
 ## Consequences
 
-- Consumers: Agent Engine (review intent), CLI `mitii review`, VS Code
+- Consumers: V8 Engine (review intent), CLI `mitii review`, VS Code
   review UI, automation/CI (SARIF + PR comments).
 - Skills remain playbooks; structured output uses `emit_review_finding`.
 - Architecture boundary tests and `ARCHITECTURE.md` §4 must list `review`.

@@ -6,7 +6,7 @@ import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 export const LOOP_REL =
-  'packages/v8/src/engine/agent-engine/policy/loopPolicyBands.ts';
+  'packages/v8/src/engine/v8-engine/legacy/policy/loopPolicyBands.ts';
 export const WINDOW_REL =
   'packages/v8/src/modules/window-budget/windowBudgetBands.ts';
 export const V8_LOOP_REL =

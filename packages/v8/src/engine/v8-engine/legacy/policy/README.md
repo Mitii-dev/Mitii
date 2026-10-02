@@ -50,7 +50,7 @@ pnpm policy-admin
 Opens a local page with live context-token budgeting, free %, and per-knob help.
 **Save** writes:
 
-- `packages/v8/src/engine/agent-engine/policy/loopPolicyBands.ts`
+- `packages/v8/src/engine/v8-engine/legacy/policy/loopPolicyBands.ts`
 - `packages/v8/src/modules/window-budget/windowBudgetBands.ts`
 
 Then rebuild `@mitii/v8`. See `tools/policy-admin/README.md`.

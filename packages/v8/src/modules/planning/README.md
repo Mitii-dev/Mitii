@@ -106,10 +106,10 @@ Does not own plan approval UI, tool execution, route authority, task-list persis
 pnpm exec vitest run packages/v8/src/modules/planning
 ```
 
-Related engine coverage checks async planning, task-list alignment, discovery, Plan quality floor, and the repair-queue behavior:
+Related engine coverage (plan discovery + orchestrator goldens):
 
 ```bash
-pnpm exec vitest run packages/v8/src/engine/agent-engine/tests/AgentEngineTaskList.spec.ts packages/v8/src/engine/agent-engine/tests/AgentEnginePipeline.spec.ts packages/v8/src/engine/agent-engine/tests/AgentEngineDiscovery.spec.ts packages/v8/src/engine/agent-engine/tests/AgentEngineRepairQueue.spec.ts packages/v8/src/engine/agent-engine/actions/tests/planDiscoveryQuality.spec.ts packages/v8/src/engine/agent-engine/actions/tests/planDiscoveryContract.spec.ts packages/v8/src/engine/agent-engine/internal/tests/discoveryPassBudget.spec.ts
+pnpm exec vitest run packages/v8/src/engine/v8-engine/modules/plan-discovery packages/v8/src/engine/v8-engine/tests/golden.behavioral.spec.ts packages/v8/src/engine/v8-engine/pipeline/V8EnginePipeline.spec.ts
 ```
 
 ## Example Flow

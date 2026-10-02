@@ -44,7 +44,7 @@ Application Hosts
         |
         | inject ports, secrets, UI, persistence
         v
-Agent Engine
+V8 Engine
   coordinates public V8 facades and run state
         |
         |-- Request Intake
@@ -192,7 +192,7 @@ Contract compatibility follows explicit schema versions. Breaking public changes
 Allowed dependencies point inward to contracts and public facades:
 
 ```text
-Application -> Agent Engine -> public V8 facades
+Application -> V8 Engine -> public V8 facades
 Repository Context -> Repository State public contracts/reader port
 Verification -> Tool Runtime public facade
 All modules -> their own contracts, actions, internals, adapters
@@ -202,8 +202,8 @@ Forbidden dependencies:
 
 - Any V8 production import from legacy paths.
 - A cross-module import from `actions/`, `internal/`, private adapters, or tests.
-- Any pipeline importing Agent Engine.
-- Repository modules importing Model Gateway, Prompt Construction, Verification, or Agent Engine.
+- Any pipeline importing V8 Engine.
+- Repository modules importing Model Gateway, Prompt Construction, Verification, or V8 Engine.
 - Model Gateway importing Tool Runtime.
 - Prompt Construction executing tools or retrieval.
 - Host APIs imported into a V8 business module.
@@ -420,7 +420,7 @@ Every policy-produced decision may include `DecisionTrace` with the route
 priority step, grant profile, mutation profile, injection clamp status, and
 signals used.
 
-After repository discovery, Agent Engine may call Decision Policy `narrow()`.
+After repository discovery, V8 Engine may call Decision Policy `narrow()`.
 Narrowing is monotonic: it can shrink path scopes, raise approval mode, or
 tighten mutation budget, but it cannot add tools, effects, network hosts, or
 broader paths. Tool Runtime remains the enforcement point for every tool call.
@@ -544,7 +544,7 @@ Result states distinguish:
 - blocked
 - cancelled
 
-## 16. Agent Engine state machine
+## 16. V8 Engine state machine
 
 ```text
 Active:
@@ -601,7 +601,7 @@ Automated checks MUST cover:
 - cross-module deep imports
 - exports leaking `internal/`, `actions/`, tests, or private adapters
 - module cycles
-- pipeline imports of Agent Engine
+- pipeline imports of V8 Engine
 - host API imports inside V8
 - duplicate public contract definitions
 - missing contract/version tests
