@@ -74,4 +74,22 @@ describe("refineExecutionSeedFromContext", () => {
     });
     expect(refined).toEqual(original);
   });
+
+  it("binds app mount files when auth route is seeded", () => {
+    const refined = refineExecutionSeedFromContext({
+      seed: seed({
+        paths: ["src/routes/login.js", "src/routes/users.js"],
+        source: "user",
+      }),
+      contextPaths: [
+        "src/routes/login.js",
+        "src/routes/users.js",
+        "src/index.js",
+        "package.json",
+      ],
+      userPrompt: "Add bearer token login that returns 401 on bad password",
+    });
+    expect(refined.paths).toContain("src/index.js");
+    expect(refined.paths).toContain("src/routes/login.js");
+  });
 });

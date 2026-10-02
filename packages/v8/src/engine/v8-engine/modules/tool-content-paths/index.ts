@@ -6,6 +6,20 @@
 
 const PATH_KEYS = ["path", "from", "to", "directory", "cwd", "root"] as const;
 
+/**
+ * Models and seeds often omit the leading dot: `github/workflows/ci.yml`.
+ * On-disk CI lives under `.github/workflows/`. Rewrite so patches, critic
+ * scope, and seeds hit the real tree — never create a parallel `github/` dir.
+ */
+export function normalizeCiWorkflowPath(value: string): string {
+  const trimmed = value.trim().replace(/\\/g, "/");
+  // `github/workflows/...` → `.github/workflows/...`
+  if (/^github\/workflows\//i.test(trimmed)) {
+    return `.github/${trimmed.slice("github/".length)}`;
+  }
+  return trimmed;
+}
+
 export function extractToolContentPaths(
   toolName: string,
   argumentsValue: unknown,
@@ -88,7 +102,8 @@ export function toolContentPathsOverlap(
 }
 
 export function normalizeRepoPath(value: string): string {
-  return value.trim().replace(/\\/g, "/").replace(/^\.\//, "");
+  const trimmed = value.trim().replace(/\\/g, "/").replace(/^\.\//, "");
+  return normalizeCiWorkflowPath(trimmed);
 }
 
 function unique(paths: readonly string[]): string[] {

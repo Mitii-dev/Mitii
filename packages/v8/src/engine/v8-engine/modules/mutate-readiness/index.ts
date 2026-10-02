@@ -23,6 +23,14 @@ export {
   isIdentifiableLocalEvidence,
 } from "./evidenceRecovery";
 export type { EvidenceRecoveryDecision } from "./evidenceRecovery";
+export {
+  decideMutateEvidenceAction,
+} from "./decideMutateEvidenceAction";
+export type {
+  EvidenceState,
+  MutateEvidenceDecision,
+  MutateEvidenceDecisionKind,
+} from "./decideMutateEvidenceAction";
 
 export type ActiveStepMutateReadiness = {
   ready: boolean;
@@ -340,10 +348,17 @@ export function shouldRearmMutateLockOnContinue(params: {
   if (!params.mutationRequired || params.changedFileCount > 0) {
     return false;
   }
+  // Engine clarify wall: do NOT force mutate lock — need an explicit path first.
+  if (params.wallReason === "evidence_clarify") {
+    return false;
+  }
+  const codes = params.reasonCodes ?? [];
+  if (codes.includes("evidence_recovery_exhausted")) {
+    return false;
+  }
   if (params.wallReason === "unfulfilled_execute") {
     return true;
   }
-  const codes = params.reasonCodes ?? [];
   return (
     codes.includes("readonly_thrash_continue") ||
     codes.includes("step_mutate_lock_armed") ||

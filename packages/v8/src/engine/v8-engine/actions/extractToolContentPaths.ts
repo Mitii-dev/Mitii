@@ -4,4 +4,5 @@ export {
   stripPathRangeSuffix,
   toolContentPathsOverlap,
   normalizeRepoPath,
+  normalizeCiWorkflowPath,
 } from "../modules/tool-content-paths";

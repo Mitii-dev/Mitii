@@ -227,10 +227,17 @@ function isPathInAskScope(path: string, scopes: readonly string[]): boolean {
 
 function isHardDeniedDiagnosticPath(path: string): boolean {
   const normalized = normalizePath(path);
-  return normalized
-    .split("/")
-    .filter(Boolean)
-    .some((segment) => HARD_DENIED_SEGMENTS.has(segment));
+  if (
+    normalized
+      .split("/")
+      .filter(Boolean)
+      .some((segment) => HARD_DENIED_SEGMENTS.has(segment))
+  ) {
+    return true;
+  }
+  // Harness frames often prefix noise before the real path
+  // (e.g. "❯ EventEmitter.onMessage ../../node_modules/vitest/...").
+  return /(?:^|\/| )node_modules(?:\/|$)/i.test(normalized);
 }
 
 function normalizePath(value: string): string {

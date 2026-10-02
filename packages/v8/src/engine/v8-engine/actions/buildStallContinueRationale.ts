@@ -12,6 +12,13 @@ export const BUDGET_WALL_REASONS = [
   "budget_exhausted",
   "verification_repair_capped",
   "incomplete_checklist",
+  /**
+   * Engine-driven clarify after evidence recovery exhausted.
+   * Host may still show Continue, but resume must NOT force apply_patch —
+   * user must supply an explicit path (or stop). Distinct from
+   * unfulfilled_execute (resume_mutate).
+   */
+  "evidence_clarify",
 ] as const;
 
 export type BudgetWallReason = (typeof BUDGET_WALL_REASONS)[number];
@@ -85,6 +92,11 @@ export function buildBudgetWallRationale(params: {
           : "Edits are in progress, but the last turn stopped without applying the next patch.",
       );
       break;
+    case "evidence_clarify":
+      lines.push(
+        "I don't have a concrete file path to edit yet after the evidence budget was used.",
+      );
+      break;
     case "rejected_mutation":
       lines.push(
         "Our first edit attempts didn't land cleanly — we'd like to take another careful look before trying again.",
@@ -129,7 +141,11 @@ export function buildBudgetWallRationale(params: {
     );
   }
 
-  if (
+  if (params.reason === "evidence_clarify") {
+    lines.push(
+      "Continue with an explicit file path to focus on, or stop here. Do not expect another open-ended search pass.",
+    );
+  } else if (
     zeroProgressMutation ||
     params.reason === "unfulfilled_execute" ||
     params.reason === "rejected_mutation" ||
@@ -214,6 +230,11 @@ export function buildBudgetWallResetMessage(params: {
     case "rejected_mutation":
       parts.push(
         "The user approved continuing after a mutation recovery limit. Your next action MUST be apply_patch, delete_file, or move_file on a bounded surface. Do not call list_directory, glob_files, or search_files. If write/mustRead file contents are not yet in context, you may use the remaining targeted read_file/read_many_files batches on those paths only, then patch immediately. A second Continue spends that read budget.",
+      );
+      break;
+    case "evidence_clarify":
+      parts.push(
+        "The user approved continuing after an evidence-clarify wall (engine stop — not a mutate resume). Do NOT force apply_patch yet. If they shared an explicit file path in guidance, bind to that path only (read_file then apply_patch). If no path was shared, ask for one or stop — do not reopen broad search/list/glob.",
       );
       break;
     case "incomplete_execute":

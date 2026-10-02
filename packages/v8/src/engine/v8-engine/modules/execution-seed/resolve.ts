@@ -260,10 +260,14 @@ function uniqueCap(values: readonly string[], max: number): string[] {
 }
 
 function normalizePath(value: string): string {
-  return value
+  let path = value
     .trim()
     .replace(/\\/g, "/")
     .replace(/\/+/g, "/")
     .replace(/^\.\//, "")
     .replace(/\/+$/, "");
+  if (/^github\/workflows\//i.test(path)) {
+    path = `.github/${path.slice("github/".length)}`;
+  }
+  return path;
 }

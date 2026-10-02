@@ -263,6 +263,21 @@ describe("mutateReadiness (per-step evidence → patch)", () => {
     ).toBe(true);
     expect(
       shouldRearmMutateLockOnContinue({
+        wallReason: "evidence_clarify",
+        changedFileCount: 0,
+        mutationRequired: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldRearmMutateLockOnContinue({
+        wallReason: "unfulfilled_execute",
+        changedFileCount: 0,
+        mutationRequired: true,
+        reasonCodes: ["evidence_recovery_exhausted"],
+      }),
+    ).toBe(false);
+    expect(
+      shouldRearmMutateLockOnContinue({
         wallReason: "unfulfilled_execute",
         changedFileCount: 2,
         mutationRequired: true,

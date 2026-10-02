@@ -86,6 +86,12 @@ describe("buildVerificationRepairPrompt", () => {
             startLine: 1,
           },
           {
+            path: "❯ EventEmitter.onMessage ../../node_modules/vitest/dist/chunks/index.B521nVV-.js",
+            severity: "error",
+            message: "20",
+            startLine: 103,
+          },
+          {
             path: "packages/other/src/unrelated.ts",
             severity: "error",
             message: "unrelated",
