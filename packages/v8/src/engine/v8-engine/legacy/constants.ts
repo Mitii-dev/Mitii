@@ -92,6 +92,10 @@ export const AGENT_REASON_CODES = [
   "discovery_skipped",
   /** Prompt already named concrete files — shaped glob/search preflight skipped. */
   "discovery_explicit_paths_skip_shaped_search",
+  /** Medium/large: trusted seed / preferred paths read before shaped search. */
+  "discovery_seed_first",
+  /** Seed pre-reads produced no evidence; shaped search ran as fallback. */
+  "discovery_seed_insufficient_shaped_fallback",
   "plan_rejected",
   "plan_edited",
   "task_list_seeded",

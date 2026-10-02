@@ -286,6 +286,13 @@ function requiresConcreteChangeSteps(
   if (input.mode === "plan") {
     return true;
   }
+  // Medium/large agent plans must name real files (same bar as visible Plan).
+  if (
+    input.evidence.taskSize === "medium" ||
+    input.evidence.taskSize === "large"
+  ) {
+    return true;
+  }
   return input.planningDepth === "visible";
 }
 

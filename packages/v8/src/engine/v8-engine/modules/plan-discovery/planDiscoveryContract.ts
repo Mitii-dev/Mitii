@@ -5,14 +5,16 @@ import { isPlanningFollowUp } from "../../actions/planningContext";
 import { resolveShapedDiscoveryProfile } from "../shaped-discovery";
 
 export type PlanningDepthForContract = "none" | "internal" | "visible";
+export type PlanningTaskSizeForContract = "small" | "medium" | "large";
 
 /**
  * Discovery contract before drafting.
  *
  * Plan mode: cold / shaped asks force discover_and_plan (user expects a
  * thorough one-shot plan with real files/paths).
- * Agent mode: big tasks (visible plan depth, or wide internal) get the same
- * discovery-first contract, then execute — not a hollow plan_from_ask.
+ * Agent mode: medium/large taskSize, visible plan depth, or wide internal
+ * get the same discovery-first contract, then execute — not a hollow
+ * plan_from_ask.
  *
  * Architecture / big-task asks override incidental follow_evidence so
  * preflight diagnostics cannot skip discovery.
@@ -26,6 +28,8 @@ export function applyPlanModeDiscoveryContract(params: {
   planningDepth?: PlanningDepthForContract;
   /** Wide Agent scopes (package+/complex+/recommendsPlanning). */
   agentWideScope?: boolean;
+  /** Officer taskSize — medium/large force bounded discovery on Agent. */
+  taskSize?: PlanningTaskSizeForContract;
 }): {
   strategy: PlanStrategyDecision;
   applied: boolean;
@@ -79,6 +83,7 @@ function shouldOverrideFollowEvidence(params: {
   conversation: readonly { role: string; content: string }[];
   planningDepth?: PlanningDepthForContract;
   agentWideScope?: boolean;
+  taskSize?: PlanningTaskSizeForContract;
 }): boolean {
   if (looksLikeArchitectureDiscoveryAsk(params.query)) {
     return true;
@@ -94,9 +99,7 @@ function shouldOverrideFollowEvidence(params: {
     return resolveShapedDiscoveryProfile(params.query) !== undefined;
   }
   if (params.mode === "agent") {
-    const bigTask =
-      params.planningDepth === "visible" ||
-      (params.planningDepth === "internal" && params.agentWideScope === true);
+    const bigTask = isAgentDiscoveryRequiredTask(params);
     return bigTask && looksLikeArchitectureDiscoveryAsk(params.query);
   }
   return false;
@@ -159,21 +162,26 @@ function applyAgentBigTaskDiscoveryContract(params: {
   strategy: PlanStrategyDecision;
   planningDepth?: PlanningDepthForContract;
   agentWideScope?: boolean;
+  taskSize?: PlanningTaskSizeForContract;
 }): {
   strategy: PlanStrategyDecision;
   applied: boolean;
   rationale?: string;
 } {
-  const bigTask =
-    params.planningDepth === "visible" ||
-    (params.planningDepth === "internal" && params.agentWideScope === true);
-  if (!bigTask) {
+  if (!isAgentDiscoveryRequiredTask(params)) {
     return { strategy: params.strategy, applied: false };
   }
 
-  // Agent follow-ups with known surfaces may keep plan_from_ask (like Plan).
+  // Agent follow-ups with known surfaces may keep plan_from_ask only for
+  // small tasks. Medium/large always rediscover (bounded).
   const followUp = isPlanningFollowUp(params.query, params.conversation);
-  if (followUp && params.strategy.strategy === "plan_from_ask") {
+  const mediumOrLarge =
+    params.taskSize === "medium" || params.taskSize === "large";
+  if (
+    followUp &&
+    params.strategy.strategy === "plan_from_ask" &&
+    !mediumOrLarge
+  ) {
     return { strategy: params.strategy, applied: false };
   }
 
@@ -182,7 +190,9 @@ function applyAgentBigTaskDiscoveryContract(params: {
     return {
       strategy: forceDiscoverAndPlan(
         params.strategy,
-        `Agent big-task: ${shapedProfile.id} ask requires discovery before drafting.`,
+        mediumOrLarge
+          ? `Agent ${params.taskSize} task: ${shapedProfile.id} ask requires bounded discovery before drafting.`
+          : `Agent big-task: ${shapedProfile.id} ask requires discovery before drafting.`,
       ),
       applied: true,
       rationale: shapedProfile.id,
@@ -196,16 +206,32 @@ function applyAgentBigTaskDiscoveryContract(params: {
     return {
       strategy: forceDiscoverAndPlan(
         params.strategy,
-        params.planningDepth === "visible"
-          ? "Agent visible-plan task: discover repository surfaces before drafting, then execute."
-          : "Agent wide-scope task: discover repository surfaces before drafting, then execute.",
+        mediumOrLarge
+          ? `Agent ${params.taskSize} task: bounded discovery before a concrete implementation plan, then execute.`
+          : params.planningDepth === "visible"
+            ? "Agent visible-plan task: discover repository surfaces before drafting, then execute."
+            : "Agent wide-scope task: discover repository surfaces before drafting, then execute.",
       ),
       applied: true,
-      rationale: "agent_big_task",
+      rationale: mediumOrLarge ? `agent_${params.taskSize}_task` : "agent_big_task",
     };
   }
 
   return { strategy: params.strategy, applied: false };
+}
+
+function isAgentDiscoveryRequiredTask(params: {
+  planningDepth?: PlanningDepthForContract;
+  agentWideScope?: boolean;
+  taskSize?: PlanningTaskSizeForContract;
+}): boolean {
+  if (params.taskSize === "medium" || params.taskSize === "large") {
+    return true;
+  }
+  return (
+    params.planningDepth === "visible" ||
+    (params.planningDepth === "internal" && params.agentWideScope === true)
+  );
 }
 
 function forceDiscoverAndPlan(

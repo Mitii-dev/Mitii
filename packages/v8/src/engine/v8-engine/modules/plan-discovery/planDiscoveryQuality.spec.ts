@@ -76,6 +76,34 @@ describe("requiresPlanDiscoveryQualityFloor", () => {
       }),
     ).toBe(false);
   });
+
+  it("requires a floor for Agent medium/large taskSize even on internal depth", () => {
+    expect(
+      requiresPlanDiscoveryQualityFloor({
+        mode: "agent",
+        explorationDepth: "auto",
+        planningDepth: "internal",
+        agentWideScope: false,
+        taskSize: "medium",
+      }),
+    ).toBe(true);
+    expect(
+      requiresPlanDiscoveryQualityFloor({
+        mode: "agent",
+        explorationDepth: "auto",
+        planningDepth: "none",
+        taskSize: "large",
+      }),
+    ).toBe(true);
+    expect(
+      requiresPlanDiscoveryQualityFloor({
+        mode: "agent",
+        explorationDepth: "auto",
+        planningDepth: "internal",
+        taskSize: "small",
+      }),
+    ).toBe(false);
+  });
 });
 
 describe("isPlanDiscoveryEvidenceSufficient", () => {
@@ -247,6 +275,27 @@ describe("shouldPreferDiscoverySymbolEvidence", () => {
         codeIntelligenceToolIds: ["document_symbol"],
       }),
     ).toBe(true);
+  });
+
+  it("nudges symbols for medium preferSymbols without thorough", () => {
+    expect(
+      shouldPreferDiscoverySymbolEvidence({
+        thorough: false,
+        preferSymbols: true,
+        allowedTools: ["goto_definition", "find_references"],
+        reasonCodes: [],
+        codeIntelligenceToolIds: ["goto_definition", "find_references"],
+      }),
+    ).toBe(true);
+    expect(
+      shouldPreferDiscoverySymbolEvidence({
+        thorough: false,
+        preferSymbols: false,
+        allowedTools: ["goto_definition"],
+        reasonCodes: [],
+        codeIntelligenceToolIds: ["goto_definition"],
+      }),
+    ).toBe(false);
   });
 });
 

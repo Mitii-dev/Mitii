@@ -83,6 +83,13 @@ export async function runDiscoveryPass(
   qualityFloor?: boolean;
   /** Plan / Agent-visible: multi-file multi-surface thoroughness bar. */
   thoroughEvidence?: boolean;
+  /**
+   * Medium/large: prefer trusted seed/explicit paths first; only run shaped
+   * search when seeds are insufficient.
+   */
+  seedFirstDiscovery?: boolean;
+  /** Soft symbol nudge even when thoroughEvidence is off (medium band). */
+  preferSymbols?: boolean;
 }): Promise<{
   brief: DiscoveryBrief;
   failed: boolean;
@@ -106,6 +113,8 @@ export async function runDiscoveryPass(
     preferredPaths = [],
     qualityFloor = false,
     thoroughEvidence = false,
+    seedFirstDiscovery = false,
+    preferSymbols = false,
   } = params;
 
   runtime.emitStage(bus, runId, "discovery", "started");
@@ -141,6 +150,7 @@ export async function runDiscoveryPass(
     "natural";
   const preferSymbolEvidence = shouldPreferDiscoverySymbolEvidence({
     thorough: thoroughEvidence,
+    preferSymbols,
     allowedTools: decision.toolGrant.allowedTools,
     reasonCodes: decision.reasonCodes,
     codeIntelligenceToolIds: CODE_INTELLIGENCE_TOOL_IDS,
@@ -175,14 +185,19 @@ export async function runDiscoveryPass(
       : preferredPaths;
     // When the prompt already names concrete files, skip broad shaped globs
     // (**/routes/**/*.ts etc.) and seed-read those paths instead.
-    const skipShapedSearch = hasExplicitFilePathTargets([
+    // Medium seed-first: same — prefer trusted/explicit seeds before shaped search.
+    const hasSeedFilePaths = hasExplicitFilePathTargets([
       ...rankedPreferred,
       ...preferredPaths,
     ]);
+    let skipShapedSearch = hasSeedFilePaths;
     if (skipShapedSearch) {
       reasonCodes.push("discovery_explicit_paths_skip_shaped_search");
     }
-    const globHits =
+    if (seedFirstDiscovery && hasSeedFilePaths) {
+      reasonCodes.push("discovery_seed_first");
+    }
+    let globHits: string[] =
       shapedProfile && !skipShapedSearch
         ? await collectShapedDiscoveryHits({
             profile: shapedProfile,
@@ -207,31 +222,52 @@ export async function runDiscoveryPass(
             },
           })
         : [];
-    const shapedSeeds = shapedProfile
+    let shapedSeeds = shapedProfile
       ? selectShapedDiscoverySeeds(shapedProfile, globHits, rankedPreferred)
       : [];
     // Quality floor: if scoring filtered every hit, still try top ranked paths.
-    const qualityFallbackSeeds =
-      qualityFloor && shapedSeeds.length === 0 && shapedProfile
+    let qualityFallbackSeeds =
+      qualityFloor && shapedSeeds.length === 0 && shapedProfile && !skipShapedSearch
         ? rankPathsForShapedDiscovery(shapedProfile, globHits).slice(0, 4)
         : [];
-    const seeds = [
-      ...shapedSeeds,
-      ...qualityFallbackSeeds.filter((path) => !shapedSeeds.includes(path)),
-      ...rankedPreferred.filter(
-        (path) =>
-          !shapedSeeds.includes(path) && !qualityFallbackSeeds.includes(path),
-      ),
-    ]
+    // Seed-first: preferred / trusted paths before shaped hits.
+    const seeds = (
+      seedFirstDiscovery
+        ? [
+            ...rankedPreferred,
+            ...preferredPaths,
+            ...shapedSeeds,
+            ...qualityFallbackSeeds,
+          ]
+        : [
+            ...shapedSeeds,
+            ...qualityFallbackSeeds.filter((path) => !shapedSeeds.includes(path)),
+            ...rankedPreferred.filter(
+              (path) =>
+                !shapedSeeds.includes(path) &&
+                !qualityFallbackSeeds.includes(path),
+            ),
+          ]
+    )
       .map((path) => path.trim())
-      .filter((path) => path.length > 0 && path.includes("."))
-      .slice(0, Math.min(6, DISCOVERY_PASS_POLICY.maxFileReads));
+      .filter((path) => path.length > 0 && path.includes("."));
+    const uniqueSeeds: string[] = [];
+    const seenSeed = new Set<string>();
+    for (const path of seeds) {
+      const key = path.replace(/\\/g, "/").toLowerCase();
+      if (seenSeed.has(key)) continue;
+      seenSeed.add(key);
+      uniqueSeeds.push(path);
+      if (uniqueSeeds.length >= Math.min(6, DISCOVERY_PASS_POLICY.maxFileReads)) {
+        break;
+      }
+    }
     const preReadByPath = new Map<string, string>();
     const perFileChars = Math.min(
       4_000,
       windowPolicy.compaction.toolResultContentChars,
     );
-    for (const seedPath of seeds) {
+    for (const seedPath of uniqueSeeds) {
       // Do not gate seed reads on search budget — shaped preflight often
       // spends the search allotment before any file is opened.
       if (!discoveryCanReadMore(collector) || signal.aborted) {
@@ -263,10 +299,84 @@ export async function runDiscoveryPass(
       }
     }
 
+    // Medium seed-first with empty preferred paths: run shaped search now.
+    // Or when preferred seeds failed to open any file — fall back to shaped.
+    if (
+      seedFirstDiscovery &&
+      skipShapedSearch &&
+      shapedProfile &&
+      preReadByPath.size === 0 &&
+      discoveryBudgetRemaining(collector) &&
+      !signal.aborted
+    ) {
+      skipShapedSearch = false;
+      reasonCodes.push("discovery_seed_insufficient_shaped_fallback");
+      globHits = await collectShapedDiscoveryHits({
+        profile: shapedProfile,
+        shouldContinue: () =>
+          discoveryBudgetRemaining(collector) &&
+          collector.searches < DISCOVERY_PASS_POLICY.maxSearches &&
+          !signal.aborted,
+        executeTool: async (toolName, argumentsValue) => {
+          const result = await executeDiscoveryToolCall(runtime, {
+            runId,
+            bus,
+            budget,
+            collector,
+            grant,
+            workspaceRoot: workspaceRoot!,
+            pinnedState,
+            windowPolicy,
+            toolName,
+            argumentsValue,
+          });
+          return result?.output;
+        },
+      });
+      shapedSeeds = selectShapedDiscoverySeeds(
+        shapedProfile,
+        globHits,
+        rankedPreferred,
+      );
+      qualityFallbackSeeds =
+        qualityFloor && shapedSeeds.length === 0
+          ? rankPathsForShapedDiscovery(shapedProfile, globHits).slice(0, 4)
+          : [];
+      for (const seedPath of [...shapedSeeds, ...qualityFallbackSeeds]) {
+        if (!discoveryCanReadMore(collector) || signal.aborted) break;
+        if (hasDiscoveryReadPath(collector, seedPath)) continue;
+        const seedResult = await executeDiscoveryToolCall(runtime, {
+          runId,
+          bus,
+          budget,
+          collector,
+          grant,
+          workspaceRoot: workspaceRoot!,
+          pinnedState,
+          windowPolicy,
+          toolName: "read_file",
+          argumentsValue: { path: seedPath },
+        });
+        if (seedResult?.status === "succeeded") {
+          const text = extractDiscoveryReadText(seedResult.output);
+          if (text.length > 0) {
+            preReadByPath.set(
+              seedPath.replace(/\\/g, "/").replace(/^\.\//, ""),
+              text.slice(0, perFileChars),
+            );
+          }
+        }
+      }
+    }
+
+    const promptSeeds =
+      uniqueSeeds.length > 0
+        ? uniqueSeeds
+        : [...shapedSeeds, ...rankedPreferred].slice(0, 6);
     const prompt = buildDiscoveryPrompt({
       query,
       objective,
-      preferredPaths: seeds,
+      preferredPaths: promptSeeds,
       shapedDiscovery: shapedProfile,
     });
     const qualityFloorNudge = thoroughEvidence

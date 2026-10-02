@@ -196,6 +196,45 @@ describe("resolvePlanStrategyRules", () => {
     expect(decision.skipDiscover).toBe(true);
   });
 
+  it("forces bounded discover_and_plan for medium even with knownPathHints", () => {
+    const decision = resolvePlanStrategyRules(
+      input({
+        explorationDepth: "auto",
+        query: "Add retry support to the API client and update tests",
+        evidence: {
+          ...input().evidence,
+          primaryIntent: "feature",
+          scope: "multi_file",
+          complexity: "moderate",
+          taskSize: "medium",
+          recommendsPlanning: true,
+          targets: [
+            { kind: "file", value: "src/api/client.ts", explicit: true },
+          ],
+        },
+        buildEvidence: undefined,
+        knownPathHints: ["src/api/client.ts", "src/api/client.test.ts"],
+      }),
+    );
+
+    expect(decision.strategy).toBe("discover_and_plan");
+    expect(decision.skipDiscover).toBe(false);
+  });
+
+  it("keeps follow_evidence for medium repair with in-scope diagnostics", () => {
+    const decision = resolvePlanStrategyRules(
+      input({
+        evidence: {
+          ...input().evidence,
+          taskSize: "medium",
+        },
+      }),
+    );
+
+    expect(decision.strategy).toBe("follow_evidence");
+    expect(decision.skipDiscover).toBe(true);
+  });
+
   it("still rediscovers on deep exploration even with knownPathHints", () => {
     const decision = resolvePlanStrategyRules(
       input({

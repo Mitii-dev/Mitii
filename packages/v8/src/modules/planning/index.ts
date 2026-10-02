@@ -39,6 +39,7 @@ export {
   resolvePlanStrategyRules,
   isRepairIntent,
   isArchitecturePlanningAsk,
+  isMediumOrLargerTask,
 } from "./actions/ResolvePlanStrategy";
 
 export {
@@ -50,6 +51,7 @@ export {
 export {
   planningInputSchema,
   planningTaskEvidenceSchema,
+  planningTaskSizeSchema,
   planningSkillHintSchema,
   explorationDepthSchema,
   planningScopedRepoMapSchema,

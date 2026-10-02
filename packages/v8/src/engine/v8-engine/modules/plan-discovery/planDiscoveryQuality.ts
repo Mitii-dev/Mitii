@@ -2,14 +2,15 @@ import type { DiscoveryBrief } from "../../../../modules/planning";
 import type { AgentMode } from "../../../../modules/request-intake";
 
 export type PlanningDepthForQuality = "none" | "internal" | "visible";
+export type PlanningTaskSizeForQuality = "small" | "medium" | "large";
 
 /**
  * When true, discovery must produce file-backed evidence before a concrete
  * plan is treated as ready.
  *
  * - Plan mode (except thoroughness Low / `quick`): always.
- * - Agent mode: only for big tasks already assigned a plan depth
- *   (`visible` / wide `internal`) — same foolproof bar as Plan, then execute.
+ * - Agent mode: medium/large taskSize, or big tasks already assigned a plan
+ *   depth (`visible` / wide `internal`) — same foolproof bar as Plan, then execute.
  */
 export function requiresPlanDiscoveryQualityFloor(params: {
   mode: AgentMode;
@@ -17,6 +18,8 @@ export function requiresPlanDiscoveryQualityFloor(params: {
   planningDepth?: PlanningDepthForQuality;
   /** Wide Agent scopes (package+/complex+/recommendsPlanning). */
   agentWideScope?: boolean;
+  /** Officer taskSize — medium/large require file-backed discovery. */
+  taskSize?: PlanningTaskSizeForQuality;
 }): boolean {
   if (params.explorationDepth === "quick") {
     return false;
@@ -26,6 +29,9 @@ export function requiresPlanDiscoveryQualityFloor(params: {
   }
   if (params.mode !== "agent") {
     return false;
+  }
+  if (params.taskSize === "medium" || params.taskSize === "large") {
+    return true;
   }
   if (params.planningDepth === "visible") {
     return true;
@@ -131,15 +137,17 @@ export function shouldRequireDiscoverySymbolEvidence(params: {
 
 /**
  * Soft preference for symbol tools during discovery (nudges only).
- * True whenever nav tools are granted, even if forced tool choice is unavailable.
+ * True for thorough Plan / Agent-visible OR medium/large bounded discovery.
  */
 export function shouldPreferDiscoverySymbolEvidence(params: {
   thorough: boolean;
   allowedTools: readonly string[];
   reasonCodes: readonly string[];
   codeIntelligenceToolIds: readonly string[];
+  /** Soft symbol nudge for medium/large without thorough bar. */
+  preferSymbols?: boolean;
 }): boolean {
-  if (!params.thorough) {
+  if (!params.thorough && params.preferSymbols !== true) {
     return false;
   }
   if (params.reasonCodes.includes("code_navigation_unavailable")) {
