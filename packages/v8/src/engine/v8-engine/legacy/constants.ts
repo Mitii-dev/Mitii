@@ -193,6 +193,10 @@ export const AGENT_REASON_CODES = [
   "step_mutate_lock_armed",
   /** Mutate lock rejected a discovery tool at execution (not just catalog filter). */
   "step_mutate_lock_enforced",
+  /** One capped local-evidence recovery after happy-path bind budget. */
+  "evidence_recovery_armed",
+  /** Recovery used or miss not local — clarify/escalate, no open search. */
+  "evidence_recovery_exhausted",
   /** Authoritative paths/causes resolved from user cites and/or diagnostics. */
   "execution_seed_trusted",
   /** No authoritative seed yet — do not force patch-required. */

@@ -37,27 +37,34 @@ describe("mutateReadiness (per-step evidence → patch)", () => {
     expect(resolveMutateReadinessBudget("small").maxEvidencePaths).toBe(4);
     expect(
       resolveMutateReadinessBudget("medium", "standard").readonlyTurnsBeforeGate,
-    ).toBe(3);
+    ).toBe(4);
     expect(
       resolveMutateReadinessBudget("medium", "standard").maxEvidencePaths,
     ).toBe(8);
     expect(
+      resolveMutateReadinessBudget("medium", "standard")
+        .maxEvidenceGateNudgesBeforePatchDemand,
+    ).toBe(3);
+    expect(
       resolveMutateReadinessBudget("medium", "wide").readonlyTurnsBeforeGate,
-    ).toBe(2);
+    ).toBe(3);
     expect(
       resolveMutateReadinessBudget("medium", "wide").maxEvidencePaths,
     ).toBe(8);
     expect(resolveMutateReadinessBudget("large").maxEvidencePaths).toBe(12);
     expect(
-      resolveMutateReadinessBudget("medium").maxEvidenceGateNudgesBeforePatchDemand,
+      resolveMutateReadinessBudget("medium").evidenceRecoveryTurns,
     ).toBe(2);
+    expect(
+      resolveMutateReadinessBudget("medium").evidenceRecoveryMaxPaths,
+    ).toBe(4);
     // Turns = model/tool-loop turns; window tokens map via band.
     expect(
       resolveMutateReadinessBudget("medium", 40_000).readonlyTurnsBeforeGate,
-    ).toBe(3);
+    ).toBe(5);
     expect(
       resolveMutateReadinessBudget("medium", 120_000).readonlyTurnsBeforeGate,
-    ).toBe(2);
+    ).toBe(3);
     expect(
       resolveStepReadonlyTurnsBeforeGate({
         taskSize: "large",

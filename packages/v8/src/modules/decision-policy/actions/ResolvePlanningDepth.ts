@@ -126,6 +126,12 @@ export function resolvePlanningDepth(params: {
     }
   }
 
+  // Agent execute always gets at least a short internal plan (never none).
+  if (mode === "agent" && route === "execute") {
+    reasonCodes.push("officer_task_size_plan", "multi_file_internal_plan");
+    return { planningDepth: "internal", reasonCodes };
+  }
+
   if (isSimpleLocalized(taskAnalysis)) {
     reasonCodes.push("simple_localized_no_visible_plan");
     return { planningDepth: "none", reasonCodes };
@@ -190,7 +196,8 @@ function isSimpleLocalized(
 
 /**
  * Map RU Officer taskSize / planningHint to planningDepth.
- * Returns null when Officer left small/none (let classic heuristics decide).
+ * Medium/large (and medium/long hints) plan early. Small/short is a floor
+ * applied later for agent execute — never steals broad_repair / architecture.
  */
 function resolveOfficerTaskSizePlanningDepth(params: {
   taskAnalysis: RequestUnderstandingResult["taskAnalysis"];
@@ -200,11 +207,7 @@ function resolveOfficerTaskSizePlanningDepth(params: {
   const size = taskAnalysis.taskSize;
   const hint = taskAnalysis.planningHint;
 
-  // Only fire when Officer (or sizeDraft) set an explicit band/hint.
-  // Do not steal architecture / large-implementation visible plans from
-  // recommendsPlanning alone.
   const explicitOfficerSignal =
-    hint === "short" ||
     hint === "medium" ||
     hint === "long" ||
     size === "medium" ||

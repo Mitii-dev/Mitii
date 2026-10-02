@@ -64,7 +64,7 @@ createMitiiClient({
 **Verification LLM critique:** `steering: { verificationLlmCritique: true }` (default off).
 Advisory only after the evidence gate — never overrides `decideVerificationGate`.
 
-## Medium close-loop (P1)
+## Medium close-loop (P1) + evidence valve
 
 When Officer `taskSize=medium`:
 
@@ -73,14 +73,24 @@ preferred medium-planning (soft)
   → discover_and_plan (known paths still discover)
   → bounded seed-first discovery (taskSize × window band)
   → concrete Change steps → non-empty plan-derived task list
-  → per-step bind (not a second discovery) → READY → patch
+  → per-step bind (happy-path budget) → READY → patch
 ```
+
+**Size vs recovery (orthogonal):**
+- **Size → happy-path budget** (token bands are candidates only; pinned folder is work root, not size).
+- **Evidence sufficiency → recovery valve** when that budget is not enough: local named miss → one capped recovery (1–2 turns / 2–4 paths) → gate again; otherwise clarify/escalate. Never budget exhausted → +10 searches → patch whatever.
 
 **Budgets (two envelopes, one philosophy):**
 - **Discovery (pre-plan):** model/tool-loop turns × file reads by size×band (Medium standard: 4 turns / 8 paths). Free pre-seed discovery stays 2; post-READY discovery stays 0.
-- **Per-step bind (post-plan):** Medium compact/standard 3 turns / 8 paths / 2 nudges; wide 2 / 8 / 2.
+- **Per-step bind (post-plan):** Medium compact 5/10/4 · standard 4/8/3 · wide 3/8/3 (turns / paths / nudges), plus recovery 2/4.
 
-**Failure ladder:** sufficient → plan; local gap → one seed-informed targetRefs recovery; still empty → `task_list_plan_not_concrete` (clarify/suspend — never invent an executable row from seed alone); scope blown → escalate (not +5 forever).
+**Always short plan:** Agent execute never uses `planningDepth: none` — small asks get an internal short plan with evidence.
+
+**Preflight deferred:** captured for post-task verify; does not seed cause / repair instruct / lock unless fix-build language or cited overlap.
+
+**Hard-deny mutations:** `node_modules`, `.git`, `dist`, `build`, `out` → `path_hard_denied`.
+
+**Failure ladder:** sufficient → plan; local gap → one seed-informed targetRefs recovery; still empty → `task_list_plan_not_concrete` (clarify/suspend — never invent an executable row from seed alone); bind miss → evidence recovery then clarify; scope blown → escalate (not +5 forever).
 
 ## Eval
 

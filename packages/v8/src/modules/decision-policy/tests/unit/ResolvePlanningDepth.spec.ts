@@ -183,4 +183,32 @@ describe("resolvePlanningDepth", () => {
     expect(result.planningDepth).toBe("visible");
     expect(result.reasonCodes).toContain("officer_task_size_plan");
   });
+
+  it("forces at least internal short plan for agent execute small asks", () => {
+    const understanding = createUnderstanding({
+      primaryTaskIntent: "bugfix",
+      taskAnalysis: {
+        scope: "single_location",
+        complexity: "trivial",
+        risk: "low",
+        taskSize: "small",
+        planningHint: "short",
+      },
+    });
+
+    const result = resolvePlanningDepth({
+      mode: "agent",
+      route: "execute",
+      understanding,
+      message:
+        "upon clicking Index settings its should redirect properly to semantic tab",
+      windowPolicy: {
+        planning: { visiblePlanAffordable: true, changeImpactAffordable: true },
+      } as never,
+    });
+
+    expect(result.planningDepth).toBe("internal");
+    expect(result.reasonCodes).toContain("officer_task_size_plan");
+    expect(result.reasonCodes).not.toContain("simple_localized_no_visible_plan");
+  });
 });

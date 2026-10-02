@@ -431,7 +431,8 @@ function resolvePathScopes(
 
   const { taskAnalysis } = understanding;
 
-  // Discovery-heavy work must keep workspace-wide read access.
+  // Discovery-heavy / wide scope: keep workspace-wide read access.
+  // Pinned folders still narrow mutationPathScopes (write root).
   if (
     taskAnalysis.recommendsRepositoryDiscovery ||
     taskAnalysis.scope === "repository" ||
@@ -441,6 +442,12 @@ function resolvePathScopes(
     taskAnalysis.scope === "unknown"
   ) {
     return ["."];
+  }
+
+  // Localized work: pinned/artifact folder is the look-here root.
+  const folderScopes = collectFolderScopes(taskAnalysis.targets);
+  if (folderScopes.length > 0) {
+    return folderScopes;
   }
 
   const scopes = new Set<string>();
@@ -470,11 +477,15 @@ function resolveMutationPathScopes(
 ): string[] | undefined {
   const scopes = new Set<string>();
   for (const target of understanding.taskAnalysis.targets) {
-    if (!target.explicit || target.value.length === 0) {
+    if (target.value.length === 0) {
       continue;
     }
+    // Folder pins (artifact or explicit) are the mutation work root.
     if (target.kind === "folder") {
       scopes.add(normalizeScopePath(target.value));
+      continue;
+    }
+    if (!target.explicit) {
       continue;
     }
     if (target.kind === "file") {
@@ -486,6 +497,19 @@ function resolveMutationPathScopes(
   }
   if (scopes.size === 0) {
     return undefined;
+  }
+  return [...scopes].sort((left, right) => left.localeCompare(right));
+}
+
+function collectFolderScopes(
+  targets: RequestUnderstandingResult["taskAnalysis"]["targets"],
+): string[] {
+  const scopes = new Set<string>();
+  for (const target of targets) {
+    if (target.kind !== "folder" || target.value.length === 0) {
+      continue;
+    }
+    scopes.add(normalizeScopePath(target.value));
   }
   return [...scopes].sort((left, right) => left.localeCompare(right));
 }

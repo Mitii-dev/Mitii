@@ -20,6 +20,7 @@ import {
   shouldPreserveModelLoopPrefix,
   stubToolResultsForCompletedPaths,
 } from "../actions";
+import { preflightDiagnosticsForUserRequest } from "../modules/user-path-priority";
 import type { EstablishedFact } from "../actions";
 import type { PromptCacheClass } from "../actions/resolvePromptCacheClass";
 import type { ModelLoopCompactionResult } from "../actions/compactModelLoopMessages";
@@ -337,24 +338,33 @@ export async function prepareModelLoopTurn(params: {
       lastUpdatedAtModelCall: params.taskListRef.lastUpdatedAtModelCall,
       currentModelCall: usageSnapshot.modelCalls,
     }),
-    preflightDiagnostics: buildPreflightDiagnosticRepairInstruction({
-      diagnostics: params.repoBuildStateBefore?.diagnostics ?? [],
-      totalErrorCount: params.repoBuildStateBefore?.summary.errorCount ?? 0,
-      pathScopes: params.grantPathScopes,
-      maxDiagnostics: Math.max(
-        params.windowPolicy.planning.maxDiagnosticSteps,
-        (params.repoBuildStateBefore?.summary.errorCount ?? 0) >= 20 ? 24 : 0,
-      ),
-      maxChars: Math.min(
-        Math.max(
-          params.windowPolicy.compaction.establishedFactReinjectChars,
-          (params.repoBuildStateBefore?.summary.errorCount ?? 0) >= 20
-            ? 4_800
-            : 2_400,
+    preflightDiagnostics: (() => {
+      const raw = params.repoBuildStateBefore?.diagnostics ?? [];
+      // Deferred unless user invited fix-build or cited overlapping paths.
+      const scoped = preflightDiagnosticsForUserRequest(
+        raw,
+        params.memoryQuery,
+      );
+      if (scoped.length === 0) {
+        return undefined;
+      }
+      return buildPreflightDiagnosticRepairInstruction({
+        diagnostics: [...scoped],
+        totalErrorCount: scoped.length,
+        pathScopes: params.grantPathScopes,
+        maxDiagnostics: Math.max(
+          params.windowPolicy.planning.maxDiagnosticSteps,
+          scoped.length >= 20 ? 24 : 0,
         ),
-        6_000,
-      ),
-    }),
+        maxChars: Math.min(
+          Math.max(
+            params.windowPolicy.compaction.establishedFactReinjectChars,
+            scoped.length >= 20 ? 4_800 : 2_400,
+          ),
+          6_000,
+        ),
+      });
+    })(),
     establishedFacts: params.establishedFacts,
     maxEstablishedFactChars:
       params.windowPolicy.compaction.establishedFactReinjectChars,

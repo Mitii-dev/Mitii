@@ -1,11 +1,23 @@
 /**
  * User-cited repo paths beat unrelated preflight diagnostics.
- * When the prompt names files that are not among preflight error paths,
- * do not start under preflight repair lock.
+ * Preflight is deferred evidence unless the user invite is fix-build language
+ * or named paths that overlap diagnostics — never the default first action.
  */
 
 const CITED_REPO_PATH =
   /\b((?:[\w.-]+\/)*[\w.-]+\.(?:ts|tsx|js|jsx|mjs|cjs|py|go|rs|java|kt|css|scss|json|md))\b/gi;
+
+/** User ask clearly about build/typecheck/compile repair. */
+const FIX_BUILD_ASK =
+  /\b(?:fix\s+(?:all\s+)?(?:ts|typescript|type\s*check|typecheck|build|compile)|resolve\s+(?:all\s+)?(?:ts|typescript)\s+errors|type\s*errors?\b|fix\s+(?:the\s+)?(?:preflight|diagnostics?|errors?)\b)/i;
+
+export function userRequestInvitesPreflightRepair(
+  userPrompt: string | undefined,
+): boolean {
+  const prompt = userPrompt?.trim() ?? "";
+  if (!prompt) return false;
+  return FIX_BUILD_ASK.test(prompt);
+}
 
 export function shouldForcePreflightRepairLock(params: {
   route: string;
@@ -26,9 +38,8 @@ export function shouldForcePreflightRepairLock(params: {
 }
 
 /**
- * True when preflight errors match the user's request.
- * A prompt that cites other files and never mentions a diagnostic path is a
- * different task — repair lock stays off.
+ * True when preflight errors match the user's request and may steer first action.
+ * Unrelated asks (no fix-build invite, no overlapping cites) → deferred.
  */
 export function preflightErrorsMatchUserRequest(params: {
   userPrompt?: string;
@@ -38,12 +49,19 @@ export function preflightErrorsMatchUserRequest(params: {
   const diagnosticPaths = (params.diagnosticPaths ?? [])
     .map(normalizeRepoPath)
     .filter((path) => path.length > 0 && path !== ".");
-  if (!prompt || diagnosticPaths.length === 0) {
+  if (!prompt) {
+    return true;
+  }
+  if (diagnosticPaths.length === 0) {
+    return false;
+  }
+  if (userRequestInvitesPreflightRepair(prompt)) {
     return true;
   }
   const cited = citedRepoPathsFromPrompt(prompt);
   if (cited.length === 0) {
-    return true;
+    // Short behavioral asks without file cites — preflight is deferred evidence.
+    return false;
   }
   const lowered = prompt.toLowerCase();
   return diagnosticPaths.some(
@@ -52,7 +70,10 @@ export function preflightErrorsMatchUserRequest(params: {
   );
 }
 
-/** Drop preflight diagnostics the user request does not name, when it names other files. */
+/**
+ * Drop preflight diagnostics the user request does not invite.
+ * No cite + no fix-build invite → empty (deferred).
+ */
 export function preflightDiagnosticsForUserRequest<T extends { path: string }>(
   diagnostics: readonly T[],
   userPrompt: string | undefined,
@@ -61,19 +82,18 @@ export function preflightDiagnosticsForUserRequest<T extends { path: string }>(
   if (!prompt || diagnostics.length === 0) {
     return diagnostics;
   }
+  if (userRequestInvitesPreflightRepair(prompt)) {
+    return diagnostics;
+  }
   const cited = citedRepoPathsFromPrompt(prompt);
   if (cited.length === 0) {
-    return diagnostics;
+    return [];
   }
   const lowered = prompt.toLowerCase();
   const matching = diagnostics.filter((item) => {
     const path = normalizeRepoPath(item.path);
     return path.length > 0 && (lowered.includes(path) || cited.includes(path));
   });
-  // User named files but none overlap preflight → treat as unrelated noise.
-  if (matching.length === 0) {
-    return [];
-  }
   return matching;
 }
 

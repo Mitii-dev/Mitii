@@ -116,6 +116,28 @@ describe("resolveExecutionSeed", () => {
     expect(formatExecutionSeedForPrompt(seed)).toBe("");
   });
 
+  it("does not attach preflight cause notes for pinned folder when ask is unrelated", () => {
+    const seed = resolveExecutionSeed({
+      userPrompt:
+        "upon clicking Index settings its should redirect properly to semantic tab",
+      understanding: understandingWithTargets([
+        { kind: "folder", value: "apps/desktop", explicit: false },
+      ]),
+      diagnosticSummary: {
+        diagnostics: [
+          {
+            path: "apps/desktop/src/renderer/styles.css",
+            message: "padding: 4px",
+          },
+        ],
+      },
+    });
+    expect(seed.confidence).toBe("trusted");
+    expect(seed.source).toBe("artifact");
+    expect(seed.paths).toContain("apps/desktop");
+    expect(seed.causeNotes).toEqual([]);
+  });
+
   it("formats a binding prompt block for trusted seeds", () => {
     const seed = resolveExecutionSeed({
       userPrompt: "fix apps/desktop/src/renderer/App.tsx",

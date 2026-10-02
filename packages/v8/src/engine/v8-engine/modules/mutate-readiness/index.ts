@@ -16,6 +16,13 @@ export {
   resolveMutateReadinessBudget,
   resolveStepReadonlyTurnsBeforeGate,
 } from "./budgets";
+export {
+  buildEvidenceClarifyMessage,
+  buildEvidenceRecoveryMessage,
+  decideEvidenceRecovery,
+  isIdentifiableLocalEvidence,
+} from "./evidenceRecovery";
+export type { EvidenceRecoveryDecision } from "./evidenceRecovery";
 
 export type ActiveStepMutateReadiness = {
   ready: boolean;
