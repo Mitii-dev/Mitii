@@ -45,7 +45,8 @@ export function resolvePlanStrategy(params: {
     params.input.explorationDepth !== "deep" &&
     params.input.explorationDepth !== "quick" &&
     hasKnownFileSurfaces(params.input) &&
-    !isRepairIntent(params.input);
+    !isRepairIntent(params.input) &&
+    !isMediumOrLargerTask(params.input);
   return {
     decision,
     source: "rules",
@@ -53,6 +54,10 @@ export function resolvePlanStrategy(params: {
     reasonCodes: [
       strategyReasonCode(decision.strategy),
       "plan_strategy_rules",
+      ...(decision.strategy === "discover_and_plan" &&
+      isMediumOrLargerTask(params.input)
+        ? (["plan_strategy_medium_bounded_discover"] as const)
+        : []),
       ...(knownPathsShortCircuit
         ? (["plan_strategy_known_paths"] as const)
         : []),
@@ -71,7 +76,9 @@ export function resolvePlanStrategy(params: {
  *   repair intent AND in-scope errors >= 1     -> follow_evidence
  *   repair + "fix all …" / wide package scope  -> follow_evidence
  *   explorationDepth === "quick"               -> plan_from_ask
+ *   taskSize medium/large                      -> discover_and_plan (bounded; no known-path skip)
  *   deep/auto AND wide scope/complexity        -> discover_and_plan
+ *   known file surfaces (small only)           -> plan_from_ask
  *   else                                       -> plan_from_ask
  */
 export function resolvePlanStrategyRules(
@@ -163,9 +170,27 @@ export function resolvePlanStrategyRules(
     );
   }
 
-  // Deep always rediscovers. Auto/quick (quick already returned) may skip
-  // discovery when Engine already supplied concrete file paths from context,
-  // explicit targets, or prior-turn hints — avoid README wander on follow-ups.
+  // Medium / large: always bounded discovery before drafting (seed-first
+  // Engine pass). Known write paths still get local inspection — never skip.
+  if (isMediumOrLargerTask(input)) {
+    return sanitizeStrategy(
+      {
+        schemaVersion: 1,
+        strategy: "discover_and_plan",
+        rationale:
+          input.evidence.taskSize === "large"
+            ? "Large task requires bounded discovery before a concrete implementation plan."
+            : "Medium task requires bounded discovery before a concrete implementation plan.",
+        skipDiscover: false,
+        useBuildEvidence: inScopeErrorCount >= 1,
+        confidence: 0.88,
+      },
+      input,
+    );
+  }
+
+  // Deep always rediscovers. Auto may skip discovery for small tasks when
+  // Engine already supplied concrete file paths — avoid README wander.
   if (
     input.explorationDepth !== "deep" &&
     hasKnownFileSurfaces(input) &&
@@ -209,6 +234,12 @@ export function resolvePlanStrategyRules(
     },
     input,
   );
+}
+
+/** Officer medium/large bands must not short-circuit to plan_from_ask. */
+export function isMediumOrLargerTask(input: PlanningParsedInput): boolean {
+  const size = input.evidence.taskSize;
+  return size === "medium" || size === "large";
 }
 
 function hasKnownFileSurfaces(input: PlanningParsedInput): boolean {

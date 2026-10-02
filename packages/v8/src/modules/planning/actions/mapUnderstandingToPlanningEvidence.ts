@@ -28,6 +28,13 @@ export function mapUnderstandingToPlanningEvidence(
       ? taskAnalysis.risk
       : "medium";
 
+  const taskSize =
+    taskAnalysis.taskSize === "small" ||
+    taskAnalysis.taskSize === "medium" ||
+    taskAnalysis.taskSize === "large"
+      ? taskAnalysis.taskSize
+      : undefined;
+
   return {
     primaryIntent: intent.classification.primaryTaskIntent,
     secondaryIntents: [...intent.classification.secondaryTaskIntents],
@@ -36,6 +43,7 @@ export function mapUnderstandingToPlanningEvidence(
     complexity: taskAnalysis.complexity,
     risk,
     clarity: taskAnalysis.clarity,
+    ...(taskSize ? { taskSize } : {}),
     targets: taskAnalysis.targets.map((target) => ({
       kind: target.kind,
       value: target.value,

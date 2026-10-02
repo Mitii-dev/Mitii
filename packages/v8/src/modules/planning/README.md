@@ -42,7 +42,7 @@ planning/
 
 - `PlanningInput`: query, mode, route, planning depth, `explorationDepth` (how hard to look — orthogonal to `planningDepth`, which is whether a visible plan exists), task evidence, optional scoped repo map, build evidence, optional `DiscoveryBrief`, skills, process hints, reviewed context, prior plan, optional strategy override, and budget.
 - `DiscoveryBrief`: host-neutral discovery evidence (files read, targets, change surfaces, constraints, verification hints, open questions, confidence). It does not carry mutable task status.
-- `PlanningTaskEvidence`: primary/secondary intent, scope, complexity, risk, clarity, targets, constraints, outcomes, recommendations, and change impact hints.
+- `PlanningTaskEvidence`: primary/secondary intent, scope, complexity, risk, clarity, optional Officer `taskSize` (small/medium/large), targets, constraints, outcomes, recommendations, and change impact hints.
 - `PlanStrategyDecision`: the selected planning mode plus `skipDiscover` and `useBuildEvidence`.
 - `DiscoveredPlanDraft`: the `discover_and_plan` model call's output — objective/open-questions/Change+Verify step wording, applied onto the deterministic discovery skeleton.
 - `PlanArtifact`: structured plan with dimensions, phases, steps, risks, alternatives, and verification.
@@ -57,10 +57,11 @@ planning/
   3. repair intent plus in-scope diagnostics -> `follow_evidence`
   4. repair + broad "fix all …" / package-wide verification ask -> `follow_evidence` (do not rediscover)
   5. `explorationDepth === "quick"` -> `plan_from_ask`
-  6. Auto (not deep) with `knownPathHints` / explicit file targets -> `plan_from_ask` (skip rediscovery; Plan-mode follow-ups only when Engine contract keeps this)
-  7. Deep/Auto and wide scope/complexity (or `recommendsPlanning`, itself folded from understanding's `recommendsPlanning` OR `recommendsRepositoryDiscovery`) -> `discover_and_plan`
-  8. else -> `plan_from_ask`
-- Engine `applyPlanModeDiscoveryContract`: cold Plan-mode asks (no prior thread) and shaped-discovery profile matches force `discover_and_plan` before the discovery loop unless exploration is `quick`. Architecture / big-task asks also override incidental `follow_evidence`. Follow-up Plan asks with `plan_from_ask` are preserved.
+  6. Officer `taskSize` medium/large -> `discover_and_plan` (bounded; known-path short-circuit does not apply)
+  7. Auto (not deep) with `knownPathHints` / explicit file targets (small only) -> `plan_from_ask` (skip rediscovery; Plan-mode follow-ups only when Engine contract keeps this)
+  8. Deep/Auto and wide scope/complexity (or `recommendsPlanning`, itself folded from understanding's `recommendsPlanning` OR `recommendsRepositoryDiscovery`) -> `discover_and_plan`
+  9. else -> `plan_from_ask`
+- Engine `applyPlanModeDiscoveryContract`: cold Plan-mode asks (no prior thread) and shaped-discovery profile matches force `discover_and_plan` before the discovery loop unless exploration is `quick`. Agent medium/large `taskSize`, visible depth, and wide-internal tasks get the same discovery-first contract. Architecture / big-task asks also override incidental `follow_evidence`. Follow-up Plan asks with `plan_from_ask` are preserved for small tasks only.
 - Engine **Plan quality floor** (Plan mode, not `quick`): after the discovery pass, if evidence is not file-backed and non-thin (`filesRead ≥ 1`, change surfaces present, confidence not `low`), Engine emits `plan_mode_discovery_insufficient` and overrides strategy to `clarify` before calling `planning.plan`. Planning then drafts clarifying open questions instead of inventing Change steps. When evidence is sufficient, strategy stays `discover_and_plan` and the one-shot discovery draft call can run. Drafting also suppresses generic clarity/scope open-question templates when the discovery brief is already medium/high with change surfaces.
 - Repair detection uses `isRepairIntentTaxonomy` (bugfix/diagnose/compile — not refactor/migrate). Architecture intents use `isArchitectureIntentTaxonomy` / `isArchitecturePlanningAsk` so package redesigns are not swallowed by incidental diagnostics. The same repair predicate backs Decision Policy's Plan-mode preflight gate and `DraftPlan`'s Discover/Change step wording.
 - Engine owns strategy selection — it calls `resolvePlanStrategyRules` itself (not a port method) before deciding whether to run a discovery pass, then calls `planning.plan({ strategyOverride })`. Planning never runs a second classifier.

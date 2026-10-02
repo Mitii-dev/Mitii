@@ -136,6 +136,22 @@ describe("applyPlanModeDiscoveryContract", () => {
     expect(result.strategy.strategy).toBe("discover_and_plan");
   });
 
+  it("forces discover_and_plan for Agent medium taskSize on internal depth", () => {
+    const result = applyPlanModeDiscoveryContract({
+      mode: "agent",
+      explorationDepth: "auto",
+      query: "Add caching around the product list service and update its unit tests",
+      conversation: [],
+      strategy: planFromAsk,
+      planningDepth: "internal",
+      agentWideScope: false,
+      taskSize: "medium",
+    });
+    expect(result.applied).toBe(true);
+    expect(result.strategy.strategy).toBe("discover_and_plan");
+    expect(result.rationale).toBe("agent_medium_task");
+  });
+
   it("forces discover_and_plan for shaped browser test-runner cold plan asks", () => {
     const result = applyPlanModeDiscoveryContract({
       mode: "plan",

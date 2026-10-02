@@ -348,6 +348,9 @@ export async function finishEnrichmentSkillsMemoryPlan(
     // Engine owns strategy (rules only); Planning drafts against override.
     const strategyDecision = resolvePlanStrategyRules(planningInput);
     const agentWideScope = isAgentWidePlanningScope(planningInput.evidence);
+    const taskSize = planningInput.evidence.taskSize;
+    const mediumOrLarge =
+      taskSize === "medium" || taskSize === "large";
     const planContract = applyPlanModeDiscoveryContract({
       mode: envelope.mode,
       explorationDepth: input.explorationDepth,
@@ -356,6 +359,7 @@ export async function finishEnrichmentSkillsMemoryPlan(
       strategy: strategyDecision,
       planningDepth: decision.planningDepth,
       agentWideScope,
+      taskSize,
     });
     let strategyOverride: PlanStrategyDecision = planContract.strategy;
     if (planContract.applied) {
@@ -375,6 +379,7 @@ export async function finishEnrichmentSkillsMemoryPlan(
       explorationDepth: input.explorationDepth,
       planningDepth: decision.planningDepth,
       agentWideScope,
+      taskSize,
     });
     // Post-contract strategy (Plan / Agent big-task may upgrade to discover_and_plan).
     if (strategyOverride.strategy === "discover_and_plan") {
@@ -398,6 +403,8 @@ export async function finishEnrichmentSkillsMemoryPlan(
         preferredPaths: knownPathHints,
         qualityFloor: planQualityFloor,
         thoroughEvidence,
+        seedFirstDiscovery: mediumOrLarge,
+        preferSymbols: mediumOrLarge,
       });
       discoveryBrief = discovery.brief;
       recordDiscoveryEvidence(runEvidence, {

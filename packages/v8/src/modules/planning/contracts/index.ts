@@ -1,6 +1,7 @@
 export {
   planningInputSchema,
   planningTaskEvidenceSchema,
+  planningTaskSizeSchema,
   planningSkillHintSchema,
   explorationDepthSchema,
   planningScopedRepoMapSchema,
