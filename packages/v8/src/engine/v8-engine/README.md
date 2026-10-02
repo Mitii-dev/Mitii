@@ -92,6 +92,10 @@ preferred medium-planning (soft)
 
 **Hard-deny mutations:** `node_modules`, `.git`, `dist`, `build`, `out` → `path_hard_denied`. Verification repair prompts stay ask-scoped and never steer into those trees.
 
+**Ask-scoped verification accept:** when changed/seed paths have no in-scope diagnostic errors, the gate accepts as `implemented_unverified` even if package typecheck/test failed on out-of-scope noise (e.g. vitest stack paths). Repair prompts do not fall back to the raw diagnostic dump when ask scope is known.
+
+**Compare-only leftovers:** when the change introduces no **new** errors, remaining pre-existing diagnostics are optional — the run accepts, and the answer offers to fix them only if the user opts in (`fix the remaining verification errors`).
+
 **Failure ladder:** sufficient → plan; local gap → one seed-informed targetRefs recovery; still empty → `task_list_plan_not_concrete` (clarify/suspend — never invent an executable row from seed alone); bind miss → evidence recovery then clarify; scope blown → escalate (not +5 forever).
 
 ## Eval

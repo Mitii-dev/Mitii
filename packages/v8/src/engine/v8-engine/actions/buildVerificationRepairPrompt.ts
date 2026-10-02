@@ -60,10 +60,17 @@ export function buildVerificationRepairPrompt(params: {
   const scopePaths = collectAskScopePaths(params);
   const rawDiagnostics = params.verification?.diagnostics ?? [];
   const scoped = filterDiagnosticsToAskScope(rawDiagnostics, scopePaths);
+  const hasAskScope = scopePaths.some(
+    (path) => path.trim().length > 0 && path.trim() !== ".",
+  );
+  // Never fall back to the full raw dump when ask/changed scope is known —
+  // that is what steers repair into vitest/tsconfig/import thrash.
   const usable =
     scoped.length > 0
       ? scoped
-      : rawDiagnostics.filter((item) => !isHardDeniedDiagnosticPath(item.path));
+      : hasAskScope
+        ? []
+        : rawDiagnostics.filter((item) => !isHardDeniedDiagnosticPath(item.path));
 
   const packed = packDiagnosticsForModel({
     diagnostics: usable,
@@ -104,26 +111,47 @@ export function buildVerificationRepairPrompt(params: {
       ? `…and ${packed.omittedCount} more error(s) omitted; fix the listed items first.`
       : undefined;
 
+  const askLock =
+    params.userPrompt?.trim()
+      ? `User ask (do not replace with package cleanup): ${params.userPrompt.trim().slice(0, 240)}`
+      : undefined;
+
+  const compareLock =
+    params.comparison !== undefined
+      ? `Compare-only repair: fix NEW regressions from this change (${params.comparison.newErrorCount} new). Do not chase ${params.comparison.remainingErrorCount} pre-existing remaining error(s) unless the user ask named them.`
+      : "Compare-only repair: fix only new regressions from this change on ask/changed paths. Pre-existing leftovers are optional — do not expand into them.";
+
   const errorBlock =
     diagnostics.length > 0
       ? [
-          "Remaining errors (fix these exact items; do not rediscover):",
+          "New ask-scoped errors (fix these exact items; do not rediscover):",
           ...diagnostics,
           omitFooter,
         ]
           .filter((line): line is string => Boolean(line))
           .join("\n")
-      : failedCheckLines.length > 0
-        ? `Failed checks (no structured diagnostics; fix from these summaries):\n${failedCheckLines.join("\n")}`
-        : "No structured diagnostics were attached; inspect only the changed files named above and fix the verification failure.";
+      : hasAskScope
+        ? [
+            "No new ask-scoped diagnostics remain on the changed/seed paths.",
+            "Do not expand into unrelated vitest, tsconfig, mass import cleanup, or pre-existing leftovers.",
+            "If the user ask is already satisfied on the changed files, stop — do not invent new repairs.",
+            changed,
+          ]
+            .filter((line): line is string => Boolean(line))
+            .join("\n")
+        : failedCheckLines.length > 0
+          ? `Failed checks (no structured diagnostics; fix from these summaries):\n${failedCheckLines.join("\n")}`
+          : "No structured diagnostics were attached; inspect only the changed files named above and fix new regressions only.";
 
   return [
-    "Verification failed. Call apply_patch now for the remaining-error batch below.",
-    "Fix every listed error this turn when possible. Group by code/message; do not stop after the first diagnostic.",
+    "Verification found issues after the change. Call apply_patch only for NEW ask-scoped regressions below.",
+    "Fix every listed new error this turn when possible. Group by code/message; do not stop after the first diagnostic.",
     "Do not write a report. Do not call glob_files, search_files, list_directory, directory_tree, document_symbol, or run_readonly_command.",
     "read_file is allowed only for paths named in the error list (or the active batch write/mustRead paths). Then patch.",
     "Do not introduce new TypeScript errors. Prefer renaming calls to match existing page/adapter APIs over inventing methods.",
     "Never edit node_modules, .git, dist/build/out, or unrelated vitest/tsconfig unless the user ask names them.",
+    askLock,
+    compareLock,
     batch,
     counts,
     changed,

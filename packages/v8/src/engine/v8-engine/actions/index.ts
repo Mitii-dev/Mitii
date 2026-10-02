@@ -141,6 +141,7 @@ export {
   decideVerificationGate,
   resolveFailedVerificationTerminalStatus,
   isUserGoalComplete,
+  askScopedDiagnosticsClean,
   packageCompileEvidencePassed,
   failuresAreIgnorableWhenPackagePassed,
   isPackageScopedCheck,

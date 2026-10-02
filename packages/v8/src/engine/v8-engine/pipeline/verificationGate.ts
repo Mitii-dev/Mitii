@@ -105,6 +105,8 @@ export async function runVerificationGate(
     windowPolicy: WindowPolicy;
     logVerbosity?: AgentLogVerbosity;
     signal?: AbortSignal;
+    /** Trusted seed / ask paths for ask-scoped verification accept. */
+    askScopePaths?: readonly string[];
   },
 ): Promise<VerificationGateOutcome> {
   const {
@@ -240,6 +242,8 @@ export async function runVerificationGate(
     missingInfrastructure,
     verification: verificationResult,
     comparison,
+    askScopePaths: params.askScopePaths,
+    changedFiles,
   });
 
   // Optional LLM critique is advisory only — never changes decisionOutcome.

@@ -106,7 +106,55 @@ export function citedRepoPathsFromPrompt(prompt: string): string[] {
     const path = normalizeRepoPath(match[1] ?? "");
     if (path) paths.push(path);
   }
-  return paths;
+  return preferConcreteRepoCites(paths);
+}
+
+/**
+ * When a paste cites real `packages/` / `apps/` paths, drop orphan fixture
+ * paths like `src/present.ts` or bare `present.ts` that appear only in
+ * assertion diffs — they are not workspace edit targets.
+ */
+export function preferConcreteRepoCites(paths: readonly string[]): string[] {
+  const normalized = paths
+    .map(normalizeRepoPath)
+    .filter((path) => path.length > 0);
+  if (normalized.length === 0) return [];
+  const hasPackageOrApp = normalized.some(
+    (path) =>
+      path.startsWith("packages/") ||
+      path.startsWith("apps/") ||
+      path.startsWith("tests/"),
+  );
+  if (!hasPackageOrApp) {
+    return uniquePaths(normalized);
+  }
+  return uniquePaths(
+    normalized.filter((path) => {
+      if (
+        path.startsWith("packages/") ||
+        path.startsWith("apps/") ||
+        path.startsWith("tests/")
+      ) {
+        return true;
+      }
+      // Keep other rooted multi-segment paths that are not bare `src/...` fixtures.
+      if (path.includes("/") && !path.startsWith("src/")) {
+        return true;
+      }
+      return false;
+    }),
+  );
+}
+
+function uniquePaths(paths: readonly string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const path of paths) {
+    if (seen.has(path)) continue;
+    seen.add(path);
+    out.push(path);
+  }
+  return out;
 }
 
 function normalizeRepoPath(value: string): string {

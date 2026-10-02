@@ -278,6 +278,183 @@ describe("decideVerificationGate / isUserGoalComplete", () => {
       },
     });
   });
+
+  it("accepts when package checks fail but ask/changed paths have no diagnostics", () => {
+    const verification = baseVerification({
+      status: "verification_failed",
+      diagnostics: [
+        {
+          path: "node_modules/vitest/dist/chunks/index.js",
+          severity: "error",
+          message: "EventEmitter.onMessage",
+          startLine: 103,
+        },
+      ],
+      checks: [
+        {
+          checkId: "inferred:apps/desktop:typecheck:typecheck",
+          kind: "typecheck",
+          projectId: "inferred:apps/desktop",
+          label: "desktop typecheck",
+          evidenceSource: "manifest",
+          outcome: "failed",
+          summary: "failed",
+        },
+        {
+          checkId: "inferred:apps/desktop:test:test",
+          kind: "test",
+          projectId: "inferred:apps/desktop",
+          label: "desktop test",
+          evidenceSource: "manifest",
+          outcome: "failed",
+          summary: "failed",
+        },
+        {
+          checkId: "diagnostics:workspace",
+          kind: "diagnostics",
+          label: "diagnostics",
+          evidenceSource: "tool:read_diagnostics",
+          outcome: "passed",
+          summary: "ok",
+        },
+      ],
+    });
+
+    expect(
+      isUserGoalComplete({
+        verification,
+        comparison: comparison({
+          afterErrorCount: 200,
+          newErrorCount: 99,
+        }),
+        askScopePaths: [
+          "apps/desktop/src/renderer/App.tsx",
+          "apps/desktop/src/shared/settings.ts",
+        ],
+        changedFiles: [
+          "apps/desktop/src/renderer/App.tsx",
+          "apps/desktop/src/shared/settings.ts",
+        ],
+      }),
+    ).toBe(true);
+
+    expect(
+      decideVerificationGate({
+        verificationRequired: true,
+        allowUnavailable: false,
+        changedFileCount: 2,
+        canVerify: true,
+        verification,
+        comparison: comparison({
+          afterErrorCount: 200,
+          newErrorCount: 99,
+        }),
+        askScopePaths: [
+          "apps/desktop/src/renderer/App.tsx",
+          "apps/desktop/src/shared/settings.ts",
+        ],
+        changedFiles: [
+          "apps/desktop/src/renderer/App.tsx",
+          "apps/desktop/src/shared/settings.ts",
+        ],
+      }),
+    ).toEqual({
+      action: "accept",
+      acceptKind: "implemented_unverified",
+    });
+  });
+
+  it("accepts when comparison shows only remaining pre-existing errors (no new)", () => {
+    const verification = baseVerification({
+      status: "verification_failed",
+      diagnostics: [],
+      checks: [
+        {
+          checkId: "inferred:apps/desktop:typecheck:typecheck",
+          kind: "typecheck",
+          projectId: "inferred:apps/desktop",
+          label: "desktop typecheck",
+          evidenceSource: "manifest",
+          outcome: "failed",
+          summary: "pre-existing failures",
+        },
+      ],
+    });
+
+    expect(
+      isUserGoalComplete({
+        verification,
+        comparison: comparison({
+          beforeErrorCount: 3,
+          afterErrorCount: 3,
+          newErrorCount: 0,
+          remainingErrorCount: 3,
+        }),
+        changedFiles: ["apps/desktop/src/renderer/App.tsx"],
+      }),
+    ).toBe(true);
+
+    expect(
+      decideVerificationGate({
+        verificationRequired: true,
+        allowUnavailable: false,
+        changedFileCount: 1,
+        canVerify: true,
+        verification,
+        comparison: comparison({
+          beforeErrorCount: 3,
+          afterErrorCount: 3,
+          newErrorCount: 0,
+          remainingErrorCount: 3,
+        }),
+        changedFiles: ["apps/desktop/src/renderer/App.tsx"],
+      }),
+    ).toEqual({
+      action: "accept",
+      acceptKind: "implemented_unverified",
+    });
+  });
+
+  it("still rejects when ask-scoped diagnostics remain on changed files", () => {
+    const verification = baseVerification({
+      status: "verification_failed",
+      diagnostics: [
+        {
+          path: "apps/desktop/src/renderer/App.tsx",
+          severity: "error",
+          message: "Type '\"semantic\"' is not assignable",
+          startLine: 3521,
+        },
+      ],
+      checks: [
+        {
+          checkId: "inferred:apps/desktop:typecheck:typecheck",
+          kind: "typecheck",
+          projectId: "inferred:apps/desktop",
+          label: "desktop typecheck",
+          evidenceSource: "manifest",
+          outcome: "failed",
+          summary: "failed",
+        },
+      ],
+    });
+
+    expect(
+      decideVerificationGate({
+        verificationRequired: true,
+        allowUnavailable: false,
+        changedFileCount: 1,
+        canVerify: true,
+        verification,
+        comparison: comparison({
+          afterErrorCount: 1,
+          newErrorCount: 1,
+        }),
+        askScopePaths: ["apps/desktop/src/renderer/App.tsx"],
+        changedFiles: ["apps/desktop/src/renderer/App.tsx"],
+      }).action,
+    ).toBe("reject");
+  });
 });
 
 describe("resolveFailedVerificationTerminalStatus", () => {

@@ -80,6 +80,7 @@ export { SYNTAX_PORT_EVIDENCE } from "./contracts";
 export {
   buildVerificationRecord,
   buildVerificationUserSummary,
+  formatOptionalLeftoverOffer,
 } from "./records";
 
 export {
