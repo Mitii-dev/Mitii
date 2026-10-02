@@ -24,6 +24,8 @@ export const REPOSITORY_CONTEXT_BUDGET_POLICY = {
 export const REPOSITORY_CONTEXT_RETRIEVAL_POLICY = {
   /** Cap on editor/git file priors used as RepoGraph blast-radius anchors. */
   maximumGraphFileAnchors: 16,
+  /** Cap on required/explicit/selection paths that bypass RRF ordering. */
+  maximumPriorityPaths: 16,
 } as const;
 
 /**
@@ -63,6 +65,100 @@ export function collectRepositoryContextGraphAnchors(
   }
 
   return paths;
+}
+
+/**
+ * Build session ranking context for query-time RepoMap re-rank and priority lanes.
+ */
+export function buildHybridRetrievalRankingContext(
+  references?: ContextSelectionReferences,
+):
+  | {
+      currentFile?: string;
+      openFiles?: string[];
+      gitDiffFiles?: string[];
+      diagnosticFiles?: string[];
+      recentEditFiles?: string[];
+      staleFiles?: string[];
+      priorityPaths?: string[];
+    }
+  | undefined {
+  if (!references) {
+    return undefined;
+  }
+
+  const pathOf = (reference?: ContextFileReference) =>
+    reference?.relativePath.trim() || undefined;
+
+  const listOf = (
+    values: readonly ContextFileReference[] | undefined,
+  ): string[] | undefined => {
+    if (!values || values.length === 0) {
+      return undefined;
+    }
+    const paths = [
+      ...new Set(
+        values
+          .map((value) => value.relativePath.trim())
+          .filter(Boolean),
+      ),
+    ].sort((left, right) => left.localeCompare(right));
+    return paths.length > 0 ? paths : undefined;
+  };
+
+  const currentFile = pathOf(references.currentFile);
+  const openFiles = listOf(references.openFiles);
+  const gitDiffFiles = listOf(references.gitDiffFiles);
+  const diagnosticFiles = listOf(references.diagnosticFiles);
+  const recentEditFiles = listOf(references.recentEditFiles);
+  const staleFiles = listOf(references.staleFiles);
+
+  const priority: string[] = [];
+  const seenPriority = new Set<string>();
+  const addPriority = (relativePath: string | undefined) => {
+    if (
+      !relativePath ||
+      seenPriority.has(relativePath) ||
+      priority.length >=
+        REPOSITORY_CONTEXT_RETRIEVAL_POLICY.maximumPriorityPaths
+    ) {
+      return;
+    }
+    seenPriority.add(relativePath);
+    priority.push(relativePath);
+  };
+
+  for (const file of references.explicitFiles ?? []) {
+    addPriority(pathOf(file));
+  }
+  for (const file of references.pinnedFiles ?? []) {
+    if ((file.priority ?? "preferred") === "required") {
+      addPriority(pathOf(file));
+    }
+  }
+  addPriority(pathOf(references.currentSelection));
+
+  if (
+    !currentFile &&
+    !openFiles &&
+    !gitDiffFiles &&
+    !diagnosticFiles &&
+    !recentEditFiles &&
+    !staleFiles &&
+    priority.length === 0
+  ) {
+    return undefined;
+  }
+
+  return {
+    ...(currentFile ? { currentFile } : {}),
+    ...(openFiles ? { openFiles } : {}),
+    ...(gitDiffFiles ? { gitDiffFiles } : {}),
+    ...(diagnosticFiles ? { diagnosticFiles } : {}),
+    ...(recentEditFiles ? { recentEditFiles } : {}),
+    ...(staleFiles ? { staleFiles } : {}),
+    ...(priority.length > 0 ? { priorityPaths: priority } : {}),
+  };
 }
 
 /**
@@ -124,6 +220,7 @@ export function restrictContextReferencesToFolderPrefix(
   const gitDiffFiles = (references.gitDiffFiles ?? []).filter(keep);
   const diagnosticFiles = (references.diagnosticFiles ?? []).filter(keep);
   const recentEditFiles = (references.recentEditFiles ?? []).filter(keep);
+  const staleFiles = (references.staleFiles ?? []).filter(keep);
   const explicitFiles = (references.explicitFiles ?? []).filter(keep);
   const pinnedFiles = (references.pinnedFiles ?? []).filter(keep);
 
@@ -134,6 +231,7 @@ export function restrictContextReferencesToFolderPrefix(
     gitDiffFiles.length === 0 &&
     diagnosticFiles.length === 0 &&
     recentEditFiles.length === 0 &&
+    staleFiles.length === 0 &&
     explicitFiles.length === 0 &&
     pinnedFiles.length === 0
   ) {
@@ -147,6 +245,7 @@ export function restrictContextReferencesToFolderPrefix(
     ...(gitDiffFiles.length > 0 ? { gitDiffFiles } : {}),
     ...(diagnosticFiles.length > 0 ? { diagnosticFiles } : {}),
     ...(recentEditFiles.length > 0 ? { recentEditFiles } : {}),
+    ...(staleFiles.length > 0 ? { staleFiles } : {}),
     ...(explicitFiles.length > 0 ? { explicitFiles } : {}),
     ...(pinnedFiles.length > 0 ? { pinnedFiles } : {}),
   };

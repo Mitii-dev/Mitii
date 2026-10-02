@@ -11,6 +11,7 @@ import {
 import type {
   HybridRetrievalInput,
   HybridRetrievalNormalization,
+  HybridRetrievalRankingContext,
   HybridRetrievalWarning,
   NormalizedHybridRetrievalRequest,
   ResolvedHybridRetrieverOptions,
@@ -111,6 +112,15 @@ export class HybridRetrievalRequestNormalizer {
           scopedFilters.filePaths,
         anchorFilePaths,
         kinds,
+        ...(parsed.rankingContext
+          ? {
+              rankingContext:
+                this.normalizeRankingContext(
+                  parsed.rankingContext,
+                  warnings,
+                ),
+            }
+          : {}),
         maximumResults:
           parsed.maximumResults ??
           options.maximumResults,
@@ -220,6 +230,39 @@ export class HybridRetrievalRequestNormalizer {
       lastSegment.includes(".") &&
       !lastSegment.endsWith(".")
     );
+  }
+
+  private normalizeRankingContext(
+    context: HybridRetrievalRankingContext,
+    warnings: HybridRetrievalWarning[],
+  ): HybridRetrievalRankingContext {
+    const normalizeList = (
+      values: readonly string[] | undefined,
+    ): string[] | undefined => {
+      if (!values || values.length === 0) {
+        return undefined;
+      }
+      return this.uniqueSorted(values, warnings);
+    };
+
+    const openFiles = normalizeList(context.openFiles);
+    const gitDiffFiles = normalizeList(context.gitDiffFiles);
+    const diagnosticFiles = normalizeList(context.diagnosticFiles);
+    const recentEditFiles = normalizeList(context.recentEditFiles);
+    const staleFiles = normalizeList(context.staleFiles);
+    const priorityPaths = normalizeList(context.priorityPaths);
+
+    return {
+      ...(context.currentFile
+        ? { currentFile: context.currentFile }
+        : {}),
+      ...(openFiles ? { openFiles } : {}),
+      ...(gitDiffFiles ? { gitDiffFiles } : {}),
+      ...(diagnosticFiles ? { diagnosticFiles } : {}),
+      ...(recentEditFiles ? { recentEditFiles } : {}),
+      ...(staleFiles ? { staleFiles } : {}),
+      ...(priorityPaths ? { priorityPaths } : {}),
+    };
   }
 
   /**

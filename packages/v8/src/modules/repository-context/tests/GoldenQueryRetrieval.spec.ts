@@ -96,6 +96,10 @@ describe("golden query retrieval", () => {
       "src/auth/session.ts",
       "src/auth/token.ts",
     ]);
+    expect(retrievalInput?.rankingContext).toEqual({
+      currentFile: "src/auth/session.ts",
+      gitDiffFiles: ["src/auth/token.ts"],
+    });
     expect(retrievalInput?.filePaths).toBeUndefined();
   });
 });

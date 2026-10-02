@@ -14,6 +14,7 @@ import {
 import {
   RepoGraphRetrievalSource,
   RepoMapRetrievalSource,
+  SessionContextRetrievalSource,
   TextIndexRetrievalSource,
   VectorIndexRetrievalSource,
 } from "./sources";
@@ -98,6 +99,10 @@ export class HybridRetrievalFactory {
       {
         source:
           new RepoGraphRetrievalSource(),
+      },
+      {
+        source:
+          new SessionContextRetrievalSource(),
       },
       ...(
         dependencies

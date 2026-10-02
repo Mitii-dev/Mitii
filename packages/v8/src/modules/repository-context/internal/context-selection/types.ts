@@ -69,6 +69,11 @@ export interface ContextSelectionReferences {
   gitDiffFiles?: readonly ContextFileReference[];
   diagnosticFiles?: readonly ContextFileReference[];
   recentEditFiles?: readonly ContextFileReference[];
+  /**
+   * Files that changed on disk after the agent last loaded them into context
+   * (Cline-style stale tracking). Prefer re-read over stale cached bodies.
+   */
+  staleFiles?: readonly ContextFileReference[];
 }
 
 export interface ContextSelectionBudget {
@@ -120,6 +125,7 @@ export interface NormalizedContextSelectionRequest {
     gitDiffFiles: ContextFileReference[];
     diagnosticFiles: ContextFileReference[];
     recentEditFiles: ContextFileReference[];
+    staleFiles: ContextFileReference[];
   };
 
   budget: NormalizedContextSelectionBudget;
@@ -143,7 +149,8 @@ export type ContextCandidateOrigin =
   | "open_file"
   | "git_diff"
   | "diagnostic"
-  | "recent_edit";
+  | "recent_edit"
+  | "stale_file";
 
 export interface ContextCandidate {
   key: string;
@@ -176,6 +183,7 @@ export type ContextSelectionScoreSignalType =
   | "git_diff"
   | "diagnostic"
   | "recent_edit"
+  | "stale_file"
   | "required_priority"
   | "diversity_penalty";
 

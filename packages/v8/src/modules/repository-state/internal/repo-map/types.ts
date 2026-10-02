@@ -55,6 +55,7 @@ export interface RepoMapRankingContext {
 
 export type RepoMapScoreReasonType =
   | "current_file"
+  | "important_file"
   | "open_file"
   | "git_diff"
   | "diagnostic"

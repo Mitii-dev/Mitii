@@ -64,6 +64,12 @@ const retrievalReasonTypeSchema =
     "graph_call_neighbor",
     "graph_import_neighbor",
     "graph_reference_neighbor",
+    "session_current_file",
+    "session_open_file",
+    "session_git_diff",
+    "session_diagnostic",
+    "session_recent_edit",
+    "session_stale_file",
     "reranked",
   ]);
 
@@ -133,6 +139,37 @@ const uniqueStringsSchema = (
       },
     );
 
+const rankingContextSchema =
+  z.object({
+    currentFile:
+      canonicalRelativePathSchema
+        .optional(),
+    openFiles:
+      z.array(
+        canonicalRelativePathSchema,
+      ).optional(),
+    gitDiffFiles:
+      z.array(
+        canonicalRelativePathSchema,
+      ).optional(),
+    diagnosticFiles:
+      z.array(
+        canonicalRelativePathSchema,
+      ).optional(),
+    recentEditFiles:
+      z.array(
+        canonicalRelativePathSchema,
+      ).optional(),
+    staleFiles:
+      z.array(
+        canonicalRelativePathSchema,
+      ).optional(),
+    priorityPaths:
+      z.array(
+        canonicalRelativePathSchema,
+      ).optional(),
+  }).strict();
+
 export const hybridRetrievalInputSchema =
   z.object({
     workspace:
@@ -163,6 +200,10 @@ export const hybridRetrievalInputSchema =
       z.array(
         chunkKindSchema,
       ).optional(),
+
+    rankingContext:
+      rankingContextSchema
+        .optional(),
 
     maximumResults:
       z.number()
@@ -248,6 +289,10 @@ export const normalizedHybridRetrievalRequestSchema =
               "Chunk kinds must be unique.",
           },
         ),
+
+    rankingContext:
+      rankingContextSchema
+        .optional(),
 
     maximumResults:
       z.number()
@@ -619,8 +664,10 @@ export const hybridRetrievalWarningSchema =
       "source_failed",
       "required_source_unavailable",
       "optional_source_unavailable",
+      "source_timeout",
       "source_truncated",
       "result_limit_reached",
+      "modality_quota_applied",
       "failure_policy_unsatisfied",
       "minimum_sources_unsatisfied",
       "reranker_failed",

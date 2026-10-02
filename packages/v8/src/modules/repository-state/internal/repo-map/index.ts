@@ -1,5 +1,6 @@
 export * from "./types";
 export * from "./constants";
+export * from "./importantFiles";
 export * from "./schema";
 export * from "./RepoMapBudgetApplier";
 export * from "./RepoMapBuilder";

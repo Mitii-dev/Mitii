@@ -128,6 +128,11 @@ export class ContextSelectionRequestNormalizer {
         references
           .recentEditFiles,
       );
+    const staleFiles =
+      normalizeGroup(
+        references
+          .staleFiles,
+      );
 
     const pinnedFiles =
       this.normalizePinned(
@@ -209,6 +214,7 @@ export class ContextSelectionRequestNormalizer {
           gitDiffFiles,
           diagnosticFiles,
           recentEditFiles,
+          staleFiles,
         },
         budget,
       },

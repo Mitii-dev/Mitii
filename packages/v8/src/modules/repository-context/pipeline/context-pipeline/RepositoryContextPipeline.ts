@@ -27,6 +27,7 @@ import type {
 } from "../../contracts/types";
 import {
   collectRepositoryContextGraphAnchors,
+  buildHybridRetrievalRankingContext,
   restrictContextReferencesToFolderPrefix,
 } from "../../policy";
 
@@ -232,6 +233,9 @@ export class RepositoryContextPipeline {
     const anchorFilePaths = collectRepositoryContextGraphAnchors(
       focusedReferences,
     );
+    const rankingContext = buildHybridRetrievalRankingContext(
+      focusedReferences,
+    );
 
     const retrieval = await this.dependencies.retriever.retrieve({
       workspace: artifacts.descriptor.workspaceId,
@@ -260,6 +264,11 @@ export class RepositoryContextPipeline {
       ...(anchorFilePaths.length > 0
         ? {
             anchorFilePaths,
+          }
+        : {}),
+      ...(rankingContext
+        ? {
+            rankingContext,
           }
         : {}),
       ...(input.kinds

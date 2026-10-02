@@ -119,6 +119,8 @@ export const CONTEXT_SELECTION_SIGNAL_BOOSTS:
     0.24,
   recent_edit:
     0.12,
+  stale_file:
+    0.28,
   required_priority:
     1,
 };
@@ -174,6 +176,8 @@ export const CONTEXT_SELECTION_MODE_MULTIPLIERS:
       1.2,
     recent_edit:
       1.15,
+    stale_file:
+      1.25,
   },
 };
 
@@ -290,6 +294,7 @@ export const CONTEXT_SELECTION_ORIGIN_ORDER:
   "current_selection",
   "pinned_file",
   "current_file",
+  "stale_file",
   "diagnostic",
   "git_diff",
   "recent_edit",

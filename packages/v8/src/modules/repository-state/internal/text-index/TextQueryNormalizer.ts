@@ -234,7 +234,23 @@ export class TextQueryNormalizer {
   ): string[] {
     return expandCodeIdentifierTerms(
       term,
-    );
+    )
+      .map((value) => this.sanitizeFtsTerm(value))
+      .filter(Boolean);
+  }
+
+  /**
+   * Strip FTS5 grammar metacharacters so MATCH never fails on punctuation
+   * (Hermes-style query hygiene). Terms are still quote-wrapped by the
+   * SQLite query builder.
+   */
+  private sanitizeFtsTerm(
+    term: string,
+  ): string {
+    return term
+      .replace(/["*^:(){}[\]~\\]/g, " ")
+      .replace(/\s+/g, "")
+      .trim();
   }
 
   private resolveBoundedPositive(

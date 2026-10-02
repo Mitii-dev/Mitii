@@ -22,8 +22,9 @@ export type {
 } from "../../internal/repo-graph/types";
 export { repoGraphSchema } from "../../internal/repo-graph/schema";
 
-export type { RepoMap, RepoMapEntry } from "../../internal/repo-map/types";
+export type { RepoMap, RepoMapEntry, RepoMapRankingContext } from "../../internal/repo-map/types";
 export { repoMapSchema } from "../../internal/repo-map/schema";
+export { RepoMapRanker } from "../../internal/repo-map/ranking/RepoMapRanker";
 
 export type {
   Chunk,

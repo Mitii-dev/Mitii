@@ -94,4 +94,101 @@ describe("RepoMapRanker", () => {
       ]),
     );
   });
+
+  it("personalizes PageRank toward path components mentioned in the query", () => {
+    const result = new RepoMapRanker().rank({
+      graph: graph([
+        "src/login/form.ts",
+        "src/shared/utils.ts",
+        "src/other/page.ts",
+      ]),
+      context: {
+        query: "inspect the login flow helpers",
+      },
+    });
+
+    expect(result.entries[0]?.file.relativePath).toBe("src/login/form.ts");
+  });
+
+  it("boosts call edges whose symbol is mentioned in the query", () => {
+    const graphWithCalls: RepoGraph = {
+      ...graph([
+        "src/chat/Editor.tsx",
+        "src/auth/LoginForm.tsx",
+        "src/shared/utils.ts",
+      ]),
+      nodes: [
+        ...graph([
+          "src/chat/Editor.tsx",
+          "src/auth/LoginForm.tsx",
+          "src/shared/utils.ts",
+        ]).nodes,
+        {
+          id: "sym:editor:renderLoginForm",
+          kind: "symbol",
+          symbolId: "sym:editor:renderLoginForm",
+          fileId: "file:src/chat/Editor.tsx",
+          name: "renderLoginForm",
+          symbolKind: "function",
+        },
+        {
+          id: "sym:login:LoginForm",
+          kind: "symbol",
+          symbolId: "sym:login:LoginForm",
+          fileId: "file:src/auth/LoginForm.tsx",
+          name: "LoginForm",
+          symbolKind: "function",
+        },
+        {
+          id: "sym:utils:helper",
+          kind: "symbol",
+          symbolId: "sym:utils:helper",
+          fileId: "file:src/shared/utils.ts",
+          name: "helper",
+          symbolKind: "function",
+        },
+      ],
+      edges: [
+        {
+          id: "e1",
+          type: "calls",
+          fromNodeId: "sym:editor:renderLoginForm",
+          toNodeId: "sym:login:LoginForm",
+          weight: 4,
+          evidenceCount: 1,
+          evidence: [{ source: "code_index_symbol" }],
+          evidenceTruncated: false,
+        },
+        {
+          id: "e2",
+          type: "calls",
+          fromNodeId: "sym:editor:renderLoginForm",
+          toNodeId: "sym:utils:helper",
+          weight: 40,
+          evidenceCount: 1,
+          evidence: [{ source: "code_index_symbol" }],
+          evidenceTruncated: false,
+        },
+      ],
+    };
+
+    const result = new RepoMapRanker().rank({
+      graph: graphWithCalls,
+      context: {
+        query: "Fix LoginForm validation",
+        openFiles: ["src/chat/Editor.tsx"],
+      },
+    });
+
+    const loginRank =
+      result.entries.find(
+        (entry) => entry.file.relativePath === "src/auth/LoginForm.tsx",
+      )?.pageRank ?? 0;
+    const utilsRank =
+      result.entries.find(
+        (entry) => entry.file.relativePath === "src/shared/utils.ts",
+      )?.pageRank ?? 0;
+
+    expect(loginRank).toBeGreaterThan(utilsRank);
+  });
 });

@@ -51,6 +51,10 @@ export class HybridRetrieverOptionsResolver {
             .rerankerFailureMode ??
           HYBRID_RETRIEVAL_DEFAULTS
             .RERANKER_FAILURE_MODE,
+        sourceTimeoutMs:
+          options.sourceTimeoutMs ??
+          HYBRID_RETRIEVAL_DEFAULTS
+            .SOURCE_TIMEOUT_MS,
       };
 
     this.positiveInteger(
@@ -89,6 +93,20 @@ export class HybridRetrieverOptionsResolver {
       HYBRID_RETRIEVAL_LIMITS
         .MAXIMUM_RERANKER_CANDIDATE_POOL,
     );
+
+    if (
+      !Number.isFinite(
+        resolved.sourceTimeoutMs,
+      ) ||
+      resolved.sourceTimeoutMs < 0 ||
+      !Number.isSafeInteger(
+        resolved.sourceTimeoutMs,
+      )
+    ) {
+      throw new RangeError(
+        "sourceTimeoutMs must be a non-negative safe integer.",
+      );
+    }
 
     if (
       !Number.isFinite(

@@ -66,6 +66,7 @@ const originSchema =
     "git_diff",
     "diagnostic",
     "recent_edit",
+    "stale_file",
   ]);
 
 const representationSchema =
@@ -90,6 +91,7 @@ const scoreSignalTypeSchema =
     "git_diff",
     "diagnostic",
     "recent_edit",
+    "stale_file",
     "required_priority",
     "diversity_penalty",
   ]);
@@ -245,6 +247,10 @@ export const contextSelectionInputSchema =
             fileReferenceSchema,
           ).optional(),
         recentEditFiles:
+          referenceArraySchema(
+            fileReferenceSchema,
+          ).optional(),
+        staleFiles:
           referenceArraySchema(
             fileReferenceSchema,
           ).optional(),

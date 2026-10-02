@@ -22,6 +22,8 @@ export const HYBRID_RETRIEVAL_IDS = {
     "repo-map",
   REPO_GRAPH_SOURCE:
     "repo-graph",
+  SESSION_SOURCE:
+    "session-context",
 } as const;
 
 export const HYBRID_RETRIEVAL_DEFAULTS = {
@@ -95,6 +97,49 @@ export const HYBRID_RETRIEVAL_DEFAULTS = {
   MINIMUM_FOLDER_SCOPED_RESULTS:
     12,
 
+  /**
+   * Cap on required/explicit/selection paths that bypass RRF ordering.
+   */
+  MAXIMUM_PRIORITY_PATHS:
+    16,
+
+  /**
+   * Soft per-source deadline (Cody-style). Slow sources are skipped without
+   * aborting the whole retrieval fan-out.
+   */
+  SOURCE_TIMEOUT_MS:
+    1_500,
+
+  SESSION_SOURCE_WEIGHT:
+    1.1,
+
+  /** Source score tiers for ephemeral session paths. */
+  SESSION_CURRENT_FILE_SCORE:
+    1,
+  SESSION_RECENT_EDIT_SCORE:
+    0.92,
+  SESSION_STALE_FILE_SCORE:
+    0.96,
+  SESSION_GIT_DIFF_SCORE:
+    0.88,
+  SESSION_DIAGNOSTIC_SCORE:
+    0.8,
+  SESSION_OPEN_FILE_SCORE:
+    0.72,
+
+  /**
+   * Final-slot modality quotas when vector retrieval is unavailable.
+   * Remaining mass is filled by fused order.
+   */
+  QUOTA_TEXT_WHEN_VECTOR_DEGRADED:
+    0.4,
+  QUOTA_GRAPH_WHEN_VECTOR_DEGRADED:
+    0.25,
+  QUOTA_MAP_WHEN_VECTOR_DEGRADED:
+    0.2,
+  QUOTA_SESSION_WHEN_VECTOR_DEGRADED:
+    0.15,
+
   GRAPH_EXACT_PATH_SCORE:
     1,
   GRAPH_FILE_ANCHOR_SCORE:
@@ -158,6 +203,10 @@ export const HYBRID_RETRIEVAL_SOURCE_WEIGHTS:
     .REPO_GRAPH_SOURCE]:
     HYBRID_RETRIEVAL_DEFAULTS
       .REPO_GRAPH_SOURCE_WEIGHT,
+  [HYBRID_RETRIEVAL_IDS
+    .SESSION_SOURCE]:
+    HYBRID_RETRIEVAL_DEFAULTS
+      .SESSION_SOURCE_WEIGHT,
 };
 
 export const HYBRID_RETRIEVAL_GRAPH_EDGE_TYPES = [
@@ -221,8 +270,12 @@ export const HYBRID_RETRIEVAL_MESSAGES = {
     "A required retrieval source was unavailable.",
   OPTIONAL_SOURCE_UNAVAILABLE:
     "An optional retrieval source was unavailable; remaining sources continued.",
+  SOURCE_TIMEOUT:
+    "A retrieval source exceeded its soft deadline and was skipped.",
   SOURCE_TRUNCATED:
     "A retrieval source reached its candidate limit.",
+  MODALITY_QUOTA_APPLIED:
+    "Final retrieval slots were rebalanced because vector retrieval was unavailable.",
   RESULT_LIMIT_REACHED:
     "The fused retrieval result reached its result limit.",
   RERANKER_FAILED:

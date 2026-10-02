@@ -1002,6 +1002,126 @@ test(
   },
 );
 
+test(
+  "query-time repo map re-rank prefers open files over published scores",
+  async () => {
+    const paths = [
+      "src/feature/active.ts",
+      "src/feature/archive.ts",
+      "src/feature/readme.ts",
+    ] as const;
+    const graph: RepoGraph = {
+      schemaVersion: 1,
+      workspaceSnapshotId: "snapshot-1",
+      codeIndexChangeToken: "change-1",
+      nodes: paths.map((relativePath) => ({
+        id: `file:${relativePath}`,
+        kind: "file" as const,
+        fileId: `file:${relativePath}`,
+        rootId: "root",
+        relativePath,
+      })),
+      edges: [],
+      warnings: [],
+      statistics: {
+        availableFiles: paths.length,
+        indexedFiles: paths.length,
+        projectNodes: 0,
+        fileNodes: paths.length,
+        symbolNodes: 0,
+        containsEdges: 0,
+        declaresEdges: 0,
+        importEdges: 0,
+        referenceEdges: 0,
+        projectRelationshipEdges: 0,
+        unresolvedImports: 0,
+        omittedImportTargets: 0,
+        ambiguousReferences: 0,
+        unresolvedReferences: 0,
+        omittedReferenceTargets: 0,
+        omittedParentSymbolTargets: 0,
+        truncatedSymbolFiles: 0,
+        droppedSymbolNodes: 0,
+        droppedEdges: 0,
+        consistencyRetries: 0,
+        durationMs: 0,
+      },
+      status: "complete",
+      generatedAt: new Date(0).toISOString(),
+    };
+
+    const publishedMap: RepoMap = {
+      schemaVersion: 1,
+      workspaceSnapshotId: "snapshot-1",
+      codeIndexChangeToken: "change-1",
+      entries: [
+        repoMapEntry("src/feature/readme.ts", 1),
+        repoMapEntry("src/feature/active.ts", 0.2),
+        repoMapEntry("src/feature/archive.ts", 0.1),
+      ],
+      statistics: {
+        availableFiles: 3,
+        rankedFiles: 3,
+        includedFiles: 3,
+        includedSymbols: 0,
+        estimatedTokens: 0,
+        durationMs: 0,
+      },
+      status: "complete",
+      generatedAt: new Date(0).toISOString(),
+    };
+
+    const result = await new HybridRetriever([
+      {
+        source: new RepoMapRetrievalSource(),
+      },
+    ]).retrieve({
+      ...baseInput,
+      query: "feature",
+      repoMap: publishedMap,
+      repoGraph: graph,
+      rankingContext: {
+        openFiles: ["src/feature/archive.ts"],
+      },
+    });
+
+    assert.equal(
+      result.candidates[0]?.relativePath,
+      "src/feature/archive.ts",
+    );
+  },
+);
+
+test(
+  "priority paths are prepended ahead of higher RRF lexical hits",
+  async () => {
+    const result = await new HybridRetriever([
+      {
+        source: new StaticRetrievalSource(
+          "lexical",
+          complete([
+            candidate("src/noise/a.ts", "a", 1),
+            candidate("src/noise/b.ts", "b", 0.95),
+            candidate("src/target/Important.ts", "important", 0.1),
+          ]),
+        ),
+        weight: 1,
+      },
+    ]).retrieve({
+      ...baseInput,
+      maximumResults: 3,
+      rankingContext: {
+        priorityPaths: ["src/target/Important.ts"],
+      },
+    });
+
+    assert.equal(
+      result.candidates[0]?.relativePath,
+      "src/target/Important.ts",
+    );
+  },
+);
+
 function createGraph(
   nodes:
     RepoGraphNode[],

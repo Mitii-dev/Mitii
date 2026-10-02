@@ -7,6 +7,7 @@ import {
   ContextSelector,
   HybridRetrievalFactory,
   IdentifierAwareRetrievalReranker,
+  CrossEncoderRetrievalReranker,
   NodeFileSystemAdapter,
   RepositoryContextPipeline,
   type GitPort,
@@ -33,6 +34,7 @@ import {
   type WorkspaceFileEntry,
   type WorkspaceSnapshot,
   type EmbeddingProvider,
+  type CrossEncoderDocumentScorer,
   pathMatchesFolderPrefix,
 } from '@mitii/v8';
 import { CorpusRetrievalSource } from '../corpus/CorpusRetrievalSource.js';
@@ -46,6 +48,10 @@ import {
 } from '../indexing/semanticIndex.js';
 import { WORKSPACE_WALK_SKIP_DIR_NAMES, shouldSkipWorkspaceWalkFile } from '../internal/workspaceWalk.js';
 import type { OpenHostSqliteDatabase } from '../sqlite/types.js';
+import {
+  buildWorkspaceSketch,
+  WORKSPACE_SKETCH_DEFAULTS,
+} from './workspaceSketch.js';
 
 const MAX_REPO_MAP_FILES = 400;
 const MAX_WORKSPACE_SNAPSHOT_FILES = 10_000;
@@ -69,6 +75,12 @@ type HostContextFileReference = NonNullable<
 export type HostEditorContextReferences = {
   currentFile?: HostContextFileReference;
   openFiles?: readonly HostContextFileReference[];
+  recentEditFiles?: readonly HostContextFileReference[];
+  /**
+   * Files changed on disk after the agent last loaded them (Cline-style).
+   * Injected as preferred selection priors so re-read beats stale bodies.
+   */
+  staleFiles?: readonly HostContextFileReference[];
 };
 
 export function createHostRepositoryContext(options: {
@@ -85,6 +97,11 @@ export function createHostRepositoryContext(options: {
    * Only registers when enabled AND `.mitii/corpus/index.json` exists.
    */
   corpusEnabled?: boolean;
+  /**
+   * Optional Continue-style cross-encoder / API rerank scorer.
+   * When omitted, host keeps the cheap identifier-aware lexical reranker.
+   */
+  crossEncoderScorer?: CrossEncoderDocumentScorer;
   resolveEditorReferences?: () =>
     | HostEditorContextReferences
     | Promise<HostEditorContextReferences>;
@@ -154,6 +171,9 @@ export function createHostRepositoryContext(options: {
       resolvedDescriptors,
       semanticIndex: options.semanticIndex,
       corpusEnabled: options.corpusEnabled === true,
+      ...(options.crossEncoderScorer
+        ? { crossEncoderScorer: options.crossEncoderScorer }
+        : {}),
     }),
     selector,
     assembler: createHostAssembler(defaultAssembler, (snapshotId) =>
@@ -225,11 +245,19 @@ class GitAwareRepositoryContextPipeline extends RepositoryContextPipeline {
         const openFiles = (editor.openFiles ?? [])
           .map((file) => normalizeContextFileReference(file, rootId))
           .filter((file): file is HostContextFileReference => Boolean(file));
+        const recentEditFiles = (editor.recentEditFiles ?? [])
+          .map((file) => normalizeContextFileReference(file, rootId))
+          .filter((file): file is HostContextFileReference => Boolean(file));
+        const staleFiles = (editor.staleFiles ?? [])
+          .map((file) => normalizeContextFileReference(file, rootId))
+          .filter((file): file is HostContextFileReference => Boolean(file));
         next = {
           ...next,
           references: mergeContextReferences(next.references, {
             ...(currentFile ? { currentFile } : {}),
             ...(openFiles.length ? { openFiles } : {}),
+            ...(recentEditFiles.length ? { recentEditFiles } : {}),
+            ...(staleFiles.length ? { staleFiles } : {}),
           }),
         };
       } catch {
@@ -367,6 +395,22 @@ function mergeContextReferences(
           ]),
         }
       : {}),
+    ...(additions.recentEditFiles
+      ? {
+          recentEditFiles: uniqueContextFileReferences([
+            ...(existing?.recentEditFiles ?? []),
+            ...additions.recentEditFiles,
+          ]),
+        }
+      : {}),
+    ...(additions.staleFiles
+      ? {
+          staleFiles: uniqueContextFileReferences([
+            ...(existing?.staleFiles ?? []),
+            ...additions.staleFiles,
+          ]),
+        }
+      : {}),
   };
 }
 
@@ -458,6 +502,7 @@ function createHostRetriever(options: {
   resolvedDescriptors: ReadonlyMap<string, RepositoryStateDescriptor>;
   semanticIndex?: SemanticIndexSettings;
   corpusEnabled?: boolean;
+  crossEncoderScorer?: CrossEncoderDocumentScorer;
 }): RepositoryContextRetrieverPort {
   return {
     retrieve: async (
@@ -547,7 +592,9 @@ function createHostRetriever(options: {
 
         const retriever = new HybridRetrievalFactory().create({
           ...(textIndex ? { textIndex } : {}),
-          reranker: new IdentifierAwareRetrievalReranker(),
+          reranker: options.crossEncoderScorer
+            ? new CrossEncoderRetrievalReranker(options.crossEncoderScorer)
+            : new IdentifierAwareRetrievalReranker(),
           ...(vectorIndex && embeddingProvider
             ? {
                 vectorIndex,
@@ -859,14 +906,16 @@ function assembleFileMapFallback(
     if (paths.length >= MAX_REPO_MAP_FILES) break;
   }
   const ranked = rankedPaths.length > 0;
-  let content = `Workspace file map (${paths.length} files${
-    ranked ? ', ranked by repository map' : ''
-  }):\n${paths.map((path: string) => `- ${path}`).join('\n')}`;
-  if (content.length > MAX_REPO_MAP_CHARS) {
-    content = `${content.slice(0, MAX_REPO_MAP_CHARS)}\n...(truncated)`;
-  }
+  const sketch = buildWorkspaceSketch(paths, {
+    maximumItems: WORKSPACE_SKETCH_DEFAULTS.MAXIMUM_ITEMS,
+    maximumCharacters: MAX_REPO_MAP_CHARS,
+    rootLabel: '.',
+  });
+  const content = ranked
+    ? `Workspace sketch (${sketch.includedItems} items, ranked seeds):\n${sketch.content}`
+    : `Workspace sketch (${sketch.includedItems} items):\n${sketch.content}`;
   const truncated =
-    content.includes('...(truncated)') ||
+    sketch.truncated ||
     snapshotPaths.length > paths.length ||
     rankedPaths.length > paths.length;
   const tokens = Math.max(1, Math.ceil(content.length / 4));
@@ -937,12 +986,12 @@ function fileMapFallbackMessage(
 ): string {
   if (reason === 'empty_assembly') {
     return ranked
-      ? 'Selected context items assembled to zero file bodies; injected a repository-map-ranked file list instead of file contents.'
-      : 'Selected context items assembled to zero file bodies; injected a workspace file list instead of file contents.';
+      ? 'Selected context items assembled to zero file bodies; injected a repository-map-ranked workspace sketch instead of file contents.'
+      : 'Selected context items assembled to zero file bodies; injected a BFS workspace sketch instead of file contents.';
   }
   return ranked
-    ? 'Retrieval selected no items; assembled a repository-map-ranked file list instead of file contents.'
-    : 'Retrieval selected no items; assembled a workspace file list instead of file contents.';
+    ? 'Retrieval selected no items; assembled a repository-map-ranked workspace sketch instead of file contents.'
+    : 'Retrieval selected no items; assembled a BFS workspace sketch instead of file contents.';
 }
 
 async function buildHostWorkspaceSnapshot(

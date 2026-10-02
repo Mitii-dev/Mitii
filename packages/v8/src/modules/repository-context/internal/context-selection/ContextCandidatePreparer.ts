@@ -382,6 +382,18 @@ export class ContextCandidatePreparer {
       );
     }
 
+    for (
+      const reference of
+        request.references
+          .staleFiles
+    ) {
+      addFileReference(
+        reference,
+        "stale_file",
+        "preferred",
+      );
+    }
+
     const selection =
       request.references
         .currentSelection;

@@ -21,10 +21,17 @@ export const REPO_MAP_DEFAULTS = {
   ESTIMATED_SYMBOL_OVERHEAD_CHARACTERS: 8,
   MINIMUM_QUERY_TERM_LENGTH: 2,
   PAGE_RANK_EVIDENCE_DECIMAL_PLACES: 6,
+  /**
+   * When ranking context has no chat/open/current files, enlarge the map
+   * token budget (aider `map_mul_no_files`).
+   */
+  MAP_MUL_NO_FILES: 8,
+  MAXIMUM_NO_SESSION_TOKEN_BUDGET: 32_000,
 } as const;
 
 export const REPO_MAP_PRESELECTION_WEIGHTS = {
   CURRENT_FILE: 1_000,
+  IMPORTANT_FILE: 900,
   GIT_DIFF_FILE: 800,
   OPEN_FILE: 700,
   DIAGNOSTIC_FILE: 600,
@@ -58,10 +65,23 @@ export const REPO_MAP_SCORE_WEIGHTS = {
 
   PAGE_RANK_MULTIPLIER: 25,
   ENTRY_POINT: 3,
+  IMPORTANT_FILE: 6,
 
   IMPORT_EDGE: 2,
   CALL_EDGE: 1.25,
   REFERENCE_EDGE: 0.5,
+
+  /**
+   * Aider-style identifier edge multipliers (injected formulae, not drop-in).
+   * Applied to calls/references PageRank edges only.
+   */
+  IDENT_MENTIONED_MULTIPLIER: 10,
+  IDENT_QUALITY_MULTIPLIER: 10,
+  IDENT_QUALITY_MINIMUM_LENGTH: 8,
+  IDENT_PRIVATE_MULTIPLIER: 0.1,
+  IDENT_HIGH_FANIN_MULTIPLIER: 0.1,
+  IDENT_HIGH_FANIN_THRESHOLD: 5,
+  CHAT_FILE_REFERRER_MULTIPLIER: 50,
 
   PERSONALIZATION_BASE: 0.1,
   PERSONALIZATION_CURRENT_FILE: 12,
@@ -69,6 +89,9 @@ export const REPO_MAP_SCORE_WEIGHTS = {
   PERSONALIZATION_GIT_DIFF_FILE: 10,
   PERSONALIZATION_DIAGNOSTIC_FILE: 5,
   PERSONALIZATION_RECENT_EDIT_FILE: 1,
+  /** Path basename/component intersects a query-mentioned identifier. */
+  PERSONALIZATION_MENTIONED_PATH_COMPONENT: 6,
+  PERSONALIZATION_IMPORTANT_FILE: 2,
 } as const;
 
 export const REPO_MAP_SYMBOL_KIND_PRIORITY: Readonly<
@@ -93,6 +116,7 @@ export const REPO_MAP_REASON_ORDER: Readonly<
   Record<RepoMapScoreReasonType, number>
 > = {
   current_file: 10,
+  important_file: 15,
   git_diff: 20,
   open_file: 30,
   diagnostic: 40,

@@ -160,6 +160,14 @@ export { createHostRepositoryContext } from './repository-context/createHostRepo
 export type {
   HostEditorContextReferences,
 } from './repository-context/createHostRepositoryContext.js';
+export {
+  buildWorkspaceSketch,
+  WORKSPACE_SKETCH_DEFAULTS,
+} from './repository-context/workspaceSketch.js';
+export type {
+  WorkspaceSketchOptions,
+  WorkspaceSketchResult,
+} from './repository-context/workspaceSketch.js';
 
 export { createHostCodeNavigationPort } from './code-navigation/createHostCodeNavigationPort.js';
 export { createHostLanguageServices } from './code-navigation/createHostLanguageServices.js';

@@ -96,6 +96,9 @@ export class RetrievalSourceRegistry {
         required:
           registration.required ??
           false,
+        timeoutMs:
+          registration.timeoutMs ??
+          -1,
       },
     );
   }

@@ -32,6 +32,10 @@ import {
   importanceByPathFromRepoMapEntries,
 } from "./boostByImportance";
 
+import {
+  applyModalityQuotas,
+} from "./applyModalityQuotas";
+
 import type {
   HybridRetrievalCandidate,
   HybridRetrievalInput,
@@ -50,6 +54,19 @@ import type {
   RetrievalSourceRegistration,
   SuccessfulRetrievalSourceResult,
 } from "./types";
+
+
+class SoftSourceTimeoutError extends Error {
+  constructor(
+    readonly sourceId: string,
+    readonly timeoutMs: number,
+  ) {
+    super(
+      `${HYBRID_RETRIEVAL_MESSAGES.SOURCE_TIMEOUT} (${sourceId}, ${timeoutMs}ms)`,
+    );
+    this.name = "SoftSourceTimeoutError";
+  }
+}
 
 export class HybridRetriever {
   private readonly options:
@@ -284,10 +301,18 @@ export class HybridRetriever {
           )
         : request.maximumResults;
 
+    const {
+      priorityCandidates,
+      remainingSources,
+    } = this.extractPriorityLane(
+      request,
+      successful,
+    );
+
     const fusionResult =
       this.fusion.fuse({
         sourceResults:
-          successful,
+          remainingSources,
         rankConstant:
           this.options
             .rankConstant,
@@ -295,10 +320,12 @@ export class HybridRetriever {
           fusionLimit,
       });
 
-    let candidates = [
-      ...fusionResult
-        .candidates,
-    ];
+    let candidates =
+      this.mergePriorityLane(
+        priorityCandidates,
+        fusionResult.candidates,
+        fusionLimit,
+      );
 
       candidates =
       this.backfillFolderScopedMapCandidates(
@@ -307,9 +334,27 @@ export class HybridRetriever {
         candidates,
       );
 
+    const quotaResult = applyModalityQuotas({
+      candidates,
+      successful,
+      maximumResults: fusionLimit,
+    });
+    candidates = quotaResult.candidates;
+    if (quotaResult.warning) {
+      warnings.push(quotaResult.warning);
+    }
+
     // Optional post-RRF boost from published RepoMap composite scores.
-    // Does not recompute PageRank — only applies published importance.
-    if (request.repoMap?.entries?.length) {
+    // Skip when session rankingContext is present — query-time map re-rank
+    // already applied personalization; published index-time scores would
+    // otherwise pull stale files back to the top.
+    const hasSessionRanking = this.hasSessionRankingContext(
+      request.rankingContext,
+    );
+    if (
+      !hasSessionRanking &&
+      request.repoMap?.entries?.length
+    ) {
       const importanceByPath =
         importanceByPathFromRepoMapEntries(
           request.repoMap.entries,
@@ -443,19 +488,32 @@ export class HybridRetriever {
     abortSignal:
       AbortSignal | undefined,
   ): Promise<RetrievalSourceExecutionResult> {
+    const timeoutMs =
+      registration.timeoutMs >= 0
+        ? registration.timeoutMs
+        : this.options.sourceTimeoutMs;
+
     try {
+      const retrievePromise =
+        registration.source.retrieve(
+          request,
+          {
+            ...(abortSignal
+              ? {
+                  abortSignal,
+                }
+              : {}),
+          },
+        );
+
       const rawResult =
-        await registration.source
-          .retrieve(
-            request,
-            {
-              ...(abortSignal
-                ? {
-                    abortSignal,
-                  }
-                : {}),
-            },
-          );
+        timeoutMs > 0
+          ? await this.withSoftTimeout(
+              retrievePromise,
+              timeoutMs,
+              registration.source.id,
+            )
+          : await retrievePromise;
 
       const result =
         retrievalSourceResultSchema
@@ -485,10 +543,52 @@ export class HybridRetriever {
         result,
       };
     } catch (error) {
+      if (error instanceof SoftSourceTimeoutError) {
+        return {
+          registration,
+          report: {
+            ...this.report(
+              registration.source.id,
+              registration.required ? "failed" : "skipped",
+              registration.required,
+              registration.weight,
+            ),
+            error: error.message,
+          },
+          error,
+        };
+      }
       return this.failedExecution(
         registration,
         error,
       );
+    }
+  }
+
+  private async withSoftTimeout<T>(
+    promise: Promise<T>,
+    timeoutMs: number,
+    sourceId: string,
+  ): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((_resolve, reject) => {
+          timer = setTimeout(() => {
+            reject(
+              new SoftSourceTimeoutError(
+                sourceId,
+                timeoutMs,
+              ),
+            );
+          }, timeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timer !== undefined) {
+        clearTimeout(timer);
+      }
     }
   }
 
@@ -530,12 +630,40 @@ export class HybridRetriever {
           .status ===
         "failed"
       ) {
+        const timedOut =
+          execution.error instanceof
+          SoftSourceTimeoutError;
         warnings.push({
           code:
-            "source_failed",
+            timedOut
+              ? "source_timeout"
+              : "source_failed",
+          message:
+            timedOut
+              ? HYBRID_RETRIEVAL_MESSAGES
+                  .SOURCE_TIMEOUT
+              : HYBRID_RETRIEVAL_MESSAGES
+                  .SOURCE_FAILED,
+          sourceId:
+            execution
+              .registration
+              .source.id,
+        });
+      }
+
+      if (
+        execution.report
+          .status ===
+          "skipped" &&
+        execution.error instanceof
+          SoftSourceTimeoutError
+      ) {
+        warnings.push({
+          code:
+            "source_timeout",
           message:
             HYBRID_RETRIEVAL_MESSAGES
-              .SOURCE_FAILED,
+              .SOURCE_TIMEOUT,
           sourceId:
             execution
               .registration
@@ -683,6 +811,136 @@ export class HybridRetriever {
         HYBRID_RETRIEVAL_MESSAGES
           .FAILURE_POLICY_UNSATISFIED,
     });
+  }
+
+  /**
+   * Priority paths (required / explicit / current selection) form a lane that
+   * is fused separately and prepended ahead of the main RRF result so weak
+   * lexical hits cannot bury user anchors.
+   */
+  private hasSessionRankingContext(
+    context:
+      NormalizedHybridRetrievalRequest["rankingContext"],
+  ): boolean {
+    if (!context) {
+      return false;
+    }
+    return Boolean(
+      context.currentFile ||
+        context.openFiles?.length ||
+        context.gitDiffFiles?.length ||
+        context.diagnosticFiles?.length ||
+        context.recentEditFiles?.length ||
+        context.staleFiles?.length ||
+        context.priorityPaths?.length,
+    );
+  }
+
+  private extractPriorityLane(
+    request: NormalizedHybridRetrievalRequest,
+    successful: readonly SuccessfulRetrievalSourceResult[],
+  ): {
+    priorityCandidates: HybridRetrievalCandidate[];
+    remainingSources: SuccessfulRetrievalSourceResult[];
+  } {
+    const priorityPaths = new Set(
+      (request.rankingContext?.priorityPaths ?? []).slice(
+        0,
+        HYBRID_RETRIEVAL_DEFAULTS.MAXIMUM_PRIORITY_PATHS,
+      ),
+    );
+
+    if (priorityPaths.size === 0) {
+      return {
+        priorityCandidates: [],
+        remainingSources: [...successful],
+      };
+    }
+
+    const prioritySources: SuccessfulRetrievalSourceResult[] = [];
+    const remainingSources: SuccessfulRetrievalSourceResult[] = [];
+
+    for (const source of successful) {
+      const priority: SuccessfulRetrievalSourceResult["candidates"][number][] =
+        [];
+      const remaining: SuccessfulRetrievalSourceResult["candidates"][number][] =
+        [];
+      for (const candidate of source.candidates) {
+        if (priorityPaths.has(candidate.relativePath)) {
+          priority.push(candidate);
+        } else {
+          remaining.push(candidate);
+        }
+      }
+      if (priority.length > 0) {
+        prioritySources.push({
+          ...source,
+          candidates: priority,
+        });
+      }
+      remainingSources.push({
+        ...source,
+        candidates: remaining,
+      });
+    }
+
+    if (prioritySources.length === 0) {
+      return {
+        priorityCandidates: [],
+        remainingSources: [...successful],
+      };
+    }
+
+    const priorityFusion = this.fusion.fuse({
+      sourceResults: prioritySources,
+      rankConstant: this.options.rankConstant,
+      maximumResults: Math.max(
+        priorityPaths.size,
+        HYBRID_RETRIEVAL_DEFAULTS.MAXIMUM_PRIORITY_PATHS,
+      ),
+    });
+
+    return {
+      priorityCandidates: priorityFusion.candidates,
+      remainingSources,
+    };
+  }
+
+  private mergePriorityLane(
+    priority: readonly HybridRetrievalCandidate[],
+    fused: readonly HybridRetrievalCandidate[],
+    maximumResults: number,
+  ): HybridRetrievalCandidate[] {
+    if (priority.length === 0) {
+      return [...fused];
+    }
+
+    const seen = new Set<string>();
+    const merged: HybridRetrievalCandidate[] = [];
+
+    for (const candidate of priority) {
+      if (seen.has(candidate.key)) {
+        continue;
+      }
+      seen.add(candidate.key);
+      merged.push(candidate);
+      if (merged.length >= maximumResults) {
+        return merged;
+      }
+    }
+
+    for (const candidate of fused) {
+      if (seen.has(candidate.key)) {
+        continue;
+      }
+      seen.add(candidate.key);
+      merged.push(candidate);
+      if (merged.length >= maximumResults) {
+        break;
+      }
+    }
+
+    return merged;
   }
 
   /**

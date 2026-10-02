@@ -5,6 +5,13 @@ export { ContextAssemblyFactory } from "../internal/context-assembly/ContextAsse
 export { ContextSelector } from "../internal/context-selection/ContextSelector";
 export { HybridRetrievalFactory } from "../internal/hybrid-retrieval/HybridRetrievalFactory";
 export { IdentifierAwareRetrievalReranker } from "../internal/hybrid-retrieval/IdentifierAwareRetrievalReranker";
+export {
+  CrossEncoderRetrievalReranker,
+} from "../internal/hybrid-retrieval/CrossEncoderRetrievalReranker";
+export type {
+  CrossEncoderDocumentScorer,
+  CrossEncoderDocumentFormatter,
+} from "../internal/hybrid-retrieval/CrossEncoderRetrievalReranker";
 export type {
   ContextAssemblyInput,
   ContextAssemblyResult,

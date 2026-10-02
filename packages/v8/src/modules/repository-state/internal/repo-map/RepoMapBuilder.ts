@@ -1,4 +1,5 @@
 import {
+  REPO_MAP_DEFAULTS,
   REPO_MAP_SCHEMA_VERSION,
 } from "./constants";
 
@@ -16,8 +17,10 @@ import {
 
 import type {
   RepoMap,
+  RepoMapBudget,
   RepoMapBuildInput,
   RepoMapRankerOptions,
+  RepoMapRankingContext,
 } from "./types";
 
 export class RepoMapBuilder {
@@ -51,11 +54,13 @@ export class RepoMapBuilder {
       input.abortSignal,
     );
 
+    const rankingContext =
+      input.ranking ?? {};
+
     const ranking =
       this.ranker.rank({
         graph: input.graph,
-        context:
-          input.ranking ?? {},
+        context: rankingContext,
         ...(input.abortSignal
           ? {
               abortSignal:
@@ -71,7 +76,10 @@ export class RepoMapBuilder {
     const budget =
       this.budgetApplier.apply(
         ranking.entries,
-        input.budget,
+        this.resolveBudget(
+          input.budget,
+          rankingContext,
+        ),
       );
 
     const result: RepoMap = {
@@ -118,6 +126,64 @@ export class RepoMapBuilder {
     return repoMapSchema.parse(
       result,
     ) as RepoMap;
+  }
+
+  /**
+   * When ranking has no chat/open/current files, enlarge the token budget
+   * (aider `map_mul_no_files`) so cold-start maps stay informative.
+   */
+  private resolveBudget(
+    budget: RepoMapBudget | undefined,
+    context: RepoMapRankingContext,
+  ): RepoMapBudget | undefined {
+    if (this.hasSessionFiles(context)) {
+      return budget;
+    }
+
+    const baseTokens =
+      budget?.maximumEstimatedTokens ??
+      REPO_MAP_DEFAULTS
+        .MAXIMUM_ESTIMATED_TOKENS;
+
+    const expanded = Math.min(
+      REPO_MAP_DEFAULTS
+        .MAXIMUM_NO_SESSION_TOKEN_BUDGET,
+      baseTokens *
+        REPO_MAP_DEFAULTS.MAP_MUL_NO_FILES,
+    );
+
+    if (
+      budget?.maximumEstimatedTokens !==
+        undefined &&
+      expanded <=
+        budget.maximumEstimatedTokens
+    ) {
+      return budget;
+    }
+
+    return {
+      ...(budget ?? {}),
+      maximumEstimatedTokens: expanded,
+    };
+  }
+
+  private hasSessionFiles(
+    context: RepoMapRankingContext,
+  ): boolean {
+    return Boolean(
+      context.currentFile ||
+        (context.openFiles &&
+          context.openFiles.length > 0) ||
+        (context.gitDiffFiles &&
+          context.gitDiffFiles.length >
+            0) ||
+        (context.diagnosticFiles &&
+          context.diagnosticFiles
+            .length > 0) ||
+        (context.recentEditFiles &&
+          context.recentEditFiles
+            .length > 0),
+    );
   }
 
   private throwIfAborted(
