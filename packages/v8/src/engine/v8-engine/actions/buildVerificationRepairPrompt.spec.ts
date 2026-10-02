@@ -111,6 +111,64 @@ describe("buildVerificationRepairPrompt", () => {
     expect(prompt).not.toContain("packages/other");
     expect(prompt).toContain("Never edit node_modules");
   });
+
+  it("does not fall back to out-of-scope diagnostics when ask scope is known", () => {
+    const prompt = buildVerificationRepairPrompt({
+      verification: {
+        schemaVersion: VERIFICATION_SCHEMA_VERSION,
+        status: "verification_failed",
+        stateToken: "state-1",
+        affectedProjectIds: [],
+        checks: [
+          {
+            checkId: "inferred:apps/desktop:typecheck:typecheck",
+            kind: "typecheck",
+            label: "typecheck",
+            evidenceSource: "manifest",
+            outcome: "failed",
+            summary: "failed",
+          },
+        ],
+        diagnostics: [
+          {
+            path: "node_modules/vitest/dist/chunks/index.js",
+            severity: "error",
+            message: "EventEmitter.onMessage",
+            startLine: 103,
+          },
+          {
+            path: "packages/other/src/unrelated.ts",
+            severity: "error",
+            message: "unrelated",
+            startLine: 1,
+          },
+        ],
+        diff: {
+          reviewed: true,
+          staleStateRisk: false,
+          summary: "diff",
+          changedPaths: ["apps/desktop/src/renderer/App.tsx"],
+        },
+        warnings: [],
+        reasonCodes: ["checks_failed"],
+        durationMs: 1,
+      },
+      changedFiles: ["apps/desktop/src/renderer/App.tsx"],
+      askScopePaths: [
+        "apps/desktop/src/renderer/App.tsx",
+        "apps/desktop/src/shared/settings.ts",
+      ],
+      userPrompt:
+        "upon clicking Index settings its should redirect properly to semantic tab",
+    });
+
+    expect(prompt).toContain("No new ask-scoped diagnostics remain");
+    expect(prompt).toContain("User ask");
+    expect(prompt).toContain("Compare-only repair");
+    expect(prompt).not.toContain("EventEmitter");
+    expect(prompt).not.toContain("packages/other");
+    expect(prompt).not.toContain("New ask-scoped errors (fix these exact items");
+  });
 });
 
 describe("loadDiagnosticSourceLines", () => {

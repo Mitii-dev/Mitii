@@ -4,4 +4,4 @@
  */
 export { buildVerificationRecord } from "./actions/BuildVerificationRecord";
 export type { BuildVerificationRecordParams } from "./actions/BuildVerificationRecord";
-export { buildVerificationUserSummary } from "./actions/BuildVerificationUserSummary";
+export { buildVerificationUserSummary, formatOptionalLeftoverOffer } from "./actions/BuildVerificationUserSummary";

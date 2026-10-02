@@ -299,8 +299,9 @@ function truncate(value: string, max: number): string {
 function executionContract(strategy?: PlanStrategyDecision): string {
   if (strategy?.strategy === "follow_evidence") {
     return [
-      "Execution contract: preflight evidence already enumerates failures.",
-      "Skip rediscovery. Start at the first Change step or active checklist item.",
+      "Execution contract: when the ask is fix-build / cites these failures, bind to the listed evidence.",
+      "Otherwise treat preflight as baseline inventory — do the user ask first; do not expand into unrelated pre-existing errors.",
+      "Start at the first Change step or active checklist item.",
       "Load only files for the active todo; mark it done before moving on.",
       "Do not end after planning — call apply_patch (or other mutation tools) for Change steps now.",
       "Do not expand scope unless the user revises the plan.",

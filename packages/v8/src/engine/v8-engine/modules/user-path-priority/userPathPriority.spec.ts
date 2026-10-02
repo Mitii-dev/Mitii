@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  citedRepoPathsFromPrompt,
+  preferConcreteRepoCites,
   preflightDiagnosticsForUserRequest,
   preflightErrorsMatchUserRequest,
   shouldForcePreflightRepairLock,
@@ -21,6 +23,28 @@ describe("userPathPriority", () => {
         ],
       }),
     ).toBe(false);
+  });
+
+  it("drops fixture src/paths when the paste already cites packages/ apps tests", () => {
+    const cited = citedRepoPathsFromPrompt(
+      [
+        "FAIL packages/host/src/repository-context/createHostRepositoryContext.spec.ts",
+        "expected to contain 'src/present.ts'",
+        "+ └───present.ts",
+        "FAIL packages/v8/tests/architecture/v8-module-boundaries.test.ts",
+      ].join("\n"),
+    );
+    expect(cited).toContain(
+      "packages/host/src/repository-context/createhostrepositorycontext.spec.ts",
+    );
+    expect(cited).toContain(
+      "packages/v8/tests/architecture/v8-module-boundaries.test.ts",
+    );
+    expect(cited).not.toContain("src/present.ts");
+    expect(preferConcreteRepoCites(["src/present.ts", "present.ts"])).toEqual([
+      "src/present.ts",
+      "present.ts",
+    ]);
   });
 
   it("allows repair lock when prompt names a diagnostic path", () => {

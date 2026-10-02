@@ -25,4 +25,4 @@ export { captureRepoBuildState } from "./CaptureRepoBuildState";
 export { compareRepoBuildStates } from "./CompareRepoBuildStates";
 export { buildVerificationRecord } from "./BuildVerificationRecord";
 export type { BuildVerificationRecordParams } from "./BuildVerificationRecord";
-export { buildVerificationUserSummary } from "./BuildVerificationUserSummary";
+export { buildVerificationUserSummary, formatOptionalLeftoverOffer } from "./BuildVerificationUserSummary";

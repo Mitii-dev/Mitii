@@ -4,6 +4,8 @@ import type {
   VerificationResult,
 } from "../../../modules/verification";
 
+import { filterDiagnosticsToAskScope } from "./buildVerificationRepairPrompt";
+
 /**
  * Pure decision for how Agent Engine should treat a Verification result.
  *
@@ -16,6 +18,7 @@ import type {
  * - implemented_unverified (work done; evidence incomplete — keep changes)
  * - verification infrastructure missing AND allowUnavailable
  * - package typecheck/build passed while only workspace-root leftovers failed
+ * - ask/changed paths have no in-scope diagnostic errors (package noise ignored)
  *
  * Reject (eligible for repair only when repairable):
  * - verification_failed → repairable (model can fix the change)
@@ -75,6 +78,9 @@ export function decideVerificationGate(params: {
   missingInfrastructure?: readonly string[];
   verification?: VerificationResult;
   comparison?: RepoBuildStateComparison;
+  /** Changed / seed paths — used to ignore unrelated package noise. */
+  askScopePaths?: readonly string[];
+  changedFiles?: readonly string[];
 }): VerificationGateDecision {
   if (params.mutationRequired && params.changedFileCount === 0) {
     return {
@@ -125,11 +131,18 @@ export function decideVerificationGate(params: {
     };
   }
 
+  const goalParams = {
+    verification,
+    comparison: params.comparison,
+    askScopePaths: params.askScopePaths,
+    changedFiles: params.changedFiles,
+  };
+
   switch (verification.status) {
     case "verified_success":
       return { action: "accept", acceptKind: "verified_success" };
     case "implemented_unverified":
-      if (isUserGoalComplete({ verification, comparison: params.comparison })) {
+      if (isUserGoalComplete(goalParams)) {
         return { action: "accept", acceptKind: "implemented_unverified" };
       }
       if (hasDiagnosticErrors(params.comparison)) {
@@ -148,7 +161,7 @@ export function decideVerificationGate(params: {
       // Keep mutations; do not roll back a successful edit for missing scripts.
       return { action: "accept", acceptKind: "implemented_unverified" };
     case "verification_failed":
-      if (isUserGoalComplete({ verification, comparison: params.comparison })) {
+      if (isUserGoalComplete(goalParams)) {
         return { action: "accept", acceptKind: "implemented_unverified" };
       }
       return {
@@ -231,12 +244,21 @@ function diagnosticErrorMessage(comparison: RepoBuildStateComparison): string {
  * repair loop after `inferred:apps/...` / `inferred:packages/...` already
  * passed — those root leftovers are monorepo noise, not a regression from
  * the localized edit.
+ *
+ * Also true when:
+ * - ask/changed paths have zero in-scope diagnostic errors (out-of-scope
+ *   vitest/package noise ignored), or
+ * - the before→after comparison shows **no new errors** (pre-existing
+ *   remaining bugs stay optional — do not auto-repair them).
  */
 export function isUserGoalComplete(params: {
   verification: VerificationResult;
   comparison?: RepoBuildStateComparison;
+  askScopePaths?: readonly string[];
+  changedFiles?: readonly string[];
 }): boolean {
   const { verification, comparison } = params;
+  const changedCount = params.changedFiles?.length ?? 0;
 
   if (
     packageCompileEvidencePassed(verification) &&
@@ -245,12 +267,26 @@ export function isUserGoalComplete(params: {
     return true;
   }
 
-  if (
-    comparison &&
-    (comparison.afterErrorCount > 0 || comparison.newErrorCount > 0)
-  ) {
+  if (askScopedDiagnosticsClean(params)) {
+    return true;
+  }
+
+  // Compare-only: edits landed and this change introduced no new diagnostics.
+  // Remaining pre-existing errors are offered optionally, not repaired here.
+  if (changedCount > 0 && comparison && comparison.newErrorCount === 0) {
+    return true;
+  }
+
+  // New errors exist — only block when we cannot prove they are out of ask scope.
+  if (comparison && comparison.newErrorCount > 0) {
     return false;
   }
+
+  if (comparison && comparison.afterErrorCount > 0) {
+    // after>0 with new===0 already accepted above when we have changes.
+    return changedCount > 0;
+  }
+
   const failed = verification.checks.filter(
     (check) => check.outcome === "failed" || check.outcome === "timed_out",
   );
@@ -267,6 +303,36 @@ export function isUserGoalComplete(params: {
     (check) => check.kind === "diagnostics" || check.kind === "syntax",
   );
   return lintOnly && !typecheckOrBuildFailed && !diagnosticsFailed;
+}
+
+/**
+ * Changed/seed paths have no error diagnostics after ask-scope filtering.
+ * Package check failures with only out-of-scope noise do not reopen repair.
+ */
+export function askScopedDiagnosticsClean(params: {
+  verification: VerificationResult;
+  askScopePaths?: readonly string[];
+  changedFiles?: readonly string[];
+}): boolean {
+  const scopePaths = [
+    ...(params.askScopePaths ?? []),
+    ...(params.changedFiles ?? []),
+  ].filter((path) => path.trim().length > 0);
+  if (scopePaths.length === 0) {
+    return false;
+  }
+  if ((params.changedFiles ?? []).length === 0) {
+    return false;
+  }
+  const scoped = filterDiagnosticsToAskScope(
+    params.verification.diagnostics ?? [],
+    scopePaths,
+  );
+  return !scoped.some(
+    (item) =>
+      item.severity === "error" ||
+      (item.severity as string | undefined) === "fatal",
+  );
 }
 
 /** Package/inferred typecheck or build passed for the changed project. */

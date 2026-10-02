@@ -20,6 +20,10 @@ import type {
   VerificationRecord,
   VerificationRecordStatus,
 } from "../../../modules/verification";
+import {
+  buildVerificationUserSummary,
+  formatOptionalLeftoverOffer,
+} from "../../../modules/verification";
 
 import {
   isPrematurePartialExecuteStop,
@@ -293,6 +297,10 @@ export async function finishAfterLoop(
           evidence,
           windowPolicy,
           signal: params.signal,
+          askScopePaths: [
+            ...(params.loopContext?.executionSeed?.paths ?? []),
+            ...(params.loopContext?.memoryFileTargets ?? []),
+          ],
         });
         commitMutations(runtime, currentOutcome.mutationCheckpointIds, {
           runId,
@@ -386,6 +394,10 @@ export async function finishAfterLoop(
       evidence,
       windowPolicy,
       signal: params.signal,
+      askScopePaths: [
+        ...(params.loopContext?.executionSeed?.paths ?? []),
+        ...(params.loopContext?.memoryFileTargets ?? []),
+      ],
     });
 
     const recordStatus: VerificationRecordStatus =
@@ -454,10 +466,33 @@ export async function finishAfterLoop(
       if (repairAttempts > 0) {
         reasonCodes.push("verification_repair_succeeded");
       }
-      const userAnswer = selectUserFacingLoopAnswer({
+      let userAnswer = selectUserFacingLoopAnswer({
         loopAnswer,
         changedFiles: loopChangedFiles,
       });
+      const remaining =
+        verificationOutcome.comparison?.remainingErrorCount ?? 0;
+      const newCount = verificationOutcome.comparison?.newErrorCount ?? 0;
+      if (
+        remaining > 0 &&
+        newCount === 0 &&
+        loopChangedFiles.length > 0 &&
+        record
+      ) {
+        const leftover = buildVerificationUserSummary(record);
+        if (leftover.trim()) {
+          userAnswer = `${userAnswer.trim()}\n\n${leftover.trim()}`;
+        }
+      } else if (
+        remaining > 0 &&
+        newCount === 0 &&
+        loopChangedFiles.length > 0
+      ) {
+        const leftover = formatOptionalLeftoverOffer({ remaining });
+        if (leftover.trim()) {
+          userAnswer = `${userAnswer.trim()}\n\n${leftover.trim()}`;
+        }
+      }
       const answerForIncompleteCheck = userAnswer;
       const clearBlocker = isClearMutationBlocker(answerForIncompleteCheck);
       const mutationRequired = requiresMutationForExecute({
