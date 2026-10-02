@@ -400,5 +400,16 @@ export type {
   MutateReadinessTaskSize,
   ActiveStepMutateReadiness,
 } from "../modules/mutate-readiness";
+export {
+  resolveExecutionSeed,
+  isExecutionSeedTrusted,
+  formatExecutionSeedForPrompt,
+  applyExecutionSeedToTaskList,
+} from "../modules/execution-seed";
+export type {
+  ExecutionSeed,
+  ExecutionSeedConfidence,
+  ExecutionSeedSource,
+} from "../modules/execution-seed";
 export { runV8MutationCritic } from "../modules/mutation-critic";
 export type { V8MutationCriticDecision } from "../modules/mutation-critic";

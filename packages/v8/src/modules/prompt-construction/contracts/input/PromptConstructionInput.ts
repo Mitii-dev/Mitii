@@ -178,6 +178,11 @@ export const promptConstructionInputSchema = z
      * Trusted DecisionBrief block (already formatted). Advisory only.
      */
     decisionBriefText: z.string().min(1).max(8_000).optional(),
+    /**
+     * Trusted ExecutionSeed binding block (paths/causes + binding rules).
+     * Always-on for agent execute when a seed exists — not behind steering flags.
+     */
+    executionSeedText: z.string().min(1).max(4_000).optional(),
     tools: z.array(modelToolDefinitionSchema).optional(),
     capabilities: modelCapabilitiesSchema,
     model: z.string().min(1).optional(),

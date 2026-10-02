@@ -66,12 +66,17 @@ export const V8_ENGINE_THRESHOLDS = {
    * general maxReadOnlyTurnsBeforeMutationNudge so plan-then-finish does not
    * rediscover forever.
    */
-  maxReadOnlyTurnsBeforeMutationNudgeAfterPlan: 4,
+  maxReadOnlyTurnsBeforeMutationNudgeAfterPlan: 2,
   /**
    * Soft mutation nudges allowed before offering host Continue (unfulfilled).
    * Does not claim edits are done — asks to continue patching or stop.
    */
-  maxSoftMutationNudgesBeforeContinue: 2,
+  maxSoftMutationNudgesBeforeContinue: 1,
+  /**
+   * Free discovery tool turns allowed before binding to a trusted seed.
+   * After a trusted seed, binding uses the tighter step gate instead.
+   */
+  maxFreeDiscoveryTurnsBeforeSeedBind: 2,
   /** User Continue overrides after stall / loop_detected walls. */
   maxContinueOverrides: 4,
   /** Remaining-error verification repairs after the first mutate loop. */
@@ -128,6 +133,7 @@ export const v8EngineThresholdsSchema = z
     maxChangeImpactNudges: nonnegativeIntSchema,
     maxReadOnlyTurnsBeforeMutationNudgeAfterPlan: positiveIntSchema,
     maxSoftMutationNudgesBeforeContinue: nonnegativeIntSchema,
+    maxFreeDiscoveryTurnsBeforeSeedBind: positiveIntSchema,
     maxContinueOverrides: nonnegativeIntSchema,
     maxVerificationRepairAttempts: nonnegativeIntSchema,
     preferredBatchSize: positiveIntSchema,

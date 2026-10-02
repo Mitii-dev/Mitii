@@ -20,6 +20,7 @@ export type {
 export {
   BaseInstructionsFragment,
   DecisionBriefFragment,
+  ExecutionSeedFragment,
   InstructionBlockFragment,
   MidConversationUpdateFragment,
   PlanGuidanceFragment,

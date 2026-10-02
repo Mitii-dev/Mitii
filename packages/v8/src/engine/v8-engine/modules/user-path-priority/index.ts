@@ -41,7 +41,7 @@ export function preflightErrorsMatchUserRequest(params: {
   if (!prompt || diagnosticPaths.length === 0) {
     return true;
   }
-  const cited = citedRepoPaths(prompt);
+  const cited = citedRepoPathsFromPrompt(prompt);
   if (cited.length === 0) {
     return true;
   }
@@ -61,7 +61,7 @@ export function preflightDiagnosticsForUserRequest<T extends { path: string }>(
   if (!prompt || diagnostics.length === 0) {
     return diagnostics;
   }
-  const cited = citedRepoPaths(prompt);
+  const cited = citedRepoPathsFromPrompt(prompt);
   if (cited.length === 0) {
     return diagnostics;
   }
@@ -77,7 +77,8 @@ export function preflightDiagnosticsForUserRequest<T extends { path: string }>(
   return matching;
 }
 
-function citedRepoPaths(prompt: string): string[] {
+/** File-like paths cited in the user prompt (normalized). */
+export function citedRepoPathsFromPrompt(prompt: string): string[] {
   const paths: string[] = [];
   const re = new RegExp(CITED_REPO_PATH.source, "gi");
   let match: RegExpExecArray | null;

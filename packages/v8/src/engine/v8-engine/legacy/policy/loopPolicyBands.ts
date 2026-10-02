@@ -59,7 +59,9 @@ export const LOOP_POLICY_WINDOW_BAND_TABLE: Record<
       // repair so simple TS API mismatches cannot burn 20+ minutes.
       explorationRereadMinCalls: 5,
       maxReadOnlyMutationRetryAttempts: 2,
-      maxReadOnlyToolTurnsBeforeMutationNudge: 15,
+      // P0: do not rely on a long free-discovery budget; trusted seed uses
+      // tighter binding in modelLoop. Cap compact free discovery below 15.
+      maxReadOnlyToolTurnsBeforeMutationNudge: 8,
       maxPostNudgeEvidenceReadTurns: 6,
       maxReadOnlyToolTurnsAfterMutationNudge: 4,
       maxReadOnlyToolTurnsAfterMutationNudges: 2,

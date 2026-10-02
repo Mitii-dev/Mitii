@@ -165,6 +165,7 @@ export function createPromptInput(
     skillCatalogL1: overrides.skillCatalogL1,
     planText: overrides.planText,
     decisionBriefText: overrides.decisionBriefText,
+    executionSeedText: overrides.executionSeedText,
     tools: overrides.tools,
     capabilities: overrides.capabilities ?? createCapabilities(),
     model: overrides.model,

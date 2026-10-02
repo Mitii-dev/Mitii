@@ -230,17 +230,20 @@ export function extractPriorPathHints(
 }
 
 /**
- * Preferred discovery / strategy paths: explicit file targets, context paths,
- * then prior conversation path hints.
+ * Preferred discovery / strategy paths: seed paths, explicit file targets,
+ * context paths, then prior conversation path hints.
  */
 export function collectPreferredPlanningPaths(params: {
   evidenceTargets?: readonly { kind: string; value: string; explicit: boolean }[];
   contextPaths?: readonly string[];
   priorPathHints?: readonly string[];
+  /** Trusted execution-seed paths (authoritative; ranked first). */
+  seedPaths?: readonly string[];
   query?: string;
   max?: number;
 }): string[] {
   const max = params.max ?? MAX_PRIOR_PATH_HINTS;
+  const seed = (params.seedPaths ?? []).map(normalizePlanningPath);
   const explicit = (params.evidenceTargets ?? [])
     .filter(
       (target) =>
@@ -259,6 +262,7 @@ export function collectPreferredPlanningPaths(params: {
     ? extractFileLikePaths(params.query).map(normalizePlanningPath)
     : [];
   const merged = uniqueStrings([
+    ...seed,
     ...explicit,
     ...fromQuery,
     ...context,
@@ -275,7 +279,13 @@ export function collectPreferredPlanningPaths(params: {
   const ranked = profile
     ? rankPathsForShapedDiscovery(profile, merged)
     : merged;
-  return ranked.slice(0, max);
+  // Keep seed paths first even after shaped ranking.
+  const seedSet = new Set(seed.map((path) => path.toLowerCase()));
+  const ordered = [
+    ...merged.filter((path) => seedSet.has(path.toLowerCase())),
+    ...ranked.filter((path) => !seedSet.has(path.toLowerCase())),
+  ];
+  return uniqueStrings(ordered).slice(0, max);
 }
 
 function extractFileLikePaths(text: string): string[] {

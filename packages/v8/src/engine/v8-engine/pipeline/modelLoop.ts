@@ -74,6 +74,7 @@ import {
   resolveStepReadonlyTurnsBeforeGate,
   shouldDemandEvidenceBeforePatch,
 } from "../modules/mutate-readiness";
+import { isExecutionSeedTrusted } from "../modules/execution-seed";
 import { runV8MutationCritic } from "../actions/mutationCritic";
 import {
   buildRejectedMutationRecoveryMessage,
@@ -147,6 +148,8 @@ export type V8ModelLoopParams = {
   /** Pre-mutation critic mode from steering (default off). */
   criticMode?: SteeringCriticMode;
   understanding?: RequestUnderstandingResult;
+  /** Trusted/weak seed from early pipeline — gates patch-required arming. */
+  executionSeed?: import("../modules/execution-seed").ExecutionSeed;
   repoBuildStateBefore?: RepoBuildState;
   memoryFacts?: readonly { id: string; content: string }[];
   memoryQuery?: string;
@@ -225,6 +228,9 @@ export async function runV8ModelLoop(
   const mutationNeeded = requiresMutation(decision);
   const vcsHistoryRewrite = decision.reasonCodes.includes("vcs_history_rewrite");
   let gitWriteSucceeded = false;
+  const executionSeed = params.executionSeed;
+  const seedTrusted = isExecutionSeedTrusted(executionSeed);
+  const seedPaths = executionSeed?.paths ?? [];
   const readLedger = new ReadLedger();
   const thresholds = resolveV8LoopPolicyThresholds({
     contextWindowTokens: params.windowPolicy.contextWindowTokens,
@@ -244,14 +250,20 @@ export async function runV8ModelLoop(
     maxReadOnlyTurnsBeforeMutationNudgeAfterPlan:
       thresholds.maxReadOnlyTurnsBeforeMutationNudgeAfterPlan,
   });
-  const readonlyTurnsBeforeMutationNudge =
-    resolveReadonlyTurnsBeforeMutationNudge({
-      hasPlan: planDraftedThisRun,
-      maxReadOnlyTurnsBeforeMutationNudge:
-        thresholds.maxReadOnlyTurnsBeforeMutationNudge,
-      maxReadOnlyTurnsBeforeMutationNudgeAfterPlan:
+  // After a trusted seed, use the tight binding budget — ignore compact-band looseness.
+  const readonlyTurnsBeforeMutationNudge = seedTrusted
+    ? Math.min(
+        stepReadonlyTurnsBeforeGate,
         thresholds.maxReadOnlyTurnsBeforeMutationNudgeAfterPlan,
-    });
+        thresholds.maxFreeDiscoveryTurnsBeforeSeedBind,
+      )
+    : resolveReadonlyTurnsBeforeMutationNudge({
+        hasPlan: planDraftedThisRun,
+        maxReadOnlyTurnsBeforeMutationNudge:
+          thresholds.maxReadOnlyTurnsBeforeMutationNudge,
+        maxReadOnlyTurnsBeforeMutationNudgeAfterPlan:
+          thresholds.maxReadOnlyTurnsBeforeMutationNudgeAfterPlan,
+      });
   const mustReadNudgeBudget = { remaining: thresholds.maxMustReadNudges };
   const changeImpactRecommended = decision.reasonCodes.includes(
     "change_impact_recommended",
@@ -278,6 +290,16 @@ export async function runV8ModelLoop(
         : 0,
   };
   const loopFileReads = createLoopFileReadTracker();
+  const evaluateStepReadiness = () =>
+    evaluateActiveStepMutateReadiness({
+      taskList: taskListRef.current,
+      loopFileReads,
+      establishedFacts,
+      maxEvidencePaths: mutateReadinessBudget.maxEvidencePaths,
+      mutationRequired: mutationNeeded,
+      seedPaths,
+      seedTrusted,
+    });
   const criticMode: SteeringCriticMode = params.criticMode ?? "off";
   const toolLoopGuard = new ToolLoopGuard({
     softIdenticalLimit: thresholds.toolLoopSoftIdentical,
@@ -585,12 +607,7 @@ export async function runV8ModelLoop(
             readonlyTurnsBeforeMutationNudge,
           );
           if (readonlyTurnsOnActiveStep >= gateTurns) {
-            const readiness = evaluateActiveStepMutateReadiness({
-              taskList: taskListRef.current,
-              loopFileReads,
-              establishedFacts,
-              maxEvidencePaths: mutateReadinessBudget.maxEvidencePaths,
-            });
+            const readiness = evaluateStepReadiness();
             if (
               shouldDemandEvidenceBeforePatch({
                 readiness,
@@ -613,6 +630,28 @@ export async function runV8ModelLoop(
                 role: "user",
                 content: buildStepEvidenceGateMessage(readiness),
               });
+            } else if (!seedTrusted) {
+              // Weak seed: never force patch-required after random reads.
+              softMutationNudges += 1;
+              reasonCodes.push("execution_seed_weak", "soft_mutation_nudged");
+              warnings.push(
+                "No trusted execution seed yet — not demanding apply_patch. Establish a file path from diagnostics or an explicit cite.",
+              );
+              if (
+                shouldEscalateReadonlyThrashToContinue({
+                  softMutationNudges,
+                  maxSoftMutationNudgesBeforeContinue:
+                    thresholds.maxSoftMutationNudgesBeforeContinue,
+                  changedFileCount: changedFiles.length,
+                  gitWriteSucceeded,
+                })
+              ) {
+                reasonCodes.push("readonly_thrash_continue");
+                return offerContinue(
+                  "unfulfilled_execute",
+                  "No trusted file seed yet, so no workspace edits were applied. Continue with an explicit path or stop here.",
+                );
+              }
             } else {
               softMutationNudges += 1;
               const ready =
@@ -812,6 +851,8 @@ export async function runV8ModelLoop(
         changeImpactGate,
         changeImpactNudgeBudget,
         loopFileReads,
+        awaitingMutateOnly,
+        mutateLockAllowTargetedReads,
       });
       if (settled.kind === "return") {
         return settled.outcome;
@@ -883,12 +924,7 @@ export async function runV8ModelLoop(
           readonlyTurnsBeforeMutationNudge,
         );
         if (readonlyTurnsOnActiveStep >= gateTurns) {
-          const readiness = evaluateActiveStepMutateReadiness({
-            taskList: taskListRef.current,
-            loopFileReads,
-            establishedFacts,
-            maxEvidencePaths: mutateReadinessBudget.maxEvidencePaths,
-          });
+          const readiness = evaluateStepReadiness();
 
           if (
             shouldDemandEvidenceBeforePatch({
@@ -918,6 +954,29 @@ export async function runV8ModelLoop(
             messages.push({ role: "user", content: gateMessage });
             readonlyTurnsOnActiveStep = 0;
             readOnlyTurnsWithoutMutation = 0;
+          } else if (!seedTrusted) {
+            softMutationNudges += 1;
+            reasonCodes.push("execution_seed_weak", "soft_mutation_nudged");
+            warnings.push(
+              "No trusted execution seed yet — not demanding apply_patch after readonly thrash.",
+            );
+            readonlyTurnsOnActiveStep = 0;
+            readOnlyTurnsWithoutMutation = 0;
+            if (
+              shouldEscalateReadonlyThrashToContinue({
+                softMutationNudges,
+                maxSoftMutationNudgesBeforeContinue:
+                  thresholds.maxSoftMutationNudgesBeforeContinue,
+                changedFileCount: changedFiles.length,
+                gitWriteSucceeded,
+              })
+            ) {
+              reasonCodes.push("readonly_thrash_continue");
+              return offerContinue(
+                "unfulfilled_execute",
+                "No trusted file seed yet, so no workspace edits were applied. Continue with an explicit path or stop here.",
+              );
+            }
           } else {
             softMutationNudges += 1;
             const ready =
