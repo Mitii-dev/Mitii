@@ -42,6 +42,7 @@ export {
   stripPathRangeSuffix,
   toolContentPathsOverlap,
   normalizeRepoPath,
+  normalizeCiWorkflowPath,
 } from "./extractToolContentPaths";
 export {
   extractMutationTargetPaths,
@@ -144,6 +145,7 @@ export {
   askScopedDiagnosticsClean,
   packageCompileEvidencePassed,
   failuresAreIgnorableWhenPackagePassed,
+  isPhantomConfigDiagnostic,
   isPackageScopedCheck,
   isWorkspaceRootCheck,
 } from "./decideVerificationGate";
@@ -394,6 +396,7 @@ export {
   resolveStepReadonlyTurnsBeforeGate,
   evaluateActiveStepMutateReadiness,
   shouldDemandEvidenceBeforePatch,
+  decideMutateEvidenceAction,
   buildStepEvidenceGateMessage,
   buildStepPatchRequiredMessage,
   filterToolsForMutateLock,

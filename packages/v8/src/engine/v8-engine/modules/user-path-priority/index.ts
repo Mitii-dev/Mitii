@@ -5,7 +5,7 @@
  */
 
 const CITED_REPO_PATH =
-  /\b((?:[\w.-]+\/)*[\w.-]+\.(?:ts|tsx|js|jsx|mjs|cjs|py|go|rs|java|kt|css|scss|json|md))\b/gi;
+  /\b((?:[\w.-]+\/)*[\w.-]+\.(?:ts|tsx|js|jsx|mjs|cjs|py|go|rs|java|kt|css|scss|json|md|yml|yaml))\b/gi;
 
 /** User ask clearly about build/typecheck/compile repair. */
 const FIX_BUILD_ASK =
@@ -158,10 +158,14 @@ function uniquePaths(paths: readonly string[]): string[] {
 }
 
 function normalizeRepoPath(value: string): string {
-  return value
+  let path = value
     .trim()
     .replace(/\\/g, "/")
     .replace(/^\.\//, "")
-    .replace(/\/+$/, "")
-    .toLowerCase();
+    .replace(/\/+$/, "");
+  // Models omit the leading dot on CI workflows.
+  if (/^github\/workflows\//i.test(path)) {
+    path = `.github/${path.slice("github/".length)}`;
+  }
+  return path.toLowerCase();
 }

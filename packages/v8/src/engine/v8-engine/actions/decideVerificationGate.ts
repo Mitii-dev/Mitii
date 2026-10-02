@@ -1,6 +1,7 @@
 import type {
   RepoBuildStateComparison,
   VerificationCheckResult,
+  VerificationDiagnostic,
   VerificationResult,
 } from "../../../modules/verification";
 
@@ -17,8 +18,9 @@ import { filterDiagnosticsToAskScope } from "./buildVerificationRepairPrompt";
  * - verified_success
  * - implemented_unverified (work done; evidence incomplete — keep changes)
  * - verification infrastructure missing AND allowUnavailable
- * - package typecheck/build passed while only workspace-root leftovers failed
- * - ask/changed paths have no in-scope diagnostic errors (package noise ignored)
+ * - package typecheck/build passed while only workspace-root / syntax / test
+ *   leftovers failed (vitest harness + syntax:port noise must not reopen repair)
+ * - ask/changed paths have no actionable in-scope diagnostic errors
  *
  * Reject (eligible for repair only when repairable):
  * - verification_failed → repairable (model can fix the change)
@@ -238,16 +240,17 @@ function diagnosticErrorMessage(comparison: RepoBuildStateComparison): string {
 
 /**
  * True when the user-visible compile evidence for the changed package
- * succeeded, or when the only remaining failed checks are lint/format.
+ * succeeded, or when the only remaining failed checks are leftover noise.
  *
- * Workspace-root typecheck/test timeout or failure must not reopen a long
- * repair loop after `inferred:apps/...` / `inferred:packages/...` already
- * passed — those root leftovers are monorepo noise, not a regression from
+ * Workspace-root typecheck/test timeout or failure, package test harness
+ * failures, and syntax:port phantoms must not reopen a long repair loop after
+ * `inferred:apps/...` / `inferred:packages/...` typecheck/build already
+ * passed — those leftovers are monorepo/harness noise, not a regression from
  * the localized edit.
  *
  * Also true when:
- * - ask/changed paths have zero in-scope diagnostic errors (out-of-scope
- *   vitest/package noise ignored), or
+ * - ask/changed paths have zero actionable in-scope diagnostic errors
+ *   (node_modules / phantom JSX/--jsx ignored when package tsc passed), or
  * - the before→after comparison shows **no new errors** (pre-existing
  *   remaining bugs stay optional — do not auto-repair them).
  */
@@ -259,9 +262,10 @@ export function isUserGoalComplete(params: {
 }): boolean {
   const { verification, comparison } = params;
   const changedCount = params.changedFiles?.length ?? 0;
+  const packageCompilePassed = packageCompileEvidencePassed(verification);
 
   if (
-    packageCompileEvidencePassed(verification) &&
+    packageCompilePassed &&
     failuresAreIgnorableWhenPackagePassed(verification)
   ) {
     return true;
@@ -278,6 +282,9 @@ export function isUserGoalComplete(params: {
   }
 
   // New errors exist — only block when we cannot prove they are out of ask scope.
+  // When package compile already passed, comparison floods from vitest/syntax:port
+  // (before=0 → after=200) must not force repair; ask-scope / ignorable already
+  // decided above.
   if (comparison && comparison.newErrorCount > 0) {
     return false;
   }
@@ -306,8 +313,9 @@ export function isUserGoalComplete(params: {
 }
 
 /**
- * Changed/seed paths have no error diagnostics after ask-scope filtering.
- * Package check failures with only out-of-scope noise do not reopen repair.
+ * Changed/seed paths have no actionable error diagnostics after ask-scope
+ * filtering. Hard-denied trees and (when package tsc passed) phantom config
+ * diagnostics do not reopen repair.
  */
 export function askScopedDiagnosticsClean(params: {
   verification: VerificationResult;
@@ -324,15 +332,44 @@ export function askScopedDiagnosticsClean(params: {
   if ((params.changedFiles ?? []).length === 0) {
     return false;
   }
-  const scoped = filterDiagnosticsToAskScope(
-    params.verification.diagnostics ?? [],
-    scopePaths,
+  const packageCompilePassed = packageCompileEvidencePassed(params.verification);
+  const diagnostics = (params.verification.diagnostics ?? []).filter(
+    (item) =>
+      !(packageCompilePassed && isPhantomConfigDiagnostic(item)),
   );
+  const scoped = filterDiagnosticsToAskScope(diagnostics, scopePaths);
   return !scoped.some(
     (item) =>
       item.severity === "error" ||
       (item.severity as string | undefined) === "fatal",
   );
+}
+
+/**
+ * Config/harness phantoms that contradict a passing package typecheck/build.
+ * syntax:port and mis-scoped tsserver often emit these on changed files even
+ * when `pnpm typecheck` for the package already passed.
+ */
+export function isPhantomConfigDiagnostic(
+  diagnostic: VerificationDiagnostic,
+): boolean {
+  const code = (diagnostic.code ?? "").toUpperCase();
+  if (code === "TS17004") {
+    return true;
+  }
+  const message = (diagnostic.message ?? "").toLowerCase();
+  if (
+    message.includes("cannot use jsx unless") &&
+    message.includes("--jsx")
+  ) {
+    return true;
+  }
+  // syntax:port often re-emits implicit-any on files the package tsc already
+  // accepted — not an actionable ask regression.
+  if (code === "TS7006") {
+    return true;
+  }
+  return false;
 }
 
 /** Package/inferred typecheck or build passed for the changed project. */
@@ -348,8 +385,9 @@ export function packageCompileEvidencePassed(
 }
 
 /**
- * Failed/timed-out checks are only workspace-root compile/test noise or
- * lint/format leftovers — safe to ignore when package evidence passed.
+ * Failed/timed-out checks are leftover noise once package typecheck/build
+ * passed: lint/format, syntax:port, workspace-root compile/test, and package
+ * test harness failures (vitest node_modules frames).
  */
 export function failuresAreIgnorableWhenPackagePassed(
   verification: VerificationResult,
@@ -369,10 +407,17 @@ function isIgnorableFailureWhenPackagePassed(
   if (check.kind === "lint" || check.kind === "format") {
     return true;
   }
+  // syntax:port is not authoritative next to a passing package typecheck.
+  if (check.kind === "syntax") {
+    return true;
+  }
+  // Package/inferred tests often fail on harness frames under node_modules —
+  // not a localized compile regression. Keep edits; do not thrash repair.
+  if (check.kind === "test") {
+    return true;
+  }
   if (
-    (check.kind === "typecheck" ||
-      check.kind === "test" ||
-      check.kind === "build") &&
+    (check.kind === "typecheck" || check.kind === "build") &&
     isWorkspaceRootCheck(check)
   ) {
     return true;

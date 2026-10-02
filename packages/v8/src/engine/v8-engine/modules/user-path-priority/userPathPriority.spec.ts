@@ -47,6 +47,14 @@ describe("userPathPriority", () => {
     ]);
   });
 
+  it("normalizes github/workflows cites to .github/workflows", () => {
+    const cited = citedRepoPathsFromPrompt(
+      "Update github/workflows/ci.yml to run tests on pull_request",
+    );
+    expect(cited).toContain(".github/workflows/ci.yml");
+    expect(cited).not.toContain("github/workflows/ci.yml");
+  });
+
   it("allows repair lock when prompt names a diagnostic path", () => {
     expect(
       shouldForcePreflightRepairLock({

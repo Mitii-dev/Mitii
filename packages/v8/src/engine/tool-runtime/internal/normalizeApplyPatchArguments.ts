@@ -30,15 +30,25 @@ function coerceOptionalBoolean(value: unknown): boolean | undefined {
  */
 function coalescePatchPath(entry: Record<string, unknown>): void {
   if (typeof entry.path === "string" && entry.path.trim().length > 0) {
+    entry.path = normalizeCiWorkflowPath(entry.path.trim());
     return;
   }
   for (const key of ["filePath", "file_path", "file", "filename", "target"] as const) {
     const value = entry[key];
     if (typeof value === "string" && value.trim().length > 0) {
-      entry.path = value.trim();
+      entry.path = normalizeCiWorkflowPath(value.trim());
       return;
     }
   }
+}
+
+/** `github/workflows/...` → `.github/workflows/...` (no parallel github/ tree). */
+function normalizeCiWorkflowPath(value: string): string {
+  const trimmed = value.replace(/\\/g, "/");
+  if (/^github\/workflows\//i.test(trimmed)) {
+    return `.github/${trimmed.slice("github/".length)}`;
+  }
+  return trimmed;
 }
 
 function sanitizePatchEntry(value: unknown): unknown {

@@ -50,6 +50,27 @@ describe("normalizeApplyPatchArguments", () => {
     expect(normalizeApplyPatchArguments(input)).toEqual(input);
   });
 
+  it("rewrites github/workflows paths to .github/workflows", () => {
+    const normalized = normalizeApplyPatchArguments({
+      patches: [
+        {
+          path: "github/workflows/ci.yml",
+          oldText: "on: push",
+          newText: "on: [push, pull_request]",
+        },
+      ],
+    });
+    expect(normalized).toEqual({
+      patches: [
+        {
+          path: ".github/workflows/ci.yml",
+          oldText: "on: push",
+          newText: "on: [push, pull_request]",
+        },
+      ],
+    });
+  });
+
   it("drops expectedHash null so gemma-style patches validate (billbuddy headless run)", () => {
     const normalized = normalizeApplyPatchArguments({
       patches: [
