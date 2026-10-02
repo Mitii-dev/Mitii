@@ -27,15 +27,11 @@ import {
   normalizeDiscoveryPath,
   discoveryOverflowNotes,
 } from "./discoverySupport";
+import type { DiscoveryPassBudget } from "../../modules/plan-discovery/discoveryBudgets";
+import { DEFAULT_DISCOVERY_PASS_BUDGET } from "../../modules/plan-discovery/discoveryBudgets";
 
-export const DISCOVERY_PASS_POLICY = {
-  maxModelTurns: 2,
-  maxFileReads: 8,
-  // Shaped preflight alone uses up to 3 globs + 1 search. Keep headroom so
-  // seed reads + model discovery turns are not starved after preflight.
-  maxSearches: 10,
-  maxToolCalls: 14,
-} as const;
+/** @deprecated Prefer resolveDiscoveryPassBudget; kept as the default envelope. */
+export const DISCOVERY_PASS_POLICY = DEFAULT_DISCOVERY_PASS_BUDGET;
 
 const DISCOVERY_TOOL_IDS = new Set<string>([
   "list_directory",
@@ -56,7 +52,10 @@ const FILE_READ_TOOLS = new Set(["read_file", "read_many_files"]);
 const SEARCH_TOOLS = new Set(["search_files", "glob_files"]);
 const SYMBOL_TOOLS = new Set<string>([...CODE_INTELLIGENCE_TOOL_IDS]);
 
-export function createDiscoveryGrant(base: ToolGrant): ToolGrant {
+export function createDiscoveryGrant(
+  base: ToolGrant,
+  budget: DiscoveryPassBudget = DISCOVERY_PASS_POLICY,
+): ToolGrant {
   const allowed = base.allowedTools.filter(
     (name) =>
       DISCOVERY_TOOL_IDS.has(name) &&
@@ -70,10 +69,7 @@ export function createDiscoveryGrant(base: ToolGrant): ToolGrant {
     approvalMode: "never",
     limits: {
       ...base.limits,
-      maxToolCalls: Math.min(
-        base.limits.maxToolCalls,
-        DISCOVERY_PASS_POLICY.maxToolCalls,
-      ),
+      maxToolCalls: Math.min(base.limits.maxToolCalls, budget.maxToolCalls),
     },
   };
 }
@@ -95,7 +91,9 @@ export function isDiscoveryTaskList(taskList: TaskList | undefined): boolean {
 
 import type { DiscoveryObservationCollector } from "./discoveryTypes";
 
-export function createDiscoveryObservationCollector(): DiscoveryObservationCollector {
+export function createDiscoveryObservationCollector(
+  budget: DiscoveryPassBudget = DISCOVERY_PASS_POLICY,
+): DiscoveryObservationCollector {
   return {
     filesRead: [],
     searchHits: [],
@@ -106,6 +104,7 @@ export function createDiscoveryObservationCollector(): DiscoveryObservationColle
     omittedFilesRead: 0,
     omittedSearchHits: 0,
     omittedVerificationHints: 0,
+    budget: { ...budget },
   };
 }
 
@@ -262,10 +261,11 @@ export function recordDiscoveryToolUse(params: {
 export function discoveryBudgetRemaining(
   collector: DiscoveryObservationCollector,
 ): boolean {
+  const budget = collector.budget;
   return (
-    collector.toolCalls < DISCOVERY_PASS_POLICY.maxToolCalls &&
-    collector.fileReads < DISCOVERY_PASS_POLICY.maxFileReads &&
-    collector.searches < DISCOVERY_PASS_POLICY.maxSearches
+    collector.toolCalls < budget.maxToolCalls &&
+    collector.fileReads < budget.maxFileReads &&
+    collector.searches < budget.maxSearches
   );
 }
 
@@ -273,9 +273,10 @@ export function discoveryBudgetRemaining(
 export function discoveryCanReadMore(
   collector: DiscoveryObservationCollector,
 ): boolean {
+  const budget = collector.budget;
   return (
-    collector.toolCalls < DISCOVERY_PASS_POLICY.maxToolCalls &&
-    collector.fileReads < DISCOVERY_PASS_POLICY.maxFileReads
+    collector.toolCalls < budget.maxToolCalls &&
+    collector.fileReads < budget.maxFileReads
   );
 }
 
@@ -286,12 +287,13 @@ export function discoveryCanReadMore(
 export function discoveryCanModelTurn(
   collector: DiscoveryObservationCollector,
 ): boolean {
-  if (collector.toolCalls >= DISCOVERY_PASS_POLICY.maxToolCalls) {
+  const budget = collector.budget;
+  if (collector.toolCalls >= budget.maxToolCalls) {
     return false;
   }
   return (
-    collector.fileReads < DISCOVERY_PASS_POLICY.maxFileReads ||
-    collector.searches < DISCOVERY_PASS_POLICY.maxSearches
+    collector.fileReads < budget.maxFileReads ||
+    collector.searches < budget.maxSearches
   );
 }
 

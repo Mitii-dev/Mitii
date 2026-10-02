@@ -13,3 +13,10 @@ export type {
   ExecutionSeedDiagnostic,
 } from "./resolve";
 export { applyExecutionSeedToTaskList } from "./applyExecutionSeedToTaskList";
+export { recoverPlanTargetsFromSeed } from "./recoverPlanTargetsFromSeed";
+export {
+  ensureConcreteTaskListFromPlan,
+} from "./ensureConcreteTaskList";
+export type { EnsureConcreteTaskListResult } from "./ensureConcreteTaskList";
+export { applyPostPlanTaskListGate } from "./applyPostPlanTaskListGate";
+export type { MediumTaskListGateResult } from "./applyPostPlanTaskListGate";

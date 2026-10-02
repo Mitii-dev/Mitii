@@ -8,19 +8,14 @@ import type { ModelToolDefinition } from "../../../../modules/model-gateway";
 import type { EstablishedFact } from "../../actions/extractEstablishedFact";
 import type { LoopFileReadTracker } from "../../actions/isExplorationRereadHeavy";
 
-export type MutateReadinessTaskSize = "small" | "medium" | "large";
-
-export type MutateReadinessBudget = {
-  /** Readonly tool turns on the active step before firing the gate. */
-  readonlyTurnsBeforeGate: number;
-  /** Cap on RequiredEvidenceBeforePatch paths. */
-  maxEvidencePaths: number;
-  /**
-   * How many times we may demand named reads before escalating to
-   * “patch now” even if some paths are still missing (soft, not a hard lock).
-   */
-  maxEvidenceGateNudgesBeforePatchDemand: number;
-};
+export type {
+  MutateReadinessBudget,
+  MutateReadinessTaskSize,
+} from "./budgets";
+export {
+  resolveMutateReadinessBudget,
+  resolveStepReadonlyTurnsBeforeGate,
+} from "./budgets";
 
 export type ActiveStepMutateReadiness = {
   ready: boolean;
@@ -35,50 +30,6 @@ export type ActiveStepMutateReadiness = {
   /** Suggested turns to load missing evidence (1 when anything missing). */
   estTurns: number;
 };
-
-export function resolveMutateReadinessBudget(
-  taskSize: MutateReadinessTaskSize | string | undefined,
-): MutateReadinessBudget {
-  switch (taskSize) {
-    case "large":
-      return {
-        readonlyTurnsBeforeGate: 2,
-        maxEvidencePaths: 6,
-        maxEvidenceGateNudgesBeforePatchDemand: 1,
-      };
-    case "medium":
-      return {
-        readonlyTurnsBeforeGate: 2,
-        maxEvidencePaths: 4,
-        maxEvidenceGateNudgesBeforePatchDemand: 1,
-      };
-    case "small":
-    default:
-      return {
-        readonlyTurnsBeforeGate: 1,
-        maxEvidencePaths: 2,
-        maxEvidenceGateNudgesBeforePatchDemand: 1,
-      };
-  }
-}
-
-/**
- * Prefer the tighter of size-shaped gate and post-plan soft-nudge threshold.
- */
-export function resolveStepReadonlyTurnsBeforeGate(params: {
-  taskSize?: MutateReadinessTaskSize | string;
-  hasPlan: boolean;
-  maxReadOnlyTurnsBeforeMutationNudgeAfterPlan: number;
-}): number {
-  const sizeBudget = resolveMutateReadinessBudget(params.taskSize);
-  if (!params.hasPlan) {
-    return sizeBudget.readonlyTurnsBeforeGate;
-  }
-  return Math.min(
-    sizeBudget.readonlyTurnsBeforeGate,
-    params.maxReadOnlyTurnsBeforeMutationNudgeAfterPlan,
-  );
-}
 
 export function evaluateActiveStepMutateReadiness(params: {
   taskList?: TaskList;

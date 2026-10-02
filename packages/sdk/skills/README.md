@@ -13,7 +13,7 @@ Use the format documented in `docs/SKILLS_FORMAT.md`.
 
 ## Packs
 
-- Core defaults: `safety-always`, `ask-concise`, `bugfix-localize`, `planning-default`
+- Core defaults: `safety-always`, `ask-concise`, `bugfix-localize`, `planning-default`, `medium-planning`
 - Writing recipes: `git-commit-message`, `git-pr-summary`, `release-changelog`
   (VS Code SCM / CLI `commit-message` | `pr-summary` | `changelog` force-attach these)
 - Data-path debug: `api-db-runtime-debug` (recipe `debug-api-data-path`; Debug mode)

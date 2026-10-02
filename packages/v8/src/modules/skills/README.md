@@ -39,7 +39,7 @@ skills/
 
 ## Types And Contracts
 
-- `SkillsSelectInput`: query, mode, route, task evidence, budget, max skill count, and optional `includeCatalogL1`.
+- `SkillsSelectInput`: query, mode, route, task evidence, budget, max skill count, optional `requiredSkillIds`, soft `preferredSkillIds` (Engine size/route boost; missing ids ignored), and optional `includeCatalogL1`.
 - `SkillTaskEvidence`: primary intent, secondary intents, scope, complexity, risk, recommendations, paths, tags, languages, and project kinds.
 - `SkillDescriptor`: skill metadata plus body.
 - `SkillInstructionBlock`: prompt-ready instruction content with provenance.

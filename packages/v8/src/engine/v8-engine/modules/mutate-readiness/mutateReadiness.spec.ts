@@ -30,22 +30,40 @@ function taskList(items: TaskList["items"]): TaskList {
 }
 
 describe("mutateReadiness (per-step evidence → patch)", () => {
-  it("sizes small/medium/large budgets for token efficiency", () => {
+  it("sizes small/medium/large bind budgets by taskSize × window band", () => {
     expect(resolveMutateReadinessBudget("small").readonlyTurnsBeforeGate).toBe(
-      1,
-    );
-    expect(resolveMutateReadinessBudget("medium").readonlyTurnsBeforeGate).toBe(
       2,
     );
-    expect(resolveMutateReadinessBudget("large").maxEvidencePaths).toBe(6);
+    expect(resolveMutateReadinessBudget("small").maxEvidencePaths).toBe(4);
+    expect(
+      resolveMutateReadinessBudget("medium", "standard").readonlyTurnsBeforeGate,
+    ).toBe(3);
+    expect(
+      resolveMutateReadinessBudget("medium", "standard").maxEvidencePaths,
+    ).toBe(8);
+    expect(
+      resolveMutateReadinessBudget("medium", "wide").readonlyTurnsBeforeGate,
+    ).toBe(2);
+    expect(
+      resolveMutateReadinessBudget("medium", "wide").maxEvidencePaths,
+    ).toBe(8);
+    expect(resolveMutateReadinessBudget("large").maxEvidencePaths).toBe(12);
     expect(
       resolveMutateReadinessBudget("medium").maxEvidenceGateNudgesBeforePatchDemand,
-    ).toBe(1);
+    ).toBe(2);
+    // Turns = model/tool-loop turns; window tokens map via band.
+    expect(
+      resolveMutateReadinessBudget("medium", 40_000).readonlyTurnsBeforeGate,
+    ).toBe(3);
+    expect(
+      resolveMutateReadinessBudget("medium", 120_000).readonlyTurnsBeforeGate,
+    ).toBe(2);
     expect(
       resolveStepReadonlyTurnsBeforeGate({
         taskSize: "large",
         hasPlan: true,
         maxReadOnlyTurnsBeforeMutationNudgeAfterPlan: 2,
+        windowBandOrTokens: "standard",
       }),
     ).toBe(2);
   });

@@ -227,6 +227,11 @@ export { recoverLeakedToolCallsFromMarkup } from "./recoverLeakedToolCalls";
 export { formatSkillPromptContent } from "./formatSkillPromptContent";
 export { buildSkillsReadyEvent } from "./buildSkillsReadyEvent";
 export {
+  resolvePreferredSkillIdsForRun,
+  MEDIUM_PLANNING_SKILL_ID,
+} from "./resolvePreferredSkillIds";
+export { selectSkillsForEnrichment } from "./selectSkillsForEnrichment";
+export {
   CONTEXT_READY_VERBOSE_WARNING_CODES,
   CONTEXT_READY_WARNING_CODES,
   deriveContextFocusFromUnderstanding,

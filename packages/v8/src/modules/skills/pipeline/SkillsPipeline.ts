@@ -2,6 +2,7 @@ import {
   applySkillBudget,
   matchSkills,
   mergeSkillCandidates,
+  resolvePreferredSkills,
   resolveRequiredSkills,
   resolveSkillConflicts,
 } from "../actions";
@@ -148,6 +149,14 @@ export class SkillsPipeline {
       reasonCodes.push("skills_required_partial");
     }
 
+    const preferred = resolvePreferredSkills({
+      catalog,
+      preferredSkillIds: parsed.preferredSkillIds,
+    });
+    if (preferred.resolvedIds.length > 0) {
+      reasonCodes.push("skills_preferred");
+    }
+
     const matched = await matchSkills({
       catalog,
       input: parsed,
@@ -179,7 +188,15 @@ export class SkillsPipeline {
         `Excluded ${matched.scored.length - matchedWithoutExcluded.length} auto-matched skill(s) for this run.`,
       );
     }
-    const merged = mergeSkillCandidates(required.scored, matchedWithoutExcluded);
+    const preferredWithoutExcluded =
+      excluded.size === 0
+        ? preferred.scored
+        : preferred.scored.filter((entry) => !excluded.has(entry.skill.id));
+    const merged = mergeSkillCandidates(
+      required.scored,
+      matchedWithoutExcluded,
+      preferredWithoutExcluded,
+    );
     const conflicts = resolveSkillConflicts({ scored: merged });
     if (conflicts.conflictsResolved) {
       reasonCodes.push("conflicts_resolved");

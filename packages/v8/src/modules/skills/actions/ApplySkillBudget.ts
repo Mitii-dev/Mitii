@@ -53,7 +53,9 @@ export function applySkillBudget(params: {
   for (let index = 0; index < params.scored.length; index += 1) {
     const entry = params.scored[index]!;
     const exemptFromMaxSkills =
-      entry.skill.alwaysApply || entry.selection === "required";
+      entry.skill.alwaysApply ||
+      entry.selection === "required" ||
+      entry.selection === "preferred";
     if (!exemptFromMaxSkills && selectedMatchSkills >= params.maxSkills) {
       omissions.push({
         skillId: entry.skill.id,
@@ -88,7 +90,7 @@ export function applySkillBudget(params: {
     const laterMediumPending = params.scored
       .slice(index + 1)
       .some((candidate) => {
-        if (candidate.skill.alwaysApply || candidate.selection === "required") {
+        if (candidate.skill.alwaysApply || candidate.selection === "required" || candidate.selection === "preferred") {
           return false;
         }
         return resolveSkillSizeClass(candidate.skill) !== "L";

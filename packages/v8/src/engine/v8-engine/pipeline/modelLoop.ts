@@ -243,12 +243,16 @@ export async function runV8ModelLoop(
   const taskSize =
     params.understanding?.taskAnalysis?.taskSize ??
     (planDraftedThisRun ? "medium" : "small");
-  const mutateReadinessBudget = resolveMutateReadinessBudget(taskSize);
+  const mutateReadinessBudget = resolveMutateReadinessBudget(
+    taskSize,
+    params.windowPolicy.contextWindowTokens,
+  );
   const stepReadonlyTurnsBeforeGate = resolveStepReadonlyTurnsBeforeGate({
     taskSize,
     hasPlan: planDraftedThisRun,
     maxReadOnlyTurnsBeforeMutationNudgeAfterPlan:
       thresholds.maxReadOnlyTurnsBeforeMutationNudgeAfterPlan,
+    windowBandOrTokens: params.windowPolicy.contextWindowTokens,
   });
   // After a trusted seed, use the tight binding budget — ignore compact-band looseness.
   const readonlyTurnsBeforeMutationNudge = seedTrusted

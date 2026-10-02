@@ -199,6 +199,11 @@ export const AGENT_REASON_CODES = [
   "execution_seed_weak",
   /** Trusted seed paths written onto checklist write/mustRead. */
   "execution_seed_task_list_bound",
+  /**
+   * Medium/large plan could not yield a concrete plan-derived checklist
+   * (even after one seed-informed targetRefs recovery). Do not invent tasks.
+   */
+  "task_list_plan_not_concrete",
   "code_intel_adoption_nudged",
   "tools_executed",
   "mutation_applied",
