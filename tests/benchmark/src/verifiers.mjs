@@ -97,11 +97,18 @@ async function verify(check, context) {
       cwd: workspace,
       timeoutMs: check.timeoutMs ?? 120000,
       shell: true,
+      env: {
+        CI: '1',
+        NEXT_TELEMETRY_DISABLED: '1',
+      },
     });
     const passed =
       execution.exitCode === (check.exitCode ?? 0) &&
       (!check.stdoutContains || execution.stdout.includes(check.stdoutContains));
-    return result(passed, `${check.command} -> ${execution.exitCode}\n${(execution.stderr || execution.stdout).slice(0, 500)}`);
+    return result(passed, formatCommandCheckDetails(check.command, execution), {
+      timedOut: Boolean(execution.timedOut),
+      durationMs: execution.durationMs,
+    });
   }
   if (check.type === 'http') {
     return runHttpCheck(check, workspace);
@@ -211,6 +218,25 @@ function normalize(value, caseSensitive = false) {
   return caseSensitive ? text : text.toLowerCase();
 }
 
-function result(passed, details = '') {
-  return { passed, details };
+/** Prefer actionable build/tool output over npm env-config noise on stderr. */
+export function formatCommandCheckDetails(command, execution) {
+  const status = execution.timedOut
+    ? `TIMED OUT after ${execution.durationMs}ms (exit ${execution.exitCode})`
+    : `exit ${execution.exitCode} in ${execution.durationMs}ms`;
+  const stdout = String(execution.stdout ?? '').trim();
+  const stderr = String(execution.stderr ?? '').trim();
+  const npmNoiseOnly =
+    stderr.length > 0 &&
+    stderr
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .every((line) => /npm warn Unknown env config/i.test(line) || /^npm notice/i.test(line));
+  const primary = npmNoiseOnly ? stdout || stderr : stderr || stdout;
+  const secondary = npmNoiseOnly ? '' : stdout && stderr && stdout !== stderr ? `\n--- stdout ---\n${stdout}` : '';
+  const body = `${primary}${secondary}`.trim();
+  return `${command} -> ${status}\n${body.slice(0, 1500)}`;
+}
+
+function result(passed, details = '', extra = {}) {
+  return { passed, details, ...extra };
 }

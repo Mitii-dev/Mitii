@@ -280,4 +280,47 @@ describe("selectProportionalChecks", () => {
       "inferred:packages/v8:typecheck:typecheck",
     );
   });
+
+  it("never drops required typecheck/build when maxChecks is the window-budget floor (2)", () => {
+    const syntax: DiscoveredCheckCandidate = {
+      ...typecheck,
+      checkId: "syntax:port",
+      kind: "syntax",
+      label: "tree-sitter syntax",
+      evidenceSource: "syntax-port",
+    };
+    const diagnostics: DiscoveredCheckCandidate = {
+      ...typecheck,
+      checkId: "diagnostics:workspace",
+      kind: "diagnostics",
+      label: "workspace diagnostics",
+      evidenceSource: "diagnostics-port",
+    };
+    const build: DiscoveredCheckCandidate = {
+      ...typecheck,
+      checkId: "workspace-root:build:build",
+      kind: "build",
+      label: "npm run build",
+      evidenceSource: "manifest:package.json#scripts.build",
+      toolArguments: { argv: ["npm", "run", "build"] },
+      argv: ["npm", "run", "build"],
+    };
+    const result = selectProportionalChecks({
+      candidates: [syntax, diagnostics, typecheck, build],
+      verification: {
+        required: true,
+        minimumEvidence: ["diagnostics", "typecheck", "build"],
+        allowUnavailable: false,
+      },
+      changeScope: "localized",
+      maxChecks: 2,
+    });
+
+    expect(result.selected.map((c) => c.kind).sort()).toEqual([
+      "build",
+      "diagnostics",
+      "syntax",
+      "typecheck",
+    ]);
+  });
 });

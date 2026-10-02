@@ -91,8 +91,11 @@ export function selectProportionalChecks(params: {
   const narrowScope =
     params.changeScope === "localized" || params.changeScope === "module";
 
+  const maxChecks = params.maxChecks ?? DEFAULT_MAX_CHECKS;
+
   for (const candidate of byPriority) {
-    if (candidate.kind === "test" && !requiredKinds.has("test")) {
+    const isRequired = requiredKinds.has(candidate.kind);
+    if (candidate.kind === "test" && !isRequired) {
       omitted.push(candidate);
       continue;
     }
@@ -111,11 +114,13 @@ export function selectProportionalChecks(params: {
       omitted.push(candidate);
       continue;
     }
-    if (selected.length >= (params.maxChecks ?? DEFAULT_MAX_CHECKS)) {
+    if (narrowScope && seenKinds.has(candidate.kind)) {
       omitted.push(candidate);
       continue;
     }
-    if (narrowScope && seenKinds.has(candidate.kind)) {
+    // Required evidence kinds are never truncated by the window budget.
+    // Soft/bonus checks still respect maxChecks after required slots fill.
+    if (!isRequired && selected.length >= maxChecks) {
       omitted.push(candidate);
       continue;
     }
