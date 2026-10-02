@@ -24,6 +24,11 @@ import {
 } from "../internal/taskListRuntime";
 import { DEFAULT_TOOL_DEFINITIONS } from "../legacy/policy";
 import { shouldRearmMutateLockOnContinue } from "../modules/mutate-readiness";
+import {
+  isExecutionSeedTrusted,
+  resolveExecutionSeed,
+} from "../modules/execution-seed";
+import { extractPrimaryUserMessage } from "../../../modules/request-understanding/intent/extractPrimaryUserMessage";
 import type { AgentEngineRuntime } from "./runtime";
 import { finishAfterLoop } from "./verification";
 import { resolveSteeringFeatureFlags } from "../legacy/steeringFlags";
@@ -129,6 +134,22 @@ export async function resumeV8ToolLoopFromCheckpoint(
     maximumOutputTokens: windowPolicy.maximumOutputTokens,
   };
 
+  const executionSeed = resolveExecutionSeed({
+    userPrompt: extractPrimaryUserMessage(startInput.request.userMessage),
+    repoBuildStateBefore: checkpoint.repoBuildStateBefore,
+  });
+  const mutationRequired =
+    decisionWithAttach.reasonCodes.includes("mutation_execute") ||
+    decisionWithAttach.toolGrant.maximumWorkspaceEffect === "write";
+  const rearmLock =
+    isExecutionSeedTrusted(executionSeed) &&
+    shouldRearmMutateLockOnContinue({
+      wallReason: checkpoint.continueWallReason,
+      changedFileCount: changedFiles.length,
+      mutationRequired,
+      reasonCodes,
+    });
+
   const loopOutcome = await runV8ModelLoop(runtime, {
     runId,
     requestId,
@@ -156,14 +177,8 @@ export async function resumeV8ToolLoopFromCheckpoint(
     criticMode: resolveSteeringFeatureFlags(startInput.steering).criticMode,
     repoBuildStateBefore: checkpoint.repoBuildStateBefore,
     logVerbosity: startInput.logVerbosity,
-    armMutateLockOnStart: shouldRearmMutateLockOnContinue({
-      wallReason: checkpoint.continueWallReason,
-      changedFileCount: changedFiles.length,
-      mutationRequired:
-        decisionWithAttach.reasonCodes.includes("mutation_execute") ||
-        decisionWithAttach.toolGrant.maximumWorkspaceEffect === "write",
-      reasonCodes,
-    }),
+    executionSeed,
+    armMutateLockOnStart: rearmLock,
   });
 
   return finishAfterLoop(runtime, {

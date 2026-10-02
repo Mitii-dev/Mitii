@@ -187,6 +187,14 @@ export const AGENT_REASON_CODES = [
   "step_mutate_patch_required",
   /** Discovery tools stripped; mutate (+ optional targeted reads) only until patch lands. */
   "step_mutate_lock_armed",
+  /** Mutate lock rejected a discovery tool at execution (not just catalog filter). */
+  "step_mutate_lock_enforced",
+  /** Authoritative paths/causes resolved from user cites and/or diagnostics. */
+  "execution_seed_trusted",
+  /** No authoritative seed yet — do not force patch-required. */
+  "execution_seed_weak",
+  /** Trusted seed paths written onto checklist write/mustRead. */
+  "execution_seed_task_list_bound",
   "code_intel_adoption_nudged",
   "tools_executed",
   "mutation_applied",

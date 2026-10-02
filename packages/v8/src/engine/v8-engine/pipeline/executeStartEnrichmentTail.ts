@@ -49,6 +49,7 @@ import {
   requiresPlanDiscoveryQualityFloor,
   usesThoroughPlanDiscoveryEvidence,
 } from "../modules/plan-discovery";
+import { applyExecutionSeedToTaskList } from "../modules/execution-seed";
 import type {
   AgentEngineStartInput,
   AgentReasonCode,
@@ -307,6 +308,7 @@ export async function finishEnrichmentSkillsMemoryPlan(
       evidenceTargets: planningEvidence.targets,
       contextPaths,
       priorPathHints,
+      seedPaths: shared.executionSeed?.paths,
       query: buildPlanningQuery(
         extractPrimaryUserMessage(envelope.message),
         input.conversation,
@@ -423,12 +425,18 @@ export async function finishEnrichmentSkillsMemoryPlan(
     let impactReports = planningInput.impactReports;
     const impactSeedPaths =
       strategyOverride.strategy === "follow_evidence"
-        ? (planningInput.buildEvidence?.diagnostics ?? [])
-            .filter((diagnostic) => diagnostic.severity === "error")
-            .map((diagnostic) => diagnostic.path)
+        ? [
+            ...(shared.executionSeed?.paths ?? []),
+            ...(planningInput.buildEvidence?.diagnostics ?? [])
+              .filter((diagnostic) => diagnostic.severity === "error")
+              .map((diagnostic) => diagnostic.path),
+          ]
         : strategyOverride.strategy === "discover_and_plan" && discoveryBrief
-          ? collectDiscoveryImpactSeedPaths(discoveryBrief)
-          : [];
+          ? [
+              ...(shared.executionSeed?.paths ?? []),
+              ...collectDiscoveryImpactSeedPaths(discoveryBrief),
+            ]
+          : [...(shared.executionSeed?.paths ?? [])];
     if (impactSeedPaths.length > 0) {
       impactReports = await collectPlanningImpactReports({
         repoGraphs: runtime.deps.repoGraphs,
@@ -468,6 +476,14 @@ export async function finishEnrichmentSkillsMemoryPlan(
         "plan_drafted",
       ]);
       syncTaskListOnce();
+      const seededAfterPlan = applyExecutionSeedToTaskList({
+        taskList: taskListRef.current,
+        seed: shared.executionSeed,
+      });
+      if (seededAfterPlan.applied && seededAfterPlan.taskList) {
+        taskListRef.current = seededAfterPlan.taskList;
+        reasonCodes.push("execution_seed_task_list_bound");
+      }
 
       if (
         !skipPlanGate &&
@@ -579,6 +595,14 @@ export async function finishEnrichmentSkillsMemoryPlan(
   }
 
   syncTaskListOnce();
+  const seededTaskList = applyExecutionSeedToTaskList({
+    taskList: taskListRef.current,
+    seed: shared.executionSeed,
+  });
+  if (seededTaskList.applied && seededTaskList.taskList) {
+    taskListRef.current = seededTaskList.taskList;
+    reasonCodes.push("execution_seed_task_list_bound");
+  }
 
   if (signal.aborted) {
     await runtime.safeUnpin(runId, shared.pinnedState);

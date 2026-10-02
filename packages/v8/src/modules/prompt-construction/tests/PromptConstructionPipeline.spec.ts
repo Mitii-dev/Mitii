@@ -72,6 +72,30 @@ describe("PromptConstructionPipeline", () => {
     expect(userMessage?.attachments).toBeUndefined();
   });
 
+  it("includes execution seed framing when executionSeedText is provided", () => {
+    const seedBlock = [
+      "ExecutionSeed confidence=trusted source=diagnostic",
+      "Paths: apps/desktop/src/renderer/SettingsPanel.tsx",
+      "Binding: read only write∪mustRead; no broad search while binding; patch when READY.",
+    ].join("\n");
+    const withSeed = new PromptConstructionPipeline().construct(
+      createPromptInput({
+        executionSeedText: seedBlock,
+        tools: SAMPLE_TOOLS,
+      }),
+    );
+    const systemWithSeed = withSeed.request.messages[0]?.content ?? "";
+    expect(systemWithSeed).toContain("ExecutionSeed confidence=trusted");
+    expect(systemWithSeed).toContain("SettingsPanel.tsx");
+    expect(systemWithSeed).toMatch(/patch when READY/i);
+
+    const withoutSeed = new PromptConstructionPipeline().construct(
+      createPromptInput({ tools: SAMPLE_TOOLS }),
+    );
+    const systemWithout = withoutSeed.request.messages[0]?.content ?? "";
+    expect(systemWithout).not.toContain("ExecutionSeed confidence=");
+  });
+
   it("raises PromptConstructionError with stable code on invalid input", () => {
     const pipeline = new PromptConstructionPipeline();
 

@@ -210,6 +210,44 @@ export class DecisionBriefFragment implements ContextualFragment {
   }
 }
 
+export class ExecutionSeedFragment implements ContextualFragment {
+  public readonly id = "system:execution-seed";
+
+  constructor(private readonly text: string) {}
+
+  role(): FragmentRole {
+    return "system";
+  }
+
+  contentKind(): string {
+    return "generic.execution_seed";
+  }
+
+  requiresSeparateMessage(): boolean {
+    return false;
+  }
+
+  markers(): readonly [string, string] {
+    return ["", ""] as const;
+  }
+
+  body(): string {
+    return this.text.trim();
+  }
+
+  maxTokens(): number {
+    return Math.min(FRAGMENT_POLICY.absoluteMaxTokens, 1_200);
+  }
+
+  section(): "system" {
+    return "system";
+  }
+
+  trust(): "trusted_instruction" {
+    return "trusted_instruction";
+  }
+}
+
 export class PlanGuidanceFragment implements ContextualFragment {
   public readonly id = "system:plan-guidance";
 

@@ -43,6 +43,10 @@ import {
   extractMentionedPaths,
   collectUnderstandingCandidatePaths,
 } from "../actions";
+import {
+  isExecutionSeedTrusted,
+  resolveExecutionSeed,
+} from "../modules/execution-seed";
 import { handleMetaCommand } from "../modules/session-control";
 import type { SessionControlRunResult } from "../contracts/output/AgentRunResult";
 import { resolveSteeringFeatureFlags } from "../legacy/steeringFlags";
@@ -82,6 +86,7 @@ export type ExecuteStartSharedState = {
   repoBuildStateBefore: RepoBuildState | undefined;
   repoBuildStateAfter: RepoBuildState | undefined;
   verificationRecord: VerificationRecord | undefined;
+  executionSeed?: import("../modules/execution-seed").ExecutionSeed;
 };
 
 export type StartEarlyPipelineContinue = {
@@ -89,6 +94,7 @@ export type StartEarlyPipelineContinue = {
   understanding: RequestUnderstandingResult;
   decision: ExecutionDecision;
   candidateRelativePaths: string[];
+  executionSeed: import("../modules/execution-seed").ExecutionSeed;
 };
 
 export type StartEarlyPipelineOutcome =
@@ -382,11 +388,24 @@ export async function runStartEarlyPipeline(
 
   const steering = resolveSteeringFeatureFlags(input.steering);
 
+  const executionSeed = resolveExecutionSeed({
+    userPrompt: extractPrimaryUserMessage(understandingEnvelope.message),
+    understanding,
+    repoBuildStateBefore: shared.repoBuildStateBefore,
+    ...(diagnosticSummary ? { diagnosticSummary } : {}),
+  });
+  shared.executionSeed = executionSeed;
+  reasonCodes.push(
+    isExecutionSeedTrusted(executionSeed)
+      ? "execution_seed_trusted"
+      : "execution_seed_weak",
+  );
+
   // --- Decide ---
   // Validates composed DecisionPolicyInput at its boundary (not a second
   // intake). Uses the original intake envelope, not the amended message.
   runtime.emitStage(bus, runId, "decided", "started");
-  const decision = runtime.deps.decision.decide({
+  let decision = runtime.deps.decision.decide({
     schemaVersion: DECISION_POLICY_SCHEMA_VERSION,
     // Hand-written envelope types use readonly arrays; Zod infer is mutable.
     envelope: envelope as DecisionPolicyInput["envelope"],
@@ -416,6 +435,18 @@ export async function runStartEarlyPipeline(
     policyFactsFirst: steering.policyFactsFirst,
     requiredMcpServerIds: input.requiredMcpServerIds,
   });
+  if (
+    isExecutionSeedTrusted(executionSeed) &&
+    executionSeed.paths.length > 0 &&
+    decision.toolGrant.maximumWorkspaceEffect === "write" &&
+    runtime.deps.decision.narrow
+  ) {
+    decision = runtime.deps.decision.narrow({
+      previous: decision,
+      discoveredPaths: executionSeed.paths,
+    });
+    reasonCodes.push("grant_narrowed");
+  }
   shared.route = decision.route;
   shared.planningDepth = decision.planningDepth;
   reasonCodes.push("decision_complete");
@@ -584,6 +615,7 @@ export async function runStartEarlyPipeline(
       understanding,
       decision,
       candidateRelativePaths,
+      executionSeed,
     },
   };
 }

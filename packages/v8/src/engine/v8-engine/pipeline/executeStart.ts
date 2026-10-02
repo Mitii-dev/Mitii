@@ -22,6 +22,7 @@ import {
   createInitialRunEvidence,
   extractMemoryFileTargets,
   finalizeRunEvidence,
+  formatExecutionSeedForPrompt,
 } from "../actions";
 import { filterToolDefinitions } from "../actions/progressiveTools";
 import { withMcpAttachOnGrant, formatMcpAttachInstruction } from "../../../modules/mcp-attach";
@@ -376,6 +377,10 @@ export async function executeV8Start(
           }),
         )
       : undefined;
+    const executionSeedText =
+      decisionWithAttach.toolGrant.maximumWorkspaceEffect === "write"
+        ? formatExecutionSeedForPrompt(shared.executionSeed)
+        : "";
 
     const promptResult = runtime.deps.prompt.construct({
       schemaVersion: PROMPT_CONSTRUCTION_SCHEMA_VERSION,
@@ -387,6 +392,7 @@ export async function executeV8Start(
       instructions,
       planText,
       ...(decisionBriefText ? { decisionBriefText } : {}),
+      ...(executionSeedText ? { executionSeedText } : {}),
       injectSkillCatalogL1: steering.injectSkillCatalogL1,
       ...(steering.injectSkillCatalogL1 && skillCatalogL1
         ? { skillCatalogL1: [...skillCatalogL1] }
@@ -555,6 +561,7 @@ export async function executeV8Start(
       thresholdOverrides: input.v8LoopPolicy?.thresholds,
       criticMode: steering.criticMode,
       understanding,
+      executionSeed: shared.executionSeed,
       repoBuildStateBefore: shared.repoBuildStateBefore,
       memoryFacts,
       memoryQuery: userPrompt,

@@ -67,6 +67,7 @@ export {
   renderFragment,
   BaseInstructionsFragment,
   DecisionBriefFragment,
+  ExecutionSeedFragment,
   InstructionBlockFragment,
   MidConversationUpdateFragment,
   PlanGuidanceFragment,

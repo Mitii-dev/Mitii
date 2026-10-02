@@ -5,6 +5,7 @@ import {
   buildStepPatchRequiredMessage,
   evaluateActiveStepMutateReadiness,
   filterToolsForMutateLock,
+  isMutateLockAllowedToolName,
   mutateLockModelRequestFields,
   resolveMutateLockAllowTargetedReads,
   resolveMutateReadinessBudget,
@@ -31,19 +32,22 @@ function taskList(items: TaskList["items"]): TaskList {
 describe("mutateReadiness (per-step evidence → patch)", () => {
   it("sizes small/medium/large budgets for token efficiency", () => {
     expect(resolveMutateReadinessBudget("small").readonlyTurnsBeforeGate).toBe(
-      2,
+      1,
     );
     expect(resolveMutateReadinessBudget("medium").readonlyTurnsBeforeGate).toBe(
-      4,
+      2,
     );
     expect(resolveMutateReadinessBudget("large").maxEvidencePaths).toBe(6);
+    expect(
+      resolveMutateReadinessBudget("medium").maxEvidenceGateNudgesBeforePatchDemand,
+    ).toBe(1);
     expect(
       resolveStepReadonlyTurnsBeforeGate({
         taskSize: "large",
         hasPlan: true,
-        maxReadOnlyTurnsBeforeMutationNudgeAfterPlan: 4,
+        maxReadOnlyTurnsBeforeMutationNudgeAfterPlan: 2,
       }),
-    ).toBe(4);
+    ).toBe(2);
   });
 
   it("demands named evidence for the active step before patch", () => {
@@ -108,15 +112,41 @@ describe("mutateReadiness (per-step evidence → patch)", () => {
     expect(patchMsg).toMatch(/NOT done/i);
   });
 
-  it("treats steps without named paths as ready for soft patch demand", () => {
-    const readiness = evaluateActiveStepMutateReadiness({
+  it("treats steps without named paths as ready only when mutation is not required", () => {
+    const soft = evaluateActiveStepMutateReadiness({
       taskList: taskList([
         { id: "a", title: "Investigate", status: "active" },
       ]),
       maxEvidencePaths: 5,
     });
-    expect(readiness.ready).toBe(true);
-    expect(readiness.missingPaths).toEqual([]);
+    expect(soft.ready).toBe(true);
+    expect(soft.missingPaths).toEqual([]);
+
+    const mutating = evaluateActiveStepMutateReadiness({
+      taskList: taskList([
+        { id: "a", title: "Investigate", status: "active" },
+      ]),
+      maxEvidencePaths: 5,
+      mutationRequired: true,
+    });
+    expect(mutating.ready).toBe(false);
+
+    const seeded = evaluateActiveStepMutateReadiness({
+      taskList: taskList([
+        { id: "a", title: "Investigate", status: "active" },
+      ]),
+      maxEvidencePaths: 5,
+      mutationRequired: true,
+      seedTrusted: true,
+      seedPaths: ["apps/desktop/src/renderer/SettingsPanel.tsx"],
+    });
+    expect(seeded.ready).toBe(false);
+    expect(seeded.writePaths).toContain(
+      "apps/desktop/src/renderer/SettingsPanel.tsx",
+    );
+    expect(seeded.missingPaths).toContain(
+      "apps/desktop/src/renderer/SettingsPanel.tsx",
+    );
   });
 
   it("strips discovery tools under mutate lock but keeps apply_patch", () => {
@@ -146,6 +176,25 @@ describe("mutateReadiness (per-step evidence → patch)", () => {
       "analyze_change_impact",
       "apply_patch",
     ]);
+
+    // settleTools execution gate: search_files must be tool_not_allowed under lock
+    expect(
+      isMutateLockAllowedToolName("search_files", { allowTargetedReads: true }),
+    ).toBe(false);
+    expect(
+      isMutateLockAllowedToolName("search_files", {
+        allowTargetedReads: false,
+      }),
+    ).toBe(false);
+    expect(
+      isMutateLockAllowedToolName("apply_patch", { allowTargetedReads: false }),
+    ).toBe(true);
+    expect(
+      isMutateLockAllowedToolName("read_file", { allowTargetedReads: true }),
+    ).toBe(true);
+    expect(
+      isMutateLockAllowedToolName("read_file", { allowTargetedReads: false }),
+    ).toBe(false);
 
     const forced = mutateLockModelRequestFields(tools, {
       allowTargetedReads: false,

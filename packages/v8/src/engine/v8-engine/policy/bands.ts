@@ -30,7 +30,7 @@ export const V8_ENGINE_BAND_TABLE: Record<
     label: "Compact",
     rangeLabel: "< 50k",
     overrides: {
-      maxReadOnlyTurnsBeforeMutationNudge: 15,
+      maxReadOnlyTurnsBeforeMutationNudge: 8,
       maxTruncationRecoveries: 4,
       maxUnfulfilledExecuteRecoveries: 3,
       maxReasoningCharsWithoutProgress: 20_000,

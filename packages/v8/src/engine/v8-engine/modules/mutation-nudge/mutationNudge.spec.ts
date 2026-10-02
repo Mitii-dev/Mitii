@@ -96,6 +96,13 @@ describe("mutationNudge", () => {
         maxSoftMutationNudgesBeforeContinue: 2,
         changedFileCount: 0,
       }),
+    ).toBe(false);
+    expect(
+      shouldEscalateReadonlyThrashToContinue({
+        softMutationNudges: 3,
+        maxSoftMutationNudgesBeforeContinue: 2,
+        changedFileCount: 0,
+      }),
     ).toBe(true);
     expect(
       shouldEscalateReadonlyThrashToContinue({

@@ -42,20 +42,20 @@ export function resolveMutateReadinessBudget(
   switch (taskSize) {
     case "large":
       return {
-        readonlyTurnsBeforeGate: 5,
+        readonlyTurnsBeforeGate: 2,
         maxEvidencePaths: 6,
-        maxEvidenceGateNudgesBeforePatchDemand: 2,
+        maxEvidenceGateNudgesBeforePatchDemand: 1,
       };
     case "medium":
       return {
-        readonlyTurnsBeforeGate: 4,
-        maxEvidencePaths: 5,
-        maxEvidenceGateNudgesBeforePatchDemand: 2,
+        readonlyTurnsBeforeGate: 2,
+        maxEvidencePaths: 4,
+        maxEvidenceGateNudgesBeforePatchDemand: 1,
       };
     case "small":
     default:
       return {
-        readonlyTurnsBeforeGate: 2,
+        readonlyTurnsBeforeGate: 1,
         maxEvidencePaths: 2,
         maxEvidenceGateNudgesBeforePatchDemand: 1,
       };
@@ -85,9 +85,42 @@ export function evaluateActiveStepMutateReadiness(params: {
   loopFileReads?: LoopFileReadTracker;
   establishedFacts?: readonly EstablishedFact[];
   maxEvidencePaths: number;
+  /**
+   * When true (execute/write), empty write/mustRead is NOT ready — use seedPaths
+   * as synthetic needed or stay not-ready to avoid hallucinated patch demand.
+   */
+  mutationRequired?: boolean;
+  /** Trusted execution-seed paths used when checklist write/mustRead are empty. */
+  seedPaths?: readonly string[];
+  /** When false/weak, never report ready for patch demand. */
+  seedTrusted?: boolean;
 }): ActiveStepMutateReadiness {
+  const mutationRequired = params.mutationRequired === true;
+  const seedTrusted = params.seedTrusted === true;
+  const seedPaths = uniquePaths(params.seedPaths ?? []);
   const active = params.taskList?.items.find((item) => item.status === "active");
+
   if (!active) {
+    if (mutationRequired) {
+      if (seedTrusted && seedPaths.length > 0) {
+        return readinessFromNeeded({
+          writePaths: seedPaths,
+          mustReadPaths: seedPaths,
+          needed: seedPaths,
+          maxEvidencePaths: params.maxEvidencePaths,
+          loopFileReads: params.loopFileReads,
+          establishedFacts: params.establishedFacts,
+        });
+      }
+      return {
+        ready: false,
+        writePaths: [],
+        mustReadPaths: [],
+        missingPaths: seedPaths.slice(0, Math.max(1, params.maxEvidencePaths)),
+        estFilesThisStep: Math.max(seedPaths.length, 1),
+        estTurns: 1,
+      };
+    }
     return {
       ready: true,
       writePaths: [],
@@ -98,13 +131,36 @@ export function evaluateActiveStepMutateReadiness(params: {
     };
   }
 
-  const writePaths = uniquePaths(active.write ?? []);
-  const mustReadPaths = uniquePaths(active.mustRead ?? []);
+  let writePaths = uniquePaths(active.write ?? []);
+  let mustReadPaths = uniquePaths(active.mustRead ?? []);
+  if (
+    mutationRequired &&
+    writePaths.length === 0 &&
+    seedTrusted &&
+    seedPaths.length > 0
+  ) {
+    writePaths = seedPaths;
+    if (mustReadPaths.length === 0) {
+      mustReadPaths = seedPaths;
+    }
+  }
   const needed = uniquePaths([...mustReadPaths, ...writePaths]);
   const estFilesThisStep = Math.max(writePaths.length, needed.length > 0 ? 1 : 0);
 
   if (needed.length === 0) {
-    // No named surfaces — treat as ready so soft patch demand can fire.
+    // Mutation required without named surfaces — not ready (avoid patch hallucination).
+    if (mutationRequired) {
+      return {
+        ready: false,
+        activeItemId: active.id,
+        activeTitle: active.title,
+        writePaths,
+        mustReadPaths,
+        missingPaths: [],
+        estFilesThisStep: 1,
+        estTurns: 1,
+      };
+    }
     return {
       ready: true,
       activeItemId: active.id,
@@ -117,7 +173,29 @@ export function evaluateActiveStepMutateReadiness(params: {
     };
   }
 
-  const missingPaths = needed
+  return readinessFromNeeded({
+    activeItemId: active.id,
+    activeTitle: active.title,
+    writePaths,
+    mustReadPaths,
+    needed,
+    maxEvidencePaths: params.maxEvidencePaths,
+    loopFileReads: params.loopFileReads,
+    establishedFacts: params.establishedFacts,
+  });
+}
+
+function readinessFromNeeded(params: {
+  activeItemId?: string;
+  activeTitle?: string;
+  writePaths: string[];
+  mustReadPaths: string[];
+  needed: string[];
+  maxEvidencePaths: number;
+  loopFileReads?: LoopFileReadTracker;
+  establishedFacts?: readonly EstablishedFact[];
+}): ActiveStepMutateReadiness {
+  const missingPaths = params.needed
     .filter(
       (path) =>
         !isEvidencePathLoaded(path, params.loopFileReads, params.establishedFacts),
@@ -126,12 +204,12 @@ export function evaluateActiveStepMutateReadiness(params: {
 
   return {
     ready: missingPaths.length === 0,
-    activeItemId: active.id,
-    activeTitle: active.title,
-    writePaths,
-    mustReadPaths,
+    activeItemId: params.activeItemId,
+    activeTitle: params.activeTitle,
+    writePaths: params.writePaths,
+    mustReadPaths: params.mustReadPaths,
     missingPaths,
-    estFilesThisStep: Math.max(estFilesThisStep, 1),
+    estFilesThisStep: Math.max(params.writePaths.length, 1),
     estTurns: missingPaths.length > 0 ? 1 : 0,
   };
 }

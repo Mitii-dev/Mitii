@@ -102,6 +102,7 @@ export class PromptConstructionPipeline {
       budgetTokens: systemBudget,
       planText: parsed.planText,
       decisionBriefText: parsed.decisionBriefText,
+      executionSeedText: parsed.executionSeedText,
     });
     let systemContent = system.content;
 
@@ -111,6 +112,14 @@ export class PromptConstructionPipeline {
       source: "system:safety+route",
       trust: "trusted_instruction",
     });
+    if (parsed.executionSeedText?.trim()) {
+      provenance.push({
+        blockId: "system:execution-seed",
+        section: "system",
+        source: "system:execution-seed",
+        trust: "trusted_instruction",
+      });
+    }
     if (parsed.decisionBriefText?.trim()) {
       provenance.push({
         blockId: "system:decision-brief",

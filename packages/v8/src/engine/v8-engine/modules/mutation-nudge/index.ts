@@ -76,7 +76,8 @@ export function shouldEscalateReadonlyThrashToContinue(params: {
   if (params.maxSoftMutationNudgesBeforeContinue <= 0) {
     return false;
   }
-  return params.softMutationNudges >= params.maxSoftMutationNudgesBeforeContinue;
+  // Allow `max` soft patch demands before Continue (escalate only after exceeding).
+  return params.softMutationNudges > params.maxSoftMutationNudgesBeforeContinue;
 }
 
 /** Soft nudge after too many read-only turns with zero mutations. Does not spend evidence reads. */
