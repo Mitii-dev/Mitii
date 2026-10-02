@@ -134,10 +134,15 @@ export async function resumeV8ToolLoopFromCheckpoint(
     maximumOutputTokens: windowPolicy.maximumOutputTokens,
   };
 
-  const executionSeed = resolveExecutionSeed({
-    userPrompt: extractPrimaryUserMessage(startInput.request.userMessage),
-    repoBuildStateBefore: checkpoint.repoBuildStateBefore,
-  });
+  const executionSeed =
+    checkpoint.executionSeed ??
+    resolveExecutionSeed({
+      userPrompt: extractPrimaryUserMessage(startInput.request.userMessage),
+      repoBuildStateBefore: checkpoint.repoBuildStateBefore,
+    });
+  if (checkpoint.executionSeed) {
+    reasonCodes.push("execution_seed_restored");
+  }
   const mutationRequired =
     decisionWithAttach.reasonCodes.includes("mutation_execute") ||
     decisionWithAttach.toolGrant.maximumWorkspaceEffect === "write";
@@ -212,6 +217,7 @@ export async function resumeV8ToolLoopFromCheckpoint(
       plan: checkpoint.plan,
       requiredSkillIds: startInput.requiredSkillIds ?? [],
       excludedSkillIds: startInput.excludedSkillIds ?? [],
+      executionSeed,
     },
   });
 }

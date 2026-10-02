@@ -12,6 +12,7 @@ import type { ToolResult } from "../../tool-runtime";
 import type { ContextEpoch } from "./context-epoch";
 import type { BudgetWallReason } from "../actions/buildStallContinueRationale";
 import type { ClarificationSession } from "../actions/buildClarificationPayload";
+import type { ExecutionSeed } from "../modules/execution-seed";
 
 import type { AgentEngineStartInput } from "../contracts";
 import type { AgentReasonCode, AgentRunUsage } from "../contracts";
@@ -90,6 +91,12 @@ export interface AgentRunCheckpoint {
    * rebuild the baseline. `{ epochId, baseline, snapshot, createdAt }`.
    */
   contextEpoch?: ContextEpoch;
+  /**
+   * Refined execution seed (paths/confidence) as of suspension. Resume must
+   * restore this — re-resolving from the raw user prompt alone drops context
+   * refinement (e.g. App.tsx wiring) and thrash-Continues as seed_weak.
+   */
+  executionSeed?: ExecutionSeed;
 }
 
 export interface AgentEngineRunCheckpointStorePort {

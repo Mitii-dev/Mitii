@@ -203,6 +203,8 @@ export const AGENT_REASON_CODES = [
   "execution_seed_weak",
   /** Folder-only seed refined to concrete context file paths. */
   "execution_seed_context_refined",
+  /** Continue resume restored the refined seed from the checkpoint. */
+  "execution_seed_restored",
   /** Trusted seed paths written onto checklist write/mustRead. */
   "execution_seed_task_list_bound",
   /**

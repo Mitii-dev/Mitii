@@ -56,6 +56,7 @@ import { discardIncompleteToolCalls } from "../actions/completeToolCalls";
 import { isClearMutationBlocker } from "../actions/isClearMutationBlocker";
 import {
   batchIsReadonlyTools,
+  changeImpactRetryPatchMessage,
   hasPlanDraftedThisRun,
   readonlyThrashPartialAnswer,
   requiresMutation,
@@ -257,14 +258,12 @@ export async function runV8ModelLoop(
     maxReadOnlyTurnsBeforeMutationNudgeAfterPlan:
       thresholds.maxReadOnlyTurnsBeforeMutationNudgeAfterPlan,
     windowBandOrTokens: params.windowPolicy.contextWindowTokens,
+    seedTrusted,
   });
-  // After a trusted seed, use the tight binding budget — ignore compact-band looseness.
+  // Trusted seed: size×band bind envelope only (see resolveStepReadonlyTurnsBeforeGate).
+  // Untrusted: soft-nudge threshold, tightened after a plan.
   const readonlyTurnsBeforeMutationNudge = seedTrusted
-    ? Math.min(
-        stepReadonlyTurnsBeforeGate,
-        thresholds.maxReadOnlyTurnsBeforeMutationNudgeAfterPlan,
-        thresholds.maxFreeDiscoveryTurnsBeforeSeedBind,
-      )
+    ? stepReadonlyTurnsBeforeGate
     : resolveReadonlyTurnsBeforeMutationNudge({
         hasPlan: planDraftedThisRun,
         maxReadOnlyTurnsBeforeMutationNudge:
@@ -930,6 +929,36 @@ export async function runV8ModelLoop(
         mutateLockAllowTargetedReads = true;
         consecutiveSameToolTurns = 0;
         lastUniformToolName = undefined;
+      } else if (
+        mutationNeeded &&
+        changedFiles.length === 0 &&
+        !gitWriteSucceeded &&
+        changeImpactGate.required &&
+        changeImpactGate.satisfied &&
+        toolCalls.some((call) => call.name === "analyze_change_impact")
+      ) {
+        // Gate just satisfied (or already was): demand the withheld patch this
+        // turn — do not count this as readonly thrash / Continue.
+        softMutationNudges = 0;
+        readOnlyTurnsWithoutMutation = 0;
+        readonlyTurnsOnActiveStep = 0;
+        awaitingMutateOnly = true;
+        mutateLockAllowTargetedReads = false;
+        reasonCodes.push("step_mutate_patch_required", "step_mutate_lock_armed");
+        warnings.push(
+          "Change impact satisfied; mutate lock demanding apply_patch retry.",
+        );
+        runtime.emit(bus, {
+          type: "warning",
+          runId,
+          message:
+            "Mutate lock: discovery stripped; call apply_patch now (targeted reads off). Edits are not done until it lands.",
+          at: runtime.isoNow(),
+        });
+        messages.push({
+          role: "user",
+          content: changeImpactRetryPatchMessage(),
+        });
       } else if (
         mutationNeeded &&
         changedFiles.length === 0 &&

@@ -32,9 +32,9 @@ function taskList(items: TaskList["items"]): TaskList {
 describe("mutateReadiness (per-step evidence → patch)", () => {
   it("sizes small/medium/large bind budgets by taskSize × window band", () => {
     expect(resolveMutateReadinessBudget("small").readonlyTurnsBeforeGate).toBe(
-      2,
+      6,
     );
-    expect(resolveMutateReadinessBudget("small").maxEvidencePaths).toBe(4);
+    expect(resolveMutateReadinessBudget("small").maxEvidencePaths).toBe(8);
     expect(
       resolveMutateReadinessBudget("medium", "standard").readonlyTurnsBeforeGate,
     ).toBe(4);
@@ -73,6 +73,16 @@ describe("mutateReadiness (per-step evidence → patch)", () => {
         windowBandOrTokens: "standard",
       }),
     ).toBe(2);
+    // Trusted seed keeps the size×band envelope (do not collapse to afterPlan=2).
+    expect(
+      resolveStepReadonlyTurnsBeforeGate({
+        taskSize: "small",
+        hasPlan: true,
+        maxReadOnlyTurnsBeforeMutationNudgeAfterPlan: 2,
+        windowBandOrTokens: "standard",
+        seedTrusted: true,
+      }),
+    ).toBe(6);
   });
 
   it("demands named evidence for the active step before patch", () => {

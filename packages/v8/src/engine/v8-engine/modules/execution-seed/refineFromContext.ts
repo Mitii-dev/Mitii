@@ -1,11 +1,17 @@
 /**
  * After context retrieval: promote folder-only execution seeds to concrete
- * file paths from retrieved blocks (e.g. apps/desktop → SettingsPanel.tsx).
+ * file paths from retrieved blocks (e.g. apps/desktop → SettingsPanel.tsx),
+ * and bind composition wiring (App.tsx) for Index/settings navigation asks.
  */
 import type { ExecutionSeed } from "./resolve";
 import { EXECUTION_SEED_MAX_PATHS } from "./resolve";
 
 const FILE_LIKE = /\.[A-Za-z0-9]{1,12}$/;
+const UI_NAV_ASK =
+  /\b(?:click(?:ing)?|redirect|open|navigat\w*|tab)\b/i;
+const CHIP_OR_SETTINGS =
+  /(?:IndexStatusChip|SettingsPanel)\.[A-Za-z0-9]+$/i;
+const RENDERER_APP = /\/(?:renderer\/)?App\.(tsx|jsx|ts|js)$/i;
 
 export function refineExecutionSeedFromContext(params: {
   seed: ExecutionSeed;
@@ -13,8 +19,26 @@ export function refineExecutionSeedFromContext(params: {
   userPrompt?: string;
   maxPaths?: number;
 }): ExecutionSeed {
-  const seed = params.seed;
   const max = Math.max(1, params.maxPaths ?? EXECUTION_SEED_MAX_PATHS);
+  let next = promoteFolderSeedToFiles(params, max);
+  next = enrichUiWiringSeeds({
+    seed: next,
+    contextPaths: params.contextPaths,
+    userPrompt: params.userPrompt,
+    maxPaths: max,
+  });
+  return next;
+}
+
+function promoteFolderSeedToFiles(
+  params: {
+    seed: ExecutionSeed;
+    contextPaths: readonly string[];
+    userPrompt?: string;
+  },
+  max: number,
+): ExecutionSeed {
+  const seed = params.seed;
   if (seed.paths.length === 0 || params.contextPaths.length === 0) {
     return seed;
   }
@@ -58,6 +82,62 @@ export function refineExecutionSeedFromContext(params: {
     .map(normalize)
     .filter((path) => FILE_LIKE.test(baseName(path)));
   const paths = uniqueCap([...chosen, ...existingFiles], max);
+  if (samePathSet(paths, seed.paths)) {
+    return seed;
+  }
+
+  return {
+    ...seed,
+    paths,
+    confidence: "trusted",
+    source:
+      seed.source === "none" || seed.source === "artifact"
+        ? "mixed"
+        : seed.source,
+  };
+}
+
+/**
+ * Index/settings click→tab asks are wired in the shell App, not only in the
+ * chip/panel. When those surfaces are seeded, bind the sibling App.tsx even
+ * if retrieval omitted it — otherwise mutate lock blocks finding the handler.
+ */
+export function enrichUiWiringSeeds(params: {
+  seed: ExecutionSeed;
+  contextPaths: readonly string[];
+  userPrompt?: string;
+  maxPaths: number;
+}): ExecutionSeed {
+  const seed = params.seed;
+  const prompt = params.userPrompt?.trim() ?? "";
+  if (!prompt || !UI_NAV_ASK.test(prompt)) {
+    return seed;
+  }
+
+  const seedPaths = seed.paths.map(normalize).filter(Boolean);
+  const hasUiSurface = seedPaths.some((path) => CHIP_OR_SETTINGS.test(path));
+  if (!hasUiSurface) {
+    return seed;
+  }
+
+  const fromContext = params.contextPaths
+    .map(normalize)
+    .filter((path) => RENDERER_APP.test(path));
+
+  const synthesized: string[] = [];
+  for (const path of seedPaths) {
+    const rendererRoot = path.match(/^(.*\/renderer)\//i)?.[1];
+    if (rendererRoot) {
+      synthesized.push(`${rendererRoot}/App.tsx`);
+    }
+  }
+
+  const toAdd = uniqueCap([...fromContext, ...synthesized], params.maxPaths);
+  if (toAdd.length === 0) {
+    return seed;
+  }
+
+  const paths = uniqueCap([...toAdd, ...seedPaths], params.maxPaths);
   if (samePathSet(paths, seed.paths)) {
     return seed;
   }

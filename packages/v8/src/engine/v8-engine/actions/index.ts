@@ -386,6 +386,7 @@ export {
   shouldEscalateReadonlyThrashToContinue,
   softMutationNudgeMessage,
   readonlyThrashPartialAnswer,
+  changeImpactRetryPatchMessage,
   unfulfilledExecuteNudgeMessage,
 } from "../modules/mutation-nudge";
 export {

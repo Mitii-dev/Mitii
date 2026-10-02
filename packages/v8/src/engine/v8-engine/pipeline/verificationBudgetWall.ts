@@ -19,6 +19,7 @@ import { EventBus } from "../internal/EventBus";
 import { RunBudgetTracker } from "../internal/RunBudget";
 import type { ToolCallCache } from "../internal/ToolCallCache";
 import type { TaskListRef } from "../internal/taskListRuntime";
+import type { ExecutionSeed } from "../modules/execution-seed";
 import type { AgentEngineRuntime } from "./runtime";
 
 export type SuspendBudgetWallContext = {
@@ -51,6 +52,7 @@ export type SuspendBudgetWallContext = {
   continueOverrideCount: number;
   maxContinueOverrides: number;
   plan?: PlanArtifact;
+  executionSeed?: ExecutionSeed;
 };
 
 export async function suspendForBudgetWall(
@@ -89,6 +91,7 @@ export async function suspendForBudgetWall(
     continueOverrideCount,
     maxContinueOverrides,
     plan,
+    executionSeed,
   } = ctx;
 
   if (
@@ -142,6 +145,7 @@ export async function suspendForBudgetWall(
       ? { completedPlanStepIds: [...taskListRef.completedPlanStepIds] }
       : {}),
     ...(plan ? { plan } : {}),
+    ...(executionSeed ? { executionSeed } : {}),
   });
   runtime.emit(bus, {
     type: "suspended",
