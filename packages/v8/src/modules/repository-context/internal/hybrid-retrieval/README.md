@@ -8,9 +8,16 @@ Hybrid Retrieval gathers candidate context from repository intelligence sources 
 - Executes registered retrieval sources.
 - Captures per-source success, failure, skip, and warning reports.
 - Deduplicates candidates across sources.
+- Prefers query-time personalized RepoMap ranking when `repoGraph` + session
+  `rankingContext` are available (invokes state-owned `RepoMapRanker`).
+- Fuses priority-lane paths (required/explicit/selection) ahead of main RRF.
+- Soft-times out slow sources (`sourceTimeoutMs`) without aborting the fan-out.
+- Rebalances final slots when vector retrieval is degraded (`applyModalityQuotas`).
+- Includes ephemeral `SessionContextRetrievalSource` for open/recent/git paths.
+- Span-aware candidate keys so identical line ranges fuse across sources.
 - Combines rankings with weighted reciprocal-rank fusion.
-- Optionally boosts fused scores from published RepoMap importance
-  (`boostByImportance.ts` — never recomputes PageRank).
+- Optionally boosts fused scores from published RepoMap importance when no
+  session ranking context is present (`boostByImportance.ts`).
 - Optionally reranks candidates using identifier-aware signals.
 - Returns fused candidates and retrieval statistics.
 
@@ -35,7 +42,8 @@ hybrid-retrieval/
 
 ## Types And Contracts
 
-- `HybridRetrievalInput`: workspace, query, filters, anchors, consistency guards, optional repo map/graph, and abort signal.
+- `HybridRetrievalInput`: workspace, query, filters, anchors, optional
+  `rankingContext`, consistency guards, optional repo map/graph, and abort signal.
 - `RetrievalSource`: source interface for repo map, graph, text, vector, or future sources.
 - `RetrievalCandidate`: raw candidate emitted by one source.
 - `HybridRetrievalCandidate`: fused candidate with contributions and final score.

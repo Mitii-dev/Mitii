@@ -14,10 +14,13 @@ published `RepoMap` entries.
 
 ## Ownership
 
-- **Computes** importance here (repository-state).
-- **Consumes** via published `RepoMap.entries[].score` / `pageRank` in
-  `repository-context` hybrid retrieval (`RepoMapRetrievalSource`, optional
-  post-RRF boost). Context must **not** recompute PageRank.
+- **Computes** importance here (repository-state), including query-time
+  `RepoMapRanker.rank({ graph, context })` invoked by repository-context for
+  session-conditioned map retrieval candidates.
+- **Consumes** published `RepoMap.entries[].score` / `pageRank` as the
+  index-time baseline and for optional post-RRF importance boost.
+- Context must **not** reimplement PageRank locally — only call this ranker.
 
-Personalization uses referencer→definer edges. Courtesy inspiration
+Personalization uses referencer→definer edges with identifier-quality
+multipliers and session chat-file referrer boosts. Courtesy inspiration
 acknowledgement (not copied upstream source): see `Mitii/NOTICE-REVIEW.md`.

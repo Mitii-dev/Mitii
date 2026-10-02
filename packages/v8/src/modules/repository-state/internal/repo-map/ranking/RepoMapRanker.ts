@@ -8,8 +8,12 @@ import {
   resolveRepoMapRankerOptions,
 } from "../constants";
 
+import {
+  isImportantRepoMapFile,
+} from "../importantFiles";
+
 import type {
-  RepoGraphEdge,
+  RepoGraph,
   RepoGraphFileNode,
   RepoGraphSymbolNode,
 } from "../../repo-graph";
@@ -130,9 +134,10 @@ export class RepoMapRanker {
 
     const graphSignals =
       this.collectGraphSignals(
-        input.graph.edges,
+        input.graph,
         fileIds,
         nodeToFileId,
+        input.context,
       );
 
     const personalization =
@@ -286,6 +291,16 @@ export class RepoMapRanker {
       score +=
         REPO_MAP_PRESELECTION_WEIGHTS
           .CURRENT_FILE;
+    }
+
+    if (
+      isImportantRepoMapFile(
+        file.relativePath,
+      )
+    ) {
+      score +=
+        REPO_MAP_PRESELECTION_WEIGHTS
+          .IMPORTANT_FILE;
     }
 
     if (
@@ -445,11 +460,11 @@ export class RepoMapRanker {
   }
 
   private collectGraphSignals(
-    edges:
-      readonly RepoGraphEdge[],
+    graph: RepoGraph,
     fileIds: ReadonlySet<string>,
     nodeToFileId:
       ReadonlyMap<string, string>,
+    context: RepoMapRankingContext,
   ): {
     inboundImports:
       ReadonlyMap<string, number>;
@@ -472,7 +487,45 @@ export class RepoMapRanker {
     const pageRankEdges:
       PageRankEdge[] = [];
 
-    for (const edge of edges) {
+    const symbolById =
+      new Map<
+        string,
+        {
+          name: string;
+          fileId: string;
+        }
+      >();
+    const definerCountByName =
+      new Map<string, number>();
+
+    for (const node of graph.nodes) {
+      if (node.kind !== "symbol") {
+        continue;
+      }
+      symbolById.set(node.id, {
+        name: node.name,
+        fileId: node.fileId,
+      });
+      definerCountByName.set(
+        node.name,
+        (definerCountByName.get(
+          node.name,
+        ) ?? 0) + 1,
+      );
+    }
+
+    const mentionedIdents =
+      this.collectMentionedIdents(
+        context,
+      );
+    const chatFileIds =
+      this.collectChatFileIds(
+        graph,
+        fileIds,
+        context,
+      );
+
+    for (const edge of graph.edges) {
       if (
         edge.type !== "imports" &&
         edge.type !== "calls" &&
@@ -550,16 +603,43 @@ export class RepoMapRanker {
       if (
         fromFileId !== toFileId
       ) {
+        const typeWeight =
+          edge.type === "calls"
+            ? REPO_MAP_SCORE_WEIGHTS
+                .CALL_EDGE
+            : REPO_MAP_SCORE_WEIGHTS
+                .REFERENCE_EDGE;
+
+        const definer =
+          symbolById.get(
+            edge.toNodeId,
+          );
+        const ident =
+          definer?.name ?? "";
+        const identMul =
+          this.identifierEdgeMultiplier(
+            ident,
+            mentionedIdents,
+            definerCountByName.get(
+              ident,
+            ) ?? 1,
+          );
+        const chatMul =
+          chatFileIds.has(
+            fromFileId,
+          )
+            ? REPO_MAP_SCORE_WEIGHTS
+                .CHAT_FILE_REFERRER_MULTIPLIER
+            : 1;
+
         pageRankEdges.push({
           from: fromFileId,
           to: toFileId,
           weight:
-            count *
-            (edge.type === "calls"
-              ? REPO_MAP_SCORE_WEIGHTS
-                  .CALL_EDGE
-              : REPO_MAP_SCORE_WEIGHTS
-                  .REFERENCE_EDGE),
+            Math.sqrt(count) *
+            typeWeight *
+            identMul *
+            chatMul,
         });
       }
     }
@@ -598,6 +678,24 @@ export class RepoMapRanker {
       REPO_MAP_SCORE_WEIGHTS
         .CURRENT_FILE,
     );
+
+    if (
+      isImportantRepoMapFile(
+        input.file.relativePath,
+      )
+    ) {
+      score +=
+        REPO_MAP_SCORE_WEIGHTS
+          .IMPORTANT_FILE;
+      reasons.push({
+        type: "important_file",
+        score:
+          REPO_MAP_SCORE_WEIGHTS
+            .IMPORTANT_FILE,
+        evidence:
+          `"${input.file.relativePath}" matched an important project root file.`,
+      });
+    }
 
     score +=
       this.addSelectionListSignal(
@@ -861,6 +959,10 @@ export class RepoMapRanker {
   ): Map<string, number> {
     const result =
       new Map<string, number>();
+    const mentionedIdents =
+      this.collectMentionedIdents(
+        context,
+      );
 
     for (const file of files) {
       let weight =
@@ -920,6 +1022,27 @@ export class RepoMapRanker {
         weight +=
           REPO_MAP_SCORE_WEIGHTS
             .PERSONALIZATION_RECENT_EDIT_FILE;
+      }
+
+      if (
+        this.pathMentionsIdent(
+          file.relativePath,
+          mentionedIdents,
+        )
+      ) {
+        weight +=
+          REPO_MAP_SCORE_WEIGHTS
+            .PERSONALIZATION_MENTIONED_PATH_COMPONENT;
+      }
+
+      if (
+        isImportantRepoMapFile(
+          file.relativePath,
+        )
+      ) {
+        weight +=
+          REPO_MAP_SCORE_WEIGHTS
+            .PERSONALIZATION_IMPORTANT_FILE;
       }
 
       result.set(
@@ -1018,6 +1141,160 @@ export class RepoMapRanker {
     });
 
     return score;
+  }
+
+
+  private collectMentionedIdents(
+    context: RepoMapRankingContext,
+  ): Set<string> {
+    const idents = new Set<string>();
+    for (const term of this.tokenize(
+      context.query,
+    )) {
+      if (
+        term.length >=
+        REPO_MAP_DEFAULTS
+          .MINIMUM_QUERY_TERM_LENGTH
+      ) {
+        idents.add(term);
+      }
+    }
+
+    const pathSelections = [
+      context.currentFile,
+      ...(context.openFiles ?? []),
+      ...(context.gitDiffFiles ?? []),
+    ];
+    for (const selection of pathSelections) {
+      if (!selection) continue;
+      const relativePath =
+        typeof selection === "string"
+          ? selection
+          : selection.relativePath;
+      for (const part of relativePath
+        .toLowerCase()
+        .split(/[/._-]+/)) {
+        if (
+          part.length >=
+          REPO_MAP_DEFAULTS
+            .MINIMUM_QUERY_TERM_LENGTH
+        ) {
+          idents.add(part);
+        }
+      }
+    }
+
+    return idents;
+  }
+
+  private collectChatFileIds(
+    graph: RepoGraph,
+    fileIds: ReadonlySet<string>,
+    context: RepoMapRankingContext,
+  ): Set<string> {
+    const chatIds = new Set<string>();
+    for (const node of graph.nodes) {
+      if (
+        node.kind !== "file" ||
+        !fileIds.has(node.id)
+      ) {
+        continue;
+      }
+      const file = this.toRepoMapFile(node);
+      if (
+        this.matchesSelection(
+          file,
+          context.currentFile,
+        ) ||
+        this.matchesAnySelection(
+          file,
+          context.openFiles,
+        )
+      ) {
+        chatIds.add(file.id);
+      }
+    }
+    return chatIds;
+  }
+
+  private identifierEdgeMultiplier(
+    ident: string,
+    mentionedIdents: ReadonlySet<string>,
+    definerCount: number,
+  ): number {
+    if (!ident) {
+      return 1;
+    }
+
+    let mul = 1;
+    const lower = ident.toLowerCase();
+    if (
+      mentionedIdents.has(lower) ||
+      mentionedIdents.has(ident)
+    ) {
+      mul *=
+        REPO_MAP_SCORE_WEIGHTS
+          .IDENT_MENTIONED_MULTIPLIER;
+    }
+
+    const isSnake =
+      ident.includes("_") &&
+      /[a-zA-Z]/.test(ident);
+    const isKebab =
+      ident.includes("-") &&
+      /[a-zA-Z]/.test(ident);
+    const isCamel =
+      /[A-Z]/.test(ident) &&
+      /[a-z]/.test(ident);
+    if (
+      (isSnake || isKebab || isCamel) &&
+      ident.length >=
+        REPO_MAP_SCORE_WEIGHTS
+          .IDENT_QUALITY_MINIMUM_LENGTH
+    ) {
+      mul *=
+        REPO_MAP_SCORE_WEIGHTS
+          .IDENT_QUALITY_MULTIPLIER;
+    }
+
+    if (ident.startsWith("_")) {
+      mul *=
+        REPO_MAP_SCORE_WEIGHTS
+          .IDENT_PRIVATE_MULTIPLIER;
+    }
+
+    if (
+      definerCount >
+      REPO_MAP_SCORE_WEIGHTS
+        .IDENT_HIGH_FANIN_THRESHOLD
+    ) {
+      mul *=
+        REPO_MAP_SCORE_WEIGHTS
+          .IDENT_HIGH_FANIN_MULTIPLIER;
+    }
+
+    return mul;
+  }
+
+  private pathMentionsIdent(
+    relativePath: string,
+    mentionedIdents: ReadonlySet<string>,
+  ): boolean {
+    if (mentionedIdents.size === 0) {
+      return false;
+    }
+    const components = relativePath
+      .toLowerCase()
+      .split(/[/._-]+/)
+      .filter(
+        (part) =>
+          part.length >=
+          REPO_MAP_DEFAULTS
+            .MINIMUM_QUERY_TERM_LENGTH,
+      );
+    return components.some((part) =>
+      mentionedIdents.has(part),
+    );
   }
 
   private matchesAnySelection(

@@ -7,8 +7,13 @@ import {
   retrievalSourceResultSchema,
 } from "../schema";
 
+import {
+  RepoMapRanker,
+} from "../../../../repository-state/index";
+
 import type {
   RepoMapEntry,
+  RepoMapRankingContext,
 } from "../../../../repository-state/index";
 
 import type {
@@ -25,22 +30,39 @@ export class RepoMapRetrievalSource
     HYBRID_RETRIEVAL_IDS
       .REPO_MAP_SOURCE;
 
+  constructor(
+    private readonly ranker =
+      new RepoMapRanker(),
+  ) {}
+
   public canRetrieve(
     request:
       NormalizedHybridRetrievalRequest,
   ): boolean {
-    return (
+    const hasPublishedMap =
       request.repoMap !==
         undefined &&
-      (
-        request.kinds.length ===
-          0 ||
-        request.kinds.includes(
-          "code_symbol",
-        ) ||
-        request.kinds.includes(
-          "code_region",
-        )
+      request.repoMap.entries
+        .length > 0;
+    const canQueryRank =
+      request.repoGraph !==
+      undefined;
+
+    if (
+      !hasPublishedMap &&
+      !canQueryRank
+    ) {
+      return false;
+    }
+
+    return (
+      request.kinds.length ===
+        0 ||
+      request.kinds.includes(
+        "code_symbol",
+      ) ||
+      request.kinds.includes(
+        "code_region",
       )
     );
   }
@@ -49,22 +71,22 @@ export class RepoMapRetrievalSource
     request:
       NormalizedHybridRetrievalRequest,
   ): Promise<RetrievalSourceResult> {
-    const repoMap =
-      request.repoMap;
+    const entries =
+      this.resolveEntries(
+        request,
+      );
 
-    if (!repoMap) {
+    if (entries.length === 0) {
       return this.validate({
-        status:
-          "unavailable",
+        status: "empty",
         candidates: [],
-        truncated:
-          false,
+        truncated: false,
         warnings: [],
       });
     }
 
     const matching =
-      repoMap.entries.filter(
+      entries.filter(
         (entry) =>
           this.matchesScope(
             entry,
@@ -133,6 +155,74 @@ export class RepoMapRetrievalSource
             ]
           : [],
     });
+  }
+
+  /**
+   * Prefer query-time personalized ranking when a graph is available.
+   * Fall back to the published index-time map when graph is missing.
+   */
+  private resolveEntries(
+    request:
+      NormalizedHybridRetrievalRequest,
+  ): readonly RepoMapEntry[] {
+    if (request.repoGraph) {
+      const ranking =
+        this.ranker.rank({
+          graph: request.repoGraph,
+          context:
+            this.toRankingContext(
+              request,
+            ),
+        });
+      return ranking.entries;
+    }
+
+    return request.repoMap?.entries ?? [];
+  }
+
+  private toRankingContext(
+    request:
+      NormalizedHybridRetrievalRequest,
+  ): RepoMapRankingContext {
+    const session =
+      request.rankingContext;
+
+    return {
+      query: request.query,
+      ...(request.rootIds.length > 0
+        ? { rootIds: request.rootIds }
+        : {}),
+      ...(request.folderPrefix
+        ? { folderPrefix: request.folderPrefix }
+        : {}),
+      ...(session?.currentFile
+        ? { currentFile: session.currentFile }
+        : {}),
+      ...(session?.openFiles?.length
+        ? { openFiles: session.openFiles }
+        : {}),
+      ...(session?.gitDiffFiles?.length
+        ? { gitDiffFiles: session.gitDiffFiles }
+        : {}),
+      ...(session?.diagnosticFiles?.length
+        ? {
+            diagnosticFiles:
+              session.diagnosticFiles,
+          }
+        : {}),
+      ...(() => {
+        const recentEditFiles = [
+          ...new Set([
+            ...(session?.recentEditFiles ??
+              []),
+            ...(session?.staleFiles ?? []),
+          ]),
+        ];
+        return recentEditFiles.length > 0
+          ? { recentEditFiles }
+          : {};
+      })(),
+    };
   }
 
   private toCandidate(

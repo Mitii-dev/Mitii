@@ -93,6 +93,7 @@ export {
   workspaceEntrySchema,
   repoGraphSchema,
   repoMapSchema,
+  RepoMapRanker,
 } from "./contracts";
 export type {
   LanguageId,
@@ -130,6 +131,7 @@ export type {
   RepoGraphEdgeType,
   RepoMap,
   RepoMapEntry,
+  RepoMapRankingContext,
   Chunk,
   ChunkKind,
   ChunkTokenEstimator,

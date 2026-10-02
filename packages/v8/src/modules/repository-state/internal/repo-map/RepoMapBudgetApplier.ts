@@ -9,6 +9,11 @@ import type {
   RepoMapEntry,
 } from "./types";
 
+/**
+ * Packs ranked RepoMap entries under entry/symbol/token budgets.
+ * Uses binary search over the ranked prefix (aider-style) so the densest
+ * high-score window that still fits the token budget is selected.
+ */
 export class RepoMapBudgetApplier {
   public apply(
     entries: readonly RepoMapEntry[],
@@ -19,61 +24,76 @@ export class RepoMapBudgetApplier {
 
     this.validateBudget(resolved);
 
-    const included: RepoMapEntry[] = [];
-    let estimatedTokens = 0;
-    let truncated = false;
-
-    for (const entry of entries) {
-      if (
-        included.length >=
-        resolved.maximumEntries
-      ) {
-        truncated = true;
-        break;
-      }
-
-      const boundedEntry =
-        this.limitSymbols(
-          entry,
-          resolved.maximumSymbolsPerEntry,
-        );
-
-      if (
-        boundedEntry.symbols.length <
-        entry.symbols.length
-      ) {
-        truncated = true;
-      }
-
-      const entryTokens =
-        this.estimateEntryTokens(
-          boundedEntry,
-        );
-
-      const exceedsTokenBudget =
-        estimatedTokens +
-          entryTokens >
-        resolved.maximumEstimatedTokens;
-
-      if (
-        exceedsTokenBudget &&
-        included.length >=
-          resolved.minimumEntries
-      ) {
-        truncated = true;
-        break;
-      }
-
-      included.push(boundedEntry);
-      estimatedTokens += entryTokens;
+    if (entries.length === 0) {
+      return {
+        entries: [],
+        estimatedTokens: 0,
+        truncated: false,
+      };
     }
 
-    if (
-      included.length <
-      entries.length
-    ) {
-      truncated = true;
+    const prepared = entries.map((entry) =>
+      this.limitSymbols(
+        entry,
+        resolved.maximumSymbolsPerEntry,
+      ),
+    );
+
+    const maxByEntries = Math.min(
+      prepared.length,
+      resolved.maximumEntries,
+    );
+
+    let low = Math.min(
+      resolved.minimumEntries,
+      maxByEntries,
+    );
+    let high = maxByEntries;
+    let bestCount = Math.min(
+      resolved.minimumEntries,
+      maxByEntries,
+    );
+
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2);
+      const tokens = this.estimatePrefixTokens(
+        prepared,
+        mid,
+      );
+      if (tokens <= resolved.maximumEstimatedTokens) {
+        bestCount = mid;
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
     }
+
+    // Always keep at least minimumEntries when entries exist, even if over
+    // budget — matches prior fail-open behavior for tiny maps.
+    bestCount = Math.max(
+      bestCount,
+      Math.min(resolved.minimumEntries, maxByEntries),
+    );
+    bestCount = Math.min(bestCount, maxByEntries);
+
+    const included = prepared
+      .slice(0, bestCount)
+      .map((entry) => ({
+        ...entry,
+        symbols: [...entry.symbols],
+        reasons: [...entry.reasons],
+      }));
+
+    const estimatedTokens =
+      this.estimatePrefixTokens(included, included.length);
+
+    const truncated =
+      included.length < entries.length ||
+      prepared.some(
+        (entry, index) =>
+          index < included.length &&
+          entry.symbols.length < entries[index]!.symbols.length,
+      );
 
     return {
       entries: included,
@@ -105,6 +125,17 @@ export class RepoMapBudgetApplier {
       ),
       reasons: [...entry.reasons],
     };
+  }
+
+  private estimatePrefixTokens(
+    entries: readonly RepoMapEntry[],
+    count: number,
+  ): number {
+    let total = 0;
+    for (let index = 0; index < count; index += 1) {
+      total += this.estimateEntryTokens(entries[index]!);
+    }
+    return total;
   }
 
   private estimateEntryTokens(

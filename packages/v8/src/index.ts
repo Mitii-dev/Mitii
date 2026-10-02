@@ -64,6 +64,11 @@ export {
 export {
   ContextAssemblyFactory, ContextSelector, HybridRetrievalFactory,
   IdentifierAwareRetrievalReranker,
+  CrossEncoderRetrievalReranker,
+} from "./modules/repository-context";
+export type {
+  CrossEncoderDocumentScorer,
+  CrossEncoderDocumentFormatter,
 } from "./modules/repository-context";
 export {
   repositoryContextPipelineInputSchema, repositoryContextPipelineResultSchema,

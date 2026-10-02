@@ -33,5 +33,8 @@
   "mitii.safety.approvalMode": "pilot",
   "mitii.ui.modeDefaults.ask.approvalMode": "pilot",
   "mitii.ui.modeDefaults.ask.thoroughness": "high",
-  "mitii.ui.modeDefaults.ask.depth": "deep"
+  "mitii.ui.modeDefaults.ask.depth": "deep",
+  "mitii.ui.modeDefaults.agent.approvalMode": "pilot",
+  "mitii.ui.modeDefaults.agent.thoroughness": "high",
+  "mitii.ui.modeDefaults.agent.depth": "deep"
 }
