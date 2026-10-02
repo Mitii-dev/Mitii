@@ -30,13 +30,13 @@ const HOST = process.env.POLICY_ADMIN_HOST || '127.0.0.1';
 
 const LOOP_SRC = join(
   ROOT,
-  'packages/v8/src/engine/agent-engine/policy/loopPolicyBands.ts',
+  'packages/v8/src/engine/v8-engine/legacy/policy/loopPolicyBands.ts',
 );
 const WINDOW_SRC = join(
   ROOT,
   'packages/v8/src/modules/window-budget/windowBudgetBands.ts',
 );
-const POLICY_SRC = join(ROOT, 'packages/v8/src/engine/agent-engine/policy.ts');
+const POLICY_SRC = join(ROOT, 'packages/v8/src/engine/v8-engine/legacy/policy.ts');
 const DEFAULTS_SRC = join(
   ROOT,
   'packages/v8/src/modules/window-budget/defaults.ts',
@@ -204,7 +204,7 @@ function readState() {
     tables,
     previews,
     paths: {
-      loop: 'packages/v8/src/engine/agent-engine/policy/loopPolicyBands.ts',
+      loop: 'packages/v8/src/engine/v8-engine/legacy/policy/loopPolicyBands.ts',
       window: 'packages/v8/src/modules/window-budget/windowBudgetBands.ts',
       v8Loop: 'packages/v8/src/engine/v8-engine/policy/bands.ts',
     },

@@ -38,7 +38,7 @@ Resume maps a chosen option id to a structured fact patch, then re-runs understa
 
 `recommendedSkillTags` are intersected with a closed vocabulary (catalog tags + engine priors such as `localize`, `fix`). Unknown tags are dropped. Tags boost Skills ranking only; they never grant applicability alone.
 
-## Feature flags (`steering` on Agent Engine start input)
+## Feature flags (`steering` on V8 Engine start input)
 
 | Flag | Default | Effect |
 |---|---|---|
@@ -52,5 +52,5 @@ Resume maps a chosen option id to a structured fact patch, then re-runs understa
 - Request Understanding intent ballot: `packages/v8/src/modules/request-understanding/intent/`
 - Decision Policy: `packages/v8/src/modules/decision-policy/`
 - DecisionBrief: `packages/v8/src/modules/decision-policy/actions/CompileDecisionBrief.ts`
-- Critic: `packages/v8/src/engine/agent-engine/actions/evaluateMutationCritic.ts`
+- Critic: `packages/v8/src/engine/v8-engine/actions/evaluateMutationCritic.ts`
 - Skills soft tags: `packages/v8/src/modules/skills/actions/MatchSkills.ts`
