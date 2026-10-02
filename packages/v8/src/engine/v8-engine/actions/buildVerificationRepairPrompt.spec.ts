@@ -63,6 +63,54 @@ describe("buildVerificationRepairPrompt", () => {
     expect(prompt).toContain(`- ${path}:3 Type 'number' is not assignable`);
     expect(prompt).toContain("  | const name: string = 1;");
   });
+
+  it("keeps ask-scoped diagnostics and drops node_modules residuals", () => {
+    const prompt = buildVerificationRepairPrompt({
+      verification: {
+        schemaVersion: VERIFICATION_SCHEMA_VERSION,
+        status: "verification_failed",
+        stateToken: "state-1",
+        affectedProjectIds: [],
+        checks: [],
+        diagnostics: [
+          {
+            path: "apps/desktop/src/renderer/SettingsPanel.tsx",
+            severity: "error",
+            message: "tab redirect broken",
+            startLine: 10,
+          },
+          {
+            path: "node_modules/vitest/dist/chunks/index.js",
+            severity: "error",
+            message: "EventEmitter",
+            startLine: 1,
+          },
+          {
+            path: "packages/other/src/unrelated.ts",
+            severity: "error",
+            message: "unrelated",
+            startLine: 1,
+          },
+        ],
+        diff: {
+          reviewed: true,
+          staleStateRisk: false,
+          summary: "diff",
+          changedPaths: ["apps/desktop/src/renderer/styles.css"],
+        },
+        warnings: [],
+        reasonCodes: ["checks_failed"],
+        durationMs: 1,
+      },
+      changedFiles: ["apps/desktop/src/renderer/styles.css"],
+      askScopePaths: ["apps/desktop"],
+    });
+
+    expect(prompt).toContain("SettingsPanel.tsx");
+    expect(prompt).not.toContain("node_modules/vitest");
+    expect(prompt).not.toContain("packages/other");
+    expect(prompt).toContain("Never edit node_modules");
+  });
 });
 
 describe("loadDiagnosticSourceLines", () => {

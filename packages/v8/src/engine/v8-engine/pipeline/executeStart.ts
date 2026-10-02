@@ -623,6 +623,7 @@ export async function executeV8Start(
         instructionBodies,
         establishedFacts,
         plan: shared.runPlan,
+        executionSeed: shared.executionSeed,
       },
     });
   } catch (error) {

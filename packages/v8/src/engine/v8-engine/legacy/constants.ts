@@ -201,6 +201,8 @@ export const AGENT_REASON_CODES = [
   "execution_seed_trusted",
   /** No authoritative seed yet — do not force patch-required. */
   "execution_seed_weak",
+  /** Folder-only seed refined to concrete context file paths. */
+  "execution_seed_context_refined",
   /** Trusted seed paths written onto checklist write/mustRead. */
   "execution_seed_task_list_bound",
   /**

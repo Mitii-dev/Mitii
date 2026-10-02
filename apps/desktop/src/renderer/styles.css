@@ -2562,7 +2562,6 @@ button[aria-disabled='true'] {
 
 .model-quick-select__search:focus {
   border-color: color-mix(in srgb, var(--mitii-accent) 45%, var(--mitii-border));
-}
   padding: 4px;
   border: 1px solid var(--mitii-border);
   border-radius: var(--mitii-radius-lg);

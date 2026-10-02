@@ -94,6 +94,7 @@ export async function handleVerificationFailed(params: {
     requiredSkillIds?: string[];
     excludedSkillIds?: string[];
     plan?: import("../../../modules/planning").PlanArtifact;
+    executionSeed?: import("../modules/execution-seed").ExecutionSeed;
   };
   verificationOutcome: FailedGate;
   record: VerificationRecord | undefined;
@@ -237,6 +238,12 @@ export async function handleVerificationFailed(params: {
           workspaceRoot: input.workspaceRoot,
           verification: verificationOutcome.verification,
         }),
+        askScopePaths: [
+          ...(loopContext?.executionSeed?.paths ?? []),
+          ...(loopContext?.memoryFileTargets ?? []),
+          ...loopChangedFiles,
+        ],
+        userPrompt: loopContext?.skillsQuery ?? loopContext?.memoryQuery ?? "",
         ...(repairPrep.activeItem
           ? {
               activeBatch: {

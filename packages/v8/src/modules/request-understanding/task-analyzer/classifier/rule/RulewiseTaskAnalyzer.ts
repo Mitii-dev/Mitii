@@ -322,9 +322,19 @@ export class RulewiseTaskAnalyzer {
     if (params.interactionIntent === "plan" && planningHint === "none") {
       planningHint = taskSize === "large" ? "long" : "short";
     }
-    // Agent execute always gets at least a short plan hint (never force none).
-    if (planningHint === "none" && params.interactionIntent !== "question") {
+    // Always at least a short plan hint for act/plan (Officer "none" does not win).
+    if (
+      planningHint === "none" &&
+      params.interactionIntent !== "question"
+    ) {
       planningHint = defaultPlanningHintForSize(taskSize);
+    }
+    if (
+      params.officerPlanningHint === "none" &&
+      params.interactionIntent === "act" &&
+      taskSize === "small"
+    ) {
+      planningHint = "short";
     }
 
     return { taskSize, planningHint };

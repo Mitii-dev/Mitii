@@ -188,11 +188,15 @@ describe("resolvePlanningDepth", () => {
     const understanding = createUnderstanding({
       primaryTaskIntent: "bugfix",
       taskAnalysis: {
-        scope: "single_location",
+        scope: "package",
         complexity: "trivial",
         risk: "low",
+        clarity: "clear",
         taskSize: "small",
         planningHint: "short",
+        targets: [
+          { kind: "folder", value: "apps/desktop", explicit: true },
+        ],
       },
     });
 
@@ -208,7 +212,8 @@ describe("resolvePlanningDepth", () => {
     });
 
     expect(result.planningDepth).toBe("internal");
+    expect(result.reasonCodes).not.toContain("broad_repair_visible_plan");
+    expect(result.reasonCodes).not.toContain("change_impact_recommended");
     expect(result.reasonCodes).toContain("officer_task_size_plan");
-    expect(result.reasonCodes).not.toContain("simple_localized_no_visible_plan");
   });
 });

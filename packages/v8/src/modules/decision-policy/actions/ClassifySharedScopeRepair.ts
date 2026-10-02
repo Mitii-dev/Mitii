@@ -34,6 +34,45 @@ const SHARED_SCOPES = new Set([
   "workspace",
 ]);
 
+const MULTI_FAIL_PASTE =
+  /(?:Failed Tests?\s+\d+|FAIL\s+\S+\.(?:test|spec)\.[jt]sx?\b|AssertionError)/i;
+
+/**
+ * Clear small UI / localized bugfix — package scope from a folder pin must
+ * not escalate to broad_repair / change-impact. Explicit "fix all" phrasing
+ * or multi-fail pastes still elevate.
+ */
+export function isLocalizedSmallClearAsk(params: {
+  taskAnalysis: RequestUnderstandingResult["taskAnalysis"];
+  message: string;
+}): boolean {
+  const { taskAnalysis, message } = params;
+  if (DECISION_POLICY_PATTERNS.broadRepairRequest.test(message)) {
+    return false;
+  }
+  if (MULTI_FAIL_PASTE.test(message)) {
+    return false;
+  }
+  const size = taskAnalysis.taskSize;
+  if (size === "medium" || size === "large") {
+    return false;
+  }
+  const complexity = taskAnalysis.complexity;
+  if (
+    complexity === "complex" ||
+    complexity === "very_complex" ||
+    complexity === "moderate"
+  ) {
+    return false;
+  }
+  const clarity = taskAnalysis.clarity;
+  if (clarity === "unclear") {
+    return false;
+  }
+  // trivial/simple + small/default size + clear-ish clarity.
+  return true;
+}
+
 /**
  * True when execute work spans shared surfaces and needs a visible plan /
  * change-impact pass rather than reactive single-file patching.
@@ -48,6 +87,11 @@ export function isBroadSharedScopeRepair(params: {
   const { primaryTaskIntent, taskAnalysis, message } = params;
   if (!BROAD_REPAIR_INTENTS.has(primaryTaskIntent)) {
     return false;
+  }
+
+  // Folder pin → package scope alone must not force broad repair for small UI asks.
+  if (isLocalizedSmallClearAsk({ taskAnalysis, message })) {
+    return DECISION_POLICY_PATTERNS.broadRepairRequest.test(message);
   }
 
   if (SHARED_SCOPES.has(taskAnalysis.scope)) {
@@ -134,6 +178,11 @@ export function shouldRecommendChangeImpact(params: {
     return true;
   }
 
+  const localizedSmall = isLocalizedSmallClearAsk({
+    taskAnalysis,
+    message,
+  });
+
   if (
     isBroadSharedScopeRepair({
       primaryTaskIntent,
@@ -144,7 +193,7 @@ export function shouldRecommendChangeImpact(params: {
     return true;
   }
 
-  if (SHARED_SCOPES.has(taskAnalysis.scope)) {
+  if (SHARED_SCOPES.has(taskAnalysis.scope) && !localizedSmall) {
     // Feature / optimize / test work across multiple files still benefits
     // from impact before the first patch — not only repair intents.
     if (
