@@ -29,6 +29,11 @@ Verification gathers evidence after a change. It maps changed files to projects,
   engine; not stored on the durable record).
 - Executes checks through `VerificationToolExecutorPort`.
 - Normalizes diagnostics and compares against optional baseline diagnostics.
+- Filters harness / denied-tree / phantom-secondary residuals (language-agnostic
+  path policy) before completion and before→after compare counts.
+- Soft-accepts (`implemented_unverified`) when project-local typecheck/build
+  passed and remaining failures are only harness, syntax-secondary, or
+  workspace-root noise — so repair does not thrash on runner frames.
 - Inspects diff/stale-state risk.
 - Returns final verification status and evidence.
 - Builds a durable `VerificationRecord` (before / after / comparison) that is stored outside the model transcript.
@@ -77,6 +82,13 @@ verification/
 - Unavailable repository state blocks verification unless policy allows unavailable evidence.
 - Diff inspection reports changed paths and stale-state risk.
 - A later "fix the remaining verification errors" turn reloads `loadLatest(workspaceId)` instead of scraping chat history.
+- **Task-relevant stop gate:** `assessTaskRelevantEvidence` owns residual
+  classification. Authoritative evidence is a passed project-local
+  typecheck/build (any layout — not only `apps/` / `packages/`). Absolute
+  `afterErrorCount` never drives repair; only actionable `newErrorCount` and
+  ask-scoped source defects do. Reason codes:
+  `task_relevant_evidence_passed`, `residual_harness_noise`,
+  `residual_phantom_secondary`, `residual_workspace_root_noise`.
 
 ## Ownership Boundaries
 

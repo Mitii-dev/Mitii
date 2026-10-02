@@ -135,7 +135,7 @@ import {
   stripTrailingMention,
   type MentionSuggestState,
 } from './chat/mentionSuggest.js';
-import { SettingsPanel } from './SettingsPanel.js';
+import { SettingsPanel, type FeatureTabId } from './SettingsPanel.js';
 import { ResizeHandle, usePersistedWidth } from './shell/ResizeHandle.js';
 import { WorkspacePanel } from './shell/WorkspacePanel.js';
 import {
@@ -404,6 +404,7 @@ export function App() {
   const workspaceInvalidateSeq = useRef(0);
   const [workspaceSide, setWorkspaceSide] = useState<WorkspaceSide>('explorer');
   const [settingsTab, setSettingsTab] = useState<SettingsTabId>('profiles');
+  const [featureTab, setFeatureTab] = useState<FeatureTabId>('autocomplete');
   const [picker, setPicker] = useState<'workspace' | 'profile' | null>(null);
   const [gitBadge, setGitBadge] = useState(0);
   const [snapshot, setSnapshot] = useState<DesktopShellSnapshot | null>(null);
@@ -3519,6 +3520,7 @@ export function App() {
             onPause={() => void pauseIndex()}
             onOpenSettings={() => {
               setSettingsTab('features');
+              setFeatureTab('index');
               setView('settings');
             }}
           />
@@ -3871,6 +3873,8 @@ export function App() {
               authToken={snapshot?.authToken}
               tab={settingsTab}
               onTabChange={setSettingsTab}
+              featureTab={featureTab}
+              onFeatureTabChange={setFeatureTab}
               hideSideNav
               onSave={onSaveSettings}
               onPickWorkspace={() => void onPickWorkspace()}

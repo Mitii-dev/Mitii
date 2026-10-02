@@ -15,6 +15,18 @@ export type { ExecuteChecksResult } from "./ExecuteChecks";
 
 export { normalizeDiagnostics, packDiagnosticsForModel } from "./NormalizeDiagnostics";
 
+export { filterActionableDiagnostics } from "./FilterActionableDiagnostics";
+export type { FilterActionableDiagnosticsResult } from "./FilterActionableDiagnostics";
+
+export {
+  assessTaskRelevantEvidence,
+  projectLocalCompilePassed,
+} from "./AssessTaskRelevantEvidence";
+export type {
+  TaskRelevantEvidenceAssessment,
+  TaskRelevantResidualKind,
+} from "./AssessTaskRelevantEvidence";
+
 export { inspectDiffAndStaleRisk } from "./InspectDiffAndStaleRisk";
 export type { InspectDiffAndStaleRiskResult } from "./InspectDiffAndStaleRisk";
 

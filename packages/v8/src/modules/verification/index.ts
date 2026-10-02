@@ -85,7 +85,26 @@ export {
 
 export {
   packDiagnosticsForModel,
+  filterActionableDiagnostics,
+  assessTaskRelevantEvidence,
+  projectLocalCompilePassed,
+  recommendCompletion,
 } from "./actions";
+export type {
+  FilterActionableDiagnosticsResult,
+  TaskRelevantEvidenceAssessment,
+  TaskRelevantResidualKind,
+  CompletionRecommendation,
+} from "./actions";
+
+export {
+  VERIFICATION_DENIED_PATH_SEGMENTS,
+  isDeniedDiagnosticPath,
+  isHarnessFrameDiagnostic,
+  isPhantomSecondaryDiagnostic,
+  isWorkspaceRootCheckId,
+  normalizeVerificationPath,
+} from "./patterns";
 
 export {
   InMemoryManifestReader,

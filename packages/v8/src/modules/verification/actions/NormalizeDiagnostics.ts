@@ -7,6 +7,7 @@ import {
   DEFAULT_MAX_DIAGNOSTICS,
   DEFAULT_MAX_DIAGNOSTICS_PER_FILE,
 } from "../defaults";
+import { filterActionableDiagnostics } from "./FilterActionableDiagnostics";
 
 const SEVERITY_RANK: Record<VerificationDiagnostic["severity"], number> = {
   error: 0,
@@ -72,9 +73,17 @@ export function normalizeDiagnostics(params: {
     );
   }
 
+  // Drop harness / denied-tree frames before baseline or packing — they are
+  // never ask-actionable and inflate before→after "new error" counts.
+  const actionable = filterActionableDiagnostics({
+    diagnostics,
+    dropPhantomSecondary: false,
+    keepSyntheticTestPaths: true,
+  }).actionable;
+
   return prioritizeDiagnostics(
     filterBaselineDiagnostics({
-      diagnostics,
+      diagnostics: actionable,
       baselineDiagnostics: params.baselineDiagnostics,
     }),
   ).slice(0, DEFAULT_MAX_DIAGNOSTICS);

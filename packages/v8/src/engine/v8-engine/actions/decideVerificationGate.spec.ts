@@ -392,7 +392,9 @@ describe("decideVerificationGate / isUserGoalComplete", () => {
     });
   });
 
-  it("accepts when package checks fail but ask/changed paths have no diagnostics", () => {
+  it("rejects when project-local typecheck failed even if only harness diagnostics remain", () => {
+    // Soft-accept requires authoritative compile evidence. Harness frames alone
+    // must not green-exit a failed package typecheck.
     const verification = baseVerification({
       status: "verification_failed",
       diagnostics: [
@@ -449,7 +451,7 @@ describe("decideVerificationGate / isUserGoalComplete", () => {
           "apps/desktop/src/shared/settings.ts",
         ],
       }),
-    ).toBe(true);
+    ).toBe(false);
 
     expect(
       decideVerificationGate({
@@ -470,11 +472,8 @@ describe("decideVerificationGate / isUserGoalComplete", () => {
           "apps/desktop/src/renderer/App.tsx",
           "apps/desktop/src/shared/settings.ts",
         ],
-      }),
-    ).toEqual({
-      action: "accept",
-      acceptKind: "implemented_unverified",
-    });
+      }).action,
+    ).toBe("reject");
   });
 
   it("accepts when comparison shows only remaining pre-existing errors (no new)", () => {

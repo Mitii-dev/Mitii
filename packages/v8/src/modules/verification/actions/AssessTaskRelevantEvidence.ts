@@ -1,0 +1,287 @@
+import type { VerificationRequirement } from "../../decision-policy";
+
+import type {
+  VerificationCheckResult,
+  VerificationDiagnostic,
+  VerificationReasonCode,
+} from "../contracts";
+import {
+  isPhantomSecondaryDiagnostic,
+  isWorkspaceRootCheckId,
+  normalizeVerificationPath,
+} from "../patterns";
+import { filterActionableDiagnostics } from "./FilterActionableDiagnostics";
+
+export type TaskRelevantResidualKind =
+  | "none"
+  | "harness_noise"
+  | "phantom_secondary"
+  | "workspace_root_noise"
+  | "ask_scoped_defect"
+  | "unclassified_failure";
+
+export interface TaskRelevantEvidenceAssessment {
+  /** Project-local typecheck or build passed (authoritative compile evidence). */
+  authoritativeCompilePassed: boolean;
+  /** True when the user goal is proven and repair must not open. */
+  shouldAccept: boolean;
+  residualKind: TaskRelevantResidualKind;
+  actionableDiagnostics: VerificationDiagnostic[];
+  reasonCodes: VerificationReasonCode[];
+}
+
+/**
+ * Classify whether verification failures are residual noise after the
+ * task-relevant compile evidence already passed.
+ *
+ * Generic rules (no apps/packages or single-toolchain hardcoding):
+ * 1. Authoritative evidence = passed typecheck/build that is not workspace-root.
+ * 2. If that passed, failed syntax / workspace-root compile leftovers and
+ *    harness/denied diagnostics are residuals — accept.
+ * 3. Failed tests with ask-scoped source diagnostics remain defects.
+ *    Harness-only / denied-only test failures do not reopen repair.
+ * 4. Without authoritative compile, do not soft-accept failed checks.
+ */
+export function assessTaskRelevantEvidence(params: {
+  verification: VerificationRequirement;
+  checks: readonly VerificationCheckResult[];
+  diagnostics?: readonly VerificationDiagnostic[];
+  changedFiles?: readonly string[];
+  askScopePaths?: readonly string[];
+}): TaskRelevantEvidenceAssessment {
+  const checks = params.checks;
+  const authoritativeCompilePassed = projectLocalCompilePassed(checks);
+  const diagnostics = params.diagnostics ?? [];
+
+  const filtered = filterActionableDiagnostics({
+    diagnostics,
+    dropPhantomSecondary: authoritativeCompilePassed,
+    keepSyntheticTestPaths: true,
+  });
+
+  const scopePaths = uniquePaths([
+    ...(params.askScopePaths ?? []),
+    ...(params.changedFiles ?? []),
+  ]);
+  const askScopedDefects = selectAskScopedDefects(
+    filtered.actionable,
+    scopePaths,
+  );
+
+  const failed = checks.filter(
+    (check) => check.outcome === "failed" || check.outcome === "timed_out",
+  );
+
+  if (failed.length === 0 && askScopedDefects.length === 0) {
+    return {
+      authoritativeCompilePassed,
+      shouldAccept: true,
+      residualKind: "none",
+      actionableDiagnostics: filtered.actionable,
+      reasonCodes: authoritativeCompilePassed
+        ? ["task_relevant_evidence_passed", "checks_passed"]
+        : ["checks_passed"],
+    };
+  }
+
+  if (!authoritativeCompilePassed) {
+    return {
+      authoritativeCompilePassed: false,
+      shouldAccept: false,
+      residualKind:
+        askScopedDefects.length > 0
+          ? "ask_scoped_defect"
+          : "unclassified_failure",
+      actionableDiagnostics: filtered.actionable,
+      reasonCodes: ["checks_failed"],
+    };
+  }
+
+  // Authoritative compile passed — ask-scoped source defects still block.
+  if (askScopedDefects.length > 0) {
+    return {
+      authoritativeCompilePassed: true,
+      shouldAccept: false,
+      residualKind: "ask_scoped_defect",
+      actionableDiagnostics: filtered.actionable,
+      reasonCodes: ["checks_failed"],
+    };
+  }
+
+  // Every failed check must be an ignorable residual class.
+  for (const check of failed) {
+    if (!isIgnorableResidualCheck(check)) {
+      return {
+        authoritativeCompilePassed: true,
+        shouldAccept: false,
+        residualKind: "unclassified_failure",
+        actionableDiagnostics: filtered.actionable,
+        reasonCodes: ["checks_failed"],
+      };
+    }
+  }
+
+  const residualCodes: VerificationReasonCode[] = [
+    "task_relevant_evidence_passed",
+  ];
+  let residualKind: TaskRelevantResidualKind = "none";
+
+  if (failed.some((check) => check.kind === "syntax") ||
+    diagnostics.some((diagnostic) =>
+      isPhantomSecondaryDiagnostic({
+        code: diagnostic.code,
+        message: diagnostic.message,
+      }),
+    )) {
+    residualCodes.push("residual_phantom_secondary");
+    residualKind = "phantom_secondary";
+  }
+  if (
+    failed.some((check) => check.kind === "test") ||
+    filtered.omitted.length > 0
+  ) {
+    residualCodes.push("residual_harness_noise");
+    if (residualKind === "none") {
+      residualKind = "harness_noise";
+    }
+  }
+  if (
+    failed.some(
+      (check) =>
+        (check.kind === "typecheck" ||
+          check.kind === "build" ||
+          check.kind === "test") &&
+        isWorkspaceRootCheckId({
+          checkId: check.checkId,
+          projectId: check.projectId,
+        }),
+    )
+  ) {
+    residualCodes.push("residual_workspace_root_noise");
+    if (residualKind === "none") {
+      residualKind = "workspace_root_noise";
+    }
+  }
+  if (failed.some((check) => check.kind === "lint" || check.kind === "format")) {
+    if (residualKind === "none") {
+      residualKind = "harness_noise";
+    }
+    if (!residualCodes.includes("residual_harness_noise")) {
+      residualCodes.push("residual_harness_noise");
+    }
+  }
+
+  return {
+    authoritativeCompilePassed: true,
+    shouldAccept: true,
+    residualKind,
+    actionableDiagnostics: filtered.actionable,
+    reasonCodes: [...new Set(residualCodes)],
+  };
+}
+
+/** Project-local (non workspace-root) typecheck or build passed. */
+export function projectLocalCompilePassed(
+  checks: readonly VerificationCheckResult[],
+): boolean {
+  return checks.some(
+    (check) =>
+      (check.kind === "typecheck" || check.kind === "build") &&
+      check.outcome === "passed" &&
+      !isWorkspaceRootCheckId({
+        checkId: check.checkId,
+        projectId: check.projectId,
+      }),
+  );
+}
+
+function isIgnorableResidualCheck(check: VerificationCheckResult): boolean {
+  if (check.kind === "lint" || check.kind === "format") {
+    return true;
+  }
+  if (check.kind === "syntax") {
+    return true;
+  }
+  // Test exit failures without ask-scoped source diagnostics are harness noise.
+  if (check.kind === "test") {
+    return true;
+  }
+  if (
+    (check.kind === "typecheck" || check.kind === "build") &&
+    isWorkspaceRootCheckId({
+      checkId: check.checkId,
+      projectId: check.projectId,
+    })
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Error diagnostics that look like real source defects under ask/changed paths.
+ * Synthetic `<test>` assertion rows count when present (tests evidence path).
+ */
+function selectAskScopedDefects(
+  diagnostics: readonly VerificationDiagnostic[],
+  scopePaths: readonly string[],
+): VerificationDiagnostic[] {
+  const errors = diagnostics.filter(
+    (item) =>
+      item.severity === "error" ||
+      (item.severity as string | undefined) === "fatal",
+  );
+  if (errors.length === 0) {
+    return [];
+  }
+
+  const inScope = (diagnostic: VerificationDiagnostic): boolean => {
+    const path = normalizeVerificationPath(diagnostic.path);
+    if (isSyntheticPath(path)) {
+      // Synthetic assertion without a file — only a defect when tests left
+      // a real assertion body (not a bare digit leftover).
+      return /assertion|expected|received|failed|error/i.test(
+        diagnostic.message,
+      );
+    }
+    if (scopePaths.length === 0) {
+      return pathLooksLikeSource(path);
+    }
+    return scopePaths.some(
+      (scope) =>
+        path === scope ||
+        path.startsWith(`${scope}/`) ||
+        scope.startsWith(`${path}/`),
+    );
+  };
+
+  return errors.filter((diagnostic) => {
+    const path = normalizeVerificationPath(diagnostic.path);
+    if (isSyntheticPath(path)) {
+      return inScope(diagnostic);
+    }
+    return inScope(diagnostic) && pathLooksLikeSource(path);
+  });
+}
+
+function isSyntheticPath(path: string): boolean {
+  const lower = path.toLowerCase();
+  return lower === "<test>" || lower === "<unknown>" || lower === "<stdin>";
+}
+
+function pathLooksLikeSource(path: string): boolean {
+  if (!path || isSyntheticPath(path)) {
+    return false;
+  }
+  return /\.[A-Za-z0-9]+$/.test(path) || path.includes("/");
+}
+
+function uniquePaths(paths: readonly string[]): string[] {
+  return [
+    ...new Set(
+      paths
+        .map(normalizeVerificationPath)
+        .filter((path) => path.length > 0),
+    ),
+  ];
+}

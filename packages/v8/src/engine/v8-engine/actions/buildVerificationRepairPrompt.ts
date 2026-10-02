@@ -3,20 +3,15 @@ import type {
   VerificationDiagnostic,
   VerificationResult,
 } from "../../../modules/verification";
-import { packDiagnosticsForModel } from "../../../modules/verification";
+import {
+  isDeniedDiagnosticPath,
+  packDiagnosticsForModel,
+} from "../../../modules/verification";
 
 import { diagnosticSourceLineKey } from "./loadDiagnosticSourceLines";
 
 const DEFAULT_MAX_DIAGNOSTICS = 16;
 const DEFAULT_MESSAGE_CHARS = 180;
-
-const HARD_DENIED_SEGMENTS = new Set([
-  "node_modules",
-  ".git",
-  "dist",
-  "build",
-  "out",
-]);
 
 /**
  * Compact one-shot repair instruction. Persisted verification records stay
@@ -226,18 +221,7 @@ function isPathInAskScope(path: string, scopes: readonly string[]): boolean {
 }
 
 function isHardDeniedDiagnosticPath(path: string): boolean {
-  const normalized = normalizePath(path);
-  if (
-    normalized
-      .split("/")
-      .filter(Boolean)
-      .some((segment) => HARD_DENIED_SEGMENTS.has(segment))
-  ) {
-    return true;
-  }
-  // Harness frames often prefix noise before the real path
-  // (e.g. "❯ EventEmitter.onMessage ../../node_modules/vitest/...").
-  return /(?:^|\/| )node_modules(?:\/|$)/i.test(normalized);
+  return isDeniedDiagnosticPath(path);
 }
 
 function normalizePath(value: string): string {
