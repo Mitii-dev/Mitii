@@ -80,15 +80,17 @@ preferred medium-planning (soft)
 - **Size → happy-path budget** (token bands are candidates only; pinned folder is work root, not size).
 - **Evidence sufficiency → recovery valve** when that budget is not enough: local named miss → one capped recovery (1–2 turns / 2–4 paths) → gate again; otherwise clarify/escalate. Never budget exhausted → +10 searches → patch whatever.
 
+**Small clear UI asks:** package scope from a folder pin alone does **not** fire `broad_repair_visible_plan` / change-impact. Folder-only seeds are refined to concrete context files (e.g. `IndexStatusChip.tsx`) after retrieval.
+
 **Budgets (two envelopes, one philosophy):**
 - **Discovery (pre-plan):** model/tool-loop turns × file reads by size×band (Medium standard: 4 turns / 8 paths). Free pre-seed discovery stays 2; post-READY discovery stays 0.
 - **Per-step bind (post-plan):** Medium compact 5/10/4 · standard 4/8/3 · wide 3/8/3 (turns / paths / nudges), plus recovery 2/4.
 
-**Always short plan:** Agent execute never uses `planningDepth: none` — small asks get an internal short plan with evidence.
+**Always short plan:** Agent execute never uses `planningDepth: none` — small asks get an internal short plan with evidence. Officer `planningHint: none` is remapped to `short`.
 
 **Preflight deferred:** captured for post-task verify; does not seed cause / repair instruct / lock unless fix-build language or cited overlap.
 
-**Hard-deny mutations:** `node_modules`, `.git`, `dist`, `build`, `out` → `path_hard_denied`.
+**Hard-deny mutations:** `node_modules`, `.git`, `dist`, `build`, `out` → `path_hard_denied`. Verification repair prompts stay ask-scoped and never steer into those trees.
 
 **Failure ladder:** sufficient → plan; local gap → one seed-informed targetRefs recovery; still empty → `task_list_plan_not_concrete` (clarify/suspend — never invent an executable row from seed alone); bind miss → evidence recovery then clarify; scope blown → escalate (not +5 forever).
 

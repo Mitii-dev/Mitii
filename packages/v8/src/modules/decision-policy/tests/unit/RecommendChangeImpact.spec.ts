@@ -147,6 +147,42 @@ describe("shouldRecommendChangeImpact", () => {
       }),
     ).toBe(true);
   });
+
+  it("does not treat small clear UI bug + package pin as broad repair", () => {
+    const taskAnalysis = createUnderstanding({
+      primaryTaskIntent: "bugfix",
+      taskAnalysis: {
+        scope: "package",
+        complexity: "trivial",
+        risk: "low",
+        clarity: "clear",
+        taskSize: "small",
+        planningHint: "short",
+        targets: [
+          { kind: "folder", value: "apps/desktop", explicit: true },
+        ],
+      },
+    }).taskAnalysis;
+
+    expect(
+      isBroadSharedScopeRepair({
+        primaryTaskIntent: "bugfix",
+        taskAnalysis,
+        message:
+          "upon clicking Index settings its should redirect properly to semantic tab",
+      }),
+    ).toBe(false);
+
+    expect(
+      shouldRecommendChangeImpact({
+        route: "execute",
+        primaryTaskIntent: "bugfix",
+        taskAnalysis,
+        message:
+          "upon clicking Index settings its should redirect properly to semantic tab",
+      }),
+    ).toBe(false);
+  });
 });
 
 describe("resolvePlanningDepth change-impact recommend", () => {

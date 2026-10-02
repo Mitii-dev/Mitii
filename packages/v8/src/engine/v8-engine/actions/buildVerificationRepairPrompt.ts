@@ -10,13 +10,21 @@ import { diagnosticSourceLineKey } from "./loadDiagnosticSourceLines";
 const DEFAULT_MAX_DIAGNOSTICS = 16;
 const DEFAULT_MESSAGE_CHARS = 180;
 
+const HARD_DENIED_SEGMENTS = new Set([
+  "node_modules",
+  ".git",
+  "dist",
+  "build",
+  "out",
+]);
+
 /**
  * Compact one-shot repair instruction. Persisted verification records stay
  * outside the transcript; this is only the top remaining errors the model
  * needs for a single repair pass.
  *
- * BillBuddy 00:48: keep this error-list driven — ban rediscovery so simple
- * adapter/signature mismatches do not burn 20+ minutes of reads.
+ * Prefer diagnostics under the user ask / changed files / active batch.
+ * Never steer repair into node_modules or other hard-denied trees.
  */
 export function buildVerificationRepairPrompt(params: {
   verification?: VerificationResult;
@@ -40,13 +48,25 @@ export function buildVerificationRepairPrompt(params: {
     mustRead?: readonly string[];
     affected?: readonly string[];
   };
+  /** Trusted seed / ask paths — prefer these over unrelated residuals. */
+  askScopePaths?: readonly string[];
+  userPrompt?: string;
 }): string {
   const maxDiagnostics =
     params.activeBatch !== undefined
       ? 8
       : (params.maxDiagnostics ?? DEFAULT_MAX_DIAGNOSTICS);
+
+  const scopePaths = collectAskScopePaths(params);
+  const rawDiagnostics = params.verification?.diagnostics ?? [];
+  const scoped = filterDiagnosticsToAskScope(rawDiagnostics, scopePaths);
+  const usable =
+    scoped.length > 0
+      ? scoped
+      : rawDiagnostics.filter((item) => !isHardDeniedDiagnosticPath(item.path));
+
   const packed = packDiagnosticsForModel({
-    diagnostics: params.verification?.diagnostics ?? [],
+    diagnostics: usable,
     maxTotal: maxDiagnostics,
     errorsOnly: true,
   });
@@ -103,6 +123,7 @@ export function buildVerificationRepairPrompt(params: {
     "Do not write a report. Do not call glob_files, search_files, list_directory, directory_tree, document_symbol, or run_readonly_command.",
     "read_file is allowed only for paths named in the error list (or the active batch write/mustRead paths). Then patch.",
     "Do not introduce new TypeScript errors. Prefer renaming calls to match existing page/adapter APIs over inventing methods.",
+    "Never edit node_modules, .git, dist/build/out, or unrelated vitest/tsconfig unless the user ask names them.",
     batch,
     counts,
     changed,
@@ -110,6 +131,86 @@ export function buildVerificationRepairPrompt(params: {
   ]
     .filter((line): line is string => Boolean(line))
     .join("\n");
+}
+
+export function filterDiagnosticsToAskScope(
+  diagnostics: readonly VerificationDiagnostic[],
+  scopePaths: readonly string[],
+): VerificationDiagnostic[] {
+  if (diagnostics.length === 0) return [];
+  const scopes = scopePaths
+    .map(normalizePath)
+    .filter((path) => path.length > 0 && path !== ".");
+  const withoutDenied = diagnostics.filter(
+    (item) => !isHardDeniedDiagnosticPath(item.path),
+  );
+  if (scopes.length === 0) {
+    return [...withoutDenied];
+  }
+  const matching = withoutDenied.filter((item) =>
+    isPathInAskScope(item.path, scopes),
+  );
+  return matching;
+}
+
+function collectAskScopePaths(params: {
+  changedFiles: readonly string[];
+  askScopePaths?: readonly string[];
+  activeBatch?: {
+    write?: readonly string[];
+    mustRead?: readonly string[];
+    affected?: readonly string[];
+  };
+}): string[] {
+  const out: string[] = [];
+  for (const path of params.askScopePaths ?? []) {
+    if (path.trim()) out.push(path);
+  }
+  for (const path of params.changedFiles) {
+    if (path.trim()) out.push(path);
+  }
+  const batch = params.activeBatch;
+  if (batch) {
+    for (const path of [
+      ...(batch.write ?? []),
+      ...(batch.mustRead ?? []),
+      ...(batch.affected ?? []),
+    ]) {
+      if (path.trim()) out.push(path);
+    }
+  }
+  return out;
+}
+
+function isPathInAskScope(path: string, scopes: readonly string[]): boolean {
+  const normalized = normalizePath(path);
+  if (!normalized || isHardDeniedDiagnosticPath(normalized)) {
+    return false;
+  }
+  return scopes.some((scope) => {
+    if (scope === ".") return true;
+    return (
+      normalized === scope ||
+      normalized.startsWith(`${scope}/`) ||
+      scope.startsWith(`${normalized}/`)
+    );
+  });
+}
+
+function isHardDeniedDiagnosticPath(path: string): boolean {
+  const normalized = normalizePath(path);
+  return normalized
+    .split("/")
+    .filter(Boolean)
+    .some((segment) => HARD_DENIED_SEGMENTS.has(segment));
+}
+
+function normalizePath(value: string): string {
+  return value
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\.\//, "")
+    .replace(/\/+$/, "");
 }
 
 function formatDiagnosticRepairLines(

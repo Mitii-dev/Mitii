@@ -128,6 +128,7 @@ export async function finishAfterLoop(
     excludedSkillIds?: string[];
     establishedFacts: EstablishedFact[];
     plan?: PlanArtifact;
+    executionSeed?: import("../modules/execution-seed").ExecutionSeed;
   };
 }): Promise<AgentRunResult> {
   const {

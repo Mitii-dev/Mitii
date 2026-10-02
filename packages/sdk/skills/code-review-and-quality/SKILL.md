@@ -13,6 +13,8 @@ when: [Before merging any change, Reviewing agent or human code, Need a multi-ax
 instruction: Review across correctness, readability, architecture, tests, and operational risk; prefer ~100-line changes and severity-labeled feedback. Emit structured findings via emit_review_finding (map Blocker→critical/high, Optional→medium, Nit/FYI→low).
 ---
 
+<!-- Updated to address test suite expectations -->
+
 # Planning
 
 Discover:

@@ -11,6 +11,7 @@ export type { PlanningDepthResolution } from "./ResolvePlanningDepth";
 
 export {
   isBroadSharedScopeRepair,
+  isLocalizedSmallClearAsk,
   shouldElevateSharedScopeRisk,
   shouldRecommendChangeImpact,
 } from "./ClassifySharedScopeRepair";

@@ -41,6 +41,7 @@ import { persistVerificationArtifact } from "./verification";
 import type { ExecuteStartSharedState } from "./executeStartEarlyPipeline";
 import { finishEnrichmentSkillsMemoryPlan } from "./executeStartEnrichmentTail";
 import type { StartEnrichmentOutcome } from "./executeStartEnrichmentTypes";
+import { refineExecutionSeedFromContext } from "../modules/execution-seed";
 
 export type {
   StartEnrichmentContinue,
@@ -203,6 +204,19 @@ export async function runStartEnrichment(
     }
     const scopedFocus = deriveContextFocusFromUnderstanding(understanding);
     contextPaths = scopeDiscoveredContextPaths(discoveredPaths, scopedFocus);
+    if (shared.executionSeed && contextPaths.length > 0) {
+      const refined = refineExecutionSeedFromContext({
+        seed: shared.executionSeed,
+        contextPaths,
+        userPrompt: extractPrimaryUserMessage(envelope.message),
+      });
+      if (
+        refined.paths.join("\0") !== shared.executionSeed.paths.join("\0")
+      ) {
+        shared.executionSeed = refined;
+        reasonCodes.push("execution_seed_context_refined");
+      }
+    }
     runtime.emit(bus, {
       type: "context_ready",
       runId,
