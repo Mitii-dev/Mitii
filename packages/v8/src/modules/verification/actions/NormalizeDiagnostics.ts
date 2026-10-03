@@ -7,6 +7,7 @@ import {
   DEFAULT_MAX_DIAGNOSTICS,
   DEFAULT_MAX_DIAGNOSTICS_PER_FILE,
 } from "../defaults";
+import { diagnosticIdentityKey } from "./diagnosticIdentity";
 import { filterActionableDiagnostics } from "./FilterActionableDiagnostics";
 
 const SEVERITY_RANK: Record<VerificationDiagnostic["severity"], number> = {
@@ -376,16 +377,3 @@ function extractCombinedText(output: unknown): string {
     .join("\n");
 }
 
-function diagnosticIdentityKey(diagnostic: VerificationDiagnostic): string {
-  return [
-    normalizeSlashes(diagnostic.path).toLowerCase(),
-    diagnostic.severity,
-    diagnostic.message.replace(/\s+/g, " ").trim(),
-    diagnostic.startLine ?? "",
-    diagnostic.startColumn ?? "",
-    diagnostic.endLine ?? "",
-    diagnostic.endColumn ?? "",
-    diagnostic.source ?? "",
-    diagnostic.code ?? "",
-  ].join("\u001f");
-}

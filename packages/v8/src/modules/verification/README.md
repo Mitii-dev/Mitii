@@ -34,6 +34,9 @@ Verification gathers evidence after a change. It maps changed files to projects,
 - Soft-accepts (`implemented_unverified`) when project-local typecheck/build
   passed and remaining failures are only harness, syntax-secondary, or
   workspace-root noise — so repair does not thrash on runner frames.
+- Before→after compare counts **NEW∩IN_SCOPE∩ACTIONABLE** when ask/changed
+  paths are supplied (`out_of_scope_residuals_ignored`). Only that intersection
+  opens repair; selection may still run broader checks.
 - Inspects diff/stale-state risk.
 - Returns final verification status and evidence.
 - Builds a durable `VerificationRecord` (before / after / comparison) that is stored outside the model transcript.
@@ -85,16 +88,17 @@ verification/
 - **Task-relevant stop gate:** `assessTaskRelevantEvidence` owns residual
   classification. Authoritative evidence is a passed project-local
   typecheck/build (any layout — not only `apps/` / `packages/`). Absolute
-  `afterErrorCount` never drives repair; only actionable `newErrorCount` and
-  ask-scoped source defects do. Reason codes:
+  `afterErrorCount` never drives repair; only in-scope actionable
+  `newErrorCount` and ask-scoped source defects do. Reason codes:
   `task_relevant_evidence_passed`, `residual_harness_noise`,
-  `residual_phantom_secondary`, `residual_workspace_root_noise`.
+  `residual_phantom_secondary`, `residual_workspace_root_noise`,
+  `out_of_scope_residuals_ignored`.
 
 ## Ownership Boundaries
 
 Owns verification planning, check execution, diagnostics, result evidence, and the durable verification record.
 
-Does not own mutation, general tool authorization, repository indexing, prompt construction, or route policy. The Agent Engine decides when to persist, whether to keep edits, and when to ask the model for a short narrative.
+Does not own mutation, general tool authorization, repository indexing, prompt construction, or route policy. The Agent Engine decides when to persist, whether to keep edits, and when to ask the model for a short narrative. After `decideVerificationGate` accepts, the engine hard-stops (`verification_accepted_terminal`) — no incomplete-checklist Continue, repair reopen, or rediscovery. Repair exhaustion likewise stops with `verification_repair_exhausted_terminal` (no `verification_repair_capped` Continue).
 
 ## Tests
 

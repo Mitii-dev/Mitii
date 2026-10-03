@@ -17,6 +17,11 @@ export interface MutationCriticInput {
   mutationToolNames: readonly string[];
   /** Paths the batch intends to touch (best-effort). */
   intendedPaths?: readonly string[];
+  /**
+   * Explicit ask-scoped file/folder targets from request understanding.
+   * When present, a batch that touches none of them is revise (wrong-target).
+   */
+  askScopedPaths?: readonly string[];
   /** Short plan / assistant narration snippet. */
   proposedSummary?: string;
   mode: SteeringCriticMode;
@@ -92,6 +97,36 @@ export function evaluateMutationCritic(
     reasons.push(
       `Intended paths out of grant scope: ${outOfScope.slice(0, 5).join(", ")}.`,
     );
+  }
+
+  const askScoped = (input.askScopedPaths ?? [])
+    .map((p) => p.replace(/\\/g, "/").replace(/^\.\//, ""))
+    .filter((p) => p.length > 0);
+  const intendedNormalized = (input.intendedPaths ?? [])
+    .map((p) => p.replace(/\\/g, "/").replace(/^\.\//, ""))
+    .filter((p) => p.length > 0);
+  if (askScoped.length > 0 && intendedNormalized.length > 0) {
+    const matchesAsk = (path: string): boolean =>
+      askScoped.some((ask) => {
+        const askDir = ask.endsWith("/") ? ask : `${ask}/`;
+        const pathDir = path.endsWith("/") ? path : `${path}/`;
+        return (
+          path === ask ||
+          path.startsWith(askDir) ||
+          ask.startsWith(pathDir) ||
+          // basename equality for bare filenames in ask
+          (ask.includes("/") === false &&
+            (path === ask || path.endsWith(`/${ask}`)))
+        );
+      });
+    const wrongTarget = intendedNormalized.every((path) => !matchesAsk(path));
+    if (wrongTarget) {
+      reasons.push(
+        `Intended paths do not match ask-scoped targets (${askScoped
+          .slice(0, 4)
+          .join(", ")}); proposed: ${intendedNormalized.slice(0, 4).join(", ")}.`,
+      );
+    }
   }
 
   if (input.brief) {

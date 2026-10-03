@@ -21,11 +21,14 @@ export type { FilterActionableDiagnosticsResult } from "./FilterActionableDiagno
 export {
   assessTaskRelevantEvidence,
   projectLocalCompilePassed,
+  selectAskScopedDefects,
 } from "./AssessTaskRelevantEvidence";
 export type {
   TaskRelevantEvidenceAssessment,
   TaskRelevantResidualKind,
 } from "./AssessTaskRelevantEvidence";
+
+export { diagnosticIdentityKey } from "./diagnosticIdentity";
 
 export { inspectDiffAndStaleRisk } from "./InspectDiffAndStaleRisk";
 export type { InspectDiffAndStaleRiskResult } from "./InspectDiffAndStaleRisk";

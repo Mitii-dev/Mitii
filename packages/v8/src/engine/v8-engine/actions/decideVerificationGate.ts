@@ -149,7 +149,7 @@ export function decideVerificationGate(params: {
       if (isUserGoalComplete(goalParams)) {
         return { action: "accept", acceptKind: "implemented_unverified" };
       }
-      if (hasActionableNewOrRemainingErrors(params.comparison)) {
+      if (hasInScopeActionableRepairTarget(goalParams)) {
         return {
           action: "reject",
           repairable: true,
@@ -168,9 +168,11 @@ export function decideVerificationGate(params: {
       if (isUserGoalComplete(goalParams)) {
         return { action: "accept", acceptKind: "implemented_unverified" };
       }
+      // Phase 2: repair only for NEW∩IN_SCOPE∩ACTIONABLE (or ask-scoped /
+      // failed authoritative evidence the model can still address).
       return {
         action: "reject",
-        repairable: true,
+        repairable: hasInScopeActionableRepairTarget(goalParams),
         rejectKind: "verification_failed",
         verification,
         error: {
@@ -219,19 +221,53 @@ export function decideVerificationGate(params: {
   }
 }
 
-/** Only *new* actionable errors reopen repair — not absolute after counts. */
-function hasActionableNewOrRemainingErrors(
-  comparison: RepoBuildStateComparison | undefined,
-): comparison is RepoBuildStateComparison {
-  return comparison !== undefined && comparison.newErrorCount > 0;
+/**
+ * Repair opens only for in-scope actionable work:
+ * - NEW in-scope actionable compare delta, or
+ * - ask-scoped source defects, or
+ * - failed project-local compile without soft-accept (suite/compile may
+ *   fail without parseable in-scope rows).
+ */
+function hasInScopeActionableRepairTarget(params: {
+  verification: VerificationResult;
+  comparison?: RepoBuildStateComparison;
+  askScopePaths?: readonly string[];
+  changedFiles?: readonly string[];
+}): boolean {
+  if (params.comparison && params.comparison.newErrorCount > 0) {
+    return true;
+  }
+  const assessment = assessTaskRelevantEvidence({
+    verification: {
+      required: true,
+      minimumEvidence: [],
+      allowUnavailable: true,
+    },
+    checks: params.verification.checks,
+    diagnostics: params.verification.diagnostics,
+    changedFiles: params.changedFiles,
+    askScopePaths: params.askScopePaths,
+  });
+  if (assessment.residualKind === "ask_scoped_defect") {
+    return true;
+  }
+  if (!assessment.shouldAccept && !assessment.authoritativeCompilePassed) {
+    return true;
+  }
+  return false;
 }
 
-function diagnosticErrorMessage(comparison: RepoBuildStateComparison): string {
+function diagnosticErrorMessage(
+  comparison: RepoBuildStateComparison | undefined,
+): string {
+  if (!comparison) {
+    return "Verification is incomplete and still reports actionable failures.";
+  }
   const newErrors =
     comparison.newErrorCount > 0
-      ? `, including ${comparison.newErrorCount} new error(s)`
+      ? `, including ${comparison.newErrorCount} new in-scope error(s)`
       : "";
-  return `Verification is incomplete and diagnostics still report ${comparison.afterErrorCount} error(s)${newErrors}.`;
+  return `Verification is incomplete and diagnostics still report ${comparison.afterErrorCount} in-scope error(s)${newErrors}.`;
 }
 
 /**

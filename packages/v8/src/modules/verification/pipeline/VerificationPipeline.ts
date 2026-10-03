@@ -282,6 +282,8 @@ export class VerificationPipeline {
   public compareBuildStates(params: {
     before?: RepoBuildState;
     after: RepoBuildState;
+    askScopePaths?: readonly string[];
+    changedFiles?: readonly string[];
   }): RepoBuildStateComparison {
     return compareRepoBuildStates(params);
   }

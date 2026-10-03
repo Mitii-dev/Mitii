@@ -61,6 +61,7 @@ createMitiiClient({
 **V8 knobs:** ship bands in `policy/bands.ts` (edit via `pnpm policy-admin`). Local Custom: `mitii.v8LoopPolicy.*`.
 
 **Mutation critic:** `steering: { criticMode: "off" | "shadow" | "enforce" }` (default off).
+When enforce/shadow and understanding has explicit file/folder targets, a batch that touches none of them revises (wrong-target), without widening the grant.
 **Verification LLM critique:** `steering: { verificationLlmCritique: true }` (default off).
 Advisory only after the evidence gate — never overrides `decideVerificationGate`.
 
@@ -80,7 +81,7 @@ preferred medium-planning (soft)
 - **Size → happy-path budget** (token bands are candidates only; pinned folder is work root, not size).
 - **Evidence sufficiency → recovery valve** when that budget is not enough: local named miss → one capped recovery (1–2 turns / 2–4 paths) → gate again; otherwise clarify/escalate. Never budget exhausted → +10 searches → patch whatever.
 
-**Small clear UI asks:** package scope from a folder pin alone does **not** fire `broad_repair_visible_plan` / change-impact. Folder-only seeds are refined to concrete context files (e.g. `IndexStatusChip.tsx`) after retrieval.
+**Small clear UI asks:** package scope from a folder pin alone does **not** fire `broad_repair_visible_plan` / change-impact. Folder-only seeds are refined to concrete context files (e.g. `IndexStatusChip.tsx`) after retrieval. Front-door: short `change/rename … to …` nav/label asks execute (no false clarify); evidence pack carries advisory `projectFingerprint`; sizeDraft keeps them `small`.
 
 **Budgets (two envelopes, one philosophy):**
 - **Discovery (pre-plan):** model/tool-loop turns × file reads by size×band (Medium standard: 4 turns / 8 paths). Free pre-seed discovery stays 2; post-READY discovery stays 0.
@@ -96,7 +97,9 @@ preferred medium-planning (soft)
 
 **Compare-only leftovers:** when the change introduces no **new** errors, remaining pre-existing diagnostics are optional — the run accepts, and the answer offers to fix them only if the user opts in (`fix the remaining verification errors`).
 
-**Failure ladder:** sufficient → plan; local gap → one seed-informed targetRefs recovery; still empty → `task_list_plan_not_concrete` (clarify/suspend — never invent an executable row from seed alone); bind miss → evidence recovery then clarify; scope blown → escalate (not +5 forever).
+**Failure ladder:** sufficient → plan; local gap → one seed-informed targetRefs recovery; still empty → `task_list_plan_not_concrete` (clarify/suspend — never invent an executable row from seed alone); bind miss → one evidence recovery then **hard STOP** (`evidence_recovery_exhausted_terminal` — no Continue that reopens discovery); weak seed may still Continue for an explicit path; scope blown → escalate (not +5 forever). Medium budget table numbers stay locked.
+
+**Provider infrastructure (Phase 5):** after gateway bounded retries, `provider_unavailable` / `fetch failed` suspends as Continuable `provider_unavailable` (`provider_infrastructure_unavailable`) — not a bare agent-logic fail. Index rehydrate fingerprint pins reuse the persisted full-index snapshot id so map/graph stay bound.
 
 ## Eval
 

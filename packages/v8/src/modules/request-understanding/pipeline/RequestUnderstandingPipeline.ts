@@ -40,6 +40,8 @@ export interface RequestUnderstandingOptions {
   priorTaskSize?: "small" | "medium" | "large";
   /** Host MCP servers relevant to this turn. */
   requiredMcpServerIds?: readonly string[];
+  /** Optional catalog/host project fingerprint for the Officer evidence pack. */
+  projectFingerprint?: import("../intent/evidence/UnderstandingEvidencePack").ProjectFingerprint;
 }
 
 export class RequestUnderstandingPipeline {
@@ -101,6 +103,7 @@ export class RequestUnderstandingPipeline {
       historyDigest: options.historyDigest,
       priorRoute: options.priorRoute,
       priorTaskSize: options.priorTaskSize,
+      projectFingerprint: options.projectFingerprint,
     });
 
     const intent = await this.intentRouter.classify({

@@ -19,6 +19,11 @@ export const BUDGET_WALL_REASONS = [
    * unfulfilled_execute (resume_mutate).
    */
   "evidence_clarify",
+  /**
+   * Model provider transport failure after bounded gateway retries.
+   * Resume retries the provider; do not treat as agent logic failure.
+   */
+  "provider_unavailable",
 ] as const;
 
 export type BudgetWallReason = (typeof BUDGET_WALL_REASONS)[number];
@@ -97,6 +102,11 @@ export function buildBudgetWallRationale(params: {
         "I don't have a concrete file path to edit yet after the evidence budget was used.",
       );
       break;
+    case "provider_unavailable":
+      lines.push(
+        "The model provider is unreachable (network/infrastructure) after bounded retries.",
+      );
+      break;
     case "rejected_mutation":
       lines.push(
         "Our first edit attempts didn't land cleanly — we'd like to take another careful look before trying again.",
@@ -144,6 +154,10 @@ export function buildBudgetWallRationale(params: {
   if (params.reason === "evidence_clarify") {
     lines.push(
       "Continue with an explicit file path to focus on, or stop here. Do not expect another open-ended search pass.",
+    );
+  } else if (params.reason === "provider_unavailable") {
+    lines.push(
+      "Continue to retry the provider when the network is back, or stop here. Progress so far is preserved.",
     );
   } else if (
     zeroProgressMutation ||
@@ -237,6 +251,11 @@ export function buildBudgetWallResetMessage(params: {
         "The user approved continuing after an evidence-clarify wall (engine stop — not a mutate resume). Do NOT force apply_patch yet. If they shared an explicit file path in guidance, bind to that path only (read_file then apply_patch). If no path was shared, ask for one or stop — do not reopen broad search/list/glob.",
       );
       break;
+    case "provider_unavailable":
+      parts.push(
+        "The user approved continuing after a model-provider infrastructure outage. Retry the next model turn; do not restart discovery or invent a new plan. Prefer completing the current checklist step.",
+      );
+      break;
     case "incomplete_execute":
     case "incomplete_checklist":
       parts.push(
@@ -267,7 +286,9 @@ export function buildBudgetWallResetMessage(params: {
     params.mutationRequired &&
     params.changedFiles.length === 0 &&
     params.reason !== "verification_repair_capped" &&
-    params.reason !== "budget_exhausted"
+    params.reason !== "budget_exhausted" &&
+    params.reason !== "provider_unavailable" &&
+    params.reason !== "evidence_clarify"
   ) {
     parts.push(
       "Call apply_patch/delete_file/move_file now, or stop with a clear blocker. Analysis-only turns are not allowed.",

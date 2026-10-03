@@ -22,6 +22,19 @@ export const sizeDraftSchema = z
   })
   .strict();
 
+/**
+ * Compact workspace shape for the Officer (advisory). Prefer host/catalog
+ * when supplied; otherwise derived from referenced artifacts.
+ */
+export const projectFingerprintSchema = z
+  .object({
+    relativeRoots: z.array(z.string().min(1).max(300)).max(24),
+    fileExtensions: z.array(z.string().min(1).max(32)).max(24),
+    /** Known package/script names when a catalog summary is available. */
+    scriptNames: z.array(z.string().min(1).max(80)).max(24).default([]),
+  })
+  .strict();
+
 export const understandingEvidencePackSchema = z
   .object({
     mode: z.enum(["ask", "plan", "agent"]),
@@ -100,6 +113,7 @@ export const understandingEvidencePackSchema = z
 
     rulePriors: z.array(rulePriorSchema).max(3),
     sizeDraft: sizeDraftSchema,
+    projectFingerprint: projectFingerprintSchema.optional(),
 
     diagnostics: z
       .object({
@@ -122,6 +136,7 @@ export const understandingEvidencePackSchema = z
 
 export type RulePrior = z.infer<typeof rulePriorSchema>;
 export type SizeDraft = z.infer<typeof sizeDraftSchema>;
+export type ProjectFingerprint = z.infer<typeof projectFingerprintSchema>;
 export type UnderstandingEvidencePack = z.infer<
   typeof understandingEvidencePackSchema
 >;

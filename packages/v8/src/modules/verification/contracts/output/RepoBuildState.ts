@@ -48,6 +48,11 @@ export const repoBuildStateComparisonReasonSchema = z.enum([
   "no_before_state",
   /** Harness/denied/phantom residuals were excluded before delta counts. */
   "non_actionable_residuals_ignored",
+  /**
+   * Out-of-ask-scope actionable errors were excluded from NEW/remaining
+   * counts (Phase 2: only NEW∩IN_SCOPE∩ACTIONABLE opens repair).
+   */
+  "out_of_scope_residuals_ignored",
 ]);
 
 export const repoBuildStateComparisonSchema = z

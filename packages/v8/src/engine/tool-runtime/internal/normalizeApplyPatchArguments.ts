@@ -8,6 +8,8 @@
  * Normalize those shapes before schema validation so recoverable calls succeed.
  */
 
+import { normalizeCiWorkflowPath } from "./canonicalizeMutationPath";
+
 function coerceOptionalBoolean(value: unknown): boolean | undefined {
   if (typeof value === "boolean") {
     return value;
@@ -40,15 +42,6 @@ function coalescePatchPath(entry: Record<string, unknown>): void {
       return;
     }
   }
-}
-
-/** `github/workflows/...` → `.github/workflows/...` (no parallel github/ tree). */
-function normalizeCiWorkflowPath(value: string): string {
-  const trimmed = value.replace(/\\/g, "/");
-  if (/^github\/workflows\//i.test(trimmed)) {
-    return `.github/${trimmed.slice("github/".length)}`;
-  }
-  return trimmed;
 }
 
 function sanitizePatchEntry(value: unknown): unknown {

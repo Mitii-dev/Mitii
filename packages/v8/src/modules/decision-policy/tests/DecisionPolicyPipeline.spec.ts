@@ -1330,6 +1330,38 @@ describe("DecisionPolicyPipeline", () => {
     expect(decision.reasonCodes).toContain("mutation_execute");
   });
 
+  it("does not clarify short nav-label change asks under soft Officer ambiguity", () => {
+    // Phase 4: "Change the nav label to Docs" must execute — not clarify chips.
+    const decision = new DecisionPolicyPipeline().decide(
+      createInput({
+        mode: "agent",
+        message: "Change the nav label to Docs",
+        understanding: createUnderstanding({
+          primaryTaskIntent: "question",
+          interactionIntent: "question",
+          confidence: 0.62,
+          confidenceMargin: 0.08,
+          status: "clarification_required",
+          recommendsClarification: true,
+          needsClarification: true,
+          taskAnalysis: {
+            clarity: "unclear",
+            recommendsTaskClarification: true,
+            scope: "package",
+            complexity: "simple",
+            taskSize: "small",
+            risk: "low",
+          },
+        }),
+      }),
+    );
+
+    expect(decision.route).toBe("execute");
+    expect(decision.runDisposition).toBe("continue");
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("write");
+    expect(decision.planningDepth).not.toBe("visible");
+  });
+
   it("does not clarify clear agent implement asks even when understanding is soft-ambiguous", () => {
     const decision = new DecisionPolicyPipeline().decide(
       createInput({

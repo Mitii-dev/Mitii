@@ -14,6 +14,7 @@ import {
   resolveFailedVerificationTerminalStatus,
   selectUserFacingLoopAnswer,
   shouldContinueVerificationRepair,
+  shouldSuspendContinueAfterRepairExhausted,
   nextStalledRepairCount,
   resolveLoopPolicyThresholds,
 } from "../actions";
@@ -407,31 +408,35 @@ export async function handleVerificationFailed(params: {
       at: runtime.isoNow(),
     });
   }
-  // Finalize verification evidence and memory before suspending. This makes
-  // Stop a clean terminal choice with a durable summary/retry record.
+  // Finalize verification evidence and memory. Repair exhaustion is a hard
+  // STOP/REPORT — never offer verification_repair_capped Continue (Phase 1).
   if (
     verificationOutcome.repairable &&
     currentOutcome.kind === "completed" &&
     loopChangedFiles.length > 0
   ) {
-    const suspended = await suspendForBudgetWall(budgetWallCtx(), {
-      wallReason: "verification_repair_capped",
-      messages: currentOutcome.messages,
-      toolCache: currentOutcome.toolCache,
-      changedFiles: loopChangedFiles,
-      mutationCheckpointIds: loopMutationIds,
-      answer:
-        selectUserFacingLoopAnswer({
-          loopAnswer: currentOutcome.answer,
-          fallbackSummary: summary,
-          changedFiles: loopChangedFiles,
-        }) ?? summary,
-      mutationRequired: true,
-    });
-    if (suspended) {
-      return { kind: "return", result: suspended };
+    if (shouldSuspendContinueAfterRepairExhausted()) {
+      const suspended = await suspendForBudgetWall(budgetWallCtx(), {
+        wallReason: "verification_repair_capped",
+        messages: currentOutcome.messages,
+        toolCache: currentOutcome.toolCache,
+        changedFiles: loopChangedFiles,
+        mutationCheckpointIds: loopMutationIds,
+        answer:
+          selectUserFacingLoopAnswer({
+            loopAnswer: currentOutcome.answer,
+            fallbackSummary: summary,
+            changedFiles: loopChangedFiles,
+          }) ?? summary,
+        mutationRequired: true,
+      });
+      if (suspended) {
+        return { kind: "return", result: suspended };
+      }
+      reasonCodes.push("stall_continue_override_capped");
+    } else {
+      reasonCodes.push("verification_repair_exhausted_terminal");
     }
-    reasonCodes.push("stall_continue_override_capped");
   }
   await runtime.safeUnpin(runId, pinnedState);
   reasonCodes.push("answer_produced");

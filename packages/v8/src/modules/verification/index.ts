@@ -88,7 +88,10 @@ export {
   filterActionableDiagnostics,
   assessTaskRelevantEvidence,
   projectLocalCompilePassed,
+  selectAskScopedDefects,
+  diagnosticIdentityKey,
   recommendCompletion,
+  compareRepoBuildStates,
 } from "./actions";
 export type {
   FilterActionableDiagnosticsResult,

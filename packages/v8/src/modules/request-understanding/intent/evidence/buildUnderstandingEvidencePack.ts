@@ -7,7 +7,10 @@ import type {
 } from "../../../request-intake";
 import type { DiagnosticSummary } from "../../contracts";
 import { DEFAULT_CLOSED_SKILL_TAGS } from "../intersectRecommendedSkillTags";
-import type { RulePrior } from "./UnderstandingEvidencePack";
+import type {
+  ProjectFingerprint,
+  RulePrior,
+} from "./UnderstandingEvidencePack";
 import {
   understandingEvidencePackSchema,
   type UnderstandingEvidencePack,
@@ -36,6 +39,8 @@ export interface BuildUnderstandingEvidencePackInput {
   historyDigest?: string;
   priorRoute?: string;
   priorTaskSize?: "small" | "medium" | "large";
+  /** Optional host/catalog fingerprint; else derived from artifacts. */
+  projectFingerprint?: ProjectFingerprint;
 }
 
 export function buildUnderstandingEvidencePack(
@@ -77,6 +82,8 @@ export function buildUnderstandingEvidencePack(
     },
     rulePriors: [...(input.rulePriors ?? [])].slice(0, 3),
     sizeDraft,
+    projectFingerprint:
+      input.projectFingerprint ?? deriveProjectFingerprint(artifacts),
     ...(input.diagnosticSummary
       ? {
           diagnostics: {
@@ -155,6 +162,38 @@ function summarizeAttachments(
   return {
     imageCount: attachments.length,
     images,
+  };
+}
+
+function deriveProjectFingerprint(
+  artifacts: UnderstandingEvidencePack["artifacts"],
+): ProjectFingerprint {
+  const relativeRoots = new Set<string>();
+  for (const folder of artifacts.folders) {
+    const root = folder.path.replace(/\\/g, "/").replace(/\/+$/, "");
+    if (root) {
+      relativeRoots.add(root.split("/").slice(0, 2).join("/"));
+    }
+  }
+  const fileExtensions = new Set<string>();
+  for (const file of artifacts.files) {
+    const normalized = file.path.replace(/\\/g, "/");
+    const segments = normalized.split("/");
+    if (segments.length >= 2) {
+      relativeRoots.add(segments.slice(0, 2).join("/"));
+    } else if (segments[0]) {
+      relativeRoots.add(segments[0]);
+    }
+    const base = segments[segments.length - 1] ?? "";
+    const dot = base.lastIndexOf(".");
+    if (dot > 0 && dot < base.length - 1) {
+      fileExtensions.add(base.slice(dot + 1).toLowerCase());
+    }
+  }
+  return {
+    relativeRoots: [...relativeRoots].slice(0, 24),
+    fileExtensions: [...fileExtensions].slice(0, 24),
+    scriptNames: [],
   };
 }
 

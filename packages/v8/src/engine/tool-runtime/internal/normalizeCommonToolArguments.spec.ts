@@ -195,6 +195,23 @@ describe("normalizeCommonToolArguments", () => {
       edgeTypes: ["imports"],
     });
   });
+
+  it("rewrites github/ paths on delete/move mutation tools", () => {
+    expect(
+      normalizeCommonToolArguments("delete_file", {
+        path: "github/workflows/ci.yml",
+      }),
+    ).toEqual({ path: ".github/workflows/ci.yml" });
+    expect(
+      normalizeCommonToolArguments("move_file", {
+        from: "github/CODEOWNERS",
+        to: "github/OWNERS",
+      }),
+    ).toEqual({
+      from: ".github/CODEOWNERS",
+      to: ".github/OWNERS",
+    });
+  });
 });
 
 describe("coerceArgumentsToSchema numbers", () => {

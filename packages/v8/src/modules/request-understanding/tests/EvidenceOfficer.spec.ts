@@ -109,5 +109,23 @@ describe("buildUnderstandingEvidencePack", () => {
     expect(pack.mcp.requiredServerIds).toEqual(["github"]);
     expect(pack.skills.availableTags.length).toBeGreaterThan(0);
     expect(pack.sizeDraft.taskSize).toMatch(/small|medium|large/);
+    expect(pack.projectFingerprint?.relativeRoots.length).toBeGreaterThan(0);
+    expect(pack.projectFingerprint?.fileExtensions).toContain("ts");
+  });
+
+  it("keeps short nav-label asks small and fingerprints pinned folders", () => {
+    const message = "Change the nav label to Docs";
+    const pack = buildUnderstandingEvidencePack({
+      mode: "agent",
+      turnKind: "new",
+      messageText: message,
+      originalMessageLength: message.length,
+      referencedArtifacts: [
+        { name: "website", path: "apps/website", kind: "folder" },
+      ],
+    });
+    expect(pack.sizeDraft.taskSize).toBe("small");
+    expect(pack.sizeDraft.reasons).toContain("localized_ui_copy_small");
+    expect(pack.projectFingerprint?.relativeRoots).toContain("apps/website");
   });
 });

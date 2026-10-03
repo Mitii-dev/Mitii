@@ -82,6 +82,14 @@ export function formatVisibleFailureDetails(options: {
     lines.push(`Reason: ${result.error.message}`);
   }
   if (
+    result.reasonCodes?.includes('provider_infrastructure_unavailable') ||
+    result.error?.code === 'provider_unavailable'
+  ) {
+    lines.push(
+      'Infrastructure: the model provider is unreachable (network). This is not an agent logic failure — Continue to retry when the provider is back, or Stop.',
+    );
+  }
+  if (
     result.reasonCodes?.includes('prompt_blocked') ||
     result.error?.code === 'prompt_blocked'
   ) {

@@ -7,6 +7,7 @@ import type {
   VerificationDiagnostic,
   VerificationRecord,
 } from "../contracts";
+import { diagnosticIdentityKey } from "./diagnosticIdentity";
 import { packDiagnosticsForModel } from "./NormalizeDiagnostics";
 
 /**
@@ -182,18 +183,6 @@ function formatDiagnosticLines(
     lines.push(`  ${label}: …and ${packed.omittedCount} more omitted`);
   }
   return lines;
-}
-
-function diagnosticIdentityKey(diagnostic: VerificationDiagnostic): string {
-  return [
-    diagnostic.path,
-    diagnostic.severity,
-    diagnostic.message,
-    diagnostic.startLine ?? "",
-    diagnostic.startColumn ?? "",
-    diagnostic.source ?? "",
-    diagnostic.code ?? "",
-  ].join("\u0000");
 }
 
 function uniqueStrings(values: readonly string[]): string[] {

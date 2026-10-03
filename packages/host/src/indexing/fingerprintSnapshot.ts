@@ -163,38 +163,75 @@ export async function buildWorkspaceSnapshot(
 }
 
 /**
- * When a fingerprint pin is published over an existing on-disk LanceDB index,
- * copy the persisted embedding profile onto the candidate so vector retrieval
- * does not report published_profile_missing.
+ * When a fingerprint pin is published over an existing on-disk index:
+ * - Phase 5: rebind `snapshotId` to the persisted full-index fingerprint so
+ *   Repo Map / Repo Graph identity matches (do not invent a new pin id).
+ * - Copy the persisted embedding profile so vector retrieval does not report
+ *   published_profile_missing.
+ * - Restore map/graph/code/text revisions from runtime metadata when present.
  */
 export function enrichFingerprintWithPersistedVectorProfile(
   candidate: PublishRepositoryStateInput,
   mitiiDir: string,
 ): PublishRepositoryStateInput {
   const metadata = readIndexRuntimeMetadata(join(mitiiDir, 'index-runtime.json'));
-  const profileId = metadata?.embeddingProfile?.id?.trim();
-  if (!profileId || !metadata?.lanceDbPath || !existsSync(metadata.lanceDbPath)) {
+  if (!metadata) {
     return candidate;
   }
+
+  const persistedSnapshot = metadata.snapshotFingerprint?.trim();
+  const profileId = metadata.embeddingProfile?.id?.trim();
+  const hasLance =
+    Boolean(profileId) &&
+    Boolean(metadata.lanceDbPath) &&
+    existsSync(metadata.lanceDbPath);
+
   return {
     ...candidate,
-    roots: candidate.roots.map((root) => ({
-      ...root,
-      vectorProfile: profileId,
-      vectorIndexRevision:
-        root.vectorIndexRevision ??
-        root.textIndexRevision ??
-        root.codeIndexRevision ??
-        root.projectCatalogRevision,
-      capabilities: root.capabilities.map((capability) =>
-        capability.capability === 'vectorIndex'
+    ...(persistedSnapshot ? { snapshotId: persistedSnapshot } : {}),
+    roots: candidate.roots.map((root) => {
+      const mapRevision = metadata.mapRevisionByRoot?.[root.rootId];
+      const graphRevision = metadata.graphRevisionByRoot?.[root.rootId];
+      const catalogRevision =
+        metadata.catalogRevisionByRoot?.[root.rootId] ??
+        root.projectCatalogRevision;
+      const nextCapabilities = root.capabilities.map((capability) => {
+        if (capability.capability === 'vectorIndex' && hasLance) {
+          return {
+            capability: 'vectorIndex' as const,
+            status: 'degraded' as const,
+            reasonCode: 'capability_degraded' as const,
+          };
+        }
+        if (
+          capability.capability === 'codeIndex' &&
+          (mapRevision || graphRevision)
+        ) {
+          return {
+            capability: 'codeIndex' as const,
+            status: 'degraded' as const,
+            reasonCode: 'capability_degraded' as const,
+          };
+        }
+        return capability;
+      });
+      return {
+        ...root,
+        projectCatalogRevision: catalogRevision,
+        ...(mapRevision ? { mapRevision } : {}),
+        ...(graphRevision ? { graphRevision } : {}),
+        ...(hasLance
           ? {
-              capability: 'vectorIndex' as const,
-              status: 'degraded' as const,
-              reasonCode: 'capability_degraded' as const,
+              vectorProfile: profileId,
+              vectorIndexRevision:
+                root.vectorIndexRevision ??
+                root.textIndexRevision ??
+                root.codeIndexRevision ??
+                catalogRevision,
             }
-          : capability,
-      ),
-    })),
+          : {}),
+        capabilities: nextCapabilities,
+      };
+    }),
   };
 }

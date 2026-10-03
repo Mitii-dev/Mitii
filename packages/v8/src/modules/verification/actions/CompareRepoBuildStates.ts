@@ -3,13 +3,22 @@ import {
   type RepoBuildState,
   type RepoBuildStateComparison,
   type RepoBuildStateComparisonReason,
+  type VerificationDiagnostic,
 } from "../contracts";
+import { normalizeVerificationPath } from "../patterns";
+import {
+  projectLocalCompilePassed,
+  selectAskScopedDefects,
+} from "./AssessTaskRelevantEvidence";
 import { filterActionableDiagnostics } from "./FilterActionableDiagnostics";
-import { projectLocalCompilePassed } from "./AssessTaskRelevantEvidence";
+import { diagnosticIdentityKey } from "./diagnosticIdentity";
 
 export function compareRepoBuildStates(params: {
   before?: RepoBuildState;
   after: RepoBuildState;
+  /** Seed / ask paths — when set, error deltas are NEW∩IN_SCOPE∩ACTIONABLE. */
+  askScopePaths?: readonly string[];
+  changedFiles?: readonly string[];
 }): RepoBuildStateComparison {
   const before = params.before;
   const after = params.after;
@@ -32,16 +41,32 @@ export function compareRepoBuildStates(params: {
       (before.diagnostics.length !== beforeActionable.length ||
         after.diagnostics.length !== afterActionable.length));
 
-  const afterKeys = new Set(afterActionable.map(diagnosticKey));
+  const scopePaths = uniquePaths([
+    ...(params.askScopePaths ?? []),
+    ...(params.changedFiles ?? []),
+  ]);
+  const scopeApplied = scopePaths.length > 0;
+  const beforeScoped = scopeApplied
+    ? filterActionableToScope(beforeActionable, scopePaths)
+    : beforeActionable;
+  const afterScoped = scopeApplied
+    ? filterActionableToScope(afterActionable, scopePaths)
+    : afterActionable;
+  const ignoredOutOfScope =
+    scopeApplied &&
+    (countErrors(afterActionable) > countErrors(afterScoped) ||
+      countErrors(beforeActionable) > countErrors(beforeScoped));
+
+  const afterKeys = new Set(afterScoped.map(diagnosticIdentityKey));
   const beforeErrorKeys = new Set(
-    beforeActionable
+    beforeScoped
       .filter((diag) => diag.severity === "error")
-      .map(diagnosticKey),
+      .map(diagnosticIdentityKey),
   );
   const afterErrorKeys = new Set(
-    afterActionable
+    afterScoped
       .filter((diag) => diag.severity === "error")
-      .map(diagnosticKey),
+      .map(diagnosticIdentityKey),
   );
 
   const newErrorCount = [...afterErrorKeys].filter(
@@ -55,14 +80,14 @@ export function compareRepoBuildStates(params: {
   ).length;
 
   const beforeWarningKeys = new Set(
-    beforeActionable
+    beforeScoped
       .filter((diag) => diag.severity === "warning")
-      .map(diagnosticKey),
+      .map(diagnosticIdentityKey),
   );
   const afterWarningKeys = new Set(
-    afterActionable
+    afterScoped
       .filter((diag) => diag.severity === "warning")
-      .map(diagnosticKey),
+      .map(diagnosticIdentityKey),
   );
   const newWarningCount = [...afterWarningKeys].filter(
     (key) => !beforeWarningKeys.has(key),
@@ -81,7 +106,7 @@ export function compareRepoBuildStates(params: {
     reasonCodes.push("errors_remaining");
   }
   if (newErrorCount > 0) reasonCodes.push("new_errors_introduced");
-  if (afterActionable.some((diag) => diag.severity === "warning")) {
+  if (afterScoped.some((diag) => diag.severity === "warning")) {
     reasonCodes.push("warnings_remaining");
   }
   if (before && newWarningCount > 0) {
@@ -95,6 +120,9 @@ export function compareRepoBuildStates(params: {
   }
   if (ignoredResiduals) {
     reasonCodes.push("non_actionable_residuals_ignored");
+  }
+  if (ignoredOutOfScope) {
+    reasonCodes.push("out_of_scope_residuals_ignored");
   }
 
   return repoBuildStateComparisonSchema.parse({
@@ -110,14 +138,42 @@ export function compareRepoBuildStates(params: {
   });
 }
 
-function diagnosticKey(diag: RepoBuildState["diagnostics"][number]): string {
+/**
+ * Errors use ask-scoped defect selection; warnings use path membership only.
+ */
+function filterActionableToScope(
+  diagnostics: readonly VerificationDiagnostic[],
+  scopePaths: readonly string[],
+): VerificationDiagnostic[] {
+  const errors = selectAskScopedDefects(diagnostics, scopePaths);
+  const errorKeys = new Set(errors.map(diagnosticIdentityKey));
+  const warnings = diagnostics.filter((diag) => {
+    if (diag.severity !== "warning") {
+      return false;
+    }
+    const pathKey = normalizeVerificationPath(diag.path).toLowerCase();
+    return scopePaths.some((scope) => {
+      const scopeKey = scope.toLowerCase();
+      return (
+        pathKey === scopeKey ||
+        pathKey.startsWith(`${scopeKey}/`) ||
+        scopeKey.startsWith(`${pathKey}/`)
+      );
+    });
+  });
+  return [...errors, ...warnings.filter((w) => !errorKeys.has(diagnosticIdentityKey(w)))];
+}
+
+function countErrors(diagnostics: readonly VerificationDiagnostic[]): number {
+  return diagnostics.filter((diag) => diag.severity === "error").length;
+}
+
+function uniquePaths(paths: readonly string[]): string[] {
   return [
-    diag.path,
-    diag.severity,
-    diag.startLine ?? "",
-    diag.startColumn ?? "",
-    diag.source ?? "",
-    diag.code ?? "",
-    diag.message,
-  ].join("\u0000");
+    ...new Set(
+      paths
+        .map(normalizeVerificationPath)
+        .filter((path) => path.length > 0),
+    ),
+  ];
 }

@@ -68,11 +68,22 @@ export function runV8MutationCritic(params: {
         })
       : undefined);
 
+  const askScopedPaths =
+    params.understanding?.taskAnalysis.targets
+      .filter(
+        (t) =>
+          t.explicit &&
+          (t.kind === "file" || t.kind === "folder") &&
+          t.value.length > 0,
+      )
+      .map((t) => t.value) ?? [];
+
   const result = evaluateMutationCritic({
     decision: params.decision,
     brief,
     mutationToolNames,
     intendedPaths,
+    askScopedPaths,
     proposedSummary: params.turnContent.slice(0, 800),
     mode: params.mode,
   });

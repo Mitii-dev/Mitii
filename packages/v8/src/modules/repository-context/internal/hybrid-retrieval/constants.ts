@@ -285,9 +285,9 @@ export const HYBRID_RETRIEVAL_MESSAGES = {
   RERANKER_INCOMPLETE:
     "The reranker did not return a score for every candidate; missing candidates retained their fused score.",
   SNAPSHOT_MISMATCH:
-    "Repository intelligence was produced from a different workspace snapshot.",
+    "Repository intelligence was produced from a different workspace snapshot; rebound to the pinned identity.",
   CHANGE_TOKEN_MISMATCH:
-    "Repo Map and Repo Graph were produced from different Code Index revisions.",
+    "Repo Map and Repo Graph were produced from different Code Index revisions; rebound to the pinned identity.",
   VECTOR_DEPENDENCY_MISMATCH:
     "vectorIndex and embeddingProvider must be configured together.",
   FAILURE_POLICY_UNSATISFIED:

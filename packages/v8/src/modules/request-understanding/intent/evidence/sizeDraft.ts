@@ -111,6 +111,20 @@ export function computeSizeDraft(params: {
     reasons.push("single_short_ask");
   }
 
+  // Phase 4: short clear UI copy stays small (avoid medium close-loop / oversized plan).
+  if (
+    approxTokens < TOKEN_MEDIUM_CANDIDATE &&
+    /\b(?:nav(?:igation|bar)?|label|button|link|title|heading|menu)\b/i.test(
+      params.text,
+    ) &&
+    /\b(?:change|set|rename|update|replace)\b[\s\S]{0,80}\bto\b/i.test(
+      params.text,
+    )
+  ) {
+    rank = 0;
+    reasons.push("localized_ui_copy_small");
+  }
+
   // Keep words in reasons for diagnostics when useful (not a size latch).
   if (approxWords > 0 && reasons.every((r) => !r.startsWith("tokens>="))) {
     reasons.push(`words=${approxWords}`);
