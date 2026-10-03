@@ -85,4 +85,57 @@ describe("runV8MutationCritic", () => {
     expect(decision.kind).toBe("pass");
     expect(decision.result.shadowWouldBlock).toBe(true);
   });
+
+  it("revises when mutation targets miss explicit ask-scoped files", () => {
+    const decision = runV8MutationCritic({
+      decision: writeDecision(),
+      toolCalls: [
+        {
+          id: "1",
+          name: "apply_patch",
+          arguments: {
+            patches: [
+              { path: "src/unrelated.ts", oldText: "a", newText: "b" },
+            ],
+          },
+        },
+      ],
+      turnContent: "patching wrong file",
+      mode: "enforce",
+      brief: {
+        mission: "Edit the auth service.",
+        routeIntent: "Route=execute; effect=write",
+        mustDo: [],
+        mustNotDo: [],
+        evidenceNeeded: [],
+        verification: [],
+        openRisks: [],
+        authorityNote: "test",
+      },
+      understanding: {
+        intent: {} as never,
+        taskAnalysis: {
+          scope: "single_location",
+          complexity: "simple",
+          risk: "low",
+          clarity: "clear",
+          targets: [
+            { kind: "file", value: "src/auth/service.ts", explicit: true },
+          ],
+          constraints: [],
+          requestedOutcomes: [],
+          recommendsRepositoryDiscovery: false,
+          recommendsPlanning: false,
+          recommendsVerification: false,
+          recommendsTaskClarification: false,
+          taskSize: "small",
+          planningHint: "none",
+        },
+      },
+    });
+    expect(decision.kind).toBe("revise");
+    expect(decision.result.reasons.some((r) => /ask-scoped/i.test(r))).toBe(
+      true,
+    );
+  });
 });

@@ -3,6 +3,7 @@ import type { VerificationRecord } from "../../../modules/verification";
 import {
   applyExplorationSignal,
   clampRunBudget,
+  isProviderInfrastructureFailure,
   toRunUsage,
 } from "../actions";
 import { AGENT_ENGINE_SCHEMA_VERSION } from "../legacy/constants";
@@ -236,12 +237,23 @@ export async function executeV8Resume(
     if (signal.aborted) {
       return await cancelledResult();
     }
+    const message =
+      error instanceof Error ? error.message : "Resume failed.";
+    const infrastructure = isProviderInfrastructureFailure({
+      errorMessage: message,
+    });
     return finish({
       status: "failed",
-      reasonCodes: [...reasonCodes, "provider_failed"],
+      reasonCodes: [
+        ...reasonCodes,
+        "provider_failed",
+        ...(infrastructure
+          ? (["provider_infrastructure_unavailable"] as const)
+          : []),
+      ],
       error: {
-        code: "execution_failed",
-        message: error instanceof Error ? error.message : "Resume failed.",
+        code: infrastructure ? "provider_unavailable" : "execution_failed",
+        message,
       },
     });
   }

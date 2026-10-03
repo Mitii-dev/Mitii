@@ -24,6 +24,7 @@ import {
 } from "../internal/taskListRuntime";
 import { DEFAULT_TOOL_DEFINITIONS } from "../legacy/policy";
 import { shouldRearmMutateLockOnContinue } from "../modules/mutate-readiness";
+import { shouldStripDiscoveryAfterEvidenceExhaustion } from "../actions/resolveEvidenceTerminal";
 import {
   isExecutionSeedTrusted,
   resolveExecutionSeed,
@@ -146,14 +147,26 @@ export async function resumeV8ToolLoopFromCheckpoint(
   const mutationRequired =
     decisionWithAttach.reasonCodes.includes("mutation_execute") ||
     decisionWithAttach.toolGrant.maximumWorkspaceEffect === "write";
+  // Phase 3: exhaustion sticky — never reopen discovery after bind+recovery.
+  const stripAfterEvidenceExhaust =
+    shouldStripDiscoveryAfterEvidenceExhaustion({ reasonCodes });
   const rearmLock =
-    isExecutionSeedTrusted(executionSeed) &&
-    shouldRearmMutateLockOnContinue({
-      wallReason: checkpoint.continueWallReason,
-      changedFileCount: changedFiles.length,
-      mutationRequired,
-      reasonCodes,
-    });
+    stripAfterEvidenceExhaust ||
+    (isExecutionSeedTrusted(executionSeed) &&
+      shouldRearmMutateLockOnContinue({
+        wallReason: checkpoint.continueWallReason,
+        changedFileCount: changedFiles.length,
+        mutationRequired,
+        reasonCodes,
+      }));
+  if (stripAfterEvidenceExhaust) {
+    if (!reasonCodes.includes("evidence_recovery_exhausted_terminal")) {
+      reasonCodes.push("evidence_recovery_exhausted_terminal");
+    }
+    warnings.push(
+      "Evidence recovery previously exhausted — discovery stays stripped on Continue.",
+    );
+  }
 
   const loopOutcome = await runV8ModelLoop(runtime, {
     runId,

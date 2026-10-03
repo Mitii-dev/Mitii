@@ -208,7 +208,7 @@ const VERIFICATION_PATTERN =
   /\b(?:tests?|unit tests?|integration tests?|e2e|lint|build|typecheck|type check|ci|continuous integration|benchmark|regression test|validate|verification)\b/gi;
 
 const SIMPLE_TASK_PATTERN =
-  /\b(?:rename|format|prettier|fix typo|update comment|change text|remove import|sort imports|single file|one file|small change|localized change)\b/i;
+  /\b(?:rename|format|prettier|fix typo|update comment|change text|change(?:\s+the)?\s+(?:nav|label|button|link|title|heading|menu)|rename(?:\s+the)?\s+(?:nav|label|button|link|title)|remove import|sort imports|single file|one file|small change|localized change)\b/i;
 
 /**
  * TASK CLARITY PATTERNS

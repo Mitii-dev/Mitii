@@ -25,7 +25,8 @@ describe("HybridRetrievalRequestNormalizer", () => {
   const normalizer = new HybridRetrievalRequestNormalizer();
   const options = new HybridRetrieverOptionsResolver().resolve({});
 
-  it("drops stale repo map instead of aborting retrieval", () => {
+  it("rebinds stale repo map to the pinned snapshot instead of dropping it", () => {
+    // Phase 5: fingerprint-pin / restart must not discard map/graph intelligence.
     const result = normalizer.normalize(
       {
         workspace: "workspace",
@@ -37,12 +38,12 @@ describe("HybridRetrievalRequestNormalizer", () => {
     );
 
     expect(result.request).toBeDefined();
-    expect(result.request?.repoMap).toBeUndefined();
+    expect(result.request?.repoMap?.workspaceSnapshotId).toBe("snapshot-a");
     expect(
       result.warnings.some(
         (warning) =>
           warning.code === "optional_source_unavailable" &&
-          /workspace snapshot/i.test(warning.message),
+          /rebound/i.test(warning.message),
       ),
     ).toBe(true);
   });

@@ -24,19 +24,27 @@ export function extractMutationTargetPaths(
     return [];
   }
   const record = argumentsValue as Record<string, unknown>;
-  if (toolName === "apply_patch" && Array.isArray(record.patches)) {
-    return uniquePaths(
-      record.patches.flatMap((patch) =>
-        patch &&
-        typeof patch === "object" &&
-        typeof (patch as { path?: unknown }).path === "string"
-          ? [(patch as { path: string }).path]
-          : [],
-      ),
-    );
+  if (toolName === "apply_patch") {
+    const fromPatches = Array.isArray(record.patches)
+      ? record.patches.flatMap((patch) =>
+          patch &&
+          typeof patch === "object" &&
+          typeof (patch as { path?: unknown }).path === "string"
+            ? [(patch as { path: string }).path]
+            : [],
+        )
+      : [];
+    // Flat pre-normalize shape `{ path, oldText, newText }`.
+    if (typeof record.path === "string") {
+      fromPatches.push(record.path);
+    }
+    return uniquePaths(fromPatches);
   }
-  if (toolName === "move_file" && typeof record.from === "string") {
-    return uniquePaths([record.from]);
+  if (toolName === "move_file") {
+    const paths: string[] = [];
+    if (typeof record.from === "string") paths.push(record.from);
+    if (typeof record.to === "string") paths.push(record.to);
+    return uniquePaths(paths);
   }
   if (typeof record.path === "string") {
     return uniquePaths([record.path]);

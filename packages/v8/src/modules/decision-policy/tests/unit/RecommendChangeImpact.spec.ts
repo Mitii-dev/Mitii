@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   isBroadSharedScopeRepair,
+  isConcreteLocalizedMutationAsk,
   shouldRecommendChangeImpact,
 } from "../../actions/ClassifySharedScopeRepair";
 import { createUnderstanding } from "../fixtures/decisionCases";
@@ -233,5 +234,18 @@ describe("resolvePlanningDepth change-impact recommend", () => {
 
     expect(result.planningDepth).toBe("none");
     expect(result.reasonCodes).toContain("change_impact_recommended");
+  });
+});
+
+describe("isConcreteLocalizedMutationAsk (Phase 4)", () => {
+  it("detects short nav/label change-to asks", () => {
+    expect(isConcreteLocalizedMutationAsk("Change the nav label to Docs")).toBe(
+      true,
+    );
+    expect(isConcreteLocalizedMutationAsk("Rename the button to Save")).toBe(
+      true,
+    );
+    expect(isConcreteLocalizedMutationAsk("fix it")).toBe(false);
+    expect(isConcreteLocalizedMutationAsk("make it better")).toBe(false);
   });
 });

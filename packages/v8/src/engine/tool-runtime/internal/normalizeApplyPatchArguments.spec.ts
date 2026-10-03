@@ -50,13 +50,18 @@ describe("normalizeApplyPatchArguments", () => {
     expect(normalizeApplyPatchArguments(input)).toEqual(input);
   });
 
-  it("rewrites github/workflows paths to .github/workflows", () => {
+  it("rewrites github/… paths to .github/…", () => {
     const normalized = normalizeApplyPatchArguments({
       patches: [
         {
           path: "github/workflows/ci.yml",
           oldText: "on: push",
           newText: "on: [push, pull_request]",
+        },
+        {
+          path: "github/CODEOWNERS",
+          oldText: "* @team",
+          newText: "* @owners",
         },
       ],
     });
@@ -66,6 +71,11 @@ describe("normalizeApplyPatchArguments", () => {
           path: ".github/workflows/ci.yml",
           oldText: "on: push",
           newText: "on: [push, pull_request]",
+        },
+        {
+          path: ".github/CODEOWNERS",
+          oldText: "* @team",
+          newText: "* @owners",
         },
       ],
     });

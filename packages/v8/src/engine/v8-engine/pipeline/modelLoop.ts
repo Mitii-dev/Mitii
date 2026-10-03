@@ -66,7 +66,6 @@ import {
   unfulfilledExecuteNudgeMessage,
 } from "../actions/mutationNudge";
 import {
-  buildEvidenceClarifyMessage,
   buildEvidenceRecoveryMessage,
   buildStepEvidenceGateMessage,
   buildStepPatchRequiredMessage,
@@ -76,8 +75,19 @@ import {
   resolveMutateLockAllowTargetedReads,
   resolveMutateReadinessBudget,
   resolveStepReadonlyTurnsBeforeGate,
+  type MutateReadinessBudget,
 } from "../modules/mutate-readiness";
 import { isExecutionSeedTrusted } from "../modules/execution-seed";
+import {
+  bindBudgetConsumptionSnapshot,
+  buildEvidenceExhaustedTerminalOutcome,
+  shouldOfferContinueAfterEvidenceExhaustion,
+} from "../actions/resolveEvidenceTerminal";
+import {
+  isProviderInfrastructureFailure,
+  providerInfrastructureUserMessage,
+} from "../actions/resolveProviderInfrastructure";
+import { upsertLedgerEntry } from "../actions/runEvidence";
 import { runV8MutationCritic } from "../actions/mutationCritic";
 import {
   buildRejectedMutationRecoveryMessage,
@@ -114,6 +124,65 @@ function pickV8ThresholdOverrides(
     }
   }
   return Object.keys(next).length > 0 ? next : undefined;
+}
+
+/** Phase 3: bind+recovery spent → hard STOP (no Continue rediscovery). */
+function finishEvidenceRailExhausted(params: {
+  reason: "recovery_exhausted" | "miss_not_local";
+  reasonCodes: AgentReasonCode[];
+  warnings: string[];
+  runtime: AgentEngineRuntime;
+  bus: EventBus;
+  runId: string;
+  evidence: RunEvidence | undefined;
+  budget: MutateReadinessBudget;
+  nudgesUsed: number;
+  recoveryUsed: boolean;
+  readonlyTurnsOnStep: number;
+}): ToolLoopOutcome {
+  const terminal = buildEvidenceExhaustedTerminalOutcome({
+    reason: params.reason,
+  });
+  params.reasonCodes.push(...terminal.reasonCodesToPush);
+  // Policy lock: Continue after exhaustion is illegal.
+  void shouldOfferContinueAfterEvidenceExhaustion();
+  const snapshot = bindBudgetConsumptionSnapshot({
+    maxTurns: params.budget.readonlyTurnsBeforeGate,
+    maxPaths: params.budget.maxEvidencePaths,
+    maxNudges: params.budget.maxEvidenceGateNudgesBeforePatchDemand,
+    recoveryTurns: params.budget.evidenceRecoveryTurns,
+    recoveryPaths: params.budget.evidenceRecoveryMaxPaths,
+    nudgesUsed: params.nudgesUsed,
+    recoveryUsed: params.recoveryUsed,
+    readonlyTurnsOnStep: params.readonlyTurnsOnStep,
+  });
+  params.warnings.push(
+    `Bind budget exhausted (nudges=${snapshot.nudgesUsed}/${snapshot.maxNudges}, recoveryUsed=${String(snapshot.recoveryUsed)}).`,
+  );
+  params.runtime.emit(params.bus, {
+    type: "warning",
+    runId: params.runId,
+    message: "Bind/evidence budget exhausted — discovery rail terminal.",
+    code: "bind_budget_consumed",
+    data: snapshot,
+    at: params.runtime.isoNow(),
+  });
+  if (params.evidence) {
+    upsertLedgerEntry(params.evidence, {
+      id: "bind-budget-exhausted",
+      kind: "stop",
+      summary: `Bind budget exhausted: nudges ${String(snapshot.nudgesUsed)}/${String(snapshot.maxNudges)}, recovery=${String(snapshot.recoveryUsed)}`,
+      status: "evidence_exhausted",
+      paths: [],
+      issueIds: [],
+    });
+  }
+  return {
+    kind: "failed",
+    answer: terminal.answer,
+    extraReasons: terminal.extraReasons,
+    error: terminal.error,
+  };
 }
 
 export type V8ModelLoopParams = {
@@ -325,7 +394,8 @@ export async function runV8ModelLoop(
       | "exploration_stall"
       | "unfulfilled_execute"
       | "budget_exhausted"
-      | "evidence_clarify",
+      | "evidence_clarify"
+      | "provider_unavailable",
     partialAnswer: string,
   ): ToolLoopOutcome => {
     const offered = tryOfferBudgetWallContinue({
@@ -461,6 +531,22 @@ export async function runV8ModelLoop(
     }
     if (turn.kind === "failed") {
       reasonCodes.push("provider_failed");
+      // Phase 5: transport/provider outage → Continuable infrastructure wall.
+      if (
+        isProviderInfrastructureFailure({
+          errorCode: turn.errorCode,
+          errorMessage: turn.errorMessage,
+        })
+      ) {
+        reasonCodes.push("provider_infrastructure_unavailable");
+        const infraAnswer = providerInfrastructureUserMessage({
+          errorMessage: turn.errorMessage,
+        });
+        return offerContinue(
+          "provider_unavailable",
+          turn.content || answer || infraAnswer,
+        );
+      }
       return {
         kind: "failed",
         answer: turn.content || answer || undefined,
@@ -688,18 +774,22 @@ export async function runV8ModelLoop(
                   );
                 }
               } else {
-                reasonCodes.push(
-                  "evidence_recovery_exhausted",
-                  "readonly_thrash_continue",
-                );
-                return offerContinue(
-                  "evidence_clarify",
-                  buildEvidenceClarifyMessage(
+                return finishEvidenceRailExhausted({
+                  reason:
                     evidenceAction.reason === "recovery_exhausted"
-                      ? "Evidence recovery budget exhausted without enough_to_patch. Name the concrete file or stop — do not broaden search."
-                      : "Bind budget exhausted without identifiable local file evidence. Clarify the change surface (file path) before more reads or patches.",
-                  ),
-                );
+                      ? "recovery_exhausted"
+                      : "miss_not_local",
+                  reasonCodes,
+                  warnings,
+                  runtime,
+                  bus,
+                  runId,
+                  evidence,
+                  budget: mutateReadinessBudget,
+                  nudgesUsed: evidenceGateNudges,
+                  recoveryUsed: evidenceRecoveryUsed,
+                  readonlyTurnsOnStep: gateTurns,
+                });
               }
             } else {
               softMutationNudges += 1;
@@ -1084,21 +1174,23 @@ export async function runV8ModelLoop(
                 );
               }
             } else {
-              reasonCodes.push(
-                "evidence_recovery_exhausted",
-                "readonly_thrash_continue",
-              );
-              warnings.push(
-                "Evidence recovery exhausted; clarifying instead of unbounded search.",
-              );
-              return offerContinue(
-                "evidence_clarify",
-                buildEvidenceClarifyMessage(
+              return finishEvidenceRailExhausted({
+                reason:
                   evidenceAction.reason === "recovery_exhausted"
-                    ? "Evidence recovery budget exhausted without enough_to_patch. Name the concrete file or stop — do not broaden search."
-                    : "Bind budget exhausted without identifiable local file evidence. Clarify the change surface (file path) before more reads or patches.",
-                ),
-              );
+                    ? "recovery_exhausted"
+                    : "miss_not_local",
+                reasonCodes,
+                warnings,
+                runtime,
+                bus,
+                runId,
+                evidence,
+                budget: mutateReadinessBudget,
+                nudgesUsed: evidenceGateNudges,
+                recoveryUsed: evidenceRecoveryUsed,
+                readonlyTurnsOnStep:
+                  readonlyTurnsOnActiveStep || gateTurns,
+              });
             }
           } else {
             // PATCH_READY

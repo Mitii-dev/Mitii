@@ -491,7 +491,7 @@ test(
 );
 
 test(
-  "snapshot consistency guards drop stale repository intelligence and continue",
+  "snapshot consistency guards rebind stale repository intelligence and continue",
   async () => {
     const map: RepoMap = {
       schemaVersion:

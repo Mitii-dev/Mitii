@@ -1,11 +1,13 @@
 export {
   rulePriorSchema,
   sizeDraftSchema,
+  projectFingerprintSchema,
   understandingEvidencePackSchema,
 } from "./UnderstandingEvidencePack";
 export type {
   RulePrior,
   SizeDraft,
+  ProjectFingerprint,
   UnderstandingEvidencePack,
 } from "./UnderstandingEvidencePack";
 export {

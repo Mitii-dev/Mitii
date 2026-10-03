@@ -276,6 +276,8 @@ describe("mutateReadiness (per-step evidence → patch)", () => {
         reasonCodes: ["evidence_recovery_exhausted"],
       }),
     ).toBe(false);
+    // Phase 3: exhaustion sticky is owned by shouldStripDiscoveryAfterEvidenceExhaustion
+    // (resumeToolLoop ORs it so discovery stays stripped even when rearm is false).
     expect(
       shouldRearmMutateLockOnContinue({
         wallReason: "unfulfilled_execute",

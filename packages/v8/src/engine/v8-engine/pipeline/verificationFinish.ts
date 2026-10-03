@@ -20,23 +20,14 @@ import type {
   VerificationRecord,
   VerificationRecordStatus,
 } from "../../../modules/verification";
-import {
-  buildVerificationUserSummary,
-  formatOptionalLeftoverOffer,
-} from "../../../modules/verification";
 
 import {
-  isPrematurePartialExecuteStop,
-  isSyntheticCompletedEditsFallback,
-  requiresMutationForExecute,
   selectUserFacingLoopAnswer,
   markPlanEvidenceStepsDone,
   resolveLoopPolicyThresholds,
 } from "../actions";
-import { isClearMutationBlocker } from "../actions/isClearMutationBlocker";
 import {
   completePlanStepsFromDiagnostics,
-  hasIncompleteChangeSurfaces,
   markTaskListUpdated,
   planProgressOf,
   type TaskListRef,
@@ -66,16 +57,13 @@ import {
   runVerificationGate,
 } from "./verificationSupport";
 
-import {
-  suspendForBudgetWall,
-  type SuspendBudgetWallContext,
-} from "./verificationBudgetWall";
 import { finishIfApprovalRequired } from "./verificationFinishApproval";
 import {
   finishIfGrantExpansionRequired,
   finishIfContinueRequired,
 } from "./verificationFinishSuspend";
 import { handleVerificationFailed } from "./verificationFinishFailed";
+import { finishVerificationAccepted } from "./finishVerificationAccepted";
 
 export async function finishAfterLoop(
   runtime: AgentEngineRuntime,
@@ -159,36 +147,6 @@ export async function finishAfterLoop(
     contextWindowTokens: windowPolicy.contextWindowTokens,
     overrides: input.loopPolicy?.thresholds,
   }).thresholds;
-
-  const budgetWallCtxBase = (): Omit<SuspendBudgetWallContext, "decision" | "afterState"> => ({
-    runtime,
-    runId,
-    requestId,
-    input,
-    bus,
-    pinnedState,
-    reasonCodes,
-    warnings,
-    budget,
-    startedAtMs,
-    finish,
-    taskListRef,
-    repoBuildStateBefore,
-    repoBuildStateAfter: params.repoBuildStateAfter,
-    continueOverrideCount,
-    maxContinueOverrides: thresholds.maxContinueOverrides,
-    plan: params.loopContext?.plan,
-    executionSeed: params.loopContext?.executionSeed,
-  });
-  const suspendForBudgetWallLocal = async (
-    opts: Parameters<typeof suspendForBudgetWall>[1],
-    decision: ExecutionDecision,
-    afterState?: RepoBuildState,
-  ) =>
-    suspendForBudgetWall(
-      { ...budgetWallCtxBase(), decision, afterState },
-      opts,
-    );
 
   let currentOutcome = loopOutcome;
   // Authority may have been refreshed mid-loop (e.g. after approval or
@@ -465,102 +423,23 @@ export async function finishAfterLoop(
     }
 
     if (verificationOutcome.kind === "ok") {
-      if (repairAttempts > 0) {
-        reasonCodes.push("verification_repair_succeeded");
-      }
-      let userAnswer = selectUserFacingLoopAnswer({
-        loopAnswer,
-        changedFiles: loopChangedFiles,
-      });
-      const remaining =
-        verificationOutcome.comparison?.remainingErrorCount ?? 0;
-      const newCount = verificationOutcome.comparison?.newErrorCount ?? 0;
-      if (
-        remaining > 0 &&
-        newCount === 0 &&
-        loopChangedFiles.length > 0 &&
-        record
-      ) {
-        const leftover = buildVerificationUserSummary(record);
-        if (leftover.trim()) {
-          userAnswer = `${userAnswer.trim()}\n\n${leftover.trim()}`;
-        }
-      } else if (
-        remaining > 0 &&
-        newCount === 0 &&
-        loopChangedFiles.length > 0
-      ) {
-        const leftover = formatOptionalLeftoverOffer({ remaining });
-        if (leftover.trim()) {
-          userAnswer = `${userAnswer.trim()}\n\n${leftover.trim()}`;
-        }
-      }
-      const answerForIncompleteCheck = userAnswer;
-      const clearBlocker = isClearMutationBlocker(answerForIncompleteCheck);
-      const mutationRequired = requiresMutationForExecute({
-        route: decision.route,
-        maximumWorkspaceEffect: decision.toolGrant.maximumWorkspaceEffect,
-        primaryTaskIntent:
-          params.loopContext?.understanding?.intent.classification
-            .primaryTaskIntent,
-        reasonCodes: decision.reasonCodes,
-        allowedTools: decision.toolGrant.allowedTools,
-      });
-      const checklistOpen = hasIncompleteChangeSurfaces(taskListRef.current);
-      // Mutate-or-fail: execute+write with zero landings is incomplete even
-      // when the checklist never materialized change-surface rows.
-      const incompleteExecute =
-        !clearBlocker &&
-        mutationRequired &&
-        (loopChangedFiles.length === 0 ||
-          (checklistOpen &&
-            (isPrematurePartialExecuteStop({
-              mutationRequired: true,
-              hasIncompleteChangeSurfaces: true,
-              content: answerForIncompleteCheck,
-              changedFileCount: loopChangedFiles.length,
-            }) ||
-              isSyntheticCompletedEditsFallback(answerForIncompleteCheck))));
-      if (incompleteExecute && currentOutcome.kind === "completed") {
-        const suspended = await suspendForBudgetWallLocal({
-          wallReason: "incomplete_checklist",
-          messages: currentOutcome.messages,
-          toolCache: currentOutcome.toolCache,
-          changedFiles: loopChangedFiles,
-          mutationCheckpointIds: loopMutationIds,
-          answer: userAnswer,
-          mutationRequired: true,
-        }, decision, afterState);
-        if (suspended) {
-          return suspended;
-        }
-        reasonCodes.push("stall_continue_override_capped");
-      }
-      await runtime.safeUnpin(runId, pinnedState);
-      if (incompleteExecute) {
-        reasonCodes.push("incomplete_execute", "answer_produced");
-        return finish({
-          status: "failed",
-          answer: userAnswer,
-          reasonCodes,
-          error: {
-            code: "incomplete_execute",
-            message:
-              "The execute run ended while change checklist surfaces were still open.",
-          },
-        });
-      }
-      const loopWasEmpty = !(loopAnswer?.trim());
-      const usedStockFallback =
-        loopWasEmpty &&
-        /I stopped without a complete final answer/i.test(userAnswer);
-      reasonCodes.push(
-        usedStockFallback ? "incomplete_answer_fallback" : "answer_produced",
-      );
-      return finish({
-        status: "completed",
-        answer: userAnswer,
+      // Phase 1: ACCEPTED = hard terminal. Never Continue/repair/rediscover.
+      return finishVerificationAccepted({
+        runtime,
+        runId,
+        pinnedState,
         reasonCodes,
+        repairAttempts,
+        loopAnswer,
+        loopChangedFiles,
+        record,
+        remainingErrorCount:
+          verificationOutcome.comparison?.remainingErrorCount ?? 0,
+        newErrorCount: verificationOutcome.comparison?.newErrorCount ?? 0,
+        decision,
+        understanding: params.loopContext?.understanding,
+        taskList: taskListRef.current,
+        finish,
       });
     }
 

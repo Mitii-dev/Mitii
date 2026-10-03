@@ -221,8 +221,10 @@ function isIgnorableResidualCheck(check: VerificationCheckResult): boolean {
 /**
  * Error diagnostics that look like real source defects under ask/changed paths.
  * Synthetic `<test>` assertion rows count when present (tests evidence path).
+ *
+ * Shared by assess + compare so NEW∩IN_SCOPE∩ACTIONABLE uses one rule.
  */
-function selectAskScopedDefects(
+export function selectAskScopedDefects(
   diagnostics: readonly VerificationDiagnostic[],
   scopePaths: readonly string[],
 ): VerificationDiagnostic[] {
@@ -247,12 +249,15 @@ function selectAskScopedDefects(
     if (scopePaths.length === 0) {
       return pathLooksLikeSource(path);
     }
-    return scopePaths.some(
-      (scope) =>
-        path === scope ||
-        path.startsWith(`${scope}/`) ||
-        scope.startsWith(`${path}/`),
-    );
+    const pathKey = path.toLowerCase();
+    return scopePaths.some((scope) => {
+      const scopeKey = scope.toLowerCase();
+      return (
+        pathKey === scopeKey ||
+        pathKey.startsWith(`${scopeKey}/`) ||
+        scopeKey.startsWith(`${pathKey}/`)
+      );
+    });
   };
 
   return errors.filter((diagnostic) => {

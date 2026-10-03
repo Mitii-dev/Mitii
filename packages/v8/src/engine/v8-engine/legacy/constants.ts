@@ -197,6 +197,11 @@ export const AGENT_REASON_CODES = [
   "evidence_recovery_armed",
   /** Recovery used or miss not local — clarify/escalate, no open search. */
   "evidence_recovery_exhausted",
+  /**
+   * Bind+recovery exhausted — hard STOP/REPORT (Phase 3 discovery rail).
+   * No evidence_clarify Continue that reopens discovery.
+   */
+  "evidence_recovery_exhausted_terminal",
   /** Authoritative paths/causes resolved from user cites and/or diagnostics. */
   "execution_seed_trusted",
   /** No authoritative seed yet — do not force patch-required. */
@@ -223,6 +228,16 @@ export const AGENT_REASON_CODES = [
   "verification_repair_batch_activated",
   /** First mutate loop stopped early so remaining model calls can repair. */
   "verification_repair_budget_reserved",
+  /**
+   * Gate accepted — run is hard-terminal (no Continue / repair / rediscover).
+   * Phase 1 execution reliability: ACCEPTED = STOP.
+   */
+  "verification_accepted_terminal",
+  /**
+   * Repair budget/stall/cap exhausted — STOP/REPORT without Continue wall.
+   * Explicit user retry may still use the durable verification record.
+   */
+  "verification_repair_exhausted_terminal",
   /** Post-mutation glob/read streak capped so verification can run. */
   "post_mutation_read_capped",
   "verification_skipped",
@@ -230,6 +245,12 @@ export const AGENT_REASON_CODES = [
   "cancelled",
   "budget_exhausted",
   "provider_failed",
+  /**
+   * Model transport/provider unreachable after gateway retries (Phase 5).
+   * Distinct from agent logic failure — hosts should show infrastructure UX
+   * and prefer Continue/resume over a bare agent-failed exit.
+   */
+  "provider_infrastructure_unavailable",
   "tool_failed",
   "misconfigured",
   "invalid_input",

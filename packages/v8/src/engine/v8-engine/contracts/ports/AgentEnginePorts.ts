@@ -192,6 +192,8 @@ export interface AgentEngineVerificationPort {
   compareBuildStates?(params: {
     before?: RepoBuildState;
     after: RepoBuildState;
+    askScopePaths?: readonly string[];
+    changedFiles?: readonly string[];
   }): RepoBuildStateComparison;
   persistRecord?(record: VerificationRecord): Promise<void>;
   loadRecord?(recordId: string): Promise<VerificationRecord | undefined>;

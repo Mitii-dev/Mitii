@@ -349,6 +349,24 @@ export type {
   ShouldContinueVerificationRepairInput,
   VerificationRepairStopReason,
 } from "./shouldContinueVerificationRepair";
+export {
+  shouldSuspendContinueAfterVerificationAccept,
+  shouldSuspendContinueAfterRepairExhausted,
+  isIllegalVerificationPhaseTransition,
+} from "./resolveVerificationTerminal";
+export type { VerificationFinishPhase } from "./resolveVerificationTerminal";
+export {
+  shouldOfferContinueAfterEvidenceExhaustion,
+  shouldStripDiscoveryAfterEvidenceExhaustion,
+  isIllegalEvidencePhaseTransition,
+  buildEvidenceExhaustedTerminalOutcome,
+  bindBudgetConsumptionSnapshot,
+} from "./resolveEvidenceTerminal";
+export type { EvidenceRailPhase } from "./resolveEvidenceTerminal";
+export {
+  isProviderInfrastructureFailure,
+  providerInfrastructureUserMessage,
+} from "./resolveProviderInfrastructure";
 export type {
   ResolveLoopTurnOutcome,
   ResolveLoopTurnOutcomeInput,

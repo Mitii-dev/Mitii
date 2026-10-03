@@ -60,11 +60,15 @@ export function applyRepoBuildStateComparisonReasonCodes(
     before: RepoBuildState | undefined;
     after: RepoBuildState;
     reasonCodes: AgentReasonCode[];
+    askScopePaths?: readonly string[];
+    changedFiles?: readonly string[];
   },
 ): RepoBuildStateComparison | undefined {
   const comparison = runtime.deps.verification?.compareBuildStates?.({
     before: params.before,
     after: params.after,
+    askScopePaths: params.askScopePaths,
+    changedFiles: params.changedFiles,
   });
   if (!comparison) {
     return undefined;
@@ -198,6 +202,8 @@ export async function runVerificationGate(
         before: repoBuildStateBefore,
         after: afterState,
         reasonCodes,
+        askScopePaths: params.askScopePaths,
+        changedFiles,
       });
     }
     recordVerificationEvidence(evidence, {

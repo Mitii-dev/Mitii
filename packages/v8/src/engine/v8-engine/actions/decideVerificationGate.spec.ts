@@ -527,6 +527,103 @@ describe("decideVerificationGate / isUserGoalComplete", () => {
     });
   });
 
+  it("accepts when only out-of-scope NEW errors exist (false-repair guard)", () => {
+    // Phase 2: workspace-wide NEW must not reopen repair when ask scope is clean.
+    const verification = baseVerification({
+      status: "verification_failed",
+      diagnostics: [
+        {
+          path: "packages/other/src/unrelated.ts",
+          severity: "error",
+          message: "Cannot find name 'x'.",
+          startLine: 1,
+        },
+      ],
+      checks: [
+        {
+          checkId: "inferred:apps/desktop:typecheck:typecheck",
+          kind: "typecheck",
+          projectId: "inferred:apps/desktop",
+          label: "desktop typecheck",
+          evidenceSource: "manifest",
+          outcome: "failed",
+          summary: "failed from unrelated package noise",
+        },
+      ],
+    });
+
+    expect(
+      decideVerificationGate({
+        verificationRequired: true,
+        allowUnavailable: false,
+        changedFileCount: 1,
+        canVerify: true,
+        verification,
+        // Scoped compare already dropped out-of-scope NEW.
+        comparison: comparison({
+          afterErrorCount: 0,
+          newErrorCount: 0,
+          remainingErrorCount: 0,
+          reasonCodes: [
+            "out_of_scope_residuals_ignored",
+            "checks_still_failing",
+          ],
+        }),
+        askScopePaths: ["apps/desktop/src/renderer/App.tsx"],
+        changedFiles: ["apps/desktop/src/renderer/App.tsx"],
+      }),
+    ).toEqual({
+      action: "accept",
+      acceptKind: "implemented_unverified",
+    });
+  });
+
+  it("rejects repairable on genuine in-scope NEW regression", () => {
+    const verification = baseVerification({
+      status: "verification_failed",
+      diagnostics: [
+        {
+          path: "apps/desktop/src/renderer/App.tsx",
+          severity: "error",
+          message: "Type '\"semantic\"' is not assignable",
+          startLine: 100,
+        },
+      ],
+      checks: [
+        {
+          checkId: "inferred:apps/desktop:typecheck:typecheck",
+          kind: "typecheck",
+          projectId: "inferred:apps/desktop",
+          label: "desktop typecheck",
+          evidenceSource: "manifest",
+          outcome: "failed",
+          summary: "failed",
+        },
+      ],
+    });
+
+    const decision = decideVerificationGate({
+      verificationRequired: true,
+      allowUnavailable: false,
+      changedFileCount: 1,
+      canVerify: true,
+      verification,
+      comparison: comparison({
+        afterErrorCount: 1,
+        newErrorCount: 1,
+        reasonCodes: ["new_errors_introduced", "checks_still_failing"],
+      }),
+      askScopePaths: ["apps/desktop/src/renderer/App.tsx"],
+      changedFiles: ["apps/desktop/src/renderer/App.tsx"],
+    });
+
+    expect(decision).toMatchObject({
+      action: "reject",
+      repairable: true,
+      rejectKind: "verification_failed",
+    });
+  });
+
   it("still rejects when ask-scoped diagnostics remain on changed files", () => {
     const verification = baseVerification({
       status: "verification_failed",

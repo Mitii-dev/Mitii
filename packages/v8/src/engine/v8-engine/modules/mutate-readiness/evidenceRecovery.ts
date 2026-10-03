@@ -78,6 +78,7 @@ export function buildEvidenceRecoveryMessage(params: {
 export function buildEvidenceClarifyMessage(rationale: string): string {
   return [
     rationale,
-    "Do not keep rediscovering. Prefer Continue with an explicit file path, or stop here.",
+    // weak_seed Continue only — recovery exhaustion is a hard terminal (Phase 3).
+    "Do not keep rediscovering. Continue only with an explicit file path, or stop here.",
   ].join("\n");
 }

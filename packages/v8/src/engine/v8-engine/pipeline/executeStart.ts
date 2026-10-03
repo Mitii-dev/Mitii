@@ -23,6 +23,7 @@ import {
   extractMemoryFileTargets,
   finalizeRunEvidence,
   formatExecutionSeedForPrompt,
+  isProviderInfrastructureFailure,
 } from "../actions";
 import { filterToolDefinitions } from "../actions/progressiveTools";
 import { withMcpAttachOnGrant, formatMcpAttachInstruction } from "../../../modules/mcp-attach";
@@ -631,12 +632,23 @@ export async function executeV8Start(
     if (signal.aborted) {
       return await cancelledResult();
     }
+    const message =
+      error instanceof Error ? error.message : "Agent run failed.";
+    const infrastructure = isProviderInfrastructureFailure({
+      errorMessage: message,
+    });
     return finish({
       status: "failed",
-      reasonCodes: [...reasonCodes, "provider_failed"],
+      reasonCodes: [
+        ...reasonCodes,
+        "provider_failed",
+        ...(infrastructure
+          ? (["provider_infrastructure_unavailable"] as const)
+          : []),
+      ],
       error: {
-        code: "execution_failed",
-        message: error instanceof Error ? error.message : "Agent run failed.",
+        code: infrastructure ? "provider_unavailable" : "execution_failed",
+        message,
       },
     });
   }

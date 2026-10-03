@@ -38,6 +38,36 @@ const MULTI_FAIL_PASTE =
   /(?:Failed Tests?\s+\d+|FAIL\s+\S+\.(?:test|spec)\.[jt]sx?\b|AssertionError)/i;
 
 /**
+ * Message-level detector for clear localized UI / copy mutations
+ * ("Change the nav label to Docs", "Rename the button to Save").
+ * Used by the clarify gate so soft Officer ambiguity cannot stall these asks.
+ */
+export function isConcreteLocalizedMutationAsk(message: string): boolean {
+  const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
+  if (text.length === 0) {
+    return false;
+  }
+  // change/set/rename/update/replace … to …
+  if (
+    /\b(?:change|set|rename|update|replace|switch)\b[\s\S]{0,80}\bto\b\s*["'`]?[\w][\w\s./-]{0,48}/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+  // UI surface + mutation verb (language-agnostic UI nouns).
+  if (
+    /\b(?:nav(?:igation|bar)?|menu(?:\s*item)?|label|button|link|title|heading|breadcrumb|tab(?:\s*label)?|placeholder|tooltip|caption)\b/i.test(
+      text,
+    ) &&
+    /\b(?:change|set|rename|update|replace|make|use|edit)\b/i.test(text)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Clear small UI / localized bugfix — package scope from a folder pin must
  * not escalate to broad_repair / change-impact. Explicit "fix all" phrasing
  * or multi-fail pastes still elevate.

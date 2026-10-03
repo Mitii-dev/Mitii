@@ -13,6 +13,10 @@ import {
 import type { DecisionReasonCode, ExecutionRoute } from "../contracts";
 import { DECISION_POLICY_THRESHOLDS } from "../policy";
 import {
+  isConcreteLocalizedMutationAsk,
+  isLocalizedSmallClearAsk,
+} from "./ClassifySharedScopeRepair";
+import {
   looksLikePastedTestFailureDump,
   looksLikeWorkspaceBugReport,
 } from "./LooksLikeWorkspaceBugReport";
@@ -566,6 +570,17 @@ function requiresClarification(
   const { intent, taskAnalysis } = understanding;
   const materialFork = isMaterialCapabilityFork(understanding, message);
 
+  // Phase 4: clear localized UI / "change X to Y" asks must not suspend on
+  // soft Officer ambiguity (nav-label / chip false-clarify class).
+  if (
+    mode === "agent" &&
+    !materialFork &&
+    (isConcreteLocalizedMutationAsk(message) ||
+      isLocalizedSmallClearAsk({ taskAnalysis, message }))
+  ) {
+    return false;
+  }
+
   // Agent mode: clear actionable mutation asks should execute even when
   // understanding marks soft ambiguity (avoids stalling "implement X" work).
   // Do NOT skip when alternatives fork read vs write (investigate vs fix),
@@ -673,12 +688,15 @@ function isMaterialCapabilityFork(
 
   // Medium/low confidence with an explicit clarify flag — ask instead of
   // collapsing to a tool-less answer or a guessed write grant. Skip when the
-  // user already named a concrete path target (benchmark / IDE file asks).
+  // user already named a concrete path / localized UI outcome.
   if (
     classification.confidence <
       DECISION_POLICY_THRESHOLDS.clarifyWhenFlaggedBelowConfidence
   ) {
-    if (hasExplicitMutationPathTarget(message)) {
+    if (
+      hasExplicitMutationPathTarget(message) ||
+      isConcreteLocalizedMutationAsk(message)
+    ) {
       return false;
     }
     return true;
@@ -718,6 +736,13 @@ function hasExplicitMutationPathTarget(message: string): boolean {
 /** Pronoun-only / tiny mutation asks that still need a target. */
 function isBareAmbiguousMutationAsk(message: string): boolean {
   const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
+  // Phase 4: short alone is not bare when the outcome/target is concrete.
+  if (
+    isConcreteLocalizedMutationAsk(text) ||
+    hasExplicitMutationPathTarget(text)
+  ) {
+    return false;
+  }
   if (text.length < 48) {
     return true;
   }

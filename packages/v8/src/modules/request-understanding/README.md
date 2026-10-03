@@ -33,7 +33,7 @@ request-understanding/
 
 - `RequestUnderstandingPipelineInput`: the `UserRequestEnvelope`.
 - `RequestUnderstandingResult`: `{ intent, taskAnalysis, evidence? }`.
-- `UnderstandingEvidencePack`: mode, turnKind, message stats, artifacts, images meta, MCP, skill tags, rulePriors, sizeDraft, optional history.
+- `UnderstandingEvidencePack`: mode, turnKind, message stats, artifacts, images meta, MCP, skill tags, rulePriors, sizeDraft, optional `projectFingerprint` (roots/extensions/scripts), optional history.
 - `intent`: Super Intent result with status, classification, scores, confidence margin, clarification, diagnostics (`officerFallback` when LLM failed).
 - `TaskAnalysis`: existing dimensions + `taskSize` (`small|medium|large`) + `planningHint` (`none|short|medium|long`).
 
