@@ -25,10 +25,28 @@ Legacy npm `@mitii/cli@2.7.x` is a different binary stack - prefer versions publ
 
 ```bash
 mitii --help                 # or: mitii -h
-mitii setup                  # pick provider + write .mitii/config.json
-export ANTHROPIC_API_KEY=...   # or GEMINI_ / OPENAI_ / MITII_API_KEY
+
+# Secrets via .env (auto-loaded) — never put keys in config.json
+cp .env.example .env         # or create .mitii/.env
+# edit ANTHROPIC_API_KEY / MITII_PROVIDER / MITII_MODEL / MITII_BASE_URL / MITII_CONTEXT_WINDOW
+
+mitii setup --provider anthropic --yes   # writes .mitii/config.json (no secrets)
+mitii doctor                 # config + keys + index + log paths
+mitii index                  # build workspace index
 mitii session                # dotted MITII banner + interactive loop
+
+# Useful:
+mitii paths                  # where config / index / logs live
+mitii profile list           # mode profiles (architect/code/ask/debug/…)
+mitii mcp list               # MCP servers from .mitii/mcp.json
+mitii recipe list            # built-in + project recipes
+mitii history list           # session logs under .mitii/logs
+mitii history usage          # last-run token summary
+mitii commit-message         # draft commit message from git
+mitii index --status         # check index health
 ```
+
+Docs: https://docs.mitii.dev/using/CLI/overview — workflows, MCP, environment, CI secrets, indexing, logs, profiles.
 
 Smoke without a live model:
 

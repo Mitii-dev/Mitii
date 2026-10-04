@@ -13,6 +13,7 @@ import {
   formatEnvironmentDetailsBlock,
   isDatabaseUiMode,
   loadModeProfiles,
+  resolveModeProfile,
   loadProjectRules,
   loadUserSafetyRules,
   loadWorkspaceHooks,
@@ -51,6 +52,7 @@ import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
 import { resolveCliSemanticIndexSettings } from './semanticIndex.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
 import type { ParsedCliArgs } from './parseCliArgs.js';
+import { openCliSessionLog } from './cliLog.js';
 
 export function resolveAskPrompt(
   parsed: ParsedCliArgs,
@@ -63,6 +65,7 @@ export function resolveAskPrompt(
   autoApproval?: 'approved' | 'denied';
   requiredSkillIds?: string[];
   attachments?: MitiiImageAttachment[];
+  profile?: string;
 } {
   let agent: MitiiAgentFile | undefined;
   if (parsed.agent) {
@@ -105,6 +108,7 @@ export function resolveAskPrompt(
     origin,
     autonomyPreset,
     autoApproval,
+    ...(parsed.profile ? { profile: parsed.profile } : {}),
     ...(requiredSkillIds.length > 0 ? { requiredSkillIds } : {}),
     ...(attachments.length > 0 ? { attachments } : {}),
   };
@@ -124,6 +128,7 @@ export async function resolveAskPromptWithRecipe(
   autoApproval?: 'approved' | 'denied';
   requiredSkillIds?: string[];
   attachments?: MitiiImageAttachment[];
+  profile?: string;
 }> {
   if (!parsed.recipe) {
     return resolveAskPrompt(parsed, cwd);
@@ -191,6 +196,7 @@ export async function resolveAskPromptWithRecipe(
     autonomyPreset,
     autoApproval,
     requiredSkillIds,
+    ...(parsed.profile ? { profile: parsed.profile } : {}),
     ...(attachments.length > 0 ? { attachments } : {}),
   };
 }
@@ -277,6 +283,8 @@ export async function runAsk(options: {
   mode?: AgentMode | 'database';
   origin?: UserRequestOrigin;
   autonomyPreset?: MitiiAutonomyPreset;
+  /** One-off profile slug; overrides `.mitii/modes.json` active for this run. */
+  profile?: string;
   requiredSkillIds?: string[];
   attachments?: MitiiImageAttachment[];
   conversation?: MitiiConversationMessage[];
@@ -298,10 +306,21 @@ export async function runAsk(options: {
   const origin = options.origin ?? 'user';
   const machineReadable =
     options.json === true || options.streamJson === true;
+  const sessionLog = openCliSessionLog(options.cwd, {
+    provider: ports.providerLabel,
+    mode: uiMode,
+    origin,
+    profile: options.profile,
+  });
   if (!machineReadable) {
     io.writeStderr(
-      `[mitii] provider=${ports.providerLabel} mode=${uiMode} origin=${origin}\n`,
+      `[mitii] provider=${ports.providerLabel} mode=${uiMode} origin=${origin}${
+        options.profile ? ` profile=${options.profile}` : ''
+      }\n`,
     );
+    if (sessionLog) {
+      io.writeStderr(`[mitii] log=${sessionLog.path}\n`);
+    }
   }
 
   // Each CLI invocation uses a fresh in-memory repository-state store.
@@ -318,13 +337,28 @@ export async function runAsk(options: {
     workspaceRoot: options.cwd,
   });
   const modeProfiles = loadModeProfiles(options.cwd);
+  const profileOverride = options.profile
+    ? resolveModeProfile(options.cwd, options.profile)
+    : undefined;
+  if (options.profile && !profileOverride) {
+    io.writeStderr(
+      `mitii: unknown --profile "${options.profile}". Run: mitii profile list\n`,
+    );
+    sessionLog?.write({
+      type: 'session_end',
+      exitCode: 2,
+      error: 'unknown_profile',
+    });
+    return { code: 2, mode: mapUiModeToAgentMode(uiMode) };
+  }
+  const activeProfile = profileOverride ?? modeProfiles.active;
   const databaseOverlay = isDatabaseUiMode(uiMode)
     ? resolveDatabaseModeStart({ workspaceRoot: options.cwd })
     : undefined;
   const compiledMode = databaseOverlay
     ? undefined
-    : modeProfiles.active
-      ? compileModeProfile(modeProfiles.active)
+    : activeProfile
+      ? compileModeProfile(activeProfile)
       : undefined;
   const mergedProjectRules = [
     ...projectRules,
@@ -462,6 +496,25 @@ export async function runAsk(options: {
     memoryCapture,
   });
   reportOutcome(io, machineReadable, outcome);
+  sessionLog?.write({
+    type: 'session_end',
+    exitCode: outcome.exitCode,
+    mode: effectiveMode,
+    usage: outcome.result?.usage
+      ? {
+          modelCalls: outcome.result.usage.modelCalls,
+          toolCalls: outcome.result.usage.toolCalls,
+          loopIterations: outcome.result.usage.loopIterations,
+          ...(typeof outcome.result.usage.inputTokens === 'number'
+            ? { inputTokens: outcome.result.usage.inputTokens }
+            : {}),
+          ...(typeof outcome.result.usage.outputTokens === 'number'
+            ? { outputTokens: outcome.result.usage.outputTokens }
+            : {}),
+          durationMs: outcome.result.durationMs,
+        }
+      : undefined,
+  });
   return { code: outcome.exitCode, mode: effectiveMode, outcome };
 }
 

@@ -452,6 +452,17 @@ export async function main(
   argv: string[] = process.argv,
   io?: SessionIo,
 ): Promise<number> {
+  // Resolve cwd early so dotenv files under --cwd are loaded before provider ports.
+  const earlyCwd = (() => {
+    const args = argv.slice(2);
+    for (let i = 0; i < args.length; i += 1) {
+      if (args[i] === '--cwd' && args[i + 1]) return args[i + 1]!;
+    }
+    return process.cwd();
+  })();
+  const { loadCliDotEnv } = await import('./loadDotEnv.js');
+  loadCliDotEnv(earlyCwd);
+
   const parsed = parseCliArgs(argv);
   const sessionIo = io ?? createDefaultSessionIo();
   const cwd = parsed.cwd ?? process.cwd();
@@ -505,6 +516,7 @@ export async function main(
         mode: resolved.mode,
         origin: resolved.origin,
         autonomyPreset: resolved.autonomyPreset,
+        profile: resolved.profile ?? parsed.profile,
         requiredSkillIds: resolved.requiredSkillIds,
         attachments: resolved.attachments,
         loopPolicyJson: parsed.loopPolicyJson,
@@ -512,6 +524,33 @@ export async function main(
         io: sessionIo,
       });
       return code;
+    }
+    case 'paths': {
+      const { runPathsCommand } = await import('./commands/paths.js');
+      return runPathsCommand({
+        cwd,
+        json: parsed.json === true,
+        doctor: false,
+        io: sessionIo,
+      });
+    }
+    case 'doctor': {
+      const { runPathsCommand } = await import('./commands/paths.js');
+      return runPathsCommand({
+        cwd,
+        json: parsed.json === true,
+        doctor: true,
+        io: sessionIo,
+      });
+    }
+    case 'profile': {
+      const { runProfileCommand } = await import('./commands/profile.js');
+      return runProfileCommand({
+        cwd,
+        args: parsed.rest,
+        json: parsed.json === true,
+        io: sessionIo,
+      });
     }
     case 'index':
       if (parsed.indexStatus === true) {
@@ -700,6 +739,24 @@ export async function main(
         cwd,
         json: parsed.json === true,
         forceEcho: parsed.forceEcho === true,
+        io: sessionIo,
+      });
+    }
+    case 'mcp': {
+      const { runMcpCommand } = await import('./commands/mcp.js');
+      return runMcpCommand({
+        cwd,
+        args: parsed.rest,
+        json: parsed.json === true,
+        io: sessionIo,
+      });
+    }
+    case 'history': {
+      const { runHistoryCommand } = await import('./commands/history.js');
+      return runHistoryCommand({
+        cwd,
+        args: parsed.rest,
+        json: parsed.json === true,
         io: sessionIo,
       });
     }

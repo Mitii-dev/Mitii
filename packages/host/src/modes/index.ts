@@ -28,6 +28,8 @@ export {
   loadModeProfiles,
   resolveModeProfile,
   parseModeProfile,
+  setActiveModeProfile,
+  initModeCatalog,
 } from "./loadModeProfiles.js";
 export type { LoadModeProfilesResult } from "./loadModeProfiles.js";
 

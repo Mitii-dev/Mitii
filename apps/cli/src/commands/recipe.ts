@@ -1,6 +1,10 @@
+import { existsSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+
 import type { SessionIo } from '../session.js';
 import { runAsk } from '../runAskCommand.js';
 import {
+  MITII_WRITING_RECIPES,
   compileRecipeToStartInput,
   isMitiiWritingRecipeId,
   loadRecipeSpec,
@@ -8,7 +12,7 @@ import {
 } from '@mitii/host';
 
 /**
- * `mitii recipe run <id> [--param k=v ...] [--preview] [note]`
+ * `mitii recipe list|show <id>|run <id> [--param k=v ...] [--preview] [note]`
  * Compiles RecipeSpec → MitiiStartInput fields; never widens ToolGrant.
  */
 export async function runRecipeCommand(params: {
@@ -20,9 +24,22 @@ export async function runRecipeCommand(params: {
 }): Promise<number> {
   const { args, cwd, json, forceEcho, io } = params;
   const [sub = '', ...rest] = args;
+
+  if (sub === 'list' || sub === 'ls') {
+    return listRecipes({ cwd, json: json === true, io });
+  }
+  if (sub === 'show') {
+    const idOrPath = rest.find((a) => !a.startsWith('-'));
+    if (!idOrPath) {
+      io.writeStderr('Usage: mitii recipe show <id|path>\n');
+      return 2;
+    }
+    return showRecipe({ cwd, idOrPath, json: json === true, io });
+  }
+
   if (sub !== 'run') {
     io.writeStderr(
-      'Usage: mitii recipe run <id|path> [--param key=value]... [--preview] [note]\n',
+      'Usage: mitii recipe list|show <id>|run <id|path> [--param key=value]... [--preview] [note]\n',
     );
     return 2;
   }
@@ -117,4 +134,78 @@ export async function runRecipeCommand(params: {
     origin: compiled.autonomyPreset ? 'automation' : 'user',
   });
   return code;
+}
+
+function listRecipes(options: {
+  cwd: string;
+  json: boolean;
+  io: SessionIo;
+}): number {
+  const dir = join(options.cwd, '.mitii', 'recipes');
+  const project: Array<{ id: string; path: string; source: 'project' }> = [];
+  if (existsSync(dir)) {
+    for (const name of readdirSync(dir)) {
+      if (!name.endsWith('.json')) continue;
+      const id = name.replace(/\.json$/, '');
+      project.push({ id, path: join(dir, name), source: 'project' });
+    }
+  }
+  const builtin = MITII_WRITING_RECIPES.map((r) => ({
+    id: r.id,
+    title: r.title,
+    skillId: r.skillId,
+    command: r.command,
+    source: 'builtin' as const,
+  }));
+
+  if (options.json) {
+    options.io.writeStdout(
+      `${JSON.stringify({ builtin, project, recipesDir: dir }, null, 2)}\n`,
+    );
+    return 0;
+  }
+
+  options.io.writeStdout('Built-in writing recipes\n');
+  for (const r of builtin) {
+    options.io.writeStdout(
+      `  ${r.id.padEnd(16)}  mitii ${r.command}  (skill ${r.skillId})\n`,
+    );
+  }
+  options.io.writeStdout(`\nProject recipes (.mitii/recipes/)\n`);
+  if (project.length === 0) {
+    options.io.writeStdout('  (none)\n');
+  } else {
+    for (const r of project) {
+      options.io.writeStdout(`  ${r.id.padEnd(16)}  ${r.path}\n`);
+    }
+  }
+  options.io.writeStdout(
+    '\nRun: mitii recipe run <id>   Show: mitii recipe show <id>   Preview: mitii recipe run <id> --preview\n',
+  );
+  return 0;
+}
+
+async function showRecipe(options: {
+  cwd: string;
+  idOrPath: string;
+  json: boolean;
+  io: SessionIo;
+}): Promise<number> {
+  try {
+    const spec = isMitiiWritingRecipeId(options.idOrPath)
+      ? writingRecipeToSpec(options.idOrPath)
+      : await loadRecipeSpec({
+          workspaceRoot: options.cwd,
+          idOrPath: options.idOrPath,
+        });
+    options.io.writeStdout(`${JSON.stringify(spec, null, 2)}\n`);
+    return 0;
+  } catch (error) {
+    options.io.writeStderr(
+      `mitii recipe show: ${
+        error instanceof Error ? error.message : String(error)
+      }\n`,
+    );
+    return 2;
+  }
 }

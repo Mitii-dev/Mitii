@@ -1,0 +1,60 @@
+# GitHub Actions — clear example of secrets + variables → Mitii env.
+# Copy to: .github/workflows/mitii-agent.yml
+#
+# Repository → Settings → Secrets and variables → Actions:
+#   Secret:  ANTHROPIC_API_KEY  (or OPENAI_API_KEY / GEMINI_API_KEY / MITII_API_KEY)
+#   Variable (optional): MITII_PROVIDER, MITII_MODEL, MITII_BASE_URL, MITII_CONTEXT_WINDOW
+#
+# Docs: https://docs.mitii.dev/using/CLI/ci-secrets
+
+name: Mitii agent (env secrets)
+
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: Task for Mitii
+        required: true
+        default: "List the top 3 risky files in this repo and explain why"
+
+permissions:
+  contents: read
+
+jobs:
+  mitii:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Mitii CLI
+        run: npm install -g @mitii/cli
+
+      # Provider/model in config (never put API keys in config.json)
+      - name: mitii setup
+        run: |
+          mitii setup \
+            --provider "${{ vars.MITII_PROVIDER || 'anthropic' }}" \
+            --model "${{ vars.MITII_MODEL || 'claude-sonnet-4-5' }}" \
+            --yes
+
+      - name: Index
+        run: mitii index
+
+      # Secrets/vars become process env — Mitii CLI reads them automatically
+      - name: Run agent
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MITII_API_KEY: ${{ secrets.MITII_API_KEY }}
+          MITII_PROVIDER: ${{ vars.MITII_PROVIDER }}
+          MITII_MODEL: ${{ vars.MITII_MODEL }}
+          MITII_BASE_URL: ${{ vars.MITII_BASE_URL }}
+          MITII_CONTEXT_WINDOW: ${{ vars.MITII_CONTEXT_WINDOW }}
+        run: |
+          mitii doctor
+          mitii run --auto "${{ inputs.prompt }}" --json
