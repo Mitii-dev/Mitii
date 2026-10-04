@@ -12,7 +12,9 @@ import * as readline from 'node:readline';
 
 import {
   observeRunToolEvent,
+  openSessionLog,
   type MemoryCaptureContext,
+  type SessionLogWriter,
 } from '@mitii/host';
 
 import { formatTaskList } from './runReport.js';
@@ -70,6 +72,16 @@ export interface SessionIo {
   onInterrupt?: (handler: () => void) => () => void;
 }
 
+export interface DriveRunSessionLogOptions {
+  workspaceRoot: string;
+  /** Prefer resolveMitiiCliPaths(cwd).logsDir so MITII_LOGS_PATH is honored. */
+  logsDir?: string;
+  /** Stable across interactive turns; defaults to start.sessionId / runId. */
+  sessionId?: string;
+  contextWindowTokens?: number;
+  maximumOutputTokens?: number;
+}
+
 export interface DriveRunOptions {
   client: MitiiClient;
   start: MitiiStartInput;
@@ -91,12 +103,19 @@ export interface DriveRunOptions {
   io: SessionIo;
   /** Optional host capture after mutating / failed tools. */
   memoryCapture?: MemoryCaptureContext;
+  /**
+   * Desktop/VS Code–parity live JSONL under `.mitii/logs/`.
+   * Omit or pass undefined to skip file logging (tests / machine-only pipes).
+   */
+  sessionLog?: DriveRunSessionLogOptions;
 }
 
 export interface DriveRunOutcome {
   exitCode: number;
   result: AgentRunResult;
   events: RunEvent[];
+  /** Path of the live session JSONL when sessionLog was enabled. */
+  sessionLogPath?: string;
 }
 
 export function createDefaultSessionIo(): SessionIo {
@@ -214,10 +233,12 @@ function streamEvents(
   events: RunEvent[],
   memoryCapture?: MemoryCaptureContext,
   userPrompt?: string,
+  sessionLog?: SessionLogWriter,
 ): Promise<void> {
   return (async () => {
     for await (const event of run.events) {
       events.push(event);
+      sessionLog?.appendEvent(event);
       if (memoryCapture) {
         await observeRunToolEvent({
           event,
@@ -397,65 +418,94 @@ export async function driveRun(
   const machineReadable = json || streamJson;
   const events: RunEvent[] = [];
   let run = options.client.start(options.start);
-  let result: AgentRunResult;
+  let result: AgentRunResult | undefined;
   let declinedSuspension = false;
 
-  for (;;) {
-    const unsubscribe = options.io.onInterrupt
-      ? options.io.onInterrupt(() => {
-          options.io.writeStderr('\n[mitii] cancelling…\n');
-          run.cancel('user_interrupted');
-        })
-      : () => undefined;
+  const logOpts = options.sessionLog;
+  const sessionLog = logOpts
+    ? openSessionLog(logOpts.workspaceRoot, {
+        at: new Date().toISOString(),
+        prompt: options.start.prompt,
+        mode: options.start.mode,
+        conversationCount: options.start.conversation?.length ?? 0,
+        sessionId: logOpts.sessionId ?? options.start.sessionId,
+        runId: run.runId,
+        logsDir: logOpts.logsDir,
+        contextWindowTokens: logOpts.contextWindowTokens,
+        maximumOutputTokens: logOpts.maximumOutputTokens,
+      })
+    : undefined;
+  if (sessionLog?.path && !machineReadable) {
+    options.io.writeStderr(`[mitii] log=${sessionLog.path}\n`);
+  }
 
-    try {
-      await streamEvents(
-        run,
-        options.io,
-        { json, streamJson },
-        events,
-        options.memoryCapture,
-        options.start.prompt,
-      );
-      result = await run.result;
-    } finally {
-      unsubscribe();
+  try {
+    for (;;) {
+      const unsubscribe = options.io.onInterrupt
+        ? options.io.onInterrupt(() => {
+            options.io.writeStderr('\n[mitii] cancelling…\n');
+            run.cancel('user_interrupted');
+          })
+        : () => undefined;
+
+      try {
+        await streamEvents(
+          run,
+          options.io,
+          { json, streamJson },
+          events,
+          options.memoryCapture,
+          options.start.prompt,
+          sessionLog,
+        );
+        result = await run.result;
+      } finally {
+        unsubscribe();
+      }
+
+      if (result.status !== 'suspended') {
+        break;
+      }
+
+      const suspensionKind = result.suspension?.kind;
+      const canAutoResolve =
+        (suspensionKind === 'clarification_required' &&
+          Boolean(options.autoClarify)) ||
+        (suspensionKind === 'approval_required' &&
+          Boolean(options.autoApproval)) ||
+        (suspensionKind === 'plan_approval_required' &&
+          Boolean(options.autoApproval)) ||
+        (suspensionKind === 'continue_required' &&
+          (Boolean(options.autoContinue) ||
+            options.autoApproval === 'approved' ||
+            options.autoApproval === 'denied'));
+
+      // Non-interactive JSON / stream-json: only auto-resume the suspension kind
+      // that has a matching flag. `--approve` must not open an interactive
+      // clarification prompt (benchmarks spawn with stdin ignored).
+      if (machineReadable && !canAutoResolve) {
+        break;
+      }
+
+      const next = await resolveSuspension(result, options);
+      if (next === 'cancel' || next === 'stop') {
+        declinedSuspension = next === 'cancel';
+        break;
+      }
+
+      if (!machineReadable) {
+        options.io.writeStderr('[mitii] resuming…\n');
+      }
+      run = options.client.resume(next);
     }
-
-    if (result.status !== 'suspended') {
-      break;
+  } finally {
+    if (sessionLog && result) {
+      sessionLog.finish(result);
     }
+  }
 
-    const suspensionKind = result.suspension?.kind;
-    const canAutoResolve =
-      (suspensionKind === 'clarification_required' &&
-        Boolean(options.autoClarify)) ||
-      (suspensionKind === 'approval_required' &&
-        Boolean(options.autoApproval)) ||
-      (suspensionKind === 'plan_approval_required' &&
-        Boolean(options.autoApproval)) ||
-      (suspensionKind === 'continue_required' &&
-        (Boolean(options.autoContinue) ||
-          options.autoApproval === 'approved' ||
-          options.autoApproval === 'denied'));
-
-    // Non-interactive JSON / stream-json: only auto-resume the suspension kind
-    // that has a matching flag. `--approve` must not open an interactive
-    // clarification prompt (benchmarks spawn with stdin ignored).
-    if (machineReadable && !canAutoResolve) {
-      break;
-    }
-
-    const next = await resolveSuspension(result, options);
-    if (next === 'cancel' || next === 'stop') {
-      declinedSuspension = next === 'cancel';
-      break;
-    }
-
-    if (!machineReadable) {
-      options.io.writeStderr('[mitii] resuming…\n');
-    }
-    run = options.client.resume(next);
+  if (!result) {
+    throw new Error('mitii: driveRun finished without a result');
   }
 
   if (streamJson) {
@@ -482,5 +532,6 @@ export async function driveRun(
     }),
     result,
     events,
+    ...(sessionLog?.path ? { sessionLogPath: sessionLog.path } : {}),
   };
 }

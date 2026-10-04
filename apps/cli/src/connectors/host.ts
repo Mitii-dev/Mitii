@@ -5,6 +5,10 @@ import type {
   TaskList,
 } from '@mitii/sdk';
 
+import {
+  isCliSessionLogEnabled,
+  resolveCliLogsDir,
+} from '../cliLog.js';
 import { loadMitiiHostConfig } from '../config.js';
 import { runFullWorkspaceIndex } from '../fullWorkspaceIndex.js';
 import { resolveCliLoopPolicyThresholds } from '../loopPolicy.js';
@@ -158,11 +162,25 @@ export async function runConnectorTurn(
       : {};
 
   const sessionIo = toSessionIo(options.io);
+  const threadSessionId = `thread_${options.adapterName}_${options.threadId}`
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .slice(0, 96);
+  const runCaps = ports.runLlm.capabilities;
+  const sessionLog = isCliSessionLogEnabled()
+    ? {
+        workspaceRoot: options.cwd,
+        logsDir: resolveCliLogsDir(options.cwd),
+        sessionId: threadSessionId,
+        contextWindowTokens: runCaps.contextWindowTokens,
+        maximumOutputTokens: runCaps.maximumOutputTokens,
+      }
+    : undefined;
   const outcome = await driveRun({
     client,
     start: {
       prompt: options.prompt,
       mode,
+      sessionId: threadSessionId,
       workspaceRoot: options.cwd,
       ...hostApproval,
       ...(projectRules.length > 0 ? { projectRules: [...projectRules] } : {}),
@@ -176,6 +194,7 @@ export async function runConnectorTurn(
     autoApproval,
     io: sessionIo,
     memoryCapture,
+    ...(sessionLog ? { sessionLog } : {}),
   });
 
   const next = nextCliSessionCarry({

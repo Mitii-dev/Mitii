@@ -6,6 +6,7 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 
+import { isCliSessionLogFileName } from '../cliLog.js';
 import { resolveMitiiCliPaths } from '../cliPaths.js';
 import type { SessionIo } from '../session.js';
 
@@ -19,7 +20,7 @@ interface LogEntry {
 function listCliLogs(logsDir: string): LogEntry[] {
   if (!existsSync(logsDir)) return [];
   return readdirSync(logsDir)
-    .filter((name) => name.startsWith('cli-') && name.endsWith('.jsonl'))
+    .filter((name) => isCliSessionLogFileName(name))
     .map((name) => {
       const path = join(logsDir, name);
       const st = statSync(path);
@@ -40,6 +41,31 @@ function readJsonl(path: string): Array<Record<string, unknown>> {
     }
   }
   return rows;
+}
+
+function extractUsage(rows: Array<Record<string, unknown>>): {
+  start?: Record<string, unknown>;
+  end?: Record<string, unknown>;
+  usage: Record<string, unknown> | null;
+  mode?: unknown;
+  exitCode?: unknown;
+  provider?: unknown;
+} {
+  const start =
+    rows.find((r) => r.kind === 'run_start') ??
+    rows.find((r) => r.type === 'session_start');
+  const end =
+    [...rows].reverse().find((r) => r.kind === 'run_end') ??
+    [...rows].reverse().find((r) => r.type === 'session_end');
+  const usage = (end?.usage ?? null) as Record<string, unknown> | null;
+  return {
+    start,
+    end,
+    usage,
+    mode: end?.mode ?? start?.mode,
+    exitCode: end?.exitCode ?? end?.status,
+    provider: start?.provider,
+  };
 }
 
 /**
@@ -80,7 +106,7 @@ export async function runHistoryCommand(options: {
     io.writeStdout(`Logs dir: ${logsDir}\n\n`);
     if (logs.length === 0) {
       io.writeStdout(
-        'No CLI session logs yet. Run mitii ask / session (MITII_CLI_LOG=0 disables logging).\n',
+        'No session logs yet. Run mitii ask / session (MITII_CLI_LOG=0 disables logging).\n',
       );
       return 0;
     }
@@ -92,7 +118,9 @@ export async function runHistoryCommand(options: {
     if (logs.length > 50) {
       io.writeStdout(`… +${logs.length - 50} more\n`);
     }
-    io.writeStdout('\nShow: mitii history show [cli-….jsonl|latest]\n');
+    io.writeStdout(
+      '\nShow: mitii history show [*-thread_….jsonl|latest]\n',
+    );
     return 0;
   }
 
@@ -135,15 +163,13 @@ export async function runHistoryCommand(options: {
       return 2;
     }
     const rows = readJsonl(entry.path);
-    const end = [...rows].reverse().find((r) => r.type === 'session_end');
-    const start = rows.find((r) => r.type === 'session_start');
-    const usage = (end?.usage ?? null) as Record<string, unknown> | null;
+    const extracted = extractUsage(rows);
     const payload = {
       path: entry.path,
-      provider: start?.provider,
-      mode: end?.mode ?? start?.mode,
-      exitCode: end?.exitCode,
-      usage,
+      provider: extracted.provider,
+      mode: extracted.mode,
+      exitCode: extracted.exitCode,
+      usage: extracted.usage,
       tip: 'Live runs also print: [mitii] usage models=… inTokens=… outTokens=…',
     };
     if (json) {
@@ -156,8 +182,8 @@ export async function runHistoryCommand(options: {
     if (payload.exitCode !== undefined) {
       io.writeStdout(`Exit: ${payload.exitCode}\n`);
     }
-    if (usage && typeof usage === 'object') {
-      const parts = Object.entries(usage)
+    if (extracted.usage && typeof extracted.usage === 'object') {
+      const parts = Object.entries(extracted.usage)
         .filter(([, v]) => v !== undefined && v !== null)
         .map(([k, v]) => `${k}=${v}`);
       io.writeStdout(`Usage: ${parts.join(' ')}\n`);

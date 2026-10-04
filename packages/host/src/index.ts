@@ -610,3 +610,24 @@ export type { HookSpec, LoadedHooks } from './hooks/workspaceHooks.js';
 
 export { createHeuristicAdversary } from './safety/heuristicAdversary.js';
 export type { HeuristicAdversaryOptions } from './safety/heuristicAdversary.js';
+
+// ---------------------------------------------------------------------------
+// Session log — Desktop/VS Code/CLI parity JSONL under .mitii/logs
+// ---------------------------------------------------------------------------
+export {
+  appendSessionLog,
+  createMitiiThreadSessionId,
+  findLatestSessionLog,
+  formatMitiiLogStamp,
+  MITII_LOG_STAMP_PREFIX,
+  openSessionLog,
+  resolveMitiiSessionLogsDir,
+  resolveSessionLogTextLimits,
+  writeSessionExport,
+} from './session-log/index.js';
+export type {
+  SessionLogAppend,
+  SessionLogOpenOptions,
+  SessionLogTextLimits,
+  SessionLogWriter,
+} from './session-log/index.js';

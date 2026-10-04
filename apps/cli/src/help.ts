@@ -158,13 +158,14 @@ Config (no secrets in git):
   .mitii/modes.json    Mode profiles (mitii profile use <slug>)
   .mitii/agents/*.md   Named agents (--agent)
   .mitii/safety.json   Optional tighten-only user rules (enabled:false by default)
-  .mitii/logs/         CLI session NDJSON logs (or MITII_LOGS_PATH)
+  .mitii/logs/         Full session JSONL (MM-DD-YYYY-HH-MM-thread_….jsonl)
+                       Same shape as Desktop/VS Code (or MITII_LOGS_PATH)
 
 Environment (common):
   MITII_PROVIDER / MITII_MODEL / MITII_BASE_URL / MITII_API_KEY
   MITII_CONTEXT_WINDOW             Explicit context window tokens
   MITII_LOGS_PATH                  Override log directory
-  MITII_CLI_LOG=0                  Disable writing .mitii/logs session files
+  MITII_CLI_LOG=0                  Disable .mitii/logs session JSONL (on by default)
   ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY
   SEARXNG_BASE_URL / MITII_SEARXNG_URL
   MITII_SANDBOX=1                  OS process sandbox (fail-closed)

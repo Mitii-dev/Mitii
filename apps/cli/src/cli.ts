@@ -39,6 +39,7 @@ import {
   resolveAskPromptWithRecipe,
 } from './runAskCommand.js';
 import { runReviewCommand } from './runReviewCommand.js';
+import { newCliThreadSessionId } from './cliLog.js';
 
 import { parseCliArgs } from './parseCliArgs.js';
 export { parseCliArgs, type ParsedCliArgs } from './parseCliArgs.js';
@@ -411,6 +412,7 @@ async function runSession(options: {
 
   let conversation: MitiiConversationMessage[] = [];
   let taskList: TaskList | undefined;
+  const sessionId = newCliThreadSessionId();
   try {
     for (;;) {
       const prompt = (await ask('mitii> ')).trim();
@@ -423,6 +425,7 @@ async function runSession(options: {
         mode: options.mode,
         conversation,
         taskList,
+        sessionId,
         loopPolicyJson: options.loopPolicyJson,
         noLoopPolicy: options.noLoopPolicy,
         io: options.io,

@@ -59,6 +59,7 @@ src/
   ports/                   # search, network (content-aware), memory, skills, checkpoints
   prompt/                  # project rules loader -> start({ projectRules })
   config/                  # provider presets (not a V8 port)
+  session-log/             # live .mitii/logs JSONL (Desktop/VS Code/CLI parity)
   internal/                # private helpers (not public)
 ```
 
@@ -86,6 +87,7 @@ Prefer importing from `@mitii/host`. Do not import `internal/`.
 | `createWorkspaceKnowledgeGraph` | V8 `KnowledgeGraphPort` | `.mitii/memory/graph.jsonl` (entities/relations beside facts) |
 | `createOptionalSearchPort` | V8 `SearchPort` | Multi-provider via `@mitii/search-kit` (SearXNG / Brave / Tavily). SecretStorage `mitii.search.apiKey` or env keys. |
 | `createHostNetworkPort` | V8 `NetworkPort` | Content-aware wrapper: SO / GitHub issues / Wiki / arXiv / HTML readability before raw HTTP. |
+| `openSessionLog` / `createMitiiThreadSessionId` | Host session JSONL | Live `.mitii/logs/MM-DD-YYYY-HH-MM-thread_….jsonl` (CLI / Desktop / VS Code parity) |
 | `createFileSystemSkillsCatalog` | V8 `SkillsCatalogPort` | SDK bundled `skills/` + `.mitii/skills` |
 | `buildWritingRecipeAsk` | Host recipes | Force-attach commit / PR / changelog skills + git context |
 | `buildFixReviewFindingsAsk` | Host recipes | Compile review findings → Agent prompt + `fix-review-findings` skill (no ToolGrant) |
