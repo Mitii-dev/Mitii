@@ -69,7 +69,9 @@ mitii -v                     # or: mitii --version / mitii version
 ## Quick start
 
 ```bash
-mitii ask "What is recursion?" --echo
+mitii ask --prompt "What is recursion?" --echo
+mitii plan --prompt "Outline the auth flow" --echo
+mitii agent --prompt "Add a healthcheck route" --approve --echo
 mitii run --auto "run tests and fix failures" --echo
 mitii index
 mitii index --status --json
@@ -83,7 +85,9 @@ mitii export-session "Summarize this repo" --out session.json --echo
 | Command | Behavior |
 |---|---|
 | `setup` | Interactive (or flag-driven) model/provider setup |
-| `ask <prompt>` | SDK ask with streaming, cancel, clarify/approve |
+| `ask <prompt>` / `ask --prompt "…"` | One-shot run (ask mode / config `defaultMode`) |
+| `plan --prompt "…"` | One-shot plan mode (read-only; no file edits) |
+| `agent --prompt "…"` | One-shot agent mode (edit + tools; add `--autonomy apply` for CI) |
 | `commit-message` | Draft commit message (auto-attaches `git-commit-message`) |
 | `pr-summary` | Draft PR body (auto-attaches `git-pr-summary`) |
 | `changelog` | Draft Keep a Changelog entry (auto-attaches `release-changelog`) |
@@ -395,13 +399,13 @@ Safe to delete `*.threads.json` to reset history. Tokens are **not** written to 
 
 ### Modes
 
-| Mode | Behavior |
-|---|---|
-| `ask` | Q&A / explain (default) |
-| `plan` | Read-only plan; no file edits |
-| `agent` | Edit + verify with approvals |
+| Mode | Behavior | Verb command |
+|---|---|---|
+| `ask` | Q&A / explain (default) | `mitii ask --prompt "…"` |
+| `plan` | Read-only plan; no file edits | `mitii plan --prompt "…"` |
+| `agent` | Edit + verify with approvals | `mitii agent --prompt "…"` |
 
-Set with `--mode <mode>` or `defaultMode` in config.
+Set with a verb command, `--mode <mode>`, or `defaultMode` in config. Positional prompts still work (`mitii ask "…"`).
 
 ### Common options
 
@@ -420,6 +424,7 @@ Set with `--mode <mode>` or `defaultMode` in config.
 | `--origin <o>` | `user` \| `automation` \| `api` (unattended policy) |
 | `--autonomy <a>` | `readonly` \| `propose` \| `apply` \| `apply_and_pr` |
 | `--agent <id\|path>` | Load `.mitii/agents/<id>.md` or a markdown path |
+| `--prompt <text>` | Prompt text (alternative to positional prompt) |
 | `--prompt-file <path>` | Prompt from file (`-` = stdin) |
 | `--loop-policy-json <json>` | Lab: one-off threshold overrides for this run |
 | `--no-loop-policy` | Ignore config `loopPolicy` for this run |

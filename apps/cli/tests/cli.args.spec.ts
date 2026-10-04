@@ -74,6 +74,64 @@ describe('CLI parseCliArgs', () => {
     expect(parsed.forceEcho).toBe(true);
   });
 
+  it('parses --prompt on ask / plan / agent mode verbs', () => {
+    const ask = parseCliArgs([
+      'node',
+      'mitii',
+      'ask',
+      '--prompt',
+      'What is recursion?',
+      '--echo',
+    ]);
+    expect(ask.command).toBe('ask');
+    expect(ask.prompt).toBe('What is recursion?');
+
+    const plan = parseCliArgs([
+      'node',
+      'mitii',
+      'plan',
+      '--prompt',
+      'Outline the auth flow',
+      '--cwd',
+      '/tmp/ws',
+    ]);
+    expect(plan.command).toBe('plan');
+    expect(plan.mode).toBe('plan');
+    expect(plan.prompt).toBe('Outline the auth flow');
+    expect(plan.cwd).toBe('/tmp/ws');
+
+    const agent = parseCliArgs([
+      'node',
+      'mitii',
+      'agent',
+      '--prompt',
+      'Add a healthcheck route',
+      '--autonomy',
+      'apply',
+      '--origin',
+      'automation',
+    ]);
+    expect(agent.command).toBe('agent');
+    expect(agent.mode).toBe('agent');
+    expect(agent.prompt).toBe('Add a healthcheck route');
+    expect(agent.autonomyPreset).toBe('apply');
+    expect(agent.origin).toBe('automation');
+  });
+
+  it('keeps positional prompt and allows --mode override on agent', () => {
+    const parsed = parseCliArgs([
+      'node',
+      'mitii',
+      'agent',
+      'fix the tests',
+      '--mode',
+      'ask',
+    ]);
+    expect(parsed.command).toBe('agent');
+    expect(parsed.prompt).toBe('fix the tests');
+    expect(parsed.mode).toBe('ask');
+  });
+
   it('parses --stream-json on ask', () => {
     const parsed = parseCliArgs([
       'node',

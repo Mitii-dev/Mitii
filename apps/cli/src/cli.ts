@@ -475,6 +475,8 @@ export async function main(
       sessionIo.writeStdout(`${readPackageVersion()}\n`);
       return 0;
     case 'ask':
+    case 'plan':
+    case 'agent':
     case 'run':
     case 'commit-message':
     case 'pr-summary':
