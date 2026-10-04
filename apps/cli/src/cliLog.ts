@@ -1,38 +1,47 @@
-import { appendFileSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import {
+  createMitiiThreadSessionId,
+  MITII_LOG_STAMP_PREFIX,
+} from '@mitii/host';
 
 import { resolveMitiiCliPaths } from './cliPaths.js';
 
-export interface CliSessionLogHandle {
-  path: string;
-  write: (event: Record<string, unknown>) => void;
-}
+export type CliSessionLogMode = 'off' | 'full';
 
 /**
- * CLI session logs (NDJSON) under .mitii/logs or MITII_LOGS_PATH.
- * Disabled when MITII_CLI_LOG=0.
+ * CLI session logging mode.
+ *
+ * - unset / `1` / `true` / `full` → Desktop/VS Code–parity thread JSONL (default)
+ * - `0` / `false` / `off` / `none` → disabled
  */
-export function openCliSessionLog(
-  cwd: string,
-  meta: Record<string, unknown> = {},
-): CliSessionLogHandle | null {
-  const disabled =
-    process.env.MITII_CLI_LOG === '0' || process.env.MITII_CLI_LOG === 'false';
-  if (disabled) return null;
+export function resolveCliSessionLogMode(
+  env: NodeJS.ProcessEnv = process.env,
+): CliSessionLogMode {
+  const raw = env.MITII_CLI_LOG?.trim().toLowerCase();
+  if (raw === '0' || raw === 'false' || raw === 'off' || raw === 'none') {
+    return 'off';
+  }
+  return 'full';
+}
 
-  const { logsDir } = resolveMitiiCliPaths(cwd);
-  mkdirSync(logsDir, { recursive: true });
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const path = join(logsDir, `cli-${stamp}.jsonl`);
+export function isCliSessionLogEnabled(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return resolveCliSessionLogMode(env) === 'full';
+}
 
-  const write = (event: Record<string, unknown>) => {
-    const line = JSON.stringify({
-      ts: new Date().toISOString(),
-      ...event,
-    });
-    appendFileSync(path, `${line}\n`, 'utf8');
-  };
+export function newCliThreadSessionId(): string {
+  return createMitiiThreadSessionId();
+}
 
-  write({ type: 'session_start', cwd, ...meta });
-  return { path, write };
+export function resolveCliLogsDir(cwd: string): string {
+  return resolveMitiiCliPaths(cwd).logsDir;
+}
+
+/** Session JSONL names written by host openSessionLog (and legacy cli-*.jsonl). */
+export function isCliSessionLogFileName(name: string): boolean {
+  if (!name.endsWith('.jsonl') || name.endsWith('-model-io.jsonl')) {
+    return false;
+  }
+  if (name.startsWith('cli-')) return true;
+  return MITII_LOG_STAMP_PREFIX.test(name);
 }

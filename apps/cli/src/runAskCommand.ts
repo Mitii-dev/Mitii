@@ -52,7 +52,11 @@ import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
 import { resolveCliSemanticIndexSettings } from './semanticIndex.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
 import type { ParsedCliArgs } from './parseCliArgs.js';
-import { openCliSessionLog } from './cliLog.js';
+import {
+  isCliSessionLogEnabled,
+  newCliThreadSessionId,
+  resolveCliLogsDir,
+} from './cliLog.js';
 
 export function resolveAskPrompt(
   parsed: ParsedCliArgs,
@@ -289,6 +293,8 @@ export async function runAsk(options: {
   attachments?: MitiiImageAttachment[];
   conversation?: MitiiConversationMessage[];
   taskList?: TaskList;
+  /** Stable thread id for interactive session log continuity. */
+  sessionId?: string;
   loopPolicyJson?: string;
   noLoopPolicy?: boolean;
   io?: SessionIo;
@@ -306,21 +312,23 @@ export async function runAsk(options: {
   const origin = options.origin ?? 'user';
   const machineReadable =
     options.json === true || options.streamJson === true;
-  const sessionLog = openCliSessionLog(options.cwd, {
-    provider: ports.providerLabel,
-    mode: uiMode,
-    origin,
-    profile: options.profile,
-  });
+  const threadSessionId = options.sessionId ?? newCliThreadSessionId();
+  const runCaps = ports.runLlm.capabilities;
+  const fullSessionLog = isCliSessionLogEnabled()
+    ? {
+        workspaceRoot: options.cwd,
+        logsDir: resolveCliLogsDir(options.cwd),
+        sessionId: threadSessionId,
+        contextWindowTokens: runCaps.contextWindowTokens,
+        maximumOutputTokens: runCaps.maximumOutputTokens,
+      }
+    : undefined;
   if (!machineReadable) {
     io.writeStderr(
       `[mitii] provider=${ports.providerLabel} mode=${uiMode} origin=${origin}${
         options.profile ? ` profile=${options.profile}` : ''
       }\n`,
     );
-    if (sessionLog) {
-      io.writeStderr(`[mitii] log=${sessionLog.path}\n`);
-    }
   }
 
   // Each CLI invocation uses a fresh in-memory repository-state store.
@@ -344,11 +352,6 @@ export async function runAsk(options: {
     io.writeStderr(
       `mitii: unknown --profile "${options.profile}". Run: mitii profile list\n`,
     );
-    sessionLog?.write({
-      type: 'session_end',
-      exitCode: 2,
-      error: 'unknown_profile',
-    });
     return { code: 2, mode: mapUiModeToAgentMode(uiMode) };
   }
   const activeProfile = profileOverride ?? modeProfiles.active;
@@ -458,6 +461,7 @@ export async function runAsk(options: {
       prompt: options.prompt,
       mode: effectiveMode,
       origin,
+      sessionId: threadSessionId,
       ...(options.autonomyPreset
         ? { autonomyPreset: options.autonomyPreset }
         : {}),
@@ -494,27 +498,9 @@ export async function runAsk(options: {
     autoApproval: options.autoApproval,
     io,
     memoryCapture,
+    ...(fullSessionLog ? { sessionLog: fullSessionLog } : {}),
   });
   reportOutcome(io, machineReadable, outcome);
-  sessionLog?.write({
-    type: 'session_end',
-    exitCode: outcome.exitCode,
-    mode: effectiveMode,
-    usage: outcome.result?.usage
-      ? {
-          modelCalls: outcome.result.usage.modelCalls,
-          toolCalls: outcome.result.usage.toolCalls,
-          loopIterations: outcome.result.usage.loopIterations,
-          ...(typeof outcome.result.usage.inputTokens === 'number'
-            ? { inputTokens: outcome.result.usage.inputTokens }
-            : {}),
-          ...(typeof outcome.result.usage.outputTokens === 'number'
-            ? { outputTokens: outcome.result.usage.outputTokens }
-            : {}),
-          durationMs: outcome.result.durationMs,
-        }
-      : undefined,
-  });
   return { code: outcome.exitCode, mode: effectiveMode, outcome };
 }
 

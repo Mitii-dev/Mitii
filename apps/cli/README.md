@@ -46,6 +46,17 @@ mitii commit-message         # draft commit message from git
 mitii index --status         # check index health
 ```
 
+### Session logs (Desktop / VS Code parity)
+
+By default the CLI writes live `MM-DD-YYYY-HH-MM-thread_….jsonl` files under `.mitii/logs/` (or `MITII_LOGS_PATH`) — same `run_start` / compacted events / `run_end` shape as Desktop and VS Code. Disable with `MITII_CLI_LOG=0`.
+
+```bash
+mitii ask "What is recursion?" --echo
+# stderr: [mitii] log=/…/.mitii/logs/10-04-2026-16-55-thread_….jsonl
+mitii history list
+mitii history show latest
+```
+
 Docs: https://docs.mitii.dev/using/CLI/overview — workflows, MCP, environment, CI secrets, indexing, logs, profiles.
 
 Smoke without a live model:
