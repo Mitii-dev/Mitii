@@ -40,7 +40,7 @@ Verification gathers evidence after a change. It maps changed files to projects,
 - Inspects diff/stale-state risk.
 - Returns final verification status and evidence.
 - Builds a durable `VerificationRecord` (before / after / comparison) that is stored outside the model transcript.
-- Produces a deterministic user summary from that record. An optional engine LLM narrative may wrap it; it must not replace the counts.
+- Produces a deterministic user summary from that record. An optional engine LLM narrative may wrap it; it must not replace the counts. Summary text claims "edits were kept" only when `changedFiles` is non-empty (blocked mutations must not look successful).
 - Optional engine LLM critique (`steering.verificationLlmCritique`) is advisory
   only after the evidence gate — APPROVE/REJECT keywords never flip
   `decideVerificationGate`.

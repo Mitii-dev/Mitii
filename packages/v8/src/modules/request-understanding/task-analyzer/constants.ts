@@ -82,15 +82,24 @@ const CONNECTOR_PATTERN =
 const ACTION_PATTERN =
   /\b(?:implement|build|create|add|fix|resolve|repair|migrate|refactor|rewrite|convert|integrate|configure|optimize|redesign|replace|remove|delete|update|generate|document|deploy|test|validate|install|upgrade|scaffold)\b/gi;
 
+/**
+ * Workspace-relative file cites. Rules that keep this generic:
+ * - Path segments may be hidden dirs (`.github/`), relative (`./`, `../`), or
+ *   drive-rooted (`C:/`).
+ * - Extension match must end at an identifier boundary so
+ *   `AppService.createUser` / `this.cartRepository` are not read as `*.c`.
+ * - Longer extensions win via SOURCE_FILE_EXTENSION_PATTERN sort order
+ *   (`cpp` before `c`, `tsx` before `ts`).
+ */
 const FILE_REFERENCE_PATTERN = new RegExp(
-  "[`'\"]?((?:(?:[a-zA-Z]:[\\\\/])|(?:\\.{0,2}[\\\\/])|(?:[a-zA-Z0-9_-]+[\\\\/]))*[a-zA-Z0-9_.-]+\\.(?:" +
+  "[`'\"]?((?:(?:[a-zA-Z]:[\\\\/])|(?:\\.{1,2}[\\\\/])|(?:\\.?[a-zA-Z0-9_-]+[\\\\/]))*[a-zA-Z0-9_.-]+\\.(?:" +
     SOURCE_FILE_EXTENSION_PATTERN +
-    "))[`'\"]?",
+    "))(?![A-Za-z0-9_$])[`'\"]?",
   "gi",
 );
 
 const FOLDER_REFERENCE_PATTERN =
-  /(?:^|[\s"'`])((?:\.{1,2}\/|[a-zA-Z0-9_-]+\/)(?:[a-zA-Z0-9_.-]+\/)+)(?=$|[\s"'`,.;:!?)\]}])/g;
+  /(?:^|[\s"'`])((?:\.{1,2}\/|\.?[a-zA-Z0-9_-]+\/)(?:\.?[a-zA-Z0-9_.-]+\/)+)(?=$|[\s"'`,.;:!?)\]}])/g;
 
 /**
  * Common first-segment workspace roots across languages and layouts.

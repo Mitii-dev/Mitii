@@ -1,0 +1,42 @@
+# Optional smoke against the sibling mitii-bench corpus (dry-run, no live model).
+# Skips automatically when mitii-bench is not checked out beside this repo.
+name: mitii-bench-smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 7 * * 1"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Mitii
+        uses: actions/checkout@v4
+      - name: Checkout mitii-bench
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/mitii-bench
+          path: mitii-bench
+        continue-on-error: true
+      - uses: pnpm/action-setup@v4
+        if: hashFiles('mitii-bench/package.json') != ''
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        if: hashFiles('mitii-bench/package.json') != ''
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: mitii-bench/pnpm-lock.yaml
+      - name: Dry-run smoke subset
+        if: hashFiles('mitii-bench/package.json') != ''
+        working-directory: mitii-bench
+        run: |
+          pnpm install
+          pnpm fixtures:install
+          pnpm case:validate
+          pnpm case:dry-run frontend-site-nav-pages@base-react-js
+      - name: Skip notice
+        if: hashFiles('mitii-bench/package.json') == ''
+        run: echo "mitii-bench repo not available for ${{ github.repository_owner }}/mitii-bench — skipping"

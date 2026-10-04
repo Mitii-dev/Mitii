@@ -528,7 +528,16 @@ export function looksLikeWorkspaceRootMutation(message: string): boolean {
 }
 
 function normalizeScopePath(value: string): string {
-  return value.replace(/\\/g, "/").replace(/^\.?\//, "").replace(/\/+$/, "") || ".";
+  let normalized =
+    value.replace(/\\/g, "/").replace(/^\.?\//, "").replace(/\/+$/, "") || ".";
+  // Same CI rewrite as tool-runtime: never grant a parallel `github/` tree.
+  if (/^github\//i.test(normalized) || normalized === "github") {
+    normalized =
+      normalized === "github"
+        ? ".github"
+        : `.github/${normalized.slice("github/".length)}`;
+  }
+  return normalized;
 }
 
 /** Intents that may honestly need live web evidence when SearchPort exists. */

@@ -43,6 +43,8 @@ describe("buildVerificationUserSummary", () => {
       status: "incomplete",
       before: buildState("before", ["src/a.ts", "src/c.ts"]),
       after: buildState("after", ["src/a.ts", "src/c.ts"]),
+      // Ask touched a.ts; c.ts remains as optional pre-existing outside the edit.
+      changedFiles: ["src/a.ts"],
     });
     const summary = buildVerificationUserSummary(record);
     expect(summary).toContain("no new regressions");
@@ -52,6 +54,21 @@ describe("buildVerificationUserSummary", () => {
     expect(summary).not.toContain("Verification did not go clean");
   });
 
+  it("does not claim edits were kept when no workspace files changed", () => {
+    const record = buildVerificationRecord({
+      runId: "run_1_blocked",
+      requestId: "req_1_blocked",
+      status: "incomplete",
+      before: buildState("before", ["src/a.ts", "src/c.ts"]),
+      after: buildState("after", ["src/a.ts", "src/c.ts"]),
+      changedFiles: [],
+    });
+    const summary = buildVerificationUserSummary(record);
+    expect(summary).toContain("No workspace edits were applied");
+    expect(summary).not.toContain("edits were kept");
+    expect(summary).not.toContain("no new regressions from this change");
+  });
+
   it("lists new regressions when this change introduced errors", () => {
     const record = buildVerificationRecord({
       runId: "run_1b",
@@ -59,6 +76,7 @@ describe("buildVerificationUserSummary", () => {
       status: "incomplete",
       before: buildState("before", ["src/a.ts"]),
       after: buildState("after", ["src/b.ts"]),
+      changedFiles: ["src/b.ts"],
     });
     const summary = buildVerificationUserSummary(record);
     expect(summary).toContain("new issues from this change");
@@ -74,9 +92,11 @@ describe("buildVerificationUserSummary", () => {
       status: "passed",
       before: buildState("before", ["src/a.ts"]),
       after: buildState("after", []),
+      changedFiles: ["src/a.ts"],
     });
     const summary = buildVerificationUserSummary(record);
     expect(summary).toContain("Verification passed");
     expect(summary).toContain("Cleared 1");
+    expect(summary).toContain("edits were kept");
   });
 });

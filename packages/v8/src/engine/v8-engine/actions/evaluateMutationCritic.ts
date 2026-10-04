@@ -1,5 +1,6 @@
 import type { DecisionBrief } from "../../../modules/decision-policy";
 import type { ExecutionDecision } from "../../../modules/decision-policy";
+import { normalizeRepoPath } from "../modules/tool-content-paths";
 import type { SteeringCriticMode } from "../legacy/steeringFlags";
 
 export const MUTATION_CRITIC_VERDICTS = [
@@ -72,12 +73,14 @@ export function evaluateMutationCritic(
     }
   }
 
-  const scopes = grant.mutationPathScopes?.length
-    ? grant.mutationPathScopes.map((s) => s.replace(/\\/g, "/"))
-    : grant.pathScopes.map((s) => s.replace(/\\/g, "/"));
+  const scopes = (
+    grant.mutationPathScopes?.length
+      ? grant.mutationPathScopes
+      : grant.pathScopes
+  ).map(normalizeRepoPath);
   const outOfScope: string[] = [];
   for (const raw of input.intendedPaths ?? []) {
-    const path = raw.replace(/\\/g, "/").replace(/^\.\//, "");
+    const path = normalizeRepoPath(raw);
     if (!path) continue;
     if (scopes.includes("**") || scopes.includes(".") || scopes.includes("./")) {
       continue;
@@ -99,11 +102,12 @@ export function evaluateMutationCritic(
     );
   }
 
+  // Same canonical form as tool-runtime patches (`github/` → `.github/`).
   const askScoped = (input.askScopedPaths ?? [])
-    .map((p) => p.replace(/\\/g, "/").replace(/^\.\//, ""))
+    .map(normalizeRepoPath)
     .filter((p) => p.length > 0);
   const intendedNormalized = (input.intendedPaths ?? [])
-    .map((p) => p.replace(/\\/g, "/").replace(/^\.\//, ""))
+    .map(normalizeRepoPath)
     .filter((p) => p.length > 0);
   if (askScoped.length > 0 && intendedNormalized.length > 0) {
     const matchesAsk = (path: string): boolean =>
@@ -163,7 +167,7 @@ export function evaluateMutationCritic(
   const narrowToPaths =
     verdict === "revise" && (input.intendedPaths?.length ?? 0) > 0
       ? (input.intendedPaths ?? [])
-          .map((p) => p.replace(/\\/g, "/").replace(/^\.\//, ""))
+          .map(normalizeRepoPath)
           .filter((p) => p.length > 0)
           .slice(0, 20)
       : undefined;
