@@ -138,4 +138,72 @@ describe("runV8MutationCritic", () => {
       true,
     );
   });
+
+  it("treats github/ and .github/ ask scopes as the same CI tree", () => {
+    const decisionWithDot = writeDecision();
+    decisionWithDot.toolGrant.pathScopes = [".github"];
+    decisionWithDot.toolGrant.mutationPathScopes = [".github"];
+
+    const pass = runV8MutationCritic({
+      decision: decisionWithDot,
+      toolCalls: [
+        {
+          id: "1",
+          name: "apply_patch",
+          arguments: {
+            patches: [
+              {
+                path: ".github/workflows/ci.yml",
+                oldText: "a",
+                newText: "b",
+              },
+            ],
+          },
+        },
+      ],
+      turnContent: "add workflow",
+      mode: "enforce",
+      brief: {
+        mission: "Add CI workflow.",
+        routeIntent: "Route=execute; effect=write",
+        mustDo: [],
+        mustNotDo: [],
+        evidenceNeeded: [],
+        verification: [],
+        openRisks: [],
+        authorityNote: "test",
+      },
+      understanding: {
+        intent: {
+          classification: {
+            primaryTaskIntent: "config",
+            interactionIntent: "act",
+          },
+        } as never,
+        taskAnalysis: {
+          scope: "single_location",
+          complexity: "simple",
+          risk: "low",
+          clarity: "clear",
+          targets: [
+            {
+              kind: "file",
+              value: "github/workflows/ci.yml",
+              explicit: true,
+            },
+          ],
+          constraints: [],
+          requestedOutcomes: [],
+          recommendsRepositoryDiscovery: false,
+          recommendsPlanning: false,
+          recommendsVerification: false,
+          recommendsTaskClarification: false,
+          taskSize: "small",
+          planningHint: "none",
+        },
+      },
+    });
+    expect(pass.kind).toBe("pass");
+    expect(pass.result.reasons).toEqual([]);
+  });
 });

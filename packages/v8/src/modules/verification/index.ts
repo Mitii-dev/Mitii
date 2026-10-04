@@ -90,7 +90,6 @@ export {
   projectLocalCompilePassed,
   selectAskScopedDefects,
   diagnosticIdentityKey,
-  recommendCompletion,
   compareRepoBuildStates,
 } from "./actions";
 export type {

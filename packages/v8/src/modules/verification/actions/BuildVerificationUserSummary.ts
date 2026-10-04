@@ -29,6 +29,7 @@ export function buildVerificationUserSummary(
   const cleared = comparison?.clearedErrorCount ?? 0;
   const remaining = comparison?.remainingErrorCount ?? afterErrors;
   const buckets = classifyDiagnostics(record.before, record.after);
+  const editsApplied = (record.changedFiles?.length ?? 0) > 0;
   const failedChecks = uniqueStrings([
     ...(record.after?.summary.failedCheckIds ?? []),
     ...(record.verification?.checks
@@ -44,7 +45,9 @@ export function buildVerificationUserSummary(
   if (record.status === "passed") {
     return clip(
       [
-        "Verification passed. The edits were kept.",
+        editsApplied
+          ? "Verification passed. The edits were kept."
+          : "Verification passed. No workspace edits were recorded for this change.",
         cleared > 0 ? `Cleared ${cleared} error(s).` : "No remaining errors.",
         newCount > 0 ? `Unexpected new errors: ${newCount}.` : undefined,
         remaining > 0
@@ -69,6 +72,24 @@ export function buildVerificationUserSummary(
       ]
         .filter((line): line is string => Boolean(line))
         .join(" "),
+    );
+  }
+
+  // No mutations landed — never claim edits were kept (critic/grant blocks).
+  if (!editsApplied) {
+    return clip(
+      [
+        "No workspace edits were applied. Verification baseline is unchanged.",
+        `Baseline: ${beforeErrors} error(s).`,
+        remaining > 0
+          ? formatOptionalLeftoverOffer({ remaining, sample: buckets.remaining })
+          : undefined,
+        record.retry
+          ? `Say "fix the remaining verification errors" to continue from this snapshot.`
+          : undefined,
+      ]
+        .filter((line): line is string => Boolean(line))
+        .join("\n"),
     );
   }
 

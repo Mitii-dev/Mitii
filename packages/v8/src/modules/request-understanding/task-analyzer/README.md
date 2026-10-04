@@ -38,6 +38,10 @@ task-analyzer/
 - `TaskAnalyzer.analyze` validates and normalizes the request.
 - LLM hints can be merged by the parent Request Understanding pipeline, but the analyzer remains useful without an LLM.
 - Explicit artifact paths are treated as stronger evidence than inferred paths.
+- File cites require an identifier boundary after the extension so
+  `Class.method` / `this.property` are not mistaken for `*.c` / short extensions.
+- Hidden dirs (`.github/…`) are kept with the leading dot; bare `github/…`
+  cites normalize to `.github/…` (same rule as tool-runtime).
 - Recommendations are not permissions; they are consumed by Decision Policy and Planning.
 
 ## Ownership Boundaries
