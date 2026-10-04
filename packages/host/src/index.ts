@@ -524,6 +524,8 @@ export {
   loadModeProfiles,
   resolveModeProfile,
   parseModeProfile,
+  setActiveModeProfile,
+  initModeCatalog,
   mergeUserSafetyRules,
   modeProfileSchema,
   modeCatalogSchema,

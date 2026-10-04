@@ -1,11 +1,12 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 import {
   BUILTIN_MODE_PROFILES,
   getBuiltinModeProfile,
 } from "./builtinModeProfiles.js";
 import {
+  MODE_PROFILE_SCHEMA_VERSION,
   modeCatalogSchema,
   modeProfileSchema,
   type ModeCatalog,
@@ -99,4 +100,65 @@ export const MODE_CATALOG_EXAMPLE: ModeCatalog = {
 export function parseModeProfile(raw: unknown): ModeProfile | undefined {
   const parsed = modeProfileSchema.safeParse(raw);
   return parsed.success ? parsed.data : undefined;
+}
+
+/**
+ * Set (or clear) the active mode profile slug in `.mitii/modes.json`.
+ * Creates the file from MODE_CATALOG_EXAMPLE when missing.
+ */
+export function setActiveModeProfile(
+  workspaceRoot: string,
+  slug: string | undefined,
+): { path: string; catalog: ModeCatalog } {
+  const path = join(workspaceRoot, ".mitii", MODE_CATALOG_FILENAME);
+  let catalog: ModeCatalog = {
+    schemaVersion: MODE_PROFILE_SCHEMA_VERSION,
+    modes: [],
+  };
+
+  if (existsSync(path)) {
+    try {
+      const raw = JSON.parse(readFileSync(path, "utf8")) as unknown;
+      const parsed = modeCatalogSchema.safeParse(raw);
+      if (parsed.success) catalog = parsed.data;
+    } catch {
+      // replace with empty catalog
+    }
+  }
+
+  if (slug !== undefined) {
+    const resolved =
+      catalog.modes.find((m) => m.slug === slug) ?? getBuiltinModeProfile(slug);
+    if (!resolved) {
+      throw new Error(
+        `Unknown mode profile "${slug}". Run: mitii profile list`,
+      );
+    }
+    catalog = { ...catalog, active: slug };
+  } else {
+    catalog = {
+      schemaVersion: MODE_PROFILE_SCHEMA_VERSION,
+      modes: catalog.modes,
+    };
+  }
+
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(catalog, null, 2)}\n`, "utf8");
+  return { path, catalog };
+}
+
+/** Write a starter `.mitii/modes.json` if absent. */
+export function initModeCatalog(workspaceRoot: string): {
+  path: string;
+  created: boolean;
+} {
+  const path = join(workspaceRoot, ".mitii", MODE_CATALOG_FILENAME);
+  if (existsSync(path)) return { path, created: false };
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(
+    path,
+    `${JSON.stringify(MODE_CATALOG_EXAMPLE, null, 2)}\n`,
+    "utf8",
+  );
+  return { path, created: true };
 }

@@ -1,0 +1,83 @@
+# Gitea / Forgejo Actions example — unattended Mitii agent run.
+# Copy to: .gitea/workflows/mitii-agent.yml  (or .forgejo/workflows/)
+#
+# Repo secrets / variables (Settings → Secrets and Variables):
+#   secrets.ANTHROPIC_API_KEY   (or OPENAI_API_KEY / GEMINI_API_KEY / MITII_API_KEY)
+#   vars.MITII_PROVIDER         optional, default anthropic
+#   vars.MITII_MODEL            optional
+#   vars.MITII_BASE_URL         optional (openai-compatible gateways)
+#
+# Docs: https://docs.mitii.dev/using/CLI/ci-secrets
+
+name: Mitii agent
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: Task for Mitii
+        required: false
+        default: "Summarize the latest commit and suggest one small improvement"
+
+jobs:
+  mitii:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Mitii CLI
+        run: npm install -g @mitii/cli
+
+      - name: Configure provider (no secrets in files)
+        run: |
+          mitii setup --provider "${MITII_PROVIDER:-anthropic}" \
+            ${MITII_MODEL:+--model "$MITII_MODEL"} \
+            ${MITII_BASE_URL:+--base-url "$MITII_BASE_URL"} \
+            --yes
+        env:
+          MITII_PROVIDER: ${{ vars.MITII_PROVIDER || 'anthropic' }}
+          MITII_MODEL: ${{ vars.MITII_MODEL }}
+          MITII_BASE_URL: ${{ vars.MITII_BASE_URL }}
+
+      - name: Index workspace
+        run: mitii index --cwd .
+
+      - name: Doctor (fail if no key / config)
+        run: mitii doctor --cwd .
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MITII_API_KEY: ${{ secrets.MITII_API_KEY }}
+          MITII_PROVIDER: ${{ vars.MITII_PROVIDER }}
+          MITII_MODEL: ${{ vars.MITII_MODEL }}
+          MITII_BASE_URL: ${{ vars.MITII_BASE_URL }}
+          MITII_CONTEXT_WINDOW: ${{ vars.MITII_CONTEXT_WINDOW }}
+
+      - name: Run Mitii (unattended)
+        run: |
+          PROMPT="${{ github.event.inputs.prompt }}"
+          if [ -z "$PROMPT" ]; then
+            PROMPT="Inspect the latest commit. Summarize risk and open a draft PR only if you made file changes."
+          fi
+          mitii run --auto "$PROMPT" --cwd . --json
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          MITII_API_KEY: ${{ secrets.MITII_API_KEY }}
+          MITII_PROVIDER: ${{ vars.MITII_PROVIDER }}
+          MITII_MODEL: ${{ vars.MITII_MODEL }}
+          MITII_BASE_URL: ${{ vars.MITII_BASE_URL }}
+          MITII_CONTEXT_WINDOW: ${{ vars.MITII_CONTEXT_WINDOW }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

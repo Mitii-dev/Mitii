@@ -5,6 +5,12 @@ Usage:
   mitii [--version | -v | version]
   mitii help
   mitii setup [--show] [--provider <id>] [--model <id>] [--test]
+  mitii doctor [--cwd <path>] [--json]
+  mitii paths [--cwd <path>] [--json]
+  mitii profile list|show|use <slug>|clear|init
+  mitii mcp list|tools [serverId]|path [--json]
+  mitii recipe list|show <id>|run <id> …
+  mitii history list|show|usage|path [--json]
   mitii ask <prompt> [options]
   mitii ask --agent <id|path> [options]
   mitii ask --prompt-file <path|-> [options]
@@ -26,13 +32,20 @@ Usage:
   mitii connect <channel> …
 
 First run:
-  1. mitii setup                 # pick provider + write .mitii/config.json
-  2. export ANTHROPIC_API_KEY=…  # (or GEMINI_ / OPENAI_ / MITII_API_KEY)
-  3. mitii session               # banner + interactive loop
+  1. Copy .env.example → .env (or .mitii/.env) and fill keys
+  2. mitii setup --provider anthropic --yes   # writes .mitii/config.json (no secrets)
+  3. mitii doctor                             # verify config / keys / index paths
+  4. mitii index && mitii session             # index workspace, then REPL
   Or smoke without a key:  mitii ask "ping" --echo
 
 Commands:
   setup            Interactive (or flag) model/provider setup
+  doctor           Check config, env keys, index, and log paths
+  paths            Print where config / index / logs live
+  profile          List / switch mode profiles (.mitii/modes.json)
+  mcp              List MCP servers/tools from .mitii/mcp.json
+  recipe           list|show|run parameterized RecipeSpec / writing recipes
+  history          List/show CLI session logs + last-run token usage
   ask <prompt>     One-shot agent run with streaming
   commit-message   Draft a commit message (auto-attaches git-commit-message)
   pr-summary       Draft a PR body (auto-attaches git-pr-summary)
@@ -53,7 +66,6 @@ Commands:
   status           Show latest persisted repository state + index pipeline health
   export-session   Run ask and write secret-free JSON export
   restore          Undo Agent file mutations to a RestorePoint (or --list)
-  recipe           Run a parameterized RecipeSpec (prompt/mode/skills only)
   memory           List/approve/reject pending auto-mined memories
   connect          Chat bridges (telegram / discord / slack)
   version / help   Version and usage
@@ -112,6 +124,7 @@ Options:
   --skill <id>       Force-attach a skill for this run (repeat up to 3 times)
   --recipe <id>      commit-message | pr-summary | changelog
   --agent <id|path>  Agent markdown under .mitii/agents/ or a path
+  --profile <slug>   One-off mode profile (architect|code|ask|debug|…)
   --prompt-file <p>  Prompt file path, or - for stdin
   --loop-policy-json <json>
                      Lab: one-off threshold overrides for this run
@@ -128,35 +141,31 @@ Options:
 Signals:
   SIGINT / SIGTERM   Cancel the active run via SDK run.cancel()
 
-Config (no secrets):
+Config (no secrets in git):
   .mitii/config.json or ~/.mitii/config.json
   Fields: provider, providerPreset, model, baseUrl, searxngBaseUrl, workspaceId,
-          defaultMode, loopPolicy (optional lab: { enabled, thresholds })
+          defaultMode, contextWindowTokens, embedding*, loopPolicy
   provider: echo | openai-compatible | anthropic | gemini
-  API keys never go in config files — use env vars
+  API keys NEVER go in config.json — use env / .env files
+  .env | .env.local | .mitii/.env | ~/.mitii/.env   (loaded automatically; shell wins)
+  .mitii/modes.json    Mode profiles (mitii profile use <slug>)
+  .mitii/agents/*.md   Named agents (--agent)
   .mitii/safety.json   Optional tighten-only user rules (enabled:false by default)
-  Permanent window bands live in @mitii/v8 policy/loopPolicyBands.ts
-  loopPolicy lab overrides merge after the band (same as VS Code Developer)
+  .mitii/logs/         CLI session NDJSON logs (or MITII_LOGS_PATH)
 
-Environment:
-  MITII_PROVIDER                   echo | openai-compatible | anthropic | gemini
-  MITII_MODEL / MITII_BASE_URL     Model id and API base URL
-  MITII_API_KEY                    Generic key (any provider)
+Environment (common):
+  MITII_PROVIDER / MITII_MODEL / MITII_BASE_URL / MITII_API_KEY
+  MITII_CONTEXT_WINDOW             Explicit context window tokens
+  MITII_LOGS_PATH                  Override log directory
+  MITII_CLI_LOG=0                  Disable writing .mitii/logs session files
+  ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY
   SEARXNG_BASE_URL / MITII_SEARXNG_URL
-                                   Free SearXNG for web_search (config searxngBaseUrl wins)
-  BRAVE_API_KEY / MITII_SEARCH_API_KEY / TAVILY_API_KEY
-                                   Optional paid search providers
-  MITII_TASK_LIST_AUTO_ADVANCE     Product default on; set to 0 to disable
-  MITII_SANDBOX=1                  Enable OS process sandbox (macOS/Linux; fail-closed)
-  MITII_SANDBOX_NETWORK=allow|deny Network for sandboxed children (default deny)
-  MITII_SANDBOX_IMAGE              Docker/Podman image (default alpine:3.20)
-  ANTHROPIC_API_KEY                Claude / Anthropic
-  GEMINI_API_KEY / GOOGLE_API_KEY  Gemini
-  OPENAI_API_KEY                   OpenAI-compatible (OpenAI, DeepSeek, …)
+  MITII_SANDBOX=1                  OS process sandbox (fail-closed)
+  See docs: Environment variables + CI secrets
 
 CI example:
-  mitii run --auto "run tests and fix failures" --echo
-  # or with a real provider + MITII_SANDBOX=1 for OS confinement
+  mitii run --auto "run tests and fix failures"
+  # map secrets → env in GitHub Actions / Gitea (see docs)
 
 Daemon/board UIs remain separate from interactive chat.
 Phase 1 automation: mitii schedule | mitii serve | mitii-daemon

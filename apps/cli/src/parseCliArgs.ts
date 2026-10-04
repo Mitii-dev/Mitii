@@ -26,6 +26,11 @@ export interface ParsedCliArgs {
     | 'pr-summary'
     | 'changelog'
     | 'review'
+    | 'paths'
+    | 'doctor'
+    | 'profile'
+    | 'mcp'
+    | 'history'
     | 'unknown'
     | 'error';
   prompt?: string;
@@ -42,6 +47,8 @@ export interface ParsedCliArgs {
   mode?: AgentMode | 'database';
   origin?: UserRequestOrigin;
   autonomyPreset?: MitiiAutonomyPreset;
+  /** One-off mode profile slug (`.mitii/modes.json` / builtins). */
+  profile?: string;
   /** Path or id for `.mitii/agents/<id>.md`. */
   agent?: string;
   /** Explicitly attach skill ids for this run (repeatable). */
@@ -106,6 +113,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   let origin: UserRequestOrigin | undefined;
   let autonomyPreset: MitiiAutonomyPreset | undefined;
   let agent: string | undefined;
+  let profile: string | undefined;
   let promptFile: string | undefined;
   let recipe: string | undefined;
   const skills: string[] = [];
@@ -291,6 +299,15 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       i = taken.next;
       continue;
     }
+    if (arg === '--profile') {
+      const taken = takeValue(args, i, '--profile');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      profile = taken.value;
+      i = taken.next;
+      continue;
+    }
     if (arg === '--prompt-file') {
       const taken = takeValue(args, i, '--prompt-file');
       if ('error' in taken) {
@@ -449,7 +466,9 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
         arg === 'events' ||
         arg === 'restore' ||
         arg === 'recipe' ||
-        arg === 'memory') &&
+        arg === 'memory' ||
+        arg === 'mcp' ||
+        arg === 'history') &&
       positionals.length === 1
     ) {
       automationPassthrough = [];
@@ -486,6 +505,22 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       ...(command === 'index' && flags.has('status')
         ? { indexStatus: true }
         : {}),
+      rest,
+    };
+  }
+  if (command === 'paths' || command === 'doctor') {
+    return {
+      command,
+      cwd,
+      json: flags.has('json'),
+      rest,
+    };
+  }
+  if (command === 'profile') {
+    return {
+      command: 'profile',
+      cwd,
+      json: flags.has('json'),
       rest,
     };
   }
@@ -548,6 +583,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       origin,
       autonomyPreset,
       agent,
+      profile,
       promptFile,
       recipe,
       skills: skills.length > 0 ? skills : undefined,
@@ -601,7 +637,9 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
     command === 'events' ||
     command === 'restore' ||
     command === 'recipe' ||
-    command === 'memory'
+    command === 'memory' ||
+    command === 'mcp' ||
+    command === 'history'
   ) {
     return {
       command,
