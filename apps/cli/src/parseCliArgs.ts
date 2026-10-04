@@ -9,6 +9,8 @@ export interface ParsedCliArgs {
     | 'help'
     | 'version'
     | 'ask'
+    | 'plan'
+    | 'agent'
     | 'run'
     | 'index'
     | 'status'
@@ -114,6 +116,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   let autonomyPreset: MitiiAutonomyPreset | undefined;
   let agent: string | undefined;
   let profile: string | undefined;
+  let promptFlag: string | undefined;
   let promptFile: string | undefined;
   let recipe: string | undefined;
   const skills: string[] = [];
@@ -305,6 +308,15 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
         return { command: 'error', errorMessage: taken.error, rest: [] };
       }
       profile = taken.value;
+      i = taken.next;
+      continue;
+    }
+    if (arg === '--prompt') {
+      const taken = takeValue(args, i, '--prompt');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      promptFlag = taken.value;
       i = taken.next;
       continue;
     }
@@ -567,11 +579,24 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       rest,
     };
   }
-  if (command === 'ask' || command === 'run') {
-    const prompt = rest.join(' ').trim();
+  if (
+    command === 'ask' ||
+    command === 'plan' ||
+    command === 'agent' ||
+    command === 'run'
+  ) {
+    const fromRest = rest.join(' ').trim();
+    const fromFlag = promptFlag?.trim() ?? '';
+    const promptParts = [fromRest, fromFlag].filter((part) => part.length > 0);
+    const prompt =
+      promptParts.length > 0 ? promptParts.join('\n\n') : undefined;
+    // Mode verbs: `mitii plan` / `mitii agent` set mode unless --mode overrides.
+    const resolvedMode =
+      mode ??
+      (command === 'plan' || command === 'agent' ? command : undefined);
     return {
       command,
-      prompt: prompt.length > 0 ? prompt : undefined,
+      prompt,
       cwd,
       json: flags.has('json'),
       streamJson: flags.has('stream-json'),
@@ -579,7 +604,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       autoClarify,
       autoApproval,
       auto: flags.has('auto'),
-      mode,
+      mode: resolvedMode,
       origin,
       autonomyPreset,
       agent,

@@ -12,6 +12,9 @@ Usage:
   mitii recipe list|show <id>|run <id> …
   mitii history list|show|usage|path [--json]
   mitii ask <prompt> [options]
+  mitii ask --prompt "<text>" [options]
+  mitii plan --prompt "<text>" [options]
+  mitii agent --prompt "<text>" [options]
   mitii ask --agent <id|path> [options]
   mitii ask --prompt-file <path|-> [options]
   mitii ask --recipe <id> [note] [options]
@@ -46,7 +49,9 @@ Commands:
   mcp              List MCP servers/tools from .mitii/mcp.json
   recipe           list|show|run parameterized RecipeSpec / writing recipes
   history          List/show CLI session logs + last-run token usage
-  ask <prompt>     One-shot agent run with streaming
+  ask <prompt>     One-shot run (default mode: ask / config defaultMode)
+  plan --prompt    One-shot plan mode (read-only; no file edits)
+  agent --prompt   One-shot agent mode (edit + tools; use --autonomy apply for CI)
   commit-message   Draft a commit message (auto-attaches git-commit-message)
   pr-summary       Draft a PR body (auto-attaches git-pr-summary)
   changelog        Draft Keep a Changelog entry (auto-attaches release-changelog)
@@ -70,10 +75,10 @@ Commands:
   connect          Chat bridges (telegram / discord / slack)
   version / help   Version and usage
 
-Modes (--mode or config defaultMode):
-  ask     Q&A / explain (default)
-  plan    Read-only plan; no file edits
-  agent   Edit + tools with approvals
+Modes (--mode, config defaultMode, or verb commands):
+  ask     Q&A / explain (default) — also: mitii ask --prompt "…"
+  plan    Read-only plan; no file edits — also: mitii plan --prompt "…"
+  agent   Edit + tools with approvals — also: mitii agent --prompt "…"
 
 Automation (Phase 0):
   --origin <o>       user | automation | api
@@ -85,6 +90,7 @@ Automation (Phase 0):
                      fills mode + approval policy for unattended runs
   --auto             With "run": require unattended apply path (CI)
   --agent <id|path>  Load .mitii/agents/<id>.md (or a file path)
+  --prompt <text>    Prompt text (alternative to positional prompt)
   --prompt-file <p>  Prompt from file, or - for stdin
 
 Writing recipes (VS Code + CLI):
@@ -125,6 +131,7 @@ Options:
   --recipe <id>      commit-message | pr-summary | changelog
   --agent <id|path>  Agent markdown under .mitii/agents/ or a path
   --profile <slug>   One-off mode profile (architect|code|ask|debug|…)
+  --prompt <text>    Prompt text (alternative to positional prompt)
   --prompt-file <p>  Prompt file path, or - for stdin
   --loop-policy-json <json>
                      Lab: one-off threshold overrides for this run
