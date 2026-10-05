@@ -22,6 +22,7 @@ export async function executeFileMetadata(params: {
     workspaceRoot: params.workspaceRoot,
     requestedPath: input.path,
     pathScopes: params.grant.pathScopes,
+    extraAllowedRoots: params.grant.extraAllowedRoots,
   });
 
   const stat = await params.fileSystem.lstat(contained.absolutePath);

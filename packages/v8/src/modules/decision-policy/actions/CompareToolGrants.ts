@@ -23,5 +23,8 @@ function normalizeGrantForCompare(grant: ToolGrant): ToolGrant {
     networkHosts: grant.networkHosts
       ? [...grant.networkHosts].sort()
       : undefined,
+    extraAllowedRoots: grant.extraAllowedRoots
+      ? [...grant.extraAllowedRoots].sort()
+      : undefined,
   };
 }

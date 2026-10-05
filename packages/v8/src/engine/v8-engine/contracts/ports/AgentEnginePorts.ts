@@ -96,6 +96,7 @@ export interface AgentEngineDecisionPort {
   widen?(input: {
     previous: ExecutionDecision;
     extraPaths?: readonly string[];
+    extraAllowedRoots?: readonly string[];
     extraNetworkHosts?: readonly string[];
   }): ExecutionDecision;
 }

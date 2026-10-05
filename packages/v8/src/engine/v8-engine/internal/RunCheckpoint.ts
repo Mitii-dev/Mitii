@@ -27,9 +27,20 @@ export interface PendingApprovalState {
   paths: string[];
 }
 
+export interface PendingGrantExpansionToolCall {
+  toolName: string;
+  callId: string;
+  arguments: unknown;
+}
+
 export interface PendingGrantExpansionState {
   expansionId: string;
+  /** In-workspace relative scopes to admit. */
   extraPaths: string[];
+  /** Absolute outside-workspace roots awaiting approval. */
+  externalRoots?: string[];
+  /** Failed tool calls to replay after approve + widen. */
+  pendingToolCalls?: PendingGrantExpansionToolCall[];
 }
 
 /**

@@ -156,15 +156,42 @@ async function resolvePhysicalWorkspaceRoot(params: {
 }
 
 /**
- * Resolves a relative path, enforces grant scopes, and rejects symlink escapes.
+ * Resolves a path, enforces grant scopes, and rejects symlink escapes.
+ * Absolute / `..` requests are admitted only under the workspace or an
+ * approved `extraAllowedRoots` entry (user grant expansion).
  */
 export async function resolveContainedPath(params: {
   fileSystem: WorkspaceFileSystemPort;
   workspaceRoot: string;
   requestedPath: string;
   pathScopes: readonly string[];
+  /** Absolute roots approved for outside-workspace access. */
+  extraAllowedRoots?: readonly string[];
   mustExist?: boolean;
 }): Promise<ContainedPath> {
+  const absoluteRoot = path.resolve(params.workspaceRoot);
+  const physicalRoot = await resolvePhysicalWorkspaceRoot({
+    fileSystem: params.fileSystem,
+    workspaceRoot: absoluteRoot,
+  });
+
+  const escapeAttempt = tryResolveEscapeCandidate(
+    params.requestedPath,
+    absoluteRoot,
+  );
+  if (escapeAttempt) {
+    return resolveEscapeOrExternalPath({
+      fileSystem: params.fileSystem,
+      requestedPath: params.requestedPath,
+      absoluteCandidate: escapeAttempt,
+      absoluteRoot,
+      physicalRoot,
+      pathScopes: params.pathScopes,
+      extraAllowedRoots: params.extraAllowedRoots,
+      mustExist: params.mustExist,
+    });
+  }
+
   const relativePath = normalizeRelativePath(params.requestedPath);
 
   if (!isPathWithinScopes(relativePath, params.pathScopes)) {
@@ -174,11 +201,6 @@ export async function resolveContainedPath(params: {
     );
   }
 
-  const absoluteRoot = path.resolve(params.workspaceRoot);
-  const physicalRoot = await resolvePhysicalWorkspaceRoot({
-    fileSystem: params.fileSystem,
-    workspaceRoot: absoluteRoot,
-  });
   const absolutePath =
     relativePath === "."
       ? absoluteRoot
@@ -275,6 +297,133 @@ export async function resolveContainedPath(params: {
   }
 
   return { relativePath, absolutePath, realPath };
+}
+
+/**
+ * Detect absolute / parent-escape requests before normalizeRelativePath throws.
+ * Returns the resolved absolute candidate, or undefined for normal relative paths.
+ */
+function tryResolveEscapeCandidate(
+  requestedPath: string,
+  absoluteWorkspaceRoot: string,
+): string | undefined {
+  assertNoNullBytes(requestedPath);
+  const withoutAt = requestedPath.replace(/^@(?=[A-Za-z0-9_.-])/, "");
+  const slashNormalized = withoutAt.replace(/\\/g, "/");
+  if (isAbsolutePath(slashNormalized)) {
+    return path.resolve(slashNormalized);
+  }
+  const normalized = path.posix.normalize(slashNormalized);
+  if (normalized === ".." || normalized.startsWith("../")) {
+    return path.resolve(absoluteWorkspaceRoot, normalized);
+  }
+  return undefined;
+}
+
+async function resolveEscapeOrExternalPath(params: {
+  fileSystem: WorkspaceFileSystemPort;
+  requestedPath: string;
+  absoluteCandidate: string;
+  absoluteRoot: string;
+  physicalRoot: string;
+  pathScopes: readonly string[];
+  extraAllowedRoots?: readonly string[];
+  mustExist?: boolean;
+}): Promise<ContainedPath> {
+  // Still inside workspace after resolving `..` → treat as normal relative.
+  if (isPhysicalPathWithinRoot(params.absoluteRoot, params.absoluteCandidate)) {
+    const relative = path
+      .relative(params.absoluteRoot, params.absoluteCandidate)
+      .split(path.sep)
+      .join("/");
+    const relativePath = relative === "" ? "." : relative;
+    if (!isPathWithinScopes(relativePath, params.pathScopes)) {
+      throw new PathContainmentError(
+        "path_out_of_scope",
+        `Path "${relativePath}" is outside granted pathScopes.`,
+      );
+    }
+    return resolveContainedPath({
+      fileSystem: params.fileSystem,
+      workspaceRoot: params.absoluteRoot,
+      requestedPath: relativePath,
+      pathScopes: params.pathScopes,
+      extraAllowedRoots: params.extraAllowedRoots,
+      mustExist: params.mustExist,
+    });
+  }
+
+  const allowedRoots = await resolveAllowedExternalRoots({
+    fileSystem: params.fileSystem,
+    roots: params.extraAllowedRoots ?? [],
+  });
+
+  let realPath: string | undefined;
+  try {
+    realPath = await params.fileSystem.realpath(params.absoluteCandidate);
+  } catch {
+    realPath = undefined;
+  }
+
+  const probe = realPath ?? params.absoluteCandidate;
+  const admitted = allowedRoots.some(
+    (root) =>
+      isPhysicalPathWithinRoot(root, params.absoluteCandidate) ||
+      isPhysicalPathWithinRoot(root, probe),
+  );
+  if (!admitted) {
+    throw new PathContainmentError(
+      "path_escape",
+      `Path escapes the workspace: "${params.requestedPath}".`,
+    );
+  }
+
+  if (realPath === undefined) {
+    if (params.mustExist === false) {
+      return {
+        relativePath: params.absoluteCandidate,
+        absolutePath: params.absoluteCandidate,
+        realPath: params.absoluteCandidate,
+      };
+    }
+    throw new PathContainmentError(
+      "execution_failed",
+      `Path does not exist or cannot be resolved: "${params.requestedPath}".`,
+    );
+  }
+
+  if (!allowedRoots.some((root) => isPhysicalPathWithinRoot(root, realPath))) {
+    throw new PathContainmentError(
+      "symlink_escape",
+      `Symlink target escapes approved root for "${params.requestedPath}".`,
+    );
+  }
+
+  return {
+    relativePath: params.absoluteCandidate,
+    absolutePath: params.absoluteCandidate,
+    realPath,
+  };
+}
+
+async function resolveAllowedExternalRoots(params: {
+  fileSystem: WorkspaceFileSystemPort;
+  roots: readonly string[];
+}): Promise<string[]> {
+  const resolved: string[] = [];
+  for (const root of params.roots) {
+    const absolute = path.resolve(root);
+    resolved.push(absolute);
+    try {
+      const physical = await params.fileSystem.realpath(absolute);
+      if (physical !== absolute) {
+        resolved.push(physical);
+      }
+    } catch {
+      // Keep logical root only.
+    }
+  }
+  return [...new Set(resolved)];
 }
 
 /**

@@ -88,9 +88,13 @@ export const AGENT_ENGINE_THRESHOLDS = {
   /**
    * Flag context-loss re-reads when file-read calls exceed unique paths
    * by this ratio and at least `explorationRereadMinCalls` reads occurred.
+   * Same-file windowed reads within `explorationSamePathReadAllowance`
+   * count as one unit for the thrash ratio.
    */
   explorationRereadRatio: 2,
   explorationRereadMinCalls: 6,
+  /** Windowed reads of one base path before thrash charges extras (2–4). */
+  explorationSamePathReadAllowance: 4,
   /** One mid-loop nudge, then stop the spin. */
   maxExplorationStallNudges: 1,
   /**

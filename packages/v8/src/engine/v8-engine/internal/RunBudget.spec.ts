@@ -69,13 +69,25 @@ describe("RunBudgetTracker", () => {
       budget.isExplorationStalled({ minCalls: 8, ratio: 2 }),
     ).toBe(false);
 
-    for (let index = 0; index < 8; index += 1) {
+    // Windowed reads within the same-path allowance are not thrash.
+    for (let index = 0; index < 4; index += 1) {
       budget.recordFileRead(["src/form.ts"]);
     }
-
-    expect(budget.isExhausted()).toBe(false);
     expect(
       budget.isExplorationStalled({ minCalls: 8, ratio: 2 }),
+    ).toBe(false);
+
+    // Excess beyond allowance (or allowance=1) still flags re-read thrash.
+    for (let index = 0; index < 4; index += 1) {
+      budget.recordFileRead(["src/form.ts"]);
+    }
+    expect(budget.isExhausted()).toBe(false);
+    expect(
+      budget.isExplorationStalled({
+        minCalls: 8,
+        ratio: 2,
+        samePathAllowance: 1,
+      }),
     ).toBe(true);
     expect(budget.snapshot()).toMatchObject({
       fileReadCalls: 8,

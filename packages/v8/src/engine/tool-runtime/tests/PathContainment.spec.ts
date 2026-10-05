@@ -207,6 +207,39 @@ describe("PathContainment.resolveContainedPath", () => {
     }
   });
 
+  it("admits absolute paths under approved extraAllowedRoots", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "mitii-path-ws-"));
+    const external = await mkdtemp(path.join(tmpdir(), "mitii-path-ext-"));
+    try {
+      await writeFile(path.join(external, "secret.txt"), "ok\n");
+      const externalFile = path.join(external, "secret.txt");
+
+      await expect(
+        resolveContainedPath({
+          fileSystem: new NodeWorkspaceFileSystemAdapter(),
+          workspaceRoot: root,
+          requestedPath: externalFile,
+          pathScopes: ["."],
+        }),
+      ).rejects.toMatchObject({ reasonCode: "path_escape" });
+
+      const contained = await resolveContainedPath({
+        fileSystem: new NodeWorkspaceFileSystemAdapter(),
+        workspaceRoot: root,
+        requestedPath: externalFile,
+        pathScopes: ["."],
+        extraAllowedRoots: [external],
+      });
+      expect(contained.absolutePath).toBe(path.resolve(externalFile));
+      expect(contained.realPath.toLowerCase()).toBe(
+        (await fsRealpath(externalFile)).toLowerCase(),
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+      await rm(external, { recursive: true, force: true });
+    }
+  });
+
   it("hints glob_files when a path is missing", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "mitii-path-missing-"));
     try {

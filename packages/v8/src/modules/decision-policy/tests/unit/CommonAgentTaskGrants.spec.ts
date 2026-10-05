@@ -43,6 +43,51 @@ function mutationScopesOf(decision: ReturnType<typeof decideAgent>): readonly st
 }
 
 describe("common agent task grants", () => {
+  it("implicit pinned folders are focus only — workspace stays the write ceiling", () => {
+    const decision = decideAgent("improve this test case", {
+      primaryTaskIntent: "test",
+      taskAnalysis: {
+        scope: "single_location",
+        recommendsRepositoryDiscovery: false,
+        targets: [
+          {
+            kind: "folder",
+            value: "suites/js/atomic/backend/apollo-user-query",
+            explicit: false,
+          },
+        ],
+      },
+    });
+
+    expect(decision.toolGrant.pathScopes).toEqual(["."]);
+    expect(decision.toolGrant.mutationPathScopes).toBeUndefined();
+    expect(mutationScopesOf(decision)).toEqual(["."]);
+  });
+
+  it("explicit folder mentions still narrow mutation scopes", () => {
+    const decision = decideAgent(
+      "fix tests only under @suites/js/atomic/backend/apollo-user-query",
+      {
+        primaryTaskIntent: "test",
+        taskAnalysis: {
+          scope: "single_location",
+          recommendsRepositoryDiscovery: false,
+          targets: [
+            {
+              kind: "folder",
+              value: "suites/js/atomic/backend/apollo-user-query",
+              explicit: true,
+            },
+          ],
+        },
+      },
+    );
+
+    expect(decision.toolGrant.mutationPathScopes).toEqual([
+      "suites/js/atomic/backend/apollo-user-query",
+    ]);
+  });
+
   it("installing packages grants write + process tools at workspace root", () => {
     const message = "Install lodash and update package.json";
     const decision = decideAgent(message, {

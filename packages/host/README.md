@@ -42,7 +42,7 @@ V8 is host-neutral. Apps still need:
 
 `@mitii/host` centralizes those so CLI and VS Code stay thin and do not drift.
 
-Apps still own environment-specific pieces: secrets, settings UI, MCP, diagnostics, git adapters, and (in VS Code) Memento-backed memory if preferred over the file store.
+Apps still own environment-specific pieces: secrets, settings UI, MCP, IDE diagnostics, git adapters, and (in VS Code) Memento-backed memory if preferred over the file store. When no TypeScript language service is available, `createHostLanguageServices` still wires `createNodeJsDiagnosticsPort` so CLI `read_diagnostics` can surface Node module-load errors for `.js` / `.mjs` / `.cjs`.
 
 ## Source layout
 

@@ -25,6 +25,7 @@ export async function executeReadPackageScripts(params: {
     workspaceRoot: params.workspaceRoot,
     requestedPath: input.path,
     pathScopes: params.grant.pathScopes,
+    extraAllowedRoots: params.grant.extraAllowedRoots,
   });
 
   const read = await params.fileSystem.readFile(contained.realPath, {

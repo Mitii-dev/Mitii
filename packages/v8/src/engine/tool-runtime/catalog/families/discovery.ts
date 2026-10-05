@@ -54,62 +54,94 @@ export const readFileTruncationReasonSchema = z.enum([
   "model_budget",
 ]);
 
-export const readFileInputSchema = z
-  .object({
-    path: z.string().min(1),
-    startLine: z.number().int().positive().optional(),
-    endLine: z.number().int().positive().optional(),
-    maxLines: z.number().int().positive().max(20_000).optional(),
-    /** First N lines (alias for startLine=1 + maxLines). Mutually exclusive with tail. */
-    head: z.number().int().positive().max(20_000).optional(),
-    /** Last N lines when the loaded prefix is complete. Mutually exclusive with head. */
-    tail: z.number().int().positive().max(20_000).optional(),
-  })
-  .strict()
-  .superRefine((value, ctx) => {
-    if (
-      value.startLine !== undefined &&
-      value.endLine !== undefined &&
-      value.endLine < value.startLine
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "endLine must be >= startLine",
-        path: ["endLine"],
-      });
-    }
-    if (value.head !== undefined && value.tail !== undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "head and tail are mutually exclusive",
-        path: ["tail"],
-      });
-    }
-    if (
-      value.head !== undefined &&
-      (value.startLine !== undefined ||
-        value.endLine !== undefined ||
-        value.maxLines !== undefined)
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "head cannot be combined with startLine/endLine/maxLines",
-        path: ["head"],
-      });
-    }
-    if (
-      value.tail !== undefined &&
-      (value.startLine !== undefined ||
-        value.endLine !== undefined ||
-        value.maxLines !== undefined)
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "tail cannot be combined with startLine/endLine/maxLines",
-        path: ["tail"],
-      });
-    }
-  });
+/**
+ * Normalize common model mistakes before strict validation:
+ * - `line` → `startLine`
+ * - drop `head`/`tail` when an explicit range is already present
+ */
+function normalizeReadFileInput(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object") {
+    return raw;
+  }
+  const value = { ...(raw as Record<string, unknown>) };
+  if (
+    typeof value.line === "number" &&
+    Number.isFinite(value.line) &&
+    value.startLine === undefined
+  ) {
+    value.startLine = value.line;
+  }
+  delete value.line;
+  const hasRange =
+    value.startLine !== undefined ||
+    value.endLine !== undefined ||
+    value.maxLines !== undefined;
+  if (hasRange) {
+    delete value.head;
+    delete value.tail;
+  }
+  return value;
+}
+
+export const readFileInputSchema = z.preprocess(
+  normalizeReadFileInput,
+  z
+    .object({
+      path: z.string().min(1),
+      startLine: z.number().int().positive().optional(),
+      endLine: z.number().int().positive().optional(),
+      maxLines: z.number().int().positive().max(20_000).optional(),
+      /** First N lines (alias for startLine=1 + maxLines). Mutually exclusive with tail. */
+      head: z.number().int().positive().max(20_000).optional(),
+      /** Last N lines when the loaded prefix is complete. Mutually exclusive with head. */
+      tail: z.number().int().positive().max(20_000).optional(),
+    })
+    .strict()
+    .superRefine((value, ctx) => {
+      if (
+        value.startLine !== undefined &&
+        value.endLine !== undefined &&
+        value.endLine < value.startLine
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "endLine must be >= startLine",
+          path: ["endLine"],
+        });
+      }
+      if (value.head !== undefined && value.tail !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "head and tail are mutually exclusive",
+          path: ["tail"],
+        });
+      }
+      if (
+        value.head !== undefined &&
+        (value.startLine !== undefined ||
+          value.endLine !== undefined ||
+          value.maxLines !== undefined)
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "head cannot be combined with startLine/endLine/maxLines",
+          path: ["head"],
+        });
+      }
+      if (
+        value.tail !== undefined &&
+        (value.startLine !== undefined ||
+          value.endLine !== undefined ||
+          value.maxLines !== undefined)
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "tail cannot be combined with startLine/endLine/maxLines",
+          path: ["tail"],
+        });
+      }
+    }),
+);
 
 export const readFileOutputSchema = z
   .object({

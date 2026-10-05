@@ -51,12 +51,12 @@ decision-policy/
 - Soft workspace symptoms (stuck loading / hang with server or localhost) route to `diagnose` in Agent mode — never tool-less `direct_answer`.
 - Injection scanning never broadens authority.
 - `narrow()` may reduce write scope or tighten approval/budgets after discovery; it cannot add authority. Workspace-wide read (`pathScopes: ["."]`) is preserved so config files stay readable. When `approvalMode` is `never` (full access / `--approve`), write mutation scopes stay workspace-wide and are not narrowed away from required companion files.
-- `widen()` may add path/mutation scopes after `path_out_of_scope` or compiler errors; it cannot add tools, effects, or write authority that was not already granted. Agent Engine auto-widens path scopes whenever read or write effect is already granted (no second approval gate for admitting required paths). Auto-widen also applies when `approvalMode` is `never`.
+- `widen()` may add path/mutation scopes after `path_out_of_scope` or compiler errors; it cannot add tools, effects, or write authority that was not already granted. Agent Engine suspends with `grant_expansion_required` so the user can approve expanding path scopes (reads or writes) — it does not silent-auto-widen, including when `approvalMode` is `never`.
 - Large greenfield / full-package feature work (`large_implementation_visible_plan`) is treated like architecture-scale planning when the window can afford a visible plan.
 - `narrow()` returns the previous decision when the grant is unchanged.
   Callers MUST emit `grant_narrowed` only when `toolGrantsEquivalent` is false.
 - Mutation profiles are `relaxed`, `standard`, and `tight`. When `windowPolicy` is present, each numeric cap is `min(profile, window)` and `requireBatchedExecution` is OR'd.
-- Write grants may set `mutationPathScopes` from explicit folder/file targets. With `approvalMode: never`, mutation scopes are workspace-wide (`["."]`) so wiring files like `package.json` are never blocked after a script-only target. Discovery tools keep `pathScopes: ["."]` for package / multi-file work so `glob_files` / `search_files` can still see the repo; `apply_patch` / delete / move enforce `mutationPathScopes`.
+- Write grants may set `mutationPathScopes` from **explicit** folder/file targets only. Implicit UI folder pins are focus hints (look-here), not a hard mutation fence — workspace remains the default write ceiling. Discovery tools keep `pathScopes: ["."]` for package / multi-file work so `glob_files` / `search_files` can still see the repo; `apply_patch` / delete / move enforce `mutationPathScopes` when set.
 - `narrow()` also narrows `mutationPathScopes` when they were set (skipped for `approvalMode: never` and visible plans).
 - Verification requirements specify required evidence and whether unavailable evidence is acceptable.
 - Host capability flags currently include web search availability.

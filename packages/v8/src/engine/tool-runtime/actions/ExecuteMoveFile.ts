@@ -44,6 +44,7 @@ export async function executeMoveFile(params: {
     const result = await params.transactions.moveFile({
       workspaceRoot: params.workspaceRoot,
       pathScopes: resolveMutationPathScopes(params.grant),
+      extraAllowedRoots: params.grant.extraAllowedRoots,
       fileSystem: params.fileSystem,
       from: parsed.from,
       to: parsed.to,

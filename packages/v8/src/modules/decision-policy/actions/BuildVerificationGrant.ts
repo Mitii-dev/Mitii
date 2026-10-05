@@ -14,6 +14,12 @@ export const DEFAULT_VERIFICATION_COMMAND_PREFIXES = [
   "pnpm",
   "yarn",
   "bun",
+  /** Changed-file syntax / module-load gates (`node --import`, `node --check`). */
+  "node",
+  "nodejs",
+  "python3",
+  "python",
+  "bash",
   "pytest",
   "mypy",
   "ruff",

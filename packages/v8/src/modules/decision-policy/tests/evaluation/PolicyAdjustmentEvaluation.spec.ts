@@ -88,6 +88,34 @@ describe("Policy adjustment evaluation", () => {
     );
   });
 
+  it("widen() merges extraAllowedRoots for outside-workspace path_escape grants", () => {
+    const input = createDecisionInput({
+      mode: "agent",
+      message: "Update src/components/Button.tsx",
+      understanding: createUnderstanding({
+        primaryTaskIntent: "bugfix",
+        taskAnalysis: {
+          scope: "single_location",
+          recommendsRepositoryDiscovery: false,
+          targets: [
+            { kind: "file", value: "src/components/Button.tsx", explicit: true },
+          ],
+        },
+      }),
+    });
+    const initial = pipeline.decide(input);
+    const externalRoot = "/tmp/mitii-external-root";
+    const widened = pipeline.widen({
+      previous: initial,
+      extraAllowedRoots: [externalRoot],
+    });
+
+    expect(widened.reasonCodes).toContain("grant_expanded");
+    expect(widened.toolGrant.extraAllowedRoots ?? []).toEqual(
+      expect.arrayContaining([externalRoot]),
+    );
+  });
+
   it("approvalMode never keeps workspace-wide read and preserves narrow mutation", () => {
     const input = createDecisionInput({
       mode: "agent",

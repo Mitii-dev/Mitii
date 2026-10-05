@@ -39,6 +39,7 @@ export interface DesktopSuspension {
   grantExpansion?: {
     expansionId: string;
     extraPaths: string[];
+    externalRoots?: string[];
   };
 }
 
@@ -100,8 +101,18 @@ export function extractSuspension(result: unknown): DesktopSuspension | null {
     const extraPaths = Array.isArray(g.extraPaths)
       ? g.extraPaths.filter((p): p is string => typeof p === 'string')
       : [];
+    const externalRoots = Array.isArray(g.externalRoots)
+      ? g.externalRoots.filter((p): p is string => typeof p === 'string')
+      : undefined;
     if (expansionId) {
-      grantExpansion = { expansionId, extraPaths };
+      grantExpansion = {
+        expansionId,
+        // Show external roots in the same list so the card lists what to approve.
+        extraPaths: [...extraPaths, ...(externalRoots ?? [])],
+        ...(externalRoots && externalRoots.length > 0
+          ? { externalRoots }
+          : {}),
+      };
     }
   }
 

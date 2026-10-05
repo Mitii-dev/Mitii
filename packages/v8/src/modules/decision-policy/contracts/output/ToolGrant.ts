@@ -86,6 +86,12 @@ export const toolGrantSchema = z
      * Mutation relative paths must match this regex when set (mode profiles).
      */
     mutationRelativePathRegex: z.string().min(1).optional(),
+    /**
+     * Absolute filesystem roots the user approved for access outside the
+     * workspace. PathContainment admits paths under these roots after
+     * grant_expansion approval. Never inferred — only user-approved.
+     */
+    extraAllowedRoots: z.array(z.string().min(1)).max(20).optional(),
   })
   .strict();
 

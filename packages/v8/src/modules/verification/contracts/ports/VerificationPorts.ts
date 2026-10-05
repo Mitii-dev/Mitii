@@ -51,3 +51,10 @@ export interface VerificationSyntaxPort {
 
 /** Evidence source marker for port-backed syntax candidates. */
 export const SYNTAX_PORT_EVIDENCE = "port:syntax";
+
+/**
+ * Evidence source for Node ESM/CJS module-load checks.
+ * Catches duplicate exports and other instantiate-time errors that
+ * `node --check` and tree-sitter parse miss.
+ */
+export const NODE_MODULE_LOAD_EVIDENCE = "changed-files:node_module_load";

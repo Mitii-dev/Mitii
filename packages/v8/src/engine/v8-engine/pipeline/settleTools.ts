@@ -1,3 +1,5 @@
+import * as path from "node:path";
+
 import type { ExecutionDecision } from "../../../modules/decision-policy";
 import type { ModelMessage, ModelToolCall } from "../../../modules/model-gateway";
 import type { AgentMode } from "../../../modules/request-intake";
@@ -11,6 +13,9 @@ import type {
   RunEvidence,
 } from "../contracts";
 import type { EstablishedFact } from "../actions";
+import { extractOutOfScopePaths } from "../actions/extractEstablishedFact";
+import { extractMutationTargetPaths } from "../actions/assertBatchReads";
+import { extractFileReadPaths } from "../actions/extractFileReadPaths";
 import { summarizeToolCall } from "../actions/summarizeToolCall";
 import type { LoopFileReadTracker } from "../actions/isExplorationRereadHeavy";
 import { EventBus } from "../internal/EventBus";
@@ -427,6 +432,46 @@ export async function settleToolBatch(params: {
     toolLoopGuard.observeResults(results);
   }
 
+  const expansion = collectGrantExpansionFromBatch({
+    toolCalls,
+    toolCache,
+    warnings,
+    workspaceRoot: workspaceRoot ?? ".",
+  });
+  if (
+    expansion.extraPaths.length > 0 ||
+    expansion.externalRoots.length > 0
+  ) {
+    const preview = [
+      ...expansion.extraPaths.slice(0, 4),
+      ...expansion.externalRoots.slice(0, 2),
+    ];
+    reasonCodes.push("grant_expansion_suspended");
+    warnings.push(
+      `Path access needs permission: ${preview.join(", ")}. Approve to expand the grant and continue, or deny to stop.`,
+    );
+    runtime.emitStage(bus, runId, "tool_running", "completed");
+    return {
+      kind: "return",
+      outcome: {
+        kind: "grant_expansion_required",
+        messages,
+        toolCache,
+        extraPaths: expansion.extraPaths,
+        ...(expansion.externalRoots.length > 0
+          ? { externalRoots: expansion.externalRoots }
+          : {}),
+        ...(expansion.pendingToolCalls.length > 0
+          ? { pendingToolCalls: expansion.pendingToolCalls }
+          : {}),
+        changedFiles,
+        mutationCheckpointIds,
+        answer: answer || undefined,
+        decision,
+      },
+    };
+  }
+
   runtime.emitStage(bus, runId, "tool_running", "completed");
   return {
     kind: "continue",
@@ -444,6 +489,150 @@ export async function settleToolBatch(params: {
       rejectedMutation,
     },
   };
+}
+
+/** Collect in-workspace OOS paths, external roots, and failed calls to replay. */
+function collectGrantExpansionFromBatch(params: {
+  toolCalls: readonly ModelToolCall[];
+  toolCache: ToolCallCache;
+  warnings: readonly string[];
+  workspaceRoot: string;
+}): {
+  extraPaths: string[];
+  externalRoots: string[];
+  pendingToolCalls: Array<{
+    toolName: string;
+    callId: string;
+    arguments: unknown;
+  }>;
+} {
+  const extraPaths = new Set<string>(extractOutOfScopePaths(params.warnings));
+  const externalRoots = new Set<string>();
+  const pendingToolCalls: Array<{
+    toolName: string;
+    callId: string;
+    arguments: unknown;
+  }> = [];
+
+  for (const toolCall of params.toolCalls) {
+    const cached = params.toolCache.get(toolCall.id);
+    if (
+      !cached ||
+      (cached.reasonCode !== "path_out_of_scope" &&
+        cached.reasonCode !== "path_escape")
+    ) {
+      continue;
+    }
+    let argumentsValue: unknown = {};
+    try {
+      argumentsValue =
+        toolCall.arguments.trim().length === 0
+          ? {}
+          : JSON.parse(toolCall.arguments);
+    } catch {
+      argumentsValue = {};
+    }
+    pendingToolCalls.push({
+      toolName: toolCall.name,
+      callId: toolCall.id,
+      arguments: argumentsValue,
+    });
+
+    if (cached.reasonCode === "path_out_of_scope") {
+      for (const warning of cached.warnings) {
+        for (const path of extractOutOfScopePaths([warning])) {
+          extraPaths.add(path);
+        }
+      }
+      const fromArgs = [
+        ...(extractFileReadPaths(toolCall.name, argumentsValue) ?? []),
+        ...extractMutationTargetPaths(toolCall.name, argumentsValue),
+      ];
+      for (const path of fromArgs) {
+        const normalized = normalizeWorkspaceRelative(path);
+        if (normalized && !looksOutsideWorkspace(normalized)) {
+          extraPaths.add(normalized);
+        }
+      }
+      continue;
+    }
+
+    // path_escape → ask for absolute external root
+    for (const warning of cached.warnings) {
+      for (const escaped of extractPathEscapeRequests([warning])) {
+        externalRoots.add(
+          resolveExternalRootRequest(escaped, params.workspaceRoot),
+        );
+      }
+    }
+    const fromArgs = [
+      ...(extractFileReadPaths(toolCall.name, argumentsValue) ?? []),
+      ...extractMutationTargetPaths(toolCall.name, argumentsValue),
+    ];
+    for (const path of fromArgs) {
+      if (looksOutsideWorkspace(path)) {
+        externalRoots.add(
+          resolveExternalRootRequest(path, params.workspaceRoot),
+        );
+      }
+    }
+  }
+
+  return {
+    extraPaths: [...extraPaths].slice(0, 50),
+    externalRoots: [...externalRoots].slice(0, 20),
+    pendingToolCalls: pendingToolCalls.slice(0, 10),
+  };
+}
+
+function normalizeWorkspaceRelative(pathValue: string): string {
+  return pathValue
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\.\//, "")
+    .replace(/\/+$/, "");
+}
+
+function looksOutsideWorkspace(pathValue: string): boolean {
+  const normalized = pathValue.trim().replace(/\\/g, "/");
+  return (
+    normalized.startsWith("/") ||
+    /^[A-Za-z]:\//.test(normalized) ||
+    normalized.startsWith("../") ||
+    normalized === ".."
+  );
+}
+
+function extractPathEscapeRequests(warnings: readonly string[]): string[] {
+  const paths: string[] = [];
+  const patterns = [
+    /Path escapes the workspace: "([^"]+)"/g,
+    /Expected a relative path, received absolute: "([^"]+)"/g,
+    /Resolved path escapes workspace: "([^"]+)"/g,
+  ];
+  for (const warning of warnings) {
+    for (const pattern of patterns) {
+      for (const match of warning.matchAll(pattern)) {
+        const value = match[1]?.trim();
+        if (value) paths.push(value);
+      }
+    }
+  }
+  return paths;
+}
+
+function resolveExternalRootRequest(
+  requested: string,
+  workspaceRoot: string,
+): string {
+  const normalized = requested.trim().replace(/\\/g, "/");
+  if (
+    normalized.startsWith("/") ||
+    /^[A-Za-z]:\//.test(normalized)
+  ) {
+    return normalized;
+  }
+  return path.resolve(workspaceRoot, normalized);
 }
 
 /** Short failure text for tool-loop signatures. Successful results have none. */

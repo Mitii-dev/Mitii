@@ -66,6 +66,7 @@ export class MutationTransactionRegistry {
   public async applyPatches(params: {
     workspaceRoot: string;
     pathScopes: readonly string[];
+    extraAllowedRoots?: readonly string[];
     fileSystem: WorkspaceFileSystemPort;
     patches: readonly StructuredPatch[];
     dirtyPaths?: readonly string[];
@@ -89,6 +90,7 @@ export class MutationTransactionRegistry {
     params: {
       workspaceRoot: string;
       pathScopes: readonly string[];
+      extraAllowedRoots?: readonly string[];
       fileSystem: WorkspaceFileSystemPort;
       patches: readonly StructuredPatch[];
       dirtyPaths?: readonly string[];
@@ -114,6 +116,7 @@ export class MutationTransactionRegistry {
         workspaceRoot: params.workspaceRoot,
         requestedPath: relativePath,
         pathScopes: params.pathScopes,
+        extraAllowedRoots: params.extraAllowedRoots,
         mustExist: false,
       });
       containedByPath.set(relativePath, contained);
@@ -232,6 +235,7 @@ export class MutationTransactionRegistry {
   public async deleteFile(params: {
     workspaceRoot: string;
     pathScopes: readonly string[];
+    extraAllowedRoots?: readonly string[];
     fileSystem: WorkspaceFileSystemPort;
     path: string;
     dirtyPaths?: readonly string[];
@@ -248,6 +252,7 @@ export class MutationTransactionRegistry {
     params: {
       workspaceRoot: string;
       pathScopes: readonly string[];
+      extraAllowedRoots?: readonly string[];
       fileSystem: WorkspaceFileSystemPort;
       path: string;
       dirtyPaths?: readonly string[];
@@ -274,6 +279,7 @@ export class MutationTransactionRegistry {
       workspaceRoot: params.workspaceRoot,
       requestedPath: relativePath,
       pathScopes: params.pathScopes,
+      extraAllowedRoots: params.extraAllowedRoots,
       mustExist: true,
     });
 
@@ -301,6 +307,7 @@ export class MutationTransactionRegistry {
   public async deleteDirectory(params: {
     workspaceRoot: string;
     pathScopes: readonly string[];
+    extraAllowedRoots?: readonly string[];
     fileSystem: WorkspaceFileSystemPort;
     path: string;
     recursive?: boolean;
@@ -322,6 +329,7 @@ export class MutationTransactionRegistry {
       workspaceRoot: params.workspaceRoot,
       requestedPath: relativePath,
       pathScopes: params.pathScopes,
+      extraAllowedRoots: params.extraAllowedRoots,
       mustExist: true,
     });
 
@@ -373,6 +381,7 @@ export class MutationTransactionRegistry {
   public async moveFile(params: {
     workspaceRoot: string;
     pathScopes: readonly string[];
+    extraAllowedRoots?: readonly string[];
     fileSystem: WorkspaceFileSystemPort;
     from: string;
     to: string;
@@ -400,6 +409,7 @@ export class MutationTransactionRegistry {
       workspaceRoot: params.workspaceRoot,
       requestedPath: fromPath,
       pathScopes: params.pathScopes,
+        extraAllowedRoots: params.extraAllowedRoots,
       mustExist: true,
     });
     const toContained = await resolveContainedPath({
@@ -407,6 +417,7 @@ export class MutationTransactionRegistry {
       workspaceRoot: params.workspaceRoot,
       requestedPath: toPath,
       pathScopes: params.pathScopes,
+        extraAllowedRoots: params.extraAllowedRoots,
       mustExist: false,
     });
 

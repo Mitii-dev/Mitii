@@ -111,6 +111,8 @@ export const agentRunSuspensionSchema = z
       .object({
         expansionId: z.string().min(1),
         extraPaths: z.array(z.string()).max(50),
+        /** Absolute outside-workspace roots awaiting approval. */
+        externalRoots: z.array(z.string()).max(20).optional(),
         currentPathScopes: z.array(z.string()).max(20).optional(),
       })
       .strict()

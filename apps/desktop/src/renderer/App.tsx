@@ -2761,11 +2761,14 @@ export function App() {
       setSuspension(null);
       return;
     }
+    if (suspension.kind === 'grant_expansion_required') {
+      onDenySuspension();
+      return;
+    }
     if (
       suspension.kind === 'approval_required' ||
       (suspension.approval &&
         suspension.kind !== 'plan_approval_required' &&
-        suspension.kind !== 'grant_expansion_required' &&
         suspension.kind !== 'continue_required')
     ) {
       onDenySuspension();

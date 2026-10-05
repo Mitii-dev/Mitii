@@ -4,6 +4,10 @@ import type {
   VerificationCheckKind,
   VerificationChangeScope,
 } from "../contracts";
+import {
+  NODE_MODULE_LOAD_EVIDENCE,
+  SYNTAX_PORT_EVIDENCE,
+} from "../contracts";
 import { DEFAULT_MAX_CHECKS } from "../defaults";
 import { checkKindsForEvidence } from "../internal/evidencePolicy";
 import { BROWSER_E2E_TEST_PATTERN, CHECK_KIND_PRIORITY } from "../policy";
@@ -66,6 +70,13 @@ export function selectProportionalChecks(params: {
     const aTouch = packageTouchRank(a, touchedPackageRoots);
     const bTouch = packageTouchRank(b, touchedPackageRoots);
     if (aTouch !== bTouch) return aTouch - bTouch;
+    // Narrow scopes keep one syntax slot — prefer module-load over parse-only
+    // before project-scope ranking (port:syntax is often workspace-global).
+    if (a.kind === "syntax" && b.kind === "syntax") {
+      const aSyntax = syntaxEvidenceRank(a);
+      const bSyntax = syntaxEvidenceRank(b);
+      if (aSyntax !== bSyntax) return aSyntax - bSyntax;
+    }
     // Prefer package/inferred projects over workspace-root so localized
     // one-per-kind selection keeps the check that matches changed files.
     const aScope = projectScopeRank(a);
@@ -129,6 +140,19 @@ export function selectProportionalChecks(params: {
   }
 
   return { selected, omitted };
+}
+
+/**
+ * Lower rank is preferred within `syntax` kind. Module-load beats
+ * tree-sitter / `node --check` so localized selection keeps the stronger gate.
+ */
+export function syntaxEvidenceRank(
+  candidate: DiscoveredCheckCandidate,
+): number {
+  if (candidate.evidenceSource === NODE_MODULE_LOAD_EVIDENCE) return 0;
+  if (candidate.evidenceSource === "changed-files:node_check") return 1;
+  if (candidate.evidenceSource === SYNTAX_PORT_EVIDENCE) return 2;
+  return 3;
 }
 
 export function isBrowserE2eCandidate(

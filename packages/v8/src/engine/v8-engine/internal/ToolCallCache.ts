@@ -63,6 +63,11 @@ export class ToolCallCache {
     return this.completed.has(callId);
   }
 
+  /** Drop a callId entry so resume can re-execute the same call after grant widen. */
+  public delete(callId: string): boolean {
+    return this.completed.delete(callId);
+  }
+
   /**
    * Invalidate read-only content cache entries.
    *

@@ -36,12 +36,16 @@ describe("verification grant + network authority", () => {
     expect(agentPrefixes).toContain("npm");
     expect(agentPrefixes).toContain("pnpm");
     expect(agentPrefixes).toContain("git status");
+    expect(agentPrefixes).toContain("node");
+    expect(agentPrefixes).toContain("python3");
+    expect(agentPrefixes).toContain("bash");
 
     const verification = buildVerificationGrant(decision.toolGrant);
     expect(verification.commandRules?.[0]?.prefixes).toEqual([
       ...DEFAULT_VERIFICATION_COMMAND_PREFIXES,
     ]);
     expect(verification.commandRules?.[0]?.prefixes).toContain("npm");
+    expect(verification.commandRules?.[0]?.prefixes).toContain("node");
     expect(verification.maximumWorkspaceEffect).toBe("read");
     expect(verification.allowedTools).not.toContain("apply_patch");
   });

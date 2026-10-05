@@ -46,6 +46,12 @@ export type ToolLoopOutcome =
       messages: ModelMessage[];
       toolCache: ToolCallCache;
       extraPaths: string[];
+      externalRoots?: string[];
+      pendingToolCalls?: Array<{
+        toolName: string;
+        callId: string;
+        arguments: unknown;
+      }>;
       changedFiles: string[];
       mutationCheckpointIds: string[];
       answer?: string;

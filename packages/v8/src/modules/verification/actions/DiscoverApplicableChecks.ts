@@ -5,7 +5,10 @@ import type {
   VerificationCheckKind,
   VerificationManifestReaderPort,
 } from "../contracts";
-import { SYNTAX_PORT_EVIDENCE } from "../contracts";
+import {
+  NODE_MODULE_LOAD_EVIDENCE,
+  SYNTAX_PORT_EVIDENCE,
+} from "../contracts";
 import { CHECK_KINDS_BY_SCOPE, CHECK_KIND_PRIORITY } from "../policy";
 import {
   discoverCandidatesForProject,
@@ -58,10 +61,12 @@ export async function discoverApplicableChecks(params: {
         continue;
       }
       // Prefer host tree-sitter over spawned py_compile/node --check/bash -n.
+      // Keep Node module-load: it catches instantiate errors parse-only misses.
       if (
         params.syntaxPortAvailable &&
         candidate.kind === "syntax" &&
-        candidate.evidenceSource !== SYNTAX_PORT_EVIDENCE
+        candidate.evidenceSource !== SYNTAX_PORT_EVIDENCE &&
+        candidate.evidenceSource !== NODE_MODULE_LOAD_EVIDENCE
       ) {
         continue;
       }

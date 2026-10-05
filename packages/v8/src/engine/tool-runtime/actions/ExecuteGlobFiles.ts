@@ -43,6 +43,7 @@ export async function executeGlobFiles(params: {
       pathScopes: params.grant.pathScopes,
     }),
     pathScopes: params.grant.pathScopes,
+    extraAllowedRoots: params.grant.extraAllowedRoots,
   });
 
   const maxResults = input.maxResults ?? DEFAULT_MAX_GLOB_RESULTS;

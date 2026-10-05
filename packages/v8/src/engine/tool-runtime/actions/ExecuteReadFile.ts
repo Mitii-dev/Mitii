@@ -28,6 +28,7 @@ export async function executeReadFile(params: {
     workspaceRoot: params.workspaceRoot,
     requestedPath: input.path,
     pathScopes: params.grant.pathScopes,
+    extraAllowedRoots: params.grant.extraAllowedRoots,
   });
 
   const maxBytes = Math.min(DEFAULT_MAX_FILE_BYTES, params.maxOutputBytes);

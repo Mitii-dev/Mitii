@@ -272,7 +272,10 @@ function buildRouteGuidance(decision: ExecutionDecision): string {
     decision.route === "diagnose" ||
     decision.toolGrant.maximumWorkspaceEffect !== "write"
   ) {
-    return "This is a read-only answer route. Do not claim you are applying edits, adding files, or running a change now; explain findings, recommendations, or exact steps instead.";
+    return [
+      "This is a read-only answer route. Do not claim you are applying edits, adding files, or running a change now; explain findings, recommendations, or exact steps instead.",
+      "When you recommend concrete follow-on work (more tests, grading checks, sibling files), end with a short offer: ask whether the user wants you to apply those next, and tell them to say continue.",
+    ].join("\n");
   }
   return "";
 }
@@ -379,7 +382,7 @@ function buildToolGuidance(decision: ExecutionDecision): string {
   if (grant.maximumWorkspaceEffect === "write") {
     lines.push(
       "You have write authority for this turn. Apply required edits with mutation tools (apply_patch / write tools). Never claim you are on a read-only route or ask the user to switch sessions when write tools are listed above.",
-      "If a mutation is rejected as path_out_of_scope, retry the same edit on the next turn — granted path scopes expand to include required paths when write authority is already active.",
+      "If a tool is rejected as path_out_of_scope or path_escape, the run suspends for user permission to expand the grant (including outside-workspace roots). Do not invent workarounds; wait for approval or choose an in-scope path.",
       "Prefer exact paths named in the user ask. When the ask says every/all occurrences of a typo or string, use replaceAll (or equivalent) so none remain.",
       "Match named APIs and file layouts from the ask (for example src/routes/login.js, createUserStore() as a factory function, new Logger(...)). Do not invent alternate paths when the ask is specific.",
       "Stay scoped: edit only the modules needed for the ask. Do not drive-by-fix unrelated siblings (for example analytics when only products was named).",

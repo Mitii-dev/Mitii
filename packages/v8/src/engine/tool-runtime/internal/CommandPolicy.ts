@@ -111,7 +111,11 @@ export function validateReadonlyCommand(params: {
   return {
     argv,
     matchedPrefix,
-    env: pickAllowedEnv(process.env),
+    env: {
+      ...pickAllowedEnv(process.env),
+      // Always set for Node module-load / fixture servers during verify.
+      MITII_NO_LISTEN: process.env.MITII_NO_LISTEN?.trim() || "1",
+    },
   };
 }
 

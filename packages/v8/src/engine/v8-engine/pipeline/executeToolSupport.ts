@@ -238,33 +238,27 @@ export async function refreshAuthorityAfterTools(
         .filter((host) => host.length > 0),
     ),
   ].slice(0, 16);
-  // Widen first so path_out_of_scope / compiler paths are admitted before any
-  // discovery-based narrow can drop them. Also admit web_search result hosts.
+  // Path scope expansion always asks the user (even full-access / write grants).
+  // Network host expansion may still auto-admit when network tools are already granted.
   if (
     runtime.deps.decision.widen &&
     (extraPaths.length > 0 || extraNetworkHosts.length > 0)
   ) {
     const previous = params.decisionRef.get();
-    const canAutoExpandPaths =
-      previous.toolGrant.approvalMode === "never" ||
-      previous.toolGrant.maximumWorkspaceEffect === "write" ||
-      previous.toolGrant.maximumWorkspaceEffect === "read";
+    if (extraPaths.length > 0) {
+      return { kind: "expansion_required", extraPaths };
+    }
+
     const canAutoExpandHosts =
       previous.toolGrant.allowedEffects.includes("network_access") ||
       previous.toolGrant.allowedTools.includes("web_search") ||
       previous.toolGrant.allowedTools.includes("fetch_url");
 
-    // Path expansion still requires an approval gate when effect is none.
-    if (extraPaths.length > 0 && !canAutoExpandPaths) {
-      return { kind: "expansion_required", extraPaths };
-    }
-
-    const widenPaths = canAutoExpandPaths ? extraPaths : [];
     const widenHosts = canAutoExpandHosts ? extraNetworkHosts : [];
-    if (widenPaths.length > 0 || widenHosts.length > 0) {
+    if (widenHosts.length > 0) {
       const widened = runtime.deps.decision.widen({
         previous,
-        extraPaths: widenPaths,
+        extraPaths: [],
         extraNetworkHosts: widenHosts,
       });
       if (!toolGrantsEquivalent(previous.toolGrant, widened.toolGrant)) {

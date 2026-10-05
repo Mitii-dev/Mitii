@@ -88,7 +88,7 @@ describe("ToolLoopGuard", () => {
     expect(guard.observeCalls([other]).type).toBe("allow");
   });
 
-  it("treats same-path read windows as identical (path-scoped)", () => {
+  it("allows progressive same-path read_file windows without soft nudge", () => {
     const guard = new ToolLoopGuard({
       softIdenticalLimit: 3,
       hardIdenticalLimit: 6,
@@ -101,12 +101,43 @@ describe("ToolLoopGuard", () => {
       name: "read_file",
       arguments: {
         path: "apps/vscode/src/sidebar.ts",
-        startLine: 80,
+        startLine: 81,
         endLine: 160,
+      },
+    };
+    const windowC = {
+      name: "read_file",
+      arguments: {
+        path: "apps/vscode/src/sidebar.ts",
+        startLine: 161,
+        endLine: 240,
+      },
+    };
+    const windowD = {
+      name: "read_file",
+      arguments: {
+        path: "apps/vscode/src/sidebar.ts",
+        startLine: 241,
+        endLine: 320,
       },
     };
     expect(guard.observeCalls([windowA]).type).toBe("allow");
     expect(guard.observeCalls([windowB]).type).toBe("allow");
-    expect(guard.observeCalls([windowA]).type).toBe("soft");
+    expect(guard.observeCalls([windowC]).type).toBe("allow");
+    expect(guard.observeCalls([windowD]).type).toBe("allow");
+  });
+
+  it("soft-nudges when the exact same read_file window repeats", () => {
+    const guard = new ToolLoopGuard({
+      softIdenticalLimit: 3,
+      hardIdenticalLimit: 6,
+    });
+    const sameWindow = {
+      name: "read_file",
+      arguments: { path: "apps/vscode/src/sidebar.ts", startLine: 1, endLine: 80 },
+    };
+    expect(guard.observeCalls([sameWindow]).type).toBe("allow");
+    expect(guard.observeCalls([sameWindow]).type).toBe("allow");
+    expect(guard.observeCalls([sameWindow]).type).toBe("soft");
   });
 });

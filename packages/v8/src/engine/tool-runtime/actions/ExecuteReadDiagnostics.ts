@@ -49,6 +49,7 @@ export async function executeReadDiagnostics(params: {
           workspaceRoot: params.workspaceRoot,
           requestedPath: requested,
           pathScopes: params.grant.pathScopes,
+          extraAllowedRoots: params.grant.extraAllowedRoots,
         });
         scopedPaths.push(contained.relativePath);
       } catch (error) {

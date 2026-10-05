@@ -21,7 +21,7 @@ describe("syntaxCandidatesForChangedFiles", () => {
     ]);
   });
 
-  it("emits node --check only for JS files, not TypeScript", () => {
+  it("emits node module-load and --check only for JS files, not TypeScript", () => {
     const candidates = syntaxCandidatesForChangedFiles({
       projectId: "web",
       languageId: "typescript",
@@ -32,8 +32,16 @@ describe("syntaxCandidatesForChangedFiles", () => {
         "packages/v8/src/x.js",
       ],
     });
-    expect(candidates).toHaveLength(1);
+    expect(candidates).toHaveLength(2);
+    expect(candidates[0]?.evidenceSource).toBe("changed-files:node_module_load");
     expect(candidates[0]?.argv).toEqual([
+      "node",
+      "--import",
+      "./apps/vscode/scripts/helper.js",
+      "-e",
+      "void 0",
+    ]);
+    expect(candidates[1]?.argv).toEqual([
       "node",
       "--check",
       "apps/vscode/scripts/helper.js",
