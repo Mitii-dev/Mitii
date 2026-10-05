@@ -12,7 +12,8 @@ describe('createHostLanguageServices', () => {
       const services = createHostLanguageServices({ workspaceRoot });
       expect(services.capability.status).toBe('degraded');
       expect(services.capability.reason).toBe('language_server_not_configured');
-      expect(services.diagnostics).toBeUndefined();
+      // CLI still gets Node module-load diagnostics for .js/.mjs/.cjs.
+      expect(services.diagnostics).toBeDefined();
       services.dispose();
     });
   });
@@ -140,7 +141,7 @@ describe('createHostLanguageServices', () => {
       const services = createHostLanguageServices({ workspaceRoot });
       try {
         expect(services.capability.status).toBe('degraded');
-        expect(services.diagnostics).toBeUndefined();
+        expect(services.diagnostics).toBeDefined();
       } finally {
         services.dispose();
       }

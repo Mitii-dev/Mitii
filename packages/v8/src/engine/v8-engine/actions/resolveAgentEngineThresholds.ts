@@ -30,6 +30,7 @@ export const agentEngineThresholdsSchema = z
     defaultMaxPatchesPerCall: positiveIntSchema,
     explorationRereadRatio: z.number().positive(),
     explorationRereadMinCalls: positiveIntSchema,
+    explorationSamePathReadAllowance: positiveIntSchema,
     maxExplorationStallNudges: nonnegativeIntSchema,
     maxContinueOverrides: nonnegativeIntSchema,
     maxMutationLockRecoveries: nonnegativeIntSchema,

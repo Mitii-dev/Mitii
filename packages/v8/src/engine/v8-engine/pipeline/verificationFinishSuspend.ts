@@ -102,6 +102,14 @@ export async function finishIfGrantExpansionRequired(
       pendingGrantExpansion: {
         expansionId,
         extraPaths: [...currentOutcome.extraPaths],
+        ...(currentOutcome.externalRoots &&
+        currentOutcome.externalRoots.length > 0
+          ? { externalRoots: [...currentOutcome.externalRoots] }
+          : {}),
+        ...(currentOutcome.pendingToolCalls &&
+        currentOutcome.pendingToolCalls.length > 0
+          ? { pendingToolCalls: [...currentOutcome.pendingToolCalls] }
+          : {}),
       },
       changedFiles: currentOutcome.changedFiles,
       mutationCheckpointIds: currentOutcome.mutationCheckpointIds,
@@ -121,12 +129,17 @@ export async function finishIfGrantExpansionRequired(
       ...(plan ? { plan } : {}),
     });
 
-    const pathPreview = currentOutcome.extraPaths.slice(0, 5).join(", ");
+    const allPreview = [
+      ...currentOutcome.extraPaths,
+      ...(currentOutcome.externalRoots ?? []),
+    ];
+    const pathPreview = allPreview.slice(0, 5).join(", ");
     const more =
-      currentOutcome.extraPaths.length > 5
-        ? ` (+${currentOutcome.extraPaths.length - 5} more)`
-        : "";
-    const rationale = `Workspace access expansion required for: ${pathPreview}${more}.`;
+      allPreview.length > 5 ? ` (+${allPreview.length - 5} more)` : "";
+    const rationale =
+      (currentOutcome.externalRoots?.length ?? 0) > 0
+        ? `Access outside the workspace requires permission for: ${pathPreview}${more}.`
+        : `Workspace access expansion required for: ${pathPreview}${more}.`;
     runtime.emit(bus, {
       type: "suspended",
       runId,
@@ -145,6 +158,12 @@ export async function finishIfGrantExpansionRequired(
         grantExpansion: {
           expansionId,
           extraPaths: currentOutcome.extraPaths.slice(0, 50),
+          ...(currentOutcome.externalRoots &&
+          currentOutcome.externalRoots.length > 0
+            ? {
+                externalRoots: currentOutcome.externalRoots.slice(0, 20),
+              }
+            : {}),
           currentPathScopes: decision.toolGrant.pathScopes.slice(0, 20),
         },
       },

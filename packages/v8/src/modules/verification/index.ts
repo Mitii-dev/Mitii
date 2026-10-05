@@ -75,7 +75,10 @@ export type {
   VerificationRecordStorePort,
 } from "./contracts";
 
-export { SYNTAX_PORT_EVIDENCE } from "./contracts";
+export {
+  SYNTAX_PORT_EVIDENCE,
+  NODE_MODULE_LOAD_EVIDENCE,
+} from "./contracts";
 
 export {
   buildVerificationRecord,

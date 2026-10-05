@@ -203,21 +203,30 @@ export class DecisionPolicyPipeline {
   public widen(input: {
     previous: ExecutionDecision;
     extraPaths?: readonly string[];
+    extraAllowedRoots?: readonly string[];
     extraNetworkHosts?: readonly string[];
   }): ExecutionDecision {
     const previous = executionDecisionSchema.parse(input.previous);
     const extraPaths = (input.extraPaths ?? []).filter(
       (path) => path.trim().length > 0,
     );
+    const extraAllowedRoots = (input.extraAllowedRoots ?? [])
+      .map((root) => root.trim())
+      .filter((root) => root.length > 0);
     const extraNetworkHosts = (input.extraNetworkHosts ?? [])
       .map((host) => host.trim().toLowerCase())
       .filter((host) => host.length > 0);
-    if (extraPaths.length === 0 && extraNetworkHosts.length === 0) {
+    if (
+      extraPaths.length === 0 &&
+      extraAllowedRoots.length === 0 &&
+      extraNetworkHosts.length === 0
+    ) {
       return previous;
     }
     const widenedGrant = widenToolGrant({
       previous: previous.toolGrant,
       extraPaths,
+      extraAllowedRoots,
       extraNetworkHosts,
     });
     if (toolGrantsEquivalent(previous.toolGrant, widenedGrant)) {
@@ -521,6 +530,7 @@ function narrowToolGrant(params: {
 function widenToolGrant(params: {
   previous: ToolGrant;
   extraPaths: readonly string[];
+  extraAllowedRoots?: readonly string[];
   extraNetworkHosts?: readonly string[];
 }): ToolGrant {
   const extraScopes = deriveDiscoveredScopes(params.extraPaths);
@@ -529,12 +539,20 @@ function widenToolGrant(params: {
     ...previousHosts,
     ...(params.extraNetworkHosts ?? []),
   ]).slice(0, 16);
+  const previousRoots = params.previous.extraAllowedRoots ?? [];
+  const mergedRoots = uniqueStrings([
+    ...previousRoots,
+    ...(params.extraAllowedRoots ?? []),
+  ]).slice(0, 20);
 
   const hostsChanged =
     mergedHosts.length !== previousHosts.length ||
     mergedHosts.some((host, index) => host !== previousHosts[index]);
+  const rootsChanged =
+    mergedRoots.length !== previousRoots.length ||
+    mergedRoots.some((root, index) => root !== previousRoots[index]);
 
-  if (extraScopes.length === 0 && !hostsChanged) {
+  if (extraScopes.length === 0 && !hostsChanged && !rootsChanged) {
     return params.previous;
   }
 
@@ -562,6 +580,9 @@ function widenToolGrant(params: {
         ? mutationPathScopes
         : params.previous.mutationPathScopes,
     networkHosts: hostsChanged ? mergedHosts : params.previous.networkHosts,
+    extraAllowedRoots: rootsChanged
+      ? mergedRoots
+      : params.previous.extraAllowedRoots,
   };
 }
 

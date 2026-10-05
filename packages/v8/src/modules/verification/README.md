@@ -17,10 +17,13 @@ Verification gathers evidence after a change. It maps changed files to projects,
   must never drag in `packages/v8:test` unless that package was edited and
   tests were requested.
 - Discovers cheap `syntax` candidates for changed `.py` / `.js` / `.sh`
-  files (`py_compile`, `node --check`, `bash -n`) without inventing full
-  suites. When a host wires `VerificationSyntaxPort` (tree-sitter ERROR /
-  missing nodes), that port replaces spawned syntax checks. Syntax never
-  satisfies typecheck evidence.
+  files (`py_compile`, `node --import` module-load, `node --check`,
+  `bash -n`) without inventing full suites. When a host wires
+  `VerificationSyntaxPort` (tree-sitter ERROR / missing nodes), that port
+  replaces parse-only spawned checks — but Node **module-load**
+  (`NODE_MODULE_LOAD_EVIDENCE`) stays selected so duplicate exports and
+  other instantiate-time errors are not missed. Syntax never satisfies
+  typecheck evidence.
 - Soft-reorders discovered checks using script tokens from `AGENTS.md` /
   similar instruction files — never invents argv from those hints.
 - Preflights `mayBeUnavailable` binaries via Tool Runtime (`binary --version`)

@@ -23,6 +23,7 @@ export async function executeListDirectory(params: {
     workspaceRoot: params.workspaceRoot,
     requestedPath: input.path,
     pathScopes: params.grant.pathScopes,
+    extraAllowedRoots: params.grant.extraAllowedRoots,
   });
 
   const entries = await params.fileSystem.listDirectory(contained.realPath);

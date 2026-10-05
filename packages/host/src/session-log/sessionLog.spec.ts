@@ -73,6 +73,25 @@ describe('session-log', () => {
       summary: 'src/a.ts',
       at: '2026-07-28T00:00:03.000Z',
     } as RunEvent);
+    writer!.appendEvent({
+      type: 'plan_ready',
+      runId: 'run_live',
+      planningDepth: 'internal',
+      phaseCount: 1,
+      approvalRequired: false,
+      plan: {
+        objective: 'Add API key auth',
+        phases: [
+          {
+            steps: [
+              { id: 's1', intent: 'Add api_keys table' },
+              { id: 's2', intent: 'Export apiKeyMiddleware' },
+            ],
+          },
+        ],
+      },
+      at: '2026-07-28T00:00:04.000Z',
+    } as RunEvent);
 
     writer!.finish({
       schemaVersion: 1,
@@ -102,6 +121,11 @@ describe('session-log', () => {
       expect.arrayContaining([
         expect.objectContaining({ type: 'stage_started', stage: 'understood' }),
         expect.objectContaining({ type: 'tool_started', toolName: 'read_file' }),
+        expect.objectContaining({
+          type: 'plan_ready',
+          stepCount: 2,
+          stepSummaries: ['Add api_keys table', 'Export apiKeyMiddleware'],
+        }),
         expect.objectContaining({ kind: 'run_end', status: 'completed' }),
       ]),
     );

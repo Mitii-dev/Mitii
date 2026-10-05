@@ -432,7 +432,7 @@ function resolvePathScopes(
   const { taskAnalysis } = understanding;
 
   // Discovery-heavy / wide scope: keep workspace-wide read access.
-  // Pinned folders still narrow mutationPathScopes (write root).
+  // Pinned folders are focus hints only — they do not fence workspace reads.
   if (
     taskAnalysis.recommendsRepositoryDiscovery ||
     taskAnalysis.scope === "repository" ||
@@ -444,12 +444,9 @@ function resolvePathScopes(
     return ["."];
   }
 
-  // Localized work: pinned/artifact folder is the look-here root.
-  const folderScopes = collectFolderScopes(taskAnalysis.targets);
-  if (folderScopes.length > 0) {
-    return folderScopes;
-  }
-
+  // Localized work: only *explicit* folder/file mentions narrow read scopes.
+  // Implicit artifact / UI pins stay workspace-wide so the agent can still
+  // read elsewhere in the workspace (and ask before leaving it).
   const scopes = new Set<string>();
   for (const target of taskAnalysis.targets) {
     if (!target.explicit || target.value.length === 0) {
@@ -480,12 +477,13 @@ function resolveMutationPathScopes(
     if (target.value.length === 0) {
       continue;
     }
-    // Folder pins (artifact or explicit) are the mutation work root.
-    if (target.kind === "folder") {
-      scopes.add(normalizeScopePath(target.value));
+    // Explicit folder/file mentions only. Implicit UI pins are focus, not a
+    // hard mutation fence — workspace remains the default write ceiling.
+    if (!target.explicit) {
       continue;
     }
-    if (!target.explicit) {
+    if (target.kind === "folder") {
+      scopes.add(normalizeScopePath(target.value));
       continue;
     }
     if (target.kind === "file") {
@@ -497,19 +495,6 @@ function resolveMutationPathScopes(
   }
   if (scopes.size === 0) {
     return undefined;
-  }
-  return [...scopes].sort((left, right) => left.localeCompare(right));
-}
-
-function collectFolderScopes(
-  targets: RequestUnderstandingResult["taskAnalysis"]["targets"],
-): string[] {
-  const scopes = new Set<string>();
-  for (const target of targets) {
-    if (target.kind !== "folder" || target.value.length === 0) {
-      continue;
-    }
-    scopes.add(normalizeScopePath(target.value));
   }
   return [...scopes].sort((left, right) => left.localeCompare(right));
 }

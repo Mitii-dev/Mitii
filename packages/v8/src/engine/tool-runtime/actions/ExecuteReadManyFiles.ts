@@ -73,6 +73,7 @@ export async function executeReadManyFiles(params: {
         workspaceRoot: params.workspaceRoot,
         requestedPath,
         pathScopes: params.grant.pathScopes,
+        extraAllowedRoots: params.grant.extraAllowedRoots,
       });
       const remainingBudget = Math.max(0, params.maxOutputBytes - usedBytes);
       if (remainingBudget === 0) {

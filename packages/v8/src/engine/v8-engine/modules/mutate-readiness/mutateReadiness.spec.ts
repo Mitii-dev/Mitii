@@ -123,10 +123,14 @@ describe("mutateReadiness (per-step evidence → patch)", () => {
     expect(gate).toMatch(/NOT done/i);
     expect(gate).not.toMatch(/mutations? (are|were) done/i);
 
-    recordLoopFileReads(reads, [
-      "packages/v8/src/engine/v8-engine/index.ts",
-      "packages/v8/tests/architecture/v8-module-boundaries.test.ts",
-    ]);
+    recordLoopFileReads(
+      reads,
+      [
+        "packages/v8/src/engine/v8-engine/index.ts",
+        "packages/v8/tests/architecture/v8-module-boundaries.test.ts",
+      ],
+      { fullyLoaded: true },
+    );
     const ready = evaluateActiveStepMutateReadiness({
       taskList: list,
       loopFileReads: reads,
@@ -182,6 +186,40 @@ describe("mutateReadiness (per-step evidence → patch)", () => {
     expect(seeded.missingPaths).toContain(
       "apps/desktop/src/renderer/SettingsPanel.tsx",
     );
+  });
+
+  it("does not mark truncated windowed reads as fully loaded evidence", () => {
+    const list = taskList([
+      {
+        id: "step-1",
+        title: "Edit large case file",
+        status: "active",
+        write: ["scripts/data/node-ecosystem-cases.mjs"],
+        mustRead: ["scripts/data/node-ecosystem-cases.mjs"],
+      },
+    ]);
+    const reads = createLoopFileReadTracker();
+    recordLoopFileReads(reads, ["scripts/data/node-ecosystem-cases.mjs"]);
+    expect(
+      evaluateActiveStepMutateReadiness({
+        taskList: list,
+        loopFileReads: reads,
+        maxEvidencePaths: 5,
+      }).ready,
+    ).toBe(false);
+
+    recordLoopFileReads(
+      reads,
+      ["scripts/data/node-ecosystem-cases.mjs"],
+      { fullyLoaded: true },
+    );
+    expect(
+      evaluateActiveStepMutateReadiness({
+        taskList: list,
+        loopFileReads: reads,
+        maxEvidencePaths: 5,
+      }).ready,
+    ).toBe(true);
   });
 
   it("strips discovery tools under mutate lock but keeps apply_patch", () => {

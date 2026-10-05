@@ -119,15 +119,29 @@ export async function finishVerificationAccepted(params: {
   await runtime.safeUnpin(runId, pinnedState);
   if (incompleteExecute) {
     reasonCodes.push("incomplete_execute", "answer_produced");
+    // Verification already accepted (this finish path). Zero edits → fail.
+    // Edits landed → complete: Phase 1 ACCEPTED=STOP reports leftover
+    // checklist items but must not fail a green verify / agent_exit 1.
+    if (loopChangedFiles.length === 0) {
+      return finish({
+        status: "failed",
+        answer: userAnswer,
+        reasonCodes,
+        error: {
+          code: "incomplete_execute",
+          message:
+            "The execute run ended while change checklist surfaces were still open.",
+        },
+      });
+    }
+    const openNote = formatOpenChecklistLeftover(taskList);
+    if (openNote) {
+      userAnswer = `${userAnswer.trim()}\n\n${openNote}`;
+    }
     return finish({
-      status: "failed",
+      status: "completed",
       answer: userAnswer,
       reasonCodes,
-      error: {
-        code: "incomplete_execute",
-        message:
-          "The execute run ended while change checklist surfaces were still open.",
-      },
     });
   }
   const loopWasEmpty = !(loopAnswer?.trim());
@@ -142,4 +156,29 @@ export async function finishVerificationAccepted(params: {
     answer: userAnswer,
     reasonCodes,
   });
+}
+
+/** Short leftover note for open plan checklist rows after verify accept. */
+export function formatOpenChecklistLeftover(
+  taskList: TaskList | undefined,
+): string {
+  if (!taskList?.items?.length) {
+    return "";
+  }
+  const open = taskList.items
+    .filter(
+      (item) => item.status === "pending" || item.status === "active",
+    )
+    .map((item) => item.title?.trim() || item.id)
+    .filter((title) => title.length > 0)
+    .slice(0, 6);
+  if (open.length === 0) {
+    return "";
+  }
+  return [
+    "I finished one change, but related work may still be open:",
+    ...open.map((title) => `- ${title}`),
+    "",
+    "Want me to improve these as well? Say **continue** and I'll pick up from there.",
+  ].join("\n");
 }

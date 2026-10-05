@@ -167,7 +167,10 @@ export type {
   VerificationRecordStorePort, VerificationToolExecutorPort, VerificationManifestReaderPort,
   VerificationSyntaxPort, VerificationSyntaxFinding,
 } from "./modules/verification";
-export { SYNTAX_PORT_EVIDENCE } from "./modules/verification";
+export {
+  SYNTAX_PORT_EVIDENCE,
+  NODE_MODULE_LOAD_EVIDENCE,
+} from "./modules/verification";
 export {
   SkillsPipeline,
 } from "./modules/skills";

@@ -2,13 +2,19 @@ import { describe, expect, it } from "vitest";
 
 import { InMemoryManifestReader } from "../..";
 import { discoverApplicableChecks } from "../DiscoverApplicableChecks";
-import { SYNTAX_PORT_EVIDENCE } from "../../contracts";
+import {
+  NODE_MODULE_LOAD_EVIDENCE,
+  SYNTAX_PORT_EVIDENCE,
+} from "../../contracts";
 import { extractScriptHints } from "../../internal/readVerificationScriptHints";
-import { selectProportionalChecks } from "../SelectProportionalChecks";
+import {
+  selectProportionalChecks,
+  syntaxEvidenceRank,
+} from "../SelectProportionalChecks";
 import type { DiscoveredCheckCandidate } from "../../internal/discovery";
 
 describe("discoverApplicableChecks — syntax port", () => {
-  it("emits port:syntax and suppresses command syntax when the port is available", async () => {
+  it("emits port:syntax and suppresses parse-only command syntax when the port is available", async () => {
     const manifests = new InMemoryManifestReader({
       "package.json": JSON.stringify({ name: "app" }),
     });
@@ -36,9 +42,89 @@ describe("discoverApplicableChecks — syntax port", () => {
     expect(
       withPort.candidates.some(
         (c) =>
-          c.kind === "syntax" && c.evidenceSource !== SYNTAX_PORT_EVIDENCE,
+          c.kind === "syntax" &&
+          c.evidenceSource !== SYNTAX_PORT_EVIDENCE &&
+          c.evidenceSource !== NODE_MODULE_LOAD_EVIDENCE,
       ),
     ).toBe(false);
+  });
+
+  it("keeps Node module-load syntax alongside the tree-sitter port", async () => {
+    const manifests = new InMemoryManifestReader({
+      "package.json": JSON.stringify({ name: "app", type: "module" }),
+    });
+
+    const withPort = await discoverApplicableChecks({
+      projects: [
+        {
+          projectId: "root",
+          rootPath: ".",
+          primaryLanguageId: "javascript",
+          ecosystemId: "node",
+          manifestPaths: ["package.json"],
+        },
+      ],
+      changeScope: "localized",
+      changedFiles: ["src/index.js"],
+      manifests,
+      syntaxPortAvailable: true,
+    });
+
+    expect(
+      withPort.candidates.some(
+        (c) => c.evidenceSource === NODE_MODULE_LOAD_EVIDENCE,
+      ),
+    ).toBe(true);
+    expect(
+      withPort.candidates.some(
+        (c) => c.evidenceSource === SYNTAX_PORT_EVIDENCE,
+      ),
+    ).toBe(true);
+  });
+
+  it("selects module-load over tree-sitter for the single localized syntax slot", () => {
+    const moduleLoad: DiscoveredCheckCandidate = {
+      checkId: "root:syntax:module_load",
+      kind: "syntax",
+      projectId: "root",
+      label: "node --import",
+      evidenceSource: NODE_MODULE_LOAD_EVIDENCE,
+      languageId: "javascript",
+      toolName: "run_readonly_command",
+      toolArguments: {
+        argv: ["node", "--import", "./src/index.js", "-e", "void 0"],
+      },
+      argv: ["node", "--import", "./src/index.js", "-e", "void 0"],
+    };
+    const portSyntax: DiscoveredCheckCandidate = {
+      checkId: "syntax:port",
+      kind: "syntax",
+      label: "Tree-sitter syntax check",
+      evidenceSource: SYNTAX_PORT_EVIDENCE,
+      languageId: "unknown",
+      toolName: "run_readonly_command",
+      toolArguments: {},
+    };
+
+    expect(syntaxEvidenceRank(moduleLoad)).toBeLessThan(
+      syntaxEvidenceRank(portSyntax),
+    );
+
+    const result = selectProportionalChecks({
+      candidates: [portSyntax, moduleLoad],
+      verification: {
+        required: true,
+        minimumEvidence: [],
+        allowUnavailable: true,
+      },
+      changeScope: "localized",
+      maxChecks: 4,
+    });
+
+    expect(result.selected.map((c) => c.checkId)).toContain(
+      "root:syntax:module_load",
+    );
+    expect(result.selected.map((c) => c.checkId)).not.toContain("syntax:port");
   });
 
   it("returns soft scriptHints from AGENTS.md without inventing checks", async () => {

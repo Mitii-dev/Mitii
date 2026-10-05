@@ -38,6 +38,7 @@ export async function executeDeleteFile(params: {
     const result = await params.transactions.deleteFile({
       workspaceRoot: params.workspaceRoot,
       pathScopes: resolveMutationPathScopes(params.grant),
+      extraAllowedRoots: params.grant.extraAllowedRoots,
       fileSystem: params.fileSystem,
       path: parsed.path,
       dirtyPaths: params.dirtyPaths,

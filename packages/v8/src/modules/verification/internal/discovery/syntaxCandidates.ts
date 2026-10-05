@@ -1,5 +1,6 @@
 import type { LanguageId } from "../../../repository-state";
 
+import { NODE_MODULE_LOAD_EVIDENCE } from "../../contracts";
 import type { DiscoveredCheckCandidate } from "./types";
 import { commandCandidate } from "./types";
 
@@ -50,6 +51,21 @@ export function syntaxCandidatesForChangedFiles(params: {
       params.languageId === "unknown") &&
     jsFiles.length > 0
   ) {
+    const languageId =
+      params.languageId === "typescript" ? "typescript" : "javascript";
+    // Module-load catches duplicate exports / instantiate errors that
+    // `node --check` and tree-sitter parse miss. Prefer this over parse-only.
+    candidates.push(
+      commandCandidate({
+        projectId: params.projectId,
+        kind: "syntax",
+        label: `node --import (module load, ${params.projectId})`,
+        evidenceSource: NODE_MODULE_LOAD_EVIDENCE,
+        languageId,
+        argv: buildNodeModuleLoadArgv(jsFiles),
+        mayBeUnavailable: true,
+      }),
+    );
     // node --check is JS-only; TypeScript stays on typecheck/diagnostics.
     candidates.push(
       commandCandidate({
@@ -57,8 +73,7 @@ export function syntaxCandidatesForChangedFiles(params: {
         kind: "syntax",
         label: `node --check (${params.projectId})`,
         evidenceSource: "changed-files:node_check",
-        languageId:
-          params.languageId === "typescript" ? "typescript" : "javascript",
+        languageId,
         argv: ["node", "--check", ...jsFiles],
         mayBeUnavailable: true,
       }),
@@ -88,6 +103,35 @@ export function syntaxCandidatesForChangedFiles(params: {
   }
 
   return candidates;
+}
+
+/**
+ * `node --import <file> … -e "void 0"` instantiates each module (ESM/CJS).
+ * `-e` must be non-empty (tool argv schema rejects `""`). Process env should
+ * include MITII_NO_LISTEN=1 for fixtures that call listen() at top level
+ * (injected by CommandPolicy).
+ */
+export function buildNodeModuleLoadArgv(files: readonly string[]): string[] {
+  const argv: string[] = ["node"];
+  for (const file of files) {
+    argv.push("--import", toNodeImportSpecifier(file));
+  }
+  argv.push("-e", "void 0");
+  return argv;
+}
+
+/** Node treats bare `src/a.js` as a package name — force a relative path. */
+export function toNodeImportSpecifier(filePath: string): string {
+  const normalized = filePath.replace(/\\/g, "/");
+  if (
+    normalized.startsWith("./") ||
+    normalized.startsWith("../") ||
+    normalized.startsWith("/") ||
+    /^[A-Za-z]:\//.test(normalized)
+  ) {
+    return normalized;
+  }
+  return `./${normalized}`;
 }
 
 function normalizeRoot(rootPath: string): string {

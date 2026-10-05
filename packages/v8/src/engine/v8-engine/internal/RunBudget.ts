@@ -1,4 +1,6 @@
 import type { AgentRunBudget } from "../contracts";
+import { stripPathRangeSuffix } from "../modules/tool-content-paths";
+import { DEFAULT_SAME_PATH_READ_ALLOWANCE } from "../actions/isExplorationRereadHeavy";
 
 export class RunBudgetTracker {
   private modelCalls = 0;
@@ -10,6 +12,7 @@ export class RunBudgetTracker {
   private cacheMissTokens = 0;
   private fileReadCalls = 0;
   private readonly touchedFilePaths = new Set<string>();
+  private readonly readsPerBasePath = new Map<string, number>();
   private readonly startedMs: number;
   /** Wall-clock time spent waiting on user (approval/clarification) — not billed. */
   private excludedWaitMs: number;
@@ -54,10 +57,20 @@ export class RunBudgetTracker {
   public recordFileRead(paths: readonly string[]): void {
     this.fileReadCalls += 1;
     for (const path of paths) {
-      const normalized = path.trim().replace(/\\/g, "/");
-      if (normalized.length > 0) {
-        this.touchedFilePaths.add(normalized);
-      }
+      const base = stripPathRangeSuffix(
+        path
+          .trim()
+          .replace(/\\/g, "/")
+          .replace(/\/+/g, "/")
+          .replace(/^\.\//, "")
+          .replace(/\/+$/, ""),
+      );
+      if (base.length === 0) continue;
+      this.touchedFilePaths.add(base);
+      this.readsPerBasePath.set(
+        base,
+        (this.readsPerBasePath.get(base) ?? 0) + 1,
+      );
     }
   }
 
@@ -127,16 +140,38 @@ export class RunBudgetTracker {
 
   /**
    * Progress stall: many file reads against few unique paths.
+   * Same-file windowed reads within `samePathAllowance` count as one unit.
    * Separate from the flat ceilings in `isExhausted()`.
    */
   public isExplorationStalled(params: {
     minCalls: number;
     ratio: number;
+    samePathAllowance?: number;
   }): boolean {
-    if (this.fileReadCalls < params.minCalls || this.touchedFilePaths.size <= 0) {
+    const unique = this.touchedFilePaths.size;
+    if (unique <= 0) {
       return false;
     }
-    return this.fileReadCalls >= this.touchedFilePaths.size * params.ratio;
+    const allowance = Math.max(
+      1,
+      params.samePathAllowance ?? DEFAULT_SAME_PATH_READ_ALLOWANCE,
+    );
+    const effective = this.effectiveFileReadCalls(allowance);
+    if (effective < params.minCalls) {
+      return false;
+    }
+    return effective >= unique * params.ratio;
+  }
+
+  private effectiveFileReadCalls(allowance: number): number {
+    if (this.readsPerBasePath.size === 0) {
+      return this.fileReadCalls;
+    }
+    let effective = 0;
+    for (const count of this.readsPerBasePath.values()) {
+      effective += 1 + Math.max(0, count - allowance);
+    }
+    return effective;
   }
 
   public maxModelCalls(): number {
@@ -173,6 +208,8 @@ export class RunBudgetTracker {
     cacheMissTokens: number;
     fileReadCalls: number;
     uniqueFilePathsTouched: number;
+    /** Thrash metric: unique paths + extras beyond same-path allowance. */
+    effectiveFileReadCalls: number;
   } {
     return {
       modelCalls: this.modelCalls,
@@ -184,6 +221,9 @@ export class RunBudgetTracker {
       cacheMissTokens: this.cacheMissTokens,
       fileReadCalls: this.fileReadCalls,
       uniqueFilePathsTouched: this.touchedFilePaths.size,
+      effectiveFileReadCalls: this.effectiveFileReadCalls(
+        DEFAULT_SAME_PATH_READ_ALLOWANCE,
+      ),
     };
   }
 }

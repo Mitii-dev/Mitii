@@ -59,18 +59,29 @@ export function applyExplorationSignal(
   snapshot: {
     fileReadCalls: number;
     uniqueFilePathsTouched: number;
+    /** Prefer this for thrash when present (same-path windowed reads discounted). */
+    effectiveFileReadCalls?: number;
   },
   reasonCodes: AgentReasonCode[],
   warnings: string[],
   thresholds: ExplorationRereadThresholds = AGENT_ENGINE_THRESHOLDS,
 ): void {
-  if (!isExplorationRereadHeavy(snapshot, thresholds)) {
+  const thrashCalls = snapshot.effectiveFileReadCalls ?? snapshot.fileReadCalls;
+  if (
+    !isExplorationRereadHeavy(
+      {
+        fileReadCalls: thrashCalls,
+        uniqueFilePathsTouched: snapshot.uniqueFilePathsTouched,
+      },
+      thresholds,
+    )
+  ) {
     return;
   }
   if (!reasonCodes.includes("exploration_reread_heavy")) {
     reasonCodes.push("exploration_reread_heavy");
   }
-  const warning = `File reads (${snapshot.fileReadCalls}) substantially exceeded unique paths (${snapshot.uniqueFilePathsTouched}).`;
+  const warning = `File reads (${thrashCalls} effective / ${snapshot.fileReadCalls} raw) substantially exceeded unique paths (${snapshot.uniqueFilePathsTouched}).`;
   if (!warnings.includes(warning)) {
     warnings.push(warning);
   }

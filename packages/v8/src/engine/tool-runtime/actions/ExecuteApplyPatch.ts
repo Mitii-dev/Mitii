@@ -44,6 +44,7 @@ export async function executeApplyPatch(params: {
     const result = await params.transactions.applyPatches({
       workspaceRoot: params.workspaceRoot,
       pathScopes: resolveMutationPathScopes(params.grant),
+      extraAllowedRoots: params.grant.extraAllowedRoots,
       fileSystem: params.fileSystem,
       patches: parsed.patches,
       dirtyPaths: params.dirtyPaths,

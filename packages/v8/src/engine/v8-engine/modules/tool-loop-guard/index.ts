@@ -2,8 +2,9 @@
  * Guard against identical tool-batch thrash: soft nudge → force final → reject.
  * Signatures cover tool name + stable arguments (and optional result payloads).
  *
- * Read/search windows (startLine/endLine/maxLines/…) are stripped so re-reading
- * the same path with a sliding line range still counts as the same batch.
+ * For read_file, startLine/endLine stay in the signature so progressive windows
+ * of a large file are distinct. Other discovery tools still strip volatile
+ * pagination keys so path/query thrash is detected.
  */
 
 export type ToolLoopCall = {
@@ -199,9 +200,12 @@ export function forceFinalToolLoopMessage(repeatCount: number): string {
   ].join("\n");
 }
 
+/** Kept on read_file so progressive windows do not soft-nudge as identical. */
+const READ_FILE_WINDOW_KEYS = new Set(["startLine", "endLine"]);
+
 /**
- * Drop volatile read windows so `read_file` of the same path with different
- * line ranges still shares a signature. Keep query/mode/path for search.
+ * Drop volatile pagination keys for discovery thrash detection.
+ * read_file keeps startLine/endLine so large-file paging is not identical.
  */
 export function canonicalizeArgumentsForLoop(
   toolName: string,
@@ -213,8 +217,12 @@ export function canonicalizeArgumentsForLoop(
   }
   const record = { ...(parsed as Record<string, unknown>) };
 
-  if (
-    toolName === "read_file" ||
+  if (toolName === "read_file") {
+    for (const key of VOLATILE_ARG_KEYS) {
+      if (READ_FILE_WINDOW_KEYS.has(key)) continue;
+      delete record[key];
+    }
+  } else if (
     toolName === "read_many_files" ||
     toolName === "search_files" ||
     toolName === "glob_files" ||

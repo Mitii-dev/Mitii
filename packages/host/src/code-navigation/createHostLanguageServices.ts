@@ -19,6 +19,7 @@ import { CODE_NAVIGATION_OPERATIONS, CODE_NAVIGATION_POLICY, createRequestLimite
 import type { RequestLimiter } from '@mitii/v8';
 
 import { createHostCodeNavigationPort } from './createHostCodeNavigationPort.js';
+import { createNodeJsDiagnosticsPort } from './createNodeJsDiagnosticsPort.js';
 import {
   createStdioLspCodeNavigationPort,
   type StdioLspServerConfig,
@@ -91,6 +92,10 @@ export function createHostLanguageServices(options: {
         workspaceRoot: options.workspaceRoot,
         languageServer: stdio,
       }),
+      // Stdio LSP may not expose diagnostics; Node module-load covers .js/.mjs/.cjs.
+      diagnostics: createNodeJsDiagnosticsPort({
+        workspaceRoot: options.workspaceRoot,
+      }),
       capability: {
         status: 'available',
         provider: 'language_server',
@@ -108,6 +113,9 @@ export function createHostLanguageServices(options: {
   });
   return {
     codeNavigation,
+    diagnostics: createNodeJsDiagnosticsPort({
+      workspaceRoot: options.workspaceRoot,
+    }),
     capability: codeNavigation.capability?.() ?? {
       status: 'degraded',
       provider: 'repo_graph',

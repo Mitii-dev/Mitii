@@ -6,7 +6,10 @@
 import type { TaskList } from "../../../../modules/task-list";
 import type { ModelToolDefinition } from "../../../../modules/model-gateway";
 import type { EstablishedFact } from "../../actions/extractEstablishedFact";
-import type { LoopFileReadTracker } from "../../actions/isExplorationRereadHeavy";
+import {
+  isLoopFilePathFullyLoaded,
+  type LoopFileReadTracker,
+} from "../../actions/isExplorationRereadHeavy";
 
 export type {
   MutateReadinessBudget,
@@ -373,12 +376,14 @@ function isEvidencePathLoaded(
 ): boolean {
   const normalized = normalizePath(path);
   if (!normalized) return false;
-  if (loopFileReads) {
-    for (const candidate of loopFileReads.paths) {
-      if (normalizePath(candidate) === normalized) {
-        return true;
-      }
-    }
+  // Truncated / windowed reads must not satisfy readiness — only eof+complete.
+  if (isLoopFilePathFullyLoaded(loopFileReads, normalized)) {
+    return true;
+  }
+  // Facts are a soft fallback only when the tracker has no entry for the path
+  // (e.g. context from a prior turn). Never treat a truncated-read fact as load.
+  if (loopFileReads?.byPath.has(normalized)) {
+    return false;
   }
   for (const fact of establishedFacts ?? []) {
     if (fact.id.includes(normalized) || fact.content.includes(normalized)) {

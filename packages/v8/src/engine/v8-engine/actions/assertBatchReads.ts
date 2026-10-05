@@ -1,6 +1,9 @@
 import type { TaskList } from "../../../modules/task-list";
 import type { EstablishedFact } from "./extractEstablishedFact";
-import type { LoopFileReadTracker } from "./isExplorationRereadHeavy";
+import {
+  isLoopFilePathFullyLoaded,
+  type LoopFileReadTracker,
+} from "./isExplorationRereadHeavy";
 
 const MUTATION_PATH_TOOLS = new Set([
   "apply_patch",
@@ -97,15 +100,16 @@ function isPathLoaded(
   loopFileReads?: LoopFileReadTracker,
   establishedFacts?: readonly EstablishedFact[],
 ): boolean {
-  if (loopFileReads) {
-    for (const candidate of loopFileReads.paths) {
-      if (normalizePath(candidate) === path) {
-        return true;
-      }
-    }
+  const normalized = normalizePath(path);
+  if (!normalized) return false;
+  if (isLoopFilePathFullyLoaded(loopFileReads, normalized)) {
+    return true;
+  }
+  if (loopFileReads?.byPath.has(normalized)) {
+    return false;
   }
   for (const fact of establishedFacts ?? []) {
-    if (fact.id.includes(path) || fact.content.includes(path)) {
+    if (fact.id.includes(normalized) || fact.content.includes(normalized)) {
       return true;
     }
   }

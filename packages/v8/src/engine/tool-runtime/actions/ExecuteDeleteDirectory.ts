@@ -40,6 +40,7 @@ export async function executeDeleteDirectory(params: {
     const result = await params.transactions.deleteDirectory({
       workspaceRoot: params.workspaceRoot,
       pathScopes: resolveMutationPathScopes(params.grant),
+      extraAllowedRoots: params.grant.extraAllowedRoots,
       fileSystem: params.fileSystem,
       path: parsed.path,
       recursive,

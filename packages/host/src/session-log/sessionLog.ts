@@ -139,6 +139,40 @@ function compactText(text: string | undefined, maxChars?: number): {
   };
 }
 
+const PLAN_STEP_SUMMARY_MAX = 24;
+const PLAN_STEP_SUMMARY_CHARS = 160;
+
+/** Compact step titles for session logs — never the full PlanArtifact body. */
+function summarizePlanSteps(plan: {
+  phases: readonly {
+    steps: readonly {
+      id?: string;
+      intent?: string;
+      actionSummary?: string;
+    }[];
+  }[];
+}): string[] {
+  const summaries: string[] = [];
+  for (const phase of plan.phases) {
+    for (const step of phase.steps) {
+      if (summaries.length >= PLAN_STEP_SUMMARY_MAX) {
+        return summaries;
+      }
+      const raw =
+        step.intent?.trim() ||
+        step.actionSummary?.trim() ||
+        step.id?.trim() ||
+        'step';
+      summaries.push(
+        raw.length > PLAN_STEP_SUMMARY_CHARS
+          ? `${raw.slice(0, PLAN_STEP_SUMMARY_CHARS)}…`
+          : raw,
+      );
+    }
+  }
+  return summaries;
+}
+
 function compactEvent(
   event: RunEvent,
   limits: SessionLogTextLimits,
@@ -279,6 +313,7 @@ function compactEvent(
                 ) => sum + phase.steps.length,
                 0,
               ),
+              stepSummaries: summarizePlanSteps(event.plan),
             }
           : {}),
       };

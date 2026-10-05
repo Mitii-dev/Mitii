@@ -54,7 +54,10 @@ export type {
   VerificationSyntaxPort,
   VerificationSyntaxFinding,
 } from "./ports/VerificationPorts";
-export { SYNTAX_PORT_EVIDENCE } from "./ports/VerificationPorts";
+export {
+  SYNTAX_PORT_EVIDENCE,
+  NODE_MODULE_LOAD_EVIDENCE,
+} from "./ports/VerificationPorts";
 
 export {
   verificationRecordSchema,

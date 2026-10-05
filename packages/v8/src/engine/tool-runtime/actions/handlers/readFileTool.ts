@@ -11,7 +11,7 @@ export const readFileTool: RegisteredTool = {
     name: "read_file",
     effects: ["workspace_read"],
     description:
-      "Read a workspace file or line range. Use head/tail for first/last N lines; or startLine/endLine/maxLines. Returns actual startLine/endLine coverage, eof, and nextStartLine when truncated — call again with startLine=nextStartLine for the remainder instead of re-reading from line 1. Prefer glob_files/search_files/list_directory/directory_tree first; use read_many_files for multiple small files. For edits, use minimal apply_patch hunks from the window you have; do not rewrite whole files.",
+      "Read a workspace file or line range. Use startLine/endLine/maxLines (not `line`). Prefer head/tail alone for first/last N lines — do not combine head/tail with startLine/endLine/maxLines. Returns actual startLine/endLine coverage, eof, and nextStartLine when truncated — call again with startLine=nextStartLine for the remainder instead of re-reading from line 1. Prefer glob_files/search_files/list_directory/directory_tree first; use read_many_files for multiple small files. For edits, use minimal apply_patch hunks from the window you have; do not rewrite whole files.",
     inputSchema: readFileInputSchema,
     outputSchema: readFileOutputSchema,
     modelInputSchema: {

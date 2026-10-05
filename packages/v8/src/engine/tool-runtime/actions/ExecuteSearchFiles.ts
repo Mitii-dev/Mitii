@@ -46,6 +46,7 @@ export async function executeSearchFiles(params: {
       pathScopes: params.grant.pathScopes,
     }),
     pathScopes: params.grant.pathScopes,
+    extraAllowedRoots: params.grant.extraAllowedRoots,
   });
 
   const maxMatches = input.maxMatches ?? DEFAULT_MAX_SEARCH_MATCHES;

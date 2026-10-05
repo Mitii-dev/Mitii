@@ -52,6 +52,8 @@ export const DEFAULT_ALLOWED_COMMAND_ENV = [
   "TMPDIR",
   "TMP",
   "TEMP",
+  /** Bench/fixtures skip `listen()` when modules are loaded for verify. */
+  "MITII_NO_LISTEN",
 ] as const;
 
 export const DEFAULT_READONLY_COMMAND_PREFIXES = [

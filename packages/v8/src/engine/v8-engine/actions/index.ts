@@ -72,12 +72,16 @@ export type { EstablishedFact } from "./extractEstablishedFact";
 export {
   createLoopFileReadTracker,
   isExplorationRereadHeavy,
+  isLoopFilePathFullyLoaded,
+  markLoopFileReadResult,
   recordLoopFileReads,
   resetLoopFileReadTracker,
   snapshotLoopFileReads,
+  DEFAULT_SAME_PATH_READ_ALLOWANCE,
 } from "./isExplorationRereadHeavy";
 export type {
   LoopFileReadTracker,
+  LoopFileReadCoverage,
   ExplorationRereadThresholds,
 } from "./isExplorationRereadHeavy";
 export {
