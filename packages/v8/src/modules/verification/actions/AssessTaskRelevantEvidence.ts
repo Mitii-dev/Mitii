@@ -38,9 +38,13 @@ export interface TaskRelevantEvidenceAssessment {
  * 1. Authoritative evidence = passed typecheck/build that is not workspace-root.
  * 2. If that passed, failed syntax / workspace-root compile leftovers and
  *    harness/denied diagnostics are residuals — accept.
- * 3. Failed tests with ask-scoped source diagnostics remain defects.
- *    Harness-only / denied-only test failures do not reopen repair.
+ * 3. Failed tests with ask-scoped / parseable assertion diagnostics remain
+ *    defects when `minimumEvidence` includes `tests`. Empty-suite / unparsed
+ *    test exits stay harness noise (common for single-package fixtures before
+ *    host-injected oracles). Optional tests remain harness noise.
  * 4. Without authoritative compile, do not soft-accept failed checks.
+ *    Sole workspace-root build/typecheck counts when no project-local compile
+ *    check ran (single-package fixtures).
  */
 export function assessTaskRelevantEvidence(params: {
   verification: VerificationRequirement;
@@ -50,8 +54,9 @@ export function assessTaskRelevantEvidence(params: {
   askScopePaths?: readonly string[];
 }): TaskRelevantEvidenceAssessment {
   const checks = params.checks;
-  const authoritativeCompilePassed = projectLocalCompilePassed(checks);
+  const authoritativeCompilePassed = resolveAuthoritativeCompilePassed(checks);
   const diagnostics = params.diagnostics ?? [];
+  const testsRequired = params.verification.minimumEvidence.includes("tests");
 
   const filtered = filterActionableDiagnostics({
     diagnostics,
@@ -110,7 +115,12 @@ export function assessTaskRelevantEvidence(params: {
 
   // Every failed check must be an ignorable residual class.
   for (const check of failed) {
-    if (!isIgnorableResidualCheck(check)) {
+    if (
+      !isIgnorableResidualCheck(check, {
+        testsRequired,
+        actionableDiagnostics: filtered.actionable,
+      })
+    ) {
       return {
         authoritativeCompilePassed: true,
         shouldAccept: false,
@@ -195,16 +205,55 @@ export function projectLocalCompilePassed(
   );
 }
 
-function isIgnorableResidualCheck(check: VerificationCheckResult): boolean {
+function resolveAuthoritativeCompilePassed(
+  checks: readonly VerificationCheckResult[],
+): boolean {
+  if (projectLocalCompilePassed(checks)) {
+    return true;
+  }
+  // Single-package fixtures only expose workspace-root compile checks.
+  const hasProjectLocalCompile = checks.some(
+    (check) =>
+      (check.kind === "typecheck" || check.kind === "build") &&
+      !isWorkspaceRootCheckId({
+        checkId: check.checkId,
+        projectId: check.projectId,
+      }),
+  );
+  if (hasProjectLocalCompile) {
+    return false;
+  }
+  return checks.some(
+    (check) =>
+      (check.kind === "typecheck" || check.kind === "build") &&
+      check.outcome === "passed" &&
+      isWorkspaceRootCheckId({
+        checkId: check.checkId,
+        projectId: check.projectId,
+      }),
+  );
+}
+
+function isIgnorableResidualCheck(
+  check: VerificationCheckResult,
+  options: {
+    testsRequired: boolean;
+    actionableDiagnostics: readonly VerificationDiagnostic[];
+  },
+): boolean {
   if (check.kind === "lint" || check.kind === "format") {
     return true;
   }
   if (check.kind === "syntax") {
     return true;
   }
-  // Test exit failures without ask-scoped source diagnostics are harness noise.
+  // Required tests with parseable assertion/source rows are defects.
+  // Empty-suite / unparsed exits stay harness noise.
   if (check.kind === "test") {
-    return true;
+    if (!options.testsRequired) {
+      return true;
+    }
+    return isEmptyTestHarnessFailure(check, options.actionableDiagnostics);
   }
   if (
     (check.kind === "typecheck" || check.kind === "build") &&
@@ -216,6 +265,24 @@ function isIgnorableResidualCheck(check: VerificationCheckResult): boolean {
     return true;
   }
   return false;
+}
+
+function isEmptyTestHarnessFailure(
+  check: VerificationCheckResult,
+  actionableDiagnostics: readonly VerificationDiagnostic[],
+): boolean {
+  if (actionableDiagnostics.length > 0) {
+    return false;
+  }
+  const summary = `${check.summary ?? ""} ${check.label ?? ""}`.toLowerCase();
+  return (
+    /no test files?|no tests? found|0 tests?|did not (run|find) any test|no test specified/i.test(
+      summary,
+    ) ||
+    // Selected test script failed with nothing parseable — typical empty
+    // fixture / pre-oracle harness noise, not a product assertion.
+    summary.length > 0
+  );
 }
 
 /**

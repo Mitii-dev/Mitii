@@ -34,9 +34,13 @@ Verification gathers evidence after a change. It maps changed files to projects,
 - Normalizes diagnostics and compares against optional baseline diagnostics.
 - Filters harness / denied-tree / phantom-secondary residuals (language-agnostic
   path policy) before completion and before→after compare counts.
-- Soft-accepts (`implemented_unverified`) when project-local typecheck/build
-  passed and remaining failures are only harness, syntax-secondary, or
-  workspace-root noise — so repair does not thrash on runner frames.
+- Soft-accepts (`implemented_unverified`) when authoritative compile passed
+  (project-local typecheck/build, or sole workspace-root compile on
+  single-package fixtures) and remaining failures are only harness,
+  syntax-secondary, empty-suite test exits, or workspace-root noise.
+  Required `tests` evidence with parseable ask-scoped assertion diagnostics
+  is not harness noise — those reopen repair. Compare-only “no new errors”
+  must not soft-accept when the assessor still rejects.
 - Before→after compare counts **NEW∩IN_SCOPE∩ACTIONABLE** when ask/changed
   paths are supplied (`out_of_scope_residuals_ignored`). Only that intersection
   opens repair; selection may still run broader checks.

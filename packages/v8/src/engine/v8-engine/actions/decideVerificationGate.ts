@@ -1,3 +1,4 @@
+import type { VerificationRequirement } from "../../../modules/decision-policy";
 import {
   assessTaskRelevantEvidence,
   isPhantomSecondaryDiagnostic,
@@ -85,6 +86,8 @@ export function decideVerificationGate(params: {
   /** Changed / seed paths — used to ignore unrelated package noise. */
   askScopePaths?: readonly string[];
   changedFiles?: readonly string[];
+  /** Decision-policy minimum evidence kinds (e.g. includes `tests`). */
+  minimumEvidence?: readonly string[];
 }): VerificationGateDecision {
   if (params.mutationRequired && params.changedFileCount === 0) {
     return {
@@ -140,6 +143,7 @@ export function decideVerificationGate(params: {
     comparison: params.comparison,
     askScopePaths: params.askScopePaths,
     changedFiles: params.changedFiles,
+    minimumEvidence: params.minimumEvidence,
   };
 
   switch (verification.status) {
@@ -233,6 +237,7 @@ function hasInScopeActionableRepairTarget(params: {
   comparison?: RepoBuildStateComparison;
   askScopePaths?: readonly string[];
   changedFiles?: readonly string[];
+  minimumEvidence?: readonly string[];
 }): boolean {
   if (params.comparison && params.comparison.newErrorCount > 0) {
     return true;
@@ -240,7 +245,7 @@ function hasInScopeActionableRepairTarget(params: {
   const assessment = assessTaskRelevantEvidence({
     verification: {
       required: true,
-      minimumEvidence: [],
+      minimumEvidence: normalizeMinimumEvidence(params.minimumEvidence),
       allowUnavailable: true,
     },
     checks: params.verification.checks,
@@ -251,7 +256,9 @@ function hasInScopeActionableRepairTarget(params: {
   if (assessment.residualKind === "ask_scoped_defect") {
     return true;
   }
-  if (!assessment.shouldAccept && !assessment.authoritativeCompilePassed) {
+  // Failed required evidence (including tests) is repairable even when
+  // project-local compile already passed.
+  if (!assessment.shouldAccept) {
     return true;
   }
   return false;
@@ -282,14 +289,16 @@ export function isUserGoalComplete(params: {
   comparison?: RepoBuildStateComparison;
   askScopePaths?: readonly string[];
   changedFiles?: readonly string[];
+  minimumEvidence?: readonly string[];
 }): boolean {
   const { verification, comparison } = params;
   const changedCount = params.changedFiles?.length ?? 0;
+  const minimumEvidence = normalizeMinimumEvidence(params.minimumEvidence);
 
   const assessment = assessTaskRelevantEvidence({
     verification: {
       required: true,
-      minimumEvidence: [],
+      minimumEvidence,
       allowUnavailable: true,
     },
     checks: verification.checks,
@@ -309,9 +318,17 @@ export function isUserGoalComplete(params: {
     return true;
   }
 
-  // Compare-only: edits landed and actionable compare introduced no new errors.
+  const hasFailedCheck = verification.checks.some(
+    (check) => check.outcome === "failed" || check.outcome === "timed_out",
+  );
+
+  // Compare-only: edits landed and actionable compare introduced no new
+  // errors. Do not soft-accept when selected checks failed and the assessor
+  // did not classify them as ignorable residuals (e.g. required tests).
   if (changedCount > 0 && comparison && comparison.newErrorCount === 0) {
-    return true;
+    if (!hasFailedCheck || assessment.shouldAccept) {
+      return true;
+    }
   }
 
   if (comparison && comparison.newErrorCount > 0) {
@@ -319,10 +336,29 @@ export function isUserGoalComplete(params: {
   }
 
   if (comparison && comparison.afterErrorCount > 0) {
-    return changedCount > 0;
+    return changedCount > 0 && assessment.shouldAccept;
   }
 
   return assessment.shouldAccept;
+}
+
+function normalizeMinimumEvidence(
+  value: readonly string[] | undefined,
+): VerificationRequirement["minimumEvidence"] {
+  const allowed = new Set<VerificationRequirement["minimumEvidence"][number]>([
+    "diagnostics",
+    "diff_review",
+    "typecheck",
+    "tests",
+    "build",
+  ]);
+  if (!value || value.length === 0) {
+    return [];
+  }
+  return value.filter(
+    (item): item is VerificationRequirement["minimumEvidence"][number] =>
+      allowed.has(item as VerificationRequirement["minimumEvidence"][number]),
+  );
 }
 
 /** @deprecated Prefer `isPhantomSecondaryDiagnostic` from verification. */

@@ -115,17 +115,37 @@ function buildTargetAllowlist(input: PlanningParsedInput): string[] {
       query: input.query,
     })?.diagnostics ?? [];
   const mapping = resolveScaffoldMappingForInput(input);
-  const raw = [
+  const observed = [
     ...(input.scopedRepoMap?.entries.map((entry) => entry.path) ?? []),
     ...(input.discoveryBrief?.filesRead.map((file) => file.path) ?? []),
-    ...(input.discoveryBrief?.proposedChangeSurfaces.map((surface) => surface.path) ??
-      []),
-    ...(input.discoveryBrief?.targets.map((target) => target.value) ?? []),
+    ...(input.discoveryBrief?.proposedChangeSurfaces.map(
+      (surface) => surface.path,
+    ) ?? []),
     ...scopedDiagnostics.map((diagnostic) => diagnostic.path),
-    ...input.evidence.targets
-      .filter((target) => target.explicit)
-      .map((target) => target.value),
   ].map(normalizePath);
+
+  const discoveryNonThin =
+    (input.discoveryBrief?.filesRead.length ?? 0) >= 1 ||
+    (input.discoveryBrief?.proposedChangeSurfaces.length ?? 0) > 0;
+
+  // After real discovery reads/surfaces, prompt-extracted targets that were
+  // never observed must not stay on the write allowlist (e.g. Next `app/page.jsx`
+  // mentioned in a shared prompt while discovery only saw Vite `src/App.jsx`).
+  const promptTargets = discoveryNonThin
+    ? []
+    : [
+        ...(input.discoveryBrief?.targets.map((target) => target.value) ?? []),
+        ...input.evidence.targets
+          .filter((target) => target.explicit)
+          .map((target) => target.value),
+      ].map(normalizePath);
+
+  const raw = [
+    ...observed,
+    // Same-directory creates stay allowed under observed parents.
+    ...(discoveryNonThin ? observed.flatMap(parentDirectories) : []),
+    ...promptTargets,
+  ];
 
   // Clone/port asks: write allowlist is the TARGET package only. Template
   // filesRead stay as evidence in the prompt, not as writable targetRefs.
@@ -144,6 +164,19 @@ function buildTargetAllowlist(input: PlanningParsedInput): string[] {
   }
 
   return uniqueStrings(raw).filter((value) => value.length > 0);
+}
+
+/** Ancestor directories for an observed file path (`src/App.jsx` → `src`). */
+function parentDirectories(path: string): string[] {
+  const parts = path.split("/").filter((part) => part.length > 0);
+  if (parts.length <= 1) {
+    return [];
+  }
+  const parents: string[] = [];
+  for (let index = 1; index < parts.length; index += 1) {
+    parents.push(parts.slice(0, index).join("/"));
+  }
+  return parents;
 }
 
 function filterTargetRefs(

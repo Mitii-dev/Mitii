@@ -141,6 +141,11 @@ export const AGENT_REASON_CODES = [
   "mutation_lock_auto_stub",
   "tool_result_deduped",
   "tool_result_already_read",
+  /**
+   * Successful `run_command` wiped read-only content cache + read ledger
+   * so post-install builds/reads are not served from pre-mutation results.
+   */
+  "shell_mutation_cache_invalidated",
   "content_cache_path_invalidated",
   "read_ledger_invalidated",
   "prompt_cache_class_no_cache",

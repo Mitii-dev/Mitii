@@ -244,6 +244,76 @@ describe("assessTaskRelevantEvidence", () => {
 
     expect(assessment.shouldAccept).toBe(false);
   });
+
+  it("rejects failed tests when minimumEvidence includes tests and assertions parse", () => {
+    const assessment = assessTaskRelevantEvidence({
+      verification: {
+        required: true,
+        minimumEvidence: ["typecheck", "tests"],
+        allowUnavailable: false,
+      },
+      checks: [
+        check({
+          checkId: "pkg:typecheck:typecheck",
+          kind: "typecheck",
+          projectId: "pkg",
+          outcome: "passed",
+        }),
+        check({
+          checkId: "pkg:test:test",
+          kind: "test",
+          projectId: "pkg",
+          outcome: "failed",
+        }),
+      ],
+      diagnostics: [
+        {
+          path: "pkg/src/App.jsx",
+          severity: "error",
+          message: 'Unable to find an element by: [data-testid="cookie-banner"]',
+          startLine: 12,
+          source: "vitest",
+        },
+      ],
+      changedFiles: ["pkg/src/App.jsx"],
+      askScopePaths: ["pkg/src/App.jsx"],
+    });
+
+    expect(assessment.shouldAccept).toBe(false);
+    expect(assessment.residualKind).toBe("ask_scoped_defect");
+    expect(assessment.reasonCodes).toContain("checks_failed");
+  });
+
+  it("accepts empty-suite workspace-root test noise when sole compile passed", () => {
+    const assessment = assessTaskRelevantEvidence({
+      verification: {
+        required: true,
+        minimumEvidence: ["build", "tests"],
+        allowUnavailable: false,
+      },
+      checks: [
+        check({
+          checkId: "workspace-root:build:build",
+          kind: "build",
+          projectId: "workspace-root",
+          outcome: "passed",
+        }),
+        check({
+          checkId: "workspace-root:test:test",
+          kind: "test",
+          projectId: "workspace-root",
+          outcome: "failed",
+          summary: "npm test (workspace-root) failed (exit 1).",
+        }),
+      ],
+      diagnostics: [],
+      changedFiles: ["src/App.jsx"],
+    });
+
+    expect(assessment.authoritativeCompilePassed).toBe(true);
+    expect(assessment.shouldAccept).toBe(true);
+    expect(assessment.reasonCodes).toContain("residual_harness_noise");
+  });
 });
 
 describe("recommendCompletion + compare (Index thrash regression)", () => {

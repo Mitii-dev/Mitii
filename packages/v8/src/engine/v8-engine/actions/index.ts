@@ -70,6 +70,10 @@ export {
 } from "./extractEstablishedFact";
 export type { EstablishedFact } from "./extractEstablishedFact";
 export {
+  applySucceededMutationSideEffects,
+  SHELL_MUTATION_MANIFEST_PATHS,
+} from "./invalidateReadonlyCachesAfterMutation";
+export {
   createLoopFileReadTracker,
   isExplorationRereadHeavy,
   isLoopFilePathFullyLoaded,

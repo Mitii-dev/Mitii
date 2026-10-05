@@ -19,8 +19,10 @@ interface ContentCacheEntry {
  * approval gate. `content:` entries dedup identical read-only tool+args
  * issued under a new callId in the same run.
  *
- * Content entries store path metadata so mutations invalidate only
- * overlapping paths instead of wiping the entire read cache.
+ * Content entries store path metadata so file mutations invalidate only
+ * overlapping paths. Successful `run_command` full-wipes content entries
+ * (see `applySucceededMutationSideEffects`) because command results have
+ * empty path metadata and installs change build/test outcomes.
  */
 export class ToolCallCache {
   private readonly completed = new Map<string, ToolResult>();
