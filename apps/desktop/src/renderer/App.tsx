@@ -73,10 +73,7 @@ import {
   IconWorkspace,
 } from './ActivityIcons.js';
 import { ActivityTimeline } from './chat/ActivityTimeline.js';
-import {
-  ThinkingBlock,
-  thinkingItemsFromActivity,
-} from './chat/ThinkingBlock.js';
+import { createStreamPaintScheduler } from './chat/streamPaintScheduler.js';
 import {
   extractAssistantText,
   deleteHistoryThread,
@@ -1138,106 +1135,117 @@ export function App() {
         setTokenUsage(next);
       };
 
-      for await (const line of lines) {
-        if (line.op === 'error') {
-          throw new Error(line.message ?? line.error);
-        }
-        if (line.op === 'event') {
-          const tokens = extractTurnTokens(line.event);
-          if (tokens) {
-            pushUsage(
-              addTurnTokens({ ...usage, live: true }, tokens.in, tokens.out, {
-                hit: tokens.cacheHit,
-                miss: tokens.cacheMiss,
-              }),
-            );
-          }
-          const breakdown = breakdownFromPromptReady(line.event);
-          if (breakdown) {
-            pushUsage({
-              ...usage,
-              contextBreakdown: breakdown,
-              contextWindow: breakdown.contextWindow || usage.contextWindow,
-              live: true,
-            });
-          }
-          if (isToolCompleted(line.event)) {
-            pushUsage({
-              ...usage,
-              toolCalls: usage.toolCalls + 1,
-            });
-          }
-          const writePaths = collectMutatedPathsFromEvent(line.event);
-          for (const path of writePaths) mutated.add(path);
-          // Mid-stream: refresh explorer/SCM as soon as write tools complete.
-          if (isToolCompleted(line.event) && writePaths.length > 0) {
-            workspaceInvalidateSeq.current += 1;
-            setWorkspaceInvalidate({
-              seq: workspaceInvalidateSeq.current,
-              paths: writePaths,
-            });
-          }
-          const item = runEventToActivity(line.event);
-          if (item) {
-            activity = appendActivity(activity, item);
-          }
-          const delta = extractAssistantText(line);
-          if (delta) assistant += delta;
-          const text = assistant;
-          const activitySnapshot = activity;
+      const paint = createStreamPaintScheduler({
+        coalesceMs: 1000,
+        paint: (snapshot) => {
           setMessages((prev) =>
             prev.map((m) =>
               m.id === assistantId
                 ? {
                     ...m,
-                    text,
-                    activity: activitySnapshot,
-                    streaming: true,
+                    text: snapshot.text,
+                    activity: snapshot.activity,
+                    streaming: snapshot.streaming,
                   }
                 : m,
             ),
           );
-        }
-        if (line.op === 'result') {
-          assistant = finalizeAssistantText(assistant, line);
-          nextSuspension = extractSuspension(line.result);
-          if (nextSuspension) {
-            // Pilot: queue silent auto-Continue — do not paint the stall card
-            // (avoids "Clarification / more research" flicker).
-            if (
-              nextSuspension.kind === 'continue_required' &&
-              approvalModeRef.current === 'pilot'
-            ) {
-              setPendingAutoContinue(nextSuspension);
-            } else {
-              setSuspension(nextSuspension);
+        },
+      });
+
+      try {
+        for await (const line of lines) {
+          if (line.op === 'error') {
+            paint.force({
+              text: assistant,
+              activity,
+              streaming: false,
+            });
+            throw new Error(line.message ?? line.error);
+          }
+          if (line.op === 'event') {
+            const tokens = extractTurnTokens(line.event);
+            if (tokens) {
+              pushUsage(
+                addTurnTokens({ ...usage, live: true }, tokens.in, tokens.out, {
+                  hit: tokens.cacheHit,
+                  miss: tokens.cacheMiss,
+                }),
+              );
             }
-          }
-          const extracted = extractPlanFromRunResult(line.result);
-          resultPlan = extracted.plan;
-          resultPlanStrategy = extracted.planStrategy;
-          resultTaskList = extracted.taskList;
-          if (options?.formatPlanAnswer) {
-            assistant = resolvePlanDisplayText({
-              answer: assistant,
-              ...(resultPlan ? { plan: resultPlan } : {}),
+            const breakdown = breakdownFromPromptReady(line.event);
+            if (breakdown) {
+              pushUsage({
+                ...usage,
+                contextBreakdown: breakdown,
+                contextWindow: breakdown.contextWindow || usage.contextWindow,
+                live: true,
+              });
+            }
+            if (isToolCompleted(line.event)) {
+              pushUsage({
+                ...usage,
+                toolCalls: usage.toolCalls + 1,
+              });
+            }
+            const writePaths = collectMutatedPathsFromEvent(line.event);
+            for (const path of writePaths) mutated.add(path);
+            // Mid-stream: refresh explorer/SCM as soon as write tools complete.
+            if (isToolCompleted(line.event) && writePaths.length > 0) {
+              workspaceInvalidateSeq.current += 1;
+              setWorkspaceInvalidate({
+                seq: workspaceInvalidateSeq.current,
+                paths: writePaths,
+              });
+            }
+            const item = runEventToActivity(line.event);
+            if (item) {
+              activity = appendActivity(activity, item);
+            }
+            const delta = extractAssistantText(line);
+            if (delta) assistant += delta;
+            paint.update({
+              text: assistant,
+              activity,
+              streaming: true,
             });
           }
-          const activitySnapshot = activity;
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId
-                ? {
-                    ...m,
-                    text: assistant,
-                    activity: activitySnapshot,
-                    streaming: false,
-                  }
-                : m,
-            ),
-          );
-          pushUsage({ ...usage, live: false });
+          if (line.op === 'result') {
+            assistant = finalizeAssistantText(assistant, line);
+            nextSuspension = extractSuspension(line.result);
+            if (nextSuspension) {
+              // Pilot: queue silent auto-Continue — do not paint the stall card
+              // (avoids "Clarification / more research" flicker).
+              if (
+                nextSuspension.kind === 'continue_required' &&
+                approvalModeRef.current === 'pilot'
+              ) {
+                setPendingAutoContinue(nextSuspension);
+              } else {
+                setSuspension(nextSuspension);
+              }
+            }
+            const extracted = extractPlanFromRunResult(line.result);
+            resultPlan = extracted.plan;
+            resultPlanStrategy = extracted.planStrategy;
+            resultTaskList = extracted.taskList;
+            if (options?.formatPlanAnswer) {
+              assistant = resolvePlanDisplayText({
+                answer: assistant,
+                ...(resultPlan ? { plan: resultPlan } : {}),
+              });
+            }
+            paint.force({
+              text: assistant,
+              activity,
+              streaming: false,
+            });
+            pushUsage({ ...usage, live: false });
+          }
         }
+      } finally {
+        paint.force();
+        paint.dispose();
       }
 
       return {
@@ -3014,10 +3022,16 @@ export function App() {
                 <>
                   <ActivityTimeline
                     items={(m.activity ?? []).filter(
-                      (item) =>
-                        item.kind !== 'mcp_app' && item.kind !== 'thinking',
+                      (item) => item.kind !== 'mcp_app',
                     )}
                     streaming={Boolean(m.streaming)}
+                    endAt={
+                      m.streaming
+                        ? undefined
+                        : (m.activity ?? [])
+                            .filter((item) => item.kind !== 'thinking')
+                            .at(-1)?.at
+                    }
                   />
                   {mcpAppsFromActivity(m.activity).map((app, index) => (
                     <McpAppCard
@@ -3041,17 +3055,6 @@ export function App() {
                       }}
                     />
                   ) : null}
-                  <ThinkingBlock
-                    items={thinkingItemsFromActivity(m.activity)}
-                    streaming={Boolean(m.streaming)}
-                    endAt={
-                      m.streaming
-                        ? undefined
-                        : (m.activity ?? [])
-                            .filter((item) => item.kind !== 'thinking')
-                            .at(-1)?.at
-                    }
-                  />
                   {m.fileChanges && m.fileChanges.files.length > 0 ? (
                     <FileChangesCard
                       changes={m.fileChanges}

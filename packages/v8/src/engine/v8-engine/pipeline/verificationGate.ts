@@ -250,6 +250,7 @@ export async function runVerificationGate(
     comparison,
     askScopePaths: params.askScopePaths,
     changedFiles,
+    minimumEvidence: decision.verification.minimumEvidence,
   });
 
   // Optional LLM critique is advisory only — never changes decisionOutcome.

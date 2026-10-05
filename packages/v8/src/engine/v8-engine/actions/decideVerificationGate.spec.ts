@@ -476,7 +476,9 @@ describe("decideVerificationGate / isUserGoalComplete", () => {
     ).toBe("reject");
   });
 
-  it("accepts when comparison shows only remaining pre-existing errors (no new)", () => {
+  it("rejects when checks still fail even if compare shows no new errors", () => {
+    // Compare-only soft-accept must not hide failed selected checks
+    // (cookie-consent / workspace-root test failure class).
     const verification = baseVerification({
       status: "verification_failed",
       diagnostics: [],
@@ -504,7 +506,7 @@ describe("decideVerificationGate / isUserGoalComplete", () => {
         }),
         changedFiles: ["apps/desktop/src/renderer/App.tsx"],
       }),
-    ).toBe(true);
+    ).toBe(false);
 
     expect(
       decideVerificationGate({
@@ -521,14 +523,16 @@ describe("decideVerificationGate / isUserGoalComplete", () => {
         }),
         changedFiles: ["apps/desktop/src/renderer/App.tsx"],
       }),
-    ).toEqual({
-      action: "accept",
-      acceptKind: "implemented_unverified",
+    ).toMatchObject({
+      action: "reject",
+      repairable: true,
+      rejectKind: "verification_failed",
     });
   });
 
-  it("accepts when only out-of-scope NEW errors exist (false-repair guard)", () => {
-    // Phase 2: workspace-wide NEW must not reopen repair when ask scope is clean.
+  it("rejects failed project checks when scoped compare dropped out-of-scope NEW", () => {
+    // Failed selected checks are repairable; out-of-scope diagnostic rows
+    // alone must not soft-accept a failed project-local typecheck.
     const verification = baseVerification({
       status: "verification_failed",
       diagnostics: [
@@ -571,6 +575,132 @@ describe("decideVerificationGate / isUserGoalComplete", () => {
         }),
         askScopePaths: ["apps/desktop/src/renderer/App.tsx"],
         changedFiles: ["apps/desktop/src/renderer/App.tsx"],
+      }),
+    ).toMatchObject({
+      action: "reject",
+      repairable: true,
+      rejectKind: "verification_failed",
+    });
+  });
+
+  it("rejects repairable when required tests fail with parseable assertion diagnostics", () => {
+    const changedFiles = ["src/App.jsx"];
+    const verification = baseVerification({
+      status: "verification_failed",
+      reasonCodes: ["narrow_scope_selected", "checks_failed"],
+      diagnostics: [
+        {
+          path: "src/App.jsx",
+          severity: "error",
+          message: "Unable to find an element by: [data-testid=\"cookie-banner\"]",
+          startLine: 1,
+          source: "vitest",
+        },
+      ],
+      checks: [
+        {
+          checkId: "pkg:build:build",
+          kind: "build",
+          projectId: "pkg",
+          label: "npm build",
+          evidenceSource: "manifest",
+          outcome: "passed",
+          summary: "passed",
+        },
+        {
+          checkId: "pkg:test:test",
+          kind: "test",
+          projectId: "pkg",
+          label: "npm test",
+          evidenceSource: "manifest",
+          outcome: "failed",
+          summary: "failed",
+        },
+      ],
+    });
+
+    expect(
+      isUserGoalComplete({
+        verification,
+        comparison: comparison({
+          newErrorCount: 0,
+          afterErrorCount: 0,
+          failedCheckIdsAfter: ["pkg:test:test"],
+          reasonCodes: ["checks_still_failing"],
+        }),
+        changedFiles,
+        askScopePaths: changedFiles,
+        minimumEvidence: ["diagnostics", "diff_review", "tests", "build"],
+      }),
+    ).toBe(false);
+
+    expect(
+      decideVerificationGate({
+        verificationRequired: true,
+        allowUnavailable: false,
+        changedFileCount: 1,
+        canVerify: true,
+        verification,
+        comparison: comparison({
+          newErrorCount: 0,
+          afterErrorCount: 0,
+          failedCheckIdsAfter: ["pkg:test:test"],
+          reasonCodes: ["checks_still_failing"],
+        }),
+        changedFiles,
+        askScopePaths: changedFiles,
+        minimumEvidence: ["diagnostics", "diff_review", "tests", "build"],
+      }),
+    ).toMatchObject({
+      action: "reject",
+      repairable: true,
+      rejectKind: "verification_failed",
+    });
+  });
+
+  it("soft-accepts empty-suite workspace-root test noise when build passed", () => {
+    // Bench fixtures often run `npm test` before host-injected oracles exist.
+    const verification = baseVerification({
+      status: "verification_failed",
+      reasonCodes: ["narrow_scope_selected", "checks_failed"],
+      diagnostics: [],
+      checks: [
+        {
+          checkId: "workspace-root:build:build",
+          kind: "build",
+          projectId: "workspace-root",
+          label: "npm build (workspace-root)",
+          evidenceSource: "manifest",
+          outcome: "passed",
+          summary: "passed",
+        },
+        {
+          checkId: "workspace-root:test:test",
+          kind: "test",
+          projectId: "workspace-root",
+          label: "npm test (workspace-root)",
+          evidenceSource: "manifest",
+          outcome: "failed",
+          summary: "npm test (workspace-root) failed (exit 1).",
+        },
+      ],
+    });
+
+    expect(
+      decideVerificationGate({
+        verificationRequired: true,
+        allowUnavailable: false,
+        changedFileCount: 1,
+        canVerify: true,
+        verification,
+        comparison: comparison({
+          newErrorCount: 0,
+          afterErrorCount: 0,
+          failedCheckIdsAfter: ["workspace-root:test:test"],
+          reasonCodes: ["checks_still_failing"],
+        }),
+        changedFiles: ["src/App.jsx"],
+        minimumEvidence: ["diagnostics", "diff_review", "tests", "build"],
       }),
     ).toEqual({
       action: "accept",

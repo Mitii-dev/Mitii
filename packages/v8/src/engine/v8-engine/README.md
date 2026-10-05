@@ -23,7 +23,7 @@ Thin run orchestrator — **sole** Mitii engine (Phase 10; `agent-engine/` delet
 | **Phase 7.3** soft must-read nudge budget | done |
 | **Phase 7.4** honest truncation vs reasoning | done |
 | **Phase 7.5** Dropped-legacy kill list + PROMOTION | done |
-| **Phase 8.1** EventBus / RunBudget / caches / checkpoint | done (owned in `v8-engine/internal/`) |
+| **Phase 8.1** EventBus / RunBudget / caches / checkpoint | done (owned in `v8-engine/internal/`; successful `run_command` full-wipes read-only content cache + read ledger via `shell_mutation_cache_invalidated`) |
 | **Phase 8.2** discoveryPass split + shapedDiscovery | done (`internal/discovery/`) |
 | **Phase 8.3** executeTool + support (split ≤600) | done (`executeTool` / `Finish` / `Support`) |
 | **Phase 8.4** verification finish/gate/repair (split ≤600) | done (`Gate` / `Artifacts` / `Finish*` / `BudgetWall`) |

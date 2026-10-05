@@ -1445,6 +1445,91 @@ describe("PlanningPipeline", () => {
     expect(change?.steps[1]?.intent).toContain("error mapping");
   });
 
+  it("drops unobserved prompt-only paths after non-thin discovery (Vite vs Next)", async () => {
+    const llmPipeline = new PlanningPipeline({
+      llm: fakeLlm([
+        JSON.stringify({
+          objective: "Build a GDPR cookie consent banner",
+          steps: [
+            {
+              phaseHint: "change",
+              intent: "Create cookie banner in Next page",
+              actionSummary: "Add client component banner.",
+              targetRefs: ["app/page.jsx", "src/App.jsx"],
+              expectedOutcome: "Banner stores cookies_accepted in localStorage.",
+            },
+          ],
+        }),
+      ]),
+    });
+    const result = await llmPipeline.plan(
+      baseInput({
+        query: "Build a GDPR cookie consent banner",
+        evidence: {
+          primaryIntent: "feature",
+          secondaryIntents: [],
+          interactionIntent: "act",
+          scope: "single_location",
+          complexity: "moderate",
+          risk: "low",
+          clarity: "clear",
+          targets: [
+            {
+              kind: "file",
+              value: "app/page.jsx",
+              explicit: true,
+            },
+          ],
+          constraints: [],
+          requestedOutcomes: ["Build a GDPR cookie consent banner"],
+          recommendsPlanning: true,
+          recommendsVerification: true,
+          changeImpact: ["code"],
+        },
+        discoveryBrief: {
+          schemaVersion: 1,
+          objective: "Build a GDPR cookie consent banner",
+          filesRead: [
+            { path: "src/App.jsx", reason: "Vite React entry component" },
+            { path: "src/main.jsx", reason: "Vite mount entry" },
+            { path: "package.json", reason: "Fixture package metadata" },
+          ],
+          targets: [
+            {
+              kind: "file",
+              value: "app/page.jsx",
+              reason: "Extracted from shared prompt",
+              explicit: true,
+            },
+          ],
+          proposedChangeSurfaces: [
+            {
+              path: "src/App.jsx",
+              actionHint: "Change",
+              riskLevel: "low",
+              evidence: "Mounted UI surface for the cookie banner",
+            },
+          ],
+          discoveredConstraints: [],
+          verificationHints: [],
+          openQuestions: [],
+          confidence: "high",
+        },
+        strategyOverride: {
+          schemaVersion: 1,
+          strategy: "discover_and_plan",
+          rationale: "Discovery already identified the Vite entrypoint.",
+          skipDiscover: true,
+          useBuildEvidence: false,
+        },
+      }),
+    );
+
+    const change = result.plan?.phases.find((phase) => phase.name === "Change");
+    expect(change?.steps[0]?.targetRefs).toContain("src/App.jsx");
+    expect(change?.steps[0]?.targetRefs).not.toContain("app/page.jsx");
+  });
+
   it("falls back to the deterministic discovery skeleton when the one-shot model draft is invalid", async () => {
     const llmPipeline = new PlanningPipeline({ llm: fakeLlm(["not json"]) });
     const result = await llmPipeline.plan(

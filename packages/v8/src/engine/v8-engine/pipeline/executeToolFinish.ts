@@ -12,7 +12,7 @@ import {
 import type { ToolApprovalToken } from "../../tool-runtime";
 
 import {
-  dropEstablishedFactsForPaths,
+  applySucceededMutationSideEffects,
   extractEstablishedFact,
   extractMutationTargetPaths,
   extractToolContentPaths,
@@ -472,21 +472,16 @@ export async function finishExecuteOneTool(
     const output = result.output as
       | { checkpointId?: string; changedFiles?: string[] }
       | undefined;
-    if (output?.checkpointId) {
-      mutationCheckpointIds.push(output.checkpointId);
-      for (const changed of output.changedFiles ?? []) {
-        if (!changedFiles.includes(changed)) {
-          changedFiles.push(changed);
-        }
-      }
-      reasonCodes.push("mutation_applied");
-      toolCache.invalidateContent(output.changedFiles ?? []);
-      readLedger?.invalidatePaths(output.changedFiles ?? []);
-      dropEstablishedFactsForPaths(
-        establishedFacts ?? [],
-        output.changedFiles ?? [],
-      );
-    }
+    applySucceededMutationSideEffects({
+      toolName: toolCall.name,
+      output,
+      mutationCheckpointIds,
+      changedFiles,
+      toolCache,
+      readLedger,
+      establishedFacts,
+      reasonCodes,
+    });
     const autoAdvanced = maybeAutoAdvanceTaskList({
       enabled: taskListAutoAdvance,
       allowAdvance: taskListAutoAdvanceBudget.remaining > 0,
