@@ -10,7 +10,7 @@ Maintainer: **codewithshinde** - [codewithshinde@gmail.com](mailto:codewithshind
 
 Mitii is released under [AGPL-3.0-or-later](LICENSE). By contributing code, you agree that your contributions will be licensed under the same terms. If that doesn't work for your employer or use case, reach out before investing a large amount of time.
 
-For bugs and feature ideas, open an [issue](https://github.com/Mitii-dev/Mitii/issues) first when the change is non-trivial - saves everyone a rework loop.
+For bugs and feature ideas, open an [issue](https://github.com/Mitii-dev/Mitii/issues/new/choose) first when the change is non-trivial - use the Bug / Feature / Question templates. Saves everyone a rework loop.
 
 ---
 
@@ -224,23 +224,25 @@ I review PRs as time allows. Small, well-scoped changes land faster.
 
 ## Reporting bugs
 
-Include:
+Use the [Bug report](https://github.com/Mitii-dev/Mitii/issues/new?template=bug_report.yml) template. Include:
 
-- VS Code (or Cursor) version
-- Mitii version (`package.json` -> `version`)
+- Surface (CLI, Desktop, VS Code, SDK, V8, …)
+- Mitii version (`package.json` -> `version`) or commit
 - OS
 - Provider config (model name and base URL - no API keys)
 - Steps to reproduce
 - Relevant session log from `.mitii/logs/` if you have one (`Mitii: Export Session Log`)
 
+Feature ideas: [Feature request](https://github.com/Mitii-dev/Mitii/issues/new?template=feature_request.yml) template.
+
 ---
 
 ## Security
 
-Don't open public issues for exploitable vulnerabilities. Email **codewithshinde@gmail.com** with details and we'll coordinate a fix before disclosure.
+Don't open public issues for exploitable vulnerabilities. Email **codewithshinde@gmail.com** with details and we'll coordinate a fix before disclosure. The issue chooser also links this contact path.
 
 ---
 
 ## Questions
 
-GitHub Discussions aren't set up yet - issues tagged `question` or a direct email to codewithshinde@gmail.com both work.
+GitHub Discussions aren't set up yet - use the [Question](https://github.com/Mitii-dev/Mitii/issues/new?template=question.yml) template (label `question`) or email codewithshinde@gmail.com.
