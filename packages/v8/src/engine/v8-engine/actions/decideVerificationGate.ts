@@ -23,7 +23,9 @@ import {
  * - verification infrastructure missing AND allowUnavailable
  * - task-relevant project-local typecheck/build passed with only harness /
  *   phantom / workspace-root residuals (Verification `assessTaskRelevantEvidence`)
- * - before→after actionable compare shows no new in-scope errors
+ * - before→after actionable compare shows no new in-scope errors (leftover
+ *   workspace-root / suite noise soft-accepted; ask-scoped defects and failed
+ *   project-local compile still reject)
  *
  * Reject (eligible for repair only when repairable):
  * - verification_failed → repairable (model can fix the change)
@@ -231,6 +233,9 @@ export function decideVerificationGate(params: {
  * - ask-scoped source defects, or
  * - failed project-local compile without soft-accept (suite/compile may
  *   fail without parseable in-scope rows).
+ *
+ * Pre-existing workspace-root check failures with no NEW in-scope errors and
+ * no ask-scoped defect are leftovers — do not open unbounded repair.
  */
 function hasInScopeActionableRepairTarget(params: {
   verification: VerificationResult;
@@ -256,12 +261,18 @@ function hasInScopeActionableRepairTarget(params: {
   if (assessment.residualKind === "ask_scoped_defect") {
     return true;
   }
-  // Failed required evidence (including tests) is repairable even when
-  // project-local compile already passed.
-  if (!assessment.shouldAccept) {
+  if (hasFailedProjectLocalCompile(params.verification.checks)) {
     return true;
   }
-  return false;
+  if (assessment.shouldAccept) {
+    return false;
+  }
+  // Assessor rejected, but compare shows no NEW and failures are not
+  // project-local compile / ask-scoped — treat as leftover fixture noise.
+  if (params.comparison && params.comparison.newErrorCount === 0) {
+    return false;
+  }
+  return true;
 }
 
 function diagnosticErrorMessage(
@@ -280,6 +291,11 @@ function diagnosticErrorMessage(
 /**
  * True when Verification's task-relevant evidence assessor says accept, or
  * when the actionable before→after compare shows no new regressions.
+ *
+ * Mental model:
+ * - Ask done + no NEW in-scope errors → soft-accept leftovers
+ * - Ask-scoped defects / failed project-local compile → not complete
+ * - User may still opt in later via "fix remaining verification errors"
  *
  * Residual classification (harness / phantom / workspace-root) is owned by
  * `@mitii/v8` Verification — this gate only orchestrates accept vs repair.
@@ -318,21 +334,22 @@ export function isUserGoalComplete(params: {
     return true;
   }
 
-  const hasFailedCheck = verification.checks.some(
-    (check) => check.outcome === "failed" || check.outcome === "timed_out",
-  );
-
-  // Compare-only: edits landed and actionable compare introduced no new
-  // errors. Do not soft-accept when selected checks failed and the assessor
-  // did not classify them as ignorable residuals (e.g. required tests).
-  if (changedCount > 0 && comparison && comparison.newErrorCount === 0) {
-    if (!hasFailedCheck || assessment.shouldAccept) {
-      return true;
-    }
-  }
-
   if (comparison && comparison.newErrorCount > 0) {
     return false;
+  }
+
+  // Compare-only soft-accept: edits landed and actionable compare introduced
+  // no new in-scope errors. Keep rejecting ask-connected defects and failed
+  // project-local compile; pre-existing workspace-root / suite noise is a
+  // leftover for the user, not a hard fail.
+  if (changedCount > 0 && comparison && comparison.newErrorCount === 0) {
+    if (assessment.residualKind === "ask_scoped_defect") {
+      return false;
+    }
+    if (hasFailedProjectLocalCompile(verification.checks)) {
+      return false;
+    }
+    return true;
   }
 
   if (comparison && comparison.afterErrorCount > 0) {
@@ -340,6 +357,21 @@ export function isUserGoalComplete(params: {
   }
 
   return assessment.shouldAccept;
+}
+
+/** Failed typecheck/build on a non-workspace-root project (repairable). */
+function hasFailedProjectLocalCompile(
+  checks: readonly VerificationCheckResult[],
+): boolean {
+  return checks.some(
+    (check) =>
+      (check.kind === "typecheck" || check.kind === "build") &&
+      (check.outcome === "failed" || check.outcome === "timed_out") &&
+      !isWorkspaceRootCheckId({
+        checkId: check.checkId,
+        projectId: check.projectId,
+      }),
+  );
 }
 
 function normalizeMinimumEvidence(

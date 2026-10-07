@@ -39,8 +39,12 @@ Verification gathers evidence after a change. It maps changed files to projects,
   single-package fixtures) and remaining failures are only harness,
   syntax-secondary, empty-suite test exits, or workspace-root noise.
   Required `tests` evidence with parseable ask-scoped assertion diagnostics
-  is not harness noise — those reopen repair. Compare-only “no new errors”
-  must not soft-accept when the assessor still rejects.
+  is not harness noise — those reopen repair.
+- Compare-only soft-accept when edits landed and actionable
+  `newErrorCount === 0`: pre-existing workspace-root check failures are
+  leftovers for the user ("fix remaining?"), not a hard fail. Still
+  reject ask-scoped defects and failed **project-local** compile on the
+  edited package.
 - Before→after compare counts **NEW∩IN_SCOPE∩ACTIONABLE** when ask/changed
   paths are supplied (`out_of_scope_residuals_ignored`). Only that intersection
   opens repair; selection may still run broader checks.

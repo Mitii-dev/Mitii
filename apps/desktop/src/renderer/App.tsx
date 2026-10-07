@@ -73,7 +73,6 @@ import {
   IconWorkspace,
 } from './ActivityIcons.js';
 import { ActivityTimeline } from './chat/ActivityTimeline.js';
-import { createStreamPaintScheduler } from './chat/streamPaintScheduler.js';
 import {
   extractAssistantText,
   deleteHistoryThread,
@@ -1135,117 +1134,113 @@ export function App() {
         setTokenUsage(next);
       };
 
-      const paint = createStreamPaintScheduler({
-        coalesceMs: 1000,
-        paint: (snapshot) => {
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId
-                ? {
-                    ...m,
-                    text: snapshot.text,
-                    activity: snapshot.activity,
-                    streaming: snapshot.streaming,
-                  }
-                : m,
-            ),
-          );
-        },
-      });
+      const paintAssistant = (snapshot: {
+        text: string;
+        activity: DesktopActivityItem[];
+        streaming: boolean;
+      }) => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? {
+                  ...m,
+                  text: snapshot.text,
+                  activity: snapshot.activity,
+                  streaming: snapshot.streaming,
+                }
+              : m,
+          ),
+        );
+      };
 
-      try {
-        for await (const line of lines) {
-          if (line.op === 'error') {
-            paint.force({
-              text: assistant,
-              activity,
-              streaming: false,
-            });
-            throw new Error(line.message ?? line.error);
-          }
-          if (line.op === 'event') {
-            const tokens = extractTurnTokens(line.event);
-            if (tokens) {
-              pushUsage(
-                addTurnTokens({ ...usage, live: true }, tokens.in, tokens.out, {
-                  hit: tokens.cacheHit,
-                  miss: tokens.cacheMiss,
-                }),
-              );
-            }
-            const breakdown = breakdownFromPromptReady(line.event);
-            if (breakdown) {
-              pushUsage({
-                ...usage,
-                contextBreakdown: breakdown,
-                contextWindow: breakdown.contextWindow || usage.contextWindow,
-                live: true,
-              });
-            }
-            if (isToolCompleted(line.event)) {
-              pushUsage({
-                ...usage,
-                toolCalls: usage.toolCalls + 1,
-              });
-            }
-            const writePaths = collectMutatedPathsFromEvent(line.event);
-            for (const path of writePaths) mutated.add(path);
-            // Mid-stream: refresh explorer/SCM as soon as write tools complete.
-            if (isToolCompleted(line.event) && writePaths.length > 0) {
-              workspaceInvalidateSeq.current += 1;
-              setWorkspaceInvalidate({
-                seq: workspaceInvalidateSeq.current,
-                paths: writePaths,
-              });
-            }
-            const item = runEventToActivity(line.event);
-            if (item) {
-              activity = appendActivity(activity, item);
-            }
-            const delta = extractAssistantText(line);
-            if (delta) assistant += delta;
-            paint.update({
-              text: assistant,
-              activity,
-              streaming: true,
-            });
-          }
-          if (line.op === 'result') {
-            assistant = finalizeAssistantText(assistant, line);
-            nextSuspension = extractSuspension(line.result);
-            if (nextSuspension) {
-              // Pilot: queue silent auto-Continue — do not paint the stall card
-              // (avoids "Clarification / more research" flicker).
-              if (
-                nextSuspension.kind === 'continue_required' &&
-                approvalModeRef.current === 'pilot'
-              ) {
-                setPendingAutoContinue(nextSuspension);
-              } else {
-                setSuspension(nextSuspension);
-              }
-            }
-            const extracted = extractPlanFromRunResult(line.result);
-            resultPlan = extracted.plan;
-            resultPlanStrategy = extracted.planStrategy;
-            resultTaskList = extracted.taskList;
-            if (options?.formatPlanAnswer) {
-              assistant = resolvePlanDisplayText({
-                answer: assistant,
-                ...(resultPlan ? { plan: resultPlan } : {}),
-              });
-            }
-            paint.force({
-              text: assistant,
-              activity,
-              streaming: false,
-            });
-            pushUsage({ ...usage, live: false });
-          }
+      for await (const line of lines) {
+        if (line.op === 'error') {
+          paintAssistant({
+            text: assistant,
+            activity,
+            streaming: false,
+          });
+          throw new Error(line.message ?? line.error);
         }
-      } finally {
-        paint.force();
-        paint.dispose();
+        if (line.op === 'event') {
+          const tokens = extractTurnTokens(line.event);
+          if (tokens) {
+            pushUsage(
+              addTurnTokens({ ...usage, live: true }, tokens.in, tokens.out, {
+                hit: tokens.cacheHit,
+                miss: tokens.cacheMiss,
+              }),
+            );
+          }
+          const breakdown = breakdownFromPromptReady(line.event);
+          if (breakdown) {
+            pushUsage({
+              ...usage,
+              contextBreakdown: breakdown,
+              contextWindow: breakdown.contextWindow || usage.contextWindow,
+              live: true,
+            });
+          }
+          if (isToolCompleted(line.event)) {
+            pushUsage({
+              ...usage,
+              toolCalls: usage.toolCalls + 1,
+            });
+          }
+          const writePaths = collectMutatedPathsFromEvent(line.event);
+          for (const path of writePaths) mutated.add(path);
+          // Mid-stream: refresh explorer/SCM as soon as write tools complete.
+          if (isToolCompleted(line.event) && writePaths.length > 0) {
+            workspaceInvalidateSeq.current += 1;
+            setWorkspaceInvalidate({
+              seq: workspaceInvalidateSeq.current,
+              paths: writePaths,
+            });
+          }
+          const item = runEventToActivity(line.event);
+          if (item) {
+            activity = appendActivity(activity, item);
+          }
+          const delta = extractAssistantText(line);
+          if (delta) assistant += delta;
+          paintAssistant({
+            text: assistant,
+            activity,
+            streaming: true,
+          });
+        }
+        if (line.op === 'result') {
+          assistant = finalizeAssistantText(assistant, line);
+          nextSuspension = extractSuspension(line.result);
+          if (nextSuspension) {
+            // Pilot: queue silent auto-Continue — do not paint the stall card
+            // (avoids "Clarification / more research" flicker).
+            if (
+              nextSuspension.kind === 'continue_required' &&
+              approvalModeRef.current === 'pilot'
+            ) {
+              setPendingAutoContinue(nextSuspension);
+            } else {
+              setSuspension(nextSuspension);
+            }
+          }
+          const extracted = extractPlanFromRunResult(line.result);
+          resultPlan = extracted.plan;
+          resultPlanStrategy = extracted.planStrategy;
+          resultTaskList = extracted.taskList;
+          if (options?.formatPlanAnswer) {
+            assistant = resolvePlanDisplayText({
+              answer: assistant,
+              ...(resultPlan ? { plan: resultPlan } : {}),
+            });
+          }
+          paintAssistant({
+            text: assistant,
+            activity,
+            streaming: false,
+          });
+          pushUsage({ ...usage, live: false });
+        }
       }
 
       return {
