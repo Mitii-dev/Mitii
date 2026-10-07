@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: mailto:codewithshinde@gmail.com
+    about: Do not open public issues for exploitable vulnerabilities. Email the maintainer instead.
+  - name: Contributing guide
+    url: https://github.com/Mitii-dev/Mitii/blob/main/CONTRIBUTING.md
+    about: Setup, DCO sign-off, and pull request expectations.

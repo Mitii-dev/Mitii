@@ -1,0 +1,35 @@
+name: Question
+description: Ask about Mitii usage, architecture, or contributing
+title: "[Question]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        GitHub Discussions are not set up yet — questions here or email to **codewithshinde@gmail.com** both work.
+  - type: dropdown
+    id: topic
+    attributes:
+      label: Topic
+      options:
+        - Usage / setup
+        - Architecture
+        - Contributing
+        - CLI
+        - Desktop / VS Code
+        - SDK / V8
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What do you want to know?
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Versions, surface (CLI/Desktop/etc.), or links that help answer.

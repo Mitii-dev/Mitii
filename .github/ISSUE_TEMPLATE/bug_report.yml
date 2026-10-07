@@ -1,0 +1,90 @@
+name: Bug report
+description: Something broken in Mitii (CLI, Desktop, VS Code, SDK, or V8)
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Fill in as much as you can — repro steps and version help most.
+        For security issues, email **codewithshinde@gmail.com** instead of filing a public issue.
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      description: Where did you hit the problem?
+      options:
+        - CLI
+        - Desktop
+        - VS Code extension
+        - SDK
+        - V8 engine
+        - Docs
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Expected behavior vs what actually happened.
+      placeholder: |
+        Expected: …
+        Actual: …
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps someone else can follow.
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Mitii version / commit
+      description: Package version, git SHA, or release tag if known.
+      placeholder: e.g. 0.x.x or abc1234
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: OS
+      options:
+        - macOS
+        - Linux
+        - Windows
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment details
+      description: Node/pnpm versions, host IDE, provider (model + base URL only — never paste API keys).
+      placeholder: |
+        Node: 20.x
+        pnpm: 10.x
+        Host: VS Code / Cursor / Desktop
+        Provider: …
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / error output
+      description: Paste relevant errors, or note a session log from `.mitii/logs/` / Mitii Export Session Log.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: I did not include API keys, tokens, or other secrets.
+          required: true
