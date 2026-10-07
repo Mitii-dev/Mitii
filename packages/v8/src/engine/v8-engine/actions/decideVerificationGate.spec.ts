@@ -476,9 +476,9 @@ describe("decideVerificationGate / isUserGoalComplete", () => {
     ).toBe("reject");
   });
 
-  it("rejects when checks still fail even if compare shows no new errors", () => {
-    // Compare-only soft-accept must not hide failed selected checks
-    // (cookie-consent / workspace-root test failure class).
+  it("rejects when project-local compile still fails even if compare shows no new errors", () => {
+    // Compare-only soft-accept must not hide failed project-local compile
+    // (edited package still red).
     const verification = baseVerification({
       status: "verification_failed",
       diagnostics: [],
@@ -701,6 +701,137 @@ describe("decideVerificationGate / isUserGoalComplete", () => {
         }),
         changedFiles: ["src/App.jsx"],
         minimumEvidence: ["diagnostics", "diff_review", "tests", "build"],
+      }),
+    ).toEqual({
+      action: "accept",
+      acceptKind: "implemented_unverified",
+    });
+  });
+
+  it("soft-accepts pre-existing workspace-root test failure with no ask-scoped diagnostics", () => {
+    // node-express style: ask done, full npm test still fails on unrelated suite.
+    const verification = baseVerification({
+      status: "verification_failed",
+      reasonCodes: ["checks_failed"],
+      diagnostics: [],
+      checks: [
+        {
+          checkId: "workspace-root:syntax:node_load",
+          kind: "syntax",
+          projectId: "workspace-root",
+          label: "node --import",
+          evidenceSource: "inferred",
+          outcome: "passed",
+          summary: "passed",
+        },
+        {
+          checkId: "workspace-root:test:test",
+          kind: "test",
+          projectId: "workspace-root",
+          label: "npm test (workspace-root)",
+          evidenceSource: "manifest",
+          outcome: "failed",
+          summary: "npm test (workspace-root) failed (exit 1).",
+        },
+      ],
+    });
+
+    expect(
+      isUserGoalComplete({
+        verification,
+        comparison: comparison({
+          beforeErrorCount: 0,
+          afterErrorCount: 0,
+          newErrorCount: 0,
+          failedCheckIdsAfter: ["workspace-root:test:test"],
+          reasonCodes: ["checks_still_failing", "out_of_scope_residuals_ignored"],
+        }),
+        changedFiles: ["src/routes/users.js"],
+        askScopePaths: ["src/routes/users.js"],
+        minimumEvidence: ["diagnostics", "diff_review", "tests"],
+      }),
+    ).toBe(true);
+
+    expect(
+      decideVerificationGate({
+        verificationRequired: true,
+        allowUnavailable: false,
+        changedFileCount: 1,
+        canVerify: true,
+        verification,
+        comparison: comparison({
+          beforeErrorCount: 0,
+          afterErrorCount: 0,
+          newErrorCount: 0,
+          failedCheckIdsAfter: ["workspace-root:test:test"],
+          reasonCodes: ["checks_still_failing", "out_of_scope_residuals_ignored"],
+        }),
+        changedFiles: ["src/routes/users.js"],
+        askScopePaths: ["src/routes/users.js"],
+        minimumEvidence: ["diagnostics", "diff_review", "tests"],
+      }),
+    ).toEqual({
+      action: "accept",
+      acceptKind: "implemented_unverified",
+    });
+  });
+
+  it("soft-accepts pre-existing workspace-root typecheck/build failures when compare has no NEW", () => {
+    // saas-api style: fixture has many planted TS errors; ask path is clean.
+    const verification = baseVerification({
+      status: "verification_failed",
+      reasonCodes: ["checks_failed"],
+      diagnostics: [
+        {
+          path: "src/modules/other/unrelated.service.ts",
+          severity: "error",
+          message: "Property 'x' does not exist.",
+          startLine: 10,
+        },
+      ],
+      checks: [
+        {
+          checkId: "workspace-root:typecheck:build",
+          kind: "typecheck",
+          projectId: "workspace-root",
+          label: "npm build (workspace-root)",
+          evidenceSource: "manifest",
+          outcome: "failed",
+          summary: "npm build (workspace-root) failed (exit 2).",
+        },
+        {
+          checkId: "workspace-root:build:build",
+          kind: "build",
+          projectId: "workspace-root",
+          label: "npm build (workspace-root)",
+          evidenceSource: "manifest",
+          outcome: "failed",
+          summary: "npm build (workspace-root) failed (exit 2).",
+        },
+      ],
+    });
+
+    expect(
+      decideVerificationGate({
+        verificationRequired: true,
+        allowUnavailable: false,
+        changedFileCount: 1,
+        canVerify: true,
+        verification,
+        comparison: comparison({
+          beforeErrorCount: 158,
+          afterErrorCount: 0,
+          newErrorCount: 0,
+          remainingErrorCount: 0,
+          failedCheckIdsAfter: [
+            "workspace-root:typecheck:build",
+            "workspace-root:build:build",
+          ],
+          reasonCodes: ["checks_still_failing", "out_of_scope_residuals_ignored"],
+        }),
+        changedFiles: ["src/common/validation.ts"],
+        askScopePaths: ["src/common/validation.ts"],
+        minimumEvidence: ["diagnostics", "diff_review", "typecheck", "build"],
       }),
     ).toEqual({
       action: "accept",
