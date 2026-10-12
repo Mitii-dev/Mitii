@@ -20,7 +20,13 @@ import {
   extractMentionedPaths,
   CONTEXT_READY_VERBOSE_WARNING_CODES,
   CONTEXT_READY_WARNING_CODES,
+  buildPlanningQuery,
   deriveContextFocusFromUnderstanding,
+  extractPriorPathHints,
+  isPlanningFollowUp,
+  mergeContextFocusWithPriorPathHints,
+  mergeContextPathsWithPriorHints,
+  resolvePriorPathHintBudget,
   scopeDiscoveredContextPaths,
 } from "../actions";
 import type {
@@ -135,8 +141,31 @@ export async function runStartEnrichment(
     }
 
     runtime.emitStage(bus, runId, "context_ready", "started");
-    const contextQuery = extractPrimaryUserMessage(envelope.message);
-    const contextFocus = deriveContextFocusFromUnderstanding(understanding);
+    const liveQuery = extractPrimaryUserMessage(envelope.message);
+    const conversation = input.conversation ?? [];
+    const planFollowUp =
+      envelope.mode === "plan" ||
+      isPlanningFollowUp(liveQuery, conversation);
+    // Plan / follow-up: retrieve against the merged prior ask + guidance, not
+    // only the short "plan the above" prompt.
+    const contextQuery = planFollowUp
+      ? buildPlanningQuery(liveQuery, conversation)
+      : liveQuery;
+    const priorPathHints = extractPriorPathHints(conversation, {
+      max: resolvePriorPathHintBudget({
+        currentQuery: liveQuery,
+        conversation,
+        mode: envelope.mode,
+      }),
+    });
+    let contextFocus = deriveContextFocusFromUnderstanding(understanding);
+    if (priorPathHints.length > 0 && planFollowUp) {
+      contextFocus = mergeContextFocusWithPriorPathHints(
+        contextFocus,
+        priorPathHints,
+      );
+      reasonCodes.push("plan_prior_path_hints_carried");
+    }
     const contextResult = await runtime.deps.repositoryContext.execute({
       state: shared.pinnedState,
       query: contextQuery,
@@ -204,6 +233,20 @@ export async function runStartEnrichment(
     }
     const scopedFocus = deriveContextFocusFromUnderstanding(understanding);
     contextPaths = scopeDiscoveredContextPaths(discoveredPaths, scopedFocus);
+    // Keep Ask-touched paths even when retrieval collapses to one file.
+    if (priorPathHints.length > 0 && planFollowUp) {
+      const before = contextPaths.join("\0");
+      contextPaths = mergeContextPathsWithPriorHints({
+        contextPaths,
+        priorPathHints,
+      });
+      if (
+        contextPaths.join("\0") !== before &&
+        !reasonCodes.includes("plan_prior_path_hints_carried")
+      ) {
+        reasonCodes.push("plan_prior_path_hints_carried");
+      }
+    }
     if (shared.executionSeed && contextPaths.length > 0) {
       const refined = refineExecutionSeedFromContext({
         seed: shared.executionSeed,

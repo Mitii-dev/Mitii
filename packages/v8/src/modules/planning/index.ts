@@ -23,11 +23,16 @@ export { PlanningPipeline } from "./pipeline/PlanningPipeline";
 export {
   compileDiscoveryBrief,
   collectDiscoveryImpactSeedPaths,
+  formatClarifyAsAnswer,
   formatPlanAsAnswer,
   inferPlanStrategyFromArtifact,
   serializePlanForPrompt,
   serializePlanText,
 } from "./pipeline/PlanningPipeline";
+export {
+  draftClarifyFromDiscovery,
+  buildFallbackClarifyDraft,
+} from "./actions/DraftClarifyFromDiscovery";
 export {
   remapPathThroughScaffoldMapping,
   remapScaffoldChangeSurfaces,
@@ -47,6 +52,9 @@ export {
   isConcretePlanTargetRef,
   isConcretePlanVerification,
 } from "./internal/concretePlanTargets";
+
+export { thinDiscoveryBriefForClarify } from "./internal/thinDiscoveryBriefForClarify";
+export { hasResolvedPlanScopeChoice } from "./internal/planScopeChoice";
 
 export {
   planningInputSchema,
@@ -72,6 +80,8 @@ export {
   planStrategyDecisionSchema,
   discoveredPlanStepSchema,
   discoveredPlanDraftSchema,
+  planClarifyOptionSchema,
+  planClarifyDraftSchema,
   planningResultSchema,
   PlanningError,
   planningErrorCodeSchema,
@@ -105,6 +115,8 @@ export type {
   PlanStrategyDecision,
   DiscoveredPlanStep,
   DiscoveredPlanDraft,
+  PlanClarifyOption,
+  PlanClarifyDraft,
   PlanningResult,
   PlanningStatus,
   PlanningReasonCode,

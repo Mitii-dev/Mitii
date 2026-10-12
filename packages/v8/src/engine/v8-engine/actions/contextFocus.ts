@@ -165,3 +165,52 @@ export function deriveContextFocusFromUnderstanding(
       : {}),
   };
 }
+
+export type ContextFocus = ReturnType<typeof deriveContextFocusFromUnderstanding>;
+
+/**
+ * Pin prior-turn path hints as required context references so Plan follow-ups
+ * do not lose Ask-touched files when the live query is a short "plan the above".
+ * Adds to references without narrowing folderPrefix scope via filePaths filter
+ * when understanding already has a folder focus.
+ */
+export function mergeContextFocusWithPriorPathHints(
+  focus: ContextFocus,
+  priorPathHints: readonly string[],
+): ContextFocus {
+  const priorFiles = [
+    ...new Set(
+      priorPathHints.flatMap((path) => {
+        const canonical = toCanonicalWorkspaceRelativePath(path);
+        return canonical && looksLikeContextFilePath(canonical)
+          ? [canonical]
+          : [];
+      }),
+    ),
+  ].slice(0, 12);
+  if (priorFiles.length === 0) {
+    return focus;
+  }
+
+  const mergedFiles = [...new Set([...priorFiles, ...focus.filePaths])].slice(
+    0,
+    12,
+  );
+  const existingRefs = focus.references?.explicitFiles ?? [];
+  const refPaths = [
+    ...new Set([
+      ...priorFiles,
+      ...existingRefs.map((entry) => entry.relativePath),
+    ]),
+  ].slice(0, 8);
+
+  return {
+    ...focus,
+    // Only set filePaths filter when there is no folder prefix — otherwise
+    // session/index hits under the folder would be incorrectly scoped out.
+    filePaths: focus.folderPrefix ? focus.filePaths : mergedFiles,
+    references: {
+      explicitFiles: refPaths.map((relativePath) => ({ relativePath })),
+    },
+  };
+}

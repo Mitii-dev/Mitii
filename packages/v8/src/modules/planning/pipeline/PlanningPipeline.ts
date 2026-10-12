@@ -3,6 +3,7 @@ import {
   applyPlanWorkingSets,
   compactPlan,
   compileDiscoveryBrief,
+  draftClarifyFromDiscovery,
   draftPlan,
   draftPlanFromDiscovery,
   resolvePlanStrategy,
@@ -17,6 +18,7 @@ import {
 import type {
   DiscoveryBrief,
   DiscoveryObservation,
+  PlanClarifyDraft,
   PlanStrategyDecision,
   PlanningInput,
   PlanningLlmPort,
@@ -25,6 +27,13 @@ import type {
   PlanningResult,
 } from "../contracts";
 import { isThinDiscoveryBrief } from "../internal/discoveredPlanPrompt";
+import {
+  clarifyStrategyAfterFailedDiscoveryDraft,
+  isGenericDiscoverySkeletonPlan,
+  requiresNonSkeletonDiscoveryDraft,
+} from "../internal/discoveryDraftQuality";
+import { thinDiscoveryBriefForClarify } from "../internal/thinDiscoveryBriefForClarify";
+import { hasResolvedPlanScopeChoice } from "../internal/planScopeChoice";
 import type { z } from "zod";
 
 export interface PlanStrategyResolution {
@@ -94,25 +103,31 @@ export class PlanningPipeline {
     }
 
     const strategy = resolvePlanStrategy({ input: parsed });
-    const draftInput = prepareDraftInput(parsed, strategy.decision);
+    let strategyDecision = strategy.decision;
+    const draftInput = prepareDraftInput(parsed, strategyDecision);
     let drafted = draftPlan({
       ...draftInput,
-      strategy: strategy.decision,
+      strategy: strategyDecision,
     });
 
     const draftWarnings: string[] = [];
     const draftReasonCodes: PlanningReasonCode[] = [];
+    const requireModelDraft = requiresNonSkeletonDiscoveryDraft({
+      input: parsed,
+      strategy: strategyDecision,
+    });
+    let draftedFromDiscovery = false;
+
     if (
-      strategy.decision.strategy === "discover_and_plan" &&
-      parsed.discoveryBrief &&
-      this.deps.llm
+      strategyDecision.strategy === "discover_and_plan" &&
+      parsed.discoveryBrief
     ) {
       if (isThinDiscoveryBrief(parsed.discoveryBrief)) {
         draftReasonCodes.push("plan_discovery_draft_skipped_thin_brief");
         draftWarnings.push(
           "Discovery evidence was thin; kept the deterministic plan skeleton instead of a model draft.",
         );
-      } else {
+      } else if (this.deps.llm) {
         const discovered = await draftPlanFromDiscovery({
           input: parsed,
           discoveryBrief: parsed.discoveryBrief,
@@ -124,10 +139,66 @@ export class PlanningPipeline {
             draft: discovered.draft,
             input: parsed,
           });
+          draftedFromDiscovery = true;
           draftReasonCodes.push("plan_drafted_from_discovery");
         } else {
           draftWarnings.push(discovered.warning);
           draftReasonCodes.push("plan_discovery_draft_failed_fallback");
+        }
+      } else if (requireModelDraft) {
+        draftReasonCodes.push("plan_discovery_draft_required_clarify");
+        draftWarnings.push(
+          "Plan requires a discovery model draft but no planning LLM is configured; clarifying instead of a hollow skeleton.",
+        );
+      }
+    }
+
+    // Medium+/multi-item Plan: never ship the generic discovery skeleton.
+    // If the user already picked A/B/C scope, keep drafting — do not re-clarify.
+    const scopeAlreadyChosen = hasResolvedPlanScopeChoice({
+      query: parsed.query,
+    });
+    if (
+      requireModelDraft &&
+      (!draftedFromDiscovery || isGenericDiscoverySkeletonPlan(drafted)) &&
+      !scopeAlreadyChosen
+    ) {
+      strategyDecision = clarifyStrategyAfterFailedDiscoveryDraft(
+        strategyDecision,
+      );
+      drafted = draftPlan({
+        ...prepareDraftInput(
+          {
+            ...parsed,
+            discoveryBrief: thinDiscoveryBriefForClarify(parsed.discoveryBrief, [
+              "Which concrete files, symbols, and verify commands should each improvement cover?",
+            ]),
+          },
+          strategyDecision,
+        ),
+        strategy: strategyDecision,
+      });
+      draftReasonCodes.push("plan_discovery_draft_required_clarify");
+      draftWarnings.push(
+        "Rejected hollow discovery skeleton for Plan; drafted clarifying open questions instead.",
+      );
+    }
+
+    let clarifyDraft: PlanClarifyDraft | undefined;
+    if (strategyDecision.strategy === "clarify") {
+      const clarifyInput = prepareDraftInput(parsed, strategyDecision);
+      const clarified = await draftClarifyFromDiscovery({
+        input: parsed,
+        discoveryBrief: clarifyInput.discoveryBrief,
+        llm: this.deps.llm,
+      });
+      clarifyDraft = clarified.draft;
+      if (clarified.ok && clarified.source === "model") {
+        draftReasonCodes.push("plan_clarify_drafted");
+      } else {
+        draftReasonCodes.push("plan_clarify_draft_fallback");
+        if (!clarified.ok) {
+          draftWarnings.push(clarified.warning);
         }
       }
     }
@@ -135,7 +206,7 @@ export class PlanningPipeline {
     const validated = validatePlan({
       plan: drafted,
       input: parsed,
-      strategy: strategy.decision,
+      strategy: strategyDecision,
     });
     if (!validated.ok) {
       return planningResultSchema.parse({
@@ -150,14 +221,15 @@ export class PlanningPipeline {
         usedTokens: 0,
         budgetTokens: parsed.budgetTokens,
         durationMs: Date.now() - startedMs,
-        strategy: strategy.decision,
+        strategy: strategyDecision,
+        ...(clarifyDraft ? { clarifyDraft } : {}),
       });
     }
 
     const annotated = applyPlanWorkingSets({
       plan: validated.plan,
       input: parsed,
-      strategy: strategy.decision,
+      strategy: strategyDecision,
     });
 
     const compacted = compactPlan({
@@ -185,7 +257,8 @@ export class PlanningPipeline {
       usedTokens: compacted.usedTokens,
       budgetTokens: parsed.budgetTokens,
       durationMs: Date.now() - startedMs,
-      strategy: strategy.decision,
+      strategy: strategyDecision,
+      ...(clarifyDraft ? { clarifyDraft } : {}),
     });
   }
 
@@ -207,6 +280,7 @@ export class PlanningPipeline {
 export {
   compileDiscoveryBrief,
   collectDiscoveryImpactSeedPaths,
+  formatClarifyAsAnswer,
   formatPlanAsAnswer,
   inferPlanStrategyFromArtifact,
   serializePlanForPrompt,
@@ -214,13 +288,20 @@ export {
 } from "../actions";
 
 /**
- * When discovery evidence is thin, drop process skills so they cannot invent
- * README/docs steps without file evidence.
+ * When discovery evidence is thin or strategy is clarify, drop process skills
+ * (and strip change surfaces on clarify) so drafting cannot invent file work.
  */
 function prepareDraftInput(
   parsed: PlanningParsedInput,
   strategy: PlanStrategyDecision,
 ): PlanningParsedInput {
+  if (strategy.strategy === "clarify") {
+    return {
+      ...parsed,
+      skills: [],
+      discoveryBrief: thinDiscoveryBriefForClarify(parsed.discoveryBrief),
+    };
+  }
   if (
     strategy.strategy === "discover_and_plan" &&
     parsed.discoveryBrief &&

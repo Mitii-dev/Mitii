@@ -89,6 +89,17 @@ preferred medium-planning (soft)
 
 **Always short plan:** Agent execute never uses `planningDepth: none` — small asks get an internal short plan with evidence. Officer `planningHint: none` is remapped to `short`.
 
+### Plan thoroughness (Ask → Plan follow-up)
+
+Plan mode expects a foolproof one-shot plan. Engine `modules/plan-discovery` owns the contract:
+
+1. Multi-item “plan the above” follow-ups bump `taskSize` ≥ medium and keep prior Ask path hints.
+2. Thorough discovery requires productive multi-file evidence (+ search on medium/large); entry+`package.json` is not enough.
+3. Discovery failure fail-closes to clarify (`shouldClarifyAfterPlanDiscovery` uses the pass `failed` flag).
+4. Planning rejects hollow single-surface skeletons for medium+/multi-item asks (`plan_discovery_draft_required_clarify`).
+
+Goldens: always-on **G10**, behavioral `plan thorough Ask→Plan follow-up`. Details: `modules/plan-discovery/README.md`.
+
 **Preflight deferred:** captured for post-task verify; does not seed cause / repair instruct / lock unless fix-build language or cited overlap.
 
 **Hard-deny mutations:** `node_modules`, `.git`, `dist`, `build`, `out` → `path_hard_denied`. Verification repair prompts stay ask-scoped and never steer into those trees.

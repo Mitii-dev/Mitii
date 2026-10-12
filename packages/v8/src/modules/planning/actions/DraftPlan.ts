@@ -36,6 +36,7 @@ import {
   step,
   uniqueStrings,
 } from "./draftPlanShared";
+import { thinDiscoveryBriefForClarify } from "../internal/thinDiscoveryBriefForClarify";
 
 /**
  * Draft a generic PlanArtifact from task dimensions and optional hints.
@@ -54,26 +55,38 @@ export function draftPlan(
     };
   }
 
+  const clarify = input.strategy?.strategy === "clarify";
+  // Clarify must never draft Change surfaces from partial discovery.
+  const discoveryBrief = clarify
+    ? thinDiscoveryBriefForClarify(input.discoveryBrief)
+    : input.discoveryBrief;
+
   const { evidence } = input;
   const changeImpact = resolveChangeImpact(evidence);
   const approvalRequired =
     evidence.risk === "high" ||
     evidence.risk === "critical";
-  const targetRefs = resolveTargetRefs(evidence, input.discoveryBrief);
+  const targetRefs = clarify
+    ? []
+    : resolveTargetRefs(evidence, discoveryBrief);
   const objective = buildObjective(input.query, evidence);
   const openQuestions = buildOpenQuestions(
     evidence,
     input.processHints,
-    input.discoveryBrief,
+    discoveryBrief,
+    clarify,
   );
-  const skillPhaseHints = extractSkillPhaseHints(input.skills ?? []);
-  const scopedBuildEvidence = input.strategy?.useBuildEvidence
-    ? filterBuildEvidenceToAskScope({
-        buildEvidence: input.buildEvidence,
-        targets: evidence.targets,
-        query: input.query,
-      })
-    : undefined;
+  const skillPhaseHints = clarify
+    ? []
+    : extractSkillPhaseHints(input.skills ?? []);
+  const scopedBuildEvidence =
+    !clarify && input.strategy?.useBuildEvidence
+      ? filterBuildEvidenceToAskScope({
+          buildEvidence: input.buildEvidence,
+          targets: evidence.targets,
+          query: input.query,
+        })
+      : undefined;
   const phases = buildPhases({
     evidence,
     objective,
@@ -82,9 +95,10 @@ export function draftPlan(
     processHints: input.processHints ?? [],
     skillPhaseHints,
     buildEvidence: scopedBuildEvidence,
-    skipDiscover: input.strategy?.skipDiscover ?? false,
-    discoveryBrief: input.discoveryBrief,
+    skipDiscover: clarify ? true : (input.strategy?.skipDiscover ?? false),
+    discoveryBrief,
     maxFilesPerBatch: input.maxFilesPerBatch,
+    clarify,
   });
 
   return {
@@ -95,7 +109,7 @@ export function draftPlan(
     contextReviewed: mergeContextReviewed(
       input.contextReviewed,
       input.scopedRepoMap,
-      input.discoveryBrief?.filesRead.map((file) => ({
+      discoveryBrief?.filesRead.map((file) => ({
         kind: "file" as const,
         ref: file.path,
         note: file.reason,
@@ -103,7 +117,7 @@ export function draftPlan(
     ),
     constraints: uniqueStrings([
       ...evidence.constraints,
-      ...(input.discoveryBrief?.discoveredConstraints ?? []),
+      ...(discoveryBrief?.discoveredConstraints ?? []),
     ]),
     dimensions: {
       scope: evidence.scope,
@@ -217,13 +231,12 @@ function buildOpenQuestions(
   evidence: PlanningTaskEvidence,
   processHints: readonly string[] | undefined,
   discoveryBrief?: DiscoveryBrief,
+  clarify = false,
 ): string[] {
-  if (discoveryBrief && discoveryBrief.confidence === "low") {
-    return uniqueStrings(discoveryBrief.openQuestions).slice(0, 5);
-  }
   // File-backed discovery already grounded the ask — keep only discovery's
   // own open questions, not generic clarity/scope templates from understanding.
   if (
+    !clarify &&
     discoveryBrief &&
     discoveryBrief.confidence !== "low" &&
     discoveryBrief.proposedChangeSurfaces.length > 0
@@ -232,7 +245,11 @@ function buildOpenQuestions(
   }
   const questions: string[] = [...(discoveryBrief?.openQuestions ?? [])];
   const scope = scopeLabel(evidence.targets.map((t) => t.value));
-  if (evidence.clarity === "unclear" || evidence.clarity === "partially_clear") {
+  if (
+    clarify ||
+    evidence.clarity === "unclear" ||
+    evidence.clarity === "partially_clear"
+  ) {
     questions.push(
       scope
         ? `For work${scope}: which outcome is in scope this turn, and what must stay unchanged?`
@@ -240,6 +257,7 @@ function buildOpenQuestions(
     );
   }
   if (
+    clarify ||
     evidence.scope === "repository" ||
     evidence.scope === "workspace" ||
     evidence.scope === "unknown"
@@ -280,6 +298,7 @@ function buildPhases(params: {
   skipDiscover?: boolean;
   discoveryBrief?: DiscoveryBrief;
   maxFilesPerBatch?: number;
+  clarify?: boolean;
 }): PlanPhase[] {
   const {
     evidence,
@@ -291,6 +310,34 @@ function buildPhases(params: {
     buildEvidence,
     discoveryBrief,
   } = params;
+  const shortObjective = clipPhrase(objective, 80);
+
+  // Clarify strategy: open questions only — never seed-read Change skeletons.
+  if (params.clarify) {
+    return [
+      {
+        id: "phase-change",
+        name: "Change",
+        purpose: `Resolve open questions before changing files for "${shortObjective}".`,
+        dependencies: [],
+        successCriteria: acceptanceCriteria(evidence, objective, [
+          "Open questions are answered or the user confirms the change surface.",
+          "No file mutations are attempted until the plan is revised.",
+        ]),
+        steps: [
+          step(
+            "step-open-questions",
+            "Resolve remaining open questions before changing files",
+            [],
+            "Discovery did not identify a concrete change surface. Answer the open questions instead of inventing file work.",
+            "Open questions are resolved or the user confirms the change surface.",
+            "low",
+          ),
+        ],
+      },
+    ];
+  }
+
   const needsDiscovery =
     !params.skipDiscover &&
     (evidence.scope === "package" ||
@@ -338,7 +385,6 @@ function buildPhases(params: {
   }
 
   const phases: PlanPhase[] = [];
-  const shortObjective = clipPhrase(objective, 80);
   const includeVerify = shouldIncludeVerifyPhase(evidence);
 
   if (needsDiscovery) {
@@ -961,8 +1007,22 @@ function buildChangeSteps(
     discoverySteps.length === 0 &&
     diagnosticSteps.length === 0;
 
+  // Low-confidence discovery must not invent architecture / implement steps.
+  if (discoveryFailed) {
+    return [
+      step(
+        "step-open-questions",
+        "Resolve remaining open questions before changing files",
+        [],
+        "Discovery did not identify a concrete change surface. Answer the open questions instead of inventing file work.",
+        "Open questions are resolved or the user confirms the change surface.",
+        "low",
+      ),
+    ];
+  }
+
   // Repair intents skip design-heavy approach selection.
-  if (!isRepairIntent(evidence) && !discoveryFailed && discoverySteps.length === 0) {
+  if (!isRepairIntent(evidence) && discoverySteps.length === 0) {
     steps.push(
       step(
         "step-design",
@@ -995,19 +1055,6 @@ function buildChangeSteps(
   } else {
     steps.push(...diagnosticSteps);
     if (diagnosticSteps.length === 0 && discoverySteps.length === 0) {
-      if (discoveryFailed) {
-        steps.push(
-          step(
-            "step-open-questions",
-            "Resolve remaining open questions before changing files",
-            [],
-            "Discovery did not identify a concrete change surface. Answer the open questions instead of inventing file work.",
-            "Open questions are resolved or the user confirms the change surface.",
-            "low",
-          ),
-        );
-        return steps;
-      }
       const fallbackArchitecture = buildArchitectureChangeSteps(
         evidence,
         objective,

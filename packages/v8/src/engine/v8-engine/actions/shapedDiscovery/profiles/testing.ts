@@ -4,12 +4,13 @@ export const testingDiscoveryProfile = createShapedDiscoveryProfile({
   id: "testing",
   priority: 8,
   strongPatterns: [
-    /\b(?:unit\s+test|integration\s+test|test\s+suite|mock(?:ing)?|stub(?:bing)?|fixture)\b/i,
+    /\b(?:unit\s+test|integration\s+test|test\s+suite|test\s+cases?|improve\s+tests?)\b/i,
+    /\b(?:mock(?:ing)?|stub(?:bing)?|fixture|oracle|grader|corpus)\b/i,
     /\b(?:jest|vitest|mocha|pytest|junit|playwright|cypress)\b/i,
     /\b(?:coverage|assert(?:ion)?|expect\()\b/i,
   ],
   weakPatterns: [
-    /\b(?:test|spec|mock|stub|fixture|describe|it\()\b/i,
+    /\b(?:test|spec|mock|stub|fixture|describe|it\(|oracle|grader|corpus|cases?)\b/i,
   ],
   rejectQuery: (query) =>
     /\b(?:wdio|webdriver|selenium|headless\s+browser|browser\s+test)\b/i.test(

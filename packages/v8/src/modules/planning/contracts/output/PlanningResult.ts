@@ -6,6 +6,7 @@ import {
   PLANNING_STATUSES,
 } from "../../constants";
 import { planArtifactSchema } from "./PlanArtifact";
+import { planClarifyDraftSchema } from "./PlanClarifyDraft";
 import { planStrategyDecisionSchema } from "./PlanStrategyDecision";
 
 export const planningStatusSchema = z.enum(PLANNING_STATUSES);
@@ -16,6 +17,8 @@ export const planningResultSchema = z
     schemaVersion: z.literal(PLANNING_SCHEMA_VERSION),
     status: planningStatusSchema,
     plan: planArtifactSchema.optional(),
+    /** Findings + A/B/C scope forks when strategy is clarify. */
+    clarifyDraft: planClarifyDraftSchema.optional(),
     warnings: z.array(z.string()),
     reasonCodes: z.array(planningReasonCodeSchema).min(1),
     usedTokens: z.number().int().nonnegative(),

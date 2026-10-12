@@ -62,7 +62,10 @@ planning/
   8. Deep/Auto and wide scope/complexity (or `recommendsPlanning`, itself folded from understanding's `recommendsPlanning` OR `recommendsRepositoryDiscovery`) -> `discover_and_plan`
   9. else -> `plan_from_ask`
 - Engine `applyPlanModeDiscoveryContract`: cold Plan-mode asks (no prior thread) and shaped-discovery profile matches force `discover_and_plan` before the discovery loop unless exploration is `quick`. Agent medium/large `taskSize`, visible depth, and wide-internal tasks get the same discovery-first contract. Architecture / big-task asks also override incidental `follow_evidence`. Follow-up Plan asks with `plan_from_ask` are preserved for small tasks only.
-- Engine **Plan quality floor** (Plan mode, not `quick`): after the discovery pass, if evidence is not file-backed and non-thin (`filesRead ≥ 1`, change surfaces present, confidence not `low`), Engine emits `plan_mode_discovery_insufficient` and overrides strategy to `clarify` before calling `planning.plan`. Planning then drafts clarifying open questions instead of inventing Change steps. When evidence is sufficient, strategy stays `discover_and_plan` and the one-shot discovery draft call can run. Drafting also suppresses generic clarity/scope open-question templates when the discovery brief is already medium/high with change surfaces.
+- Engine **Plan quality floor** (Plan mode, not `quick`): after the discovery pass, Engine uses the discovery pass `failed` flag (same thorough options as the pass — productive multi-file reads, related surfaces/tests, ≥1 search/glob, optional symbols). On failure it emits `plan_mode_discovery_insufficient`, overrides strategy to `clarify`, and thins the discovery brief (`thinDiscoveryBriefForClarify`) before calling `planning.plan`. Planning's `clarify` strategy drafts open-questions-only Change steps **and** a `clarifyDraft` (findings + A/B/C scope forks via `draftClarifyFromDiscovery`). Engine Plan mode **suspends** `clarification_required` with that prose answer (not `plan_mode_completed` Change YAML). After the user picks A/B/C (`hasResolvedPlanScopeChoice`), Engine honors the choice (`plan_scope_choice_honored`) and drafts a concrete plan instead of re-suspending. When evidence is sufficient, strategy stays `discover_and_plan` and the one-shot discovery draft call can run.
+- Thorough Plan discovery always requires ≥1 search (`resolvePlanDiscoveryMinSearches`). `discovery_force_exploration` keeps shaped search when preferred paths exist; when no shaped profile matches, a query-derived fallback search runs (`discovery_force_exploration_fallback`).
+- Plan follow-ups that target multi-item prior assistant guidance bump `taskSize` to at least `medium` so discovery budgets and search floors unlock. Plan thorough discovery also forces exploration (does not skip shaped/search solely because a preferred path is known).
+- Plan / follow-up context retrieval uses the merged planning query and carries prior-turn path hints (assistant text + tool-call paths) into context references and discovery preferred paths (`plan_prior_path_hints_carried`) so a collapsed one-file retrieval cannot erase Ask grounding.
 - Repair detection uses `isRepairIntentTaxonomy` (bugfix/diagnose/compile — not refactor/migrate). Architecture intents use `isArchitectureIntentTaxonomy` / `isArchitecturePlanningAsk` so package redesigns are not swallowed by incidental diagnostics. The same repair predicate backs Decision Policy's Plan-mode preflight gate and `DraftPlan`'s Discover/Change step wording.
 - Engine owns strategy selection — it calls `resolvePlanStrategyRules` itself (not a port method) before deciding whether to run a discovery pass, then calls `planning.plan({ strategyOverride })`. Planning never runs a second classifier.
 - `follow_evidence` and `plan_from_ask` skip discovery entirely (`skipDiscover: true`). `discover_and_plan` runs Engine's bounded read-only discovery loop first; Planning then receives `discoveryBrief` and `skipDiscover: true` and either runs its one model call (see below) or falls back to the deterministic discovery skeleton.
@@ -80,6 +83,7 @@ planning/
 - `planningInputSchema`, `planningResultSchema`, `planArtifactSchema`, `planStrategyDecisionSchema`, `discoveryBriefSchema`, `explorationDepthSchema`
 - `resolvePlanStrategyRules`, `isRepairIntent`, `isArchitecturePlanningAsk`
 - `compileDiscoveryBrief`, `inferPlanStrategyFromArtifact`, `serializePlanForPrompt`, `serializePlanText`, `formatPlanAsAnswer`
+- `thinDiscoveryBriefForClarify`, `formatClarifyAsAnswer`, `draftClarifyFromDiscovery`, `planClarifyDraftSchema`, `hasResolvedPlanScopeChoice`
 - `PlanningError` and planning reason/error codes
 
 ## Failure Modes
@@ -87,7 +91,8 @@ planning/
 - `planningDepth: none` returns `blocked` with `plan_depth_none`.
 - Invalid input throws `PlanningError` (`invalid_input`).
 - Invalid required sections return `blocked` with `plan_blocked_invalid`.
-- `discover_and_plan`'s model draft call failing keeps the deterministic discovery skeleton (`plan_discovery_draft_failed_fallback`).
+- `discover_and_plan`'s model draft call failing keeps the deterministic discovery skeleton for small asks (`plan_discovery_draft_failed_fallback`). Multi-surface skeletons with concrete `targetRefs` are kept. For Plan medium+/multi-item asks (or Agent-visible equivalent), Planning rejects a hollow single-surface skeleton and drafts clarifying open questions instead (`plan_discovery_draft_required_clarify`).
+- Thorough plans that request verification must include a Verify phase (`plan_verify_phase_required`).
 - Out-of-scope diagnostics are ignored (`plan_build_evidence_out_of_scope`).
 - Low-confidence discovery keeps open questions and does not invent file-scoped tasks (`plan_discovery_insufficient`).
 - Engine Plan quality floor with insufficient discovery overrides to `clarify` (`plan_mode_discovery_insufficient` on the engine run) before Planning drafts — see agent-engine README.
@@ -110,7 +115,10 @@ pnpm exec vitest run packages/v8/src/modules/planning
 Related engine coverage (plan discovery + orchestrator goldens):
 
 ```bash
-pnpm exec vitest run packages/v8/src/engine/v8-engine/modules/plan-discovery packages/v8/src/engine/v8-engine/tests/golden.behavioral.spec.ts packages/v8/src/engine/v8-engine/pipeline/V8EnginePipeline.spec.ts
+pnpm exec vitest run packages/v8/src/engine/v8-engine/modules/plan-discovery
+pnpm exec vitest run packages/v8/src/engine/v8-engine/tests/eval/alwaysOn.goldens.spec.ts -t "G9|G10"
+pnpm exec vitest run packages/v8/src/engine/v8-engine/tests/golden.behavioral.spec.ts -t "plan thorough"
+pnpm exec vitest run packages/v8/src/engine/v8-engine/pipeline/V8EnginePipeline.spec.ts
 ```
 
 ## Example Flow

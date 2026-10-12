@@ -2,7 +2,7 @@ import {
   isSafeRelativePlanningPath,
   normalizePlanningPath,
   uniqueStrings,
-} from "../planningContext";
+} from "../planningPathUtils";
 
 export function extractGlobPathsFromToolOutput(output: unknown): string[] {
   const record = asRecord(output);

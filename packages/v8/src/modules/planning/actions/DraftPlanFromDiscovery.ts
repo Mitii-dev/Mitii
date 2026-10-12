@@ -81,8 +81,8 @@ export async function draftPlanFromDiscovery(params: {
       ok: false,
       warning:
         error instanceof Error && error.message === "model_output_truncated"
-          ? "Discovery plan draft model call was truncated; rejected the partial draft and kept the deterministic discovery skeleton."
-          : `Discovery plan draft model call failed; kept deterministic discovery skeleton. ${
+          ? "Discovery plan draft model call was truncated; rejected the partial draft."
+          : `Discovery plan draft model call failed. ${
               error instanceof Error ? error.message : String(error)
             }`,
     };

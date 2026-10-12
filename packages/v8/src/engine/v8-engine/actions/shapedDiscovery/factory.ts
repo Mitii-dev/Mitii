@@ -1,4 +1,4 @@
-import { normalizePlanningPath } from "../planningContext";
+import { normalizePlanningPath } from "../planningPathUtils";
 
 import { scoreCommonDiscoveryNoise } from "./pathNoise";
 import type { ShapedDiscoveryProfile } from "./types";

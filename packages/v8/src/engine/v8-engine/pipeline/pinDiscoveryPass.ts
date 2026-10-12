@@ -22,6 +22,7 @@ import {
 } from "../actions";
 import {
   isPlanDiscoveryEvidenceSufficient,
+  resolvePlanDiscoveryMinSearches,
   shouldPreferDiscoverySymbolEvidence,
   shouldRequireDiscoverySymbolEvidence,
   resolveDiscoveryPassBudget,
@@ -80,6 +81,11 @@ export async function runDiscoveryPass(
    * search when seeds are insufficient.
    */
   seedFirstDiscovery?: boolean;
+  /**
+   * Plan thorough: do not skip shaped/search solely because preferred paths
+   * already name a file — force real exploration.
+   */
+  forceExploration?: boolean;
   /** Soft symbol nudge even when thoroughEvidence is off (medium band). */
   preferSymbols?: boolean;
   /** Officer taskSize for discovery envelope. */
@@ -108,6 +114,7 @@ export async function runDiscoveryPass(
     qualityFloor = false,
     thoroughEvidence = false,
     seedFirstDiscovery = false,
+    forceExploration = false,
     preferSymbols = false,
     taskSize,
   } = params;
@@ -163,6 +170,10 @@ export async function runDiscoveryPass(
     codeIntelligenceToolIds: CODE_INTELLIGENCE_TOOL_IDS,
     supportsForcedToolChoice: canForceTools,
   });
+  const minSearches = resolvePlanDiscoveryMinSearches({
+    thorough: thoroughEvidence,
+    taskSize,
+  });
   if (preferSymbolEvidence && !requireSymbolEvidence) {
     warnings.push(
       "Code-intelligence tools are granted but this model cannot force tool_choice=required; discovery will nudge for symbols without failing the quality floor.",
@@ -199,6 +210,7 @@ export async function runDiscoveryPass(
       preferredPaths,
       qualityFloor,
       seedFirstDiscovery,
+      forceExploration,
       discoveryBudget,
       signal,
       reasonCodes,
@@ -216,11 +228,13 @@ export async function runDiscoveryPass(
     });
     const qualityFloorNudge = thoroughEvidence
       ? preferSymbolEvidence
-        ? "Plan quality floor (thorough): before finishing, read at least two concrete source/config files, call document_symbol or goto_definition on entrypoints to attach key symbols, and identify change surfaces."
-        : "Plan quality floor (thorough): before finishing, read at least two concrete source/config files and identify key functions/symbols (document_symbol / goto_definition on entrypoints) plus change surfaces."
+        ? "Plan quality floor (thorough): before finishing, read at least two productive source files (not package.json/lockfiles), search for related callers/tests, call document_symbol or goto_definition on entrypoints to attach key symbols, and identify change surfaces."
+        : "Plan quality floor (thorough): before finishing, read at least two productive source files (not package.json/lockfiles), search for related callers/tests, and identify key functions/symbols plus change surfaces."
       : "Plan quality floor: before finishing, read at least one concrete source/config file that discovery identified.";
     const symbolEvidenceNudge =
       "Symbol evidence still missing: call document_symbol or goto_definition on an entrypoint already read (or a preferred path) before finishing discovery.";
+    const searchEvidenceNudge =
+      "Search evidence still missing: call search_files or glob_files for related callers, tests, or imports before finishing discovery.";
     const preReadEvidence = formatDiscoveryPreReadEvidence(
       [...preReadByPath.entries()].map(([path, content]) => ({ path, content })),
       {
@@ -259,6 +273,7 @@ export async function runDiscoveryPass(
     let turn = 0;
     let qualityFloorNudged = false;
     let symbolEvidenceNudged = false;
+    let searchEvidenceNudged = false;
     for (; turn < discoveryBudget.maxModelTurns; turn += 1) {
       if (signal.aborted) {
         stopReason = "aborted";
@@ -276,8 +291,14 @@ export async function runDiscoveryPass(
         collector.fileReads > 0 &&
         !discoveryHasSymbolEvidence(collector) &&
         tools.length > 0;
+      const needsSearchEvidence =
+        qualityFloor &&
+        minSearches > 0 &&
+        collector.searches < minSearches &&
+        tools.length > 0;
       const needsForcedTools =
-        canForceTools && (needsFileEvidence || needsSymbolEvidence);
+        canForceTools &&
+        (needsFileEvidence || needsSymbolEvidence || needsSearchEvidence);
       budget.recordModelCall();
       const discoveryReasoningBudget = resolveReasoningProgressBudget({
         supportsReasoning: runtime.deps.llm.capabilities.supportsReasoning,
@@ -344,6 +365,24 @@ export async function runDiscoveryPass(
           messages.push({
             role: "user",
             content: symbolEvidenceNudge,
+          });
+          continue;
+        }
+        if (
+          qualityFloor &&
+          minSearches > 0 &&
+          collector.searches < minSearches &&
+          !searchEvidenceNudged &&
+          turn + 1 < discoveryBudget.maxModelTurns
+        ) {
+          searchEvidenceNudged = true;
+          messages.push({
+            role: "assistant",
+            content: turnResult.content,
+          });
+          messages.push({
+            role: "user",
+            content: searchEvidenceNudge,
           });
           continue;
         }
@@ -495,6 +534,8 @@ export async function runDiscoveryPass(
     ? !isPlanDiscoveryEvidenceSufficient(brief, {
         thorough: thoroughEvidence,
         requireSymbolEvidence,
+        minSearches,
+        searchCount: collector.searches,
       })
     : brief.confidence === "low" && brief.proposedChangeSurfaces.length === 0;
   reasonCodes.push(failed ? "discovery_failed" : "discovery_completed");

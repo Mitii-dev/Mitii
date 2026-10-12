@@ -11,6 +11,7 @@ export type {
   ClarificationSession,
   ClarificationSessionOption,
 } from "./buildClarificationPayload";
+export { buildPlanClarifySuspension } from "./buildPlanClarifySuspension";
 export {
   evaluateMutationCritic,
   MUTATION_CRITIC_VERDICTS,
@@ -246,8 +247,10 @@ export {
   CONTEXT_READY_VERBOSE_WARNING_CODES,
   CONTEXT_READY_WARNING_CODES,
   deriveContextFocusFromUnderstanding,
+  mergeContextFocusWithPriorPathHints,
   scopeDiscoveredContextPaths,
 } from "./contextFocus";
+export type { ContextFocus } from "./contextFocus";
 export {
   applyPlanModeDiscoveryContract,
   isAgentWidePlanningScope,
@@ -271,10 +274,15 @@ export {
   inferLanguageFromPaths,
   isPlanningFollowUp,
   isSafeRelativePlanningPath,
+  looksLikeMultiItemPlanGuidance,
+  mergeContextPathsWithPriorHints,
   normalizePlanningPath,
+  resolveFollowUpPlanningTaskSize,
+  resolvePriorPathHintBudget,
   toPlanningBuildEvidence,
   uniqueStrings,
 } from "./planningContext";
+export type { PlanningTaskSize } from "./planningContext";
 export {
   apiBackendDiscoveryProfile,
   authDiscoveryProfile,

@@ -36,3 +36,7 @@ export {
   cappedSearchQueries,
   collectShapedDiscoveryHits,
 } from "./preflight";
+export {
+  buildForceExplorationSearchQueries,
+  collectForceExplorationFallbackHits,
+} from "./forceExplorationFallback";

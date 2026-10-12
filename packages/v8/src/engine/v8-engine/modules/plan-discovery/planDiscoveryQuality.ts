@@ -4,6 +4,23 @@ import type { AgentMode } from "../../../../modules/request-intake";
 export type PlanningDepthForQuality = "none" | "internal" | "visible";
 export type PlanningTaskSizeForQuality = "small" | "medium" | "large";
 
+const TEST_LIKE = /(?:\.test|\.spec|\/tests?\/|\/__tests__\/)/i;
+/** Lockfiles / tooling noise — never count as productive discovery reads. */
+const NOISE_CONFIG =
+  /(?:^|\/)(?:package-lock\.json|pnpm-lock\.yaml|yarn\.lock|composer\.lock|Cargo\.lock|\.mitii\/)/i;
+/** Package/tsconfig manifests — padding only, not productive source reads. */
+const MANIFEST_CONFIG =
+  /(?:^|\/)(?:package\.json|tsconfig[\w.-]*\.json)$/i;
+
+export type PlanDiscoverySufficiencyOptions = {
+  thorough?: boolean;
+  requireSymbolEvidence?: boolean;
+  /** When set, discovery must have performed at least this many searches. */
+  minSearches?: number;
+  /** Actual search/glob tool uses from the discovery collector. */
+  searchCount?: number;
+};
+
 /**
  * When true, discovery must produce file-backed evidence before a concrete
  * plan is treated as ready.
@@ -43,8 +60,34 @@ export function requiresPlanDiscoveryQualityFloor(params: {
 }
 
 /**
- * Plan-mode thoroughness (user expects a foolproof one-shot plan): align with
- * DiscoveryBrief high confidence — ≥2 productive reads and ≥2 change surfaces.
+ * Source/config reads that count toward the thorough Plan floor.
+ * Excludes lockfiles and package/tsconfig manifests so entry+package.json
+ * cannot fake multi-file discovery.
+ */
+export function isProductiveDiscoveryReadPath(path: string): boolean {
+  const normalized = path.replace(/\\/g, "/");
+  if (NOISE_CONFIG.test(normalized) || MANIFEST_CONFIG.test(normalized)) {
+    return false;
+  }
+  return true;
+}
+
+export function countProductiveDiscoveryReads(
+  filesRead: readonly { path: string }[],
+): number {
+  const seen = new Set<string>();
+  for (const file of filesRead) {
+    if (!isProductiveDiscoveryReadPath(file.path)) {
+      continue;
+    }
+    seen.add(file.path.replace(/\\/g, "/").toLowerCase());
+  }
+  return seen.size;
+}
+
+/**
+ * Plan-mode thoroughness (user expects a foolproof one-shot plan): productive
+ * multi-file evidence, multi-surface or surface+related, non-low confidence.
  * Agent big-task floor keeps the base medium bar unless `thorough` is set.
  */
 export function isPlanDiscoveryEvidenceSufficient(
@@ -52,12 +95,10 @@ export function isPlanDiscoveryEvidenceSufficient(
     DiscoveryBrief,
     "filesRead" | "proposedChangeSurfaces" | "confidence"
   >,
-  options?: { thorough?: boolean; requireSymbolEvidence?: boolean },
+  options?: PlanDiscoverySufficiencyOptions,
 ): boolean {
   if (options?.thorough) {
-    return isThoroughPlanDiscoveryEvidenceSufficient(brief, {
-      requireSymbolEvidence: options.requireSymbolEvidence === true,
-    });
+    return isThoroughPlanDiscoveryEvidenceSufficient(brief, options);
   }
   return (
     brief.filesRead.length >= 1 &&
@@ -67,33 +108,82 @@ export function isPlanDiscoveryEvidenceSufficient(
 }
 
 /**
- * Foolproof Plan / Agent-visible discovery: multi-file, multi-surface,
- * non-low confidence (matches CompileDiscoveryBrief high band intent).
- * When `requireSymbolEvidence` is set (host code navigation usable), at least
- * one read file must carry attached symbols from code-intelligence tools.
+ * Foolproof Plan / Agent-visible discovery:
+ * - ≥2 productive reads (not lockfile/manifest padding)
+ * - ≥2 change surfaces, or ≥1 surface plus a related test / non-surface read
+ * - non-low confidence
+ * - optional symbol attachment and min search count
  */
 export function isThoroughPlanDiscoveryEvidenceSufficient(
   brief: Pick<
     DiscoveryBrief,
     "filesRead" | "proposedChangeSurfaces" | "confidence"
   >,
-  options?: { requireSymbolEvidence?: boolean },
+  options?: PlanDiscoverySufficiencyOptions,
 ): boolean {
   if (brief.confidence === "low") {
     return false;
   }
-  if (
-    brief.filesRead.length < 2 ||
-    brief.proposedChangeSurfaces.length < 1
-  ) {
+  const productiveReads = countProductiveDiscoveryReads(brief.filesRead);
+  if (productiveReads < 2) {
+    return false;
+  }
+  const surfaces = brief.proposedChangeSurfaces;
+  if (surfaces.length < 1) {
+    return false;
+  }
+  if (surfaces.length < 2 && !hasRelatedDiscoverySupport(brief)) {
     return false;
   }
   if (options?.requireSymbolEvidence === true) {
-    return brief.filesRead.some(
+    const hasSymbols = brief.filesRead.some(
       (file) => Array.isArray(file.symbols) && file.symbols.length > 0,
     );
+    if (!hasSymbols) {
+      return false;
+    }
+  }
+  const minSearches = options?.minSearches ?? 0;
+  if (minSearches > 0 && (options?.searchCount ?? 0) < minSearches) {
+    return false;
   }
   return true;
+}
+
+/** Related test file, or a productive read that is not itself a change surface. */
+function hasRelatedDiscoverySupport(
+  brief: Pick<DiscoveryBrief, "filesRead" | "proposedChangeSurfaces">,
+): boolean {
+  const surfacePaths = new Set(
+    brief.proposedChangeSurfaces.map((surface) =>
+      surface.path.replace(/\\/g, "/").toLowerCase(),
+    ),
+  );
+  for (const file of brief.filesRead) {
+    const path = file.path.replace(/\\/g, "/");
+    if (TEST_LIKE.test(path)) {
+      return true;
+    }
+    if (
+      isProductiveDiscoveryReadPath(path) &&
+      !surfacePaths.has(path.toLowerCase())
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Single decision helper so discovery failure and Engine clarify cannot drift.
+ * Callers that already ran discovery SHOULD pass `discoveryFailed` from the
+ * pass result rather than recomputing with weaker options.
+ */
+export function shouldClarifyAfterPlanDiscovery(params: {
+  qualityFloor: boolean;
+  discoveryFailed: boolean;
+}): boolean {
+  return params.qualityFloor && params.discoveryFailed;
 }
 
 /** True when Plan (or Agent-visible) should use the thorough evidence bar. */
@@ -105,6 +195,21 @@ export function usesThoroughPlanDiscoveryEvidence(params: {
     return true;
   }
   return params.mode === "agent" && params.planningDepth === "visible";
+}
+
+/**
+ * Thorough Plan / Agent-visible discovery must perform at least one search/glob.
+ * Seed reads alone cannot satisfy the floor (avoids hollow one-shot plans).
+ */
+export function resolvePlanDiscoveryMinSearches(params: {
+  thorough: boolean;
+  taskSize?: PlanningTaskSizeForQuality | string;
+}): number {
+  void params.taskSize;
+  if (!params.thorough) {
+    return 0;
+  }
+  return 1;
 }
 
 /**

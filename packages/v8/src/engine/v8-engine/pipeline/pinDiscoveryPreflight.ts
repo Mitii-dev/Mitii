@@ -3,6 +3,7 @@ import type { RepositoryStateReference } from "../../../modules/repository-state
 import type { WindowPolicy } from "../../../modules/window-budget";
 
 import {
+  collectForceExplorationFallbackHits,
   collectShapedDiscoveryHits,
   hasExplicitFilePathTargets,
   rankPathsForShapedDiscovery,
@@ -53,6 +54,11 @@ export async function runDiscoverySeedAndShapedPreflight(params: {
   preferredPaths: readonly string[];
   qualityFloor: boolean;
   seedFirstDiscovery: boolean;
+  /**
+   * When true (Plan thorough), keep shaped/search even if preferred paths
+   * already name concrete files.
+   */
+  forceExploration?: boolean;
   discoveryBudget: DiscoveryPassBudget;
   signal: AbortSignal;
   reasonCodes: AgentReasonCode[];
@@ -71,6 +77,7 @@ export async function runDiscoverySeedAndShapedPreflight(params: {
     preferredPaths,
     qualityFloor,
     seedFirstDiscovery,
+    forceExploration = false,
     discoveryBudget,
     signal,
     reasonCodes,
@@ -83,42 +90,68 @@ export async function runDiscoverySeedAndShapedPreflight(params: {
   // When the prompt already names concrete files, skip broad shaped globs
   // (**/routes/**/*.ts etc.) and seed-read those paths instead.
   // Medium seed-first: same — prefer trusted/explicit seeds before shaped search.
+  // Plan thorough forceExploration keeps search so known entry files cannot
+  // short-circuit discovery to a hollow one-file plan.
   const hasSeedFilePaths = hasExplicitFilePathTargets([
     ...rankedPreferred,
     ...preferredPaths,
   ]);
-  let skipShapedSearch = hasSeedFilePaths;
-  if (skipShapedSearch) {
+  let skipShapedSearch = hasSeedFilePaths && !forceExploration;
+  if (hasSeedFilePaths && forceExploration) {
+    reasonCodes.push("discovery_force_exploration");
+  } else if (skipShapedSearch) {
     reasonCodes.push("discovery_explicit_paths_skip_shaped_search");
   }
   if (seedFirstDiscovery && hasSeedFilePaths) {
     reasonCodes.push("discovery_seed_first");
   }
+  const executeSearchTool = async (
+    toolName: "glob_files" | "search_files",
+    argumentsValue: Record<string, unknown>,
+  ) => {
+    const result = await executeDiscoveryToolCall(runtime, {
+      runId,
+      bus,
+      budget,
+      collector,
+      grant,
+      workspaceRoot,
+      pinnedState,
+      windowPolicy,
+      toolName,
+      argumentsValue,
+    });
+    return result?.output;
+  };
+  const searchShouldContinue = () =>
+    discoveryBudgetRemaining(collector) &&
+    collector.searches < discoveryBudget.maxSearches &&
+    !signal.aborted;
+
   let globHits: string[] =
     shapedProfile && !skipShapedSearch
       ? await collectShapedDiscoveryHits({
           profile: shapedProfile,
-          shouldContinue: () =>
-            discoveryBudgetRemaining(collector) &&
-            collector.searches < discoveryBudget.maxSearches &&
-            !signal.aborted,
-          executeTool: async (toolName, argumentsValue) => {
-            const result = await executeDiscoveryToolCall(runtime, {
-              runId,
-              bus,
-              budget,
-              collector,
-              grant,
-              workspaceRoot,
-              pinnedState,
-              windowPolicy,
-              toolName,
-              argumentsValue,
-            });
-            return result?.output;
-          },
+          shouldContinue: searchShouldContinue,
+          executeTool: executeSearchTool,
         })
       : [];
+
+  // Plan thorough with no matching profile: still search from query tokens.
+  if (
+    forceExploration &&
+    !shapedProfile &&
+    !skipShapedSearch &&
+    searchShouldContinue()
+  ) {
+    reasonCodes.push("discovery_force_exploration_fallback");
+    globHits = await collectForceExplorationFallbackHits({
+      query,
+      shouldContinue: searchShouldContinue,
+      executeTool: executeSearchTool,
+    });
+  }
+
   let shapedSeeds = shapedProfile
     ? selectShapedDiscoverySeeds(shapedProfile, globHits, rankedPreferred)
     : [];
@@ -126,6 +159,11 @@ export async function runDiscoverySeedAndShapedPreflight(params: {
   let qualityFallbackSeeds =
     qualityFloor && shapedSeeds.length === 0 && shapedProfile && !skipShapedSearch
       ? rankPathsForShapedDiscovery(shapedProfile, globHits).slice(0, 4)
+      : [];
+  // No profile: use fallback search hits as additional seed candidates.
+  const fallbackSeeds =
+    !shapedProfile && globHits.length > 0
+      ? globHits.filter((path) => path.includes(".")).slice(0, 4)
       : [];
   // Seed-first: preferred / trusted paths before shaped hits.
   const seeds = (
@@ -135,14 +173,21 @@ export async function runDiscoverySeedAndShapedPreflight(params: {
           ...preferredPaths,
           ...shapedSeeds,
           ...qualityFallbackSeeds,
+          ...fallbackSeeds,
         ]
       : [
           ...shapedSeeds,
           ...qualityFallbackSeeds.filter((path) => !shapedSeeds.includes(path)),
-          ...rankedPreferred.filter(
+          ...fallbackSeeds.filter(
             (path) =>
               !shapedSeeds.includes(path) &&
               !qualityFallbackSeeds.includes(path),
+          ),
+          ...rankedPreferred.filter(
+            (path) =>
+              !shapedSeeds.includes(path) &&
+              !qualityFallbackSeeds.includes(path) &&
+              !fallbackSeeds.includes(path),
           ),
         ]
   )

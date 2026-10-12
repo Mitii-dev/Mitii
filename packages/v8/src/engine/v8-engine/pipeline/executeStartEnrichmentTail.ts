@@ -1,19 +1,17 @@
 import type { ExecutionDecision } from "../../../modules/decision-policy";
 import { MEMORY_SCHEMA_VERSION } from "../../../modules/memory";
 import {
-  PLANNING_SCHEMA_VERSION,
   collectDiscoveryImpactSeedPaths,
   collectPlanningImpactReports,
   formatPlanAsAnswer,
   inferPlanStrategyFromArtifact,
-  mapUnderstandingToPlanningEvidence,
-  planningInputSchema,
   resolvePlanStrategyRules,
   serializePlanForPrompt,
+  thinDiscoveryBriefForClarify,
   type PlanArtifact,
   type PlanStrategyDecision,
-  type PlanningInput,
 } from "../../../modules/planning";
+import { buildPlanClarifySuspension } from "../actions/buildPlanClarifySuspension";
 import type {
   PromptInstructions,
   PromptRepositoryContext,
@@ -25,21 +23,18 @@ import type { WindowPolicy } from "../../../modules/window-budget";
 
 import {
   extractMemoryFileTargets,
-  buildPlanningQuery,
-  buildScopedRepoMapForPlanning,
-  collectPreferredPlanningPaths,
-  extractPriorPathHints,
-  toPlanningBuildEvidence,
   recordDiscoveryEvidence,
   recordPlanEvidence,
   selectSkillsForEnrichment,
 } from "../actions";
+import { preparePlanningInputFromEnrichment } from "./preparePlanningInputFromEnrichment";
 import {
   applyPlanModeDiscoveryContract,
   isAgentWidePlanningScope,
   clarifyAfterInsufficientPlanDiscovery,
-  isPlanDiscoveryEvidenceSufficient,
+  hasResolvedPlanScopeChoice,
   requiresPlanDiscoveryQualityFloor,
+  shouldClarifyAfterPlanDiscovery,
   usesThoroughPlanDiscoveryEvidence,
 } from "../modules/plan-discovery";
 import {
@@ -232,54 +227,20 @@ export async function finishEnrichmentSkillsMemoryPlan(
     }
   } else if (runtime.deps.planning && decision.planningDepth !== "none") {
     runtime.emitStage(bus, runId, "plan_ready", "started");
-    const contextReviewed = (repositoryContext?.blocks ?? [])
-      .slice(0, 20)
-      .map((block) => ({
-        kind: "file" as const,
-        ref: block.relativePath,
-      }));
-    const planningEvidence = mapUnderstandingToPlanningEvidence(understanding);
-    const priorPathHints = extractPriorPathHints(input.conversation);
-    const knownPathHints = collectPreferredPlanningPaths({
-      evidenceTargets: planningEvidence.targets,
+    const { planningInput, knownPathHints } = preparePlanningInputFromEnrichment({
+      envelope,
+      understanding,
+      conversation: input.conversation ?? [],
       contextPaths,
-      priorPathHints,
-      seedPaths: shared.executionSeed?.paths,
-      query: buildPlanningQuery(
-        extractPrimaryUserMessage(envelope.message),
-        input.conversation,
-      ),
-    });
-    const planningInputCandidate: PlanningInput = {
-      schemaVersion: PLANNING_SCHEMA_VERSION,
-      query: buildPlanningQuery(
-        extractPrimaryUserMessage(envelope.message),
-        input.conversation,
-      ),
-      mode: envelope.mode,
+      repositoryContext,
+      selectedSkills,
+      shared,
+      windowPolicy,
       route: decision.route,
       planningDepth: decision.planningDepth,
       explorationDepth: input.explorationDepth,
-      evidence: planningEvidence,
-      scopedRepoMap: buildScopedRepoMapForPlanning(contextPaths),
-      buildEvidence: shared.repoBuildStateBefore
-        ? toPlanningBuildEvidence(shared.repoBuildStateBefore)
-        : undefined,
-      skills: selectedSkills?.map((block: { id: string; title?: string; content: string; priority?: number }) => ({
-        id: block.id,
-        title: block.title,
-        content: block.content,
-        priority: block.priority,
-      })),
-      processHints: [],
-      contextReviewed:
-        contextReviewed.length > 0 ? contextReviewed : undefined,
-      ...(knownPathHints.length > 0 ? { knownPathHints } : {}),
-      budgetTokens: windowPolicy.planning.budgetTokens,
-      maxDiagnosticSteps: windowPolicy.planning.maxDiagnosticSteps,
-      maxFilesPerBatch: windowPolicy.mutation.preferredBatchSize,
-    };
-    const planningInput = planningInputSchema.parse(planningInputCandidate);
+      reasonCodes,
+    });
 
     // Engine owns strategy (rules only); Planning drafts against override.
     const strategyDecision = resolvePlanStrategyRules(planningInput);
@@ -287,6 +248,13 @@ export async function finishEnrichmentSkillsMemoryPlan(
     const taskSize = planningInput.evidence.taskSize;
     const mediumOrLarge =
       taskSize === "medium" || taskSize === "large";
+    const scopeChoiceResolved = hasResolvedPlanScopeChoice({
+      query: planningInput.query,
+      conversation: input.conversation ?? [],
+      optionId: input.clarificationResolution?.optionId,
+      outcomeNote: input.clarificationResolution?.outcomeNote,
+      label: input.clarificationResolution?.label,
+    });
     const planContract = applyPlanModeDiscoveryContract({
       mode: envelope.mode,
       explorationDepth: input.explorationDepth,
@@ -302,8 +270,15 @@ export async function finishEnrichmentSkillsMemoryPlan(
       reasonCodes.push(
         envelope.mode === "agent"
           ? "agent_big_task_discovery_required"
-          : "plan_mode_discovery_required",
+          : planContract.rationale === "plan_scope_choice_honored"
+            ? "plan_scope_choice_honored"
+            : "plan_mode_discovery_required",
       );
+    } else if (
+      scopeChoiceResolved &&
+      !reasonCodes.includes("plan_scope_choice_honored")
+    ) {
+      reasonCodes.push("plan_scope_choice_honored");
     }
     let discoveryBrief = planningInput.discoveryBrief;
     const thoroughEvidence = usesThoroughPlanDiscoveryEvidence({
@@ -341,6 +316,8 @@ export async function finishEnrichmentSkillsMemoryPlan(
         thoroughEvidence,
         seedFirstDiscovery: mediumOrLarge,
         preferSymbols: mediumOrLarge,
+        // Plan thorough: keep searching even when a preferred path is known.
+        forceExploration: thoroughEvidence && envelope.mode === "plan",
         taskSize,
       });
       discoveryBrief = discovery.brief;
@@ -352,17 +329,30 @@ export async function finishEnrichmentSkillsMemoryPlan(
       runtime.emitEvidenceUpdated(bus, runId, runEvidence);
       // Discovery ran; skip Planning's Discover phase.
       strategyOverride = { ...strategyOverride, skipDiscover: true };
+      // Use the discovery pass failure flag — never recompute with weaker options.
+      // Once the user picked A/B/C scope, draft from whatever evidence we have.
       if (
-        planQualityFloor &&
-        !isPlanDiscoveryEvidenceSufficient(discovery.brief, {
-          thorough: thoroughEvidence,
+        shouldClarifyAfterPlanDiscovery({
+          qualityFloor: planQualityFloor,
+          discoveryFailed: discovery.failed,
         })
       ) {
-        reasonCodes.push("plan_mode_discovery_insufficient");
-        strategyOverride = clarifyAfterInsufficientPlanDiscovery(
-          strategyOverride.confidence,
-          { thorough: thoroughEvidence },
-        );
+        if (scopeChoiceResolved) {
+          if (!reasonCodes.includes("plan_scope_choice_honored")) {
+            reasonCodes.push("plan_scope_choice_honored");
+          }
+          warnings.push(
+            "Discovery quality floor was not fully met, but a plan scope choice was already resolved — drafting a concrete plan from available evidence.",
+          );
+        } else {
+          reasonCodes.push("plan_mode_discovery_insufficient");
+          strategyOverride = clarifyAfterInsufficientPlanDiscovery(
+            strategyOverride.confidence,
+            { thorough: thoroughEvidence },
+          );
+          // Strip seed-read surfaces so Planning cannot draft Change skeletons.
+          discoveryBrief = thinDiscoveryBriefForClarify(discoveryBrief);
+        }
       }
     }
 
@@ -388,7 +378,7 @@ export async function finishEnrichmentSkillsMemoryPlan(
       });
     }
 
-    const planningResult = await runtime.deps.planning.plan({
+    let planningResult = await runtime.deps.planning.plan({
       ...planningInput,
       discoveryBrief,
       strategyOverride,
@@ -396,6 +386,32 @@ export async function finishEnrichmentSkillsMemoryPlan(
         ? { impactReports }
         : {}),
     });
+
+    // Scope already chosen but Planning still clarified — force a concrete draft.
+    if (
+      scopeChoiceResolved &&
+      planningResult.strategy?.strategy === "clarify"
+    ) {
+      if (!reasonCodes.includes("plan_scope_choice_honored")) {
+        reasonCodes.push("plan_scope_choice_honored");
+      }
+      planningResult = await runtime.deps.planning.plan({
+        ...planningInput,
+        discoveryBrief,
+        strategyOverride: {
+          schemaVersion: 1,
+          strategy: "discover_and_plan",
+          rationale:
+            "Plan scope choice already resolved; draft a concrete plan from discovery evidence.",
+          skipDiscover: true,
+          useBuildEvidence: false,
+          confidence: strategyOverride.confidence ?? 0.7,
+        },
+        ...(impactReports && impactReports.length > 0
+          ? { impactReports }
+          : {}),
+      });
+    }
 
     if (planningResult.plan) {
       shared.runPlan = planningResult.plan;
@@ -441,6 +457,72 @@ export async function finishEnrichmentSkillsMemoryPlan(
       });
       if (taskListGate.kind === "terminal") {
         return taskListGate;
+      }
+
+      // Plan clarify with findings + A/B/C: suspend for scope choice.
+      // Never re-suspend when the user already answered A/B/C on a prior turn.
+      if (
+        envelope.mode === "plan" &&
+        planningResult.strategy?.strategy === "clarify" &&
+        planningResult.clarifyDraft &&
+        !scopeChoiceResolved
+      ) {
+        const clarify = buildPlanClarifySuspension(planningResult.clarifyDraft);
+        reasonCodes.push("clarification_suspended");
+        const rationale =
+          "Choose plan scope (and optionally first delivery) before a concrete Change plan is locked.";
+        if (runtime.deps.checkpointStore) {
+          await runtime.deps.checkpointStore.save({
+            runId,
+            requestId: shared.requestId,
+            suspensionKind: "clarification_required",
+            input,
+            decision,
+            pinnedState: undefined,
+            messages: [],
+            toolCacheEntries: [],
+            pendingApproval: undefined,
+            plan: planningResult.plan,
+            ...(planningResult.strategy
+              ? { planStrategy: planningResult.strategy }
+              : {}),
+            clarificationSession: clarify.clarificationSession,
+            changedFiles: [],
+            mutationCheckpointIds: [],
+            reasonCodes,
+            warnings,
+            usage: budget.snapshot(),
+            startedAtMs: startedMs,
+            repoBuildStateBefore: shared.repoBuildStateBefore,
+            repoBuildStateAfter: shared.repoBuildStateAfter,
+          });
+        }
+        runtime.emit(bus, {
+          type: "suspended",
+          runId,
+          kind: "clarification_required",
+          rationale,
+          at: runtime.isoNow(),
+        });
+        await runtime.safeUnpin(runId, shared.pinnedState);
+        return {
+          kind: "terminal",
+          result: finish({
+            status: "suspended",
+            route: decision.route,
+            planningDepth: decision.planningDepth,
+            plan: planningResult.plan,
+            answer: clarify.answer,
+            suspension: {
+              kind: "clarification_required",
+              rationale,
+              clarificationPrompt: clarify.clarificationPrompt,
+              clarificationOptions: clarify.clarificationOptions,
+              plan: planningResult.plan,
+            },
+            reasonCodes,
+          }),
+        };
       }
 
       if (
@@ -498,7 +580,11 @@ export async function finishEnrichmentSkillsMemoryPlan(
             route: decision.route,
             planningDepth: decision.planningDepth,
             plan: planningResult.plan,
-            answer: formatPlanAsAnswer(planningResult.plan),
+            answer: formatPlanAsAnswer(
+              planningResult.plan,
+              planningResult.strategy,
+              planningResult.clarifyDraft,
+            ),
             suspension: {
               kind: "plan_approval_required",
               rationale,
@@ -520,7 +606,11 @@ export async function finishEnrichmentSkillsMemoryPlan(
             route: decision.route,
             planningDepth: decision.planningDepth,
             plan: planningResult.plan,
-            answer: formatPlanAsAnswer(planningResult.plan),
+            answer: formatPlanAsAnswer(
+              planningResult.plan,
+              planningResult.strategy,
+              planningResult.clarifyDraft,
+            ),
             reasonCodes,
           }),
         };

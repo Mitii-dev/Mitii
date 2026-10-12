@@ -2,7 +2,7 @@ import {
   isSafeRelativePlanningPath,
   normalizePlanningPath,
   uniqueStrings,
-} from "../planningContext";
+} from "../planningPathUtils";
 
 import type { ShapedDiscoveryProfile } from "./types";
 

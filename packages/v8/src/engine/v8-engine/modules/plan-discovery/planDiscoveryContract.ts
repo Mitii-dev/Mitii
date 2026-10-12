@@ -1,4 +1,7 @@
-import type { PlanStrategyDecision } from "../../../../modules/planning";
+import {
+  hasResolvedPlanScopeChoice,
+  type PlanStrategyDecision,
+} from "../../../../modules/planning";
 import type { AgentMode } from "../../../../modules/request-intake";
 
 import { isPlanningFollowUp } from "../../actions/planningContext";
@@ -129,6 +132,24 @@ function applyPlanColdOrShapedContract(params: {
   const followUp = isPlanningFollowUp(params.query, params.conversation);
   if (followUp && params.strategy.strategy === "plan_from_ask") {
     return { strategy: params.strategy, applied: false };
+  }
+
+  // User already answered the Plan A/B/C scope fork — discover then draft,
+  // never stay on clarify for another suspend loop.
+  if (
+    hasResolvedPlanScopeChoice({
+      query: params.query,
+      conversation: params.conversation,
+    })
+  ) {
+    return {
+      strategy: forceDiscoverAndPlan(
+        params.strategy,
+        "Plan mode: scope choice resolved — discover then draft a concrete plan.",
+      ),
+      applied: true,
+      rationale: "plan_scope_choice_honored",
+    };
   }
 
   const shapedProfile = resolveShapedDiscoveryProfile(params.query);

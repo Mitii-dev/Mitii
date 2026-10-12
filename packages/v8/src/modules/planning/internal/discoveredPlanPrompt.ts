@@ -13,6 +13,8 @@ export const DISCOVERED_PLAN_SYSTEM = [
   "Do not invent files or targets that discovery did not surface.",
   "Prefer allowedTargets and proposedChangeSurfaces over README or package.json unless they appear there.",
   "When allowedTargets are under a new/target package, write Change steps there — template filesRead are evidence only.",
+  "When the query lists multiple improvements or checklist items, emit one Change step per item with concrete targetRefs and a Verify step with commands.",
+  "Do not collapse a multi-item ask into a single generic 'smallest coherent change' step.",
   "If discovery evidence is thin, prefer openQuestions over invented file work.",
   "Return only JSON matching the provided schema.",
 ].join("\n");

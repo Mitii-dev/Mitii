@@ -1,4 +1,4 @@
-import { normalizePlanningPath } from "../planningContext";
+import { normalizePlanningPath } from "../planningPathUtils";
 
 /** Shared deprioritization for paths that rarely hold the primary edit surface. */
 export function scoreCommonDiscoveryNoise(path: string): number {

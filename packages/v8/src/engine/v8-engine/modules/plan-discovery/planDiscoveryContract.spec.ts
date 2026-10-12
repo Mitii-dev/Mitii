@@ -57,6 +57,30 @@ describe("applyPlanModeDiscoveryContract", () => {
     expect(result.strategy.skipDiscover).toBe(false);
   });
 
+  it("forces discover_and_plan after a Plan A/B/C scope choice on follow-up", () => {
+    const result = applyPlanModeDiscoveryContract({
+      mode: "plan",
+      explorationDepth: "auto",
+      query:
+        "How I can improve the test cases?\n\nClarification: C) Runner / architecture changes — Redesign grading DSL",
+      conversation: [
+        { role: "user", content: "How I can improve the test cases?" },
+        {
+          role: "assistant",
+          content: "Before I lock a plan, choose A/B/C scope.",
+        },
+        {
+          role: "user",
+          content: "C) Runner / architecture changes",
+        },
+      ],
+      strategy: clarify,
+    });
+    expect(result.applied).toBe(true);
+    expect(result.rationale).toBe("plan_scope_choice_honored");
+    expect(result.strategy.strategy).toBe("discover_and_plan");
+  });
+
   it("forces discover_and_plan when known paths would short-circuit cold plan", () => {
     const result = applyPlanModeDiscoveryContract({
       mode: "plan",

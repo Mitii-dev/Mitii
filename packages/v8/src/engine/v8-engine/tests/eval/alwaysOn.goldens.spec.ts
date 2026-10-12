@@ -15,9 +15,16 @@ import {
   shouldNudgeDiagnoseAnswer,
 } from "../../modules/diagnose-answer";
 import {
+  mergeContextPathsWithPriorHints,
+  resolveFollowUpPlanningTaskSize,
+} from "../../actions/planningContext";
+import {
   applyPlanModeDiscoveryContract,
   isPlanDiscoveryEvidenceSufficient,
   requiresPlanDiscoveryQualityFloor,
+  resolvePlanDiscoveryMinSearches,
+  shouldClarifyAfterPlanDiscovery,
+  usesThoroughPlanDiscoveryEvidence,
 } from "../../modules/plan-discovery";
 import { V8EnginePipeline } from "../../pipeline/V8EnginePipeline";
 import { InMemoryRunCheckpointStore } from "../../adapters";
@@ -333,5 +340,113 @@ describe("v8-engine always-on goldens (§7.2)", () => {
         confidence: "low",
       }),
     ).toBe(false);
+  });
+
+  it("G10: Ask→Plan follow-up thoroughness (verifiers-style regression)", () => {
+    const priorAssistant = [
+      "**Verifiers present in packages/runner/src/verifiers.js**",
+      "",
+      "| Verifier | Purpose |",
+      "|----------|---------|",
+      "| agent_exit | exit code |",
+      "| file_exists | path exists |",
+      "",
+      "### Suggested improvements / gaps",
+      "",
+      "| Area | What could be added |",
+      "|------|---------------------|",
+      "| Pattern matching | Add file_matches_regex |",
+      "| JSON schema | Validate configs |",
+      "| Parallel verification | Run checks concurrently |",
+      "| Timeout granularity | Per-check timeoutMs |",
+    ].join("\n");
+    const conversation = [
+      {
+        role: "user",
+        content:
+          "how many verifiers do we have except contains and http and list what to improve",
+      },
+      { role: "assistant", content: priorAssistant },
+    ];
+    const followUp = "can you plan for the above implementation";
+
+    expect(
+      resolveFollowUpPlanningTaskSize({
+        currentTaskSize: "small",
+        currentQuery: followUp,
+        conversation,
+      }),
+    ).toBe("medium");
+
+    expect(
+      mergeContextPathsWithPriorHints({
+        contextPaths: ["packages/runner/src/verifiers.js"],
+        priorPathHints: [
+          "packages/runner/src/verifiers.js",
+          "packages/runner/src/http-check.js",
+          "packages/runner/src/runner.js",
+        ],
+      }),
+    ).toEqual([
+      "packages/runner/src/verifiers.js",
+      "packages/runner/src/http-check.js",
+      "packages/runner/src/runner.js",
+    ]);
+
+    expect(usesThoroughPlanDiscoveryEvidence({ mode: "plan" })).toBe(true);
+    expect(
+      resolvePlanDiscoveryMinSearches({ thorough: true, taskSize: "medium" }),
+    ).toBe(1);
+
+    // Entry + package.json must not fake thorough multi-file discovery.
+    expect(
+      isPlanDiscoveryEvidenceSufficient(
+        {
+          filesRead: [
+            { path: "packages/runner/src/verifiers.js", reason: "seed" },
+            { path: "package.json", reason: "seed" },
+          ],
+          proposedChangeSurfaces: [
+            {
+              path: "packages/runner/src/verifiers.js",
+              actionHint: "Change",
+              riskLevel: "low",
+              evidence: "read",
+            },
+          ],
+          confidence: "medium",
+        },
+        { thorough: true, minSearches: 1, searchCount: 0 },
+      ),
+    ).toBe(false);
+
+    expect(
+      shouldClarifyAfterPlanDiscovery({
+        qualityFloor: true,
+        discoveryFailed: true,
+      }),
+    ).toBe(true);
+
+    // Related productive read + search satisfies thorough medium floor.
+    expect(
+      isPlanDiscoveryEvidenceSufficient(
+        {
+          filesRead: [
+            { path: "packages/runner/src/verifiers.js", reason: "seed" },
+            { path: "packages/runner/src/http-check.js", reason: "related" },
+          ],
+          proposedChangeSurfaces: [
+            {
+              path: "packages/runner/src/verifiers.js",
+              actionHint: "Change",
+              riskLevel: "low",
+              evidence: "read",
+            },
+          ],
+          confidence: "medium",
+        },
+        { thorough: true, minSearches: 1, searchCount: 1 },
+      ),
+    ).toBe(true);
   });
 });

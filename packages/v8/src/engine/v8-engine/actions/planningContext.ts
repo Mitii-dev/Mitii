@@ -3,9 +3,20 @@ import type { ProjectDescriptor } from "../../../modules/repository-state";
 import type { RepoBuildState } from "../../../modules/verification";
 
 import {
+  isSafeRelativePlanningPath,
+  normalizePlanningPath,
+  uniqueStrings,
+} from "./planningPathUtils";
+import {
   rankPathsForShapedDiscovery,
   resolveShapedDiscoveryProfile,
 } from "./shapedDiscovery";
+
+export {
+  isSafeRelativePlanningPath,
+  normalizePlanningPath,
+  uniqueStrings,
+} from "./planningPathUtils";
 
 const FILE_LIKE_PATH =
   /(?:^|[\s`"'(=,[])((?:[\w.-]+\/)+[\w.-]+\.[\w]{1,16})\b/g;
@@ -17,9 +28,18 @@ const FOLLOW_UP_PLAN_QUERY =
 const FOLLOW_UP_PLAN_REFERENCE =
   /(?:\bplan\b.{0,40}\b(?:above|that|this|it)\b|\b(?:above|prior|previous)\b.{0,40}\b(?:plan|implement)|(?:for|to)\s+implement(?:ation)?\b|\bbased\s+on\s+(?:the\s+)?(?:above|prior|previous)\b)/i;
 
-const MAX_PRIOR_ASSISTANT_CHARS = 1_200;
-const MAX_PLANNING_QUERY_CHARS = 1_500;
+const MAX_PRIOR_ASSISTANT_CHARS = 3_000;
+const MAX_PLANNING_QUERY_CHARS = 3_500;
 const MAX_PRIOR_PATH_HINTS = 8;
+/** Follow-up Plan asks keep more prior-touched paths for discovery seeds. */
+const MAX_PRIOR_PATH_HINTS_FOLLOW_UP = 16;
+
+/** Multi-item improvement / implementation lists in prior assistant guidance. */
+const MULTI_ITEM_GUIDANCE =
+  /(?:^|\n)\s*(?:#{1,3}\s+)?(?:suggested\s+improvements|improvements?\s*\/\s*gaps|what\s+to\s+improve|implementation\s+plan|todos?)(?:\b|:)/i;
+const MULTI_BULLET_ROWS =
+  /(?:^|\n)\s*(?:[-*]|\d+[.)])\s+\S.+(?:\n\s*(?:[-*]|\d+[.)])\s+\S.+){2,}/m;
+const MULTI_TABLE_ROWS = /\|.+\|(?:\n\|.+\|){3,}/;
 
 export function inferDiscoveryTargetKind(
   kind: string,
@@ -77,31 +97,6 @@ export function toPlanningBuildEvidence(state: RepoBuildState): {
     diagnostics: topDiagnostics.length > 0 ? topDiagnostics : undefined,
     failedChecks: failedChecks.length > 0 ? failedChecks : undefined,
   };
-}
-
-export function normalizePlanningPath(value: string): string {
-  return (
-    value
-      .trim()
-      .replace(/^@+/, "")
-      .replace(/\\/g, "/")
-      .replace(/^\.\//, "")
-      .replace(/\/+$/, "") || "."
-  );
-}
-
-export function isSafeRelativePlanningPath(path: string): boolean {
-  return (
-    path.length > 0 &&
-    !path.startsWith("/") &&
-    !path.startsWith("~") &&
-    !path.includes("..") &&
-    !/^[A-Za-z]:\//.test(path)
-  );
-}
-
-export function uniqueStrings(values: readonly string[]): string[] {
-  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
 export function inferLanguageFromPaths(
@@ -205,28 +200,148 @@ export function isPlanningFollowUp(
 }
 
 /**
- * File-like paths mentioned in prior turns. Used to seed discovery and
- * strategy short-circuits — hints only, not grants.
+ * Prior assistant guidance that enumerates multiple implementation items
+ * (bullets, tables, improvement sections) — not a single-file tweak.
+ */
+export function looksLikeMultiItemPlanGuidance(text: string): boolean {
+  const trimmed = text.trim();
+  if (trimmed.length < 120) {
+    return false;
+  }
+  if (MULTI_ITEM_GUIDANCE.test(trimmed)) {
+    return true;
+  }
+  if (MULTI_BULLET_ROWS.test(trimmed)) {
+    return true;
+  }
+  return MULTI_TABLE_ROWS.test(trimmed);
+}
+
+export type PlanningTaskSize = "small" | "medium" | "large";
+
+/**
+ * Follow-up Plan asks that target a multi-item prior answer must not stay
+ * `small` / single-location — bump at least to medium so discovery budgets
+ * and search floors unlock.
+ */
+export function resolveFollowUpPlanningTaskSize(params: {
+  currentTaskSize?: PlanningTaskSize | string;
+  currentQuery: string;
+  conversation: readonly { role: string; content: string }[];
+  planningQuery?: string;
+}): PlanningTaskSize {
+  const current =
+    params.currentTaskSize === "medium" || params.currentTaskSize === "large"
+      ? params.currentTaskSize
+      : "small";
+  if (current !== "small") {
+    return current;
+  }
+  if (!isPlanningFollowUp(params.currentQuery, params.conversation)) {
+    return "small";
+  }
+  const priorAssistant = [...params.conversation]
+    .reverse()
+    .find(
+      (entry) =>
+        entry.role === "assistant" && entry.content.trim().length >= 40,
+    )
+    ?.content;
+  const grounding = [params.planningQuery, priorAssistant]
+    .filter((part): part is string => Boolean(part && part.trim()))
+    .join("\n\n");
+  if (looksLikeMultiItemPlanGuidance(grounding)) {
+    return "medium";
+  }
+  return "small";
+}
+
+/**
+ * File-like paths mentioned in prior turns (user/assistant/tool) and tool-call
+ * arguments. Used to seed discovery and context — hints only, not grants.
  */
 export function extractPriorPathHints(
-  conversation: readonly { role: string; content: string }[],
+  conversation: readonly {
+    role: string;
+    content: string;
+    toolCalls?: readonly { name: string; arguments: string }[];
+  }[],
+  options?: { max?: number },
 ): string[] {
+  const max = options?.max ?? MAX_PRIOR_PATH_HINTS;
   const recent = conversation
     .filter(
       (entry) =>
-        (entry.role === "user" || entry.role === "assistant") &&
-        entry.content.trim().length > 0,
+        (entry.role === "user" ||
+          entry.role === "assistant" ||
+          entry.role === "tool") &&
+        (entry.content.trim().length > 0 ||
+          (entry.toolCalls?.length ?? 0) > 0),
     )
-    .slice(-6);
+    .slice(-12);
   const found: string[] = [];
   for (const entry of recent) {
-    for (const path of extractFileLikePaths(entry.content)) {
-      found.push(path);
+    if (entry.content.trim().length > 0) {
+      for (const path of extractFileLikePaths(entry.content)) {
+        found.push(path);
+      }
+    }
+    for (const call of entry.toolCalls ?? []) {
+      for (const path of extractPathsFromToolArguments(call.arguments)) {
+        found.push(path);
+      }
     }
   }
   return uniqueStrings(found.map(normalizePlanningPath))
     .filter((path) => isSafeRelativePlanningPath(path) && path.includes("."))
-    .slice(0, MAX_PRIOR_PATH_HINTS);
+    .slice(0, max);
+}
+
+/**
+ * Prefer a larger prior-path budget for Plan follow-ups so Ask-touched files
+ * survive into discovery seeds when live context retrieval collapses.
+ */
+export function resolvePriorPathHintBudget(params: {
+  currentQuery: string;
+  conversation: readonly { role: string; content: string }[];
+  mode?: "ask" | "plan" | "agent";
+}): number {
+  if (
+    params.mode === "plan" ||
+    isPlanningFollowUp(params.currentQuery, params.conversation)
+  ) {
+    return MAX_PRIOR_PATH_HINTS_FOLLOW_UP;
+  }
+  return MAX_PRIOR_PATH_HINTS;
+}
+
+/**
+ * Union retrieved context paths with prior-turn path hints. When retrieval
+ * collapses to a single file but the prior Ask touched more, keep the richer
+ * set for planning / discovery seeding.
+ */
+export function mergeContextPathsWithPriorHints(params: {
+  contextPaths: readonly string[];
+  priorPathHints: readonly string[];
+  max?: number;
+}): string[] {
+  const max = params.max ?? MAX_PRIOR_PATH_HINTS_FOLLOW_UP;
+  const context = params.contextPaths
+    .map(normalizePlanningPath)
+    .filter((path) => isSafeRelativePlanningPath(path) && path !== ".");
+  const prior = params.priorPathHints
+    .map(normalizePlanningPath)
+    .filter(
+      (path) =>
+        isSafeRelativePlanningPath(path) &&
+        path !== "." &&
+        path.includes("."),
+    );
+  if (prior.length === 0) {
+    return uniqueStrings(context).slice(0, max);
+  }
+  // Prefer prior-touched files first (Ask grounding), then fresh retrieval.
+  return uniqueStrings([...prior, ...context]).slice(0, max);
 }
 
 /**
@@ -310,6 +425,37 @@ function extractFileLikePaths(text: string): string[] {
     if (path) paths.push(path);
   }
   return paths;
+}
+
+/** Pull path / paths fields from tool-call JSON arguments. */
+function extractPathsFromToolArguments(argumentsJson: string): string[] {
+  const trimmed = argumentsJson.trim();
+  if (!trimmed || trimmed === "{}") {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    const found: string[] = [];
+    const pathValue = parsed.path;
+    if (typeof pathValue === "string" && pathValue.trim()) {
+      found.push(pathValue.trim());
+    }
+    const pathsValue = parsed.paths;
+    if (Array.isArray(pathsValue)) {
+      for (const entry of pathsValue) {
+        if (typeof entry === "string" && entry.trim()) {
+          found.push(entry.trim());
+        }
+      }
+    }
+    // Fallback: path-like strings embedded in the arguments blob.
+    if (found.length === 0) {
+      found.push(...extractFileLikePaths(trimmed));
+    }
+    return found;
+  } catch {
+    return extractFileLikePaths(trimmed);
+  }
 }
 
 function clipForPlanning(text: string, maxChars: number): string {

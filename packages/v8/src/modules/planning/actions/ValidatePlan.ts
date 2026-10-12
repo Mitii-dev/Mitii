@@ -162,6 +162,22 @@ export function validatePlan(params: {
     };
   }
 
+  const verifyGate = enforceVerifyPhaseWhenRequired({
+    plan,
+    input,
+    strategy: params.strategy,
+  });
+  warnings.push(...verifyGate.warnings);
+  reasonCodes.push(...verifyGate.reasonCodes);
+  if (!verifyGate.ok) {
+    return {
+      plan,
+      warnings,
+      reasonCodes: unique([...reasonCodes, "plan_blocked_invalid"]),
+      ok: false,
+    };
+  }
+
   reasonCodes.push("plan_validated");
   return {
     plan,
@@ -294,6 +310,57 @@ function requiresConcreteChangeSteps(
     return true;
   }
   return input.planningDepth === "visible";
+}
+
+/**
+ * Plan / Agent-visible asks that request verification must keep a Verify phase
+ * with at least one step (unless clarifying).
+ */
+function enforceVerifyPhaseWhenRequired(params: {
+  plan: PlanArtifact;
+  input: PlanningParsedInput;
+  strategy?: PlanStrategyDecision;
+}): {
+  warnings: string[];
+  reasonCodes: PlanningReasonCode[];
+  ok: boolean;
+} {
+  const warnings: string[] = [];
+  const reasonCodes: PlanningReasonCode[] = [];
+  if (params.strategy?.strategy === "clarify") {
+    return { warnings, reasonCodes, ok: true };
+  }
+  const wantsVerify =
+    params.input.evidence.recommendsVerification === true ||
+    (params.input.discoveryBrief?.verificationHints.length ?? 0) > 0;
+  if (!wantsVerify) {
+    return { warnings, reasonCodes, ok: true };
+  }
+  const thorough =
+    params.input.mode === "plan" ||
+    params.input.planningDepth === "visible" ||
+    params.input.evidence.taskSize === "medium" ||
+    params.input.evidence.taskSize === "large";
+  if (!thorough) {
+    return { warnings, reasonCodes, ok: true };
+  }
+  const hasChange = params.plan.phases.some((phase) =>
+    changeLikePhaseName(phase.name),
+  );
+  if (!hasChange) {
+    return { warnings, reasonCodes, ok: true };
+  }
+  const verifyPhase = params.plan.phases.find((phase) =>
+    /verify|test|check/i.test(phase.name),
+  );
+  if (!verifyPhase || verifyPhase.steps.length === 0) {
+    reasonCodes.push("plan_verify_phase_required");
+    warnings.push(
+      "Thorough plan with verification requested must include a Verify phase with at least one step.",
+    );
+    return { warnings, reasonCodes, ok: false };
+  }
+  return { warnings, reasonCodes, ok: true };
 }
 
 function unique(codes: readonly PlanningReasonCode[]): PlanningReasonCode[] {

@@ -1,5 +1,6 @@
 import type {
   PlanArtifact,
+  PlanClarifyDraft,
   PlanStrategyDecision,
   PlanningReasonCode,
 } from "../contracts";
@@ -9,6 +10,7 @@ import {
   DEFAULT_PLAN_CHARACTERS_PER_TOKEN,
 } from "../defaults";
 import { PLANNING_WORKING_SET_POLICY } from "../policy";
+import { formatClarifyAsAnswer } from "./formatClarifyAsAnswer";
 
 export interface CompactPlanResult {
   plan: PlanArtifact;
@@ -192,7 +194,14 @@ export function serializePlanForPrompt(
   ].join("\n");
 }
 
-export function formatPlanAsAnswer(plan: PlanArtifact): string {
+export function formatPlanAsAnswer(
+  plan: PlanArtifact,
+  strategy?: PlanStrategyDecision,
+  clarifyDraft?: PlanClarifyDraft,
+): string {
+  if (strategy?.strategy === "clarify" && clarifyDraft) {
+    return formatClarifyAsAnswer(clarifyDraft);
+  }
   return serializePlanText(plan);
 }
 

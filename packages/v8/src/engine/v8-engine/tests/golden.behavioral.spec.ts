@@ -6,9 +6,19 @@ import { describe, expect, it } from "vitest";
 import {
   decideTruncationRecovery,
   discardIncompleteToolCalls,
+  extractPriorPathHints,
+  mergeContextFocusWithPriorPathHints,
+  mergeContextPathsWithPriorHints,
+  resolveFollowUpPlanningTaskSize,
   shouldForcePreflightRepairLock,
   truncationWarningMessage,
+  deriveContextFocusFromUnderstanding,
 } from "../actions";
+import {
+  shouldClarifyAfterPlanDiscovery,
+  usesThoroughPlanDiscoveryEvidence,
+  resolvePlanDiscoveryMinSearches,
+} from "../modules/plan-discovery";
 import { V8EnginePipeline } from "../pipeline/V8EnginePipeline";
 import { InMemoryRunCheckpointStore } from "../adapters";
 import {
@@ -17,6 +27,82 @@ import {
   createStubDependencies,
   ScriptedLlmPort,
 } from "../tests/fixtures/stubs";
+
+describe("v8-engine golden — plan thorough Ask→Plan follow-up", () => {
+  it("carries prior Ask paths, sizes medium, and fail-closes hollow discovery", () => {
+    const conversation = [
+      {
+        role: "user" as const,
+        content:
+          "how many verifiers in packages/runner/src/verifiers.js and what to improve",
+      },
+      {
+        role: "assistant" as const,
+        content: [
+          "See packages/runner/src/verifiers.js and packages/runner/src/http-check.js.",
+          "### Suggested improvements / gaps",
+          "| Area | What |",
+          "|------|------|",
+          "| Regex | file_matches_regex |",
+          "| Schema | json_schema |",
+          "| Parallel | parallel checks |",
+        ].join("\n"),
+        toolCalls: [
+          {
+            name: "read_file",
+            arguments: JSON.stringify({
+              path: "packages/runner/src/verifiers.js",
+            }),
+          },
+        ],
+      },
+    ];
+
+    expect(
+      resolveFollowUpPlanningTaskSize({
+        currentTaskSize: "small",
+        currentQuery: "can you plan for the above implementation",
+        conversation,
+      }),
+    ).toBe("medium");
+
+    const priorPaths = extractPriorPathHints(conversation, { max: 16 });
+    expect(priorPaths).toEqual(
+      expect.arrayContaining([
+        "packages/runner/src/verifiers.js",
+        "packages/runner/src/http-check.js",
+      ]),
+    );
+
+    const focus = mergeContextFocusWithPriorPathHints(
+      deriveContextFocusFromUnderstanding({
+        taskAnalysis: { targets: [] },
+      } as Parameters<typeof deriveContextFocusFromUnderstanding>[0]),
+      priorPaths,
+    );
+    expect(focus.references?.explicitFiles.map((f) => f.relativePath)).toEqual(
+      expect.arrayContaining(["packages/runner/src/verifiers.js"]),
+    );
+
+    expect(
+      mergeContextPathsWithPriorHints({
+        contextPaths: ["packages/runner/src/verifiers.js"],
+        priorPathHints: priorPaths,
+      }).length,
+    ).toBeGreaterThan(1);
+
+    expect(usesThoroughPlanDiscoveryEvidence({ mode: "plan" })).toBe(true);
+    expect(
+      resolvePlanDiscoveryMinSearches({ thorough: true, taskSize: "medium" }),
+    ).toBe(1);
+    expect(
+      shouldClarifyAfterPlanDiscovery({
+        qualityFloor: true,
+        discoveryFailed: true,
+      }),
+    ).toBe(true);
+  });
+});
 
 describe("v8-engine golden — user paths vs preflight", () => {
   it("does not force preflight repair lock for a multi-test dump vs unrelated CSS diagnostics", () => {

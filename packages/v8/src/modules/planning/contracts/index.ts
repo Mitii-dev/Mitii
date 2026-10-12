@@ -96,6 +96,15 @@ export type {
 } from "./output/DiscoveredPlanDraft";
 
 export {
+  planClarifyOptionSchema,
+  planClarifyDraftSchema,
+} from "./output/PlanClarifyDraft";
+export type {
+  PlanClarifyOption,
+  PlanClarifyDraft,
+} from "./output/PlanClarifyDraft";
+
+export {
   planningResultSchema,
   planningStatusSchema,
   planningReasonCodeSchema,

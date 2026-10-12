@@ -92,6 +92,12 @@ export const AGENT_REASON_CODES = [
   "discovery_skipped",
   /** Prompt already named concrete files — shaped glob/search preflight skipped. */
   "discovery_explicit_paths_skip_shaped_search",
+  /** Plan thorough: preferred paths present but shaped/search still runs. */
+  "discovery_force_exploration",
+  /** Plan thorough: no shaped profile matched — query-derived search/glob ran. */
+  "discovery_force_exploration_fallback",
+  /** Prior-turn path hints injected into context focus / planning seeds. */
+  "plan_prior_path_hints_carried",
   /** Medium/large: trusted seed / preferred paths read before shaped search. */
   "discovery_seed_first",
   /** Seed pre-reads produced no evidence; shaped search ran as fallback. */
@@ -289,6 +295,11 @@ export const AGENT_REASON_CODES = [
   "plan_mode_discovery_required",
   /** Plan mode discovery finished without file-backed evidence; strategy fell back to clarify. */
   "plan_mode_discovery_insufficient",
+  /**
+   * User already picked a Plan A/B/C scope (or equivalent). Do not re-clarify;
+   * draft a concrete plan from discovery / scoped ask.
+   */
+  "plan_scope_choice_honored",
   /** Agent big-task contract upgraded strategy to discover_and_plan before discovery. */
   "agent_big_task_discovery_required",
   /** Grant expansion included network access (fetch_url/fetch_docs/web_search). */
