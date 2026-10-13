@@ -6,7 +6,10 @@ export type { RouteResolution } from "./ResolveRoute";
 export { looksLikeWorkspaceBugReport } from "./LooksLikeWorkspaceBugReport";
 export { looksLikePastedTestFailureDump } from "./LooksLikeWorkspaceBugReport";
 
-export { resolvePlanningDepth } from "./ResolvePlanningDepth";
+export {
+  resolvePlanningDepth,
+  isMultiOutcomeCampaignAsk,
+} from "./ResolvePlanningDepth";
 export type { PlanningDepthResolution } from "./ResolvePlanningDepth";
 
 export {

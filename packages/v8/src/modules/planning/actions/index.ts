@@ -33,6 +33,7 @@ export {
   serializePlanText,
   serializePlanForPrompt,
   formatPlanAsAnswer,
+  formatPlanSummaryAnswer,
   inferPlanStrategyFromArtifact,
 } from "./CompactPlan";
 export type { CompactPlanResult } from "./CompactPlan";

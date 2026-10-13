@@ -158,6 +158,78 @@ describe("resolvePlanningDepth", () => {
     expect(result.reasonCodes).toContain("officer_task_size_plan");
   });
 
+  it("does not let Officer medium bury a long execute brief (visible)", () => {
+    const understanding = createUnderstanding({
+      primaryTaskIntent: "test",
+      taskAnalysis: {
+        scope: "single_location",
+        complexity: "simple",
+        risk: "medium",
+        taskSize: "medium",
+        planningHint: "short",
+      },
+    });
+    const message = `Harden the suite.\n\n${"x".repeat(2_600)}`;
+
+    const result = resolvePlanningDepth({
+      mode: "agent",
+      route: "execute",
+      understanding,
+      message,
+      windowPolicy: {
+        contextWindowTokens: 64_000,
+        planning: { visiblePlanAffordable: true, changeImpactAffordable: true },
+      } as never,
+    });
+
+    expect(result.planningDepth).toBe("visible");
+    expect(result.reasonCodes).toContain("long_prompt_visible_plan");
+    expect(result.reasonCodes).not.toContain("multi_file_internal_plan");
+  });
+
+  it("forces visible for multi-outcome campaign asks", () => {
+    const understanding = createUnderstanding({
+      primaryTaskIntent: "test",
+      taskAnalysis: {
+        scope: "single_location",
+        complexity: "moderate",
+        risk: "medium",
+        taskSize: "medium",
+      },
+    });
+    const message = [
+      "What I need done:",
+      "",
+      "- Finish the real cross-device story on desktop and tablet",
+      "- Bring tablet smoke and regression coverage closer to desktop",
+      "- Cover billing and payments regression cases",
+      "- Keep layout floor setup tests green",
+      "- Update the README for desktop tablet and cross runs",
+      "",
+      "Done means",
+      "- Cross dine-in and takeaway complete",
+      "- Tablet smoke plus regression cases exist",
+      "- Billing history cases exist",
+      "- README matches reality",
+      "",
+      `${"y".repeat(500)}`,
+    ].join("\n");
+
+    const result = resolvePlanningDepth({
+      mode: "agent",
+      route: "execute",
+      understanding,
+      message,
+      windowPolicy: {
+        contextWindowTokens: 64_000,
+        planning: { visiblePlanAffordable: true, changeImpactAffordable: true },
+      } as never,
+    });
+
+    expect(result.planningDepth).toBe("visible");
+    expect(result.reasonCodes).toContain("multi_outcome_campaign_visible_plan");
+  });
+
   it("honors Officer large taskSize as visible when affordable", () => {
     const understanding = createUnderstanding({
       primaryTaskIntent: "feature",

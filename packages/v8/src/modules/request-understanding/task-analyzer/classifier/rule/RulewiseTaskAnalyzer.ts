@@ -436,13 +436,21 @@ export class RulewiseTaskAnalyzer {
     return merged;
   }
 
-  /** Prefer the more conservative (less clear) rating when both are present. */
+  /**
+   * Prefer LLM `clear` when the Officer judged the ask clear — deterministic
+   * clarity often marks repo-scale feature asks as unclear solely because no
+   * file path was pinned yet, which wrongly opens harness A/B/C.
+   * Otherwise keep the more conservative rating.
+   */
   private mergeClarity(
     deterministic: TaskClarity,
     hinted: TaskClarity | undefined,
   ): TaskClarity {
     if (!hinted) {
       return deterministic;
+    }
+    if (hinted === "clear") {
+      return "clear";
     }
     const rank: Record<TaskClarity, number> = {
       clear: 0,

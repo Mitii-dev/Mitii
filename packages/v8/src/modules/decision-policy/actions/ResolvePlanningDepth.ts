@@ -65,19 +65,8 @@ export function resolvePlanningDepth(params: {
     return { planningDepth: "visible", reasonCodes };
   }
 
-  // Officer taskSize / planningHint → plan-then-finish (before localized shortcuts).
-  const officerPlan = resolveOfficerTaskSizePlanningDepth({
-    taskAnalysis,
-    windowPolicy: params.windowPolicy,
-  });
-  if (officerPlan && mode === "agent" && route === "execute") {
-    reasonCodes.push(...officerPlan.reasonCodes);
-    return {
-      planningDepth: officerPlan.planningDepth,
-      reasonCodes,
-    };
-  }
-
+  // Architecture / large impl before Officer — mis-sized Officer medium must
+  // not bury package-scale or architecture asks.
   if (
     isArchitectureScale(taskAnalysis, primary, message) ||
     isLargeImplementationScale(taskAnalysis, primary, message)
@@ -110,6 +99,39 @@ export function resolvePlanningDepth(params: {
     }
     reasonCodes.push("multi_file_internal_plan");
     return { planningDepth: "internal", reasonCodes };
+  }
+
+  // Long / multi-outcome briefs before Officer medium→internal. BillBuddy-class
+  // asks are often Officer-medium + long text; visible must win.
+  if (mode === "agent" && route === "execute") {
+    const longPrompt = resolveLongPromptPlanningDepth({
+      message,
+      windowPolicy: params.windowPolicy,
+    });
+    if (longPrompt?.planningDepth === "visible") {
+      reasonCodes.push(...longPrompt.reasonCodes);
+      return { planningDepth: "visible", reasonCodes };
+    }
+    if (
+      isMultiOutcomeCampaignAsk(message) &&
+      isVisiblePlanAffordable(params.windowPolicy)
+    ) {
+      reasonCodes.push("multi_outcome_campaign_visible_plan");
+      return { planningDepth: "visible", reasonCodes };
+    }
+  }
+
+  // Officer taskSize / planningHint → plan-then-finish (before localized shortcuts).
+  const officerPlan = resolveOfficerTaskSizePlanningDepth({
+    taskAnalysis,
+    windowPolicy: params.windowPolicy,
+  });
+  if (officerPlan && mode === "agent" && route === "execute") {
+    reasonCodes.push(...officerPlan.reasonCodes);
+    return {
+      planningDepth: officerPlan.planningDepth,
+      reasonCodes,
+    };
   }
 
   if (mode === "agent" && route === "execute") {
@@ -339,6 +361,37 @@ function resolveLongPromptPlanningDepth(params: {
   }
 
   return null;
+}
+
+/**
+ * Multi-deliverable campaign ask (generic): several outcome sections / done
+ * criteria, not a single localized edit. Used to force visible planning.
+ */
+export function isMultiOutcomeCampaignAsk(message: string): boolean {
+  const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
+  if (text.length < 900) {
+    return false;
+  }
+  const bullets =
+    text.match(/(?:^|\n)\s*(?:[-*•]|\d+[.)])\s+\S+/g)?.length ?? 0;
+  const sectionMarkers =
+    text.match(
+      /(?:^|\n)\s*(?:what i need|done means|finish |bring |cover |update |billing|layout|docs?\b)/gim,
+    )?.length ?? 0;
+  const surfaceWords =
+    text.match(
+      /\b(?:desktop|tablet|mobile|cross[- ]?device|ci|readme|regression|smoke|e2e|end-to-end)\b/gi,
+    )?.length ?? 0;
+  if (/(?:done means|what i need done)/i.test(text) && bullets >= 3) {
+    return true;
+  }
+  if (sectionMarkers >= 3 && bullets >= 4) {
+    return true;
+  }
+  if (surfaceWords >= 4 && bullets >= 4 && text.length >= 1_500) {
+    return true;
+  }
+  return false;
 }
 
 function isVisiblePlanAffordable(windowPolicy?: WindowPolicy): boolean {

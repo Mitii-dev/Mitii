@@ -103,7 +103,9 @@ export function PlanFollowStrip({
   running = false,
   onOpenPlanFile,
 }: PlanFollowStripProps) {
-  const [expanded, setExpanded] = useState(true);
+  const stepCount = plan?.steps?.length ?? 0;
+  // Long plans start collapsed so they don't bury the composer / Approve.
+  const [expanded, setExpanded] = useState(() => stepCount > 0 && stepCount <= 6);
   const current = currentPlanStep(plan, running);
   if (!plan) return null;
 
@@ -114,9 +116,11 @@ export function PlanFollowStrip({
   const showLoader = running && !current?.complete;
   const headingText = current?.complete
     ? 'Plan complete'
-    : running
-      ? 'Following plan'
-      : 'Plan ready';
+    : running && completedSteps === 0
+      ? 'Starting plan'
+      : running
+        ? 'Following plan'
+        : 'Plan ready';
   const fallbackTitle = plan.objective || plan.title || 'Plan';
   const currentIsRunning =
     current &&
@@ -137,7 +141,7 @@ export function PlanFollowStrip({
         <div className="plan-follow-strip__heading">
           <span className="plan-follow-strip__eyebrow">{headingText}</span>
           <span className="plan-follow-strip__progress">
-            {completedSteps}/{totalSteps} complete
+            {completedSteps} of {totalSteps} done
           </span>
         </div>
         <div className="plan-follow-strip__actions">
@@ -164,7 +168,9 @@ export function PlanFollowStrip({
       <div className="plan-follow-strip__step">
         {current ? (
           <span className="plan-follow-strip__count">
-            Step {current.index + 1} of {current.total}
+            {current.complete
+              ? `Finished step ${current.index + 1} of ${current.total}`
+              : `Now on step ${current.index + 1} of ${current.total}`}
           </span>
         ) : (
           <span className="plan-follow-strip__count">

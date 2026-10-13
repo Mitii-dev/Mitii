@@ -85,6 +85,11 @@ export const DECISION_REASON_CODES = [
   "long_prompt_internal_plan",
   /** Long structured execute briefs get a visible plan when the window can afford it. */
   "long_prompt_visible_plan",
+  /**
+   * Multi-deliverable / campaign-shaped Agent ask — force a visible plan so
+   * execute does not silently run an internal skeleton.
+   */
+  "multi_outcome_campaign_visible_plan",
   /** Prompt/engine should prefer analyze_change_impact before shared-surface mutations. */
   "change_impact_recommended",
   /**

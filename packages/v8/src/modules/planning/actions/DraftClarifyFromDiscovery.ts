@@ -17,6 +17,8 @@ import {
   collectCompletionText,
   parseLastJsonObject,
 } from "../internal/modelJson";
+import { askNeedsPlanScopeFork } from "../internal/askNeedsPlanScopeFork";
+import { PLAN_SCOPE_DEFS, PLAN_SCOPE_ORDER } from "../internal/planScopeChoice";
 
 export type DraftClarifyFromDiscoveryResult =
   | { ok: true; draft: PlanClarifyDraft; source: "model" | "fallback" }
@@ -101,26 +103,14 @@ export function buildFallbackClarifyDraft(
   return planClarifyDraftSchema.parse({
     schemaVersion: 1,
     findings,
-    scopeOptions: [
-      {
-        id: "outcome:scope-a-focused",
-        label: "A) Focused case hardening",
-        detail:
-          "Harden high-value cases (oracles, negative paths, HTTP contracts) without redesigning the harness.",
-      },
-      {
-        id: "outcome:scope-b-corpus",
-        label: "B) Corpus-wide quality bar",
-        detail:
-          "Raise the bar across weak cases (solutions/oracles) and CI/validate coverage beyond smoke.",
-      },
-      {
-        id: "outcome:scope-c-architecture",
-        label: "C) Runner / architecture changes",
-        detail:
-          "Redesign grading DSL, scoring, dry-run policy, or workspace change rules.",
-      },
-    ],
+    scopeOptions: PLAN_SCOPE_ORDER.map((id) => {
+      const def = PLAN_SCOPE_DEFS[id];
+      return {
+        id: def.optionId,
+        label: `${def.letter}) ${def.label}`,
+        detail: def.detail,
+      };
+    }),
     deliveryOptions: [
       {
         id: "outcome:delivery-quick-wins",
@@ -139,8 +129,7 @@ export function buildFallbackClarifyDraft(
         detail: "Redesign grading layers/weights, DSL gaps, or project suites first.",
       },
     ],
-    replyHint:
-      "Reply with something like B + quality gate (or A + quick wins), and I will write a concrete phased plan against that.",
+    replyHint: "Reply A, B, or C (optionally + delivery), then I write the plan.",
   });
 }
 
@@ -151,36 +140,31 @@ function buildFallbackFindings(
   const findings: string[] = [];
   const files = discoveryBrief?.filesRead ?? [];
   if (files.length > 0) {
-    const sample = files
-      .slice(0, 4)
-      .map((file) => file.path)
-      .join(", ");
     findings.push(
-      `Discovery reviewed ${files.length} file(s) so far (including ${sample}) but did not lock a single change surface.`,
+      `Reviewed ${files.length} file(s); no single change surface locked yet.`,
     );
   } else {
-    findings.push(
-      "Discovery did not gather enough file-backed evidence to lock a concrete Change plan.",
-    );
+    findings.push("Not enough file evidence yet for a concrete Change plan.");
   }
+  // Only claim a scope fork when the ask language actually forks — empty
+  // discovery surfaces alone are not an A/B/C decision.
   if (
-    input.evidence.clarity === "unclear" ||
-    input.evidence.clarity === "partially_clear"
+    askNeedsPlanScopeFork({
+      clarity: input.evidence.clarity,
+      primaryIntent: input.evidence.primaryIntent,
+      requestedOutcomes: input.evidence.requestedOutcomes,
+      query: input.query,
+    })
   ) {
     findings.push(
-      "The ask forks across quality improvements and architecture — scope must be chosen before Change steps.",
+      "Ask forks across scopes — pick A/B/C before Change steps.",
     );
-  } else {
+  } else if ((discoveryBrief?.proposedChangeSurfaces.length ?? 0) === 0) {
     findings.push(
-      "Multiple plausible scopes remain (focused cases vs corpus bar vs harness architecture).",
+      "Need a concrete change surface before locking Change steps.",
     );
   }
-  if ((discoveryBrief?.proposedChangeSurfaces.length ?? 0) === 0) {
-    findings.push(
-      "No concrete proposed change surfaces survived the quality floor; inventing file work would be guesswork.",
-    );
-  }
-  return findings.slice(0, 5);
+  return findings.slice(0, 2);
 }
 
 const CLARIFY_PLAN_JSON_SCHEMA = {
@@ -191,8 +175,8 @@ const CLARIFY_PLAN_JSON_SCHEMA = {
     findings: {
       type: "array",
       minItems: 1,
-      maxItems: 8,
-      items: { type: "string", minLength: 1, maxLength: 500 },
+      maxItems: 2,
+      items: { type: "string", minLength: 1, maxLength: 160 },
     },
     scopeOptions: {
       type: "array",

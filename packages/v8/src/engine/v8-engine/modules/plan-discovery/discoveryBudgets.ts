@@ -77,3 +77,22 @@ export function resolveDiscoveryPassBudget(
     maxToolCalls,
   };
 }
+
+/**
+ * Shrink a discovery envelope after A/B/C scope lock so the phase stays
+ * bounded (default ~65% of the unscoped pass).
+ */
+export function scaleDiscoveryPassBudget(
+  budget: DiscoveryPassBudget,
+  factor = 0.65,
+): DiscoveryPassBudget {
+  const clamped = Math.min(1, Math.max(0.25, factor));
+  const scale = (n: number, floor: number) =>
+    Math.max(floor, Math.ceil(n * clamped));
+  return {
+    maxModelTurns: scale(budget.maxModelTurns, 1),
+    maxFileReads: scale(budget.maxFileReads, 2),
+    maxSearches: scale(budget.maxSearches, 2),
+    maxToolCalls: scale(budget.maxToolCalls, 4),
+  };
+}

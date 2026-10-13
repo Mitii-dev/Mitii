@@ -14,7 +14,7 @@ export const planClarifyOptionSchema = z
 export const planClarifyDraftSchema = z
   .object({
     schemaVersion: z.literal(1),
-    findings: z.array(z.string().min(1).max(500)).min(1).max(8),
+    findings: z.array(z.string().min(1).max(160)).min(1).max(2),
     scopeOptions: z.array(planClarifyOptionSchema).min(2).max(5),
     deliveryOptions: z.array(planClarifyOptionSchema).max(5).optional(),
     replyHint: z.string().min(1).max(300).optional(),

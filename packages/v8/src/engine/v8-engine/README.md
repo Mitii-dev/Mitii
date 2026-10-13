@@ -97,6 +97,7 @@ Plan mode expects a foolproof one-shot plan. Engine `modules/plan-discovery` own
 2. Thorough discovery requires productive multi-file evidence (+ search on medium/large); entry+`package.json` is not enough.
 3. Discovery failure fail-closes to clarify (`shouldClarifyAfterPlanDiscovery` uses the pass `failed` flag).
 4. Planning rejects hollow single-surface skeletons for medium+/multi-item asks (`plan_discovery_draft_required_clarify`).
+5. Findings + A/B/C scope-fork suspend applies only when the ask truly forks (`askNeedsPlanScopeFork`) — clear single-outcome feature/bugfix asks draft and execute without harness A/B/C. Scope choice is honored on resume (`plan_scope_choice_honored`).
 
 Goldens: always-on **G10**, behavioral `plan thorough Ask→Plan follow-up`. Details: `modules/plan-discovery/README.md`.
 

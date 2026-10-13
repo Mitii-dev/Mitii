@@ -37,6 +37,8 @@ const REASON_PLAYBOOKS: Partial<Record<DecisionReasonCode, string>> = {
     "Trusted ≥70% act/mutation ballot — apply the write; soft don't-X / make-a-plan / dump heuristics are not a veto.",
   long_prompt_visible_plan:
     "Keep a concise visible plan aligned with executable Change/Verify work.",
+  multi_outcome_campaign_visible_plan:
+    "Multi-deliverable ask: draft a visible plan and phase-lock scope before execute.",
   broad_repair_visible_plan:
     "Use a visible plan and live checklist for package-wide repair; avoid reactive patch loops alone.",
 };

@@ -202,7 +202,40 @@ export function formatPlanAsAnswer(
   if (strategy?.strategy === "clarify" && clarifyDraft) {
     return formatClarifyAsAnswer(clarifyDraft);
   }
-  return serializePlanText(plan);
+  // Chat stays scannable — PlanFollow / approval card own the full plan.
+  return formatPlanSummaryAnswer(plan);
+}
+
+/** Short user-facing plan summary (not the full serializePlanText dump). */
+export function formatPlanSummaryAnswer(plan: PlanArtifact): string {
+  const stepCount = plan.phases.reduce(
+    (sum, phase) => sum + phase.steps.length,
+    0,
+  );
+  const objective = plan.objective.trim();
+  const shortObjective =
+    objective.length > 160
+      ? `${objective.slice(0, 157).trimEnd()}…`
+      : objective;
+  const lines: string[] = [
+    `Plan ready (${stepCount} step${stepCount === 1 ? "" : "s"}).`,
+    shortObjective,
+    "",
+    "Review steps in the plan strip, then Approve to execute.",
+  ];
+  let listed = 0;
+  for (const phase of plan.phases) {
+    for (const step of phase.steps) {
+      if (listed >= 6) break;
+      lines.push(`- ${phase.name}: ${truncate(step.intent, 80)}`);
+      listed += 1;
+    }
+    if (listed >= 6) break;
+  }
+  if (stepCount > listed) {
+    lines.push(`- … +${stepCount - listed} more`);
+  }
+  return lines.join("\n");
 }
 
 /**

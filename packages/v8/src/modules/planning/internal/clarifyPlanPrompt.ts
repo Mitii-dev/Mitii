@@ -5,7 +5,8 @@ export const CLARIFY_PLAN_SYSTEM = [
   "The ask is still multi-fork or discovery was insufficient for a concrete Change plan.",
   "Synthesize findings ONLY from the discovery evidence (files read, surfaces, constraints).",
   "Do not invent file Change steps, paths, or metrics that discovery did not surface.",
-  "Emit a short findings list and 2–4 mutually exclusive scope options (A/B/C style).",
+  "Emit at most 2 findings (each ≤160 chars). Humans read chips for detail — keep prose short.",
+  "Emit 2–4 mutually exclusive scope options (A/B/C style) with short labels.",
   "Optionally emit 2–3 first-delivery options (quick wins vs quality gate vs architecture).",
   "Return only JSON matching the provided schema.",
 ].join("\n");

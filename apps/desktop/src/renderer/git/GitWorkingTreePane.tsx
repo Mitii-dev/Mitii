@@ -118,6 +118,8 @@ interface GitWorkingTreePaneProps {
   onUsePrompt?: (prompt: string, mode?: 'ask' | 'plan' | 'agent') => void;
   onStatusNote?: (note: string | null) => void;
   onError?: (error: string | null) => void;
+  /** After discard — close stale diff tabs / reload open files. */
+  onPathsDiscarded?: (paths: readonly string[]) => void;
   /** Bubble Code Review findings to the chat composer strip. */
   onFindingsChange?: (findings: ReviewFinding[]) => void;
   /** When false, hide Code Review button + findings pane (settings). */
@@ -319,6 +321,7 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
       status?: GitWorkingTreeSnapshot;
     }>,
     okNote?: string,
+    options?: { discardedPaths?: readonly string[] },
   ) => {
     setBusy(true);
     props.onError?.(null);
@@ -329,6 +332,9 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
       if (!result.ok) {
         props.onError?.(result.error ?? 'git_failed');
         return;
+      }
+      if (options?.discardedPaths && options.discardedPaths.length > 0) {
+        props.onPathsDiscarded?.(options.discardedPaths);
       }
       if (okNote) props.onStatusNote?.(okNote);
     } catch (err) {
@@ -660,11 +666,13 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
                               : actions.dangerTitle
                           }
                           aria-label={`${actions.dangerTitle} ${file.path}`}
-                          onClick={() =>
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
                             actions.onDanger?.(
                               pathsForAction(file.path, files),
-                            )
-                          }
+                            );
+                          }}
                         >
                           ×
                         </button>
@@ -918,12 +926,15 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
                 paths.length === 1 ? paths[0] : `${paths.length} files`;
               const verb = hasJunk ? 'Discard / delete' : 'Discard changes to';
               if (!window.confirm(`${verb} ${label}?`)) return;
-              void runMutation(() =>
-                gitDiscardFiles({
-                  ...auth,
-                  paths,
-                  includeUntracked: hasJunk,
-                }),
+              void runMutation(
+                () =>
+                  gitDiscardFiles({
+                    ...auth,
+                    paths,
+                    includeUntracked: hasJunk,
+                  }),
+                undefined,
+                { discardedPaths: paths },
               );
             },
           })}

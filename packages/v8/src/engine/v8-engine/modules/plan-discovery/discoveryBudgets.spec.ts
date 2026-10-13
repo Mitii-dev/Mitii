@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   resolveDiscoveryPassBudget,
+  scaleDiscoveryPassBudget,
   DEFAULT_DISCOVERY_PASS_BUDGET,
 } from "./discoveryBudgets";
 
@@ -48,5 +49,16 @@ describe("resolveDiscoveryPassBudget", () => {
       resolveDiscoveryPassBudget("small", "standard").maxModelTurns,
     );
     expect(DEFAULT_DISCOVERY_PASS_BUDGET.maxFileReads).toBe(8);
+  });
+});
+
+describe("scaleDiscoveryPassBudget", () => {
+  it("shrinks the envelope after scope lock without emptying it", () => {
+    const base = resolveDiscoveryPassBudget("medium", "standard");
+    const scaled = scaleDiscoveryPassBudget(base, 0.65);
+    expect(scaled.maxModelTurns).toBeLessThan(base.maxModelTurns);
+    expect(scaled.maxFileReads).toBeLessThan(base.maxFileReads);
+    expect(scaled.maxModelTurns).toBeGreaterThanOrEqual(1);
+    expect(scaled.maxFileReads).toBeGreaterThanOrEqual(2);
   });
 });

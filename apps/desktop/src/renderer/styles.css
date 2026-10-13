@@ -1,10 +1,11 @@
 :root {
   color-scheme: light;
-  /* Cloudflare-inspired tokens — orange brand, warm charcoal, restrained surfaces */
-  --mitii-brand: #f6821f;
-  --mitii-brand-hover: #e2700b;
-  --mitii-brand-soft: #faad3f;
-  --mitii-brand-tint: #fdf3e7;
+  /* Cloudflare-like: cool neutrals, orange reserved for primary actions & accents */
+  --mitii-brand: #ff751f;
+  --mitii-brand-hover: #e86812;
+  --mitii-brand-soft: #ffbd59;
+  --mitii-brand-tint: #fff6ef;
+  --mitii-brand-on: #ffffff;
   --mitii-accent: var(--mitii-brand);
   --mitii-surface: #f7f7f7;
   --mitii-panel: #ffffff;
@@ -46,10 +47,11 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --mitii-brand: #f6821f;
-  --mitii-brand-hover: #faad3f;
-  --mitii-brand-soft: #faad3f;
-  --mitii-brand-tint: color-mix(in srgb, #f6821f 18%, #15171a);
+  --mitii-brand: #ff751f;
+  --mitii-brand-hover: #ff8a3d;
+  --mitii-brand-soft: #ffbd59;
+  --mitii-brand-tint: color-mix(in srgb, #ff751f 14%, #15171a);
+  --mitii-brand-on: #ffffff;
   --mitii-surface: #1d1f20;
   --mitii-panel: #15171a;
   --mitii-panel-raised: #262a2e;
@@ -66,7 +68,7 @@
   --accent: var(--mitii-brand);
 }
 
-/* Light: left chrome stays pure white (Cloudflare panel surface). */
+/* Light: left chrome stays pure white (panel surface). */
 :root[data-theme="light"] .side,
 :root[data-theme="light"] .workspace-side,
 :root[data-theme="light"] .workspace-pane,
@@ -128,6 +130,12 @@ button[aria-disabled='true'] {
 }
 
 .app-topbar {
+  /* Fixed ink on brand orange — same in light & dark for contrast */
+  --topbar-ink: #1a1a1a;
+  --topbar-ink-muted: color-mix(in srgb, #1a1a1a 62%, transparent);
+  --topbar-line: color-mix(in srgb, #1a1a1a 18%, transparent);
+  --topbar-fill: color-mix(in srgb, #1a1a1a 6%, transparent);
+  --topbar-fill-hover: color-mix(in srgb, #1a1a1a 10%, transparent);
   flex: 0 0 48px;
   height: 48px;
   display: flex;
@@ -135,8 +143,9 @@ button[aria-disabled='true'] {
   justify-content: space-between;
   gap: 16px;
   padding: 0 16px 0 78px;
-  border-bottom: 1px solid var(--mitii-border);
-  background: var(--mitii-surface);
+  background: var(--mitii-brand);
+  border-bottom: 1px solid color-mix(in srgb, var(--mitii-brand) 78%, #000);
+  color: var(--topbar-ink);
   -webkit-app-region: drag;
   z-index: 30;
 }
@@ -177,7 +186,100 @@ button[aria-disabled='true'] {
   height: 22px;
   object-fit: contain;
   display: block;
-  opacity: 0.98;
+  /* Black mark on orange — readable in both themes */
+  filter: brightness(0);
+  opacity: 0.92;
+}
+
+/* Quiet black chrome on orange — light & dark */
+.app-topbar .layout-toggle button {
+  color: var(--topbar-ink-muted);
+}
+
+.app-topbar .layout-toggle button:hover:not(.is-active) {
+  color: var(--topbar-ink);
+  background: var(--topbar-fill);
+}
+
+.app-topbar .layout-toggle button.is-active {
+  background: #ffffff;
+  color: #1a1a1a;
+  border-color: color-mix(in srgb, #1a1a1a 12%, transparent);
+  border-bottom-color: #ffffff;
+}
+
+.app-topbar .layout-toggle button.is-active::after {
+  background: #1a1a1a;
+}
+
+.app-topbar .top-select__trigger {
+  border-color: var(--topbar-line);
+  background: var(--topbar-fill);
+  color: var(--topbar-ink);
+}
+
+.app-topbar .top-select__trigger:hover,
+.app-topbar .top-select__trigger[aria-expanded='true'] {
+  background: var(--topbar-fill-hover);
+  border-color: color-mix(in srgb, #1a1a1a 28%, transparent);
+}
+
+.app-topbar .top-select__label {
+  color: var(--topbar-ink-muted);
+}
+
+.app-topbar .top-icon-btn {
+  border-color: var(--topbar-line);
+  background: var(--topbar-fill);
+  color: var(--topbar-ink);
+}
+
+.app-topbar .top-icon-btn:hover:not(:disabled) {
+  background: var(--topbar-fill-hover);
+  border-color: color-mix(in srgb, #1a1a1a 28%, transparent);
+}
+
+.app-topbar .run-status-chip {
+  border-color: color-mix(in srgb, #14532d 35%, transparent);
+  background: color-mix(in srgb, #ffffff 55%, transparent);
+  color: #14532d;
+}
+
+.app-topbar .run-status-chip:hover {
+  background: color-mix(in srgb, #ffffff 72%, transparent);
+}
+
+.app-topbar .status-icons--identity {
+  border-left-color: var(--topbar-line);
+}
+
+.app-topbar .status-icon {
+  color: var(--topbar-ink-muted);
+}
+
+.app-topbar .status-icon:hover {
+  background: var(--topbar-fill);
+  color: var(--topbar-ink);
+}
+
+.app-topbar .status-icon--ready {
+  color: #166534;
+}
+
+.app-topbar .status-icon--indexing {
+  color: #92400e;
+}
+
+.app-topbar .status-icon--embedding {
+  color: #1e40af;
+}
+
+.app-topbar .status-icon--warn {
+  color: #991b1b;
+}
+
+.app-topbar .status-icon--idle {
+  color: var(--topbar-ink-muted);
 }
 
 .app-body {
@@ -1513,15 +1615,15 @@ button[aria-disabled='true'] {
 }
 
 .token-chip--cost {
-  border-color: color-mix(in srgb, #f6821f 28%, var(--mitii-border));
-  background: color-mix(in srgb, #f6821f 8%, transparent);
-  color: color-mix(in srgb, #f6821f 72%, var(--mitii-text));
+  border-color: color-mix(in srgb, var(--mitii-brand) 28%, var(--mitii-border));
+  background: color-mix(in srgb, var(--mitii-brand) 8%, transparent);
+  color: color-mix(in srgb, var(--mitii-brand) 72%, var(--mitii-text));
 }
 
 .token-chip--cost:hover,
 .token-chip--cost.token-chip--active {
-  border-color: color-mix(in srgb, #f6821f 48%, var(--mitii-border));
-  background: color-mix(in srgb, #f6821f 14%, transparent);
+  border-color: color-mix(in srgb, var(--mitii-brand) 48%, var(--mitii-border));
+  background: color-mix(in srgb, var(--mitii-brand) 14%, transparent);
   color: var(--mitii-text);
 }
 
@@ -1558,8 +1660,8 @@ button[aria-disabled='true'] {
 }
 
 .token-chip__dot--cost {
-  background: #f6821f;
-  box-shadow: 0 0 0 2px color-mix(in srgb, #f6821f 22%, transparent);
+  background: var(--mitii-brand);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--mitii-brand) 22%, transparent);
 }
 
 .token-chip__dot--cache {
@@ -1609,7 +1711,7 @@ button[aria-disabled='true'] {
   background:
     linear-gradient(
       135deg,
-      color-mix(in srgb, #f6821f 6%, transparent),
+      color-mix(in srgb, var(--mitii-brand) 6%, transparent),
       color-mix(in srgb, #2c7be5 6%, transparent) 48%,
       transparent 72%
     ),
@@ -1631,7 +1733,7 @@ button[aria-disabled='true'] {
 }
 
 .token-stat-card--cost {
-  border-color: color-mix(in srgb, #f6821f 30%, var(--mitii-border));
+  border-color: color-mix(in srgb, var(--mitii-brand) 30%, var(--mitii-border));
 }
 
 .token-stat-card--cache {
@@ -2089,6 +2191,11 @@ button[aria-disabled='true'] {
   border-radius: 12px;
   background: var(--mitii-panel);
   box-shadow: var(--mitii-shadow-soft);
+  /* Long plans must scroll — Approve stays reachable */
+  max-height: min(52vh, 520px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  min-height: 0;
 }
 
 .approval-card h3 {
@@ -2153,6 +2260,17 @@ button[aria-disabled='true'] {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin-top: 4px;
+  padding-top: 10px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--mitii-panel) 0%, transparent),
+    var(--mitii-panel) 28%
+  );
+  border-top: 1px solid var(--mitii-border-soft);
 }
 
 /* Pin chips */
@@ -4106,15 +4224,15 @@ button.md-file-link.md-code-inline:hover {
 }
 
 .top-icon-btn--accent {
-  background: color-mix(in srgb, var(--mitii-brand) 12%, var(--mitii-panel));
-  border-color: color-mix(in srgb, var(--mitii-brand) 38%, var(--mitii-border));
-  color: var(--mitii-text);
+  background: var(--mitii-brand);
+  border-color: transparent;
+  color: var(--mitii-brand-on);
 }
 
 .top-icon-btn--accent:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--mitii-brand) 18%, var(--mitii-panel));
-  border-color: color-mix(in srgb, var(--mitii-brand) 52%, var(--mitii-border));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mitii-brand) 10%, transparent);
+  background: var(--mitii-brand-hover);
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .top-icon-btn:disabled {
@@ -4738,7 +4856,7 @@ button.md-file-link.md-code-inline:hover {
 
 .btn-primary {
   background: var(--mitii-brand);
-  color: #fff;
+  color: var(--mitii-brand-on);
   border-color: transparent;
   font-weight: 650;
 }
@@ -8199,6 +8317,9 @@ button.mcp-manager__card {
   border-top: 1px solid
     color-mix(in srgb, var(--plan-follow-accent) 22%, var(--mitii-border));
   padding-top: 8px;
+  max-height: min(24vh, 220px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .plan-follow-strip__steps-item {
@@ -8252,6 +8373,10 @@ button.mcp-manager__card {
   padding: 0;
   display: grid;
   gap: 6px;
+  max-height: min(28vh, 260px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
 }
 
 .approval-plan-panel__steps li {

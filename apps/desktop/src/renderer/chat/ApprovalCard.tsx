@@ -22,7 +22,6 @@ export function ApprovalCard({
   onStop,
 }: ApprovalCardProps) {
   const [clarifyText, setClarifyText] = useState('');
-  const [planExpanded, setPlanExpanded] = useState(true);
   const isClarify = suspension.kind === 'clarification_required';
   const isPlan = suspension.kind === 'plan_approval_required';
   const isContinue = suspension.kind === 'continue_required';
@@ -30,6 +29,10 @@ export function ApprovalCard({
   const approval = suspension.approval;
   const options = suspension.clarificationOptions ?? [];
   const planSteps = suspension.plan?.steps ?? [];
+  // Long plans start collapsed so Approve stays above the fold.
+  const [planExpanded, setPlanExpanded] = useState(
+    () => planSteps.length > 0 && planSteps.length <= 6,
+  );
 
   const title = isClarify
     ? 'Clarification needed'
@@ -41,14 +44,19 @@ export function ApprovalCard({
           ? 'Workspace access expansion'
           : 'Approval required';
 
-  const prompt =
-    (isContinue
-      ? suspension.continuePrompt ?? suspension.rationale
-      : suspension.clarificationPrompt) ??
-    suspension.rationale ??
-    (isPlan
-      ? 'Review the plan, then approve to continue or reject to stop.'
-      : 'I need a bit more detail before continuing.');
+  // Chips carry the options — keep the card prompt short when choices exist.
+  const prompt = isClarify
+    ? options.length > 0
+      ? 'Pick a scope below to continue.'
+      : (suspension.clarificationPrompt ??
+        suspension.rationale ??
+        'I need a bit more detail before continuing.')
+    : (isContinue
+        ? suspension.continuePrompt ?? suspension.rationale
+        : suspension.rationale) ??
+      (isPlan
+        ? 'Review the plan, then approve to continue or reject to stop.'
+        : 'I need a bit more detail before continuing.');
 
   return (
     <div className="approval-card" role="dialog" aria-label={title}>
@@ -115,8 +123,6 @@ export function ApprovalCard({
             )
           ) : null}
         </div>
-      ) : suspension.planText ? (
-        <pre className="approval-plan">{suspension.planText}</pre>
       ) : null}
 
       {approval?.arguments ? (

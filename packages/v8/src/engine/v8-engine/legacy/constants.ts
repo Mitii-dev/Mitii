@@ -219,6 +219,8 @@ export const AGENT_REASON_CODES = [
   "execution_seed_weak",
   /** Folder-only seed refined to concrete context file paths. */
   "execution_seed_context_refined",
+  /** Concrete plan Change targetRefs promoted into a trusted seed. */
+  "execution_seed_from_plan",
   /** Continue resume restored the refined seed from the checkpoint. */
   "execution_seed_restored",
   /** Trusted seed paths written onto checklist write/mustRead. */
@@ -300,6 +302,15 @@ export const AGENT_REASON_CODES = [
    * draft a concrete plan from discovery / scoped ask.
    */
   "plan_scope_choice_honored",
+  /** Discovery preferred paths / budget were narrowed to the chosen A/B/C scope. */
+  "plan_scope_bounds_applied",
+  /** Terminal answer offers remaining A/B/C campaign phases after this scope. */
+  "plan_next_phase_offered",
+  /**
+   * Agent visible / multi-outcome: suspended for A/B/C after a concrete plan
+   * so execute does not run the whole campaign in one shot.
+   */
+  "plan_scope_campaign_phase_lock",
   /** Agent big-task contract upgraded strategy to discover_and_plan before discovery. */
   "agent_big_task_discovery_required",
   /** Grant expansion included network access (fetch_url/fetch_docs/web_search). */

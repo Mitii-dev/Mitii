@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { PLANNING_SCHEMA_VERSION, type PlanArtifact } from "../contracts";
-import { compactPlan, serializePlanText } from "./CompactPlan";
+import {
+  compactPlan,
+  formatPlanAsAnswer,
+  serializePlanText,
+} from "./CompactPlan";
 
 function planWithTargets(): PlanArtifact {
   return {
@@ -51,6 +55,17 @@ function planWithTargets(): PlanArtifact {
     processHintsApplied: [],
   };
 }
+
+describe("formatPlanAsAnswer", () => {
+  it("keeps chat answer short instead of dumping the full plan", () => {
+    const answer = formatPlanAsAnswer(planWithTargets());
+    expect(answer).toMatch(/Plan ready \(\d+ steps?\)\./);
+    expect(answer).toContain("Review steps in the plan strip");
+    expect(answer).toContain("Fix TS2322 in Login.ts");
+    expect(answer).not.toContain("Alternatives / tradeoffs:");
+    expect(answer.length).toBeLessThan(800);
+  });
+});
 
 describe("serializePlanText", () => {
   it("emits every step targetRef as a write line", () => {

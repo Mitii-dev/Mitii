@@ -81,6 +81,26 @@ describe("applyPlanModeDiscoveryContract", () => {
     expect(result.strategy.strategy).toBe("discover_and_plan");
   });
 
+  it("forces discover_and_plan after Agent A/B/C scope choice on a medium task", () => {
+    const result = applyPlanModeDiscoveryContract({
+      mode: "agent",
+      explorationDepth: "auto",
+      query:
+        "Improve the test corpus\n\nClarification: B) Corpus-wide quality bar — Raise the bar across weak cases",
+      conversation: [
+        { role: "user", content: "Improve the test corpus" },
+        { role: "assistant", content: "Choose A/B/C before I execute." },
+        { role: "user", content: "B) Corpus-wide quality bar" },
+      ],
+      strategy: clarify,
+      planningDepth: "internal",
+      taskSize: "medium",
+    });
+    expect(result.applied).toBe(true);
+    expect(result.rationale).toBe("plan_scope_choice_honored");
+    expect(result.strategy.strategy).toBe("discover_and_plan");
+  });
+
   it("forces discover_and_plan when known paths would short-circuit cold plan", () => {
     const result = applyPlanModeDiscoveryContract({
       mode: "plan",

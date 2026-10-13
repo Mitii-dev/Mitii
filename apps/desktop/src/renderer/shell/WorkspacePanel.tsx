@@ -1675,6 +1675,60 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                 onUsePrompt={props.onUsePrompt}
                 onStatusNote={setNote}
                 onError={setError}
+                onPathsDiscarded={(paths) => {
+                  setError(null);
+                  const list = [...paths];
+                  // Diff tabs are always stale after discard.
+                  setTabs((prev) => {
+                    const doomed = new Set(list);
+                    const next = prev.filter((t) => {
+                      if (t.mode !== 'diff') return true;
+                      const filePath = t.path.replace(/^diff:/, '');
+                      return ![...doomed].some(
+                        (p) =>
+                          filePath === p || filePath.startsWith(`${p}/`),
+                      );
+                    });
+                    setActivePath((cur) => {
+                      if (!cur) return cur;
+                      return next.some((t) => t.path === cur)
+                        ? cur
+                        : (next[next.length - 1]?.path ?? null);
+                    });
+                    return next;
+                  });
+                  // Tracked restore: reload open file tabs. Untracked delete:
+                  // drop the tab if the file is gone so later opens stay clean.
+                  void (async () => {
+                    for (const path of list) {
+                      const open = tabsRef.current.find(
+                        (t) => t.path === path && t.mode === 'file',
+                      );
+                      if (!open) continue;
+                      try {
+                        const file = await fetchWorkspaceFile({
+                          ...auth,
+                          path,
+                        });
+                        setTabs((prev) =>
+                          prev.map((t) =>
+                            t.path === path && t.mode === 'file'
+                              ? {
+                                  ...t,
+                                  content: file.content,
+                                  savedContent: file.content,
+                                  truncated: file.truncated,
+                                  loading: false,
+                                }
+                              : t,
+                          ),
+                        );
+                      } catch {
+                        closeTabsMatching([path]);
+                      }
+                    }
+                  })();
+                }}
                 onFindingsChange={props.onReviewFindingsChange}
               />
             ) : null}

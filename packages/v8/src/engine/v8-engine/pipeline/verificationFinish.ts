@@ -121,6 +121,7 @@ export async function finishAfterLoop(
     establishedFacts: EstablishedFact[];
     plan?: PlanArtifact;
     executionSeed?: import("../modules/execution-seed").ExecutionSeed;
+    nextPlanPhaseOffer?: string;
   };
 }): Promise<AgentRunResult> {
   const {
@@ -439,6 +440,7 @@ export async function finishAfterLoop(
         decision,
         understanding: params.loopContext?.understanding,
         taskList: taskListRef.current,
+        nextPlanPhaseOffer: params.loopContext?.nextPlanPhaseOffer,
         finish,
       });
     }

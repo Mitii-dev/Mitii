@@ -206,6 +206,23 @@ function applyAgentBigTaskDiscoveryContract(params: {
     return { strategy: params.strategy, applied: false };
   }
 
+  // User already answered findings A/B/C — discover then draft/execute that phase.
+  if (
+    hasResolvedPlanScopeChoice({
+      query: params.query,
+      conversation: params.conversation,
+    })
+  ) {
+    return {
+      strategy: forceDiscoverAndPlan(
+        params.strategy,
+        "Agent big-task: scope choice resolved — discover then draft a concrete phase plan.",
+      ),
+      applied: true,
+      rationale: "plan_scope_choice_honored",
+    };
+  }
+
   const shapedProfile = resolveShapedDiscoveryProfile(params.query);
   if (shapedProfile) {
     return {

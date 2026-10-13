@@ -27,6 +27,7 @@ import {
   shouldRequireDiscoverySymbolEvidence,
   resolveDiscoveryPassBudget,
 } from "../modules/plan-discovery";
+import type { DiscoveryPassBudget } from "../modules/plan-discovery";
 import type {
   AgentReasonCode,
 } from "../contracts";
@@ -90,6 +91,13 @@ export async function runDiscoveryPass(
   preferSymbols?: boolean;
   /** Officer taskSize for discovery envelope. */
   taskSize?: "small" | "medium" | "large" | string;
+  /**
+   * After A/B/C scope lock: shrink the discovery envelope (default factor
+   * applied by caller via scaleDiscoveryPassBudget).
+   */
+  discoveryBudgetOverride?: DiscoveryPassBudget;
+  /** Injected when preferred paths were narrowed to a chosen plan scope. */
+  discoveryScopeHint?: string;
 }): Promise<{
   brief: DiscoveryBrief;
   failed: boolean;
@@ -117,6 +125,8 @@ export async function runDiscoveryPass(
     forceExploration = false,
     preferSymbols = false,
     taskSize,
+    discoveryBudgetOverride,
+    discoveryScopeHint,
   } = params;
 
   runtime.emitStage(bus, runId, "discovery", "started");
@@ -128,10 +138,12 @@ export async function runDiscoveryPass(
   });
   reasonCodes.push("discovery_started");
 
-  const discoveryBudget = resolveDiscoveryPassBudget(
-    taskSize,
-    windowPolicy.contextWindowTokens,
-  );
+  const discoveryBudget =
+    discoveryBudgetOverride ??
+    resolveDiscoveryPassBudget(
+      taskSize,
+      windowPolicy.contextWindowTokens,
+    );
   const discoveryList = createDiscoveryTaskList();
   taskListRef.current = discoveryList;
   runtime.emitTaskListUpdated(bus, runId, discoveryList);
@@ -220,11 +232,22 @@ export async function runDiscoveryPass(
       uniqueSeeds.length > 0
         ? uniqueSeeds
         : [...shapedSeeds, ...rankedPreferred].slice(0, 6);
+    const shapedHint = shapedProfile?.discoverySystemHint;
+    const scopeHint = discoveryScopeHint?.trim();
+    const mergedSystemHint =
+      shapedHint && scopeHint
+        ? `${shapedHint} ${scopeHint}`
+        : shapedHint ?? scopeHint;
     const prompt = buildDiscoveryPrompt({
       query,
       objective,
       preferredPaths: promptSeeds,
-      shapedDiscovery: shapedProfile,
+      shapedDiscovery: {
+        preferredPathsLabel: shapedProfile?.preferredPathsLabel,
+        ...(mergedSystemHint
+          ? { discoverySystemHint: mergedSystemHint }
+          : {}),
+      },
     });
     const qualityFloorNudge = thoroughEvidence
       ? preferSymbolEvidence

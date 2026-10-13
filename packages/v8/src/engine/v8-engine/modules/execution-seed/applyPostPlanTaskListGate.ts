@@ -15,7 +15,11 @@ import {
 import {
   ensureConcreteTaskListFromPlan,
 } from "./ensureConcreteTaskList";
-import type { ExecutionSeed } from "./resolve";
+import { refineExecutionSeedFromPlan } from "./refineFromPlan";
+import {
+  isExecutionSeedTrusted,
+  type ExecutionSeed,
+} from "./resolve";
 import type { AgentEngineRuntime } from "../../pipeline/runtime";
 import type { ExecuteStartSharedState } from "../../pipeline/executeStartEarlyPipeline";
 
@@ -85,9 +89,31 @@ export async function applyPostPlanTaskListGate(params: {
     return { kind: "continue" };
   }
 
+  // Findings + A/B/C owns clarify; do not steal with a hollow task-list message.
+  if (planStrategy?.strategy === "clarify") {
+    syncTaskListOnce();
+    return { kind: "continue" };
+  }
+
+  // Plan Change targetRefs are authoritative once the plan is concrete —
+  // promote them so mutate lock does not stall on a pre-plan weak seed.
+  const promoted = refineExecutionSeedFromPlan({
+    seed,
+    plan,
+  });
+  if (
+    isExecutionSeedTrusted(promoted) &&
+    (!seed ||
+      seed.confidence !== "trusted" ||
+      promoted.paths.join("\0") !== seed.paths.join("\0"))
+  ) {
+    shared.executionSeed = promoted;
+    reasonCodes.push("execution_seed_from_plan");
+  }
+
   const ensured = ensureConcreteTaskListFromPlan({
     plan,
-    seed,
+    seed: shared.executionSeed ?? promoted,
     maxTasks: taskListRef.maxTasks,
     allowSeedRecovery: true,
   });

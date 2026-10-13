@@ -21,3 +21,4 @@ export type { EnsureConcreteTaskListResult } from "./ensureConcreteTaskList";
 export { applyPostPlanTaskListGate } from "./applyPostPlanTaskListGate";
 export type { MediumTaskListGateResult } from "./applyPostPlanTaskListGate";
 export { refineExecutionSeedFromContext, enrichUiWiringSeeds, enrichAuthMountSeeds } from "./refineFromContext";
+export { refineExecutionSeedFromPlan } from "./refineFromPlan";

@@ -14,6 +14,7 @@ import {
 } from '../shared/conversationCarry.js';
 import {
   extractPlanFromRunResult,
+  parseTaskList,
   resolvePlanDisplayText,
   resolvePlanHandoff,
   resolvePlanStrategyHandoff,
@@ -112,6 +113,7 @@ import {
 } from './chat/DatabaseModeBanner.js';
 import {
   PlanFollowStrip,
+  type PlanFollowStepStatus,
   type PlanFollowView,
 } from './chat/PlanFollowStrip.js';
 import { IdentityPicker } from './IdentityPicker.js';
@@ -180,18 +182,106 @@ interface HistoryThread {
   pendingTaskList?: TaskList;
 }
 
+function formatPlanFollowStepTitle(
+  phaseName: string,
+  intent: string,
+  actionSummary?: string,
+): string {
+  const phase = phaseName.trim();
+  const stepIntent = intent.trim();
+  const summary = actionSummary?.trim() ?? '';
+  // Hollow "Change: Change path" → prefer actionSummary / bare intent.
+  if (/^change$/i.test(phase) && /^change\b/i.test(stepIntent)) {
+    return summary || stepIntent;
+  }
+  if (phase && stepIntent) return `${phase}: ${stepIntent}`;
+  return stepIntent || summary || phase || 'Step';
+}
+
+function matchTaskForPlanStep(
+  step: {
+    id: string;
+    intent: string;
+    actionSummary?: string;
+    targetRefs?: string[];
+  },
+  taskList: TaskList | null | undefined,
+  completedPlanStepIds?: ReadonlySet<string>,
+): TaskList['items'][number] | undefined {
+  if (completedPlanStepIds?.has(step.id)) {
+    return {
+      id: step.id,
+      title: step.intent,
+      status: 'done',
+    };
+  }
+  if (!taskList?.items.length) return undefined;
+  const byRef = taskList.items.find(
+    (item) => item.sourceRef === step.id || item.id === step.id,
+  );
+  if (byRef) return byRef;
+  const refs = new Set(
+    (step.targetRefs ?? []).map((path) => path.replace(/\\/g, '/').toLowerCase()),
+  );
+  if (refs.size > 0) {
+    const byWrite = taskList.items.find((item) =>
+      (item.write ?? []).some((path) =>
+        refs.has(path.replace(/\\/g, '/').toLowerCase()),
+      ),
+    );
+    if (byWrite) return byWrite;
+  }
+  const needle = (step.intent || step.actionSummary || '')
+    .toLowerCase()
+    .slice(0, 48);
+  if (!needle) return undefined;
+  return taskList.items.find((item) => {
+    const hay = `${item.title} ${item.detail ?? ''}`.toLowerCase();
+    return hay.includes(needle) || needle.includes(item.title.toLowerCase());
+  });
+}
+
+function planStepStatusFromTask(
+  taskStatus: string | undefined,
+): PlanFollowStepStatus {
+  switch ((taskStatus ?? '').toLowerCase()) {
+    case 'done':
+    case 'completed':
+      return 'done';
+    case 'active':
+    case 'in_progress':
+    case 'running':
+      return 'active';
+    case 'skipped':
+      return 'skipped';
+    default:
+      return 'pending';
+  }
+}
+
 function planArtifactToFollowView(
   plan: PlanArtifact | null,
   running: boolean,
+  taskList?: TaskList | null,
+  completedPlanStepIds?: ReadonlySet<string>,
 ): PlanFollowView | null {
   if (!plan) return null;
   const steps: NonNullable<PlanFollowView['steps']> = [];
   for (const phase of plan.phases) {
     for (const step of phase.steps) {
+      const matched = matchTaskForPlanStep(
+        step,
+        taskList,
+        completedPlanStepIds,
+      );
       steps.push({
         id: step.id,
-        title: `${phase.name}: ${step.intent}`,
-        status: 'pending',
+        title: formatPlanFollowStepTitle(
+          phase.name,
+          step.intent,
+          step.actionSummary,
+        ),
+        status: planStepStatusFromTask(matched?.status),
         detail: step.actionSummary,
       });
       if (steps.length >= 24) break;
@@ -205,7 +295,11 @@ function planArtifactToFollowView(
       status: 'pending',
     });
   }
-  if (running && steps[0]) {
+  // Only invent "step 1 active" when the task list has no active/done signal yet.
+  const hasProgress = steps.some(
+    (step) => step.status === 'active' || step.status === 'done',
+  );
+  if (running && !hasProgress && steps[0]) {
     steps[0] = { ...steps[0], status: 'active' };
   }
   return {
@@ -411,6 +505,8 @@ export function App() {
   /** Pilot auto-Continue without flashing the stall card. */
   const [pendingAutoContinue, setPendingAutoContinue] =
     useState<DesktopSuspension | null>(null);
+  /** Cap silent Continues so reasoning-budget stalls don't spin forever. */
+  const pilotAutoContinueStreakRef = useRef(0);
   const [dbAccess, setDbAccess] = useState<DatabaseAccessUiMode>('readonly');
   const [thoroughness, setThoroughness] = useState<ThoroughnessUi>('medium');
   const [input, setInput] = useState('');
@@ -459,6 +555,9 @@ export function App() {
   const [pendingPlanStrategy, setPendingPlanStrategy] =
     useState<PlanStrategyDecision | null>(null);
   const [pendingTaskList, setPendingTaskList] = useState<TaskList | null>(null);
+  const [completedPlanStepIds, setCompletedPlanStepIds] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
   const [pinnedPaths, setPinnedPaths] = useState<string[]>([]);
   const [pinnedSkillIds, setPinnedSkillIds] = useState<string[]>([]);
   const [pinnedMcpIds, setPinnedMcpIds] = useState<string[]>([]);
@@ -760,6 +859,7 @@ export function App() {
             setPendingPlan(null);
             setPendingPlanStrategy(null);
             setPendingTaskList(null);
+            setCompletedPlanStepIds(new Set());
             setTokenUsage(emptyTokenUsage());
             setSuspension(null);
             setView('chat');
@@ -1134,6 +1234,10 @@ export function App() {
         setTokenUsage(next);
       };
 
+      // Paint live=true immediately — model_turn tokens only arrive after each
+      // turn completes, so without this the meter stays stale until tab switch.
+      pushUsage(usage);
+
       const paintAssistant = (snapshot: {
         text: string;
         activity: DesktopActivityItem[];
@@ -1163,6 +1267,25 @@ export function App() {
           throw new Error(line.message ?? line.error);
         }
         if (line.op === 'event') {
+          const eventRecord =
+            line.event && typeof line.event === 'object'
+              ? (line.event as Record<string, unknown>)
+              : null;
+          if (eventRecord?.type === 'task_list_updated') {
+            const liveList = parseTaskList(eventRecord.taskList);
+            if (liveList) {
+              resultTaskList = liveList;
+              setPendingTaskList(liveList);
+            }
+            if (Array.isArray(eventRecord.completedPlanStepIds)) {
+              const ids = eventRecord.completedPlanStepIds.filter(
+                (id): id is string => typeof id === 'string' && id.length > 0,
+              );
+              if (ids.length > 0) {
+                setCompletedPlanStepIds(new Set(ids));
+              }
+            }
+          }
           const tokens = extractTurnTokens(line.event);
           if (tokens) {
             pushUsage(
@@ -1191,6 +1314,7 @@ export function App() {
           for (const path of writePaths) mutated.add(path);
           // Mid-stream: refresh explorer/SCM as soon as write tools complete.
           if (isToolCompleted(line.event) && writePaths.length > 0) {
+            pilotAutoContinueStreakRef.current = 0;
             workspaceInvalidateSeq.current += 1;
             setWorkspaceInvalidate({
               seq: workspaceInvalidateSeq.current,
@@ -1213,14 +1337,19 @@ export function App() {
           assistant = finalizeAssistantText(assistant, line);
           nextSuspension = extractSuspension(line.result);
           if (nextSuspension) {
-            // Pilot: queue silent auto-Continue — do not paint the stall card
-            // (avoids "Clarification / more research" flicker).
+            // Pilot: at most one silent Continue. Further stalls surface the
+            // card so the user can Continue/Stop (avoids reasoning-budget spin).
             if (
               nextSuspension.kind === 'continue_required' &&
-              approvalModeRef.current === 'pilot'
+              approvalModeRef.current === 'pilot' &&
+              pilotAutoContinueStreakRef.current < 1
             ) {
+              pilotAutoContinueStreakRef.current += 1;
               setPendingAutoContinue(nextSuspension);
             } else {
+              if (nextSuspension.kind === 'continue_required') {
+                pilotAutoContinueStreakRef.current = 0;
+              }
               setSuspension(nextSuspension);
             }
           }
@@ -1228,6 +1357,17 @@ export function App() {
           resultPlan = extracted.plan;
           resultPlanStrategy = extracted.planStrategy;
           resultTaskList = extracted.taskList;
+          // Don't paint PlanFollow from a clarify-only placeholder plan —
+          // wait for a concrete post-scope / approved plan.
+          const clarifyOnly =
+            nextSuspension?.kind === 'clarification_required';
+          if (resultPlan && !clarifyOnly) {
+            setPendingPlan(resultPlan);
+            setPendingPlanStrategy(resultPlanStrategy ?? null);
+            if (resultTaskList) setPendingTaskList(resultTaskList);
+          } else if (resultTaskList) {
+            setPendingTaskList(resultTaskList);
+          }
           if (options?.formatPlanAnswer) {
             assistant = resolvePlanDisplayText({
               answer: assistant,
@@ -1289,6 +1429,7 @@ export function App() {
     setPendingPlan(null);
     setPendingPlanStrategy(null);
     setPendingTaskList(null);
+    setCompletedPlanStepIds(new Set());
     setPinnedPaths([]);
     setPinnedSkillIds([]);
     setPinnedMcpIds([]);
@@ -1615,6 +1756,10 @@ export function App() {
   };
 
   const stopRun = () => {
+    // Cancel must not race Pilot auto-Continue into resume with no checkpoint.
+    setPendingAutoContinue(null);
+    pilotAutoContinueStreakRef.current = 0;
+    setSuspension(null);
     runAbortRef.current?.abort();
   };
 
@@ -2073,6 +2218,7 @@ export function App() {
     setPendingPlan(null);
     setPendingPlanStrategy(null);
     setPendingTaskList(null);
+    setCompletedPlanStepIds(new Set());
     setTokenUsage(emptyTokenUsage());
     setView('chat');
   };
@@ -2236,6 +2382,9 @@ export function App() {
           suspension: nextSuspension,
           mutatedPaths,
           tokenUsage: nextUsage,
+          plan: resultPlan,
+          planStrategy: resultPlanStrategy,
+          taskList: resultTaskList,
         } = streamResult;
 
         const mergedActivity = [...priorActivity, ...activity];
@@ -2271,6 +2420,24 @@ export function App() {
           ),
         );
 
+        let planPersist:
+          | {
+              pendingPlan?: PlanArtifact | null;
+              pendingPlanStrategy?: PlanStrategyDecision | null;
+              pendingTaskList?: TaskList | null;
+            }
+          | undefined;
+        if (resultPlan) {
+          setPendingPlan(resultPlan);
+          setPendingPlanStrategy(resultPlanStrategy ?? null);
+          setPendingTaskList(resultTaskList ?? null);
+          planPersist = {
+            pendingPlan: resultPlan,
+            pendingPlanStrategy: resultPlanStrategy ?? null,
+            pendingTaskList: resultTaskList ?? null,
+          };
+        }
+
         const withAssistant = existing
           ? messages.map((m) =>
               m.id === assistantId
@@ -2295,7 +2462,12 @@ export function App() {
                 streaming: false,
               },
             ];
-        await persistMessages(withAssistant, threadId, nextUsage);
+        await persistMessages(
+          withAssistant,
+          threadId,
+          nextUsage,
+          planPersist,
+        );
       } catch (err) {
         if (!shouldIgnoreRunError(err, signal)) {
           setError(runErrorMessage(err));
@@ -2348,6 +2520,8 @@ export function App() {
     const signal = beginRunAbort();
     setError(null);
     setSuspension(null);
+    setPendingAutoContinue(null);
+    pilotAutoContinueStreakRef.current = 0;
     setReviewDismissed(false);
     if (!override?.prompt) setInput('');
 
@@ -2552,11 +2726,13 @@ export function App() {
           }
         | undefined;
 
+      // Visible plan UI (PlanFollowStrip / PendingPlanBanner) needs pendingPlan
+      // for both Plan and Agent — Agent used to drop the artifact entirely.
       const pendingFromRun =
-        runMode === 'plan'
-          ? resultPlan ??
-            synthesizePlanArtifactFromAnswer(finalAssistant)
-          : undefined;
+        resultPlan ??
+        (runMode === 'plan'
+          ? synthesizePlanArtifactFromAnswer(finalAssistant)
+          : undefined);
 
       if (pendingFromRun) {
         setPendingPlan(pendingFromRun);
@@ -2571,6 +2747,7 @@ export function App() {
         setPendingPlan(null);
         setPendingPlanStrategy(null);
         setPendingTaskList(null);
+        setCompletedPlanStepIds(new Set());
         planPersist = { clearPendingPlan: true };
       } else if (resultTaskList) {
         setPendingTaskList(resultTaskList);
@@ -2659,6 +2836,7 @@ export function App() {
     setPendingPlan(null);
     setPendingPlanStrategy(null);
     setPendingTaskList(null);
+    setCompletedPlanStepIds(new Set());
     if (!engine || !threadId) return;
     void postHistory({
       ...engine,
@@ -2846,6 +3024,8 @@ export function App() {
   const planFollowView = planArtifactToFollowView(
     pendingPlan,
     busy && (mode === 'plan' || mode === 'agent'),
+    pendingTaskList,
+    completedPlanStepIds,
   );
   const latestAssistantWithChanges = [...messages]
     .reverse()
@@ -2865,8 +3045,10 @@ export function App() {
   );
   const activeReviewFindings =
     codeReviewEnabled && !reviewDismissed ? reviewFindings : [];
+  // Chat layout: files live on the message card. Code layout: files live on
+  // the composer strip. Never both.
   const showComposerReview =
-    (latestFileChanges?.files.length ?? 0) > 0 ||
+    (chatLayout === 'code' && (latestFileChanges?.files.length ?? 0) > 0) ||
     activeReviewFindings.length > 0;
   const showOnboarding = settings.onboarding?.completed === false;
 
@@ -3050,7 +3232,9 @@ export function App() {
                       }}
                     />
                   ) : null}
-                  {m.fileChanges && m.fileChanges.files.length > 0 ? (
+                  {chatLayout === 'chat' &&
+                  m.fileChanges &&
+                  m.fileChanges.files.length > 0 ? (
                     <FileChangesCard
                       changes={m.fileChanges}
                       onOpenFile={(path) => {
@@ -3091,7 +3275,7 @@ export function App() {
         <PendingPlanBanner
           visible={
             Boolean(pendingPlan) &&
-            mode !== 'agent' &&
+            mode === 'plan' &&
             suspension?.kind !== 'plan_approval_required'
           }
           busy={busy}
@@ -3632,17 +3816,6 @@ export function App() {
               onClick={toggleTheme}
             >
               {theme === 'dark' ? <IconSun size={15} /> : <IconMoon size={15} />}
-            </button>
-            <button
-              type="button"
-              className="top-icon-btn top-icon-btn--accent"
-              disabled={busy}
-              title={busy ? 'Agent is running' : 'Add workspace'}
-              aria-label={busy ? 'Agent is running' : 'Add workspace'}
-              onClick={() => void onPickWorkspace()}
-            >
-              <IconPlus size={15} />
-              <span>New</span>
             </button>
           </div>
           </div>

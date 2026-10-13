@@ -180,8 +180,10 @@ const APPROVAL_PRESET_MAP = {
     planApproval: 'policy' as const,
   },
   pilot: {
+    // Tools stay autonomous; visible/architecture plans still gate so the
+    // user can see and approve the plan before mutate (avoids silent hollow run).
     approvalMode: 'never' as const,
-    planApproval: 'never' as const,
+    planApproval: 'policy' as const,
   },
   builder: {
     approvalMode: 'when_required' as const,

@@ -17,12 +17,17 @@ Engine-owned contract for Plan (and Agent big-task) discovery before Planning dr
 | Thorough bar | ≥2 **productive** reads (not `package.json` / lockfiles), ≥1 change surface **plus** related support (2nd productive non-surface read or test), confidence ≠ `low` |
 | Searches | Thorough Plan/Agent-visible: ≥1 search/glob for all taskSizes (`resolvePlanDiscoveryMinSearches`) |
 | Symbols | When code-intel tools are granted and forced tool choice is supported |
-| Fail closed | Engine clarify uses discovery pass `failed` via `shouldClarifyAfterPlanDiscovery` — never recompute with weaker options; thins discovery brief; Planning emits findings+A/B/C; Engine suspends for scope choice |
-| Scope honored | After user picks A/B/C (`hasResolvedPlanScopeChoice`), do not re-clarify — keep `discover_and_plan` and draft a concrete plan (`plan_scope_choice_honored`) |
-| Force exploration | Plan thorough does not skip shaped/search solely because a preferred path is known (`discovery_force_exploration`); if no shaped profile matches, query-derived search runs (`discovery_force_exploration_fallback`) |
+| Fail closed | Engine clarify uses discovery pass `failed` via `shouldClarifyAfterPlanDiscovery` — never recompute with weaker options. **Clear single-outcome asks** (`askNeedsPlanScopeFork` = false) draft from available evidence instead of forcing harness A/B/C |
+| Scope fork suspend | Only when `askNeedsPlanScopeFork` (explicit A/B/C or tests-or-architecture multi-outcome). Substantive feature/bugfix/refactor asks never get harness chips — even if deterministic clarity was downgraded to unclear for missing file targets. Agent campaign phase-lock requires `askNeedsScopeFork === true` plus `forceCampaignPhaseLock`. Runs **before** Agent `task_list_plan_not_concrete` |
+| Clarify draft | `ensurePlanClarifyDraft` synthesizes findings+A/B/C only when the ask needs a scope fork; leftover `clarify` strategy on clear asks remaps to `discover_and_plan` and still hits the concreteness task-list gate |
+| Visible depth | Long Agent briefs and multi-outcome campaigns force `planningDepth: visible` before Officer medium→internal (`long_prompt_visible_plan` / `multi_outcome_campaign_visible_plan`) |
+| Scope honored | After user picks A/B/C (`resolvePlanScopeId`), do not re-clarify — keep `discover_and_plan` and draft a concrete plan (`plan_scope_choice_honored`) |
+| Scope bounds | Chosen scope narrows preferred paths + impact seeds and scales the discovery envelope (`plan_scope_bounds_applied` / `scaleDiscoveryPassBudget`) |
+| Next phase | Campaign A/B handoff only when the ask was a true multi-outcome fork (`askNeedsPlanScopeFork`); clear feature runs do not append harness leftovers |
+| Force exploration | Thorough Plan / Agent-visible does not skip shaped/search solely because a preferred path is known (`discovery_force_exploration`); if no shaped profile matches, query-derived search runs (`discovery_force_exploration_fallback`) |
 | Follow-up sizing | Multi-item prior Ask guidance bumps planning `taskSize` ≥ medium |
 | Prior paths | Ask-touched paths carry into context refs + discovery seeds (`plan_prior_path_hints_carried`) |
-| Draft quality | Medium+/multi-item Plan rejects hollow single-surface skeleton → clarify (`plan_discovery_draft_required_clarify`) |
+| Draft quality | Medium+/multi-item Plan rejects hollow single-surface skeleton → clarify only when the ask needs a scope fork; clear single-outcome asks keep drafting from discovery (`plan_discovery_draft_required_clarify`) |
 
 ## Input / output
 

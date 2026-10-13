@@ -512,7 +512,7 @@ describe("PlanningPipeline", () => {
       "packages/mui-builder/src/Button.tsx",
     ]);
     expect(serializePlanForPrompt(result.plan!, result.strategy)).toContain(
-      "Skip rediscovery",
+      "bind to the listed evidence",
     );
   });
 
@@ -1190,11 +1190,13 @@ describe("PlanningPipeline", () => {
     expect(text).toContain("Objective:");
     expect(text).toContain("write:");
     const answer = formatPlanAsAnswer(result.plan!);
-    expect(answer).toContain("Plan:");
-    expect(answer).toContain("Acceptance:");
-    expect(answer).toContain("Alternatives / tradeoffs:");
-    expect(answer).toContain("Risks / ifs:");
-    expect(answer).toContain("Keep password login working");
+    expect(answer).toMatch(/Plan ready \(\d+ steps?\)\./);
+    expect(answer).toContain("Review steps in the plan strip");
+    expect(answer).toMatch(/SSO|password login/i);
+    expect(answer.length).toBeLessThan(1200);
+    // Full dump stays on serializePlanText / prompt — not chat answer.
+    expect(answer).not.toContain("Alternatives / tradeoffs:");
+    expect(answer).not.toContain("Acceptance:");
   });
 
   it("infers follow_evidence from a Change-only concrete plan", async () => {
@@ -1240,7 +1242,7 @@ describe("PlanningPipeline", () => {
     const inferred = inferPlanStrategyFromArtifact(result.plan!);
     expect(inferred.strategy).toBe("follow_evidence");
     expect(serializePlanForPrompt(result.plan!, inferred)).toContain(
-      "Skip rediscovery",
+      "bind to the listed evidence",
     );
   });
 
@@ -1649,6 +1651,72 @@ describe("PlanningPipeline", () => {
       }),
     );
 
+    // Clear single-outcome feature asks must NOT fall into harness A/B/C when
+    // the model draft fails — keep discover_and_plan from discovery surfaces.
+    expect(result.strategy?.strategy).toBe("discover_and_plan");
+    expect(result.reasonCodes).not.toContain(
+      "plan_discovery_draft_required_clarify",
+    );
+    expect(result.clarifyDraft).toBeUndefined();
+    const change = result.plan?.phases.find((phase) => /change/i.test(phase.name));
+    expect((change?.steps.length ?? 0) > 0).toBe(true);
+  });
+
+  it("clarifies hollow medium Plan drafts when the ask is a true multi-outcome fork", async () => {
+    const llmPipeline = new PlanningPipeline({ llm: fakeLlm(["not json"]) });
+    const result = await llmPipeline.plan(
+      baseInput({
+        query:
+          "How I can improve the test cases? Can you plan or changing the architecture?",
+        evidence: {
+          primaryIntent: "refactor",
+          secondaryIntents: [],
+          interactionIntent: "plan",
+          scope: "package",
+          complexity: "moderate",
+          risk: "medium",
+          clarity: "unclear",
+          targets: [
+            { kind: "folder", value: "packages/runner", explicit: true },
+          ],
+          constraints: [],
+          requestedOutcomes: ["Improve tests or architecture"],
+          recommendsPlanning: true,
+          recommendsVerification: true,
+          changeImpact: ["code"],
+          taskSize: "medium",
+        },
+        discoveryBrief: {
+          schemaVersion: 1,
+          objective: "Improve verifiers",
+          filesRead: [
+            { path: "packages/runner/src/verifiers.js", reason: "entrypoint" },
+            { path: "packages/runner/src/http-check.js", reason: "related" },
+          ],
+          targets: [],
+          proposedChangeSurfaces: [
+            {
+              path: "packages/runner/src/verifiers.js",
+              actionHint: "Change",
+              riskLevel: "low",
+              evidence: "read",
+            },
+          ],
+          discoveredConstraints: [],
+          verificationHints: [{ kind: "test", reason: "suite tests" }],
+          openQuestions: [],
+          confidence: "medium",
+        },
+        strategyOverride: {
+          schemaVersion: 1,
+          strategy: "discover_and_plan",
+          rationale: "Discovery found surfaces.",
+          skipDiscover: true,
+          useBuildEvidence: false,
+        },
+      }),
+    );
+
     expect(result.strategy?.strategy).toBe("clarify");
     expect(result.reasonCodes).toContain("plan_discovery_draft_required_clarify");
     const change = result.plan?.phases.find((phase) => /change/i.test(phase.name));
@@ -1973,7 +2041,7 @@ describe("PlanningPipeline", () => {
         result.strategy,
         result.clarifyDraft,
       ),
-    ).toMatch(/Before I lock a plan/i);
+    ).toMatch(/Need a scope choice before locking a plan/i);
   });
 
   it("clarify strategy never drafts Change surfaces from partial discovery", async () => {

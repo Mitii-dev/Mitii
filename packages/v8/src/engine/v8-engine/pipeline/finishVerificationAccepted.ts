@@ -16,6 +16,7 @@ import {
 } from "../actions";
 import { isClearMutationBlocker } from "../actions/isClearMutationBlocker";
 import { hasIncompleteChangeSurfaces } from "../internal/taskListRuntime";
+import { formatPlanAnswerWithNextPhase } from "../modules/plan-discovery";
 import type {
   AgentReasonCode,
   AgentRunResult,
@@ -44,6 +45,7 @@ export async function finishVerificationAccepted(params: {
   decision: ExecutionDecision;
   understanding: RequestUnderstandingResult | undefined;
   taskList: TaskList | undefined;
+  nextPlanPhaseOffer?: string;
   finish: (result: {
     status: "completed" | "failed";
     answer?: string;
@@ -65,6 +67,7 @@ export async function finishVerificationAccepted(params: {
     decision,
     understanding,
     taskList,
+    nextPlanPhaseOffer,
     finish,
   } = params;
 
@@ -115,6 +118,12 @@ export async function finishVerificationAccepted(params: {
           changedFileCount: loopChangedFiles.length,
         }) ||
           isSyntheticCompletedEditsFallback(userAnswer))));
+
+  userAnswer = formatPlanAnswerWithNextPhase({
+    answer: userAnswer,
+    nextPlanPhaseOffer,
+    reasonCodes,
+  });
 
   await runtime.safeUnpin(runId, pinnedState);
   if (incompleteExecute) {

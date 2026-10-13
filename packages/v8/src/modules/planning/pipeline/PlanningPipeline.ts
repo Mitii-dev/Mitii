@@ -33,6 +33,7 @@ import {
   requiresNonSkeletonDiscoveryDraft,
 } from "../internal/discoveryDraftQuality";
 import { thinDiscoveryBriefForClarify } from "../internal/thinDiscoveryBriefForClarify";
+import { askNeedsPlanScopeFork } from "../internal/askNeedsPlanScopeFork";
 import { hasResolvedPlanScopeChoice } from "../internal/planScopeChoice";
 import type { z } from "zod";
 
@@ -155,13 +156,22 @@ export class PlanningPipeline {
 
     // Medium+/multi-item Plan: never ship the generic discovery skeleton.
     // If the user already picked A/B/C scope, keep drafting — do not re-clarify.
+    // Clear single-outcome feature/bugfix asks also keep drafting — harness
+    // A/B/C chips are wrong for those (askNeedsPlanScopeFork).
     const scopeAlreadyChosen = hasResolvedPlanScopeChoice({
+      query: parsed.query,
+    });
+    const needsScopeFork = askNeedsPlanScopeFork({
+      clarity: parsed.evidence.clarity,
+      primaryIntent: parsed.evidence.primaryIntent,
+      requestedOutcomes: parsed.evidence.requestedOutcomes,
       query: parsed.query,
     });
     if (
       requireModelDraft &&
       (!draftedFromDiscovery || isGenericDiscoverySkeletonPlan(drafted)) &&
-      !scopeAlreadyChosen
+      !scopeAlreadyChosen &&
+      needsScopeFork
     ) {
       strategyDecision = clarifyStrategyAfterFailedDiscoveryDraft(
         strategyDecision,
@@ -182,10 +192,19 @@ export class PlanningPipeline {
       draftWarnings.push(
         "Rejected hollow discovery skeleton for Plan; drafted clarifying open questions instead.",
       );
+    } else if (
+      requireModelDraft &&
+      (!draftedFromDiscovery || isGenericDiscoverySkeletonPlan(drafted)) &&
+      !scopeAlreadyChosen &&
+      !needsScopeFork
+    ) {
+      draftWarnings.push(
+        "Kept discovery-grounded plan for a clear single-outcome ask instead of forcing harness A/B/C clarify.",
+      );
     }
 
     let clarifyDraft: PlanClarifyDraft | undefined;
-    if (strategyDecision.strategy === "clarify") {
+    if (strategyDecision.strategy === "clarify" && needsScopeFork) {
       const clarifyInput = prepareDraftInput(parsed, strategyDecision);
       const clarified = await draftClarifyFromDiscovery({
         input: parsed,
@@ -282,6 +301,7 @@ export {
   collectDiscoveryImpactSeedPaths,
   formatClarifyAsAnswer,
   formatPlanAsAnswer,
+  formatPlanSummaryAnswer,
   inferPlanStrategyFromArtifact,
   serializePlanForPrompt,
   serializePlanText,

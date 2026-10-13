@@ -87,6 +87,8 @@ export type ExecuteStartSharedState = {
   repoBuildStateAfter: RepoBuildState | undefined;
   verificationRecord: VerificationRecord | undefined;
   executionSeed?: import("../modules/execution-seed").ExecutionSeed;
+  /** Prose offer for remaining A/B/C campaign phases after this scope. */
+  nextPlanPhaseOffer?: string;
 };
 
 export type StartEarlyPipelineContinue = {

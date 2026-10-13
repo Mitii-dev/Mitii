@@ -1,9 +1,9 @@
 import type { ExecutionDecision } from "../../../modules/decision-policy";
 import { MEMORY_SCHEMA_VERSION } from "../../../modules/memory";
 import {
+  askNeedsPlanScopeFork,
   collectDiscoveryImpactSeedPaths,
   collectPlanningImpactReports,
-  formatPlanAsAnswer,
   inferPlanStrategyFromArtifact,
   resolvePlanStrategyRules,
   serializePlanForPrompt,
@@ -11,7 +11,6 @@ import {
   type PlanArtifact,
   type PlanStrategyDecision,
 } from "../../../modules/planning";
-import { buildPlanClarifySuspension } from "../actions/buildPlanClarifySuspension";
 import type {
   PromptInstructions,
   PromptRepositoryContext,
@@ -28,18 +27,21 @@ import {
   selectSkillsForEnrichment,
 } from "../actions";
 import { preparePlanningInputFromEnrichment } from "./preparePlanningInputFromEnrichment";
+import { runPostPlanDraftGates } from "./enrichmentAfterPlanDraft";
 import {
   applyPlanModeDiscoveryContract,
-  isAgentWidePlanningScope,
+  applyPlanScopePhaseBounds,
+  boundImpactSeedsForPlanScope,
   clarifyAfterInsufficientPlanDiscovery,
-  hasResolvedPlanScopeChoice,
+  isAgentWidePlanningScope,
   requiresPlanDiscoveryQualityFloor,
   shouldClarifyAfterPlanDiscovery,
   usesThoroughPlanDiscoveryEvidence,
 } from "../modules/plan-discovery";
 import {
   applyExecutionSeedToTaskList,
-  applyPostPlanTaskListGate,
+  isExecutionSeedTrusted,
+  refineExecutionSeedFromPlan,
 } from "../modules/execution-seed";
 import type {
   AgentEngineStartInput,
@@ -220,6 +222,22 @@ export async function finishEnrichmentSkillsMemoryPlan(
     planText = serializePlanForPrompt(approvedPlan, shared.runPlanStrategy);
     recordPlanEvidence(runEvidence, approvedPlan);
     runtime.emitEvidenceUpdated(bus, runId, runEvidence);
+    // Resume-from-approval restarts start — promote plan paths so mutate
+    // lock is not stuck on the pre-plan weak seed from a pathless prompt.
+    const promoted = refineExecutionSeedFromPlan({
+      seed: shared.executionSeed,
+      plan: approvedPlan,
+    });
+    if (isExecutionSeedTrusted(promoted)) {
+      if (
+        !shared.executionSeed ||
+        shared.executionSeed.confidence !== "trusted" ||
+        promoted.paths.join("\0") !== shared.executionSeed.paths.join("\0")
+      ) {
+        shared.executionSeed = promoted;
+        reasonCodes.push("execution_seed_from_plan");
+      }
+    }
     if (planSource === "host_carry") {
       reasonCodes.push("plan_drafted", "plan_carried");
     } else {
@@ -227,7 +245,10 @@ export async function finishEnrichmentSkillsMemoryPlan(
     }
   } else if (runtime.deps.planning && decision.planningDepth !== "none") {
     runtime.emitStage(bus, runId, "plan_ready", "started");
-    const { planningInput, knownPathHints } = preparePlanningInputFromEnrichment({
+    const {
+      planningInput: preparedPlanningInput,
+      knownPathHints,
+    } = preparePlanningInputFromEnrichment({
       envelope,
       understanding,
       conversation: input.conversation ?? [],
@@ -241,6 +262,7 @@ export async function finishEnrichmentSkillsMemoryPlan(
       explorationDepth: input.explorationDepth,
       reasonCodes,
     });
+    let planningInput = preparedPlanningInput;
 
     // Engine owns strategy (rules only); Planning drafts against override.
     const strategyDecision = resolvePlanStrategyRules(planningInput);
@@ -248,13 +270,31 @@ export async function finishEnrichmentSkillsMemoryPlan(
     const taskSize = planningInput.evidence.taskSize;
     const mediumOrLarge =
       taskSize === "medium" || taskSize === "large";
-    const scopeChoiceResolved = hasResolvedPlanScopeChoice({
-      query: planningInput.query,
-      conversation: input.conversation ?? [],
-      optionId: input.clarificationResolution?.optionId,
-      outcomeNote: input.clarificationResolution?.outcomeNote,
-      label: input.clarificationResolution?.label,
+    const scopePhase = applyPlanScopePhaseBounds({
+      planningInput,
+      knownPathHints,
+      scopeChoice: {
+        query: planningInput.query,
+        conversation: input.conversation ?? [],
+        optionId: input.clarificationResolution?.optionId,
+        outcomeNote: input.clarificationResolution?.outcomeNote,
+        label: input.clarificationResolution?.label,
+      },
+      taskSize,
+      contextWindowTokens: windowPolicy.contextWindowTokens,
+      reasonCodes,
     });
+    planningInput = scopePhase.planningInput;
+    const {
+      resolvedScopeId,
+      scopeChoiceResolved,
+      discoveryPreferredPaths,
+      discoveryBudgetOverride,
+      discoveryScopeHint,
+    } = scopePhase;
+    if (scopePhase.nextPlanPhaseOffer) {
+      shared.nextPlanPhaseOffer = scopePhase.nextPlanPhaseOffer;
+    }
     const planContract = applyPlanModeDiscoveryContract({
       mode: envelope.mode,
       explorationDepth: input.explorationDepth,
@@ -268,10 +308,10 @@ export async function finishEnrichmentSkillsMemoryPlan(
     let strategyOverride: PlanStrategyDecision = planContract.strategy;
     if (planContract.applied) {
       reasonCodes.push(
-        envelope.mode === "agent"
-          ? "agent_big_task_discovery_required"
-          : planContract.rationale === "plan_scope_choice_honored"
-            ? "plan_scope_choice_honored"
+        planContract.rationale === "plan_scope_choice_honored"
+          ? "plan_scope_choice_honored"
+          : envelope.mode === "agent"
+            ? "agent_big_task_discovery_required"
             : "plan_mode_discovery_required",
       );
     } else if (
@@ -311,14 +351,18 @@ export async function finishEnrichmentSkillsMemoryPlan(
         warnings,
         taskListRef,
         windowPolicy,
-        preferredPaths: knownPathHints,
+        preferredPaths: discoveryPreferredPaths,
         qualityFloor: planQualityFloor,
         thoroughEvidence,
         seedFirstDiscovery: mediumOrLarge,
         preferSymbols: mediumOrLarge,
-        // Plan thorough: keep searching even when a preferred path is known.
-        forceExploration: thoroughEvidence && envelope.mode === "plan",
+        // Thorough Plan / Agent-visible: keep searching even when a preferred path is known.
+        forceExploration: thoroughEvidence,
         taskSize,
+        ...(discoveryBudgetOverride
+          ? { discoveryBudgetOverride }
+          : {}),
+        ...(discoveryScopeHint ? { discoveryScopeHint } : {}),
       });
       discoveryBrief = discovery.brief;
       recordDiscoveryEvidence(runEvidence, {
@@ -330,19 +374,28 @@ export async function finishEnrichmentSkillsMemoryPlan(
       // Discovery ran; skip Planning's Discover phase.
       strategyOverride = { ...strategyOverride, skipDiscover: true };
       // Use the discovery pass failure flag — never recompute with weaker options.
-      // Once the user picked A/B/C scope, draft from whatever evidence we have.
+      // Clear single-outcome asks (and already-chosen A/B/C) draft from evidence
+      // instead of forcing harness A/B/C chips.
       if (
         shouldClarifyAfterPlanDiscovery({
           qualityFloor: planQualityFloor,
           discoveryFailed: discovery.failed,
         })
       ) {
-        if (scopeChoiceResolved) {
-          if (!reasonCodes.includes("plan_scope_choice_honored")) {
+        const needsScopeFork = askNeedsPlanScopeFork({
+          clarity: planningInput.evidence.clarity,
+          primaryIntent: planningInput.evidence.primaryIntent,
+          requestedOutcomes: planningInput.evidence.requestedOutcomes,
+          query: planningInput.query,
+        });
+        if (scopeChoiceResolved || !needsScopeFork) {
+          if (scopeChoiceResolved && !reasonCodes.includes("plan_scope_choice_honored")) {
             reasonCodes.push("plan_scope_choice_honored");
           }
           warnings.push(
-            "Discovery quality floor was not fully met, but a plan scope choice was already resolved — drafting a concrete plan from available evidence.",
+            scopeChoiceResolved
+              ? "Discovery quality floor was not fully met, but a plan scope choice was already resolved — drafting a concrete plan from available evidence."
+              : "Discovery quality floor was not fully met, but the ask is a clear single outcome — drafting a concrete plan from available evidence (no A/B/C fork).",
           );
         } else {
           reasonCodes.push("plan_mode_discovery_insufficient");
@@ -357,7 +410,7 @@ export async function finishEnrichmentSkillsMemoryPlan(
     }
 
     let impactReports = planningInput.impactReports;
-    const impactSeedPaths =
+    let impactSeedPaths =
       strategyOverride.strategy === "follow_evidence"
         ? [
             ...(shared.executionSeed?.paths ?? []),
@@ -371,6 +424,10 @@ export async function finishEnrichmentSkillsMemoryPlan(
               ...collectDiscoveryImpactSeedPaths(discoveryBrief),
             ]
           : [...(shared.executionSeed?.paths ?? [])];
+    impactSeedPaths = boundImpactSeedsForPlanScope(
+      impactSeedPaths,
+      resolvedScopeId,
+    );
     if (impactSeedPaths.length > 0) {
       impactReports = await collectPlanningImpactReports({
         repoGraphs: runtime.deps.repoGraphs,
@@ -414,206 +471,37 @@ export async function finishEnrichmentSkillsMemoryPlan(
     }
 
     if (planningResult.plan) {
-      shared.runPlan = planningResult.plan;
-      shared.runPlanStrategy = planningResult.strategy;
-      recordPlanEvidence(runEvidence, planningResult.plan);
-      planText = serializePlanForPrompt(
-        planningResult.plan,
-        planningResult.strategy,
-      );
-      reasonCodes.push("plan_drafted");
-      runtime.emit(bus, {
-        type: "plan_ready",
-        runId,
-        planningDepth: decision.planningDepth,
-        phaseCount: planningResult.plan.phases.length,
-        approvalRequired: planningResult.plan.approvalRequired,
-        plan: planningResult.plan,
-        at: runtime.isoNow(),
-      });
-      runtime.emitEvidenceUpdated(bus, runId, runEvidence);
-      runtime.emitStage(bus, runId, "plan_ready", "completed", [
-        "plan_drafted",
-      ]);
-      const taskListGate = await applyPostPlanTaskListGate({
+      const postPlan = await runPostPlanDraftGates({
         runtime,
-        mediumOrLarge,
-        mode: envelope.mode,
-        plan: planningResult.plan,
-        planStrategy: planningResult.strategy,
-        seed: shared.executionSeed,
-        shared,
-        taskListRef,
-        reasonCodes,
-        warnings,
-        syncTaskListOnce,
-        bus,
         runId,
         input,
-        decision,
+        bus,
         budget,
+        reasonCodes,
+        warnings,
         startedMs,
+        shared,
+        taskListRef,
+        runEvidence,
+        envelope,
+        decision,
+        planningResult: {
+          plan: planningResult.plan,
+          strategy: planningResult.strategy,
+          clarifyDraft: planningResult.clarifyDraft,
+        },
+        planningInput,
+        discoveryBrief,
+        mediumOrLarge,
+        scopeChoiceResolved,
+        planQualityFloor,
+        skipPlanGate,
+        syncTaskListOnce,
         finish,
       });
-      if (taskListGate.kind === "terminal") {
-        return taskListGate;
-      }
-
-      // Plan clarify with findings + A/B/C: suspend for scope choice.
-      // Never re-suspend when the user already answered A/B/C on a prior turn.
-      if (
-        envelope.mode === "plan" &&
-        planningResult.strategy?.strategy === "clarify" &&
-        planningResult.clarifyDraft &&
-        !scopeChoiceResolved
-      ) {
-        const clarify = buildPlanClarifySuspension(planningResult.clarifyDraft);
-        reasonCodes.push("clarification_suspended");
-        const rationale =
-          "Choose plan scope (and optionally first delivery) before a concrete Change plan is locked.";
-        if (runtime.deps.checkpointStore) {
-          await runtime.deps.checkpointStore.save({
-            runId,
-            requestId: shared.requestId,
-            suspensionKind: "clarification_required",
-            input,
-            decision,
-            pinnedState: undefined,
-            messages: [],
-            toolCacheEntries: [],
-            pendingApproval: undefined,
-            plan: planningResult.plan,
-            ...(planningResult.strategy
-              ? { planStrategy: planningResult.strategy }
-              : {}),
-            clarificationSession: clarify.clarificationSession,
-            changedFiles: [],
-            mutationCheckpointIds: [],
-            reasonCodes,
-            warnings,
-            usage: budget.snapshot(),
-            startedAtMs: startedMs,
-            repoBuildStateBefore: shared.repoBuildStateBefore,
-            repoBuildStateAfter: shared.repoBuildStateAfter,
-          });
-        }
-        runtime.emit(bus, {
-          type: "suspended",
-          runId,
-          kind: "clarification_required",
-          rationale,
-          at: runtime.isoNow(),
-        });
-        await runtime.safeUnpin(runId, shared.pinnedState);
-        return {
-          kind: "terminal",
-          result: finish({
-            status: "suspended",
-            route: decision.route,
-            planningDepth: decision.planningDepth,
-            plan: planningResult.plan,
-            answer: clarify.answer,
-            suspension: {
-              kind: "clarification_required",
-              rationale,
-              clarificationPrompt: clarify.clarificationPrompt,
-              clarificationOptions: clarify.clarificationOptions,
-              plan: planningResult.plan,
-            },
-            reasonCodes,
-          }),
-        };
-      }
-
-      if (
-        !skipPlanGate &&
-        decision.planGate === "required_before_execute"
-      ) {
-        reasonCodes.push("plan_approval_suspended");
-        const rationale =
-          "A reviewable plan is required before mutation. Approve, edit, or reject the plan to continue.";
-        if (runtime.deps.checkpointStore) {
-          await runtime.deps.checkpointStore.save({
-            runId,
-            requestId: shared.requestId,
-            suspensionKind: "plan_approval_required",
-            input,
-            decision,
-            pinnedState: shared.pinnedState,
-            messages: [],
-            toolCacheEntries: [],
-            pendingApproval: undefined,
-            plan: planningResult.plan,
-            ...(planningResult.strategy
-              ? { planStrategy: planningResult.strategy }
-              : {}),
-            changedFiles: [],
-            mutationCheckpointIds: [],
-            reasonCodes,
-            warnings,
-            usage: budget.snapshot(),
-            startedAtMs: startedMs,
-            repoBuildStateBefore: shared.repoBuildStateBefore,
-            repoBuildStateAfter: shared.repoBuildStateAfter,
-            ...(taskListRef.current ? { taskList: taskListRef.current } : {}),
-            ...(taskListRef.completedPlanStepIds &&
-            taskListRef.completedPlanStepIds.length > 0
-              ? {
-                  completedPlanStepIds: [
-                    ...taskListRef.completedPlanStepIds,
-                  ],
-                }
-              : {}),
-          });
-        }
-        runtime.emit(bus, {
-          type: "suspended",
-          runId,
-          kind: "plan_approval_required",
-          rationale,
-          at: runtime.isoNow(),
-        });
-        return {
-          kind: "terminal",
-          result: finish({
-            status: "suspended",
-            route: decision.route,
-            planningDepth: decision.planningDepth,
-            plan: planningResult.plan,
-            answer: formatPlanAsAnswer(
-              planningResult.plan,
-              planningResult.strategy,
-              planningResult.clarifyDraft,
-            ),
-            suspension: {
-              kind: "plan_approval_required",
-              rationale,
-              plan: planningResult.plan,
-            },
-            reasonCodes,
-          }),
-        };
-      }
-
-      // Plan mode: structured plan is the terminal answer (skip model loop).
-      if (envelope.mode === "plan") {
-        reasonCodes.push("plan_mode_completed", "answer_produced");
-        await runtime.safeUnpin(runId, shared.pinnedState);
-        return {
-          kind: "terminal",
-          result: finish({
-            status: "completed",
-            route: decision.route,
-            planningDepth: decision.planningDepth,
-            plan: planningResult.plan,
-            answer: formatPlanAsAnswer(
-              planningResult.plan,
-              planningResult.strategy,
-              planningResult.clarifyDraft,
-            ),
-            reasonCodes,
-          }),
-        };
+      planText = postPlan.planText;
+      if (postPlan.terminal) {
+        return postPlan.terminal;
       }
     } else {
       reasonCodes.push("plan_skipped");

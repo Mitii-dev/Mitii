@@ -625,6 +625,7 @@ export async function executeV8Start(
         establishedFacts,
         plan: shared.runPlan,
         executionSeed: shared.executionSeed,
+        nextPlanPhaseOffer: shared.nextPlanPhaseOffer,
       },
     });
   } catch (error) {

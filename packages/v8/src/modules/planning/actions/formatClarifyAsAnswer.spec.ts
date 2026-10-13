@@ -6,7 +6,7 @@ import { PLANNING_SCHEMA_VERSION } from "../constants";
 import { planningInputSchema } from "../contracts";
 
 describe("formatClarifyAsAnswer", () => {
-  it("renders findings and A/B/C scope forks without Change skeletons", () => {
+  it("keeps clarify answer short: findings + A/B/C labels only", () => {
     const input = planningInputSchema.parse({
       schemaVersion: PLANNING_SCHEMA_VERSION,
       query: "How I can improve the test cases? Can you plan or changing the architecture?",
@@ -46,12 +46,16 @@ describe("formatClarifyAsAnswer", () => {
     });
     const draft = buildFallbackClarifyDraft(input, input.discoveryBrief);
     const answer = formatClarifyAsAnswer(draft);
-    expect(answer).toMatch(/From discovery so far/i);
-    expect(answer).toMatch(/Scope/i);
+    expect(answer).toMatch(/Need a scope choice/i);
+    expect(answer).toMatch(/Pick one/i);
     expect(answer).toMatch(/A\)|Focused/i);
     expect(answer).toMatch(/B\)|Corpus/i);
     expect(answer).toMatch(/C\)|architecture/i);
+    expect(answer).not.toMatch(/First delivery/i);
+    expect(answer).not.toMatch(/Harden high-value cases/i);
     expect(answer).not.toMatch(/smallest coherent change/i);
     expect(answer).not.toMatch(/^Objective:/m);
+    expect(answer.length).toBeLessThan(700);
+    expect(draft.findings.length).toBeLessThanOrEqual(2);
   });
 });
