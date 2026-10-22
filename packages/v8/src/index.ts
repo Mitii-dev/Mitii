@@ -267,14 +267,17 @@ export { deriveWindowPolicy, mergeWindowBudgetPolicy, resolveWindowBudgetPolicy,
 export {
   WINDOW_BUDGET_SCHEMA_VERSION, DEFAULT_WINDOW_BUDGET_POLICY, WINDOW_BUDGET_POLICY,
   WINDOW_BUDGET_EFFORTS, DEFAULT_WINDOW_BUDGET_EFFORT, WINDOW_BUDGET_EFFORT_OVERLAY,
-  resolveWindowBudgetEffort, WINDOW_BUDGET_BANDS, WINDOW_BUDGET_BAND_CEILINGS,
+  resolveWindowBudgetEffort, WINDOW_BUDGET_MODES, DEFAULT_WINDOW_BUDGET_MODE,
+  WINDOW_BUDGET_MODE_OVERLAY, resolveWindowBudgetMode, windowBudgetModeOverlay,
+  WINDOW_BUDGET_BANDS, WINDOW_BUDGET_BAND_CEILINGS,
   WINDOW_BUDGET_BAND_TABLE, resolveWindowBudgetBand, windowBudgetBandDefinition,
   listWindowBudgetBands, windowBudgetInputSchema, windowBudgetPolicySchema,
   windowBudgetPolicyOverridesSchema, windowPolicySchema, WindowBudgetError,
 } from "./modules/window-budget";
 export type {
   WindowBudgetInput, WindowBudgetPolicy, WindowBudgetPolicyOverrides,
-  WindowPolicy, WindowBudgetEffort, WindowBudgetBand,
+  WindowPolicy, WindowPolicyCarry, WindowPolicyInjection, WindowPolicyFragments,
+  WindowBudgetEffort, WindowBudgetMode, WindowBudgetModeOverlay, WindowBudgetBand,
   WindowBudgetBandDefinition, ResolveWindowBudgetPolicyInput, ResolvedWindowBudgetPolicy,
 } from "./modules/window-budget";
 export {

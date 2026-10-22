@@ -32,7 +32,23 @@ describe('live token budget preview', () => {
       expect(live.maxUniqueFilesPerCall).toBe(host.maxUniqueFilesPerCall);
       expect(live.maxVerificationChecks).toBe(host.maxVerificationChecks);
       expect(live.maxTasks).toBe(host.maxTasks);
+      expect(live.carryMaxMessages).toBe(host.carryMaxMessages);
+      expect(live.carryMaxCharsPerMessage).toBe(host.carryMaxCharsPerMessage);
+      expect(live.injectionRepoMapChars).toBe(host.injectionRepoMapChars);
     }
+  });
+
+  it('scales carry ceilings with the context window', () => {
+    const compact = deriveLiveTokenBudgetPreview({
+      contextWindowTokens: 30_000,
+    });
+    const wide = deriveLiveTokenBudgetPreview({
+      contextWindowTokens: 200_000,
+    });
+    expect(compact.carryMaxMessages).toBeLessThan(wide.carryMaxMessages);
+    expect(compact.carryMaxCharsPerMessage).toBeLessThan(
+      wide.carryMaxCharsPerMessage,
+    );
   });
 
   it('scales files per mutation with the context window until the value is pinned', () => {

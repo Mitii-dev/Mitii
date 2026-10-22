@@ -399,6 +399,19 @@ export interface TokenBudgetPreview {
   runBudgetUnlimited: boolean;
   runBudgetMaxModelCalls: number;
   runBudgetMaxToolCalls: number;
+  /** Host→engine conversation carry (from Window Budget). */
+  carryMaxMessages: number;
+  carryMaxCharsPerMessage: number;
+  /** Host pre-prompt injection ceilings (from Window Budget). */
+  injectionProjectRuleChars: number;
+  injectionProjectRulesTotalChars: number;
+  injectionRepoMapChars: number;
+  injectionRepoMapFilesMax: number;
+  injectionSketchChars: number;
+  injectionSketchItemsMax: number;
+  injectionSelectionChars: number;
+  injectionReviewDiffFileChars: number;
+  injectionReviewDiffTotalChars: number;
 }
 
 export interface TokenBudgetSettingsSnapshot {

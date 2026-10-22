@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { WINDOW_BUDGET_SCHEMA_VERSION } from "../../constants";
 import { WINDOW_BUDGET_EFFORTS } from "../../effort";
+import { WINDOW_BUDGET_MODES } from "../../mode";
 
 const ratioSchema = z.number().min(0).max(1);
 const positiveIntSchema = z.number().int().positive();
@@ -85,6 +86,66 @@ export const windowBudgetPolicySchema = z
     verificationChecksBase: positiveIntSchema,
     verificationChecksPerUsable: positiveNumberSchema,
     verificationChecksMax: positiveIntSchema,
+    /**
+     * Host→engine conversation carry (message count). Scaled from usable input.
+     */
+    carryMaxMessagesRatio: ratioSchema,
+    carryMaxMessagesMin: positiveIntSchema,
+    carryMaxMessagesMax: positiveIntSchema,
+    /**
+     * Per-message character ceiling when forwarding prior turns.
+     * Scaled from usable input (same units as other `*CharsRatio` fields).
+     */
+    carryMaxCharsPerMessageRatio: ratioSchema,
+    carryMaxCharsPerMessageMin: positiveIntSchema,
+    carryMaxCharsPerMessageMax: positiveIntSchema,
+    /** Single project-rule file body (AGENTS.md / .mitii/rules). */
+    injectionProjectRuleCharsRatio: ratioSchema,
+    injectionProjectRuleCharsMin: positiveIntSchema,
+    injectionProjectRuleCharsMax: positiveIntSchema,
+    /** Aggregate project-rules injection. */
+    injectionProjectRulesTotalCharsRatio: ratioSchema,
+    injectionProjectRulesTotalCharsMin: positiveIntSchema,
+    injectionProjectRulesTotalCharsMax: positiveIntSchema,
+    /** Host repo-map / workspace-sketch character budget. */
+    injectionRepoMapCharsRatio: ratioSchema,
+    injectionRepoMapCharsMin: positiveIntSchema,
+    injectionRepoMapCharsMax: positiveIntSchema,
+    /** Absolute file-count ceiling for repo-map assembly (not window-scaled). */
+    injectionRepoMapFilesMax: positiveIntSchema,
+    injectionSketchCharsRatio: ratioSchema,
+    injectionSketchCharsMin: positiveIntSchema,
+    injectionSketchCharsMax: positiveIntSchema,
+    /** Absolute item-count ceiling for workspace sketch (not window-scaled). */
+    injectionSketchItemsMax: positiveIntSchema,
+    /** Editor selection injected into the prompt. */
+    injectionSelectionCharsRatio: ratioSchema,
+    injectionSelectionCharsMin: positiveIntSchema,
+    injectionSelectionCharsMax: positiveIntSchema,
+    /** Per-file review / git diff clip. */
+    injectionReviewDiffFileCharsRatio: ratioSchema,
+    injectionReviewDiffFileCharsMin: positiveIntSchema,
+    injectionReviewDiffFileCharsMax: positiveIntSchema,
+    /** Aggregate review / git diff clip. */
+    injectionReviewDiffTotalCharsRatio: ratioSchema,
+    injectionReviewDiffTotalCharsMin: positiveIntSchema,
+    injectionReviewDiffTotalCharsMax: positiveIntSchema,
+    /** Per-fragment hard token ceiling (prompt-construction). */
+    fragmentAbsoluteMaxTokensRatio: ratioSchema,
+    fragmentAbsoluteMaxTokensMin: positiveIntSchema,
+    fragmentAbsoluteMaxTokensMax: positiveIntSchema,
+    /** Soft review-flag threshold (not a hard reject). */
+    fragmentReviewThresholdTokens: positiveIntSchema,
+    /** Cap for additional-context / environment value bodies. */
+    fragmentAdditionalContextValueTokensRatio: ratioSchema,
+    fragmentAdditionalContextValueTokensMin: positiveIntSchema,
+    fragmentAdditionalContextValueTokensMax: positiveIntSchema,
+    /** L1 skill catalog strip (name+description). */
+    fragmentSkillCatalogL1MaxTokensRatio: ratioSchema,
+    fragmentSkillCatalogL1MaxTokensMin: positiveIntSchema,
+    fragmentSkillCatalogL1MaxTokensMax: positiveIntSchema,
+    /** Absolute entry count for L1 skill catalog (not window-scaled). */
+    fragmentSkillCatalogL1MaxEntries: positiveIntSchema,
   })
   .strict();
 
@@ -119,6 +180,11 @@ export const windowBudgetInputSchema = z
      * calls, and compaction ceilings independently of the advertised window.
      */
     effort: z.enum(WINDOW_BUDGET_EFFORTS).optional(),
+    /**
+     * Interaction-mode overlay (`ask` | `plan` | `agent`). Omit for no mode
+     * delta (defaults + band + lab only).
+     */
+    mode: z.enum(WINDOW_BUDGET_MODES).optional(),
   })
   .strict();
 

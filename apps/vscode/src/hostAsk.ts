@@ -201,6 +201,24 @@ export async function runAskInOutputChannel(options: {
   handlers?: HostAskHandlers;
 }): Promise<HostAskOutcome> {
   const { vs, client, workspaceRoot, channel, handlers } = options;
+  const cfgEarly = vs.workspace.getConfiguration('mitii');
+  const storedContextWindowEarly = cfgEarly.get<number>('provider.contextWindow');
+  const contextWindowEarly = resolveEffectiveContextWindow(
+    typeof storedContextWindowEarly === 'number' &&
+      Number.isFinite(storedContextWindowEarly)
+      ? Math.floor(storedContextWindowEarly)
+      : 0,
+    cfgEarly.get<string>('provider.model') ?? '',
+    cfgEarly.get<string>('provider.type') ?? '',
+  );
+  const windowBudgetPolicyEarly = readTokenBudgetPolicyOverrides(cfgEarly);
+  const budgetPreviewEarly = deriveLiveTokenBudgetPreview({
+    contextWindowTokens: contextWindowEarly,
+    maximumOutputTokens: normalizeMaximumOutputTokens(
+      cfgEarly.get<number>('provider.maximumOutputTokens'),
+    ),
+    policy: windowBudgetPolicyEarly,
+  });
   const toggles = resolveIntentLiteContextToggles({
     toggles: readContextToggles(vs),
     depth: options.depth,
@@ -209,6 +227,7 @@ export async function runAskInOutputChannel(options: {
   const editor = toggles.editor
     ? captureEditorContext(vs, workspaceRoot, {
         includeOpenTabs: toggles.openTabs,
+        maxSelectionChars: budgetPreviewEarly.injectionSelectionChars,
       })
     : undefined;
   const diagnosticsBlock = toggles.diagnostics
@@ -249,7 +268,14 @@ export async function runAskInOutputChannel(options: {
   let gitDiffBlock: string | undefined;
   if (toggles.gitDiff && workspaceRoot) {
     try {
-      const review = await buildReviewDiff(workspaceRoot);
+      const review = await buildReviewDiff(workspaceRoot, {
+        maxFileChars: budgetPreviewEarly.injectionReviewDiffFileChars,
+        maxTotalChars: budgetPreviewEarly.injectionReviewDiffTotalChars,
+        maxPatchPreviewChars: Math.min(
+          4_000,
+          budgetPreviewEarly.injectionReviewDiffFileChars,
+        ),
+      });
       const fileLines = review.files
         .slice(0, 40)
         .map((f) => `- ${f.status} ${f.path}`)
@@ -283,7 +309,7 @@ export async function runAskInOutputChannel(options: {
     gitDiffBlock,
   });
 
-  const cfg = vs.workspace.getConfiguration('mitii');
+  const cfg = cfgEarly;
   const approvalPolicy = resolveApprovalPolicy(
     options.approvalMode ??
       cfg.get<string>('safety.approvalMode') ??
@@ -291,14 +317,7 @@ export async function runAskInOutputChannel(options: {
   );
   const model = cfg.get<string>('provider.model') ?? '';
   const providerType = cfg.get<string>('provider.type') ?? '';
-  const storedContextWindow = cfg.get<number>('provider.contextWindow');
-  const contextWindow = resolveEffectiveContextWindow(
-    typeof storedContextWindow === 'number' && Number.isFinite(storedContextWindow)
-      ? Math.floor(storedContextWindow)
-      : 0,
-    model,
-    providerType,
-  );
+  const contextWindow = contextWindowEarly;
   const maximumOutputTokens = normalizeMaximumOutputTokens(
     cfg.get<number>('provider.maximumOutputTokens'),
   );
@@ -310,13 +329,8 @@ export async function runAskInOutputChannel(options: {
           options.workspaceId,
         )
       : undefined;
-  const windowBudgetPolicy = readTokenBudgetPolicyOverrides(cfg);
-  const budgetPreview = deriveLiveTokenBudgetPreview({
-    contextWindowTokens: contextWindow,
-    maximumOutputTokens:
-      maximumOutputTokens > 0 ? maximumOutputTokens : undefined,
-    policy: windowBudgetPolicy,
-  });
+  const windowBudgetPolicy = windowBudgetPolicyEarly;
+  const budgetPreview = budgetPreviewEarly;
   let contextBreakdown = buildContextUsageBreakdown({
     prompt: options.prompt,
     conversationText: options.conversationText,
@@ -449,7 +463,11 @@ export async function runAskInOutputChannel(options: {
     token: vscode.CancellationToken,
   ): Promise<HostAskOutcome> => {
     const projectRules = workspaceRoot
-      ? await loadProjectRules({ workspaceRoot })
+      ? await loadProjectRules({
+          workspaceRoot,
+          maxRuleChars: budgetPreview.injectionProjectRuleChars,
+          maxTotalChars: budgetPreview.injectionProjectRulesTotalChars,
+        })
       : [];
     const modeProfiles = workspaceRoot
       ? loadModeProfiles(workspaceRoot)

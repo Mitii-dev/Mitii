@@ -103,6 +103,9 @@ export class PromptConstructionPipeline {
       planText: parsed.planText,
       decisionBriefText: parsed.decisionBriefText,
       executionSeedText: parsed.executionSeedText,
+      ...(parsed.fragmentLimits
+        ? { fragmentLimits: parsed.fragmentLimits }
+        : {}),
     });
     let systemContent = system.content;
 

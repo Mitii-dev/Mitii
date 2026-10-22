@@ -15,6 +15,7 @@ export {
 export type {
   AssembledFragmentOmission,
   AssembledFragments,
+  AssembleFragmentLimits,
   FragmentTruncateFn,
 } from "./assembleFragments";
 export {

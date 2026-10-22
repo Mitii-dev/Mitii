@@ -11,13 +11,15 @@ import {
 } from '@mitii/sdk';
 
 /**
- * Host-side conversation / plan carry policy.
- * Limits are intentional defaults — engine compactConversation still budgets.
+ * Fallback host-side conversation / plan carry ceilings when callers have not
+ * yet derived `WindowPolicy.carry` from Window Budget.
+ * Prefer `limits` from `deriveWindowPolicy(...).carry` (or live preview mirrors).
+ * Structured handoff caps stay host-local (not token-window proportional).
  */
 export const CONVERSATION_CARRY_LIMITS = {
-  /** Max prior role turns to forward (user+assistant each count). */
+  /** Matches `carryMaxMessagesMax` in window-budget defaults. */
   maxMessages: 200,
-  /** Per-message character cap before truncation. */
+  /** Matches `carryMaxCharsPerMessageMax` in window-budget defaults. */
   maxCharsPerMessage: 100_000,
   /** Same retention as ask/plan — do not drop customer-visible history in Agent. */
   agentMaxMessages: 200,

@@ -12,10 +12,14 @@ export interface MitiiConversationMessage {
   content: string;
 }
 
+/**
+ * Fallback when callers omit Window Budget–derived `limits`.
+ * Prefer `deriveLiveTokenBudgetPreview(...).carry*` / `WindowPolicy.carry`.
+ */
 export const CONVERSATION_CARRY_LIMITS = {
-  /** Forward a long chat window so prior findings stay available in every mode. */
+  /** Matches `carryMaxMessagesMax` in window-budget defaults. */
   maxMessages: 200,
-  /** Do not chop large audits / reports when carrying into the next turn. */
+  /** Matches `carryMaxCharsPerMessageMax` in window-budget defaults. */
   maxCharsPerMessage: 100_000,
   /** Same retention as ask/plan — agent must not drop customer-visible history. */
   agentMaxMessages: 200,

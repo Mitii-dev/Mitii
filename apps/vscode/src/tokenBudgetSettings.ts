@@ -771,6 +771,17 @@ export function toTokenBudgetPreview(
     runBudgetMaxModelCalls:
       runBudget?.maxModelCalls ?? policy.run.maxModelCalls,
     runBudgetMaxToolCalls: runBudget?.maxToolCalls ?? policy.run.maxToolCalls,
+    carryMaxMessages: policy.carry.maxMessages,
+    carryMaxCharsPerMessage: policy.carry.maxCharsPerMessage,
+    injectionProjectRuleChars: policy.injection.projectRuleChars,
+    injectionProjectRulesTotalChars: policy.injection.projectRulesTotalChars,
+    injectionRepoMapChars: policy.injection.repoMapChars,
+    injectionRepoMapFilesMax: policy.injection.repoMapFilesMax,
+    injectionSketchChars: policy.injection.sketchChars,
+    injectionSketchItemsMax: policy.injection.sketchItemsMax,
+    injectionSelectionChars: policy.injection.selectionChars,
+    injectionReviewDiffFileChars: policy.injection.reviewDiffFileChars,
+    injectionReviewDiffTotalChars: policy.injection.reviewDiffTotalChars,
   };
 }
 

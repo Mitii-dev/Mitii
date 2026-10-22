@@ -27,6 +27,7 @@ import {
   PlanGuidanceFragment,
   SkillCatalogFragment,
   formatSkillCatalogL1,
+  type AssembleFragmentLimits,
   type ContextualFragment,
 } from "../internal/fragments";
 import { PROMPT_CONSTRUCTION_THRESHOLDS } from "../policy";
@@ -46,6 +47,8 @@ export function buildSystemInstructions(params: {
   planText?: string;
   decisionBriefText?: string;
   executionSeedText?: string;
+  /** Prefer `WindowPolicy.fragments` absolute/review ceilings. */
+  fragmentLimits?: AssembleFragmentLimits;
 }): {
   content: string;
   usedTokens: number;
@@ -146,6 +149,9 @@ export function buildSystemInstructions(params: {
     ),
     truncateToBudget: (text, budget) =>
       truncateToTokenBudget(text, budget, params.estimator),
+    ...(params.fragmentLimits
+      ? { limits: params.fragmentLimits }
+      : {}),
   });
 
   const includedFragmentIds = new Set(

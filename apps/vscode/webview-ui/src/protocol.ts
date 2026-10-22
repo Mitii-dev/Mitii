@@ -397,6 +397,17 @@ export interface TokenBudgetPreview {
   runBudgetUnlimited: boolean;
   runBudgetMaxModelCalls: number;
   runBudgetMaxToolCalls: number;
+  carryMaxMessages: number;
+  carryMaxCharsPerMessage: number;
+  injectionProjectRuleChars: number;
+  injectionProjectRulesTotalChars: number;
+  injectionRepoMapChars: number;
+  injectionRepoMapFilesMax: number;
+  injectionSketchChars: number;
+  injectionSketchItemsMax: number;
+  injectionSelectionChars: number;
+  injectionReviewDiffFileChars: number;
+  injectionReviewDiffTotalChars: number;
 }
 
 export interface TokenBudgetSettingsSnapshot {

@@ -1572,6 +1572,12 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           : (message.mode ?? 'ask');
     const engineMode =
       mode === 'plan' || mode === 'agent' || mode === 'database' ? mode : 'ask';
+    const carryBudget = deriveLiveTokenBudgetPreview({
+      contextWindowTokens: resolveContextWindow(this.vs),
+      policy: readTokenBudgetPolicyOverrides(
+        this.vs.workspace.getConfiguration('mitii'),
+      ),
+    });
     const conversation = buildConversationCarry({
       messages: (activeThread?.messages ?? []).map((m) => ({
         role: m.role,
@@ -1583,6 +1589,10 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
         engineMode === 'agent'
           ? collectStructuredCarryFromThread(activeThread ?? {})
           : undefined,
+      limits: {
+        maxMessages: carryBudget.carryMaxMessages,
+        maxCharsPerMessage: carryBudget.carryMaxCharsPerMessage,
+      },
     });
     const conversationText = conversation
       .map((m) => `${m.role}: ${m.content}`)
@@ -1600,7 +1610,21 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
     if (message.mode === 'review') {
       const root = this.effectiveRoot();
       if (root) {
-        const reviewDiff = await buildReviewDiff(root);
+        const reviewBudget = deriveLiveTokenBudgetPreview({
+          contextWindowTokens: resolveContextWindow(this.vs),
+          policy: readTokenBudgetPolicyOverrides(
+            this.vs.workspace.getConfiguration('mitii'),
+          ),
+        });
+        const reviewLimits = {
+          maxFileChars: reviewBudget.injectionReviewDiffFileChars,
+          maxTotalChars: reviewBudget.injectionReviewDiffTotalChars,
+          maxPatchPreviewChars: Math.min(
+            4_000,
+            reviewBudget.injectionReviewDiffFileChars,
+          ),
+        };
+        const reviewDiff = await buildReviewDiff(root, reviewLimits);
         this.post({
           type: 'setReviewDiff',
           review: reviewDiff,
@@ -1612,6 +1636,7 @@ export class MitiiSidebarProvider implements vscode.WebviewViewProvider {
           const files = await buildReviewFileDiffs(
             root,
             reviewDiff.files ?? [],
+            reviewLimits,
           );
           const prep = new ReviewPipeline().prepare({
             schemaVersion: 1,

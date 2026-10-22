@@ -41,14 +41,23 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
   }
 
   const windowTokens = parsed.contextWindowTokens;
-  const policy = resolveWindowBudgetPolicy({
+  const resolved = resolveWindowBudgetPolicy({
     contextWindowTokens: windowTokens,
+    mode: parsed.mode,
     overrides: parsed.policy,
-  }).policy;
+  });
+  const policy = resolved.policy;
   const reasonCodes: WindowBudgetReasonCode[] = [];
   const effort = resolveWindowBudgetEffort(parsed.effort);
   const overlay = WINDOW_BUDGET_EFFORT_OVERLAY[effort];
   reasonCodes.push(`effort_${effort}`);
+  if (resolved.mode === "ask") {
+    reasonCodes.push("mode_ask");
+  } else if (resolved.mode === "plan") {
+    reasonCodes.push("mode_plan");
+  } else if (resolved.mode === "agent") {
+    reasonCodes.push("mode_agent");
+  }
 
   const windowOutputCap = Math.min(
     policy.outputMaxTokens,
@@ -248,10 +257,76 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
     Math.max(1, Math.floor(windowTokens * policy.changeImpactMinUsableRatio)),
   );
 
+  const carryMaxMessages = clampInt(
+    Math.floor(usableInputTokens * policy.carryMaxMessagesRatio),
+    policy.carryMaxMessagesMin,
+    policy.carryMaxMessagesMax,
+  );
+  const carryMaxCharsPerMessage = clampInt(
+    Math.floor(usableInputTokens * policy.carryMaxCharsPerMessageRatio),
+    policy.carryMaxCharsPerMessageMin,
+    policy.carryMaxCharsPerMessageMax,
+  );
+  const projectRuleChars = clampInt(
+    Math.floor(usableInputTokens * policy.injectionProjectRuleCharsRatio),
+    policy.injectionProjectRuleCharsMin,
+    policy.injectionProjectRuleCharsMax,
+  );
+  const projectRulesTotalChars = clampInt(
+    Math.floor(usableInputTokens * policy.injectionProjectRulesTotalCharsRatio),
+    policy.injectionProjectRulesTotalCharsMin,
+    policy.injectionProjectRulesTotalCharsMax,
+  );
+  const repoMapChars = clampInt(
+    Math.floor(usableInputTokens * policy.injectionRepoMapCharsRatio),
+    policy.injectionRepoMapCharsMin,
+    policy.injectionRepoMapCharsMax,
+  );
+  const sketchChars = clampInt(
+    Math.floor(usableInputTokens * policy.injectionSketchCharsRatio),
+    policy.injectionSketchCharsMin,
+    policy.injectionSketchCharsMax,
+  );
+  const selectionChars = clampInt(
+    Math.floor(usableInputTokens * policy.injectionSelectionCharsRatio),
+    policy.injectionSelectionCharsMin,
+    policy.injectionSelectionCharsMax,
+  );
+  const reviewDiffFileChars = clampInt(
+    Math.floor(usableInputTokens * policy.injectionReviewDiffFileCharsRatio),
+    policy.injectionReviewDiffFileCharsMin,
+    policy.injectionReviewDiffFileCharsMax,
+  );
+  const reviewDiffTotalChars = clampInt(
+    Math.floor(usableInputTokens * policy.injectionReviewDiffTotalCharsRatio),
+    policy.injectionReviewDiffTotalCharsMin,
+    policy.injectionReviewDiffTotalCharsMax,
+  );
+  const fragmentAbsoluteMaxTokens = clampInt(
+    Math.floor(usableInputTokens * policy.fragmentAbsoluteMaxTokensRatio),
+    policy.fragmentAbsoluteMaxTokensMin,
+    policy.fragmentAbsoluteMaxTokensMax,
+  );
+  const fragmentAdditionalContextValueTokens = clampInt(
+    Math.floor(
+      usableInputTokens * policy.fragmentAdditionalContextValueTokensRatio,
+    ),
+    policy.fragmentAdditionalContextValueTokensMin,
+    policy.fragmentAdditionalContextValueTokensMax,
+  );
+  const fragmentSkillCatalogL1MaxTokens = clampInt(
+    Math.floor(
+      usableInputTokens * policy.fragmentSkillCatalogL1MaxTokensRatio,
+    ),
+    policy.fragmentSkillCatalogL1MaxTokensMin,
+    policy.fragmentSkillCatalogL1MaxTokensMax,
+  );
+
   return windowPolicySchema.parse({
     schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
     contextWindowTokens: windowTokens,
     effort,
+    ...(resolved.mode ? { mode: resolved.mode } : {}),
     maximumOutputTokens,
     toolSchemaTokens,
     usableInputTokens,
@@ -304,6 +379,28 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
     },
     taskList: {
       maxTasks,
+    },
+    carry: {
+      maxMessages: carryMaxMessages,
+      maxCharsPerMessage: carryMaxCharsPerMessage,
+    },
+    injection: {
+      projectRuleChars,
+      projectRulesTotalChars,
+      repoMapChars,
+      repoMapFilesMax: policy.injectionRepoMapFilesMax,
+      sketchChars,
+      sketchItemsMax: policy.injectionSketchItemsMax,
+      selectionChars,
+      reviewDiffFileChars,
+      reviewDiffTotalChars,
+    },
+    fragments: {
+      absoluteMaxTokens: fragmentAbsoluteMaxTokens,
+      reviewThresholdTokens: policy.fragmentReviewThresholdTokens,
+      additionalContextValueTokens: fragmentAdditionalContextValueTokens,
+      skillCatalogL1MaxTokens: fragmentSkillCatalogL1MaxTokens,
+      skillCatalogL1MaxEntries: policy.fragmentSkillCatalogL1MaxEntries,
     },
     maxVerificationChecks,
     resolvedPolicy: policy,

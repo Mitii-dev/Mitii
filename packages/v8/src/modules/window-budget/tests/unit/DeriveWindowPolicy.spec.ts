@@ -6,6 +6,49 @@ import {
 } from "../../index";
 
 describe("deriveWindowPolicy", () => {
+  it("scales carry and injection ceilings with usable input", () => {
+    const compact = deriveWindowPolicy({
+      schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+      contextWindowTokens: 30_000,
+    });
+    const wide = deriveWindowPolicy({
+      schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+      contextWindowTokens: 200_000,
+    });
+
+    expect(compact.carry.maxMessages).toBeLessThan(wide.carry.maxMessages);
+    expect(compact.carry.maxCharsPerMessage).toBeLessThan(
+      wide.carry.maxCharsPerMessage,
+    );
+    expect(compact.injection.projectRulesTotalChars).toBeLessThanOrEqual(
+      wide.injection.projectRulesTotalChars,
+    );
+    expect(wide.carry.maxMessages).toBe(200);
+    expect(wide.carry.maxCharsPerMessage).toBe(100_000);
+    expect(wide.injection.repoMapFilesMax).toBe(400);
+    expect(wide.injection.sketchItemsMax).toBe(200);
+    expect(compact.fragments.absoluteMaxTokens).toBeLessThan(
+      wide.fragments.absoluteMaxTokens,
+    );
+  });
+
+  it("applies ask mode overlay to raise conversation share", () => {
+    const baseline = deriveWindowPolicy({
+      schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+      contextWindowTokens: 80_000,
+    });
+    const ask = deriveWindowPolicy({
+      schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+      contextWindowTokens: 80_000,
+      mode: "ask",
+    });
+    expect(ask.mode).toBe("ask");
+    expect(ask.reasonCodes).toContain("mode_ask");
+    expect(ask.sections.conversationTokens).toBeGreaterThan(
+      baseline.sections.conversationTokens,
+    );
+  });
+
   it("scales usable input and section shares with the window", () => {
     const small = deriveWindowPolicy({
       schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,

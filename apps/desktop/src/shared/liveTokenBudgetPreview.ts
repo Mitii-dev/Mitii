@@ -1,47 +1,21 @@
 /** Live window-budget preview for Desktop Profiles (mirrors VS Code). */
 
+import {
+  DEFAULT_WINDOW_BUDGET_NUMBERS,
+  MEDIUM_WINDOW_BUDGET_EFFORT,
+  WINDOW_BUDGET_BAND_OVERLAYS,
+} from './liveWindowBudgetDefaults.js';
+import type { TokenBudgetPreview } from './liveTokenBudgetTypes.js';
+export { DEFAULT_WINDOW_BUDGET_NUMBERS } from './liveWindowBudgetDefaults.js';
+export type { TokenBudgetPreview } from './liveTokenBudgetTypes.js';
+export {
+  windowAllocationSlices,
+  type WindowAllocationSlice,
+  type WindowAllocationSliceId,
+} from './liveWindowBudgetAllocation.js';
+
 /** Historical VS Code default; treated as unset so output scales with the window. */
 export const LEGACY_DEFAULT_MAXIMUM_OUTPUT_TOKENS = 5_000;
-
-export interface TokenBudgetPreview {
-  contextWindowTokens: number;
-  maximumOutputTokens: number;
-  toolSchemaTokens: number;
-  usableInputTokens: number;
-  loopInputBudgetTokens: number;
-  repositoryTokens: number;
-  conversationTokens: number;
-  planTokens: number;
-  skillsTokens: number;
-  systemTokens: number;
-  compactionWarnTokens: number;
-  compactionAutoTokens: number;
-  compactionHardTokens: number;
-  keepRecentToolResults: number;
-  compactedToolResultChars: number;
-  compactedToolArgumentChars: number;
-  toolResultContentChars: number;
-  droppedTurnSummaryChars: number;
-  establishedFactChars: number;
-  maxEstablishedFacts: number;
-  establishedFactReinjectChars: number;
-  memoryReinjectChars: number;
-  maxPatchesPerCall: number;
-  maxModelCalls: number;
-  maxToolCalls: number;
-  maxUniqueFilesPerCall: number;
-  maxPatchPayloadCharacters: number;
-  requireBatchedExecution: boolean;
-  maxDiagnosticSteps: number;
-  maxTasks: number;
-  maxSkills: number;
-  maxVerificationChecks: number;
-  visiblePlanAffordable: boolean;
-  changeImpactAffordable: boolean;
-  runBudgetUnlimited: boolean;
-  runBudgetMaxModelCalls: number;
-  runBudgetMaxToolCalls: number;
-}
 
 export function normalizeMaximumOutputTokens(raw: unknown): number {
   const value = Number(raw);
@@ -53,131 +27,6 @@ export function normalizeMaximumOutputTokens(raw: unknown): number {
 export function isAutoMaximumOutputTokens(raw: unknown): boolean {
   return normalizeMaximumOutputTokens(raw) === 0;
 }
-
-/**
- * Built-in Window Budget defaults. Keep aligned with
- * `packages/v8/src/modules/window-budget/defaults.ts`.
- * Used by the settings UI so a draft context window can recompute
- * every derived budget before Save.
- */
-export const DEFAULT_WINDOW_BUDGET_NUMBERS: Record<string, number> = {
-  outputRatio: 0.2,
-  outputMinTokens: 10_240,
-  outputMaxTokens: 512_000,
-  outputWindowCapRatio: 0.35,
-  toolSchemaFallbackTokens: 8_000,
-  toolSchemaFallbackWindowRatio: 0.2,
-  minimumUsableInputTokens: 2_048,
-  loopSafetyRatio: 0.94,
-  repositoryShare: 0.28,
-  conversationShare: 0.4,
-  planShare: 0.06,
-  skillsShare: 0.04,
-  planTokensCap: 32_000,
-  skillsTokensCap: 16_000,
-  repositoryTokensCap: 128_000,
-  compactionWarnRatio: 0.7,
-  compactionAutoRatio: 0.8,
-  compactionHardRatio: 0.92,
-  keepRecentToolResultsRatio: 0.00008,
-  keepRecentToolResultsMin: 3,
-  keepRecentToolResultsMax: 16,
-  compactedToolResultCharsRatio: 0.006,
-  compactedToolResultCharsMin: 400,
-  compactedToolResultCharsMax: 4_000,
-  compactedToolArgumentCharsRatio: 0.003,
-  compactedToolArgumentCharsMin: 256,
-  compactedToolArgumentCharsMax: 2_000,
-  toolResultContentCharsRatio: 0.015,
-  toolResultContentCharsMin: 2_000,
-  toolResultContentCharsMax: 64_000,
-  droppedTurnSummaryCharsRatio: 0.01,
-  droppedTurnSummaryCharsMin: 1_200,
-  droppedTurnSummaryCharsMax: 8_000,
-  establishedFactCharsRatio: 0.002,
-  establishedFactCharsMin: 220,
-  establishedFactCharsMax: 900,
-  establishedFactCountRatio: 0.00015,
-  establishedFactCountMin: 12,
-  establishedFactCountMax: 48,
-  establishedFactReinjectCharsRatio: 0.012,
-  establishedFactReinjectCharsMin: 1_600,
-  establishedFactReinjectCharsMax: 8_000,
-  memoryReinjectCharsRatio: 0.006,
-  memoryReinjectCharsMin: 800,
-  memoryReinjectCharsMax: 4_000,
-  filesPerOutputTokens: 800,
-  minUniqueFilesPerCall: 2,
-  maxUniqueFilesPerCallCap: 48,
-  patchPayloadOutputRatio: 0.6,
-  charsPerOutputToken: 3,
-  requireBatchedBelowOutputTokens: 4_096,
-  visiblePlanMinUsableTokens: 8_192,
-  changeImpactMinUsableTokens: 8_192,
-  visiblePlanMinUsableRatio: 0.35,
-  changeImpactMinUsableRatio: 0.35,
-  maxPatchesPerCallCap: 96,
-  diagnosticStepsBase: 2,
-  diagnosticStepsPerUsable: 20_000,
-  diagnosticStepsMax: 8,
-  maxTasksBase: 8,
-  maxTasksPerUsable: 25_000,
-  maxTasksCap: 12,
-  maxModelCallsPerUsable: 2_500,
-  maxModelCallsMin: 48,
-  maxModelCallsMax: 96,
-  maxSkillsBase: 2,
-  maxSkillsPerUsable: 12_000,
-  maxSkillsCap: 4,
-  verificationChecksBase: 2,
-  verificationChecksPerUsable: 40_000,
-  verificationChecksMax: 16,
-};
-
-/**
- * Ship band overlays. Keep aligned with
- * `packages/v8/src/modules/window-budget/windowBudgetBands.ts`.
- */
-const WINDOW_BUDGET_BAND_OVERLAYS: Record<string, Record<string, number>> = {
-  compact: {
-    maxUniqueFilesPerCallCap: 8,
-    outputMinTokens: 2_048,
-    outputRatio: 0.12,
-    outputWindowCapRatio: 0.12,
-    filesPerOutputTokens: 450,
-    repositoryShare: 0.26,
-    conversationShare: 0.4,
-    planShare: 0.06,
-    skillsShare: 0.07,
-    maxSkillsCap: 4,
-  },
-  standard: {
-    maxUniqueFilesPerCallCap: 12,
-    outputMinTokens: 8192,
-    outputRatio: 0.22,
-    outputWindowCapRatio: 0.28,
-    repositoryShare: 0.28,
-    conversationShare: 0.38,
-    planShare: 0.06,
-    skillsShare: 0.05,
-    maxSkillsCap: 4,
-  },
-  wide: {
-    maxUniqueFilesPerCallCap: 20,
-    outputMinTokens: 10_240,
-    outputRatio: 0.18,
-    outputWindowCapRatio: 0.25,
-    repositoryShare: 0.3,
-    conversationShare: 0.36,
-    planShare: 0.06,
-    skillsShare: 0.05,
-    maxSkillsCap: 6,
-    repositoryTokensCap: 180_000,
-    planTokensCap: 48_000,
-    skillsTokensCap: 24_000,
-    toolResultContentCharsMax: 96_000,
-  },
-};
 
 /** Keep aligned with scaleEffortCallBudget in window-budget/effort.ts. */
 function scaleEffortCallBudget(base: number, contextWindowTokens: number): number {
@@ -197,21 +46,6 @@ export function resolveLiveWindowBudgetBand(
   if (window < 100_000) return 'standard';
   return 'wide';
 }
-
-/**
- * Medium working-set overlay. Keep aligned with
- * `packages/v8/src/modules/window-budget/effort.ts`.
- * Live preview cannot import V8; hosts still derive from `deriveWindowPolicy`.
- * Compaction ceilings scale with the context window (settings source of truth).
- */
-const MEDIUM_WINDOW_BUDGET_EFFORT = {
-  maxUniqueFilesPerCall: 8,
-  maxModelCalls: 64,
-  compactionAutoWindowRatio: 0.8,
-  compactionHardWindowRatio: 1,
-  compactionAutoMinTokens: 16_000,
-  compactionHardMinTokens: 24_000,
-} as const;
 
 function resolveMediumCompactionCeilings(contextWindowTokens: number): {
   autoMaxTokens: number;
@@ -241,22 +75,6 @@ export const SIMPLE_TOKEN_BUDGET_KEYS = [
   'planShare',
   'skillsShare',
 ] as const;
-
-export type WindowAllocationSliceId =
-  | 'output'
-  | 'tools'
-  | 'repository'
-  | 'conversation'
-  | 'plan'
-  | 'skills'
-  | 'free';
-
-export interface WindowAllocationSlice {
-  id: WindowAllocationSliceId;
-  label: string;
-  tokens: number;
-  windowShare: number;
-}
 
 export interface LiveTokenBudgetInput {
   contextWindowTokens: number;
@@ -670,56 +488,75 @@ export function deriveLiveTokenBudgetPreview(
     runBudgetMaxModelCalls:
       input.runBudget?.maxModelCalls ?? maxModelCalls,
     runBudgetMaxToolCalls: input.runBudget?.maxToolCalls ?? maxModelCalls * 2,
+    carryMaxMessages: clampInt(
+      Math.floor(
+        usableInputTokens * policyNumber(policy, 'carryMaxMessagesRatio'),
+      ),
+      policyNumber(policy, 'carryMaxMessagesMin'),
+      policyNumber(policy, 'carryMaxMessagesMax'),
+    ),
+    carryMaxCharsPerMessage: clampInt(
+      Math.floor(
+        usableInputTokens * policyNumber(policy, 'carryMaxCharsPerMessageRatio'),
+      ),
+      policyNumber(policy, 'carryMaxCharsPerMessageMin'),
+      policyNumber(policy, 'carryMaxCharsPerMessageMax'),
+    ),
+    injectionProjectRuleChars: clampInt(
+      Math.floor(
+        usableInputTokens *
+          policyNumber(policy, 'injectionProjectRuleCharsRatio'),
+      ),
+      policyNumber(policy, 'injectionProjectRuleCharsMin'),
+      policyNumber(policy, 'injectionProjectRuleCharsMax'),
+    ),
+    injectionProjectRulesTotalChars: clampInt(
+      Math.floor(
+        usableInputTokens *
+          policyNumber(policy, 'injectionProjectRulesTotalCharsRatio'),
+      ),
+      policyNumber(policy, 'injectionProjectRulesTotalCharsMin'),
+      policyNumber(policy, 'injectionProjectRulesTotalCharsMax'),
+    ),
+    injectionRepoMapChars: clampInt(
+      Math.floor(
+        usableInputTokens * policyNumber(policy, 'injectionRepoMapCharsRatio'),
+      ),
+      policyNumber(policy, 'injectionRepoMapCharsMin'),
+      policyNumber(policy, 'injectionRepoMapCharsMax'),
+    ),
+    injectionRepoMapFilesMax: policyNumber(policy, 'injectionRepoMapFilesMax'),
+    injectionSketchChars: clampInt(
+      Math.floor(
+        usableInputTokens * policyNumber(policy, 'injectionSketchCharsRatio'),
+      ),
+      policyNumber(policy, 'injectionSketchCharsMin'),
+      policyNumber(policy, 'injectionSketchCharsMax'),
+    ),
+    injectionSketchItemsMax: policyNumber(policy, 'injectionSketchItemsMax'),
+    injectionSelectionChars: clampInt(
+      Math.floor(
+        usableInputTokens *
+          policyNumber(policy, 'injectionSelectionCharsRatio'),
+      ),
+      policyNumber(policy, 'injectionSelectionCharsMin'),
+      policyNumber(policy, 'injectionSelectionCharsMax'),
+    ),
+    injectionReviewDiffFileChars: clampInt(
+      Math.floor(
+        usableInputTokens *
+          policyNumber(policy, 'injectionReviewDiffFileCharsRatio'),
+      ),
+      policyNumber(policy, 'injectionReviewDiffFileCharsMin'),
+      policyNumber(policy, 'injectionReviewDiffFileCharsMax'),
+    ),
+    injectionReviewDiffTotalChars: clampInt(
+      Math.floor(
+        usableInputTokens *
+          policyNumber(policy, 'injectionReviewDiffTotalCharsRatio'),
+      ),
+      policyNumber(policy, 'injectionReviewDiffTotalCharsMin'),
+      policyNumber(policy, 'injectionReviewDiffTotalCharsMax'),
+    ),
   };
-}
-
-const ALLOCATION_META: Array<{
-  id: WindowAllocationSliceId;
-  label: string;
-  tokens: (preview: TokenBudgetPreview) => number;
-}> = [
-  {
-    id: 'output',
-    label: 'Output',
-    tokens: (preview) => preview.maximumOutputTokens,
-  },
-  {
-    id: 'tools',
-    label: 'Tool schemas',
-    tokens: (preview) => preview.toolSchemaTokens,
-  },
-  {
-    id: 'repository',
-    label: 'Repository',
-    tokens: (preview) => preview.repositoryTokens,
-  },
-  {
-    id: 'conversation',
-    label: 'Conversation',
-    tokens: (preview) => preview.conversationTokens,
-  },
-  { id: 'plan', label: 'Plan', tokens: (preview) => preview.planTokens },
-  { id: 'skills', label: 'Skills', tokens: (preview) => preview.skillsTokens },
-  {
-    id: 'free',
-    label: 'Free (unallocated)',
-    // Residual usable input when repo+conversation+plan+skills < 100%.
-    // Stored historically as systemTokens in the preview payload.
-    tokens: (preview) => preview.systemTokens,
-  },
-];
-
-export function windowAllocationSlices(
-  preview: TokenBudgetPreview,
-): WindowAllocationSlice[] {
-  const windowTokens = Math.max(1, preview.contextWindowTokens);
-  return ALLOCATION_META.map((entry) => {
-    const tokens = Math.max(0, entry.tokens(preview));
-    return {
-      id: entry.id,
-      label: entry.label,
-      tokens,
-      windowShare: tokens / windowTokens,
-    };
-  });
 }

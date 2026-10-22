@@ -43,11 +43,18 @@ export interface AssembledFragments {
  *   (or truncated once when remaining > 40), matching Mitii instruction packing.
  * - Items above `reviewThresholdTokens` are flagged, not auto-rejected.
  */
+export type AssembleFragmentLimits = {
+  absoluteMaxTokens: number;
+  reviewThresholdTokens: number;
+};
+
 export function assembleFragments(params: {
   fragments: readonly ContextualFragment[];
   estimator: TokenEstimatorPort;
   budgetTokens: number;
   truncateToBudget: FragmentTruncateFn;
+  /** Prefer `WindowPolicy.fragments` from Window Budget. */
+  limits?: AssembleFragmentLimits;
 }): AssembledFragments {
   let remaining = Math.max(0, params.budgetTokens);
   let usedTokens = 0;
@@ -58,6 +65,11 @@ export function assembleFragments(params: {
   const omissions: AssembledFragmentOmission[] = [];
   const reviewFlaggedIds: string[] = [];
   const parts: string[] = [];
+  const absoluteMaxTokens =
+    params.limits?.absoluteMaxTokens ?? FRAGMENT_POLICY.absoluteMaxTokens;
+  const reviewThresholdTokens =
+    params.limits?.reviewThresholdTokens ??
+    FRAGMENT_POLICY.reviewThresholdTokens;
 
   for (const fragment of params.fragments) {
     const body = fragment.body();
@@ -72,10 +84,7 @@ export function assembleFragments(params: {
       continue;
     }
 
-    const absoluteCap = Math.min(
-      fragment.maxTokens(),
-      FRAGMENT_POLICY.absoluteMaxTokens,
-    );
+    const absoluteCap = Math.min(fragment.maxTokens(), absoluteMaxTokens);
     if (absoluteCap <= 0) {
       const tokens = params.estimator.estimate(body);
       omissions.push({
@@ -95,7 +104,7 @@ export function assembleFragments(params: {
       params.truncateToBudget,
     );
 
-    if (rendered.tokens > FRAGMENT_POLICY.reviewThresholdTokens) {
+    if (rendered.tokens > reviewThresholdTokens) {
       reviewFlaggedIds.push(fragment.id);
     }
 

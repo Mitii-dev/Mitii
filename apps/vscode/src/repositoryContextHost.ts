@@ -20,6 +20,12 @@ export function createHostRepositoryContext(options: {
   resolveEditorReferences?: () =>
     | HostEditorContextReferences
     | Promise<HostEditorContextReferences>;
+  injection?: {
+    repoMapChars?: number;
+    repoMapFilesMax?: number;
+    sketchChars?: number;
+    sketchItemsMax?: number;
+  };
 }): RepositoryContextPipeline {
   return createSharedHostRepositoryContext({
     ...options,

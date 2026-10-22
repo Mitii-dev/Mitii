@@ -53,9 +53,46 @@ import {
   WORKSPACE_SKETCH_DEFAULTS,
 } from './workspaceSketch.js';
 
+/** Fallback maxima — prefer `injection` from Window Budget when provided. */
 const MAX_REPO_MAP_FILES = 400;
 const MAX_WORKSPACE_SNAPSHOT_FILES = 10_000;
 const MAX_REPO_MAP_CHARS = 24_000;
+
+type HostInjectionLimits = {
+  repoMapChars: number;
+  repoMapFilesMax: number;
+  sketchChars: number;
+  sketchItemsMax: number;
+};
+
+function resolveHostInjectionLimits(injection?: {
+  repoMapChars?: number;
+  repoMapFilesMax?: number;
+  sketchChars?: number;
+  sketchItemsMax?: number;
+}): HostInjectionLimits {
+  const repoMapChars = Math.max(
+    64,
+    Math.floor(injection?.repoMapChars ?? MAX_REPO_MAP_CHARS),
+  );
+  return {
+    repoMapChars,
+    repoMapFilesMax: Math.max(
+      1,
+      Math.floor(injection?.repoMapFilesMax ?? MAX_REPO_MAP_FILES),
+    ),
+    sketchChars: Math.max(
+      64,
+      Math.floor(injection?.sketchChars ?? repoMapChars),
+    ),
+    sketchItemsMax: Math.max(
+      1,
+      Math.floor(
+        injection?.sketchItemsMax ?? WORKSPACE_SKETCH_DEFAULTS.MAXIMUM_ITEMS,
+      ),
+    ),
+  };
+}
 const INDEX_DB_FILE = 'repository-index.sqlite';
 const HEX_SNAPSHOT_ID = /^[a-f0-9]{64}$/;
 const DEFAULT_CONTEXT_ROOT_ID = 'workspace';
@@ -105,8 +142,19 @@ export function createHostRepositoryContext(options: {
   resolveEditorReferences?: () =>
     | HostEditorContextReferences
     | Promise<HostEditorContextReferences>;
+  /**
+   * Window Budget–derived injection ceilings (`WindowPolicy.injection`).
+   * When omitted, falls back to historical fixed caps.
+   */
+  injection?: {
+    repoMapChars?: number;
+    repoMapFilesMax?: number;
+    sketchChars?: number;
+    sketchItemsMax?: number;
+  };
 }): RepositoryContextPipeline {
   const { repositoryState, workspaceRoot } = options;
+  const injectionLimits = resolveHostInjectionLimits(options.injection);
   const textIndexDatabasePath =
     options.textIndexDatabasePath ?? join(workspaceRoot, '.mitii', INDEX_DB_FILE);
   const resolvedDescriptors = new Map<string, RepositoryStateDescriptor>();
@@ -176,8 +224,10 @@ export function createHostRepositoryContext(options: {
         : {}),
     }),
     selector,
-    assembler: createHostAssembler(defaultAssembler, (snapshotId) =>
-      resolvedRepoMaps.get(snapshotId),
+    assembler: createHostAssembler(
+      defaultAssembler,
+      (snapshotId) => resolvedRepoMaps.get(snapshotId),
+      injectionLimits,
     ),
   };
 
@@ -788,6 +838,7 @@ function vectorCapabilityForProfile(
 function createHostAssembler(
   defaultAssembler: RepositoryContextAssemblerPort,
   getRepoMap: (snapshotId: string) => RepoMap | undefined,
+  injectionLimits: HostInjectionLimits,
 ): RepositoryContextAssemblerPort {
   return {
     assemble: async (
@@ -795,7 +846,12 @@ function createHostAssembler(
     ): Promise<ContextAssemblyResult> => {
       const repoMap = getRepoMap(input.snapshot.snapshotId);
       if (input.selection.items.length === 0) {
-        return assembleFileMapFallback(input, repoMap, 'empty_selection');
+        return assembleFileMapFallback(
+          input,
+          repoMap,
+          'empty_selection',
+          injectionLimits,
+        );
       }
       const assembled = await defaultAssembler.assemble(input);
       if (
@@ -805,7 +861,12 @@ function createHostAssembler(
       ) {
         return assembled;
       }
-      return mergeFailedAssemblyWithFileMapFallback(input, assembled, repoMap);
+      return mergeFailedAssemblyWithFileMapFallback(
+        input,
+        assembled,
+        repoMap,
+        injectionLimits,
+      );
     },
   };
 }
@@ -856,9 +917,15 @@ function emptyHostRetrieval(
 function mergeFailedAssemblyWithFileMapFallback(
   input: ContextAssemblyInput,
   assembled: ContextAssemblyResult,
-  repoMap?: RepoMap,
+  repoMap: RepoMap | undefined,
+  injectionLimits: HostInjectionLimits,
 ): ContextAssemblyResult {
-  const fallback = assembleFileMapFallback(input, repoMap, 'empty_assembly');
+  const fallback = assembleFileMapFallback(
+    input,
+    repoMap,
+    'empty_assembly',
+    injectionLimits,
+  );
   return {
     ...fallback,
     dropped: [...assembled.dropped, ...fallback.dropped],
@@ -877,7 +944,9 @@ function assembleFileMapFallback(
   input: ContextAssemblyInput,
   repoMap: RepoMap | undefined,
   reason: 'empty_selection' | 'empty_assembly',
+  injectionLimits: HostInjectionLimits,
 ): ContextAssemblyResult {
+  const { repoMapFilesMax, sketchItemsMax, sketchChars } = injectionLimits;
   const snapshotPaths = input.snapshot.entries
     .filter(
       (entry: unknown): entry is WorkspaceFileEntry =>
@@ -903,12 +972,12 @@ function assembleFileMapFallback(
     if (seen.has(path)) continue;
     seen.add(path);
     paths.push(path);
-    if (paths.length >= MAX_REPO_MAP_FILES) break;
+    if (paths.length >= repoMapFilesMax) break;
   }
   const ranked = rankedPaths.length > 0;
   const sketch = buildWorkspaceSketch(paths, {
-    maximumItems: WORKSPACE_SKETCH_DEFAULTS.MAXIMUM_ITEMS,
-    maximumCharacters: MAX_REPO_MAP_CHARS,
+    maximumItems: sketchItemsMax,
+    maximumCharacters: sketchChars,
     rootLabel: '.',
   });
   const content = ranked

@@ -405,6 +405,10 @@ export async function executeV8Start(
       stream: input.stream,
       outputReserveTokens: windowPolicy.maximumOutputTokens,
       planBudgetTokens: planText ? windowPolicy.sections.planTokens : 0,
+      fragmentLimits: {
+        absoluteMaxTokens: windowPolicy.fragments.absoluteMaxTokens,
+        reviewThresholdTokens: windowPolicy.fragments.reviewThresholdTokens,
+      },
     });
 
     if (promptResult.status === "blocked") {

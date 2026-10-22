@@ -12,9 +12,18 @@
  *
  * Attribution / inspiration policy: see Mitii/NOTICE-REVIEW.md.
  */
+/**
+ * Fallback fragment ceilings when callers have not passed
+ * `WindowPolicy.fragments` into assembleFragments.
+ * Prefer window-budget derived values at the assemble boundary.
+ */
 export const FRAGMENT_POLICY = {
-  /** Absolute hard cap per fragment. */
-  absoluteMaxTokens: 10_000,
+  /**
+   * Soft absolute hard cap per fragment when Window Budget is unavailable.
+   * Matches `fragmentAbsoluteMaxTokensMax` default so wide windows can grow
+   * once assembleFragments receives `WindowPolicy.fragments`.
+   */
+  absoluteMaxTokens: 16_000,
 
   /**
    * Fragments above this size are review-sensitive.

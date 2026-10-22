@@ -192,6 +192,17 @@ export const promptConstructionInputSchema = z
     outputReserveTokens: z.number().int().positive().optional(),
     /** Window-reserved plan slice; used for metering when plan text is present. */
     planBudgetTokens: z.number().int().nonnegative().optional(),
+    /**
+     * Per-fragment ceilings from Window Budget (`WindowPolicy.fragments`).
+     * When omitted, prompt-construction falls back to FRAGMENT_POLICY defaults.
+     */
+    fragmentLimits: z
+      .object({
+        absoluteMaxTokens: z.number().int().positive(),
+        reviewThresholdTokens: z.number().int().positive(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

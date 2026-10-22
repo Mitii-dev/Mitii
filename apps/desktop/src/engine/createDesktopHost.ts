@@ -19,8 +19,10 @@ import {
   RepositoryStatePipeline,
   ToolRuntimePipeline,
   VerificationPipeline,
+  WINDOW_BUDGET_SCHEMA_VERSION,
   WorkspaceFileSystemManifestReader,
   InMemoryToolOutputSpillAdapter,
+  deriveWindowPolicy,
   type AgentMode,
   type LlmPort,
   type MitiiClient,
@@ -381,12 +383,25 @@ export async function createHostDesktopClient(
     filename: string,
     openOptions?: { readonly?: boolean; fileMustExist?: boolean },
   ) => new Database(filename, openOptions)) as never;
+  const injection = deriveWindowPolicy({
+    schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+    contextWindowTokens,
+    ...(hostMaximumOutputTokens > 0
+      ? { maximumOutputTokens: hostMaximumOutputTokens }
+      : {}),
+  }).injection;
   const repositoryContext = createHostRepositoryContext({
     repositoryState,
     workspaceRoot: cwd,
     semanticIndex,
     git,
     openDatabase,
+    injection: {
+      repoMapChars: injection.repoMapChars,
+      repoMapFilesMax: injection.repoMapFilesMax,
+      sketchChars: injection.sketchChars,
+      sketchItemsMax: injection.sketchItemsMax,
+    },
   });
 
   const developerEnabled =

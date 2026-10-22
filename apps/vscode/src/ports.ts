@@ -57,6 +57,8 @@ import {
   normalizeMaximumOutputTokens,
   resolveEffectiveContextWindow,
 } from './settingsFields.js';
+import { deriveLiveTokenBudgetPreview } from './liveTokenBudgetPreview.js';
+import { readTokenBudgetPolicyOverrides } from './tokenBudgetSettings.js';
 
 export class LocalUnderstandingLlmPort implements LlmPort {
   readonly id = 'vscode-local-understanding';
@@ -341,6 +343,16 @@ export async function createVscodeClient(
   const semanticIndex = workspaceRoot
     ? await resolveVsCodeSemanticIndexSettings(vs, secrets)
     : undefined;
+  const providerModel = cfg.get<string>('provider.model') ?? '';
+  const providerType = cfg.get<string>('provider.type') ?? '';
+  const injectionBudget = deriveLiveTokenBudgetPreview({
+    contextWindowTokens: resolveContextWindowFromSettings(
+      cfg,
+      providerModel,
+      providerType,
+    ),
+    policy: readTokenBudgetPolicyOverrides(cfg),
+  });
   const repositoryContext = workspaceRoot
     ? createHostRepositoryContext({
         repositoryState,
@@ -349,6 +361,12 @@ export async function createVscodeClient(
         ...(git ? { git } : {}),
         resolveEditorReferences: () =>
           resolveVsCodeEditorReferences(vs, workspaceRoot),
+        injection: {
+          repoMapChars: injectionBudget.injectionRepoMapChars,
+          repoMapFilesMax: injectionBudget.injectionRepoMapFilesMax,
+          sketchChars: injectionBudget.injectionSketchChars,
+          sketchItemsMax: injectionBudget.injectionSketchItemsMax,
+        },
       })
     : undefined;
 

@@ -34,6 +34,11 @@ Given `contextWindowTokens`, optional host `maximumOutputTokens`, optional measu
 - `planning`: diagnostic step cap and whether a visible plan / change-impact gate is affordable
 - `run`: model/tool call caps and `maxVerificationRepairs` from the effort overlay
 - `skills`: skill body budget and max selected skills
+- `carry`: host→engine conversation carry (`maxMessages`, `maxCharsPerMessage`)
+- `injection`: host pre-prompt ceilings (project rules, repo map / sketch,
+  editor selection, review/git diff chars; plus absolute file/item maxima)
+- `fragments`: per-fragment absolute/review ceilings for prompt-construction
+- `mode`: optional ask/plan/agent overlay that was applied
 - `maxVerificationChecks`
 - `resolvedPolicy`: the full policy after defaults + overrides
 - `reasonCodes`: how output and tool cost were chosen
@@ -132,6 +137,32 @@ memoryReinjectChars        = clamp(U × memoryReinjectCharsRatio, min, max)
 Agent Engine consumes these derived values directly. It does not reintroduce
 separate fixed caps for tool-result serialization, dropped tool summaries, or
 mid-run observation reinjection.
+
+Host conversation carry and pre-prompt injections also scale from usable input:
+
+```text
+carry.maxMessages              = clamp(U × carryMaxMessagesRatio, min, max)
+carry.maxCharsPerMessage       = clamp(U × carryMaxCharsPerMessageRatio, min, max)
+injection.projectRuleChars     = clamp(U × injectionProjectRuleCharsRatio, min, max)
+injection.projectRulesTotalChars = clamp(U × …TotalCharsRatio, min, max)
+injection.repoMapChars / sketchChars / selectionChars / reviewDiff*Chars
+                               = clamp(U × matching ratio, min, max)
+injection.repoMapFilesMax / sketchItemsMax = absolute policy maxima (not scaled)
+```
+
+Hosts MUST read `WindowPolicy.carry` / `WindowPolicy.injection` /
+`WindowPolicy.fragments` (or the live preview mirrors) instead of hard-coding
+message/char/fragment ceilings.
+
+Mode overlays (`WINDOW_BUDGET_MODE_OVERLAY`) are static tables activated by
+`deriveWindowPolicy({ mode: "ask" | "plan" | "agent" })`. Merge order:
+
+```text
+DEFAULT_WINDOW_BUDGET_POLICY → window band → mode overlay → host lab overrides
+```
+
+Ask raises conversation share / carry floors; plan raises plan share; agent
+keeps ask-parity history retention so ask→agent handoffs do not drop turns.
 
 ## Pipeline stages
 

@@ -43,6 +43,17 @@ export type {
   WindowBudgetEffort,
   WindowBudgetEffortOverlay,
 } from "./effort";
+export {
+  WINDOW_BUDGET_MODES,
+  DEFAULT_WINDOW_BUDGET_MODE,
+  WINDOW_BUDGET_MODE_OVERLAY,
+  resolveWindowBudgetMode,
+  windowBudgetModeOverlay,
+} from "./mode";
+export type {
+  WindowBudgetMode,
+  WindowBudgetModeOverlay,
+} from "./mode";
 
 export {
   deriveWindowPolicy,
@@ -70,6 +81,9 @@ export type {
   WindowPolicyRun,
   WindowPolicySkills,
   WindowPolicyTaskList,
+  WindowPolicyCarry,
+  WindowPolicyInjection,
+  WindowPolicyFragments,
   WindowBudgetReasonCode,
   WindowBudgetErrorCode,
 } from "./contracts";

@@ -12,6 +12,8 @@ import {
   compactFileChangesForHistory,
   enrichAssistantCarryText,
 } from '../shared/conversationCarry.js';
+import { resolveEffectiveContextWindow } from '../shared/contextWindow.js';
+import { deriveLiveTokenBudgetPreview } from '../shared/liveTokenBudgetPreview.js';
 import {
   extractPlanFromRunResult,
   parseTaskList,
@@ -2620,6 +2622,16 @@ export function App() {
             ? pendingTaskList ?? undefined
             : undefined;
 
+      const provider = promptSnapshot.settings.provider;
+      const carryBudget = deriveLiveTokenBudgetPreview({
+        contextWindowTokens: resolveEffectiveContextWindow(
+          typeof provider?.contextWindow === 'number'
+            ? provider.contextWindow
+            : 0,
+          provider?.model ?? '',
+          provider?.type,
+        ),
+      });
       const conversation = buildConversationCarry({
         messages: messages.map((m) => ({ role: m.role, text: m.text })),
         currentPrompt: prompt,
@@ -2632,6 +2644,10 @@ export function App() {
                 pendingTaskList: taskList ?? pendingTaskList,
               })
             : undefined,
+        limits: {
+          maxMessages: carryBudget.carryMaxMessages,
+          maxCharsPerMessage: carryBudget.carryMaxCharsPerMessage,
+        },
       });
 
       const runPromptStream = (snap: DesktopShellSnapshot) =>
