@@ -54,6 +54,7 @@ import {
 } from "../actions/truncationRecovery";
 import { discardIncompleteToolCalls } from "../actions/completeToolCalls";
 import { isClearMutationBlocker } from "../actions/isClearMutationBlocker";
+import { preserveSubstantiveAssistantAnswer } from "../actions/preserveSubstantiveAssistantAnswer";
 import {
   batchIsReadonlyTools,
   changeImpactRetryPatchMessage,
@@ -1319,7 +1320,9 @@ export async function runV8ModelLoop(
       continue;
     }
 
-    answer = turn.content;
+    // Never erase a substantive findings report when a later turn is only a
+    // mutation blocker / verification wrap-up (customer-visible history).
+    answer = preserveSubstantiveAssistantAnswer(answer, turn.content);
     messages.push({ role: "assistant", content: turn.content });
 
     const mutationStillNeeded =
@@ -1327,7 +1330,8 @@ export async function runV8ModelLoop(
 
     if (mutationStillNeeded) {
       // Honest "cannot edit" / grant/policy blockers must not open Continue.
-      if (isClearMutationBlocker(answer)) {
+      // Prefer the preserved answer (prior findings + blocker) when present.
+      if (isClearMutationBlocker(turn.content) || isClearMutationBlocker(answer)) {
         reasonCodes.push("answer_produced");
         return {
           kind: "completed",

@@ -16,6 +16,25 @@ describe("empty answer hardening (diagnose thrash / answerChars:0)", () => {
     expect(answer).toMatch(/stopped without a complete final answer/i);
   });
 
+  it("keeps substantive findings instead of replacing them with verification fluff", () => {
+    const findings = [
+      "# Security Audit",
+      "",
+      "## CRITICAL",
+      "Secrets committed in .dev.vars with live Mongo credentials.",
+      "JWT tokens never expire and auth middleware races.",
+    ].join("\n");
+    const answer = selectUserFacingLoopAnswer({
+      loopAnswer: findings,
+      fallbackSummary:
+        "No workspace edits were applied. Baseline: 0 error(s). Say fix the remaining verification errors to continue.",
+      changedFiles: [],
+    });
+    expect(answer).toContain("Security Audit");
+    expect(answer).toContain("Secrets committed");
+    expect(answer).not.toMatch(/fix the remaining verification errors/i);
+  });
+
   it("hides unfinished investigation dumps but still yields a fallback", () => {
     const dump = [
       "I looked at SettingsSidebar and ArchitectureBoundary.",

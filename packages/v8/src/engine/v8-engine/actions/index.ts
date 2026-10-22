@@ -356,6 +356,10 @@ export {
 } from "./resolveLoopTurnOutcome";
 export { isClearMutationBlocker } from "./isClearMutationBlocker";
 export {
+  isLowValueAnswerFollowUp,
+  preserveSubstantiveAssistantAnswer,
+} from "./preserveSubstantiveAssistantAnswer";
+export {
   shouldContinueVerificationRepair,
   maxVerificationRepairsForDepth,
   nextStalledRepairCount,

@@ -65,4 +65,21 @@ describe('buildConversationCarry', () => {
     expect(carried[0]?.content).toContain('<carry_handoff>');
     expect(carried[0]?.content).toContain('src/a.ts');
   });
+
+  it('keeps long prior assistant findings in agent mode (no tight truncate)', () => {
+    const findings = `# Security Audit\n\n${'Finding line.\n'.repeat(400)}`;
+    const carried = buildConversationCarry({
+      messages: [
+        { role: 'user', text: 'identify security issues' },
+        { role: 'assistant', text: findings },
+      ],
+      currentPrompt: 'fix the first finding',
+      mode: 'agent',
+    });
+
+    const assistant = carried.find((m) => m.role === 'assistant');
+    expect(assistant?.content).toContain('Security Audit');
+    expect(assistant?.content.length).toBeGreaterThan(3_000);
+    expect(assistant?.content.endsWith('…')).toBe(false);
+  });
 });

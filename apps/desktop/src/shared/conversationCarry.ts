@@ -13,10 +13,13 @@ export interface MitiiConversationMessage {
 }
 
 export const CONVERSATION_CARRY_LIMITS = {
-  maxMessages: 20,
-  maxCharsPerMessage: 8_000,
-  agentMaxMessages: 8,
-  agentMaxCharsPerMessage: 3_000,
+  /** Forward a long chat window so prior findings stay available in every mode. */
+  maxMessages: 200,
+  /** Do not chop large audits / reports when carrying into the next turn. */
+  maxCharsPerMessage: 100_000,
+  /** Same retention as ask/plan — agent must not drop customer-visible history. */
+  agentMaxMessages: 200,
+  agentMaxCharsPerMessage: 100_000,
   structuredMaxChangedPaths: 40,
   structuredMaxErrors: 8,
   structuredMaxErrorChars: 240,
@@ -56,12 +59,9 @@ export function resolveConversationCarryLimits(mode?: AgentCarryMode): {
   maxMessages: number;
   maxCharsPerMessage: number;
 } {
-  if (mode === 'agent') {
-    return {
-      maxMessages: CONVERSATION_CARRY_LIMITS.agentMaxMessages,
-      maxCharsPerMessage: CONVERSATION_CARRY_LIMITS.agentMaxCharsPerMessage,
-    };
-  }
+  // All modes keep the same history budget so ask → agent follow-ups do not
+  // lose prior answers. Token budgeting still compacts inside the engine.
+  void mode;
   return {
     maxMessages: CONVERSATION_CARRY_LIMITS.maxMessages,
     maxCharsPerMessage: CONVERSATION_CARRY_LIMITS.maxCharsPerMessage,

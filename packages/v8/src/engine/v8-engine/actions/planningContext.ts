@@ -28,8 +28,8 @@ const FOLLOW_UP_PLAN_QUERY =
 const FOLLOW_UP_PLAN_REFERENCE =
   /(?:\bplan\b.{0,40}\b(?:above|that|this|it)\b|\b(?:above|prior|previous)\b.{0,40}\b(?:plan|implement)|(?:for|to)\s+implement(?:ation)?\b|\bbased\s+on\s+(?:the\s+)?(?:above|prior|previous)\b)/i;
 
-const MAX_PRIOR_ASSISTANT_CHARS = 3_000;
-const MAX_PLANNING_QUERY_CHARS = 3_500;
+const MAX_PRIOR_ASSISTANT_CHARS = 24_000;
+const MAX_PLANNING_QUERY_CHARS = 12_000;
 const MAX_PRIOR_PATH_HINTS = 8;
 /** Follow-up Plan asks keep more prior-touched paths for discovery seeds. */
 const MAX_PRIOR_PATH_HINTS_FOLLOW_UP = 16;

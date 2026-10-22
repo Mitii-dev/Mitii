@@ -95,15 +95,19 @@ describe('conversationCarry (VS Code host)', () => {
   it('uses default limits from policy constants', () => {
     expect(CONVERSATION_CARRY_LIMITS.maxMessages).toBeGreaterThan(0);
     expect(CONVERSATION_CARRY_LIMITS.maxCharsPerMessage).toBeGreaterThan(0);
-    expect(CONVERSATION_CARRY_LIMITS.agentMaxMessages).toBeLessThan(
+    // Agent keeps the same retention as ask/plan so history is not dropped.
+    expect(CONVERSATION_CARRY_LIMITS.agentMaxMessages).toBe(
       CONVERSATION_CARRY_LIMITS.maxMessages,
     );
     expect(resolveConversationCarryLimits('agent').maxMessages).toBe(
-      CONVERSATION_CARRY_LIMITS.agentMaxMessages,
+      CONVERSATION_CARRY_LIMITS.maxMessages,
+    );
+    expect(resolveConversationCarryLimits('ask').maxMessages).toBe(
+      resolveConversationCarryLimits('agent').maxMessages,
     );
   });
 
-  it('applies tighter agent caps and prepends structured handoff', () => {
+  it('prepends structured handoff and keeps full agent chat history', () => {
     const messages = Array.from({ length: 20 }, (_, i) => ({
       role: (i % 2 === 0 ? 'user' : 'assistant') as 'user' | 'assistant',
       text: `turn-${i}`,
@@ -123,8 +127,10 @@ describe('conversationCarry (VS Code host)', () => {
     expect(carried[0]?.content).toContain('<carry_handoff>');
     expect(carried[0]?.content).toContain('Build mui-builder');
     expect(carried[0]?.content).toContain('packages/mui-builder/src/index.ts');
-    // prefix + (agentMaxMessages - 1) chat turns
-    expect(carried).toHaveLength(CONVERSATION_CARRY_LIMITS.agentMaxMessages);
+    // prefix + all 20 chat turns (under the shared maxMessages budget)
+    expect(carried).toHaveLength(21);
+    expect(carried.some((m) => m.content === 'turn-0')).toBe(true);
+    expect(carried.some((m) => m.content === 'turn-19')).toBe(true);
   });
 
   it('collects structured handoff from thread plan and file changes', () => {

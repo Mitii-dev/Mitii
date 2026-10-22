@@ -595,7 +595,15 @@ export function selectUserFacingLoopAnswer(params: {
     });
   }
 
-  const joined = [loop, summary].filter((part) => part.length > 0).join("\n\n");
+  // Keep the model findings; only append verification text when it adds signal.
+  const summaryIsVerificationFluff =
+    /\bno workspace edits were applied\b/i.test(summary) &&
+    /\b(?:baseline|0 error)\b/i.test(summary);
+  const summaryAddsSignal =
+    summary.length > 0 && !(summaryIsVerificationFluff && loop.length > 40);
+  const joined = [loop, summaryAddsSignal ? summary : ""]
+    .filter((part) => part.length > 0)
+    .join("\n\n");
   return joined.length > 0
     ? joined
     : synthesizeFallbackAnswer({
@@ -674,21 +682,22 @@ export function amendMessageWithPriorConversation(
   extractPrimary: (text: string) => string = (text) => text,
 ): string {
   const primary = (extractPrimary(message) || message).trim();
+  // Keep a wide prior window so follow-ups retain findings / decisions.
   const recent = conversation
     .filter(
       (entry) =>
         (entry.role === "user" || entry.role === "assistant") &&
         entry.content.trim().length > 0,
     )
-    .slice(-4);
+    .slice(-24);
   if (recent.length === 0) {
     return primary;
   }
 
   const lines = recent.map((entry) => {
     const clipped =
-      entry.content.length > 600
-        ? `${entry.content.slice(0, 599)}…`
+      entry.content.length > 12_000
+        ? `${entry.content.slice(0, 11_999)}…`
         : entry.content;
     return `${entry.role}: ${clipped}`;
   });
@@ -717,7 +726,7 @@ export function buildUnderstandingHistoryDigest(
         (entry.role === "user" || entry.role === "assistant") &&
         entry.content.trim().length > 0,
     )
-    .slice(-4);
+    .slice(-12);
   if (recent.length === 0 && !options?.priorRoute && !options?.priorTaskSize) {
     return undefined;
   }
@@ -731,10 +740,10 @@ export function buildUnderstandingHistoryDigest(
   }
   for (const entry of recent) {
     const clipped =
-      entry.content.length > 180
-        ? `${entry.content.slice(0, 179)}…`
+      entry.content.length > 2_000
+        ? `${entry.content.slice(0, 1_999)}…`
         : entry.content.trim();
     lines.push(`${entry.role}: ${clipped.replace(/\s+/g, " ")}`);
   }
-  return lines.join("\n").slice(0, 4000);
+  return lines.join("\n").slice(0, 24_000);
 }

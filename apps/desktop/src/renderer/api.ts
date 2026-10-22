@@ -11,6 +11,7 @@ import {
   extractAssistantDelta,
   extractRunError,
   extractRunStatus,
+  preserveStreamedAssistantAnswer,
 } from '../shared/extract-run-text.js';
 import type {
   DesktopAgentMode,
@@ -650,7 +651,10 @@ export function finalizeAssistantText(
 ): string {
   if (line.op !== 'result') return streamed;
   const answer = extractAssistantAnswer(line.result);
-  if (answer) return answer;
+  if (answer) {
+    // Do not let a short final blocker erase streamed findings the user saw.
+    return preserveStreamedAssistantAnswer(streamed, answer);
+  }
   const status = extractRunStatus(line.result);
   const err = extractRunError(line.result);
   if (err) return streamed || `Run failed: ${err}`;

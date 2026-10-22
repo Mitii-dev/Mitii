@@ -11,6 +11,11 @@
 const WORKING_SET_RE =
   /<working_set\b[^>]*>[\s\S]*?<\/working_set>/gi;
 
+const BLOCKER_FOLLOW_UP =
+  /(?:^|\n)\s*(?:\*{0,2}|_{0,2})?\s*blocker(?:\*{0,2}|_{0,2})?\s*[:\-—]/im;
+const LOW_VALUE_VERIFICATION =
+  /\bno workspace edits were applied\b/i;
+
 /** Strip engine scaffolding that Echo used to dump into the chat. */
 export function sanitizeAssistantText(text: string): string {
   let out = text.replace(WORKING_SET_RE, '').trim();
@@ -64,6 +69,39 @@ export function extractAssistantAnswer(result: unknown): string {
     return sanitizeAssistantText(record.answer);
   }
   return '';
+}
+
+/**
+ * Prefer keeping streamed findings when the final result is only a blocker /
+ * verification wrap-up. Mirrors engine preserveSubstantiveAssistantAnswer.
+ */
+export function preserveStreamedAssistantAnswer(
+  streamed: string,
+  finalAnswer: string,
+): string {
+  const prior = streamed.trim();
+  const next = finalAnswer.trim();
+  if (!prior) return next;
+  if (!next) return prior;
+  if (prior === next) return next;
+  if (next.includes(prior) || prior.includes(next)) {
+    return prior.length >= next.length ? prior : next;
+  }
+  const nextIsLowValue =
+    BLOCKER_FOLLOW_UP.test(next) ||
+    (LOW_VALUE_VERIFICATION.test(next) &&
+      /\b(?:baseline|0 error|verification)\b/i.test(next));
+  if (nextIsLowValue && prior.length > next.length) {
+    return `${prior}\n\n${next}`;
+  }
+  if (
+    prior.length >= 400 &&
+    next.length < prior.length * 0.55 &&
+    !BLOCKER_FOLLOW_UP.test(prior)
+  ) {
+    return `${prior}\n\n${next}`;
+  }
+  return next;
 }
 
 export function extractRunStatus(result: unknown): string | undefined {
