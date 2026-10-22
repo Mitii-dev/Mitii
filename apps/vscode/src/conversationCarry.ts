@@ -29,6 +29,17 @@ export const CONVERSATION_CARRY_LIMITS = {
   structuredMaxErrorChars: 240,
 } as const;
 
+/** Runtime carry ceilings (Window Budget derived values are plain numbers). */
+export type ConversationCarryLimits = {
+  maxMessages: number;
+  maxCharsPerMessage: number;
+  agentMaxMessages: number;
+  agentMaxCharsPerMessage: number;
+  structuredMaxChangedPaths: number;
+  structuredMaxErrors: number;
+  structuredMaxErrorChars: number;
+};
+
 export type CarryChatRole = 'user' | 'assistant';
 
 export interface CarryChatMessage {
@@ -58,7 +69,7 @@ export interface BuildConversationCarryOptions {
   mode?: AgentCarryMode;
   /** Preferred over raw chat when present (Agent follow-ups). */
   structured?: StructuredCarryHandoff;
-  limits?: Partial<typeof CONVERSATION_CARRY_LIMITS>;
+  limits?: Partial<ConversationCarryLimits>;
 }
 
 export function resolveConversationCarryLimits(

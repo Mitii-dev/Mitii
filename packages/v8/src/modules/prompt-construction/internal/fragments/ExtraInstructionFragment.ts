@@ -9,7 +9,13 @@ import { FRAGMENT_POLICY } from "./fragmentPolicy";
 export class ExtraInstructionFragment implements ContextualFragment {
   public readonly id: string;
 
-  constructor(private readonly spec: PromptExtraFragment) {
+  constructor(
+    private readonly spec: PromptExtraFragment,
+    private readonly limits?: {
+      readonly absoluteMaxTokens?: number;
+      readonly additionalContextValueTokens?: number;
+    },
+  ) {
     this.id = spec.id;
   }
 
@@ -41,15 +47,18 @@ export class ExtraInstructionFragment implements ContextualFragment {
   }
 
   maxTokens(): number {
-    const requested = this.spec.maxTokens ?? FRAGMENT_POLICY.absoluteMaxTokens;
+    const absolute =
+      this.limits?.absoluteMaxTokens ?? FRAGMENT_POLICY.absoluteMaxTokens;
+    const requested = this.spec.maxTokens ?? absolute;
     if (this.spec.section === "environment") {
       return Math.min(
         requested,
-        FRAGMENT_POLICY.additionalContextValueTokens,
-        FRAGMENT_POLICY.absoluteMaxTokens,
+        this.limits?.additionalContextValueTokens ??
+          FRAGMENT_POLICY.additionalContextValueTokens,
+        absolute,
       );
     }
-    return Math.min(requested, FRAGMENT_POLICY.absoluteMaxTokens);
+    return Math.min(requested, absolute);
   }
 
   section():

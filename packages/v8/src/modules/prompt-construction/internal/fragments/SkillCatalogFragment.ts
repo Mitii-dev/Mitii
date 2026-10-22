@@ -1,5 +1,6 @@
 import { FRAGMENT_POLICY } from "./fragmentPolicy";
 import type { ContextualFragment, FragmentRole } from "./ContextualFragment";
+import type { AssembleFragmentLimits } from "./assembleFragments";
 
 export interface SkillCatalogL1Entry {
   readonly id: string;
@@ -8,13 +9,19 @@ export interface SkillCatalogL1Entry {
 }
 
 /**
- * Optional L1 skill awareness strip (OpenCode SkillGuidance pattern).
+ * Optional L1 skill awareness strip.
  * Name + description only — never full SKILL.md bodies. Default off for 30k.
  */
 export class SkillCatalogFragment implements ContextualFragment {
   public readonly id = "system:skill-catalog-l1";
 
-  constructor(private readonly entries: readonly SkillCatalogL1Entry[]) {}
+  constructor(
+    private readonly entries: readonly SkillCatalogL1Entry[],
+    private readonly limits?: Pick<
+      AssembleFragmentLimits,
+      "skillCatalogL1MaxTokens" | "skillCatalogL1MaxEntries"
+    >,
+  ) {}
 
   role(): FragmentRole {
     return "system";
@@ -33,11 +40,17 @@ export class SkillCatalogFragment implements ContextualFragment {
   }
 
   body(): string {
-    return formatSkillCatalogL1(this.entries);
+    return formatSkillCatalogL1(
+      this.entries,
+      this.limits?.skillCatalogL1MaxEntries,
+    );
   }
 
   maxTokens(): number {
-    return FRAGMENT_POLICY.skillCatalogL1MaxTokens;
+    return (
+      this.limits?.skillCatalogL1MaxTokens ??
+      FRAGMENT_POLICY.skillCatalogL1MaxTokens
+    );
   }
 
   section(): "skills" {
@@ -51,10 +64,11 @@ export class SkillCatalogFragment implements ContextualFragment {
 
 export function formatSkillCatalogL1(
   entries: readonly SkillCatalogL1Entry[],
+  maxEntries: number = FRAGMENT_POLICY.skillCatalogL1MaxEntries,
 ): string {
   const capped = entries
     .filter((entry) => entry.id.trim() && entry.name.trim())
-    .slice(0, FRAGMENT_POLICY.skillCatalogL1MaxEntries);
+    .slice(0, Math.max(1, Math.floor(maxEntries)));
   if (capped.length === 0) {
     return [
       "Skills provide specialized instructions for specific tasks.",

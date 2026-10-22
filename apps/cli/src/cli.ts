@@ -437,6 +437,7 @@ async function runSession(options: {
           taskList,
           prompt,
           result: outcome.result,
+          contextWindowTokens: ports.runLlm.capabilities.contextWindowTokens,
         });
         conversation = next.conversation;
         taskList = next.taskList;

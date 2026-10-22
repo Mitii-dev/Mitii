@@ -200,6 +200,9 @@ export const promptConstructionInputSchema = z
       .object({
         absoluteMaxTokens: z.number().int().positive(),
         reviewThresholdTokens: z.number().int().positive(),
+        additionalContextValueTokens: z.number().int().positive().optional(),
+        skillCatalogL1MaxTokens: z.number().int().positive().optional(),
+        skillCatalogL1MaxEntries: z.number().int().positive().optional(),
       })
       .strict()
       .optional(),

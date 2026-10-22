@@ -408,6 +408,11 @@ export async function executeV8Start(
       fragmentLimits: {
         absoluteMaxTokens: windowPolicy.fragments.absoluteMaxTokens,
         reviewThresholdTokens: windowPolicy.fragments.reviewThresholdTokens,
+        additionalContextValueTokens:
+          windowPolicy.fragments.additionalContextValueTokens,
+        skillCatalogL1MaxTokens: windowPolicy.fragments.skillCatalogL1MaxTokens,
+        skillCatalogL1MaxEntries:
+          windowPolicy.fragments.skillCatalogL1MaxEntries,
       },
     });
 

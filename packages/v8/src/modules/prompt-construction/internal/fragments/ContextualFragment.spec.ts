@@ -27,6 +27,24 @@ describe("ContextualFragment formulae", () => {
     expect(rendered.truncated).toBe(true);
   });
 
+  it("applies Window Budget absoluteMaxTokens override during assemble", () => {
+    const huge = "x".repeat(8_000);
+    const fragment = new BaseInstructionsFragment(huge);
+    const assembled = assembleFragments({
+      fragments: [fragment],
+      estimator,
+      budgetTokens: 50_000,
+      truncateToBudget: (text, budget) =>
+        truncateToTokenBudget(text, budget, estimator),
+      limits: {
+        absoluteMaxTokens: 500,
+        reviewThresholdTokens: 100,
+      },
+    });
+    expect(assembled.included[0]?.tokens).toBeLessThanOrEqual(500);
+    expect(assembled.included[0]?.truncated).toBe(true);
+  });
+
   it("flags fragments above the 1k review threshold without rejecting them", () => {
     const body = "word ".repeat(2_500);
     const fragment = new InstructionBlockFragment(

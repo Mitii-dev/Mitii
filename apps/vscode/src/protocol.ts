@@ -412,6 +412,12 @@ export interface TokenBudgetPreview {
   injectionSelectionChars: number;
   injectionReviewDiffFileChars: number;
   injectionReviewDiffTotalChars: number;
+  /** Prompt-construction fragment ceilings (from Window Budget). */
+  fragmentAbsoluteMaxTokens: number;
+  fragmentReviewThresholdTokens: number;
+  fragmentAdditionalContextValueTokens: number;
+  fragmentSkillCatalogL1MaxTokens: number;
+  fragmentSkillCatalogL1MaxEntries: number;
 }
 
 export interface TokenBudgetSettingsSnapshot {

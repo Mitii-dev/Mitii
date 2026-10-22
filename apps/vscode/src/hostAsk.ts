@@ -315,8 +315,6 @@ export async function runAskInOutputChannel(options: {
       cfg.get<string>('safety.approvalMode') ??
       'guided',
   );
-  const model = cfg.get<string>('provider.model') ?? '';
-  const providerType = cfg.get<string>('provider.type') ?? '';
   const contextWindow = contextWindowEarly;
   const maximumOutputTokens = normalizeMaximumOutputTokens(
     cfg.get<number>('provider.maximumOutputTokens'),

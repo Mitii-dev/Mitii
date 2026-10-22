@@ -17,17 +17,17 @@ Prompt Construction builds the provider-neutral `ModelRequest` that is sent thro
 - Reports budget, provenance, omissions, warnings, and reason codes.
 - Assembles trusted system text via typed **ContextualFragments**: each
   injection has a stable `contentKind`, optional markers, and a hard token
-  cap (`FRAGMENT_POLICY.absoluteMaxTokens` = 10k). Environment/memory
-  fragments are marked; `MidConversationUpdateFragment` and
+  cap. Prefer `fragmentLimits` from `WindowPolicy.fragments` (absolute max,
+  review threshold, additional-context value tokens, skill-catalog L1
+  tokens/entries); `FRAGMENT_POLICY` is the fallback when limits are omitted.
+  Environment/memory fragments are marked; `MidConversationUpdateFragment` and
   `requiresSeparateMessage` fragments are appended as separate messages
   after the baseline system blob (provider-cache friendly). Mid-conversation
   epoch updates use **user** role + `<context_epoch_update>` markers (shared
   with engine admit). Callers may pass serializable `extraFragments` without
   forking core assembly. Optional L1 skill catalog
   (`injectSkillCatalogL1` + `skillCatalogL1`, default off) injects a
-  name+description awareness strip under a hard ~400-token cap.
-  Courtesy inspiration acknowledgement (not copied upstream source): see
-  `Mitii/NOTICE-REVIEW.md`.
+  name+description awareness strip under the Window Budget L1 token/entry caps.
 
 ## Structure
 

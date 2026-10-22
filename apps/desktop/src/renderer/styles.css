@@ -130,24 +130,24 @@ button[aria-disabled='true'] {
 }
 
 .app-topbar {
-  /* Fixed ink on brand orange — same in light & dark for contrast */
-  --topbar-ink: #1a1a1a;
-  --topbar-ink-muted: color-mix(in srgb, #1a1a1a 62%, transparent);
-  --topbar-line: color-mix(in srgb, #1a1a1a 18%, transparent);
-  --topbar-fill: color-mix(in srgb, #1a1a1a 6%, transparent);
-  --topbar-fill-hover: color-mix(in srgb, #1a1a1a 10%, transparent);
-  flex: 0 0 48px;
-  height: 48px;
+  flex: 0 0 52px;
+  height: 52px;
   display: flex;
-  align-items: stretch;
+  align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 0 16px 0 78px;
-  background: var(--mitii-brand);
-  border-bottom: 1px solid color-mix(in srgb, var(--mitii-brand) 78%, #000);
-  color: var(--topbar-ink);
+  gap: 20px;
+  padding: 0 18px 0 78px;
+  background: var(--mitii-panel);
+  border-bottom: 1px solid color-mix(in srgb, var(--mitii-border) 88%, transparent);
+  color: var(--mitii-text);
+  box-shadow: 0 1px 0 color-mix(in srgb, #fff 40%, transparent);
   -webkit-app-region: drag;
   z-index: 30;
+}
+
+:root[data-theme='dark'] .app-topbar {
+  background: color-mix(in srgb, var(--mitii-panel) 88%, var(--mitii-surface));
+  box-shadow: none;
 }
 
 .app-topbar * {
@@ -158,27 +158,31 @@ button[aria-disabled='true'] {
 .app-topbar__right {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 14px;
   min-width: 0;
 }
 
 .app-topbar__left {
-  align-items: stretch;
-  gap: 12px;
+  gap: 18px;
 }
 
 .app-topbar__right {
   flex-shrink: 0;
+  gap: 10px;
 }
 
 .app-topbar__brand {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  align-self: center;
+  gap: 9px;
   flex-shrink: 0;
-  width: 28px;
-  height: 28px;
   margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--mitii-text);
+  cursor: default;
+  user-select: none;
 }
 
 .app-topbar__brand img {
@@ -186,100 +190,21 @@ button[aria-disabled='true'] {
   height: 22px;
   object-fit: contain;
   display: block;
-  /* Black mark on orange — readable in both themes */
-  filter: brightness(0);
-  opacity: 0.92;
 }
 
-/* Quiet black chrome on orange — light & dark */
-.app-topbar .layout-toggle button {
-  color: var(--topbar-ink-muted);
+.app-topbar__brand-name {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: var(--mitii-text);
 }
 
-.app-topbar .layout-toggle button:hover:not(.is-active) {
-  color: var(--topbar-ink);
-  background: var(--topbar-fill);
-}
-
-.app-topbar .layout-toggle button.is-active {
-  background: #ffffff;
-  color: #1a1a1a;
-  border-color: color-mix(in srgb, #1a1a1a 12%, transparent);
-  border-bottom-color: #ffffff;
-}
-
-.app-topbar .layout-toggle button.is-active::after {
-  background: #1a1a1a;
-}
-
-.app-topbar .top-select__trigger {
-  border-color: var(--topbar-line);
-  background: var(--topbar-fill);
-  color: var(--topbar-ink);
-}
-
-.app-topbar .top-select__trigger:hover,
-.app-topbar .top-select__trigger[aria-expanded='true'] {
-  background: var(--topbar-fill-hover);
-  border-color: color-mix(in srgb, #1a1a1a 28%, transparent);
-}
-
-.app-topbar .top-select__label {
-  color: var(--topbar-ink-muted);
-}
-
-.app-topbar .top-icon-btn {
-  border-color: var(--topbar-line);
-  background: var(--topbar-fill);
-  color: var(--topbar-ink);
-}
-
-.app-topbar .top-icon-btn:hover:not(:disabled) {
-  background: var(--topbar-fill-hover);
-  border-color: color-mix(in srgb, #1a1a1a 28%, transparent);
-}
-
-.app-topbar .run-status-chip {
-  border-color: color-mix(in srgb, #14532d 35%, transparent);
-  background: color-mix(in srgb, #ffffff 55%, transparent);
-  color: #14532d;
-}
-
-.app-topbar .run-status-chip:hover {
-  background: color-mix(in srgb, #ffffff 72%, transparent);
-}
-
-.app-topbar .status-icons--identity {
-  border-left-color: var(--topbar-line);
-}
-
-.app-topbar .status-icon {
-  color: var(--topbar-ink-muted);
-}
-
-.app-topbar .status-icon:hover {
-  background: var(--topbar-fill);
-  color: var(--topbar-ink);
-}
-
-.app-topbar .status-icon--ready {
-  color: #166534;
-}
-
-.app-topbar .status-icon--indexing {
-  color: #92400e;
-}
-
-.app-topbar .status-icon--embedding {
-  color: #1e40af;
-}
-
-.app-topbar .status-icon--warn {
-  color: #991b1b;
-}
-
-.app-topbar .status-icon--idle {
-  color: var(--topbar-ink-muted);
+.app-topbar__divider {
+  width: 1px;
+  height: 20px;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--mitii-border) 90%, transparent);
 }
 
 .app-body {
@@ -391,8 +316,8 @@ button[aria-disabled='true'] {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 10px 0 12px;
+  gap: 4px;
+  padding: 12px 0 14px;
   background: var(--mitii-surface);
   border-right: 1px solid color-mix(in srgb, var(--mitii-border) 85%, transparent);
   overflow: visible;
@@ -428,17 +353,20 @@ button[aria-disabled='true'] {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
+  width: 42px;
+  height: 42px;
   margin: 0;
   padding: 0;
   border: 0;
-  border-radius: 10px;
+  border-radius: 11px;
   background: transparent;
-  color: color-mix(in srgb, var(--mitii-muted) 82%, var(--mitii-text));
+  color: color-mix(in srgb, var(--mitii-muted) 78%, var(--mitii-text));
   flex-shrink: 0;
   line-height: 0;
-  transition: color 120ms ease, background 120ms ease;
+  transition:
+    color 150ms ease,
+    background 150ms ease,
+    box-shadow 150ms ease;
 }
 
 .activity-bar__nav button svg,
@@ -456,8 +384,9 @@ button[aria-disabled='true'] {
 
 .activity-bar__nav button.is-active,
 .activity-bar__foot button.is-active {
-  color: var(--mitii-text);
-  background: color-mix(in srgb, var(--mitii-accent) 16%, transparent);
+  color: var(--mitii-brand);
+  background: color-mix(in srgb, var(--mitii-brand) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mitii-brand) 14%, transparent);
 }
 
 /* Active rail mark — outside the icon box so icons stay optically centered */
@@ -469,9 +398,9 @@ button[aria-disabled='true'] {
   top: 50%;
   transform: translateY(-50%);
   width: 3px;
-  height: 22px;
+  height: 18px;
   border-radius: 0 3px 3px 0;
-  background: var(--mitii-accent);
+  background: var(--mitii-brand);
   pointer-events: none;
 }
 
@@ -495,7 +424,7 @@ button[aria-disabled='true'] {
 }
 
 .activity-bar--settings .activity-bar__nav button.is-active {
-  background: color-mix(in srgb, var(--mitii-accent) 18%, transparent);
+  background: color-mix(in srgb, var(--mitii-brand) 12%, transparent);
 }
 
 /* Activity bar tooltips — delayed, elevated, IDE-grade */
@@ -732,16 +661,18 @@ button[aria-disabled='true'] {
 .run-status-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  border: 1px solid color-mix(in srgb, #22c55e 45%, var(--mitii-border));
-  background: color-mix(in srgb, #22c55e 12%, var(--mitii-surface));
+  gap: 7px;
+  height: 32px;
+  border: 1px solid color-mix(in srgb, #22c55e 40%, var(--mitii-border));
+  background: color-mix(in srgb, #22c55e 10%, var(--mitii-panel));
   color: var(--mitii-text);
   border-radius: 999px;
-  padding: 3px 10px 3px 8px;
+  padding: 0 12px 0 10px;
   font-size: 11px;
   font-weight: 650;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.02em;
   cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease;
 }
 
 .run-status-chip:hover {
@@ -799,31 +730,49 @@ button[aria-disabled='true'] {
 
 .layout-toggle {
   display: inline-flex;
-  align-items: stretch;
-  align-self: stretch;
-  gap: 0;
-  margin: 0 0 -1px 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  overflow: visible;
-  background: transparent;
+  align-items: center;
+  gap: 2px;
+  margin: 0;
+  padding: 3px;
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 92%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--mitii-surface) 72%, var(--mitii-panel));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 35%, transparent);
+}
+
+:root[data-theme='dark'] .layout-toggle {
+  background: color-mix(in srgb, var(--mitii-surface) 80%, #000 8%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 4%, transparent);
 }
 
 .layout-toggle button {
   position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 78px;
+  height: 30px;
+  margin: 0;
+  padding: 0 12px;
   border: 1px solid transparent;
-  border-bottom: none;
-  border-radius: 7px 7px 0 0;
+  border-radius: 7px;
   background: transparent;
-  margin-top: 10px;
-  padding: 0 16px;
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: 0.01em;
   color: var(--mitii-muted);
   box-shadow: none;
-  transition: color 120ms ease, background 120ms ease;
+  transition:
+    color 140ms ease,
+    background 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.layout-toggle button svg {
+  flex-shrink: 0;
+  opacity: 0.88;
 }
 
 .layout-toggle button:hover:not(.is-active) {
@@ -834,20 +783,22 @@ button[aria-disabled='true'] {
 .layout-toggle button.is-active {
   background: var(--mitii-panel);
   color: var(--mitii-text);
-  border-color: var(--mitii-border);
-  border-bottom-color: var(--mitii-panel);
-  box-shadow: none;
+  border-color: color-mix(in srgb, var(--mitii-border) 70%, transparent);
+  box-shadow:
+    0 1px 2px color-mix(in srgb, #000 8%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--mitii-brand) 12%, transparent);
 }
 
-.layout-toggle button.is-active::after {
-  content: '';
-  position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: 0;
-  height: 2px;
-  background: var(--mitii-brand);
-  border-radius: 2px 2px 0 0;
+:root[data-theme='dark'] .layout-toggle button.is-active {
+  background: color-mix(in srgb, var(--mitii-panel-raised) 92%, var(--mitii-panel));
+  box-shadow:
+    0 1px 2px color-mix(in srgb, #000 28%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--mitii-brand) 18%, transparent);
+}
+
+.layout-toggle button.is-active svg {
+  color: var(--mitii-brand);
+  opacity: 1;
 }
 
 .code-mode {
@@ -890,10 +841,10 @@ button[aria-disabled='true'] {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  min-height: 40px;
-  padding: 6px 12px 6px 14px;
+  min-height: 44px;
+  padding: 8px 14px 8px 16px;
   border-bottom: 1px solid color-mix(in srgb, var(--mitii-border) 80%, transparent);
-  background: color-mix(in srgb, var(--mitii-surface) 55%, var(--mitii-panel));
+  background: var(--mitii-panel);
 }
 
 .chat-topbar__left {
@@ -959,28 +910,43 @@ button[aria-disabled='true'] {
 .top-select__trigger {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  max-width: 220px;
-  height: 30px;
-  border: 1px solid var(--mitii-border);
-  background: var(--mitii-panel);
-  border-radius: var(--mitii-radius-lg);
-  padding: 0 10px;
+  gap: 7px;
+  max-width: 240px;
+  height: 32px;
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 92%, transparent);
+  background: color-mix(in srgb, var(--mitii-surface) 55%, var(--mitii-panel));
+  border-radius: 9px;
+  padding: 0 10px 0 9px;
   font-size: 12px;
   color: var(--mitii-text);
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.top-select__trigger svg:first-child {
+  flex-shrink: 0;
+  color: var(--mitii-muted);
 }
 
 .top-select__trigger:hover,
 .top-select__trigger[aria-expanded='true'] {
-  background: color-mix(in srgb, var(--mitii-text) 6%, var(--mitii-panel));
-  border-color: color-mix(in srgb, var(--mitii-text) 18%, var(--mitii-border));
+  background: var(--mitii-panel);
+  border-color: color-mix(in srgb, var(--mitii-text) 16%, var(--mitii-border));
+  box-shadow: 0 1px 2px color-mix(in srgb, #000 6%, transparent);
+}
+
+.top-select__trigger[aria-expanded='true'] svg:first-child {
+  color: var(--mitii-brand);
 }
 
 .top-select__label {
   color: var(--mitii-muted);
   font-size: 10px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
 }
 
 .top-select__value {
@@ -990,6 +956,14 @@ button[aria-disabled='true'] {
   white-space: nowrap;
   font-family: var(--mono);
   font-size: 11px;
+  font-weight: 500;
+}
+
+.top-select__chevron {
+  margin-left: 1px;
+  color: var(--mitii-muted);
+  opacity: 0.75;
+  flex-shrink: 0;
 }
 
 .top-select__menu {
@@ -997,14 +971,16 @@ button[aria-disabled='true'] {
   right: 0;
   top: calc(100% + 6px);
   z-index: 40;
-  min-width: 180px;
+  min-width: 188px;
   max-height: 240px;
   overflow: auto;
-  padding: 4px;
-  border: 1px solid var(--mitii-border);
-  border-radius: var(--mitii-radius-lg);
+  padding: 5px;
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 88%, transparent);
+  border-radius: 10px;
   background: var(--mitii-panel);
-  box-shadow: var(--mitii-shadow-soft);
+  box-shadow:
+    0 1px 2px color-mix(in srgb, #000 8%, transparent),
+    0 12px 28px color-mix(in srgb, #000 14%, transparent);
 }
 
 .top-select__menu button {
@@ -1013,14 +989,17 @@ button[aria-disabled='true'] {
   text-align: left;
   border: 0;
   background: transparent;
-  border-radius: 6px;
-  padding: 7px 8px;
+  border-radius: 7px;
+  padding: 8px 10px;
   font-size: 12px;
+  font-weight: 500;
+  transition: background 120ms ease;
 }
 
 .top-select__menu button:hover,
 .top-select__menu button.is-selected {
-  background: color-mix(in srgb, var(--mitii-text) 6%, transparent);
+  background: color-mix(in srgb, var(--mitii-brand) 10%, transparent);
+  color: var(--mitii-text);
 }
 
 .top-select__empty {
@@ -4135,9 +4114,9 @@ button.md-file-link.md-code-inline:hover {
 
 .status-icons--identity {
   gap: 8px;
-  margin-left: 4px;
-  padding-left: 8px;
-  border-left: 1px solid var(--mitii-border);
+  margin-left: 2px;
+  padding-left: 10px;
+  border-left: 1px solid color-mix(in srgb, var(--mitii-border) 85%, transparent);
 }
 
 .top-workspace-cluster {
@@ -4206,21 +4185,29 @@ button.md-file-link.md-code-inline:hover {
 .top-icon-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 5px;
-  height: 30px;
-  padding: 0 10px;
-  border: 1px solid var(--mitii-border);
-  border-radius: 8px;
-  background: var(--mitii-panel);
-  color: var(--mitii-text);
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 92%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--mitii-surface) 55%, var(--mitii-panel));
+  color: var(--mitii-muted);
   font-size: 12px;
   font-weight: 600;
-  transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .top-icon-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--mitii-text) 5%, var(--mitii-panel));
+  background: var(--mitii-panel);
+  color: var(--mitii-text);
   border-color: color-mix(in srgb, var(--mitii-text) 16%, var(--mitii-border));
+  box-shadow: 0 1px 2px color-mix(in srgb, #000 6%, transparent);
 }
 
 .top-icon-btn--accent {
@@ -9185,17 +9172,20 @@ button.mcp-manager__card {
 
 .top-history__menu {
   position: absolute;
-  top: calc(100% + 4px);
+  top: calc(100% + 6px);
   right: 0;
   z-index: 50;
-  min-width: 220px;
+  min-width: 228px;
   max-width: 280px;
   max-height: 320px;
   overflow: auto;
-  border: 1px solid var(--mitii-border);
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 88%, transparent);
   background: var(--mitii-panel);
-  box-shadow: var(--mitii-shadow-soft);
-  padding: 4px;
+  border-radius: 10px;
+  box-shadow:
+    0 1px 2px color-mix(in srgb, #000 8%, transparent),
+    0 12px 28px color-mix(in srgb, #000 14%, transparent);
+  padding: 5px;
   display: flex;
   flex-direction: column;
   gap: 1px;

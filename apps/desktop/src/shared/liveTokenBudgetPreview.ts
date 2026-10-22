@@ -558,5 +558,37 @@ export function deriveLiveTokenBudgetPreview(
       policyNumber(policy, 'injectionReviewDiffTotalCharsMin'),
       policyNumber(policy, 'injectionReviewDiffTotalCharsMax'),
     ),
+    fragmentAbsoluteMaxTokens: clampInt(
+      Math.floor(
+        usableInputTokens *
+          policyNumber(policy, 'fragmentAbsoluteMaxTokensRatio'),
+      ),
+      policyNumber(policy, 'fragmentAbsoluteMaxTokensMin'),
+      policyNumber(policy, 'fragmentAbsoluteMaxTokensMax'),
+    ),
+    fragmentReviewThresholdTokens: policyNumber(
+      policy,
+      'fragmentReviewThresholdTokens',
+    ),
+    fragmentAdditionalContextValueTokens: clampInt(
+      Math.floor(
+        usableInputTokens *
+          policyNumber(policy, 'fragmentAdditionalContextValueTokensRatio'),
+      ),
+      policyNumber(policy, 'fragmentAdditionalContextValueTokensMin'),
+      policyNumber(policy, 'fragmentAdditionalContextValueTokensMax'),
+    ),
+    fragmentSkillCatalogL1MaxTokens: clampInt(
+      Math.floor(
+        usableInputTokens *
+          policyNumber(policy, 'fragmentSkillCatalogL1MaxTokensRatio'),
+      ),
+      policyNumber(policy, 'fragmentSkillCatalogL1MaxTokensMin'),
+      policyNumber(policy, 'fragmentSkillCatalogL1MaxTokensMax'),
+    ),
+    fragmentSkillCatalogL1MaxEntries: policyNumber(
+      policy,
+      'fragmentSkillCatalogL1MaxEntries',
+    ),
   };
 }

@@ -203,6 +203,7 @@ export async function runConnectorTurn(
     taskList,
     prompt: options.prompt,
     result: outcome.result,
+    contextWindowTokens: runCaps.contextWindowTokens,
   });
   saveThreadCarry(
     options.adapterName,

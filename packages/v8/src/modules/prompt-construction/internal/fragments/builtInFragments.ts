@@ -56,6 +56,8 @@ export class InstructionBlockFragment implements ContextualFragment {
     private readonly options?: {
       readonly marked?: boolean;
       readonly separateMessage?: boolean;
+      readonly absoluteMaxTokens?: number;
+      readonly additionalContextValueTokens?: number;
     },
   ) {}
 
@@ -98,15 +100,18 @@ export class InstructionBlockFragment implements ContextualFragment {
   }
 
   maxTokens(): number {
+    const absolute =
+      this.options?.absoluteMaxTokens ?? FRAGMENT_POLICY.absoluteMaxTokens;
     // Environment values keep the additional-context hard budget.
     // Rules/skills/memory use absolute max; review threshold only flags.
     if (this.sectionName === "environment") {
       return Math.min(
-        FRAGMENT_POLICY.additionalContextValueTokens,
-        FRAGMENT_POLICY.absoluteMaxTokens,
+        this.options?.additionalContextValueTokens ??
+          FRAGMENT_POLICY.additionalContextValueTokens,
+        absolute,
       );
     }
-    return FRAGMENT_POLICY.absoluteMaxTokens;
+    return absolute;
   }
 
   section(): "rules" | "skills" | "memory" | "environment" | "plan" {

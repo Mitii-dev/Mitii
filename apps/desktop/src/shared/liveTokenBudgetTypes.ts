@@ -47,4 +47,9 @@ export interface TokenBudgetPreview {
   injectionSelectionChars: number;
   injectionReviewDiffFileChars: number;
   injectionReviewDiffTotalChars: number;
+  fragmentAbsoluteMaxTokens: number;
+  fragmentReviewThresholdTokens: number;
+  fragmentAdditionalContextValueTokens: number;
+  fragmentSkillCatalogL1MaxTokens: number;
+  fragmentSkillCatalogL1MaxEntries: number;
 }

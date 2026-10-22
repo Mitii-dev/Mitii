@@ -751,6 +751,18 @@ describe('window-scaled token budget defaults', () => {
     ).toBe(true);
   });
 
+  it('exposes Window Budget carry, injection, and fragment knobs', () => {
+    const keys = new Set(TOKEN_BUDGET_FIELDS.map((field) => field.key));
+    expect(keys.has('carryMaxMessagesRatio')).toBe(true);
+    expect(keys.has('injectionProjectRuleCharsRatio')).toBe(true);
+    expect(keys.has('fragmentAbsoluteMaxTokensRatio')).toBe(true);
+    expect(keys.has('fragmentSkillCatalogL1MaxEntries')).toBe(true);
+    const preview = defaultTokenBudgetSettings(32_768).preview;
+    expect(preview.carryMaxMessages).toBeGreaterThan(0);
+    expect(preview.fragmentAbsoluteMaxTokens).toBeGreaterThan(0);
+    expect(preview.fragmentSkillCatalogL1MaxEntries).toBeGreaterThan(0);
+  });
+
   it('scales derived budgets from the context window without custom overrides', () => {
     const at30k = defaultTokenBudgetSettings(30_000);
     const at60k = defaultTokenBudgetSettings(60_000);

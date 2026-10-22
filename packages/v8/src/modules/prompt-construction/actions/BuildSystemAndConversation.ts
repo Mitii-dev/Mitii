@@ -92,6 +92,14 @@ export function buildSystemInstructions(params: {
     fragments.push(new PlanGuidanceFragment(planGuidance));
   }
 
+  const fragmentCeilings = {
+    absoluteMaxTokens: params.fragmentLimits?.absoluteMaxTokens,
+    additionalContextValueTokens:
+      params.fragmentLimits?.additionalContextValueTokens,
+    skillCatalogL1MaxTokens: params.fragmentLimits?.skillCatalogL1MaxTokens,
+    skillCatalogL1MaxEntries: params.fragmentLimits?.skillCatalogL1MaxEntries,
+  };
+
   const pushBlocks = (
     section: "rules" | "skills" | "memory" | "environment",
     heading: string,
@@ -107,6 +115,11 @@ export function buildSystemInstructions(params: {
           block,
           section,
           kindNamespace,
+          {
+            absoluteMaxTokens: fragmentCeilings.absoluteMaxTokens,
+            additionalContextValueTokens:
+              fragmentCeilings.additionalContextValueTokens,
+          },
         ),
       );
     }
@@ -127,7 +140,12 @@ export function buildSystemInstructions(params: {
     params.skillCatalogL1 &&
     params.skillCatalogL1.length > 0
   ) {
-    fragments.push(new SkillCatalogFragment(params.skillCatalogL1));
+    fragments.push(
+      new SkillCatalogFragment(params.skillCatalogL1, {
+        skillCatalogL1MaxTokens: fragmentCeilings.skillCatalogL1MaxTokens,
+        skillCatalogL1MaxEntries: fragmentCeilings.skillCatalogL1MaxEntries,
+      }),
+    );
     skillCatalogL1Injected = true;
   }
 
@@ -135,7 +153,13 @@ export function buildSystemInstructions(params: {
     (a, b) => b.priority - a.priority,
   );
   for (const extra of extras) {
-    fragments.push(new ExtraInstructionFragment(extra));
+    fragments.push(
+      new ExtraInstructionFragment(extra, {
+        absoluteMaxTokens: fragmentCeilings.absoluteMaxTokens,
+        additionalContextValueTokens:
+          fragmentCeilings.additionalContextValueTokens,
+      }),
+    );
   }
 
   for (const block of params.memory) fragments.push(new MemoryEvidenceFragment(block));

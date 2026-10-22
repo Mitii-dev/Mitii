@@ -72,10 +72,15 @@ export function renderFragment(
     text: string,
     budgetTokens: number,
   ) => { content: string; usedTokens: number; truncatedTokens: number },
+  /** Override `fragment.maxTokens()` (e.g. Window Budget absolute ceiling). */
+  maxTokensOverride?: number,
 ): RenderedFragment {
   const [start, end] = fragment.markers();
   const rawBody = fragment.body();
-  const cap = fragment.maxTokens();
+  const cap =
+    typeof maxTokensOverride === "number" && Number.isFinite(maxTokensOverride)
+      ? Math.min(fragment.maxTokens(), Math.floor(maxTokensOverride))
+      : fragment.maxTokens();
   const bodyEstimate = estimateTokens(rawBody);
   let body = rawBody;
   let truncated = false;

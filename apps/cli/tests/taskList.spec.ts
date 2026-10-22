@@ -5,7 +5,11 @@ import type { AgentRunResult, TaskList } from '@mitii/sdk';
 
 import { parseCliArgs } from '../src/cli.js';
 import { formatTaskList } from '../src/runReport.js';
-import { nextCliSessionCarry } from '../src/sessionCarry.js';
+import {
+  CLI_SESSION_CARRY_LIMITS,
+  nextCliSessionCarry,
+  resolveCliSessionCarryLimits,
+} from '../src/sessionCarry.js';
 
 const list: TaskList = {
   schemaVersion: 1,
@@ -49,6 +53,36 @@ describe('CLI task list rendering', () => {
     expect(
       parseCliArgs(['node', 'mitii', 'session', '--mode', 'plan']).mode,
     ).toBe('plan');
+  });
+});
+
+describe('CLI session Window Budget carry', () => {
+  it('derives larger carry ceilings from a wide context window', () => {
+    const compact = resolveCliSessionCarryLimits(8_192);
+    const wide = resolveCliSessionCarryLimits(200_000);
+    expect(wide.maxMessages).toBeGreaterThanOrEqual(compact.maxMessages);
+    expect(wide.maxCharsPerMessage).toBeGreaterThanOrEqual(
+      compact.maxCharsPerMessage,
+    );
+    expect(CLI_SESSION_CARRY_LIMITS.maxMessages).toBeGreaterThan(20);
+  });
+
+  it('clips appended turns using derived Window Budget limits', () => {
+    const longAnswer = 'a'.repeat(50_000);
+    const next = nextCliSessionCarry({
+      mode: 'ask',
+      conversation: [],
+      prompt: 'summarize',
+      result: {
+        ...completedResult(),
+        answer: longAnswer,
+      },
+      contextWindowTokens: 8_192,
+    });
+    const limits = resolveCliSessionCarryLimits(8_192);
+    expect(next.conversation[1]?.content.length).toBeLessThanOrEqual(
+      limits.maxCharsPerMessage,
+    );
   });
 });
 

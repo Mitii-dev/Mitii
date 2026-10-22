@@ -43,9 +43,13 @@ export interface AssembledFragments {
  *   (or truncated once when remaining > 40), matching Mitii instruction packing.
  * - Items above `reviewThresholdTokens` are flagged, not auto-rejected.
  */
+/** Prefer `WindowPolicy.fragments` from Window Budget. */
 export type AssembleFragmentLimits = {
   absoluteMaxTokens: number;
   reviewThresholdTokens: number;
+  additionalContextValueTokens?: number;
+  skillCatalogL1MaxTokens?: number;
+  skillCatalogL1MaxEntries?: number;
 };
 
 export function assembleFragments(params: {
@@ -102,6 +106,7 @@ export function assembleFragments(params: {
       fragment,
       (text) => params.estimator.estimate(text),
       params.truncateToBudget,
+      absoluteCap,
     );
 
     if (rendered.tokens > reviewThresholdTokens) {

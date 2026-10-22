@@ -57,6 +57,7 @@ import logoUrl from './assets/mitii-logo.svg';
 import { ActivityBarButton } from './shell/ActivityBarButton.js';
 import {
   IconChat,
+  IconChevronDown,
   IconCode,
   IconContext,
   IconDeveloper,
@@ -3673,8 +3674,10 @@ export function App() {
       <header className="app-topbar">
         <div className="app-topbar__left">
           <div className="app-topbar__brand" title="Mitii">
-            <img src={logoUrl} alt="Mitii" width={22} height={22} />
+            <img src={logoUrl} alt="" width={22} height={22} />
+            <span className="app-topbar__brand-name">Mitii</span>
           </div>
+          <span className="app-topbar__divider" aria-hidden />
           <div className="layout-toggle" role="group" aria-label="Layout">
             <button
               type="button"
@@ -3683,6 +3686,7 @@ export function App() {
               }
               onClick={() => setLayout('chat')}
             >
+              <IconChat size={15} />
               Chat
             </button>
             <button
@@ -3690,6 +3694,7 @@ export function App() {
               className={inCodeMode ? 'is-active' : undefined}
               onClick={() => setLayout('code')}
             >
+              <IconCode size={15} />
               Code
             </button>
           </div>
@@ -3726,114 +3731,126 @@ export function App() {
             }}
           />
           <div className="status-icons status-icons--identity">
-          <div className="top-select">
-            <button
-              type="button"
-              className="top-select__trigger"
-              disabled={busy}
-              title={busy ? 'Agent is running' : 'Profile'}
-              aria-expanded={picker === 'profile'}
-              onClick={() =>
-                setPicker((v) => (v === 'profile' ? null : 'profile'))
-              }
-            >
-              <IconUser size={14} />
-              <span className="top-select__label">Profile</span>
-              <span className="top-select__value">
-                {activeProfile?.name ?? 'Default'}
-              </span>
-              <span aria-hidden>▾</span>
-            </button>
-          </div>
-          <div className="top-workspace-cluster">
             <div className="top-select">
               <button
                 type="button"
-                className="top-select__trigger top-select__trigger--repo"
+                className="top-select__trigger"
                 disabled={busy}
-                aria-expanded={picker === 'workspace'}
-                title={
-                  busy
-                    ? 'Agent is running'
-                    : (snapshot?.workspaceRoot ?? 'Workspace')
-                }
+                title={busy ? 'Agent is running' : 'Profile'}
+                aria-expanded={picker === 'profile'}
                 onClick={() =>
-                  setPicker((v) => (v === 'workspace' ? null : 'workspace'))
+                  setPicker((v) => (v === 'profile' ? null : 'profile'))
                 }
               >
-                <IconWorkspace size={14} />
-                <span className="top-select__label">Workspace</span>
+                <IconUser size={14} />
+                <span className="top-select__label">Profile</span>
                 <span className="top-select__value">
-                  {workspaceLabel(snapshot?.workspaceRoot ?? '') ||
-                    'Select folder'}
+                  {activeProfile?.name ?? 'Default'}
                 </span>
-                <span aria-hidden>▾</span>
+                <IconChevronDown
+                  className="top-select__chevron"
+                  size={11}
+                />
               </button>
             </div>
-            {inCodeMode ? (
-              <div className="top-history" ref={historyMenuRef}>
+            <div className="top-workspace-cluster">
+              <div className="top-select">
                 <button
                   type="button"
-                  className="top-icon-btn"
+                  className="top-select__trigger top-select__trigger--repo"
                   disabled={busy}
-                  title={busy ? 'Agent is running' : 'Recent chats'}
-                  aria-label={busy ? 'Agent is running' : 'Recent chats'}
-                  aria-expanded={historyMenuOpen}
-                  onClick={() => setHistoryMenuOpen((v) => !v)}
+                  aria-expanded={picker === 'workspace'}
+                  title={
+                    busy
+                      ? 'Agent is running'
+                      : (snapshot?.workspaceRoot ?? 'Workspace')
+                  }
+                  onClick={() =>
+                    setPicker((v) => (v === 'workspace' ? null : 'workspace'))
+                  }
                 >
-                  <IconHistory size={15} />
+                  <IconWorkspace size={14} />
+                  <span className="top-select__label">Workspace</span>
+                  <span className="top-select__value">
+                    {workspaceLabel(snapshot?.workspaceRoot ?? '') ||
+                      'Select folder'}
+                  </span>
+                  <IconChevronDown
+                    className="top-select__chevron"
+                    size={11}
+                  />
                 </button>
-                {historyMenuOpen ? (
-                  <div className="top-history__menu" role="menu">
-                    {recentHistory.length === 0 ? (
-                      <p className="top-history__empty">No chats yet</p>
-                    ) : (
-                      recentHistory.map((thread) => (
+              </div>
+              {inCodeMode ? (
+                <div className="top-history" ref={historyMenuRef}>
+                  <button
+                    type="button"
+                    className="top-icon-btn"
+                    disabled={busy}
+                    title={busy ? 'Agent is running' : 'Recent chats'}
+                    aria-label={busy ? 'Agent is running' : 'Recent chats'}
+                    aria-expanded={historyMenuOpen}
+                    onClick={() => setHistoryMenuOpen((v) => !v)}
+                  >
+                    <IconHistory size={15} />
+                  </button>
+                  {historyMenuOpen ? (
+                    <div className="top-history__menu" role="menu">
+                      {recentHistory.length === 0 ? (
+                        <p className="top-history__empty">No chats yet</p>
+                      ) : (
+                        recentHistory.map((thread) => (
+                          <button
+                            key={thread.id}
+                            type="button"
+                            role="menuitem"
+                            className={
+                              thread.id === threadId ? 'is-active' : undefined
+                            }
+                            onClick={() => {
+                              setHistoryMenuOpen(false);
+                              void onOpenThread(thread.id);
+                            }}
+                          >
+                            {thread.title || 'Chat'}
+                          </button>
+                        ))
+                      )}
+                      {hasMoreHistory ? (
                         <button
-                          key={thread.id}
                           type="button"
                           role="menuitem"
-                          className={
-                            thread.id === threadId ? 'is-active' : undefined
-                          }
+                          className="top-history__more"
                           onClick={() => {
                             setHistoryMenuOpen(false);
-                            void onOpenThread(thread.id);
+                            setLayout('chat');
                           }}
                         >
-                          {thread.title || 'Chat'}
+                          More…
                         </button>
-                      ))
-                    )}
-                    {hasMoreHistory ? (
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className="top-history__more"
-                        onClick={() => {
-                          setHistoryMenuOpen(false);
-                          setLayout('chat');
-                        }}
-                      >
-                        More…
-                      </button>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-            <button
-              type="button"
-              className="top-icon-btn"
-              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-              aria-label={
-                theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'
-              }
-              onClick={toggleTheme}
-            >
-              {theme === 'dark' ? <IconSun size={15} /> : <IconMoon size={15} />}
-            </button>
-          </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              <button
+                type="button"
+                className="top-icon-btn"
+                title={
+                  theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'
+                }
+                aria-label={
+                  theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'
+                }
+                onClick={toggleTheme}
+              >
+                {theme === 'dark' ? (
+                  <IconSun size={15} />
+                ) : (
+                  <IconMoon size={15} />
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </header>

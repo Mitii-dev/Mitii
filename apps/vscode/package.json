@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
-  "version": "2.10.35",
+  "version": "2.10.36",
   "publisher": "mitii",
   "license": "AGPL-3.0-or-later",
   "icon": "media/mitii-logo.png",
@@ -701,6 +701,258 @@
           "default": 16,
           "minimum": 1,
           "description": "Ceiling for verification checks."
+        },
+        "mitii.tokenBudget.carryMaxMessagesRatio": {
+          "type": "number",
+          "default": 0.003,
+          "description": "Fraction of usable input converted to max prior turns forwarded into the engine.",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "mitii.tokenBudget.carryMaxMessagesMin": {
+          "type": "number",
+          "default": 48,
+          "description": "Floor for prior turns forwarded into the engine.",
+          "minimum": 1
+        },
+        "mitii.tokenBudget.carryMaxMessagesMax": {
+          "type": "number",
+          "default": 200,
+          "description": "Ceiling for prior turns forwarded into the engine.",
+          "minimum": 1
+        },
+        "mitii.tokenBudget.carryMaxCharsPerMessageRatio": {
+          "type": "number",
+          "default": 0.8,
+          "description": "Fraction of usable input converted to per-message character ceiling for carry.",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "mitii.tokenBudget.carryMaxCharsPerMessageMin": {
+          "type": "number",
+          "default": 24000,
+          "description": "Floor for per-message character ceiling when carrying history.",
+          "minimum": 1
+        },
+        "mitii.tokenBudget.carryMaxCharsPerMessageMax": {
+          "type": "number",
+          "default": 100000,
+          "description": "Ceiling for per-message character budget when carrying history.",
+          "minimum": 1
+        },
+        "mitii.tokenBudget.injectionProjectRuleCharsRatio": {
+          "type": "number",
+          "default": 0.12,
+          "description": "Fraction of usable input for a single project-rule file body.",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "mitii.tokenBudget.injectionProjectRuleCharsMin": {
+          "type": "number",
+          "default": 4000,
+          "description": "Floor for a single project-rule file body.",
+          "minimum": 1
+        },
+        "mitii.tokenBudget.injectionProjectRuleCharsMax": {
+          "type": "number",
+          "default": 12000,
+          "description": "Ceiling for a single project-rule file body.",
+          "minimum": 1
+        },
+        "mitii.tokenBudget.injectionProjectRulesTotalCharsRatio": {
+          "type": "number",
+          "default": 0.25,
+          "description": "Fraction of usable input for all project-rule bodies combined.",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "mitii.tokenBudget.injectionProjectRulesTotalCharsMin": {
+          "type": "number",
+          "default": 8000,
+          "description": "Floor for aggregate project-rule injection.",
+          "minimum": 1
+        },
+        "mitii.tokenBudget.injectionProjectRulesTotalCharsMax": {
+          "type": "number",
+          "default": 24000,
+          "description": "Ceiling for aggregate project-rule injection.",
+          "minimum": 1
+        },
+        "mitii.tokenBudget.injectionRepoMapCharsRatio": {
+          "type": "number",
+          "default": 0.3,
+          "description": "Fraction of usable input for host repo-map / sketch character budget.",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "mitii.tokenBudget.injectionRepoMapCharsMin": {
+          "type": "number",
+          "default": 8000,
+          "description": "Floor for host repo-map character budget.",
+          "minimum": 1
+        },
+        "mitii.tokenBudget.injectionRepoMapCharsMax": {
+          "type": "number",
+          "default": 24000,
+          "description": "Ceiling for host repo-map character budget.",
+          "minimum": 1
+        },
+        "mitii.tokenBudget.injectionRepoMapFilesMax": {
+          "type": "number",
+          "default": 400,
+          "description": "Absolute file-count ceiling for repo-map assembly (not window-scaled).",
+          "minimum": 1
+        },
+        "mitii.tokenBudget.injectionSketchCharsRatio": {
+          "type": "number",
+          "default": 0.3,
+          "description": "Fraction of usable input for workspace-sketch character budget.",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "mitii.tokenBudget.injectionSketchCharsMin": {
+          "type": "number",
+          "default": 8000,
+          "description": "Floor for workspace-sketch character budget.",
+          "minimum": 1
+        },
+        "mitii.tokenBudget.injectionSketchCharsMax": {
+          "type": "number",
+          "default": 24000,
+          "description": "Ceiling for workspace-sketch character budget.",
+          "minimum": 1
+        },
+        "mitii.tokenBudget.injectionSketchItemsMax": {
+          "type": "number",
+          "default": 200,
+          "description": "Absolute item-count ceiling for workspace sketch (not window-scaled).",
+          "minimum": 1
+        },
+        "mitii.tokenBudget.injectionSelectionCharsRatio": {
+          "type": "number",
+          "default": 0.06,
+          "description": "Fraction of usable input for editor selection injected into the prompt.",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "mitii.tokenBudget.injectionSelectionCharsMin": {
+          "type": "number",
+          "default": 2000,
+          "description": "Floor for editor selection characters.",
+          "minimum": 1
+        },
+        "mitii.tokenBudget.injectionSelectionCharsMax": {
+          "type": "number",
+          "default": 8000,
+          "description": "Ceiling for editor selection characters.",
+          "minimum": 1
+        },
+        "mitii.tokenBudget.injectionReviewDiffFileCharsRatio": {
+          "type": "number",
+          "default": 0.1,
+          "description": "Fraction of usable input for per-file review/git diff clip.",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "mitii.tokenBudget.injectionReviewDiffFileCharsMin": {
+          "type": "number",
+          "default": 4000,
+          "description": "Floor for per-file review/git diff characters.",
+          "minimum": 1
+        },
+        "mitii.tokenBudget.injectionReviewDiffFileCharsMax": {
+          "type": "number",
+          "default": 12000,
+          "description": "Ceiling for per-file review/git diff characters.",
+          "minimum": 1
+        },
+        "mitii.tokenBudget.injectionReviewDiffTotalCharsRatio": {
+          "type": "number",
+          "default": 0.5,
+          "description": "Fraction of usable input for aggregate review/git diff clip.",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "mitii.tokenBudget.injectionReviewDiffTotalCharsMin": {
+          "type": "number",
+          "default": 16000,
+          "description": "Floor for aggregate review/git diff characters.",
+          "minimum": 1
+        },
+        "mitii.tokenBudget.injectionReviewDiffTotalCharsMax": {
+          "type": "number",
+          "default": 48000,
+          "description": "Ceiling for aggregate review/git diff characters.",
+          "minimum": 1
+        },
+        "mitii.tokenBudget.fragmentAbsoluteMaxTokensRatio": {
+          "type": "number",
+          "default": 0.12,
+          "description": "Fraction of usable input for per-fragment hard token ceiling.",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "mitii.tokenBudget.fragmentAbsoluteMaxTokensMin": {
+          "type": "number",
+          "default": 4000,
+          "description": "Floor for per-fragment hard token ceiling.",
+          "minimum": 1
+        },
+        "mitii.tokenBudget.fragmentAbsoluteMaxTokensMax": {
+          "type": "number",
+          "default": 16000,
+          "description": "Ceiling for per-fragment hard token budget.",
+          "minimum": 1
+        },
+        "mitii.tokenBudget.fragmentReviewThresholdTokens": {
+          "type": "number",
+          "default": 1000,
+          "description": "Soft review-flag threshold for large fragments (not a hard reject).",
+          "minimum": 1
+        },
+        "mitii.tokenBudget.fragmentAdditionalContextValueTokensRatio": {
+          "type": "number",
+          "default": 0.02,
+          "description": "Fraction of usable input for environment/additional-context value bodies.",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "mitii.tokenBudget.fragmentAdditionalContextValueTokensMin": {
+          "type": "number",
+          "default": 400,
+          "description": "Floor for additional-context value body tokens.",
+          "minimum": 1
+        },
+        "mitii.tokenBudget.fragmentAdditionalContextValueTokensMax": {
+          "type": "number",
+          "default": 2000,
+          "description": "Ceiling for additional-context value body tokens.",
+          "minimum": 1
+        },
+        "mitii.tokenBudget.fragmentSkillCatalogL1MaxTokensRatio": {
+          "type": "number",
+          "default": 0.008,
+          "description": "Fraction of usable input for L1 skill catalog strip.",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "mitii.tokenBudget.fragmentSkillCatalogL1MaxTokensMin": {
+          "type": "number",
+          "default": 200,
+          "description": "Floor for L1 skill catalog strip tokens.",
+          "minimum": 1
+        },
+        "mitii.tokenBudget.fragmentSkillCatalogL1MaxTokensMax": {
+          "type": "number",
+          "default": 800,
+          "description": "Ceiling for L1 skill catalog strip tokens.",
+          "minimum": 1
+        },
+        "mitii.tokenBudget.fragmentSkillCatalogL1MaxEntries": {
+          "type": "number",
+          "default": 40,
+          "description": "Absolute entry count for L1 skill catalog (not window-scaled).",
+          "minimum": 1
         },
         "mitii.loopPolicy.enabled": {
           "type": "boolean",
