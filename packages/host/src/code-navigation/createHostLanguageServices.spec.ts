@@ -9,7 +9,10 @@ import { createHostLanguageServices } from './createHostLanguageServices.js';
 describe('createHostLanguageServices', () => {
   it('degrades to the repo graph when no tsconfig is present', () => {
     return withWorkspace(async (workspaceRoot) => {
-      const services = createHostLanguageServices({ workspaceRoot });
+      const services = createHostLanguageServices({
+        workspaceRoot,
+        lspServers: [],
+      });
       expect(services.capability.status).toBe('degraded');
       expect(services.capability.reason).toBe('language_server_not_configured');
       // CLI still gets Node module-load diagnostics for .js/.mjs/.cjs.
@@ -39,7 +42,10 @@ describe('createHostLanguageServices', () => {
         'export function greet(name: string) {\n  return name;\n}\nconst broken: number = "x";\n',
       );
 
-      const services = createHostLanguageServices({ workspaceRoot });
+      const services = createHostLanguageServices({
+        workspaceRoot,
+        lspServers: [],
+      });
       try {
         expect(services.capability.status).toBe('available');
         expect(services.capability.reason).toBe('typescript_language_service');
@@ -92,7 +98,10 @@ describe('createHostLanguageServices', () => {
         ].join('\n'),
       );
 
-      const services = createHostLanguageServices({ workspaceRoot });
+      const services = createHostLanguageServices({
+        workspaceRoot,
+        lspServers: [],
+      });
       try {
         const implementations = await services.codeNavigation.implementation?.({
           relativePath: 'src/port.ts',
@@ -138,7 +147,10 @@ describe('createHostLanguageServices', () => {
         'export default function App() { return null; }\n',
       );
 
-      const services = createHostLanguageServices({ workspaceRoot });
+      const services = createHostLanguageServices({
+        workspaceRoot,
+        lspServers: [],
+      });
       try {
         expect(services.capability.status).toBe('degraded');
         expect(services.diagnostics).toBeDefined();
@@ -171,7 +183,10 @@ describe('createHostLanguageServices', () => {
         'export function greet(name: string) {\n  return name;\n}\n',
       );
 
-      const services = createHostLanguageServices({ workspaceRoot });
+      const services = createHostLanguageServices({
+        workspaceRoot,
+        lspServers: [],
+      });
       try {
         const missing = await services.diagnostics?.readDiagnostics({
           workspaceRoot,
@@ -220,7 +235,10 @@ describe('createHostLanguageServices', () => {
         'import { helper } from "./util";\nexport const value = helper();\n',
       );
 
-      const services = createHostLanguageServices({ workspaceRoot });
+      const services = createHostLanguageServices({
+        workspaceRoot,
+        lspServers: [],
+      });
       try {
         const defs = await services.codeNavigation.definition({
           relativePath: 'src/main.ts',
@@ -265,7 +283,10 @@ describe('createHostLanguageServices', () => {
         'import type { User } from "./types";\nexport function take(user: User) {\n  return user.id;\n}\n',
       );
 
-      const services = createHostLanguageServices({ workspaceRoot });
+      const services = createHostLanguageServices({
+        workspaceRoot,
+        lspServers: [],
+      });
       try {
         const typed = await services.codeNavigation.typeDefinition?.({
           relativePath: 'src/use.ts',
@@ -279,6 +300,60 @@ describe('createHostLanguageServices', () => {
               item.symbolName === 'User',
           ),
         ).toBe(true);
+      } finally {
+        services.dispose();
+      }
+    });
+  });
+
+  it('honors includeDeclaration=false when collecting references', () => {
+    return withWorkspace(async (workspaceRoot) => {
+      await writeFile(
+        join(workspaceRoot, 'tsconfig.json'),
+        JSON.stringify({
+          compilerOptions: {
+            strict: true,
+            target: 'ES2022',
+            module: 'ESNext',
+            moduleResolution: 'Bundler',
+            noEmit: true,
+            skipLibCheck: true,
+          },
+          include: ['src'],
+        }),
+      );
+      await writeFile(
+        join(workspaceRoot, 'src/util.ts'),
+        'export function helper() {\n  return 1;\n}\n',
+      );
+      await writeFile(
+        join(workspaceRoot, 'src/main.ts'),
+        'import { helper } from "./util";\nexport const value = helper();\n',
+      );
+
+      const services = createHostLanguageServices({
+        workspaceRoot,
+        lspServers: [],
+      });
+      try {
+        const refs = await services.codeNavigation.references({
+          relativePath: 'src/util.ts',
+          line: 1,
+          column: 17,
+          includeDeclaration: false,
+        });
+        expect(
+          refs.every(
+            (item) =>
+              !(
+                item.relativePath.endsWith('util.ts') &&
+                item.startLine === 1
+              ),
+          ),
+        ).toBe(true);
+        expect(refs.some((item) => item.relativePath.endsWith('main.ts'))).toBe(
+          true,
+        );
       } finally {
         services.dispose();
       }

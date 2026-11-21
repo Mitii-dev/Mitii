@@ -52,7 +52,7 @@ export const policyLabFileSchema = z
     previewContextWindowTokens: z.number().int().positive().optional(),
     loop: bandLoopMapSchema,
     window: bandWindowMapSchema,
-    /** Phase 6: v8-engine ship knobs per band. */
+    /** v8-engine ship knobs per band. */
     v8Loop: bandV8LoopMapSchema,
   })
   .strict();

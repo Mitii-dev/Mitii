@@ -424,7 +424,7 @@ export async function finishAfterLoop(
     }
 
     if (verificationOutcome.kind === "ok") {
-      // Phase 1: ACCEPTED = hard terminal. Never Continue/repair/rediscover.
+      // ACCEPTED = hard terminal. Never Continue/repair/rediscover.
       return finishVerificationAccepted({
         runtime,
         runId,

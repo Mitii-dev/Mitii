@@ -8,7 +8,7 @@ import {
 } from "../fixtures/memoryEvalCases";
 
 /**
- * Phase 9 memory evaluation gates:
+ * memory evaluation gates:
  * - Relevant-memory recall ≥90%
  * - Irrelevant-memory rate <10%
  * - Stale memories accepted = 0

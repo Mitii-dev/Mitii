@@ -15,7 +15,7 @@ export interface DeliveryBusOptions {
 }
 
 /**
- * Phase 3 delivery bus: enqueue after runs, flush pending with retries.
+ * delivery bus: enqueue after runs, flush pending with retries.
  * Sender is injected by host/CLI (connect adapters / webhook / gh).
  */
 export class DeliveryBus {

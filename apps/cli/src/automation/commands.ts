@@ -65,7 +65,7 @@ export async function runScheduleCommand(options: {
   const [sub = 'list', ...rest] = peeled.args;
 
   if (sub === 'help' || sub === '--help' || sub === '-h') {
-    io.writeStdout(`mitii schedule — automation schedules (Phase 1)
+ io.writeStdout(`mitii schedule — automation schedules
 
   create <name> --cron "0 9 * * *" --prompt "…" [--workspace <path>]
   list | get <id> | pause <id> | resume <id> | delete <id>
@@ -371,7 +371,7 @@ export async function runEventsCommand(options: {
   const [sub = 'list', ...rest] = peeled.args;
 
   if (sub === 'help' || sub === '--help' || sub === '-h') {
-    io.writeStdout(`mitii events — automation event ingress (Phase 2)
+ io.writeStdout(`mitii events — automation event ingress
 
   list [--json]
   ingest --type <eventType> --source <source> [--id <id>] [--subject <s>]

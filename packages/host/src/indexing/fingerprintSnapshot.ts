@@ -164,7 +164,7 @@ export async function buildWorkspaceSnapshot(
 
 /**
  * When a fingerprint pin is published over an existing on-disk index:
- * - Phase 5: rebind `snapshotId` to the persisted full-index fingerprint so
+ * - rebind `snapshotId` to the persisted full-index fingerprint so
  *   Repo Map / Repo Graph identity matches (do not invent a new pin id).
  * - Copy the persisted embedding profile so vector retrieval does not report
  *   published_profile_missing.

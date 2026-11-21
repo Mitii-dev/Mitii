@@ -777,7 +777,7 @@ export function GitWorkingTreePane(props: GitWorkingTreePaneProps) {
                 void loadGit();
               }}
             >
-              <IconRefresh size={15} />
+              <IconRefresh size={13} />
             </button>
           </div>
         </header>

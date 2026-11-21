@@ -61,7 +61,7 @@ ingest logs → fingerprint → search code → reproduce
   └── reproduced + autonomy apply* → fix → verify → ticket + patch (+ draft PR if asked)
 ```
 
-## Ticket creation (Phase 0)
+## Ticket creation
 
 Prefer GitHub Issues via `gh`:
 

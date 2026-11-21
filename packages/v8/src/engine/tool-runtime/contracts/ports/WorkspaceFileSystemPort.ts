@@ -49,7 +49,7 @@ export interface WorkspaceReadFileResult {
 /**
  * Workspace filesystem used by Tool Runtime.
  * Implementations MUST use lstat/realpath semantics for containment.
- * Write methods are required for Phase 8 mutation tools.
+ * Write methods are required mutation tools.
  */
 export interface WorkspaceFileSystemPort {
   resolve(workspaceRoot: string, relativePath: string): string;

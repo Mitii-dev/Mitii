@@ -57,7 +57,7 @@ function createRuntime(root = directory({ "src": directory({ "a.ts": file("const
   };
 }
 
-describe("Tool Runtime Phase 8 mutations", () => {
+describe("Tool Runtime mutations", () => {
   it("requires approval before apply_patch when approvalMode is when_required", async () => {
     const { runtime } = createRuntime();
     const args = {

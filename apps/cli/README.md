@@ -630,14 +630,14 @@ Cursor Cloud Agents are a separate agent API, not an LLM endpoint. Point `openai
 
 ## Out of scope
 
-Daemon and board UIs are not part of this CLI yet (Phase 1+). Channel bridges are
+Daemon and board UIs are separate from this interactive CLI. Channel bridges are
 Telegram, Discord, and Slack via `mitii connect`. GitHub work uses the repo +
 tools/`gh`, not a `connect` adapter (see **Connect** above).
 
-**Phase 0 CI automation** works today: `--origin` / `--autonomy` / `--agent` /
+CI / unattended automation works today: `--origin` / `--autonomy` / `--agent` /
 `mitii run --auto`, plus optional `.mitii/safety.json` (tighten-only) and
 `MITII_SANDBOX=1` (OS process sandbox, fail-closed). See
-[docs/SAFETY_PHASES.md](../../docs/SAFETY_PHASES.md).
+[docs/SAFETY.md](../../docs/SAFETY.md).
 `--prompt-file` plus the example workflows under
 `docs/examples/workflows/mitii-*.yml`. See
 [docs/automation/README.md](../../docs/automation/README.md).

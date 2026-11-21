@@ -13,7 +13,7 @@ export interface AutomationsPanelProps {
 }
 
 /**
- * Phase 5 — Automations control surface (schedules + recent runs).
+ * Automations control surface (schedules + recent runs).
  */
 export function AutomationsPanel(props: AutomationsPanelProps) {
   const { specs, runs, loading, error, onRefresh } = props;

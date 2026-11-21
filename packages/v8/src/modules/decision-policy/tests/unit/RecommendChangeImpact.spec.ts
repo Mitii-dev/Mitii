@@ -237,7 +237,7 @@ describe("resolvePlanningDepth change-impact recommend", () => {
   });
 });
 
-describe("isConcreteLocalizedMutationAsk (Phase 4)", () => {
+describe("isConcreteLocalizedMutationAsk", () => {
   it("detects short nav/label change-to asks", () => {
     expect(isConcreteLocalizedMutationAsk("Change the nav label to Docs")).toBe(
       true,

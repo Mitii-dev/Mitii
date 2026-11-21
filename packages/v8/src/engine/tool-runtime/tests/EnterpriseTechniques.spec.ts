@@ -167,7 +167,7 @@ describe("enterprise P0 techniques", () => {
         callId: "s-defaults",
         toolName: "sequential_thinking",
         arguments: {
-          thought: "Phase 0 inventory without counters",
+ thought: "inventory without counters",
           nextThoughtNeeded: "true",
         },
         grant: createReadOnlyGrant({

@@ -51,6 +51,17 @@ export function inferMaximumOutputTokensFromModelId(
   return undefined;
 }
 
+/** Cap completion max so it never exceeds the effective context window. */
+export function clampMaximumOutputTokensToContext(
+  maximumOutputTokens: number,
+  contextWindowTokens: number,
+): number {
+  const window = Math.max(1, Math.floor(contextWindowTokens));
+  const maxOut = Math.floor(maximumOutputTokens);
+  if (!Number.isFinite(maxOut) || maxOut <= 0) return 0;
+  return Math.min(maxOut, window);
+}
+
 /**
  * Effective context window: **settings value wins** when positive.
  * Only when stored is 0 (auto) do we fall back to model preset → provider → default.

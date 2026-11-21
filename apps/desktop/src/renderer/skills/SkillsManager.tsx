@@ -279,7 +279,7 @@ export function SkillsManager(props: Props) {
             title="Refresh"
             onClick={() => void reload()}
           >
-            <IconRefresh size={16} />
+            <IconRefresh size={13} />
           </button>
         </div>
       </header>
@@ -304,7 +304,7 @@ export function SkillsManager(props: Props) {
       {!selectedId ? (
         <>
           <div className="skills-manager__search skills-manager__search--gallery">
-            <IconSearch size={16} />
+            <IconSearch size={13} />
             <input
               type="search"
               value={query}

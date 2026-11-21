@@ -111,7 +111,7 @@ export function computeSizeDraft(params: {
     reasons.push("single_short_ask");
   }
 
-  // Phase 4: short clear UI copy stays small (avoid medium close-loop / oversized plan).
+  // short clear UI copy stays small (avoid medium close-loop / oversized plan).
   if (
     approxTokens < TOKEN_MEDIUM_CANDIDATE &&
     /\b(?:nav(?:igation|bar)?|label|button|link|title|heading|menu)\b/i.test(

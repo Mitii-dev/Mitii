@@ -38,7 +38,7 @@ function executeStartInput() {
   };
 }
 
-describe("V8EnginePipeline Phase 2 thin loop", () => {
+describe("V8EnginePipeline thin loop", () => {
   it("completes a direct_answer ask route", async () => {
     const engine = new V8EnginePipeline(
       createStubDependencies({

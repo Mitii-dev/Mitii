@@ -181,7 +181,7 @@ export function RecipesManager(props: Props) {
             title="Refresh"
             onClick={() => void reload()}
           >
-            <IconRefresh size={16} />
+            <IconRefresh size={13} />
           </button>
         </div>
       </header>
@@ -218,7 +218,7 @@ export function RecipesManager(props: Props) {
       ) : (
         <>
           <div className="recipes-manager__search">
-            <IconSearch size={16} />
+            <IconSearch size={13} />
             <input
               type="search"
               value={query}

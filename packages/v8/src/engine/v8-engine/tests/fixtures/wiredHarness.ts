@@ -101,7 +101,7 @@ export interface CreateWiredHarnessOptions {
 
 /**
  * Compose real Intake / Understanding / Decision / Prompt / State / Context /
- * Tool Runtime facades for Phase 7 end-to-end tests.
+ * Tool Runtime facades end-to-end tests.
  */
 export async function createWiredHarness(
   options: CreateWiredHarnessOptions = {},

@@ -50,7 +50,7 @@ function state(params: {
   };
 }
 
-describe("compareRepoBuildStates (Phase 2 NEW∩IN_SCOPE∩ACTIONABLE)", () => {
+describe("compareRepoBuildStates", () => {
   const typecheckFailed = check({
     checkId: "inferred:apps/desktop:typecheck:typecheck",
     kind: "typecheck",

@@ -87,12 +87,13 @@ export interface CreateMitiiClientOptions {
    */
   taskListAutoAdvance?: boolean;
   /**
-   * Orchestrator implementation. When omitted, defaults to Phase 5 `v8`.
-   * Pass `legacy` to keep Agent Engine. Hosts map `mitii.engine.implementation`.
+   * Orchestrator implementation. When omitted, defaults to `v8`.
+   * Pass `legacy` only as a compatibility alias (always resolves to v8).
+   * Hosts map `mitii.engine.implementation`.
    * Do not resume a run across a flip — checkpoints are best-effort compatible.
    */
   engineImplementation?: V8EngineImplementation;
-  /** Restrict-only ToolAdversaryPort (Phase 3). Default unset = no-op. */
+  /** Restrict-only ToolAdversaryPort. Default unset = no-op. */
   adversary?: ToolAdversaryPort;
   adversaryFailMode?: AdversaryFailMode;
 }

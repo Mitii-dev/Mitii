@@ -11,7 +11,7 @@ import { createReadOnlyGrant } from "./fixtures/grants";
 
 const WORKSPACE = "/workspace";
 
-describe("Phase 3 polish", () => {
+describe("run_readonly_command argv guard", () => {
   it("soft-blocks mutating argv on run_readonly_command", async () => {
     const runtime = new ToolRuntimePipeline({
       fileSystem: new InMemoryFileSystemAdapter(

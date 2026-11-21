@@ -46,7 +46,7 @@ function mapRun(run: {
 }
 
 /**
- * Phase 5 — host helpers for Automations panel (shared SQLite control plane).
+ * host helpers for Automations panel (shared SQLite control plane).
  */
 export function handleAutomationHostMessage(input: {
   message:

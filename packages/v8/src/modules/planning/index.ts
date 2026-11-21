@@ -148,7 +148,7 @@ export type {
   PlanningErrorCode,
 } from "./contracts";
 
-/** Bridge maps (Phase 9.2) — understanding → planning evidence / impact. */
+/** Bridge maps — understanding → planning evidence / impact. */
 export {
   mapUnderstandingToPlanningEvidence,
   collectPlanningImpactReports,

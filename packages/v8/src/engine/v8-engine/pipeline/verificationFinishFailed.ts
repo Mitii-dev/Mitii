@@ -409,7 +409,7 @@ export async function handleVerificationFailed(params: {
     });
   }
   // Finalize verification evidence and memory. Repair exhaustion is a hard
-  // STOP/REPORT — never offer verification_repair_capped Continue (Phase 1).
+ // STOP/REPORT — never offer verification_repair_capped Continue.
   if (
     verificationOutcome.repairable &&
     currentOutcome.kind === "completed" &&

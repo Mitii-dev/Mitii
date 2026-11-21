@@ -20,7 +20,7 @@ export interface ToolExecutionContext {
    */
   maxContentChars?: number;
   signal?: AbortSignal;
-  /** Present when Tool Runtime is configured for Phase 8 mutations. */
+ /** Present when Tool Runtime is configured for mutations. */
   transactions?: MutationTransactionRegistry;
   dirtyPaths?: readonly string[];
   alreadyMutatedPaths?: readonly string[];

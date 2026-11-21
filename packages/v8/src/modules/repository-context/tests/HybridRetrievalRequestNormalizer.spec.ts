@@ -26,7 +26,7 @@ describe("HybridRetrievalRequestNormalizer", () => {
   const options = new HybridRetrieverOptionsResolver().resolve({});
 
   it("rebinds stale repo map to the pinned snapshot instead of dropping it", () => {
-    // Phase 5: fingerprint-pin / restart must not discard map/graph intelligence.
+    // fingerprint-pin / restart must not discard map/graph intelligence.
     const result = normalizer.normalize(
       {
         workspace: "workspace",

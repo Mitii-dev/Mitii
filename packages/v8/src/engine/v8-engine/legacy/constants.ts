@@ -209,7 +209,7 @@ export const AGENT_REASON_CODES = [
   /** Recovery used or miss not local — clarify/escalate, no open search. */
   "evidence_recovery_exhausted",
   /**
-   * Bind+recovery exhausted — hard STOP/REPORT (Phase 3 discovery rail).
+ * Bind+recovery exhausted — hard STOP/REPORT.
    * No evidence_clarify Continue that reopens discovery.
    */
   "evidence_recovery_exhausted_terminal",
@@ -243,7 +243,7 @@ export const AGENT_REASON_CODES = [
   "verification_repair_budget_reserved",
   /**
    * Gate accepted — run is hard-terminal (no Continue / repair / rediscover).
-   * Phase 1 execution reliability: ACCEPTED = STOP.
+   * execution reliability: ACCEPTED = STOP.
    */
   "verification_accepted_terminal",
   /**
@@ -259,7 +259,7 @@ export const AGENT_REASON_CODES = [
   "budget_exhausted",
   "provider_failed",
   /**
-   * Model transport/provider unreachable after gateway retries (Phase 5).
+ * Model transport/provider unreachable after gateway retries.
    * Distinct from agent logic failure — hosts should show infrastructure UX
    * and prefer Continue/resume over a bare agent-failed exit.
    */

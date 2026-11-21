@@ -1,4 +1,4 @@
-/** Tool schema catalog — split by family (Phase 1.1). */
+/** Tool schema catalog — split by family. */
 export * from "./families/discovery";
 export * from "./families/codeIntel";
 export * from "./families/gitMemory";

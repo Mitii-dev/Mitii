@@ -55,7 +55,7 @@ const FORBIDDEN_V8_IMPORT_PATTERNS = [
   /from ['"](?:\.\.\/)+(?:kernel|interfaces|features|composition)(?:\/|['"])/,
 ] as const;
 
-describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
+describe('v8 module boundaries', () => {
   it('places live V8 under packages/v8 with no parallel src/v8 tree', () => {
     expect(existsSync(v8PackageRoot)).toBe(true);
     expect(existsSync(modulesRoot)).toBe(true);
@@ -95,7 +95,7 @@ describe('v8 module boundaries (Phase 0/1/2/3/4/5/6/7/8/9/11/12/13)', () => {
     expect(missing).toEqual([]);
   });
 
-  it('exposes Phase 1 public facades from packages/v8/src/index.ts', () => {
+  it('exposes public facades from packages/v8/src/index.ts', () => {
     const index = readFileSync(join(v8SrcRoot, 'index.ts'), 'utf8');
     expect(index).toContain('RequestIntakePipeline');
     expect(index).toContain('UserRequestEnvelopeBuilder');

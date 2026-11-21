@@ -29,13 +29,14 @@ Workspace root `package.json` is **private** and must not ship as the product.
 ## Build commands
 
 ```bash
-pnpm run build               # product packages + apps/vscode
+pnpm run build               # product packages + vscode + desktop
 pnpm run build:all           # build + Electron native SQLite staged for F5
 pnpm run build:vscode        # extension only
-pnpm run build:cli           # CLI only
-pnpm run build:mcp           # MCP client only
-pnpm run build:mcp-web       # MCP web server only
-pnpm run package             # VSIX via apps/vscode (target from MITII_VSCODE_TARGET or local)
+pnpm run build:desktop       # desktop only
+pnpm run build:cli           # CLI + deps
+pnpm --filter @mitii/mcp build
+pnpm --filter @mitii/mcp-web build
+pnpm run package             # VSIX via apps/vscode
 ```
 
 ## Required gates before release

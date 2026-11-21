@@ -1,5 +1,5 @@
 /**
- * Phase 5: classify model-gateway transport failures as infrastructure,
+ * classify model-gateway transport failures as infrastructure,
  * not agent logic failure. Bounded retry already lives in the gateway;
  * after exhaustion the engine should suspend Continuable state (or report
  * infrastructure) instead of a bare "agent failed".

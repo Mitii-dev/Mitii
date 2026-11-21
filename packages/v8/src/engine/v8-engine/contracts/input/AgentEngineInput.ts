@@ -157,8 +157,8 @@ export const agentEngineStartInputSchema = z
       .strict()
       .optional(),
     /**
-     * Optional host lab overrides for v8-engine knobs (Phase 6).
-     * Merged after v8 band tables. Ignored by legacy agent-engine.
+     * Optional host lab overrides for v8-engine knobs.
+     * Merged after v8 band tables.
      * Keys must match V8_ENGINE_THRESHOLDS; unknown keys stripped at resolve.
      */
     v8LoopPolicy: z
@@ -193,7 +193,7 @@ export const agentEngineStartInputSchema = z
       .default([]),
     /**
      * Understanding Ballot + Decision Steering feature flags.
-     * Defaults off — see docs/UNDERSTANDING_BALLOT_AND_STEERING.md.
+     * Defaults off — see packages/v8/ARCHITECTURE.md (understanding ballot).
      */
     steering: z
       .object({

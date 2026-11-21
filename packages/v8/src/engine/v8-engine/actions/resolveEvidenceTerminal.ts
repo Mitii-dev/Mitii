@@ -2,7 +2,7 @@ import type { AgentReasonCode } from "../contracts";
 import type { ToolLoopOutcome } from "../pipeline/types";
 
 /**
- * Phase 3 discovery-rail terminals for post-plan evidence / bind exhaustion.
+ * discovery-rail terminals for post-plan evidence / bind exhaustion.
  *
  * Hard invariants (Medium budget numbers unchanged):
  * - Recovery exhausted / miss-not-local → STOP/REPORT (no evidence_clarify Continue)

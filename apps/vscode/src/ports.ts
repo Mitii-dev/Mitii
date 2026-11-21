@@ -53,6 +53,7 @@ import {
 } from './modelIoLog.js';
 import { readModelIoLoggingEnabled } from './modelIoSettings.js';
 import {
+  clampMaximumOutputTokensToContext,
   inferMaximumOutputTokensFromModelId,
   normalizeMaximumOutputTokens,
   resolveEffectiveContextWindow,
@@ -183,10 +184,12 @@ export async function resolveVscodePorts(
     providerType,
   );
   const hostMaximumOutputTokens = resolveHostMaximumOutputTokens(cfg);
-  const capabilityMaximumOutputTokens =
+  const capabilityMaximumOutputTokens = clampMaximumOutputTokensToContext(
     hostMaximumOutputTokens > 0
       ? hostMaximumOutputTokens
-      : (inferMaximumOutputTokensFromModelId(model) ?? 0);
+      : (inferMaximumOutputTokensFromModelId(model) ?? 0),
+    contextWindowTokens,
+  );
   const ports = createHostLlmPorts({
     type: providerType,
     preset: presetId,

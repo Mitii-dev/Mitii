@@ -172,10 +172,9 @@ export const AGENT_ENGINE_THRESHOLDS = {
 } as const;
 
 /**
- * Routes supported by the single-agent Engine after Phase 8.
- * Phase 9 optionally attaches Skills/Memory before prompt construction.
+ * Routes supported by the single-agent Engine.
  */
-export const PHASE8_SUPPORTED_ROUTES = [
+export const SUPPORTED_EXECUTION_ROUTES = [
   "direct_answer",
   "repository_answer",
   "clarify",
@@ -184,13 +183,18 @@ export const PHASE8_SUPPORTED_ROUTES = [
   "execute",
 ] as const;
 
-/** @deprecated Use PHASE8_SUPPORTED_ROUTES. Kept for existing Phase 7 tests. */
-export const PHASE7_SUPPORTED_ROUTES = [
+/** @deprecated Prefer SUPPORTED_EXECUTION_ROUTES. */
+export const LEGACY_ANSWER_ROUTES = [
   "direct_answer",
   "repository_answer",
   "clarify",
   "diagnose",
 ] as const;
+
+/** @deprecated Use SUPPORTED_EXECUTION_ROUTES. */
+export const PHASE8_SUPPORTED_ROUTES = SUPPORTED_EXECUTION_ROUTES;
+/** @deprecated Use LEGACY_ANSWER_ROUTES. */
+export const PHASE7_SUPPORTED_ROUTES = LEGACY_ANSWER_ROUTES;
 
 /**
  * Default JSON tool schemas for grant-filtered prompt attachment.

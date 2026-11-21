@@ -20,7 +20,7 @@ export type CompareEngineImplementationsResult = {
 };
 
 /**
- * Run the same start input twice on v8 (legacy alias removed in Phase 10).
+ * Run the same start input twice on v8.
  * Kept for golden harness compatibility — both sides are v8.
  */
 export async function compareEngineImplementations(params: {

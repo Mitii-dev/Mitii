@@ -232,7 +232,7 @@ export interface AgentEngineDependencies {
    */
   contextEpochStore?: ContextEpochStorePort;
   /**
-   * Optional restrict-only ToolAdversaryPort (Phase 3). Forwarded into tool
+ * Optional restrict-only ToolAdversaryPort. Forwarded into tool
    * execute options. Unset = no-op. Never widens grants.
    */
   adversary?: ToolAdversaryPort;

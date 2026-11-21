@@ -50,7 +50,7 @@ export const repoBuildStateComparisonReasonSchema = z.enum([
   "non_actionable_residuals_ignored",
   /**
    * Out-of-ask-scope actionable errors were excluded from NEW/remaining
-   * counts (Phase 2: only NEW∩IN_SCOPE∩ACTIONABLE opens repair).
+ * counts.
    */
   "out_of_scope_residuals_ignored",
 ]);

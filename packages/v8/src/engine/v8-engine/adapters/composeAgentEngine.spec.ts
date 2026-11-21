@@ -25,7 +25,7 @@ describe("composeAgentEngine", () => {
     expect(engine).toBeInstanceOf(V8EnginePipeline);
   });
 
-  it("maps legacy implementation to v8 (Phase 10)", () => {
+ it("maps legacy implementation to v8", () => {
     const llm = new EchoLlmPort();
     const { implementation, engine } = composeAgentEngine({
       understandingLlm: llm,

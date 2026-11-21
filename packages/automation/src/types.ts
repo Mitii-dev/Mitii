@@ -148,7 +148,7 @@ export interface AutomationServeOptions {
   claimLeaseSeconds?: number;
   globalMaxConcurrency?: number;
   autoReconcile?: boolean;
-  /** When set, start HTTP ingress on this port (Phase 2). */
+ /** When set, start HTTP ingress on this port. */
   webhookPort?: number;
   webhookHost?: string;
   webhookToken?: string;

@@ -78,6 +78,21 @@ export function inferMaximumOutputTokensFromModelId(
 }
 
 /**
+ * Cap completion max so it never exceeds the effective context window.
+ * Model-family hard max (e.g. DeepSeek V4 65_536) can otherwise exceed a
+ * smaller stored contextWindow and fail ModelCapabilities validation at boot.
+ */
+export function clampMaximumOutputTokensToContext(
+  maximumOutputTokens: number,
+  contextWindowTokens: number,
+): number {
+  const window = Math.max(1, Math.floor(contextWindowTokens));
+  const maxOut = Math.floor(maximumOutputTokens);
+  if (!Number.isFinite(maxOut) || maxOut <= 0) return 0;
+  return Math.min(maxOut, window);
+}
+
+/**
  * Effective context window: **stored settings win** when positive.
  * Auto (0) falls back to model tags → provider → 32_768.
  */

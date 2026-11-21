@@ -80,7 +80,7 @@ Modes (--mode, config defaultMode, or verb commands):
   plan    Read-only plan; no file edits — also: mitii plan --prompt "…"
   agent   Edit + tools with approvals — also: mitii agent --prompt "…"
 
-Automation (Phase 0):
+Automation:
   --origin <o>       user | automation | api
                      automation/api suppress interactive clarify in policy
   --skill <id>       Force-attach a skill for this run (repeat up to 3 times)
@@ -100,7 +100,7 @@ Writing recipes (VS Code + CLI):
   Equivalent: mitii ask --recipe commit-message
   Chat: @skill:git-commit-message  (or /git-commit-message)
 
-Parameterized recipes (Phase 2):
+Parameterized recipes:
   mitii recipe run after-commit --param task="write tests"
   mitii recipe run commit-message --preview
   Specs live in .mitii/recipes/<id>.json (schemaVersion: 1).
@@ -176,6 +176,6 @@ CI example:
   # map secrets → env in GitHub Actions / Gitea (see docs)
 
 Daemon/board UIs remain separate from interactive chat.
-Phase 1 automation: mitii schedule | mitii serve | mitii-daemon
+Schedules / daemon: mitii schedule | mitii serve | mitii-daemon
   (see docs/automation/README.md and packages/automation/ARCHITECTURE.md)
 `;

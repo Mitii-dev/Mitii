@@ -25,7 +25,7 @@ export type V8EnginePipelineDependencies = AgentEngineDependencies;
 
 /**
  * V8 Engine facade. Same host surface as AgentEnginePipeline.
- * Phase 3: start + resume (Continue/clarify/plan/approval) + restore.
+ * start + resume (Continue/clarify/plan/approval) + restore.
  */
 export class V8EnginePipeline {
   private readonly runtime: AgentEngineRuntime;

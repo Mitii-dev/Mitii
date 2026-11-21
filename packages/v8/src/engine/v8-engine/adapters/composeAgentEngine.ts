@@ -25,7 +25,7 @@ export type MitiiAgentEngine = {
 export type ComposeAgentEngineOptions = ComposeV8EngineOptions & {
   /**
    * Which orchestrator to wire. When omitted, uses default (`v8`).
-   * `legacy` is removed in Phase 10 — unknown values fall back to `v8` with a warning.
+   * `legacy` is accepted for compatibility and always resolves to `v8`.
    */
   implementation?: V8EngineImplementation | "legacy";
 };
@@ -37,7 +37,7 @@ export type ComposedAgentEngine = {
 
 /**
  * Compose the v8 engine. Legacy `implementation: "legacy"` is accepted for
- * host settings compatibility but always resolves to v8 (Phase 10).
+ * host settings compatibility but always resolves to v8.
  */
 export function composeAgentEngine(
   options: ComposeAgentEngineOptions,
@@ -74,7 +74,7 @@ export function isMitiiAgentEngine(
   );
 }
 
-/** @deprecated Phase 10 — use composeAgentEngine; returns v8 engine only. */
+/** @deprecated use composeAgentEngine; returns v8 engine only. */
 export function composeReadOnlyAgentEngine(
   options: ComposeAgentEngineOptions,
 ): MitiiAgentEngine {

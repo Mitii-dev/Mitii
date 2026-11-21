@@ -1,6 +1,6 @@
 {
   "name": "@mitii/desktop",
-  "version": "2.10.36",
+  "version": "2.11.0",
   "description": "Mitii Desktop — local coding agent with chat, settings, and repository index.",
   "license": "AGPL-3.0-or-later",
   "private": true,
@@ -34,6 +34,7 @@
     "engine:echo": "node bin/mitii-desktop-engine.js --echo"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
     "@mitii/host": "workspace:*",
     "@mitii/mcp": "workspace:*",
     "@mitii/mcp-mongo": "workspace:*",

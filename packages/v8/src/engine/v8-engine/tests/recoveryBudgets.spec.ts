@@ -1,6 +1,5 @@
 /**
- * Phase 7 goldens — T10 rejected mutation, T11 prepareTurn wire,
- * T12 soft must-read budget.
+ * Recovery budgets: rejected mutation, prepareTurn wiring, soft must-read nudges.
  */
 import { describe, expect, it } from "vitest";
 

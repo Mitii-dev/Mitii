@@ -1,5 +1,5 @@
 /**
- * Public facade for ToolAdversaryPort (Phase 3 restrict-only fence).
+ * Public facade for ToolAdversaryPort.
  * Architecture boundary: do not import internal/adversary from package roots.
  */
 export {

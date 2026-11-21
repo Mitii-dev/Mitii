@@ -88,7 +88,7 @@ export type {
   SkillCatalogL1Entry,
 } from "./internal/fragments";
 
-/** Bridge maps (Phase 9.2) — context → prompt slice / instruction merge. */
+/** Bridge maps — context → prompt slice / instruction merge. */
 export {
   mapContextToPromptSlice,
   mergePromptInstructions,

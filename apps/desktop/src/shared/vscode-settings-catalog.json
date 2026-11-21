@@ -1,7 +1,7 @@
 {
   "mitii.developer.enabled": {
     "type": "boolean",
-    "description": "Unlock developer options in the Mitii Settings \u2192 Developer page (nested debug switches appear after this is enabled)",
+    "description": "Unlock developer options in the Mitii Settings → Developer page (nested debug switches appear after this is enabled)",
     "default": false
   },
   "mitii.developer.intensityOverrides": {
@@ -11,12 +11,12 @@
   },
   "mitii.debug": {
     "type": "boolean",
-    "description": "Enable debug logging in the Mitii Output channel (auto-shows the channel; includes stack traces on failures). Requires mitii.developer.enabled in Settings \u2192 Developer.",
+    "description": "Enable debug logging in the Mitii Output channel (auto-shows the channel; includes stack traces on failures). Requires mitii.developer.enabled in Settings → Developer.",
     "default": false
   },
   "mitii.developer.modelIo": {
     "type": "boolean",
-    "description": "When developer settings are enabled, write sanitized model request/response bodies to a separate *-model-io.jsonl under .mitii/logs/. Large and may include workspace content \u2014 keep local. Use Mitii: Export Shareable Diagnostic for a redacted one-file paste for online help.",
+    "description": "When developer settings are enabled, write sanitized model request/response bodies to a separate *-model-io.jsonl under .mitii/logs/. Large and may include workspace content — keep local. Use Mitii: Export Shareable Diagnostic for a redacted one-file paste for online help.",
     "default": false
   },
   "mitii.tokenBudget.enabled": {
@@ -145,7 +145,7 @@
   },
   "mitii.tokenBudget.keepRecentToolResultsRatio": {
     "type": "number",
-    "default": 8e-05,
+    "default": 0.00008,
     "minimum": 0,
     "maximum": 1,
     "description": "Fraction of usable input converted to the count of recent tool results kept in full."
@@ -318,7 +318,7 @@
     "type": "number",
     "default": 800,
     "minimum": 1,
-    "description": "Unique files per mutation call scale as (context window \u00d7 output ratio) / this value."
+    "description": "Unique files per mutation call scale as (context window × output ratio) / this value."
   },
   "mitii.tokenBudget.minUniqueFilesPerCall": {
     "type": "number",
@@ -720,7 +720,7 @@
   },
   "mitii.loopPolicy.explorationRereadRatio": {
     "type": "number",
-    "description": "Trip when file-read calls \u2265 unique paths \u00d7 this ratio.",
+    "description": "Trip when file-read calls ≥ unique paths × this ratio.",
     "default": 2,
     "minimum": 1
   },
@@ -968,7 +968,7 @@
   },
   "mitii.semanticIndex.enabled": {
     "type": "boolean",
-    "description": "Enable optional semantic (vector) indexing after FTS/symbols. Off by default \u2014 lexical search stays available. Bundled MiniLM or an HTTP embedding API.",
+    "description": "Enable optional semantic (vector) indexing after FTS/symbols. Off by default — lexical search stays available. Bundled MiniLM or an HTTP embedding API.",
     "default": false
   },
   "mitii.semanticIndex.source": {
@@ -1034,7 +1034,7 @@
   },
   "mitii.ui.features.codeReviewButton": {
     "type": "boolean",
-    "description": "Show the Code Review button on the working-tree bar. Review always lists git changes; Code Review runs an LLM analysis. Enable under Settings \u2192 Features.",
+    "description": "Show the Code Review button on the working-tree bar. Review always lists git changes; Code Review runs an LLM analysis. Enable under Settings → Features.",
     "default": false
   },
   "mitii.ui.reasoningPreviewMaxChars": {
@@ -1180,7 +1180,7 @@
       "legacy",
       "v8"
     ],
-    "description": "Agent orchestrator implementation. `v8` is the Phase 5 default (thin rewrite). `legacy` keeps the prior Agent Engine as fallback \u2014 do not resume a run after flipping this setting.",
+    "description": "Agent orchestrator. Only `v8` exists. `legacy` is accepted for compatibility and always resolves to `v8`. Do not resume a run after flipping this setting.",
     "default": "v8"
   },
   "mitii.ui.contextToggles.repoMap": {
@@ -1235,7 +1235,7 @@
   },
   "mitii.safety.sandbox.enabled": {
     "type": "boolean",
-    "description": "Enable OS process sandbox for run_command / process tools. When unset, defaults follow approval mode (safe/guided \u2192 on+deny; pilot \u2192 on+allow).",
+    "description": "Enable OS process sandbox for run_command / process tools. When unset, defaults follow approval mode (safe/guided → on+deny; pilot → on+allow).",
     "default": null
   },
   "mitii.safety.sandbox.network": {
@@ -1261,7 +1261,7 @@
   },
   "mitii.tools.applyPatch.fuzzyMatch": {
     "type": "boolean",
-    "description": "Allow bounded fuzzy recovery when apply_patch oldText is not found exactly (trim / indent / \u00b15 line window). Default off for first ship.",
+    "description": "Allow bounded fuzzy recovery when apply_patch oldText is not found exactly (trim / indent / ±5 line window). Default off for first ship.",
     "default": false
   },
   "mitii.runBudget.unlimited": {

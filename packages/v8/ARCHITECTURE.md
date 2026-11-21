@@ -365,7 +365,7 @@ Its output includes evidence such as:
 
 The understanding LLM is a **constrained ballot** over messy language (catalog
 intents, situation options, closed skill tags). It outputs facts, not grants.
-See [`docs/UNDERSTANDING_BALLOT_AND_STEERING.md`](../../../docs/UNDERSTANDING_BALLOT_AND_STEERING.md).
+Authority stays in Decision Policy; the ballot never widens grants.
 
 DecisionBrief (when enabled) translates the authoritative decision into
 worker-facing mission/constraints. A pre-mutation critic may narrow or pause

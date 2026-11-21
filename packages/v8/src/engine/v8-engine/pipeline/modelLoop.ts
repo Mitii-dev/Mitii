@@ -127,7 +127,7 @@ function pickV8ThresholdOverrides(
   return Object.keys(next).length > 0 ? next : undefined;
 }
 
-/** Phase 3: bind+recovery spent → hard STOP (no Continue rediscovery). */
+/** bind+recovery spent → hard STOP (no Continue rediscovery). */
 function finishEvidenceRailExhausted(params: {
   reason: "recovery_exhausted" | "miss_not_local";
   reasonCodes: AgentReasonCode[];
@@ -236,7 +236,7 @@ export type V8ModelLoopParams = {
 };
 
 /**
- * Thin model/tool loop with Phase 3 discipline:
+ * Thin model/tool loop with discipline:
  * prepareTurn (compaction/working set), ToolLoopGuard, soft mutation nudge
  * (no evidence spend), rejected-mutation recovery, truncation/reasoning rails.
  */
@@ -532,7 +532,7 @@ export async function runV8ModelLoop(
     }
     if (turn.kind === "failed") {
       reasonCodes.push("provider_failed");
-      // Phase 5: transport/provider outage → Continuable infrastructure wall.
+      // transport/provider outage → Continuable infrastructure wall.
       if (
         isProviderInfrastructureFailure({
           errorCode: turn.errorCode,

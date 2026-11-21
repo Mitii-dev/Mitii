@@ -1331,7 +1331,7 @@ describe("DecisionPolicyPipeline", () => {
   });
 
   it("does not clarify short nav-label change asks under soft Officer ambiguity", () => {
-    // Phase 4: "Change the nav label to Docs" must execute — not clarify chips.
+    // "Change the nav label to Docs" must execute — not clarify chips.
     const decision = new DecisionPolicyPipeline().decide(
       createInput({
         mode: "agent",

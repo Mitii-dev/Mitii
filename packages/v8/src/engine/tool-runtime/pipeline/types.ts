@@ -41,7 +41,7 @@ export interface ToolExecuteOptions {
     disagreed: boolean;
   }) => void;
   /**
-   * Optional ToolAdversaryPort (Phase 3). Consulted after grant + shadow,
+ * Optional ToolAdversaryPort. Consulted after grant + shadow,
    * before approval. Restrict-only — never widens grants. Unset = no-op.
    */
   adversary?: ToolAdversaryPort;

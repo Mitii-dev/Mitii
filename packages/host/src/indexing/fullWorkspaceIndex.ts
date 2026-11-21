@@ -365,7 +365,7 @@ async function runFullWorkspaceIndexOnce(options: {
       embeddingPhase: shouldSyncEmbeddings ? 'pending' : 'unavailable',
     });
 
-    // Phase 1 — FTS/symbols only. Publish mid-run so the project is usable
+ // FTS/symbols only. Publish mid-run so the project is usable
     // while embeddings continue (ARCHITECTURE §9–10 capability independence).
     const lexicalIndexing = await indexingRuntime.pipeline.execute({
       workspace: options.workspaceId,

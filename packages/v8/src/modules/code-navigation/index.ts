@@ -28,11 +28,9 @@ export type { RequestLimiter } from "./internal/createRequestLimiter";
 export { CodeNavigationPipeline } from "./pipeline/CodeNavigationPipeline";
 export type { CodeNavigationPipelineDependencies } from "./pipeline/CodeNavigationPipeline";
 
-export {
-  GraphCodeNavigationAdapter,
-  FallbackCodeNavigationAdapter,
-} from "./adapters/GraphCodeNavigationAdapter";
+export { GraphCodeNavigationAdapter } from "./adapters/GraphCodeNavigationAdapter";
 export type { GraphCodeNavigationAdapterOptions } from "./adapters/GraphCodeNavigationAdapter";
+export { FallbackCodeNavigationAdapter } from "./adapters/FallbackCodeNavigationAdapter";
 
 export {
   codeNavigationInputSchema,

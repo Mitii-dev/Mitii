@@ -3,12 +3,8 @@
 Control plane for unattended Mitii runs: CLI/CI workers, local schedules, event
 ingress (including GitHub), delivery adapters, and incident evidence packs.
 
-**Design & test new scenarios:** [DESIGN_AND_TESTING.md](./DESIGN_AND_TESTING.md)
-
-## CI and worker wrappers
-
-Use GitHub Actions or system cron calling the CLI when you do not need a local
-daemon.
+Package architecture: [`packages/automation/ARCHITECTURE.md`](../../packages/automation/ARCHITECTURE.md).
+Agent examples: [`agents/`](./agents/). Workflow examples: [`../examples/workflows/`](../examples/workflows/).
 
 ## Capability map
 
@@ -18,27 +14,19 @@ daemon.
 | V8 Decision Policy | `automation` / `api` suppress interactive clarify |
 | CLI | `--origin`, `--autonomy`, `--agent`, `--prompt-file`; exit `4` on unattended clarify gap |
 | Skills | `cicd-agent`, `incident-triage`, `code-review-and-quality` |
-| Agents | Example markdown under `docs/automation/agents/` (incl. `pr-review.md`) |
-| GHA | `.github/actions/mitii-run` + post-commit / CI-fail / [PR review](../examples/workflows/mitii-pr-review.yml) examples |
+| Agents | Example markdown under `docs/automation/agents/` |
+| GHA | `.github/actions/mitii-run` + example workflows under `docs/examples/workflows/` |
 | Review CLI | `mitii review --preview|--format sarif` + `scripts/github-actions/post-mitii-review-comments.js` |
 
 ## Quick start (local)
 
 ```bash
-# Copy an agent into the workspace
 mkdir -p .mitii/agents
 cp docs/automation/agents/post-commit-cover.md .mitii/agents/
 
 export ANTHROPIC_API_KEY=...
 mitii ask --agent post-commit-cover --json \
   --origin automation --autonomy apply_and_pr
-```
-
-```bash
-# Incident from a log file
-mitii ask --agent incident-from-logs \
-  --prompt-file /tmp/error.log \
-  --origin automation --autonomy apply --json
 ```
 
 ## Autonomy presets
@@ -64,12 +52,10 @@ Explicit `--mode` / `--approve` / `--deny` override preset defaults where set.
 
 ## GitHub Actions
 
-1. Store `ANTHROPIC_API_KEY` (or other provider key) as a repo secret.
-2. Enable example workflows or copy them into your app repo.
+1. Store provider API key as a repo secret.
+2. Copy an example workflow from `docs/examples/workflows/`.
 3. Ensure `.mitii/agents/*.md` exists in the consumer repo.
 4. Grant `contents: write`, `pull-requests: write`, and/or `issues: write`.
-
-Composite action:
 
 ```yaml
 - uses: ./.github/actions/mitii-run
@@ -82,68 +68,24 @@ Composite action:
     autonomy: apply_and_pr
 ```
 
-## Example: post-commit cover
-
-See `docs/examples/workflows/mitii-post-commit-cover.yml` and
-`docs/automation/agents/post-commit-cover.md`.
-
-**Ship guide:** [SHIP.md](./SHIP.md) - smoke: `docs/automation/smoke/example1-post-commit.sh`
-
-## Example: CI failure to ticket
-
-See `docs/examples/workflows/mitii-ci-failure-triage.yml` and
-`docs/automation/agents/incident-from-logs.md`.
-
-**Ship guide:** [SHIP.md](./SHIP.md) - smoke: `docs/automation/smoke/example2-ci-failure.sh`
-
 ## Schedules and daemon
 
 ```bash
 mitii schedule create "morning" --cron "0 9 * * *" --prompt "Health check" --workspace .
 mitii schedule list
 mitii schedule trigger <specId>
-mitii serve --echo          # local smoke; omit --echo for real provider
-# or: mitii-daemon
+mitii serve --echo
 ```
 
-- `@mitii/automation` - SQLite specs/runs, materializer, claim/lease runner
-- File specs: `.mitii/cron/*.cron.md`
-- Architecture: [packages/automation/ARCHITECTURE.md](../../packages/automation/ARCHITECTURE.md)
+- `@mitii/automation` — SQLite specs/runs, materializer, claim/lease runner
+- File specs: `.mitii/cron/*.cron.md` (examples under [`cron/`](./cron/))
 
-## Events and GitHub webhooks
+## Events and delivery
 
 ```bash
 mitii events ingest --type github.workflow_run.completed --source github --json-file ./payload.json
-mitii events list
-mitii serve --webhook-port 8787   # POST /hooks/github , POST /events , GET /health
+mitii serve --webhook-port 8787
 ```
 
-- Event specs: `.mitii/cron/events/*.event.md`
-- Tools: `create_github_issue`, `create_pull_request` (via `gh`)
-
-## Delivery bus
-
-Spec metadata:
-
-```json
-{ "delivery": [{ "adapter": "slack", "target": "C0123" }] }
-```
-
-Adapters: `webhook`, `slack`, `discord`, `telegram`, `github_comment`, `github_check`.  
-Senders live in `@mitii/host` (`createCompositeDeliverySender`); tokens from env.
-
-## Incident evidence
-
-On CI failure events, ClaimRunner pulls `gh run view --log` when possible and
-writes an evidence pack under `~/.mitii/automation/artifacts/<runId>/` with a
-stable `[mitii:<fingerprint>]` issue title hint.
-
-## VS Code and export
-
-- Automations panel in the VS Code sidebar (list / trigger / pause / resume)
-- `mitii schedule export` / `mitii schedule import`
-
-## Hardening
-
-Lease reclaim, delivery retries, multi-DB isolation, and export/import covered
-by `@mitii/automation` unit tests.
+Delivery adapters: `webhook`, `slack`, `discord`, `telegram`, `github_comment`, `github_check`
+(senders in `@mitii/host`).

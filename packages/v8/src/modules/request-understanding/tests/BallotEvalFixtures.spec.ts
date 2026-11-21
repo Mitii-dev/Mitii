@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { intersectRecommendedSkillTags } from "../intent/intersectRecommendedSkillTags";
 import { BALLOT_EVAL_CASES } from "./fixtures/ballotEvalCases";
 
-describe("ballot eval fixtures (Phase 0)", () => {
+describe("ballot eval fixtures", () => {
   it("exports non-empty golden cases with ids", () => {
     expect(BALLOT_EVAL_CASES.length).toBeGreaterThanOrEqual(5);
     const ids = new Set(BALLOT_EVAL_CASES.map((c) => c.id));

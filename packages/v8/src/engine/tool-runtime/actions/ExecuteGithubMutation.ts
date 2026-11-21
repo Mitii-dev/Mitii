@@ -1,5 +1,5 @@
 /**
- * Native GitHub issue / PR tools (Phase 2+).
+ * Native GitHub issue / PR tools.
  * Execute via `gh` argv — no shell. Decision Policy must grant the tool id.
  * Issues support fingerprint-based upsert (comment on existing).
  */

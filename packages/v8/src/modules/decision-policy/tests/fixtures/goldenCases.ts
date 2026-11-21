@@ -9,7 +9,6 @@ import { GOLDEN_DECISION_CASES_EXTENDED } from "./goldenCasesExtended";
 
 /**
  * Human-reviewed golden suite — must pass 100% on every PR.
- * See project-goals/decision-policy/POLICY_CHANGE_CHECKLIST.md
  */
 const GOLDEN_DECISION_CASES_CORE: GoldenDecisionCase[] = [
   // --- Baseline ---

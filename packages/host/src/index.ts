@@ -270,7 +270,7 @@ export type { MemoryAuditEvent } from './ports/memoryAudit.js';
 export { createMemoryEmbeddingPort } from './ports/memoryEmbeddingAdapter.js';
 
 // ---------------------------------------------------------------------------
-// Corpus RAG (Phase 4) — optional `.mitii/corpus/` text index + retrieval
+// Corpus RAG — optional `.mitii/corpus/` text index + retrieval
 // ---------------------------------------------------------------------------
 export {
   runCorpusIndex,
@@ -290,7 +290,7 @@ export type {
 export { CorpusRetrievalSource } from './corpus/CorpusRetrievalSource.js';
 
 // ---------------------------------------------------------------------------
-// Child runs (Phase 5) — mode ≤ parent, deny-only safety, worktree path
+// Child runs — mode ≤ parent, deny-only safety, worktree path
 // ---------------------------------------------------------------------------
 export {
   narrowChildStartInput,
@@ -481,7 +481,7 @@ export type {
 } from './config/modelPricing.js';
 
 // ---------------------------------------------------------------------------
-// Automation (Phase 1) — SDK executor for @mitii/automation ClaimRunner
+// Automation — SDK executor for @mitii/automation ClaimRunner
 // ---------------------------------------------------------------------------
 export { createAutomationRunExecutor } from './automation/createAutomationRunExecutor.js';
 export type { CreateAutomationRunExecutorOptions } from './automation/createAutomationRunExecutor.js';

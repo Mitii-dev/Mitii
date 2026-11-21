@@ -1,4 +1,4 @@
-/** Phase 9.1 — one-job modules (owned actions). */
+/** One-job engine modules (owned actions). */
 export * from "./user-path-priority";
 export * from "./tool-loop-guard";
 export * from "./truncation";

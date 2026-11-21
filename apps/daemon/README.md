@@ -1,6 +1,6 @@
 # `@mitii/daemon`
 
-Long-lived Mitii automation process (Phase 1).
+Long-lived Mitii automation process.
 
 ```bash
 mitii-daemon --cwd /path/to/repo

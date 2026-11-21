@@ -88,8 +88,9 @@ Writing recipes (force-attach + git context) are defined in `@mitii/host` and us
 
 ## Related
 
-- [`docs/INITIAL_LAUNCH.md`](INITIAL_LAUNCH.md) - F5 / first launch
-- [`docs/TESTS.md`](TESTS.md) - tests + benchmark
-- [`docs/RELEASE.md`](RELEASE.md) - publish gates
-- [`docs/SAFETY_PHASES.md`](SAFETY_PHASES.md) - safety / sandbox
-- [`docs/automation/README.md`](automation/README.md) - unattended agents
+- [`docs/INITIAL_LAUNCH.md`](INITIAL_LAUNCH.md) — F5 / first launch
+- [`docs/TESTS.md`](TESTS.md) — tests + benchmark
+- [`docs/RELEASE.md`](RELEASE.md) — publish gates
+- [`docs/SAFETY.md`](SAFETY.md) — safety / sandbox
+- [`docs/SKILLS_FORMAT.md`](SKILLS_FORMAT.md) — skills authoring
+- [`docs/automation/README.md`](automation/README.md) — unattended agents

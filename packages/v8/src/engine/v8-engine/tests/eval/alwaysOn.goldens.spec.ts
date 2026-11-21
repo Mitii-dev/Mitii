@@ -37,8 +37,8 @@ import {
 } from "../fixtures/stubs";
 import { V8_ENGINE_PROMOTION } from "../../promotion";
 
-describe("v8-engine always-on goldens (§7.2)", () => {
-  it("promotion default is v8; legacy is alias-only after Phase 10", () => {
+describe("v8-engine always-on goldens", () => {
+  it("promotion default is v8; legacy is an alias only", () => {
     expect(V8_ENGINE_PROMOTION.defaultImplementation).toBe("v8");
     expect(V8_ENGINE_PROMOTION.status).toBe("promoted");
     expect(V8_ENGINE_PROMOTION.rollback.settingValue).toBe("v8");

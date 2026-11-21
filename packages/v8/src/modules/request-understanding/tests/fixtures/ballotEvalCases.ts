@@ -1,6 +1,6 @@
 /**
- * Golden fixtures for Understanding Ballot + Decision Steering (Phase 0).
- * Behavior assertions land with later phases; these cases document expected outcomes.
+ * Golden fixtures for understanding ballot + decision steering.
+ * Cases document expected outcomes for route / clarify behavior.
  */
 
 export type BallotEvalExpectation =

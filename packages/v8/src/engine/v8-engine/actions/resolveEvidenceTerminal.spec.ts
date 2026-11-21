@@ -8,7 +8,7 @@ import {
   shouldStripDiscoveryAfterEvidenceExhaustion,
 } from "./resolveEvidenceTerminal";
 
-describe("resolveEvidenceTerminal (Phase 3 discovery rail)", () => {
+describe("resolveEvidenceTerminal", () => {
   it("never offers Continue after evidence exhaustion", () => {
     expect(shouldOfferContinueAfterEvidenceExhaustion()).toBe(false);
   });

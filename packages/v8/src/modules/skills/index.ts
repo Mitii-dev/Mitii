@@ -59,7 +59,7 @@ export {
   normalizeSkillId,
 } from "./parseRequiredSkillMentions";
 
-/** Bridge maps (Phase 9.2) — understanding → skill evidence. */
+/** Bridge maps — understanding → skill evidence. */
 export {
   mapUnderstandingToSkillEvidence,
   deriveSkillRepoEvidence,

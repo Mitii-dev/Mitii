@@ -59,7 +59,7 @@ SPECIFY ──→ PLAN ──→ TASKS ──→ IMPLEMENT
  reviews    reviews  reviews    reviews
 ```
 
-### Phase 1: Specify
+### Specify
 
 Start with a high-level vision. Ask the human clarifying questions until requirements are concrete.
 
@@ -156,7 +156,7 @@ REFRAMED SUCCESS CRITERIA:
 
 This lets you loop, retry, and problem-solve toward a clear goal rather than guessing what "faster" means.
 
-### Phase 2: Plan
+### Plan
 
 With the validated spec, generate a technical implementation plan:
 
@@ -172,7 +172,7 @@ With the validated spec, generate a technical implementation plan:
 
 The plan should be reviewable: the human should be able to read it and say "yes, that's the right approach" or "no, change X."
 
-### Phase 3: Tasks
+### Tasks
 
 Break the plan into discrete, implementable tasks:
 
@@ -192,7 +192,7 @@ Break the plan into discrete, implementable tasks:
   - Files: [Which files will be touched]
 ```
 
-### Phase 4: Implement
+### Implement
 
 Execute tasks one at a time following `skills/incremental-implementation/SKILL.md` (`incremental-implementation`) and `skills/test-driven-development/SKILL.md` (`test-driven-development`). Use `skills/context-engineering/SKILL.md` (`context-engineering`) to load the right spec sections and source files at each step rather than flooding the agent with the entire spec.
 

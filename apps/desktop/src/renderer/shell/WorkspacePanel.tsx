@@ -1485,7 +1485,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                       aria-label="New File"
                       onClick={() => void beginCreate('file')}
                     >
-                      <IconNewFile size={16} />
+                      <IconNewFile size={13} />
                     </button>
                     <button
                       type="button"
@@ -1494,7 +1494,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                       aria-label="New Folder"
                       onClick={() => void beginCreate('dir')}
                     >
-                      <IconNewFolder size={16} />
+                      <IconNewFolder size={13} />
                     </button>
                     <button
                       type="button"
@@ -1514,7 +1514,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                         })();
                       }}
                     >
-                      <IconRefresh size={16} />
+                      <IconRefresh size={13} />
                     </button>
                     <button
                       type="button"
@@ -1526,7 +1526,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                         setWorkspaceRootOpen(true);
                       }}
                     >
-                      <IconCollapseAll size={16} />
+                      <IconCollapseAll size={13} />
                     </button>
                   </div>
                 </div>

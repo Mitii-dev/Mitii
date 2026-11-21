@@ -62,6 +62,7 @@ import Database from 'better-sqlite3';
 
 import type { DesktopHostMode } from '../shared/protocol.js';
 import {
+  clampMaximumOutputTokensToContext,
   inferMaximumOutputTokensFromModelId,
   resolveEffectiveContextWindow,
 } from '../shared/contextWindow.js';
@@ -272,10 +273,18 @@ export async function createHostDesktopClient(
   // Capabilities advertise the provider hard max (settings override, else
   // model inference). Window Budget still uses only the explicit host setting
   // for planning O — inferred max must not become a false output override.
-  const capabilityMaximumOutputTokens =
+  // Always clamp to contextWindowTokens so ModelCapabilities validation
+  // cannot fail boot when a family hard max exceeds a smaller stored window.
+  const capabilityMaximumOutputTokens = clampMaximumOutputTokensToContext(
     hostMaximumOutputTokens > 0
       ? hostMaximumOutputTokens
-      : (inferMaximumOutputTokensFromModelId(model) ?? 0);
+      : (inferMaximumOutputTokensFromModelId(model) ?? 0),
+    contextWindowTokens,
+  );
+  const windowBudgetMaximumOutputTokens = clampMaximumOutputTokensToContext(
+    hostMaximumOutputTokens,
+    contextWindowTokens,
+  );
 
   const llm = forceEcho
     ? {
@@ -386,8 +395,8 @@ export async function createHostDesktopClient(
   const injection = deriveWindowPolicy({
     schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
     contextWindowTokens,
-    ...(hostMaximumOutputTokens > 0
-      ? { maximumOutputTokens: hostMaximumOutputTokens }
+    ...(windowBudgetMaximumOutputTokens > 0
+      ? { maximumOutputTokens: windowBudgetMaximumOutputTokens }
       : {}),
   }).injection;
   const repositoryContext = createHostRepositoryContext({

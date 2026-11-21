@@ -393,7 +393,7 @@ export type {
   LoopTurnDisposition,
 } from "./resolveLoopTurnOutcome";
 
-/** v8-owned modules (Phase 9+) — re-exported for pipeline + goldens. */
+/** V8-owned modules — re-exported for pipeline + goldens. */
 export {
   ToolLoopGuard,
   buildToolLoopCallSignature,

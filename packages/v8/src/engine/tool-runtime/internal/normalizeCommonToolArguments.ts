@@ -25,7 +25,7 @@ export function normalizeCommonToolArguments(
     return value;
   }
 
-  // Phase 6: mutation path tools get github/ → .github/ rewrite.
+  // mutation path tools get github/ → .github/ rewrite.
   if (
     toolName === "delete_file" ||
     toolName === "delete_directory" ||

@@ -26,7 +26,7 @@ import type { AgentEngineRuntime } from "./runtime";
 /**
  * Hard-terminal finish after Verification gate accept.
  *
- * Phase 1 reliability: ACCEPTED = STOP. Never Continue for incomplete
+ * reliability: ACCEPTED = STOP. Never Continue for incomplete
  * checklist (`shouldSuspendContinueAfterVerificationAccept` is false), never
  * reopen repair/discovery. Optional leftover pre-existing errors are appended
  * as an opt-in offer in the answer text only.
@@ -129,7 +129,7 @@ export async function finishVerificationAccepted(params: {
   if (incompleteExecute) {
     reasonCodes.push("incomplete_execute", "answer_produced");
     // Verification already accepted (this finish path). Zero edits → fail.
-    // Edits landed → complete: Phase 1 ACCEPTED=STOP reports leftover
+ // Edits landed → complete: ACCEPTED=STOP reports leftover
     // checklist items but must not fail a green verify / agent_exit 1.
     if (loopChangedFiles.length === 0) {
       return finish({

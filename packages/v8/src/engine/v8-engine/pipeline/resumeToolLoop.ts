@@ -147,7 +147,7 @@ export async function resumeV8ToolLoopFromCheckpoint(
   const mutationRequired =
     decisionWithAttach.reasonCodes.includes("mutation_execute") ||
     decisionWithAttach.toolGrant.maximumWorkspaceEffect === "write";
-  // Phase 3: exhaustion sticky — never reopen discovery after bind+recovery.
+  // exhaustion sticky — never reopen discovery after bind+recovery.
   const stripAfterEvidenceExhaust =
     shouldStripDiscoveryAfterEvidenceExhaustion({ reasonCodes });
   const rearmLock =

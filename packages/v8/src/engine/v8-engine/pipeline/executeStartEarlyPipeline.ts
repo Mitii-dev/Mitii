@@ -62,7 +62,7 @@ import {
   type TaskListRef,
 } from "../internal/taskListRuntime";
 import {
-  PHASE8_SUPPORTED_ROUTES,
+  SUPPORTED_EXECUTION_ROUTES,
 } from "../legacy/policy";
 
 import type { AgentEngineRuntime } from "./runtime";
@@ -588,10 +588,10 @@ export async function runStartEarlyPipeline(
     };
   }
 
-  // All Phase 8 routes are supported; this only guards against a
+  // All routes are supported; this only guards against a
   // future/unregistered route reaching the Engine unchanged.
   if (
-    !(PHASE8_SUPPORTED_ROUTES as readonly string[]).includes(decision.route)
+    !(SUPPORTED_EXECUTION_ROUTES as readonly string[]).includes(decision.route)
   ) {
     reasonCodes.push("misconfigured");
     await runtime.safeUnpin(runId, shared.pinnedState);

@@ -1,5 +1,5 @@
 /**
- * Phase 1 execution-reliability terminals for Verification finish.
+ * execution-reliability terminals for Verification finish.
  *
  * Hard invariants (engine-owned; no discovery reopen):
  * - Gate accept → ACCEPTED → STOP (no Continue / repair / rediscover)

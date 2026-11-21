@@ -1,6 +1,6 @@
 # `@mitii/automation`
 
-Mitii **automation control plane** (Phase 1): schedules, SQLite run queue,
+Mitii **automation control plane**: schedules, SQLite run queue,
 cron materialization, and a single claim/lease runner.
 
 Agent execution is **not** in this package. Hosts inject

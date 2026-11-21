@@ -49,12 +49,21 @@ export interface WorkspaceChatSummary {
   threads: WorkspaceChatThreadSummary[];
 }
 
+/** Platform + fullscreen for titlebar traffic-light inset. */
+export interface DesktopShellChrome {
+  platform: string;
+  fullscreen: boolean;
+}
+
 export interface MitiiDesktopBridge {
   getSnapshot: () => Promise<DesktopShellSnapshot>;
   getEngineBaseUrl: () => Promise<string>;
   getEngineAuthToken: () => Promise<string>;
   getWorkspaceRoot: () => Promise<string>;
   getAppVersion: () => Promise<string>;
+  getShellChrome: () => Promise<DesktopShellChrome>;
+  /** Subscribe to native fullscreen changes; returns unsubscribe. */
+  onShellFullscreen: (listener: (fullscreen: boolean) => void) => () => void;
   openExternal: (url: string) => Promise<{ ok: boolean; reason?: string }>;
   pickWorkspace: () => Promise<{
     ok: boolean;

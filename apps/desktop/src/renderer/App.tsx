@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
 
 import {
   appendActivity,
@@ -28,6 +35,7 @@ import {
 import type {
   DesktopShellSnapshot,
 } from '../shared/bridge.js';
+import { applyShellChromeDataset } from '../shared/shellChrome.js';
 import type {
   DesktopAgentMode,
   DesktopPromptStreamLine,
@@ -477,8 +485,8 @@ export function App() {
   const [historyMenuOpen, setHistoryMenuOpen] = useState(false);
   const historyMenuRef = useRef<HTMLDivElement>(null);
   const [sideWidth, setSideWidth] = usePersistedWidth('mitii.desktop.sideWidth', {
-    initial: 232,
-    min: 160,
+    initial: 268,
+    min: 220,
     max: 420,
   });
   const [codeChatWidth, setCodeChatWidth] = usePersistedWidth(
@@ -657,6 +665,39 @@ export function App() {
   useEffect(() => {
     scrollToBottom(false);
   }, [messages, suspension, scrollToBottom]);
+
+  useLayoutEffect(() => {
+    const guessPlatform = (): string => {
+      if (/Mac|iPhone|iPad|iPod/i.test(navigator.platform)) return 'darwin';
+      if (/Win/i.test(navigator.platform)) return 'win32';
+      if (/Linux/i.test(navigator.platform)) return 'linux';
+      return navigator.platform || 'unknown';
+    };
+    let platform = guessPlatform();
+    let fullscreen = false;
+    const stamp = () => {
+      applyShellChromeDataset(document.documentElement, platform, fullscreen);
+    };
+    stamp();
+
+    const bridge = getDesktopBridge();
+    if (!bridge?.getShellChrome || !bridge.onShellFullscreen) return;
+    let cancelled = false;
+    void bridge.getShellChrome().then((chrome) => {
+      if (cancelled) return;
+      platform = chrome.platform;
+      fullscreen = chrome.fullscreen;
+      stamp();
+    });
+    const unsubscribe = bridge.onShellFullscreen((next) => {
+      fullscreen = next;
+      stamp();
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -3869,15 +3910,22 @@ export function App() {
               activeThreadId={threadId}
               busy={busy}
               loading={historyLoading}
+              profileName={activeProfile?.name}
               onOpenThread={(id) => void onOpenThread(id)}
               onDeleteThread={(id) => void onDeleteThread(id)}
               onNewChat={() => void onNewChat()}
+              onOpenWorkspace={() =>
+                setPicker((v) => (v === 'workspace' ? null : 'workspace'))
+              }
+              onOpenSkills={() => {
+                setLayout('code');
+                setWorkspaceSide('skills');
+              }}
+              onOpenSettings={() => setView('settings')}
+              onOpenProfile={() =>
+                setPicker((v) => (v === 'profile' ? null : 'profile'))
+              }
             />
-            <div className="side-foot">
-              <button type="button" onClick={() => setView('settings')}>
-                Settings
-              </button>
-            </div>
           </aside>
           <ResizeHandle
             value={sideWidth}
@@ -4157,7 +4205,7 @@ export function App() {
                 }))}
                 onSelect={(id) => void onSwitchWorkspace(id)}
                 onAdd={() => void onPickWorkspace()}
-                addLabel="Add workspace"
+                addLabel="New workspace"
                 onRemove={(id) => void onForgetWorkspace(id)}
                 removeLabel="Remove"
                 footer={

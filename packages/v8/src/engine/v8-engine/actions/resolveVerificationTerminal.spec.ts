@@ -6,7 +6,7 @@ import {
   shouldSuspendContinueAfterVerificationAccept,
 } from "./resolveVerificationTerminal";
 
-describe("resolveVerificationTerminal (Phase 1 ACCEPTED=STOP)", () => {
+describe("resolveVerificationTerminal", () => {
   it("never offers Continue after gate accept", () => {
     expect(shouldSuspendContinueAfterVerificationAccept()).toBe(false);
   });

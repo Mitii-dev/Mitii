@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-/** Supported first-party search providers (Phase 1). */
+/** Supported first-party search providers. */
 export const SearchProviderIdSchema = z.enum(['brave', 'searxng', 'tavily']);
 export type SearchProviderId = z.infer<typeof SearchProviderIdSchema>;
 

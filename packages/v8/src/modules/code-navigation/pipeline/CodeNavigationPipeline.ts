@@ -1,22 +1,23 @@
 import {
-  CODE_NAVIGATION_SCHEMA_VERSION,
-} from "../constants";
-import {
   CodeNavigationError,
   codeNavigationInputSchema,
-  codeNavigationResultSchema,
 } from "../contracts";
 import type {
   CodeNavigationCallOptions,
-  CodeNavigationHover,
   CodeNavigationInput,
-  CodeNavigationLocation,
   CodeNavigationParsedInput,
   CodeNavigationPort,
   CodeNavigationReasonCode,
   CodeNavigationResult,
 } from "../contracts";
-import { DEFAULT_MAX_HOVER_CHARACTERS } from "../defaults";
+import {
+  clampHover,
+  hoverResult,
+  locationsResult,
+  portUnavailableResult,
+  providerFailureResult,
+  unavailable,
+} from "../internal/buildResult";
 
 export interface CodeNavigationPipelineDependencies {
   navigation?: CodeNavigationPort;
@@ -50,21 +51,7 @@ export class CodeNavigationPipeline {
 
     const port = this.dependencies.navigation;
     if (!port) {
-      return codeNavigationResultSchema.parse({
-        schemaVersion: CODE_NAVIGATION_SCHEMA_VERSION,
-        status: "unavailable",
-        operation: parsed.operation,
-        provider: "none",
-        locations: [],
-        truncated: false,
-        warnings: [
-          {
-            code: "language_server_failed",
-            message: "No code-navigation port is configured.",
-          },
-        ],
-        reasonCodes: ["port_unavailable"],
-      });
+      return portUnavailableResult(parsed.operation);
     }
 
     try {
@@ -84,25 +71,11 @@ export class CodeNavigationPipeline {
         }
         const rawHover = await port.hover?.(parsed.query, callOptions);
         const { hover, truncated } = clampHover(rawHover);
-        const reasonCodes: CodeNavigationReasonCode[] = hover
-          ? ["hover_resolved"]
-          : ["no_locations"];
-        if (truncated) {
-          reasonCodes.push("hover_truncated");
-        }
-        if (port.provider === "repo_graph") {
-          reasonCodes.push("repo_graph_fallback");
-        }
-        return codeNavigationResultSchema.parse({
-          schemaVersion: CODE_NAVIGATION_SCHEMA_VERSION,
-          status: hover ? "resolved" : "empty",
+        return hoverResult({
           operation: parsed.operation,
-          provider: port.provider,
-          locations: [],
-          ...(hover ? { hover } : {}),
+          port,
+          hover,
           truncated,
-          warnings: [],
-          reasonCodes,
         });
       }
 
@@ -198,104 +171,13 @@ export class CodeNavigationPipeline {
           ? error
           : Object.assign(new Error(String(error)), { name: "AbortError" });
       }
-      return codeNavigationResultSchema.parse({
-        schemaVersion: CODE_NAVIGATION_SCHEMA_VERSION,
-        status: "unavailable",
+      return providerFailureResult({
         operation: parsed.operation,
-        provider: port.provider,
-        locations: [],
-        truncated: false,
-        warnings: [
-          {
-            code:
-              port.provider === "repo_graph"
-                ? "repo_graph_unavailable"
-                : "language_server_failed",
-            message:
-              error instanceof Error ? error.message : String(error),
-          },
-        ],
-        reasonCodes:
-          port.provider === "repo_graph"
-            ? ["repo_graph_fallback"]
-            : ["language_server_unavailable"],
+        port,
+        error,
       });
     }
   }
-}
-
-function clampHover(
-  hover: CodeNavigationHover | undefined,
-): { hover: CodeNavigationHover | undefined; truncated: boolean } {
-  if (!hover) return { hover: undefined, truncated: false };
-  if (hover.contents.length <= DEFAULT_MAX_HOVER_CHARACTERS) {
-    return { hover, truncated: false };
-  }
-  return {
-    hover: {
-      ...hover,
-      contents: `${hover.contents.slice(0, DEFAULT_MAX_HOVER_CHARACTERS)}…`,
-    },
-    truncated: true,
-  };
-}
-
-function locationsResult(
-  operation: CodeNavigationParsedInput["operation"],
-  port: CodeNavigationPort,
-  raw: readonly CodeNavigationLocation[],
-  maximumLocations: number,
-  resolvedCode: CodeNavigationReasonCode,
-): CodeNavigationResult {
-  const truncated = raw.length > maximumLocations;
-  const locations = truncated ? raw.slice(0, maximumLocations) : raw;
-  const reasonCodes: CodeNavigationReasonCode[] = locations.length
-    ? [resolvedCode]
-    : ["no_locations"];
-  if (truncated) {
-    reasonCodes.push("locations_truncated");
-  }
-  if (port.provider === "repo_graph") {
-    reasonCodes.push("repo_graph_fallback");
-  }
-  return codeNavigationResultSchema.parse({
-    schemaVersion: CODE_NAVIGATION_SCHEMA_VERSION,
-    status: locations.length ? "resolved" : "empty",
-    operation,
-    provider: port.provider,
-    locations,
-    truncated,
-    warnings: [],
-    reasonCodes,
-  });
-}
-
-function unavailable(
-  operation: CodeNavigationParsedInput["operation"],
-  port: CodeNavigationPort,
-  message: string,
-): CodeNavigationResult {
-  return codeNavigationResultSchema.parse({
-    schemaVersion: CODE_NAVIGATION_SCHEMA_VERSION,
-    status: "unavailable",
-    operation,
-    provider: port.provider,
-    locations: [],
-    truncated: false,
-    warnings: [
-      {
-        code:
-          port.provider === "repo_graph"
-            ? "repo_graph_unavailable"
-            : "language_server_failed",
-        message,
-      },
-    ],
-    reasonCodes:
-      port.provider === "repo_graph"
-        ? ["repo_graph_fallback"]
-        : ["language_server_unavailable"],
-  });
 }
 
 function throwIfAborted(signal?: AbortSignal): void {

@@ -570,7 +570,7 @@ function requiresClarification(
   const { intent, taskAnalysis } = understanding;
   const materialFork = isMaterialCapabilityFork(understanding, message);
 
-  // Phase 4: clear localized UI / "change X to Y" asks must not suspend on
+  // clear localized UI / "change X to Y" asks must not suspend on
   // soft Officer ambiguity (nav-label / chip false-clarify class).
   if (
     mode === "agent" &&
@@ -736,7 +736,7 @@ function hasExplicitMutationPathTarget(message: string): boolean {
 /** Pronoun-only / tiny mutation asks that still need a target. */
 function isBareAmbiguousMutationAsk(message: string): boolean {
   const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
-  // Phase 4: short alone is not bare when the outcome/target is concrete.
+  // short alone is not bare when the outcome/target is concrete.
   if (
     isConcreteLocalizedMutationAsk(text) ||
     hasExplicitMutationPathTarget(text)

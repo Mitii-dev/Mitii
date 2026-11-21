@@ -20,7 +20,7 @@ export function parseArxivUrl(url: string): { id: string } | undefined {
   return { id: match[1]! };
 }
 
-/** arXiv abstract via Atom API (no PDF download in Phase 1). */
+/** arXiv abstract via Atom API (no PDF download). */
 export class ArxivContentResolver implements ContentResolver {
   readonly id = 'arxiv';
 

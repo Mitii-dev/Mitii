@@ -4,7 +4,7 @@ Bundled Mitii skills in `SKILL.md` format (`docs/SKILLS_FORMAT.md`).
 
 These are **bundled defaults** under `packages/sdk/skills/`. Edit them in place. Replace any skill by overwriting its folder, or override per workspace without touching the pack.
 
-## Included (phase 1 + automation)
+## Included
 
 | Skill | Conflict group | Primary intents |
 |---|---|---|

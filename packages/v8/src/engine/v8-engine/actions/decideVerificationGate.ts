@@ -174,7 +174,7 @@ export function decideVerificationGate(params: {
       if (isUserGoalComplete(goalParams)) {
         return { action: "accept", acceptKind: "implemented_unverified" };
       }
-      // Phase 2: repair only for NEW∩IN_SCOPE∩ACTIONABLE (or ask-scoped /
+      // repair only for NEW∩IN_SCOPE∩ACTIONABLE (or ask-scoped /
       // failed authoritative evidence the model can still address).
       return {
         action: "reject",

@@ -8,6 +8,7 @@ import {
   MITII_DESKTOP_BRIDGE_KEY,
   type MitiiDesktopBridge,
 } from '../shared/bridge.js';
+import { SHELL_FULLSCREEN_CHANNEL } from '../shared/shellChrome.js';
 import type { DesktopSettings } from '../shared/settings.js';
 
 const bridge: MitiiDesktopBridge = {
@@ -16,6 +17,16 @@ const bridge: MitiiDesktopBridge = {
   getEngineAuthToken: () => ipcRenderer.invoke('mitii:get-engine-auth-token'),
   getWorkspaceRoot: () => ipcRenderer.invoke('mitii:get-workspace-root'),
   getAppVersion: () => ipcRenderer.invoke('mitii:get-app-version'),
+  getShellChrome: () => ipcRenderer.invoke('mitii:get-shell-chrome'),
+  onShellFullscreen: (listener) => {
+    const handler = (_event: unknown, fullscreen: unknown) => {
+      listener(fullscreen === true);
+    };
+    ipcRenderer.on(SHELL_FULLSCREEN_CHANNEL, handler);
+    return () => {
+      ipcRenderer.removeListener(SHELL_FULLSCREEN_CHANNEL, handler);
+    };
+  },
   openExternal: (url: string) => ipcRenderer.invoke('mitii:open-external', url),
   pickWorkspace: () => ipcRenderer.invoke('mitii:pick-workspace'),
   pickFiles: () => ipcRenderer.invoke('mitii:pick-files'),

@@ -176,6 +176,10 @@ function registerIpc(): void {
   ipcMain.handle('mitii:get-engine-auth-token', () => engineToken ?? '');
   ipcMain.handle('mitii:get-workspace-root', () => state.workspaceRoot);
   ipcMain.handle('mitii:get-app-version', () => app.getVersion());
+  ipcMain.handle('mitii:get-shell-chrome', () => ({
+    platform: process.platform,
+    fullscreen: mainWindow?.isFullScreen() ?? false,
+  }));
   ipcMain.handle('mitii:get-settings', () => state.settings);
   ipcMain.handle('mitii:open-external', async (_event, url: unknown) => {
     if (typeof url !== 'string' || !isExternalBrowsableUrl(url)) {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  clampMaximumOutputTokensToContext,
   inferContextWindowFromModelId,
   inferMaximumOutputTokensFromModelId,
   resolveEffectiveContextWindow,
@@ -26,5 +27,12 @@ describe('contextWindow', () => {
     );
     expect(inferMaximumOutputTokensFromModelId('deepseek-chat')).toBe(8_192);
     expect(inferMaximumOutputTokensFromModelId('my-qwen-64k:latest')).toBeUndefined();
+  });
+
+  it('clamps DeepSeek V4 hard max when stored context is smaller', () => {
+    const inferred = inferMaximumOutputTokensFromModelId('deepseek-v4.1-flash');
+    expect(inferred).toBe(65_536);
+    expect(clampMaximumOutputTokensToContext(inferred!, 65_000)).toBe(65_000);
+    expect(clampMaximumOutputTokensToContext(0, 65_000)).toBe(0);
   });
 });

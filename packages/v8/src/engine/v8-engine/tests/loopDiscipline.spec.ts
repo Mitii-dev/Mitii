@@ -11,7 +11,7 @@ import {
 } from "../tests/fixtures/stubs";
 import { V8_ENGINE_THRESHOLDS } from "../policy";
 
-describe("v8-engine Phase 3 discipline", () => {
+describe("v8-engine loop discipline", () => {
   it("force-final identical tool thrash then Continue resume completes", async () => {
     // Hard limit in policy is 6 — script that many identical reads then a final answer after Continue.
     const identicalRead = {

@@ -427,13 +427,13 @@ export function McpManager(props: Props) {
             title="Refresh"
             onClick={() => void reload()}
           >
-            <IconRefresh size={16} />
+            <IconRefresh size={13} />
           </button>
         </div>
       </header>
 
       <div className="mcp-manager__search">
-        <IconSearch size={16} />
+        <IconSearch size={13} />
         <input
           type="search"
           value={query}

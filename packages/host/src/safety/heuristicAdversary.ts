@@ -1,5 +1,5 @@
 /**
- * Host heuristic ToolAdversaryPort (Phase 3).
+ * Host heuristic ToolAdversaryPort.
  * Restrict-only. Default disabled via createHeuristicAdversary({ enabled: false }).
  */
 

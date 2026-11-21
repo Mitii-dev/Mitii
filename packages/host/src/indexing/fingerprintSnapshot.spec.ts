@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { enrichFingerprintWithPersistedVectorProfile } from "./fingerprintSnapshot.js";
 
-describe("enrichFingerprintWithPersistedVectorProfile (Phase 5)", () => {
+describe("enrichFingerprintWithPersistedVectorProfile", () => {
   it("rebinds fingerprint pin snapshotId to persisted full-index fingerprint", () => {
     const mitiiDir = mkdtempSync(join(tmpdir(), "mitii-fp-"));
     writeFileSync(

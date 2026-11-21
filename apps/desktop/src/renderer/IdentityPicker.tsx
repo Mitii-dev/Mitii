@@ -34,6 +34,21 @@ export function IdentityPicker(props: IdentityPickerProps) {
         {props.subtitle ? <p>{props.subtitle}</p> : null}
       </header>
       <div className="identity-picker__grid" role="list">
+        {props.onAdd ? (
+          <button
+            type="button"
+            className="identity-card identity-card--add"
+            role="listitem"
+            onClick={props.onAdd}
+          >
+            <span className="identity-card__avatar" aria-hidden>
+              <IconPlus size={22} />
+            </span>
+            <span className="identity-card__title">
+              {props.addLabel ?? 'Add'}
+            </span>
+          </button>
+        ) : null}
         {props.cards.map((card) => (
           <div
             key={card.id}
@@ -70,20 +85,6 @@ export function IdentityPicker(props: IdentityPickerProps) {
             ) : null}
           </div>
         ))}
-        {props.onAdd ? (
-          <button
-            type="button"
-            className="identity-card identity-card--add"
-            onClick={props.onAdd}
-          >
-            <span className="identity-card__avatar" aria-hidden>
-              <IconPlus size={22} />
-            </span>
-            <span className="identity-card__title">
-              {props.addLabel ?? 'Add'}
-            </span>
-          </button>
-        ) : null}
       </div>
       {props.footer ? (
         <footer className="identity-picker__footer">{props.footer}</footer>

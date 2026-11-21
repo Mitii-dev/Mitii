@@ -4,7 +4,6 @@ Tool Runtime is the enforcement and execution layer for tools. It receives model
 
 Tool Runtime never decides that a tool should be allowed. It only enforces the grant it receives.
 
-**Ownership / compare plan:** [`project-goals/tool-runtime-ownership-plan.md`](../../../../project-goals/tool-runtime-ownership-plan.md) (agents-ref Tier A map, Keep-power vs dual-catalog phases).
 
 ## Responsibilities
 

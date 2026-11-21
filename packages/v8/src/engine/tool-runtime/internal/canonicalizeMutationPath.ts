@@ -1,7 +1,7 @@
 import { normalizeRelativePath } from "./PathContainment";
 
 /**
- * Canonical form for mutation path authorize/deny (Phase 6).
+ * Canonical form for mutation path authorize/deny.
  * - Strip chat `@` mentions
  * - Normalize slashes / `.` / `..` via `normalizeRelativePath`
  * - Rewrite `github/…` → `.github/…` (no parallel github/ tree)

@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { redactSecrets } from '../security/redact.js';
 
 /**
- * Phase 4 — pull CI logs and build an evidence pack directory for triage.
+ * pull CI logs and build an evidence pack directory for triage.
  */
 
 export interface PullCiLogsInput {

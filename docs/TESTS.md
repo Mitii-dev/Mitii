@@ -1,63 +1,21 @@
 # Tests
 
-## Layout
-
-Package and architecture tests live next to their owners:
+Package and architecture tests live next to their owners. Root `tests/` is **benchmark-only**.
 
 ```text
 packages/v8/tests/architecture/   # module boundary rules
-packages/v8/tests/smoke/          # public @mitii/v8 consumer smoke
-packages/sdk/tests/               # SDK contract + smoke
-apps/vscode/tests/                # VS Code extension unit tests
-packages/v8/src/**/tests/         # co-located module specs
+packages/*/…/tests/               # co-located unit / contract / integration
+apps/vscode/tests/                # extension unit tests
+tests/benchmark/                  # @mitii/solid-benchmark
+scripts/github-actions/*.test.js  # CI review poster
 ```
-
-`tests/` is **benchmark-only**:
-
-```text
-tests/
-|-- README.md                 # short overview + quick start
-|-- package.json              # forwards to @mitii/solid-benchmark
-`-- benchmark/
-    `-- README.md             # full install / run / cleanup guide
-```
-
-## Behavioral vs golden policy tests
-
-| Suite | Location | Asserts |
-|-------|----------|---------|
-| Golden decision cases | `packages/v8/src/modules/decision-policy/tests/` | Route/grant expectations — **100% pass** merge gate |
-| Mode seal invariants | `.../decision-policy/tests/unit/ModeSealInvariants.spec.ts` | Ask/Plan never gain writes |
-| Review module | `packages/v8/src/modules/review/**/*.spec.ts` | Selection, rules, anchor, SARIF, ReviewRecord |
-| Review CI poster | `scripts/github-actions/post-mitii-review-comments.test.js` | IoU dedupe + sticky marker |
-| Behavioral evals | `packages/v8/src/engine/v8-engine/tests/golden.behavioral.spec.ts`, `packages/v8/src/engine/v8-engine/tests/eval/alwaysOn.goldens.spec.ts` | Real coding prompts → deny tools / mode seals (not prose); always-on rewrite goldens |
-| Progressive tools | `packages/v8/src/engine/tool-runtime/tests/DescribeTool.spec.ts`, `packages/v8/src/engine/v8-engine/tests/phase6.spec.ts`, `packages/v8/src/engine/tool-runtime/actions/tests/collectPostEditDiagnostics.spec.ts` | INDEX stubs + full schemas for code-intelligence/diagnostics/change-impact + post-edit diagnostics settle |
-| RecipeSpec | `packages/host/src/recipes/recipeSpec.spec.ts` | Params compile; never emits ToolGrant fields |
-| Adversary | `tool-runtime/tests/Adversary.spec.ts` | BLOCK/ASK/fail-closed; unset = no-op |
-| Hooks / corpus / child | `packages/host/src/hooks`, `corpus`, `runtime` | Restrict-only hooks; corpus RAG opt-in; child mode ≤ parent |
-
-## Package tests
 
 ```bash
 pnpm test
 pnpm run check:architecture
+pnpm run benchmark:validate
+pnpm run benchmark:prepare   # wipe + reinstall fixture deps
+pnpm run benchmark           # full run (see tests/benchmark/README.md)
 ```
 
-## Solid benchmark
-
-Start here:
-
-1. [tests/README.md](../tests/README.md) - overview  
-2. [tests/benchmark/README.md](../tests/benchmark/README.md) - step-by-step  
-   (fixtures install & cleanup, model setup, run options, reports)
-
-```bash
-pnpm benchmark:fixtures   # install fixture deps
-pnpm benchmark:reset      # wipe + reinstall all fixtures
-pnpm benchmark:validate
-pnpm --filter @mitii/solid-benchmark suites   # live case counts
-pnpm benchmark:frontend
-```
-
-Fixture `node_modules` / lockfiles are gitignored. Reports write per-case under
-`tests/benchmark/reports/runs/<runId>/cases/`.
+Suite shortcuts (`benchmark:frontend`, etc.) live on `@mitii/solid-benchmark` / `tests/package.json`.

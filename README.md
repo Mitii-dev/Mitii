@@ -15,7 +15,7 @@
   <a href="LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/License-AGPL_v3-blue.svg"></a>
   <a href="https://code.visualstudio.com/"><img alt="VS Code 1.124+" src="https://img.shields.io/badge/VS%20Code-1.124%2B-007ACC?logo=visualstudiocode"></a>
   <a href="https://nodejs.org/"><img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-339933?logo=node.js"></a>
-  <img alt="Version 2.10.36" src="https://img.shields.io/badge/version-2.10.36-111111">
+  <img alt="Version 2.11.0" src="https://img.shields.io/badge/version-2.11.0-111111">
   <a href="https://docs.mitii.dev"><img alt="Documentation" src="https://img.shields.io/badge/docs-docs.mitii.dev-ff751f"></a>
 </p>
 
@@ -230,20 +230,26 @@ See [docs/REPO_LAYOUT.md](docs/REPO_LAYOUT.md). Canonical architecture: [package
 ## Development
 
 ```bash
-pnpm run build:all          # build all packages + Electron SQLite for F5 / indexes
-pnpm run build              # packages only
+pnpm run build:all          # packages + Electron SQLite staged for F5 / indexes
+pnpm run build              # packages only (vscode + desktop included)
+pnpm run build:desktop      # desktop app + deps
+pnpm run build:vscode       # VS Code extension
 pnpm run typecheck
 pnpm test
-pnpm run package            # target-specific VSIX (apps/vscode)
+pnpm run package            # VSIX (apps/vscode)
 pnpm run package:preflight  # release checks, tests, and package
 ```
 
-Native modules target different runtimes. `rebuild:native` stages the Electron
-binding for F5 and restores the Node ABI in `node_modules`, so tests keep working:
+Native modules target different runtimes (Windows + macOS). `rebuild:native`
+rebuilds `better-sqlite3` for the editor Electron ABI, stages it under
+`apps/vscode/dist/native`, then restores the Node ABI in `node_modules` so tests
+keep working:
 
 ```bash
-pnpm run rebuild:native     # Electron -> dist/native, then restore Node ABI
-pnpm run rebuild:node       # Node-only (tests/CLI)
+pnpm run rebuild:native                    # VS Code Electron → dist/native, restore Node
+MITII_EDITOR=cursor pnpm run rebuild:native
+MITII_ELECTRON_VERSION=<ver> pnpm run rebuild:native   # Windows / non-auto detect
+pnpm run rebuild:node                      # Node-only (tests / CLI)
 ```
 
 Vitest scripts auto-heal ABI mismatches via `scripts/ensure-node-native.mjs`.
@@ -259,6 +265,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for coding conventions and pull request g
 - [CLI](apps/cli/README.md) (includes writing recipes)
 - [VS Code extension](apps/vscode/README.md)
 - [Release / publish units](docs/RELEASE.md)
+- [Safety](docs/SAFETY.md)
 - [Solid benchmark](tests/benchmark/README.md)
 - [Tests layout](docs/TESTS.md)
 - [MCP packages](packages/mcp/README.md)

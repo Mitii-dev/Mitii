@@ -132,7 +132,7 @@ export type {
 
 export { V8EnginePipeline } from "./pipeline/V8EnginePipeline";
 export type { V8EnginePipelineDependencies } from "./pipeline/V8EnginePipeline";
-/** @deprecated Phase 10 — alias for V8EnginePipeline. */
+/** @deprecated alias for V8EnginePipeline. */
 export { V8EnginePipeline as AgentEnginePipeline } from "./pipeline/V8EnginePipeline";
 export type { V8EnginePipelineDependencies as AgentEnginePipelineDependencies } from "./pipeline/V8EnginePipeline";
 

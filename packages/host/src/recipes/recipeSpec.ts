@@ -10,7 +10,7 @@ import {
 } from './gitWritingRecipes.js';
 
 /**
- * Parameterized recipe product surface (Phase 2).
+ * Parameterized recipe product surface.
  * Compiles to MitiiStartInput fields only — never widens ToolGrant.
  */
 export const RECIPE_SPEC_SCHEMA_VERSION = 1 as const;

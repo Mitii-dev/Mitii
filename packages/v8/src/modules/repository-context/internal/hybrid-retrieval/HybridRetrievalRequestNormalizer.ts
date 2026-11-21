@@ -267,7 +267,7 @@ export class HybridRetrievalRequestNormalizer {
 
   /**
    * Stale Repo Map / Repo Graph must not abort lexical or vector retrieval.
-   * Phase 5: rebind identity to the pinned snapshot/token instead of dropping
+   * rebind identity to the pinned snapshot/token instead of dropping
    * intelligence after restart / fingerprint-pin drift.
    */
   private reconcileRepositoryIntelligence(

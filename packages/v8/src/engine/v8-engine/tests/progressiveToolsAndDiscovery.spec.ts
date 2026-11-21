@@ -88,7 +88,7 @@ describe("v8 loop policy bands", () => {
   });
 });
 
-describe("shaped discovery Phase 6 profiles", () => {
+describe("shaped discovery profiles", () => {
   it("resolves monorepo and security queries", () => {
     expect(SHAPED_DISCOVERY_PROFILES.length).toBeGreaterThanOrEqual(10);
     expect(resolveShapedDiscoveryProfile("fix pnpm workspace turbo build")?.id).toBe(

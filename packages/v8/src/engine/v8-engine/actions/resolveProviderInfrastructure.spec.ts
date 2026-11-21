@@ -5,7 +5,7 @@ import {
   providerInfrastructureUserMessage,
 } from "./resolveProviderInfrastructure";
 
-describe("resolveProviderInfrastructure (Phase 5)", () => {
+describe("resolveProviderInfrastructure", () => {
   it("classifies provider_unavailable and rate_limited as infrastructure", () => {
     expect(
       isProviderInfrastructureFailure({ errorCode: "provider_unavailable" }),

@@ -10,6 +10,7 @@ import {
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { SHELL_FULLSCREEN_CHANNEL } from '../shared/shellChrome.js';
 import {
   isExternalBrowsableUrl,
   isLoopbackAppUrl,
@@ -45,6 +46,14 @@ export function createMainWindow(
   };
 
   const win = new BrowserWindow(opts);
+
+  const emitShellFullscreen = (): void => {
+    if (win.isDestroyed()) return;
+    win.webContents.send(SHELL_FULLSCREEN_CHANNEL, win.isFullScreen());
+  };
+  win.on('enter-full-screen', emitShellFullscreen);
+  win.on('leave-full-screen', emitShellFullscreen);
+  win.webContents.on('did-finish-load', emitShellFullscreen);
 
   win.webContents.on('preload-error', (_event, preloadPath, error) => {
     console.error(
