@@ -1,6 +1,7 @@
 import {
   AGENT_ENGINE_SCHEMA_VERSION,
   agentEngineStartInputSchema,
+  agentRunBudgetSchema,
   createUserRequestInputSchema,
   mergeRequiredMcpServerIds,
   mergeRequiredSkillIds,
@@ -114,7 +115,7 @@ export function toAgentEngineStartInput(
     approvedPlan: parsed.approvedPlan,
     approvedPlanStrategy: parsed.approvedPlanStrategy,
     taskList: parsed.taskList,
-    budget: parsed.budget,
+    budget: resolveStartBudget(parsed),
     model: parsed.model,
     temperature: parsed.temperature,
     stream: parsed.stream,
@@ -131,6 +132,19 @@ export function toAgentEngineStartInput(
     requiredSkillIds,
     requiredMcpServerIds,
     instructions: buildStartInstructions(parsed),
+  });
+}
+
+/** Fold the host wall-time shorthand into the engine run budget. */
+function resolveStartBudget(
+  parsed: MitiiStartInput,
+): AgentEngineStartInput['budget'] {
+  if (parsed.maxWallTimeMs === undefined) {
+    return parsed.budget;
+  }
+  return agentRunBudgetSchema.parse({
+    ...(parsed.budget ?? {}),
+    maxWallTimeMs: parsed.maxWallTimeMs,
   });
 }
 

@@ -13,6 +13,7 @@ import {
   remapPathThroughScaffoldMapping,
   resolveScaffoldPackageMapping,
 } from "./remapScaffoldChangeSurfaces";
+import { normalizeRepoPathText } from "../../repository-state";
 
 /**
  * Apply a `discover_and_plan` model draft onto the deterministic discovery
@@ -223,13 +224,7 @@ function pathOverlaps(a: string, b: string): boolean {
 }
 
 function normalizePath(value: string): string {
-  return value
-    .trim()
-    .replace(/^@+/, "")
-    .replace(/\\/g, "/")
-    .replace(/\/+/g, "/")
-    .replace(/^\.\//, "")
-    .replace(/\/+$/, "");
+  return normalizeRepoPathText(value, { stripAtPrefix: true });
 }
 
 function uniqueStrings(values: readonly string[]): string[] {

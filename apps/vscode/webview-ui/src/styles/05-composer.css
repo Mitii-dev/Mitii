@@ -1,0 +1,455 @@
+.pins {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  min-width: 0;
+  max-height: min(16vh, 104px);
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.pin-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 24px;
+  padding: 2px 4px 2px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--pin-mode-color, var(--mitii-accent)) 9%, var(--mitii-panel));
+  color: var(--mitii-text);
+  border: 1px solid color-mix(in srgb, var(--pin-mode-color, var(--mitii-accent)) 28%, var(--mitii-border));
+  font-family: var(--mitii-font-mono);
+  font-size: 10.5px;
+  line-height: 1;
+  overflow: hidden;
+  box-shadow: 0 1px 0 color-mix(in srgb, #fff 4%, transparent) inset;
+}
+
+.pin-chip--auto {
+  border-style: dashed;
+  color: color-mix(in srgb, var(--mitii-text) 86%, var(--mitii-muted));
+}
+
+.pin-chip__path {
+  display: inline-flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.pin-chip__path:hover .pin-chip__name {
+  color: color-mix(in srgb, var(--pin-mode-color, var(--mitii-accent)) 78%, var(--mitii-text));
+}
+
+.pin-chip__name,
+.pin-chip__dir {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pin-chip__name {
+  color: var(--mitii-text);
+  font-weight: 700;
+  max-width: min(46vw, 190px);
+}
+
+.pin-chip__dir {
+  display: none;
+}
+
+.skill-pin-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  padding: 4px 8px 0;
+}
+
+.skill-pin-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 22px;
+  padding: 2px 4px 2px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--composer-mode-color, var(--mitii-accent)) 9%, var(--mitii-panel));
+  color: var(--mitii-text);
+  border: 1px solid color-mix(in srgb, var(--composer-mode-color, var(--mitii-accent)) 28%, var(--mitii-border));
+  font-size: 10px;
+  line-height: 1;
+}
+
+.skill-pin-chip button {
+  border: 0;
+  background: transparent;
+  color: var(--mitii-muted);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.skill-pin-chip button:hover {
+  color: var(--mitii-text);
+}
+
+.pin-chip__remove {
+  flex: 0 0 auto;
+  align-self: center;
+  border: 0;
+  background: transparent;
+  color: var(--mitii-muted);
+  padding: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  line-height: 1;
+  font-size: 14px;
+}
+
+.pin-chip__remove:hover {
+  background: color-mix(in srgb, var(--mitii-text) 8%, transparent);
+  color: var(--mitii-text);
+}
+
+.composer-dock {
+  position: relative;
+  z-index: 40;
+  border-top: 0;
+  padding: 18px 12px 4px;
+  background:
+    linear-gradient(
+      180deg,
+      transparent 0,
+      color-mix(in srgb, var(--mitii-surface) 82%, transparent) 18px,
+      var(--mitii-surface) 46px
+    );
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: visible;
+  flex-shrink: 0;
+}
+
+.mode-switch {
+  display: none;
+}
+
+.mode-hint {
+  display: none;
+}
+
+.composer-footer {
+  display: grid;
+  gap: 8px;
+  padding: 8px 10px 9px;
+  border-top: 1px solid var(--mitii-border-soft);
+  overflow: visible;
+  position: relative;
+  z-index: 60;
+  background: color-mix(in srgb, var(--mitii-panel-raised) 40%, transparent);
+  min-width: 0;
+  border-radius: 0 0 11px 11px;
+}
+
+.composer-controls-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+  overflow: visible;
+  position: relative;
+  z-index: 2;
+}
+
+.composer-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+  overflow: visible;
+  position: relative;
+  z-index: 2;
+}
+
+.composer-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  flex-wrap: nowrap;
+  overflow: visible;
+  position: relative;
+  z-index: 1;
+}
+
+.composer-code-review-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+  min-height: 22px;
+  padding: 0 2px;
+  margin-bottom: 6px;
+}
+
+.composer-code-review-row__inner {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: min(56%, 340px);
+  min-width: 168px;
+}
+
+.composer-git-count {
+  font-size: 11px;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--composer-mode-color, var(--mitii-accent)) 78%, var(--mitii-text));
+}
+
+.composer-code-review-link {
+  border: 0;
+  background: transparent;
+  color: var(--mitii-muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 0 2px;
+  cursor: pointer;
+}
+
+.composer-code-review-link:hover:not(:disabled) {
+  color: var(--mitii-text);
+}
+
+.composer-code-review-link:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.composer-code-review-btn {
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--composer-mode-color, var(--mitii-accent)) 45%, var(--mitii-border));
+  background: color-mix(in srgb, var(--composer-mode-color, var(--mitii-accent)) 78%, var(--mitii-panel));
+  color: #fff;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.composer-code-review-btn--fix {
+  border-color: color-mix(in srgb, var(--mitii-ok) 50%, var(--mitii-border));
+  background: color-mix(in srgb, var(--mitii-ok) 72%, var(--mitii-panel));
+}
+
+.composer-code-review-btn:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.composer-code-review-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.composer-dropdown-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+  padding: 0;
+  overflow: visible;
+  position: relative;
+  z-index: 2;
+}
+
+.composer-utility-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  flex-wrap: nowrap;
+  overflow: visible;
+  position: relative;
+  z-index: 1;
+}
+
+/* Model menu opens upward — keep it above mode/access controls. */
+.composer-footer:has(.model-quick-select__trigger[aria-expanded='true'])
+  .composer-controls-row {
+  z-index: 1;
+}
+
+.composer-footer:has(.model-quick-select__trigger[aria-expanded='true'])
+  .composer-meta-row {
+  z-index: 30;
+}
+
+.model-quick-select:has(.model-quick-select__trigger[aria-expanded='true']) {
+  z-index: 50;
+}
+
+/* Token details panel opens upward over the mode/access/depth controls. */
+.composer-footer:has(.token-popover__panel) .composer-controls-row {
+  z-index: 1;
+  pointer-events: none;
+}
+
+.composer-footer:has(.token-popover__panel) .composer-meta-row {
+  z-index: 5;
+}
+
+.composer-left {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+  overflow: visible;
+}
+
+.composer-meta-group {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 6px;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.composer-meta-group .token-popover,
+.composer-meta-group .token-meter-cluster {
+  flex: 0 0 auto;
+}
+
+.composer-meta-group .model-quick-select {
+  flex: 0 1 auto;
+  max-width: min(42vw, 200px);
+}
+
+.composer-meta-row .model-quick-select {
+  flex: 0 1 auto;
+  max-width: min(52vw, 240px);
+  margin-left: auto;
+}
+
+.composer-meta-row .token-popover,
+.composer-meta-row .token-meter-cluster {
+  flex: 0 0 auto;
+}
+
+.composer-left .composer-dropdown--profile {
+  display: none;
+}
+
+.composer-link-select {
+  flex: 0 1 clamp(64px, 20vw, 112px);
+  width: clamp(64px, 20vw, 112px);
+  min-width: 48px;
+  height: 22px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-foreground, var(--mitii-text));
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 650;
+  padding: 0 2px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.composer-link-select:hover,
+.composer-link-select:focus-visible {
+  outline: none;
+  background: var(--vscode-list-hoverBackground, color-mix(in srgb, var(--mitii-text) 7%, transparent));
+  color: var(--vscode-list-hoverForeground, var(--vscode-foreground, var(--mitii-text)));
+}
+
+.composer-link-select--model {
+  flex-basis: clamp(76px, 28vw, 148px);
+  width: clamp(76px, 28vw, 148px);
+}
+
+.model-quick-select {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  flex: 1 1 auto;
+  max-width: min(64vw, 300px);
+}
+
+.model-quick-select__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+  height: 24px;
+  border: 1px solid var(--vscode-dropdown-border, var(--mitii-border-soft));
+  border-radius: 6px;
+  background: var(--vscode-dropdown-background, var(--mitii-panel));
+  color: var(--vscode-dropdown-foreground, var(--mitii-text));
+  padding: 0 8px;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 650;
+  text-align: left;
+  text-decoration: none;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+}
+
+.model-quick-select__trigger:hover,
+.model-quick-select__trigger:focus-visible,
+.model-quick-select__trigger[aria-expanded='true'] {
+  outline: none;
+  color: var(--vscode-dropdown-foreground, var(--mitii-text));
+  border-color: var(--vscode-focusBorder, var(--mitii-accent));
+  background: var(
+    --vscode-list-hoverBackground,
+    color-mix(in srgb, var(--mitii-text) 6%, var(--vscode-dropdown-background, var(--mitii-panel)))
+  );
+}
+
+.model-quick-select__trigger svg {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+}
+
+.model-quick-select__trigger span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

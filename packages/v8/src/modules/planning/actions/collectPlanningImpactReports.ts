@@ -2,10 +2,11 @@ import {
   CHANGE_IMPACT_SCHEMA_VERSION,
   ChangeImpactPipeline,
 } from "../../change-impact";
+import type { RepositoryGraphPort } from "../../change-impact";
 import { PLANNING_WORKING_SET_POLICY } from "../policy";
 import type { PlanningImpactReport } from "../contracts";
 import type { RepoGraph } from "../../repository-state";
-import type { RepositoryGraphPort } from "../../../engine/tool-runtime";
+import { normalizeRepoPathText } from "../../repository-state";
 
 /**
  * Bounded hop-1 graph reports for follow_evidence planning.
@@ -70,7 +71,7 @@ export async function collectPlanningImpactReports(params: {
         edgeTypes: PLANNING_WORKING_SET_POLICY.dependentEdgeTypes,
         expectedToken,
       });
-      const writeKey = normalizePath(seedPath);
+      const writeKey = normalizeRepoPathText(seedPath);
       const report: PlanningImpactReport = {
         seedPath: writeKey,
         mustRead: mustRead
@@ -131,11 +132,11 @@ function selectGraph(
   graphs: readonly RepoGraph[],
   path: string,
 ): RepoGraph | undefined {
-  const normalized = normalizePath(path);
+  const normalized = normalizeRepoPathText(path);
   return graphs.find((graph) =>
     graph.nodes.some(
       (node) =>
-        node.kind === "file" && normalizePath(node.relativePath) === normalized,
+        node.kind === "file" && normalizeRepoPathText(node.relativePath) === normalized,
     ),
   );
 }
@@ -144,7 +145,7 @@ function uniquePaths(paths: readonly string[]): string[] {
   const seen = new Set<string>();
   const unique: string[] = [];
   for (const path of paths) {
-    const normalized = normalizePath(path);
+    const normalized = normalizeRepoPathText(path);
     if (!normalized || seen.has(normalized)) continue;
     seen.add(normalized);
     unique.push(normalized);
@@ -152,11 +153,3 @@ function uniquePaths(paths: readonly string[]): string[] {
   return unique;
 }
 
-function normalizePath(value: string): string {
-  return value
-    .trim()
-    .replace(/\\/g, "/")
-    .replace(/\/+/g, "/")
-    .replace(/^\.\//, "")
-    .replace(/\/+$/, "");
-}

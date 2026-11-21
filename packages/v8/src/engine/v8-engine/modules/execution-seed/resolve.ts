@@ -9,6 +9,7 @@ import {
   citedRepoPathsFromPrompt,
   preflightDiagnosticsForUserRequest,
 } from "../user-path-priority";
+import { normalizeRepoPathText } from "../../../../modules/repository-state";
 
 export const EXECUTION_SEED_MAX_PATHS = 8;
 export const EXECUTION_SEED_MAX_SYMBOLS = 8;
@@ -260,12 +261,7 @@ function uniqueCap(values: readonly string[], max: number): string[] {
 }
 
 function normalizePath(value: string): string {
-  let path = value
-    .trim()
-    .replace(/\\/g, "/")
-    .replace(/\/+/g, "/")
-    .replace(/^\.\//, "")
-    .replace(/\/+$/, "");
+  let path = normalizeRepoPathText(value);
   if (/^github\/workflows\//i.test(path)) {
     path = `.github/${path.slice("github/".length)}`;
   }

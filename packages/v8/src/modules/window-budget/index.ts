@@ -7,6 +7,11 @@ export {
 
 export { DEFAULT_WINDOW_BUDGET_POLICY } from "./defaults";
 export {
+  WINDOW_BUDGET_MODEL_PROFILES,
+  resolveWindowBudgetModelProfile,
+} from "./modelProfiles";
+export type { WindowBudgetModelProfile } from "./modelProfiles";
+export {
   WINDOW_BUDGET_POLICY,
   mergeWindowBudgetPolicy,
   resolveWindowBudgetPolicy,

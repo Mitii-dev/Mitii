@@ -25,6 +25,37 @@ describe("createRequestLimiter", () => {
     expect(started).toBeGreaterThanOrEqual(1);
   });
 
+  it("does not emit unhandledRejection when a fire-and-forget request times out", async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const limit = createRequestLimiter({ limit: 1, timeoutMs: 10 });
+      void limit(() => new Promise<string>((resolve) => setTimeout(() => resolve("late"), 60)));
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
+  it("still rejects awaiting callers with RequestLimiterTimeoutError", async () => {
+    const limit = createRequestLimiter({ limit: 1, timeoutMs: 10 });
+    await expect(
+      limit(() => new Promise<string>((resolve) => setTimeout(() => resolve("late"), 60))),
+    ).rejects.toBeInstanceOf(RequestLimiterTimeoutError);
+  });
+
+  it("rejects (not throws) and frees the slot when the creator throws synchronously", async () => {
+    const limit = createRequestLimiter({ limit: 1, timeoutMs: 1000 });
+    const failing = limit((): Promise<string> => {
+      throw new Error("sync boom");
+    });
+    const next = limit(async () => "ok");
+    await expect(failing).rejects.toThrow("sync boom");
+    await expect(next).resolves.toBe("ok");
+  });
+
   it("rejects immediately when the abort signal is already aborted", async () => {
     const limit = createRequestLimiter({ limit: 2, timeoutMs: 1000 });
     const controller = new AbortController();

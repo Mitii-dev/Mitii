@@ -1,4 +1,4 @@
-import { INTENT_CONSTANTS } from "../../../request-understanding/intent/constants";
+import { INTENT_CONSTANTS } from "../../../request-understanding";
 import type { GoldenDecisionCase } from "../fixtures/decisionFixtureTypes";
 import { createTarget, createUnderstanding } from "../fixtures/decisionFixtureHelpers";
 

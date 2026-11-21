@@ -93,3 +93,5 @@ export {
   mapContextToPromptSlice,
   mergePromptInstructions,
 } from "./actions";
+
+export { PROMPT_CONSTRUCTION_THRESHOLDS } from "./policy";

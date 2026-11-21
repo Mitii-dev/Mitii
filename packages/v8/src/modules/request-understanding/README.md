@@ -130,3 +130,9 @@ Request Understanding result returns a result like this:
   }
 }
 ```
+
+## Intent API
+
+The index exports the intent helpers other modules need (clarification option parsing,
+fact patches, intent resolution) so consumers never deep-import `intent/`.
+Contract coverage: `tests/contract/RequestUnderstanding.contract.spec.ts`.

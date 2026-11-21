@@ -26,6 +26,15 @@ Planning creates structured plans when policy or user mode calls for visible pla
 planning/
   pipeline/                 PlanningPipeline
   actions/                  Resolve strategy (rules), draft, draft-from-discovery, apply-discovered-draft, validate, compact, serialize, format
+    DraftPlan.ts            `draftPlan` entry (public; assembles the artifact)
+    draftPlanPhases.ts      Phase assembly (Discover / Change / Verify, skill-driven)
+    draftSkillHints.ts      Skill planning-hint parsing and skill-driven phases
+    draftPhaseInjection.ts  Inject discovery/diagnostic steps into Change phases
+    draftChangeSteps.ts     Discover and Change step builders
+    draftArchitectureSteps.ts Architecture-scale Change workstreams
+    draftVerifySteps.ts     Verify step builders
+    draftPlanEvidence.ts    Objective, targets, questions, risks, verification, criteria
+    draftPlanPhrases.ts     Phrase/intent text helpers and repair predicate
     draftPlanShared.ts      Shared step/clip helpers
     draftDiagnosticSteps.ts Diagnostic-class Change batches
     draftDiscoverySurfaces.ts Discovery-surface Change steps
@@ -219,3 +228,9 @@ PlanningInput -> PlanningResult. Engine supplies understanding evidence, optiona
   "budgetTokens": 1600
 }
 ```
+
+## Boundaries
+
+Planning imports `RepositoryGraphPort` from `change-impact`, never from the tool runtime.
+`resolvePlanStrategy` and `thinDiscoveryBriefForClarify` are public helpers; `internal/` is
+not exported. Contract coverage: `tests/contract/Planning.contract.spec.ts`.

@@ -30,6 +30,18 @@ describe('resolveEffectiveContextWindow', () => {
     expect(resolveEffectiveContextWindow(0, 'my-qwen-64k:latest')).toBe(65_536);
   });
 
+  it.each([
+    'deepseek-chat',
+    'deepseek-reasoner',
+    'deepseek-v4-pro:0813',
+    'deepseek/deepseek-chat-v3-0324',
+    'deepseek-r1:32b',
+  ])('resolves DeepSeek model %s to the 128k preset when auto', (model) => {
+    expect(resolveEffectiveContextWindow(0, model, 'openai-compatible')).toBe(
+      128_000,
+    );
+  });
+
   it('falls back to default when nothing matches', () => {
     expect(resolveEffectiveContextWindow(0, 'custom-local')).toBe(
       DEFAULT_CONTEXT_WINDOW,

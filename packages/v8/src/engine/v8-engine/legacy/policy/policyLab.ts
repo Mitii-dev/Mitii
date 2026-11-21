@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { windowBudgetPolicyOverridesSchema } from "../../../../modules/window-budget/contracts";
+import { windowBudgetPolicyOverridesSchema } from "../../../../modules/window-budget";
 import { agentEngineThresholdsOverridesSchema } from "../../actions/resolveAgentEngineThresholds";
 import { v8EngineThresholdsOverridesSchema } from "../../policy";
 

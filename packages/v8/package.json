@@ -1,6 +1,6 @@
 {
   "name": "@mitii/v8",
-  "version": "2.11.1",
+  "version": "2.11.2",
   "description": "Host-neutral Mitii V8 agent runtime (modules + engine).",
   "license": "AGPL-3.0-or-later",
   "type": "module",
@@ -36,6 +36,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node ../../scripts/ensure-node-native.mjs && vitest run",
     "eval:nightly": "node ./scripts/eval-nightly.mjs",
+    "eval:live": "MITII_LIVE_EVAL=1 node ./scripts/eval-nightly.mjs",
     "test:v8-engine": "node ../../scripts/ensure-node-native.mjs && vitest run src/engine/v8-engine"
   },
   "dependencies": {

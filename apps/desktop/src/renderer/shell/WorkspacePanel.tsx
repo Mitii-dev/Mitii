@@ -29,7 +29,7 @@ import {
 import {
   isTransientEngineNetworkError,
   withEngineFetchRetry,
-} from '../engineNetwork.js';
+} from './engineNetwork.js';
 import { MarkdownBody } from '../chat/MarkdownBody.js';
 import { CodeEditor } from '../explorer/CodeEditor.js';
 import { GitWorkingTreePane } from '../git/GitWorkingTreePane.js';
@@ -52,7 +52,7 @@ import {
   IconNewFolder,
   IconOpenPreview,
   IconRefresh,
-} from '../ActivityIcons.js';
+} from './ActivityIcons.js';
 import { ResizeHandle, usePersistedWidth } from './ResizeHandle.js';
 import type { GitWorkingTreeSnapshot } from '../../shared/git/workingTree.js';
 

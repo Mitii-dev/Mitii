@@ -434,6 +434,7 @@ Set with a verb command, `--mode <mode>`, or `defaultMode` in config. Positional
 | `--mode <mode>` | `ask` \| `plan` \| `agent` |
 | `--origin <o>` | `user` \| `automation` \| `api` (unattended policy) |
 | `--autonomy <a>` | `readonly` \| `propose` \| `apply` \| `apply_and_pr` |
+| `--timeout <seconds>` | Host wall-time budget for the run (also `MITII_RUN_TIMEOUT_SECONDS`; flag wins). Passed to the engine as `maxWallTimeMs`, which finalizes after a verified patch instead of starting another model turn near the deadline |
 | `--agent <id\|path>` | Load `.mitii/agents/<id>.md` or a markdown path |
 | `--prompt <text>` | Prompt text (alternative to positional prompt) |
 | `--prompt-file <path>` | Prompt from file (`-` = stdin) |

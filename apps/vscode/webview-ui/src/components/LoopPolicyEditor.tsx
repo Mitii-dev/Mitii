@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 
 import type { TokenBudgetFieldDescriptor } from '../protocol';
-import { NumberField } from './NumberField';
+import { NumberField } from '@mitii/ui-react';
 
 export function LoopPolicyEditor({
   fields,

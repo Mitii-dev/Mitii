@@ -7,7 +7,7 @@ import type {
   PromptSkillCatalogL1Entry,
 } from "../../../modules/prompt-construction";
 import type { UserRequestEnvelope } from "../../../modules/request-intake";
-import { extractPrimaryUserMessage } from "../../../modules/request-understanding/intent/extractPrimaryUserMessage";
+import { extractPrimaryUserMessage } from "../../../modules/request-understanding";
 import type { RequestUnderstandingResult } from "../../../modules/request-understanding";
 import {
   SKILLS_SCHEMA_VERSION,

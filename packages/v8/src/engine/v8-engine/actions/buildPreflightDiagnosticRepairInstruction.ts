@@ -1,4 +1,5 @@
 import type { VerificationDiagnostic } from "../../../modules/verification";
+import { normalizeRepoPathText } from "../../../modules/repository-state";
 
 export interface PreflightDiagnosticRepairInstructionInput {
   diagnostics: readonly VerificationDiagnostic[];
@@ -63,14 +64,7 @@ function isPathInScopes(path: string, scopes: readonly string[]): boolean {
 }
 
 function normalizePath(value: string): string {
-  return (
-    value
-      .trim()
-      .replace(/\\/g, "/")
-      .replace(/^@+/, "")
-      .replace(/^\.\//, "")
-      .replace(/\/+$/, "") || "."
-  );
+  return normalizeRepoPathText(value, { stripAtPrefix: true, emptyFallback: "." });
 }
 
 function clipText(value: string, maxChars: number): string {

@@ -81,6 +81,8 @@ export interface ParsedCliArgs {
   setupShow?: boolean;
   setupTest?: boolean;
   setupYes?: boolean;
+  /** Host wall-time budget for the run (seconds); engine finalizes near the deadline. */
+  timeoutSeconds?: number;
   /** One-off loop-policy threshold JSON (lab). Implies overrides for this run. */
   loopPolicyJson?: string;
   /** Force window-band standards even if config enables loopPolicy. */
@@ -101,6 +103,46 @@ function takeValue(
     return { error: `mitii: ${flag} requires a value` };
   }
   return { value, next: index + 1 };
+}
+
+/**
+ * Peel global host flags that may appear after a passthrough subcommand
+ * (`memory`, `mcp`, `history`, …). Those args otherwise land in `rest` and
+ * never set `json` / `cwd` / `echo` on the parsed result.
+ */
+export function peelGlobalPassthroughFlags(args: string[]): {
+  rest: string[];
+  json: boolean;
+  echo: boolean;
+  cwd?: string;
+  error?: string;
+} {
+  const rest: string[] = [];
+  let json = false;
+  let echo = false;
+  let cwd: string | undefined;
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i]!;
+    if (arg === '--json') {
+      json = true;
+      continue;
+    }
+    if (arg === '--echo') {
+      echo = true;
+      continue;
+    }
+    if (arg === '--cwd') {
+      const taken = takeValue(args, i, '--cwd');
+      if ('error' in taken) {
+        return { rest: [], json, echo, error: taken.error };
+      }
+      cwd = taken.value;
+      i = taken.next;
+      continue;
+    }
+    rest.push(arg);
+  }
+  return { rest, json, echo, cwd };
 }
 
 export function parseCliArgs(argv: string[]): ParsedCliArgs {
@@ -125,6 +167,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
   let setupModel: string | undefined;
   let setupBaseUrl: string | undefined;
   let loopPolicyJson: string | undefined;
+  let timeoutSeconds: number | undefined;
   /** Once `connect` is seen, remaining argv (flags included) is channel passthrough. */
   let connectPassthrough: string[] | undefined;
   /** Once `schedule`/`serve`/`events`/`restore`/`recipe` is seen, remaining argv is passthrough. */
@@ -335,6 +378,23 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
         return { command: 'error', errorMessage: taken.error, rest: [] };
       }
       loopPolicyJson = taken.value;
+      i = taken.next;
+      continue;
+    }
+    if (arg === '--timeout') {
+      const taken = takeValue(args, i, '--timeout');
+      if ('error' in taken) {
+        return { command: 'error', errorMessage: taken.error, rest: [] };
+      }
+      const seconds = Number(taken.value);
+      if (!Number.isFinite(seconds) || seconds <= 0) {
+        return {
+          command: 'error',
+          errorMessage: `mitii: --timeout must be a positive number of seconds (got "${taken.value}")`,
+          rest: [],
+        };
+      }
+      timeoutSeconds = seconds;
       i = taken.next;
       continue;
     }
@@ -613,6 +673,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       recipe,
       skills: skills.length > 0 ? skills : undefined,
       images: images.length > 0 ? images : undefined,
+      timeoutSeconds,
       loopPolicyJson,
       noLoopPolicy: flags.has('no-loop-policy'),
       rest,
@@ -641,6 +702,7 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
       recipe: recipe ?? command,
       skills: skills.length > 0 ? skills : undefined,
       images: images.length > 0 ? images : undefined,
+      timeoutSeconds,
       loopPolicyJson,
       noLoopPolicy: flags.has('no-loop-policy'),
       rest,
@@ -666,12 +728,16 @@ export function parseCliArgs(argv: string[]): ParsedCliArgs {
     command === 'mcp' ||
     command === 'history'
   ) {
+    const peeled = peelGlobalPassthroughFlags(automationPassthrough ?? rest);
+    if (peeled.error) {
+      return { command: 'error', errorMessage: peeled.error, rest: [] };
+    }
     return {
       command,
-      cwd,
-      json: flags.has('json'),
-      forceEcho: flags.has('echo'),
-      rest: automationPassthrough ?? rest,
+      cwd: peeled.cwd ?? cwd,
+      json: flags.has('json') || peeled.json,
+      forceEcho: flags.has('echo') || peeled.echo,
+      rest: peeled.rest,
     };
   }
 

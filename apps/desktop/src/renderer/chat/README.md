@@ -11,4 +11,8 @@ Composer, chronological activity timeline, markdown, mentions, plan strips, hist
 
 Stream paints update immediately as events arrive; typing reveal is local presentation only. `prefers-reduced-motion` skips typing/caret motion.
 
-Not an activity-bar side — layout toggles (Chat / Code) live in `App.tsx`. Wire contract: `shared/protocol.ts` (`mitii-desktop/v1` prompt stream).
+Not an activity-bar side — layout toggles (Chat / Code) live in `shell/AppTopbar.tsx` via `shell/hooks/useShellActions.ts`. Wire contract: `shared/protocol.ts` (`mitii-desktop/v1` prompt stream).
+
+## Containers and hooks
+
+`ChatPanel` → `ChatFeed` + `ApprovalCard` + `ChatComposer` (+ `SuggestMenu`). State and actions live in `hooks/` (`useRunSubmit`, `useRunResume`, `useRunStream`, `useThreadActions`, `useSuspensionActions`, `usePlanActions`, …) and are wired by `app/useAppModel.ts`.

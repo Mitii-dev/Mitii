@@ -10,6 +10,10 @@ import {
   isWorkspaceRootCheckId,
   normalizeVerificationPath,
 } from "../patterns";
+import {
+  isBehaviorDefectCheck,
+  requiresBehaviorEvidence,
+} from "./BehaviorEvidence";
 import { filterActionableDiagnostics } from "./FilterActionableDiagnostics";
 
 export type TaskRelevantResidualKind =
@@ -42,6 +46,8 @@ export interface TaskRelevantEvidenceAssessment {
  *    defects when `minimumEvidence` includes `tests`. Empty-suite / unparsed
  *    test exits stay harness noise (common for single-package fixtures before
  *    host-injected oracles). Optional tests remain harness noise.
+ *    When `minimumEvidence` includes `behavior`, any failed non-empty test
+ *    suite blocks soft-accept (see `isBehaviorDefectCheck`).
  * 4. Without authoritative compile, do not soft-accept failed checks.
  *    Sole workspace-root build/typecheck counts when no project-local compile
  *    check ran (single-package fixtures).
@@ -57,6 +63,9 @@ export function assessTaskRelevantEvidence(params: {
   const authoritativeCompilePassed = resolveAuthoritativeCompilePassed(checks);
   const diagnostics = params.diagnostics ?? [];
   const testsRequired = params.verification.minimumEvidence.includes("tests");
+  const behaviorRequired = requiresBehaviorEvidence(
+    params.verification.minimumEvidence,
+  );
 
   const filtered = filterActionableDiagnostics({
     diagnostics,
@@ -118,6 +127,8 @@ export function assessTaskRelevantEvidence(params: {
     if (
       !isIgnorableResidualCheck(check, {
         testsRequired,
+        behaviorRequired,
+        allChecks: checks,
         actionableDiagnostics: filtered.actionable,
       })
     ) {
@@ -238,6 +249,8 @@ function isIgnorableResidualCheck(
   check: VerificationCheckResult,
   options: {
     testsRequired: boolean;
+    behaviorRequired: boolean;
+    allChecks: readonly VerificationCheckResult[];
     actionableDiagnostics: readonly VerificationDiagnostic[];
   },
 ): boolean {
@@ -250,6 +263,14 @@ function isIgnorableResidualCheck(
   // Required tests with parseable assertion/source rows are defects.
   // Empty-suite / unparsed exits stay harness noise.
   if (check.kind === "test") {
+    // Behavior-implied asks: a failing suite is a product defect even when no
+    // assertion row could be parsed (e.g. an unwired route returning 404).
+    if (
+      options.behaviorRequired &&
+      isBehaviorDefectCheck(check, options.allChecks)
+    ) {
+      return false;
+    }
     if (!options.testsRequired) {
       return true;
     }

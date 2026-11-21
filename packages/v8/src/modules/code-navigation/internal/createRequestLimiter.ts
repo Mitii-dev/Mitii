@@ -1,6 +1,11 @@
 /**
- * Bounded concurrency + per-request timeout for language-service calls.
- * Pattern from Cody's lsp request limiter (limit 3, timeout ~2s).
+ * Bounded concurrency + per-request timeout for language-service calls
+ * (typically limit 3, timeout ~2s).
+ *
+ * Settlement contract: every request settles exactly once. Timeouts, aborts and
+ * synchronous creator failures reject the promise returned to the caller; the
+ * returned promise is also marked handled so fire-and-forget callers never
+ * trigger `unhandledRejection`. Callers that await it still observe the error.
  */
 export type RequestLimiter = <T>(
   creator: () => Promise<T>,
@@ -21,6 +26,9 @@ export class RequestLimiterAbortError extends Error {
   }
 }
 
+const toError = (error: unknown): Error =>
+  error instanceof Error ? error : new Error(String(error));
+
 export function createRequestLimiter(params: {
   limit: number;
   timeoutMs: number;
@@ -37,30 +45,41 @@ export function createRequestLimiter(params: {
     if (inflight >= limit || queue.length === 0) return;
     const next = queue.shift()!;
     inflight += 1;
-    let timedOut = false;
-    const timeoutId = setTimeout(() => {
-      timedOut = true;
-      next.reject(new RequestLimiterTimeoutError(timeoutMs));
+    let settled = false;
+    const release = (): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
       inflight -= 1;
       processNext();
+    };
+    const timeoutId = setTimeout(() => {
+      if (settled) return;
+      next.reject(new RequestLimiterTimeoutError(timeoutMs));
+      release();
     }, timeoutMs);
 
-    next
-      .creator()
-      .then((value) => {
-        if (!timedOut) next.resolve(value);
-      })
-      .catch((error: unknown) => {
-        if (!timedOut) {
-          next.reject(error instanceof Error ? error : new Error(String(error)));
-        }
-      })
-      .finally(() => {
-        if (timedOut) return;
-        clearTimeout(timeoutId);
-        inflight -= 1;
-        processNext();
-      });
+    let started: Promise<unknown>;
+    try {
+      started = Promise.resolve(next.creator());
+    } catch (error: unknown) {
+      next.reject(toError(error));
+      release();
+      return;
+    }
+
+    started.then(
+      (value) => {
+        if (settled) return;
+        next.resolve(value);
+        release();
+      },
+      (error: unknown) => {
+        if (settled) return;
+        next.reject(toError(error));
+        release();
+      },
+    );
   };
 
   return function enqueue<T>(
@@ -68,7 +87,9 @@ export function createRequestLimiter(params: {
     abortSignal?: AbortSignal,
   ): Promise<T> {
     if (abortSignal?.aborted) {
-      return Promise.reject(new RequestLimiterAbortError());
+      const aborted = Promise.reject<T>(new RequestLimiterAbortError());
+      aborted.catch(() => undefined);
+      return aborted;
     }
 
     let queued: (typeof queue)[number] | undefined;
@@ -90,8 +111,10 @@ export function createRequestLimiter(params: {
     };
     abortSignal?.addEventListener("abort", onAbort, { once: true });
     processNext();
-    return promise.finally(() => {
+    const settledPromise = promise.finally(() => {
       abortSignal?.removeEventListener("abort", onAbort);
     });
+    settledPromise.catch(() => undefined);
+    return settledPromise;
   };
 }

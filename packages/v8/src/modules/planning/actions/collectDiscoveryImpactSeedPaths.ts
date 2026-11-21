@@ -1,4 +1,5 @@
 import type { DiscoveryBrief } from "../contracts";
+import { normalizeRepoPathText } from "../../repository-state";
 
 /**
  * Seed paths for hop-1 impact collection after a discovery pass.
@@ -28,13 +29,5 @@ function uniquePaths(paths: readonly string[]): string[] {
 }
 
 function normalizePath(value: string): string {
-  return (
-    value
-      .trim()
-      .replace(/^@+/, "")
-      .replace(/\\/g, "/")
-      .replace(/\/+/g, "/")
-      .replace(/^\.\//, "")
-      .replace(/\/+$/, "") || ""
-  );
+  return normalizeRepoPathText(value, { stripAtPrefix: true });
 }

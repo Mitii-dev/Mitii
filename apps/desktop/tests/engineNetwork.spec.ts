@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   isTransientEngineNetworkError,
   withEngineFetchRetry,
-} from '../src/renderer/engineNetwork';
+} from '../src/renderer/shell/engineNetwork';
 
 describe('engineNetwork', () => {
   it('detects Chromium Failed to fetch / NetworkError blips', () => {

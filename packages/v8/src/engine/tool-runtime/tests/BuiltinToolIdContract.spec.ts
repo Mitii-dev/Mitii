@@ -19,7 +19,7 @@ import {
   MUTATION_TOOL_IDS as DP_MUTATION,
   PROCESS_TOOL_IDS as DP_PROCESS,
   READ_ONLY_TOOL_IDS as DP_READ_ONLY,
-} from "../../../modules/decision-policy/constants";
+} from "../../../modules/decision-policy";
 import { ADVERSARY_HIGH_RISK_TOOL_IDS } from "../internal/adversary";
 
 /**

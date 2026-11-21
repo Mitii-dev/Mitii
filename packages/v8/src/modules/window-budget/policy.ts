@@ -4,6 +4,10 @@ import type {
   WindowBudgetPolicyOverrides,
 } from "./contracts";
 import {
+  resolveWindowBudgetModelProfile,
+  type WindowBudgetModelProfile,
+} from "./modelProfiles";
+import {
   resolveWindowBudgetMode,
   windowBudgetModeOverlay,
   type WindowBudgetMode,
@@ -45,6 +49,13 @@ export interface ResolveWindowBudgetPolicyInput {
    */
   mode?: WindowBudgetMode | string;
   /**
+   * Optional model id. When it matches a model profile, the profile overlay
+   * is applied after the band and before the mode overlay.
+   */
+  modelId?: string;
+  /** Profile table override (tests / hosts); defaults to the shipped table. */
+  modelProfiles?: readonly WindowBudgetModelProfile[];
+  /**
    * Optional host / Developer Custom overrides (`mitii.tokenBudget.*`).
    * Applied last; only defined keys replace band/mode.
    */
@@ -58,7 +69,9 @@ export interface ResolvedWindowBudgetPolicy {
   bandOverrides: WindowBudgetPolicyOverrides;
   mode?: WindowBudgetMode;
   modeOverrides: WindowBudgetPolicyOverrides;
-  /** Final policy: defaults → band → mode → lab. */
+  /** Matched model profile id, when one applied. */
+  modelProfileId?: string;
+  /** Final policy: defaults → band → model profile → mode → lab. */
   policy: WindowBudgetPolicy;
 }
 
@@ -68,8 +81,9 @@ export interface ResolvedWindowBudgetPolicy {
  * Merge order:
  * 1. `DEFAULT_WINDOW_BUDGET_POLICY`
  * 2. Window band overlays from `windowBudgetBands.ts`
- * 3. Optional mode overlays from `mode.ts`
- * 4. Optional lab / host overrides
+ * 3. Optional model profile from `modelProfiles.ts`
+ * 4. Optional mode overlays from `mode.ts`
+ * 5. Optional lab / host overrides
  */
 export function resolveWindowBudgetPolicy(
   input: ResolveWindowBudgetPolicyInput,
@@ -81,6 +95,13 @@ export function resolveWindowBudgetPolicy(
   const band = resolveWindowBudgetBand(contextWindowTokens);
   const bandDefinition = windowBudgetBandDefinition(band);
   const bandOverrides = stripUndefined(bandDefinition.overrides);
+  const modelProfile = resolveWindowBudgetModelProfile(
+    input.modelId,
+    input.modelProfiles,
+  );
+  const modelProfileOverrides = modelProfile
+    ? stripUndefined(modelProfile.overrides)
+    : {};
   const mode = resolveWindowBudgetMode(
     typeof input.mode === "string" ? input.mode : undefined,
   );
@@ -94,6 +115,7 @@ export function resolveWindowBudgetPolicy(
   const policy: WindowBudgetPolicy = {
     ...DEFAULT_WINDOW_BUDGET_POLICY,
     ...bandOverrides,
+    ...modelProfileOverrides,
     ...modeOverrides,
     ...labOverrides,
   };
@@ -105,6 +127,7 @@ export function resolveWindowBudgetPolicy(
     bandOverrides,
     ...(mode ? { mode } : {}),
     modeOverrides,
+    ...(modelProfile ? { modelProfileId: modelProfile.id } : {}),
     policy,
   };
 }

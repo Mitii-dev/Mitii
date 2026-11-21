@@ -30,7 +30,8 @@ import {
   shouldElevateSharedScopeRisk,
   shouldRecommendChangeImpact,
 } from "./ClassifySharedScopeRepair";
-import { looksLikeCodeReviewRequest } from "./ResolveRoute";
+import { looksLikeCodeReviewRequest } from "./RouteMessageSignals";
+import { EXECUTION_ROUTE } from "../constants";
 
 /**
  * Discrete grant profiles. Mode + route select exactly one; layers then add
@@ -71,23 +72,23 @@ export function selectGrantProfile(params: {
 }): GrantProfile {
   const { mode, route, hasNetworkTools } = params;
 
-  if (route === "clarify") {
+  if (route === EXECUTION_ROUTE.CLARIFY) {
     return "none";
   }
 
   // Ask / plan are hard seals: never agent_execute regardless of route.
   if (mode === "ask" || mode === "plan") {
-    if (route === "direct_answer") {
+    if (route === EXECUTION_ROUTE.DIRECT_ANSWER) {
       return hasNetworkTools ? "network_only" : "none";
     }
     return "readonly";
   }
 
   // Agent mode
-  if (route === "direct_answer") {
+  if (route === EXECUTION_ROUTE.DIRECT_ANSWER) {
     return hasNetworkTools ? "network_only" : "none";
   }
-  if (route === "execute") {
+  if (route === EXECUTION_ROUTE.EXECUTE) {
     return "agent_execute";
   }
   // diagnose | repository_answer | plan
@@ -209,7 +210,7 @@ function appendModeAndRouteReasonCodes(params: {
   message: string;
   reasonCodes: DecisionReasonCode[];
 }): void {
-  if (params.route === "diagnose") {
+  if (params.route === EXECUTION_ROUTE.DIAGNOSE) {
     params.reasonCodes.push("diagnosis_readonly");
     if (looksLikeCodeReviewRequest(params.message)) {
       params.reasonCodes.push("review_pipeline_required");

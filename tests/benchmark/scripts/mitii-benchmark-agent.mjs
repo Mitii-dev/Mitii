@@ -246,7 +246,7 @@ function handleStreamJsonLine(rawLine) {
 
 /**
  * Drop bulky nested payloads that blow the runner's 8KB stdout window.
- * Mirrors apps/vscode/src/sessionLog.ts plan_ready compaction.
+ * Mirrors packages/host/src/session-log/sessionLog.ts plan_ready compaction.
  * @param {Record<string, unknown>} event
  */
 function compactRunEvent(event) {

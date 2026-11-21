@@ -14,6 +14,7 @@ import type {
 import { resolvePlanGate } from "./ResolvePlanGate";
 import { resolvePlanningDepth } from "./ResolvePlanningDepth";
 import { resolveRoute, type RouteResolution } from "./ResolveRoute";
+import { EXECUTION_ROUTE } from "../constants";
 
 export interface RoutePlanResult {
   route: ExecutionRoute;
@@ -38,7 +39,7 @@ function groundRouteForMcpAttach(
   if (!requiredMcpServerIds || requiredMcpServerIds.length === 0) {
     return routeResult;
   }
-  if (routeResult.route !== "direct_answer") {
+  if (routeResult.route !== EXECUTION_ROUTE.DIRECT_ANSWER) {
     return routeResult;
   }
   return {
@@ -91,7 +92,7 @@ export function planRoute(params: {
   } else if (params.origin === "api") {
     originReasonCodes.push("api_origin");
   }
-  if (unattended && routeResult.route === "clarify") {
+  if (unattended && routeResult.route === EXECUTION_ROUTE.CLARIFY) {
     routeResult = resolveRoute({
       mode: params.mode,
       understanding: params.understanding,

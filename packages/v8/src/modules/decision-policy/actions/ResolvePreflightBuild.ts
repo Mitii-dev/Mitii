@@ -6,6 +6,7 @@ import type {
   ToolGrant,
 } from "../contracts";
 import { isRepairIntentTaxonomy } from "../patterns";
+import { EXECUTION_ROUTE } from "../constants";
 
 export interface PreflightBuildResolution {
   run: boolean;
@@ -26,8 +27,8 @@ export function resolvePreflightBuild(params: {
 }): PreflightBuildResolution {
   const { mode, route, understanding, grant } = params;
   const eligibleRoute =
-    (mode === "agent" && route === "execute") ||
-    (mode === "plan" && route === "plan");
+    (mode === "agent" && route === EXECUTION_ROUTE.EXECUTE) ||
+    (mode === "plan" && route === EXECUTION_ROUTE.PLAN);
   if (!eligibleRoute) {
     return { run: false, reasonCodes: [] };
   }

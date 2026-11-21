@@ -2,6 +2,7 @@ import type { RequestUnderstandingResult } from "../../request-understanding";
 
 import { DECISION_POLICY_THRESHOLDS } from "../policy";
 import { DECISION_POLICY_PATTERNS } from "../patterns";
+import { EXECUTION_ROUTE } from "../constants";
 
 const BROAD_REPAIR_INTENTS = new Set([
   "bugfix",
@@ -174,8 +175,8 @@ export function shouldRecommendChangeImpact(params: {
   const { route, primaryTaskIntent, taskAnalysis, message } = params;
 
   if (
-    route === "clarify" ||
-    route === "direct_answer"
+    route === EXECUTION_ROUTE.CLARIFY ||
+    route === EXECUTION_ROUTE.DIRECT_ANSWER
   ) {
     return false;
   }
@@ -227,9 +228,9 @@ export function shouldRecommendChangeImpact(params: {
     // Feature / optimize / test work across multiple files still benefits
     // from impact before the first patch — not only repair intents.
     if (
-      route === "execute" ||
-      route === "plan" ||
-      route === "diagnose"
+      route === EXECUTION_ROUTE.EXECUTE ||
+      route === EXECUTION_ROUTE.PLAN ||
+      route === EXECUTION_ROUTE.DIAGNOSE
     ) {
       return true;
     }
@@ -239,7 +240,7 @@ export function shouldRecommendChangeImpact(params: {
   if (
     typeof estimatedMax === "number" &&
     estimatedMax >= DECISION_POLICY_THRESHOLDS.multiFilePlanThreshold &&
-    (route === "execute" || route === "plan" || route === "diagnose")
+    (route === EXECUTION_ROUTE.EXECUTE || route === EXECUTION_ROUTE.PLAN || route === EXECUTION_ROUTE.DIAGNOSE)
   ) {
     return true;
   }

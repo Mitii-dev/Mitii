@@ -42,3 +42,5 @@ export {
   changeImpactErrorCodeSchema,
 } from "./errors/ChangeImpactError";
 export type { ChangeImpactErrorCode } from "./errors/ChangeImpactError";
+
+export type { RepositoryGraphPort } from "./ports/RepositoryGraphPort";

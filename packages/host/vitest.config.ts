@@ -9,6 +9,7 @@ export default defineConfig({
       '@mitii/automation': resolve(__dirname, '../automation/src/index.ts'),
       '@mitii/search-kit': resolve(__dirname, '../search-kit/src/index.ts'),
       '@mitii/mcp': resolve(__dirname, '../mcp/src/index.ts'),
+      '@mitii/ui-core': resolve(__dirname, '../ui-core/src/index.ts'),
     },
   },
   test: {

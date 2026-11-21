@@ -118,3 +118,9 @@ Repository State publication result returns a result like this:
   }
 }
 ```
+
+## Path text normalization
+
+`normalizeRepoPathText(value, { stripAtPrefix?, emptyFallback? })` is the single
+public normalizer for repo-relative path text (slashes, `./`, trailing `/`).
+Other modules import it from this module's index instead of keeping copies.

@@ -1,6 +1,9 @@
 const { spawnSync } = require('node:child_process');
 
 const packages = [
+  '@mitii/ui-core',
+  '@mitii/ui-theme',
+  '@mitii/ui-react',
   '@mitii/v8',
   '@mitii/sdk',
   '@mitii/automation',

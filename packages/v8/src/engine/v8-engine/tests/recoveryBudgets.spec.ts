@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   allowsTargetedDiscoveryAfterRejectedMutation,
   buildRejectedMutationRecoveryMessage,
-} from "../actions/rejectedMutationRecovery";
+} from "../modules/rejected-mutation";
 import {
   resolveV8EngineThresholds,
   V8_ENGINE_THRESHOLDS,

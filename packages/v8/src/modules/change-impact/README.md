@@ -120,3 +120,8 @@ Change Impact result returns a result like this:
   "reasonCodes": ["impact_resolved"]
 }
 ```
+
+## Ports
+
+`RepositoryGraphPort` is owned here (`contracts/ports`) and exported from the index.
+Planning and the tool runtime consume this type; neither defines its own.

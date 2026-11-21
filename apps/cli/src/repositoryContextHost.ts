@@ -6,7 +6,7 @@ import type {
   RepositoryContextPipeline,
   RepositoryStatePipeline,
   GitPort,
-} from '@mitii/v8';
+} from '@mitii/sdk';
 import Database from 'better-sqlite3';
 
 export function createHostRepositoryContext(options: {

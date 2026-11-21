@@ -1,0 +1,8 @@
+.token-call-card__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--mitii-muted);
+}

@@ -31,6 +31,7 @@ import {
   type ContextualFragment,
 } from "../internal/fragments";
 import { PROMPT_CONSTRUCTION_THRESHOLDS } from "../policy";
+import { EXECUTION_ROUTE } from "../../decision-policy";
 
 export function buildSystemInstructions(params: {
   decision: ExecutionDecision;
@@ -297,9 +298,9 @@ function buildCoreSystemPrompt(
 
 function buildRouteGuidance(decision: ExecutionDecision): string {
   if (
-    decision.route === "direct_answer" ||
-    decision.route === "repository_answer" ||
-    decision.route === "diagnose" ||
+    decision.route === EXECUTION_ROUTE.DIRECT_ANSWER ||
+    decision.route === EXECUTION_ROUTE.REPOSITORY_ANSWER ||
+    decision.route === EXECUTION_ROUTE.DIAGNOSE ||
     decision.toolGrant.maximumWorkspaceEffect !== "write"
   ) {
     return [

@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { IconGit } from '../ActivityIcons.js';
+import { IconGit } from '../shell/ActivityIcons.js';
 import {
   fetchGitBranches,
   fetchGitStatus,

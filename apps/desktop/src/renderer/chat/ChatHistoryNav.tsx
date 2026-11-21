@@ -11,7 +11,7 @@ import {
   IconSettings,
   IconSkills,
   IconUser,
-} from '../ActivityIcons.js';
+} from '../shell/ActivityIcons.js';
 import { workspaceLabel } from '../api.js';
 import { formatThreadAge } from './threadAge.js';
 

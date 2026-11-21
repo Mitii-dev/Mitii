@@ -12,6 +12,8 @@ import {
   isBroadSharedScopeRepair,
   shouldRecommendChangeImpact,
 } from "./ClassifySharedScopeRepair";
+import { resolveFastPath } from "./ResolveFastPath";
+import { EXECUTION_ROUTE } from "../constants";
 
 export interface PlanningDepthResolution {
   planningDepth: PlanningDepth;
@@ -40,14 +42,14 @@ export function resolvePlanningDepth(params: {
   });
 
   if (
-    route === "clarify" ||
-    route === "direct_answer" ||
-    route === "repository_answer"
+    route === EXECUTION_ROUTE.CLARIFY ||
+    route === EXECUTION_ROUTE.DIRECT_ANSWER ||
+    route === EXECUTION_ROUTE.REPOSITORY_ANSWER
   ) {
     return { planningDepth: "none", reasonCodes };
   }
 
-  if (route === "diagnose") {
+  if (route === EXECUTION_ROUTE.DIAGNOSE) {
     if (
       taskAnalysis.complexity === "complex" ||
       taskAnalysis.complexity === "very_complex" ||
@@ -60,7 +62,7 @@ export function resolvePlanningDepth(params: {
     return { planningDepth: "none", reasonCodes };
   }
 
-  if (mode === "plan" || route === "plan") {
+  if (mode === "plan" || route === EXECUTION_ROUTE.PLAN) {
     reasonCodes.push("explicit_plan_request");
     return { planningDepth: "visible", reasonCodes };
   }
@@ -86,7 +88,7 @@ export function resolvePlanningDepth(params: {
 
   if (
     mode === "agent" &&
-    route === "execute" &&
+    route === EXECUTION_ROUTE.EXECUTE &&
     isBroadSharedScopeRepair({
       primaryTaskIntent: primary,
       taskAnalysis,
@@ -103,7 +105,7 @@ export function resolvePlanningDepth(params: {
 
   // Long / multi-outcome briefs before Officer medium→internal. BillBuddy-class
   // asks are often Officer-medium + long text; visible must win.
-  if (mode === "agent" && route === "execute") {
+  if (mode === "agent" && route === EXECUTION_ROUTE.EXECUTE) {
     const longPrompt = resolveLongPromptPlanningDepth({
       message,
       windowPolicy: params.windowPolicy,
@@ -126,7 +128,7 @@ export function resolvePlanningDepth(params: {
     taskAnalysis,
     windowPolicy: params.windowPolicy,
   });
-  if (officerPlan && mode === "agent" && route === "execute") {
+  if (officerPlan && mode === "agent" && route === EXECUTION_ROUTE.EXECUTE) {
     reasonCodes.push(...officerPlan.reasonCodes);
     return {
       planningDepth: officerPlan.planningDepth,
@@ -134,7 +136,7 @@ export function resolvePlanningDepth(params: {
     };
   }
 
-  if (mode === "agent" && route === "execute") {
+  if (mode === "agent" && route === EXECUTION_ROUTE.EXECUTE) {
     const longPrompt = resolveLongPromptPlanningDepth({
       message,
       windowPolicy: params.windowPolicy,
@@ -148,8 +150,24 @@ export function resolvePlanningDepth(params: {
     }
   }
 
-  // Agent execute always gets at least a short internal plan (never none).
-  if (mode === "agent" && route === "execute") {
+  // Fast path: small, clear asks naming explicit file paths skip plan +
+  // discovery (the execution seed binds the paths for the mutate loop).
+  if (mode === "agent" && route === EXECUTION_ROUTE.EXECUTE) {
+    const fastPath = resolveFastPath({
+      mode,
+      route,
+      understanding,
+      message,
+      changeImpactRecommended: reasonCodes.includes("change_impact_recommended"),
+    });
+    if (fastPath.eligible) {
+      reasonCodes.push("fast_path_explicit_paths");
+      return { planningDepth: "none", reasonCodes };
+    }
+  }
+
+  // Agent execute otherwise always gets at least a short internal plan.
+  if (mode === "agent" && route === EXECUTION_ROUTE.EXECUTE) {
     reasonCodes.push("officer_task_size_plan", "multi_file_internal_plan");
     return { planningDepth: "internal", reasonCodes };
   }

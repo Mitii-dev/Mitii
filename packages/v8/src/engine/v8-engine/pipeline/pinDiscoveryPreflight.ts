@@ -11,6 +11,7 @@ import {
   selectShapedDiscoverySeeds,
   type ShapedDiscoveryProfile,
 } from "../actions/shapedDiscovery";
+import { resolveDiscoverySeedPaths } from "../actions/discoverySeedPaths";
 import type { DiscoveryPassBudget } from "../modules/plan-discovery";
 import type { AgentReasonCode } from "../contracts";
 import {
@@ -52,6 +53,14 @@ export async function runDiscoverySeedAndShapedPreflight(params: {
   windowPolicy: WindowPolicy;
   query: string;
   preferredPaths: readonly string[];
+  /**
+   * Seed-path hygiene inputs: `knownPaths` is the run's (partial) path index;
+   * `trustedPaths` are paths the user named and are never dropped as unindexed.
+   */
+  seedPathHygiene?: {
+    knownPaths?: readonly string[];
+    trustedPaths?: readonly string[];
+  };
   qualityFloor: boolean;
   seedFirstDiscovery: boolean;
   /**
@@ -74,7 +83,6 @@ export async function runDiscoverySeedAndShapedPreflight(params: {
     pinnedState,
     windowPolicy,
     query,
-    preferredPaths,
     qualityFloor,
     seedFirstDiscovery,
     forceExploration = false,
@@ -82,6 +90,17 @@ export async function runDiscoverySeedAndShapedPreflight(params: {
     signal,
     reasonCodes,
   } = params;
+
+  // Never spend read_file on prose tokens or unresolvable basenames/globs.
+  const seedHygiene = resolveDiscoverySeedPaths({
+    paths: params.preferredPaths,
+    knownPaths: params.seedPathHygiene?.knownPaths,
+    trustedPaths: params.seedPathHygiene?.trustedPaths,
+  });
+  const preferredPaths = seedHygiene.kept;
+  if (seedHygiene.dropped.length > 0 || seedHygiene.rewritten.length > 0) {
+    reasonCodes.push("discovery_seed_paths_filtered");
+  }
 
   const shapedProfile = resolveShapedDiscoveryProfile(query);
   const rankedPreferred = shapedProfile

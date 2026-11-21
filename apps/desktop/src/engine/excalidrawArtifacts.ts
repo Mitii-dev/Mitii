@@ -3,7 +3,7 @@ import { dirname, join, relative } from 'node:path';
 
 import type { McpToolResultEvent } from '@mitii/mcp';
 
-import { elementsToSvg } from '../shared/excalidrawSvg.js';
+import { elementsToSvg } from '@mitii/ui-core';
 
 function mitiiDir(workspaceRoot: string): string {
   return join(workspaceRoot, '.mitii');
@@ -252,5 +252,5 @@ function slugify(value: string): string {
   );
 }
 
-export { elementsToSvg } from '../shared/excalidrawSvg.js';
+export { elementsToSvg } from '@mitii/ui-core';
 

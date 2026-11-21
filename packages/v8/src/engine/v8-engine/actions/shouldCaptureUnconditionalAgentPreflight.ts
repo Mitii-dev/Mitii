@@ -1,6 +1,6 @@
 import { looksLikeAgentVerificationRequest } from "../../../modules/decision-policy";
-import { WORKSPACE_BUG_FAILURE_LANGUAGE } from "../../../modules/decision-policy/patterns";
-import { extractPrimaryUserMessage } from "../../../modules/request-understanding/intent/extractPrimaryUserMessage";
+import { WORKSPACE_BUG_FAILURE_LANGUAGE } from "../../../modules/decision-policy";
+import { extractPrimaryUserMessage } from "../../../modules/request-understanding";
 
 const QUESTION_OPENER =
   /^(?:is|are|was|were|does|do|did|have|has|can|could|should|would|what|where|when|why|who|how)\b/i;

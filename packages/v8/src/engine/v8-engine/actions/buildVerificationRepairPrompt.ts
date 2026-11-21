@@ -9,6 +9,7 @@ import {
 } from "../../../modules/verification";
 
 import { diagnosticSourceLineKey } from "./loadDiagnosticSourceLines";
+import { normalizeRepoPathText } from "../../../modules/repository-state";
 
 const DEFAULT_MAX_DIAGNOSTICS = 16;
 const DEFAULT_MESSAGE_CHARS = 180;
@@ -162,7 +163,7 @@ export function filterDiagnosticsToAskScope(
 ): VerificationDiagnostic[] {
   if (diagnostics.length === 0) return [];
   const scopes = scopePaths
-    .map(normalizePath)
+    .map((scope) => normalizeRepoPathText(scope))
     .filter((path) => path.length > 0 && path !== ".");
   const withoutDenied = diagnostics.filter(
     (item) => !isHardDeniedDiagnosticPath(item.path),
@@ -206,7 +207,7 @@ function collectAskScopePaths(params: {
 }
 
 function isPathInAskScope(path: string, scopes: readonly string[]): boolean {
-  const normalized = normalizePath(path);
+  const normalized = normalizeRepoPathText(path);
   if (!normalized || isHardDeniedDiagnosticPath(normalized)) {
     return false;
   }
@@ -224,13 +225,6 @@ function isHardDeniedDiagnosticPath(path: string): boolean {
   return isDeniedDiagnosticPath(path);
 }
 
-function normalizePath(value: string): string {
-  return value
-    .trim()
-    .replace(/\\/g, "/")
-    .replace(/^\.\//, "")
-    .replace(/\/+$/, "");
-}
 
 function formatDiagnosticRepairLines(
   diagnostic: VerificationDiagnostic,

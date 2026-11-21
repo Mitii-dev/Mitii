@@ -1,7 +1,7 @@
 {
   "name": "mitii-ai-agent",
-  "description": "Private Mitii monorepo workspace orchestrator. Product packages: @mitii/v8, @mitii/sdk, @mitii/automation, @mitii/search-kit, @mitii/mcp, @mitii/mcp-web, @mitii/mcp-sqlite, @mitii/mcp-postgres, @mitii/mcp-mongo, @mitii/mcp-sql, @mitii/host, @mitii/cli, @mitii/daemon, @mitii/acp, @mitii/desktop, apps/vscode.",
-  "version": "2.11.1",
+  "description": "Private Mitii monorepo workspace orchestrator. Product packages: @mitii/ui-core, @mitii/ui-theme, @mitii/ui-react, @mitii/ui-protocol, @mitii/v8, @mitii/sdk, @mitii/automation, @mitii/search-kit, @mitii/mcp, @mitii/mcp-web, @mitii/mcp-sqlite, @mitii/mcp-postgres, @mitii/mcp-mongo, @mitii/mcp-sql, @mitii/host, @mitii/cli, @mitii/daemon, @mitii/acp, @mitii/desktop, apps/vscode.",
+  "version": "2.11.2",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "author": {
@@ -21,7 +21,7 @@
   },
   "packageManager": "pnpm@10.13.1+sha512.37ebf1a5c7a30d5fabe0c5df44ee8da4c965ca0c5af3dbab28c3a1681b70a256218d05c81c9c0dcf767ef6b8551eb5b960042b9ed4300c59242336377e01cfad",
   "scripts": {
-    "build": "pnpm -r --filter @mitii/v8 --filter @mitii/sdk --filter @mitii/automation --filter @mitii/search-kit --filter @mitii/mcp --filter @mitii/mcp-web --filter @mitii/mcp-sqlite --filter @mitii/mcp-postgres --filter @mitii/mcp-mongo --filter @mitii/mcp-sql --filter @mitii/host --filter @mitii/cli --filter @mitii/daemon --filter @mitii/acp --filter @mitii/desktop --filter ./apps/vscode run build",
+    "build": "pnpm -r --filter @mitii/ui-core --filter @mitii/ui-theme --filter @mitii/ui-react --filter @mitii/ui-protocol --filter @mitii/v8 --filter @mitii/sdk --filter @mitii/automation --filter @mitii/search-kit --filter @mitii/mcp --filter @mitii/mcp-web --filter @mitii/mcp-sqlite --filter @mitii/mcp-postgres --filter @mitii/mcp-mongo --filter @mitii/mcp-sql --filter @mitii/host --filter @mitii/cli --filter @mitii/daemon --filter @mitii/acp --filter @mitii/desktop --filter ./apps/vscode run build",
     "build:all": "pnpm run build && pnpm run rebuild:native",
     "build:v8": "pnpm --filter @mitii/v8 build",
     "build:sdk": "pnpm --filter @mitii/sdk build",
@@ -30,14 +30,16 @@
     "build:desktop": "pnpm -r --filter @mitii/desktop... run build",
     "build:vscode": "pnpm --filter ./apps/vscode build",
     "build:vscode:prod": "pnpm --filter ./apps/vscode build:prod",
-    "typecheck": "pnpm run build && pnpm -r --filter @mitii/v8 --filter @mitii/sdk --filter @mitii/automation --filter @mitii/search-kit --filter @mitii/mcp --filter @mitii/mcp-web --filter @mitii/mcp-sqlite --filter @mitii/mcp-postgres --filter @mitii/mcp-mongo --filter @mitii/mcp-sql --filter @mitii/host --filter @mitii/cli --filter @mitii/daemon --filter @mitii/acp --filter @mitii/desktop --filter ./apps/vscode run typecheck",
-    "test": "node scripts/ensure-node-native.mjs && vitest run && pnpm run test:webview",
+    "typecheck": "pnpm run build && pnpm -r --filter @mitii/ui-core --filter @mitii/ui-theme --filter @mitii/ui-react --filter @mitii/ui-protocol --filter @mitii/v8 --filter @mitii/sdk --filter @mitii/automation --filter @mitii/search-kit --filter @mitii/mcp --filter @mitii/mcp-web --filter @mitii/mcp-sqlite --filter @mitii/mcp-postgres --filter @mitii/mcp-mongo --filter @mitii/mcp-sql --filter @mitii/host --filter @mitii/cli --filter @mitii/daemon --filter @mitii/acp --filter @mitii/desktop --filter ./apps/vscode run typecheck",
+    "test": "node scripts/ensure-node-native.mjs && vitest run && pnpm run test:ui && pnpm run test:webview && pnpm run test:cli && pnpm run test:desktop",
     "test:watch": "node scripts/ensure-node-native.mjs && vitest",
     "test:v8": "pnpm --filter @mitii/v8 test",
     "test:sdk": "pnpm --filter @mitii/sdk test",
+    "test:cli": "pnpm --filter @mitii/cli test",
     "test:desktop": "pnpm --filter @mitii/desktop test",
     "test:webview": "pnpm --filter @mitii/vscode-webview test",
-    "check:architecture": "vitest run packages/v8/tests/architecture/v8-module-boundaries.test.ts",
+    "check:architecture": "vitest run packages/v8/tests/architecture",
+    "check:file-size": "node scripts/check-file-size.mjs",
     "verify": "pnpm run typecheck && pnpm test && pnpm run build:all",
     "verify:launch": "node scripts/verify-f5-launch.mjs",
     "package": "pnpm --filter ./apps/vscode package",
@@ -65,7 +67,8 @@
     "log-viewer": "node tools/log-viewer/server.mjs",
     "audit:dependencies": "node scripts/audit-dependencies.mjs",
     "audit:engines": "node scripts/audit-package-engines.mjs",
-    "check:circular-deps": "node scripts/check-circular-deps.mjs"
+    "check:circular-deps": "node scripts/check-circular-deps.mjs",
+    "test:ui": "pnpm --filter @mitii/ui-core test && pnpm --filter @mitii/ui-theme test && pnpm --filter @mitii/ui-react test && pnpm --filter @mitii/ui-protocol test"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.2.0",

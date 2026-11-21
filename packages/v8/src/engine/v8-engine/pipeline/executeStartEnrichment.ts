@@ -8,7 +8,7 @@ import type { PromptRepositoryContext } from "../../../modules/prompt-constructi
 import { mapContextToPromptSlice } from "../../../modules/prompt-construction";
 import { deriveContextSelectionBudget } from "../../../modules/repository-context";
 import type { UserRequestEnvelope } from "../../../modules/request-intake";
-import { extractPrimaryUserMessage } from "../../../modules/request-understanding/intent/extractPrimaryUserMessage";
+import { extractPrimaryUserMessage } from "../../../modules/request-understanding";
 import {
   resolveFuzzyFileTargets,
   type RequestUnderstandingResult,

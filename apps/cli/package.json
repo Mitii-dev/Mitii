@@ -1,6 +1,6 @@
 {
   "name": "@mitii/cli",
-  "version": "2.11.1",
+  "version": "2.11.2",
   "description": "Mitii headless CLI over @mitii/sdk. --origin/--autonomy/--agent for CI automation.",
   "license": "AGPL-3.0-or-later",
   "publishConfig": {
@@ -33,7 +33,6 @@
     "@mitii/host": "workspace:*",
     "@mitii/mcp": "workspace:*",
     "@mitii/sdk": "workspace:*",
-    "@mitii/v8": "workspace:*",
     "better-sqlite3": "^12.11.1",
     "tree-sitter-wasms": "^0.1.13",
     "web-tree-sitter": "^0.24.7"

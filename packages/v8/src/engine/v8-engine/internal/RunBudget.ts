@@ -1,6 +1,7 @@
 import type { AgentRunBudget } from "../contracts";
 import { stripPathRangeSuffix } from "../modules/tool-content-paths";
 import { DEFAULT_SAME_PATH_READ_ALLOWANCE } from "../actions/isExplorationRereadHeavy";
+import { isWithinWallTimeReserve } from "../actions/resolveWallTimeDeadline";
 
 export class RunBudgetTracker {
   private modelCalls = 0;
@@ -115,6 +116,23 @@ export class RunBudgetTracker {
   /** Active (non-suspended) elapsed wall time. */
   public activeElapsedMs(nowMs: number = Date.now()): number {
     return Math.max(0, nowMs - this.startedMs - this.excludedWaitMs);
+  }
+
+  public maxWallTimeMs(): number {
+    return this.limits.maxWallTimeMs;
+  }
+
+  /** Active wall time left before `maxWallTimeMs` (never negative). */
+  public remainingWallMs(nowMs: number = Date.now()): number {
+    return Math.max(0, this.limits.maxWallTimeMs - this.activeElapsedMs(nowMs));
+  }
+
+  /** True once the remaining wall time is inside the verify/report reserve. */
+  public isNearWallDeadline(nowMs: number = Date.now()): boolean {
+    return isWithinWallTimeReserve({
+      remainingMs: this.remainingWallMs(nowMs),
+      maxWallTimeMs: this.limits.maxWallTimeMs,
+    });
   }
 
   public isExhausted():

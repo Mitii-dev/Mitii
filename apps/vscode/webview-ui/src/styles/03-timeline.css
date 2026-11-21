@@ -1,0 +1,456 @@
+.timeline {
+  --timeline-trunk-x: 10px;
+  --timeline-branch: color-mix(
+    in srgb,
+    var(--turn-accent, var(--mitii-accent)) 42%,
+    var(--mitii-border-soft)
+  );
+  --timeline-branch-strong: color-mix(
+    in srgb,
+    var(--turn-accent, var(--mitii-accent)) 78%,
+    var(--mitii-border)
+  );
+  position: relative;
+  list-style: none;
+  margin: 6px 0 10px;
+  padding: 2px 0 2px 34px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border-left: 0;
+  width: 100%;
+}
+
+.timeline__row {
+  --branch-y: 0.55em;
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  padding: 1px 0;
+}
+
+/*
+ * Tree trunk — continuous vertical stem through every step.
+ */
+.timeline__row::before {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  top: -8px;
+  bottom: -14px;
+  left: calc(-1 * (34px - var(--timeline-trunk-x)));
+  width: 1.5px;
+  border-radius: 999px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--timeline-branch) 55%, transparent) 0%,
+    var(--timeline-branch) 18%,
+    var(--timeline-branch) 82%,
+    color-mix(in srgb, var(--timeline-branch) 55%, transparent) 100%
+  );
+  pointer-events: none;
+}
+
+.timeline__row:first-child::before {
+  top: var(--branch-y);
+}
+
+.timeline__row:last-child::before {
+  bottom: calc(100% - var(--branch-y) - 1px);
+}
+
+.timeline__row--done::before,
+.timeline__row--active::before,
+.timeline__row--thinking-active::before {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--timeline-branch-strong) 40%, transparent) 0%,
+    var(--timeline-branch-strong) 20%,
+    var(--timeline-branch-strong) 80%,
+    color-mix(in srgb, var(--timeline-branch-strong) 40%, transparent) 100%
+  );
+}
+
+/*
+ * Branch arm — each step forks off the trunk.
+ * Four silhouettes cycle so the tree never reads as a flat list.
+ */
+.timeline__row::after {
+  content: '';
+  position: absolute;
+  z-index: 2;
+  left: calc(-1 * (34px - var(--timeline-trunk-x)));
+  top: var(--branch-y);
+  width: 14px;
+  height: 12px;
+  box-sizing: border-box;
+  border: 0;
+  border-left: 1.5px solid var(--timeline-branch);
+  border-bottom: 1.5px solid var(--timeline-branch);
+  border-radius: 0 0 0 9px;
+  background: transparent;
+  transform: translateY(-100%);
+  transform-origin: left bottom;
+  pointer-events: none;
+  transition:
+    border-color 200ms ease,
+    width 200ms ease,
+    height 200ms ease;
+}
+
+/* Arc — soft rounded fork */
+.timeline__row--branch-arc::after {
+  width: 15px;
+  height: 13px;
+  border-radius: 0 0 0 11px;
+}
+
+/* Elbow — crisp right angle */
+.timeline__row--branch-elbow::after {
+  width: 13px;
+  height: 10px;
+  border-radius: 0;
+}
+
+/* Reach — longer horizontal arm, shallow drop */
+.timeline__row--branch-reach::after {
+  width: 18px;
+  height: 8px;
+  border-radius: 0 0 0 6px;
+}
+
+/* Twig — short, dashed, slightly tilted */
+.timeline__row--branch-twig::after {
+  width: 11px;
+  height: 11px;
+  border-radius: 0 0 0 7px;
+  border-left-style: dashed;
+  border-bottom-style: dashed;
+  transform: translateY(-100%) rotate(-6deg);
+}
+
+.timeline__row--done::after,
+.timeline__row--active::after,
+.timeline__row--thinking-active::after {
+  border-color: var(--timeline-branch-strong);
+}
+
+.timeline__row--active::after,
+.timeline__row--thinking-active::after {
+  filter: drop-shadow(
+    0 0 3px color-mix(in srgb, var(--turn-accent, var(--mitii-accent)) 45%, transparent)
+  );
+  animation: timeline-branch-grow 1.8s ease-in-out infinite;
+}
+
+.timeline__row--warn::after {
+  border-color: color-mix(
+    in srgb,
+    var(--turn-accent, var(--mitii-accent)) 70%,
+    var(--mitii-border)
+  );
+  border-left-style: solid;
+  border-bottom-style: solid;
+}
+
+.timeline__row--tool,
+.timeline__row--files,
+.timeline__row--command {
+  align-items: flex-start;
+  padding: 2px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.timeline__row--thinking-active {
+  align-items: flex-start;
+  padding: 2px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+/* Leaf / node at the tip of each branch — shape follows step kind */
+.timeline__marker {
+  position: absolute;
+  z-index: 3;
+  left: -13px;
+  top: calc(var(--branch-y) - 4px);
+  width: 8px;
+  height: 8px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: var(--mitii-panel);
+  border: 1.5px solid
+    color-mix(in srgb, var(--turn-accent, var(--mitii-accent)) 55%, var(--mitii-border));
+  box-shadow: 0 0 0 3px var(--mitii-panel);
+  transition:
+    background 200ms ease,
+    border-color 200ms ease,
+    box-shadow 200ms ease,
+    transform 200ms ease;
+}
+
+.timeline__row--branch-elbow .timeline__marker {
+  left: -15px;
+}
+
+.timeline__row--branch-reach .timeline__marker {
+  left: -10px;
+}
+
+.timeline__row--branch-twig .timeline__marker {
+  left: -17px;
+}
+
+.timeline__row--kind-thinking .timeline__marker,
+.timeline__row--kind-context .timeline__marker,
+.timeline__row--kind-info .timeline__marker {
+  border-radius: 50%;
+  background: transparent;
+}
+
+.timeline__row--kind-tool .timeline__marker {
+  border-radius: 1.5px;
+  transform: rotate(45deg);
+}
+
+.timeline__row--kind-decision .timeline__marker {
+  border-radius: 2px;
+  width: 7px;
+  height: 7px;
+  top: calc(var(--branch-y) - 3.5px);
+}
+
+.timeline__row--command .timeline__marker {
+  border-radius: 1px;
+  transform: none;
+  width: 7px;
+  height: 7px;
+}
+
+.timeline__row--files .timeline__marker {
+  border-radius: 2px;
+  width: 9px;
+  height: 6px;
+  top: calc(var(--branch-y) - 3px);
+  transform: none;
+}
+
+.timeline__row--kind-warning .timeline__marker,
+.timeline__row--kind-suspended .timeline__marker,
+.timeline__row--warn .timeline__marker {
+  border-radius: 1px;
+  transform: rotate(45deg) scaleY(0.85);
+}
+
+.timeline__row--kind-mcp_app .timeline__marker {
+  border-radius: 50%;
+  width: 9px;
+  height: 9px;
+  top: calc(var(--branch-y) - 4.5px);
+}
+
+.timeline__row--done .timeline__marker {
+  background: var(--turn-accent, var(--mitii-accent));
+  border-color: var(--turn-accent, var(--mitii-accent));
+  box-shadow:
+    0 0 0 3px var(--mitii-panel),
+    0 0 7px
+      color-mix(in srgb, var(--turn-accent, var(--mitii-accent)) 20%, transparent);
+}
+
+.timeline__row--active .timeline__marker,
+.timeline__row--thinking-active .timeline__marker {
+  background: var(--turn-accent, var(--mitii-accent));
+  border-color: color-mix(
+    in srgb,
+    var(--turn-accent, var(--mitii-accent)) 65%,
+    #fff 35%
+  );
+  box-shadow:
+    0 0 0 3px var(--mitii-panel),
+    0 0 10px
+      color-mix(in srgb, var(--turn-accent, var(--mitii-accent)) 38%, transparent);
+  animation: timeline-leaf-pulse 1.6s ease-in-out infinite;
+}
+
+.timeline__row--kind-tool.timeline__row--active .timeline__marker,
+.timeline__row--kind-tool.timeline__row--thinking-active .timeline__marker {
+  transform: rotate(45deg);
+}
+
+.timeline__row--warn .timeline__marker {
+  background: var(--turn-accent, var(--mitii-accent));
+  border-color: var(--turn-accent, var(--mitii-accent));
+}
+
+@keyframes timeline-branch-grow {
+  0%,
+  100% {
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes timeline-leaf-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 3px var(--mitii-panel),
+      0 0 8px
+        color-mix(in srgb, var(--turn-accent, var(--mitii-accent)) 30%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 3px var(--mitii-panel),
+      0 0 14px
+        color-mix(in srgb, var(--turn-accent, var(--mitii-accent)) 55%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .timeline__row--active::after,
+  .timeline__row--thinking-active::after,
+  .timeline__row--active .timeline__marker,
+  .timeline__row--thinking-active .timeline__marker {
+    animation: none;
+    filter: none;
+  }
+}
+
+.timeline__row-text {
+  min-width: 0;
+  flex: 1 1 auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--mitii-chat-fg);
+}
+
+.timeline__row-text--muted {
+  color: color-mix(in srgb, var(--mitii-chat-fg) 72%, var(--mitii-muted));
+}
+
+.timeline__thinking-label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  color: color-mix(in srgb, var(--mitii-chat-fg) 68%, var(--mitii-muted));
+  font-family: var(--mitii-font-thinking);
+  font-size: 11.5px;
+  font-weight: 500;
+  font-style: normal;
+  letter-spacing: 0.02em;
+  font-variant-ligatures: none;
+}
+
+.timeline__thinking-preview {
+  display: block;
+  max-height: calc(10 * 1.45em + 12px);
+  margin: 5px 0 0;
+  padding: 7px 9px;
+  overflow: auto;
+  color: color-mix(in srgb, var(--mitii-chat-fg) 70%, var(--mitii-muted));
+  font-family: var(--mitii-font-thinking);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 1.45;
+  letter-spacing: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 76%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--vscode-terminal-background, var(--mitii-panel-raised)) 92%, #000 8%);
+  scrollbar-width: thin;
+}
+
+.timeline__row-title {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 8px;
+  padding: 0;
+  border-radius: 0;
+  font-weight: 600;
+  font-size: 12px;
+  font-family: var(--mitii-font-tool);
+  letter-spacing: 0.012em;
+  background: transparent;
+  color: var(--mitii-chat-fg);
+  border: 0;
+  transition: color 180ms ease;
+}
+
+.timeline__row--tool .timeline__row-title {
+  background: transparent;
+  border-color: transparent;
+  color: var(--mitii-chat-fg);
+}
+
+.timeline__row--tool.timeline__row--active .timeline__row-title {
+  background: transparent;
+  border-color: transparent;
+  color: var(--turn-accent, var(--mitii-accent));
+}
+
+.timeline__row-title--plain {
+  padding: 0;
+  background: transparent;
+  border: 0;
+  font-weight: 500;
+  font-family: var(--mitii-font-ui);
+  font-style: normal;
+  color: color-mix(in srgb, var(--mitii-chat-fg) 70%, var(--mitii-muted));
+}
+
+.timeline__row--done .timeline__row-title {
+  background: transparent;
+  color: var(--mitii-chat-fg);
+}
+
+.timeline__row--active .timeline__row-title {
+  background: transparent;
+  color: var(--turn-accent, var(--mitii-accent));
+}
+
+.timeline__row--warn .timeline__row-title {
+  background: transparent;
+  color: color-mix(in srgb, var(--mitii-warn-soft) 68%, var(--mitii-chat-fg));
+  font-weight: 600;
+}
+
+.timeline__row--tool.timeline__row--done .timeline__row-title {
+  background: transparent;
+  border-color: transparent;
+  color: var(--mitii-chat-fg);
+}
+
+.timeline__row-detail {
+  display: inline;
+  align-items: baseline;
+  max-width: 100%;
+  margin: 0;
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 78%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--mitii-panel-raised) 88%, #000 12%);
+  color: var(--vscode-terminal-foreground, var(--mitii-chat-fg));
+  font-family: var(--mitii-font-file);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.timeline__row--tool .timeline__row-detail {
+  display: inline;
+  background: color-mix(in srgb, var(--mitii-panel-raised) 82%, #000 18%);
+}

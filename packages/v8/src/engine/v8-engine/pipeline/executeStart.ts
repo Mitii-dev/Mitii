@@ -25,15 +25,12 @@ import {
   formatExecutionSeedForPrompt,
   isProviderInfrastructureFailure,
 } from "../actions";
-import { filterToolDefinitions } from "../actions/progressiveTools";
+import { filterToolDefinitions } from "../actions/filterToolDefinitions";
 import { withMcpAttachOnGrant, formatMcpAttachInstruction } from "../../../modules/mcp-attach";
 import type { EstablishedFact } from "../actions";
 import { ToolCallCache } from "../internal/ToolCallCache";
 import { AGENT_ENGINE_SCHEMA_VERSION } from "../legacy/constants";
-import {
-  agentRunBudgetSchema,
-  agentRunResultSchema,
-} from "../contracts";
+import { agentRunBudgetSchema } from "../contracts";
 import type {
   AgentEngineStartInput,
   AgentReasonCode,
@@ -47,7 +44,7 @@ import {
   type TaskListRef,
 } from "../internal/taskListRuntime";
 import { DEFAULT_TOOL_DEFINITIONS } from "../legacy/policy";
-import { extractPrimaryUserMessage } from "../../../modules/request-understanding/intent/extractPrimaryUserMessage";
+import { extractPrimaryUserMessage } from "../../../modules/request-understanding";
 
 import type { AgentEngineRuntime } from "./runtime";
 import { resolveWorkspaceId } from "./runtime";
@@ -58,8 +55,12 @@ import {
 } from "./executeStartEarlyPipeline";
 import { runStartEnrichment } from "./executeStartEnrichment";
 
-import { shouldForcePreflightRepairLock } from "../actions/userPathPriority";
+import { shouldForcePreflightRepairLock } from "../modules/user-path-priority";
 import { runV8ModelLoop } from "./modelLoop";
+import { parseAgentRunResultResilient } from "./parseAgentRunResult";
+import type { StartReuseState } from "./startReuse";
+import { emitRunBudgetClampWarnings } from "./emitRunBudgetClampWarnings";
+import { EXECUTION_ROUTE } from "../../../modules/decision-policy";
 
 /**
  * V8 start path: early + enrichment (legacy modules) → thin model/tool loop.
@@ -77,6 +78,7 @@ export async function executeV8Start(
     approvedPlanStrategy?: PlanStrategyDecision;
     skipPlanGate?: boolean;
     planSource?: "host_carry" | "resume_approval";
+    reuse?: StartReuseState;
   },
 ): Promise<AgentRunResult> {
   const {
@@ -89,6 +91,7 @@ export async function executeV8Start(
     approvedPlanStrategy,
     skipPlanGate = false,
     planSource,
+    reuse,
   } = params;
   const startedMs = Date.now();
   const windowPolicy = runtime.resolveWindowPolicy(input);
@@ -100,25 +103,12 @@ export async function executeV8Start(
   const reasonCodes: AgentReasonCode[] = ["run_started"];
   const warnings: string[] = [];
 
-  if (
-    runBudgetClamp.clamped.length > 0 &&
-    logVerbosityAtLeast(input.logVerbosity, "standard")
-  ) {
-    for (const field of runBudgetClamp.clamped) {
-      runtime.emit(bus, {
-        type: "warning",
-        runId,
-        message: `Run budget "${field.field}" reduced from ${field.requested} to ${field.effective} by the window policy.`,
-        code: "run_budget_clamped",
-        data: {
-          field: field.field,
-          requested: field.requested,
-          effective: field.effective,
-        },
-        at: runtime.isoNow(),
-      });
-    }
-  }
+  emitRunBudgetClampWarnings(runtime, {
+    runId,
+    bus,
+    clamped: runBudgetClamp.clamped,
+    logVerbosity: input.logVerbosity,
+  });
 
   const shared: ExecuteStartSharedState = {
     pinnedState: undefined,
@@ -179,7 +169,7 @@ export async function executeV8Start(
     const finalReasonCodes = [...(partial.reasonCodes ?? reasonCodes)];
     const finalWarnings = [...warnings, ...(partial.warnings ?? [])];
     applyExplorationSignal(usageSnap, finalReasonCodes, finalWarnings);
-    const result = agentRunResultSchema.parse({
+    const result = parseAgentRunResultResilient({
       schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
       runId,
       requestId: shared.requestId,
@@ -271,6 +261,7 @@ export async function executeV8Start(
       taskListRef,
       finish,
       cancelledResult,
+      reuse,
     });
     if (early.kind === "terminal") {
       return early.result;
@@ -527,7 +518,7 @@ export async function executeV8Start(
     // Never arm repair-lock steering into the thin loop.
     if (
       (shared.repoBuildStateBefore?.summary.errorCount ?? 0) > 0 &&
-      decisionWithAttach.route === "execute" &&
+      decisionWithAttach.route === EXECUTION_ROUTE.EXECUTE &&
       !wouldLock
     ) {
       warnings.push(

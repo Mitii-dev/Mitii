@@ -105,6 +105,12 @@ verification/
   `residual_phantom_secondary`, `residual_workspace_root_noise`,
   `out_of_scope_residuals_ignored`.
 
+- **Behavior evidence:** when the requirement lists `behavior`
+  (`requiresBehaviorEvidence`), a failed non-empty `test` check is a behavior
+  defect (`isBehaviorDefectCheck`) and is never soft-accepted as residual
+  noise. Empty-suite harness failures are still ignorable. Repos with no test
+  checks at all keep the existing `implemented_unverified` path.
+
 ## Ownership Boundaries
 
 Owns verification planning, check execution, diagnostics, result evidence, and the durable verification record.

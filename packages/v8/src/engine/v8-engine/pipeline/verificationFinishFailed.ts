@@ -190,7 +190,10 @@ export async function handleVerificationFailed(params: {
     repairAttempts,
     explorationDepth: input.explorationDepth,
     consecutiveStalledRepairs,
-    canStartModelCall: budget.canStartModelCall(),
+    // Near the host wall-time budget a repair turn cannot finish + re-verify;
+    // report the failed gate with partial results instead.
+    canStartModelCall:
+      budget.canStartModelCall() && !budget.isNearWallDeadline(),
     maxAttempts: windowPolicy.run.maxVerificationRepairs,
     thresholds,
   });

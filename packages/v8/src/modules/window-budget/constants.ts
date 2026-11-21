@@ -22,6 +22,7 @@ export const WINDOW_BUDGET_REASON_CODES = [
   "mode_ask",
   "mode_plan",
   "mode_agent",
+  "model_profile_applied",
   "mutation_effort_capped",
   "repository_tokens_capped",
   "plan_tokens_capped",

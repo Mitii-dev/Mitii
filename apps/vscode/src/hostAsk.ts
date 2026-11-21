@@ -14,16 +14,20 @@ import {
   compileModeProfile,
   formatEnvironmentDetailsBlock,
   isDatabaseUiMode,
+  isModelIoLoggingEnabled,
   loadModeProfiles,
   loadProjectRules,
   loadUserSafetyRules,
   mapUiModeToAgentMode,
+  type MemoryCaptureContext,
   mergeUserSafetyRules,
   observeRunToolEvent,
+  openModelIoLog,
+  openSessionLog,
   resolveDatabaseModeStart,
   resolveMaximumIndexFiles,
+  setActiveModelIoSink,
   withDefaultProtectedPaths,
-  type MemoryCaptureContext,
 } from '@mitii/host';
 import type * as vscode from 'vscode';
 
@@ -54,14 +58,8 @@ import {
   formatRunDiagnostics,
   formatUsageLine,
 } from './runReport.js';
-import { openSessionLog } from './sessionLog.js';
-import {
-  isModelIoLoggingEnabled,
-  openModelIoLog,
-  setActiveModelIoSink,
-} from './modelIoLog.js';
 import { readModelIoLoggingEnabled } from './modelIoSettings.js';
-import { deriveLiveTokenBudgetPreview } from './liveTokenBudgetPreview.js';
+import { deriveLiveTokenBudgetPreview } from '@mitii/ui-core';
 import { readTokenBudgetPolicyOverrides } from './tokenBudgetSettings.js';
 import { readLoopPolicyThresholdOverrides } from './loopPolicySettings.js';
 import { readV8LoopPolicyThresholdOverrides } from './v8LoopPolicySettings.js';
@@ -71,7 +69,7 @@ import {
   normalizeMaximumOutputTokens,
   resolveEffectiveContextWindow,
 } from './settingsFields.js';
-import { MemoryPipeline } from '@mitii/v8';
+import { MemoryPipeline } from '@mitii/sdk';
 
 export {
   formatRunEventLine,

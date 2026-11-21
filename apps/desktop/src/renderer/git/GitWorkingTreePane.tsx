@@ -27,11 +27,11 @@ import {
   IconPlus,
   IconRefresh,
   IconStop,
-} from '../ActivityIcons.js';
+} from '../shell/ActivityIcons.js';
 import {
   isTransientEngineNetworkError,
   withEngineFetchRetry,
-} from '../engineNetwork.js';
+} from '../shell/engineNetwork.js';
 import {
   createWorkspaceFilePath,
   extractAssistantText,

@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { writeRunHtml, writeRunsIndex } from './html-report.mjs';
 import { enrichReportEnvironment, resolveAgentEnvironment } from './report-format.mjs';
 import { renderExportMarkdown } from './report-export-md.mjs';
+import { OUTCOME_BUCKETS, STAGE_TIMING_FIELDS } from './outcome.mjs';
 
 export function createRunReporter(options = {}) {
   const runId = options.runId ?? new Date().toISOString().replaceAll(/[:.]/g, '-');
@@ -232,6 +233,8 @@ function renderCaseMarkdown(result) {
     `**Fixture:** ${result.fixture}`,
     `**Capability:** ${result.capability}`,
     `**Duration:** ${result.durationMs ?? 0}ms`,
+    `**Outcome:** ${result.outcome ?? (result.passed ? 'passed' : 'failed')}`,
+    `**Stage timings:** ${formatStageTimings(result.stageTimings)}`,
     `**Tokens / usage:** ${tokenParts.length ? tokenParts.join(' ') : 'n/a'}`,
     '',
     '## Checks',
@@ -253,6 +256,13 @@ function renderCaseMarkdown(result) {
   return `${lines.join('\n')}\n`;
 }
 
+function formatStageTimings(timings) {
+  const parts = STAGE_TIMING_FIELDS.filter((field) => typeof timings?.[field] === 'number').map(
+    (field) => `${field.replace(/Ms$/, '')}=${timings[field]}ms`
+  );
+  return parts.length ? parts.join(' ') : 'n/a';
+}
+
 function escapeMd(value) {
   return String(value).replaceAll('|', '\\|').replaceAll('\n', ' ');
 }
@@ -267,10 +277,18 @@ function summarize(results) {
   }
   const familyRates = [...families.values()].map((values) => values.reduce((a, b) => a + b, 0) / values.length);
   const durations = results.map((result) => result.durationMs).filter((value) => typeof value === 'number');
+  const outcomes = Object.fromEntries(OUTCOME_BUCKETS.map((bucket) => [bucket, 0]));
+  for (const result of results) {
+    const bucket = result.outcome ?? (result.passed ? 'passed' : 'failed');
+    outcomes[bucket] = (outcomes[bucket] ?? 0) + 1;
+  }
   return {
     total: results.length,
     passed,
     failed: results.length - passed,
+    outcomes,
+    /** Timed out, but every content check passed — not counted as passed. */
+    timeoutContentPass: outcomes.timeout_content_pass,
     families: families.size,
     caseScore: results.length ? passed / results.length : 0,
     familyScore: familyRates.length ? familyRates.reduce((a, b) => a + b, 0) / familyRates.length : 0,

@@ -1,233 +1,44 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import type { ExtensionContext } from 'vscode';
 import * as vscode from 'vscode';
 
-import type { MitiiClient } from '@mitii/sdk';
+import { registerApiKeyCommands } from './activation/apiKeyCommands.js';
+import { registerEditorSync } from './activation/editorSync.js';
+import { registerExportCommands } from './activation/exportCommands.js';
 import {
-  buildWritingRecipeAsk,
-  unwrapRecipeAnswer,
-  type MitiiWritingRecipeId,
-  IndexLockedError,
-  resolveMaximumIndexFiles,
-} from '@mitii/host';
-import { isSecurityConcern, WorkspaceIgnorePolicy } from '@mitii/v8';
-
-import { captureEditorContext } from './context/editorContext.js';
-import { MitiiInlineCompletionProvider } from './autocomplete/inlineCompletionProvider.js';
-import { resolveContextToggles } from './contextToggles.js';
-import { InlineDiffManager } from './diff/inlineDiffManager.js';
+  createIndexWorkspace,
+  registerIndexingCommands,
+  registerIndexingListeners,
+} from './activation/indexing.js';
+import { createActivationRuntime } from './activation/runtime.js';
+import { registerSidebarCommands } from './activation/sidebarCommands.js';
+import { registerWritingRecipeCommands } from './activation/writingRecipes.js';
 import { showWriteDiffPreview } from './diff/diffPreview.js';
+import { InlineDiffManager } from './diff/inlineDiffManager.js';
 import { ReviewFindingsPresenter } from './review/reviewFindingsPresenter.js';
-import { runAskInOutputChannel } from './hostAsk.js';
-import { mitiiLogsDir, scaffoldMitiiWorkspace } from './mitiiWorkspace.js';
-import { createVscodeClient } from './ports.js';
-import type { IndexStatusSnapshot } from './protocol.js';
-import { buildAuditPack, buildSessionExport } from './runReport.js';
-import { runCommitMessageWithScmUi } from './scm/registerScm.js';
-import {
-  findLatestSessionLog,
-  writeSessionExport,
-} from './sessionLog.js';
-import { writeShareableDiagnostic } from './shareableDiagnostic.js';
-import { readModelIoLoggingEnabled } from './modelIoSettings.js';
-import { formatMitiiLogStamp } from './mitiiLogStamp.js';
 import { MitiiSidebarProvider } from './sidebar.js';
-import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
-import { resolveVsCodeSemanticIndexSettings } from './semanticIndex.js';
-import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
-import { rehydrateRepositoryStateFromDisk } from './rehydrateRepositoryState.js';
-import { restoreCheckpointCommand } from './restoreCheckpoint.js';
-import {
-  getWorkspaceTrustSnapshot,
-  onWorkspaceTrustChanged,
-} from './workspace/trust.js';
 
 /**
  * VS Code host: activation composes @mitii/sdk and serves the React sidebar.
+ * Command and listener registration lives under `./activation/`.
  */
 export function activate(context: ExtensionContext): void {
-  const channel = vscode.window.createOutputChannel('Mitii');
-  context.subscriptions.push(channel);
-
-  const debugEnabled = (): boolean =>
-    vscode.workspace.getConfiguration('mitii').get<boolean>('debug') === true;
-
-  const debugLog = (line: string): void => {
-    if (debugEnabled()) channel.appendLine(line);
-  };
-
-  const extensionVersion =
-    (context.extension?.packageJSON as { version?: string } | undefined)
-      ?.version ?? 'unknown';
-  channel.appendLine(
-    `[mitii] activate v${extensionVersion} · ${new Date().toISOString()}`,
-  );
-  channel.appendLine(
-    `[mitii] extensionMode=${context.extensionMode} · debug=${debugEnabled()}`,
-  );
-  if (debugEnabled() || context.extensionMode === vscode.ExtensionMode.Development) {
-    channel.show(true);
-  }
-
-  let client: MitiiClient | undefined;
-  let workspaceId = 'vscode_workspace';
-  let lastSessionExportPath: string | undefined;
-  let indexAbort: AbortController | undefined;
-
-  const workspaceRoot = (): string | undefined =>
-    vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-
-  const rootAtActivate = workspaceRoot();
-  channel.appendLine(
-    `[mitii] workspaceRoot=${rootAtActivate ?? '(none)'}`,
-  );
-  if (rootAtActivate) {
-    try {
-      const dir = scaffoldMitiiWorkspace(rootAtActivate);
-      channel.appendLine(`[mitii] workspace data: ${dir}`);
-    } catch (error) {
-      const detail =
-        error instanceof Error
-          ? debugEnabled() && error.stack
-            ? error.stack
-            : error.message
-          : String(error);
-      channel.appendLine(`[mitii] scaffold failed: ${detail}`);
-    }
-  } else {
-    channel.appendLine(
-      '[mitii] no folder open — indexing and agent runs need a workspace',
-    );
-  }
-
-  const invalidateClient = (): void => {
-    client = undefined;
-  };
-
-  /** Coalesce profile/settings storms into one ensure after writes settle. */
-  let ensureIndexedTimer: ReturnType<typeof setTimeout> | undefined;
-  const scheduleEnsureIndexed = (delayMs = 500): void => {
-    if (ensureIndexedTimer) clearTimeout(ensureIndexedTimer);
-    ensureIndexedTimer = setTimeout(() => {
-      ensureIndexedTimer = undefined;
-      void (async () => {
-        if (!sidebar) return;
-        const status = await sidebar.ensureIndexed();
-        sidebar.post({ type: 'index.status', index: status });
-        await sidebar.refreshBootstrap();
-      })().catch((error) => {
-        channel.appendLine(
-          `[index] scheduled ensure failed: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      });
-    }, delayMs);
-  };
-  context.subscriptions.push({
-    dispose: () => {
-      if (ensureIndexedTimer) clearTimeout(ensureIndexedTimer);
-    },
-  });
-
-  const ensureClient = async (): Promise<MitiiClient> => {
-    if (client) return client;
-    const composed = await createVscodeClient(
-      vscode,
-      context.secrets,
-      workspaceRoot(),
-      { workspaceState: context.workspaceState },
-    );
-    client = composed.client;
-    workspaceId = composed.ports.workspaceId;
-    channel.appendLine(`[mitii] provider=${composed.ports.providerLabel}`);
-    return client;
-  };
-
-  const setApiKey = async (): Promise<void> => {
-    const key = await vscode.window.showInputBox({
-      prompt: 'Provider API key (stored in SecretStorage as mitii.provider.apiKey)',
-      password: true,
-      ignoreFocusOut: true,
-      placeHolder: 'sk-…',
-    });
-    if (key === undefined) return;
-    const trimmed = key.trim();
-    if (!trimmed) {
-      void vscode.window.showWarningMessage('API key not set (empty).');
-      return;
-    }
-    await context.secrets.store('mitii.provider.apiKey', trimmed);
-    invalidateClient();
-    channel.appendLine('[mitii] SecretStorage mitii.provider.apiKey updated');
-    void vscode.window.showInformationMessage(
-      'Mitii API key saved. Choose Anthropic, Gemini, DeepSeek, OpenAI, or a custom OpenAI-compatible endpoint in Settings. Local Ollama does not need a key.',
-    );
-  };
-
-  const clearApiKey = async (): Promise<void> => {
-    await context.secrets.delete('mitii.provider.apiKey');
-    invalidateClient();
-    channel.appendLine('[mitii] SecretStorage mitii.provider.apiKey cleared');
-    void vscode.window.showInformationMessage('Mitii API key cleared.');
-  };
-
-  const setSearchApiKey = async (): Promise<void> => {
-    const key = await vscode.window.showInputBox({
-      prompt:
-        'Brave Search API key (stored in SecretStorage as mitii.search.apiKey)',
-      password: true,
-      ignoreFocusOut: true,
-      placeHolder: 'BSA…',
-    });
-    if (key === undefined) return;
-    const trimmed = key.trim();
-    if (!trimmed) {
-      void vscode.window.showWarningMessage('Web search API key not set (empty).');
-      return;
-    }
-    await context.secrets.store('mitii.search.apiKey', trimmed);
-    invalidateClient();
-    channel.appendLine('[mitii] SecretStorage mitii.search.apiKey updated');
-    void vscode.window.showInformationMessage(
-      'Mitii Brave web search key saved. Prefer mitii.search.searxngBaseUrl for free SearXNG; Tavily via TAVILY_API_KEY. External/product asks grant web_search when a provider is configured.',
-    );
-  };
-
-  const clearSearchApiKey = async (): Promise<void> => {
-    await context.secrets.delete('mitii.search.apiKey');
-    invalidateClient();
-    channel.appendLine('[mitii] SecretStorage mitii.search.apiKey cleared');
-    void vscode.window.showInformationMessage('Mitii web search API key cleared.');
-  };
-
-  const toggleAutocomplete = async (): Promise<void> => {
-    const cfg = vscode.workspace.getConfiguration('mitii');
-    const current = cfg.get<boolean>('autocomplete.enabled') === true;
-    const target = vscode.workspace.workspaceFolders?.length
-      ? vscode.ConfigurationTarget.Workspace
-      : vscode.ConfigurationTarget.Global;
-    await cfg.update('autocomplete.enabled', !current, target);
-    void vscode.window.showInformationMessage(
-      `Mitii autocomplete ${current ? 'disabled' : 'enabled'}.`,
-    );
-  };
-
-  let sidebar: MitiiSidebarProvider;
+  const rt = createActivationRuntime(context);
+  const { channel } = rt;
 
   const inlineDiff = new InlineDiffManager(
     vscode,
     async (approvalId) => {
-      sidebar?.resolveInlineDiffDecision(approvalId, 'approved');
+      rt.sidebar?.resolveInlineDiffDecision(approvalId, 'approved');
     },
     async (approvalId) => {
-      sidebar?.resolveInlineDiffDecision(approvalId, 'denied');
+      rt.sidebar?.resolveInlineDiffDecision(approvalId, 'denied');
     },
   );
   context.subscriptions.push(inlineDiff);
 
-  const reviewFindings = new ReviewFindingsPresenter(vscode, workspaceRoot);
+  const reviewFindings = new ReviewFindingsPresenter(vscode, () =>
+    rt.workspaceRoot(),
+  );
   context.subscriptions.push(reviewFindings);
 
   const setInlineDiffContext = (pending: boolean): void => {
@@ -238,417 +49,17 @@ export function activate(context: ExtensionContext): void {
     );
   };
 
-  const indexWorkspace = async (): Promise<IndexStatusSnapshot> => {
-    const root =
-      vscode.workspace
-        .getConfiguration('mitii')
-        .get<string>('workspace.rootPathOverride')
-        ?.trim() || workspaceRoot();
-    if (!root) {
-      void vscode.window.showWarningMessage('Open a folder to index.');
-      return {
-        fileCount: 0,
-        truncated: false,
-        message: 'Open a workspace folder to index',
-      };
-    }
+  const indexWorkspace = createIndexWorkspace(rt);
 
-    indexAbort?.abort();
-    indexAbort = new AbortController();
-    const abortSignal = indexAbort.signal;
-
-    return vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: 'Mitii: Indexing workspace',
-        cancellable: true,
-      },
-      async (progress, token) => {
-        token.onCancellationRequested(() => indexAbort?.abort());
-        const onProgress = (event: {
-          message: string;
-          fileCount?: number;
-        }) => {
-          progress.report({
-            message: event.fileCount
-              ? `${event.message} (${event.fileCount} files)`
-              : event.message,
-          });
-          channel.appendLine(`[index] ${event.message}`);
-        };
-
-        if (sidebar) {
-          const status = await sidebar.publishIndexSnapshot({
-            force: true,
-            abortSignal,
-            onProgress,
-          });
-          if (!abortSignal.aborted) {
-            void vscode.window.showInformationMessage(
-              status.message ?? 'Mitii index updated.',
-            );
-          }
-          return status;
-        }
-        const c = await ensureClient();
-        const dir = join(root, '.mitii');
-        mkdirSync(dir, { recursive: true });
-        let fileCount = 0;
-        let truncated = false;
-        let indexMode: IndexStatusSnapshot['indexMode'] = 'full';
-        let fallbackReason: string | undefined;
-        let published;
-        try {
-          const full = await runFullWorkspaceIndex({
-            mitiiDir: dir,
-            workspaceRoot: root,
-            workspaceId,
-            force: true,
-            abortSignal,
-            onProgress,
-            semanticIndex: await resolveVsCodeSemanticIndexSettings(
-              vscode,
-              context.secrets,
-            ),
-          });
-          fileCount = full.fileCount;
-          truncated = full.truncated;
-          if (full.status === 'cancelled') {
-            return {
-              fileCount,
-              truncated,
-              message: 'Indexing cancelled',
-            };
-          }
-          if (full.status === 'skipped') {
-            await rehydrateRepositoryStateFromDisk({
-              client: c,
-              mitiiDir: dir,
-              workspaceRoot: root,
-              workspaceId,
-              channel,
-            });
-            return {
-              fileCount,
-              truncated,
-              message: 'Indexing already in progress',
-            };
-          }
-          published = await c.publishRepositoryStateFromIndexing(full.indexing, {
-            catalogRevisionByRoot: full.catalogRevisionByRoot,
-            graphRevisionByRoot: full.graphRevisionByRoot,
-            mapRevisionByRoot: full.mapRevisionByRoot,
-          });
-          if (full.status === 'unchanged') {
-            channel.appendLine(
-              `[index] unchanged (up to date) at ${full.databasePath}; vector=${full.vectorIndex.status}${full.vectorIndex.profileId ? ` profile=${full.vectorIndex.profileId}` : ''}`,
-            );
-          } else {
-            channel.appendLine(
-              `[index] full code/text/graph/map index stored at ${full.databasePath}; vector=${full.vectorIndex.status}${full.vectorIndex.profileId ? ` profile=${full.vectorIndex.profileId}` : ''}${full.vectorIndex.reason ? ` reason=${full.vectorIndex.reason}` : ''}`,
-            );
-          }
-        } catch (error) {
-          if (
-            error instanceof IndexLockedError ||
-            (error instanceof Error && error.name === 'IndexLockedError')
-          ) {
-            channel.appendLine(
-              `[index] skipped (lock held): ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-            );
-            await rehydrateRepositoryStateFromDisk({
-              client: c,
-              mitiiDir: dir,
-              workspaceRoot: root,
-              workspaceId,
-              channel,
-            });
-            return {
-              fileCount,
-              truncated,
-              message: 'Indexing already in progress',
-            };
-          }
-          indexMode = 'host_snapshot';
-          fallbackReason = error instanceof Error ? error.message : String(error);
-          channel.appendLine(
-            `[index] full index unavailable; falling back to host snapshot: ${fallbackReason}`,
-          );
-          const snapshot = await buildWorkspaceSnapshot({
-            workspaceRoot: root,
-            workspaceId,
-            maxFiles: resolveMaximumIndexFiles(
-              vscode.workspace
-                .getConfiguration('mitii')
-                .get<number>('workspace.maximumIndexFiles'),
-            ),
-          });
-          fileCount = snapshot.fileCount;
-          truncated = snapshot.truncated;
-          published = await c.publishRepositoryState(snapshot.candidate);
-        }
-        if (published.status === 'published') {
-          writeFileSync(
-            join(dir, 'last-repository-state.json'),
-            `${JSON.stringify(
-              {
-                ...published.descriptor,
-                fileCount,
-                truncated,
-                indexMode,
-              },
-              null,
-              2,
-            )}\n`,
-          );
-          channel.appendLine(
-            `[index] readiness=${published.descriptor.readiness} token=${published.reference.stateToken.slice(0, 16)}… files=${fileCount}`,
-          );
-        }
-        const status: IndexStatusSnapshot = {
-          fileCount,
-          truncated,
-          message:
-            indexMode === 'host_snapshot'
-              ? `Indexed ${fileCount} files (host snapshot fallback)`
-              : `Indexed ${fileCount} files`,
-        };
-        void vscode.window.showInformationMessage(
-          status.message ?? 'Mitii index updated.',
-        );
-        return status;
-      },
-    );
-  };
-
-  const openChat = async (): Promise<void> => {
-    await vscode.commands.executeCommand('mitii.sidebar.focus');
-    sidebar?.post({ type: 'setTab', tab: 'chat' });
-  };
-
-  const reviewChanges = async (): Promise<void> => {
-    await vscode.commands.executeCommand('mitii.sidebar.focus');
-    // Show git changes only — LLM Code Review is the separate bar button.
-    sidebar?.post({ type: 'startReview', autoRun: false });
-  };
-
-  const runWritingRecipe = async (
-    recipeId: MitiiWritingRecipeId,
-    options?: { userNote?: string; writeFileName?: string },
-  ): Promise<string | undefined> => {
-    const root = workspaceRoot();
-    if (!root) {
-      void vscode.window.showWarningMessage('Open a git folder first.');
-      return undefined;
-    }
-    const style =
-      vscode.workspace
-        .getConfiguration('mitii')
-        .get<string>('scm.commitMessageStyle') ?? 'conventional';
-    const ask = await buildWritingRecipeAsk({
-      workspaceRoot: root,
-      recipe: recipeId,
-      commitMessageStyle:
-        style === 'plain' ? 'plain' : 'conventional',
-      userNote: options?.userNote,
-    });
-    const c = await ensureClient();
-    const outcome = await runAskInOutputChannel({
-      vs: vscode,
-      client: c,
-      prompt: ask.prompt,
-      workspaceRoot: root,
-      channel,
-      mode: ask.mode,
-      requiredSkillIds: ask.requiredSkillIds,
-      workspaceId,
-      workspaceState: context.workspaceState,
-      secrets: context.secrets,
-    });
-    const answer = outcome.result.answer?.trim();
-    const cleaned = answer ? unwrapRecipeAnswer(answer) : undefined;
-    if (options?.writeFileName && cleaned) {
-      const outPath = join(root, '.mitii', options.writeFileName);
-      mkdirSync(join(root, '.mitii'), { recursive: true });
-      writeFileSync(outPath, `${cleaned}\n`);
-      const doc = await vscode.workspace.openTextDocument(outPath);
-      await vscode.window.showTextDocument(doc);
-    }
-    return cleaned;
-  };
-
-  const generateCommitMessage = async (): Promise<void> => {
-    const root = workspaceRoot();
-    if (!root) {
-      void vscode.window.showWarningMessage('Open a git folder first.');
-      return;
-    }
-    try {
-      await runCommitMessageWithScmUi({
-        vs: vscode,
-        workspaceRoot: root,
-        generate: async () => {
-          const answer = await runWritingRecipe('commit-message');
-          return answer || 'chore: update workspace';
-        },
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      void vscode.window.showErrorMessage(`Mitii: ${message}`);
-    }
-  };
-
-  const exportSession = async (): Promise<string | undefined> => {
-    const prompt = await vscode.window.showInputBox({
-      prompt: 'Prompt to run before exporting session log',
-      value: 'Summarize the current workspace briefly.',
-    });
-    if (!prompt?.trim()) return undefined;
-    const root = workspaceRoot();
-    const c = await ensureClient();
-    const outcome = await runAskInOutputChannel({
-      vs: vscode,
-      client: c,
-      prompt: prompt.trim(),
-      workspaceRoot: root,
-      channel,
-      workspaceId,
-      workspaceState: context.workspaceState,
-      secrets: context.secrets,
-    });
-    const payload = buildSessionExport({
-      result: outcome.result,
-      events: outcome.events,
-    });
-    const outPath = writeSessionExport(
-      root,
-      context.globalStorageUri.fsPath,
-      payload,
-    );
-    lastSessionExportPath = outPath;
-    channel.appendLine(`[export] wrote ${outPath}`);
-    void vscode.window.showInformationMessage(`Exported session to ${outPath}`);
-    return outPath;
-  };
-
-  const exportAudit = async (): Promise<void> => {
-    const prompt = await vscode.window.showInputBox({
-      prompt: 'Prompt to run before exporting audit pack',
-      value: 'Summarize recent agent activity for audit.',
-    });
-    if (!prompt?.trim()) return;
-    const root = workspaceRoot();
-    const c = await ensureClient();
-    const outcome = await runAskInOutputChannel({
-      vs: vscode,
-      client: c,
-      prompt: prompt.trim(),
-      workspaceRoot: root,
-      channel,
-      workspaceId,
-      workspaceState: context.workspaceState,
-      secrets: context.secrets,
-    });
-    const cfg = vscode.workspace.getConfiguration('mitii');
-    const settingsRedacted = {
-      provider: {
-        type: cfg.get('provider.type'),
-        baseUrl: cfg.get('provider.baseUrl'),
-        model: cfg.get('provider.model'),
-        hasApiKey: Boolean(await context.secrets.get('mitii.provider.apiKey')),
-      },
-      ui: {
-        showReasoning: cfg.get('ui.showReasoning'),
-        depth: cfg.get('ui.depth'),
-        contextToggles: resolveContextToggles(cfg),
-      },
-      safety: { approvalMode: cfg.get('safety.approvalMode') },
-      mcpEnabled: Boolean(
-        (cfg.get('mcp') as { enabled?: boolean } | undefined)?.enabled,
-      ),
-    };
-    const indexMeta = sidebar
-      ? await sidebar.readIndexStatusPublic()
-      : undefined;
-    const payload = buildAuditPack({
-      result: outcome.result,
-      events: outcome.events,
-      settingsRedacted,
-      indexMeta: indexMeta as unknown as Record<string, unknown>,
-      workspaceRoot: root,
-    });
-    const auditDir = root
-      ? mitiiLogsDir(root)
-      : context.globalStorageUri.fsPath;
-    mkdirSync(auditDir, { recursive: true });
-    const outPath = join(auditDir, `audit-pack-${formatMitiiLogStamp()}.json`);
-    writeFileSync(outPath, `${JSON.stringify(payload, null, 2)}\n`);
-    channel.appendLine(`[audit] wrote ${outPath}`);
-    void vscode.window.showInformationMessage(`Exported audit pack to ${outPath}`);
-  };
-
-  const exportShareableDiagnostic = async (): Promise<void> => {
-    const root = workspaceRoot();
-    const cfg = vscode.workspace.getConfiguration('mitii');
-    const written = writeShareableDiagnostic({
-      workspaceRoot: root,
-      fallbackDir: context.globalStorageUri.fsPath,
-      meta: {
-        providerType: cfg.get<string>('provider.type') ?? undefined,
-        model: cfg.get<string>('provider.model') ?? undefined,
-        baseUrl: cfg.get<string>('provider.baseUrl') ?? undefined,
-        developerEnabled: cfg.get<boolean>('developer.enabled') ?? false,
-        modelIoEnabled: readModelIoLoggingEnabled(cfg),
-        contextWindowTokens: (() => {
-          const raw = cfg.get<number>('provider.contextWindow');
-          return typeof raw === 'number' && Number.isFinite(raw) && raw > 0
-            ? Math.floor(raw)
-            : undefined;
-        })(),
-      },
-    });
-    channel.appendLine(`[shareable] wrote ${written.path}`);
-    if (written.sources.sessionLogPath) {
-      channel.appendLine(`[shareable] session ${written.sources.sessionLogPath}`);
-    }
-    if (written.sources.modelIoLogPath) {
-      channel.appendLine(`[shareable] model-io ${written.sources.modelIoLogPath}`);
-    }
-    const doc = await vscode.workspace.openTextDocument(written.path);
-    await vscode.window.showTextDocument(doc);
-    void vscode.window.showInformationMessage(
-      `Shareable diagnostic ready — copy from ${written.path}`,
-    );
-  };
-
-  const openSessionLog = async (): Promise<void> => {
-    const root = workspaceRoot();
-    const candidate =
-      lastSessionExportPath ??
-      findLatestSessionLog(root) ??
-      (root ? join(root, '.mitii-session-export.json') : undefined);
-    if (!candidate || !existsSync(candidate)) {
-      const created = await exportSession();
-      if (!created) return;
-      const doc = await vscode.workspace.openTextDocument(created);
-      await vscode.window.showTextDocument(doc);
-      return;
-    }
-    const doc = await vscode.workspace.openTextDocument(candidate);
-    await vscode.window.showTextDocument(doc);
-  };
-
-  sidebar = new MitiiSidebarProvider(
+  const sidebar = new MitiiSidebarProvider(
     vscode,
     context.extensionUri,
-    ensureClient,
-    workspaceRoot,
-    () => workspaceId,
+    () => rt.ensureClient(),
+    () => rt.workspaceRoot(),
+    () => rt.workspaceId(),
     channel,
     context.secrets,
-    invalidateClient,
+    () => rt.invalidateClient(),
     indexWorkspace,
     {
       extensionMode: context.extensionMode,
@@ -658,233 +69,31 @@ export function activate(context: ExtensionContext): void {
       onInlineDiffPending: setInlineDiffContext,
     },
   );
-
-  /** Soft pins follow Context toggles — never force-attach when Editor/Open tabs are off. */
-  const postEditorAutoPins = (): void => {
-    const root = workspaceRoot();
-    const toggles = resolveContextToggles(
-      vscode.workspace.getConfiguration('mitii'),
-    );
-    const snap = captureEditorContext(vscode, root, {
-      includeOpenTabs: toggles.openTabs,
-    });
-    if (toggles.editor && snap.activeRelPath) {
-      sidebar.post({
-        type: 'editorPin',
-        path: snap.activeRelPath,
-        source: 'auto',
-      });
-    }
-    let paths: string[] = [];
-    if (toggles.openTabs) {
-      paths = snap.openTabRelPaths.length
-        ? snap.openTabRelPaths
-        : snap.activeRelPath
-          ? [snap.activeRelPath]
-          : [];
-    } else if (toggles.editor && snap.activeRelPath) {
-      paths = [snap.activeRelPath];
-    }
-    sidebar.post({ type: 'syncAutoPins', paths });
-  };
+  rt.sidebar = sidebar;
 
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider(
-      MitiiSidebarProvider.viewType,
-      sidebar,
-      { webviewOptions: { retainContextWhenHidden: true } },
-    ),
-    vscode.commands.registerCommand('mitii.openChat', openChat),
-    vscode.commands.registerCommand('mitii.reviewChanges', reviewChanges),
-    vscode.commands.registerCommand('mitii.indexWorkspace', async () => {
-      await indexWorkspace();
-    }),
-    vscode.commands.registerCommand('mitii.pauseIndexing', () => {
-      indexAbort?.abort();
-      channel.appendLine('[index] pause requested');
-      void vscode.window.showInformationMessage('Mitii indexing paused.');
-    }),
-    vscode.commands.registerCommand(
-      'mitii.generateCommitMessage',
-      generateCommitMessage,
-    ),
-    vscode.commands.registerCommand('mitii.exportSessionLog', async () => {
-      await exportSession();
-    }),
-    vscode.commands.registerCommand('mitii.restoreCheckpoint', async () => {
-      await restoreCheckpointCommand(vscode, context.secrets);
-    }),
-    vscode.commands.registerCommand('mitii.exportAuditPack', exportAudit),
-    vscode.commands.registerCommand(
-      'mitii.exportShareableDiagnostic',
-      exportShareableDiagnostic,
-    ),
-    vscode.commands.registerCommand('mitii.openSessionLog', openSessionLog),
-    vscode.commands.registerCommand('mitii.generatePrSummary', async () => {
-      try {
-        const answer = await runWritingRecipe('pr-summary', {
-          writeFileName: 'PR-SUMMARY-draft.md',
-        });
-        if (!answer) {
-          void vscode.window.showWarningMessage(
-            'Mitii: No PR summary returned — check provider settings.',
-          );
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        void vscode.window.showErrorMessage(`Mitii: ${message}`);
-      }
-    }),
-    vscode.commands.registerCommand('mitii.generateChangelog', async () => {
-      try {
-        const answer = await runWritingRecipe('changelog', {
-          writeFileName: 'CHANGELOG-draft.md',
-        });
-        if (!answer) {
-          void vscode.window.showWarningMessage(
-            'Mitii: No changelog returned — check provider settings.',
-          );
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        void vscode.window.showErrorMessage(`Mitii: ${message}`);
-      }
-    }),
-    vscode.commands.registerCommand('mitii.prepareRelease', async () => {
-      try {
-        const answer = await runWritingRecipe('changelog', {
-          userNote:
-            'Frame as release notes: summary highlights, breaking changes, and upgrade notes inside the Keep a Changelog section.',
-          writeFileName: 'RELEASE-NOTES-draft.md',
-        });
-        if (!answer) {
-          void vscode.window.showWarningMessage(
-            'Mitii: No release notes returned — check provider settings.',
-          );
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        void vscode.window.showErrorMessage(`Mitii: ${message}`);
-      }
-    }),
-    vscode.commands.registerCommand('mitii.showInlineDiff', async () => {
-      const pending = inlineDiff.getPending();
-      if (!pending) {
-        void vscode.window.showInformationMessage(
-          'No pending Mitii inline diff.',
-        );
-        return;
-      }
-      const root = workspaceRoot();
-      if (!root) return;
-      await inlineDiff.showForApproval(
-        root,
-        pending.approvalId,
-        pending.relPath,
-        pending.toolName,
-        pending.proposedText,
-        pending.originalText,
-      );
-    }),
-    vscode.commands.registerCommand('mitii.setApiKey', setApiKey),
-    vscode.commands.registerCommand('mitii.clearApiKey', clearApiKey),
-    vscode.commands.registerCommand('mitii.setSearchApiKey', setSearchApiKey),
-    vscode.commands.registerCommand('mitii.clearSearchApiKey', clearSearchApiKey),
-    vscode.commands.registerCommand(
-      'mitii.toggleAutocomplete',
-      toggleAutocomplete,
-    ),
-    vscode.languages.registerInlineCompletionItemProvider(
-      { scheme: 'file' },
-      new MitiiInlineCompletionProvider(
-        vscode,
-        context.secrets,
-        workspaceRoot,
-        channel,
-      ),
-    ),
-    vscode.commands.registerCommand('mitii.showSettings', async () => {
-      await vscode.commands.executeCommand('mitii.sidebar.focus');
-      sidebar.post({ type: 'openSettings', tab: 'model' });
-    }),
-    vscode.window.onDidChangeActiveTextEditor(() => {
-      postEditorAutoPins();
-      sidebar.postTrustAndNotices(getWorkspaceTrustSnapshot(vscode));
-    }),
-    vscode.workspace.onDidCloseTextDocument((doc) => {
-      if (doc.uri.scheme !== 'file') return;
-      postEditorAutoPins();
-      const toggles = resolveContextToggles(
-        vscode.workspace.getConfiguration('mitii'),
-      );
-      if (toggles.openTabs || toggles.editor) {
-        debugLog('[mitii] document closed -> syncAutoPins');
-      }
-    }),
-    vscode.window.onDidChangeVisibleTextEditors(() => {
-      postEditorAutoPins();
-    }),
-    onWorkspaceTrustChanged(vscode, (snap) => {
-      sidebar.postTrustAndNotices(snap);
-    }),
-    vscode.workspace.onDidChangeConfiguration((event) => {
-      if (
-        event.affectsConfiguration('mitii.ui.contextToggles.editor') ||
-        event.affectsConfiguration('mitii.ui.contextToggles.openTabs')
-      ) {
-        postEditorAutoPins();
-      }
-      if (event.affectsConfiguration('mitii.debug')) {
-        channel.appendLine(
-          `[mitii] debug logging ${debugEnabled() ? 'enabled' : 'disabled'}`,
-        );
-        if (debugEnabled()) channel.show(true);
-      }
-      if (
-        event.affectsConfiguration('mitii.provider') ||
-        event.affectsConfiguration('mitii.workspace') ||
-        event.affectsConfiguration('mitii.mcp') ||
-        event.affectsConfiguration('mitii.search') ||
-        event.affectsConfiguration('mitii.ui') ||
-        event.affectsConfiguration('mitii.safety') ||
-        event.affectsConfiguration('mitii.agent') ||
-        event.affectsConfiguration('mitii.onboarding') ||
-        event.affectsConfiguration('mitii.autocomplete') ||
-        event.affectsConfiguration('mitii.debug') ||
-        event.affectsConfiguration('mitii.developer')
-      ) {
-        if (
-          event.affectsConfiguration('mitii.provider') ||
-          event.affectsConfiguration('mitii.mcp') ||
-          event.affectsConfiguration('mitii.search') ||
-          event.affectsConfiguration('mitii.ui.contextToggles.memory') ||
-          event.affectsConfiguration('mitii.agent.taskListAutoAdvance') ||
-          event.affectsConfiguration('mitii.developer.modelIo') ||
-          event.affectsConfiguration('mitii.developer.enabled')
-        ) {
-          invalidateClient();
-          channel.appendLine(
-            '[mitii] provider/mcp/search/memory/agent/debug settings changed; client will recompose',
-          );
-        }
-        scheduleEnsureIndexed();
-      }
-    }),
+    ...registerSidebarCommands(rt, sidebar, inlineDiff),
+    ...registerIndexingCommands(rt, indexWorkspace),
+    ...registerWritingRecipeCommands(rt),
+    ...registerExportCommands(rt),
+    ...registerApiKeyCommands(rt),
+    ...registerEditorSync(rt, sidebar),
   );
 
   // Expose diff preview helper for sidebar without circular imports
   sidebar.attachHostHelpers({
     showWriteDiffPreview: async (relPath, content) => {
-      const root = workspaceRoot();
+      const root = rt.workspaceRoot();
       if (!root) return;
       await showWriteDiffPreview(vscode, root, relPath, content);
     },
   });
 
-  void ensureClient()
+  void rt
+    .ensureClient()
     .then(async () => {
       channel.appendLine('[mitii] client composed OK');
-      if (!workspaceRoot()) return;
+      if (!rt.workspaceRoot()) return;
       const status = await sidebar.ensureIndexed();
       channel.appendLine(
         `[index] activation ${status.message ?? 'ready'} files=${status.fileCount}`,
@@ -893,90 +102,15 @@ export function activate(context: ExtensionContext): void {
     .catch((error) => {
       const detail =
         error instanceof Error
-          ? debugEnabled() && error.stack
+          ? rt.debugEnabled() && error.stack
             ? error.stack
             : error.message
           : String(error);
       channel.appendLine(`[mitii] client/index init deferred: ${detail}`);
-      if (debugEnabled()) channel.show(true);
+      if (rt.debugEnabled()) channel.show(true);
     });
 
-  const ignorePolicy = new WorkspaceIgnorePolicy();
-  const pendingIndexPaths = new Set<string>();
-  let saveIndexTimer: ReturnType<typeof setTimeout> | undefined;
-
-  const relativeWorkspacePath = (uri: vscode.Uri): string | undefined => {
-    const root = workspaceRoot();
-    if (!root || uri.scheme !== 'file') return undefined;
-    const relative = vscode.workspace.asRelativePath(uri, false);
-    if (!relative || relative === uri.fsPath) return undefined;
-    return relative.replace(/\\/g, '/');
-  };
-
-  const flushSaveIndex = async (): Promise<void> => {
-    const filePaths = [...pendingIndexPaths];
-    pendingIndexPaths.clear();
-    if (filePaths.length === 0) return;
-    try {
-      const status = await sidebar.publishIndexSnapshot({ filePaths });
-      sidebar.post({ type: 'index.status', index: status });
-      channel.appendLine(
-        `[index] save refresh ${filePaths.join(', ')} ${status.message ?? 'updated'}`,
-      );
-    } catch (error) {
-      channel.appendLine(
-        `[index] save refresh failed: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    }
-  };
-
-  context.subscriptions.push(
-    vscode.workspace.onDidSaveTextDocument((document) => {
-      const relativePath = relativeWorkspacePath(document.uri);
-      if (!relativePath) return;
-      if (isSecurityConcern(relativePath)) return;
-      if (
-        ignorePolicy.shouldIgnore({
-          root: workspaceRoot() ?? '',
-          path: document.uri.fsPath,
-          relativePath,
-          kind: 'file',
-          depth: relativePath.split('/').length,
-        })
-      ) {
-        return;
-      }
-      pendingIndexPaths.add(relativePath);
-      if (saveIndexTimer) clearTimeout(saveIndexTimer);
-      saveIndexTimer = setTimeout(() => {
-        void flushSaveIndex();
-      }, 750);
-    }),
-    vscode.workspace.onDidChangeWorkspaceFolders(() => {
-      const root = workspaceRoot();
-      invalidateClient();
-      if (!root) return;
-      try {
-        channel.appendLine(
-          `[mitii] workspace data: ${scaffoldMitiiWorkspace(root)}`,
-        );
-      } catch (error) {
-        channel.appendLine(
-          `[mitii] scaffold failed: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      }
-      void sidebar.ensureIndexed().then((status) => {
-        sidebar.post({ type: 'index.status', index: status });
-        channel.appendLine(
-          `[index] workspace-folder change ${status.message ?? 'ready'}`,
-        );
-      });
-    }),
-  );
+  context.subscriptions.push(...registerIndexingListeners(rt, sidebar));
 
   channel.appendLine('[mitii] activation complete');
 }

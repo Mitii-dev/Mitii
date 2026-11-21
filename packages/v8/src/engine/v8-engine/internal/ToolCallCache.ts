@@ -4,7 +4,7 @@ import type { ToolResult } from "../../tool-runtime";
 import {
   extractToolContentPaths,
   toolContentPathsOverlap,
-} from "../actions/toolContentPaths";
+} from "../modules/tool-content-paths";
 
 const CONTENT_PREFIX = "content:";
 

@@ -15,7 +15,7 @@
   <a href="LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/License-AGPL_v3-blue.svg"></a>
   <a href="https://code.visualstudio.com/"><img alt="VS Code 1.124+" src="https://img.shields.io/badge/VS%20Code-1.124%2B-007ACC?logo=visualstudiocode"></a>
   <a href="https://nodejs.org/"><img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-339933?logo=node.js"></a>
-  <img alt="Version 2.11.1" src="https://img.shields.io/badge/version-2.11.1-111111">
+  <img alt="Version 2.11.2" src="https://img.shields.io/badge/version-2.11.2-111111">
   <a href="https://docs.mitii.dev"><img alt="Documentation" src="https://img.shields.io/badge/docs-docs.mitii.dev-ff751f"></a>
 </p>
 
@@ -212,6 +212,9 @@ mitii-ai-agent/
 |   |-- v8/                   # @mitii/v8 - host-neutral agent runtime
 |   |-- sdk/                  # @mitii/sdk - public API + bundled skills/
 |   |-- host/                 # @mitii/host - indexing, ports, writing recipes
+|   |-- ui-core/              # @mitii/ui-core - pure UI helpers shared by Desktop + VS Code
+|   |-- ui-theme/             # @mitii/ui-theme - --mitii-* CSS token contract + vscode/standalone adapters
+|   |-- ui-react/             # @mitii/ui-react - props-only React components shared by Desktop + VS Code
 |   |-- automation/           # @mitii/automation - schedules and claim runner
 |   |-- mcp/                  # @mitii/mcp client + @mitii/mcp-web server
 |   `-- search-kit/           # @mitii/search-kit - web search/fetch helpers

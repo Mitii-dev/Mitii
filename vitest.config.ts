@@ -9,6 +9,8 @@ export default defineConfig({
       '@mitii/sdk': resolve(__dirname, 'packages/sdk/src/index.ts'),
       '@mitii/host': resolve(__dirname, 'packages/host/src/index.ts'),
       '@mitii/search-kit': resolve(__dirname, 'packages/search-kit/src/index.ts'),
+      '@mitii/ui-core': resolve(__dirname, 'packages/ui-core/src/index.ts'),
+      '@mitii/ui-protocol': resolve(__dirname, 'packages/ui-protocol/src/index.ts'),
     },
   },
   test: {
@@ -50,6 +52,8 @@ export default defineConfig({
       'packages/v8/src/modules/model-gateway/tests/GeminiLlmPort.spec.ts',
       'packages/v8/src/modules/model-gateway/tests/projectOpenAiCompatibleMessages.spec.ts',
       'packages/search-kit/src/**/*.spec.ts',
+      'packages/ui-core/tests/**/*.test.ts',
+      'packages/ui-protocol/tests/**/*.test.ts',
       'packages/host/src/**/*.spec.ts',
       'apps/cli/src/**/*.spec.ts',
       'scripts/github-actions/**/*.test.js',

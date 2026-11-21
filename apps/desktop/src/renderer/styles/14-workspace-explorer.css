@@ -1,0 +1,299 @@
+.settings-inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-inline-actions .storage-note {
+  flex: 1 1 100%;
+  margin: 0;
+}
+
+.mono-input {
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+/* ── Workspace / Explorer (VS Code–like, lightweight) ──── */
+
+.workspace-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--mitii-panel);
+}
+
+.workspace-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  /* columns set inline when resizable: explorer | handle | editor */
+  grid-template-columns: 260px 5px minmax(0, 1fr);
+}
+
+.workspace-view--embedded {
+  height: 100%;
+}
+
+.workspace-side {
+  display: flex;
+  min-height: 0;
+  border-right: 1px solid var(--mitii-border);
+  background: var(--mitii-surface);
+}
+
+.workspace-side--flush .workspace-pane {
+  width: 100%;
+}
+
+.activity-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 44px;
+  flex-shrink: 0;
+  padding: 8px 4px;
+  border-right: 1px solid var(--mitii-border);
+  background: var(--mitii-surface);
+}
+
+.activity-rail button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--mitii-muted);
+  font-size: 15px;
+  line-height: 0;
+}
+
+.activity-rail button svg {
+  display: block;
+}
+
+.activity-rail button:hover {
+  color: var(--mitii-text);
+  background: color-mix(in srgb, var(--mitii-text) 6%, transparent);
+}
+
+.activity-rail button.is-active {
+  color: var(--mitii-text);
+  box-shadow: inset 2px 0 0 var(--mitii-accent);
+}
+
+.activity-badge {
+  position: absolute;
+  top: 4px;
+  right: 3px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--mitii-accent);
+  color: #fff;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+}
+
+.workspace-pane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.workspace-pane__title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 8px 4px 16px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mitii-muted);
+  min-height: 28px;
+}
+
+.explorer-label--root {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.explorer-row--workspace-root {
+  margin: 0 0 2px;
+  font-weight: 600;
+}
+
+.explorer-row--workspace-root .explorer-label {
+  color: var(--mitii-text);
+}
+
+.icon-quiet {
+  border: 0;
+  background: transparent;
+  color: var(--mitii-muted);
+  border-radius: 5px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.icon-quiet svg {
+  display: block;
+  flex-shrink: 0;
+  width: 13px;
+  height: 13px;
+}
+
+.icon-quiet:hover {
+  color: var(--mitii-text);
+  background: color-mix(in srgb, var(--mitii-text) 8%, transparent);
+}
+
+.explorer-tree {
+  flex: 1;
+  overflow: auto;
+  padding: 0 4px 8px;
+}
+
+.explorer-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  border-radius: 0;
+  padding: 1px 8px 1px 4px;
+  font-size: 13px;
+  color: var(--mitii-text);
+  min-height: 22px;
+}
+
+.explorer-row:hover {
+  background: color-mix(in srgb, var(--mitii-text) 6%, transparent);
+}
+
+.explorer-row.is-active {
+  background: color-mix(in srgb, var(--mitii-accent) 14%, transparent);
+}
+
+.explorer-row.is-selected {
+  background: color-mix(in srgb, var(--mitii-accent) 22%, transparent);
+}
+
+.explorer-row.is-cut {
+  opacity: 0.45;
+}
+
+.explorer-row--rename {
+  gap: 2px;
+}
+
+.explorer-rename {
+  flex: 1;
+  min-width: 0;
+  height: 20px;
+  border: 1px solid var(--mitii-accent);
+  border-radius: 3px;
+  background: var(--mitii-panel);
+  color: var(--mitii-text);
+  font-size: 12px;
+  padding: 0 4px;
+  outline: none;
+}
+
+.explorer-menu {
+  position: fixed;
+  z-index: 80;
+  min-width: 220px;
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--mitii-border);
+  background: color-mix(in srgb, var(--mitii-surface) 92%, #000 8%);
+  box-shadow: 0 10px 28px color-mix(in srgb, #000 42%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.explorer-menu button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: var(--mitii-text);
+  font-size: 12px;
+  padding: 7px 10px;
+  border-radius: 5px;
+}
+
+.explorer-menu button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--mitii-accent) 18%, transparent);
+}
+
+.explorer-menu button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.explorer-menu__kbd {
+  margin-left: auto;
+  font-family: var(--mitii-font-ui);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--mitii-muted);
+  background: none;
+  border: 0;
+  padding: 0;
+}
+
+.explorer-menu__danger {
+  color: #f07178 !important;
+}
+
+.explorer-menu hr {
+  border: 0;
+  border-top: 1px solid var(--mitii-border);
+  margin: 4px 2px;
+}
+
+.workspace-side--rail-only {
+  width: 44px;
+  overflow: hidden;
+}
+
+.workspace-resize-spacer {
+  width: 0;
+  pointer-events: none;
+}
+
+.editor-shell--mcp,
+.editor-shell--extensions {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--mitii-bg, var(--mitii-surface));
+}

@@ -175,3 +175,6 @@ export {
   REPOSITORY_STATE_REASON_CODES,
   REPOSITORY_STATE_ERROR_CODES,
 } from "./constants";
+
+export { normalizeRepoPathText } from "./normalizeRepoPathText";
+export type { NormalizeRepoPathTextOptions } from "./normalizeRepoPathText";

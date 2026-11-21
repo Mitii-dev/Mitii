@@ -10,6 +10,7 @@ import {
   isLoopFilePathFullyLoaded,
   type LoopFileReadTracker,
 } from "../../actions/isExplorationRereadHeavy";
+import { normalizeRepoPathText } from "../../../../modules/repository-state";
 
 export type {
   MutateReadinessBudget,
@@ -374,7 +375,7 @@ function isEvidencePathLoaded(
   loopFileReads?: LoopFileReadTracker,
   establishedFacts?: readonly EstablishedFact[],
 ): boolean {
-  const normalized = normalizePath(path);
+  const normalized = normalizeRepoPathText(path);
   if (!normalized) return false;
   // Truncated / windowed reads must not satisfy readiness — only eof+complete.
   if (isLoopFilePathFullyLoaded(loopFileReads, normalized)) {
@@ -397,7 +398,7 @@ function uniquePaths(paths: readonly string[]): string[] {
   const seen = new Set<string>();
   const unique: string[] = [];
   for (const path of paths) {
-    const normalized = normalizePath(path);
+    const normalized = normalizeRepoPathText(path);
     if (!normalized || seen.has(normalized)) continue;
     seen.add(normalized);
     unique.push(normalized);
@@ -405,11 +406,3 @@ function uniquePaths(paths: readonly string[]): string[] {
   return unique;
 }
 
-function normalizePath(value: string): string {
-  return value
-    .trim()
-    .replace(/\\/g, "/")
-    .replace(/\/+/g, "/")
-    .replace(/^\.\//, "")
-    .replace(/\/+$/, "");
-}

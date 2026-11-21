@@ -16,7 +16,7 @@ import type {
   PromptRepositoryContext,
 } from "../../../modules/prompt-construction";
 import type { UserRequestEnvelope } from "../../../modules/request-intake";
-import { extractPrimaryUserMessage } from "../../../modules/request-understanding/intent/extractPrimaryUserMessage";
+import { extractPrimaryUserMessage } from "../../../modules/request-understanding";
 import type { RequestUnderstandingResult } from "../../../modules/request-understanding";
 import type { WindowPolicy } from "../../../modules/window-budget";
 
@@ -25,6 +25,7 @@ import {
   recordDiscoveryEvidence,
   recordPlanEvidence,
   selectSkillsForEnrichment,
+  collectTrustedSeedPaths,
 } from "../actions";
 import { preparePlanningInputFromEnrichment } from "./preparePlanningInputFromEnrichment";
 import { runPostPlanDraftGates } from "./enrichmentAfterPlanDraft";
@@ -114,7 +115,7 @@ export async function finishEnrichmentSkillsMemoryPlan(
     runEvidence,
     syncTaskListOnce,
     envelope,
-    candidateRelativePaths: _candidateRelativePaths,
+    candidateRelativePaths,
     approvedPlan,
     approvedPlanStrategy,
     skipPlanGate,
@@ -352,6 +353,14 @@ export async function finishEnrichmentSkillsMemoryPlan(
         taskListRef,
         windowPolicy,
         preferredPaths: discoveryPreferredPaths,
+        seedPathHygiene: {
+          knownPaths: [...contextPaths, ...candidateRelativePaths],
+          trustedPaths: collectTrustedSeedPaths({
+            seedPaths: shared.executionSeed?.paths,
+            evidenceTargets: planningInput.evidence.targets,
+            query: planningInput.query,
+          }),
+        },
         qualityFloor: planQualityFloor,
         thoroughEvidence,
         seedFirstDiscovery: mediumOrLarge,
@@ -528,6 +537,11 @@ export async function finishEnrichmentSkillsMemoryPlan(
     }
   } else {
     reasonCodes.push("plan_skipped");
+    if (decision.reasonCodes.includes("fast_path_explicit_paths")) {
+      // No plan and no discovery pass: the execution seed binds the named
+      // paths and the mutate loop starts immediately.
+      reasonCodes.push("fast_path_plan_skipped");
+    }
   }
 
   syncTaskListOnce();

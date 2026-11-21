@@ -7,6 +7,7 @@ import {
   type ModelCapabilities,
 } from '@mitii/v8';
 
+import { resolveEffectiveContextWindow } from './resolveEffectiveContextWindow.js';
 import {
   getProviderPreset,
   isHostProviderType,
@@ -64,9 +65,14 @@ export function createHostLlmPorts(
     preset?.model ||
     'echo';
   const presetCapabilities = preset?.defaultCapabilities ?? {};
+  // Hosts that omit the window must not silently inherit the adapter default
+  // (32_768): infer it from the model family / provider like every other host.
   const capabilities = {
     ...presetCapabilities,
     ...input.capabilities,
+    contextWindowTokens:
+      input.capabilities?.contextWindowTokens ??
+      resolveEffectiveContextWindow(0, model, type),
   };
   const shared = {
     model,

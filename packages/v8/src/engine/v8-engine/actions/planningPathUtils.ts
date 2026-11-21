@@ -1,14 +1,11 @@
 /** Leaf path helpers for planning/discovery — keep free of shapedDiscovery imports. */
+import { normalizeRepoPathText } from "../../../modules/repository-state";
 
 export function normalizePlanningPath(value: string): string {
-  return (
-    value
-      .trim()
-      .replace(/^@+/, "")
-      .replace(/\\/g, "/")
-      .replace(/^\.\//, "")
-      .replace(/\/+$/, "") || "."
-  );
+  return normalizeRepoPathText(value, {
+    stripAtPrefix: true,
+    emptyFallback: ".",
+  });
 }
 
 export function isSafeRelativePlanningPath(path: string): boolean {

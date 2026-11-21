@@ -277,6 +277,12 @@ export const AGENT_REASON_CODES = [
   "run_budget_clamped",
   /** Turn's maximum output tokens was reduced to avoid exceeding the context window. */
   "output_tokens_clamped",
+  /** Plan-approval resume reused pinned state, understanding, and decision instead of re-running startup. */
+  "resume_state_reused",
+  /** A passing verification command ran after the last edit; the model loop ended without another free-form turn. */
+  "loop_finished_after_verified_mutation",
+  /** Final run-result schema rejected a field; evidence was clamped/dropped so the run outcome survived. */
+  "result_contract_degraded",
   /** A best-effort mutation checkpoint commit failed; changes may not be durably committed. */
   "mutation_commit_failed",
   /** Best-effort state unpin failed on a terminal path; pinned state may leak. */
@@ -317,6 +323,14 @@ export const AGENT_REASON_CODES = [
   "network_access_granted",
   /** One or more values in an emitted event array were truncated for size; see truncated flag. */
   "event_list_truncated",
+  /** Decision Policy fast path: small explicit-path ask skipped plan + discovery. */
+  "fast_path_plan_skipped",
+  /** Discovery seed paths were filtered against the index / path hygiene rules. */
+  "discovery_seed_paths_filtered",
+  /** Near the host wall-time budget with a mutation landed: loop ended so verification can run. */
+  "wall_time_finalize_after_mutation",
+  /** Near the host wall-time budget with no mutation yet: one nudge to patch now. */
+  "wall_time_wrap_up_nudge",
 ] as const;
 
 

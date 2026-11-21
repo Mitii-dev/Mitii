@@ -10,18 +10,7 @@ import { join } from 'node:path';
 
 import {
   createMitiiClient,
-  DEFAULT_TOOL_DEFINITIONS,
-  InMemoryRepositoryStateStore,
-  NodeGitAdapter,
-  NodeNetworkAdapter,
-  NodeProcessAdapter,
-  NodeWorkspaceFileSystemAdapter,
-  RepositoryStatePipeline,
-  ToolRuntimePipeline,
-  VerificationPipeline,
   WINDOW_BUDGET_SCHEMA_VERSION,
-  WorkspaceFileSystemManifestReader,
-  InMemoryToolOutputSpillAdapter,
   deriveWindowPolicy,
   type AgentMode,
   type LlmPort,
@@ -31,28 +20,19 @@ import {
   type ModelRequest,
 } from '@mitii/sdk';
 import {
-  createFileSystemSkillsCatalog,
-  createHostLanguageServices,
+  bindHostMcp,
+  createHostClient,
   createHostLlmPorts,
-  createHostNetworkPort,
   createHostRepositoryContext,
-  createHostRepositoryGraphPort,
-  createOptionalSearchPort,
-  createSandboxedProcessPort,
-  createWorkspaceCheckpointStore,
-  createWorkspaceKnowledgeGraph,
-  createWorkspaceMemoryStore,
-  createWorkspaceVerificationStore,
-  createOptionalVerificationSyntaxPort,
-  detectSandboxBackend,
   getProviderPreset,
   inferHostProviderType,
   isHostProviderType,
+  isModelIoLoggingEnabled,
   normalizeOllamaModelId,
-  resolveMemoryEmbeddingPort,
+  readSandboxOptionsFromEnv,
   resolveProviderApiKey,
-  resolveSandboxPolicy,
   type SemanticIndexSettings,
+  wrapLlmPortForModelIo,
 } from '@mitii/host';
 import {
   getSharedMcpManager,
@@ -67,10 +47,6 @@ import {
   resolveEffectiveContextWindow,
 } from '../shared/contextWindow.js';
 import { ensureDesktopRepositoryState } from './ensureRepositoryState.js';
-import {
-  isModelIoLoggingEnabled,
-  wrapLlmPortForModelIo,
-} from './modelIoLog.js';
 import { workspaceIdFromRoot } from './workspace-id.js';
 
 interface MitiiDesktopConfig {
@@ -306,55 +282,6 @@ export async function createHostDesktopClient(
         },
       });
 
-  const mcpManager = getSharedMcpManager({ clientInfoName: 'mitii-desktop' });
-  const mcp = readMcpSettingsFromDisk(cwd);
-  const mcpSnapshot = await mcpManager.sync(mcp, cwd);
-
-  const fileSystem = new NodeWorkspaceFileSystemAdapter();
-  const search = createOptionalSearchPort(env);
-  const git = new NodeGitAdapter();
-  const knowledgeGraph = createWorkspaceKnowledgeGraph(cwd);
-  const language = createHostLanguageServices({ workspaceRoot: cwd });
-  const tools = new ToolRuntimePipeline(
-    {
-      fileSystem,
-      process: createSandboxedProcessPort(
-        new NodeProcessAdapter(),
-        resolveSandboxPolicy({
-          enabled: env.MITII_SANDBOX === '1' || env.MITII_SANDBOX === 'true',
-          network: env.MITII_SANDBOX_NETWORK === 'allow' ? 'allow' : 'deny',
-          workspaceRoot: cwd,
-        }),
-        detectSandboxBackend(),
-      ),
-      network: createHostNetworkPort({
-        inner: new NodeNetworkAdapter(),
-        env,
-      }),
-      git,
-      knowledgeGraph,
-      codeNavigation: language.codeNavigation,
-      ...(language.diagnostics ? { diagnostics: language.diagnostics } : {}),
-      repoGraphs: createHostRepositoryGraphPort({ workspaceRoot: cwd }),
-      outputSpill: new InMemoryToolOutputSpillAdapter(),
-      ...(search ? { search } : {}),
-    },
-    { registry: mcpManager.createRegistry() },
-  );
-  const verification = new VerificationPipeline({
-    tools,
-    manifests: new WorkspaceFileSystemManifestReader({
-      fileSystem,
-      workspaceRoot: cwd,
-    }),
-    records: createWorkspaceVerificationStore(cwd),
-    ...(await createOptionalVerificationSyntaxPort().then((syntax) =>
-      syntax ? { syntax } : {},
-    )),
-  });
-  const repositoryState = new RepositoryStatePipeline({
-    store: new InMemoryRepositoryStateStore(),
-  });
   const workspaceId = config.workspaceId ?? workspaceIdFromRoot(cwd);
   const memoryEnabled = readDesktopSettingsField(env, 'ui.contextToggles.memory');
   const memoryOn = memoryEnabled !== false;
@@ -399,20 +326,6 @@ export async function createHostDesktopClient(
       ? { maximumOutputTokens: windowBudgetMaximumOutputTokens }
       : {}),
   }).injection;
-  const repositoryContext = createHostRepositoryContext({
-    repositoryState,
-    workspaceRoot: cwd,
-    semanticIndex,
-    git,
-    openDatabase,
-    injection: {
-      repoMapChars: injection.repoMapChars,
-      repoMapFilesMax: injection.repoMapFilesMax,
-      sketchChars: injection.sketchChars,
-      sketchItemsMax: injection.sketchItemsMax,
-    },
-  });
-
   const developerEnabled =
     readDesktopSettingsField(env, 'developer.enabled') === true;
   const modelIoEnabled =
@@ -424,42 +337,42 @@ export async function createHostDesktopClient(
   );
   const runLlm = wrapLlmPortForModelIo(llm.runLlm, modelIoOn);
 
-  const client = createMitiiClient({
-    understandingLlm,
-    runLlm,
+  const { client } = await createHostClient({
     workspaceRoot: cwd,
-    defaultMode:
-      config.defaultMode === 'agent'
-        ? 'agent'
-        : (config.defaultMode ?? 'ask'),
-    defaultSessionId: `desktop_${workspaceId}`,
     workspaceId,
-    repositoryState,
-    repositoryContext,
-    tools,
-    verification,
-    toolDefinitions: [
-      ...DEFAULT_TOOL_DEFINITIONS,
-      ...mcpSnapshot.toolDefinitions,
-    ],
-    enableInMemoryCheckpoints: false,
-    checkpointStore: createWorkspaceCheckpointStore(cwd),
+    llm: { understandingLlm, runLlm },
+    env,
+    defaultMode: config.defaultMode ?? 'ask',
+    defaultSessionId: `desktop_${workspaceId}`,
     taskListAutoAdvance: env.MITII_TASK_LIST_AUTO_ADVANCE !== '0',
-    engineImplementation:
-      env.MITII_ENGINE_IMPLEMENTATION === 'legacy' ||
-      readDesktopSettingsField(env, 'agent.engineImplementation') === 'legacy'
-        ? 'legacy'
-        : 'v8',
-    ...(memoryOn
-      ? {
-          memoryStore: createWorkspaceMemoryStore(cwd, workspaceId),
-          memoryEmbedding: resolveMemoryEmbeddingPort(semanticIndex),
-        }
-      : {}),
-    skillsCatalog: createFileSystemSkillsCatalog({
-      workspaceRoot: cwd,
-      contentMode: 'metadata',
-    }),
+    sandbox: { ...readSandboxOptionsFromEnv(env), prefer: 'auto' },
+    mcp: bindHostMcp(
+      getSharedMcpManager({ clientInfoName: 'mitii-desktop' }),
+      readMcpSettingsFromDisk(cwd),
+      cwd,
+    ),
+    ...(memoryOn ? { memory: { semanticIndex } } : {}),
+    repositoryContext: ({ repositoryState, workspaceRoot, git }) =>
+      createHostRepositoryContext({
+        repositoryState,
+        workspaceRoot,
+        semanticIndex,
+        git,
+        openDatabase,
+        injection: {
+          repoMapChars: injection.repoMapChars,
+          repoMapFilesMax: injection.repoMapFilesMax,
+          sketchChars: injection.sketchChars,
+          sketchItemsMax: injection.sketchItemsMax,
+        },
+      }),
+    clientOptions: {
+      engineImplementation:
+        env.MITII_ENGINE_IMPLEMENTATION === 'legacy' ||
+        readDesktopSettingsField(env, 'agent.engineImplementation') === 'legacy'
+          ? 'legacy'
+          : 'v8',
+    },
   });
 
   await ensureDesktopRepositoryState({

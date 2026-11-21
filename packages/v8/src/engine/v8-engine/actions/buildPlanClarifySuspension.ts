@@ -1,6 +1,6 @@
 import type { PlanClarifyDraft } from "../../../modules/planning";
 import { formatClarifyAsAnswer } from "../../../modules/planning";
-import { parseClarificationOptionId } from "../../../modules/request-understanding/intent/applyClarificationFactPatch";
+import { parseClarificationOptionId } from "../../../modules/request-understanding";
 
 import type {
   ClarificationOptionPayload,

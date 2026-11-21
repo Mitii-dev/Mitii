@@ -1,45 +1,22 @@
 import type {
-  ExecutionDecision,
-} from "../../../modules/decision-policy";
-import type {
-  LlmPort,
-  ModelMessage,
   ModelRequest,
 } from "../../../modules/model-gateway";
-import type { AgentMode } from "../../../modules/request-intake";
-import type {
-  RepositoryStateReference,
-} from "../../../modules/repository-state";
-import type { RequestUnderstandingResult } from "../../../modules/request-understanding";
-import type { WindowPolicy } from "../../../modules/window-budget";
-import type { RepoBuildState } from "../../../modules/verification";
 
-import type {
-  AgentReasonCode,
-  RunEvidence,
-} from "../contracts";
-import type { EstablishedFact } from "../actions";
 import type { PromptCacheClass } from "../actions/resolvePromptCacheClass";
 import {
   createLoopFileReadTracker,
   estimateStickyMutableChars,
 } from "../actions";
-import { EventBus } from "../internal/EventBus";
 import { ReadLedger } from "../internal/ReadLedger";
-import { RunBudgetTracker } from "../internal/RunBudget";
-import { ToolCallCache } from "../internal/ToolCallCache";
 import type { ContextEpoch } from "../internal/context-epoch";
 import { InMemorySessionHistoryArchive } from "../internal/session-history";
 import type { AgentLogVerbosity } from "../internal/logVerbosity";
-import type { TaskListRef } from "../internal/taskListRuntime";
 import { consumeModelTurn } from "./consumeModelTurn";
 import { tryOfferBudgetWallContinue } from "./tryOfferBudgetWallContinue";
 import type { AgentEngineRuntime } from "./runtime";
 import type { ToolLoopOutcome } from "./types";
 import type { SteeringCriticMode } from "../legacy/steeringFlags";
 
-import type { V8EngineThresholdsOverrides } from "../policy";
-import { V8_ENGINE_THRESHOLDS } from "../policy";
 import {
   resolveV8LoopPolicyThresholds,
 } from "../policy/bands";
@@ -47,12 +24,12 @@ import {
   ToolLoopGuard,
   forceFinalToolLoopMessage,
   softToolLoopNudgeMessage,
-} from "../actions/toolLoopGuard";
+} from "../modules/tool-loop-guard";
 import {
   decideTruncationRecovery,
   truncationWarningMessage,
-} from "../actions/truncationRecovery";
-import { discardIncompleteToolCalls } from "../actions/completeToolCalls";
+} from "../modules/truncation";
+import { discardIncompleteToolCalls } from "../modules/complete-tool-calls";
 import { isClearMutationBlocker } from "../actions/isClearMutationBlocker";
 import { preserveSubstantiveAssistantAnswer } from "../actions/preserveSubstantiveAssistantAnswer";
 import {
@@ -65,7 +42,7 @@ import {
   shouldEscalateReadonlyThrashToContinue,
   softMutationNudgeMessage,
   unfulfilledExecuteNudgeMessage,
-} from "../actions/mutationNudge";
+} from "../modules/mutation-nudge";
 import {
   buildEvidenceRecoveryMessage,
   buildStepEvidenceGateMessage,
@@ -76,29 +53,27 @@ import {
   resolveMutateLockAllowTargetedReads,
   resolveMutateReadinessBudget,
   resolveStepReadonlyTurnsBeforeGate,
-  type MutateReadinessBudget,
 } from "../modules/mutate-readiness";
 import { isExecutionSeedTrusted } from "../modules/execution-seed";
-import {
-  bindBudgetConsumptionSnapshot,
-  buildEvidenceExhaustedTerminalOutcome,
-  shouldOfferContinueAfterEvidenceExhaustion,
-} from "../actions/resolveEvidenceTerminal";
 import {
   isProviderInfrastructureFailure,
   providerInfrastructureUserMessage,
 } from "../actions/resolveProviderInfrastructure";
-import { upsertLedgerEntry } from "../actions/runEvidence";
-import { runV8MutationCritic } from "../actions/mutationCritic";
+import { runV8MutationCritic } from "../modules/mutation-critic";
 import {
   buildRejectedMutationRecoveryMessage,
-} from "../actions/rejectedMutationRecovery";
+} from "../modules/rejected-mutation";
 import {
   buildIncompleteAnswerRecoveryMessage,
   compactRecoveredAssistantContent,
   synthesizeFallbackAnswer,
 } from "../actions/isIncompleteAssistantTurn";
 import { resolveLoopTurnOutcome } from "../actions/resolveLoopTurnOutcome";
+import { shouldFinishAfterVerifiedMutation } from "../actions/shouldFinishAfterVerifiedMutation";
+import {
+  buildWallTimeWrapUpNudge,
+  decideWallTimeDeadline,
+} from "../actions/resolveWallTimeDeadline";
 import {
   DIAGNOSE_ANSWER_NUDGE_MESSAGE,
   answerLockModelRequestFields,
@@ -111,129 +86,10 @@ import {
 import { prepareTurn } from "./prepareTurn";
 import { settleToolBatch } from "./settleTools";
 
-function pickV8ThresholdOverrides(
-  raw: V8EngineThresholdsOverrides | Record<string, number> | undefined,
-): V8EngineThresholdsOverrides | undefined {
-  if (!raw) return undefined;
-  const next: V8EngineThresholdsOverrides = {};
-  for (const key of Object.keys(V8_ENGINE_THRESHOLDS) as Array<
-    keyof typeof V8_ENGINE_THRESHOLDS
-  >) {
-    const value = raw[key];
-    if (typeof value === "number" && Number.isFinite(value)) {
-      next[key] = value;
-    }
-  }
-  return Object.keys(next).length > 0 ? next : undefined;
-}
+import { finishEvidenceRailExhausted, pickV8ThresholdOverrides } from "./modelLoopSupport";
+import type { V8ModelLoopParams } from "./modelLoopTypes";
 
-/** bind+recovery spent → hard STOP (no Continue rediscovery). */
-function finishEvidenceRailExhausted(params: {
-  reason: "recovery_exhausted" | "miss_not_local";
-  reasonCodes: AgentReasonCode[];
-  warnings: string[];
-  runtime: AgentEngineRuntime;
-  bus: EventBus;
-  runId: string;
-  evidence: RunEvidence | undefined;
-  budget: MutateReadinessBudget;
-  nudgesUsed: number;
-  recoveryUsed: boolean;
-  readonlyTurnsOnStep: number;
-}): ToolLoopOutcome {
-  const terminal = buildEvidenceExhaustedTerminalOutcome({
-    reason: params.reason,
-  });
-  params.reasonCodes.push(...terminal.reasonCodesToPush);
-  // Policy lock: Continue after exhaustion is illegal.
-  void shouldOfferContinueAfterEvidenceExhaustion();
-  const snapshot = bindBudgetConsumptionSnapshot({
-    maxTurns: params.budget.readonlyTurnsBeforeGate,
-    maxPaths: params.budget.maxEvidencePaths,
-    maxNudges: params.budget.maxEvidenceGateNudgesBeforePatchDemand,
-    recoveryTurns: params.budget.evidenceRecoveryTurns,
-    recoveryPaths: params.budget.evidenceRecoveryMaxPaths,
-    nudgesUsed: params.nudgesUsed,
-    recoveryUsed: params.recoveryUsed,
-    readonlyTurnsOnStep: params.readonlyTurnsOnStep,
-  });
-  params.warnings.push(
-    `Bind budget exhausted (nudges=${snapshot.nudgesUsed}/${snapshot.maxNudges}, recoveryUsed=${String(snapshot.recoveryUsed)}).`,
-  );
-  params.runtime.emit(params.bus, {
-    type: "warning",
-    runId: params.runId,
-    message: "Bind/evidence budget exhausted — discovery rail terminal.",
-    code: "bind_budget_consumed",
-    data: snapshot,
-    at: params.runtime.isoNow(),
-  });
-  if (params.evidence) {
-    upsertLedgerEntry(params.evidence, {
-      id: "bind-budget-exhausted",
-      kind: "stop",
-      summary: `Bind budget exhausted: nudges ${String(snapshot.nudgesUsed)}/${String(snapshot.maxNudges)}, recovery=${String(snapshot.recoveryUsed)}`,
-      status: "evidence_exhausted",
-      paths: [],
-      issueIds: [],
-    });
-  }
-  return {
-    kind: "failed",
-    answer: terminal.answer,
-    extraReasons: terminal.extraReasons,
-    error: terminal.error,
-  };
-}
-
-export type V8ModelLoopParams = {
-  runId: string;
-  requestId: string;
-  interactionMode: AgentMode;
-  llm: LlmPort;
-  request: ModelRequest;
-  decision: ExecutionDecision;
-  messages: ModelMessage[];
-  bus: EventBus;
-  signal: AbortSignal;
-  budget: RunBudgetTracker;
-  reasonCodes: AgentReasonCode[];
-  warnings: string[];
-  toolCache: ToolCallCache;
-  changedFiles: string[];
-  mutationCheckpointIds: string[];
-  dirtyPaths: readonly string[] | undefined;
-  pinnedState: RepositoryStateReference | undefined;
-  workspaceRoot: string | undefined;
-  taskListRef: TaskListRef;
-  evidence?: RunEvidence;
-  establishedFacts: EstablishedFact[];
-  windowPolicy: WindowPolicy;
-  /** Seeded from checkpoint when resuming after Continue. */
-  continueOverrideCount?: number;
-  /** Host / lab overrides for v8 knobs (merged onto band defaults). */
-  thresholdOverrides?: V8EngineThresholdsOverrides | Record<string, number>;
-  /**
-   * Re-arm mutate lock on Continue after unfulfilled/readonly thrash so
-   * discovery stays stripped until apply_patch lands.
-   */
-  armMutateLockOnStart?: boolean;
-  /** Pre-mutation critic mode from steering (default off). */
-  criticMode?: SteeringCriticMode;
-  understanding?: RequestUnderstandingResult;
-  /** Trusted/weak seed from early pipeline — gates patch-required arming. */
-  executionSeed?: import("../modules/execution-seed").ExecutionSeed;
-  repoBuildStateBefore?: RepoBuildState;
-  memoryFacts?: readonly { id: string; content: string }[];
-  memoryQuery?: string;
-  memoryWorkspaceId?: string;
-  memoryFileTargets?: readonly string[];
-  logVerbosity?: AgentLogVerbosity;
-  selectedSkillIds?: readonly string[];
-  projectRuleIds?: readonly string[];
-  environmentIds?: readonly string[];
-  instructionBodies?: import("../internal/system-context").InstructionBodiesByKind;
-};
+export type { V8ModelLoopParams } from "./modelLoopTypes";
 
 /**
  * Thin model/tool loop with discipline:
@@ -302,6 +158,7 @@ export async function runV8ModelLoop(
   const mutationNeeded = requiresMutation(decision);
   const vcsHistoryRewrite = decision.reasonCodes.includes("vcs_history_rewrite");
   let gitWriteSucceeded = false;
+  let wallTimeNudged = false;
   const executionSeed = params.executionSeed;
   const seedTrusted = isExecutionSeedTrusted(executionSeed);
   const seedPaths = executionSeed?.paths ?? [];
@@ -434,6 +291,41 @@ export async function runV8ModelLoop(
   while (true) {
     if (signal.aborted) {
       return { kind: "cancelled" };
+    }
+    const wallDeadline = decideWallTimeDeadline({
+      remainingMs: budget.remainingWallMs(),
+      maxWallTimeMs: budget.maxWallTimeMs(),
+      mutationApplied: changedFiles.length > 0 || gitWriteSucceeded,
+      mutationRequired: mutationNeeded,
+      alreadyNudged: wallTimeNudged,
+    });
+    if (wallDeadline === "finalize_after_mutation") {
+      // Host wall-time budget nearly spent and a patch already landed:
+      // end the loop so the verification gate runs instead of another turn.
+      reasonCodes.push("wall_time_finalize_after_mutation", "mutation_applied");
+      warnings.push(
+        "Run wall-time budget nearly exhausted; finalizing after the applied edit so verification can run.",
+      );
+      if (answer.trim().length === 0) {
+        answer = synthesizeFallbackAnswer({ priorAnswer: "", changedFiles });
+      }
+      return {
+        kind: "completed",
+        answer,
+        changedFiles,
+        mutationCheckpointIds,
+        messages,
+        toolCache,
+        decision,
+      };
+    }
+    if (wallDeadline === "wrap_up_nudge") {
+      wallTimeNudged = true;
+      reasonCodes.push("wall_time_wrap_up_nudge");
+      messages.push({
+        role: "user",
+        content: buildWallTimeWrapUpNudge(budget.remainingWallMs()),
+      });
     }
     if (!budget.canStartModelCall()) {
       return offerContinue(
@@ -995,6 +887,39 @@ export async function runV8ModelLoop(
         return settled.outcome;
       }
       decision = settled.decision;
+
+      if (
+        shouldFinishAfterVerifiedMutation({
+          mutationApplied: changedFiles.length > 0 || gitWriteSucceeded ||
+            settled.stats.succeededGitWrite,
+          batchHadSuccessfulMutation:
+            settled.stats.succeededMutating || settled.stats.succeededGitWrite,
+          batchHadRejectedMutation: settled.stats.rejectedMutation !== undefined,
+          openTaskCount: (taskListRef.current?.items ?? []).filter(
+            (item) => item.status === "pending" || item.status === "active",
+          ).length,
+          batch: toolCalls.map((call) => ({
+            toolName: call.name,
+            result: toolCache.get(call.id),
+          })),
+        })
+      ) {
+        // Verification passed after the last edit: end the loop; the
+        // verification gate decides. No extra free-form narration turn.
+        reasonCodes.push("loop_finished_after_verified_mutation", "mutation_applied");
+        if (answer.trim().length === 0) {
+          answer = synthesizeFallbackAnswer({ priorAnswer: turn.content, changedFiles });
+        }
+        return {
+          kind: "completed",
+          answer,
+          changedFiles,
+          mutationCheckpointIds,
+          messages,
+          toolCache,
+          decision,
+        };
+      }
 
       if (softNudgeAfterSettle) {
         messages.push({

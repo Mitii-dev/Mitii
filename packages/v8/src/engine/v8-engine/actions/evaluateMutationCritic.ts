@@ -2,6 +2,7 @@ import type { DecisionBrief } from "../../../modules/decision-policy";
 import type { ExecutionDecision } from "../../../modules/decision-policy";
 import { normalizeRepoPath } from "../modules/tool-content-paths";
 import type { SteeringCriticMode } from "../legacy/steeringFlags";
+import { EXECUTION_ROUTE } from "../../../modules/decision-policy";
 
 export const MUTATION_CRITIC_VERDICTS = [
   "pass",
@@ -52,7 +53,7 @@ export function evaluateMutationCritic(
   const decision = input.decision;
   const grant = decision.toolGrant;
 
-  if (decision.route !== "execute" || grant.maximumWorkspaceEffect !== "write") {
+  if (decision.route !== EXECUTION_ROUTE.EXECUTE || grant.maximumWorkspaceEffect !== "write") {
     if (input.mutationToolNames.length > 0) {
       reasons.push(
         `Mutation tools proposed on non-write route=${decision.route} effect=${grant.maximumWorkspaceEffect}.`,

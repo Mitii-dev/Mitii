@@ -1,10 +1,10 @@
 import type { AgentEngineThresholdsOverrides } from "../../actions/resolveAgentEngineThresholds";
-import type { WindowBudgetPolicyOverrides } from "../../../../modules/window-budget/contracts";
+import type { WindowBudgetPolicyOverrides } from "../../../../modules/window-budget";
 import type { V8EngineThresholdsOverrides } from "../../policy";
 import {
   resolveWindowBudgetBand,
   type WindowBudgetBand,
-} from "../../../../modules/window-budget/windowBudgetBands";
+} from "../../../../modules/window-budget";
 import {
   resolveLoopPolicyWindowBand,
   type LoopPolicyWindowBand,

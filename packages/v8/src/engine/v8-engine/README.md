@@ -109,12 +109,37 @@ Details: `modules/plan-discovery/README.md`.
   clarify; bind miss → one evidence recovery then **hard STOP**
   (`evidence_recovery_exhausted_terminal`).
 
+### Stability guards (Wave 1.6)
+
+- **Result contract:** `RunEvidence` is clamped to schema limits at the producer
+  (`clampRunEvidence`). The final result goes through
+  `parseAgentRunResultResilient`: a schema failure in an optional section clamps
+  or drops that section, adds `result_contract_degraded`, and keeps the run
+  outcome. Failures on core fields (status, usage, reason codes, …) still throw.
+- **Verified finish:** a passing verification command after the last edit, with
+  no open task-list items, ends the loop
+  (`loop_finished_after_verified_mutation`); the verification gate then decides.
+  No extra free-form narration turn.
+- **Plan approval resume:** the checkpoint carries `understanding`; resume reuses
+  it with the pinned state, decision, and execution seed (`resume_state_reused`)
+  instead of re-running pin/preflight/understand/decide. Legacy checkpoints fall
+  back to full startup. `approvalMode: never` implies `planApproval: never`
+  unless the host sets `planApproval` explicitly.
+
 ### Provider infrastructure
 
 After gateway bounded retries, `provider_unavailable` / `fetch failed` suspends
 as Continuable `provider_unavailable` — not a bare agent-logic fail. Index
 rehydrate fingerprint pins reuse the persisted full-index snapshot id so
 map/graph stay bound.
+
+### Accuracy controls
+
+- **Fast path:** `fast_path_plan_skipped` — small asks with explicit paths skip the visible plan.
+- **Wall time:** `maxWallTimeMs` (SDK/CLI `--timeout`) feeds `RunBudgetTracker`. Near the deadline the loop prefers finalize after a verified mutation (`wall_time_finalize_after_mutation`), otherwise one `wall_time_wrap_up_nudge`, and no new model turn starts from the verification-repair loop.
+- **Behavior gate:** `decideVerificationGate` rejects `implemented_unverified` when a behavior test defect exists and treats it as a repairable target.
+- **Seed hygiene:** `resolveDiscoverySeedPaths` drops prose tokens and unresolved basenames/globs before `read_file` (`discovery_seed_paths_filtered`); user-named paths are never dropped as merely unindexed.
+- **Create asks:** `agent_create_ask_execute` routes to execute, and the `no_mutation_performed` gate stops a plan-only reply from completing.
 
 ## Eval
 
@@ -124,9 +149,24 @@ pnpm --filter @mitii/v8 run eval:nightly
 ```
 
 - Catalog: `tests/eval/curated-40.json`
+- Live (opt-in): `pnpm --filter @mitii/v8 run eval:live` (`MITII_LIVE_EVAL=1`; needs built CLI + provider env). Default runs validate the catalog and grading helpers only.
 - Pass bar: [`tests/eval/PASS_BAR.md`](./tests/eval/PASS_BAR.md)
 
 ## Rules
 
 Contract-first modules, ≤600 lines/file, no peer product names in source,
 public `index.ts` only. See `packages/v8/ARCHITECTURE.md` and the repo Cursor rule.
+
+## Structure debt (tracked)
+
+Enforced by `tests/architecture/` (`pnpm run check:architecture`):
+
+- Legacy re-export shims in `actions/` were removed; engine code imports owners'
+  public `index.ts` directly.
+- `actions/` still holds engine-local helpers alongside `modules/`. Move each
+  helper to the module that owns its outcome when it next changes.
+- `pipeline/modelLoop.ts` is still over 600 lines (allowlisted). Types live in
+  `modelLoopTypes.ts` and pure helpers in `modelLoopSupport.ts`; the loop closure
+  needs a shared state object before it can be split further.
+- File-level import cycles inside this component remain; unit-level cycles are
+  forbidden and baselined empty (`baselines/module-cycle-baseline.json`).

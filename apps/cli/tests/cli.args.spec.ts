@@ -172,6 +172,51 @@ describe('CLI parseCliArgs', () => {
     expect(parsed.command).toBe('unknown');
     expect(parsed.unknownCommand).toBe('board');
   });
+
+  it('parses --json after history/mcp/memory subcommands', () => {
+    const history = parseCliArgs([
+      'node',
+      'mitii',
+      'history',
+      'list',
+      '--json',
+    ]);
+    expect(history.command).toBe('history');
+    expect(history.json).toBe(true);
+    expect(history.rest).toEqual(['list']);
+
+    const mcp = parseCliArgs(['node', 'mitii', 'mcp', 'list', '--json']);
+    expect(mcp.command).toBe('mcp');
+    expect(mcp.json).toBe(true);
+    expect(mcp.rest).toEqual(['list']);
+
+    const memory = parseCliArgs([
+      'node',
+      'mitii',
+      'memory',
+      'pending',
+      '--json',
+    ]);
+    expect(memory.command).toBe('memory');
+    expect(memory.json).toBe(true);
+    expect(memory.rest).toEqual(['pending']);
+  });
+
+  it('parses --cwd after passthrough subcommands without treating path as positional', () => {
+    const mcp = parseCliArgs([
+      'node',
+      'mitii',
+      'mcp',
+      'list',
+      '--cwd',
+      '/tmp/ws',
+      '--json',
+    ]);
+    expect(mcp.command).toBe('mcp');
+    expect(mcp.cwd).toBe('/tmp/ws');
+    expect(mcp.json).toBe(true);
+    expect(mcp.rest).toEqual(['list']);
+  });
 });
 
 describe('CLI banner', () => {
@@ -242,7 +287,7 @@ describe('CLI setup', () => {
 
 describe('CLI resolveCliPorts', () => {
   it('defaults to echo without API keys', () => {
-    const ports = resolveCliPorts({ env: {} });
+    const ports = resolveCliPorts({ env: {}, config: {} });
     expect(ports.providerLabel).toBe('echo');
   });
 
@@ -257,6 +302,7 @@ describe('CLI resolveCliPorts', () => {
   it('selects anthropic when ANTHROPIC_API_KEY is set', () => {
     const ports = resolveCliPorts({
       env: { ANTHROPIC_API_KEY: 'sk-ant-test' },
+      config: {},
     });
     expect(ports.providerLabel).toBe('anthropic:claude-sonnet-4-5');
   });

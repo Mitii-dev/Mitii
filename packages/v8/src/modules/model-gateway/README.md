@@ -42,6 +42,8 @@ model-gateway/
 - Tool calls stream as `tool_call_delta` events and are executed later by Agent Engine through Tool Runtime.
 - Provider errors include retryability and optional retry delay.
 
+- **Advertised window:** adapters default to `32_768` when a host passes no window. Hosts must advertise the real window; `createHostLlmPorts` infers it with `resolveEffectiveContextWindow` (e.g. DeepSeek → 128k) when `capabilities.contextWindowTokens` is omitted. Per-model budget tuning belongs to Window Budget model profiles; reasoning effort stays a gateway request field and is not profiled yet.
+
 ## Ownership Boundaries
 
 Owns model contracts, provider adapters, capability normalization, and event normalization.

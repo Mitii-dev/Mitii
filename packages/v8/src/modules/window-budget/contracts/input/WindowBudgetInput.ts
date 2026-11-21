@@ -185,6 +185,11 @@ export const windowBudgetInputSchema = z
      * delta (defaults + band + lab only).
      */
     mode: z.enum(WINDOW_BUDGET_MODES).optional(),
+    /**
+     * Model id used to look up a per-model window-budget profile. Omit when
+     * unknown; no profile is applied.
+     */
+    modelId: z.string().min(1).optional(),
   })
   .strict();
 

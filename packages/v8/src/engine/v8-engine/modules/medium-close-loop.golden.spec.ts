@@ -8,7 +8,7 @@ import {
   resolvePlanStrategyRules,
 } from "../../../modules/planning";
 import type { PlanningParsedInput } from "../../../modules/planning";
-import { resolvePlanStrategy } from "../../../modules/planning/actions/ResolvePlanStrategy";
+import { resolvePlanStrategy } from "../../../modules/planning";
 import {
   resolvePreferredSkillIdsForRun,
   MEDIUM_PLANNING_SKILL_ID,

@@ -6,7 +6,7 @@ import {
   TOOL_INDEX_INPUT_SCHEMA,
   filterToolDefinitions,
   toToolIndexDefinition,
-} from "../actions/progressiveTools";
+} from "../actions/filterToolDefinitions";
 import { resolveV8LoopPolicyThresholds } from "../policy/bands";
 import { V8_ENGINE_THRESHOLDS } from "../policy";
 import {

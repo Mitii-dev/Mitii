@@ -32,7 +32,7 @@ import {
   isGenericDiscoverySkeletonPlan,
   requiresNonSkeletonDiscoveryDraft,
 } from "../internal/discoveryDraftQuality";
-import { thinDiscoveryBriefForClarify } from "../internal/thinDiscoveryBriefForClarify";
+import { thinDiscoveryBriefForClarify } from "../thinDiscoveryBriefForClarify";
 import { askNeedsPlanScopeFork } from "../internal/askNeedsPlanScopeFork";
 import { hasResolvedPlanScopeChoice } from "../internal/planScopeChoice";
 import type { z } from "zod";

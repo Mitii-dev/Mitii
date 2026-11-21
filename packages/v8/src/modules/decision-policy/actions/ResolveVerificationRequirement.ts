@@ -5,6 +5,8 @@ import type {
   ExecutionRoute,
   VerificationRequirement,
 } from "../contracts";
+import { EXECUTION_ROUTE } from "../constants";
+import { looksLikeBehavioralAsk } from "./DetectBehavioralAsk";
 
 export interface VerificationResolution {
   verification: VerificationRequirement;
@@ -22,7 +24,7 @@ export function resolveVerificationRequirement(params: {
   const { route, understanding, maximumWorkspaceEffect } = params;
   const reasonCodes: DecisionReasonCode[] = [];
 
-  if (maximumWorkspaceEffect !== "write" || route !== "execute") {
+  if (maximumWorkspaceEffect !== "write" || route !== EXECUTION_ROUTE.EXECUTE) {
     reasonCodes.push("verification_not_required");
     return {
       verification: {
@@ -42,6 +44,14 @@ export function resolveVerificationRequirement(params: {
 
   if (understanding.taskAnalysis.recommendsVerification) {
     minimumEvidence.push("tests");
+  }
+
+  if (looksLikeBehavioralAsk(params.message ?? "")) {
+    if (!minimumEvidence.includes("tests")) {
+      minimumEvidence.push("tests");
+    }
+    minimumEvidence.push("behavior");
+    reasonCodes.push("verification_behavior_evidence_preferred");
   }
 
   const messageHint = (params.message ?? "").toLowerCase();

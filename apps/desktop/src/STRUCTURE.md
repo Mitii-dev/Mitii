@@ -33,39 +33,49 @@ apps/desktop/src/
 │   ├── git/             # working-tree DTOs (desktop git contract)
 │   └── …                # protocol, settings, bridge (cross-cutting)
 ├── engine/
-│   ├── explorer/        # workspace fs + watch
+│   ├── server.ts        # wiring only: watcher, index, route dispatch, lifecycle
+│   ├── serverOptions.ts # EngineServerOptions / EngineServerHandle
+│   ├── routes/          # one module per feature + index.ts route table
+│   ├── http/            # httpUtils (json/auth/ndjson), bodyParsers, Route types
+│   ├── chat/            # prompt/resume handlers, start-input builder, run streaming
+│   ├── explorer/        # workspace fs + watch + incremental index wiring
 │   ├── git/             # status, mutations, argv safety
 │   ├── skills/          # frontmatter format + recipe
-│   ├── server.ts        # HTTP route table (wires features)
 │   └── createDesktopHost.ts
 └── renderer/
-    ├── shell/           # WorkspacePanel, activity bar button, resize
-    ├── explorer/        # DiffView, CodeEditor (tree lives in shell today)
+    ├── App.tsx          # composition root: useAppModel() + <AppShell/>
+    ├── api.ts           # thin barrel over api/ (one module per feature)
+    ├── api/             # HTTP client modules (chat, git, mcp, workspace, …)
+    ├── app/             # useAppModel (wires feature hooks) + AppShell
+    ├── shell/           # topbar, activity bar, main section, workspace panel, hooks/
+    ├── chat/            # panel, feed, composer, timeline, markdown, hooks/
+    ├── settings/        # SettingsPanel, tabs/, features/, profiles/
+    ├── indexing/        # index status chip + hooks/
+    ├── explorer/        # DiffView, CodeEditor
     ├── git/             # Source Control pane + top branch select
-    ├── mcp/             # MCP manager UI
-    ├── skills/          # Skills manager UI
-    ├── recipes/         # Recipes manager UI
-    ├── chat/            # composer, timeline, markdown, history nav
-    ├── App.tsx          # shell + mounts WorkspacePanel + chat layout
-    └── api.ts           # HTTP client for all features
+    ├── mcp/ skills/ recipes/
+    ├── styles.css       # entry: @mitii/ui-theme adapter + ordered partials
+    └── styles/          # NN-feature.css partials (import order = cascade order)
 ```
 
 | Activity | Renderer | Engine | Shared / package |
 |---|---|---|---|
 | **Explorer** | `shell/WorkspacePanel` (tree) + `explorer/` | `engine/explorer/` | — |
 | **Git** | `renderer/git/` | `engine/git/` | `shared/git/` |
-| **MCP** | `renderer/mcp/` | `@mitii/mcp` + `/v1/mcp*` in `server.ts` | `@mitii/mcp` contracts |
+| **MCP** | `renderer/mcp/` | `@mitii/mcp` + `engine/routes/mcp.ts` | `@mitii/mcp` contracts |
 | **Skills** | `renderer/skills/` | `engine/skills/` | host / V8 skills |
-| **Recipes** | `renderer/recipes/` | host recipes via `server.ts` | `@mitii/host` |
+| **Recipes** | `renderer/recipes/` | host recipes via `engine/routes/recipes.ts` | `@mitii/host` |
 | **Chat** | `renderer/chat/` (+ `App.tsx` layout) | `/v1/prompt`, history | `shared/protocol.ts` |
 
 ## Where to put new code
 
-1. **UI for a side** → `renderer/<feature>/`
+1. **UI for a side** → `renderer/<feature>/` (container components take `m: <Model>`; state lives in `<feature>/hooks/`)
 2. **HTTP / disk for that side** → `engine/<feature>/`
 3. **Types used by both** → `shared/<feature>/` (owner stays with the feature)
-4. **Wire a new route** → import from `engine/<feature>/` inside `server.ts` (do not grow logic inside `server.ts`)
-5. **Wire a new API helper** → `renderer/api.ts` (split per feature later if oversized)
+4. **Wire a new route** → add a handler + `Route` entry in `engine/routes/<feature>.ts`; register the module in `engine/routes/index.ts`. Never add routes or logic to `server.ts`.
+5. **Wire a new API helper** → `renderer/api/<feature>.ts`, re-exported from `renderer/api.ts`
+6. **New UI state** → a hook in the owning feature's `hooks/`; wire it in `renderer/app/useAppModel.ts` in dependency order
+7. **New CSS** → the matching `renderer/styles/NN-*.css` partial (keep ≤600 lines; new partial = new `@import` at the right cascade position in `styles.css`)
 
 ## Related
 

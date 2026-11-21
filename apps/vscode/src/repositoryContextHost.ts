@@ -7,7 +7,7 @@ import type {
   RepositoryContextPipeline,
   RepositoryStatePipeline,
   GitPort,
-} from '@mitii/v8';
+} from '@mitii/sdk';
 
 import { openSqliteDatabase } from './nativeSqlite.js';
 

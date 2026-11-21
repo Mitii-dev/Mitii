@@ -1,0 +1,16 @@
+/*
+ * Mitii theme token contract — host-independent values.
+ *
+ * Brand and shape tokens are identical in every shell. Host-specific tokens
+ * (surfaces, text, borders, status colors, fonts, shadows) are supplied by an
+ * adapter: `vscode.css` (derived from --vscode-*) or `standalone.css`
+ * (Desktop literals). Component CSS must read only `--mitii-*` names.
+ */
+:root {
+  --mitii-brand: #ff751f;
+  --mitii-brand-soft: #ffbd59;
+  --mitii-brand-on: #ffffff;
+  --mitii-accent: var(--mitii-brand);
+  --mitii-accent-soft: color-mix(in srgb, var(--mitii-brand) 18%, transparent);
+  --mitii-radius: 4px;
+}

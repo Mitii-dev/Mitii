@@ -158,11 +158,32 @@ Mode overlays (`WINDOW_BUDGET_MODE_OVERLAY`) are static tables activated by
 `deriveWindowPolicy({ mode: "ask" | "plan" | "agent" })`. Merge order:
 
 ```text
-DEFAULT_WINDOW_BUDGET_POLICY → window band → mode overlay → host lab overrides
+DEFAULT_WINDOW_BUDGET_POLICY → window band → model profile → mode overlay → host lab overrides
 ```
 
 Ask raises conversation share / carry floors; plan raises plan share; agent
 keeps ask-parity history retention so ask→agent handoffs do not drop turns.
+
+## Model profiles
+
+`modelProfiles.ts` is the per-model seam. A `WindowBudgetModelProfile` is
+`{ id, match: RegExp, overrides: WindowBudgetPolicyOverrides }`; the first
+profile whose `match` hits `input.modelId` is merged between the band and the
+mode overlay, and the policy reports `model_profile_applied`. The engine passes
+`modelId` from the advertised model capabilities.
+
+- Profiles tune **window-owned** knobs only: output caps (`outputRatio`,
+  `outputWindowCapRatio`, `outputMaxTokens`, which also drive the tool-loop
+  output ceiling), repair/call counts, compaction ratios.
+- The shipped `WINDOW_BUDGET_MODEL_PROFILES` table is intentionally empty. Add
+  an entry only with benchmark or live-run evidence.
+- Not wired yet (other owners): reasoning effort belongs to the Model Gateway
+  request, and discovery model turns belong to Plan Discovery budgets. Both
+  can read `resolveWindowBudgetModelProfile(modelId)` once a profile needs to
+  carry them; Window Budget does not own those knobs.
+- Context window size is **not** a profile concern. Hosts resolve `W` with
+  `resolveEffectiveContextWindow` (model family presets, e.g. DeepSeek → 128k)
+  and `createHostLlmPorts` applies the same inference when a host omits it.
 
 ## Pipeline stages
 
@@ -185,6 +206,7 @@ None. Pure function of the input contract. No LLM, filesystem, or host APIs.
 - `DEFAULT_WINDOW_BUDGET_POLICY` / `WINDOW_BUDGET_POLICY`
 - `WINDOW_BUDGET_EFFORTS` / `DEFAULT_WINDOW_BUDGET_EFFORT` / `WINDOW_BUDGET_EFFORT_OVERLAY` / `resolveWindowBudgetEffort`
 - `windowBudgetInputSchema`, `windowBudgetPolicySchema`, `windowPolicySchema`
+- `WINDOW_BUDGET_MODEL_PROFILES` / `resolveWindowBudgetModelProfile` / `WindowBudgetModelProfile`
 - `resolveToolLoopMaxOutputTokens` — continuous `floor(W × outputWindowCapRatio)`
 - inferred types and `WindowBudgetError`
 

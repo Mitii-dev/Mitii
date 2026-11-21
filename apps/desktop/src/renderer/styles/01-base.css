@@ -1,0 +1,221 @@
+:root {
+  /* Desktop-only short aliases for legacy rules; values come from --mitii-*. */
+  --bg: var(--mitii-panel);
+  --panel: var(--mitii-surface);
+  --surface: var(--mitii-panel);
+  --line: var(--mitii-border);
+  --text: var(--mitii-text);
+  --muted: var(--mitii-muted);
+  --accent: var(--mitii-brand);
+  --danger: var(--mitii-danger);
+  --font: var(--mitii-font-ui);
+  --mono: var(--mitii-font-mono);
+  font-family: var(--font);
+  color: var(--text);
+  background: var(--bg);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: -0.011em;
+  font-optical-sizing: auto;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Light: left chrome stays pure white (panel surface). */
+:root[data-theme="light"] .side,
+:root[data-theme="light"] .workspace-side,
+:root[data-theme="light"] .workspace-pane,
+:root[data-theme="light"] .activity-bar,
+:root[data-theme="light"] .activity-bar--settings,
+:root[data-theme="light"] .activity-rail {
+  background: var(--mitii-panel);
+}
+
+/* Dark: activity chrome uses elevated surface, not black-washed mixes. */
+:root[data-theme="dark"] .activity-bar,
+:root[data-theme="dark"] .activity-bar--settings,
+:root[data-theme="dark"] .activity-rail {
+  background: var(--mitii-surface);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--mitii-font-ui);
+  letter-spacing: -0.011em;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  font-family: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled,
+button[aria-disabled='true'] {
+  cursor: not-allowed;
+}
+
+/* ── Shell ─────────────────────────────────────────────── */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background: var(--mitii-panel);
+}
+
+.app--code {
+  /* Code mode: single activity bar + workspace + chat */
+}
+
+.app-topbar {
+  flex: 0 0 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  /* Default flush left (Windows/Linux + macOS fullscreen). macOS windowed
+     clears traffic lights via data-mac-traffic-inset from preload. */
+  padding: 0 18px 0 18px;
+  background: var(--mitii-panel);
+  border-bottom: 1px solid color-mix(in srgb, var(--mitii-border) 88%, transparent);
+  color: var(--mitii-text);
+  box-shadow: 0 1px 0 color-mix(in srgb, #fff 40%, transparent);
+  -webkit-app-region: drag;
+  z-index: 30;
+}
+
+:root[data-mac-traffic-inset='1'] .app-topbar {
+  padding-left: 78px;
+}
+
+:root[data-theme='dark'] .app-topbar {
+  background: color-mix(in srgb, var(--mitii-panel) 88%, var(--mitii-surface));
+  box-shadow: none;
+}
+
+.app-topbar * {
+  -webkit-app-region: no-drag;
+}
+
+.app-topbar__left,
+.app-topbar__right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.app-topbar__left {
+  gap: 18px;
+}
+
+.app-topbar__right {
+  flex-shrink: 0;
+  gap: 10px;
+}
+
+.app-topbar__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--mitii-text);
+  cursor: default;
+  user-select: none;
+}
+
+.app-topbar__brand img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  display: block;
+}
+
+.app-topbar__brand-name {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: var(--mitii-text);
+}
+
+.app-topbar__divider {
+  width: 1px;
+  height: 20px;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--mitii-border) 90%, transparent);
+}
+
+.app-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.resize-handle {
+  flex: 0 0 5px;
+  width: 5px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: col-resize;
+  position: relative;
+  z-index: 5;
+  align-self: stretch;
+}
+
+.resize-handle--horizontal {
+  width: auto;
+  height: 5px;
+  flex: 0 0 5px;
+  cursor: row-resize;
+  align-self: stretch;
+}
+
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  inset: 0 1px;
+  background: transparent;
+  transition: background 120ms ease;
+}
+
+.resize-handle--horizontal::after {
+  inset: 1px 0;
+}
+
+.resize-handle:hover::after,
+.resize-handle.is-dragging::after {
+  background: color-mix(in srgb, var(--mitii-accent) 55%, var(--mitii-border));
+}

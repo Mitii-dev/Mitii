@@ -471,14 +471,14 @@ export {
   getCachedModelsDevCatalog,
   fetchModelsDevCatalog,
   resolveModelCostRates,
-} from './config/modelPricing.js';
+} from '@mitii/ui-core';
 export type {
   ModelCostRates,
   TokenCostUsage,
   SessionCostEstimate,
   ModelsDevCatalog,
   ModelsDevPricingCache,
-} from './config/modelPricing.js';
+} from '@mitii/ui-core';
 
 // ---------------------------------------------------------------------------
 // Automation — SDK executor for @mitii/automation ClaimRunner
@@ -617,18 +617,34 @@ export type { HeuristicAdversaryOptions } from './safety/heuristicAdversary.js';
 // ---------------------------------------------------------------------------
 export {
   appendSessionLog,
+  buildShareableDiagnostic,
   createMitiiThreadSessionId,
+  findLatestModelIoLog,
+  findLatestSessionJsonl,
   findLatestSessionLog,
   formatMitiiLogStamp,
+  getActiveModelIoSink,
+  isModelIoLoggingEnabled,
+  LoggingLlmPort,
   MITII_LOG_STAMP_PREFIX,
+  openModelIoLog,
   openSessionLog,
   resolveMitiiSessionLogsDir,
   resolveSessionLogTextLimits,
+  setActiveModelIoSink,
+  wrapLlmPortForModelIo,
   writeSessionExport,
+  writeShareableDiagnostic,
 } from './session-log/index.js';
 export type {
+  ModelIoSink,
   SessionLogAppend,
   SessionLogOpenOptions,
   SessionLogTextLimits,
   SessionLogWriter,
+  ShareableDiagnosticMeta,
+  ShareableDiagnosticSources,
 } from './session-log/index.js';
+
+// Host client composition — shared createMitiiClient wiring for every host.
+export * from './client/index.js';

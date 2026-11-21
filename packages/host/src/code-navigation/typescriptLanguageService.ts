@@ -165,13 +165,9 @@ export class TypeScriptLanguageService implements CodeNavigationPort, Diagnostic
     return this.limit(
       () =>
         Promise.resolve(
-          this.definitions(input, (file, position) => {
-            const bound = this.service.getDefinitionAndBoundSpanAtPosition?.(
-              file,
-              position,
-            );
-            return bound?.definitions ?? this.service.getDefinitionAtPosition(file, position);
-          }),
+          this.definitions(input, (file, position) =>
+            this.service.getDefinitionAtPosition(file, position),
+          ),
         ),
       options?.signal,
     );
@@ -330,9 +326,13 @@ export class TypeScriptLanguageService implements CodeNavigationPort, Diagnostic
     for (const position of positions) {
       const entries = this.service.getReferencesAtPosition(file, position) ?? [];
       for (const entry of entries) {
+        const isDefinition =
+          'isDefinition' in entry
+            ? Boolean((entry as { isDefinition?: boolean }).isDefinition)
+            : false;
         if (
           !includeDeclaration &&
-          (entry.isDefinition ||
+          (isDefinition ||
             declarationKeys.has(spanKey(entry.fileName, entry.textSpan)))
         ) {
           continue;

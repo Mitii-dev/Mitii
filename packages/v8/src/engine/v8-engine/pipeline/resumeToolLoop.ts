@@ -6,7 +6,7 @@ import type { VerificationRecord } from "../../../modules/verification";
 import {
   annotateMutationToolDefinitions,
 } from "../actions";
-import { filterToolDefinitions } from "../actions/progressiveTools";
+import { filterToolDefinitions } from "../actions/filterToolDefinitions";
 import type { EstablishedFact } from "../actions";
 import { withMcpAttachOnGrant } from "../../../modules/mcp-attach";
 import { ToolCallCache } from "../internal/ToolCallCache";
@@ -29,7 +29,7 @@ import {
   isExecutionSeedTrusted,
   resolveExecutionSeed,
 } from "../modules/execution-seed";
-import { extractPrimaryUserMessage } from "../../../modules/request-understanding/intent/extractPrimaryUserMessage";
+import { extractPrimaryUserMessage } from "../../../modules/request-understanding";
 import type { AgentEngineRuntime } from "./runtime";
 import { finishAfterLoop } from "./verification";
 import { resolveSteeringFeatureFlags } from "../legacy/steeringFlags";

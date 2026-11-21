@@ -2,6 +2,7 @@ import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, symlinkSy
 import { dirname, join, relative, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { runProcess, substitute } from './process.mjs';
+import { classifyOutcome, extractStageTimings, isContentPass } from './outcome.mjs';
 import { snapshotTree } from './snapshot.mjs';
 import { verifyCheck } from './verifiers.mjs';
 
@@ -172,6 +173,15 @@ async function runOneCase(testCase, index, total, rootDir, workRoot, config, opt
     durationMs: execution.durationMs,
     usage,
     exitCode: execution.exitCode,
+    timedOut: Boolean(execution.timedOut),
+    contentPass: isContentPass(checks),
+    outcome: classifyOutcome({
+      passed,
+      timedOut: execution.timedOut,
+      aborted: execution.aborted,
+      checks,
+    }),
+    stageTimings: extractStageTimings(execution.stdout),
     stdout: sliceStdoutForReport(execution.stdout, failedRun || !passed),
     stderr: execution.stderr.slice(0, failedRun || !passed ? 8000 : 4000),
     workspace: keepWorkspace ? workspace : null,

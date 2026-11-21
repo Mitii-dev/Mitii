@@ -46,6 +46,23 @@ export const DECISION_POLICY_THRESHOLDS = {
     standard: 2_500,
     wide: 3_200,
   },
+  /** Fast path (skip plan + discovery): max explicit file paths named in the ask. */
+  fastPathMaxExplicitPaths: 3,
+  /** Fast path: max primary-ask length; longer briefs keep the internal plan. */
+  fastPathMaxPromptChars: 700,
+  /**
+   * Soft Officer act+mutation on structured test-failure pastes may authorize
+   * a write despite the dump heuristic at or above this confidence.
+   */
+  softOfficerWriteMinConfidence: 0.6,
+  /** Mutation asks shorter than this with no concrete target are "bare". */
+  bareMutationAskMaxChars: 48,
+  /** Minimum ask length for the soft workspace runtime-symptom heuristic. */
+  runtimeSymptomMinChars: 8,
+  /** Minimum ask length for the pasted runtime-error dump heuristic. */
+  pastedRuntimeDumpMinChars: 12,
+  /** Minimum ask length for the pasted test-failure report heuristic. */
+  pastedTestFailureMinChars: 24,
 } as const;
 
 /**

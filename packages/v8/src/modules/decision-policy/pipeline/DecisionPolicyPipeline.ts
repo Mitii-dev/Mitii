@@ -20,8 +20,9 @@ import type {
   MutationBudget,
   ToolGrant,
 } from "../contracts";
-import { extractPrimaryUserMessage } from "../../request-understanding/intent/extractPrimaryUserMessage";
-import { isContinuationTurnKind } from "../../request-understanding/intent/policy/TurnKindIntentPolicy";
+import { extractPrimaryUserMessage } from "../../request-understanding";
+import { isContinuationTurnKind } from "../../request-understanding";
+import { EXECUTION_ROUTE } from "../constants";
 
 export class DecisionPolicyPipeline {
   public decide(input: DecisionPolicyInput): ExecutionDecision {
@@ -273,10 +274,10 @@ function resolveRepositoryContextNeed(params: {
   const warnings: string[] = [];
 
   const repositoryContextRequired =
-    route === "repository_answer" ||
-    route === "diagnose" ||
-    route === "plan" ||
-    route === "execute" ||
+    route === EXECUTION_ROUTE.REPOSITORY_ANSWER ||
+    route === EXECUTION_ROUTE.DIAGNOSE ||
+    route === EXECUTION_ROUTE.PLAN ||
+    route === EXECUTION_ROUTE.EXECUTE ||
     understanding.taskAnalysis.recommendsRepositoryDiscovery;
 
   if (repositoryContextRequired) {
@@ -342,7 +343,7 @@ function clampGrantAgainstInjection(
   }
 
   // Never allow injection to produce write authority outside agent execute.
-  if (mode !== "agent" || route !== "execute") {
+  if (mode !== "agent" || route !== EXECUTION_ROUTE.EXECUTE) {
     if (grant.maximumWorkspaceEffect === "write") {
       return {
         clamped: true,

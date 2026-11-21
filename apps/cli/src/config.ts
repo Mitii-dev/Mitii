@@ -114,6 +114,19 @@ function parseConfigObject(raw: Record<string, unknown>): MitiiHostConfig {
   };
 }
 
+/** Workspace id used when `.mitii/config.json` does not set `workspaceId`. */
+export const DEFAULT_CLI_WORKSPACE_ID = 'cli_workspace';
+
+/**
+ * Single source of truth for the CLI workspace id. Agent runs (ports),
+ * memory capture, and `mitii memory` must all resolve through this.
+ */
+export function resolveCliWorkspaceId(
+  config: Pick<MitiiHostConfig, 'workspaceId'>,
+): string {
+  return config.workspaceId ?? DEFAULT_CLI_WORKSPACE_ID;
+}
+
 /**
  * Load optional host config from `.mitii/config.json` (cwd) or `~/.mitii/config.json`.
  * Secrets must come from environment variables, never from these files.

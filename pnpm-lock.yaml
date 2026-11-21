@@ -63,9 +63,6 @@ importers:
       '@mitii/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
-      '@mitii/v8':
-        specifier: workspace:*
-        version: link:../../packages/v8
       better-sqlite3:
         specifier: ^12.11.1
         version: 12.11.1
@@ -120,6 +117,9 @@ importers:
       '@fontsource-variable/inter':
         specifier: ^5.3.0
         version: 5.3.0
+      '@fontsource/ibm-plex-mono':
+        specifier: ^5.2.5
+        version: 5.3.0
       '@mitii/host':
         specifier: workspace:*
         version: link:../../packages/host
@@ -141,6 +141,18 @@ importers:
       '@mitii/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@mitii/ui-core':
+        specifier: workspace:*
+        version: link:../../packages/ui-core
+      '@mitii/ui-protocol':
+        specifier: workspace:*
+        version: link:../../packages/ui-protocol
+      '@mitii/ui-react':
+        specifier: workspace:*
+        version: link:../../packages/ui-react
+      '@mitii/ui-theme':
+        specifier: workspace:*
+        version: link:../../packages/ui-theme
       better-sqlite3:
         specifier: ^12.11.1
         version: 12.11.1
@@ -214,9 +226,12 @@ importers:
       '@mitii/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
-      '@mitii/v8':
+      '@mitii/ui-core':
         specifier: workspace:*
-        version: link:../../packages/v8
+        version: link:../../packages/ui-core
+      '@mitii/ui-protocol':
+        specifier: workspace:*
+        version: link:../../packages/ui-protocol
       better-sqlite3:
         specifier: ^12.11.1
         version: 12.11.1
@@ -258,6 +273,18 @@ importers:
 
   apps/vscode/webview-ui:
     dependencies:
+      '@mitii/ui-core':
+        specifier: workspace:*
+        version: link:../../../packages/ui-core
+      '@mitii/ui-protocol':
+        specifier: workspace:*
+        version: link:../../../packages/ui-protocol
+      '@mitii/ui-react':
+        specifier: workspace:*
+        version: link:../../../packages/ui-react
+      '@mitii/ui-theme':
+        specifier: workspace:*
+        version: link:../../../packages/ui-theme
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -332,6 +359,9 @@ importers:
       '@mitii/search-kit':
         specifier: workspace:*
         version: link:../search-kit
+      '@mitii/ui-core':
+        specifier: workspace:*
+        version: link:../ui-core
       '@mitii/v8':
         specifier: workspace:*
         version: link:../v8
@@ -522,6 +552,83 @@ importers:
       zod:
         specifier: ^3.23.8
         version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^20.14.0
+        version: 20.19.43
+      typescript:
+        specifier: ^5.5.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/debug@4.1.13)(@types/node@20.19.43)(jsdom@26.1.0)
+
+  packages/ui-core:
+    devDependencies:
+      '@types/node':
+        specifier: ^20.14.0
+        version: 20.19.43
+      typescript:
+        specifier: ^5.5.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/debug@4.1.13)(@types/node@20.19.43)(jsdom@26.1.0)
+
+  packages/ui-protocol:
+    dependencies:
+      '@mitii/ui-core':
+        specifier: workspace:*
+        version: link:../ui-core
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^20.14.0
+        version: 20.19.43
+      typescript:
+        specifier: ^5.5.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/debug@4.1.13)(@types/node@20.19.43)(jsdom@26.1.0)
+
+  packages/ui-react:
+    dependencies:
+      '@mitii/ui-core':
+        specifier: workspace:*
+        version: link:../ui-core
+    devDependencies:
+      '@testing-library/react':
+        specifier: ^16.3.3
+        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@types/node':
+        specifier: ^20.14.0
+        version: 20.19.43
+      '@types/react':
+        specifier: ^18.3.12
+        version: 18.3.31
+      '@types/react-dom':
+        specifier: ^18.3.1
+        version: 18.3.7(@types/react@18.3.31)
+      jsdom:
+        specifier: ^26.1.0
+        version: 26.1.0
+      react:
+        specifier: ^18.3.1
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.3.1
+        version: 18.3.1(react@18.3.1)
+      typescript:
+        specifier: ^5.5.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/debug@4.1.13)(@types/node@20.19.43)(jsdom@26.1.0)
+
+  packages/ui-theme:
     devDependencies:
       '@types/node':
         specifier: ^20.14.0
@@ -1070,6 +1177,9 @@ packages:
 
   '@fontsource-variable/inter@5.3.0':
     resolution: {integrity: sha512-OupL48va4JNofb97w6NYeF9S7W/kHNKM0Er8Dem5nqi4jeOLrVJDoE8tZEpnMJmtkvNbB1EIPPwHcdkF6b1oUA==}
+
+  '@fontsource/ibm-plex-mono@5.3.0':
+    resolution: {integrity: sha512-eTgnZjZEGk1QtD3ZstF+Vclo2HLAni8YMy34/DxllwZvyz1lR/1RF/xTiAquOBO7MvqBx8D2Ig2WCPMVfdZu7Q==}
 
   '@huggingface/jinja@0.3.4':
     resolution: {integrity: sha512-kFFQWJiWwvxezKQnvH1X7GjsECcMljFx+UZK9hx6P26aVHwwidJVTB0ptLfRVZQvVkOGHoMmTGvo4nT0X9hHOA==}
@@ -5041,6 +5151,8 @@ snapshots:
     optional: true
 
   '@fontsource-variable/inter@5.3.0': {}
+
+  '@fontsource/ibm-plex-mono@5.3.0': {}
 
   '@huggingface/jinja@0.3.4':
     optional: true

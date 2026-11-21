@@ -9,7 +9,7 @@ import {
   IconRefresh,
   IconSearch,
   IconTrash,
-} from '../ActivityIcons.js';
+} from '../shell/ActivityIcons.js';
 import {
   deleteWorkspaceSkillApi,
   fetchWorkspaceSkill,

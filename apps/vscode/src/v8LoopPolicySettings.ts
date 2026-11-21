@@ -157,7 +157,7 @@ export interface V8LoopPolicySettingsSnapshot {
   thresholds: Record<string, number>;
   bandThresholds: Record<string, number>;
   band: {
-    id: string;
+    id: 'compact' | 'standard' | 'wide';
     label: string;
     rangeLabel: string;
     contextWindowTokens: number;

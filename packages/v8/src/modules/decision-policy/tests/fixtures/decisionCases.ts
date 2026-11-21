@@ -616,7 +616,8 @@ export const DECISION_EVALUATION_CASES: DecisionCaseFixture[] = [
     expected: {
       route: "execute",
       maximumWorkspaceEffect: "write",
-      planningDepth: "internal",
+      // Small ask naming an explicit file → fast path (no plan / discovery).
+      planningDepth: "none",
     },
   },
   {

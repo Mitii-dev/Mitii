@@ -7,6 +7,7 @@ import {
   normalizePlanningPath,
   uniqueStrings,
 } from "./planningPathUtils";
+import { isProsePathToken } from "./discoverySeedPaths";
 import {
   rankPathsForShapedDiscovery,
   resolveShapedDiscoveryProfile,
@@ -386,6 +387,7 @@ export function collectPreferredPlanningPaths(params: {
     (path) =>
       isSafeRelativePlanningPath(path) &&
       path !== "." &&
+      !isProsePathToken(path) &&
       (path.includes(".") || path.includes("/")),
   );
   const profile = params.query
@@ -403,7 +405,28 @@ export function collectPreferredPlanningPaths(params: {
   return uniqueStrings(ordered).slice(0, max);
 }
 
-function extractFileLikePaths(text: string): string[] {
+/**
+ * Paths the user (or a trusted execution seed) named directly. These may not
+ * exist in the index yet (create asks), so seed-path hygiene never drops them
+ * as unindexed.
+ */
+export function collectTrustedSeedPaths(params: {
+  seedPaths?: readonly string[];
+  evidenceTargets?: readonly { kind: string; value: string; explicit: boolean }[];
+  query?: string;
+}): string[] {
+  const explicit = (params.evidenceTargets ?? [])
+    .filter((target) => target.explicit && /\.\w{1,16}$/.test(target.value))
+    .map((target) => target.value);
+  const fromQuery = params.query ? extractFileLikePaths(params.query) : [];
+  return uniqueStrings(
+    [...(params.seedPaths ?? []), ...explicit, ...fromQuery]
+      .map(normalizePlanningPath)
+      .filter((path) => path !== "." && !isProsePathToken(path)),
+  );
+}
+
+export function extractFileLikePaths(text: string): string[] {
   const paths: string[] = [];
   const re = new RegExp(FILE_LIKE_PATH.source, "g");
   let match: RegExpExecArray | null;

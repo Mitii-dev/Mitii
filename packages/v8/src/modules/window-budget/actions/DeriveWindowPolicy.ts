@@ -44,6 +44,7 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
   const resolved = resolveWindowBudgetPolicy({
     contextWindowTokens: windowTokens,
     mode: parsed.mode,
+    modelId: parsed.modelId,
     overrides: parsed.policy,
   });
   const policy = resolved.policy;
@@ -51,6 +52,9 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
   const effort = resolveWindowBudgetEffort(parsed.effort);
   const overlay = WINDOW_BUDGET_EFFORT_OVERLAY[effort];
   reasonCodes.push(`effort_${effort}`);
+  if (resolved.modelProfileId) {
+    reasonCodes.push("model_profile_applied");
+  }
   if (resolved.mode === "ask") {
     reasonCodes.push("mode_ask");
   } else if (resolved.mode === "plan") {

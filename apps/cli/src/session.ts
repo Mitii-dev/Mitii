@@ -408,6 +408,23 @@ function exitCodeFor(
 }
 
 /**
+ * `--approve` means nobody will review mutations or plans, so the start must
+ * say so up front. Otherwise the engine suspends for plan approval and the
+ * auto-resume pays startup again. Explicit host values always win.
+ */
+export function withAutoApprovalPolicy<T extends {
+  approvalMode?: string;
+  planApproval?: string;
+}>(start: T, autoApproval: 'approved' | 'denied' | undefined): T {
+  if (autoApproval !== 'approved') return start;
+  return {
+    ...start,
+    approvalMode: start.approvalMode ?? 'never',
+    planApproval: start.planApproval ?? 'never',
+  };
+}
+
+/**
  * Drive a start → (optional resume)* loop with streaming and cancel.
  */
 export async function driveRun(
@@ -417,7 +434,8 @@ export async function driveRun(
   const streamJson = options.streamJson === true;
   const machineReadable = json || streamJson;
   const events: RunEvent[] = [];
-  let run = options.client.start(options.start);
+  const startInput = withAutoApprovalPolicy(options.start, options.autoApproval);
+  let run = options.client.start(startInput);
   let result: AgentRunResult | undefined;
   let declinedSuspension = false;
 

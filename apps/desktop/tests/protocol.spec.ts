@@ -45,3 +45,22 @@ describe('mitii-desktop protocol', () => {
     expect(createPromptId()).toMatch(/^prompt_/);
   });
 });
+
+describe('mitii-desktop stream + resume contracts', () => {
+  it('parses NDJSON envelope lines with typed events', async () => {
+    const { parseDesktopStreamLine, parseDesktopResumeBody } = await import(
+      '../src/shared/protocol.js'
+    );
+    const ok = parseDesktopStreamLine(
+      '{"op":"event","id":"1","event":{"type":"tool_completed"}}',
+    );
+    expect(ok.ok).toBe(true);
+    expect(
+      parseDesktopStreamLine('{"op":"event","id":"1","event":{}}').ok,
+    ).toBe(false);
+    expect(parseDesktopResumeBody({ runId: '' })).toEqual({
+      ok: false,
+      error: 'runId_required',
+    });
+  });
+});

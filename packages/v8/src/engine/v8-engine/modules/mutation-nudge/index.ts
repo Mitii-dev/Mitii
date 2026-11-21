@@ -1,10 +1,11 @@
 import type { ExecutionDecision } from "../../../../modules/decision-policy";
 import type { ModelToolCall } from "../../../../modules/model-gateway";
 import { DEFAULT_MUTATING_TOOL_NAMES } from "../../pipeline/executeTool";
+import { EXECUTION_ROUTE } from "../../../../modules/decision-policy";
 
 export function requiresMutation(decision: ExecutionDecision): boolean {
   return (
-    decision.route === "execute" &&
+    decision.route === EXECUTION_ROUTE.EXECUTE &&
     decision.toolGrant.maximumWorkspaceEffect === "write"
   );
 }

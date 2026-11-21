@@ -1,9 +1,6 @@
 import type { ExecutionDecision } from "../../../modules/decision-policy";
 import type { PlanArtifact } from "../../../modules/planning";
-import {
-  formatPlanAsAnswer,
-  inferPlanStrategyFromArtifact,
-} from "../../../modules/planning";
+import { formatPlanAsAnswer } from "../../../modules/planning";
 import type { WindowPolicy } from "../../../modules/window-budget";
 import type { VerificationRecord } from "../../../modules/verification";
 import type { ToolApprovalToken } from "../../tool-runtime";
@@ -15,7 +12,7 @@ import {
   buildPreflightDiagnosticRepairInstruction,
   resolveLoopPolicyThresholds,
 } from "../actions";
-import { formatClarificationAnswerFromPatch } from "../../../modules/request-understanding/intent/applyClarificationFactPatch";
+import { formatClarificationAnswerFromPatch } from "../../../modules/request-understanding";
 import type { BudgetWallReason } from "../actions/buildStallContinueRationale";
 import {
   AgentEngineError,
@@ -40,6 +37,7 @@ import {
   executeOneTool,
 } from "./executeTool";
 import { executeV8Start } from "./executeStart";
+import { planApprovalResumeStartParams } from "./startReuse";
 import { resumeV8ToolLoopFromCheckpoint } from "./resumeToolLoop";
 
 export type ResumeFinish = (
@@ -218,13 +216,12 @@ export async function handlePlanApprovalResume(
     bus,
     signal,
     getCancelReason,
-    approvedPlan: nextPlan,
-    approvedPlanStrategy:
-      input.planDecision.decision === "edited"
-        ? inferPlanStrategyFromArtifact(nextPlan)
-        : checkpoint.planStrategy ?? inferPlanStrategyFromArtifact(nextPlan),
-    skipPlanGate: true,
-    planSource: "resume_approval",
+    ...planApprovalResumeStartParams({
+      checkpoint,
+      decision: ctx.decision,
+      plan: nextPlan,
+      edited: input.planDecision.decision === "edited",
+    }),
   });
 }
 

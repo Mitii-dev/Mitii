@@ -1,7 +1,9 @@
 import type { VerificationRequirement } from "../../../modules/decision-policy";
 import {
   assessTaskRelevantEvidence,
+  hasBehaviorDefect,
   isPhantomSecondaryDiagnostic,
+  requiresBehaviorEvidence,
   isWorkspaceRootCheckId,
   projectLocalCompilePassed,
   type RepoBuildStateComparison,
@@ -163,7 +165,8 @@ export function decideVerificationGate(params: {
           verification,
           error: {
             code: "verification_failed",
-            message: diagnosticErrorMessage(params.comparison),
+            message: behaviorDefectMessage(goalParams) ??
+              diagnosticErrorMessage(params.comparison),
           },
         };
       }
@@ -264,6 +267,14 @@ function hasInScopeActionableRepairTarget(params: {
   if (hasFailedProjectLocalCompile(params.verification.checks)) {
     return true;
   }
+  // Behavior-implied asks (HTTP/routes/scripts/tests): a failing suite is a
+  // repairable defect even without parseable in-scope diagnostics.
+  if (
+    requiresBehaviorEvidence(normalizeMinimumEvidence(params.minimumEvidence)) &&
+    hasBehaviorDefect(params.verification.checks)
+  ) {
+    return true;
+  }
   if (assessment.shouldAccept) {
     return false;
   }
@@ -273,6 +284,19 @@ function hasInScopeActionableRepairTarget(params: {
     return false;
   }
   return true;
+}
+
+function behaviorDefectMessage(params: {
+  verification: VerificationResult;
+  minimumEvidence?: readonly string[];
+}): string | undefined {
+  if (
+    !requiresBehaviorEvidence(normalizeMinimumEvidence(params.minimumEvidence)) ||
+    !hasBehaviorDefect(params.verification.checks)
+  ) {
+    return undefined;
+  }
+  return "A test/smoke check for the requested behavior failed after the change; compile evidence alone does not prove it.";
 }
 
 function diagnosticErrorMessage(
@@ -322,6 +346,13 @@ export function isUserGoalComplete(params: {
     changedFiles: params.changedFiles,
     askScopePaths: params.askScopePaths,
   });
+  // Behavior-implied asks never soft-accept past a failed test/smoke suite.
+  if (
+    requiresBehaviorEvidence(minimumEvidence) &&
+    hasBehaviorDefect(verification.checks)
+  ) {
+    return false;
+  }
   if (assessment.shouldAccept && assessment.authoritativeCompilePassed) {
     return true;
   }
@@ -383,6 +414,7 @@ function normalizeMinimumEvidence(
     "typecheck",
     "tests",
     "build",
+    "behavior",
   ]);
   if (!value || value.length === 0) {
     return [];

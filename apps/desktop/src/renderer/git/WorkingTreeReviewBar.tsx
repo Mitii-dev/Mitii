@@ -21,7 +21,7 @@ import {
   IconGit,
   IconUndo,
   IconWrench,
-} from '../ActivityIcons.js';
+} from '../shell/ActivityIcons.js';
 import { DiffView } from '../explorer/DiffView.js';
 
 export type ReviewFindingChip = ReviewFinding & {

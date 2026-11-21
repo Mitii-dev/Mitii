@@ -1,6 +1,6 @@
 import type { AgentEngineThresholdsOverrides } from "../../actions/resolveAgentEngineThresholds";
-import type { WindowBudgetPolicyOverrides } from "../../../../modules/window-budget/contracts";
-import type { WindowBudgetBand } from "../../../../modules/window-budget/windowBudgetBands";
+import type { WindowBudgetPolicyOverrides } from "../../../../modules/window-budget";
+import type { WindowBudgetBand } from "../../../../modules/window-budget";
 import type { PolicyLabFile } from "./policyLab";
 import type { LoopPolicyWindowBand } from "./loopPolicyBands";
 

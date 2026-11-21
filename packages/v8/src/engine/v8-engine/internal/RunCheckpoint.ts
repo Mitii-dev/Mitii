@@ -6,6 +6,7 @@ import type {
 import type { TaskList } from "../../../modules/task-list";
 import type { ModelMessage } from "../../../modules/model-gateway";
 import type { RepositoryStateReference } from "../../../modules/repository-state";
+import type { RequestUnderstandingResult } from "../../../modules/request-understanding";
 import type { RepoBuildState } from "../../../modules/verification";
 import type { ToolResult } from "../../tool-runtime";
 
@@ -108,6 +109,12 @@ export interface AgentRunCheckpoint {
    * refinement (e.g. App.tsx wiring) and thrash-Continues as seed_weak.
    */
   executionSeed?: ExecutionSeed;
+  /**
+   * Understanding result at plan-approval suspension. Resume reuses it (with
+   * `decision`, `pinnedState`, `executionSeed`) so an approved plan does not
+   * repeat understand/decide.
+   */
+  understanding?: RequestUnderstandingResult;
 }
 
 export interface AgentEngineRunCheckpointStorePort {

@@ -8,7 +8,7 @@ import {
   EchoLlmPort,
   type LlmPort,
 } from '@mitii/sdk';
-import type { ModelCapabilities, ModelEvent, ModelRequest } from '@mitii/v8';
+import type { ModelCapabilities, ModelEvent, ModelRequest } from '@mitii/sdk';
 
 import {
   isCliSessionLogEnabled,

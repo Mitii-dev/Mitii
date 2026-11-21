@@ -10,7 +10,6 @@ import { AGENT_ENGINE_SCHEMA_VERSION } from "../legacy/constants";
 import {
   AgentEngineError,
   agentRunBudgetSchema,
-  agentRunResultSchema,
 } from "../contracts";
 import type {
   AgentEngineResumeInput,
@@ -22,6 +21,7 @@ import { RunBudgetTracker } from "../internal/RunBudget";
 import type { TaskListRef } from "../internal/taskListRuntime";
 import type { AgentEngineRuntime } from "./runtime";
 import { resolveWorkspaceId } from "./runtime";
+import { parseAgentRunResultResilient } from "./parseAgentRunResult";
 import { persistVerificationArtifact } from "./verification";
 import {
   handleApprovalResume,
@@ -113,7 +113,7 @@ export async function executeV8Resume(
     const finalReasonCodes = [...(partial.reasonCodes ?? reasonCodes)];
     const finalWarnings = [...warnings, ...(partial.warnings ?? [])];
     applyExplorationSignal(usageSnap, finalReasonCodes, finalWarnings);
-    const result = agentRunResultSchema.parse({
+    const result = parseAgentRunResultResilient({
       schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
       runId,
       requestId,

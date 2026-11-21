@@ -56,6 +56,7 @@ src/
   repository-context/      # createHostRepositoryContext
   corpus/                  # optional `.mitii/corpus/` index + retrieval source
   runtime/                 # child-run narrowing helpers
+  client/                  # createHostClient: shared createMitiiClient composition
   ports/                   # search, network (content-aware), memory, skills, checkpoints
   prompt/                  # project rules loader -> start({ projectRules })
   config/                  # provider presets (not a V8 port)
@@ -97,6 +98,35 @@ Prefer importing from `@mitii/host`. Do not import `internal/`.
 | `PROVIDER_PRESETS` / `getProviderPreset` | Host config only | Prefills base URL / model / adapter |
 | `createHostLlmPorts` | Host composition | Echo, OpenAI-compatible, Anthropic, Gemini. Presets may set `defaultCapabilities` (e.g. disable forced tool choice + structured output for thinking endpoints). |
 | `testProviderConnection` | Host UX | Probe without starting a run |
+
+## `createHostClient`
+
+Every host (CLI, VS Code, Desktop, ACP) composes the same stack around `createMitiiClient`. `createHostClient(options)` owns that composition so hosts only pass what differs.
+
+| | |
+|---|---|
+| **Input** | `workspaceRoot` (or `undefined` for chat-only), `workspaceId`, `llm: { understandingLlm, runLlm }`, optional `env`, `defaultMode`, `defaultSessionId`, `sandbox`, `mcp`, `search`, `skills`, `memory`, `repositoryContext`, and host port overrides (`processPort`, `network`, `diagnostics`, `codeNavigation`) |
+| **Output** | `{ client, repositoryState, tools?, verification?, git?, mcpToolDefinitions, memoryStore?, memoryEmbedding? }` |
+| **Owns** | tool runtime, verification, `InMemoryRepositoryStateStore` + pipeline, disk skills, workspace memory, sandboxed process port, MCP registry + tool definitions, workspace checkpoints, repository graphs |
+| **Hosts own** | LLM port resolution and secrets, settings, IDE diagnostics / code navigation, SQLite opener, the repository-context wrapper (passed as a callback receiving `{ repositoryState, workspaceRoot, git }`) |
+| **Failure** | `HostClientOptionsError` with `code` in `invalid_workspace_id`, `invalid_default_mode`, `invalid_sandbox` (scalar options are Zod-validated) |
+
+Helpers: `readSandboxOptionsFromEnv(env)` parses the shared `MITII_SANDBOX*` contract; `bindHostMcp(manager, settings, root)` adapts any MCP manager (`@mitii/mcp` or a host-owned one) to the `HostMcpPort`.
+
+```ts
+const { client } = await createHostClient({
+  workspaceRoot: cwd,
+  workspaceId,
+  llm: { understandingLlm, runLlm },
+  sandbox: readSandboxOptionsFromEnv(process.env),
+  mcp: bindHostMcp(getSharedMcpManager({ clientInfoName: 'my-host' }), mcpSettings, cwd),
+  memory: { semanticIndex },
+  repositoryContext: ({ repositoryState, workspaceRoot, git }) =>
+    createHostRepositoryContext({ repositoryState, workspaceRoot, semanticIndex, git }),
+});
+```
+
+Non-responsibilities: provider/secret resolution, UI, and SDK/V8 behavior. `clientOptions` are spread last for per-host `createMitiiClient` overrides (adversary, engine implementation).
 
 ## How hosts wire it
 

@@ -6,7 +6,7 @@ import {
   normalizeRepoPath,
   stripPathRangeSuffix,
   toolContentPathsOverlap,
-} from "../actions/toolContentPaths";
+} from "../modules/tool-content-paths";
 
 const LEDGER_READ_TOOLS = new Set(["read_file", "read_many_files"]);
 

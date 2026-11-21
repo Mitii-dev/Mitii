@@ -56,7 +56,7 @@ Commands:
   pr-summary       Draft a PR body (auto-attaches git-pr-summary)
   changelog        Draft Keep a Changelog entry (auto-attaches release-changelog)
   run --auto       Unattended CI run (agent + apply autonomy; no prompts)
-  session          Interactive REPL (MITII banner + prompts)
+  session          Interactive REPL (/help, /clear, /exit; empty line ignored)
   index            Full workspace index + publish repository state
                    --status            Show Code/FTS/Embeddings pipeline health (no reindex)
   review           Deterministic review preview/prepare (+ SARIF); LLM findings via ask
@@ -137,6 +137,10 @@ Options:
                      Lab: one-off threshold overrides for this run
                      (merged on the active window band; see README)
   --no-loop-policy   Ignore config loopPolicy for this run
+  --timeout <sec>    Host wall-time budget for the run (ask/plan/agent/run).
+                     Near the deadline the engine finalizes after a landed
+                     patch instead of starting another model turn.
+                     Env fallback: MITII_RUN_TIMEOUT_SECONDS
   --provider <id>    setup: ollama | anthropic | gemini | openai | …
   --model <id>       setup: model id
   --base-url <url>   setup: OpenAI-compatible base URL

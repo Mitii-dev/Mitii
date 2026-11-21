@@ -1,6 +1,6 @@
 import { relative } from 'node:path';
 import type * as vscode from 'vscode';
-import { isSecurityConcern, WorkspaceIgnorePolicy } from '@mitii/v8';
+import { isSecurityConcern, WorkspaceIgnorePolicy } from '@mitii/sdk';
 
 import { sliceFimContext } from './fim.js';
 import { OpenAiCompatibleFimClient } from './openAiCompatibleFimClient.js';

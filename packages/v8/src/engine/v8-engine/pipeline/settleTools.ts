@@ -32,7 +32,7 @@ import { writeRestorePointAfterMutation } from "./writeRestorePoint";
 import type { AgentEngineRuntime } from "./runtime";
 import type { ToolLoopOutcome } from "./types";
 import type { ToolResult } from "../../tool-runtime";
-import type { ToolLoopGuard, ToolLoopResult } from "../actions/toolLoopGuard";
+import type { ToolLoopGuard, ToolLoopResult } from "../modules/tool-loop-guard";
 import { isMutateLockAllowedToolName } from "../modules/mutate-readiness";
 import { serializeToolResultForModel } from "../actions/serializeToolResultForModel";
 import { TOOL_RUNTIME_SCHEMA_VERSION } from "../../tool-runtime";

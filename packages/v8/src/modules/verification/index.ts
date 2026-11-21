@@ -92,6 +92,11 @@ export {
   assessTaskRelevantEvidence,
   projectLocalCompilePassed,
   selectAskScopedDefects,
+  BEHAVIOR_EVIDENCE_KIND,
+  hasBehaviorDefect,
+  hasPassedBehaviorCheck,
+  isBehaviorDefectCheck,
+  requiresBehaviorEvidence,
   diagnosticIdentityKey,
   compareRepoBuildStates,
 } from "./actions";

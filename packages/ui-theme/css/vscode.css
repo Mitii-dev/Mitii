@@ -1,0 +1,82 @@
+/*
+ * VS Code webview adapter: derives the --mitii-* contract from --vscode-*
+ * variables so the UI follows the active editor theme.
+ */
+@import './tokens.css';
+
+:root {
+  color-scheme: light dark;
+
+  --mitii-brand-hover: color-mix(in srgb, var(--mitii-brand) 88%, #000);
+  --mitii-brand-tint: color-mix(
+    in srgb,
+    var(--mitii-brand) 14%,
+    var(--vscode-editor-background)
+  );
+
+  --mitii-surface: var(--vscode-sideBar-background);
+  --mitii-panel: var(--vscode-editor-background);
+  --mitii-panel-raised: color-mix(
+    in srgb,
+    var(--vscode-editor-background) 96%,
+    var(--vscode-foreground) 4%
+  );
+  --mitii-border: var(--vscode-panel-border, var(--vscode-widget-border, #3c3c3c));
+  --mitii-border-soft: color-mix(in srgb, var(--mitii-border) 72%, transparent);
+  --mitii-text: var(--vscode-foreground);
+  --mitii-muted: var(
+    --vscode-descriptionForeground,
+    color-mix(in srgb, var(--vscode-foreground) 65%, transparent)
+  );
+  --mitii-chat-fg: var(--vscode-editor-foreground, var(--vscode-foreground));
+  --mitii-danger: var(--vscode-errorForeground, #e06c75);
+  --mitii-ok: var(--vscode-testing-iconPassed, #89b86c);
+  --mitii-warn: color-mix(
+    in srgb,
+    var(--mitii-brand-soft) 58%,
+    var(--vscode-foreground) 42%
+  );
+  --mitii-warn-soft: #c9b27a;
+
+  --mitii-radius-lg: 8px;
+  --mitii-space-x: 0px;
+
+  --mitii-font-ui: var(
+    --vscode-font-family,
+    'Segoe UI',
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif
+  );
+  --mitii-font-tool: var(
+    --vscode-font-family,
+    'Segoe UI Semibold',
+    'Segoe UI',
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif
+  );
+  --mitii-font-file: var(
+    --vscode-editor-font-family,
+    'SFMono-Regular',
+    Consolas,
+    'Liberation Mono',
+    Menlo,
+    monospace
+  );
+  --mitii-font-thinking: var(
+    --vscode-editor-font-family,
+    'SF Mono',
+    'Cascadia Code',
+    'Cascadia Mono',
+    'JetBrains Mono',
+    Menlo,
+    Consolas,
+    'Liberation Mono',
+    monospace
+  );
+  --mitii-font-mono: var(--mitii-font-file);
+
+  --mitii-shadow-soft: 0 10px 30px color-mix(in srgb, #000 18%, transparent);
+  --mitii-shadow-tight: 0 2px 10px color-mix(in srgb, #000 14%, transparent);
+}

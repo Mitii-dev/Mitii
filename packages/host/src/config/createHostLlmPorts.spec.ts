@@ -42,6 +42,42 @@ describe('createHostLlmPorts', () => {
     expect(ports.runLlm.id).toBe('echo');
   });
 
+  describe('context window resolution', () => {
+    it('regression: deepseek preset without an explicit window resolves to 128k, not the 32k adapter default', () => {
+      const ports = createHostLlmPorts({
+        type: 'openai-compatible',
+        preset: 'deepseek',
+        model: 'deepseek-chat',
+        apiKey: 'sk-test',
+      });
+      expect(ports.runLlm.capabilities.contextWindowTokens).toBe(128_000);
+      expect(ports.understandingLlm.capabilities.contextWindowTokens).toBe(
+        128_000,
+      );
+    });
+
+    it('keeps an explicit host window over inference', () => {
+      const ports = createHostLlmPorts({
+        type: 'openai-compatible',
+        preset: 'deepseek',
+        model: 'deepseek-chat',
+        apiKey: 'sk-test',
+        capabilities: { contextWindowTokens: 64_000 },
+      });
+      expect(ports.runLlm.capabilities.contextWindowTokens).toBe(64_000);
+    });
+
+    it('keeps the 32k last resort for unknown openai-compatible models', () => {
+      const ports = createHostLlmPorts({
+        type: 'openai-compatible',
+        preset: 'ollama',
+        model: 'custom-local',
+        baseUrl: 'http://localhost:11434/v1',
+      });
+      expect(ports.runLlm.capabilities.contextWindowTokens).toBe(32_768);
+    });
+  });
+
   it('enables prompt-cache usage mapping for openai-compatible runtimes', () => {
     const ports = createHostLlmPorts({
       type: 'openai-compatible',

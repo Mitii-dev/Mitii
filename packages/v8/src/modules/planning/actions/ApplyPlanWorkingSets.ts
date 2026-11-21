@@ -5,6 +5,7 @@ import type {
   PlanningReasonCode,
 } from "../contracts";
 import { PLANNING_WORKING_SET_POLICY } from "../policy";
+import { normalizeRepoPathText } from "../../repository-state";
 
 export interface ApplyPlanWorkingSetsResult {
   plan: PlanArtifact;
@@ -135,11 +136,5 @@ function uniquePaths(paths: readonly string[]): string[] {
 }
 
 function normalizePath(value: string): string {
-  return value
-    .trim()
-    .replace(/^@+/, "")
-    .replace(/\\/g, "/")
-    .replace(/\/+/g, "/")
-    .replace(/^\.\//, "")
-    .replace(/\/+$/, "");
+  return normalizeRepoPathText(value, { stripAtPrefix: true });
 }

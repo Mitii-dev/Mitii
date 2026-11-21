@@ -3,13 +3,23 @@
  */
 export const DECISION_POLICY_SCHEMA_VERSION = 1 as const;
 
+/** Stable route identifiers; compare against these instead of inline strings. */
+export const EXECUTION_ROUTE = {
+  DIRECT_ANSWER: "direct_answer",
+  REPOSITORY_ANSWER: "repository_answer",
+  CLARIFY: "clarify",
+  DIAGNOSE: "diagnose",
+  PLAN: "plan",
+  EXECUTE: "execute",
+} as const;
+
 export const EXECUTION_ROUTES = [
-  "direct_answer",
-  "repository_answer",
-  "clarify",
-  "diagnose",
-  "plan",
-  "execute",
+  EXECUTION_ROUTE.DIRECT_ANSWER,
+  EXECUTION_ROUTE.REPOSITORY_ANSWER,
+  EXECUTION_ROUTE.CLARIFY,
+  EXECUTION_ROUTE.DIAGNOSE,
+  EXECUTION_ROUTE.PLAN,
+  EXECUTION_ROUTE.EXECUTE,
 ] as const;
 
 export const PLANNING_DEPTHS = ["none", "internal", "visible"] as const;
@@ -50,12 +60,10 @@ export const VERIFICATION_EVIDENCE_KINDS = [
   "lint",
   "build",
   "diff_review",
+  /** Executed test/smoke evidence; typecheck/build alone does not satisfy it. */
+  "behavior",
 ] as const;
 
-/**
- * Built-in tool ID lists — owned by Tool Runtime (`engine/tool-runtime/constants`).
- * Decision Policy re-exports so grants cannot drift from the enforce catalog (R7/R10).
- */
 export {
   CHANGE_IMPACT_TOOL_IDS,
   CODE_INTELLIGENCE_TOOL_IDS,
@@ -63,9 +71,11 @@ export {
   GITHUB_MUTATION_TOOL_IDS,
   GIT_MUTATION_TOOL_IDS,
   MUTATION_TOOL_IDS,
+  NETWORK_TOOL_IDS,
+  OPT_IN_MUTATION_TOOL_IDS,
   PROCESS_TOOL_IDS,
   READ_ONLY_TOOL_IDS,
-} from "../../engine/tool-runtime/constants";
+} from "./toolIds";
 
 export const DECISION_REASON_CODES = [
   "mode_ask_readonly",
@@ -183,6 +193,22 @@ export const DECISION_REASON_CODES = [
    * MCP tools stay available for follow-up queries.
    */
   "mcp_attach_required",
+  /**
+   * Small, clear agent-execute ask naming explicit file paths: plan and
+   * discovery are skipped (planningDepth none) and the mutate loop runs from
+   * the execution seed.
+   */
+  "fast_path_explicit_paths",
+  /**
+   * The ask names HTTP behavior, runnable scripts, or tests, so verification
+   * prefers executed test/smoke evidence over compile-only evidence.
+   */
+  "verification_behavior_evidence_preferred",
+  /**
+   * Agent-mode explicit "create X" ask: a plan-labelled ballot is overridden so
+   * the run executes and mutates instead of completing plan-only.
+   */
+  "agent_create_ask_execute",
 ] as const;
 
 export const DECISION_POLICY_ERROR_CODES = [

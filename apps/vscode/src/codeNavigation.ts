@@ -6,14 +6,14 @@ import type {
   CodeNavigationPort,
   CodeNavigationQuery,
   CodeNavigationWorkspaceQuery,
-} from '@mitii/v8';
+} from '@mitii/sdk';
 
 type CodeNavigationCallOptions = { signal?: AbortSignal };
 import {
   CODE_NAVIGATION_OPERATIONS,
   CODE_NAVIGATION_POLICY,
   createRequestLimiter,
-} from '@mitii/v8';
+} from '@mitii/sdk';
 import type * as vscode from 'vscode';
 
 export function createVsCodeCodeNavigationPort(

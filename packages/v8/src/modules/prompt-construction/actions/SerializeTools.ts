@@ -5,7 +5,7 @@ import {
   DIAGNOSTICS_TOOL_IDS,
   MUTATION_TOOL_IDS,
   PROCESS_TOOL_IDS,
-} from "../../decision-policy/constants";
+} from "../../decision-policy";
 import type {
   ModelCapabilities,
   ModelToolChoice,

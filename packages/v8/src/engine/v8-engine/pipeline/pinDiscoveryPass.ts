@@ -73,6 +73,8 @@ export async function runDiscoveryPass(
   taskListRef: TaskListRef;
   windowPolicy: WindowPolicy;
   preferredPaths?: readonly string[];
+  /** Index + user-named paths used to validate `preferredPaths` before reads. */
+  seedPathHygiene?: { knownPaths?: readonly string[]; trustedPaths?: readonly string[] };
   /** Plan mode (non-quick): require file-backed discovery before treating pass as success. */
   qualityFloor?: boolean;
   /** Plan / Agent-visible: multi-file multi-surface thoroughness bar. */
@@ -220,6 +222,7 @@ export async function runDiscoveryPass(
       windowPolicy,
       query,
       preferredPaths,
+      seedPathHygiene: params.seedPathHygiene,
       qualityFloor,
       seedFirstDiscovery,
       forceExploration,

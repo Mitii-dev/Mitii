@@ -5,7 +5,14 @@ import {
   rejectPendingMemory,
   createWorkspaceMemoryStore,
 } from '@mitii/host';
-import { MemoryPipeline } from '@mitii/v8';
+import { MemoryPipeline } from '@mitii/sdk';
+
+import { loadMitiiHostConfig, resolveCliWorkspaceId } from '../config.js';
+
+/** Same id agent runs use (`resolveCliPorts`), so approvals land in the run's memory scope. */
+export function resolveMemoryWorkspaceId(cwd: string): string {
+  return resolveCliWorkspaceId(loadMitiiHostConfig(cwd));
+}
 
 /**
  * `mitii memory pending|approve <id>|reject <id>`
@@ -18,6 +25,7 @@ export async function runMemoryCommand(params: {
 }): Promise<number> {
   const { args, cwd, json, io } = params;
   const [sub = '', id = ''] = args;
+  const workspaceId = resolveMemoryWorkspaceId(cwd);
 
   if (sub === 'pending') {
     const pending = await listPendingMemories(cwd);
@@ -40,11 +48,11 @@ export async function runMemoryCommand(params: {
       io.writeStderr('Usage: mitii memory approve <pendingId>\n');
       return 2;
     }
-    const store = createWorkspaceMemoryStore(cwd, 'cli');
+    const store = createWorkspaceMemoryStore(cwd, workspaceId);
     const pipeline = new MemoryPipeline({ store });
     const result = await approvePendingMemory({
       workspaceRoot: cwd,
-      workspaceId: 'cli',
+      workspaceId,
       pendingId: id,
       pipeline,
     });
@@ -64,7 +72,7 @@ export async function runMemoryCommand(params: {
     const result = await rejectPendingMemory({
       workspaceRoot: cwd,
       pendingId: id,
-      workspaceId: 'cli',
+      workspaceId,
     });
     if (!result.rejected) {
       io.writeStderr('mitii memory reject: not_found\n');

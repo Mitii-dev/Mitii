@@ -7,7 +7,10 @@
  * 2. Re-runs the v8-engine vitest suite (always-on + unit)
  * 3. Prints catalog bucket coverage for live/recorded drivers to consume
  *
- * Does not call live paid APIs.
+ * 4. Optional: with MITII_LIVE_EVAL=1 also runs the live curated-40 eval
+ *    (tests/eval/curated-40.live.spec.ts) against a built CLI.
+ *
+ * Default (flag unset) never calls live paid APIs.
  */
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -56,6 +59,22 @@ if (result.status !== 0) {
 }
 
 console.log("always-on goldens + unit: ok");
-console.log(
-  "live curated-40: skipped (stub CI). Use a recorded fixture driver for product eval.",
+if (process.env.MITII_LIVE_EVAL !== "1") {
+  console.log(
+    "live curated-40: skipped (catalog validation only). Set MITII_LIVE_EVAL=1 to run it.",
+  );
+  process.exit(0);
+}
+
+console.log("live curated-40: running (MITII_LIVE_EVAL=1)");
+const live = spawnSync(
+  "npx",
+  [
+    "vitest",
+    "run",
+    "src/engine/v8-engine/tests/eval/curated-40.live.spec.ts",
+    "--reporter=verbose",
+  ],
+  { cwd: packageRoot, stdio: "inherit", env: process.env },
 );
+process.exit(live.status ?? 1);

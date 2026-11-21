@@ -1,5 +1,6 @@
 export {
   DECISION_POLICY_SCHEMA_VERSION,
+  EXECUTION_ROUTE,
   EXECUTION_ROUTES,
   PLANNING_DEPTHS,
   PLAN_GATES,
@@ -9,6 +10,8 @@ export {
   APPROVAL_MODES,
   VERIFICATION_EVIDENCE_KINDS,
   READ_ONLY_TOOL_IDS,
+  NETWORK_TOOL_IDS,
+  OPT_IN_MUTATION_TOOL_IDS,
   CODE_INTELLIGENCE_TOOL_IDS,
   DIAGNOSTICS_TOOL_IDS,
   CHANGE_IMPACT_TOOL_IDS,
@@ -34,6 +37,12 @@ export {
   compileGrant,
   toolGrantsEquivalent,
   looksLikeAgentVerificationRequest,
+  resolveFastPath,
+  extractExplicitFilePaths,
+  detectBehavioralAskSignals,
+  looksLikeBehavioralAsk,
+  isExplicitCreateAsk,
+  FAST_PATH_DECLINE_REASONS,
   looksLikeVcsHistoryRewrite,
   intersectUserSafetyRules,
   grantNeverWidens,
@@ -48,7 +57,12 @@ export {
   selectGrantProfile,
   GRANT_PROFILES,
 } from "./actions";
-export type { GrantProfile } from "./actions";
+export type {
+  GrantProfile,
+  FastPathResolution,
+  BehavioralAskSignals,
+  FastPathDeclineReason,
+} from "./actions";
 
 export { DecisionPolicyPipeline } from "./pipeline/DecisionPolicyPipeline";
 
@@ -56,6 +70,7 @@ export {
   isRepairIntentTaxonomy,
   isArchitectureIntentTaxonomy,
   DECISION_POLICY_PATTERNS,
+  WORKSPACE_BUG_FAILURE_LANGUAGE,
 } from "./patterns";
 
 export {

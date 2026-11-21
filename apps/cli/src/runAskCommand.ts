@@ -31,7 +31,7 @@ import {
   loadPromptFile,
   type MitiiAgentFile,
 } from './agentFile.js';
-import { createCliClient } from './ports.js';
+import { createCliClient, type CliRuntime } from './ports.js';
 import {
   formatContextInspection,
   formatDiffReview,
@@ -45,6 +45,7 @@ import {
 } from './session.js';
 import { loadMitiiHostConfig } from './config.js';
 import { resolveCliLoopPolicyThresholds } from './loopPolicy.js';
+import { resolveRunWallTimeMs } from './runTimeout.js';
 import {
   persistLatestRepositoryState,
 } from './stateCache.js';
@@ -297,16 +298,25 @@ export async function runAsk(options: {
   sessionId?: string;
   loopPolicyJson?: string;
   noLoopPolicy?: boolean;
+  /** Host wall-time budget (seconds); falls back to MITII_RUN_TIMEOUT_SECONDS. */
+  timeoutSeconds?: number;
   io?: SessionIo;
+  /**
+   * Pre-built client for interactive sessions. When set, no new client (and no
+   * fresh in-memory repository state / MCP sync) is created for this turn.
+   */
+  runtime?: CliRuntime;
 }): Promise<{
   code: number;
   mode: AgentMode;
   outcome?: Awaited<ReturnType<typeof driveRun>>;
 }> {
-  const { client, ports, memoryCapture } = await createCliClient({
-    cwd: options.cwd,
-    forceEcho: options.forceEcho,
-  });
+  const { client, ports, memoryCapture } =
+    options.runtime ??
+    (await createCliClient({
+      cwd: options.cwd,
+      forceEcho: options.forceEcho,
+    }));
   const io = options.io ?? createDefaultSessionIo();
   const uiMode = options.mode ?? ports.defaultMode;
   const origin = options.origin ?? 'user';
@@ -331,9 +341,10 @@ export async function runAsk(options: {
     );
   }
 
-  // Each CLI invocation uses a fresh in-memory repository-state store.
+  // Each one-shot CLI invocation uses a fresh in-memory repository-state store.
   // Index in a prior process only writes `.mitii/` on disk; ask must publish
-  // into this process or agent runs fail with state_unavailable.
+  // into this process or agent runs fail with state_unavailable. A reused
+  // session runtime already holds the published state, so this is a no-op then.
   await ensurePublishedRepositoryState({
     client,
     workspaceId: ports.workspaceId,
@@ -415,6 +426,14 @@ export async function runAsk(options: {
   ].slice(0, 3);
   const mergedRequiredMcpServerIds =
     databaseOverlay?.startFields.requiredMcpServerIds ?? [];
+  const runTimeout = resolveRunWallTimeMs({
+    flagSeconds: options.timeoutSeconds,
+    env: process.env,
+  });
+  if (!runTimeout.ok) {
+    io.writeStderr(`${runTimeout.message}\n`);
+    return { code: 2, mode: effectiveMode };
+  }
   const hostConfig = loadMitiiHostConfig(options.cwd);
   let loopPolicyThresholds;
   try {
@@ -490,6 +509,9 @@ export async function runAsk(options: {
         : {}),
       ...(loopPolicyThresholds
         ? { loopPolicy: { thresholds: loopPolicyThresholds } }
+        : {}),
+      ...(runTimeout.maxWallTimeMs !== undefined
+        ? { maxWallTimeMs: runTimeout.maxWallTimeMs }
         : {}),
     },
     json: options.json,

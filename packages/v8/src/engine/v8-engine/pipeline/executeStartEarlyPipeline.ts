@@ -15,19 +15,10 @@ import type {
   RepositoryStateReference,
 } from "../../../modules/repository-state";
 import type { UserRequestEnvelope } from "../../../modules/request-intake";
-import { extractPrimaryUserMessage } from "../../../modules/request-understanding/intent/extractPrimaryUserMessage";
-import {
-  applyClarificationFactPatch,
-  type ClarificationFactPatch,
-} from "../../../modules/request-understanding/intent/applyClarificationFactPatch";
+import { extractPrimaryUserMessage } from "../../../modules/request-understanding";
 import type {
   RequestUnderstandingResult,
 } from "../../../modules/request-understanding";
-import type {
-  IntentClassification,
-} from "../../../modules/request-understanding/intent/schema";
-import type { TaskIntent } from "../../../modules/request-understanding/intent/types";
-import { INTENT_CONSTANTS } from "../../../modules/request-understanding/intent/constants";
 import type {
   RepoBuildState,
   VerificationRecord,
@@ -75,6 +66,13 @@ import {
   persistVerificationArtifact,
   tryLoadVerificationRetry,
 } from "./verification";
+import {
+  noteAutoApprovedPlanGate,
+  resolveEffectivePlanApproval,
+} from "./planGatePolicy";
+import { applyClarificationResolutionOverlay } from "./clarificationResolutionOverlay";
+import { applyStartReuse, type StartReuseState } from "./startReuse";
+import { EXECUTION_ROUTE } from "../../../modules/decision-policy";
 
 export type ExecuteStartSharedState = {
   pinnedState: RepositoryStateReference | undefined;
@@ -87,6 +85,8 @@ export type ExecuteStartSharedState = {
   repoBuildStateAfter: RepoBuildState | undefined;
   verificationRecord: VerificationRecord | undefined;
   executionSeed?: import("../modules/execution-seed").ExecutionSeed;
+  /** Understanding used for this run; persisted at plan-approval suspension for resume reuse. */
+  understanding?: RequestUnderstandingResult;
   /** Prose offer for remaining A/B/C campaign phases after this scope. */
   nextPlanPhaseOffer?: string;
 };
@@ -134,6 +134,8 @@ export async function runStartEarlyPipeline(
     error?: { code: string; message: string };
   }) => AgentRunResult;
   cancelledResult: () => Promise<AgentRunResult>;
+  /** Plan-approval resume: skip pin / preflight / understand / decide. */
+  reuse?: StartReuseState;
 }): Promise<StartEarlyPipelineOutcome> {
   const {
     runId,
@@ -248,6 +250,19 @@ export async function runStartEarlyPipeline(
 
   if (signal.aborted) {
     return { kind: "terminal", result: await cancelledResult() };
+  }
+
+  if (params.reuse) {
+    return {
+      kind: "continue",
+      state: applyStartReuse({
+        reuse: params.reuse,
+        shared,
+        reasonCodes,
+        input,
+        envelope,
+      }),
+    };
   }
 
   // --- Pin ---
@@ -414,7 +429,7 @@ export async function runStartEarlyPipeline(
     understanding,
     repositoryState: input.repositoryState,
     approvalMode: input.approvalMode,
-    planApproval: input.planApproval,
+    planApproval: resolveEffectivePlanApproval(input),
     hostCapabilities: {
       webSearch: runtime.deps.tools?.hasSearchPort?.() === true,
       diagnostics: runtime.deps.tools?.hasDiagnosticsPort?.() === true,
@@ -495,20 +510,7 @@ export async function runStartEarlyPipeline(
     });
   }
 
-  if (
-    decision.planningDepth === "visible" &&
-    decision.reasonCodes.includes("plan_gate_suppressed_by_policy")
-  ) {
-    const planGateWarning =
-      "A visible architecture plan was drafted, but plan approval was skipped because host approval policy is set to never. Switch approval mode away from never/pilot if you want to review the plan before mutations.";
-    warnings.push(planGateWarning);
-    runtime.emit(bus, {
-      type: "warning",
-      runId,
-      message: planGateWarning,
-      at: runtime.isoNow(),
-    });
-  }
+  noteAutoApprovedPlanGate(runtime, { runId, bus, warnings, decision });
 
   if (signal.aborted) {
     return { kind: "terminal", result: await cancelledResult() };
@@ -517,7 +519,7 @@ export async function runStartEarlyPipeline(
   // Clarification suspends without model/tools.
   if (
     decision.runDisposition === "clarification_required" ||
-    decision.route === "clarify"
+    decision.route === EXECUTION_ROUTE.CLARIFY
   ) {
     reasonCodes.push("clarification_suspended");
     const rationale =
@@ -610,6 +612,7 @@ export async function runStartEarlyPipeline(
     };
   }
 
+  shared.understanding = understanding;
   return {
     kind: "continue",
     state: {
@@ -618,44 +621,6 @@ export async function runStartEarlyPipeline(
       decision,
       candidateRelativePaths,
       executionSeed,
-    },
-  };
-}
-
-function applyClarificationResolutionOverlay(
-  understanding: RequestUnderstandingResult,
-  resolution: AgentEngineStartInput["clarificationResolution"],
-): RequestUnderstandingResult {
-  if (!resolution) {
-    return understanding;
-  }
-  const taskIntentSet = new Set<string>(INTENT_CONSTANTS.TASK_INTENTS);
-  const patch: ClarificationFactPatch = {
-    optionId: resolution.optionId,
-    label: resolution.label,
-    interactionIntent: resolution.interactionIntent,
-    targetPath: resolution.targetPath,
-    scopeHint: resolution.scopeHint,
-    outcomeNote: resolution.outcomeNote,
-  };
-  if (
-    resolution.primaryTaskIntent &&
-    taskIntentSet.has(resolution.primaryTaskIntent)
-  ) {
-    patch.primaryTaskIntent = resolution.primaryTaskIntent as TaskIntent;
-  }
-  const classification = applyClarificationFactPatch(
-    understanding.intent.classification as IntentClassification,
-    patch,
-  );
-  return {
-    ...understanding,
-    intent: {
-      ...understanding.intent,
-      status: "accepted",
-      recommendsClarification: false,
-      clarification: undefined,
-      classification,
     },
   };
 }

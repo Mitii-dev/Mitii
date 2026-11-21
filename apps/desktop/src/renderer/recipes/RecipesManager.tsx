@@ -9,7 +9,7 @@ import {
   IconPlus,
   IconRefresh,
   IconSearch,
-} from '../ActivityIcons.js';
+} from '../shell/ActivityIcons.js';
 import { fetchRecipes, runRecipe, saveRecipe } from '../api.js';
 
 const CREATE_RECIPE_LOCKED = true;

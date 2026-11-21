@@ -2,7 +2,7 @@ import {
   getApprovalPresetCopy,
   formatApprovalPresetHelp,
   type ApprovalPresetCopy,
-} from '@mitii/v8';
+} from '@mitii/sdk';
 
 /**
  * Map VS Code `mitii.safety.approvalMode` preset → engine approval policy.

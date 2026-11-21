@@ -1,0 +1,119 @@
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+
+export interface NumberFieldProps {
+  id: string;
+  label: string;
+  value: number;
+  min?: number;
+  max?: number;
+  step?: number;
+  disabled?: boolean;
+  /** Round to whole numbers before clamping. Defaults to true. */
+  integer?: boolean;
+  /** Tooltip text. */
+  hint?: string;
+  footer?: ReactNode;
+  onCommit: (value: number) => void;
+  onDraftChange?: (value: number | undefined) => void;
+}
+
+/** Number input that commits on blur/Enter, clamped to min/max. */
+export function NumberField({
+  id,
+  label,
+  value,
+  min,
+  max,
+  step,
+  disabled,
+  integer = true,
+  hint,
+  footer,
+  onCommit,
+  onDraftChange,
+}: NumberFieldProps) {
+  const safeValue = Number.isFinite(value) ? value : (min ?? 0);
+  const [draft, setDraft] = useState(String(safeValue));
+  const draftRef = useRef(draft);
+  const focusedRef = useRef(false);
+  const valueAtFocusRef = useRef(safeValue);
+  draftRef.current = draft;
+
+  useEffect(() => {
+    if (!focusedRef.current) {
+      setDraft(String(safeValue));
+    }
+  }, [safeValue]);
+
+  const parseDraft = (nextDraft: string): number | undefined => {
+    if (!nextDraft.trim()) {
+      return undefined;
+    }
+    const parsed = Number(nextDraft);
+    if (!Number.isFinite(parsed)) {
+      return undefined;
+    }
+    const rounded = integer ? Math.floor(parsed) : parsed;
+    return Math.max(
+      min ?? Number.NEGATIVE_INFINITY,
+      Math.min(max ?? Number.POSITIVE_INFINITY, rounded),
+    );
+  };
+
+  const commit = (nextDraft: string) => {
+    const bounded = parseDraft(nextDraft);
+    if (bounded === undefined) {
+      setDraft(String(safeValue));
+      onDraftChange?.(undefined);
+      return;
+    }
+    setDraft(String(bounded));
+    // Compare against the value when focus began so live parent updates
+    // (e.g. auto-scaled max output mirroring the draft) do not swallow commits.
+    if (bounded !== valueAtFocusRef.current) {
+      onDraftChange?.(bounded);
+      onCommit(bounded);
+      return;
+    }
+    onDraftChange?.(undefined);
+  };
+
+  return (
+    <div className="field">
+      <label htmlFor={id}>{label}</label>
+      <input
+        id={id}
+        type="number"
+        inputMode="numeric"
+        min={min}
+        max={max}
+        step="any"
+        disabled={disabled}
+        title={hint}
+        data-step={step}
+        value={draft}
+        onFocus={() => {
+          focusedRef.current = true;
+          valueAtFocusRef.current = safeValue;
+        }}
+        onChange={(e) => {
+          const nextDraft = e.target.value;
+          draftRef.current = nextDraft;
+          setDraft(nextDraft);
+          onDraftChange?.(parseDraft(nextDraft));
+        }}
+        onBlur={() => {
+          focusedRef.current = false;
+          commit(draftRef.current);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commit(draftRef.current);
+          }
+        }}
+      />
+      {footer}
+    </div>
+  );
+}

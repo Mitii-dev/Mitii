@@ -28,6 +28,15 @@ export type {
   TaskRelevantResidualKind,
 } from "./AssessTaskRelevantEvidence";
 
+export {
+  BEHAVIOR_EVIDENCE_KIND,
+  hasBehaviorDefect,
+  hasPassedBehaviorCheck,
+  isBehaviorDefectCheck,
+  isEmptyTestSuiteSummary,
+  requiresBehaviorEvidence,
+} from "./BehaviorEvidence";
+
 export { diagnosticIdentityKey } from "./diagnosticIdentity";
 
 export { inspectDiffAndStaleRisk } from "./InspectDiffAndStaleRisk";

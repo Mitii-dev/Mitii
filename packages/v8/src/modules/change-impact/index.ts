@@ -100,4 +100,5 @@ export type {
   ChangeImpactWarningCode,
   ChangeImpactErrorCode,
   ChangeImpactFileBucket,
+  RepositoryGraphPort,
 } from "./contracts";

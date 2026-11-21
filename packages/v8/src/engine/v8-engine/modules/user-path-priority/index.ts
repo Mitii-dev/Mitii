@@ -1,3 +1,4 @@
+import { EXECUTION_ROUTE } from "../../../../modules/decision-policy";
 /**
  * User-cited repo paths beat unrelated preflight diagnostics.
  * Preflight is deferred evidence unless the user invite is fix-build language
@@ -28,7 +29,7 @@ export function shouldForcePreflightRepairLock(params: {
   diagnosticPaths?: readonly string[];
 }): boolean {
   if ((params.changedFilesCount ?? 0) > 0) return false;
-  if (params.route !== "execute") return false;
+  if (params.route !== EXECUTION_ROUTE.EXECUTE) return false;
   if (params.maximumWorkspaceEffect !== "write") return false;
   if (params.preflightErrorCount <= 0) return false;
   return preflightErrorsMatchUserRequest({

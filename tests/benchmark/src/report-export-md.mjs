@@ -51,6 +51,11 @@ export function renderExportMarkdown(report, options = {}) {
   lines.push(
     `| **Cases** | ${overall.passed ?? 0}/${overall.total ?? results.length} passed · ${overall.failed ?? failed.length} failed |`,
   );
+  if (overall.outcomes) {
+    lines.push(
+      `| **Outcomes** | passed ${overall.outcomes.passed ?? 0} · content-pass but timed out ${overall.outcomes.timeout_content_pass ?? 0} · timed out ${overall.outcomes.timeout ?? 0} · failed ${overall.outcomes.failed ?? 0} |`,
+    );
+  }
   lines.push(
     `| **Tokens** | in ${fmtTokens(usage.inputTokens)} · out ${fmtTokens(usage.outputTokens)} |`,
   );
@@ -88,7 +93,7 @@ export function renderExportMarkdown(report, options = {}) {
     const u = r.usage ?? {};
     const title = `\`${escapeCell(r.id)}\`<br>${escapeCell(shortDesc(r.prompt, 88))}`;
     lines.push(
-      `| ${r.passed ? 'PASS' : '**FAIL**'} | ${title} | ${escapeCell(r.category || '—')} | ${fmtDuration(r.durationMs)} | ${fmtTokens(u.inputTokens)} | ${fmtTokens(u.outputTokens)} |`,
+      `| ${r.passed ? 'PASS' : r.outcome === 'timeout_content_pass' ? '**TIMEOUT** (content pass)' : '**FAIL**'} | ${title} | ${escapeCell(r.category || '—')} | ${fmtDuration(r.durationMs)} | ${fmtTokens(u.inputTokens)} | ${fmtTokens(u.outputTokens)} |`,
     );
   }
 

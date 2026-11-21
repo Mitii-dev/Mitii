@@ -7,7 +7,7 @@ import {
   type MemoryFact,
   type MemoryFactDraft,
   type MemoryStorePort,
-} from '@mitii/v8';
+} from '@mitii/sdk';
 
 type MemoryScope = MemoryFact['scope'];
 

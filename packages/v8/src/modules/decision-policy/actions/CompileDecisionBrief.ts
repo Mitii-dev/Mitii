@@ -5,6 +5,7 @@ import {
   decisionBriefSchema,
   type DecisionBrief,
 } from "../contracts/output/DecisionBrief";
+import { EXECUTION_ROUTE } from "../constants";
 
 const REASON_PLAYBOOKS: Partial<Record<DecisionReasonCode, string>> = {
   mutation_execute:
@@ -77,9 +78,9 @@ export function compileDecisionBrief(params: {
   }
 
   if (
-    decision.route === "direct_answer" ||
-    decision.route === "repository_answer" ||
-    decision.route === "diagnose" ||
+    decision.route === EXECUTION_ROUTE.DIRECT_ANSWER ||
+    decision.route === EXECUTION_ROUTE.REPOSITORY_ANSWER ||
+    decision.route === EXECUTION_ROUTE.DIAGNOSE ||
     grant.maximumWorkspaceEffect !== "write"
   ) {
     mustNotDo.push(
@@ -89,7 +90,7 @@ export function compileDecisionBrief(params: {
   if (grant.allowedTools.length === 0) {
     mustNotDo.push("Do not invent tool use; answer from provided context only.");
   }
-  if (decision.route === "clarify") {
+  if (decision.route === EXECUTION_ROUTE.CLARIFY) {
     mustDo.push("Ask a concrete clarifying question; wait for the user choice.");
   }
   if (targets.length > 0) {
@@ -127,13 +128,13 @@ export function compileDecisionBrief(params: {
   }
 
   const mission =
-    decision.route === "execute"
+    decision.route === EXECUTION_ROUTE.EXECUTE
       ? `Complete the ${primary} request (${interaction}) within the granted write scopes.`
-      : decision.route === "diagnose"
+      : decision.route === EXECUTION_ROUTE.DIAGNOSE
         ? `Diagnose the ${primary} request without mutating the workspace.`
-        : decision.route === "plan"
+        : decision.route === EXECUTION_ROUTE.PLAN
           ? `Produce a concrete plan for the ${primary} request without executing mutations.`
-          : decision.route === "clarify"
+          : decision.route === EXECUTION_ROUTE.CLARIFY
             ? `Clarify the material ambiguity before continuing.`
             : `Answer the ${primary} request on route ${decision.route}.`;
 

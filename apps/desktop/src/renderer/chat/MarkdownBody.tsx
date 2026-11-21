@@ -4,10 +4,11 @@ import remarkGfm from 'remark-gfm';
 
 import {
   elementsToSvg,
+  inlineCodeAsFileRef,
   isExcalidrawSource,
   parseExcalidrawDocument,
-} from '../../shared/excalidrawSvg.js';
-import { inlineCodeAsFileRef, parseFileRef } from './fileLinks.js';
+  parseFileRef,
+} from '@mitii/ui-core';
 
 interface MarkdownBodyProps {
   text: string;

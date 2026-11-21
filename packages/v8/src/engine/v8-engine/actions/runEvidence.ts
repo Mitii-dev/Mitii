@@ -7,6 +7,7 @@ import type { VerificationGateDecision } from "./decideVerificationGate";
 import {
   createDiscoveryObservationCollector,
 } from "../internal/discovery/index";
+import { clampRunEvidence, clipEvidenceText, RUN_EVIDENCE_LIMITS } from "./clampRunEvidence";
 import { uniqueStrings } from "./planningContext";
 
 export function createInitialRunEvidence(objective: string): RunEvidence {
@@ -64,7 +65,7 @@ export function finalizeRunEvidence(params: {
       issueIds: [],
     });
   }
-  return evidence;
+  return clampRunEvidence(evidence);
 }
 
 export function recordDiscoveryEvidence(
@@ -188,7 +189,10 @@ export function recordToolEvidence(
   evidence.ledger.push({
     id: `tool-${evidence.ledger.length + 1}`,
     kind,
-    summary: params.summary || params.toolName,
+    summary: clipEvidenceText(
+      params.summary || params.toolName,
+      RUN_EVIDENCE_LIMITS.ledgerSummary,
+    ),
     status: params.status,
     toolName: params.toolName,
     paths,
@@ -236,10 +240,10 @@ export function recordBuildStateDeltaEvidence(
     ),
     remainingIssueCount: params.after.summary.errorCount,
     checks: params.after.checks.slice(0, 32).map((check) => ({
-      checkId: check.checkId,
-      kind: check.kind,
-      outcome: check.outcome,
-      summary: check.summary,
+      checkId: clipEvidenceText(check.checkId, RUN_EVIDENCE_LIMITS.checkId),
+      kind: clipEvidenceText(check.kind, RUN_EVIDENCE_LIMITS.checkKind),
+      outcome: clipEvidenceText(check.outcome, RUN_EVIDENCE_LIMITS.checkOutcome),
+      summary: clipEvidenceText(check.summary, RUN_EVIDENCE_LIMITS.checkSummary),
     })),
     stopReason:
       params.after.summary.errorCount === 0
@@ -283,10 +287,10 @@ export function recordVerificationEvidence(
       (diag) => diag.severity === "error" || diag.severity === "warning",
     ).length,
     checks: params.verification.checks.slice(0, 32).map((check) => ({
-      checkId: check.checkId,
-      kind: check.kind,
-      outcome: check.outcome,
-      summary: check.summary,
+      checkId: clipEvidenceText(check.checkId, RUN_EVIDENCE_LIMITS.checkId),
+      kind: clipEvidenceText(check.kind, RUN_EVIDENCE_LIMITS.checkKind),
+      outcome: clipEvidenceText(check.outcome, RUN_EVIDENCE_LIMITS.checkOutcome),
+      summary: clipEvidenceText(check.summary, RUN_EVIDENCE_LIMITS.checkSummary),
     })),
     stopReason:
       params.verification.status === "verified_success"
@@ -362,7 +366,12 @@ export function diagnosticToIssue(
     ...(diagnostic.code ? { code: diagnostic.code } : {}),
     status: params.status,
     ...(diagnostic.checkId
-      ? { verificationEvidence: `check:${diagnostic.checkId}` }
+      ? {
+          verificationEvidence: clipEvidenceText(
+            `check:${diagnostic.checkId}`,
+            RUN_EVIDENCE_LIMITS.verificationEvidence,
+          ),
+        }
       : {}),
   };
 }

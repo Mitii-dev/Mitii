@@ -1,14 +1,14 @@
 import type { RequestUnderstandingResult } from "../../../modules/request-understanding";
-import type { AmbiguousSlotKind } from "../../../modules/request-understanding/intent/schema";
+import type { AmbiguousSlotKind } from "../../../modules/request-understanding";
 import {
   parseClarificationOptionId,
   type ClarificationFactPatch,
-} from "../../../modules/request-understanding/intent/applyClarificationFactPatch";
+} from "../../../modules/request-understanding";
 import {
   extractPrimaryUserMessage,
   MITII_HOST_CONTEXT_MARKER,
   MITII_USER_MESSAGE_MARKER,
-} from "../../../modules/request-understanding/intent/extractPrimaryUserMessage";
+} from "../../../modules/request-understanding";
 
 export interface ClarificationOptionPayload {
   id: string;

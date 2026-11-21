@@ -6,6 +6,7 @@ import type {
   PlanGate,
   PlanningDepth,
 } from "../contracts";
+import { EXECUTION_ROUTE } from "../constants";
 
 export interface PlanGateResolution {
   planGate: PlanGate;
@@ -26,7 +27,7 @@ export function resolvePlanGate(params: {
   const reasonCodes: DecisionReasonCode[] = [];
 
   // Plan-only / ask never mutate, so no execute gate.
-  if (mode !== "agent" || route !== "execute") {
+  if (mode !== "agent" || route !== EXECUTION_ROUTE.EXECUTE) {
     reasonCodes.push("plan_gate_none");
     return { planGate: "none", reasonCodes };
   }

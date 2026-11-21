@@ -1,51 +1,35 @@
 import {
-  InMemoryRepositoryStateStore,
-  NodeNetworkAdapter,
-  NodeGitAdapter,
-  NodeProcessAdapter,
-  NodeWorkspaceFileSystemAdapter,
-  RepositoryStatePipeline,
-  DEFAULT_TOOL_DEFINITIONS,
-  ToolRuntimePipeline,
-  VerificationPipeline,
-  WorkspaceFileSystemManifestReader,
-  InMemoryToolOutputSpillAdapter,
-  createMitiiClient,
+  MemoryPipeline,
   type CreateMitiiClientOptions,
+  type LlmPort,
   type MitiiClient,
+  type ModelCapabilities,
+  type ModelEvent,
+  type ModelRequest,
 } from '@mitii/sdk';
-import { MemoryPipeline } from '@mitii/v8';
 import {
-  createFileSystemSkillsCatalog,
-  createHostLanguageServices,
+  bindHostMcp,
+  createHostClient,
   createHostLlmPorts,
-  createHostNetworkPort,
-  createHostRepositoryGraphPort,
-  createOptionalSearchPort,
-  createSandboxedProcessPort,
-  createWorkspaceCheckpointStore,
-  createWorkspaceVerificationStore,
-  createWorkspaceMemoryStore,
-  createWorkspaceKnowledgeGraph,
-  createOptionalVerificationSyntaxPort,
   createHeuristicAdversary,
-  detectSandboxBackend,
   getProviderPreset,
   inferHostProviderType,
   isHostProviderType,
+  readSandboxOptionsFromEnv,
   resolveHostContextWindowTokens,
-  resolveMemoryEmbeddingPort,
   resolveProviderApiKey,
-  resolveSandboxPolicy,
   type MemoryCaptureContext,
 } from '@mitii/host';
 import {
   getSharedMcpManager,
   readMcpSettingsFromDisk,
 } from '@mitii/mcp';
-import type { LlmPort, ModelCapabilities, ModelEvent, ModelRequest } from '@mitii/v8';
 
-import { loadMitiiHostConfig, type MitiiHostConfig } from './config.js';
+import {
+  loadMitiiHostConfig,
+  resolveCliWorkspaceId,
+  type MitiiHostConfig,
+} from './config.js';
 import { createHostRepositoryContext } from './repositoryContextHost.js';
 import { resolveCliSemanticIndexSettings } from './semanticIndex.js';
 
@@ -106,7 +90,7 @@ export function resolveCliPorts(
   const env = options.env ?? process.env;
   const config =
     options.config ?? loadMitiiHostConfig(options.cwd ?? process.cwd());
-  const workspaceId = config.workspaceId ?? 'cli_workspace';
+  const workspaceId = resolveCliWorkspaceId(config);
   const defaultMode = config.defaultMode ?? 'ask';
   const forceEcho =
     options.forceEcho === true ||
@@ -168,16 +152,22 @@ export function resolveCliPorts(
   };
 }
 
+/**
+ * Client + resolved ports + memory capture. REPL sessions build this once and
+ * reuse it so the in-memory repository state (and MCP sync) survive across turns.
+ */
+export interface CliRuntime {
+  client: MitiiClient;
+  ports: ResolvedCliPorts;
+  memoryCapture?: MemoryCaptureContext;
+}
+
 export async function createCliClient(options: {
   cwd: string;
   forceEcho?: boolean;
   env?: NodeJS.ProcessEnv;
   clientOverrides?: Partial<CreateMitiiClientOptions>;
-}): Promise<{
-  client: MitiiClient;
-  ports: ResolvedCliPorts;
-  memoryCapture?: MemoryCaptureContext;
-}> {
+}): Promise<CliRuntime> {
   const env = options.env ?? process.env;
   const config = loadMitiiHostConfig(options.cwd);
   const ports = resolveCliPorts({
@@ -186,125 +176,47 @@ export async function createCliClient(options: {
     cwd: options.cwd,
     config,
   });
-  const fileSystem = new NodeWorkspaceFileSystemAdapter();
   const searxngBaseUrl = config.searxngBaseUrl?.trim() || undefined;
-  const search = createOptionalSearchPort({
-    env,
-    ...(searxngBaseUrl ? { config: { searxngBaseUrl } } : {}),
-  });
-  const git = new NodeGitAdapter();
-  const knowledgeGraph = createWorkspaceKnowledgeGraph(options.cwd);
-  const repoGraphs = createHostRepositoryGraphPort({
-    workspaceRoot: options.cwd,
-  });
-  const sandboxEnabled = env.MITII_SANDBOX === '1' || env.MITII_SANDBOX === 'true';
-  const sandboxNetwork =
-    env.MITII_SANDBOX_NETWORK === 'allow' ? 'allow' : 'deny';
-  const sandboxPreferRaw = env.MITII_SANDBOX_BACKEND;
-  const sandboxPrefer =
-    sandboxPreferRaw === 'docker' ||
-    sandboxPreferRaw === 'podman' ||
-    sandboxPreferRaw === 'seatbelt' ||
-    sandboxPreferRaw === 'bubblewrap'
-      ? sandboxPreferRaw
-      : 'auto';
-
-  const mcpManager = getSharedMcpManager({ clientInfoName: 'mitii-cli' });
-  const mcp = readMcpSettingsFromDisk(options.cwd);
-  const mcpSnapshot = await mcpManager.sync(mcp, options.cwd);
-
-  const processPort = createSandboxedProcessPort(
-    new NodeProcessAdapter(),
-    resolveSandboxPolicy({
-      enabled: sandboxEnabled,
-      network: sandboxNetwork,
-      workspaceRoot: options.cwd,
-    }),
-    detectSandboxBackend({ prefer: sandboxPrefer }),
-  );
+  const semanticIndex = resolveCliSemanticIndexSettings({ env, config });
   const adversary = createHeuristicAdversary({
     enabled: env.MITII_ADVERSARY === '1' || env.MITII_ADVERSARY === 'true',
   });
   const adversaryFailMode =
     env.MITII_ADVERSARY_FAIL === 'open' ? ('fail_open' as const) : ('fail_closed' as const);
-  const language = createHostLanguageServices({ workspaceRoot: options.cwd });
-  const tools = new ToolRuntimePipeline(
-    {
-      fileSystem,
-      process: processPort,
-      network: createHostNetworkPort({
-        inner: new NodeNetworkAdapter(),
-        env,
-      }),
-      git,
-      knowledgeGraph,
-      codeNavigation: language.codeNavigation,
-      ...(language.diagnostics ? { diagnostics: language.diagnostics } : {}),
-      repoGraphs,
-      outputSpill: new InMemoryToolOutputSpillAdapter(),
-      ...(search ? { search } : {}),
-    },
-    { registry: mcpManager.createRegistry() },
-  );
-  const verification = new VerificationPipeline({
-    tools,
-    manifests: new WorkspaceFileSystemManifestReader({
-      fileSystem,
-      workspaceRoot: options.cwd,
-    }),
-    records: createWorkspaceVerificationStore(options.cwd),
-    ...(await createOptionalVerificationSyntaxPort().then((syntax) =>
-      syntax ? { syntax } : {},
-    )),
-  });
-  const repositoryState = new RepositoryStatePipeline({
-    store: new InMemoryRepositoryStateStore(),
-  });
-  const workspaceSkillsEnabled = env.MITII_DISABLE_WORKSPACE_SKILLS !== '1';
-  const memoryDisabled = env.MITII_DISABLE_MEMORY === '1';
-  const semanticIndex = resolveCliSemanticIndexSettings({ env, config });
-  const memoryEmbedding = memoryDisabled
-    ? undefined
-    : resolveMemoryEmbeddingPort(semanticIndex);
-  const memoryStore = memoryDisabled
-    ? undefined
-    : createWorkspaceMemoryStore(options.cwd, ports.workspaceId);
-  const repositoryContext = createHostRepositoryContext({
-    repositoryState,
+
+  const composition = await createHostClient({
     workspaceRoot: options.cwd,
-    semanticIndex,
-    git,
-  });
-  const client = createMitiiClient({
-    understandingLlm: ports.understandingLlm,
-    runLlm: ports.runLlm,
-    workspaceRoot: options.cwd,
-    defaultMode: ports.defaultMode === 'agent' ? 'agent' : ports.defaultMode,
-    defaultSessionId: 'cli_session',
     workspaceId: ports.workspaceId,
-    repositoryState,
-    repositoryContext,
-    enableInMemoryCheckpoints: false,
-    checkpointStore: createWorkspaceCheckpointStore(options.cwd),
-    tools,
-    repoGraphs,
-    verification,
-    toolDefinitions: [
-      ...DEFAULT_TOOL_DEFINITIONS,
-      ...mcpSnapshot.toolDefinitions,
-    ],
+    llm: {
+      understandingLlm: ports.understandingLlm,
+      runLlm: ports.runLlm,
+    },
+    env,
+    defaultMode: ports.defaultMode,
+    defaultSessionId: 'cli_session',
     taskListAutoAdvance: env.MITII_TASK_LIST_AUTO_ADVANCE !== '0',
-    skillsCatalog: createFileSystemSkillsCatalog({
-      workspaceRoot: workspaceSkillsEnabled ? options.cwd : undefined,
-      contentMode: 'metadata',
-    }),
-    memoryStore,
-    memoryEmbedding,
-    ...(adversary
-      ? { adversary, adversaryFailMode }
-      : {}),
-    ...options.clientOverrides,
+    sandbox: readSandboxOptionsFromEnv(env),
+    ...(searxngBaseUrl ? { search: { searxngBaseUrl } } : {}),
+    mcp: bindHostMcp(
+      getSharedMcpManager({ clientInfoName: 'mitii-cli' }),
+      readMcpSettingsFromDisk(options.cwd),
+      options.cwd,
+    ),
+    skills: { workspaceSkills: env.MITII_DISABLE_WORKSPACE_SKILLS !== '1' },
+    ...(env.MITII_DISABLE_MEMORY === '1' ? {} : { memory: { semanticIndex } }),
+    repositoryContext: ({ repositoryState, workspaceRoot, git }) =>
+      createHostRepositoryContext({
+        repositoryState,
+        workspaceRoot,
+        semanticIndex,
+        git,
+      }),
+    clientOptions: {
+      ...(adversary ? { adversary, adversaryFailMode } : {}),
+      ...options.clientOverrides,
+    },
   });
+  const { client, memoryStore, memoryEmbedding } = composition;
   return {
     client,
     ports,

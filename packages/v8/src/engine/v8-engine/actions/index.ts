@@ -159,14 +159,14 @@ export {
   isWorkspaceRootCheck,
 } from "./decideVerificationGate";
 export type { VerificationGateDecision } from "./decideVerificationGate";
-export { mapContextToPromptSlice } from "./mapContextToPromptSlice";
-export { mapUnderstandingToSkillEvidence } from "./mapUnderstandingToSkillEvidence";
+export { mapContextToPromptSlice } from "../../../modules/prompt-construction";
+export { mapUnderstandingToSkillEvidence } from "../../../modules/skills";
 export { extractMemoryFileTargets } from "./extractMemoryFileTargets";
-export { deriveSkillRepoEvidence } from "./deriveSkillRepoEvidence";
-export type { SkillRepoEvidence } from "./deriveSkillRepoEvidence";
-export { mapUnderstandingToPlanningEvidence } from "./mapUnderstandingToPlanningEvidence";
-export { collectPlanningImpactReports } from "./collectPlanningImpactReports";
-export { mergePromptInstructions } from "./mergePromptInstructions";
+export { deriveSkillRepoEvidence } from "../../../modules/skills";
+export type { SkillRepoEvidence } from "../../../modules/skills";
+export { mapUnderstandingToPlanningEvidence } from "../../../modules/planning";
+export { collectPlanningImpactReports } from "../../../modules/planning";
+export { mergePromptInstructions } from "../../../modules/prompt-construction";
 export {
   filterToolDefinitions,
   toToolIndexDefinition,
@@ -236,7 +236,7 @@ export {
 } from "./isIncompleteAssistantTurn";
 
 export { recoverLeakedToolCallsFromMarkup } from "./recoverLeakedToolCalls";
-export { formatSkillPromptContent } from "./formatSkillPromptContent";
+export { formatSkillPromptContent } from "../../../modules/skills";
 export { buildSkillsReadyEvent } from "./buildSkillsReadyEvent";
 export {
   resolvePreferredSkillIdsForRun,
@@ -254,7 +254,7 @@ export type { ContextFocus } from "./contextFocus";
 export {
   applyPlanModeDiscoveryContract,
   isAgentWidePlanningScope,
-} from "./planDiscoveryContract";
+} from "../modules/plan-discovery";
 export {
   clarifyAfterInsufficientPlanDiscovery,
   isPlanDiscoveryEvidenceSufficient,
@@ -263,12 +263,22 @@ export {
   shouldPreferDiscoverySymbolEvidence,
   shouldRequireDiscoverySymbolEvidence,
   usesThoroughPlanDiscoveryEvidence,
-} from "./planDiscoveryQuality";
-export type { PlanningDepthForQuality } from "./planDiscoveryQuality";
+} from "../modules/plan-discovery";
+export type { PlanningDepthForQuality } from "../modules/plan-discovery";
+export {
+  DISCOVERY_SEED_DROP_REASONS,
+  isProsePathToken,
+  resolveDiscoverySeedPaths,
+} from "./discoverySeedPaths";
+export type {
+  DiscoverySeedDropReason,
+  DiscoverySeedPathResolution,
+} from "./discoverySeedPaths";
 export {
   buildPlanningQuery,
   buildScopedRepoMapForPlanning,
   collectPreferredPlanningPaths,
+  collectTrustedSeedPaths,
   extractPriorPathHints,
   inferDiscoveryTargetKind,
   inferLanguageFromPaths,

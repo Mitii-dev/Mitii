@@ -1,4 +1,4 @@
-import { PROMPT_CONSTRUCTION_THRESHOLDS } from "../../../modules/prompt-construction/policy";
+import { PROMPT_CONSTRUCTION_THRESHOLDS } from "../../../modules/prompt-construction";
 import { resolveToolLoopMaxOutputTokens } from "../../../modules/window-budget";
 
 /** Never emit a 1-token recovery turn when leftover context still allows a tool call. */

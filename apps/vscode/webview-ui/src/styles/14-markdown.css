@@ -1,0 +1,446 @@
+.markdown-message {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  line-height: 1.64;
+  color: var(--mitii-chat-fg);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0.005em;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.markdown-message p {
+  margin: 0;
+  min-width: 0;
+  max-width: 100%;
+  color: var(--mitii-chat-fg);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.markdown-message h1,
+.markdown-message h2,
+.markdown-message h3,
+.markdown-message h4 {
+  margin: 8px 0 0;
+  max-width: 100%;
+  font-size: 13.5px;
+  line-height: 1.35;
+  font-weight: 700;
+  letter-spacing: 0.005em;
+  color: color-mix(in srgb, var(--turn-accent, var(--mitii-accent)) 30%, var(--mitii-chat-fg));
+  overflow-wrap: anywhere;
+}
+
+.markdown-message h1 {
+  padding-bottom: 6px;
+  border-bottom: 1px solid color-mix(in srgb, var(--turn-accent, var(--mitii-accent)) 20%, var(--mitii-border-soft));
+  font-size: 15px;
+}
+
+.markdown-message ul,
+.markdown-message ol {
+  margin: 0;
+  min-width: 0;
+  max-width: 100%;
+  padding-left: 1.35em;
+  color: var(--mitii-chat-fg);
+}
+
+.markdown-message li {
+  min-width: 0;
+  padding-left: 2px;
+  overflow-wrap: anywhere;
+}
+
+.markdown-message li::marker {
+  color: color-mix(in srgb, var(--turn-accent, var(--mitii-accent)) 72%, var(--mitii-muted));
+}
+
+.markdown-message li + li {
+  margin-top: 5px;
+}
+
+.markdown-message blockquote {
+  margin: 0;
+  padding: 8px 10px;
+  border-left: 2px solid color-mix(in srgb, var(--turn-accent, var(--mitii-accent)) 64%, transparent);
+  border-radius: 0 7px 7px 0;
+  background: color-mix(in srgb, var(--turn-accent, var(--mitii-accent)) 5%, transparent);
+  color: color-mix(in srgb, var(--mitii-chat-fg) 78%, var(--mitii-muted));
+  overflow-wrap: anywhere;
+}
+
+.markdown-message strong {
+  color: color-mix(in srgb, var(--turn-accent, var(--mitii-accent)) 18%, var(--mitii-chat-fg));
+  font-weight: 700;
+}
+
+.markdown-message a {
+  color: var(--vscode-textLink-foreground, var(--mitii-accent));
+  text-decoration: none;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.markdown-message a:hover {
+  color: var(--vscode-textLink-activeForeground, var(--mitii-accent));
+  text-decoration: underline;
+}
+
+.markdown-message hr {
+  width: 100%;
+  height: 1px;
+  margin: 4px 0;
+  border: 0;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--turn-accent, var(--mitii-accent)) 42%, var(--mitii-border)),
+    transparent
+  );
+}
+
+.markdown-message img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--mitii-border-soft);
+  border-radius: 9px;
+}
+
+.md-inline-code {
+  max-width: 100%;
+  font-family: var(--mitii-font-file);
+  font-size: 11.5px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--mitii-panel-raised) 82%, #000 18%);
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 78%, transparent);
+  color: var(--mitii-chat-fg);
+  white-space: break-spaces;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.md-file-link {
+  border: 0;
+  background: transparent;
+  color: var(--mitii-accent);
+  font-family: var(--mitii-font-file);
+  font-size: inherit;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+button.md-file-link.md-inline-code {
+  display: inline;
+  align-items: baseline;
+  gap: 5px;
+  max-width: 100%;
+  vertical-align: baseline;
+  font-family: var(--mitii-font-file);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-decoration: none;
+  border-radius: 5px;
+  padding: 2px 7px 2px 6px;
+  color: var(--vscode-terminal-foreground, var(--mitii-chat-fg));
+  background: color-mix(in srgb, var(--mitii-panel-raised) 78%, #000 22%);
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 82%, transparent);
+  box-shadow: 0 1px 0 color-mix(in srgb, #fff 4%, transparent) inset;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+button.md-file-link.md-inline-code::before {
+  content: '$';
+  flex: 0 0 auto;
+  color: var(--vscode-terminal-ansiGreen, var(--mitii-ok));
+  font-weight: 700;
+}
+
+button.md-file-link.md-inline-code:hover {
+  background: color-mix(in srgb, var(--mitii-panel-raised) 68%, #000 32%);
+  border-color: color-mix(in srgb, var(--mitii-accent) 34%, var(--mitii-border));
+  color: var(--mitii-chat-fg);
+}
+
+.md-code-card,
+.md-diagram-card {
+  position: relative;
+  margin: 0;
+  min-width: 0;
+  max-width: 100%;
+  border-radius: 9px;
+  border: 1px solid color-mix(in srgb, var(--turn-accent, var(--mitii-accent)) 18%, var(--mitii-border-soft));
+  background: var(--vscode-editor-background, var(--mitii-panel));
+  overflow: hidden;
+}
+
+.md-code-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--mitii-border-soft);
+  background: color-mix(in srgb, var(--mitii-surface) 70%, var(--mitii-panel));
+}
+
+.md-code-window {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.md-code-window span {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 70%, transparent);
+  background: color-mix(in srgb, var(--mitii-muted) 28%, transparent);
+}
+
+.md-code-window span:nth-child(1) {
+  background: color-mix(in srgb, var(--mitii-danger) 50%, transparent);
+}
+
+.md-code-window span:nth-child(2) {
+  background: color-mix(in srgb, var(--mitii-warn) 58%, transparent);
+}
+
+.md-code-window span:nth-child(3) {
+  background: color-mix(in srgb, var(--mitii-ok) 48%, transparent);
+}
+
+.md-code-lang,
+.md-diagram-title {
+  min-width: 0;
+  color: var(--mitii-muted);
+  font-family: var(--mitii-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.md-diagram-title {
+  color: color-mix(in srgb, var(--mitii-text) 88%, var(--mitii-muted));
+}
+
+.md-copy-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  min-width: 0;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--mitii-border-soft);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--mitii-muted);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.md-copy-button svg {
+  width: 13px;
+  height: 13px;
+}
+
+.md-copy-button:hover {
+  border-color: color-mix(in srgb, var(--mitii-accent) 46%, var(--mitii-border));
+  color: var(--mitii-text);
+}
+
+.md-code-block {
+  margin: 0;
+  padding: 8px 0;
+  max-height: min(52vh, 520px);
+  overflow: auto;
+  font-family: var(--mitii-font-mono);
+  font-size: 11px;
+  line-height: 1.55;
+  scrollbar-width: thin;
+}
+
+.md-code-block code {
+  display: table;
+  min-width: 100%;
+  white-space: pre;
+}
+
+.md-code-line {
+  display: table-row;
+}
+
+.md-code-line__number,
+.md-code-line__text {
+  display: table-cell;
+}
+
+.md-code-line__number {
+  width: 1%;
+  min-width: 36px;
+  padding: 0 10px;
+  border-right: 1px solid color-mix(in srgb, var(--mitii-border) 62%, transparent);
+  color: color-mix(in srgb, var(--mitii-muted) 70%, transparent);
+  text-align: right;
+  user-select: none;
+}
+
+.md-code-line__text {
+  padding: 0 12px;
+  color: color-mix(in srgb, var(--mitii-text) 94%, var(--mitii-muted));
+}
+
+.md-code-line--add .md-code-line__text {
+  background: color-mix(in srgb, var(--mitii-ok) 12%, transparent);
+  color: color-mix(in srgb, var(--mitii-ok) 78%, var(--mitii-text));
+}
+
+.md-code-line--del .md-code-line__text {
+  background: color-mix(in srgb, var(--mitii-danger) 12%, transparent);
+  color: color-mix(in srgb, var(--mitii-danger) 78%, var(--mitii-text));
+}
+
+.md-diagram-toolbar {
+  background: color-mix(in srgb, var(--mitii-surface) 74%, var(--mitii-panel));
+}
+
+.md-diagram-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.md-diagram-error {
+  margin: 0;
+  padding: 10px 12px;
+  color: color-mix(in srgb, var(--mitii-danger) 82%, var(--mitii-text));
+  font-size: 12px;
+}
+
+.md-diagram-card--error .md-diagram-error {
+  border-bottom: 1px solid var(--mitii-border-soft);
+}
+
+.md-diagram-stage {
+  overflow: auto;
+  padding: 12px;
+  scrollbar-width: thin;
+}
+
+.md-diagram {
+  display: block;
+  min-width: 520px;
+  max-width: 100%;
+  height: auto;
+}
+
+.md-diagram-edge {
+  fill: none;
+  stroke: color-mix(in srgb, var(--mitii-muted) 64%, var(--mitii-border));
+  stroke-width: 1.4;
+}
+
+.md-diagram-arrow {
+  fill: color-mix(in srgb, var(--mitii-muted) 72%, var(--mitii-border));
+}
+
+.md-diagram-edge-label {
+  fill: var(--mitii-muted);
+  font-family: var(--mitii-font-mono);
+  font-size: 10px;
+  paint-order: stroke;
+  stroke: var(--vscode-editor-background, var(--mitii-panel));
+  stroke-width: 4px;
+  text-anchor: middle;
+}
+
+.md-diagram-node {
+  fill: color-mix(in srgb, var(--vscode-editorWidget-background, var(--mitii-panel)) 86%, var(--mitii-surface));
+  stroke: color-mix(in srgb, var(--mitii-accent) 34%, var(--mitii-border));
+  stroke-width: 1;
+}
+
+.md-diagram-node-label {
+  fill: var(--mitii-text);
+  font-family: var(--mitii-font-ui);
+  font-size: 11px;
+  font-weight: 650;
+  text-anchor: middle;
+}
+
+.md-pending {
+  margin: 0;
+  color: var(--mitii-muted);
+}
+
+.bubble.assistant {
+  white-space: normal;
+}
+
+.bubble.assistant .markdown-message {
+  white-space: normal;
+}
+
+.pending-plan-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 9px;
+  border: 1px solid color-mix(in srgb, var(--mitii-accent) 26%, var(--mitii-border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mitii-accent) 7%, var(--mitii-panel));
+  flex-shrink: 0;
+  box-shadow: 0 1px 0 color-mix(in srgb, #fff 4%, transparent) inset;
+}
+
+.pending-plan-banner__text {
+  font-size: 12px;
+  color: var(--mitii-text);
+}
+
+.pending-plan-banner__actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.database-mode-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 9px;
+  border: 1px solid color-mix(in srgb, #06b6d4 40%, var(--mitii-border));
+  border-radius: 8px;
+  background: color-mix(in srgb, #06b6d4 12%, var(--mitii-panel));
+  flex-shrink: 0;
+  box-shadow: 0 1px 0 color-mix(in srgb, #fff 4%, transparent) inset;
+}
+
+.database-mode-banner__text {
+  font-size: 12px;
+  color: var(--mitii-text);
+  line-height: 1.35;
+}

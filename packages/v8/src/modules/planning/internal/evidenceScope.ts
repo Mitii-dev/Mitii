@@ -2,6 +2,7 @@ import type {
   PlanningBuildEvidence,
   PlanningTaskEvidence,
 } from "../contracts";
+import { normalizeRepoPathText } from "../../repository-state";
 
 export function isDiagnosticInAskScope(
   diagnostic: { path: string },
@@ -93,11 +94,5 @@ function extractMentionedPaths(query: string): string[] {
 }
 
 function normalizePath(value: string): string {
-  return value
-    .trim()
-    .replace(/^@+/, "")
-    .replace(/\\/g, "/")
-    .replace(/\/+/g, "/")
-    .replace(/^\.\//, "")
-    .replace(/\/+$/, "");
+  return normalizeRepoPathText(value, { stripAtPrefix: true });
 }

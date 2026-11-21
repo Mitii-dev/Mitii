@@ -290,6 +290,7 @@ export function createAgentEngineRuntime(
       policy: input.windowBudget?.policy,
       effort: input.windowBudget?.effort,
       mode: input.request.mode,
+      modelId: deps.llm.capabilities.modelId || undefined,
     });
   };
 

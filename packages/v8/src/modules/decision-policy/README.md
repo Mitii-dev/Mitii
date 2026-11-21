@@ -59,6 +59,9 @@ decision-policy/
 - Write grants may set `mutationPathScopes` from **explicit** folder/file targets only. Implicit UI folder pins are focus hints (look-here), not a hard mutation fence — workspace remains the default write ceiling. Discovery tools keep `pathScopes: ["."]` for package / multi-file work so `glob_files` / `search_files` can still see the repo; `apply_patch` / delete / move enforce `mutationPathScopes` when set.
 - `narrow()` also narrows `mutationPathScopes` when they were set (skipped for `approvalMode: never` and visible plans).
 - Verification requirements specify required evidence and whether unavailable evidence is acceptable.
+- **Behavioral asks:** `detectBehavioralAskSignals` / `looksLikeBehavioralAsk` flag HTTP/routes, script runs, and test asks (docs-only asks excluded). `resolveVerificationRequirement` then adds `tests` and `behavior` to `minimumEvidence` and emits `verification_behavior_evidence_preferred`, so a passing typecheck alone cannot accept an unwired route.
+- **Fast path:** `resolveFastPath` (agent + execute, 1–3 explicit file paths, short, low/medium risk) sets `planningDepth: "none"` with `fast_path_explicit_paths`. Declines carry `FAST_PATH_DECLINE_REASONS`.
+- **Explicit create asks:** `isExplicitCreateAsk` (leading create verb + mutation request, not plan/question vocabulary) routes agent-mode asks to `execute` with `agent_create_ask_execute`, never plan-only. Plan-only wording and read-only asks still win.
 - Host capability flags currently include web search availability.
 
 ## Ownership Boundaries
@@ -140,3 +143,13 @@ Decision Policy execution decision returns a result like this:
   "reasonCodes": ["execute_requested", "localized_change", "verification_required"]
 }
 ```
+
+## Single-owner constants
+
+- `toolIds.ts` owns tool-id groups and `TOOL_EFFECTS`; the tool runtime re-exports
+  them so this module never imports `engine/tool-runtime`.
+- `EXECUTION_ROUTE` is the only place route string literals are defined; compare
+  routes through it instead of inline strings.
+- `ResolveRoute` stages live in `RouteIntents`, `RouteMessageSignals`,
+  `RouteBallotAuthority` and `RouteClarification`; numeric thresholds are in
+  `policy.ts` (`DECISION_POLICY_THRESHOLDS`).

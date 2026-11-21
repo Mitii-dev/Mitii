@@ -42,6 +42,7 @@ export {
 export type { PlanStrategyResolution } from "./pipeline/PlanningPipeline";
 
 export {
+  resolvePlanStrategy,
   resolvePlanStrategyRules,
   isRepairIntent,
   isArchitecturePlanningAsk,
@@ -54,7 +55,7 @@ export {
   isConcretePlanVerification,
 } from "./internal/concretePlanTargets";
 
-export { thinDiscoveryBriefForClarify } from "./internal/thinDiscoveryBriefForClarify";
+export { thinDiscoveryBriefForClarify } from "./thinDiscoveryBriefForClarify";
 export {
   hasResolvedPlanScopeChoice,
   resolvePlanScopeId,

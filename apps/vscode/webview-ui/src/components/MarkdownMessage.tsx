@@ -4,12 +4,13 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 import { IconCopy } from './Icons';
-import { inlineCodeAsFileRef, parseFileRef } from '../fileLinks';
 import {
   elementsToSvg,
+  inlineCodeAsFileRef,
   isExcalidrawSource,
   parseExcalidrawDocument,
-} from '../excalidrawSvg';
+  parseFileRef,
+} from '@mitii/ui-core';
 
 interface MarkdownMessageProps {
   content: string;

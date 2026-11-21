@@ -7,7 +7,7 @@ import {
 } from "../../../modules/planning";
 import type { PromptRepositoryContext } from "../../../modules/prompt-construction";
 import type { UserRequestEnvelope } from "../../../modules/request-intake";
-import { extractPrimaryUserMessage } from "../../../modules/request-understanding/intent/extractPrimaryUserMessage";
+import { extractPrimaryUserMessage } from "../../../modules/request-understanding";
 import type { RequestUnderstandingResult } from "../../../modules/request-understanding";
 import type { WindowPolicy } from "../../../modules/window-budget";
 

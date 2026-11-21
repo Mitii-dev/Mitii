@@ -115,6 +115,12 @@ export const mitiiStartInputSchema = z
     approvedPlanStrategy: planStrategyDecisionSchema.optional(),
     taskList: taskListSchema.optional(),
     budget: agentRunBudgetSchema.optional(),
+    /**
+     * Host wall-time budget for this run (ms). Merged into `budget` so the
+     * engine can finalize after a landed patch before the host kills the run
+     * (benchmarks / CI). Wins over `budget.maxWallTimeMs` when both are set.
+     */
+    maxWallTimeMs: z.number().int().positive().optional(),
     model: z.string().min(1).optional(),
     temperature: z.number().min(0).max(2).optional(),
     stream: z.boolean().optional(),

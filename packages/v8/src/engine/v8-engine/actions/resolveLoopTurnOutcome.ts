@@ -10,6 +10,7 @@ import type { AgentEngineThresholds } from "./resolveAgentEngineThresholds";
 
 import { isClearMutationBlocker } from "./isClearMutationBlocker";
 import { shouldRecoverIncompleteAssistantTurn } from "./isIncompleteAssistantTurn";
+import { EXECUTION_ROUTE } from "../../../modules/decision-policy";
 
 export const LOOP_TURN_DISPOSITIONS = [
   "execute_tools",
@@ -274,9 +275,9 @@ function needsWorkspaceGroundingRecovery(input: {
     return false;
   }
   if (
-    input.route !== "repository_answer" &&
-    input.route !== "diagnose" &&
-    input.route !== "direct_answer"
+    input.route !== EXECUTION_ROUTE.REPOSITORY_ANSWER &&
+    input.route !== EXECUTION_ROUTE.DIAGNOSE &&
+    input.route !== EXECUTION_ROUTE.DIRECT_ANSWER
   ) {
     return false;
   }
@@ -299,7 +300,7 @@ export function requiresMutationForExecute(input: {
   reasonCodes?: readonly string[];
   allowedTools?: readonly string[];
 }): boolean {
-  if (input.route !== "execute") {
+  if (input.route !== EXECUTION_ROUTE.EXECUTE) {
     return false;
   }
   if (input.maximumWorkspaceEffect !== "write") {

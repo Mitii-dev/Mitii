@@ -224,6 +224,9 @@ export async function maybeSuspendAfterPlanDraft(params: {
         ...(shared.executionSeed
           ? { executionSeed: shared.executionSeed }
           : {}),
+        ...(shared.understanding
+          ? { understanding: shared.understanding }
+          : {}),
       });
     }
     runtime.emit(bus, {
