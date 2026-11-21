@@ -13,8 +13,7 @@ Electron main  ──spawn──►  engine (HTTP)  ──►  @mitii/host → @
    renderer UI            local host adapters only
 ```
 
-Rules ([`docs/REPO_LAYOUT.md`](../../docs/REPO_LAYOUT.md),
-[`packages/v8/ARCHITECTURE.md`](../../packages/v8/ARCHITECTURE.md)):
+Rules ([`packages/v8/ARCHITECTURE.md`](../../packages/v8/ARCHITECTURE.md)):
 
 | Layer | May import | Must not import |
 |---|---|---|
@@ -68,8 +67,8 @@ apps/desktop/src/
 4. **Wire a new route** → import from `engine/<feature>/` inside `server.ts` (do not grow logic inside `server.ts`)
 5. **Wire a new API helper** → `renderer/api.ts` (split per feature later if oversized)
 
-## Docs
+## Related
 
-- Skills format (repo-wide): [`docs/SKILLS_FORMAT.md`](../../docs/SKILLS_FORMAT.md)
+- Skills: [`packages/sdk/skills/`](../../packages/sdk/skills/)
 - MCP package: [`packages/mcp`](../../packages/mcp)
 - Desktop protocol: `shared/protocol.ts` (`mitii-desktop/v1`)

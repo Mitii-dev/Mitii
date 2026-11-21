@@ -5,7 +5,7 @@ Skills selects relevant instruction blocks from a skill catalog. It helps the mo
 ## Related product docs
 
 - Bundled skill pack: [`packages/sdk/skills/`](../../../../sdk/skills/README.md)
-- Skill file format: [`docs/SKILLS_FORMAT.md`](../../../../../docs/SKILLS_FORMAT.md)
+- Skill files: [`packages/sdk/skills/`](../../../../../sdk/skills/) (`SKILL.md` per skill)
 - Host catalog + writing recipes: `@mitii/host` (`createFileSystemSkillsCatalog`, `buildWritingRecipeAsk`)
 - CLI recipes: [`apps/cli/README.md`](../../../../../apps/cli/README.md)
 

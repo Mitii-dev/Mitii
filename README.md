@@ -15,7 +15,7 @@
   <a href="LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/License-AGPL_v3-blue.svg"></a>
   <a href="https://code.visualstudio.com/"><img alt="VS Code 1.124+" src="https://img.shields.io/badge/VS%20Code-1.124%2B-007ACC?logo=visualstudiocode"></a>
   <a href="https://nodejs.org/"><img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-339933?logo=node.js"></a>
-  <img alt="Version 2.11.0" src="https://img.shields.io/badge/version-2.11.0-111111">
+  <img alt="Version 2.11.1" src="https://img.shields.io/badge/version-2.11.1-111111">
   <a href="https://docs.mitii.dev"><img alt="Documentation" src="https://img.shields.io/badge/docs-docs.mitii.dev-ff751f"></a>
 </p>
 
@@ -163,7 +163,7 @@ New users: `mitii setup` writes non-secret provider config, then set an API key 
 
 ### SDK
 
-`@mitii/v8`, `@mitii/sdk`, `@mitii/host`, and `@mitii/cli` publish to npm on `v*` release tags (see [docs/RELEASE.md](docs/RELEASE.md)). For local development, consume them from this monorepo workspace.
+`@mitii/v8`, `@mitii/sdk`, `@mitii/host`, and `@mitii/cli` publish to npm on `v*` release tags. For local development, consume them from this monorepo workspace.
 
 ```ts
 import { createMitiiClient, EchoLlmPort } from '@mitii/sdk';
@@ -202,7 +202,7 @@ What exists today:
 - session logs and a basic audit-pack export (redacted settings + run events)
 - OpenAI-compatible local endpoints (Ollama / LM Studio) for privacy-sensitive work
 
-Not yet product features: `mitii.enterprise.localProvidersOnly`, signed SIEM/webhook delivery, SSO/OIDC, RBAC, or a dedicated `docs/enterprise/` pack.
+Not yet product features: `mitii.enterprise.localProvidersOnly`, signed SIEM/webhook delivery, SSO/OIDC, or RBAC.
 
 ## Repository layout
 
@@ -221,11 +221,12 @@ mitii-ai-agent/
 |   |-- daemon/               # long-lived automation daemon (`mitii-daemon`)
 |   `-- acp/                  # ACP-lite stdio bridge (`mitii-acp`)
 |-- tests/                    # solid benchmark (+ package-local specs elsewhere)
-|-- docs/                     # developer and release guides (+ automation/)
 `-- scripts/                  # build, release, and audit automation
 ```
 
-See [docs/REPO_LAYOUT.md](docs/REPO_LAYOUT.md). Canonical architecture: [packages/v8/ARCHITECTURE.md](packages/v8/ARCHITECTURE.md). Unattended CI agents: [docs/automation/README.md](docs/automation/README.md). Skills format: [docs/SKILLS_FORMAT.md](docs/SKILLS_FORMAT.md).
+Canonical architecture: [packages/v8/ARCHITECTURE.md](packages/v8/ARCHITECTURE.md).
+Automation: [packages/automation/ARCHITECTURE.md](packages/automation/ARCHITECTURE.md).
+Skills live under `packages/sdk/skills/`.
 
 ## Development
 
@@ -258,16 +259,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for coding conventions and pull request g
 
 ## Documentation
 
+Package READMEs and architecture notes live next to the code (more will land later):
+
 - [Architecture](packages/v8/ARCHITECTURE.md)
-- [Repository layout](docs/REPO_LAYOUT.md)
-- [Initial launch / F5](docs/INITIAL_LAUNCH.md)
-- [Skills format](docs/SKILLS_FORMAT.md)
-- [CLI](apps/cli/README.md) (includes writing recipes)
+- [CLI](apps/cli/README.md)
 - [VS Code extension](apps/vscode/README.md)
-- [Release / publish units](docs/RELEASE.md)
-- [Safety](docs/SAFETY.md)
+- [Desktop](apps/desktop/README.md)
 - [Solid benchmark](tests/benchmark/README.md)
-- [Tests layout](docs/TESTS.md)
 - [MCP packages](packages/mcp/README.md)
 - [Search kit](packages/search-kit/README.md)
 - [Website](https://mitii.dev)

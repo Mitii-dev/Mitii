@@ -24,7 +24,6 @@ vitest.config.ts
 dist/*.map
 dist/**/*.map
 
-docs/**
 packages/**
 bin/.mitii/**
 scripts/**

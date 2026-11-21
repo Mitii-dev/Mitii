@@ -1,6 +1,6 @@
 /**
  * Schedule prompt / recipe for periodic MemoryPipeline.consolidate.
- * Pair with docs/automation/cron/memory-consolidate.cron.md.
+ * Pair with a `.mitii/cron/memory-consolidate.cron.md` schedule in the workspace.
  *
  * Hosts should wrap consolidate with
  * `createWorkspaceMemoryLeaseStore(root).withLease({ resource: 'memory:consolidate', ... })`

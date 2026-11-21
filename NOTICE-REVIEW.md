@@ -85,7 +85,7 @@ Mitii’s structured review module (`packages/v8/src/modules/review/`).
   [alibaba/open-code-review](https://github.com/alibaba/open-code-review)
 - Mitii does **not** vendor that project’s Go sources, embedded rule corpora,
   or prompt templates.
-- See also: `docs/architecture/ADR-review-module.md`.
+- Review module: `packages/v8/src/modules/review/`.
 
 ### 3.2 Coding-agent planning & prompt formulae (industry practice)
 

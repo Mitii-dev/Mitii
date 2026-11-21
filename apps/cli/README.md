@@ -636,11 +636,9 @@ tools/`gh`, not a `connect` adapter (see **Connect** above).
 
 CI / unattended automation works today: `--origin` / `--autonomy` / `--agent` /
 `mitii run --auto`, plus optional `.mitii/safety.json` (tighten-only) and
-`MITII_SANDBOX=1` (OS process sandbox, fail-closed). See
-[docs/SAFETY.md](../../docs/SAFETY.md).
-`--prompt-file` plus the example workflows under
-`docs/examples/workflows/mitii-*.yml`. See
-[docs/automation/README.md](../../docs/automation/README.md).
+`MITII_SANDBOX=1` (OS process sandbox, fail-closed).
+See [packages/automation/ARCHITECTURE.md](../../packages/automation/ARCHITECTURE.md)
+and `.github/actions/mitii-run`.
 
 ## Development (monorepo)
 

@@ -169,13 +169,13 @@ Environment (common):
   ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY
   SEARXNG_BASE_URL / MITII_SEARXNG_URL
   MITII_SANDBOX=1                  OS process sandbox (fail-closed)
-  See docs: Environment variables + CI secrets
+  Env vars: see README (Environment / CI secrets)
 
 CI example:
   mitii run --auto "run tests and fix failures"
-  # map secrets → env in GitHub Actions / Gitea (see docs)
+  # map secrets → env in GitHub Actions / Gitea
 
 Daemon/board UIs remain separate from interactive chat.
 Schedules / daemon: mitii schedule | mitii serve | mitii-daemon
-  (see docs/automation/README.md and packages/automation/ARCHITECTURE.md)
+  (see packages/automation/ARCHITECTURE.md)
 `;

@@ -5,7 +5,7 @@ severity + coverage) for a diff, commit range, workspace change set, or full
 file scan. It does **not** own mutation or post-mutation verification checks.
 
 Third-party *inspiration* acknowledgement (not copied upstream source): see
-`Mitii/NOTICE-REVIEW.md` and `docs/architecture/ADR-review-module.md`.
+`NOTICE-REVIEW.md` (repo root).
 
 ## What This Module Does
 

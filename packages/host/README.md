@@ -206,7 +206,7 @@ Unknown RestorePoint schema versions are ignored. Clear with
 ## Skills and writing recipes
 
 - **Catalog:** `createFileSystemSkillsCatalog({ workspaceRoot, contentMode: 'metadata' })` loads SDK-bundled skills then workspace `.mitii/skills/`.
-- **Format:** [`docs/SKILLS_FORMAT.md`](../../docs/SKILLS_FORMAT.md), pack notes in [`packages/sdk/skills/README.md`](../sdk/skills/README.md).
+- **Format / pack notes:** [`packages/sdk/skills/README.md`](../sdk/skills/README.md).
 - **Writing recipes:** `buildWritingRecipeAsk({ recipe: 'commit-message' | 'pr-summary' | 'changelog', workspaceRoot })` gathers git context and returns `requiredSkillIds` for VS Code SCM helpers and CLI.
 - **Parameterized recipes:** `RecipeSpec` (`schemaVersion: 1`) under `.mitii/recipes/<id>.json`. `compileRecipeToStartInput` fills `prompt` / `mode` / `requiredSkillIds` / `autonomyPreset` only — Decision Policy still owns grants. CLI: `mitii recipe run <id> --param k=v`.
 

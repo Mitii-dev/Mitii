@@ -616,7 +616,7 @@ describe('v8 module boundaries', () => {
       join(repoRoot, 'apps/vscode/src'),
     ];
     // Ban the old repo-root / package vault `legacy/` trees. The intentional
-    // Phase-10 compat shim at `engine/v8-engine/legacy/` is allowed.
+    // compat shim at `engine/v8-engine/legacy/` is allowed.
     const legacyImportPatterns = [
       /from ['"].*(?:^|\/)legacy(?:\/|['"])/,
       /from ['"].*(?:^|\/)(?:src\/kernel|src\/interfaces|src\/composition)(?:\/|['"])/,

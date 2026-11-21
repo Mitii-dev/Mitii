@@ -16,8 +16,7 @@ Electron main ──spawn──► mitii-desktop-engine (HTTP loopback)
 
 ## Architecture contract
 
-Follows [`docs/REPO_LAYOUT.md`](../../docs/REPO_LAYOUT.md) and
-[`packages/v8/ARCHITECTURE.md`](../../packages/v8/ARCHITECTURE.md):
+Follows [`packages/v8/ARCHITECTURE.md`](../../packages/v8/ARCHITECTURE.md):
 
 | Rule | How desktop complies |
 |---|---|

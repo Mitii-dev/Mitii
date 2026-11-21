@@ -72,7 +72,7 @@ Repository packaging places this boundary in concrete packages:
 - Hosts: `apps/vscode`, `apps/cli`, `apps/desktop` (optional `apps/daemon`, `apps/acp`)
 - Consumers: `tests/` (benchmark), package-local `*.spec.ts`
 
-Authoritative packaging layout: `docs/REPO_LAYOUT.md`.
+Dependency direction: `apps → @mitii/host → @mitii/sdk → @mitii/v8`.
 
 Dependency direction MUST remain `apps -> host -> sdk -> v8` (apps may also import sdk/v8 types carefully). V8 MUST NOT import host or SDK packages.
 

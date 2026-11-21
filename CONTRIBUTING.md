@@ -53,7 +53,7 @@ Git hooks are installed automatically via `pnpm install` -> `prepare` -> `script
 3. In the Extension Development Host, open a project folder
 4. Click the Mitii icon in the activity bar
 
-Automated launch gate (no Extension Host): `pnpm run verify:launch` - see [docs/INITIAL_LAUNCH.md](docs/INITIAL_LAUNCH.md).
+Automated launch gate (no Extension Host): `pnpm run verify:launch`.
 
 ### Watch mode (day-to-day dev)
 
@@ -67,7 +67,7 @@ Rebuild the extension after host changes. Reload the Extension Development Host 
 
 ## Project layout
 
-Canonical packaging layout: [docs/REPO_LAYOUT.md](docs/REPO_LAYOUT.md). Canonical V8 architecture: [packages/v8/ARCHITECTURE.md](packages/v8/ARCHITECTURE.md).
+Canonical V8 architecture: [packages/v8/ARCHITECTURE.md](packages/v8/ARCHITECTURE.md).
 
 ```
 mitii-ai-agent/
@@ -78,8 +78,8 @@ mitii-ai-agent/
 |-- apps/vscode/                  # VS Code extension
 |-- apps/cli/                     # Headless CLI
 |-- apps/daemon/                  # Long-lived automation
+|-- apps/desktop/                 # Electron desktop
 |-- tests/benchmark/              # Solid benchmark
-|-- docs/
 |-- scripts/
 |-- pnpm-workspace.yaml
 `-- package.json                  # Private workspace orchestrator
@@ -94,7 +94,7 @@ mitii-ai-agent/
 
 ### Skills
 
-Bundled skills: `packages/sdk/skills/`. Format: [docs/SKILLS_FORMAT.md](docs/SKILLS_FORMAT.md).
+Bundled skills: `packages/sdk/skills/` (see that folder’s README).
 
 Writing recipes (CLI + VS Code SCM):
 
@@ -114,7 +114,7 @@ pnpm run benchmark:prepare
 pnpm run benchmark
 ```
 
-See [tests/benchmark/README.md](tests/benchmark/README.md) and [docs/TESTS.md](docs/TESTS.md).
+See [tests/benchmark/README.md](tests/benchmark/README.md).
 
 ---
 
@@ -165,18 +165,6 @@ pnpm run audit:engines
 ```
 
 Useful before large refactors. Not required on every PR.
-
-### Taste (keep the repo looking authored)
-
-Mitii’s architecture is intentional. Avoid leaving agent-session residue:
-
-- Prefer **one** root script over five aliases for the same command.
-- Name files and tests for the behavior (`loopDiscipline.spec.ts`), not a roadmap slot (`phase3.spec.ts`).
-- Docs answer how to ship/debug — not “Phase N status” or dated audit dumps.
-- Delete unused scripts, ignore entries, and plan folders the same week they die.
-- Local scratch (`project-goals/`, VSIX output) stays gitignored; do not link product docs at it.
-
-Canonical architecture: [packages/v8/ARCHITECTURE.md](packages/v8/ARCHITECTURE.md). Cursor rule: `.cursor/rules/mitii.mdc`.
 
 ---
 
