@@ -45,7 +45,8 @@ export interface HostLanguageServices {
   codeNavigation: CodeNavigationPort;
   diagnostics?: DiagnosticsPort;
   capability: CodeNavigationCapability;
-  dispose(): void;
+  /** May return a Promise when a stdio LSP child must exit before temp dirs unlock. */
+  dispose(): void | Promise<void>;
 }
 
 export function createHostLanguageServices(options: {
@@ -85,9 +86,9 @@ export function createHostLanguageServices(options: {
       }),
       diagnostics: service,
       capability: service.capability(),
-      dispose() {
+      async dispose() {
         service.dispose();
-        void stdio?.dispose();
+        await stdio?.dispose();
       },
     };
   }
@@ -110,7 +111,7 @@ export function createHostLanguageServices(options: {
         operations: CODE_NAVIGATION_OPERATIONS,
       },
       dispose() {
-        void stdio.dispose();
+        return stdio.dispose();
       },
     };
   }

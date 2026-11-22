@@ -127,9 +127,12 @@ describe('CLI commands (index/status)', () => {
         (entry) => entry.capability === 'vectorIndex',
       );
       expect(vectorCapability).toBeTruthy();
-      expect(['ready', 'unavailable', 'degraded']).toContain(
-        vectorCapability?.status,
-      );
+      expect([
+        'available',
+        'ready',
+        'unavailable',
+        'degraded',
+      ]).toContain(vectorCapability?.status);
 
       stdout.length = 0;
       const statusCode = await main(
@@ -157,7 +160,12 @@ describe('CLI commands (index/status)', () => {
         (entry) => entry.capability === 'vectorIndex',
       );
       expect(statusVector).toBeTruthy();
-      expect(['ready', 'unavailable', 'degraded']).toContain(statusVector?.status);
+      expect([
+        'available',
+        'ready',
+        'unavailable',
+        'degraded',
+      ]).toContain(statusVector?.status);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -152,10 +152,25 @@ describe("createHostLanguageServices + lspServers", () => {
         });
         expect(definitions[0]?.relativePath).toBe("src/mod.py");
       } finally {
-        services.dispose();
+        await Promise.resolve(services.dispose());
       }
     } finally {
-      await rm(workspaceRoot, { recursive: true, force: true });
+      await rmTempDir(workspaceRoot);
     }
   });
 });
+
+/** Windows holds locks on temp dirs until the LSP child fully exits. */
+async function rmTempDir(dir: string): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 15; attempt += 1) {
+    try {
+      await rm(dir, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 50 * (attempt + 1)));
+    }
+  }
+  throw lastError;
+}

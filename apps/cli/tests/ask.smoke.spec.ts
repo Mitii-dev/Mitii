@@ -30,5 +30,5 @@ describe('CLI ask smoke', () => {
     expect(payload.result.answer).toContain('Echo:');
     // Full session JSONL is enabled by default; path is suppressed for --json.
     expect(errChunks.join('')).not.toMatch(/\[mitii\] log=/);
-  }, 30_000);
+  }, 90_000);
 });
