@@ -3,7 +3,7 @@ import type { ModelMessage } from "../../../../modules/model-gateway";
 import type { SessionHistoryArchivePort, SessionHistoryRecord } from "./types";
 
 /**
- * Process-local durable Session History archive (OpenCode dual-store).
+ * Process-local durable Session History archive (dual-store projection).
  * Survives projection cutover when turns leave the model-visible window.
  */
 export class InMemorySessionHistoryArchive implements SessionHistoryArchivePort {
@@ -28,7 +28,7 @@ export class InMemorySessionHistoryArchive implements SessionHistoryArchivePort 
 
   /**
    * Archive dropped model messages as searchable SessionHistoryRecords.
-   * OpenCode: compaction does not delete durable history.
+   * Compaction never deletes durable history.
    */
   public archiveDroppedMessages(params: {
     dropped: readonly ModelMessage[];

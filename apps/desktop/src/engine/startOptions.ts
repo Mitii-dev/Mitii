@@ -1,6 +1,6 @@
 /**
  * Build MitiiStartInput extras from MITII_DESKTOP_SETTINGS_JSON.
- * Mirrors vscode hostAsk resolveRunBudget / tokenBudget / loopPolicy.
+ * Mirrors vscode hostAsk resolveRunBudget / tokenBudget / loopPolicy / v8LoopPolicy.
  */
 
 import type { AgentRunBudget, MitiiStartInput } from '@mitii/sdk';
@@ -130,6 +130,14 @@ export function buildDesktopStartExtras(
     const thresholds = collectNumericOverrides(loopPolicy);
     if (thresholds) {
       extras.loopPolicy = { thresholds: thresholds as never };
+    }
+  }
+
+  const v8LoopPolicy = asRecord(settings.v8LoopPolicy);
+  if (v8LoopPolicy?.enabled === true) {
+    const thresholds = collectNumericOverrides(v8LoopPolicy);
+    if (thresholds) {
+      extras.v8LoopPolicy = { thresholds };
     }
   }
 

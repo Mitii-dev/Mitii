@@ -7,7 +7,7 @@ import type {
 } from "./types";
 
 /**
- * Host-provided pair scorer (Continue-style cross-encoder / Voyage / Cohere).
+ * Host-provided pair scorer (cross-encoder / hosted rerank API).
  * Documents are already flattened text; Mitii does not vendor a model.
  */
 export interface CrossEncoderDocumentScorer {

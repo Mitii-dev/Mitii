@@ -1,6 +1,6 @@
 /**
  * Bound tool output for the model context; optionally spill the full payload.
- * Head/tail preview (Cline-style) with UTF-8 byte budgets (OpenCode/Codex pattern).
+ * Head/tail preview with UTF-8 byte budgets.
  */
 import type { ToolOutputSpillPort } from "../../contracts/ports/ToolOutputSpillPort";
 import { measureJsonBytes } from "../OutputSanitizer";

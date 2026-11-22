@@ -22,7 +22,7 @@ export type HostEditorContextReferences = {
   openFiles?: readonly HostContextFileReference[];
   recentEditFiles?: readonly HostContextFileReference[];
   /**
-   * Files changed on disk after the agent last loaded them (Cline-style).
+   * Files changed on disk after the agent last loaded them (stale disk vs last load).
    * Injected as preferred selection priors so re-read beats stale bodies.
    */
   staleFiles?: readonly HostContextFileReference[];

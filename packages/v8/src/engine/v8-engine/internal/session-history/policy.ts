@@ -1,5 +1,5 @@
 /**
- * Session-history retrieve policy (Mitii hybrid over OpenCode dual-store archive).
+ * Session-history retrieve policy (hybrid retrieval over the dual-store archive).
  * Mirrors memory RRF defaults without importing memory module internals.
  */
 export const SESSION_HISTORY_POLICY = {
@@ -13,7 +13,7 @@ export const SESSION_HISTORY_POLICY = {
   /** Soft diversify: max hits per toolName / role bucket. */
   maxPerSource: 3,
   /**
-   * OpenCode keep.tokens analogue: prefer not to drown recent live turns.
+   * Recent-turn reserve: prefer not to drown recent live turns.
    * Hybrid projection chars default to this fraction of conversationTokens
    * when conversationTokens is supplied; else droppedTurnSummaryChars.
    */

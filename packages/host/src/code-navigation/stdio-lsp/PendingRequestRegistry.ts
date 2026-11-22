@@ -6,7 +6,7 @@ export type PendingRequest<T = unknown> = {
 
 /**
  * In-flight JSON-RPC request registry with per-request timeout.
- * Cancel removes an entry and leaves the shared server running (OpenClaw).
+ * Cancel removes an entry and leaves the shared server running.
  */
 export class PendingRequestRegistry {
   private readonly pending = new Map<number, PendingRequest>();

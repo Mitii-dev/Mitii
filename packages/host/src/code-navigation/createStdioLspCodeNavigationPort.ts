@@ -46,7 +46,7 @@ export interface CreateStdioLspCodeNavigationPortOptions {
 }
 
 /**
- * Host-owned multi-language LSP port (OpenClaw/Opencode injection pattern).
+ * Host-owned multi-language LSP port (injected into the engine as a code-navigation port).
  * Spawns configured stdio language servers, routes by extension, falls through
  * empty results so FallbackCodeNavigationAdapter can use the repo graph.
  * V8 never imports this — hosts compose it into createHostCodeNavigationPort.

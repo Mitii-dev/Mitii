@@ -1,8 +1,7 @@
 /**
  * Built-in Context Sources for Mitii v8-engine epochs.
- * Formulae from OpenCode builtins (environment / instructions) adapted to
- * Mitii decision + instruction identity (ids + content digests), not drop-in
- * Effect layers. Memory stays ids-only (bodies are untrusted / reinject path).
+ * Environment and instruction sources keyed on Mitii decision + instruction
+ * identity (ids + content digests). Memory stays ids-only (bodies are untrusted / reinject path).
  */
 
 import {

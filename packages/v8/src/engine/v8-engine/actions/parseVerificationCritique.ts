@@ -29,7 +29,7 @@ export interface VerificationCritiqueResult {
 }
 
 /**
- * Parse a VTCode-style LLM verification critique.
+ * Parse an LLM verification critique markdown (APPROVE / REJECT).
  * Decision keywords are advisory metadata only — callers must never use them
  * to override `decideVerificationGate`.
  */

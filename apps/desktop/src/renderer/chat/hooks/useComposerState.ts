@@ -3,20 +3,20 @@
 import { useState, useRef } from 'react';
 import { type DesktopAgentMode } from '../../../shared/protocol.js';
 import {
-  type ApprovalUiMode,
-  type DatabaseAccessUiMode,
-  type ThoroughnessUi,
-  modeAccent,
-} from '../ComposerControls.js';
+  composerModeColor,
+  type ComposerApprovalMode,
+  type ComposerDbAccess,
+  type ComposerThoroughness,
+} from '@mitii/ui-react';
 import { type DesktopSuspension } from '../../../shared/suspension.js';
 import { type MentionSuggestState } from '@mitii/ui-core';
 
 export function useComposerState() {
   const [mode, setMode] = useState<DesktopAgentMode>('ask');
 
-  const [approvalMode, setApprovalMode] = useState<ApprovalUiMode>('guided');
+  const [approvalMode, setApprovalMode] = useState<ComposerApprovalMode>('guided');
 
-  const approvalModeRef = useRef<ApprovalUiMode>(approvalMode);
+  const approvalModeRef = useRef<ComposerApprovalMode>(approvalMode);
 
   approvalModeRef.current = approvalMode;
 
@@ -27,9 +27,9 @@ export function useComposerState() {
   /** Cap silent Continues so reasoning-budget stalls don't spin forever. */
   const pilotAutoContinueStreakRef = useRef(0);
 
-  const [dbAccess, setDbAccess] = useState<DatabaseAccessUiMode>('readonly');
+  const [dbAccess, setDbAccess] = useState<ComposerDbAccess>('readonly');
 
-  const [thoroughness, setThoroughness] = useState<ThoroughnessUi>('medium');
+  const [thoroughness, setThoroughness] = useState<ComposerThoroughness>('medium');
 
   const [input, setInput] = useState('');
 
@@ -57,7 +57,7 @@ export function useComposerState() {
 
   const searchReq = useRef(0);
 
-  const accent = modeAccent(mode);
+  const accent = composerModeColor(mode);
 
   return {
     textareaRef,

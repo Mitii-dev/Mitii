@@ -28,6 +28,7 @@ Single source of truth for the `mitii.*` settings catalog shared by Mitii Deskto
 - The catalog owns keys, `min`/`max`, and `description`. A presentation overlay (keyed by short key) may only add group, label, kind, step, tier, docsHref, hiddenFromDebug; overlay key order sets output order, remaining catalog keys follow.
 - `defaultValue` is the catalog default unless `options.defaults` supplies a host ship baseline (e.g. SDK runtime defaults). Baseline drift from the catalog is a host concern and is not rewritten here.
 - Kind is inferred (`integer` type → `int`, `maximum <= 1` → `ratio`, else `number`) unless the overlay says otherwise. `enabled` and non-numeric entries are skipped.
+- Shared presentation overlays live in `src/presentation/` and are the single source of group, label, kind, step, tier, and `hiddenFromDebug` for `mitii.tokenBudget.*`, `mitii.loopPolicy.*`, and `mitii.v8LoopPolicy.*`. VS Code and Desktop pass them to `projectNumberFields`; each must name only catalog number keys and cover all of them (`tests/presentation.contract.test.ts`).
 - Failure reasons (`ProjectNumberFieldsError.reason`): `unknown_overlay_key`, `unknown_default_key`, `invalid_overlay`, `invalid_descriptor`.
 
 ### Known default drift (catalog vs host ship baseline)
@@ -58,13 +59,13 @@ The catalog `default` is the value written to `package.json` and to Desktop's ne
 
 `v8LoopPolicy` has no drift (`V8_ENGINE_THRESHOLDS` equals the catalog); it is pinned empty in `apps/vscode/tests/v8LoopPolicyFieldsFromCatalog.test.ts`.
 
-Desktop (renderer) cannot import the SDK. Its `tokenBudget` descriptors take `defaults` from the UI-core window-budget baseline (equal to the SDK values above), so `defaultValue` matches VS Code; its `loopPolicy` / `v8LoopPolicy` descriptors keep catalog defaults, so the five `loopPolicy` rows above also differ on Desktop.
+Desktop (renderer) cannot import the SDK. Its descriptors take `defaults` from `@mitii/ui-core` baselines (`DEFAULT_WINDOW_BUDGET_NUMBERS`, `DEFAULT_LOOP_POLICY_NUMBERS`, `DEFAULT_V8_LOOP_POLICY_NUMBERS`), which equal the SDK values above, so `defaultValue` matches VS Code for all three prefixes. The loop/v8 baselines are pinned against `AGENT_ENGINE_THRESHOLDS` / `V8_ENGINE_THRESHOLDS` in the VS Code `*FieldsFromCatalog` tests. Desktop's persisted nested defaults still come from the catalog, so the five `loopPolicy` rows above remain drift between persisted values and the editor's "Standard" hint.
 
 A catalog `default` of `null` means "unset": it is kept in nested defaults and omitted from the VS Code manifest.
 
 ## Exports
 
-Everything comes from the package root: contracts (`settingsCatalogSchema`, `SettingsCatalogEntry`, `parseSettingsCatalog`), catalog (`SETTINGS_CATALOG`, `catalogEntriesForPrefix`), defaults (`DEFAULT_MITII_SETTINGS`, `MitiiSettings`, `buildDefaultSettings`), Desktop profile (`DEFAULT_DESKTOP_SETTINGS`, `DesktopSettings`, `DESKTOP_DEFAULT_OVERRIDES`), nesting (`nestFlatSettings`, `getNestedSetting`, `setNestedSetting`, `flattenNestedSettings`), number-field projection (`projectNumberFields`, `numberFieldDescriptorSchema`, `NumberFieldDescriptor`, `ProjectNumberFieldsError`), and VS Code projection helpers.
+Everything comes from the package root: contracts (`settingsCatalogSchema`, `SettingsCatalogEntry`, `parseSettingsCatalog`), catalog (`SETTINGS_CATALOG`, `catalogEntriesForPrefix`), defaults (`DEFAULT_MITII_SETTINGS`, `MitiiSettings`, `buildDefaultSettings`), Desktop profile (`DEFAULT_DESKTOP_SETTINGS`, `DesktopSettings`, `DESKTOP_DEFAULT_OVERRIDES`), nesting (`nestFlatSettings`, `getNestedSetting`, `setNestedSetting`, `flattenNestedSettings`), shared presentation overlays (`TOKEN_BUDGET_PRESENTATION`, `LOOP_POLICY_PRESENTATION`, `V8_LOOP_POLICY_PRESENTATION`), number-field projection (`projectNumberFields`, `numberFieldDescriptorSchema`, `NumberFieldDescriptor`, `ProjectNumberFieldsError`), and VS Code projection helpers.
 
 ## Adding or changing a setting
 

@@ -9,10 +9,9 @@ import type {
   AgentEngineThresholdsOverrides,
   LoopPolicyWindowBand,
 } from '@mitii/sdk';
-import { projectNumberFields } from '@mitii/settings';
+import { LOOP_POLICY_PRESENTATION, projectNumberFields } from '@mitii/settings';
 import type * as vscode from 'vscode';
 
-import { LOOP_POLICY_PRESENTATION } from './loopPolicyFieldPresentation.js';
 import type { TokenBudgetFieldDescriptor } from './protocol.js';
 
 export type LoopPolicyFieldDescriptor = TokenBudgetFieldDescriptor;

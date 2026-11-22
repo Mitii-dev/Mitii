@@ -83,7 +83,7 @@ export interface ModelLoopCompactionResult {
   /** Ladder stages that mutated history this turn (provenance). */
   stagesApplied: CompactionLadderStage[];
   /**
-   * Turns removed from model projection this compaction (OpenCode dual-store).
+   * Turns removed from model projection this compaction (dual-store projection).
    * Callers MUST archive these; they leave Session History projection only.
    */
   droppedMessages: ModelMessage[];

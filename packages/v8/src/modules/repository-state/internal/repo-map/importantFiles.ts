@@ -1,5 +1,5 @@
 /**
- * Aider-inspired root important-file basename pins (formula inject, not drop-in).
+ * Root important-file basename pins.
  * Matched against the final path segment (case-insensitive).
  */
 export const REPO_MAP_IMPORTANT_FILE_BASENAMES: ReadonlySet<string> = new Set(

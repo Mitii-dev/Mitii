@@ -1,7 +1,7 @@
 /** Agent mode switching (incl. Database access readiness). */
 
 import { type DesktopAgentMode } from '../../../shared/protocol.js';
-import { type ThoroughnessUi, type ApprovalUiMode } from '../ComposerControls.js';
+import type { ComposerApprovalMode, ComposerThoroughness } from '@mitii/ui-react';
 import type { useComposerState } from './useComposerState.js';
 import type { useEngineSnapshot } from '../../shell/hooks/useEngineSnapshot.js';
 import type { useSettingsActions } from '../../settings/hooks/useSettingsActions.js';
@@ -41,7 +41,7 @@ export function useModeChange(deps: Pick<
       const defaults = settings.ui.modeDefaults[next];
       if (defaults) {
         const rawThorough = String(defaults.thoroughness ?? 'medium');
-        const nextThorough: ThoroughnessUi =
+        const nextThorough: ComposerThoroughness =
           rawThorough === 'low' || rawThorough === 'quick'
             ? 'low'
             : rawThorough === 'high' || rawThorough === 'thorough'
@@ -50,7 +50,7 @@ export function useModeChange(deps: Pick<
         setThoroughness(nextThorough);
 
         const rawApproval = String(defaults.approvalMode ?? 'guided');
-        const nextApproval: ApprovalUiMode =
+        const nextApproval: ComposerApprovalMode =
           rawApproval === 'safe' ||
           rawApproval === 'guided' ||
           rawApproval === 'pilot'

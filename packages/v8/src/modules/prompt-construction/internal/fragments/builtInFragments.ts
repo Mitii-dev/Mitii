@@ -124,7 +124,7 @@ export class InstructionBlockFragment implements ContextualFragment {
 }
 
 /**
- * Mid-conversation context-epoch update (OpenCode chronological admission).
+ * Mid-conversation context-epoch update (chronological admission).
  *
  * Always a separate **user** message (not trailing system) so the leading
  * system baseline stays a stable provider-cache prefix. Marked so epoch

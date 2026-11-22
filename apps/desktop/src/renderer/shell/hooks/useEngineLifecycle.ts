@@ -3,7 +3,7 @@
 import { useCallback, useRef } from 'react';
 import { getDesktopBridge, setDatabaseMcpAccess, fetchMcpServers } from '../../api.js';
 import { type DesktopShellSnapshot } from '../../../shared/bridge.js';
-import { type DatabaseAccessUiMode } from '../../chat/ComposerControls.js';
+import type { ComposerDbAccess } from '@mitii/ui-react';
 import type { useEngineSnapshot } from './useEngineSnapshot.js';
 import type { useProviderState } from '../../settings/hooks/useProviderState.js';
 
@@ -114,7 +114,7 @@ export function useEngineLifecycle(deps: Pick<
 
   const ensureDatabaseAccessReady = useCallback(
     async (
-      access: DatabaseAccessUiMode,
+      access: ComposerDbAccess,
     ): Promise<{
       engine: { baseUrl: string; token: string };
       snapshot: DesktopShellSnapshot;

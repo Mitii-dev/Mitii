@@ -47,7 +47,7 @@ export function createHostRepositoryContext(options: {
    */
   corpusEnabled?: boolean;
   /**
-   * Optional Continue-style cross-encoder / API rerank scorer.
+   * Optional cross-encoder / API rerank scorer.
    * When omitted, host keeps the cheap identifier-aware lexical reranker.
    */
   crossEncoderScorer?: CrossEncoderDocumentScorer;

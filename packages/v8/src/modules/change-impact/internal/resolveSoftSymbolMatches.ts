@@ -1,8 +1,8 @@
 import type { RepoGraphSymbolNode } from "../../repository-state";
 
 /**
- * Soft symbol resolution when an exact seed match fails (Continue-style
- * fallback before exploding to file-level impact).
+ * Soft symbol resolution when an exact seed match fails (fallback
+ * before exploding to file-level impact).
  */
 export function resolveSoftSymbolMatches(params: {
   symbolsInFile: readonly RepoGraphSymbolNode[];

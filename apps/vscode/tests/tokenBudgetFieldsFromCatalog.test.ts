@@ -1,8 +1,11 @@
 import { DEFAULT_WINDOW_BUDGET_POLICY } from '@mitii/sdk';
-import { SETTINGS_CATALOG, projectNumberFields } from '@mitii/settings';
+import {
+  SETTINGS_CATALOG,
+  TOKEN_BUDGET_PRESENTATION,
+  projectNumberFields,
+} from '@mitii/settings';
 import { describe, expect, it } from 'vitest';
 
-import { TOKEN_BUDGET_PRESENTATION } from '../src/tokenBudgetFieldPresentation';
 import { TOKEN_BUDGET_FIELDS } from '../src/tokenBudgetSettings';
 
 const PREFIX = 'mitii.tokenBudget.';

@@ -97,7 +97,7 @@ export const TEXT_INDEX_FTS = {
     0,
     0,
     0,
-    // relative_path — Continue-style path-weighted BM25 (was 2.5)
+    // relative_path — path-weighted BM25 (was 2.5)
     10,
     0,
     4,

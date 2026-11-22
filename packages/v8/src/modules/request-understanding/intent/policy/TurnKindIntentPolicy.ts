@@ -9,7 +9,7 @@ const CONTINUATION_TURN_KINDS: ReadonlySet<RequestTurnKind> = new Set([
 ]);
 
 /**
- * Short plan-approval phrases (Cline-style). On a continuation turn whose
+ * Short plan-approval phrases. On a continuation turn whose
  * ballot is still "plan", promote interaction to "act" so Decision Policy can
  * execute without inventing a new task intent.
  */

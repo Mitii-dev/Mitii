@@ -5,11 +5,10 @@ import {
   type V8EngineThresholds,
   type V8EngineThresholdsOverrides,
 } from '@mitii/sdk';
-import { projectNumberFields } from '@mitii/settings';
+import { V8_LOOP_POLICY_PRESENTATION, projectNumberFields } from '@mitii/settings';
 import type * as vscode from 'vscode';
 
 import type { TokenBudgetFieldDescriptor } from './protocol.js';
-import { V8_LOOP_POLICY_PRESENTATION } from './v8LoopPolicyFieldPresentation.js';
 
 export type V8LoopPolicyFieldDescriptor = TokenBudgetFieldDescriptor;
 

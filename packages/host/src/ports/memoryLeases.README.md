@@ -12,7 +12,7 @@ Durable resource locks under `<workspace>/.mitii/memory/`.
 | `memory:consolidate` | `runMemoryConsolidateWithLease` / cron hosts |
 | `memory:approve_pending` | `approvePendingMemory` |
 
-## Semantics (agentmemory-inspired)
+## Semantics (lease ownership)
 
 - Acquire with TTL (default 10m, max 60m)
 - Same holder re-acquire is idempotent

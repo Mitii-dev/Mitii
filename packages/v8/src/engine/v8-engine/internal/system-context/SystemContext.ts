@@ -141,7 +141,7 @@ function observe(context: SystemContext): Entry[] {
 
 /**
  * Creates the immutable baseline and durable snapshot for a new generation.
- * Unavailable initial sources block initialization (OpenCode formula).
+ * Unavailable initial sources block initialization (stale-while-revalidate formula).
  */
 export function initializeSystemContext(
   context: SystemContext,
@@ -187,7 +187,7 @@ function initializeObservation(
 
 /**
  * Reconcile current sources with the active snapshot.
- * OpenCode: Unchanged | Updated | ReplacementReady | ReplacementBlocked.
+ * Outcomes: Unchanged | Updated | ReplacementReady | ReplacementBlocked.
  */
 export function reconcileSystemContext(params: {
   context: SystemContext;

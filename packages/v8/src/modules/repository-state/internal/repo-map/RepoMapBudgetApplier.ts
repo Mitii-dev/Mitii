@@ -11,7 +11,7 @@ import type {
 
 /**
  * Packs ranked RepoMap entries under entry/symbol/token budgets.
- * Uses binary search over the ranked prefix (aider-style) so the densest
+ * Uses binary search over the ranked prefix (ranked-prefix fit) so the densest
  * high-score window that still fits the token budget is selected.
  */
 export class RepoMapBudgetApplier {

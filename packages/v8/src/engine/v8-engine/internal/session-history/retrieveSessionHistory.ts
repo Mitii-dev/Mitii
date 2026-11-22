@@ -53,7 +53,7 @@ export function resolveSessionHistoryProjectionBudgetChars(params: {
  *
  * Streams: lexical (content) + locator/path + recency (newer archive seq).
  * Fuse with RRF; diversify by role/tool; pack under char budget into an
- * OpenCode-shaped conversation checkpoint for model projection.
+ * Conversation checkpoint for model projection.
  */
 export function retrieveSessionHistory(params: {
   archive: readonly SessionHistoryRecord[];

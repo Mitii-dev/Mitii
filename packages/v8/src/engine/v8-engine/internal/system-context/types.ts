@@ -1,10 +1,10 @@
 /**
- * System Context formulae injected from OpenCode CONTEXT.md / system-context.
+ * System Context formulae for typed, independently observed prompt sources.
  *
  * Mitii-shaped (no Effect): typed sources compose into an opaque carrier;
  * interpreters observe once and produce Generation | Updated | Replacement*.
  *
- * Language (OpenCode):
+ * Language:
  * - Context Source: independently observed typed value with baseline/update/removal renderers
  * - Context Snapshot: model-hidden JSON state for comparison
  * - Baseline System Context: immutable provider-cache prefix for one Context Epoch
@@ -20,7 +20,7 @@ export type SystemContextUnavailable = typeof SYSTEM_CONTEXT_UNAVAILABLE;
 
 /**
  * Stable namespaced key (`domain/name`).
- * OpenCode: /^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._/-]*$/
+ * Pattern: /^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._/-]*$/
  */
 export type SystemContextKey = string;
 

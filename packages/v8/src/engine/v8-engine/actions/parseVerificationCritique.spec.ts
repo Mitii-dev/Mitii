@@ -6,7 +6,7 @@ import {
 } from "./parseVerificationCritique";
 
 describe("parseVerificationCritique", () => {
-  it("parses VTCode-style APPROVE / REJECT markdown", () => {
+  it("parses LLM critique APPROVE / REJECT markdown", () => {
     const critique = parseVerificationCritique(`
 ## Verification Result
 

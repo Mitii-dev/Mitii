@@ -1,6 +1,6 @@
 # Git
 
-Source Control pane, top-bar branch select, working-tree review bar.
+Source Control pane and top-bar branch select.
 
 ## File map
 
@@ -20,8 +20,9 @@ Source Control pane, top-bar branch select, working-tree review bar.
 | `ScmResourceGroup.tsx` | Staged / Changes group and file rows |
 | `ScmContextMenu.tsx` | Stage / Unstage / Stash menu |
 | `ScmReviewPanel.tsx` | Code Review findings list |
-| `TopBranchSelect.tsx`, `WorkingTreeReviewBar.tsx` | Top-bar branch select, review bar |
+| `TopBranchSelect.tsx` | Top-bar branch select |
 
+- The post-run working-tree review bar is composer UI and lives in `chat/` (`WorkingTreeReviewBar.tsx`, `ComposerReviewStrip.tsx`).
 - Engine: `engine/git/`
 - Contract: `shared/git/workingTree.ts`
 - HTTP: `/v1/git/*` via `engine/server.ts`

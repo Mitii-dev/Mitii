@@ -98,6 +98,7 @@ export async function buildStartInput(
     ...(taskList ? { taskList } : {}),
     ...(extras.budget ? { budget: extras.budget } : {}),
     ...(extras.loopPolicy ? { loopPolicy: extras.loopPolicy } : {}),
+    ...(extras.v8LoopPolicy ? { v8LoopPolicy: extras.v8LoopPolicy } : {}),
     ...(extras.logVerbosity ? { logVerbosity: extras.logVerbosity } : {}),
     ...(extras.windowBudget?.policy
       ? { windowBudgetPolicy: extras.windowBudget.policy as Record<string, number> }

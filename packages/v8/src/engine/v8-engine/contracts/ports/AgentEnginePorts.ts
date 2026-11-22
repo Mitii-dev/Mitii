@@ -225,7 +225,7 @@ export interface AgentEngineDependencies {
   review?: AgentEngineReviewPort;
   checkpointStore?: AgentEngineRunCheckpointStorePort;
   /**
-   * Optional durable Context Epoch store (OpenCode session_context_epoch).
+   * Optional durable Context Epoch store (per-session context-epoch snapshots).
    * When set, each admit persists the active epoch alongside the in-memory map.
    * Checkpoints already embed `contextEpoch`; this port is for hosts that want
    * an independent epoch table / process-local cache.

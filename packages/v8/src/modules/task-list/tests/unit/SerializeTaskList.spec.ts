@@ -35,7 +35,7 @@ describe("serializeTaskList", () => {
     ]);
   });
 
-  it("parses Cursor-style focus chain lists", () => {
+  it("parses focus-chain markdown checkbox lists", () => {
     const parsed = parseTaskListMarkdown(
       [
         "# Focus Chain List for Task 1786569152232",

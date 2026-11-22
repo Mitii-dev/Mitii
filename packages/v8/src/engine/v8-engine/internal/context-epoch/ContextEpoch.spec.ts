@@ -19,7 +19,7 @@ import {
   stripMidConversationSystemMessages,
 } from "./admitContextEpoch";
 
-describe("ContextEpoch formulae (OpenCode discipline)", () => {
+describe("ContextEpoch formulae (formula discipline)", () => {
   it("initializes an immutable baseline with hashed sources", () => {
     const epoch = initializeContextEpoch({
       runId: "run_1",
@@ -159,7 +159,7 @@ describe("ContextEpoch formulae (OpenCode discipline)", () => {
   });
 });
 
-describe("admitContextEpoch (OpenCode Safe Provider-Turn Boundary)", () => {
+describe("admitContextEpoch (Safe Provider-Turn Boundary)", () => {
   const observed = {
     route: "repository_answer",
     planningDepth: "none",

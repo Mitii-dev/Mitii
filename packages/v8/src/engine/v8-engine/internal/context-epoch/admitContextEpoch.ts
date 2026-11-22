@@ -34,7 +34,7 @@ export interface AdmitContextEpochInput {
 }
 
 /**
- * OpenCode Context Epoch admission at a Safe Provider-Turn Boundary.
+ * Context Epoch admission at a Safe Provider-Turn Boundary.
  *
  * Formulae:
  * 1. Initialize → freeze baseline verbatim; pin as cache prefix.
@@ -209,7 +209,7 @@ export function stripMidConversationSystemMessages(
  *
  * Projected as `user` (not `system`): OpenAI-compatible and many local
  * providers reject non-leading system messages with
- * "system message must be at the beginning". Markers preserve OpenCode
+ * "system message must be at the beginning". Markers preserve
  * epoch semantics for strip/baseline detection.
  */
 export function appendMidConversationSystemMessage(

@@ -1,5 +1,5 @@
 /**
- * LSP Content-Length framing (OpenClaw / LSP stdio transport).
+ * LSP Content-Length framing for the stdio transport.
  * Processes fragmented stdout with geometric buffer growth and less copying.
  */
 

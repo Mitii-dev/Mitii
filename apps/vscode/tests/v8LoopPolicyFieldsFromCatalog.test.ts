@@ -1,8 +1,12 @@
 import { V8_ENGINE_THRESHOLDS } from '@mitii/sdk';
-import { SETTINGS_CATALOG, projectNumberFields } from '@mitii/settings';
+import { DEFAULT_V8_LOOP_POLICY_NUMBERS } from '@mitii/ui-core';
+import {
+  SETTINGS_CATALOG,
+  V8_LOOP_POLICY_PRESENTATION,
+  projectNumberFields,
+} from '@mitii/settings';
 import { describe, expect, it } from 'vitest';
 
-import { V8_LOOP_POLICY_PRESENTATION } from '../src/v8LoopPolicyFieldPresentation';
 import { V8_LOOP_POLICY_FIELDS } from '../src/v8LoopPolicySettings';
 
 const PREFIX = 'mitii.v8LoopPolicy.';
@@ -56,5 +60,16 @@ describe('V8_LOOP_POLICY_FIELDS from the settings catalog', () => {
       if (catalog !== sdk) drift[field.key] = { catalog: catalog as number, sdk: sdk as number };
     }
     expect(drift).toEqual(KNOWN_DEFAULT_DRIFT);
+  });
+
+  it('ui-core DEFAULT_V8_LOOP_POLICY_NUMBERS equals the SDK baseline for every catalog key', () => {
+    expect(Object.keys(DEFAULT_V8_LOOP_POLICY_NUMBERS).sort()).toEqual(
+      [...catalogNumberKeys].sort(),
+    );
+    for (const key of catalogNumberKeys) {
+      expect(DEFAULT_V8_LOOP_POLICY_NUMBERS[key], key).toBe(
+        V8_ENGINE_THRESHOLDS[key as keyof typeof V8_ENGINE_THRESHOLDS],
+      );
+    }
   });
 });

@@ -17,7 +17,7 @@ const IMAGE_MIME_TYPES_BY_EXTENSION: Record<string, string> = {
 };
 
 /**
- * Agent markdown under `.mitii/agents/<id>.md` (Continue-style).
+ * Agent markdown under `.mitii/agents/<id>.md` (frontmatter + markdown body).
  * Frontmatter is optional; body becomes the prompt (or is appended).
  */
 export interface MitiiAgentFile {

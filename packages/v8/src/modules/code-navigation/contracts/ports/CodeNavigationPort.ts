@@ -36,7 +36,7 @@ export interface CodeNavigationPort {
 
   /**
    * Ensure the document is known to the language service before caret queries
-   * (opencode touchFile / didOpen pattern). Optional — graph adapters no-op.
+   * (didOpen-style notification). Optional — graph adapters no-op.
    */
   prepare?(
     relativePath: string,

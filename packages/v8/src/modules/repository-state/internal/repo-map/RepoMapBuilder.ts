@@ -130,7 +130,7 @@ export class RepoMapBuilder {
 
   /**
    * When ranking has no chat/open/current files, enlarge the token budget
-   * (aider `map_mul_no_files`) so cold-start maps stay informative.
+   * (cold-start multiplier when no files are focused) so cold-start maps stay informative.
    */
   private resolveBudget(
     budget: RepoMapBudget | undefined,

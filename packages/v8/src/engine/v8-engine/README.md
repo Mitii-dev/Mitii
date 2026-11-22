@@ -109,7 +109,7 @@ Details: `modules/plan-discovery/README.md`.
   clarify; bind miss → one evidence recovery then **hard STOP**
   (`evidence_recovery_exhausted_terminal`).
 
-### Stability guards (Wave 1.6)
+### Stability guards
 
 - **Result contract:** `RunEvidence` is clamped to schema limits at the producer
   (`clampRunEvidence`). The final result goes through

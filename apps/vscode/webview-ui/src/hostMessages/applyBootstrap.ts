@@ -4,7 +4,7 @@ import { modeDefaultsFromUi } from '../app/modeSettings';
 import { mergeModelOptions } from '../app/modelOptions';
 import { toChatTurn } from '../app/turnHelpers';
 import { postToHost } from '../bridge';
-import { normalizeApproval } from '../components/ComposerControls';
+import { normalizeApproval } from '../approvalPresets';
 import { type HostToWebviewMessage } from '../protocol';
 import { modelsForProvider } from '../providerOptions';
 import { resolveRunIntensity } from '@mitii/ui-core';

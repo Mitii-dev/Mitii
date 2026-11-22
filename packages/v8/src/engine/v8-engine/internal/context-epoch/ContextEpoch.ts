@@ -12,7 +12,7 @@ import {
   wrapMidConversationUpdateText,
 } from "../../../../modules/prompt-construction";
 
-/** OpenCode-style privileged system context source keys Mitii tracks. */
+/** Privileged system context source keys Mitii tracks. */
 export const CONTEXT_EPOCH_SOURCE_KEYS = {
   /** @deprecated Prefer system-context SYSTEM_CONTEXT_SOURCE_KEYS; kept for tests. */
   baselineSystem: "system.baseline",
@@ -41,7 +41,7 @@ export function hashContextText(text: string): string {
 }
 
 /**
- * Normalize legacy hash-only snapshots into OpenCode SourceSnapshot shape.
+ * Normalize legacy hash-only snapshots into SourceSnapshot shape.
  * Bare strings become `{ value }` so SystemContext codecs can attempt decode.
  */
 export function normalizeContextEpochSnapshot(
@@ -114,7 +114,7 @@ function isSystemContextSnapshot(
  * Prefer SystemContext.reconcile for production admit; kept for unit tests
  * and hash-based callers.
  *
- * OpenCode formula: unchanged | updated | replace_ready | replace_blocked.
+ * Formula: unchanged | updated | replace_ready | replace_blocked.
  */
 export function reconcileContextEpoch(params: {
   epoch: ContextEpoch;
@@ -202,7 +202,7 @@ export function markContextEpochForReplacement(
 
 /**
  * After compaction, fold current complete system context into a fresh baseline
- * (OpenCode: completed compaction starts a new Context Epoch).
+ * (completed compaction starts a new Context Epoch).
  */
 export function replaceContextEpoch(params: {
   previous: ContextEpoch;

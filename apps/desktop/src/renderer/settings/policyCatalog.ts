@@ -1,9 +1,16 @@
 /** Numeric policy descriptors for token-budget / loop-policy editors. */
 
 import type { TokenBudgetFieldDescriptor } from '@mitii/ui-react';
-import { DEFAULT_WINDOW_BUDGET_NUMBERS } from '@mitii/ui-core';
 import {
+  DEFAULT_LOOP_POLICY_NUMBERS,
+  DEFAULT_V8_LOOP_POLICY_NUMBERS,
+  DEFAULT_WINDOW_BUDGET_NUMBERS,
+} from '@mitii/ui-core';
+import {
+  LOOP_POLICY_PRESENTATION,
   SETTINGS_CATALOG,
+  TOKEN_BUDGET_PRESENTATION,
+  V8_LOOP_POLICY_PRESENTATION,
   projectNumberFields,
   type NumberFieldPresentationMap,
 } from '@mitii/settings';
@@ -23,63 +30,36 @@ export function numericPolicyRecord(
 
 export type PolicyPrefix = 'tokenBudget' | 'loopPolicy' | 'v8LoopPolicy';
 
-interface PolicyPresentation {
-  group: string;
-  /** Keys shown as Simple controls; every other key is Advanced. */
-  simple: ReadonlySet<string>;
-  overlay: NumberFieldPresentationMap;
-}
-
 /**
- * Desktop's thin presentation per prefix: group, Simple keys, Debug-hidden
- * keys. The Simple sets mirror the VS Code presentation overlays so the two
- * hosts expose the same Simple/Advanced split.
+ * Shared presentation (labels, groups, steps, tiers, Debug visibility) and
+ * the renderer-visible ship baseline per prefix. Keys without a baseline fall
+ * back to the catalog default.
  */
-const PRESENTATION: Record<PolicyPrefix, PolicyPresentation> = {
+const POLICY_SOURCES: Record<
+  PolicyPrefix,
+  {
+    overlay: NumberFieldPresentationMap;
+    baseline: Readonly<Record<string, number>>;
+  }
+> = {
   tokenBudget: {
-    group: 'Token budget',
-    simple: new Set([
-      'outputRatio',
-      'repositoryShare',
-      'conversationShare',
-      'planShare',
-      'skillsShare',
-    ]),
-    overlay: {
-      maxModelCallsPerUsable: { hiddenFromDebug: true },
-      maxModelCallsMin: { hiddenFromDebug: true },
-      maxModelCallsMax: { hiddenFromDebug: true },
-    },
+    overlay: TOKEN_BUDGET_PRESENTATION,
+    baseline: DEFAULT_WINDOW_BUDGET_NUMBERS,
   },
   loopPolicy: {
-    group: 'Loop thresholds',
-    simple: new Set([
-      'explorationRereadMinCalls',
-      'explorationRereadRatio',
-      'maxExplorationStallNudges',
-      'maxReadOnlyToolTurnsBeforeMutationNudge',
-      'maxReadOnlyMutationRetryAttempts',
-      'maxReadOnlyToolTurnsAfterMutationNudge',
-    ]),
-    overlay: {},
+    overlay: LOOP_POLICY_PRESENTATION,
+    baseline: DEFAULT_LOOP_POLICY_NUMBERS,
   },
   v8LoopPolicy: {
-    group: 'V8 engine',
-    simple: new Set([
-      'maxReadOnlyTurnsBeforeMutationNudge',
-      'toolLoopSoftIdentical',
-      'toolLoopHardIdentical',
-      'maxTruncationRecoveries',
-    ]),
-    overlay: {},
+    overlay: V8_LOOP_POLICY_PRESENTATION,
+    baseline: DEFAULT_V8_LOOP_POLICY_NUMBERS,
   },
 };
 
-/** Ship baselines the renderer can see; other prefixes use catalog defaults. */
-function baselineDefaults(prefix: PolicyPrefix): Record<string, number> {
-  if (prefix !== 'tokenBudget') return {};
+/** Renderer-visible ship baseline entries that name a catalog key under `prefix`. */
+export function policyBaselineNumbers(prefix: PolicyPrefix): Record<string, number> {
   const out: Record<string, number> = {};
-  for (const [key, value] of Object.entries(DEFAULT_WINDOW_BUDGET_NUMBERS)) {
+  for (const [key, value] of Object.entries(POLICY_SOURCES[prefix].baseline)) {
     if (SETTINGS_CATALOG[`mitii.${prefix}.${key}`] !== undefined) {
       out[key] = value;
     }
@@ -87,14 +67,12 @@ function baselineDefaults(prefix: PolicyPrefix): Record<string, number> {
   return out;
 }
 
-/** Catalog projection with Desktop's group/tier presentation for a prefix. */
+/** Catalog projection with the shared presentation for a prefix. */
 export function catalogNumberDescriptors(
   prefix: PolicyPrefix,
 ): TokenBudgetFieldDescriptor[] {
-  const { group, simple, overlay } = PRESENTATION[prefix];
-  return projectNumberFields(prefix, overlay, {
-    group,
-    tier: (shortKey) => (simple.has(shortKey) ? 'simple' : 'advanced'),
-    defaults: baselineDefaults(prefix),
+  return projectNumberFields(prefix, POLICY_SOURCES[prefix].overlay, {
+    tier: () => 'advanced',
+    defaults: policyBaselineNumbers(prefix),
   });
 }

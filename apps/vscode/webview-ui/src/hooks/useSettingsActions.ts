@@ -1,8 +1,11 @@
 import { hydrateUiSnapshot } from '../app/hydrate';
 import { settingsModeFor, modeDefaultsFromUi, mergeUiPatch, clearStaleModeModelDefaultsAfterProviderModelChange } from '../app/modeSettings';
-import { approvalModeUiPatch } from '../approvalPresets';
 import { postToHost } from '../bridge';
-import { normalizeApproval, type ApprovalUiMode } from '../components/ComposerControls';
+import {
+  approvalModeUiPatch,
+  normalizeApproval,
+  type ApprovalUiMode,
+} from '../approvalPresets';
 import { type AgentUiMode, type AgentUiThoroughness, type ProviderSettingsSnapshot, type SettingsProfileView, type UiSettingsPatch } from '../protocol';
 import { getProviderPreset } from '../providerOptions';
 import { resolveRunIntensity, thoroughnessUiPatch } from '@mitii/ui-core';

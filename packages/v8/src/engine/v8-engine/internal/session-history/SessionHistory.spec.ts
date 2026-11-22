@@ -10,7 +10,7 @@ import {
 } from "./index";
 import type { ModelMessage } from "../../../../modules/model-gateway";
 
-describe("Session History formulae (OpenCode dual-store + Mitii hybrid)", () => {
+describe("Session History formulae (dual-store + hybrid retrieval)", () => {
   it("archives dropped turns without deleting them from the durable store", () => {
     const archive = new InMemorySessionHistoryArchive();
     const dropped: ModelMessage[] = [
@@ -43,7 +43,7 @@ describe("Session History formulae (OpenCode dual-store + Mitii hybrid)", () => 
     expect(records.length).toBe(2);
     expect(archive.size()).toBe(2);
     expect(records[0]?.locators).toContain("src/hooks/useAuth.ts");
-    // Second compaction generation still keeps prior records (OpenCode dual-store).
+    // Second compaction generation still keeps prior records (dual-store archive).
     archive.archiveDroppedMessages({
       dropped: [{ role: "user", content: "also fix the flaky test" }],
       nowMs: 2_000,

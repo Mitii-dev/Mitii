@@ -1,6 +1,6 @@
 # Chat
 
-Composer, chronological activity timeline, markdown, mentions, plan strips, history nav.
+Composer, post-run review strip, chronological activity timeline, markdown, mentions, plan strips, history nav.
 
 ## Assistant turn composition
 
@@ -12,6 +12,11 @@ Composer, chronological activity timeline, markdown, mentions, plan strips, hist
 Stream paints update immediately as events arrive; typing reveal is local presentation only. `prefers-reduced-motion` skips typing/caret motion.
 
 Not an activity-bar side — layout toggles (Chat / Code) live in `shell/AppTopbar.tsx` via `shell/hooks/useShellActions.ts`. Wire contract: `shared/protocol.ts` (`mitii-desktop/v1` prompt stream).
+
+## Composer surface
+
+- Mode / approval / DB-access / thoroughness pickers come from `@mitii/ui-react` (`ComposerControls`); `ChatComposer` passes state and callbacks, Desktop supplies no icons.
+- `ComposerReviewStrip` + `WorkingTreeReviewBar` render the expandable post-run changes panel above the input. Review stays Desktop-owned (not in `@mitii/ui-react`); it reads working-tree DTOs from `shared/` and does not import `git/`.
 
 ## Containers and hooks
 

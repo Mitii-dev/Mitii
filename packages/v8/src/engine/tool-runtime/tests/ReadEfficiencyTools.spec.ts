@@ -358,7 +358,7 @@ describe("model tool definition single source", () => {
     ]);
   });
 
-  it("search_files accepts Cursor-style pattern + string maxMatches aliases", async () => {
+  it("search_files accepts pattern + string maxMatches aliases", async () => {
     const runtime = createRuntime();
     const result = await runtime.execute({
       schemaVersion: 1,

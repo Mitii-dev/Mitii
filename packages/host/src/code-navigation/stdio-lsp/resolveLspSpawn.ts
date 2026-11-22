@@ -13,7 +13,7 @@ export type LspSpawnInvocation = {
 /**
  * Resolve an LSP server command for cross-platform spawn.
  * On Windows, npm global shims are often `.cmd` — run them via `cmd.exe /c`
- * so Node can spawn them without shell:true (OpenClaw pattern).
+ * so Node can spawn them without shell:true.
  */
 export function resolveLspSpawnInvocation(params: {
   command: string;

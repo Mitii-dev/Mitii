@@ -1,6 +1,6 @@
 /** Scrolling chat feed: hero, messages and streaming activity. */
 
-import { modeAccent } from './ComposerControls.js';
+import { composerModeColor } from '@mitii/ui-react';
 import { type DesktopAgentMode } from '../../shared/protocol.js';
 import { type CSSProperties } from 'react';
 import { ActivityTimeline } from './ActivityTimeline.js';
@@ -36,7 +36,7 @@ export function ChatFeed({ m }: { m: AppModel }) {
             style={
               m.role === 'assistant'
                 ? ({
-                    '--turn-accent': modeAccent(
+                    '--turn-accent': composerModeColor(
                       (m.mode as DesktopAgentMode) || 'ask',
                     ),
                   } as CSSProperties)

@@ -33,7 +33,7 @@ export type RequestIntakeResult = {
 /**
  * Primary request-intake facade.
  *
- * Stages (inject, not drop-in peer copies):
+ * Stages:
  * sanitize → command-classify → mention-extract → attachment-normalize
  * → mode-resolve → validate → build envelope.
  */

@@ -1,4 +1,4 @@
-import type { NumberFieldPresentationMap } from '@mitii/settings';
+import type { NumberFieldPresentationMap } from '../contracts/numberFieldDescriptor.js';
 
 /**
  * Developer Token Budget presentation overlay. Keys, bounds, and descriptions

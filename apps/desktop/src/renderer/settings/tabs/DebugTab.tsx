@@ -1,6 +1,6 @@
 /** Developer / debug tab. */
 
-import { type DesktopSettings, DEFAULT_DESKTOP_SETTINGS } from '../../../shared/settings.js';
+import { type DesktopSettings } from '../../../shared/settings.js';
 import { TokenBudgetEditor } from '@mitii/ui-react';
 import { deriveLiveTokenBudgetPreview, isAutoMaximumOutputTokens } from '@mitii/ui-core';
 import { LoopPolicyEditor } from '../LoopPolicyEditor.js';
@@ -13,7 +13,11 @@ import {
 } from '../../api.js';
 import type { SettingsModel } from '../useSettingsPanelModel.js';
 import { SettingsSection, Field } from '../fields.js';
-import { catalogNumberDescriptors, numericPolicyRecord } from '../policyCatalog.js';
+import {
+  catalogNumberDescriptors,
+  numericPolicyRecord,
+  policyBaselineNumbers,
+} from '../policyCatalog.js';
 
 export function DebugTab({ m }: { m: SettingsModel }) {
   const {
@@ -199,12 +203,7 @@ export function DebugTab({ m }: { m: SettingsModel }) {
           thresholds={numericPolicyRecord(
             draft.loopPolicy as unknown as Record<string, unknown>,
           )}
-          bandThresholds={numericPolicyRecord(
-            DEFAULT_DESKTOP_SETTINGS.loopPolicy as unknown as Record<
-              string,
-              unknown
-            >,
-          )}
+          bandThresholds={policyBaselineNumbers('loopPolicy')}
           customEnabled={draft.loopPolicy.enabled}
           disabled={
             !draft.developer.enabled || !draft.loopPolicy.enabled
@@ -224,7 +223,7 @@ export function DebugTab({ m }: { m: SettingsModel }) {
   
       <SettingsSection
         title="V8 engine knobs"
-        description="All mitii.v8LoopPolicy.* keys. Saved with your settings; the Desktop engine does not forward them to runs yet."
+        description="All mitii.v8LoopPolicy.* keys. Forwarded to runs when enabled (V8 engine only); the engine applies these overrides on top of its ship thresholds."
       >
         <label className="checkbox-row">
           <input
@@ -248,12 +247,7 @@ export function DebugTab({ m }: { m: SettingsModel }) {
           thresholds={numericPolicyRecord(
             draft.v8LoopPolicy as unknown as Record<string, unknown>,
           )}
-          bandThresholds={numericPolicyRecord(
-            DEFAULT_DESKTOP_SETTINGS.v8LoopPolicy as unknown as Record<
-              string,
-              unknown
-            >,
-          )}
+          bandThresholds={policyBaselineNumbers('v8LoopPolicy')}
           customEnabled={draft.v8LoopPolicy.enabled}
           disabled={
             !draft.developer.enabled || !draft.v8LoopPolicy.enabled

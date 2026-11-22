@@ -48,11 +48,11 @@ apps/desktop/src/
     ├── api/             # HTTP client modules (chat, git, mcp, workspace, …)
     ├── app/             # useAppModel (wires feature hooks) + AppShell
     ├── shell/           # topbar, activity bar, main section, workspace panel (thin host), hooks/
-    ├── chat/            # panel, feed, composer, timeline, markdown, hooks/
+    ├── chat/            # panel, feed, composer (+ review strip / bar), timeline, markdown, hooks/
     ├── settings/        # SettingsPanel, tabs/, features/, profiles/
     ├── indexing/        # index status chip + hooks/
     ├── explorer/        # file tree, editor tabs, context menu, DiffView, CodeEditor, hooks/
-    ├── git/             # Source Control pane + top branch select
+    ├── git/             # Source Control pane + top branch select (not composer UI)
     ├── mcp/ skills/ recipes/
     ├── styles.css       # entry: @mitii/ui-theme adapter + ordered partials
     └── styles/          # NN-feature.css partials (import order = cascade order)

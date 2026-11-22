@@ -10,7 +10,7 @@ import type {
   WindowBudgetPolicyOverrides,
   WindowPolicy,
 } from '@mitii/sdk';
-import { projectNumberFields } from '@mitii/settings';
+import { TOKEN_BUDGET_PRESENTATION, projectNumberFields } from '@mitii/settings';
 import type * as vscode from 'vscode';
 
 import type {
@@ -18,7 +18,6 @@ import type {
   TokenBudgetPreview,
   TokenBudgetSettingsSnapshot,
 } from './protocol.js';
-import { TOKEN_BUDGET_PRESENTATION } from './tokenBudgetFieldPresentation.js';
 
 function windowBudgetDefaults(): Record<string, number> {
   const out: Record<string, number> = {};

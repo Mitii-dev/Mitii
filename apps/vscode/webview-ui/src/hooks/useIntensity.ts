@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { type ApprovalUiMode } from '../components/ComposerControls';
+import { type ApprovalUiMode } from '../approvalPresets';
 import { modeColor } from '../modeColors';
 import { type AgentUiDepth, type AgentUiEffort, type AgentUiMode, type AgentUiThoroughness } from '../protocol';
 

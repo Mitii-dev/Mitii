@@ -11,7 +11,16 @@ import {
   settingsToMitiiConfigFile,
   settingsToEngineEnv,
 } from '../src/shared/settings.js';
-import { DEFAULT_WINDOW_BUDGET_NUMBERS } from '@mitii/ui-core';
+import {
+  DEFAULT_LOOP_POLICY_NUMBERS,
+  DEFAULT_V8_LOOP_POLICY_NUMBERS,
+  DEFAULT_WINDOW_BUDGET_NUMBERS,
+} from '@mitii/ui-core';
+import {
+  LOOP_POLICY_PRESENTATION,
+  TOKEN_BUDGET_PRESENTATION,
+  V8_LOOP_POLICY_PRESENTATION,
+} from '@mitii/settings';
 import { catalogNumberDescriptors } from '../src/renderer/settings/policyCatalog.js';
 
 describe('desktop settings', () => {
@@ -166,7 +175,7 @@ describe('desktop settings', () => {
         const entry = SETTINGS_CATALOG[`mitii.${prefix}.${descriptor.key}`];
         expect(entry, descriptor.key).toBeTruthy();
         expect(descriptor.min, descriptor.key).toBe(entry?.minimum ?? 0);
-        if (prefix !== 'tokenBudget') {
+        if (prefix === 'v8LoopPolicy') {
           expect(descriptor.defaultValue).toBe(entry?.default);
         }
       }
@@ -189,7 +198,13 @@ describe('desktop settings', () => {
   it('tokenBudget keeps only the five Simple keys out of Advanced', () => {
     const budget = catalogNumberDescriptors('tokenBudget');
     expect(budget).toHaveLength(108);
-    expect(budget.every((d) => d.group === 'Token budget')).toBe(true);
+    expect(budget.map((d) => d.key)).toEqual(Object.keys(TOKEN_BUDGET_PRESENTATION));
+    for (const d of budget) {
+      expect(d.group, d.key).toBe(TOKEN_BUDGET_PRESENTATION[d.key]!.group);
+      expect(d.label, d.key).toBe(TOKEN_BUDGET_PRESENTATION[d.key]!.label);
+      expect(d.label, d.key).not.toBe(d.key);
+    }
+    expect(new Set(budget.map((d) => d.group)).size).toBeGreaterThan(5);
     expect(budget.filter((d) => d.tier === 'simple').map((d) => d.key).sort()).toEqual(
       ['conversationShare', 'outputRatio', 'planShare', 'repositoryShare', 'skillsShare'],
     );
@@ -204,7 +219,11 @@ describe('desktop settings', () => {
 
   it('loopPolicy / v8LoopPolicy descriptors split Simple and Advanced', () => {
     const loop = catalogNumberDescriptors('loopPolicy');
-    expect(loop.every((d) => d.group === 'Loop thresholds')).toBe(true);
+    expect(loop.map((d) => d.key)).toEqual(Object.keys(LOOP_POLICY_PRESENTATION));
+    for (const d of loop) {
+      expect(d.group, d.key).toBe(LOOP_POLICY_PRESENTATION[d.key]!.group);
+      expect(d.label, d.key).not.toBe(d.key);
+    }
     expect(
       loop.filter((d) => d.tier === 'simple').map((d) => d.key).sort(),
     ).toEqual(
@@ -220,9 +239,37 @@ describe('desktop settings', () => {
     expect(loop.some((d) => d.tier === 'advanced')).toBe(true);
     const v8 = catalogNumberDescriptors('v8LoopPolicy');
     expect(v8).toHaveLength(8);
-    expect(v8.every((d) => d.group === 'V8 engine')).toBe(true);
+    expect(v8.map((d) => d.key)).toEqual(Object.keys(V8_LOOP_POLICY_PRESENTATION));
+    for (const d of v8) {
+      expect(d.group, d.key).toBe(V8_LOOP_POLICY_PRESENTATION[d.key]!.group);
+      expect(d.group, d.key).toMatch(/^V8 /);
+    }
     expect(v8.filter((d) => d.tier === 'simple')).toHaveLength(4);
     expect(v8.filter((d) => d.tier === 'advanced')).toHaveLength(4);
+  });
+
+  it('loopPolicy defaults use the SDK-aligned ui-core baseline, not catalog drift', () => {
+    const loop = catalogNumberDescriptors('loopPolicy');
+    for (const d of loop) {
+      expect(d.defaultValue, d.key).toBe(DEFAULT_LOOP_POLICY_NUMBERS[d.key]);
+    }
+    const byKey = new Map(loop.map((d) => [d.key, d]));
+    expect(byKey.get('explorationRereadMinCalls')?.defaultValue).toBe(6);
+    expect(byKey.get('maxReadOnlyToolTurnsBeforeMutationNudge')?.defaultValue).toBe(4);
+    expect(byKey.get('maxUnfulfilledExecuteRecoveries')?.defaultValue).toBe(2);
+    expect(byKey.get('defaultPreferredBatchSize')?.defaultValue).toBe(12);
+    expect(byKey.get('defaultMaxPatchesPerCall')?.defaultValue).toBe(24);
+    // Catalog defaults are intentionally untouched.
+    expect(SETTINGS_CATALOG['mitii.loopPolicy.explorationRereadMinCalls']?.default).toBe(8);
+  });
+
+  it('v8LoopPolicy defaults use the ui-core baseline (equal to the catalog)', () => {
+    for (const d of catalogNumberDescriptors('v8LoopPolicy')) {
+      expect(d.defaultValue, d.key).toBe(DEFAULT_V8_LOOP_POLICY_NUMBERS[d.key]);
+      expect(d.defaultValue, d.key).toBe(
+        SETTINGS_CATALOG[`mitii.v8LoopPolicy.${d.key}`]?.default,
+      );
+    }
   });
 
   it('folds engine.implementation into the catalog tree', () => {

@@ -23,7 +23,7 @@ export const REPO_MAP_DEFAULTS = {
   PAGE_RANK_EVIDENCE_DECIMAL_PLACES: 6,
   /**
    * When ranking context has no chat/open/current files, enlarge the map
-   * token budget (aider `map_mul_no_files`).
+   * token budget so cold-start maps stay informative.
    */
   MAP_MUL_NO_FILES: 8,
   MAXIMUM_NO_SESSION_TOKEN_BUDGET: 32_000,
@@ -72,7 +72,7 @@ export const REPO_MAP_SCORE_WEIGHTS = {
   REFERENCE_EDGE: 0.5,
 
   /**
-   * Aider-style identifier edge multipliers (injected formulae, not drop-in).
+   * Identifier edge multipliers.
    * Applied to calls/references PageRank edges only.
    */
   IDENT_MENTIONED_MULTIPLIER: 10,

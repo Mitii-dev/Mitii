@@ -1,8 +1,12 @@
 import { AGENT_ENGINE_THRESHOLDS } from '@mitii/sdk';
-import { SETTINGS_CATALOG, projectNumberFields } from '@mitii/settings';
+import { DEFAULT_LOOP_POLICY_NUMBERS } from '@mitii/ui-core';
+import {
+  LOOP_POLICY_PRESENTATION,
+  SETTINGS_CATALOG,
+  projectNumberFields,
+} from '@mitii/settings';
 import { describe, expect, it } from 'vitest';
 
-import { LOOP_POLICY_PRESENTATION } from '../src/loopPolicyFieldPresentation';
 import { LOOP_POLICY_FIELDS, defaultLoopPolicySettings } from '../src/loopPolicySettings';
 
 const PREFIX = 'mitii.loopPolicy.';
@@ -69,6 +73,17 @@ describe('LOOP_POLICY_FIELDS from the settings catalog', () => {
     expect(snapshot.fields.map((f) => f.key)).toEqual(LOOP_POLICY_FIELDS.map((f) => f.key));
     for (const field of snapshot.fields) {
       expect(field.defaultValue, field.key).toBe(snapshot.bandThresholds[field.key]);
+    }
+  });
+
+  it('ui-core DEFAULT_LOOP_POLICY_NUMBERS equals the SDK baseline for every catalog key', () => {
+    expect(Object.keys(DEFAULT_LOOP_POLICY_NUMBERS).sort()).toEqual(
+      [...catalogNumberKeys].sort(),
+    );
+    for (const key of catalogNumberKeys) {
+      expect(DEFAULT_LOOP_POLICY_NUMBERS[key], key).toBe(
+        AGENT_ENGINE_THRESHOLDS[key as keyof typeof AGENT_ENGINE_THRESHOLDS],
+      );
     }
   });
 });

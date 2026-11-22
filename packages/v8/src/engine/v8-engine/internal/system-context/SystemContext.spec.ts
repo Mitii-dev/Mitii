@@ -11,7 +11,7 @@ import {
   decodeJsonString,
 } from "./index";
 
-describe("SystemContext formulae (OpenCode discipline)", () => {
+describe("SystemContext formulae (typed-source discipline)", () => {
   it("initialize blocks when any source is unavailable", () => {
     const context = composeMitiiSystemContext({
       route: "ask",

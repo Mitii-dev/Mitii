@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { modeDefaultsFromUi } from '../app/modeSettings';
 import { DEFAULT_CODE_REVIEW_PROMPT, mergeReviewSkillIds } from '../app/reviewHelpers';
 import { postToHost } from '../bridge';
-import { normalizeApproval } from '../components/ComposerControls';
+import { normalizeApproval } from '../approvalPresets';
 import { type ContextPin } from '../components/ContextPanel';
 import { enabledMcpSuggestItems, filterMcpSuggestions, togglePinnedMcpServer } from '../mcpSuggest';
 import { type PathSuggestion, type SkillCatalogItem } from '../protocol';

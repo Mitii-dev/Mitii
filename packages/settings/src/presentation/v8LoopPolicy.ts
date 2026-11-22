@@ -1,4 +1,4 @@
-import type { NumberFieldPresentationMap } from '@mitii/settings';
+import type { NumberFieldPresentationMap } from '../contracts/numberFieldDescriptor.js';
 
 /**
  * V8 engine knob presentation overlay. Keys, bounds, and descriptions come

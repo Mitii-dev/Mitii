@@ -1,21 +1,21 @@
 /**
- * Session History formulae injected from OpenCode CONTEXT.md + Mitii hybrid retrieval.
+ * Session History formulae and hybrid retrieval over the durable archive.
  *
- * OpenCode language (inject, do not drop-in Effect):
+ * Language:
  * - **Session History** = projected chronological conversation for a provider turn
  *   after compaction / Context Epoch cutoffs — not the full durable log.
  * - **Dual store**: durable transcript archive ≠ model-visible projection.
  *   Compaction removes turns from projection but MUST NOT delete the archive.
  * - **Cutover**: after drop, model sees checkpoint/summary/hybrid hits + recent live turns.
  *
- * Mitii extension (P4): hybrid retrieve (lexical + path/locator streams, RRF fuse)
+ * Hybrid retrieve (lexical + path/locator streams, RRF fuse)
  * over the durable archive under `conversationShare` / dropped-summary budget —
- * OpenCode uses rolling LLM summary only; Mitii adds query-relevant recall.
+ * adds query-relevant recall on top of the rolling summary.
  */
 
 export interface SessionHistoryRecord {
   readonly id: string;
-  /** Monotonic archive sequence (OpenCode-style seq for cutover ordering). */
+  /** Monotonic archive sequence (seq for cutover ordering). */
   readonly seq: number;
   readonly role: "user" | "assistant" | "tool";
   readonly content: string;
@@ -37,7 +37,7 @@ export interface SessionHistoryRetrieveResult {
   readonly hits: readonly SessionHistoryRetrieveHit[];
   readonly usedChars: number;
   readonly omittedCount: number;
-  /** Model-visible checkpoint text (OpenCode compaction checkpoint shape). */
+  /** Model-visible checkpoint text (compaction checkpoint shape). */
   readonly projectionText: string | undefined;
 }
 

@@ -10,7 +10,7 @@ import type { SystemContextSnapshot } from "../system-context";
 
 export interface ContextEpochSnapshot {
   /**
-   * OpenCode Context Snapshot: encoded source values (+ optional removal text).
+   * Context Snapshot: encoded source values (+ optional removal text).
    * Legacy checkpoints may store bare hash strings; admit normalizes on load.
    */
   readonly sources: SystemContextSnapshot | Readonly<Record<string, string>>;
@@ -34,7 +34,7 @@ export type ContextEpochReconcileResult =
       kind: "updated";
       epoch: ContextEpoch;
       changedSourceKeys: string[];
-      /** Mid-Conversation System Message text (OpenCode Updated.text). */
+      /** Mid-Conversation System Message text (Updated.text). */
       midConversationText: string;
     }
   | { kind: "replace_ready"; epoch: ContextEpoch }

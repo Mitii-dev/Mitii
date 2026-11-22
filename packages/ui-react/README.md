@@ -12,6 +12,7 @@ Own UI that must look and behave the same in every shell:
 | `MemoryPanel` | Workspace memory list with a compose box. |
 | `CheckpointPanel` | Checkpoint list with restore / review / delete / clear. |
 | `ModelQuickSelect` | Model picker with filter, custom model id, and profile shortcut. |
+| `ComposerControls` | Mode, approval (or DB access), and thoroughness pickers. Lives in `composer-controls/` with default option catalogs; see its README. |
 | `TokenBudgetAllocation` | Context-window allocation bar and legend. |
 | `TokenMeter` | Token chip + popover: cost, cache, latest call, window budget tree. Split under `token-meter/`. |
 | `TokenBudgetEditor` | Allocation chart, Simple sliders, optional Advanced policy fields; includes `NumberField` and `SliderField`. |
@@ -22,11 +23,11 @@ Helpers: `emptyTokenUsage`, `addTurnTokens`, `cacheHitRatio`, `formatCompact`, `
 
 Props in, callbacks out. Domain math (budget previews, pricing, policy merge) comes from `@mitii/ui-core`; this package never fetches, never reads host globals, and never imports a host. `react` is a peer dependency.
 
-Hosts tune presentation with explicit props instead of forks: `className` (panel chrome), `placement` / `glyph` / `reportedLabel` / `liveStatsLayout` (`TokenMeter`), `triggerIcon` / `checkIcon` / `showCaret` / `custom` (`ModelQuickSelect`), `hintMode` / `renderFieldHelp` (`TokenBudgetEditor`).
+Hosts tune presentation with explicit props instead of forks: `className` (panel chrome), `placement` / `glyph` / `reportedLabel` / `liveStatsLayout` (`TokenMeter`), `triggerIcon` / `checkIcon` / `showCaret` / `custom` (`ModelQuickSelect`), `icons` / `checkIcon` / `intensityCustom` / `dbAccess` / option-list overrides / `menuAlign` (`ComposerControls`), `hintMode` / `renderFieldHelp` (`TokenBudgetEditor`).
 
 ## Class-name contract
 
-Components emit stable class names (`btn`, `btn-primary`, `btn-ghost`, `token-chip*`, `token-popover*`, `slider-field*`, `model-quick-select*`, …). Each host stylesheet must define them from `--mitii-*` tokens. Ghost buttons use `btn btn-ghost`; the VS Code stylesheet treats `.btn.ghost` and `.btn.btn-ghost` the same.
+Components emit stable class names (`btn`, `btn-primary`, `btn-ghost`, `token-chip*`, `token-popover*`, `slider-field*`, `model-quick-select*`, `composer-controls`, `composer-dropdown*`, …). Each host stylesheet must define them from `--mitii-*` tokens. Ghost buttons use `btn btn-ghost`; the VS Code stylesheet treats `.btn.ghost` and `.btn.btn-ghost` the same.
 
 ## Exports
 
@@ -39,8 +40,8 @@ Components render safe empty states for missing data (no breakdown, no cost rate
 ## Non-responsibilities
 
 - No host messaging, Electron/VS Code APIs, or engine calls.
-- No CSS files (tokens live in `@mitii/ui-theme`; component rules stay in each app's stylesheet until the Wave 1.4 stylesheet split).
-- Not yet shared: Desktop/VS Code `ComposerControls` (different option sets and icons), Markdown body, review bar, and per-field help with docs links (`TokenBudgetFieldHelp` stays in VS Code and plugs in through `renderFieldHelp`).
+- No CSS files (tokens live in `@mitii/ui-theme`; component rules stay in each app's stylesheet until stylesheets are split per feature).
+- Not shared: Markdown body, the working-tree review bar (Desktop and VS Code each own theirs), and per-field help with docs links (`TokenBudgetFieldHelp` stays in VS Code and plugs in through `renderFieldHelp`).
 
 ## Settings catalog
 

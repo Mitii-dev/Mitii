@@ -5,3 +5,4 @@ export * from './thoroughness.js';
 export * from './mentionSuggest.js';
 export * from './fileLinks.js';
 export * from './excalidrawSvg.js';
+export * from './policy-defaults/index.js';

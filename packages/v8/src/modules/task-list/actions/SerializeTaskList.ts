@@ -26,7 +26,7 @@ const OPEN_STATUS = new Set<TaskItemStatus>(
 );
 
 /**
- * Serialize a task list to Cursor-style markdown checkboxes.
+ * Serialize a task list to markdown checkboxes.
  */
 export function serializeTaskListMarkdown(taskList: TaskList): string {
   const heading = taskList.title?.trim() || "Task list";

@@ -71,7 +71,7 @@ export interface ContextSelectionReferences {
   recentEditFiles?: readonly ContextFileReference[];
   /**
    * Files that changed on disk after the agent last loaded them into context
-   * (Cline-style stale tracking). Prefer re-read over stale cached bodies.
+   * (stale-read tracking). Prefer re-read over stale cached bodies.
    */
   staleFiles?: readonly ContextFileReference[];
 }

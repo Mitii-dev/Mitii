@@ -1,12 +1,16 @@
 /** Composer dock: plan banner, review strip, input and controls. */
 
-import { PendingPlanBanner, TokenMeter, ModelQuickSelect } from '@mitii/ui-react';
+import {
+  ComposerControls,
+  ModelQuickSelect,
+  PendingPlanBanner,
+  TokenMeter,
+} from '@mitii/ui-react';
 import { DatabaseModeBanner, isDatabaseMcpServer } from './DatabaseModeBanner.js';
 import { PlanFollowStrip } from './PlanFollowStrip.js';
 import { ComposerReviewStrip } from './ComposerReviewStrip.js';
 import { fetchCheckpoints, restoreCheckpoint, shortPath } from '../api.js';
 import { type CSSProperties } from 'react';
-import { ComposerControls } from './ComposerControls.js';
 import type { AppModel } from '../app/useAppModel.js';
 import { SuggestMenu } from './SuggestMenu.js';
 

@@ -8,6 +8,7 @@ Own UI-facing logic that must behave identically in every shell:
 
 - **Token budget** — `deriveLiveTokenBudgetPreview`, policy merge/pin helpers, `TokenBudgetPreview`, slider-safe values, context-window draft resolution.
 - **Window budget** — default numbers, band overlays, and `windowAllocationSlices` for allocation charts.
+- **Policy defaults** — `DEFAULT_LOOP_POLICY_NUMBERS` and `DEFAULT_V8_LOOP_POLICY_NUMBERS`: renderer-safe ship baselines aligned with the engine thresholds (pinned by VS Code catalog tests); used as editor `defaultValue`.
 - **Model pricing** — models.dev rate lookup, session cost estimate, USD formatting, catalog cache.
 - **Thoroughness** — Low/Medium/High presets mapped to exploration depth and effort, intensity normalization.
 - **Mentions** — `detectMentionSuggest` / `stripTrailingMention` for composer `@` tokens.

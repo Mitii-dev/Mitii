@@ -11,7 +11,7 @@ import type {
 } from "./types";
 
 /**
- * Continue-style modality quotas: when vector retrieval is degraded, guarantee
+ * Modality quotas: when vector retrieval is degraded, guarantee
  * minimum final slots for lexical / graph / map / session so RRF cannot starve
  * a whole modality.
  */

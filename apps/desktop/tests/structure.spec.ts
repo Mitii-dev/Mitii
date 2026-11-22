@@ -22,7 +22,7 @@ const lineCount = (file: string): number => {
   return text.endsWith('\n') ? text.split('\n').length - 1 : text.split('\n').length;
 };
 
-describe('desktop source structure (Wave 1.4 god-file splits)', () => {
+describe('desktop source structure (engine/renderer module splits)', () => {
   it('engine server.ts only wires the route table (no inline routes)', () => {
     const text = readFileSync(join(src, 'engine/server.ts'), 'utf8');
     expect(text).not.toMatch(/['"]\/v1\//);

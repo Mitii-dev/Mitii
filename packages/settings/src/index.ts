@@ -55,3 +55,8 @@ export {
   type ContributesDrift,
   type VscodeContributesProperty,
 } from './vscodeContributes.js';
+export {
+  LOOP_POLICY_PRESENTATION,
+  TOKEN_BUDGET_PRESENTATION,
+  V8_LOOP_POLICY_PRESENTATION,
+} from './presentation/index.js';
