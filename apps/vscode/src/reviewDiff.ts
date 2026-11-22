@@ -4,6 +4,7 @@ import { promisify } from 'node:util';
 import {
   flattenPorcelainFiles,
   parseGitPorcelain,
+  type GitPorcelainFile,
 } from '@mitii/sdk';
 
 import type { ReviewDiffView } from './protocol.js';
@@ -59,7 +60,7 @@ export async function buildReviewDiff(
   const parsed = parseGitPorcelain(statusOut);
   const files: ReviewDiffView['files'] = flattenPorcelainFiles(parsed)
     .slice(0, 40)
-    .map((file) => ({
+    .map((file: GitPorcelainFile) => ({
       path: file.path,
       status: file.status,
     }));
