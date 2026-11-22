@@ -57,6 +57,37 @@ export type {
 } from '../indexing/fullWorkspaceIndex.js';
 
 export {
+  createDebouncedIncrementalIndexTrigger,
+  INCREMENTAL_INDEX_DEBOUNCE_MS,
+  INCREMENTAL_INDEX_MAX_PATHS_PER_FLUSH,
+} from '../indexing/createDebouncedIncrementalIndexTrigger.js';
+export type {
+  DebouncedIncrementalIndexTrigger,
+  CreateDebouncedIncrementalIndexTriggerOptions,
+} from '../indexing/createDebouncedIncrementalIndexTrigger.js';
+
+/** Normalized workspace file-change events for host watch adapters. */
+export type WorkspaceChangeKind =
+  | 'add'
+  | 'change'
+  | 'unlink'
+  | 'addDir'
+  | 'unlinkDir'
+  | 'unknown';
+
+export interface WorkspaceChangeEvent {
+  at: number;
+  paths: string[];
+  kind: WorkspaceChangeKind;
+}
+
+export interface WorkspaceChangePort {
+  subscribe: (listener: (event: WorkspaceChangeEvent) => void) => () => void;
+  close: () => void;
+  notify: (paths: string[], kind?: WorkspaceChangeKind) => void;
+}
+
+export {
   IndexLockedError,
   acquireIndexLock,
   isIndexLockHeld,
@@ -107,6 +138,23 @@ export {
 } from '../indexing/treeSitter/WebTreeSitterRuntime.js';
 export type { WebTreeSitterRuntimeOptions } from '../indexing/treeSitter/WebTreeSitterRuntime.js';
 export { createDefaultTreeSitterRuntime } from '../indexing/treeSitter/createDefaultTreeSitterRuntime.js';
+export { NativeTreeSitterRuntime } from '../indexing/treeSitter/NativeTreeSitterRuntime.js';
+export { PreferNativeTreeSitterRuntime } from '../indexing/treeSitter/PreferNativeTreeSitterRuntime.js';
+export {
+  ScipEnrichmentAdapter,
+  scheduleScipEnrichment,
+  parseScipJsonl,
+} from '../indexing/scip/ScipEnrichmentAdapter.js';
+export type {
+  ScipOccurrence,
+  ScipEnrichmentResult,
+} from '../indexing/scip/ScipEnrichmentAdapter.js';
+export { ensureScipArtifacts } from '../indexing/scip/ensureScipArtifacts.js';
+export type { EnsureScipArtifactsResult } from '../indexing/scip/ensureScipArtifacts.js';
+export {
+  parseScipIndexBinary,
+  extractScipSymbolName,
+} from '../indexing/scip/parseScipIndexBinary.js';
 
 /**
  * Fingerprint-only publish candidate (honest: indexes unavailable).

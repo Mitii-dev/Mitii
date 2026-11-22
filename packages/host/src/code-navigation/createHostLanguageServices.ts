@@ -5,6 +5,7 @@ import type {
 } from '@mitii/v8';
 import { CODE_NAVIGATION_OPERATIONS } from '@mitii/v8';
 
+import type { OpenHostSqliteDatabase } from '../sqlite/types.js';
 import { createHostCodeNavigationPort } from './createHostCodeNavigationPort.js';
 import { createNodeJsDiagnosticsPort } from './createNodeJsDiagnosticsPort.js';
 import {
@@ -14,6 +15,23 @@ import {
 import { PreferStdioThenTypeScriptPort } from './preferStdioThenTypeScriptPort.js';
 import { discoverStdioLspServers } from './stdio-lsp/discoverStdioLspServers.js';
 import { tryCreateTypeScriptLanguageService } from './typescriptLanguageService.js';
+
+function tryDefaultSqliteOpener(): OpenHostSqliteDatabase | undefined {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const Database = require('better-sqlite3') as new (
+      path: string,
+      options?: { readonly?: boolean; fileMustExist?: boolean },
+    ) => ReturnType<OpenHostSqliteDatabase>;
+    return (filename, options) =>
+      new Database(filename, {
+        readonly: options?.readonly,
+        fileMustExist: options?.fileMustExist,
+      }) as ReturnType<OpenHostSqliteDatabase>;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * CLI/ACP-owned language-service lifecycle.
@@ -39,6 +57,7 @@ export function createHostLanguageServices(options: {
    */
   lspServers?: readonly StdioLspServerConfig[];
   abortSignal?: AbortSignal;
+  openDatabase?: OpenHostSqliteDatabase;
 }): HostLanguageServices {
   const service = tryCreateTypeScriptLanguageService(options.workspaceRoot);
   const resolvedServers =
@@ -51,6 +70,7 @@ export function createHostLanguageServices(options: {
           abortSignal: options.abortSignal,
         })
       : undefined;
+  const openDatabase = options.openDatabase ?? tryDefaultSqliteOpener();
 
   if (service) {
     // Prefer stdio when configured for the file; fall back to in-process TS.
@@ -61,6 +81,7 @@ export function createHostLanguageServices(options: {
       codeNavigation: createHostCodeNavigationPort({
         workspaceRoot: options.workspaceRoot,
         languageServer,
+        ...(openDatabase ? { openDatabase } : {}),
       }),
       diagnostics: service,
       capability: service.capability(),
@@ -76,6 +97,7 @@ export function createHostLanguageServices(options: {
       codeNavigation: createHostCodeNavigationPort({
         workspaceRoot: options.workspaceRoot,
         languageServer: stdio,
+        ...(openDatabase ? { openDatabase } : {}),
       }),
       // Stdio LSP may not expose diagnostics; Node module-load covers .js/.mjs/.cjs.
       diagnostics: createNodeJsDiagnosticsPort({
@@ -95,6 +117,7 @@ export function createHostLanguageServices(options: {
 
   const codeNavigation = createHostCodeNavigationPort({
     workspaceRoot: options.workspaceRoot,
+    ...(openDatabase ? { openDatabase } : {}),
   });
   return {
     codeNavigation,

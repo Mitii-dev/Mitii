@@ -34,6 +34,7 @@ export const READ_ONLY_TOOL_IDS = [
   "glob_files",
   "file_metadata",
   "search_files",
+  "structural_search",
   ...DIAGNOSTICS_TOOL_IDS,
   "read_git_status",
   "read_git_log",

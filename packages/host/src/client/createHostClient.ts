@@ -3,7 +3,6 @@ import {
   DEFAULT_TOOL_DEFINITIONS,
   InMemoryRepositoryStateStore,
   InMemoryToolOutputSpillAdapter,
-  NodeGitAdapter,
   NodeNetworkAdapter,
   NodeProcessAdapter,
   NodeWorkspaceFileSystemAdapter,
@@ -26,6 +25,10 @@ import { createFileSystemSkillsCatalog } from '../ports/skillsCatalog.js';
 import { createWorkspaceKnowledgeGraph } from '../ports/knowledgeGraphStore.js';
 import { createWorkspaceVerificationStore } from '../ports/verificationRecords.js';
 import { createOptionalVerificationSyntaxPort } from '../ports/verificationSyntax.js';
+import { AstGrepWorkspaceAdapter } from '../ports/AstGrepWorkspaceAdapter.js';
+import { CompositeWorkspaceTextSearchAdapter } from '../ports/CompositeWorkspaceTextSearchAdapter.js';
+import { RipgrepWorkspaceTextSearchAdapter } from '../ports/RipgrepWorkspaceTextSearchAdapter.js';
+import { createHostGitPort } from '../ports/createHostGitPort.js';
 import { createHostRepositoryGraphPort } from '../repository-graph/loadWorkspaceGraphs.js';
 import {
   createSandboxedProcessPort,
@@ -149,12 +152,16 @@ export async function createHostClient(
 
   let tools: ToolRuntimePipeline | undefined;
   let verification: VerificationPipeline | undefined;
-  let git: NodeGitAdapter | undefined;
+  let git: ReturnType<typeof createHostGitPort> | undefined;
   let repoGraphs: ReturnType<typeof createHostRepositoryGraphPort> | undefined;
 
   if (root) {
     const fileSystem = new NodeWorkspaceFileSystemAdapter();
-    git = new NodeGitAdapter();
+    git = createHostGitPort();
+    const workspaceTextSearch = new CompositeWorkspaceTextSearchAdapter(
+      new RipgrepWorkspaceTextSearchAdapter(fileSystem),
+    );
+    const astGrep = new AstGrepWorkspaceAdapter();
     repoGraphs = createHostRepositoryGraphPort({
       workspaceRoot: root,
       git,
@@ -192,6 +199,8 @@ export async function createHostClient(
           options.network ??
           createHostNetworkPort({ inner: new NodeNetworkAdapter(), env }),
         git,
+        workspaceTextSearch,
+        astGrep,
         knowledgeGraph: createWorkspaceKnowledgeGraph(root),
         ...(codeNavigation ? { codeNavigation } : {}),
         ...(diagnostics ? { diagnostics } : {}),

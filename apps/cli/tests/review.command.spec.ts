@@ -49,10 +49,10 @@ describe('review git parsing', () => {
       '',
     ].join('\0');
     expect(parsePorcelainZ(text)).toEqual([
-      { path: 'src/a b.ts', status: 'modified' },
-      { path: 'new name.ts', status: 'renamed' },
       { path: 'docs/new file.md', status: 'added', untracked: true },
       { path: 'gone.ts', status: 'deleted' },
+      { path: 'new name.ts', status: 'renamed' },
+      { path: 'src/a b.ts', status: 'modified' },
     ]);
   });
 

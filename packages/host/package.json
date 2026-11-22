@@ -1,6 +1,6 @@
 {
   "name": "@mitii/host",
-  "version": "2.11.10",
+  "version": "2.11.11",
   "description": "Shared host kit for Mitii apps: SQLite injection, workspace indexing, repository context, durable ports (checkpoints/memory/skills/search/network), project rules, prepareStartInput, provider presets. Web retrieval via @mitii/search-kit.",
   "license": "AGPL-3.0-or-later",
   "type": "module",
@@ -53,9 +53,15 @@
     "vitest": "^3.2.7"
   },
   "optionalDependencies": {
+    "@ast-grep/cli": "^0.51.3",
+    "@bufbuild/protobuf": "^2.2.0",
     "@lancedb/lancedb": "0.33.0",
+    "@scip-code/scip": "^0.10.0",
+    "@vscode/ripgrep": "^1.18.0",
+    "es-git": "^0.7.0",
     "onnxruntime-node": "1.21.0",
     "onnxruntime-web": "1.21.0",
+    "tree-sitter": "^0.22.4",
     "tree-sitter-wasms": "^0.1.13",
     "web-tree-sitter": "^0.24.7"
   }

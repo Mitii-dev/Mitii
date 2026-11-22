@@ -9,6 +9,8 @@ import type { ProcessPort } from "./ProcessPort";
 import type { SearchPort } from "./SearchPort";
 import type { ToolOutputSpillPort } from "./ToolOutputSpillPort";
 import type { WorkspaceFileSystemPort } from "./WorkspaceFileSystemPort";
+import type { AstGrepPort } from "./AstGrepPort";
+import type { WorkspaceTextSearchPort } from "./WorkspaceTextSearchPort";
 
 export interface ToolRuntimePorts {
   fileSystem: WorkspaceFileSystemPort;
@@ -17,6 +19,10 @@ export interface ToolRuntimePorts {
   git?: GitPort;
   network?: NetworkPort;
   search?: SearchPort;
+  /** Live repo text search (ripgrep / FTS). Falls back to FS walk when omitted. */
+  workspaceTextSearch?: WorkspaceTextSearchPort;
+  /** Structural AST search (ast-grep). Off the index hot path. */
+  astGrep?: AstGrepPort;
   /** Optional full-payload store when model-facing output is byte-bounded. */
   outputSpill?: ToolOutputSpillPort;
   codeNavigation?: CodeNavigationPort;
@@ -68,6 +74,18 @@ export type {
   WebSearchHit,
   WebSearchResult,
 } from "./SearchPort";
+export type {
+  WorkspaceTextSearchPort,
+  WorkspaceTextSearchMatch,
+  WorkspaceTextSearchRequest,
+  WorkspaceTextSearchResult,
+} from "./WorkspaceTextSearchPort";
+export type {
+  AstGrepPort,
+  AstGrepMatch,
+  AstGrepSearchRequest,
+  AstGrepSearchResult,
+} from "./AstGrepPort";
 export type {
   ToolOutputSpillPort,
   ToolOutputSpillStoreRequest,

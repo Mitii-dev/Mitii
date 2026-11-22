@@ -1,26 +1,16 @@
 /**
- * Workspace filesystem watch — pushes relative path changes to subscribers.
- * Uses Node recursive fs.watch (macOS/Windows). Falls back to root-only watch.
+ * Workspace filesystem watch — Chokidar-backed WorkspaceChangePort.
  */
 
-import { watch, type FSWatcher } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 
-import { isIndexLockHeld } from '@mitii/host';
-
-export type WorkspaceChangeKind =
-  | 'add'
-  | 'change'
-  | 'unlink'
-  | 'addDir'
-  | 'unlinkDir'
-  | 'unknown';
-
-export interface WorkspaceChangeEvent {
-  at: number;
-  paths: string[];
-  kind: WorkspaceChangeKind;
-}
+import { watch as chokidarWatch, type FSWatcher } from 'chokidar';
+import {
+  isIndexLockHeld,
+  type WorkspaceChangeEvent,
+  type WorkspaceChangeKind,
+  type WorkspaceChangePort,
+} from '@mitii/host';
 
 type Listener = (event: WorkspaceChangeEvent) => void;
 
@@ -59,18 +49,17 @@ function toPosix(path: string): string {
   return path.replace(/\\/g, '/');
 }
 
-export interface WorkspaceWatcher {
-  subscribe: (listener: Listener) => () => void;
-  close: () => void;
-  /** Manually publish paths (e.g. after known tool writes). */
-  notify: (paths: string[], kind?: WorkspaceChangeKind) => void;
-}
+export type {
+  WorkspaceChangeKind,
+  WorkspaceChangeEvent,
+  WorkspaceChangePort as WorkspaceWatcher,
+};
 
 /**
  * Start watching `workspaceRoot`. Events are coalesced so bursts of writes
  * produce one update with all unique relative paths.
  */
-export function createWorkspaceWatcher(workspaceRoot: string): WorkspaceWatcher {
+export function createWorkspaceWatcher(workspaceRoot: string): WorkspaceChangePort {
   const root = resolve(workspaceRoot);
   const mitiiDir = join(root, '.mitii');
   const listeners = new Set<Listener>();
@@ -119,32 +108,49 @@ export function createWorkspaceWatcher(workspaceRoot: string): WorkspaceWatcher 
     timer = setTimeout(flush, coalesceMs());
   };
 
-  const onFsEvent = (eventType: string, filename: string | null) => {
-    if (!filename) {
-      schedule('.', 'unknown');
-      return;
-    }
-    const abs = resolve(root, filename);
-    const rel = relative(root, abs);
-    if (rel.startsWith(`..${sep}`) || rel === '..') return;
-    const kind: WorkspaceChangeKind =
-      eventType === 'rename' ? 'unknown' : 'change';
-    schedule(rel, kind);
+  const toRel = (absPath: string): string | undefined => {
+    const rel = relative(root, absPath);
+    if (rel.startsWith(`..${sep}`) || rel === '..') return undefined;
+    return rel;
   };
 
   try {
-    watcher = watch(root, { recursive: true }, onFsEvent);
+    watcher = chokidarWatch(root, {
+      ignoreInitial: true,
+      awaitWriteFinish: { stabilityThreshold: 120, pollInterval: 50 },
+      ignored: (absPath) => {
+        const rel = toRel(absPath);
+        if (rel === undefined) return true;
+        return shouldIgnoreRel(rel);
+      },
+    });
+    watcher
+      .on('add', (absPath) => {
+        const rel = toRel(absPath);
+        if (rel !== undefined) schedule(rel, 'add');
+      })
+      .on('change', (absPath) => {
+        const rel = toRel(absPath);
+        if (rel !== undefined) schedule(rel, 'change');
+      })
+      .on('unlink', (absPath) => {
+        const rel = toRel(absPath);
+        if (rel !== undefined) schedule(rel, 'unlink');
+      })
+      .on('addDir', (absPath) => {
+        const rel = toRel(absPath);
+        if (rel !== undefined) schedule(rel, 'addDir');
+      })
+      .on('unlinkDir', (absPath) => {
+        const rel = toRel(absPath);
+        if (rel !== undefined) schedule(rel, 'unlinkDir');
+      })
+      .on('error', () => {
+        /* keep process alive; subscribers just stop receiving */
+      });
   } catch {
-    try {
-      watcher = watch(root, onFsEvent);
-    } catch {
-      watcher = null;
-    }
+    watcher = null;
   }
-
-  watcher?.on('error', () => {
-    /* keep process alive; subscribers just stop receiving */
-  });
 
   return {
     subscribe(listener) {
@@ -164,11 +170,7 @@ export function createWorkspaceWatcher(workspaceRoot: string): WorkspaceWatcher 
       timer = null;
       pending.clear();
       listeners.clear();
-      try {
-        watcher?.close();
-      } catch {
-        /* ignore */
-      }
+      void watcher?.close().catch(() => undefined);
       watcher = null;
     },
   };

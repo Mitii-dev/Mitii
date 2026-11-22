@@ -33,6 +33,7 @@ import { readPackageScriptsTool } from "./readPackageScriptsTool";
 import { runCommandTool } from "./runCommandTool";
 import { runReadonlyCommandTool } from "./runReadonlyCommandTool";
 import { searchFilesTool } from "./searchFilesTool";
+import { structuralSearchTool } from "./structuralSearchTool";
 import { sequentialThinkingTool } from "./sequentialThinkingTool";
 import { convertTimeTool, getCurrentTimeTool } from "./timeTools";
 import {
@@ -58,6 +59,7 @@ const BUILTIN_TOOLS_BASE: readonly RegisteredTool[] = [
   globFilesTool,
   fileMetadataTool,
   searchFilesTool,
+  structuralSearchTool,
   readDiagnosticsTool,
   readGitStatusTool,
   readGitLogTool,
@@ -149,6 +151,7 @@ export {
   globFilesTool,
   fileMetadataTool,
   searchFilesTool,
+  structuralSearchTool,
   readDiagnosticsTool,
   readGitStatusTool,
   readGitLogTool,

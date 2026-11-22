@@ -1,6 +1,6 @@
 {
   "name": "@mitii/desktop",
-  "version": "2.11.10",
+  "version": "2.11.11",
   "description": "Mitii Desktop — local coding agent with chat, settings, and repository index.",
   "license": "AGPL-3.0-or-later",
   "private": true,
@@ -49,6 +49,7 @@
     "@mitii/ui-react": "workspace:*",
     "@mitii/ui-theme": "workspace:*",
     "better-sqlite3": "^12.11.1",
+    "chokidar": "^4.0.3",
     "highlight.js": "^11.12.0",
     "mermaid": "^11.17.2",
     "react-markdown": "^9.0.3",

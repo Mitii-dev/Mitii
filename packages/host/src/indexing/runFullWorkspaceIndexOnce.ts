@@ -305,6 +305,20 @@ export async function runFullWorkspaceIndexOnce(
       // Host publish failures must not abort embedding sync.
     }
 
+    // SCIP enrichment is non-blocking — never delay lexical-ready UX.
+    try {
+      const { scheduleScipEnrichment } = await import(
+        './scip/ScipEnrichmentAdapter.js'
+      );
+      scheduleScipEnrichment({
+        workspaceRoot: options.workspaceRoot,
+        openDatabase: options.openDatabase,
+        workspaceId: options.workspaceId,
+      });
+    } catch {
+      /* optional path */
+    }
+
     let indexing = lexicalIndexing;
     let vectorIndex = degradedVector;
 

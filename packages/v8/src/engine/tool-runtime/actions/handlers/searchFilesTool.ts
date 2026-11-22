@@ -33,6 +33,9 @@ export const searchFilesTool: RegisteredTool = {
       grant: ctx.grant,
       workspaceRoot: ctx.workspaceRoot,
       fileSystem: ctx.ports.fileSystem,
+      ...(ctx.ports.workspaceTextSearch
+        ? { workspaceTextSearch: ctx.ports.workspaceTextSearch }
+        : {}),
       maxOutputBytes: ctx.maxOutputBytes,
     });
   },

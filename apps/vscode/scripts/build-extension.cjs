@@ -19,6 +19,9 @@ const {
 const {
   stageOnnxRuntime,
 } = require(resolve(__dirname, '../../../scripts/stage-onnxruntime.cjs'));
+const {
+  isNativeExternal,
+} = require(resolve(__dirname, '../../../scripts/esbuild-native-externals.cjs'));
 
 const root = join(__dirname, '..');
 const distDir = join(root, 'dist');
@@ -31,7 +34,15 @@ const builtins = new Set([
   ...builtinModules,
   ...builtinModules.map((name) => `node:${name}`),
 ]);
-const externals = new Set(['vscode', '@lancedb/lancedb']);
+const externals = new Set([
+  'vscode',
+  '@lancedb/lancedb',
+  'better-sqlite3',
+  'web-tree-sitter',
+  'tree-sitter-wasms',
+  'tree-sitter',
+  'es-git',
+]);
 
 function buildWebview() {
   const viteBin = join(webviewDir, 'node_modules', 'vite', 'bin', 'vite.js');
@@ -92,13 +103,17 @@ build({
   sourcesContent: false,
   legalComments: 'none',
   metafile: true,
-  external: ['vscode', '@lancedb/lancedb'],
+  external: [...externals],
   plugins: [
     {
       name: 'workspace-node-resolve',
       setup(buildApi) {
         buildApi.onResolve({ filter: /^[^./]/ }, (args) => {
-          if (builtins.has(args.path) || externals.has(args.path)) {
+          if (
+            builtins.has(args.path) ||
+            externals.has(args.path) ||
+            isNativeExternal(args.path, externals)
+          ) {
             return { path: args.path, external: true };
           }
           try {

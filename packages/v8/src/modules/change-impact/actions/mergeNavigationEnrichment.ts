@@ -24,7 +24,10 @@ export function mergeNavigationEnrichment(params: {
   locations: readonly NavigationEnrichmentLocation[];
   viaEdgeType?: "references" | "calls";
   maxFiles?: number;
+  /** Defaults to lsp_enriched; SCIP ingest uses scip_enriched. */
+  enrichmentCode?: "lsp_enriched" | "scip_enriched";
 }): ChangeImpactResult {
+  const enrichmentCode = params.enrichmentCode ?? "lsp_enriched";
   const maxFiles =
     params.maxFiles ?? CHANGE_IMPACT_POLICY.lspEnrichMaxFiles;
   const viaEdgeType = params.viaEdgeType ?? "references";
@@ -85,14 +88,14 @@ export function mergeNavigationEnrichment(params: {
   const reasonCodes = new Set(params.result.reasonCodes);
   reasonCodes.delete("no_dependents");
   reasonCodes.delete("no_dependencies");
-  reasonCodes.add("lsp_enriched");
+  reasonCodes.add(enrichmentCode);
   reasonCodes.add("impact_resolved");
 
   const warnings = [
     ...params.result.warnings,
     {
-      code: "lsp_enriched" as const,
-      message: `Merged ${additions.length} path(s) from code-navigation enrichment.`,
+      code: enrichmentCode,
+      message: `Merged ${additions.length} path(s) from ${enrichmentCode === "scip_enriched" ? "SCIP" : "code-navigation"} enrichment.`,
     },
   ];
 

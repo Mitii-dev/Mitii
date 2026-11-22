@@ -47,6 +47,7 @@ repository-state/
 - `REPOSITORY_INDEX_FORMAT` changes require hosts to rebuild persisted indexes.
 - Workspace Indexing produces candidates; Repository State is the publication authority.
 - Source analysis injects tree-sitter tags queries through `TreeSitterRuntimePort`; bump `graphBuilderVersion` when those queries change call-graph facts.
+- Hosts MAY enrich `symbol_refs` with SCIP evidence (`evidence_source=scip`) after lexical publish; enrichment must not block state publication. Change-impact may report `scip_enriched` alongside `lsp_enriched`.
 
 ## Ownership Boundaries
 

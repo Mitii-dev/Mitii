@@ -28,7 +28,17 @@ Forbidden: `host -> apps`, `sdk -> host`, `v8 -> host`, `search-kit -> host|sdk|
 npm install @mitii/host
 ```
 
-Requires **Node.js 20+**. Depends on `@mitii/sdk`, `@mitii/v8`, `@mitii/search-kit`, and `zod`. Optional: `@lancedb/lancedb` for the vector store, `onnxruntime-node` / `onnxruntime-web` for bundled MiniLM embeddings. License: **AGPL-3.0-or-later**.
+Requires **Node.js 20+**. Depends on `@mitii/sdk`, `@mitii/v8`, `@mitii/search-kit`, and `zod`. Optional: `@lancedb/lancedb` for the vector store, `onnxruntime-node` / `onnxruntime-web` for bundled MiniLM embeddings, `es-git` (libgit2) for fast GitPort status, `tree-sitter` native grammars for faster parse, `@vscode/ripgrep` for bundled `rg`, `@ast-grep/cli` for bundled `ast-grep`/`sg`, `@scip-code/scip` + `@bufbuild/protobuf` to decode `.mitii/scip/index.scip`. Background SCIP generation uses local/`PATH` `scip-typescript` when available (else existing `.mitii/scip/` artifacts). License: **AGPL-3.0-or-later**.
+
+### Speed / accuracy tool unlocks
+
+| Capability | Preferred binary | Fallback |
+|---|---|---|
+| `search_files` | `@vscode/ripgrep` (`rgPath`) | PATH `rg`, then filesystem walk |
+| `structural_search` | `@ast-grep/cli` native `ast-grep` | PATH `ast-grep` / `sg` |
+| SCIP → `symbol_refs` | `.mitii/scip/index.jsonl` or decoded `index.scip` | generate via `scip-typescript` into `.mitii/scip/`, then `@scip-code/scip` decode |
+
+Place prebuilt SCIP at `.mitii/scip/index.jsonl` or `.mitii/scip/index.scip` (also accepts workspace-root `index.scip`). Enrichment is scheduled after lexical index and never blocks publish.
 
 Published on `v*` release tags. For local development, consume via the workspace (`pnpm --filter @mitii/host`).
 
@@ -55,13 +65,14 @@ src/
   sqlite/                  # injection contract for openDatabase
   indexing/                # embeddings, full index, fingerprint snapshot, pipeline health
     bundled-embedding/     # on-device MiniLM source (native ONNX + WASM)
-    treeSitter/            # web-tree-sitter runtime; V8 injects query text
+    treeSitter/            # native + web-tree-sitter; V8 injects query text
+    scip/                  # background SCIP → symbol_refs enrichment
   repository-context/      # createHostRepositoryContext
   corpus/                  # optional `.mitii/corpus/` index + retrieval source
   runtime/                 # child-run narrowing helpers
   client/                  # createHostClient: shared createMitiiClient composition
   start/                   # prepareStartInput: shared MitiiStartInput assembly
-  ports/                   # search, network (content-aware), memory, skills, checkpoints
+  ports/                   # search, ripgrep/FTS, ast-grep, git (libgit2), network, memory, skills, checkpoints
   prompt/                  # project rules loader -> start({ projectRules })
   config/                  # provider presets (not a V8 port)
   session-log/             # live .mitii/logs JSONL (Desktop/VS Code/CLI parity)

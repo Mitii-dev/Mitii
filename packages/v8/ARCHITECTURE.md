@@ -609,7 +609,22 @@ Automated checks MUST cover:
 
 The architecture test is a normal CI gate. Documentation alone is not enforcement.
 
-## 19. References
+## 19. Host enrichment adapters (speed + accuracy)
+
+Hosts MAY inject adapters that enrich published repository state without replacing V8 ownership:
+
+- **Workspace watching** — Chokidar / VS Code `FileSystemWatcher` → shared debounced incremental index (`@mitii/host`).
+- **GitPort** — libgit2 (`es-git`) preferred for status; CLI `NodeGitAdapter` fallback.
+- **WorkspaceTextSearchPort** — ripgrep primary; FTS fast-path for fresh literal queries; filesystem last resort.
+- **TreeSitterRuntimePort** — native tree-sitter preferred when grammars load; WASM fallback.
+- **SCIP** — background enrichment into existing `symbol_refs` / RepoGraph evidence (`scip_enriched`); host may generate via `scip-typescript` into `.mitii/scip/` then decode with `@scip-code/scip`; MUST NOT block lexical-first publish.
+- **Bundled search tools** — host prefers `@vscode/ripgrep` and `@ast-grep/cli` binaries, then PATH `rg` / `ast-grep` / `sg`.
+- **LSP / symbol_refs / RepoGraph** — navigation fallback chain; SCIP/LSP enrich change-impact via reason codes, they do not replace `change-impact`.
+- **AstGrepPort** — `structural_search` tool only; off the index/watch hot path.
+
+V8 remains the authority for SQLite indexes, RepoGraph, hybrid retrieval, and change-impact pipelines.
+
+## 20. References
 
 - Cursor Project Rules, scoping, and rule-size guidance: https://cursor.com/docs/rules.md
 - Tree-sitter incremental parsing and language parsers: https://tree-sitter.github.io/tree-sitter/

@@ -10,6 +10,9 @@ const { builtinModules } = require('node:module');
 const { cpSync, mkdirSync } = require('node:fs');
 const { dirname, join, resolve } = require('node:path');
 const { rmRf } = require(resolve(__dirname, '../../../scripts/rm-rf.cjs'));
+const {
+  isNativeExternal,
+} = require(resolve(__dirname, '../../../scripts/esbuild-native-externals.cjs'));
 
 const root = join(__dirname, '..');
 const outfile = join(root, 'dist/engine/main.js');
@@ -24,6 +27,9 @@ const externals = new Set([
   // web-tree-sitter uses __dirname in Parser.init; bundling into ESM breaks it.
   'web-tree-sitter',
   'tree-sitter-wasms',
+  // Native optional addons — never bundle .node binaries.
+  'tree-sitter',
+  'es-git',
   'typescript',
   'vscode',
   'electron',
@@ -68,7 +74,11 @@ build({
       name: 'workspace-node-resolve',
       setup(buildApi) {
         buildApi.onResolve({ filter: /^[^./]/ }, (args) => {
-          if (builtins.has(args.path) || externals.has(args.path)) {
+          if (
+            builtins.has(args.path) ||
+            externals.has(args.path) ||
+            isNativeExternal(args.path, externals)
+          ) {
             return { path: args.path, external: true };
           }
           try {

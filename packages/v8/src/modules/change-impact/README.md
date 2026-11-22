@@ -16,7 +16,7 @@ Change Impact estimates the blast radius of a code change by walking a repositor
 - Defaults file seeds to `file_exports` (exported or externally referenced symbols) instead of exploding every symbol.
 - Soft-resolves symbol seeds (case/qualified name + optional text-occurrence hints) before falling back to file-level expand.
 - Optionally multiplies walk scores by published RepoMap importance (PageRank/composite) — never recomputes ranking.
-- Exposes `mergeNavigationEnrichment` so Tool Runtime can merge live code-nav/LSP hits when the graph walk is empty or partial.
+- Exposes `mergeNavigationEnrichment` so Tool Runtime can merge live code-nav/LSP or SCIP hits when the graph walk is empty or partial (`lsp_enriched` / `scip_enriched`).
 - Exposes `compactChangeImpactForModelFacing` so Tool Runtime can ship a
   files-first, budget-safe tool payload (top-N nodes/files, short evidence, prod-first,
   prefix-collapsed chains) without discarding the full walk limits used for analysis.

@@ -6,7 +6,7 @@
 export const REPOSITORY_INDEX_FORMAT = {
   textIndexSchemaVersion: 3,
   textPipelineVersion: "chunking-v3-collapse-trigram",
-  graphBuilderVersion: "graph-v3-tags-queries",
+  graphBuilderVersion: "graph-v4-scip-enrichment",
 } as const;
 
 export type RepositoryIndexFormat = typeof REPOSITORY_INDEX_FORMAT;

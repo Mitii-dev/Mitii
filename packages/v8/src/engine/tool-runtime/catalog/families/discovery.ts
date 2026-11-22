@@ -201,6 +201,30 @@ export const searchFilesOutputSchema = z
   })
   .strict();
 
+export const structuralSearchInputSchema = z
+  .object({
+    pattern: z.string().min(1),
+    path: z.string().min(1).default("."),
+    language: z.string().min(1).optional(),
+    maxMatches: z.number().int().positive().max(200).optional(),
+  })
+  .strict();
+
+export const structuralSearchOutputSchema = z
+  .object({
+    pattern: z.string(),
+    matches: z.array(
+      z.object({
+        path: z.string(),
+        line: z.number().int().positive(),
+        text: z.string(),
+      }),
+    ),
+    truncated: z.boolean(),
+    backend: z.enum(["ast_grep", "unavailable"]),
+  })
+  .strict();
+
 export const readDiagnosticsInputSchema = z
   .object({
     paths: z.array(z.string().min(1)).optional(),

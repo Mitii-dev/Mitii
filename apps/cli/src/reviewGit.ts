@@ -1,7 +1,11 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
-import type { ReviewChangedFile } from '@mitii/sdk';
+import {
+  parseGitPorcelain,
+  porcelainToReviewEntries,
+  type ReviewChangedFile,
+} from '@mitii/sdk';
 
 const execFileAsync = promisify(execFile);
 
@@ -53,35 +57,13 @@ function statusFromLetter(letter: string): ReviewChangedFile['status'] {
   }
 }
 
-/** Parse `git status --porcelain -z` (NUL separated; rename/copy carry an extra origin path). */
+/** Parse `git status --porcelain -z` via shared V8 porcelain helpers. */
 export function parsePorcelainZ(text: string): ChangedEntry[] {
-  const tokens = text.split('\0');
-  const out: ChangedEntry[] = [];
-  for (let i = 0; i < tokens.length; i += 1) {
-    const token = tokens[i]!;
-    if (token.length < 4) continue;
-    const xy = token.slice(0, 2);
-    const path = token.slice(3);
-    if (xy === '!!') continue;
-    if (xy[0] === 'R' || xy[0] === 'C' || xy[1] === 'R' || xy[1] === 'C') {
-      i += 1; // skip the origin path that follows the destination
-    }
-    if (xy === '??') {
-      out.push({ path, status: 'added', untracked: true });
-      continue;
-    }
-    const letter = xy.includes('D')
-      ? 'D'
-      : xy.includes('R')
-        ? 'R'
-        : xy.includes('C')
-          ? 'C'
-          : xy.includes('A')
-            ? 'A'
-            : 'M';
-    out.push({ path, status: statusFromLetter(letter) });
-  }
-  return out;
+  return porcelainToReviewEntries(parseGitPorcelain(text)).map((entry) => ({
+    path: entry.path,
+    status: entry.status === 'unknown' ? 'modified' : entry.status,
+    ...(entry.untracked ? { untracked: true } : {}),
+  }));
 }
 
 /** Parse `git diff|show --name-status -z` output. */

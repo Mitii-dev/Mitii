@@ -2,6 +2,8 @@ import type {
   TreeSitterRuntimePort,
 } from '@mitii/v8';
 
+import { NativeTreeSitterRuntime } from './NativeTreeSitterRuntime.js';
+import { PreferNativeTreeSitterRuntime } from './PreferNativeTreeSitterRuntime.js';
 import {
   WEB_TREE_SITTER_GRAMMAR_WASM_BY_LANGUAGE,
   WebTreeSitterRuntime,
@@ -9,6 +11,25 @@ import {
 } from './WebTreeSitterRuntime.js';
 
 export async function createDefaultTreeSitterRuntime(): Promise<
+  TreeSitterRuntimePort | undefined
+> {
+  const wasm = await createWasmTreeSitterRuntime();
+  const native = new NativeTreeSitterRuntime();
+
+  if (wasm && native.supports('python')) {
+    return new PreferNativeTreeSitterRuntime(native, wasm);
+  }
+  if (wasm) {
+    // Still prefer native when available for any language; WASM covers the rest.
+    return new PreferNativeTreeSitterRuntime(native, wasm);
+  }
+  if (native.supports('typescript') || native.supports('python')) {
+    return native;
+  }
+  return undefined;
+}
+
+async function createWasmTreeSitterRuntime(): Promise<
   TreeSitterRuntimePort | undefined
 > {
   const coreWasmPath = resolveTreeSitterPackageAsset([
@@ -55,7 +76,7 @@ export async function createDefaultTreeSitterRuntime(): Promise<
       await runtime.parse({
         language: 'python',
         relativePath: '__tree_sitter_probe__.py',
-        content: 'def __mitii_tree_sitter_probe__():\n    pass\n',
+        content: 'def __mitii_tree_sitter_probe__():\n  pass\n',
         symbolQuery:
           '(function_definition name: (identifier) @name) @definition',
         maximumSymbols: 1,

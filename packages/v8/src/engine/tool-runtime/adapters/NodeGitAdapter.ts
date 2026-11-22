@@ -12,7 +12,9 @@ import type {
 import {
   appendPathsAfterDoubleDash,
   assertSafeGitArg,
-} from "../internal/GitArgSafety";
+  gitStatusPathsFromPorcelain,
+  parseGitPorcelain,
+} from "../internal/git";
 
 const DEFAULT_MAX_OUTPUT_BYTES = 512_000;
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -39,7 +41,7 @@ export class NodeGitAdapter implements GitPort {
       params.workspaceRoot,
       params.signal,
     );
-    return parsePorcelainStatus(raw);
+    return gitStatusPathsFromPorcelain(parseGitPorcelain(raw), raw);
   }
 
   public async diff(params: {
@@ -242,50 +244,6 @@ function truncateText(
     };
   }
   return { diff: text, truncated: false };
-}
-
-function parsePorcelainStatus(raw: string): GitStatusResult {
-  const lines = raw.split(/\r?\n/).filter((line) => line.length > 0);
-  let branch: string | undefined;
-  const staged: string[] = [];
-  const unstaged: string[] = [];
-  const untracked: string[] = [];
-
-  for (const line of lines) {
-    if (line.startsWith("## ")) {
-      const head = line.slice(3);
-      const branchPart = head.split("...")[0]?.trim();
-      if (branchPart) {
-        branch = branchPart.replace(/^No commits yet on /, "");
-      }
-      continue;
-    }
-
-    if (line.startsWith("?? ")) {
-      untracked.push(line.slice(3).trim());
-      continue;
-    }
-
-    if (line.length < 3) {
-      continue;
-    }
-
-    const indexStatus = line[0];
-    const workTreeStatus = line[1];
-    const pathPart = line.slice(3).trim();
-    const path = pathPart.includes(" -> ")
-      ? pathPart.split(" -> ").at(-1)!.trim()
-      : pathPart;
-
-    if (indexStatus && indexStatus !== " " && indexStatus !== "?") {
-      staged.push(path);
-    }
-    if (workTreeStatus && workTreeStatus !== " " && workTreeStatus !== "?") {
-      unstaged.push(path);
-    }
-  }
-
-  return { branch, staged, unstaged, untracked, raw };
 }
 
 function parseLogHeader(chunk: string): GitLogEntry | undefined {

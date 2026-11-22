@@ -29,7 +29,8 @@ Optional but useful for full feature coverage:
 
 - A local Ollama or other OpenAI-compatible endpoint for manual testing
 - `@xenova/transformers` (installed as optional dependency) for vector search
-- `web-tree-sitter` + `tree-sitter-wasms` for symbol extraction
+- `web-tree-sitter` + `tree-sitter-wasms` for symbol extraction (optional native `tree-sitter` grammars preferred when installed)
+- Optional: `es-git` (libgit2 GitPort), `chokidar` (Desktop watch), PATH tools `rg` / `sg` (search_files / structural_search)
 
 ---
 

@@ -83,6 +83,7 @@ export const CHANGE_IMPACT_REASON_CODES = [
   "spillover_clean",
   "plan_check_complete",
   "lsp_enriched",
+  "scip_enriched",
 ] as const;
 
 export const CHANGE_IMPACT_ERROR_CODES = [
@@ -106,4 +107,5 @@ export const CHANGE_IMPACT_WARNING_CODES = [
   "spillover_detected",
   "plan_check_complete",
   "lsp_enriched",
+  "scip_enriched",
 ] as const;

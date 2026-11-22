@@ -1,6 +1,11 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
+import {
+  flattenPorcelainFiles,
+  parseGitPorcelain,
+} from '@mitii/sdk';
+
 import type { ReviewDiffView } from './protocol.js';
 
 const execFileAsync = promisify(execFile);
@@ -51,17 +56,17 @@ export async function buildReviewDiff(
     patchOut = '';
   }
 
-  const files: ReviewDiffView['files'] = [];
-  for (const line of statusOut.split('\n')) {
-    if (!line || line.startsWith('##')) continue;
-    const status = line.slice(0, 2).trim() || '?';
-    const path = line.slice(3).trim().replace(/ -> /, ' → ').split(' → ').pop() ?? '';
-    if (path) files.push({ path, status });
-  }
+  const parsed = parseGitPorcelain(statusOut);
+  const files: ReviewDiffView['files'] = flattenPorcelainFiles(parsed)
+    .slice(0, 40)
+    .map((file) => ({
+      path: file.path,
+      status: file.status,
+    }));
 
   return {
-    summary: statusOut.split('\n')[0] || '(no branch info)',
-    files: files.slice(0, 40),
+    summary: parsed.summary || '(no branch info)',
+    files,
     patchPreview: patchOut || undefined,
   };
 }

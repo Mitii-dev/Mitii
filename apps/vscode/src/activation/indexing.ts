@@ -3,7 +3,11 @@ import { join } from 'node:path';
 import * as vscode from 'vscode';
 
 import type { MitiiClient } from '@mitii/sdk';
-import { IndexLockedError, resolveMaximumIndexFiles } from '@mitii/host';
+import {
+  createDebouncedIncrementalIndexTrigger,
+  IndexLockedError,
+  resolveMaximumIndexFiles,
+} from '@mitii/host';
 import { isSecurityConcern, WorkspaceIgnorePolicy } from '@mitii/sdk';
 
 import { runFullWorkspaceIndex } from '../fullWorkspaceIndex.js';
@@ -213,7 +217,7 @@ export function createIndexWorkspace(
   return indexWorkspace;
 }
 
-/** Incremental re-index on save and workspace-folder changes. */
+/** Incremental re-index on save, FS changes, and workspace-folder changes. */
 export function registerIndexingListeners(
   rt: ActivationRuntime,
   sidebar: MitiiSidebarProvider,
@@ -222,8 +226,6 @@ export function registerIndexingListeners(
   const workspaceRoot = (): string | undefined => rt.workspaceRoot();
   const invalidateClient = (): void => rt.invalidateClient();
   const ignorePolicy = new WorkspaceIgnorePolicy();
-  const pendingIndexPaths = new Set<string>();
-  let saveIndexTimer: ReturnType<typeof setTimeout> | undefined;
 
   const relativeWorkspacePath = (uri: vscode.Uri): string | undefined => {
     const root = workspaceRoot();
@@ -233,48 +235,81 @@ export function registerIndexingListeners(
     return relative.replace(/\\/g, '/');
   };
 
-  const flushSaveIndex = async (): Promise<void> => {
-    const filePaths = [...pendingIndexPaths];
-    pendingIndexPaths.clear();
-    if (filePaths.length === 0) return;
-    try {
-      const status = await sidebar.publishIndexSnapshot({ filePaths });
-      sidebar.post({ type: 'index.status', index: status });
-      channel.appendLine(
-        `[index] save refresh ${filePaths.join(', ')} ${status.message ?? 'updated'}`,
-      );
-    } catch (error) {
-      channel.appendLine(
-        `[index] save refresh failed: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    }
+  const shouldIndexRelative = (relativePath: string, fsPath: string): boolean => {
+    if (isSecurityConcern(relativePath)) return false;
+    return !ignorePolicy.shouldIgnore({
+      root: workspaceRoot() ?? '',
+      path: fsPath,
+      relativePath,
+      kind: 'file',
+      depth: relativePath.split('/').length,
+    });
   };
+
+  let trigger: ReturnType<typeof createDebouncedIncrementalIndexTrigger> | undefined;
+  const ensureTrigger = ():
+    | ReturnType<typeof createDebouncedIncrementalIndexTrigger>
+    | undefined => {
+    const root = workspaceRoot();
+    if (!root) {
+      trigger?.dispose();
+      trigger = undefined;
+      return undefined;
+    }
+    if (trigger) return trigger;
+    trigger = createDebouncedIncrementalIndexTrigger({
+      workspaceRoot: root,
+      onFlush: async (filePaths) => {
+        const status = await sidebar.publishIndexSnapshot({
+          filePaths: [...filePaths],
+        });
+        sidebar.post({ type: 'index.status', index: status });
+        channel.appendLine(
+          `[index] refresh ${filePaths.join(', ')} ${status.message ?? 'updated'}`,
+        );
+      },
+      onError: (error) => {
+        channel.appendLine(
+          `[index] refresh failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      },
+    });
+    return trigger;
+  };
+
+  const queueRelative = (relativePath: string | undefined, fsPath: string): void => {
+    if (!relativePath) return;
+    if (!shouldIndexRelative(relativePath, fsPath)) return;
+    ensureTrigger()?.notify([relativePath]);
+  };
+
+  const watcher = vscode.workspace.createFileSystemWatcher('**/*');
 
   return [
     vscode.workspace.onDidSaveTextDocument((document) => {
-      const relativePath = relativeWorkspacePath(document.uri);
-      if (!relativePath) return;
-      if (isSecurityConcern(relativePath)) return;
-      if (
-        ignorePolicy.shouldIgnore({
-          root: workspaceRoot() ?? '',
-          path: document.uri.fsPath,
-          relativePath,
-          kind: 'file',
-          depth: relativePath.split('/').length,
-        })
-      ) {
-        return;
-      }
-      pendingIndexPaths.add(relativePath);
-      if (saveIndexTimer) clearTimeout(saveIndexTimer);
-      saveIndexTimer = setTimeout(() => {
-        void flushSaveIndex();
-      }, 750);
+      queueRelative(relativeWorkspacePath(document.uri), document.uri.fsPath);
     }),
+    watcher.onDidCreate((uri) => {
+      queueRelative(relativeWorkspacePath(uri), uri.fsPath);
+    }),
+    watcher.onDidChange((uri) => {
+      queueRelative(relativeWorkspacePath(uri), uri.fsPath);
+    }),
+    watcher.onDidDelete((uri) => {
+      queueRelative(relativeWorkspacePath(uri), uri.fsPath);
+    }),
+    watcher,
+    {
+      dispose() {
+        trigger?.dispose();
+        trigger = undefined;
+      },
+    },
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      trigger?.dispose();
+      trigger = undefined;
       const root = workspaceRoot();
       invalidateClient();
       if (!root) return;

@@ -129,10 +129,16 @@ export {
   toolInvocationInputSchema, toolResultSchema, READ_ONLY_TOOL_IDS,
   NETWORK_TOOL_IDS, MUTATION_TOOL_IDS, OPT_IN_MUTATION_TOOL_IDS,
   NodeWorkspaceFileSystemAdapter, NodeProcessAdapter, NodeNetworkAdapter,
-  NodeGitAdapter, InMemoryDiagnosticsAdapter, InMemoryGitAdapter,
+  NodeGitAdapter, Libgit2GitAdapter, statusFromPorcelainRaw,
+  InMemoryDiagnosticsAdapter, InMemoryGitAdapter,
+  FileSystemWorkspaceTextSearchAdapter,
   ToolRegistry, createBuiltinToolRegistry, defineTool,
   BUILTIN_TOOLS, StructuralShadowGrantAuthorizer, compileToolGrantToCedar,
   ADVERSARY_HIGH_RISK_TOOL_IDS, isAdversaryHighRiskTool,
+  GitArgSafetyError, assertSafeGitArg, assertSafeGitPathArgs,
+  appendPathsAfterDoubleDash, GIT_PORCELAIN_MAX_FILES, parseAheadBehind,
+  parseGitPorcelain, parsePorcelainWorkingTree, flattenPorcelainFiles,
+  gitStatusPathsFromPorcelain, porcelainToReviewEntries,
 } from "./engine/tool-runtime";
 export type {
   ShadowAuthorizeDecision, ShadowAuthorizeResult, ShadowGrantAuthorizer,
@@ -148,6 +154,12 @@ export type {
   SearchPort, RepositoryGraphPort, ProcessPort,
   ProcessExecRequest, ProcessExecResult,
   ToolOutputSpillPort, ToolOutputSpillStoreRequest, ToolOutputSpillStoreResult,
+  WorkspaceFileSystemPort,
+  WorkspaceTextSearchPort, WorkspaceTextSearchMatch, WorkspaceTextSearchRequest,
+  WorkspaceTextSearchResult, AstGrepPort, AstGrepMatch, AstGrepSearchRequest,
+  AstGrepSearchResult,
+  GitPorcelainChangeGroup, GitPorcelainFile, GitPorcelainParseResult,
+  GitPorcelainReviewStatus, GitPorcelainReviewEntry,
 } from "./engine/tool-runtime";
 export {
   InMemoryToolOutputSpillAdapter,

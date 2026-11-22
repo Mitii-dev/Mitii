@@ -128,6 +128,14 @@ export type {
   NetworkFetchRequest,
   NetworkFetchResult,
   SearchPort,
+  WorkspaceTextSearchPort,
+  WorkspaceTextSearchMatch,
+  WorkspaceTextSearchRequest,
+  WorkspaceTextSearchResult,
+  AstGrepPort,
+  AstGrepMatch,
+  AstGrepSearchRequest,
+  AstGrepSearchResult,
   RepositoryGraphPort,
   CodeNavigationPort,
   ToolOutputSpillPort,
@@ -146,11 +154,35 @@ export {
   InMemoryDiagnosticsAdapter,
   InMemoryGitAdapter,
   NodeGitAdapter,
+  Libgit2GitAdapter,
+  statusFromPorcelainRaw,
   NodeNetworkAdapter,
   InMemoryNetworkAdapter,
   InMemoryToolOutputSpillAdapter,
+  FileSystemWorkspaceTextSearchAdapter,
 } from "./adapters";
 export type { ProcessHandler } from "./adapters";
+
+export {
+  GitArgSafetyError,
+  assertSafeGitArg,
+  assertSafeGitPathArgs,
+  appendPathsAfterDoubleDash,
+  GIT_PORCELAIN_MAX_FILES,
+  parseAheadBehind,
+  parseGitPorcelain,
+  parsePorcelainWorkingTree,
+  flattenPorcelainFiles,
+  gitStatusPathsFromPorcelain,
+  porcelainToReviewEntries,
+} from "./internal/git";
+export type {
+  GitPorcelainChangeGroup,
+  GitPorcelainFile,
+  GitPorcelainParseResult,
+  GitPorcelainReviewStatus,
+  GitPorcelainReviewEntry,
+} from "./internal/git";
 
 export {
   boundToolOutput,

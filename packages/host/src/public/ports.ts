@@ -85,6 +85,17 @@ export type {
   SearchKitConfig,
   ResolveSearchKitConfigOptions,
 } from '../ports/search.js';
+export { RipgrepWorkspaceTextSearchAdapter } from '../ports/RipgrepWorkspaceTextSearchAdapter.js';
+export { CompositeWorkspaceTextSearchAdapter } from '../ports/CompositeWorkspaceTextSearchAdapter.js';
+export { AstGrepWorkspaceAdapter } from '../ports/AstGrepWorkspaceAdapter.js';
+export {
+  resolveRipgrepBinary,
+  resolveAstGrepBinary,
+  resolveScipTypescriptBinary,
+  scipIndexPaths,
+} from '../ports/resolveHostToolBinaries.js';
+export { createHostGitPort } from '../ports/createHostGitPort.js';
+export type { CreateHostGitPortOptions } from '../ports/createHostGitPort.js';
 export {
   createHostNetworkPort,
   ContentAwareNetworkAdapter,

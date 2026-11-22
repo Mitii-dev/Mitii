@@ -1,7 +1,13 @@
 /**
- * Argv-only git hardening for Desktop mutations.
- * Mirrors packages/v8 GitArgSafety without importing V8 internals (REPO_LAYOUT).
+ * Desktop git argv safety — delegates to shared @mitii/sdk helpers.
+ * `DesktopGitArgError` stays a local Error subclass for existing catch sites / tests.
  */
+
+import {
+  assertSafeGitArg as assertSafeGitArgShared,
+  assertSafeGitPathArgs as assertSafeGitPathArgsShared,
+  appendPathsAfterDoubleDash as appendPathsAfterDoubleDashShared,
+} from '@mitii/sdk';
 
 export class DesktopGitArgError extends Error {
   constructor(message: string) {
@@ -10,23 +16,25 @@ export class DesktopGitArgError extends Error {
   }
 }
 
+function rethrowAsDesktop(error: unknown): never {
+  const message =
+    error instanceof Error ? error.message : String(error);
+  throw new DesktopGitArgError(message);
+}
+
 export function assertSafeGitArg(value: string, label: string): void {
-  if (value.length === 0) {
-    throw new DesktopGitArgError(`${label} must not be empty.`);
-  }
-  if (value.startsWith('-')) {
-    throw new DesktopGitArgError(
-      `${label} must not start with "-": "${value}".`,
-    );
-  }
-  if (value.includes('\0')) {
-    throw new DesktopGitArgError(`${label} must not contain null bytes.`);
+  try {
+    assertSafeGitArgShared(value, label);
+  } catch (error: unknown) {
+    rethrowAsDesktop(error);
   }
 }
 
 export function assertSafeGitPathArgs(paths: readonly string[]): void {
-  for (const entry of paths) {
-    assertSafeGitArg(entry, 'git path');
+  try {
+    assertSafeGitPathArgsShared(paths);
+  } catch (error: unknown) {
+    rethrowAsDesktop(error);
   }
 }
 
@@ -34,7 +42,9 @@ export function appendPathsAfterDoubleDash(
   argv: string[],
   paths: readonly string[],
 ): string[] {
-  if (paths.length === 0) return argv;
-  assertSafeGitPathArgs(paths);
-  return [...argv, '--', ...paths];
+  try {
+    return appendPathsAfterDoubleDashShared(argv, paths);
+  } catch (error: unknown) {
+    rethrowAsDesktop(error);
+  }
 }
