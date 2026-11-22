@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseCliArgs } from '../src/parseCliArgs.js';
+import { parseCliArgs } from '../src/parseCliArgs/index.js';
 import { RUN_TIMEOUT_ENV, resolveRunWallTimeMs } from '../src/runTimeout.js';
 
 describe('parseCliArgs --timeout', () => {

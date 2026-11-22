@@ -43,6 +43,7 @@
   color: var(--vscode-descriptionForeground, var(--mitii-muted));
 }
 
+.index-capability--available .index-capability__status,
 .index-capability--ready .index-capability__status {
   color: var(--vscode-testing-iconPassed, var(--mitii-ok));
 }

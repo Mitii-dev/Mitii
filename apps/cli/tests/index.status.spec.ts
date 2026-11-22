@@ -100,7 +100,7 @@ describe('CLI commands (index/status)', () => {
       expect(indexPayload.capabilitySummary).toContainEqual(
         expect.objectContaining({
           capability: 'textIndex',
-          status: indexPayload.indexMode === 'full' ? 'ready' : 'unavailable',
+          status: indexPayload.indexMode === 'full' ? 'available' : 'unavailable',
         }),
       );
       const root = indexPayload.published.descriptor?.roots[0];
@@ -110,13 +110,13 @@ describe('CLI commands (index/status)', () => {
         expect(root?.capabilities).toContainEqual(
           expect.objectContaining({
             capability: 'codeIndex',
-            status: 'ready',
+            status: 'available',
           }),
         );
         expect(root?.capabilities).toContainEqual(
           expect.objectContaining({
             capability: 'textIndex',
-            status: 'ready',
+            status: 'available',
           }),
         );
       } else {

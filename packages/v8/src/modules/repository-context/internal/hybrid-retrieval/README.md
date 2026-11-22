@@ -25,14 +25,25 @@ Hybrid Retrieval gathers candidate context from repository intelligence sources 
 
 ```text
 hybrid-retrieval/
-  HybridRetriever.ts
+  HybridRetriever.ts            # facade: ctor + retrieve orchestration
+  SoftSourceTimeoutError.ts
+  executeRetrievalSource.ts     # per-source execution, soft timeout
+  hybridSourcePolicy.ts         # source warnings + failure-policy checks
+  priorityLaneFusion.ts         # session ranking + priority lane extract/merge
+  folderScopedMapBackfill.ts    # folder-floor repo-map backfill
+  applyHybridReranker.ts        # reranker application + failure modes
+  hybridRetrievalResultBuilders.ts  # failed/cancelled/report/statistics/validate
   HybridRetrievalFactory.ts
   RetrievalSourceRegistry.ts
   WeightedReciprocalRankFusion.ts
   IdentifierAwareRetrievalReranker.ts
   sources/
     RepoMapRetrievalSource.ts
-    RepoGraphRetrievalSource.ts
+    RepoGraphRetrievalSource.ts   # orchestrates graph retrieval
+    RepoGraphScoring.ts           # node scoring and match reasons
+    RepoGraphCandidates.ts        # candidate mapping, merge, scope filter
+    RepoGraphAnchors.ts           # pinned-file anchors and anchor merge
+    RepoGraphBlastRadius.ts       # bounded neighbor expansion
     TextIndexRetrievalSource.ts
     VectorIndexRetrievalSource.ts
   schema.ts

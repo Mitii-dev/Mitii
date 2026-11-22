@@ -11,10 +11,7 @@ import type {
   ModelCapabilities,
   ModelError,
   ModelEvent,
-  ModelFinishReason,
-  ModelMessage,
   ModelRequest,
-  ModelTokenUsage,
   ModelToolCallDelta,
   ResolveModelCapabilitiesInput,
 } from "../contracts/types";
@@ -27,6 +24,18 @@ import {
   normalizeNonNegativeInteger,
   normalizePositiveInteger,
 } from "../internal/http";
+import {
+  formatOpenAiMessage,
+  mapOpenAiFinishReason,
+  mapOpenAiUsage,
+  parseOpenAiSseLine,
+  projectOpenAiCompatibleMessages,
+} from "../internal/openAiCompatibleWire";
+import type {
+  OpenAiChatCompletionResponse,
+} from "../internal/openAiCompatibleWire";
+
+export { projectOpenAiCompatibleMessages };
 
 export type OpenAiCompatibleAuthHeader =
   | "authorization"
@@ -67,53 +76,6 @@ export interface OpenAiCompatibleLlmPortConfig {
   sleepImpl?: (ms: number, signal?: AbortSignal) => Promise<void>;
 }
 
-type OpenAiCompatibleUsage = {
-  prompt_tokens?: number;
-  completion_tokens?: number;
-  total_tokens?: number;
-  prompt_cache_hit_tokens?: number;
-  prompt_cache_miss_tokens?: number;
-};
-
-interface OpenAiChatCompletionResponse {
-  choices?: Array<{
-    message?: {
-      content?: string | null;
-      reasoning?: string;
-      reasoning_content?: string;
-      tool_calls?: Array<{
-        id: string;
-        type?: string;
-        function?: {
-          name?: string;
-          arguments?: string;
-        };
-      }>;
-    };
-    finish_reason?: string | null;
-  }>;
-  usage?: OpenAiCompatibleUsage;
-}
-
-interface OpenAiChatCompletionChunk {
-  choices?: Array<{
-    delta?: {
-      content?: string | null;
-      reasoning?: string;
-      reasoning_content?: string;
-      tool_calls?: Array<{
-        index?: number;
-        id?: string;
-        function?: {
-          name?: string;
-          arguments?: string;
-        };
-      }>;
-    };
-    finish_reason?: string | null;
-  }>;
-  usage?: OpenAiCompatibleUsage;
-}
 
 /**
  * OpenAI-compatible chat-completions adapter implementing LlmPort.
@@ -287,7 +249,7 @@ export class OpenAiCompatibleLlmPort implements LlmPort {
     const body: Record<string, unknown> = {
       model: request.model ?? this.config.model,
       messages: projectOpenAiCompatibleMessages(request.messages).map(
-        (message) => this.formatMessage(message),
+        (message) => formatOpenAiMessage(message),
       ),
       temperature:
         request.temperature ?? MODEL_GATEWAY_DEFAULTS.TEMPERATURE,
@@ -356,56 +318,6 @@ export class OpenAiCompatibleLlmPort implements LlmPort {
     return body;
   }
 
-  private formatMessage(
-    message: ModelMessage,
-  ): Record<string, unknown> {
-    const attachments =
-      message.attachments?.filter(
-        (attachment) => attachment.kind === "image",
-      ) ?? [];
-
-    const content =
-      attachments.length > 0 &&
-      (message.role === "user" || message.role === "assistant")
-        ? [
-            ...(message.content
-              ? [{ type: "text", text: message.content }]
-              : []),
-            ...attachments.map((attachment) => ({
-              type: "image_url",
-              image_url: {
-                url: `data:${attachment.mimeType};base64,${attachment.data}`,
-              },
-            })),
-          ]
-        : message.content;
-
-    const out: Record<string, unknown> = {
-      role: message.role,
-      content,
-    };
-
-    if (message.name) {
-      out.name = message.name;
-    }
-
-    if (message.toolCallId) {
-      out.tool_call_id = message.toolCallId;
-    }
-
-    if (message.toolCalls) {
-      out.tool_calls = message.toolCalls.map((toolCall) => ({
-        id: toolCall.id,
-        type: "function",
-        function: {
-          name: toolCall.name,
-          arguments: toolCall.arguments,
-        },
-      }));
-    }
-
-    return out;
-  }
 
   private async *yieldNonStreaming(
     response: Response,
@@ -439,7 +351,7 @@ export class OpenAiCompatibleLlmPort implements LlmPort {
       yield { type: "tool_call_delta", toolCalls };
     }
 
-    const usage = this.mapUsage(json.usage);
+    const usage = mapOpenAiUsage(json.usage);
 
     if (usage) {
       yield { type: "usage", usage };
@@ -447,7 +359,7 @@ export class OpenAiCompatibleLlmPort implements LlmPort {
 
     yield {
       type: "completed",
-      finishReason: this.mapFinishReason(choice?.finish_reason),
+      finishReason: mapOpenAiFinishReason(choice?.finish_reason),
       ...(usage ? { usage } : {}),
     };
   }
@@ -473,7 +385,7 @@ export class OpenAiCompatibleLlmPort implements LlmPort {
         buffer = lines.pop() ?? "";
 
         for (const line of lines) {
-          for (const event of this.parseSseLine(line)) {
+          for (const event of parseOpenAiSseLine(line)) {
             if (
               event.type === "completed" ||
               event.type === "failed" ||
@@ -490,7 +402,7 @@ export class OpenAiCompatibleLlmPort implements LlmPort {
       }
 
       if (buffer.trim()) {
-        for (const event of this.parseSseLine(buffer)) {
+        for (const event of parseOpenAiSseLine(buffer)) {
           if (
             event.type === "completed" ||
             event.type === "failed" ||
@@ -513,126 +425,6 @@ export class OpenAiCompatibleLlmPort implements LlmPort {
     }
   }
 
-  private parseSseLine(line: string): ModelEvent[] {
-    const trimmed = line.trim();
-
-    if (!trimmed || trimmed.startsWith(":")) {
-      return [];
-    }
-
-    if (!trimmed.startsWith("data:")) {
-      return [];
-    }
-
-    const payload = trimmed.slice("data:".length).trim();
-
-    if (!payload) {
-      return [];
-    }
-
-    if (payload === "[DONE]") {
-      return [{ type: "completed", finishReason: "stop" }];
-    }
-
-    let chunk: OpenAiChatCompletionChunk;
-
-    try {
-      chunk = JSON.parse(payload) as OpenAiChatCompletionChunk;
-    } catch {
-      return [];
-    }
-
-    const choice = chunk.choices?.[0];
-    const delta = choice?.delta;
-    const events: ModelEvent[] = [];
-
-    if (delta?.content) {
-      events.push({ type: "content_delta", content: delta.content });
-    }
-
-    const reasoning = delta?.reasoning ?? delta?.reasoning_content;
-    if (reasoning) {
-      events.push({ type: "reasoning_delta", reasoning });
-    }
-
-    const toolCalls = delta?.tool_calls?.map(
-      (toolCall, fallbackIndex): ModelToolCallDelta => ({
-        index: toolCall.index ?? fallbackIndex,
-        id: toolCall.id,
-        name: toolCall.function?.name,
-        arguments: toolCall.function?.arguments,
-      }),
-    );
-
-    if (toolCalls && toolCalls.length > 0) {
-      events.push({ type: "tool_call_delta", toolCalls });
-    }
-
-    const usage = this.mapUsage(chunk.usage);
-
-    if (usage) {
-      events.push({ type: "usage", usage });
-    }
-
-    const finishReason = choice?.finish_reason;
-    if (finishReason) {
-      events.push({
-        type: "completed",
-        finishReason: this.mapFinishReason(finishReason),
-        ...(usage ? { usage } : {}),
-      });
-    }
-
-    return events;
-  }
-
-  private mapUsage(
-    usage?: OpenAiCompatibleUsage,
-  ): ModelTokenUsage | undefined {
-    if (!usage) {
-      return undefined;
-    }
-    const inputTokens = usage.prompt_tokens;
-    const outputTokens = usage.completion_tokens;
-    const cacheHitTokens = usage.prompt_cache_hit_tokens;
-    const cacheMissTokens = usage.prompt_cache_miss_tokens;
-    if (
-      inputTokens === undefined &&
-      outputTokens === undefined &&
-      cacheHitTokens === undefined &&
-      cacheMissTokens === undefined
-    ) {
-      return undefined;
-    }
-    return {
-      ...(inputTokens !== undefined ? { inputTokens } : {}),
-      ...(outputTokens !== undefined ? { outputTokens } : {}),
-      ...(usage.total_tokens !== undefined
-        ? { totalTokens: usage.total_tokens }
-        : {
-            totalTokens: (inputTokens ?? 0) + (outputTokens ?? 0),
-          }),
-      ...(cacheHitTokens !== undefined ? { cacheHitTokens } : {}),
-      ...(cacheMissTokens !== undefined ? { cacheMissTokens } : {}),
-    };
-  }
-
-  private mapFinishReason(
-    reason: string | null | undefined,
-  ): ModelFinishReason {
-    switch (reason) {
-      case "stop":
-        return "stop";
-      case "length":
-        return "length";
-      case "tool_calls":
-        return "tool_calls";
-      case "content_filter":
-        return "content_filter";
-      default:
-        return reason ? "unknown" : "stop";
-    }
-  }
 
   private mapHttpError(
     status: number,
@@ -646,26 +438,4 @@ export class OpenAiCompatibleLlmPort implements LlmPort {
       modelId: this.config.model,
     });
   }
-}
-
-/**
- * OpenAI-compatible chat APIs require system messages only at the start of
- * the conversation. Project any later `system` turns to `user` so mid-epoch
- * updates (and legacy checkpoints) never trigger
- * "system message must be at the beginning".
- */
-export function projectOpenAiCompatibleMessages(
-  messages: readonly ModelMessage[],
-): ModelMessage[] {
-  let seenNonSystem = false;
-  return messages.map((message) => {
-    if (message.role !== "system") {
-      seenNonSystem = true;
-      return message;
-    }
-    if (!seenNonSystem) {
-      return message;
-    }
-    return { ...message, role: "user" as const };
-  });
 }

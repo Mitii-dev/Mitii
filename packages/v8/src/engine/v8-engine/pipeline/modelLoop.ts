@@ -1,18 +1,9 @@
-import type {
-  ModelRequest,
-} from "../../../modules/model-gateway";
-
 import type { PromptCacheClass } from "../actions/resolvePromptCacheClass";
-import {
-  createLoopFileReadTracker,
-  estimateStickyMutableChars,
-} from "../actions";
+import { createLoopFileReadTracker } from "../actions";
 import { ReadLedger } from "../internal/ReadLedger";
 import type { ContextEpoch } from "../internal/context-epoch";
 import { InMemorySessionHistoryArchive } from "../internal/session-history";
 import type { AgentLogVerbosity } from "../internal/logVerbosity";
-import { consumeModelTurn } from "./consumeModelTurn";
-import { tryOfferBudgetWallContinue } from "./tryOfferBudgetWallContinue";
 import type { AgentEngineRuntime } from "./runtime";
 import type { ToolLoopOutcome } from "./types";
 import type { SteeringCriticMode } from "../legacy/steeringFlags";
@@ -20,73 +11,28 @@ import type { SteeringCriticMode } from "../legacy/steeringFlags";
 import {
   resolveV8LoopPolicyThresholds,
 } from "../policy/bands";
+import { ToolLoopGuard } from "../modules/tool-loop-guard";
 import {
-  ToolLoopGuard,
-  forceFinalToolLoopMessage,
-  softToolLoopNudgeMessage,
-} from "../modules/tool-loop-guard";
-import {
-  decideTruncationRecovery,
-  truncationWarningMessage,
-} from "../modules/truncation";
-import { discardIncompleteToolCalls } from "../modules/complete-tool-calls";
-import { isClearMutationBlocker } from "../actions/isClearMutationBlocker";
-import { preserveSubstantiveAssistantAnswer } from "../actions/preserveSubstantiveAssistantAnswer";
-import {
-  batchIsReadonlyTools,
-  changeImpactRetryPatchMessage,
   hasPlanDraftedThisRun,
-  readonlyThrashPartialAnswer,
   requiresMutation,
   resolveReadonlyTurnsBeforeMutationNudge,
-  shouldEscalateReadonlyThrashToContinue,
-  softMutationNudgeMessage,
-  unfulfilledExecuteNudgeMessage,
 } from "../modules/mutation-nudge";
 import {
-  buildEvidenceRecoveryMessage,
-  buildStepEvidenceGateMessage,
-  buildStepPatchRequiredMessage,
-  decideMutateEvidenceAction,
   evaluateActiveStepMutateReadiness,
-  mutateLockModelRequestFields,
-  resolveMutateLockAllowTargetedReads,
   resolveMutateReadinessBudget,
   resolveStepReadonlyTurnsBeforeGate,
 } from "../modules/mutate-readiness";
 import { isExecutionSeedTrusted } from "../modules/execution-seed";
-import {
-  isProviderInfrastructureFailure,
-  providerInfrastructureUserMessage,
-} from "../actions/resolveProviderInfrastructure";
-import { runV8MutationCritic } from "../modules/mutation-critic";
-import {
-  buildRejectedMutationRecoveryMessage,
-} from "../modules/rejected-mutation";
-import {
-  buildIncompleteAnswerRecoveryMessage,
-  compactRecoveredAssistantContent,
-  synthesizeFallbackAnswer,
-} from "../actions/isIncompleteAssistantTurn";
-import { resolveLoopTurnOutcome } from "../actions/resolveLoopTurnOutcome";
-import { shouldFinishAfterVerifiedMutation } from "../actions/shouldFinishAfterVerifiedMutation";
-import {
-  buildWallTimeWrapUpNudge,
-  decideWallTimeDeadline,
-} from "../actions/resolveWallTimeDeadline";
-import {
-  DIAGNOSE_ANSWER_NUDGE_MESSAGE,
-  answerLockModelRequestFields,
-  toolsOffModelRequestFields,
-  primaryToolNameIfUniform,
-  shouldLockDiagnoseAnswer,
-  shouldNudgeDiagnoseAnswer,
-  updateRepeatedReadonlyToolTurns,
-} from "../modules/diagnose-answer";
-import { prepareTurn } from "./prepareTurn";
 import { settleToolBatch } from "./settleTools";
 
-import { finishEvidenceRailExhausted, pickV8ThresholdOverrides } from "./modelLoopSupport";
+import { pickV8ThresholdOverrides } from "./modelLoopSupport";
+import { createOfferContinue } from "./createOfferContinue";
+import { handleWallTimeDeadline } from "./handleWallTimeDeadline";
+import { runModelLoopModelTurn } from "./runModelLoopModelTurn";
+import { finishModelLoopAnswerTurn } from "./finishModelLoopAnswerTurn";
+import { applyMutationCriticTurn } from "./applyMutationCriticTurn";
+import { advanceAfterToolSettle } from "./advanceAfterToolSettle";
+import { handlePreSettleTurnRails } from "./handlePreSettleTurnRails";
 import type { V8ModelLoopParams } from "./modelLoopTypes";
 
 export type { V8ModelLoopParams } from "./modelLoopTypes";
@@ -247,135 +193,61 @@ export async function runV8ModelLoop(
     );
   }
 
-  const offerContinue = (
-    wallReason:
-      | "exploration_stall"
-      | "unfulfilled_execute"
-      | "budget_exhausted"
-      | "evidence_clarify"
-      | "provider_unavailable",
-    partialAnswer: string,
-  ): ToolLoopOutcome => {
-    const offered = tryOfferBudgetWallContinue({
-      wallReason,
-      messages,
-      toolCache,
-      changedFiles,
-      mutationCheckpointIds,
-      answer: partialAnswer,
-      decision,
-      continueOverrideCount,
-      maxContinueOverrides: thresholds.maxContinueOverrides,
-      taskList: taskListRef.current,
-      mutationRequired: mutationNeeded,
-    });
-    if (offered) return offered;
-    reasonCodes.push("stall_continue_override_capped");
-    return {
-      kind: "failed",
-      answer: partialAnswer || undefined,
-      extraReasons: [],
-      error: {
-        code:
-          wallReason === "unfulfilled_execute"
-            ? "no_mutation_performed"
-            : "execution_failed",
-        message:
-          wallReason === "unfulfilled_execute"
-            ? "Required mutation was not performed before the continue override cap."
-            : "Tool loop exhausted without a recoverable Continue path.",
-      },
-    };
-  };
+  const offerContinue = createOfferContinue({
+    messages,
+    toolCache,
+    changedFiles,
+    mutationCheckpointIds,
+    getDecision: () => decision,
+    continueOverrideCount,
+    maxContinueOverrides: thresholds.maxContinueOverrides,
+    getTaskList: () => taskListRef.current,
+    mutationRequired: mutationNeeded,
+    reasonCodes,
+  });
 
   while (true) {
     if (signal.aborted) {
       return { kind: "cancelled" };
     }
-    const wallDeadline = decideWallTimeDeadline({
-      remainingMs: budget.remainingWallMs(),
-      maxWallTimeMs: budget.maxWallTimeMs(),
+    const wall = handleWallTimeDeadline({
+      budget,
       mutationApplied: changedFiles.length > 0 || gitWriteSucceeded,
       mutationRequired: mutationNeeded,
-      alreadyNudged: wallTimeNudged,
+      wallTimeNudged,
+      answer,
+      changedFiles,
+      mutationCheckpointIds,
+      messages,
+      toolCache,
+      decision,
+      reasonCodes,
+      warnings,
+      offerContinue,
     });
-    if (wallDeadline === "finalize_after_mutation") {
-      // Host wall-time budget nearly spent and a patch already landed:
-      // end the loop so the verification gate runs instead of another turn.
-      reasonCodes.push("wall_time_finalize_after_mutation", "mutation_applied");
-      warnings.push(
-        "Run wall-time budget nearly exhausted; finalizing after the applied edit so verification can run.",
-      );
-      if (answer.trim().length === 0) {
-        answer = synthesizeFallbackAnswer({ priorAnswer: "", changedFiles });
-      }
-      return {
-        kind: "completed",
-        answer,
-        changedFiles,
-        mutationCheckpointIds,
-        messages,
-        toolCache,
-        decision,
-      };
-    }
-    if (wallDeadline === "wrap_up_nudge") {
-      wallTimeNudged = true;
-      reasonCodes.push("wall_time_wrap_up_nudge");
-      messages.push({
-        role: "user",
-        content: buildWallTimeWrapUpNudge(budget.remainingWallMs()),
-      });
-    }
-    if (!budget.canStartModelCall()) {
-      return offerContinue(
-        "budget_exhausted",
-        answer || "Model call budget exhausted.",
-      );
+    wallTimeNudged = wall.wallTimeNudged;
+    if (wall.kind === "done") {
+      return wall.outcome;
     }
 
-    budget.recordModelCall();
-    budget.recordLoopIteration();
-    runtime.emitStage(bus, runId, "model_running", "started");
-
-    const offerTools =
-      !forceFinalOnly &&
-      !awaitingAnswerOnly &&
-      !awaitingMutateOnly &&
-      !toolLoopGuard.isForcingFinalResponse() &&
-      decision.toolGrant.allowedTools.length > 0;
-    const toolFields = awaitingAnswerOnly
-      ? answerLockModelRequestFields(request.tools)
-      : awaitingMutateOnly
-        ? mutateLockModelRequestFields(request.tools, {
-            allowTargetedReads: mutateLockAllowTargetedReads,
-          })
-        : offerTools
-          ? { tools: request.tools }
-          : toolsOffModelRequestFields();
-    const baseRequest: ModelRequest = {
-      ...request,
-      ...toolFields,
-    };
-
-    const prepared = await prepareTurn({
+    const modelTurn = await runModelLoopModelTurn({
       runtime,
-      runId,
       bus,
-      request: baseRequest,
+      runId,
+      signal,
+      llm,
+      request,
       messages,
       budget,
       windowPolicy,
       taskListRef,
-      grantPathScopes: decision.toolGrant.pathScopes,
-      mutationBudget: decision.toolGrant.mutationBudget,
-      repoBuildStateBefore: params.repoBuildStateBefore,
-      memoryFacts,
-      memoryQuery: params.memoryQuery,
-      memoryWorkspaceId: params.memoryWorkspaceId,
-      memoryFileTargets: params.memoryFileTargets,
-      abortSignal: signal,
-      establishedFacts,
+      decision,
+      forceFinalOnly,
+      awaitingAnswerOnly,
+      awaitingMutateOnly,
+      mutateLockAllowTargetedReads,
+      toolLoopGuard,
+      answer,
       reasonCodes,
       warnings,
       logVerbosity,
@@ -383,391 +255,99 @@ export async function runV8ModelLoop(
       emittedLoopPressureWarning,
       emittedLoopCompactionWarning,
       contextEpoch,
-      decisionRoute: decision.route,
-      decisionPlanningDepth: decision.planningDepth,
+      memoryFacts,
+      memoryQuery: params.memoryQuery,
+      memoryWorkspaceId: params.memoryWorkspaceId,
+      memoryFileTargets: params.memoryFileTargets,
+      establishedFacts,
+      repoBuildStateBefore: params.repoBuildStateBefore,
       selectedSkillIds: params.selectedSkillIds,
       projectRuleIds: params.projectRuleIds,
       environmentIds: params.environmentIds,
       instructionBodies: params.instructionBodies,
-      memoryIds: memoryFacts?.map((fact) => fact.id) ?? [],
       sessionHistoryArchive,
-    });
-    if (prepared.memoryFacts) {
-      memoryFacts = [...prepared.memoryFacts];
-    }
-    emittedLoopPressureWarning = prepared.emittedLoopPressureWarning;
-    emittedLoopCompactionWarning = prepared.emittedLoopCompactionWarning;
-    lastPromptCacheClass = prepared.promptCacheClass;
-    contextEpoch = prepared.contextEpoch;
-    if (prepared.contextEpoch) {
-      runtime.contextEpochs.set(runId, prepared.contextEpoch);
-      const store = runtime.deps.contextEpochStore;
-      if (store) {
-        void store.save(prepared.contextEpoch).catch(() => {
-          /* best-effort; checkpoint remains authoritative */
-        });
-      }
-    }
-
-    const turn = await consumeModelTurn(runtime, {
-      llm,
-      request: prepared.turnRequest,
-      runId,
-      signal,
-      bus,
       maxReasoningCharsWithoutProgress:
         thresholds.maxReasoningCharsWithoutProgress,
+      offerContinue,
     });
-
-    if (turn.kind === "cancelled") {
+    if (modelTurn.kind === "cancelled") {
       return { kind: "cancelled" };
     }
-    if (turn.kind === "failed") {
-      reasonCodes.push("provider_failed");
-      // transport/provider outage → Continuable infrastructure wall.
-      if (
-        isProviderInfrastructureFailure({
-          errorCode: turn.errorCode,
-          errorMessage: turn.errorMessage,
-        })
-      ) {
-        reasonCodes.push("provider_infrastructure_unavailable");
-        const infraAnswer = providerInfrastructureUserMessage({
-          errorMessage: turn.errorMessage,
-        });
-        return offerContinue(
-          "provider_unavailable",
-          turn.content || answer || infraAnswer,
-        );
-      }
-      return {
-        kind: "failed",
-        answer: turn.content || answer || undefined,
-        extraReasons: [],
-        error: { code: turn.errorCode, message: turn.errorMessage },
-      };
+    if (modelTurn.kind === "done") {
+      return modelTurn.outcome;
     }
-
-    if (turn.usage) {
-      budget.addUsage(turn.usage);
-    }
-
-    const truncated = turn.finishReason === "length";
-    const stickyMutable = estimateStickyMutableChars(
-      prepared.turnRequest.messages,
-    );
-    runtime.emit(bus, {
-      type: "model_turn",
-      runId,
-      turnIndex: Math.max(0, budget.snapshot().modelCalls - 1),
-      inputTokens: turn.usage?.inputTokens,
-      outputTokens: turn.usage?.outputTokens,
-      cacheHitTokens: turn.usage?.cacheHitTokens,
-      cacheMissTokens: turn.usage?.cacheMissTokens,
-      finishReason: turn.finishReason,
-      truncated: truncated || undefined,
-      preservePrefix: prepared.preservePrefix,
-      promptCacheClass: prepared.promptCacheClass,
-      stickyInputChars: stickyMutable.stickyChars,
-      mutableInputChars: stickyMutable.mutableChars,
-      compactionPressure: prepared.compaction.pressure,
-      at: runtime.isoNow(),
-    });
-
-    const { complete: toolCalls, discardedCount } = discardIncompleteToolCalls(
-      turn.toolCalls,
-    );
-    if (discardedCount > 0) {
-      warnings.push(
-        `Discarded ${discardedCount} incomplete truncated tool call(s).`,
-      );
-    }
+    memoryFacts = modelTurn.memoryFacts;
+    emittedLoopPressureWarning = modelTurn.emittedLoopPressureWarning;
+    emittedLoopCompactionWarning = modelTurn.emittedLoopCompactionWarning;
+    lastPromptCacheClass = modelTurn.lastPromptCacheClass;
+    contextEpoch = modelTurn.contextEpoch;
+    const { turn, toolCalls, discardedCount, truncated } = modelTurn;
 
     let softNudgeAfterSettle = false;
-    if (toolCalls.length > 0) {
-      const callDecision = toolLoopGuard.observeCalls(
-        toolCalls.map((call) => ({
-          name: call.name,
-          arguments: call.arguments,
-        })),
-      );
-
-      if (callDecision.type === "reject") {
-        warnings.push(
-          `Identical tool batch rejected (${callDecision.violationCount} after force-final).`,
-        );
-        messages.push({
-          role: "assistant",
-          content: turn.content,
-          toolCalls,
-        });
-        messages.push({
-          role: "user",
-          content: forceFinalToolLoopMessage(callDecision.violationCount),
-        });
-        runtime.emitStage(bus, runId, "model_running", "completed", [
-          "model_completed",
-        ]);
-        if (callDecision.exhausted) {
-          return offerContinue("exploration_stall", turn.content || answer);
-        }
-        forceFinalOnly = true;
-        continue;
-      }
-
-      if (callDecision.type === "force_final") {
-        warnings.push(
-          `Tool loop force-final after ${callDecision.repeatCount} identical batches.`,
-        );
-        forceFinalOnly = true;
-        messages.push({
-          role: "assistant",
-          content: turn.content,
-          toolCalls,
-        });
-        messages.push({
-          role: "user",
-          content: forceFinalToolLoopMessage(callDecision.repeatCount),
-        });
-        runtime.emitStage(bus, runId, "model_running", "completed", [
-          "model_completed",
-        ]);
-        continue;
-      }
-
-      if (callDecision.type === "soft") {
-        softNudgeAfterSettle = true;
-        warnings.push(
-          `Soft tool-loop nudge after ${callDecision.repeatCount} identical batches.`,
-        );
-      }
-    }
-
-    const recovery = decideTruncationRecovery({
+    const preSettle = handlePreSettleTurnRails({
+      runtime,
+      bus,
+      runId,
+      turnContent: turn.content,
       finishReason: turn.finishReason,
       reasoningBudgetExceeded: turn.reasoningBudgetExceeded === true,
-      hasToolCalls: toolCalls.length > 0,
-      incompleteToolCalls: discardedCount > 0 && toolCalls.length === 0,
-      truncationRecoveriesUsed,
-      maxTruncationRecoveries: thresholds.maxTruncationRecoveries,
-      reasoningAbortRecoveriesUsed,
-      maxReasoningAbortRecoveries: thresholds.maxReasoningAbortRecoveries,
-      requireMutation: mutationNeeded,
+      toolCalls,
+      discardedCount,
+      messages,
+      toolLoopGuard,
+      answer,
+      reasonCodes,
+      warnings,
+      mutationNeeded,
+      changedFiles,
+      gitWriteSucceeded,
+      taskListRef,
+      evidence,
+      seedTrusted,
+      stepReadonlyTurnsBeforeGate,
+      readonlyTurnsBeforeMutationNudge,
+      mutateReadinessBudget,
+      evaluateStepReadiness,
+      planDraftedThisRun,
+      vcsHistoryRewrite,
+      loopFileReads,
+      thresholds: {
+        maxTruncationRecoveries: thresholds.maxTruncationRecoveries,
+        maxReasoningAbortRecoveries: thresholds.maxReasoningAbortRecoveries,
+        maxSoftMutationNudgesBeforeContinue:
+          thresholds.maxSoftMutationNudgesBeforeContinue,
+      },
+      offerContinue,
+      state: {
+        forceFinalOnly,
+        truncationRecoveriesUsed,
+        reasoningAbortRecoveriesUsed,
+        readOnlyTurnsWithoutMutation,
+        readonlyTurnsOnActiveStep,
+        lastActiveStepId,
+        evidenceGateNudges,
+        evidenceRecoveryUsed,
+        awaitingMutateOnly,
+        mutateLockAllowTargetedReads,
+        softMutationNudges,
+      },
     });
-
-    if (recovery.resetCounter) {
-      // Tool progress clears provider length recoveries only. Reasoning-abort
-      // Continue walls must stay sticky across read-only tool spam or the
-      // model can reason-abort → read → reset forever without mutating.
-      truncationRecoveriesUsed = 0;
+    softNudgeAfterSettle = preSettle.state.softNudgeAfterSettle;
+    forceFinalOnly = preSettle.state.forceFinalOnly;
+    truncationRecoveriesUsed = preSettle.state.truncationRecoveriesUsed;
+    reasoningAbortRecoveriesUsed = preSettle.state.reasoningAbortRecoveriesUsed;
+    readOnlyTurnsWithoutMutation = preSettle.state.readOnlyTurnsWithoutMutation;
+    readonlyTurnsOnActiveStep = preSettle.state.readonlyTurnsOnActiveStep;
+    lastActiveStepId = preSettle.state.lastActiveStepId;
+    evidenceGateNudges = preSettle.state.evidenceGateNudges;
+    evidenceRecoveryUsed = preSettle.state.evidenceRecoveryUsed;
+    awaitingMutateOnly = preSettle.state.awaitingMutateOnly;
+    mutateLockAllowTargetedReads = preSettle.state.mutateLockAllowTargetedReads;
+    softMutationNudges = preSettle.state.softMutationNudges;
+    if (preSettle.kind === "done") {
+      return preSettle.outcome;
     }
-
-    if (recovery.kind === "reasoning_abort") {
-      if (recovery.countReasoningAbort) {
-        reasoningAbortRecoveriesUsed += 1;
-      }
-      reasonCodes.push("reasoning_progress_budget_exceeded");
-      if (recovery.shouldRecover) {
-        warnings.push(
-          truncationWarningMessage({ reasoningBudgetExceeded: true }),
-        );
-        reasonCodes.push("model_completed");
-        messages.push({
-          role: "assistant",
-          content: turn.content || "(reasoning only — no tools or answer)",
-        });
-        if (recovery.message) {
-          messages.push({ role: "user", content: recovery.message });
-        }
-        // Count reasoning-only burns toward per-step evidence→patch pressure.
-        if (mutationNeeded && changedFiles.length === 0 && !gitWriteSucceeded) {
-          const activeStep = taskListRef.current?.items.find(
-            (item) => item.status === "active",
-          );
-          if (activeStep?.id !== lastActiveStepId) {
-            lastActiveStepId = activeStep?.id;
-            readonlyTurnsOnActiveStep = 0;
-            evidenceGateNudges = 0;
-            evidenceRecoveryUsed = false;
-          }
-          readOnlyTurnsWithoutMutation += 1;
-          readonlyTurnsOnActiveStep += 1;
-          const gateTurns = Math.min(
-            stepReadonlyTurnsBeforeGate,
-            readonlyTurnsBeforeMutationNudge,
-          );
-          if (readonlyTurnsOnActiveStep >= gateTurns) {
-            const readiness = evaluateStepReadiness();
-            const evidenceAction = decideMutateEvidenceAction({
-              readiness,
-              seedTrusted,
-              evidenceGateNudges,
-              maxEvidenceGateNudges:
-                mutateReadinessBudget.maxEvidenceGateNudgesBeforePatchDemand,
-              recoveryAlreadyUsed: evidenceRecoveryUsed,
-              maxRecoveryPaths: mutateReadinessBudget.evidenceRecoveryMaxPaths,
-            });
-            if (evidenceAction.kind === "EVIDENCE_GATE") {
-              evidenceGateNudges += 1;
-              reasonCodes.push(
-                "step_mutate_readiness_gated",
-                "step_mutate_lock_armed",
-              );
-              awaitingMutateOnly = true;
-              mutateLockAllowTargetedReads = resolveMutateLockAllowTargetedReads({
-                readinessReady: false,
-                evidenceGateActive: true,
-              });
-              messages.push({
-                role: "user",
-                content: buildStepEvidenceGateMessage(readiness),
-              });
-            } else if (evidenceAction.kind === "RECOVERY_REQUIRED") {
-              evidenceRecoveryUsed = true;
-              evidenceGateNudges = 0;
-              reasonCodes.push(
-                "evidence_recovery_armed",
-                "step_mutate_readiness_gated",
-                "step_mutate_lock_armed",
-              );
-              awaitingMutateOnly = true;
-              mutateLockAllowTargetedReads =
-                resolveMutateLockAllowTargetedReads({
-                  readinessReady: false,
-                  evidenceGateActive: true,
-                });
-              messages.push({
-                role: "user",
-                content: buildEvidenceRecoveryMessage({
-                  paths:
-                    evidenceAction.recoveryPaths ?? evidenceAction.missingPaths,
-                  recoveryTurns: mutateReadinessBudget.evidenceRecoveryTurns,
-                }),
-              });
-            } else if (evidenceAction.kind === "INSUFFICIENT_EVIDENCE") {
-              if (evidenceAction.reason === "weak_seed") {
-                softMutationNudges += 1;
-                reasonCodes.push("execution_seed_weak", "soft_mutation_nudged");
-                warnings.push(
-                  "No trusted execution seed yet — not demanding apply_patch. Establish a file path from diagnostics or an explicit cite.",
-                );
-                if (
-                  shouldEscalateReadonlyThrashToContinue({
-                    softMutationNudges,
-                    maxSoftMutationNudgesBeforeContinue:
-                      thresholds.maxSoftMutationNudgesBeforeContinue,
-                    changedFileCount: changedFiles.length,
-                    gitWriteSucceeded,
-                  })
-                ) {
-                  reasonCodes.push("readonly_thrash_continue");
-                  return offerContinue(
-                    "evidence_clarify",
-                    "No trusted file seed yet, so no workspace edits were applied. Continue with an explicit path or stop here.",
-                  );
-                }
-              } else {
-                return finishEvidenceRailExhausted({
-                  reason:
-                    evidenceAction.reason === "recovery_exhausted"
-                      ? "recovery_exhausted"
-                      : "miss_not_local",
-                  reasonCodes,
-                  warnings,
-                  runtime,
-                  bus,
-                  runId,
-                  evidence,
-                  budget: mutateReadinessBudget,
-                  nudgesUsed: evidenceGateNudges,
-                  recoveryUsed: evidenceRecoveryUsed,
-                  readonlyTurnsOnStep: gateTurns,
-                });
-              }
-            } else {
-              softMutationNudges += 1;
-              reasonCodes.push(
-                "step_mutate_patch_required",
-                "step_mutate_lock_armed",
-              );
-              awaitingMutateOnly = true;
-              mutateLockAllowTargetedReads =
-                resolveMutateLockAllowTargetedReads({
-                  readinessReady: true,
-                  evidenceGateActive: false,
-                });
-              messages.push({
-                role: "user",
-                content:
-                  readiness.activeItemId || readiness.writePaths.length > 0
-                    ? buildStepPatchRequiredMessage(readiness)
-                    : softMutationNudgeMessage(gateTurns, {
-                        vcsHistoryRewrite,
-                        hasPlan: planDraftedThisRun,
-                      }),
-              });
-              if (
-                shouldEscalateReadonlyThrashToContinue({
-                  softMutationNudges,
-                  maxSoftMutationNudgesBeforeContinue:
-                    thresholds.maxSoftMutationNudgesBeforeContinue,
-                  changedFileCount: changedFiles.length,
-                  gitWriteSucceeded,
-                })
-              ) {
-                reasonCodes.push("readonly_thrash_continue");
-                return offerContinue(
-                  "unfulfilled_execute",
-                  readonlyThrashPartialAnswer({
-                    hasPlan: planDraftedThisRun,
-                    fileReadCalls: loopFileReads.calls,
-                  }),
-                );
-              }
-            }
-            readonlyTurnsOnActiveStep = 0;
-            readOnlyTurnsWithoutMutation = 0;
-          }
-        }
-        runtime.emitStage(bus, runId, "model_running", "completed", [
-          "model_completed",
-          "reasoning_progress_budget_exceeded",
-        ]);
-        continue;
-      }
-      // Soft recoveries exhausted — ask the host to Continue rather than
-      // thrashing more reasoning-only turns.
-      return offerContinue(
-        mutationNeeded ? "unfulfilled_execute" : "exploration_stall",
-        mutationNeeded && changedFiles.length === 0
-          ? readonlyThrashPartialAnswer({
-              hasPlan: planDraftedThisRun,
-              fileReadCalls: loopFileReads.calls,
-            })
-          : turn.content || answer,
-      );
-    }
-
-    if (
-      recovery.shouldRecover &&
-      (recovery.kind === "text_continuation" || recovery.kind === "tool_call")
-    ) {
-      truncationRecoveriesUsed += 1;
-      reasonCodes.push("output_truncation_recovered");
-      warnings.push(truncationWarningMessage({}));
-      messages.push({
-        role: "assistant",
-        content: turn.content,
-        ...(toolCalls.length > 0 ? { toolCalls } : {}),
-      });
-      if (recovery.message) {
-        messages.push({ role: "user", content: recovery.message });
-      }
-      runtime.emitStage(bus, runId, "model_running", "completed", [
-        "model_completed",
-        "output_truncated",
-        "output_truncation_recovered",
-      ]);
+    if (preSettle.kind === "continue") {
       continue;
     }
 
@@ -785,68 +365,22 @@ export async function runV8ModelLoop(
     if (toolCalls.length > 0) {
       truncationRecoveriesUsed = 0;
 
-      const critic = runV8MutationCritic({
+      const criticTurn = applyMutationCriticTurn({
+        runtime,
+        bus,
+        runId,
         decision,
         toolCalls,
         turnContent: turn.content,
-        mode: criticMode,
+        messages,
+        reasonCodes,
+        warnings,
+        criticMode,
         understanding: params.understanding,
       });
-      if (critic.result.shadowWouldBlock) {
-        reasonCodes.push("mutation_critic_shadow_block");
-        warnings.push(
-          `Mutation critic (shadow) would block: ${critic.result.reasons.join(" ")}`,
-        );
-        runtime.emit(bus, {
-          type: "warning",
-          runId,
-          message: `Mutation critic shadow: ${critic.result.reasons[0] ?? "would block"}`,
-          at: runtime.isoNow(),
-        });
-      }
-      if (critic.kind === "revise") {
-        reasonCodes.push("mutation_critic_revise");
-        if (
-          critic.result.narrowToPaths &&
-          critic.result.narrowToPaths.length > 0 &&
-          runtime.deps.decision.narrow
-        ) {
-          decision = runtime.deps.decision.narrow({
-            previous: decision,
-            discoveredPaths: critic.result.narrowToPaths,
-          });
-          reasonCodes.push("grant_narrowed");
-        }
-        warnings.push(
-          `Mutation critic revise: ${critic.result.reasons.join(" ")}`,
-        );
-        messages.push({
-          role: "assistant",
-          content: turn.content,
-          toolCalls,
-        });
-        messages.push({ role: "user", content: critic.message });
+      decision = criticTurn.decision;
+      if (criticTurn.kind === "continue") {
         continue;
-      }
-      if (critic.kind === "stop") {
-        reasonCodes.push("mutation_critic_stop");
-        warnings.push(
-          `Mutation critic stop: ${critic.result.reasons.join(" ")}`,
-        );
-        messages.push({
-          role: "assistant",
-          content: turn.content,
-          toolCalls,
-        });
-        messages.push({ role: "user", content: critic.message });
-        continue;
-      }
-      if (
-        critic.kind === "pass" &&
-        !critic.result.shadowWouldBlock &&
-        criticMode !== "off"
-      ) {
-        reasonCodes.push("mutation_critic_pass");
       }
 
       const settled = await settleToolBatch({
@@ -888,487 +422,126 @@ export async function runV8ModelLoop(
       }
       decision = settled.decision;
 
-      if (
-        shouldFinishAfterVerifiedMutation({
-          mutationApplied: changedFiles.length > 0 || gitWriteSucceeded ||
-            settled.stats.succeededGitWrite,
-          batchHadSuccessfulMutation:
-            settled.stats.succeededMutating || settled.stats.succeededGitWrite,
-          batchHadRejectedMutation: settled.stats.rejectedMutation !== undefined,
-          openTaskCount: (taskListRef.current?.items ?? []).filter(
-            (item) => item.status === "pending" || item.status === "active",
-          ).length,
-          batch: toolCalls.map((call) => ({
-            toolName: call.name,
-            result: toolCache.get(call.id),
-          })),
-        })
-      ) {
-        // Verification passed after the last edit: end the loop; the
-        // verification gate decides. No extra free-form narration turn.
-        reasonCodes.push("loop_finished_after_verified_mutation", "mutation_applied");
-        if (answer.trim().length === 0) {
-          answer = synthesizeFallbackAnswer({ priorAnswer: turn.content, changedFiles });
-        }
-        return {
-          kind: "completed",
-          answer,
-          changedFiles,
-          mutationCheckpointIds,
-          messages,
-          toolCache,
+      const advanced = advanceAfterToolSettle({
+        runtime,
+        bus,
+        runId,
+        settled,
+        softNudgeAfterSettle,
+        toolCalls,
+        turnContent: turn.content,
+        messages,
+        toolCache,
+        toolLoopGuard,
+        changedFiles,
+        mutationCheckpointIds,
+        taskListRef,
+        evidence,
+        budget,
+        reasonCodes,
+        warnings,
+        mutationNeeded,
+        vcsHistoryRewrite,
+        planDraftedThisRun,
+        seedTrusted,
+        stepReadonlyTurnsBeforeGate,
+        readonlyTurnsBeforeMutationNudge,
+        mutateReadinessBudget,
+        changeImpactGate,
+        evaluateStepReadiness,
+        loopFileReads,
+        thresholds: {
+          toolLoopSoftIdentical: thresholds.toolLoopSoftIdentical,
+          toolLoopIdenticalCallAndResult: thresholds.toolLoopIdenticalCallAndResult,
+          maxRejectedMutationRecoveries: thresholds.maxRejectedMutationRecoveries,
+          preferredBatchSize: thresholds.preferredBatchSize,
+          maxSoftMutationNudgesBeforeContinue:
+            thresholds.maxSoftMutationNudgesBeforeContinue,
+          maxRepeatedReadonlyToolTurnsBeforeAnswerNudge:
+            thresholds.maxRepeatedReadonlyToolTurnsBeforeAnswerNudge,
+          maxDiagnoseAnswerNudges: thresholds.maxDiagnoseAnswerNudges,
+        },
+        offerContinue,
+        state: {
           decision,
-        };
+          answer,
+          gitWriteSucceeded,
+          readOnlyTurnsWithoutMutation,
+          readonlyTurnsOnActiveStep,
+          unfulfilledExecuteRecoveries,
+          rejectedMutationRecoveries,
+          softMutationNudges,
+          evidenceGateNudges,
+          evidenceRecoveryUsed,
+          reasoningAbortRecoveriesUsed,
+          awaitingMutateOnly,
+          mutateLockAllowTargetedReads,
+          consecutiveSameToolTurns,
+          lastUniformToolName,
+          lastActiveStepId,
+          awaitingAnswerOnly,
+          forceFinalOnly,
+          diagnoseAnswerNudges,
+        },
+      });
+      decision = advanced.state.decision;
+      answer = advanced.state.answer;
+      gitWriteSucceeded = advanced.state.gitWriteSucceeded;
+      readOnlyTurnsWithoutMutation = advanced.state.readOnlyTurnsWithoutMutation;
+      readonlyTurnsOnActiveStep = advanced.state.readonlyTurnsOnActiveStep;
+      unfulfilledExecuteRecoveries = advanced.state.unfulfilledExecuteRecoveries;
+      rejectedMutationRecoveries = advanced.state.rejectedMutationRecoveries;
+      softMutationNudges = advanced.state.softMutationNudges;
+      evidenceGateNudges = advanced.state.evidenceGateNudges;
+      evidenceRecoveryUsed = advanced.state.evidenceRecoveryUsed;
+      reasoningAbortRecoveriesUsed = advanced.state.reasoningAbortRecoveriesUsed;
+      awaitingMutateOnly = advanced.state.awaitingMutateOnly;
+      mutateLockAllowTargetedReads = advanced.state.mutateLockAllowTargetedReads;
+      consecutiveSameToolTurns = advanced.state.consecutiveSameToolTurns;
+      lastUniformToolName = advanced.state.lastUniformToolName;
+      lastActiveStepId = advanced.state.lastActiveStepId;
+      awaitingAnswerOnly = advanced.state.awaitingAnswerOnly;
+      forceFinalOnly = advanced.state.forceFinalOnly;
+      diagnoseAnswerNudges = advanced.state.diagnoseAnswerNudges;
+      if (advanced.kind === "done") {
+        return advanced.outcome;
       }
-
-      if (softNudgeAfterSettle) {
-        messages.push({
-          role: "user",
-          content: softToolLoopNudgeMessage(thresholds.toolLoopSoftIdentical),
-        });
-      }
-
-      if (settled.stats.succeededMutating || settled.stats.succeededGitWrite) {
-        if (settled.stats.succeededGitWrite) {
-          gitWriteSucceeded = true;
-        }
-        readOnlyTurnsWithoutMutation = 0;
-        readonlyTurnsOnActiveStep = 0;
-        unfulfilledExecuteRecoveries = 0;
-        rejectedMutationRecoveries = 0;
-        softMutationNudges = 0;
-        evidenceGateNudges = 0;
-        reasoningAbortRecoveriesUsed = 0;
-        awaitingMutateOnly = false;
-        mutateLockAllowTargetedReads = true;
-        consecutiveSameToolTurns = 0;
-        lastUniformToolName = undefined;
-      } else if (
-        mutationNeeded &&
-        changedFiles.length === 0 &&
-        !gitWriteSucceeded &&
-        changeImpactGate.required &&
-        changeImpactGate.satisfied &&
-        toolCalls.some((call) => call.name === "analyze_change_impact")
-      ) {
-        // Gate just satisfied (or already was): demand the withheld patch this
-        // turn — do not count this as readonly thrash / Continue.
-        softMutationNudges = 0;
-        readOnlyTurnsWithoutMutation = 0;
-        readonlyTurnsOnActiveStep = 0;
-        awaitingMutateOnly = true;
-        mutateLockAllowTargetedReads = false;
-        reasonCodes.push("step_mutate_patch_required", "step_mutate_lock_armed");
-        warnings.push(
-          "Change impact satisfied; mutate lock demanding apply_patch retry.",
-        );
-        runtime.emit(bus, {
-          type: "warning",
-          runId,
-          message:
-            "Mutate lock: discovery stripped; call apply_patch now (targeted reads off). Edits are not done until it lands.",
-          at: runtime.isoNow(),
-        });
-        messages.push({
-          role: "user",
-          content: changeImpactRetryPatchMessage(),
-        });
-      } else if (
-        mutationNeeded &&
-        changedFiles.length === 0 &&
-        !gitWriteSucceeded &&
-        settled.stats.rejectedMutation &&
-        rejectedMutationRecoveries < thresholds.maxRejectedMutationRecoveries &&
-        budget.canStartModelCall()
-      ) {
-        rejectedMutationRecoveries += 1;
-        const rejected = settled.stats.rejectedMutation;
-        const maxTargetedDiscoveryToolCalls =
-          decision.toolGrant.mutationBudget?.maxUniqueFilesPerCall ??
-          thresholds.preferredBatchSize;
-        reasonCodes.push("tool_failed");
-        warnings.push(
-          `Mutation tool ${rejected.toolName} ${rejected.status}; requesting a corrected edit.`,
-        );
-        messages.push({
-          role: "user",
-          content: buildRejectedMutationRecoveryMessage({
-            ...rejected,
-            maxTargetedDiscoveryToolCalls,
-            defaultPreferredBatchSize: thresholds.preferredBatchSize,
-          }),
-        });
-      } else if (mutationNeeded && batchIsReadonlyTools(toolCalls)) {
-        const activeStep = taskListRef.current?.items.find(
-          (item) => item.status === "active",
-        );
-        const activeStepId = activeStep?.id;
-        if (activeStepId !== lastActiveStepId) {
-          lastActiveStepId = activeStepId;
-          readonlyTurnsOnActiveStep = 0;
-          evidenceGateNudges = 0;
-          evidenceRecoveryUsed = false;
-        }
-        readOnlyTurnsWithoutMutation += 1;
-        readonlyTurnsOnActiveStep += 1;
-
-        const gateTurns = Math.min(
-          stepReadonlyTurnsBeforeGate,
-          readonlyTurnsBeforeMutationNudge,
-        );
-        if (readonlyTurnsOnActiveStep >= gateTurns) {
-          const readiness = evaluateStepReadiness();
-          const evidenceAction = decideMutateEvidenceAction({
-            readiness,
-            seedTrusted,
-            evidenceGateNudges,
-            maxEvidenceGateNudges:
-              mutateReadinessBudget.maxEvidenceGateNudgesBeforePatchDemand,
-            recoveryAlreadyUsed: evidenceRecoveryUsed,
-            maxRecoveryPaths: mutateReadinessBudget.evidenceRecoveryMaxPaths,
-          });
-
-          if (evidenceAction.kind === "EVIDENCE_GATE") {
-            evidenceGateNudges += 1;
-            reasonCodes.push("step_mutate_readiness_gated", "step_mutate_lock_armed");
-            awaitingMutateOnly = true;
-            mutateLockAllowTargetedReads = resolveMutateLockAllowTargetedReads({
-              readinessReady: false,
-              evidenceGateActive: true,
-            });
-            const gateMessage = buildStepEvidenceGateMessage(readiness);
-            warnings.push(
-              `Step evidence gate: ${readiness.missingPaths.length} path(s) still needed before patch.`,
-            );
-            runtime.emit(bus, {
-              type: "warning",
-              runId,
-              message: `Step evidence gate for "${readiness.activeTitle ?? readiness.activeItemId ?? "active step"}"; discovery stripped — targeted reads then patch. Edits are not done.`,
-              at: runtime.isoNow(),
-            });
-            messages.push({ role: "user", content: gateMessage });
-            readonlyTurnsOnActiveStep = 0;
-            readOnlyTurnsWithoutMutation = 0;
-          } else if (evidenceAction.kind === "RECOVERY_REQUIRED") {
-            evidenceRecoveryUsed = true;
-            evidenceGateNudges = 0;
-            reasonCodes.push(
-              "evidence_recovery_armed",
-              "step_mutate_readiness_gated",
-              "step_mutate_lock_armed",
-            );
-            awaitingMutateOnly = true;
-            mutateLockAllowTargetedReads = resolveMutateLockAllowTargetedReads({
-              readinessReady: false,
-              evidenceGateActive: true,
-            });
-            const recoveryPaths = evidenceAction.recoveryPaths ?? evidenceAction.missingPaths;
-            warnings.push(
-              `Evidence recovery: ${recoveryPaths.length} local path(s); no open-world search.`,
-            );
-            messages.push({
-              role: "user",
-              content: buildEvidenceRecoveryMessage({
-                paths: recoveryPaths,
-                recoveryTurns: mutateReadinessBudget.evidenceRecoveryTurns,
-              }),
-            });
-            readonlyTurnsOnActiveStep = 0;
-            readOnlyTurnsWithoutMutation = 0;
-          } else if (evidenceAction.kind === "INSUFFICIENT_EVIDENCE") {
-            if (evidenceAction.reason === "weak_seed") {
-              softMutationNudges += 1;
-              reasonCodes.push("execution_seed_weak", "soft_mutation_nudged");
-              warnings.push(
-                "No trusted execution seed yet — not demanding apply_patch after readonly thrash.",
-              );
-              readonlyTurnsOnActiveStep = 0;
-              readOnlyTurnsWithoutMutation = 0;
-              if (
-                shouldEscalateReadonlyThrashToContinue({
-                  softMutationNudges,
-                  maxSoftMutationNudgesBeforeContinue:
-                    thresholds.maxSoftMutationNudgesBeforeContinue,
-                  changedFileCount: changedFiles.length,
-                  gitWriteSucceeded,
-                })
-              ) {
-                reasonCodes.push("readonly_thrash_continue");
-                return offerContinue(
-                  "evidence_clarify",
-                  "No trusted file seed yet, so no workspace edits were applied. Continue with an explicit path or stop here.",
-                );
-              }
-            } else {
-              return finishEvidenceRailExhausted({
-                reason:
-                  evidenceAction.reason === "recovery_exhausted"
-                    ? "recovery_exhausted"
-                    : "miss_not_local",
-                reasonCodes,
-                warnings,
-                runtime,
-                bus,
-                runId,
-                evidence,
-                budget: mutateReadinessBudget,
-                nudgesUsed: evidenceGateNudges,
-                recoveryUsed: evidenceRecoveryUsed,
-                readonlyTurnsOnStep:
-                  readonlyTurnsOnActiveStep || gateTurns,
-              });
-            }
-          } else {
-            // PATCH_READY
-            softMutationNudges += 1;
-            reasonCodes.push(
-              "step_mutate_patch_required",
-              "step_mutate_lock_armed",
-            );
-            awaitingMutateOnly = true;
-            mutateLockAllowTargetedReads = resolveMutateLockAllowTargetedReads({
-              readinessReady: true,
-              evidenceGateActive: false,
-            });
-            const patchMessage =
-              readiness.activeItemId || readiness.writePaths.length > 0
-                ? buildStepPatchRequiredMessage(readiness)
-                : softMutationNudgeMessage(
-                    readonlyTurnsOnActiveStep || gateTurns,
-                    {
-                      vcsHistoryRewrite,
-                      hasPlan: planDraftedThisRun,
-                    },
-                  );
-            warnings.push(
-              `Step patch demand after ${gateTurns} read-only turns on active step (mutate lock armed).`,
-            );
-            runtime.emit(bus, {
-              type: "warning",
-              runId,
-              message:
-                "Mutate lock: discovery stripped; call apply_patch now (targeted reads off). Edits are not done until it lands.",
-              at: runtime.isoNow(),
-            });
-            messages.push({ role: "user", content: patchMessage });
-            readonlyTurnsOnActiveStep = 0;
-            readOnlyTurnsWithoutMutation = 0;
-
-            if (
-              shouldEscalateReadonlyThrashToContinue({
-                softMutationNudges,
-                maxSoftMutationNudgesBeforeContinue:
-                  thresholds.maxSoftMutationNudgesBeforeContinue,
-                changedFileCount: changedFiles.length,
-                gitWriteSucceeded,
-              })
-            ) {
-              reasonCodes.push("readonly_thrash_continue");
-              warnings.push(
-                "Read-only thrash after soft mutation nudges; offering Continue without claiming edits are done.",
-              );
-              return offerContinue(
-                "unfulfilled_execute",
-                readonlyThrashPartialAnswer({
-                  hasPlan: planDraftedThisRun,
-                  fileReadCalls: loopFileReads.calls,
-                }),
-              );
-            }
-          }
-        }
-      } else if (!mutationNeeded && settled.stats.readonlyOnly) {
-        const uniform = primaryToolNameIfUniform(toolCalls);
-        const next = updateRepeatedReadonlyToolTurns({
-          previousToolName: lastUniformToolName,
-          previousCount: consecutiveSameToolTurns,
-          turnToolName: uniform,
-        });
-        lastUniformToolName = next.toolName;
-        consecutiveSameToolTurns = next.count;
-
-        if (
-          shouldNudgeDiagnoseAnswer({
-            mutationRequired: false,
-            consecutiveSameToolTurns,
-            maxRepeatedReadonlyToolTurnsBeforeAnswerNudge:
-              thresholds.maxRepeatedReadonlyToolTurnsBeforeAnswerNudge,
-            diagnoseAnswerNudges,
-            maxDiagnoseAnswerNudges: thresholds.maxDiagnoseAnswerNudges,
-          }) &&
-          budget.canStartModelCall()
-        ) {
-          diagnoseAnswerNudges += 1;
-          reasonCodes.push("incomplete_answer_recovered");
-          messages.push({
-            role: "user",
-            content: DIAGNOSE_ANSWER_NUDGE_MESSAGE,
-          });
-          warnings.push(
-            `Repeated ${uniform ?? "tool"} turns without an answer; requesting a final response.`,
-          );
-        } else if (
-          shouldLockDiagnoseAnswer({
-            mutationRequired: false,
-            consecutiveSameToolTurns,
-            maxRepeatedReadonlyToolTurnsBeforeAnswerNudge:
-              thresholds.maxRepeatedReadonlyToolTurnsBeforeAnswerNudge,
-            diagnoseAnswerNudges,
-            maxDiagnoseAnswerNudges: thresholds.maxDiagnoseAnswerNudges,
-          })
-        ) {
-          awaitingAnswerOnly = true;
-          reasonCodes.push("incomplete_answer_recovered");
-          messages.push({
-            role: "user",
-            content: DIAGNOSE_ANSWER_NUDGE_MESSAGE,
-          });
-          warnings.push(
-            "Stripped tools after repeated identical diagnostic turns; next turn must answer.",
-          );
-        }
-      } else if (!mutationNeeded) {
-        consecutiveSameToolTurns = 0;
-        lastUniformToolName = undefined;
-      }
-
-      if (toolLoopGuard.isForcingFinalResponse()) {
-        forceFinalOnly = true;
-        messages.push({
-          role: "user",
-          content: forceFinalToolLoopMessage(
-            thresholds.toolLoopIdenticalCallAndResult,
-          ),
-        });
-      }
-
       continue;
     }
 
-    // Never erase a substantive findings report when a later turn is only a
-    // mutation blocker / verification wrap-up (customer-visible history).
-    answer = preserveSubstantiveAssistantAnswer(answer, turn.content);
-    messages.push({ role: "assistant", content: turn.content });
-
-    const mutationStillNeeded =
-      mutationNeeded && changedFiles.length === 0 && !gitWriteSucceeded;
-
-    if (mutationStillNeeded) {
-      // Honest "cannot edit" / grant/policy blockers must not open Continue.
-      // Prefer the preserved answer (prior findings + blocker) when present.
-      if (isClearMutationBlocker(turn.content) || isClearMutationBlocker(answer)) {
-        reasonCodes.push("answer_produced");
-        return {
-          kind: "completed",
-          answer,
-          changedFiles,
-          mutationCheckpointIds,
-          messages,
-          toolCache,
-          decision,
-        };
-      }
-      unfulfilledExecuteRecoveries += 1;
-      if (
-        unfulfilledExecuteRecoveries <=
-        thresholds.maxUnfulfilledExecuteRecoveries
-      ) {
-        warnings.push("Unfulfilled execute: nudging for apply_patch.");
-        messages.push({
-          role: "user",
-          content: unfulfilledExecuteNudgeMessage({ vcsHistoryRewrite }),
-        });
-        continue;
-      }
-      return offerContinue(
-        "unfulfilled_execute",
-        answer.trim().length > 0
-          ? answer
-          : readonlyThrashPartialAnswer({
-              hasPlan: planDraftedThisRun,
-              fileReadCalls: loopFileReads.calls,
-            }),
-      );
-    }
-
-    const turnOutcome = resolveLoopTurnOutcome({
-      route: decision.route,
-      maximumWorkspaceEffect: decision.toolGrant.maximumWorkspaceEffect,
-      primaryTaskIntent:
-        params.understanding?.intent.classification.primaryTaskIntent ??
-        "question",
-      toolCallCount: 0,
-      changedFileCount: changedFiles.length,
-      content: turn.content,
+    const answerTurn = finishModelLoopAnswerTurn({
+      priorAnswer: answer,
+      turnContent: turn.content,
       finishReason: turn.finishReason,
       truncated,
-      mutationBudget: decision.toolGrant.mutationBudget,
-      reasonCodes: decision.reasonCodes,
-      allowedTools: decision.toolGrant.allowedTools,
-      fileReadCalls: loopFileReads.calls,
-      recoveries: {
-        truncation: truncationRecoveriesUsed,
-        incompleteAnswer: incompleteAnswerRecoveries,
-        unfulfilledExecute: unfulfilledExecuteRecoveries,
-      },
-      thresholds: {
-        maxIncompleteAnswerRecoveries:
-          thresholds.maxIncompleteAnswerRecoveries,
-        maxUnfulfilledExecuteRecoveries:
-          thresholds.maxUnfulfilledExecuteRecoveries,
-      },
+      messages,
+      decision,
+      understanding: params.understanding,
+      mutationNeeded,
+      changedFiles,
+      gitWriteSucceeded,
+      mutationCheckpointIds,
+      toolCache,
+      planDraftedThisRun,
+      loopFileReads,
+      vcsHistoryRewrite,
+      truncationRecoveriesUsed,
+      incompleteAnswerRecoveries,
+      unfulfilledExecuteRecoveries,
+      maxIncompleteAnswerRecoveries: thresholds.maxIncompleteAnswerRecoveries,
+      maxUnfulfilledExecuteRecoveries:
+        thresholds.maxUnfulfilledExecuteRecoveries,
+      reasonCodes,
+      warnings,
+      offerContinue: (wallReason, partialAnswer) =>
+        offerContinue(wallReason, partialAnswer),
     });
-
-    if (turnOutcome.disposition === "recover_incomplete_narration") {
-      incompleteAnswerRecoveries += 1;
-      reasonCodes.push(turnOutcome.reasonCode);
-      messages.pop();
-      messages.push({
-        role: "assistant",
-        content:
-          compactRecoveredAssistantContent(turn.content) ||
-          turn.content ||
-          "(empty turn)",
-      });
-      messages.push({
-        role: "user",
-        content:
-          turnOutcome.recoveryMessage ??
-          buildIncompleteAnswerRecoveryMessage({
-            changedFiles,
-            emptyTurn: turn.content.trim().length === 0,
-          }),
-      });
-      warnings.push(
-        turn.content.trim().length === 0
-          ? "Empty assistant turn; requesting a real answer or tool call."
-          : "Incomplete narration; requesting a final user-facing answer.",
-      );
+    answer = answerTurn.answer;
+    incompleteAnswerRecoveries = answerTurn.incompleteAnswerRecoveries;
+    unfulfilledExecuteRecoveries = answerTurn.unfulfilledExecuteRecoveries;
+    if (answerTurn.kind === "continue") {
       continue;
     }
-
-    if (turnOutcome.reasonCode === "incomplete_answer_fallback") {
-      answer = synthesizeFallbackAnswer({
-        priorAnswer: turn.content,
-        changedFiles,
-      });
-      reasonCodes.push("incomplete_answer_fallback");
-    } else if (answer.trim().length > 0) {
-      reasonCodes.push("answer_produced");
-    }
-
-    if (changedFiles.length > 0 || gitWriteSucceeded) {
-      reasonCodes.push("mutation_applied");
-    }
-
-    return {
-      kind: "completed",
-      answer,
-      changedFiles,
-      mutationCheckpointIds,
-      messages,
-      toolCache,
-      decision,
-    };
+    return answerTurn.outcome;
   }
 }

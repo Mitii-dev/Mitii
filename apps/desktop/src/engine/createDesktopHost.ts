@@ -337,6 +337,10 @@ export async function createHostDesktopClient(
   );
   const runLlm = wrapLlmPortForModelIo(llm.runLlm, modelIoOn);
 
+  const fuzzyMatchDefault =
+    readDesktopSettingsField(env, 'tools.applyPatch.fuzzyMatch') === true ||
+    env.MITII_APPLY_PATCH_FUZZY === '1';
+
   const { client } = await createHostClient({
     workspaceRoot: cwd,
     workspaceId,
@@ -346,6 +350,7 @@ export async function createHostDesktopClient(
     defaultSessionId: `desktop_${workspaceId}`,
     taskListAutoAdvance: env.MITII_TASK_LIST_AUTO_ADVANCE !== '0',
     sandbox: { ...readSandboxOptionsFromEnv(env), prefer: 'auto' },
+    ...(fuzzyMatchDefault ? { fuzzyMatchDefault: true } : {}),
     mcp: bindHostMcp(
       getSharedMcpManager({ clientInfoName: 'mitii-desktop' }),
       readMcpSettingsFromDisk(cwd),

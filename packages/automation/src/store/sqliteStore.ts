@@ -18,11 +18,19 @@ import type {
   AutomationSpecRecord,
   ListRunsOptions,
   ListSpecsOptions,
-  RunStatus,
   RunTriggerKind,
-  TriggerKind,
 } from '../types.js';
+import {
+  getDelivery,
+  insertDelivery,
+  listDeliveries,
+  updateDelivery,
+} from './deliveryQueries.js';
+import { boolToInt, mapEventLog, mapRun, mapSpec } from './rowMappers.js';
 import { AUTOMATION_SCHEMA_STATEMENTS } from './schema.js';
+import { type UpsertSpecInput, writeSpecRow } from './specUpsert.js';
+
+export type { UpsertSpecInput } from './specUpsert.js';
 
 type SqliteDb = Database.Database;
 
@@ -35,125 +43,6 @@ export type OpenAutomationSqliteDatabase = (
 export type SqliteAutomationStoreOptions = {
   openDatabase?: OpenAutomationSqliteDatabase;
 };
-
-function boolToInt(value: boolean): number {
-  return value ? 1 : 0;
-}
-
-function intToBool(value: number | null | undefined): boolean {
-  return value === 1;
-}
-
-function mapSpec(row: Record<string, unknown>): AutomationSpecRecord {
-  return {
-    specId: String(row.spec_id),
-    externalId: String(row.external_id),
-    sourcePath: String(row.source_path),
-    triggerKind: row.trigger_kind as TriggerKind,
-    sourceMtimeMs:
-      row.source_mtime_ms == null ? null : Number(row.source_mtime_ms),
-    sourceHash: row.source_hash == null ? null : String(row.source_hash),
-    parseStatus: row.parse_status as 'valid' | 'invalid',
-    parseError: row.parse_error == null ? null : String(row.parse_error),
-    enabled: intToBool(Number(row.enabled)),
-    removed: intToBool(Number(row.removed)),
-    title: String(row.title),
-    prompt: row.prompt == null ? null : String(row.prompt),
-    workspaceRoot:
-      row.workspace_root == null ? null : String(row.workspace_root),
-    scheduleExpr:
-      row.schedule_expr == null ? null : String(row.schedule_expr),
-    timezone: row.timezone == null ? null : String(row.timezone),
-    eventType: row.event_type == null ? null : String(row.event_type),
-    filtersJson: row.filters_json == null ? null : String(row.filters_json),
-    debounceSeconds:
-      row.debounce_seconds == null ? null : Number(row.debounce_seconds),
-    dedupeWindowSeconds:
-      row.dedupe_window_seconds == null
-        ? null
-        : Number(row.dedupe_window_seconds),
-    cooldownSeconds:
-      row.cooldown_seconds == null ? null : Number(row.cooldown_seconds),
-    mode: (row.mode as AutomationSpecRecord['mode']) ?? null,
-    autonomyPreset:
-      (row.autonomy_preset as AutomationSpecRecord['autonomyPreset']) ?? null,
-    timeoutSeconds:
-      row.timeout_seconds == null ? null : Number(row.timeout_seconds),
-    maxParallel: row.max_parallel == null ? null : Number(row.max_parallel),
-    source: (row.source as AutomationSpecRecord['source']) ?? 'api',
-    tagsJson: row.tags_json == null ? null : String(row.tags_json),
-    metadataJson:
-      row.metadata_json == null ? null : String(row.metadata_json),
-    revision: Number(row.revision),
-    lastMaterializedRunId:
-      row.last_materialized_run_id == null
-        ? null
-        : String(row.last_materialized_run_id),
-    lastRunAt: row.last_run_at == null ? null : String(row.last_run_at),
-    nextRunAt: row.next_run_at == null ? null : String(row.next_run_at),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at),
-  };
-}
-
-function mapRun(row: Record<string, unknown>): AutomationRunRecord {
-  return {
-    runId: String(row.run_id),
-    specId: String(row.spec_id),
-    specRevision: Number(row.spec_revision),
-    triggerKind: row.trigger_kind as RunTriggerKind,
-    status: row.status as RunStatus,
-    claimToken: row.claim_token == null ? null : String(row.claim_token),
-    claimStartedAt:
-      row.claim_started_at == null ? null : String(row.claim_started_at),
-    claimUntilAt:
-      row.claim_until_at == null ? null : String(row.claim_until_at),
-    scheduledFor:
-      row.scheduled_for == null ? null : String(row.scheduled_for),
-    triggerEventId:
-      row.trigger_event_id == null ? null : String(row.trigger_event_id),
-    startedAt: row.started_at == null ? null : String(row.started_at),
-    completedAt: row.completed_at == null ? null : String(row.completed_at),
-    sessionId: row.session_id == null ? null : String(row.session_id),
-    reportPath: row.report_path == null ? null : String(row.report_path),
-    error: row.error == null ? null : String(row.error),
-    attemptCount: Number(row.attempt_count ?? 0),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at),
-  };
-}
-
-export interface UpsertSpecInput {
-  specId: string;
-  externalId: string;
-  sourcePath: string;
-  triggerKind: TriggerKind;
-  sourceMtimeMs?: number | null;
-  sourceHash?: string | null;
-  parseStatus: 'valid' | 'invalid';
-  parseError?: string | null;
-  enabled?: boolean;
-  removed?: boolean;
-  title: string;
-  prompt?: string | null;
-  workspaceRoot?: string | null;
-  scheduleExpr?: string | null;
-  timezone?: string | null;
-  eventType?: string | null;
-  filtersJson?: string | null;
-  debounceSeconds?: number | null;
-  dedupeWindowSeconds?: number | null;
-  cooldownSeconds?: number | null;
-  mode?: AutomationSpecRecord['mode'];
-  autonomyPreset?: AutomationSpecRecord['autonomyPreset'];
-  timeoutSeconds?: number | null;
-  maxParallel?: number | null;
-  source?: AutomationSpecRecord['source'];
-  tagsJson?: string | null;
-  metadataJson?: string | null;
-  nextRunAt?: string | null;
-  bumpRevision?: boolean;
-}
 
 export class SqliteAutomationStore {
   readonly db: SqliteDb;
@@ -221,132 +110,10 @@ export class SqliteAutomationStore {
   }
 
   upsertSpec(input: UpsertSpecInput): AutomationSpecRecord {
-    const existing = this.getSpec(input.specId) ?? this.getSpecBySourcePath(input.sourcePath);
-    const now = nowIso();
-    if (!existing) {
-      this.db
-        .prepare(
-          `INSERT INTO automation_specs (
-            spec_id, external_id, source_path, trigger_kind, source_mtime_ms, source_hash,
-            parse_status, parse_error, enabled, removed, title, prompt, workspace_root,
-            schedule_expr, timezone, event_type, filters_json, debounce_seconds,
-            dedupe_window_seconds, cooldown_seconds, mode, autonomy_preset, timeout_seconds,
-            max_parallel, source, tags_json, metadata_json, revision, next_run_at,
-            created_at, updated_at
-          ) VALUES (
-            @specId, @externalId, @sourcePath, @triggerKind, @sourceMtimeMs, @sourceHash,
-            @parseStatus, @parseError, @enabled, @removed, @title, @prompt, @workspaceRoot,
-            @scheduleExpr, @timezone, @eventType, @filtersJson, @debounceSeconds,
-            @dedupeWindowSeconds, @cooldownSeconds, @mode, @autonomyPreset, @timeoutSeconds,
-            @maxParallel, @source, @tagsJson, @metadataJson, 1, @nextRunAt,
-            @createdAt, @updatedAt
-          )`,
-        )
-        .run({
-          specId: input.specId,
-          externalId: input.externalId,
-          sourcePath: input.sourcePath,
-          triggerKind: input.triggerKind,
-          sourceMtimeMs: input.sourceMtimeMs ?? null,
-          sourceHash: input.sourceHash ?? null,
-          parseStatus: input.parseStatus,
-          parseError: input.parseError ?? null,
-          enabled: boolToInt(input.enabled ?? true),
-          removed: boolToInt(input.removed ?? false),
-          title: input.title,
-          prompt: input.prompt ?? null,
-          workspaceRoot: input.workspaceRoot ?? null,
-          scheduleExpr: input.scheduleExpr ?? null,
-          timezone: input.timezone ?? null,
-          eventType: input.eventType ?? null,
-          filtersJson: input.filtersJson ?? null,
-          debounceSeconds: input.debounceSeconds ?? null,
-          dedupeWindowSeconds: input.dedupeWindowSeconds ?? null,
-          cooldownSeconds: input.cooldownSeconds ?? null,
-          mode: input.mode ?? null,
-          autonomyPreset: input.autonomyPreset ?? null,
-          timeoutSeconds: input.timeoutSeconds ?? null,
-          maxParallel: input.maxParallel ?? null,
-          source: input.source ?? 'api',
-          tagsJson: input.tagsJson ?? null,
-          metadataJson: input.metadataJson ?? null,
-          nextRunAt: input.nextRunAt ?? null,
-          createdAt: now,
-          updatedAt: now,
-        });
-      return this.getSpec(input.specId)!;
-    }
-
-    const revision =
-      input.bumpRevision === true ? existing.revision + 1 : existing.revision;
-    this.db
-      .prepare(
-        `UPDATE automation_specs SET
-          external_id = @externalId,
-          source_path = @sourcePath,
-          trigger_kind = @triggerKind,
-          source_mtime_ms = @sourceMtimeMs,
-          source_hash = @sourceHash,
-          parse_status = @parseStatus,
-          parse_error = @parseError,
-          enabled = @enabled,
-          removed = @removed,
-          title = @title,
-          prompt = @prompt,
-          workspace_root = @workspaceRoot,
-          schedule_expr = @scheduleExpr,
-          timezone = @timezone,
-          event_type = @eventType,
-          filters_json = @filtersJson,
-          debounce_seconds = @debounceSeconds,
-          dedupe_window_seconds = @dedupeWindowSeconds,
-          cooldown_seconds = @cooldownSeconds,
-          mode = @mode,
-          autonomy_preset = @autonomyPreset,
-          timeout_seconds = @timeoutSeconds,
-          max_parallel = @maxParallel,
-          source = @source,
-          tags_json = @tagsJson,
-          metadata_json = @metadataJson,
-          revision = @revision,
-          next_run_at = COALESCE(@nextRunAt, next_run_at),
-          updated_at = @updatedAt
-        WHERE spec_id = @specId`,
-      )
-      .run({
-        specId: existing.specId,
-        externalId: input.externalId,
-        sourcePath: input.sourcePath,
-        triggerKind: input.triggerKind,
-        sourceMtimeMs: input.sourceMtimeMs ?? null,
-        sourceHash: input.sourceHash ?? null,
-        parseStatus: input.parseStatus,
-        parseError: input.parseError ?? null,
-        enabled: boolToInt(input.enabled ?? existing.enabled),
-        removed: boolToInt(input.removed ?? false),
-        title: input.title,
-        prompt: input.prompt ?? existing.prompt,
-        workspaceRoot: input.workspaceRoot ?? existing.workspaceRoot,
-        scheduleExpr: input.scheduleExpr ?? existing.scheduleExpr,
-        timezone: input.timezone ?? existing.timezone,
-        eventType: input.eventType ?? existing.eventType,
-        filtersJson: input.filtersJson ?? existing.filtersJson,
-        debounceSeconds: input.debounceSeconds ?? existing.debounceSeconds,
-        dedupeWindowSeconds:
-          input.dedupeWindowSeconds ?? existing.dedupeWindowSeconds,
-        cooldownSeconds: input.cooldownSeconds ?? existing.cooldownSeconds,
-        mode: input.mode ?? existing.mode,
-        autonomyPreset: input.autonomyPreset ?? existing.autonomyPreset,
-        timeoutSeconds: input.timeoutSeconds ?? existing.timeoutSeconds,
-        maxParallel: input.maxParallel ?? existing.maxParallel,
-        source: input.source ?? existing.source,
-        tagsJson: input.tagsJson ?? existing.tagsJson,
-        metadataJson: input.metadataJson ?? existing.metadataJson,
-        revision,
-        nextRunAt: input.nextRunAt ?? null,
-        updatedAt: now,
-      });
-    return this.getSpec(existing.specId)!;
+    const existing =
+      this.getSpec(input.specId) ?? this.getSpecBySourcePath(input.sourcePath);
+    const specId = writeSpecRow(this.db, input, existing, nowIso());
+    return this.getSpec(specId)!;
   }
 
   setSpecEnabled(specId: string, enabled: boolean): void {
@@ -787,55 +554,17 @@ export class SqliteAutomationStore {
     adapter: DeliveryAdapter;
     targetJson: string;
   }): AutomationDeliveryRecord {
-    const now = nowIso();
-    this.db
-      .prepare(
-        `INSERT INTO automation_deliveries (
-          delivery_id, run_id, adapter, status, target_json, error, attempts,
-          created_at, updated_at
-        ) VALUES (?, ?, ?, 'pending', ?, NULL, 0, ?, ?)`,
-      )
-      .run(
-        input.deliveryId,
-        input.runId,
-        input.adapter,
-        input.targetJson,
-        now,
-        now,
-      );
-    return this.getDelivery(input.deliveryId)!;
+    return insertDelivery(this.db, input);
   }
 
   getDelivery(deliveryId: string): AutomationDeliveryRecord | undefined {
-    const row = this.db
-      .prepare(`SELECT * FROM automation_deliveries WHERE delivery_id = ?`)
-      .get(deliveryId) as Record<string, unknown> | undefined;
-    return row ? mapDelivery(row) : undefined;
+    return getDelivery(this.db, deliveryId);
   }
 
-  listDeliveries(options: {
-    status?: DeliveryStatus;
-    runId?: string;
-    limit?: number;
-  } = {}): AutomationDeliveryRecord[] {
-    const clauses: string[] = [];
-    const params: unknown[] = [];
-    if (options.status) {
-      clauses.push('status = ?');
-      params.push(options.status);
-    }
-    if (options.runId) {
-      clauses.push('run_id = ?');
-      params.push(options.runId);
-    }
-    const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
-    const limit = Math.min(Math.max(options.limit ?? 50, 1), 500);
-    const rows = this.db
-      .prepare(
-        `SELECT * FROM automation_deliveries ${where} ORDER BY created_at ASC LIMIT ?`,
-      )
-      .all(...params, limit) as Record<string, unknown>[];
-    return rows.map(mapDelivery);
+  listDeliveries(
+    options: { status?: DeliveryStatus; runId?: string; limit?: number } = {},
+  ): AutomationDeliveryRecord[] {
+    return listDeliveries(this.db, options);
   }
 
   updateDelivery(input: {
@@ -844,75 +573,6 @@ export class SqliteAutomationStore {
     error?: string | null;
     bumpAttempt?: boolean;
   }): void {
-    if (input.bumpAttempt) {
-      this.db
-        .prepare(
-          `UPDATE automation_deliveries SET
-            status = ?,
-            error = ?,
-            attempts = attempts + 1,
-            updated_at = ?
-           WHERE delivery_id = ?`,
-        )
-        .run(
-          input.status,
-          input.error ?? null,
-          nowIso(),
-          input.deliveryId,
-        );
-      return;
-    }
-    this.db
-      .prepare(
-        `UPDATE automation_deliveries SET
-          status = ?,
-          error = ?,
-          updated_at = ?
-         WHERE delivery_id = ?`,
-      )
-      .run(
-        input.status,
-        input.error ?? null,
-        nowIso(),
-        input.deliveryId,
-      );
+    updateDelivery(this.db, input);
   }
-}
-
-function mapEventLog(row: Record<string, unknown>): AutomationEventLogRecord {
-  return {
-    eventId: String(row.event_id),
-    eventType: String(row.event_type),
-    source: String(row.source),
-    subject: row.subject == null ? null : String(row.subject),
-    occurredAt: String(row.occurred_at),
-    receivedAt: String(row.received_at),
-    workspaceRoot:
-      row.workspace_root == null ? null : String(row.workspace_root),
-    dedupeKey: row.dedupe_key == null ? null : String(row.dedupe_key),
-    payloadJson: row.payload_json == null ? null : String(row.payload_json),
-    attributesJson:
-      row.attributes_json == null ? null : String(row.attributes_json),
-    processingStatus: row.processing_status as EventProcessingStatus,
-    matchedSpecCount: Number(row.matched_spec_count ?? 0),
-    queuedRunCount: Number(row.queued_run_count ?? 0),
-    suppressedCount: Number(row.suppressed_count ?? 0),
-    error: row.error == null ? null : String(row.error),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at),
-  };
-}
-
-function mapDelivery(row: Record<string, unknown>): AutomationDeliveryRecord {
-  return {
-    deliveryId: String(row.delivery_id),
-    runId: String(row.run_id),
-    adapter: row.adapter as DeliveryAdapter,
-    status: row.status as DeliveryStatus,
-    targetJson: String(row.target_json),
-    error: row.error == null ? null : String(row.error),
-    attempts: Number(row.attempts ?? 0),
-    createdAt: String(row.created_at),
-    updatedAt: String(row.updated_at),
-  };
 }

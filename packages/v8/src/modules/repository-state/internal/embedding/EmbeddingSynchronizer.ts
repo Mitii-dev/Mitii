@@ -1,17 +1,7 @@
 import {
-  EMBEDDING_DEFAULTS,
   EMBEDDING_IDS,
   EMBEDDING_MESSAGES,
-  EMBEDDING_SCHEMA_VERSION,
 } from "./constants";
-
-import {
-  embeddingIndexStateSchema,
-  embeddingIndexWriteBatchSchema,
-  embeddingIndexWriteResultSchema,
-  embeddingProfileSchema,
-  embeddingSynchronizationResultSchema,
-} from "./schema";
 
 import {
   EmbeddingChangePlanner,
@@ -21,25 +11,26 @@ import {
   EmbeddingError,
 } from "./EmbeddingError";
 
+import {
+  EmbeddingSynchronizerGateway,
+} from "./EmbeddingSynchronizerGateway";
+
+import {
+  buildSynchronizationResult,
+  createEmptySynchronizationStatistics,
+  resolveSynchronizerOptions,
+  validateSynchronizerInput,
+} from "./embeddingSynchronizerSupport";
+
 import type {
   EmbeddingChangePlan,
-  EmbeddingIndexWriteBatch,
-  EmbeddingIndexState,
-  EmbeddingIndexWriteResult,
-  EmbeddingProfile,
   EmbeddingSynchronizationResult,
-  EmbeddingSynchronizationStatistics,
   EmbeddingSynchronizationWarning,
   EmbeddingSynchronizerDependencies,
   EmbeddingSynchronizerInput,
   EmbeddingSynchronizerOptions,
-  EmbeddingVectorRecord,
   ResolvedEmbeddingSynchronizerOptions,
 } from "./types";
-
-import type {
-  TextIndexReadContext,
-} from "../text-index/types";
 
 export class EmbeddingSynchronizer {
   public readonly id =
@@ -47,6 +38,9 @@ export class EmbeddingSynchronizer {
 
   private readonly options:
     ResolvedEmbeddingSynchronizerOptions;
+
+  private readonly gateway:
+    EmbeddingSynchronizerGateway;
 
   private readonly planner: {
     plan(
@@ -66,8 +60,14 @@ export class EmbeddingSynchronizer {
       EmbeddingSynchronizerOptions = {},
   ) {
     this.options =
-      this.resolveOptions(
+      resolveSynchronizerOptions(
         options,
+      );
+
+    this.gateway =
+      new EmbeddingSynchronizerGateway(
+        dependencies,
+        this.options,
       );
 
     this.planner =
@@ -79,16 +79,16 @@ export class EmbeddingSynchronizer {
     input:
       EmbeddingSynchronizerInput,
   ): Promise<EmbeddingSynchronizationResult> {
-    this.validateInput(input);
+    validateSynchronizerInput(input);
 
     const profile =
-      this.getProfile();
+      this.gateway.getProfile();
 
     if (
       input.abortSignal
         ?.aborted
     ) {
-      return this.result({
+      return buildSynchronizationResult({
         status: "cancelled",
         input,
         profile,
@@ -97,17 +97,17 @@ export class EmbeddingSynchronizer {
         latestRevision: 0,
         warnings: [],
         statistics:
-          this.emptyStatistics(),
+          createEmptySynchronizationStatistics(),
       });
     }
 
     const state =
-      await this.readState(
+      await this.gateway.readState(
         input,
         profile.id,
       );
 
-    this.assertStateProfile(
+    this.gateway.assertStateProfile(
       state,
       profile,
     );
@@ -119,7 +119,7 @@ export class EmbeddingSynchronizer {
       initialRevision;
 
     let latestRevision =
-      await this.readLatestRevision(
+      await this.gateway.readLatestRevision(
         input,
       );
 
@@ -143,13 +143,13 @@ export class EmbeddingSynchronizer {
       [];
 
     const statistics =
-      this.emptyStatistics();
+      createEmptySynchronizationStatistics();
 
     if (
       currentRevision ===
       latestRevision
     ) {
-      return this.result({
+      return buildSynchronizationResult({
         status: "unchanged",
         input,
         profile,
@@ -173,7 +173,7 @@ export class EmbeddingSynchronizer {
         input.abortSignal
           ?.aborted
       ) {
-        return this.result({
+        return buildSynchronizationResult({
           status:
             "cancelled",
           input,
@@ -188,7 +188,7 @@ export class EmbeddingSynchronizer {
       }
 
       const changes =
-        await this.readChanges(
+        await this.gateway.readChanges(
           input,
           currentRevision,
         );
@@ -214,7 +214,7 @@ export class EmbeddingSynchronizer {
           latestRevision
         ) {
           const write =
-            await this.writeBatch(
+            await this.gateway.writeBatch(
               input,
               profile,
               currentRevision,
@@ -223,7 +223,7 @@ export class EmbeddingSynchronizer {
               [],
             );
 
-          this.assertWriteResult(
+          this.gateway.assertWriteResult(
             write,
             currentRevision,
             latestRevision,
@@ -237,7 +237,7 @@ export class EmbeddingSynchronizer {
             latestRevision;
         }
 
-        return this.result({
+        return buildSynchronizationResult({
           status: "complete",
           input,
           profile,
@@ -274,7 +274,7 @@ export class EmbeddingSynchronizer {
       }
 
       const chunkResult =
-        await this.readChunks(
+        await this.gateway.readChunks(
           input,
           plan.upsertChunkIds,
         );
@@ -381,7 +381,7 @@ export class EmbeddingSynchronizer {
         generation.status ===
         "cancelled"
       ) {
-        return this.result({
+        return buildSynchronizationResult({
           status:
             "cancelled",
           input,
@@ -396,7 +396,7 @@ export class EmbeddingSynchronizer {
       }
 
       const write =
-        await this.writeBatch(
+        await this.gateway.writeBatch(
           input,
           profile,
           currentRevision,
@@ -406,7 +406,7 @@ export class EmbeddingSynchronizer {
           [...deleteIds].sort(),
         );
 
-      this.assertWriteResult(
+      this.gateway.assertWriteResult(
         write,
         currentRevision,
         plan.nextTextRevision,
@@ -429,7 +429,7 @@ export class EmbeddingSynchronizer {
         latestRevision &&
         !changes.truncated
       ) {
-        return this.result({
+        return buildSynchronizationResult({
           status: "complete",
           input,
           profile,
@@ -447,7 +447,7 @@ export class EmbeddingSynchronizer {
     latestRevision =
       Math.max(
         latestRevision,
-        await this.readLatestRevision(
+        await this.gateway.readLatestRevision(
           input,
         ),
       );
@@ -456,7 +456,7 @@ export class EmbeddingSynchronizer {
       currentRevision >=
       latestRevision
     ) {
-      return this.result({
+      return buildSynchronizationResult({
         status: "complete",
         input,
         profile,
@@ -478,7 +478,7 @@ export class EmbeddingSynchronizer {
           .BATCH_LIMIT_REACHED,
     });
 
-    return this.result({
+    return buildSynchronizationResult({
       status: "partial",
       input,
       profile,
@@ -489,447 +489,5 @@ export class EmbeddingSynchronizer {
       warnings,
       statistics,
     });
-  }
-
-  private getProfile():
-    EmbeddingProfile {
-    return embeddingProfileSchema
-      .parse(
-        this.dependencies
-          .generator.profile,
-      ) as
-      EmbeddingProfile;
-  }
-
-  private async readState(
-    input:
-      EmbeddingSynchronizerInput,
-    profileId: string,
-  ): Promise<
-    EmbeddingIndexState | null
-  > {
-    try {
-      const state =
-        await this.dependencies
-          .vectorWriter
-          .getState(
-            {
-              workspace:
-                input.workspace,
-              rootId:
-                input.rootId,
-              profileId,
-            },
-            this.contextOf(
-              input,
-            ),
-          );
-
-      return state
-        ? embeddingIndexStateSchema
-            .parse(
-              state,
-            ) as
-            EmbeddingIndexState
-        : null;
-    } catch (error) {
-      throw this.normalizeError(
-        error,
-        "read_index_state",
-        this.dependencies
-          .vectorWriter.id,
-      );
-    }
-  }
-
-  private async readLatestRevision(
-    input:
-      EmbeddingSynchronizerInput,
-  ): Promise<number> {
-    try {
-      return await this.dependencies
-        .textIndex
-        .getRevision(
-          input.workspace,
-          input.rootId,
-          this.contextOf(
-            input,
-          ),
-        );
-    } catch (error) {
-      throw this.normalizeError(
-        error,
-        "read_text_revision",
-        this.dependencies
-          .textIndex.id,
-      );
-    }
-  }
-
-  private async readChanges(
-    input:
-      EmbeddingSynchronizerInput,
-    afterRevision: number,
-  ) {
-    try {
-      return await this.dependencies
-        .textIndex
-        .getChanges(
-          {
-            workspace:
-              input.workspace,
-            rootId:
-              input.rootId,
-            afterRevision,
-            maximumChanges:
-              this.options
-                .maximumChangesPerBatch,
-          },
-          this.contextOf(
-            input,
-          ),
-        );
-    } catch (error) {
-      throw this.normalizeError(
-        error,
-        "read_text_changes",
-        this.dependencies
-          .textIndex.id,
-      );
-    }
-  }
-
-  private async readChunks(
-    input:
-      EmbeddingSynchronizerInput,
-    chunkIds:
-      readonly string[],
-  ) {
-    try {
-      return await this.dependencies
-        .textIndex
-        .getChunks(
-          {
-            workspace:
-              input.workspace,
-            chunkIds,
-            maximumChunks:
-              Math.max(
-                1,
-                chunkIds.length,
-              ),
-          },
-          this.contextOf(
-            input,
-          ),
-        );
-    } catch (error) {
-      throw this.normalizeError(
-        error,
-        "read_chunks",
-        this.dependencies
-          .textIndex.id,
-      );
-    }
-  }
-
-  private async writeBatch(
-    input:
-      EmbeddingSynchronizerInput,
-    profile:
-      EmbeddingProfile,
-    expectedTextRevision:
-      number,
-    nextTextRevision: number,
-    upserts:
-      readonly EmbeddingVectorRecord[],
-    deleteChunkIds:
-      readonly string[],
-  ): Promise<EmbeddingIndexWriteResult> {
-    try {
-      const result =
-        await this.dependencies
-          .vectorWriter
-          .applyBatch(
-            embeddingIndexWriteBatchSchema
-              .parse({
-              workspace:
-                input.workspace,
-              rootId:
-                input.rootId,
-              profileId:
-                profile.id,
-              profile,
-              expectedTextRevision,
-              nextTextRevision,
-              upserts,
-              deleteChunkIds,
-              updatedAt:
-                input.updatedAt,
-            }) as
-              EmbeddingIndexWriteBatch,
-            this.contextOf(
-              input,
-            ),
-          );
-
-      return embeddingIndexWriteResultSchema
-        .parse(result) as
-        EmbeddingIndexWriteResult;
-    } catch (error) {
-      throw this.normalizeError(
-        error,
-        "write_vectors",
-        this.dependencies
-          .vectorWriter.id,
-      );
-    }
-  }
-
-  private assertStateProfile(
-    state:
-      EmbeddingIndexState | null,
-    profile:
-      EmbeddingProfile,
-  ): void {
-    if (!state) {
-      return;
-    }
-
-    if (
-      state.profileId !==
-        profile.id ||
-      state.providerId !==
-        profile.providerId ||
-      state.modelId !==
-        profile.modelId ||
-      state.dimensions !==
-        profile.dimensions ||
-      state.normalized !==
-        profile.normalized
-    ) {
-      throw new EmbeddingError(
-        `Embedding profile ID "${profile.id}" collides with incompatible stored metadata.`,
-        {
-          operation:
-            "read_index_state",
-          componentId:
-            this.dependencies
-              .vectorWriter.id,
-        },
-      );
-    }
-  }
-
-  private assertWriteResult(
-    result:
-      EmbeddingIndexWriteResult,
-    expectedRevision: number,
-    nextRevision: number,
-  ): void {
-    if (
-      result
-        .previousTextRevision !==
-        expectedRevision ||
-      result.textRevision !==
-        nextRevision
-    ) {
-      throw new EmbeddingError(
-        "Vector writer returned an unexpected Text Index checkpoint.",
-        {
-          operation:
-            "write_vectors",
-          componentId:
-            this.dependencies
-              .vectorWriter.id,
-        },
-      );
-    }
-  }
-
-  private contextOf(
-    input:
-      EmbeddingSynchronizerInput,
-  ): TextIndexReadContext {
-    return {
-      ...(input.abortSignal
-        ? {
-            abortSignal:
-              input.abortSignal,
-          }
-        : {}),
-    };
-  }
-
-  private emptyStatistics():
-    EmbeddingSynchronizationStatistics {
-    return {
-      changeBatchesRead: 0,
-      writeBatchesApplied: 0,
-      changesRead: 0,
-      chunksEmbedded: 0,
-      vectorsDeleted: 0,
-      providerCalls: 0,
-      truncatedInputs: 0,
-    };
-  }
-
-  private result(
-    input: {
-      status:
-        EmbeddingSynchronizationResult[
-          "status"
-        ];
-      input:
-        EmbeddingSynchronizerInput;
-      profile:
-        EmbeddingProfile;
-      initialRevision:
-        number;
-      finalRevision:
-        number;
-      latestRevision:
-        number;
-      warnings:
-        EmbeddingSynchronizationWarning[];
-      statistics:
-        EmbeddingSynchronizationStatistics;
-    },
-  ): EmbeddingSynchronizationResult {
-    return embeddingSynchronizationResultSchema
-      .parse({
-        schemaVersion:
-          EMBEDDING_SCHEMA_VERSION,
-        status:
-          input.status,
-        workspace:
-          input.input
-            .workspace,
-        rootId:
-          input.input.rootId,
-        profile:
-          input.profile,
-        initialTextRevision:
-          input
-            .initialRevision,
-        finalTextRevision:
-          input.finalRevision,
-        latestTextRevision:
-          input.latestRevision,
-        warnings:
-          input.warnings,
-        statistics:
-          input.statistics,
-      }) as
-      EmbeddingSynchronizationResult;
-  }
-
-  private resolveOptions(
-    options:
-      EmbeddingSynchronizerOptions,
-  ): ResolvedEmbeddingSynchronizerOptions {
-    const resolved = {
-      maximumChangesPerBatch:
-        options
-          .maximumChangesPerBatch ??
-        EMBEDDING_DEFAULTS
-          .MAXIMUM_CHANGES_PER_BATCH,
-      maximumBatchesPerRun:
-        options
-          .maximumBatchesPerRun ??
-        EMBEDDING_DEFAULTS
-          .MAXIMUM_BATCHES_PER_RUN,
-    };
-
-    this.validateInteger(
-      resolved
-        .maximumChangesPerBatch,
-      "maximumChangesPerBatch",
-      EMBEDDING_DEFAULTS
-        .MAXIMUM_ALLOWED_CHANGES_PER_BATCH,
-    );
-
-    this.validateInteger(
-      resolved
-        .maximumBatchesPerRun,
-      "maximumBatchesPerRun",
-      EMBEDDING_DEFAULTS
-        .MAXIMUM_ALLOWED_BATCHES_PER_RUN,
-    );
-
-    return resolved;
-  }
-
-  private validateInput(
-    input:
-      EmbeddingSynchronizerInput,
-  ): void {
-    if (
-      !input.workspace.trim()
-    ) {
-      throw new RangeError(
-        "workspace must not be empty.",
-      );
-    }
-
-    if (!input.rootId.trim()) {
-      throw new RangeError(
-        "rootId must not be empty.",
-      );
-    }
-
-    if (
-      !Number.isSafeInteger(
-        input.updatedAt,
-      ) ||
-      input.updatedAt < 0
-    ) {
-      throw new RangeError(
-        "updatedAt must be a non-negative safe integer.",
-      );
-    }
-  }
-
-  private validateInteger(
-    value: number,
-    name: string,
-    maximum: number,
-  ): void {
-    if (
-      !Number.isSafeInteger(
-        value,
-      ) ||
-      value <= 0 ||
-      value > maximum
-    ) {
-      throw new RangeError(
-        `${name} must be a positive safe integer no greater than ${maximum}.`,
-      );
-    }
-  }
-
-  private normalizeError(
-    error: unknown,
-    operation:
-      ConstructorParameters<
-        typeof EmbeddingError
-      >[1]["operation"],
-    componentId: string,
-  ): EmbeddingError {
-    if (
-      error instanceof
-      EmbeddingError
-    ) {
-      return error;
-    }
-
-    return new EmbeddingError(
-      "Embedding synchronization failed.",
-      {
-        operation,
-        componentId,
-        cause: error,
-      },
-    );
   }
 }

@@ -41,7 +41,8 @@ repository-state/
 
 - Published descriptors are immutable.
 - Active runs pin states so cleanup does not remove required artifacts.
-- Readiness can be `ready`, `degraded`, or `unavailable`.
+- Descriptor readiness can be `ready`, `degraded`, or `unavailable`.
+- Per-root capabilities report `available`, `degraded`, or `unavailable` (ARCHITECTURE language/capability formula).
 - Partial/filtered/truncated/cancelled scans publish as degraded or unavailable.
 - `REPOSITORY_INDEX_FORMAT` changes require hosts to rebuild persisted indexes.
 - Workspace Indexing produces candidates; Repository State is the publication authority.
@@ -112,7 +113,7 @@ Repository State publication result returns a result like this:
     "readiness": "ready",
     "scanCompleteness": "complete",
     "cleanupAllowed": true,
-    "roots": [{ "rootId": "root", "projectCatalogRevision": "catalog-1", "codeIndexRevision": "code-1", "textIndexRevision": "text-1", "graphRevision": "graph-1", "mapRevision": "map-1", "capabilities": [{ "capability": "text_index", "status": "ready" }] }],
+    "roots": [{ "rootId": "root", "projectCatalogRevision": "catalog-1", "codeIndexRevision": "code-1", "textIndexRevision": "text-1", "graphRevision": "graph-1", "mapRevision": "map-1", "capabilities": [{ "capability": "text_index", "status": "available" }] }],
     "reasons": [],
     "generatedAt": "2026-08-14T12:00:00.000Z"
   }

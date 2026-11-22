@@ -1,5 +1,4 @@
 import type { WorkspaceFileSystemPort } from "../../contracts";
-import { isPatchCurrentContentReason } from "../../constants";
 import {
   normalizeRelativePath,
   resolveContainedPath,
@@ -17,6 +16,7 @@ import {
   requireRmdir,
   restoreFileCopyCheckpoint,
 } from "./checkpoint";
+import { attachPatchFailureContent } from "./patchFailureContent";
 import { withPathMutationQueue } from "./pathMutationQueue";
 import { MutationError } from "./types";
 import { describeCaughtError } from "../describeCaughtError";
@@ -583,31 +583,4 @@ export class MutationTransactionRegistry {
       changedFiles: [...params.changedFiles],
     };
   }
-}
-
-const PATCH_CONFLICT_CONTENT_CHARS = 16_000;
-
-function attachPatchFailureContent(
-  error: unknown,
-  path: string,
-  currentContent: string | undefined,
-): unknown {
-  if (
-    !(error instanceof MutationError) ||
-    !isPatchCurrentContentReason(error.reasonCode)
-  ) {
-    return error;
-  }
-  if (currentContent === undefined) {
-    return error;
-  }
-  const clipped =
-    currentContent.length > PATCH_CONFLICT_CONTENT_CHARS
-      ? `${currentContent.slice(0, PATCH_CONFLICT_CONTENT_CHARS)}\n…[truncated]`
-      : currentContent;
-  return new MutationError(error.reasonCode, error.message, {
-    ...error.details,
-    path,
-    currentContent: clipped,
-  });
 }

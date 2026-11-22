@@ -11,7 +11,6 @@ import type {
   ModelError,
   ModelEvent,
   ModelFinishReason,
-  ModelMessage,
   ModelRequest,
   ModelToolCallDelta,
   ResolveModelCapabilitiesInput,
@@ -27,6 +26,13 @@ import {
 } from "../internal/http";
 import { sanitizeGeminiJsonSchema } from "../internal/sanitizeGeminiJsonSchema";
 import { iterateSseEvents } from "../internal/sse";
+import type { GeminiPart, GeminiResponse } from "../internal/geminiMessages";
+import { mapGeminiMessages } from "../internal/geminiMessages";
+import {
+  mapGeminiFinishReason,
+  mapGeminiUsage,
+  readGeminiThoughtSignature,
+} from "../internal/geminiResponses";
 import { ModelCapabilityResolver } from "../ModelCapabilityResolver";
 
 export interface GeminiLlmPortConfig {
@@ -50,34 +56,6 @@ export interface GeminiLlmPortConfig {
   sleepImpl?: (ms: number, signal?: AbortSignal) => Promise<void>;
 }
 
-interface GeminiPart {
-  text?: string;
-  thought?: boolean;
-  /** Gemini REST JSON uses camelCase; some payloads may use snake_case. */
-  thoughtSignature?: string;
-  thought_signature?: string;
-  inlineData?: { mimeType?: string; data?: string };
-  functionCall?: { name?: string; args?: Record<string, unknown> };
-  functionResponse?: {
-    name?: string;
-    response?: Record<string, unknown>;
-  };
-}
-
-interface GeminiCandidate {
-  content?: { role?: string; parts?: GeminiPart[] };
-  finishReason?: string | null;
-}
-
-interface GeminiResponse {
-  candidates?: GeminiCandidate[];
-  usageMetadata?: {
-    promptTokenCount?: number;
-    candidatesTokenCount?: number;
-    totalTokenCount?: number;
-  };
-  promptFeedback?: { blockReason?: string };
-}
 
 /**
  * Native Google Gemini generateContent adapter.
@@ -222,7 +200,7 @@ export class GeminiLlmPort implements LlmPort {
   }
 
   private buildBody(request: ModelRequest): Record<string, unknown> {
-    const { systemInstruction, contents } = this.mapMessages(request.messages);
+    const { systemInstruction, contents } = mapGeminiMessages(request.messages);
     const generationConfig: Record<string, unknown> = {
       temperature:
         request.temperature ?? MODEL_GATEWAY_DEFAULTS.TEMPERATURE,
@@ -279,151 +257,6 @@ export class GeminiLlmPort implements LlmPort {
     return body;
   }
 
-  private mapMessages(messages: readonly ModelMessage[]): {
-    systemInstruction?: string;
-    contents: Array<{ role: "user" | "model"; parts: GeminiPart[] }>;
-  } {
-    const systemParts: string[] = [];
-    const contents: Array<{ role: "user" | "model"; parts: GeminiPart[] }> =
-      [];
-    let pendingToolParts: GeminiPart[] = [];
-
-    const flushTools = (): void => {
-      if (pendingToolParts.length === 0) return;
-      contents.push({ role: "user", parts: pendingToolParts });
-      pendingToolParts = [];
-    };
-
-    for (const message of messages) {
-      if (message.role === "system") {
-        if (message.content.trim()) {
-          systemParts.push(message.content);
-        }
-        continue;
-      }
-
-      if (message.role === "tool") {
-        pendingToolParts.push({
-          functionResponse: {
-            name: message.name ?? "tool",
-            response: this.toolResponseObject(message.content),
-          },
-        });
-        continue;
-      }
-
-      flushTools();
-
-      if (message.role === "assistant") {
-        contents.push({
-          role: "model",
-          parts: this.assistantParts(message),
-        });
-        continue;
-      }
-
-      contents.push({
-        role: "user",
-        parts: this.userParts(message),
-      });
-    }
-
-    flushTools();
-
-    const merged = this.mergeConsecutive(contents);
-    return {
-      ...(systemParts.length > 0
-        ? { systemInstruction: systemParts.join("\n\n") }
-        : {}),
-      contents:
-        merged.length > 0
-          ? merged
-          : [
-              {
-                role: "user",
-                parts: [{ text: systemParts.join("\n\n") || "Hello" }],
-              },
-            ],
-    };
-  }
-
-  private userParts(message: ModelMessage): GeminiPart[] {
-    const parts: GeminiPart[] = [];
-    if (message.content) {
-      parts.push({ text: message.content });
-    }
-    for (const attachment of message.attachments ?? []) {
-      if (attachment.kind !== "image") continue;
-      parts.push({
-        inlineData: {
-          mimeType: attachment.mimeType,
-          data: attachment.data,
-        },
-      });
-    }
-    return parts.length > 0 ? parts : [{ text: "" }];
-  }
-
-  private assistantParts(message: ModelMessage): GeminiPart[] {
-    const parts: GeminiPart[] = [];
-    if (message.content) {
-      parts.push({ text: message.content });
-    }
-    for (const toolCall of message.toolCalls ?? []) {
-      let args: Record<string, unknown> = {};
-      try {
-        const parsed = toolCall.arguments
-          ? (JSON.parse(toolCall.arguments) as unknown)
-          : {};
-        args =
-          parsed && typeof parsed === "object" && !Array.isArray(parsed)
-            ? (parsed as Record<string, unknown>)
-            : { value: parsed };
-      } catch {
-        args = { raw: toolCall.arguments };
-      }
-      const part: GeminiPart = {
-        functionCall: {
-          name: toolCall.name,
-          args,
-        },
-      };
-      // Gemini 3+ requires echoing thoughtSignature on functionCall parts.
-      if (toolCall.thoughtSignature) {
-        part.thoughtSignature = toolCall.thoughtSignature;
-      }
-      parts.push(part);
-    }
-    return parts.length > 0 ? parts : [{ text: "" }];
-  }
-
-  private toolResponseObject(content: string): Record<string, unknown> {
-    try {
-      const parsed = JSON.parse(content) as unknown;
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        return parsed as Record<string, unknown>;
-      }
-      return { result: parsed };
-    } catch {
-      return { result: content };
-    }
-  }
-
-  private mergeConsecutive(
-    contents: Array<{ role: "user" | "model"; parts: GeminiPart[] }>,
-  ): Array<{ role: "user" | "model"; parts: GeminiPart[] }> {
-    const merged: Array<{ role: "user" | "model"; parts: GeminiPart[] }> = [];
-    for (const item of contents) {
-      const last = merged[merged.length - 1];
-      if (last && last.role === item.role) {
-        last.parts = [...last.parts, ...item.parts];
-        continue;
-      }
-      merged.push({ role: item.role, parts: [...item.parts] });
-    }
-    return merged;
-  }
-
   private async *yieldNonStreaming(
     response: Response,
   ): AsyncIterable<ModelEvent> {
@@ -445,13 +278,13 @@ export class GeminiLlmPort implements LlmPort {
     const candidate = json.candidates?.[0];
     const parts = candidate?.content?.parts ?? [];
     yield* this.eventsFromParts(parts);
-    const usage = this.mapUsage(json.usageMetadata);
+    const usage = mapGeminiUsage(json.usageMetadata);
     if (usage) {
       yield { type: "usage", usage };
     }
     yield {
       type: "completed",
-      finishReason: this.mapFinishReason(
+      finishReason: mapGeminiFinishReason(
         candidate?.finishReason,
         parts,
       ),
@@ -519,14 +352,14 @@ export class GeminiLlmPort implements LlmPort {
         yield modelEvent;
       }
 
-      const nextUsage = this.mapUsage(payload.usageMetadata);
+      const nextUsage = mapGeminiUsage(payload.usageMetadata);
       if (nextUsage) {
         usage = nextUsage;
         yield { type: "usage", usage };
       }
 
       if (candidate?.finishReason) {
-        finishReason = this.mapFinishReason(
+        finishReason = mapGeminiFinishReason(
           candidate.finishReason,
           candidate.content?.parts,
         );
@@ -565,7 +398,7 @@ export class GeminiLlmPort implements LlmPort {
         yield { type: "content_delta", content: part.text };
       }
       if (part.functionCall?.name) {
-        const thoughtSignature = this.readThoughtSignature(part);
+        const thoughtSignature = readGeminiThoughtSignature(part);
         toolCalls.push({
           index: toolIndexStart + toolOffset,
           id: this.nextToolCallId(),
@@ -587,62 +420,6 @@ export class GeminiLlmPort implements LlmPort {
     return id;
   }
 
-  private readThoughtSignature(part: GeminiPart): string | undefined {
-    const value = part.thoughtSignature ?? part.thought_signature;
-    return typeof value === "string" && value.length > 0 ? value : undefined;
-  }
-
-  private mapUsage(usage?: {
-    promptTokenCount?: number;
-    candidatesTokenCount?: number;
-    totalTokenCount?: number;
-  }):
-    | {
-        inputTokens?: number;
-        outputTokens?: number;
-        totalTokens?: number;
-      }
-    | undefined {
-    if (!usage) return undefined;
-    return {
-      ...(usage.promptTokenCount !== undefined
-        ? { inputTokens: usage.promptTokenCount }
-        : {}),
-      ...(usage.candidatesTokenCount !== undefined
-        ? { outputTokens: usage.candidatesTokenCount }
-        : {}),
-      ...(usage.totalTokenCount !== undefined
-        ? { totalTokens: usage.totalTokenCount }
-        : {}),
-    };
-  }
-
-  private mapFinishReason(
-    reason: string | null | undefined,
-    parts?: GeminiPart[],
-  ): ModelFinishReason {
-    if (parts?.some((part) => part.functionCall?.name)) {
-      return "tool_calls";
-    }
-    switch (reason) {
-      case "STOP":
-        return "stop";
-      case "MAX_TOKENS":
-        return "length";
-      case "SAFETY":
-      case "RECITATION":
-      case "BLOCKLIST":
-      case "PROHIBITED_CONTENT":
-        return "content_filter";
-      case "MALFORMED_FUNCTION_CALL":
-        return "error";
-      default:
-        if (reason?.includes("FUNCTION") || reason === "TOOL_CODE") {
-          return "tool_calls";
-        }
-        return reason ? "unknown" : "stop";
-    }
-  }
 
   private mapHttpError(
     status: number,

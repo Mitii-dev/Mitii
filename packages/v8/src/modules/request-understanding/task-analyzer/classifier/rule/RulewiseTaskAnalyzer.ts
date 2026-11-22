@@ -14,14 +14,20 @@ import type {
   TaskAnalysis,
   TaskAnalysisSignal,
   TaskAnalyzerInput,
-  TaskClarity,
-  TaskComplexity,
-  TaskScope,
-  TaskTarget,
-  TaskSize,
-  PlanningHint,
 } from "../../contracts";
-import { defaultPlanningHintForSize } from "../../../intent/evidence/sizeDraft";
+import {
+  calculateOverallConfidence,
+  clamp,
+  estimateFilesAffected,
+  isIntentIncluded,
+  mergeClarity,
+  mergeTargets,
+  mergeUniqueStrings,
+  normalizeComplexitySignalScore,
+  normalizeRiskSignalScore,
+  recommendsRepositoryDiscovery as computeRepositoryDiscoveryRecommendation,
+  resolveTaskSizeAndPlanningHint,
+} from "./rulewiseTaskAnalyzerHelpers";
 
 export class RulewiseTaskAnalyzer {
   private readonly targetExtractor: TaskTargetExtractor;
@@ -68,7 +74,7 @@ export class RulewiseTaskAnalyzer {
       text,
       input.referencedArtifacts ?? [],
     );
-    const mergedTargets = this.mergeTargets(
+    const mergedTargets = mergeTargets(
       targetResult.targets,
       taskHints?.targets,
       allSignals,
@@ -94,7 +100,7 @@ export class RulewiseTaskAnalyzer {
      * 2. Extract constraints / outcomes (union; deterministic values first)
      */
     const constraintResult = this.constraintExtractor.extract(text);
-    const constraints = this.mergeUniqueStrings(
+    const constraints = mergeUniqueStrings(
       constraintResult.values,
       taskHints?.constraints,
     );
@@ -102,7 +108,7 @@ export class RulewiseTaskAnalyzer {
     allSignals.push(...constraintResult.signals);
 
     const outcomeResult = this.outcomeExtractor.extract(text);
-    const requestedOutcomes = this.mergeUniqueStrings(
+    const requestedOutcomes = mergeUniqueStrings(
       outcomeResult.values,
       taskHints?.requestedOutcomes,
     );
@@ -122,7 +128,7 @@ export class RulewiseTaskAnalyzer {
         (signal): TaskAnalysisSignal => ({
           type: "scope",
           value: signal.scope,
-          weight: this.clamp(signal.confidence),
+          weight: clamp(signal.confidence),
           evidence: signal.evidence,
         }),
       ),
@@ -139,7 +145,7 @@ export class RulewiseTaskAnalyzer {
         (signal): TaskAnalysisSignal => ({
           type: "complexity",
           value: signal.name,
-          weight: this.normalizeComplexitySignalScore(signal.score),
+          weight: normalizeComplexitySignalScore(signal.score),
           evidence: signal.evidence,
         }),
       ),
@@ -162,7 +168,7 @@ export class RulewiseTaskAnalyzer {
         (signal): TaskAnalysisSignal => ({
           type: "risk",
           value: signal.name,
-          weight: this.normalizeRiskSignalScore(signal.score),
+          weight: normalizeRiskSignalScore(signal.score),
           evidence: signal.evidence,
         }),
       ),
@@ -183,7 +189,7 @@ export class RulewiseTaskAnalyzer {
 
       continuationTurn: isContinuationTurnKind(input.turnKind),
     });
-    const clarity = this.mergeClarity(
+    const clarity = mergeClarity(
       clarityResult.clarity,
       taskHints?.clarity,
     );
@@ -193,7 +199,7 @@ export class RulewiseTaskAnalyzer {
         (signal): TaskAnalysisSignal => ({
           type: "clarity",
           value: signal.clarity,
-          weight: this.clamp(signal.confidence),
+          weight: clamp(signal.confidence),
           evidence: signal.evidence,
         }),
       ),
@@ -212,7 +218,7 @@ export class RulewiseTaskAnalyzer {
      */
     const isActionable = interactionIntent === "act";
 
-    const recommendsRepositoryDiscovery = this.recommendsRepositoryDiscovery(
+    const recommendsRepositoryDiscovery = computeRepositoryDiscoveryRecommendation(
       primaryTaskIntent,
       targets.length,
       scopeResult.scope,
@@ -221,7 +227,7 @@ export class RulewiseTaskAnalyzer {
 
     const recommendsVerification =
       isActionable &&
-      this.isIntentIncluded(
+      isIntentIncluded(
         primaryTaskIntent,
         TASK_ANALYZER_CONSTANTS.INTENT_DEFAULTS.VERIFICATION_REQUIRED,
       );
@@ -229,14 +235,14 @@ export class RulewiseTaskAnalyzer {
     const recommendsPlanning =
       interactionIntent === "plan" ||
       (isActionable &&
-        (this.isIntentIncluded(
+        (isIntentIncluded(
           primaryTaskIntent,
           TASK_ANALYZER_CONSTANTS.INTENT_DEFAULTS.PLANNING_RECOMMENDED,
         ) ||
           complexityResult.complexity === "complex" ||
           complexityResult.complexity === "very_complex"));
 
-    const { taskSize, planningHint } = this.resolveTaskSizeAndPlanningHint({
+    const { taskSize, planningHint } = resolveTaskSizeAndPlanningHint({
       officerTaskSize: taskHints?.taskSize,
       officerPlanningHint: taskHints?.planningHint,
       sizeDraft: input.sizeDraft?.taskSize,
@@ -255,7 +261,7 @@ export class RulewiseTaskAnalyzer {
     /*
      * 8. Calculate overall task-analysis confidence
      */
-    const overallConfidence = this.calculateOverallConfidence({
+    const overallConfidence = calculateOverallConfidence({
       intentConfidence: classification.confidence,
       constraintConfidence: constraintResult.confidence,
       hasConstraints: constraintResult.constraints.length > 0,
@@ -282,7 +288,7 @@ export class RulewiseTaskAnalyzer {
       taskSize,
       planningHint,
 
-      estimatedFilesAffected: this.estimateFilesAffected(
+      estimatedFilesAffected: estimateFilesAffected(
         scopeResult.scope,
         complexityResult.complexity,
       ),
@@ -290,358 +296,5 @@ export class RulewiseTaskAnalyzer {
       signals: allSignals,
       confidence: overallConfidence,
     };
-  }
-
-  private resolveTaskSizeAndPlanningHint(params: {
-    officerTaskSize?: TaskSize;
-    officerPlanningHint?: PlanningHint;
-    sizeDraft?: TaskSize;
-    complexity: TaskComplexity;
-    interactionIntent: string;
-    recommendsPlanning: boolean;
-  }): { taskSize: TaskSize; planningHint: PlanningHint } {
-    const fromComplexity = ((): TaskSize => {
-      switch (params.complexity) {
-        case "trivial":
-        case "simple":
-          return "small";
-        case "moderate":
-          return "medium";
-        case "complex":
-        case "very_complex":
-          return "large";
-      }
-    })();
-
-    const taskSize =
-      params.officerTaskSize ?? params.sizeDraft ?? fromComplexity;
-
-    let planningHint =
-      params.officerPlanningHint ?? defaultPlanningHintForSize(taskSize);
-
-    if (params.interactionIntent === "plan" && planningHint === "none") {
-      planningHint = taskSize === "large" ? "long" : "short";
-    }
-    // Always at least a short plan hint for act/plan (Officer "none" does not win).
-    if (
-      planningHint === "none" &&
-      params.interactionIntent !== "question"
-    ) {
-      planningHint = defaultPlanningHintForSize(taskSize);
-    }
-    if (
-      params.officerPlanningHint === "none" &&
-      params.interactionIntent === "act" &&
-      taskSize === "small"
-    ) {
-      planningHint = "short";
-    }
-
-    return { taskSize, planningHint };
-  }
-
-  /**
-   * Deterministic targets win on duplicates; LLM hints only add missing ones.
-   * Unverified file hints are demoted or dropped when a repo-map is present.
-   */
-  private mergeTargets(
-    deterministic: readonly TaskTarget[],
-    hinted: readonly TaskTarget[] | undefined,
-    signals: TaskAnalysisSignal[],
-    candidateRelativePaths: readonly string[],
-  ): TaskTarget[] {
-    const merged = [...deterministic];
-    const seen = new Set(
-      deterministic.map((target) => this.targetKey(target)),
-    );
-    const hasRepoMap = candidateRelativePaths.length > 0;
-    const normalizedCandidates = hasRepoMap
-      ? new Set(
-          candidateRelativePaths.map((path) =>
-            path.trim().replace(/\\/g, "/").replace(/^\.\//, "").toLowerCase(),
-          ),
-        )
-      : null;
-
-    for (const hint of hinted ?? []) {
-      const value = hint.value.trim();
-      if (!value) {
-        continue;
-      }
-
-      let explicit = hint.explicit;
-      if (hint.kind === "file") {
-        if (normalizedCandidates) {
-          const key = value.replace(/\\/g, "/").replace(/^\.\//, "").toLowerCase();
-          const inMap =
-            normalizedCandidates.has(key) ||
-            [...normalizedCandidates].some(
-              (candidate) =>
-                candidate.endsWith(`/${key}`) || candidate === key,
-            );
-          if (!inMap) {
-            // Fuzzy may still resolve basename-only hints later; keep as
-            // non-explicit so Decision Policy does not treat them as repo targets.
-            explicit = false;
-          }
-        } else {
-          explicit = false;
-        }
-      }
-
-      const candidate: TaskTarget = {
-        kind: hint.kind,
-        value,
-        explicit,
-      };
-      const key = this.targetKey(candidate);
-      if (seen.has(key)) {
-        continue;
-      }
-      seen.add(key);
-      merged.push(candidate);
-      signals.push({
-        type: "scope",
-        value: `${candidate.kind}:${candidate.value}`,
-        weight: candidate.explicit ? 0.5 : 0.35,
-        evidence: candidate.explicit
-          ? `LLM task hint added ${candidate.kind} target: ${candidate.value}`
-          : `LLM task hint added unverified ${candidate.kind} target: ${candidate.value}`,
-      });
-    }
-
-    return merged;
-  }
-
-  private mergeUniqueStrings(
-    deterministic: readonly string[],
-    hinted: readonly string[] | undefined,
-  ): string[] {
-    const merged: string[] = [];
-    const seen = new Set<string>();
-
-    for (const value of [...deterministic, ...(hinted ?? [])]) {
-      const normalized = value.trim();
-      if (!normalized) {
-        continue;
-      }
-      const key = normalized.toLowerCase();
-      if (seen.has(key)) {
-        continue;
-      }
-      seen.add(key);
-      merged.push(normalized);
-    }
-
-    return merged;
-  }
-
-  /**
-   * Prefer LLM `clear` when the Officer judged the ask clear — deterministic
-   * clarity often marks repo-scale feature asks as unclear solely because no
-   * file path was pinned yet, which wrongly opens harness A/B/C.
-   * Otherwise keep the more conservative rating.
-   */
-  private mergeClarity(
-    deterministic: TaskClarity,
-    hinted: TaskClarity | undefined,
-  ): TaskClarity {
-    if (!hinted) {
-      return deterministic;
-    }
-    if (hinted === "clear") {
-      return "clear";
-    }
-    const rank: Record<TaskClarity, number> = {
-      clear: 0,
-      partially_clear: 1,
-      unclear: 2,
-    };
-    return rank[hinted] > rank[deterministic] ? hinted : deterministic;
-  }
-
-  private targetKey(target: TaskTarget): string {
-    return `${target.kind}:${target.value.trim().toLowerCase()}`;
-  }
-
-  private recommendsRepositoryDiscovery(
-    primaryTaskIntent: TaskAnalyzerInput["intent"]["classification"]["primaryTaskIntent"],
-    targetCount: number,
-    scope: TaskScope,
-    targets: ReadonlyArray<{ kind: string }>,
-  ): boolean {
-    if (
-      scope === "repository" ||
-      scope === "workspace" ||
-      scope === "package" ||
-      scope === "multi_file"
-    ) {
-      return true;
-    }
-
-    // Scope-level targets still need repository grounding.
-    if (
-      targets.some(
-        (target) =>
-          target.kind === "repository" ||
-          target.kind === "workspace" ||
-          target.kind === "package",
-      )
-    ) {
-      return true;
-    }
-
-    // Concrete file/folder/symbol targets are routed via explicit targets
-    // in Decision Policy; do not double-flag discovery.
-    if (targetCount > 0) {
-      return false;
-    }
-
-    return this.isIntentIncluded(
-      primaryTaskIntent,
-      TASK_ANALYZER_CONSTANTS.INTENT_DEFAULTS.REPOSITORY_DEPENDENT,
-    );
-  }
-
-  private isIntentIncluded(
-    intent: TaskAnalyzerInput["intent"]["classification"]["primaryTaskIntent"],
-    intents: readonly string[],
-  ): boolean {
-    return intents.includes(intent);
-  }
-
-  private calculateOverallConfidence(input: {
-    intentConfidence: number;
-    constraintConfidence: number;
-    hasConstraints: boolean;
-    scopeConfidence: number;
-    riskConfidence: number;
-    clarityConfidence: number;
-    complexity: TaskComplexity;
-    complexitySignalCount: number;
-  }): number {
-    const confidenceValues = [
-      this.clamp(input.intentConfidence),
-      this.clamp(input.scopeConfidence),
-      this.clamp(input.riskConfidence),
-      this.clamp(input.clarityConfidence),
-      this.estimateComplexityConfidence(
-        input.complexity,
-        input.complexitySignalCount,
-      ),
-    ];
-
-    /*
-     * Absence of constraints is not uncertainty.
-     * Include constraint confidence only when constraints were found.
-     */
-    if (input.hasConstraints) {
-      confidenceValues.push(this.clamp(input.constraintConfidence));
-    }
-
-    const total = confidenceValues.reduce(
-      (sum, confidence) => sum + confidence,
-      0,
-    );
-
-    return this.clamp(total / confidenceValues.length);
-  }
-
-  private estimateComplexityConfidence(
-    complexity: TaskComplexity,
-    signalCount: number,
-  ): number {
-    const thresholds = TASK_ANALYZER_CONSTANTS.THRESHOLDS.COMPLEXITY_CONFIDENCE;
-
-    if (signalCount === 0) {
-      return complexity === "simple" || complexity === "trivial"
-        ? thresholds.EMPTY_SIMPLE
-        : thresholds.EMPTY_OTHER;
-    }
-
-    return this.clamp(
-      thresholds.BASE +
-        Math.min(thresholds.MAX_BONUS, signalCount * thresholds.PER_SIGNAL),
-    );
-  }
-
-  private normalizeComplexitySignalScore(score: number): number {
-    return this.clamp(
-      Math.abs(score) /
-        TASK_ANALYZER_CONSTANTS.THRESHOLDS.SIGNAL_NORMALIZATION
-          .COMPLEXITY_DIVISOR,
-    );
-  }
-
-  private normalizeRiskSignalScore(score: number): number {
-    return this.clamp(
-      Math.abs(score) /
-        TASK_ANALYZER_CONSTANTS.THRESHOLDS.SIGNAL_NORMALIZATION.RISK_DIVISOR,
-    );
-  }
-
-  private estimateFilesAffected(
-    scope: TaskScope,
-    complexity: TaskComplexity,
-  ): {
-    minimum: number;
-    maximum?: number;
-  } {
-    const impact = TASK_ANALYZER_CONSTANTS.FILE_IMPACT;
-
-    switch (scope) {
-      case "single_location":
-        return {
-          minimum: impact.single_location.minimum,
-          maximum:
-            complexity === "complex" || complexity === "very_complex"
-              ? impact.single_location.complexMaximum
-              : impact.single_location.defaultMaximum,
-        };
-
-      case "multi_file":
-        return {
-          minimum: impact.multi_file.minimum,
-          maximum:
-            complexity === "very_complex"
-              ? impact.multi_file.veryComplexMaximum
-              : complexity === "complex"
-                ? impact.multi_file.complexMaximum
-                : impact.multi_file.defaultMaximum,
-        };
-
-      case "package":
-        return {
-          minimum: impact.package.minimum,
-          maximum:
-            complexity === "very_complex"
-              ? impact.package.veryComplexMaximum
-              : impact.package.defaultMaximum,
-        };
-
-      case "repository":
-        return {
-          minimum: impact.repository.minimum,
-          maximum:
-            complexity === "very_complex"
-              ? impact.repository.veryComplexMaximum
-              : impact.repository.defaultMaximum,
-        };
-
-      case "workspace":
-        return {
-          minimum: impact.workspace.minimum,
-        };
-
-      case "unknown":
-      default:
-        return {
-          minimum: impact.unknown.minimum,
-        };
-    }
-  }
-
-  private clamp(value: number): number {
-    return Math.max(0, Math.min(1, value));
   }
 }

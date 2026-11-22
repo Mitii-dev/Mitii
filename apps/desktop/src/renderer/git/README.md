@@ -2,6 +2,26 @@
 
 Source Control pane, top-bar branch select, working-tree review bar.
 
+## File map
+
+| Path | Role |
+|------|------|
+| `GitWorkingTreePane.tsx` | Thin facade (export used by `WorkspacePanel`) |
+| `scmTypes.ts` | `ScmGroupKey`, `ScmJob`, `JOB_LABEL`, context-menu + props types |
+| `scmPathUtils.ts` | `fileLeaf` / `fileDir` display helpers |
+| `upsertWorkspaceMarkdown.ts` | Save-or-create workspace markdown file |
+| `changelogMerge.ts` | Merge a generated section into `CHANGELOG.md` |
+| `hooks/useGitWorkingTreeStatus.ts` | Snapshot, derived maps, `loadGit`, refresh effects |
+| `hooks/useScmSelection.ts` | Multi-select, context menu state + dismiss |
+| `hooks/useScmJobs.ts` | Recipe / stream jobs (commit message, changelog, release notes, PR, code review) |
+| `hooks/useScmMutations.ts` | `busy` + stage / unstage / discard / commit / stash |
+| `ScmPaneHeader.tsx` | Title, running job, stop, Code Review, refresh |
+| `ScmCommitBox.tsx` | Message box, Generate / Commit, Changelog + More menu |
+| `ScmResourceGroup.tsx` | Staged / Changes group and file rows |
+| `ScmContextMenu.tsx` | Stage / Unstage / Stash menu |
+| `ScmReviewPanel.tsx` | Code Review findings list |
+| `TopBranchSelect.tsx`, `WorkingTreeReviewBar.tsx` | Top-bar branch select, review bar |
+
 - Engine: `engine/git/`
 - Contract: `shared/git/workingTree.ts`
 - HTTP: `/v1/git/*` via `engine/server.ts`

@@ -1,7 +1,7 @@
 {
   "name": "@mitii/host",
-  "version": "2.11.2",
-  "description": "Shared host kit for Mitii apps: SQLite injection, workspace indexing, repository context, durable ports (checkpoints/memory/skills/search/network), project rules, provider presets. Web retrieval via @mitii/search-kit.",
+  "version": "2.11.3",
+  "description": "Shared host kit for Mitii apps: SQLite injection, workspace indexing, repository context, durable ports (checkpoints/memory/skills/search/network), project rules, prepareStartInput, provider presets. Web retrieval via @mitii/search-kit.",
   "license": "AGPL-3.0-or-later",
   "type": "module",
   "main": "./dist/index.js",

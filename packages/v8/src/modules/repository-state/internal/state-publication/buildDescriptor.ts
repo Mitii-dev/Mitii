@@ -117,7 +117,7 @@ export function deriveReadiness(input: {
       const optionalVectorUnavailable =
         capability.capability === "vectorIndex" &&
         capability.status === "unavailable";
-      if (capability.status === "ready") {
+      if (capability.status === "available") {
         hasReadyCapability = true;
         allUnavailable = false;
       } else if (capability.status === "degraded") {

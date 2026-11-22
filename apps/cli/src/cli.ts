@@ -12,8 +12,8 @@ import { runSetup } from './setup.js';
 import { runAsk, resolveAskPromptWithRecipe } from './runAskCommand.js';
 import { runReviewCommand } from './runReviewCommand.js';
 
-import { parseCliArgs } from './parseCliArgs.js';
-export { parseCliArgs, type ParsedCliArgs } from './parseCliArgs.js';
+import { parseCliArgs } from './parseCliArgs/index.js';
+export { parseCliArgs, type ParsedCliArgs } from './parseCliArgs/index.js';
 
 export async function main(
   argv: string[] = process.argv,

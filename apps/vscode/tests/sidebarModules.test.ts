@@ -25,7 +25,7 @@ const descriptor: RepositoryDescriptorSnapshot = {
       vectorProfile: 'bundled',
       vectorIndexRevision: 'vec-1',
       capabilities: [
-        { capability: 'codeIndex', status: 'ready' },
+        { capability: 'codeIndex', status: 'available' },
         { capability: 'vectorIndex', status: 'degraded', reasonCode: 'stale' },
       ],
     },
@@ -64,7 +64,7 @@ describe('sidebar/indexDescriptor', () => {
         fileCount: 1,
         truncated: false,
         capabilities: [
-          { rootId: 'r', capability: 'codeIndex', status: 'ready' },
+          { rootId: 'r', capability: 'codeIndex', status: 'available' },
         ],
       }),
     ).toBe(true);

@@ -324,7 +324,13 @@ function compactEvent(
         rationale: event.rationale,
       };
     case 'warning':
-      return { ...base, message: event.message };
+      return {
+        ...base,
+        message: event.message,
+        ...(event.code !== undefined ? { code: event.code } : {}),
+        ...(event.stage !== undefined ? { stage: event.stage } : {}),
+        ...(event.data !== undefined ? { data: event.data } : {}),
+      };
     case 'verification_completed':
       return {
         ...base,

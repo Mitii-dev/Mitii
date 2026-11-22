@@ -47,11 +47,11 @@ apps/desktop/src/
     ├── api.ts           # thin barrel over api/ (one module per feature)
     ├── api/             # HTTP client modules (chat, git, mcp, workspace, …)
     ├── app/             # useAppModel (wires feature hooks) + AppShell
-    ├── shell/           # topbar, activity bar, main section, workspace panel, hooks/
+    ├── shell/           # topbar, activity bar, main section, workspace panel (thin host), hooks/
     ├── chat/            # panel, feed, composer, timeline, markdown, hooks/
     ├── settings/        # SettingsPanel, tabs/, features/, profiles/
     ├── indexing/        # index status chip + hooks/
-    ├── explorer/        # DiffView, CodeEditor
+    ├── explorer/        # file tree, editor tabs, context menu, DiffView, CodeEditor, hooks/
     ├── git/             # Source Control pane + top branch select
     ├── mcp/ skills/ recipes/
     ├── styles.css       # entry: @mitii/ui-theme adapter + ordered partials
@@ -60,7 +60,7 @@ apps/desktop/src/
 
 | Activity | Renderer | Engine | Shared / package |
 |---|---|---|---|
-| **Explorer** | `shell/WorkspacePanel` (tree) + `explorer/` | `engine/explorer/` | — |
+| **Explorer** | `renderer/explorer/` (host: `shell/WorkspacePanel`) | `engine/explorer/` | — |
 | **Git** | `renderer/git/` | `engine/git/` | `shared/git/` |
 | **MCP** | `renderer/mcp/` | `@mitii/mcp` + `engine/routes/mcp.ts` | `@mitii/mcp` contracts |
 | **Skills** | `renderer/skills/` | `engine/skills/` | host / V8 skills |

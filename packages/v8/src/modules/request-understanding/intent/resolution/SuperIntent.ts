@@ -1,28 +1,35 @@
-import type {
-  AgentMode,
-} from "../../../request-intake";
+import type { AgentMode } from "../../../request-intake";
 
-import { INTENT_CATALOG } from "../catalog";
 import { INTENT_CONSTANTS } from "../constants";
-
 import { intentClassificationSchema } from "../schema";
-
-import type {
-  IntentClassification,
-  InteractionIntent,
-  AmbiguousSlot,
-  AmbiguousSlotKind,
-} from "../schema";
-
 import type {
   IntentClassifierResult,
-  SuperIntentClarification,
   SuperIntentInput,
   SuperIntentOptions,
   SuperIntentResult,
-  SuperIntentScore,
   TaskIntent,
 } from "../types";
+import {
+  buildClarification,
+  buildResolutionReason,
+  evaluateClarificationRecommendation,
+  resolveSecondaryIntents,
+} from "./clarification";
+import {
+  acceptsHighConfidenceLlmAction,
+  applyModePolicy,
+  resolveInteractionIntent,
+} from "./interactionPolicy";
+import {
+  adjustIntentScore,
+  clampScore,
+  combineScores,
+  findIntentScore,
+  getSortedScores,
+  promoteLlmPrimary,
+  toScoreMap,
+} from "./scoring";
+import { validateSuperIntentOptions } from "./validateSuperIntentOptions";
 
 export class SuperIntent {
   private readonly options: SuperIntentOptions;
@@ -33,7 +40,7 @@ export class SuperIntent {
       ...options,
     };
 
-    this.validateOptions();
+    validateSuperIntentOptions(this.options);
   }
 
   /**
@@ -43,7 +50,7 @@ export class SuperIntent {
    * represent a direct user or system selection such as "/bugfix".
    */
   resolve(input: SuperIntentInput): SuperIntentResult {
-    this.assertLlmResult(input.llmResult);
+    assertLlmResult(input.llmResult);
 
     if (input.ruleResult?.source === "explicit_rule") {
       return this.resolveExplicitRule(
@@ -63,7 +70,7 @@ export class SuperIntent {
   ): SuperIntentResult {
     const ruleClassification = ruleResult.classification;
 
-    const interactionIntent = this.applyModePolicy(
+    const interactionIntent = applyModePolicy(
       mode,
       ruleClassification.interactionIntent,
     );
@@ -84,7 +91,7 @@ export class SuperIntent {
 
     const interactionAgreement =
       finalClassification.interactionIntent ===
-      this.applyModePolicy(mode, llmResult.classification.interactionIntent);
+      applyModePolicy(mode, llmResult.classification.interactionIntent);
 
     return {
       status: "accepted",
@@ -97,7 +104,7 @@ export class SuperIntent {
           llmScore:
             finalClassification.primaryTaskIntent === llmPrimary
               ? llmResult.classification.confidence
-              : this.findIntentScore(
+              : findIntentScore(
                   llmResult.classification,
                   finalClassification.primaryTaskIntent,
                 ),
@@ -143,15 +150,16 @@ export class SuperIntent {
     const ruleClassification = ruleResult?.classification;
 
     const ruleScoreMap = ruleClassification
-      ? this.toScoreMap(ruleClassification)
+      ? toScoreMap(ruleClassification)
       : new Map<TaskIntent, number>();
 
-    const llmScoreMap = this.toScoreMap(llmClassification);
+    const llmScoreMap = toScoreMap(llmClassification);
 
-    const combinedScores = this.combineScores(
+    const combinedScores = combineScores(
       ruleScoreMap,
       llmScoreMap,
       Boolean(ruleClassification),
+      this.options,
     );
 
     const taskAgreement = Boolean(
@@ -167,7 +175,7 @@ export class SuperIntent {
     );
 
     const interactionIntent =
-      this.resolveInteractionIntent({
+      resolveInteractionIntent({
         mode,
         ...(ruleClassification
           ? {
@@ -189,7 +197,7 @@ export class SuperIntent {
     const llmMeetsAuthority =
       llmClassification.confidence >= INTENT_CONSTANTS.HIGH_CONFIDENCE;
     const acceptedHighConfidenceLlmAction =
-      this.acceptsHighConfidenceLlmAction({
+      acceptsHighConfidenceLlmAction({
         interactionIntent,
         llmClassification,
       });
@@ -217,7 +225,7 @@ export class SuperIntent {
     if (taskAgreement) {
       // Rule + LLM same task → confidence grows.
       agreementBonusApplied = this.options.agreementBonus;
-      this.adjustIntentScore(
+      adjustIntentScore(
         combinedScores,
         llmClassification.primaryTaskIntent,
         agreementBonusApplied,
@@ -225,8 +233,8 @@ export class SuperIntent {
       if (ruleInteractionAgrees) {
         // Full agreement (task + interaction) — grow a bit more.
         const extra = this.options.agreementBonus * 0.5;
-        agreementBonusApplied = this.clamp(agreementBonusApplied + extra);
-        this.adjustIntentScore(
+        agreementBonusApplied = clampScore(agreementBonusApplied + extra);
+        adjustIntentScore(
           combinedScores,
           llmClassification.primaryTaskIntent,
           extra,
@@ -234,10 +242,10 @@ export class SuperIntent {
       }
     } else if (ruleClassification) {
       // Officer authority: lock task primary to the LLM ballot. Rules are priors.
-      this.promoteLlmPrimary(combinedScores, llmClassification);
+      promoteLlmPrimary(combinedScores, llmClassification);
     }
 
-    const sortedScores = this.getSortedScores(combinedScores);
+    const sortedScores = getSortedScores(combinedScores);
 
     if (sortedScores.length === 0) {
       throw new Error("SuperIntent could not produce any task-intent score.");
@@ -253,11 +261,11 @@ export class SuperIntent {
 
     const bestAlternativeScore = alternativeScores[0]?.score ?? 0;
 
-    const confidenceMargin = this.clamp(
+    const confidenceMargin = clampScore(
       primaryScore.score - bestAlternativeScore,
     );
 
-    const secondaryTaskIntents = this.resolveSecondaryIntents({
+    const secondaryTaskIntents = resolveSecondaryIntents({
       primaryIntent: primaryScore.intent,
       ...(ruleClassification
         ? {
@@ -265,9 +273,10 @@ export class SuperIntent {
           }
         : {}),
       llmClassification,
+      options: this.options,
     });
 
-    const recommendsClarification = this.evaluateClarificationRecommendation({
+    const recommendsClarification = evaluateClarificationRecommendation({
       primaryConfidence: primaryScore.score,
       confidenceMargin,
       interactionConflict,
@@ -277,9 +286,10 @@ export class SuperIntent {
           }
         : {}),
       llmClassification,
+      options: this.options,
     });
 
-    const reason = this.buildResolutionReason({
+    const reason = buildResolutionReason({
       primaryIntent: primaryScore.intent,
       primaryConfidence: primaryScore.score,
       taskAgreement,
@@ -357,461 +367,15 @@ export class SuperIntent {
     };
 
     if (recommendsClarification) {
-      result.clarification = this.buildClarification(finalClassification);
+      result.clarification = buildClarification(finalClassification, this.options);
     }
 
     return result;
   }
-
-  private combineScores(
-    ruleScores: ReadonlyMap<TaskIntent, number>,
-    llmScores: ReadonlyMap<TaskIntent, number>,
-    hasRuleResult: boolean,
-  ): Map<TaskIntent, SuperIntentScore> {
-    const intents = new Set<TaskIntent>([
-      ...ruleScores.keys(),
-      ...llmScores.keys(),
-    ]);
-
-    const combined = new Map<TaskIntent, SuperIntentScore>();
-
-    for (const intent of intents) {
-      const ruleScore = ruleScores.get(intent) ?? 0;
-
-      const llmScore = llmScores.get(intent) ?? 0;
-
-      const score = hasRuleResult
-        ? ruleScore * this.options.heuristicRuleWeight +
-          llmScore * this.options.llmWeight
-        : llmScore;
-
-      combined.set(intent, {
-        intent,
-        score: this.clamp(score),
-        ruleScore,
-        llmScore,
-      });
-    }
-
-    return combined;
-  }
-
-  private toScoreMap(
-    classification: IntentClassification,
-  ): Map<TaskIntent, number> {
-    const scores = new Map<TaskIntent, number>();
-
-    scores.set(classification.primaryTaskIntent, classification.confidence);
-
-    for (const alternative of classification.alternatives) {
-      const existing = scores.get(alternative.intent) ?? 0;
-
-      scores.set(
-        alternative.intent,
-        Math.max(existing, alternative.confidence),
-      );
-    }
-
-    return scores;
-  }
-
-  private findIntentScore(
-    classification: IntentClassification,
-    intent: TaskIntent,
-  ): number {
-    if (classification.primaryTaskIntent === intent) {
-      return classification.confidence;
-    }
-
-    return (
-      classification.alternatives.find(
-        (alternative) => alternative.intent === intent,
-      )?.confidence ?? 0
-    );
-  }
-
-  private adjustIntentScore(
-    scores: Map<TaskIntent, SuperIntentScore>,
-    intent: TaskIntent,
-    adjustment: number,
-  ): void {
-    const score = scores.get(intent);
-
-    if (!score) {
-      return;
-    }
-
-    scores.set(intent, {
-      ...score,
-      score: this.clamp(score.score + adjustment),
-    });
-  }
-
-  private getSortedScores(
-    scores: ReadonlyMap<TaskIntent, SuperIntentScore>,
-  ): SuperIntentScore[] {
-    return [...scores.values()].sort(
-      (first, second) => second.score - first.score,
-    );
-  }
-
-  private resolveInteractionIntent({
-    mode,
-    ruleInteraction,
-    llmInteraction,
-    llmPrimaryIntent,
-    llmConfidence,
-  }: {
-    mode: AgentMode;
-    ruleInteraction?: InteractionIntent;
-    llmInteraction: InteractionIntent;
-    llmPrimaryIntent: TaskIntent;
-    llmConfidence: number;
-  }): InteractionIntent {
-    if (mode === "ask") {
-      return "question";
-    }
-
-    if (mode === "plan") {
-      return "plan";
-    }
-
-    if (!ruleInteraction || ruleInteraction === llmInteraction) {
-      return llmInteraction;
-    }
-
-    if (
-      llmInteraction === "act" &&
-      llmConfidence >= INTENT_CONSTANTS.HIGH_CONFIDENCE &&
-      this.isActionableTaskIntent(llmPrimaryIntent)
-    ) {
-      // ≥70% LLM act beats a conflicting rule "question" (and similar).
-      return "act";
-    }
-
-    /*
-     * Below HIGH_CONFIDENCE, keep ambiguous read/write conflicts read-only.
-     */
-    if (ruleInteraction === "question" || llmInteraction === "question") {
-      return "question";
-    }
-
-    if (ruleInteraction === "plan" || llmInteraction === "plan") {
-      return "plan";
-    }
-
-    return "act";
-  }
-
-  private acceptsHighConfidenceLlmAction({
-    interactionIntent,
-    llmClassification,
-  }: {
-    interactionIntent: InteractionIntent;
-    llmClassification: IntentClassification;
-  }): boolean {
-    return (
-      interactionIntent === "act" &&
-      llmClassification.interactionIntent === "act" &&
-      llmClassification.confidence >= INTENT_CONSTANTS.HIGH_CONFIDENCE &&
-      this.isActionableTaskIntent(llmClassification.primaryTaskIntent)
-    );
-  }
-
-  /**
-   * When the LLM is ≥ HIGH_CONFIDENCE and disagrees with rules, lock the
-   * combined primary to the LLM ballot so blend math cannot flip it.
-   */
-  private promoteLlmPrimary(
-    scores: Map<TaskIntent, SuperIntentScore>,
-    llmClassification: IntentClassification,
-  ): void {
-    const intent = llmClassification.primaryTaskIntent;
-    const existing = scores.get(intent);
-    const floor = llmClassification.confidence;
-    if (existing) {
-      scores.set(intent, {
-        ...existing,
-        score: this.clamp(Math.max(existing.score, floor)),
-      });
-      return;
-    }
-    scores.set(intent, {
-      intent,
-      score: this.clamp(floor),
-      ruleScore: 0,
-      llmScore: floor,
-    });
-  }
-
-  private isActionableTaskIntent(intent: TaskIntent): boolean {
-    switch (intent) {
-      case "bugfix":
-      case "feature":
-      case "refactor":
-      case "optimize":
-      case "test":
-      case "security":
-      case "scaffold":
-      case "migrate":
-      case "schema":
-      case "mock":
-      case "config":
-      case "dependency":
-      case "docs":
-      case "style":
-      case "format":
-        return true;
-
-      default:
-        return false;
-    }
-  }
-
-  private applyModePolicy(
-    mode: AgentMode,
-    interactionIntent: InteractionIntent,
-  ): InteractionIntent {
-    if (mode === "ask") {
-      return "question";
-    }
-
-    if (mode === "plan") {
-      return "plan";
-    }
-
-    return interactionIntent;
-  }
-
-  private resolveSecondaryIntents({
-    primaryIntent,
-    ruleClassification,
-    llmClassification,
-  }: {
-    primaryIntent: TaskIntent;
-    ruleClassification?: IntentClassification;
-    llmClassification: IntentClassification;
-  }): TaskIntent[] {
-    const secondaryIntents = new Set<TaskIntent>();
-
-    for (const intent of llmClassification.secondaryTaskIntents) {
-      if (intent !== primaryIntent) {
-        secondaryIntents.add(intent);
-      }
-    }
-
-    for (const intent of ruleClassification?.secondaryTaskIntents ?? []) {
-      if (intent !== primaryIntent) {
-        secondaryIntents.add(intent);
-      }
-    }
-
-    return [...secondaryIntents].slice(0, this.options.maximumSecondaryIntents);
-  }
-
-  private evaluateClarificationRecommendation({
-    primaryConfidence,
-    confidenceMargin,
-    interactionConflict,
-    ruleClassification,
-    llmClassification,
-  }: {
-    primaryConfidence: number;
-    confidenceMargin: number;
-    interactionConflict: boolean;
-    ruleClassification?: IntentClassification;
-    llmClassification: IntentClassification;
-  }): boolean {
-    if (
-      ruleClassification?.needsClarification ||
-      llmClassification.needsClarification
-    ) {
-      return true;
-    }
-
-    if (interactionConflict) {
-      return true;
-    }
-
-    if (primaryConfidence < this.options.minimumConfidence) {
-      return true;
-    }
-
-    if (confidenceMargin < this.options.minimumMargin) {
-      return true;
-    }
-
-    return false;
-  }
-
-  private buildResolutionReason({
-    primaryIntent,
-    primaryConfidence,
-    taskAgreement,
-    interactionConflict,
-    recommendsClarification,
-  }: {
-    primaryIntent: TaskIntent;
-    primaryConfidence: number;
-    taskAgreement: boolean;
-    interactionConflict: boolean;
-    recommendsClarification: boolean;
-  }): string {
-    if (interactionConflict) {
-      return (
-        "Rule and LLM classifiers disagree about whether the request " +
-        "permits changes."
-      );
-    }
-
-    if (recommendsClarification) {
-      return (
-        `The combined classification favors ${primaryIntent} ` +
-        `with confidence ${primaryConfidence.toFixed(2)}, but the ` +
-        "result does not meet the acceptance policy."
-      );
-    }
-
-    if (taskAgreement) {
-      return (
-        `Rule and LLM classifiers agree on ${primaryIntent} ` +
-        `with combined confidence ${primaryConfidence.toFixed(2)}.`
-      );
-    }
-
-    return (
-      `The combined evidence favors ${primaryIntent} ` +
-      `with confidence ${primaryConfidence.toFixed(2)}.`
-    );
-  }
-
-  private buildClarification(
-    classification: IntentClassification,
-  ): SuperIntentClarification {
-    const slots = classification.taskHints?.ambiguousSlots ?? [];
-    const preferredSlot = pickPreferredAmbiguousSlot(slots);
-    if (preferredSlot) {
-      return {
-        question: preferredSlot.question,
-        slotKind: preferredSlot.kind,
-        options: preferredSlot.options.map((option) => ({
-          id: option.id,
-          label: option.label,
-          // Never emit "" — AgentRunResult rejects empty description strings.
-          description: option.description?.trim() || option.label,
-          confidence: 0,
-        })),
-      };
-    }
-
-    const candidateIntents = new Set<TaskIntent>([
-      classification.primaryTaskIntent,
-      ...classification.alternatives.map((alternative) => alternative.intent),
-    ]);
-
-    const options = [...candidateIntents]
-      .slice(0, this.options.maximumClarificationOptions)
-      .map((intent) => ({
-        id: `intent:${intent}`,
-        intent,
-        label: this.humanizeIntent(intent),
-        description: INTENT_CATALOG[intent].description,
-        confidence: this.findIntentScore(classification, intent),
-      }));
-
-    const hintedQuestion = classification.taskHints?.ambiguityQuestion?.trim();
-
-    return {
-      question:
-        hintedQuestion && hintedQuestion.length > 0
-          ? hintedQuestion
-          : "What outcome do you want from this request?",
-      slotKind: "intent",
-      options,
-    };
-  }
-
-  private humanizeIntent(intent: string): string {
-    return intent
-      .split("_")
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(" ");
-  }
-
-  private clamp(value: number): number {
-    return Math.min(1, Math.max(0, value));
-  }
-
-  private assertLlmResult(result: IntentClassifierResult): void {
-    if (result.source !== "llm") {
-      throw new Error('SuperIntent requires llmResult.source to be "llm".');
-    }
-  }
-
-  private validateOptions(): void {
-    const probabilityOptions: Array<keyof SuperIntentOptions> = [
-      "llmWeight",
-      "heuristicRuleWeight",
-      "agreementBonus",
-      "disagreementPenalty",
-      "minimumConfidence",
-      "minimumMargin",
-    ];
-
-    for (const option of probabilityOptions) {
-      const value = this.options[option];
-
-      if (typeof value !== "number" || value < 0 || value > 1) {
-        throw new Error(
-          `SuperIntent option "${option}" must be between 0 and 1.`,
-        );
-      }
-    }
-
-    const totalWeight =
-      this.options.llmWeight + this.options.heuristicRuleWeight;
-
-    if (Math.abs(totalWeight - 1) > Number.EPSILON * 10) {
-      throw new Error(
-        "SuperIntent LLM and heuristic-rule weights must total 1.",
-      );
-    }
-
-    const countOptions: Array<keyof SuperIntentOptions> = [
-      "maximumAlternatives",
-      "maximumSecondaryIntents",
-      "maximumClarificationOptions",
-    ];
-
-    for (const option of countOptions) {
-      const value = this.options[option];
-
-      if (!Number.isInteger(value) || value < 1) {
-        throw new Error(
-          `SuperIntent option "${option}" must be a positive integer.`,
-        );
-      }
-    }
-  }
 }
 
-const SLOT_KIND_PRIORITY: AmbiguousSlotKind[] = [
-  "interaction",
-  "target",
-  "scope",
-  "outcome",
-  "intent",
-];
-
-function pickPreferredAmbiguousSlot(
-  slots: readonly AmbiguousSlot[],
-): AmbiguousSlot | undefined {
-  if (slots.length === 0) return undefined;
-  for (const kind of SLOT_KIND_PRIORITY) {
-    const match = slots.find(
-      (slot) => slot.kind === kind && slot.options.length >= 2,
-    );
-    if (match) return match;
+function assertLlmResult(result: IntentClassifierResult): void {
+  if (result.source !== "llm") {
+    throw new Error('SuperIntent requires llmResult.source to be "llm".');
   }
-  return slots.find((slot) => slot.options.length >= 2) ?? slots[0];
 }

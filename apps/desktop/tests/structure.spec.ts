@@ -72,12 +72,53 @@ describe('desktop source structure (Wave 1.4 god-file splits)', () => {
       join(renderer, 'indexing'),
       join(renderer, 'chat/hooks'),
       join(renderer, 'shell/hooks'),
+      join(renderer, 'explorer'),
+      join(renderer, 'git'),
     ];
     const offenders = roots
       .flatMap((dir) => walk(dir, /\.(ts|tsx)$/))
       .filter((f) => lineCount(f) > 600)
       .map((f) => relative(root, f));
     expect(offenders).toEqual([]);
+  });
+
+  it('WorkspacePanel stays a thin activity-bar host over explorer/', () => {
+    const file = join(renderer, 'shell/WorkspacePanel.tsx');
+    expect(lineCount(file)).toBeLessThanOrEqual(600);
+    const text = readFileSync(file, 'utf8');
+    for (const piece of [
+      'ExplorerTreePane',
+      'WorkspaceEditorPane',
+      'ExplorerContextMenu',
+      'GitWorkingTreePane',
+      'McpManager',
+      'SkillsManager',
+      'RecipesManager',
+      'ResizeHandle',
+    ]) {
+      expect(text).toContain(piece);
+    }
+    expect(text).not.toMatch(/fetchWorkspace(Tree|File)|saveWorkspaceFile/);
+  });
+
+  it('GitWorkingTreePane is a thin facade over git/ hooks and parts', () => {
+    const file = join(renderer, 'git/GitWorkingTreePane.tsx');
+    expect(lineCount(file)).toBeLessThanOrEqual(260);
+    const text = readFileSync(file, 'utf8');
+    for (const piece of [
+      'useGitWorkingTreeStatus',
+      'useScmSelection',
+      'useScmJobs',
+      'useScmMutations',
+      'ScmPaneHeader',
+      'ScmCommitBox',
+      'ScmResourceGroup',
+      'ScmContextMenu',
+      'ScmReviewPanel',
+    ]) {
+      expect(text).toContain(piece);
+    }
+    expect(text).not.toMatch(/runRecipe|streamPrompt|gitStageFiles/);
   });
 
   it('renderer feature modules do not import engine code', () => {

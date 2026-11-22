@@ -8,6 +8,7 @@ Persist a Desktop/VS Code–parity session timeline while a run is in progress (
 
 - `run_start` when the log opens
 - compacted `RunEvent` lines (skips noisy content/reasoning deltas)
+- `warning` keeps `message` plus optional `code`, `stage`, and `data` for filterable diagnostics
 - `plan_ready` keeps objective, stepCount, and capped `stepSummaries` (not the full plan body)
 - `run_end` when the run terminates
 

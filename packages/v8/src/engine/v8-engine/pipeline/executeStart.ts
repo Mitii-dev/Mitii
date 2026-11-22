@@ -38,7 +38,6 @@ import type {
 } from "../contracts";
 import { EventBus } from "../internal/EventBus";
 import { RunBudgetTracker } from "../internal/RunBudget";
-import { logVerbosityAtLeast } from "../internal/logVerbosity";
 import {
   attachTaskListTool,
   type TaskListRef,
@@ -55,12 +54,12 @@ import {
 } from "./executeStartEarlyPipeline";
 import { runStartEnrichment } from "./executeStartEnrichment";
 
-import { shouldForcePreflightRepairLock } from "../modules/user-path-priority";
+import { warnPreflightRepairLock } from "./warnPreflightRepairLock";
+import { emitPromptReady } from "./emitPromptReady";
 import { runV8ModelLoop } from "./modelLoop";
 import { parseAgentRunResultResilient } from "./parseAgentRunResult";
 import type { StartReuseState } from "./startReuse";
 import { emitRunBudgetClampWarnings } from "./emitRunBudgetClampWarnings";
-import { EXECUTION_ROUTE } from "../../../modules/decision-policy";
 
 /**
  * V8 start path: early + enrichment (legacy modules) → thin model/tool loop.
@@ -426,59 +425,12 @@ export async function executeV8Start(
       warnings.push(...promptResult.warnings);
     }
 
-    const includePromptDetails = logVerbosityAtLeast(
-      input.logVerbosity,
-      "standard",
-    );
-    const planSection = promptResult.budget.sections.find(
-      (section) => section.section === "plan",
-    );
-    const planUsedTokens = planSection?.usedTokens ?? 0;
-    runtime.emit(bus, {
-      type: "prompt_ready",
+    emitPromptReady(runtime, {
       runId,
-      status: promptResult.status,
-      totalOmittedTokens: promptResult.budget.totalOmittedTokens,
-      totalTruncatedTokens: promptResult.budget.totalTruncatedTokens,
-      budget: {
-        contextWindowTokens: promptResult.budget.contextWindowTokens,
-        outputReservedTokens: promptResult.budget.outputReservedTokens,
-        inputBudgetTokens: promptResult.budget.inputBudgetTokens,
-        totalUsedTokens: promptResult.budget.totalUsedTokens,
-        withinLimits: promptResult.budget.withinLimits,
-        sections: promptResult.budget.sections.slice(0, 16).map((section) => ({
-          section: section.section,
-          allocatedTokens: section.allocatedTokens,
-          usedTokens: section.usedTokens,
-          omittedTokens: section.omittedTokens,
-          truncatedTokens: section.truncatedTokens,
-        })),
-      },
-      window: {
-        toolSchemaTokens: windowPolicy.toolSchemaTokens,
-        usableInputTokens: windowPolicy.usableInputTokens,
-        repositoryTokens: windowPolicy.sections.repositoryTokens,
-        conversationTokens: windowPolicy.sections.conversationTokens,
-        planTokens: planUsedTokens > 0 ? windowPolicy.sections.planTokens : 0,
-        planUsedTokens,
-        skillsTokens: windowPolicy.sections.skillsTokens,
-        systemTokens: windowPolicy.sections.systemTokens,
-      },
-      ...(includePromptDetails && promptResult.omissions.length > 0
-        ? {
-            omissions: promptResult.omissions.slice(0, 20).map((omission) => ({
-              section: omission.section,
-              reason: omission.reason,
-              ...(typeof omission.tokens === "number"
-                ? { tokens: omission.tokens }
-                : {}),
-            })),
-          }
-        : {}),
-      ...(includePromptDetails && promptResult.warnings.length > 0
-        ? { warnings: promptResult.warnings.slice(0, 20) }
-        : {}),
-      at: runtime.isoNow(),
+      bus,
+      promptResult,
+      windowPolicy,
+      logVerbosity: input.logVerbosity,
     });
 
     if (runtime.deps.memory?.recordAccess) {
@@ -503,32 +455,15 @@ export async function executeV8Start(
     }));
 
     const userPrompt = extractPrimaryUserMessage(envelope.message);
-    const wouldLock = shouldForcePreflightRepairLock({
+    warnPreflightRepairLock({
       route: decisionWithAttach.route,
       maximumWorkspaceEffect:
         decisionWithAttach.toolGrant.maximumWorkspaceEffect,
-      preflightErrorCount:
-        shared.repoBuildStateBefore?.summary.errorCount ?? 0,
+      repoBuildStateBefore: shared.repoBuildStateBefore,
       changedFilesCount: changedFiles.length,
       userPrompt,
-      diagnosticPaths: (shared.repoBuildStateBefore?.diagnostics ?? [])
-        .filter((diagnostic) => diagnostic.severity === "error")
-        .map((diagnostic) => diagnostic.path),
+      warnings,
     });
-    // Never arm repair-lock steering into the thin loop.
-    if (
-      (shared.repoBuildStateBefore?.summary.errorCount ?? 0) > 0 &&
-      decisionWithAttach.route === EXECUTION_ROUTE.EXECUTE &&
-      !wouldLock
-    ) {
-      warnings.push(
-        "User-cited paths diverge from preflight diagnostics; repair lock not applied.",
-      );
-    } else if (wouldLock) {
-      warnings.push(
-        "Preflight errors overlap the user request; thin loop still runs without mutation lock.",
-      );
-    }
 
     const instructionBodies = buildInstructionBodies({
       skills: selectedSkills,

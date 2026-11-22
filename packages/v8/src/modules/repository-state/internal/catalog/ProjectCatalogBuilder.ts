@@ -1,10 +1,24 @@
-import * as path from "node:path";
-
 import type { WorkspaceFileEntry, WorkspaceSnapshot } from "../workspace";
 
 import { ProjectRootDetector } from "./ProjectRootDetector";
 import { ManifestReaderRegistry } from "./manifests";
 import { projectCatalogSchema } from "./schema";
+import {
+  compareWorkspaceFiles,
+  createFallbackProjectName,
+  errorMessage,
+  firstDeclaredValue,
+  isWithinRelativeRoot,
+  mergeScripts,
+  normalizeRelativePath,
+  normalizeRelativeRoot,
+  pathDepth,
+  resolveWorkspacePaths,
+  slug,
+  sortProjects,
+  sortWarnings,
+  uniqueSorted,
+} from "./ProjectCatalogHelpers";
 
 import type {
   DetectedProjectRoot,
@@ -37,7 +51,7 @@ export class ProjectCatalogBuilder {
 
     const files = snapshot.entries
       .filter((entry): entry is WorkspaceFileEntry => entry.kind === "file")
-      .sort((left, right) => this.compareWorkspaceFiles(left, right));
+      .sort((left, right) => compareWorkspaceFiles(left, right));
 
     const projects: ProjectDefinition[] = [];
     const usedProjectIds = new Set<string>();
@@ -70,8 +84,8 @@ export class ProjectCatalogBuilder {
       projects.push(project);
     }
 
-    this.sortProjects(projects);
-    this.sortWarnings(warnings);
+    sortProjects(projects);
+    sortWarnings(warnings);
 
     const catalog: ProjectCatalog = {
       schemaVersion: 1,
@@ -117,14 +131,14 @@ export class ProjectCatalogBuilder {
         (candidate) =>
           candidate.rootId === projectRoot.rootId &&
           candidate.relativeRoot !== projectRoot.relativeRoot &&
-          this.isWithinRelativeRoot(
+          isWithinRelativeRoot(
             candidate.relativeRoot,
             projectRoot.relativeRoot,
           ),
       )
-      .map((candidate) => this.normalizeRelativeRoot(candidate.relativeRoot))
+      .map((candidate) => normalizeRelativeRoot(candidate.relativeRoot))
       .sort((left, right) => {
-        const depthDifference = this.pathDepth(left) - this.pathDepth(right);
+        const depthDifference = pathDepth(left) - pathDepth(right);
 
         if (depthDifference !== 0) {
           return depthDifference;
@@ -138,14 +152,14 @@ export class ProjectCatalogBuilder {
         return false;
       }
 
-      const filePath = this.normalizeRelativePath(file.relativePath);
+      const filePath = normalizeRelativePath(file.relativePath);
 
-      if (!this.isWithinRelativeRoot(filePath, projectRoot.relativeRoot)) {
+      if (!isWithinRelativeRoot(filePath, projectRoot.relativeRoot)) {
         return false;
       }
 
       return !nestedRoots.some((nestedRoot) =>
-        this.isWithinRelativeRoot(filePath, nestedRoot),
+        isWithinRelativeRoot(filePath, nestedRoot),
       );
     });
   }
@@ -242,7 +256,7 @@ export class ProjectCatalogBuilder {
           message:
             `Reader "${reader.id}" failed to read ` +
             `"${manifest.relativePath}": ` +
-            this.errorMessage(error),
+            errorMessage(error),
         });
       }
     }
@@ -276,8 +290,8 @@ export class ProjectCatalogBuilder {
     }
 
     if (
-      this.normalizeRelativeRoot(info.relativeRoot) !==
-      this.normalizeRelativeRoot(projectRoot.relativeRoot)
+      normalizeRelativeRoot(info.relativeRoot) !==
+      normalizeRelativeRoot(projectRoot.relativeRoot)
     ) {
       throw new Error(
         `Reader returned relativeRoot ` +
@@ -286,12 +300,12 @@ export class ProjectCatalogBuilder {
       );
     }
 
-    const normalizedManifestPath = this.normalizeRelativePath(
+    const normalizedManifestPath = normalizeRelativePath(
       manifest.relativePath,
     );
 
     const returnedManifestPaths = new Set(
-      info.manifestPaths.map((value) => this.normalizeRelativePath(value)),
+      info.manifestPaths.map((value) => normalizeRelativePath(value)),
     );
 
     if (!returnedManifestPaths.has(normalizedManifestPath)) {
@@ -309,12 +323,12 @@ export class ProjectCatalogBuilder {
     usedProjectIds: Set<string>,
     warnings: ProjectCatalogWarning[],
   ): ProjectDefinition {
-    const declaredName = this.firstDeclaredValue(
+    const declaredName = firstDeclaredValue(
       manifestInfos,
       (info) => info.declaredName,
     );
 
-    const fallbackName = this.createFallbackProjectName(projectRoot, snapshot);
+    const fallbackName = createFallbackProjectName(projectRoot, snapshot);
 
     if (!declaredName) {
       warnings.push({
@@ -334,41 +348,41 @@ export class ProjectCatalogBuilder {
       warnings,
     );
 
-    const declaredVersion = this.firstDeclaredValue(
+    const declaredVersion = firstDeclaredValue(
       manifestInfos,
       (info) => info.declaredVersion,
     );
 
-    const ecosystems = this.uniqueSorted(
+    const ecosystems = uniqueSorted(
       manifestInfos.map((info) => info.ecosystem),
     );
 
-    const manifests = this.uniqueSorted(
+    const manifests = uniqueSorted(
       manifestInfos.flatMap((info) => info.manifestPaths),
     );
 
-    const entryFiles = this.resolveWorkspacePaths(
+    const entryFiles = resolveWorkspacePaths(
       projectRoot.relativeRoot,
       manifestInfos.flatMap((info) => info.suggestedEntryFiles),
     );
 
-    const sourceRoots = this.resolveWorkspacePaths(
+    const sourceRoots = resolveWorkspacePaths(
       projectRoot.relativeRoot,
       manifestInfos.flatMap((info) => info.suggestedSourceRoots),
     );
 
-    const testRoots = this.resolveWorkspacePaths(
+    const testRoots = resolveWorkspacePaths(
       projectRoot.relativeRoot,
       manifestInfos.flatMap((info) => info.suggestedTestRoots),
     );
 
-    const scripts = this.mergeScripts(manifestInfos);
+    const scripts = mergeScripts(manifestInfos);
 
-    const dependencies = this.uniqueSorted(
+    const dependencies = uniqueSorted(
       manifestInfos.flatMap((info) => info.dependencies),
     );
 
-    const developmentDependencies = this.uniqueSorted(
+    const developmentDependencies = uniqueSorted(
       manifestInfos.flatMap((info) => info.developmentDependencies),
     );
 
@@ -377,7 +391,7 @@ export class ProjectCatalogBuilder {
 
       rootId: projectRoot.rootId,
 
-      relativeRoot: this.normalizeRelativeRoot(projectRoot.relativeRoot),
+      relativeRoot: normalizeRelativeRoot(projectRoot.relativeRoot),
 
       name,
 
@@ -401,56 +415,19 @@ export class ProjectCatalogBuilder {
     };
   }
 
-  private mergeScripts(
-    manifestInfos: readonly ProjectManifestInfo[],
-  ): Record<string, string> {
-    const scripts: Record<string, string> = {};
-
-    for (const info of manifestInfos) {
-      const entries = Object.entries(info.scripts).sort(([left], [right]) =>
-        left.localeCompare(right),
-      );
-
-      for (const [name, command] of entries) {
-        if (scripts[name] === undefined) {
-          scripts[name] = command;
-          continue;
-        }
-
-        if (scripts[name] === command) {
-          continue;
-        }
-
-        /*
-         * Preserve both factual script definitions when different
-         * ecosystems expose the same script name.
-         */
-        const qualifiedName = `${info.ecosystem}:${name}`;
-
-        scripts[qualifiedName] = command;
-      }
-    }
-
-    return Object.fromEntries(
-      Object.entries(scripts).sort(([left], [right]) =>
-        left.localeCompare(right),
-      ),
-    );
-  }
-
   private createUniqueProjectId(
     projectRoot: DetectedProjectRoot,
     name: string,
     usedProjectIds: Set<string>,
     warnings: ProjectCatalogWarning[],
   ): string {
-    const rootPart = this.slug(projectRoot.rootId);
+    const rootPart = slug(projectRoot.rootId);
 
     const pathPart = projectRoot.relativeRoot
-      ? this.slug(projectRoot.relativeRoot)
+      ? slug(projectRoot.relativeRoot)
       : "root";
 
-    const namePart = this.slug(name);
+    const namePart = slug(name);
 
     const baseId = [rootPart, pathPart, namePart].filter(Boolean).join(":");
 
@@ -476,189 +453,5 @@ export class ProjectCatalogBuilder {
     usedProjectIds.add(candidate);
 
     return candidate;
-  }
-
-  private createFallbackProjectName(
-    projectRoot: DetectedProjectRoot,
-    snapshot: WorkspaceSnapshot,
-  ): string {
-    if (projectRoot.relativeRoot) {
-      const basename = path.posix.basename(projectRoot.relativeRoot);
-
-      if (basename) {
-        return basename;
-      }
-    }
-
-    const workspaceRoot = snapshot.roots.find(
-      (root) => root.id === projectRoot.rootId,
-    );
-
-    return workspaceRoot?.name || projectRoot.rootId || "project";
-  }
-
-  private resolveWorkspacePaths(
-    relativeRoot: string,
-    projectRelativePaths: readonly string[],
-  ): string[] {
-    return this.uniqueSorted(
-      projectRelativePaths.map((projectRelativePath) =>
-        this.joinRelativePath(relativeRoot, projectRelativePath),
-      ),
-    );
-  }
-
-  private joinRelativePath(
-    relativeRoot: string,
-    projectRelativePath: string,
-  ): string {
-    const normalizedRoot = this.normalizeRelativeRoot(relativeRoot);
-
-    const normalizedPath = this.normalizeRelativePath(projectRelativePath);
-
-    if (!normalizedRoot) {
-      return normalizedPath;
-    }
-
-    if (!normalizedPath) {
-      return normalizedRoot;
-    }
-
-    /*
-     * Avoid duplicating a root if a reader already returned a
-     * workspace-relative path.
-     */
-    if (
-      normalizedPath === normalizedRoot ||
-      normalizedPath.startsWith(`${normalizedRoot}/`)
-    ) {
-      return normalizedPath;
-    }
-
-    return `${normalizedRoot}/${normalizedPath}`;
-  }
-
-  private firstDeclaredValue(
-    infos: readonly ProjectManifestInfo[],
-    selector: (info: ProjectManifestInfo) => string | undefined,
-  ): string | undefined {
-    for (const info of infos) {
-      const value = selector(info)?.trim();
-
-      if (value) {
-        return value;
-      }
-    }
-
-    return undefined;
-  }
-
-  private isWithinRelativeRoot(
-    candidatePath: string,
-    relativeRoot: string,
-  ): boolean {
-    const normalizedCandidate = this.normalizeRelativePath(candidatePath);
-
-    const normalizedRoot = this.normalizeRelativeRoot(relativeRoot);
-
-    if (!normalizedRoot) {
-      return true;
-    }
-
-    return (
-      normalizedCandidate === normalizedRoot ||
-      normalizedCandidate.startsWith(`${normalizedRoot}/`)
-    );
-  }
-
-  private normalizeRelativeRoot(value: string): string {
-    if (!value.trim()) {
-      return "";
-    }
-
-    return this.normalizeRelativePath(value);
-  }
-
-  private normalizeRelativePath(value: string): string {
-    const normalized = value
-      .trim()
-      .replace(/\\/g, "/")
-      .replace(/^\.\/+/, "")
-      .replace(/\/+/g, "/");
-
-    const result = path.posix.normalize(normalized);
-
-    if (result === ".") {
-      return "";
-    }
-
-    return result.replace(/^\/+/, "");
-  }
-
-  private pathDepth(relativePath: string): number {
-    const normalized = this.normalizeRelativeRoot(relativePath);
-
-    return normalized ? normalized.split("/").length : 0;
-  }
-
-  private uniqueSorted(values: readonly string[]): string[] {
-    return [
-      ...new Set(values.map((value) => value.trim()).filter(Boolean)),
-    ].sort((left, right) => left.localeCompare(right));
-  }
-
-  private slug(value: string): string {
-    return value
-      .trim()
-      .toLowerCase()
-      .replace(/\\/g, "/")
-      .replace(/[^a-z0-9._/-]+/g, "-")
-      .replace(/[\/]+/g, "-")
-      .replace(/^-+|-+$/g, "");
-  }
-
-  private compareWorkspaceFiles(
-    left: WorkspaceFileEntry,
-    right: WorkspaceFileEntry,
-  ): number {
-    const rootComparison = left.rootId.localeCompare(right.rootId);
-
-    if (rootComparison !== 0) {
-      return rootComparison;
-    }
-
-    return left.relativePath.localeCompare(right.relativePath);
-  }
-
-  private sortProjects(projects: ProjectDefinition[]): void {
-    projects.sort((left, right) => {
-      const rootComparison = left.rootId.localeCompare(right.rootId);
-
-      if (rootComparison !== 0) {
-        return rootComparison;
-      }
-
-      return left.relativeRoot.localeCompare(right.relativeRoot);
-    });
-  }
-
-  private sortWarnings(warnings: ProjectCatalogWarning[]): void {
-    warnings.sort((left, right) => {
-      const pathComparison = left.path.localeCompare(right.path);
-
-      if (pathComparison !== 0) {
-        return pathComparison;
-      }
-
-      return left.code.localeCompare(right.code);
-    });
-  }
-
-  private errorMessage(error: unknown): string {
-    if (error instanceof Error) {
-      return error.message;
-    }
-
-    return String(error);
   }
 }

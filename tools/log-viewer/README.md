@@ -36,6 +36,7 @@ pnpm log-viewer -- --port 8797
 
 - Enter a repo path or `.mitii/logs` path and click **Load**.
 - Or click **Choose repo folder** and select a repo directory.
+- Session `warning` events surface `code` / `stage` / `data` in the timeline and Bug Signals panel when present.
 - Pick a `*-model-io.jsonl` file to see each model turn with formatted Input
   and Output.
 - Pick a normal session `.jsonl` file to inspect the run timeline.

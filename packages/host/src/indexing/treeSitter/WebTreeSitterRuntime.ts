@@ -1,9 +1,3 @@
-import { existsSync } from 'node:fs';
-import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
-
-import { resolveRuntimeFilename } from '../../internal/resolveRuntimeFilename.js';
-
 import type {
   TreeSitterRuntimeParseInput,
   TreeSitterRuntimeParseResult,
@@ -20,114 +14,19 @@ import {
   referenceKindFromCapture,
   symbolKindFromCapture,
 } from './treeSitterQueryCaptures.js';
+import { WEB_TREE_SITTER_GRAMMAR_WASM_BY_LANGUAGE } from './webTreeSitterGrammars.js';
+import { resolveTreeSitterPackageAsset } from './webTreeSitterAssets.js';
+import { invokeNodeFlag } from './webTreeSitterNodeFlag.js';
+import type {
+  TreeSitterLanguage,
+  TreeSitterNode,
+  TreeSitterParserConstructor,
+  TreeSitterQuery,
+  TreeSitterTree,
+  WebTreeSitterModule,
+} from './webTreeSitterTypes.js';
 
-type TreeSitterPoint = {
-  row: number;
-  column: number;
-};
-
-type TreeSitterNode = {
-  type: string;
-  text: string;
-  startIndex: number;
-  endIndex: number;
-  startPosition: TreeSitterPoint;
-  endPosition: TreeSitterPoint;
-  parent: TreeSitterNode | null;
-  childCount?: number;
-  child?: (index: number) => TreeSitterNode | null;
-  isMissing?: boolean | (() => boolean);
-  hasError?: boolean | (() => boolean);
-  isError?: boolean | (() => boolean);
-};
-
-type TreeSitterQueryCapture = {
-  name: string;
-  node: TreeSitterNode;
-};
-
-type TreeSitterQueryMatch = {
-  captures: TreeSitterQueryCapture[];
-};
-
-type TreeSitterQuery = {
-  matches(
-    node: TreeSitterNode,
-    options?: { matchLimit?: number },
-  ): TreeSitterQueryMatch[];
-  didExceedMatchLimit?: () => boolean;
-  delete?: () => void;
-};
-
-type TreeSitterLanguage = {
-  query?: (source: string) => TreeSitterQuery;
-};
-
-type TreeSitterTree = {
-  rootNode: TreeSitterNode;
-  delete?: () => void;
-};
-
-type TreeSitterParser = {
-  setLanguage(language: TreeSitterLanguage): void;
-  parse(content: string): TreeSitterTree | null;
-  delete?: () => void;
-};
-
-type TreeSitterParserConstructor = {
-  new (): TreeSitterParser;
-  init(moduleOptions?: {
-    locateFile?: (
-      scriptName: string,
-      scriptDirectory: string,
-    ) => string;
-  }): Promise<void>;
-  Language?: {
-    load(input: string | Uint8Array): Promise<TreeSitterLanguage>;
-  };
-};
-
-type TreeSitterQueryConstructor = {
-  new (
-    language: TreeSitterLanguage,
-    source: string,
-  ): TreeSitterQuery;
-};
-
-type WebTreeSitterModule = {
-  default?: TreeSitterParserConstructor;
-  Parser?: TreeSitterParserConstructor;
-  Language?: {
-    load(input: string | Uint8Array): Promise<TreeSitterLanguage>;
-  };
-  Query?: TreeSitterQueryConstructor;
-};
-
-export const WEB_TREE_SITTER_GRAMMAR_WASM_BY_LANGUAGE = {
-  c: 'tree-sitter-c.wasm',
-  cpp: 'tree-sitter-cpp.wasm',
-  csharp: 'tree-sitter-c_sharp.wasm',
-  dart: 'tree-sitter-dart.wasm',
-  elixir: 'tree-sitter-elixir.wasm',
-  go: 'tree-sitter-go.wasm',
-  haskell: 'tree-sitter-haskell.wasm',
-  java: 'tree-sitter-java.wasm',
-  javascript: 'tree-sitter-javascript.wasm',
-  kotlin: 'tree-sitter-kotlin.wasm',
-  lua: 'tree-sitter-lua.wasm',
-  php: 'tree-sitter-php.wasm',
-  python: 'tree-sitter-python.wasm',
-  ruby: 'tree-sitter-ruby.wasm',
-  rust: 'tree-sitter-rust.wasm',
-  scala: 'tree-sitter-scala.wasm',
-  shell: 'tree-sitter-bash.wasm',
-  solidity: 'tree-sitter-solidity.wasm',
-  sql: 'tree-sitter-sql.wasm',
-  swift: 'tree-sitter-swift.wasm',
-  tsx: 'tree-sitter-tsx.wasm',
-  typescript: 'tree-sitter-typescript.wasm',
-  zig: 'tree-sitter-zig.wasm',
-} as const;
+export { WEB_TREE_SITTER_GRAMMAR_WASM_BY_LANGUAGE, resolveTreeSitterPackageAsset };
 
 export interface WebTreeSitterRuntimeOptions {
   coreWasmPath: string;
@@ -646,60 +545,4 @@ export class WebTreeSitterRuntime implements TreeSitterRuntimePort {
     error.name = 'AbortError';
     throw error;
   }
-}
-
-function invokeNodeFlag(
-  value: boolean | (() => boolean) | undefined,
-): boolean {
-  if (typeof value === 'function') {
-    try {
-      return Boolean(value());
-    } catch {
-      return false;
-    }
-  }
-  return Boolean(value);
-}
-
-function treeSitterAssetRoots(): string[] {
-  const roots: string[] = [];
-  const configuredRoot = process.env.MITII_TREE_SITTER_ASSET_ROOT;
-  if (configuredRoot) {
-    roots.push(configuredRoot);
-  }
-  const moduleDir = dirname(resolveRuntimeFilename());
-  roots.push(join(moduleDir, 'tree-sitter'));
-  roots.push(join(moduleDir, '..', 'tree-sitter'));
-  roots.push(join(moduleDir, '..', '..', 'tree-sitter'));
-  return roots;
-}
-
-function resolveWithNodeRequire(candidate: string): string | undefined {
-  try {
-    return createRequire(resolveRuntimeFilename()).resolve(candidate);
-  } catch {
-    return undefined;
-  }
-}
-
-export function resolveTreeSitterPackageAsset(
-  candidates: readonly string[],
-): string | undefined {
-  for (const candidate of candidates) {
-    const resolved = resolveWithNodeRequire(candidate);
-    if (resolved) {
-      return resolved;
-    }
-
-    const basename = candidate.split('/').pop();
-    if (!basename) continue;
-    for (const root of treeSitterAssetRoots()) {
-      const nested = join(root, candidate);
-      const direct = join(root, basename);
-      if (existsSync(nested)) return nested;
-      if (existsSync(direct)) return direct;
-    }
-  }
-
-  return undefined;
 }

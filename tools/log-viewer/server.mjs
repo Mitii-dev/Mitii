@@ -464,6 +464,11 @@ function summarizeSessionEvent(event) {
   if (type === 'decision_made') {
     return `Decision: ${asString(event.route) || 'route'} / ${asString(event.runDisposition) || ''}`;
   }
+  if (type === 'warning') {
+    const code = asString(event.code);
+    const message = asString(event.message) || '';
+    return code ? `Warning [${code}]: ${message}` : `Warning: ${message}`;
+  }
   return asString(event.title) || asString(event.detail) || kind;
 }
 
@@ -502,6 +507,22 @@ function parseSessionFile(file) {
         severity: 'warning',
         title: `Verification ${status}`,
         detail: JSON.stringify(entry.checks || entry.diagnostics || entry.reasonCodes || []),
+        source: file.name,
+      });
+    }
+    if (type === 'warning') {
+      const code = asString(entry.code);
+      const stage = asString(entry.stage);
+      addIssue(issues, {
+        severity: 'warning',
+        title: code ? `Warning: ${code}` : 'Warning',
+        detail: [
+          asString(entry.message) || '',
+          stage ? `stage=${stage}` : '',
+          isRecord(entry.data) ? `data=${JSON.stringify(entry.data)}` : '',
+        ]
+          .filter(Boolean)
+          .join(' | '),
         source: file.name,
       });
     }

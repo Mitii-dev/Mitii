@@ -31,7 +31,6 @@ import {
   amendMessageWithPriorConversation,
   buildUnderstandingHistoryDigest,
   buildDiagnosticSummary,
-  extractMentionedPaths,
   collectUnderstandingCandidatePaths,
 } from "../actions";
 import {
@@ -57,15 +56,11 @@ import {
 } from "../legacy/policy";
 
 import type { AgentEngineRuntime } from "./runtime";
-import { resolveWorkspaceId } from "./runtime";
 import {
-  capturePreflightBuildState,
-  resolveAndPinState,
-} from "./pinAndDiscovery";
-import {
-  persistVerificationArtifact,
-  tryLoadVerificationRetry,
-} from "./verification";
+  buildSessionControlResult,
+  captureAgentExecutePreflight,
+} from "./earlyPipelineSupport";
+import { resolveAndPinState } from "./pinAndDiscovery";
 import {
   noteAutoApprovedPlanGate,
   resolveEffectivePlanApproval,
@@ -209,32 +204,7 @@ export async function runStartEarlyPipeline(
       `meta_command:${handled.command}:${handled.lifecycle}`,
     );
 
-    const sessionControl: SessionControlRunResult = {
-      command: handled.command,
-      lifecycle: handled.lifecycle,
-      answer: handled.answer,
-      ...(handled.sessionAction
-        ? { sessionAction: handled.sessionAction }
-        : {}),
-      ...(handled.compactedConversation
-        ? {
-            compactedConversation: [
-              ...handled.compactedConversation,
-            ] as SessionControlRunResult["compactedConversation"],
-          }
-        : {}),
-      ...(handled.compactStats
-        ? {
-            compactStats: {
-              beforeMessages: handled.compactStats.beforeMessages,
-              afterMessages: handled.compactStats.afterMessages,
-              omittedTokens: handled.compactStats.omittedTokens,
-              pressure: handled.compactStats.pressure,
-              stagesApplied: [...handled.compactStats.stagesApplied],
-            },
-          }
-        : {}),
-    };
+    const sessionControl = buildSessionControlResult(handled);
 
     return {
       kind: "terminal",
@@ -292,53 +262,16 @@ export async function runStartEarlyPipeline(
     envelope.mode === "agent" &&
     shouldCaptureUnconditionalAgentPreflight(envelope.message)
   ) {
-    const retryRecord = await tryLoadVerificationRetry(runtime, {
-      workspaceId: resolveWorkspaceId(input),
-      userMessage: extractPrimaryUserMessage(envelope.message),
+    await captureAgentExecutePreflight(runtime, {
       runId,
+      input,
+      envelope,
       bus,
+      signal,
+      reasonCodes,
       warnings,
-      logVerbosity: input.logVerbosity,
+      shared,
     });
-    if (retryRecord) {
-      shared.repoBuildStateBefore = retryRecord.after ?? retryRecord.before;
-      shared.verificationRecord = retryRecord;
-      reasonCodes.push("verification_retry_loaded");
-      if (shared.repoBuildStateBefore) {
-        runtime.emitRepoBuildStateCaptured(bus, runId, shared.repoBuildStateBefore);
-      }
-    } else {
-      shared.repoBuildStateBefore = await capturePreflightBuildState(runtime, {
-        runId,
-        input,
-        pinnedState: shared.pinnedState,
-        contextPaths: [],
-        bus,
-        signal,
-        reasonCodes,
-        warnings,
-        unconditional: true,
-        mentionedPaths: extractMentionedPaths(
-          extractPrimaryUserMessage(envelope.message),
-        ),
-      });
-      if (shared.repoBuildStateBefore) {
-        runtime.emitRepoBuildStateCaptured(bus, runId, shared.repoBuildStateBefore);
-        shared.verificationRecord =
-          (await persistVerificationArtifact(runtime, {
-            runId,
-            requestId: shared.requestId,
-            workspaceId: resolveWorkspaceId(input),
-            bus,
-            reasonCodes,
-            warnings,
-            status: "captured_before",
-            before: shared.repoBuildStateBefore,
-            previous: shared.verificationRecord,
-            logVerbosity: input.logVerbosity,
-          })) ?? shared.verificationRecord;
-      }
-    }
   }
 
   if (signal.aborted) {

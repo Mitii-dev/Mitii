@@ -9,19 +9,12 @@ import type {
 } from '@mitii/sdk';
 import {
   buildWritingRecipeAsk,
-  compileModeProfile,
   formatEnvironmentDetailsBlock,
-  isDatabaseUiMode,
-  loadModeProfiles,
-  resolveModeProfile,
-  loadProjectRules,
-  loadUserSafetyRules,
+  HostStartOptionsError,
   loadWorkspaceHooks,
   mapUiModeToAgentMode,
-  mergeUserSafetyRules,
-  resolveDatabaseModeStart,
+  prepareStartInput,
   resolveMitiiWritingRecipe,
-  withDefaultProtectedPaths,
 } from '@mitii/host';
 
 import {
@@ -52,7 +45,7 @@ import {
 import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
 import { resolveCliSemanticIndexSettings } from './semanticIndex.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
-import type { ParsedCliArgs } from './parseCliArgs.js';
+import type { ParsedCliArgs } from './parseCliArgs/index.js';
 import {
   isCliSessionLogEnabled,
   newCliThreadSessionId,
@@ -352,41 +345,6 @@ export async function runAsk(options: {
     io,
   });
 
-  const projectRules = await loadProjectRules({
-    workspaceRoot: options.cwd,
-  });
-  const modeProfiles = loadModeProfiles(options.cwd);
-  const profileOverride = options.profile
-    ? resolveModeProfile(options.cwd, options.profile)
-    : undefined;
-  if (options.profile && !profileOverride) {
-    io.writeStderr(
-      `mitii: unknown --profile "${options.profile}". Run: mitii profile list\n`,
-    );
-    return { code: 2, mode: mapUiModeToAgentMode(uiMode) };
-  }
-  const activeProfile = profileOverride ?? modeProfiles.active;
-  const databaseOverlay = isDatabaseUiMode(uiMode)
-    ? resolveDatabaseModeStart({ workspaceRoot: options.cwd })
-    : undefined;
-  const compiledMode = databaseOverlay
-    ? undefined
-    : activeProfile
-      ? compileModeProfile(activeProfile)
-      : undefined;
-  const mergedProjectRules = [
-    ...projectRules,
-    ...(compiledMode?.projectRules ?? []),
-    ...(databaseOverlay?.startFields.projectRules ?? []),
-  ];
-  const effectiveMode = databaseOverlay
-    ? 'ask'
-    : compiledMode
-      ? compiledMode.agentMode
-      : mapUiModeToAgentMode(uiMode);
-  const baseSafety = withDefaultProtectedPaths(
-    loadUserSafetyRules(options.cwd),
-  );
   const hooksEnabled =
     process.env.MITII_HOOKS === '1' || process.env.MITII_HOOKS === 'true';
   const hooks = await loadWorkspaceHooks({
@@ -404,36 +362,16 @@ export async function runAsk(options: {
           protectedPathGlobs: [] as string[],
         }
       : undefined;
-  const userSafetyRules = mergeUserSafetyRules(
-    baseSafety,
-    hooksSafety,
-    compiledMode?.userSafetyRules,
-    databaseOverlay?.startFields.userSafetyRules,
-  );
-  const environmentBlock = formatEnvironmentDetailsBlock({
-    todayDate: new Date().toLocaleDateString("en-CA"),
-    modeReminder: databaseOverlay
-      ? `Database (${effectiveMode})`
-      : compiledMode
-        ? `${compiledMode.name} (${effectiveMode})`
-        : effectiveMode,
-  });
-  const mergedRequiredSkillIds = [
-    ...new Set([
-      ...(options.requiredSkillIds ?? []),
-      ...(databaseOverlay?.startFields.requiredSkillIds ?? []),
-    ]),
-  ].slice(0, 3);
-  const mergedRequiredMcpServerIds =
-    databaseOverlay?.startFields.requiredMcpServerIds ?? [];
+
   const runTimeout = resolveRunWallTimeMs({
     flagSeconds: options.timeoutSeconds,
     env: process.env,
   });
   if (!runTimeout.ok) {
     io.writeStderr(`${runTimeout.message}\n`);
-    return { code: 2, mode: effectiveMode };
+    return { code: 2, mode: mapUiModeToAgentMode(uiMode) };
   }
+
   const hostConfig = loadMitiiHostConfig(options.cwd);
   let loopPolicyThresholds;
   try {
@@ -445,67 +383,61 @@ export async function runAsk(options: {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     io.writeStderr(`${message}\n`);
-    return { code: 2, mode: effectiveMode };
+    return { code: 2, mode: mapUiModeToAgentMode(uiMode) };
   }
   if (loopPolicyThresholds && !options.json) {
     io.writeStderr(
       `[mitii] loopPolicy lab overrides active (${Object.keys(loopPolicyThresholds).join(', ')})\n`,
     );
   }
+
   // `--approve` is the headless host policy: skip plan-gate suspension and
   // mutation approval prompts (same shape as VS Code "pilot"). `--deny` only
   // answers resume prompts; it does not suppress gates on start.
   // Autonomy apply* presets also set never/never via SDK mapping.
-  const hostApproval =
+  const approvalOverride =
     options.autoApproval === 'approved'
-      ? ({ approvalMode: 'never' as const, planApproval: 'never' as const })
-      : {};
+      ? ({
+          approvalMode: 'never' as const,
+          planApproval: 'never' as const,
+        })
+      : undefined;
 
   // Unattended / headless runs: turn on DecisionBrief + mutation critic so
   // multi-clause asks and path-scope discipline are enforced without a human.
   const unattendedSteering =
     options.autoApproval === 'approved' || origin === 'automation'
       ? ({
-          steering: {
-            decisionBrief: true,
-            criticMode: 'enforce' as const,
-            policyFactsFirst: true,
-          },
+          decisionBrief: true,
+          criticMode: 'enforce' as const,
+          policyFactsFirst: true,
         })
-      : {};
+      : undefined;
 
-  const outcome = await driveRun({
-    client,
-    start: {
+  let prepared;
+  try {
+    prepared = await prepareStartInput({
       prompt: options.prompt,
-      mode: effectiveMode,
+      workspaceRoot: options.cwd,
+      uiMode,
       origin,
       sessionId: threadSessionId,
+      userSafety: 'disk',
+      ...(options.profile ? { profileOverride: options.profile } : {}),
+      ...(options.requiredSkillIds && options.requiredSkillIds.length > 0
+        ? { requiredSkillIds: options.requiredSkillIds }
+        : {}),
       ...(options.autonomyPreset
         ? { autonomyPreset: options.autonomyPreset }
         : {}),
-      workspaceRoot: options.cwd,
-      ...hostApproval,
-      ...unattendedSteering,
-      ...(userSafetyRules.enabled ? { userSafetyRules } : {}),
-      ...(mergedProjectRules.length > 0
-        ? { projectRules: [...mergedProjectRules] }
-        : {}),
-      ...(environmentBlock ? { environment: [environmentBlock] } : {}),
-      ...(mergedRequiredSkillIds.length > 0
-        ? { requiredSkillIds: mergedRequiredSkillIds }
-        : {}),
-      ...(mergedRequiredMcpServerIds.length > 0
-        ? { requiredMcpServerIds: mergedRequiredMcpServerIds }
-        : {}),
+      ...(approvalOverride ? { approvalOverride } : {}),
+      ...(hooksSafety ? { extraUserSafetyRules: hooksSafety } : {}),
+      ...(unattendedSteering ? { steering: unattendedSteering } : {}),
       ...(options.attachments && options.attachments.length > 0
         ? { attachments: [...options.attachments] }
         : {}),
       ...(options.conversation && options.conversation.length > 0
         ? { conversation: options.conversation }
-        : {}),
-      ...(effectiveMode !== 'ask' && options.taskList
-        ? { taskList: options.taskList }
         : {}),
       ...(loopPolicyThresholds
         ? { loopPolicy: { thresholds: loopPolicyThresholds } }
@@ -513,7 +445,48 @@ export async function runAsk(options: {
       ...(runTimeout.maxWallTimeMs !== undefined
         ? { maxWallTimeMs: runTimeout.maxWallTimeMs }
         : {}),
-    },
+    });
+  } catch (error) {
+    if (
+      error instanceof HostStartOptionsError &&
+      error.code === 'unknown_mode_profile'
+    ) {
+      io.writeStderr(
+        `mitii: unknown --profile "${options.profile}". Run: mitii profile list\n`,
+      );
+      return { code: 2, mode: mapUiModeToAgentMode(uiMode) };
+    }
+    throw error;
+  }
+
+  const effectiveMode = prepared.effectiveMode;
+  const modeReminder = prepared.meta.usedDatabaseOverlay
+    ? `Database (${effectiveMode})`
+    : prepared.meta.usedModeProfileName
+      ? `${prepared.meta.usedModeProfileName} (${effectiveMode})`
+      : effectiveMode;
+  const environmentBlock = formatEnvironmentDetailsBlock({
+    todayDate: new Date().toLocaleDateString('en-CA'),
+    modeReminder,
+  });
+  const start = {
+    ...prepared.start,
+    ...(environmentBlock
+      ? {
+          environment: [
+            environmentBlock,
+            ...(prepared.start.environment ?? []),
+          ],
+        }
+      : {}),
+    ...(effectiveMode !== 'ask' && options.taskList
+      ? { taskList: options.taskList }
+      : {}),
+  };
+
+  const outcome = await driveRun({
+    client,
+    start,
     json: options.json,
     streamJson: options.streamJson === true,
     autoClarify: options.autoClarify,

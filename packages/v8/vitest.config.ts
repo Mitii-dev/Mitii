@@ -33,6 +33,7 @@ export default defineConfig({
       'src/modules/repository-state/adapters/**/*.spec.ts',
       'src/modules/repository-state/*.spec.ts',
       'src/modules/repository-state/internal/workspace/tests/**/*.spec.ts',
+      'src/modules/repository-state/internal/code-index/**/*.spec.ts',
       'src/modules/repository-state/internal/chunking/tests/CodeCollapse.spec.ts',
       'src/modules/repository-state/internal/text-index/tests/TrigramFts.spec.ts',
       'src/modules/repository-state/internal/embedding/tests/EmbeddingVectorCache.spec.ts',

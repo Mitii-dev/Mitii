@@ -63,6 +63,38 @@ export function inferContextWindowFromModelId(
   return undefined;
 }
 
+/** Known model families → hard maximum completion tokens. */
+const MODEL_MAX_OUTPUT_PRESETS: ReadonlyArray<{ match: RegExp; max: number }> = [
+  { match: /deepseek-v4/i, max: 65_536 },
+  { match: /deepseek/i, max: 8_192 },
+];
+
+/** Provider hard max completion tokens from model id, when known. */
+export function inferMaximumOutputTokensFromModelId(
+  model: string,
+): number | undefined {
+  const id = model.trim().toLowerCase();
+  if (!id) return undefined;
+  for (const preset of MODEL_MAX_OUTPUT_PRESETS) {
+    if (preset.match.test(id)) return preset.max;
+  }
+  return undefined;
+}
+
+/**
+ * Cap completion max so it never exceeds the effective context window.
+ * Model-family hard max can otherwise exceed a smaller stored window.
+ */
+export function clampMaximumOutputTokensToContext(
+  maximumOutputTokens: number,
+  contextWindowTokens: number,
+): number {
+  const window = Math.max(1, Math.floor(contextWindowTokens));
+  const maxOut = Math.floor(maximumOutputTokens);
+  if (!Number.isFinite(maxOut) || maxOut <= 0) return 0;
+  return Math.min(maxOut, window);
+}
+
 /**
  * Effective context window: **explicit stored wins** when positive.
  * Auto (0 / unset) falls back to model tags → provider → 32_768.

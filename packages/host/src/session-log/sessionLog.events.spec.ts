@@ -102,6 +102,58 @@ describe('sessionLog', () => {
     });
   });
 
+  it('persists warning code, stage, and data for diagnostics', () => {
+    const root = mkdtempSync(join(tmpdir(), 'mitii-session-log-'));
+    dirs.push(root);
+
+    const writer = openSessionLog(root, {
+      at: '2026-07-28T00:00:00.000Z',
+      prompt: 'warn fields',
+      mode: 'ask',
+      runId: 'run_warn',
+      sessionId: 'thread_warn',
+    });
+    expect(writer).toBeTruthy();
+
+    writer!.appendEvent({
+      type: 'warning',
+      runId: 'run_warn',
+      message: 'Context item omitted',
+      code: 'token_budget_reached',
+      stage: 'context_ready',
+      data: { omitted: 3, budget: 8000 },
+      at: '2026-07-28T00:00:01.000Z',
+    } as RunEvent);
+
+    writer!.finish({
+      schemaVersion: 1,
+      runId: 'run_warn',
+      requestId: 'req_warn',
+      status: 'completed',
+      route: 'answer',
+      planningDepth: 'none',
+      answer: 'ok',
+      reasonCodes: ['answer_produced'],
+      warnings: [],
+      usage: { modelCalls: 1, toolCalls: 0, loopIterations: 1 },
+      durationMs: 5,
+    } as AgentRunResult);
+
+    const lines = readFileSync(writer!.path, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    const warning = lines.find((line) => line.type === 'warning');
+    expect(warning).toMatchObject({
+      kind: 'event',
+      type: 'warning',
+      message: 'Context item omitted',
+      code: 'token_budget_reached',
+      stage: 'context_ready',
+      data: { omitted: 3, budget: 8000 },
+    });
+  });
+
   it('persists compact verification evidence events', () => {
     const root = mkdtempSync(join(tmpdir(), 'mitii-session-log-'));
     dirs.push(root);

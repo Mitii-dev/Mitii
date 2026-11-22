@@ -90,7 +90,7 @@ export function needsFullIndexRefresh(index: IndexStatusSnapshot): boolean {
     if (
       !capabilities.some(
         (entry) =>
-          entry.capability === capability && entry.status === 'ready',
+          entry.capability === capability && entry.status === 'available',
       )
     ) {
       return true;

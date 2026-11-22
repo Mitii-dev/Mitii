@@ -11,9 +11,15 @@ import {
   ChunkTextIndex,
 } from "../ChunkTextIndex";
 
-import type {
-  SourceAnalysisSymbol,
-} from "../../source-analysis/types";
+import {
+  collectLineStarts,
+  extensionOf,
+  fillGaps,
+  removeOverlappingSymbols,
+  sortByRange,
+  sortSpans,
+  type RangedSymbol,
+} from "./codeChunkerSpans";
 
 import type {
   ChunkingStrategy,
@@ -22,12 +28,6 @@ import type {
   ChunkingWarning,
   RawChunkSpan,
 } from "../types";
-
-interface RangedSymbol {
-  symbol: SourceAnalysisSymbol;
-  startOffset: number;
-  endOffset: number;
-}
 
 export class CodeChunker
   implements ChunkingStrategy
@@ -63,7 +63,7 @@ export class CodeChunker
 
     return CHUNKING_CODE_EXTENSIONS
       .has(
-        this.extensionOf(
+        extensionOf(
           context.relativePath,
         ),
       );
@@ -86,7 +86,7 @@ export class CodeChunker
     ) {
       return {
         spans:
-          this.fillGaps(
+          fillGaps(
             symbolSpans,
             context.content.length,
           ),
@@ -170,8 +170,8 @@ export class CodeChunker
     const expanded: RawChunkSpan[] = [];
 
     for (
-      const root of this.removeOverlappingSymbols(
-        this.sortByRange(roots),
+      const root of removeOverlappingSymbols(
+        sortByRange(roots),
       )
     ) {
       expanded.push(
@@ -186,7 +186,7 @@ export class CodeChunker
       );
     }
 
-    return this.sortSpans(expanded);
+    return sortSpans(expanded);
   }
 
   private collectRangedSymbols(
@@ -252,7 +252,7 @@ export class CodeChunker
     warnings: ChunkingWarning[],
   ): RawChunkSpan[] {
     const children =
-      this.sortByRange(
+      sortByRange(
         childrenByParent.get(
           node.symbol.localId,
         ) ?? [],
@@ -416,7 +416,7 @@ export class CodeChunker
     }
 
     const lineStarts =
-      this.collectLineStarts(
+      collectLineStarts(
         content,
       );
 
@@ -470,136 +470,5 @@ export class CodeChunker
             : "code_symbol",
       }),
     );
-  }
-
-  private fillGaps(
-    symbolSpans: readonly RawChunkSpan[],
-    contentLength: number,
-  ): RawChunkSpan[] {
-    const result:
-      RawChunkSpan[] = [];
-
-    let cursor = 0;
-
-    for (
-      const span of symbolSpans
-    ) {
-      if (
-        span.startOffset > cursor
-      ) {
-        result.push({
-          startOffset: cursor,
-          endOffset:
-            span.startOffset,
-          kind: "code_region",
-        });
-      }
-
-      result.push(span);
-
-      cursor = Math.max(
-        cursor,
-        span.endOffset,
-      );
-    }
-
-    if (cursor < contentLength) {
-      result.push({
-        startOffset: cursor,
-        endOffset:
-          contentLength,
-        kind: "code_region",
-      });
-    }
-
-    return result;
-  }
-
-  private removeOverlappingSymbols(
-    symbols: readonly RangedSymbol[],
-  ): RangedSymbol[] {
-    const result: RangedSymbol[] = [];
-    let lastEnd = -1;
-
-    for (const symbol of symbols) {
-      if (symbol.startOffset < lastEnd) {
-        continue;
-      }
-
-      result.push(symbol);
-      lastEnd = symbol.endOffset;
-    }
-
-    return result;
-  }
-
-  private sortByRange(
-    symbols: readonly RangedSymbol[],
-  ): RangedSymbol[] {
-    return [...symbols].sort(
-      (left, right) =>
-        left.startOffset - right.startOffset ||
-        right.endOffset - left.endOffset ||
-        left.symbol.localId.localeCompare(
-          right.symbol.localId,
-        ),
-    );
-  }
-
-  private sortSpans(
-    spans: readonly RawChunkSpan[],
-  ): RawChunkSpan[] {
-    return [...spans].sort(
-      (left, right) =>
-        left.startOffset - right.startOffset ||
-        right.endOffset - left.endOffset ||
-        left.kind.localeCompare(right.kind) ||
-        (left.symbolLocalId ?? "").localeCompare(
-          right.symbolLocalId ?? "",
-        ),
-    );
-  }
-
-  private collectLineStarts(
-    content: string,
-  ): number[] {
-    const starts = [0];
-
-    for (
-      let index = 0;
-      index < content.length;
-      index += 1
-    ) {
-      if (
-        content[index] ===
-          "\n" &&
-        index + 1 <
-          content.length
-      ) {
-        starts.push(index + 1);
-      }
-    }
-
-    return starts;
-  }
-
-  private extensionOf(
-    relativePath: string,
-  ): string {
-    const normalized =
-      relativePath
-        .replace(/\\/g, "/")
-        .toLowerCase();
-
-    const basename =
-      normalized.split("/")
-        .pop() ?? normalized;
-
-    const dot =
-      basename.lastIndexOf(".");
-
-    return dot >= 0
-      ? basename.slice(dot)
-      : "";
   }
 }

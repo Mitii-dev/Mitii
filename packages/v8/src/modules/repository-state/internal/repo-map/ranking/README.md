@@ -8,7 +8,12 @@ published `RepoMap` entries.
 | File | Role |
 |---|---|
 | `pageRank.ts` | Pure `computePageRank` (damping, iterations, personalization, dangling) |
-| `RepoMapRanker.ts` | Graph → personalization → PageRank → composite file scores |
+| `RepoMapRanker.ts` | Facade: option/context validation, `rank()` orchestration (graph → personalization → PageRank → composite file scores) |
+| `repoMapPreselection.ts` | `preselectFiles` / `preselectionPriority` — cap candidate files before graph work |
+| `repoMapGraphSignals.ts` | `collectSymbols`, `collectGraphSignals`, identifier/mention helpers, edge multipliers |
+| `repoMapFileScoring.ts` | `scoreFile`, selection/count signals, selection matchers, `tokenize` |
+| `repoMapPersonalization.ts` | `buildPersonalization` — PageRank personalization vector |
+| `repoMapRankingHelpers.ts` | `isInScope`, `toRepoMapFile`, `normalizePath` |
 | `importance.ts` | `ImportanceScore` contracts + path lookup helpers |
 | `pageRank.spec.ts` | Pure unit tests |
 

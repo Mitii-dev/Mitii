@@ -2,11 +2,22 @@ import {
   WORKSPACE_INDEXING_PIPELINE_IDS,
 } from "./constants";
 
+import {
+  tryBuildUnchangedResult,
+  tryBuildUnchangedResultFromCatalog,
+} from "./WorkspaceIndexingFileFreshness";
+
+import {
+  buildCancelledFileResult,
+  buildFailedFileResult,
+  buildFileResult,
+  buildFileWarning,
+} from "./WorkspaceIndexingFileResultBuilders";
+
 import type {
   WorkspaceIndexingFileProcessorDependencies,
   WorkspaceIndexingFileProcessorInput,
   WorkspaceIndexingFileResult,
-  WorkspaceIndexingStage,
   WorkspaceIndexingWarning,
 } from "./types";
 
@@ -25,15 +36,6 @@ import type {
 import type {
   TextIndexCoordinatorResult,
 } from "../../internal/text-index/types";
-import type {
-  CodeIndexFileState,
-} from "../../internal/code-indexing/types";
-import type {
-  TextIndexDocumentState,
-} from "../../internal/text-index/types";
-import {
-  TEXT_INDEX_SCHEMA_VERSION,
-} from "../../internal/text-index/constants";
 
 export class WorkspaceIndexingFileProcessor {
   public readonly id =
@@ -58,7 +60,7 @@ export class WorkspaceIndexingFileProcessor {
       request.abortSignal
         ?.aborted
     ) {
-      return this.cancelled(
+      return buildCancelledFileResult(
         selected.file.rootId,
         selected.file
           .relativePath,
@@ -67,7 +69,8 @@ export class WorkspaceIndexingFileProcessor {
     }
 
     const catalogFresh =
-      await this.tryBuildUnchangedResultFromCatalog(
+      await tryBuildUnchangedResultFromCatalog(
+        this.dependencies.freshness,
         input,
       );
 
@@ -90,7 +93,7 @@ export class WorkspaceIndexingFileProcessor {
     } catch (
       error
     ) {
-      return this.failed({
+      return buildFailedFileResult({
         selected,
         stage:
           "read",
@@ -102,7 +105,7 @@ export class WorkspaceIndexingFileProcessor {
       request.abortSignal
         ?.aborted
     ) {
-      return this.cancelled(
+      return buildCancelledFileResult(
         selected.file.rootId,
         selected.file
           .relativePath,
@@ -122,7 +125,7 @@ export class WorkspaceIndexingFileProcessor {
     } catch (
       error
     ) {
-      return this.failed({
+      return buildFailedFileResult({
         selected,
         stage:
           "content_hash",
@@ -131,7 +134,10 @@ export class WorkspaceIndexingFileProcessor {
     }
 
     const unchanged =
-      await this.tryBuildUnchangedResult({
+      await tryBuildUnchangedResult({
+        freshness:
+          this.dependencies
+            .freshness,
         input,
         contentHash,
       });
@@ -189,7 +195,7 @@ export class WorkspaceIndexingFileProcessor {
         analysisAttempt.value;
     } else {
       warnings.push(
-        this.warning({
+        buildFileWarning({
           selected,
           stage:
             "analysis",
@@ -258,7 +264,7 @@ export class WorkspaceIndexingFileProcessor {
       error
     ) {
       warnings.push(
-        this.warning({
+        buildFileWarning({
           selected,
           stage:
             "chunking",
@@ -273,7 +279,7 @@ export class WorkspaceIndexingFileProcessor {
       chunking?.status ===
         "cancelled"
     ) {
-      return this.buildResult({
+      return buildFileResult({
         selected,
         status:
           "cancelled",
@@ -400,7 +406,7 @@ export class WorkspaceIndexingFileProcessor {
       codeAttempt
     ) {
       warnings.push(
-        this.warning({
+        buildFileWarning({
           selected,
           stage:
             "code_index",
@@ -421,7 +427,7 @@ export class WorkspaceIndexingFileProcessor {
       textAttempt
     ) {
       warnings.push(
-        this.warning({
+        buildFileWarning({
           selected,
           stage:
             "text_index",
@@ -474,7 +480,7 @@ export class WorkspaceIndexingFileProcessor {
       textIndex?.status ===
         "not_indexable";
 
-    return this.buildResult({
+    return buildFileResult({
       selected,
       status:
         cancelled
@@ -533,621 +539,4 @@ export class WorkspaceIndexingFileProcessor {
     return result;
   }
 
-  private buildResult(
-    input: {
-      selected:
-        WorkspaceIndexingFileProcessorInput[
-          "selected"
-        ];
-      status:
-        WorkspaceIndexingFileResult[
-          "status"
-        ];
-      analysis?:
-        SourceAnalysis;
-      chunking?:
-        ChunkingResult;
-      codeIndex?:
-        CodeIndexCoordinatorResult;
-      textIndex?:
-        TextIndexCoordinatorResult;
-      contentHash?:
-        string;
-      warnings:
-        WorkspaceIndexingWarning[];
-    },
-  ): WorkspaceIndexingFileResult {
-    return {
-      rootId:
-        input.selected
-          .file
-          .rootId,
-      relativePath:
-        input.selected
-          .file
-          .relativePath,
-      sourceId:
-        input.selected
-          .sourceId,
-      status:
-        input.status,
-      ...(input.analysis
-        ? {
-            analysisStatus:
-              input.analysis
-                .status,
-          }
-        : {}),
-      analysisWarnings:
-        input.analysis
-          ?.warnings
-          .length ??
-        0,
-      ...(input.chunking
-        ? {
-            chunkingStatus:
-              input.chunking
-                .status,
-          }
-        : {}),
-      chunkingWarnings:
-        input.chunking
-          ?.warnings
-          .length ??
-        0,
-      emittedChunks:
-        input.chunking
-          ?.chunks
-          .length ??
-        0,
-      estimatedTokens:
-        input.chunking
-          ?.statistics
-          .estimatedTokens ??
-        0,
-      ...(input.codeIndex
-        ? {
-            codeIndexStatus:
-              input.codeIndex
-                .status,
-          }
-        : {}),
-      codeIndexChanged:
-        input.codeIndex
-          ?.update
-          ?.status ===
-          "indexed" ||
-        input.codeIndex
-          ?.update
-          ?.status ===
-          "metadata_refreshed",
-      ...(input.textIndex
-        ? {
-            textIndexStatus:
-              input.textIndex
-                .status,
-          }
-        : {}),
-      textIndexChanged:
-        input.textIndex
-          ?.update
-          ?.status ===
-          "indexed" ||
-        input.textIndex
-          ?.update
-          ?.status ===
-          "metadata_refreshed",
-      warnings:
-        input.warnings,
-      ...(input.contentHash
-        ? {
-            contentHash:
-              input.contentHash,
-          }
-        : {}),
-    };
-  }
-
-  private async tryBuildUnchangedResultFromCatalog(
-    input:
-      WorkspaceIndexingFileProcessorInput,
-  ): Promise<
-    WorkspaceIndexingFileResult |
-    undefined
-  > {
-    const file =
-      input.selected.file;
-
-    if (
-      file.size === undefined ||
-      !file.modifiedAt
-    ) {
-      return undefined;
-    }
-
-    const states =
-      await this.readFreshnessStates(
-        input,
-      );
-
-    if (!states) {
-      return undefined;
-    }
-
-    const {
-      codeState,
-      textState,
-    } = states;
-
-    if (
-      !this.codeStateIsStatFresh(
-        codeState,
-        input.selected,
-        input.request.analysisVersion,
-      ) ||
-      !this.textStateIsFresh(
-        textState,
-        codeState.contentHash,
-        input.request.textPipelineVersion,
-      )
-    ) {
-      return undefined;
-    }
-
-    return this.buildUnchangedResult(
-      input,
-      codeState,
-      textState,
-      codeState.contentHash,
-    );
-  }
-
-  private async tryBuildUnchangedResult(
-    values: {
-      input:
-        WorkspaceIndexingFileProcessorInput;
-      contentHash:
-        string;
-    },
-  ): Promise<
-    WorkspaceIndexingFileResult |
-    undefined
-  > {
-    const states =
-      await this.readFreshnessStates(
-        values.input,
-      );
-
-    if (!states) {
-      return undefined;
-    }
-
-    const {
-      request,
-      selected,
-    } = values.input;
-    const {
-      codeState,
-      textState,
-    } = states;
-
-    if (
-      !this.codeStateIsFresh(
-        codeState,
-        selected,
-        values.contentHash,
-        request.analysisVersion,
-      ) ||
-      !this.textStateIsFresh(
-        textState,
-        values.contentHash,
-        request.textPipelineVersion,
-      )
-    ) {
-      return undefined;
-    }
-
-    return this.buildUnchangedResult(
-      values.input,
-      codeState,
-      textState,
-      values.contentHash,
-    );
-  }
-
-  private async readFreshnessStates(
-    input:
-      WorkspaceIndexingFileProcessorInput,
-  ): Promise<
-    | {
-        codeState: CodeIndexFileState;
-        textState: TextIndexDocumentState;
-      }
-    | undefined
-  > {
-    const freshness =
-      this.dependencies
-        .freshness;
-
-    if (!freshness) {
-      return undefined;
-    }
-
-    const {
-      request,
-      selected,
-    } = input;
-
-    try {
-      const [
-        codeState,
-        textState,
-      ] =
-        await Promise.all([
-          freshness
-            .getCodeFileState(
-              {
-                workspace:
-                  request.workspace,
-                rootId:
-                  selected.file.rootId,
-                relativePath:
-                  selected.file
-                    .relativePath,
-              },
-              request.abortSignal
-                ? {
-                    abortSignal:
-                      request
-                        .abortSignal,
-                  }
-                : {},
-            ),
-          freshness
-            .getTextDocumentState(
-              {
-                workspace:
-                  request.workspace,
-                rootId:
-                  selected.file.rootId,
-                relativePath:
-                  selected.file
-                    .relativePath,
-              },
-              request.abortSignal
-                ? {
-                    abortSignal:
-                      request
-                        .abortSignal,
-                  }
-                : {},
-            ),
-        ]);
-
-      if (!codeState || !textState) {
-        return undefined;
-      }
-
-      return {
-        codeState,
-        textState,
-      };
-    } catch {
-      return undefined;
-    }
-  }
-
-  private buildUnchangedResult(
-    input:
-      WorkspaceIndexingFileProcessorInput,
-    codeState:
-      CodeIndexFileState,
-    textState:
-      TextIndexDocumentState,
-    contentHash:
-      string,
-  ): WorkspaceIndexingFileResult {
-    return this.buildResult({
-      selected:
-        input.selected,
-      status:
-        "complete",
-      codeIndex:
-        {
-          status:
-            codeState
-              .analysisStatus ===
-              "unsupported"
-              ? "unsupported"
-              : "unchanged",
-          analysis:
-            this.syntheticAnalysis(
-              input.selected,
-              codeState,
-            ),
-          update:
-            {
-              status:
-                "unchanged",
-              plan: {
-                action:
-                  "skip",
-                reason:
-                  "unchanged",
-              },
-            },
-        },
-      textIndex:
-        {
-          schemaVersion:
-            TEXT_INDEX_SCHEMA_VERSION,
-          status:
-            "unchanged",
-          chunkingStatus:
-            textState
-              .chunkingStatus,
-          update:
-            {
-              status:
-                "unchanged",
-              plan: {
-                action:
-                  "skip",
-                reason:
-                  "unchanged",
-              },
-            },
-        },
-      contentHash,
-      warnings:
-        [],
-    });
-  }
-
-  private codeStateIsStatFresh(
-    state:
-      CodeIndexFileState,
-    selected:
-      WorkspaceIndexingFileProcessorInput[
-        "selected"
-      ],
-    analysisVersion:
-      string,
-  ): boolean {
-    const file =
-      selected.file;
-
-    if (
-      state.analysisVersion !==
-        analysisVersion ||
-      !file.modifiedAt ||
-      state.modifiedAt !==
-        file.modifiedAt ||
-      state.size !==
-        (file.size ?? 0) ||
-      state.providerPath !==
-        file.providerPath
-    ) {
-      return false;
-    }
-
-    return (
-      !selected.language ||
-      selected.language ===
-        state.language
-    );
-  }
-
-  private codeStateIsFresh(
-    state:
-      CodeIndexFileState |
-      null,
-    selected:
-      WorkspaceIndexingFileProcessorInput[
-        "selected"
-      ],
-    contentHash:
-      string,
-    analysisVersion:
-      string,
-  ): state is CodeIndexFileState {
-    if (
-      !state ||
-      state.contentHash !==
-        contentHash ||
-      state.analysisVersion !==
-        analysisVersion
-    ) {
-      return false;
-    }
-
-    const file =
-      selected.file;
-
-    if (
-      state.providerPath !==
-        file.providerPath ||
-      state.size !==
-        (file.size ?? 0) ||
-      state.modifiedAt !==
-        file.modifiedAt
-    ) {
-      return false;
-    }
-
-    return (
-      !selected.language ||
-      selected.language ===
-        state.language
-    );
-  }
-
-  private textStateIsFresh(
-    state:
-      TextIndexDocumentState |
-      null,
-    contentHash:
-      string,
-    pipelineVersion:
-      string,
-  ): state is TextIndexDocumentState {
-    return Boolean(
-      state &&
-        state.sourceContentHash ===
-          contentHash &&
-        state.pipelineVersion ===
-          pipelineVersion,
-    );
-  }
-
-  private syntheticAnalysis(
-    selected:
-      WorkspaceIndexingFileProcessorInput[
-        "selected"
-      ],
-    state:
-      CodeIndexFileState,
-  ): SourceAnalysis {
-    return {
-      schemaVersion:
-        1,
-      sourceId:
-        selected.sourceId,
-      rootId:
-        selected.file.rootId,
-      relativePath:
-        selected.file
-          .relativePath,
-      ...(state.language
-        ? {
-            language:
-              state.language,
-          }
-        : {}),
-      languageSource:
-        "explicit",
-      quality:
-        "none",
-      status:
-        state.analysisStatus,
-      symbols:
-        [],
-      imports:
-        [],
-      references:
-        [],
-      warnings:
-        [],
-    };
-  }
-
-  private failed(
-    input: {
-      selected:
-        WorkspaceIndexingFileProcessorInput[
-          "selected"
-        ];
-      stage:
-        WorkspaceIndexingStage;
-      error:
-        unknown;
-    },
-  ): WorkspaceIndexingFileResult {
-    return this.buildResult({
-      selected:
-        input.selected,
-      status:
-        "failed",
-      warnings: [
-        this.warning(
-          input,
-        ),
-      ],
-    });
-  }
-
-  private cancelled(
-    rootId:
-      string,
-    relativePath:
-      string,
-    sourceId:
-      string,
-  ): WorkspaceIndexingFileResult {
-    return {
-      rootId,
-      relativePath,
-      sourceId,
-      status:
-        "cancelled",
-      analysisWarnings:
-        0,
-      chunkingWarnings:
-        0,
-      emittedChunks:
-        0,
-      estimatedTokens:
-        0,
-      codeIndexChanged:
-        false,
-      textIndexChanged:
-        false,
-      warnings: [
-        {
-          stage:
-            "read",
-          code:
-            "cancelled",
-          message:
-            "Workspace file indexing was cancelled.",
-          rootId,
-          relativePath,
-        },
-      ],
-    };
-  }
-
-  private warning(
-    input: {
-      selected:
-        WorkspaceIndexingFileProcessorInput[
-          "selected"
-        ];
-      stage:
-        WorkspaceIndexingStage;
-      error:
-        unknown;
-    },
-  ): WorkspaceIndexingWarning {
-    return {
-      stage:
-        input.stage,
-      code:
-        "file_stage_failed",
-      message:
-        this.errorMessage(
-          input.error,
-        ),
-      rootId:
-        input.selected
-          .file
-          .rootId,
-      relativePath:
-        input.selected
-          .file
-          .relativePath,
-    };
-  }
-
-  private errorMessage(
-    error:
-      unknown,
-  ): string {
-    return error
-      instanceof Error
-      ? error.message
-      : String(
-          error,
-        );
-  }
 }

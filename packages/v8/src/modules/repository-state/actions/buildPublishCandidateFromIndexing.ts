@@ -35,13 +35,13 @@ export interface PublishCandidateFromIndexingOptions {
 
   /**
    * Optional per-root graph revisions produced by RepoGraph builders.
-   * When supplied, graph capability becomes ready for that root.
+   * When supplied, graph capability becomes available for that root.
    */
   graphRevisionByRoot?: Readonly<Record<string, string>>;
 
   /**
    * Optional per-root map revisions produced by RepoMap builders.
-   * When supplied, map capability becomes ready for that root.
+   * When supplied, map capability becomes available for that root.
    */
   mapRevisionByRoot?: Readonly<Record<string, string>>;
 }
@@ -164,7 +164,7 @@ function mapRoot(
     catalogRevision
       ? {
           capability: "catalog",
-          status: "ready",
+          status: "available",
         }
       : {
           capability: "catalog",
@@ -177,7 +177,7 @@ function mapRoot(
     graphRevision
       ? {
           capability: "graph",
-          status: "ready",
+          status: "available",
         }
       : {
           capability: "graph",
@@ -187,7 +187,7 @@ function mapRoot(
     mapRevision
       ? {
           capability: "map",
-          status: "ready",
+          status: "available",
         }
       : {
           capability: "map",
@@ -261,7 +261,7 @@ function mapIndexCapability(
 
   return {
     capability,
-    status: "ready",
+    status: "available",
   };
 }
 
@@ -295,6 +295,6 @@ function mapVectorCapability(
   // complete | unchanged
   return {
     capability: "vectorIndex",
-    status: "ready",
+    status: "available",
   };
 }

@@ -12,7 +12,7 @@ import type { RequestUnderstandingResult } from "../../../request-understanding"
 import { DECISION_POLICY_SCHEMA_VERSION } from "../../constants";
 import type { DecisionPolicyInput } from "../../contracts";
 
-import { createUnderstanding } from "./decisionCases";
+import { createUnderstanding } from "./decisionCaseBuilders";
 import type { GoldenDecisionCase } from "./decisionFixtureTypes";
 
 export { createUnderstanding };

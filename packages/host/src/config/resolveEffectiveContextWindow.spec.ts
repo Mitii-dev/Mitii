@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   DEFAULT_CONTEXT_WINDOW,
+  clampMaximumOutputTokensToContext,
   inferContextWindowFromModelId,
+  inferMaximumOutputTokensFromModelId,
   parseContextWindowTokens,
   resolveEffectiveContextWindow,
   resolveHostContextWindowTokens,
@@ -46,6 +48,25 @@ describe('resolveEffectiveContextWindow', () => {
     expect(resolveEffectiveContextWindow(0, 'custom-local')).toBe(
       DEFAULT_CONTEXT_WINDOW,
     );
+  });
+});
+
+describe('inferMaximumOutputTokensFromModelId', () => {
+  it('resolves DeepSeek family completion caps', () => {
+    expect(inferMaximumOutputTokensFromModelId('deepseek-v4-pro:0813')).toBe(
+      65_536,
+    );
+    expect(inferMaximumOutputTokensFromModelId('deepseek-chat')).toBe(8_192);
+    expect(
+      inferMaximumOutputTokensFromModelId('my-qwen-64k:latest'),
+    ).toBeUndefined();
+  });
+});
+
+describe('clampMaximumOutputTokensToContext', () => {
+  it('never exceeds the context window and treats non-positive as auto', () => {
+    expect(clampMaximumOutputTokensToContext(65_536, 65_000)).toBe(65_000);
+    expect(clampMaximumOutputTokensToContext(0, 65_000)).toBe(0);
   });
 });
 

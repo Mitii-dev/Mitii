@@ -34,19 +34,22 @@ import {
 } from "./ContextSelectionWarningAggregator";
 
 import {
+  budgetUsage,
+  resolveStatus,
+  statistics,
+} from "./ContextSelectionResultMetrics";
+
+import {
   contextSelectionResultSchema,
 } from "./schema";
 
 import type {
-  ContextSelectionBudgetUsage,
   ContextSelectionInput,
   ContextSelectionResult,
-  ContextSelectionStatistics,
   ContextSelectionStatus,
   ContextSelectionWarning,
   ContextSelectorOptions,
   DroppedContextItem,
-  NormalizedContextSelectionBudget,
   NormalizedContextSelectionRequest,
   ResolvedContextSelectorOptions,
   SelectedContextItem,
@@ -274,7 +277,7 @@ export class ContextSelector {
     }
 
     const status =
-      this.resolveStatus(
+      resolveStatus(
         request,
         allocation.items,
         dropped,
@@ -295,78 +298,6 @@ export class ContextSelector {
         preparation
           .candidates.length,
     });
-  }
-
-  private resolveStatus(
-    request:
-      NormalizedContextSelectionRequest,
-    items:
-      readonly SelectedContextItem[],
-    dropped:
-      readonly DroppedContextItem[],
-    warnings:
-      readonly ContextSelectionWarning[],
-  ): ContextSelectionStatus {
-    if (
-      items.length ===
-      0
-    ) {
-      if (
-        dropped.some(
-          (item) =>
-            item.priority ===
-              "required" &&
-            (
-              item.cause ===
-                "required_reference_omitted" ||
-              item.cause ===
-                "excluded_path"
-            ),
-        )
-      ) {
-        return "partial";
-      }
-
-      return request.retrieval
-        .status ===
-        "failed"
-        ? "failed"
-        : "empty";
-    }
-
-    const limitingDrops =
-      dropped.some(
-        (item) =>
-          item.cause ===
-            "token_budget" ||
-          item.cause ===
-            "item_limit" ||
-          item.cause ===
-            "file_limit" ||
-          item.cause ===
-            "per_file_limit" ||
-          item.cause ===
-            "required_reference_omitted" ||
-          item.cause ===
-            "excluded_path",
-      );
-    const degraded =
-      warnings.some(
-        (warning) =>
-          warning.code ===
-            "upstream_retrieval_partial" ||
-          warning.code ===
-            "upstream_retrieval_failed" ||
-          warning.code ===
-            "required_reference_omitted" ||
-          warning.code ===
-            "representation_downgraded",
-      );
-
-    return limitingDrops ||
-      degraded
-      ? "partial"
-      : "complete";
   }
 
   private cancelled(
@@ -444,7 +375,7 @@ export class ContextSelector {
             .MAXIMUM_ITEMS_PER_FILE,
       },
       statistics:
-        this.statistics(
+        statistics(
           [],
           [],
           0,
@@ -508,13 +439,13 @@ export class ContextSelector {
             input.warnings,
           ),
       budget:
-        this.budgetUsage(
+        budgetUsage(
           input.request
             .budget,
           usedTokens,
         ),
       statistics:
-        this.statistics(
+        statistics(
           items,
           input.dropped,
           input.request
@@ -527,139 +458,6 @@ export class ContextSelector {
             .consideredCandidates,
         ),
     });
-  }
-
-  private budgetUsage(
-    budget:
-      NormalizedContextSelectionBudget,
-    usedTokens: number,
-  ): ContextSelectionBudgetUsage {
-    return {
-      maximumTokens:
-        budget.maximumTokens,
-      usedTokens,
-      remainingTokens:
-        budget
-          .maximumTokens -
-        usedTokens,
-      maximumItems:
-        budget.maximumItems,
-      maximumFiles:
-        budget.maximumFiles,
-      maximumItemsPerFile:
-        budget
-          .maximumItemsPerFile,
-    };
-  }
-
-  private statistics(
-    items:
-      readonly SelectedContextItem[],
-    dropped:
-      readonly DroppedContextItem[],
-    retrievedCandidates: number,
-    synthesizedReferences: number,
-    consideredCandidates: number,
-  ): ContextSelectionStatistics {
-    const fileKeys =
-      new Set(
-        items.map(
-          (item) =>
-            `${item.rootId ?? ""}\u0000${item.relativePath}`,
-        ),
-      );
-    const rootIds =
-      new Set(
-        items.flatMap(
-          (item) =>
-            item.rootId
-              ? [
-                  item
-                    .rootId,
-                ]
-              : [],
-        ),
-      );
-
-    return {
-      retrievedCandidates,
-      synthesizedReferences,
-      consideredCandidates,
-      selectedItems:
-        items.length,
-      droppedItems:
-        dropped.length,
-      selectedFiles:
-        fileKeys.size,
-      selectedRoots:
-        rootIds.size,
-      requiredItems:
-        this.count(
-          items,
-          "priority",
-          "required",
-        ),
-      preferredItems:
-        this.count(
-          items,
-          "priority",
-          "preferred",
-        ),
-      supplementaryItems:
-        this.count(
-          items,
-          "priority",
-          "supplementary",
-        ),
-      fullFileItems:
-        this.count(
-          items,
-          "representation",
-          "full_file",
-        ),
-      exactRangeItems:
-        this.count(
-          items,
-          "representation",
-          "exact_range",
-        ),
-      targetedExcerptItems:
-        this.count(
-          items,
-          "representation",
-          "targeted_excerpt",
-        ),
-      fileOutlineItems:
-        this.count(
-          items,
-          "representation",
-          "file_outline",
-        ),
-      symbolSignatureItems:
-        this.count(
-          items,
-          "representation",
-          "symbol_signature",
-        ),
-    };
-  }
-
-  private count<
-    K extends
-      | "priority"
-      | "representation",
-  >(
-    items:
-      readonly SelectedContextItem[],
-    key: K,
-    value:
-      SelectedContextItem[K],
-  ): number {
-    return items.filter(
-      (item) =>
-        item[key] ===
-        value,
-    ).length;
   }
 
   private validate(

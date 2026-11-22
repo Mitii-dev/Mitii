@@ -1,11 +1,12 @@
 # `@mitii/host`
 
-Shared **host kit** for Mitii apps (`@mitii/cli`, VS Code extension).
+Shared **host kit** for Mitii apps (CLI, VS Code, Desktop, ACP).
 
-Durable filesystem adapters, workspace indexing, and host UX helpers that must not live in `@mitii/v8` or `@mitii/sdk`.
+Durable filesystem adapters, workspace indexing, shared start-input assembly,
+and host UX helpers that must not live in `@mitii/v8` or `@mitii/sdk`.
 
 ```text
-apps/cli | apps/vscode
+apps/cli | apps/vscode | apps/desktop | apps/acp
         |
         v
   @mitii/host     <- this package
@@ -48,7 +49,9 @@ Apps still own environment-specific pieces: secrets, settings UI, MCP, IDE diagn
 
 ```text
 src/
-  index.ts                 # public barrel - import from `@mitii/host`
+  index.ts                 # public entry - import from `@mitii/host`; re-exports public/*, client, start
+  public/                  # re-export-only domain facades: sqlite, indexing, repository, ports,
+                           #   corpus, recipes, prompt-preview, config, automation, product, session-log
   sqlite/                  # injection contract for openDatabase
   indexing/                # embeddings, full index, fingerprint snapshot, pipeline health
     bundled-embedding/     # on-device MiniLM source (native ONNX + WASM)
@@ -57,6 +60,7 @@ src/
   corpus/                  # optional `.mitii/corpus/` index + retrieval source
   runtime/                 # child-run narrowing helpers
   client/                  # createHostClient: shared createMitiiClient composition
+  start/                   # prepareStartInput: shared MitiiStartInput assembly
   ports/                   # search, network (content-aware), memory, skills, checkpoints
   prompt/                  # project rules loader -> start({ projectRules })
   config/                  # provider presets (not a V8 port)
@@ -128,55 +132,61 @@ const { client } = await createHostClient({
 
 Non-responsibilities: provider/secret resolution, UI, and SDK/V8 behavior. `clientOptions` are spread last for per-host `createMitiiClient` overrides (adversary, engine implementation).
 
+## `prepareStartInput`
+
+Every host (Desktop, VS Code, CLI ask, CLI connectors) should assemble
+`MitiiStartInput` through `prepareStartInput` so project rules, mode profiles,
+disk safety, approval presets, and database-mode overlays stay consistent.
+Hosts only map settings → scalars and attach IDE/environment blocks.
+
+| | |
+|---|---|
+| **Input** | `prompt`, optional `workspaceRoot` / `uiMode` / `approvalPreset` / `thoroughness` / budgets / pins / conversation / environment |
+| **Output** | `{ start, effectiveMode, meta }` — `start` is Zod-validated |
+| **Owns** | Approval preset mapping (`getApprovalPresetCopy`), thoroughness → depth/effort, disk rules, modes, safety merge, database overlay, skill/MCP pin merge |
+| **Hosts own** | Secrets, settings UI, trust, IDE context blocks, streaming UI |
+| **Failure** | `HostStartOptionsError` (`invalid_prepare_start_input`, `unknown_mode_profile`) |
+
+```ts
+const { client } = await createHostClient({ /* host ports */ });
+const { start } = await prepareStartInput({
+  prompt,
+  workspaceRoot,
+  uiMode: 'ask',
+  approvalPreset: 'guided',
+  thoroughness: 'medium',
+  environment: hostCollectedBlocks,
+});
+client.start(start);
+```
+
+Helpers: `resolveApprovalPreset`, `THOROUGHNESS_MAP`. See `src/start/README.md`.
+
 ## How hosts wire it
 
 ```ts
 import {
-  createFileSystemSkillsCatalog,
-  createHostNetworkPort,
+  createHostClient,
   createHostRepositoryContext,
-  createOptionalSearchPort,
-  createWorkspaceCheckpointStore,
-  createWorkspaceMemoryStore,
-  getProviderPreset,
-  loadProjectRules,
+  prepareStartInput,
   runFullWorkspaceIndex,
 } from '@mitii/host';
-import { createMitiiClient, NodeNetworkAdapter, ToolRuntimePipeline } from '@mitii/sdk';
 
-const openDatabase = /* better-sqlite3 | Electron native */;
-
-const tools = new ToolRuntimePipeline({
-  /* ... */,
-  search: createOptionalSearchPort(process.env),
-  network: createHostNetworkPort({
-    inner: new NodeNetworkAdapter(),
-    env: process.env,
-  }),
-});
-
-const repositoryContext = createHostRepositoryContext({
-  repositoryState,
+const { client } = await createHostClient({
   workspaceRoot,
-  openDatabase,
-  semanticIndex,
+  workspaceId,
+  llm: { understandingLlm, runLlm },
+  repositoryContext: ({ repositoryState, workspaceRoot, git }) =>
+    createHostRepositoryContext({ repositoryState, workspaceRoot, git }),
 });
 
-const client = createMitiiClient({
-  /* llms... */
-  repositoryState,
-  repositoryContext,
-  tools,
-  checkpointStore: createWorkspaceCheckpointStore(workspaceRoot),
-  skillsCatalog: createFileSystemSkillsCatalog({
-    workspaceRoot,
-    contentMode: 'metadata',
-  }),
-  memoryStore: createWorkspaceMemoryStore(workspaceRoot, workspaceId),
+const { start } = await prepareStartInput({
+  prompt,
+  workspaceRoot,
+  uiMode: 'ask',
+  approvalPreset: 'guided',
 });
-
-const projectRules = await loadProjectRules({ workspaceRoot });
-await client.start({ /* ... */, projectRules });
+client.start(start);
 ```
 
 **Indexing:** prefer `runFullWorkspaceIndex` -> publish repository state. If that has not run, fall back to `buildWorkspaceSnapshot` (honest fingerprint: indexes unavailable).

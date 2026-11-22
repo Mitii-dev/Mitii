@@ -312,7 +312,7 @@ Enhanced capabilities are negotiated independently:
 - Project/build/test/lint discovery.
 - Safe edit/format support.
 
-Each capability reports `available`, `degraded`, or `unavailable` plus provider and reason. No module assumes that parsing implies LSP, or that a detected language implies a working compiler.
+Each capability reports `available`, `degraded`, or `unavailable` plus provider and reason (including `RepositoryRootState.capabilities`). Descriptor-level `readiness` remains `ready | degraded | unavailable` and is derived from those capability rows. No module assumes that parsing implies LSP, or that a detected language implies a working compiler.
 
 ### Target language matrix
 

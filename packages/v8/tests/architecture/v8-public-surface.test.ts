@@ -3,11 +3,15 @@ import { join } from 'path';
 import { describe, expect, it } from 'vitest';
 
 import {
+  diffAgainstBaseline,
   engineRoot,
   modulesRoot,
   PUBLIC_ROOTS,
+  readBaseline,
   toRepoPath,
   v8SrcRoot,
+  WRITE_BASELINES,
+  writeBaseline,
 } from './support/v8Sources';
 
 function readIndex(root: string): string {
@@ -182,21 +186,73 @@ describe('v8 public surface', () => {
   });
 
   it('keeps module root barrels free of value exports from internal/ and actions/', () => {
-    const violations: string[] = [];
-    for (const { root } of PUBLIC_ROOTS) {
-      const indexPath = join(root, 'index.ts');
-      for (const [index, line] of readFileSync(indexPath, 'utf8')
-        .split(/\r?\n/)
-        .entries()) {
-        // Type-only re-exports may surface public types owned beside actions.
-        if (!/^\s*export\s+/.test(line) || /^\s*export\s+type\s+/.test(line)) {
-          continue;
-        }
-        if (/from\s+['"]\.\/(?:internal|actions)(?:\/|['"]|$)/.test(line)) {
-          violations.push(`${toRepoPath(indexPath)}:${index + 1}: ${line.trim()}`);
-        }
-      }
+    const current = listPrivateFolderReexports();
+    if (WRITE_BASELINES) {
+      writeBaseline(PRIVATE_REEXPORT_BASELINE, current);
     }
-    expect(violations).toEqual([]);
+    const baseline = readBaseline<string[]>(PRIVATE_REEXPORT_BASELINE, []);
+    const { added, stale } = diffAgainstBaseline(current, baseline);
+    expect(
+      added,
+      'new value re-exports from ./actions or ./internal (including multi-line export blocks)',
+    ).toEqual([]);
+    expect(
+      stale,
+      `re-exports removed; rerun with MITII_ARCH_WRITE_BASELINES=1 to shrink ${PRIVATE_REEXPORT_BASELINE}`,
+    ).toEqual([]);
   });
 });
+
+const PRIVATE_REEXPORT_BASELINE = 'private-reexport-baseline.json';
+
+/** Strip comments so brace walks are not confused by `{` / `}` inside them. */
+function stripCommentsForScan(src: string): string {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, (block) => block.replace(/[^\n]/g, ' '))
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
+}
+
+/**
+ * Detect value (non-type) re-exports from `./actions` or `./internal`, including
+ * multi-line `export { … } from "./actions"` forms that a line-start check misses.
+ */
+function listPrivateFolderReexports(): string[] {
+  const violations: string[] = [];
+  for (const { root } of PUBLIC_ROOTS) {
+    const indexPath = join(root, 'index.ts');
+    const text = stripCommentsForScan(readFileSync(indexPath, 'utf8'));
+    const fromRe =
+      /\}\s*from\s*['"](\.\/(?:internal|actions)(?:\/[^'"]*)?)['"]/g;
+    let match: RegExpExecArray | null;
+    while ((match = fromRe.exec(text))) {
+      const fromPath = match[1]!;
+      const closeIdx = match.index;
+      let depth = 0;
+      let openIdx = -1;
+      for (let i = closeIdx; i >= 0; i -= 1) {
+        const ch = text[i];
+        if (ch === '}') depth += 1;
+        else if (ch === '{') {
+          depth -= 1;
+          if (depth === 0) {
+            openIdx = i;
+            break;
+          }
+        }
+      }
+      if (openIdx < 0) continue;
+      const before = text.slice(0, openIdx).replace(/\s+$/, '');
+      const exportMatch = before.match(/\bexport(\s+type)?$/);
+      if (!exportMatch || exportMatch[1]) continue;
+      const lineNo = text.slice(0, openIdx).split(/\n/).length;
+      violations.push(`${toRepoPath(indexPath)}:${lineNo}:${fromPath}`);
+    }
+    const starRe =
+      /\bexport\s+\*\s+from\s*['"](\.\/(?:internal|actions)(?:\/[^'"]*)?)['"]/g;
+    while ((match = starRe.exec(text))) {
+      const lineNo = text.slice(0, match.index).split(/\n/).length;
+      violations.push(`${toRepoPath(indexPath)}:${lineNo}:${match[1]}`);
+    }
+  }
+  return violations.sort();
+}

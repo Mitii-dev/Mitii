@@ -1,72 +1,32 @@
-/** Build SDK start input from a desktop prompt body. */
+/** Build SDK start input from a desktop prompt body via host prepareStartInput. */
 
 import {
-  isDatabaseUiMode,
-  mapUiModeToAgentMode,
-  mergeUserSafetyRules,
   normalizeOllamaModelId,
-  resolveDatabaseModeStart,
+  prepareStartInput,
+  resolveApprovalPreset,
+  resolveThoroughness,
+  THOROUGHNESS_MAP,
+  type HostUiMode,
 } from '@mitii/host';
+import type { MitiiStartInput } from '@mitii/sdk';
 import {
   planArtifactSchema,
   planStrategyDecisionSchema,
   taskListSchema,
-  type MitiiStartInput,
 } from '@mitii/sdk';
 import {
   buildDesktopStartExtras,
   readDesktopSettingsJson,
 } from '../startOptions.js';
-import {
-  getGitStatus,
-} from '../git/status.js';
+import { getGitStatus } from '../git/status.js';
 import {
   asStringArray,
   parseConversation,
 } from '../http/bodyParsers.js';
 
-export const THOROUGHNESS_MAP = {
-  low: { depth: 'quick' as const, effort: 'low' as const },
-  medium: { depth: 'auto' as const, effort: 'medium' as const },
-  high: { depth: 'deep' as const, effort: 'high' as const },
-};
+export { resolveApprovalPreset, THOROUGHNESS_MAP };
 
-export const APPROVAL_PRESET_MAP = {
-  safe: {
-    approvalMode: 'every_mutation' as const,
-    planApproval: 'policy' as const,
-  },
-  guided: {
-    approvalMode: 'when_required' as const,
-    planApproval: 'policy' as const,
-  },
-  pilot: {
-    // Tools stay autonomous; visible/architecture plans still gate so the
-    // user can see and approve the plan before mutate (avoids silent hollow run).
-    approvalMode: 'never' as const,
-    planApproval: 'policy' as const,
-  },
-  builder: {
-    approvalMode: 'when_required' as const,
-    planApproval: 'policy' as const,
-  },
-};
-
-export function resolveApprovalPreset(preset: string | undefined): {
-  approvalMode: 'never' | 'when_required' | 'every_mutation';
-  planApproval: 'policy' | 'never';
-} {
-  const key =
-    preset === 'safe' ||
-    preset === 'guided' ||
-    preset === 'pilot' ||
-    preset === 'builder'
-      ? preset
-      : 'guided';
-  return APPROVAL_PRESET_MAP[key];
-}
-
-export function buildStartInput(
+export async function buildStartInput(
   body: Record<string, unknown>,
   parsed: {
     prompt: string;
@@ -76,20 +36,15 @@ export function buildStartInput(
     sessionId?: string;
   },
   workspaceRoot: string,
-): MitiiStartInput {
+): Promise<MitiiStartInput> {
   const approvalPreset =
     typeof body.approvalPreset === 'string' ? body.approvalPreset : 'guided';
-  const policy = resolveApprovalPreset(approvalPreset);
-  const thoroughnessRaw =
-    typeof body.thoroughness === 'string' ? body.thoroughness : 'medium';
-  const thoroughness =
-    thoroughnessRaw === 'low' || thoroughnessRaw === 'high'
-      ? thoroughnessRaw
-      : 'medium';
-  const intensity = THOROUGHNESS_MAP[thoroughness];
+  const thoroughness = resolveThoroughness(
+    typeof body.thoroughness === 'string' ? body.thoroughness : undefined,
+  );
   const pinnedPaths = asStringArray(body.pinnedPaths, 32);
-  let requiredSkillIds = asStringArray(body.requiredSkillIds, 16);
-  let requiredMcpServerIds = asStringArray(body.requiredMcpServerIds, 16);
+  const requiredSkillIds = asStringArray(body.requiredSkillIds, 16);
+  const requiredMcpServerIds = asStringArray(body.requiredMcpServerIds, 16);
   const conversation = parseConversation(body.conversation);
   const approvedPlanParse = planArtifactSchema.safeParse(body.approvedPlan);
   const approvedPlan = approvedPlanParse.success
@@ -115,70 +70,28 @@ export function buildStartInput(
     : undefined;
 
   const extras = buildDesktopStartExtras(process.env);
-  const uiMode = parsed.mode ?? 'ask';
+  const uiMode = (parsed.mode ?? 'ask') as HostUiMode;
   const dbAccessRaw =
     typeof body.dbAccess === 'string' ? body.dbAccess.trim().toLowerCase() : '';
   const dbAccess =
     dbAccessRaw === 'readwrite' ||
     dbAccessRaw === 'read_write' ||
     dbAccessRaw === 'rw'
-      ? 'readwrite'
-      : 'readonly';
+      ? ('readwrite' as const)
+      : ('readonly' as const);
 
-  let agentMode = mapUiModeToAgentMode(uiMode);
-  let projectRules: MitiiStartInput['projectRules'];
-  let userSafetyRules: MitiiStartInput['userSafetyRules'];
-  let approvalMode = policy.approvalMode;
-  if (isDatabaseUiMode(uiMode)) {
-    const db = resolveDatabaseModeStart({
-      workspaceRoot,
-      preferredServerIds: requiredMcpServerIds,
-      dbAccess,
-    });
-    agentMode = db.startFields.mode;
-    requiredSkillIds = [
-      ...new Set([
-        ...(requiredSkillIds ?? []),
-        ...db.startFields.requiredSkillIds,
-      ]),
-    ].slice(0, 3);
-    requiredMcpServerIds =
-      db.startFields.requiredMcpServerIds.length > 0
-        ? db.startFields.requiredMcpServerIds
-        : undefined;
-    projectRules = db.startFields.projectRules;
-    userSafetyRules = mergeUserSafetyRules(
-      undefined,
-      db.startFields.userSafetyRules,
-    );
-    if (db.startFields.approvalMode) {
-      approvalMode = db.startFields.approvalMode;
-    }
-  }
-
-  return {
+  const { start } = await prepareStartInput({
     prompt: parsed.prompt,
-    mode: agentMode,
     workspaceRoot,
-    approvalMode,
-    planApproval: policy.planApproval,
-    explorationDepth: intensity.depth,
-    windowBudget: {
-      effort: intensity.effort,
-      ...(extras.windowBudget?.policy
-        ? { policy: extras.windowBudget.policy }
-        : {}),
-      ...(extras.windowBudget?.maximumOutputTokens != null
-        ? { maximumOutputTokens: extras.windowBudget.maximumOutputTokens }
-        : {}),
-    },
+    uiMode,
+    approvalPreset,
+    thoroughness,
+    dbAccess,
     ...(parsed.sessionId ? { sessionId: parsed.sessionId } : {}),
     ...(model ? { model } : {}),
     ...(pinnedPaths ? { pinnedPaths } : {}),
     ...(requiredSkillIds ? { requiredSkillIds } : {}),
     ...(requiredMcpServerIds ? { requiredMcpServerIds } : {}),
-    ...(projectRules ? { projectRules } : {}),
-    ...(userSafetyRules?.enabled ? { userSafetyRules } : {}),
     ...(conversation ? { conversation } : {}),
     ...(approvedPlan ? { approvedPlan } : {}),
     ...(approvedPlanStrategy ? { approvedPlanStrategy } : {}),
@@ -186,7 +99,15 @@ export function buildStartInput(
     ...(extras.budget ? { budget: extras.budget } : {}),
     ...(extras.loopPolicy ? { loopPolicy: extras.loopPolicy } : {}),
     ...(extras.logVerbosity ? { logVerbosity: extras.logVerbosity } : {}),
-  };
+    ...(extras.windowBudget?.policy
+      ? { windowBudgetPolicy: extras.windowBudget.policy as Record<string, number> }
+      : {}),
+    ...(extras.windowBudget?.maximumOutputTokens != null
+      ? { maximumOutputTokens: extras.windowBudget.maximumOutputTokens }
+      : {}),
+  });
+
+  return start;
 }
 
 /** Optional host context blocks from ui.contextToggles (gitDiff today). */

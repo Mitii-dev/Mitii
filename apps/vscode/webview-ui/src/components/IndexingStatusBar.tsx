@@ -29,7 +29,7 @@ export function resolveIndexTone(index: IndexStatusSnapshot): IndexTone {
     ),
   );
   const missingRequired = requiredCapabilities.some(
-    (capability) => capability.status !== 'ready',
+    (capability) => capability.status !== 'available',
   );
   const vectorDegraded = capabilities.some(
     (capability) =>
@@ -47,7 +47,7 @@ export function resolveIndexTone(index: IndexStatusSnapshot): IndexTone {
   if (index.fileCount <= 0 && !readiness) return 'idle';
   const coreReady =
     requiredCapabilities.length > 0 &&
-    requiredCapabilities.every((capability) => capability.status === 'ready');
+    requiredCapabilities.every((capability) => capability.status === 'available');
   if (missingRequired || readiness === 'unavailable' || readiness === 'degraded') {
     return 'warn';
   }
@@ -84,7 +84,7 @@ function shortLabel(tone: IndexTone, index: IndexStatusSnapshot): string {
         (capability) =>
           ['codeIndex', 'textIndex', 'graph', 'map'].includes(
             capability.capability,
-          ) && capability.status !== 'ready',
+          ) && capability.status !== 'available',
       )
         ? 'Index Issue'
         : index.capabilities?.some(

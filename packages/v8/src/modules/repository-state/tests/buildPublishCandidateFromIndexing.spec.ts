@@ -151,15 +151,15 @@ test("graph and map revision overlays mark those capabilities ready", () => {
   assert.equal(root?.mapRevision, "map-4");
   assert.equal(
     root?.capabilities.find((entry) => entry.capability === "catalog")?.status,
-    "ready",
+    "available",
   );
   assert.equal(
     root?.capabilities.find((entry) => entry.capability === "graph")?.status,
-    "ready",
+    "available",
   );
   assert.equal(
     root?.capabilities.find((entry) => entry.capability === "map")?.status,
-    "ready",
+    "available",
   );
 });
 

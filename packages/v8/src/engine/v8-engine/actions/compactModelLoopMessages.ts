@@ -1,4 +1,4 @@
-import type { ModelMessage, ModelToolCall } from "../../../modules/model-gateway";
+import type { ModelMessage } from "../../../modules/model-gateway";
 import type { TokenEstimatorPort } from "../../../modules/prompt-construction";
 import type { WindowPolicyCompaction } from "../../../modules/window-budget";
 
@@ -9,9 +9,40 @@ import {
   compactToolMessageContent,
   countNonSystemMessages,
   dropOldestNonSystemTurnWithRemoved,
-  parseJsonObject,
   takeLastIndices,
 } from "./compactToolHistoryHelpers";
+import {
+  ESTABLISHED_FACTS_MARKER,
+  MEMORY_REINJECT_MARKER,
+  insertAfterSystemMessages,
+  reinjectPinnedFacts,
+} from "./compactPinnedFacts";
+import { estimateModelMessagesTokens } from "./compactionTokenEstimate";
+import {
+  DEFAULT_AUTO_RATIO,
+  DEFAULT_HARD_RATIO,
+  DEFAULT_WARN_RATIO,
+  resolveCompactionPressure,
+  resolveCompactionThresholds,
+} from "./compactionThresholds";
+import type {
+  ModelLoopCompactionPressure,
+  ModelLoopCompactionThresholds,
+} from "./compactionThresholds";
+
+export {
+  resolveCompactionPressure,
+  resolveCompactionThresholds,
+} from "./compactionThresholds";
+export type {
+  ModelLoopCompactionPressure,
+  ModelLoopCompactionThresholds,
+} from "./compactionThresholds";
+export {
+  estimateModelMessageTokens,
+  estimateModelMessagesTokens,
+} from "./compactionTokenEstimate";
+export { stubToolResultsForCompletedPaths } from "./compactToolStubs";
 
 const DEFAULT_RECENT_TOOL_MESSAGES_TO_KEEP_FULL = 3;
 const DEFAULT_COMPACTED_TOOL_RESULT_CHARS_RATIO = 0.006;
@@ -20,9 +51,7 @@ const DEFAULT_DROPPED_TURN_SUMMARY_CHARS_RATIO = 0.01;
 const DEFAULT_ESTABLISHED_FACT_REINJECT_CHARS_RATIO = 0.012;
 const DEFAULT_MEMORY_REINJECT_CHARS_RATIO = 0.006;
 const DEFAULT_MIN_MESSAGES_TO_KEEP = 6;
-const DEFAULT_WARN_RATIO = 0.7;
-const DEFAULT_AUTO_RATIO = 0.8;
-const DEFAULT_HARD_RATIO = 0.92;
+
 
 /**
  * Explicit compaction ladder (production path uses WindowPolicy.compaction).
@@ -39,13 +68,6 @@ export const COMPACTION_LADDER_STAGES = [
 
 export type CompactionLadderStage = (typeof COMPACTION_LADDER_STAGES)[number];
 
-export type ModelLoopCompactionPressure = "within" | "warn" | "auto" | "hard";
-
-export interface ModelLoopCompactionThresholds {
-  warnTokens: number;
-  autoTokens: number;
-  hardTokens: number;
-}
 
 export interface ModelLoopCompactionResult {
   messages: ModelMessage[];
@@ -347,187 +369,6 @@ export function compactModelLoopMessages(params: {
   };
 }
 
-const FILE_BODY_TOOLS = new Set(["read_file", "read_many_files"]);
-
-/**
- * Immediately stub file-read bodies for paths no remaining task still needs.
- * Does not wait for compaction pressure.
- */
-export function stubToolResultsForCompletedPaths(params: {
-  messages: readonly ModelMessage[];
-  paths: readonly string[];
-  maxChars: number;
-}): { messages: ModelMessage[]; stubbed: boolean } {
-  const normalized = params.paths
-    .map((path) => path.trim().replace(/\\/g, "/"))
-    .filter((path) => path.length > 0);
-  if (normalized.length === 0) {
-    return { messages: [...params.messages], stubbed: false };
-  }
-
-  const toolCallsById = collectToolCallsById(params.messages);
-  let stubbed = false;
-  const messages = params.messages.map((message) => {
-    if (message.role !== "tool") {
-      return message;
-    }
-    const toolCall = message.toolCallId
-      ? toolCallsById.get(message.toolCallId)
-      : undefined;
-    if (!toolCall || !FILE_BODY_TOOLS.has(toolCall.name)) {
-      return message;
-    }
-    const toolPaths = collectToolCallFilePaths(toolCall);
-    if (!toolPaths.some((path) => pathMatchesCompleted(path, normalized))) {
-      return message;
-    }
-    const parsed = parseJsonObject(message.content);
-    if (
-      parsed?.compacted === true &&
-      (parsed.reason === "completed_task_file_body_stubbed" ||
-        parsed.reason === "previous_tool_result_compacted")
-    ) {
-      return message;
-    }
-    if (message.content.length <= params.maxChars) {
-      return message;
-    }
-    stubbed = true;
-    return {
-      ...message,
-      content: compactToolMessageContent({
-        message,
-        toolCall,
-        maxChars: params.maxChars,
-        reason: "completed_task_file_body_stubbed",
-      }),
-    };
-  });
-  return { messages, stubbed };
-}
-
-function collectToolCallFilePaths(toolCall: ModelToolCall): string[] {
-  const args = parseJsonObject(toolCall.arguments);
-  if (!args) {
-    return [];
-  }
-  if (typeof args.path === "string" && args.path.trim().length > 0) {
-    return [args.path.trim().replace(/\\/g, "/")];
-  }
-  if (Array.isArray(args.paths)) {
-    return args.paths
-      .filter(
-        (path): path is string =>
-          typeof path === "string" && path.trim().length > 0,
-      )
-      .map((path) => path.trim().replace(/\\/g, "/"));
-  }
-  return [];
-}
-
-function pathMatchesCompleted(
-  path: string,
-  completed: readonly string[],
-): boolean {
-  return completed.some(
-    (candidate) => path === candidate || path.endsWith(`/${candidate}`),
-  );
-}
-
-export function resolveCompactionThresholds(params: {
-  budgetTokens: number;
-  warnRatio?: number;
-  autoRatio?: number;
-  hardRatio?: number;
-  autoMaxTokens?: number;
-  hardMaxTokens?: number;
-  preservePrefix?: boolean;
-}): ModelLoopCompactionThresholds {
-  const budgetTokens = Math.max(1, Math.floor(params.budgetTokens));
-  const warnRatio = clampRatio(params.warnRatio ?? DEFAULT_WARN_RATIO);
-  const autoRatio = clampRatio(params.autoRatio ?? DEFAULT_AUTO_RATIO);
-  const hardRatio = clampRatio(params.hardRatio ?? DEFAULT_HARD_RATIO);
-  const sorted = [warnRatio, autoRatio, hardRatio].sort((a, b) => a - b);
-
-  let warnTokens = Math.max(1, Math.floor(budgetTokens * sorted[0]!));
-  let autoTokens = Math.max(1, Math.floor(budgetTokens * sorted[1]!));
-  let hardTokens = Math.max(1, Math.floor(budgetTokens * sorted[2]!));
-
-  if (params.autoMaxTokens !== undefined) {
-    autoTokens = Math.min(autoTokens, Math.max(1, Math.floor(params.autoMaxTokens)));
-  }
-  if (params.hardMaxTokens !== undefined) {
-    hardTokens = Math.min(hardTokens, Math.max(1, Math.floor(params.hardMaxTokens)));
-  }
-  if (params.preservePrefix) {
-    autoTokens = hardTokens;
-    warnTokens = Math.min(warnTokens, autoTokens);
-  }
-  if (autoTokens < warnTokens) {
-    warnTokens = autoTokens;
-  }
-  if (hardTokens < autoTokens) {
-    hardTokens = autoTokens;
-  }
-
-  return {
-    warnTokens,
-    autoTokens,
-    hardTokens,
-  };
-}
-
-export function resolveCompactionPressure(params: {
-  usedTokens: number;
-  thresholds: ModelLoopCompactionThresholds;
-}): ModelLoopCompactionPressure {
-  if (params.usedTokens >= params.thresholds.hardTokens) {
-    return "hard";
-  }
-  if (params.usedTokens >= params.thresholds.autoTokens) {
-    return "auto";
-  }
-  if (params.usedTokens >= params.thresholds.warnTokens) {
-    return "warn";
-  }
-  return "within";
-}
-
-export function estimateModelMessagesTokens(
-  messages: readonly ModelMessage[],
-  estimator: TokenEstimatorPort,
-): number {
-  return messages.reduce(
-    (sum, message) => sum + estimateModelMessageTokens(message, estimator),
-    0,
-  );
-}
-
-export function estimateModelMessageTokens(
-  message: ModelMessage,
-  estimator: TokenEstimatorPort,
-): number {
-  let tokens = estimator.estimate(message.content);
-  if (message.name) {
-    tokens += estimator.estimate(message.name);
-  }
-  if (message.toolCallId) {
-    tokens += estimator.estimate(message.toolCallId);
-  }
-  for (const toolCall of message.toolCalls ?? []) {
-    tokens += estimator.estimate(toolCall.id);
-    tokens += estimator.estimate(toolCall.name);
-    tokens += estimator.estimate(toolCall.arguments);
-    tokens += 8;
-  }
-  for (const attachment of message.attachments ?? []) {
-    tokens += estimator.estimate(attachment.mimeType);
-    tokens += estimator.estimate(attachment.name ?? "");
-    tokens += estimator.estimate(attachment.data);
-  }
-  return tokens + 4;
-}
-
 function cloneMessage(message: ModelMessage): ModelMessage {
   return {
     ...message,
@@ -535,72 +376,8 @@ function cloneMessage(message: ModelMessage): ModelMessage {
     attachments: message.attachments?.map((attachment) => ({ ...attachment })),
   };
 }
-
-function clampRatio(value: number): number {
-  if (!Number.isFinite(value)) {
-    return DEFAULT_AUTO_RATIO;
-  }
-  return Math.min(1, Math.max(0.01, value));
-}
-
 function scaledChars(budgetTokens: number, ratio: number): number {
   return Math.max(1, Math.floor(Math.max(1, budgetTokens) * ratio));
-}
-
-function insertAfterSystemMessages(
-  messages: readonly ModelMessage[],
-  insert: ModelMessage,
-): ModelMessage[] {
-  let insertAt = 0;
-  while (insertAt < messages.length && messages[insertAt]?.role === "system") {
-    insertAt += 1;
-  }
-  return [
-    ...messages.slice(0, insertAt),
-    insert,
-    ...messages.slice(insertAt),
-  ];
-}
-
-const MEMORY_REINJECT_MARKER = "[memory reinjected after compaction]";
-const ESTABLISHED_FACTS_MARKER =
-  "[established observations after compaction]";
-
-function reinjectPinnedFacts(params: {
-  messages: ModelMessage[];
-  facts: readonly { id: string; content: string }[];
-  marker: string;
-  maxChars: number;
-  estimator: TokenEstimatorPort;
-  budgetTokens: number;
-}): { messages: ModelMessage[]; reinjected: boolean } {
-  if (params.messages.some((message) => message.content.includes(params.marker))) {
-    return { messages: params.messages, reinjected: false };
-  }
-
-  const lines: string[] = [params.marker];
-  let chars = params.marker.length;
-  for (const fact of params.facts) {
-    const line = `- (${fact.id}) ${fact.content.replace(/\s+/g, " ").trim()}`;
-    if (chars + line.length + 1 > params.maxChars) {
-      break;
-    }
-    lines.push(line);
-    chars += line.length + 1;
-  }
-  if (lines.length <= 1) {
-    return { messages: params.messages, reinjected: false };
-  }
-
-  const next = insertAfterSystemMessages(params.messages, {
-    role: "user",
-    content: lines.join("\n"),
-  });
-  const used = estimateModelMessagesTokens(next, params.estimator);
-  if (used > params.budgetTokens) {
-    return { messages: params.messages, reinjected: false };
-  }
-  return { messages: next, reinjected: true };
 }
 
 function compactAllToolPayloads(params: {

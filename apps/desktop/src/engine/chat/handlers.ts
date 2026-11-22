@@ -47,7 +47,7 @@ export async function handlePrompt(
       ? (body as Record<string, unknown>)
       : {};
   const startInput = await attachContextEnvironment(
-    buildStartInput(record, parsed, workspaceRoot),
+    await buildStartInput(record, parsed, workspaceRoot),
     workspaceRoot,
   );
   // Log / NDJSON mode must match V8 start (Database+readwrite → agent), not

@@ -82,9 +82,9 @@ const descriptor = (
       codeIndexRevision: "index-1",
       textIndexRevision: "text-1",
       capabilities: [
-        { capability: "catalog", status: "ready" },
-        { capability: "codeIndex", status: "ready" },
-        { capability: "textIndex", status: "ready" },
+        { capability: "catalog", status: "available" },
+        { capability: "codeIndex", status: "available" },
+        { capability: "textIndex", status: "available" },
       ],
     },
   ],
