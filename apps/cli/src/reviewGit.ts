@@ -4,6 +4,7 @@ import { promisify } from 'node:util';
 import {
   parseGitPorcelain,
   porcelainToReviewEntries,
+  type GitPorcelainReviewEntry,
   type ReviewChangedFile,
 } from '@mitii/sdk';
 
@@ -59,11 +60,13 @@ function statusFromLetter(letter: string): ReviewChangedFile['status'] {
 
 /** Parse `git status --porcelain -z` via shared V8 porcelain helpers. */
 export function parsePorcelainZ(text: string): ChangedEntry[] {
-  return porcelainToReviewEntries(parseGitPorcelain(text)).map((entry) => ({
-    path: entry.path,
-    status: entry.status === 'unknown' ? 'modified' : entry.status,
-    ...(entry.untracked ? { untracked: true } : {}),
-  }));
+  return porcelainToReviewEntries(parseGitPorcelain(text)).map(
+    (entry: GitPorcelainReviewEntry): ChangedEntry => ({
+      path: entry.path,
+      status: entry.status === 'unknown' ? 'modified' : entry.status,
+      ...(entry.untracked ? { untracked: true } : {}),
+    }),
+  );
 }
 
 /** Parse `git diff|show --name-status -z` output. */
