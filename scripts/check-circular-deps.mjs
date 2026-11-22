@@ -25,6 +25,7 @@ const SCAN_ROOTS = [
   'packages/v8/src/modules',
   'packages/sdk/src',
   'packages/host/src',
+  'packages/settings/src',
   'packages/ui-core/src',
   'packages/ui-protocol/src',
   'packages/ui-react/src',

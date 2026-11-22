@@ -11,14 +11,32 @@ import {
   settingsToMitiiConfigFile,
   settingsToEngineEnv,
 } from '../src/shared/settings.js';
+import { catalogNumberDescriptors } from '../src/renderer/settings/policyCatalog.js';
 
 describe('desktop settings', () => {
   it('includes full VS Code mitii.* catalog', () => {
-    expect(Object.keys(SETTINGS_CATALOG).length).toBeGreaterThan(100);
+    expect(Object.keys(SETTINGS_CATALOG)).toHaveLength(212);
     expect(SETTINGS_CATALOG['mitii.provider.model']).toBeTruthy();
     expect(SETTINGS_CATALOG['mitii.tokenBudget.enabled']).toBeTruthy();
     expect(SETTINGS_CATALOG['mitii.loopPolicy.enabled']).toBeTruthy();
     expect(SETTINGS_CATALOG['mitii.autocomplete.enabled']).toBeTruthy();
+    expect(SETTINGS_CATALOG['mitii.v8LoopPolicy.enabled']).toBeTruthy();
+    expect(SETTINGS_CATALOG['mitii.workspace.indexConcurrency']).toBeTruthy();
+    expect(
+      SETTINGS_CATALOG['mitii.loopPolicy.maxReasoningCharsWithoutProgress'],
+    ).toBeTruthy();
+  });
+
+  it('defaults include v8LoopPolicy and indexConcurrency from the catalog', () => {
+    expect(DEFAULT_DESKTOP_SETTINGS.v8LoopPolicy).toMatchObject({
+      enabled: false,
+      preferredBatchSize: 12,
+      toolLoopHardIdentical: 6,
+      toolLoopSoftIdentical: 3,
+    });
+    expect(DEFAULT_DESKTOP_SETTINGS.workspace.indexConcurrency).toBe(0);
+    expect(mergeDesktopSettings({}).v8LoopPolicy.maxContinueOverrides).toBe(4);
+    expect(catalogEntriesForPrefix('v8LoopPolicy')).toHaveLength(9);
   });
 
   it('forces autocomplete.enabled off (Desktop FIM not shipped)', () => {
@@ -136,5 +154,44 @@ describe('desktop settings', () => {
     const next = setSettingAtPath(base, 'mitii.tokenBudget.outputRatio', 0.25);
     expect(getSettingAtPath(next, 'tokenBudget.outputRatio')).toBe(0.25);
     expect(catalogEntriesForPrefix('autocomplete').length).toBeGreaterThan(5);
+  });
+
+  it.each(['tokenBudget', 'loopPolicy'])(
+    '%s descriptors are a subset of the catalog',
+    (prefix) => {
+      const descriptors = catalogNumberDescriptors(prefix);
+      expect(descriptors.length).toBeGreaterThan(0);
+      for (const descriptor of descriptors) {
+        const entry = SETTINGS_CATALOG[`mitii.${prefix}.${descriptor.key}`];
+        expect(entry, descriptor.key).toBeTruthy();
+        expect(descriptor.defaultValue).toBe(entry?.default);
+      }
+    },
+  );
+
+  it('folds engine.implementation into the catalog tree', () => {
+    expect(DEFAULT_DESKTOP_SETTINGS.engine.implementation).toBe('v8');
+    expect(getSettingAtPath(DEFAULT_DESKTOP_SETTINGS, 'agent.engineImplementation')).toBeUndefined();
+    expect(
+      settingsToEngineEnv(mergeDesktopSettings({ engine: { implementation: 'legacy' } }))
+        .MITII_ENGINE_IMPLEMENTATION,
+    ).toBe('legacy');
+    expect(settingsToEngineEnv(mergeDesktopSettings({})).MITII_ENGINE_IMPLEMENTATION).toBe('v8');
+  });
+
+  it('migrates legacy agent.engineImplementation once on merge', () => {
+    const migrated = mergeDesktopSettings({
+      agent: { engineImplementation: 'legacy' },
+    });
+    expect(migrated.engine.implementation).toBe('legacy');
+    expect(
+      (migrated.agent as Record<string, unknown>).engineImplementation,
+    ).toBeUndefined();
+    const explicit = mergeDesktopSettings({
+      agent: { engineImplementation: 'legacy' },
+      engine: { implementation: 'v8' },
+    });
+    expect(explicit.engine.implementation).toBe('v8');
+    expect(mergeDesktopSettings(migrated).engine.implementation).toBe('legacy');
   });
 });

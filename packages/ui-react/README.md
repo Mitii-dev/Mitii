@@ -42,9 +42,9 @@ Components render safe empty states for missing data (no breakdown, no cost rate
 - No CSS files (tokens live in `@mitii/ui-theme`; component rules stay in each app's stylesheet until the Wave 1.4 stylesheet split).
 - Not yet shared: Desktop/VS Code `ComposerControls` (different option sets and icons), Markdown body, review bar, and per-field help with docs links (`TokenBudgetFieldHelp` stays in VS Code and plugs in through `renderFieldHelp`).
 
-## Settings catalog (TODO)
+## Settings catalog
 
-The shared settings-field catalog that should drive both VS Code contributions and the Desktop settings UI is not started. Today Desktop reads a mirrored `vscode-settings-catalog.json` while the VS Code webview hardcodes fields. Budget settings already route through `@mitii/ui-core` (`deriveLiveTokenBudgetPreview`, `mergeLiveWindowBudgetPolicy`, pin helpers) in both hosts via `TokenBudgetEditor`. Next step: define the catalog schema in a contract-first package and render fields through `NumberField` / `SliderField`.
+The `mitii.*` settings catalog lives in `@mitii/settings` (`SETTINGS_CATALOG`, nested `DEFAULT_MITII_SETTINGS`, `catalogEntriesForPrefix`). Desktop reads it through `apps/desktop/src/shared/settings.ts`; `node packages/settings/scripts/check-vscode-contributes.mjs` keeps `apps/vscode/package.json` in sync with it. The VS Code webview still hardcodes its fields. Budget settings already route through `@mitii/ui-core` (`deriveLiveTokenBudgetPreview`, `mergeLiveWindowBudgetPolicy`, pin helpers) in both hosts via `TokenBudgetEditor`. Next step: render catalog entries through `NumberField` / `SliderField`.
 
 ## Scripts
 

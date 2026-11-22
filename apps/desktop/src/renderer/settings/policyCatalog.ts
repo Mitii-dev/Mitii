@@ -1,7 +1,7 @@
 /** Numeric policy catalog descriptors for token-budget editors. */
 
 import { type TokenBudgetFieldDescriptor } from '@mitii/ui-react';
-import { catalogEntriesForPrefix } from '../../shared/settings.js';
+import { catalogEntriesForPrefix } from '@mitii/settings';
 
 export function numericPolicyRecord(
   block: Record<string, unknown>,

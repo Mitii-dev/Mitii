@@ -85,6 +85,19 @@ function readDesktopSettingsField(
   }
 }
 
+/** `engine.implementation`, falling back to the pre-SSOT `agent.engineImplementation`. */
+function readDesktopEngineImplementation(
+  env: NodeJS.ProcessEnv,
+): 'legacy' | 'v8' {
+  const fromSettings =
+    readDesktopSettingsField(env, 'engine.implementation') ??
+    readDesktopSettingsField(env, 'agent.engineImplementation');
+  return env.MITII_ENGINE_IMPLEMENTATION === 'legacy' ||
+    fromSettings === 'legacy'
+    ? 'legacy'
+    : 'v8';
+}
+
 /** Deterministic understanding for echo / smoke. */
 export class DesktopUnderstandingLlmPort implements LlmPort {
   readonly id = 'desktop-local-understanding';
@@ -195,10 +208,7 @@ export function createEchoDesktopClient(
     workspaceId,
     taskListAutoAdvance: env.MITII_TASK_LIST_AUTO_ADVANCE !== '0',
     engineImplementation:
-      env.MITII_ENGINE_IMPLEMENTATION === 'legacy' ||
-      readDesktopSettingsField(env, 'agent.engineImplementation') === 'legacy'
-        ? 'legacy'
-        : 'v8',
+      readDesktopEngineImplementation(env),
   });
 }
 
@@ -373,10 +383,7 @@ export async function createHostDesktopClient(
       }),
     clientOptions: {
       engineImplementation:
-        env.MITII_ENGINE_IMPLEMENTATION === 'legacy' ||
-        readDesktopSettingsField(env, 'agent.engineImplementation') === 'legacy'
-          ? 'legacy'
-          : 'v8',
+        readDesktopEngineImplementation(env),
     },
   });
 

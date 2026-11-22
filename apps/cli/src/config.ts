@@ -11,6 +11,11 @@ import {
 } from './loopPolicy.js';
 
 export type { MitiiLoopPolicyConfig };
+export {
+  CLI_CURATED_CONFIG_KEYS,
+  CLI_CURATED_TO_CATALOG,
+  type CliCuratedConfigKey,
+} from './settingsProjection.js';
 
 export interface MitiiHostConfig {
   provider?: HostProviderType;

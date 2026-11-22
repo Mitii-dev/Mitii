@@ -2,7 +2,7 @@
   "name": "mitii-ai-agent",
   "displayName": "Mitii AI Agent",
   "description": "Local-first VS Code AI coding agent with repository-aware context and controlled execution",
-  "version": "2.11.3",
+  "version": "2.11.4",
   "publisher": "mitii",
   "license": "AGPL-3.0-or-later",
   "icon": "media/mitii-logo.png",
@@ -1752,6 +1752,7 @@
     "@mitii/host": "workspace:*",
     "@mitii/mcp": "workspace:*",
     "@mitii/sdk": "workspace:*",
+    "@mitii/settings": "workspace:*",
     "@mitii/ui-core": "workspace:*",
     "@mitii/ui-protocol": "workspace:*",
     "better-sqlite3": "^12.11.1"

@@ -19,7 +19,7 @@ import {
   testConnection,
   getDesktopBridge,
 } from '../../api.js';
-import { DEFAULT_DESKTOP_SETTINGS } from '../../../shared/vscode-settings-defaults.js';
+import { DEFAULT_DESKTOP_SETTINGS } from '../../../shared/settings.js';
 import { type ViewMode, type CreateStep, type ModeId, type ProfileSettingsProps } from './types.js';
 import { type ProfileRow } from '../profileTypes.js';
 

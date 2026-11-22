@@ -63,6 +63,9 @@ importers:
       '@mitii/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@mitii/settings':
+        specifier: workspace:*
+        version: link:../../packages/settings
       better-sqlite3:
         specifier: ^12.11.1
         version: 12.11.1
@@ -141,6 +144,9 @@ importers:
       '@mitii/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@mitii/settings':
+        specifier: workspace:*
+        version: link:../../packages/settings
       '@mitii/ui-core':
         specifier: workspace:*
         version: link:../../packages/ui-core
@@ -226,6 +232,9 @@ importers:
       '@mitii/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@mitii/settings':
+        specifier: workspace:*
+        version: link:../../packages/settings
       '@mitii/ui-core':
         specifier: workspace:*
         version: link:../../packages/ui-core
@@ -548,6 +557,22 @@ importers:
         version: 3.2.7(@types/debug@4.1.13)(@types/node@20.19.43)(jsdom@26.1.0)
 
   packages/search-kit:
+    dependencies:
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: ^20.14.0
+        version: 20.19.43
+      typescript:
+        specifier: ^5.5.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/debug@4.1.13)(@types/node@20.19.43)(jsdom@26.1.0)
+
+  packages/settings:
     dependencies:
       zod:
         specifier: ^3.23.8

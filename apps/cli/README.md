@@ -478,6 +478,15 @@ mitii ask "Fix types" --mode agent --no-loop-policy
 
 Leave `loopPolicy` unset (or `"enabled": false`) for deploy / normal use.
 
+### Config keys vs the settings catalog
+
+`.mitii/config.json` is a **curated projection**, not the full `mitii.*` tree.
+`CLI_CURATED_CONFIG_KEYS` lists the keys the CLI persists and
+`CLI_CURATED_TO_CATALOG` maps each to its `@mitii/settings` catalog key
+(`null` for CLI-only keys such as `workspaceId`; `loopPolicy` maps to the
+`mitii.loopPolicy.*` block). Runtime threshold validation stays on the SDK
+schema, so engine-only keys that are not in the catalog are still accepted.
+
 ### Setup options
 
 | Option | Meaning |

@@ -1,6 +1,6 @@
 /**
  * Desktop settings — full parity with VS Code `mitii.*` configuration.
- * Defaults come from apps/vscode package.json (generated).
+ * Catalog and defaults come from @mitii/settings (single source of truth).
  * Secrets never live in these JSON files.
  */
 
@@ -8,13 +8,17 @@ import type { DesktopAgentMode } from './protocol.js';
 import {
   DEFAULT_DESKTOP_SETTINGS,
   SETTINGS_CATALOG,
+  catalogEntriesForPrefix,
   type DesktopSettings,
-} from './vscode-settings-defaults.js';
+  type SettingsCatalogEntry,
+} from '@mitii/settings';
 
 export {
   DEFAULT_DESKTOP_SETTINGS,
   SETTINGS_CATALOG,
+  catalogEntriesForPrefix,
   type DesktopSettings,
+  type SettingsCatalogEntry,
 };
 
 export type DesktopProviderType =
@@ -141,16 +145,44 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 /** Deep-merge settings; arrays replace, objects merge. */
 export function mergeDesktopSettings(
   partial: unknown,
-  base: DesktopSettings = structuredClone(
-    DEFAULT_DESKTOP_SETTINGS as unknown as DesktopSettings,
-  ),
+  base: DesktopSettings = structuredClone(DEFAULT_DESKTOP_SETTINGS),
 ): DesktopSettings {
   if (!isPlainObject(partial)) {
-    return lockAutocomplete(structuredClone(base));
+    return lockAutocomplete(migrateLegacyEngineImplementation(structuredClone(base)));
   }
   return lockAutocomplete(
-    deepMerge(base as Record<string, unknown>, partial) as DesktopSettings,
+    migrateLegacyEngineImplementation(
+      deepMerge(base as Record<string, unknown>, partial) as DesktopSettings,
+      partial,
+    ),
   );
+}
+
+/**
+ * Fold the pre-SSOT `agent.engineImplementation` into `engine.implementation`
+ * (an explicit `engine.implementation` in the overlay wins) and drop the old key.
+ */
+export function migrateLegacyEngineImplementation(
+  settings: DesktopSettings,
+  overlay?: Record<string, unknown>,
+): DesktopSettings {
+  const agent = settings.agent as Record<string, unknown> | undefined;
+  if (!agent || !('engineImplementation' in agent)) return settings;
+  const legacy = agent.engineImplementation;
+  const overlayEngine = overlay?.engine;
+  const overlaySetsEngine =
+    isPlainObject(overlayEngine) && typeof overlayEngine.implementation === 'string';
+  const { engineImplementation: _drop, ...restAgent } = agent;
+  void _drop;
+  const engine = { ...settings.engine };
+  if (!overlaySetsEngine && (legacy === 'legacy' || legacy === 'v8')) {
+    engine.implementation = legacy;
+  }
+  return {
+    ...settings,
+    agent: restAgent as DesktopSettings['agent'],
+    engine,
+  };
 }
 
 /** Desktop FIM is not shipped yet — keep autocomplete permanently off. */
@@ -332,7 +364,7 @@ export function settingsToEngineEnv(
   if (!settings.agent.taskListAutoAdvance) {
     env.MITII_TASK_LIST_AUTO_ADVANCE = '0';
   }
-  if (settings.agent.engineImplementation === 'legacy') {
+  if (settings.engine.implementation === 'legacy') {
     env.MITII_ENGINE_IMPLEMENTATION = 'legacy';
   } else {
     env.MITII_ENGINE_IMPLEMENTATION = 'v8';
@@ -407,21 +439,6 @@ export function settingsRequireEngineRestart(
     JSON.stringify(stripRendererOnly(previous)) !==
     JSON.stringify(stripRendererOnly(next))
   );
-}
-
-export function catalogEntriesForPrefix(prefix: string): Array<{
-  key: string;
-  shortKey: string;
-  entry: (typeof SETTINGS_CATALOG)[string];
-}> {
-  const full = prefix.startsWith('mitii.') ? prefix : `mitii.${prefix}`;
-  return Object.entries(SETTINGS_CATALOG)
-    .filter(([key]) => key === full || key.startsWith(`${full}.`))
-    .map(([key, entry]) => ({
-      key,
-      shortKey: key.slice(full.length + 1) || key.slice(6),
-      entry,
-    }));
 }
 
 export function getSettingAtPath(

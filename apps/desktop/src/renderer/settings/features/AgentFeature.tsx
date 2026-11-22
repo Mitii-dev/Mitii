@@ -47,13 +47,11 @@ export function AgentFeature({ m }: { m: SettingsModel }) {
       <Field id="engineImpl" label="Engine implementation">
         <select
           id="engineImpl"
-          value={draft.agent.engineImplementation}
+          value={draft.engine.implementation}
           onChange={(e) =>
             patch({
-              agent: {
-                engineImplementation: e.target.value as
-                  | 'legacy'
-                  | 'v8',
+              engine: {
+                implementation: e.target.value as 'legacy' | 'v8',
               },
             })
           }

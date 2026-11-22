@@ -1,6 +1,6 @@
 {
   "name": "@mitii/desktop",
-  "version": "2.11.3",
+  "version": "2.11.4",
   "description": "Mitii Desktop — local coding agent with chat, settings, and repository index.",
   "license": "AGPL-3.0-or-later",
   "private": true,
@@ -43,6 +43,7 @@
     "@mitii/mcp-sql": "workspace:*",
     "@mitii/mcp-sqlite": "workspace:*",
     "@mitii/sdk": "workspace:*",
+    "@mitii/settings": "workspace:*",
     "@mitii/ui-core": "workspace:*",
     "@mitii/ui-protocol": "workspace:*",
     "@mitii/ui-react": "workspace:*",
