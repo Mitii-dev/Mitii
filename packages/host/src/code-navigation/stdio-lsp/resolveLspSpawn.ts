@@ -89,12 +89,23 @@ function resolveExecutablePath(params: {
   for (const directory of params.pathEnv.split(delimiter)) {
     if (!directory) continue;
     for (const extension of extensions) {
-      const candidate =
+      // PATHEXT is often uppercase (.CMD); shim files are usually lowercase.
+      // Real Windows is case-insensitive; Linux CI simulating win32 is not.
+      const names =
         params.platform === "win32" && extension && !hasExtension(command)
-          ? join(directory, `${command}${extension}`)
-          : join(directory, command);
-      if (existsSync(candidate)) {
-        return { path: candidate, fromPath: true };
+          ? Array.from(
+              new Set([
+                `${command}${extension}`,
+                `${command}${extension.toLowerCase()}`,
+                `${command}${extension.toUpperCase()}`,
+              ]),
+            )
+          : [command];
+      for (const name of names) {
+        const candidate = join(directory, name);
+        if (existsSync(candidate)) {
+          return { path: candidate, fromPath: true };
+        }
       }
     }
     // Also try the bare name on Windows (already covered) and Unix.

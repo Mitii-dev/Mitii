@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from 'fs';
-import { join, sep } from 'path';
+import { join } from 'path';
 import { describe, expect, it } from 'vitest';
 
 import { repoRoot, scanImports } from './support/v8Sources';
@@ -214,7 +214,8 @@ describe('workspace package boundaries', () => {
     for (const root of productRoots) {
       expect(
         scanImports(root, legacyImportPatterns).filter(
-          (line) => !line.includes(`${sep}engine${sep}v8-engine${sep}`),
+          // scanImports uses repo-style `/` paths on every OS; do not use `path.sep`.
+          (line) => !line.includes('/engine/v8-engine/'),
         ),
       ).toEqual([]);
     }

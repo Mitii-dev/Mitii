@@ -32,7 +32,7 @@ describe("buildPlanClarifySuspension", () => {
     });
     const draft = buildFallbackClarifyDraft(input);
     const suspension = buildPlanClarifySuspension(draft);
-    expect(suspension.answer).toMatch(/From discovery so far/i);
+    expect(suspension.answer).toMatch(/Need a scope choice before locking a plan/i);
     expect(suspension.clarificationOptions.length).toBeGreaterThanOrEqual(3);
     expect(
       suspension.clarificationOptions.every((option) =>

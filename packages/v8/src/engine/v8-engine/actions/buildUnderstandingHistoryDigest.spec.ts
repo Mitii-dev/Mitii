@@ -21,7 +21,7 @@ describe("buildUnderstandingHistoryDigest", () => {
 
   it("clips long contents and includes optional prior route", () => {
     const digest = buildUnderstandingHistoryDigest(
-      [{ role: "user", content: "x".repeat(400) }],
+      [{ role: "user", content: "x".repeat(2_500) }],
       { priorRoute: "execute" },
     );
     expect(digest).toContain("prior_route=execute");

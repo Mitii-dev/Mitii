@@ -14,7 +14,11 @@ describe('createHostLanguageServices', () => {
         lspServers: [],
       });
       expect(services.capability.status).toBe('degraded');
-      expect(services.capability.reason).toBe('language_server_not_configured');
+      // Repo-graph fallback: symbol index when SQLite is available, else bare degrade.
+      expect([
+        'symbol_refs_index',
+        'language_server_not_configured',
+      ]).toContain(services.capability.reason);
       // CLI still gets Node module-load diagnostics for .js/.mjs/.cjs.
       expect(services.diagnostics).toBeDefined();
       services.dispose();
