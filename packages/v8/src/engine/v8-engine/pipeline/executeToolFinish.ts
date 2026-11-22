@@ -16,7 +16,6 @@ import {
   extractEstablishedFact,
   extractMutationTargetPaths,
   extractToolContentPaths,
-  markLoopFileReadResult,
   missingMustReadPaths,
   buildMustReadNudgeMessage,
   upsertEstablishedFact,
@@ -44,15 +43,13 @@ import {
   type TaskListRef,
 } from "../internal/taskListRuntime";
 import { markPlanEvidenceStepsDone } from "../actions/runEvidence";
-import { WORKSPACE_FILE_MUTATION_TOOL_IDS } from "../actions/resolveLoopTurnOutcome";
 import type { AgentEngineRuntime } from "./runtime";
 import type { ToolCallOutcome } from "./types";
 import { toolCompletionDiagnostics } from "./executeToolSupport";
-
-/** File edits only — not run_command (git diff was wrongly change-impact gated). */
-function isChangeImpactGatedToolName(name: string): boolean {
-  return (WORKSPACE_FILE_MUTATION_TOOL_IDS as readonly string[]).includes(name);
-}
+import {
+  isChangeImpactGatedToolName,
+  markReadCoverageFromToolResult,
+} from "./executeToolFinishHelpers";
 
 export type ExecuteToolContinueContext = {
   toolCall: ModelToolCall;
@@ -585,41 +582,4 @@ export async function finishExecuteOneTool(
       }),
     },
   };
-}
-
-/** Mark base-path coverage from read_file / read_many_files outputs. */
-function markReadCoverageFromToolResult(
-  tracker: LoopFileReadTracker,
-  toolName: string,
-  output: unknown,
-  topLevelTruncated: boolean,
-): void {
-  if (!output || typeof output !== "object") {
-    return;
-  }
-  const record = output as Record<string, unknown>;
-  if (toolName === "read_file" && typeof record.path === "string") {
-    markLoopFileReadResult(tracker, record.path, {
-      truncated:
-        topLevelTruncated ||
-        record.truncated === true ||
-        record.eof === false,
-      eof: record.eof === true,
-    });
-    return;
-  }
-  if (toolName === "read_many_files" && Array.isArray(record.files)) {
-    for (const file of record.files) {
-      if (!file || typeof file !== "object") continue;
-      const entry = file as Record<string, unknown>;
-      if (typeof entry.path !== "string") continue;
-      markLoopFileReadResult(tracker, entry.path, {
-        truncated:
-          topLevelTruncated ||
-          entry.truncated === true ||
-          entry.eof === false,
-        eof: entry.eof === true,
-      });
-    }
-  }
 }
