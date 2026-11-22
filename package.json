@@ -1,7 +1,7 @@
 {
   "name": "mitii-ai-agent",
   "description": "Private Mitii monorepo workspace orchestrator. Product packages: @mitii/ui-core, @mitii/ui-theme, @mitii/ui-react, @mitii/ui-protocol, @mitii/v8, @mitii/sdk, @mitii/automation, @mitii/search-kit, @mitii/mcp, @mitii/mcp-web, @mitii/mcp-sqlite, @mitii/mcp-postgres, @mitii/mcp-mongo, @mitii/mcp-sql, @mitii/host, @mitii/cli, @mitii/daemon, @mitii/acp, @mitii/desktop, apps/vscode.",
-  "version": "2.11.8",
+  "version": "2.11.9",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "author": {
@@ -22,6 +22,7 @@
   "packageManager": "pnpm@10.13.1+sha512.37ebf1a5c7a30d5fabe0c5df44ee8da4c965ca0c5af3dbab28c3a1681b70a256218d05c81c9c0dcf767ef6b8551eb5b960042b9ed4300c59242336377e01cfad",
   "scripts": {
     "build": "pnpm -r --filter @mitii/settings --filter @mitii/ui-core --filter @mitii/ui-theme --filter @mitii/ui-react --filter @mitii/ui-protocol --filter @mitii/v8 --filter @mitii/sdk --filter @mitii/automation --filter @mitii/search-kit --filter @mitii/mcp --filter @mitii/mcp-web --filter @mitii/mcp-sqlite --filter @mitii/mcp-postgres --filter @mitii/mcp-mongo --filter @mitii/mcp-sql --filter @mitii/host --filter @mitii/cli --filter @mitii/daemon --filter @mitii/acp --filter @mitii/desktop --filter ./apps/vscode run build",
+    "build:packages": "pnpm run build",
     "build:all": "pnpm run build && pnpm run rebuild:native",
     "build:v8": "pnpm --filter @mitii/v8 build",
     "build:sdk": "pnpm --filter @mitii/sdk build",
@@ -63,7 +64,7 @@
     "setup": "bash scripts/dev-setup.sh",
     "setup:cursor": "MITII_EDITOR=cursor bash scripts/dev-setup.sh",
     "prepare": "node scripts/install-git-hooks.mjs",
-    "postinstall": "node -e \"console.log('Run pnpm run build:all (or rebuild:native) before F5. rebuild:native stages Electron SQLite and restores Node ABI for tests.')\"",
+    "postinstall": "node -e \"console.log('Fresh compile: pnpm build. F5-ready (compile + Electron SQLite): pnpm build:all. ABI only: rebuild:native (editor) or rebuild:node (tests/CLI).')\"",
     "policy-admin": "node tools/policy-admin/server.mjs",
     "log-viewer": "node tools/log-viewer/server.mjs",
     "audit:dependencies": "node scripts/audit-dependencies.mjs",

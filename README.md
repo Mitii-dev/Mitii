@@ -15,7 +15,7 @@
   <a href="LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/License-AGPL_v3-blue.svg"></a>
   <a href="https://code.visualstudio.com/"><img alt="VS Code 1.124+" src="https://img.shields.io/badge/VS%20Code-1.124%2B-007ACC?logo=visualstudiocode"></a>
   <a href="https://nodejs.org/"><img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-339933?logo=node.js"></a>
-  <img alt="Version 2.11.8" src="https://img.shields.io/badge/version-2.11.8-111111">
+  <img alt="Version 2.11.9" src="https://img.shields.io/badge/version-2.11.9-111111">
   <a href="https://docs.mitii.dev"><img alt="Documentation" src="https://img.shields.io/badge/docs-docs.mitii.dev-ff751f"></a>
 </p>
 
@@ -234,20 +234,24 @@ Skills live under `packages/sdk/skills/`.
 ## Development
 
 ```bash
-pnpm run build:all          # packages + Electron SQLite staged for F5 / indexes
-pnpm run build              # packages only (vscode + desktop included)
-pnpm run build:desktop      # desktop app + deps
-pnpm run build:vscode       # VS Code extension
+pnpm run build              # compile every package (settings → ui → v8 → sdk → host → apps)
+pnpm run build:packages     # same as build
+pnpm run build:all          # build + stage Electron SQLite for VS Code/Cursor F5
+pnpm run build:desktop      # desktop app + its workspace deps
+pnpm run build:vscode       # VS Code extension only
 pnpm run typecheck
 pnpm test
 pnpm run package            # VSIX (apps/vscode)
 pnpm run package:preflight  # release checks, tests, and package
 ```
 
-Native modules target different runtimes (Windows + macOS). `rebuild:native`
-rebuilds `better-sqlite3` for the editor Electron ABI, stages it under
-`apps/vscode/dist/native`, then restores the Node ABI in `node_modules` so tests
-keep working:
+Use **`pnpm build`** when you want a fresh compile of everything.
+Use **`pnpm build:all`** when you also need the editor Extension Host native binding.
+
+`rebuild:*` does **not** compile TypeScript — it only rebuilds native addons for a
+specific ABI (Windows + macOS). `rebuild:native` rebuilds `better-sqlite3` for the
+editor Electron ABI, stages it under `apps/vscode/dist/native`, then restores the
+Node ABI in `node_modules` so tests keep working:
 
 ```bash
 pnpm run rebuild:native                    # VS Code Electron → dist/native, restore Node

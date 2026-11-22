@@ -149,10 +149,11 @@ Install locally: **Extensions -> ... -> Install from VSIX**.
 
 | Scenario | Command |
 |----------|---------|
-| Full F5-ready build | `pnpm run build:all` |
-| F5 / VS Code extension host | `pnpm run rebuild:native` |
-| Cursor extension host | `MITII_EDITOR=cursor pnpm run rebuild:native` |
-| Local vitest / CLI only | `pnpm run rebuild:node` |
+| Fresh compile of all packages | `pnpm run build` |
+| Compile + Electron SQLite for F5 | `pnpm run build:all` |
+| F5 / VS Code extension host (ABI only) | `pnpm run rebuild:native` |
+| Cursor extension host (ABI only) | `MITII_EDITOR=cursor pnpm run rebuild:native` |
+| Local vitest / CLI only (ABI only) | `pnpm run rebuild:node` |
 
 `rebuild:native` stages `better_sqlite3.node` into `apps/vscode/dist/native`, then restores the system Node ABI in `node_modules`. Without the staged Electron binding, code/text indexes fail in the Extension Host.
 

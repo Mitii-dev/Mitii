@@ -1,5 +1,5 @@
 /**
- * Desktop context-window helpers — owned by `@mitii/host`.
+ * Desktop context-window helpers — owned by `@mitii/ui-core` (renderer-safe).
  * Keep this file as a thin re-export so existing Desktop imports stay stable.
  */
 
@@ -9,4 +9,4 @@ export {
   inferContextWindowFromModelId,
   inferMaximumOutputTokensFromModelId,
   resolveEffectiveContextWindow,
-} from '@mitii/host';
+} from '@mitii/ui-core';

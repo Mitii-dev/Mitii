@@ -1,6 +1,6 @@
 {
   "name": "@mitii/ui-protocol",
-  "version": "2.11.8",
+  "version": "2.11.9",
   "description": "Zod-validated wire contracts shared by Mitii hosts and UIs: VS Code webview postMessage protocol and Desktop /v1 + NDJSON stream envelopes.",
   "license": "AGPL-3.0-or-later",
   "type": "module",
