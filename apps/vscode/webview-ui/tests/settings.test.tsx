@@ -4,7 +4,6 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { createProviderHarness } from '../../tests/helpers/settingsHarness';
 import { App } from '../src/App';
 import { PROVIDER_OPTIONS } from '../src/providerOptions';
-import { LOOP_POLICY_FIELDS } from '../../src/loopPolicySettings';
 import { SETTINGS_FIELDS } from '../../src/settingsFields';
 
 const bridge = vi.hoisted(() => ({ post: vi.fn(), listener: undefined as any }));
@@ -100,7 +99,7 @@ describe('settings inputs through the host save/read bridge', () => {
 const inputFields = SETTINGS_FIELDS.filter(field =>
   !['provider.type', 'provider.preset', 'semanticIndex.source', 'semanticIndex.backend', 'semanticIndex.enabled', 'mcp.enabled', 'developer.intensityOverrides', 'ui.effort'].includes(field.id)
   && (!field.id.startsWith('tokenBudget.') || field.id === 'tokenBudget.enabled')
-  && (!field.id.startsWith('loopPolicy.') || field.id === 'loopPolicy.enabled' || LOOP_POLICY_FIELDS.some(f => `loopPolicy.${f.key}` === field.id && f.tier !== 'advanced'))
+  && (!field.id.startsWith('loopPolicy.') || field.id === 'loopPolicy.enabled')
   && !/ui\.modeDefaults\..*\.(depth|thoroughness)$/.test(field.id));
 const labels: Record<string, string> = {
   'autocomplete.enabled': 'Enable autocomplete',

@@ -4,6 +4,7 @@ import type { TokenBudgetFieldDescriptor } from '../protocol';
 import { NumberField } from '@mitii/ui-react';
 
 export function LoopPolicyEditor({
+  idPrefix = 'loopPolicy',
   fields,
   thresholds,
   bandThresholds,
@@ -11,6 +12,8 @@ export function LoopPolicyEditor({
   disabled,
   onThresholdsChange,
 }: {
+  /** Setting prefix used for input ids (`loopPolicy` or `v8LoopPolicy`). */
+  idPrefix?: string;
   fields: TokenBudgetFieldDescriptor[];
   thresholds: Record<string, number>;
   bandThresholds: Record<string, number>;
@@ -32,6 +35,7 @@ export function LoopPolicyEditor({
   return (
     <div className="token-budget-editor">
       <LoopPolicyFields
+        idPrefix={idPrefix}
         fields={simpleFields}
         thresholds={displayThresholds}
         disabled={disabled || !customEnabled}
@@ -40,6 +44,7 @@ export function LoopPolicyEditor({
       <details className="settings-advanced">
         <summary>Advanced recoveries &amp; repair</summary>
         <LoopPolicyFields
+          idPrefix={idPrefix}
           fields={advancedFields}
           thresholds={displayThresholds}
           disabled={disabled || !customEnabled}
@@ -51,11 +56,13 @@ export function LoopPolicyEditor({
 }
 
 function LoopPolicyFields({
+  idPrefix,
   fields,
   thresholds,
   disabled,
   onChange,
 }: {
+  idPrefix: string;
   fields: TokenBudgetFieldDescriptor[];
   thresholds: Record<string, number>;
   disabled: boolean;
@@ -84,7 +91,7 @@ function LoopPolicyFields({
             {groupFields.map((field) => (
               <NumberField
                 key={field.key}
-                id={`loopPolicy.${field.key}`}
+                id={`${idPrefix}.${field.key}`}
                 label={field.label}
                 min={field.min}
                 max={field.max}

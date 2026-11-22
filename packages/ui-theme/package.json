@@ -1,6 +1,6 @@
 {
   "name": "@mitii/ui-theme",
-  "version": "2.11.5",
+  "version": "2.11.6",
   "description": "Shared --mitii-* CSS token contract for Mitii Desktop and VS Code, with vscode and standalone adapters.",
   "license": "AGPL-3.0-or-later",
   "type": "module",

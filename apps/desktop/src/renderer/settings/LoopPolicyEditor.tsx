@@ -17,6 +17,7 @@ import { useMemo } from 'react';
 import type { TokenBudgetFieldDescriptor } from '@mitii/ui-react';
 
 export function LoopPolicyEditor({
+  idPrefix = 'loopPolicy',
   fields,
   thresholds,
   bandThresholds,
@@ -24,6 +25,8 @@ export function LoopPolicyEditor({
   disabled,
   onThresholdsChange,
 }: {
+  /** Setting prefix used for input ids (`loopPolicy` or `v8LoopPolicy`). */
+  idPrefix?: string;
   fields: TokenBudgetFieldDescriptor[];
   thresholds: Record<string, number>;
   bandThresholds: Record<string, number>;
@@ -45,6 +48,7 @@ export function LoopPolicyEditor({
   return (
     <div className="token-budget-editor">
       <LoopPolicyFields
+        idPrefix={idPrefix}
         fields={simpleFields}
         thresholds={displayThresholds}
         disabled={disabled || !customEnabled}
@@ -53,6 +57,7 @@ export function LoopPolicyEditor({
       <details className="token-budget-editor__advanced">
         <summary>Advanced recoveries &amp; repair</summary>
         <LoopPolicyFields
+          idPrefix={idPrefix}
           fields={advancedFields}
           thresholds={displayThresholds}
           disabled={disabled || !customEnabled}
@@ -64,11 +69,13 @@ export function LoopPolicyEditor({
 }
 
 function LoopPolicyFields({
+  idPrefix,
   fields,
   thresholds,
   disabled,
   onChange,
 }: {
+  idPrefix: string;
   fields: TokenBudgetFieldDescriptor[];
   thresholds: Record<string, number>;
   disabled: boolean;
@@ -99,11 +106,11 @@ function LoopPolicyFields({
                 thresholds[field.key] ?? field.defaultValue ?? field.min;
               return (
                 <div key={field.key} className="field">
-                  <label htmlFor={`loopPolicy.${field.key}`}>
+                  <label htmlFor={`${idPrefix}.${field.key}`}>
                     {field.label}
                   </label>
                   <input
-                    id={`loopPolicy.${field.key}`}
+                    id={`${idPrefix}.${field.key}`}
                     type="number"
                     min={field.min}
                     max={field.max}

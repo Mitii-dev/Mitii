@@ -223,6 +223,55 @@ export function DebugTab({ m }: { m: SettingsModel }) {
       </SettingsSection>
   
       <SettingsSection
+        title="V8 engine knobs"
+        description="All mitii.v8LoopPolicy.* keys. Saved with your settings; the Desktop engine does not forward them to runs yet."
+      >
+        <label className="checkbox-row">
+          <input
+            type="checkbox"
+            disabled={!draft.developer.enabled}
+            checked={draft.v8LoopPolicy.enabled}
+            onChange={(e) =>
+              patch({
+                v8LoopPolicy: {
+                  ...draft.v8LoopPolicy,
+                  enabled: e.target.checked,
+                },
+              })
+            }
+          />
+          Enable v8 loop policy overrides
+        </label>
+        <LoopPolicyEditor
+          idPrefix="v8LoopPolicy"
+          fields={catalogNumberDescriptors('v8LoopPolicy')}
+          thresholds={numericPolicyRecord(
+            draft.v8LoopPolicy as unknown as Record<string, unknown>,
+          )}
+          bandThresholds={numericPolicyRecord(
+            DEFAULT_DESKTOP_SETTINGS.v8LoopPolicy as unknown as Record<
+              string,
+              unknown
+            >,
+          )}
+          customEnabled={draft.v8LoopPolicy.enabled}
+          disabled={
+            !draft.developer.enabled || !draft.v8LoopPolicy.enabled
+          }
+          onThresholdsChange={(thresholdsPatch) =>
+            setDraft((prev) => ({
+              ...prev,
+              v8LoopPolicy: {
+                ...prev.v8LoopPolicy,
+                enabled: true,
+                ...thresholdsPatch,
+              },
+            }))
+          }
+        />
+      </SettingsSection>
+
+      <SettingsSection
         title="Evidence"
         description="Session logs and shareable diagnostics for support."
       >

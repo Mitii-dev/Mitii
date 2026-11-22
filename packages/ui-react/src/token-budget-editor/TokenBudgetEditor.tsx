@@ -39,7 +39,10 @@ function windowShare(tokens: number, preview: TokenBudgetPreview): number {
 }
 
 export interface TokenBudgetEditorProps {
-  /** Advanced policy descriptors; an empty list hides the Advanced section. */
+  /**
+   * Policy descriptors. Only non-simple, non-`hiddenFromDebug` ones render in
+   * Advanced (simple keys are the sliders); none left hides the section.
+   */
   fields: readonly TokenBudgetFieldDescriptor[];
   policy: Record<string, number>;
   preview: TokenBudgetPreview;
@@ -79,6 +82,9 @@ export function TokenBudgetEditor({
   );
   const activePolicy = customEnabled ? policy : DEFAULT_WINDOW_BUDGET_NUMBERS;
   const safeFields = Array.isArray(fields) ? fields : [];
+  const hasAdvancedFields = safeFields.some(
+    (field) => !field.hiddenFromDebug && field.tier !== 'simple',
+  );
   const filesPinned = customEnabled && isFilesPerMutationPinned(policy);
   const verificationPinned =
     customEnabled && isVerificationChecksPinned(policy);
@@ -250,7 +256,7 @@ export function TokenBudgetEditor({
         onToggle={(event) =>
           setAdvancedOpen((event.currentTarget as HTMLDetailsElement).open)
         }
-        hidden={safeFields.length === 0}
+        hidden={!hasAdvancedFields}
       >
         <summary>Advanced</summary>
         {advancedOpen ? (

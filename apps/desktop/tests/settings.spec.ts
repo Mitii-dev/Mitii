@@ -11,6 +11,7 @@ import {
   settingsToMitiiConfigFile,
   settingsToEngineEnv,
 } from '../src/shared/settings.js';
+import { DEFAULT_WINDOW_BUDGET_NUMBERS } from '@mitii/ui-core';
 import { catalogNumberDescriptors } from '../src/renderer/settings/policyCatalog.js';
 
 describe('desktop settings', () => {
@@ -156,7 +157,7 @@ describe('desktop settings', () => {
     expect(catalogEntriesForPrefix('autocomplete').length).toBeGreaterThan(5);
   });
 
-  it.each(['tokenBudget', 'loopPolicy'])(
+  it.each(['tokenBudget', 'loopPolicy', 'v8LoopPolicy'] as const)(
     '%s descriptors are a subset of the catalog',
     (prefix) => {
       const descriptors = catalogNumberDescriptors(prefix);
@@ -164,19 +165,64 @@ describe('desktop settings', () => {
       for (const descriptor of descriptors) {
         const entry = SETTINGS_CATALOG[`mitii.${prefix}.${descriptor.key}`];
         expect(entry, descriptor.key).toBeTruthy();
-        expect(descriptor.defaultValue).toBe(entry?.default);
+        expect(descriptor.min, descriptor.key).toBe(entry?.minimum ?? 0);
+        if (prefix !== 'tokenBudget') {
+          expect(descriptor.defaultValue).toBe(entry?.default);
+        }
       }
     },
   );
 
-  it('desktop descriptors keep their group and tier presentation', () => {
+  it('tokenBudget defaults match the shared ship baseline used by VS Code', () => {
+    for (const descriptor of catalogNumberDescriptors('tokenBudget')) {
+      expect(descriptor.defaultValue, descriptor.key).toBe(
+        DEFAULT_WINDOW_BUDGET_NUMBERS[descriptor.key],
+      );
+    }
+    const byKey = new Map(
+      catalogNumberDescriptors('tokenBudget').map((d) => [d.key, d]),
+    );
+    expect(byKey.get('outputRatio')?.defaultValue).toBe(0.2);
+    expect(byKey.get('outputMinTokens')?.defaultValue).toBe(10_240);
+  });
+
+  it('tokenBudget keeps only the five Simple keys out of Advanced', () => {
     const budget = catalogNumberDescriptors('tokenBudget');
     expect(budget).toHaveLength(108);
-    expect(budget.every((d) => d.group === 'Token budget' && d.tier === 'simple')).toBe(true);
+    expect(budget.every((d) => d.group === 'Token budget')).toBe(true);
+    expect(budget.filter((d) => d.tier === 'simple').map((d) => d.key).sort()).toEqual(
+      ['conversationShare', 'outputRatio', 'planShare', 'repositoryShare', 'skillsShare'],
+    );
+    const advanced = budget.filter(
+      (d) => d.tier !== 'simple' && !d.hiddenFromDebug,
+    );
+    expect(advanced.length).toBe(108 - 5 - 3);
+    expect(
+      budget.filter((d) => d.hiddenFromDebug).map((d) => d.key).sort(),
+    ).toEqual(['maxModelCallsMax', 'maxModelCallsMin', 'maxModelCallsPerUsable']);
+  });
+
+  it('loopPolicy / v8LoopPolicy descriptors split Simple and Advanced', () => {
     const loop = catalogNumberDescriptors('loopPolicy');
     expect(loop.every((d) => d.group === 'Loop thresholds')).toBe(true);
+    expect(
+      loop.filter((d) => d.tier === 'simple').map((d) => d.key).sort(),
+    ).toEqual(
+      [
+        'explorationRereadMinCalls',
+        'explorationRereadRatio',
+        'maxExplorationStallNudges',
+        'maxReadOnlyMutationRetryAttempts',
+        'maxReadOnlyToolTurnsAfterMutationNudge',
+        'maxReadOnlyToolTurnsBeforeMutationNudge',
+      ].sort(),
+    );
     expect(loop.some((d) => d.tier === 'advanced')).toBe(true);
-    expect(loop.some((d) => d.tier === 'simple')).toBe(true);
+    const v8 = catalogNumberDescriptors('v8LoopPolicy');
+    expect(v8).toHaveLength(8);
+    expect(v8.every((d) => d.group === 'V8 engine')).toBe(true);
+    expect(v8.filter((d) => d.tier === 'simple')).toHaveLength(4);
+    expect(v8.filter((d) => d.tier === 'advanced')).toHaveLength(4);
   });
 
   it('folds engine.implementation into the catalog tree', () => {

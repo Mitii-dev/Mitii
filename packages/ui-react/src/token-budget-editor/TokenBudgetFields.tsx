@@ -16,7 +16,11 @@ export interface TokenBudgetFieldsProps {
   onChange: (key: string, value: number) => void;
 }
 
-/** Grouped number fields for host-provided policy descriptors. */
+/**
+ * Grouped number fields for host-provided policy descriptors. These render in
+ * the Advanced section, so `tier: 'simple'` descriptors are skipped (the
+ * editor already shows them as Simple sliders) as are `hiddenFromDebug` ones.
+ */
 export function TokenBudgetFields({
   fields,
   policy,
@@ -28,7 +32,7 @@ export function TokenBudgetFields({
   const groups = useMemo(() => {
     const next = new Map<string, TokenBudgetFieldDescriptor[]>();
     for (const field of fields) {
-      if (field.hiddenFromDebug) continue;
+      if (field.hiddenFromDebug || field.tier === 'simple') continue;
       const group = next.get(field.group) ?? [];
       group.push(field);
       next.set(field.group, group);

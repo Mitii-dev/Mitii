@@ -20,22 +20,28 @@ import type {
 } from './protocol.js';
 import { TOKEN_BUDGET_PRESENTATION } from './tokenBudgetFieldPresentation.js';
 
+function windowBudgetDefaults(): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const key of Object.keys(TOKEN_BUDGET_PRESENTATION)) {
+    const value = DEFAULT_WINDOW_BUDGET_POLICY[key as keyof WindowBudgetPolicy];
+    if (typeof value === 'number') {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
 /**
  * Developer Token Budget fields: keys, bounds, and descriptions come from the
  * `@mitii/settings` catalog; presentation from `TOKEN_BUDGET_PRESENTATION`.
  * `defaultValue` is the SDK ship baseline (`DEFAULT_WINDOW_BUDGET_POLICY`),
- * which may differ from the catalog default (see tokenBudgetFieldsFromCatalog
- * tests for the tracked drift).
+ * passed as `options.defaults`; it may differ from the catalog default (see
+ * `packages/settings/README.md` for the tracked drift).
  */
 export const TOKEN_BUDGET_FIELDS: readonly TokenBudgetFieldDescriptor[] =
   projectNumberFields('tokenBudget', TOKEN_BUDGET_PRESENTATION, {
     tier: () => 'advanced',
-  }).map((field) => {
-    const baseline =
-      DEFAULT_WINDOW_BUDGET_POLICY[field.key as keyof WindowBudgetPolicy];
-    return typeof baseline === 'number'
-      ? { ...field, defaultValue: baseline }
-      : field;
+    defaults: windowBudgetDefaults(),
   });
 
 export function tokenBudgetResetKeys(): readonly string[] {

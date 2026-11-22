@@ -131,9 +131,7 @@ export function DebugTab({ props, view }: { props: SettingsPanelProps; view: Set
             </button>
           </div>
           <TokenBudgetEditor
-            fields={ui.tokenBudget.fields.filter(
-              (field) => !field.hiddenFromDebug,
-            )}
+            fields={ui.tokenBudget.fields}
             renderFieldHelp={(field, value) => (
               <TokenBudgetFieldHelp
                 field={field}
@@ -193,9 +191,7 @@ export function DebugTab({ props, view }: { props: SettingsPanelProps; view: Set
           </div>
           {ui.loopPolicy.enabled ? (
             <LoopPolicyEditor
-              fields={ui.loopPolicy.fields.filter(
-                (f) => f.tier !== 'advanced',
-              )}
+              fields={ui.loopPolicy.fields}
               thresholds={ui.loopPolicy.thresholds}
               bandThresholds={ui.loopPolicy.bandThresholds}
               customEnabled={ui.loopPolicy.enabled}
@@ -249,6 +245,7 @@ export function DebugTab({ props, view }: { props: SettingsPanelProps; view: Set
           </div>
           {ui.v8LoopPolicy.enabled ? (
             <LoopPolicyEditor
+              idPrefix="v8LoopPolicy"
               fields={ui.v8LoopPolicy.fields}
               thresholds={ui.v8LoopPolicy.thresholds}
               bandThresholds={ui.v8LoopPolicy.bandThresholds}

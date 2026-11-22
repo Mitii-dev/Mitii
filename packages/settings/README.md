@@ -30,6 +30,36 @@ Single source of truth for the `mitii.*` settings catalog shared by Mitii Deskto
 - Kind is inferred (`integer` type → `int`, `maximum <= 1` → `ratio`, else `number`) unless the overlay says otherwise. `enabled` and non-numeric entries are skipped.
 - Failure reasons (`ProjectNumberFieldsError.reason`): `unknown_overlay_key`, `unknown_default_key`, `invalid_overlay`, `invalid_descriptor`.
 
+### Known default drift (catalog vs host ship baseline)
+
+The catalog `default` is the value written to `package.json` and to Desktop's nested defaults. The VS Code host instead passes the SDK runtime baseline as `options.defaults`, so editor `defaultValue` (shown as "Standard: …") differs from the catalog default for the keys below. The catalog is intentionally **not** rewritten to hide this; each host test pins the exact set (`KNOWN_DEFAULT_DRIFT`) and fails on any new or removed drift. Remove a row only when the catalog default is aligned with the SDK value.
+
+`tokenBudget` (baseline: `DEFAULT_WINDOW_BUDGET_POLICY`; pinned in `apps/vscode/tests/tokenBudgetFieldsFromCatalog.test.ts`):
+
+| Key | Catalog | SDK |
+|---|---|---|
+| `outputRatio` | 0.1 | 0.2 |
+| `outputMinTokens` | 1024 | 10240 |
+| `outputWindowCapRatio` | 0.2 | 0.35 |
+| `visiblePlanMinUsableTokens` | 40000 | 8192 |
+| `changeImpactMinUsableTokens` | 40000 | 8192 |
+| `maxSkillsBase` | 1 | 2 |
+| `maxSkillsPerUsable` | 30000 | 12000 |
+
+`loopPolicy` (baseline: `AGENT_ENGINE_THRESHOLDS`; pinned in `apps/vscode/tests/loopPolicyFieldsFromCatalog.test.ts`). Window-band thresholds can shift the live value further; these are the static ship baselines:
+
+| Key | Catalog | SDK |
+|---|---|---|
+| `explorationRereadMinCalls` | 8 | 6 |
+| `maxReadOnlyToolTurnsBeforeMutationNudge` | 6 | 4 |
+| `maxUnfulfilledExecuteRecoveries` | 1 | 2 |
+| `defaultPreferredBatchSize` | 8 | 12 |
+| `defaultMaxPatchesPerCall` | 16 | 24 |
+
+`v8LoopPolicy` has no drift (`V8_ENGINE_THRESHOLDS` equals the catalog); it is pinned empty in `apps/vscode/tests/v8LoopPolicyFieldsFromCatalog.test.ts`.
+
+Desktop (renderer) cannot import the SDK. Its `tokenBudget` descriptors take `defaults` from the UI-core window-budget baseline (equal to the SDK values above), so `defaultValue` matches VS Code; its `loopPolicy` / `v8LoopPolicy` descriptors keep catalog defaults, so the five `loopPolicy` rows above also differ on Desktop.
+
 A catalog `default` of `null` means "unset": it is kept in nested defaults and omitted from the VS Code manifest.
 
 ## Exports

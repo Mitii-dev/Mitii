@@ -5,115 +5,43 @@ import {
   type V8EngineThresholds,
   type V8EngineThresholdsOverrides,
 } from '@mitii/sdk';
+import { projectNumberFields } from '@mitii/settings';
 import type * as vscode from 'vscode';
 
 import type { TokenBudgetFieldDescriptor } from './protocol.js';
+import { V8_LOOP_POLICY_PRESENTATION } from './v8LoopPolicyFieldPresentation.js';
 
 export type V8LoopPolicyFieldDescriptor = TokenBudgetFieldDescriptor;
 
-const V8_LOOP_POLICY_FIELD_SPECS: readonly Omit<
-  V8LoopPolicyFieldDescriptor,
-  'defaultValue'
->[] = [
-  {
-    key: 'maxReadOnlyTurnsBeforeMutationNudge',
-    group: 'V8 mutation pressure',
-    label: 'Read turns before mutation nudge',
-    description:
-      'Soft nudge after this many readonly tool turns with zero mutations (v8-engine).',
-    kind: 'int',
-    min: 1,
-    max: 32,
-    step: 1,
-    tier: 'simple',
-  },
-  {
-    key: 'toolLoopSoftIdentical',
-    group: 'V8 tool loop',
-    label: 'Identical-tool soft nudge',
-    description: 'Identical name+args batches before a soft change-approach notice.',
-    kind: 'int',
-    min: 1,
-    max: 12,
-    step: 1,
-    tier: 'simple',
-  },
-  {
-    key: 'toolLoopHardIdentical',
-    group: 'V8 tool loop',
-    label: 'Identical-tool force-final',
-    description: 'Identical batches before forcing a final answer.',
-    kind: 'int',
-    min: 2,
-    max: 20,
-    step: 1,
-    tier: 'simple',
-  },
-  {
-    key: 'maxTruncationRecoveries',
-    group: 'V8 recoveries',
-    label: 'Truncation recoveries',
-    description:
-      'Provider length recoveries; resets when any tool call appears.',
-    kind: 'int',
-    min: 0,
-    max: 8,
-    step: 1,
-    tier: 'simple',
-  },
-  {
-    key: 'maxReasoningCharsWithoutProgress',
-    group: 'V8 recoveries',
-    label: 'Reasoning progress budget',
-    description:
-      'Honest abort when reasoning alone exceeds this with no content or tools.',
-    kind: 'int',
-    min: 1000,
-    max: 100_000,
-    step: 500,
-    tier: 'advanced',
-  },
-  {
-    key: 'maxUnfulfilledExecuteRecoveries',
-    group: 'V8 recoveries',
-    label: 'Unfulfilled-execute recoveries',
-    description: 'Text-only turns toward apply_patch when mutation is required.',
-    kind: 'int',
-    min: 0,
-    max: 8,
-    step: 1,
-    tier: 'advanced',
-  },
-  {
-    key: 'maxContinueOverrides',
-    group: 'V8 recoveries',
-    label: 'Continue overrides',
-    description: 'User Continue overrides after stall / loop_detected walls.',
-    kind: 'int',
-    min: 0,
-    max: 12,
-    step: 1,
-    tier: 'advanced',
-  },
-  {
-    key: 'preferredBatchSize',
-    group: 'V8 mutation batch',
-    label: 'Preferred patch batch size',
-    description: 'Preferred apply_patch batch sizing hint.',
-    kind: 'int',
-    min: 1,
-    max: 32,
-    step: 1,
-    tier: 'advanced',
-  },
-];
+function thresholdDefaults(
+  thresholds: V8EngineThresholds,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const key of Object.keys(V8_LOOP_POLICY_PRESENTATION)) {
+    const value = thresholds[key as keyof V8EngineThresholds];
+    if (typeof value === 'number') {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+/**
+ * V8 engine fields: keys, bounds, and descriptions come from the
+ * `@mitii/settings` catalog; presentation from `V8_LOOP_POLICY_PRESENTATION`.
+ * `defaultValue` is the SDK threshold baseline (`V8_ENGINE_THRESHOLDS`).
+ */
+function fieldsForThresholds(
+  thresholds: V8EngineThresholds,
+): V8LoopPolicyFieldDescriptor[] {
+  return projectNumberFields('v8LoopPolicy', V8_LOOP_POLICY_PRESENTATION, {
+    tier: () => 'advanced',
+    defaults: thresholdDefaults(thresholds),
+  });
+}
 
 export const V8_LOOP_POLICY_FIELDS: readonly V8LoopPolicyFieldDescriptor[] =
-  V8_LOOP_POLICY_FIELD_SPECS.map((field) => ({
-    ...field,
-    defaultValue:
-      V8_ENGINE_THRESHOLDS[field.key as keyof V8EngineThresholds],
-  }));
+  fieldsForThresholds(V8_ENGINE_THRESHOLDS);
 
 export function v8LoopPolicyResetKeys(): readonly string[] {
   return [
@@ -190,10 +118,6 @@ export function readV8LoopPolicySettings(
       rangeLabel: bandDef.rangeLabel,
       contextWindowTokens: resolved.contextWindowTokens,
     },
-    fields: V8_LOOP_POLICY_FIELD_SPECS.map((field) => ({
-      ...field,
-      defaultValue:
-        bandOnly.thresholds[field.key as keyof V8EngineThresholds],
-    })),
+    fields: fieldsForThresholds(bandOnly.thresholds),
   };
 }

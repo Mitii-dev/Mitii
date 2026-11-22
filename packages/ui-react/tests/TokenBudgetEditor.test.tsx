@@ -21,6 +21,28 @@ const fields: TokenBudgetFieldDescriptor[] = [
     min: 0,
     max: 1,
     step: 0.01,
+    tier: 'advanced',
+  },
+  {
+    key: 'repositoryShare',
+    group: 'Usable-input shares',
+    label: 'Repository share',
+    description: 'Simple slider key.',
+    kind: 'ratio',
+    min: 0,
+    max: 1,
+    step: 0.01,
+    tier: 'simple',
+  },
+  {
+    key: 'maxModelCallsMin',
+    group: 'Run caps',
+    label: 'Model calls (min)',
+    description: 'Hidden from Debug.',
+    kind: 'int',
+    min: 1,
+    step: 1,
+    hiddenFromDebug: true,
   },
 ];
 
@@ -102,6 +124,34 @@ describe('TokenBudgetEditor', () => {
     fireEvent.change(input, { target: { value: '5' } });
     fireEvent.blur(input);
     expect(onPolicyChange).toHaveBeenCalledWith({ compactionWarnRatio: 1 });
+  });
+
+  it('skips simple-tier and hiddenFromDebug descriptors in Advanced', () => {
+    const { container } = renderEditor({ fields });
+    const details = container.querySelector(
+      'details.token-budget-advanced',
+    ) as HTMLDetailsElement;
+    details.open = true;
+    fireEvent(details, new Event('toggle'));
+    expect(
+      document.getElementById('tokenBudget.compactionWarnRatio'),
+    ).not.toBeNull();
+    expect(screen.queryByText('Usable-input shares')).toBeNull();
+    expect(screen.queryByText('Run caps')).toBeNull();
+    expect(screen.queryByText('Repository share')).toBeNull();
+    // The Simple slider with the same key still renders exactly once.
+    expect(
+      document.querySelectorAll('[id="tokenBudget.repositoryShare"]'),
+    ).toHaveLength(1);
+  });
+
+  it('hides Advanced when every descriptor is simple or hidden', () => {
+    const { container } = renderEditor({ fields: fields.slice(1) });
+    expect(
+      container
+        .querySelector('details.token-budget-advanced')!
+        .hasAttribute('hidden'),
+    ).toBe(true);
   });
 
   it('shows descriptions inline when requested', () => {
