@@ -169,6 +169,16 @@ describe('desktop settings', () => {
     },
   );
 
+  it('desktop descriptors keep their group and tier presentation', () => {
+    const budget = catalogNumberDescriptors('tokenBudget');
+    expect(budget).toHaveLength(108);
+    expect(budget.every((d) => d.group === 'Token budget' && d.tier === 'simple')).toBe(true);
+    const loop = catalogNumberDescriptors('loopPolicy');
+    expect(loop.every((d) => d.group === 'Loop thresholds')).toBe(true);
+    expect(loop.some((d) => d.tier === 'advanced')).toBe(true);
+    expect(loop.some((d) => d.tier === 'simple')).toBe(true);
+  });
+
   it('folds engine.implementation into the catalog tree', () => {
     expect(DEFAULT_DESKTOP_SETTINGS.engine.implementation).toBe('v8');
     expect(getSettingAtPath(DEFAULT_DESKTOP_SETTINGS, 'agent.engineImplementation')).toBeUndefined();

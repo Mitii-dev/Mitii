@@ -12,6 +12,23 @@ export {
   type CatalogKeyedEntry,
 } from './catalog.js';
 export {
+  NUMBER_FIELD_TIERS,
+  PROJECT_NUMBER_FIELDS_REASONS,
+  ProjectNumberFieldsError,
+  numberFieldDescriptorSchema,
+  numberFieldPresentationMapSchema,
+  numberFieldPresentationSchema,
+  type NumberFieldDescriptor,
+  type NumberFieldKind,
+  type NumberFieldPresentation,
+  type NumberFieldPresentationMap,
+  type ProjectNumberFieldsReason,
+} from './contracts/numberFieldDescriptor.js';
+export {
+  projectNumberFields,
+  type ProjectNumberFieldsOptions,
+} from './projectNumberFields.js';
+export {
   DEFAULT_MITII_SETTINGS,
   buildDefaultSettings,
   type MitiiSettings,

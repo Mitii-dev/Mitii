@@ -6,4 +6,4 @@
 - `profiles/` — provider profile gallery / create wizard / editor and `useProfileSettingsModel`.
 - Shared primitives: `fields.tsx`, `pageCopy.ts`, `policyCatalog.ts`, `nomicEmbed.ts`.
 - Settings DTOs and persistence stay in `shared/settings.ts` and the engine.
-- `policyCatalog.ts` derives tokenBudget / loopPolicy editor descriptors directly from `@mitii/settings` (`catalogEntriesForPrefix`).
+- `policyCatalog.ts` wraps `projectNumberFields` from `@mitii/settings` to build tokenBudget / loopPolicy editor descriptors (Desktop supplies only the group and tier fallbacks).

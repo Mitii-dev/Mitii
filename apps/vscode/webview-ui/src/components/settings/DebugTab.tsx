@@ -131,7 +131,9 @@ export function DebugTab({ props, view }: { props: SettingsPanelProps; view: Set
             </button>
           </div>
           <TokenBudgetEditor
-            fields={[]}
+            fields={ui.tokenBudget.fields.filter(
+              (field) => !field.hiddenFromDebug,
+            )}
             renderFieldHelp={(field, value) => (
               <TokenBudgetFieldHelp
                 field={field}

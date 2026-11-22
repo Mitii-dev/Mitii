@@ -18,13 +18,23 @@ Single source of truth for the `mitii.*` settings catalog shared by Mitii Deskto
 | Catalog defaults | `DEFAULT_MITII_SETTINGS` (nested, host-neutral) |
 | Catalog defaults + `DESKTOP_DEFAULT_OVERRIDES` | `DEFAULT_DESKTOP_SETTINGS` / `DesktopSettings` (Desktop compat profile: Ollama provider defaults only; `DesktopSettings` is `MitiiSettings`, and the engine choice lives at `engine.implementation`) |
 | Flat `mitii.a.b` keys | Nested `{ a: { b } }` via `nestFlatSettings`; back via `flattenNestedSettings` |
+| Catalog prefix + optional presentation overlay (+ optional baseline `defaults`) | `projectNumberFields(prefix, overlay, options)` → validated `NumberFieldDescriptor[]` for number-field editors |
 | Catalog + manifest properties | `catalogToContributesProperties`, `diffContributesProperties` (`missing` / `extra` / `changed`) |
+
+### Number-field projection
+
+`projectNumberFields` turns the numeric entries under a prefix (e.g. `tokenBudget`) into UI descriptors (`key`, `group`, `label`, `description`, `kind`, `min`, `max`, `step`, `defaultValue`, `tier`, `docsHref`, `hiddenFromDebug`). The descriptor shape is structurally identical to the UI token-budget descriptor, but this package does not import any UI package.
+
+- The catalog owns keys, `min`/`max`, and `description`. A presentation overlay (keyed by short key) may only add group, label, kind, step, tier, docsHref, hiddenFromDebug; overlay key order sets output order, remaining catalog keys follow.
+- `defaultValue` is the catalog default unless `options.defaults` supplies a host ship baseline (e.g. SDK runtime defaults). Baseline drift from the catalog is a host concern and is not rewritten here.
+- Kind is inferred (`integer` type → `int`, `maximum <= 1` → `ratio`, else `number`) unless the overlay says otherwise. `enabled` and non-numeric entries are skipped.
+- Failure reasons (`ProjectNumberFieldsError.reason`): `unknown_overlay_key`, `unknown_default_key`, `invalid_overlay`, `invalid_descriptor`.
 
 A catalog `default` of `null` means "unset": it is kept in nested defaults and omitted from the VS Code manifest.
 
 ## Exports
 
-Everything comes from the package root: contracts (`settingsCatalogSchema`, `SettingsCatalogEntry`, `parseSettingsCatalog`), catalog (`SETTINGS_CATALOG`, `catalogEntriesForPrefix`), defaults (`DEFAULT_MITII_SETTINGS`, `MitiiSettings`, `buildDefaultSettings`), Desktop profile (`DEFAULT_DESKTOP_SETTINGS`, `DesktopSettings`, `DESKTOP_DEFAULT_OVERRIDES`), nesting (`nestFlatSettings`, `getNestedSetting`, `setNestedSetting`, `flattenNestedSettings`), and VS Code projection helpers.
+Everything comes from the package root: contracts (`settingsCatalogSchema`, `SettingsCatalogEntry`, `parseSettingsCatalog`), catalog (`SETTINGS_CATALOG`, `catalogEntriesForPrefix`), defaults (`DEFAULT_MITII_SETTINGS`, `MitiiSettings`, `buildDefaultSettings`), Desktop profile (`DEFAULT_DESKTOP_SETTINGS`, `DesktopSettings`, `DESKTOP_DEFAULT_OVERRIDES`), nesting (`nestFlatSettings`, `getNestedSetting`, `setNestedSetting`, `flattenNestedSettings`), number-field projection (`projectNumberFields`, `numberFieldDescriptorSchema`, `NumberFieldDescriptor`, `ProjectNumberFieldsError`), and VS Code projection helpers.
 
 ## Adding or changing a setting
 

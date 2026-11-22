@@ -10,6 +10,7 @@ import type {
   WindowBudgetPolicyOverrides,
   WindowPolicy,
 } from '@mitii/sdk';
+import { projectNumberFields } from '@mitii/settings';
 import type * as vscode from 'vscode';
 
 import type {
@@ -17,23 +18,25 @@ import type {
   TokenBudgetPreview,
   TokenBudgetSettingsSnapshot,
 } from './protocol.js';
-import { TOKEN_BUDGET_FIELD_SPECS } from './tokenBudgetFieldSpecs.js';
+import { TOKEN_BUDGET_PRESENTATION } from './tokenBudgetFieldPresentation.js';
 
-const SIMPLE_TOKEN_BUDGET_KEYS = new Set([
-  'outputRatio',
-  'repositoryShare',
-  'conversationShare',
-  'planShare',
-  'skillsShare',
-]);
-
+/**
+ * Developer Token Budget fields: keys, bounds, and descriptions come from the
+ * `@mitii/settings` catalog; presentation from `TOKEN_BUDGET_PRESENTATION`.
+ * `defaultValue` is the SDK ship baseline (`DEFAULT_WINDOW_BUDGET_POLICY`),
+ * which may differ from the catalog default (see tokenBudgetFieldsFromCatalog
+ * tests for the tracked drift).
+ */
 export const TOKEN_BUDGET_FIELDS: readonly TokenBudgetFieldDescriptor[] =
-  TOKEN_BUDGET_FIELD_SPECS.map((field) => ({
-    ...field,
-    defaultValue:
-      DEFAULT_WINDOW_BUDGET_POLICY[field.key as keyof WindowBudgetPolicy],
-    tier: SIMPLE_TOKEN_BUDGET_KEYS.has(field.key) ? 'simple' : 'advanced',
-  }));
+  projectNumberFields('tokenBudget', TOKEN_BUDGET_PRESENTATION, {
+    tier: () => 'advanced',
+  }).map((field) => {
+    const baseline =
+      DEFAULT_WINDOW_BUDGET_POLICY[field.key as keyof WindowBudgetPolicy];
+    return typeof baseline === 'number'
+      ? { ...field, defaultValue: baseline }
+      : field;
+  });
 
 export function tokenBudgetResetKeys(): readonly string[] {
   return [
