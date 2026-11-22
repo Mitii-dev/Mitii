@@ -5,7 +5,9 @@ export default defineConfig({
   esbuild: { jsx: 'automatic' },
   resolve: { alias: {
     vscode: resolve(__dirname, 'tests/vscode.ts'),
-    '@mitii/live-token-budget': resolve(__dirname, '../src/liveTokenBudgetPreview.ts'),
+    '@mitii/ui-core': resolve(__dirname, '../../../packages/ui-core/src/index.ts'),
+    '@mitii/ui-react': resolve(__dirname, '../../../packages/ui-react/src/index.ts'),
+    '@mitii/ui-protocol': resolve(__dirname, '../../../packages/ui-protocol/src/index.ts'),
     '@mitii/v8': resolve(__dirname, '../../../packages/v8/src/index.ts'),
     '@mitii/sdk': resolve(__dirname, '../../../packages/sdk/src/index.ts'),
     '@mitii/host': resolve(__dirname, '../../../packages/host/src/index.ts'),

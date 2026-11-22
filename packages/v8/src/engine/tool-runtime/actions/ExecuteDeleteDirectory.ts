@@ -5,6 +5,8 @@ import { MutationError } from "../internal/mutation";
 import { PathContainmentError } from "../internal/PathContainment";
 import { deleteDirectoryInputSchema } from "../internal/ToolCatalog";
 import { describeCaughtError } from "../internal/describeCaughtError";
+import { assertHardDeniedMutationPath } from "./AssertHardDeniedMutationPath";
+import { assertMutationPathMatchesGrant } from "./AssertMutationPathMatchesGrant";
 import { resolveMutationPathScopes } from "./ResolveMutationPathScopes";
 
 export async function executeDeleteDirectory(params: {
@@ -28,10 +30,17 @@ export async function executeDeleteDirectory(params: {
   const parsed = deleteDirectoryInputSchema.parse(params.arguments);
   const recursive = parsed.recursive ?? true;
 
+  assertHardDeniedMutationPath(parsed.path);
+  assertMutationPathMatchesGrant({
+    relativePath: parsed.path,
+    grant: params.grant,
+  });
+
   try {
     const result = await params.transactions.deleteDirectory({
       workspaceRoot: params.workspaceRoot,
       pathScopes: resolveMutationPathScopes(params.grant),
+      extraAllowedRoots: params.grant.extraAllowedRoots,
       fileSystem: params.fileSystem,
       path: parsed.path,
       recursive,

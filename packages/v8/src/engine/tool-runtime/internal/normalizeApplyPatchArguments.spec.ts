@@ -50,6 +50,37 @@ describe("normalizeApplyPatchArguments", () => {
     expect(normalizeApplyPatchArguments(input)).toEqual(input);
   });
 
+  it("rewrites github/… paths to .github/…", () => {
+    const normalized = normalizeApplyPatchArguments({
+      patches: [
+        {
+          path: "github/workflows/ci.yml",
+          oldText: "on: push",
+          newText: "on: [push, pull_request]",
+        },
+        {
+          path: "github/CODEOWNERS",
+          oldText: "* @team",
+          newText: "* @owners",
+        },
+      ],
+    });
+    expect(normalized).toEqual({
+      patches: [
+        {
+          path: ".github/workflows/ci.yml",
+          oldText: "on: push",
+          newText: "on: [push, pull_request]",
+        },
+        {
+          path: ".github/CODEOWNERS",
+          oldText: "* @team",
+          newText: "* @owners",
+        },
+      ],
+    });
+  });
+
   it("drops expectedHash null so gemma-style patches validate (billbuddy headless run)", () => {
     const normalized = normalizeApplyPatchArguments({
       patches: [
@@ -103,6 +134,39 @@ describe("normalizeApplyPatchArguments", () => {
           replaceAll: true,
         },
       ],
+    });
+  });
+
+  it("promotes filePath / file aliases onto path", () => {
+    expect(
+      normalizeApplyPatchArguments({
+        patches: [
+          {
+            filePath: "src/routes/login.js",
+            oldText: "",
+            newText: "export {}",
+          },
+        ],
+      }),
+    ).toEqual({
+      patches: [
+        {
+          filePath: "src/routes/login.js",
+          path: "src/routes/login.js",
+          oldText: "",
+          newText: "export {}",
+        },
+      ],
+    });
+
+    expect(
+      normalizeApplyPatchArguments({
+        file: "src/a.ts",
+        oldText: "a",
+        newText: "b",
+      }),
+    ).toEqual({
+      patches: [{ path: "src/a.ts", oldText: "a", newText: "b" }],
     });
   });
 });

@@ -21,7 +21,9 @@ Workspace Indexing scans selected workspace files and produces the artifact revi
 ws-indexing-pipeline/
   WorkspaceIndexingPipeline.ts
   WorkspaceIndexingFileSelector.ts
-  WorkspaceIndexingFileProcessor.ts
+  WorkspaceIndexingFileProcessor.ts        (process() orchestration facade)
+  WorkspaceIndexingFileFreshness.ts        (catalog/content-hash unchanged-file short-circuit)
+  WorkspaceIndexingFileResultBuilders.ts   (per-file result, warning, failed, cancelled builders)
   WorkspaceIndexingRequestNormalizer.ts
   WorkspaceIndexingRootFinalizer.ts
   schema.ts

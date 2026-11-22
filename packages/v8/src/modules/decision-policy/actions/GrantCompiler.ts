@@ -30,6 +30,8 @@ export function compileGrant(params: {
   approvalMode?: ApprovalMode;
   allowWebSearch?: boolean;
   windowPolicy?: WindowPolicy;
+  /** When set, stamped onto the grant for MCP tool scoping. */
+  requiredMcpServerIds?: readonly string[];
 }): CompiledGrantResult {
   const grantResult = buildToolGrant({
     mode: params.mode,
@@ -48,12 +50,25 @@ export function compileGrant(params: {
     message: params.message,
   });
 
+  const attachIds = (params.requiredMcpServerIds ?? [])
+    .map((id) => id.trim())
+    .filter((id) => id.length > 0)
+    .slice(0, 5);
+  const toolGrant =
+    attachIds.length > 0
+      ? {
+          ...grantResult.toolGrant,
+          allowedMcpServerIds: attachIds,
+        }
+      : grantResult.toolGrant;
+
   return {
-    toolGrant: grantResult.toolGrant,
+    toolGrant,
     verification: verificationResult.verification,
     reasonCodes: [
       ...grantResult.reasonCodes,
       ...verificationResult.reasonCodes,
+      ...(attachIds.length > 0 ? (["mcp_attach_required"] as const) : []),
     ],
   };
 }

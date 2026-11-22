@@ -56,6 +56,29 @@ describe('runReport', () => {
     expect(details).toContain('/workspace/.mitii/logs/thread.jsonl');
   });
 
+  it('explains provider infrastructure failures distinctly from agent logic', () => {
+    const result = {
+      status: 'failed',
+      error: {
+        code: 'provider_unavailable',
+        message: 'fetch failed',
+      },
+      reasonCodes: [
+        'provider_failed',
+        'provider_infrastructure_unavailable',
+      ],
+      usage: {
+        modelCalls: 1,
+        toolCalls: 0,
+        loopIterations: 1,
+      },
+    } as AgentRunResult;
+
+    const details = formatVisibleFailureDetails({ result, events: [] });
+    expect(details).toContain('Infrastructure:');
+    expect(details).toContain('not an agent logic failure');
+  });
+
   it('explains prompt construction overflow failures', () => {
     const result = {
       status: 'failed',

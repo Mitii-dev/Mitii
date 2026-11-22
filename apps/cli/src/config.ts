@@ -11,6 +11,11 @@ import {
 } from './loopPolicy.js';
 
 export type { MitiiLoopPolicyConfig };
+export {
+  CLI_CURATED_CONFIG_KEYS,
+  CLI_CURATED_TO_CATALOG,
+  type CliCuratedConfigKey,
+} from './settingsProjection.js';
 
 export interface MitiiHostConfig {
   provider?: HostProviderType;
@@ -27,6 +32,11 @@ export interface MitiiHostConfig {
   /** Never read API keys from config files — env / SecretStorage only. */
   workspaceId?: string;
   defaultMode?: 'ask' | 'plan' | 'agent';
+  /**
+   * Explicit context window for the run LLM (tokens). When unset, CLI infers
+   * from MITII_CONTEXT_WINDOW / model tags / provider defaults.
+   */
+  contextWindowTokens?: number;
   /**
    * Optional lab loop/stall overrides (power users / benchmarks).
    * Leave unset or enabled:false for shipped window-band standards.
@@ -99,8 +109,27 @@ function parseConfigObject(raw: Record<string, unknown>): MitiiHostConfig {
       safe.defaultMode === 'agent'
         ? safe.defaultMode
         : undefined,
+    contextWindowTokens:
+      typeof safe.contextWindowTokens === 'number' &&
+      Number.isFinite(safe.contextWindowTokens) &&
+      safe.contextWindowTokens > 0
+        ? Math.floor(safe.contextWindowTokens)
+        : undefined,
     loopPolicy: parseLoopPolicyConfig(safe.loopPolicy),
   };
+}
+
+/** Workspace id used when `.mitii/config.json` does not set `workspaceId`. */
+export const DEFAULT_CLI_WORKSPACE_ID = 'cli_workspace';
+
+/**
+ * Single source of truth for the CLI workspace id. Agent runs (ports),
+ * memory capture, and `mitii memory` must all resolve through this.
+ */
+export function resolveCliWorkspaceId(
+  config: Pick<MitiiHostConfig, 'workspaceId'>,
+): string {
+  return config.workspaceId ?? DEFAULT_CLI_WORKSPACE_ID;
 }
 
 /**
@@ -167,6 +196,9 @@ export function saveMitiiHostConfig(
   }
   if (merged.workspaceId) payload.workspaceId = merged.workspaceId;
   if (merged.defaultMode) payload.defaultMode = merged.defaultMode;
+  if (merged.contextWindowTokens !== undefined) {
+    payload.contextWindowTokens = merged.contextWindowTokens;
+  }
   const loopPolicyPayload = serializeLoopPolicyConfig(merged.loopPolicy);
   if (loopPolicyPayload) payload.loopPolicy = loopPolicyPayload;
 

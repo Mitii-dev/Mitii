@@ -1,4 +1,5 @@
 import type { DiagnosticItem, DiagnosticsPort } from "../contracts";
+import type { DiagnosticsSettleOptions } from "../contracts/ports/DiagnosticsPort";
 
 export class InMemoryDiagnosticsAdapter implements DiagnosticsPort {
   constructor(private readonly items: DiagnosticItem[] = []) {}
@@ -15,5 +16,12 @@ export class InMemoryDiagnosticsAdapter implements DiagnosticsPort {
         (p) => item.path === p || item.path.startsWith(`${p}/`),
       ),
     );
+  }
+
+  /** In-memory adapters are already stable — settle is a no-op. */
+  public async settleDiagnostics(
+    _options: DiagnosticsSettleOptions,
+  ): Promise<void> {
+    return;
   }
 }

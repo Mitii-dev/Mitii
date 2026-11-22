@@ -1,6 +1,7 @@
 /**
  * Soft-parse Mitii facts.json without importing @mitii/v8.
  * Fail-closed: skip malformed rows; never throw on corrupt envelopes.
+ * Eligibility mirrors the main pipeline for shareable recall.
  */
 
 export interface SoftMemoryFact {
@@ -12,6 +13,8 @@ export interface SoftMemoryFact {
   files: string[];
   type?: string;
   createdAt?: string;
+  expiresAt?: string;
+  isLatest: boolean;
 }
 
 export function softParseFactsEnvelope(raw: string): SoftMemoryFact[] {
@@ -54,6 +57,8 @@ function softParseFact(row: unknown): SoftMemoryFact | null {
     files: stringArray(obj.files),
     ...(typeof obj.type === 'string' ? { type: obj.type } : {}),
     ...(typeof obj.createdAt === 'string' ? { createdAt: obj.createdAt } : {}),
+    ...(typeof obj.expiresAt === 'string' ? { expiresAt: obj.expiresAt } : {}),
+    isLatest: obj.isLatest === false ? false : true,
   };
 }
 
@@ -64,17 +69,32 @@ function stringArray(value: unknown): string[] {
     .map((item) => item.trim());
 }
 
-/** Case-insensitive substring / tag / file match. */
+function isEligibleShareable(
+  fact: SoftMemoryFact,
+  nowMs: number,
+): boolean {
+  if (fact.privacy !== 'shareable') return false;
+  if (fact.isLatest === false) return false;
+  if (fact.expiresAt) {
+    const expires = Date.parse(fact.expiresAt);
+    if (Number.isFinite(expires) && expires <= nowMs) return false;
+  }
+  return true;
+}
+
+/** Case-insensitive substring / tag / file match over eligible shareable facts. */
 export function rankShareableFacts(
   facts: readonly SoftMemoryFact[],
   query: string,
   limit: number,
+  now: Date = new Date(),
 ): SoftMemoryFact[] {
   const q = query.trim().toLowerCase();
   if (!q) return [];
   const tokens = q.split(/\s+/).filter(Boolean);
+  const nowMs = now.getTime();
   const scored = facts
-    .filter((fact) => fact.privacy === 'shareable')
+    .filter((fact) => isEligibleShareable(fact, nowMs))
     .map((fact) => {
       const hay = [
         fact.content,

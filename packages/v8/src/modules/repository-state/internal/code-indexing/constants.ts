@@ -186,6 +186,12 @@ export const CODE_INDEXING_MIGRATION_SQL = {
       `ALTER TABLE symbol_refs ADD COLUMN reference_kind TEXT NOT NULL DEFAULT 'unknown'`,
     column_index:
       `ALTER TABLE symbol_refs ADD COLUMN column_index INTEGER`,
+    scip_symbol:
+      `ALTER TABLE symbol_refs ADD COLUMN scip_symbol TEXT`,
+    target_symbol:
+      `ALTER TABLE symbol_refs ADD COLUMN target_symbol TEXT`,
+    evidence_source:
+      `ALTER TABLE symbol_refs ADD COLUMN evidence_source TEXT NOT NULL DEFAULT 'parser'`,
   },
 } as const;
 

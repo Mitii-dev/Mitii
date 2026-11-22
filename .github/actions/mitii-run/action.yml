@@ -62,6 +62,11 @@ runs:
         OPENAI_API_KEY: ${{ env.OPENAI_API_KEY }}
         GEMINI_API_KEY: ${{ env.GEMINI_API_KEY }}
         MITII_API_KEY: ${{ env.MITII_API_KEY }}
+        MITII_PROVIDER: ${{ env.MITII_PROVIDER }}
+        MITII_MODEL: ${{ env.MITII_MODEL }}
+        MITII_BASE_URL: ${{ env.MITII_BASE_URL }}
+        MITII_CONTEXT_WINDOW: ${{ env.MITII_CONTEXT_WINDOW }}
+        MITII_LOGS_PATH: ${{ env.MITII_LOGS_PATH }}
         GH_TOKEN: ${{ env.GH_TOKEN || env.GITHUB_TOKEN }}
         MITII_PROMPT: ${{ inputs.prompt }}
         MITII_PROMPT_FILE: ${{ inputs.prompt-file }}

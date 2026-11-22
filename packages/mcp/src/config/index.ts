@@ -1,10 +1,22 @@
 export {
   MCP_BUILTIN_IDS,
+  MCP_CATALOG_META,
   createBuiltinMcpCatalog,
   createBuiltinMcpServers,
   isMcpBuiltinId,
+  migrateLegacyDatabaseMcpId,
+  LEGACY_DATABASE_MCP_ID_MAP,
   getBuiltinCatalogEntry,
+  getBuiltinCatalogMeta,
+  applyBuiltinSecrets,
+  validateBuiltinSecrets,
+  composeDbConnectionUri,
+  resolveReadonlyStdioLauncher,
+  resolveDbStdioLauncher,
   type McpBuiltinId,
+  type McpCatalogCategory,
+  type McpCatalogMeta,
+  type McpCatalogSecretField,
 } from './builtins.js';
 
 export {

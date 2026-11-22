@@ -3,13 +3,23 @@
  */
 export const DECISION_POLICY_SCHEMA_VERSION = 1 as const;
 
+/** Stable route identifiers; compare against these instead of inline strings. */
+export const EXECUTION_ROUTE = {
+  DIRECT_ANSWER: "direct_answer",
+  REPOSITORY_ANSWER: "repository_answer",
+  CLARIFY: "clarify",
+  DIAGNOSE: "diagnose",
+  PLAN: "plan",
+  EXECUTE: "execute",
+} as const;
+
 export const EXECUTION_ROUTES = [
-  "direct_answer",
-  "repository_answer",
-  "clarify",
-  "diagnose",
-  "plan",
-  "execute",
+  EXECUTION_ROUTE.DIRECT_ANSWER,
+  EXECUTION_ROUTE.REPOSITORY_ANSWER,
+  EXECUTION_ROUTE.CLARIFY,
+  EXECUTION_ROUTE.DIAGNOSE,
+  EXECUTION_ROUTE.PLAN,
+  EXECUTION_ROUTE.EXECUTE,
 ] as const;
 
 export const PLANNING_DEPTHS = ["none", "internal", "visible"] as const;
@@ -50,55 +60,22 @@ export const VERIFICATION_EVIDENCE_KINDS = [
   "lint",
   "build",
   "diff_review",
+  /** Executed test/smoke evidence; typecheck/build alone does not satisfy it. */
+  "behavior",
 ] as const;
 
-/** Tool catalog IDs Decision Policy may grant (must stay aligned with Tool Runtime). */
-export const READ_ONLY_TOOL_IDS = [
-  "describe_tool",
-  "list_directory",
-  "directory_tree",
-  "read_file",
-  "read_many_files",
-  "glob_files",
-  "file_metadata",
-  "search_files",
-  "read_diagnostics",
-  "read_git_status",
-  "read_git_log",
-  "read_git_show",
-  "read_git_branches",
-  "goto_definition",
-  "find_references",
-  "analyze_change_impact",
-  "emit_review_finding",
-  "run_readonly_command",
-  "read_package_scripts",
-  "sequential_thinking",
-  "get_current_time",
-  "convert_time",
-  "memory_graph_search",
-  "memory_graph_open",
-] as const;
-
-/** Process tools that may change workspace state through repository scripts. */
-export const PROCESS_TOOL_IDS = [
-  "run_command",
-] as const;
-
-/** Executable mutation tools for direct workspace mutations. */
-export const MUTATION_TOOL_IDS = [
-  "apply_patch",
-  "delete_file",
-  "delete_directory",
-  "move_file",
-  "memory_graph_update",
-] as const;
-
-/** External GitHub write tools (require `gh` auth in the environment). */
-export const GITHUB_MUTATION_TOOL_IDS = [
-  "create_github_issue",
-  "create_pull_request",
-] as const;
+export {
+  CHANGE_IMPACT_TOOL_IDS,
+  CODE_INTELLIGENCE_TOOL_IDS,
+  DIAGNOSTICS_TOOL_IDS,
+  GITHUB_MUTATION_TOOL_IDS,
+  GIT_MUTATION_TOOL_IDS,
+  MUTATION_TOOL_IDS,
+  NETWORK_TOOL_IDS,
+  OPT_IN_MUTATION_TOOL_IDS,
+  PROCESS_TOOL_IDS,
+  READ_ONLY_TOOL_IDS,
+} from "./toolIds";
 
 export const DECISION_REASON_CODES = [
   "mode_ask_readonly",
@@ -118,8 +95,22 @@ export const DECISION_REASON_CODES = [
   "long_prompt_internal_plan",
   /** Long structured execute briefs get a visible plan when the window can afford it. */
   "long_prompt_visible_plan",
+  /**
+   * Multi-deliverable / campaign-shaped Agent ask — force a visible plan so
+   * execute does not silently run an internal skeleton.
+   */
+  "multi_outcome_campaign_visible_plan",
   /** Prompt/engine should prefer analyze_change_impact before shared-surface mutations. */
   "change_impact_recommended",
+  /**
+   * Host reported code-navigation capability status for grant/prompt honesty
+   * (`available` | `degraded` | `unavailable`).
+   */
+  "code_navigation_available",
+  "code_navigation_degraded",
+  "code_navigation_unavailable",
+  /** Host injected a DiagnosticsPort for Problems / language-service diagnostics. */
+  "diagnostics_port_available",
   /** Execute route should capture scoped build/typecheck evidence before planning. */
   "preflight_build_recommended",
   /** Understanding risk was low but shared-scope repair elevated effective grant risk. */
@@ -135,6 +126,11 @@ export const DECISION_REASON_CODES = [
   "direct_knowledge_answer",
   "repository_grounded_answer",
   "mutation_execute",
+  /** Tool grant profile selected by BuildToolGrant (audit / debug). */
+  "grant_profile_none",
+  "grant_profile_network_only",
+  "grant_profile_readonly",
+  "grant_profile_agent_execute",
   /** Workspace-grounded bug report promoted to execute (may still be diagnose-first). */
   "workspace_bug_execute",
   /** Agent reported a runtime symptom (loading/hang) — diagnose with tools, not tool-less chat. */
@@ -143,6 +139,11 @@ export const DECISION_REASON_CODES = [
   "mutation_budget_standard",
   "mutation_budget_tight",
   "process_execution_granted",
+  /**
+   * User asked to fix DCO / Signed-off-by / rewrite commit metadata.
+   * Prefer `git_signoff_range` over apply_patch on workflow files.
+   */
+  "vcs_history_rewrite",
   "verification_required",
   "verification_not_required",
   /** Agent/ask asked to run tests or inspect pass/fail — diagnose with process tools. */
@@ -161,6 +162,11 @@ export const DECISION_REASON_CODES = [
   /** Request originated from an API client rather than an interactive user. */
   "api_origin",
   /**
+   * Intake turnKind is a continuation (steer / follow_up / continue / recover),
+   * not a fresh new request — prefer acting over re-clarifying.
+   */
+  "turn_continuation",
+  /**
    * Unattended origin would have clarified; Decision Policy continued with the
    * best-effort non-clarify route instead of suspending for interactive input.
    */
@@ -171,6 +177,38 @@ export const DECISION_REASON_CODES = [
   "policy_facts_safety_override",
   /** Heuristic vs ballot conflict with material grant impact → clarify. */
   "policy_facts_heuristic_conflict_clarify",
+  /**
+   * Soft read-only / soft plan / soft dump heuristics lost to a ≥70% LLM
+   * act/mutation ballot (same authority rule as SuperIntent; follow-ups too).
+   */
+  "policy_llm_authority_write",
+  /**
+   * RU Officer taskSize / planningHint drove plan-then-finish depth
+   * (medium+ → internal/visible; not route=plan).
+   */
+  "officer_task_size_plan",
+  /**
+   * Host attached MCP server(s) (`requiredMcpServerIds` / `@mcp:` / Database
+   * mode). Tool-less direct_answer is upgraded to repository_answer so pinned
+   * MCP tools stay available for follow-up queries.
+   */
+  "mcp_attach_required",
+  /**
+   * Small, clear agent-execute ask naming explicit file paths: plan and
+   * discovery are skipped (planningDepth none) and the mutate loop runs from
+   * the execution seed.
+   */
+  "fast_path_explicit_paths",
+  /**
+   * The ask names HTTP behavior, runnable scripts, or tests, so verification
+   * prefers executed test/smoke evidence over compile-only evidence.
+   */
+  "verification_behavior_evidence_preferred",
+  /**
+   * Agent-mode explicit "create X" ask: a plan-labelled ballot is overridden so
+   * the run executes and mutates instead of completing plan-only.
+   */
+  "agent_create_ask_execute",
 ] as const;
 
 export const DECISION_POLICY_ERROR_CODES = [

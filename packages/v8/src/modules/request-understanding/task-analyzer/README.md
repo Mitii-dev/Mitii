@@ -38,6 +38,10 @@ task-analyzer/
 - `TaskAnalyzer.analyze` validates and normalizes the request.
 - LLM hints can be merged by the parent Request Understanding pipeline, but the analyzer remains useful without an LLM.
 - Explicit artifact paths are treated as stronger evidence than inferred paths.
+- File cites require an identifier boundary after the extension so
+  `Class.method` / `this.property` are not mistaken for `*.c` / short extensions.
+- Hidden dirs (`.github/…`) are kept with the leading dot; bare `github/…`
+  cites normalize to `.github/…` (same rule as tool-runtime).
 - Recommendations are not permissions; they are consumed by Decision Policy and Planning.
 
 ## Ownership Boundaries
@@ -69,7 +73,7 @@ TaskAnalyzerInput -> TaskAnalysis:
 ```json
 {
   "userMessage": "I am in a React app. In src/LoginForm.tsx, when the user clicks the \"Sign in\" button, show a loading label and disable the button until the login request finishes. Keep the existing validation and error handling. Add or update a focused test if there is already a LoginForm test nearby.",
-  "intent": "SuperIntent result with primaryTaskIntent=implementation",
+  "intent": "SuperIntent result with primaryTaskIntent=feature",
   "referencedArtifacts": [{ "kind": "file", "name": "LoginForm.tsx", "path": "src/LoginForm.tsx" }]
 }
 ```
@@ -101,8 +105,8 @@ Task Analyzer output returns a result like this:
   "targets": [{ "kind": "file", "value": "src/LoginForm.tsx", "explicit": true }],
   "constraints": ["keep existing validation", "keep existing error handling"],
   "requestedOutcomes": ["button disabled while pending", "loading label visible"],
-  "estimatedFilesAffected": { "minimum": 1, "maximum": 2 },
-  "recommendsRepositoryDiscovery": true,
+  "estimatedFilesAffected": { "minimum": 1, "maximum": 1 },
+  "recommendsRepositoryDiscovery": false,
   "recommendsPlanning": false,
   "recommendsVerification": true,
   "recommendsTaskClarification": false,

@@ -1,3 +1,6 @@
+import { MemoryContentPolicy } from "../MemoryContentPolicy";
+import { embedMemoryTexts } from "../internal/embeddingCache";
+import { diversifyMemory } from "../internal/diversity";
 import type {
   MemoryEmbeddingPort,
   MemoryFact,
@@ -8,7 +11,7 @@ import { DEFAULT_CHARACTERS_PER_TOKEN } from "../defaults";
 import { MemoryBm25Index } from "../internal/bm25Index";
 import { extractEntitiesFromQuery } from "../internal/extractEntities";
 import { rankFactsByFileTargets } from "../internal/fileMatch";
-import { diversifyBySource, fuseRankedStreams } from "../internal/hybridFuse";
+import { fuseRankedStreams } from "../internal/hybridFuse";
 import { scoreMemoryRetention } from "../internal/retention";
 import { MemoryVectorIndex } from "../internal/vectorIndex";
 import { MEMORY_THRESHOLDS } from "../policy";
@@ -23,6 +26,7 @@ export function filterMemoryCandidates(params: {
   facts: readonly MemoryFact[];
   scope: MemoryScope;
   requesterUserId?: string;
+  origin?: "user" | "automation" | "delegated";
   now: Date;
 }): {
   candidates: MemoryFact[];
@@ -49,7 +53,7 @@ export function filterMemoryCandidates(params: {
       continue;
     }
 
-    if (fact.expiresAt && new Date(fact.expiresAt).getTime() <= params.now.getTime()) {
+    if (fact.validation === "needs_revalidation" || (fact.expiresAt && new Date(fact.expiresAt).getTime() <= params.now.getTime())) {
       omissions.push({ memoryId: fact.id, reason: "stale" });
       staleFiltered = true;
       continue;
@@ -57,9 +61,8 @@ export function filterMemoryCandidates(params: {
 
     if (
       fact.privacy === "private" &&
-      fact.scope.userId &&
-      params.requesterUserId &&
-      fact.scope.userId !== params.requesterUserId
+      (!fact.scope.userId || !params.requesterUserId ||
+        fact.scope.userId !== params.requesterUserId || params.origin === "automation" || params.origin === "delegated")
     ) {
       omissions.push({ memoryId: fact.id, reason: "privacy" });
       privacyFiltered = true;
@@ -70,7 +73,7 @@ export function filterMemoryCandidates(params: {
       continue;
     }
 
-    candidates.push(fact);
+    candidates.push(new MemoryContentPolicy().fact(fact));
   }
 
   return {
@@ -90,6 +93,7 @@ export async function scoreMemoryRelevance(params: {
   maxFacts: number;
   now: Date;
   embedding?: MemoryEmbeddingPort;
+  signal?: AbortSignal;
 }): Promise<{
   scored: ScoredMemory[];
   fileBoosted: boolean;
@@ -119,6 +123,7 @@ export async function scoreMemoryRelevance(params: {
     query: searchQuery,
     limit: retrieveDepth,
     embedding: params.embedding,
+    signal: params.signal,
   });
 
   const fused = fuseRankedStreams(
@@ -142,20 +147,8 @@ export async function scoreMemoryRelevance(params: {
     retrieveDepth,
   );
 
-  const diversified = diversifyBySource(
-    fused,
-    (id) => {
-      const fact = byId.get(id);
-      if (!fact) {
-        return id;
-      }
-      return fact.sourceIds[0] ?? fact.source ?? id;
-    },
-    retrieveDepth,
-  );
-
   const scored: ScoredMemory[] = [];
-  for (const hit of diversified) {
+  for (const hit of fused) {
     const fact = byId.get(hit.id);
     if (!fact) {
       continue;
@@ -182,7 +175,7 @@ export async function scoreMemoryRelevance(params: {
   });
 
   return {
-    scored,
+    scored: diversifyMemory(scored, retrieveDepth),
     fileBoosted: scored.some((entry) => entry.streams.includes("file")),
     hybrid: scored.some((entry) => entry.streams.includes("vector")),
     embeddingWarning: vector.warning,
@@ -194,45 +187,27 @@ async function searchVectorHits(params: {
   query: string;
   limit: number;
   embedding?: MemoryEmbeddingPort;
+  signal?: AbortSignal;
 }): Promise<{ ids: string[]; warning?: string }> {
   if (!params.embedding || params.facts.length === 0) {
     return { ids: [] };
   }
   try {
-    const queryVector = await params.embedding.embed(
-      params.query.slice(0, MEMORY_THRESHOLDS.embedMaxChars),
-    );
-    if (queryVector.length !== params.embedding.dimensions) {
-      return {
-        ids: [],
-        warning: "Memory embedding query dimension mismatch; using BM25 only.",
-      };
-    }
+    const texts = [params.query, ...params.facts.map(fact =>
+      [fact.title ?? "", fact.content, ...fact.concepts, ...fact.files].filter(Boolean).join(" "))]
+      .map(text => text.slice(0, MEMORY_THRESHOLDS.embedMaxChars));
+    const [queryVector, ...vectors] = await embedMemoryTexts(params.embedding, texts, params.signal);
     const index = new MemoryVectorIndex();
-    for (const fact of params.facts) {
-      const text = [fact.title ?? "", fact.content, ...fact.concepts, ...fact.files]
-        .filter(Boolean)
-        .join(" ")
-        .slice(0, MEMORY_THRESHOLDS.embedMaxChars);
-      const embedding = await params.embedding.embed(text);
-      if (embedding.length !== params.embedding.dimensions) {
-        continue;
-      }
-      index.add(fact.id, embedding);
-    }
+    params.facts.forEach((fact, i) => index.add(fact.id, vectors[i]));
     return {
       ids: index
         .search(queryVector, params.limit)
         .filter((hit) => hit.score >= MEMORY_THRESHOLDS.vectorMinScore)
         .map((hit) => hit.id),
     };
-  } catch (error) {
-    return {
-      ids: [],
-      warning: `Memory embedding failed: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    };
+  } catch {
+    params.signal?.throwIfAborted();
+    return { ids: [], warning: "Memory embeddings unavailable; using lexical and file retrieval." };
   }
 }
 

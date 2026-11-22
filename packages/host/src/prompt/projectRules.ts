@@ -8,6 +8,7 @@ export interface ProjectRuleBlock {
   priority: number;
 }
 
+/** Fallback maxima — prefer Window Budget `injection.projectRule*` when passed. */
 const MAX_RULE_CHARS = 12_000;
 const MAX_TOTAL_CHARS = 24_000;
 

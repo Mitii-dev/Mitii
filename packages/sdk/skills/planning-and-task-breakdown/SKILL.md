@@ -191,21 +191,21 @@ Create the `tasks/` directory if it does not exist. These paths are the conventi
 
 ## Task List
 
-### Phase 1: Foundation
+### Foundation
 - [ ] Task 1: ...
 - [ ] Task 2: ...
 
 ### Checkpoint: Foundation
 - [ ] Tests pass, builds clean
 
-### Phase 2: Core Features
+### Core Features
 - [ ] Task 3: ...
 - [ ] Task 4: ...
 
 ### Checkpoint: Core Features
 - [ ] End-to-end flow works
 
-### Phase 3: Polish
+### Polish
 - [ ] Task 5: ...
 - [ ] Task 6: ...
 

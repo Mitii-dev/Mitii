@@ -34,6 +34,11 @@ Given `contextWindowTokens`, optional host `maximumOutputTokens`, optional measu
 - `planning`: diagnostic step cap and whether a visible plan / change-impact gate is affordable
 - `run`: model/tool call caps and `maxVerificationRepairs` from the effort overlay
 - `skills`: skill body budget and max selected skills
+- `carry`: host→engine conversation carry (`maxMessages`, `maxCharsPerMessage`)
+- `injection`: host pre-prompt ceilings (project rules, repo map / sketch,
+  editor selection, review/git diff chars; plus absolute file/item maxima)
+- `fragments`: per-fragment absolute/review ceilings for prompt-construction
+- `mode`: optional ask/plan/agent overlay that was applied
 - `maxVerificationChecks`
 - `resolvedPolicy`: the full policy after defaults + overrides
 - `reasonCodes`: how output and tool cost were chosen
@@ -79,9 +84,9 @@ caps it so a 200k model does not keep 25-file patches. **Window bands**
 
 | Band | Window | Ship overlay |
 |---|---|---|
-| Compact | &lt; 50k | `maxUniqueFilesPerCallCap: 6`, skills share ↑, repo share ↓ |
-| Standard | 50k – &lt; 100k | Base `DEFAULT_WINDOW_BUDGET_POLICY` |
-| Wide | ≥ 100k | `maxSkillsCap: 6` |
+| Compact | &lt; 50k | `maxUniqueFilesPerCallCap: 8`, skills share ↑, repo share ↓ |
+| Standard | 50k – &lt; 100k | `maxUniqueFilesPerCallCap: 12` |
+| Wide | ≥ 100k | `maxUniqueFilesPerCallCap: 20`, `maxSkillsCap: 6` |
 
 ```text
 windowFiles            = (W × outputRatio) / filesPerOutputTokens
@@ -91,9 +96,9 @@ maxPatchPayloadCharacters = O × charsPerOutputToken × patchPayloadOutputRatio
 preferredBatchSize     = maxUniqueFilesPerCall
 ```
 
-Medium effort (the default): 30k → 6 files (compact band cap), 48k → 8 files
-(standard), 200k → 8 files (not 25; effort-capped). High effort raises the 200k
-cap to 12; low effort lowers it to 4.
+Medium effort (the default): 30k → 8 files (compact band cap), 65k → 12 files
+(standard), 200k → 12 files (effort-capped). High effort raises the 200k
+cap to 20; low effort lowers it to 4.
 
 Planning affordances follow **usable input**, scaled with the window so a 30k local cap still plans:
 
@@ -133,6 +138,53 @@ Agent Engine consumes these derived values directly. It does not reintroduce
 separate fixed caps for tool-result serialization, dropped tool summaries, or
 mid-run observation reinjection.
 
+Host conversation carry and pre-prompt injections also scale from usable input:
+
+```text
+carry.maxMessages              = clamp(U × carryMaxMessagesRatio, min, max)
+carry.maxCharsPerMessage       = clamp(U × carryMaxCharsPerMessageRatio, min, max)
+injection.projectRuleChars     = clamp(U × injectionProjectRuleCharsRatio, min, max)
+injection.projectRulesTotalChars = clamp(U × …TotalCharsRatio, min, max)
+injection.repoMapChars / sketchChars / selectionChars / reviewDiff*Chars
+                               = clamp(U × matching ratio, min, max)
+injection.repoMapFilesMax / sketchItemsMax = absolute policy maxima (not scaled)
+```
+
+Hosts MUST read `WindowPolicy.carry` / `WindowPolicy.injection` /
+`WindowPolicy.fragments` (or the live preview mirrors) instead of hard-coding
+message/char/fragment ceilings.
+
+Mode overlays (`WINDOW_BUDGET_MODE_OVERLAY`) are static tables activated by
+`deriveWindowPolicy({ mode: "ask" | "plan" | "agent" })`. Merge order:
+
+```text
+DEFAULT_WINDOW_BUDGET_POLICY → window band → model profile → mode overlay → host lab overrides
+```
+
+Ask raises conversation share / carry floors; plan raises plan share; agent
+keeps ask-parity history retention so ask→agent handoffs do not drop turns.
+
+## Model profiles
+
+`modelProfiles.ts` is the per-model seam. A `WindowBudgetModelProfile` is
+`{ id, match: RegExp, overrides: WindowBudgetPolicyOverrides }`; the first
+profile whose `match` hits `input.modelId` is merged between the band and the
+mode overlay, and the policy reports `model_profile_applied`. The engine passes
+`modelId` from the advertised model capabilities.
+
+- Profiles tune **window-owned** knobs only: output caps (`outputRatio`,
+  `outputWindowCapRatio`, `outputMaxTokens`, which also drive the tool-loop
+  output ceiling), repair/call counts, compaction ratios.
+- The shipped `WINDOW_BUDGET_MODEL_PROFILES` table is intentionally empty. Add
+  an entry only with benchmark or live-run evidence.
+- Not wired yet (other owners): reasoning effort belongs to the Model Gateway
+  request, and discovery model turns belong to Plan Discovery budgets. Both
+  can read `resolveWindowBudgetModelProfile(modelId)` once a profile needs to
+  carry them; Window Budget does not own those knobs.
+- Context window size is **not** a profile concern. Hosts resolve `W` with
+  `resolveEffectiveContextWindow` (model family presets, e.g. DeepSeek → 128k)
+  and `createHostLlmPorts` applies the same inference when a host omits it.
+
 ## Pipeline stages
 
 1. Validate input schema.
@@ -154,6 +206,8 @@ None. Pure function of the input contract. No LLM, filesystem, or host APIs.
 - `DEFAULT_WINDOW_BUDGET_POLICY` / `WINDOW_BUDGET_POLICY`
 - `WINDOW_BUDGET_EFFORTS` / `DEFAULT_WINDOW_BUDGET_EFFORT` / `WINDOW_BUDGET_EFFORT_OVERLAY` / `resolveWindowBudgetEffort`
 - `windowBudgetInputSchema`, `windowBudgetPolicySchema`, `windowPolicySchema`
+- `WINDOW_BUDGET_MODEL_PROFILES` / `resolveWindowBudgetModelProfile` / `WindowBudgetModelProfile`
+- `resolveToolLoopMaxOutputTokens` — continuous `floor(W × outputWindowCapRatio)`
 - inferred types and `WindowBudgetError`
 
 ## Failure modes
@@ -172,7 +226,7 @@ The customer knob is the advertised context window. Built-in defaults already sc
 
 The VS Code host maps Developer → **Token budget** onto `policy` overrides. Simple sliders cover files per mutation, output reserve, module shares, and verification checks. Advanced keeps the core ratios and clamps. Each field is also a `mitii.tokenBudget.*` setting. When the toggle is off, V8 defaults apply and scale with the context window. Moving a Simple slider turns custom budget on and pins that value so later window changes do not overwrite it. Reset clears those overrides.
 
-`mitii.provider.maximumOutputTokens = 0` means “derive O from the window”. A positive value is a host override and still cannot exceed `W − 1`. The historical default `5000` is treated as unset (`output_legacy_default_ignored`) so mutation batches are not truncated. `O` is the planning reserve (input must not fill the window). Per-turn `max_tokens` is leftover context, owned by Prompt Construction / Agent Engine, with an additional tool-loop cap for mid-run tool turns (8k compact / 10k standard / 12k wide).
+`mitii.provider.maximumOutputTokens = 0` means “derive O from the window”. A positive value is a host override and still cannot exceed `W − 1`. The historical default `5000` is treated as unset (`output_legacy_default_ignored`) so mutation batches are not truncated. `O` is the planning reserve (input must not fill the window). Per-turn `max_tokens` is leftover context, owned by Prompt Construction / Agent Engine, with an additional tool-loop ceiling of `floor(W × outputWindowCapRatio)` so mid-run turns scale with the advertised window instead of a fixed token table.
 
 ## Explicit non-responsibilities
 

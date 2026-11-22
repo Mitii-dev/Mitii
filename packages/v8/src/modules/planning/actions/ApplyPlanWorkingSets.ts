@@ -5,6 +5,7 @@ import type {
   PlanningReasonCode,
 } from "../contracts";
 import { PLANNING_WORKING_SET_POLICY } from "../policy";
+import { normalizeRepoPathText } from "../../repository-state";
 
 export interface ApplyPlanWorkingSetsResult {
   plan: PlanArtifact;
@@ -32,20 +33,37 @@ export function applyPlanWorkingSets(params: {
 
   const reports = params.input.impactReports ?? [];
   if (reports.length === 0) {
-    return { plan: params.plan, reasonCodes: [] };
+    return {
+      plan: params.plan,
+      reasonCodes: ["plan_working_set_empty"],
+    };
   }
 
-  const reportsBySeed = new Map<string, { mustRead: string[]; affected: string[] }>();
+  const reportsBySeed = new Map<
+    string,
+    { mustRead: string[]; likelyModify: string[]; affected: string[] }
+  >();
   for (const report of reports) {
     const seed = normalizePath(report.seedPath);
     if (!seed) continue;
-    const existing = reportsBySeed.get(seed) ?? { mustRead: [], affected: [] };
+    const existing = reportsBySeed.get(seed) ?? {
+      mustRead: [],
+      likelyModify: [],
+      affected: [],
+    };
     existing.mustRead = uniquePaths([...existing.mustRead, ...report.mustRead]);
+    existing.likelyModify = uniquePaths([
+      ...existing.likelyModify,
+      ...(report.likelyModify ?? []),
+    ]);
     existing.affected = uniquePaths([...existing.affected, ...report.affected]);
     reportsBySeed.set(seed, existing);
   }
   if (reportsBySeed.size === 0) {
-    return { plan: params.plan, reasonCodes: [] };
+    return {
+      plan: params.plan,
+      reasonCodes: ["plan_working_set_empty"],
+    };
   }
 
   let applied = false;
@@ -60,27 +78,43 @@ export function applyPlanWorkingSets(params: {
           uniquePaths(step.targetRefs).map((path) => normalizePath(path)),
         );
         const mustRead: string[] = [];
+        const likelyModify: string[] = [];
         const affected: string[] = [];
         for (const ref of step.targetRefs) {
           const report = reportsBySeed.get(normalizePath(ref));
           if (!report) continue;
           pushExcluded(mustRead, report.mustRead, writeSet);
+          pushExcluded(likelyModify, report.likelyModify, writeSet);
           pushExcluded(affected, report.affected, writeSet);
         }
         const cappedMustRead = uniquePaths(mustRead).slice(
           0,
           PLANNING_WORKING_SET_POLICY.maxMustRead,
         );
-        const cappedAffected = uniquePaths(affected)
+        const cappedLikelyModify = uniquePaths(likelyModify)
           .filter((path) => !cappedMustRead.includes(path))
+          .slice(0, PLANNING_WORKING_SET_POLICY.maxLikelyModify);
+        const cappedAffected = uniquePaths(affected)
+          .filter(
+            (path) =>
+              !cappedMustRead.includes(path) &&
+              !cappedLikelyModify.includes(path),
+          )
           .slice(0, PLANNING_WORKING_SET_POLICY.maxAffected);
-        if (cappedMustRead.length === 0 && cappedAffected.length === 0) {
+        if (
+          cappedMustRead.length === 0 &&
+          cappedLikelyModify.length === 0 &&
+          cappedAffected.length === 0
+        ) {
           return step;
         }
         applied = true;
         return {
           ...step,
           ...(cappedMustRead.length > 0 ? { mustRead: cappedMustRead } : {}),
+          ...(cappedLikelyModify.length > 0
+            ? { likelyModify: cappedLikelyModify }
+            : {}),
           ...(cappedAffected.length > 0 ? { affected: cappedAffected } : {}),
         };
       }),
@@ -88,7 +122,10 @@ export function applyPlanWorkingSets(params: {
   });
 
   if (!applied) {
-    return { plan: params.plan, reasonCodes: [] };
+    return {
+      plan: params.plan,
+      reasonCodes: ["plan_working_set_empty"],
+    };
   }
 
   return {
@@ -126,11 +163,5 @@ function uniquePaths(paths: readonly string[]): string[] {
 }
 
 function normalizePath(value: string): string {
-  return value
-    .trim()
-    .replace(/^@+/, "")
-    .replace(/\\/g, "/")
-    .replace(/\/+/g, "/")
-    .replace(/^\.\//, "")
-    .replace(/\/+$/, "");
+  return normalizeRepoPathText(value, { stripAtPrefix: true });
 }

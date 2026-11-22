@@ -24,7 +24,8 @@ export function scoreMemoryRetention(fact: MemoryFact, now: Date): number {
     1,
     (TYPE_SALIENCE[fact.type] ?? 0.5) + accessBonus,
   );
-  const decay = Math.exp(-MEMORY_THRESHOLDS.retentionLambda * ageDays);
+  const durable = fact.pinned || fact.type === "preference" || fact.type === "architecture";
+  const decay = durable ? 1 : Math.exp(-MEMORY_THRESHOLDS.retentionLambda * ageDays);
   let boost = 0;
   const stamps =
     fact.accessLog.length > 0
@@ -39,7 +40,7 @@ export function scoreMemoryRetention(fact: MemoryFact, now: Date): number {
     }
     const days = (now.getTime() - accessed) / 86_400_000;
     if (days > 0) {
-      boost += 1 / days;
+      boost += 1 / Math.max(1, days);
     }
   }
   return Math.min(

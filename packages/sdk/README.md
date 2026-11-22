@@ -59,7 +59,7 @@ const result = await run.result;
 
 Filesystem checkpoints, skills catalogs, search, and indexing live in **`@mitii/host`** (or your own port implementations). The SDK stays host-neutral.
 
-Bundled default skills ship beside this package under [`skills/`](./skills/). Format: [`docs/SKILLS_FORMAT.md`](../../docs/SKILLS_FORMAT.md). Hosts load them via `createFileSystemSkillsCatalog()` from `@mitii/host`.
+Bundled default skills ship beside this package under [`skills/`](./skills/). Hosts load them via `createFileSystemSkillsCatalog()` from `@mitii/host`.
 
 ## Must not
 

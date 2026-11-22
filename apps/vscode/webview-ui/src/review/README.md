@@ -31,6 +31,7 @@ Composer strip above the Mitii chat input. Host ownership stays in `apps/vscode/
 | File | Role |
 |---|---|
 | `reviewBarModel.ts` | Pure scope resolution (MUST stay host-free) |
+| `@mitii/ui-react` | Shared `ReviewFindingChip` and `summarizeReviewFindings` |
 | `WorkingTreeReviewBar.tsx` | Orchestrator |
 | `ReviewBarActions.tsx` | Undo / Keep / Review / Code Review / Fix |
 | `ReviewFilesPanel.tsx` | Chat file list |

@@ -15,6 +15,19 @@ Prompt Construction builds the provider-neutral `ModelRequest` that is sent thro
 - Adds filtered tool definitions.
 - Write-critical tools (`apply_patch`, delete/move, `run_command`, `update_todos`) pack first and are never dropped for tools-section budget when the grant already allows them. "Allowed tools:" prose is rewritten to match the schemas actually attached.
 - Reports budget, provenance, omissions, warnings, and reason codes.
+- Assembles trusted system text via typed **ContextualFragments**: each
+  injection has a stable `contentKind`, optional markers, and a hard token
+  cap. Prefer `fragmentLimits` from `WindowPolicy.fragments` (absolute max,
+  review threshold, additional-context value tokens, skill-catalog L1
+  tokens/entries); `FRAGMENT_POLICY` is the fallback when limits are omitted.
+  Environment/memory fragments are marked; `MidConversationUpdateFragment` and
+  `requiresSeparateMessage` fragments are appended as separate messages
+  after the baseline system blob (provider-cache friendly). Mid-conversation
+  epoch updates use **user** role + `<context_epoch_update>` markers (shared
+  with engine admit). Callers may pass serializable `extraFragments` without
+  forking core assembly. Optional L1 skill catalog
+  (`injectSkillCatalogL1` + `skillCatalogL1`, default off) injects a
+  name+description awareness strip under the Window Budget L1 token/entry caps.
 
 ## Structure
 
@@ -27,13 +40,16 @@ prompt-construction/
     output/                 PromptConstructionResult, budgets, provenance
     ports/                  TokenEstimatorPort
     errors/                 PromptConstructionErrors
-  internal/                 Token estimator and injection boundary helpers
+  internal/
+    fragments/              Typed ContextualFragment registry + assembly
+    CharacterTokenEstimator.ts
+    InjectionBoundary.ts
   tests/
 ```
 
 ## Types And Contracts
 
-- `PromptConstructionInput`: decision, user message, conversation, optional repository context, instructions, plan text, tools, model capabilities, model options, and output reserve.
+- `PromptConstructionInput`: decision, user message, conversation, optional repository context, instructions, optional `extraFragments`, plan text, tools, model capabilities, model options, and output reserve.
 - `PromptConstructionResult`: status, `ModelRequest`, budget report, provenance entries, omissions, warnings, and reason codes.
 - `PromptRepositoryContext`: state token plus prompt-safe blocks.
 - `PromptInstructions`: project rules, skills, and memory instruction blocks.

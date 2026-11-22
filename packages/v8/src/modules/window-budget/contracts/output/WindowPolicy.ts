@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { WINDOW_BUDGET_REASON_CODES } from "../../constants";
 import { WINDOW_BUDGET_EFFORTS } from "../../effort";
+import { WINDOW_BUDGET_MODES } from "../../mode";
 import { windowBudgetPolicySchema } from "../input/WindowBudgetInput";
 
 export const windowBudgetReasonCodeSchema = z.enum(WINDOW_BUDGET_REASON_CODES);
@@ -97,6 +98,49 @@ export const windowPolicyTaskListSchema = z
 
 export type WindowPolicyTaskList = z.infer<typeof windowPolicyTaskListSchema>;
 
+/** Host→engine prior-turn carry ceilings (message domain). */
+export const windowPolicyCarrySchema = z
+  .object({
+    maxMessages: z.number().int().positive(),
+    maxCharsPerMessage: z.number().int().positive(),
+  })
+  .strict();
+
+export type WindowPolicyCarry = z.infer<typeof windowPolicyCarrySchema>;
+
+/**
+ * Pre-prompt host injection ceilings (settings / context blocks).
+ * Character budgets scale with usable input; file/item maxima are absolute.
+ */
+export const windowPolicyInjectionSchema = z
+  .object({
+    projectRuleChars: z.number().int().positive(),
+    projectRulesTotalChars: z.number().int().positive(),
+    repoMapChars: z.number().int().positive(),
+    repoMapFilesMax: z.number().int().positive(),
+    sketchChars: z.number().int().positive(),
+    sketchItemsMax: z.number().int().positive(),
+    selectionChars: z.number().int().positive(),
+    reviewDiffFileChars: z.number().int().positive(),
+    reviewDiffTotalChars: z.number().int().positive(),
+  })
+  .strict();
+
+export type WindowPolicyInjection = z.infer<typeof windowPolicyInjectionSchema>;
+
+/** Prompt-construction per-fragment ceilings. */
+export const windowPolicyFragmentsSchema = z
+  .object({
+    absoluteMaxTokens: z.number().int().positive(),
+    reviewThresholdTokens: z.number().int().positive(),
+    additionalContextValueTokens: z.number().int().positive(),
+    skillCatalogL1MaxTokens: z.number().int().positive(),
+    skillCatalogL1MaxEntries: z.number().int().positive(),
+  })
+  .strict();
+
+export type WindowPolicyFragments = z.infer<typeof windowPolicyFragmentsSchema>;
+
 /**
  * Derived allocation for one advertised context window.
  * Consumers read named fields; they must not re-derive ratios.
@@ -106,6 +150,8 @@ export const windowPolicySchema = z
     schemaVersion: z.literal(1),
     contextWindowTokens: z.number().int().positive(),
     effort: z.enum(WINDOW_BUDGET_EFFORTS),
+    /** Present when a mode overlay was applied. */
+    mode: z.enum(WINDOW_BUDGET_MODES).optional(),
     maximumOutputTokens: z.number().int().positive(),
     toolSchemaTokens: z.number().int().nonnegative(),
     usableInputTokens: z.number().int().nonnegative(),
@@ -117,6 +163,9 @@ export const windowPolicySchema = z
     run: windowPolicyRunSchema,
     skills: windowPolicySkillsSchema,
     taskList: windowPolicyTaskListSchema,
+    carry: windowPolicyCarrySchema,
+    injection: windowPolicyInjectionSchema,
+    fragments: windowPolicyFragmentsSchema,
     maxVerificationChecks: z.number().int().positive(),
     resolvedPolicy: windowBudgetPolicySchema,
     reasonCodes: z.array(windowBudgetReasonCodeSchema),

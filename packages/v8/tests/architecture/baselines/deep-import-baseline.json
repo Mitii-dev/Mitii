@@ -1,0 +1,12 @@
+[
+  "packages/v8/src/modules/repository-context/tests/InjectionP2.spec.ts -> ../../repository-state/internal/repo-map/importantFiles",
+  "packages/v8/src/modules/repository-context/tests/InjectionP2.spec.ts -> ../../repository-state/internal/repo-map/constants",
+  "packages/v8/src/modules/repository-context/tests/InjectionP2.spec.ts -> ../../repository-state/internal/repo-map/RepoMapBudgetApplier",
+  "packages/v8/src/modules/repository-context/tests/InjectionP2.spec.ts -> ../../repository-state/internal/repo-map/RepoMapBuilder",
+  "packages/v8/src/modules/repository-context/tests/InjectionP2.spec.ts -> ../../repository-state/internal/repo-map/ranking/RepoMapRanker",
+  "packages/v8/src/modules/repository-context/tests/InjectionP2.spec.ts -> ../../repository-state/internal/repo-map/types",
+  "packages/v8/src/modules/repository-context/tests/InjectionP2.spec.ts -> ../../repository-state/internal/repo-graph/types",
+  "packages/v8/src/modules/repository-context/tests/InjectionP2.spec.ts -> ../../repository-state/internal/text-index/constants",
+  "packages/v8/src/modules/repository-context/tests/InjectionP2.spec.ts -> ../../repository-state/internal/text-index/TextQueryNormalizer",
+  "packages/v8/src/engine/v8-engine/pipeline/resolveVerificationImpactWiden.spec.ts -> ../../../modules/change-impact/tests/fixtures/changeImpactGraphFixtures"
+]

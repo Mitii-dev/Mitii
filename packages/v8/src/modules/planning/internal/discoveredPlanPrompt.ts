@@ -4,6 +4,7 @@ import {
   remapPathThroughScaffoldMapping,
   resolveScaffoldPackageMapping,
 } from "../actions/remapScaffoldChangeSurfaces";
+import { PLANNING_WORKING_SET_POLICY } from "../policy";
 
 export const DISCOVERED_PLAN_SYSTEM = [
   "You already looked at the repository through a bounded read-only discovery pass.",
@@ -12,6 +13,8 @@ export const DISCOVERED_PLAN_SYSTEM = [
   "Do not invent files or targets that discovery did not surface.",
   "Prefer allowedTargets and proposedChangeSurfaces over README or package.json unless they appear there.",
   "When allowedTargets are under a new/target package, write Change steps there — template filesRead are evidence only.",
+  "When the query lists multiple improvements or checklist items, emit one Change step per item with concrete targetRefs and a Verify step with commands.",
+  "Do not collapse a multi-item ask into a single generic 'smallest coherent change' step.",
   "If discovery evidence is thin, prefer openQuestions over invented file work.",
   "Return only JSON matching the provided schema.",
 ].join("\n");
@@ -70,7 +73,10 @@ export function renderDiscoveredPlanUserPrompt(params: {
             }
           : {}),
         targets: discoveryBrief.targets.slice(0, 20),
-        proposedChangeSurfaces: discoveryBrief.proposedChangeSurfaces.slice(0, 12),
+        proposedChangeSurfaces: discoveryBrief.proposedChangeSurfaces.slice(
+          0,
+          PLANNING_WORKING_SET_POLICY.maxBatchesOnPlan,
+        ),
         discoveredConstraints: discoveryBrief.discoveredConstraints.slice(0, 10),
         verificationHints: discoveryBrief.verificationHints.slice(0, 10),
         openQuestions: discoveryBrief.openQuestions.slice(0, 8),

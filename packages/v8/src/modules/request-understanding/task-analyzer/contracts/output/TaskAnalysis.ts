@@ -67,6 +67,9 @@ export const EstimatedFileImpactSchema = z.object({
   maximum: z.number().int().nonnegative().optional(),
 });
 
+export const TaskSizeSchema = z.enum(["small", "medium", "large"]);
+export const PlanningHintSchema = z.enum(["none", "short", "medium", "long"]);
+
 export const TaskAnalysisSchema = z.object({
   scope: TaskScopeSchema,
   complexity: TaskComplexitySchema,
@@ -79,6 +82,10 @@ export const TaskAnalysisSchema = z.object({
   recommendsPlanning: z.boolean(),
   recommendsVerification: z.boolean(),
   recommendsTaskClarification: z.boolean(),
+  /** Normalized task band for Decision Policy plan-then-finish (later). */
+  taskSize: TaskSizeSchema.default("small"),
+  /** Normalized planning depth hint — not a route. */
+  planningHint: PlanningHintSchema.default("none"),
   estimatedFilesAffected: EstimatedFileImpactSchema.optional(),
   signals: z.array(TaskAnalysisSignalSchema),
   confidence: z.number().min(0).max(1),
@@ -94,4 +101,6 @@ export type TaskAnalysisSignalType = z.infer<
 >;
 export type TaskAnalysisSignal = z.infer<typeof TaskAnalysisSignalSchema>;
 export type EstimatedFileImpact = z.infer<typeof EstimatedFileImpactSchema>;
+export type TaskSize = z.infer<typeof TaskSizeSchema>;
+export type PlanningHint = z.infer<typeof PlanningHintSchema>;
 export type TaskAnalysis = z.infer<typeof TaskAnalysisSchema>;

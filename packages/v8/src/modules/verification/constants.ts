@@ -60,6 +60,14 @@ export const VERIFICATION_REASON_CODES = [
   "diff_reviewed",
   "cancelled",
   "missing_tool_degraded",
+  /** Project-local typecheck/build proved the ask; residuals are non-blocking. */
+  "task_relevant_evidence_passed",
+  /** Failed test/runner output was harness/denied-path noise only. */
+  "residual_harness_noise",
+  /** Secondary syntax/config phantoms contradicted by authoritative compile. */
+  "residual_phantom_secondary",
+  /** Workspace-root compile/test leftovers after package-local evidence passed. */
+  "residual_workspace_root_noise",
 ] as const;
 
 export const VERIFICATION_ERROR_CODES = [

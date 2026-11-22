@@ -2,19 +2,48 @@
 
 ```text
 packages/mcp/
-|-- src/                 # @mitii/mcp — MCP **client** (Mitii calls servers)
-|-- web/                 # @mitii/mcp-web — MCP **server** (others call Mitii)
-|   `-- src/memory/      # optional memory_search (shareable facts only)
-|-- README.md            # this file (umbrella)
+|-- src/                      # @mitii/mcp — MCP **client** core (Mitii calls servers)
+|   |-- contracts/
+|   |-- config/               # settings + builtins catalog
+|   |-- transports/
+|   |-- manager/
+|   `-- index.ts
+|-- web/                      # @mitii/mcp-web — MCP **server** (others call Mitii)
+|-- sqlite/                   # @mitii/mcp-sqlite — first-party DB server
+|-- postgres/                 # @mitii/mcp-postgres — first-party DB server
+|-- mongo/                    # @mitii/mcp-mongo — first-party DB server
+|-- sql/                      # @mitii/mcp-sql — multi-dialect SQL server
+|-- README.md                 # this file (umbrella)
 `-- ARCHITECTURE.md
 ```
 
 | Package | Path | Role |
 |---|---|---|
-| `@mitii/mcp` | `packages/mcp` | Client: `.mitii/mcp.json`, transports, `mcp__*` registry |
+| `@mitii/mcp` | `packages/mcp` (`src/`) | Client core: `.mitii/mcp.json`, transports, `mcp__*` registry |
 | `@mitii/mcp-web` | `packages/mcp/web` | Server: `web_search`, `fetch_url`, optional `memory_search` |
+| `@mitii/mcp-sqlite` | `packages/mcp/sqlite` | SQLite MCP (`MCP_DB_ACCESS=readonly\|readwrite`) |
+| `@mitii/mcp-postgres` | `packages/mcp/postgres` | Postgres MCP (`MCP_DB_ACCESS`) |
+| `@mitii/mcp-mongo` | `packages/mcp/mongo` | MongoDB MCP (`MCP_DB_ACCESS`) |
+| `@mitii/mcp-sql` | `packages/mcp/sql` | Multi-dialect SQL MCP (Postgres/MySQL/MariaDB/SQLite) |
 
 App hosts may keep **thin adapters** (e.g. `apps/vscode/src/mcp/`) that only wire VS Code UI → `@mitii/mcp`. Product logic stays under `packages/mcp`.
+
+## Database catalog (Database mode)
+
+Install from **Settings → Integrations → MCP** (category **Database**):
+
+| Catalog id | Package | Env written |
+|---|---|---|
+| `sqlite` | `@mitii/mcp-sqlite` | `SQLITE_PATH` + `MCP_DB_ACCESS` |
+| `postgres` | `@mitii/mcp-postgres` | `DATABASE_URI` + `MCP_DB_ACCESS` |
+| `mongo` | `@mitii/mcp-mongo` | `MCP_MONGODB_URI` + `MCP_DB_ACCESS` |
+| `sql` | `@mitii/mcp-sql` | `SQL_MCP_URI` (+ `SQL_MCP_DIALECT`) + `MCP_DB_ACCESS` |
+
+Install UI collects **host / port / user / password / database** (plus dialect for `sql`; path for SQLite). Mitii composes those into the URI env vars above. An optional **Full connection URI** field overrides the structured fields when set.
+
+Access tier is controlled by `MCP_DB_ACCESS=readonly|readwrite` (Database mode UI) — not by separate catalog ids.
+
+Legacy ids `sqlite-readonly` / `postgres-readonly` / `mongo-readonly` are migrated to the canonical ids on load.
 
 ## Per-turn MCP attach
 
@@ -23,31 +52,16 @@ Users can pin / `@mcp:excalidraw` like skills. Mentions are parsed in
 `filterToolDefinitions`. This client package still registers all enabled
 servers; V8 scopes which `mcp__*` tools the model sees for that run.
 
-## MCP memory (`memory_search`)
-
-Lives at **`packages/mcp/web/src/memory/`** — not in the V8 memory module and not in the client.
-
-| Env | Purpose |
-|---|---|
-| `MITII_MCP_WEB_MEMORY=1` | Opt-in: list + handle `memory_search` |
-| `MITII_WORKSPACE_ROOT` | Workspace bound for `facts.json` |
-| `MITII_MEMORY_FACTS_PATH` | Optional override (still must stay under workspace) |
-
-Disabled by default. Soft-parses `.mitii/memory/facts.json`; **private** facts never returned. No `@mitii/v8` dependency.
-
-```bash
-pnpm --filter @mitii/mcp-web test
-# or
-cd packages/mcp/web && pnpm test
-```
-
 ## Scripts
 
 ```bash
 pnpm --filter @mitii/mcp build
 pnpm --filter @mitii/mcp-web build
+pnpm --filter @mitii/mcp-sqlite build
+pnpm --filter @mitii/mcp-postgres build
+pnpm --filter @mitii/mcp-mongo build
+pnpm --filter @mitii/mcp-sql build
 pnpm --filter @mitii/mcp test
-pnpm --filter @mitii/mcp-web test
 ```
 
-See [web/README.md](./web/README.md) and [web/src/memory/README.md](./web/src/memory/README.md).
+See [ARCHITECTURE.md](./ARCHITECTURE.md), [web/README.md](./web/README.md).

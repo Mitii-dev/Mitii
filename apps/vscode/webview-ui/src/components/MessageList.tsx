@@ -88,6 +88,7 @@ const MODE_LABELS: Record<AgentUiMode, string> = {
   plan: 'Plan mode',
   agent: 'Agent mode',
   review: 'Working-tree review',
+  database: 'Database mode',
 };
 
 export function MessageList({

@@ -5,14 +5,17 @@ import {
   decisionBriefSchema,
   type DecisionBrief,
 } from "../contracts/output/DecisionBrief";
+import { EXECUTION_ROUTE } from "../constants";
 
 const REASON_PLAYBOOKS: Partial<Record<DecisionReasonCode, string>> = {
   mutation_execute:
     "Apply required edits with granted mutation tools; do not ask to switch modes when write tools are listed.",
+  vcs_history_rewrite:
+    "Use git_signoff_range to add Signed-off-by trailers (rebase/amend). Do not edit .github/workflows/dco.yml or apply_patch for commit metadata. If the tool is unavailable, stop with a Blocker and the exact outside git commands.",
+  change_impact_recommended:
+    "Call analyze_change_impact on the primary seed (file or symbol) before the first mutating edit when changing shared types/APIs or multi-file surfaces; use affected files to sequence patches.",
   diagnosis_readonly:
     "Inspect and report findings only; do not claim you applied edits on this route.",
-  change_impact_recommended:
-    "Before the first mutating edit on shared surfaces, call analyze_change_impact on the primary seed and sequence patches from affected files.",
   clarification_material:
     "Ask the missing decision; do not guess act vs explain or invent targets.",
   grant_narrowed:
@@ -31,8 +34,12 @@ const REASON_PLAYBOOKS: Partial<Record<DecisionReasonCode, string>> = {
     "Follow the classified interaction and task intent; do not reinterpret the grant.",
   policy_facts_heuristic_conflict_clarify:
     "Resolve the act-vs-explain / target ambiguity before mutating.",
+  policy_llm_authority_write:
+    "Trusted ≥70% act/mutation ballot — apply the write; soft don't-X / make-a-plan / dump heuristics are not a veto.",
   long_prompt_visible_plan:
     "Keep a concise visible plan aligned with executable Change/Verify work.",
+  multi_outcome_campaign_visible_plan:
+    "Multi-deliverable ask: draft a visible plan and phase-lock scope before execute.",
   broad_repair_visible_plan:
     "Use a visible plan and live checklist for package-wide repair; avoid reactive patch loops alone.",
 };
@@ -71,9 +78,9 @@ export function compileDecisionBrief(params: {
   }
 
   if (
-    decision.route === "direct_answer" ||
-    decision.route === "repository_answer" ||
-    decision.route === "diagnose" ||
+    decision.route === EXECUTION_ROUTE.DIRECT_ANSWER ||
+    decision.route === EXECUTION_ROUTE.REPOSITORY_ANSWER ||
+    decision.route === EXECUTION_ROUTE.DIAGNOSE ||
     grant.maximumWorkspaceEffect !== "write"
   ) {
     mustNotDo.push(
@@ -83,7 +90,7 @@ export function compileDecisionBrief(params: {
   if (grant.allowedTools.length === 0) {
     mustNotDo.push("Do not invent tool use; answer from provided context only.");
   }
-  if (decision.route === "clarify") {
+  if (decision.route === EXECUTION_ROUTE.CLARIFY) {
     mustDo.push("Ask a concrete clarifying question; wait for the user choice.");
   }
   if (targets.length > 0) {
@@ -121,13 +128,13 @@ export function compileDecisionBrief(params: {
   }
 
   const mission =
-    decision.route === "execute"
+    decision.route === EXECUTION_ROUTE.EXECUTE
       ? `Complete the ${primary} request (${interaction}) within the granted write scopes.`
-      : decision.route === "diagnose"
+      : decision.route === EXECUTION_ROUTE.DIAGNOSE
         ? `Diagnose the ${primary} request without mutating the workspace.`
-        : decision.route === "plan"
+        : decision.route === EXECUTION_ROUTE.PLAN
           ? `Produce a concrete plan for the ${primary} request without executing mutations.`
-          : decision.route === "clarify"
+          : decision.route === EXECUTION_ROUTE.CLARIFY
             ? `Clarify the material ambiguity before continuing.`
             : `Answer the ${primary} request on route ${decision.route}.`;
 

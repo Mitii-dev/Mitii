@@ -66,18 +66,15 @@ It has no edit capability by design - it's a viewer, not an editor.
 All commands assume the **Mitii repo root** unless noted.
 
 ```bash
-# 1) Install fixture dependencies (once, or after fixture changes)
-pnpm benchmark:fixtures
-
-#    To wipe node_modules / lockfiles / build outputs and reinstall everything:
-#    pnpm benchmark:reset
+# 1) Wipe + install fixture dependencies (once, or after fixture changes)
+pnpm run benchmark:prepare
 
 # 2) Configure a real model (Ollama, Anthropic, OpenAI-compatible, ...)
 #    See tests/benchmark/README.md -> "Configure a model"
 node apps/cli/bin/mitii.js setup --show
 
 # 3) Validate case files
-pnpm benchmark:validate
+pnpm run benchmark:validate
 
 # 4) Run a small smoke (one domain, few cases)
 pnpm --filter @mitii/solid-benchmark benchmark -- \
@@ -97,15 +94,12 @@ From repo root (`pnpm`) or via `tests/package.json`:
 
 | Script | Purpose |
 |---|---|
-| `pnpm benchmark:validate` | Validate all domain case files |
-| `pnpm benchmark:fixtures` | Install `node_modules` inside each fixture |
-| `pnpm benchmark:reset` | Wipe fixture installs/build outputs, then reinstall all |
-| `pnpm benchmark:frontend` | Run the frontend domain |
-| `pnpm benchmark:backend` | Run the backend domain |
-| `pnpm benchmark:cicd` | Run the CI/CD domain |
-| `pnpm benchmark:testing` | Run the testing domain |
-| `pnpm benchmark -- ...` | Forward extra flags to the runner |
-| `pnpm benchmark:view` / `:view:open` | Open the HTML run viewer |
+| `pnpm run benchmark:validate` | Validate all domain case files |
+| `pnpm run benchmark:prepare` | Wipe fixture installs/build outputs, then reinstall all |
+| `pnpm run benchmark` | Forward to the runner |
+| `pnpm --filter @mitii/solid-benchmark benchmark:frontend` | Frontend domain |
+| `pnpm --filter @mitii/solid-benchmark benchmark:backend` | Backend domain |
+| `pnpm --filter @mitii/solid-benchmark view` | HTML run viewer |
 
 Not yet forwarded from this folder's `package.json` (call via
 `--filter @mitii/solid-benchmark`, or `cd tests/benchmark`):

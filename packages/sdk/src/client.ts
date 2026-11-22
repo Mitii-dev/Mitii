@@ -1,16 +1,17 @@
 import {
-  AgentEnginePipeline,
   InMemoryRepositoryStateStore,
   InMemoryRunCheckpointStore,
   RepositoryStatePipeline,
-  composeReadOnlyAgentEngine,
+  composeAgentEngine,
+  parseV8EngineImplementation,
 } from '@mitii/v8';
 import type {
   AgentMode,
-  ComposeReadOnlyAgentEngineOptions,
+  ComposeAgentEngineOptions,
   LlmPort,
   MemoryEmbeddingPort,
   MemoryStorePort,
+  MitiiAgentEngine,
   PublishRepositoryStateInput,
   PublishRepositoryStateResult,
   RepositoryContextPipeline,
@@ -22,6 +23,7 @@ import type {
   RepositoryGraphPort,
   ToolAdversaryPort,
   AdversaryFailMode,
+  V8EngineImplementation,
 } from '@mitii/v8';
 
 import {
@@ -61,11 +63,11 @@ export interface CreateMitiiClientOptions {
   repoGraphs?: RepositoryGraphPort;
   verification?: VerificationPipeline;
   /** Enables clarification/approval resume across process turns. */
-  checkpointStore?: ComposeReadOnlyAgentEngineOptions['checkpointStore'];
+  checkpointStore?: ComposeAgentEngineOptions['checkpointStore'];
   skillsCatalog?: SkillsCatalogPort;
   memoryStore?: MemoryStorePort;
   memoryEmbedding?: MemoryEmbeddingPort;
-  toolDefinitions?: ComposeReadOnlyAgentEngineOptions['toolDefinitions'];
+  toolDefinitions?: ComposeAgentEngineOptions['toolDefinitions'];
   /**
    * When true (default), create an in-memory checkpoint store if none is
    * provided so clarification/approval resume works in-process.
@@ -84,7 +86,14 @@ export interface CreateMitiiClientOptions {
    * enable this by default for product UX; see those compose sites.
    */
   taskListAutoAdvance?: boolean;
-  /** Restrict-only ToolAdversaryPort (Phase 3). Default unset = no-op. */
+  /**
+   * Orchestrator implementation. When omitted, defaults to `v8`.
+   * Pass `legacy` only as a compatibility alias (always resolves to v8).
+   * Hosts map `mitii.engine.implementation`.
+   * Do not resume a run across a flip — checkpoints are best-effort compatible.
+   */
+  engineImplementation?: V8EngineImplementation;
+  /** Restrict-only ToolAdversaryPort. Default unset = no-op. */
   adversary?: ToolAdversaryPort;
   adversaryFailMode?: AdversaryFailMode;
 }
@@ -94,7 +103,8 @@ export interface CreateMitiiClientOptions {
  * Secrets (API keys) stay on injected LlmPort adapters — never on this options bag.
  */
 export class MitiiClient {
-  private readonly engine: AgentEnginePipeline;
+  private readonly engine: MitiiAgentEngine;
+  private readonly engineImplementation: V8EngineImplementation;
   private readonly defaults: {
     mode: AgentMode;
     sessionId: string;
@@ -125,7 +135,7 @@ export class MitiiClient {
           })
         : undefined);
 
-    this.engine = composeReadOnlyAgentEngine({
+    const composed = composeAgentEngine({
       understandingLlm: options.understandingLlm,
       runLlm: options.runLlm,
       repositoryState,
@@ -141,7 +151,10 @@ export class MitiiClient {
       taskListAutoAdvance: options.taskListAutoAdvance,
       adversary: options.adversary,
       adversaryFailMode: options.adversaryFailMode,
+      implementation: parseV8EngineImplementation(options.engineImplementation),
     });
+    this.engine = composed.engine;
+    this.engineImplementation = composed.implementation;
 
     this.repositoryState = repositoryState;
     this.defaults = {
@@ -150,6 +163,11 @@ export class MitiiClient {
       workspaceRoot: options.workspaceRoot,
       workspaceId: options.workspaceId,
     };
+  }
+
+  /** Which orchestrator this client is running (`legacy` or `v8`). */
+  getEngineImplementation(): V8EngineImplementation {
+    return this.engineImplementation;
   }
 
   /**

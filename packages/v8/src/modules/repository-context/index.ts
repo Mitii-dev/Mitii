@@ -4,6 +4,11 @@ export {
   ContextSelector,
   HybridRetrievalFactory,
   IdentifierAwareRetrievalReranker,
+  CrossEncoderRetrievalReranker,
+} from "./adapters";
+export type {
+  CrossEncoderDocumentScorer,
+  CrossEncoderDocumentFormatter,
 } from "./adapters";
 export {
   repositoryContextPipelineInputSchema,
@@ -11,6 +16,7 @@ export {
 } from "./contracts/schema";
 export {
   collectRepositoryContextGraphAnchors,
+  buildHybridRetrievalRankingContext,
   deriveContextSelectionBudget,
   pathMatchesFolderPrefix,
   restrictContextReferencesToFolderPrefix,

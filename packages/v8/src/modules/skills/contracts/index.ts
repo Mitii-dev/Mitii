@@ -24,11 +24,13 @@ export type {
 export {
   skillInstructionBlockSchema,
   skillOmissionSchema,
+  skillCatalogL1EntrySchema,
   skillsSelectResultSchema,
 } from "./output/SkillsSelectResult";
 export type {
   SkillInstructionBlock,
   SkillOmission,
+  SkillCatalogL1Entry,
   SkillsSelectResult,
   SkillReasonCode,
 } from "./output/SkillsSelectResult";

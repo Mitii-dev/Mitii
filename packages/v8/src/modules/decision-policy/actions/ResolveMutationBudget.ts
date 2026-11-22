@@ -102,11 +102,27 @@ function selectProfile(
     return "standard";
   }
 
+  // Package/repo architecture refactors need the same breathing room — tight
+  // + diagnostic-first plans caused single-file TS fixes then stall
+  // (BillBuddy POM DeepSeek 70k).
+  if (isArchitectureScaleRefactor(understanding)) {
+    return "standard";
+  }
+
+  // Pasted failures are bugfixes that recommend a plan because the prompt
+  // is long. Planning alone must not force the tight batch profile — that
+  // stalled on a single file while the rest of the failures were unread.
+  // A large estimated file span still uses tight.
+  const planningForcesTight =
+    taskAnalysis.recommendsPlanning === true && primary !== "bugfix";
+  const complexityForcesTight =
+    tightScope && tightComplexity && primary !== "bugfix";
+
   if (
     primary === "refactor" ||
     largeFileSpan ||
-    (tightScope && tightComplexity) ||
-    taskAnalysis.recommendsPlanning
+    complexityForcesTight ||
+    planningForcesTight
   ) {
     return "tight";
   }
@@ -123,6 +139,26 @@ function selectProfile(
   }
 
   return "standard";
+}
+
+/**
+ * Create/scaffold/migrate/port package work should not inherit the ultra-tight
+ * refactor profile even when scope is package/single_location and planning
+ * is recommended.
+ */
+function isArchitectureScaleRefactor(
+  understanding: RequestUnderstandingResult,
+): boolean {
+  const primary = understanding.intent.classification.primaryTaskIntent;
+  if (primary !== "refactor" && primary !== "migrate") {
+    return false;
+  }
+  const scope = understanding.taskAnalysis.scope;
+  return (
+    scope === "package" ||
+    scope === "repository" ||
+    scope === "workspace"
+  );
 }
 
 /**

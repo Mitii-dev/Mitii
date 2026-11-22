@@ -12,17 +12,7 @@ import * as readline from 'node:readline';
 
 import {
   createMitiiClient,
-  DEFAULT_TOOL_DEFINITIONS,
   EchoLlmPort,
-  InMemoryRepositoryStateStore,
-  NodeGitAdapter,
-  NodeNetworkAdapter,
-  NodeProcessAdapter,
-  NodeWorkspaceFileSystemAdapter,
-  RepositoryStatePipeline,
-  ToolRuntimePipeline,
-  VerificationPipeline,
-  WorkspaceFileSystemManifestReader,
   type AgentMode,
   type LlmPort,
   type MitiiClient,
@@ -31,22 +21,17 @@ import {
   type ModelRequest,
 } from '@mitii/sdk';
 import {
-  createFileSystemSkillsCatalog,
-  createHostCodeNavigationPort,
+  bindHostMcp,
+  createHostClient,
   createHostLlmPorts,
-  createHostNetworkPort,
-  createHostRepositoryGraphPort,
-  createOptionalSearchPort,
-  createSandboxedProcessPort,
-  createWorkspaceCheckpointStore,
-  createWorkspaceKnowledgeGraph,
-  createWorkspaceVerificationStore,
-  detectSandboxBackend,
   getProviderPreset,
   inferHostProviderType,
+  isDatabaseUiMode,
   isHostProviderType,
+  mapUiModeToAgentMode,
+  readSandboxOptionsFromEnv,
+  resolveDatabaseModeStart,
   resolveProviderApiKey,
-  resolveSandboxPolicy,
 } from '@mitii/host';
 import {
   getSharedMcpManager,
@@ -57,7 +42,8 @@ interface AcpRequest {
   op: string;
   id?: string;
   prompt?: string;
-  mode?: AgentMode;
+  /** Engine mode, or UI overlay `database` (maps to ask + DB MCP pins). */
+  mode?: AgentMode | 'database';
 }
 
 interface MitiiAcpConfig {
@@ -179,71 +165,21 @@ async function createHostAcpClient(cwd: string): Promise<MitiiClient> {
         ...(apiKey ? { apiKey } : {}),
       });
 
-  const mcpManager = getSharedMcpManager({ clientInfoName: 'mitii-acp' });
-  const mcp = readMcpSettingsFromDisk(cwd);
-  const mcpSnapshot = await mcpManager.sync(mcp, cwd);
-
-  const fileSystem = new NodeWorkspaceFileSystemAdapter();
-  const search = createOptionalSearchPort(env);
-  const git = new NodeGitAdapter();
-  const knowledgeGraph = createWorkspaceKnowledgeGraph(cwd);
-  const tools = new ToolRuntimePipeline(
-    {
-      fileSystem,
-      process: createSandboxedProcessPort(
-        new NodeProcessAdapter(),
-        resolveSandboxPolicy({
-          enabled: env.MITII_SANDBOX === '1' || env.MITII_SANDBOX === 'true',
-          network: env.MITII_SANDBOX_NETWORK === 'allow' ? 'allow' : 'deny',
-          workspaceRoot: cwd,
-        }),
-        detectSandboxBackend(),
-      ),
-      network: createHostNetworkPort({
-        inner: new NodeNetworkAdapter(),
-        env,
-      }),
-      git,
-      knowledgeGraph,
-      codeNavigation: createHostCodeNavigationPort({ workspaceRoot: cwd }),
-      repoGraphs: createHostRepositoryGraphPort({ workspaceRoot: cwd }),
-      ...(search ? { search } : {}),
-    },
-    { registry: mcpManager.createRegistry() },
-  );
-  const verification = new VerificationPipeline({
-    tools,
-    manifests: new WorkspaceFileSystemManifestReader({
-      fileSystem,
-      workspaceRoot: cwd,
-    }),
-    records: createWorkspaceVerificationStore(cwd),
-  });
-  const repositoryState = new RepositoryStatePipeline({
-    store: new InMemoryRepositoryStateStore(),
-  });
-
-  return createMitiiClient({
-    understandingLlm: llm.understandingLlm,
-    runLlm: llm.runLlm,
+  const { client } = await createHostClient({
     workspaceRoot: cwd,
-    defaultMode: config.defaultMode === 'agent' ? 'agent' : config.defaultMode ?? 'ask',
-    defaultSessionId: 'acp_session',
     workspaceId: config.workspaceId ?? 'acp_workspace',
-    repositoryState,
-    tools,
-    verification,
-    toolDefinitions: [
-      ...DEFAULT_TOOL_DEFINITIONS,
-      ...mcpSnapshot.toolDefinitions,
-    ],
-    enableInMemoryCheckpoints: false,
-    checkpointStore: createWorkspaceCheckpointStore(cwd),
-    skillsCatalog: createFileSystemSkillsCatalog({
-      workspaceRoot: cwd,
-      contentMode: 'metadata',
-    }),
+    llm,
+    env,
+    defaultMode: config.defaultMode ?? 'ask',
+    defaultSessionId: 'acp_session',
+    sandbox: { ...readSandboxOptionsFromEnv(env), prefer: 'auto' },
+    mcp: bindHostMcp(
+      getSharedMcpManager({ clientInfoName: 'mitii-acp' }),
+      readMcpSettingsFromDisk(cwd),
+      cwd,
+    ),
   });
+  return client;
 }
 
 function writeLine(obj: unknown): void {
@@ -270,7 +206,8 @@ function parseLine(line: string): AcpRequest | { error: string } {
     mode:
       record.mode === 'ask' ||
       record.mode === 'plan' ||
-      record.mode === 'agent'
+      record.mode === 'agent' ||
+      record.mode === 'database'
         ? record.mode
         : undefined,
   };
@@ -291,10 +228,28 @@ async function handlePrompt(
     return;
   }
   const mode = req.mode ?? 'ask';
+  const workspaceRoot = process.cwd();
+  const databaseOverlay = isDatabaseUiMode(mode)
+    ? resolveDatabaseModeStart({ workspaceRoot })
+    : null;
+  const agentMode = mapUiModeToAgentMode(mode);
   const run = client.start({
     prompt,
-    mode,
-    workspaceRoot: process.cwd(),
+    mode: agentMode,
+    workspaceRoot,
+    ...(databaseOverlay
+      ? {
+          requiredSkillIds: databaseOverlay.startFields.requiredSkillIds,
+          requiredMcpServerIds:
+            databaseOverlay.startFields.requiredMcpServerIds,
+          projectRules: databaseOverlay.startFields.projectRules,
+          ...(databaseOverlay.startFields.userSafetyRules.enabled
+            ? {
+                userSafetyRules: databaseOverlay.startFields.userSafetyRules,
+              }
+            : {}),
+        }
+      : {}),
   });
   for await (const event of run.events) {
     writeLine({ op: 'event', id, event });

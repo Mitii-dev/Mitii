@@ -1,0 +1,75 @@
+{
+  "note": "Shrinking allowlist for file-level circular deps. Remove entries when cycles are broken. Do not add new cycles.",
+  "cycles": [
+    {
+      "root": "apps/desktop/src",
+      "cycle": [
+        "engine/desktop-store.ts",
+        "engine/profiles.ts"
+      ]
+    },
+    {
+      "root": "packages/automation/src",
+      "cycle": [
+        "service.ts",
+        "webhook/server.ts"
+      ]
+    },
+    {
+      "root": "packages/sdk/src",
+      "cycle": [
+        "contracts.ts",
+        "toAgentEngineStartInput.ts"
+      ]
+    },
+    {
+      "root": "packages/v8/src/modules",
+      "cycle": [
+        "memory/actions/RetrieveMemory.ts",
+        "memory/internal/diversity.ts"
+      ]
+    },
+    {
+      "root": "packages/v8/src/modules",
+      "cycle": [
+        "request-understanding/intent/constants.ts",
+        "request-understanding/intent/types.ts"
+      ]
+    },
+    {
+      "root": "packages/v8/src/modules",
+      "cycle": [
+        "request-understanding/intent/constants.ts",
+        "request-understanding/intent/types.ts",
+        "request-understanding/intent/evidence/index.ts",
+        "request-understanding/intent/evidence/UnderstandingEvidencePack.ts"
+      ]
+    },
+    {
+      "root": "packages/v8/src/modules",
+      "cycle": [
+        "request-understanding/intent/schema.ts",
+        "request-understanding/intent/constants.ts",
+        "request-understanding/intent/types.ts"
+      ]
+    },
+    {
+      "root": "packages/v8/src/modules",
+      "cycle": [
+        "request-understanding/intent/schema.ts",
+        "request-understanding/intent/constants.ts",
+        "request-understanding/intent/types.ts",
+        "request-understanding/intent/evidence/index.ts",
+        "request-understanding/intent/evidence/UnderstandingEvidencePack.ts"
+      ]
+    },
+    {
+      "root": "packages/v8/src/modules",
+      "cycle": [
+        "window-budget/contracts/index.ts",
+        "window-budget/contracts/input/WindowBudgetInput.ts",
+        "window-budget/mode.ts"
+      ]
+    }
+  ]
+}

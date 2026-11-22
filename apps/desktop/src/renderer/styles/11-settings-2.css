@@ -1,0 +1,64 @@
+.settings-lock-banner {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--mitii-accent, #3b82f6) 35%, var(--mitii-border));
+  background: color-mix(in srgb, var(--mitii-accent, #3b82f6) 10%, transparent);
+  color: var(--mitii-text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.sticky-actions {
+  position: sticky;
+  bottom: 0;
+  padding-top: 10px;
+  background: linear-gradient(180deg, transparent, var(--mitii-panel) 35%);
+}
+
+.settings-footer {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 12px 32px;
+  border-top: 1px solid var(--mitii-border);
+  background: var(--mitii-panel);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 2;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.settings-view:not(.settings-view--rail) .settings-footer {
+  padding: 12px 22px;
+}
+
+.settings-footer__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  max-width: 920px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.settings-view:not(.settings-view--rail) .settings-footer__actions {
+  max-width: 880px;
+  margin: 0;
+}
+
+.settings-footer__note {
+  margin: 0;
+  max-width: 920px;
+  width: 100%;
+  margin-inline: auto;
+}

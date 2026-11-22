@@ -11,45 +11,23 @@ import {
   DeleteDirectoryOptions,
   RenamePathOptions,
 } from "./types";
+import {
+  byteLength,
+  createFileExistsError,
+  createFileSystemError,
+  createInvalidArgumentError,
+  createIsDirectoryError,
+  createNotDirectoryError,
+  createNotFoundError,
+  normalize,
+  validateMaximumBytes,
+  type InMemoryDirectoryRecord,
+  type InMemoryFileRecord,
+  type InMemoryFileSystemSeedEntry,
+  type InMemorySymbolicLinkRecord,
+} from "./inMemoryFileSystemSupport";
 
-export type InMemoryFileSystemSeedEntry =
-  | {
-      kind: "file";
-      path: string;
-      content: string;
-      createdAt?: string;
-      modifiedAt?: string;
-    }
-  | {
-      kind: "directory";
-      path: string;
-      createdAt?: string;
-      modifiedAt?: string;
-    }
-  | {
-      kind: "symbolic_link";
-      path: string;
-      target: string;
-      createdAt?: string;
-      modifiedAt?: string;
-    };
-
-interface InMemoryFileRecord {
-  content: string;
-  createdAt: string;
-  modifiedAt: string;
-}
-
-interface InMemoryDirectoryRecord {
-  createdAt: string;
-  modifiedAt: string;
-}
-
-interface InMemorySymbolicLinkRecord {
-  target: string;
-  createdAt: string;
-  modifiedAt: string;
-}
+export type { InMemoryFileSystemSeedEntry } from "./inMemoryFileSystemSupport";
 
 export class InMemoryFileSystemAdapter implements FileSystemPort {
   private readonly files = new Map<string, InMemoryFileRecord>();
@@ -75,7 +53,7 @@ export class InMemoryFileSystemAdapter implements FileSystemPort {
   }
 
   public async exists(targetPath: string): Promise<boolean> {
-    const normalized = this.normalize(targetPath);
+    const normalized = normalize(targetPath);
 
     return (
       this.files.has(normalized) ||
@@ -85,7 +63,7 @@ export class InMemoryFileSystemAdapter implements FileSystemPort {
   }
 
   public async stat(targetPath: string): Promise<FileSystemStat> {
-    const normalized = this.normalize(targetPath);
+    const normalized = normalize(targetPath);
 
     const file = this.files.get(normalized);
 
@@ -93,7 +71,7 @@ export class InMemoryFileSystemAdapter implements FileSystemPort {
       return {
         path: normalized,
         kind: "file",
-        size: this.byteLength(file.content),
+        size: byteLength(file.content),
         createdAt: file.createdAt,
         modifiedAt: file.modifiedAt,
       };
@@ -117,27 +95,27 @@ export class InMemoryFileSystemAdapter implements FileSystemPort {
       return {
         path: normalized,
         kind: "symbolic_link",
-        size: this.byteLength(symbolicLink.target),
+        size: byteLength(symbolicLink.target),
         createdAt: symbolicLink.createdAt,
         modifiedAt: symbolicLink.modifiedAt,
         symbolicLinkTarget: symbolicLink.target,
       };
     }
 
-    throw this.createNotFoundError(normalized);
+    throw createNotFoundError(normalized);
   }
 
   public async readDirectory(
     targetPath: string,
   ): Promise<readonly FileSystemEntry[]> {
-    const normalized = this.normalize(targetPath);
+    const normalized = normalize(targetPath);
 
     if (!this.directories.has(normalized)) {
       if (await this.exists(normalized)) {
-        throw this.createNotDirectoryError(normalized);
+        throw createNotDirectoryError(normalized);
       }
 
-      throw this.createNotFoundError(normalized);
+      throw createNotFoundError(normalized);
     }
 
     const children = new Map<string, FileSystemEntry>();
@@ -172,7 +150,7 @@ export class InMemoryFileSystemAdapter implements FileSystemPort {
     targetPath: string,
     options?: FileSystemReadOptions,
   ): Promise<string> {
-    const normalized = this.normalize(targetPath);
+    const normalized = normalize(targetPath);
 
     const resolved = await this.resolvePath(normalized);
 
@@ -180,18 +158,18 @@ export class InMemoryFileSystemAdapter implements FileSystemPort {
 
     if (!file) {
       if (this.directories.has(resolved)) {
-        throw this.createIsDirectoryError(resolved);
+        throw createIsDirectoryError(resolved);
       }
 
-      throw this.createNotFoundError(resolved);
+      throw createNotFoundError(resolved);
     }
 
     const maximumBytes = options?.maximumBytes;
 
     if (maximumBytes !== undefined) {
-      this.validateMaximumBytes(maximumBytes);
+      validateMaximumBytes(maximumBytes);
 
-      if (this.byteLength(file.content) > maximumBytes) {
+      if (byteLength(file.content) > maximumBytes) {
         throw new FileSizeLimitExceededError(normalized, maximumBytes);
       }
     }
@@ -204,7 +182,7 @@ export class InMemoryFileSystemAdapter implements FileSystemPort {
     content: string,
     options?: FileSystemWriteOptions,
   ): Promise<void> {
-    const normalized = this.normalize(targetPath);
+    const normalized = normalize(targetPath);
 
     const parent = path.posix.dirname(normalized);
 
@@ -214,12 +192,12 @@ export class InMemoryFileSystemAdapter implements FileSystemPort {
           recursive: true,
         });
       } else {
-        throw this.createNotFoundError(parent);
+        throw createNotFoundError(parent);
       }
     }
 
     if (this.directories.has(normalized)) {
-      throw this.createIsDirectoryError(normalized);
+      throw createIsDirectoryError(normalized);
     }
 
     const timestamp = this.now();
@@ -242,10 +220,10 @@ export class InMemoryFileSystemAdapter implements FileSystemPort {
       recursive?: boolean;
     },
   ): Promise<void> {
-    const normalized = this.normalize(targetPath);
+    const normalized = normalize(targetPath);
 
     if (this.files.has(normalized)) {
-      throw this.createFileExistsError(normalized);
+      throw createFileExistsError(normalized);
     }
 
     if (this.directories.has(normalized)) {
@@ -260,7 +238,7 @@ export class InMemoryFileSystemAdapter implements FileSystemPort {
           recursive: true,
         });
       } else {
-        throw this.createNotFoundError(parent);
+        throw createNotFoundError(parent);
       }
     }
 
@@ -278,10 +256,10 @@ export class InMemoryFileSystemAdapter implements FileSystemPort {
     targetPath: string,
     options?: DeleteFileOptions,
   ): Promise<void> {
-    const normalized = this.normalize(targetPath);
+    const normalized = normalize(targetPath);
 
     if (this.directories.has(normalized)) {
-      throw this.createIsDirectoryError(normalized);
+      throw createIsDirectoryError(normalized);
     }
 
     const isFile = this.files.has(normalized);
@@ -291,7 +269,7 @@ export class InMemoryFileSystemAdapter implements FileSystemPort {
       if (options?.ignoreIfNotExists) {
         return;
       }
-      throw this.createNotFoundError(normalized);
+      throw createNotFoundError(normalized);
     }
 
     this.files.delete(normalized);
@@ -303,10 +281,10 @@ export class InMemoryFileSystemAdapter implements FileSystemPort {
     targetPath: string,
     options?: DeleteDirectoryOptions,
   ): Promise<void> {
-    const normalized = this.normalize(targetPath);
+    const normalized = normalize(targetPath);
 
     if (normalized === "/") {
-      throw this.createInvalidArgumentError(
+      throw createInvalidArgumentError(
         normalized,
         "Cannot delete root directory.",
       );
@@ -314,12 +292,12 @@ export class InMemoryFileSystemAdapter implements FileSystemPort {
 
     if (!this.directories.has(normalized)) {
       if (this.files.has(normalized) || this.symbolicLinks.has(normalized)) {
-        throw this.createNotDirectoryError(normalized);
+        throw createNotDirectoryError(normalized);
       }
       if (options?.ignoreIfNotExists) {
         return;
       }
-      throw this.createNotFoundError(normalized);
+      throw createNotFoundError(normalized);
     }
 
     const prefix = `${normalized}/`;
@@ -332,7 +310,7 @@ export class InMemoryFileSystemAdapter implements FileSystemPort {
     ].some((p) => p.startsWith(prefix));
 
     if (hasChildren && !options?.recursive) {
-      throw this.createFileSystemError(
+      throw createFileSystemError(
         "ENOTEMPTY",
         `Directory not empty: "${normalized}".`,
       );
@@ -357,16 +335,16 @@ export class InMemoryFileSystemAdapter implements FileSystemPort {
     destinationPath: string,
     options?: RenamePathOptions,
   ): Promise<void> {
-    const source = this.normalize(sourcePath);
-    const dest = this.normalize(destinationPath);
+    const source = normalize(sourcePath);
+    const dest = normalize(destinationPath);
 
     if (!(await this.exists(source))) {
-      throw this.createNotFoundError(source);
+      throw createNotFoundError(source);
     }
 
     if (await this.exists(dest)) {
       if (!options?.overwrite) {
-        throw this.createFileExistsError(dest);
+        throw createFileExistsError(dest);
       }
       // If overwriting, clear the destination first based on its type
       if (this.directories.has(dest)) {
@@ -378,7 +356,7 @@ export class InMemoryFileSystemAdapter implements FileSystemPort {
 
     const destParent = path.posix.dirname(dest);
     if (!this.directories.has(destParent)) {
-      throw this.createNotFoundError(destParent);
+      throw createNotFoundError(destParent);
     }
 
     // Move logic
@@ -414,31 +392,31 @@ export class InMemoryFileSystemAdapter implements FileSystemPort {
   }
 
   public async readSymbolicLink(targetPath: string): Promise<string> {
-    const normalized = this.normalize(targetPath);
+    const normalized = normalize(targetPath);
 
     const symbolicLink = this.symbolicLinks.get(normalized);
 
     if (!symbolicLink) {
       if (await this.exists(normalized)) {
-        throw this.createInvalidArgumentError(
+        throw createInvalidArgumentError(
           normalized,
           "Path is not a symbolic link.",
         );
       }
 
-      throw this.createNotFoundError(normalized);
+      throw createNotFoundError(normalized);
     }
 
     return symbolicLink.target;
   }
 
   public async realPath(targetPath: string): Promise<string> {
-    const normalized = this.normalize(targetPath);
+    const normalized = normalize(targetPath);
 
     const resolved = await this.resolvePath(normalized);
 
     if (!(await this.exists(resolved))) {
-      throw this.createNotFoundError(resolved);
+      throw createNotFoundError(resolved);
     }
 
     return resolved;
@@ -451,16 +429,16 @@ export class InMemoryFileSystemAdapter implements FileSystemPort {
     targetPath: string,
     linkTarget: string,
   ): Promise<void> {
-    const normalized = this.normalize(targetPath);
+    const normalized = normalize(targetPath);
 
     const parent = path.posix.dirname(normalized);
 
     if (!this.directories.has(parent)) {
-      throw this.createNotFoundError(parent);
+      throw createNotFoundError(parent);
     }
 
     if (await this.exists(normalized)) {
-      throw this.createFileExistsError(normalized);
+      throw createFileExistsError(normalized);
     }
 
     const timestamp = this.now();
@@ -478,11 +456,15 @@ export class InMemoryFileSystemAdapter implements FileSystemPort {
    * Test helper for inspecting stored file contents.
    */
   public getFileContent(targetPath: string): string | undefined {
-    return this.files.get(this.normalize(targetPath))?.content;
+    return this.files.get(normalize(targetPath))?.content;
+  }
+
+  private now(): string {
+    return new Date().toISOString();
   }
 
   private seed(entry: InMemoryFileSystemSeedEntry): void {
-    const normalized = this.normalize(entry.path);
+    const normalized = normalize(entry.path);
 
     const createdAt = entry.createdAt ?? this.now();
 
@@ -523,7 +505,7 @@ export class InMemoryFileSystemAdapter implements FileSystemPort {
   }
 
   private ensureParentDirectories(targetPath: string): void {
-    const parent = path.posix.dirname(this.normalize(targetPath));
+    const parent = path.posix.dirname(normalize(targetPath));
 
     const segments = parent.split("/").filter(Boolean);
 
@@ -569,7 +551,7 @@ export class InMemoryFileSystemAdapter implements FileSystemPort {
   }
 
   private async resolvePath(targetPath: string): Promise<string> {
-    let current = this.normalize(targetPath);
+    let current = normalize(targetPath);
     const visited = new Set<string>();
 
     while (this.symbolicLinks.has(current)) {
@@ -592,8 +574,8 @@ export class InMemoryFileSystemAdapter implements FileSystemPort {
       }
 
       current = path.posix.isAbsolute(symbolicLink.target)
-        ? this.normalize(symbolicLink.target)
-        : this.normalize(
+        ? normalize(symbolicLink.target)
+        : normalize(
             path.posix.join(path.posix.dirname(current), symbolicLink.target),
           );
     }
@@ -602,84 +584,12 @@ export class InMemoryFileSystemAdapter implements FileSystemPort {
   }
 
   private touchDirectory(targetPath: string): void {
-    const normalized = this.normalize(targetPath);
+    const normalized = normalize(targetPath);
 
     const directory = this.directories.get(normalized);
 
     if (directory) {
       directory.modifiedAt = this.now();
     }
-  }
-
-  private normalize(targetPath: string): string {
-    const slashNormalized = targetPath.replace(/\\/g, "/");
-
-    const absolute = slashNormalized.startsWith("/")
-      ? slashNormalized
-      : `/${slashNormalized}`;
-
-    return path.posix.normalize(absolute);
-  }
-
-  private byteLength(value: string): number {
-    return new TextEncoder().encode(value).byteLength;
-  }
-
-  private validateMaximumBytes(maximumBytes: number): void {
-    if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 0) {
-      throw new RangeError("maximumBytes must be a non-negative safe integer.");
-    }
-  }
-
-  private now(): string {
-    return new Date().toISOString();
-  }
-
-  private createNotFoundError(targetPath: string): Error {
-    return this.createFileSystemError(
-      "ENOENT",
-      `No such file or directory: "${targetPath}".`,
-    );
-  }
-
-  private createNotDirectoryError(targetPath: string): Error {
-    return this.createFileSystemError(
-      "ENOTDIR",
-      `Path is not a directory: "${targetPath}".`,
-    );
-  }
-
-  private createIsDirectoryError(targetPath: string): Error {
-    return this.createFileSystemError(
-      "EISDIR",
-      `Path is a directory: "${targetPath}".`,
-    );
-  }
-
-  private createFileExistsError(targetPath: string): Error {
-    return this.createFileSystemError(
-      "EEXIST",
-      `Path already exists: "${targetPath}".`,
-    );
-  }
-
-  private createInvalidArgumentError(
-    targetPath: string,
-    message: string,
-  ): Error {
-    return this.createFileSystemError(
-      "EINVAL",
-      `${message} Path: "${targetPath}".`,
-    );
-  }
-
-  private createFileSystemError(code: string, message: string): Error {
-    const error = new Error(message) as Error & {
-      code: string;
-    };
-
-    error.code = code;
-
-    return error;
   }
 }

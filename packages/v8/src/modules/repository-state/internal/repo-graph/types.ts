@@ -46,6 +46,8 @@ export interface RepoGraphFileNode
   size?: number;
   modifiedAt?: string;
   contentHash?: string;
+  /** True when the path was deleted but retained for impact walks. */
+  tombstone?: boolean;
 }
 
 export interface RepoGraphSymbolNode
@@ -77,6 +79,8 @@ export type RepoGraphEdgeType =
   | "imports"
   | "calls"
   | "references"
+  | "extends"
+  | "implements"
   | "workspace_member"
   | "depends_on"
   | "development_depends_on";
@@ -85,7 +89,8 @@ export type RepoGraphEdgeEvidenceSource =
   | "project_catalog"
   | "code_index_import"
   | "code_index_reference"
-  | "code_index_symbol";
+  | "code_index_symbol"
+  | "config_file";
 
 export interface RepoGraphEdgeEvidence {
   source: RepoGraphEdgeEvidenceSource;
@@ -143,6 +148,19 @@ export interface RepoGraphBuildInput {
   catalog: ProjectCatalog;
   rootIds?: readonly string[];
   abortSignal?: AbortSignal;
+  /**
+   * Optional reader for config-file edges (tsconfig/jsconfig extends).
+   * Hosts supply workspace text; the builder never opens paths itself.
+   */
+  readWorkspaceText?: (params: {
+    rootId: string;
+    relativePath: string;
+  }) => string | undefined | Promise<string | undefined>;
+  /**
+   * Prior published graph for the same root. Deleted file nodes are retained
+   * as tombstones so dependents stay walkable across incremental rebuilds.
+   */
+  priorGraph?: RepoGraph;
 }
 
 export type RepoGraphStatus =
@@ -176,6 +194,8 @@ export interface RepoGraphStatistics {
   importEdges: number;
   callEdges: number;
   referenceEdges: number;
+  /** Symbol-to-symbol extends + implements edges. Optional for older graphs. */
+  heritageEdges?: number;
   projectRelationshipEdges: number;
   unresolvedImports: number;
   omittedImportTargets: number;

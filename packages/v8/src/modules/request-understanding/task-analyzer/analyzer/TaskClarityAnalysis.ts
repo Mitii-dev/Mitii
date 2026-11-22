@@ -39,25 +39,43 @@ export class TaskClarityAnalyzer {
     }
 
     if (input.intentRequiresClarification) {
-      return {
-        clarity: "unclear",
-        confidence: 0.98,
-        signals: [
-          {
-            clarity: "unclear",
-            confidence: 0.98,
-            evidence: "Intent resolution already requires clarification.",
-          },
-        ],
-      };
+      // Continuation turns already deferred clarification at IntentRouter —
+      // do not re-force strong-unclear solely from that flag.
+      if (!input.continuationTurn) {
+        return {
+          clarity: "unclear",
+          confidence: 0.98,
+          signals: [
+            {
+              clarity: "unclear",
+              confidence: 0.98,
+              evidence: "Intent resolution already requires clarification.",
+            },
+          ],
+        };
+      }
+      signals.push({
+        clarity: "partially_clear",
+        confidence: 0.55,
+        evidence:
+          "Intent flagged clarification, but this is a continuation turn.",
+      });
     }
 
     if (input.intentConfidence < clarityThresholds.INTENT_LOW) {
-      signals.push({
-        clarity: "unclear",
-        confidence: 0.9,
-        evidence: `Intent confidence is below the acceptance threshold: ${input.intentConfidence.toFixed(2)}.`,
-      });
+      if (input.continuationTurn) {
+        signals.push({
+          clarity: "partially_clear",
+          confidence: 0.6,
+          evidence: `Intent confidence is moderate on a continuation turn: ${input.intentConfidence.toFixed(2)}.`,
+        });
+      } else {
+        signals.push({
+          clarity: "unclear",
+          confidence: 0.9,
+          evidence: `Intent confidence is below the acceptance threshold: ${input.intentConfidence.toFixed(2)}.`,
+        });
+      }
     } else if (input.intentConfidence >= clarityThresholds.INTENT_HIGH) {
       signals.push({
         clarity: "clear",
@@ -72,7 +90,10 @@ export class TaskClarityAnalyzer {
       });
     }
 
-    if (input.confidenceMargin < clarityThresholds.CONFIDENCE_MARGIN_LOW) {
+    if (
+      input.confidenceMargin < clarityThresholds.CONFIDENCE_MARGIN_LOW &&
+      !input.continuationTurn
+    ) {
       signals.push({
         clarity: "unclear",
         confidence: 0.88,

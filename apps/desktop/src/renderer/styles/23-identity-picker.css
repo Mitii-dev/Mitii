@@ -1,0 +1,159 @@
+/* —— Netflix-style identity picker —— */
+.identity-picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 32px 24px;
+  background: color-mix(in srgb, #000 55%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-app-region: no-drag;
+  animation: identity-fade 160ms ease-out;
+}
+
+@keyframes identity-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.identity-picker-shell {
+  width: min(920px, 100%);
+  max-height: min(80vh, 720px);
+  overflow: auto;
+  border-radius: 16px;
+  background: var(--mitii-panel);
+  border: 1px solid var(--mitii-border);
+  box-shadow: var(--mitii-shadow-soft);
+  padding: 36px 40px 28px;
+}
+
+.identity-picker__header {
+  text-align: center;
+  margin-bottom: 28px;
+}
+
+.identity-picker__header h1 {
+  margin: 0 0 8px;
+  font-size: 28px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.identity-picker__header p {
+  margin: 0;
+  color: var(--mitii-muted);
+  font-size: 14px;
+}
+
+.identity-picker__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 20px 16px;
+  justify-items: center;
+}
+
+.identity-card-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 140px;
+}
+
+.identity-card-wrap.is-active .identity-card__avatar {
+  border-color: var(--mitii-brand);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mitii-brand) 25%, transparent);
+}
+
+.identity-card__remove {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--mitii-muted);
+  font-size: 11px;
+  font-weight: 550;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.identity-card__remove:hover {
+  color: #b42318;
+  background: color-mix(in srgb, #c45c5c 12%, transparent);
+}
+
+.identity-card {
+  width: 140px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  background: transparent;
+  padding: 8px;
+  border-radius: 12px;
+  color: var(--mitii-text);
+  transition: transform 140ms ease, opacity 140ms ease;
+}
+
+.identity-card:hover {
+  transform: translateY(-2px);
+}
+
+.identity-card__avatar {
+  width: 96px;
+  height: 96px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mitii-brand) 18%, var(--mitii-surface));
+  border: 2px solid transparent;
+  font-size: 36px;
+  font-weight: 650;
+  color: var(--mitii-text);
+}
+
+.identity-card.is-active .identity-card__avatar {
+  border-color: var(--mitii-brand);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mitii-brand) 25%, transparent);
+}
+
+.identity-card--add .identity-card__avatar {
+  background: var(--mitii-surface);
+  border: 1px dashed var(--mitii-border);
+  color: var(--mitii-muted);
+  font-size: 40px;
+  font-weight: 400;
+}
+
+.identity-card__title {
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.identity-card__subtitle {
+  font-size: 11px;
+  color: var(--mitii-muted);
+  text-align: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.identity-picker__footer {
+  margin-top: 28px;
+  display: flex;
+  justify-content: center;
+}

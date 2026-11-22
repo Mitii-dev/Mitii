@@ -1,10 +1,10 @@
+import { COMPOSER_MODE_COLORS } from '@mitii/ui-react';
+
 import type { AgentUiMode } from './protocol';
 
-/** Mode accent colors — shared by composer controls, send button, and pins. */
+/** Mode accent colors — shared by composer controls, send button, and pins. `review` is webview-only. */
 export const MODE_COLORS: Record<AgentUiMode, string> = {
-  ask: '#22c55e',
-  plan: '#f59e0b',
-  agent: '#ef4444',
+  ...COMPOSER_MODE_COLORS,
   review: '#38bdf8',
 };
 

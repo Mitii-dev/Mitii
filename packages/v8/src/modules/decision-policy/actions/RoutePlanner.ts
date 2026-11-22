@@ -1,4 +1,7 @@
-import type { UserRequestOrigin } from "../../request-intake";
+import type {
+  RequestTurnKind,
+  UserRequestOrigin,
+} from "../../request-intake";
 import type { RequestUnderstandingResult } from "../../request-understanding";
 import type { WindowPolicy } from "../../window-budget";
 
@@ -10,7 +13,8 @@ import type {
 } from "../contracts";
 import { resolvePlanGate } from "./ResolvePlanGate";
 import { resolvePlanningDepth } from "./ResolvePlanningDepth";
-import { resolveRoute } from "./ResolveRoute";
+import { resolveRoute, type RouteResolution } from "./ResolveRoute";
+import { EXECUTION_ROUTE } from "../constants";
 
 export interface RoutePlanResult {
   route: ExecutionRoute;
@@ -25,6 +29,31 @@ function isUnattendedOrigin(origin: UserRequestOrigin | undefined): boolean {
 }
 
 /**
+ * Explicit MCP attach (Database mode / `@mcp:` pins) means the user expects
+ * live tools this turn. Do not collapse to tool-less direct_answer.
+ */
+function groundRouteForMcpAttach(
+  routeResult: RouteResolution,
+  requiredMcpServerIds: readonly string[] | undefined,
+): RouteResolution {
+  if (!requiredMcpServerIds || requiredMcpServerIds.length === 0) {
+    return routeResult;
+  }
+  if (routeResult.route !== EXECUTION_ROUTE.DIRECT_ANSWER) {
+    return routeResult;
+  }
+  return {
+    route: "repository_answer",
+    runDisposition: "continue",
+    reasonCodes: [
+      ...routeResult.reasonCodes,
+      "mcp_attach_required",
+      "repository_grounded_answer",
+    ],
+  };
+}
+
+/**
  * RoutePlanner: mode + understanding + message → route / plan depth / plan gate.
  * Does not authorize tools.
  */
@@ -36,8 +65,18 @@ export function planRoute(params: {
   windowPolicy?: WindowPolicy;
   /** When automation/api, suppress interactive clarify and continue best-effort. */
   origin?: UserRequestOrigin;
-  /** Prefer high-confidence understanding over looksLike* heuristics. */
+  /**
+   * Prefer high-confidence understanding over looksLike* heuristics.
+   * Default on when omitted; pass false to force the classic heuristic path.
+   */
   policyFactsFirst?: boolean;
+  /** Intake turn kind — continuation prefers ballot over soft re-clarify. */
+  turnKind?: RequestTurnKind;
+  /**
+   * When non-empty, upgrade tool-less `direct_answer` to `repository_answer`
+   * so attached MCP tools stay on a read grant.
+   */
+  requiredMcpServerIds?: readonly string[];
 }): RoutePlanResult {
   const unattended = isUnattendedOrigin(params.origin);
   let routeResult = resolveRoute({
@@ -45,6 +84,7 @@ export function planRoute(params: {
     understanding: params.understanding,
     message: params.message,
     policyFactsFirst: params.policyFactsFirst,
+    turnKind: params.turnKind,
   });
   const originReasonCodes: DecisionReasonCode[] = [];
   if (params.origin === "automation") {
@@ -52,16 +92,18 @@ export function planRoute(params: {
   } else if (params.origin === "api") {
     originReasonCodes.push("api_origin");
   }
-  if (unattended && routeResult.route === "clarify") {
+  if (unattended && routeResult.route === EXECUTION_ROUTE.CLARIFY) {
     routeResult = resolveRoute({
       mode: params.mode,
       understanding: params.understanding,
       message: params.message,
       suppressClarification: true,
       policyFactsFirst: params.policyFactsFirst,
+      turnKind: params.turnKind,
     });
     originReasonCodes.push("automation_clarify_suppressed");
   }
+  routeResult = groundRouteForMcpAttach(routeResult, params.requiredMcpServerIds);
   const depthResult = resolvePlanningDepth({
     mode: params.mode,
     route: routeResult.route,

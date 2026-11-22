@@ -93,6 +93,7 @@ export {
   workspaceEntrySchema,
   repoGraphSchema,
   repoMapSchema,
+  RepoMapRanker,
 } from "./contracts";
 export type {
   LanguageId,
@@ -130,6 +131,7 @@ export type {
   RepoGraphEdgeType,
   RepoMap,
   RepoMapEntry,
+  RepoMapRankingContext,
   Chunk,
   ChunkKind,
   ChunkTokenEstimator,
@@ -161,6 +163,7 @@ export type {
   TreeSitterRuntimePort,
   TreeSitterRuntimeReference,
   TreeSitterRuntimeSymbol,
+  TreeSitterRuntimeSyntaxError,
 } from "./contracts";
 
 export {
@@ -172,3 +175,6 @@ export {
   REPOSITORY_STATE_REASON_CODES,
   REPOSITORY_STATE_ERROR_CODES,
 } from "./constants";
+
+export { normalizeRepoPathText } from "./normalizeRepoPathText";
+export type { NormalizeRepoPathTextOptions } from "./normalizeRepoPathText";

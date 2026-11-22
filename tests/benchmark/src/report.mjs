@@ -1,6 +1,9 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { writeRunHtml, writeRunsIndex } from './html-report.mjs';
+import { enrichReportEnvironment, resolveAgentEnvironment } from './report-format.mjs';
+import { renderExportMarkdown } from './report-export-md.mjs';
+import { OUTCOME_BUCKETS, STAGE_TIMING_FIELDS } from './outcome.mjs';
 
 export function createRunReporter(options = {}) {
   const runId = options.runId ?? new Date().toISOString().replaceAll(/[:.]/g, '-');
@@ -9,11 +12,15 @@ export function createRunReporter(options = {}) {
   mkdirSync(casesDir, { recursive: true });
   const startedAt = options.startedAt ?? new Date();
   const collected = [];
+  const environment =
+    options.environment ??
+    resolveAgentEnvironment({ repoRoot: options.repoRoot });
 
   return {
     runId,
     runDir,
     casesDir,
+    environment,
     record(result, index, total) {
       collected[index] = result;
       const casePaths = writeCaseReport(result, casesDir, {
@@ -31,6 +38,8 @@ export function createRunReporter(options = {}) {
           expectedTotal: options.expectedTotal ?? total,
           expectedByDifficulty: options.expectedByDifficulty,
           suite: options.suite,
+          environment,
+          runId,
         }
       );
       const summaryPaths = writeReport(partial, join(runDir, 'summary.json'), {
@@ -48,6 +57,8 @@ export function createRunReporter(options = {}) {
         expectedTotal: options.expectedTotal ?? results.length,
         expectedByDifficulty: options.expectedByDifficulty,
         suite: options.suite,
+        environment,
+        runId,
       });
       const summaryPaths = writeReport(report, join(runDir, 'summary.json'), { runId });
       if (options.latestPath) {
@@ -143,6 +154,8 @@ export function buildReport(results, config, startedAt, finishedAt, meta = {}) {
     partial: Boolean(meta.partial),
     expectedTotal: meta.expectedTotal ?? results.length,
     completed: results.length,
+    runId: meta.runId ?? null,
+    environment: meta.environment ?? resolveAgentEnvironment({ repoRoot: meta.repoRoot }),
     gates,
     gateResults,
     overall,
@@ -175,22 +188,32 @@ export function writeCaseReport(result, casesDir, meta = {}) {
 
 export function writeReport(report, path, liveMeta = null) {
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${JSON.stringify(report, null, 2)}\n`);
+  const enriched = enrichReportEnvironment(report, {
+    repoRoot: liveMeta?.repoRoot,
+  });
+  if (liveMeta?.runId && !enriched.runId) enriched.runId = liveMeta.runId;
+  writeFileSync(path, `${JSON.stringify(enriched, null, 2)}\n`);
   const markdownPath = path.replace(/\.json$/i, '.md');
-  writeFileSync(markdownPath, renderSummaryMarkdown(report, liveMeta));
+  const briefPath = join(dirname(path), 'brief.md');
+  const markdown = renderExportMarkdown(enriched, {
+    runId: liveMeta?.runId ?? enriched.runId,
+  });
+  writeFileSync(markdownPath, markdown);
+  writeFileSync(briefPath, markdown);
   const htmlPath = path.replace(/\.json$/i, '.html');
   const live =
     liveMeta?.live
       ? { completed: liveMeta.completed, total: liveMeta.total }
       : null;
-  writeRunHtml(report, htmlPath, {
+  writeRunHtml(enriched, htmlPath, {
     runId: liveMeta?.runId,
     live,
     indexHref: /[/\\]runs[/\\][^/\\]+[/\\]summary\.html$/i.test(htmlPath)
       ? '../../index.html'
       : 'index.html',
+    markdown,
   });
-  return { json: path, markdown: markdownPath, html: htmlPath };
+  return { json: path, markdown: markdownPath, brief: briefPath, html: htmlPath };
 }
 
 function renderCaseMarkdown(result) {
@@ -210,6 +233,8 @@ function renderCaseMarkdown(result) {
     `**Fixture:** ${result.fixture}`,
     `**Capability:** ${result.capability}`,
     `**Duration:** ${result.durationMs ?? 0}ms`,
+    `**Outcome:** ${result.outcome ?? (result.passed ? 'passed' : 'failed')}`,
+    `**Stage timings:** ${formatStageTimings(result.stageTimings)}`,
     `**Tokens / usage:** ${tokenParts.length ? tokenParts.join(' ') : 'n/a'}`,
     '',
     '## Checks',
@@ -231,40 +256,15 @@ function renderCaseMarkdown(result) {
   return `${lines.join('\n')}\n`;
 }
 
-function renderSummaryMarkdown(report, liveMeta) {
-  const rows = ['easy', 'medium', 'hard'].map((difficulty) => {
-    const item = report.difficulties[difficulty];
-    const gate =
-      report.gateResults[difficulty] === null ? 'N/A' : report.gateResults[difficulty] ? 'PASS' : 'FAIL';
-    return `| ${difficulty} | ${item.passed}/${item.total} | ${(item.caseScore * 100).toFixed(1)}% | ${(item.familyScore * 100).toFixed(1)}% | ${gate} |`;
-  });
-  const live =
-    liveMeta?.live
-      ? `\n_Live progress: ${liveMeta.completed}/${liveMeta.total} case reports written._\n`
-      : '';
-  const categoryRows = Object.entries(report.byCategory ?? {})
-    .map(([name, item]) => `| ${name} | ${item.passed}/${item.total} | ${(item.caseScore * 100).toFixed(1)}% |`)
-    .join('\n');
-  const usage = report.usageTotals ?? {};
-  const usageLine = [
-    usage.inputTokens != null ? `inTokens=${usage.inputTokens}` : null,
-    usage.outputTokens != null ? `outTokens=${usage.outputTokens}` : null,
-    usage.avgDurationMs != null ? `avgDurationMs=${Math.round(usage.avgDurationMs)}` : null,
-  ]
-    .filter(Boolean)
-    .join(' ');
-  return `# Benchmark Result
+function formatStageTimings(timings) {
+  const parts = STAGE_TIMING_FIELDS.filter((field) => typeof timings?.[field] === 'number').map(
+    (field) => `${field.replace(/Ms$/, '')}=${timings[field]}ms`
+  );
+  return parts.length ? parts.join(' ') : 'n/a';
+}
 
-## Signal: ${report.signal}
-${live}
-| Difficulty | Passed | Case score | Family-weighted score | Gate |
-|---|---:|---:|---:|---:|
-${rows.join('\n')}
-
-Overall family-weighted score: **${(report.overall.familyScore * 100).toFixed(1)}%**.
-${usageLine ? `\nRun usage: **${usageLine}**.\n` : ''}
-${categoryRows ? `## Categories\n\n| Category | Passed | Case score |\n|---|---:|---:|\n${categoryRows}\n` : ''}
-`;
+function escapeMd(value) {
+  return String(value).replaceAll('|', '\\|').replaceAll('\n', ' ');
 }
 
 function summarize(results) {
@@ -277,10 +277,18 @@ function summarize(results) {
   }
   const familyRates = [...families.values()].map((values) => values.reduce((a, b) => a + b, 0) / values.length);
   const durations = results.map((result) => result.durationMs).filter((value) => typeof value === 'number');
+  const outcomes = Object.fromEntries(OUTCOME_BUCKETS.map((bucket) => [bucket, 0]));
+  for (const result of results) {
+    const bucket = result.outcome ?? (result.passed ? 'passed' : 'failed');
+    outcomes[bucket] = (outcomes[bucket] ?? 0) + 1;
+  }
   return {
     total: results.length,
     passed,
     failed: results.length - passed,
+    outcomes,
+    /** Timed out, but every content check passed — not counted as passed. */
+    timeoutContentPass: outcomes.timeout_content_pass,
     families: families.size,
     caseScore: results.length ? passed / results.length : 0,
     familyScore: familyRates.length ? familyRates.reduce((a, b) => a + b, 0) / familyRates.length : 0,
@@ -312,6 +320,11 @@ function sumUsage(results) {
   };
 }
 
-function escapeMd(value) {
-  return String(value).replaceAll('|', '\\|').replaceAll('\n', ' ');
-}
+export { renderExportMarkdown } from './report-export-md.mjs';
+export {
+  resolveAgentEnvironment,
+  enrichReportEnvironment,
+  fmtTokens,
+  fmtDuration,
+  fmtPct,
+} from './report-format.mjs';

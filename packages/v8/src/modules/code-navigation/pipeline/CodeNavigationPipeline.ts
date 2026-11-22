@@ -1,18 +1,23 @@
 import {
-  CODE_NAVIGATION_SCHEMA_VERSION,
-} from "../constants";
-import {
   CodeNavigationError,
   codeNavigationInputSchema,
-  codeNavigationResultSchema,
 } from "../contracts";
 import type {
+  CodeNavigationCallOptions,
   CodeNavigationInput,
   CodeNavigationParsedInput,
   CodeNavigationPort,
   CodeNavigationReasonCode,
   CodeNavigationResult,
 } from "../contracts";
+import {
+  clampHover,
+  hoverResult,
+  locationsResult,
+  portUnavailableResult,
+  providerFailureResult,
+  unavailable,
+} from "../internal/buildResult";
 
 export interface CodeNavigationPipelineDependencies {
   navigation?: CodeNavigationPort;
@@ -29,6 +34,7 @@ export class CodeNavigationPipeline {
 
   public async navigate(
     input: CodeNavigationInput,
+    options: CodeNavigationCallOptions = {},
   ): Promise<CodeNavigationResult> {
     let parsed: CodeNavigationParsedInput;
     try {
@@ -45,91 +51,152 @@ export class CodeNavigationPipeline {
 
     const port = this.dependencies.navigation;
     if (!port) {
-      return codeNavigationResultSchema.parse({
-        schemaVersion: CODE_NAVIGATION_SCHEMA_VERSION,
-        status: "unavailable",
-        operation: parsed.operation,
-        provider: "none",
-        locations: [],
-        warnings: [
-          {
-            code: "language_server_failed",
-            message: "No code-navigation port is configured.",
-          },
-        ],
-        reasonCodes: ["port_unavailable"],
-      });
+      return portUnavailableResult(parsed.operation);
     }
 
     try {
+      throwIfAborted(options.signal);
+      const callOptions: CodeNavigationCallOptions = {
+        ...(options.signal ? { signal: options.signal } : {}),
+      };
+      const relativePath =
+        "relativePath" in parsed.query ? parsed.query.relativePath : undefined;
+      if (relativePath) {
+        await port.prepare?.(relativePath, callOptions);
+      }
+
       if (parsed.operation === "hover") {
-        const hover = await port.hover?.(parsed.query);
-        const reasonCodes: CodeNavigationReasonCode[] = hover
-          ? ["hover_resolved"]
-          : ["no_locations"];
-        if (port.provider === "repo_graph") {
-          reasonCodes.push("repo_graph_fallback");
+        if (!("line" in parsed.query)) {
+          return unavailable(parsed.operation, port, "Hover requires a caret query.");
         }
-        return codeNavigationResultSchema.parse({
-          schemaVersion: CODE_NAVIGATION_SCHEMA_VERSION,
-          status: hover ? "resolved" : "empty",
+        const rawHover = await port.hover?.(parsed.query, callOptions);
+        const { hover, truncated } = clampHover(rawHover);
+        return hoverResult({
           operation: parsed.operation,
-          provider: port.provider,
-          locations: [],
-          ...(hover ? { hover } : {}),
-          warnings: [],
-          reasonCodes,
+          port,
+          hover,
+          truncated,
         });
       }
 
-      const locations = (
-        parsed.operation === "definition"
-          ? await port.definition(parsed.query)
-          : await port.references(parsed.query)
-      ).slice(0, parsed.maximumLocations);
-
-      const reasonCodes: CodeNavigationReasonCode[] = locations.length
-        ? [
-            parsed.operation === "definition"
-              ? "definition_resolved"
-              : "references_resolved",
-          ]
-        : ["no_locations"];
-      if (port.provider === "repo_graph") {
-        reasonCodes.push("repo_graph_fallback");
+      if (parsed.operation === "document_symbols") {
+        if (!("relativePath" in parsed.query)) {
+          return unavailable(
+            parsed.operation,
+            port,
+            "Document symbols require a relative path.",
+          );
+        }
+        const raw =
+          (await port.documentSymbols?.(
+            {
+              relativePath: parsed.query.relativePath,
+              ...("rootId" in parsed.query && parsed.query.rootId
+                ? { rootId: parsed.query.rootId }
+                : {}),
+            },
+            callOptions,
+          )) ?? [];
+        return locationsResult(
+          parsed.operation,
+          port,
+          raw,
+          parsed.maximumLocations,
+          "document_symbols_resolved",
+        );
       }
 
-      return codeNavigationResultSchema.parse({
-        schemaVersion: CODE_NAVIGATION_SCHEMA_VERSION,
-        status: locations.length ? "resolved" : "empty",
-        operation: parsed.operation,
-        provider: port.provider,
-        locations,
-        warnings: [],
-        reasonCodes,
-      });
+      if (parsed.operation === "workspace_symbols") {
+        if (!("query" in parsed.query) || !parsed.query.query) {
+          return unavailable(
+            parsed.operation,
+            port,
+            "Workspace symbols require a query.",
+          );
+        }
+        const raw =
+          (await port.workspaceSymbols?.(
+            {
+              query: parsed.query.query,
+              ...("rootId" in parsed.query && parsed.query.rootId
+                ? { rootId: parsed.query.rootId }
+                : {}),
+            },
+            callOptions,
+          )) ?? [];
+        return locationsResult(
+          parsed.operation,
+          port,
+          raw,
+          parsed.maximumLocations,
+          "workspace_symbols_resolved",
+        );
+      }
+
+      if (!("line" in parsed.query)) {
+        return unavailable(parsed.operation, port, "This operation requires a caret query.");
+      }
+
+      const raw =
+        parsed.operation === "definition"
+          ? await port.definition(parsed.query, callOptions)
+          : parsed.operation === "type_definition"
+            ? ((await port.typeDefinition?.(parsed.query, callOptions)) ?? [])
+            : parsed.operation === "implementation"
+              ? ((await port.implementation?.(parsed.query, callOptions)) ?? [])
+              : parsed.operation === "call_hierarchy"
+                ? ((await port.callHierarchy?.(parsed.query, callOptions)) ?? [])
+                : await port.references(parsed.query, callOptions);
+
+      const resolvedCode: CodeNavigationReasonCode =
+        parsed.operation === "definition"
+          ? "definition_resolved"
+          : parsed.operation === "type_definition"
+            ? "type_definition_resolved"
+            : parsed.operation === "implementation"
+              ? "implementation_resolved"
+              : parsed.operation === "call_hierarchy"
+                ? "call_hierarchy_resolved"
+                : "references_resolved";
+      return locationsResult(
+        parsed.operation,
+        port,
+        raw,
+        parsed.maximumLocations,
+        resolvedCode,
+      );
     } catch (error) {
-      return codeNavigationResultSchema.parse({
-        schemaVersion: CODE_NAVIGATION_SCHEMA_VERSION,
-        status: "unavailable",
+      if (isAbortError(error) || options.signal?.aborted) {
+        throw error instanceof Error
+          ? error
+          : Object.assign(new Error(String(error)), { name: "AbortError" });
+      }
+      return providerFailureResult({
         operation: parsed.operation,
-        provider: port.provider,
-        locations: [],
-        warnings: [
-          {
-            code:
-              port.provider === "repo_graph"
-                ? "repo_graph_unavailable"
-                : "language_server_failed",
-            message:
-              error instanceof Error ? error.message : String(error),
-          },
-        ],
-        reasonCodes:
-          port.provider === "repo_graph"
-            ? ["repo_graph_fallback"]
-            : ["language_server_unavailable"],
+        port,
+        error,
       });
     }
   }
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (!signal?.aborted) return;
+  const error = new Error("Code navigation aborted");
+  error.name = "AbortError";
+  throw error;
+}
+
+function isAbortError(error: unknown): boolean {
+  if (
+    error instanceof Error &&
+    (error.name === "AbortError" || error.name === "RequestLimiterAbortError")
+  ) {
+    return true;
+  }
+  return (
+    typeof DOMException !== "undefined" &&
+    error instanceof DOMException &&
+    error.name === "AbortError"
+  );
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseCliArgs } from './parseCliArgs.js';
+import { parseCliArgs } from './parseCliArgs/index.js';
 
 describe('parseCliArgs run --auto', () => {
   it('parses run with --auto and prompt', () => {

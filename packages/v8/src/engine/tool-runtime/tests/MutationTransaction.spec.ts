@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   InMemoryFileSystemAdapter,
   InMemoryProcessAdapter,
-  MUTATION_TOOL_IDS,
   ToolRuntimePipeline,
   directory,
   file,
@@ -11,53 +10,13 @@ import {
   isPatchCurrentContentReason,
   isPatchTargetedDiscoveryReason,
 } from "../index";
-import { createReadOnlyGrant } from "./fixtures/grants";
-import type { ToolGrant } from "../../../modules/decision-policy";
+import {
+  WORKSPACE,
+  createRuntime,
+  createWriteGrant,
+} from "./fixtures/mutationRuntime";
 
-const WORKSPACE = "/workspace";
-
-function createWriteGrant(overrides: Partial<ToolGrant> = {}): ToolGrant {
-  return {
-    maximumWorkspaceEffect: "write",
-    allowedTools: [
-      ...createReadOnlyGrant().allowedTools,
-      ...MUTATION_TOOL_IDS,
-    ],
-    allowedEffects: [
-      "workspace_read",
-      "workspace_write",
-      "process_execute",
-    ],
-    pathScopes: ["."],
-    approvalMode: "when_required",
-    limits: {
-      maxToolCalls: 24,
-      maxWallTimeMs: 90_000,
-      maxOutputBytes: 256_000,
-      maxConcurrentTools: 1,
-    },
-    ...overrides,
-  };
-}
-
-function createRuntime(root = directory({ "src": directory({ "a.ts": file("const x = 1;\n") }) })) {
-  return {
-    fs: new InMemoryFileSystemAdapter(WORKSPACE, root),
-    runtime: new ToolRuntimePipeline({
-      fileSystem: new InMemoryFileSystemAdapter(WORKSPACE, root),
-      process: new InMemoryProcessAdapter(async () => ({
-        exitCode: 0,
-        stdout: "",
-        stderr: "",
-        timedOut: false,
-        cancelled: false,
-        truncated: false,
-      })),
-    }),
-  };
-}
-
-describe("Tool Runtime Phase 8 mutations", () => {
+describe("Tool Runtime mutations", () => {
   it("requires approval before apply_patch when approvalMode is when_required", async () => {
     const { runtime } = createRuntime();
     const args = {
@@ -373,6 +332,61 @@ describe("Tool Runtime Phase 8 mutations", () => {
     );
   });
 
+  it("allows TS edits that keep the same measured bracket score (string braces)", async () => {
+    const before = 'const msg = "{ already open in string";\nexport const n = 1;\n';
+    const { runtime, fs } = createRuntime(
+      directory({ src: directory({ "noise.ts": file(before) }) }),
+    );
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "m4g",
+      toolName: "apply_patch",
+      arguments: {
+        patches: [
+          {
+            path: "src/noise.ts",
+            oldText: "export const n = 1;",
+            newText: "export const n = 2;",
+          },
+        ],
+      },
+      grant: createWriteGrant({ approvalMode: "never" }),
+      workspaceRoot: WORKSPACE,
+    });
+
+    expect(result.status).toBe("succeeded");
+    expect(
+      (await fs.readFile(`${WORKSPACE}/src/noise.ts`)).content,
+    ).toContain("export const n = 2;");
+  });
+
+  it("rejects TS edits that worsen bracket balance vs previous content", async () => {
+    const before = "export function f() {\n  return 1;\n}\n";
+    const { runtime } = createRuntime(
+      directory({ src: directory({ "bal.ts": file(before) }) }),
+    );
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "m4h",
+      toolName: "apply_patch",
+      arguments: {
+        patches: [
+          {
+            path: "src/bal.ts",
+            oldText: "export function f() {\n  return 1;\n}\n",
+            newText: "export function f() {\n  return 1;\n",
+          },
+        ],
+      },
+      grant: createWriteGrant({ approvalMode: "never" }),
+      workspaceRoot: WORKSPACE,
+    });
+
+    expect(result.status).toBe("rejected");
+    expect(result.reasonCode).toBe("patch_syntax_invalid");
+    expect(result.warnings.join(" ")).toMatch(/braces|Bracket imbalance/i);
+  });
+
   it("classifies which patch reason codes attach content vs targeted discovery", () => {
     expect(isPatchCurrentContentReason("old_text_not_found")).toBe(true);
     expect(isPatchCurrentContentReason("old_text_ambiguous")).toBe(true);
@@ -384,211 +398,5 @@ describe("Tool Runtime Phase 8 mutations", () => {
     expect(isPatchTargetedDiscoveryReason("identical_old_and_new")).toBe(true);
     expect(isPatchTargetedDiscoveryReason("patch_syntax_invalid")).toBe(false);
     expect(isPatchTargetedDiscoveryReason("patch_conflict")).toBe(true);
-  });
-
-  it("replaces every exact occurrence when replaceAll is true", async () => {
-    const { runtime, fs } = createRuntime(
-      directory({ src: directory({ "a.ts": file("foo\nfoo\n") }) }),
-    );
-    const result = await runtime.execute({
-      schemaVersion: 1,
-      callId: "m6",
-      toolName: "apply_patch",
-      arguments: {
-        patches: [
-          {
-            path: "src/a.ts",
-            oldText: "foo",
-            newText: "bar",
-            replaceAll: true,
-          },
-        ],
-      },
-      grant: createWriteGrant({ approvalMode: "never" }),
-      workspaceRoot: WORKSPACE,
-    });
-
-    expect(result.status).toBe("succeeded");
-    const patched = await fs.readFile(`${WORKSPACE}/src/a.ts`);
-    expect(patched.content).toBe("bar\nbar\n");
-  });
-
-  it("still treats regex-looking oldText as a literal under replaceAll", async () => {
-    const { runtime, fs } = createRuntime(
-      directory({ src: directory({ "a.ts": file("a.*\na.*\n") }) }),
-    );
-    const result = await runtime.execute({
-      schemaVersion: 1,
-      callId: "m6b",
-      toolName: "apply_patch",
-      arguments: {
-        patches: [
-          {
-            path: "src/a.ts",
-            oldText: "a.*",
-            newText: "b",
-            replaceAll: true,
-          },
-        ],
-      },
-      grant: createWriteGrant({ approvalMode: "never" }),
-      workspaceRoot: WORKSPACE,
-    });
-
-    expect(result.status).toBe("succeeded");
-    const patched = await fs.readFile(`${WORKSPACE}/src/a.ts`);
-    expect(patched.content).toBe("b\nb\n");
-  });
-
-  it("coerces string replaceAll and keeps unique-match as the default", async () => {
-    const { runtime } = createRuntime(
-      directory({ src: directory({ "a.ts": file("foo\nfoo\n") }) }),
-    );
-    const coerced = await runtime.execute({
-      schemaVersion: 1,
-      callId: "m6c",
-      toolName: "apply_patch",
-      arguments: {
-        patches: [
-          {
-            path: "src/a.ts",
-            oldText: "foo",
-            newText: "bar",
-            replaceAll: "true",
-          },
-        ],
-      },
-      grant: createWriteGrant({ approvalMode: "never" }),
-      workspaceRoot: WORKSPACE,
-    });
-    expect(coerced.status).toBe("succeeded");
-
-    const unique = await runtime.execute({
-      schemaVersion: 1,
-      callId: "m6d",
-      toolName: "apply_patch",
-      arguments: {
-        patches: [{ path: "src/a.ts", oldText: "bar", newText: "baz" }],
-      },
-      grant: createWriteGrant({ approvalMode: "never" }),
-      workspaceRoot: WORKSPACE,
-    });
-    expect(unique.status).toBe("rejected");
-    expect(unique.reasonCode).toBe("old_text_ambiguous");
-  });
-
-  it("rejects replaceAll with empty oldText", async () => {
-    const { runtime } = createRuntime();
-    const result = await runtime.execute({
-      schemaVersion: 1,
-      callId: "m6e",
-      toolName: "apply_patch",
-      arguments: {
-        patches: [
-          {
-            path: "src/a.ts",
-            oldText: "",
-            newText: "const y = 1;\n",
-            replaceAll: true,
-          },
-        ],
-      },
-      grant: createWriteGrant({ approvalMode: "never" }),
-      workspaceRoot: WORKSPACE,
-    });
-
-    expect(result.status).toBe("rejected");
-    expect(result.reasonCode).toBe("invalid_arguments");
-  });
-
-  it("rejects write grant without write effect", async () => {
-    const { runtime } = createRuntime();
-    const result = await runtime.execute({
-      schemaVersion: 1,
-      callId: "m5",
-      toolName: "apply_patch",
-      arguments: {
-        patches: [
-          { path: "src/a.ts", oldText: "const x = 1;\n", newText: "x" },
-        ],
-      },
-      grant: createReadOnlyGrant({
-        allowedTools: ["apply_patch", ...createReadOnlyGrant().allowedTools],
-      }),
-      workspaceRoot: WORKSPACE,
-    });
-    expect(result.status).toBe("rejected");
-    expect(result.reasonCode).toBe("effect_not_granted");
-  });
-
-  it("applies bounded fuzzyMatch when exact oldText is missing", async () => {
-    const tree = directory({
-      src: directory({
-        "a.ts": file("  const x = 1;\n"),
-      }),
-    });
-    const fs = new InMemoryFileSystemAdapter(WORKSPACE, tree);
-    const runtime = new ToolRuntimePipeline({
-      fileSystem: fs,
-      process: new InMemoryProcessAdapter(async () => ({
-        exitCode: 0,
-        stdout: "",
-        stderr: "",
-        timedOut: false,
-        cancelled: false,
-        truncated: false,
-      })),
-    });
-    const args = {
-      patches: [
-        {
-          path: "src/a.ts",
-          oldText: "const x = 1;\n",
-          newText: "const x = 2;\n",
-          fuzzyMatch: true,
-        },
-      ],
-    };
-    const result = await runtime.execute({
-      schemaVersion: 1,
-      callId: "fuzzy1",
-      toolName: "apply_patch",
-      arguments: args,
-      grant: createWriteGrant({ approvalMode: "never" }),
-      workspaceRoot: WORKSPACE,
-    });
-    expect(result.status).toBe("succeeded");
-    const written = await fs.readFile(`${WORKSPACE}/src/a.ts`);
-    expect(written.content).toContain("const x = 2");
-  });
-
-  it("rejects ambiguous fuzzyMatch with patch_fuzzy_ambiguous", async () => {
-    const { runtime } = createRuntime(
-      directory({
-        src: directory({
-          "a.ts": file("const x = 1;\nconst y = 1;\nconst x = 1;\n"),
-        }),
-      }),
-    );
-    const result = await runtime.execute({
-      schemaVersion: 1,
-      callId: "fuzzy2",
-      toolName: "apply_patch",
-      arguments: {
-        patches: [
-          {
-            path: "src/a.ts",
-            oldText: "  const x = 1;\n",
-            newText: "  const x = 2;\n",
-            fuzzyMatch: true,
-          },
-        ],
-      },
-      grant: createWriteGrant({ approvalMode: "never" }),
-      workspaceRoot: WORKSPACE,
-    });
-    expect(result.status).toBe("rejected");
-    expect(result.reasonCode).toBe("patch_fuzzy_ambiguous");
-    expect(isPatchCurrentContentReason(result.reasonCode)).toBe(true);
   });
 });

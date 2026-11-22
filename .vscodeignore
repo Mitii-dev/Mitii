@@ -1,16 +1,9 @@
 .git/**
 .github/**
 .githooks/**
-.thunder/**
-.thunder v2/**
-.thunder V2/**
 .mitii/**
 .vscode/**
 .vscode-test/**
-
-src/**
-test/**
-scripts/**
 
 *.vsix
 *.log
@@ -31,23 +24,6 @@ vitest.config.ts
 dist/*.map
 dist/**/*.map
 
-tools/benchmark/**
-docs/**
-project-goals/**
 packages/**
 bin/.mitii/**
-
-!scripts/script-catalog.json
-!scripts/audit-dead-code.sh
-!scripts/audit-dependencies.mjs
-!scripts/audit-vulnerabilities.mjs
-!scripts/check-circular-deps.mjs
-!scripts/audit-package-engines.mjs
-!scripts/find-console-logs.sh
-!scripts/find-inline-styles.sh
-!scripts/check-missing-types.sh
-!scripts/list-untracked-files.sh
-!scripts/write-checkpoint.sh
-!scripts/read-checkpoint.sh
-!scripts/sync-env-files.mjs
-!scripts/safe-lint-target.sh
+scripts/**

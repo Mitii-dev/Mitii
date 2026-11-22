@@ -10,7 +10,17 @@ export const CHECK_KINDS_BY_SCOPE: Record<
   VerificationChangeScope,
   readonly VerificationCheckKind[]
 > = {
-  localized: ["syntax", "diagnostics", "typecheck", "lint", "test", "diff_review"],
+  // Include build on narrow scopes: App Router / framework static generation
+  // defects (e.g. non-server form actions) are invisible to tsc alone.
+  localized: [
+    "syntax",
+    "diagnostics",
+    "typecheck",
+    "lint",
+    "test",
+    "build",
+    "diff_review",
+  ],
   module: [
     "syntax",
     "diagnostics",
@@ -18,6 +28,7 @@ export const CHECK_KINDS_BY_SCOPE: Record<
     "lint",
     "format",
     "test",
+    "build",
     "diff_review",
   ],
   cross_cutting: [
@@ -91,4 +102,21 @@ export const PLACEHOLDER_TEST_SCRIPT =
   /no test specified|error:\s*no test|exit\s+1/i;
 
 export const MISSING_TOOL_PATTERNS =
-  /\b(command not found|enoent|not recognized as an internal or external command|cannot find module|can't resolve|module not found)\b/i;
+  /\b(command not found|enoent|not recognized as an internal or external command|MODULE_NOT_FOUND|Error:\s*Cannot find module)\b/i;
+
+/** TypeScript/compiler diagnostics must never be reclassified as missing tools. */
+export const COMPILER_DIAGNOSTIC_EVIDENCE =
+  /\berror TS\d{3,5}\b|\.tsx?\(\d+,\d+\):\s*error\b/i;
+
+/**
+ * Fatal/runtime-like Ruff rules for localized edits — prefer these over full
+ * style lint so verification repair is not flooded with formatting noise.
+ * Broader scopes keep project-default `ruff check`.
+ */
+export const PYTHON_FATAL_RUFF_SELECT = [
+  "E9",
+  "F821",
+  "F822",
+  "F823",
+  "F401",
+] as const;

@@ -10,3 +10,4 @@ export {
   filterToolsByMcpAttach,
   withMcpAttachOnGrant,
 } from "./mcpToolAttachFilter.js";
+export { formatMcpAttachInstruction } from "./formatMcpAttachInstruction.js";

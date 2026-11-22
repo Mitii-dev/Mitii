@@ -12,6 +12,7 @@ import type {
   MutationCheckpoint,
 } from "../internal/mutation";
 import { restoreFileCopyCheckpoint } from "../internal/mutation";
+import { boundToolOutput } from "../internal/output/boundToolOutput";
 import { SessionBudget } from "../internal/SessionBudget";
 
 export type { CheckpointFileSnapshot, MutationCheckpoint };
@@ -49,6 +50,7 @@ export interface RollbackMutationInput {
  *   → begin session budget
  *   → preflight (registry + grant + approval + args)
  *   → execute registered handler
+ *   → bound+spill model-facing output
  *   → finish result / map error
  */
 export class ToolRuntimePipeline {
@@ -86,9 +88,33 @@ export class ToolRuntimePipeline {
     return this.ports.search !== undefined;
   }
 
+  /** True when a host ToolOutputSpillPort is injected. */
+  public hasOutputSpillPort(): boolean {
+    return this.ports.outputSpill !== undefined;
+  }
+
   /** True when a host DiagnosticsPort is injected. */
   public hasDiagnosticsPort(): boolean {
     return this.ports.diagnostics !== undefined;
+  }
+
+  /** Host code-navigation capability when a CodeNavigationPort is injected. */
+  public codeNavigationCapability():
+    | {
+        status: "available" | "degraded" | "unavailable";
+        provider: "language_server" | "repo_graph" | "none";
+        reason: string;
+      }
+    | undefined {
+    const capability = this.ports.codeNavigation?.capability?.();
+    if (!capability) {
+      return undefined;
+    }
+    return {
+      status: capability.status,
+      provider: capability.provider,
+      reason: capability.reason,
+    };
   }
 
   public async execute(
@@ -130,13 +156,30 @@ export class ToolRuntimePipeline {
         dirtyPaths: options.dirtyPaths,
         alreadyMutatedPaths: options.alreadyMutatedPaths,
         registry: this.registry,
+        softBlockMutatingCommands: options.softBlockMutatingCommands,
+      });
+
+      const bounded = await boundToolOutput({
+        output: executed.output,
+        maxBytes: maxOutputBytes,
+        callId: parsed.callId,
+        toolName: parsed.toolName,
+        spill: this.ports.outputSpill,
       });
 
       return buildFinishedResult({
         parsed,
         clock,
         budget,
-        body: toResultBody(executed),
+        body: toResultBody({
+          ...executed,
+          output: bounded.output,
+          truncated: executed.truncated || bounded.truncated,
+          warnings: [
+            ...(executed.warnings ?? []),
+            ...bounded.warnings,
+          ],
+        }),
       });
     } catch (error) {
       return mapExecutionError({ error, parsed, clock });

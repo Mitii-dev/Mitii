@@ -1,5 +1,6 @@
 import type {
   PlanArtifact,
+  PlanClarifyDraft,
   PlanStrategyDecision,
   PlanningReasonCode,
 } from "../contracts";
@@ -9,6 +10,7 @@ import {
   DEFAULT_PLAN_CHARACTERS_PER_TOKEN,
 } from "../defaults";
 import { PLANNING_WORKING_SET_POLICY } from "../policy";
+import { formatClarifyAsAnswer } from "./formatClarifyAsAnswer";
 
 export interface CompactPlanResult {
   plan: PlanArtifact;
@@ -138,6 +140,9 @@ export function serializePlanText(plan: PlanArtifact): string {
       if (step.mustRead && step.mustRead.length > 0) {
         lines.push(`       need: ${step.mustRead.join(", ")}`);
       }
+      if (step.likelyModify && step.likelyModify.length > 0) {
+        lines.push(`       also edit: ${step.likelyModify.join(", ")}`);
+      }
       if (step.affected && step.affected.length > 0) {
         lines.push(`       affected: ${step.affected.join(", ")}`);
       }
@@ -192,8 +197,48 @@ export function serializePlanForPrompt(
   ].join("\n");
 }
 
-export function formatPlanAsAnswer(plan: PlanArtifact): string {
-  return serializePlanText(plan);
+export function formatPlanAsAnswer(
+  plan: PlanArtifact,
+  strategy?: PlanStrategyDecision,
+  clarifyDraft?: PlanClarifyDraft,
+): string {
+  if (strategy?.strategy === "clarify" && clarifyDraft) {
+    return formatClarifyAsAnswer(clarifyDraft);
+  }
+  // Chat stays scannable — PlanFollow / approval card own the full plan.
+  return formatPlanSummaryAnswer(plan);
+}
+
+/** Short user-facing plan summary (not the full serializePlanText dump). */
+export function formatPlanSummaryAnswer(plan: PlanArtifact): string {
+  const stepCount = plan.phases.reduce(
+    (sum, phase) => sum + phase.steps.length,
+    0,
+  );
+  const objective = plan.objective.trim();
+  const shortObjective =
+    objective.length > 160
+      ? `${objective.slice(0, 157).trimEnd()}…`
+      : objective;
+  const lines: string[] = [
+    `Plan ready (${stepCount} step${stepCount === 1 ? "" : "s"}).`,
+    shortObjective,
+    "",
+    "Review steps in the plan strip, then Approve to execute.",
+  ];
+  let listed = 0;
+  for (const phase of plan.phases) {
+    for (const step of phase.steps) {
+      if (listed >= 6) break;
+      lines.push(`- ${phase.name}: ${truncate(step.intent, 80)}`);
+      listed += 1;
+    }
+    if (listed >= 6) break;
+  }
+  if (stepCount > listed) {
+    lines.push(`- … +${stepCount - listed} more`);
+  }
+  return lines.join("\n");
 }
 
 /**
@@ -299,8 +344,9 @@ function truncate(value: string, max: number): string {
 function executionContract(strategy?: PlanStrategyDecision): string {
   if (strategy?.strategy === "follow_evidence") {
     return [
-      "Execution contract: preflight evidence already enumerates failures.",
-      "Skip rediscovery. Start at the first Change step or active checklist item.",
+      "Execution contract: when the ask is fix-build / cites these failures, bind to the listed evidence.",
+      "Otherwise treat preflight as baseline inventory — do the user ask first; do not expand into unrelated pre-existing errors.",
+      "Start at the first Change step or active checklist item.",
       "Load only files for the active todo; mark it done before moving on.",
       "Do not end after planning — call apply_patch (or other mutation tools) for Change steps now.",
       "Do not expand scope unless the user revises the plan.",

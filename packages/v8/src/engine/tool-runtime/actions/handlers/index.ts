@@ -4,6 +4,9 @@ import { listModelToolDefinitions } from "../../internal/modelToolDefinitions";
 import type { RuntimeModelToolDefinition } from "../../internal/modelToolDefinitions";
 
 import { analyzeChangeImpactTool } from "./analyzeChangeImpactTool";
+import { planCheckChangeImpactTool } from "./planCheckChangeImpactTool";
+import { callHierarchyTool } from "./callHierarchyTool";
+import { documentSymbolTool } from "./documentSymbolTool";
 import { emitReviewFindingTool } from "./emitReviewFindingTool";
 import { applyPatchTool } from "./applyPatchTool";
 import { deleteDirectoryTool } from "./deleteDirectoryTool";
@@ -11,10 +14,14 @@ import { deleteFileTool } from "./deleteFileTool";
 import { fetchDocsTool } from "./fetchDocsTool";
 import { fetchUrlTool } from "./fetchUrlTool";
 import { fileMetadataTool } from "./fileMetadataTool";
+import { findImplementationTool } from "./findImplementationTool";
 import { findReferencesTool } from "./findReferencesTool";
+import { findTypeDefinitionTool } from "./findTypeDefinitionTool";
 import { createGithubIssueTool, createPullRequestTool } from "./githubMutationTools";
+import { gitSignoffRangeTool } from "./gitSignoffRangeTool";
 import { globFilesTool } from "./globFilesTool";
 import { gotoDefinitionTool } from "./gotoDefinitionTool";
+import { hoverSymbolTool } from "./hoverSymbolTool";
 import { listDirectoryTool } from "./listDirectoryTool";
 import { directoryTreeTool } from "./directoryTreeTool";
 import { moveFileTool } from "./moveFileTool";
@@ -26,6 +33,7 @@ import { readPackageScriptsTool } from "./readPackageScriptsTool";
 import { runCommandTool } from "./runCommandTool";
 import { runReadonlyCommandTool } from "./runReadonlyCommandTool";
 import { searchFilesTool } from "./searchFilesTool";
+import { structuralSearchTool } from "./structuralSearchTool";
 import { sequentialThinkingTool } from "./sequentialThinkingTool";
 import { convertTimeTool, getCurrentTimeTool } from "./timeTools";
 import {
@@ -38,6 +46,7 @@ import {
   memoryGraphSearchTool,
   memoryGraphUpdateTool,
 } from "./memoryGraphTools";
+import { workspaceSymbolTool } from "./workspaceSymbolTool";
 import { webSearchTool } from "./webSearchTool";
 import { describeToolTool } from "./describeToolTool";
 import { setBuiltinModelToolLookup } from "./builtinModelLookup";
@@ -50,14 +59,22 @@ const BUILTIN_TOOLS_BASE: readonly RegisteredTool[] = [
   globFilesTool,
   fileMetadataTool,
   searchFilesTool,
+  structuralSearchTool,
   readDiagnosticsTool,
   readGitStatusTool,
   readGitLogTool,
   readGitShowTool,
   readGitBranchesTool,
   gotoDefinitionTool,
+  findTypeDefinitionTool,
   findReferencesTool,
+  hoverSymbolTool,
+  documentSymbolTool,
+  workspaceSymbolTool,
+  findImplementationTool,
+  callHierarchyTool,
   analyzeChangeImpactTool,
+  planCheckChangeImpactTool,
   emitReviewFindingTool,
   runReadonlyCommandTool,
   readPackageScriptsTool,
@@ -74,6 +91,7 @@ const BUILTIN_TOOLS_BASE: readonly RegisteredTool[] = [
   runCommandTool,
   createGithubIssueTool,
   createPullRequestTool,
+  gitSignoffRangeTool,
   fetchUrlTool,
   fetchDocsTool,
   webSearchTool,
@@ -114,7 +132,8 @@ export function listBuiltinReadOnlyModelToolDefinitions(): RuntimeModelToolDefin
       tool.name !== "memory_graph_update" &&
       tool.name !== "run_command" &&
       tool.name !== "create_github_issue" &&
-      tool.name !== "create_pull_request",
+      tool.name !== "create_pull_request" &&
+      tool.name !== "git_signoff_range",
   );
 }
 
@@ -132,14 +151,22 @@ export {
   globFilesTool,
   fileMetadataTool,
   searchFilesTool,
+  structuralSearchTool,
   readDiagnosticsTool,
   readGitStatusTool,
   readGitLogTool,
   readGitShowTool,
   readGitBranchesTool,
   gotoDefinitionTool,
+  findTypeDefinitionTool,
   findReferencesTool,
+  hoverSymbolTool,
+  documentSymbolTool,
+  workspaceSymbolTool,
+  findImplementationTool,
+  callHierarchyTool,
   analyzeChangeImpactTool,
+  planCheckChangeImpactTool,
   emitReviewFindingTool,
   runReadonlyCommandTool,
   readPackageScriptsTool,
@@ -156,6 +183,7 @@ export {
   runCommandTool,
   createGithubIssueTool,
   createPullRequestTool,
+  gitSignoffRangeTool,
   fetchUrlTool,
   fetchDocsTool,
   webSearchTool,

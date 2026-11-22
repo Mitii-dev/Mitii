@@ -13,7 +13,9 @@
     "esModuleInterop": true,
     "types": ["vite/client"],
     "paths": {
-      "@mitii/live-token-budget": ["../src/liveTokenBudgetPreview.ts"]
+      "@mitii/ui-core": ["../../../packages/ui-core/src/index.ts"],
+      "@mitii/ui-react": ["../../../packages/ui-react/src/index.ts"],
+      "@mitii/ui-protocol": ["../../../packages/ui-protocol/src/index.ts"]
     }
   },
   "include": ["src"]

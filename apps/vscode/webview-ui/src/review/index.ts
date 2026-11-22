@@ -15,7 +15,7 @@
 
 export { WorkingTreeReviewBar } from './WorkingTreeReviewBar';
 export { ComposerReviewStrip } from './ComposerReviewStrip';
-export type { ReviewFindingChip } from './reviewFindingTypes';
+export type { ReviewFindingChip } from '@mitii/ui-react';
 export {
   resolveReviewBarScope,
   chatFilesFromRunChanges,

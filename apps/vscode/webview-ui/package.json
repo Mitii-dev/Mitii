@@ -10,6 +10,10 @@
     "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
+    "@mitii/ui-core": "workspace:*",
+    "@mitii/ui-protocol": "workspace:*",
+    "@mitii/ui-react": "workspace:*",
+    "@mitii/ui-theme": "workspace:*",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^10.1.0",

@@ -30,6 +30,9 @@ export {
   RepoMapBuilder,
 } from "../internal/repo-map/RepoMapBuilder";
 export {
+  RepoMapRanker,
+} from "../internal/repo-map/ranking/RepoMapRanker";
+export {
   VectorSearchService,
 } from "../internal/vector-index/VectorSearchService";
 export {

@@ -1,0 +1,476 @@
+import type { ModelMessage } from "../../../modules/model-gateway";
+import type { TokenEstimatorPort } from "../../../modules/prompt-construction";
+import type { WindowPolicyCompaction } from "../../../modules/window-budget";
+
+import {
+  buildCompactedToolArguments,
+  buildDroppedTurnsSummary,
+  collectToolCallsById,
+  compactToolMessageContent,
+  countNonSystemMessages,
+  dropOldestNonSystemTurnWithRemoved,
+  takeLastIndices,
+} from "./compactToolHistoryHelpers";
+import {
+  ESTABLISHED_FACTS_MARKER,
+  MEMORY_REINJECT_MARKER,
+  insertAfterSystemMessages,
+  reinjectPinnedFacts,
+} from "./compactPinnedFacts";
+import { estimateModelMessagesTokens } from "./compactionTokenEstimate";
+import {
+  DEFAULT_AUTO_RATIO,
+  DEFAULT_HARD_RATIO,
+  DEFAULT_WARN_RATIO,
+  resolveCompactionPressure,
+  resolveCompactionThresholds,
+} from "./compactionThresholds";
+import type {
+  ModelLoopCompactionPressure,
+  ModelLoopCompactionThresholds,
+} from "./compactionThresholds";
+
+export {
+  resolveCompactionPressure,
+  resolveCompactionThresholds,
+} from "./compactionThresholds";
+export type {
+  ModelLoopCompactionPressure,
+  ModelLoopCompactionThresholds,
+} from "./compactionThresholds";
+export {
+  estimateModelMessageTokens,
+  estimateModelMessagesTokens,
+} from "./compactionTokenEstimate";
+export { stubToolResultsForCompletedPaths } from "./compactToolStubs";
+
+const DEFAULT_RECENT_TOOL_MESSAGES_TO_KEEP_FULL = 3;
+const DEFAULT_COMPACTED_TOOL_RESULT_CHARS_RATIO = 0.006;
+const DEFAULT_COMPACTED_TOOL_ARGUMENT_CHARS_RATIO = 0.003;
+const DEFAULT_DROPPED_TURN_SUMMARY_CHARS_RATIO = 0.01;
+const DEFAULT_ESTABLISHED_FACT_REINJECT_CHARS_RATIO = 0.012;
+const DEFAULT_MEMORY_REINJECT_CHARS_RATIO = 0.006;
+const DEFAULT_MIN_MESSAGES_TO_KEEP = 6;
+
+
+/**
+ * Explicit compaction ladder (production path uses WindowPolicy.compaction).
+ * Stages run in order when pressure reaches auto/hard.
+ */
+export const COMPACTION_LADDER_STAGES = [
+  "soft_tool_stubs",
+  "drop_oldest_turns",
+  "dropped_turn_summary",
+  "hard_tool_compact",
+  "reinject_established_facts",
+  "reinject_memory",
+] as const;
+
+export type CompactionLadderStage = (typeof COMPACTION_LADDER_STAGES)[number];
+
+
+export interface ModelLoopCompactionResult {
+  messages: ModelMessage[];
+  usedTokens: number;
+  omittedTokens: number;
+  truncatedTokens: number;
+  compacted: boolean;
+  pressure: ModelLoopCompactionPressure;
+  thresholds: ModelLoopCompactionThresholds;
+  summarizedDroppedTurns: boolean;
+  reinjectedMemory: boolean;
+  reinjectedEstablishedFacts: boolean;
+  /** Ladder stages that mutated history this turn (provenance). */
+  stagesApplied: CompactionLadderStage[];
+  /**
+   * Turns removed from model projection this compaction (dual-store projection).
+   * Callers MUST archive these; they leave Session History projection only.
+   */
+  droppedMessages: ModelMessage[];
+}
+
+export function compactModelLoopMessages(params: {
+  messages: readonly ModelMessage[];
+  estimator: TokenEstimatorPort;
+  budgetTokens: number;
+  recentToolMessagesToKeepFull?: number;
+  compactedToolResultChars?: number;
+  compactedToolArgumentChars?: number;
+  droppedTurnSummaryChars?: number;
+  minMessagesToKeep?: number;
+  warnRatio?: number;
+  autoRatio?: number;
+  hardRatio?: number;
+  /** Absolute cap for auto compaction (effort overlay). */
+  autoMaxTokens?: number;
+  /** Absolute cap for hard compaction (effort overlay). */
+  hardMaxTokens?: number;
+  /**
+   * Prefix-cache providers: do not rewrite history until the hard window
+   * ceiling. Compacting the prefix turns cache hits into misses.
+   */
+  preservePrefix?: boolean;
+  /** Budgeted memory facts to reinject after auto/hard compaction. */
+  memoryFacts?: readonly { id: string; content: string }[];
+  maxMemoryReinjectChars?: number;
+  /** Mid-run observations that must survive dropped turns. */
+  establishedFacts?: readonly { id: string; content: string }[];
+  maxEstablishedFactReinjectChars?: number;
+  /** When true, established facts are pinned only in the trailing working set. */
+  skipEstablishedFactsReinject?: boolean;
+}): ModelLoopCompactionResult {
+  const recentToolMessagesToKeepFull =
+    params.recentToolMessagesToKeepFull ??
+    DEFAULT_RECENT_TOOL_MESSAGES_TO_KEEP_FULL;
+  const compactedToolResultChars =
+    params.compactedToolResultChars ??
+    scaledChars(params.budgetTokens, DEFAULT_COMPACTED_TOOL_RESULT_CHARS_RATIO);
+  const compactedToolArgumentChars =
+    params.compactedToolArgumentChars ??
+    scaledChars(params.budgetTokens, DEFAULT_COMPACTED_TOOL_ARGUMENT_CHARS_RATIO);
+  const droppedTurnSummaryChars =
+    params.droppedTurnSummaryChars ??
+    scaledChars(params.budgetTokens, DEFAULT_DROPPED_TURN_SUMMARY_CHARS_RATIO);
+  const maxEstablishedFactReinjectChars =
+    params.maxEstablishedFactReinjectChars ??
+    scaledChars(params.budgetTokens, DEFAULT_ESTABLISHED_FACT_REINJECT_CHARS_RATIO);
+  const maxMemoryReinjectChars =
+    params.maxMemoryReinjectChars ??
+    scaledChars(params.budgetTokens, DEFAULT_MEMORY_REINJECT_CHARS_RATIO);
+  const minMessagesToKeep =
+    params.minMessagesToKeep ?? DEFAULT_MIN_MESSAGES_TO_KEEP;
+  const thresholds = resolveCompactionThresholds({
+    budgetTokens: params.budgetTokens,
+    warnRatio: params.warnRatio ?? DEFAULT_WARN_RATIO,
+    autoRatio: params.autoRatio ?? DEFAULT_AUTO_RATIO,
+    hardRatio: params.hardRatio ?? DEFAULT_HARD_RATIO,
+    autoMaxTokens: params.autoMaxTokens,
+    hardMaxTokens: params.hardMaxTokens,
+    preservePrefix: params.preservePrefix,
+  });
+
+  let working = params.messages.map(cloneMessage);
+  let compacted = false;
+  let truncatedTokens = 0;
+  let summarizedDroppedTurns = false;
+  let reinjectedMemory = false;
+  let reinjectedEstablishedFacts = false;
+  const stagesApplied: CompactionLadderStage[] = [];
+  const droppedForSummary: ModelMessage[] = [];
+
+  const estimateAll = (messages: readonly ModelMessage[]): number =>
+    estimateModelMessagesTokens(messages, params.estimator);
+
+  let usedTokens = estimateAll(working);
+  const initialPressure = resolveCompactionPressure({
+    usedTokens,
+    thresholds,
+  });
+  if (usedTokens < thresholds.autoTokens) {
+    return {
+      messages: working,
+      usedTokens,
+      omittedTokens: 0,
+      truncatedTokens: 0,
+      compacted: false,
+      pressure: initialPressure,
+      thresholds,
+      summarizedDroppedTurns: false,
+      reinjectedMemory: false,
+      reinjectedEstablishedFacts: false,
+      stagesApplied,
+      droppedMessages: [],
+    };
+  }
+
+  const toolCallMessageIndices = working
+    .map((message, index) =>
+      message.toolCalls && message.toolCalls.length > 0 ? index : -1,
+    )
+    .filter((index) => index >= 0);
+  const fullToolCallIndices = new Set(
+    takeLastIndices(toolCallMessageIndices, recentToolMessagesToKeepFull),
+  );
+
+  working = working.map((message, index) => {
+    if (!message.toolCalls || fullToolCallIndices.has(index)) {
+      return message;
+    }
+
+    let messageChanged = false;
+    const toolCalls = message.toolCalls.map((toolCall) => {
+      if (toolCall.arguments.length <= compactedToolArgumentChars) {
+        return toolCall;
+      }
+      messageChanged = true;
+      const compactedArguments = buildCompactedToolArguments(toolCall);
+      truncatedTokens += Math.max(
+        0,
+        params.estimator.estimate(toolCall.arguments) -
+          params.estimator.estimate(compactedArguments),
+      );
+      return {
+        ...toolCall,
+        arguments: compactedArguments,
+      };
+    });
+
+    if (!messageChanged) {
+      return message;
+    }
+    compacted = true;
+    return { ...message, toolCalls };
+  });
+
+  if (compacted) {
+    stagesApplied.push("soft_tool_stubs");
+  }
+
+  const toolMessageIndices = working
+    .map((message, index) => (message.role === "tool" ? index : -1))
+    .filter((index) => index >= 0);
+  const fullToolMessageIndices = new Set(
+    takeLastIndices(toolMessageIndices, recentToolMessagesToKeepFull),
+  );
+  const toolCallsById = collectToolCallsById(working);
+
+  let softResultCompacted = false;
+  working = working.map((message, index) => {
+    if (
+      message.role !== "tool" ||
+      fullToolMessageIndices.has(index) ||
+      message.content.length <= compactedToolResultChars
+    ) {
+      return message;
+    }
+
+    const nextContent = compactToolMessageContent({
+      message,
+      toolCall: message.toolCallId
+        ? toolCallsById.get(message.toolCallId)
+        : undefined,
+      maxChars: compactedToolResultChars,
+    });
+    truncatedTokens += Math.max(
+      0,
+      params.estimator.estimate(message.content) -
+        params.estimator.estimate(nextContent),
+    );
+    compacted = true;
+    softResultCompacted = true;
+    return { ...message, content: nextContent };
+  });
+  if (softResultCompacted && !stagesApplied.includes("soft_tool_stubs")) {
+    stagesApplied.push("soft_tool_stubs");
+  }
+
+  usedTokens = estimateAll(working);
+  const omittedBeforeDrop = usedTokens;
+  while (
+    usedTokens > thresholds.autoTokens &&
+    countNonSystemMessages(working) > minMessagesToKeep
+  ) {
+    const dropResult = dropOldestNonSystemTurnWithRemoved(working);
+    if (dropResult.messages.length === working.length) {
+      break;
+    }
+    droppedForSummary.push(...dropResult.removed);
+    working = dropResult.messages;
+    compacted = true;
+    usedTokens = estimateAll(working);
+  }
+  if (droppedForSummary.length > 0) {
+    stagesApplied.push("drop_oldest_turns");
+  }
+
+  if (droppedForSummary.length > 0) {
+    const summary = buildDroppedTurnsSummary(
+      droppedForSummary,
+      droppedTurnSummaryChars,
+    );
+    if (summary) {
+      working = insertAfterSystemMessages(working, {
+        role: "user",
+        content: summary,
+      });
+      summarizedDroppedTurns = true;
+      stagesApplied.push("dropped_turn_summary");
+      usedTokens = estimateAll(working);
+    }
+  }
+
+  if (usedTokens > thresholds.hardTokens) {
+    const fullyCompacted = compactAllToolPayloads({
+      messages: working,
+      estimator: params.estimator,
+      compactedToolResultChars,
+    });
+    working = fullyCompacted.messages;
+    truncatedTokens += fullyCompacted.truncatedTokens;
+    compacted = compacted || fullyCompacted.compacted;
+    if (fullyCompacted.compacted) {
+      stagesApplied.push("hard_tool_compact");
+    }
+    usedTokens = estimateAll(working);
+  }
+
+  if (initialPressure === "auto" || initialPressure === "hard") {
+    if (
+      !params.skipEstablishedFactsReinject &&
+      params.establishedFacts &&
+      params.establishedFacts.length > 0
+    ) {
+      const reinjected = reinjectPinnedFacts({
+        messages: working,
+        facts: params.establishedFacts,
+        marker: ESTABLISHED_FACTS_MARKER,
+        maxChars: maxEstablishedFactReinjectChars,
+        estimator: params.estimator,
+        budgetTokens: params.budgetTokens,
+      });
+      working = reinjected.messages;
+      reinjectedEstablishedFacts = reinjected.reinjected;
+      if (reinjected.reinjected) {
+        stagesApplied.push("reinject_established_facts");
+      }
+      usedTokens = estimateAll(working);
+    }
+    if (params.memoryFacts && params.memoryFacts.length > 0) {
+      const reinjected = reinjectPinnedFacts({
+        messages: working,
+        facts: params.memoryFacts,
+        marker: MEMORY_REINJECT_MARKER,
+        maxChars: maxMemoryReinjectChars,
+        estimator: params.estimator,
+        budgetTokens: params.budgetTokens,
+      });
+      working = reinjected.messages;
+      reinjectedMemory = reinjected.reinjected;
+      if (reinjected.reinjected) {
+        stagesApplied.push("reinject_memory");
+      }
+      usedTokens = estimateAll(working);
+    }
+  }
+
+  return {
+    messages: working,
+    usedTokens,
+    omittedTokens: Math.max(0, omittedBeforeDrop - usedTokens),
+    truncatedTokens,
+    compacted,
+    pressure: initialPressure,
+    thresholds,
+    summarizedDroppedTurns,
+    reinjectedMemory,
+    reinjectedEstablishedFacts,
+    stagesApplied,
+    droppedMessages: droppedForSummary.map(cloneMessage),
+  };
+}
+
+function cloneMessage(message: ModelMessage): ModelMessage {
+  return {
+    ...message,
+    toolCalls: message.toolCalls?.map((toolCall) => ({ ...toolCall })),
+    attachments: message.attachments?.map((attachment) => ({ ...attachment })),
+  };
+}
+function scaledChars(budgetTokens: number, ratio: number): number {
+  return Math.max(1, Math.floor(Math.max(1, budgetTokens) * ratio));
+}
+
+function compactAllToolPayloads(params: {
+  messages: readonly ModelMessage[];
+  estimator: TokenEstimatorPort;
+  compactedToolResultChars: number;
+}): {
+  messages: ModelMessage[];
+  truncatedTokens: number;
+  compacted: boolean;
+} {
+  let compacted = false;
+  let truncatedTokens = 0;
+  const toolCallsById = collectToolCallsById(params.messages);
+  const messages = params.messages.map((message) => {
+    let next = message;
+
+    if (message.toolCalls && message.toolCalls.length > 0) {
+      const toolCalls = message.toolCalls.map((toolCall) => {
+        const compactedArguments = buildCompactedToolArguments(toolCall);
+        if (toolCall.arguments === compactedArguments) {
+          return toolCall;
+        }
+        compacted = true;
+        truncatedTokens += Math.max(
+          0,
+          params.estimator.estimate(toolCall.arguments) -
+            params.estimator.estimate(compactedArguments),
+        );
+        return { ...toolCall, arguments: compactedArguments };
+      });
+      next = { ...next, toolCalls };
+    }
+
+    if (
+      next.role === "tool" &&
+      next.content.length > params.compactedToolResultChars
+    ) {
+      const content = compactToolMessageContent({
+        message: next,
+        toolCall: next.toolCallId
+          ? toolCallsById.get(next.toolCallId)
+          : undefined,
+        maxChars: params.compactedToolResultChars,
+      });
+      compacted = true;
+      truncatedTokens += Math.max(
+        0,
+        params.estimator.estimate(next.content) -
+          params.estimator.estimate(content),
+      );
+      next = { ...next, content };
+    }
+
+    return next;
+  });
+
+  return { messages, truncatedTokens, compacted };
+}
+
+/**
+ * Production entry: thresholds come only from WindowPolicy.compaction
+ * (no parallel default-ratio path).
+ */
+export function compactModelLoopMessagesFromWindowPolicy(params: {
+  messages: readonly ModelMessage[];
+  estimator: TokenEstimatorPort;
+  budgetTokens: number;
+  compaction: WindowPolicyCompaction;
+  preservePrefix?: boolean;
+  memoryFacts?: readonly { id: string; content: string }[];
+  establishedFacts?: readonly { id: string; content: string }[];
+  skipEstablishedFactsReinject?: boolean;
+}): ModelLoopCompactionResult {
+  const { compaction } = params;
+  return compactModelLoopMessages({
+    messages: params.messages,
+    estimator: params.estimator,
+    budgetTokens: params.budgetTokens,
+    memoryFacts: params.memoryFacts,
+    establishedFacts: params.establishedFacts,
+    maxEstablishedFactReinjectChars: compaction.establishedFactReinjectChars,
+    maxMemoryReinjectChars: compaction.memoryReinjectChars,
+    recentToolMessagesToKeepFull: compaction.keepRecentToolResults,
+    compactedToolResultChars: compaction.compactedToolResultChars,
+    compactedToolArgumentChars: compaction.compactedToolArgumentChars,
+    droppedTurnSummaryChars: compaction.droppedTurnSummaryChars,
+    warnRatio: compaction.warnRatio,
+    autoRatio: compaction.autoRatio,
+    hardRatio: compaction.hardRatio,
+    autoMaxTokens: compaction.autoMaxTokens,
+    hardMaxTokens: compaction.hardMaxTokens,
+    preservePrefix: params.preservePrefix,
+    skipEstablishedFactsReinject: params.skipEstablishedFactsReinject,
+  });
+}

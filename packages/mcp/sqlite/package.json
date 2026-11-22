@@ -1,0 +1,56 @@
+{
+  "name": "@mitii/mcp-sqlite",
+  "version": "2.9.100",
+  "description": "Mitii MCP stdio server for SQLite — readonly or readwrite via MCP_DB_ACCESS.",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "mitii-mcp-sqlite": "./bin/mitii-mcp-sqlite.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mitii-dev/Mitii.git",
+    "directory": "packages/mcp/sqlite"
+  },
+  "homepage": "https://github.com/Mitii-dev/Mitii/tree/main/packages/mcp/sqlite",
+  "bugs": {
+    "url": "https://github.com/Mitii-dev/Mitii/issues"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json && node -e \"require('node:fs').accessSync('dist/index.js')\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node bin/mitii-mcp-sqlite.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.11.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.2",
+    "vitest": "^3.2.7"
+  }
+}

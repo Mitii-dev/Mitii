@@ -11,21 +11,34 @@ import {
 } from '@mitii/sdk';
 
 /**
- * Host-side conversation / plan carry policy.
- * Limits are intentional defaults — engine compactConversation still budgets.
+ * Fallback host-side conversation / plan carry ceilings when callers have not
+ * yet derived `WindowPolicy.carry` from Window Budget.
+ * Prefer `limits` from `deriveWindowPolicy(...).carry` (or live preview mirrors).
+ * Structured handoff caps stay host-local (not token-window proportional).
  */
 export const CONVERSATION_CARRY_LIMITS = {
-  /** Max prior role turns to forward (user+assistant each count). */
-  maxMessages: 20,
-  /** Per-message character cap before truncation. */
-  maxCharsPerMessage: 8_000,
-  /** Tighter Agent follow-up window (structured handoff carries the rest). */
-  agentMaxMessages: 8,
-  agentMaxCharsPerMessage: 3_000,
+  /** Matches `carryMaxMessagesMax` in window-budget defaults. */
+  maxMessages: 200,
+  /** Matches `carryMaxCharsPerMessageMax` in window-budget defaults. */
+  maxCharsPerMessage: 100_000,
+  /** Same retention as ask/plan — do not drop customer-visible history in Agent. */
+  agentMaxMessages: 200,
+  agentMaxCharsPerMessage: 100_000,
   structuredMaxChangedPaths: 40,
   structuredMaxErrors: 8,
   structuredMaxErrorChars: 240,
 } as const;
+
+/** Runtime carry ceilings (Window Budget derived values are plain numbers). */
+export type ConversationCarryLimits = {
+  maxMessages: number;
+  maxCharsPerMessage: number;
+  agentMaxMessages: number;
+  agentMaxCharsPerMessage: number;
+  structuredMaxChangedPaths: number;
+  structuredMaxErrors: number;
+  structuredMaxErrorChars: number;
+};
 
 export type CarryChatRole = 'user' | 'assistant';
 
@@ -56,7 +69,7 @@ export interface BuildConversationCarryOptions {
   mode?: AgentCarryMode;
   /** Preferred over raw chat when present (Agent follow-ups). */
   structured?: StructuredCarryHandoff;
-  limits?: Partial<typeof CONVERSATION_CARRY_LIMITS>;
+  limits?: Partial<ConversationCarryLimits>;
 }
 
 export function resolveConversationCarryLimits(
@@ -65,12 +78,9 @@ export function resolveConversationCarryLimits(
   maxMessages: number;
   maxCharsPerMessage: number;
 } {
-  if (mode === 'agent') {
-    return {
-      maxMessages: CONVERSATION_CARRY_LIMITS.agentMaxMessages,
-      maxCharsPerMessage: CONVERSATION_CARRY_LIMITS.agentMaxCharsPerMessage,
-    };
-  }
+  // All modes keep the same history budget so ask → agent follow-ups do not
+  // lose prior answers. Token budgeting still compacts inside the engine.
+  void mode;
   return {
     maxMessages: CONVERSATION_CARRY_LIMITS.maxMessages,
     maxCharsPerMessage: CONVERSATION_CARRY_LIMITS.maxCharsPerMessage,

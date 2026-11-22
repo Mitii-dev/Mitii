@@ -4,7 +4,7 @@ import { executionRouteSchema } from "../../../decision-policy";
 import { agentModeSchema } from "../../../request-intake";
 
 import { SKILLS_SCHEMA_VERSION } from "../../constants";
-import { MAX_REQUIRED_SKILLS } from "../../constants";
+import { MAX_PREFERRED_SKILLS, MAX_REQUIRED_SKILLS } from "../../constants";
 import {
   DEFAULT_MAX_SKILLS,
   DEFAULT_SKILLS_BUDGET_TOKENS,
@@ -69,6 +69,14 @@ export const skillsSelectInputSchema = z
       .max(MAX_REQUIRED_SKILLS)
       .default([]),
     /**
+     * Soft-preferred skill ids (Engine size/route boost). Included when present
+     * in the catalog; missing ids are ignored (never a hard failure).
+     */
+    preferredSkillIds: z
+      .array(z.string().min(1).max(64))
+      .max(MAX_PREFERRED_SKILLS)
+      .default([]),
+    /**
      * Skill ids that must not be auto-matched for this run.
      * Required skills still win if explicitly attached.
      */
@@ -81,6 +89,11 @@ export const skillsSelectInputSchema = z
      * Engine sets this for compact no_cache windows.
      */
     forbidLargeSkills: z.boolean().optional(),
+    /**
+     * When true, return a name+description catalog slice for optional PC L1 inject.
+     * Does not change L2 body selection. Default false (30k-friendly).
+     */
+    includeCatalogL1: z.boolean().default(false),
   })
   .strict();
 

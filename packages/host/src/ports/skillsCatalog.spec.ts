@@ -365,15 +365,54 @@ Full body.
         'incremental-implementation',
         'test-driven-development',
         'debugging-and-error-recovery',
+        'api-db-runtime-debug',
+        'nl-sql-analyst',
+        'debug-systematic',
         'code-review-and-quality',
         'fix-review-findings',
         'security-and-hardening',
         'git-workflow-and-versioning',
       ]),
     );
+
+    const apiDb = skills.find((skill) => skill.id === 'api-db-runtime-debug');
+    expect(apiDb?.priority).toBe(195);
+    expect(apiDb?.conflictGroup).toBe('debug');
   });
 
-  it('selects the bundled planning skill for plan requests', async () => {
+  it('prefers api-db-runtime-debug over debug-systematic for empty API data', async () => {
+    const pipeline = new SkillsPipeline({
+      catalog: createFileSystemSkillsCatalog({
+        workspaceRoot: root,
+      }),
+    });
+
+    const result = await pipeline.select({
+      schemaVersion: SKILLS_SCHEMA_VERSION,
+      query:
+        'GET /v2/api/users returns no users no matter what I do — check database vs adapter vs DTO',
+      mode: 'agent',
+      route: 'diagnose',
+      evidence: {
+        primaryIntent: 'bugfix',
+        secondaryIntents: ['diagnose'],
+      },
+    });
+
+    expect(result.status).toBe('selected');
+    const debugIds = result.instructions
+      .map((skill) => skill.id)
+      .filter((id) =>
+        ['api-db-runtime-debug', 'debug-systematic', 'debugging-and-error-recovery'].includes(
+          id,
+        ),
+      );
+    expect(debugIds).toContain('api-db-runtime-debug');
+    expect(debugIds).not.toContain('debug-systematic');
+    expect(debugIds).not.toContain('debugging-and-error-recovery');
+  });
+
+  it('selects the bundled medium planning skill for plan requests', async () => {
     const pipeline = new SkillsPipeline({
       catalog: createFileSystemSkillsCatalog({
         workspaceRoot: root,
@@ -392,16 +431,18 @@ Full body.
     });
 
     expect(result.status).toBe('selected');
-    // Engineering pack planning skill shares conflictGroup "planning" and
-    // outranks planning-default (priority 190 > 180).
+    // conflictGroup "planning": medium-planning (200) outranks
+    // planning-and-task-breakdown (190) and planning-default (180).
     expect(result.instructions.map((skill) => skill.id)).toEqual(
-      expect.arrayContaining(['planning-and-task-breakdown']),
+      expect.arrayContaining(['medium-planning']),
     );
     expect(
-      result.instructions.find(
-        (skill) => skill.id === 'planning-and-task-breakdown',
-      )?.content,
+      result.instructions.find((skill) => skill.id === 'medium-planning')
+        ?.content,
     ).toContain('# Planning');
+    expect(result.instructions.map((skill) => skill.id)).not.toContain(
+      'planning-and-task-breakdown',
+    );
   });
 });
 

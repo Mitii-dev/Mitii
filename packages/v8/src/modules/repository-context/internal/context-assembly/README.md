@@ -17,7 +17,10 @@ Context Assembly turns selected context items into prompt-safe content blocks. I
 
 ```text
 context-assembly/
-  ContextAssembler.ts
+  ContextAssembler.ts              (public orchestrator)
+  assembleContextItem.ts           (per-item load → sanitize → redact → truncate → block)
+  contextAssemblyDrops.ts          (drop records, load-failure mapping, required-omission warnings)
+  contextAssemblyResultBuilders.ts (status resolution, budget, statistics, result validation)
   ContextContentLoader.ts
   ContextContentSourceRegistry.ts
   WorkspaceFileContextSource.ts

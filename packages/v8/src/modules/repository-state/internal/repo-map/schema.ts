@@ -91,6 +91,7 @@ export const repoMapScoreReasonSchema = z
   .object({
     type: z.enum([
       "current_file",
+      "important_file",
       "open_file",
       "git_diff",
       "diagnostic",

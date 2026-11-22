@@ -84,6 +84,134 @@ describe("normalizeCommonToolArguments", () => {
       }),
     ).toEqual({ revision: "HEAD~1", path: "a.ts" });
   });
+
+  it("strips invented read_git_show maxBytes/maxLines and maps read_git_log aliases", () => {
+    expect(
+      normalizeCommonToolArguments("read_git_show", {
+        revision: "HEAD~1",
+        path: "a.ts",
+        maxBytes: 5000,
+        maxLines: 100,
+      }),
+    ).toEqual({ revision: "HEAD~1", path: "a.ts" });
+    expect(
+      normalizeCommonToolArguments("read_git_log", {
+        maxResults: 10,
+        path: "apps/vscode/src/sidebar.ts",
+      }),
+    ).toEqual({
+      maxCount: 10,
+      paths: ["apps/vscode/src/sidebar.ts"],
+    });
+  });
+
+  it("maps read_file line_start/line_end aliases and drops them", () => {
+    const normalized = normalizeCommonToolArguments("read_file", {
+      path: "test/Desktop/components/HeaderComponent.ts",
+      line_start: 1,
+      line_end: 40,
+    });
+    expect(normalized).toEqual({
+      path: "test/Desktop/components/HeaderComponent.ts",
+      startLine: 1,
+      endLine: 40,
+    });
+  });
+
+  it("treats empty search_files path as workspace default", () => {
+    const normalized = normalizeCommonToolArguments("search_files", {
+      query: "Header.selectors",
+      path: "",
+      maxMatches: 20,
+    });
+    expect(normalized).toEqual({
+      query: "Header.selectors",
+      maxMatches: 20,
+    });
+    expect(
+      searchFilesInputSchema.parse(
+        coerceArgumentsToSchema(normalized, searchFilesInputSchema),
+      ),
+    ).toMatchObject({ query: "Header.selectors", path: "." });
+  });
+
+  it("maps search_files mode=filename onto literal", () => {
+    const normalized = normalizeCommonToolArguments("search_files", {
+      query: "Header",
+      path: "test/Desktop/selectors",
+      mode: "filename",
+    });
+    expect(normalized).toMatchObject({ mode: "literal" });
+    expect(
+      searchFilesInputSchema.parse(
+        coerceArgumentsToSchema(normalized, searchFilesInputSchema),
+      ),
+    ).toMatchObject({ mode: "literal" });
+  });
+
+  it("maps read_diagnostics path → paths and drops singular aliases", () => {
+    expect(
+      normalizeCommonToolArguments("read_diagnostics", {
+        path: "test/Desktop/pages/NavigationPage.ts",
+      }),
+    ).toEqual({ paths: ["test/Desktop/pages/NavigationPage.ts"] });
+    expect(
+      normalizeCommonToolArguments("read_diagnostics", {
+        file: "src/a.ts",
+      }),
+    ).toEqual({ paths: ["src/a.ts"] });
+    expect(
+      normalizeCommonToolArguments("read_diagnostics", {
+        paths: ["src/a.ts"],
+        path: "ignored.ts",
+      }),
+    ).toEqual({ paths: ["src/a.ts"] });
+    expect(normalizeCommonToolArguments("read_diagnostics", {})).toEqual({});
+  });
+
+  it("maps analyze_change_impact edgeTypes aliases and drops empties", () => {
+    expect(
+      normalizeCommonToolArguments("analyze_change_impact", {
+        path: "src/a.ts",
+        edgeTypes: ["import", "call", ""],
+      }),
+    ).toEqual({
+      path: "src/a.ts",
+      edgeTypes: ["imports", "calls"],
+    });
+    expect(
+      normalizeCommonToolArguments("analyze_change_impact", {
+        path: "src/a.ts",
+        edgeTypes: [],
+      }),
+    ).toEqual({ path: "src/a.ts" });
+    expect(
+      normalizeCommonToolArguments("analyze_change_impact", {
+        path: "src/a.ts",
+        edgeTypes: "imports",
+      }),
+    ).toEqual({
+      path: "src/a.ts",
+      edgeTypes: ["imports"],
+    });
+  });
+
+  it("rewrites github/ paths on delete/move mutation tools", () => {
+    expect(
+      normalizeCommonToolArguments("delete_file", {
+        path: "github/workflows/ci.yml",
+      }),
+    ).toEqual({ path: ".github/workflows/ci.yml" });
+    expect(
+      normalizeCommonToolArguments("move_file", {
+        from: "github/CODEOWNERS",
+        to: "github/OWNERS",
+      }),
+    ).toEqual({
+      from: ".github/CODEOWNERS",
+      to: ".github/OWNERS",
+    });
+  });
 });
 
 describe("coerceArgumentsToSchema numbers", () => {

@@ -5,6 +5,8 @@ import {
   type VerificationInput,
   type VerificationResult,
 } from "../contracts";
+import { projectLocalCompilePassed } from "./AssessTaskRelevantEvidence";
+import { filterActionableDiagnostics } from "./FilterActionableDiagnostics";
 
 export function captureRepoBuildState(params: {
   phase: "before" | "after";
@@ -12,13 +14,27 @@ export function captureRepoBuildState(params: {
   result: VerificationResult;
   capturedAt?: string;
 }): RepoBuildState {
-  const diagnostics = (params.result.allDiagnostics ?? params.result.diagnostics)
-    .slice(0, 500);
+  const raw = (params.result.allDiagnostics ?? params.result.diagnostics).slice(
+    0,
+    500,
+  );
+  const { actionable, omitted } = filterActionableDiagnostics({
+    diagnostics: raw,
+    dropPhantomSecondary: projectLocalCompilePassed(params.result.checks),
+    keepSyntheticTestPaths: false,
+  });
+  const diagnostics = actionable.slice(0, 500);
   const checks = params.result.checks.slice(0, 32);
   const projectIds =
     params.result.affectedProjectIds.length > 0
       ? params.result.affectedProjectIds
       : params.input.projects.map((project) => project.projectId);
+
+  const reasonCodes = [...params.result.reasonCodes];
+  if (omitted.length > 0 && !reasonCodes.includes("residual_harness_noise")) {
+    // Surface that snapshot counts exclude non-actionable residuals.
+    reasonCodes.push("residual_harness_noise");
+  }
 
   return repoBuildStateSchema.parse({
     schemaVersion: REPO_BUILD_STATE_SCHEMA_VERSION,
@@ -46,7 +62,7 @@ export function captureRepoBuildState(params: {
         )
         .map((check) => check.checkId),
     },
-    reasonCodes: params.result.reasonCodes,
+    reasonCodes: [...new Set(reasonCodes)],
   });
 }
 
@@ -60,9 +76,15 @@ function deriveFolderPrefixes(paths: readonly string[]): string[] {
       )
       .map((path) => {
         const parts = path.split("/").filter(Boolean);
+        // Prefer two-segment package roots when present (apps/x, packages/x,
+        // crates/x, libs/x) — otherwise keep the parent directory.
         if (
           parts.length >= 2 &&
-          (parts[0] === "packages" || parts[0] === "apps")
+          (parts[0] === "packages" ||
+            parts[0] === "apps" ||
+            parts[0] === "crates" ||
+            parts[0] === "libs" ||
+            parts[0] === "services")
         ) {
           return `${parts[0]}/${parts[1]}`;
         }

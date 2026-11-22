@@ -25,8 +25,7 @@ describe('WorkingTreeReviewBar', () => {
     ],
   };
 
-  it('lists this-chat files under Review and labels Code Review with git count', () => {
-    const onRunCodeReview = vi.fn();
+  it('lists this-chat files under Review without embedding Code Review', () => {
     render(
       <WorkingTreeReviewBar
         review={review}
@@ -36,7 +35,7 @@ describe('WorkingTreeReviewBar', () => {
         onOpenFile={vi.fn()}
         onOpenDiff={vi.fn()}
         onShowChanges={vi.fn()}
-        onRunCodeReview={onRunCodeReview}
+        onRunCodeReview={vi.fn()}
       />,
     );
 
@@ -45,12 +44,7 @@ describe('WorkingTreeReviewBar', () => {
     expect(screen.getByText('chat-a.ts')).toBeTruthy();
     expect(screen.getByText('chat-b.ts')).toBeTruthy();
     expect(screen.queryByText('extra.ts')).toBeNull();
-
-    const codeReview = screen.getByRole('button', {
-      name: 'Code Review (3)',
-    });
-    fireEvent.click(codeReview);
-    expect(onRunCodeReview).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: /Code Review/ })).toBeNull();
   });
 
   it('renders nothing when there are 0 file changes', () => {
@@ -97,7 +91,7 @@ describe('WorkingTreeReviewBar', () => {
     expect(screen.queryByText('Bug')).toBeNull();
   });
 
-  it('shows findings with severity and Fix when Code Review is enabled', () => {
+  it('shows findings with severity and per-finding Fix (Fix all lives in Code Review row)', () => {
     const onFixFinding = vi.fn();
     render(
       <WorkingTreeReviewBar
@@ -127,6 +121,7 @@ describe('WorkingTreeReviewBar', () => {
     expect(screen.getByText('Null deref')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Fix' }));
     expect(onFixFinding).toHaveBeenCalledWith(0);
-    expect(screen.getByRole('button', { name: 'Fix all' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Fix all' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
   });
 });

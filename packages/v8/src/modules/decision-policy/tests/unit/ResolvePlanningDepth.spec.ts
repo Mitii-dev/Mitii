@@ -131,4 +131,161 @@ describe("resolvePlanningDepth", () => {
 
     expect(result.planningDepth).toBe("none");
   });
+
+  it("honors Officer medium taskSize with short planningHint as internal", () => {
+    const understanding = createUnderstanding({
+      primaryTaskIntent: "bugfix",
+      taskAnalysis: {
+        scope: "single_location",
+        complexity: "simple",
+        risk: "low",
+        taskSize: "medium",
+        planningHint: "short",
+      },
+    });
+
+    const result = resolvePlanningDepth({
+      mode: "agent",
+      route: "execute",
+      understanding,
+      message: "Fix the failing tests",
+      windowPolicy: {
+        planning: { visiblePlanAffordable: true, changeImpactAffordable: true },
+      } as never,
+    });
+
+    expect(result.planningDepth).toBe("internal");
+    expect(result.reasonCodes).toContain("officer_task_size_plan");
+  });
+
+  it("does not let Officer medium bury a long execute brief (visible)", () => {
+    const understanding = createUnderstanding({
+      primaryTaskIntent: "test",
+      taskAnalysis: {
+        scope: "single_location",
+        complexity: "simple",
+        risk: "medium",
+        taskSize: "medium",
+        planningHint: "short",
+      },
+    });
+    const message = `Harden the suite.\n\n${"x".repeat(2_600)}`;
+
+    const result = resolvePlanningDepth({
+      mode: "agent",
+      route: "execute",
+      understanding,
+      message,
+      windowPolicy: {
+        contextWindowTokens: 64_000,
+        planning: { visiblePlanAffordable: true, changeImpactAffordable: true },
+      } as never,
+    });
+
+    expect(result.planningDepth).toBe("visible");
+    expect(result.reasonCodes).toContain("long_prompt_visible_plan");
+    expect(result.reasonCodes).not.toContain("multi_file_internal_plan");
+  });
+
+  it("forces visible for multi-outcome campaign asks", () => {
+    const understanding = createUnderstanding({
+      primaryTaskIntent: "test",
+      taskAnalysis: {
+        scope: "single_location",
+        complexity: "moderate",
+        risk: "medium",
+        taskSize: "medium",
+      },
+    });
+    const message = [
+      "What I need done:",
+      "",
+      "- Finish the real cross-device story on desktop and tablet",
+      "- Bring tablet smoke and regression coverage closer to desktop",
+      "- Cover billing and payments regression cases",
+      "- Keep layout floor setup tests green",
+      "- Update the README for desktop tablet and cross runs",
+      "",
+      "Done means",
+      "- Cross dine-in and takeaway complete",
+      "- Tablet smoke plus regression cases exist",
+      "- Billing history cases exist",
+      "- README matches reality",
+      "",
+      `${"y".repeat(500)}`,
+    ].join("\n");
+
+    const result = resolvePlanningDepth({
+      mode: "agent",
+      route: "execute",
+      understanding,
+      message,
+      windowPolicy: {
+        contextWindowTokens: 64_000,
+        planning: { visiblePlanAffordable: true, changeImpactAffordable: true },
+      } as never,
+    });
+
+    expect(result.planningDepth).toBe("visible");
+    expect(result.reasonCodes).toContain("multi_outcome_campaign_visible_plan");
+  });
+
+  it("honors Officer large taskSize as visible when affordable", () => {
+    const understanding = createUnderstanding({
+      primaryTaskIntent: "feature",
+      taskAnalysis: {
+        scope: "multi_file",
+        complexity: "moderate",
+        risk: "low",
+        taskSize: "large",
+        planningHint: "long",
+      },
+    });
+
+    const result = resolvePlanningDepth({
+      mode: "agent",
+      route: "execute",
+      understanding,
+      message: "Implement the settings flow",
+      windowPolicy: {
+        planning: { visiblePlanAffordable: true, changeImpactAffordable: true },
+      } as never,
+    });
+
+    expect(result.planningDepth).toBe("visible");
+    expect(result.reasonCodes).toContain("officer_task_size_plan");
+  });
+
+  it("forces at least internal short plan for agent execute small asks", () => {
+    const understanding = createUnderstanding({
+      primaryTaskIntent: "bugfix",
+      taskAnalysis: {
+        scope: "package",
+        complexity: "trivial",
+        risk: "low",
+        clarity: "clear",
+        taskSize: "small",
+        planningHint: "short",
+        targets: [
+          { kind: "folder", value: "apps/desktop", explicit: true },
+        ],
+      },
+    });
+
+    const result = resolvePlanningDepth({
+      mode: "agent",
+      route: "execute",
+      understanding,
+      message:
+        "upon clicking Index settings its should redirect properly to semantic tab",
+      windowPolicy: {
+        planning: { visiblePlanAffordable: true, changeImpactAffordable: true },
+      } as never,
+    });
+
+    expect(result.planningDepth).toBe("internal");
+    expect(result.reasonCodes).not.toContain("broad_repair_visible_plan");
+    expect(result.reasonCodes).not.toContain("change_impact_recommended");
+    expect(result.reasonCodes).toContain("officer_task_size_plan");
+  });
 });

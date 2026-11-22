@@ -115,7 +115,7 @@ pnpm --filter @mitii/search-kit build
 
 Tests use mocked `fetch` — no live network required.
 
-## Non-goals (Phase 1–2)
+## Non-goals
 
 - Browser / Playwright scraping
 - Regional HTML engine farms (Baidu, Sogou, …)

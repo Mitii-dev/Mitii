@@ -38,6 +38,7 @@ export const ADVERSARY_HIGH_RISK_TOOL_IDS = [
   "web_search",
   "create_github_issue",
   "create_pull_request",
+  "git_signoff_range",
 ] as const;
 
 export function isAdversaryHighRiskTool(name: string): boolean {

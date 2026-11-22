@@ -1,11 +1,12 @@
 # `@mitii/host`
 
-Shared **host kit** for Mitii apps (`@mitii/cli`, VS Code extension).
+Shared **host kit** for Mitii apps (CLI, VS Code, Desktop, ACP).
 
-Durable filesystem adapters, workspace indexing, and host UX helpers that must not live in `@mitii/v8` or `@mitii/sdk`.
+Durable filesystem adapters, workspace indexing, shared start-input assembly,
+and host UX helpers that must not live in `@mitii/v8` or `@mitii/sdk`.
 
 ```text
-apps/cli | apps/vscode
+apps/cli | apps/vscode | apps/desktop | apps/acp
         |
         v
   @mitii/host     <- this package
@@ -27,7 +28,17 @@ Forbidden: `host -> apps`, `sdk -> host`, `v8 -> host`, `search-kit -> host|sdk|
 npm install @mitii/host
 ```
 
-Requires **Node.js 20+**. Depends on `@mitii/sdk`, `@mitii/v8`, `@mitii/search-kit`, and `zod`. Optional: `@lancedb/lancedb` for the vector store, `onnxruntime-node` / `onnxruntime-web` for bundled MiniLM embeddings. License: **AGPL-3.0-or-later**.
+Requires **Node.js 20+**. Depends on `@mitii/sdk`, `@mitii/v8`, `@mitii/search-kit`, and `zod`. Optional: `@lancedb/lancedb` for the vector store, `onnxruntime-node` / `onnxruntime-web` for bundled MiniLM embeddings, `es-git` (libgit2) for fast GitPort status, `tree-sitter` native grammars for faster parse, `@vscode/ripgrep` for bundled `rg`, `@ast-grep/cli` for bundled `ast-grep`/`sg`, `@scip-code/scip` + `@bufbuild/protobuf` to decode `.mitii/scip/index.scip`. Background SCIP generation uses local/`PATH` `scip-typescript` when available (else existing `.mitii/scip/` artifacts). License: **AGPL-3.0-or-later**.
+
+### Speed / accuracy tool unlocks
+
+| Capability | Preferred binary | Fallback |
+|---|---|---|
+| `search_files` | `@vscode/ripgrep` (`rgPath`) | PATH `rg`, then filesystem walk |
+| `structural_search` | `@ast-grep/cli` native `ast-grep` | PATH `ast-grep` / `sg` |
+| SCIP → `symbol_refs` | `.mitii/scip/index.jsonl` or decoded `index.scip` | generate via `scip-typescript` into `.mitii/scip/`, then `@scip-code/scip` decode |
+
+Place prebuilt SCIP at `.mitii/scip/index.jsonl` or `.mitii/scip/index.scip` (also accepts workspace-root `index.scip`). Enrichment is scheduled after lexical index and never blocks publish.
 
 Published on `v*` release tags. For local development, consume via the workspace (`pnpm --filter @mitii/host`).
 
@@ -42,23 +53,29 @@ V8 is host-neutral. Apps still need:
 
 `@mitii/host` centralizes those so CLI and VS Code stay thin and do not drift.
 
-Apps still own environment-specific pieces: secrets, settings UI, MCP, diagnostics, git adapters, and (in VS Code) Memento-backed memory if preferred over the file store.
+Apps still own environment-specific pieces: secrets, settings UI, MCP, IDE diagnostics, git adapters, and (in VS Code) Memento-backed memory if preferred over the file store. When no TypeScript language service is available, `createHostLanguageServices` still wires `createNodeJsDiagnosticsPort` so CLI `read_diagnostics` can surface Node module-load errors for `.js` / `.mjs` / `.cjs`.
 
 ## Source layout
 
 ```text
 src/
-  index.ts                 # public barrel - import from `@mitii/host`
+  index.ts                 # public entry - import from `@mitii/host`; re-exports public/*, client, start
+  public/                  # re-export-only domain facades: sqlite, indexing, repository, ports,
+                           #   corpus, recipes, prompt-preview, config, automation, product, session-log
   sqlite/                  # injection contract for openDatabase
-  indexing/                # embeddings, full index, fingerprint snapshot
+  indexing/                # embeddings, full index, fingerprint snapshot, pipeline health
     bundled-embedding/     # on-device MiniLM source (native ONNX + WASM)
-    treeSitter/            # web-tree-sitter runtime; V8 injects query text
+    treeSitter/            # native + web-tree-sitter; V8 injects query text
+    scip/                  # background SCIP → symbol_refs enrichment
   repository-context/      # createHostRepositoryContext
   corpus/                  # optional `.mitii/corpus/` index + retrieval source
   runtime/                 # child-run narrowing helpers
-  ports/                   # search, network (content-aware), memory, skills, checkpoints
+  client/                  # createHostClient: shared createMitiiClient composition
+  start/                   # prepareStartInput: shared MitiiStartInput assembly
+  ports/                   # search, ripgrep/FTS, ast-grep, git (libgit2), network, memory, skills, checkpoints
   prompt/                  # project rules loader -> start({ projectRules })
   config/                  # provider presets (not a V8 port)
+  session-log/             # live .mitii/logs JSONL (Desktop/VS Code/CLI parity)
   internal/                # private helpers (not public)
 ```
 
@@ -73,18 +90,20 @@ Prefer importing from `@mitii/host`. Do not import `internal/`.
 | `createBundledMiniLmEmbeddingProvider` | V8 `EmbeddingProvider` | On-device MiniLM (native ONNX, WASM fallback) |
 | `createLanceDbConnection` | V8 `LanceDbConnectionPort` | Optional `@lancedb/lancedb` vector store |
 | `runFullWorkspaceIndex` | Orchestrates V8 index runtime | Writes `.mitii/repository-index.sqlite`, LanceDB, graph/map |
+| `readIndexPipelineHealth` / `formatIndexPipelineHealthLines` | Index observability | Code / FTS5 / Embeddings / Graph / native status from `.mitii/` |
 | `runCorpusIndex` / `CorpusRetrievalSource` | Optional corpus RAG | Indexes `.mitii/corpus/` markdown/text → `index.json`; hybrid `additionalSources` when `corpusEnabled` |
 | `buildWorkspaceSnapshot` | Builds `PublishRepositoryStateInput` | Fingerprint-only; indexes marked unavailable. `roots[0].rootId` is the workspace directory basename. |
 | `createHostRepositoryContext` | V8 `RepositoryContextPipeline` | Hybrid retrieve + file-map fallback. File-map fallback honors `folderPrefix`. Optional `corpusEnabled` (default false). |
 | `createWorkspaceCheckpointStore` | SDK checkpoint store | `.mitii/checkpoints/` |
 | `createWorkspaceVerificationStore` | Verification record store | `.mitii/verification/` |
 | `createWorkspaceReviewStore` | Review record store | `.mitii/review/` |
-| `createWorkspaceMemoryStore` | V8 `MemoryStorePort` | `.mitii/memory/facts.json` (mutation queue + atomic rename + honest deletes) |
+| `createWorkspaceMemoryStore` | V8 `MemoryStorePort` | `.mitii/memory/facts.json` (queue, file locks, `transact`, recovery guards, honest deletes) |
 | `listPendingMemories` / `approvePendingMemory` | Memory approve queue | `.mitii/memory/pending.json` — `autoPromote` default false |
 | `narrowChildStartInput` | Child-run helper | Mode ≤ parent; deny-only `userSafetyRules`; `enabled` default off |
 | `createWorkspaceKnowledgeGraph` | V8 `KnowledgeGraphPort` | `.mitii/memory/graph.jsonl` (entities/relations beside facts) |
 | `createOptionalSearchPort` | V8 `SearchPort` | Multi-provider via `@mitii/search-kit` (SearXNG / Brave / Tavily). SecretStorage `mitii.search.apiKey` or env keys. |
 | `createHostNetworkPort` | V8 `NetworkPort` | Content-aware wrapper: SO / GitHub issues / Wiki / arXiv / HTML readability before raw HTTP. |
+| `openSessionLog` / `createMitiiThreadSessionId` | Host session JSONL | Live `.mitii/logs/MM-DD-YYYY-HH-MM-thread_….jsonl` (CLI / Desktop / VS Code parity) |
 | `createFileSystemSkillsCatalog` | V8 `SkillsCatalogPort` | SDK bundled `skills/` + `.mitii/skills` |
 | `buildWritingRecipeAsk` | Host recipes | Force-attach commit / PR / changelog skills + git context |
 | `buildFixReviewFindingsAsk` | Host recipes | Compile review findings → Agent prompt + `fix-review-findings` skill (no ToolGrant) |
@@ -92,65 +111,117 @@ Prefer importing from `@mitii/host`. Do not import `internal/`.
 | `loadRecipeSpec` | Parameterized recipes | Load `.mitii/recipes/<id>.json` (schemaVersion: 1) |
 | `loadProjectRules` | SDK `projectRules` | `AGENTS.md`, `.mitii/rules`, `MITTII.local.md` |
 | `PROVIDER_PRESETS` / `getProviderPreset` | Host config only | Prefills base URL / model / adapter |
-| `createHostLlmPorts` | Host composition | Echo, OpenAI-compatible, Anthropic, Gemini |
+| `createHostLlmPorts` | Host composition | Echo, OpenAI-compatible, Anthropic, Gemini. Presets may set `defaultCapabilities` (e.g. disable forced tool choice + structured output for thinking endpoints). |
 | `testProviderConnection` | Host UX | Probe without starting a run |
+
+## `createHostClient`
+
+Every host (CLI, VS Code, Desktop, ACP) composes the same stack around `createMitiiClient`. `createHostClient(options)` owns that composition so hosts only pass what differs.
+
+| | |
+|---|---|
+| **Input** | `workspaceRoot` (or `undefined` for chat-only), `workspaceId`, `llm: { understandingLlm, runLlm }`, optional `env`, `defaultMode`, `defaultSessionId`, `sandbox`, `mcp`, `search`, `skills`, `memory`, `repositoryContext`, and host port overrides (`processPort`, `network`, `diagnostics`, `codeNavigation`) |
+| **Output** | `{ client, repositoryState, tools?, verification?, git?, mcpToolDefinitions, memoryStore?, memoryEmbedding? }` |
+| **Owns** | tool runtime, verification, `InMemoryRepositoryStateStore` + pipeline, disk skills, workspace memory, sandboxed process port, MCP registry + tool definitions, workspace checkpoints, repository graphs |
+| **Hosts own** | LLM port resolution and secrets, settings, IDE diagnostics / code navigation, SQLite opener, the repository-context wrapper (passed as a callback receiving `{ repositoryState, workspaceRoot, git }`) |
+| **Failure** | `HostClientOptionsError` with `code` in `invalid_workspace_id`, `invalid_default_mode`, `invalid_sandbox` (scalar options are Zod-validated) |
+
+Helpers: `readSandboxOptionsFromEnv(env)` parses the shared `MITII_SANDBOX*` contract; `bindHostMcp(manager, settings, root)` adapts any MCP manager (`@mitii/mcp` or a host-owned one) to the `HostMcpPort`.
+
+```ts
+const { client } = await createHostClient({
+  workspaceRoot: cwd,
+  workspaceId,
+  llm: { understandingLlm, runLlm },
+  sandbox: readSandboxOptionsFromEnv(process.env),
+  mcp: bindHostMcp(getSharedMcpManager({ clientInfoName: 'my-host' }), mcpSettings, cwd),
+  memory: { semanticIndex },
+  repositoryContext: ({ repositoryState, workspaceRoot, git }) =>
+    createHostRepositoryContext({ repositoryState, workspaceRoot, semanticIndex, git }),
+});
+```
+
+Non-responsibilities: provider/secret resolution, UI, and SDK/V8 behavior. `clientOptions` are spread last for per-host `createMitiiClient` overrides (adversary, engine implementation).
+
+## `prepareStartInput`
+
+Every host (Desktop, VS Code, CLI ask, CLI connectors) should assemble
+`MitiiStartInput` through `prepareStartInput` so project rules, mode profiles,
+disk safety, approval presets, and database-mode overlays stay consistent.
+Hosts only map settings → scalars and attach IDE/environment blocks.
+
+| | |
+|---|---|
+| **Input** | `prompt`, optional `workspaceRoot` / `uiMode` / `approvalPreset` / `thoroughness` / budgets / pins / conversation / environment |
+| **Output** | `{ start, effectiveMode, meta }` — `start` is Zod-validated |
+| **Owns** | Approval preset mapping (`getApprovalPresetCopy`), thoroughness → depth/effort, disk rules, modes, safety merge, database overlay, skill/MCP pin merge |
+| **Hosts own** | Secrets, settings UI, trust, IDE context blocks, streaming UI |
+| **Failure** | `HostStartOptionsError` (`invalid_prepare_start_input`, `unknown_mode_profile`) |
+
+```ts
+const { client } = await createHostClient({ /* host ports */ });
+const { start } = await prepareStartInput({
+  prompt,
+  workspaceRoot,
+  uiMode: 'ask',
+  approvalPreset: 'guided',
+  thoroughness: 'medium',
+  environment: hostCollectedBlocks,
+});
+client.start(start);
+```
+
+Helpers: `resolveApprovalPreset`, `THOROUGHNESS_MAP`. See `src/start/README.md`.
 
 ## How hosts wire it
 
 ```ts
 import {
-  createFileSystemSkillsCatalog,
-  createHostNetworkPort,
+  createHostClient,
   createHostRepositoryContext,
-  createOptionalSearchPort,
-  createWorkspaceCheckpointStore,
-  createWorkspaceMemoryStore,
-  getProviderPreset,
-  loadProjectRules,
+  prepareStartInput,
   runFullWorkspaceIndex,
 } from '@mitii/host';
-import { createMitiiClient, NodeNetworkAdapter, ToolRuntimePipeline } from '@mitii/sdk';
 
-const openDatabase = /* better-sqlite3 | Electron native */;
-
-const tools = new ToolRuntimePipeline({
-  /* ... */,
-  search: createOptionalSearchPort(process.env),
-  network: createHostNetworkPort({
-    inner: new NodeNetworkAdapter(),
-    env: process.env,
-  }),
-});
-
-const repositoryContext = createHostRepositoryContext({
-  repositoryState,
+const { client } = await createHostClient({
   workspaceRoot,
-  openDatabase,
-  semanticIndex,
+  workspaceId,
+  llm: { understandingLlm, runLlm },
+  repositoryContext: ({ repositoryState, workspaceRoot, git }) =>
+    createHostRepositoryContext({ repositoryState, workspaceRoot, git }),
 });
 
-const client = createMitiiClient({
-  /* llms... */
-  repositoryState,
-  repositoryContext,
-  tools,
-  checkpointStore: createWorkspaceCheckpointStore(workspaceRoot),
-  skillsCatalog: createFileSystemSkillsCatalog({
-    workspaceRoot,
-    contentMode: 'metadata',
-  }),
-  memoryStore: createWorkspaceMemoryStore(workspaceRoot, workspaceId),
+const { start } = await prepareStartInput({
+  prompt,
+  workspaceRoot,
+  uiMode: 'ask',
+  approvalPreset: 'guided',
 });
-
-const projectRules = await loadProjectRules({ workspaceRoot });
-await client.start({ /* ... */, projectRules });
+client.start(start);
 ```
 
 **Indexing:** prefer `runFullWorkspaceIndex` -> publish repository state. If that has not run, fall back to `buildWorkspaceSnapshot` (honest fingerprint: indexes unavailable).
 
+**Index pipeline health:** call `readIndexPipelineHealth({ workspaceRoot })` (or CLI `mitii index --status`) to see which pipeline is ready vs failed: Code Index, Text FTS5, Embeddings, Graph/Map, Tree-sitter, and native sqlite / LanceDB / ONNX. Overall is `ready`, `lexical_only`, `running`, `failed`, or `missing`.
+
 **Semantic retrieval** is off unless the host passes `semanticIndex.enabled` (and a ready embedding profile). When disabled, repository context logs `semantic_index_disabled` and falls back to path-based discovery.
 
-**Memory** persists under `.mitii/memory/facts.json` when `createWorkspaceMemoryStore` is injected. Writes are serialized (mutation queue), crash-safe (temp + rename), and soft-fail malformed facts on load. `delete` returns `{ id, deleted, message }` so missing ids are honest no-ops. An empty store is a cold start (`memory_empty`), not a missing adapter. Reusable package facts are only available after a prior run committed them.
+**Memory** persists under `.mitii/memory/facts.json` when `createWorkspaceMemoryStore` is injected. The adapter accepts validated facts and returns validated facts through `query`/`list`; `delete` returns `{ id, deleted, message }`. Mutations read and validate the stored envelope and every row before replacing the file using a same-directory temporary file and rename. A per-instance mutation queue serializes calls through one adapter object; exclusive directory locks coordinate separate instances and processes on the same facts file. `transact` applies a scoped decision and writes its full change set under that same lock.
+
+A missing file is a cold start. A corrupt or unsupported envelope is an error, never an empty writable store. Supported storage versions are 1 and 2; absent legacy scope/privacy fields retain their existing defaults, and valid date offsets normalize to UTC. Invalid metadata is no longer silently replaced with defaults. Valid rows in a partially damaged envelope remain readable, but commits, deletes, and access updates reject until recovery, including when duplicate IDs or unknown fact fields would otherwise be discarded. Failed write validation never filters a fact out of the replacement envelope.
+
+`MemoryStorageError`, `memoryStorageErrorCodeSchema`, and the inferred `MemoryStorageErrorCode` are public exports. Error messages contain no stored payloads:
+
+| Code | Meaning |
+|---|---|
+| `memory_storage_corrupt` | Invalid JSON or envelope shape; reads and mutations reject |
+| `memory_storage_version_unsupported` | Unsupported storage version; reads and mutations reject |
+| `memory_storage_recovery_required` | Invalid rows or duplicate IDs; valid rows remain readable but mutations reject |
+| `memory_storage_invalid_fact` | An incoming or updated fact fails validation; mutation rejects |
+
+Filesystem errors other than a missing file propagate unchanged. The memory pipeline can still return recoverable facts when access updates fail, with an access-touch warning. These guards apply to the file fact adapter; pending drafts and observations share atomic write + lock helpers and content sanitization, while graph persistence and VS Code Memento have separate owners with matching content-policy expectations.
+
+For recovery, stop writers, preserve a copy of the original file, and restore a verified supported envelope from a backup or explicitly repair its invalid rows. Do not substitute an empty file. Unsupported versions need a compatible Mitii version or an explicit migration. The next operation rechecks disk, so a repaired file can be used without recreating the adapter. Automatic repair, backups, and schema migration are not performed by this adapter. A crashed writer's lock directory is retained until recovered; other writers fail after a short wait rather than taking over a stale lock.
 
 ## Naming note: `WorkspaceSnapshot`
 
@@ -186,9 +257,33 @@ Unknown RestorePoint schema versions are ignored. Clear with
 ## Skills and writing recipes
 
 - **Catalog:** `createFileSystemSkillsCatalog({ workspaceRoot, contentMode: 'metadata' })` loads SDK-bundled skills then workspace `.mitii/skills/`.
-- **Format:** [`docs/SKILLS_FORMAT.md`](../../docs/SKILLS_FORMAT.md), pack notes in [`packages/sdk/skills/README.md`](../sdk/skills/README.md).
+- **Format / pack notes:** [`packages/sdk/skills/README.md`](../sdk/skills/README.md).
 - **Writing recipes:** `buildWritingRecipeAsk({ recipe: 'commit-message' | 'pr-summary' | 'changelog', workspaceRoot })` gathers git context and returns `requiredSkillIds` for VS Code SCM helpers and CLI.
 - **Parameterized recipes:** `RecipeSpec` (`schemaVersion: 1`) under `.mitii/recipes/<id>.json`. `compileRecipeToStartInput` fills `prompt` / `mode` / `requiredSkillIds` / `autonomyPreset` only — Decision Policy still owns grants. CLI: `mitii recipe run <id> --param k=v`.
+
+## Database mode
+
+Read-only NL→SQL overlay for Desktop, VS Code, CLI, and ACP. See [`src/database-mode/README.md`](./src/database-mode/README.md) and [`ARCHITECTURE.md`](./src/database-mode/ARCHITECTURE.md).
+
+```ts
+import {
+  isDatabaseUiMode,
+  resolveDatabaseModeStart,
+  mapUiModeToAgentMode,
+} from '@mitii/host';
+
+if (isDatabaseUiMode(uiMode)) {
+  const overlay = resolveDatabaseModeStart({ workspaceRoot });
+  client.start({
+    mode: mapUiModeToAgentMode(uiMode), // 'ask'
+    ...overlay.startFields,
+  });
+}
+```
+
+- Builtin profile slug: `database` (ask + read/mcp/command; no edit)
+- Forced skill: `nl-sql-analyst`
+- Pins installed DB MCP via `requiredMcpServerIds` (Ask MCP grant); plain Ask is unchanged
 
 ## Index pin and reuse
 

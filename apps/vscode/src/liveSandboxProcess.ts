@@ -1,5 +1,5 @@
 import type * as vscode from 'vscode';
-import type { ProcessPort, ProcessExecRequest } from '@mitii/v8';
+import type { ProcessPort, ProcessExecRequest } from '@mitii/sdk';
 import {
   createSandboxedProcessPort,
   resolveSandboxPolicy,

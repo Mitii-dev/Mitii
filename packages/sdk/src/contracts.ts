@@ -18,6 +18,7 @@ import {
   MAX_REQUIRED_MCP_SERVERS,
   REQUEST_ENVELOPE_LIMITS,
   SUPPORTED_IMAGE_MIME_TYPES,
+  userSafetyRulesSchema,
 } from '@mitii/v8';
 import type {
   AgentEngineResumeInput,
@@ -114,6 +115,12 @@ export const mitiiStartInputSchema = z
     approvedPlanStrategy: planStrategyDecisionSchema.optional(),
     taskList: taskListSchema.optional(),
     budget: agentRunBudgetSchema.optional(),
+    /**
+     * Host wall-time budget for this run (ms). Merged into `budget` so the
+     * engine can finalize after a landed patch before the host kills the run
+     * (benchmarks / CI). Wins over `budget.maxWallTimeMs` when both are set.
+     */
+    maxWallTimeMs: z.number().int().positive().optional(),
     model: z.string().min(1).optional(),
     temperature: z.number().min(0).max(2).optional(),
     stream: z.boolean().optional(),
@@ -128,18 +135,7 @@ export const mitiiStartInputSchema = z
       })
       .strict()
       .optional(),
-    userSafetyRules: z
-      .object({
-        enabled: z.boolean().default(false),
-        denyTools: z.array(z.string().min(1)).default([]),
-        denyCommandPrefixes: z.array(z.string().min(1)).default([]),
-        allowCommandPrefixes: z.array(z.string().min(1)).optional(),
-        denyPathScopes: z.array(z.string().min(1)).default([]),
-        denyNetworkHosts: z.array(z.string().min(1)).default([]),
-        approvalCeiling: mitiiApprovalModeSchema.optional(),
-      })
-      .strict()
-      .optional(),
+    userSafetyRules: userSafetyRulesSchema.optional(),
     dirtyPaths: z.array(z.string().min(1)).optional(),
     explorationDepth: explorationDepthSchema.optional(),
     windowBudget: z
@@ -153,6 +149,12 @@ export const mitiiStartInputSchema = z
     loopPolicy: z
       .object({
         thresholds: agentEngineThresholdsOverridesSchema.optional(),
+      })
+      .strict()
+      .optional(),
+    v8LoopPolicy: z
+      .object({
+        thresholds: z.record(z.string(), z.number()).optional(),
       })
       .strict()
       .optional(),
@@ -170,6 +172,20 @@ export const mitiiStartInputSchema = z
           .strict(),
       )
       .max(32)
+      .optional(),
+    /** Host IDE / session environment pulse → Prompt Construction environment. */
+    environment: z
+      .array(
+        z
+          .object({
+            id: z.string().min(1),
+            title: z.string().min(1).optional(),
+            content: z.string().min(1),
+            priority: z.number().int().nonnegative().optional(),
+          })
+          .strict(),
+      )
+      .max(8)
       .optional(),
     requiredSkillIds: z
       .array(z.string().min(1).max(64))

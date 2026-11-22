@@ -131,6 +131,11 @@ const referencesSchema =
         fileReferenceSchema,
       )
         .optional(),
+    staleFiles:
+      z.array(
+        fileReferenceSchema,
+      )
+        .optional(),
   }).strict()
     .optional();
 

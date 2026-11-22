@@ -20,6 +20,8 @@ export {
   promptOmissionSchema,
   promptInstructionBlockSchema,
   promptInstructionsSchema,
+  promptExtraFragmentSchema,
+  promptSkillCatalogL1EntrySchema,
   promptRepositoryBlockSchema,
   promptRepositoryContextSchema,
   promptSectionSchema,
@@ -39,6 +41,8 @@ export type {
   PromptOmission,
   PromptInstructionBlock,
   PromptInstructions,
+  PromptExtraFragment,
+  PromptSkillCatalogL1Entry,
   PromptRepositoryBlock,
   PromptRepositoryContext,
   PromptSection,
@@ -55,3 +59,39 @@ export {
   estimateTurnOutputHeadroom,
 } from "./turnOutputHeadroom";
 export type { TurnOutputHeadroom } from "./turnOutputHeadroom";
+
+export {
+  FRAGMENT_POLICY,
+  assembleFragments,
+  matchesMarkedFragment,
+  renderFragment,
+  BaseInstructionsFragment,
+  DecisionBriefFragment,
+  ExecutionSeedFragment,
+  InstructionBlockFragment,
+  MidConversationUpdateFragment,
+  PlanGuidanceFragment,
+  ExtraInstructionFragment,
+  SkillCatalogFragment,
+  formatSkillCatalogL1,
+  MID_CONVERSATION_UPDATE_MARKERS,
+  MID_CONVERSATION_SYSTEM_MARKERS,
+  wrapMidConversationUpdateText,
+  wrapMidConversationSystemText,
+} from "./internal/fragments";
+export type {
+  ContextualFragment,
+  FragmentRole,
+  RenderedFragment,
+  AssembledFragments,
+  AssembledFragmentOmission,
+  SkillCatalogL1Entry,
+} from "./internal/fragments";
+
+/** Bridge maps — context → prompt slice / instruction merge. */
+export {
+  mapContextToPromptSlice,
+  mergePromptInstructions,
+} from "./actions";
+
+export { PROMPT_CONSTRUCTION_THRESHOLDS } from "./policy";

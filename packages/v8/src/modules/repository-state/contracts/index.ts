@@ -99,6 +99,7 @@ export type {
   TreeSitterRuntimePort,
   TreeSitterRuntimeReference,
   TreeSitterRuntimeSymbol,
+  TreeSitterRuntimeSyntaxError,
 } from "./ports/TreeSitterRuntimePort";
 
 export {
@@ -106,6 +107,7 @@ export {
   workspaceEntrySchema,
   repoGraphSchema,
   repoMapSchema,
+  RepoMapRanker,
 } from "./artifacts";
 export type {
   WorkspaceSnapshot,
@@ -118,6 +120,7 @@ export type {
   RepoGraphEdgeType,
   RepoMap,
   RepoMapEntry,
+  RepoMapRankingContext,
   Chunk,
   ChunkKind,
   ChunkTokenEstimator,

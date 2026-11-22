@@ -39,21 +39,29 @@ decision-policy/
 
 ## Technical Details
 
+- **Grant profiles:** `BuildToolGrant` selects exactly one profile from mode×route — `none` | `network_only` | `readonly` | `agent_execute`. Ask/plan never get `agent_execute`. Only **agent + route `execute`** grants `apply_patch` (and other mutation tools). Profile is emitted as `grant_profile_*` reason codes for audit.
+- **Authority ladder:** Intake (mode / turnKind / artifacts) → Request Understanding Officer ballot (LLM ≥0.70; TurnKind clears soft clarify) → Decision Policy authorizes route + grant. Soft `looksLike*` heuristics lose to a trusted write ballot; **vitest/jest failure pastes** also yield to accepted act+mutation at ≥0.60. Hard plan-only / hard read-only still win.
+- **Facts-first default:** When understanding is high-confidence (≥0.70 + margin, accepted, no clarify), route resolution prefers the ballot over classic heuristics. Set `policyFactsFirst: false` only as a kill-switch. Continuation turns (`steer` / `follow_up` / `continue` / `recover`) emit `turn_continuation` and do not re-suspend on soft Task Analyzer clarity alone.
+- **Officer plan-then-finish:** RU `taskSize` / `planningHint` (`medium`/`short` → internal; `large`/`long` → visible when affordable) emit `officer_task_size_plan` on agent execute — still **route execute**, not plan-only. **Long briefs** (`long_prompt_visible_plan`) and **multi-outcome campaigns** (`multi_outcome_campaign_visible_plan`) upgrade to visible **before** Officer medium→internal so large asks are not buried.
 - Ask and plan modes cannot receive write grants.
 - Optional `userSafetyRules` (from `.mitii/safety.json`) may only tighten a grant after mode seals and injection clamp — never widen.
 - Agent (and ask) "run the tests / can you test" requests route to `diagnose` with `run_readonly_command`. Implement/fix phrasing still wins over a mention of running tests.
-- Agent clarify gate: clear "implement/fix …" asks still execute when understanding only has soft ambiguity. Material forks (diagnose vs mutation alternatives, investigate-vs-fix ambiguity questions, or `needsClarification` with confidence below 0.75) route to `clarify` instead of guessing.
+- Agent clarify gate: clear "implement/fix …" asks still execute when understanding only has soft ambiguity. **Localized UI copy** (`change/rename … to …`, nav/label/button) and path-targeted asks also execute — short length alone is not "bare ambiguous." Material forks (diagnose vs mutation alternatives, investigate-vs-fix ambiguity questions) still clarify. On continuation turns, material heuristic↔ballot conflict prefers safe `diagnose` over re-clarify.
+- Intent ballot: rule↔LLM agreement grows confidence; on conflict, LLM ≥ 0.70 wins the route (e.g. LLM `act` over rule `question`) unless `needsClarification` is set. The same ≥0.70 write ballot also wins soft Decision Policy keyword hits on follow-ups (soft read-only, soft "make a plan", pasted dumps, verification/symptom when they would steal the route). Hard overrides still win: `plan only`, "no code/file changes".
 - Soft workspace symptoms (stuck loading / hang with server or localhost) route to `diagnose` in Agent mode — never tool-less `direct_answer`.
 - Injection scanning never broadens authority.
 - `narrow()` may reduce write scope or tighten approval/budgets after discovery; it cannot add authority. Workspace-wide read (`pathScopes: ["."]`) is preserved so config files stay readable. When `approvalMode` is `never` (full access / `--approve`), write mutation scopes stay workspace-wide and are not narrowed away from required companion files.
-- `widen()` may add path/mutation scopes after `path_out_of_scope` or compiler errors; it cannot add tools, effects, or write authority that was not already granted. Agent Engine auto-widens path scopes whenever read or write effect is already granted (no second approval gate for admitting required paths). Auto-widen also applies when `approvalMode` is `never`.
+- `widen()` may add path/mutation scopes after `path_out_of_scope` or compiler errors; it cannot add tools, effects, or write authority that was not already granted. Agent Engine suspends with `grant_expansion_required` so the user can approve expanding path scopes (reads or writes) — it does not silent-auto-widen, including when `approvalMode` is `never`.
 - Large greenfield / full-package feature work (`large_implementation_visible_plan`) is treated like architecture-scale planning when the window can afford a visible plan.
 - `narrow()` returns the previous decision when the grant is unchanged.
   Callers MUST emit `grant_narrowed` only when `toolGrantsEquivalent` is false.
 - Mutation profiles are `relaxed`, `standard`, and `tight`. When `windowPolicy` is present, each numeric cap is `min(profile, window)` and `requireBatchedExecution` is OR'd.
-- Write grants may set `mutationPathScopes` from explicit folder/file targets. With `approvalMode: never`, mutation scopes are workspace-wide (`["."]`) so wiring files like `package.json` are never blocked after a script-only target. Discovery tools keep `pathScopes: ["."]` for package / multi-file work so `glob_files` / `search_files` can still see the repo; `apply_patch` / delete / move enforce `mutationPathScopes`.
+- Write grants may set `mutationPathScopes` from **explicit** folder/file targets only. Implicit UI folder pins are focus hints (look-here), not a hard mutation fence — workspace remains the default write ceiling. Discovery tools keep `pathScopes: ["."]` for package / multi-file work so `glob_files` / `search_files` can still see the repo; `apply_patch` / delete / move enforce `mutationPathScopes` when set.
 - `narrow()` also narrows `mutationPathScopes` when they were set (skipped for `approvalMode: never` and visible plans).
 - Verification requirements specify required evidence and whether unavailable evidence is acceptable.
+- **Behavioral asks:** `detectBehavioralAskSignals` / `looksLikeBehavioralAsk` flag HTTP/routes, script runs, and test asks (docs-only asks excluded). `resolveVerificationRequirement` then adds `tests` and `behavior` to `minimumEvidence` and emits `verification_behavior_evidence_preferred`, so a passing typecheck alone cannot accept an unwired route.
+- **Fast path:** `resolveFastPath` (agent + execute, 1–3 explicit file paths, short, low/medium risk) sets `planningDepth: "none"` with `fast_path_explicit_paths`. Declines carry `FAST_PATH_DECLINE_REASONS`.
+- **Explicit create asks:** `isExplicitCreateAsk` (leading create verb + mutation request, not plan/question vocabulary) routes agent-mode asks to `execute` with `agent_create_ask_execute`, never plan-only. Plan-only wording and read-only asks still win.
 - Host capability flags currently include web search availability.
 
 ## Ownership Boundaries
@@ -135,3 +143,13 @@ Decision Policy execution decision returns a result like this:
   "reasonCodes": ["execute_requested", "localized_change", "verification_required"]
 }
 ```
+
+## Single-owner constants
+
+- `toolIds.ts` owns tool-id groups and `TOOL_EFFECTS`; the tool runtime re-exports
+  them so this module never imports `engine/tool-runtime`.
+- `EXECUTION_ROUTE` is the only place route string literals are defined; compare
+  routes through it instead of inline strings.
+- `ResolveRoute` stages live in `RouteIntents`, `RouteMessageSignals`,
+  `RouteBallotAuthority` and `RouteClarification`; numeric thresholds are in
+  `policy.ts` (`DECISION_POLICY_THRESHOLDS`).

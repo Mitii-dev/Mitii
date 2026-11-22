@@ -1,0 +1,129 @@
+.file-changes-card__file-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  min-height: 20px;
+  border-radius: 999px;
+  border: 1px solid var(--mitii-border-soft);
+  background: color-mix(in srgb, var(--mitii-surface) 88%, transparent);
+  color: var(--mitii-muted);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
+.file-changes-card__file-status--edited {
+  color: #60a5fa;
+  border-color: color-mix(in srgb, #60a5fa 32%, var(--mitii-border));
+  background: color-mix(in srgb, #60a5fa 9%, transparent);
+}
+
+.file-changes-card__file-status--added {
+  color: var(--mitii-ok, #22c55e);
+  border-color: color-mix(in srgb, var(--mitii-ok, #22c55e) 32%, var(--mitii-border));
+  background: color-mix(in srgb, var(--mitii-ok, #22c55e) 9%, transparent);
+}
+
+.file-changes-card__file-status--deleted {
+  color: var(--mitii-danger, #ef4444);
+  border-color: color-mix(in srgb, var(--mitii-danger, #ef4444) 32%, var(--mitii-border));
+  background: color-mix(in srgb, var(--mitii-danger, #ef4444) 9%, transparent);
+}
+
+.file-changes-card__path {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--mitii-text);
+  text-align: left;
+  font-family: var(--mitii-font-mono);
+  font-size: 11.5px;
+  padding: 0;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-changes-card__path:hover .file-changes-card__name {
+  text-decoration: underline;
+}
+
+.file-changes-card__dir {
+  color: var(--mitii-muted);
+}
+
+.file-changes-card__name {
+  color: var(--mitii-text);
+  font-weight: 600;
+}
+
+.file-changes-card__file-stats {
+  display: inline-flex;
+  gap: 6px;
+  font-family: var(--mitii-font-mono);
+  font-size: 11px;
+  flex-shrink: 0;
+  border: 1px solid var(--mitii-border-soft);
+  background: color-mix(in srgb, var(--mitii-surface) 82%, transparent);
+  padding: 3px 6px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.file-changes-card__file-stats:hover {
+  background: color-mix(in srgb, var(--mitii-text) 6%, transparent);
+}
+
+.file-changes-card__diff-wrap {
+  margin: 0 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.file-changes-card__diff {
+  margin: 0;
+  padding: 8px 10px;
+  max-height: 180px;
+  overflow: auto;
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 6px;
+  border: 1px solid var(--mitii-border-soft);
+  background: color-mix(in srgb, var(--mitii-surface) 90%, transparent);
+  font-size: 10.5px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.file-changes-card__more {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--mitii-border-soft);
+  background: transparent;
+  color: var(--mitii-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 8px 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.file-changes-card__more:hover {
+  color: var(--mitii-text);
+  background: color-mix(in srgb, var(--mitii-text) 4%, transparent);
+}
+
+.diff-add {
+  color: var(--mitii-ok, #22c55e);
+}
+
+.diff-del {
+  color: var(--vscode-charts-red, #f87171);
+}

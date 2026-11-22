@@ -2,11 +2,15 @@ import {
   applySkillBudget,
   matchSkills,
   mergeSkillCandidates,
+  resolvePreferredSkills,
   resolveRequiredSkills,
   resolveSkillConflicts,
 } from "../actions";
 import { KeywordSkillSimilarity } from "../KeywordSkillSimilarity";
 import { SKILLS_SCHEMA_VERSION } from "../constants";
+import {
+  DEFAULT_SKILL_CATALOG_L1_MAX_ENTRIES,
+} from "../defaults";
 import {
   SkillsError,
   skillBodySchema,
@@ -18,6 +22,7 @@ import {
 import type { HydratedScoredSkill, ScoredSkill } from "../actions";
 import type {
   SkillBody,
+  SkillCatalogL1Entry,
   SkillIndexEntry,
   SkillsCatalogPort,
   SkillsSelectInput,
@@ -94,6 +99,12 @@ export class SkillsPipeline {
     const catalog = rawCatalog.map((entry) => skillIndexEntrySchema.parse(entry));
     const reasonCodes: SkillReasonCode[] = [];
     const warnings: string[] = [];
+    const catalogL1 = parsed.includeCatalogL1
+      ? buildCatalogL1(catalog)
+      : undefined;
+    if (catalogL1 && catalogL1.length > 0) {
+      reasonCodes.push("catalog_l1_included");
+    }
 
     if (catalog.length === 0) {
       reasonCodes.push("catalog_empty");
@@ -101,6 +112,7 @@ export class SkillsPipeline {
         schemaVersion: SKILLS_SCHEMA_VERSION,
         status: "empty",
         instructions: [],
+        ...(catalogL1 ? { catalogL1 } : {}),
         omissions: [],
         required: [],
         requiredCount: 0,
@@ -137,6 +149,14 @@ export class SkillsPipeline {
       reasonCodes.push("skills_required_partial");
     }
 
+    const preferred = resolvePreferredSkills({
+      catalog,
+      preferredSkillIds: parsed.preferredSkillIds,
+    });
+    if (preferred.resolvedIds.length > 0) {
+      reasonCodes.push("skills_preferred");
+    }
+
     const matched = await matchSkills({
       catalog,
       input: parsed,
@@ -168,7 +188,15 @@ export class SkillsPipeline {
         `Excluded ${matched.scored.length - matchedWithoutExcluded.length} auto-matched skill(s) for this run.`,
       );
     }
-    const merged = mergeSkillCandidates(required.scored, matchedWithoutExcluded);
+    const preferredWithoutExcluded =
+      excluded.size === 0
+        ? preferred.scored
+        : preferred.scored.filter((entry) => !excluded.has(entry.skill.id));
+    const merged = mergeSkillCandidates(
+      required.scored,
+      matchedWithoutExcluded,
+      preferredWithoutExcluded,
+    );
     const conflicts = resolveSkillConflicts({ scored: merged });
     if (conflicts.conflictsResolved) {
       reasonCodes.push("conflicts_resolved");
@@ -219,6 +247,7 @@ export class SkillsPipeline {
         schemaVersion: SKILLS_SCHEMA_VERSION,
         status: "empty",
         instructions: [],
+        ...(catalogL1 ? { catalogL1 } : {}),
         omissions,
         required: required.resolvedIds,
         requiredCount: requiredInInstructions.length,
@@ -236,6 +265,7 @@ export class SkillsPipeline {
       schemaVersion: SKILLS_SCHEMA_VERSION,
       status: "selected",
       instructions: budgeted.instructions,
+      ...(catalogL1 ? { catalogL1 } : {}),
       omissions,
       required: required.resolvedIds,
       requiredCount: requiredInInstructions.length,
@@ -323,4 +353,17 @@ function resolveMaxSkills(
     default:
       return parsed.maxSkills;
   }
+}
+
+function buildCatalogL1(
+  catalog: readonly SkillIndexEntry[],
+): SkillCatalogL1Entry[] {
+  return catalog
+    .filter((entry) => entry.id.trim() && entry.title.trim())
+    .slice(0, DEFAULT_SKILL_CATALOG_L1_MAX_ENTRIES)
+    .map((entry) => ({
+      id: entry.id,
+      name: entry.title,
+      description: (entry.description ?? entry.title).trim() || entry.title,
+    }));
 }

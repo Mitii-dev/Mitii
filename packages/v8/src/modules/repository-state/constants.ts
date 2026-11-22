@@ -26,8 +26,9 @@ export const REPOSITORY_CAPABILITY_IDS = [
   "map",
 ] as const;
 
+/** Per-capability levels (ARCHITECTURE § language/capability formula). Descriptor readiness stays `ready|degraded|unavailable`. */
 export const REPOSITORY_CAPABILITY_STATUSES = [
-  "ready",
+  "available",
   "degraded",
   "unavailable",
 ] as const;

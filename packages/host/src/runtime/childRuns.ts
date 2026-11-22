@@ -56,6 +56,7 @@ export function narrowChildStartInput(
     denyCommandPrefixes: [],
     denyPathScopes: [],
     denyNetworkHosts: [],
+    protectedPathGlobs: [],
   };
 
   return {

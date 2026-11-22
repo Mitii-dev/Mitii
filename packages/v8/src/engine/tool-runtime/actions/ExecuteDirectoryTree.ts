@@ -38,6 +38,7 @@ export async function executeDirectoryTree(params: {
     workspaceRoot: params.workspaceRoot,
     requestedPath: input.path,
     pathScopes: params.grant.pathScopes,
+    extraAllowedRoots: params.grant.extraAllowedRoots,
   });
 
   const maxDepth = input.maxDepth ?? DEFAULT_MAX_DEPTH;

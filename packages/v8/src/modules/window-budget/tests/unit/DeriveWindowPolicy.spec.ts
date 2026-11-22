@@ -6,6 +6,49 @@ import {
 } from "../../index";
 
 describe("deriveWindowPolicy", () => {
+  it("scales carry and injection ceilings with usable input", () => {
+    const compact = deriveWindowPolicy({
+      schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+      contextWindowTokens: 30_000,
+    });
+    const wide = deriveWindowPolicy({
+      schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+      contextWindowTokens: 200_000,
+    });
+
+    expect(compact.carry.maxMessages).toBeLessThan(wide.carry.maxMessages);
+    expect(compact.carry.maxCharsPerMessage).toBeLessThan(
+      wide.carry.maxCharsPerMessage,
+    );
+    expect(compact.injection.projectRulesTotalChars).toBeLessThanOrEqual(
+      wide.injection.projectRulesTotalChars,
+    );
+    expect(wide.carry.maxMessages).toBe(200);
+    expect(wide.carry.maxCharsPerMessage).toBe(100_000);
+    expect(wide.injection.repoMapFilesMax).toBe(400);
+    expect(wide.injection.sketchItemsMax).toBe(200);
+    expect(compact.fragments.absoluteMaxTokens).toBeLessThan(
+      wide.fragments.absoluteMaxTokens,
+    );
+  });
+
+  it("applies ask mode overlay to raise conversation share", () => {
+    const baseline = deriveWindowPolicy({
+      schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+      contextWindowTokens: 80_000,
+    });
+    const ask = deriveWindowPolicy({
+      schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
+      contextWindowTokens: 80_000,
+      mode: "ask",
+    });
+    expect(ask.mode).toBe("ask");
+    expect(ask.reasonCodes).toContain("mode_ask");
+    expect(ask.sections.conversationTokens).toBeGreaterThan(
+      baseline.sections.conversationTokens,
+    );
+  });
+
   it("scales usable input and section shares with the window", () => {
     const small = deriveWindowPolicy({
       schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
@@ -33,7 +76,7 @@ describe("deriveWindowPolicy", () => {
     );
     expect(small.effort).toBe("medium");
     expect(small.run.maxModelCalls).toBe(64);
-    expect(small.run.maxModelCalls).toBe(large.run.maxModelCalls);
+    expect(large.run.maxModelCalls).toBe(128);
     expect(small.run.maxVerificationRepairs).toBe(8);
     expect(small.compaction.toolResultContentChars).toBeLessThan(
       large.compaction.toolResultContentChars,
@@ -55,11 +98,11 @@ describe("deriveWindowPolicy", () => {
       schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
       contextWindowTokens: 200_000,
     });
-    // Compact band: 6-file mutation cap; ~30% output (ratio + window cap).
-    expect(at30k.mutation.maxUniqueFilesPerCall).toBe(6);
+    // Compact band: 8-file mutation cap; ~12% output (ratio + window cap).
+    expect(at30k.mutation.maxUniqueFilesPerCall).toBe(8);
     expect(at30k.taskList.maxTasks).toBe(8);
-    expect(at30k.maximumOutputTokens).toBe(9_000);
-    expect(at200k.mutation.maxUniqueFilesPerCall).toBe(8);
+    expect(at30k.maximumOutputTokens).toBe(3_600);
+    expect(at200k.mutation.maxUniqueFilesPerCall).toBe(12);
     expect(at200k.taskList.maxTasks).toBeGreaterThanOrEqual(10);
     expect(at200k.reasonCodes).toContain("mutation_effort_capped");
     expect(at200k.reasonCodes).toContain("effort_medium");
@@ -112,7 +155,7 @@ describe("deriveWindowPolicy", () => {
       maximumOutputTokens: 5_000,
     });
     expect(legacy.maximumOutputTokens).toBe(derived.maximumOutputTokens);
-    expect(legacy.maximumOutputTokens).toBeGreaterThan(5_000);
+    expect(legacy.maximumOutputTokens).toBe(4_200);
     expect(legacy.reasonCodes).toContain("output_legacy_default_ignored");
     expect(legacy.reasonCodes).toContain("output_derived_from_window");
     expect(legacy.reasonCodes).not.toContain("output_host_override");
@@ -214,14 +257,14 @@ describe("deriveWindowPolicy", () => {
     expect(medium.contextWindowTokens).toBe(200_000);
     expect(high.contextWindowTokens).toBe(200_000);
     expect(low.mutation.maxUniqueFilesPerCall).toBe(4);
-    expect(medium.mutation.maxUniqueFilesPerCall).toBe(8);
-    expect(high.mutation.maxUniqueFilesPerCall).toBe(12);
-    expect(low.run.maxModelCalls).toBe(24);
-    expect(low.run.maxToolCalls).toBe(48);
-    expect(medium.run.maxToolCalls).toBe(128);
-    expect(medium.run.maxModelCalls).toBe(64);
-    expect(high.run.maxModelCalls).toBe(96);
-    expect(high.run.maxToolCalls).toBe(192);
+    expect(medium.mutation.maxUniqueFilesPerCall).toBe(12);
+    expect(high.mutation.maxUniqueFilesPerCall).toBe(20);
+    expect(low.run.maxModelCalls).toBe(48);
+    expect(low.run.maxToolCalls).toBe(96);
+    expect(medium.run.maxToolCalls).toBe(256);
+    expect(medium.run.maxModelCalls).toBe(128);
+    expect(high.run.maxModelCalls).toBe(192);
+    expect(high.run.maxToolCalls).toBe(384);
     expect(low.run.maxVerificationRepairs).toBe(0);
     expect(high.run.maxVerificationRepairs).toBe(12);
     expect(high.reasonCodes).toContain("effort_high");

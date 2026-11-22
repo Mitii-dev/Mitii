@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import type { PlanArtifact } from '@mitii/sdk';
-import { serializePlanText } from '@mitii/v8';
+import { serializePlanText } from '@mitii/sdk';
 
 import { mitiiPlansDir } from './mitiiWorkspace.js';
 

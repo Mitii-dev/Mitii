@@ -29,4 +29,29 @@ describe('@mitii/mcp', () => {
     expect(settings.servers[0]?.transport).toBe('sse');
     expect(settings.servers[0]?.url).toBe('https://example.com/sse');
   });
+
+  it('migrates legacy mongo-readonly to mongo and refreshes launcher', () => {
+    const settings = parseMcp({
+      enabled: true,
+      servers: [
+        {
+          id: 'mongo-readonly',
+          name: 'MongoDB (read-only)',
+          transport: 'stdio',
+          command: 'npx',
+          args: ['-y', '@mitii/mcp-mongo-readonly'],
+          enabled: true,
+          builtin: true,
+          env: { MCP_MONGODB_URI: 'mongodb://localhost:27017/test' },
+        },
+      ],
+    });
+    const server = settings.servers[0]!;
+    expect(server.id).toBe('mongo');
+    expect(server.name).toBe('MongoDB');
+    expect(server.env?.MCP_MONGODB_URI).toBe('mongodb://localhost:27017/test');
+    const joined = `${server.command} ${(server.args ?? []).join(' ')}`;
+    expect(joined).toMatch(/mcp-mongo/);
+    expect(joined).not.toMatch(/mongo-readonly/);
+  });
 });

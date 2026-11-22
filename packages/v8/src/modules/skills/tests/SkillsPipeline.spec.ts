@@ -529,87 +529,6 @@ describe("SkillsPipeline", () => {
     );
   });
 
-  it("loads required skills even when relevance matching would skip them", async () => {
-    const pipeline = new SkillsPipeline({
-      catalog: new InMemorySkillsCatalog([
-        ...catalog,
-        {
-          id: "module-doc-generator",
-          title: "Module Doc Generator",
-          content: "Follow the module documentation playbook.",
-          intents: [],
-          routes: [],
-          tags: [],
-          paths: [],
-          priority: 220,
-          alwaysApply: false,
-        },
-      ]),
-    });
-
-    const result = await pipeline.select(
-      baseInput({
-        route: "execute",
-        query: "Generate docs for test/Tablet",
-        evidence: {
-          primaryIntent: "docs",
-          secondaryIntents: [],
-        },
-        requiredSkillIds: ["module-doc-generator"],
-      }),
-    );
-
-    expect(result.status).toBe("selected");
-    expect(result.required).toEqual(["module-doc-generator"]);
-    expect(result.requiredCount).toBe(1);
-    expect(result.instructions.map((block) => block.id)).toContain(
-      "module-doc-generator",
-    );
-    expect(
-      result.instructions.find((block) => block.id === "module-doc-generator")
-        ?.provenance.selection,
-    ).toBe("required");
-  });
-
-  it("excludes auto-matched skills listed in excludedSkillIds", async () => {
-    const pipeline = new SkillsPipeline({
-      catalog: new InMemorySkillsCatalog(catalog),
-    });
-
-    const included = await pipeline.select(
-      baseInput({
-        route: "execute",
-        query: "Fix the null check",
-        evidence: {
-          primaryIntent: "bugfix",
-          secondaryIntents: [],
-        },
-      }),
-    );
-    expect(included.instructions.map((block) => block.id)).toContain(
-      "bugfix-localize",
-    );
-
-    const excluded = await pipeline.select(
-      baseInput({
-        route: "execute",
-        query: "Fix the null check",
-        evidence: {
-          primaryIntent: "bugfix",
-          secondaryIntents: [],
-        },
-        excludedSkillIds: ["bugfix-localize"],
-      }),
-    );
-
-    expect(excluded.instructions.map((block) => block.id)).not.toContain(
-      "bugfix-localize",
-    );
-    expect(
-      excluded.warnings.some((warning) => warning.includes("Excluded")),
-    ).toBe(true);
-  });
-
   it("reports not_found omissions for missing required skills", async () => {
     const pipeline = new SkillsPipeline({
       catalog: new InMemorySkillsCatalog(catalog),
@@ -630,5 +549,28 @@ describe("SkillsPipeline", () => {
         }),
       ]),
     );
+  });
+
+  it("returns L1 catalog slice when includeCatalogL1 is set", async () => {
+    const pipeline = new SkillsPipeline({
+      catalog: new InMemorySkillsCatalog(catalog),
+    });
+
+    const withCatalog = await pipeline.select(
+      baseInput({ includeCatalogL1: true }),
+    );
+    expect(withCatalog.reasonCodes).toContain("catalog_l1_included");
+    expect(withCatalog.catalogL1?.length).toBeGreaterThan(0);
+    expect(withCatalog.catalogL1?.[0]).toEqual(
+      expect.objectContaining({
+        id: expect.any(String),
+        name: expect.any(String),
+        description: expect.any(String),
+      }),
+    );
+
+    const withoutCatalog = await pipeline.select(baseInput());
+    expect(withoutCatalog.catalogL1).toBeUndefined();
+    expect(withoutCatalog.reasonCodes).not.toContain("catalog_l1_included");
   });
 });

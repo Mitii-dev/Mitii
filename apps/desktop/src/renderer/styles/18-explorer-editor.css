@@ -1,0 +1,438 @@
+.explorer-twist {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--mitii-muted);
+}
+
+.explorer-twist svg {
+  display: block;
+}
+
+.explorer-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(in srgb, var(--mitii-muted) 70%, var(--mitii-text));
+  background: transparent;
+  border-radius: 0;
+}
+
+.explorer-icon svg {
+  display: block;
+}
+
+.explorer-icon--dir {
+  color: #dcb67a;
+  background: transparent;
+}
+
+.explorer-icon--dir.is-open {
+  color: #dcb67a;
+}
+
+.explorer-icon--file {
+  color: color-mix(in srgb, #89b4fa 55%, var(--mitii-muted));
+  background: transparent;
+}
+
+
+  :root[data-theme="light"] .explorer-icon--dir,
+:root[data-theme="light"] .explorer-icon--dir.is-open {
+    color: #c18401;
+  }
+
+  :root[data-theme="light"] .explorer-icon--file {
+    color: #3b7dd8;
+  }
+
+
+.explorer-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-left: 2px;
+}
+
+.workspace-git-summary {
+  display: grid;
+  gap: 2px;
+  padding: 0 12px 8px;
+}
+
+.workspace-git-summary strong {
+  font-size: 12px;
+}
+
+.workspace-git-summary span {
+  font-size: 11px;
+  color: var(--mitii-muted);
+  font-family: var(--mono);
+}
+
+.workspace-git-status {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  width: 18px;
+  flex-shrink: 0;
+  color: var(--mitii-muted);
+}
+
+.workspace-git-status--added {
+  color: #3f9c5a;
+}
+
+.workspace-git-status--deleted {
+  color: #d14d41;
+}
+
+.workspace-git-status--modified {
+  color: #c69026;
+}
+
+.workspace-git-status--renamed,
+.workspace-git-status--copied {
+  color: #3b82c4;
+}
+
+.workspace-git-status--conflict {
+  color: #d97706;
+}
+
+.explorer-row--git-added .explorer-label {
+  color: color-mix(in srgb, #3f9c5a 70%, var(--mitii-text));
+}
+
+.explorer-row--git-deleted .explorer-label {
+  color: color-mix(in srgb, #d14d41 65%, var(--mitii-text));
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, #d14d41 45%, transparent);
+}
+
+.explorer-row--git-modified .explorer-label {
+  color: color-mix(in srgb, #c69026 55%, var(--mitii-text));
+}
+
+.workspace-empty {
+  margin: 12px;
+  color: var(--mitii-muted);
+  font-size: 12px;
+}
+
+.editor-shell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--mitii-panel);
+}
+
+.editor-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  overflow-x: auto;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--mitii-border);
+  background: color-mix(in srgb, var(--mitii-surface) 80%, transparent);
+}
+
+.editor-tab {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 180px;
+  border-right: 1px solid var(--mitii-border);
+  background: transparent;
+  min-height: 32px;
+}
+
+.editor-tab.is-active {
+  background: var(--mitii-panel);
+  box-shadow: inset 0 -1px 0 var(--mitii-panel);
+}
+
+.editor-tab.is-dirty .editor-tab__label::before {
+  content: '●';
+  margin-right: 5px;
+  font-size: 8px;
+  color: var(--mitii-muted);
+}
+
+.editor-tab__label {
+  border: 0;
+  background: transparent;
+  padding: 0 4px 0 12px;
+  font-size: 12px;
+  color: var(--mitii-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 140px;
+}
+
+.editor-tab.is-active .editor-tab__label {
+  color: var(--mitii-text);
+}
+
+.editor-tab__close {
+  border: 0;
+  background: transparent;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  color: var(--mitii-muted);
+  margin-right: 4px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.editor-tab__close:hover {
+  background: color-mix(in srgb, var(--mitii-text) 8%, transparent);
+  color: var(--mitii-text);
+}
+
+.editor-breadcrumb {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--mitii-border-soft);
+  flex-shrink: 0;
+  font-size: 12px;
+}
+
+.editor-breadcrumb__path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  color: var(--mitii-muted);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.editor-breadcrumb__sep {
+  opacity: 0.5;
+  margin: 0 2px;
+}
+
+.editor-breadcrumb__current {
+  color: var(--mitii-text);
+  font-weight: 600;
+}
+
+.editor-breadcrumb__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.editor-note {
+  font-size: 11px;
+  color: var(--mitii-muted);
+}
+
+.code-editor {
+  --code-font-size: 13px;
+  --code-line-height: 20px;
+  --code-pad-y: 12px;
+  --code-pad-x: 14px;
+  --code-gutter-ch: 2;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: calc(var(--code-gutter-ch) * 1ch + 28px) minmax(0, 1fr);
+  overflow: hidden;
+  background: var(--mitii-panel);
+}
+
+.code-editor__gutter {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: var(--code-pad-y) 0;
+  text-align: right;
+  font-family: var(--mono);
+  font-size: var(--code-font-size);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--code-line-height);
+  color: var(--mitii-muted);
+  background: color-mix(in srgb, var(--mitii-surface) 70%, var(--mitii-panel));
+  border-right: 1px solid var(--mitii-border-soft);
+  user-select: none;
+  pointer-events: none;
+}
+
+.code-editor__line-no {
+  display: block;
+  box-sizing: border-box;
+  height: var(--code-line-height);
+  padding: 0 12px 0 8px;
+  line-height: var(--code-line-height);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.code-editor__stack {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.code-editor__highlight,
+.code-editor__input {
+  margin: 0;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: var(--code-pad-y) var(--code-pad-x);
+  border: 0;
+  outline: 0;
+  font-family: var(--mono);
+  font-size: var(--code-font-size);
+  line-height: var(--code-line-height);
+  tab-size: 2;
+  white-space: pre;
+  word-wrap: normal;
+  overflow-wrap: normal;
+  overflow: auto;
+}
+
+.code-editor__highlight {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: transparent;
+  color: var(--mitii-chat-fg);
+}
+
+.code-editor__input {
+  position: relative;
+  z-index: 1;
+  resize: none;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--mitii-text);
+  -webkit-text-fill-color: transparent;
+}
+
+.code-editor__input::selection {
+  background: color-mix(in srgb, var(--mitii-accent) 28%, transparent);
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+/* VS Code–ish token colors (light + dark via existing theme vars) */
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-built_in,
+.hljs-name,
+.hljs-tag {
+  color: #0550ae;
+}
+
+.hljs-string,
+.hljs-title,
+.hljs-section,
+.hljs-attribute,
+.hljs-literal,
+.hljs-template-tag,
+.hljs-template-variable,
+.hljs-type,
+.hljs-addition {
+  color: #0a3069;
+}
+
+.hljs-comment,
+.hljs-quote,
+.hljs-deletion,
+.hljs-meta {
+  color: #6e7781;
+}
+
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-link,
+.hljs-regexp,
+.hljs-variable,
+.hljs-params {
+  color: #953800;
+}
+
+.hljs-attr,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-selector-attr,
+.hljs-selector-pseudo {
+  color: #116329;
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: 700;
+}
+
+
+  :root[data-theme="dark"] .hljs-keyword,
+:root[data-theme="dark"] .hljs-selector-tag,
+:root[data-theme="dark"] .hljs-built_in,
+:root[data-theme="dark"] .hljs-name,
+:root[data-theme="dark"] .hljs-tag {
+    color: #ff7b72;
+  }
+
+  :root[data-theme="dark"] .hljs-string,
+:root[data-theme="dark"] .hljs-title,
+:root[data-theme="dark"] .hljs-section,
+:root[data-theme="dark"] .hljs-attribute,
+:root[data-theme="dark"] .hljs-literal,
+:root[data-theme="dark"] .hljs-template-tag,
+:root[data-theme="dark"] .hljs-template-variable,
+:root[data-theme="dark"] .hljs-type,
+:root[data-theme="dark"] .hljs-addition {
+    color: #a5d6ff;
+  }
+
+  :root[data-theme="dark"] .hljs-comment,
+:root[data-theme="dark"] .hljs-quote,
+:root[data-theme="dark"] .hljs-deletion,
+:root[data-theme="dark"] .hljs-meta {
+    color: #8b949e;
+  }
+
+  :root[data-theme="dark"] .hljs-number,
+:root[data-theme="dark"] .hljs-symbol,
+:root[data-theme="dark"] .hljs-bullet,
+:root[data-theme="dark"] .hljs-link,
+:root[data-theme="dark"] .hljs-regexp,
+:root[data-theme="dark"] .hljs-variable,
+:root[data-theme="dark"] .hljs-params {
+    color: #ffa657;
+  }
+
+  :root[data-theme="dark"] .hljs-attr,
+:root[data-theme="dark"] .hljs-selector-id,
+:root[data-theme="dark"] .hljs-selector-class,
+:root[data-theme="dark"] .hljs-selector-attr,
+:root[data-theme="dark"] .hljs-selector-pseudo {
+    color: #7ee787;
+  }

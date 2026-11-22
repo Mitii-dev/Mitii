@@ -15,6 +15,7 @@ export {
 export {
   DEFAULT_MAX_CHECKS,
   DEFAULT_MAX_DIAGNOSTICS,
+  DEFAULT_MAX_DIAGNOSTICS_PER_FILE,
   DEFAULT_DIFF_PREVIEW_CHARS,
   DEFAULT_SUMMARY_DIAGNOSTICS,
   DEFAULT_SUMMARY_CHARS,
@@ -69,13 +70,51 @@ export type {
   VerificationErrorCode,
   VerificationToolExecutorPort,
   VerificationManifestReaderPort,
+  VerificationSyntaxPort,
+  VerificationSyntaxFinding,
   VerificationRecordStorePort,
+} from "./contracts";
+
+export {
+  SYNTAX_PORT_EVIDENCE,
+  NODE_MODULE_LOAD_EVIDENCE,
 } from "./contracts";
 
 export {
   buildVerificationRecord,
   buildVerificationUserSummary,
+  formatOptionalLeftoverOffer,
 } from "./records";
+
+export {
+  packDiagnosticsForModel,
+  filterActionableDiagnostics,
+  assessTaskRelevantEvidence,
+  projectLocalCompilePassed,
+  selectAskScopedDefects,
+  BEHAVIOR_EVIDENCE_KIND,
+  hasBehaviorDefect,
+  hasPassedBehaviorCheck,
+  isBehaviorDefectCheck,
+  requiresBehaviorEvidence,
+  diagnosticIdentityKey,
+  compareRepoBuildStates,
+} from "./actions";
+export type {
+  FilterActionableDiagnosticsResult,
+  TaskRelevantEvidenceAssessment,
+  TaskRelevantResidualKind,
+  CompletionRecommendation,
+} from "./actions";
+
+export {
+  VERIFICATION_DENIED_PATH_SEGMENTS,
+  isDeniedDiagnosticPath,
+  isHarnessFrameDiagnostic,
+  isPhantomSecondaryDiagnostic,
+  isWorkspaceRootCheckId,
+  normalizeVerificationPath,
+} from "./patterns";
 
 export {
   InMemoryManifestReader,

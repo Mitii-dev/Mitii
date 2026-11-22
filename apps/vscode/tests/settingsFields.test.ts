@@ -125,6 +125,18 @@ const BASE_UI: UiSettingsSnapshot = {
     },
     fields: [...LOOP_POLICY_FIELDS],
   },
+  v8LoopPolicy: {
+    enabled: false,
+    thresholds: {},
+    bandThresholds: {},
+    band: {
+      id: 'compact',
+      label: 'Compact',
+      rangeLabel: '< 50k',
+      contextWindowTokens: 32_768,
+    },
+    fields: [],
+  },
   policyLab: {
     enabled: false,
     filePath: 'packages/v8/.../loopPolicyBands.ts + windowBudgetBands.ts',
@@ -737,6 +749,18 @@ describe('window-scaled token budget defaults', () => {
         (field) => field.tier === 'advanced',
       ),
     ).toBe(true);
+  });
+
+  it('exposes Window Budget carry, injection, and fragment knobs', () => {
+    const keys = new Set(TOKEN_BUDGET_FIELDS.map((field) => field.key));
+    expect(keys.has('carryMaxMessagesRatio')).toBe(true);
+    expect(keys.has('injectionProjectRuleCharsRatio')).toBe(true);
+    expect(keys.has('fragmentAbsoluteMaxTokensRatio')).toBe(true);
+    expect(keys.has('fragmentSkillCatalogL1MaxEntries')).toBe(true);
+    const preview = defaultTokenBudgetSettings(32_768).preview;
+    expect(preview.carryMaxMessages).toBeGreaterThan(0);
+    expect(preview.fragmentAbsoluteMaxTokens).toBeGreaterThan(0);
+    expect(preview.fragmentSkillCatalogL1MaxEntries).toBeGreaterThan(0);
   });
 
   it('scales derived budgets from the context window without custom overrides', () => {

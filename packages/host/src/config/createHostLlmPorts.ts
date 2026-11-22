@@ -7,9 +7,11 @@ import {
   type ModelCapabilities,
 } from '@mitii/v8';
 
+import { resolveEffectiveContextWindow } from './resolveEffectiveContextWindow.js';
 import {
   getProviderPreset,
   isHostProviderType,
+  normalizeOllamaModelId,
   type HostProviderType,
 } from './providerPresets.js';
 
@@ -29,6 +31,7 @@ export interface CreateHostLlmPortsInput {
       | 'supportsVision'
       | 'supportsReasoning'
       | 'supportsPromptCaching'
+      | 'supportsForcedToolChoice'
     >
   >;
   fetchImpl?: typeof fetch;
@@ -53,9 +56,24 @@ export function createHostLlmPorts(
   const type: HostProviderType = isHostProviderType(requested)
     ? requested
     : (preset?.type ?? 'echo');
-  const model = input.model.trim() || preset?.model || 'echo';
   const baseUrl = input.baseUrl?.trim() || preset?.baseUrl || '';
-  const capabilities = input.capabilities;
+  const model =
+    normalizeOllamaModelId(
+      input.model.trim() || preset?.model || 'echo',
+      baseUrl,
+    ) ||
+    preset?.model ||
+    'echo';
+  const presetCapabilities = preset?.defaultCapabilities ?? {};
+  // Hosts that omit the window must not silently inherit the adapter default
+  // (32_768): infer it from the model family / provider like every other host.
+  const capabilities = {
+    ...presetCapabilities,
+    ...input.capabilities,
+    contextWindowTokens:
+      input.capabilities?.contextWindowTokens ??
+      resolveEffectiveContextWindow(0, model, type),
+  };
   const shared = {
     model,
     ...(input.apiKey ? { apiKey: input.apiKey } : {}),

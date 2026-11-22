@@ -112,6 +112,8 @@ export const projectDefinitionSchema = z
     dependencies: uniqueStringArraySchema,
 
     developmentDependencies: uniqueStringArraySchema,
+
+    workspaceMemberPatterns: uniqueStringArraySchema.optional(),
   })
   .strict();
 
@@ -139,6 +141,8 @@ export const projectCatalogWarningSchema = z
       "project_name_missing",
       "duplicate_project_id",
       "nested_project_conflict",
+      "relationship_target_ambiguous",
+      "relationship_target_unresolved",
     ]),
 
     path: z.string(),

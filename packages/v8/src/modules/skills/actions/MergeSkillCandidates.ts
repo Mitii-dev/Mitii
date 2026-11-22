@@ -3,8 +3,10 @@ import type { ScoredSkill } from "./MatchSkills";
 export function mergeSkillCandidates(
   required: readonly ScoredSkill[],
   matched: readonly ScoredSkill[],
+  preferred: readonly ScoredSkill[] = [],
 ): ScoredSkill[] {
   const requiredIds = new Set(required.map((entry) => entry.skill.id));
+  const preferredIds = new Set(preferred.map((entry) => entry.skill.id));
   const merged: ScoredSkill[] = [];
   const seen = new Set<string>();
 
@@ -29,8 +31,19 @@ export function mergeSkillCandidates(
     push(entry);
   }
 
+  for (const entry of preferred) {
+    if (requiredIds.has(entry.skill.id)) {
+      continue;
+    }
+    push(entry);
+  }
+
   for (const entry of matched) {
-    if (entry.skill.alwaysApply || requiredIds.has(entry.skill.id)) {
+    if (
+      entry.skill.alwaysApply ||
+      requiredIds.has(entry.skill.id) ||
+      preferredIds.has(entry.skill.id)
+    ) {
       continue;
     }
     push({

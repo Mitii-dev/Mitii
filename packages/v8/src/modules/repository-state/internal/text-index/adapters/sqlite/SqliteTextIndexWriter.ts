@@ -1,17 +1,22 @@
 import {
   TEXT_INDEX_IDS,
-  TEXT_INDEX_SCHEMA_VERSION,
   TEXT_INDEX_SQL,
 } from "../../constants";
-import {
-  expandFtsText,
-} from "../../../../codeIdentifiers";
 
 import {
   textIndexDocumentLocatorSchema,
   textIndexDocumentSchema,
-  textIndexWriteResultSchema,
 } from "../../schema";
+
+import {
+  SqliteTextIndexStatements,
+} from "./SqliteTextIndexStatements";
+
+import {
+  locatorOf,
+  validateChangeMetadata,
+  validateWrite,
+} from "./SqliteTextIndexValidation";
 
 import {
   TextIndexError,
@@ -20,9 +25,7 @@ import {
 
 import type {
   SqliteTextIndexAdapterOptions,
-  SqliteTextIndexChunkIdRow,
   SqliteTextIndexDocumentStateRow,
-  SqliteTextIndexRevisionRow,
   TextIndexDocument,
   TextIndexDocumentLocator,
   TextIndexDocumentState,
@@ -43,8 +46,8 @@ export class SqliteTextIndexWriter
 {
   public readonly id: string;
 
-  private trigramTableAvailable:
-    boolean | undefined;
+  private readonly statements:
+    SqliteTextIndexStatements;
 
   constructor(
     private readonly database:
@@ -55,6 +58,11 @@ export class SqliteTextIndexWriter
     this.id =
       options.adapterId?.trim() ||
       TEXT_INDEX_IDS.SQLITE_WRITER;
+
+    this.statements =
+      new SqliteTextIndexStatements(
+        database,
+      );
   }
 
   public async getDocumentState(
@@ -70,7 +78,7 @@ export class SqliteTextIndexWriter
     const validated =
       textIndexDocumentLocatorSchema
         .parse(
-          this.locatorOf(
+          locatorOf(
             locator,
           ),
         ) as
@@ -134,19 +142,19 @@ export class SqliteTextIndexWriter
           );
 
           const previousChunks =
-            this.getDocumentChunkIds(
+            this.statements.getDocumentChunkIds(
               validated,
             );
 
-          this.upsertDocument(
+          this.statements.upsertDocument(
             validated,
           );
 
-          this.deleteDocumentFts(
+          this.statements.deleteDocumentFts(
             validated,
           );
 
-          this.deleteDocumentChunks(
+          this.statements.deleteDocumentChunks(
             validated,
           );
 
@@ -154,14 +162,14 @@ export class SqliteTextIndexWriter
             const chunk of
               validated.chunks
           ) {
-            this.insertChunk(
+            this.statements.insertChunk(
               validated.workspace,
               chunk,
             );
           }
 
           const revision =
-            this.bumpRevision(
+            this.statements.bumpRevision(
               validated.workspace,
               validated.rootId,
               validated
@@ -186,7 +194,7 @@ export class SqliteTextIndexWriter
                 previous.id,
               )
             ) {
-              this.insertChange(
+              this.statements.insertChange(
                 validated.workspace,
                 validated.rootId,
                 revision,
@@ -204,7 +212,7 @@ export class SqliteTextIndexWriter
             const chunk of
               validated.chunks
           ) {
-            this.insertChange(
+            this.statements.insertChange(
               validated.workspace,
               validated.rootId,
               revision,
@@ -215,12 +223,12 @@ export class SqliteTextIndexWriter
             );
           }
 
-          return this.validateWrite({
+          return validateWrite({
             action: current
               ? "replaced"
               : "inserted",
             document:
-              this.locatorOf(
+              locatorOf(
                 validated,
               ),
             revision,
@@ -276,18 +284,18 @@ export class SqliteTextIndexWriter
           );
 
       const revision =
-        this.getRevisionValue(
+        this.statements.getRevisionValue(
           validated.workspace,
           validated.rootId,
         );
 
-      return this.validateWrite({
+      return validateWrite({
         action:
           result.changes > 0
             ? "metadata_refreshed"
             : "not_found",
         document:
-          this.locatorOf(
+          locatorOf(
             validated,
           ),
         revision,
@@ -320,7 +328,7 @@ export class SqliteTextIndexWriter
         .parse(locator) as
       TextIndexDocumentLocator;
 
-    this.validateChangeMetadata(
+    validateChangeMetadata(
       workspaceSnapshotId,
       changedAt,
     );
@@ -329,11 +337,11 @@ export class SqliteTextIndexWriter
       const transaction = this.database
         .transaction(() => {
           const chunks =
-            this.getDocumentChunkIds(
+            this.statements.getDocumentChunkIds(
               validated,
             );
 
-          this.deleteDocumentFts(
+          this.statements.deleteDocumentFts(
             validated,
           );
 
@@ -353,13 +361,13 @@ export class SqliteTextIndexWriter
           if (
             result.changes === 0
           ) {
-            return this.validateWrite({
+            return validateWrite({
               action:
                 "not_found",
               document:
                 validated,
               revision:
-                this.getRevisionValue(
+                this.statements.getRevisionValue(
                   validated
                     .workspace,
                   validated.rootId,
@@ -370,7 +378,7 @@ export class SqliteTextIndexWriter
           }
 
           const revision =
-            this.bumpRevision(
+            this.statements.bumpRevision(
               validated.workspace,
               validated.rootId,
               workspaceSnapshotId,
@@ -380,7 +388,7 @@ export class SqliteTextIndexWriter
           for (
             const chunk of chunks
           ) {
-            this.insertChange(
+            this.statements.insertChange(
               validated.workspace,
               validated.rootId,
               revision,
@@ -391,7 +399,7 @@ export class SqliteTextIndexWriter
             );
           }
 
-          return this.validateWrite({
+          return validateWrite({
             action: "removed",
             document: validated,
             revision,
@@ -423,7 +431,7 @@ export class SqliteTextIndexWriter
       this.id,
     );
 
-    this.validateChangeMetadata(
+    validateChangeMetadata(
       input.workspaceSnapshotId,
       input.changedAt,
     );
@@ -471,7 +479,7 @@ export class SqliteTextIndexWriter
                 [],
               removedChunks: 0,
               revision:
-                this.getRevisionValue(
+                this.statements.getRevisionValue(
                   input.workspace,
                   input.rootId,
                 ),
@@ -481,7 +489,7 @@ export class SqliteTextIndexWriter
           const chunks =
             removedPaths.flatMap(
               (relativePath) =>
-                this.getDocumentChunkIds({
+                this.statements.getDocumentChunkIds({
                   workspace:
                     input.workspace,
                   rootId:
@@ -494,7 +502,7 @@ export class SqliteTextIndexWriter
             const relativePath of
               removedPaths
           ) {
-            this.deleteDocumentFts({
+            this.statements.deleteDocumentFts({
               workspace:
                 input.workspace,
               rootId:
@@ -515,7 +523,7 @@ export class SqliteTextIndexWriter
           }
 
           const revision =
-            this.bumpRevision(
+            this.statements.bumpRevision(
               input.workspace,
               input.rootId,
               input
@@ -526,7 +534,7 @@ export class SqliteTextIndexWriter
           for (
             const chunk of chunks
           ) {
-            this.insertChange(
+            this.statements.insertChange(
               input.workspace,
               input.rootId,
               revision,
@@ -556,333 +564,6 @@ export class SqliteTextIndexWriter
         "Unable to remove missing SQLite Text Index documents.",
       );
     }
-  }
-
-  private upsertDocument(
-    document: TextIndexDocument,
-  ): void {
-    this.database
-      .prepare(
-        TEXT_INDEX_SQL
-          .UPSERT_DOCUMENT,
-      )
-      .run(
-        document.workspace,
-        document.rootId,
-        document.relativePath,
-        document.sourceId,
-        document
-          .sourceContentHash,
-        document.language ?? null,
-        document
-          .chunkingSchemaVersion,
-        document.pipelineVersion,
-        document.chunkingStatus,
-        document.strategyId ??
-          null,
-        document.chunks.length,
-        document
-          .workspaceSnapshotId,
-        document.indexedAt,
-      );
-  }
-
-  private insertChunk(
-    workspace: string,
-    chunk: TextIndexDocument["chunks"][number],
-  ): void {
-    this.database
-      .prepare(
-        TEXT_INDEX_SQL
-          .INSERT_CHUNK,
-      )
-      .run(
-        chunk.id,
-        workspace,
-        chunk.rootId,
-        chunk.relativePath,
-        chunk.sourceId,
-        chunk.strategyId,
-        chunk.ordinal,
-        chunk.kind,
-        chunk.title ?? null,
-        chunk.symbolLocalId ??
-          null,
-        chunk.content,
-        chunk
-          .sourceContentHash,
-        chunk.contentHash,
-        chunk.tokenEstimate,
-        chunk.startOffset,
-        chunk.endOffset,
-        chunk.startLine,
-        chunk.endLine,
-      );
-
-    this.database
-      .prepare(
-        TEXT_INDEX_SQL
-          .INSERT_CHUNK_FTS,
-      )
-      .run(
-        expandFtsText(
-          chunk.title ?? "",
-        ),
-        expandFtsText(
-          [
-            chunk.relativePath,
-            chunk.title ?? "",
-            chunk.content,
-          ].join(" "),
-        ),
-        workspace,
-        chunk.id,
-      );
-
-    this.insertChunkTrigram(
-      workspace,
-      chunk,
-    );
-  }
-
-  private insertChunkTrigram(
-    workspace: string,
-    chunk: TextIndexDocument["chunks"][number],
-  ): void {
-    if (!this.hasTrigramTable()) {
-      return;
-    }
-
-    this.database
-      .prepare(
-        TEXT_INDEX_SQL
-          .INSERT_CHUNK_FTS_TRIGRAM,
-      )
-      .run(
-        chunk.title ?? "",
-        [
-          chunk.relativePath,
-          chunk.title ?? "",
-          chunk.content,
-        ].join(" "),
-        workspace,
-        chunk.id,
-      );
-  }
-
-  private deleteDocumentFts(
-    locator: TextIndexDocumentLocator,
-  ): void {
-    this.database
-      .prepare(
-        TEXT_INDEX_SQL
-          .DELETE_DOCUMENT_FTS,
-      )
-      .run(
-        locator.workspace,
-        locator.rootId,
-        locator.relativePath,
-      );
-
-    if (!this.hasTrigramTable()) {
-      return;
-    }
-
-    this.database
-      .prepare(
-        TEXT_INDEX_SQL
-          .DELETE_DOCUMENT_FTS_TRIGRAM,
-      )
-      .run(
-        locator.workspace,
-        locator.rootId,
-        locator.relativePath,
-      );
-  }
-
-  private hasTrigramTable(): boolean {
-    if (
-      this.trigramTableAvailable !==
-      undefined
-    ) {
-      return this.trigramTableAvailable;
-    }
-
-    const row =
-      this.database
-        .prepare(
-          `
-            SELECT COUNT(*) AS value
-            FROM sqlite_schema
-            WHERE type = 'table'
-              AND name = 'text_index_fts_trigram'
-          `,
-        )
-        .get() as { value: number };
-
-    this.trigramTableAvailable =
-      row.value > 0;
-
-    return this.trigramTableAvailable;
-  }
-
-  private deleteDocumentChunks(
-    locator: TextIndexDocumentLocator,
-  ): void {
-    this.database
-      .prepare(
-        TEXT_INDEX_SQL
-          .DELETE_DOCUMENT_CHUNKS,
-      )
-      .run(
-        locator.workspace,
-        locator.rootId,
-        locator.relativePath,
-      );
-  }
-
-  private getDocumentChunkIds(
-    locator: TextIndexDocumentLocator,
-  ): SqliteTextIndexChunkIdRow[] {
-    return this.database
-      .prepare(
-        TEXT_INDEX_SQL
-          .GET_DOCUMENT_CHUNK_IDS,
-      )
-      .all(
-        locator.workspace,
-        locator.rootId,
-        locator.relativePath,
-      ) as
-      SqliteTextIndexChunkIdRow[];
-  }
-
-  private bumpRevision(
-    workspace: string,
-    rootId: string,
-    snapshotId: string,
-    changedAt: number,
-  ): number {
-    this.database
-      .prepare(
-        TEXT_INDEX_SQL
-          .ENSURE_METADATA,
-      )
-      .run(
-        workspace,
-        rootId,
-        TEXT_INDEX_SCHEMA_VERSION,
-        snapshotId,
-        changedAt,
-      );
-
-    this.database
-      .prepare(
-        TEXT_INDEX_SQL
-          .BUMP_REVISION,
-      )
-      .run(
-        TEXT_INDEX_SCHEMA_VERSION,
-        snapshotId,
-        changedAt,
-        workspace,
-        rootId,
-      );
-
-    return this.getRevisionValue(
-      workspace,
-      rootId,
-    );
-  }
-
-  private getRevisionValue(
-    workspace: string,
-    rootId: string,
-  ): number {
-    const row =
-      this.database
-        .prepare(
-          TEXT_INDEX_SQL
-            .GET_REVISION,
-        )
-        .get(
-          workspace,
-          rootId,
-        ) as
-        | SqliteTextIndexRevisionRow
-        | undefined;
-
-    return row?.revision ?? 0;
-  }
-
-  private insertChange(
-    workspace: string,
-    rootId: string,
-    revision: number,
-    operation:
-      "upsert" | "delete",
-    chunkId: string,
-    relativePath: string,
-    changedAt: number,
-  ): void {
-    this.database
-      .prepare(
-        TEXT_INDEX_SQL
-          .INSERT_CHANGE,
-      )
-      .run(
-        workspace,
-        rootId,
-        revision,
-        operation,
-        chunkId,
-        relativePath,
-        changedAt,
-      );
-  }
-
-  private locatorOf(
-    document:
-      TextIndexDocumentLocator,
-  ): TextIndexDocumentLocator {
-    return {
-      workspace:
-        document.workspace,
-      rootId:
-        document.rootId,
-      relativePath:
-        document.relativePath,
-    };
-  }
-
-  private validateChangeMetadata(
-    snapshotId: string,
-    changedAt: number,
-  ): void {
-    if (!snapshotId.trim()) {
-      throw new TypeError(
-        "workspaceSnapshotId must be a non-empty string.",
-      );
-    }
-
-    if (
-      !Number.isSafeInteger(
-        changedAt,
-      ) ||
-      changedAt < 0
-    ) {
-      throw new RangeError(
-        "changedAt must be a non-negative safe integer.",
-      );
-    }
-  }
-
-  private validateWrite(
-    result: TextIndexWriteResult,
-  ): TextIndexWriteResult {
-    return textIndexWriteResultSchema
-      .parse(result) as
-      TextIndexWriteResult;
   }
 
   private normalizeError(

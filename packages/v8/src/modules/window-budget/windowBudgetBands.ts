@@ -49,11 +49,16 @@ export const WINDOW_BUDGET_BAND_TABLE: Record<
     label: "Compact",
     rangeLabel: "< 50k",
     overrides: {
-      // Log-tuned: more usable for tool-read loops; 6-file repair batches.
-      maxUniqueFilesPerCallCap: 6,
-      outputMinTokens: 5120,
-      outputRatio: 0.3,
-      outputWindowCapRatio: 0.3,
+      // Small local windows: keep tool-loop max_tokens tight so models that
+      // pad/repeat until the ceiling do not burn the whole budget hallucinating.
+      // 30k × 0.12 = 3.6k; 45k × 0.12 = 5.4k → tool-loop hard-caps at 5k.
+      maxUniqueFilesPerCallCap: 8,
+      outputMinTokens: 2_048,
+      outputRatio: 0.12,
+      outputWindowCapRatio: 0.12,
+      // Keep ~8-file batches at 30k even with the tighter output ratio:
+      // floor((30_000 × 0.12) / 450) = 8.
+      filesPerOutputTokens: 450,
       repositoryShare: 0.26,
       conversationShare: 0.4,
       planShare: 0.06,
@@ -67,7 +72,7 @@ export const WINDOW_BUDGET_BAND_TABLE: Record<
     rangeLabel: "50k – < 100k",
     overrides: {
       // Balanced mid windows: lower output tax than compact, more repo.
-      maxUniqueFilesPerCallCap: 8,
+      maxUniqueFilesPerCallCap: 12,
       outputMinTokens: 8192,
       outputRatio: 0.22,
       outputWindowCapRatio: 0.28,
@@ -84,7 +89,7 @@ export const WINDOW_BUDGET_BAND_TABLE: Record<
     rangeLabel: "≥ 100k",
     overrides: {
       // Large windows: leaner output %, more repo/skills, larger batches.
-      maxUniqueFilesPerCallCap: 12,
+      maxUniqueFilesPerCallCap: 20,
       outputMinTokens: 10_240,
       outputRatio: 0.18,
       outputWindowCapRatio: 0.25,

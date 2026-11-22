@@ -10,12 +10,54 @@ Verification gathers evidence after a change. It maps changed files to projects,
 - Discovers applicable checks.
 - Selects proportional checks for the change scope. `test` checks (including
   `desktop:test` / WDIO) run only when `minimumEvidence` includes `tests`.
+  Required evidence kinds (typecheck/build/…) are never truncated by the
+  window `maxVerificationChecks` floor (often 2 on small context windows).
+- Package-scopes tests (and localized typecheck/lint/build) to touched
+  `apps/` / `packages/` roots from `changedFiles` (plus optional
+  `impactAffectedFiles`). Hosts may set `widenScope` when change-impact
+  reports unsafe graph confidence so sibling packages are not omitted.
+  A vscode settings paste must never drag in `packages/v8:test` unless that
+  package was edited and
+  tests were requested.
+- Discovers cheap `syntax` candidates for changed `.py` / `.js` / `.sh`
+  files (`py_compile`, `node --import` module-load, `node --check`,
+  `bash -n`) without inventing full suites. When a host wires
+  `VerificationSyntaxPort` (tree-sitter ERROR / missing nodes), that port
+  replaces parse-only spawned checks — but Node **module-load**
+  (`NODE_MODULE_LOAD_EVIDENCE`) stays selected so duplicate exports and
+  other instantiate-time errors are not missed. Syntax never satisfies
+  typecheck evidence.
+- Soft-reorders discovered checks using script tokens from `AGENTS.md` /
+  similar instruction files — never invents argv from those hints.
+- Preflights `mayBeUnavailable` binaries via Tool Runtime (`binary --version`)
+  before running the full check; missing PATH tools become `unavailable`.
+- Repair prompts may include one source line per diagnostic (loaded by the
+  engine; not stored on the durable record).
 - Executes checks through `VerificationToolExecutorPort`.
 - Normalizes diagnostics and compares against optional baseline diagnostics.
+- Filters harness / denied-tree / phantom-secondary residuals (language-agnostic
+  path policy) before completion and before→after compare counts.
+- Soft-accepts (`implemented_unverified`) when authoritative compile passed
+  (project-local typecheck/build, or sole workspace-root compile on
+  single-package fixtures) and remaining failures are only harness,
+  syntax-secondary, empty-suite test exits, or workspace-root noise.
+  Required `tests` evidence with parseable ask-scoped assertion diagnostics
+  is not harness noise — those reopen repair.
+- Compare-only soft-accept when edits landed and actionable
+  `newErrorCount === 0`: pre-existing workspace-root check failures are
+  leftovers for the user ("fix remaining?"), not a hard fail. Still
+  reject ask-scoped defects and failed **project-local** compile on the
+  edited package.
+- Before→after compare counts **NEW∩IN_SCOPE∩ACTIONABLE** when ask/changed
+  paths are supplied (`out_of_scope_residuals_ignored`). Only that intersection
+  opens repair; selection may still run broader checks.
 - Inspects diff/stale-state risk.
 - Returns final verification status and evidence.
 - Builds a durable `VerificationRecord` (before / after / comparison) that is stored outside the model transcript.
-- Produces a deterministic user summary from that record. An optional engine LLM narrative may wrap it; it must not replace the counts.
+- Produces a deterministic user summary from that record. An optional engine LLM narrative may wrap it; it must not replace the counts. Summary text claims "edits were kept" only when `changedFiles` is non-empty (blocked mutations must not look successful).
+- Optional engine LLM critique (`steering.verificationLlmCritique`) is advisory
+  only after the evidence gate — APPROVE/REJECT keywords never flip
+  `decideVerificationGate`.
 
 ## Structure
 
@@ -57,12 +99,26 @@ verification/
 - Unavailable repository state blocks verification unless policy allows unavailable evidence.
 - Diff inspection reports changed paths and stale-state risk.
 - A later "fix the remaining verification errors" turn reloads `loadLatest(workspaceId)` instead of scraping chat history.
+- **Task-relevant stop gate:** `assessTaskRelevantEvidence` owns residual
+  classification. Authoritative evidence is a passed project-local
+  typecheck/build (any layout — not only `apps/` / `packages/`). Absolute
+  `afterErrorCount` never drives repair; only in-scope actionable
+  `newErrorCount` and ask-scoped source defects do. Reason codes:
+  `task_relevant_evidence_passed`, `residual_harness_noise`,
+  `residual_phantom_secondary`, `residual_workspace_root_noise`,
+  `out_of_scope_residuals_ignored`.
+
+- **Behavior evidence:** when the requirement lists `behavior`
+  (`requiresBehaviorEvidence`), a failed non-empty `test` check is a behavior
+  defect (`isBehaviorDefectCheck`) and is never soft-accepted as residual
+  noise. Empty-suite harness failures are still ignorable. Repos with no test
+  checks at all keep the existing `implemented_unverified` path.
 
 ## Ownership Boundaries
 
 Owns verification planning, check execution, diagnostics, result evidence, and the durable verification record.
 
-Does not own mutation, general tool authorization, repository indexing, prompt construction, or route policy. The Agent Engine decides when to persist, whether to keep edits, and when to ask the model for a short narrative.
+Does not own mutation, general tool authorization, repository indexing, prompt construction, or route policy. The Agent Engine decides when to persist, whether to keep edits, and when to ask the model for a short narrative. After `decideVerificationGate` accepts, the engine hard-stops (`verification_accepted_terminal`) — no incomplete-checklist Continue, repair reopen, or rediscovery. Repair exhaustion likewise stops with `verification_repair_exhausted_terminal` (no `verification_repair_capped` Continue).
 
 ## Tests
 

@@ -41,11 +41,13 @@ repository-state/
 
 - Published descriptors are immutable.
 - Active runs pin states so cleanup does not remove required artifacts.
-- Readiness can be `ready`, `degraded`, or `unavailable`.
+- Descriptor readiness can be `ready`, `degraded`, or `unavailable`.
+- Per-root capabilities report `available`, `degraded`, or `unavailable` (ARCHITECTURE language/capability formula).
 - Partial/filtered/truncated/cancelled scans publish as degraded or unavailable.
 - `REPOSITORY_INDEX_FORMAT` changes require hosts to rebuild persisted indexes.
 - Workspace Indexing produces candidates; Repository State is the publication authority.
 - Source analysis injects tree-sitter tags queries through `TreeSitterRuntimePort`; bump `graphBuilderVersion` when those queries change call-graph facts.
+- Hosts MAY enrich `symbol_refs` with SCIP evidence (`evidence_source=scip`) after lexical publish; enrichment must not block state publication. Change-impact may report `scip_enriched` alongside `lsp_enriched`.
 
 ## Ownership Boundaries
 
@@ -112,9 +114,15 @@ Repository State publication result returns a result like this:
     "readiness": "ready",
     "scanCompleteness": "complete",
     "cleanupAllowed": true,
-    "roots": [{ "rootId": "root", "projectCatalogRevision": "catalog-1", "codeIndexRevision": "code-1", "textIndexRevision": "text-1", "graphRevision": "graph-1", "mapRevision": "map-1", "capabilities": [{ "capability": "text_index", "status": "ready" }] }],
+    "roots": [{ "rootId": "root", "projectCatalogRevision": "catalog-1", "codeIndexRevision": "code-1", "textIndexRevision": "text-1", "graphRevision": "graph-1", "mapRevision": "map-1", "capabilities": [{ "capability": "text_index", "status": "available" }] }],
     "reasons": [],
     "generatedAt": "2026-08-14T12:00:00.000Z"
   }
 }
 ```
+
+## Path text normalization
+
+`normalizeRepoPathText(value, { stripAtPrefix?, emptyFallback? })` is the single
+public normalizer for repo-relative path text (slashes, `./`, trailing `/`).
+Other modules import it from this module's index instead of keeping copies.

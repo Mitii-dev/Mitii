@@ -1,0 +1,458 @@
+.model-quick-select__menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 7px);
+  z-index: 710;
+  display: grid;
+  gap: 1px;
+  width: min(320px, calc(100vw - 20px));
+  max-height: min(360px, 54vh);
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--vscode-dropdown-border, var(--mitii-border));
+  border-radius: 10px;
+  background: var(--vscode-dropdown-background, var(--vscode-quickInput-background, var(--mitii-panel)));
+  color: var(--vscode-dropdown-foreground, var(--mitii-text));
+  box-shadow:
+    0 1px 0 color-mix(in srgb, #fff 5%, transparent) inset,
+    0 18px 48px color-mix(in srgb, #000 34%, transparent);
+  scrollbar-width: thin;
+}
+
+.model-quick-select__option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 30px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--mitii-text);
+  text-align: left;
+}
+
+.model-quick-select__option:hover,
+.model-quick-select__option.is-selected {
+  background: var(--vscode-list-hoverBackground, color-mix(in srgb, var(--mitii-text) 5%, transparent));
+  border-color: color-mix(in srgb, var(--mitii-border) 78%, transparent);
+}
+
+.model-quick-select__option.is-selected {
+  color: var(--vscode-list-activeSelectionForeground, var(--mitii-text));
+}
+
+.model-quick-select__option-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mitii-font-file);
+  font-size: 11px;
+}
+
+.model-quick-select__check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: var(--mitii-accent);
+}
+
+.model-quick-select__check svg {
+  width: 12px;
+  height: 12px;
+}
+
+.model-custom-input--inline {
+  flex: 1 1 112px;
+  min-width: 72px;
+  max-width: 160px;
+  height: 22px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 10.5px;
+  padding: 0 4px;
+}
+
+@media (max-width: 280px) {
+  .composer-left {
+    flex-wrap: wrap;
+  }
+
+  .composer-meta-group {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .composer-link-select {
+    flex-basis: calc(50% - 3px);
+    width: calc(50% - 3px);
+  }
+
+  .composer-meta-group .model-quick-select {
+    flex-basis: 100%;
+    max-width: 100%;
+  }
+}
+
+.composer-dropdown {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  flex: 0 1 auto;
+  --composer-control-color: var(--mitii-accent);
+  z-index: 1;
+  overflow: visible;
+}
+
+.composer-dropdown:has(.composer-dropdown__button[aria-expanded='true']) {
+  z-index: 220;
+}
+
+.composer-dropdown__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  width: auto;
+  height: 24px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0 16px 0 7px;
+  border: 1px solid var(--mitii-border-soft);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--mitii-panel-raised) 88%, transparent);
+  color: var(--mitii-text);
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+  position: relative;
+}
+
+.composer-dropdown__button:hover,
+.composer-dropdown__button:focus-visible,
+.composer-dropdown__button[aria-expanded='true'] {
+  outline: none;
+  background: var(--vscode-list-hoverBackground, color-mix(in srgb, var(--mitii-text) 5%, transparent));
+  border-color: color-mix(in srgb, var(--mitii-border) 92%, var(--mitii-text) 8%);
+  box-shadow: none;
+}
+
+/* Outline chips — matches chat-box-design.svg (Agent / Full Access / High) */
+.composer-dropdown__button--link {
+  justify-content: flex-start;
+  border-color: var(--composer-control-color);
+  background: transparent;
+  color: var(--composer-control-color);
+  text-decoration: none;
+  box-shadow: none;
+  padding: 0 14px 0 7px;
+}
+
+.composer-dropdown__button--link:hover,
+.composer-dropdown__button--link:focus-visible,
+.composer-dropdown__button--link[aria-expanded='true'] {
+  background: color-mix(in srgb, var(--composer-control-color) 12%, transparent);
+  border-color: var(--composer-control-color);
+  color: color-mix(in srgb, var(--composer-control-color) 88%, #fff 12%);
+}
+
+.composer-dropdown__button--link .composer-dropdown__icon {
+  display: none;
+}
+
+.composer-dropdown__button--link .composer-dropdown__chevron {
+  color: color-mix(in srgb, var(--composer-control-color) 72%, transparent);
+}
+
+.composer-dropdown__value {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.composer-dropdown__value .composer-dropdown__icon {
+  display: inline-flex;
+  color: var(--composer-control-color);
+  background: color-mix(in srgb, var(--composer-control-color) 14%, transparent);
+}
+
+.composer-dropdown__value > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-dropdown__dot,
+.composer-dropdown__option-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--composer-control-color);
+  box-shadow: 0 0 0 2px
+    color-mix(in srgb, var(--composer-control-color) 18%, transparent);
+}
+
+.composer-dropdown__icon,
+.composer-dropdown__option-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: var(--mitii-muted);
+}
+
+.composer-dropdown__icon {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--mitii-text) 5%, transparent);
+}
+
+.composer-dropdown__option-icon {
+  color: var(--mitii-muted);
+  margin-top: 2px;
+}
+
+.composer-dropdown__icon svg,
+.composer-dropdown__option-icon svg {
+  width: 11px;
+  height: 11px;
+}
+
+.composer-dropdown__option-dot {
+  background: var(--composer-option-color, var(--composer-control-color));
+  margin-top: 3px;
+}
+
+.composer-dropdown__chevron {
+  position: absolute;
+  right: 5px;
+  color: color-mix(in srgb, var(--composer-control-color) 66%, var(--mitii-muted));
+  font-size: 9px;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.composer-dropdown__menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 710;
+  display: grid;
+  gap: 1px;
+  width: max(210px, 100%);
+  max-width: min(260px, calc(100vw - 24px));
+  padding: 6px;
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 82%, var(--mitii-text) 18%);
+  border-radius: 10px;
+  background: var(--vscode-quickInput-background, var(--mitii-panel));
+  box-shadow:
+    0 1px 0 color-mix(in srgb, #fff 5%, transparent) inset,
+    0 18px 48px color-mix(in srgb, #000 34%, transparent);
+  pointer-events: auto;
+}
+
+@media (max-width: 360px) {
+  .composer-dropdown__menu {
+    width: min(240px, calc(100vw - 18px));
+  }
+}
+
+.composer-dropdown--depth .composer-dropdown__menu,
+.composer-dropdown--effort .composer-dropdown__menu,
+.composer-dropdown--profile .composer-dropdown__menu,
+.composer-dropdown--model .composer-dropdown__menu,
+.composer-dropdown--thoroughness .composer-dropdown__menu {
+  left: auto;
+  right: 0;
+}
+
+.composer-dropdown--approval .composer-dropdown__menu {
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  width: min(360px, calc(100vw - 16px));
+  max-width: min(360px, calc(100vw - 16px));
+}
+
+.composer-dropdown--model .composer-dropdown__menu {
+  width: max(280px, 100%);
+  max-height: min(360px, 58vh);
+  overflow: auto;
+}
+
+.composer-dropdown--profile .composer-dropdown__menu {
+  width: max(240px, 100%);
+  max-height: min(320px, 54vh);
+  overflow: auto;
+}
+
+.composer-dropdown__option {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 16px;
+  gap: 7px;
+  align-items: start;
+  width: 100%;
+  min-height: 34px;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--mitii-text);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.composer-dropdown__option:hover,
+.composer-dropdown__option--selected {
+  background: var(--vscode-list-hoverBackground, color-mix(in srgb, var(--mitii-text) 5%, transparent));
+  border-color: color-mix(in srgb, var(--mitii-border) 80%, transparent);
+}
+
+.composer-dropdown__option--selected {
+  background: var(--vscode-list-activeSelectionBackground, color-mix(in srgb, var(--mitii-accent) 10%, transparent));
+  color: var(--vscode-list-activeSelectionForeground, var(--mitii-text));
+}
+
+.composer-dropdown__option--warning,
+.composer-dropdown__option--warning .composer-dropdown__option-text span,
+.composer-dropdown__option--warning .composer-dropdown__option-text small,
+.composer-dropdown__option--warning .composer-dropdown__option-icon,
+.composer-dropdown__option--warning .composer-dropdown__option-check {
+  color: var(--mitii-warn-soft);
+}
+
+.composer-dropdown__option--warning .composer-dropdown__option-text small {
+  color: color-mix(in srgb, var(--mitii-warn-soft) 62%, var(--mitii-muted));
+}
+
+.composer-dropdown__button--warning {
+  color: color-mix(in srgb, var(--mitii-warn-soft) 78%, var(--mitii-text));
+}
+
+.composer-dropdown__option-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  color: var(--mitii-text);
+}
+
+.composer-dropdown__option-check svg {
+  width: 12px;
+  height: 12px;
+}
+
+.composer-dropdown__option-text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.composer-dropdown__option-text span {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.composer-dropdown__option-text small {
+  color: var(--mitii-muted);
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+.composer-box {
+  position: relative;
+  --composer-mode-color: var(--mitii-accent);
+  border: 1px solid var(--vscode-input-border, var(--mitii-border));
+  border-radius: 12px;
+  background: var(--vscode-input-background, var(--mitii-panel));
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+  box-shadow:
+    0 1px 0 color-mix(in srgb, #fff 4%, transparent) inset,
+    0 8px 24px color-mix(in srgb, #000 10%, transparent);
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.composer-box:focus-within {
+  border-color: color-mix(
+    in srgb,
+    var(--vscode-focusBorder, var(--mitii-accent)) 70%,
+    var(--mitii-border)
+  );
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder, var(--mitii-accent)) 18%, transparent),
+    0 1px 0 color-mix(in srgb, #fff 5%, transparent) inset,
+    0 10px 28px color-mix(in srgb, #000 12%, transparent);
+}
+
+.composer-box textarea {
+  width: 100%;
+  min-height: 50px;
+  max-height: 132px;
+  height: 50px;
+  resize: none;
+  border: 0;
+  outline: none;
+  background: transparent;
+  padding: 13px 14px 10px;
+  line-height: 1.45;
+  color: var(--vscode-input-foreground, var(--mitii-chat-fg));
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.composer-box textarea::placeholder {
+  color: var(--vscode-input-placeholderForeground, var(--mitii-muted));
+}
+
+.composer-actions {
+  position: static;
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.depth-select {
+  min-height: 28px;
+  border: 1px solid
+    color-mix(in srgb, var(--mitii-accent) 18%, var(--mitii-border));
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--mitii-panel-raised) 96%, transparent),
+      color-mix(in srgb, var(--mitii-panel-raised) 82%, transparent)
+    );
+  border-radius: 6px;
+  padding: 0 24px 0 8px;
+  font-size: 10px;
+  font-weight: 650;
+  color: var(--mitii-text);
+}

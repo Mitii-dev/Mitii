@@ -1,10 +1,14 @@
-import { loadProjectRules } from '@mitii/host';
+import { prepareStartInput } from '@mitii/host';
 import type {
   AgentMode,
   MitiiConversationMessage,
   TaskList,
 } from '@mitii/sdk';
 
+import {
+  isCliSessionLogEnabled,
+  resolveCliLogsDir,
+} from '../cliLog.js';
 import { loadMitiiHostConfig } from '../config.js';
 import { runFullWorkspaceIndex } from '../fullWorkspaceIndex.js';
 import { resolveCliLoopPolicyThresholds } from '../loopPolicy.js';
@@ -141,9 +145,6 @@ export async function runConnectorTurn(
     io: options.io,
   });
 
-  const projectRules = await loadProjectRules({
-    workspaceRoot: options.cwd,
-  });
   const hostConfig = loadMitiiHostConfig(options.cwd);
   const loopPolicyThresholds = resolveCliLoopPolicyThresholds({
     config: hostConfig.loopPolicy,
@@ -152,38 +153,75 @@ export async function runConnectorTurn(
 
   const autoApproval =
     options.autoApprove === false ? undefined : ('approved' as const);
-  const hostApproval =
+  const approvalOverride =
     autoApproval === 'approved'
-      ? ({ approvalMode: 'never' as const, planApproval: 'never' as const })
-      : {};
+      ? ({
+          approvalMode: 'never' as const,
+          planApproval: 'never' as const,
+        })
+      : undefined;
 
   const sessionIo = toSessionIo(options.io);
+  const threadSessionId = `thread_${options.adapterName}_${options.threadId}`
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .slice(0, 96);
+  const runCaps = ports.runLlm.capabilities;
+  const sessionLog = isCliSessionLogEnabled()
+    ? {
+        workspaceRoot: options.cwd,
+        logsDir: resolveCliLogsDir(options.cwd),
+        sessionId: threadSessionId,
+        contextWindowTokens: runCaps.contextWindowTokens,
+        maximumOutputTokens: runCaps.maximumOutputTokens,
+      }
+    : undefined;
+
+  const prepared = await prepareStartInput({
+    prompt: options.prompt,
+    workspaceRoot: options.cwd,
+    uiMode: mode,
+    sessionId: threadSessionId,
+    origin: 'automation',
+    userSafety: 'disk',
+    ...(approvalOverride ? { approvalOverride } : {}),
+    ...(autoApproval === 'approved'
+      ? {
+          steering: {
+            decisionBrief: true,
+            criticMode: 'enforce' as const,
+            policyFactsFirst: true,
+          },
+        }
+      : {}),
+    ...(conversation.length > 0 ? { conversation } : {}),
+    ...(loopPolicyThresholds
+      ? { loopPolicy: { thresholds: loopPolicyThresholds } }
+      : {}),
+  });
+
+  const effectiveMode = prepared.effectiveMode;
+  const start = {
+    ...prepared.start,
+    ...(effectiveMode !== 'ask' && taskList ? { taskList } : {}),
+  };
+
   const outcome = await driveRun({
     client,
-    start: {
-      prompt: options.prompt,
-      mode,
-      workspaceRoot: options.cwd,
-      ...hostApproval,
-      ...(projectRules.length > 0 ? { projectRules: [...projectRules] } : {}),
-      ...(conversation.length > 0 ? { conversation } : {}),
-      ...(mode !== 'ask' && taskList ? { taskList } : {}),
-      ...(loopPolicyThresholds
-        ? { loopPolicy: { thresholds: loopPolicyThresholds } }
-        : {}),
-    },
+    start,
     json: false,
     autoApproval,
     io: sessionIo,
     memoryCapture,
+    ...(sessionLog ? { sessionLog } : {}),
   });
 
   const next = nextCliSessionCarry({
-    mode,
+    mode: effectiveMode,
     conversation,
     taskList,
     prompt: options.prompt,
     result: outcome.result,
+    contextWindowTokens: runCaps.contextWindowTokens,
   });
   saveThreadCarry(
     options.adapterName,
@@ -192,7 +230,7 @@ export async function runConnectorTurn(
     {
       conversation: next.conversation,
       taskList: next.taskList,
-      mode,
+      mode: effectiveMode,
       updatedAt: new Date().toISOString(),
     },
     options.cwd,

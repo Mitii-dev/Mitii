@@ -1,0 +1,228 @@
+.card {
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 70%, var(--mitii-accent) 30%);
+  border-radius: var(--mitii-radius-lg);
+  margin: 8px 0 12px;
+  padding: 12px 14px;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--mitii-panel) 92%, var(--mitii-accent) 8%),
+      var(--mitii-panel)
+    );
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: var(--mitii-shadow-tight);
+}
+
+.approval-card {
+  position: sticky;
+  bottom: 10px;
+  z-index: 520;
+  isolation: isolate;
+  box-shadow:
+    var(--mitii-shadow-tight),
+    0 0 0 1px color-mix(in srgb, var(--mitii-accent) 18%, transparent);
+}
+
+.card h3 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.card p {
+  margin: 0;
+  color: var(--mitii-muted);
+  line-height: 1.4;
+}
+
+.approval-card__prompt {
+  max-height: 8.5em;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.approval-command {
+  display: grid;
+  gap: 4px;
+}
+
+.approval-command > span {
+  color: var(--mitii-muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.approval-plan {
+  display: grid;
+  gap: 8px;
+  max-height: min(46vh, 360px);
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--mitii-border-soft);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--mitii-surface) 68%, transparent);
+}
+
+.approval-plan__toggle {
+  justify-self: start;
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--mitii-accent) 78%, var(--mitii-text));
+  padding: 0;
+  font-size: 11px;
+  font-weight: 750;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.approval-plan__toggle:hover {
+  color: var(--mitii-text);
+}
+
+.approval-plan__facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.approval-plan__facts div {
+  min-width: 0;
+  border: 1px solid var(--mitii-border-soft);
+  border-radius: 5px;
+  padding: 6px;
+}
+
+.approval-plan__facts span,
+.approval-plan__risks span {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--mitii-muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.approval-plan__facts strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.approval-plan__steps {
+  list-style: none;
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+}
+
+.approval-plan__steps li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 7px;
+  align-items: start;
+}
+
+.approval-plan__steps li > span {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--mitii-accent-soft);
+  color: var(--mitii-text);
+  font-family: var(--mitii-font-mono);
+  font-size: 10px;
+}
+
+.approval-plan__steps p {
+  margin: 0;
+  color: var(--mitii-text);
+  line-height: 1.35;
+}
+
+.approval-plan__risks {
+  color: var(--mitii-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.approval-plan__raw {
+  max-height: min(42vh, 320px);
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border: 1px solid var(--mitii-border-soft);
+  border-radius: 6px;
+  padding: 8px;
+  background: color-mix(in srgb, var(--mitii-panel) 78%, transparent);
+  font-family: var(--mitii-font-mono);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.approval-plan__raw--diff {
+  max-height: min(36vh, 260px);
+}
+
+.approval-plan__raw--command {
+  max-height: min(24vh, 160px);
+  color: var(--mitii-text);
+}
+
+@media (max-width: 360px) {
+  .approval-plan__facts {
+    grid-template-columns: 1fr;
+  }
+}
+
+.clarify-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.clarify-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--mitii-border);
+  background: var(--mitii-bg, transparent);
+  color: var(--mitii-text);
+  cursor: pointer;
+}
+
+.clarify-option:hover {
+  border-color: color-mix(in srgb, var(--mitii-accent, #3b82f6) 55%, var(--mitii-border));
+  background: var(--mitii-accent-soft);
+}
+
+.clarify-option__label {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.clarify-option__desc {
+  font-size: 11px;
+  color: var(--mitii-muted);
+  line-height: 1.35;
+}
+
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

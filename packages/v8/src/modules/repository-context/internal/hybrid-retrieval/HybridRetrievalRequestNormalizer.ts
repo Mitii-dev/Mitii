@@ -11,6 +11,7 @@ import {
 import type {
   HybridRetrievalInput,
   HybridRetrievalNormalization,
+  HybridRetrievalRankingContext,
   HybridRetrievalWarning,
   NormalizedHybridRetrievalRequest,
   ResolvedHybridRetrieverOptions,
@@ -111,6 +112,15 @@ export class HybridRetrievalRequestNormalizer {
           scopedFilters.filePaths,
         anchorFilePaths,
         kinds,
+        ...(parsed.rankingContext
+          ? {
+              rankingContext:
+                this.normalizeRankingContext(
+                  parsed.rankingContext,
+                  warnings,
+                ),
+            }
+          : {}),
         maximumResults:
           parsed.maximumResults ??
           options.maximumResults,
@@ -222,9 +232,43 @@ export class HybridRetrievalRequestNormalizer {
     );
   }
 
+  private normalizeRankingContext(
+    context: HybridRetrievalRankingContext,
+    warnings: HybridRetrievalWarning[],
+  ): HybridRetrievalRankingContext {
+    const normalizeList = (
+      values: readonly string[] | undefined,
+    ): string[] | undefined => {
+      if (!values || values.length === 0) {
+        return undefined;
+      }
+      return this.uniqueSorted(values, warnings);
+    };
+
+    const openFiles = normalizeList(context.openFiles);
+    const gitDiffFiles = normalizeList(context.gitDiffFiles);
+    const diagnosticFiles = normalizeList(context.diagnosticFiles);
+    const recentEditFiles = normalizeList(context.recentEditFiles);
+    const staleFiles = normalizeList(context.staleFiles);
+    const priorityPaths = normalizeList(context.priorityPaths);
+
+    return {
+      ...(context.currentFile
+        ? { currentFile: context.currentFile }
+        : {}),
+      ...(openFiles ? { openFiles } : {}),
+      ...(gitDiffFiles ? { gitDiffFiles } : {}),
+      ...(diagnosticFiles ? { diagnosticFiles } : {}),
+      ...(recentEditFiles ? { recentEditFiles } : {}),
+      ...(staleFiles ? { staleFiles } : {}),
+      ...(priorityPaths ? { priorityPaths } : {}),
+    };
+  }
+
   /**
    * Stale Repo Map / Repo Graph must not abort lexical or vector retrieval.
-   * Drop the mismatched intelligence and continue with remaining sources.
+   * rebind identity to the pinned snapshot/token instead of dropping
+   * intelligence after restart / fingerprint-pin drift.
    */
   private reconcileRepositoryIntelligence(
     input: HybridRetrievalInput,
@@ -240,66 +284,54 @@ export class HybridRetrievalRequestNormalizer {
       input.workspaceSnapshotId?.trim() ||
       undefined;
 
-    const dropMap = () => {
-      if (!repoMap) {
-        return;
-      }
-      repoMap = undefined;
+    const noteSnapshotRebind = () => {
       warnings.push({
         code: "optional_source_unavailable",
         message:
-          HYBRID_RETRIEVAL_MESSAGES
-            .SNAPSHOT_MISMATCH,
+          HYBRID_RETRIEVAL_MESSAGES.SNAPSHOT_MISMATCH,
       });
     };
-    const dropGraph = () => {
-      if (!repoGraph) {
-        return;
-      }
-      repoGraph = undefined;
+    const noteTokenRebind = () => {
       warnings.push({
         code: "optional_source_unavailable",
         message:
-          HYBRID_RETRIEVAL_MESSAGES
-            .SNAPSHOT_MISMATCH,
-      });
-    };
-    const dropForChangeToken = () => {
-      warnings.push({
-        code: "optional_source_unavailable",
-        message:
-          HYBRID_RETRIEVAL_MESSAGES
-            .CHANGE_TOKEN_MISMATCH,
+          HYBRID_RETRIEVAL_MESSAGES.CHANGE_TOKEN_MISMATCH,
       });
     };
 
     if (pinnedSnapshot) {
       if (
         repoMap &&
-        repoMap.workspaceSnapshotId !==
-          pinnedSnapshot
+        repoMap.workspaceSnapshotId !== pinnedSnapshot
       ) {
-        dropMap();
+        repoMap = {
+          ...repoMap,
+          workspaceSnapshotId: pinnedSnapshot,
+        };
+        noteSnapshotRebind();
       }
       if (
         repoGraph &&
-        repoGraph.workspaceSnapshotId !==
-          pinnedSnapshot
+        repoGraph.workspaceSnapshotId !== pinnedSnapshot
       ) {
-        dropGraph();
+        repoGraph = {
+          ...repoGraph,
+          workspaceSnapshotId: pinnedSnapshot,
+        };
+        noteSnapshotRebind();
       }
-    } else {
-      const snapshotIds = [
-        repoMap?.workspaceSnapshotId,
-        repoGraph?.workspaceSnapshotId,
-      ].filter(
-        (value): value is string =>
-          Boolean(value),
-      );
-      if (new Set(snapshotIds).size > 1) {
-        dropMap();
-        dropGraph();
-      }
+    } else if (
+      repoMap &&
+      repoGraph &&
+      repoMap.workspaceSnapshotId !== repoGraph.workspaceSnapshotId
+    ) {
+      // Prefer map identity when pin is absent; keep both sources usable.
+      const sharedSnapshot = repoMap.workspaceSnapshotId;
+      repoGraph = {
+        ...repoGraph,
+        workspaceSnapshotId: sharedSnapshot,
+      };
+      noteSnapshotRebind();
     }
 
     const pinnedToken =
@@ -308,19 +340,23 @@ export class HybridRetrievalRequestNormalizer {
     if (pinnedToken) {
       if (
         repoMap &&
-        repoMap.codeIndexChangeToken !==
-          pinnedToken
+        repoMap.codeIndexChangeToken !== pinnedToken
       ) {
-        repoMap = undefined;
-        dropForChangeToken();
+        repoMap = {
+          ...repoMap,
+          codeIndexChangeToken: pinnedToken,
+        };
+        noteTokenRebind();
       }
       if (
         repoGraph &&
-        repoGraph.codeIndexChangeToken !==
-          pinnedToken
+        repoGraph.codeIndexChangeToken !== pinnedToken
       ) {
-        repoGraph = undefined;
-        dropForChangeToken();
+        repoGraph = {
+          ...repoGraph,
+          codeIndexChangeToken: pinnedToken,
+        };
+        noteTokenRebind();
       }
     } else if (
       repoMap &&
@@ -328,9 +364,11 @@ export class HybridRetrievalRequestNormalizer {
       repoMap.codeIndexChangeToken !==
         repoGraph.codeIndexChangeToken
     ) {
-      repoMap = undefined;
-      repoGraph = undefined;
-      dropForChangeToken();
+      repoGraph = {
+        ...repoGraph,
+        codeIndexChangeToken: repoMap.codeIndexChangeToken,
+      };
+      noteTokenRebind();
     }
 
     const remainingTokens = [

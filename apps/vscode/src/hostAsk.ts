@@ -1,7 +1,5 @@
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
 import {
-  type AgentRunBudget,
+  MemoryPipeline,
   type MitiiClient,
   type MitiiConversationMessage,
   type MitiiResumeInput,
@@ -10,80 +8,23 @@ import {
   type RunEvent,
   type TaskList,
 } from '@mitii/sdk';
-import { loadUserSafetyRules, resolveMaximumIndexFiles } from '@mitii/host';
+import {
+  formatEnvironmentDetailsBlock,
+  isModelIoLoggingEnabled,
+  type MemoryCaptureContext,
+  observeRunToolEvent,
+  openModelIoLog,
+  openSessionLog,
+  prepareStartInput,
+  setActiveModelIoSink,
+} from '@mitii/host';
 import type * as vscode from 'vscode';
 
-import { formatDiagnosticsPromptBlock } from './context/diagnosticsContext.js';
-import { captureEditorContext } from './context/editorContext.js';
-import {
-  buildContextUsageBreakdown,
-  mergePromptBudgetIntoBreakdown,
-} from './contextUsage.js';
-import {
-  readContextToggles,
-  resolveIntentLiteContextToggles,
-} from './contextToggles.js';
-import { getSharedMcpManager } from './mcp/manager.js';
-import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
-import { createVsCodeMemoryStore, estimateMemoryPromptBlock } from './memoryStore.js';
-import { scaffoldMitiiWorkspace } from './mitiiWorkspace.js';
-import { resolveVsCodeSemanticIndexSettings } from './semanticIndex.js';
-import { buildReviewDiff } from './reviewDiff.js';
-import {
-  resolveApprovalPolicy as resolveApprovalPolicyFromModule,
-} from './approvalPolicy.js';
-import {
-  formatContextInspection,
-  formatDiffReview,
-  formatVisibleFailureDetails,
-  formatRunDiagnostics,
-  formatUsageLine,
-} from './runReport.js';
-import { openSessionLog } from './sessionLog.js';
-import {
-  isModelIoLoggingEnabled,
-  openModelIoLog,
-  setActiveModelIoSink,
-} from './modelIoLog.js';
-import { readModelIoLoggingEnabled } from './modelIoSettings.js';
-import { deriveLiveTokenBudgetPreview } from './liveTokenBudgetPreview.js';
-import { readTokenBudgetPolicyOverrides } from './tokenBudgetSettings.js';
-import { readLoopPolicyThresholdOverrides } from './loopPolicySettings.js';
-import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
-import {
-  loadProjectRules,
-  observeRunToolEvent,
-  type MemoryCaptureContext,
-} from '@mitii/host';
-import { rehydrateRepositoryStateFromDisk } from './rehydrateRepositoryState.js';
-import {
-  normalizeMaximumOutputTokens,
-  resolveEffectiveContextWindow,
-} from './settingsFields.js';
-import { MemoryPipeline } from '@mitii/v8';
-
-export {
-  formatRunEventLine,
-  nextActivityEventId,
-  runEventToActivity,
-} from './hostAskEvents.js';
-
-export {
-  composePrompt,
-  resultToSuspension,
-  type HostAskHandlers,
-  type HostAskOutcome,
-} from './hostAskSuspension.js';
-
-import {
-  buildStopResumeFromSuspension,
-  composePrompt,
-  readPinnedFileContents,
-  resolveSuspensionNative,
-  resultToSuspension,
-  type HostAskHandlers,
-  type HostAskOutcome,
-} from './hostAskSuspension.js';
+import { resolveApprovalPolicy as resolveApprovalPolicyFromModule } from './approvalPolicy.js';
+import { collectVsCodeEnvironmentSnapshot } from './collectEnvironmentDetails.js';
+import { mergePromptBudgetIntoBreakdown } from './contextUsage.js';
+import { ensureRepositoryStateForAsk } from './hostAskAutoIndex.js';
+import { prepareHostAskContext } from './hostAskContextPrep.js';
 import {
   eventAtMs,
   formatClock,
@@ -91,64 +32,48 @@ import {
   nextActivityEventId,
   runEventToActivity,
 } from './hostAskEvents.js';
+import {
+  resolveLogVerbosity,
+  resolveRunBudget,
+  withCurrentApprovalPolicy,
+} from './hostAskSettings.js';
+import {
+  buildStopResumeFromSuspension,
+  resolveSuspensionNative,
+  resultToSuspension,
+  type HostAskHandlers,
+  type HostAskOutcome,
+} from './hostAskSuspension.js';
+import { readLoopPolicyThresholdOverrides } from './loopPolicySettings.js';
+import { createVsCodeMemoryStore } from './memoryStore.js';
+import { readModelIoLoggingEnabled } from './modelIoSettings.js';
+import {
+  formatContextInspection,
+  formatDiffReview,
+  formatRunDiagnostics,
+  formatUsageLine,
+  formatVisibleFailureDetails,
+} from './runReport.js';
+import { readV8LoopPolicyThresholdOverrides } from './v8LoopPolicySettings.js';
+
+export {
+  formatRunEventLine,
+  nextActivityEventId,
+  runEventToActivity,
+} from './hostAskEvents.js';
+
+export {
+  composePrompt,
+  resultToSuspension,
+  type HostAskHandlers,
+  type HostAskOutcome,
+} from './hostAskSuspension.js';
 
 export function resolveApprovalPolicy(preset: string | undefined): {
   approvalMode: 'never' | 'when_required' | 'every_mutation';
   planApproval: 'policy' | 'never';
 } {
   return resolveApprovalPolicyFromModule(preset);
-}
-
-function withCurrentApprovalPolicy(
-  vs: typeof vscode,
-  resume: MitiiResumeInput,
-): MitiiResumeInput {
-  const preset =
-    vs.workspace.getConfiguration('mitii').get<string>('safety.approvalMode') ??
-    'guided';
-  return {
-    ...resume,
-    approvalMode: resolveApprovalPolicy(preset).approvalMode,
-  };
-}
-
-function resolveRunBudget(vs: typeof vscode): AgentRunBudget {
-  const cfg = vs.workspace.getConfiguration('mitii');
-  if (cfg.get<boolean>('runBudget.unlimited') ?? false) {
-    return {
-      unlimited: true,
-      maxModelCalls: 1_000_000,
-      maxToolCalls: 1_000_000,
-      maxLoopIterations: 1_000_000,
-      maxWallTimeMs: 365 * 24 * 60 * 60 * 1000,
-    };
-  }
-  const readPositive = (key: string, fallback: number): number => {
-    const value = cfg.get<number>(key);
-    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
-      return Math.floor(value);
-    }
-    return fallback;
-  };
-  return {
-    maxModelCalls: readPositive('runBudget.maxModelCalls', 64),
-    maxToolCalls: readPositive('runBudget.maxToolCalls', 128),
-    maxLoopIterations: readPositive('runBudget.maxLoopIterations', 96),
-    maxWallTimeMs:
-      readPositive('runBudget.maxWallTimeMinutes', 30) * 60 * 1000,
-  };
-}
-
-/** Developer-facing run-log detail level; see `mitii.logVerbosity` in package.json. */
-function resolveLogVerbosity(
-  vs: typeof vscode,
-): 'minimal' | 'standard' | 'verbose' {
-  const value = vs.workspace
-    .getConfiguration('mitii')
-    .get<string>('logVerbosity');
-  return value === 'minimal' || value === 'standard' || value === 'verbose'
-    ? value
-    : 'verbose';
 }
 
 /**
@@ -160,7 +85,7 @@ export async function runAskInOutputChannel(options: {
   prompt: string;
   workspaceRoot?: string;
   channel: vscode.OutputChannel;
-  mode?: 'ask' | 'plan' | 'agent';
+  mode?: 'ask' | 'plan' | 'agent' | 'database';
   depth?: string;
   effort?: string;
   approvalMode?: string;
@@ -190,299 +115,101 @@ export async function runAskInOutputChannel(options: {
   handlers?: HostAskHandlers;
 }): Promise<HostAskOutcome> {
   const { vs, client, workspaceRoot, channel, handlers } = options;
-  const toggles = resolveIntentLiteContextToggles({
-    toggles: readContextToggles(vs),
-    depth: options.depth,
-    prompt: options.prompt,
-  });
-  const editor = toggles.editor
-    ? captureEditorContext(vs, workspaceRoot, {
-        includeOpenTabs: toggles.openTabs,
-      })
-    : undefined;
-  const diagnosticsBlock = toggles.diagnostics
-    ? formatDiagnosticsPromptBlock(vs, workspaceRoot)
-    : '';
-  // Explicit user pins only — do not auto-promote the active editor into pinned.
-  const pinnedPaths = [...(options.pinnedPaths ?? [])];
-  const hasPinnedContext = pinnedPaths.length > 0;
-
-  let repoMapBlock: string | undefined;
-  // Pinned files take priority. Only attach a workspace outline when there are
-  // no pins, or when the user explicitly asked for deep context.
-  const includeRepoMap =
-    toggles.repoMap &&
-    workspaceRoot &&
-    (!hasPinnedContext || options.depth === 'deep');
-  if (includeRepoMap) {
-    try {
-      const maxFiles = hasPinnedContext ? 60 : 200;
-      const snap = await buildWorkspaceSnapshot({
-        workspaceRoot,
-        workspaceId: options.workspaceId ?? 'vscode_workspace',
-        maxFiles,
-      });
-      const listed = snap.relativePaths.slice(0, maxFiles);
-      repoMapBlock = `Workspace file map (${snap.fileCount} files${
-        snap.truncated ? ', truncated' : ''
-      }${hasPinnedContext ? '; supplementary — pinned files take priority' : ''}):\n${listed
-        .map((p) => `- ${p}`)
-        .join('\n')}`;
-    } catch (error) {
-      channel.appendLine(
-        `[context] repo map failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-  }
-
-  let gitDiffBlock: string | undefined;
-  if (toggles.gitDiff && workspaceRoot) {
-    try {
-      const review = await buildReviewDiff(workspaceRoot);
-      const fileLines = review.files
-        .slice(0, 40)
-        .map((f) => `- ${f.status} ${f.path}`)
-        .join('\n');
-      gitDiffBlock = [
-        `Git status: ${review.summary}`,
-        fileLines ? `Changed files:\n${fileLines}` : undefined,
-        review.patchPreview ? `Diff stat:\n${review.patchPreview}` : undefined,
-      ]
-        .filter(Boolean)
-        .join('\n\n');
-    } catch (error) {
-      channel.appendLine(
-        `[context] git diff failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-  }
-
-  const pinnedContents =
-    workspaceRoot && pinnedPaths.length
-      ? readPinnedFileContents(workspaceRoot, pinnedPaths)
-      : undefined;
-
-  const prompt = composePrompt({
-    prompt: options.prompt,
+  const {
+    cfg,
+    toggles,
     pinnedPaths,
-    pinnedContents: pinnedContents || undefined,
-    editorBlock: editor?.promptBlock,
-    diagnosticsBlock: diagnosticsBlock || undefined,
-    repoMapBlock,
-    gitDiffBlock,
-  });
-
-  const cfg = vs.workspace.getConfiguration('mitii');
-  const approvalPolicy = resolveApprovalPolicy(
-    options.approvalMode ??
-      cfg.get<string>('safety.approvalMode') ??
-      'guided',
-  );
-  const model = cfg.get<string>('provider.model') ?? '';
-  const providerType = cfg.get<string>('provider.type') ?? '';
-  const storedContextWindow = cfg.get<number>('provider.contextWindow');
-  const contextWindow = resolveEffectiveContextWindow(
-    typeof storedContextWindow === 'number' && Number.isFinite(storedContextWindow)
-      ? Math.floor(storedContextWindow)
-      : 0,
-    model,
-    providerType,
-  );
-  const maximumOutputTokens = normalizeMaximumOutputTokens(
-    cfg.get<number>('provider.maximumOutputTokens'),
-  );
-  const mcpCatalogTokens = getSharedMcpManager().snapshot().toolsCatalogTokens;
-  const memoryBlock =
-    toggles.memory && options.workspaceState && options.workspaceId
-      ? await estimateMemoryPromptBlock(
-          options.workspaceState,
-          options.workspaceId,
-        )
-      : undefined;
-  const windowBudgetPolicy = readTokenBudgetPolicyOverrides(cfg);
-  const budgetPreview = deriveLiveTokenBudgetPreview({
-    contextWindowTokens: contextWindow,
-    maximumOutputTokens:
-      maximumOutputTokens > 0 ? maximumOutputTokens : undefined,
-    policy: windowBudgetPolicy,
-  });
-  let contextBreakdown = buildContextUsageBreakdown({
-    prompt: options.prompt,
-    conversationText: options.conversationText,
-    pinnedContents: pinnedContents || undefined,
-    memoryBlock,
-    editorBlock: editor?.promptBlock,
-    diagnosticsBlock: diagnosticsBlock || undefined,
-    gitDiffBlock,
-    repoMapBlock,
-    mcpToolsCatalogTokens: mcpCatalogTokens,
-    depthHint: options.depth,
+    prompt,
     contextWindow,
-    preview: budgetPreview,
+    maximumOutputTokens,
+    windowBudgetPolicy,
+    budgetPreview,
+    contextBreakdown: initialContextBreakdown,
+  } = await prepareHostAskContext({
+    vs,
+    workspaceRoot,
+    channel,
+    prompt: options.prompt,
+    depth: options.depth,
+    pinnedPaths: options.pinnedPaths,
+    workspaceId: options.workspaceId,
+    workspaceState: options.workspaceState,
+    conversationText: options.conversationText,
+    conversation: options.conversation,
+    handlers,
   });
-  handlers?.onContextBreakdown?.(contextBreakdown);
+  let contextBreakdown = initialContextBreakdown;
 
-  channel.show(true);
-  channel.appendLine(`> ${options.prompt}`);
-  if (options.conversation && options.conversation.length > 0) {
-    channel.appendLine(
-      `[context] conversation carry: ${options.conversation.length} prior turn(s)`,
-    );
-  } else {
-    channel.appendLine('[context] conversation carry: none (first turn or empty history)');
-  }
-
-  const emitHostNote = (line: string, title: string, detail?: string) => {
-    channel.appendLine(line);
-    handlers?.onEvent?.(undefined, {
-      id: nextActivityEventId(),
-      at: Date.now(),
-      kind: 'context',
-      title,
-      detail,
-    });
-  };
-
-  if (editor?.activeRelPath) {
-    emitHostNote(
-      `[context] activeEditor=@${editor.activeRelPath}`,
-      'Attached active editor',
-      `@${editor.activeRelPath}`,
-    );
-  }
-  if (diagnosticsBlock) {
-    emitHostNote(
-      '[context] diagnostics attached',
-      'Attached diagnostics',
-      'workspace problems',
-    );
-  }
-  if (repoMapBlock) {
-    const fileCountMatch = /Workspace file map \((\d+) files/.exec(repoMapBlock);
-    const fileCount = fileCountMatch?.[1];
-    emitHostNote(
-      '[context] repo map attached',
-      'Attached workspace map',
-      fileCount ? `${fileCount} file paths` : 'file path list',
-    );
-  }
-  if (gitDiffBlock) {
-    emitHostNote(
-      '[context] git diff attached',
-      'Attached git status',
-      'changed files + diff summary',
-    );
-  }
-  if (pinnedContents) {
-    emitHostNote(
-      `[context] pinned file contents (${pinnedPaths.length})`,
-      pinnedPaths.length === 1 ? 'Read pinned file' : 'Read pinned files',
-      pinnedPaths.map((p) => `@${p}`).join(', '),
-    );
-  }
-
-  // Ensure repository state exists so context/tool routes can pin.
-  if (workspaceRoot) {
-    try {
-      const latest = await client.getLatestRepositoryState(
-        options.workspaceId ?? 'vscode_workspace',
-      );
-      if (!latest) {
-        const workspaceId = options.workspaceId ?? 'vscode_workspace';
-        const mitiiDir = scaffoldMitiiWorkspace(workspaceRoot);
-        const sqlitePath = join(mitiiDir, 'repository-index.sqlite');
-        if (existsSync(sqlitePath)) {
-          const rehydrated = await rehydrateRepositoryStateFromDisk({
-            client,
-            mitiiDir,
-            workspaceRoot,
-            workspaceId,
-            channel,
-          });
-          if (rehydrated.ok) {
-            // In-memory state restored from disk; skip full reindex.
-          } else {
-            channel.appendLine(
-              `[index] on-disk sqlite present but rehydrate failed; falling through to full index`,
-            );
-            await autoPublishFullOrSnapshot({
-              client,
-              mitiiDir,
-              workspaceRoot,
-              workspaceId,
-              channel,
-              vs,
-              secrets: options.secrets,
-            });
-          }
-        } else {
-          await autoPublishFullOrSnapshot({
-            client,
-            mitiiDir,
-            workspaceRoot,
-            workspaceId,
-            channel,
-            vs,
-            secrets: options.secrets,
-          });
-        }
-      }
-    } catch (error) {
-      channel.appendLine(
-        `[index] auto-publish skipped: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-  }
+  await ensureRepositoryStateForAsk({
+    client,
+    workspaceRoot,
+    workspaceId: options.workspaceId,
+    channel,
+    vs,
+    secrets: options.secrets,
+  });
 
   const execute = async (
     token: vscode.CancellationToken,
   ): Promise<HostAskOutcome> => {
-    const projectRules = workspaceRoot
-      ? await loadProjectRules({ workspaceRoot })
-      : [];
     const runStartedAt = new Date().toISOString();
     const loopPolicyThresholds = readLoopPolicyThresholdOverrides(cfg);
+    const v8LoopPolicyThresholds = readV8LoopPolicyThresholdOverrides(cfg);
     const effort =
       options.effort === 'low' ||
       options.effort === 'high' ||
       options.effort === 'medium'
         ? options.effort
         : undefined;
+    const explorationDepth =
+      options.depth === 'quick' ||
+      options.depth === 'auto' ||
+      options.depth === 'deep'
+        ? options.depth
+        : undefined;
     const userRulesEnabled =
       cfg.get<boolean>('safety.userRulesEnabled') === true;
-    const userSafetyRules = userRulesEnabled && workspaceRoot
-      ? loadUserSafetyRules(workspaceRoot)
-      : undefined;
-    let run = client.start({
+    const approvalPreset =
+      options.approvalMode ??
+      cfg.get<string>('safety.approvalMode') ??
+      'guided';
+
+    const prepared = await prepareStartInput({
       prompt,
-      mode: options.mode ?? 'ask',
-      workspaceRoot,
-      ...(options.sessionId ? { sessionId: options.sessionId } : {}),
-      approvalMode: approvalPolicy.approvalMode,
-      planApproval: approvalPolicy.planApproval,
-      ...(userSafetyRules?.enabled ? { userSafetyRules } : {}),
-      budget: resolveRunBudget(vs),
-      windowBudget: {
-        ...(windowBudgetPolicy ? { policy: windowBudgetPolicy } : {}),
-        ...(effort ? { effort } : {}),
-        // Raw settings value (0 = derive). Engine must not see a pre-derived
-        // capability number as a host override.
-        maximumOutputTokens,
+      ...(workspaceRoot ? { workspaceRoot } : {}),
+      uiMode: options.mode ?? 'ask',
+      approvalPreset,
+      userSafety: userRulesEnabled ? 'disk' : 'off',
+      projectRulesBudget: {
+        maxRuleChars: budgetPreview.injectionProjectRuleChars,
+        maxTotalChars: budgetPreview.injectionProjectRulesTotalChars,
       },
+      ...(options.sessionId ? { sessionId: options.sessionId } : {}),
+      ...(explorationDepth ? { explorationDepth } : {}),
+      ...(effort ? { effort } : {}),
+      budget: resolveRunBudget(vs),
+      ...(windowBudgetPolicy
+        ? { windowBudgetPolicy: windowBudgetPolicy as Record<string, number> }
+        : {}),
+      // Raw settings value (0 = derive). Engine must not see a pre-derived
+      // capability number as a host override.
+      maximumOutputTokens,
       ...(loopPolicyThresholds
         ? { loopPolicy: { thresholds: loopPolicyThresholds } }
         : {}),
-      ...(projectRules.length > 0 ? { projectRules: [...projectRules] } : {}),
+      ...(v8LoopPolicyThresholds
+        ? { v8LoopPolicy: { thresholds: v8LoopPolicyThresholds } }
+        : {}),
       ...(pinnedPaths.length > 0 ? { pinnedPaths } : {}),
       ...(options.requiredSkillIds && options.requiredSkillIds.length > 0
-        ? { requiredSkillIds: [...options.requiredSkillIds] }
+        ? { requiredSkillIds: options.requiredSkillIds }
         : {}),
       ...(options.excludedSkillIds && options.excludedSkillIds.length > 0
-        ? { excludedSkillIds: [...options.excludedSkillIds] }
+        ? { excludedSkillIds: options.excludedSkillIds }
         : {}),
       ...(options.requiredMcpServerIds &&
       options.requiredMcpServerIds.length > 0
-        ? { requiredMcpServerIds: [...options.requiredMcpServerIds] }
+        ? { requiredMcpServerIds: options.requiredMcpServerIds }
         : {}),
       ...(options.conversation && options.conversation.length > 0
         ? { conversation: options.conversation }
@@ -492,9 +219,32 @@ export async function runAskInOutputChannel(options: {
         ? { approvedPlanStrategy: options.approvedPlanStrategy }
         : {}),
       ...(options.taskList ? { taskList: options.taskList } : {}),
-      ...(options.depth ? { explorationDepth: options.depth } : {}),
       logVerbosity: resolveLogVerbosity(vs),
     });
+
+    const effectiveMode = prepared.effectiveMode;
+    const modeReminder = prepared.meta.usedDatabaseOverlay
+      ? `Database (${effectiveMode})`
+      : prepared.meta.usedModeProfileName
+        ? `${prepared.meta.usedModeProfileName} (${effectiveMode})`
+        : effectiveMode;
+    const environmentBlock = formatEnvironmentDetailsBlock(
+      collectVsCodeEnvironmentSnapshot({
+        workspaceRoot,
+        modeReminder,
+      }),
+    );
+    const startInput = environmentBlock
+      ? {
+          ...prepared.start,
+          environment: [
+            environmentBlock,
+            ...(prepared.start.environment ?? []),
+          ],
+        }
+      : prepared.start;
+
+    let run = client.start(startInput);
     const events: RunEvent[] = [];
     const memoryCapture: MemoryCaptureContext | undefined =
       toggles.memory &&
@@ -515,7 +265,7 @@ export async function runAskInOutputChannel(options: {
     const sessionLog = openSessionLog(workspaceRoot, {
       at: runStartedAt,
       prompt: options.prompt,
-      mode: options.mode,
+      mode: effectiveMode,
       conversationCount: options.conversation?.length ?? 0,
       sessionId: options.sessionId,
       runId: run.runId,
@@ -707,56 +457,4 @@ export async function runAskInOutputChannel(options: {
     },
     async (_progress, token) => execute(token),
   );
-}
-
-async function autoPublishFullOrSnapshot(options: {
-  client: MitiiClient;
-  mitiiDir: string;
-  workspaceRoot: string;
-  workspaceId: string;
-  channel: { appendLine(line: string): void };
-  vs: typeof vscode;
-  secrets?: vscode.SecretStorage;
-}): Promise<void> {
-  try {
-    const full = await runFullWorkspaceIndex({
-      mitiiDir: options.mitiiDir,
-      workspaceRoot: options.workspaceRoot,
-      workspaceId: options.workspaceId,
-      ...(options.secrets
-        ? {
-            semanticIndex: await resolveVsCodeSemanticIndexSettings(
-              options.vs,
-              options.secrets,
-            ),
-          }
-        : {}),
-    });
-    await options.client.publishRepositoryStateFromIndexing(full.indexing, {
-      catalogRevisionByRoot: full.catalogRevisionByRoot,
-      graphRevisionByRoot: full.graphRevisionByRoot,
-      mapRevisionByRoot: full.mapRevisionByRoot,
-    });
-    options.channel.appendLine(
-      `[index] auto-published full index (${full.fileCount} files); vector=${full.vectorIndex.status}${full.vectorIndex.reason ? ` reason=${full.vectorIndex.reason}` : ''}`,
-    );
-  } catch (fullIndexError) {
-    const snap = await buildWorkspaceSnapshot({
-      workspaceRoot: options.workspaceRoot,
-      workspaceId: options.workspaceId,
-      maxFiles: resolveMaximumIndexFiles(
-        options.vs.workspace
-          .getConfiguration('mitii')
-          .get<number>('workspace.maximumIndexFiles'),
-      ),
-    });
-    await options.client.publishRepositoryState(snap.candidate);
-    options.channel.appendLine(
-      `[index] auto-published host snapshot (${snap.fileCount} files; full index unavailable: ${
-        fullIndexError instanceof Error
-          ? fullIndexError.message
-          : String(fullIndexError)
-      })`,
-    );
-  }
 }

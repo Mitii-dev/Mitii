@@ -1,5 +1,5 @@
 /**
- * Host-owned session hooks (Phase 3).
+ * Host-owned session hooks.
  * Restrict-only: may deny tools/command prefixes and audit — never add tools
  * or raise autonomy. Disabled when `.mitii/hooks/` is absent.
  */

@@ -1,6 +1,6 @@
 # @mitii/search-kit — Architecture
 
-Status: Phase 1–2 web retrieval kit (providers + content resolvers)  
+Status: 2 web retrieval kit (providers + content resolvers) 
 Depends on: `zod`  
 Must **not** depend on: `@mitii/v8`, `@mitii/sdk`, `@mitii/host`, apps
 
@@ -126,7 +126,7 @@ the content chain, then fall back to raw HTTP.
 - [x] AbortSignal + timeouts
 - [x] Deterministic Zod validation at config boundary
 - [x] Unit tests with mocked fetch (no live network)
-- [x] No browser dependency in Phase 1–2
+- [x] No browser dependency –2
 
 ## Evolution
 

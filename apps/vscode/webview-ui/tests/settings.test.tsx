@@ -4,7 +4,6 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { createProviderHarness } from '../../tests/helpers/settingsHarness';
 import { App } from '../src/App';
 import { PROVIDER_OPTIONS } from '../src/providerOptions';
-import { LOOP_POLICY_FIELDS } from '../../src/loopPolicySettings';
 import { SETTINGS_FIELDS } from '../../src/settingsFields';
 
 const bridge = vi.hoisted(() => ({ post: vi.fn(), listener: undefined as any }));
@@ -100,7 +99,7 @@ describe('settings inputs through the host save/read bridge', () => {
 const inputFields = SETTINGS_FIELDS.filter(field =>
   !['provider.type', 'provider.preset', 'semanticIndex.source', 'semanticIndex.backend', 'semanticIndex.enabled', 'mcp.enabled', 'developer.intensityOverrides', 'ui.effort'].includes(field.id)
   && (!field.id.startsWith('tokenBudget.') || field.id === 'tokenBudget.enabled')
-  && (!field.id.startsWith('loopPolicy.') || field.id === 'loopPolicy.enabled' || LOOP_POLICY_FIELDS.some(f => `loopPolicy.${f.key}` === field.id && f.tier !== 'advanced'))
+  && (!field.id.startsWith('loopPolicy.') || field.id === 'loopPolicy.enabled')
   && !/ui\.modeDefaults\..*\.(depth|thoroughness)$/.test(field.id));
 const labels: Record<string, string> = {
   'autocomplete.enabled': 'Enable autocomplete',
@@ -178,6 +177,18 @@ describe('simple budget controls and remaining settings', () => {
     fireEvent.blur(number);
     await save();
     expect((document.getElementById(id) as HTMLInputElement).value).toBe(String(Number(edited) + 1));
+  });
+
+  it('renders host-provided Advanced token-budget fields, minus Debug-hidden ones', async () => {
+    harness.store.set('developer.enabled', true);
+    await hydrate(); await open('debug');
+    const advanced = document.querySelector('.token-budget-advanced') as HTMLDetailsElement;
+    expect(advanced.hidden).toBe(false);
+    act(() => { advanced.open = true; advanced.dispatchEvent(new Event('toggle')); });
+    expect(screen.getByText('Output reserve', { selector: 'h4' })).toBeTruthy();
+    expect(document.getElementById('tokenBudget.outputMinTokens')).toBeTruthy();
+    expect(document.getElementById('tokenBudget.maxModelCallsMin')).toBeNull();
+    expect(document.getElementById('tokenBudget.maxModelCallsPerUsable')).toBeNull();
   });
 
   it('saves SearXNG URL and restores it', async () => {

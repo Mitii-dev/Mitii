@@ -2,6 +2,12 @@ export {
   CHANGE_IMPACT_SCHEMA_VERSION,
   CHANGE_IMPACT_STATUSES,
   CHANGE_IMPACT_DIRECTIONS,
+  CHANGE_IMPACT_SEED_EXPANSIONS,
+  CHANGE_IMPACT_FILE_BUCKETS,
+  CHANGE_IMPACT_FILE_REASONS,
+  CHANGE_IMPACT_PATH_IDENTITY_KINDS,
+  CHANGE_IMPACT_BLAST_LEVELS,
+  CHANGE_IMPACT_RISK_TIERS,
   CHANGE_IMPACT_EDGE_TYPES,
   CHANGE_IMPACT_REASON_CODES,
   CHANGE_IMPACT_ERROR_CODES,
@@ -13,12 +19,94 @@ export {
   DEFAULT_CHANGE_IMPACT_MAXIMUM_AFFECTED_NODES,
   DEFAULT_CHANGE_IMPACT_MAXIMUM_PACKAGES,
   DEFAULT_CHANGE_IMPACT_MAXIMUM_EVIDENCE_PER_NODE,
+  DEFAULT_CHANGE_IMPACT_MAXIMUM_PATHS,
+  DEFAULT_CHANGE_IMPACT_SEED_EXPANSION,
+  DEFAULT_CHANGE_IMPACT_FAN_IN_WEIGHT,
+  DEFAULT_CHANGE_IMPACT_FAN_IN_CAP,
+  DEFAULT_CHANGE_IMPACT_EVIDENCE_WEIGHT,
+  DEFAULT_CHANGE_IMPACT_EVIDENCE_CAP,
+  DEFAULT_CHANGE_IMPACT_TEST_SCORE_FACTOR,
+  DEFAULT_CHANGE_IMPACT_PAGE_RANK_WEIGHT,
+  DEFAULT_CHANGE_IMPACT_PAGE_RANK_CAP,
+  DEFAULT_CHANGE_IMPACT_LSP_ENRICH_MAX_FILES,
+  DEFAULT_CHANGE_IMPACT_MODEL_FACING_AFFECTED_NODES,
+  DEFAULT_CHANGE_IMPACT_MODEL_FACING_EVIDENCE_PER_NODE,
+  DEFAULT_CHANGE_IMPACT_MODEL_FACING_AFFECTED_FILES,
+  DEFAULT_CHANGE_IMPACT_MODEL_FACING_CHAINS,
+  DEFAULT_CHANGE_IMPACT_CONFIDENCE_LOW,
+  DEFAULT_CHANGE_IMPACT_CONFIDENCE_UNSAFE,
+  DEFAULT_CHANGE_IMPACT_BLAST_MEDIUM_FILES,
+  DEFAULT_CHANGE_IMPACT_BLAST_HIGH_FILES,
+  DEFAULT_CHANGE_IMPACT_BLAST_MEDIUM_HOP1,
+  DEFAULT_CHANGE_IMPACT_BLAST_HIGH_HOP1,
+  DEFAULT_CHANGE_IMPACT_RISK_REVIEW,
+  DEFAULT_CHANGE_IMPACT_RISK_TEST,
+  DEFAULT_CHANGE_IMPACT_RISK_CRITICAL,
+  DEFAULT_CHANGE_IMPACT_SENSITIVE_PATH_TOKENS,
+  DEFAULT_CHANGE_IMPACT_CO_CHANGE_WEIGHT,
+  DEFAULT_CHANGE_IMPACT_CO_CHANGE_COUNT_CAP,
+  DEFAULT_CHANGE_IMPACT_HIDDEN_COUPLING_MIN,
+  DEFAULT_CHANGE_IMPACT_HIDDEN_COUPLING_MAX_FILES,
+  DEFAULT_CHANGE_IMPACT_HIDDEN_COUPLING_BASE_SCORE,
+  DEFAULT_CHANGE_IMPACT_MAX_CYCLES,
+  DEFAULT_CHANGE_IMPACT_MAX_CYCLE_LENGTH,
+  DEFAULT_CHANGE_IMPACT_MAX_SEEDS,
+  DEFAULT_CHANGE_IMPACT_MAX_PROPOSED_PATHS,
 } from "./defaults";
 
 export { CHANGE_IMPACT_POLICY } from "./policy";
 
-export { ChangeImpactPipeline } from "./pipeline/ChangeImpactPipeline";
+export {
+  compactChangeImpactForModelFacing,
+  isChangeImpactToolOutput,
+} from "./actions/compactChangeImpactForModelFacing";
+export type {
+  ModelFacingAffectedNode,
+  ModelFacingAffectedFile,
+  ModelFacingPackage,
+  ModelFacingChain,
+  ModelFacingChainLink,
+} from "./actions/compactChangeImpactForModelFacing";
 
+export {
+  mergeNavigationEnrichment,
+} from "./actions/mergeNavigationEnrichment";
+export type { NavigationEnrichmentLocation } from "./actions/mergeNavigationEnrichment";
+
+export {
+  recommendWidenVerification,
+  isGraphConfidenceUnsafe,
+} from "./actions/recommendWidenVerification";
+
+export {
+  mergeChangeImpactResults,
+} from "./actions/mergeChangeImpactResults";
+export {
+  analyzeManyChangeImpact,
+} from "./actions/analyzeManyChangeImpact";
+export {
+  evaluateSpillover,
+  spilloverTokensFromResult,
+} from "./actions/evaluateSpillover";
+export {
+  planCheckChangeImpact,
+} from "./actions/planCheckChangeImpact";
+
+export {
+  classifyImpactBucket,
+  bucketSortKey,
+} from "./internal/classifyImpactBucket";
+export type { ChangeImpactFileBucket as ImpactPathBucket } from "./internal/classifyImpactBucket";
+
+export {
+  resolveSoftSymbolMatches,
+} from "./internal/resolveSoftSymbolMatches";
+
+export {
+  collapseChainPrefixes,
+} from "./internal/collectBoundedChains";
+
+export { ChangeImpactPipeline } from "./pipeline/ChangeImpactPipeline";
 export {
   changeImpactInputSchema,
   changeImpactSeedSchema,
@@ -27,15 +115,35 @@ export {
   changeImpactCaretSeedSchema,
   changeImpactEdgeTypeSchema,
   changeImpactDirectionSchema,
+  changeImpactSeedExpansionSchema,
+  changeImpactPathIdentityKindSchema,
+  changeImpactPathIdentityOverlaySchema,
+  changeImpactHistoricalCouplingEntrySchema,
+  changeImpactMultiInputSchema,
+  changeImpactPlanCheckInputSchema,
+  changeImpactSpilloverInputSchema,
   changeImpactResultSchema,
   changeImpactStatusSchema,
   changeImpactReasonCodeSchema,
   changeImpactWarningCodeSchema,
+  changeImpactFileBucketSchema,
+  changeImpactFileReasonSchema,
+  changeImpactBlastLevelSchema,
+  changeImpactRiskTierSchema,
   changeImpactResolvedSeedSchema,
   changeImpactAffectedNodeSchema,
   changeImpactAffectedFileSchema,
+  changeImpactDirectNeighborCountsSchema,
+  changeImpactChainLinkSchema,
+  changeImpactChainSchema,
   changeImpactPackageSchema,
   changeImpactWarningSchema,
+  changeImpactTotalsSchema,
+  changeImpactBlastRadiusSchema,
+  changeImpactHiddenCouplingSchema,
+  changeImpactSpilloverResultSchema,
+  changeImpactMergedResultSchema,
+  changeImpactPlanCheckResultSchema,
   ChangeImpactError,
   changeImpactErrorCodeSchema,
 } from "./contracts";
@@ -43,9 +151,28 @@ export type {
   ChangeImpactInput,
   ChangeImpactParsedInput,
   ChangeImpactSeed,
+  ChangeImpactPathIdentityOverlay,
+  ChangeImpactHistoricalCouplingEntry,
+  ChangeImpactMultiInput,
+  ChangeImpactParsedMultiInput,
+  ChangeImpactPlanCheckInput,
+  ChangeImpactParsedPlanCheckInput,
+  ChangeImpactSpilloverInput,
+  ChangeImpactParsedSpilloverInput,
   ChangeImpactResult,
   ChangeImpactStatus,
   ChangeImpactReasonCode,
   ChangeImpactWarningCode,
   ChangeImpactErrorCode,
+  ChangeImpactFileBucket,
+  ChangeImpactFileReason,
+  ChangeImpactBlastLevel,
+  ChangeImpactRiskTier,
+  ChangeImpactBlastRadius,
+  ChangeImpactTotals,
+  ChangeImpactHiddenCoupling,
+  ChangeImpactSpilloverResult,
+  ChangeImpactMergedResult,
+  ChangeImpactPlanCheckResult,
+  RepositoryGraphPort,
 } from "./contracts";

@@ -11,11 +11,16 @@ import type {
   DiscoveryTarget,
   DiscoveryVerificationHint,
 } from "../contracts";
-import { remapScaffoldChangeSurfaces } from "./remapScaffoldChangeSurfaces";
+import {
+  remapScaffoldChangeSurfaces,
+  resolveScaffoldPackageMapping,
+} from "./remapScaffoldChangeSurfaces";
 
 const FILE_LIKE = /\.\w{1,16}$/;
 const TEST_LIKE = /(?:\.test|\.spec|\/tests?\/|\/__tests__\/)/i;
-const CONFIG_LIKE = /(?:^|\/)(?:.*\.)?(?:config|rc|toml|ya?ml|json|env)(?:$|\.)/i;
+/** Conf modules (wdio.*.conf.ts) count as config when read — not only *config*. */
+const CONFIG_LIKE =
+  /(?:^|\/)(?:.*\.)?(?:config|conf|rc|toml|ya?ml|json|env)(?:$|\.)/i;
 /** Lockfiles / tooling noise — never promote to change surfaces from listing. */
 const NOISE_CONFIG =
   /(?:^|\/)(?:package-lock\.json|pnpm-lock\.yaml|yarn\.lock|composer\.lock|Cargo\.lock|\.mitii\/)/i;
@@ -59,6 +64,7 @@ export function compileDiscoveryBrief(
   ]);
 
   const inferredSurfaces = inferChangeSurfaces({
+    objective: parsed.objective,
     filesRead,
     searchFiles,
     explicitTargets: parsed.explicitTargets,
@@ -98,6 +104,7 @@ export function compileDiscoveryBrief(
 }
 
 function inferChangeSurfaces(params: {
+  objective: string;
   filesRead: readonly DiscoveryFileRef[];
   searchFiles: readonly { path: string; reason: string }[];
   explicitTargets: readonly DiscoveryTarget[];
@@ -115,6 +122,11 @@ function inferChangeSurfaces(params: {
       .filter(Boolean),
   );
   const readPaths = new Set(params.filesRead.map((file) => file.path));
+  const scaffoldMapping = resolveScaffoldPackageMapping({
+    objective: params.objective,
+    explicitTargets: params.explicitTargets,
+    filesRead: params.filesRead,
+  });
 
   const ranked = uniqueByPath([
     ...params.filesRead.map((file) => ({
@@ -139,7 +151,11 @@ function inferChangeSurfaces(params: {
       return true;
     }
     // Manifests (package.json / tsconfig) are not edit surfaces unless targeted.
-    if (MANIFEST_CONFIG.test(item.path) && !explicitPaths.has(item.path)) {
+    if (
+      MANIFEST_CONFIG.test(item.path) &&
+      !explicitPaths.has(item.path) &&
+      !scaffoldMapping
+    ) {
       return false;
     }
     // Other config modules are first-class when read or explicitly targeted
@@ -165,10 +181,29 @@ function inferChangeSurfaces(params: {
 
   return ranked.slice(0, 16).map((item) => ({
     path: item.path,
-    actionHint: "Change",
+    actionHint: inferActionHint(params.objective, item.path),
     riskLevel: "low",
     evidence: item.reason,
   }));
+}
+
+/** Prefer verb+target over hollow "Change" so plan steps stay readable. */
+function inferActionHint(objective: string, path: string): string {
+  const lower = `${objective} ${path}`.toLowerCase();
+  const base = path.split("/").pop() ?? path;
+  if (/\b(add|create|introduce|new)\b/.test(lower)) {
+    return `Add or wire ${base}`;
+  }
+  if (/\b(fix|repair|bug)\b/.test(lower)) {
+    return `Fix ${base}`;
+  }
+  if (/\b(update|extend|wire|integrate|plug)\b/.test(lower)) {
+    return `Update ${base}`;
+  }
+  if (CONFIG_LIKE.test(path)) {
+    return `Configure ${base}`;
+  }
+  return `Edit ${base}`;
 }
 
 function inferVerificationHints(

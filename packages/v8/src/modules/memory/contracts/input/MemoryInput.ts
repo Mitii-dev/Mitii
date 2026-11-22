@@ -31,6 +31,11 @@ export const memoryRetrieveInputSchema = z
     concepts: z.array(z.string().min(1)).default([]),
     /** Optional run id recorded on access touch. */
     runId: z.string().min(1).optional(),
+    origin: z.enum(["user", "automation", "delegated"]).default("user"),
+    /** Hosts record access only after final prompt inclusion. */
+    deferAccess: z.boolean().default(false),
+    signal: z.custom<AbortSignal>(value => value !== null && typeof value === "object" &&
+      "aborted" in value && "addEventListener" in value).optional(),
     /**
      * `layered` partitions selected memory into L1 index clips (~30%),
      * L2 timeline (~30%), and L3 full facts (~40%). Default retrieve
@@ -67,6 +72,18 @@ export const memoryCommitInputSchema = z
       .max(10)
       .default(DEFAULT_MEMORY_IMPORTANCE),
     sourceIds: z.array(z.string().min(1)).default([]),
+    /** Explicit correction target; similarity alone never supersedes a fact. */
+    replacesId: z.string().min(1).optional(),
+    pinned: z.boolean().optional(),
+    claimKey: z.string().min(1).max(512).optional(),
+    evidence: z.array(z.object({
+      id: z.string().min(1),
+      kind: z.enum(["user_statement", "tool_result", "verification", "repository"]),
+      verified: z.boolean().default(false),
+    }).strict()).max(32).optional(),
+    applicability: z.object({
+      fileHashes: z.record(z.string(), z.string().regex(/^[a-f0-9]{64}$/)),
+    }).strict().optional(),
   })
   .strict();
 

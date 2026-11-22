@@ -1,0 +1,508 @@
+/**
+ * Host-side conversation carry — mirrors apps/vscode/src/conversationCarry.ts
+ * so follow-up turns (e.g. "1" after numbered options) reach Agent Engine
+ * with prior user/assistant context.
+ *
+ * Browser-safe: no runtime @mitii/sdk import (keeps Vite renderer off Node/V8).
+ */
+
+/** Mirrors carry payloads sent to the engine (user/assistant only). */
+export interface MitiiConversationMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+/**
+ * Fallback when callers omit Window Budget–derived `limits`.
+ * Prefer `deriveLiveTokenBudgetPreview(...).carry*` / `WindowPolicy.carry`.
+ */
+export const CONVERSATION_CARRY_LIMITS = {
+  /** Matches `carryMaxMessagesMax` in window-budget defaults. */
+  maxMessages: 200,
+  /** Matches `carryMaxCharsPerMessageMax` in window-budget defaults. */
+  maxCharsPerMessage: 100_000,
+  /** Same retention as ask/plan — agent must not drop customer-visible history. */
+  agentMaxMessages: 200,
+  agentMaxCharsPerMessage: 100_000,
+  structuredMaxChangedPaths: 40,
+  structuredMaxErrors: 8,
+  structuredMaxErrorChars: 240,
+} as const;
+
+/** Runtime carry ceilings (Window Budget derived values are plain numbers). */
+export type ConversationCarryLimits = {
+  maxMessages: number;
+  maxCharsPerMessage: number;
+  agentMaxMessages: number;
+  agentMaxCharsPerMessage: number;
+  structuredMaxChangedPaths: number;
+  structuredMaxErrors: number;
+  structuredMaxErrorChars: number;
+};
+
+export type CarryChatRole = 'user' | 'assistant';
+
+export interface CarryChatMessage {
+  role: CarryChatRole;
+  text: string;
+}
+
+export type AgentCarryMode = 'ask' | 'plan' | 'agent';
+
+/** Compact cross-turn facts preferred over dumping full chat history. */
+export interface StructuredCarryHandoff {
+  objective?: string;
+  changedPaths?: readonly string[];
+  lastErrors?: readonly string[];
+  taskSummary?: string;
+}
+
+export interface BuildConversationCarryOptions {
+  messages: readonly CarryChatMessage[];
+  /**
+   * Current prompt about to be sent. When it matches the trailing user turn
+   * (already persisted or mirrored in UI), that turn is excluded so the engine
+   * does not duplicate the live userMessage.
+   */
+  currentPrompt?: string;
+  mode?: AgentCarryMode;
+  structured?: StructuredCarryHandoff;
+  limits?: Partial<ConversationCarryLimits>;
+}
+
+export function resolveConversationCarryLimits(mode?: AgentCarryMode): {
+  maxMessages: number;
+  maxCharsPerMessage: number;
+} {
+  // All modes keep the same history budget so ask → agent follow-ups do not
+  // lose prior answers. Token budgeting still compacts inside the engine.
+  void mode;
+  return {
+    maxMessages: CONVERSATION_CARRY_LIMITS.maxMessages,
+    maxCharsPerMessage: CONVERSATION_CARRY_LIMITS.maxCharsPerMessage,
+  };
+}
+
+function truncateMessage(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  if (maxChars <= 1) return '…';
+  return `${text.slice(0, maxChars - 1)}…`;
+}
+
+function uniqueNonEmpty(values: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    out.push(trimmed);
+  }
+  return out;
+}
+
+/**
+ * Build a compact `<carry_handoff>` block for Agent follow-ups.
+ */
+export function buildStructuredCarryPrefix(
+  handoff: StructuredCarryHandoff | undefined,
+): string | undefined {
+  if (!handoff) return undefined;
+
+  const lines: string[] = ['<carry_handoff>'];
+  const objective = handoff.objective?.trim();
+  if (objective) {
+    lines.push(`objective: ${truncateMessage(objective, 400)}`);
+  }
+  const taskSummary = handoff.taskSummary?.trim();
+  if (taskSummary) {
+    lines.push(`tasks: ${truncateMessage(taskSummary, 240)}`);
+  }
+  const paths = uniqueNonEmpty(handoff.changedPaths ?? []).slice(
+    0,
+    CONVERSATION_CARRY_LIMITS.structuredMaxChangedPaths,
+  );
+  if (paths.length > 0) {
+    lines.push(`changed_files (${paths.length}):`);
+    for (const path of paths) {
+      lines.push(`- ${path}`);
+    }
+  }
+  const errors = uniqueNonEmpty(handoff.lastErrors ?? [])
+    .slice(0, CONVERSATION_CARRY_LIMITS.structuredMaxErrors)
+    .map((error) =>
+      truncateMessage(error, CONVERSATION_CARRY_LIMITS.structuredMaxErrorChars),
+    );
+  if (errors.length > 0) {
+    lines.push('last_errors:');
+    for (const error of errors) {
+      lines.push(`- ${error}`);
+    }
+  }
+  if (lines.length === 1) return undefined;
+  lines.push('</carry_handoff>');
+  return lines.join('\n');
+}
+
+/**
+ * Collect structured handoff facts from recent chat messages (edits + errors).
+ */
+export function collectStructuredCarryFromThread(thread: {
+  pendingPlan?: { objective?: string } | null;
+  pendingTaskList?: {
+    items?: readonly {
+      status?: string;
+      title?: string;
+    }[];
+  } | null;
+  messages?: readonly {
+    fileChanges?: { files?: readonly { path?: string }[] } | null;
+    activity?: readonly {
+      kind?: string;
+      title?: string;
+      detail?: string;
+      status?: string;
+    }[];
+  }[];
+}): StructuredCarryHandoff | undefined {
+  const changedPaths: string[] = [];
+  const lastErrors: string[] = [];
+  for (const message of thread.messages ?? []) {
+    for (const file of message.fileChanges?.files ?? []) {
+      if (file.path?.trim()) changedPaths.push(file.path.trim());
+    }
+    for (const event of message.activity ?? []) {
+      const isErrorish =
+        event.kind === 'warning' ||
+        event.status === 'error' ||
+        event.status === 'failed';
+      if (!isErrorish) continue;
+      const text = (event.detail ?? event.title ?? '').trim();
+      if (text) lastErrors.push(text);
+    }
+  }
+
+  const items = thread.pendingTaskList?.items ?? [];
+  const pending = items.filter((item) => item.status === 'pending').length;
+  const active = items.filter((item) => item.status === 'active').length;
+  const done = items.filter((item) => item.status === 'done').length;
+  const taskSummary =
+    items.length > 0
+      ? `${items.length} items (${done} done, ${active} active, ${pending} pending)`
+      : undefined;
+
+  const handoff: StructuredCarryHandoff = {
+    ...(thread.pendingPlan?.objective
+      ? { objective: thread.pendingPlan.objective }
+      : {}),
+    ...(changedPaths.length > 0 ? { changedPaths } : {}),
+    ...(lastErrors.length > 0 ? { lastErrors } : {}),
+    ...(taskSummary ? { taskSummary } : {}),
+  };
+  if (
+    !handoff.objective &&
+    !handoff.changedPaths &&
+    !handoff.lastErrors &&
+    !handoff.taskSummary
+  ) {
+    return undefined;
+  }
+  return handoff;
+}
+
+/**
+ * Map persisted chat turns into SDK conversation messages for Agent Engine.
+ */
+export function buildConversationCarry(
+  options: BuildConversationCarryOptions,
+): MitiiConversationMessage[] {
+  const defaults = resolveConversationCarryLimits(options.mode);
+  const maxMessages = options.limits?.maxMessages ?? defaults.maxMessages;
+  const maxChars =
+    options.limits?.maxCharsPerMessage ?? defaults.maxCharsPerMessage;
+
+  const structuredPrefix = buildStructuredCarryPrefix(options.structured);
+  const chatBudget = structuredPrefix
+    ? Math.max(0, maxMessages - 1)
+    : maxMessages;
+
+  const trimmedPrompt = options.currentPrompt?.trim();
+  let source = options.messages.filter(
+    (message) =>
+      (message.role === 'user' || message.role === 'assistant') &&
+      message.text.trim().length > 0,
+  );
+
+  if (trimmedPrompt && source.length > 0) {
+    const last = source[source.length - 1];
+    if (last?.role === 'user' && last.text.trim() === trimmedPrompt) {
+      source = source.slice(0, -1);
+    }
+  }
+
+  const windowed = source.slice(-chatBudget);
+  const carried: MitiiConversationMessage[] = [];
+
+  if (structuredPrefix) {
+    carried.push({ role: 'user', content: structuredPrefix });
+  }
+
+  for (const message of windowed) {
+    const content = truncateMessage(message.text.trim(), maxChars);
+    if (!content) continue;
+    carried.push({ role: message.role, content });
+  }
+
+  return carried;
+}
+
+/** Keep in sync with packages/v8 isTransitionalAssistantAnswer heuristics. */
+const TRANSITIONAL_OPENERS =
+  /^(?:okay[,.]?\s+|ok[,.]?\s+|sure[,.]?\s+|alright[,.]?\s+|right[,.]?\s+)?(?:let me|i(?:'ll| will)|i(?:'m| am) going to|now let me|next[,]? (?:i(?:'ll| will)|let me)|i need to|i should)\b/i;
+const TRANSITIONAL_INTENT =
+  /\b(?:let me|i(?:'ll| will)|i(?:'m| am) going to)\b/i;
+const TRANSITIONAL_CLOSERS = /(?::|\.\.\.|…)\s*$/;
+const TRAILING_INTENT_CLAUSE =
+  /[.!,;]\s*(?:let me|i(?:'ll| will)|i(?:'m| am) going to)\b[\s\S]{0,160}$/i;
+
+const PLANNING_PHRASE =
+  /\b(?:let me|i(?:'ll| will)|i(?:'m| am) going to|i need to|i should)\b/gi;
+
+function isMidWorkAnalysisDump(text: string): boolean {
+  const trimmed = text.trim();
+  if (trimmed.length < 800) return false;
+  const planning = trimmed.match(PLANNING_PHRASE) ?? [];
+  return planning.length >= 8;
+}
+
+function isWeakAssistantDisplay(text: string): boolean {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return true;
+  if (/^(?:\([\w_]+\)|Error:)/.test(trimmed) && trimmed.length < 80) return true;
+  if (/^Completed workspace edits\b/i.test(trimmed) && trimmed.length < 260) return true;
+  if (/^Completed workspace edits\b[\s\S]*\bChanged files \(\d+\):/i.test(trimmed)) {
+    return true;
+  }
+  if (isMidWorkAnalysisDump(trimmed)) return true;
+  if (trimmed.length > 600) return false;
+
+  const singleBeat =
+    trimmed.split(/\n+/).filter((line) => line.trim().length > 0).length <= 2;
+  if (!singleBeat) return false;
+
+  if (TRANSITIONAL_OPENERS.test(trimmed) && TRANSITIONAL_CLOSERS.test(trimmed)) {
+    return true;
+  }
+  if (
+    TRANSITIONAL_OPENERS.test(trimmed) &&
+    trimmed.length < 180 &&
+    !/[.!]["']?\s*$/.test(trimmed)
+  ) {
+    return true;
+  }
+  if (TRANSITIONAL_INTENT.test(trimmed) && TRANSITIONAL_CLOSERS.test(trimmed)) {
+    return true;
+  }
+  if (trimmed.length < 280 && TRAILING_INTENT_CLAUSE.test(trimmed)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Persist a carry-friendly assistant turn: if the model ended mid-narration but
+ * mutated files, attach a changed-files summary so the next turn has memory.
+ */
+export function enrichAssistantCarryText(options: {
+  answer: string;
+  changedPaths?: readonly string[];
+}): string {
+  const answer = options.answer.trim();
+  const paths = [...(options.changedPaths ?? [])].filter(
+    (path) => path.trim().length > 0,
+  );
+  const incomplete = isWeakAssistantDisplay(answer);
+
+  if (paths.length === 0) {
+    return answer || '(no answer)';
+  }
+
+  if (incomplete) {
+    return `Completed workspace edits (${paths.length} file${paths.length === 1 ? '' : 's'} changed).`;
+  }
+  return answer;
+}
+
+/**
+ * Prefer a substantive final answer; keep streamed text when the final answer
+ * is empty/transitional so the chat does not collapse to a one-liner.
+ */
+export function resolveDisplayedAssistantText(options: {
+  streamedText: string;
+  finalAnswer: string;
+}): string {
+  const streamed = options.streamedText.trim();
+  const final = options.finalAnswer.trim();
+  if (!final) return streamed || '(no answer)';
+  if (!streamed) return final;
+  if (isMidWorkAnalysisDump(streamed)) return final;
+
+  const finalWeak = isWeakAssistantDisplay(final);
+  if (!finalWeak) return final;
+
+  const streamedStronger =
+    streamed.length > final.length * 1.35 ||
+    (!isWeakAssistantDisplay(streamed) && streamed.length >= final.length);
+
+  if (!streamedStronger) return final;
+
+  return streamed;
+}
+
+/** Keep a bounded, low-noise activity trail for memento / reload. */
+export function compactActivityForHistory(
+  events: readonly {
+    id: string;
+    at: number;
+    kind: string;
+    title: string;
+    detail?: string;
+    status?: string;
+    mcpApp?: {
+      serverId: string;
+      tool: string;
+      title: string;
+      checkpointId?: string;
+      svgDataUrl?: string;
+      html?: string;
+      paths: {
+        md?: string;
+        docsMd?: string;
+        excalidraw?: string;
+        svg?: string;
+      };
+    };
+  }[],
+  limit = 40,
+): Array<{
+  id: string;
+  at: number;
+  kind:
+    | 'thinking'
+    | 'delta'
+    | 'context'
+    | 'tool'
+    | 'decision'
+    | 'warning'
+    | 'suspended'
+    | 'terminal'
+    | 'info'
+    | 'mcp_app';
+  title: string;
+  detail?: string;
+  status?: string;
+  mcpApp?: {
+    serverId: string;
+    tool: string;
+    title: string;
+    checkpointId?: string;
+    svgDataUrl?: string;
+    paths: {
+      md?: string;
+      docsMd?: string;
+      excalidraw?: string;
+      svg?: string;
+    };
+  };
+}> {
+  const allowed = new Set([
+    'context',
+    'tool',
+    'decision',
+    'warning',
+    'suspended',
+    'terminal',
+    'info',
+    'mcp_app',
+  ]);
+  return events
+    .filter((event) => allowed.has(event.kind))
+    .slice(-limit)
+    .map((event) => ({
+      id: event.id,
+      at: event.at,
+      kind: event.kind as
+        | 'context'
+        | 'tool'
+        | 'decision'
+        | 'warning'
+        | 'suspended'
+        | 'terminal'
+        | 'info'
+        | 'mcp_app',
+      title: event.title.slice(0, 160),
+      ...(event.detail
+        ? { detail: event.detail.slice(0, 400) }
+        : {}),
+      ...(event.status ? { status: event.status.slice(0, 64) } : {}),
+      // Keep SVG preview + paths; drop bulky MCP App HTML from memento.
+      ...(event.kind === 'mcp_app' && event.mcpApp
+        ? {
+            mcpApp: {
+              serverId: event.mcpApp.serverId,
+              tool: event.mcpApp.tool,
+              title: event.mcpApp.title.slice(0, 160),
+              ...(event.mcpApp.checkpointId
+                ? { checkpointId: event.mcpApp.checkpointId.slice(0, 64) }
+                : {}),
+              ...(event.mcpApp.svgDataUrl
+                ? { svgDataUrl: event.mcpApp.svgDataUrl.slice(0, 200_000) }
+                : {}),
+              paths: {
+                ...(event.mcpApp.paths.md
+                  ? { md: event.mcpApp.paths.md.slice(0, 400) }
+                  : {}),
+                ...(event.mcpApp.paths.docsMd
+                  ? { docsMd: event.mcpApp.paths.docsMd.slice(0, 400) }
+                  : {}),
+                ...(event.mcpApp.paths.excalidraw
+                  ? { excalidraw: event.mcpApp.paths.excalidraw.slice(0, 400) }
+                  : {}),
+                ...(event.mcpApp.paths.svg
+                  ? { svg: event.mcpApp.paths.svg.slice(0, 400) }
+                  : {}),
+              },
+            },
+          }
+        : {}),
+    }));
+}
+
+/** Drop bulky patch previews before persisting file-change cards. */
+export function compactFileChangesForHistory<
+  T extends {
+    runId: string;
+    files: Array<{
+      path: string;
+      additions: number;
+      deletions: number;
+      status: 'A' | 'M' | 'D' | '?';
+      patchPreview?: string;
+      wasPreDirty?: boolean;
+    }>;
+    totalAdditions: number;
+    totalDeletions: number;
+  },
+>(changes: T | null | undefined): T | undefined {
+  if (!changes || changes.files.length === 0) return undefined;
+  return {
+    ...changes,
+    files: changes.files.slice(0, 80).map((file) => ({
+      path: file.path,
+      additions: file.additions,
+      deletions: file.deletions,
+      status: file.status,
+      ...(file.wasPreDirty ? { wasPreDirty: true } : {}),
+    })),
+  };
+}

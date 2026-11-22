@@ -66,13 +66,18 @@ export function buildDiagnosticChangeSteps(
 export function mergeDiagnosticChangeSteps(
   diagnosticSteps: readonly PlanStep[],
   retained: readonly PlanStep[],
+  preferArchitectureFirst = false,
 ): PlanStep[] {
   const diagnostics = diagnosticSteps.slice(
     0,
     PLANNING_WORKING_SET_POLICY.maxBatchesOnPlan,
   );
   const remaining = Math.max(0, 20 - diagnostics.length);
-  return [...diagnostics, ...retained.slice(0, remaining)];
+  const retainedSlice = retained.slice(0, remaining);
+  if (preferArchitectureFirst && retainedSlice.length > 0) {
+    return [...retainedSlice, ...diagnostics].slice(0, 20);
+  }
+  return [...diagnostics, ...retainedSlice];
 }
 
 export function groupDiagnosticsByCode(

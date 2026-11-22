@@ -1,17 +1,7 @@
 import { createHash } from 'node:crypto';
 import { relative } from 'node:path';
 import {
-  createMitiiClient,
-  InMemoryRepositoryStateStore,
-  RepositoryStatePipeline,
-  DEFAULT_TOOL_DEFINITIONS,
-  ToolRuntimePipeline,
-  VerificationPipeline,
-  WorkspaceFileSystemManifestReader,
   NodeProcessAdapter,
-  NodeNetworkAdapter,
-  NodeWorkspaceFileSystemAdapter,
-  NodeGitAdapter,
   type LlmPort,
   type MitiiClient,
   type ModelCapabilities,
@@ -20,19 +10,15 @@ import {
   type SkillsCatalogPort,
 } from '@mitii/sdk';
 import {
-  createFileSystemSkillsCatalog,
+  createHostClient,
   createHostCodeNavigationPort,
   createHostLlmPorts,
-  createHostNetworkPort,
-  createHostRepositoryGraphPort,
-  createOptionalSearchPort,
-  createWorkspaceCheckpointStore,
-  createWorkspaceKnowledgeGraph,
-  createWorkspaceVerificationStore,
   detectSandboxBackend,
-  resolveMemoryEmbeddingPort,
+  isModelIoLoggingEnabled,
   resolveProviderApiKey,
+  type HostMcpPort,
   type SandboxBackendPrefer,
+  wrapLlmPortForModelIo,
 } from '@mitii/host';
 import type * as vscode from 'vscode';
 
@@ -45,15 +31,15 @@ import { readContextToggles } from './contextToggles.js';
 import { createVsCodeMemoryStore } from './memoryStore.js';
 import { createVsCodeCodeNavigationPort } from './codeNavigation.js';
 import { resolveVsCodeSemanticIndexSettings } from './semanticIndex.js';
-import {
-  isModelIoLoggingEnabled,
-  wrapLlmPortForModelIo,
-} from './modelIoLog.js';
 import { readModelIoLoggingEnabled } from './modelIoSettings.js';
 import {
+  clampMaximumOutputTokensToContext,
+  inferMaximumOutputTokensFromModelId,
   normalizeMaximumOutputTokens,
   resolveEffectiveContextWindow,
 } from './settingsFields.js';
+import { deriveLiveTokenBudgetPreview } from '@mitii/ui-core';
+import { readTokenBudgetPolicyOverrides } from './tokenBudgetSettings.js';
 
 export class LocalUnderstandingLlmPort implements LlmPort {
   readonly id = 'vscode-local-understanding';
@@ -178,6 +164,12 @@ export async function resolveVscodePorts(
     providerType,
   );
   const hostMaximumOutputTokens = resolveHostMaximumOutputTokens(cfg);
+  const capabilityMaximumOutputTokens = clampMaximumOutputTokensToContext(
+    hostMaximumOutputTokens > 0
+      ? hostMaximumOutputTokens
+      : (inferMaximumOutputTokensFromModelId(model) ?? 0),
+    contextWindowTokens,
+  );
   const ports = createHostLlmPorts({
     type: providerType,
     preset: presetId,
@@ -186,10 +178,11 @@ export async function resolveVscodePorts(
     ...(secretKey ? { apiKey: secretKey } : {}),
     capabilities: {
       contextWindowTokens,
-      // Only forward a real host override. Omitting lets the adapter advertise
-      // a capability default without Window Budget treating it as an override.
-      ...(hostMaximumOutputTokens > 0
-        ? { maximumOutputTokens: hostMaximumOutputTokens }
+      // Capabilities advertise the provider hard max. Window Budget still
+      // receives only the explicit host setting via start input — inferred
+      // max must not become a false output_host_override.
+      ...(capabilityMaximumOutputTokens > 0
+        ? { maximumOutputTokens: capabilityMaximumOutputTokens }
         : {}),
       supportsTools: true,
     },
@@ -215,9 +208,7 @@ export async function createVscodeClient(
   } = {},
 ): Promise<{ client: MitiiClient; ports: VscodePortResolution }> {
   const ports = await resolveVscodePorts(vs, secrets, workspaceRoot);
-  const repositoryState = new RepositoryStatePipeline({
-    store: new InMemoryRepositoryStateStore(),
-  });
+  const cfg = vs.workspace.getConfiguration('mitii');
 
   // Untrusted folders: skip project MCP (no connect) and keep Ask-only defaultMode.
   const workspaceTrusted = vs.workspace.isTrusted !== false;
@@ -225,59 +216,22 @@ export async function createVscodeClient(
     ? readMcpSettings(vs, workspaceRoot)
     : defaultMcpSettings();
   const mcpManager = getSharedMcpManager();
-  const mcpSnapshot = await mcpManager.sync(mcp, workspaceRoot);
-  const mcpReady = mcpSnapshot.servers.filter((s) => s.status === 'ready');
-  const mcpErrors = mcpSnapshot.servers.filter((s) => s.status === 'error');
-  if (mcp.enabled || mcpSnapshot.servers.length > 0) {
-    // Surface connect results in the Extension Host console (Output → Mitii
-    // also shows runtime status from the Settings UI).
-    console.info(
-      `[mitii:mcp] enabled=${mcp.enabled} ready=${mcpReady.length} error=${mcpErrors.length} tools=${mcpSnapshot.toolDefinitions.length}`,
-    );
-    for (const server of mcpErrors) {
-      console.warn(
-        `[mitii:mcp] ${server.id} failed: ${server.error ?? 'unknown'}`,
-      );
-    }
-  }
+  const mcpPort: HostMcpPort = {
+    sync: async () => {
+      const snapshot = await mcpManager.sync(mcp, workspaceRoot);
+      logMcpSnapshot(mcp.enabled, snapshot);
+      return snapshot;
+    },
+    createRegistry: () => mcpManager.createRegistry(),
+  };
 
-  const fileSystem = workspaceRoot
-    ? new NodeWorkspaceFileSystemAdapter()
-    : undefined;
-  const searchEnv = process.env;
   const searchApiKey =
     (await secrets.get('mitii.search.apiKey'))?.trim() ||
-    searchEnv.MITII_SEARCH_API_KEY?.trim() ||
-    searchEnv.BRAVE_API_KEY?.trim() ||
+    process.env.MITII_SEARCH_API_KEY?.trim() ||
+    process.env.BRAVE_API_KEY?.trim() ||
     undefined;
   const searxngBaseUrl =
-    vs.workspace
-      .getConfiguration('mitii')
-      .get<string>('search.searxngBaseUrl')
-      ?.trim() || undefined;
-  const search = createOptionalSearchPort({
-    env: searchEnv,
-    ...(searchApiKey ? { apiKey: searchApiKey } : {}),
-    ...(searxngBaseUrl ? { config: { searxngBaseUrl } } : {}),
-  });
-  const git = workspaceRoot ? new NodeGitAdapter() : undefined;
-  const knowledgeGraph = workspaceRoot
-    ? createWorkspaceKnowledgeGraph(workspaceRoot)
-    : undefined;
-  const codeNavigation = workspaceRoot
-    ? createHostCodeNavigationPort({
-        workspaceRoot,
-        languageServer: createVsCodeCodeNavigationPort(vs, workspaceRoot),
-      })
-    : undefined;
-  const repoGraphs = workspaceRoot
-    ? createHostRepositoryGraphPort({ workspaceRoot })
-    : undefined;
-  const network = createHostNetworkPort({
-    inner: new NodeNetworkAdapter(),
-    env: searchEnv,
-  });
-  const cfg = vs.workspace.getConfiguration('mitii');
+    cfg.get<string>('search.searxngBaseUrl')?.trim() || undefined;
   const sandboxBackendRaw = cfg.get<string>('safety.sandbox.backend') ?? 'auto';
   const sandboxPrefer: SandboxBackendPrefer =
     sandboxBackendRaw === 'docker' ||
@@ -287,106 +241,108 @@ export async function createVscodeClient(
     sandboxBackendRaw === 'auto'
       ? sandboxBackendRaw
       : 'auto';
-  const fuzzyMatchDefault =
-    cfg.get<boolean>('tools.applyPatch.fuzzyMatch') === true;
-  const tools = workspaceRoot && fileSystem
-    ? new ToolRuntimePipeline(
-        {
-          fileSystem,
-          process: createLiveSandboxedProcessPort(
+
+  const semanticIndex = workspaceRoot
+    ? await resolveVsCodeSemanticIndexSettings(vs, secrets)
+    : undefined;
+  const injectionBudget = deriveLiveTokenBudgetPreview({
+    contextWindowTokens: resolveContextWindowFromSettings(
+      cfg,
+      cfg.get<string>('provider.model') ?? '',
+      cfg.get<string>('provider.type') ?? '',
+    ),
+    policy: readTokenBudgetPolicyOverrides(cfg),
+  });
+  const memoryEnabled = readContextToggles(vs).memory;
+  const rawEngine = cfg.get<string>('engine.implementation');
+
+  const { client } = await createHostClient({
+    workspaceRoot,
+    workspaceId: ports.workspaceId,
+    llm: {
+      understandingLlm: ports.understandingLlm,
+      runLlm: ports.runLlm,
+    },
+    // Ask-only ceiling until the folder is trusted (and the product default otherwise).
+    defaultMode: 'ask',
+    defaultSessionId: 'vscode_session',
+    taskListAutoAdvance: cfg.get<boolean>('agent.taskListAutoAdvance') ?? true,
+    mcp: mcpPort,
+    search: {
+      ...(searchApiKey ? { apiKey: searchApiKey } : {}),
+      ...(searxngBaseUrl ? { searxngBaseUrl } : {}),
+    },
+    fuzzyMatchDefault: cfg.get<boolean>('tools.applyPatch.fuzzyMatch') === true,
+    ...(workspaceRoot
+      ? {
+          processPort: createLiveSandboxedProcessPort(
             vs,
             new NodeProcessAdapter(),
             workspaceRoot,
             detectSandboxBackend({ prefer: sandboxPrefer }),
           ),
-          network,
-          git,
-          diagnostics: new VscodeDiagnosticsPort(vs, workspaceRoot),
-          ...(search ? { search } : {}),
-          ...(codeNavigation ? { codeNavigation } : {}),
-          ...(repoGraphs ? { repoGraphs } : {}),
-          ...(knowledgeGraph ? { knowledgeGraph } : {}),
-        },
-        {
-          registry: mcpManager.createRegistry(),
-          fuzzyMatchDefault,
-        },
-      )
-    : undefined;
-
-  const verification =
-    workspaceRoot && tools && fileSystem
-      ? new VerificationPipeline({
-          tools,
-          manifests: new WorkspaceFileSystemManifestReader({
-            fileSystem,
+          codeNavigation: createHostCodeNavigationPort({
             workspaceRoot,
+            languageServer: createVsCodeCodeNavigationPort(vs, workspaceRoot),
           }),
-          records: createWorkspaceVerificationStore(workspaceRoot),
-        })
-      : undefined;
-
-  const semanticIndex = workspaceRoot
-    ? await resolveVsCodeSemanticIndexSettings(vs, secrets)
-    : undefined;
-  const repositoryContext = workspaceRoot
-    ? createHostRepositoryContext({
-        repositoryState,
-        workspaceRoot,
-        semanticIndex,
-        ...(git ? { git } : {}),
-        resolveEditorReferences: () =>
-          resolveVsCodeEditorReferences(vs, workspaceRoot),
-      })
-    : undefined;
-
-  const toolDefinitions = [
-    ...DEFAULT_TOOL_DEFINITIONS,
-    ...mcpSnapshot.toolDefinitions,
-  ];
-  const memoryEnabled = readContextToggles(vs).memory;
-  const workspaceSkillsEnabled =
-    vs.workspace
-      .getConfiguration('mitii')
-      .get<boolean>('skills.workspace.enabled') ?? true;
-
-  const client = createMitiiClient({
-    understandingLlm: ports.understandingLlm,
-    runLlm: ports.runLlm,
-    workspaceRoot,
-    // Ask-only ceiling until the folder is trusted (and the product default otherwise).
-    defaultMode: 'ask',
-    defaultSessionId: 'vscode_session',
-    workspaceId: ports.workspaceId,
-    repositoryState,
-    repositoryContext,
-    tools,
-    ...(repoGraphs ? { repoGraphs } : {}),
-    verification,
-    toolDefinitions,
-    enableInMemoryCheckpoints: false,
-    taskListAutoAdvance:
-      vs.workspace
-        .getConfiguration('mitii')
-        .get<boolean>('agent.taskListAutoAdvance') ?? true,
-    ...(workspaceRoot
-      ? { checkpointStore: createWorkspaceCheckpointStore(workspaceRoot) }
+          diagnostics: new VscodeDiagnosticsPort(vs, workspaceRoot),
+        }
       : {}),
-    skillsCatalog:
-      options.skillsCatalog ??
-      createFileSystemSkillsCatalog({
-        workspaceRoot: workspaceSkillsEnabled ? workspaceRoot : undefined,
-        contentMode: 'metadata',
+    skills: {
+      ...(options.skillsCatalog ? { catalog: options.skillsCatalog } : {}),
+      workspaceSkills:
+        cfg.get<boolean>('skills.workspace.enabled') ?? true,
+    },
+    ...(memoryEnabled && options.workspaceState
+      ? {
+          memory: {
+            store: createVsCodeMemoryStore(
+              options.workspaceState,
+              ports.workspaceId,
+            ),
+            ...(semanticIndex ? { semanticIndex } : {}),
+          },
+        }
+      : {}),
+    repositoryContext: ({ repositoryState, workspaceRoot: root, git }) =>
+      createHostRepositoryContext({
+        repositoryState,
+        workspaceRoot: root,
+        semanticIndex,
+        git,
+        resolveEditorReferences: () => resolveVsCodeEditorReferences(vs, root),
+        injection: {
+          repoMapChars: injectionBudget.injectionRepoMapChars,
+          repoMapFilesMax: injectionBudget.injectionRepoMapFilesMax,
+          sketchChars: injectionBudget.injectionSketchChars,
+          sketchItemsMax: injectionBudget.injectionSketchItemsMax,
+        },
       }),
-    memoryStore:
-      memoryEnabled && options.workspaceState
-        ? createVsCodeMemoryStore(options.workspaceState, ports.workspaceId)
-        : undefined,
-    memoryEmbedding: memoryEnabled
-      ? resolveMemoryEmbeddingPort(semanticIndex)
-      : undefined,
+    clientOptions: {
+      engineImplementation: rawEngine === 'legacy' ? 'legacy' : 'v8',
+    },
   });
   return { client, ports };
+}
+
+function logMcpSnapshot(
+  enabled: boolean,
+  snapshot: {
+    servers: ReadonlyArray<{ id: string; status: string; error?: string }>;
+    toolDefinitions: readonly unknown[];
+  },
+): void {
+  const ready = snapshot.servers.filter((s) => s.status === 'ready');
+  const errors = snapshot.servers.filter((s) => s.status === 'error');
+  if (!enabled && snapshot.servers.length === 0) return;
+  // Surface connect results in the Extension Host console (Output → Mitii
+  // also shows runtime status from the Settings UI).
+  console.info(
+    `[mitii:mcp] enabled=${enabled} ready=${ready.length} error=${errors.length} tools=${snapshot.toolDefinitions.length}`,
+  );
+  for (const server of errors) {
+    console.warn(`[mitii:mcp] ${server.id} failed: ${server.error ?? 'unknown'}`);
+  }
 }
 
 function resolveWorkspaceId(workspaceRoot: string | undefined): string {

@@ -67,4 +67,29 @@ describe("KnowledgeGraphManager", () => {
     const graph = await manager.read();
     expect(graph.entities).toHaveLength(20);
   });
+
+  it("redacts secrets from graph observations before persist", async () => {
+    const manager = new KnowledgeGraphManager(new InMemoryKnowledgeGraphStore());
+    await manager.createEntities([
+      {
+        name: "billing",
+        entityType: "module",
+        observations: ["token=sk-ant-abcdefghijklmnopqrstuvwxyz012345"],
+      },
+    ]);
+    await manager.addObservations([
+      {
+        entityName: "billing",
+        contents: ["password=super-secret-credential-value"],
+      },
+    ]);
+
+    const graph = await manager.read();
+    const observations = graph.entities[0]?.observations ?? [];
+    expect(observations.join("\n")).not.toContain("sk-ant-");
+    expect(observations.join("\n")).not.toContain("super-secret-credential-value");
+    expect(observations.some((row) => row.includes("[REDACTED_SECRET]"))).toBe(
+      true,
+    );
+  });
 });

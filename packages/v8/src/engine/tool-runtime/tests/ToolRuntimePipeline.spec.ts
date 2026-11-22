@@ -1,14 +1,19 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import {
   InMemoryDiagnosticsAdapter,
   InMemoryFileSystemAdapter,
   InMemoryGitAdapter,
   InMemoryProcessAdapter,
+  InMemoryToolOutputSpillAdapter,
   ToolRuntimeError,
   ToolRuntimePipeline,
+  createBuiltinToolRegistry,
+  defineTool,
   directory,
   file,
+  isMitiiBoundedToolOutput,
   toolInvocationInputSchema,
   toolResultSchema,
 } from "../index";
@@ -78,6 +83,10 @@ function createRuntime(options?: {
           symbolName: "n",
         },
       ],
+      hover: async () => ({
+        contents: "const n: number",
+        language: "typescript",
+      }),
     },
     repoGraphs: {
       loadGraphs: async () => [createGraph()],
@@ -203,6 +212,17 @@ describe("ToolRuntimePipeline", () => {
     });
     expect(diags.status).toBe("succeeded");
 
+    const diagsPathAlias = await runtime.execute({
+      schemaVersion: 1,
+      callId: "d1-alias",
+      toolName: "read_diagnostics",
+      arguments: { path: "src/util.ts" },
+      grant,
+      workspaceRoot: WORKSPACE,
+    });
+    expect(diagsPathAlias.status).toBe("succeeded");
+    expect(diagsPathAlias.reasonCode).not.toBe("invalid_arguments");
+
     const missingPathDiags = await runtime.execute({
       schemaVersion: 1,
       callId: "d2",
@@ -253,6 +273,20 @@ describe("ToolRuntimePipeline", () => {
       (references.output as { locations: Array<{ path?: string }> })
         .locations[0]?.path,
     ).toBe("src/other.ts");
+
+    const hover = await runtime.execute({
+      schemaVersion: 1,
+      callId: "nav3",
+      toolName: "hover_symbol",
+      arguments: { path: "src/util.ts", line: 1 },
+      grant,
+      workspaceRoot: WORKSPACE,
+    });
+    expect(hover.status).toBe("succeeded");
+    expect(
+      (hover.output as { hover?: { contents: string } }).hover?.contents
+        .length,
+    ).toBeGreaterThan(0);
 
     const impact = await runtime.execute({
       schemaVersion: 1,
@@ -406,3 +440,75 @@ function createGraph(): RepoGraph {
     generatedAt: "2026-08-13T00:00:00.000Z",
   };
 }
+
+describe("ToolRuntimePipeline output spill", () => {
+  it("bounds huge process output and retains full payload in spill store", async () => {
+    const spill = new InMemoryToolOutputSpillAdapter();
+    const huge = "Z".repeat(100_000);
+    const registry = createBuiltinToolRegistry().register({
+      definition: defineTool({
+        name: "test_huge_output",
+        effects: ["workspace_read"],
+        description: "Test tool that returns an oversized payload.",
+        inputSchema: z.object({}).strict(),
+        outputSchema: z.unknown(),
+        executeSupported: true,
+      }),
+      async execute() {
+        return {
+          output: { blob: huge },
+          truncated: false,
+          redacted: false,
+        };
+      },
+    });
+    const runtime = new ToolRuntimePipeline(
+      {
+        fileSystem: new InMemoryFileSystemAdapter(
+          WORKSPACE,
+          directory({ README: file("hi\n") }),
+        ),
+        process: new InMemoryProcessAdapter(async () => ({
+          exitCode: 0,
+          stdout: "",
+          stderr: "",
+          timedOut: false,
+          cancelled: false,
+          truncated: false,
+        })),
+        outputSpill: spill,
+      },
+      { registry },
+    );
+
+    const grant = createReadOnlyGrant({
+      allowedTools: ["test_huge_output"],
+      limits: {
+        ...createReadOnlyGrant().limits,
+        maxOutputBytes: 8_000,
+      },
+    });
+
+    const result = await runtime.execute({
+      schemaVersion: 1,
+      callId: "spill_huge_1",
+      toolName: "test_huge_output",
+      arguments: {},
+      grant,
+      workspaceRoot: WORKSPACE,
+    });
+
+    expect(result.status).toBe("succeeded");
+    expect(result.warnings.join("\n")).toMatch(/spill/i);
+    expect(result.truncated).toBe(true);
+    expect(result.reasonCode).toBe("output_truncated");
+    expect(runtime.hasOutputSpillPort()).toBe(true);
+    expect(isMitiiBoundedToolOutput(result.output)).toBe(true);
+    if (isMitiiBoundedToolOutput(result.output)) {
+      expect(result.output.spillId).toBeTruthy();
+      expect(result.output.previewBytes).toBeLessThanOrEqual(8_000);
+      const stored = await spill.read(result.output.spillId!);
+      expect(stored).toContain(huge.slice(0, 200));
+    }
+  });
+});

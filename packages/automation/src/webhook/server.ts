@@ -31,7 +31,7 @@ export interface AutomationWebhookServer {
 }
 
 /**
- * Minimal ingress HTTP surface for Phase 2+.
+ * Minimal ingress HTTP surface.
  * Kept inside @mitii/automation (no sdk) so apps/daemon and CLI can share it.
  */
 export async function startAutomationWebhookServer(

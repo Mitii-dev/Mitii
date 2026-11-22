@@ -12,6 +12,12 @@ export type {
 } from "./ResolvePlanStrategy";
 export { draftPlanFromDiscovery } from "./DraftPlanFromDiscovery";
 export type { DraftPlanFromDiscoveryResult } from "./DraftPlanFromDiscovery";
+export {
+  draftClarifyFromDiscovery,
+  buildFallbackClarifyDraft,
+} from "./DraftClarifyFromDiscovery";
+export type { DraftClarifyFromDiscoveryResult } from "./DraftClarifyFromDiscovery";
+export { formatClarifyAsAnswer } from "./formatClarifyAsAnswer";
 export { applyDiscoveredPlanDraft } from "./ApplyDiscoveredPlanDraft";
 export { validatePlan } from "./ValidatePlan";
 export type { ValidatePlanResult } from "./ValidatePlan";
@@ -27,6 +33,10 @@ export {
   serializePlanText,
   serializePlanForPrompt,
   formatPlanAsAnswer,
+  formatPlanSummaryAnswer,
   inferPlanStrategyFromArtifact,
 } from "./CompactPlan";
 export type { CompactPlanResult } from "./CompactPlan";
+
+export { mapUnderstandingToPlanningEvidence } from "./mapUnderstandingToPlanningEvidence";
+export { collectPlanningImpactReports } from "./collectPlanningImpactReports";

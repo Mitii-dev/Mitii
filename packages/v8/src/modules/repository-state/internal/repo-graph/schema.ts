@@ -91,6 +91,11 @@ export const repoGraphFileNodeSchema = z
       z.string().datetime().optional(),
     contentHash:
       z.string().min(1).optional(),
+    /**
+     * Retained after deletion so dependents of the removed path remain
+     * walkable until the next full rebuild drops unused tombstones.
+     */
+    tombstone: z.boolean().optional(),
   })
   .strict()
   .refine(
@@ -159,6 +164,7 @@ export const repoGraphEdgeEvidenceSchema = z
       "code_index_import",
       "code_index_reference",
       "code_index_symbol",
+      "config_file",
     ]),
     detail:
       z.string().min(1).optional(),
@@ -176,6 +182,8 @@ export const repoGraphEdgeSchema = z
       "imports",
       "calls",
       "references",
+      "extends",
+      "implements",
       "workspace_member",
       "depends_on",
       "development_depends_on",
@@ -267,6 +275,8 @@ export const repoGraphStatisticsSchema = z
       z.number().int().nonnegative(),
     referenceEdges:
       z.number().int().nonnegative(),
+    heritageEdges:
+      z.number().int().nonnegative().optional(),
     projectRelationshipEdges:
       z.number().int().nonnegative(),
     unresolvedImports:

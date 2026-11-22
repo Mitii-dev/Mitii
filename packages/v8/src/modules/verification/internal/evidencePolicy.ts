@@ -11,6 +11,8 @@ export const EVIDENCE_TO_CHECK: Readonly<
   typecheck: ["typecheck"],
   lint: ["lint", "format"],
   tests: ["test", "build", "typecheck"],
+  // Executed test/smoke evidence only; compile checks cannot prove behavior.
+  behavior: ["test"],
   build: ["build"],
   diff_review: ["diff_review"],
 };

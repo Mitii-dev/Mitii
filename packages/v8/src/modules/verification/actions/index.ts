@@ -13,7 +13,31 @@ export type { SelectProportionalChecksResult } from "./SelectProportionalChecks"
 export { executeChecks } from "./ExecuteChecks";
 export type { ExecuteChecksResult } from "./ExecuteChecks";
 
-export { normalizeDiagnostics } from "./NormalizeDiagnostics";
+export { normalizeDiagnostics, packDiagnosticsForModel } from "./NormalizeDiagnostics";
+
+export { filterActionableDiagnostics } from "./FilterActionableDiagnostics";
+export type { FilterActionableDiagnosticsResult } from "./FilterActionableDiagnostics";
+
+export {
+  assessTaskRelevantEvidence,
+  projectLocalCompilePassed,
+  selectAskScopedDefects,
+} from "./AssessTaskRelevantEvidence";
+export type {
+  TaskRelevantEvidenceAssessment,
+  TaskRelevantResidualKind,
+} from "./AssessTaskRelevantEvidence";
+
+export {
+  BEHAVIOR_EVIDENCE_KIND,
+  hasBehaviorDefect,
+  hasPassedBehaviorCheck,
+  isBehaviorDefectCheck,
+  isEmptyTestSuiteSummary,
+  requiresBehaviorEvidence,
+} from "./BehaviorEvidence";
+
+export { diagnosticIdentityKey } from "./diagnosticIdentity";
 
 export { inspectDiffAndStaleRisk } from "./InspectDiffAndStaleRisk";
 export type { InspectDiffAndStaleRiskResult } from "./InspectDiffAndStaleRisk";
@@ -25,4 +49,4 @@ export { captureRepoBuildState } from "./CaptureRepoBuildState";
 export { compareRepoBuildStates } from "./CompareRepoBuildStates";
 export { buildVerificationRecord } from "./BuildVerificationRecord";
 export type { BuildVerificationRecordParams } from "./BuildVerificationRecord";
-export { buildVerificationUserSummary } from "./BuildVerificationUserSummary";
+export { buildVerificationUserSummary, formatOptionalLeftoverOffer } from "./BuildVerificationUserSummary";

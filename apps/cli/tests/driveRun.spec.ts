@@ -10,9 +10,13 @@ import {
   type MitiiRun,
   type RunEvent,
 } from '@mitii/sdk';
-import type { ModelCapabilities, ModelEvent, ModelRequest } from '@mitii/v8';
+import type { ModelCapabilities, ModelEvent, ModelRequest } from '@mitii/sdk';
 
-import { driveRun, type SessionIo } from '../src/session.js';
+import {
+  driveRun,
+  withAutoApprovalPolicy,
+  type SessionIo,
+} from '../src/session.js';
 
 class LocalUnderstandingLlmPort implements LlmPort {
   readonly id = 'test-understanding';
@@ -279,5 +283,53 @@ describe('CLI driveRun', () => {
     });
     expect(outcome.result.status).toBe('completed');
     expect(outcome.exitCode).toBe(0);
+  });
+
+  it('declares never/never on start under --approve so plan approval never suspends', async () => {
+    const completed: AgentRunResult = {
+      schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+      runId: 'run_start_policy',
+      requestId: 'req',
+      status: 'completed',
+      reasonCodes: ['answer_produced'],
+      warnings: [],
+      usage: { modelCalls: 0, toolCalls: 0, loopIterations: 0 },
+      durationMs: 1,
+      answer: 'ok',
+    };
+    const run: MitiiRun = {
+      runId: 'run_start_policy',
+      events: (async function* (): AsyncGenerator<RunEvent> {})(),
+      result: Promise.resolve(completed),
+      cancel: () => undefined,
+    };
+    const starts: unknown[] = [];
+    const client = {
+      start: (input: unknown) => {
+        starts.push(input);
+        return run;
+      },
+      resume: () => run,
+    } as unknown as MitiiClient;
+
+    await driveRun({
+      client,
+      start: { prompt: 'Add a pipe', mode: 'agent' },
+      json: true,
+      autoApproval: 'approved',
+      io: memoryIo(),
+    });
+    expect(starts[0]).toMatchObject({
+      approvalMode: 'never',
+      planApproval: 'never',
+    });
+  });
+
+  it('withAutoApprovalPolicy keeps explicit host values and ignores non-approve runs', () => {
+    const explicit = { approvalMode: 'when_required', planApproval: 'policy' };
+    expect(withAutoApprovalPolicy(explicit, 'approved')).toEqual(explicit);
+    const bare = { prompt: 'x' };
+    expect(withAutoApprovalPolicy(bare, undefined)).toBe(bare);
+    expect(withAutoApprovalPolicy(bare, 'denied')).toBe(bare);
   });
 });

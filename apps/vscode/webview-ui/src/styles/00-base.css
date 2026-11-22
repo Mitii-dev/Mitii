@@ -1,0 +1,54 @@
+/* Shared --mitii-* tokens (derived from --vscode-*) come from @mitii/ui-theme. */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--mitii-font-ui);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--mitii-text);
+  background: var(--mitii-surface);
+  overflow: hidden;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+input:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, var(--mitii-accent));
+  outline-offset: 1px;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+  background: transparent;
+}

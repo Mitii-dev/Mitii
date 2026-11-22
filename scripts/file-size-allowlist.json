@@ -1,0 +1,5 @@
+{
+  "limit": 600,
+  "note": "Shrinking allowlist for Mitii ≤600-line rule. Remove entries when files are split under the limit. Do not add new paths except via intentional Wave work tracked in CI.",
+  "files": []
+}

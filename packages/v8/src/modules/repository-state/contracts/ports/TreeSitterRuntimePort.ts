@@ -11,6 +11,8 @@ export type SourceReferenceKind =
   | "call"
   | "construct"
   | "type"
+  | "extends"
+  | "implements"
   | "read"
   | "write"
   | "unknown";
@@ -55,13 +57,13 @@ export interface TreeSitterRuntimeParseInput {
   /**
    * Tree-sitter query capturing definitions. Accepted capture names:
    * - Mitii: `@name` plus optional `@definition`
-   * - Aider tags: `@name.definition.<kind>` plus optional `@definition.<kind>`
+   * - Legacy tags: `@name.definition.<kind>` plus optional `@definition.<kind>`
    */
   symbolQuery?: string;
   /**
    * Tree-sitter query capturing references. Accepted capture names:
    * - Mitii: `@reference.<kind>` (`call` | `construct` | `type` | `read` | `write`)
-   * - Aider tags: `@name.reference.<kind>` plus optional `@reference.<kind>`
+   * - Legacy tags: `@name.reference.<kind>` plus optional `@reference.<kind>`
    */
   referenceQuery?: string;
   maximumSymbols: number;
@@ -70,10 +72,22 @@ export interface TreeSitterRuntimeParseInput {
   abortSignal?: AbortSignal;
 }
 
+/** Tree-sitter ERROR / missing-node finding (not a type diagnostic). */
+export interface TreeSitterRuntimeSyntaxError {
+  startLine: number;
+  startColumn?: number;
+  endLine?: number;
+  endColumn?: number;
+  message: string;
+  kind: "error" | "missing";
+}
+
 export interface TreeSitterRuntimeParseResult {
   symbols: readonly TreeSitterRuntimeSymbol[];
   imports?: readonly TreeSitterRuntimeImport[];
   references?: readonly TreeSitterRuntimeReference[];
+  /** Present when the runtime walks ERROR / missing nodes. */
+  syntaxErrors?: readonly TreeSitterRuntimeSyntaxError[];
   warnings?: readonly string[];
 }
 

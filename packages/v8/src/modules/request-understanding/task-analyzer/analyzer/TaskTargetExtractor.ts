@@ -55,14 +55,40 @@ export class TaskTargetExtractor {
     seen: Set<string>,
   ): void {
     for (const artifact of artifacts) {
-      const value = artifact.path?.trim() || artifact.name.trim();
-
-      if (!value) {
+      if (artifact.kind === "symbol") {
+        const symbolName = artifact.name.trim();
+        if (symbolName) {
+          this.addTarget(targets, seen, {
+            kind: "symbol",
+            value: symbolName,
+            explicit: false,
+          });
+        }
+        const path = artifact.path?.trim();
+        if (path) {
+          this.addTarget(targets, seen, {
+            kind: "file",
+            value: this.normalizeFileTargetPath(path),
+            explicit: false,
+          });
+        }
         continue;
       }
 
+      const raw = artifact.path?.trim() || artifact.name.trim();
+
+      if (!raw) {
+        continue;
+      }
+
+      const kind = this.mapArtifactKind(artifact);
+      const value =
+        kind === "file" || kind === "folder"
+          ? this.normalizeFileTargetPath(raw)
+          : raw;
+
       this.addTarget(targets, seen, {
-        kind: this.mapArtifactKind(artifact),
+        kind,
         value,
         explicit: false,
       });
@@ -80,7 +106,9 @@ export class TaskTargetExtractor {
     for (const match of userMessage.matchAll(
       this.cloneGlobalPattern(pattern),
     )) {
-      const value = this.cleanTargetValue(match[1] ?? match[0]);
+      const value = this.normalizeFileTargetPath(
+        this.cleanTargetValue(match[1] ?? match[0]),
+      );
 
       if (!value || this.isAbsolutePathLike(value)) {
         continue;
@@ -117,7 +145,9 @@ export class TaskTargetExtractor {
       TASK_ANALYZER_CONSTANTS.TARGET_PATTERNS.FOLDER_REFERENCE;
 
     for (const match of userMessage.matchAll(pattern)) {
-      const value = this.cleanTargetValue(match[1] ?? match[0]);
+      const value = this.normalizeFileTargetPath(
+        this.cleanTargetValue(match[1] ?? match[0]),
+      );
 
       if (
         !value ||
@@ -245,6 +275,9 @@ export class TaskTargetExtractor {
       case "folder":
         return "folder";
 
+      case "symbol":
+        return "symbol";
+
       case "selection":
         return artifact.path ? "file" : "symbol";
 
@@ -277,6 +310,18 @@ export class TaskTargetExtractor {
       .trim()
       .replace(/^[`'"]+/, "")
       .replace(/[`'",.;:!?)\]}]+$/, "");
+  }
+
+  /**
+   * Canonical workspace-relative file/folder form shared with tool-runtime:
+   * models often omit the leading dot on `.github/…`.
+   */
+  private normalizeFileTargetPath(value: string): string {
+    const normalized = value.replace(/\\/g, "/").replace(/^\.\//, "").trim();
+    if (/^github\//i.test(normalized)) {
+      return `.github/${normalized.slice("github/".length)}`;
+    }
+    return normalized;
   }
 
   private normalizeForComparison(value: string): string {

@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import type {
   GitBranchListResult,
   GitDiffResult,
+  GitLogEntry,
   GitLogResult,
   GitPort,
   GitShowResult,
@@ -11,7 +12,9 @@ import type {
 import {
   appendPathsAfterDoubleDash,
   assertSafeGitArg,
-} from "../internal/GitArgSafety";
+  gitStatusPathsFromPorcelain,
+  parseGitPorcelain,
+} from "../internal/git";
 
 const DEFAULT_MAX_OUTPUT_BYTES = 512_000;
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -38,7 +41,7 @@ export class NodeGitAdapter implements GitPort {
       params.workspaceRoot,
       params.signal,
     );
-    return parsePorcelainStatus(raw);
+    return gitStatusPathsFromPorcelain(parseGitPorcelain(raw), raw);
   }
 
   public async diff(params: {
@@ -62,6 +65,7 @@ export class NodeGitAdapter implements GitPort {
     workspaceRoot: string;
     maxCount?: number;
     paths?: readonly string[];
+    nameOnly?: boolean;
     signal?: AbortSignal;
   }): Promise<GitLogResult> {
     const maxCount = Math.min(Math.max(params.maxCount ?? 20, 1), 100);
@@ -70,27 +74,23 @@ export class NodeGitAdapter implements GitPort {
       `--max-count=${maxCount}`,
       `--pretty=format:%H${LOG_FIELD_SEP}%s${LOG_FIELD_SEP}%an${LOG_FIELD_SEP}%ae${LOG_FIELD_SEP}%aI${LOG_RECORD_SEP}`,
     ];
+    if (params.nameOnly) {
+      argv.splice(1, 0, "--name-only");
+    }
     if (params.paths && params.paths.length > 0) {
       argv = appendPathsAfterDoubleDash(argv, params.paths);
     }
     const raw = await this.runGit(argv, params.workspaceRoot, params.signal);
-    const entries = raw
-      .split(LOG_RECORD_SEP)
-      .map((chunk) => chunk.trim())
-      .filter((chunk) => chunk.length > 0)
-      .map((chunk) => {
-        const [hash, subject, authorName, authorEmail, authoredAt] =
-          chunk.split(LOG_FIELD_SEP);
-        return {
-          hash: hash ?? "",
-          subject: subject ?? "",
-          ...(authorName ? { authorName } : {}),
-          ...(authorEmail ? { authorEmail } : {}),
-          ...(authoredAt ? { authoredAt } : {}),
-        };
-      })
-      .filter((entry) => entry.hash.length > 0);
-    return { entries, truncated: false };
+    if (!params.nameOnly) {
+      const entries = raw
+        .split(LOG_RECORD_SEP)
+        .map((chunk) => chunk.trim())
+        .filter((chunk) => chunk.length > 0)
+        .map((chunk) => parseLogHeader(chunk))
+        .filter((entry): entry is NonNullable<typeof entry> => entry !== undefined);
+      return { entries, truncated: false };
+    }
+    return { entries: parseNameOnlyLog(raw), truncated: false };
   }
 
   public async show(params: {
@@ -246,46 +246,44 @@ function truncateText(
   return { diff: text, truncated: false };
 }
 
-function parsePorcelainStatus(raw: string): GitStatusResult {
-  const lines = raw.split(/\r?\n/).filter((line) => line.length > 0);
-  let branch: string | undefined;
-  const staged: string[] = [];
-  const unstaged: string[] = [];
-  const untracked: string[] = [];
+function parseLogHeader(chunk: string): GitLogEntry | undefined {
+  const [hash, subject, authorName, authorEmail, authoredAt] =
+    chunk.split(LOG_FIELD_SEP);
+  if (!hash || hash.length === 0) return undefined;
+  return {
+    hash,
+    subject: subject ?? "",
+    ...(authorName ? { authorName } : {}),
+    ...(authorEmail ? { authorEmail } : {}),
+    ...(authoredAt ? { authoredAt } : {}),
+  };
+}
 
-  for (const line of lines) {
-    if (line.startsWith("## ")) {
-      const head = line.slice(3);
-      const branchPart = head.split("...")[0]?.trim();
-      if (branchPart) {
-        branch = branchPart.replace(/^No commits yet on /, "");
-      }
-      continue;
+/**
+ * Parse `git log --name-only --pretty=format:…RECORD_SEP` output.
+ * Files for a commit appear after the record separator until the next header.
+ */
+function parseNameOnlyLog(raw: string): GitLogEntry[] {
+  const entries: GitLogEntry[] = [];
+  const chunks = raw.split(LOG_RECORD_SEP);
+  for (let index = 0; index < chunks.length; index += 1) {
+    const chunk = chunks[index];
+    if (!chunk) continue;
+    const lines = chunk.split(/\r?\n/);
+    const headerLine = lines.find((line) => line.includes(LOG_FIELD_SEP));
+    if (!headerLine) continue;
+    const header = parseLogHeader(headerLine.trim());
+    if (!header) continue;
+    const files: string[] = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.includes(LOG_FIELD_SEP)) continue;
+      files.push(trimmed.replace(/\\/g, "/"));
     }
-
-    if (line.startsWith("?? ")) {
-      untracked.push(line.slice(3).trim());
-      continue;
-    }
-
-    if (line.length < 3) {
-      continue;
-    }
-
-    const indexStatus = line[0];
-    const workTreeStatus = line[1];
-    const pathPart = line.slice(3).trim();
-    const path = pathPart.includes(" -> ")
-      ? pathPart.split(" -> ").at(-1)!.trim()
-      : pathPart;
-
-    if (indexStatus && indexStatus !== " " && indexStatus !== "?") {
-      staged.push(path);
-    }
-    if (workTreeStatus && workTreeStatus !== " " && workTreeStatus !== "?") {
-      unstaged.push(path);
-    }
+    entries.push({
+      ...header,
+      ...(files.length > 0 ? { files } : {}),
+    });
   }
-
-  return { branch, staged, unstaged, untracked, raw };
+  return entries;
 }

@@ -13,7 +13,7 @@ import {
 
 type ReviewEffort = (typeof REVIEW_EFFORTS)[number];
 
-/** Effort → max review rounds per group (inspired by OCR effort presets). */
+/** Effort → max review rounds per group. */
 export const REVIEW_EFFORT_ROUNDS: Record<ReviewEffort, number> = {
   low: 1,
   medium: 2,

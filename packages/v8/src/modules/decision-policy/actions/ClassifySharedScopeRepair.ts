@@ -2,6 +2,7 @@ import type { RequestUnderstandingResult } from "../../request-understanding";
 
 import { DECISION_POLICY_THRESHOLDS } from "../policy";
 import { DECISION_POLICY_PATTERNS } from "../patterns";
+import { EXECUTION_ROUTE } from "../constants";
 
 const BROAD_REPAIR_INTENTS = new Set([
   "bugfix",
@@ -11,12 +12,97 @@ const BROAD_REPAIR_INTENTS = new Set([
   "security",
 ]);
 
+/** Intents that reshape shared contracts even on a single seed file. */
+const SHARED_SURFACE_INTENTS = new Set([
+  "schema",
+  "refactor",
+  "migrate",
+  "scaffold",
+  "security",
+]);
+
+const SKIP_RECOMMEND_INTENTS = new Set([
+  "style",
+  "format",
+  "docs",
+  "question",
+]);
+
 const SHARED_SCOPES = new Set([
   "multi_file",
   "package",
   "repository",
   "workspace",
 ]);
+
+const MULTI_FAIL_PASTE =
+  /(?:Failed Tests?\s+\d+|FAIL\s+\S+\.(?:test|spec)\.[jt]sx?\b|AssertionError)/i;
+
+/**
+ * Message-level detector for clear localized UI / copy mutations
+ * ("Change the nav label to Docs", "Rename the button to Save").
+ * Used by the clarify gate so soft Officer ambiguity cannot stall these asks.
+ */
+export function isConcreteLocalizedMutationAsk(message: string): boolean {
+  const text = message.replace(/\nClarification:\s*[\s\S]*$/i, "").trim();
+  if (text.length === 0) {
+    return false;
+  }
+  // change/set/rename/update/replace … to …
+  if (
+    /\b(?:change|set|rename|update|replace|switch)\b[\s\S]{0,80}\bto\b\s*["'`]?[\w][\w\s./-]{0,48}/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+  // UI surface + mutation verb (language-agnostic UI nouns).
+  if (
+    /\b(?:nav(?:igation|bar)?|menu(?:\s*item)?|label|button|link|title|heading|breadcrumb|tab(?:\s*label)?|placeholder|tooltip|caption)\b/i.test(
+      text,
+    ) &&
+    /\b(?:change|set|rename|update|replace|make|use|edit)\b/i.test(text)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Clear small UI / localized bugfix — package scope from a folder pin must
+ * not escalate to broad_repair / change-impact. Explicit "fix all" phrasing
+ * or multi-fail pastes still elevate.
+ */
+export function isLocalizedSmallClearAsk(params: {
+  taskAnalysis: RequestUnderstandingResult["taskAnalysis"];
+  message: string;
+}): boolean {
+  const { taskAnalysis, message } = params;
+  if (DECISION_POLICY_PATTERNS.broadRepairRequest.test(message)) {
+    return false;
+  }
+  if (MULTI_FAIL_PASTE.test(message)) {
+    return false;
+  }
+  const size = taskAnalysis.taskSize;
+  if (size === "medium" || size === "large") {
+    return false;
+  }
+  const complexity = taskAnalysis.complexity;
+  if (
+    complexity === "complex" ||
+    complexity === "very_complex" ||
+    complexity === "moderate"
+  ) {
+    return false;
+  }
+  const clarity = taskAnalysis.clarity;
+  if (clarity === "unclear") {
+    return false;
+  }
+  // trivial/simple + small/default size + clear-ish clarity.
+  return true;
+}
 
 /**
  * True when execute work spans shared surfaces and needs a visible plan /
@@ -32,6 +118,11 @@ export function isBroadSharedScopeRepair(params: {
   const { primaryTaskIntent, taskAnalysis, message } = params;
   if (!BROAD_REPAIR_INTENTS.has(primaryTaskIntent)) {
     return false;
+  }
+
+  // Folder pin → package scope alone must not force broad repair for small UI asks.
+  if (isLocalizedSmallClearAsk({ taskAnalysis, message })) {
+    return DECISION_POLICY_PATTERNS.broadRepairRequest.test(message);
   }
 
   if (SHARED_SCOPES.has(taskAnalysis.scope)) {
@@ -66,4 +157,101 @@ export function shouldElevateSharedScopeRisk(params: {
     return false;
   }
   return isBroadSharedScopeRepair(params);
+}
+
+/**
+ * When to recommend `analyze_change_impact` (prompt + optional soft mutation gate).
+ * Broader than {@link isBroadSharedScopeRepair}: type/API edits, typecheck fan-out,
+ * symbol targets, multi-file estimates, and explicit blast-radius analysis asks.
+ *
+ * Does not decide tool grant membership — that stays on READ_ONLY affordability.
+ */
+export function shouldRecommendChangeImpact(params: {
+  route: string;
+  primaryTaskIntent: string;
+  taskAnalysis: RequestUnderstandingResult["taskAnalysis"];
+  message: string;
+}): boolean {
+  const { route, primaryTaskIntent, taskAnalysis, message } = params;
+
+  if (
+    route === EXECUTION_ROUTE.CLARIFY ||
+    route === EXECUTION_ROUTE.DIRECT_ANSWER
+  ) {
+    return false;
+  }
+
+  if (DECISION_POLICY_PATTERNS.blastRadiusAnalysisRequest.test(message)) {
+    return true;
+  }
+
+  if (SKIP_RECOMMEND_INTENTS.has(primaryTaskIntent)) {
+    // Still allow blast-radius phrasing above; otherwise skip docs/style/question.
+    return false;
+  }
+
+  if (hasExplicitSymbolTarget(taskAnalysis)) {
+    return true;
+  }
+
+  if (DECISION_POLICY_PATTERNS.sharedSurfaceEditRequest.test(message)) {
+    return true;
+  }
+
+  if (SHARED_SURFACE_INTENTS.has(primaryTaskIntent)) {
+    return true;
+  }
+
+  if (
+    (primaryTaskIntent === "bugfix" || primaryTaskIntent === "diagnose") &&
+    DECISION_POLICY_PATTERNS.typecheckFanoutRequest.test(message)
+  ) {
+    return true;
+  }
+
+  const localizedSmall = isLocalizedSmallClearAsk({
+    taskAnalysis,
+    message,
+  });
+
+  if (
+    isBroadSharedScopeRepair({
+      primaryTaskIntent,
+      taskAnalysis,
+      message,
+    })
+  ) {
+    return true;
+  }
+
+  if (SHARED_SCOPES.has(taskAnalysis.scope) && !localizedSmall) {
+    // Feature / optimize / test work across multiple files still benefits
+    // from impact before the first patch — not only repair intents.
+    if (
+      route === EXECUTION_ROUTE.EXECUTE ||
+      route === EXECUTION_ROUTE.PLAN ||
+      route === EXECUTION_ROUTE.DIAGNOSE
+    ) {
+      return true;
+    }
+  }
+
+  const estimatedMax = taskAnalysis.estimatedFilesAffected?.maximum;
+  if (
+    typeof estimatedMax === "number" &&
+    estimatedMax >= DECISION_POLICY_THRESHOLDS.multiFilePlanThreshold &&
+    (route === EXECUTION_ROUTE.EXECUTE || route === EXECUTION_ROUTE.PLAN || route === EXECUTION_ROUTE.DIAGNOSE)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function hasExplicitSymbolTarget(
+  taskAnalysis: RequestUnderstandingResult["taskAnalysis"],
+): boolean {
+  return taskAnalysis.targets.some(
+    (target) => target.explicit && target.kind === "symbol",
+  );
 }

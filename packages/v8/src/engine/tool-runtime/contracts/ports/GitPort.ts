@@ -17,6 +17,8 @@ export interface GitLogEntry {
   authorName?: string;
   authorEmail?: string;
   authoredAt?: string;
+  /** Present when `log` was called with `nameOnly: true`. */
+  files?: string[];
 }
 
 export interface GitLogResult {
@@ -55,6 +57,8 @@ export interface GitPort {
     workspaceRoot: string;
     maxCount?: number;
     paths?: readonly string[];
+    /** When true, each entry includes `files` touched by the commit. */
+    nameOnly?: boolean;
     signal?: AbortSignal;
   }): Promise<GitLogResult>;
   show?(params: {

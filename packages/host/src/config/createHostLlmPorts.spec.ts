@@ -1,12 +1,38 @@
 import { describe, expect, it } from 'vitest';
 
 import { createHostLlmPorts } from './createHostLlmPorts.js';
-import { getProviderPreset } from './providerPresets.js';
+import {
+  getProviderPreset,
+  normalizeOllamaModelId,
+} from './providerPresets.js';
 import { inferHostProviderType, resolveProviderApiKey } from './resolveProviderApiKey.js';
 import {
   listProviderModels,
   testProviderConnection,
 } from './testProviderConnection.js';
+
+describe('normalizeOllamaModelId', () => {
+  it('maps qwen3.5:397b to the official cloud chat tag', () => {
+    expect(
+      normalizeOllamaModelId('qwen3.5:397b', 'https://ollama.com/v1'),
+    ).toBe('qwen3.5:cloud');
+    expect(
+      normalizeOllamaModelId('qwen3.5:397b', 'http://192.168.0.252:11434/v1'),
+    ).toBe('qwen3.5:cloud');
+  });
+
+  it('adds -cloud for other sized tags on ollama.com', () => {
+    expect(
+      normalizeOllamaModelId('minimax-m2.5:230b', 'https://ollama.com/v1'),
+    ).toBe('minimax-m2.5:230b-cloud');
+  });
+
+  it('leaves local size tags alone when not a known cloud alias', () => {
+    expect(
+      normalizeOllamaModelId('qwen3-coder:30b', 'http://localhost:11434/v1'),
+    ).toBe('qwen3-coder:30b');
+  });
+});
 
 describe('createHostLlmPorts', () => {
   it('constructs echo ports for the echo preset', () => {
@@ -14,6 +40,42 @@ describe('createHostLlmPorts', () => {
     expect(ports.type).toBe('echo');
     expect(ports.providerLabel).toBe('echo');
     expect(ports.runLlm.id).toBe('echo');
+  });
+
+  describe('context window resolution', () => {
+    it('regression: deepseek preset without an explicit window resolves to 128k, not the 32k adapter default', () => {
+      const ports = createHostLlmPorts({
+        type: 'openai-compatible',
+        preset: 'deepseek',
+        model: 'deepseek-chat',
+        apiKey: 'sk-test',
+      });
+      expect(ports.runLlm.capabilities.contextWindowTokens).toBe(128_000);
+      expect(ports.understandingLlm.capabilities.contextWindowTokens).toBe(
+        128_000,
+      );
+    });
+
+    it('keeps an explicit host window over inference', () => {
+      const ports = createHostLlmPorts({
+        type: 'openai-compatible',
+        preset: 'deepseek',
+        model: 'deepseek-chat',
+        apiKey: 'sk-test',
+        capabilities: { contextWindowTokens: 64_000 },
+      });
+      expect(ports.runLlm.capabilities.contextWindowTokens).toBe(64_000);
+    });
+
+    it('keeps the 32k last resort for unknown openai-compatible models', () => {
+      const ports = createHostLlmPorts({
+        type: 'openai-compatible',
+        preset: 'ollama',
+        model: 'custom-local',
+        baseUrl: 'http://localhost:11434/v1',
+      });
+      expect(ports.runLlm.capabilities.contextWindowTokens).toBe(32_768);
+    });
   });
 
   it('enables prompt-cache usage mapping for openai-compatible runtimes', () => {
@@ -41,6 +103,12 @@ describe('createHostLlmPorts', () => {
     expect(ports.runLlm.id).toBe('openai-compatible');
     expect(ports.runLlm.capabilities.supportsPromptCaching).toBe(true);
     expect(ports.understandingLlm.capabilities.supportsPromptCaching).toBe(true);
+    expect(ports.runLlm.capabilities.supportsForcedToolChoice).toBe(false);
+    expect(ports.runLlm.capabilities.supportsStructuredOutput).toBe(false);
+    expect(ports.runLlm.capabilities.supportsReasoning).toBe(true);
+    expect(ports.understandingLlm.capabilities.supportsStructuredOutput).toBe(
+      false,
+    );
   });
 
   it('constructs native anthropic and gemini ports', () => {
@@ -273,5 +341,28 @@ describe('testProviderConnection', () => {
     expect(
       (await testProviderConnection({ type: 'gemini', model: 'gemini-2.5-flash' })).ok,
     ).toBe(false);
+  });
+
+  it('matches ollama.com sized draft models to cloud-normalized catalog ids', async () => {
+    const result = await testProviderConnection({
+      type: 'openai-compatible',
+      baseUrl: 'https://ollama.com/v1',
+      model: 'gemma4:31b',
+      fetchImpl: (async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === 'https://ollama.com/v1/models') {
+          return new Response(
+            JSON.stringify({
+              data: [{ id: 'gemma4:31b' }, { id: 'qwen3.8:27b' }],
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response('unexpected', { status: 500 });
+      }) as typeof fetch,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.models).toEqual(['gemma4:31b-cloud', 'qwen3.8:27b-cloud']);
+    expect(result.message).toContain('gemma4:31b-cloud');
   });
 });

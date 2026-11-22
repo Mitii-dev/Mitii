@@ -29,7 +29,7 @@ describe('writeShipBandSources', () => {
     const root = mkdtempSync(join(tmpdir(), 'mitii-ship-bands-'));
     const loopDir = join(
       root,
-      'packages/v8/src/engine/agent-engine/policy',
+      'packages/v8/src/engine/v8-engine/legacy/policy',
     );
     const windowDir = join(
       root,

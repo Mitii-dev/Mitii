@@ -1,0 +1,141 @@
+import { describe, expect, it } from 'vitest';
+
+import {
+  deriveLiveTokenBudgetPreview,
+  isFilesPerMutationPinned,
+  isVerificationChecksPinned,
+  mergeLiveWindowBudgetPolicy,
+  policyForFilesPerMutation,
+  policyForVerificationChecks,
+  resolvePreviewContextWindow,
+  safeSliderValue,
+  windowAllocationSlices,
+} from '../src/index.js';
+
+describe('live token budget preview', () => {
+  it('scales carry ceilings with the context window', () => {
+    const compact = deriveLiveTokenBudgetPreview({
+      contextWindowTokens: 30_000,
+    });
+    const wide = deriveLiveTokenBudgetPreview({
+      contextWindowTokens: 200_000,
+    });
+    expect(compact.carryMaxMessages).toBeLessThan(wide.carryMaxMessages);
+    expect(compact.carryMaxCharsPerMessage).toBeLessThan(
+      wide.carryMaxCharsPerMessage,
+    );
+  });
+
+  it('scales files per mutation with the context window until the value is pinned', () => {
+    const at30k = deriveLiveTokenBudgetPreview({
+      contextWindowTokens: 30_000,
+    });
+    const at60k = deriveLiveTokenBudgetPreview({
+      contextWindowTokens: 60_000,
+    });
+    expect(at60k.maxUniqueFilesPerCall).toBeGreaterThan(
+      at30k.maxUniqueFilesPerCall,
+    );
+
+    const pinned = policyForFilesPerMutation(at30k.maxUniqueFilesPerCall);
+    expect(isFilesPerMutationPinned(pinned)).toBe(true);
+    const pinnedAt60k = deriveLiveTokenBudgetPreview({
+      contextWindowTokens: 60_000,
+      policy: pinned,
+    });
+    expect(pinnedAt60k.maxUniqueFilesPerCall).toBe(at30k.maxUniqueFilesPerCall);
+  });
+
+  it('keeps unpinned verification checks scaling and pinned checks stable', () => {
+    const at30k = deriveLiveTokenBudgetPreview({
+      contextWindowTokens: 30_000,
+    });
+    const pinned = policyForVerificationChecks(5);
+    expect(isVerificationChecksPinned(pinned)).toBe(true);
+    const pinnedAt200k = deriveLiveTokenBudgetPreview({
+      contextWindowTokens: 200_000,
+      policy: pinned,
+    });
+    expect(pinnedAt200k.maxVerificationChecks).toBe(5);
+    expect(at30k.maxVerificationChecks).not.toBe(5);
+  });
+
+  it('shows each module as a percent of the current context window', () => {
+    const preview = deriveLiveTokenBudgetPreview({
+      contextWindowTokens: 48_000,
+    });
+    const slices = windowAllocationSlices(preview);
+    const totalShare = slices.reduce((sum, slice) => sum + slice.windowShare, 0);
+    const totalTokens = slices.reduce((sum, slice) => sum + slice.tokens, 0);
+    expect(slices.map((slice) => slice.id)).toEqual([
+      'output',
+      'tools',
+      'repository',
+      'conversation',
+      'plan',
+      'skills',
+      'free',
+    ]);
+    expect(totalTokens).toBe(preview.contextWindowTokens);
+    expect(totalShare).toBeCloseTo(1, 5);
+    const repository = slices.find((slice) => slice.id === 'repository');
+    expect(repository?.windowShare).toBeGreaterThan(0);
+    expect(repository?.windowShare).toBeLessThan(0.5);
+  });
+
+  it('exposes free capacity when usable shares sum below 100%', () => {
+    const preview = deriveLiveTokenBudgetPreview({
+      contextWindowTokens: 48_000,
+      policy: {
+        repositoryShare: 0.1,
+        conversationShare: 0.2,
+        planShare: 0.05,
+        skillsShare: 0.05,
+      },
+    });
+    const slices = windowAllocationSlices(preview);
+    const free = slices.find((slice) => slice.id === 'free');
+    expect(free?.tokens).toBe(preview.systemTokens);
+    expect(free?.tokens).toBeGreaterThan(0);
+    expect(free?.windowShare).toBeGreaterThan(0);
+  });
+
+  it('ignores non-finite policy overrides so sliders never receive NaN', () => {
+    const merged = mergeLiveWindowBudgetPolicy({
+      outputRatio: Number.NaN,
+      repositoryShare: Number.POSITIVE_INFINITY,
+      conversationShare: undefined as unknown as number,
+    });
+    expect(merged.outputRatio).toBe(0.2);
+    expect(merged.repositoryShare).toBe(0.28);
+    expect(safeSliderValue(Number.NaN, 1, 20)).toBe(1);
+    expect(safeSliderValue(50, 1, 20)).toBe(20);
+    expect(safeSliderValue(0, 1, 16)).toBe(1);
+  });
+
+  it('uses a typed context-window draft before Save, and 0 falls back to the model preset', () => {
+    expect(
+      resolvePreviewContextWindow({
+        draft: 16_000,
+        stored: 30_000,
+        effective: 262_144,
+        fallback: 32_768,
+      }),
+    ).toBe(16_000);
+    expect(
+      resolvePreviewContextWindow({
+        draft: 0,
+        stored: 0,
+        effective: 262_144,
+        fallback: 32_768,
+      }),
+    ).toBe(262_144);
+    expect(
+      resolvePreviewContextWindow({
+        stored: 48_000,
+        effective: 262_144,
+        fallback: 32_768,
+      }),
+    ).toBe(48_000);
+  });
+});

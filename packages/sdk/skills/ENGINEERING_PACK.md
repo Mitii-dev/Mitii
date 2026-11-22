@@ -1,18 +1,21 @@
 # Engineering skills pack (starter 8)
 
-Adapted from [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) into Mitii’s `SKILL.md` format (`docs/SKILLS_FORMAT.md`).
+Bundled Mitii skills in `SKILL.md` format (see this folder’s README).
 
 These are **bundled defaults** under `packages/sdk/skills/`. Edit them in place. Replace any skill by overwriting its folder, or override per workspace without touching the pack.
 
-## Included (phase 1 + automation)
+## Included
 
 | Skill | Conflict group | Primary intents |
 |---|---|---|
 | `spec-driven-development` | define | feature, scaffold, migrate, question |
-| `planning-and-task-breakdown` | planning | feature, bugfix, … (plan-heavy) |
+| `planning-default` | planning | plan (S default Discover/Change/Verify) |
+| `medium-planning` | planning | feature, bugfix, … (medium bounded plan; priority 200) |
+| `planning-and-task-breakdown` | planning | feature, bugfix, … (plan-heavy L) |
 | `incremental-implementation` | build | feature, refactor, migrate, scaffold |
 | `test-driven-development` | verify | test, bugfix, feature, refactor |
 | `debugging-and-error-recovery` | debug | bugfix, diagnose, trace |
+| `api-db-runtime-debug` | debug | bugfix, diagnose, trace (API + DB probes; priority 195) |
 | `code-review-and-quality` | review | review, audit, refactor |
 | `fix-review-findings` | build | bugfix, refactor (recipe: Fix / Fix all) |
 | `security-and-hardening` | review | security, audit, feature |

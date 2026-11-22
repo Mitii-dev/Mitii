@@ -69,6 +69,12 @@ export interface WorkspaceIndexingPipelineInput {
   failureMode?: WorkspaceIndexingFailureMode;
   cleanupMissing?: boolean;
   synchronizeEmbeddings?: boolean;
+  /**
+   * Skip per-file analysis/indexing and only run root finalization
+   * (cleanup + optional embedding sync). Used by the host fast-ready path
+   * after code/text indexes are already published.
+   */
+  finalizeOnly?: boolean;
 
   abortSignal?: AbortSignal;
 }
@@ -92,6 +98,7 @@ export interface NormalizedWorkspaceIndexingPipelineInput {
   failureMode: WorkspaceIndexingFailureMode;
   cleanupMissing: boolean;
   synchronizeEmbeddings: boolean;
+  finalizeOnly: boolean;
 
   abortSignal?: AbortSignal;
 }

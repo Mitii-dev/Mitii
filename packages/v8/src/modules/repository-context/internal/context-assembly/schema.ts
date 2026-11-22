@@ -35,6 +35,7 @@ const originSchema =
     "git_diff",
     "diagnostic",
     "recent_edit",
+    "stale_file",
   ]);
 
 const prioritySchema =
@@ -81,6 +82,7 @@ const scoreSignalSchema =
         "git_diff",
         "diagnostic",
         "recent_edit",
+        "stale_file",
         "required_priority",
         "diversity_penalty",
       ]),

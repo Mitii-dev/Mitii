@@ -145,6 +145,8 @@ export const codeIndexReferenceSchema = z
       "call",
       "construct",
       "type",
+      "extends",
+      "implements",
       "read",
       "write",
       "unknown",

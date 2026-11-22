@@ -1,0 +1,281 @@
+.timeline__command {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  margin-top: 5px;
+  padding: 7px 9px;
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 78%, transparent);
+  border-radius: 4px;
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--mitii-accent) 22%, transparent),
+      transparent 3px
+    ),
+    color-mix(in srgb, var(--vscode-terminal-background, var(--mitii-panel-raised)) 90%, #000 10%);
+  color: var(--vscode-terminal-foreground, var(--mitii-chat-fg));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 4%, transparent),
+    0 1px 5px color-mix(in srgb, #000 10%, transparent);
+}
+
+.timeline__command-prompt {
+  flex: 0 0 auto;
+  color: color-mix(in srgb, var(--mitii-ok) 70%, var(--mitii-muted));
+  font-family: var(--mitii-font-file);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.timeline__row-text--block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+}
+
+.mcp-app-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 80%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mitii-panel-raised) 88%, transparent);
+}
+
+.mcp-app-card__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.mcp-app-card__meta {
+  color: var(--mitii-muted);
+  font-size: 11px;
+}
+
+.mcp-app-card__svg {
+  display: block;
+  width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.mcp-app-card__fallback {
+  font-size: 12px;
+  color: var(--mitii-muted);
+}
+
+.mcp-app-card__frame {
+  width: 100%;
+  min-height: 280px;
+  margin-top: 8px;
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 70%, transparent);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.mcp-app-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.timeline__command code {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  color: inherit;
+  font-family: var(--mitii-font-file);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.timeline__files {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  max-width: 100%;
+  margin-top: 5px;
+  padding: 6px 0;
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 78%, transparent);
+  border-radius: 4px;
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--mitii-ok) 20%, transparent),
+      transparent 3px
+    ),
+    color-mix(in srgb, var(--vscode-terminal-background, var(--mitii-panel-raised)) 90%, #000 10%);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 4%, transparent),
+    0 1px 5px color-mix(in srgb, #000 10%, transparent);
+  font-family: var(--mitii-font-file);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--vscode-terminal-foreground, var(--mitii-chat-fg));
+}
+
+.timeline__files-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  padding: 1px 9px 1px 10px;
+}
+
+.timeline__files-row:hover {
+  background: color-mix(in srgb, var(--mitii-text) 5%, transparent);
+}
+
+.timeline__files-prompt {
+  flex: 0 0 auto;
+  width: 0.7em;
+  color: color-mix(in srgb, var(--mitii-ok) 68%, var(--mitii-muted));
+  font-weight: 600;
+  user-select: none;
+}
+
+.timeline__files-path {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  color: color-mix(in srgb, var(--vscode-terminal-foreground, var(--mitii-chat-fg)) 92%, var(--mitii-ok));
+}
+
+.timeline__files-more {
+  color: color-mix(in srgb, var(--mitii-chat-fg) 58%, var(--mitii-muted));
+  font-style: normal;
+}
+
+.live-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  max-width: 100%;
+  margin: 10px 0 6px 1px;
+  padding: 6px 0;
+  color: color-mix(in srgb, var(--mitii-chat-fg) 72%, var(--mitii-muted));
+  font-family: var(--mitii-font-thinking);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.015em;
+}
+
+.live-status__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  background: var(--turn-accent, var(--mitii-accent));
+  box-shadow: 0 0 0 4px
+    color-mix(
+      in srgb,
+      var(--turn-accent, var(--mitii-accent)) 12%,
+      transparent
+    );
+  animation: live-status-breathe 2.4s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+}
+
+.live-status__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  animation: live-status-fade 320ms ease;
+}
+
+@keyframes live-status-fade {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes live-status-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.78;
+    box-shadow: 0 0 0 4px
+      color-mix(
+        in srgb,
+        var(--turn-accent, var(--mitii-accent)) 10%,
+        transparent
+      );
+  }
+  50% {
+    transform: scale(1.12);
+    opacity: 1;
+    box-shadow: 0 0 0 7px
+      color-mix(
+        in srgb,
+        var(--turn-accent, var(--mitii-accent)) 6%,
+        transparent
+      );
+  }
+}
+
+.live-status__dots {
+  display: inline-flex;
+  gap: 3px;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.live-status__dots span {
+  width: 3px;
+  height: 3px;
+  border-radius: 999px;
+  background: color-mix(
+    in srgb,
+    var(--turn-accent, var(--mitii-accent)) 55%,
+    var(--mitii-muted)
+  );
+  animation: live-status-ellipsis 1.6s ease-in-out infinite;
+}
+
+.live-status__dots span:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+.live-status__dots span:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
+@keyframes live-status-ellipsis {
+  0%,
+  80%,
+  100% {
+    opacity: 0.28;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 0.9;
+    transform: translateY(-1px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-status__dot,
+  .live-status__dots span,
+  .live-status__text {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}

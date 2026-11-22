@@ -3,54 +3,23 @@
  */
 export const TOOL_RUNTIME_SCHEMA_VERSION = 1 as const;
 
-/** Read-only tools Decision Policy may grant. */
-export const READ_ONLY_TOOL_IDS = [
-  "describe_tool",
-  "list_directory",
-  "directory_tree",
-  "read_file",
-  "read_many_files",
-  "glob_files",
-  "file_metadata",
-  "search_files",
-  "read_diagnostics",
-  "read_git_status",
-  "read_git_log",
-  "read_git_show",
-  "read_git_branches",
-  "goto_definition",
-  "find_references",
-  "analyze_change_impact",
-  "run_readonly_command",
-  "read_package_scripts",
-  "sequential_thinking",
-  "get_current_time",
-  "convert_time",
-  "memory_graph_search",
-  "memory_graph_open",
-] as const;
-
-/** Catalogued network tools — granted only when Decision Policy issues hosts/search. */
-export const NETWORK_TOOL_IDS = [
-  "fetch_url",
-  "fetch_docs",
-  "web_search",
-] as const;
-
 /**
- * Mutation tools Decision Policy may grant by default.
- * `run_command` is executable but opt-in (explicit grant + commandRules).
+ * Built-in tool ID lists and tool effects are owned by Decision Policy
+ * (`modules/decision-policy/toolIds.ts`); Tool Runtime consumes them.
  */
-export const MUTATION_TOOL_IDS = [
-  "apply_patch",
-  "delete_file",
-  "delete_directory",
-  "move_file",
-  "memory_graph_update",
-] as const;
-
-/** Opt-in mutating process tool (not in default MUTATION_TOOL_IDS). */
-export const OPT_IN_MUTATION_TOOL_IDS = ["run_command"] as const;
+export {
+  CODE_INTELLIGENCE_TOOL_IDS,
+  DIAGNOSTICS_TOOL_IDS,
+  CHANGE_IMPACT_TOOL_IDS,
+  READ_ONLY_TOOL_IDS,
+  NETWORK_TOOL_IDS,
+  MUTATION_TOOL_IDS,
+  GITHUB_MUTATION_TOOL_IDS,
+  GIT_MUTATION_TOOL_IDS,
+  PROCESS_TOOL_IDS,
+  OPT_IN_MUTATION_TOOL_IDS,
+  TOOL_EFFECTS,
+} from "../../modules/decision-policy";
 
 export const TOOL_BACKENDS = ["local", "host", "mcp"] as const;
 
@@ -69,6 +38,8 @@ export const TOOL_REASON_CODES = [
   "invalid_arguments",
   "effect_not_granted",
   "path_out_of_scope",
+  /** Hard-denied vendored/generated path (node_modules, .git, dist, …). */
+  "path_hard_denied",
   "path_escape",
   "symlink_escape",
   "command_not_allowed",
@@ -90,7 +61,9 @@ export const TOOL_REASON_CODES = [
   "patch_hash_mismatch",
   "identical_old_and_new",
   "patch_syntax_invalid",
+  "patch_too_destructive",
   "must_read_incomplete",
+  "change_impact_incomplete",
   "already_read",
   "checkpoint_missing",
   "rollback_failed",
@@ -111,6 +84,7 @@ export const PATCH_CURRENT_CONTENT_REASON_CODES = [
   "patch_hash_mismatch",
   "patch_syntax_invalid",
   "identical_old_and_new",
+  "patch_too_destructive",
 ] as const;
 
 /**
@@ -125,6 +99,7 @@ export const PATCH_TARGETED_DISCOVERY_REASON_CODES = [
   "patch_target_missing",
   "patch_hash_mismatch",
   "identical_old_and_new",
+  "patch_too_destructive",
 ] as const;
 
 export function isPatchCurrentContentReason(
@@ -152,16 +127,6 @@ export function isPatchTargetedDiscoveryReason(
 export const TOOL_RUNTIME_ERROR_CODES = [
   "invalid_input",
   "misconfigured_ports",
-] as const;
-
-export const TOOL_EFFECTS = [
-  "workspace_read",
-  "workspace_write",
-  "process_execute",
-  "network_access",
-  "git_write",
-  "external_write",
-  "secret_use",
 ] as const;
 
 export const SHELL_METACHARACTERS = [

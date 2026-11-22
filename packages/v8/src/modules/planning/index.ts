@@ -23,11 +23,17 @@ export { PlanningPipeline } from "./pipeline/PlanningPipeline";
 export {
   compileDiscoveryBrief,
   collectDiscoveryImpactSeedPaths,
+  formatClarifyAsAnswer,
   formatPlanAsAnswer,
+  formatPlanSummaryAnswer,
   inferPlanStrategyFromArtifact,
   serializePlanForPrompt,
   serializePlanText,
 } from "./pipeline/PlanningPipeline";
+export {
+  draftClarifyFromDiscovery,
+  buildFallbackClarifyDraft,
+} from "./actions/DraftClarifyFromDiscovery";
 export {
   remapPathThroughScaffoldMapping,
   remapScaffoldChangeSurfaces,
@@ -36,13 +42,49 @@ export {
 export type { PlanStrategyResolution } from "./pipeline/PlanningPipeline";
 
 export {
+  resolvePlanStrategy,
   resolvePlanStrategyRules,
   isRepairIntent,
+  isArchitecturePlanningAsk,
+  isMediumOrLargerTask,
 } from "./actions/ResolvePlanStrategy";
+
+export {
+  changeLikePhaseName,
+  isConcretePlanTargetRef,
+  isConcretePlanVerification,
+} from "./internal/concretePlanTargets";
+
+export { thinDiscoveryBriefForClarify } from "./thinDiscoveryBriefForClarify";
+export {
+  hasResolvedPlanScopeChoice,
+  resolvePlanScopeId,
+  collectCompletedPlanScopeIds,
+  PLAN_SCOPE_DEFS,
+  PLAN_SCOPE_ORDER,
+} from "./internal/planScopeChoice";
+export type { PlanScopeId, PlanScopeChoiceParams } from "./internal/planScopeChoice";
+export {
+  askNeedsPlanScopeFork,
+} from "./internal/askNeedsPlanScopeFork";
+export type { PlanScopeForkEvidence } from "./internal/askNeedsPlanScopeFork";
+export {
+  boundPreferredPathsForPlanScope,
+  scorePathForPlanScope,
+  planScopeDiscoveryHint,
+  planScopeProcessHint,
+  planScopeSearchQueries,
+} from "./internal/planScopeBounds";
+export {
+  remainingPlanScopeIds,
+  formatNextPlanPhaseOffer,
+  appendNextPlanPhaseOffer,
+} from "./internal/planScopeCampaign";
 
 export {
   planningInputSchema,
   planningTaskEvidenceSchema,
+  planningTaskSizeSchema,
   planningSkillHintSchema,
   explorationDepthSchema,
   planningScopedRepoMapSchema,
@@ -63,6 +105,8 @@ export {
   planStrategyDecisionSchema,
   discoveredPlanStepSchema,
   discoveredPlanDraftSchema,
+  planClarifyOptionSchema,
+  planClarifyDraftSchema,
   planningResultSchema,
   PlanningError,
   planningErrorCodeSchema,
@@ -96,9 +140,17 @@ export type {
   PlanStrategyDecision,
   DiscoveredPlanStep,
   DiscoveredPlanDraft,
+  PlanClarifyOption,
+  PlanClarifyDraft,
   PlanningResult,
   PlanningStatus,
   PlanningReasonCode,
   PlanStepRiskLevel,
   PlanningErrorCode,
 } from "./contracts";
+
+/** Bridge maps — understanding → planning evidence / impact. */
+export {
+  mapUnderstandingToPlanningEvidence,
+  collectPlanningImpactReports,
+} from "./actions";

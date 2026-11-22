@@ -105,7 +105,7 @@ Write a commit message for the staged changes.
 CLI also accepts `mitii ask --recipe commit-message` (same for `pr-summary`, `changelog`).
 These entry points gather git status/diff/log and set `requiredSkillIds` so the skill is guaranteed.
 
-Authoring format and matcher fields: [docs/SKILLS_FORMAT.md](../../docs/SKILLS_FORMAT.md).
+Authoring format: see [`packages/sdk/skills/`](../../packages/sdk/skills/).
 
 ## Platform notes
 
@@ -129,7 +129,7 @@ pnpm run setup
 # Cursor on macOS: pnpm run setup:cursor
 ```
 
-Press **F5** for an Extension Development Host. Details: [docs/INITIAL_LAUNCH.md](https://github.com/Mitii-dev/Mitii/blob/main/docs/INITIAL_LAUNCH.md).
+Press **F5** for an Extension Development Host (`pnpm run setup` / `setup:cursor` first).
 
 Runtime stack: extension -> `@mitii/host` -> `@mitii/sdk` -> `@mitii/v8`.
 
@@ -137,8 +137,6 @@ Runtime stack: extension -> `@mitii/host` -> `@mitii/sdk` -> `@mitii/v8`.
 pnpm --filter ./apps/vscode build
 pnpm run package   # writes dist-vsix/mitii-ai-agent-<version>-<target>.vsix
 ```
-
-Release process: [docs/RELEASE.md](https://github.com/Mitii-dev/Mitii/blob/main/docs/RELEASE.md).
 
 ## Links
 

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   grantNeverWidens,
   intersectUserSafetyRules,
+  resolveApprovalSkipCategories,
 } from "../../actions/IntersectUserSafetyRules";
 import type { ToolGrant, UserSafetyRules } from "../../contracts";
 
@@ -52,6 +53,7 @@ describe("intersectUserSafetyRules", () => {
       denyCommandPrefixes: [],
       denyPathScopes: [],
       denyNetworkHosts: [],
+      protectedPathGlobs: [],
     });
     expect(disabled.tightened).toBe(false);
     expect(disabled.toolGrant.allowedTools).toContain("apply_patch");
@@ -69,6 +71,7 @@ describe("intersectUserSafetyRules", () => {
       allowCommandPrefixes: ["pnpm", "npm", "git"],
       denyPathScopes: [],
       denyNetworkHosts: ["evil.example"],
+      protectedPathGlobs: [],
       approvalCeiling: "when_required",
     };
     const after = intersectUserSafetyRules(before, rules);
@@ -94,10 +97,10 @@ describe("intersectUserSafetyRules", () => {
       enabled: true,
       denyTools: [],
       denyCommandPrefixes: [],
-      // Attempt to "allow" a tool via command allow-list only — must not invent tools.
       allowCommandPrefixes: ["pnpm", "curl"],
       denyPathScopes: [],
       denyNetworkHosts: [],
+      protectedPathGlobs: [],
     };
     const after = intersectUserSafetyRules(before, rules);
     expect(after.toolGrant.allowedTools).toEqual(["read_file", "apply_patch"]);
@@ -112,9 +115,27 @@ describe("intersectUserSafetyRules", () => {
       denyCommandPrefixes: [],
       denyPathScopes: [],
       denyNetworkHosts: [],
+      protectedPathGlobs: [],
     });
     expect(after.toolGrant.maximumWorkspaceEffect).not.toBe("write");
     expect(after.toolGrant.mutationBudget).toBeUndefined();
+    expect(grantNeverWidens(before, after.toolGrant)).toBe(true);
+  });
+
+  it("retains write effect when retainWriteEffect is set (Database readwrite)", () => {
+    const before = baseWriteGrant();
+    const after = intersectUserSafetyRules(before, {
+      enabled: true,
+      denyTools: ["apply_patch", "delete_file", "delete_directory", "move_file"],
+      denyCommandPrefixes: [],
+      denyPathScopes: [],
+      denyNetworkHosts: [],
+      protectedPathGlobs: [],
+      retainWriteEffect: true,
+    });
+    expect(after.toolGrant.maximumWorkspaceEffect).toBe("write");
+    expect(after.toolGrant.mutationBudget).toBeUndefined();
+    expect(after.toolGrant.allowedTools).not.toContain("apply_patch");
     expect(grantNeverWidens(before, after.toolGrant)).toBe(true);
   });
 
@@ -126,9 +147,57 @@ describe("intersectUserSafetyRules", () => {
       denyCommandPrefixes: [],
       denyPathScopes: [],
       denyNetworkHosts: [],
+      protectedPathGlobs: [],
       approvalCeiling: "never",
     });
     expect(after.toolGrant.approvalMode).toBe("every_mutation");
     expect(grantNeverWidens(before, after.toolGrant)).toBe(true);
+  });
+
+  it("copies autoApprove skip categories and protected globs onto the grant", () => {
+    const before = baseWriteGrant({ approvalMode: "when_required" });
+    const after = intersectUserSafetyRules(before, {
+      enabled: true,
+      denyTools: [],
+      denyCommandPrefixes: [],
+      denyPathScopes: [],
+      denyNetworkHosts: [],
+      protectedPathGlobs: [".mitii/**", "AGENTS.md"],
+      autoApprove: {
+        write: true,
+        execute: true,
+        mcp: false,
+        network: false,
+        external: false,
+      },
+      mutationRelativePathRegex: "\\.md$",
+    });
+    expect(after.toolGrant.approvalSkipCategories).toEqual(
+      expect.arrayContaining(["write", "execute"]),
+    );
+    expect(after.toolGrant.protectedPathGlobs).toEqual([
+      ".mitii/**",
+      "AGENTS.md",
+    ]);
+    expect(after.toolGrant.mutationRelativePathRegex).toBe("\\.md$");
+    expect(grantNeverWidens(before, after.toolGrant)).toBe(true);
+  });
+});
+
+describe("resolveApprovalSkipCategories", () => {
+  it("maps autoApprove flags to categories", () => {
+    expect(
+      resolveApprovalSkipCategories({
+        write: true,
+        execute: false,
+        mcp: true,
+        network: false,
+        external: true,
+      }),
+    ).toEqual(["write", "mcp", "external"]);
+  });
+
+  it("returns empty when autoApprove is undefined", () => {
+    expect(resolveApprovalSkipCategories(undefined)).toEqual([]);
   });
 });

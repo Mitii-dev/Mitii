@@ -1,17 +1,17 @@
+import { summarizeReviewFindings, type ReviewFindingChip } from '@mitii/ui-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import type { ReviewDiffView, RunFileChangesView } from '../protocol';
 import { ReviewBarActions } from './ReviewBarActions';
 import { ReviewFilesPanel } from './ReviewFilesPanel';
 import { ReviewFindingsPanel } from './ReviewFindingsPanel';
-import type { ReviewFindingChip } from './reviewFindingTypes';
 import {
   chatFilesFromRunChanges,
   gitFilesFromReview,
   resolveReviewBarScope,
 } from './reviewBarModel';
 
-export type { ReviewFindingChip } from './reviewFindingTypes';
+export type { ReviewFindingChip };
 
 interface WorkingTreeReviewBarProps {
   review: ReviewDiffView | null;
@@ -38,8 +38,8 @@ interface WorkingTreeReviewBarProps {
 }
 
 /**
- * Flush review strip attached to the top of the composer box.
- * Review = this-chat diffs. Code Review = full git + findings (feature-gated).
+ * Review strip attached to the top of the chat input box.
+ * Review = this-chat diffs. Code Review CTA lives above the composer dock.
  */
 export function WorkingTreeReviewBar({
   review,
@@ -52,13 +52,13 @@ export function WorkingTreeReviewBar({
   onOpenDiff,
   onOpenFinding,
   onShowChanges,
-  onRunCodeReview,
+  onRunCodeReview: _onRunCodeReview,
   showCodeReview = false,
   onUndoAll,
   onKeepAll,
-  onDismissFindings,
+  onDismissFindings: _onDismissFindings,
   onFixFinding,
-  onFixAllFindings,
+  onFixAllFindings: _onFixAllFindings,
 }: WorkingTreeReviewBarProps) {
   const scope = useMemo(
     () =>
@@ -75,13 +75,12 @@ export function WorkingTreeReviewBar({
   const [expanded, setExpanded] = useState(false);
   const [tab, setTab] = useState<'files' | 'findings'>('files');
 
-  const openFindings = findings.filter((f) => f.status !== 'fixed');
-  const fixedFindings = findings.filter((f) => f.status === 'fixed');
-  const reviewComplete =
-    scope.showFindingsUi &&
-    findings.length > 0 &&
-    openFindings.length === 0 &&
-    fixedFindings.length > 0;
+  const {
+    open: openFindings,
+    fixed: fixedFindings,
+    complete: findingsComplete,
+  } = summarizeReviewFindings(findings);
+  const reviewComplete = scope.showFindingsUi && findingsComplete;
   const hasOpenFindings = scope.showFindingsUi && openFindings.length > 0;
 
   useEffect(() => {
@@ -103,8 +102,6 @@ export function WorkingTreeReviewBar({
 
   const canUndoKeep =
     !reviewComplete && Boolean(runChanges && runChanges.files.length > 0);
-  const canFix =
-    hasOpenFindings && !running && Boolean(onFixAllFindings) && !reviewComplete;
 
   return (
     <div
@@ -150,24 +147,14 @@ export function WorkingTreeReviewBar({
         <ReviewBarActions
           reviewComplete={reviewComplete}
           canUndoKeep={canUndoKeep}
-          canFix={canFix}
           canExpandReview={scope.canExpandReview}
-          showCodeReview={scope.showFindingsUi}
-          codeReviewButtonLabel={scope.codeReviewButtonLabel}
-          canRunCodeReview={scope.canRunCodeReview}
           running={running}
-          hasFindings={scope.showFindingsUi && findings.length > 0}
           onUndoAll={onUndoAll}
           onKeepAll={onKeepAll}
-          onDismissFindings={
-            scope.showFindingsUi ? onDismissFindings : undefined
-          }
-          onFixAllFindings={scope.showFindingsUi ? onFixAllFindings : undefined}
           onShowChanges={() => {
             setExpanded(true);
             onShowChanges();
           }}
-          onRunCodeReview={onRunCodeReview}
           onCollapse={() => setExpanded(false)}
           onSelectFilesTab={() => setTab('files')}
         />

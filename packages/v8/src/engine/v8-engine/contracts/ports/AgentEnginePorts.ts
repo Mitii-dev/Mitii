@@ -1,0 +1,260 @@
+import type {
+  DecisionPolicyInput,
+  ExecutionDecision,
+  ToolGrant,
+} from "../../../../modules/decision-policy";
+import type { LlmPort, ModelToolDefinition } from "../../../../modules/model-gateway";
+import type {
+  PromptConstructionInput,
+  PromptConstructionResult,
+} from "../../../../modules/prompt-construction";
+import type {
+  MemoryCommitInput,
+  MemoryCommitResult,
+  MemoryRetrieveInput,
+  MemoryRetrieveResult,
+} from "../../../../modules/memory";
+import type {
+  PlanningInput,
+  PlanningResult,
+} from "../../../../modules/planning";
+import type {
+  RepositoryContextPipelineInput,
+  RepositoryContextPipelineResult,
+} from "../../../../modules/repository-context";
+import type {
+  PinRepositoryStateInput,
+  PinRepositoryStateResult,
+  RepositoryStateDescriptor,
+  UnpinRepositoryStateInput,
+  UnpinRepositoryStateResult,
+} from "../../../../modules/repository-state";
+import type {
+  CreateUserRequestInput,
+  RequestIntakeResult,
+  UserRequestEnvelope,
+} from "../../../../modules/request-intake";
+import type {
+  DiagnosticSummary,
+  RequestUnderstandingOptions,
+  RequestUnderstandingResult,
+} from "../../../../modules/request-understanding";
+import type {
+  SkillsSelectInput,
+  SkillsSelectResult,
+} from "../../../../modules/skills";
+import type {
+  ToolApprovalToken,
+  ToolExecuteOptions,
+  ToolInvocationInput,
+  ToolResult,
+  RepositoryGraphPort,
+  ToolAdversaryPort,
+  AdversaryFailMode,
+} from "../../../tool-runtime";
+import type {
+  RepoBuildState,
+  RepoBuildStateComparison,
+  VerificationInput,
+  VerificationPipelineOptions,
+  VerificationRecord,
+  VerificationResult,
+} from "../../../../modules/verification";
+
+import type { AgentEngineRunCheckpointStorePort } from "../../internal/RunCheckpoint";
+import type { ContextEpochStorePort } from "../../internal/context-epoch";
+import type { AgentEngineReviewPort } from "./AgentEngineReviewPort";
+
+export interface AgentEngineClockPort {
+  now(): Date;
+}
+
+export interface AgentEngineIdGeneratorPort {
+  next(prefix: string): string;
+}
+
+export interface AgentEngineIntakePort {
+  intake(input: CreateUserRequestInput): UserRequestEnvelope;
+  /** Optional detailed intake with short-circuit + warnings. */
+  intakeDetailed?(input: CreateUserRequestInput): RequestIntakeResult;
+}
+
+export interface AgentEngineUnderstandingPort {
+  understand(
+    input: UserRequestEnvelope,
+    diagnosticSummaryOrOptions?: DiagnosticSummary | RequestUnderstandingOptions,
+  ): Promise<RequestUnderstandingResult>;
+}
+
+export interface AgentEngineDecisionPort {
+  decide(input: DecisionPolicyInput): ExecutionDecision;
+  narrow?(input: {
+    previous: ExecutionDecision;
+    discoveredPaths?: readonly string[];
+    residualRisk?: "low" | "medium" | "high" | "critical";
+  }): ExecutionDecision;
+  widen?(input: {
+    previous: ExecutionDecision;
+    extraPaths?: readonly string[];
+    extraAllowedRoots?: readonly string[];
+    extraNetworkHosts?: readonly string[];
+  }): ExecutionDecision;
+}
+
+export interface AgentEnginePromptPort {
+  construct(input: PromptConstructionInput): PromptConstructionResult;
+}
+
+export interface AgentEngineSkillsPort {
+  select(input: SkillsSelectInput): Promise<SkillsSelectResult>;
+}
+
+export interface AgentEngineMemoryPort {
+  retrieve(input: MemoryRetrieveInput): Promise<MemoryRetrieveResult>;
+  commit?(input: MemoryCommitInput): Promise<MemoryCommitResult>;
+  recordAccess?(ids: readonly string[], at: string): Promise<void>;
+}
+
+export interface AgentEnginePlanningPort {
+  plan(input: PlanningInput): Promise<PlanningResult>;
+}
+
+export interface AgentEngineRepositoryStatePort {
+  pin(input: PinRepositoryStateInput): Promise<PinRepositoryStateResult>;
+  unpin(input: UnpinRepositoryStateInput): Promise<UnpinRepositoryStateResult>;
+  getLatest(workspaceId: string): Promise<RepositoryStateDescriptor | undefined>;
+}
+
+export interface AgentEngineRepositoryContextPort {
+  execute(
+    input: RepositoryContextPipelineInput,
+  ): Promise<RepositoryContextPipelineResult>;
+}
+
+export interface AgentEngineToolRuntimePort {
+  execute(
+    input: ToolInvocationInput,
+    options?: ToolExecuteOptions,
+  ): Promise<ToolResult>;
+  createBudget?(grant: ToolGrant): unknown;
+  rollbackMutation?(input: {
+    checkpointId: string;
+  }): Promise<ToolResult>;
+  commitMutation?(checkpointId: string): void;
+  /** Live in-memory mutation snapshot (pre-commit). */
+  getMutationCheckpoint?(checkpointId: string):
+    | {
+        checkpointId: string;
+        workspaceRoot: string;
+        files: readonly {
+          relativePath: string;
+          kind: "existing" | "missing" | "directory";
+          content?: string;
+        }[];
+        createdAt: string;
+      }
+    | undefined;
+  /** Apply a durable mutation snapshot to the workspace. */
+  restoreMutationSnapshot?(snapshot: {
+    checkpointId: string;
+    workspaceRoot: string;
+    files: readonly {
+      relativePath: string;
+      kind: "existing" | "missing" | "directory";
+      content?: string;
+    }[];
+    createdAt: string;
+  }): Promise<string[]>;
+  /** Honest grant gating — omit / false when SearchPort is not injected. */
+  hasSearchPort?(): boolean;
+  hasDiagnosticsPort?(): boolean;
+  /** Host code-navigation capability when a CodeNavigationPort is injected. */
+  codeNavigationCapability?():
+    | {
+        status: "available" | "degraded" | "unavailable";
+        provider: "language_server" | "repo_graph" | "none";
+        reason: string;
+      }
+    | undefined;
+}
+
+export interface AgentEngineVerificationPort {
+  verify(input: VerificationInput): Promise<VerificationResult>;
+  captureBuildState?(
+    input: VerificationInput,
+    params: { phase: "before" | "after"; capturedAt?: string },
+    options?: VerificationPipelineOptions,
+  ): Promise<RepoBuildState>;
+  buildStateFromResult?(
+    input: VerificationInput,
+    result: VerificationResult,
+    params: { phase: "before" | "after"; capturedAt?: string },
+  ): RepoBuildState;
+  compareBuildStates?(params: {
+    before?: RepoBuildState;
+    after: RepoBuildState;
+    askScopePaths?: readonly string[];
+    changedFiles?: readonly string[];
+  }): RepoBuildStateComparison;
+  persistRecord?(record: VerificationRecord): Promise<void>;
+  loadRecord?(recordId: string): Promise<VerificationRecord | undefined>;
+  loadLatestRecord?(
+    workspaceId: string,
+  ): Promise<VerificationRecord | undefined>;
+}
+
+/**
+ * Dependencies injected by the Application layer / tests.
+ * Engine coordinates these public facades; it does not reimplement them.
+ * Skills, Memory, and Planning are optional — omitting leaves the core loop intact.
+ */
+export interface AgentEngineDependencies {
+  intake: AgentEngineIntakePort;
+  understanding: AgentEngineUnderstandingPort;
+  decision: AgentEngineDecisionPort;
+  prompt: AgentEnginePromptPort;
+  llm: LlmPort;
+  skills?: AgentEngineSkillsPort;
+  memory?: AgentEngineMemoryPort;
+  planning?: AgentEnginePlanningPort;
+  repositoryState?: AgentEngineRepositoryStatePort;
+  repositoryContext?: AgentEngineRepositoryContextPort;
+  tools?: AgentEngineToolRuntimePort;
+  verification?: AgentEngineVerificationPort;
+  /** Optional structured code-review pipeline (Phase review). */
+  review?: AgentEngineReviewPort;
+  checkpointStore?: AgentEngineRunCheckpointStorePort;
+  /**
+   * Optional durable Context Epoch store (per-session context-epoch snapshots).
+   * When set, each admit persists the active epoch alongside the in-memory map.
+   * Checkpoints already embed `contextEpoch`; this port is for hosts that want
+   * an independent epoch table / process-local cache.
+   */
+  contextEpochStore?: ContextEpochStorePort;
+  /**
+ * Optional restrict-only ToolAdversaryPort. Forwarded into tool
+   * execute options. Unset = no-op. Never widens grants.
+   */
+  adversary?: ToolAdversaryPort;
+  adversaryFailMode?: AdversaryFailMode;
+  /**
+   * Optional published RepoGraph port. When present, follow_evidence and
+   * discover_and_plan collect hop-1 mustRead/affected reports before drafting.
+   * Omitting leaves those fields empty.
+   */
+  repoGraphs?: RepositoryGraphPort;
+  /** Defaults to policy DEFAULT_TOOL_DEFINITIONS when omitted. */
+  toolDefinitions?: readonly ModelToolDefinition[];
+  /**
+   * Opt-in checklist auto-advance after successful built-in mutating tools
+   * (`DEFAULT_MUTATION_TOOL_DEFINITIONS`: apply_patch, write/delete/move, …).
+   * Defaults to false at the engine/SDK compose layer. Host apps may enable
+   * it by default; custom/MCP tools are not included unless added to the
+   * engine mutating-tool set later.
+   */
+  taskListAutoAdvance?: boolean;
+  clock?: AgentEngineClockPort;
+  idGenerator?: AgentEngineIdGeneratorPort;
+}
+
+export type { ToolApprovalToken };

@@ -1,0 +1,25 @@
+# `@mitii/mcp-mongo`
+
+First-party Mitii MCP **stdio** server for MongoDB (Database mode).
+
+## Access mode
+
+| `MCP_DB_ACCESS` | Tools |
+|-----------------|-------|
+| `readonly` (default) | `list_collections`, `describe_collection`, `query`, `aggregate`, `count`, `server_info` |
+| `readwrite` | + `insert`, `update`, `delete`, `create_index` |
+
+## Env
+
+- `MCP_MONGODB_URI` or `MONGODB_URI` (required)
+- `MCP_DB_ACCESS=readonly|readwrite`
+- `MONGO_MAX_DOCS` (optional, default 50)
+
+## Catalog
+
+- Catalog id: `mongo`
+
+```bash
+MCP_MONGODB_URI=mongodb://localhost:27017/mydb MCP_DB_ACCESS=readonly \
+  node bin/mitii-mcp-mongo.js
+```

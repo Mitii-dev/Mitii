@@ -1,6 +1,7 @@
 import {
   AGENT_ENGINE_SCHEMA_VERSION,
   agentEngineStartInputSchema,
+  agentRunBudgetSchema,
   createUserRequestInputSchema,
   mergeRequiredMcpServerIds,
   mergeRequiredSkillIds,
@@ -114,7 +115,7 @@ export function toAgentEngineStartInput(
     approvedPlan: parsed.approvedPlan,
     approvedPlanStrategy: parsed.approvedPlanStrategy,
     taskList: parsed.taskList,
-    budget: parsed.budget,
+    budget: resolveStartBudget(parsed),
     model: parsed.model,
     temperature: parsed.temperature,
     stream: parsed.stream,
@@ -126,21 +127,59 @@ export function toAgentEngineStartInput(
     explorationDepth: parsed.explorationDepth,
     windowBudget: parsed.windowBudget,
     loopPolicy: parsed.loopPolicy,
+    v8LoopPolicy: parsed.v8LoopPolicy,
     logVerbosity: parsed.logVerbosity,
     requiredSkillIds,
     requiredMcpServerIds,
-    instructions:
-      parsed.projectRules && parsed.projectRules.length > 0
-        ? {
-            projectRules: parsed.projectRules.map((rule) => ({
-              id: rule.id,
-              content: rule.content,
-              ...(rule.title ? { title: rule.title } : {}),
-              priority: rule.priority ?? 100,
-            })),
-          }
-        : undefined,
+    instructions: buildStartInstructions(parsed),
   });
+}
+
+/** Fold the host wall-time shorthand into the engine run budget. */
+function resolveStartBudget(
+  parsed: MitiiStartInput,
+): AgentEngineStartInput['budget'] {
+  if (parsed.maxWallTimeMs === undefined) {
+    return parsed.budget;
+  }
+  return agentRunBudgetSchema.parse({
+    ...(parsed.budget ?? {}),
+    maxWallTimeMs: parsed.maxWallTimeMs,
+  });
+}
+
+function buildStartInstructions(
+  parsed: MitiiStartInput,
+): AgentEngineStartInput['instructions'] {
+  const hasProjectRules =
+    parsed.projectRules !== undefined && parsed.projectRules.length > 0;
+  const hasEnvironment =
+    parsed.environment !== undefined && parsed.environment.length > 0;
+  if (!hasProjectRules && !hasEnvironment) {
+    return undefined;
+  }
+  return {
+    ...(hasProjectRules
+      ? {
+          projectRules: parsed.projectRules!.map((rule) => ({
+            id: rule.id,
+            content: rule.content,
+            ...(rule.title ? { title: rule.title } : {}),
+            priority: rule.priority ?? 100,
+          })),
+        }
+      : {}),
+    ...(hasEnvironment
+      ? {
+          environment: parsed.environment!.map((block) => ({
+            id: block.id,
+            content: block.content,
+            ...(block.title ? { title: block.title } : {}),
+            priority: block.priority ?? 100,
+          })),
+        }
+      : {}),
+  };
 }
 
 /**

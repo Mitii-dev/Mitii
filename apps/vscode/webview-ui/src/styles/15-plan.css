@@ -1,0 +1,268 @@
+.plan-follow {
+  --plan-follow-accent: var(--mitii-accent);
+  display: grid;
+  gap: 8px;
+  padding: 10px 11px 11px;
+  border: 1px solid
+    color-mix(in srgb, var(--plan-follow-accent) 38%, var(--mitii-border));
+  border-radius: 8px;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--plan-follow-accent) 15%, var(--mitii-panel)),
+      color-mix(in srgb, var(--plan-follow-accent) 8%, var(--mitii-panel))
+    );
+  box-shadow:
+    0 1px 0 color-mix(in srgb, #fff 4%, transparent) inset,
+    0 8px 20px color-mix(in srgb, #000 10%, transparent);
+}
+
+.plan-follow__top,
+.plan-follow__step {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.plan-follow__top {
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.plan-follow__heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.plan-follow__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.plan-follow__eyebrow {
+  color: var(--mitii-muted);
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.plan-follow__progress {
+  color: color-mix(in srgb, var(--plan-follow-accent) 76%, var(--mitii-text));
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.plan-follow__location {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--plan-follow-accent) 78%, var(--mitii-text));
+  padding: 0;
+  font-size: 11px;
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.plan-follow__location:hover {
+  color: var(--mitii-text);
+}
+
+.plan-follow__toggle {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--plan-follow-accent) 78%, var(--mitii-text));
+  padding: 0;
+  font-size: 11px;
+  font-weight: 650;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.plan-follow__toggle:hover {
+  color: var(--mitii-text);
+}
+
+.plan-follow__step {
+  gap: 8px;
+  color: var(--mitii-text);
+  line-height: 1.35;
+  padding: 8px;
+  border: 1px solid
+    color-mix(in srgb, var(--plan-follow-accent) 24%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--mitii-panel) 82%, transparent);
+}
+
+.plan-follow__count {
+  flex: 0 0 auto;
+  color: color-mix(in srgb, var(--plan-follow-accent) 78%, var(--mitii-text));
+  font-family: var(--mitii-font-mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.plan-follow__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.plan-follow__state {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  border-radius: 999px;
+  padding: 0 7px;
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1;
+}
+
+.plan-follow__state--following {
+  border: 1px solid color-mix(in srgb, var(--plan-follow-accent) 42%, transparent);
+  background: color-mix(in srgb, var(--plan-follow-accent) 14%, transparent);
+  color: color-mix(in srgb, var(--plan-follow-accent) 78%, var(--mitii-text));
+}
+
+.plan-follow__state--done {
+  border: 1px solid color-mix(in srgb, var(--mitii-ok) 48%, transparent);
+  background: color-mix(in srgb, var(--mitii-ok) 13%, transparent);
+  color: color-mix(in srgb, var(--mitii-ok) 72%, var(--mitii-text));
+}
+
+.plan-follow__loader {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid
+    color-mix(in srgb, var(--plan-follow-accent) 24%, transparent);
+  border-top-color: color-mix(
+    in srgb,
+    var(--plan-follow-accent) 86%,
+    var(--mitii-text)
+  );
+  animation: mitii-loader-spin 800ms linear infinite;
+}
+
+.plan-follow__steps {
+  display: grid;
+  gap: 4px;
+  margin: 2px 0 0;
+  padding: 8px 0 0;
+  border-top: 1px solid
+    color-mix(in srgb, var(--plan-follow-accent) 20%, var(--mitii-border));
+  list-style: none;
+}
+
+.plan-follow__steps-item {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--mitii-text);
+  min-height: 26px;
+  padding: 3px 6px 3px 4px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+}
+
+.plan-follow__steps-item--active {
+  border-color: color-mix(in srgb, var(--plan-follow-accent) 35%, transparent);
+  background: color-mix(in srgb, var(--plan-follow-accent) 12%, transparent);
+}
+
+.plan-follow__steps-item--done {
+  color: color-mix(in srgb, var(--mitii-text) 58%, transparent);
+}
+
+.plan-follow__steps-item--skipped {
+  color: var(--mitii-muted);
+  opacity: 0.76;
+}
+
+.plan-follow__steps-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--mitii-muted) 14%, transparent);
+  color: var(--mitii-muted);
+  font-family: var(--mitii-font-mono);
+  font-size: 10px;
+}
+
+.plan-follow__steps-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.plan-follow__steps-item--active .plan-follow__steps-index {
+  background: color-mix(in srgb, var(--plan-follow-accent) 24%, transparent);
+  color: color-mix(in srgb, var(--plan-follow-accent) 82%, var(--mitii-text));
+  box-shadow: 0 0 0 1px
+    color-mix(in srgb, var(--plan-follow-accent) 36%, transparent) inset;
+}
+
+.plan-follow__steps-item--active .plan-follow__steps-title {
+  font-weight: 700;
+}
+
+.plan-follow__steps-item--done .plan-follow__steps-index {
+  background: color-mix(in srgb, var(--mitii-ok) 18%, transparent);
+  color: color-mix(in srgb, var(--mitii-ok) 78%, var(--mitii-text));
+}
+
+.plan-follow__steps-item--done .plan-follow__steps-title {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(
+    in srgb,
+    var(--mitii-ok) 62%,
+    var(--mitii-muted)
+  );
+}
+
+.plan-follow__steps-status {
+  color: var(--mitii-muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.plan-follow__steps-item--active .plan-follow__steps-status {
+  color: color-mix(in srgb, var(--plan-follow-accent) 80%, var(--mitii-text));
+}
+
+.plan-follow__steps-item--done .plan-follow__steps-status {
+  color: color-mix(in srgb, var(--mitii-ok) 72%, var(--mitii-text));
+}
+
+.plan-follow__steps-item--blocked {
+  border-color: color-mix(in srgb, var(--mitii-danger, #c45c5c) 32%, transparent);
+}
+
+@keyframes mitii-loader-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

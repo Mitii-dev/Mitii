@@ -3,7 +3,7 @@ import type {
   DiscoveryChangeSurface,
   PlanStep,
 } from "../contracts";
-import { DEFAULT_MAX_STEPS_PER_PHASE } from "../defaults";
+import { PLANNING_WORKING_SET_POLICY } from "../policy";
 import { clipPhrase, step } from "./draftPlanShared";
 
 export function buildDiscoveryChangeSteps(
@@ -14,9 +14,9 @@ export function buildDiscoveryChangeSteps(
   if (surfaces.length === 0) {
     return [];
   }
-  return surfaces.slice(0, DEFAULT_MAX_STEPS_PER_PHASE).map((surface, index) =>
-    discoverySurfaceStep(surface, index, risk),
-  );
+  return surfaces
+    .slice(0, PLANNING_WORKING_SET_POLICY.maxBatchesOnPlan)
+    .map((surface, index) => discoverySurfaceStep(surface, index, risk));
 }
 
 export function discoverySurfaceStep(

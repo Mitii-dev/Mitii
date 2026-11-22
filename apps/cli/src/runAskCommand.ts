@@ -9,9 +9,11 @@ import type {
 } from '@mitii/sdk';
 import {
   buildWritingRecipeAsk,
-  loadProjectRules,
-  loadUserSafetyRules,
+  formatEnvironmentDetailsBlock,
+  HostStartOptionsError,
   loadWorkspaceHooks,
+  mapUiModeToAgentMode,
+  prepareStartInput,
   resolveMitiiWritingRecipe,
 } from '@mitii/host';
 
@@ -22,7 +24,7 @@ import {
   loadPromptFile,
   type MitiiAgentFile,
 } from './agentFile.js';
-import { createCliClient } from './ports.js';
+import { createCliClient, type CliRuntime } from './ports.js';
 import {
   formatContextInspection,
   formatDiffReview,
@@ -36,25 +38,32 @@ import {
 } from './session.js';
 import { loadMitiiHostConfig } from './config.js';
 import { resolveCliLoopPolicyThresholds } from './loopPolicy.js';
+import { resolveRunWallTimeMs } from './runTimeout.js';
 import {
   persistLatestRepositoryState,
 } from './stateCache.js';
 import { runFullWorkspaceIndex } from './fullWorkspaceIndex.js';
 import { resolveCliSemanticIndexSettings } from './semanticIndex.js';
 import { buildWorkspaceSnapshot } from './workspaceSnapshot.js';
-import type { ParsedCliArgs } from './parseCliArgs.js';
+import type { ParsedCliArgs } from './parseCliArgs/index.js';
+import {
+  isCliSessionLogEnabled,
+  newCliThreadSessionId,
+  resolveCliLogsDir,
+} from './cliLog.js';
 
 export function resolveAskPrompt(
   parsed: ParsedCliArgs,
   cwd: string,
 ): {
   prompt: string;
-  mode?: AgentMode;
+  mode?: AgentMode | 'database';
   origin?: UserRequestOrigin;
   autonomyPreset?: MitiiAutonomyPreset;
   autoApproval?: 'approved' | 'denied';
   requiredSkillIds?: string[];
   attachments?: MitiiImageAttachment[];
+  profile?: string;
 } {
   let agent: MitiiAgentFile | undefined;
   if (parsed.agent) {
@@ -97,6 +106,7 @@ export function resolveAskPrompt(
     origin,
     autonomyPreset,
     autoApproval,
+    ...(parsed.profile ? { profile: parsed.profile } : {}),
     ...(requiredSkillIds.length > 0 ? { requiredSkillIds } : {}),
     ...(attachments.length > 0 ? { attachments } : {}),
   };
@@ -116,6 +126,7 @@ export async function resolveAskPromptWithRecipe(
   autoApproval?: 'approved' | 'denied';
   requiredSkillIds?: string[];
   attachments?: MitiiImageAttachment[];
+  profile?: string;
 }> {
   if (!parsed.recipe) {
     return resolveAskPrompt(parsed, cwd);
@@ -183,6 +194,7 @@ export async function resolveAskPromptWithRecipe(
     autonomyPreset,
     autoApproval,
     requiredSkillIds,
+    ...(parsed.profile ? { profile: parsed.profile } : {}),
     ...(attachments.length > 0 ? { attachments } : {}),
   };
 }
@@ -266,39 +278,66 @@ export async function runAsk(options: {
   forceEcho: boolean;
   autoClarify?: string;
   autoApproval?: 'approved' | 'denied';
-  mode?: AgentMode;
+  mode?: AgentMode | 'database';
   origin?: UserRequestOrigin;
   autonomyPreset?: MitiiAutonomyPreset;
+  /** One-off profile slug; overrides `.mitii/modes.json` active for this run. */
+  profile?: string;
   requiredSkillIds?: string[];
   attachments?: MitiiImageAttachment[];
   conversation?: MitiiConversationMessage[];
   taskList?: TaskList;
+  /** Stable thread id for interactive session log continuity. */
+  sessionId?: string;
   loopPolicyJson?: string;
   noLoopPolicy?: boolean;
+  /** Host wall-time budget (seconds); falls back to MITII_RUN_TIMEOUT_SECONDS. */
+  timeoutSeconds?: number;
   io?: SessionIo;
+  /**
+   * Pre-built client for interactive sessions. When set, no new client (and no
+   * fresh in-memory repository state / MCP sync) is created for this turn.
+   */
+  runtime?: CliRuntime;
 }): Promise<{
   code: number;
   mode: AgentMode;
   outcome?: Awaited<ReturnType<typeof driveRun>>;
 }> {
-  const { client, ports, memoryCapture } = await createCliClient({
-    cwd: options.cwd,
-    forceEcho: options.forceEcho,
-  });
+  const { client, ports, memoryCapture } =
+    options.runtime ??
+    (await createCliClient({
+      cwd: options.cwd,
+      forceEcho: options.forceEcho,
+    }));
   const io = options.io ?? createDefaultSessionIo();
-  const mode = options.mode ?? ports.defaultMode;
+  const uiMode = options.mode ?? ports.defaultMode;
   const origin = options.origin ?? 'user';
   const machineReadable =
     options.json === true || options.streamJson === true;
+  const threadSessionId = options.sessionId ?? newCliThreadSessionId();
+  const runCaps = ports.runLlm.capabilities;
+  const fullSessionLog = isCliSessionLogEnabled()
+    ? {
+        workspaceRoot: options.cwd,
+        logsDir: resolveCliLogsDir(options.cwd),
+        sessionId: threadSessionId,
+        contextWindowTokens: runCaps.contextWindowTokens,
+        maximumOutputTokens: runCaps.maximumOutputTokens,
+      }
+    : undefined;
   if (!machineReadable) {
     io.writeStderr(
-      `[mitii] provider=${ports.providerLabel} mode=${mode} origin=${origin}\n`,
+      `[mitii] provider=${ports.providerLabel} mode=${uiMode} origin=${origin}${
+        options.profile ? ` profile=${options.profile}` : ''
+      }\n`,
     );
   }
 
-  // Each CLI invocation uses a fresh in-memory repository-state store.
+  // Each one-shot CLI invocation uses a fresh in-memory repository-state store.
   // Index in a prior process only writes `.mitii/` on disk; ask must publish
-  // into this process or agent runs fail with state_unavailable.
+  // into this process or agent runs fail with state_unavailable. A reused
+  // session runtime already holds the published state, so this is a no-op then.
   await ensurePublishedRepositoryState({
     client,
     workspaceId: ports.workspaceId,
@@ -306,32 +345,33 @@ export async function runAsk(options: {
     io,
   });
 
-  const projectRules = await loadProjectRules({
-    workspaceRoot: options.cwd,
-  });
-  const baseSafety = loadUserSafetyRules(options.cwd);
   const hooksEnabled =
     process.env.MITII_HOOKS === '1' || process.env.MITII_HOOKS === 'true';
   const hooks = await loadWorkspaceHooks({
     workspaceRoot: options.cwd,
     enabled: hooksEnabled,
   });
-  const userSafetyRules = {
-    ...baseSafety,
-    enabled:
-      baseSafety.enabled ||
-      hooks.denyTools.length > 0 ||
-      hooks.denyCommandPrefixes.length > 0,
-    denyTools: [
-      ...new Set([...(baseSafety.denyTools ?? []), ...hooks.denyTools]),
-    ],
-    denyCommandPrefixes: [
-      ...new Set([
-        ...(baseSafety.denyCommandPrefixes ?? []),
-        ...hooks.denyCommandPrefixes,
-      ]),
-    ],
-  };
+  const hooksSafety =
+    hooks.denyTools.length > 0 || hooks.denyCommandPrefixes.length > 0
+      ? {
+          enabled: true as const,
+          denyTools: hooks.denyTools,
+          denyCommandPrefixes: hooks.denyCommandPrefixes,
+          denyPathScopes: [] as string[],
+          denyNetworkHosts: [] as string[],
+          protectedPathGlobs: [] as string[],
+        }
+      : undefined;
+
+  const runTimeout = resolveRunWallTimeMs({
+    flagSeconds: options.timeoutSeconds,
+    env: process.env,
+  });
+  if (!runTimeout.ok) {
+    io.writeStderr(`${runTimeout.message}\n`);
+    return { code: 2, mode: mapUiModeToAgentMode(uiMode) };
+  }
+
   const hostConfig = loadMitiiHostConfig(options.cwd);
   let loopPolicyThresholds;
   try {
@@ -343,73 +383,119 @@ export async function runAsk(options: {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     io.writeStderr(`${message}\n`);
-    return { code: 2, mode };
+    return { code: 2, mode: mapUiModeToAgentMode(uiMode) };
   }
   if (loopPolicyThresholds && !options.json) {
     io.writeStderr(
       `[mitii] loopPolicy lab overrides active (${Object.keys(loopPolicyThresholds).join(', ')})\n`,
     );
   }
+
   // `--approve` is the headless host policy: skip plan-gate suspension and
   // mutation approval prompts (same shape as VS Code "pilot"). `--deny` only
   // answers resume prompts; it does not suppress gates on start.
   // Autonomy apply* presets also set never/never via SDK mapping.
-  const hostApproval =
+  const approvalOverride =
     options.autoApproval === 'approved'
-      ? ({ approvalMode: 'never' as const, planApproval: 'never' as const })
-      : {};
+      ? ({
+          approvalMode: 'never' as const,
+          planApproval: 'never' as const,
+        })
+      : undefined;
 
   // Unattended / headless runs: turn on DecisionBrief + mutation critic so
   // multi-clause asks and path-scope discipline are enforced without a human.
   const unattendedSteering =
     options.autoApproval === 'approved' || origin === 'automation'
       ? ({
-          steering: {
-            decisionBrief: true,
-            criticMode: 'enforce' as const,
-            policyFactsFirst: true,
-          },
+          decisionBrief: true,
+          criticMode: 'enforce' as const,
+          policyFactsFirst: true,
         })
-      : {};
+      : undefined;
 
-  const outcome = await driveRun({
-    client,
-    start: {
+  let prepared;
+  try {
+    prepared = await prepareStartInput({
       prompt: options.prompt,
-      mode,
+      workspaceRoot: options.cwd,
+      uiMode,
       origin,
+      sessionId: threadSessionId,
+      userSafety: 'disk',
+      ...(options.profile ? { profileOverride: options.profile } : {}),
+      ...(options.requiredSkillIds && options.requiredSkillIds.length > 0
+        ? { requiredSkillIds: options.requiredSkillIds }
+        : {}),
       ...(options.autonomyPreset
         ? { autonomyPreset: options.autonomyPreset }
         : {}),
-      workspaceRoot: options.cwd,
-      ...hostApproval,
-      ...unattendedSteering,
-      ...(userSafetyRules.enabled ? { userSafetyRules } : {}),
-      ...(projectRules.length > 0 ? { projectRules: [...projectRules] } : {}),
-      ...(options.requiredSkillIds && options.requiredSkillIds.length > 0
-        ? { requiredSkillIds: [...options.requiredSkillIds] }
-        : {}),
+      ...(approvalOverride ? { approvalOverride } : {}),
+      ...(hooksSafety ? { extraUserSafetyRules: hooksSafety } : {}),
+      ...(unattendedSteering ? { steering: unattendedSteering } : {}),
       ...(options.attachments && options.attachments.length > 0
         ? { attachments: [...options.attachments] }
         : {}),
       ...(options.conversation && options.conversation.length > 0
         ? { conversation: options.conversation }
         : {}),
-      ...(mode !== 'ask' && options.taskList
-        ? { taskList: options.taskList }
-        : {}),
       ...(loopPolicyThresholds
         ? { loopPolicy: { thresholds: loopPolicyThresholds } }
         : {}),
-    },
+      ...(runTimeout.maxWallTimeMs !== undefined
+        ? { maxWallTimeMs: runTimeout.maxWallTimeMs }
+        : {}),
+    });
+  } catch (error) {
+    if (
+      error instanceof HostStartOptionsError &&
+      error.code === 'unknown_mode_profile'
+    ) {
+      io.writeStderr(
+        `mitii: unknown --profile "${options.profile}". Run: mitii profile list\n`,
+      );
+      return { code: 2, mode: mapUiModeToAgentMode(uiMode) };
+    }
+    throw error;
+  }
+
+  const effectiveMode = prepared.effectiveMode;
+  const modeReminder = prepared.meta.usedDatabaseOverlay
+    ? `Database (${effectiveMode})`
+    : prepared.meta.usedModeProfileName
+      ? `${prepared.meta.usedModeProfileName} (${effectiveMode})`
+      : effectiveMode;
+  const environmentBlock = formatEnvironmentDetailsBlock({
+    todayDate: new Date().toLocaleDateString('en-CA'),
+    modeReminder,
+  });
+  const start = {
+    ...prepared.start,
+    ...(environmentBlock
+      ? {
+          environment: [
+            environmentBlock,
+            ...(prepared.start.environment ?? []),
+          ],
+        }
+      : {}),
+    ...(effectiveMode !== 'ask' && options.taskList
+      ? { taskList: options.taskList }
+      : {}),
+  };
+
+  const outcome = await driveRun({
+    client,
+    start,
     json: options.json,
     streamJson: options.streamJson === true,
     autoClarify: options.autoClarify,
     autoApproval: options.autoApproval,
     io,
     memoryCapture,
+    ...(fullSessionLog ? { sessionLog: fullSessionLog } : {}),
   });
   reportOutcome(io, machineReadable, outcome);
-  return { code: outcome.exitCode, mode, outcome };
+  return { code: outcome.exitCode, mode: effectiveMode, outcome };
 }
 

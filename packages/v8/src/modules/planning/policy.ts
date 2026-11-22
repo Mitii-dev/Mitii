@@ -23,7 +23,9 @@ export const PLANNING_PROCESS_META_STEP =
  * light/full enrichment mode — strategy-specific, runs at most once.
  */
 export const DISCOVERED_PLAN_POLICY = {
-  maxSteps: 10,
+  // Keep discovered drafts compact so execute does not inherit a 16-step
+  // checklist that burns the harness wall clock on broad rediscovery.
+  maxSteps: 12,
   maxRepoEntries: 40,
   maxDiagnostics: 16,
 } as const;
@@ -34,9 +36,10 @@ export const DISCOVERED_PLAN_POLICY = {
  */
 export const PLANNING_WORKING_SET_POLICY = {
   maxMustRead: 5,
+  maxLikelyModify: 5,
   maxAffected: 5,
   maximumHops: 1,
-  maximumAffectedNodes: 5,
+  maximumAffectedNodes: 8,
   maxReports: 16,
   /** Write files per diagnostic Change step. Engine may pass the window cap. */
   maxWritePerBatch: 7,
@@ -45,7 +48,9 @@ export const PLANNING_WORKING_SET_POLICY = {
    * smaller; leftover batches stream in as earlier items complete.
    * Must stay within planPhaseSchema.steps.max (20).
    */
-  maxBatchesOnPlan: 16,
+  maxBatchesOnPlan: 12,
+  /** Cap Verify phase steps when commands / check kinds expand the matrix. */
+  maxVerifySteps: 4,
   dependencyEdgeTypes: ["imports", "depends_on"] as const,
   dependentEdgeTypes: ["imports", "calls", "references"] as const,
 } as const;

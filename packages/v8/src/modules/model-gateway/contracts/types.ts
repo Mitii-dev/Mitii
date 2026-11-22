@@ -208,6 +208,11 @@ export interface ModelCapabilities {
   supportsReasoning: boolean;
   supportsPromptCaching: boolean;
   supportsEmbeddings: boolean;
+  /**
+   * When false, callers must not send tool_choice=required (thinking/reasoner
+   * endpoints that 400 on forced tool choice). Omit/true = allowed.
+   */
+  supportsForcedToolChoice?: boolean;
 
   agenticTier?: ModelAgenticTier;
 }
@@ -226,6 +231,7 @@ export interface ResolveModelCapabilitiesInput {
   supportsReasoning?: boolean;
   supportsPromptCaching?: boolean;
   supportsEmbeddings?: boolean;
+  supportsForcedToolChoice?: boolean;
 
   agenticTier?: ModelAgenticTier;
 }

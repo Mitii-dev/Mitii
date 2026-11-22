@@ -1,19 +1,16 @@
+import { CHUNKING_MESSAGES } from "./constants";
+import { ChunkTextIndex } from "./ChunkTextIndex";
 import {
-  CHUNKING_DEFAULTS,
-  CHUNKING_ERRORS,
-  CHUNKING_MESSAGES,
-  CHUNKING_PATTERNS,
-  CHUNKING_SCHEMA_VERSION,
-} from "./constants";
-
+  buildChunkingResult,
+  chunkingErrorMessage,
+  resolveChunkingSourceAnalysis,
+  safeChunkingPrefix,
+} from "./buildChunkingResult";
+import { resolveChunkingOptions } from "./resolveChunkingOptions";
 import {
-  chunkingResultSchema,
-} from "./schema";
-
-import {
-  ChunkTextIndex,
-} from "./ChunkTextIndex";
-
+  validateChunkingHash,
+  validateChunkingInput,
+} from "./validateChunkingInput";
 import type {
   ChunkingInput,
   ChunkingOptions,
@@ -23,7 +20,6 @@ import type {
   ChunkingStatus,
   ChunkingStrategyContext,
   ChunkingWarning,
-  ResolvedChunkingOptions,
 } from "./types";
 
 export class ChunkingService
@@ -41,10 +37,10 @@ export class ChunkingService
     input: ChunkingInput,
     options: ChunkingOptions = {},
   ): Promise<ChunkingResult> {
-    this.validateInput(input);
+    validateChunkingInput(input);
 
     const resolvedOptions =
-      this.resolveOptions({
+      resolveChunkingOptions({
         ...this.defaultOptions,
         ...options,
       });
@@ -56,7 +52,7 @@ export class ChunkingService
           input.content,
         );
 
-    this.validateHash(
+    validateChunkingHash(
       sourceContentHash,
     );
 
@@ -72,7 +68,7 @@ export class ChunkingService
       input.abortSignal
         ?.aborted
     ) {
-      return this.buildResult({
+      return buildChunkingResult({
         input,
         sourceContentHash,
         status: "cancelled",
@@ -94,7 +90,7 @@ export class ChunkingService
     if (
       input.content.length === 0
     ) {
-      return this.buildResult({
+      return buildChunkingResult({
         input,
         sourceContentHash,
         status: "empty",
@@ -117,7 +113,7 @@ export class ChunkingService
         .inputOverflowPolicy ===
         "reject"
     ) {
-      return this.buildResult({
+      return buildChunkingResult({
         input,
         sourceContentHash,
         status: "rejected",
@@ -138,7 +134,7 @@ export class ChunkingService
     }
 
     const content = overflow
-      ? this.safePrefix(
+      ? safeChunkingPrefix(
           input.content,
           resolvedOptions
             .maximumInputCharacters,
@@ -158,7 +154,7 @@ export class ChunkingService
     }
 
     const sourceAnalysis =
-      this.resolveSourceAnalysis(
+      resolveChunkingSourceAnalysis(
         input,
         warnings,
       );
@@ -229,7 +225,7 @@ export class ChunkingService
               .CANCELLED,
         });
 
-        return this.buildResult({
+        return buildChunkingResult({
           input,
           sourceContentHash,
           status: "cancelled",
@@ -297,7 +293,7 @@ export class ChunkingService
         if (
           normalized.cancelled
         ) {
-          return this.buildResult({
+          return buildChunkingResult({
             input,
             sourceContentHash,
             strategyId:
@@ -360,7 +356,7 @@ export class ChunkingService
           strategyId:
             strategy.id,
           message:
-            this.errorMessage(
+            chunkingErrorMessage(
               error,
             ),
         });
@@ -368,7 +364,7 @@ export class ChunkingService
     }
 
     if (!selectedStrategyId) {
-      return this.buildResult({
+      return buildChunkingResult({
         input,
         sourceContentHash,
         status: "failed",
@@ -387,7 +383,7 @@ export class ChunkingService
         ? "partial"
         : "complete";
 
-    return this.buildResult({
+    return buildChunkingResult({
       input,
       sourceContentHash,
       strategyId:
@@ -401,403 +397,4 @@ export class ChunkingService
       warnings,
     });
   }
-
-  private resolveSourceAnalysis(
-    input: ChunkingInput,
-    warnings: ChunkingWarning[],
-  ) {
-    const analysis =
-      input.sourceAnalysis;
-
-    if (!analysis) {
-      return undefined;
-    }
-
-    if (
-      analysis.sourceId !==
-        input.sourceId ||
-      analysis.rootId !==
-        input.rootId ||
-      analysis.relativePath !==
-        input.relativePath
-    ) {
-      warnings.push({
-        code:
-          "source_analysis_mismatch",
-        message:
-          CHUNKING_MESSAGES
-            .SOURCE_ANALYSIS_MISMATCH,
-      });
-
-      return undefined;
-    }
-
-    return analysis;
-  }
-
-  private buildResult(
-    input: {
-      input: ChunkingInput;
-      sourceContentHash: string;
-      status: ChunkingStatus;
-      processedCharacters: number;
-      inputCharacters: number;
-      inputLines: number;
-      chunks: ChunkingResult["chunks"];
-      warnings: ChunkingWarning[];
-      strategyId?: string;
-    },
-  ): ChunkingResult {
-    const result:
-      ChunkingResult = {
-      schemaVersion:
-        CHUNKING_SCHEMA_VERSION,
-
-      sourceId:
-        input.input.sourceId,
-
-      rootId:
-        input.input.rootId,
-
-      relativePath:
-        input.input.relativePath,
-
-      ...(input.input.language
-        ? {
-            language:
-              input.input
-                .language,
-          }
-        : input.input
-            .sourceAnalysis
-            ?.language
-          ? {
-              language:
-                input.input
-                  .sourceAnalysis
-                  .language,
-            }
-          : {}),
-
-      sourceContentHash:
-        input.sourceContentHash,
-
-      ...(input.strategyId
-        ? {
-            strategyId:
-              input.strategyId,
-          }
-        : {}),
-
-      status: input.status,
-      chunks: input.chunks,
-      warnings:
-        input.warnings,
-
-      statistics: {
-        inputCharacters:
-          input.inputCharacters,
-
-        processedCharacters:
-          input
-            .processedCharacters,
-
-        omittedCharacters:
-          input.inputCharacters -
-          input
-            .processedCharacters,
-
-        inputLines:
-          input.inputLines,
-
-        emittedChunks:
-          input.chunks.length,
-
-        estimatedTokens:
-          input.chunks.reduce(
-            (sum, chunk) =>
-              sum +
-              chunk
-                .tokenEstimate,
-            0,
-          ),
-      },
-    };
-
-    return chunkingResultSchema
-      .parse(result) as
-      ChunkingResult;
-  }
-
-  private resolveOptions(
-    options: ChunkingOptions,
-  ): ResolvedChunkingOptions {
-    const resolved:
-      ResolvedChunkingOptions = {
-      maximumInputCharacters:
-        options
-          .maximumInputCharacters ??
-        CHUNKING_DEFAULTS
-          .MAXIMUM_INPUT_CHARACTERS,
-
-      inputOverflowPolicy:
-        options
-          .inputOverflowPolicy ??
-        CHUNKING_DEFAULTS
-          .INPUT_OVERFLOW_POLICY,
-
-      targetChunkCharacters:
-        options
-          .targetChunkCharacters ??
-        CHUNKING_DEFAULTS
-          .TARGET_CHUNK_CHARACTERS,
-
-      maximumChunkCharacters:
-        options
-          .maximumChunkCharacters ??
-        CHUNKING_DEFAULTS
-          .MAXIMUM_CHUNK_CHARACTERS,
-
-      minimumChunkCharacters:
-        options
-          .minimumChunkCharacters ??
-        CHUNKING_DEFAULTS
-          .MINIMUM_CHUNK_CHARACTERS,
-
-      overlapCharacters:
-        options
-          .overlapCharacters ??
-        CHUNKING_DEFAULTS
-          .OVERLAP_CHARACTERS,
-
-      boundarySearchCharacters:
-        options
-          .boundarySearchCharacters ??
-        CHUNKING_DEFAULTS
-          .BOUNDARY_SEARCH_CHARACTERS,
-
-      maximumChunks:
-        options.maximumChunks ??
-        CHUNKING_DEFAULTS
-          .MAXIMUM_CHUNKS,
-
-      maximumTitleCharacters:
-        options
-          .maximumTitleCharacters ??
-        CHUNKING_DEFAULTS
-          .MAXIMUM_TITLE_CHARACTERS,
-    };
-
-    this.validatePositiveInteger(
-      resolved
-        .maximumInputCharacters,
-      "maximumInputCharacters",
-    );
-
-    this.validatePositiveInteger(
-      resolved
-        .targetChunkCharacters,
-      "targetChunkCharacters",
-    );
-
-    this.validatePositiveInteger(
-      resolved
-        .maximumChunkCharacters,
-      "maximumChunkCharacters",
-    );
-
-    this.validatePositiveInteger(
-      resolved
-        .minimumChunkCharacters,
-      "minimumChunkCharacters",
-    );
-
-    this.validateNonNegativeInteger(
-      resolved
-        .overlapCharacters,
-      "overlapCharacters",
-    );
-
-    this.validatePositiveInteger(
-      resolved
-        .boundarySearchCharacters,
-      "boundarySearchCharacters",
-    );
-
-    this.validatePositiveInteger(
-      resolved.maximumChunks,
-      "maximumChunks",
-    );
-
-    this.validatePositiveInteger(
-      resolved
-        .maximumTitleCharacters,
-      "maximumTitleCharacters",
-    );
-
-    if (
-      resolved
-        .targetChunkCharacters >
-      resolved
-        .maximumChunkCharacters
-    ) {
-      throw new RangeError(
-        CHUNKING_ERRORS
-          .TARGET_EXCEEDS_MAXIMUM,
-      );
-    }
-
-    if (
-      resolved
-        .minimumChunkCharacters >
-      resolved
-        .targetChunkCharacters
-    ) {
-      throw new RangeError(
-        CHUNKING_ERRORS
-          .MINIMUM_EXCEEDS_TARGET,
-      );
-    }
-
-    if (
-      resolved
-        .overlapCharacters >=
-      resolved
-        .targetChunkCharacters
-    ) {
-      throw new RangeError(
-        CHUNKING_ERRORS
-          .OVERLAP_TOO_LARGE,
-      );
-    }
-
-    return resolved;
-  }
-
-  private validateInput(
-    input: ChunkingInput,
-  ): void {
-    if (!input.sourceId.trim()) {
-      throw new TypeError(
-        CHUNKING_ERRORS
-          .SOURCE_ID_REQUIRED,
-      );
-    }
-
-    if (!input.rootId.trim()) {
-      throw new TypeError(
-        CHUNKING_ERRORS
-          .ROOT_ID_REQUIRED,
-      );
-    }
-
-    const relativePath =
-      input.relativePath;
-
-    if (
-      !relativePath ||
-      relativePath
-        .startsWith("/") ||
-      relativePath
-        .endsWith("/") ||
-      relativePath
-        .includes("\\") ||
-      relativePath
-        .split("/")
-        .some(
-          (segment) =>
-            !segment ||
-            segment === "." ||
-            segment === "..",
-        )
-    ) {
-      throw new TypeError(
-        CHUNKING_ERRORS
-          .RELATIVE_PATH_REQUIRED,
-      );
-    }
-
-    if (input.contentHash) {
-      this.validateHash(
-        input.contentHash,
-      );
-    }
-  }
-
-  private validateHash(
-    hash: string,
-  ): void {
-    if (
-      !CHUNKING_PATTERNS
-        .CONTENT_HASH.test(hash)
-    ) {
-      throw new TypeError(
-        CHUNKING_ERRORS
-          .HASH_INVALID,
-      );
-    }
-  }
-
-  private validatePositiveInteger(
-    value: number,
-    name: string,
-  ): void {
-    if (
-      !Number.isSafeInteger(
-        value,
-      ) ||
-      value <= 0
-    ) {
-      throw new RangeError(
-        `${name}: ${CHUNKING_ERRORS.POSITIVE_INTEGER_REQUIRED}`,
-      );
-    }
-  }
-
-  private validateNonNegativeInteger(
-    value: number,
-    name: string,
-  ): void {
-    if (
-      !Number.isSafeInteger(
-        value,
-      ) ||
-      value < 0
-    ) {
-      throw new RangeError(
-        `${name}: ${CHUNKING_ERRORS.NON_NEGATIVE_INTEGER_REQUIRED}`,
-      );
-    }
-  }
-
-  private safePrefix(
-    content: string,
-    maximumCharacters: number,
-  ): string {
-    let end =
-      maximumCharacters;
-
-    const character =
-      content.charCodeAt(
-        end - 1,
-      );
-
-    if (
-      character >= 0xd800 &&
-      character <= 0xdbff
-    ) {
-      end -= 1;
-    }
-
-    return content.slice(0, end);
-  }
-
-  private errorMessage(
-    error: unknown,
-  ): string {
-    return error instanceof Error
-      ? error.message
-      : String(error);
-  }
 }
-

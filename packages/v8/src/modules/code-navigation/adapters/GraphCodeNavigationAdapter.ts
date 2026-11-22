@@ -3,12 +3,19 @@ import type {
   RepoGraphFileNode,
   RepoGraphSymbolNode,
 } from "../../repository-state";
+import {
+  CODE_NAVIGATION_OPERATIONS,
+} from "../constants";
 import { CODE_NAVIGATION_POLICY } from "../policy";
 import type {
+  CodeNavigationCallOptions,
+  CodeNavigationCapability,
+  CodeNavigationDocumentQuery,
   CodeNavigationHover,
   CodeNavigationLocation,
   CodeNavigationPort,
   CodeNavigationQuery,
+  CodeNavigationWorkspaceQuery,
 } from "../contracts";
 
 export interface GraphCodeNavigationAdapterOptions {
@@ -25,8 +32,18 @@ export class GraphCodeNavigationAdapter implements CodeNavigationPort {
     private readonly options: GraphCodeNavigationAdapterOptions,
   ) {}
 
+  public capability(): CodeNavigationCapability {
+    return {
+      status: "degraded",
+      provider: "repo_graph",
+      reason: "language_server_not_configured",
+      operations: CODE_NAVIGATION_OPERATIONS,
+    };
+  }
+
   public async definition(
     input: CodeNavigationQuery,
+    _options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
     const symbols = await this.resolveSymbols(input);
     return this.uniqueLocations(
@@ -34,8 +51,24 @@ export class GraphCodeNavigationAdapter implements CodeNavigationPort {
     );
   }
 
+  public async typeDefinition(
+    input: CodeNavigationQuery,
+    _options?: CodeNavigationCallOptions,
+  ): Promise<readonly CodeNavigationLocation[]> {
+    // Graph has no typed-expression edges. Only return type-like symbols at the
+    // caret; otherwise empty so callers prefer a language-service port.
+    const symbols = await this.resolveSymbols(input);
+    const typed = symbols.filter((symbol) =>
+      isTypeLikeSymbolKind(symbol.node.symbolKind),
+    );
+    return this.uniqueLocations(
+      typed.map((symbol) => this.toLocation(symbol.file, symbol.node)),
+    );
+  }
+
   public async references(
     input: CodeNavigationQuery,
+    _options?: CodeNavigationCallOptions,
   ): Promise<readonly CodeNavigationLocation[]> {
     const graphs = await this.options.loadGraphs();
     const symbols = await this.resolveSymbols(input, graphs);
@@ -77,6 +110,7 @@ export class GraphCodeNavigationAdapter implements CodeNavigationPort {
 
   public async hover(
     input: CodeNavigationQuery,
+    _options?: CodeNavigationCallOptions,
   ): Promise<CodeNavigationHover | undefined> {
     const [symbol] = await this.resolveSymbols(input);
     if (!symbol) return undefined;
@@ -85,6 +119,113 @@ export class GraphCodeNavigationAdapter implements CodeNavigationPort {
       ? signature
       : `${symbol.node.symbolKind} ${symbol.node.name}`;
     return { contents };
+  }
+
+  public async documentSymbols(
+    input: CodeNavigationDocumentQuery,
+    _options?: CodeNavigationCallOptions,
+  ): Promise<readonly CodeNavigationLocation[]> {
+    const graphs = await this.options.loadGraphs();
+    const normalizedPath = normalizeRelativePath(input.relativePath);
+    const locations: CodeNavigationLocation[] = [];
+    for (const graph of graphs) {
+      const files = fileIndex(graph);
+      for (const node of graph.nodes) {
+        if (node.kind !== "symbol") continue;
+        const file = files.get(node.fileId);
+        if (!file) continue;
+        if (normalizeRelativePath(file.relativePath) !== normalizedPath) continue;
+        locations.push(this.toLocation(file, node));
+      }
+    }
+    return this.uniqueLocations(locations);
+  }
+
+  public async workspaceSymbols(
+    input: CodeNavigationWorkspaceQuery,
+    _options?: CodeNavigationCallOptions,
+  ): Promise<readonly CodeNavigationLocation[]> {
+    const graphs = await this.options.loadGraphs();
+    const needle = input.query.trim().toLowerCase();
+    const locations: CodeNavigationLocation[] = [];
+    for (const graph of graphs) {
+      const files = fileIndex(graph);
+      for (const node of graph.nodes) {
+        if (node.kind !== "symbol") continue;
+        if (!node.name.toLowerCase().includes(needle)) continue;
+        const file = files.get(node.fileId);
+        if (!file) continue;
+        locations.push(this.toLocation(file, node));
+      }
+    }
+    return this.uniqueLocations(locations);
+  }
+
+  public async implementation(
+    input: CodeNavigationQuery,
+    _options?: CodeNavigationCallOptions,
+  ): Promise<readonly CodeNavigationLocation[]> {
+    const graphs = await this.options.loadGraphs();
+    const symbols = await this.resolveSymbols(input, graphs);
+    let frontier = new Set(symbols.map((symbol) => symbol.node.id));
+    const locations: CodeNavigationLocation[] = [];
+    const seen = new Set(frontier);
+
+    for (let hop = 0; hop < CODE_NAVIGATION_POLICY.graphHopDepth && frontier.size > 0; hop += 1) {
+      const next = new Set<string>();
+      for (const graph of graphs) {
+        const files = fileIndex(graph);
+        const nodes = symbolIndex(graph);
+        for (const edge of graph.edges) {
+          if (edge.type !== "implements" && edge.type !== "extends") continue;
+          if (!frontier.has(edge.toNodeId) || seen.has(edge.fromNodeId)) continue;
+          const related = nodes.get(edge.fromNodeId);
+          const file = related ? files.get(related.fileId) : undefined;
+          if (!related || !file) continue;
+          seen.add(edge.fromNodeId);
+          next.add(edge.fromNodeId);
+          locations.push(this.toLocation(file, related));
+        }
+      }
+      frontier = next;
+    }
+
+    return this.uniqueLocations(locations);
+  }
+
+  public async callHierarchy(
+    input: CodeNavigationQuery,
+    _options?: CodeNavigationCallOptions,
+  ): Promise<readonly CodeNavigationLocation[]> {
+    const graphs = await this.options.loadGraphs();
+    const symbols = await this.resolveSymbols(input, graphs);
+    const direction = input.direction ?? "outgoing";
+    let frontier = new Set(symbols.map((symbol) => symbol.node.id));
+    const locations: CodeNavigationLocation[] = [];
+    const seen = new Set<string>();
+
+    for (let hop = 0; hop < CODE_NAVIGATION_POLICY.graphHopDepth && frontier.size > 0; hop += 1) {
+      const next = new Set<string>();
+      for (const graph of graphs) {
+        const files = fileIndex(graph);
+        const nodes = symbolIndex(graph);
+        for (const edge of graph.edges) {
+          if (edge.type !== "calls") continue;
+          const fromId = direction === "outgoing" ? edge.fromNodeId : edge.toNodeId;
+          const toId = direction === "outgoing" ? edge.toNodeId : edge.fromNodeId;
+          if (!frontier.has(fromId) || seen.has(toId)) continue;
+          const related = nodes.get(toId);
+          const file = related ? files.get(related.fileId) : undefined;
+          if (!related || !file) continue;
+          seen.add(toId);
+          next.add(toId);
+          locations.push(this.toLocation(file, related));
+        }
+      }
+      frontier = next;
+    }
+
+    return this.uniqueLocations(locations);
   }
 
   private async resolveSymbols(
@@ -141,9 +282,21 @@ export class GraphCodeNavigationAdapter implements CodeNavigationPort {
         coversLine(match.node, input.line),
     );
     if (positional.length > 0) {
-      positional.sort(
-        (left, right) => span(left.node) - span(right.node),
-      );
+      const column = input.column ?? 1;
+      positional.sort((left, right) => {
+        // Prefer symbols whose declaration starts on the caret line (name site).
+        const leftOnLine = left.node.startLine === input.line ? 0 : 1;
+        const rightOnLine = right.node.startLine === input.line ? 0 : 1;
+        if (leftOnLine !== rightOnLine) return leftOnLine - rightOnLine;
+        // Tighter span wins; with an explicit column, prefer smaller bodies.
+        const spanDelta = span(left.node) - span(right.node);
+        if (spanDelta !== 0) return spanDelta;
+        if (column > 1) {
+          // Without symbol columns on the graph, break ties by declaration order.
+          return (left.node.startLine ?? 0) - (right.node.startLine ?? 0);
+        }
+        return 0;
+      });
       return [positional[0]!];
     }
     return matches;
@@ -185,63 +338,6 @@ export class GraphCodeNavigationAdapter implements CodeNavigationPort {
   }
 }
 
-export class FallbackCodeNavigationAdapter implements CodeNavigationPort {
-  public readonly id = "fallback-code-navigation";
-  public readonly provider: "language_server" | "repo_graph";
-
-  constructor(
-    private readonly options: {
-      primary: CodeNavigationPort;
-      fallback: CodeNavigationPort;
-    },
-  ) {
-    this.provider = options.primary.provider;
-  }
-
-  public async definition(
-    input: CodeNavigationQuery,
-  ): Promise<readonly CodeNavigationLocation[]> {
-    return this.firstNonEmpty(
-      () => this.options.primary.definition(input),
-      () => this.options.fallback.definition(input),
-    );
-  }
-
-  public async references(
-    input: CodeNavigationQuery,
-  ): Promise<readonly CodeNavigationLocation[]> {
-    return this.firstNonEmpty(
-      () => this.options.primary.references(input),
-      () => this.options.fallback.references(input),
-    );
-  }
-
-  public async hover(
-    input: CodeNavigationQuery,
-  ): Promise<CodeNavigationHover | undefined> {
-    try {
-      const hover = await this.options.primary.hover?.(input);
-      if (hover) return hover;
-    } catch {
-      // Fall through to graph hover.
-    }
-    return this.options.fallback.hover?.(input);
-  }
-
-  private async firstNonEmpty(
-    primary: () => Promise<readonly CodeNavigationLocation[]>,
-    fallback: () => Promise<readonly CodeNavigationLocation[]>,
-  ): Promise<readonly CodeNavigationLocation[]> {
-    try {
-      const locations = await primary();
-      if (locations.length > 0) return locations;
-    } catch {
-      // Language servers can fail closed; graph remains available.
-    }
-    return fallback();
-  }
-}
-
 function fileIndex(
   graph: RepoGraph,
 ): Map<string, RepoGraphFileNode> {
@@ -273,6 +369,17 @@ function coversLine(
   if (!symbol.startLine) return false;
   const end = symbol.endLine ?? symbol.startLine;
   return line >= symbol.startLine && line <= end;
+}
+
+function isTypeLikeSymbolKind(kind: string): boolean {
+  const normalized = kind.toLowerCase();
+  return (
+    normalized.includes("class") ||
+    normalized.includes("interface") ||
+    normalized.includes("enum") ||
+    normalized.includes("type") ||
+    normalized.includes("struct")
+  );
 }
 
 function span(symbol: RepoGraphSymbolNode): number {

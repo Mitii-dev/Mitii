@@ -23,6 +23,8 @@ import { planStrategyDecisionSchema } from "../output/PlanStrategyDecision";
  * Engine maps Request Understanding into this slice so Planning never owns
  * classification internals.
  */
+export const planningTaskSizeSchema = z.enum(["small", "medium", "large"]);
+
 export const planningTaskEvidenceSchema = z
   .object({
     primaryIntent: z.string().min(1),
@@ -32,6 +34,11 @@ export const planningTaskEvidenceSchema = z
     complexity: z.string().min(1),
     risk: planStepRiskLevelSchema,
     clarity: z.string().min(1),
+    /**
+     * Officer / task-analyzer size band. Medium forces bounded discovery
+     * (discover_and_plan) unless repair diagnostics drive follow_evidence.
+     */
+    taskSize: planningTaskSizeSchema.optional(),
     targets: z
       .array(
         z
@@ -103,6 +110,8 @@ export const planningImpactReportSchema = z
   .object({
     seedPath: z.string().min(1).max(1_000),
     mustRead: z.array(z.string().min(1).max(500)).max(8).default([]),
+    /** Hop-1 production dependents likely to need coordinated edits. */
+    likelyModify: z.array(z.string().min(1).max(500)).max(8).default([]),
     affected: z.array(z.string().min(1).max(500)).max(8).default([]),
   })
   .strict();

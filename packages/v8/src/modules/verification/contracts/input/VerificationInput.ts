@@ -48,6 +48,17 @@ export const verificationInputSchema = z
       .default("ready"),
     /** Window-derived cap on how many checks run this pass. */
     maxChecks: z.number().int().positive().optional(),
+    /**
+     * When true, skip package-local narrowing so proportional selection keeps
+     * sibling-package checks. Hosts set this when change-impact reports unsafe
+     * graph confidence or critical blast radius.
+     */
+    widenScope: z.boolean().optional(),
+    /**
+     * Extra workspace-relative paths from change-impact (or similar). Unioned
+     * into package-touch filtering alongside changedFiles.
+     */
+    impactAffectedFiles: z.array(z.string().min(1)).max(500).optional(),
   })
   .strict();
 

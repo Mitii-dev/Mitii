@@ -1,12 +1,57 @@
 # Changelog
 
+## [2.9.67] - 2026-09-27
+
+### Added
+- Git working tree pane: unified AI job runner for commit message, changelog, release notes, PR summary, and code review generation, with a single active-job state and a Stop button (new `IconStop`) to abort in-flight generation.
+- Right-click context menu on working tree files for running AI jobs against a selected set of paths.
+- "More" overflow menu in the working tree pane toolbar for secondary actions.
+- `gitStash` engine API (`git stash push` with pathspec, optional `--include-untracked`, and optional stash message) with path and message sanitization.
+- `POST /v1/git/stash` engine server endpoint (auth-protected) and `gitStashFiles` renderer API client.
+- `changelogMerge` utility (`mergeChangelogSection`, `unwrapRecipeAnswer`) to merge generated Keep a Changelog sections into an existing `CHANGELOG.md`, plus unit tests (`changelogMerge.spec.ts`).
+- Upsert behavior for generated markdown: saves to an existing workspace file or creates it (including parent path) when missing.
+
+### Changed
+- Working tree pane now merges untracked files into the "Changes" group (separate "Untracked" group removed) and sorts the combined list by path.
+- Replaced separate `genBusy`/`reviewBusy` states with a single `activeJob` state and `AbortController`-based cancellation across all AI jobs.
+- Recipe prompts now accept an optional note that is prepended when not already present in the compiled prompt.
+
+### Fixed
+- Stash message input is validated via `assertSafeGitArg` to prevent shell/argument injection through the stash label.
+
+## [2.9.67] - 2025-01-15
+
+### Added
+- **Git: stash selected files** — New `gitStash` engine API (`git stash push` with optional `--include-untracked` and message) exposed via `POST /v1/git/stash`, with path sanitization and stash-message argument safety checks; renderer client `gitStashFiles` and a "Stash" action in the Git working-tree pane.
+- **Changelog generation with merge** — New `changelogMerge` module (`mergeChangelogSection`, `unwrapRecipeAnswer`) that merges a generated Keep a Changelog section into `CHANGELOG.md` (upserting the file if missing), plus unit tests (`changelogMerge.spec.ts`).
+- **Unified SCM job runner with Stop** — Commit message, changelog, release notes, PR summary, and code review now share a single job state with an abortable stream (`AbortController`) and a new Stop button (`IconStop`) to cancel in-flight generation.
+- **File context menu** — Right-click context menu on working-tree files for multi-file actions, with click-outside and Escape dismissal.
+
+### Changed
+- **Git pane: merged "Untracked" into "Changes"** — Staged and Changes groups now cover all dirty and untracked files (sorted), simplifying selection and per-file actions; untracked files are detected per-path for stash behavior.
+- **Changelog output saved to workspace** — Generated changelog sections are written back to `CHANGELOG.md` (create-or-update) instead of only being displayed.
+
+### Fixed
+- Recipe answer unwrapping (fenced-code-block stripping) centralized in `changelogMerge` to avoid duplicated, inconsistent parsing in the Git pane.
+
 ## [Unreleased]
 
 ### Added
+- **Mode profiles (`.mitii/modes.json`)** — Optional workspace overlays on Ask / Plan / Agent. Built-ins: `architect`, `code`, `ask`, `debug`. Custom profiles support role text, `toolGroups`, and `mutationRelativePathRegex`. Set `active` to apply a profile on every run; omit `active` to leave the UI/CLI mode control in charge. Hosted in `@mitii/host` (`loadModeProfiles`, `compileModeProfile`, `mergeUserSafetyRules`); wired in VS Code and CLI start paths.
+- **Workspace safety (`.mitii/safety.json`)** — Tighten-only deny tools/commands, command allowlists, `protectedPathGlobs`, category `autoApprove` (`write` / `execute` / `mcp` / `network` / `external`), optional `approvalCeiling` and `mutationRelativePathRegex`. VS Code requires `mitii.safety.userRulesEnabled: true`. Defaults for protected paths via `withDefaultProtectedPaths` / `DEFAULT_PROTECTED_PATH_GLOBS`.
+- **Environment details in prompts** — Hosts inject optional `instructions.environment` (visible files, open tabs, terminals, mode reminder). Prompt Construction budgets the block with the system section. VS Code collects IDE state; CLI passes a mode reminder. SDK: `MitiiStartInput.environment`.
+- **ToolGrant approval UX metadata** — `approvalSkipCategories`, `protectedPathGlobs`, and `mutationRelativePathRegex` on grants; Tool Runtime skips approval by category, always asks on protected paths, and enforces mutation path regex on apply_patch / delete / move.
+- Scaffold note for `.mitii/modes.json` / `modes.json.example` and docs for modes, safety, and environment (configuration, safety, plan-act, prompt-construction, VS Code settings, recent improvements).
 - Hardened large-repository indexing with explicit scan/index/cancel phases, partial-index status, progress detail, and "degraded but usable" messaging in the VS Code UI and CLI.
 - Expanded first-run onboarding into Echo, local Ollama/OpenAI-compatible, optional cloud key, and safety/index steps with connection testing at each provider stage.
 - Promoted `propose_file_scope` to the default Act contract in prompts so file reads and edits are scoped before model tool use.
 - Polished async local jobs with worker leases, job show/retry/cancel commands, worker limits, JSON worker events, and overnight-worker documentation.
+
+### Changed
+- `UserSafetyRules` / SDK start input use the shared V8 safety schema (including auto-approve and protected paths) instead of a duplicated subset.
+- `IntersectUserSafetyRules` copies host UX fields onto the grant without widening tools or effects; `grantNeverWidens` ignores those metadata fields.
+- Child-run safety fragments include `protectedPathGlobs` for schema compatibility.
+- Public `@mitii/v8` exports extended for mode compilation (`MUTATION_TOOL_IDS`, `NETWORK_TOOL_IDS`, `OPT_IN_MUTATION_TOOL_IDS`, `GITHUB_MUTATION_TOOL_IDS`, `PROCESS_TOOL_IDS`, approval-skip helpers).
 
 ## [2.7.54] - 2026-07-15
 

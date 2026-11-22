@@ -74,6 +74,64 @@ describe('CLI parseCliArgs', () => {
     expect(parsed.forceEcho).toBe(true);
   });
 
+  it('parses --prompt on ask / plan / agent mode verbs', () => {
+    const ask = parseCliArgs([
+      'node',
+      'mitii',
+      'ask',
+      '--prompt',
+      'What is recursion?',
+      '--echo',
+    ]);
+    expect(ask.command).toBe('ask');
+    expect(ask.prompt).toBe('What is recursion?');
+
+    const plan = parseCliArgs([
+      'node',
+      'mitii',
+      'plan',
+      '--prompt',
+      'Outline the auth flow',
+      '--cwd',
+      '/tmp/ws',
+    ]);
+    expect(plan.command).toBe('plan');
+    expect(plan.mode).toBe('plan');
+    expect(plan.prompt).toBe('Outline the auth flow');
+    expect(plan.cwd).toBe('/tmp/ws');
+
+    const agent = parseCliArgs([
+      'node',
+      'mitii',
+      'agent',
+      '--prompt',
+      'Add a healthcheck route',
+      '--autonomy',
+      'apply',
+      '--origin',
+      'automation',
+    ]);
+    expect(agent.command).toBe('agent');
+    expect(agent.mode).toBe('agent');
+    expect(agent.prompt).toBe('Add a healthcheck route');
+    expect(agent.autonomyPreset).toBe('apply');
+    expect(agent.origin).toBe('automation');
+  });
+
+  it('keeps positional prompt and allows --mode override on agent', () => {
+    const parsed = parseCliArgs([
+      'node',
+      'mitii',
+      'agent',
+      'fix the tests',
+      '--mode',
+      'ask',
+    ]);
+    expect(parsed.command).toBe('agent');
+    expect(parsed.prompt).toBe('fix the tests');
+    expect(parsed.mode).toBe('ask');
+  });
+
   it('parses --stream-json on ask', () => {
     const parsed = parseCliArgs([
       'node',
@@ -114,6 +172,51 @@ describe('CLI parseCliArgs', () => {
     expect(parsed.command).toBe('unknown');
     expect(parsed.unknownCommand).toBe('board');
   });
+
+  it('parses --json after history/mcp/memory subcommands', () => {
+    const history = parseCliArgs([
+      'node',
+      'mitii',
+      'history',
+      'list',
+      '--json',
+    ]);
+    expect(history.command).toBe('history');
+    expect(history.json).toBe(true);
+    expect(history.rest).toEqual(['list']);
+
+    const mcp = parseCliArgs(['node', 'mitii', 'mcp', 'list', '--json']);
+    expect(mcp.command).toBe('mcp');
+    expect(mcp.json).toBe(true);
+    expect(mcp.rest).toEqual(['list']);
+
+    const memory = parseCliArgs([
+      'node',
+      'mitii',
+      'memory',
+      'pending',
+      '--json',
+    ]);
+    expect(memory.command).toBe('memory');
+    expect(memory.json).toBe(true);
+    expect(memory.rest).toEqual(['pending']);
+  });
+
+  it('parses --cwd after passthrough subcommands without treating path as positional', () => {
+    const mcp = parseCliArgs([
+      'node',
+      'mitii',
+      'mcp',
+      'list',
+      '--cwd',
+      '/tmp/ws',
+      '--json',
+    ]);
+    expect(mcp.command).toBe('mcp');
+    expect(mcp.cwd).toBe('/tmp/ws');
+    expect(mcp.json).toBe(true);
+    expect(mcp.rest).toEqual(['list']);
+  });
 });
 
 describe('CLI banner', () => {
@@ -150,7 +253,32 @@ describe('CLI setup', () => {
       ) as Record<string, unknown>;
       expect(raw.provider).toBe('openai-compatible');
       expect(raw.providerPreset).toBe('ollama');
-      expect(raw.model).toBeTruthy();
+      // The ollama preset has no default model (picked after listing models),
+      // so config must omit `model` rather than persist an empty string.
+      expect('model' in raw).toBe(false);
+      expect(raw.apiKey).toBeUndefined();
+      expect(io.stdout).toMatch(/Wrote /);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('writes the preset default model with --yes when the preset has one', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mitii-setup-model-'));
+    try {
+      const io = memoryIo();
+      const code = await runSetup({
+        cwd: dir,
+        provider: 'openai',
+        yes: true,
+        io,
+      });
+      expect(code).toBe(0);
+      const raw = JSON.parse(
+        readFileSync(join(dir, '.mitii', 'config.json'), 'utf8'),
+      ) as Record<string, unknown>;
+      expect(raw.providerPreset).toBe('openai');
+      expect(raw.model).toBe('gpt-4o-mini');
       expect(raw.apiKey).toBeUndefined();
       expect(io.stdout).toMatch(/Wrote /);
     } finally {
@@ -184,7 +312,7 @@ describe('CLI setup', () => {
 
 describe('CLI resolveCliPorts', () => {
   it('defaults to echo without API keys', () => {
-    const ports = resolveCliPorts({ env: {} });
+    const ports = resolveCliPorts({ env: {}, config: {} });
     expect(ports.providerLabel).toBe('echo');
   });
 
@@ -199,6 +327,7 @@ describe('CLI resolveCliPorts', () => {
   it('selects anthropic when ANTHROPIC_API_KEY is set', () => {
     const ports = resolveCliPorts({
       env: { ANTHROPIC_API_KEY: 'sk-ant-test' },
+      config: {},
     });
     expect(ports.providerLabel).toBe('anthropic:claude-sonnet-4-5');
   });

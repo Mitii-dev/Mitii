@@ -1,6 +1,13 @@
 import { findLocalModelPreset } from './modelPresets.js';
 import { TOKEN_BUDGET_FIELDS } from './tokenBudgetSettings.js';
 import { LOOP_POLICY_FIELDS } from './loopPolicySettings.js';
+import {
+  DEFAULT_CONTEXT_WINDOW,
+  clampMaximumOutputTokensToContext,
+  inferContextWindowFromModelId,
+  inferMaximumOutputTokensFromModelId,
+  resolveEffectiveContextWindow as resolveHostEffectiveContextWindow,
+} from '@mitii/host';
 import type {
   ContextToggles,
   ModeDefaultSettingsSnapshot,
@@ -10,39 +17,20 @@ import type {
   UiSettingsPatch,
   UiSettingsSnapshot,
 } from './protocol.js';
+import { SETTINGS_FIELDS_CORE } from './settingsCatalog.js';
+import type { SettingsFieldSpec } from './settingsFieldSpec.js';
 
-export const DEFAULT_CONTEXT_WINDOW = 32_768;
-
-/** Provider-type fallbacks when settings.contextWindow is 0 and no model preset matches. */
-export const PROVIDER_CONTEXT_WINDOW_FALLBACKS: Readonly<
-  Record<string, number>
-> = {
-  anthropic: 200_000,
-  gemini: 1_048_576,
-  openai: 128_000,
+export type { SettingsFieldSpec, SettingsPage } from './settingsFieldSpec.js';
+export {
+  DEFAULT_CONTEXT_WINDOW,
+  clampMaximumOutputTokensToContext,
+  inferContextWindowFromModelId,
+  inferMaximumOutputTokensFromModelId,
 };
 
-export function inferContextWindowFromModelId(model: string): number | undefined {
-  const id = model.trim().toLowerCase();
-  if (!id) return undefined;
-  if (id.includes('claude')) return 200_000;
-  if (id.includes('gemini')) return 1_048_576;
-  if (
-    id.startsWith('gpt-') ||
-    id.startsWith('o1') ||
-    id.startsWith('o3') ||
-    id.startsWith('o4') ||
-    id.includes('gpt-4')
-  ) {
-    return 128_000;
-  }
-  if (id.includes('deepseek')) return 128_000;
-  return undefined;
-}
-
 /**
- * Effective context window: **settings value wins** when positive.
- * Only when stored is 0 (auto) do we fall back to model preset → provider → default.
+ * Effective context window: settings value wins when positive.
+ * Auto (0) uses VS Code local model presets, then shared host inference.
  */
 export function resolveEffectiveContextWindow(
   stored: number,
@@ -52,14 +40,9 @@ export function resolveEffectiveContextWindow(
   if (stored > 0) return Math.floor(stored);
   const preset = findLocalModelPreset(model)?.contextWindow;
   if (typeof preset === 'number' && preset > 0) return preset;
-  const fromModel = inferContextWindowFromModelId(model);
-  if (fromModel) return fromModel;
-  const typeKey = (providerType ?? '').trim().toLowerCase();
-  if (typeKey && PROVIDER_CONTEXT_WINDOW_FALLBACKS[typeKey]) {
-    return PROVIDER_CONTEXT_WINDOW_FALLBACKS[typeKey]!;
-  }
-  return DEFAULT_CONTEXT_WINDOW;
+  return resolveHostEffectiveContextWindow(0, model, providerType);
 }
+
 export const SETTINGS_NAV_COMPACT_MAX_WIDTH = 440;
 
 export const SETTINGS_NAV_ITEMS: readonly {
@@ -110,30 +93,6 @@ export function tokenLimitDraftAfterHostEcho(options: {
     contextWindow: options.storedContextWindow,
     maximumOutputTokens: options.storedMaxOutput,
   };
-}
-
-export type SettingsPage =
-  | 'provider'
-  | 'autocomplete'
-  | 'workspace'
-  | 'modes'
-  | 'context'
-  | 'features'
-  | 'mcp'
-  | 'developer';
-
-export interface SettingsFieldSpec {
-  id: string;
-  page: SettingsPage;
-  tab: SettingsTab;
-  setting: string;
-  label: string;
-  kind: 'string' | 'int' | 'number' | 'boolean' | 'enum';
-  /** Value the settings UI must show after save (raw stored value). */
-  reflect: 'raw' | 'effective';
-  sample: unknown;
-  min?: number;
-  max?: number;
 }
 
 export function parseNumberFieldDraft(
@@ -297,6 +256,22 @@ export function applyUiPatch(
           fields: base.loopPolicy.fields,
         }
       : base.loopPolicy,
+    v8LoopPolicy: patch.v8LoopPolicy
+      ? {
+          ...base.v8LoopPolicy,
+          ...patch.v8LoopPolicy,
+          thresholds: {
+            ...base.v8LoopPolicy.thresholds,
+            ...(patch.v8LoopPolicy.thresholds ?? {}),
+          },
+          bandThresholds: {
+            ...base.v8LoopPolicy.bandThresholds,
+            ...(patch.v8LoopPolicy.bandThresholds ?? {}),
+          },
+          band: patch.v8LoopPolicy.band ?? base.v8LoopPolicy.band,
+          fields: base.v8LoopPolicy.fields,
+        }
+      : base.v8LoopPolicy,
     policyLab: patch.policyLab
       ? {
           ...base.policyLab,
@@ -485,579 +460,9 @@ export const DEFAULT_MODE_DEFAULTS: Record<
   },
 };
 
+
 export const SETTINGS_FIELDS: readonly SettingsFieldSpec[] = [
-  {
-    id: 'provider.type',
-    page: 'provider',
-    tab: 'model',
-    setting: 'provider.type',
-    label: 'Provider adapter',
-    kind: 'enum',
-    reflect: 'raw',
-    sample: 'openai-compatible',
-  },
-  {
-    id: 'provider.preset',
-    page: 'provider',
-    tab: 'model',
-    setting: 'provider.preset',
-    label: 'Provider',
-    kind: 'enum',
-    reflect: 'raw',
-    sample: 'ollama',
-  },
-  {
-    id: 'provider.baseUrl',
-    page: 'provider',
-    tab: 'model',
-    setting: 'provider.baseUrl',
-    label: 'Base URL',
-    kind: 'string',
-    reflect: 'raw',
-    sample: 'http://localhost:11434/v1',
-  },
-  {
-    id: 'provider.model',
-    page: 'provider',
-    tab: 'model',
-    setting: 'provider.model',
-    label: 'Model',
-    kind: 'string',
-    reflect: 'raw',
-    sample: 'qwen3-coder:30b',
-  },
-  {
-    id: 'provider.contextWindow',
-    page: 'provider',
-    tab: 'model',
-    setting: 'provider.contextWindow',
-    label: 'Context window',
-    kind: 'int',
-    reflect: 'raw',
-    sample: 8192,
-    min: 0,
-  },
-  {
-    id: 'provider.maximumOutputTokens',
-    page: 'provider',
-    tab: 'model',
-    setting: 'provider.maximumOutputTokens',
-    label: 'Max output',
-    kind: 'int',
-    reflect: 'raw',
-    sample: 2048,
-    min: 0,
-  },
-  {
-    id: 'autocomplete.enabled',
-    page: 'autocomplete',
-    tab: 'autocomplete',
-    setting: 'autocomplete.enabled',
-    label: 'Autocomplete',
-    kind: 'boolean',
-    reflect: 'raw',
-    sample: true,
-  },
-  {
-    id: 'autocomplete.baseUrl',
-    page: 'autocomplete',
-    tab: 'autocomplete',
-    setting: 'autocomplete.baseUrl',
-    label: 'Base URL',
-    kind: 'string',
-    reflect: 'raw',
-    sample: 'http://localhost:11434/v1',
-  },
-  {
-    id: 'autocomplete.model',
-    page: 'autocomplete',
-    tab: 'autocomplete',
-    setting: 'autocomplete.model',
-    label: 'Model',
-    kind: 'string',
-    reflect: 'raw',
-    sample: 'fim-model',
-  },
-  {
-    id: 'autocomplete.endpointPath',
-    page: 'autocomplete',
-    tab: 'autocomplete',
-    setting: 'autocomplete.endpointPath',
-    label: 'Endpoint path',
-    kind: 'string',
-    reflect: 'raw',
-    sample: 'completions',
-  },
-  {
-    id: 'autocomplete.authHeader',
-    page: 'autocomplete',
-    tab: 'autocomplete',
-    setting: 'autocomplete.authHeader',
-    label: 'Auth header',
-    kind: 'enum',
-    reflect: 'raw',
-    sample: 'authorization',
-  },
-  {
-    id: 'autocomplete.maxTokens',
-    page: 'autocomplete',
-    tab: 'autocomplete',
-    setting: 'autocomplete.maxTokens',
-    label: 'Max tokens',
-    kind: 'int',
-    reflect: 'raw',
-    sample: 96,
-    min: 1,
-    max: 512,
-  },
-  {
-    id: 'autocomplete.debounceMs',
-    page: 'autocomplete',
-    tab: 'autocomplete',
-    setting: 'autocomplete.debounceMs',
-    label: 'Debounce',
-    kind: 'int',
-    reflect: 'raw',
-    sample: 250,
-    min: 0,
-    max: 2000,
-  },
-  {
-    id: 'autocomplete.timeoutMs',
-    page: 'autocomplete',
-    tab: 'autocomplete',
-    setting: 'autocomplete.timeoutMs',
-    label: 'Timeout',
-    kind: 'int',
-    reflect: 'raw',
-    sample: 4000,
-    min: 250,
-    max: 30000,
-  },
-  {
-    id: 'autocomplete.prefixChars',
-    page: 'autocomplete',
-    tab: 'autocomplete',
-    setting: 'autocomplete.prefixChars',
-    label: 'Prefix chars',
-    kind: 'int',
-    reflect: 'raw',
-    sample: 6000,
-    min: 128,
-    max: 60000,
-  },
-  {
-    id: 'autocomplete.suffixChars',
-    page: 'autocomplete',
-    tab: 'autocomplete',
-    setting: 'autocomplete.suffixChars',
-    label: 'Suffix chars',
-    kind: 'int',
-    reflect: 'raw',
-    sample: 2000,
-    min: 0,
-    max: 60000,
-  },
-  {
-    id: 'autocomplete.temperature',
-    page: 'autocomplete',
-    tab: 'autocomplete',
-    setting: 'autocomplete.temperature',
-    label: 'Temperature',
-    kind: 'number',
-    reflect: 'raw',
-    sample: 0.2,
-    min: 0,
-    max: 2,
-  },
-  {
-    id: 'workspace.rootPathOverride',
-    page: 'workspace',
-    tab: 'workspace',
-    setting: 'workspace.rootPathOverride',
-    label: 'Root path override',
-    kind: 'string',
-    reflect: 'raw',
-    sample: '/tmp/mitii-workspace',
-  },
-  {
-    id: 'workspace.maximumIndexFiles',
-    page: 'workspace',
-    tab: 'workspace',
-    setting: 'workspace.maximumIndexFiles',
-    label: 'Maximum index files',
-    kind: 'int',
-    reflect: 'raw',
-    sample: 30000,
-    min: 0,
-    max: 240000,
-  },
-  {
-    id: 'semanticIndex.source',
-    page: 'workspace',
-    tab: 'workspace',
-    setting: 'semanticIndex.source',
-    label: 'Embedding source',
-    kind: 'enum',
-    reflect: 'raw',
-    sample: 'disabled',
-  },
-  {
-    id: 'semanticIndex.backend',
-    page: 'workspace',
-    tab: 'workspace',
-    setting: 'semanticIndex.backend',
-    label: 'Embedding backend',
-    kind: 'enum',
-    reflect: 'raw',
-    sample: 'disabled',
-  },
-  {
-    id: 'semanticIndex.enabled',
-    page: 'workspace',
-    tab: 'workspace',
-    setting: 'semanticIndex.enabled',
-    label: 'Semantic indexing enabled',
-    kind: 'boolean',
-    reflect: 'raw',
-    sample: false,
-  },
-  {
-    id: 'ui.modeDefaults.ask.thoroughness',
-    page: 'modes',
-    tab: 'modes',
-    setting: 'ui.modeDefaults.ask.thoroughness',
-    label: 'Ask thoroughness',
-    kind: 'enum',
-    reflect: 'raw',
-    sample: 'medium',
-  },
-  {
-    id: 'ui.modeDefaults.plan.thoroughness',
-    page: 'modes',
-    tab: 'modes',
-    setting: 'ui.modeDefaults.plan.thoroughness',
-    label: 'Plan thoroughness',
-    kind: 'enum',
-    reflect: 'raw',
-    sample: 'high',
-  },
-  {
-    id: 'ui.modeDefaults.agent.thoroughness',
-    page: 'modes',
-    tab: 'modes',
-    setting: 'ui.modeDefaults.agent.thoroughness',
-    label: 'Agent thoroughness',
-    kind: 'enum',
-    reflect: 'raw',
-    sample: 'medium',
-  },
-  {
-    id: 'ui.modeDefaults.ask.approvalMode',
-    page: 'modes',
-    tab: 'modes',
-    setting: 'ui.modeDefaults.ask.approvalMode',
-    label: 'Ask approval',
-    kind: 'enum',
-    reflect: 'raw',
-    sample: 'safe',
-  },
-  {
-    id: 'ui.modeDefaults.plan.approvalMode',
-    page: 'modes',
-    tab: 'modes',
-    setting: 'ui.modeDefaults.plan.approvalMode',
-    label: 'Plan approval',
-    kind: 'enum',
-    reflect: 'raw',
-    sample: 'guided',
-  },
-  {
-    id: 'ui.modeDefaults.agent.approvalMode',
-    page: 'modes',
-    tab: 'modes',
-    setting: 'ui.modeDefaults.agent.approvalMode',
-    label: 'Agent approval',
-    kind: 'enum',
-    reflect: 'raw',
-    sample: 'pilot',
-  },
-  {
-    id: 'ui.modeDefaults.ask.model',
-    page: 'modes',
-    tab: 'modes',
-    setting: 'ui.modeDefaults.ask.model',
-    label: 'Ask model',
-    kind: 'string',
-    reflect: 'raw',
-    sample: 'qwen3.5:9b',
-  },
-  {
-    id: 'ui.modeDefaults.plan.model',
-    page: 'modes',
-    tab: 'modes',
-    setting: 'ui.modeDefaults.plan.model',
-    label: 'Plan model',
-    kind: 'string',
-    reflect: 'raw',
-    sample: 'qwen3-coder:30b',
-  },
-  {
-    id: 'ui.modeDefaults.agent.model',
-    page: 'modes',
-    tab: 'modes',
-    setting: 'ui.modeDefaults.agent.model',
-    label: 'Agent model',
-    kind: 'string',
-    reflect: 'raw',
-    sample: 'qwen3.5:latest',
-  },
-  {
-    id: 'developer.intensityOverrides',
-    page: 'developer',
-    tab: 'debug',
-    setting: 'developer.intensityOverrides',
-    label: 'Intensity overrides',
-    kind: 'boolean',
-    reflect: 'raw',
-    sample: true,
-  },
-  {
-    id: 'ui.effort',
-    page: 'developer',
-    tab: 'debug',
-    setting: 'ui.effort',
-    label: 'Working set (override)',
-    kind: 'enum',
-    reflect: 'raw',
-    sample: 'high',
-  },
-  {
-    id: 'ui.modeDefaults.ask.depth',
-    page: 'developer',
-    tab: 'debug',
-    setting: 'ui.modeDefaults.ask.depth',
-    label: 'Ask depth (override)',
-    kind: 'enum',
-    reflect: 'raw',
-    sample: 'quick',
-  },
-  {
-    id: 'ui.modeDefaults.plan.depth',
-    page: 'developer',
-    tab: 'debug',
-    setting: 'ui.modeDefaults.plan.depth',
-    label: 'Plan depth (override)',
-    kind: 'enum',
-    reflect: 'raw',
-    sample: 'deep',
-  },
-  {
-    id: 'ui.modeDefaults.agent.depth',
-    page: 'developer',
-    tab: 'debug',
-    setting: 'ui.modeDefaults.agent.depth',
-    label: 'Agent depth (override)',
-    kind: 'enum',
-    reflect: 'raw',
-    sample: 'auto',
-  },
-  {
-    id: 'ui.showReasoning',
-    page: 'modes',
-    tab: 'modes',
-    setting: 'ui.showReasoning',
-    label: 'Show reasoning stream',
-    kind: 'boolean',
-    reflect: 'raw',
-    sample: false,
-  },
-  {
-    id: 'ui.features.codeReviewButton',
-    page: 'features',
-    tab: 'features',
-    setting: 'ui.features.codeReviewButton',
-    label: 'Show Code Review button',
-    kind: 'boolean',
-    reflect: 'raw',
-    sample: true,
-  },
-  {
-    id: 'ui.reasoningPreviewMaxChars',
-    page: 'modes',
-    tab: 'modes',
-    setting: 'ui.reasoningPreviewMaxChars',
-    label: 'Reasoning preview chars',
-    kind: 'int',
-    reflect: 'raw',
-    sample: 4000,
-    min: 500,
-    max: 50_000,
-  },
-  {
-    id: 'runBudget.unlimited',
-    page: 'modes',
-    tab: 'modes',
-    setting: 'runBudget.unlimited',
-    label: 'Unlimited run budget',
-    kind: 'boolean',
-    reflect: 'raw',
-    sample: true,
-  },
-  {
-    id: 'runBudget.maxModelCalls',
-    page: 'modes',
-    tab: 'modes',
-    setting: 'runBudget.maxModelCalls',
-    label: 'Model calls',
-    kind: 'int',
-    reflect: 'raw',
-    sample: 12,
-    min: 1,
-  },
-  {
-    id: 'runBudget.maxToolCalls',
-    page: 'modes',
-    tab: 'modes',
-    setting: 'runBudget.maxToolCalls',
-    label: 'Tool calls',
-    kind: 'int',
-    reflect: 'raw',
-    sample: 24,
-    min: 1,
-  },
-  {
-    id: 'runBudget.maxLoopIterations',
-    page: 'modes',
-    tab: 'modes',
-    setting: 'runBudget.maxLoopIterations',
-    label: 'Loop iterations',
-    kind: 'int',
-    reflect: 'raw',
-    sample: 40,
-    min: 1,
-  },
-  {
-    id: 'runBudget.maxWallTimeMinutes',
-    page: 'modes',
-    tab: 'modes',
-    setting: 'runBudget.maxWallTimeMinutes',
-    label: 'Wall time (min)',
-    kind: 'int',
-    reflect: 'raw',
-    sample: 15,
-    min: 1,
-  },
-  {
-    id: 'ui.contextToggles.repoMap',
-    page: 'context',
-    tab: 'context',
-    setting: 'ui.contextToggles.repoMap',
-    label: 'Repo map',
-    kind: 'boolean',
-    reflect: 'raw',
-    sample: false,
-  },
-  {
-    id: 'ui.contextToggles.diagnostics',
-    page: 'context',
-    tab: 'context',
-    setting: 'ui.contextToggles.diagnostics',
-    label: 'Diagnostics',
-    kind: 'boolean',
-    reflect: 'raw',
-    sample: false,
-  },
-  {
-    id: 'ui.contextToggles.gitDiff',
-    page: 'context',
-    tab: 'context',
-    setting: 'ui.contextToggles.gitDiff',
-    label: 'Git diff',
-    kind: 'boolean',
-    reflect: 'raw',
-    sample: false,
-  },
-  {
-    id: 'ui.contextToggles.editor',
-    page: 'context',
-    tab: 'context',
-    setting: 'ui.contextToggles.editor',
-    label: 'Active editor',
-    kind: 'boolean',
-    reflect: 'raw',
-    sample: false,
-  },
-  {
-    id: 'ui.contextToggles.openTabs',
-    page: 'context',
-    tab: 'context',
-    setting: 'ui.contextToggles.openTabs',
-    label: 'Open tabs',
-    kind: 'boolean',
-    reflect: 'raw',
-    sample: true,
-  },
-  {
-    id: 'ui.contextToggles.memory',
-    page: 'context',
-    tab: 'context',
-    setting: 'ui.contextToggles.memory',
-    label: 'Memory',
-    kind: 'boolean',
-    reflect: 'raw',
-    sample: false,
-  },
-  {
-    id: 'mcp.enabled',
-    page: 'mcp',
-    tab: 'integrations',
-    setting: 'mcp.enabled',
-    label: 'Enable MCP',
-    kind: 'boolean',
-    reflect: 'raw',
-    sample: true,
-  },
-  {
-    id: 'developer.enabled',
-    page: 'developer',
-    tab: 'debug',
-    setting: 'developer.enabled',
-    label: 'Enable developer settings',
-    kind: 'boolean',
-    reflect: 'raw',
-    sample: true,
-  },
-  {
-    id: 'debug',
-    page: 'developer',
-    tab: 'debug',
-    setting: 'debug',
-    label: 'Debug logging',
-    kind: 'boolean',
-    reflect: 'raw',
-    sample: true,
-  },
-  {
-    id: 'developer.modelIo',
-    page: 'developer',
-    tab: 'debug',
-    setting: 'developer.modelIo',
-    label: 'Log model I/O',
-    kind: 'boolean',
-    reflect: 'raw',
-    sample: true,
-  },
-  {
-    id: 'tokenBudget.enabled',
-    page: 'developer',
-    tab: 'debug',
-    setting: 'tokenBudget.enabled',
-    label: 'Custom token budget',
-    kind: 'boolean',
-    reflect: 'raw',
-    sample: true,
-  },
+  ...SETTINGS_FIELDS_CORE,
   ...TOKEN_BUDGET_FIELDS.filter((field) => !field.hiddenFromDebug).map(
     (field) =>
       ({

@@ -8,10 +8,12 @@ import type {
 } from "../contracts";
 import { DEFAULT_MAX_STEPS_PER_PHASE } from "../defaults";
 import { filterBuildEvidenceToAskScope } from "../internal/evidenceScope";
+import { PLANNING_WORKING_SET_POLICY } from "../policy";
 import {
   remapPathThroughScaffoldMapping,
   resolveScaffoldPackageMapping,
 } from "./remapScaffoldChangeSurfaces";
+import { normalizeRepoPathText } from "../../repository-state";
 
 /**
  * Apply a `discover_and_plan` model draft onto the deterministic discovery
@@ -59,8 +61,11 @@ function replacePhaseSteps(params: {
   }
   const fallbackRisk = params.phase.steps[0]?.riskLevel ?? "low";
   const fallbackTargets = params.phase.steps[0]?.targetRefs ?? [];
-  const steps: PlanStep[] = params.entries
-    .slice(0, DEFAULT_MAX_STEPS_PER_PHASE)
+  const limit = isChangeLikePhase(params.phase)
+    ? PLANNING_WORKING_SET_POLICY.maxBatchesOnPlan
+    : DEFAULT_MAX_STEPS_PER_PHASE;
+  const drafted: PlanStep[] = params.entries
+    .slice(0, limit)
     .map((entry, index) => ({
       id: `${params.phase.id}-draft-${index + 1}`.slice(0, 64),
       intent: entry.intent,
@@ -70,7 +75,16 @@ function replacePhaseSteps(params: {
       expectedOutcome: entry.expectedOutcome,
       riskLevel: fallbackRisk,
     }));
-  return { ...params.phase, steps };
+  const coveredTargets = new Set(
+    drafted.flatMap((step) => step.targetRefs.map(normalizePath)),
+  );
+  const backfill = params.phase.steps
+    .filter((step) => step.id.startsWith("step-change-surface-"))
+    .filter((step) =>
+      step.targetRefs.some((target) => !coveredTargets.has(normalizePath(target))),
+    )
+    .slice(0, Math.max(0, limit - drafted.length));
+  return { ...params.phase, steps: [...drafted, ...backfill].slice(0, limit) };
 }
 
 function groupByPhase(
@@ -102,17 +116,37 @@ function buildTargetAllowlist(input: PlanningParsedInput): string[] {
       query: input.query,
     })?.diagnostics ?? [];
   const mapping = resolveScaffoldMappingForInput(input);
-  const raw = [
+  const observed = [
     ...(input.scopedRepoMap?.entries.map((entry) => entry.path) ?? []),
     ...(input.discoveryBrief?.filesRead.map((file) => file.path) ?? []),
-    ...(input.discoveryBrief?.proposedChangeSurfaces.map((surface) => surface.path) ??
-      []),
-    ...(input.discoveryBrief?.targets.map((target) => target.value) ?? []),
+    ...(input.discoveryBrief?.proposedChangeSurfaces.map(
+      (surface) => surface.path,
+    ) ?? []),
     ...scopedDiagnostics.map((diagnostic) => diagnostic.path),
-    ...input.evidence.targets
-      .filter((target) => target.explicit)
-      .map((target) => target.value),
   ].map(normalizePath);
+
+  const discoveryNonThin =
+    (input.discoveryBrief?.filesRead.length ?? 0) >= 1 ||
+    (input.discoveryBrief?.proposedChangeSurfaces.length ?? 0) > 0;
+
+  // After real discovery reads/surfaces, prompt-extracted targets that were
+  // never observed must not stay on the write allowlist (e.g. Next `app/page.jsx`
+  // mentioned in a shared prompt while discovery only saw Vite `src/App.jsx`).
+  const promptTargets = discoveryNonThin
+    ? []
+    : [
+        ...(input.discoveryBrief?.targets.map((target) => target.value) ?? []),
+        ...input.evidence.targets
+          .filter((target) => target.explicit)
+          .map((target) => target.value),
+      ].map(normalizePath);
+
+  const raw = [
+    ...observed,
+    // Same-directory creates stay allowed under observed parents.
+    ...(discoveryNonThin ? observed.flatMap(parentDirectories) : []),
+    ...promptTargets,
+  ];
 
   // Clone/port asks: write allowlist is the TARGET package only. Template
   // filesRead stay as evidence in the prompt, not as writable targetRefs.
@@ -131,6 +165,19 @@ function buildTargetAllowlist(input: PlanningParsedInput): string[] {
   }
 
   return uniqueStrings(raw).filter((value) => value.length > 0);
+}
+
+/** Ancestor directories for an observed file path (`src/App.jsx` → `src`). */
+function parentDirectories(path: string): string[] {
+  const parts = path.split("/").filter((part) => part.length > 0);
+  if (parts.length <= 1) {
+    return [];
+  }
+  const parents: string[] = [];
+  for (let index = 1; index < parts.length; index += 1) {
+    parents.push(parts.slice(0, index).join("/"));
+  }
+  return parents;
 }
 
 function filterTargetRefs(
@@ -168,18 +215,16 @@ function phaseKind(phase: PlanPhase): DiscoveredPlanStep["phaseHint"] {
   return /verify|test|check/.test(normalized) ? "verify" : "change";
 }
 
+function isChangeLikePhase(phase: PlanPhase): boolean {
+  return phaseKind(phase) === "change";
+}
+
 function pathOverlaps(a: string, b: string): boolean {
   return a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
 }
 
 function normalizePath(value: string): string {
-  return value
-    .trim()
-    .replace(/^@+/, "")
-    .replace(/\\/g, "/")
-    .replace(/\/+/g, "/")
-    .replace(/^\.\//, "")
-    .replace(/\/+$/, "");
+  return normalizeRepoPathText(value, { stripAtPrefix: true });
 }
 
 function uniqueStrings(values: readonly string[]): string[] {

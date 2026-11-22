@@ -41,7 +41,7 @@ export interface ToolExecuteOptions {
     disagreed: boolean;
   }) => void;
   /**
-   * Optional ToolAdversaryPort (Phase 3). Consulted after grant + shadow,
+ * Optional ToolAdversaryPort. Consulted after grant + shadow,
    * before approval. Restrict-only — never widens grants. Unset = no-op.
    */
   adversary?: ToolAdversaryPort;
@@ -52,6 +52,11 @@ export interface ToolExecuteOptions {
     toolName: string;
     result: AdversaryEvaluateResult;
   }) => void;
+  /**
+   * Soft file-edit command guard for run_command (plan-mode defense).
+   * run_readonly_command always applies the same heuristic.
+   */
+  softBlockMutatingCommands?: boolean;
 }
 
 export interface ToolRuntimePipelineOptions {

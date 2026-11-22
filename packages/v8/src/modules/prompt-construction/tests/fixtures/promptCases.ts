@@ -160,12 +160,19 @@ export function createPromptInput(
     conversation: overrides.conversation ?? [],
     repositoryContext: overrides.repositoryContext,
     instructions: overrides.instructions,
+    extraFragments: overrides.extraFragments,
+    injectSkillCatalogL1: overrides.injectSkillCatalogL1,
+    skillCatalogL1: overrides.skillCatalogL1,
+    planText: overrides.planText,
+    decisionBriefText: overrides.decisionBriefText,
+    executionSeedText: overrides.executionSeedText,
     tools: overrides.tools,
     capabilities: overrides.capabilities ?? createCapabilities(),
     model: overrides.model,
     temperature: overrides.temperature,
     stream: overrides.stream,
     outputReserveTokens: overrides.outputReserveTokens,
+    planBudgetTokens: overrides.planBudgetTokens,
   };
 }
 

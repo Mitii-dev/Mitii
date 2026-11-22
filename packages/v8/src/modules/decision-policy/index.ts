@@ -1,5 +1,6 @@
 export {
   DECISION_POLICY_SCHEMA_VERSION,
+  EXECUTION_ROUTE,
   EXECUTION_ROUTES,
   PLANNING_DEPTHS,
   PLAN_GATES,
@@ -9,9 +10,15 @@ export {
   APPROVAL_MODES,
   VERIFICATION_EVIDENCE_KINDS,
   READ_ONLY_TOOL_IDS,
+  NETWORK_TOOL_IDS,
+  OPT_IN_MUTATION_TOOL_IDS,
+  CODE_INTELLIGENCE_TOOL_IDS,
+  DIAGNOSTICS_TOOL_IDS,
+  CHANGE_IMPACT_TOOL_IDS,
   PROCESS_TOOL_IDS,
   MUTATION_TOOL_IDS,
   GITHUB_MUTATION_TOOL_IDS,
+  GIT_MUTATION_TOOL_IDS,
   DECISION_REASON_CODES,
   DECISION_POLICY_ERROR_CODES,
   MUTATION_TASK_INTENTS,
@@ -30,6 +37,13 @@ export {
   compileGrant,
   toolGrantsEquivalent,
   looksLikeAgentVerificationRequest,
+  resolveFastPath,
+  extractExplicitFilePaths,
+  detectBehavioralAskSignals,
+  looksLikeBehavioralAsk,
+  isExplicitCreateAsk,
+  FAST_PATH_DECLINE_REASONS,
+  looksLikeVcsHistoryRewrite,
   intersectUserSafetyRules,
   grantNeverWidens,
   formatEffectiveGrant,
@@ -40,11 +54,24 @@ export {
   formatApprovalPresetHelp,
   compileDecisionBrief,
   formatDecisionBriefForPrompt,
+  selectGrantProfile,
+  GRANT_PROFILES,
+} from "./actions";
+export type {
+  GrantProfile,
+  FastPathResolution,
+  BehavioralAskSignals,
+  FastPathDeclineReason,
 } from "./actions";
 
 export { DecisionPolicyPipeline } from "./pipeline/DecisionPolicyPipeline";
 
-export { isRepairIntentTaxonomy, DECISION_POLICY_PATTERNS } from "./patterns";
+export {
+  isRepairIntentTaxonomy,
+  isArchitectureIntentTaxonomy,
+  DECISION_POLICY_PATTERNS,
+  WORKSPACE_BUG_FAILURE_LANGUAGE,
+} from "./patterns";
 
 export {
   decisionPolicyInputSchema,
@@ -52,6 +79,10 @@ export {
   hostCapabilityFlagsSchema,
   userSafetyRulesSchema,
   DISABLED_USER_SAFETY_RULES,
+  approvalSkipCategorySchema,
+  userSafetyAutoApproveSchema,
+  APPROVAL_SKIP_CATEGORIES,
+  DEFAULT_PROTECTED_PATH_GLOBS,
   executionDecisionSchema,
   executionRouteSchema,
   planningDepthSchema,
@@ -75,6 +106,8 @@ export type {
   RepositoryStateCapabilitySummary,
   HostCapabilityFlags,
   UserSafetyRules,
+  ApprovalSkipCategory,
+  UserSafetyAutoApprove,
   ExecutionDecision,
   ExecutionRoute,
   PlanningDepth,

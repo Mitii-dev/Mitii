@@ -34,6 +34,8 @@ export async function draftPlanFromDiscovery(params: {
   llm: LlmPort;
 }): Promise<DraftPlanFromDiscoveryResult> {
   try {
+    const useStructured =
+      params.llm.capabilities.supportsStructuredOutput === true;
     const request = modelRequestSchema.parse({
       messages: [
         { role: "system", content: DISCOVERED_PLAN_SYSTEM },
@@ -54,12 +56,16 @@ export async function draftPlanFromDiscovery(params: {
         effort: "low",
         includeInResponse: false,
       },
-      responseFormat: {
-        type: "json_schema",
-        name: "discovered_plan_draft",
-        schema: DISCOVERED_PLAN_JSON_SCHEMA,
-        strict: true,
-      },
+      ...(useStructured
+        ? {
+            responseFormat: {
+              type: "json_schema" as const,
+              name: "discovered_plan_draft",
+              schema: DISCOVERED_PLAN_JSON_SCHEMA,
+              strict: true,
+            },
+          }
+        : {}),
     }) as ModelRequest;
     const text = await collectCompletionText({ llm: params.llm, request });
     const parsed = discoveredPlanDraftSchema.parse(parseLastJsonObject(text));
@@ -75,8 +81,8 @@ export async function draftPlanFromDiscovery(params: {
       ok: false,
       warning:
         error instanceof Error && error.message === "model_output_truncated"
-          ? "Discovery plan draft model call was truncated; rejected the partial draft and kept the deterministic discovery skeleton."
-          : `Discovery plan draft model call failed; kept deterministic discovery skeleton. ${
+          ? "Discovery plan draft model call was truncated; rejected the partial draft."
+          : `Discovery plan draft model call failed. ${
               error instanceof Error ? error.message : String(error)
             }`,
     };
@@ -96,7 +102,7 @@ const DISCOVERED_PLAN_JSON_SCHEMA = {
     },
     steps: {
       type: "array",
-      maxItems: 10,
+      maxItems: 16,
       items: {
         type: "object",
         additionalProperties: false,

@@ -67,3 +67,8 @@ legacy/tools-benchmark/fixtures/**/src/main.tsx
 .mitii-audit-pack.json
 
 .pnpm-store/
+# Local VSIX build output
+dist-vsix/
+
+# Local agent/session scratch
+.mitii-state.json

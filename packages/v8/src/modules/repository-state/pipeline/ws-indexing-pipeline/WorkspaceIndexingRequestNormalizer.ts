@@ -84,6 +84,9 @@ export class WorkspaceIndexingRequestNormalizer {
           .synchronizeEmbeddings ??
         WORKSPACE_INDEXING_PIPELINE_DEFAULTS
           .SYNCHRONIZE_EMBEDDINGS,
+      finalizeOnly:
+        input.finalizeOnly ===
+        true,
       ...(input.abortSignal
         ? {
             abortSignal:

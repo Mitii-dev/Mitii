@@ -15,7 +15,7 @@
   <a href="LICENSE"><img alt="License: AGPL v3" src="https://img.shields.io/badge/License-AGPL_v3-blue.svg"></a>
   <a href="https://code.visualstudio.com/"><img alt="VS Code 1.124+" src="https://img.shields.io/badge/VS%20Code-1.124%2B-007ACC?logo=visualstudiocode"></a>
   <a href="https://nodejs.org/"><img alt="Node 20+" src="https://img.shields.io/badge/Node-20%2B-339933?logo=node.js"></a>
-  <img alt="Version 2.10.0" src="https://img.shields.io/badge/version-2.10.0-111111">
+  <img alt="Version 2.11.18" src="https://img.shields.io/badge/version-2.11.18-111111">
   <a href="https://docs.mitii.dev"><img alt="Documentation" src="https://img.shields.io/badge/docs-docs.mitii.dev-ff751f"></a>
 </p>
 
@@ -163,7 +163,7 @@ New users: `mitii setup` writes non-secret provider config, then set an API key 
 
 ### SDK
 
-`@mitii/v8`, `@mitii/sdk`, `@mitii/host`, and `@mitii/cli` publish to npm on `v*` release tags (see [docs/RELEASE.md](docs/RELEASE.md)). For local development, consume them from this monorepo workspace.
+`@mitii/v8`, `@mitii/sdk`, `@mitii/host`, and `@mitii/cli` publish to npm on `v*` release tags. For local development, consume them from this monorepo workspace.
 
 ```ts
 import { createMitiiClient, EchoLlmPort } from '@mitii/sdk';
@@ -202,7 +202,7 @@ What exists today:
 - session logs and a basic audit-pack export (redacted settings + run events)
 - OpenAI-compatible local endpoints (Ollama / LM Studio) for privacy-sensitive work
 
-Not yet product features: `mitii.enterprise.localProvidersOnly`, signed SIEM/webhook delivery, SSO/OIDC, RBAC, or a dedicated `docs/enterprise/` pack.
+Not yet product features: `mitii.enterprise.localProvidersOnly`, signed SIEM/webhook delivery, SSO/OIDC, or RBAC.
 
 ## Repository layout
 
@@ -212,6 +212,9 @@ mitii-ai-agent/
 |   |-- v8/                   # @mitii/v8 - host-neutral agent runtime
 |   |-- sdk/                  # @mitii/sdk - public API + bundled skills/
 |   |-- host/                 # @mitii/host - indexing, ports, writing recipes
+|   |-- ui-core/              # @mitii/ui-core - pure UI helpers shared by Desktop + VS Code
+|   |-- ui-theme/             # @mitii/ui-theme - --mitii-* CSS token contract + vscode/standalone adapters
+|   |-- ui-react/             # @mitii/ui-react - props-only React components shared by Desktop + VS Code
 |   |-- automation/           # @mitii/automation - schedules and claim runner
 |   |-- mcp/                  # @mitii/mcp client + @mitii/mcp-web server
 |   `-- search-kit/           # @mitii/search-kit - web search/fetch helpers
@@ -221,29 +224,40 @@ mitii-ai-agent/
 |   |-- daemon/               # long-lived automation daemon (`mitii-daemon`)
 |   `-- acp/                  # ACP-lite stdio bridge (`mitii-acp`)
 |-- tests/                    # solid benchmark (+ package-local specs elsewhere)
-|-- docs/                     # developer and release guides (+ automation/)
 `-- scripts/                  # build, release, and audit automation
 ```
 
-See [docs/REPO_LAYOUT.md](docs/REPO_LAYOUT.md). Canonical architecture: [packages/v8/ARCHITECTURE.md](packages/v8/ARCHITECTURE.md). Unattended CI agents: [docs/automation/README.md](docs/automation/README.md). Skills format: [docs/SKILLS_FORMAT.md](docs/SKILLS_FORMAT.md).
+Canonical architecture: [packages/v8/ARCHITECTURE.md](packages/v8/ARCHITECTURE.md).
+Automation: [packages/automation/ARCHITECTURE.md](packages/automation/ARCHITECTURE.md).
+Skills live under `packages/sdk/skills/`.
 
 ## Development
 
 ```bash
-pnpm run build:all          # build all packages + Electron SQLite for F5 / indexes
-pnpm run build              # packages only
+pnpm run build              # compile every package (settings → ui → v8 → sdk → host → apps)
+pnpm run build:packages     # same as build
+pnpm run build:all          # build + stage Electron SQLite for VS Code/Cursor F5
+pnpm run build:desktop      # desktop app + its workspace deps
+pnpm run build:vscode       # VS Code extension only
 pnpm run typecheck
 pnpm test
-pnpm run package            # target-specific VSIX (apps/vscode)
+pnpm run package            # VSIX (apps/vscode)
 pnpm run package:preflight  # release checks, tests, and package
 ```
 
-Native modules target different runtimes. `rebuild:native` stages the Electron
-binding for F5 and restores the Node ABI in `node_modules`, so tests keep working:
+Use **`pnpm build`** when you want a fresh compile of everything.
+Use **`pnpm build:all`** when you also need the editor Extension Host native binding.
+
+`rebuild:*` does **not** compile TypeScript — it only rebuilds native addons for a
+specific ABI (Windows + macOS). `rebuild:native` rebuilds `better-sqlite3` for the
+editor Electron ABI, stages it under `apps/vscode/dist/native`, then restores the
+Node ABI in `node_modules` so tests keep working:
 
 ```bash
-pnpm run rebuild:native     # Electron -> dist/native, then restore Node ABI
-pnpm run rebuild:node       # Node-only (tests/CLI)
+pnpm run rebuild:native                    # VS Code Electron → dist/native, restore Node
+MITII_EDITOR=cursor pnpm run rebuild:native
+MITII_ELECTRON_VERSION=<ver> pnpm run rebuild:native   # Windows / non-auto detect
+pnpm run rebuild:node                      # Node-only (tests / CLI)
 ```
 
 Vitest scripts auto-heal ABI mismatches via `scripts/ensure-node-native.mjs`.
@@ -252,15 +266,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for coding conventions and pull request g
 
 ## Documentation
 
+Package READMEs and architecture notes live next to the code (more will land later):
+
 - [Architecture](packages/v8/ARCHITECTURE.md)
-- [Repository layout](docs/REPO_LAYOUT.md)
-- [Initial launch / F5](docs/INITIAL_LAUNCH.md)
-- [Skills format](docs/SKILLS_FORMAT.md)
-- [CLI](apps/cli/README.md) (includes writing recipes)
+- [CLI](apps/cli/README.md)
 - [VS Code extension](apps/vscode/README.md)
-- [Release / publish units](docs/RELEASE.md)
+- [Desktop](apps/desktop/README.md)
 - [Solid benchmark](tests/benchmark/README.md)
-- [Tests layout](docs/TESTS.md)
 - [MCP packages](packages/mcp/README.md)
 - [Search kit](packages/search-kit/README.md)
 - [Website](https://mitii.dev)
@@ -276,4 +288,12 @@ Contributions are welcome. Keep changes focused and run `pnpm run typecheck` and
 
 ## License
 
-Mitii AI Agent is licensed under [AGPL-3.0-or-later](LICENSE). Contact the maintainer for commercial licensing outside the AGPL terms.
+Mitii AI Agent is **copyright codewithshinde** and licensed under
+[AGPL-3.0-or-later](LICENSE).
+
+Authorship, ownership, and courtesy *inspiration-only* acknowledgements
+(independent prior art — **not** copied or vendored third-party agent source)
+are in [NOTICE-REVIEW.md](NOTICE-REVIEW.md). Inspired projects have **no**
+authorship or ownership claim over Mitii.
+
+Contact the maintainer for commercial licensing outside the AGPL terms.

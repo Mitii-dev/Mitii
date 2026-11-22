@@ -7,6 +7,11 @@ export {
 
 export { DEFAULT_WINDOW_BUDGET_POLICY } from "./defaults";
 export {
+  WINDOW_BUDGET_MODEL_PROFILES,
+  resolveWindowBudgetModelProfile,
+} from "./modelProfiles";
+export type { WindowBudgetModelProfile } from "./modelProfiles";
+export {
   WINDOW_BUDGET_POLICY,
   mergeWindowBudgetPolicy,
   resolveWindowBudgetPolicy,
@@ -28,7 +33,7 @@ export type {
   WindowBudgetBandDefinition,
 } from "./windowBudgetBands";
 export {
-  TOOL_LOOP_MAX_OUTPUT_TOKENS_BY_BAND,
+  COMPACT_TOOL_LOOP_OUTPUT_HARD_CAP,
   resolveToolLoopMaxOutputTokens,
 } from "./toolLoopOutputCaps";
 export {
@@ -37,11 +42,23 @@ export {
   WINDOW_BUDGET_EFFORT_OVERLAY,
   resolveWindowBudgetEffort,
   resolveEffortCompactionCeilings,
+  scaleEffortCallBudget,
 } from "./effort";
 export type {
   WindowBudgetEffort,
   WindowBudgetEffortOverlay,
 } from "./effort";
+export {
+  WINDOW_BUDGET_MODES,
+  DEFAULT_WINDOW_BUDGET_MODE,
+  WINDOW_BUDGET_MODE_OVERLAY,
+  resolveWindowBudgetMode,
+  windowBudgetModeOverlay,
+} from "./mode";
+export type {
+  WindowBudgetMode,
+  WindowBudgetModeOverlay,
+} from "./mode";
 
 export {
   deriveWindowPolicy,
@@ -69,6 +86,9 @@ export type {
   WindowPolicyRun,
   WindowPolicySkills,
   WindowPolicyTaskList,
+  WindowPolicyCarry,
+  WindowPolicyInjection,
+  WindowPolicyFragments,
   WindowBudgetReasonCode,
   WindowBudgetErrorCode,
 } from "./contracts";

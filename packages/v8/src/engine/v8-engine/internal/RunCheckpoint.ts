@@ -1,0 +1,133 @@
+import type { ExecutionDecision } from "../../../modules/decision-policy";
+import type {
+  PlanArtifact,
+  PlanStrategyDecision,
+} from "../../../modules/planning";
+import type { TaskList } from "../../../modules/task-list";
+import type { ModelMessage } from "../../../modules/model-gateway";
+import type { RepositoryStateReference } from "../../../modules/repository-state";
+import type { RequestUnderstandingResult } from "../../../modules/request-understanding";
+import type { RepoBuildState } from "../../../modules/verification";
+import type { ToolResult } from "../../tool-runtime";
+
+import type { ContextEpoch } from "./context-epoch";
+import type { BudgetWallReason } from "../actions/buildStallContinueRationale";
+import type { ClarificationSession } from "../actions/buildClarificationPayload";
+import type { ExecutionSeed } from "../modules/execution-seed";
+
+import type { AgentEngineStartInput } from "../contracts";
+import type { AgentReasonCode, AgentRunUsage } from "../contracts";
+import type { RestorePoint, RestorePointSummary } from "../contracts";
+
+export interface PendingApprovalState {
+  approvalId: string;
+  fingerprint: string;
+  toolName: string;
+  callId: string;
+  arguments: unknown;
+  paths: string[];
+}
+
+export interface PendingGrantExpansionToolCall {
+  toolName: string;
+  callId: string;
+  arguments: unknown;
+}
+
+export interface PendingGrantExpansionState {
+  expansionId: string;
+  /** In-workspace relative scopes to admit. */
+  extraPaths: string[];
+  /** Absolute outside-workspace roots awaiting approval. */
+  externalRoots?: string[];
+  /** Failed tool calls to replay after approve + widen. */
+  pendingToolCalls?: PendingGrantExpansionToolCall[];
+}
+
+/**
+ * Persisted run checkpoint for suspension/resume.
+ * Completed tool callIds are retained so resume does not replay them.
+ */
+export interface AgentRunCheckpoint {
+  runId: string;
+  requestId: string;
+  suspensionKind:
+    | "approval_required"
+    | "clarification_required"
+    | "plan_approval_required"
+    | "grant_expansion_required"
+    | "continue_required";
+  input: AgentEngineStartInput;
+  decision: ExecutionDecision;
+  pinnedState?: RepositoryStateReference;
+  messages: ModelMessage[];
+  toolCacheEntries: Array<[string, ToolResult]>;
+  pendingApproval?: PendingApprovalState;
+  /** Paths awaiting approval before grant widen. */
+  pendingGrantExpansion?: PendingGrantExpansionState;
+  /** User-facing stall summary when suspensionKind is continue_required. */
+  stallContinueRationale?: string;
+  /** Best user-facing answer available if the user chooses Stop. */
+  continuePartialAnswer?: string;
+  /** Why continue_required was raised. */
+  continueWallReason?: BudgetWallReason;
+  /** How many Continue approvals the user has already granted this run. */
+  continueOverrideCount?: number;
+  /** Structured plan awaiting approval when suspensionKind is plan_approval_required. */
+  plan?: PlanArtifact;
+  /** Clarification option map for structured resume (ballot v2). */
+  clarificationSession?: ClarificationSession;
+  /** Strategy that produced `plan`; restored on resume so the prompt contract survives. */
+  planStrategy?: PlanStrategyDecision;
+  /** Live task list at suspension time. */
+  taskList?: TaskList;
+  /** Durable finished plan step ids (survives desk refill). */
+  completedPlanStepIds?: string[];
+  repoBuildStateBefore?: RepoBuildState;
+  repoBuildStateAfter?: RepoBuildState;
+  changedFiles: string[];
+  mutationCheckpointIds: string[];
+  reasonCodes: AgentReasonCode[];
+  warnings: string[];
+  usage: AgentRunUsage;
+  startedAtMs: number;
+  /**
+   * Accumulated user-wait time already excluded from wall_time budget
+   * (prior approval suspensions in this run).
+   */
+  excludedWaitMs?: number;
+  /** Wall clock when this suspension began; resume credits the delta. */
+  suspendedAtMs?: number;
+  /**
+   * Context epoch formula persisted with the run so resume does not
+   * rebuild the baseline. `{ epochId, baseline, snapshot, createdAt }`.
+   */
+  contextEpoch?: ContextEpoch;
+  /**
+   * Refined execution seed (paths/confidence) as of suspension. Resume must
+   * restore this — re-resolving from the raw user prompt alone drops context
+   * refinement (e.g. App.tsx wiring) and thrash-Continues as seed_weak.
+   */
+  executionSeed?: ExecutionSeed;
+  /**
+   * Understanding result at plan-approval suspension. Resume reuses it (with
+   * `decision`, `pinnedState`, `executionSeed`) so an approved plan does not
+   * repeat understand/decide.
+   */
+  understanding?: RequestUnderstandingResult;
+}
+
+export interface AgentEngineRunCheckpointStorePort {
+  save(checkpoint: AgentRunCheckpoint): Promise<void>;
+  load(runId: string): Promise<AgentRunCheckpoint | undefined>;
+  delete(runId: string): Promise<void>;
+  /** Persist a durable undo point after a successful mutation. */
+  saveRestorePoint(point: RestorePoint): Promise<void>;
+  loadRestorePoint(
+    runId: string,
+    restorePointId: string,
+  ): Promise<RestorePoint | undefined>;
+  listRestorePoints(runId: string): Promise<RestorePointSummary[]>;
+  /** Remove all restore points for a run (e.g. after terminal commit). */
+  deleteRestorePoints(runId: string): Promise<void>;
+}

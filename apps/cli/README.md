@@ -25,10 +25,39 @@ Legacy npm `@mitii/cli@2.7.x` is a different binary stack - prefer versions publ
 
 ```bash
 mitii --help                 # or: mitii -h
-mitii setup                  # pick provider + write .mitii/config.json
-export ANTHROPIC_API_KEY=...   # or GEMINI_ / OPENAI_ / MITII_API_KEY
+
+# Secrets via .env (auto-loaded) — never put keys in config.json
+cp .env.example .env         # or create .mitii/.env
+# edit ANTHROPIC_API_KEY / MITII_PROVIDER / MITII_MODEL / MITII_BASE_URL / MITII_CONTEXT_WINDOW
+
+mitii setup --provider anthropic --yes   # writes .mitii/config.json (no secrets)
+mitii doctor                 # config + keys + index + log paths
+mitii index                  # build workspace index
 mitii session                # dotted MITII banner + interactive loop
+
+# Useful:
+mitii paths                  # where config / index / logs live
+mitii profile list           # mode profiles (architect/code/ask/debug/…)
+mitii mcp list               # MCP servers from .mitii/mcp.json
+mitii recipe list            # built-in + project recipes
+mitii history list           # session logs under .mitii/logs
+mitii history usage          # last-run token summary
+mitii commit-message         # draft commit message from git
+mitii index --status         # check index health
 ```
+
+### Session logs (Desktop / VS Code parity)
+
+By default the CLI writes live `MM-DD-YYYY-HH-MM-thread_….jsonl` files under `.mitii/logs/` (or `MITII_LOGS_PATH`) — same `run_start` / compacted events / `run_end` shape as Desktop and VS Code. Disable with `MITII_CLI_LOG=0`.
+
+```bash
+mitii ask "What is recursion?" --echo
+# stderr: [mitii] log=/…/.mitii/logs/10-04-2026-16-55-thread_….jsonl
+mitii history list
+mitii history show latest
+```
+
+Docs: https://docs.mitii.dev/using/CLI/overview — workflows, MCP, environment, CI secrets, indexing, logs, profiles.
 
 Smoke without a live model:
 
@@ -51,9 +80,12 @@ mitii -v                     # or: mitii --version / mitii version
 ## Quick start
 
 ```bash
-mitii ask "What is recursion?" --echo
+mitii ask --prompt "What is recursion?" --echo
+mitii plan --prompt "Outline the auth flow" --echo
+mitii agent --prompt "Add a healthcheck route" --approve --echo
 mitii run --auto "run tests and fix failures" --echo
 mitii index
+mitii index --status --json
 mitii status --json
 mitii session
 mitii export-session "Summarize this repo" --out session.json --echo
@@ -64,15 +96,17 @@ mitii export-session "Summarize this repo" --out session.json --echo
 | Command | Behavior |
 |---|---|
 | `setup` | Interactive (or flag-driven) model/provider setup |
-| `ask <prompt>` | SDK ask with streaming, cancel, clarify/approve |
+| `ask <prompt>` / `ask --prompt "…"` | One-shot run (ask mode / config `defaultMode`) |
+| `plan --prompt "…"` | One-shot plan mode (read-only; no file edits) |
+| `agent --prompt "…"` | One-shot agent mode (edit + tools; add `--autonomy apply` for CI) |
 | `commit-message` | Draft commit message (auto-attaches `git-commit-message`) |
 | `pr-summary` | Draft PR body (auto-attaches `git-pr-summary`) |
 | `changelog` | Draft Keep a Changelog entry (auto-attaches `release-changelog`) |
 | `run --auto "<task>"` | Unattended CI run (agent + apply autonomy; no prompts) |
 | `session` | Interactive prompt loop with MITII banner |
-| `index` | Full workspace index + publish repository state |
+| `index` | Full workspace index + publish; `--status` shows Code/FTS/Embeddings pipeline health (no reindex) |
 | `review` | Deterministic review prep / SARIF (`--preview`, `--from`/`--to`, `--commit`, `--format`, `--output`). For LLM findings use `mitii ask … --skill code-review-and-quality` (recipe/skill) or the VS Code **Review** button for working-tree changes |
-| `status` | Show latest persisted repository state |
+| `status` | Show latest persisted repository state + index pipeline health |
 | `export-session` | Run ask and write secret-free JSON export |
 | `connect` | Bridge Mitii into Telegram, Discord, or Slack |
 | `schedule` | CRUD / trigger / history for automation schedules |
@@ -163,7 +197,7 @@ GitHub is different:
 | `--cwd <path>` | Workspace root (default: current directory) |
 | `--mode ask\|plan\|agent` | Same modes as CLI (`ask` default - safest for chat) |
 | `--echo` | Force Echo LLM (local smoke, no API key) |
-| `--approve` | Auto-approve mutation/plan gates (**default** for connectors) |
+| `--approve` | Auto-approve mutation/plan gates and auto-Continue stall walls (`continue_required`) (**default** for connectors) |
 | `--deny` | Do not auto-approve; suspended turns stop instead |
 | `--allowed-user-id <id>` | Allowlist platform user id (repeatable). **Recommended** |
 | `--stop` | Stop a running connector for this channel/cwd |
@@ -376,13 +410,13 @@ Safe to delete `*.threads.json` to reset history. Tokens are **not** written to 
 
 ### Modes
 
-| Mode | Behavior |
-|---|---|
-| `ask` | Q&A / explain (default) |
-| `plan` | Read-only plan; no file edits |
-| `agent` | Edit + verify with approvals |
+| Mode | Behavior | Verb command |
+|---|---|---|
+| `ask` | Q&A / explain (default) | `mitii ask --prompt "…"` |
+| `plan` | Read-only plan; no file edits | `mitii plan --prompt "…"` |
+| `agent` | Edit + verify with approvals | `mitii agent --prompt "…"` |
 
-Set with `--mode <mode>` or `defaultMode` in config.
+Set with a verb command, `--mode <mode>`, or `defaultMode` in config. Positional prompts still work (`mitii ask "…"`).
 
 ### Common options
 
@@ -400,7 +434,9 @@ Set with `--mode <mode>` or `defaultMode` in config.
 | `--mode <mode>` | `ask` \| `plan` \| `agent` |
 | `--origin <o>` | `user` \| `automation` \| `api` (unattended policy) |
 | `--autonomy <a>` | `readonly` \| `propose` \| `apply` \| `apply_and_pr` |
+| `--timeout <seconds>` | Host wall-time budget for the run (also `MITII_RUN_TIMEOUT_SECONDS`; flag wins). Passed to the engine as `maxWallTimeMs`, which finalizes after a verified patch instead of starting another model turn near the deadline |
 | `--agent <id\|path>` | Load `.mitii/agents/<id>.md` or a markdown path |
+| `--prompt <text>` | Prompt text (alternative to positional prompt) |
 | `--prompt-file <path>` | Prompt from file (`-` = stdin) |
 | `--loop-policy-json <json>` | Lab: one-off threshold overrides for this run |
 | `--no-loop-policy` | Ignore config `loopPolicy` for this run |
@@ -441,6 +477,15 @@ mitii ask "Fix types" --mode agent --no-loop-policy
 ```
 
 Leave `loopPolicy` unset (or `"enabled": false`) for deploy / normal use.
+
+### Config keys vs the settings catalog
+
+`.mitii/config.json` is a **curated projection**, not the full `mitii.*` tree.
+`CLI_CURATED_CONFIG_KEYS` lists the keys the CLI persists and
+`CLI_CURATED_TO_CATALOG` maps each to its `@mitii/settings` catalog key
+(`null` for CLI-only keys such as `workspaceId`; `loopPolicy` maps to the
+`mitii.loopPolicy.*` block). Runtime threshold validation stays on the SDK
+schema, so engine-only keys that are not in the catalog are still accepted.
 
 ### Setup options
 
@@ -595,17 +640,15 @@ Cursor Cloud Agents are a separate agent API, not an LLM endpoint. Point `openai
 
 ## Out of scope
 
-Daemon and board UIs are not part of this CLI yet (Phase 1+). Channel bridges are
+Daemon and board UIs are separate from this interactive CLI. Channel bridges are
 Telegram, Discord, and Slack via `mitii connect`. GitHub work uses the repo +
 tools/`gh`, not a `connect` adapter (see **Connect** above).
 
-**Phase 0 CI automation** works today: `--origin` / `--autonomy` / `--agent` /
+CI / unattended automation works today: `--origin` / `--autonomy` / `--agent` /
 `mitii run --auto`, plus optional `.mitii/safety.json` (tighten-only) and
-`MITII_SANDBOX=1` (OS process sandbox, fail-closed). See
-[docs/SAFETY_PHASES.md](../../docs/SAFETY_PHASES.md).
-`--prompt-file` plus the example workflows under
-`docs/examples/workflows/mitii-*.yml`. See
-[docs/automation/README.md](../../docs/automation/README.md).
+`MITII_SANDBOX=1` (OS process sandbox, fail-closed).
+See [packages/automation/ARCHITECTURE.md](../../packages/automation/ARCHITECTURE.md)
+and `.github/actions/mitii-run`.
 
 ## Development (monorepo)
 

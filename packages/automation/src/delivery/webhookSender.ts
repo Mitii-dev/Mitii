@@ -1,7 +1,7 @@
 import type { DeliverySender } from './types.js';
 
 /**
- * Outbound signed/plain webhook delivery (Phase 3).
+ * Outbound signed/plain webhook delivery.
  * Posts a JSON receipt; optional shared secret as Bearer token.
  */
 export function createWebhookDeliverySender(options: {

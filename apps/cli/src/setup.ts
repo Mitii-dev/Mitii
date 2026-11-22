@@ -226,7 +226,7 @@ export async function runSetup(options: SetupOptions): Promise<number> {
   const config: MitiiHostConfig = {
     provider: preset.type,
     providerPreset: preset.id as ProviderPresetId,
-    model,
+    ...(model ? { model } : {}),
     ...(baseUrl ? { baseUrl } : {}),
     defaultMode: mode,
   };

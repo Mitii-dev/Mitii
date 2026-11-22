@@ -46,6 +46,10 @@ step('build product packages', () => {
   run('pnpm', [
     '-r',
     '--filter',
+    '@mitii/ui-core',
+    '--filter',
+    '@mitii/ui-protocol',
+    '--filter',
     '@mitii/v8',
     '--filter',
     '@mitii/sdk',

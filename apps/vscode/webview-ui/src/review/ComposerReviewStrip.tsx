@@ -1,6 +1,6 @@
 import type { ReviewDiffView, RunFileChangesView } from '../protocol';
 import { WorkingTreeReviewBar } from './WorkingTreeReviewBar';
-import type { ReviewFindingChip } from './reviewFindingTypes';
+import type { ReviewFindingChip } from '@mitii/ui-react';
 import {
   composerNeedsReviewStrip,
   selectLatestRunChanges,

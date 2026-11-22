@@ -1,0 +1,4 @@
+export {
+  DEFAULT_LOOP_POLICY_NUMBERS,
+  DEFAULT_V8_LOOP_POLICY_NUMBERS,
+} from './loopPolicy.js';

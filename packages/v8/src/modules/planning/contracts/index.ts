@@ -1,6 +1,7 @@
 export {
   planningInputSchema,
   planningTaskEvidenceSchema,
+  planningTaskSizeSchema,
   planningSkillHintSchema,
   explorationDepthSchema,
   planningScopedRepoMapSchema,
@@ -93,6 +94,15 @@ export type {
   DiscoveredPlanStep,
   DiscoveredPlanDraft,
 } from "./output/DiscoveredPlanDraft";
+
+export {
+  planClarifyOptionSchema,
+  planClarifyDraftSchema,
+} from "./output/PlanClarifyDraft";
+export type {
+  PlanClarifyOption,
+  PlanClarifyDraft,
+} from "./output/PlanClarifyDraft";
 
 export {
   planningResultSchema,

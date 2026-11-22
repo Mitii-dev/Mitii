@@ -8,7 +8,7 @@ import {
 } from "../fixtures/skillsEvalCases";
 
 /**
- * Phase 9 skills evaluation gates:
+ * skills evaluation gates:
  * - Relevant-skill recall ≥90%
  * - Irrelevant-instruction rate <10%
  * - Budget never exceeded

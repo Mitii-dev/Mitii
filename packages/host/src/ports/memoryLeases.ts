@@ -1,9 +1,9 @@
 /**
  * Durable memory resource leases under `.mitii/memory/leases.json`.
  *
- * Inspired by agentmemory lease-acquire/release/renew (TTL + holder),
- * adapted to Mitii host paths — gates consolidate / pending approve
- * so concurrent hosts do not race RMW on facts/pending.
+ * Supports acquire / release / renew with TTL + holder.
+ * Gates consolidate / pending approve so concurrent hosts do not race
+ * RMW on facts/pending.
  */
 
 import { randomBytes } from 'node:crypto';

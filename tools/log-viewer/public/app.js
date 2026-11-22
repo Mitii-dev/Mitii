@@ -323,7 +323,15 @@ function parseModelIoEntries(file, parsed) {
   let requestCount = 0;
   let responseCount = 0;
 
-  for (const entry of parsed.entries) {
+  // Normalize snapshots to the same input/output view as legacy pairs.
+  for (const entry of parsed.entries.flatMap((entry) => {
+    if (entry.kind !== 'model_snapshot') return [entry];
+    const { request, startedAt, callId, runId, requestId, portId, ...response } = entry;
+    return [
+      { kind: 'model_request', at: startedAt, callId, runId, requestId, portId, request },
+      { ...response, kind: 'model_response', callId, runId, requestId, portId },
+    ];
+  })) {
     const kind = entry.kind;
     if (entry.runId) runIds.add(entry.runId);
     if (kind !== 'model_request' && kind !== 'model_response') continue;
@@ -427,6 +435,11 @@ function sessionSummary(entry) {
   }
   if (entry.type === 'verification_completed') return `Verification: ${entry.status || 'unknown'}`;
   if (entry.type === 'decision_made') return `Decision: ${entry.route || ''} / ${entry.runDisposition || ''}`;
+  if (entry.type === 'warning') {
+    const code = entry.code ? String(entry.code) : '';
+    const message = entry.message ? String(entry.message) : '';
+    return code ? `Warning [${code}]: ${message}` : `Warning: ${message}`;
+  }
   if (entry.type && entry.type.startsWith('tool_')) return `${entry.type.replace(/_/g, ' ')}: ${entry.toolName || entry.title || ''}`;
   return entry.title || entry.detail || kind;
 }
@@ -457,6 +470,18 @@ function parseSessionEntries(file, parsed) {
     }
     if (entry.type === 'verification_completed' && entry.status && entry.status !== 'passed') {
       issues.push(issue('warning', `Verification ${entry.status}`, JSON.stringify(entry.checks || entry.diagnostics || entry.reasonCodes || []), '', file.name));
+    }
+    if (entry.type === 'warning') {
+      const code = entry.code ? String(entry.code) : '';
+      const stage = entry.stage ? String(entry.stage) : '';
+      const detail = [
+        entry.message ? String(entry.message) : '',
+        stage ? `stage=${stage}` : '',
+        entry.data && typeof entry.data === 'object' ? `data=${JSON.stringify(entry.data)}` : '',
+      ]
+        .filter(Boolean)
+        .join(' | ');
+      issues.push(issue('warning', code ? `Warning: ${code}` : 'Warning', detail, '', file.name));
     }
   }
   return { calls: [], timeline, issues, truncated: parsed.truncated };

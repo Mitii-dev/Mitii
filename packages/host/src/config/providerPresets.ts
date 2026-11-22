@@ -1,4 +1,5 @@
 import type { OpenAiCompatibleAuthHeader } from '@mitii/sdk';
+import type { ModelCapabilities } from '@mitii/v8';
 
 /**
  * UI / config preset id. `type` selects the host-constructed LlmPort adapter.
@@ -35,6 +36,20 @@ export interface ProviderPreset {
   authHeader?: OpenAiCompatibleAuthHeader;
   chatCompletionsPath?: string;
   notes?: string;
+  /**
+   * Default model capabilities for this preset. Host merges these under
+   * user/profile overrides so V8 stays provider-agnostic.
+   */
+  defaultCapabilities?: Partial<
+    Pick<
+      ModelCapabilities,
+      | 'supportsStructuredOutput'
+      | 'supportsReasoning'
+      | 'supportsForcedToolChoice'
+      | 'supportsPromptCaching'
+      | 'supportsTools'
+    >
+  >;
 }
 
 export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
@@ -106,6 +121,13 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
     model: 'deepseek-chat',
     models: ['deepseek-chat', 'deepseek-reasoner'],
     requiresApiKey: true,
+    notes:
+      'Thinking/reasoner endpoints reject tool_choice=required and some response_format types; Mitii disables forced tools and structured output for this preset.',
+    defaultCapabilities: {
+      supportsReasoning: true,
+      supportsForcedToolChoice: false,
+      supportsStructuredOutput: false,
+    },
   },
   {
     id: 'azure-openai',
@@ -181,6 +203,54 @@ export function isOllamaBaseUrl(baseUrl?: string): boolean {
   } catch {
     return /11434|\bollama\b/i.test(baseUrl);
   }
+}
+
+/** True when the OpenAI-compatible root is hosted Ollama Cloud (ollama.com). */
+export function isOllamaCloudBaseUrl(baseUrl?: string): boolean {
+  if (!baseUrl?.trim()) return false;
+  try {
+    const host = new URL(baseUrl).hostname.toLowerCase();
+    return host === 'ollama.com' || host.endsWith('.ollama.com');
+  } catch {
+    return /(?:^|\/\/)(?:[\w-]+\.)?ollama\.com\b/i.test(baseUrl);
+  }
+}
+
+/**
+ * Map catalog / UI model ids to the chat tag Ollama actually accepts.
+ *
+ * Cloud lists sometimes expose size tags (`qwen3.5:397b`) while chat requires
+ * the cloud alias (`qwen3.5:cloud` or `name:SIZE-cloud`). Local Ollama can
+ * proxy the same cloud aliases when configured with an API key.
+ */
+export function normalizeOllamaModelId(
+  model: string,
+  baseUrl?: string,
+): string {
+  const trimmed = model.trim();
+  if (!trimmed) return trimmed;
+  if (!isOllamaBaseUrl(baseUrl) && !isOllamaCloudBaseUrl(baseUrl)) {
+    return trimmed;
+  }
+
+  if (/:cloud$/i.test(trimmed) || /:\d+b-cloud$/i.test(trimmed)) {
+    return trimmed;
+  }
+
+  const knownAliases: Record<string, string> = {
+    'qwen3.5:397b': 'qwen3.5:cloud',
+    'qwen3.5:397b-a17b': 'qwen3.5:cloud',
+  };
+  const alias = knownAliases[trimmed.toLowerCase()];
+  if (alias) return alias;
+
+  // On ollama.com, bare size tags are not chat-callable — prefer :SIZE-cloud.
+  if (isOllamaCloudBaseUrl(baseUrl)) {
+    const sized = trimmed.match(/^([a-z0-9._/-]+):(\d+b)$/i);
+    if (sized) return `${sized[1]}:${sized[2]}-cloud`;
+  }
+
+  return trimmed;
 }
 
 export function isLocalBaseUrl(baseUrl?: string): boolean {

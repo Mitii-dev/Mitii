@@ -40,11 +40,11 @@ V8 does not:
 
 ```text
 Application Hosts
-  VS Code | CLI | tests | future web/desktop
+  VS Code | CLI | Desktop | tests | future web
         |
         | inject ports, secrets, UI, persistence
         v
-Agent Engine
+V8 Engine
   coordinates public V8 facades and run state
         |
         |-- Request Intake
@@ -69,14 +69,14 @@ Repository packaging places this boundary in concrete packages:
 - Runtime: `packages/v8` (`@mitii/v8`) - live root is `packages/v8/src/`
 - Public API: `packages/sdk` (`@mitii/sdk`) - hosts and tests prefer this
 - Host kit: `packages/host` (`@mitii/host`)
-- Hosts: `apps/vscode`, `apps/cli` (optional `apps/daemon`)
+- Hosts: `apps/vscode`, `apps/cli`, `apps/desktop` (optional `apps/daemon`, `apps/acp`)
 - Consumers: `tests/` (benchmark), package-local `*.spec.ts`
 
-Authoritative packaging layout: `docs/REPO_LAYOUT.md`.
+Dependency direction: `apps → @mitii/host → @mitii/sdk → @mitii/v8`.
 
 Dependency direction MUST remain `apps -> host -> sdk -> v8` (apps may also import sdk/v8 types carefully). V8 MUST NOT import host or SDK packages.
 
-Runtime orchestration belongs to `packages/v8/src/engine/agent-engine/`. Tool execution
+Runtime orchestration belongs to `packages/v8/src/engine/v8-engine/`. Tool execution
 belongs to the tool-runtime engine package path. Business facades remain under
 `modules/`.
 
@@ -93,12 +93,12 @@ belongs to the tool-runtime engine package path. Business facades remain under
 | `model-gateway` | Model invocation -> model-event stream | Provider selection, capability negotiation, normalized streaming, usage, retry classification | Tool execution or run policy |
 | `tool-runtime` | Authorized tool call -> tool result | Tool catalog, schema validation, permissions, path/command/network enforcement, timeout, audit, mutation transaction | Choosing the task route |
 | `verification` | Change/result + state + policy -> verification result | Affected-project selection, applicable checks, diagnostics/diff evidence, completion recommendation | Direct shell bypass |
-| `agent-engine` | Start/resume request -> run handle | State machine, sequencing, model/tool loop, cancellation, suspension/resume, checkpoints, events, terminal result | Internals owned by other modules |
+| `v8-engine` | Start/resume request -> run handle | State machine, sequencing, model/tool loop, cancellation, suspension/resume, checkpoints, events, terminal result | Internals owned by other modules |
 | `skills` | Task evidence + budget -> selected instructions | Selection, conflicts, provenance, instruction budgeting | General prompt construction |
 | `memory` | Scoped query/commit -> memory result | Retrieval, relevance, retention, provenance, privacy | Run orchestration |
 | `planning` | Task evidence + decision depth (+ optional skills/process hints) -> `PlanArtifact` | Dimension-driven plan drafting, validation, compaction, serialization | Route authority, tool execution, hard-coded plan types |
 | `task-list` | Plan artifact or apply input -> live `TaskList` | Compact working checklist (max 8), derive pending tasks from a plan, markdown serialize/parse | Plan drafting, tool execution, host UI, stamping remaining items done when a run ends |
-| `code-navigation` | Path + caret -> definitions / references / hover | Language-server and repo-graph navigation | Indexing, retrieval budgets, spawning servers |
+| `code-navigation` | Path + caret -> definitions / references / hover / symbols / implementations / call hierarchy | Language-server and repo-graph navigation; hosts own language-service lifecycle | Indexing, retrieval budgets, spawning servers |
 | `change-impact` | Change seed + published `RepoGraph` -> bounded impact report | Reverse-dependent blast radius (callers, importers, package dependents), truncation/staleness reason codes | Indexing, retrieval ranking, tool grants, planning dimensions |
 | `review` | Diff/scan seed -> structured review artifact (`ReviewRecord`) | Deterministic file selection, grouping, path rules, finding anchor/repair/reflect, SARIF export | Mutation, verification checks, git shelling, model tool loops |
 | `window-budget` | Advertised context window + optional overrides -> `WindowPolicy` | Proportional output reserve, usable-input split, mutation/planning/skills/run/compaction numbers | Prompt text, retrieval, grants, model calls |
@@ -192,7 +192,7 @@ Contract compatibility follows explicit schema versions. Breaking public changes
 Allowed dependencies point inward to contracts and public facades:
 
 ```text
-Application -> Agent Engine -> public V8 facades
+Application -> V8 Engine -> public V8 facades
 Repository Context -> Repository State public contracts/reader port
 Verification -> Tool Runtime public facade
 All modules -> their own contracts, actions, internals, adapters
@@ -202,8 +202,8 @@ Forbidden dependencies:
 
 - Any V8 production import from legacy paths.
 - A cross-module import from `actions/`, `internal/`, private adapters, or tests.
-- Any pipeline importing Agent Engine.
-- Repository modules importing Model Gateway, Prompt Construction, Verification, or Agent Engine.
+- Any pipeline importing V8 Engine.
+- Repository modules importing Model Gateway, Prompt Construction, Verification, or V8 Engine.
 - Model Gateway importing Tool Runtime.
 - Prompt Construction executing tools or retrieval.
 - Host APIs imported into a V8 business module.
@@ -312,7 +312,7 @@ Enhanced capabilities are negotiated independently:
 - Project/build/test/lint discovery.
 - Safe edit/format support.
 
-Each capability reports `available`, `degraded`, or `unavailable` plus provider and reason. No module assumes that parsing implies LSP, or that a detected language implies a working compiler.
+Each capability reports `available`, `degraded`, or `unavailable` plus provider and reason (including `RepositoryRootState.capabilities`). Descriptor-level `readiness` remains `ready | degraded | unavailable` and is derived from those capability rows. No module assumes that parsing implies LSP, or that a detected language implies a working compiler.
 
 ### Target language matrix
 
@@ -365,7 +365,7 @@ Its output includes evidence such as:
 
 The understanding LLM is a **constrained ballot** over messy language (catalog
 intents, situation options, closed skill tags). It outputs facts, not grants.
-See [`docs/UNDERSTANDING_BALLOT_AND_STEERING.md`](../../../docs/UNDERSTANDING_BALLOT_AND_STEERING.md).
+Authority stays in Decision Policy; the ballot never widens grants.
 
 DecisionBrief (when enabled) translates the authoritative decision into
 worker-facing mission/constraints. A pre-mutation critic may narrow or pause
@@ -420,7 +420,7 @@ Every policy-produced decision may include `DecisionTrace` with the route
 priority step, grant profile, mutation profile, injection clamp status, and
 signals used.
 
-After repository discovery, Agent Engine may call Decision Policy `narrow()`.
+After repository discovery, V8 Engine may call Decision Policy `narrow()`.
 Narrowing is monotonic: it can shrink path scopes, raise approval mode, or
 tighten mutation budget, but it cannot add tools, effects, network hosts, or
 broader paths. Tool Runtime remains the enforcement point for every tool call.
@@ -544,7 +544,7 @@ Result states distinguish:
 - blocked
 - cancelled
 
-## 16. Agent Engine state machine
+## 16. V8 Engine state machine
 
 ```text
 Active:
@@ -601,7 +601,7 @@ Automated checks MUST cover:
 - cross-module deep imports
 - exports leaking `internal/`, `actions/`, tests, or private adapters
 - module cycles
-- pipeline imports of Agent Engine
+- pipeline imports of V8 Engine
 - host API imports inside V8
 - duplicate public contract definitions
 - missing contract/version tests
@@ -609,7 +609,22 @@ Automated checks MUST cover:
 
 The architecture test is a normal CI gate. Documentation alone is not enforcement.
 
-## 19. References
+## 19. Host enrichment adapters (speed + accuracy)
+
+Hosts MAY inject adapters that enrich published repository state without replacing V8 ownership:
+
+- **Workspace watching** — Chokidar / VS Code `FileSystemWatcher` → shared debounced incremental index (`@mitii/host`).
+- **GitPort** — libgit2 (`es-git`) preferred for status; CLI `NodeGitAdapter` fallback.
+- **WorkspaceTextSearchPort** — ripgrep primary; FTS fast-path for fresh literal queries; filesystem last resort.
+- **TreeSitterRuntimePort** — native tree-sitter preferred when grammars load; WASM fallback.
+- **SCIP** — background enrichment into existing `symbol_refs` / RepoGraph evidence (`scip_enriched`); host may generate via `scip-typescript` into `.mitii/scip/` then decode with `@scip-code/scip`; MUST NOT block lexical-first publish.
+- **Bundled search tools** — host prefers `@vscode/ripgrep` and `@ast-grep/cli` binaries, then PATH `rg` / `ast-grep` / `sg`.
+- **LSP / symbol_refs / RepoGraph** — navigation fallback chain; SCIP/LSP enrich change-impact via reason codes, they do not replace `change-impact`.
+- **AstGrepPort** — `structural_search` tool only; off the index/watch hot path.
+
+V8 remains the authority for SQLite indexes, RepoGraph, hybrid retrieval, and change-impact pipelines.
+
+## 20. References
 
 - Cursor Project Rules, scoping, and rule-size guidance: https://cursor.com/docs/rules.md
 - Tree-sitter incremental parsing and language parsers: https://tree-sitter.github.io/tree-sitter/

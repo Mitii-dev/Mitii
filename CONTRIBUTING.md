@@ -10,6 +10,8 @@ Maintainer: **codewithshinde** - [codewithshinde@gmail.com](mailto:codewithshind
 
 Mitii is released under [AGPL-3.0-or-later](LICENSE). By contributing code, you agree that your contributions will be licensed under the same terms. If that doesn't work for your employer or use case, reach out before investing a large amount of time.
 
+All commits must be signed off under the [Developer Certificate of Origin](DCO) (see [Sign your work](#sign-your-work-developer-certificate-of-origin) below).
+
 For bugs and feature ideas, open an [issue](https://github.com/Mitii-dev/Mitii/issues/new/choose) first when the change is non-trivial - use the Bug / Feature / Question templates. Saves everyone a rework loop.
 
 ---
@@ -27,7 +29,8 @@ Optional but useful for full feature coverage:
 
 - A local Ollama or other OpenAI-compatible endpoint for manual testing
 - `@xenova/transformers` (installed as optional dependency) for vector search
-- `web-tree-sitter` + `tree-sitter-wasms` for symbol extraction
+- `web-tree-sitter` + `tree-sitter-wasms` for symbol extraction (optional native `tree-sitter` grammars preferred when installed)
+- Optional: `es-git` (libgit2 GitPort), `chokidar` (Desktop watch), PATH tools `rg` / `sg` (search_files / structural_search)
 
 ---
 
@@ -51,7 +54,7 @@ Git hooks are installed automatically via `pnpm install` -> `prepare` -> `script
 3. In the Extension Development Host, open a project folder
 4. Click the Mitii icon in the activity bar
 
-Automated launch gate (no Extension Host): `pnpm run verify:launch` - see [docs/INITIAL_LAUNCH.md](docs/INITIAL_LAUNCH.md).
+Automated launch gate (no Extension Host): `pnpm run verify:launch`.
 
 ### Watch mode (day-to-day dev)
 
@@ -65,7 +68,7 @@ Rebuild the extension after host changes. Reload the Extension Development Host 
 
 ## Project layout
 
-Canonical packaging layout: [docs/REPO_LAYOUT.md](docs/REPO_LAYOUT.md). Canonical V8 architecture: [packages/v8/ARCHITECTURE.md](packages/v8/ARCHITECTURE.md).
+Canonical V8 architecture: [packages/v8/ARCHITECTURE.md](packages/v8/ARCHITECTURE.md).
 
 ```
 mitii-ai-agent/
@@ -76,8 +79,8 @@ mitii-ai-agent/
 |-- apps/vscode/                  # VS Code extension
 |-- apps/cli/                     # Headless CLI
 |-- apps/daemon/                  # Long-lived automation
+|-- apps/desktop/                 # Electron desktop
 |-- tests/benchmark/              # Solid benchmark
-|-- docs/
 |-- scripts/
 |-- pnpm-workspace.yaml
 `-- package.json                  # Private workspace orchestrator
@@ -92,7 +95,7 @@ mitii-ai-agent/
 
 ### Skills
 
-Bundled skills: `packages/sdk/skills/`. Format: [docs/SKILLS_FORMAT.md](docs/SKILLS_FORMAT.md).
+Bundled skills: `packages/sdk/skills/` (see that folder’s README).
 
 Writing recipes (CLI + VS Code SCM):
 
@@ -108,10 +111,11 @@ Details: [apps/cli/README.md](apps/cli/README.md), [apps/vscode/README.md](apps/
 
 ```bash
 pnpm run benchmark:validate
+pnpm run benchmark:prepare
 pnpm run benchmark
 ```
 
-See [tests/benchmark/README.md](tests/benchmark/README.md) and [docs/TESTS.md](docs/TESTS.md).
+See [tests/benchmark/README.md](tests/benchmark/README.md).
 
 ---
 
@@ -146,10 +150,11 @@ Install locally: **Extensions -> ... -> Install from VSIX**.
 
 | Scenario | Command |
 |----------|---------|
-| Full F5-ready build | `pnpm run build:all` |
-| F5 / VS Code extension host | `pnpm run rebuild:native` |
-| Cursor extension host | `MITII_EDITOR=cursor pnpm run rebuild:native` |
-| Local vitest / CLI only | `pnpm run rebuild:node` |
+| Fresh compile of all packages | `pnpm run build` |
+| Compile + Electron SQLite for F5 | `pnpm run build:all` |
+| F5 / VS Code extension host (ABI only) | `pnpm run rebuild:native` |
+| Cursor extension host (ABI only) | `MITII_EDITOR=cursor pnpm run rebuild:native` |
+| Local vitest / CLI only (ABI only) | `pnpm run rebuild:node` |
 
 `rebuild:native` stages `better_sqlite3.node` into `apps/vscode/dist/native`, then restores the system Node ABI in `node_modules`. Without the staged Electron binding, code/text indexes fail in the Extension Host.
 
@@ -183,6 +188,36 @@ chore: bump vitest to 1.6
 
 The pre-commit hook may stage a version bump in `package.json`. Include that in your commit if it runs.
 
+### Sign your work (Developer Certificate of Origin)
+
+We require a [Developer Certificate of Origin](https://developercertificate.org/) (DCO) sign-off on every commit. By signing off, you certify the statements in [DCO](DCO) — in short: you created the contribution (or have the right to submit it) under AGPL-3.0-or-later, and you are not violating employer or contract restrictions.
+
+Sign off with `-s` / `--signoff` (uses your configured `user.name` and `user.email`):
+
+```bash
+git commit -s -m "feat: add session log export command"
+```
+
+That appends a trailer like:
+
+```text
+Signed-off-by: Jane Doe <jane.doe@example.com>
+```
+
+The name and email should match the commit author. Pull requests are checked by the `DCO` GitHub Action; unsigned commits will fail CI.
+
+If you forgot to sign off:
+
+```bash
+# last commit only
+git commit --amend -s --no-edit
+
+# several commits since main
+git rebase --signoff main
+```
+
+Then force-push your branch if it was already pushed.
+
 ### Code style
 
 - TypeScript strict mode - `pnpm run typecheck` must pass
@@ -211,9 +246,10 @@ The pre-commit hook may stage a version bump in `package.json`. Include that in 
 
 1. Fork and branch from `main`
 2. Make your change; keep the diff focused
-3. Run `pnpm run typecheck` and `pnpm test`
-4. Manually smoke-test in the Extension Development Host if you touched agent behavior or UI
-5. Open a PR against `main` with:
+3. Sign off every commit (`git commit -s`) — see [Sign your work](#sign-your-work-developer-certificate-of-origin)
+4. Run `pnpm run typecheck` and `pnpm test`
+5. Manually smoke-test in the Extension Development Host if you touched agent behavior or UI
+6. Open a PR against `main` with:
    - What changed and why (2-4 sentences is fine)
    - How you tested it
    - Screenshots or a short recording for UI changes

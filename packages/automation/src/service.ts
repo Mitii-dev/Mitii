@@ -81,7 +81,7 @@ export class AutomationService {
     return this.store.listEventLogs(options);
   }
 
-  /** Phase 5 — export enabled specs as portable JSON (no run history). */
+ /** export enabled specs as portable JSON (no run history). */
   exportSpecs(): {
     schemaVersion: 1;
     exportedAt: string;
@@ -115,7 +115,7 @@ export class AutomationService {
     };
   }
 
-  /** Phase 5 — import specs from exportSpecs() JSON (idempotent by externalId). */
+ /** import specs from exportSpecs JSON (idempotent by externalId). */
   importSpecs(payload: {
     specs: Array<Record<string, unknown>>;
   }): { upserted: number } {

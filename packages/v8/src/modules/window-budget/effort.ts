@@ -1,7 +1,8 @@
 /**
  * Named working-set overlays. The advertised context window remains the
- * source of truth for retrieval and output reserve; effort only shapes
- * mutation batches, loop call counts, and compaction aggressiveness.
+ * source of truth for retrieval and output reserve. Effort shapes mutation
+ * batches and compaction, and loop call counts scale up on standard and
+ * wide windows so a large context is not pinned to the compact ceiling.
  *
  * Compaction ceilings are **ratios of the context window** (with small-window
  * floors), so compact / standard / wide budgets and loop history all grow
@@ -53,7 +54,7 @@ export const WINDOW_BUDGET_EFFORT_OVERLAY: Record<
     maxVerificationRepairs: 0,
   },
   medium: {
-    maxUniqueFilesPerCall: 8,
+    maxUniqueFilesPerCall: 12,
     // Align with the VS Code host default (64). 40 let the first loop
     // consume every call before remaining-error repairs could start.
     maxModelCalls: 64,
@@ -66,7 +67,7 @@ export const WINDOW_BUDGET_EFFORT_OVERLAY: Record<
     maxVerificationRepairs: 8,
   },
   high: {
-    maxUniqueFilesPerCall: 12,
+    maxUniqueFilesPerCall: 20,
     maxModelCalls: 96,
     maxToolCalls: 192,
     compactionAutoWindowRatio: 0.9,
@@ -84,6 +85,28 @@ export function resolveWindowBudgetEffort(
     return value;
   }
   return DEFAULT_WINDOW_BUDGET_EFFORT;
+}
+
+/**
+ * Effort bases are tuned for compact windows. Standard and wide windows
+ * get more model and tool calls so a 150k context is not stuck on the
+ * compact loop ceiling.
+ *
+ * Compact (under 50k): 1×. Standard (under 100k): 1.5×. Wide: 2×.
+ */
+export function scaleEffortCallBudget(
+  base: number,
+  contextWindowTokens: number,
+): number {
+  const window = Math.floor(contextWindowTokens);
+  const calls = Math.max(1, Math.floor(base));
+  if (!Number.isFinite(window) || window < 50_000) {
+    return calls;
+  }
+  if (window < 100_000) {
+    return Math.max(calls, Math.round(calls * 1.5));
+  }
+  return calls * 2;
 }
 
 /**

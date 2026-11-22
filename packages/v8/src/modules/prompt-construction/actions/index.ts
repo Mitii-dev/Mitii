@@ -19,3 +19,6 @@ export type { TurnOutputHeadroom } from "./EstimateTurnOutputHeadroom";
 
 export { resolveDynamicOutputTokens } from "./ResolveDynamicOutputTokens";
 export type { DynamicOutputTokenResolution } from "./ResolveDynamicOutputTokens";
+
+export { mapContextToPromptSlice } from "./mapContextToPromptSlice";
+export { mergePromptInstructions } from "./mergePromptInstructions";

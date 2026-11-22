@@ -1,0 +1,292 @@
+import type { PromptInstructionBlock } from "../../contracts";
+import { FRAGMENT_POLICY } from "./fragmentPolicy";
+import type { ContextualFragment, FragmentRole } from "./ContextualFragment";
+import { MID_CONVERSATION_UPDATE_MARKERS } from "./midConversationMarkers";
+
+export class BaseInstructionsFragment implements ContextualFragment {
+  public readonly id = "system:core";
+
+  constructor(private readonly text: string) {}
+
+  role(): FragmentRole {
+    return "system";
+  }
+
+  contentKind(): string {
+    return "generic.base_instructions";
+  }
+
+  requiresSeparateMessage(): boolean {
+    return false;
+  }
+
+  markers(): readonly [string, string] {
+    return ["", ""] as const;
+  }
+
+  body(): string {
+    return this.text;
+  }
+
+  maxTokens(): number {
+    return FRAGMENT_POLICY.absoluteMaxTokens;
+  }
+
+  section(): "system" {
+    return "system";
+  }
+
+  trust(): "trusted_instruction" {
+    return "trusted_instruction";
+  }
+}
+
+export class InstructionBlockFragment implements ContextualFragment {
+  constructor(
+    public readonly id: string,
+    private readonly heading: string,
+    private readonly block: PromptInstructionBlock,
+    private readonly sectionName:
+      | "rules"
+      | "skills"
+      | "memory"
+      | "environment"
+      | "plan",
+    private readonly kindNamespace: string,
+    private readonly options?: {
+      readonly marked?: boolean;
+      readonly separateMessage?: boolean;
+      readonly absoluteMaxTokens?: number;
+      readonly additionalContextValueTokens?: number;
+    },
+  ) {}
+
+  role(): FragmentRole {
+    return "system";
+  }
+
+  contentKind(): string {
+    return `${this.kindNamespace}.${this.block.id}`;
+  }
+
+  requiresSeparateMessage(): boolean {
+    return this.options?.separateMessage === true;
+  }
+
+  /**
+   * Environment / memory default to marked fragments so
+   * mid-session reinjection and epoch mid-updates can be recognized later.
+   * Rules/skills stay unmarked for classic single-system-blob compatibility
+   * unless `options.marked` is set.
+   */
+  markers(): readonly [string, string] {
+    if (this.options?.marked === false) {
+      return ["", ""] as const;
+    }
+    if (
+      this.options?.marked === true ||
+      this.sectionName === "environment" ||
+      this.sectionName === "memory"
+    ) {
+      const tag = this.sectionName;
+      return [`<${tag}_fragment id="${this.block.id}">`, `</${tag}_fragment>`] as const;
+    }
+    return ["", ""] as const;
+  }
+
+  body(): string {
+    const title = this.block.title ?? this.block.id;
+    return `## ${this.heading}: ${title}\n${this.block.content}`;
+  }
+
+  maxTokens(): number {
+    const absolute =
+      this.options?.absoluteMaxTokens ?? FRAGMENT_POLICY.absoluteMaxTokens;
+    // Environment values keep the additional-context hard budget.
+    // Rules/skills/memory use absolute max; review threshold only flags.
+    if (this.sectionName === "environment") {
+      return Math.min(
+        this.options?.additionalContextValueTokens ??
+          FRAGMENT_POLICY.additionalContextValueTokens,
+        absolute,
+      );
+    }
+    return absolute;
+  }
+
+  section(): "rules" | "skills" | "memory" | "environment" | "plan" {
+    return this.sectionName;
+  }
+
+  trust(): "trusted_instruction" {
+    return "trusted_instruction";
+  }
+}
+
+/**
+ * Mid-conversation context-epoch update (chronological admission).
+ *
+ * Always a separate **user** message (not trailing system) so the leading
+ * system baseline stays a stable provider-cache prefix. Marked so epoch
+ * admit can strip on replace. Prefer `wrapMidConversationUpdateText` when
+ * only wrapping text for the engine admit path.
+ */
+export class MidConversationUpdateFragment implements ContextualFragment {
+  public readonly id: string;
+
+  constructor(
+    private readonly bodyText: string,
+    idSuffix = "update",
+  ) {
+    this.id = `context_epoch:${idSuffix}`;
+  }
+
+  role(): FragmentRole {
+    return "user";
+  }
+
+  contentKind(): string {
+    return "generic.context_epoch_update";
+  }
+
+  requiresSeparateMessage(): boolean {
+    return true;
+  }
+
+  markers(): readonly [string, string] {
+    return [
+      `${MID_CONVERSATION_UPDATE_MARKERS.start}\n`,
+      `\n${MID_CONVERSATION_UPDATE_MARKERS.end}`,
+    ] as const;
+  }
+
+  body(): string {
+    return this.bodyText.trim();
+  }
+
+  maxTokens(): number {
+    return FRAGMENT_POLICY.absoluteMaxTokens;
+  }
+
+  section(): "system" {
+    return "system";
+  }
+
+  trust(): "trusted_instruction" {
+    return "trusted_instruction";
+  }
+}
+
+export class DecisionBriefFragment implements ContextualFragment {
+  public readonly id = "system:decision-brief";
+
+  constructor(private readonly text: string) {}
+
+  role(): FragmentRole {
+    return "system";
+  }
+
+  contentKind(): string {
+    return "generic.decision_brief";
+  }
+
+  requiresSeparateMessage(): boolean {
+    return false;
+  }
+
+  markers(): readonly [string, string] {
+    return ["", ""] as const;
+  }
+
+  body(): string {
+    return this.text.trim();
+  }
+
+  maxTokens(): number {
+    return FRAGMENT_POLICY.absoluteMaxTokens;
+  }
+
+  section(): "system" {
+    return "system";
+  }
+
+  trust(): "trusted_instruction" {
+    return "trusted_instruction";
+  }
+}
+
+export class ExecutionSeedFragment implements ContextualFragment {
+  public readonly id = "system:execution-seed";
+
+  constructor(private readonly text: string) {}
+
+  role(): FragmentRole {
+    return "system";
+  }
+
+  contentKind(): string {
+    return "generic.execution_seed";
+  }
+
+  requiresSeparateMessage(): boolean {
+    return false;
+  }
+
+  markers(): readonly [string, string] {
+    return ["", ""] as const;
+  }
+
+  body(): string {
+    return this.text.trim();
+  }
+
+  maxTokens(): number {
+    return Math.min(FRAGMENT_POLICY.absoluteMaxTokens, 1_200);
+  }
+
+  section(): "system" {
+    return "system";
+  }
+
+  trust(): "trusted_instruction" {
+    return "trusted_instruction";
+  }
+}
+
+export class PlanGuidanceFragment implements ContextualFragment {
+  public readonly id = "system:plan-guidance";
+
+  constructor(private readonly text: string) {}
+
+  role(): FragmentRole {
+    return "system";
+  }
+
+  contentKind(): string {
+    return "generic.plan_guidance";
+  }
+
+  requiresSeparateMessage(): boolean {
+    return false;
+  }
+
+  markers(): readonly [string, string] {
+    return ["", ""] as const;
+  }
+
+  body(): string {
+    return this.text;
+  }
+
+  maxTokens(): number {
+    return FRAGMENT_POLICY.absoluteMaxTokens;
+  }
+
+  section(): "plan" {
+    return "plan";
+  }
+
+  trust(): "trusted_instruction" {
+    return "trusted_instruction";
+  }
+}

@@ -10,6 +10,7 @@ export {
 } from "./checkpoint";
 export {
   preflightStructuredPatch,
+  stripJsNoiseForBracketScan,
   validatePostEditSyntax,
 } from "./applyStructuredPatch";
 export { MutationTransactionRegistry } from "./MutationTransactionRegistry";
@@ -17,6 +18,10 @@ export type {
   MutationTransactionApplyResult,
   MutationPathResult,
 } from "./MutationTransactionRegistry";
+export {
+  withPathMutationQueue,
+  resetPathMutationQueuesForTests,
+} from "./pathMutationQueue";
 export { assertApprovalSatisfied } from "./assertApprovalSatisfied";
 export type { ToolApprovalToken } from "./assertApprovalSatisfied";
 export { MutationError } from "./types";

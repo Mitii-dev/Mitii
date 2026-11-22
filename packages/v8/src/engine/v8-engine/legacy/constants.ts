@@ -1,0 +1,373 @@
+/**
+ * Stable identifiers for Agent Engine.
+ */
+export const AGENT_ENGINE_SCHEMA_VERSION = 1 as const;
+
+/**
+ * Developer-facing log verbosity. Controls how much diagnostic detail is
+ * attached to RunEvents beyond the events every run already emits.
+ *
+ * - "minimal": only the baseline event set (pre-existing behavior).
+ * - "standard": adds structured reason codes / before-after values for
+ *   clamps, drops, and soft failures — low volume, high diagnostic value.
+ * - "verbose": adds everything, including per-attempt retry events and
+ *   uncapped omission/evidence detail. Higher volume.
+ *
+ * Defaults to "verbose" so bugs are discoverable by default; hosts that find
+ * the volume excessive can turn it down without any behavior change.
+ */
+export const AGENT_LOG_VERBOSITIES = ["minimal", "standard", "verbose"] as const;
+export const DEFAULT_AGENT_LOG_VERBOSITY = "verbose" as const;
+export type AgentLogVerbosity = (typeof AGENT_LOG_VERBOSITIES)[number];
+
+export const AGENT_RUN_STATUSES = [
+  "completed",
+  "suspended",
+  "cancelled",
+  "budget_exhausted",
+  "failed",
+  "approval_denied",
+] as const;
+
+export const AGENT_SUSPENSION_KINDS = [
+  "clarification_required",
+  "approval_required",
+  "plan_approval_required",
+  "grant_expansion_required",
+  "continue_required",
+] as const;
+
+export const AGENT_ACTIVE_STAGES = [
+  "received",
+  "understood",
+  "decided",
+  "skills_ready",
+  "memory_ready",
+  "plan_ready",
+  "discovery",
+  "context_ready",
+  "model_running",
+  "tool_running",
+  "verifying",
+] as const;
+
+export const AGENT_REASON_CODES = [
+  "run_started",
+  "intake_complete",
+  /** Leading slash classified as non-agent meta; run short-circuited at intake. */
+  "intake_meta_command",
+  /** `@path` mentions were parsed into referencedArtifacts at intake. */
+  "intake_mentions_extracted",
+  /** Session-control handled /stop at intake. */
+  "session_control_stop",
+  /** Session-control handled /new or /clear (host should reset transcript). */
+  "session_control_finalized",
+  /** Session-control compacted host conversation at intake. */
+  "session_control_compacted",
+  /** Session-control side channel (/help /status /resume). */
+  "session_control_side_channel",
+  "understanding_complete",
+  "decision_complete",
+  "grant_narrowed",
+  "grant_expanded",
+  "mutation_critic_pass",
+  "mutation_critic_revise",
+  "mutation_critic_stop",
+  "mutation_critic_shadow_block",
+  "grant_expansion_suspended",
+  "grant_expansion_approved",
+  "grant_expansion_denied",
+  "clarification_suspended",
+  "plan_drafted",
+  "plan_skipped",
+  "plan_approval_suspended",
+  "plan_approved",
+  /** Host supplied an approved plan on start (cross-run plan→execute handoff). */
+  "plan_carried",
+  /** Plan mode finished with the structured plan as the terminal answer. */
+  "plan_mode_completed",
+  "discovery_started",
+  "discovery_completed",
+  "discovery_failed",
+  "discovery_skipped",
+  /** Prompt already named concrete files — shaped glob/search preflight skipped. */
+  "discovery_explicit_paths_skip_shaped_search",
+  /** Plan thorough: preferred paths present but shaped/search still runs. */
+  "discovery_force_exploration",
+  /** Plan thorough: no shaped profile matched — query-derived search/glob ran. */
+  "discovery_force_exploration_fallback",
+  /** Prior-turn path hints injected into context focus / planning seeds. */
+  "plan_prior_path_hints_carried",
+  /** Medium/large: trusted seed / preferred paths read before shaped search. */
+  "discovery_seed_first",
+  /** Seed pre-reads produced no evidence; shaped search ran as fallback. */
+  "discovery_seed_insufficient_shaped_fallback",
+  "plan_rejected",
+  "plan_edited",
+  "task_list_seeded",
+  "task_list_updated",
+  "task_list_auto_advanced",
+  "task_list_refilled",
+  "repo_build_state_before_captured",
+  "repo_build_state_after_captured",
+  "repo_build_state_errors_cleared",
+  "repo_build_state_errors_remaining",
+  "repo_build_state_new_errors",
+  "repo_build_state_remaining_error_batch",
+  "verification_incomplete",
+  "verification_record_saved",
+  "verification_summary_produced",
+  "verification_retry_available",
+  "verification_retry_loaded",
+  "verification_kept_changes",
+  "memory_committed",
+  "change_impact_gate_blocked",
+  "change_impact_observed",
+  "change_impact_incomplete",
+  "post_edit_diagnostics_requires_repair",
+  "approval_suspended",
+  "approval_denied",
+  "approval_granted",
+  "mutation_deferred",
+  "state_pinned",
+  "skills_selected",
+  "skills_skipped",
+  "skills_refreshed",
+  "memory_retrieved",
+  "memory_empty",
+  "memory_skipped",
+  "exploration_reread_heavy",
+  "exploration_stall_broken",
+  "stall_continue_suspended",
+  "stall_continue_approved",
+  "stall_continue_stopped",
+  "stall_continue_override_capped",
+  "preflight_repair_lock",
+  "mutation_lock_recovered",
+  "mutation_lock_auto_stub",
+  "tool_result_deduped",
+  "tool_result_already_read",
+  /**
+   * Successful `run_command` wiped read-only content cache + read ledger
+   * so post-install builds/reads are not served from pre-mutation results.
+   */
+  "shell_mutation_cache_invalidated",
+  "content_cache_path_invalidated",
+  "read_ledger_invalidated",
+  "prompt_cache_class_no_cache",
+  "prompt_cache_class_prompt_cache",
+  "context_epoch_initialized",
+  "context_epoch_unchanged",
+  "context_epoch_updated",
+  "context_epoch_mid_update_admitted",
+  "context_epoch_baseline_pinned",
+  "context_epoch_baseline_rewritten",
+  "context_epoch_replace_requested",
+  "context_epoch_replaced",
+  "context_epoch_replace_blocked",
+  "context_epoch_mid_updates_stripped",
+  "context_cache_prefix_mismatch",
+  "session_history_archived",
+  "session_history_hybrid_retrieved",
+  "session_history_projection_upserted",
+  "established_facts_reinjected",
+  "memory_refreshed_for_compaction",
+  "memory_reinjected",
+  "completed_task_results_stubbed",
+  "context_retrieved",
+  "context_skipped",
+  "prompt_constructed",
+  "model_completed",
+  "output_truncated",
+  "output_truncation_recovered",
+  /** Length-stop after mutations already landed; finish instead of recovering. */
+  "output_truncation_finish_after_mutation",
+  /** Reasoning channel exceeded progress budget before content/tools; treated as length. */
+  "reasoning_progress_budget_exceeded",
+  "incomplete_answer_recovered",
+  "incomplete_answer_fallback",
+  "incomplete_execute",
+  /** Verification gate: execute+write finished with zero workspace file mutations. */
+  "no_mutation_performed",
+  "incomplete_review",
+  "incomplete_review_recovered",
+  "unfulfilled_execute_recovered",
+  "unfulfilled_execute_exhausted",
+  "must_read_nudged",
+  "soft_mutation_nudged",
+  "readonly_thrash_continue",
+  /** Active checklist step: load named RequiredEvidenceBeforePatch, then patch. */
+  "step_mutate_readiness_gated",
+  /** Active checklist step evidence loaded (or gate budget spent); demand apply_patch. */
+  "step_mutate_patch_required",
+  /** Discovery tools stripped; mutate (+ optional targeted reads) only until patch lands. */
+  "step_mutate_lock_armed",
+  /** Mutate lock rejected a discovery tool at execution (not just catalog filter). */
+  "step_mutate_lock_enforced",
+  /** One capped local-evidence recovery after happy-path bind budget. */
+  "evidence_recovery_armed",
+  /** Recovery used or miss not local — clarify/escalate, no open search. */
+  "evidence_recovery_exhausted",
+  /**
+ * Bind+recovery exhausted — hard STOP/REPORT.
+   * No evidence_clarify Continue that reopens discovery.
+   */
+  "evidence_recovery_exhausted_terminal",
+  /** Authoritative paths/causes resolved from user cites and/or diagnostics. */
+  "execution_seed_trusted",
+  /** No authoritative seed yet — do not force patch-required. */
+  "execution_seed_weak",
+  /** Folder-only seed refined to concrete context file paths. */
+  "execution_seed_context_refined",
+  /** Concrete plan Change targetRefs promoted into a trusted seed. */
+  "execution_seed_from_plan",
+  /** Continue resume restored the refined seed from the checkpoint. */
+  "execution_seed_restored",
+  /** Trusted seed paths written onto checklist write/mustRead. */
+  "execution_seed_task_list_bound",
+  /**
+   * Medium/large plan could not yield a concrete plan-derived checklist
+   * (even after one seed-informed targetRefs recovery). Do not invent tasks.
+   */
+  "task_list_plan_not_concrete",
+  "code_intel_adoption_nudged",
+  "tools_executed",
+  "mutation_applied",
+  "mutation_rolled_back",
+  "verification_passed",
+  "verification_failed",
+  "verification_repair_attempted",
+  "verification_repair_succeeded",
+  "verification_repair_batch_activated",
+  /** First mutate loop stopped early so remaining model calls can repair. */
+  "verification_repair_budget_reserved",
+  /**
+   * Gate accepted — run is hard-terminal (no Continue / repair / rediscover).
+   * execution reliability: ACCEPTED = STOP.
+   */
+  "verification_accepted_terminal",
+  /**
+   * Repair budget/stall/cap exhausted — STOP/REPORT without Continue wall.
+   * Explicit user retry may still use the durable verification record.
+   */
+  "verification_repair_exhausted_terminal",
+  /** Post-mutation glob/read streak capped so verification can run. */
+  "post_mutation_read_capped",
+  "verification_skipped",
+  "answer_produced",
+  "cancelled",
+  "budget_exhausted",
+  "provider_failed",
+  /**
+ * Model transport/provider unreachable after gateway retries.
+   * Distinct from agent logic failure — hosts should show infrastructure UX
+   * and prefer Continue/resume over a bare agent-failed exit.
+   */
+  "provider_infrastructure_unavailable",
+  "tool_failed",
+  "misconfigured",
+  "invalid_input",
+  "prompt_blocked",
+  /** Request carried an image attachment but the resolved model does not support vision. */
+  "vision_unsupported",
+  "context_failed",
+  "state_unavailable",
+  "resume_complete",
+  /** A requested run-budget ceiling was reduced by the window policy. */
+  "run_budget_clamped",
+  /** Turn's maximum output tokens was reduced to avoid exceeding the context window. */
+  "output_tokens_clamped",
+  /** Plan-approval resume reused pinned state, understanding, and decision instead of re-running startup. */
+  "resume_state_reused",
+  /** A passing verification command ran after the last edit; the model loop ended without another free-form turn. */
+  "loop_finished_after_verified_mutation",
+  /** Final run-result schema rejected a field; evidence was clamped/dropped so the run outcome survived. */
+  "result_contract_degraded",
+  /** A best-effort mutation checkpoint commit failed; changes may not be durably committed. */
+  "mutation_commit_failed",
+  /** Best-effort state unpin failed on a terminal path; pinned state may leak. */
+  "state_unpin_failed",
+  /** Loading a prior verification retry record failed (distinct from "no record found"). */
+  "verification_retry_load_failed",
+  /** Building the verification record for persistence failed. */
+  "verification_record_build_failed",
+  /** LLM verification-summary narration failed or was rejected; a template fallback was used. */
+  "verification_narration_failed",
+  /** Optional LLM verification critique failed or was rejected; gate decision unchanged. */
+  "verification_critique_failed",
+  /** A hard/blocked verification rejection was kept rather than repaired (see rejectKind on the event). */
+  "verification_rejected_kept",
+  /** A host policy (planApproval: never) suppressed a plan gate that risk analysis required. */
+  "plan_gate_suppressed_by_policy",
+  /** Plan mode contract upgraded strategy to discover_and_plan before discovery. */
+  "plan_mode_discovery_required",
+  /** Plan mode discovery finished without file-backed evidence; strategy fell back to clarify. */
+  "plan_mode_discovery_insufficient",
+  /**
+   * User already picked a Plan A/B/C scope (or equivalent). Do not re-clarify;
+   * draft a concrete plan from discovery / scoped ask.
+   */
+  "plan_scope_choice_honored",
+  /** Discovery preferred paths / budget were narrowed to the chosen A/B/C scope. */
+  "plan_scope_bounds_applied",
+  /** Terminal answer offers remaining A/B/C campaign phases after this scope. */
+  "plan_next_phase_offered",
+  /**
+   * Agent visible / multi-outcome: suspended for A/B/C after a concrete plan
+   * so execute does not run the whole campaign in one shot.
+   */
+  "plan_scope_campaign_phase_lock",
+  /** Agent big-task contract upgraded strategy to discover_and_plan before discovery. */
+  "agent_big_task_discovery_required",
+  /** Grant expansion included network access (fetch_url/fetch_docs/web_search). */
+  "network_access_granted",
+  /** One or more values in an emitted event array were truncated for size; see truncated flag. */
+  "event_list_truncated",
+  /** Decision Policy fast path: small explicit-path ask skipped plan + discovery. */
+  "fast_path_plan_skipped",
+  /** Discovery seed paths were filtered against the index / path hygiene rules. */
+  "discovery_seed_paths_filtered",
+  /** Near the host wall-time budget with a mutation landed: loop ended so verification can run. */
+  "wall_time_finalize_after_mutation",
+  /** Near the host wall-time budget with no mutation yet: one nudge to patch now. */
+  "wall_time_wrap_up_nudge",
+] as const;
+
+
+export const AGENT_ERROR_CODES = [
+  "invalid_input",
+  "misconfigured_ports",
+  "execution_failed",
+] as const;
+
+export const AGENT_EVENT_TYPES = [
+  "stage_started",
+  "stage_completed",
+  "decision_made",
+  "grant_narrowed",
+  "state_pinned",
+  "skills_ready",
+  "memory_ready",
+  "plan_ready",
+  "discovery_started",
+  "discovery_progress",
+  "discovery_completed",
+  "task_list_updated",
+  "context_ready",
+  "prompt_ready",
+  "model_delta",
+  "model_turn",
+  "tool_started",
+  "tool_completed",
+  "evidence_updated",
+  "suspended",
+  "warning",
+  "verification_completed",
+  "repo_build_state_captured",
+  "verification_comparison",
+  "verification_record_saved",
+  "verification_summary_ready",
+  "verification_critique_ready",
+  "verification_retry_available",
+  "terminal",
+] as const;

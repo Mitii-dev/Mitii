@@ -4,7 +4,13 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 import { IconCopy } from './Icons';
-import { inlineCodeAsFileRef, parseFileRef } from '../fileLinks';
+import {
+  elementsToSvg,
+  inlineCodeAsFileRef,
+  isExcalidrawSource,
+  parseExcalidrawDocument,
+  parseFileRef,
+} from '@mitii/ui-core';
 
 interface MarkdownMessageProps {
   content: string;
@@ -262,6 +268,54 @@ function CodeBlock({
   );
 }
 
+function ExcalidrawBlock({ text }: { text: string }) {
+  const [showSource, setShowSource] = useState(false);
+  const parsed = useMemo(() => parseExcalidrawDocument(text), [text]);
+
+  if (!parsed) {
+    return (
+      <figure className="md-diagram-card md-diagram-card--error">
+        <figcaption className="md-code-toolbar md-diagram-toolbar">
+          <span className="md-diagram-title">Excalidraw</span>
+          <span className="md-code-lang">parse error</span>
+          <CopyButton text={text} label="Source" />
+        </figcaption>
+        <p className="md-diagram-error">
+          Could not parse Excalidraw JSON (incomplete or invalid).
+        </p>
+        <CodeBlock language="json" text={text} />
+      </figure>
+    );
+  }
+
+  const title = parsed.title ?? 'Architecture diagram';
+  const svg = elementsToSvg(parsed.elements, title);
+  const svgDataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+
+  return (
+    <figure className="md-diagram-card mcp-app-card">
+      <figcaption className="md-code-toolbar md-diagram-toolbar">
+        <span className="md-diagram-title">{title}</span>
+        <span className="md-code-lang">excalidraw</span>
+        <div className="md-diagram-actions">
+          <button
+            type="button"
+            className="md-copy-button"
+            onClick={() => setShowSource((v) => !v)}
+          >
+            {showSource ? 'Hide source' : 'Source'}
+          </button>
+          <CopyButton text={text} label="Copy" />
+        </div>
+      </figcaption>
+      <div className="md-diagram-stage">
+        <img className="mcp-app-card__svg" src={svgDataUrl} alt={title} />
+      </div>
+      {showSource ? <CodeBlock language="excalidraw" text={text} /> : null}
+    </figure>
+  );
+}
+
 function DiagramBlock({
   language,
   text,
@@ -404,6 +458,9 @@ function createComponents(
         );
       }
       const lang = normalizeLanguage(language);
+      if (isExcalidrawSource(lang, text)) {
+        return <ExcalidrawBlock text={text} />;
+      }
       if (isDiagramSource(lang, text)) {
         return <DiagramBlock language={lang} text={text} />;
       }

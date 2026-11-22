@@ -175,6 +175,48 @@ describe('MitiiClient contract', () => {
     expect(engineInput.request.mode).toBe('agent');
   });
 
+  it('folds maxWallTimeMs into the engine run budget', () => {
+    const engineInput = toAgentEngineStartInput(
+      { prompt: 'Fix it', mode: 'agent', maxWallTimeMs: 300_000 },
+      { mode: 'ask', sessionId: 'sess_test' },
+    );
+    expect(engineInput.budget?.maxWallTimeMs).toBe(300_000);
+    expect(engineInput.budget?.maxModelCalls).toBeGreaterThan(0);
+
+    const merged = toAgentEngineStartInput(
+      {
+        prompt: 'Fix it',
+        mode: 'agent',
+        budget: {
+          unlimited: false,
+          maxModelCalls: 7,
+          maxToolCalls: 9,
+          maxLoopIterations: 7,
+          maxWallTimeMs: 900_000,
+        },
+        maxWallTimeMs: 120_000,
+      },
+      { mode: 'ask', sessionId: 'sess_test' },
+    );
+    expect(merged.budget?.maxWallTimeMs).toBe(120_000);
+    expect(merged.budget?.maxModelCalls).toBe(7);
+
+    const untouched = toAgentEngineStartInput(
+      { prompt: 'Fix it', mode: 'agent' },
+      { mode: 'ask', sessionId: 'sess_test' },
+    );
+    expect(untouched.budget).toBeUndefined();
+  });
+
+  it('rejects non-positive maxWallTimeMs', () => {
+    expect(() =>
+      toAgentEngineStartInput(
+        { prompt: 'Fix it', mode: 'agent', maxWallTimeMs: 0 },
+        { mode: 'ask', sessionId: 'sess_test' },
+      ),
+    ).toThrow();
+  });
+
   it('maps a carried taskList onto engine start input', () => {
     const engineInput = toAgentEngineStartInput(
       {

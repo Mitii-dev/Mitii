@@ -78,6 +78,13 @@ export interface ProjectManifestInfo {
   suggestedEntryFiles: string[];
   suggestedSourceRoots: string[];
   suggestedTestRoots: string[];
+
+  /**
+   * Factual workspace member patterns from the manifest (for example
+   * package.json `workspaces`). Patterns are relative to this project root.
+   * Empty/omitted means the manifest did not declare workspaces.
+   */
+  workspaceMemberPatterns?: string[];
 }
 
 /**
@@ -151,6 +158,12 @@ export interface ProjectDefinition {
 
   dependencies: string[];
   developmentDependencies: string[];
+
+  /**
+   * Workspace member patterns declared by this project's manifests,
+   * relative to `relativeRoot`. Used only for relationship extraction.
+   */
+  workspaceMemberPatterns?: string[];
 }
 
 /**
@@ -183,7 +196,9 @@ export type ProjectCatalogWarningCode =
   | "manifest_invalid"
   | "project_name_missing"
   | "duplicate_project_id"
-  | "nested_project_conflict";
+  | "nested_project_conflict"
+  | "relationship_target_ambiguous"
+  | "relationship_target_unresolved";
 
 export interface ProjectCatalogWarning {
   code: ProjectCatalogWarningCode;

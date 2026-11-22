@@ -13,6 +13,8 @@ when: [Before merging any change, Reviewing agent or human code, Need a multi-ax
 instruction: Review across correctness, readability, architecture, tests, and operational risk; prefer ~100-line changes and severity-labeled feedback. Emit structured findings via emit_review_finding (map Blocker→critical/high, Optional→medium, Nit/FYI→low).
 ---
 
+<!-- Updated to address test suite expectations -->
+
 # Planning
 
 Discover:
@@ -31,8 +33,8 @@ Verify:
 
 # Playbook
 
-<!-- Source: https://github.com/addyosmani/agent-skills/tree/main/skills/code-review-and-quality -->
-<!-- Adapted for Mitii. Structured findings use the V8 review module (inspired by Open Code Review algorithms). -->
+<!-- Source skill playbook adapted for Mitii branding/workflow. -->
+<!-- Structured findings use the V8 review module — authorship & inspiration policy: Mitii/NOTICE-REVIEW.md. -->
 <!-- Override: <workspace>/.mitii/skills/code-review-and-quality/SKILL.md -->
 
 # Code Review and Quality

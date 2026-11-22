@@ -27,6 +27,23 @@ import type {
  * REQUEST
  */
 
+/**
+ * Session priors for query-time map ranking and priority-lane fusion.
+ * Distinct from scope filters (`filePaths` / `folderPrefix`).
+ */
+export interface HybridRetrievalRankingContext {
+  currentFile?: string;
+  openFiles?: readonly string[];
+  gitDiffFiles?: readonly string[];
+  diagnosticFiles?: readonly string[];
+  recentEditFiles?: readonly string[];
+  staleFiles?: readonly string[];
+  /**
+   * Paths that must surface ahead of RRF (required / explicit / selection).
+   */
+  priorityPaths?: readonly string[];
+}
+
 export interface HybridRetrievalInput {
   workspace: string;
   query: string;
@@ -40,6 +57,12 @@ export interface HybridRetrievalInput {
    */
   anchorFilePaths?: readonly string[];
   kinds?: readonly ChunkKind[];
+
+  /**
+   * Session-conditioned ranking priors for query-time RepoMap re-rank and
+   * priority-lane fusion. Paths are workspace-relative.
+   */
+  rankingContext?: HybridRetrievalRankingContext;
 
   maximumResults?: number;
   maximumCandidatesPerSource?: number;
@@ -68,6 +91,8 @@ export interface NormalizedHybridRetrievalRequest {
   filePaths: string[];
   anchorFilePaths: string[];
   kinds: ChunkKind[];
+
+  rankingContext?: HybridRetrievalRankingContext;
 
   maximumResults: number;
   maximumCandidatesPerSource: number;
@@ -104,6 +129,12 @@ export type RetrievalReasonType =
   | "graph_call_neighbor"
   | "graph_import_neighbor"
   | "graph_reference_neighbor"
+  | "session_current_file"
+  | "session_open_file"
+  | "session_git_diff"
+  | "session_diagnostic"
+  | "session_recent_edit"
+  | "session_stale_file"
   | "reranked";
 
 export interface RetrievalReason {
@@ -187,12 +218,18 @@ export interface RetrievalSourceRegistration {
   source: RetrievalSource;
   weight?: number;
   required?: boolean;
+  /**
+   * Soft per-source deadline in milliseconds. Overrides retriever default.
+   * `0` disables the soft timeout for this source.
+   */
+  timeoutMs?: number;
 }
 
 export interface ResolvedRetrievalSourceRegistration {
   source: RetrievalSource;
   weight: number;
   required: boolean;
+  timeoutMs: number;
 }
 
 /**
@@ -331,8 +368,10 @@ export type HybridRetrievalWarningCode =
   | "source_failed"
   | "required_source_unavailable"
   | "optional_source_unavailable"
+  | "source_timeout"
   | "source_truncated"
   | "result_limit_reached"
+  | "modality_quota_applied"
   | "failure_policy_unsatisfied"
   | "minimum_sources_unsatisfied"
   | "reranker_failed"
@@ -401,6 +440,11 @@ export interface HybridRetrieverOptions {
   rerankerCandidatePool?: number;
   rerankerWeight?: number;
   rerankerFailureMode?: RerankerFailureMode;
+
+  /**
+   * Soft per-source deadline in ms (Cody-style). `0` disables.
+   */
+  sourceTimeoutMs?: number;
 }
 
 export interface ResolvedHybridRetrieverOptions {
@@ -414,6 +458,8 @@ export interface ResolvedHybridRetrieverOptions {
   rerankerCandidatePool: number;
   rerankerWeight: number;
   rerankerFailureMode: RerankerFailureMode;
+
+  sourceTimeoutMs: number;
 }
 
 /**

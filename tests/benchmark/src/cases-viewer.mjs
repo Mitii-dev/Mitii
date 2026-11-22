@@ -52,17 +52,26 @@ function renderCasesHtml(cases, suites, manifestBySuite) {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Benchmark test cases</title>
+  <title>Mitii Benchmark test cases</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
   <style>${sharedCss()}${casesCss()}</style>
 </head>
 <body class="cases-page">
+  <div class="atmosphere" aria-hidden="true"></div>
   <div class="shell">
-    <header class="bar">
-      <div class="bar-left">
-        <strong class="suite">Test case viewer</strong>
+    <header class="topbar">
+      <div class="topbar-brand">
+        <a class="brand" href="index.html">
+          <span class="brand-mark">Mitii</span>
+          <span class="brand-sub">Eval</span>
+        </a>
+        <span class="crumb-sep" aria-hidden="true">/</span>
+        <span class="crumb">Test cases</span>
         <span class="muted" id="cases-meta"></span>
       </div>
-      <div class="bar-right">
+      <div class="topbar-actions">
         <input id="cases-search" type="search" placeholder="Search id, prompt, fixture…" />
         <select id="cases-suite"><option value="all">All suites</option></select>
         <select id="cases-file"><option value="all">All files</option></select>
@@ -73,18 +82,18 @@ function renderCasesHtml(cases, suites, manifestBySuite) {
           <option value="hard">hard</option>
         </select>
         <select id="cases-capability"><option value="all">All capabilities</option></select>
-        <a class="link" href="index.html">&larr; Runs</a>
+        <a class="btn btn-ghost" href="index.html">Runs</a>
       </div>
     </header>
     <main class="main cases-main">
       <div class="cases-shell">
-        <div class="card cases-list-card">
+        <div class="panel cases-list-card">
           <div class="cases-list-header">
             <span id="cases-count" class="muted"></span>
           </div>
           <div id="cases-list" class="cases-list"></div>
         </div>
-        <div class="card cases-detail-card">
+        <div class="panel cases-detail-card">
           <div id="cases-detail" class="cases-detail empty">Select a case to view its full prompt, fixture, preconditions, and checks.</div>
         </div>
       </div>
@@ -101,46 +110,46 @@ function renderCasesHtml(cases, suites, manifestBySuite) {
 function casesCss() {
   return `
 .cases-main { padding: 16px 20px 24px; }
-.cases-shell { display: grid; grid-template-columns: 420px 1fr; gap: 12px; height: calc(100vh - 88px); }
+.cases-shell { display: grid; grid-template-columns: 420px 1fr; gap: 14px; height: calc(100vh - 96px); }
 @media (max-width: 900px) { .cases-shell { grid-template-columns: 1fr; height: auto; } }
 .cases-list-card, .cases-detail-card { display: flex; flex-direction: column; min-height: 0; padding: 0; overflow: hidden; }
-.cases-list-header { padding: 12px 14px; border-bottom: 1px solid var(--line); flex: 0 0 auto; }
+.cases-list-header { padding: 12px 14px; border-bottom: 1px solid var(--line-soft); flex: 0 0 auto; background: rgba(248,250,252,0.8); }
 .cases-list { overflow: auto; flex: 1; }
 .case-row {
   display: block;
   width: 100%;
   text-align: left;
   border: 0;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--line-soft);
   background: none;
-  padding: 10px 14px;
+  padding: 12px 14px;
   cursor: pointer;
 }
-.case-row:hover { background: var(--track); }
-.case-row.active { background: #ecfdf5; }
+.case-row:hover { background: #f8fafc; }
+.case-row.active { background: var(--accent-soft); }
 .case-row .row-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
 .case-row .row-id { font: 700 12px/1.3 var(--mono); color: var(--ink); word-break: break-all; }
 .case-row .row-prompt { margin-top: 4px; color: var(--muted); font-size: 12.5px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .case-row .row-meta { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
 .cases-detail { overflow: auto; flex: 1; padding: 18px; }
-.cases-detail.empty { display: flex; align-items: center; justify-content: center; color: var(--muted); text-align: center; }
+.cases-detail.empty { display: flex; align-items: center; justify-content: center; color: var(--muted); text-align: center; font-weight: 600; }
 .detail-title { font: 700 15px/1.4 var(--mono); word-break: break-all; margin-bottom: 4px; }
 .detail-family { color: var(--muted); font-size: 12.5px; margin-bottom: 12px; }
 .detail-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
 .detail-section { margin-bottom: 18px; }
-.detail-section h3 { margin: 0 0 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
-.detail-prompt { background: var(--track); border-radius: 8px; padding: 12px 14px; font-size: 13.5px; line-height: 1.55; white-space: pre-wrap; }
+.detail-section h3 { margin: 0 0 8px; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.detail-prompt { background: #f7f9fb; border: 1px solid var(--line-soft); border-radius: 12px; padding: 12px 14px; font-size: 13.5px; line-height: 1.55; white-space: pre-wrap; }
 .detail-rationale { color: var(--ink); font-size: 13px; line-height: 1.5; }
 .check-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.check-item { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: 12px/1.5 var(--mono); background: var(--panel); }
-.check-item .check-type { font-weight: 700; color: var(--accent); }
+.check-item { border: 1px solid var(--line-soft); border-radius: 10px; padding: 8px 10px; font: 12px/1.5 var(--mono); background: var(--panel); }
+.check-item .check-type { font-weight: 700; color: var(--accent-deep); }
 .check-item .check-rest { color: var(--muted); white-space: pre-wrap; word-break: break-word; }
-.pill.fixture { color: var(--info); background: #eff6ff; }
-.pill.capability { color: var(--accent); background: #ecfdf5; }
-.pill.mode { color: var(--warn); background: #fffbeb; }
-.pill.difficulty-easy { color: var(--pass); background: #ecfdf5; }
-.pill.difficulty-medium { color: var(--warn); background: #fffbeb; }
-.pill.difficulty-hard { color: var(--fail); background: #fef2f2; }
+.pill.fixture { color: var(--info); background: var(--info-soft); }
+.pill.capability { color: var(--accent-deep); background: var(--accent-soft); }
+.pill.mode { color: var(--warn); background: var(--warn-soft); }
+.pill.difficulty-easy { color: var(--pass); background: var(--pass-soft); }
+.pill.difficulty-medium { color: var(--warn); background: var(--warn-soft); }
+.pill.difficulty-hard { color: var(--fail); background: var(--fail-soft); }
 .pill.file { color: var(--muted); background: var(--track); }
 `;
 }

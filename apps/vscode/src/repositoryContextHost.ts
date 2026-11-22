@@ -7,7 +7,7 @@ import type {
   RepositoryContextPipeline,
   RepositoryStatePipeline,
   GitPort,
-} from '@mitii/v8';
+} from '@mitii/sdk';
 
 import { openSqliteDatabase } from './nativeSqlite.js';
 
@@ -20,6 +20,12 @@ export function createHostRepositoryContext(options: {
   resolveEditorReferences?: () =>
     | HostEditorContextReferences
     | Promise<HostEditorContextReferences>;
+  injection?: {
+    repoMapChars?: number;
+    repoMapFilesMax?: number;
+    sketchChars?: number;
+    sketchItemsMax?: number;
+  };
 }): RepositoryContextPipeline {
   return createSharedHostRepositoryContext({
     ...options,

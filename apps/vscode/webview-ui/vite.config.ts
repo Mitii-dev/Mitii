@@ -8,9 +8,17 @@ export default defineConfig({
   base: './',
   resolve: {
     alias: {
-      '@mitii/live-token-budget': resolve(
+      '@mitii/ui-core': resolve(
         __dirname,
-        '../src/liveTokenBudgetPreview.ts',
+        '../../../packages/ui-core/src/index.ts',
+      ),
+      '@mitii/ui-react': resolve(
+        __dirname,
+        '../../../packages/ui-react/src/index.ts',
+      ),
+      '@mitii/ui-protocol': resolve(
+        __dirname,
+        '../../../packages/ui-protocol/src/index.ts',
       ),
     },
   },

@@ -1,17 +1,46 @@
 export { toolGrantsEquivalent } from "./CompareToolGrants";
 
-export { resolveRoute, isMutationIntent, isDiagnosisIntent, looksLikeAgentVerificationRequest, looksLikeCodeReviewRequest } from "./ResolveRoute";
+export { resolveRoute } from "./ResolveRoute";
+export { isExplicitCreateAsk } from "./RouteCreateAsk";
 export type { RouteResolution } from "./ResolveRoute";
+export { isMutationIntent, isDiagnosisIntent } from "./RouteIntents";
+export {
+  looksLikeAgentVerificationRequest,
+  looksLikeCodeReviewRequest,
+} from "./RouteMessageSignals";
 
 export { looksLikeWorkspaceBugReport } from "./LooksLikeWorkspaceBugReport";
+export { looksLikePastedTestFailureDump } from "./LooksLikeWorkspaceBugReport";
 
-export { resolvePlanningDepth } from "./ResolvePlanningDepth";
+export {
+  resolvePlanningDepth,
+  isMultiOutcomeCampaignAsk,
+} from "./ResolvePlanningDepth";
 export type { PlanningDepthResolution } from "./ResolvePlanningDepth";
 
 export {
   isBroadSharedScopeRepair,
+  isLocalizedSmallClearAsk,
+  isConcreteLocalizedMutationAsk,
   shouldElevateSharedScopeRisk,
+  shouldRecommendChangeImpact,
 } from "./ClassifySharedScopeRepair";
+
+export {
+  resolveFastPath,
+  extractExplicitFilePaths,
+  FAST_PATH_DECLINE_REASONS,
+} from "./ResolveFastPath";
+export type {
+  FastPathResolution,
+  FastPathDeclineReason,
+} from "./ResolveFastPath";
+
+export {
+  detectBehavioralAskSignals,
+  looksLikeBehavioralAsk,
+} from "./DetectBehavioralAsk";
+export type { BehavioralAskSignals } from "./DetectBehavioralAsk";
 
 export { resolvePlanGate } from "./ResolvePlanGate";
 export type { PlanGateResolution } from "./ResolvePlanGate";
@@ -22,8 +51,17 @@ export type { RoutePlanResult } from "./RoutePlanner";
 export { compileGrant } from "./GrantCompiler";
 export type { CompiledGrantResult } from "./GrantCompiler";
 
-export { buildToolGrant, extractNetworkHosts, isExplicitWebSearchAsk, needsLiveWebEvidence } from "./BuildToolGrant";
-export type { ToolGrantResolution } from "./BuildToolGrant";
+export {
+  buildToolGrant,
+  extractNetworkHosts,
+  isExplicitWebSearchAsk,
+  needsLiveWebEvidence,
+  selectGrantProfile,
+  GRANT_PROFILES,
+} from "./BuildToolGrant";
+export type { ToolGrantResolution, GrantProfile } from "./BuildToolGrant";
+
+export { looksLikeVcsHistoryRewrite } from "./DetectVcsHistoryRewrite";
 
 export {
   buildVerificationGrant,
@@ -49,6 +87,7 @@ export type { InjectionScanResult } from "./ScanPromptInjection";
 export {
   intersectUserSafetyRules,
   grantNeverWidens,
+  resolveApprovalSkipCategories,
 } from "./IntersectUserSafetyRules";
 export type { IntersectUserSafetyResult } from "./IntersectUserSafetyRules";
 

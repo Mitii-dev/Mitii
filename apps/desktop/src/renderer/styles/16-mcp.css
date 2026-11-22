@@ -1,0 +1,466 @@
+.mcp-manager {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding: 20px 24px 28px;
+}
+
+.mcp-manager__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.mcp-manager__title-block h2 {
+  margin: 0 0 6px;
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--mitii-text);
+}
+
+.mcp-manager__title-block p {
+  margin: 0;
+  max-width: 52ch;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--mitii-muted);
+}
+
+.mcp-manager__title-block code {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.mcp-manager__header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.mcp-manager__master {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--mitii-text);
+}
+
+.mcp-manager__add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mcp-manager__search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--mitii-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--mitii-surface) 92%, transparent);
+  color: var(--mitii-muted);
+}
+
+.mcp-manager__search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--mitii-text);
+  font-size: 13px;
+}
+
+.mcp-manager__body {
+  display: grid;
+  gap: 22px;
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding-bottom: 8px;
+}
+
+.mcp-manager__section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.mcp-manager__section-head h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--mitii-muted);
+}
+
+.mcp-manager__section-head span {
+  font-size: 11px;
+  color: var(--mitii-muted);
+}
+
+.mcp-manager__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.mcp-manager__row,
+.mcp-manager__card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 85%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--mitii-panel, var(--mitii-surface)) 94%, transparent);
+  text-align: left;
+  color: inherit;
+}
+
+button.mcp-manager__card {
+  cursor: pointer;
+}
+
+.mcp-manager__card.is-selected,
+.mcp-wizard__choice.is-selected {
+  border-color: color-mix(in srgb, var(--mitii-accent) 55%, var(--mitii-border));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mitii-accent) 35%, transparent);
+}
+
+.mcp-manager__card-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.mcp-manager__card-main strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mcp-manager__card-main small {
+  font-size: 11px;
+  color: var(--mitii-muted);
+}
+
+.mcp-manager__card-main p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--mitii-muted);
+}
+
+.mcp-manager__delete {
+  color: var(--mitii-muted);
+}
+
+.mcp-manager__delete:hover {
+  color: #b42318;
+}
+
+.mcp-manager__gallery {
+  margin-top: 4px;
+}
+
+.mcp-manager__tile-delete {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mitii-panel) 88%, transparent);
+  color: var(--mitii-muted);
+  cursor: pointer;
+}
+
+.mcp-manager__tile-delete:hover:not(:disabled) {
+  color: #b42318;
+  background: color-mix(in srgb, #c45c5c 12%, transparent);
+}
+
+.mcp-manager__tile-delete:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.mcp-wizard {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  flex: 1;
+}
+
+.mcp-wizard__steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mitii-muted);
+}
+
+.mcp-wizard__steps .is-active {
+  color: var(--mitii-text);
+  font-weight: 700;
+}
+
+.mcp-wizard__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--mitii-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--mitii-surface) 96%, transparent);
+}
+
+.mcp-wizard__panel h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.mcp-wizard__hint {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--mitii-muted);
+  line-height: 1.45;
+}
+
+.mcp-wizard__hint code {
+  font-size: 11.5px;
+}
+
+.mcp-wizard__fields {
+  display: grid;
+  gap: 12px;
+}
+
+.mcp-wizard__fields label {
+  display: grid;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.mcp-wizard__fields input {
+  font-weight: 400;
+}
+
+.mcp-wizard__field-hint {
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--mitii-muted);
+}
+
+.mcp-db-form {
+  display: grid;
+  gap: 14px;
+}
+
+.mcp-db-form__intro {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--mitii-muted);
+}
+
+.mcp-db-form__methods {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--mitii-panel) 88%, transparent);
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 80%, transparent);
+}
+
+.mcp-db-form__method {
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--mitii-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.mcp-db-form__method.is-active {
+  color: var(--mitii-fg, inherit);
+  background: color-mix(in srgb, var(--mitii-surface, #fff) 92%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--mitii-border) 70%, transparent);
+}
+
+.mcp-db-form__stack,
+.mcp-db-form__grid {
+  display: grid;
+  gap: 12px;
+}
+
+.mcp-db-form__grid {
+  grid-template-columns: 1fr 1fr;
+}
+
+.mcp-db-form__grid--dialect {
+  grid-template-columns: 1fr;
+}
+
+.mcp-db-form__span-2 {
+  grid-column: 1 / -1;
+}
+
+.mcp-db-form__field {
+  display: grid;
+  gap: 5px;
+  font-size: 12px;
+}
+
+.mcp-db-form__label {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.mcp-db-form__req {
+  color: color-mix(in srgb, #c45c5c 85%, var(--mitii-fg));
+}
+
+.mcp-db-form__opt {
+  font-weight: 500;
+  font-size: 10px;
+  color: var(--mitii-muted);
+}
+
+.mcp-db-form__field input,
+.mcp-db-form__field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--mitii-border) 85%, transparent);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--mitii-panel) 94%, transparent);
+  color: inherit;
+  font: inherit;
+  font-weight: 400;
+}
+
+.mcp-db-form__field textarea {
+  resize: vertical;
+  min-height: 72px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+}
+
+.mcp-db-form__hint {
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--mitii-muted);
+  line-height: 1.35;
+}
+
+@media (max-width: 560px) {
+  .mcp-db-form__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mcp-db-form__span-2 {
+    grid-column: auto;
+  }
+}
+
+.mcp-wizard__choices {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.mcp-wizard__choice {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid var(--mitii-border);
+  border-radius: 10px;
+  background: transparent;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+
+.mcp-wizard__choice:hover {
+  background: color-mix(in srgb, var(--mitii-accent) 8%, transparent);
+}
+
+.mcp-wizard__choice strong {
+  font-size: 13px;
+}
+
+.mcp-wizard__choice span {
+  font-size: 12px;
+  color: var(--mitii-muted);
+  line-height: 1.4;
+}
+
+.mcp-wizard__form {
+  display: grid;
+  gap: 12px;
+}
+
+.mcp-wizard__form label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--mitii-muted);
+}
+
+.mcp-wizard__form input,
+.mcp-wizard__form textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--mitii-border);
+  border-radius: 8px;
+  background: var(--mitii-surface);
+  color: var(--mitii-text);
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.mcp-wizard__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (max-width: 720px) {
+  .mcp-manager {
+    padding: 14px 14px 20px;
+  }
+
+  .mcp-manager__header {
+    flex-direction: column;
+  }
+}

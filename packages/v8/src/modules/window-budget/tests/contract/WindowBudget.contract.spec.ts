@@ -23,6 +23,12 @@ describe("Window Budget contract", () => {
     expect(result.reasonCodes).toContain("tool_schema_fallback");
     expect(result.reasonCodes).toContain("effort_medium");
     expect(result.effort).toBe("medium");
+    expect(result.carry.maxMessages).toBeGreaterThan(0);
+    expect(result.carry.maxCharsPerMessage).toBeGreaterThan(0);
+    expect(result.injection.projectRuleChars).toBeGreaterThan(0);
+    expect(result.injection.repoMapChars).toBeGreaterThan(0);
+    expect(result.fragments.absoluteMaxTokens).toBeGreaterThan(0);
+    expect(result.fragments.reviewThresholdTokens).toBeGreaterThan(0);
   });
 
   it("rejects invalid input with a stable error code", () => {

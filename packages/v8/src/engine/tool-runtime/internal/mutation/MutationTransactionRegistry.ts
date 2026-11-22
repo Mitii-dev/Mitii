@@ -1,5 +1,4 @@
 import type { WorkspaceFileSystemPort } from "../../contracts";
-import { isPatchCurrentContentReason } from "../../constants";
 import {
   normalizeRelativePath,
   resolveContainedPath,
@@ -17,6 +16,8 @@ import {
   requireRmdir,
   restoreFileCopyCheckpoint,
 } from "./checkpoint";
+import { attachPatchFailureContent } from "./patchFailureContent";
+import { withPathMutationQueue } from "./pathMutationQueue";
 import { MutationError } from "./types";
 import { describeCaughtError } from "../describeCaughtError";
 import type {
@@ -29,6 +30,8 @@ export interface MutationTransactionApplyResult {
   checkpointId: string;
   changedFiles: string[];
   applied: AppliedPatchRecord[];
+  /** True when patches were validated but not written. */
+  dryRun?: boolean;
 }
 
 export interface MutationPathResult {
@@ -63,11 +66,14 @@ export class MutationTransactionRegistry {
   public async applyPatches(params: {
     workspaceRoot: string;
     pathScopes: readonly string[];
+    extraAllowedRoots?: readonly string[];
     fileSystem: WorkspaceFileSystemPort;
     patches: readonly StructuredPatch[];
     dirtyPaths?: readonly string[];
     alreadyMutatedPaths?: readonly string[];
     nowIso?: string;
+    /** Validate and preview only — do not write or register a checkpoint. */
+    dryRun?: boolean;
   }): Promise<MutationTransactionApplyResult> {
     const relativePaths = [
       ...new Set(
@@ -75,6 +81,25 @@ export class MutationTransactionRegistry {
       ),
     ];
 
+    return withPathMutationQueue(relativePaths, () =>
+      this.applyPatchesUnlocked(params, relativePaths),
+    );
+  }
+
+  private async applyPatchesUnlocked(
+    params: {
+      workspaceRoot: string;
+      pathScopes: readonly string[];
+      extraAllowedRoots?: readonly string[];
+      fileSystem: WorkspaceFileSystemPort;
+      patches: readonly StructuredPatch[];
+      dirtyPaths?: readonly string[];
+      alreadyMutatedPaths?: readonly string[];
+      nowIso?: string;
+      dryRun?: boolean;
+    },
+    relativePaths: string[],
+  ): Promise<MutationTransactionApplyResult> {
     assertNoDirtyOverlap({
       targetPaths: relativePaths,
       dirtyPaths: params.dirtyPaths ?? [],
@@ -91,6 +116,7 @@ export class MutationTransactionRegistry {
         workspaceRoot: params.workspaceRoot,
         requestedPath: relativePath,
         pathScopes: params.pathScopes,
+        extraAllowedRoots: params.extraAllowedRoots,
         mustExist: false,
       });
       containedByPath.set(relativePath, contained);
@@ -122,7 +148,11 @@ export class MutationTransactionRegistry {
           currentContent: current,
           fuzzyMatch: this.fuzzyMatchDefault,
         });
-        validatePostEditSyntax(relativePath, preflight.proposedContent);
+        validatePostEditSyntax(
+          relativePath,
+          preflight.proposedContent,
+          current,
+        );
         proposed.set(relativePath, {
           content: preflight.proposedContent,
           created:
@@ -131,6 +161,23 @@ export class MutationTransactionRegistry {
       } catch (error) {
         throw attachPatchFailureContent(error, relativePath, current);
       }
+    }
+
+    const appliedPreview: AppliedPatchRecord[] = [...proposed.entries()].map(
+      ([relativePath, next]) => ({
+        path: relativePath,
+        created: next.created,
+        bytesWritten: Buffer.byteLength(next.content, "utf8"),
+      }),
+    );
+
+    if (params.dryRun === true) {
+      return {
+        checkpointId: "dry_run",
+        changedFiles: appliedPreview.map((entry) => entry.path),
+        applied: appliedPreview,
+        dryRun: true,
+      };
     }
 
     const checkpointId = this.idGenerator();
@@ -188,6 +235,7 @@ export class MutationTransactionRegistry {
   public async deleteFile(params: {
     workspaceRoot: string;
     pathScopes: readonly string[];
+    extraAllowedRoots?: readonly string[];
     fileSystem: WorkspaceFileSystemPort;
     path: string;
     dirtyPaths?: readonly string[];
@@ -195,6 +243,24 @@ export class MutationTransactionRegistry {
     nowIso?: string;
   }): Promise<MutationPathResult> {
     const relativePath = normalizeRelativePath(params.path);
+    return withPathMutationQueue([relativePath], () =>
+      this.deleteFileUnlocked(params, relativePath),
+    );
+  }
+
+  private async deleteFileUnlocked(
+    params: {
+      workspaceRoot: string;
+      pathScopes: readonly string[];
+      extraAllowedRoots?: readonly string[];
+      fileSystem: WorkspaceFileSystemPort;
+      path: string;
+      dirtyPaths?: readonly string[];
+      alreadyMutatedPaths?: readonly string[];
+      nowIso?: string;
+    },
+    relativePath: string,
+  ): Promise<MutationPathResult> {
     if (relativePath === ".") {
       throw new MutationError(
         "path_escape",
@@ -213,6 +279,7 @@ export class MutationTransactionRegistry {
       workspaceRoot: params.workspaceRoot,
       requestedPath: relativePath,
       pathScopes: params.pathScopes,
+      extraAllowedRoots: params.extraAllowedRoots,
       mustExist: true,
     });
 
@@ -240,6 +307,7 @@ export class MutationTransactionRegistry {
   public async deleteDirectory(params: {
     workspaceRoot: string;
     pathScopes: readonly string[];
+    extraAllowedRoots?: readonly string[];
     fileSystem: WorkspaceFileSystemPort;
     path: string;
     recursive?: boolean;
@@ -261,6 +329,7 @@ export class MutationTransactionRegistry {
       workspaceRoot: params.workspaceRoot,
       requestedPath: relativePath,
       pathScopes: params.pathScopes,
+      extraAllowedRoots: params.extraAllowedRoots,
       mustExist: true,
     });
 
@@ -292,24 +361,27 @@ export class MutationTransactionRegistry {
       alreadyMutatedPaths: params.alreadyMutatedPaths,
     });
 
-    return this.runRecoverableMutation({
-      workspaceRoot: params.workspaceRoot,
-      fileSystem: params.fileSystem,
-      relativePaths: nestedFiles.length > 0 ? nestedFiles : [relativePath],
-      changedFiles: [relativePath, ...nestedFiles],
-      nowIso: params.nowIso,
-      mutate: async () => {
-        await requireRmdir(params.fileSystem)(contained.absolutePath, {
-          recursive,
-        });
-      },
-      failureMessage: "delete_directory failed",
-    });
+    return withPathMutationQueue(targetPaths, () =>
+      this.runRecoverableMutation({
+        workspaceRoot: params.workspaceRoot,
+        fileSystem: params.fileSystem,
+        relativePaths: nestedFiles.length > 0 ? nestedFiles : [relativePath],
+        changedFiles: [relativePath, ...nestedFiles],
+        nowIso: params.nowIso,
+        mutate: async () => {
+          await requireRmdir(params.fileSystem)(contained.absolutePath, {
+            recursive,
+          });
+        },
+        failureMessage: "delete_directory failed",
+      }),
+    );
   }
 
   public async moveFile(params: {
     workspaceRoot: string;
     pathScopes: readonly string[];
+    extraAllowedRoots?: readonly string[];
     fileSystem: WorkspaceFileSystemPort;
     from: string;
     to: string;
@@ -337,6 +409,7 @@ export class MutationTransactionRegistry {
       workspaceRoot: params.workspaceRoot,
       requestedPath: fromPath,
       pathScopes: params.pathScopes,
+        extraAllowedRoots: params.extraAllowedRoots,
       mustExist: true,
     });
     const toContained = await resolveContainedPath({
@@ -344,6 +417,7 @@ export class MutationTransactionRegistry {
       workspaceRoot: params.workspaceRoot,
       requestedPath: toPath,
       pathScopes: params.pathScopes,
+        extraAllowedRoots: params.extraAllowedRoots,
       mustExist: false,
     });
 
@@ -351,7 +425,7 @@ export class MutationTransactionRegistry {
       await params.fileSystem.lstat(toContained.absolutePath);
       throw new MutationError(
         "invalid_arguments",
-        `Destination already exists: "${toPath}".`,
+        `Destination already exists: "${toPath}". Call delete_file on the destination first, or choose a different to path.`,
       );
     } catch (error) {
       if (error instanceof MutationError) {
@@ -394,20 +468,22 @@ export class MutationTransactionRegistry {
       ]),
     ];
 
-    return this.runRecoverableMutation({
-      workspaceRoot: params.workspaceRoot,
-      fileSystem: params.fileSystem,
-      relativePaths: checkpointPaths,
-      changedFiles: [...new Set([fromPath, toPath, ...destinationFiles])],
-      nowIso: params.nowIso,
-      mutate: async () => {
-        await requireRename(params.fileSystem)(
-          fromContained.absolutePath,
-          toContained.absolutePath,
-        );
-      },
-      failureMessage: "move_file failed",
-    });
+    return withPathMutationQueue(checkpointPaths, () =>
+      this.runRecoverableMutation({
+        workspaceRoot: params.workspaceRoot,
+        fileSystem: params.fileSystem,
+        relativePaths: checkpointPaths,
+        changedFiles: [...new Set([fromPath, toPath, ...destinationFiles])],
+        nowIso: params.nowIso,
+        mutate: async () => {
+          await requireRename(params.fileSystem)(
+            fromContained.absolutePath,
+            toContained.absolutePath,
+          );
+        },
+        failureMessage: "move_file failed",
+      }),
+    );
   }
 
   public async rollback(params: {
@@ -507,31 +583,4 @@ export class MutationTransactionRegistry {
       changedFiles: [...params.changedFiles],
     };
   }
-}
-
-const PATCH_CONFLICT_CONTENT_CHARS = 16_000;
-
-function attachPatchFailureContent(
-  error: unknown,
-  path: string,
-  currentContent: string | undefined,
-): unknown {
-  if (
-    !(error instanceof MutationError) ||
-    !isPatchCurrentContentReason(error.reasonCode)
-  ) {
-    return error;
-  }
-  if (currentContent === undefined) {
-    return error;
-  }
-  const clipped =
-    currentContent.length > PATCH_CONFLICT_CONTENT_CHARS
-      ? `${currentContent.slice(0, PATCH_CONFLICT_CONTENT_CHARS)}\n…[truncated]`
-      : currentContent;
-  return new MutationError(error.reasonCode, error.message, {
-    ...error.details,
-    path,
-    currentContent: clipped,
-  });
 }

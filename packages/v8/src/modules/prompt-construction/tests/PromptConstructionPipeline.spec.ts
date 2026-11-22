@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import { DecisionPolicyPipeline } from "../../decision-policy";
 import {
   PromptConstructionError,
   PromptConstructionPipeline,
@@ -12,7 +11,6 @@ import {
   createCapabilities,
   createDecision,
   createPromptInput,
-  createUnderstanding,
 } from "./fixtures/promptCases";
 
 describe("PromptConstructionPipeline", () => {
@@ -70,6 +68,30 @@ describe("PromptConstructionPipeline", () => {
 
     const userMessage = result.request.messages.at(-1);
     expect(userMessage?.attachments).toBeUndefined();
+  });
+
+  it("includes execution seed framing when executionSeedText is provided", () => {
+    const seedBlock = [
+      "ExecutionSeed confidence=trusted source=diagnostic",
+      "Paths: apps/desktop/src/renderer/SettingsPanel.tsx",
+      "Binding: read only write∪mustRead; no broad search while binding; patch when READY.",
+    ].join("\n");
+    const withSeed = new PromptConstructionPipeline().construct(
+      createPromptInput({
+        executionSeedText: seedBlock,
+        tools: SAMPLE_TOOLS,
+      }),
+    );
+    const systemWithSeed = withSeed.request.messages[0]?.content ?? "";
+    expect(systemWithSeed).toContain("ExecutionSeed confidence=trusted");
+    expect(systemWithSeed).toContain("SettingsPanel.tsx");
+    expect(systemWithSeed).toMatch(/patch when READY/i);
+
+    const withoutSeed = new PromptConstructionPipeline().construct(
+      createPromptInput({ tools: SAMPLE_TOOLS }),
+    );
+    const systemWithout = withoutSeed.request.messages[0]?.content ?? "";
+    expect(systemWithout).not.toContain("ExecutionSeed confidence=");
   });
 
   it("raises PromptConstructionError with stable code on invalid input", () => {
@@ -294,195 +316,5 @@ describe("PromptConstructionPipeline", () => {
     const system = result.request.messages[0]?.content ?? "";
     expect(system).toContain("read-only answer route");
     expect(system).toContain("Do not claim you are applying edits");
-  });
-
-  it("reports omitted repository blocks when budget is tight", () => {
-    const largeBlocks = Array.from({ length: 12 }, (_, index) => ({
-      id: `block_${index}`,
-      relativePath: `src/file_${index}.ts`,
-      content: "x".repeat(2_000),
-      score: 1 - index * 0.01,
-      priority: 100 - index,
-    }));
-
-    const result = new PromptConstructionPipeline().construct(
-      createPromptInput({
-        capabilities: createCapabilities({
-          contextWindowTokens: 2_048,
-          maximumOutputTokens: 512,
-        }),
-        repositoryContext: {
-          stateToken: "st_prompt_1",
-          blocks: largeBlocks,
-        },
-      }),
-    );
-
-    expect(result.budget.withinLimits).toBe(true);
-    expect(
-      result.omissions.some((omission) => omission.section === "repository"),
-    ).toBe(true);
-    expect(result.reasonCodes).toContain("partial_context_omitted");
-    expect(result.status === "partial" || result.status === "complete").toBe(
-      true,
-    );
-  });
-
-  it("deduplicates identical repository blocks", () => {
-    const result = new PromptConstructionPipeline().construct(
-      createPromptInput({
-        repositoryContext: {
-          stateToken: "st_prompt_1",
-          blocks: [
-            {
-              id: "block_a",
-              relativePath: "src/util.ts",
-              content: "export const a = 1;",
-              score: 0.9,
-            },
-            {
-              id: "block_b",
-              relativePath: "src/util.ts",
-              content: "export const a = 1;",
-              score: 0.8,
-            },
-          ],
-        },
-      }),
-    );
-
-    expect(
-      result.omissions.some(
-        (omission) =>
-          omission.section === "repository" && omission.reason === "duplicate",
-      ),
-    ).toBe(true);
-    expect(
-      result.provenance.filter((entry) => entry.source === "src/util.ts"),
-    ).toHaveLength(1);
-  });
-
-  it("stays within provider input limits on the happy path", () => {
-    const result = new PromptConstructionPipeline().construct(
-      createPromptInput({
-        repositoryContext: {
-          stateToken: "st_prompt_1",
-          blocks: [
-            {
-              id: "block_1",
-              relativePath: "src/util.ts",
-              content: "export function ok() { return true; }",
-            },
-          ],
-        },
-      }),
-    );
-
-    expect(result.budget.withinLimits).toBe(true);
-    expect(result.reasonCodes).toContain("within_provider_limits");
-    expect(result.status).not.toBe("blocked");
-  });
-
-  it("truncates a huge pasted user request instead of blocking the prompt", () => {
-    const hugeConfig = JSON.stringify(
-      {
-        baseSourcePath: "http://localhost:3000",
-        helpLinks: Object.fromEntries(
-          Array.from({ length: 400 }, (_, index) => [
-            `key_${index}`,
-            `https://example.com/help/${index}/${"x".repeat(60)}`,
-          ]),
-        ),
-        youtubeApiKey: "AIzaSyC5LyOtxFHTATPLJuzNFjKfp68BOkvcbrs",
-        projectId: "1",
-      },
-      null,
-      2,
-    );
-    const ask = "Please, specify correct config params:";
-    const userMessage = `${hugeConfig}\n\n${ask}`;
-    expect(userMessage.length).toBeGreaterThan(30_000);
-
-    const longHistory = Array.from({ length: 12 }, (_, index) => ({
-      role: index % 2 === 0 ? ("user" as const) : ("assistant" as const),
-      content: `Prior turn ${index}: ${"context ".repeat(80)}`,
-    }));
-
-    const result = new PromptConstructionPipeline().construct(
-      createPromptInput({
-        userMessage,
-        conversation: longHistory,
-        capabilities: createCapabilities({
-          contextWindowTokens: 8_192,
-          maximumOutputTokens: 2_048,
-        }),
-        repositoryContext: {
-          stateToken: "st_prompt_1",
-          blocks: [
-            {
-              id: "block_1",
-              relativePath: "index.html",
-              content: "<html><body>Loading...</body></html>",
-            },
-          ],
-        },
-      }),
-    );
-
-    expect(result.status).not.toBe("blocked");
-    expect(result.budget.withinLimits).toBe(true);
-    expect(result.reasonCodes).toContain("user_request_truncated");
-    expect(result.reasonCodes).toContain("within_provider_limits");
-    expect(result.reasonCodes).not.toContain("blocked_required_overflow");
-
-    const userContent =
-      [...result.request.messages]
-        .reverse()
-        .find((message) => message.role === "user")?.content ?? "";
-    expect(userContent).toContain(ask);
-    expect(userContent).toContain("…[truncated for context budget]");
-    expect(userContent.length).toBeLessThan(userMessage.length);
-  });
-
-  it("instructs the model to call web_search when it is granted", () => {
-    const decision = new DecisionPolicyPipeline().decide({
-      schemaVersion: 1,
-      envelope: {
-        schemaVersion: 1,
-        requestId: "req_web_search",
-        sessionId: "sess_web_search",
-        mode: "ask",
-        origin: "user",
-        message: "Search the web for Next.js 15 error boundaries",
-        referencedArtifacts: [],
-        createdAt: "2026-07-25T12:00:00.000Z",
-      },
-      understanding: createUnderstanding({
-        primaryTaskIntent: "docs",
-        interactionIntent: "question",
-        taskAnalysis: {
-          recommendsRepositoryDiscovery: false,
-          recommendsPlanning: false,
-          recommendsVerification: false,
-        },
-      }),
-      repositoryState: {
-        reference: { workspaceId: "ws_1", stateToken: "st_web_search" },
-        readiness: "ready",
-      },
-      hostCapabilities: { webSearch: true },
-    });
-
-    const result = new PromptConstructionPipeline().construct(
-      createPromptInput({
-        decision,
-        userMessage: "Search the web for Next.js 15 error boundaries",
-        tools: SAMPLE_TOOLS,
-      }),
-    );
-
-    const system = result.request.messages[0]?.content ?? "";
-    expect(decision.toolGrant.allowedTools).toContain("web_search");
-    expect(system).toContain("call web_search first");
   });
 });

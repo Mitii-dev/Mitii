@@ -7,6 +7,11 @@ const root = JSON.parse(readFileSync('package.json', 'utf8'));
 const version = root.version;
 /** Keep in sync with CI/release/npm-publish workflows and scripts/publish-npm.cjs. */
 const packageFiles = [
+  'packages/settings/package.json',
+  'packages/ui-core/package.json',
+  'packages/ui-theme/package.json',
+  'packages/ui-react/package.json',
+  'packages/ui-protocol/package.json',
   'packages/v8/package.json',
   'packages/sdk/package.json',
   'packages/automation/package.json',
@@ -17,6 +22,7 @@ const packageFiles = [
   'apps/cli/package.json',
   'apps/daemon/package.json',
   'apps/acp/package.json',
+  'apps/desktop/package.json',
   'apps/vscode/package.json',
 ];
 

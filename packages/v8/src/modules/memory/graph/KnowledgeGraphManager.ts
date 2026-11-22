@@ -10,6 +10,7 @@ import {
   type KnowledgeGraphRelation,
   type KnowledgeGraphStorePort,
 } from "./contracts";
+import { MemoryContentPolicy } from "../MemoryContentPolicy";
 
 /**
  * Serializes RMW so concurrent graph tool calls cannot last-write-wins.
@@ -28,11 +29,12 @@ class MutationQueue {
 }
 
 /**
- * Knowledge-graph operations over an injected store (servers-main memory technique).
+ * Knowledge-graph operations over an injected store.
  * Pure domain — hosts own JSONL / Memento persistence.
  */
 export class KnowledgeGraphManager implements KnowledgeGraphPort {
   private readonly mutations = new MutationQueue();
+  private readonly policy = new MemoryContentPolicy();
 
   constructor(private readonly store: KnowledgeGraphStorePort) {}
 
@@ -73,7 +75,9 @@ export class KnowledgeGraphManager implements KnowledgeGraphPort {
   ): Promise<readonly KnowledgeGraphEntity[]> {
     return this.mutations.enqueue(async () => {
       const graph = await this.loadValidated();
-      const parsed = entities.map((e) => knowledgeGraphEntitySchema.parse(e));
+      const parsed = entities.map((e) =>
+        knowledgeGraphEntitySchema.parse(sanitizeEntity(e, this.policy)),
+      );
       const created: KnowledgeGraphEntity[] = [];
       for (let i = 0; i < parsed.length; i += 1) {
         const entity = parsed[i]!;
@@ -98,7 +102,13 @@ export class KnowledgeGraphManager implements KnowledgeGraphPort {
     return this.mutations.enqueue(async () => {
       const graph = await this.loadValidated();
       const names = new Set(graph.entities.map((e) => e.name));
-      const parsed = relations.map((r) => knowledgeGraphRelationSchema.parse(r));
+      const parsed = relations.map((r) =>
+        knowledgeGraphRelationSchema.parse({
+          from: this.policy.sanitize(r.from),
+          to: this.policy.sanitize(r.to),
+          relationType: this.policy.sanitize(r.relationType),
+        }),
+      );
       for (const relation of parsed) {
         if (!names.has(relation.from)) {
           throw new Error(`Entity "${relation.from}" not found.`);
@@ -137,16 +147,20 @@ export class KnowledgeGraphManager implements KnowledgeGraphPort {
       const graph = await this.loadValidated();
       const results: KnowledgeGraphAddObservationsResult[] = [];
       for (const item of observations) {
-        const entity = graph.entities.find((e) => e.name === item.entityName);
+        const entityName = this.policy.sanitize(item.entityName);
+        const entity = graph.entities.find((e) => e.name === entityName);
         if (!entity) {
-          throw new Error(`Entity "${item.entityName}" not found.`);
+          throw new Error(`Entity "${entityName}" not found.`);
         }
-        const added = item.contents.filter(
-          (content) => !entity.observations.includes(content),
+        const sanitized = item.contents.map((content) =>
+          this.policy.sanitize(content),
+        );
+        const added = sanitized.filter(
+          (content) => content && !entity.observations.includes(content),
         );
         entity.observations.push(...added);
         results.push({
-          entityName: item.entityName,
+          entityName,
           addedObservations: [...added],
         });
       }
@@ -192,6 +206,19 @@ export class KnowledgeGraphManager implements KnowledgeGraphPort {
     const raw = await this.store.load();
     return knowledgeGraphSchema.parse(raw);
   }
+}
+
+function sanitizeEntity(
+  entity: KnowledgeGraphEntity,
+  policy: MemoryContentPolicy,
+): KnowledgeGraphEntity {
+  return {
+    name: policy.sanitize(entity.name),
+    entityType: policy.sanitize(entity.entityType),
+    observations: entity.observations
+      .map((observation) => policy.sanitize(observation))
+      .filter((observation) => observation.length > 0),
+  };
 }
 
 function sameRelation(

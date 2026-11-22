@@ -1,4 +1,9 @@
-export { applyTaskListUpdate, isTerminalTaskStatus } from "./ApplyTaskListUpdate";
+export {
+  applyTaskListUpdate,
+  clipTaskTitle,
+  isTerminalTaskStatus,
+  isValidStatusTransition,
+} from "./ApplyTaskListUpdate";
 export { deriveTaskListFromPlan } from "./DeriveTaskListFromPlan";
 export { refillTaskListFromPlan } from "./RefillTaskListFromPlan";
 export {

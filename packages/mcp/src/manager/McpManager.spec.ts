@@ -56,6 +56,21 @@ describe('mcpServerEffects', () => {
       }),
     ).toBe(true);
   });
+
+  it('marks sqlite/postgres/mongo/sql DB builtins as workspace-non-write', () => {
+    for (const id of ['sqlite', 'postgres', 'mongo', 'sql']) {
+      expect(readOnlyMcpServer(id)).toBe(true);
+      expect(
+        mcpServerRequiresWorkspaceWrite({
+          name: id,
+          id,
+          transport: 'stdio',
+          command: 'node',
+          enabled: true,
+        }),
+      ).toBe(false);
+    }
+  });
 });
 
 describe('McpManager', () => {

@@ -50,6 +50,7 @@ export type {
   ProcessExecResult,
   DiagnosticsPort,
   DiagnosticItem,
+  DiagnosticsSettleOptions,
   GitPort,
   GitStatusResult,
   GitDiffResult,
@@ -61,10 +62,23 @@ export type {
   NetworkFetchRequest,
   NetworkFetchResult,
   SearchPort,
+  WorkspaceTextSearchPort,
+  WorkspaceTextSearchMatch,
+  WorkspaceTextSearchRequest,
+  WorkspaceTextSearchResult,
+  AstGrepPort,
+  AstGrepMatch,
+  AstGrepSearchRequest,
+  AstGrepSearchResult,
   RepositoryGraphPort,
   WebSearchRequest,
   WebSearchHit,
   WebSearchResult,
   KnowledgeGraphPort,
 } from "./ports/ToolRuntimePorts";
+export type {
+  ToolOutputSpillPort,
+  ToolOutputSpillStoreRequest,
+  ToolOutputSpillStoreResult,
+} from "./ports/ToolOutputSpillPort";
 export type { CodeNavigationPort } from "../../../modules/code-navigation";

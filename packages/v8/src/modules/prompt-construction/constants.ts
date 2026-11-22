@@ -20,6 +20,7 @@ export const PROMPT_TRUST_LEVELS = [
   "conversation",
   "untrusted_repository_content",
   "untrusted_tool_content",
+  "untrusted_memory_content",
 ] as const;
 
 export const PROMPT_OMISSION_REASONS = [
@@ -50,6 +51,9 @@ export const PROMPT_REASON_CODES = [
   "conversation_compacted",
   "user_request_truncated",
   "blocked_required_overflow",
+  "fragment_review_threshold",
+  "extra_fragments_injected",
+  "skill_catalog_l1_injected",
 ] as const;
 
 export const PROMPT_CONSTRUCTION_ERROR_CODES = [

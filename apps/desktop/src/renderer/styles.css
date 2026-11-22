@@ -1,0 +1,31 @@
+/* Shared --mitii-* tokens (light default, :root[data-theme='dark']) come from @mitii/ui-theme. */
+@import '@mitii/ui-theme/standalone.css';
+
+/* Desktop feature partials — import order is cascade order; do not reorder. */
+@import './styles/01-base.css';
+@import './styles/02-shell-sidebar.css';
+@import './styles/03-chat-layout.css';
+@import './styles/04-chat-composer.css';
+@import './styles/05-token-meter.css';
+@import './styles/06-token-meter-2.css';
+@import './styles/07-chat-controls.css';
+@import './styles/08-chat-timeline.css';
+@import './styles/09-chat-markdown.css';
+@import './styles/10-settings.css';
+@import './styles/11-settings-2.css';
+@import './styles/12-topbar-index.css';
+@import './styles/13-profiles.css';
+@import './styles/14-workspace-explorer.css';
+@import './styles/15-skills.css';
+@import './styles/16-mcp.css';
+@import './styles/17-recipes-extensions.css';
+@import './styles/18-explorer-editor.css';
+@import './styles/19-workspace-panel.css';
+@import './styles/20-scm.css';
+@import './styles/21-scm-2.css';
+@import './styles/22-history-sidebar.css';
+@import './styles/23-identity-picker.css';
+@import './styles/24-plan-approval.css';
+@import './styles/25-onboarding.css';
+@import './styles/26-composer-extras.css';
+@import './styles/27-composer-extras-2.css';

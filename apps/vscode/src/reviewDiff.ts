@@ -1,17 +1,36 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
+import {
+  flattenPorcelainFiles,
+  parseGitPorcelain,
+  type GitPorcelainFile,
+} from '@mitii/sdk';
+
 import type { ReviewDiffView } from './protocol.js';
 
 const execFileAsync = promisify(execFile);
 
+/** Fallback maxima — prefer Window Budget `injection.reviewDiff*`. */
 const MAX_FILE_DIFF_CHARS = 8_000;
 const MAX_TOTAL_DIFF_CHARS = 48_000;
+
+export type ReviewDiffLimits = {
+  maxFileChars?: number;
+  maxTotalChars?: number;
+  /** Cap for `git diff --stat` patch preview in buildReviewDiff. */
+  maxPatchPreviewChars?: number;
+};
 
 /** Build a review-mode diff snapshot from git status + short patch. */
 export async function buildReviewDiff(
   workspaceRoot: string,
+  limits: ReviewDiffLimits = {},
 ): Promise<ReviewDiffView> {
+  const maxPatchPreviewChars = Math.max(
+    256,
+    Math.floor(limits.maxPatchPreviewChars ?? 4_000),
+  );
   let statusOut = '';
   let patchOut = '';
   try {
@@ -33,22 +52,22 @@ export async function buildReviewDiff(
       ['diff', '--stat', 'HEAD'],
       { cwd: workspaceRoot, timeout: 10_000 },
     );
-    patchOut = diff.stdout.trim().slice(0, 4000);
+    patchOut = diff.stdout.trim().slice(0, maxPatchPreviewChars);
   } catch {
     patchOut = '';
   }
 
-  const files: ReviewDiffView['files'] = [];
-  for (const line of statusOut.split('\n')) {
-    if (!line || line.startsWith('##')) continue;
-    const status = line.slice(0, 2).trim() || '?';
-    const path = line.slice(3).trim().replace(/ -> /, ' → ').split(' → ').pop() ?? '';
-    if (path) files.push({ path, status });
-  }
+  const parsed = parseGitPorcelain(statusOut);
+  const files: ReviewDiffView['files'] = flattenPorcelainFiles(parsed)
+    .slice(0, 40)
+    .map((file: GitPorcelainFile) => ({
+      path: file.path,
+      status: file.status,
+    }));
 
   return {
-    summary: statusOut.split('\n')[0] || '(no branch info)',
-    files: files.slice(0, 40),
+    summary: parsed.summary || '(no branch info)',
+    files,
     patchPreview: patchOut || undefined,
   };
 }
@@ -65,9 +84,18 @@ export type ReviewFileDiffInput = {
 export async function buildReviewFileDiffs(
   workspaceRoot: string,
   files: ReadonlyArray<{ path: string; status: string }>,
+  limits: ReviewDiffLimits = {},
 ): Promise<ReviewFileDiffInput[]> {
+  const maxFileChars = Math.max(
+    256,
+    Math.floor(limits.maxFileChars ?? MAX_FILE_DIFF_CHARS),
+  );
+  const maxTotalChars = Math.max(
+    maxFileChars,
+    Math.floor(limits.maxTotalChars ?? MAX_TOTAL_DIFF_CHARS),
+  );
   const out: ReviewFileDiffInput[] = [];
-  let budget = MAX_TOTAL_DIFF_CHARS;
+  let budget = maxTotalChars;
 
   for (const file of files.slice(0, 40)) {
     if (budget <= 0) break;
@@ -124,7 +152,7 @@ export async function buildReviewFileDiffs(
       }
     }
 
-    const capped = diffText.slice(0, Math.min(MAX_FILE_DIFF_CHARS, budget));
+    const capped = diffText.slice(0, Math.min(maxFileChars, budget));
     budget -= capped.length;
     const { insertions, deletions } = countDiffStats(capped);
     out.push({

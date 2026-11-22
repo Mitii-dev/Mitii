@@ -1,0 +1,245 @@
+.composer-box:has(.wt-review--attached) .context-panel {
+  border-radius: 0;
+}
+
+.composer-box > .wt-review--attached:first-child {
+  border-radius: 11px 11px 0 0;
+}
+
+.context-panel--empty {
+  display: none;
+}
+
+.context-panel__label {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 5px;
+  color: var(--mitii-muted);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: none;
+}
+
+.context-panel__label span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  text-transform: none;
+}
+
+.context-empty-text {
+  min-width: 0;
+  flex: 1 1 160px;
+  color: var(--mitii-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.approval-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--mitii-muted);
+}
+
+.skill-badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0;
+  color: var(--mitii-muted);
+}
+
+.skill-badge.on {
+  color: var(--mitii-ok);
+}
+
+.skill-management input {
+  border: 1px solid var(--mitii-border-soft);
+  background: var(--vscode-input-background, var(--mitii-panel));
+  color: var(--vscode-input-foreground, var(--mitii-text));
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.markdown-table-wrap {
+  max-width: 100%;
+  overflow: auto;
+}
+
+.markdown-message table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 11px;
+  scrollbar-width: thin;
+}
+
+.markdown-message th,
+.markdown-message td {
+  border: 1px solid var(--mitii-border-soft);
+  min-width: 88px;
+  max-width: 280px;
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.markdown-message th {
+  background: color-mix(in srgb, var(--turn-accent, var(--mitii-accent)) 7%, var(--mitii-panel));
+  color: color-mix(in srgb, var(--turn-accent, var(--mitii-accent)) 24%, var(--mitii-chat-fg));
+  font-weight: 700;
+}
+
+.markdown-message tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--mitii-text) 2.5%, transparent);
+}
+
+.markdown-message input[type='checkbox'] {
+  margin: 0 6px 0 0;
+  vertical-align: -1px;
+  accent-color: var(--turn-accent, var(--mitii-accent));
+}
+
+/* —— File changes summary —— */
+.file-changes-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-shrink: 0;
+  margin: 8px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--mitii-border-soft);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mitii-panel-raised) 82%, transparent);
+  box-shadow: 0 1px 0 color-mix(in srgb, #fff 4%, transparent) inset;
+}
+
+.file-changes-bar__summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--mitii-text);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0;
+  cursor: pointer;
+}
+
+.file-changes-bar__chevron {
+  display: inline-flex;
+  width: 14px;
+  justify-content: center;
+  color: var(--mitii-muted);
+  font-size: 14px;
+  line-height: 1;
+  transform: translateY(-1px);
+}
+
+.file-changes-bar__icon {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  border: 1px solid var(--mitii-border);
+  font-size: 12px;
+  color: var(--mitii-ok, #22c55e);
+}
+
+.file-changes-bar__stats {
+  display: inline-flex;
+  gap: 6px;
+  font-family: var(--mitii-font-mono);
+  font-weight: 500;
+  font-size: 11px;
+}
+
+.file-changes-bar__actions {
+  display: inline-flex;
+  gap: 10px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.file-changes-bar__link {
+  border: 0;
+  background: transparent;
+  color: var(--mitii-muted);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 0;
+  cursor: pointer;
+}
+
+.file-changes-bar__link:hover:not(:disabled) {
+  color: var(--mitii-text);
+}
+
+.file-changes-bar__link:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.file-changes-bar__cta {
+  border: 0;
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--mitii-text);
+  background: color-mix(in srgb, var(--mitii-surface) 70%, var(--mitii-panel));
+  border: 1px solid var(--mitii-border-soft);
+  cursor: pointer;
+}
+
+.file-changes-bar__cta:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--mitii-surface) 88%, var(--mitii-panel));
+}
+
+.file-changes-bar__cta:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Working-tree review block — standalone above the chat box, theme-driven */
+.wt-review {
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.wt-review--standalone {
+  margin: 0 0 8px;
+  border: 1px solid var(--vscode-widget-border, var(--mitii-border));
+  border-radius: 10px;
+  background: var(--vscode-sideBar-background, var(--mitii-panel));
+  color: var(--vscode-foreground, var(--mitii-text));
+}
+
+.wt-review--attached {
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--mitii-border-soft);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--mitii-panel-raised) 55%, transparent);
+}
+
+.composer-box--with-review {
+  overflow: visible;
+}
+
+.composer-box--with-review .wt-review--attached {
+  border-radius: 11px 11px 0 0;
+}

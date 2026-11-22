@@ -5,6 +5,8 @@ import { MutationError } from "../internal/mutation";
 import { PathContainmentError } from "../internal/PathContainment";
 import { applyPatchInputSchema } from "../internal/ToolCatalog";
 import { describeCaughtError } from "../internal/describeCaughtError";
+import { assertHardDeniedMutationPath } from "./AssertHardDeniedMutationPath";
+import { assertMutationPathMatchesGrant } from "./AssertMutationPathMatchesGrant";
 import { resolveMutationPathScopes } from "./ResolveMutationPathScopes";
 
 export async function executeApplyPatch(params: {
@@ -30,14 +32,24 @@ export async function executeApplyPatch(params: {
 }> {
   const parsed = applyPatchInputSchema.parse(params.arguments);
 
+  for (const patch of parsed.patches) {
+    assertHardDeniedMutationPath(patch.path);
+    assertMutationPathMatchesGrant({
+      relativePath: patch.path,
+      grant: params.grant,
+    });
+  }
+
   try {
     const result = await params.transactions.applyPatches({
       workspaceRoot: params.workspaceRoot,
       pathScopes: resolveMutationPathScopes(params.grant),
+      extraAllowedRoots: params.grant.extraAllowedRoots,
       fileSystem: params.fileSystem,
       patches: parsed.patches,
       dirtyPaths: params.dirtyPaths,
       alreadyMutatedPaths: params.alreadyMutatedPaths,
+      dryRun: parsed.dryRun === true,
     });
     return {
       output: result,

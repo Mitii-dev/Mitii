@@ -53,6 +53,8 @@ export function buildVerificationRecord(
       ? compareRepoBuildStates({
           before: params.before,
           after: params.after,
+          changedFiles: params.changedFiles,
+          askScopePaths: params.changedFiles,
         })
       : undefined);
   const checkIds = uniqueStrings([

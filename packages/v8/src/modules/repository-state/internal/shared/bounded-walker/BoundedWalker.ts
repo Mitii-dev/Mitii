@@ -5,7 +5,18 @@ import type {
 } from "../filesystem";
 
 import { PathNormalizer } from "../path-normalizer";
-import { BOUNDED_WALKER_CONSTANTS } from "./constants";
+import { processSymbolicLink } from "./symbolicLinkWalker";
+import {
+  checkStop,
+  stopForMaximumDirectories,
+  stopForMaximumFiles,
+} from "./walkControl";
+import {
+  createWalkState,
+  errorMessage,
+  isMissingPathError,
+  normalizeWalkOptions,
+} from "./walkSupport";
 
 import type {
   BoundedWalkIgnoreContext,
@@ -24,16 +35,16 @@ export class BoundedWalker {
   ) {}
 
   public async walk(input: BoundedWalkInput): Promise<BoundedWalkResult> {
-    const options = this.normalizeOptions(input);
+    const options = normalizeWalkOptions(input);
 
-    const state = this.createState();
+    const state = createWalkState();
 
     const roots = [...new Set(input.roots)]
       .map((root) => this.pathNormalizer.normalizePhysical(root))
       .sort((left, right) => left.localeCompare(right));
 
     for (const root of roots) {
-      if (state.stopped || this.checkStop(options, state, root)) {
+      if (state.stopped || checkStop(options, state, root)) {
         break;
       }
 
@@ -79,7 +90,7 @@ export class BoundedWalker {
     try {
       rootStat = await this.fileSystem.stat(root);
     } catch (error) {
-      if (this.isMissingPathError(error)) {
+      if (isMissingPathError(error)) {
         state.warnings.push({
           code: "root_not_found",
           path: root,
@@ -92,14 +103,14 @@ export class BoundedWalker {
           message:
             `Unable to inspect workspace root ` +
             `"${root}": ` +
-            this.errorMessage(error),
+            errorMessage(error),
         });
       }
 
       return;
     }
 
-    if (this.checkStop(options, state, root)) {
+    if (checkStop(options, state, root)) {
       return;
     }
 
@@ -151,7 +162,7 @@ export class BoundedWalker {
     let queueIndex = 0;
 
     while (queueIndex < queue.length && !state.stopped) {
-      if (this.checkStop(options, state, root)) {
+      if (checkStop(options, state, root)) {
         break;
       }
 
@@ -173,12 +184,12 @@ export class BoundedWalker {
     options: NormalizedWalkOptions,
     state: WalkState,
   ): Promise<void> {
-    if (this.checkStop(options, state, root)) {
+    if (checkStop(options, state, root)) {
       return;
     }
 
     if (state.filesVisited >= options.maximumFiles) {
-      this.stopForMaximumFiles(root, state);
+      stopForMaximumFiles(root, state);
 
       return;
     }
@@ -219,12 +230,12 @@ export class BoundedWalker {
     options: NormalizedWalkOptions,
     state: WalkState,
   ): Promise<void> {
-    if (this.checkStop(options, state, directory.path)) {
+    if (checkStop(options, state, directory.path)) {
       return;
     }
 
     if (state.directoriesVisited >= options.maximumDirectories) {
-      this.stopForMaximumDirectories(directory.path, state);
+      stopForMaximumDirectories(directory.path, state);
 
       return;
     }
@@ -242,13 +253,13 @@ export class BoundedWalker {
         message:
           `Unable to read directory ` +
           `"${directory.path}": ` +
-          this.errorMessage(error),
+          errorMessage(error),
       });
 
       return;
     }
 
-    if (this.checkStop(options, state, directory.path)) {
+    if (checkStop(options, state, directory.path)) {
       return;
     }
 
@@ -257,7 +268,7 @@ export class BoundedWalker {
     );
 
     for (const entry of sortedEntries) {
-      if (state.stopped || this.checkStop(options, state, entry.path)) {
+      if (state.stopped || checkStop(options, state, entry.path)) {
         return;
       }
 
@@ -277,7 +288,7 @@ export class BoundedWalker {
           message:
             `Unable to create a workspace-relative ` +
             `path for "${entry.path}": ` +
-            this.errorMessage(error),
+            errorMessage(error),
         });
 
         continue;
@@ -333,7 +344,14 @@ export class BoundedWalker {
       }
 
       case "symbolic_link": {
-        await this.processSymbolicLink(item, queue, options, state);
+        await processSymbolicLink(
+          this.fileSystem,
+          this.pathNormalizer,
+          item,
+          queue,
+          options,
+          state,
+        );
 
         return;
       }
@@ -356,12 +374,12 @@ export class BoundedWalker {
     options: NormalizedWalkOptions,
     state: WalkState,
   ): Promise<void> {
-    if (this.checkStop(options, state, item.path)) {
+    if (checkStop(options, state, item.path)) {
       return;
     }
 
     if (state.filesVisited >= options.maximumFiles) {
-      this.stopForMaximumFiles(item.path, state);
+      stopForMaximumFiles(item.path, state);
 
       return;
     }
@@ -377,11 +395,11 @@ export class BoundedWalker {
         message:
           `Unable to inspect file ` +
           `"${item.path}": ` +
-          this.errorMessage(error),
+          errorMessage(error),
       });
     }
 
-    if (this.checkStop(options, state, item.path)) {
+    if (checkStop(options, state, item.path)) {
       return;
     }
 
@@ -438,140 +456,6 @@ export class BoundedWalker {
     queue.push(item);
   }
 
-  private async processSymbolicLink(
-    item: DirectoryQueueItem,
-    queue: DirectoryQueueItem[],
-    options: NormalizedWalkOptions,
-    state: WalkState,
-  ): Promise<void> {
-    state.symbolicLinksVisited += 1;
-
-    let stat: FileSystemStat | undefined;
-
-    try {
-      stat = await this.fileSystem.stat(item.path);
-    } catch (error) {
-      state.warnings.push({
-        code: "stat_failed",
-        path: item.path,
-        message:
-          `Unable to inspect symbolic link ` +
-          `"${item.path}": ` +
-          this.errorMessage(error),
-      });
-    }
-
-    //INFO: exactOptionalPropertyTypes: true 
-    state.entries.push({
-      root: item.root,
-      path: item.path,
-      relativePath: item.relativePath,
-      depth: item.depth,
-      kind: "symbolic_link",
-
-      ...(stat?.size !== undefined
-        ? {
-            size: stat.size,
-          }
-        : {}),
-
-      ...(stat?.modifiedAt
-        ? {
-            modifiedAt: stat.modifiedAt,
-          }
-        : {}),
-
-      ...(stat?.symbolicLinkTarget
-        ? {
-            linkTarget: stat.symbolicLinkTarget,
-          }
-        : {}),
-    });
-
-    if (!options.followSymbolicLinks) {
-      state.warnings.push({
-        code: "symbolic_link_skipped",
-        path: item.path,
-        message: "Symbolic-link traversal is disabled.",
-      });
-
-      return;
-    }
-
-    if (this.checkStop(options, state, item.path)) {
-      return;
-    }
-
-    let realPath: string;
-    let targetStat: FileSystemStat;
-
-    try {
-      realPath = await this.fileSystem.realPath(item.path);
-      targetStat = await this.fileSystem.stat(realPath);
-    } catch (error) {
-      state.warnings.push({
-        code: "symbolic_link_resolution_failed",
-        path: item.path,
-        message:
-          `Unable to resolve symbolic link ` +
-          `"${item.path}": ` +
-          this.errorMessage(error),
-      });
-
-      return;
-    }
-
-    if (!this.pathNormalizer.isWithinRoot(item.rootRealPath, realPath)) {
-      state.warnings.push({
-        code: "outside_root",
-        path: item.path,
-        message:
-          `Symbolic link resolves outside workspace ` + `root: "${realPath}".`,
-      });
-
-      return;
-    }
-
-    if (targetStat.kind !== "directory") {
-      return;
-    }
-
-    const normalizedRealPath = this.pathNormalizer.normalizePhysical(realPath);
-
-    if (state.visitedRealDirectories.has(normalizedRealPath)) {
-      state.warnings.push({
-        code: "symbolic_link_cycle",
-        path: item.path,
-        message:
-          `Symbolic link resolves to an already ` +
-          `visited directory: "${realPath}".`,
-      });
-
-      return;
-    }
-
-    if (item.depth >= options.maximumDepth) {
-      state.truncated = true;
-
-      state.warnings.push({
-        code: "maximum_depth_reached",
-        path: item.path,
-        message:
-          `Maximum traversal depth of ` +
-          `${options.maximumDepth} was reached.`,
-      });
-
-      return;
-    }
-
-    state.visitedRealDirectories.add(normalizedRealPath);
-
-    queue.push({
-      ...item,
-      path: realPath,
-    });
-  }
-
   private async shouldIgnore(
     context: BoundedWalkIgnoreContext,
     options: NormalizedWalkOptions,
@@ -590,7 +474,7 @@ export class BoundedWalker {
         message:
           `Ignore policy failed for ` +
           `"${context.path}": ` +
-          this.errorMessage(error),
+          errorMessage(error),
       });
 
       /*
@@ -601,197 +485,4 @@ export class BoundedWalker {
     }
   }
 
-  private checkStop(
-    options: NormalizedWalkOptions,
-    state: WalkState,
-    currentPath: string,
-  ): boolean {
-    if (this.checkCancellation(options, state, currentPath)) {
-      return true;
-    }
-
-    return this.checkTimeout(options, state, currentPath);
-  }
-
-  private checkCancellation(
-    options: NormalizedWalkOptions,
-    state: WalkState,
-    currentPath: string,
-  ): boolean {
-    if (!options.abortSignal?.aborted) {
-      return false;
-    }
-
-    if (!state.cancelled) {
-      state.cancelled = true;
-      state.stopped = true;
-
-      state.warnings.push({
-        code: "cancelled",
-        path: currentPath,
-        message: "Workspace traversal was cancelled.",
-      });
-    }
-
-    return true;
-  }
-
-  private checkTimeout(
-    options: NormalizedWalkOptions,
-    state: WalkState,
-    currentPath: string,
-  ): boolean {
-    if (Date.now() < options.deadline) {
-      return false;
-    }
-
-    state.timedOut = true;
-    state.truncated = true;
-    state.stopped = true;
-
-    if (!state.reportedTimeout) {
-      state.reportedTimeout = true;
-
-      state.warnings.push({
-        code: "timeout_reached",
-        path: currentPath,
-        message:
-          `Workspace traversal exceeded its ` +
-          `${options.timeoutMs}ms time limit.`,
-      });
-    }
-
-    return true;
-  }
-
-  private stopForMaximumFiles(currentPath: string, state: WalkState): void {
-    state.truncated = true;
-    state.stopped = true;
-
-    if (state.reportedMaximumFiles) {
-      return;
-    }
-
-    state.reportedMaximumFiles = true;
-
-    state.warnings.push({
-      code: "maximum_files_reached",
-      path: currentPath,
-      message: "The maximum file limit was reached.",
-    });
-  }
-
-  private stopForMaximumDirectories(
-    currentPath: string,
-    state: WalkState,
-  ): void {
-    state.truncated = true;
-    state.stopped = true;
-
-    if (state.reportedMaximumDirectories) {
-      return;
-    }
-
-    state.reportedMaximumDirectories = true;
-
-    state.warnings.push({
-      code: "maximum_directories_reached",
-      path: currentPath,
-      message: "The maximum directory limit was reached.",
-    });
-  }
-
-  private normalizeOptions(input: BoundedWalkInput): NormalizedWalkOptions {
-    const maximumDepth =
-      input.maximumDepth ?? BOUNDED_WALKER_CONSTANTS.DEFAULT_MAXIMUM_DEPTH;
-
-    const maximumFiles =
-      input.maximumFiles ?? BOUNDED_WALKER_CONSTANTS.DEFAULT_MAXIMUM_FILES;
-
-    const maximumDirectories =
-      input.maximumDirectories ??
-      BOUNDED_WALKER_CONSTANTS.DEFAULT_MAXIMUM_DIRECTORIES;
-
-    const timeoutMs =
-      input.timeoutMs ?? BOUNDED_WALKER_CONSTANTS.DEFAULT_TIMEOUT_MS;
-
-    this.validateLimit("maximumDepth", maximumDepth, true);
-
-    this.validateLimit("maximumFiles", maximumFiles, false);
-
-    this.validateLimit("maximumDirectories", maximumDirectories, false);
-
-    this.validateLimit("timeoutMs", timeoutMs, false);
-
-    return {
-      maximumDepth,
-      maximumFiles,
-      maximumDirectories,
-
-      timeoutMs,
-      deadline: Date.now() + timeoutMs,
-
-      followSymbolicLinks: input.followSymbolicLinks ?? false,
-
-      shouldIgnore: input.shouldIgnore,
-      abortSignal: input.abortSignal,
-    };
-  }
-
-  private createState(): WalkState {
-    return {
-      entries: [],
-      warnings: [],
-
-      filesVisited: 0,
-      directoriesVisited: 0,
-      symbolicLinksVisited: 0,
-      ignoredEntries: 0,
-
-      truncated: false,
-      cancelled: false,
-      timedOut: false,
-      stopped: false,
-
-      reportedMaximumFiles: false,
-      reportedMaximumDirectories: false,
-      reportedTimeout: false,
-
-      visitedRealDirectories: new Set<string>(),
-    };
-  }
-
-  private validateLimit(name: string, value: number, allowZero: boolean): void {
-    const minimum = allowZero ? 0 : 1;
-
-    if (!Number.isSafeInteger(value) || value < minimum) {
-      throw new RangeError(
-        `${name} must be a safe integer ` +
-          `greater than or equal to ${minimum}.`,
-      );
-    }
-  }
-
-  private isMissingPathError(error: unknown): boolean {
-    const code = this.getErrorCode(error);
-
-    return (
-      code === "ENOENT" ||
-      code === "ENOTDIR" ||
-      code === "FileNotFound" ||
-      code === "EntryNotFound"
-    );
-  }
-
-  private getErrorCode(error: unknown): string | undefined {
-    if (!error || typeof error !== "object" || !("code" in error)) {
-      return undefined;
-    }
-
-    return String(error.code);
-  }
-
-  private errorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
-  }
 }

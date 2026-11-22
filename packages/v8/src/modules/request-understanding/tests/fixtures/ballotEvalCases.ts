@@ -1,6 +1,6 @@
 /**
- * Golden fixtures for Understanding Ballot + Decision Steering (Phase 0).
- * Behavior assertions land with later phases; these cases document expected outcomes.
+ * Golden fixtures for understanding ballot + decision steering.
+ * Cases document expected outcomes for route / clarify behavior.
  */
 
 export type BallotEvalExpectation =
@@ -108,6 +108,51 @@ export const BALLOT_EVAL_CASES: BallotEvalCase[] = [
       {
         kind: "route_or_clarify",
         preferredRoutes: ["diagnose"],
+        forbiddenSilentRoutes: ["execute"],
+      },
+    ],
+  },
+  {
+    id: "vitest-fail-paste-execute",
+    description:
+      "Failed Tests N paste with Officer act+bugfix should execute (plan-then-finish), not dump-diagnose",
+    mode: "agent",
+    message: [
+      "Failed Tests 2",
+      "FAIL apps/vscode/tests/sidebarSettingsPersistence.test.ts > case",
+      "AssertionError: expected false to be true",
+      " ❯ apps/vscode/tests/sidebarSettingsPersistence.test.ts:257:31",
+    ].join("\n"),
+    expectations: [
+      {
+        kind: "route_or_clarify",
+        preferredRoutes: ["execute"],
+        forbiddenSilentRoutes: [],
+      },
+    ],
+  },
+  {
+    id: "ask-mode-fix-clarify-not-act",
+    description: "Ask mode 'fix this bug?' must not silently execute",
+    mode: "ask",
+    message: "fix this bug?",
+    expectations: [
+      {
+        kind: "route_or_clarify",
+        preferredRoutes: ["clarify", "diagnose", "repository_answer", "direct_answer"],
+        forbiddenSilentRoutes: ["execute"],
+      },
+    ],
+  },
+  {
+    id: "plan-mode-implement-stays-plan",
+    description: "Plan mode implement ask stays plan route",
+    mode: "plan",
+    message: "implement auth for the settings sidebar",
+    expectations: [
+      {
+        kind: "route_or_clarify",
+        preferredRoutes: ["plan"],
         forbiddenSilentRoutes: ["execute"],
       },
     ],

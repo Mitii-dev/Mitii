@@ -36,6 +36,8 @@ export const planStepSchema = z
     riskLevel: planStepRiskLevelSchema.default("low"),
     /** Files to load before writing this step. Optional; filled from graph dependencies. */
     mustRead: z.array(z.string().min(1).max(500)).max(8).optional(),
+    /** Production dependents likely to need coordinated edits. */
+    likelyModify: z.array(z.string().min(1).max(500)).max(8).optional(),
     /** Files likely to break after this write. Optional; filled from graph dependents. */
     affected: z.array(z.string().min(1).max(500)).max(8).optional(),
   })

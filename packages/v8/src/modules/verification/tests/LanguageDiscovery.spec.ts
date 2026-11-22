@@ -91,8 +91,42 @@ line-length = 100
 
     expect(result.candidates.map((c) => c.kind).sort()).toEqual([
       "lint",
+      "syntax",
       "test",
       "typecheck",
+    ]);
+    expect(result.candidates.some((c) => c.kind === "syntax")).toBe(true);
+  });
+
+  it("uses fatal-only ruff select for localized Python discovery", async () => {
+    const manifests = new InMemoryManifestReader({
+      "pyproject.toml": `[tool.ruff]\nline-length = 100\n`,
+    });
+    const localized = await discoverCandidatesForProject({
+      project: project({ projectId: "py", primaryLanguageId: "python" }),
+      changedFiles: ["app.py"],
+      manifests,
+      changeScope: "localized",
+    });
+    const lint = localized.candidates.find((c) => c.kind === "lint");
+    expect(lint?.argv).toEqual([
+      "ruff",
+      "check",
+      "--select",
+      "E9,F821,F822,F823,F401",
+      ".",
+    ]);
+
+    const broad = await discoverCandidatesForProject({
+      project: project({ projectId: "py", primaryLanguageId: "python" }),
+      changedFiles: ["app.py"],
+      manifests,
+      changeScope: "cross_cutting",
+    });
+    expect(broad.candidates.find((c) => c.kind === "lint")?.argv).toEqual([
+      "ruff",
+      "check",
+      ".",
     ]);
   });
 
@@ -205,14 +239,15 @@ line-length = 100
     expect(swift.candidates.some((c) => c.argv?.[0] === "swift")).toBe(true);
   });
 
-  it("does not invent shell/sql checks without evidence", async () => {
+  it("allows cheap shell syntax but does not invent shellcheck/sql suites", async () => {
     const shell = await discoverCandidatesForProject({
       project: project({ projectId: "sh", primaryLanguageId: "shell" }),
       changedFiles: ["scripts/run.sh"],
       manifests: new InMemoryManifestReader(),
     });
-    expect(shell.candidates).toEqual([]);
-    expect(shell.warnings[0]).toMatch(/not invented|unavailable/i);
+    expect(shell.candidates.map((c) => c.kind)).toEqual(["syntax"]);
+    expect(shell.candidates[0]?.argv).toEqual(["bash", "-n", "scripts/run.sh"]);
+    expect(shell.candidates.every((c) => c.kind !== "lint")).toBe(true);
 
     const sql = await discoverCandidatesForProject({
       project: project({ projectId: "sql", primaryLanguageId: "sql" }),

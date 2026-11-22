@@ -7,16 +7,19 @@ export const DECISION_POLICY_THRESHOLDS = {
   lowIntentConfidence: 0.45,
   /**
    * When understanding already set needsClarification, still ask if confidence
-   * is below this (covers investigate-vs-fix forks around ~0.6).
+   * is below this (covers investigate-vs-fix forks and soft ambiguity).
+   * Kept slightly above HIGH_CONFIDENCE (0.70) so a 70% LLM route win does not
+   * silently skip an explicit clarify flag in the medium band.
    */
   clarifyWhenFlaggedBelowConfidence: 0.75,
   /** Above this margin, competing intents are treated as clear enough to proceed. */
   minimumIntentMargin: 0.12,
   /**
-   * When policyFactsFirst is on, treat understanding as authoritative above
-   * this confidence (and margin) except for documented safety overrides.
+   * Treat understanding as authoritative above this confidence (and margin)
+   * unless policyFactsFirst is explicitly false. Aligned with intent
+   * HIGH_CONFIDENCE (LLM wins rule conflicts at ≥0.70).
    */
-  factsFirstMinConfidence: 0.74,
+  factsFirstMinConfidence: 0.7,
   factsFirstMinMargin: 0.12,
   /** Estimated file count above which multi-file work gets an internal plan. */
   multiFilePlanThreshold: 2,
@@ -43,6 +46,23 @@ export const DECISION_POLICY_THRESHOLDS = {
     standard: 2_500,
     wide: 3_200,
   },
+  /** Fast path (skip plan + discovery): max explicit file paths named in the ask. */
+  fastPathMaxExplicitPaths: 3,
+  /** Fast path: max primary-ask length; longer briefs keep the internal plan. */
+  fastPathMaxPromptChars: 700,
+  /**
+   * Soft Officer act+mutation on structured test-failure pastes may authorize
+   * a write despite the dump heuristic at or above this confidence.
+   */
+  softOfficerWriteMinConfidence: 0.6,
+  /** Mutation asks shorter than this with no concrete target are "bare". */
+  bareMutationAskMaxChars: 48,
+  /** Minimum ask length for the soft workspace runtime-symptom heuristic. */
+  runtimeSymptomMinChars: 8,
+  /** Minimum ask length for the pasted runtime-error dump heuristic. */
+  pastedRuntimeDumpMinChars: 12,
+  /** Minimum ask length for the pasted test-failure report heuristic. */
+  pastedTestFailureMinChars: 24,
 } as const;
 
 /**
@@ -55,23 +75,23 @@ export const MUTATION_BUDGET_PROFILES = {
     maxPatchesPerCall: 48,
     maxUniqueFilesPerCall: 32,
     maxPatchPayloadCharacters: 80_000,
-    preferredBatchSize: 12,
+    preferredBatchSize: 20,
     requireBatchedExecution: false,
   },
   /** Default agent execute path. */
   standard: {
-    maxPatchesPerCall: 36,
-    maxUniqueFilesPerCall: 24,
-    maxPatchPayloadCharacters: 48_000,
-    preferredBatchSize: 8,
+    maxPatchesPerCall: 40,
+    maxUniqueFilesPerCall: 28,
+    maxPatchPayloadCharacters: 56_000,
+    preferredBatchSize: 12,
     requireBatchedExecution: false,
   },
   /** Large / multi-file / high-complexity refactors — batch, but do not shrink below window effort. */
   tight: {
-    maxPatchesPerCall: 16,
-    maxUniqueFilesPerCall: 12,
-    maxPatchPayloadCharacters: 32_000,
-    preferredBatchSize: 8,
+    maxPatchesPerCall: 28,
+    maxUniqueFilesPerCall: 20,
+    maxPatchPayloadCharacters: 40_000,
+    preferredBatchSize: 12,
     requireBatchedExecution: true,
   },
 } as const;

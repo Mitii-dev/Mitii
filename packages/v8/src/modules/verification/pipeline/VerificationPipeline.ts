@@ -27,6 +27,7 @@ import type {
   VerificationRecord,
   VerificationRecordStorePort,
   VerificationResult,
+  VerificationSyntaxPort,
   VerificationToolExecutorPort,
 } from "../contracts";
 import { VERIFICATION_SCHEMA_VERSION } from "../constants";
@@ -40,6 +41,8 @@ export interface VerificationPipelineDependencies {
   manifests: VerificationManifestReaderPort;
   /** Optional durable store. Omit in tests that only exercise check execution. */
   records?: VerificationRecordStorePort;
+  /** Optional host tree-sitter syntax gate (ERROR / missing nodes). */
+  syntax?: VerificationSyntaxPort;
 }
 
 /**
@@ -59,6 +62,7 @@ export class VerificationPipeline {
   private readonly tools: VerificationToolExecutorPort;
   private readonly manifests: VerificationManifestReaderPort;
   private readonly records?: VerificationRecordStorePort;
+  private readonly syntax?: VerificationSyntaxPort;
 
   constructor(dependencies: VerificationPipelineDependencies) {
     if (!dependencies.tools || !dependencies.manifests) {
@@ -70,6 +74,7 @@ export class VerificationPipeline {
     this.tools = dependencies.tools;
     this.manifests = dependencies.manifests;
     this.records = dependencies.records;
+    this.syntax = dependencies.syntax;
   }
 
   public async verify(
@@ -142,6 +147,7 @@ export class VerificationPipeline {
       changeScope: parsed.changeScope,
       changedFiles: parsed.changedFiles,
       manifests: this.manifests,
+      syntaxPortAvailable: Boolean(this.syntax),
     });
 
     const selected = selectProportionalChecks({
@@ -149,6 +155,14 @@ export class VerificationPipeline {
       verification: parsed.verification,
       changeScope: parsed.changeScope,
       maxChecks: parsed.maxChecks,
+      changedFiles: parsed.changedFiles,
+      scriptHints: discovered.scriptHints,
+      ...(typeof parsed.widenScope === "boolean"
+        ? { widenScope: parsed.widenScope }
+        : {}),
+      ...(parsed.impactAffectedFiles
+        ? { impactAffectedFiles: parsed.impactAffectedFiles }
+        : {}),
     });
 
     const executed = await executeChecks({
@@ -157,6 +171,7 @@ export class VerificationPipeline {
       workspaceRoot: parsed.workspaceRoot,
       pinnedState: parsed.pinnedState,
       tools: this.tools,
+      ...(this.syntax ? { syntax: this.syntax } : {}),
       signal: options.signal,
     });
 
@@ -190,6 +205,9 @@ export class VerificationPipeline {
       cancelled: executed.cancelled || Boolean(options.signal?.aborted),
       staleStateRisk: inspection.diff.staleStateRisk,
       stateUnavailable: false,
+      diagnostics: allDiagnostics,
+      changedFiles: parsed.changedFiles,
+      askScopePaths: parsed.changedFiles,
     });
 
     const reasonCodes = uniqueReasonCodes([
@@ -270,6 +288,8 @@ export class VerificationPipeline {
   public compareBuildStates(params: {
     before?: RepoBuildState;
     after: RepoBuildState;
+    askScopePaths?: readonly string[];
+    changedFiles?: readonly string[];
   }): RepoBuildStateComparison {
     return compareRepoBuildStates(params);
   }

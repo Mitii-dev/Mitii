@@ -3,11 +3,26 @@ import type {
   VerificationCheckResult,
   VerificationDiagnostic,
 } from "../contracts";
-import { DEFAULT_MAX_DIAGNOSTICS } from "../defaults";
+import {
+  DEFAULT_MAX_DIAGNOSTICS,
+  DEFAULT_MAX_DIAGNOSTICS_PER_FILE,
+} from "../defaults";
+import { diagnosticIdentityKey } from "./diagnosticIdentity";
+import { filterActionableDiagnostics } from "./FilterActionableDiagnostics";
+
+const SEVERITY_RANK: Record<VerificationDiagnostic["severity"], number> = {
+  error: 0,
+  warning: 1,
+  info: 2,
+  hint: 3,
+};
 
 /**
  * Normalize diagnostics from Tool Runtime read_diagnostics output and from
  * common compiler/test text patterns in check stdout/stderr.
+ *
+ * Results are severity-sorted (errors first) and capped globally. Call
+ * `packDiagnosticsForModel` for the tighter per-file model/repair subset.
  */
 export function normalizeDiagnostics(params: {
   checks: readonly VerificationCheckResult[];
@@ -36,6 +51,18 @@ export function normalizeDiagnostics(params: {
       continue;
     }
 
+    if (check.kind === "syntax") {
+      const fromPort = fromSyntaxPortFindings(check.checkId, output);
+      if (fromPort.length > 0) {
+        diagnostics.push(
+          ...fromPort.map((diagnostic) =>
+            resolveDiagnosticPath(diagnostic, projectRoot),
+          ),
+        );
+        continue;
+      }
+    }
+
     if (check.kind === "diff_review") {
       continue;
     }
@@ -47,10 +74,72 @@ export function normalizeDiagnostics(params: {
     );
   }
 
-  return filterBaselineDiagnostics({
+  // Drop harness / denied-tree frames before baseline or packing — they are
+  // never ask-actionable and inflate before→after "new error" counts.
+  const actionable = filterActionableDiagnostics({
     diagnostics,
-    baselineDiagnostics: params.baselineDiagnostics,
-  }).slice(0, DEFAULT_MAX_DIAGNOSTICS);
+    dropPhantomSecondary: false,
+    keepSyntheticTestPaths: true,
+  }).actionable;
+
+  return prioritizeDiagnostics(
+    filterBaselineDiagnostics({
+      diagnostics: actionable,
+      baselineDiagnostics: params.baselineDiagnostics,
+    }),
+  ).slice(0, DEFAULT_MAX_DIAGNOSTICS);
+}
+
+/**
+ * Model/repair packaging: errors-first, per-path cap, omit footer count.
+ * Durable records and gate decisions should keep the fuller normalize set.
+ */
+export function packDiagnosticsForModel(params: {
+  diagnostics: readonly VerificationDiagnostic[];
+  maxTotal?: number;
+  maxPerFile?: number;
+  errorsOnly?: boolean;
+}): {
+  diagnostics: VerificationDiagnostic[];
+  omittedCount: number;
+} {
+  const maxTotal = params.maxTotal ?? DEFAULT_MAX_DIAGNOSTICS_PER_FILE * 4;
+  const maxPerFile = params.maxPerFile ?? DEFAULT_MAX_DIAGNOSTICS_PER_FILE;
+  const source = params.errorsOnly
+    ? params.diagnostics.filter((diagnostic) => diagnostic.severity === "error")
+    : params.diagnostics;
+  const prioritized = prioritizeDiagnostics(source);
+  const perFile = new Map<string, number>();
+  const packed: VerificationDiagnostic[] = [];
+
+  for (const diagnostic of prioritized) {
+    if (packed.length >= maxTotal) {
+      break;
+    }
+    const count = perFile.get(diagnostic.path) ?? 0;
+    if (count >= maxPerFile) {
+      continue;
+    }
+    perFile.set(diagnostic.path, count + 1);
+    packed.push(diagnostic);
+  }
+
+  return {
+    diagnostics: packed,
+    omittedCount: Math.max(0, source.length - packed.length),
+  };
+}
+
+export function prioritizeDiagnostics(
+  diagnostics: readonly VerificationDiagnostic[],
+): VerificationDiagnostic[] {
+  return [...diagnostics].sort((a, b) => {
+    const severity = SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity];
+    if (severity !== 0) return severity;
+    const path = a.path.localeCompare(b.path);
+    if (path !== 0) return path;
+    return (a.startLine ?? 0) - (b.startLine ?? 0);
+  });
 }
 
 function buildProjectRootLookup(
@@ -144,6 +233,41 @@ function fromDiagnosticsTool(
         typeof record.code === "string" || typeof record.code === "number"
           ? String(record.code)
           : undefined,
+      checkId,
+    });
+  }
+  return result;
+}
+
+function fromSyntaxPortFindings(
+  checkId: string,
+  output: unknown,
+): VerificationDiagnostic[] {
+  if (!output || typeof output !== "object") return [];
+  const findings = (output as { findings?: unknown }).findings;
+  if (!Array.isArray(findings)) return [];
+
+  const result: VerificationDiagnostic[] = [];
+  for (const item of findings) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as Record<string, unknown>;
+    if (typeof record.path !== "string" || typeof record.message !== "string") {
+      continue;
+    }
+    if (typeof record.startLine !== "number") {
+      continue;
+    }
+    result.push({
+      path: record.path,
+      severity: "error",
+      message: record.message,
+      startLine: record.startLine,
+      startColumn:
+        typeof record.startColumn === "number" ? record.startColumn : undefined,
+      endLine: typeof record.endLine === "number" ? record.endLine : undefined,
+      endColumn:
+        typeof record.endColumn === "number" ? record.endColumn : undefined,
+      source: "tree-sitter",
       checkId,
     });
   }
@@ -253,16 +377,3 @@ function extractCombinedText(output: unknown): string {
     .join("\n");
 }
 
-function diagnosticIdentityKey(diagnostic: VerificationDiagnostic): string {
-  return [
-    diagnostic.path,
-    diagnostic.severity,
-    diagnostic.message,
-    diagnostic.startLine ?? "",
-    diagnostic.startColumn ?? "",
-    diagnostic.endLine ?? "",
-    diagnostic.endColumn ?? "",
-    diagnostic.source ?? "",
-    diagnostic.code ?? "",
-  ].join("\u001f");
-}

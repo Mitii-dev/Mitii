@@ -5,21 +5,32 @@ export {
   CODE_NAVIGATION_PROVIDERS,
   CODE_NAVIGATION_REASON_CODES,
   CODE_NAVIGATION_ERROR_CODES,
+  CODE_NAVIGATION_CAPABILITY_STATUSES,
 } from "./constants";
 
 export {
   DEFAULT_MAX_CODE_NAVIGATION_LOCATIONS,
   DEFAULT_MAX_HOVER_CHARACTERS,
+  DEFAULT_GRAPH_HOP_DEPTH,
+  DEFAULT_NAVIGATION_REQUEST_LIMIT,
+  DEFAULT_NAVIGATION_REQUEST_TIMEOUT_MS,
 } from "./defaults";
+
+export { CODE_NAVIGATION_POLICY } from "./policy";
+
+export {
+  createRequestLimiter,
+  RequestLimiterTimeoutError,
+  RequestLimiterAbortError,
+} from "./internal/createRequestLimiter";
+export type { RequestLimiter } from "./internal/createRequestLimiter";
 
 export { CodeNavigationPipeline } from "./pipeline/CodeNavigationPipeline";
 export type { CodeNavigationPipelineDependencies } from "./pipeline/CodeNavigationPipeline";
 
-export {
-  GraphCodeNavigationAdapter,
-  FallbackCodeNavigationAdapter,
-} from "./adapters/GraphCodeNavigationAdapter";
+export { GraphCodeNavigationAdapter } from "./adapters/GraphCodeNavigationAdapter";
 export type { GraphCodeNavigationAdapterOptions } from "./adapters/GraphCodeNavigationAdapter";
+export { FallbackCodeNavigationAdapter } from "./adapters/FallbackCodeNavigationAdapter";
 
 export {
   codeNavigationInputSchema,
@@ -36,9 +47,13 @@ export type {
   CodeNavigationQuery,
   CodeNavigationLocation,
   CodeNavigationHover,
+  CodeNavigationDocumentQuery,
+  CodeNavigationWorkspaceQuery,
   CodeNavigationResult,
   CodeNavigationStatus,
   CodeNavigationReasonCode,
   CodeNavigationErrorCode,
   CodeNavigationPort,
+  CodeNavigationCapability,
+  CodeNavigationCallOptions,
 } from "./contracts";
