@@ -7,6 +7,11 @@ import {
   resolveWorkspaceStorage,
 } from '../src/shared/storage-layout.js';
 
+/** Repo-style path for assertions (strip Windows drive letter from resolve()). */
+function normalizeStoragePath(path: string): string {
+  return path.replace(/\\/g, '/').replace(/^[A-Za-z]:/, '');
+}
+
 describe('storage-layout projects path', () => {
   it('builds friendly project slugs', () => {
     expect(projectSlugFromRoot('/tmp/gitea-main')).toBe('gitea-main');
@@ -24,10 +29,11 @@ describe('storage-layout projects path', () => {
     expect(layout.projectFolderName).toBe(
       projectFolderName('billbuddy-test-suite', 'ws_abcdef0123456789'),
     );
-    expect(layout.dataPath.replace(/\\/g, '/')).toBe(
+    // path.resolve on Windows may prefix a drive letter onto absolute POSIX roots.
+    expect(normalizeStoragePath(layout.dataPath)).toBe(
       '/data/mitii-root/projects/billbuddy-test-suite--abcdef0123456789',
     );
-    expect(layout.legacyDataPath?.replace(/\\/g, '/')).toBe(
+    expect(normalizeStoragePath(layout.legacyDataPath ?? '')).toBe(
       '/data/mitii-root/workspaces/ws_abcdef0123456789',
     );
     expect(projectIdSuffix('ws_abcdef0123456789')).toBe('abcdef0123456789');
