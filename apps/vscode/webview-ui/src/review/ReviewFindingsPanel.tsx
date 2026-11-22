@@ -1,4 +1,4 @@
-import type { ReviewFindingChip } from './reviewFindingTypes';
+import type { ReviewFindingChip } from '@mitii/ui-react';
 import { severityTone } from './reviewBarFormat';
 
 type Props = {

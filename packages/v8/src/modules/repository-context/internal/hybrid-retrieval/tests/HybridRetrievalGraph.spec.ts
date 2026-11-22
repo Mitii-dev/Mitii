@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { describe, expect, it } from "vitest";
 import { HybridRetriever } from "../HybridRetriever";
 import { RepoGraphRetrievalSource } from "../sources";
 import type {
@@ -8,306 +7,122 @@ import type {
 } from "../../../../repository-state/index";
 import { baseInput, createGraph } from "./hybridRetrievalHarness";
 
-test(
-  "repo graph retrieval returns direct matches and bounded neighbors",
-  async () => {
-    const nodes:
-      RepoGraphNode[] = [
-        {
-          id:
-            "file:auth",
-          kind:
-            "file",
-          fileId:
-            "auth",
-          rootId:
-            "root",
-          relativePath:
-            "src/auth.ts",
-        },
-        {
-          id:
-            "file:database",
-          kind:
-            "file",
-          fileId:
-            "database",
-          rootId:
-            "root",
-          relativePath:
-            "src/database.ts",
-        },
-      ];
+const fileNode = (id: string, relativePath: string): RepoGraphNode => ({
+  id: `file:${id}`,
+  kind: "file",
+  fileId: id,
+  rootId: "root",
+  relativePath,
+});
 
-    const edges:
-      RepoGraphEdge[] = [
-        {
-          id:
-            "edge:auth-database",
-          type:
-            "imports",
-          fromNodeId:
-            "file:auth",
-          toNodeId:
-            "file:database",
-          weight:
-            1,
-          evidenceCount:
-            1,
-          evidence: [
-            {
-              source:
-                "code_index_import",
-            },
-          ],
-          evidenceTruncated:
-            false,
-        },
-      ];
+const symbolNode = (id: string, name: string): RepoGraphNode => ({
+  id: `symbol:${id}`,
+  kind: "symbol",
+  symbolId: `symbol:${id}`,
+  fileId: id,
+  name,
+  symbolKind: "function",
+  startLine: 1,
+});
 
-    const graph =
-      createGraph(
-        nodes,
-        edges,
-      );
+const callEdge = (
+  id: string,
+  from: string,
+  to: string,
+  line: number,
+): RepoGraphEdge => ({
+  id,
+  type: "calls",
+  fromNodeId: from,
+  toNodeId: to,
+  weight: 1,
+  evidenceCount: 1,
+  evidence: [{ source: "code_index_reference", detail: "call", line }],
+  evidenceTruncated: false,
+});
 
-    const retriever =
-      new HybridRetriever([
-        {
-          source:
-            new RepoGraphRetrievalSource(
-              {
-                maximumNeighborsPerAnchor:
-                  1,
-              },
-            ),
-        },
-      ]);
+describe("HybridRetriever repo graph source", () => {
+  it("returns direct matches and bounded neighbors", async () => {
+    const nodes = [
+      fileNode("auth", "src/auth.ts"),
+      fileNode("database", "src/database.ts"),
+    ];
+    const edges: RepoGraphEdge[] = [
+      {
+        id: "edge:auth-database",
+        type: "imports",
+        fromNodeId: "file:auth",
+        toNodeId: "file:database",
+        weight: 1,
+        evidenceCount: 1,
+        evidence: [{ source: "code_index_import" }],
+        evidenceTruncated: false,
+      },
+    ];
 
-    const result =
-      await retriever.retrieve({
-        ...baseInput,
-        query:
-          "auth handler",
-        repoGraph:
-          graph,
-      });
+    const retriever = new HybridRetriever([
+      {
+        source: new RepoGraphRetrievalSource({ maximumNeighborsPerAnchor: 1 }),
+      },
+    ]);
 
-    assert.deepEqual(
-      result.candidates.map(
-        (entry) =>
-          entry.relativePath,
+    const result = await retriever.retrieve({
+      ...baseInput,
+      query: "auth handler",
+      repoGraph: createGraph(nodes, edges),
+    });
+
+    expect(result.candidates.map((entry) => entry.relativePath)).toEqual([
+      "src/auth.ts",
+      "src/database.ts",
+    ]);
+    expect(
+      result.candidates[1]?.reasons.some(
+        (reason) => reason.type === "graph_import_neighbor",
       ),
-      [
-        "src/auth.ts",
-        "src/database.ts",
-      ],
-    );
-    assert.ok(
-      result.candidates[1]
-        ?.reasons.some(
-          (reason) =>
-            reason.type ===
-            "graph_import_neighbor",
-        ),
-    );
-  },
-);
+    ).toBe(true);
+  });
 
-test(
-  "repo graph retrieval expands call blast radius across bounded hops",
-  async () => {
-    const nodes:
-      RepoGraphNode[] = [
-        {
-          id:
-            "file:entry",
-          kind:
-            "file",
-          fileId:
-            "entry",
-          rootId:
-            "root",
-          relativePath:
-            "src/entry.ts",
-        },
-        {
-          id:
-            "file:service",
-          kind:
-            "file",
-          fileId:
-            "service",
-          rootId:
-            "root",
-          relativePath:
-            "src/service.ts",
-        },
-        {
-          id:
-            "file:auth",
-          kind:
-            "file",
-          fileId:
-            "auth",
-          rootId:
-            "root",
-          relativePath:
-            "src/auth.ts",
-        },
-        {
-          id:
-            "symbol:entry",
-          kind:
-            "symbol",
-          symbolId:
-            "symbol:entry",
-          fileId:
-            "entry",
-          name:
-            "main",
-          symbolKind:
-            "function",
-          startLine:
-            1,
-        },
-        {
-          id:
-            "symbol:service",
-          kind:
-            "symbol",
-          symbolId:
-            "symbol:service",
-          fileId:
-            "service",
-          name:
-            "validateSession",
-          symbolKind:
-            "function",
-          startLine:
-            1,
-        },
-        {
-          id:
-            "symbol:auth",
-          kind:
-            "symbol",
-          symbolId:
-            "symbol:auth",
-          fileId:
-            "auth",
-          name:
-            "validateJwt",
-          symbolKind:
-            "function",
-          startLine:
-            1,
-        },
-      ];
+  it("expands call blast radius across bounded hops", async () => {
+    const nodes = [
+      fileNode("entry", "src/entry.ts"),
+      fileNode("service", "src/service.ts"),
+      fileNode("auth", "src/auth.ts"),
+      symbolNode("entry", "main"),
+      symbolNode("service", "validateSession"),
+      symbolNode("auth", "validateJwt"),
+    ];
+    const edges = [
+      callEdge("edge:entry-service", "symbol:entry", "symbol:service", 3),
+      callEdge("edge:service-auth", "symbol:service", "symbol:auth", 4),
+    ];
 
-    const edges:
-      RepoGraphEdge[] = [
-        {
-          id:
-            "edge:entry-service",
-          type:
-            "calls",
-          fromNodeId:
-            "symbol:entry",
-          toNodeId:
-            "symbol:service",
-          weight:
-            1,
-          evidenceCount:
-            1,
-          evidence: [
-            {
-              source:
-                "code_index_reference",
-              detail:
-                "call",
-              line:
-                3,
-            },
-          ],
-          evidenceTruncated:
-            false,
-        },
-        {
-          id:
-            "edge:service-auth",
-          type:
-            "calls",
-          fromNodeId:
-            "symbol:service",
-          toNodeId:
-            "symbol:auth",
-          weight:
-            1,
-          evidenceCount:
-            1,
-          evidence: [
-            {
-              source:
-                "code_index_reference",
-              detail:
-                "call",
-              line:
-                4,
-            },
-          ],
-          evidenceTruncated:
-            false,
-        },
-      ];
+    const retriever = new HybridRetriever([
+      {
+        source: new RepoGraphRetrievalSource({
+          maximumHops: 2,
+          maximumNeighborsPerAnchor: 4,
+        }),
+      },
+    ]);
 
-    const retriever =
-      new HybridRetriever([
-        {
-          source:
-            new RepoGraphRetrievalSource(
-              {
-                maximumHops: 2,
-                maximumNeighborsPerAnchor:
-                  4,
-              },
-            ),
-        },
-      ]);
+    const result = await retriever.retrieve({
+      ...baseInput,
+      query: "validateJwt",
+      repoGraph: createGraph(nodes, edges),
+    });
 
-    const result =
-      await retriever.retrieve({
-        ...baseInput,
-        query:
-          "validateJwt",
-        repoGraph:
-          createGraph(
-            nodes,
-            edges,
-          ),
-      });
-
-    assert.deepEqual(
-      result.candidates.map(
-        (entry) =>
-          entry.relativePath,
-      ),
-      [
-        "src/auth.ts",
-        "src/service.ts",
-        "src/entry.ts",
-      ],
-    );
-    assert.ok(
+    expect(result.candidates.map((entry) => entry.relativePath)).toEqual([
+      "src/auth.ts",
+      "src/service.ts",
+      "src/entry.ts",
+    ]);
+    expect(
       result.candidates
         .slice(1)
         .every((entry) =>
-          entry.reasons.some(
-            (reason) =>
-              reason.type ===
-              "graph_call_neighbor",
-          ),
+          entry.reasons.some((reason) => reason.type === "graph_call_neighbor"),
         ),
-    );
-  },
-);
+    ).toBe(true);
+  });
+});

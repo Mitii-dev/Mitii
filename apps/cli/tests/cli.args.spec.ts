@@ -253,7 +253,32 @@ describe('CLI setup', () => {
       ) as Record<string, unknown>;
       expect(raw.provider).toBe('openai-compatible');
       expect(raw.providerPreset).toBe('ollama');
-      expect(raw.model).toBeTruthy();
+      // The ollama preset has no default model (picked after listing models),
+      // so config must omit `model` rather than persist an empty string.
+      expect('model' in raw).toBe(false);
+      expect(raw.apiKey).toBeUndefined();
+      expect(io.stdout).toMatch(/Wrote /);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('writes the preset default model with --yes when the preset has one', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'mitii-setup-model-'));
+    try {
+      const io = memoryIo();
+      const code = await runSetup({
+        cwd: dir,
+        provider: 'openai',
+        yes: true,
+        io,
+      });
+      expect(code).toBe(0);
+      const raw = JSON.parse(
+        readFileSync(join(dir, '.mitii', 'config.json'), 'utf8'),
+      ) as Record<string, unknown>;
+      expect(raw.providerPreset).toBe('openai');
+      expect(raw.model).toBe('gpt-4o-mini');
       expect(raw.apiKey).toBeUndefined();
       expect(io.stdout).toMatch(/Wrote /);
     } finally {

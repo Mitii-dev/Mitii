@@ -1,17 +1,17 @@
+import { summarizeReviewFindings, type ReviewFindingChip } from '@mitii/ui-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import type { ReviewDiffView, RunFileChangesView } from '../protocol';
 import { ReviewBarActions } from './ReviewBarActions';
 import { ReviewFilesPanel } from './ReviewFilesPanel';
 import { ReviewFindingsPanel } from './ReviewFindingsPanel';
-import type { ReviewFindingChip } from './reviewFindingTypes';
 import {
   chatFilesFromRunChanges,
   gitFilesFromReview,
   resolveReviewBarScope,
 } from './reviewBarModel';
 
-export type { ReviewFindingChip } from './reviewFindingTypes';
+export type { ReviewFindingChip };
 
 interface WorkingTreeReviewBarProps {
   review: ReviewDiffView | null;
@@ -75,13 +75,12 @@ export function WorkingTreeReviewBar({
   const [expanded, setExpanded] = useState(false);
   const [tab, setTab] = useState<'files' | 'findings'>('files');
 
-  const openFindings = findings.filter((f) => f.status !== 'fixed');
-  const fixedFindings = findings.filter((f) => f.status === 'fixed');
-  const reviewComplete =
-    scope.showFindingsUi &&
-    findings.length > 0 &&
-    openFindings.length === 0 &&
-    fixedFindings.length > 0;
+  const {
+    open: openFindings,
+    fixed: fixedFindings,
+    complete: findingsComplete,
+  } = summarizeReviewFindings(findings);
+  const reviewComplete = scope.showFindingsUi && findingsComplete;
   const hasOpenFindings = scope.showFindingsUi && openFindings.length > 0;
 
   useEffect(() => {

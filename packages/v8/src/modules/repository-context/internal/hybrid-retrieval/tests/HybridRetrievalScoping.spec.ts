@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { describe, expect, it } from "vitest";
 import { HybridRetrievalFactory } from "../HybridRetrievalFactory";
 import { HybridRetriever } from "../HybridRetriever";
 import { RepoMapRetrievalSource } from "../sources";
@@ -7,8 +6,7 @@ import type {
   NormalizedHybridRetrievalRequest,
   RetrievalSource,
 } from "../types";
-import type { RepoGraph } from "../../../../repository-state/index";
-import type { RepoMap } from "../../../../repository-state/index";
+import type { RepoGraph, RepoMap } from "../../../../repository-state/index";
 import {
   StaticRetrievalSource,
   candidate,
@@ -17,87 +15,59 @@ import {
   repoMapEntry,
 } from "./hybridRetrievalHarness";
 
-test(
-  "snapshot consistency guards rebind stale repository intelligence and continue",
-  async () => {
-    const map: RepoMap = {
-      schemaVersion:
-        1,
-      workspaceSnapshotId:
-        "snapshot-b",
-      codeIndexChangeToken:
-        "change-1",
-      entries: [],
-      statistics: {
-        availableFiles:
-          0,
-        rankedFiles:
-          0,
-        includedFiles:
-          0,
-        includedSymbols:
-          0,
-        estimatedTokens:
-          0,
-        durationMs:
-          0,
+const epoch = new Date(0).toISOString();
+
+function createRepoMap(
+  workspaceSnapshotId: string,
+  entries: RepoMap["entries"],
+): RepoMap {
+  return {
+    schemaVersion: 1,
+    workspaceSnapshotId,
+    codeIndexChangeToken: "change-1",
+    entries,
+    statistics: {
+      availableFiles: entries.length,
+      rankedFiles: entries.length,
+      includedFiles: entries.length,
+      includedSymbols: 0,
+      estimatedTokens: 0,
+      durationMs: 0,
+    },
+    status: "complete",
+    generatedAt: epoch,
+  };
+}
+
+describe("HybridRetriever scoping", () => {
+  it("snapshot consistency guards rebind stale repository intelligence and continue", async () => {
+    const retriever = new HybridRetriever([
+      {
+        source: new StaticRetrievalSource(
+          "lexical",
+          complete([candidate("src/auth.ts", "auth", 0.9)]),
+        ),
       },
-      status:
-        "complete",
-      generatedAt:
-        new Date(0)
-          .toISOString(),
-    };
+    ]);
 
-    const retriever =
-      new HybridRetriever([
-        {
-          source:
-            new StaticRetrievalSource(
-              "lexical",
-              complete([
-                candidate(
-                  "src/auth.ts",
-                  "auth",
-                  0.9,
-                ),
-              ]),
-            ),
-        },
-      ]);
+    const result = await retriever.retrieve({
+      ...baseInput,
+      workspaceSnapshotId: "snapshot-a",
+      repoMap: createRepoMap("snapshot-b", []),
+    });
 
-    const result =
-      await retriever.retrieve({
-        ...baseInput,
-        workspaceSnapshotId:
-          "snapshot-a",
-        repoMap:
-          map,
-      });
-
-    assert.equal(
-      result.candidates.length,
-      1,
-    );
-    assert.ok(
+    expect(result.candidates.length).toBe(1);
+    expect(
       result.warnings.some(
         (warning) =>
-          warning.code ===
-            "optional_source_unavailable" &&
-          /workspace snapshot/i.test(
-            warning.message,
-          ),
+          warning.code === "optional_source_unavailable" &&
+          /workspace snapshot/i.test(warning.message),
       ),
-    );
-  },
-);
+    ).toBe(true);
+  });
 
-test(
-  "directory-like file paths are promoted to folderPrefix",
-  async () => {
-    let captured:
-      | NormalizedHybridRetrievalRequest
-      | undefined;
+  it("directory-like file paths are promoted to folderPrefix", async () => {
+    let captured: NormalizedHybridRetrievalRequest | undefined;
     const capture: RetrievalSource = {
       id: "capture",
       canRetrieve: () => true,
@@ -112,122 +82,46 @@ test(
       },
     };
 
-    await new HybridRetriever([
-      {
-        source: capture,
-      },
-    ]).retrieve({
+    await new HybridRetriever([{ source: capture }]).retrieve({
       ...baseInput,
-      filePaths: [
-        "packages/demo",
-      ],
+      filePaths: ["packages/demo"],
     });
 
-    assert.equal(
-      captured?.folderPrefix,
-      "packages/demo",
-    );
-    assert.deepEqual(
-      captured?.filePaths,
-      [],
-    );
-  },
-);
+    expect(captured?.folderPrefix).toBe("packages/demo");
+    expect(captured?.filePaths).toEqual([]);
+  });
 
-test(
-  "repo map scope includes explicit files plus folder contents",
-  async () => {
-    const map: RepoMap = {
-      schemaVersion:
-        1,
-      workspaceSnapshotId:
-        "snapshot-1",
-      codeIndexChangeToken:
-        "change-1",
-      entries: [
-        repoMapEntry(
-          "packages/mui-builder/src/FormBuilder.tsx",
-          0.9,
-        ),
-        repoMapEntry(
-          "tsconfig.json",
-          0.8,
-        ),
-        repoMapEntry(
-          "packages/other/src/Other.ts",
-          1,
-        ),
-      ],
-      statistics: {
-        availableFiles:
-          3,
-        rankedFiles:
-          3,
-        includedFiles:
-          3,
-        includedSymbols:
-          0,
-        estimatedTokens:
-          0,
-        durationMs:
-          0,
-      },
-      status:
-        "complete",
-      generatedAt:
-        new Date(0)
-          .toISOString(),
-    };
+  it("repo map scope includes explicit files plus folder contents", async () => {
+    const map = createRepoMap("snapshot-1", [
+      repoMapEntry("packages/mui-builder/src/FormBuilder.tsx", 0.9),
+      repoMapEntry("tsconfig.json", 0.8),
+      repoMapEntry("packages/other/src/Other.ts", 1),
+    ]);
 
-    const result =
-      await new HybridRetriever([
-        {
-          source:
-            new RepoMapRetrievalSource(),
-        },
-      ]).retrieve({
-        ...baseInput,
-        folderPrefix:
-          "packages/mui-builder",
-        filePaths: [
-          "tsconfig.json",
-        ],
-        repoMap:
-          map,
-      });
+    const result = await new HybridRetriever([
+      { source: new RepoMapRetrievalSource() },
+    ]).retrieve({
+      ...baseInput,
+      folderPrefix: "packages/mui-builder",
+      filePaths: ["tsconfig.json"],
+      repoMap: map,
+    });
 
-    assert.deepEqual(
-      result.candidates.map(
-        (entry) =>
-          entry.relativePath,
-      ),
-      [
-        "packages/mui-builder/src/FormBuilder.tsx",
-        "tsconfig.json",
-      ],
-    );
-  },
-);
+    expect(result.candidates.map((entry) => entry.relativePath)).toEqual([
+      "packages/mui-builder/src/FormBuilder.tsx",
+      "tsconfig.json",
+    ]);
+  });
 
-test(
-  "factory rejects incomplete vector configuration",
-  () => {
-    const factory =
-      new HybridRetrievalFactory();
+  it("factory rejects incomplete vector configuration", () => {
+    const factory = new HybridRetrievalFactory();
 
-    assert.throws(
-      () =>
-        factory.create({
-          vectorIndex: {} as never,
-        }),
+    expect(() => factory.create({ vectorIndex: {} as never })).toThrow(
       /must be configured together/i,
     );
-  },
-);
+  });
 
-test(
-  "query-time repo map re-rank prefers open files over published scores",
-  async () => {
+  it("query-time repo map re-rank prefers open files over published scores", async () => {
     const paths = [
       "src/feature/active.ts",
       "src/feature/archive.ts",
@@ -270,54 +164,29 @@ test(
         durationMs: 0,
       },
       status: "complete",
-      generatedAt: new Date(0).toISOString(),
+      generatedAt: epoch,
     };
 
-    const publishedMap: RepoMap = {
-      schemaVersion: 1,
-      workspaceSnapshotId: "snapshot-1",
-      codeIndexChangeToken: "change-1",
-      entries: [
-        repoMapEntry("src/feature/readme.ts", 1),
-        repoMapEntry("src/feature/active.ts", 0.2),
-        repoMapEntry("src/feature/archive.ts", 0.1),
-      ],
-      statistics: {
-        availableFiles: 3,
-        rankedFiles: 3,
-        includedFiles: 3,
-        includedSymbols: 0,
-        estimatedTokens: 0,
-        durationMs: 0,
-      },
-      status: "complete",
-      generatedAt: new Date(0).toISOString(),
-    };
+    const publishedMap = createRepoMap("snapshot-1", [
+      repoMapEntry("src/feature/readme.ts", 1),
+      repoMapEntry("src/feature/active.ts", 0.2),
+      repoMapEntry("src/feature/archive.ts", 0.1),
+    ]);
 
     const result = await new HybridRetriever([
-      {
-        source: new RepoMapRetrievalSource(),
-      },
+      { source: new RepoMapRetrievalSource() },
     ]).retrieve({
       ...baseInput,
       query: "feature",
       repoMap: publishedMap,
       repoGraph: graph,
-      rankingContext: {
-        openFiles: ["src/feature/archive.ts"],
-      },
+      rankingContext: { openFiles: ["src/feature/archive.ts"] },
     });
 
-    assert.equal(
-      result.candidates[0]?.relativePath,
-      "src/feature/archive.ts",
-    );
-  },
-);
+    expect(result.candidates[0]?.relativePath).toBe("src/feature/archive.ts");
+  });
 
-test(
-  "priority paths are prepended ahead of higher RRF lexical hits",
-  async () => {
+  it("priority paths are prepended ahead of higher RRF lexical hits", async () => {
     const result = await new HybridRetriever([
       {
         source: new StaticRetrievalSource(
@@ -333,14 +202,11 @@ test(
     ]).retrieve({
       ...baseInput,
       maximumResults: 3,
-      rankingContext: {
-        priorityPaths: ["src/target/Important.ts"],
-      },
+      rankingContext: { priorityPaths: ["src/target/Important.ts"] },
     });
 
-    assert.equal(
-      result.candidates[0]?.relativePath,
+    expect(result.candidates[0]?.relativePath).toBe(
       "src/target/Important.ts",
     );
-  },
-);
+  });
+});

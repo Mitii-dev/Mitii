@@ -34,6 +34,7 @@ jobs:
       - run: pnpm run check:architecture
       - run: pnpm run check:file-size
       - run: pnpm run check:circular-deps
+      - run: pnpm run check:settings-catalog
       - run: pnpm run build:cli
       - run: pnpm run build:vscode
       - run: pnpm run benchmark:validate

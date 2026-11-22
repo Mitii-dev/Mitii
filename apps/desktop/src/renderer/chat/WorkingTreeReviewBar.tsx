@@ -6,11 +6,15 @@
 
 import { useState } from 'react';
 
+import {
+  summarizeReviewFindings,
+  type ReviewFindingChip,
+} from '@mitii/ui-react';
+
 import type {
   DesktopFileChangeEntry,
   DesktopFileChanges,
 } from '../../shared/fileChanges.js';
-import type { ReviewFinding } from '../../shared/reviewFindings.js';
 import {
   IconChevronDown,
   IconChevronRight,
@@ -24,9 +28,7 @@ import {
 } from '../shell/ActivityIcons.js';
 import { DiffView } from '../explorer/DiffView.js';
 
-export type ReviewFindingChip = ReviewFinding & {
-  status?: 'open' | 'fixed';
-};
+export type { ReviewFindingChip };
 
 export interface RunFileChangesSummary {
   runId: string;
@@ -86,8 +88,7 @@ export function WorkingTreeReviewBar({
   const [expanded, setExpanded] = useState(false);
   const [openDiff, setOpenDiff] = useState<string | null>(null);
 
-  const openFindings = findings.filter((f) => f.status !== 'fixed');
-  const findingsCount = openFindings.length;
+  const findingsCount = summarizeReviewFindings(findings).open.length;
   const hasChanges = fileChangeCount > 0 || Boolean(runChanges?.fileCount);
   const changeCount = files.length || runChanges?.fileCount || fileChangeCount;
   const additions = runChanges?.totalAdditions ?? totalAdditions;

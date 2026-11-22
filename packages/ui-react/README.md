@@ -13,6 +13,7 @@ Own UI that must look and behave the same in every shell:
 | `CheckpointPanel` | Checkpoint list with restore / review / delete / clear. |
 | `ModelQuickSelect` | Model picker with filter, custom model id, and profile shortcut. |
 | `ComposerControls` | Mode, approval (or DB access), and thoroughness pickers. Lives in `composer-controls/` with default option catalogs; see its README. |
+| `ReviewFindingChip` / `summarizeReviewFindings` | Review-finding DTO and open/fixed/complete split for the composer review strip. See `working-tree-review/`. |
 | `TokenBudgetAllocation` | Context-window allocation bar and legend. |
 | `TokenMeter` | Token chip + popover: cost, cache, latest call, window budget tree. Split under `token-meter/`. |
 | `TokenBudgetEditor` | Allocation chart, Simple sliders, optional Advanced policy fields; includes `NumberField` and `SliderField`. |
@@ -41,7 +42,7 @@ Components render safe empty states for missing data (no breakdown, no cost rate
 
 - No host messaging, Electron/VS Code APIs, or engine calls.
 - No CSS files (tokens live in `@mitii/ui-theme`; component rules stay in each app's stylesheet until stylesheets are split per feature).
-- Not shared: Markdown body, the working-tree review bar (Desktop and VS Code each own theirs), and per-field help with docs links (`TokenBudgetFieldHelp` stays in VS Code and plugs in through `renderFieldHelp`).
+- Not shared: Markdown body, the working-tree review bar and composer review strip components (Desktop and VS Code each own theirs; only the finding model is shared, see `working-tree-review/README.md`), and per-field help with docs links (`TokenBudgetFieldHelp` stays in VS Code and plugs in through `renderFieldHelp`).
 
 ## Settings catalog
 

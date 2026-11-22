@@ -22,3 +22,4 @@ export {
 export * from './token-meter/index.js';
 export * from './token-budget-editor/index.js';
 export * from './composer-controls/index.js';
+export * from './working-tree-review/index.js';
