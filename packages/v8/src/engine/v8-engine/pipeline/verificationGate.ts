@@ -35,6 +35,7 @@ import {
 } from "./verificationArtifacts";
 export { isVerificationRetryAsk } from "./verificationRetryAsk";
 import { resolveSteeringFeatureFlags } from "../legacy/steeringFlags";
+import { resolveVerificationImpactWiden } from "./resolveVerificationImpactWiden";
 
 export function captureBuildStateFromVerificationResult(
   runtime: AgentEngineRuntime,
@@ -111,6 +112,9 @@ export async function runVerificationGate(
     signal?: AbortSignal;
     /** Trusted seed / ask paths for ask-scoped verification accept. */
     askScopePaths?: readonly string[];
+    /** Optional prior change-impact tool output for verification widen. */
+    impactAffectedFiles?: readonly string[];
+    impactWidenVerification?: boolean;
   },
 ): Promise<VerificationGateOutcome> {
   const {
@@ -156,6 +160,18 @@ export async function runVerificationGate(
     runtime.emitStage(bus, runId, "verifying", "started");
     const verificationGrant = buildVerificationGrant(decision.toolGrant);
     const projects = resolveVerificationProjects(input);
+    const impactWiden = await resolveVerificationImpactWiden({
+      repoGraphs: runtime.deps.repoGraphs,
+      changedFiles,
+      explicitAffectedFiles: params.impactAffectedFiles,
+      explicitWiden: params.impactWidenVerification,
+      signal,
+    });
+    if (impactWiden.widenScope || impactWiden.impactAffectedFiles?.length) {
+      warnings.push(
+        "Verification scope widened from change-impact affected files.",
+      );
+    }
     verificationResult = await runtime.deps.verification!.verify({
       schemaVersion: VERIFICATION_SCHEMA_VERSION,
       workspaceRoot: input.workspaceRoot!,
@@ -174,6 +190,12 @@ export async function runVerificationGate(
       baselineDiagnostics: repoBuildStateBefore?.diagnostics,
       stateReadiness: input.repositoryState?.readiness ?? "ready",
       maxChecks: windowPolicy.maxVerificationChecks,
+      ...(typeof impactWiden.widenScope === "boolean"
+        ? { widenScope: impactWiden.widenScope }
+        : {}),
+      ...(impactWiden.impactAffectedFiles
+        ? { impactAffectedFiles: impactWiden.impactAffectedFiles }
+        : {}),
     });
     const afterState = captureBuildStateFromVerificationResult(runtime, {
       input: {

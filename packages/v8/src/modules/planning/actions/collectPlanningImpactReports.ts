@@ -63,7 +63,7 @@ export async function collectPlanningImpactReports(params: {
         edgeTypes: PLANNING_WORKING_SET_POLICY.dependencyEdgeTypes,
         expectedToken,
       });
-      const affected = walkPaths({
+      const dependentFiles = walkAffectedFiles({
         pipeline,
         graph,
         seedPath,
@@ -72,16 +72,40 @@ export async function collectPlanningImpactReports(params: {
         expectedToken,
       });
       const writeKey = normalizeRepoPathText(seedPath);
+      const cappedMustRead = mustRead
+        .filter((path) => path !== writeKey)
+        .slice(0, PLANNING_WORKING_SET_POLICY.maxMustRead);
+      const likelyModify = uniquePaths(
+        dependentFiles
+          .filter(
+            (file) =>
+              file.path !== writeKey &&
+              !cappedMustRead.includes(file.path) &&
+              file.bucket !== "test",
+          )
+          .map((file) => file.path),
+      ).slice(0, PLANNING_WORKING_SET_POLICY.maxLikelyModify);
+      const affected = uniquePaths(
+        dependentFiles
+          .filter(
+            (file) =>
+              file.path !== writeKey &&
+              !cappedMustRead.includes(file.path) &&
+              !likelyModify.includes(file.path),
+          )
+          .map((file) => file.path),
+      ).slice(0, PLANNING_WORKING_SET_POLICY.maxAffected);
       const report: PlanningImpactReport = {
         seedPath: writeKey,
-        mustRead: mustRead
-          .filter((path) => path !== writeKey)
-          .slice(0, PLANNING_WORKING_SET_POLICY.maxMustRead),
-        affected: affected
-          .filter((path) => path !== writeKey && !mustRead.includes(path))
-          .slice(0, PLANNING_WORKING_SET_POLICY.maxAffected),
+        mustRead: cappedMustRead,
+        likelyModify,
+        affected,
       };
-      if (report.mustRead.length === 0 && report.affected.length === 0) {
+      if (
+        report.mustRead.length === 0 &&
+        report.likelyModify.length === 0 &&
+        report.affected.length === 0
+      ) {
         continue;
       }
       reports.push(report);
@@ -101,6 +125,17 @@ function walkPaths(params: {
   edgeTypes: readonly ("imports" | "depends_on" | "calls" | "references")[];
   expectedToken?: string;
 }): string[] {
+  return walkAffectedFiles(params).map((file) => file.path);
+}
+
+function walkAffectedFiles(params: {
+  pipeline: ChangeImpactPipeline;
+  graph: RepoGraph;
+  seedPath: string;
+  direction: "dependents" | "dependencies";
+  edgeTypes: readonly ("imports" | "depends_on" | "calls" | "references")[];
+  expectedToken?: string;
+}): Array<{ path: string; bucket?: string }> {
   const result = params.pipeline.analyze({
     schemaVersion: CHANGE_IMPACT_SCHEMA_VERSION,
     seed: { kind: "file", relativePath: params.seedPath },
@@ -121,11 +156,12 @@ function walkPaths(params: {
   ) {
     return [];
   }
-  return uniquePaths(
-    result.affectedFiles
-      .filter((file) => file.hop === 1)
-      .map((file) => file.relativePath),
-  );
+  return result.affectedFiles
+    .filter((file) => file.hop === 1)
+    .map((file) => ({
+      path: normalizeRepoPathText(file.relativePath),
+      ...(file.bucket ? { bucket: file.bucket } : {}),
+    }));
 }
 
 function selectGraph(

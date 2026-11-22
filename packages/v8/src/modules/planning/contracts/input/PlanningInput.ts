@@ -110,6 +110,8 @@ export const planningImpactReportSchema = z
   .object({
     seedPath: z.string().min(1).max(1_000),
     mustRead: z.array(z.string().min(1).max(500)).max(8).default([]),
+    /** Hop-1 production dependents likely to need coordinated edits. */
+    likelyModify: z.array(z.string().min(1).max(500)).max(8).default([]),
     affected: z.array(z.string().min(1).max(500)).max(8).default([]),
   })
   .strict();

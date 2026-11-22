@@ -1,9 +1,15 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { repoGraphSchema, type RepositoryGraphPort, type RepoGraph } from '@mitii/v8';
+import {
+  repoGraphSchema,
+  type GitPort,
+  type RepositoryGraphPort,
+  type RepoGraph,
+} from '@mitii/v8';
 
 import { readIndexRuntimeMetadata } from '../indexing/semanticIndex.js';
+import { loadHistoricalCouplingFromGit } from './loadHistoricalCoupling.js';
 
 interface IndexRuntimeGraphMetadata {
   graphArtifactPaths?: Record<string, string>;
@@ -43,11 +49,22 @@ export function loadWorkspaceGraphs(workspaceRoot: string): RepoGraph[] {
 
 export function createHostRepositoryGraphPort(options: {
   workspaceRoot: string;
+  git?: GitPort;
 }): RepositoryGraphPort {
   return {
     loadGraphs: () => loadWorkspaceGraphs(options.workspaceRoot),
     expectedCodeIndexChangeToken: (graph) =>
       resolveExpectedCodeIndexChangeToken(options.workspaceRoot, graph),
+    ...(options.git
+      ? {
+          loadHistoricalCoupling: (relativePath: string) =>
+            loadHistoricalCouplingFromGit({
+              workspaceRoot: options.workspaceRoot,
+              relativePath,
+              git: options.git!,
+            }),
+        }
+      : {}),
   };
 }
 
@@ -104,6 +121,8 @@ export function workspaceGraphLooksStale(
 
   for (const node of graph.nodes) {
     if (node.kind !== 'file') continue;
+    // Tombstones are retained after deletion; missing on disk is expected.
+    if (node.tombstone === true) continue;
     const absolutePath = join(workspaceRoot, node.relativePath);
     try {
       const info = statSync(absolutePath);

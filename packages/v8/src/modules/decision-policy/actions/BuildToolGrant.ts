@@ -150,9 +150,15 @@ export function buildToolGrant(params: {
 }
 
 function filterReadOnlyTools(changeImpactAffordable: boolean): string[] {
-  return READ_ONLY_TOOL_IDS.filter(
-    (toolId) => toolId !== "analyze_change_impact" || changeImpactAffordable,
-  );
+  return READ_ONLY_TOOL_IDS.filter((toolId) => {
+    if (
+      toolId === "analyze_change_impact" ||
+      toolId === "plan_check_change_impact"
+    ) {
+      return changeImpactAffordable;
+    }
+    return true;
+  });
 }
 
 function appendModeAndRouteReasonCodes(params: {

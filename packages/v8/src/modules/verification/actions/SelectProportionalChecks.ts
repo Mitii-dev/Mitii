@@ -45,6 +45,13 @@ export function selectProportionalChecks(params: {
    * discovered candidates — never invents checks.
    */
   scriptHints?: readonly string[];
+  /**
+   * Skip sibling-package omission when the published impact graph is unsafe
+   * or blast radius is critical.
+   */
+  widenScope?: boolean;
+  /** Extra impact paths merged into package-touch roots. */
+  impactAffectedFiles?: readonly string[];
 }): SelectProportionalChecksResult {
   const requiredKinds = new Set<VerificationCheckKind>();
   for (const evidence of params.verification.minimumEvidence) {
@@ -53,8 +60,13 @@ export function selectProportionalChecks(params: {
     }
   }
 
-  const changedFiles = params.changedFiles ?? [];
-  const touchedPackageRoots = packageRootsFromChangedFiles(changedFiles);
+  const changedFiles = [
+    ...(params.changedFiles ?? []),
+    ...(params.impactAffectedFiles ?? []),
+  ];
+  const touchedPackageRoots = params.widenScope
+    ? []
+    : packageRootsFromChangedFiles(changedFiles);
   const scriptHints = new Set(
     (params.scriptHints ?? []).map((hint) => hint.toLowerCase()),
   );
@@ -97,10 +109,12 @@ export function selectProportionalChecks(params: {
   // otherwise workspace-root + inferred typecheck both run and root noise
   // reopens verification repair after the package check already passed.
   const selected: DiscoveredCheckCandidate[] = [];
-  const seenKinds = new Set<VerificationCheckKind>();
+  const seenSlots = new Set<string>();
   const omitted: DiscoveredCheckCandidate[] = [];
   const narrowScope =
-    params.changeScope === "localized" || params.changeScope === "module";
+    !params.widenScope &&
+    (params.changeScope === "localized" || params.changeScope === "module");
+  const multiPackageTouch = touchedPackageRoots.length > 1;
 
   const maxChecks = params.maxChecks ?? DEFAULT_MAX_CHECKS;
 
@@ -125,7 +139,11 @@ export function selectProportionalChecks(params: {
       omitted.push(candidate);
       continue;
     }
-    if (narrowScope && seenKinds.has(candidate.kind)) {
+    const slotKey =
+      narrowScope && multiPackageTouch
+        ? `${candidate.kind}:${packageRootFromCandidate(candidate) ?? "root"}`
+        : candidate.kind;
+    if (narrowScope && seenSlots.has(slotKey)) {
       omitted.push(candidate);
       continue;
     }
@@ -136,7 +154,7 @@ export function selectProportionalChecks(params: {
       continue;
     }
     selected.push(candidate);
-    seenKinds.add(candidate.kind);
+    seenSlots.add(slotKey);
   }
 
   return { selected, omitted };

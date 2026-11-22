@@ -1,12 +1,13 @@
 import { createHash } from 'node:crypto';
-import { existsSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { join, resolve as resolvePath } from 'node:path';
 
 import {
   RepoGraphBuilder,
   RepoMapBuilder,
   SqliteCodeIndexAdapter,
   createDefaultProjectCatalogBuilder,
+  repoGraphSchema,
   type NodeFileSystemAdapter,
   type RepoGraph,
   type RepoMap,
@@ -84,10 +85,28 @@ export async function buildGraphMapArtifacts(options: {
       workspace: options.workspaceId,
       rootId: root.id,
     });
+    const priorGraphPath =
+      options.previousMetadata?.graphArtifactPaths?.[root.id];
+    const priorGraph =
+      priorGraphPath && existsSync(priorGraphPath)
+        ? readPriorGraph(priorGraphPath)
+        : undefined;
     const graph = await new RepoGraphBuilder(codeIndex).build({
       snapshot: options.snapshot,
       catalog,
       rootIds: [root.id],
+      ...(priorGraph ? { priorGraph } : {}),
+      readWorkspaceText: async ({ relativePath }) => {
+        try {
+          const rootAbsolute = root.providerPath ?? options.dir;
+          const absolute = resolvePath(rootAbsolute, relativePath);
+          return await options.fileSystem.readText(absolute, {
+            maximumBytes: 256_000,
+          });
+        } catch {
+          return undefined;
+        }
+      },
     });
     const repoMap = new RepoMapBuilder().build({ graph });
     const graphPath = join(
@@ -120,6 +139,14 @@ function writeArtifact(
   artifact: RepoGraph | RepoMap | BuiltProjectCatalog,
 ): void {
   writeFileSync(path, `${JSON.stringify(artifact, null, 2)}\n`);
+}
+
+function readPriorGraph(path: string): RepoGraph | undefined {
+  try {
+    return repoGraphSchema.parse(JSON.parse(readFileSync(path, 'utf8')));
+  } catch {
+    return undefined;
+  }
 }
 
 function catalogRevisionToken(catalog: BuiltProjectCatalog): string {

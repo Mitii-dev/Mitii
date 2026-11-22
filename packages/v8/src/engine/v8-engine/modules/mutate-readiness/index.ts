@@ -270,6 +270,7 @@ export const MUTATE_LOCK_TARGETED_READ_TOOL_NAMES = new Set([
  */
 export const MUTATE_LOCK_SUPPORT_TOOL_NAMES = new Set([
   "analyze_change_impact",
+  "plan_check_change_impact",
 ]);
 
 export function isMutateLockAllowedToolName(

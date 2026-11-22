@@ -6,9 +6,12 @@ Change Impact estimates the blast radius of a code change by walking a repositor
 
 - Validates change-impact input.
 - Resolves a file/symbol/caret seed against a `RepoGraph`.
-- Traverses dependency or dependent edges.
+- Traverses dependency or dependent edges (including package / workspace edges when packages are included).
 - Applies hop, node, and path/chain limits; retains best same-hop edge/score.
 - Summarizes affected nodes, files (prod/test buckets), packages, and impact chains.
+- Reports graph confidence from published unresolved/omitted edge statistics; marks `graph_confidence_unsafe` and forces `partial` when the graph cannot be trusted for narrow selection.
+- Classifies blast radius (level, fragility, risk score/tier) and auditable `impactReason` codes per affected file.
+- Keeps full-walk `totals` accurate even when model-facing lists are later capped.
 - Reports truncation, unresolved seeds, stale graph signals, hop-1 neighbor counts, and warnings.
 - Defaults file seeds to `file_exports` (exported or externally referenced symbols) instead of exploding every symbol.
 - Soft-resolves symbol seeds (case/qualified name + optional text-occurrence hints) before falling back to file-level expand.
@@ -17,6 +20,16 @@ Change Impact estimates the blast radius of a code change by walking a repositor
 - Exposes `compactChangeImpactForModelFacing` so Tool Runtime can ship a
   files-first, budget-safe tool payload (top-N nodes/files, short evidence, prod-first,
   prefix-collapsed chains) without discarding the full walk limits used for analysis.
+- Exposes `recommendWidenVerification` so hosts can widen proportional verification when confidence is unsafe or risk is critical.
+- Expands symbol seeds to related parent/child symbols via published nesting (`seed_rollup_expanded`).
+- Accepts host `pathIdentityOverlays` for rename/delete so prior-path dependents stay reachable when those file nodes still exist.
+- Package/workspace relationships now flow from the project catalog into package edge walks when `includePackages` is enabled.
+- Applies capped host-published historical co-change boosts; evidence-gates same-package / prefix siblings as `hidden_coupling` when co-change exists without a structural edge.
+- Detects short file-level cycles that touch the seed neighborhood and raises risk / widen-verification signals.
+- Multi-seed merge (`analyzeManyChangeImpact`) unions blast radius conservatively (min confidence, max risk).
+- Spillover checks compare affected packages against an expected set.
+- Counterfactual `planCheckChangeImpact` analyzes proposed paths without writing the working tree.
+- Tool Runtime exposes `analyze_change_impact` and `plan_check_change_impact` so agents can run the same pipelines.
 
 ## Structure
 
@@ -34,14 +47,15 @@ change-impact/
 
 ## Types And Contracts
 
-- `ChangeImpactInput`: seed, direction, edge types, hop/node limits, package flag, repo graph, and optional code-index token.
+- `ChangeImpactInput`: seed, direction, edge types, hop/node limits, package flag, optional path-identity overlays, repo graph, and optional code-index token.
 - `ChangeImpactSeed`: file, symbol, or caret seed.
-- `ChangeImpactResult`: status, direction, seed, resolved seeds, affected nodes, affected files, packages affected, truncation flag, warnings, reason codes, graph revision, and optional code-index token.
-- `ChangeImpactAffectedFile`: file-level impact summary used by planning or verification choices.
+- `ChangeImpactResult`: status, direction, seed, resolved seeds, affected nodes, affected files, packages affected, cycles, hidden coupling, totals, confidence, blast radius, truncation flag, warnings, reason codes, graph revision, and optional code-index token.
+- `ChangeImpactAffectedFile`: file-level impact summary with `impactReason` for planning or verification choices.
 
 ## Technical Details
 
-- The public facade method is `ChangeImpactPipeline.analyze`.
+- The public facade method is `ChangeImpactPipeline.analyze` (single seed).
+- Multi-seed and plan-check are actions: `analyzeManyChangeImpact`, `planCheckChangeImpact`, `evaluateSpillover`.
 - Direction is usually dependencies or dependents.
 - Edge types are constrained to known repository graph relationships.
 - Limits protect very large graphs and set `truncated` when reached.
@@ -106,15 +120,19 @@ Change Impact result returns a result like this:
 ```json
 {
   "schemaVersion": 1,
-  "status": "complete",
+  "status": "ok",
   "direction": "dependents",
   "seed": { "kind": "file", "relativePath": "src/LoginForm.tsx" },
   "resolvedSeeds": [{ "nodeId": "file:src/LoginForm.tsx", "kind": "file", "relativePath": "src/LoginForm.tsx" }],
   "affected": [
     { "nodeId": "file:src/LoginForm.test.tsx", "kind": "file", "relativePath": "src/LoginForm.test.tsx", "hop": 1, "viaEdgeType": "imports", "score": 0.86, "evidence": ["test imports LoginForm"] }
   ],
-  "affectedFiles": [{ "relativePath": "src/LoginForm.test.tsx", "hop": 1, "score": 0.86, "affectedNodeIds": ["file:src/LoginForm.test.tsx"], "reason": "dependent test imports changed component" }],
+  "affectedFiles": [{ "relativePath": "src/LoginForm.test.tsx", "hop": 1, "score": 0.86, "affectedNodeIds": ["file:src/LoginForm.test.tsx"], "reason": "imports dependent at hop 1", "impactReason": "direct", "bucket": "test" }],
   "packagesAffected": [],
+  "totals": { "affectedNodes": 1, "affectedFiles": 1, "packages": 0, "chains": 1 },
+  "confidence": 1,
+  "graphConfidenceUnsafe": false,
+  "blastRadius": { "level": "low", "fragility": 0.0, "riskScore": 18, "riskTier": "safe", "detail": "1 affected file(s); 1 hop-1 file(s); fragility 0.00" },
   "truncated": false,
   "warnings": [],
   "reasonCodes": ["impact_resolved"]
@@ -125,3 +143,4 @@ Change Impact result returns a result like this:
 
 `RepositoryGraphPort` is owned here (`contracts/ports`) and exported from the index.
 Planning and the tool runtime consume this type; neither defines its own.
+Optional `loadHistoricalCoupling` supplies host-published co-change facts; change-impact never mines git history.

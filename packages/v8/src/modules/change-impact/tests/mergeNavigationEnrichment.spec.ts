@@ -16,6 +16,7 @@ describe("mergeNavigationEnrichment", () => {
           score: 0.8,
           affectedNodeIds: ["file:existing"],
           reason: "imports",
+          impactReason: "direct",
           bucket: "prod",
         },
       ],
@@ -39,10 +40,18 @@ describe("mergeNavigationEnrichment", () => {
       "src/also.ts",
       "src/from-lsp.ts",
     ]);
+    expect(
+      merged.affectedFiles.every(
+        (file) =>
+          file.impactReason === "direct" ||
+          file.impactReason === "navigation_enrichment",
+      ),
+    ).toBe(true);
     expect(merged.warnings.some((w) => w.code === "lsp_enriched")).toBe(true);
     expect(
       merged.affected.some((n) => n.relativePath === "src/from-lsp.ts"),
     ).toBe(true);
+    expect(merged.totals.affectedFiles).toBe(3);
   });
 
   it("is a no-op when all locations already present", () => {
@@ -54,6 +63,7 @@ describe("mergeNavigationEnrichment", () => {
           score: 0.5,
           affectedNodeIds: ["file:a"],
           reason: "imports",
+          impactReason: "direct",
           bucket: "prod",
         },
       ],
@@ -88,7 +98,24 @@ function emptyResult(
     affected: [],
     packagesAffected: [],
     chains: [],
+    cycles: [],
+    hiddenCoupling: [],
     directNeighborCounts: { nodes: 0, files: 0 },
+    totals: {
+      affectedNodes: 0,
+      affectedFiles: overrides.affectedFiles?.length ?? 0,
+      packages: 0,
+      chains: 0,
+    },
+    confidence: 1,
+    graphConfidenceUnsafe: false,
+    blastRadius: {
+      level: "low",
+      fragility: 0,
+      riskScore: 10,
+      riskTier: "safe",
+      detail: "0 affected file(s); 0 hop-1 file(s); fragility 0.00",
+    },
     truncated: false,
     warnings: [],
     ...overrides,

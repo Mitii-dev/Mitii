@@ -29,6 +29,14 @@ import {
 } from "./RepoGraphEdgeLoader";
 
 import {
+  loadConfigExtendsEdges,
+} from "./loadConfigExtendsEdges";
+
+import {
+  retainDeletedPathTombstones,
+} from "./retainDeletedPathTombstones";
+
+import {
   finalizeGraph,
 } from "./RepoGraphFinalize";
 
@@ -125,17 +133,20 @@ export class RepoGraphBuilder {
       if (
         beforeToken === afterToken
       ) {
-        return finalizeGraph({
+        return this.finalizeWithTombstones(
           input,
-          attempt: latestAttempt,
-          changeToken:
-            afterToken,
-          consistencyRetries,
-          durationMs:
-            Date.now() -
-            startedAt,
-          indexChanged: false,
-        });
+          finalizeGraph({
+            input,
+            attempt: latestAttempt,
+            changeToken:
+              afterToken,
+            consistencyRetries,
+            durationMs:
+              Date.now() -
+              startedAt,
+            indexChanged: false,
+          }),
+        );
       }
 
       consistencyRetries += 1;
@@ -147,15 +158,36 @@ export class RepoGraphBuilder {
       );
     }
 
-    return finalizeGraph({
+    return this.finalizeWithTombstones(
       input,
-      attempt: latestAttempt,
-      changeToken:
-        latestChangeToken,
-      consistencyRetries,
-      durationMs:
-        Date.now() - startedAt,
-      indexChanged: true,
+      finalizeGraph({
+        input,
+        attempt: latestAttempt,
+        changeToken:
+          latestChangeToken,
+        consistencyRetries,
+        durationMs:
+          Date.now() - startedAt,
+        indexChanged: true,
+      }),
+    );
+  }
+
+  private finalizeWithTombstones(
+    input: RepoGraphBuildInput,
+    graph: RepoGraph,
+  ): RepoGraph {
+    const presentRelativePaths = new Set(
+      input.snapshot.entries
+        .filter((entry) => entry.kind === "file")
+        .map((entry) =>
+          entry.relativePath.replace(/\\/g, "/").replace(/^\/+/, ""),
+        ),
+    );
+    return retainDeletedPathTombstones({
+      graph,
+      priorGraph: input.priorGraph,
+      presentRelativePaths,
     });
   }
 
@@ -271,6 +303,16 @@ export class RepoGraphBuilder {
       input.catalog.relationships,
       edgeAccumulator,
     );
+
+    const fileNodes = [...nodes.values()].filter(
+      (node): node is import("./types").RepoGraphFileNode =>
+        node.kind === "file",
+    );
+    await loadConfigExtendsEdges({
+      fileNodes,
+      edges: edgeAccumulator,
+      readWorkspaceText: input.readWorkspaceText,
+    });
 
     const omittedParentSymbolTargets =
       addSymbolStructureEdges(

@@ -303,7 +303,15 @@ function parseModelIoFile(file) {
     });
   }
 
-  for (const entry of parsed.entries) {
+  // Normalize snapshots to the same input/output view as legacy pairs.
+  for (const entry of parsed.entries.flatMap((entry) => {
+    if (entry.kind !== 'model_snapshot') return [entry];
+    const { request, startedAt, callId, runId, requestId, portId, ...response } = entry;
+    return [
+      { kind: 'model_request', at: startedAt, callId, runId, requestId, portId, request },
+      { ...response, kind: 'model_response', callId, runId, requestId, portId },
+    ];
+  })) {
     const kind = asString(entry.kind);
     if (asString(entry.runId)) runIds.add(asString(entry.runId));
     if (kind !== 'model_request' && kind !== 'model_response') continue;

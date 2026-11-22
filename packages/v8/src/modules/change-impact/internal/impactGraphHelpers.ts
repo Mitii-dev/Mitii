@@ -115,10 +115,14 @@ export function symbolSpan(node: RepoGraphSymbolNode): number {
   return (node.endLine ?? node.startLine ?? 1) - (node.startLine ?? 1);
 }
 
+const EDGE_TYPE_WALK_ORDER: readonly RepoGraphEdgeType[] = [
+  ...CHANGE_IMPACT_POLICY.defaultEdgeTypes,
+  "development_depends_on",
+  "workspace_member",
+];
+
 export function edgeTypeOrder(edgeType: RepoGraphEdgeType): number {
-  const order = CHANGE_IMPACT_POLICY.defaultEdgeTypes.indexOf(
-    edgeType as (typeof CHANGE_IMPACT_POLICY.defaultEdgeTypes)[number],
-  );
+  const order = EDGE_TYPE_WALK_ORDER.indexOf(edgeType);
   return order >= 0 ? order : Number.MAX_SAFE_INTEGER;
 }
 

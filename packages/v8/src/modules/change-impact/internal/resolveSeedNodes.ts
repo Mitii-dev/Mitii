@@ -9,6 +9,7 @@ import type {
   RepoGraphNode,
   RepoGraphSymbolNode,
 } from "../../repository-state";
+import { expandSymbolRollup } from "./expandSymbolRollup";
 import {
   coversLine,
   normalizeRelativePath,
@@ -20,6 +21,7 @@ import type {
   ResolvedSeedNode,
   SeedExpansion,
 } from "./impactTypes";
+import { resolvePathIdentity } from "./resolvePathIdentity";
 import { resolveSoftSymbolMatches } from "./resolveSoftSymbolMatches";
 
 export function resolveSeedNodes(params: {
@@ -31,19 +33,93 @@ export function resolveSeedNodes(params: {
   reasonCodes: Set<ChangeImpactReasonCode>;
 }): ResolvedSeedNode[] {
   const seed = params.input.seed;
-  const file = findFile(params.fileByFileId, seed.relativePath, seed.rootId);
+  const identity = resolvePathIdentity({
+    relativePath: seed.relativePath,
+    overlays: params.input.pathIdentityOverlays,
+  });
+
+  let file: RepoGraphFileNode | undefined;
+  for (const candidate of identity.candidatePaths) {
+    file = findFile(params.fileByFileId, candidate, seed.rootId);
+    if (file) break;
+  }
   if (!file) return [];
 
+  if (identity.remapped) {
+    params.reasonCodes.add("path_identity_remapped");
+    params.warnings.push({
+      code: "path_identity_remapped",
+      message:
+        "Seed path was remapped through a host path-identity overlay (rename/delete).",
+    });
+  }
+
+  let seeds: ResolvedSeedNode[];
   if (seed.kind === "file") {
-    return expandFileSeed({
+    seeds = expandFileSeed({
       file,
       input: params.input,
       nodeById: params.nodeById,
       projectByProjectId: params.projectByProjectId,
       graphEdges: params.input.repoGraph.edges,
     });
+  } else {
+    seeds = resolveSymbolOrCaretSeed({
+      seed,
+      file,
+      input: params.input,
+      nodeById: params.nodeById,
+      projectByProjectId: params.projectByProjectId,
+      warnings: params.warnings,
+      reasonCodes: params.reasonCodes,
+    });
   }
 
+  const rollup = expandSymbolRollup({
+    seeds,
+    nodeById: params.nodeById,
+  });
+  seeds = rollup.seeds;
+  if (rollup.expanded) {
+    params.reasonCodes.add("seed_rollup_expanded");
+    params.warnings.push({
+      code: "seed_rollup_expanded",
+      message:
+        "Seed symbols expanded to related parent/child symbols via published nesting.",
+    });
+  }
+
+  for (const priorPath of identity.retainedPriorPaths) {
+    const priorFile = findFile(
+      params.fileByFileId,
+      priorPath,
+      seed.rootId,
+    );
+    if (!priorFile || seeds.some((entry) => entry.node.id === priorFile.id)) {
+      continue;
+    }
+    seeds.push(...expandFileSeed({
+      file: priorFile,
+      input: params.input,
+      nodeById: params.nodeById,
+      projectByProjectId: params.projectByProjectId,
+      graphEdges: params.input.repoGraph.edges,
+    }));
+  }
+
+  return dedupeSeeds(seeds);
+}
+
+function resolveSymbolOrCaretSeed(params: {
+  seed: Extract<ChangeImpactParsedInput["seed"], { kind: "symbol" | "caret" }>;
+  file: RepoGraphFileNode;
+  input: ChangeImpactParsedInput;
+  nodeById: ReadonlyMap<string, RepoGraphNode>;
+  projectByProjectId: ReadonlyMap<string, RepoGraphProjectNode>;
+  warnings: Array<{ code: ChangeImpactWarningCode; message: string }>;
+  reasonCodes: Set<ChangeImpactReasonCode>;
+}): ResolvedSeedNode[] {
+  const { seed, file } = params;
   const symbols = [...params.nodeById.values()].filter(
     (node): node is RepoGraphSymbolNode =>
       node.kind === "symbol" &&
@@ -60,8 +136,6 @@ export function resolveSeedNodes(params: {
     seed.kind === "caret"
       ? symbols
           .sort((left, right) => {
-            // Prefer nearest enclosing: largest startLine among covers, then
-            // smallest span (Goose-style disambiguation + nested symbols).
             const startDelta =
               (right.startLine ?? 1) - (left.startLine ?? 1);
             if (startDelta !== 0) return startDelta;
@@ -82,19 +156,12 @@ export function resolveSeedNodes(params: {
     );
     const soft = resolveSoftSymbolMatches({
       symbolsInFile,
-      symbolName:
-        seed.kind === "symbol" || seed.kind === "caret"
-          ? seed.symbolName
-          : undefined,
+      symbolName: seed.symbolName,
       line: seed.kind === "caret" ? seed.line : undefined,
       textOccurrenceLines: (params.input.textOccurrenceHints ?? [])
         .filter((hint) => {
           if (!hint.symbolName) return true;
-          const seedName =
-            seed.kind === "symbol" || seed.kind === "caret"
-              ? seed.symbolName
-              : undefined;
-          return !seedName || hint.symbolName === seedName;
+          return !seed.symbolName || hint.symbolName === seed.symbolName;
         })
         .map((hint) => hint.line),
     });
@@ -169,6 +236,17 @@ function expandFileSeed(params: {
     seeds.push({ node: project });
   }
   return seeds;
+}
+
+function dedupeSeeds(seeds: readonly ResolvedSeedNode[]): ResolvedSeedNode[] {
+  const seen = new Set<string>();
+  const result: ResolvedSeedNode[] = [];
+  for (const seed of seeds) {
+    if (seen.has(seed.node.id)) continue;
+    seen.add(seed.node.id);
+    result.push(seed);
+  }
+  return result;
 }
 
 function findFile(

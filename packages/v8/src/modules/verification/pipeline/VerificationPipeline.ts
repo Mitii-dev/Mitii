@@ -157,6 +157,12 @@ export class VerificationPipeline {
       maxChecks: parsed.maxChecks,
       changedFiles: parsed.changedFiles,
       scriptHints: discovered.scriptHints,
+      ...(typeof parsed.widenScope === "boolean"
+        ? { widenScope: parsed.widenScope }
+        : {}),
+      ...(parsed.impactAffectedFiles
+        ? { impactAffectedFiles: parsed.impactAffectedFiles }
+        : {}),
     });
 
     const executed = await executeChecks({

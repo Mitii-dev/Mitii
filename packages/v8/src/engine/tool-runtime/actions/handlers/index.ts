@@ -4,6 +4,7 @@ import { listModelToolDefinitions } from "../../internal/modelToolDefinitions";
 import type { RuntimeModelToolDefinition } from "../../internal/modelToolDefinitions";
 
 import { analyzeChangeImpactTool } from "./analyzeChangeImpactTool";
+import { planCheckChangeImpactTool } from "./planCheckChangeImpactTool";
 import { callHierarchyTool } from "./callHierarchyTool";
 import { documentSymbolTool } from "./documentSymbolTool";
 import { emitReviewFindingTool } from "./emitReviewFindingTool";
@@ -71,6 +72,7 @@ const BUILTIN_TOOLS_BASE: readonly RegisteredTool[] = [
   findImplementationTool,
   callHierarchyTool,
   analyzeChangeImpactTool,
+  planCheckChangeImpactTool,
   emitReviewFindingTool,
   runReadonlyCommandTool,
   readPackageScriptsTool,
@@ -161,6 +163,7 @@ export {
   findImplementationTool,
   callHierarchyTool,
   analyzeChangeImpactTool,
+  planCheckChangeImpactTool,
   emitReviewFindingTool,
   runReadonlyCommandTool,
   readPackageScriptsTool,

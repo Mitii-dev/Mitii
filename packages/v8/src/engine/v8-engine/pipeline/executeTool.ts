@@ -97,7 +97,12 @@ export async function executeOneTool(
    * change_impact_recommended until analyze_change_impact succeeds, subject
    * to changeImpactNudgeBudget (mirrors must-read nudges).
    */
-  changeImpactGate?: { required: boolean; satisfied: boolean };
+  changeImpactGate?: {
+    required: boolean;
+    satisfied: boolean;
+    lastImpactAffectedFiles?: string[];
+    lastWidenVerification?: boolean;
+  };
   /** Remaining change-impact withholdals for this run (usually 0 or 1). */
   changeImpactNudgeBudget?: { remaining: number };
   evidence?: RunEvidence;

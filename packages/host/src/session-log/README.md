@@ -14,6 +14,8 @@ Persist a Desktop/VS Code–parity session timeline while a run is in progress (
 
 Filenames: `MM-DD-YYYY-HH-MM-<sessionId>.jsonl` (often `thread_…`).
 
+Each observed model call writes one `model_snapshot` record with its assembled input and streamed output when the call ends. See the [observability audit](observability-audit.md) for coverage gaps and the snapshot format.
+
 ## Input / output
 
 | | |

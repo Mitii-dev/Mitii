@@ -281,6 +281,68 @@ describe("selectProportionalChecks", () => {
     );
   });
 
+  it("widenScope keeps sibling package checks when impact graph is unsafe", () => {
+    const vscodeTypecheck: DiscoveredCheckCandidate = {
+      ...typecheck,
+      checkId: "inferred:apps/vscode:typecheck:typecheck",
+      projectId: "inferred:apps/vscode",
+    };
+    const v8Typecheck: DiscoveredCheckCandidate = {
+      ...typecheck,
+      checkId: "inferred:packages/v8:typecheck:typecheck",
+      projectId: "inferred:packages/v8",
+    };
+    const result = selectProportionalChecks({
+      candidates: [v8Typecheck, vscodeTypecheck],
+      verification: {
+        required: true,
+        minimumEvidence: ["typecheck"],
+        allowUnavailable: false,
+      },
+      changeScope: "localized",
+      changedFiles: ["apps/vscode/src/extension.ts"],
+      widenScope: true,
+    });
+
+    expect(result.selected.map((c) => c.checkId)).toEqual(
+      expect.arrayContaining([
+        "inferred:apps/vscode:typecheck:typecheck",
+        "inferred:packages/v8:typecheck:typecheck",
+      ]),
+    );
+  });
+
+  it("impactAffectedFiles expands package-touch roots for selection", () => {
+    const vscodeTypecheck: DiscoveredCheckCandidate = {
+      ...typecheck,
+      checkId: "inferred:apps/vscode:typecheck:typecheck",
+      projectId: "inferred:apps/vscode",
+    };
+    const v8Typecheck: DiscoveredCheckCandidate = {
+      ...typecheck,
+      checkId: "inferred:packages/v8:typecheck:typecheck",
+      projectId: "inferred:packages/v8",
+    };
+    const result = selectProportionalChecks({
+      candidates: [v8Typecheck, vscodeTypecheck],
+      verification: {
+        required: true,
+        minimumEvidence: ["typecheck"],
+        allowUnavailable: false,
+      },
+      changeScope: "localized",
+      changedFiles: ["apps/vscode/src/extension.ts"],
+      impactAffectedFiles: ["packages/v8/src/index.ts"],
+    });
+
+    expect(result.selected.map((c) => c.checkId)).toEqual(
+      expect.arrayContaining([
+        "inferred:apps/vscode:typecheck:typecheck",
+        "inferred:packages/v8:typecheck:typecheck",
+      ]),
+    );
+  });
+
   it("never drops required typecheck/build when maxChecks is the window-budget floor (2)", () => {
     const syntax: DiscoveredCheckCandidate = {
       ...typecheck,

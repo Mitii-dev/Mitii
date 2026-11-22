@@ -118,7 +118,7 @@ describe('modelIoLog', () => {
     expect(tools[0]?.inputSchemaFingerprint).toBe(sameFingerprint.fingerprint);
   });
 
-  it('writes request/response records when a sink is active', async () => {
+  it('writes one request/response snapshot when a sink is active', async () => {
     const root = mkdtempSync(join(tmpdir(), 'mitii-model-io-'));
 
     try {
@@ -175,12 +175,14 @@ describe('modelIoLog', () => {
         .map((line) => JSON.parse(line) as Record<string, unknown>);
 
       expect(lines[0]).toMatchObject({ kind: 'model_io_start', runId: 'run_1' });
-      const request = lines.find((line) => line.kind === 'model_request');
-      const response = lines.find((line) => line.kind === 'model_response');
-      expect(request).toBeDefined();
-      expect(JSON.stringify(request)).toContain('[REDACTED]');
+      expect(lines).toHaveLength(3);
+      const response = lines[1];
+      expect(JSON.stringify(response?.request)).toContain('[REDACTED]');
       expect(response).toMatchObject({
-        kind: 'model_response',
+        kind: 'model_snapshot',
+        runId: 'run_1',
+        startedAt: expect.any(String),
+        durationMs: expect.any(Number),
         finishReason: 'tool_calls',
         content: 'Hello world',
       });
@@ -196,6 +198,40 @@ describe('modelIoLog', () => {
       rmSync(root, { recursive: true, force: true });
       setActiveModelIoSink(undefined);
     }
+  });
+
+  it('captures partial output and preserves a thrown provider error', async () => {
+    const failure = new Error('Disconnected with Bearer SECRETTOKEN123');
+    const entries: Record<string, unknown>[] = [];
+    const port = new LoggingLlmPort(
+      new (class extends ScriptedPort {
+        override async *complete(): AsyncIterable<ModelEvent> {
+          yield { type: 'content_delta', content: 'Partial response' };
+          throw failure;
+        }
+      })([]),
+      () => ({
+        path: '',
+        write: (entry) => { entries.push(entry); },
+        close: () => {},
+      }),
+    );
+
+    const stream = port.complete({ messages: [{ role: 'user', content: 'hi' }] });
+    const drain = async () => {
+      for await (const _ of stream) {
+        // Drain the stream.
+      }
+    };
+    await expect(drain()).rejects.toBe(failure);
+    expect(entries).toEqual([
+      expect.objectContaining({
+        kind: 'model_snapshot',
+        finishReason: 'error',
+        content: 'Partial response',
+        error: { message: 'Disconnected with [REDACTED]' },
+      }),
+    ]);
   });
 
   it('does not write when no sink is active', async () => {

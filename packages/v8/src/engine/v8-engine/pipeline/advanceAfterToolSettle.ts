@@ -98,7 +98,12 @@ export function advanceAfterToolSettle(params: {
   stepReadonlyTurnsBeforeGate: number;
   readonlyTurnsBeforeMutationNudge: number;
   mutateReadinessBudget: MutateReadinessBudget;
-  changeImpactGate: { required: boolean; satisfied: boolean };
+  changeImpactGate: {
+    required: boolean;
+    satisfied: boolean;
+    lastImpactAffectedFiles?: string[];
+    lastWidenVerification?: boolean;
+  };
   evaluateStepReadiness: () => ReturnType<typeof evaluateActiveStepMutateReadiness>;
   loopFileReads: LoopFileReadTracker;
   thresholds: {
@@ -271,7 +276,11 @@ export function advanceAfterToolSettle(params: {
       !gitWriteSucceeded &&
       changeImpactGate.required &&
       changeImpactGate.satisfied &&
-      toolCalls.some((call) => call.name === "analyze_change_impact")
+      toolCalls.some(
+        (call) =>
+          call.name === "analyze_change_impact" ||
+          call.name === "plan_check_change_impact",
+      )
     ) {
       // Gate just satisfied (or already was): demand the withheld patch this
       // turn — do not count this as readonly thrash / Continue.

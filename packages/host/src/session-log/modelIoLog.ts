@@ -290,20 +290,15 @@ export class LoggingLlmPort implements LlmPort {
     context?: ModelCallContext,
   ): AsyncIterable<ModelEvent> {
     const sink = this.getSink();
+    if (!sink) {
+      yield* this.inner.complete(request, context);
+      return;
+    }
+
     const callId = `call_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
     const startedAt = new Date().toISOString();
-
-    if (sink) {
-      sink.write({
-        kind: 'model_request',
-        at: startedAt,
-        callId,
-        portId: this.inner.id,
-        runId: context?.runId,
-        requestId: context?.requestId,
-        request: sanitizeRequest(request),
-      });
-    }
+    const startedClock = performance.now();
+    const input = sanitizeRequest(request);
 
     let content = '';
     let reasoning = '';
@@ -356,53 +351,64 @@ export class LoggingLlmPort implements LlmPort {
         }
         yield event;
       }
+    } catch (cause) {
+      finishReason = context?.abortSignal?.aborted ? 'cancelled' : 'error';
+      error = {
+        message: compactText(
+          cause instanceof Error ? cause.message : String(cause),
+          1_200,
+        ).text,
+      };
+      throw cause;
     } finally {
-      if (sink) {
-        const contentCompact = compactText(
-          content,
-          MODEL_IO_LIMITS.maxContentChars,
-        );
-        const reasoningCompact = reasoning
-          ? compactText(reasoning, MODEL_IO_LIMITS.maxContentChars)
-          : undefined;
-        const serializedTools = [...toolCalls.entries()]
-          .sort(([a], [b]) => a - b)
-          .map(([index, call]) => {
-            const args = compactText(
-              call.arguments,
-              MODEL_IO_LIMITS.maxToolArgChars,
-            );
-            return {
-              index,
-              id: call.id,
-              name: call.name,
-              arguments: args.text,
-              argumentChars: args.chars,
-              truncated: args.truncated || undefined,
-              redacted: args.redacted || undefined,
-            };
-          });
-
-        sink.write({
-          kind: 'model_response',
-          at: new Date().toISOString(),
-          callId,
-          portId: this.inner.id,
-          runId: context?.runId,
-          requestId: context?.requestId,
-          finishReason,
-          usage,
-          content: contentCompact.text || undefined,
-          contentChars: contentCompact.chars,
-          contentTruncated: contentCompact.truncated || undefined,
-          contentRedacted: contentCompact.redacted || undefined,
-          reasoning: reasoningCompact?.text,
-          reasoningChars: reasoningCompact?.chars,
-          reasoningTruncated: reasoningCompact?.truncated || undefined,
-          toolCalls: serializedTools.length > 0 ? serializedTools : undefined,
-          error,
+      const contentCompact = compactText(
+        content,
+        MODEL_IO_LIMITS.maxContentChars,
+      );
+      const reasoningCompact = reasoning
+        ? compactText(reasoning, MODEL_IO_LIMITS.maxContentChars)
+        : undefined;
+      const serializedTools = [...toolCalls.entries()]
+        .sort(([a], [b]) => a - b)
+        .map(([index, call]) => {
+          const args = compactText(
+            call.arguments,
+            MODEL_IO_LIMITS.maxToolArgChars,
+          );
+          return {
+            index,
+            id: call.id,
+            name: call.name,
+            arguments: args.text,
+            argumentChars: args.chars,
+            truncated: args.truncated || undefined,
+            redacted: args.redacted || undefined,
+          };
         });
-      }
+
+      sink.write({
+        kind: 'model_snapshot',
+        at: new Date().toISOString(),
+        startedAt,
+        durationMs: Math.round(performance.now() - startedClock),
+        request: input,
+        callId,
+        portId: this.inner.id,
+        runId: context?.runId,
+        requestId: context?.requestId,
+        finishReason:
+          finishReason ?? (context?.abortSignal?.aborted ? 'cancelled' : 'incomplete'),
+        usage,
+        content: contentCompact.text || undefined,
+        contentChars: contentCompact.chars,
+        contentTruncated: contentCompact.truncated || undefined,
+        contentRedacted: contentCompact.redacted || undefined,
+        reasoning: reasoningCompact?.text,
+        reasoningChars: reasoningCompact?.chars,
+        reasoningTruncated: reasoningCompact?.truncated || undefined,
+        toolCalls: serializedTools.length > 0 ? serializedTools : undefined,
+        error,
+      });
     }
   }
 }

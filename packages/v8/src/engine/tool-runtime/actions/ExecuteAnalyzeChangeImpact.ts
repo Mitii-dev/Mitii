@@ -4,6 +4,7 @@ import {
   changeImpactResultSchema,
   compactChangeImpactForModelFacing,
   mergeNavigationEnrichment,
+  recommendWidenVerification,
   type ChangeImpactInput,
   type ChangeImpactResult,
 } from "../../../modules/change-impact";
@@ -71,6 +72,9 @@ export async function executeAnalyzeChangeImpact(params: {
   const importanceByRelativePath = await loadImportanceRecord(
     params.repoGraphs,
   );
+  const historicalCoupling =
+    input.historicalCoupling ??
+    (await loadHistoricalCoupling(params.repoGraphs, input.path));
   const textOccurrenceHints = await collectTextOccurrenceHints({
     path: input.path,
     symbolName: input.symbolName,
@@ -102,6 +106,12 @@ export async function executeAnalyzeChangeImpact(params: {
     ...(textOccurrenceHints.length > 0
       ? { textOccurrenceHints }
       : {}),
+    ...(input.pathIdentityOverlays
+      ? { pathIdentityOverlays: input.pathIdentityOverlays }
+      : {}),
+    ...(historicalCoupling && historicalCoupling.length > 0
+      ? { historicalCoupling }
+      : {}),
   } satisfies ChangeImpactInput);
 
   result = await maybeEnrichFromCodeNavigation({
@@ -127,6 +137,7 @@ export async function executeAnalyzeChangeImpact(params: {
       score: file.score,
       affectedNodeCount: file.affectedNodeIds.length,
       reason: file.reason,
+      impactReason: file.impactReason,
       bucket: file.bucket,
     })),
     packagesAffected: parsed.packagesAffected.map((project) => ({
@@ -162,6 +173,16 @@ export async function executeAnalyzeChangeImpact(params: {
     packagesAffected: slim.packagesAffected,
     chains: slim.chains,
     directNeighborCounts: parsed.directNeighborCounts,
+    totals: parsed.totals,
+    confidence: parsed.confidence,
+    ...(parsed.confidenceNote
+      ? { confidenceNote: parsed.confidenceNote }
+      : {}),
+    graphConfidenceUnsafe: parsed.graphConfidenceUnsafe,
+    blastRadius: parsed.blastRadius,
+    widenVerification: recommendWidenVerification(parsed),
+    cycles: parsed.cycles,
+    hiddenCoupling: parsed.hiddenCoupling,
     // Reflect graph walk + intentional model-facing caps in the payload;
     // do not mark the ToolResult itself truncated (that surfaces as
     // output_truncated and looks like a failed/cut tool call).
@@ -204,6 +225,23 @@ async function loadImportanceRecord(
     return Object.fromEntries(loaded.entries());
   }
   return { ...(loaded as Readonly<Record<string, number>>) };
+}
+
+async function loadHistoricalCoupling(
+  repoGraphs: RepositoryGraphPort,
+  relativePath: string,
+): Promise<
+  | Array<{
+      relativePath: string;
+      coChangeCount: number;
+      churnScore?: number;
+    }>
+  | undefined
+> {
+  if (!repoGraphs.loadHistoricalCoupling) return undefined;
+  const loaded = await repoGraphs.loadHistoricalCoupling(relativePath);
+  if (!loaded || loaded.length === 0) return undefined;
+  return [...loaded];
 }
 
 function isStringNumberMap(

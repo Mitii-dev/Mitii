@@ -22,6 +22,7 @@ export type ModelFacingAffectedFile = {
   score: number;
   affectedNodeCount: number;
   reason: string;
+  impactReason?: string;
   bucket?: ChangeImpactFileBucket;
 };
 
@@ -76,6 +77,7 @@ export function compactChangeImpactForModelFacing(params: {
     score: number;
     affectedNodeCount: number;
     reason: string;
+    impactReason?: string;
     bucket: ChangeImpactFileBucket;
   }>;
   packagesAffected: Array<{
@@ -149,6 +151,7 @@ export function compactChangeImpactForModelFacing(params: {
     score: file.score,
     affectedNodeCount: file.affectedNodeCount,
     reason: file.reason,
+    ...(file.impactReason ? { impactReason: file.impactReason } : {}),
     bucket: file.bucket,
   }));
   const affected = sortedNodes.slice(0, maxNodes).map((node) => ({

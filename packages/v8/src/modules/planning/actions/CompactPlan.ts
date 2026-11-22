@@ -140,6 +140,9 @@ export function serializePlanText(plan: PlanArtifact): string {
       if (step.mustRead && step.mustRead.length > 0) {
         lines.push(`       need: ${step.mustRead.join(", ")}`);
       }
+      if (step.likelyModify && step.likelyModify.length > 0) {
+        lines.push(`       also edit: ${step.likelyModify.join(", ")}`);
+      }
       if (step.affected && step.affected.length > 0) {
         lines.push(`       affected: ${step.affected.join(", ")}`);
       }

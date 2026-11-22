@@ -13,8 +13,11 @@ Verification gathers evidence after a change. It maps changed files to projects,
   Required evidence kinds (typecheck/build/…) are never truncated by the
   window `maxVerificationChecks` floor (often 2 on small context windows).
 - Package-scopes tests (and localized typecheck/lint/build) to touched
-  `apps/` / `packages/` roots from `changedFiles`. A vscode settings paste
-  must never drag in `packages/v8:test` unless that package was edited and
+  `apps/` / `packages/` roots from `changedFiles` (plus optional
+  `impactAffectedFiles`). Hosts may set `widenScope` when change-impact
+  reports unsafe graph confidence so sibling packages are not omitted.
+  A vscode settings paste must never drag in `packages/v8:test` unless that
+  package was edited and
   tests were requested.
 - Discovers cheap `syntax` candidates for changed `.py` / `.js` / `.sh`
   files (`py_compile`, `node --import` module-load, `node --check`,

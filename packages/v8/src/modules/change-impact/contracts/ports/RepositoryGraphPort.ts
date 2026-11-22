@@ -1,4 +1,5 @@
 import type { RepoGraph } from "../../../repository-state";
+import type { ChangeImpactHistoricalCouplingEntry } from "../input/ChangeImpactInput";
 
 /** Host port supplying published repo graphs to change-impact consumers. */
 export interface RepositoryGraphPort {
@@ -25,5 +26,15 @@ export interface RepositoryGraphPort {
     | Promise<
         ReadonlyMap<string, number> | Readonly<Record<string, number>> | undefined
       >
+    | undefined;
+  /**
+   * Optional host-published historical coupling for a seed path.
+   * Change-impact never mines git history itself.
+   */
+  loadHistoricalCoupling?: (
+    relativePath: string,
+  ) =>
+    | readonly ChangeImpactHistoricalCouplingEntry[]
+    | Promise<readonly ChangeImpactHistoricalCouplingEntry[] | undefined>
     | undefined;
 }

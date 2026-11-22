@@ -36,3 +36,59 @@ export const DEFAULT_CHANGE_IMPACT_MODEL_FACING_AFFECTED_NODES = 8;
 export const DEFAULT_CHANGE_IMPACT_MODEL_FACING_EVIDENCE_PER_NODE = 1;
 export const DEFAULT_CHANGE_IMPACT_MODEL_FACING_AFFECTED_FILES = 24;
 export const DEFAULT_CHANGE_IMPACT_MODEL_FACING_CHAINS = 12;
+
+/**
+ * Graph confidence = resolved structural edges / (resolved + unresolved).
+ * Below low → warning; below unsafe → reason code + force partial status.
+ */
+export const DEFAULT_CHANGE_IMPACT_CONFIDENCE_LOW = 0.85;
+export const DEFAULT_CHANGE_IMPACT_CONFIDENCE_UNSAFE = 0.7;
+
+/** Blast level thresholds on unique affected files (full walk, not model-facing). */
+export const DEFAULT_CHANGE_IMPACT_BLAST_MEDIUM_FILES = 8;
+export const DEFAULT_CHANGE_IMPACT_BLAST_HIGH_FILES = 40;
+export const DEFAULT_CHANGE_IMPACT_BLAST_MEDIUM_HOP1 = 5;
+export const DEFAULT_CHANGE_IMPACT_BLAST_HIGH_HOP1 = 18;
+
+/** Risk score bands → SAFE / REVIEW / TEST / CRITICAL. */
+export const DEFAULT_CHANGE_IMPACT_RISK_REVIEW = 21;
+export const DEFAULT_CHANGE_IMPACT_RISK_TEST = 51;
+export const DEFAULT_CHANGE_IMPACT_RISK_CRITICAL = 76;
+
+/**
+ * Path tokens that raise risk when present on the seed (case-insensitive path
+ * segments). Kept generic — hosts may override via policy later.
+ */
+export const DEFAULT_CHANGE_IMPACT_SENSITIVE_PATH_TOKENS = [
+  "auth",
+  "oauth",
+  "password",
+  "credential",
+  "secret",
+  "session",
+  "payment",
+  "billing",
+  "security",
+  "crypto",
+  "token",
+] as const;
+
+/**
+ * Historical coupling is host-published. Structural score stays primary;
+ * co-change may multiply by at most `(1 + weight * cappedNormalizedCount)`.
+ */
+export const DEFAULT_CHANGE_IMPACT_CO_CHANGE_WEIGHT = 0.2;
+export const DEFAULT_CHANGE_IMPACT_CO_CHANGE_COUNT_CAP = 8;
+/** Minimum co-change count to surface a non-structural (hidden) coupling. */
+export const DEFAULT_CHANGE_IMPACT_HIDDEN_COUPLING_MIN = 3;
+/** Cap how many hidden-coupling files may be merged into the report. */
+export const DEFAULT_CHANGE_IMPACT_HIDDEN_COUPLING_MAX_FILES = 12;
+/** Base score for evidence-gated hidden coupling additions. */
+export const DEFAULT_CHANGE_IMPACT_HIDDEN_COUPLING_BASE_SCORE = 0.42;
+/** Maximum seed-neighborhood cycles reported. */
+export const DEFAULT_CHANGE_IMPACT_MAX_CYCLES = 8;
+export const DEFAULT_CHANGE_IMPACT_MAX_CYCLE_LENGTH = 8;
+
+/** Multi-seed / plan-check budgets. */
+export const DEFAULT_CHANGE_IMPACT_MAX_SEEDS = 16;
+export const DEFAULT_CHANGE_IMPACT_MAX_PROPOSED_PATHS = 40;

@@ -19,7 +19,10 @@ export const CODE_INTELLIGENCE_TOOL_IDS = [
 export const DIAGNOSTICS_TOOL_IDS = ["read_diagnostics"] as const;
 
 /** Repository blast-radius analysis tools. */
-export const CHANGE_IMPACT_TOOL_IDS = ["analyze_change_impact"] as const;
+export const CHANGE_IMPACT_TOOL_IDS = [
+  "analyze_change_impact",
+  "plan_check_change_impact",
+] as const;
 
 /** Read-only tools Decision Policy may grant. */
 export const READ_ONLY_TOOL_IDS = [

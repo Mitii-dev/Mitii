@@ -4,6 +4,7 @@ import type { RepoGraph } from "../../../repository-state";
 import {
   CHANGE_IMPACT_DIRECTIONS,
   CHANGE_IMPACT_EDGE_TYPES,
+  CHANGE_IMPACT_PATH_IDENTITY_KINDS,
   CHANGE_IMPACT_SCHEMA_VERSION,
   CHANGE_IMPACT_SEED_EXPANSIONS,
 } from "../../constants";
@@ -49,6 +50,43 @@ export const changeImpactDirectionSchema = z.enum(CHANGE_IMPACT_DIRECTIONS);
 export const changeImpactSeedExpansionSchema = z.enum(
   CHANGE_IMPACT_SEED_EXPANSIONS,
 );
+
+export const changeImpactPathIdentityKindSchema = z.enum(
+  CHANGE_IMPACT_PATH_IDENTITY_KINDS,
+);
+
+/**
+ * Host-supplied path identity facts (for example from a diff). Used to keep
+ * dependents of renamed/deleted paths reachable without inventing graph edges.
+ */
+export const changeImpactPathIdentityOverlaySchema = z
+  .object({
+    kind: changeImpactPathIdentityKindSchema,
+    fromRelativePath: z.string().min(1),
+    toRelativePath: z.string().min(1).optional(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.kind === "renamed" && !value.toRelativePath) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "toRelativePath is required when kind is renamed",
+        path: ["toRelativePath"],
+      });
+    }
+  });
+
+/**
+ * Host-published historical coupling for one path relative to the seed.
+ * Change-impact never computes git history — it only applies capped boosts.
+ */
+export const changeImpactHistoricalCouplingEntrySchema = z
+  .object({
+    relativePath: z.string().min(1),
+    coChangeCount: z.number().int().nonnegative(),
+    churnScore: z.number().min(0).max(1).optional(),
+  })
+  .strict();
 
 const repoGraphReferenceSchema = z.custom<RepoGraph>(
   (value) =>
@@ -112,12 +150,30 @@ export const changeImpactInputSchema = z
       )
       .max(40)
       .optional(),
+    /**
+     * Optional rename/delete path overlays from the host. Remaps seeds and
+     * dual-seeds retained prior paths when those file nodes still exist.
+     */
+    pathIdentityOverlays: z
+      .array(changeImpactPathIdentityOverlaySchema)
+      .max(200)
+      .optional(),
+    historicalCoupling: z
+      .array(changeImpactHistoricalCouplingEntrySchema)
+      .max(200)
+      .optional(),
     repoGraph: repoGraphReferenceSchema,
     codeIndexChangeToken: z.string().min(1).optional(),
   })
   .strict();
 
 export type ChangeImpactSeed = z.infer<typeof changeImpactSeedSchema>;
+export type ChangeImpactPathIdentityOverlay = z.infer<
+  typeof changeImpactPathIdentityOverlaySchema
+>;
+export type ChangeImpactHistoricalCouplingEntry = z.infer<
+  typeof changeImpactHistoricalCouplingEntrySchema
+>;
 export type ChangeImpactInput = z.input<typeof changeImpactInputSchema>;
 export type ChangeImpactParsedInput = z.infer<
   typeof changeImpactInputSchema

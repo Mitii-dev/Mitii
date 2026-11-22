@@ -181,6 +181,10 @@ export class PackageJsonReader implements ManifestReader {
       COMMON_TEST_ROOTS,
     );
 
+    const workspaceMemberPatterns = this.readWorkspaceMemberPatterns(
+      manifest.workspaces,
+    );
+
     return {
       readerId: this.id,
       ecosystem: "node",
@@ -201,6 +205,10 @@ export class PackageJsonReader implements ManifestReader {
       suggestedEntryFiles,
       suggestedSourceRoots,
       suggestedTestRoots,
+
+      ...(workspaceMemberPatterns.length > 0
+        ? { workspaceMemberPatterns }
+        : {}),
     };
   }
 
@@ -334,6 +342,22 @@ export class PackageJsonReader implements ManifestReader {
     }
 
     return roots.sort((left, right) => left.localeCompare(right));
+  }
+
+  private readWorkspaceMemberPatterns(value: unknown): string[] {
+    const patterns: string[] = [];
+
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        this.addStringValue(patterns, entry);
+      }
+    } else if (this.isRecord(value) && Array.isArray(value.packages)) {
+      for (const entry of value.packages) {
+        this.addStringValue(patterns, entry);
+      }
+    }
+
+    return this.normalizeUniquePaths(patterns);
   }
 
   private mergeDependencyNames(...values: unknown[]): string[] {

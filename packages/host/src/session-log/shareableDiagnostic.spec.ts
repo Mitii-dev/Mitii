@@ -77,6 +77,14 @@ describe('shareableDiagnostic', () => {
           content: 'I will patch login',
           usage: { inputTokens: 100, outputTokens: 20 },
         }),
+        JSON.stringify({
+          kind: 'model_snapshot',
+          callId: 'call_2',
+          portId: 'openai',
+          request: { messages: [{ role: 'user', content: 'check the patch' }] },
+          finishReason: 'stop',
+          content: 'Patch verified',
+        }),
       ].join('\n') + '\n',
       'utf8',
     );
@@ -97,6 +105,8 @@ describe('shareableDiagnostic', () => {
     expect(built.markdown).toContain('read_file');
     expect(built.markdown).toContain('please fix login');
     expect(built.markdown).toContain('I will patch login');
+    expect(built.markdown).toContain('check the patch');
+    expect(built.markdown).toContain('Patch verified');
     expect(built.sources.sessionLogPath).toContain('sess.jsonl');
     expect(built.sources.modelIoLogPath).toContain('model-io.jsonl');
 

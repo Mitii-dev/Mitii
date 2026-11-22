@@ -1,5 +1,6 @@
 import type { WorkspaceFileEntry, WorkspaceSnapshot } from "../workspace";
 
+import { extractProjectRelationships } from "./extractProjectRelationships";
 import { ProjectRootDetector } from "./ProjectRootDetector";
 import { ManifestReaderRegistry } from "./manifests";
 import { projectCatalogSchema } from "./schema";
@@ -85,6 +86,11 @@ export class ProjectCatalogBuilder {
     }
 
     sortProjects(projects);
+
+    const relationships = extractProjectRelationships({
+      projects,
+      warnings,
+    });
     sortWarnings(warnings);
 
     const catalog: ProjectCatalog = {
@@ -94,13 +100,7 @@ export class ProjectCatalogBuilder {
 
       projects,
 
-      /*
-       * Relationship extraction is intentionally deferred.
-       *
-       * It will later use factual workspace declarations and
-       * dependency resolution rather than path guesses.
-       */
-      relationships: [],
+      relationships,
 
       warnings,
 
@@ -386,6 +386,10 @@ export class ProjectCatalogBuilder {
       manifestInfos.flatMap((info) => info.developmentDependencies),
     );
 
+    const workspaceMemberPatterns = uniqueSorted(
+      manifestInfos.flatMap((info) => info.workspaceMemberPatterns ?? []),
+    );
+
     return {
       id: projectId,
 
@@ -412,6 +416,10 @@ export class ProjectCatalogBuilder {
 
       dependencies,
       developmentDependencies,
+
+      ...(workspaceMemberPatterns.length > 0
+        ? { workspaceMemberPatterns }
+        : {}),
     };
   }
 

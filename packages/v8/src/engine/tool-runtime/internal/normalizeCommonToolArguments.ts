@@ -69,7 +69,10 @@ export function normalizeCommonToolArguments(
     return normalizeReadFileArguments(value as Record<string, unknown>);
   }
 
-  if (toolName === "analyze_change_impact") {
+  if (
+    toolName === "analyze_change_impact" ||
+    toolName === "plan_check_change_impact"
+  ) {
     return normalizeAnalyzeChangeImpactArguments(
       value as Record<string, unknown>,
     );

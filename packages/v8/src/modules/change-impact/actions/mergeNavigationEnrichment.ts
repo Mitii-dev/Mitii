@@ -1,5 +1,9 @@
 import { CHANGE_IMPACT_POLICY } from "../policy";
 import {
+  affectedHasTestDependent,
+  classifyBlastRadius,
+} from "../internal/classifyBlastRadius";
+import {
   bucketSortKey,
   classifyImpactBucket,
 } from "../internal/classifyImpactBucket";
@@ -47,6 +51,7 @@ export function mergeNavigationEnrichment(params: {
       score: 0.55,
       affectedNodeIds: [`nav:${path}`],
       reason: `${viaEdgeType} via code-navigation enrichment`,
+      impactReason: "navigation_enrichment",
       bucket: classifyImpactBucket(path),
     });
     if (additions.length >= maxFiles) break;
@@ -91,12 +96,47 @@ export function mergeNavigationEnrichment(params: {
     },
   ];
 
+  const hop1Files = new Set(
+    affectedFiles
+      .filter((file) => file.hop === 1)
+      .map((file) => file.relativePath),
+  ).size;
+
+  const seedInFileCount = Math.max(
+    params.result.directNeighborCounts.files,
+    hop1Files,
+  );
+  const priorFragility = params.result.blastRadius.fragility;
+  const seedOutFileCount =
+    priorFragility > 0 && priorFragility < 1
+      ? Math.max(
+          0,
+          Math.round(
+            (priorFragility * seedInFileCount) / (1 - priorFragility),
+          ),
+        )
+      : 0;
+
+  const blastRadius = classifyBlastRadius({
+    seedRelativePath: seedPath,
+    affectedFileCount: affectedFiles.length,
+    hop1FileCount: hop1Files,
+    seedOutFileCount,
+    seedInFileCount,
+    hasTestDependent: affectedHasTestDependent(affectedFiles),
+    confidence: params.result.confidence,
+    graphConfidenceUnsafe: params.result.graphConfidenceUnsafe,
+  });
+
   const status =
     params.result.status === "unavailable"
       ? params.result.status
       : params.result.truncated ||
+          params.result.graphConfidenceUnsafe ||
           params.result.reasonCodes.includes("graph_stale") ||
-          params.result.warnings.some((warning) => warning.code === "graph_partial")
+          params.result.warnings.some(
+            (warning) => warning.code === "graph_partial",
+          )
         ? "partial"
         : "ok";
 
@@ -110,12 +150,15 @@ export function mergeNavigationEnrichment(params: {
         params.result.directNeighborCounts.nodes,
         additions.length,
       ),
-      files: Math.max(
-        params.result.directNeighborCounts.files,
-        new Set(affectedFiles.filter((file) => file.hop === 1).map((f) => f.relativePath))
-          .size,
-      ),
+      files: Math.max(params.result.directNeighborCounts.files, hop1Files),
     },
+    totals: {
+      affectedNodes: affected.length,
+      affectedFiles: affectedFiles.length,
+      packages: params.result.packagesAffected.length,
+      chains: params.result.chains.length,
+    },
+    blastRadius,
     warnings,
     reasonCodes: [...reasonCodes],
   };

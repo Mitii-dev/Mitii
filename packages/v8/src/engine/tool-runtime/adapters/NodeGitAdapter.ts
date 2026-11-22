@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import type {
   GitBranchListResult,
   GitDiffResult,
+  GitLogEntry,
   GitLogResult,
   GitPort,
   GitShowResult,
@@ -62,6 +63,7 @@ export class NodeGitAdapter implements GitPort {
     workspaceRoot: string;
     maxCount?: number;
     paths?: readonly string[];
+    nameOnly?: boolean;
     signal?: AbortSignal;
   }): Promise<GitLogResult> {
     const maxCount = Math.min(Math.max(params.maxCount ?? 20, 1), 100);
@@ -70,27 +72,23 @@ export class NodeGitAdapter implements GitPort {
       `--max-count=${maxCount}`,
       `--pretty=format:%H${LOG_FIELD_SEP}%s${LOG_FIELD_SEP}%an${LOG_FIELD_SEP}%ae${LOG_FIELD_SEP}%aI${LOG_RECORD_SEP}`,
     ];
+    if (params.nameOnly) {
+      argv.splice(1, 0, "--name-only");
+    }
     if (params.paths && params.paths.length > 0) {
       argv = appendPathsAfterDoubleDash(argv, params.paths);
     }
     const raw = await this.runGit(argv, params.workspaceRoot, params.signal);
-    const entries = raw
-      .split(LOG_RECORD_SEP)
-      .map((chunk) => chunk.trim())
-      .filter((chunk) => chunk.length > 0)
-      .map((chunk) => {
-        const [hash, subject, authorName, authorEmail, authoredAt] =
-          chunk.split(LOG_FIELD_SEP);
-        return {
-          hash: hash ?? "",
-          subject: subject ?? "",
-          ...(authorName ? { authorName } : {}),
-          ...(authorEmail ? { authorEmail } : {}),
-          ...(authoredAt ? { authoredAt } : {}),
-        };
-      })
-      .filter((entry) => entry.hash.length > 0);
-    return { entries, truncated: false };
+    if (!params.nameOnly) {
+      const entries = raw
+        .split(LOG_RECORD_SEP)
+        .map((chunk) => chunk.trim())
+        .filter((chunk) => chunk.length > 0)
+        .map((chunk) => parseLogHeader(chunk))
+        .filter((entry): entry is NonNullable<typeof entry> => entry !== undefined);
+      return { entries, truncated: false };
+    }
+    return { entries: parseNameOnlyLog(raw), truncated: false };
   }
 
   public async show(params: {
@@ -288,4 +286,46 @@ function parsePorcelainStatus(raw: string): GitStatusResult {
   }
 
   return { branch, staged, unstaged, untracked, raw };
+}
+
+function parseLogHeader(chunk: string): GitLogEntry | undefined {
+  const [hash, subject, authorName, authorEmail, authoredAt] =
+    chunk.split(LOG_FIELD_SEP);
+  if (!hash || hash.length === 0) return undefined;
+  return {
+    hash,
+    subject: subject ?? "",
+    ...(authorName ? { authorName } : {}),
+    ...(authorEmail ? { authorEmail } : {}),
+    ...(authoredAt ? { authoredAt } : {}),
+  };
+}
+
+/**
+ * Parse `git log --name-only --pretty=format:…RECORD_SEP` output.
+ * Files for a commit appear after the record separator until the next header.
+ */
+function parseNameOnlyLog(raw: string): GitLogEntry[] {
+  const entries: GitLogEntry[] = [];
+  const chunks = raw.split(LOG_RECORD_SEP);
+  for (let index = 0; index < chunks.length; index += 1) {
+    const chunk = chunks[index];
+    if (!chunk) continue;
+    const lines = chunk.split(/\r?\n/);
+    const headerLine = lines.find((line) => line.includes(LOG_FIELD_SEP));
+    if (!headerLine) continue;
+    const header = parseLogHeader(headerLine.trim());
+    if (!header) continue;
+    const files: string[] = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.includes(LOG_FIELD_SEP)) continue;
+      files.push(trimmed.replace(/\\/g, "/"));
+    }
+    entries.push({
+      ...header,
+      ...(files.length > 0 ? { files } : {}),
+    });
+  }
+  return entries;
 }

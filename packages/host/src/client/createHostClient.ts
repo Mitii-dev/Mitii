@@ -155,7 +155,10 @@ export async function createHostClient(
   if (root) {
     const fileSystem = new NodeWorkspaceFileSystemAdapter();
     git = new NodeGitAdapter();
-    repoGraphs = createHostRepositoryGraphPort({ workspaceRoot: root });
+    repoGraphs = createHostRepositoryGraphPort({
+      workspaceRoot: root,
+      git,
+    });
     const sandbox = options.sandbox ?? {};
     const processPort =
       options.processPort ??

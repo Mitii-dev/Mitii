@@ -174,11 +174,11 @@ export function buildShareableDiagnostic(options: {
     }));
 
   const modelCalls = modelIoLines
-    .filter((line) => line.kind === 'model_request')
+    .filter((line) => line.kind === 'model_request' || line.kind === 'model_snapshot')
     .slice(-SHAREABLE_LIMITS.maxModelCalls)
     .map((req) => {
       const callId = req.callId;
-      const res = modelIoLines.find(
+      const res = req.kind === 'model_snapshot' ? req : modelIoLines.find(
         (line) => line.kind === 'model_response' && line.callId === callId,
       );
       const request = (req.request ?? {}) as Record<string, unknown>;

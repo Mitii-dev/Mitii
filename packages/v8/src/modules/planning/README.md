@@ -16,7 +16,7 @@ Planning creates structured plans when policy or user mode calls for visible pla
 - Validates required plan sections, including stripping a stray Discover/Inspect/Explore phase if a `discoveryBrief` is present (discovery already ran; a model-drafted plan must not repeat it).
 - For Plan / Agent-visible thorough plans, Change steps must carry concrete file/symbol `targetRefs` (vague placeholders are stripped; hollow Change phases block validation). Thin discovery briefs skip this gate so open-question plans can ship.
 - Compacts the plan to a token budget.
-- For `follow_evidence` and `discover_and_plan`, compiles Engine-supplied hop-1 `mustRead`/`affected` onto Change steps (`impactReports`). The model draft does not invent those paths.
+- For `follow_evidence` and `discover_and_plan`, compiles Engine-supplied hop-1 `mustRead` / `likelyModify` / `affected` onto Change steps (`impactReports`). The model draft does not invent those paths.
 - Serializes plan artifacts for user answers or prompt injection, including a strategy-aware execution contract.
 
 ## Structure

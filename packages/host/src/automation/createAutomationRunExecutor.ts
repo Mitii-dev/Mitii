@@ -292,6 +292,7 @@ async function createAutomationClient(options: {
       ...(language.diagnostics ? { diagnostics: language.diagnostics } : {}),
       repoGraphs: createHostRepositoryGraphPort({
         workspaceRoot: options.cwd,
+        git,
       }),
       outputSpill: new InMemoryToolOutputSpillAdapter(),
       ...(search ? { search } : {}),

@@ -36,9 +36,10 @@ export const DISCOVERED_PLAN_POLICY = {
  */
 export const PLANNING_WORKING_SET_POLICY = {
   maxMustRead: 5,
+  maxLikelyModify: 5,
   maxAffected: 5,
   maximumHops: 1,
-  maximumAffectedNodes: 5,
+  maximumAffectedNodes: 8,
   maxReports: 16,
   /** Write files per diagnostic Change step. Engine may pass the window cap. */
   maxWritePerBatch: 7,

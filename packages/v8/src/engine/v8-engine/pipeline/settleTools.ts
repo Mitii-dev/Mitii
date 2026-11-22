@@ -95,7 +95,12 @@ export async function settleToolBatch(params: {
    * Soft change-impact gate (mutated in place). Armed when decision recommends
    * analyze_change_impact on a write grant; persists across tool batches.
    */
-  changeImpactGate: { required: boolean; satisfied: boolean };
+  changeImpactGate: {
+    required: boolean;
+    satisfied: boolean;
+    lastImpactAffectedFiles?: string[];
+    lastWidenVerification?: boolean;
+  };
   changeImpactNudgeBudget: { remaining: number };
   loopFileReads?: LoopFileReadTracker;
   /** When true, reject tools outside the mutate-lock allowlist at execution. */

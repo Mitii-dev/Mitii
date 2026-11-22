@@ -60,7 +60,12 @@ export type ExecuteToolContinueContext = {
   summary: string | undefined;
   grant: ToolGrant;
   mutatingToolNames: ReadonlySet<string>;
-  changeImpactGate?: { required: boolean; satisfied: boolean };
+  changeImpactGate?: {
+    required: boolean;
+    satisfied: boolean;
+    lastImpactAffectedFiles?: string[];
+    lastWidenVerification?: boolean;
+  };
   changeImpactNudgeBudget?: { remaining: number };
   mustReadNudgeBudget?: { remaining: number };
   taskListRef?: TaskListRef;
@@ -465,9 +470,29 @@ export async function finishExecuteOneTool(
     }
 
   if (result.status === "succeeded") {
-    if (toolCall.name === "analyze_change_impact" && changeImpactGate) {
+    if (
+      (toolCall.name === "analyze_change_impact" ||
+        toolCall.name === "plan_check_change_impact") &&
+      changeImpactGate
+    ) {
       changeImpactGate.satisfied = true;
       reasonCodes.push("change_impact_observed");
+      const impactOutput = result.output as
+        | {
+            affectedFiles?: Array<{ path?: string }>;
+            widenVerification?: boolean;
+          }
+        | undefined;
+      const paths = (impactOutput?.affectedFiles ?? [])
+        .map((file) => file.path)
+        .filter((path): path is string => typeof path === "string" && path.length > 0);
+      if (paths.length > 0) {
+        changeImpactGate.lastImpactAffectedFiles = paths;
+      }
+      if (typeof impactOutput?.widenVerification === "boolean") {
+        changeImpactGate.lastWidenVerification =
+          impactOutput.widenVerification;
+      }
     }
     const output = result.output as
       | { checkpointId?: string; changedFiles?: string[] }
