@@ -1,6 +1,6 @@
 {
   "name": "@mitii/settings",
-  "version": "2.11.21",
+  "version": "2.11.22",
   "description": "Shared Mitii settings catalog (single source of truth for mitii.* keys): contract, defaults, nesting helpers, and VS Code contributes projection.",
   "license": "AGPL-3.0-or-later",
   "type": "module",
