@@ -263,6 +263,18 @@ describe('CLI default command', () => {
     expect(parsed.initNoIndex).toBe(true);
     expect(parsed.initNoGitignore).toBe(true);
   });
+
+  it('passes --profile through to session', () => {
+    const parsed = parseCliArgs([
+      'node',
+      'mitii',
+      'session',
+      '--profile',
+      'architect',
+    ]);
+    expect(parsed.command).toBe('session');
+    expect(parsed.profile).toBe('architect');
+  });
 });
 
 describe('CLI setup', () => {

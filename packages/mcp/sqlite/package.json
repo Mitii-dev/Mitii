@@ -1,6 +1,6 @@
 {
   "name": "@mitii/mcp-sqlite",
-  "version": "2.11.22",
+  "version": "2.11.23",
   "description": "Mitii MCP stdio server for SQLite — readonly or readwrite via MCP_DB_ACCESS.",
   "license": "AGPL-3.0-or-later",
   "type": "module",

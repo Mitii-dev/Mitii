@@ -68,6 +68,7 @@ export function resolveCliArgs(state: CliArgScanState): ParsedCliArgs {
       json: flags.has('json'),
       forceEcho: flags.has('echo'),
       mode,
+      ...(command === 'session' && profile ? { profile } : {}),
       loopPolicyJson,
       noLoopPolicy: flags.has('no-loop-policy'),
       ...(command === 'index' && flags.has('status')
