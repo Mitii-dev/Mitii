@@ -1,17 +1,30 @@
 const { spawnSync } = require('node:child_process');
 
+/**
+ * Publish order: dependents after dependencies.
+ * Keep in sync with scripts/sync-versions.mjs and .github/workflows/npm-publish.yml.
+ * VS Code extension publishes via Release → publish-marketplace (not npm).
+ */
 const packages = [
   '@mitii/settings',
   '@mitii/ui-core',
   '@mitii/ui-theme',
+  '@mitii/ui-protocol',
   '@mitii/ui-react',
   '@mitii/v8',
+  '@mitii/search-kit',
   '@mitii/sdk',
   '@mitii/automation',
-  '@mitii/search-kit',
+  '@mitii/mcp',
+  '@mitii/mcp-web',
+  '@mitii/mcp-sqlite',
+  '@mitii/mcp-postgres',
+  '@mitii/mcp-mongo',
+  '@mitii/mcp-sql',
   '@mitii/host',
   '@mitii/cli',
   '@mitii/daemon',
+  '@mitii/acp',
 ];
 const hasToken = Boolean(process.env.NODE_AUTH_TOKEN || process.env.NPM_TOKEN);
 const hasGithubOidc = Boolean(

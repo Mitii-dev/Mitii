@@ -1,6 +1,7 @@
-# Publishes @mitii/ui-core -> @mitii/v8 -> @mitii/sdk -> @mitii/automation -> @mitii/search-kit -> @mitii/host -> @mitii/cli -> @mitii/daemon to npm.
-# Invoked from the Release workflow on v* tags, or manually via workflow_dispatch.
-# For trusted publishing through workflow_call, configure npm with the caller workflow filename.
+# Publishes product npm packages in dependency order (see scripts/publish-npm.cjs):
+# settings, ui-*, v8, search-kit, sdk, automation, mcp*, host, cli, daemon, acp.
+# Invoked from the Release workflow, or manually via workflow_dispatch.
+# VS Code Marketplace / Open VSX publish via Release → publish-marketplace.
 # Prefers GitHub OIDC trusted publishing; NPM_TOKEN is optional fallback.
 name: npm publish
 
