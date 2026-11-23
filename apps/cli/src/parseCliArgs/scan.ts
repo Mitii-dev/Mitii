@@ -307,6 +307,18 @@ export function scanCliArgs(argv: string[]): CliArgScanOutcome {
       flags.add('yes');
       continue;
     }
+    if (arg === '--no-index') {
+      flags.add('no-index');
+      continue;
+    }
+    if (arg === '--no-gitignore') {
+      flags.add('no-gitignore');
+      continue;
+    }
+    if (arg === '--agents') {
+      flags.add('agents');
+      continue;
+    }
     if (arg === '--preview' || arg === '-p') {
       flags.add('preview');
       continue;

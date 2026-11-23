@@ -26,6 +26,8 @@ export default defineConfig({
     outDir: resolve(__dirname, '../dist/webview'),
     emptyOutDir: true,
     cssCodeSplit: false,
+    // Single webview entry ships UI packages together; ~500–600 kB is expected.
+    chunkSizeWarningLimit: 650,
     rollupOptions: {
       input: resolve(__dirname, 'index.html'),
       output: {

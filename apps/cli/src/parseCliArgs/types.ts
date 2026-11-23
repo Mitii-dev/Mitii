@@ -31,10 +31,16 @@ export interface ParsedCliArgs {
     | 'paths'
     | 'doctor'
     | 'profile'
+    | 'init'
     | 'mcp'
     | 'history'
     | 'unknown'
     | 'error';
+  /** `mitii init` flags */
+  initYes?: boolean;
+  initNoIndex?: boolean;
+  initNoGitignore?: boolean;
+  initAgents?: boolean;
   prompt?: string;
   cwd?: string;
   json?: boolean;

@@ -5,9 +5,11 @@ Usage:
   mitii [--version | -v | version]
   mitii help
   mitii setup [--show] [--provider <id>] [--model <id>] [--test]
+  mitii init [--yes] [--agents] [--no-index] [--no-gitignore]
   mitii doctor [--cwd <path>] [--json]
   mitii paths [--cwd <path>] [--json]
   mitii profile list|show|use <slug>|clear|init
+  mitii                 # opens interactive session (same as mitii session)
   mitii mcp list|tools [serverId]|path [--json]
   mitii recipe list|show <id>|run <id> …
   mitii history list|show|usage|path [--json]
@@ -35,14 +37,14 @@ Usage:
   mitii connect <channel> …
 
 First run:
-  1. Copy .env.example → .env (or .mitii/.env) and fill keys
-  2. mitii setup --provider anthropic --yes   # writes .mitii/config.json (no secrets)
-  3. mitii doctor                             # verify config / keys / index paths
-  4. mitii index && mitii session             # index workspace, then REPL
+  1. cd <repo> && mitii setup                 # provider → API key (.mitii/.env) → models → test
+  2. mitii init --yes --agents                # .mitii layout, gitignore, index
+  3. mitii                                    # interactive session (branded REPL)
   Or smoke without a key:  mitii ask "ping" --echo
 
 Commands:
   setup            Interactive (or flag) model/provider setup
+  init             Bootstrap workspace (.mitii/, gitignore, optional AGENTS.md, index)
   doctor           Check config, env keys, index, and log paths
   paths            Print where config / index / logs live
   profile          List / switch mode profiles (.mitii/modes.json)
@@ -56,7 +58,7 @@ Commands:
   pr-summary       Draft a PR body (auto-attaches git-pr-summary)
   changelog        Draft Keep a Changelog entry (auto-attaches release-changelog)
   run --auto       Unattended CI run (agent + apply autonomy; no prompts)
-  session          Interactive REPL (/help, /clear, /exit; empty line ignored)
+  session          Interactive REPL (/help /init /mode /index /exit)
   index            Full workspace index + publish repository state
                    --status            Show Code/FTS/Embeddings pipeline health (no reindex)
   review           Deterministic review preview/prepare (+ SARIF); LLM findings via ask

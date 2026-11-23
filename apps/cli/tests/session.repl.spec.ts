@@ -156,29 +156,54 @@ describe('mitii session REPL', () => {
 });
 
 describe('runSlashCommand', () => {
-  const io = (): { io: SessionIo; out: string[] } => {
+  let slashCwd: string;
+  beforeEach(() => {
+    slashCwd = mkdtempSync(join(tmpdir(), 'mitii-cli-slash-'));
+  });
+  afterEach(() => {
+    rmSync(slashCwd, { recursive: true, force: true });
+  });
+
+  const ctx = (): {
+    ctx: Parameters<typeof runSlashCommand>[1];
+    out: string[];
+  } => {
     const out: string[] = [];
+    const io: SessionIo = {
+      writeStdout: (c) => void out.push(c),
+      writeStderr: (c) => void out.push(c),
+      prompt: async () => '',
+    };
     return {
       out,
-      io: {
-        writeStdout: (c) => void out.push(c),
-        writeStderr: (c) => void out.push(c),
-        prompt: async () => '',
+      ctx: {
+        cwd: slashCwd,
+        io,
+        state: { mode: 'ask' },
+        forceEcho: true,
       },
     };
   };
 
-  it('maps exit aliases and help', () => {
-    const { io: sessionIo, out } = io();
-    expect(runSlashCommand('/exit', sessionIo)).toBe('exit');
-    expect(runSlashCommand('/QUIT', sessionIo)).toBe('exit');
-    expect(runSlashCommand('/help', sessionIo)).toBe('continue');
+  it('maps exit aliases and help', async () => {
+    const { ctx: slashCtx, out } = ctx();
+    expect(await runSlashCommand('/exit', slashCtx)).toBe('exit');
+    expect(await runSlashCommand('/QUIT', slashCtx)).toBe('exit');
+    expect(await runSlashCommand('/help', slashCtx)).toBe('continue');
     expect(out.join('')).toContain('/exit, /quit');
   });
 
-  it('leaves normal prompts and absolute paths for the agent', () => {
-    const { io: sessionIo } = io();
-    expect(runSlashCommand('explain this', sessionIo)).toBeUndefined();
-    expect(runSlashCommand('/usr/bin/env is what?', sessionIo)).toBeUndefined();
+  it('switches mode in session state', async () => {
+    const { ctx: slashCtx } = ctx();
+    expect(await runSlashCommand('/mode agent', slashCtx)).toBe('continue');
+    expect(slashCtx.state.mode).toBe('agent');
+  });
+
+  it('leaves normal prompts and absolute paths for the agent', async () => {
+    const { ctx: slashCtx } = ctx();
+    expect(await runSlashCommand('explain this', slashCtx)).toBeUndefined();
+    expect(
+      await runSlashCommand('/usr/bin/env is what?', slashCtx),
+    ).toBeUndefined();
   });
 });

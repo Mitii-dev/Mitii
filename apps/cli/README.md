@@ -26,14 +26,18 @@ Legacy npm `@mitii/cli@2.7.x` is a different binary stack - prefer versions publ
 ```bash
 mitii --help                 # or: mitii -h
 
-# Secrets via .env (auto-loaded) — never put keys in config.json
-cp .env.example .env         # or create .mitii/.env
-# edit ANTHROPIC_API_KEY / MITII_PROVIDER / MITII_MODEL / MITII_BASE_URL / MITII_CONTEXT_WINDOW
+# Interactive setup: provider → API key (.mitii/.env) → list models → pick → test
+mitii setup
 
-mitii setup --provider anthropic --yes   # writes .mitii/config.json (no secrets)
+# Bootstrap this repo (.mitii/, gitignore, index)
+mitii init --yes --agents
+
+# Or non-interactive model config (key must already be in env / .env):
+# export ANTHROPIC_API_KEY=...   # or MITII_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY
+mitii setup --provider anthropic --model claude-sonnet-4-5 --yes --test
+
 mitii doctor                 # config + keys + index + log paths
-mitii index                  # build workspace index
-mitii session                # dotted MITII banner + interactive loop
+mitii                        # interactive session (same as mitii session)
 
 # Useful:
 mitii paths                  # where config / index / logs live
@@ -44,6 +48,10 @@ mitii history list           # session logs under .mitii/logs
 mitii history usage          # last-run token summary
 mitii commit-message         # draft commit message from git
 mitii index --status         # check index health
+
+# In-session (mitii ›):
+#   /help  /init  /mode ask|plan|agent  /profile use code
+#   /index  /status  /doctor  /config  /exit
 ```
 
 ### Session logs (Desktop / VS Code parity)
@@ -96,6 +104,7 @@ mitii export-session "Summarize this repo" --out session.json --echo
 | Command | Behavior |
 |---|---|
 | `setup` | Interactive (or flag-driven) model/provider setup |
+| `init` | Bootstrap `.mitii/`, gitignore, optional `AGENTS.md`, then index |
 | `ask <prompt>` / `ask --prompt "…"` | One-shot run (ask mode / config `defaultMode`) |
 | `plan --prompt "…"` | One-shot plan mode (read-only; no file edits) |
 | `agent --prompt "…"` | One-shot agent mode (edit + tools; add `--autonomy apply` for CI) |
@@ -103,7 +112,7 @@ mitii export-session "Summarize this repo" --out session.json --echo
 | `pr-summary` | Draft PR body (auto-attaches `git-pr-summary`) |
 | `changelog` | Draft Keep a Changelog entry (auto-attaches `release-changelog`) |
 | `run --auto "<task>"` | Unattended CI run (agent + apply autonomy; no prompts) |
-| `session` | Interactive prompt loop with MITII banner |
+| `session` | Interactive REPL (orange brand chrome; `/help` `/init` `/mode` `/index` …) |
 | `index` | Full workspace index + publish; `--status` shows Code/FTS/Embeddings pipeline health (no reindex) |
 | `review` | Deterministic review prep / SARIF (`--preview`, `--from`/`--to`, `--commit`, `--format`, `--output`). For LLM findings use `mitii ask … --skill code-review-and-quality` (recipe/skill) or the VS Code **Review** button for working-tree changes |
 | `status` | Show latest persisted repository state + index pipeline health |
@@ -492,20 +501,31 @@ schema, so engine-only keys that are not in the catalog are still accepted.
 | Option | Meaning |
 |---|---|
 | `--show` | Print current config (no secrets) |
-| `--provider <id>` | `ollama`, `anthropic`, `gemini`, `openai`, `deepseek`, ... |
+| `--provider <id>` | `ollama`, `ollama-cloud`, `anthropic`, `gemini`, `openai`, `deepseek`, ... |
 | `--model <id>` | Model id |
 | `--base-url <url>` | OpenAI-compatible base URL |
-| `--global` | Write `~/.mitii/config.json` instead of project `.mitii/` |
+| `--global` | Write `~/.mitii/config.json` (+ `~/.mitii/.env` for keys) instead of project `.mitii/` |
 | `--test` | Probe the provider after writing |
 | `--yes` / `-y` | Non-interactive (requires `--provider`) |
 
+Interactive `mitii setup` (no `--yes`):
+
+1. Choose a provider.
+2. If the provider needs a key, prompt for it (or keep an existing env key) and save to `.mitii/.env`.
+3. Call the provider’s model catalog (`listProviderModels`) and let you pick a model.
+4. Write non-secret `.mitii/config.json`.
+5. Offer **Test connection** (default yes).
+
 ```bash
-# Local Ollama
+# Interactive (recommended for ollama-cloud / cloud keys)
+mitii setup
+
+# Local Ollama (no key; still tries to list local models)
 mitii setup --provider ollama --yes
 
-# Claude, then set the key in the shell
-mitii setup --provider anthropic --model claude-sonnet-4-5 --yes
+# Claude non-interactive
 export ANTHROPIC_API_KEY=sk-ant-...
+mitii setup --provider anthropic --model claude-sonnet-4-5 --yes --test
 
 # Custom OpenAI-compatible gateway
 mitii setup --provider openai-compatible --base-url http://localhost:1234/v1 --model local-model --yes --test
@@ -625,7 +645,7 @@ Cursor Cloud Agents are a separate agent API, not an LLM endpoint. Point `openai
 
 ## Session UI
 
-`mitii session` prints a dotted **MITII** banner, then workspace / provider / mode, and the `mitii>` prompt. If you are still on the echo stub, it points you at `mitii setup`.
+`mitii` / `mitii session` prints the orange **MITII** brand mark, a readiness board (git, index, provider, mode), then the `mitii ›` prompt. Session commands include `/init`, `/mode`, `/profile`, `/index`, `/status`, `/doctor`, `/config`, and `/help`. If you are still on the echo stub, it points you at `mitii setup`.
 
 ## Troubleshooting
 

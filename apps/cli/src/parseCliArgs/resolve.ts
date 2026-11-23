@@ -30,9 +30,22 @@ export function resolveCliArgs(state: CliArgScanState): ParsedCliArgs {
     automationPassthrough,
   } = state;
 
-  const [command = 'help', ...rest] = positionals;
+  // Bare `mitii` opens an interactive session; use --help for usage.
+  const [command = 'session', ...rest] = positionals;
   if (command === 'help') return { command: 'help', rest: [] };
   if (command === 'version') return { command: 'version', rest: [] };
+  if (command === 'init') {
+    return {
+      command: 'init',
+      cwd,
+      forceEcho: flags.has('echo'),
+      initYes: flags.has('yes'),
+      initNoIndex: flags.has('no-index'),
+      initNoGitignore: flags.has('no-gitignore'),
+      initAgents: flags.has('agents'),
+      rest,
+    };
+  }
   if (command === 'setup') {
     return {
       command: 'setup',

@@ -193,11 +193,24 @@ export async function main(
       return runSession({
         cwd,
         forceEcho: parsed.forceEcho === true,
-        mode: parsed.mode,
+        mode: parsed.mode === 'database' ? 'ask' : parsed.mode,
+        profile: parsed.profile,
         loopPolicyJson: parsed.loopPolicyJson,
         noLoopPolicy: parsed.noLoopPolicy === true,
         io: sessionIo,
       });
+    case 'init': {
+      const { runInit } = await import('./commands/init.js');
+      return runInit({
+        cwd,
+        yes: parsed.initYes === true,
+        noIndex: parsed.initNoIndex === true,
+        noGitignore: parsed.initNoGitignore === true,
+        agents: parsed.initAgents === true,
+        forceEcho: parsed.forceEcho === true,
+        io: sessionIo,
+      });
+    }
     case 'setup':
       return runSetup({
         cwd,

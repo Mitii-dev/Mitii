@@ -1,6 +1,9 @@
 const { builtinModules } = require('node:module');
 const { existsSync, readFileSync, statSync } = require('node:fs');
-const { join } = require('node:path');
+const { join, resolve } = require('node:path');
+const {
+  isOptionalVscodeNativeExternal,
+} = require(resolve(__dirname, '../../../scripts/esbuild-native-externals.cjs'));
 
 const root = join(__dirname, '..');
 const dist = join(root, 'dist');
@@ -13,6 +16,8 @@ const allowedExternalRequires = new Set([
   'vscode',
   // Bundled TypeScript optionally probes this in a guarded try/catch.
   'source-map-support',
+  // Optional LanceDB vector store (same external as the extension build).
+  '@lancedb/lancedb',
 ]);
 const failures = [];
 
@@ -73,7 +78,8 @@ if (existsSync(bundlePath)) {
     if (
       request.startsWith('.') ||
       builtins.has(request) ||
-      allowedExternalRequires.has(request)
+      allowedExternalRequires.has(request) ||
+      isOptionalVscodeNativeExternal(request)
     ) {
       continue;
     }

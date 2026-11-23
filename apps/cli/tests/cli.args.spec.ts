@@ -10,6 +10,7 @@ import { saveMitiiHostConfig } from '../src/config.js';
 import { resolveCliPorts } from '../src/ports.js';
 import { runSetup } from '../src/setup.js';
 import type { SessionIo } from '../src/session.js';
+import { createTermStyle } from '../src/termStyle.js';
 
 function memoryIo(answers: string[] = []): SessionIo & {
   stdout: string;
@@ -229,10 +230,38 @@ describe('CLI banner', () => {
       version: '0.0.0',
       isEcho: true,
       showSetupHint: true,
+      indexOverall: 'missing',
+      gitPresent: false,
+      profile: null,
+      style: createTermStyle({ isTTY: false }),
     });
-    expect(header).toContain('Mitii CLI');
+    expect(header).toContain('Mitii');
     expect(header).toContain('mitii setup');
     expect(header).toContain('/tmp/ws');
+    expect(header).toContain('SETUP REQUIRED');
+  });
+});
+
+describe('CLI default command', () => {
+  it('opens session when invoked with no subcommand', () => {
+    expect(parseCliArgs(['node', 'mitii']).command).toBe('session');
+  });
+
+  it('parses init flags', () => {
+    const parsed = parseCliArgs([
+      'node',
+      'mitii',
+      'init',
+      '--yes',
+      '--agents',
+      '--no-index',
+      '--no-gitignore',
+    ]);
+    expect(parsed.command).toBe('init');
+    expect(parsed.initYes).toBe(true);
+    expect(parsed.initAgents).toBe(true);
+    expect(parsed.initNoIndex).toBe(true);
+    expect(parsed.initNoGitignore).toBe(true);
   });
 });
 

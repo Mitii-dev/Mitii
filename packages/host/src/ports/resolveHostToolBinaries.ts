@@ -6,7 +6,11 @@ import { accessSync, constants, existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 
-const requireFromHere = createRequire(import.meta.url);
+import { resolveRuntimeFilename } from '../internal/resolveRuntimeFilename.js';
+
+function requireFromHere() {
+  return createRequire(resolveRuntimeFilename());
+}
 
 function isExecutable(path: string): boolean {
   try {
@@ -24,7 +28,7 @@ function isExecutable(path: string): boolean {
 
 function requireWithFallback(specifier: string): string | undefined {
   try {
-    return requireFromHere.resolve(specifier);
+    return requireFromHere().resolve(specifier);
   } catch {
     try {
       return createRequire(join(process.cwd(), 'package.json')).resolve(
@@ -75,7 +79,7 @@ function detectAstGrepPlatformPackage(): string | undefined {
       let libc: 'gnu' | 'musl' = 'gnu';
       try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const detect = requireFromHere('detect-libc') as {
+        const detect = requireFromHere()('detect-libc') as {
           familySync?: () => string;
           MUSL?: string;
         };
@@ -110,7 +114,7 @@ export function resolveRipgrepBinary(override?: string): string {
   try {
     // ESM package: sync resolve may still surface platform path via CJS interop.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mod = requireFromHere('@vscode/ripgrep') as { rgPath?: string };
+    const mod = requireFromHere()('@vscode/ripgrep') as { rgPath?: string };
     if (mod.rgPath && isExecutable(mod.rgPath)) return mod.rgPath;
   } catch {
     /* optional */

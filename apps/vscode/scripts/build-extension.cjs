@@ -20,7 +20,7 @@ const {
   stageOnnxRuntime,
 } = require(resolve(__dirname, '../../../scripts/stage-onnxruntime.cjs'));
 const {
-  isNativeExternal,
+  isOptionalVscodeNativeExternal,
 } = require(resolve(__dirname, '../../../scripts/esbuild-native-externals.cjs'));
 
 const root = join(__dirname, '..');
@@ -34,15 +34,11 @@ const builtins = new Set([
   ...builtinModules,
   ...builtinModules.map((name) => `node:${name}`),
 ]);
-const externals = new Set([
-  'vscode',
-  '@lancedb/lancedb',
-  'better-sqlite3',
-  'web-tree-sitter',
-  'tree-sitter-wasms',
-  'tree-sitter',
-  'es-git',
-]);
+// VSIX is packaged with --no-dependencies. Bundle typescript / better-sqlite3 /
+// web-tree-sitter; stage .node / wasm / onnx beside the bundle. Only leave
+// vscode, optional LanceDB, and optional native tree-sitter / es-git external
+// (those soft-fail to WASM / CLI when missing from the Extension Host).
+const externals = new Set(['vscode', '@lancedb/lancedb']);
 
 function buildWebview() {
   const viteBin = join(webviewDir, 'node_modules', 'vite', 'bin', 'vite.js');
@@ -112,7 +108,7 @@ build({
           if (
             builtins.has(args.path) ||
             externals.has(args.path) ||
-            isNativeExternal(args.path, externals)
+            isOptionalVscodeNativeExternal(args.path)
           ) {
             return { path: args.path, external: true };
           }
