@@ -63,6 +63,14 @@ const stagedReleaseFiles = [
 
 try {
   run('pnpm', ['run', 'rebuild:native'], { cwd: repoRoot });
+  // Rebuild workspace deps in topological order (@mitii/automation before
+  // @mitii/host, etc.) so packaging never typechecks host against a missing
+  // automation dist. Filter is the package name + `^...` (deps only).
+  run(
+    'pnpm',
+    ['-r', '--filter', 'mitii-ai-agent^...', 'run', 'build'],
+    { cwd: repoRoot },
+  );
   run('pnpm', ['run', 'build:prod']);
   run('pnpm', ['run', 'audit:package']);
 

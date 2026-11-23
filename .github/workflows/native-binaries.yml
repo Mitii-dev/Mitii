@@ -36,6 +36,7 @@ jobs:
       - run: pnpm run rebuild:native
         env:
           MITII_ELECTRON_VERSION: 42.6.0
+      - run: pnpm run build:vscode-deps
       - run: pnpm run package
         env:
           MITII_VSCODE_TARGET: ${{ matrix.target }}

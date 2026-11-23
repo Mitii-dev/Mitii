@@ -32,6 +32,7 @@ jobs:
       - run: pnpm run check:settings-catalog
       - run: pnpm run build:cli
       - run: pnpm run test:scripts
+      - run: pnpm run build:vscode-deps
       - run: pnpm run build:vscode:prod
       - run: pnpm --filter mitii-ai-agent audit:package
       - run: pnpm run benchmark:validate

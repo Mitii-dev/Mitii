@@ -1,7 +1,7 @@
 {
   "name": "mitii-ai-agent",
   "description": "Private Mitii monorepo workspace orchestrator. Product packages: @mitii/ui-core, @mitii/ui-theme, @mitii/ui-react, @mitii/ui-protocol, @mitii/v8, @mitii/sdk, @mitii/automation, @mitii/search-kit, @mitii/mcp, @mitii/mcp-web, @mitii/mcp-sqlite, @mitii/mcp-postgres, @mitii/mcp-mongo, @mitii/mcp-sql, @mitii/host, @mitii/cli, @mitii/daemon, @mitii/acp, @mitii/desktop, apps/vscode.",
-  "version": "2.11.23",
+  "version": "2.11.24",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "author": {
@@ -31,6 +31,7 @@
     "build:desktop": "pnpm -r --filter @mitii/desktop... run build",
     "build:vscode": "pnpm --filter ./apps/vscode build",
     "build:vscode:prod": "pnpm --filter ./apps/vscode build:prod",
+    "build:vscode-deps": "pnpm -r --filter mitii-ai-agent^... run build",
     "typecheck": "pnpm run build && pnpm -r --filter @mitii/settings --filter @mitii/ui-core --filter @mitii/ui-theme --filter @mitii/ui-react --filter @mitii/ui-protocol --filter @mitii/v8 --filter @mitii/sdk --filter @mitii/automation --filter @mitii/search-kit --filter @mitii/mcp --filter @mitii/mcp-web --filter @mitii/mcp-sqlite --filter @mitii/mcp-postgres --filter @mitii/mcp-mongo --filter @mitii/mcp-sql --filter @mitii/host --filter @mitii/cli --filter @mitii/daemon --filter @mitii/acp --filter @mitii/desktop --filter ./apps/vscode run typecheck",
     "test": "node scripts/ensure-node-native.mjs && vitest run && pnpm run test:ui && pnpm run test:webview && pnpm run test:cli && pnpm run test:desktop",
     "test:watch": "node scripts/ensure-node-native.mjs && vitest",

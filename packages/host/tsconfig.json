@@ -5,7 +5,7 @@
     "outDir": "dist",
     "composite": false,
     "noEmit": false,
-    "noEmitOnError": false
+    "noEmitOnError": true
   },
   "include": ["src/**/*"],
   "exclude": [

@@ -6,7 +6,15 @@ const require = createRequire(import.meta.url);
 const {
   isNativeExternal,
   isOptionalVscodeNativeExternal,
+  isVscodeMustBundle,
 } = require('./esbuild-native-externals.cjs');
+
+test('isVscodeMustBundle covers VSIX runtime packages and subpaths', () => {
+  assert.equal(isVscodeMustBundle('typescript'), true);
+  assert.equal(isVscodeMustBundle('typescript/lib/tsserverlibrary'), true);
+  assert.equal(isVscodeMustBundle('better-sqlite3'), true);
+  assert.equal(isVscodeMustBundle('tree-sitter'), false);
+});
 
 test('isOptionalVscodeNativeExternal keeps VSIX-bundled packages internal', () => {
   for (const path of [

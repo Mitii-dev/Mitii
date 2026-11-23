@@ -101,6 +101,17 @@ if (failures.length > 0) {
   for (const failure of failures) {
     console.error(`  - ${failure}`);
   }
+  if (
+    failures.some((failure) =>
+      /unresolved runtime require in extension bundle: (typescript|better-sqlite3)/.test(
+        failure,
+      ),
+    )
+  ) {
+    console.error(
+      '  hint: VSIX uses --no-dependencies; rebuild with apps/vscode/scripts/build-extension.cjs so typescript and better-sqlite3 are bundled (not external).',
+    );
+  }
   process.exit(1);
 }
 

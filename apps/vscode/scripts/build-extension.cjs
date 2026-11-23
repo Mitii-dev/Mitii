@@ -21,6 +21,7 @@ const {
 } = require(resolve(__dirname, '../../../scripts/stage-onnxruntime.cjs'));
 const {
   isOptionalVscodeNativeExternal,
+  isVscodeMustBundle,
 } = require(resolve(__dirname, '../../../scripts/esbuild-native-externals.cjs'));
 
 const root = join(__dirname, '..');
@@ -105,6 +106,20 @@ build({
       name: 'workspace-node-resolve',
       setup(buildApi) {
         buildApi.onResolve({ filter: /^[^./]/ }, (args) => {
+          // Never externalize packages the VSIX must ship inside extension.js.
+          if (isVscodeMustBundle(args.path)) {
+            try {
+              return { path: resolveBareImport(args) };
+            } catch (error) {
+              return {
+                errors: [
+                  {
+                    text: `VS Code bundle must resolve "${args.path}" (VSIX has --no-dependencies): ${error instanceof Error ? error.message : String(error)}`,
+                  },
+                ],
+              };
+            }
+          }
           if (
             builtins.has(args.path) ||
             externals.has(args.path) ||

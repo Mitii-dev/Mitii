@@ -48,6 +48,34 @@ function isNativeExternal(path, extra) {
 }
 
 /**
+ * Packages that must be inlined into the VS Code extension.js bundle.
+ * VSIX is packaged with `--no-dependencies`, so these cannot remain as
+ * runtime `require("…")` calls.
+ */
+const VSCODE_MUST_BUNDLE = [
+  'typescript',
+  'better-sqlite3',
+  'web-tree-sitter',
+  'tree-sitter-wasms',
+  'onnxruntime-node',
+  'onnxruntime-web',
+  'onnxruntime-common',
+  '@vscode/ripgrep',
+  '@ast-grep/cli',
+];
+
+/**
+ * @param {string} path bare import path
+ */
+function isVscodeMustBundle(path) {
+  if (VSCODE_MUST_BUNDLE.includes(path)) return true;
+  // Subpath imports (e.g. typescript/lib/tsserverlibrary).
+  return VSCODE_MUST_BUNDLE.some(
+    (pkg) => path === pkg || path.startsWith(`${pkg}/`),
+  );
+}
+
+/**
  * Optional .node addons the VS Code extension may probe at runtime.
  * Soft-fail paths use WASM tree-sitter / CLI git when these are absent.
  * Must not include packages the VSIX bundles (typescript, better-sqlite3, …).
@@ -55,6 +83,9 @@ function isNativeExternal(path, extra) {
  * @param {string} path bare import path
  */
 function isOptionalVscodeNativeExternal(path) {
+  if (isVscodeMustBundle(path)) {
+    return false;
+  }
   if (path === 'tree-sitter' || path === 'es-git') {
     return true;
   }
@@ -73,6 +104,8 @@ function isOptionalVscodeNativeExternal(path) {
 
 module.exports = {
   NATIVE_EXTERNALS,
+  VSCODE_MUST_BUNDLE,
   isNativeExternal,
+  isVscodeMustBundle,
   isOptionalVscodeNativeExternal,
 };

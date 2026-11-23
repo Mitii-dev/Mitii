@@ -36,12 +36,16 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Check product package versions are synced
         run: pnpm run sync:versions -- --check
+      # Full monorepo build (topo order: automation before host, …) then typecheck.
       - run: pnpm run typecheck
       - run: pnpm run rebuild:node
       - run: pnpm test
       - run: pnpm run rebuild:native
         env:
           MITII_ELECTRON_VERSION: 42.6.0
+      # Rebuild extension deps again right before package so host never sees a
+      # missing @mitii/automation dist after earlier clean/test steps.
+      - run: pnpm run build:vscode-deps
       - run: pnpm run package
         env:
           MITII_VSCODE_TARGET: ${{ matrix.target }}
