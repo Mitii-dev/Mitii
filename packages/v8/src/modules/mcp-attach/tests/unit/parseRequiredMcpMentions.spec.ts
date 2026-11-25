@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   mergeRequiredMcpServerIds,
   parseRequiredMcpMentions,
-} from "../parseRequiredMcpMentions.js";
+} from "../../index";
 
 describe("parseRequiredMcpMentions", () => {
   it("extracts @mcp mentions and cleans the message", () => {

@@ -4,7 +4,7 @@ import {
   filterToolsByMcpAttach,
   isMcpToolAttached,
   mcpServerIdFromToolName,
-} from "../mcpToolAttachFilter.js";
+} from "../../index";
 
 describe("mcpToolAttachFilter", () => {
   it("parses server id from tool names", () => {
@@ -25,9 +25,8 @@ describe("mcpToolAttachFilter", () => {
       { name: "mcp__excalidraw__create_view" },
       { name: "mcp__memory__store" },
     ];
-    expect(filterToolsByMcpAttach(tools, ["excalidraw"]).map((t) => t.name)).toEqual([
-      "read_file",
-      "mcp__excalidraw__create_view",
-    ]);
+    expect(
+      filterToolsByMcpAttach(tools, ["excalidraw"]).map((t) => t.name),
+    ).toEqual(["read_file", "mcp__excalidraw__create_view"]);
   });
 });

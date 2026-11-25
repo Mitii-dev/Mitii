@@ -198,10 +198,17 @@ export type {
   SkillSimilarityPort,
 } from "./modules/skills";
 export {
+  McpAttachPipeline,
   parseRequiredMcpMentions, mergeRequiredMcpServerIds, normalizeMcpServerId,
-  MAX_REQUIRED_MCP_SERVERS, MCP_TOOL_NAME_PREFIX, mcpServerIdFromToolName,
+  MAX_REQUIRED_MCP_SERVERS, MCP_TOOL_NAME_PREFIX, MCP_ATTACH_STAGES,
+  mcpServerIdFromToolName,
   isMcpToolAttached, filterToolsByMcpAttach, withMcpAttachOnGrant,
   formatMcpAttachInstruction,
+} from "./modules/mcp-attach";
+export type {
+  McpAttachPipelineDependencies,
+  McpAttachInstruction,
+  ModuleLoggerPort as McpAttachModuleLoggerPort,
 } from "./modules/mcp-attach";
 export { MemoryPipeline, MemoryContentPolicy } from "./modules/memory";
 export {
