@@ -1,222 +1,44 @@
 # Verification
 
-Verification gathers evidence after a change. It maps changed files to projects, discovers trusted checks, executes them through a verification tool port, normalizes diagnostics, and reports whether the change has enough evidence to complete.
+Gathers post-change evidence: maps files to projects, discovers trusted
+checks, executes them through a tool port, normalizes diagnostics, and
+recommends completion from that evidence. Does not own mutation or tool
+runtime itself.
 
-## What This Module Does
+## Contract
 
-- Validates verification input.
-- Maps changed files to affected projects.
-- Reads trusted manifests.
-- Discovers applicable checks.
-- Selects proportional checks for the change scope. `test` checks (including
-  `desktop:test` / WDIO) run only when `minimumEvidence` includes `tests`.
-  Required evidence kinds (typecheck/build/…) are never truncated by the
-  window `maxVerificationChecks` floor (often 2 on small context windows).
-- Package-scopes tests (and localized typecheck/lint/build) to touched
-  `apps/` / `packages/` roots from `changedFiles` (plus optional
-  `impactAffectedFiles`). Hosts may set `widenScope` when change-impact
-  reports unsafe graph confidence so sibling packages are not omitted.
-  A vscode settings paste must never drag in `packages/v8:test` unless that
-  package was edited and
-  tests were requested.
-- Discovers cheap `syntax` candidates for changed `.py` / `.js` / `.sh`
-  files (`py_compile`, `node --import` module-load, `node --check`,
-  `bash -n`) without inventing full suites. When a host wires
-  `VerificationSyntaxPort` (tree-sitter ERROR / missing nodes), that port
-  replaces parse-only spawned checks — but Node **module-load**
-  (`NODE_MODULE_LOAD_EVIDENCE`) stays selected so duplicate exports and
-  other instantiate-time errors are not missed. Syntax never satisfies
-  typecheck evidence.
-- Soft-reorders discovered checks using script tokens from `AGENTS.md` /
-  similar instruction files — never invents argv from those hints.
-- Preflights `mayBeUnavailable` binaries via Tool Runtime (`binary --version`)
-  before running the full check; missing PATH tools become `unavailable`.
-- Repair prompts may include one source line per diagnostic (loaded by the
-  engine; not stored on the durable record).
-- Executes checks through `VerificationToolExecutorPort`.
-- Normalizes diagnostics and compares against optional baseline diagnostics.
-- Filters harness / denied-tree / phantom-secondary residuals (language-agnostic
-  path policy) before completion and before→after compare counts.
-- Soft-accepts (`implemented_unverified`) when authoritative compile passed
-  (project-local typecheck/build, or sole workspace-root compile on
-  single-package fixtures) and remaining failures are only harness,
-  syntax-secondary, empty-suite test exits, or workspace-root noise.
-  Required `tests` evidence with parseable ask-scoped assertion diagnostics
-  is not harness noise — those reopen repair.
-- Compare-only soft-accept when edits landed and actionable
-  `newErrorCount === 0`: pre-existing workspace-root check failures are
-  leftovers for the user ("fix remaining?"), not a hard fail. Still
-  reject ask-scoped defects and failed **project-local** compile on the
-  edited package.
-- Before→after compare counts **NEW∩IN_SCOPE∩ACTIONABLE** when ask/changed
-  paths are supplied (`out_of_scope_residuals_ignored`). Only that intersection
-  opens repair; selection may still run broader checks.
-- Inspects diff/stale-state risk.
-- Returns final verification status and evidence.
-- Builds a durable `VerificationRecord` (before / after / comparison) that is stored outside the model transcript.
-- Produces a deterministic user summary from that record. An optional engine LLM narrative may wrap it; it must not replace the counts. Summary text claims "edits were kept" only when `changedFiles` is non-empty (blocked mutations must not look successful).
-- Optional engine LLM critique (`steering.verificationLlmCritique`) is advisory
-  only after the evidence gate — APPROVE/REJECT keywords never flip
-  `decideVerificationGate`.
+**In:** `VerificationInput` (changed files, projects, grant, pinned state,
+verification requirement, optional baseline).  
+**Out:** `VerificationResult` (+ optional `RepoBuildState` /
+`VerificationRecord`).
 
-## Structure
+| Facade | Stages |
+|---|---|
+| `verify` | 1-map → 2-discover → 3-select → 4-execute → 5-normalize → 6-inspect → 7-recommend |
+| `captureBuildState` / `compareBuildStates` | 8-capture + helpers/compare |
+| `buildRecord` / `buildUserSummary` | 9–10 |
 
-```text
-verification/
-  pipeline/                 VerificationPipeline
-  actions/                  Check discovery, execution, diagnostics, records
-  providers/                 Manifest readers and verification-record stores
-  contracts/
-    input/                  VerificationInput
-    output/                 VerificationResult, RepoBuildState, VerificationRecord
-    ports/                  Tool, manifest, and record-store ports
-    errors/                 VerificationErrors
-  internal/
-  tests/
+Ports (injected): `VerificationToolExecutorPort`,
+`VerificationManifestReaderPort`, optional `VerificationRecordStorePort`,
+`VerificationSyntaxPort`, `ModuleLoggerPort`.
+
+## Example
+
+```ts
+import {
+  VerificationPipeline,
+  InMemoryManifestReader,
+} from "@mitii/v8/modules/verification";
+
+const pipeline = new VerificationPipeline({
+  tools,
+  manifests: new InMemoryManifestReader({}),
+});
+const result = await pipeline.verify(input);
 ```
 
-## Types And Contracts
+## Non-responsibilities
 
-- `VerificationInput`: workspace root, pinned state, changed files, projects, verification requirement, grant, change scope, optional baseline diagnostics, and state readiness.
-- `VerificationResult`: status, state token, affected project ids, checks, diagnostics, diff inspection, warnings, reason codes, and duration.
-- `VerificationCheckResult`: command/check evidence with kind, project id, label, argv, source, outcome, exit code, duration, and summary.
-- `VerificationDiagnostic`: path, severity, message, range, source/code/check id.
-- `RepoBuildState` / `RepoBuildStateComparison`: before/after snapshots and the new / remaining / cleared delta.
-- `VerificationRecord`: durable retry handle. Statuses: `captured_before`, `compared`, `passed`, `incomplete`, `cancelled`.
-- `VerificationManifestReaderPort`: trusted manifest read contract.
-- `VerificationToolExecutorPort`: command/check execution contract.
-- `VerificationRecordStorePort`: save / load / loadLatest. Hosts persist under `.mitii/verification/`.
-
-## Technical Details
-
-- The public facade method is `VerificationPipeline.verify`.
-- `buildRecord` / `persistRecord` / `loadLatestRecord` own the durable artifact. They are not prompt construction.
-- Verification does not run arbitrary commands directly.
-- Checks come from project descriptors and trusted manifests.
-- Node discovery warnings include `projectId`. A workspace-root "no scripts"
-  warning is suppressed when a descendant package already produced checks.
-- Baseline diagnostics let the result focus on newly introduced issues.
-- Unavailable repository state blocks verification unless policy allows unavailable evidence.
-- Diff inspection reports changed paths and stale-state risk.
-- A later "fix the remaining verification errors" turn reloads `loadLatest(workspaceId)` instead of scraping chat history.
-- **Task-relevant stop gate:** `assessTaskRelevantEvidence` owns residual
-  classification. Authoritative evidence is a passed project-local
-  typecheck/build (any layout — not only `apps/` / `packages/`). Absolute
-  `afterErrorCount` never drives repair; only in-scope actionable
-  `newErrorCount` and ask-scoped source defects do. Reason codes:
-  `task_relevant_evidence_passed`, `residual_harness_noise`,
-  `residual_phantom_secondary`, `residual_workspace_root_noise`,
-  `out_of_scope_residuals_ignored`.
-
-- **Behavior evidence:** when the requirement lists `behavior`
-  (`requiresBehaviorEvidence`), a failed non-empty `test` check is a behavior
-  defect (`isBehaviorDefectCheck`) and is never soft-accepted as residual
-  noise. Empty-suite harness failures are still ignorable. Repos with no test
-  checks at all keep the existing `implemented_unverified` path.
-
-## Ownership Boundaries
-
-Owns verification planning, check execution, diagnostics, result evidence, and the durable verification record.
-
-Does not own mutation, general tool authorization, repository indexing, prompt construction, or route policy. The Agent Engine decides when to persist, whether to keep edits, and when to ask the model for a short narrative. After `decideVerificationGate` accepts, the engine hard-stops (`verification_accepted_terminal`) — no incomplete-checklist Continue, repair reopen, or rediscovery. Repair exhaustion likewise stops with `verification_repair_exhausted_terminal` (no `verification_repair_capped` Continue).
-
-## Tests
-
-```bash
-pnpm exec vitest run packages/v8/src/modules/verification
-```
-
-## Example Flow
-
-This example uses a realistic coding-agent request and shows the kind of structure this module receives and returns. The output is representative: ids, timings, and scores are examples, but the shape matches how this module is meant to be understood.
-
-### Real Prompt
-
-```text
-I am in a React app. In src/LoginForm.tsx, when the user clicks the "Sign in" button, show a loading label and disable the button until the login request finishes. Keep the existing validation and error handling. Add or update a focused test if there is already a LoginForm test nearby.
-```
-
-### Real Input Structure
-
-VerificationInput -> VerificationResult:
-
-```json
-{
-  "schemaVersion": 1,
-  "workspaceRoot": "/repo",
-  "pinnedState": { "workspaceId": "workspace-1", "stateToken": "state-abc" },
-  "changedFiles": ["src/LoginForm.tsx", "src/LoginForm.test.tsx"],
-  "projects": [
-    {
-      "projectId": "web",
-      "rootId": "root",
-      "name": "web",
-      "kind": "node",
-      "manifestPath": "package.json"
-    }
-  ],
-  "verification": {
-    "required": true,
-    "minimumEvidence": ["tests_or_diagnostics"],
-    "allowUnavailable": false
-  },
-  "grant": "decision.toolGrant",
-  "changeScope": "localized",
-  "stateReadiness": "ready"
-}
-```
-
-### Step-By-Step Flow
-
-1. A user sends the real prompt shown above from an editor or chat host.
-2. Agent Engine records that mutation tools changed `src/LoginForm.tsx`.
-3. Agent Engine also records that `src/LoginForm.test.tsx` changed because the focused test was updated.
-4. Decision Policy has already required verification for this write route.
-5. Verification validates the pinned repository state and changed-file list.
-6. Verification maps both changed files to the `web` project from Repository State.
-7. Verification reads trusted manifests through `VerificationManifestReaderPort`.
-8. Verification discovers a focused test command or a project diagnostics command.
-9. Verification selects proportional checks because the change scope is localized.
-10. Verification executes the selected check through `VerificationToolExecutorPort`.
-11. Verification normalizes diagnostics and compares them with any baseline diagnostics.
-12. Verification inspects the diff and reports stale-state risk.
-13. Verification returns the realistic output shape shown below.
-14. Agent Engine uses this result to decide whether the run can complete.
-
-### Realistic Output
-
-Verification returns a result like this:
-
-```json
-{
-  "schemaVersion": 1,
-  "status": "passed",
-  "stateToken": "state-abc",
-  "affectedProjectIds": ["web"],
-  "checks": [
-    {
-      "checkId": "web:test-loginform",
-      "kind": "test",
-      "projectId": "web",
-      "label": "LoginForm focused test",
-      "argv": ["pnpm", "test", "src/LoginForm.test.tsx"],
-      "evidenceSource": "package.json",
-      "outcome": "passed",
-      "exitCode": 0,
-      "durationMs": 1842,
-      "summary": "LoginForm pending-state test passed.",
-      "toolCallId": "verify-1"
-    }
-  ],
-  "diagnostics": [],
-  "diff": {
-    "reviewed": true,
-    "staleStateRisk": false,
-    "summary": "Changed LoginForm pending button state and updated focused test.",
-    "changedPaths": ["src/LoginForm.tsx", "src/LoginForm.test.tsx"]
-  },
-  "warnings": [],
-  "reasonCodes": ["verification_passed"],
-  "durationMs": 1910
-}
-```
+Git shelling, tool runtime implementation, decision-policy grants, mutation,
+and review finding generation. Language discovery stays under
+`helpers/discovery/`.

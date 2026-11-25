@@ -6,11 +6,15 @@ export {
   VERIFICATION_CHANGE_SCOPES,
   VERIFICATION_DIAGNOSTIC_SEVERITIES,
   VERIFICATION_REASON_CODES,
+  VERIFICATION_REASON,
   VERIFICATION_ERROR_CODES,
+  VERIFICATION_MESSAGES,
+  VERIFICATION_STAGES,
   VERIFICATION_RECORD_SCHEMA_VERSION,
   VERIFICATION_RECORD_STATUSES,
   VERIFICATION_RECORD_REASON_CODES,
 } from "./constants";
+export type { VerificationStageName } from "./constants";
 
 export {
   DEFAULT_MAX_CHECKS,
@@ -21,11 +25,11 @@ export {
   DEFAULT_SUMMARY_CHARS,
 } from "./defaults";
 
-export { VerificationPipeline } from "./pipeline/VerificationPipeline";
+export { VerificationPipeline } from "./flow/VerificationPipeline";
 export type {
   VerificationPipelineDependencies,
   VerificationPipelineOptions,
-} from "./pipeline/VerificationPipeline";
+} from "./flow/VerificationPipeline";
 
 export {
   verificationInputSchema,
@@ -73,11 +77,13 @@ export type {
   VerificationSyntaxPort,
   VerificationSyntaxFinding,
   VerificationRecordStorePort,
+  ModuleLoggerPort,
 } from "./contracts";
 
 export {
   SYNTAX_PORT_EVIDENCE,
   NODE_MODULE_LOAD_EVIDENCE,
+  noopModuleLogger,
 } from "./contracts";
 
 export {
@@ -99,13 +105,13 @@ export {
   requiresBehaviorEvidence,
   diagnosticIdentityKey,
   compareRepoBuildStates,
-} from "./actions";
+} from "./flow/steps";
 export type {
   FilterActionableDiagnosticsResult,
   TaskRelevantEvidenceAssessment,
   TaskRelevantResidualKind,
   CompletionRecommendation,
-} from "./actions";
+} from "./flow/steps";
 
 export {
   VERIFICATION_DENIED_PATH_SEGMENTS,
