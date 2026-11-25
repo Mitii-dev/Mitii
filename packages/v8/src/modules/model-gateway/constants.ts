@@ -17,6 +17,15 @@ export const MODEL_GATEWAY_IDS = {
     "gemini",
 } as const;
 
+/** Ordered flow stage names (pipeline + logger). */
+export const MODEL_GATEWAY_STAGES = {
+  resolveCapabilities: "1-resolve-capabilities",
+  complete: "2-complete",
+} as const;
+
+export type ModelGatewayStageName =
+  (typeof MODEL_GATEWAY_STAGES)[keyof typeof MODEL_GATEWAY_STAGES];
+
 /**
  * Explicit provider support matrix for shipped adapters.
  * Only list providers that have a working adapter path.
@@ -52,6 +61,37 @@ export const MODEL_PROVIDER_SUPPORT = {
     adapter: "OpenAiCompatibleLlmPort",
     notes: "OpenAiCompatibleLlmPort with https://api.deepseek.com/v1.",
   },
+  grok: {
+    status: "supported",
+    adapter: "OpenAiCompatibleLlmPort",
+    notes: "xAI Grok via OpenAiCompatibleLlmPort (https://api.x.ai/v1).",
+  },
+  xai: {
+    status: "supported",
+    adapter: "OpenAiCompatibleLlmPort",
+    notes: "Alias of grok — same OpenAI-compatible xAI endpoint.",
+  },
+  groq: {
+    status: "supported",
+    adapter: "OpenAiCompatibleLlmPort",
+    notes: "OpenAiCompatibleLlmPort with https://api.groq.com/openai/v1.",
+  },
+  mistral: {
+    status: "supported",
+    adapter: "OpenAiCompatibleLlmPort",
+    notes: "OpenAiCompatibleLlmPort with https://api.mistral.ai/v1.",
+  },
+  together: {
+    status: "supported",
+    adapter: "OpenAiCompatibleLlmPort",
+    notes: "OpenAiCompatibleLlmPort with https://api.together.xyz/v1.",
+  },
+  fireworks: {
+    status: "supported",
+    adapter: "OpenAiCompatibleLlmPort",
+    notes:
+      "OpenAiCompatibleLlmPort with https://api.fireworks.ai/inference/v1.",
+  },
   "lm-studio": {
     status: "supported",
     adapter: "OpenAiCompatibleLlmPort",
@@ -73,6 +113,35 @@ export const MODEL_PROVIDER_SUPPORT = {
     adapter: "GeminiLlmPort",
     notes: "Native Google Gemini generateContent API.",
   },
+  /**
+   * Cursor does not expose a public chat-completions / model-inference API.
+   * Use Anthropic, OpenAI, Gemini, or Grok adapters (or Cursor Agent SDK outside
+   * this module) — do not reverse-engineer Cursor private endpoints.
+   */
+  cursor: {
+    status: "unsupported",
+    adapter: "none",
+    notes:
+      "No public LlmPort: Cursor models are IDE/Agent-SDK only, not raw inference.",
+  },
+} as const;
+
+/**
+ * Known OpenAI-compatible base URLs for first-class presets.
+ * Hosts may override; V8 adapters stay URL-agnostic.
+ */
+export const OPENAI_COMPATIBLE_PROVIDER_BASE_URLS = {
+  openai: "https://api.openai.com/v1",
+  openrouter: "https://openrouter.ai/api/v1",
+  deepseek: "https://api.deepseek.com/v1",
+  grok: "https://api.x.ai/v1",
+  xai: "https://api.x.ai/v1",
+  groq: "https://api.groq.com/openai/v1",
+  mistral: "https://api.mistral.ai/v1",
+  together: "https://api.together.xyz/v1",
+  fireworks: "https://api.fireworks.ai/inference/v1",
+  ollama: "http://localhost:11434/v1",
+  "lm-studio": "http://localhost:1234/v1",
 } as const;
 
 export type ModelProviderId = keyof typeof MODEL_PROVIDER_SUPPORT;

@@ -1,107 +1,41 @@
 # Model Gateway
 
-Model Gateway is the provider-neutral LLM boundary. It lets Agent Engine and Prompt Construction work with one `LlmPort` contract while provider adapters handle OpenAI-compatible, Anthropic, Gemini, or echo-model details.
+**Does:** provider-neutral LLM boundary — `ModelRequest` in, streaming `ModelEvent`s out — plus capability normalization. Adapters own OpenAI-compatible / Anthropic / Gemini / echo wire details. Does not build prompts, authorize tools, or run the agent loop.
 
-## What This Module Does
-
-- Defines `ModelRequest`, `ModelMessage`, model tool definitions, and model events.
-- Defines `LlmPort` for streaming completions and capability resolution.
-- Normalizes provider responses into `ModelEvent`.
-- Normalizes provider failures into `ModelError`.
-- Resolves model capabilities such as context window, tool support, streaming, reasoning, vision, structured output, and forced tool choice.
-
-## Structure
+## Contract
 
 ```text
-model-gateway/
-  contracts/                ModelRequest, ModelEvent, ModelCapabilities, LlmPort
-  adapters/                 Echo, OpenAI-compatible, Anthropic, Gemini
-  internal/                 HTTP and SSE helpers
-  ModelCapabilityResolver.ts
-  constants.ts
-  tests/
+ResolveModelCapabilitiesInput  →  ModelGatewayPipeline.resolveCapabilities()  →  ModelCapabilities
+
+LlmPort + ModelRequest         →  ModelGatewayPipeline.complete()             →  AsyncIterable<ModelEvent>
 ```
 
-## Types And Contracts
+| Surface | Role |
+|---|---|
+| `LlmPort` | provider port (`complete`, `capabilities`) |
+| `ModelRequest` / `ModelMessage` / tools | request shape |
+| `ModelEvent` | content / reasoning / tool_call deltas, usage, completed / failed / cancelled |
+| Native adapters | Echo, Anthropic, Gemini |
+| OpenAI-compatible | OpenAI, Azure, Ollama, LM Studio, OpenRouter, DeepSeek, **Grok/xAI**, **Groq**, **Mistral**, **Together**, **Fireworks** |
 
-- `ModelRequest`: messages, model options, maximum output tokens, stream flag, tools, tool choice, reasoning, and response format.
-- `ModelMessage`: system/user/assistant/tool content with optional tool calls or image attachments.
-- `ModelToolDefinition`: name, description, and input schema.
-- `ModelEvent`: content deltas, reasoning deltas, tool-call deltas, usage, completed, failed, or cancelled.
-- `ModelCapabilities`: provider/model feature contract.
-- `LlmPort`: provider interface used by Agent Engine.
+Cursor has **no** public chat-completions API — use Anthropic / OpenAI / Gemini / Grok (or Cursor Agent SDK outside this module).
 
-## Technical Details
+## Example
 
-- `EchoLlmPort` is deterministic and useful for tests.
-- `OpenAiCompatibleLlmPort` maps V8 requests to OpenAI-compatible APIs and defaults `capabilities.supportsPromptCaching` to `true` so `prompt_cache_hit_tokens` / `prompt_cache_miss_tokens` are recorded when the runtime reports them (Ollama, vLLM, DeepSeek). Hosts can opt out per adapter instance.
-- `OpenAiCompatibleLlmPort` only sends `response_format` when `supportsStructuredOutput` is true, and downgrades `tool_choice=required` to `auto` when `supportsForcedToolChoice` is false or request reasoning is enabled.
-- `AnthropicLlmPort` and `GeminiLlmPort` adapt provider-specific formats.
-- `AnthropicLlmPort` defaults `capabilities.supportsPromptCaching` to `true` (native Messages API support is GA on the stable `2023-06-01` version header, no beta flag needed) and adds `cache_control: {type: "ephemeral"}` breakpoints to the system prompt, the last tool definition, and the last content block of the last message. Anthropic matches the longest previously-cached prefix, so re-marking the tail every turn keeps a growing agentic conversation's stable history cached across turns without tracking what changed. Hosts can opt out per adapter instance via `capabilities.supportsPromptCaching: false`.
-- `ModelCapabilityResolver` fills defaults and validates output/context constraints.
-- Tool calls stream as `tool_call_delta` events and are executed later by Agent Engine through Tool Runtime.
-- Provider errors include retryability and optional retry delay.
+```ts
+const gateway = new ModelGatewayPipeline();
 
-- **Advertised window:** adapters default to `32_768` when a host passes no window. Hosts must advertise the real window; `createHostLlmPorts` infers it with `resolveEffectiveContextWindow` (e.g. DeepSeek → 128k) when `capabilities.contextWindowTokens` is omitted. Per-model budget tuning belongs to Window Budget model profiles; reasoning effort stays a gateway request field and is not profiled yet.
+const capabilities = gateway.resolveCapabilities({
+  modelId: "local/qwen",
+  contextWindowTokens: 128_000,
+  supportsTools: true,
+});
+// capabilities.maximumOutputTokens === 32_000  (25% default)
 
-## Ownership Boundaries
-
-Owns model contracts, provider adapters, capability normalization, and event normalization.
-
-Does not own prompt construction, authorization, tool execution, repository context, or run orchestration policy.
-
-## Tests
-
-```bash
-pnpm exec vitest run packages/v8/src/modules/model-gateway
-```
-
-## Example Flow
-
-This example uses a realistic coding-agent request and shows the kind of structure this module receives and returns. The output is representative: ids, timings, and scores are examples, but the shape matches how this module is meant to be understood.
-
-### Real Prompt
-
-```text
-I am in a React app. In src/LoginForm.tsx, when the user clicks the "Sign in" button, show a loading label and disable the button until the login request finishes. Keep the existing validation and error handling. Add or update a focused test if there is already a LoginForm test nearby.
-```
-
-### Real Input Structure
-
-ModelRequest -> AsyncIterable<ModelEvent>:
-
-```json
-{
-  "prompt": "I am in a React app. In src/LoginForm.tsx, when the user clicks the \"Sign in\" button, show a loading label and disable the button until the login request finishes. Keep the existing validation and error handling. Add or update a focused test if there is already a LoginForm test nearby.",
-  "workspaceId": "workspace-1",
-  "stateToken": "state-abc",
-  "targetFile": "src/LoginForm.tsx"
+const port = new EchoLlmPort({ modelId: "echo/local" });
+for await (const event of gateway.complete(port, {
+  messages: [{ role: "user", content: "Inspect LoginForm.tsx" }],
+})) {
+  // content_delta → … → completed | failed | cancelled
 }
-```
-
-### Step-By-Step Flow
-
-1. A user sends the real prompt shown above from an editor or chat host.
-2. The host attaches workspace id `workspace-1` and the explicit target file `src/LoginForm.tsx`.
-3. The module receives the real structure shown in the input block.
-4. The module validates schema/version/limits before doing any work.
-5. The module extracts the important target: `src/LoginForm.tsx`.
-6. The module keeps the user constraint: existing validation and error handling must stay intact.
-7. The module performs only its own responsibility and does not cross into neighboring modules.
-8. Any budget, path, state, or provider constraint is applied before output is produced.
-9. The module records warnings/reason codes instead of hiding degraded behavior.
-10. The module returns the realistic output shape shown below.
-11. The next pipeline stage consumes that output without reinterpreting raw user text.
-
-### Realistic Output
-
-Model Gateway normalized event stream returns a result like this:
-
-```json
-[
-  { "type": "content_delta", "content": "I will inspect LoginForm first." },
-  { "type": "tool_call_delta", "toolCalls": [{ "index": 0, "id": "call-read-login", "name": "read_file", "arguments": "{\"path\":\"src/LoginForm.tsx\"}" }] },
-  { "type": "usage", "usage": { "inputTokens": 8120, "outputTokens": 140 } },
-  { "type": "completed", "finishReason": "tool_calls", "usage": { "totalTokens": 8260 } }
-]
 ```

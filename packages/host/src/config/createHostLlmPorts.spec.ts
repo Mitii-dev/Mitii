@@ -131,10 +131,27 @@ describe('createHostLlmPorts', () => {
 });
 
 describe('provider presets', () => {
-  it('exposes anthropic, gemini, and deepseek presets', () => {
+  it('exposes anthropic, gemini, deepseek, and coding-agent must-have presets', () => {
     expect(getProviderPreset('anthropic')?.type).toBe('anthropic');
     expect(getProviderPreset('gemini')?.type).toBe('gemini');
     expect(getProviderPreset('deepseek')?.type).toBe('openai-compatible');
+    expect(getProviderPreset('grok')?.baseUrl).toBe('https://api.x.ai/v1');
+    expect(getProviderPreset('xai')?.baseUrl).toBe('https://api.x.ai/v1');
+    expect(getProviderPreset('groq')?.baseUrl).toContain('groq.com');
+    expect(getProviderPreset('mistral')?.baseUrl).toContain('mistral.ai');
+    expect(getProviderPreset('together')?.baseUrl).toContain('together.xyz');
+    expect(getProviderPreset('fireworks')?.baseUrl).toContain('fireworks.ai');
+  });
+
+  it('constructs grok ports with inferred context window', () => {
+    const ports = createHostLlmPorts({
+      type: 'openai-compatible',
+      preset: 'grok',
+      model: 'grok-4',
+      apiKey: 'xai-test',
+    });
+    expect(ports.runLlm.capabilities.contextWindowTokens).toBe(131_072);
+    expect(ports.providerLabel).toBe('openai-compatible:grok-4');
   });
 });
 
@@ -155,6 +172,16 @@ describe('resolveProviderApiKey', () => {
         env: { GOOGLE_API_KEY: 'g-key' },
       }),
     ).toBe('g-key');
+    expect(
+      resolveProviderApiKey({
+        type: 'openai-compatible',
+        preset: 'grok',
+        env: {
+          XAI_API_KEY: 'xai-key',
+          OPENAI_API_KEY: 'openai-key',
+        },
+      }),
+    ).toBe('xai-key');
   });
 
   it('infers provider type from env when MITII_PROVIDER is unset', () => {

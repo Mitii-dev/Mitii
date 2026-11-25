@@ -1,6 +1,18 @@
+/**
+ * Model Gateway public surface.
+ *
+ * Prefer `ModelGatewayPipeline` for capability resolve + logged complete.
+ * Adapters remain the provider wire implementations.
+ */
+
+export { ModelGatewayPipeline } from "./pipeline/ModelGatewayPipeline";
+export type { ModelGatewayPipelineDependencies } from "./pipeline/ModelGatewayPipeline";
+
 export {
   MODEL_GATEWAY_IDS,
+  MODEL_GATEWAY_STAGES,
   MODEL_PROVIDER_SUPPORT,
+  OPENAI_COMPATIBLE_PROVIDER_BASE_URLS,
   MODEL_TOOL_CHOICES,
   MODEL_REASONING_EFFORTS,
   MODEL_ERROR_CODES,
@@ -13,7 +25,10 @@ export {
   GEMINI_DEFAULTS,
   HTTP_STATUS_TO_MODEL_ERROR,
 } from "./constants";
-export type { ModelProviderId } from "./constants";
+export type {
+  ModelProviderId,
+  ModelGatewayStageName,
+} from "./constants";
 
 export {
   modelRequestSchema,
@@ -23,7 +38,8 @@ export {
   modelEventSchema,
   modelResponseDeltaSchema,
   modelCapabilitiesSchema,
-} from "./contracts/schema";
+  noopModuleLogger,
+} from "./contracts";
 
 export type {
   LlmPort,
@@ -41,9 +57,13 @@ export type {
   ModelToolChoice,
   ModelToolDefinition,
   ResolveModelCapabilitiesInput,
-} from "./contracts/types";
+  ModuleLoggerPort,
+} from "./contracts";
 
-export { ModelCapabilityResolver } from "./ModelCapabilityResolver";
+export {
+  ModelCapabilityResolver,
+  resolveModelCapabilities,
+} from "./actions";
 
 export {
   EchoLlmPort,

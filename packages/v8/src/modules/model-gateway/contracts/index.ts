@@ -32,3 +32,6 @@ export type {
   ModelErrorCode,
   ModelAgenticTier,
 } from "./types";
+
+export { noopModuleLogger } from "./ports/ModuleLoggerPort";
+export type { ModuleLoggerPort } from "./ports/ModuleLoggerPort";

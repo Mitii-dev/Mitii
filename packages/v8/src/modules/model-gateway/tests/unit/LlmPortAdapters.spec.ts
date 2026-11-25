@@ -6,8 +6,8 @@ import {
   modelEventSchema,
   modelRequestSchema,
   MODEL_PROVIDER_SUPPORT,
-} from "../index";
-import type { ModelEvent } from "../contracts/types";
+} from "../../index";
+import type { ModelEvent } from "../../contracts/types";
 
 async function collectContent(
   stream: AsyncIterable<ModelEvent>,
@@ -306,10 +306,17 @@ it("provider support matrix lists only shipped adapters", () => {
   expect(MODEL_PROVIDER_SUPPORT["openai-compatible"].status).toBe("supported");
   expect(MODEL_PROVIDER_SUPPORT.openrouter.status).toBe("supported");
   expect(MODEL_PROVIDER_SUPPORT.deepseek.status).toBe("supported");
+  expect(MODEL_PROVIDER_SUPPORT.grok.status).toBe("supported");
+  expect(MODEL_PROVIDER_SUPPORT.xai.status).toBe("supported");
+  expect(MODEL_PROVIDER_SUPPORT.groq.status).toBe("supported");
+  expect(MODEL_PROVIDER_SUPPORT.mistral.status).toBe("supported");
+  expect(MODEL_PROVIDER_SUPPORT.together.status).toBe("supported");
+  expect(MODEL_PROVIDER_SUPPORT.fireworks.status).toBe("supported");
   expect(MODEL_PROVIDER_SUPPORT["lm-studio"].status).toBe("supported");
   expect(MODEL_PROVIDER_SUPPORT["azure-openai"].status).toBe("supported");
   expect(MODEL_PROVIDER_SUPPORT.anthropic.status).toBe("supported");
   expect(MODEL_PROVIDER_SUPPORT.gemini.status).toBe("supported");
+  expect(MODEL_PROVIDER_SUPPORT.cursor.status).toBe("unsupported");
   expect(modelEventSchema.safeParse({ type: "content_delta" }).success).toBe(false);
   expect(
     modelEventSchema.safeParse({

@@ -19,6 +19,12 @@ export type ProviderPresetId =
   | 'openai'
   | 'openrouter'
   | 'deepseek'
+  | 'grok'
+  | 'xai'
+  | 'groq'
+  | 'mistral'
+  | 'together'
+  | 'fireworks'
   | 'azure-openai'
   | 'openai-compatible'
   | 'anthropic'
@@ -127,6 +133,102 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
       supportsReasoning: true,
       supportsForcedToolChoice: false,
       supportsStructuredOutput: false,
+    },
+  },
+  {
+    id: 'grok',
+    type: 'openai-compatible',
+    label: 'xAI Grok',
+    baseUrl: 'https://api.x.ai/v1',
+    model: 'grok-4',
+    models: ['grok-4', 'grok-4.7', 'grok-3', 'grok-3-mini', 'grok-2-latest'],
+    requiresApiKey: true,
+    notes:
+      'OpenAI-compatible xAI Chat Completions (console.x.ai). Prefer Responses API features later if Mitii adds a native xAI adapter.',
+    defaultCapabilities: {
+      supportsTools: true,
+      supportsReasoning: true,
+    },
+  },
+  {
+    id: 'xai',
+    type: 'openai-compatible',
+    label: 'xAI (Grok)',
+    baseUrl: 'https://api.x.ai/v1',
+    model: 'grok-4',
+    models: ['grok-4', 'grok-4.7', 'grok-3', 'grok-3-mini'],
+    requiresApiKey: true,
+    notes: 'Alias of the grok preset — same https://api.x.ai/v1 endpoint.',
+    defaultCapabilities: {
+      supportsTools: true,
+      supportsReasoning: true,
+    },
+  },
+  {
+    id: 'groq',
+    type: 'openai-compatible',
+    label: 'Groq',
+    baseUrl: 'https://api.groq.com/openai/v1',
+    model: 'llama-3.3-70b-versatile',
+    models: [
+      'llama-3.3-70b-versatile',
+      'llama-3.1-8b-instant',
+      'openai/gpt-oss-120b',
+    ],
+    requiresApiKey: true,
+    notes: 'Fast OpenAI-compatible inference (console.groq.com).',
+    defaultCapabilities: {
+      supportsTools: true,
+    },
+  },
+  {
+    id: 'mistral',
+    type: 'openai-compatible',
+    label: 'Mistral',
+    baseUrl: 'https://api.mistral.ai/v1',
+    model: 'mistral-large-latest',
+    models: [
+      'mistral-large-latest',
+      'mistral-small-latest',
+      'codestral-latest',
+      'devstral-latest',
+    ],
+    requiresApiKey: true,
+    notes: 'OpenAI-compatible Mistral API (console.mistral.ai).',
+    defaultCapabilities: {
+      supportsTools: true,
+    },
+  },
+  {
+    id: 'together',
+    type: 'openai-compatible',
+    label: 'Together AI',
+    baseUrl: 'https://api.together.xyz/v1',
+    model: 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo',
+    models: [
+      'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo',
+      'Qwen/Qwen2.5-Coder-32B-Instruct',
+    ],
+    requiresApiKey: true,
+    notes: 'Open models via Together’s OpenAI-compatible API.',
+    defaultCapabilities: {
+      supportsTools: true,
+    },
+  },
+  {
+    id: 'fireworks',
+    type: 'openai-compatible',
+    label: 'Fireworks',
+    baseUrl: 'https://api.fireworks.ai/inference/v1',
+    model: 'accounts/fireworks/models/llama-v3p3-70b-instruct',
+    models: [
+      'accounts/fireworks/models/llama-v3p3-70b-instruct',
+      'accounts/fireworks/models/qwen2p5-coder-32b-instruct',
+    ],
+    requiresApiKey: true,
+    notes: 'OpenAI-compatible Fireworks inference API.',
+    defaultCapabilities: {
+      supportsTools: true,
     },
   },
   {

@@ -43,6 +43,15 @@ describe('resolveEffectiveContextWindow', () => {
     );
   });
 
+  it.each(['grok-4', 'grok-4.7', 'grok-3-mini'])(
+    'resolves Grok model %s to the 131k preset when auto',
+    (model) => {
+      expect(resolveEffectiveContextWindow(0, model, 'openai-compatible')).toBe(
+        131_072,
+      );
+    },
+  );
+
   it('falls back to default when nothing matches', () => {
     expect(resolveEffectiveContextWindow(0, 'custom-local')).toBe(
       DEFAULT_CONTEXT_WINDOW,

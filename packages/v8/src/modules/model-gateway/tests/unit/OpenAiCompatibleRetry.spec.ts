@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { OpenAiCompatibleLlmPort } from '..';
-import type { ModelEvent } from '../contracts/types';
+import { OpenAiCompatibleLlmPort } from "../../index";
+import type { ModelEvent } from "../../contracts/types";
 
 async function collectContent(
   stream: AsyncIterable<ModelEvent>,
