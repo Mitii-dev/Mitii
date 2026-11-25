@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { PLANNING_SCHEMA_VERSION } from "../constants";
 import type { PlanningParsedInput } from "../contracts";
-import { resolvePlanStrategyRules } from "../actions/ResolvePlanStrategy";
+import { resolvePlanStrategyRules } from "../helpers/ResolvePlanStrategy";
 
 /**
  * Regression coverage for a real logged run: "@packages/mui-builder please

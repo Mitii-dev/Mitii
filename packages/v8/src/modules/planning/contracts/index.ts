@@ -118,4 +118,3 @@ export type {
 export { PlanningError, planningErrorCodeSchema } from "./errors/PlanningErrors";
 export type { PlanningErrorCode } from "./errors/PlanningErrors";
 
-export type { PlanningLlmPort } from "./ports/PlanningLlmPort";
