@@ -1,5 +1,21 @@
-export { UserRequestEnvelopeBuilder } from "./request-envelope/UserRequestEnvelopeBuilder";
-export type { CreateUserRequestInput } from "./contracts/input/CreateUserRequestInput";
+/**
+ * Request Intake public surface.
+ *
+ * Prefer `RequestIntakePipeline`. Helpers below stay exported for hosts/tests
+ * during the engine rewrite.
+ */
+
+export { RequestIntakePipeline } from "./pipeline/RequestIntakePipeline";
+export type {
+  RequestIntakePipelineDependencies,
+  RequestIntakeResult,
+} from "./pipeline/RequestIntakePipeline";
+
+export { REQUEST_INTAKE_STAGES } from "./constants";
+export type { RequestIntakeStageName } from "./constants";
+
+export { UserRequestEnvelopeBuilder } from "./actions";
+export type { CreateUserRequestInput } from "./contracts";
 export type {
   UserRequestEnvelope,
   UserRequestEnvelopeBuilderDependencies,
@@ -13,23 +29,22 @@ export type {
   UserRequestCorrelation,
   UserRequestOrigin,
   UserRequestWorkspaceScope,
-} from "./request-envelope/types";
+  ModuleLoggerPort,
+} from "./contracts";
 export {
   userRequestEnvelopeSchema,
   requestArtifactReferenceSchema,
   requestImageAttachmentSchema,
   requestMetaCommandSchema,
-} from "./request-envelope/schema";
-
-export { agentModeSchema, resolveInteractionMode } from "./interaction-mode";
-export type { AgentMode } from "./interaction-mode/types";
-export { AGENT_MODES, INTERACTION_MODE_DEFAULT } from "./interaction-mode/constants";
-
-export {
   createUserRequestInputSchema,
+  agentModeSchema,
+  noopModuleLogger,
 } from "./contracts";
+export type { AgentMode } from "./contracts";
 
 export {
+  AGENT_MODES,
+  INTERACTION_MODE_DEFAULT,
   USER_REQUEST_ORIGINS,
   REQUEST_ENVELOPE_DEFAULTS,
   REQUEST_ENVELOPE_LIMITS,
@@ -37,23 +52,16 @@ export {
   REQUEST_SESSION_ACTIONS,
   META_COMMAND_LIFECYCLES,
   SUPPORTED_IMAGE_MIME_TYPES,
-} from "./request-envelope/constants";
+  BUILTIN_META_COMMAND_SPECS,
+} from "./policy";
 
-export { RequestIntakePipeline } from "./pipeline/RequestIntakePipeline";
-export type {
-  RequestIntakePipelineDependencies,
-  RequestIntakeResult,
-} from "./pipeline/RequestIntakePipeline";
-
-export { sanitizeUserMessage } from "./sanitize";
+export { resolveInteractionMode } from "./actions";
 export {
+  sanitizeUserMessage,
   classifyLeadingCommand,
   parseLeadingCommand,
   isLeadingSlashCommand,
-  BUILTIN_META_COMMAND_SPECS,
-} from "./command-classify";
-export {
   extractMentionArtifacts,
   mergeReferencedArtifacts,
-} from "./mention-extract";
-export { normalizeAttachments } from "./attachment-normalize";
+  normalizeAttachments,
+} from "./actions";

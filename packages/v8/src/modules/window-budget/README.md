@@ -1,254 +1,207 @@
 # Window Budget
 
-Window Budget turns an advertised model context window into one proportional token allocation. Every consumer (prompt, retrieval, planning, skills, mutation batches, compaction, run caps) reads the derived `WindowPolicy` instead of hard-coded counts.
+**One job:** turn a model context window size `W` into a `WindowPolicy` number sheet.
 
-## Structure
+```text
+W in  →  WindowBudgetPipeline.derive()  →  WindowPolicy out
+```
+
+This module does **not** run the agent loop. It only publishes numbers.
+
+---
+
+## How to read this folder
 
 ```text
 window-budget/
-  pipeline/WindowBudgetPipeline.ts   # ONE class: derive / ceilings
+  pipeline/WindowBudgetPipeline.ts   ← start here (ONE class) — calls the flow
   actions/
-    1-resolve-policy.ts
-    2-derive-allocation.ts
-    3-resolve-generation-ceiling.ts
-  policy/                            # bands, effort, mode, profiles, merge
-  contracts/                         # input, output, errors, logger port
+    1-resolve-policy.ts              ← real function: merge tables
+    2-derive-allocation.ts           ← real function: bake WindowPolicy
+    3-resolve-generation-ceiling.ts  ← real function: output ceiling helper
+  policy/                            ← tables only (bands, effort, mode…)
+  constants.ts                       ← reason codes + stage names (no magic strings)
+  contracts/                         ← input / WindowPolicy / errors / ModuleLoggerPort
   tests/{contract,unit,golden}
 ```
 
-Prefer `new WindowBudgetPipeline().derive(input)`. Free `deriveWindowPolicy` remains as a thin alias for hosts during the engine rewrite.
+Open `pipeline/` → where steps are **called**.  
+Open `actions/` top→bottom → step **implementations**.  
+Open `policy/` → the knobs.  
+Open `constants.ts` → stable reason/stage strings.
 
-## Responsibility
+---
 
-Given `contextWindowTokens`, optional host `maximumOutputTokens`, optional measured tool-schema tokens, optional `effort` (`low` | `medium` | `high`, default `medium`), and optional policy overrides, produce a validated `WindowPolicy`.
+## Two kinds of numbers on `WindowPolicy`
 
-## Input
-
-`WindowBudgetInput`:
-
-- `schemaVersion`: `1`
-- `contextWindowTokens`: advertised provider window
-- `maximumOutputTokens`: omit or `0` to derive from the window; a positive value is a host override
-- `toolSchemaTokens`: omit or `0` to use the fallback; a positive value is a measured tool-JSON cost
-- `policy`: optional overrides for every ratio and clamp (developer settings)
-- `effort`: optional working-set overlay; omit to use `medium`
-
-## Output
-
-`WindowPolicy`:
-
-- `effort`: `low` | `medium` | `high` (default `medium`)
-- `maximumOutputTokens` / `toolSchemaTokens` / `usableInputTokens` / `loopInputBudgetTokens`
-- `sections`: repository, conversation, plan, skills, system
-- `compaction`: warn/auto/hard ratios plus window-scaled `autoMaxTokens` /
-  `hardMaxTokens` ceilings from the effort overlay (fractions of the advertised
-  context window, with small-window floors), how much tool history to keep, live
-  tool-result content budget, compacted result/argument budgets, dropped-turn
-  summary budget, observation size/count, and memory/observation reinjection
-  budgets
-- `mutation`: files per call and patch payload size (scaled from output)
-- `planning`: diagnostic step cap and whether a visible plan / change-impact gate is affordable
-- `run`: soft + hard model/tool call caps (`maxModelCalls` / `hardMaxModelCalls`)
-  and `maxVerificationRepairs` from the effort overlay. Soft = Continue
-  checkpoint; hard = safety ceiling owned by the engine loop.
-- `skills`: skill body budget and max selected skills
-- `carry`: host→engine conversation carry (`maxMessages`, `maxCharsPerMessage`)
-- `injection`: host pre-prompt ceilings (project rules, repo map / sketch,
-  editor selection, review/git diff chars; plus absolute file/item maxima)
-- `fragments`: per-fragment absolute/review ceilings for prompt-construction
-- `mode`: optional ask/plan/agent overlay that was applied
-- `maxVerificationChecks`
-- `resolvedPolicy`: the full policy after defaults + overrides
-- `reasonCodes`: how output and tool cost were chosen
-
-## How tokens are distributed
-
-```text
-W  = contextWindowTokens
-O  = host override, or clamp(W × outputRatio, outputMin, min(outputMax, W × outputWindowCapRatio))
-T  = measured tool schemas, or min(fallbackTokens, W × fallbackWindowRatio)
-     then T is capped so W − O − T stays at least minimumUsableInputTokens when possible
-U  = W − O − T                  // usable input
-loop = U × loopSafetyRatio
-```
-
-Tool JSON is treated as a **fixed cost**. Shares below are of `U`, not of `W`:
-
-| Slice | Share of U | Cap |
+| Group | Fields (examples) | Meaning |
 |---|---|---|
-| Repository context | `repositoryShare` | `repositoryTokensCap` |
-| Conversation / loop history | `conversationShare` | none |
-| Plan text | `planShare` | `planTokensCap` |
-| Skills | `skillsShare` | `skillsTokensCap` |
-| System + rules | remainder | none |
+| **Context pie** | `maximumOutputTokens`, `usableInputTokens`, `sections.*`, `compaction`, `carry`, `injection`, `fragments` | How to **fill** the prompt |
+| **Work hints** | `mutation.*`, `planning.*`, `run.max*` / `run.hardMax*` | Suggested batch sizes / call caps |
 
-Worked defaults (`outputRatio=0.20`, `outputMinTokens=10240`,
-`outputWindowCapRatio=0.35`, tool fallback 8k / 20% of W). Band overlays may
-change ratios (compact uses ~30% output):
+**Context pie** = this module’s main product.  
+**Work hints** = suggested numbers for whoever runs the loop (engine rewrite). Enforcement is **not** here.
 
-| Window | Output | Tools | Usable | Repo | Plan | Skills |
-|---|---|---|---|---|---|---|
-| 30k | 10,240 | 6,000 | ~13.8k | ~3.9k | ~0.8k | ~0.6k |
-| 100k | 18,000 | 8,000 | ~74k | ~22k | ~4.4k | ~3.7k |
-| 200k | 36,000 | 8,000 | ~156k | ~47k | ~9.4k | ~6.2k |
+### Tiny example (`W = 100_000`)
 
-Medium effort compaction ceilings scale with W (auto ≈ 0.8×W, hard ≈ W), so a
-100k settings window keeps ~80k of loop history before auto-compaction — not a
-fixed 32k absolute.
+```text
+O  ≈ output reserve
+T  ≈ tool-schema cost
+U  = W − O − T          ← usable input
 
-Mutation batch size follows the **context window**, then the effort overlay
-caps it so a 200k model does not keep 25-file patches. **Window bands**
-(`policy/bands.ts`) apply before host overrides:
+U split → repo | conversation | plan | skills | system
+run     → soft model calls + hard model calls (hints only)
+```
 
-| Band | Window | Ship overlay |
+---
+
+## Public API
+
+Prefer:
+
+```ts
+new WindowBudgetPipeline({ log }).derive(input)
+```
+
+Aliases kept for hosts: `deriveWindowPolicy`, `resolveGenerationCeiling`.
+
+---
+
+## Owns / does not own
+
+**Owns:** proportional token allocation, band/effort/mode tables, soft/hard *hint* values on `run`, stage logging.
+
+**Does not own:** model/tool loop, Continue walls, `budget_exhausted`, discovery budgets, grants, prompts.
+
+---
+
+## Tests
+
+```bash
+pnpm exec vitest run packages/v8/src/modules/window-budget
+```
+
+---
+
+## Bands (context size)
+
+| Band | Window | Effect |
 |---|---|---|
-| Compact | &lt; 50k | `maxUniqueFilesPerCallCap: 8`, skills share ↑, repo share ↓ |
-| Standard | 50k – &lt; 100k | `maxUniqueFilesPerCallCap: 12` |
-| Wide | ≥ 100k | `maxUniqueFilesPerCallCap: 20`, `maxSkillsCap: 6` |
+| compact | &lt; 50k | tighter output/plan shares |
+| standard | 50k – &lt; 100k | defaults |
+| wide | ≥ 100k | more repo/plan room |
 
-```text
-windowFiles            = (W × outputRatio) / filesPerOutputTokens
-maxUniqueFilesPerCall  = clamp(windowFiles, minFiles, min(maxFilesCap, effort.maxUniqueFilesPerCall))
-maxPatchesPerCall      = clamp(files × 2, files, maxPatchesPerCallCap)
-maxPatchPayloadCharacters = O × charsPerOutputToken × patchPayloadOutputRatio
-preferredBatchSize     = maxUniqueFilesPerCall
+Effort (`low` / `medium` / `high`) scales mutation and **run hint** ceilings on top of the band.
+
+Merge order for policy tables: `defaults → band → model profile → mode → host overrides` → then effort on the derived allocation.
+
+Full field list and formulas live in `contracts/output/WindowPolicy.ts` and `actions/2-derive-allocation.ts`.
+
+---
+
+# Refactor brief (module 1)
+
+## What changed
+
+- Folded scattered budget logic into one readable layout: `pipeline/` + numbered `actions/` + `policy/` + `contracts/` + `tests/`.
+- Added `WindowBudgetPipeline` as the canonical facade (`derive`, ceilings, tool-loop caps).
+- Moved band / effort / mode / model-profile / tool-loop-cap / merge tables under `policy/`.
+- Put **real step functions** in `actions/` (not re-export shelves).
+- Centralized reason codes and stage names in `constants.ts` (`WINDOW_BUDGET_REASON`, `WINDOW_BUDGET_EFFORT_REASON`, `WINDOW_BUDGET_MODE_REASON`, `WINDOW_BUDGET_STAGES`).
+- Added optional `ModuleLoggerPort` + optional `WindowPolicy.stages` traces.
+- Published soft + hard run **hints** on `WindowPolicy.run` (`max*` soft, `hardMax*` hard).
+
+## Why it changed
+
+- The old layout made “where does the number come from?” hard to answer.
+- Magic reason-code strings were easy to typo and hard to grep.
+- Soft vs hard run caps were unclear; unlimited was getting treated like a soft ceiling in the engine.
+- Module cleanup must stay readable **before** the engine rewrite consumes these contracts.
+
+## How we refactored it
+
+1. Locked public contracts (`WindowBudgetInput` → `WindowPolicy`).
+2. Extracted policy **tables** into `policy/` (no orchestration there).
+3. Numbered flow steps as real functions in `actions/`.
+4. Made `WindowBudgetPipeline.derive()` the only orchestrator that calls 1 → 2 (and exposes 3 as a helper).
+5. Kept thin free-function aliases so existing hosts keep compiling during the engine rewrite.
+6. Added golden + unit + contract tests; verified with vitest.
+
+## How constants / reason texts were moved
+
+| Before | After |
+|---|---|
+| Inline `"effort_medium"`-style strings / templates | `WINDOW_BUDGET_REASON.*`, `WINDOW_BUDGET_EFFORT_REASON[effort]`, `WINDOW_BUDGET_MODE_REASON[mode]` |
+| Ad-hoc stage labels | `WINDOW_BUDGET_STAGES.resolvePolicy` etc. |
+| Error code literals | `WINDOW_BUDGET_ERROR_CODES` / `WindowBudgetError` |
+
+Rule going forward: **never** build reason codes with string templates. Add a named constant, then use it in derive + tests + logs.
+
+## How logger helps identify problems
+
+Inject `log: ModuleLoggerPort` into `WindowBudgetPipeline`:
+
+```ts
+new WindowBudgetPipeline({
+  log: {
+    stage(event) {
+      // event.module === "window-budget"
+      // event.stage === "1-resolve-policy" | "2-derive-allocation"
+      // event.reasonCodes, inputSummary, outputSummary, durationMs
+    },
+  },
+}).derive(input)
 ```
 
-Medium effort (the default): 30k → 8 files (compact band cap), 65k → 12 files
-(standard), 200k → 12 files (effort-capped). High effort raises the 200k
-cap to 20; low effort lowers it to 4.
+Use logs to answer:
 
-Planning affordances follow **usable input**, scaled with the window so a 30k local cap still plans:
+| Symptom | Look at |
+|---|---|
+| Wrong band / profile | `1-resolve-policy` `outputSummary.band` / `modelProfileId` |
+| Pie doesn’t add up / usable too small | `2-derive-allocation` `reasonCodes` + `usableInputTokens` / `maximumOutputTokens` |
+| Effort/mode overlay missing | presence of `effort_*` / `mode_*` in `reasonCodes` |
+| Slow derive | `durationMs` per stage |
 
-```text
-visiblePlanThreshold      = min(visiblePlanMinUsableTokens, W × visiblePlanMinUsableRatio)
-changeImpactThreshold     = min(changeImpactMinUsableTokens, W × changeImpactMinUsableRatio)
-visiblePlanAffordable     = U >= visiblePlanThreshold
-changeImpactAffordable    = U >= changeImpactThreshold
-maxSkills                 = clamp(maxSkillsBase + U / maxSkillsPerUsable, base, cap)
-maxDiagnosticSteps        = clamp(base + U / perUsable, base, max)
-maxModelCalls             = effort overlay (medium: 64)
-```
+`WindowPolicy.stages` (when using the pipeline) is the same ordered trail without a live logger.
 
-Effort also sets compaction ceilings (`autoMaxTokens` / `hardMaxTokens`) and
-`run.maxVerificationRepairs` (medium: 8). Host `runBudget.unlimited` is still
-clamped to these window-effort loop caps.
+## How to extend the module
 
-Decision Policy then merges profile mutation budgets with these window caps using `min()` (and ORs `requireBatchedExecution`).
+| Goal | Where |
+|---|---|
+| New context-size band | `policy/bands.ts` + golden |
+| New effort scaling | `policy/effort.ts` (+ map in `constants` if new reason) |
+| New mode overlay | `policy/mode.ts` |
+| New model family defaults | `policy/modelProfiles.ts` |
+| New pie section / formula | `actions/2-derive-allocation.ts` + `WindowPolicy` schema |
+| New public entry | method on `WindowBudgetPipeline` (don’t invent a second orchestrator) |
+| New stable string | `constants.ts` first |
 
-Compaction budgets also follow `U` so a 300k window retains more useful
-tool-history memory than a 30k window before rereading. Tool-history sizing is
-derived from ratios and clamped by developer-tunable min/max fields:
+Keep `policy/` data-only. Keep orchestration in `pipeline/`.
 
-```text
-keepRecentToolResults      = clamp(U × keepRecentToolResultsRatio, min, max)
-compactedToolResultChars   = clamp(U × compactedToolResultCharsRatio, min, max)
-compactedToolArgumentChars = clamp(U × compactedToolArgumentCharsRatio, min, max)
-toolResultContentChars     = clamp(U × toolResultContentCharsRatio, min, max)
-droppedTurnSummaryChars    = clamp(U × droppedTurnSummaryCharsRatio, min, max)
-establishedFactChars       = clamp(U × establishedFactCharsRatio, min, max)
-maxEstablishedFacts        = clamp(U × establishedFactCountRatio, min, max)
-establishedFactReinject    = clamp(U × establishedFactReinjectCharsRatio, min, max)
-memoryReinjectChars        = clamp(U × memoryReinjectCharsRatio, min, max)
-```
+## If something breaks later — how to fix
 
-Agent Engine consumes these derived values directly. It does not reintroduce
-separate fixed caps for tool-result serialization, dropped tool summaries, or
-mid-run observation reinjection.
+1. Reproduce with the smallest input (`contextWindowTokens`, `mode`, `effort`, `modelId`).
+2. Read `reasonCodes` / logger stages — find which step diverged.
+3. Fix at the **owner**: table bug → `policy/`; formula bug → `actions/2-…`; API shape → `contracts/`.
+4. Add a regression (unit or golden). Do **not** special-case one host path in core.
+5. Re-run `pnpm exec vitest run packages/v8/src/modules/window-budget`.
 
-Host conversation carry and pre-prompt injections also scale from usable input:
+## Bugs fixed while redesigning
 
-```text
-carry.maxMessages              = clamp(U × carryMaxMessagesRatio, min, max)
-carry.maxCharsPerMessage       = clamp(U × carryMaxCharsPerMessageRatio, min, max)
-injection.projectRuleChars     = clamp(U × injectionProjectRuleCharsRatio, min, max)
-injection.projectRulesTotalChars = clamp(U × …TotalCharsRatio, min, max)
-injection.repoMapChars / sketchChars / selectionChars / reviewDiff*Chars
-                               = clamp(U × matching ratio, min, max)
-injection.repoMapFilesMax / sketchItemsMax = absolute policy maxima (not scaled)
-```
+| Bug | Fix |
+|---|---|
+| Unlimited run budget clamped to soft (e.g. 64) | Soft vs hard fields on `WindowPolicy.run`; clamp respects hard for unlimited |
+| Soft exhaust treated like hard stop | Soft → Continue checkpoint; hard → `budget_exhausted` (engine; numbers owned here) |
+| Continue only nudged soft by a tiny bump | Continue extends soft by a full soft chunk toward hard |
+| Reason codes built/ad-hoc | Named maps in `constants.ts` |
 
-Hosts MUST read `WindowPolicy.carry` / `WindowPolicy.injection` /
-`WindowPolicy.fragments` (or the live preview mirrors) instead of hard-coding
-message/char/fragment ceilings.
+## Room left for improvement
 
-Mode overlays (`WINDOW_BUDGET_MODE_OVERLAY`) are static tables activated by
-`deriveWindowPolicy({ mode: "ask" | "plan" | "agent" })`. Merge order:
+- Engine still calls free `deriveWindowPolicy` in places — switch fully to `WindowBudgetPipeline` + inject logger.
+- Collapse any remaining “lab” path string assumptions once ui-core/scripts settle.
+- Optional: richer `inputSummary` (tool-schema source) without logging secrets.
+- Keep goldens as the lock on band math when tables change.
 
-```text
-DEFAULT_WINDOW_BUDGET_POLICY → window band → model profile → mode overlay → host lab overrides
-```
+## Verification
 
-Ask raises conversation share / carry floors; plan raises plan share; agent
-keeps ask-parity history retention so ask→agent handoffs do not drop turns.
-
-## Model profiles
-
-`modelProfiles.ts` is the per-model seam. A `WindowBudgetModelProfile` is
-`{ id, match: RegExp, overrides: WindowBudgetPolicyOverrides }`; the first
-profile whose `match` hits `input.modelId` is merged between the band and the
-mode overlay, and the policy reports `model_profile_applied`. The engine passes
-`modelId` from the advertised model capabilities.
-
-- Profiles tune **window-owned** knobs only: output caps (`outputRatio`,
-  `outputWindowCapRatio`, `outputMaxTokens`, which also drive the tool-loop
-  output ceiling), repair/call counts, compaction ratios.
-- The shipped `WINDOW_BUDGET_MODEL_PROFILES` table is intentionally empty. Add
-  an entry only with benchmark or live-run evidence.
-- Not wired yet (other owners): reasoning effort belongs to the Model Gateway
-  request, and discovery model turns belong to Plan Discovery budgets. Both
-  can read `resolveWindowBudgetModelProfile(modelId)` once a profile needs to
-  carry them; Window Budget does not own those knobs.
-- Context window size is **not** a profile concern. Hosts resolve `W` with
-  `resolveEffectiveContextWindow` (model family presets, e.g. DeepSeek → 128k)
-  and `createHostLlmPorts` applies the same inference when a host omits it.
-
-## Pipeline stages
-
-1. Validate input schema.
-2. Merge host policy overrides onto defaults.
-3. Derive or accept output reserve.
-4. Charge tool-schema tokens as a fixed cost.
-5. Split remaining usable input by shares.
-6. Derive mutation, planning, skills, run, and verification numbers from `O` / `U`.
-7. Validate the output contract.
-
-## Dependencies and ports
-
-None. Pure function of the input contract. No LLM, filesystem, or host APIs.
-
-## Public exports
-
-- `WindowBudgetPipeline` (preferred)
-- `deriveWindowPolicy` (alias)
-- `mergeWindowBudgetPolicy`
-- `DEFAULT_WINDOW_BUDGET_POLICY` / `WINDOW_BUDGET_POLICY`
-- `WINDOW_BUDGET_EFFORTS` / `DEFAULT_WINDOW_BUDGET_EFFORT` / `WINDOW_BUDGET_EFFORT_OVERLAY` / `resolveWindowBudgetEffort`
-- `windowBudgetInputSchema`, `windowBudgetPolicySchema`, `windowPolicySchema`
-- `WINDOW_BUDGET_MODEL_PROFILES` / `resolveWindowBudgetModelProfile` / `WindowBudgetModelProfile`
-- `resolveToolLoopMaxOutputTokens` — continuous `floor(W × outputWindowCapRatio)`
-- inferred types and `WindowBudgetError`
-
-## Failure modes
-
-- `invalid_input`: schema/version/limit failure. No partial policy is returned.
-
-## Genericness strategy
-
-- No provider, model, language, or host names.
-- Every numeric behavior is a named policy field.
-- Hosts tune via `policy` overrides; they do not fork the algorithm.
-
-## Developer settings
-
-The customer knob is the advertised context window. Built-in defaults already scale every derived budget from that window. Hosts should not require users to edit ratios.
-
-The VS Code host maps Developer → **Token budget** onto `policy` overrides. Simple sliders cover files per mutation, output reserve, module shares, and verification checks. Advanced keeps the core ratios and clamps. Each field is also a `mitii.tokenBudget.*` setting. When the toggle is off, V8 defaults apply and scale with the context window. Moving a Simple slider turns custom budget on and pins that value so later window changes do not overwrite it. Reset clears those overrides.
-
-`mitii.provider.maximumOutputTokens = 0` means “derive O from the window”. A positive value is a host override and still cannot exceed `W − 1`. The historical default `5000` is treated as unset (`output_legacy_default_ignored`) so mutation batches are not truncated. `O` is the planning reserve (input must not fill the window). Per-turn `max_tokens` is leftover context, owned by Prompt Construction / Agent Engine, with an additional tool-loop ceiling of `floor(W × outputWindowCapRatio)` so mid-run turns scale with the advertised window instead of a fixed token table.
-
-## Explicit non-responsibilities
-
-- Does not construct prompts, retrieve files, grant tools, or run the model loop.
-- Does not own provider capability discovery (Model Gateway advertises `W`).
-- Does not persist settings (the host maps developer options onto `policy`).
+`pnpm exec vitest run packages/v8/src/modules/window-budget` → 8 files / 38 tests passed.

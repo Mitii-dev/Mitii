@@ -93,6 +93,7 @@ export function composeV8Engine(
       generate: (namespace: string) =>
         `${namespace}_${Math.random().toString(36).slice(2, 10)}`,
     },
+    log: options.intake?.log,
   });
 
   return new V8EnginePipeline({

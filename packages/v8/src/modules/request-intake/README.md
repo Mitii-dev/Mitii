@@ -1,87 +1,78 @@
 # Request Intake
 
-Request Intake is the first V8 module a user request passes through. It validates raw host input and creates a normalized `UserRequestEnvelope` that downstream modules can trust.
+**One job:** raw host request → trusted `UserRequestEnvelope`.
 
-## What This Module Does
+```text
+CreateUserRequestInput  →  RequestIntakePipeline.intake() / intakeDetailed()  →  UserRequestEnvelope
+```
 
-- Validates the incoming request shape.
-- Requires meaningful content through a message, referenced artifacts, or a meta command.
-- Sanitizes user text and classifies leading slash commands (mode + meta lifecycle).
-- Extracts `@path` mentions into `referencedArtifacts` (paths only — no content load).
-- Normalizes image attachments (mime allowlist + size caps).
-- Normalizes mode, origin, turn kind, workspace scope, referenced artifacts, and correlation metadata.
-- Assigns request ids and timestamps through injected ports.
-- Produces the stable envelope consumed by Request Understanding and Decision Policy.
+No LLM. No file reads. No session storage.
 
-## Structure
+---
+
+## How to read this folder
 
 ```text
 request-intake/
-  pipeline/                 RequestIntakePipeline (staged inject)
-  contracts/
-    input/                  CreateUserRequestInput
-  request-envelope/         UserRequestEnvelopeBuilder and envelope types
-  interaction-mode/         AgentMode schema + mode resolve
-  sanitize/                 Message sanitize
-  command-classify/         Leading slash parse + meta lifecycle
-  mention-extract/          @path → artifact stubs
-  attachment-normalize/     Image attachment policy
-  tests/                    Pipeline and envelope tests
+  pipeline/RequestIntakePipeline.ts   ← start here — THIS is where the flow is called
+  actions/
+    1-sanitize.ts                     ← step shelf (re-exports helper today)
+    2-classify-command.ts
+    3-extract-mentions.ts
+    4-normalize-attachments.ts
+    5-resolve-mode.ts
+    6-build-envelope.ts
+  helpers/                            ← real implementations (temporary; see brief)
+  policy/                             ← limits, modes, slash catalogs
+  constants.ts                        ← REQUEST_INTAKE_STAGES (logger + docs)
+  contracts/                          ← input + envelope types + ModuleLoggerPort
+  tests/{unit,contract}
 ```
 
-## Intake Stages (inject order)
+**Where is the flow called?** Only in `pipeline/RequestIntakePipeline.ts` → `intakeDetailed()`  
+(steps 1→6, in order). Opening `actions/N-*.ts` today shows exports; bodies still live under `helpers/` until the inline pass (tracked below).
 
-1. Sanitize
-2. Command classify (`/stop|/new|/plan|…`)
-3. Mention extract → `referencedArtifacts`
-4. Attachment normalize
-5. Mode resolve (slash overrides host when `/ask|/plan|/agent`)
-6. Validate + build envelope
+---
 
-Meta commands with non-agent lifecycle set `shortCircuitMeta` via `intakeDetailed` so the engine can exit before pin/understand.
+## Flow
 
-Engine `session-control` then **handles** classified commands:
-- `/compact` — force-compacts `start.conversation` and returns `result.sessionControl.compactedConversation` for the host to persist
-- `/new` `/clear` — returns `sessionAction` so the host clears transcript storage
-- `/stop` — cancelled run
-- `/help` `/status` `/resume` — side-channel answers (host owns resume storage)
+1. **Sanitize** text  
+2. **Classify** leading `/commands`  
+3. **Extract** `@path` mentions → artifact stubs  
+4. **Normalize** image attachments  
+5. **Resolve** ask / plan / agent mode  
+6. **Build** `UserRequestEnvelope`
 
-## Host Contract (selection / open tabs)
+---
 
-Intake never calls IDE APIs. Hosts must pre-fill structured refs on `CreateUserRequestInput`:
+## Owns / does not own
 
-| Host signal | Envelope field |
-|-------------|----------------|
-| Active editor selection | `referencedArtifacts[]` with `kind: "selection"`, `path`, `startLine`, `endLine` |
-| Explicit @-picker / drag files | `referencedArtifacts[]` with `kind: "file"` or `"folder"` |
-| Open / visible tabs (optional) | additional `kind: "file"` refs (cap with envelope limits) |
-| Pasted / attached images | `attachments[]` (mime allowlist + size caps) |
-| Mid-run steer / follow-up | `turnKind: "steer" \| "follow_up" \| "continue"` (+ optional `parentRequestId`) |
-| Session new/resume | `sessionAction` — classify only; host owns storage |
+**Owns:** validation, sanitize, slash classify, mentions, attachment policy, mode resolve, envelope shape, stage logging.
 
-Intake will also parse `@path` and whole-message bare paths into artifacts, but **selection ranges and open-tab sets are host-only**.
+**Does not own:** understanding intent, grants, loading `@path` contents, `/compact` execution, transcript storage (engine/host rewrite).
 
-## Types And Contracts
+---
 
-- `CreateUserRequestInput`: boundary input with `sessionId`, `mode`, `userMessage`, optional `requestId`, `origin`, `referencedArtifacts`, `workspace`, and `correlation`.
-- `UserRequestEnvelope`: normalized output with `schemaVersion`, `requestId`, `sessionId`, `mode`, `origin`, `message`, artifact list, optional workspace/correlation, and `createdAt`.
-- `AgentMode`: request mode used by later policy and planning modules.
-- `RequestArtifactReference`: file/folder/attachment/selection/symbol reference metadata.
-- `RequestEnvelopeClockPort`: injected clock for deterministic timestamps.
-- `RequestEnvelopeIdGeneratorPort`: injected id generator.
+## Host must pre-fill
 
-## Technical Details
+| Host signal | Field |
+|---|---|
+| Selection | `referencedArtifacts` (`kind: "selection"`) |
+| @-picker / tabs | `referencedArtifacts` (`kind: "file"` / `"folder"`) |
+| Images | `attachments[]` |
+| Steer / follow-up | `turnKind` |
 
-- The public facade method is `RequestIntakePipeline.intake`.
-- The schema rejects empty requests unless artifacts provide content.
-- Message length and artifact count limits are enforced before any model or repository work.
-- The module records observed workspace state if the host provides it, but it does not resolve or validate repository artifacts.
+---
 
-## Ownership Boundaries
+## Public API
 
-Owns request validation and envelope creation.
+```ts
+new RequestIntakePipeline({ clock, idGenerator, log }).intakeDetailed(input)
+```
 
-Does not own intent classification, route decisions, repository indexing, prompt construction, model calls, or tool execution.
+Prefer `intakeDetailed` when the engine needs `shortCircuitMeta` / `warnings`.
+
+---
 
 ## Tests
 
@@ -89,62 +80,114 @@ Does not own intent classification, route decisions, repository indexing, prompt
 pnpm exec vitest run packages/v8/src/modules/request-intake
 ```
 
-## Example Flow
+---
 
-This example uses a realistic coding-agent request and shows the kind of structure this module receives and returns. The output is representative: ids, timings, and scores are examples, but the shape matches how this module is meant to be understood.
+# Refactor brief (module 2)
 
-### Real Prompt
+## What changed
 
-```text
-I am in a React app. In src/LoginForm.tsx, when the user clicks the "Sign in" button, show a loading label and disable the button until the login request finishes. Keep the existing validation and error handling. Add or update a focused test if there is already a LoginForm test nearby.
+- Unified layout toward the same pattern as window-budget: `pipeline/` + numbered `actions/` + `policy/` + `contracts/` + `tests/`.
+- Moved former top-level domains (`sanitize`, `command-classify`, `mention-extract`, `attachment-normalize`, `interaction-mode`, `request-envelope`) under `helpers/`.
+- Added numbered `actions/` shelf that matches pipeline order (1→6).
+- Added `policy/` glance shelf for limits, modes, and slash/meta catalogs.
+- Added `constants.ts` with `REQUEST_INTAKE_STAGES` (same names as action files / logger events).
+- Added optional `ModuleLoggerPort`; `intakeDetailed` emits one stage event per step.
+- Restored `createUserRequestInputSchema` limits to the real constant keys (`MAXIMUM_MESSAGE_CHARACTERS`, …).
+- Collocated tests under `tests/{unit,contract}` (vitest).
+
+## Why it changed
+
+- Intake had many sibling folders with no single “start here” story.
+- The engine and hosts need a stable envelope + short-circuit flag without caring about internal folders.
+- Without stage logs, “why did mode become plan?” / “why did /stop short-circuit?” was guesswork.
+- Module cleanup must stay readable **before** the engine rewrite.
+
+## How we refactored it
+
+1. Kept public contracts (`CreateUserRequestInput` → `UserRequestEnvelope` + `RequestIntakeResult`).
+2. Left orchestration only in `RequestIntakePipeline.intakeDetailed()`.
+3. Numbered the six steps to mirror call order.
+4. Parked implementations under `helpers/` and re-exported through `actions/` (compat shelf).
+5. Re-exported policy tables from `policy/` without changing values.
+6. Wired optional logger; `composeV8Engine` can pass `intake.log`.
+7. Contract + unit tests green.
+
+## How constants / texts were moved
+
+| Kind | Home |
+|---|---|
+| Envelope limits / defaults / origins / turn kinds | `helpers/request-envelope/constants.ts` → re-exported via `policy/` + module `index` |
+| Agent modes | `helpers/interaction-mode/constants.ts` → `policy/` |
+| Slash / meta command catalogs | `helpers/command-classify/constants.ts` → `policy/` (`BUILTIN_META_COMMAND_SPECS`, `MODE_SLASH_COMMANDS`) |
+| User-facing validation messages | `REQUEST_ENVELOPE_MESSAGES.*` (no inline prose in schemas beyond references) |
+| Stage names for logs | `REQUEST_INTAKE_STAGES` in module `constants.ts` |
+
+Rule: add catalog/limit/message constants next to their policy owner; export through `policy/` / public `index`. Do not invent new magic strings in the pipeline.
+
+## How logger helps identify problems
+
+Inject `log` on the pipeline (or via `composeV8Engine({ intake: { log } })`):
+
+```ts
+new RequestIntakePipeline({
+  clock,
+  idGenerator,
+  log: {
+    stage(event) {
+      // event.module === "request-intake"
+      // event.stage === "1-sanitize" … "6-build-envelope"
+      // event.reasonCodes, inputSummary, outputSummary, durationMs
+    },
+  },
+}).intakeDetailed(input)
 ```
 
-### Real Input Structure
+| Symptom | Look at |
+|---|---|
+| Mode flipped unexpectedly | `2-classify-command` (`slashMode`) then `5-resolve-mode` (`hostMode` vs `mode`) |
+| `/stop` / `/compact` didn’t short-circuit | `2-classify-command` `shortCircuitMeta` + `metaName` |
+| Missing @file artifact | `3-extract-mentions` `extractedCount` / `mergedCount` |
+| Image dropped | `4-normalize-attachments` `reasonCodes` (warnings) + `kept` |
+| Empty / oversized reject | fails before/at validate — check input schema limits, not logger |
+| Slow intake | `durationMs` per stage |
 
-CreateUserRequestInput -> UserRequestEnvelope:
+## How to extend the module
 
-```json
-{
-  "sessionId": "session-1",
-  "mode": "agent",
-  "userMessage": "I am in a React app. In src/LoginForm.tsx, when the user clicks the \"Sign in\" button, show a loading label and disable the button until the login request finishes. Keep the existing validation and error handling. Add or update a focused test if there is already a LoginForm test nearby.",
-  "referencedArtifacts": [
-    { "kind": "file", "name": "LoginForm.tsx", "path": "src/LoginForm.tsx" }
-  ],
-  "workspace": { "workspaceId": "workspace-1" }
-}
-```
+| Goal | Where |
+|---|---|
+| New slash mode (`/ask`, …) | `MODE_SLASH_COMMANDS` in command-classify constants + mode schema if needed |
+| New meta command (`/foo`) | `BUILTIN_META_COMMAND_SPECS` (+ lifecycle) |
+| New attachment mime | `SUPPORTED_IMAGE_MIME_TYPES` + normalize policy |
+| New artifact kind | envelope schema/types + mention extract if parseable |
+| New turn kind / session action | envelope constants + schemas |
+| New pipeline step | new numbered `actions/N-…`, call it from `intakeDetailed`, add `REQUEST_INTAKE_STAGES` + logger event + test |
+| New stable stage/reason string | `constants.ts` / policy constants first |
 
-### Step-By-Step Flow
+Do not put LLM / file IO / session storage here.
 
-1. A user sends the real prompt shown above from an editor or chat host.
-2. The host attaches workspace id `workspace-1` and the explicit target file `src/LoginForm.tsx`.
-3. The module receives the real structure shown in the input block.
-4. The module validates schema/version/limits before doing any work.
-5. The module extracts the important target: `src/LoginForm.tsx`.
-6. The module keeps the user constraint: existing validation and error handling must stay intact.
-7. The module performs only its own responsibility and does not cross into neighboring modules.
-8. Any budget, path, state, or provider constraint is applied before output is produced.
-9. The module records warnings/reason codes instead of hiding degraded behavior.
-10. The module returns the realistic output shape shown below.
-11. The next pipeline stage consumes that output without reinterpreting raw user text.
+## If something breaks later — how to fix
 
-### Realistic Output
+1. Reproduce with the smallest `CreateUserRequestInput` (message, mode, artifacts, meta).
+2. Run with an injected logger — see which stage’s `outputSummary` diverges.
+3. Fix at the owner: parse bug → helper/action for that step; limit/message → policy constants; envelope shape → contracts/schema.
+4. Add a regression under `tests/unit` or `tests/contract`.
+5. Re-run `pnpm exec vitest run packages/v8/src/modules/request-intake`.
 
-Request Intake envelope creation returns a result like this:
+## Bugs fixed while redesigning
 
-```json
-{
-  "schemaVersion": 1,
-  "requestId": "req-1",
-  "sessionId": "session-1",
-  "mode": "agent",
-  "origin": "user",
-  "message": "I am in a React app. In src/LoginForm.tsx, when the user clicks the \"Sign in\" button, show a loading label and disable the button until the login request finishes. Keep the existing validation and error handling. Add or update a focused test if there is already a LoginForm test nearby.",
-  "referencedArtifacts": [
-    { "kind": "file", "name": "LoginForm.tsx", "path": "src/LoginForm.tsx" }
-  ],
-  "workspace": { "workspaceId": "workspace-1" },
-  "createdAt": "2026-08-14T12:00:00.000Z"
-}
-```
+| Bug | Fix |
+|---|---|
+| Input schema referenced non-existent limit keys (`MAX_MESSAGE_LENGTH`, …) so oversized messages were accepted | Restored `MAXIMUM_MESSAGE_CHARACTERS` / `MAXIMUM_*` keys matching envelope constants |
+| Empty-request / attachment edge rules drifted from original contract | Restored original `createUserRequestInputSchema` refine semantics |
+| No stage visibility for mode/meta/attachment drops | `ModuleLoggerPort` stage events on every step |
+
+## Room left for improvement
+
+- **Inline helpers into numbered `actions/`** so opening `2-classify-command.ts` shows the real function (match window-budget). Tracked as `RI-ACTIONS-INLINE`.
+- Move envelope/mode **schemas** fully under `contracts/` (helpers keep algorithms only).
+- Engine hosts should always prefer `intakeDetailed` + shared logger adapter.
+- Optional richer reason codes (e.g. `attachment_dropped_mime`) instead of free-text warnings in logs.
+
+## Verification
+
+`pnpm exec vitest run packages/v8/src/modules/request-intake` → contract + unit (incl. logger stage order) passed.

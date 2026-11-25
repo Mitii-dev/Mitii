@@ -1,23 +1,30 @@
+import { REQUEST_INTAKE_STAGES } from "../constants";
 import { createUserRequestInputSchema } from "../contracts/input/CreateUserRequestInput";
 import type { CreateUserRequestInput } from "../contracts/input/CreateUserRequestInput";
-import { UserRequestEnvelopeBuilder } from "../request-envelope/UserRequestEnvelopeBuilder";
+import type { AgentMode } from "../contracts";
+import {
+  noopModuleLogger,
+  type ModuleLoggerPort,
+} from "../contracts/ports/ModuleLoggerPort";
 import type {
   UserRequestEnvelope,
   UserRequestEnvelopeBuilderDependencies,
-} from "../request-envelope/types";
-import { REQUEST_ENVELOPE_DEFAULTS } from "../request-envelope/constants";
-import { sanitizeUserMessage } from "../sanitize";
-import { classifyLeadingCommand } from "../command-classify";
+} from "../helpers/request-envelope/types";
+import { REQUEST_ENVELOPE_DEFAULTS } from "../policy";
 import {
+  sanitizeUserMessage,
+  classifyLeadingCommand,
   extractMentionArtifacts,
   mergeReferencedArtifacts,
-} from "../mention-extract";
-import { normalizeAttachments } from "../attachment-normalize";
-import { resolveInteractionMode } from "../interaction-mode/resolveMode";
-import type { AgentMode } from "../interaction-mode/types";
+  normalizeAttachments,
+  resolveInteractionMode,
+  UserRequestEnvelopeBuilder,
+} from "../actions";
 
 export type RequestIntakePipelineDependencies =
-  UserRequestEnvelopeBuilderDependencies;
+  UserRequestEnvelopeBuilderDependencies & {
+    log?: ModuleLoggerPort;
+  };
 
 export type RequestIntakeResult = {
   envelope: UserRequestEnvelope;
@@ -31,21 +38,28 @@ export type RequestIntakeResult = {
 };
 
 /**
- * Primary request-intake facade.
+ * Request Intake facade.
  *
- * Stages:
- * sanitize → command-classify → mention-extract → attachment-normalize
- * → mode-resolve → validate → build envelope.
+ * Flow:
+ *   1-sanitize → 2-classify-command → 3-extract-mentions
+ *   → 4-normalize-attachments → 5-resolve-mode → 6-build-envelope
+ *
+ * Does not load file contents, call LLMs, or own session storage.
  */
 export class RequestIntakePipeline {
   private readonly builder: UserRequestEnvelopeBuilder;
+  private readonly log: ModuleLoggerPort;
 
   constructor(dependencies: RequestIntakePipelineDependencies) {
-    this.builder = new UserRequestEnvelopeBuilder(dependencies);
+    this.builder = new UserRequestEnvelopeBuilder({
+      clock: dependencies.clock,
+      idGenerator: dependencies.idGenerator,
+    });
+    this.log = dependencies.log ?? noopModuleLogger;
   }
 
   /**
-   * Validate + staged inject parse → normalized envelope.
+   * Validate + staged parse → normalized envelope.
    * Prefer {@link intakeDetailed} when callers need short-circuit flags.
    */
   public intake(input: CreateUserRequestInput): UserRequestEnvelope {
@@ -57,19 +71,31 @@ export class RequestIntakePipeline {
     const warnings: string[] = [];
 
     // 1. Sanitize
+    let startedMs = Date.now();
     const sanitized = sanitizeUserMessage(validated.userMessage);
+    this.log.stage({
+      module: "request-intake",
+      stage: REQUEST_INTAKE_STAGES.sanitize,
+      durationMs: Date.now() - startedMs,
+      reasonCodes: [],
+      inputSummary: { messageChars: validated.userMessage.length },
+      outputSummary: { messageChars: sanitized.length },
+    });
+
     let message = sanitized;
     let messageOriginal: string | undefined;
     let slashMode: AgentMode | undefined;
     let metaCommand = validated.metaCommand;
     let shortCircuitMeta = false;
+    let classifyKind: "none" | "mode" | "meta" | "host_meta" = "none";
 
     // 2. Command classify (host metaCommand wins)
+    startedMs = Date.now();
     if (!metaCommand) {
       const classified = classifyLeadingCommand(sanitized);
+      classifyKind = classified.kind;
       if (classified.kind === "mode") {
         slashMode = classified.mode;
-        // Bare `/plan` with no args: keep original text so content rules pass.
         message =
           classified.message.length > 0
             ? classified.message
@@ -85,6 +111,7 @@ export class RequestIntakePipeline {
         shortCircuitMeta = !classified.entersAgentTurn;
       }
     } else {
+      classifyKind = "host_meta";
       shortCircuitMeta =
         metaCommand.lifecycle !== "agent_turn" &&
         !(
@@ -92,8 +119,21 @@ export class RequestIntakePipeline {
           metaCommand.args.trim().length > 0
         );
     }
+    this.log.stage({
+      module: "request-intake",
+      stage: REQUEST_INTAKE_STAGES.classifyCommand,
+      durationMs: Date.now() - startedMs,
+      reasonCodes: metaCommand ? [`meta:${metaCommand.name}`] : [],
+      outputSummary: {
+        kind: classifyKind,
+        slashMode,
+        shortCircuitMeta,
+        metaName: metaCommand?.name,
+      },
+    });
 
     // 3. Mention extract → artifacts (paths only; keep @ text in message)
+    startedMs = Date.now();
     const extracted = extractMentionArtifacts(message);
     const hostArtifacts = (validated.referencedArtifacts ?? []).map(
       (artifact) => ({ ...artifact }),
@@ -102,15 +142,46 @@ export class RequestIntakePipeline {
       hostArtifacts,
       extracted,
     );
+    this.log.stage({
+      module: "request-intake",
+      stage: REQUEST_INTAKE_STAGES.extractMentions,
+      durationMs: Date.now() - startedMs,
+      reasonCodes: [],
+      outputSummary: {
+        hostArtifactCount: hostArtifacts.length,
+        extractedCount: extracted.length,
+        mergedCount: referencedArtifacts.length,
+      },
+    });
 
     // 4. Attachment normalize
+    startedMs = Date.now();
     const attachmentResult = normalizeAttachments(validated.attachments);
     warnings.push(...attachmentResult.warnings);
+    this.log.stage({
+      module: "request-intake",
+      stage: REQUEST_INTAKE_STAGES.normalizeAttachments,
+      durationMs: Date.now() - startedMs,
+      reasonCodes: attachmentResult.warnings,
+      outputSummary: {
+        kept: attachmentResult.attachments.length,
+        warningCount: attachmentResult.warnings.length,
+      },
+    });
 
     // 5. Mode resolve
+    startedMs = Date.now();
     const mode = resolveInteractionMode({
       hostMode: validated.mode,
       slashMode,
+    });
+    this.log.stage({
+      module: "request-intake",
+      stage: REQUEST_INTAKE_STAGES.resolveMode,
+      durationMs: Date.now() - startedMs,
+      reasonCodes: [`mode:${mode}`],
+      inputSummary: { hostMode: validated.mode, slashMode },
+      outputSummary: { mode },
     });
 
     const buildInput: CreateUserRequestInput = {
@@ -129,6 +200,8 @@ export class RequestIntakePipeline {
     // Re-validate after inject stages (limits / empty rules).
     const revalidated = createUserRequestInputSchema.parse(buildInput);
 
+    // 6. Build envelope
+    startedMs = Date.now();
     const envelope = this.builder.build(revalidated, {
       mode,
       message,
@@ -142,6 +215,19 @@ export class RequestIntakePipeline {
       sessionAction: revalidated.sessionAction,
       parentRequestId: revalidated.parentRequestId,
       metaCommand,
+    });
+    this.log.stage({
+      module: "request-intake",
+      stage: REQUEST_INTAKE_STAGES.buildEnvelope,
+      durationMs: Date.now() - startedMs,
+      reasonCodes: [],
+      outputSummary: {
+        requestId: envelope.requestId,
+        mode: envelope.mode,
+        turnKind: envelope.turnKind,
+        artifactCount: envelope.referencedArtifacts.length,
+        shortCircuitMeta,
+      },
     });
 
     return {

@@ -1,21 +1,27 @@
 import { describe, expect, it } from "vitest";
 
-import { createUserRequestInputSchema } from "../contracts/input/CreateUserRequestInput";
-import { agentModeSchema } from "../interaction-mode/schema";
-import { RequestIntakePipeline } from "../pipeline/RequestIntakePipeline";
-import { userRequestEnvelopeSchema } from "../request-envelope/schema";
-import { extractMentionArtifacts } from "../mention-extract";
-import { classifyLeadingCommand, parseLeadingCommand } from "../command-classify";
-import { sanitizeUserMessage } from "../sanitize";
+import {
+  createUserRequestInputSchema,
+  agentModeSchema,
+  RequestIntakePipeline,
+  REQUEST_INTAKE_STAGES,
+  userRequestEnvelopeSchema,
+  extractMentionArtifacts,
+  classifyLeadingCommand,
+  parseLeadingCommand,
+  sanitizeUserMessage,
+  type ModuleLoggerPort,
+} from "../../index";
 
 const NOW = Date.parse("2026-07-25T12:00:00.000Z");
 
-const createPipeline = () =>
+const createPipeline = (log?: ModuleLoggerPort) =>
   new RequestIntakePipeline({
     clock: { now: () => NOW },
     idGenerator: {
       generate: (namespace) => `${namespace}-intake-1`,
     },
+    log,
   });
 
 describe("RequestIntakePipeline", () => {
@@ -183,6 +189,28 @@ describe("RequestIntakePipeline", () => {
 
     expect(result.turnKind).toBe("steer");
     expect(result.parentRequestId).toBe("request-parent-1");
+  });
+
+  it("emits logger stage events when a logger is injected", () => {
+    const stages: string[] = [];
+    const log: ModuleLoggerPort = {
+      stage(event) {
+        stages.push(event.stage);
+      },
+    };
+    createPipeline(log).intake({
+      sessionId: "session-1",
+      mode: "agent",
+      userMessage: "Explain the bug.",
+    });
+    expect(stages).toEqual([
+      REQUEST_INTAKE_STAGES.sanitize,
+      REQUEST_INTAKE_STAGES.classifyCommand,
+      REQUEST_INTAKE_STAGES.extractMentions,
+      REQUEST_INTAKE_STAGES.normalizeAttachments,
+      REQUEST_INTAKE_STAGES.resolveMode,
+      REQUEST_INTAKE_STAGES.buildEnvelope,
+    ]);
   });
 });
 

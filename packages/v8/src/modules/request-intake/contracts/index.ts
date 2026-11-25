@@ -5,9 +5,33 @@ export type {
   CreateUserRequestInput,
 } from "./input/CreateUserRequestInput";
 
-export { userRequestEnvelopeSchema } from "../request-envelope/schema";
+export {
+  userRequestEnvelopeSchema,
+  requestArtifactReferenceSchema,
+  requestImageAttachmentSchema,
+  requestMetaCommandSchema,
+} from "../helpers/request-envelope/schema";
 export type {
   UserRequestEnvelope,
-} from "../request-envelope/types";
-export type { AgentMode } from "../interaction-mode/types";
-export { agentModeSchema } from "../interaction-mode/schema";
+  RequestArtifactReference,
+  RequestImageAttachment,
+  RequestMetaCommand,
+  RequestTurnKind,
+  RequestSessionAction,
+  MetaCommandLifecycle,
+  UserRequestCorrelation,
+  UserRequestOrigin,
+  UserRequestWorkspaceScope,
+  RequestArtifactKind,
+  UserRequestEnvelopeBuilderDependencies,
+  RequestEnvelopeClockPort,
+  RequestEnvelopeIdGeneratorPort,
+} from "../helpers/request-envelope/types";
+
+export type { AgentMode } from "../helpers/interaction-mode/types";
+export { agentModeSchema } from "../helpers/interaction-mode/schema";
+
+export {
+  noopModuleLogger,
+} from "./ports/ModuleLoggerPort";
+export type { ModuleLoggerPort } from "./ports/ModuleLoggerPort";

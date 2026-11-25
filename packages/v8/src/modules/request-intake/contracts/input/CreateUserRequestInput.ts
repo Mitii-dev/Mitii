@@ -1,20 +1,20 @@
 import { z } from "zod";
 
-import { agentModeSchema } from "../../interaction-mode/schema";
+import { agentModeSchema } from "../../helpers/interaction-mode/schema";
 import {
   requestArtifactReferenceSchema,
   requestImageAttachmentSchema,
   requestMetaCommandSchema,
   userRequestCorrelationSchema,
   userRequestWorkspaceScopeSchema,
-} from "../../request-envelope/schema";
+} from "../../helpers/request-envelope/schema";
 import {
   REQUEST_ENVELOPE_LIMITS,
   REQUEST_ENVELOPE_MESSAGES,
   REQUEST_SESSION_ACTIONS,
   REQUEST_TURN_KINDS,
   USER_REQUEST_ORIGINS,
-} from "../../request-envelope/constants";
+} from "../../helpers/request-envelope/constants";
 
 /**
  * Boundary input for RequestIntakePipeline.
