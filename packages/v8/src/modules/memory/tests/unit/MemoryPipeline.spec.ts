@@ -6,8 +6,9 @@ import {
   MemoryError,
   MemoryPipeline,
   MEMORY_SCHEMA_VERSION,
-} from "..";
-import type { MemoryFactDraft } from "..";
+  MEMORY_STAGES,
+} from "../..";
+import type { MemoryFactDraft, ModuleLoggerPort } from "../..";
 
 const now = "2026-07-26T12:00:00.000Z";
 
@@ -64,6 +65,29 @@ describe("MemoryPipeline", () => {
         scope: { kind: "workspace" } as never,
       }),
     ).rejects.toBeInstanceOf(MemoryError);
+  });
+
+  it("emits logger stage events for the retrieve path", async () => {
+    const stages: string[] = [];
+    const log: ModuleLoggerPort = {
+      stage(event) {
+        stages.push(event.stage);
+      },
+    };
+    await new MemoryPipeline({
+      store: new InMemoryMemoryStore(seed),
+      log,
+    }).retrieve({
+      schemaVersion: MEMORY_SCHEMA_VERSION,
+      query: "install packages with pnpm",
+      scope: { kind: "workspace", workspaceId: "ws" },
+      now,
+    });
+    expect(stages).toEqual([
+      MEMORY_STAGES.filterCandidates,
+      MEMORY_STAGES.scoreRelevance,
+      MEMORY_STAGES.applyBudget,
+    ]);
   });
 
   it("retrieves relevant workspace memory with provenance", async () => {

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import type { MemoryCommitParsedInput, MemoryFact } from "../contracts";
 import { deriveConcepts } from "../internal/deriveConcepts";
-import { MemoryContentPolicy } from "../MemoryContentPolicy";
+import { MemoryContentPolicy } from "../policy/contentPolicy";
 import { redactMemoryContent } from "../internal/privacy";
 import { MEMORY_THRESHOLDS } from "../policy";
 

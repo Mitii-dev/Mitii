@@ -1,4 +1,4 @@
-import { MemoryContentPolicy } from "../MemoryContentPolicy";
+import { MemoryContentPolicy } from "../policy/contentPolicy";
 import type { MemoryFactType } from "../contracts";
 
 export interface SyntheticObservationInput {

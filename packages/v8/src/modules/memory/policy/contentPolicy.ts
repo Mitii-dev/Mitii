@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { memoryFactSchema, type MemoryFact } from "./contracts";
-import { redactMemoryContent } from "./internal/privacy";
+import { memoryFactSchema, type MemoryFact } from "../contracts";
+import { redactMemoryContent } from "../internal/privacy";
 
 /** Content boundary shared by capture, storage, graph and prompt consumers. */
 export class MemoryContentPolicy {

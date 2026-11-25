@@ -7,7 +7,7 @@ import {
   DEFAULT_MEMORY_IMPORTANCE,
   DEFAULT_MIN_MEMORY_SCORE,
   DEFAULT_RETENTION_DAYS,
-} from "./defaults";
+} from "../defaults";
 
 export const MEMORY_THRESHOLDS = {
   defaultBudgetTokens: DEFAULT_MEMORY_BUDGET_TOKENS,

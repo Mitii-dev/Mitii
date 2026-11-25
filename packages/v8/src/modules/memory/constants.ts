@@ -59,8 +59,61 @@ export const MEMORY_REASON_CODES = [
   "memory_consolidated",
 ] as const;
 
+export type MemoryReasonCodeConst = (typeof MEMORY_REASON_CODES)[number];
+
+/** Named reason-code accessors — never build codes with string templates. */
+export const MEMORY_REASON = {
+  retrieved: "memory_retrieved",
+  noRelevant: "no_relevant_memory",
+  budgetOmitted: "budget_omitted_memory",
+  staleFiltered: "stale_memory_filtered",
+  privacyFiltered: "privacy_filtered",
+  storeEmpty: "store_empty",
+  committed: "memory_committed",
+  commitRejected: "commit_rejected",
+  bm25Only: "memory_bm25_only",
+  fileBoosted: "memory_file_boosted",
+  hybrid: "memory_hybrid",
+  superseded: "memory_superseded",
+  privacyRedacted: "privacy_redacted",
+  duplicate: "memory_duplicate",
+  reinforced: "memory_reinforced",
+  layered: "memory_layered",
+  consolidated: "memory_consolidated",
+} as const satisfies Record<string, MemoryReasonCodeConst>;
+
 export const MEMORY_ERROR_CODES = [
   "invalid_input",
   "misconfigured_ports",
   "store_failed",
 ] as const;
+
+export const MEMORY_MESSAGES = {
+  retrieveInputInvalid: "Memory retrieve input failed schema validation.",
+  commitInputInvalid: "Memory commit input failed schema validation.",
+  consolidateInputInvalid: "Invalid memory consolidation input.",
+  storeRequired: "MemoryPipeline requires a store port.",
+  storeQueryFailed: "Memory store query failed.",
+  storeCommitFailed: "Memory store commit failed.",
+  correctionNeedsAtomic: "Memory correction requires an atomic store.",
+  consolidateNeedsAtomic: "Consolidation requires an atomic store.",
+  embeddingUnavailable:
+    "Memory embeddings unavailable; using lexical and file retrieval.",
+  commitRejected: (reason: string) => `Commit rejected: ${reason}.`,
+  privacyRedacted:
+    "Sensitive memory fields were redacted before persistence.",
+  accessTouchFailed: (detail: string) =>
+    `Memory access touch failed: ${detail}`,
+} as const;
+
+/** Ordered flow stage names (pipeline + logger). */
+export const MEMORY_STAGES = {
+  filterCandidates: "1-filter-candidates",
+  scoreRelevance: "2-score-relevance",
+  applyBudget: "3-apply-budget",
+  prepareCommit: "4-prepare-commit",
+  commitAndConsolidate: "5-commit-and-consolidate",
+} as const;
+
+export type MemoryStageName =
+  (typeof MEMORY_STAGES)[keyof typeof MEMORY_STAGES];
