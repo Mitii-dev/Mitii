@@ -5,13 +5,13 @@ import {
   ChangeImpactPipeline,
   planCheckChangeImpact,
   recommendWidenVerification,
-} from "../index";
+} from "../../index";
 import {
   createGraph,
   edge,
   fileNode,
   projectNode,
-} from "./fixtures/changeImpactGraphFixtures";
+} from "../fixtures/changeImpactGraphFixtures";
 
 /**
  * Frozen oracle cases: expected affected paths / widen / spillover for a

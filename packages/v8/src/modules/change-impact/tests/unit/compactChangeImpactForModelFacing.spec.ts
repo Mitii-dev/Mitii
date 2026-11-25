@@ -5,7 +5,7 @@ import {
   compactChangeImpactForModelFacing,
   isChangeImpactToolOutput,
   CHANGE_IMPACT_POLICY,
-} from "../index";
+} from "../../index";
 
 describe("classifyImpactBucket", () => {
   it("marks common test path conventions as test", () => {

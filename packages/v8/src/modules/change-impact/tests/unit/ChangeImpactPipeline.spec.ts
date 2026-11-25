@@ -2,19 +2,57 @@ import { describe, expect, it } from "vitest";
 
 import {
   CHANGE_IMPACT_SCHEMA_VERSION,
+  CHANGE_IMPACT_STAGES,
   ChangeImpactPipeline,
   changeImpactInputSchema,
   changeImpactResultSchema,
-} from "../index";
+} from "../../index";
+import type { ModuleLoggerPort } from "../../index";
 import {
   createGraph,
   edge,
   fileNode,
   projectNode,
   symbolNode,
-} from "./fixtures/changeImpactGraphFixtures";
+} from "../fixtures/changeImpactGraphFixtures";
 
 describe("ChangeImpactPipeline", () => {
+  it("emits logger stage events for the analyze path", () => {
+    const stages: string[] = [];
+    const log: ModuleLoggerPort = {
+      stage(event) {
+        stages.push(event.stage);
+      },
+    };
+    const graph = createGraph({
+      nodes: [
+        fileNode("file:core", "src/core.ts"),
+        symbolNode("sym:validate", "file:core", "validateJwt", 1, 4),
+        fileNode("file:caller", "src/caller.ts"),
+        symbolNode("sym:caller", "file:caller", "requireAuth", 10, 13),
+      ],
+      edges: [edge("e1", "calls", "sym:caller", "sym:validate", 5, 11)],
+    });
+    new ChangeImpactPipeline({ log }).analyze({
+      schemaVersion: CHANGE_IMPACT_SCHEMA_VERSION,
+      seed: {
+        kind: "symbol",
+        relativePath: "src/core.ts",
+        symbolName: "validateJwt",
+      },
+      repoGraph: graph,
+      maximumHops: 2,
+      includePackages: false,
+    });
+    expect(stages).toEqual([
+      CHANGE_IMPACT_STAGES.assessGraph,
+      CHANGE_IMPACT_STAGES.resolveSeeds,
+      CHANGE_IMPACT_STAGES.walkImpact,
+      CHANGE_IMPACT_STAGES.applyCouplingCycles,
+      CHANGE_IMPACT_STAGES.finalizeResult,
+    ]);
+  });
+
   it("walks reverse call dependents across bounded hops", () => {
     const graph = createGraph({
       nodes: [

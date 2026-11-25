@@ -1,3 +1,4 @@
+import { CHANGE_IMPACT_REASON } from "../constants";
 import type { ChangeImpactResult } from "../contracts";
 
 /**
@@ -11,10 +12,16 @@ export function recommendWidenVerification(
   >,
 ): boolean {
   if (result.graphConfidenceUnsafe) return true;
-  if (result.reasonCodes.includes("graph_confidence_unsafe")) return true;
-  if (result.reasonCodes.includes("graph_stale")) return true;
-  if (result.reasonCodes.includes("seed_cycle_detected")) return true;
-  if (result.reasonCodes.includes("hidden_coupling_detected")) return true;
+  if (result.reasonCodes.includes(CHANGE_IMPACT_REASON.graphConfidenceUnsafe)) {
+    return true;
+  }
+  if (result.reasonCodes.includes(CHANGE_IMPACT_REASON.graphStale)) return true;
+  if (result.reasonCodes.includes(CHANGE_IMPACT_REASON.seedCycleDetected)) {
+    return true;
+  }
+  if (result.reasonCodes.includes(CHANGE_IMPACT_REASON.hiddenCouplingDetected)) {
+    return true;
+  }
   if (result.status === "partial" && result.blastRadius.level === "high") {
     return true;
   }
@@ -27,6 +34,6 @@ export function isGraphConfidenceUnsafe(
 ): boolean {
   return (
     result.graphConfidenceUnsafe ||
-    result.reasonCodes.includes("graph_confidence_unsafe")
+    result.reasonCodes.includes(CHANGE_IMPACT_REASON.graphConfidenceUnsafe)
   );
 }

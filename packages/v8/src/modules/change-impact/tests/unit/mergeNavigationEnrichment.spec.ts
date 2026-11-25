@@ -4,7 +4,7 @@ import {
   CHANGE_IMPACT_SCHEMA_VERSION,
   mergeNavigationEnrichment,
   type ChangeImpactResult,
-} from "../index";
+} from "../../index";
 
 describe("mergeNavigationEnrichment", () => {
   it("merges unique code-nav paths and marks lsp_enriched", () => {

@@ -1,3 +1,4 @@
+import { CHANGE_IMPACT_MESSAGES } from "../constants";
 import {
   ChangeImpactError,
   changeImpactMultiInputSchema,
@@ -8,7 +9,7 @@ import type {
   ChangeImpactResult,
 } from "../contracts";
 import { ChangeImpactPipeline } from "../pipeline/ChangeImpactPipeline";
-import { mergeChangeImpactResults } from "./mergeChangeImpactResults";
+import { mergeChangeImpactResults } from "./7-merge-results";
 
 /**
  * Analyze multiple seeds independently and merge conservatively.
@@ -26,7 +27,7 @@ export function analyzeManyChangeImpact(params: {
   } catch (error) {
     throw new ChangeImpactError(
       "invalid_input",
-      "Multi-seed change impact input failed schema validation.",
+      CHANGE_IMPACT_MESSAGES.multiInputInvalid,
       {
         cause: error instanceof Error ? error.message : String(error),
       },

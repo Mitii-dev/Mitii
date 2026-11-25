@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   isGraphConfidenceUnsafe,
   recommendWidenVerification,
-} from "../index";
+} from "../../index";
 
 describe("recommendWidenVerification", () => {
   it("widens when graph confidence is unsafe", () => {

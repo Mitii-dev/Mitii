@@ -1,4 +1,6 @@
 import {
+  CHANGE_IMPACT_MESSAGES,
+  CHANGE_IMPACT_REASON,
   CHANGE_IMPACT_SCHEMA_VERSION,
 } from "../constants";
 import {
@@ -12,12 +14,12 @@ import type {
 } from "../contracts";
 import { normalizeRelativePath } from "../internal/impactGraphHelpers";
 import { ChangeImpactPipeline } from "../pipeline/ChangeImpactPipeline";
-import { analyzeManyChangeImpact } from "./analyzeManyChangeImpact";
+import { analyzeManyChangeImpact } from "./6-analyze-many";
 import {
   evaluateSpillover,
   spilloverTokensFromResult,
-} from "./evaluateSpillover";
-import { recommendWidenVerification } from "./recommendWidenVerification";
+} from "./8-evaluate-spillover";
+import { recommendWidenVerification } from "./12-recommend-widen";
 
 /**
  * Counterfactual blast-radius check for a proposed path set.
@@ -33,7 +35,7 @@ export function planCheckChangeImpact(params: {
   } catch (error) {
     throw new ChangeImpactError(
       "invalid_input",
-      "Plan-check change impact input failed schema validation.",
+      CHANGE_IMPACT_MESSAGES.planCheckInputInvalid,
       {
         cause: error instanceof Error ? error.message : String(error),
       },
@@ -55,7 +57,7 @@ export function planCheckChangeImpact(params: {
   });
 
   const reasonCodes = new Set(merged.reasonCodes);
-  reasonCodes.add("plan_check_complete");
+  reasonCodes.add(CHANGE_IMPACT_REASON.planCheckComplete);
   const warnings = [
     ...merged.warnings,
     {

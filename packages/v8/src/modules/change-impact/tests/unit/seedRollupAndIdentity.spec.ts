@@ -3,13 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   CHANGE_IMPACT_SCHEMA_VERSION,
   ChangeImpactPipeline,
-} from "../index";
+} from "../../index";
 import {
   createGraph,
   edge,
   fileNode,
   symbolNode,
-} from "./fixtures/changeImpactGraphFixtures";
+} from "../fixtures/changeImpactGraphFixtures";
 
 describe("change-impact seed rollup and path identity", () => {
   it("expands method seeds to parent type and finds type-level callers", () => {

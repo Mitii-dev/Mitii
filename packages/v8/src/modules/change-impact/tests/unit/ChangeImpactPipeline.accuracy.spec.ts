@@ -3,14 +3,14 @@ import { describe, expect, it } from "vitest";
 import {
   CHANGE_IMPACT_SCHEMA_VERSION,
   ChangeImpactPipeline,
-} from "../index";
+} from "../../index";
 import {
   createGraph,
   edge,
   fileNode,
   projectNode,
   symbolNode,
-} from "./fixtures/changeImpactGraphFixtures";
+} from "../fixtures/changeImpactGraphFixtures";
 
 describe("ChangeImpactPipeline accuracy", () => {
   it("marks graph_confidence_unsafe and forces partial when unresolved dominate", () => {

@@ -6,13 +6,13 @@ import {
   evaluateSpillover,
   planCheckChangeImpact,
   spilloverTokensFromResult,
-} from "../index";
+} from "../../index";
 import {
   createGraph,
   edge,
   fileNode,
   projectNode,
-} from "./fixtures/changeImpactGraphFixtures";
+} from "../fixtures/changeImpactGraphFixtures";
 
 describe("change-impact multi-seed, spillover, and plan-check", () => {
   it("merges multiple seeds with min confidence and unioned files", () => {

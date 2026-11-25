@@ -4,12 +4,12 @@ import {
   CHANGE_IMPACT_SCHEMA_VERSION,
   ChangeImpactPipeline,
   recommendWidenVerification,
-} from "../index";
+} from "../../index";
 import {
   createGraph,
   edge,
   fileNode,
-} from "./fixtures/changeImpactGraphFixtures";
+} from "../fixtures/changeImpactGraphFixtures";
 
 describe("change-impact historical coupling and cycles", () => {
   it("applies capped co-change boosts to structural dependents", () => {
