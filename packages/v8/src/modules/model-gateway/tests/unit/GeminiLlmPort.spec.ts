@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { GeminiLlmPort, MODEL_PROVIDER_SUPPORT } from "../../index";
-import type { ModelEvent } from "../../contracts/types";
-import { sanitizeGeminiJsonSchema } from "../../internal/sanitizeGeminiJsonSchema";
+import type { ModelEvent } from "../../types/types";
+import { sanitizeGeminiJsonSchema } from "../../helpers/sanitizeGeminiJsonSchema";
 
 async function collectEvents(
   stream: AsyncIterable<ModelEvent>,

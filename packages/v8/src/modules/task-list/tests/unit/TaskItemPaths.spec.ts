@@ -6,8 +6,8 @@ import {
   itemWriteTargetsMatchChangedFiles,
   taskItemPaths,
   taskPathsMatch,
-} from "../../actions/6-task-item-paths";
-import type { TaskList } from "../../contracts";
+} from "../../actions/steps/6-task-item-paths";
+import type { TaskList } from "../../types";
 
 describe("taskItemPaths", () => {
   it("prefers explicit write/mustRead/affected over title tokens", () => {

@@ -4,4 +4,4 @@
 export {
   ModelCapabilityResolver,
   resolveModelCapabilities,
-} from "./actions/1-resolve-capabilities";
+} from "./actions/steps/1-resolve-capabilities";

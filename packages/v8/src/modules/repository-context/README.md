@@ -22,7 +22,7 @@ repository-context/
     hybrid-retrieval/       Multi-source retrieval and fusion
     context-selection/      Candidate scoring and budgeted selection
     context-assembly/       Content loading and prompt-safe blocks
-  adapters/
+  providers/
   tests/
 ```
 

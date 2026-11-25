@@ -24,7 +24,7 @@ repository-state/
     artifacts/              Snapshot, graph, map, index artifacts
     language/               Language profiles
   internal/                 Workspace scan, source analysis, chunking, indexes
-  adapters/                 In-memory store, filesystem/index runtime helpers
+  providers/                 In-memory store, filesystem/index runtime helpers
   tests/
 ```
 

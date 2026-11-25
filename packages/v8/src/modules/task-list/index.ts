@@ -34,10 +34,10 @@ export {
   DEFAULT_MAX_TASK_PATH_CHARS,
 } from "./defaults";
 
-export { TASK_LIST_POLICY, resolveMaxTasks } from "./policy";
+export { TASK_LIST_POLICY, resolveMaxTasks } from "./rules";
 
-export { TaskListPipeline } from "./pipeline/TaskListPipeline";
-export type { TaskListPipelineDependencies } from "./pipeline/TaskListPipeline";
+export { TaskListPipeline } from "./actions/TaskListPipeline";
+export type { TaskListPipelineDependencies } from "./actions/TaskListPipeline";
 
 export {
   taskListApplyInputSchema,
@@ -55,7 +55,7 @@ export {
   TaskListError,
   taskListErrorCodeSchema,
   noopModuleLogger,
-} from "./contracts";
+} from "./types";
 export type {
   TaskListApplyInput,
   TaskListDraftItem,
@@ -71,7 +71,7 @@ export type {
   TaskListReasonCode,
   TaskListErrorCode,
   ModuleLoggerPort,
-} from "./contracts";
+} from "./types";
 
 export {
   parseTaskListMarkdown,
@@ -95,6 +95,6 @@ export {
   clipTaskTitle,
   isTerminalTaskStatus,
   isValidStatusTransition,
-} from "./actions/1-apply-update";
+} from "./actions/steps/1-apply-update";
 
 export { collectConcretePlanStepCandidates } from "./planStepCandidates";

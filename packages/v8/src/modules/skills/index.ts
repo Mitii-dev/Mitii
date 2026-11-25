@@ -31,10 +31,10 @@ export {
   DEFAULT_MIN_USEFUL_SKILL_TOKENS,
 } from "./defaults";
 
-export { SKILLS_THRESHOLDS } from "./policy";
+export { SKILLS_THRESHOLDS } from "./rules";
 
-export { SkillsPipeline } from "./pipeline/SkillsPipeline";
-export type { SkillsPipelineDependencies } from "./pipeline/SkillsPipeline";
+export { SkillsPipeline } from "./actions/SkillsPipeline";
+export type { SkillsPipelineDependencies } from "./actions/SkillsPipeline";
 
 export {
   skillsSelectInputSchema,
@@ -50,7 +50,7 @@ export {
   skillResourceManifestSchema,
   SkillsError,
   noopModuleLogger,
-} from "./contracts";
+} from "./types";
 export type {
   SkillsSelectInput,
   SkillTaskEvidence,
@@ -67,12 +67,12 @@ export type {
   SkillsCatalogPort,
   SkillSimilarityPort,
   ModuleLoggerPort,
-} from "./contracts";
+} from "./types";
 
 export {
   InMemorySkillsCatalog,
   KeywordSkillSimilarity,
-} from "./adapters";
+} from "./impl";
 
 export {
   parseRequiredSkillMentions,
@@ -81,5 +81,5 @@ export {
   mapUnderstandingToSkillEvidence,
   deriveSkillRepoEvidence,
   formatSkillPromptContent,
-} from "./actions";
-export type { SkillRepoEvidence } from "./actions";
+} from "./actions/steps";
+export type { SkillRepoEvidence } from "./actions/steps";

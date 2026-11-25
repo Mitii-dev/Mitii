@@ -5,17 +5,17 @@
  * during the engine rewrite.
  */
 
-export { RequestIntakePipeline } from "./pipeline/RequestIntakePipeline";
+export { RequestIntakePipeline } from "./actions/RequestIntakePipeline";
 export type {
   RequestIntakePipelineDependencies,
   RequestIntakeResult,
-} from "./pipeline/RequestIntakePipeline";
+} from "./actions/RequestIntakePipeline";
 
 export { REQUEST_INTAKE_STAGES } from "./constants";
 export type { RequestIntakeStageName } from "./constants";
 
-export { UserRequestEnvelopeBuilder } from "./actions";
-export type { CreateUserRequestInput } from "./contracts";
+export { UserRequestEnvelopeBuilder } from "./actions/steps";
+export type { CreateUserRequestInput } from "./types";
 export type {
   UserRequestEnvelope,
   UserRequestEnvelopeBuilderDependencies,
@@ -30,7 +30,7 @@ export type {
   UserRequestOrigin,
   UserRequestWorkspaceScope,
   ModuleLoggerPort,
-} from "./contracts";
+} from "./types";
 export {
   userRequestEnvelopeSchema,
   requestArtifactReferenceSchema,
@@ -39,8 +39,8 @@ export {
   createUserRequestInputSchema,
   agentModeSchema,
   noopModuleLogger,
-} from "./contracts";
-export type { AgentMode } from "./contracts";
+} from "./types";
+export type { AgentMode } from "./types";
 
 export {
   AGENT_MODES,
@@ -53,9 +53,9 @@ export {
   META_COMMAND_LIFECYCLES,
   SUPPORTED_IMAGE_MIME_TYPES,
   BUILTIN_META_COMMAND_SPECS,
-} from "./policy";
+} from "./rules";
 
-export { resolveInteractionMode } from "./actions";
+export { resolveInteractionMode } from "./actions/steps";
 export {
   sanitizeUserMessage,
   classifyLeadingCommand,
@@ -64,4 +64,4 @@ export {
   extractMentionArtifacts,
   mergeReferencedArtifacts,
   normalizeAttachments,
-} from "./actions";
+} from "./actions/steps";

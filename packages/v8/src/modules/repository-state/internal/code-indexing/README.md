@@ -24,7 +24,7 @@ code-indexing/
   InRepoLanguageImportResolver.ts
   CodeIndexUpdatePlanner.ts
   CodeIndexUpdater.ts
-  adapters/sqlite/
+  providers/sqlite/
     SqliteCodeIndexWriter.ts
     SqliteCodeIndexMigration.ts
   schema.ts

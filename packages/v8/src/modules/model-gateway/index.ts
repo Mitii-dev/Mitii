@@ -5,8 +5,8 @@
  * Adapters remain the provider wire implementations.
  */
 
-export { ModelGatewayPipeline } from "./pipeline/ModelGatewayPipeline";
-export type { ModelGatewayPipelineDependencies } from "./pipeline/ModelGatewayPipeline";
+export { ModelGatewayPipeline } from "./actions/ModelGatewayPipeline";
+export type { ModelGatewayPipelineDependencies } from "./actions/ModelGatewayPipeline";
 
 export {
   MODEL_GATEWAY_IDS,
@@ -39,7 +39,7 @@ export {
   modelResponseDeltaSchema,
   modelCapabilitiesSchema,
   noopModuleLogger,
-} from "./contracts";
+} from "./types";
 
 export type {
   LlmPort,
@@ -58,12 +58,12 @@ export type {
   ModelToolDefinition,
   ResolveModelCapabilitiesInput,
   ModuleLoggerPort,
-} from "./contracts";
+} from "./types";
 
 export {
   ModelCapabilityResolver,
   resolveModelCapabilities,
-} from "./actions";
+} from "./actions/steps";
 
 export {
   EchoLlmPort,
@@ -71,11 +71,11 @@ export {
   projectOpenAiCompatibleMessages,
   AnthropicLlmPort,
   GeminiLlmPort,
-} from "./adapters";
+} from "./impl";
 export type {
   EchoLlmPortOptions,
   OpenAiCompatibleAuthHeader,
   OpenAiCompatibleLlmPortConfig,
   AnthropicLlmPortConfig,
   GeminiLlmPortConfig,
-} from "./adapters";
+} from "./impl";

@@ -23,7 +23,7 @@ review/
   pipeline/                 ReviewPipeline (preview | prepare | finalize)
   actions/                  Select, group, rules, anchor, repair, reflect, record, SARIF
   contracts/                Input / output / errors / ports
-  adapters/                 In-memory and file record stores
+  providers/                 In-memory and file record stores
   bundled-rules/            Mitii-owned default path rules
   internal/                 Path utils, scan batching
   tests/

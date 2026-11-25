@@ -61,7 +61,7 @@ export {
   DEFAULT_CHANGE_IMPACT_MAX_PROPOSED_PATHS,
 } from "./defaults";
 
-export { CHANGE_IMPACT_POLICY } from "./policy";
+export { CHANGE_IMPACT_POLICY } from "./rules";
 
 export {
   compactChangeImpactForModelFacing,
@@ -74,7 +74,7 @@ export {
   evaluateSpillover,
   spilloverTokensFromResult,
   planCheckChangeImpact,
-} from "./actions";
+} from "./actions/steps";
 export type {
   ModelFacingAffectedNode,
   ModelFacingAffectedFile,
@@ -82,20 +82,20 @@ export type {
   ModelFacingChain,
   ModelFacingChainLink,
   NavigationEnrichmentLocation,
-} from "./actions";
+} from "./actions/steps";
 
 export {
   classifyImpactBucket,
   bucketSortKey,
-} from "./internal/classifyImpactBucket";
-export type { ChangeImpactFileBucket as ImpactPathBucket } from "./internal/classifyImpactBucket";
+} from "./helpers/classifyImpactBucket";
+export type { ChangeImpactFileBucket as ImpactPathBucket } from "./helpers/classifyImpactBucket";
 
-export { resolveSoftSymbolMatches } from "./internal/resolveSoftSymbolMatches";
+export { resolveSoftSymbolMatches } from "./helpers/resolveSoftSymbolMatches";
 
-export { collapseChainPrefixes } from "./internal/collectBoundedChains";
+export { collapseChainPrefixes } from "./helpers/collectBoundedChains";
 
-export { ChangeImpactPipeline } from "./pipeline/ChangeImpactPipeline";
-export type { ChangeImpactPipelineDependencies } from "./pipeline/ChangeImpactPipeline";
+export { ChangeImpactPipeline } from "./actions/ChangeImpactPipeline";
+export type { ChangeImpactPipelineDependencies } from "./actions/ChangeImpactPipeline";
 
 export {
   changeImpactInputSchema,
@@ -137,7 +137,7 @@ export {
   ChangeImpactError,
   changeImpactErrorCodeSchema,
   noopModuleLogger,
-} from "./contracts";
+} from "./types";
 export type {
   ChangeImpactInput,
   ChangeImpactParsedInput,
@@ -167,4 +167,4 @@ export type {
   ChangeImpactPlanCheckResult,
   RepositoryGraphPort,
   ModuleLoggerPort,
-} from "./contracts";
+} from "./types";

@@ -4,8 +4,16 @@ export {
   CODE_NAVIGATION_STATUSES,
   CODE_NAVIGATION_PROVIDERS,
   CODE_NAVIGATION_REASON_CODES,
+  CODE_NAVIGATION_REASON,
   CODE_NAVIGATION_ERROR_CODES,
   CODE_NAVIGATION_CAPABILITY_STATUSES,
+  CODE_NAVIGATION_WARNING_CODES,
+  CODE_NAVIGATION_MESSAGES,
+  CODE_NAVIGATION_STAGES,
+} from "./constants";
+export type {
+  CodeNavigationReasonCodeConst,
+  CodeNavigationStageName,
 } from "./constants";
 
 export {
@@ -16,21 +24,21 @@ export {
   DEFAULT_NAVIGATION_REQUEST_TIMEOUT_MS,
 } from "./defaults";
 
-export { CODE_NAVIGATION_POLICY } from "./policy";
+export { CODE_NAVIGATION_POLICY } from "./rules";
 
 export {
   createRequestLimiter,
   RequestLimiterTimeoutError,
   RequestLimiterAbortError,
-} from "./internal/createRequestLimiter";
-export type { RequestLimiter } from "./internal/createRequestLimiter";
+} from "./helpers/createRequestLimiter";
+export type { RequestLimiter } from "./helpers/createRequestLimiter";
 
-export { CodeNavigationPipeline } from "./pipeline/CodeNavigationPipeline";
-export type { CodeNavigationPipelineDependencies } from "./pipeline/CodeNavigationPipeline";
+export { CodeNavigationPipeline } from "./actions/CodeNavigationPipeline";
+export type { CodeNavigationPipelineDependencies } from "./actions/CodeNavigationPipeline";
 
-export { GraphCodeNavigationAdapter } from "./adapters/GraphCodeNavigationAdapter";
-export type { GraphCodeNavigationAdapterOptions } from "./adapters/GraphCodeNavigationAdapter";
-export { FallbackCodeNavigationAdapter } from "./adapters/FallbackCodeNavigationAdapter";
+export { GraphCodeNavigationAdapter } from "./impl/GraphCodeNavigationAdapter";
+export type { GraphCodeNavigationAdapterOptions } from "./impl/GraphCodeNavigationAdapter";
+export { FallbackCodeNavigationAdapter } from "./impl/FallbackCodeNavigationAdapter";
 
 export {
   codeNavigationInputSchema,
@@ -40,7 +48,8 @@ export {
   codeNavigationResultSchema,
   CodeNavigationError,
   codeNavigationErrorCodeSchema,
-} from "./contracts";
+  noopModuleLogger,
+} from "./types";
 export type {
   CodeNavigationInput,
   CodeNavigationParsedInput,
@@ -56,4 +65,5 @@ export type {
   CodeNavigationPort,
   CodeNavigationCapability,
   CodeNavigationCallOptions,
-} from "./contracts";
+  ModuleLoggerPort,
+} from "./types";

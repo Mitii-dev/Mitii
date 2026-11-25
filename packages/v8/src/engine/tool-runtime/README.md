@@ -26,7 +26,7 @@ tool-runtime/
     ports/                  Filesystem, process, network, git, diagnostics, search
     errors/                 ToolRuntimeErrors
   actions/                  Grant validation, mutation batch validation, built-ins
-  adapters/                 Node and in-memory host adapters
+  providers/                 Node and in-memory host adapters
   constants.ts              ONE built-in ID list (Decision Policy re-exports)
   internal/                 Registry, shadow, normalize/, sanitization, budgets
   tests/                    Registry, grant, mutation, ID-contract, network tests

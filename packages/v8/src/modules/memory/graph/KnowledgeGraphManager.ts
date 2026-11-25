@@ -10,7 +10,7 @@ import {
   type KnowledgeGraphRelation,
   type KnowledgeGraphStorePort,
 } from "./contracts";
-import { MemoryContentPolicy } from "../policy/contentPolicy";
+import { MemoryContentPolicy } from "../rules/contentPolicy";
 /**
  * Serializes RMW so concurrent graph tool calls cannot last-write-wins.
  */

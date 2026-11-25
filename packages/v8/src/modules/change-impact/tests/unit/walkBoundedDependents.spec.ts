@@ -4,8 +4,8 @@ import type { RepoGraphEdge } from "../../../repository-state";
 import {
   collapseChainPrefixes,
   collectBoundedChains,
-} from "../../internal/collectBoundedChains";
-import { walkBoundedDependents } from "../../internal/walkBoundedDependents";
+} from "../../helpers/collectBoundedChains";
+import { walkBoundedDependents } from "../../helpers/walkBoundedDependents";
 
 describe("walkBoundedDependents", () => {
   it("does not visit or enqueue nodes beyond maximumAffectedNodes", () => {

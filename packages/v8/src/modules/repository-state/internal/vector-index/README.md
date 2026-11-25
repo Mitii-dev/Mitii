@@ -20,7 +20,7 @@ vector-index/
   VectorSearchRequestNormalizer.ts
   VectorIndexTableNameBuilder.ts
   KeyedAsyncLock.ts
-  adapters/lancedb/
+  providers/lancedb/
     LanceDbVectorIndexFactory.ts
     LanceDbVectorIndexReader.ts
     LanceDbVectorIndexWriter.ts

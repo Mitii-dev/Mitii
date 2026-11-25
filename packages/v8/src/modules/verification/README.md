@@ -65,7 +65,7 @@ Verification gathers evidence after a change. It maps changed files to projects,
 verification/
   pipeline/                 VerificationPipeline
   actions/                  Check discovery, execution, diagnostics, records
-  adapters/                 Manifest readers and verification-record stores
+  providers/                 Manifest readers and verification-record stores
   contracts/
     input/                  VerificationInput
     output/                 VerificationResult, RepoBuildState, VerificationRecord

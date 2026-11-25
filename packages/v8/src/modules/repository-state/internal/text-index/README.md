@@ -22,7 +22,7 @@ text-index/
   TextIndexUpdater.ts
   TextSearchService.ts
   TextQueryNormalizer.ts
-  adapters/sqlite/
+  providers/sqlite/
     SqliteTextIndexFactory.ts
     SqliteTextIndexReader.ts
     SqliteTextIndexWriter.ts
