@@ -3,20 +3,25 @@ export {
   clipTaskTitle,
   isTerminalTaskStatus,
   isValidStatusTransition,
-} from "./ApplyTaskListUpdate";
-export { deriveTaskListFromPlan } from "./DeriveTaskListFromPlan";
-export { refillTaskListFromPlan } from "./RefillTaskListFromPlan";
+} from "./1-apply-update";
 export {
   createDiscoveryTaskList,
   isDiscoveryTaskList,
-} from "./CreateDiscoveryTaskList";
+} from "./2-create-discovery";
+export {
+  deriveTaskListFromPlan,
+  collectConcretePlanStepCandidates,
+} from "./3-derive-from-plan";
+export { refillTaskListFromPlan } from "./4-refill-from-plan";
 export {
   parseTaskListMarkdown,
   serializeTaskListForPrompt,
+  serializeTaskListGuidance,
   serializeTaskListMarkdown,
   serializeWorkingSetForLoop,
+  serializeWorkingSetChecklistLines,
   WORKING_SET_MARKER,
-} from "./SerializeTaskList";
+} from "./5-serialize";
 export {
   collectCompletedTaskPaths,
   extractDiagnosticCodeHint,
@@ -25,7 +30,4 @@ export {
   normalizeTaskPath,
   taskItemPaths,
   taskPathsMatch,
-} from "./TaskItemPaths";
-export {
-  collectConcretePlanStepCandidates,
-} from "./DeriveTaskListFromPlan";
+} from "./6-task-item-paths";

@@ -1,4 +1,6 @@
-import { TASK_LIST_SCHEMA_VERSION } from "../constants";
+import { TASK_LIST_SCHEMA_VERSION,
+  TASK_LIST_REASON,
+} from "../constants";
 import {
   DEFAULT_MAX_TASK_TITLE_CHARS,
 } from "../defaults";
@@ -32,7 +34,7 @@ export function applyTaskListUpdate(
         items: [],
       },
       warnings: [],
-      reasonCodes: ["task_list_cleared", "task_list_applied"],
+      reasonCodes: [TASK_LIST_REASON.cleared, TASK_LIST_REASON.applied],
     });
   }
 
@@ -48,14 +50,14 @@ export function applyTaskListUpdate(
       return parsedResult({
         status: "rejected",
         warnings: built.warnings,
-        reasonCodes: ["task_list_invalid"],
+        reasonCodes: [TASK_LIST_REASON.invalid],
       });
     }
     return parsedResult({
       status: "applied",
       taskList: built.taskList,
       warnings: built.warnings,
-      reasonCodes: ["task_list_replaced", "task_list_applied"],
+      reasonCodes: [TASK_LIST_REASON.replaced, TASK_LIST_REASON.applied],
     });
   }
 
@@ -64,7 +66,7 @@ export function applyTaskListUpdate(
     return parsedResult({
       status: "rejected",
       warnings: ["Cannot patch an empty task list. Use replace to create one."],
-      reasonCodes: ["task_list_invalid", "task_list_empty"],
+      reasonCodes: [TASK_LIST_REASON.invalid, TASK_LIST_REASON.empty],
     });
   }
 
@@ -79,7 +81,7 @@ export function applyTaskListUpdate(
       return parsedResult({
         status: "rejected",
         warnings: [`Unknown task id "${patch.id}".`],
-        reasonCodes: ["task_list_invalid"],
+        reasonCodes: [TASK_LIST_REASON.invalid],
       });
     }
     if (patch.title) {
@@ -98,8 +100,8 @@ export function applyTaskListUpdate(
               `Invalid status transition for "${patch.id}": ${existing.status} → ${patch.status}.`,
             ],
             reasonCodes: [
-              "task_list_invalid",
-              "task_list_status_transition_invalid",
+              TASK_LIST_REASON.invalid,
+              TASK_LIST_REASON.statusTransitionInvalid,
             ],
           });
         }
@@ -107,7 +109,7 @@ export function applyTaskListUpdate(
           warnings.push(
             `Unusual status transition for "${patch.id}": ${existing.status} → ${patch.status}.`,
           );
-          reasonCodesExtra.push("task_list_status_transition_invalid");
+          reasonCodesExtra.push(TASK_LIST_REASON.statusTransitionInvalid);
         }
       }
       existing.status = patch.status;
@@ -118,7 +120,7 @@ export function applyTaskListUpdate(
     return parsedResult({
       status: "rejected",
       warnings,
-      reasonCodes: ["task_list_invalid"],
+      reasonCodes: [TASK_LIST_REASON.invalid],
     });
   }
 
@@ -135,14 +137,14 @@ export function applyTaskListUpdate(
     return parsedResult({
       status: "rejected",
       warnings: validated.error.issues.map((issue) => issue.message),
-      reasonCodes: ["task_list_invalid"],
+      reasonCodes: [TASK_LIST_REASON.invalid],
     });
   }
 
   const unchanged = sameList(current, validated.data);
   const reasonCodes: TaskListReasonCode[] = unchanged
-    ? ["task_list_unchanged", ...reasonCodesExtra]
-    : ["task_list_patched", "task_list_applied", ...reasonCodesExtra];
+    ? [TASK_LIST_REASON.unchanged, ...reasonCodesExtra]
+    : [TASK_LIST_REASON.patched, TASK_LIST_REASON.applied, ...reasonCodesExtra];
 
   return parsedResult({
     status: "applied",

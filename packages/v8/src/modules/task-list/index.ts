@@ -1,3 +1,9 @@
+/**
+ * Task List public surface.
+ *
+ * Prefer `TaskListPipeline` for apply / derive / refill / discovery.
+ */
+
 export {
   TASK_LIST_SCHEMA_VERSION,
   TASK_ITEM_STATUSES,
@@ -5,9 +11,16 @@ export {
   TASK_LIST_PURPOSES,
   TASK_LIST_APPLY_STATUSES,
   TASK_LIST_REASON_CODES,
+  TASK_LIST_REASON,
   TASK_LIST_ERROR_CODES,
+  TASK_LIST_MESSAGES,
+  TASK_LIST_STAGES,
   UPDATE_TODOS_TOOL_NAME,
   UPDATE_TODOS_TOOL_ALIASES,
+} from "./constants";
+export type {
+  TaskListReasonCodeConst,
+  TaskListStageName,
 } from "./constants";
 
 export {
@@ -24,6 +37,7 @@ export {
 export { TASK_LIST_POLICY, resolveMaxTasks } from "./policy";
 
 export { TaskListPipeline } from "./pipeline/TaskListPipeline";
+export type { TaskListPipelineDependencies } from "./pipeline/TaskListPipeline";
 
 export {
   taskListApplyInputSchema,
@@ -40,6 +54,7 @@ export {
   taskListReasonCodeSchema,
   TaskListError,
   taskListErrorCodeSchema,
+  noopModuleLogger,
 } from "./contracts";
 export type {
   TaskListApplyInput,
@@ -55,6 +70,7 @@ export type {
   TaskListApplyStatus,
   TaskListReasonCode,
   TaskListErrorCode,
+  ModuleLoggerPort,
 } from "./contracts";
 
 export {
@@ -79,7 +95,6 @@ export {
   clipTaskTitle,
   isTerminalTaskStatus,
   isValidStatusTransition,
-} from "./actions/ApplyTaskListUpdate";
+} from "./actions/1-apply-update";
 
 export { collectConcretePlanStepCandidates } from "./planStepCandidates";
-

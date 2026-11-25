@@ -1,6 +1,8 @@
 import type { PlanArtifact } from "../../planning";
 
-import { TASK_LIST_SCHEMA_VERSION } from "../constants";
+import { TASK_LIST_SCHEMA_VERSION,
+  TASK_LIST_REASON,
+} from "../constants";
 import {
   DEFAULT_MAX_TASK_DETAIL_CHARS,
   DEFAULT_MAX_TASK_PATHS,
@@ -9,7 +11,7 @@ import {
 import { resolveMaxTasks, TASK_LIST_POLICY } from "../policy";
 import type { TaskItem, TaskListApplyResult } from "../contracts";
 import { taskListApplyResultSchema, taskListSchema } from "../contracts";
-import { clipTaskTitle } from "./ApplyTaskListUpdate";
+import { clipTaskTitle } from "./1-apply-update";
 
 /**
  * Compact a PlanArtifact into a live working list.
@@ -51,7 +53,7 @@ export function deriveTaskListFromPlan(
       warnings: [
         "Plan did not contain concrete file-scoped tasks for the live checklist.",
       ],
-      reasonCodes: ["task_list_empty", "task_list_invalid"],
+      reasonCodes: [TASK_LIST_REASON.empty, TASK_LIST_REASON.invalid],
     });
   }
 
@@ -68,7 +70,7 @@ export function deriveTaskListFromPlan(
     status: "applied",
     taskList,
     warnings: [],
-    reasonCodes: ["task_list_derived", "task_list_applied"],
+    reasonCodes: [TASK_LIST_REASON.derived, TASK_LIST_REASON.applied],
   });
 }
 

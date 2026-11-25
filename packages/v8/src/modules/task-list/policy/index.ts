@@ -1,4 +1,15 @@
-import { DEFAULT_MAX_TASKS, MAX_TASKS_CAP } from "./defaults";
+import { DEFAULT_MAX_TASKS, MAX_TASKS_CAP } from "../defaults";
+
+export {
+  DEFAULT_MAX_TASKS,
+  MAX_TASKS_CAP,
+  DEFAULT_MIN_TASKS,
+  DEFAULT_MAX_TASK_TITLE_CHARS,
+  DEFAULT_MAX_TASK_DETAIL_CHARS,
+  DEFAULT_MAX_TASK_ID_CHARS,
+  DEFAULT_MAX_TASK_PATHS,
+  DEFAULT_MAX_TASK_PATH_CHARS,
+} from "../defaults";
 
 /**
  * Resolve the live checklist cap. Window policy may raise it above the default

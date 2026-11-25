@@ -1,14 +1,16 @@
 import type { PlanArtifact } from "../../planning";
 
-import { TASK_LIST_SCHEMA_VERSION } from "../constants";
+import { TASK_LIST_SCHEMA_VERSION,
+  TASK_LIST_REASON,
+} from "../constants";
 import { resolveMaxTasks } from "../policy";
 import type { TaskItem, TaskList, TaskListApplyResult } from "../contracts";
 import { taskListApplyResultSchema, taskListSchema } from "../contracts";
-import { isTerminalTaskStatus } from "./ApplyTaskListUpdate";
+import { isTerminalTaskStatus } from "./1-apply-update";
 import {
   buildTaskItem,
   collectConcretePlanStepCandidates,
-} from "./DeriveTaskListFromPlan";
+} from "./3-derive-from-plan";
 
 /**
  * Stream unused plan steps onto the live list after earlier items complete.
@@ -100,7 +102,7 @@ export function refillTaskListFromPlan(params: {
     status: "applied",
     taskList,
     warnings: [],
-    reasonCodes: ["task_list_refilled", "task_list_applied"],
+    reasonCodes: [TASK_LIST_REASON.refilled, TASK_LIST_REASON.applied],
   });
 }
 
@@ -132,6 +134,6 @@ function unchanged(current: TaskList): TaskListApplyResult {
     status: "applied",
     taskList: current,
     warnings: [],
-    reasonCodes: ["task_list_unchanged"],
+    reasonCodes: [TASK_LIST_REASON.unchanged],
   });
 }

@@ -8,7 +8,7 @@ export {
   serializeWorkingSetForLoop,
   serializeWorkingSetChecklistLines,
   WORKING_SET_MARKER,
-} from "./actions/SerializeTaskList";
+} from "./actions/5-serialize";
 export {
   collectCompletedTaskPaths,
   extractDiagnosticCodeHint,
@@ -17,7 +17,7 @@ export {
   normalizeTaskPath,
   taskItemPaths,
   taskPathsMatch,
-} from "./actions/TaskItemPaths";
+} from "./actions/6-task-item-paths";
 
 export function taskListProgress(taskList: TaskList): {
   completedCount: number;
