@@ -1,14 +1,26 @@
 import { z } from "zod";
 
 import { WINDOW_BUDGET_REASON_CODES } from "../../constants";
-import { WINDOW_BUDGET_EFFORTS } from "../../effort";
-import { WINDOW_BUDGET_MODES } from "../../mode";
+import { WINDOW_BUDGET_EFFORTS } from "../../policy/effort";
+import { WINDOW_BUDGET_MODES } from "../../policy/mode";
 import { windowBudgetPolicySchema } from "../input/WindowBudgetInput";
 
 export const windowBudgetReasonCodeSchema = z.enum(WINDOW_BUDGET_REASON_CODES);
 
 export type WindowBudgetReasonCode = z.infer<
   typeof windowBudgetReasonCodeSchema
+>;
+
+export const windowBudgetStageTraceSchema = z
+  .object({
+    name: z.string().min(1),
+    durationMs: z.number().nonnegative(),
+    reasonCodes: z.array(windowBudgetReasonCodeSchema),
+  })
+  .strict();
+
+export type WindowBudgetStageTrace = z.infer<
+  typeof windowBudgetStageTraceSchema
 >;
 
 export const windowPolicySectionsSchema = z
@@ -73,11 +85,39 @@ export type WindowPolicyPlanning = z.infer<typeof windowPolicyPlanningSchema>;
 
 export const windowPolicyRunSchema = z
   .object({
+    /**
+     * Soft model-call checkpoint. Engine SHOULD offer Continue here when
+     * work is unfinished — not fail the run.
+     */
     maxModelCalls: z.number().int().positive(),
+    /**
+     * Hard safety ceiling. Engine MUST NOT exceed this even after Continue.
+     * Always >= maxModelCalls.
+     */
+    hardMaxModelCalls: z.number().int().positive(),
+    /** Soft tool-call checkpoint (paired with hardMaxToolCalls). */
     maxToolCalls: z.number().int().positive(),
+    /** Hard tool-call safety ceiling. Always >= maxToolCalls. */
+    hardMaxToolCalls: z.number().int().positive(),
     maxVerificationRepairs: z.number().int().nonnegative(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.hardMaxModelCalls < value.maxModelCalls) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "hardMaxModelCalls must be >= maxModelCalls",
+        path: ["hardMaxModelCalls"],
+      });
+    }
+    if (value.hardMaxToolCalls < value.maxToolCalls) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "hardMaxToolCalls must be >= maxToolCalls",
+        path: ["hardMaxToolCalls"],
+      });
+    }
+  });
 
 export type WindowPolicyRun = z.infer<typeof windowPolicyRunSchema>;
 
@@ -169,6 +209,8 @@ export const windowPolicySchema = z
     maxVerificationChecks: z.number().int().positive(),
     resolvedPolicy: windowBudgetPolicySchema,
     reasonCodes: z.array(windowBudgetReasonCodeSchema),
+    /** Optional per-flow-stage timing (filled by WindowBudgetPipeline). */
+    stages: z.array(windowBudgetStageTraceSchema).optional(),
   })
   .strict();
 

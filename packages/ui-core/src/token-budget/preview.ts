@@ -28,7 +28,7 @@ export function isAutoMaximumOutputTokens(raw: unknown): boolean {
   return normalizeMaximumOutputTokens(raw) === 0;
 }
 
-/** Keep aligned with scaleEffortCallBudget in window-budget/effort.ts. */
+/** Keep aligned with scaleEffortCallBudget in window-budget/policy/effort.ts. */
 function scaleEffortCallBudget(base: number, contextWindowTokens: number): number {
   const window = Math.floor(contextWindowTokens);
   const calls = Math.max(1, Math.floor(base));

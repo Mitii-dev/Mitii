@@ -214,16 +214,28 @@ export async function settleToolBatch(params: {
       return { kind: "return", outcome: { kind: "cancelled" } };
     }
     if (!budget.canStartToolCall()) {
-      return {
-        kind: "return",
-        outcome: {
-          kind: "budget_exhausted",
-          answer: answer || undefined,
-          message: "Tool call budget exhausted.",
-          changedFiles,
-          mutationCheckpointIds,
-        },
-      };
+      // Soft tool ceiling mid-batch: raise toward hard so an in-flight
+      // mutation batch is not killed. Hard ceiling still terminates.
+      if (budget.canExtendToolSoft()) {
+        const nextSoft = budget.raiseSoftToolCeiling(
+          windowPolicy.run.maxToolCalls,
+        );
+        reasonCodes.push("run_budget_soft_wall");
+        warnings.push(
+          `Raised soft tool-call budget to ${nextSoft} (hard ${budget.hardMaxToolCalls()}).`,
+        );
+      } else {
+        return {
+          kind: "return",
+          outcome: {
+            kind: "budget_exhausted",
+            answer: answer || undefined,
+            message: "Hard tool-call safety ceiling reached.",
+            changedFiles,
+            mutationCheckpointIds,
+          },
+        };
+      }
     }
 
     if (

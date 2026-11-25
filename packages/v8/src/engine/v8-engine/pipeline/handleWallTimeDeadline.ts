@@ -84,12 +84,30 @@ export function handleWallTimeDeadline(params: {
   }
 
   if (!params.budget.canStartModelCall()) {
+    // Soft ceiling hit. If soft already equals hard, this is terminal.
+    if (!params.budget.canExtendModelSoft()) {
+      params.reasonCodes.push("budget_exhausted");
+      return {
+        kind: "done",
+        wallTimeNudged,
+        outcome: {
+          kind: "budget_exhausted",
+          answer: params.answer || undefined,
+          message:
+            "Hard model-call safety ceiling reached; cannot extend further.",
+          changedFiles: params.changedFiles,
+          mutationCheckpointIds: params.mutationCheckpointIds,
+        },
+      };
+    }
+    // Soft checkpoint — offer Continue to raise soft toward hard.
+    params.reasonCodes.push("run_budget_soft_wall");
     return {
       kind: "done",
       wallTimeNudged,
       outcome: params.offerContinue(
         "budget_exhausted",
-        params.answer || "Model call budget exhausted.",
+        params.answer || "Model call soft budget reached — Continue to extend.",
       ),
     };
   }

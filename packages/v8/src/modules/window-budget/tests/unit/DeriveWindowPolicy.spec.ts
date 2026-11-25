@@ -76,7 +76,11 @@ describe("deriveWindowPolicy", () => {
     );
     expect(small.effort).toBe("medium");
     expect(small.run.maxModelCalls).toBe(64);
+    expect(small.run.hardMaxModelCalls).toBe(192);
     expect(large.run.maxModelCalls).toBe(128);
+    expect(large.run.hardMaxModelCalls).toBeGreaterThanOrEqual(
+      large.run.maxModelCalls,
+    );
     expect(small.run.maxVerificationRepairs).toBe(8);
     expect(small.compaction.toolResultContentChars).toBeLessThan(
       large.compaction.toolResultContentChars,
@@ -260,11 +264,17 @@ describe("deriveWindowPolicy", () => {
     expect(medium.mutation.maxUniqueFilesPerCall).toBe(12);
     expect(high.mutation.maxUniqueFilesPerCall).toBe(20);
     expect(low.run.maxModelCalls).toBe(48);
+    expect(low.run.hardMaxModelCalls).toBe(144);
     expect(low.run.maxToolCalls).toBe(96);
+    expect(low.run.hardMaxToolCalls).toBe(288);
     expect(medium.run.maxToolCalls).toBe(256);
+    expect(medium.run.hardMaxToolCalls).toBe(768);
     expect(medium.run.maxModelCalls).toBe(128);
+    expect(medium.run.hardMaxModelCalls).toBe(384);
     expect(high.run.maxModelCalls).toBe(192);
+    expect(high.run.hardMaxModelCalls).toBe(576);
     expect(high.run.maxToolCalls).toBe(384);
+    expect(high.run.hardMaxToolCalls).toBe(1152);
     expect(low.run.maxVerificationRepairs).toBe(0);
     expect(high.run.maxVerificationRepairs).toBe(12);
     expect(high.reasonCodes).toContain("effort_high");

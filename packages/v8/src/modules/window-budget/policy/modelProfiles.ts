@@ -1,4 +1,4 @@
-import type { WindowBudgetPolicyOverrides } from "./contracts";
+import type { WindowBudgetPolicyOverrides } from "../contracts";
 
 /**
  * Per-model window-budget profiles.

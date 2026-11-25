@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { WINDOW_BUDGET_SCHEMA_VERSION } from "../../constants";
-import { deriveWindowPolicy } from "../../actions/DeriveWindowPolicy";
 import {
+  WINDOW_BUDGET_SCHEMA_VERSION,
+  deriveWindowPolicy,
   WINDOW_BUDGET_MODEL_PROFILES,
   resolveWindowBudgetModelProfile,
+  resolveWindowBudgetPolicy,
   type WindowBudgetModelProfile,
-} from "../../modelProfiles";
-import { resolveWindowBudgetPolicy } from "../../policy";
+} from "../../index";
 
 const tightOutput: WindowBudgetModelProfile = {
   id: "tight-output",

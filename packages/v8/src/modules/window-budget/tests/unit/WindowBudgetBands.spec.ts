@@ -5,9 +5,7 @@ import {
   WINDOW_BUDGET_BAND_TABLE,
   resolveWindowBudgetBand,
   listWindowBudgetBands,
-} from "../../windowBudgetBands";
-import { resolveWindowBudgetPolicy } from "../../policy";
-import {
+  resolveWindowBudgetPolicy,
   WINDOW_BUDGET_SCHEMA_VERSION,
   deriveWindowPolicy,
 } from "../../index";

@@ -1,8 +1,8 @@
-import { DEFAULT_WINDOW_BUDGET_POLICY } from "./defaults";
+import { DEFAULT_WINDOW_BUDGET_POLICY } from "../defaults";
 import type {
   WindowBudgetPolicy,
   WindowBudgetPolicyOverrides,
-} from "./contracts";
+} from "../contracts";
 import {
   resolveWindowBudgetModelProfile,
   type WindowBudgetModelProfile,
@@ -17,7 +17,7 @@ import {
   windowBudgetBandDefinition,
   type WindowBudgetBand,
   type WindowBudgetBandDefinition,
-} from "./windowBudgetBands";
+} from "./bands";
 
 /**
  * Tunable Window Budget policy. Re-exported so hosts and tests import
@@ -80,9 +80,9 @@ export interface ResolvedWindowBudgetPolicy {
  *
  * Merge order:
  * 1. `DEFAULT_WINDOW_BUDGET_POLICY`
- * 2. Window band overlays from `windowBudgetBands.ts`
- * 3. Optional model profile from `modelProfiles.ts`
- * 4. Optional mode overlays from `mode.ts`
+ * 2. Window band overlays from `policy/bands.ts`
+ * 3. Optional model profile from `policy/modelProfiles.ts`
+ * 4. Optional mode overlays from `policy/mode.ts`
  * 5. Optional lab / host overrides
  */
 export function resolveWindowBudgetPolicy(

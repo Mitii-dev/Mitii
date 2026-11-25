@@ -76,7 +76,7 @@ export function promotePolicyLabToShip(
     windowSnippet: windowParts.length
       ? [
           "// Paste into WINDOW_BUDGET_BAND_TABLE.<band>.overrides",
-          "// packages/v8/src/modules/window-budget/windowBudgetBands.ts",
+          "// packages/v8/src/modules/window-budget/policy/bands.ts",
           "",
           ...windowParts,
         ].join("\n")

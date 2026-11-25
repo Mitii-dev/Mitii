@@ -257,6 +257,8 @@ export const AGENT_REASON_CODES = [
   "answer_produced",
   "cancelled",
   "budget_exhausted",
+  /** Soft run-call checkpoint hit — Continue may raise soft toward hard. */
+  "run_budget_soft_wall",
   "provider_failed",
   /**
  * Model transport/provider unreachable after gateway retries.

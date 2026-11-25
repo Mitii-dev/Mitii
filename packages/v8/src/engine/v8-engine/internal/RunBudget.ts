@@ -135,6 +135,37 @@ export class RunBudgetTracker {
     });
   }
 
+  /** Soft working ceiling (Continue checkpoint). */
+  public maxModelCalls(): number {
+    return this.limits.maxModelCalls;
+  }
+
+  /** Hard safety ceiling — never exceed, even after Continue. */
+  public hardMaxModelCalls(): number {
+    return this.limits.hardMaxModelCalls ?? this.limits.maxModelCalls;
+  }
+
+  public hardMaxToolCalls(): number {
+    return this.limits.hardMaxToolCalls ?? this.limits.maxToolCalls;
+  }
+
+  public hardMaxLoopIterations(): number {
+    return this.limits.hardMaxLoopIterations ?? this.limits.maxLoopIterations;
+  }
+
+  /** True when soft is already at hard — next soft miss is terminal. */
+  public canExtendModelSoft(): boolean {
+    return this.limits.maxModelCalls < this.hardMaxModelCalls();
+  }
+
+  public canExtendToolSoft(): boolean {
+    return this.limits.maxToolCalls < this.hardMaxToolCalls();
+  }
+
+  /**
+   * Soft exhaustion (Continue wall). Prefer {@link isHardExhausted} for
+   * terminal fail.
+   */
   public isExhausted():
     | false
     | "model_calls"
@@ -148,6 +179,28 @@ export class RunBudgetTracker {
       return "tool_calls";
     }
     if (this.loopIterations >= this.limits.maxLoopIterations) {
+      return "loop_iterations";
+    }
+    if (this.activeElapsedMs() >= this.limits.maxWallTimeMs) {
+      return "wall_time";
+    }
+    return false;
+  }
+
+  /** True when the hard safety ceiling is hit — no further Continue room. */
+  public isHardExhausted():
+    | false
+    | "model_calls"
+    | "tool_calls"
+    | "loop_iterations"
+    | "wall_time" {
+    if (this.modelCalls >= this.hardMaxModelCalls()) {
+      return "model_calls";
+    }
+    if (this.toolCalls >= this.hardMaxToolCalls()) {
+      return "tool_calls";
+    }
+    if (this.loopIterations >= this.hardMaxLoopIterations()) {
       return "loop_iterations";
     }
     if (this.activeElapsedMs() >= this.limits.maxWallTimeMs) {
@@ -192,17 +245,13 @@ export class RunBudgetTracker {
     return effective;
   }
 
-  public maxModelCalls(): number {
-    return this.limits.maxModelCalls;
-  }
-
   public remainingModelCalls(): number {
     return Math.max(0, this.limits.maxModelCalls - this.modelCalls);
   }
 
   /**
-   * `reserved` holds calls back for a later phase (verification repair).
-   * The reserve is never allowed to consume the entire ceiling.
+   * Soft gate: may the next model turn start under the working soft ceiling?
+   * `reserved` holds calls for a later phase (verification repair).
    */
   public canStartModelCall(reserved = 0): boolean {
     const reserve = Math.max(
@@ -212,8 +261,38 @@ export class RunBudgetTracker {
     return this.modelCalls < this.limits.maxModelCalls - reserve;
   }
 
+  /** Soft tool gate (Continue can raise soft toward hard). */
   public canStartToolCall(): boolean {
     return this.toolCalls < this.limits.maxToolCalls;
+  }
+
+  /**
+   * Raise the soft tool ceiling by `slice` (capped at hard). Returns the new
+   * soft limit. No-op when already at hard.
+   */
+  public raiseSoftToolCeiling(slice: number): number {
+    const hard = this.hardMaxToolCalls();
+    const next = Math.min(
+      hard,
+      this.limits.maxToolCalls + Math.max(1, Math.floor(slice)),
+    );
+    this.limits.maxToolCalls = next;
+    return next;
+  }
+
+  /** Raise the soft model/loop ceilings by `slice` (capped at hard). */
+  public raiseSoftModelCeiling(slice: number): number {
+    const hard = this.hardMaxModelCalls();
+    const next = Math.min(
+      hard,
+      this.limits.maxModelCalls + Math.max(1, Math.floor(slice)),
+    );
+    this.limits.maxModelCalls = next;
+    this.limits.maxLoopIterations = Math.min(
+      this.hardMaxLoopIterations(),
+      Math.max(this.limits.maxLoopIterations, next),
+    );
+    return next;
   }
 
   public snapshot(): {

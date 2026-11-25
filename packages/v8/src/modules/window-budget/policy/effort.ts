@@ -1,3 +1,5 @@
+import { WINDOW_BUDGET_BAND_CEILINGS } from "./bands";
+
 /**
  * Named working-set overlays. The advertised context window remains the
  * source of truth for retrieval and output reserve. Effort shapes mutation
@@ -21,8 +23,14 @@ export const DEFAULT_WINDOW_BUDGET_EFFORT: WindowBudgetEffort = "medium";
 
 export interface WindowBudgetEffortOverlay {
   maxUniqueFilesPerCall: number;
+  /** Soft model-call checkpoint (Continue wall). */
   maxModelCalls: number;
+  /** Hard model-call safety ceiling (terminal). */
+  hardMaxModelCalls: number;
+  /** Soft tool-call checkpoint. */
   maxToolCalls: number;
+  /** Hard tool-call safety ceiling. */
+  hardMaxToolCalls: number;
   /**
    * Auto-compaction ceiling as a fraction of `contextWindowTokens`.
    * Medium ≈ 0.80 so a 40k window keeps the historical 32k auto ceiling.
@@ -46,7 +54,9 @@ export const WINDOW_BUDGET_EFFORT_OVERLAY: Record<
   low: {
     maxUniqueFilesPerCall: 4,
     maxModelCalls: 24,
+    hardMaxModelCalls: 72,
     maxToolCalls: 48,
+    hardMaxToolCalls: 144,
     compactionAutoWindowRatio: 0.5,
     compactionHardWindowRatio: 0.75,
     compactionAutoMinTokens: 8_000,
@@ -55,11 +65,12 @@ export const WINDOW_BUDGET_EFFORT_OVERLAY: Record<
   },
   medium: {
     maxUniqueFilesPerCall: 12,
-    // Align with the VS Code host default (64). 40 let the first loop
-    // consume every call before remaining-error repairs could start.
+    // Soft checkpoint — engine offers Continue here, does not die.
     maxModelCalls: 64,
-    // Keep room for read->patch->verify repair loops on 30k windows.
+    // Hard safety — ~3× soft so big tasks can Continue twice.
+    hardMaxModelCalls: 192,
     maxToolCalls: 128,
+    hardMaxToolCalls: 384,
     compactionAutoWindowRatio: 0.8,
     compactionHardWindowRatio: 1,
     compactionAutoMinTokens: 16_000,
@@ -69,7 +80,9 @@ export const WINDOW_BUDGET_EFFORT_OVERLAY: Record<
   high: {
     maxUniqueFilesPerCall: 20,
     maxModelCalls: 96,
+    hardMaxModelCalls: 288,
     maxToolCalls: 192,
+    hardMaxToolCalls: 576,
     compactionAutoWindowRatio: 0.9,
     compactionHardWindowRatio: 1,
     compactionAutoMinTokens: 24_000,
@@ -81,8 +94,11 @@ export const WINDOW_BUDGET_EFFORT_OVERLAY: Record<
 export function resolveWindowBudgetEffort(
   value?: string,
 ): WindowBudgetEffort {
-  if (value === "low" || value === "high" || value === "medium") {
-    return value;
+  if (
+    value !== undefined &&
+    (WINDOW_BUDGET_EFFORTS as readonly string[]).includes(value)
+  ) {
+    return value as WindowBudgetEffort;
   }
   return DEFAULT_WINDOW_BUDGET_EFFORT;
 }
@@ -100,10 +116,13 @@ export function scaleEffortCallBudget(
 ): number {
   const window = Math.floor(contextWindowTokens);
   const calls = Math.max(1, Math.floor(base));
-  if (!Number.isFinite(window) || window < 50_000) {
+  if (
+    !Number.isFinite(window) ||
+    window < WINDOW_BUDGET_BAND_CEILINGS.compactMaxExclusive
+  ) {
     return calls;
   }
-  if (window < 100_000) {
+  if (window < WINDOW_BUDGET_BAND_CEILINGS.standardMaxExclusive) {
     return Math.max(calls, Math.round(calls * 1.5));
   }
   return calls * 2;

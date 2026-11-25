@@ -162,10 +162,13 @@ export const WINDOW_BUDGET_BAND_OVERLAYS: Record<
   },
 };
 
-/** Medium working-set overlay — mirrors window-budget/effort.ts. */
+/** Medium working-set overlay — mirrors window-budget/policy/effort.ts. */
 export const MEDIUM_WINDOW_BUDGET_EFFORT = {
   maxUniqueFilesPerCall: 12,
   maxModelCalls: 64,
+  hardMaxModelCalls: 192,
+  maxToolCalls: 128,
+  hardMaxToolCalls: 384,
   compactionAutoWindowRatio: 0.8,
   compactionHardWindowRatio: 1,
   compactionAutoMinTokens: 16_000,

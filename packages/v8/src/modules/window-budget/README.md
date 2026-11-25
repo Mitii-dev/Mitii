@@ -2,6 +2,22 @@
 
 Window Budget turns an advertised model context window into one proportional token allocation. Every consumer (prompt, retrieval, planning, skills, mutation batches, compaction, run caps) reads the derived `WindowPolicy` instead of hard-coded counts.
 
+## Structure
+
+```text
+window-budget/
+  pipeline/WindowBudgetPipeline.ts   # ONE class: derive / ceilings
+  actions/
+    1-resolve-policy.ts
+    2-derive-allocation.ts
+    3-resolve-generation-ceiling.ts
+  policy/                            # bands, effort, mode, profiles, merge
+  contracts/                         # input, output, errors, logger port
+  tests/{contract,unit,golden}
+```
+
+Prefer `new WindowBudgetPipeline().derive(input)`. Free `deriveWindowPolicy` remains as a thin alias for hosts during the engine rewrite.
+
 ## Responsibility
 
 Given `contextWindowTokens`, optional host `maximumOutputTokens`, optional measured tool-schema tokens, optional `effort` (`low` | `medium` | `high`, default `medium`), and optional policy overrides, produce a validated `WindowPolicy`.
@@ -32,7 +48,9 @@ Given `contextWindowTokens`, optional host `maximumOutputTokens`, optional measu
   budgets
 - `mutation`: files per call and patch payload size (scaled from output)
 - `planning`: diagnostic step cap and whether a visible plan / change-impact gate is affordable
-- `run`: model/tool call caps and `maxVerificationRepairs` from the effort overlay
+- `run`: soft + hard model/tool call caps (`maxModelCalls` / `hardMaxModelCalls`)
+  and `maxVerificationRepairs` from the effort overlay. Soft = Continue
+  checkpoint; hard = safety ceiling owned by the engine loop.
 - `skills`: skill body budget and max selected skills
 - `carry`: host→engine conversation carry (`maxMessages`, `maxCharsPerMessage`)
 - `injection`: host pre-prompt ceilings (project rules, repo map / sketch,
@@ -80,7 +98,7 @@ fixed 32k absolute.
 
 Mutation batch size follows the **context window**, then the effort overlay
 caps it so a 200k model does not keep 25-file patches. **Window bands**
-(`windowBudgetBands.ts`) apply before host overrides:
+(`policy/bands.ts`) apply before host overrides:
 
 | Band | Window | Ship overlay |
 |---|---|---|
@@ -201,7 +219,8 @@ None. Pure function of the input contract. No LLM, filesystem, or host APIs.
 
 ## Public exports
 
-- `deriveWindowPolicy`
+- `WindowBudgetPipeline` (preferred)
+- `deriveWindowPolicy` (alias)
 - `mergeWindowBudgetPolicy`
 - `DEFAULT_WINDOW_BUDGET_POLICY` / `WINDOW_BUDGET_POLICY`
 - `WINDOW_BUDGET_EFFORTS` / `DEFAULT_WINDOW_BUDGET_EFFORT` / `WINDOW_BUDGET_EFFORT_OVERLAY` / `resolveWindowBudgetEffort`

@@ -1,13 +1,17 @@
 import {
   LEGACY_DEFAULT_MAXIMUM_OUTPUT_TOKENS,
+  WINDOW_BUDGET_REASON,
+  WINDOW_BUDGET_EFFORT_REASON,
+  WINDOW_BUDGET_MODE_REASON,
   WINDOW_BUDGET_SCHEMA_VERSION,
+  WINDOW_BUDGET_STAGES,
 } from "../constants";
 import {
   WINDOW_BUDGET_EFFORT_OVERLAY,
   resolveEffortCompactionCeilings,
   scaleEffortCallBudget,
   resolveWindowBudgetEffort,
-} from "../effort";
+} from "../policy/effort";
 import {
   WindowBudgetError,
   windowBudgetInputSchema,
@@ -16,9 +20,22 @@ import {
 import type {
   WindowBudgetInput,
   WindowBudgetReasonCode,
+  WindowBudgetStageTrace,
   WindowPolicy,
 } from "../contracts";
-import { resolveWindowBudgetPolicy } from "../policy";
+import {
+  resolveWindowBudgetPolicy,
+  type ResolvedWindowBudgetPolicy,
+} from "../policy/merge";
+
+export interface DeriveAllocationOptions {
+  /** Pre-resolved policy from flow step 1 (avoids a second merge). */
+  resolved?: ResolvedWindowBudgetPolicy;
+  /** Prior stage traces to prepend (e.g. resolve-policy). */
+  priorStages?: readonly WindowBudgetStageTrace[];
+  /** When true (or priorStages set), attach `stages` on the result. */
+  recordStages?: boolean;
+}
 
 /**
  * Derive a complete window allocation from advertised capabilities.
@@ -26,7 +43,11 @@ import { resolveWindowBudgetPolicy } from "../policy";
  *
  * Policy merge: defaults → window band → optional host/lab overrides.
  */
-export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
+export function deriveWindowPolicy(
+  input: WindowBudgetInput,
+  options: DeriveAllocationOptions = {},
+): WindowPolicy {
+  const startedMs = Date.now();
   let parsed: WindowBudgetInput;
   try {
     parsed = windowBudgetInputSchema.parse(input);
@@ -41,26 +62,24 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
   }
 
   const windowTokens = parsed.contextWindowTokens;
-  const resolved = resolveWindowBudgetPolicy({
-    contextWindowTokens: windowTokens,
-    mode: parsed.mode,
-    modelId: parsed.modelId,
-    overrides: parsed.policy,
-  });
+  const resolved =
+    options.resolved ??
+    resolveWindowBudgetPolicy({
+      contextWindowTokens: windowTokens,
+      mode: parsed.mode,
+      modelId: parsed.modelId,
+      overrides: parsed.policy,
+    });
   const policy = resolved.policy;
   const reasonCodes: WindowBudgetReasonCode[] = [];
   const effort = resolveWindowBudgetEffort(parsed.effort);
   const overlay = WINDOW_BUDGET_EFFORT_OVERLAY[effort];
-  reasonCodes.push(`effort_${effort}`);
+  reasonCodes.push(WINDOW_BUDGET_EFFORT_REASON[effort]);
   if (resolved.modelProfileId) {
-    reasonCodes.push("model_profile_applied");
+    reasonCodes.push(WINDOW_BUDGET_REASON.modelProfileApplied);
   }
-  if (resolved.mode === "ask") {
-    reasonCodes.push("mode_ask");
-  } else if (resolved.mode === "plan") {
-    reasonCodes.push("mode_plan");
-  } else if (resolved.mode === "agent") {
-    reasonCodes.push("mode_agent");
+  if (resolved.mode) {
+    reasonCodes.push(WINDOW_BUDGET_MODE_REASON[resolved.mode]);
   }
 
   const windowOutputCap = Math.min(
@@ -83,10 +102,12 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
       ? clampInt(hostOutput, 1, Math.max(1, windowTokens - 1))
       : derivedOutput;
   if (legacyHostDefault) {
-    reasonCodes.push("output_legacy_default_ignored");
+    reasonCodes.push(WINDOW_BUDGET_REASON.outputLegacyDefaultIgnored);
   }
   reasonCodes.push(
-    hostOutput > 0 ? "output_host_override" : "output_derived_from_window",
+    hostOutput > 0
+      ? WINDOW_BUDGET_REASON.outputHostOverride
+      : WINDOW_BUDGET_REASON.outputDerivedFromWindow,
   );
 
   const measuredTools = parsed.toolSchemaTokens ?? 0;
@@ -96,7 +117,9 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
   );
   const rawTools = measuredTools > 0 ? measuredTools : fallbackTools;
   reasonCodes.push(
-    measuredTools > 0 ? "tool_schema_measured" : "tool_schema_fallback",
+    measuredTools > 0
+      ? WINDOW_BUDGET_REASON.toolSchemaMeasured
+      : WINDOW_BUDGET_REASON.toolSchemaFallback,
   );
 
   const remainingAfterOutput = Math.max(0, windowTokens - maximumOutputTokens);
@@ -113,7 +136,7 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
       policy.minimumUsableInputTokens,
       remainingAfterOutput,
     );
-    reasonCodes.push("usable_input_clamped");
+    reasonCodes.push(WINDOW_BUDGET_REASON.usableInputClamped);
   }
 
   const loopInputBudgetTokens = Math.max(
@@ -129,7 +152,7 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
     repositoryTokensShare,
   );
   if (repositoryTokensShare > policy.repositoryTokensCap) {
-    reasonCodes.push("repository_tokens_capped");
+    reasonCodes.push(WINDOW_BUDGET_REASON.repositoryTokensCapped);
   }
   const conversationTokens = Math.floor(
     usableInputTokens * policy.conversationShare,
@@ -137,12 +160,12 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
   const planTokensShare = Math.floor(usableInputTokens * policy.planShare);
   const planTokens = clampInt(planTokensShare, 1, policy.planTokensCap);
   if (planTokensShare > policy.planTokensCap) {
-    reasonCodes.push("plan_tokens_capped");
+    reasonCodes.push(WINDOW_BUDGET_REASON.planTokensCapped);
   }
   const skillsTokensShare = Math.floor(usableInputTokens * policy.skillsShare);
   const skillsTokens = clampInt(skillsTokensShare, 1, policy.skillsTokensCap);
   if (skillsTokensShare > policy.skillsTokensCap) {
-    reasonCodes.push("skills_tokens_capped");
+    reasonCodes.push(WINDOW_BUDGET_REASON.skillsTokensCapped);
   }
   const allocated =
     repositoryTokens + conversationTokens + planTokens + skillsTokens;
@@ -207,7 +230,7 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
     Math.min(policy.maxUniqueFilesPerCallCap, overlay.maxUniqueFilesPerCall),
   );
   if (windowDerivedFiles > overlay.maxUniqueFilesPerCall) {
-    reasonCodes.push("mutation_effort_capped");
+    reasonCodes.push(WINDOW_BUDGET_REASON.mutationEffortCapped);
   }
   const maxPatchesPerCall = clampInt(
     maxUniqueFilesPerCall * 2,
@@ -238,6 +261,15 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
   const maxModelCalls = scaleEffortCallBudget(
     overlay.maxModelCalls,
     windowTokens,
+  );
+  const hardMaxModelCalls = Math.max(
+    maxModelCalls,
+    scaleEffortCallBudget(overlay.hardMaxModelCalls, windowTokens),
+  );
+  const maxToolCalls = scaleEffortCallBudget(overlay.maxToolCalls, windowTokens);
+  const hardMaxToolCalls = Math.max(
+    maxToolCalls,
+    scaleEffortCallBudget(overlay.hardMaxToolCalls, windowTokens),
   );
   const maxSkills = clampInt(
     policy.maxSkillsBase +
@@ -374,7 +406,9 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
     },
     run: {
       maxModelCalls,
-      maxToolCalls: scaleEffortCallBudget(overlay.maxToolCalls, windowTokens),
+      hardMaxModelCalls,
+      maxToolCalls,
+      hardMaxToolCalls,
       maxVerificationRepairs: overlay.maxVerificationRepairs,
     },
     skills: {
@@ -409,6 +443,18 @@ export function deriveWindowPolicy(input: WindowBudgetInput): WindowPolicy {
     maxVerificationChecks,
     resolvedPolicy: policy,
     reasonCodes,
+    ...(options.recordStages || options.priorStages
+      ? {
+          stages: [
+            ...(options.priorStages ?? []),
+            {
+              name: WINDOW_BUDGET_STAGES.deriveAllocation,
+              durationMs: Date.now() - startedMs,
+              reasonCodes,
+            },
+          ],
+        }
+      : {}),
   });
 }
 

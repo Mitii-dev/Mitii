@@ -1,4 +1,4 @@
-import type { WindowBudgetPolicyOverrides } from "./contracts";
+import type { WindowBudgetPolicyOverrides } from "../contracts";
 
 /**
  * Agent interaction modes that can reshape how a context window is spent.
@@ -64,8 +64,11 @@ export const WINDOW_BUDGET_MODE_OVERLAY: Record<
 export function resolveWindowBudgetMode(
   value?: string,
 ): WindowBudgetMode | undefined {
-  if (value === "ask" || value === "plan" || value === "agent") {
-    return value;
+  if (
+    value !== undefined &&
+    (WINDOW_BUDGET_MODES as readonly string[]).includes(value)
+  ) {
+    return value as WindowBudgetMode;
   }
   return undefined;
 }

@@ -1,4 +1,4 @@
-import type { WindowBudgetPolicyOverrides } from "./contracts";
+import type { WindowBudgetPolicyOverrides } from "../contracts";
 
 /**
  * Window-budget bands keyed by the same context-window cutoffs as loop policy
@@ -110,20 +110,27 @@ export const WINDOW_BUDGET_BAND_TABLE: Record<
  * Resolve which window-budget band applies for an effective context window.
  * Non-finite / non-positive windows fall back to `compact`.
  */
+/** Named band ids — prefer these over raw string literals at call sites. */
+export const WINDOW_BUDGET_BAND = {
+  compact: "compact",
+  standard: "standard",
+  wide: "wide",
+} as const satisfies Record<WindowBudgetBand, WindowBudgetBand>;
+
 export function resolveWindowBudgetBand(
   contextWindowTokens: number,
 ): WindowBudgetBand {
   const window = Math.floor(contextWindowTokens);
   if (!Number.isFinite(window) || window <= 0) {
-    return "compact";
+    return WINDOW_BUDGET_BAND.compact;
   }
   if (window < WINDOW_BUDGET_BAND_CEILINGS.compactMaxExclusive) {
-    return "compact";
+    return WINDOW_BUDGET_BAND.compact;
   }
   if (window < WINDOW_BUDGET_BAND_CEILINGS.standardMaxExclusive) {
-    return "standard";
+    return WINDOW_BUDGET_BAND.standard;
   }
-  return "wide";
+  return WINDOW_BUDGET_BAND.wide;
 }
 
 export function windowBudgetBandDefinition(

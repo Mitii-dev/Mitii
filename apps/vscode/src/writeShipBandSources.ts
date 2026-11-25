@@ -19,7 +19,7 @@ export interface WriteShipBandSourcesResult {
 const LOOP_REL =
   'packages/v8/src/engine/v8-engine/legacy/policy/loopPolicyBands.ts';
 const WINDOW_REL =
-  'packages/v8/src/modules/window-budget/windowBudgetBands.ts';
+  'packages/v8/src/modules/window-budget/policy/bands.ts';
 
 const BAND_META: Record<
   ShipBandId,

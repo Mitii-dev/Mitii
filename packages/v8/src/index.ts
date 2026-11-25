@@ -275,22 +275,30 @@ export type {
   TaskListApplyInput, TaskListApplyResult, TaskListSource,
   TaskListPurpose,
 } from "./modules/task-list";
-export { deriveWindowPolicy, mergeWindowBudgetPolicy, resolveWindowBudgetPolicy, resolveGenerationCeiling } from "./modules/window-budget";
+export {
+  WindowBudgetPipeline,
+  deriveWindowPolicy,
+  mergeWindowBudgetPolicy,
+  resolveWindowBudgetPolicy,
+  resolveGenerationCeiling,
+} from "./modules/window-budget";
 export {
   WINDOW_BUDGET_SCHEMA_VERSION, DEFAULT_WINDOW_BUDGET_POLICY, WINDOW_BUDGET_POLICY,
   WINDOW_BUDGET_EFFORTS, DEFAULT_WINDOW_BUDGET_EFFORT, WINDOW_BUDGET_EFFORT_OVERLAY,
   resolveWindowBudgetEffort, WINDOW_BUDGET_MODES, DEFAULT_WINDOW_BUDGET_MODE,
   WINDOW_BUDGET_MODE_OVERLAY, resolveWindowBudgetMode, windowBudgetModeOverlay,
-  WINDOW_BUDGET_BANDS, WINDOW_BUDGET_BAND_CEILINGS,
+  WINDOW_BUDGET_BANDS, WINDOW_BUDGET_BAND, WINDOW_BUDGET_BAND_CEILINGS,
   WINDOW_BUDGET_BAND_TABLE, resolveWindowBudgetBand, windowBudgetBandDefinition,
   listWindowBudgetBands, windowBudgetInputSchema, windowBudgetPolicySchema,
   windowBudgetPolicyOverridesSchema, windowPolicySchema, WindowBudgetError,
+  WINDOW_BUDGET_REASON, WINDOW_BUDGET_STAGES,
 } from "./modules/window-budget";
 export type {
   WindowBudgetInput, WindowBudgetPolicy, WindowBudgetPolicyOverrides,
   WindowPolicy, WindowPolicyCarry, WindowPolicyInjection, WindowPolicyFragments,
   WindowBudgetEffort, WindowBudgetMode, WindowBudgetModeOverlay, WindowBudgetBand,
   WindowBudgetBandDefinition, ResolveWindowBudgetPolicyInput, ResolvedWindowBudgetPolicy,
+  WindowBudgetStageTrace, ModuleLoggerPort,
 } from "./modules/window-budget";
 export {
   AgentEnginePipeline,

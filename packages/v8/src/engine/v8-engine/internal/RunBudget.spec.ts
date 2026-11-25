@@ -115,4 +115,32 @@ describe("RunBudgetTracker", () => {
     expect(budget.remainingModelCalls()).toBe(2);
     expect(budget.isExhausted()).toBe(false);
   });
+
+  it("treats soft vs hard model ceilings separately", () => {
+    const budget = new RunBudgetTracker({
+      maxModelCalls: 4,
+      hardMaxModelCalls: 12,
+      maxToolCalls: 20,
+      hardMaxToolCalls: 60,
+      maxLoopIterations: 4,
+      hardMaxLoopIterations: 12,
+      maxWallTimeMs: 60_000,
+    });
+
+    expect(budget.canExtendModelSoft()).toBe(true);
+    for (let index = 0; index < 4; index += 1) {
+      budget.recordModelCall();
+    }
+    expect(budget.isExhausted()).toBe("model_calls");
+    expect(budget.isHardExhausted()).toBe(false);
+
+    expect(budget.raiseSoftModelCeiling(4)).toBe(8);
+    expect(budget.canStartModelCall()).toBe(true);
+    expect(budget.canExtendModelSoft()).toBe(true);
+
+    expect(budget.raiseSoftModelCeiling(100)).toBe(12);
+    expect(budget.canExtendModelSoft()).toBe(false);
+    expect(budget.hardMaxModelCalls()).toBe(12);
+  });
 });
+

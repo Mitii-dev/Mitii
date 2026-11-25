@@ -94,26 +94,44 @@ export async function handleContinueResume(
 
   let continueBudget = budget;
   if (wallReason === "budget_exhausted") {
-    const bump = resolveLoopPolicyThresholds({
+    const bumpFloor = resolveLoopPolicyThresholds({
       contextWindowTokens: windowPolicy.contextWindowTokens,
       overrides: startInput.loopPolicy?.thresholds,
     }).thresholds.continueBudgetModelCallBump;
-    // resumeBudget is rebuilt from the original start budget on every
-    // resume, so the bump must scale with how many Continues were approved.
-    const extension = bump * nextOverrideCount;
+    // Soft slice from window policy (e.g. 64). Each Continue adds another
+    // soft chunk toward the hard ceiling — not a tiny +4 bump.
+    const softModel = windowPolicy.run.maxModelCalls;
+    const hardModel =
+      resumeBudget.hardMaxModelCalls ?? windowPolicy.run.hardMaxModelCalls;
+    const softTool = windowPolicy.run.maxToolCalls;
+    const hardTool =
+      resumeBudget.hardMaxToolCalls ?? windowPolicy.run.hardMaxToolCalls;
+    const modelSlice = Math.max(bumpFloor, softModel);
+    const toolSlice = Math.max(bumpFloor, softTool);
+    const nextModelSoft = Math.min(
+      hardModel,
+      softModel + modelSlice * nextOverrideCount,
+    );
+    const nextToolSoft = Math.min(
+      hardTool,
+      softTool + toolSlice * nextOverrideCount,
+    );
     continueBudget = new RunBudgetTracker(
       {
         ...resumeBudget,
-        maxModelCalls: resumeBudget.maxModelCalls + extension,
-        maxToolCalls: resumeBudget.maxToolCalls + extension,
-        maxLoopIterations: resumeBudget.maxLoopIterations + extension,
+        maxModelCalls: nextModelSoft,
+        hardMaxModelCalls: hardModel,
+        maxToolCalls: nextToolSoft,
+        hardMaxToolCalls: hardTool,
+        maxLoopIterations: nextModelSoft,
+        hardMaxLoopIterations: hardModel,
       },
       checkpoint.startedAtMs,
       checkpoint.usage,
       excludedWaitMs,
     );
     warnings.push(
-      `Extended run budget by ${extension} model/tool/loop units after Continue.`,
+      `Extended soft run budget to ${nextModelSoft} model / ${nextToolSoft} tool calls (hard ${hardModel}/${hardTool}) after Continue.`,
     );
   }
 

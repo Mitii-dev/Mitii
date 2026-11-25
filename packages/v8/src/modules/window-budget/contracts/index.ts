@@ -22,6 +22,7 @@ export {
   windowPolicyInjectionSchema,
   windowPolicyFragmentsSchema,
   windowBudgetReasonCodeSchema,
+  windowBudgetStageTraceSchema,
 } from "./output/WindowPolicy";
 export type {
   WindowPolicy,
@@ -36,7 +37,13 @@ export type {
   WindowPolicyInjection,
   WindowPolicyFragments,
   WindowBudgetReasonCode,
+  WindowBudgetStageTrace,
 } from "./output/WindowPolicy";
+
+export {
+  noopModuleLogger,
+} from "./ports/ModuleLoggerPort";
+export type { ModuleLoggerPort } from "./ports/ModuleLoggerPort";
 
 export {
   windowBudgetErrorCodeSchema,

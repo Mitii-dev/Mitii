@@ -1,64 +1,64 @@
+/**
+ * Window Budget public surface.
+ *
+ * Prefer `WindowBudgetPipeline` for new call sites. Free functions remain as
+ * thin aliases for hosts during the engine rewrite.
+ */
+
+export { WindowBudgetPipeline } from "./pipeline/WindowBudgetPipeline";
+export type { WindowBudgetPipelineDependencies } from "./pipeline/WindowBudgetPipeline";
+
 export {
   WINDOW_BUDGET_SCHEMA_VERSION,
-  WINDOW_BUDGET_REASON_CODES,
   LEGACY_DEFAULT_MAXIMUM_OUTPUT_TOKENS,
+  WINDOW_BUDGET_REASON_CODES,
+  WINDOW_BUDGET_REASON,
+  WINDOW_BUDGET_EFFORT_REASON,
+  WINDOW_BUDGET_MODE_REASON,
+  WINDOW_BUDGET_STAGES,
   WINDOW_BUDGET_ERROR_CODES,
 } from "./constants";
 
 export { DEFAULT_WINDOW_BUDGET_POLICY } from "./defaults";
-export {
-  WINDOW_BUDGET_MODEL_PROFILES,
-  resolveWindowBudgetModelProfile,
-} from "./modelProfiles";
-export type { WindowBudgetModelProfile } from "./modelProfiles";
+
 export {
   WINDOW_BUDGET_POLICY,
   mergeWindowBudgetPolicy,
   resolveWindowBudgetPolicy,
-} from "./policy";
-export type {
-  ResolveWindowBudgetPolicyInput,
-  ResolvedWindowBudgetPolicy,
-} from "./policy";
-export {
   WINDOW_BUDGET_BANDS,
+  WINDOW_BUDGET_BAND,
   WINDOW_BUDGET_BAND_CEILINGS,
   WINDOW_BUDGET_BAND_TABLE,
   resolveWindowBudgetBand,
   windowBudgetBandDefinition,
   listWindowBudgetBands,
-} from "./windowBudgetBands";
-export type {
-  WindowBudgetBand,
-  WindowBudgetBandDefinition,
-} from "./windowBudgetBands";
-export {
-  COMPACT_TOOL_LOOP_OUTPUT_HARD_CAP,
-  resolveToolLoopMaxOutputTokens,
-} from "./toolLoopOutputCaps";
-export {
   WINDOW_BUDGET_EFFORTS,
   DEFAULT_WINDOW_BUDGET_EFFORT,
   WINDOW_BUDGET_EFFORT_OVERLAY,
   resolveWindowBudgetEffort,
   resolveEffortCompactionCeilings,
   scaleEffortCallBudget,
-} from "./effort";
-export type {
-  WindowBudgetEffort,
-  WindowBudgetEffortOverlay,
-} from "./effort";
-export {
   WINDOW_BUDGET_MODES,
   DEFAULT_WINDOW_BUDGET_MODE,
   WINDOW_BUDGET_MODE_OVERLAY,
   resolveWindowBudgetMode,
   windowBudgetModeOverlay,
-} from "./mode";
+  WINDOW_BUDGET_MODEL_PROFILES,
+  resolveWindowBudgetModelProfile,
+  COMPACT_TOOL_LOOP_OUTPUT_HARD_CAP,
+  resolveToolLoopMaxOutputTokens,
+} from "./policy";
 export type {
+  ResolveWindowBudgetPolicyInput,
+  ResolvedWindowBudgetPolicy,
+  WindowBudgetBand,
+  WindowBudgetBandDefinition,
+  WindowBudgetEffort,
+  WindowBudgetEffortOverlay,
   WindowBudgetMode,
   WindowBudgetModeOverlay,
-} from "./mode";
+  WindowBudgetModelProfile,
+} from "./policy";
 
 export {
   deriveWindowPolicy,
@@ -71,8 +71,10 @@ export {
   windowBudgetPolicyOverridesSchema,
   windowPolicySchema,
   windowBudgetReasonCodeSchema,
+  windowBudgetStageTraceSchema,
   WindowBudgetError,
   windowBudgetErrorCodeSchema,
+  noopModuleLogger,
 } from "./contracts";
 export type {
   WindowBudgetInput,
@@ -90,5 +92,7 @@ export type {
   WindowPolicyInjection,
   WindowPolicyFragments,
   WindowBudgetReasonCode,
+  WindowBudgetStageTrace,
   WindowBudgetErrorCode,
+  ModuleLoggerPort,
 } from "./contracts";

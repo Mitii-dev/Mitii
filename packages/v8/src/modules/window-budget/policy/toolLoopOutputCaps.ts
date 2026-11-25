@@ -1,6 +1,6 @@
-import type { WindowBudgetPolicyOverrides } from "./contracts";
-import { resolveWindowBudgetPolicy } from "./policy";
-import { WINDOW_BUDGET_BAND_CEILINGS } from "./windowBudgetBands";
+import type { WindowBudgetPolicyOverrides } from "../contracts";
+import { resolveWindowBudgetPolicy } from "./merge";
+import { WINDOW_BUDGET_BAND_CEILINGS } from "./bands";
 
 /**
  * Absolute tool-loop output ceiling for compact windows. Local models often

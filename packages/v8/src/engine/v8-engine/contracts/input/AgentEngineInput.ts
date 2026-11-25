@@ -39,21 +39,30 @@ const agentApprovalModeSchema = z.enum(APPROVAL_MODES);
 export const agentRunBudgetSchema = z
   .object({
     /**
-     * When true, host run-budget numbers are used as-is.
-     * Window-derived ceilings do not clamp an explicit unlimited request.
+     * When true, the working soft ceiling may rise up to the hard safety
+     * ceiling from Window Policy (host numbers are not soft-clamped to the
+     * soft checkpoint).
      */
     unlimited: z.boolean().default(false),
+    /** Soft working ceiling — Continue wall when exhausted. */
     maxModelCalls: z
       .number()
       .int()
       .positive()
       .default(DEFAULT_MAX_MODEL_CALLS),
+    /**
+     * Hard safety ceiling. Omit to treat maxModelCalls as both soft and hard
+     * (legacy). Engine must not exceed this even after Continue.
+     */
+    hardMaxModelCalls: z.number().int().positive().optional(),
     maxToolCalls: z.number().int().positive().default(DEFAULT_MAX_TOOL_CALLS),
+    hardMaxToolCalls: z.number().int().positive().optional(),
     maxLoopIterations: z
       .number()
       .int()
       .positive()
       .default(DEFAULT_MAX_LOOP_ITERATIONS),
+    hardMaxLoopIterations: z.number().int().positive().optional(),
     maxWallTimeMs: z
       .number()
       .int()
