@@ -1,6 +1,6 @@
 {
   "name": "@mitii/mcp-mongo",
-  "version": "2.11.35",
+  "version": "2.11.36",
   "description": "Mitii MCP stdio server for MongoDB — readonly or readwrite via MCP_DB_ACCESS (list, query, aggregate, insert, update, delete, create_index).",
   "license": "AGPL-3.0-or-later",
   "type": "module",

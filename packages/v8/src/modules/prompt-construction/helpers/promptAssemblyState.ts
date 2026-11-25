@@ -1,11 +1,11 @@
-import type { allocateBudget } from "../actions";
+import type { BudgetAllocation } from "./allocateBudget";
 import type {
   PromptOmission,
   PromptProvenanceEntry,
   PromptReasonCode,
 } from "../contracts";
 
-export type PromptBudgetSections = ReturnType<typeof allocateBudget>["sections"];
+export type PromptBudgetSections = BudgetAllocation["sections"];
 
 /** Mutable accumulators shared by the prompt assembly stages. */
 export interface PromptAssemblyState {

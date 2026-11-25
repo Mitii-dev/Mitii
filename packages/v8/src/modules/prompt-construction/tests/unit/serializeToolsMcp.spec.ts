@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { packPriority, serializeTools } from "../SerializeTools";
+import { packPriority, serializeTools } from "../../helpers/SerializeTools";
 import type { ExecutionDecision } from "../../../decision-policy";
 import type { ModelCapabilities, ModelToolDefinition } from "../../../model-gateway";
 import type { TokenEstimatorPort } from "../../contracts";

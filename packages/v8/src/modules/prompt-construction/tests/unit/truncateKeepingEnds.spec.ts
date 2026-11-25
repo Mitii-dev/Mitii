@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   truncateKeepingEnds,
   truncateToTokenBudget,
-} from "../BuildSystemAndConversation";
-import { CharacterTokenEstimator } from "../../internal/CharacterTokenEstimator";
+} from "../../helpers/BuildSystemAndConversation";
+import { CharacterTokenEstimator } from "../../adapters/CharacterTokenEstimator";
 
 describe("truncateKeepingEnds", () => {
   const estimator = new CharacterTokenEstimator();

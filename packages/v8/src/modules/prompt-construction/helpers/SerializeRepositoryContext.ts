@@ -4,7 +4,7 @@ import {
   countInjectionSignals,
   wrapUntrustedFileBlock,
   wrapUntrustedRepositoryContent,
-} from "../internal/InjectionBoundary";
+} from "./InjectionBoundary";
 import { truncateToTokenBudget } from "./BuildSystemAndConversation";
 
 export interface SerializedRepositoryContext {

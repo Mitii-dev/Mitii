@@ -1,5 +1,8 @@
-export { allocateBudget, updateSectionBudget } from "./AllocateBudget";
-export type { BudgetAllocation } from "./AllocateBudget";
+export {
+  allocateBudget,
+  updateSectionBudget,
+} from "./allocateBudget";
+export type { BudgetAllocation } from "./allocateBudget";
 
 export {
   buildSystemInstructions,
@@ -16,9 +19,6 @@ export type { SerializedTools } from "./SerializeTools";
 
 export { estimateTurnOutputHeadroom } from "./EstimateTurnOutputHeadroom";
 export type { TurnOutputHeadroom } from "./EstimateTurnOutputHeadroom";
-
-export { resolveDynamicOutputTokens } from "./ResolveDynamicOutputTokens";
-export type { DynamicOutputTokenResolution } from "./ResolveDynamicOutputTokens";
 
 export { mapContextToPromptSlice } from "./mapContextToPromptSlice";
 export { mergePromptInstructions } from "./mergePromptInstructions";

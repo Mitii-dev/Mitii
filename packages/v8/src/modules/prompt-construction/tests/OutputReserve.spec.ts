@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { PromptConstructionPipeline, estimateTurnOutputHeadroom } from "../index";
-import { resolveDynamicOutputTokens } from "../actions";
-import { PROMPT_CONSTRUCTION_THRESHOLDS } from "../policy";
+import { resolveDynamicOutputTokens } from "../flow/steps/6-resolve-dynamic-output";
+import { PROMPT_CONSTRUCTION_THRESHOLDS } from "../rules";
 import {
   WINDOW_BUDGET_SCHEMA_VERSION,
   deriveWindowPolicy,

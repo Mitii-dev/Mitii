@@ -1,6 +1,6 @@
-import type { PromptReasonCode } from "../contracts";
-import { PROMPT_CONSTRUCTION_THRESHOLDS } from "../policy";
-import { resolveGenerationCeiling } from "../../window-budget";
+import type { PromptReasonCode } from "../../contracts";
+import { PROMPT_CONSTRUCTION_THRESHOLDS } from "../../rules";
+import { resolveGenerationCeiling } from "../../../window-budget";
 
 export interface DynamicOutputTokenResolution {
   maximumOutputTokens: number;

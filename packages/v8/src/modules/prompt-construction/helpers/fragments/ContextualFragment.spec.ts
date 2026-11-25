@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { CharacterTokenEstimator } from "../../CharacterTokenEstimator";
-import { truncateToTokenBudget } from "../../actions/BuildSystemAndConversation";
+import { CharacterTokenEstimator } from "../../adapters/CharacterTokenEstimator";
+import { truncateToTokenBudget } from "../BuildSystemAndConversation";
 import {
   FRAGMENT_POLICY,
   InstructionBlockFragment,

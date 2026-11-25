@@ -1,24 +1,24 @@
 import {
   buildSystemInstructions,
   updateSectionBudget,
-} from "../actions";
-import type { allocateBudget } from "../actions";
+} from "../../helpers";
+import type { BudgetAllocation } from "../../helpers";
 import type {
   PromptConstructionInput,
   TokenEstimatorPort,
-} from "../contracts";
+} from "../../contracts";
 import {
   sectionAllocation,
   sumInstructionTokens,
   type PromptAssemblyState,
-} from "./promptAssemblyState";
+} from "../../helpers/promptAssemblyState";
 
 type SystemInstructions = ReturnType<typeof buildSystemInstructions>;
 
 /** Builds system/rules/skills/memory/plan content and records provenance + budgets. */
 export function assembleSystemStage(params: {
   parsed: PromptConstructionInput;
-  allocation: ReturnType<typeof allocateBudget>;
+  allocation: BudgetAllocation;
   state: PromptAssemblyState;
   estimator: TokenEstimatorPort;
 }): { system: SystemInstructions; systemContent: string } {

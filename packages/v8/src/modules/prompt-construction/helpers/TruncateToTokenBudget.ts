@@ -1,6 +1,6 @@
 import type { TokenEstimatorPort } from "../contracts";
 import { TRUNCATION_MARKER } from "../defaults";
-import { PROMPT_CONSTRUCTION_THRESHOLDS } from "../policy";
+import { PROMPT_CONSTRUCTION_THRESHOLDS } from "../rules";
 
 export function truncateToTokenBudget(
   content: string,

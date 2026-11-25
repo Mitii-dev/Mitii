@@ -54,7 +54,7 @@ export const PROMPT_CONSTRUCTION_THRESHOLDS = {
 } as const;
 
 /** Re-export fragment caps for module consumers. */
-export { FRAGMENT_POLICY } from "./internal/fragments/fragmentPolicy";
+export { FRAGMENT_POLICY } from "../helpers/fragments/fragmentPolicy";
 
 /**
  * Patterns that attempt to smuggle authority through repository or tool text.

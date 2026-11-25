@@ -1,4 +1,4 @@
-import { PROMPT_CONSTRUCTION_THRESHOLDS } from "../policy";
+import { PROMPT_CONSTRUCTION_THRESHOLDS } from "../rules";
 import { DEFAULT_CHARACTERS_PER_TOKEN } from "../defaults";
 
 export interface TurnOutputHeadroom {

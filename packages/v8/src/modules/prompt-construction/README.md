@@ -1,154 +1,33 @@
 # Prompt Construction
 
-Prompt Construction builds the provider-neutral `ModelRequest` that is sent through Model Gateway. It combines policy, user message, conversation, repository context, skills, memory, optional plan text, tools, and model capabilities under a strict token budget.
+Builds the provider-neutral `ModelRequest` sent through Model Gateway:
+policy, user message, conversation, repository context, skills, memory,
+optional plan, and tools under a strict token budget.
 
-## What This Module Does
+## Contract
 
-- Validates `PromptConstructionInput`.
-- Reserves output tokens before allocating input budget.
-- After prompt assembly, sets the final output limit from leftover context
-  (safety ratio). The planning reserve is not a generation ceiling.
-- Builds system/developer/user/tool conversation messages.
-- Serializes repository context into bounded prompt blocks.
-- Injects selected skill and memory instruction blocks.
-- Includes optional approved plan text.
-- Adds filtered tool definitions.
-- Write-critical tools (`apply_patch`, delete/move, `run_command`, `update_todos`) pack first and are never dropped for tools-section budget when the grant already allows them. "Allowed tools:" prose is rewritten to match the schemas actually attached.
-- Reports budget, provenance, omissions, warnings, and reason codes.
-- Assembles trusted system text via typed **ContextualFragments**: each
-  injection has a stable `contentKind`, optional markers, and a hard token
-  cap. Prefer `fragmentLimits` from `WindowPolicy.fragments` (absolute max,
-  review threshold, additional-context value tokens, skill-catalog L1
-  tokens/entries); `FRAGMENT_POLICY` is the fallback when limits are omitted.
-  Environment/memory fragments are marked; `MidConversationUpdateFragment` and
-  `requiresSeparateMessage` fragments are appended as separate messages
-  after the baseline system blob (provider-cache friendly). Mid-conversation
-  epoch updates use **user** role + `<context_epoch_update>` markers (shared
-  with engine admit). Callers may pass serializable `extraFragments` without
-  forking core assembly. Optional L1 skill catalog
-  (`injectSkillCatalogL1` + `skillCatalogL1`, default off) injects a
-  name+description awareness strip under the Window Budget L1 token/entry caps.
+**In:** `PromptConstructionInput` (decision, message, conversation,
+capabilities, optional context/instructions/tools/fragments).  
+**Out:** `PromptConstructionResult` (`ModelRequest`, budget report,
+provenance, omissions, reason codes).
 
-## Structure
+| Facade | Stages |
+|---|---|
+| `construct` | 1-allocate → 2-system → 3-tools → 4-conversation/repo → 5-user → 6-dynamic-output |
 
-```text
-prompt-construction/
-  pipeline/                 PromptConstructionPipeline
-  actions/                  Budgeting, tool serialization, context serialization
-  contracts/
-    input/                  PromptConstructionInput
-    output/                 PromptConstructionResult, budgets, provenance
-    ports/                  TokenEstimatorPort
-    errors/                 PromptConstructionErrors
-  internal/
-    fragments/              Typed ContextualFragment registry + assembly
-    CharacterTokenEstimator.ts
-    InjectionBoundary.ts
-  tests/
+Ports (injected): optional `TokenEstimatorPort`, `ModuleLoggerPort`.
+Default estimator: `CharacterTokenEstimator` (adapters).
+
+## Example
+
+```ts
+import { PromptConstructionPipeline } from "@mitii/v8/modules/prompt-construction";
+
+const result = new PromptConstructionPipeline().construct(input);
 ```
 
-## Types And Contracts
+## Non-responsibilities
 
-- `PromptConstructionInput`: decision, user message, conversation, optional repository context, instructions, optional `extraFragments`, plan text, tools, model capabilities, model options, and output reserve.
-- `PromptConstructionResult`: status, `ModelRequest`, budget report, provenance entries, omissions, warnings, and reason codes.
-- `PromptRepositoryContext`: state token plus prompt-safe blocks.
-- `PromptInstructions`: project rules, skills, and memory instruction blocks.
-- `PromptBudgetReport`: context window, output reserve, section budgets, and limit status.
-
-## Technical Details
-
-- The public facade method is `PromptConstructionPipeline.construct`.
-- Repository retrieval internals never enter the prompt path directly.
-- Trust/provenance metadata distinguishes system, repository, skills, memory, plan, user, and tool content.
-- Output reserve is calculated before context allocation, then the final
-  `ModelRequest.maximumOutputTokens` is resolved after concrete prompt usage is
-  known.
-- The final output limit is recomputed every turn from leftover context.
-  The planning reserve keeps input from filling the window; generation then
-  uses `floor(leftover * 0.95)`, capped by a real host override of
-  `maximumOutputTokens`. The derived reserve and the legacy 5000 default are
-  not generation ceilings.
-- For example, a 30k context window with a 12k prompt and a 6k planning
-  reserve resolves to `floor((30k - 12k) * 0.95)` = 17.1k output tokens,
-  not the 6k reserve. A 10k-free turn can write about 10k tokens.
-- If the assembled prompt would exceed the planned input budget, the current
-  user request is truncated (keeping both ends) and conversation history is
-  compacted first so large pastes do not block the run. Blocking remains only
-  when required system/tool sections alone cannot fit.
-- Sections can be omitted or truncated with explicit reason codes.
-- Tool definitions are supplied after Agent Engine filters them by grant.
-
-## Ownership Boundaries
-
-Owns prompt assembly, budget allocation, provenance, omissions, and output headroom.
-
-Does not own policy grants, repository retrieval, model HTTP, tool execution, or verification.
-
-## Tests
-
-```bash
-pnpm exec vitest run packages/v8/src/modules/prompt-construction
-```
-
-## Example Flow
-
-This example uses a realistic coding-agent request and shows the kind of structure this module receives and returns. The output is representative: ids, timings, and scores are examples, but the shape matches how this module is meant to be understood.
-
-### Real Prompt
-
-```text
-I am in a React app. In src/LoginForm.tsx, when the user clicks the "Sign in" button, show a loading label and disable the button until the login request finishes. Keep the existing validation and error handling. Add or update a focused test if there is already a LoginForm test nearby.
-```
-
-### Real Input Structure
-
-PromptConstructionInput -> PromptConstructionResult:
-
-```json
-{
-  "prompt": "I am in a React app. In src/LoginForm.tsx, when the user clicks the \"Sign in\" button, show a loading label and disable the button until the login request finishes. Keep the existing validation and error handling. Add or update a focused test if there is already a LoginForm test nearby.",
-  "workspaceId": "workspace-1",
-  "stateToken": "state-abc",
-  "targetFile": "src/LoginForm.tsx"
-}
-```
-
-### Step-By-Step Flow
-
-1. A user sends the real prompt shown above from an editor or chat host.
-2. The host attaches workspace id `workspace-1` and the explicit target file `src/LoginForm.tsx`.
-3. The module receives the real structure shown in the input block.
-4. The module validates schema/version/limits before doing any work.
-5. The module extracts the important target: `src/LoginForm.tsx`.
-6. The module keeps the user constraint: existing validation and error handling must stay intact.
-7. The module performs only its own responsibility and does not cross into neighboring modules.
-8. Any budget, path, state, or provider constraint is applied before output is produced.
-9. The module records warnings/reason codes instead of hiding degraded behavior.
-10. The module returns the realistic output shape shown below.
-11. The next pipeline stage consumes that output without reinterpreting raw user text.
-
-### Realistic Output
-
-Prompt Construction result returns a result like this:
-
-```json
-{
-  "schemaVersion": 1,
-  "status": "complete",
-  "request": {
-    "model": "gpt-5-codex",
-    "maximumOutputTokens": 12000,
-    "toolChoice": "auto",
-    "messages": [
-      { "role": "system", "content": "You are Mitii Agent..." },
-      { "role": "user", "content": "<user_request>...loading state...</user_request>" }
-    ],
-    "tools": [{ "name": "read_file", "description": "Read a workspace file", "inputSchema": { "type": "object" } }]
-  },
-  "budget": { "contextWindowTokens": 128000, "outputReservedTokens": 4096, "inputBudgetTokens": 123904, "withinLimits": true },
-  "provenance": [{ "blockId": "repo:src/LoginForm.tsx", "section": "repository", "source": "repository-context", "trust": "untrusted_repository_content" }],
-  "omissions": [],
-  "warnings": [],
-  "reasonCodes": ["output_reserved_first", "within_provider_limits"]
-}
-```
+Model HTTP calls, tool execution, window-band derivation (delegates to
+window-budget), repository indexing, and skill/memory retrieval. Fragment
+assembly lives under `helpers/fragments/`.

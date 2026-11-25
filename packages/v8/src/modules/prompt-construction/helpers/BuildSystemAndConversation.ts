@@ -1,4 +1,4 @@
-import { MemoryEvidenceFragment } from "../internal/fragments/MemoryEvidenceFragment";
+import { MemoryEvidenceFragment } from "./fragments/MemoryEvidenceFragment";
 import type { ExecutionDecision } from "../../decision-policy";
 import type { ModelMessage } from "../../model-gateway";
 
@@ -24,8 +24,8 @@ import {
   formatSkillCatalogL1,
   type AssembleFragmentLimits,
   type ContextualFragment,
-} from "../internal/fragments";
-import { PROMPT_CONSTRUCTION_THRESHOLDS } from "../policy";
+} from "./fragments";
+import { PROMPT_CONSTRUCTION_THRESHOLDS } from "../rules";
 import { buildCoreSystemPrompt, buildPlanGuidance } from "./SystemPromptGuidance";
 import { truncateToTokenBudget } from "./TruncateToTokenBudget";
 

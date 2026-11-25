@@ -1,17 +1,17 @@
-import { truncateKeepingEnds, updateSectionBudget } from "../actions";
-import type { compactConversation, buildSystemInstructions } from "../actions";
-import type { allocateBudget } from "../actions";
-import type { ModelMessage } from "../../model-gateway";
+import { truncateKeepingEnds, updateSectionBudget } from "../../helpers";
+import type { compactConversation, buildSystemInstructions } from "../../helpers";
+import type { BudgetAllocation } from "../../helpers";
+import type { ModelMessage } from "../../../model-gateway";
 import type {
   PromptConstructionInput,
   TokenEstimatorPort,
-} from "../contracts";
-import { PROMPT_CONSTRUCTION_THRESHOLDS } from "../policy";
-import type { PromptAssemblyState } from "./promptAssemblyState";
+} from "../../contracts";
+import { PROMPT_CONSTRUCTION_THRESHOLDS } from "../../rules";
+import type { PromptAssemblyState } from "../../helpers/promptAssemblyState";
 
 /** Fits the current user request, builds the message list, and applies last-resort shrink. */
 export function assembleUserRequestStage(params: {
-  allocation: ReturnType<typeof allocateBudget>;
+  allocation: BudgetAllocation;
   attachments: PromptConstructionInput["attachments"];
   state: PromptAssemblyState;
   estimator: TokenEstimatorPort;

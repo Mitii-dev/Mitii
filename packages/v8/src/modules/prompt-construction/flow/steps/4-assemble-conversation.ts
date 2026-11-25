@@ -2,18 +2,18 @@ import {
   compactConversation,
   serializeRepositoryContext,
   updateSectionBudget,
-} from "../actions";
+} from "../../helpers";
 import type {
   PromptConstructionInput,
   TokenEstimatorPort,
-} from "../contracts";
-import { DEFAULT_MIN_CONVERSATION_TURNS } from "../defaults";
-import { wrapUserRequest } from "../internal/InjectionBoundary";
-import { PROMPT_CONSTRUCTION_THRESHOLDS } from "../policy";
+} from "../../contracts";
+import { DEFAULT_MIN_CONVERSATION_TURNS } from "../../defaults";
+import { wrapUserRequest } from "../../helpers/InjectionBoundary";
+import { PROMPT_CONSTRUCTION_THRESHOLDS } from "../../rules";
 import {
   sectionAllocation,
   type PromptAssemblyState,
-} from "./promptAssemblyState";
+} from "../../helpers/promptAssemblyState";
 
 type CompactedConversation = ReturnType<typeof compactConversation>;
 
