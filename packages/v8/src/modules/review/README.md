@@ -1,51 +1,38 @@
 # Review
 
-Review produces a structured, evidence-backed review artifact (findings +
-severity + coverage) for a diff, commit range, workspace change set, or full
-file scan. It does **not** own mutation or post-mutation verification checks.
+Produces structured, evidence-backed review findings for a diff, commit
+range, workspace change set, or full-file scan. Does not own mutation or
+post-mutation verification.
 
-Third-party *inspiration* acknowledgement (not copied upstream source): see
-`NOTICE-REVIEW.md` (repo root).
+## Contract
 
-## What This Module Does
+**In:** `ReviewInput` (mode, files/diffs, effort, filters, rules).  
+**Out:** `ReviewPreview` | `ReviewPrepResult` | `ReviewResult` (+ optional
+`ReviewRecord` / SARIF).
 
-- Validates review input (workspace / range / commit / scan).
-- Deterministically selects reviewable files with exclude reasons.
-- Groups files for bounded concurrent review.
-- Resolves path-matched review rules (workspace → system → bundled).
-- Repairs, anchors, and optionally reflects model findings.
-- Builds a durable `ReviewRecord` and can export SARIF 2.1.0.
+| Facade | Stages |
+|---|---|
+| `preview` | 1-select-files |
+| `prepare` | 1 → 2-group-files → 3-resolve-rules |
+| `finalize` | 4-repair → 5-anchor → 6-reflect → 7-build-record |
+| `toSarif` | 8-export-sarif |
 
-## Structure
+Ports (injected): `ReviewRecordStorePort`, `ReviewLlmPort`, optional
+`ModuleLoggerPort`. Diff discovery stays on the host via `ReviewDiffPort`.
 
-```text
-review/
-  pipeline/                 ReviewPipeline (preview | prepare | finalize)
-  actions/                  Select, group, rules, anchor, repair, reflect, record, SARIF
-  contracts/                Input / output / errors / ports
-  providers/                 In-memory and file record stores
-  bundled-rules/            Mitii-owned default path rules
-  internal/                 Path utils, scan batching
-  tests/
+## Example
+
+```ts
+import { ReviewPipeline, InMemoryReviewRecordStore } from "@mitii/v8/modules/review";
+
+const pipeline = new ReviewPipeline({
+  records: new InMemoryReviewRecordStore(),
+});
+const prep = pipeline.prepare(input);
+const result = await pipeline.finalize({ input, prep, rawFindings });
 ```
 
-## Ownership Boundaries
+## Non-responsibilities
 
-Owns selection, grouping, rules resolution, finding post-process, review
-records, and SARIF export.
-
-Does not own git shelling, model tool loops, mutation, or verification
-`diff_review` evidence. Hosts inject `ReviewDiffPort` / LLM / store ports.
-
-## Public Facade
-
-- `preview(input)` — same selection as prepare; no LLM.
-- `prepare(input)` — selection + groups + rules (delegate-equivalent).
-- `finalize({ input, rawFindings | findings, prep? })` — anchor/repair/reflect/record.
-- `toSarif(result)` / `loadLatest(workspaceId)` / `persistRecord`.
-
-## Tests
-
-```bash
-pnpm exec vitest run packages/v8/src/modules/review
-```
+Git shelling, model tool loops, mutation, verification `diff_review`
+evidence. Bundled path rules live under `bundled-rules/`.

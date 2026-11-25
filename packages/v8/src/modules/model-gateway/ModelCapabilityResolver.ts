@@ -4,4 +4,4 @@
 export {
   ModelCapabilityResolver,
   resolveModelCapabilities,
-} from "./actions/steps/1-resolve-capabilities";
+} from "./flow/steps/1-resolve-capabilities";

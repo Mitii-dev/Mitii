@@ -1,4 +1,4 @@
-import type { RequestArtifactReference } from "../request-envelope/types";
+import type { RequestArtifactReference } from "../request-envelope/contracts";
 
 /**
  * Path-like tokens after `@`, excluding obvious non-path mentions.

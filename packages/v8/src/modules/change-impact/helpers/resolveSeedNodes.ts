@@ -2,7 +2,7 @@ import type {
   ChangeImpactParsedInput,
   ChangeImpactReasonCode,
   ChangeImpactWarningCode,
-} from "../types";
+} from "../contracts";
 import type {
   RepoGraphEdge,
   RepoGraphFileNode,

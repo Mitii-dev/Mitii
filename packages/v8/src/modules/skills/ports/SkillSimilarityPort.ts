@@ -1,4 +1,4 @@
-import type { SkillIndexEntry } from "../types/output/SkillDescriptor";
+import type { SkillIndexEntry } from "../contracts/output/SkillDescriptor";
 
 /**
  * Optional soft ranking signal for already-applicable skills.

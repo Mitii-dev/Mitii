@@ -1,4 +1,4 @@
-import type { WindowBudgetPolicyOverrides } from "../types";
+import type { WindowBudgetPolicyOverrides } from "../contracts";
 
 /**
  * Agent interaction modes that can reshape how a context window is spent.

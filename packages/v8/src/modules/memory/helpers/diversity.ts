@@ -1,4 +1,4 @@
-import type { MemoryFact } from "../types";
+import type { MemoryFact } from "../contracts";
 
 export interface ScoredMemory {
   fact: MemoryFact;

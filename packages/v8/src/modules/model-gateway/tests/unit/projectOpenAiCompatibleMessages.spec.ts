@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { projectOpenAiCompatibleMessages } from "../../impl/OpenAiCompatibleLlmPort";
+import { projectOpenAiCompatibleMessages } from "../../adapters/OpenAiCompatibleLlmPort";
 
 describe("projectOpenAiCompatibleMessages", () => {
   it("keeps a leading system prefix intact", () => {

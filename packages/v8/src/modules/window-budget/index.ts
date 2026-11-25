@@ -5,8 +5,8 @@
  * thin aliases for hosts during the engine rewrite.
  */
 
-export { WindowBudgetPipeline } from "./actions/WindowBudgetPipeline";
-export type { WindowBudgetPipelineDependencies } from "./actions/WindowBudgetPipeline";
+export { WindowBudgetPipeline } from "./flow/WindowBudgetPipeline";
+export type { WindowBudgetPipelineDependencies } from "./flow/WindowBudgetPipeline";
 
 export {
   WINDOW_BUDGET_SCHEMA_VERSION,
@@ -63,7 +63,7 @@ export type {
 export {
   deriveWindowPolicy,
   resolveGenerationCeiling,
-} from "./actions/steps";
+} from "./flow/steps";
 
 export {
   windowBudgetInputSchema,
@@ -75,7 +75,7 @@ export {
   WindowBudgetError,
   windowBudgetErrorCodeSchema,
   noopModuleLogger,
-} from "./types";
+} from "./contracts";
 export type {
   WindowBudgetInput,
   WindowBudgetPolicy,
@@ -95,4 +95,4 @@ export type {
   WindowBudgetStageTrace,
   WindowBudgetErrorCode,
   ModuleLoggerPort,
-} from "./types";
+} from "./contracts";

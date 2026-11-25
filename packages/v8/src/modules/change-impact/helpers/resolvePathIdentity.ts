@@ -1,4 +1,4 @@
-import type { ChangeImpactPathIdentityOverlay } from "../types";
+import type { ChangeImpactPathIdentityOverlay } from "../contracts";
 import { normalizeRelativePath } from "./impactGraphHelpers";
 
 export type PathIdentityResolution = {

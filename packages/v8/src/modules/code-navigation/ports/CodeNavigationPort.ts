@@ -5,7 +5,7 @@ import type {
   CodeNavigationLocation,
   CodeNavigationQuery,
   CodeNavigationWorkspaceQuery,
-} from "../types/input/CodeNavigationInput";
+} from "../contracts/input/CodeNavigationInput";
 
 /**
  * Architecture capability formula. Hosts report this; V8 does not spawn servers.

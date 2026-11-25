@@ -1,4 +1,4 @@
-import type { ChangeImpactFileReason } from "../types";
+import type { ChangeImpactFileReason } from "../contracts";
 import type { ChangeImpactEdgeType } from "./impactTypes";
 
 const PACKAGE_EDGE_TYPES = new Set<ChangeImpactEdgeType>([

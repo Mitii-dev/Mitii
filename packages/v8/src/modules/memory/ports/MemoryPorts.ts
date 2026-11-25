@@ -1,5 +1,5 @@
-import type { MemoryCommitInput, MemoryRetrieveInput } from "../types/input/MemoryInput";
-import type { MemoryFact, MemoryScope } from "../types/output/MemoryFact";
+import type { MemoryCommitInput, MemoryRetrieveInput } from "../contracts/input/MemoryInput";
+import type { MemoryFact, MemoryScope } from "../contracts/output/MemoryFact";
 
 /**
  * Host/application supplies durable memory storage.

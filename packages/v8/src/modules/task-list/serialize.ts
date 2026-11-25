@@ -1,4 +1,4 @@
-import type { TaskList } from "./types";
+import type { TaskList } from "./contracts";
 
 export {
   parseTaskListMarkdown,
@@ -8,7 +8,7 @@ export {
   serializeWorkingSetForLoop,
   serializeWorkingSetChecklistLines,
   WORKING_SET_MARKER,
-} from "./actions/steps/5-serialize";
+} from "./flow/steps/5-serialize";
 export {
   collectCompletedTaskPaths,
   extractDiagnosticCodeHint,
@@ -17,7 +17,7 @@ export {
   normalizeTaskPath,
   taskItemPaths,
   taskPathsMatch,
-} from "./actions/steps/6-task-item-paths";
+} from "./flow/steps/6-task-item-paths";
 
 export function taskListProgress(taskList: TaskList): {
   completedCount: number;

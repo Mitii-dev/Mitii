@@ -4,7 +4,7 @@ import type {
   ModelMessage,
   ModelTokenUsage,
   ModelToolCallDelta,
-} from "../types/types";
+} from "../contracts/contracts";
 
 export type OpenAiCompatibleUsage = {
   prompt_tokens?: number;

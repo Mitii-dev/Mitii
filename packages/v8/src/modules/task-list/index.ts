@@ -36,8 +36,8 @@ export {
 
 export { TASK_LIST_POLICY, resolveMaxTasks } from "./rules";
 
-export { TaskListPipeline } from "./actions/TaskListPipeline";
-export type { TaskListPipelineDependencies } from "./actions/TaskListPipeline";
+export { TaskListPipeline } from "./flow/TaskListPipeline";
+export type { TaskListPipelineDependencies } from "./flow/TaskListPipeline";
 
 export {
   taskListApplyInputSchema,
@@ -55,7 +55,7 @@ export {
   TaskListError,
   taskListErrorCodeSchema,
   noopModuleLogger,
-} from "./types";
+} from "./contracts";
 export type {
   TaskListApplyInput,
   TaskListDraftItem,
@@ -71,7 +71,7 @@ export type {
   TaskListReasonCode,
   TaskListErrorCode,
   ModuleLoggerPort,
-} from "./types";
+} from "./contracts";
 
 export {
   parseTaskListMarkdown,
@@ -95,6 +95,6 @@ export {
   clipTaskTitle,
   isTerminalTaskStatus,
   isValidStatusTransition,
-} from "./actions/steps/1-apply-update";
+} from "./flow/steps/1-apply-update";
 
 export { collectConcretePlanStepCandidates } from "./planStepCandidates";

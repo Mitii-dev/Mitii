@@ -2,7 +2,7 @@ import type {
   ChangeImpactBlastLevel,
   ChangeImpactBlastRadius,
   ChangeImpactRiskTier,
-} from "../types";
+} from "../contracts";
 import { CHANGE_IMPACT_POLICY } from "../rules";
 import { classifyImpactBucket } from "./classifyImpactBucket";
 

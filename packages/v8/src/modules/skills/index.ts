@@ -33,8 +33,8 @@ export {
 
 export { SKILLS_THRESHOLDS } from "./rules";
 
-export { SkillsPipeline } from "./actions/SkillsPipeline";
-export type { SkillsPipelineDependencies } from "./actions/SkillsPipeline";
+export { SkillsPipeline } from "./flow/SkillsPipeline";
+export type { SkillsPipelineDependencies } from "./flow/SkillsPipeline";
 
 export {
   skillsSelectInputSchema,
@@ -50,7 +50,7 @@ export {
   skillResourceManifestSchema,
   SkillsError,
   noopModuleLogger,
-} from "./types";
+} from "./contracts";
 export type {
   SkillsSelectInput,
   SkillTaskEvidence,
@@ -67,12 +67,12 @@ export type {
   SkillsCatalogPort,
   SkillSimilarityPort,
   ModuleLoggerPort,
-} from "./types";
+} from "./contracts";
 
 export {
   InMemorySkillsCatalog,
   KeywordSkillSimilarity,
-} from "./impl";
+} from "./adapters";
 
 export {
   parseRequiredSkillMentions,
@@ -81,5 +81,5 @@ export {
   mapUnderstandingToSkillEvidence,
   deriveSkillRepoEvidence,
   formatSkillPromptContent,
-} from "./actions/steps";
-export type { SkillRepoEvidence } from "./actions/steps";
+} from "./flow/steps";
+export type { SkillRepoEvidence } from "./flow/steps";

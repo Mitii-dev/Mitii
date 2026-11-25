@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveReviewRules } from "../../actions/ResolveReviewRules";
+import { resolveReviewRules } from "../../flow/steps/3-resolve-rules";
 import { reviewInputSchema } from "../../contracts";
 
 describe("resolveReviewRules", () => {

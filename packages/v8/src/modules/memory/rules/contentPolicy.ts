@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { memoryFactSchema, type MemoryFact } from "../types";
+import { memoryFactSchema, type MemoryFact } from "../contracts";
 import { redactMemoryContent } from "../helpers/privacy";
 
 /** Content boundary shared by capture, storage, graph and prompt consumers. */

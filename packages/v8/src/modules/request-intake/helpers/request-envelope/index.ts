@@ -1,6 +1,6 @@
 export { UserRequestEnvelopeBuilder } from "./UserRequestEnvelopeBuilder";
 export type { BuildEnvelopeFields } from "./UserRequestEnvelopeBuilder";
-export type { CreateUserRequestInput } from "../../types/input/CreateUserRequestInput";
+export type { CreateUserRequestInput } from "../../contracts/input/CreateUserRequestInput";
 export type {
   UserRequestEnvelope,
   UserRequestEnvelopeBuilderDependencies,
@@ -16,7 +16,7 @@ export type {
   RequestTurnKind,
   RequestSessionAction,
   MetaCommandLifecycle,
-} from "./types";
+} from "./contracts";
 export {
   userRequestEnvelopeSchema,
   requestArtifactReferenceSchema,

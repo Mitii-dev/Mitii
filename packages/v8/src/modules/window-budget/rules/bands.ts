@@ -1,4 +1,4 @@
-import type { WindowBudgetPolicyOverrides } from "../types";
+import type { WindowBudgetPolicyOverrides } from "../contracts";
 
 /**
  * Window-budget bands keyed by the same context-window cutoffs as loop policy

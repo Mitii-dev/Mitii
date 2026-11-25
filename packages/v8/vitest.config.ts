@@ -19,6 +19,7 @@ export default defineConfig({
       'src/modules/task-list/**/*.spec.ts',
       'src/modules/code-navigation/**/*.spec.ts',
       'src/modules/change-impact/**/*.spec.ts',
+      'src/modules/review/**/*.spec.ts',
       'src/modules/repository-context/internal/hybrid-retrieval/IdentifierAwareRetrievalReranker.spec.ts',
       'src/modules/repository-context/internal/hybrid-retrieval/boostByImportance.spec.ts',
       'src/modules/repository-context/internal/hybrid-retrieval/tests/**/*.spec.ts',

@@ -1,4 +1,4 @@
-import type { MemoryFact } from "../types";
+import type { MemoryFact } from "../contracts";
 import { MEMORY_THRESHOLDS } from "../rules";
 
 /**

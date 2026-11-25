@@ -74,7 +74,7 @@ export {
   evaluateSpillover,
   spilloverTokensFromResult,
   planCheckChangeImpact,
-} from "./actions/steps";
+} from "./flow/steps";
 export type {
   ModelFacingAffectedNode,
   ModelFacingAffectedFile,
@@ -82,7 +82,7 @@ export type {
   ModelFacingChain,
   ModelFacingChainLink,
   NavigationEnrichmentLocation,
-} from "./actions/steps";
+} from "./flow/steps";
 
 export {
   classifyImpactBucket,
@@ -94,8 +94,8 @@ export { resolveSoftSymbolMatches } from "./helpers/resolveSoftSymbolMatches";
 
 export { collapseChainPrefixes } from "./helpers/collectBoundedChains";
 
-export { ChangeImpactPipeline } from "./actions/ChangeImpactPipeline";
-export type { ChangeImpactPipelineDependencies } from "./actions/ChangeImpactPipeline";
+export { ChangeImpactPipeline } from "./flow/ChangeImpactPipeline";
+export type { ChangeImpactPipelineDependencies } from "./flow/ChangeImpactPipeline";
 
 export {
   changeImpactInputSchema,
@@ -137,7 +137,7 @@ export {
   ChangeImpactError,
   changeImpactErrorCodeSchema,
   noopModuleLogger,
-} from "./types";
+} from "./contracts";
 export type {
   ChangeImpactInput,
   ChangeImpactParsedInput,
@@ -167,4 +167,4 @@ export type {
   ChangeImpactPlanCheckResult,
   RepositoryGraphPort,
   ModuleLoggerPort,
-} from "./types";
+} from "./contracts";

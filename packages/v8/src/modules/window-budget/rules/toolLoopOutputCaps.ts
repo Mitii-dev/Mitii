@@ -1,4 +1,4 @@
-import type { WindowBudgetPolicyOverrides } from "../types";
+import type { WindowBudgetPolicyOverrides } from "../contracts";
 import { resolveWindowBudgetPolicy } from "./merge";
 import { WINDOW_BUDGET_BAND_CEILINGS } from "./bands";
 

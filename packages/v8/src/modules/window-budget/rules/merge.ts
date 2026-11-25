@@ -2,7 +2,7 @@ import { DEFAULT_WINDOW_BUDGET_POLICY } from "../defaults";
 import type {
   WindowBudgetPolicy,
   WindowBudgetPolicyOverrides,
-} from "../types";
+} from "../contracts";
 import {
   resolveWindowBudgetModelProfile,
   type WindowBudgetModelProfile,

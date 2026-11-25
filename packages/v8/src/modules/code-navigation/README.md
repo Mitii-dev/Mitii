@@ -8,8 +8,8 @@
 actions/    Pipeline + steps (what the module does)
 helpers/    shared help for actions only
 ports/      CodeNavigationPort (promise only)
-impl/   graph/ + fallback/ method files (fulfill the port)
-types/      input / output / errors
+adapters/   graph/ + fallback/ method files (fulfill the port)
+contracts/  input / output / errors
 rules/      caps / hop depth
 ```
 

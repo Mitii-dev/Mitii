@@ -2,7 +2,7 @@ import type {
   ModelEvent,
   ModelFinishReason,
   ModelToolCallDelta,
-} from "../types/types";
+} from "../contracts/contracts";
 import { iterateSseEvents } from "./sse";
 import type {
   AnthropicContentBlock,

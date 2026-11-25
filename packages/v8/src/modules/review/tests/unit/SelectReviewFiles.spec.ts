@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { selectReviewFiles } from "../../actions/SelectReviewFiles";
+import { selectReviewFiles } from "../../flow/steps/1-select-files";
 import { reviewInputSchema } from "../../contracts";
 
 function input(files: Parameters<typeof reviewInputSchema.parse>[0]["files"]) {

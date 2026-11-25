@@ -1,4 +1,4 @@
-import type { ChangeImpactReasonCode } from "../types";
+import type { ChangeImpactReasonCode } from "../contracts";
 import type { RepoGraphEdge } from "../../repository-state";
 
 export interface BoundedWalkNeighbor<TEdge> {

@@ -1,5 +1,5 @@
 import type { RepoGraph } from "../../repository-state";
-import type { ChangeImpactHistoricalCouplingEntry } from "../types/input/ChangeImpactInput";
+import type { ChangeImpactHistoricalCouplingEntry } from "../contracts/input/ChangeImpactInput";
 
 /** Host port supplying published repo graphs to change-impact consumers. */
 export interface RepositoryGraphPort {

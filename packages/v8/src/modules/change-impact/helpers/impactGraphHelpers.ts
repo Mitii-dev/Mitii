@@ -1,4 +1,4 @@
-import type { ChangeImpactResult } from "../types";
+import type { ChangeImpactResult } from "../contracts";
 import { CHANGE_IMPACT_POLICY } from "../rules";
 import type {
   RepoGraph,

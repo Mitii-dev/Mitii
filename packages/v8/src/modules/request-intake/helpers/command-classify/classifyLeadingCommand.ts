@@ -1,5 +1,5 @@
-import type { MetaCommandLifecycle, RequestMetaCommand } from "../request-envelope/types";
-import type { AgentMode } from "../interaction-mode/types";
+import type { MetaCommandLifecycle, RequestMetaCommand } from "../request-envelope/contracts";
+import type { AgentMode } from "../interaction-mode/contracts";
 
 import {
   BUILTIN_META_COMMAND_SPECS,

@@ -1,4 +1,4 @@
-import type { WindowBudgetPolicy } from "./types";
+import type { WindowBudgetPolicy } from "./contracts";
 
 /**
  * Default proportional policy. Hosts may override any field.

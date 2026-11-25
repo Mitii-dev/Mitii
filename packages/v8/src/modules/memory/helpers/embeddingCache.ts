@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { MemoryEmbeddingPort } from "../types";
+import type { MemoryEmbeddingPort } from "../contracts";
 
 const caches = new WeakMap<MemoryEmbeddingPort, Map<string, Float32Array>>();
 const MAX_ENTRIES = 10_000;

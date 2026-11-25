@@ -8,7 +8,7 @@ import {
   userRequestEnvelopeSchema,
 } from "./schema";
 
-import type { CreateUserRequestInput } from "../../types/input/CreateUserRequestInput";
+import type { CreateUserRequestInput } from "../../contracts/input/CreateUserRequestInput";
 import type {
   RequestArtifactReference,
   RequestImageAttachment,
@@ -19,8 +19,8 @@ import type {
   UserRequestEnvelope,
   UserRequestEnvelopeBuilderDependencies,
   UserRequestWorkspaceScope,
-} from "./types";
-import type { AgentMode } from "../interaction-mode/types";
+} from "./contracts";
+import type { AgentMode } from "../interaction-mode/contracts";
 
 export interface BuildEnvelopeFields {
   mode: AgentMode;

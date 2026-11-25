@@ -1,4 +1,4 @@
-import type { ChangeImpactParsedInput } from "../types";
+import type { ChangeImpactParsedInput } from "../contracts";
 import type {
   RepoGraphEdge,
   RepoGraphFileNode,

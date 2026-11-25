@@ -2,7 +2,7 @@ import type {
   ChangeImpactReasonCode,
   ChangeImpactResult,
   ChangeImpactWarningCode,
-} from "../types";
+} from "../contracts";
 import {
   bucketSortKey,
   classifyImpactBucket,

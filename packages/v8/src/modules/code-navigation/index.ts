@@ -33,12 +33,12 @@ export {
 } from "./helpers/createRequestLimiter";
 export type { RequestLimiter } from "./helpers/createRequestLimiter";
 
-export { CodeNavigationPipeline } from "./actions/CodeNavigationPipeline";
-export type { CodeNavigationPipelineDependencies } from "./actions/CodeNavigationPipeline";
+export { CodeNavigationPipeline } from "./flow/CodeNavigationPipeline";
+export type { CodeNavigationPipelineDependencies } from "./flow/CodeNavigationPipeline";
 
-export { GraphCodeNavigationAdapter } from "./impl/GraphCodeNavigationAdapter";
-export type { GraphCodeNavigationAdapterOptions } from "./impl/GraphCodeNavigationAdapter";
-export { FallbackCodeNavigationAdapter } from "./impl/FallbackCodeNavigationAdapter";
+export { GraphCodeNavigationAdapter } from "./adapters/GraphCodeNavigationAdapter";
+export type { GraphCodeNavigationAdapterOptions } from "./adapters/GraphCodeNavigationAdapter";
+export { FallbackCodeNavigationAdapter } from "./adapters/FallbackCodeNavigationAdapter";
 
 export {
   codeNavigationInputSchema,
@@ -49,7 +49,7 @@ export {
   CodeNavigationError,
   codeNavigationErrorCodeSchema,
   noopModuleLogger,
-} from "./types";
+} from "./contracts";
 export type {
   CodeNavigationInput,
   CodeNavigationParsedInput,
@@ -66,4 +66,4 @@ export type {
   CodeNavigationCapability,
   CodeNavigationCallOptions,
   ModuleLoggerPort,
-} from "./types";
+} from "./contracts";

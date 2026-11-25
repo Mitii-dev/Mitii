@@ -1,4 +1,4 @@
-import type { ModelFinishReason } from "../types/types";
+import type { ModelFinishReason } from "../contracts/contracts";
 import type { GeminiPart } from "./geminiMessages";
 
 export function readGeminiThoughtSignature(part: GeminiPart): string | undefined {

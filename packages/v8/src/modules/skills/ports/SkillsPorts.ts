@@ -2,7 +2,7 @@ import type {
   SkillBody,
   SkillDescriptor,
   SkillIndexEntry,
-} from "../types/output/SkillDescriptor";
+} from "../contracts/output/SkillDescriptor";
 
 /**
  * Host/application supplies the skill catalog. Skills never reads the

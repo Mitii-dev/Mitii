@@ -1,4 +1,4 @@
-import type { MemoryFact } from "../types";
+import type { MemoryFact } from "../contracts";
 
 export function normalizeMemoryPath(path: string): string {
   return path

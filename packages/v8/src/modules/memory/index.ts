@@ -26,8 +26,8 @@ export {
   DEFAULT_EMBED_MAX_CHARS,
 } from "./defaults";
 
-export { MemoryPipeline } from "./actions/MemoryPipeline";
-export type { MemoryPipelineDependencies } from "./actions/MemoryPipeline";
+export { MemoryPipeline } from "./flow/MemoryPipeline";
+export type { MemoryPipelineDependencies } from "./flow/MemoryPipeline";
 export { MemoryContentPolicy } from "./rules/contentPolicy";
 export { MEMORY_THRESHOLDS } from "./rules";
 
@@ -47,7 +47,7 @@ export {
   memoryErrorCodeSchema,
   MemoryError,
   noopModuleLogger,
-} from "./types";
+} from "./contracts";
 export type {
   MemoryRetrieveInput,
   MemoryCommitInput,
@@ -68,9 +68,9 @@ export type {
   MemoryIdGeneratorPort,
   MemoryEmbeddingPort,
   ModuleLoggerPort,
-} from "./types";
+} from "./contracts";
 
-export { InMemoryMemoryStore, HashMemoryEmbedding } from "./impl";
+export { InMemoryMemoryStore, HashMemoryEmbedding } from "./adapters";
 export {
   KnowledgeGraphManager,
   InMemoryKnowledgeGraphStore,
@@ -87,8 +87,8 @@ export type {
   KnowledgeGraphDeleteEntitiesResult,
   KnowledgeGraphAddObservationsResult,
 } from "./graph";
-export { buildSyntheticMemoryDraft } from "./actions/steps";
+export { buildSyntheticMemoryDraft } from "./flow/steps";
 export type {
   SyntheticObservation,
   SyntheticObservationInput,
-} from "./actions/steps";
+} from "./flow/steps";
