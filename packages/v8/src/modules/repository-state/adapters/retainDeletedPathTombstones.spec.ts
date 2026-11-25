@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { retainDeletedPathTombstones } from "../internal/repo-graph/retainDeletedPathTombstones";
-import type { RepoGraph, RepoGraphFileNode } from "../internal/repo-graph/types";
+import { retainDeletedPathTombstones } from "../helpers/repo-graph/retainDeletedPathTombstones";
+import type { RepoGraph, RepoGraphFileNode } from "../helpers/repo-graph/types";
 
 function file(
   id: string,

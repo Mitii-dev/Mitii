@@ -87,7 +87,7 @@ export type {
   RepositoryStateReaderPort,
   ActiveRunStateRetentionPort,
   RepositoryStateStorePort,
-} from "./ports/RepositoryStateStorePorts";
+} from "../ports/RepositoryStateStorePorts";
 
 export type {
   SourceImportKind,
@@ -100,7 +100,7 @@ export type {
   TreeSitterRuntimeReference,
   TreeSitterRuntimeSymbol,
   TreeSitterRuntimeSyntaxError,
-} from "./ports/TreeSitterRuntimePort";
+} from "../ports/TreeSitterRuntimePort";
 
 export {
   workspaceSnapshotSchema,

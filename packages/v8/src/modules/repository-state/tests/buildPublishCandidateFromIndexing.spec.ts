@@ -5,11 +5,11 @@ import {
   InMemoryRepositoryStateStore,
   RepositoryStatePipeline,
 } from "../index";
-import { WORKSPACE_INDEXING_PIPELINE_MESSAGES } from "../pipeline/ws-indexing-pipeline/constants";
+import { WORKSPACE_INDEXING_PIPELINE_MESSAGES } from "../flow/ws-indexing-pipeline/constants";
 import {
   buildPublishCandidateFromIndexing,
-} from "../actions/buildPublishCandidateFromIndexing";
-import type { WorkspaceIndexingPipelineResult } from "../pipeline/ws-indexing-pipeline/types";
+} from "../helpers/buildPublishCandidateFromIndexing";
+import type { WorkspaceIndexingPipelineResult } from "../flow/ws-indexing-pipeline/types";
 
 const SNAPSHOT_ID = "c".repeat(64);
 const INDEXED_AT = Date.parse("2026-07-25T19:00:00.000Z");

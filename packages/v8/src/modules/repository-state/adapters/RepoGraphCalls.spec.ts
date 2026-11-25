@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   RepoGraphBuilder,
-} from "../internal/repo-graph/RepoGraphBuilder";
+} from "../helpers/repo-graph/RepoGraphBuilder";
 
 import type {
   ProjectCatalog,
-} from "../internal/catalog/types";
+} from "../helpers/catalog/types";
 
 import type {
   CodeIndexContext,
@@ -17,11 +17,11 @@ import type {
   CodeIndexSymbol,
   CodeIndexSymbolQuery,
   CodeIndexSymbolQueryResult,
-} from "../internal/code-index/types";
+} from "../helpers/code-index/types";
 
 import type {
   WorkspaceSnapshot,
-} from "../internal/workspace/types";
+} from "../helpers/workspace/types";
 
 describe("RepoGraphBuilder call edges", () => {
   it("emits call edges from enclosing caller symbols to callee symbols", async () => {

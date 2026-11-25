@@ -8,25 +8,25 @@ import { buildHybridRetrievalRankingContext } from "../rules";
 
 import {
   isImportantRepoMapFile,
-} from "../../repository-state/internal/repo-map/importantFiles";
+} from "../../repository-state/helpers/repo-map/importantFiles";
 import {
   REPO_MAP_DEFAULTS,
-} from "../../repository-state/internal/repo-map/constants";
+} from "../../repository-state/helpers/repo-map/constants";
 import {
   RepoMapBudgetApplier,
-} from "../../repository-state/internal/repo-map/RepoMapBudgetApplier";
-import { RepoMapBuilder } from "../../repository-state/internal/repo-map/RepoMapBuilder";
-import { RepoMapRanker } from "../../repository-state/internal/repo-map/ranking/RepoMapRanker";
+} from "../../repository-state/helpers/repo-map/RepoMapBudgetApplier";
+import { RepoMapBuilder } from "../../repository-state/helpers/repo-map/RepoMapBuilder";
+import { RepoMapRanker } from "../../repository-state/helpers/repo-map/ranking/RepoMapRanker";
 import type {
   RepoMapEntry,
-} from "../../repository-state/internal/repo-map/types";
-import type { RepoGraph } from "../../repository-state/internal/repo-graph/types";
+} from "../../repository-state/helpers/repo-map/types";
+import type { RepoGraph } from "../../repository-state/helpers/repo-graph/types";
 import {
   TEXT_INDEX_FTS,
-} from "../../repository-state/internal/text-index/constants";
+} from "../../repository-state/helpers/text-index/constants";
 import {
   TextQueryNormalizer,
-} from "../../repository-state/internal/text-index/TextQueryNormalizer";
+} from "../../repository-state/helpers/text-index/TextQueryNormalizer";
 
 function graph(paths: readonly string[]): RepoGraph {
   return {

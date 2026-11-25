@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { RepoGraphEdgeAccumulator } from "../internal/repo-graph/RepoGraphEdgeAccumulator";
-import { loadConfigExtendsEdges } from "../internal/repo-graph/loadConfigExtendsEdges";
-import type { RepoGraphFileNode } from "../internal/repo-graph/types";
+import { RepoGraphEdgeAccumulator } from "../helpers/repo-graph/RepoGraphEdgeAccumulator";
+import { loadConfigExtendsEdges } from "../helpers/repo-graph/loadConfigExtendsEdges";
+import type { RepoGraphFileNode } from "../helpers/repo-graph/types";
 
 function file(id: string, relativePath: string): RepoGraphFileNode {
   return {

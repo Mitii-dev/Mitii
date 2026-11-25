@@ -1,13 +1,13 @@
-export { WorkspaceIndexingPipeline } from "./pipeline/ws-indexing-pipeline/WorkspaceIndexingPipeline";
+export { WorkspaceIndexingPipeline } from "./flow/ws-indexing-pipeline/WorkspaceIndexingPipeline";
 export type {
   WorkspaceIndexingPipelineInput,
   WorkspaceIndexingPipelineResult,
-} from "./pipeline/ws-indexing-pipeline/types";
-export { RepositoryStatePipeline } from "./pipeline/RepositoryStatePipeline";
+} from "./flow/ws-indexing-pipeline/types";
+export { RepositoryStatePipeline } from "./flow/RepositoryStatePipeline";
 export type {
   RepositoryStatePipelineClock,
   RepositoryStatePipelineDependencies,
-} from "./pipeline/RepositoryStatePipeline";
+} from "./flow/RepositoryStatePipeline";
 
 export {
   InMemoryRepositoryStateStore,
@@ -41,12 +41,12 @@ export {
   WorkspaceIgnorePolicy,
   isSecurityConcern,
   WS_CONSTANTS,
-} from "./ignorePolicy";
+} from "./helpers/ignorePolicy";
 export type {
   WorkspaceIgnoreDecision,
   WorkspaceIgnorePolicyOptions,
   WorkspaceIgnoreReason,
-} from "./ignorePolicy";
+} from "./helpers/ignorePolicy";
 
 export {
   splitCodeIdentifier,
@@ -54,14 +54,14 @@ export {
   expandFtsText,
   CODE_IDENTIFIER_MINIMUM_PART_CHARACTERS,
   CODE_IDENTIFIER_MINIMUM_TERM_CHARACTERS,
-} from "./codeIdentifiers";
+} from "./helpers/codeIdentifiers";
 
 export {
   REPOSITORY_INDEX_FORMAT,
-} from "./indexFormat";
+} from "./helpers/indexFormat";
 export type {
   RepositoryIndexFormat,
-} from "./indexFormat";
+} from "./helpers/indexFormat";
 
 export {
   LANGUAGE_IDS,
@@ -174,7 +174,13 @@ export {
   REPOSITORY_CAPABILITY_STATUSES,
   REPOSITORY_STATE_REASON_CODES,
   REPOSITORY_STATE_ERROR_CODES,
+  REPOSITORY_STATE_REASON,
+  REPOSITORY_STATE_STAGES,
+  REPOSITORY_STATE_MESSAGES,
 } from "./constants";
 
-export { normalizeRepoPathText } from "./normalizeRepoPathText";
-export type { NormalizeRepoPathTextOptions } from "./normalizeRepoPathText";
+export type { ModuleLoggerPort } from "./ports/ModuleLoggerPort";
+export { noopModuleLogger } from "./ports/ModuleLoggerPort";
+
+export { normalizeRepoPathText } from "./helpers/normalizeRepoPathText";
+export type { NormalizeRepoPathTextOptions } from "./helpers/normalizeRepoPathText";

@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
 
-import { ChunkingFactory } from '../internal/chunking/ChunkingFactory';
-import { NodeSha256ChunkHasher } from '../internal/chunking/adapters/node/NodeSha256ChunkHasher';
-import { SqliteTextIndexFactory } from '../internal/text-index/adapters/sqlite/SqliteTextIndexFactory';
-import { SqliteTextIndexMigration } from '../internal/text-index/adapters/sqlite/SqliteTextIndexMigration';
-import { TEXT_INDEX_SCHEMA_VERSION } from '../internal/text-index/constants';
+import { ChunkingFactory } from "../helpers/chunking/ChunkingFactory";
+import { NodeSha256ChunkHasher } from "../helpers/chunking/adapters/node/NodeSha256ChunkHasher";
+import { SqliteTextIndexFactory } from "../helpers/text-index/adapters/sqlite/SqliteTextIndexFactory";
+import { SqliteTextIndexMigration } from "../helpers/text-index/adapters/sqlite/SqliteTextIndexMigration";
+import { TEXT_INDEX_SCHEMA_VERSION } from "../helpers/text-index/constants";
 import type {
   SqliteDatabasePort,
   SqliteStatementPort,
-} from '../internal/shared/sqlite';
+} from "../helpers/shared/sqlite";
 
 class BetterSqliteDatabasePort implements SqliteDatabasePort {
   constructor(private readonly database: Database.Database) {}

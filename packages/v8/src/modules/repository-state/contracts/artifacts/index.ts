@@ -6,11 +6,11 @@
 export type {
   WorkspaceSnapshot,
   WorkspaceFileEntry,
-} from "../../internal/workspace/types";
+} from "../../helpers/workspace/types";
 export {
   workspaceSnapshotSchema,
   workspaceEntrySchema,
-} from "../../internal/workspace/schema";
+} from "../../helpers/workspace/schema";
 
 export type {
   RepoGraph,
@@ -19,23 +19,23 @@ export type {
   RepoGraphSymbolNode,
   RepoGraphEdge,
   RepoGraphEdgeType,
-} from "../../internal/repo-graph/types";
-export { repoGraphSchema } from "../../internal/repo-graph/schema";
+} from "../../helpers/repo-graph/types";
+export { repoGraphSchema } from "../../helpers/repo-graph/schema";
 
-export type { RepoMap, RepoMapEntry, RepoMapRankingContext } from "../../internal/repo-map/types";
-export { repoMapSchema } from "../../internal/repo-map/schema";
-export { RepoMapRanker } from "../../internal/repo-map/ranking/RepoMapRanker";
+export type { RepoMap, RepoMapEntry, RepoMapRankingContext } from "../../helpers/repo-map/types";
+export { repoMapSchema } from "../../helpers/repo-map/schema";
+export { RepoMapRanker } from "../../helpers/repo-map/ranking/RepoMapRanker";
 
 export type {
   Chunk,
   ChunkKind,
   ChunkTokenEstimator,
-} from "../../internal/chunking/types";
+} from "../../helpers/chunking/types";
 
 export type {
   TextSearchMatch,
   TextIndexReadPort,
-} from "../../internal/text-index/types";
+} from "../../helpers/text-index/types";
 
 export type {
   VectorSearchMatch,
@@ -48,23 +48,23 @@ export type {
   LanceDbRow,
   LanceDbTablePort,
   LanceDbVectorQueryPort,
-} from "../../internal/vector-index/types";
+} from "../../helpers/vector-index/types";
 
 export type {
   EmbeddingProfile,
   EmbeddingProvider,
-} from "../../internal/embedding/types";
+} from "../../helpers/embedding/types";
 
 export type {
   FileSystemReadPort,
   FileSystemPort,
-} from "../../internal/shared/filesystem/types";
+} from "../../helpers/shared/filesystem/types";
 
 export type {
   SqliteCodeIndexDatabasePort,
-} from "../../internal/code-indexing/types";
+} from "../../helpers/code-indexing/types";
 
 export type {
   SqliteTextIndexModule,
   TextIndexSqliteDatabasePort,
-} from "../../internal/text-index/types";
+} from "../../helpers/text-index/types";
