@@ -1,0 +1,205 @@
+import type {
+  AgentMode,
+  RequestTurnKind,
+} from "../../../request-intake";
+
+import type {
+  RequestArtifactKind,
+  RequestArtifactReference,
+} from "../../../request-intake";
+
+import type { DiagnosticSummary } from "../contracts";
+
+import {
+  INTENT_CONSTANTS,
+} from "./constants";
+
+import type {
+  IntentClassification,
+  InteractionIntent,
+  AmbiguousSlotKind,
+} from "./schema";
+import type { RulePrior, UnderstandingEvidencePack } from "./evidence";
+export type TaskIntent = (typeof INTENT_CONSTANTS.TASK_INTENTS)[number];
+
+export interface IntentDefinition {
+  id: TaskIntent;
+  description: string;
+  includes: string[];
+  excludes: string[];
+  confusedWith: TaskIntent[];
+  examples: string[];
+}
+
+export interface IntentRule {
+  intent: TaskIntent;
+  pattern: RegExp;
+  confidence: number;
+}
+
+export type ReferencedArtifactKind =
+  RequestArtifactKind;
+
+export interface IntentClassificationInput {
+  mode: AgentMode;
+  userMessage: string;
+  referencedArtifacts?: readonly ReferencedArtifact[];
+  /** Capped preflight-diagnostic hint. LLM classifier only — rule classifier ignores it. */
+  diagnosticSummary?: DiagnosticSummary;
+  /** Intake turn kind — continuation turns soften clarification. */
+  turnKind?: RequestTurnKind;
+  /** Investigator evidence pack for the Officer LLM (advisory priors + facts). */
+  evidence?: UnderstandingEvidencePack;
+}
+
+export interface IntentRouterDependencies {
+  ruleClassifier?:
+    RuleIntentClassifierPort;
+  llmClassifier?:
+    LlmIntentClassifierPort;
+}
+
+export interface RuleIntentClassifierPort {
+  classifyMessage(
+    message: string,
+  ): IntentClassification | null;
+  /** Top heuristic hits for the Officer evidence pack (advisory only). */
+  listPriors?(message: string): RulePrior[];
+}
+
+export interface LlmIntentClassifierPort {
+  classify(
+    input: IntentClassificationInput,
+  ): Promise<IntentClassification>;
+}
+
+export type ReferencedArtifact =
+  RequestArtifactReference;
+
+export type IntentClassifierSource = "explicit_rule" | "heuristic_rule" | "llm";
+
+export type OfficerFallbackKind = "rule" | "safe";
+
+export interface IntentClassifierResult {
+  source: IntentClassifierSource;
+  classification: IntentClassification;
+  matchedRule?: string;
+}
+
+export type SuperIntentStatus = "accepted" | "clarification_required";
+
+export interface SuperIntentScore {
+  intent: TaskIntent;
+
+  /**
+   * Final combined score after weighting and adjustments.
+   */
+  score: number;
+
+  /**
+   * Score contributed by the deterministic rule classifier.
+   */
+  ruleScore: number;
+
+  /**
+   * Score contributed by the LLM classifier.
+   */
+  llmScore: number;
+}
+
+export interface SuperIntentClarificationOption {
+  /**
+   * Stable namespaced id for UI resume (intent:bugfix, target:path, …).
+   * When omitted, hosts fall back to `intent` as the id.
+   */
+  id: string;
+  /** Task intent when this option is intent-shaped; optional for situation slots. */
+  intent?: TaskIntent;
+  label: string;
+  description: string;
+  confidence: number;
+}
+
+export interface SuperIntentClarification {
+  question: string;
+  options: SuperIntentClarificationOption[];
+  /** Slot kind when options come from ambiguousSlots (ballot v2). */
+  slotKind?: AmbiguousSlotKind;
+}
+
+export interface SuperIntentDiagnostics {
+  ruleSource?: IntentClassifierSource;
+  matchedRule?: string;
+
+  rulePrimaryIntent?: TaskIntent;
+  llmPrimaryIntent: TaskIntent;
+
+  ruleInteractionIntent?: InteractionIntent;
+  llmInteractionIntent: InteractionIntent;
+
+  taskAgreement: boolean;
+  interactionAgreement: boolean;
+  interactionConflict: boolean;
+
+  agreementBonusApplied: number;
+  disagreementPenaltyApplied: number;
+
+  minimumConfidence: number;
+  minimumMargin: number;
+
+  /** Set when the Officer LLM call failed and a non-LLM path was used. */
+  officerFallback?: OfficerFallbackKind;
+}
+
+export interface SuperIntentResult {
+  status: SuperIntentStatus;
+
+  /**
+   * Final normalized classification.
+   */
+  classification: IntentClassification;
+
+  /**
+   * Scores for all intents that received evidence.
+   */
+  scores: SuperIntentScore[];
+
+  /**
+   * Difference between the primary and best alternative.
+   */
+  confidenceMargin: number;
+
+  recommendsClarification: boolean;
+  clarification?: SuperIntentClarification;
+
+  diagnostics: SuperIntentDiagnostics;
+}
+
+export interface SuperIntentInput {
+  mode: AgentMode;
+
+  /**
+   * Rule result can be absent when no deterministic rule matched.
+   */
+  ruleResult?: IntentClassifierResult | null;
+
+  /**
+   * LLM result is required for normal ensemble resolution.
+   */
+  llmResult: IntentClassifierResult;
+}
+
+export interface SuperIntentOptions {
+  llmWeight: number;
+  heuristicRuleWeight: number;
+
+  agreementBonus: number;
+  disagreementPenalty: number;
+
+  minimumConfidence: number;
+  minimumMargin: number;
+
+  maximumAlternatives: number;
+  maximumSecondaryIntents: number;
+  maximumClarificationOptions: number;
+}

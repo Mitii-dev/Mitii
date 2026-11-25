@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveFuzzyFileTargets } from "../task-analyzer/analyzer/resolveFuzzyFileTargets";
+import { resolveFuzzyFileTargets } from "../helpers/task-analyzer/analyzer/resolveFuzzyFileTargets";
 
 describe("resolveFuzzyFileTargets", () => {
   const candidates = [

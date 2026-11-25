@@ -4,8 +4,8 @@ import {
   parseClarificationOptionId,
   applyClarificationFactPatch,
   formatClarificationAnswerFromPatch,
-} from "../intent/applyClarificationFactPatch";
-import type { IntentClassification } from "../intent/schema";
+} from "../helpers/intent/applyClarificationFactPatch";
+import type { IntentClassification } from "../helpers/intent/schema";
 
 const baseClassification = (): IntentClassification => ({
   interactionIntent: "question",

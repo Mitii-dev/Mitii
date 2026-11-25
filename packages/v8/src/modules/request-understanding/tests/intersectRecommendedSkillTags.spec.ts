@@ -4,7 +4,7 @@ import {
   DEFAULT_CLOSED_SKILL_TAGS,
   buildClosedSkillTagAllowlist,
   intersectRecommendedSkillTags,
-} from "../intent/intersectRecommendedSkillTags";
+} from "../helpers/intent/intersectRecommendedSkillTags";
 
 describe("intersectRecommendedSkillTags", () => {
   it("keeps allowlisted tags and drops unknowns", () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { TaskScopeAnalyzer } from "../task-analyzer/analyzer/TaskScopeAnalyzer";
-import { TASK_ANALYZER_CONSTANTS } from "../task-analyzer/constants";
+import { TaskScopeAnalyzer } from "../helpers/task-analyzer/analyzer/TaskScopeAnalyzer";
+import { TASK_ANALYZER_CONSTANTS } from "../helpers/task-analyzer/constants";
 
 describe("repository scope breadth (plan-gate input)", () => {
   const pattern = TASK_ANALYZER_CONSTANTS.SCOPE_PATTERNS.REPOSITORY_SCOPE_PATTERN;

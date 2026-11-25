@@ -8,9 +8,9 @@ import {
   looksLikePasteDump,
   looksLikeTestFailurePaste,
   TOKEN_MEDIUM_CANDIDATE,
-} from "../intent/evidence/sizeDraft";
-import { buildUnderstandingEvidencePack } from "../intent/evidence/buildUnderstandingEvidencePack";
-import { RuleIntentClassifier } from "../intent/classifiers/rule/RuleIntentClassifier";
+} from "../helpers/intent/evidence/sizeDraft";
+import { buildUnderstandingEvidencePack } from "../helpers/intent/evidence/buildUnderstandingEvidencePack";
+import { RuleIntentClassifier } from "../adapters/rule/RuleIntentClassifier";
 
 describe("sizeDraft investigator", () => {
   it("marks short single-file asks as small", () => {

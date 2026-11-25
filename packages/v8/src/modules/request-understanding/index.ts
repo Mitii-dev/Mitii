@@ -1,8 +1,8 @@
-export { RequestUnderstandingPipeline } from "./pipeline/RequestUnderstandingPipeline";
+export { RequestUnderstandingPipeline } from "./flow/RequestUnderstandingPipeline";
 export type {
   RequestUnderstandingPipelineDependencies,
   RequestUnderstandingOptions,
-} from "./pipeline/RequestUnderstandingPipeline";
+} from "./flow/RequestUnderstandingPipeline";
 
 export {
   requestUnderstandingPipelineInputSchema,
@@ -17,22 +17,39 @@ export type {
   DiagnosticSummaryEntry,
 } from "./contracts";
 
-export { TaskAnalysisSchema } from "./task-analyzer/contracts/output/TaskAnalysis";
-export type { TaskAnalysis } from "./task-analyzer/contracts/output/TaskAnalysis";
+export { TaskAnalysisSchema } from "./helpers/task-analyzer/contracts/output/TaskAnalysis";
+export type { TaskAnalysis } from "./helpers/task-analyzer/contracts/output/TaskAnalysis";
 
-export { resolveFuzzyFileTargets } from "./task-analyzer/analyzer/resolveFuzzyFileTargets";
+export { resolveFuzzyFileTargets } from "./helpers/task-analyzer/analyzer/resolveFuzzyFileTargets";
 export {
   isWholeRequestReadOnlyConstraint,
   isHardWholeRequestReadOnlyConstraint,
   hasMutatingPrimaryAsk,
   hasNonNegatedMutationVerb,
-} from "./intent/isWholeRequestReadOnlyConstraint";
+} from "./helpers/intent/isWholeRequestReadOnlyConstraint";
 export {
   resolveIntentClassifierMaximumOutputTokens,
   INTENT_CLASSIFIER_MAXIMUM_OUTPUT_TOKENS_BY_BAND,
-} from "./intent/resolveIntentClassifierMaximumOutputTokens";
+} from "./helpers/intent/resolveIntentClassifierMaximumOutputTokens";
 
-export { REQUEST_UNDERSTANDING_IDS } from "./constants";
+export {
+  REQUEST_UNDERSTANDING_IDS,
+  REQUEST_UNDERSTANDING_MESSAGES,
+  REQUEST_UNDERSTANDING_REASON,
+  REQUEST_UNDERSTANDING_STAGES,
+} from "./constants";
+export type { RequestUnderstandingStageName } from "./constants";
+export type { ModuleLoggerPort } from "./ports/ModuleLoggerPort";
+export { noopModuleLogger } from "./ports/ModuleLoggerPort";
+export type {
+  RuleIntentClassifierPort,
+  LlmIntentClassifierPort,
+} from "./ports/IntentClassifierPorts";
+export {
+  RuleIntentClassifier,
+  LlmIntentClassifier,
+} from "./adapters";
+
 
 export {
   extractPrimaryUserMessage,
@@ -40,15 +57,15 @@ export {
   MITII_USER_MESSAGE_MARKER,
   MITII_HOST_CONTEXT_MARKER,
   CURRENT_USER_REQUEST_MARKER,
-} from "./intent/extractPrimaryUserMessage";
+} from "./helpers/intent/extractPrimaryUserMessage";
 export {
   parseClarificationOptionId,
   applyClarificationFactPatch,
   formatClarificationAnswerFromPatch,
-} from "./intent/applyClarificationFactPatch";
-export type { ClarificationFactPatch } from "./intent/applyClarificationFactPatch";
-export { INTENT_CONSTANTS } from "./intent/constants";
-export type { IntentClassification, AmbiguousSlotKind } from "./intent/schema";
-export type { TaskIntent } from "./intent/types";
-export { isContinuationTurnKind } from "./intent/policy/TurnKindIntentPolicy";
-export { TaskTargetExtractor } from "./task-analyzer/analyzer/TaskTargetExtractor";
+} from "./helpers/intent/applyClarificationFactPatch";
+export type { ClarificationFactPatch } from "./helpers/intent/applyClarificationFactPatch";
+export { INTENT_CONSTANTS } from "./helpers/intent/constants";
+export type { IntentClassification, AmbiguousSlotKind } from "./helpers/intent/schema";
+export type { TaskIntent } from "./helpers/intent/types";
+export { isContinuationTurnKind } from "./rules/TurnKindIntentPolicy";
+export { TaskTargetExtractor } from "./helpers/task-analyzer/analyzer/TaskTargetExtractor";

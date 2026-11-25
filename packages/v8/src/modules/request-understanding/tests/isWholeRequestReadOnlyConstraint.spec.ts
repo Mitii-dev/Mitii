@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isWholeRequestReadOnlyConstraint } from "../intent/isWholeRequestReadOnlyConstraint";
+import { isWholeRequestReadOnlyConstraint } from "../helpers/intent/isWholeRequestReadOnlyConstraint";
 
 describe("isWholeRequestReadOnlyConstraint", () => {
   it("treats scoped Do-not constraints on a Fix ask as not read-only", () => {

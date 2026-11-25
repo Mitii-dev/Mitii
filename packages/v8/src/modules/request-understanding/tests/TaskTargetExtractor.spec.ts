@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { TaskTargetExtractor } from "../task-analyzer/analyzer/TaskTargetExtractor";
+import { TaskTargetExtractor } from "../helpers/task-analyzer/analyzer/TaskTargetExtractor";
 
 describe("TaskTargetExtractor file cites", () => {
   const extractor = new TaskTargetExtractor();

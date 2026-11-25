@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { SuperIntent } from "../intent/resolution/SuperIntent";
-import { INTENT_CONSTANTS } from "../intent/constants";
-import type { IntentClassification } from "../intent/schema";
+import { SuperIntent } from "../helpers/intent/resolution/SuperIntent";
+import { INTENT_CONSTANTS } from "../helpers/intent/constants";
+import type { IntentClassification } from "../helpers/intent/schema";
 
 function classification(
   overrides: Partial<IntentClassification> &

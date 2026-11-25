@@ -3,11 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   TurnKindIntentPolicy,
   isContinuationTurnKind,
-} from "../intent/policy/TurnKindIntentPolicy";
-import { IntentRouter } from "../intent/IntentRouter";
-import type { IntentClassification } from "../intent/schema";
+} from "../rules/TurnKindIntentPolicy";
+import { IntentRouter } from "../helpers/intent/IntentRouter";
+import type { IntentClassification } from "../helpers/intent/schema";
 import type { LlmPort } from "../../model-gateway";
-import type { SuperIntentResult } from "../intent/types";
+import type { SuperIntentResult } from "../helpers/intent/types";
 
 const base = (): IntentClassification => ({
   interactionIntent: "act",
