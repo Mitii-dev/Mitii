@@ -1,5 +1,5 @@
-import type { SkillIndexEntry } from "./contracts";
-import type { SkillSimilarityPort } from "./contracts/ports/SkillSimilarityPort";
+import type { SkillIndexEntry } from "../contracts";
+import type { SkillSimilarityPort } from "../contracts/ports/SkillSimilarityPort";
 
 /**
  * Default similarity adapter: token overlap against title/description/tags.

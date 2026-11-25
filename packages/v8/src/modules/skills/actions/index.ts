@@ -1,15 +1,17 @@
-export { matchSkills, estimateTokens } from "./MatchSkills";
-export type { ScoredSkill, SkillSelectionKind } from "./MatchSkills";
-export { resolveRequiredSkills } from "./ResolveRequiredSkills";
-export { resolvePreferredSkills } from "./ResolvePreferredSkills";
-export { mergeSkillCandidates } from "./MergeSkillCandidates";
-export { resolveSkillConflicts } from "./ResolveSkillConflicts";
-export { applySkillBudget, resolveSkillSizeClass } from "./ApplySkillBudget";
-export type { HydratedScoredSkill, SkillSizeClass } from "./ApplySkillBudget";
-
-export { mapUnderstandingToSkillEvidence } from "./mapUnderstandingToSkillEvidence";
+export { resolveRequiredSkills } from "./1-resolve-required";
+export { resolvePreferredSkills } from "./2-resolve-preferred";
+export { matchSkills, estimateTokens } from "./3-match-skills";
+export type { ScoredSkill, SkillSelectionKind } from "./3-match-skills";
+export { mergeSkillCandidates } from "./4-merge-candidates";
+export { resolveSkillConflicts } from "./5-resolve-conflicts";
+export { applySkillBudget, resolveSkillSizeClass } from "./6-apply-budget";
+export type { HydratedScoredSkill, SkillSizeClass } from "./6-apply-budget";
 export {
-  deriveSkillRepoEvidence,
-} from "./deriveSkillRepoEvidence";
-export type { SkillRepoEvidence } from "./deriveSkillRepoEvidence";
-export { formatSkillPromptContent } from "./formatSkillPromptContent";
+  parseRequiredSkillMentions,
+  mergeRequiredSkillIds,
+  normalizeSkillId,
+} from "./7-parse-mentions";
+export { mapUnderstandingToSkillEvidence } from "./8-map-understanding-evidence";
+export { deriveSkillRepoEvidence } from "./9-derive-repo-evidence";
+export type { SkillRepoEvidence } from "./9-derive-repo-evidence";
+export { formatSkillPromptContent } from "./10-format-prompt-content";

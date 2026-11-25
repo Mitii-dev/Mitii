@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   mergeRequiredSkillIds,
   parseRequiredSkillMentions,
-} from "../parseRequiredSkillMentions";
+} from "../../index";
 
 describe("parseRequiredSkillMentions", () => {
   it("extracts @skill mentions and cleans the message", () => {

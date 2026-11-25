@@ -1,4 +1,4 @@
-import type { ScoredSkill } from "./MatchSkills";
+import type { ScoredSkill } from "./3-match-skills";
 
 export function mergeSkillCandidates(
   required: readonly ScoredSkill[],

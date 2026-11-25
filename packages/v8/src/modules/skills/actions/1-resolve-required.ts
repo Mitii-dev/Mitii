@@ -1,7 +1,7 @@
 import type { SkillIndexEntry, SkillOmission } from "../contracts";
-import { normalizeSkillId } from "../parseRequiredSkillMentions";
+import { normalizeSkillId } from "./7-parse-mentions";
 
-import type { ScoredSkill } from "./MatchSkills";
+import type { ScoredSkill } from "./3-match-skills";
 
 export function resolveRequiredSkills(params: {
   catalog: readonly SkillIndexEntry[];

@@ -4,8 +4,8 @@ import {
   InMemorySkillsCatalog,
   SkillsPipeline,
   SKILLS_SCHEMA_VERSION,
-} from "..";
-import type { SkillDescriptor } from "..";
+} from "../..";
+import type { SkillDescriptor } from "../..";
 
 const baseCatalog: SkillDescriptor[] = [
   {

@@ -5,7 +5,7 @@ import type {
 } from "../contracts";
 import { DEFAULT_CHARACTERS_PER_TOKEN } from "../defaults";
 import { SKILLS_THRESHOLDS } from "../policy";
-import { estimateTokens, type ScoredSkill } from "./MatchSkills";
+import { estimateTokens, type ScoredSkill } from "./3-match-skills";
 
 const TRUNCATION_MARKER = "\n…(skill truncated to budget)";
 

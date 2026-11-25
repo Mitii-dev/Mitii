@@ -40,3 +40,6 @@ export type { SkillsErrorCode } from "./errors/SkillsErrors";
 
 export type { SkillsCatalogPort } from "./ports/SkillsPorts";
 export type { SkillSimilarityPort } from "./ports/SkillSimilarityPort";
+
+export { noopModuleLogger } from "./ports/ModuleLoggerPort";
+export type { ModuleLoggerPort } from "./ports/ModuleLoggerPort";

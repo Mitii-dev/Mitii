@@ -2,7 +2,7 @@ import type { ProjectDescriptor } from "../../repository-state";
 import type { RequestUnderstandingResult } from "../../request-understanding";
 import type { SkillTaskEvidence } from "../contracts";
 
-import { deriveSkillRepoEvidence } from "./deriveSkillRepoEvidence";
+import { deriveSkillRepoEvidence } from "./9-derive-repo-evidence";
 
 /**
  * Map Request Understanding into the slim Skills evidence slice.

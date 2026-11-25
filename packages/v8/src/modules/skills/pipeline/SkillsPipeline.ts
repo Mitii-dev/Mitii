@@ -6,18 +6,25 @@ import {
   resolveRequiredSkills,
   resolveSkillConflicts,
 } from "../actions";
-import { KeywordSkillSimilarity } from "../KeywordSkillSimilarity";
-import { SKILLS_SCHEMA_VERSION } from "../constants";
+import { KeywordSkillSimilarity } from "../adapters";
+import {
+  SKILLS_MESSAGES,
+  SKILLS_SCHEMA_VERSION,
+  SKILLS_STAGES,
+  SKILL_REASON,
+} from "../constants";
 import {
   DEFAULT_SKILL_CATALOG_L1_MAX_ENTRIES,
 } from "../defaults";
 import {
   SkillsError,
+  noopModuleLogger,
   skillBodySchema,
   skillDescriptorSchema,
   skillIndexEntrySchema,
   skillsSelectInputSchema,
   skillsSelectResultSchema,
+  type ModuleLoggerPort,
 } from "../contracts";
 import type { HydratedScoredSkill, ScoredSkill } from "../actions";
 import type {
@@ -35,36 +42,34 @@ import type { z } from "zod";
 export interface SkillsPipelineDependencies {
   catalog: SkillsCatalogPort;
   similarity?: SkillSimilarityPort;
+  log?: ModuleLoggerPort;
 }
 
 /**
  * Skills facade.
  *
  * Flow:
- *   validate input
- *   → load catalog
- *   → match by task evidence / route / keywords (+ optional similarity)
- *   → resolve conflict groups
- *   → hydrate selected skill bodies
- *   → apply dedicated budget
- *   → return instruction blocks with provenance
+ *   1-resolve-required → 2-resolve-preferred → 3-match-skills
+ *   → 4-merge-candidates → 5-resolve-conflicts → hydrate → 6-apply-budget
  *
  * Does not own general prompt construction or run orchestration.
  */
 export class SkillsPipeline {
   private readonly catalog: SkillsCatalogPort;
   private readonly similarity: SkillSimilarityPort;
+  private readonly log: ModuleLoggerPort;
 
   constructor(dependencies: SkillsPipelineDependencies) {
     if (!dependencies.catalog) {
       throw new SkillsError(
         "misconfigured_ports",
-        "SkillsPipeline requires a catalog port.",
+        SKILLS_MESSAGES.catalogRequired,
       );
     }
     this.catalog = dependencies.catalog;
     this.similarity =
       dependencies.similarity ?? new KeywordSkillSimilarity();
+    this.log = dependencies.log ?? noopModuleLogger;
   }
 
   public async select(input: SkillsSelectInput): Promise<SkillsSelectResult> {
@@ -76,7 +81,7 @@ export class SkillsPipeline {
     } catch (error) {
       throw new SkillsError(
         "invalid_input",
-        "Skills select input failed schema validation.",
+        SKILLS_MESSAGES.selectInputInvalid,
         {
           cause: error instanceof Error ? error.message : String(error),
         },
@@ -89,7 +94,7 @@ export class SkillsPipeline {
     } catch (error) {
       throw new SkillsError(
         "catalog_failed",
-        "Skills catalog failed to load.",
+        SKILLS_MESSAGES.catalogLoadFailed,
         {
           cause: error instanceof Error ? error.message : String(error),
         },
@@ -103,11 +108,11 @@ export class SkillsPipeline {
       ? buildCatalogL1(catalog)
       : undefined;
     if (catalogL1 && catalogL1.length > 0) {
-      reasonCodes.push("catalog_l1_included");
+      reasonCodes.push(SKILL_REASON.catalogL1Included);
     }
 
     if (catalog.length === 0) {
-      reasonCodes.push("catalog_empty");
+      reasonCodes.push(SKILL_REASON.catalogEmpty);
       return skillsSelectResultSchema.parse({
         schemaVersion: SKILLS_SCHEMA_VERSION,
         status: "empty",
@@ -125,54 +130,74 @@ export class SkillsPipeline {
       });
     }
 
+    let stageStartedMs = Date.now();
     const required = resolveRequiredSkills({
       catalog,
       requiredSkillIds: parsed.requiredSkillIds,
     });
     if (required.resolvedIds.length > 0) {
-      reasonCodes.push("skills_required");
+      reasonCodes.push(SKILL_REASON.required);
     }
     if (
       parsed.requiredSkillIds.length > 0 &&
       required.omissions.some((omission) => omission.reason === "not_found")
     ) {
-      reasonCodes.push("skills_required_not_found");
-      warnings.push(
-        "One or more required skills were not found in the catalog.",
-      );
+      reasonCodes.push(SKILL_REASON.requiredNotFound);
+      warnings.push(SKILLS_MESSAGES.requiredMissing);
     }
     if (
       parsed.requiredSkillIds.length > 0 &&
       required.resolvedIds.length > 0 &&
       required.resolvedIds.length < parsed.requiredSkillIds.length
     ) {
-      reasonCodes.push("skills_required_partial");
+      reasonCodes.push(SKILL_REASON.requiredPartial);
     }
+    this.log.stage({
+      module: "skills",
+      stage: SKILLS_STAGES.resolveRequired,
+      durationMs: Date.now() - stageStartedMs,
+      reasonCodes: [],
+      outputSummary: { resolvedCount: required.resolvedIds.length },
+    });
 
+    stageStartedMs = Date.now();
     const preferred = resolvePreferredSkills({
       catalog,
       preferredSkillIds: parsed.preferredSkillIds,
     });
     if (preferred.resolvedIds.length > 0) {
-      reasonCodes.push("skills_preferred");
+      reasonCodes.push(SKILL_REASON.preferred);
     }
+    this.log.stage({
+      module: "skills",
+      stage: SKILLS_STAGES.resolvePreferred,
+      durationMs: Date.now() - stageStartedMs,
+      reasonCodes: [],
+      outputSummary: { resolvedCount: preferred.resolvedIds.length },
+    });
 
+    stageStartedMs = Date.now();
     const matched = await matchSkills({
       catalog,
       input: parsed,
       similarity: this.similarity,
     });
     if (matched.nonMatchedCount > 0) {
-      // Not pushed to `omissions`/`omittedCount` — those are reserved for
-      // budget/conflict/duplicate drops of already-applicable skills. This
-      // is the much larger "didn't match at all" population, which was
-      // previously invisible: `omittedCount` only ever reflected the small
-      // conflict/budget slice, never the catalog majority that never
-      // qualified as a candidate in the first place.
       warnings.push(
-        `${matched.nonMatchedCount} of ${catalog.length} catalog skill(s) did not match this request (path/intent/route/keyword/threshold) and were not considered.`,
+        SKILLS_MESSAGES.nonMatched(matched.nonMatchedCount, catalog.length),
       );
     }
+    this.log.stage({
+      module: "skills",
+      stage: SKILLS_STAGES.matchSkills,
+      durationMs: Date.now() - stageStartedMs,
+      reasonCodes: [],
+      outputSummary: {
+        scoredCount: matched.scored.length,
+        nonMatchedCount: matched.nonMatchedCount,
+      },
+    });
+
     const excluded = new Set(
       parsed.excludedSkillIds.map((id) => id.trim()).filter(Boolean),
     );
@@ -185,25 +210,48 @@ export class SkillsPipeline {
       matchedWithoutExcluded.length < matched.scored.length
     ) {
       warnings.push(
-        `Excluded ${matched.scored.length - matchedWithoutExcluded.length} auto-matched skill(s) for this run.`,
+        SKILLS_MESSAGES.excludedMatched(
+          matched.scored.length - matchedWithoutExcluded.length,
+        ),
       );
     }
     const preferredWithoutExcluded =
       excluded.size === 0
         ? preferred.scored
         : preferred.scored.filter((entry) => !excluded.has(entry.skill.id));
+
+    stageStartedMs = Date.now();
     const merged = mergeSkillCandidates(
       required.scored,
       matchedWithoutExcluded,
       preferredWithoutExcluded,
     );
+    this.log.stage({
+      module: "skills",
+      stage: SKILLS_STAGES.mergeCandidates,
+      durationMs: Date.now() - stageStartedMs,
+      reasonCodes: [],
+      outputSummary: { mergedCount: merged.length },
+    });
+
+    stageStartedMs = Date.now();
     const conflicts = resolveSkillConflicts({ scored: merged });
     if (conflicts.conflictsResolved) {
-      reasonCodes.push("conflicts_resolved");
+      reasonCodes.push(SKILL_REASON.conflictsResolved);
     }
+    this.log.stage({
+      module: "skills",
+      stage: SKILLS_STAGES.resolveConflicts,
+      durationMs: Date.now() - stageStartedMs,
+      reasonCodes: conflicts.conflictsResolved
+        ? [SKILL_REASON.conflictsResolved]
+        : [],
+      outputSummary: { selectedCount: conflicts.selected.length },
+    });
 
     const hydrated = await this.hydrateSelected(conflicts.selected);
 
+    stageStartedMs = Date.now();
     const budgeted = applySkillBudget({
       scored: hydrated.selected,
       budgetTokens: parsed.budgetTokens,
@@ -212,20 +260,26 @@ export class SkillsPipeline {
     });
 
     if (budgeted.budgetOmitted) {
-      reasonCodes.push("budget_omitted_skills");
+      reasonCodes.push(SKILL_REASON.budgetOmitted);
     }
     if (budgeted.compacted) {
-      reasonCodes.push("skills_compacted");
-      warnings.push(
-        "One or more selected skills used compact metadata because the full playbook exceeded the skills budget.",
-      );
+      reasonCodes.push(SKILL_REASON.compacted);
+      warnings.push(SKILLS_MESSAGES.compacted);
     }
     if (budgeted.truncated) {
-      reasonCodes.push("skills_truncated_to_budget");
-      warnings.push(
-        "One or more selected skills were truncated to fit the remaining skills budget.",
-      );
+      reasonCodes.push(SKILL_REASON.truncatedToBudget);
+      warnings.push(SKILLS_MESSAGES.truncated);
     }
+    this.log.stage({
+      module: "skills",
+      stage: SKILLS_STAGES.applyBudget,
+      durationMs: Date.now() - stageStartedMs,
+      reasonCodes: [],
+      outputSummary: {
+        instructionCount: budgeted.instructions.length,
+        usedTokens: budgeted.usedTokens,
+      },
+    });
 
     const omissions = [
       ...required.omissions,
@@ -242,7 +296,7 @@ export class SkillsPipeline {
     ).length;
 
     if (budgeted.instructions.length === 0) {
-      reasonCodes.push("no_matching_skills");
+      reasonCodes.push(SKILL_REASON.noMatching);
       return skillsSelectResultSchema.parse({
         schemaVersion: SKILLS_SCHEMA_VERSION,
         status: "empty",
@@ -260,7 +314,7 @@ export class SkillsPipeline {
       });
     }
 
-    reasonCodes.push("skills_selected");
+    reasonCodes.push(SKILL_REASON.selected);
     return skillsSelectResultSchema.parse({
       schemaVersion: SKILLS_SCHEMA_VERSION,
       status: "selected",
@@ -324,7 +378,7 @@ export class SkillsPipeline {
     } catch (error) {
       throw new SkillsError(
         "catalog_failed",
-        `Skills catalog failed to hydrate body for ${skill.id}.`,
+        SKILLS_MESSAGES.hydrateBodyFailed(skill.id),
         {
           cause: error instanceof Error ? error.message : String(error),
         },

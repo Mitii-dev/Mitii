@@ -1,5 +1,5 @@
 import type { SkillOmission } from "../contracts";
-import type { ScoredSkill } from "./MatchSkills";
+import type { ScoredSkill } from "./3-match-skills";
 
 /**
  * Keep at most one skill per conflictGroup (highest score/priority wins).

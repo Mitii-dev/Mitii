@@ -1,4 +1,4 @@
-import { MAX_REQUIRED_SKILLS } from "./constants";
+import { MAX_REQUIRED_SKILLS } from "../constants";
 
 const SKILL_MENTION_PATTERN =
   /@skill:([a-z0-9][a-z0-9_.-]{0,63})/gi;

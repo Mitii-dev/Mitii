@@ -5,8 +5,10 @@ import {
   SkillsError,
   SkillsPipeline,
   SKILLS_SCHEMA_VERSION,
-} from "..";
-import type { SkillDescriptor } from "..";
+  SKILLS_STAGES,
+  type ModuleLoggerPort,
+} from "../..";
+import type { SkillDescriptor } from "../..";
 
 const catalog: SkillDescriptor[] = [
   {
@@ -96,6 +98,27 @@ describe("SkillsPipeline", () => {
         schemaVersion: 2 as 1,
       }),
     ).rejects.toBeInstanceOf(SkillsError);
+  });
+
+  it("emits logger stage events for the select path", async () => {
+    const stages: string[] = [];
+    const log: ModuleLoggerPort = {
+      stage(event) {
+        stages.push(event.stage);
+      },
+    };
+    await new SkillsPipeline({
+      catalog: new InMemorySkillsCatalog(catalog),
+      log,
+    }).select(baseInput());
+    expect(stages).toEqual([
+      SKILLS_STAGES.resolveRequired,
+      SKILLS_STAGES.resolvePreferred,
+      SKILLS_STAGES.matchSkills,
+      SKILLS_STAGES.mergeCandidates,
+      SKILLS_STAGES.resolveConflicts,
+      SKILLS_STAGES.applyBudget,
+    ]);
   });
 
   it("selects matching and always-apply skills with provenance", async () => {

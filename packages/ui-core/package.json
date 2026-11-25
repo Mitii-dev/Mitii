@@ -1,6 +1,6 @@
 {
   "name": "@mitii/ui-core",
-  "version": "2.11.29",
+  "version": "2.11.30",
   "description": "Pure TypeScript UI helpers shared by Mitii Desktop and VS Code: token-budget preview, model pricing, thoroughness, mentions, file links, Excalidraw SVG.",
   "license": "AGPL-3.0-or-later",
   "type": "module",
