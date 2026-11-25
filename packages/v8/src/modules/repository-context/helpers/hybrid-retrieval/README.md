@@ -79,7 +79,7 @@ Does not own final context selection, file content loading, secret redaction, or
 ## Tests
 
 ```bash
-pnpm exec vitest run packages/v8/src/modules/repository-context/internal/hybrid-retrieval
+pnpm exec vitest run packages/v8/src/modules/repository-context/helpers/hybrid-retrieval
 ```
 
 ## Example Flow

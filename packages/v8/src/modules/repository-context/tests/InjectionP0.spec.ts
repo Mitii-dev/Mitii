@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { HybridRetriever } from "../internal/hybrid-retrieval/HybridRetriever";
+import { HybridRetriever } from "../helpers/hybrid-retrieval/HybridRetriever";
 import {
   RepoMapRetrievalSource,
-} from "../internal/hybrid-retrieval/sources/RepoMapRetrievalSource";
+} from "../helpers/hybrid-retrieval/sources/RepoMapRetrievalSource";
 import type {
   RetrievalCandidate,
   RetrievalSource,
   RetrievalSourceResult,
-} from "../internal/hybrid-retrieval/types";
+} from "../helpers/hybrid-retrieval/types";
 import {
   buildHybridRetrievalRankingContext,
-} from "../policy";
+} from "../rules";
 import type { RepoGraph, RepoMap } from "../../repository-state";
 
 class StaticRetrievalSource implements RetrievalSource {

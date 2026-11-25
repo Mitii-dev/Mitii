@@ -1,26 +1,25 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { describe, expect, it } from "vitest";
 
 import type {
   RepositoryStateDescriptor,
   RepositoryStateReference,
   WorkspaceSnapshot,
-} from "../../../../repository-state/index";
+} from "../../repository-state/index";
 
 import type {
   ContextAssemblyInput,
   ContextAssemblyResult,
-} from "../../../internal/context-assembly/types";
+} from "../helpers/context-assembly/types";
 
 import type {
   ContextSelectionInput,
   ContextSelectionResult,
-} from "../../../internal/context-selection/types";
+} from "../helpers/context-selection/types";
 
 import type {
   HybridRetrievalInput,
   HybridRetrievalResult,
-} from "../../../internal/hybrid-retrieval/types";
+} from "../helpers/hybrid-retrieval/types";
 
 import {
   RepositoryContextPipeline,
@@ -31,7 +30,7 @@ import type {
   RepositoryContextResolvedState,
   RepositoryContextStateResolveResult,
   RepositoryContextStateResolverPort,
-} from "../../../contracts/types";
+} from "../contracts/types";
 
 const SNAPSHOT_ID = "a".repeat(64);
 const STATE_TOKEN = "b".repeat(64);
@@ -208,13 +207,14 @@ const emptyAssembly = (
   },
 });
 
-test("pipeline resolves state then runs retrieval, selection, and assembly", async () => {
+describe("RepositoryContextPipeline", () => {
+it("pipeline resolves state then runs retrieval, selection, and assembly", async () => {
   const calls: string[] = [];
   let retrievalInput: HybridRetrievalInput | undefined;
 
   const pipeline = new RepositoryContextPipeline({
     stateResolver: createResolver((reference) => {
-      assert.equal(reference.stateToken, STATE_TOKEN);
+      expect(reference.stateToken).toBe(STATE_TOKEN);
       return {
         status: "resolved",
         artifacts: resolvedArtifacts(),
@@ -251,16 +251,16 @@ test("pipeline resolves state then runs retrieval, selection, and assembly", asy
     rootIds: ["root"],
   });
 
-  assert.deepEqual(calls, ["retrieval", "selection", "assembly"]);
-  assert.equal(retrievalInput?.workspaceSnapshotId, SNAPSHOT_ID);
-  assert.equal(retrievalInput?.codeIndexChangeToken, "index-1");
-  assert.equal(retrievalInput?.workspace, "workspace");
-  assert.equal(result.stateToken, STATE_TOKEN);
-  assert.equal(result.workspaceSnapshotId, SNAPSHOT_ID);
-  assert.equal(result.status, "empty");
+  expect(calls).toEqual(["retrieval", "selection", "assembly"]);
+  expect(retrievalInput?.workspaceSnapshotId).toBe(SNAPSHOT_ID);
+  expect(retrievalInput?.codeIndexChangeToken).toBe("index-1");
+  expect(retrievalInput?.workspace).toBe("workspace");
+  expect(result.stateToken).toBe(STATE_TOKEN);
+  expect(result.workspaceSnapshotId).toBe(SNAPSHOT_ID);
+  expect(result.status).toBe("empty");
 });
 
-test("public input accepts only a state reference, not loose snapshot artifacts", () => {
+it("public input accepts only a state reference, not loose snapshot artifacts", () => {
   const valid = repositoryContextPipelineInputSchema.safeParse({
     state: {
       workspaceId: "workspace",
@@ -269,7 +269,7 @@ test("public input accepts only a state reference, not loose snapshot artifacts"
     query: "Find authentication code",
     mode: "ask",
   });
-  assert.equal(valid.success, true);
+  expect(valid.success).toBe(true);
 
   const withSnapshot = repositoryContextPipelineInputSchema.safeParse({
     state: {
@@ -280,7 +280,7 @@ test("public input accepts only a state reference, not loose snapshot artifacts"
     mode: "ask",
     snapshot,
   });
-  assert.equal(withSnapshot.success, false);
+  expect(withSnapshot.success).toBe(false);
 
   const withRepoMap = repositoryContextPipelineInputSchema.safeParse({
     state: {
@@ -306,10 +306,10 @@ test("public input accepts only a state reference, not loose snapshot artifacts"
       generatedAt: "2026-07-25T12:00:00.000Z",
     },
   });
-  assert.equal(withRepoMap.success, false);
+  expect(withRepoMap.success).toBe(false);
 });
 
-test("unknown state token fails closed without retrieval", async () => {
+it("unknown state token fails closed without retrieval", async () => {
   let retrieved = false;
 
   const pipeline = new RepositoryContextPipeline({
@@ -341,13 +341,13 @@ test("unknown state token fails closed without retrieval", async () => {
     mode: "ask",
   });
 
-  assert.equal(retrieved, false);
-  assert.equal(result.status, "failed");
-  assert.equal(result.warnings[0]?.code, "unknown_state_token");
-  assert.equal(result.warnings[0]?.stage, "state_resolution");
+  expect(retrieved).toBe(false);
+  expect(result.status).toBe("failed");
+  expect(result.warnings[0]?.code).toBe("unknown_state_token");
+  expect(result.warnings[0]?.stage).toBe("state_resolution");
 });
 
-test("unavailable state fails closed; degraded state warns and continues", async () => {
+it("unavailable state fails closed; degraded state warns and continues", async () => {
   const unavailablePipeline = new RepositoryContextPipeline({
     stateResolver: createResolver(() => ({
       status: "resolved",
@@ -372,8 +372,8 @@ test("unavailable state fails closed; degraded state warns and continues", async
     query: "Find authentication code",
     mode: "ask",
   });
-  assert.equal(unavailable.status, "failed");
-  assert.equal(unavailable.warnings[0]?.code, "state_unavailable");
+  expect(unavailable.status).toBe("failed");
+  expect(unavailable.warnings[0]?.code).toBe("state_unavailable");
 
   let retrieved = false;
   const degradedPipeline = new RepositoryContextPipeline({
@@ -404,14 +404,14 @@ test("unavailable state fails closed; degraded state warns and continues", async
     mode: "ask",
   });
 
-  assert.equal(retrieved, true);
-  assert.equal(degraded.status, "empty");
-  assert.ok(
+  expect(retrieved).toBe(true);
+  expect(degraded.status).toBe("empty");
+  expect(
     degraded.warnings.some((warning) => warning.code === "state_degraded"),
-  );
+  ).toBe(true);
 });
 
-test("folderPrefix drops unrelated git and editor references before selection", async () => {
+it("folderPrefix drops unrelated git and editor references before selection", async () => {
   let selectionInput: ContextSelectionInput | undefined;
 
   const pipeline = new RepositoryContextPipeline({
@@ -450,9 +450,10 @@ test("folderPrefix drops unrelated git and editor references before selection", 
     },
   });
 
-  assert.deepEqual(
+  expect(
     selectionInput?.references?.gitDiffFiles?.map((file) => file.relativePath),
-    ["packages/demo/src/used.ts"],
-  );
-  assert.equal(selectionInput?.references?.openFiles, undefined);
+  ).toEqual(["packages/demo/src/used.ts"]);
+  expect(selectionInput?.references?.openFiles).toBe(undefined);
 });
+});
+

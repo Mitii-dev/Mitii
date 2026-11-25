@@ -10,7 +10,7 @@ import {
   pathMatchesFolderPrefix,
   restrictContextReferencesToFolderPrefix,
   REPOSITORY_CONTEXT_RETRIEVAL_POLICY,
-} from "../policy";
+} from "../rules";
 
 describe("deriveContextSelectionBudget", () => {
   it("uses the window-derived repository slice instead of a 12k floor", () => {

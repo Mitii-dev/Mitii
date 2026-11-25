@@ -55,7 +55,7 @@ Does not own source retrieval, content loading, redaction, or prompt section all
 ## Tests
 
 ```bash
-pnpm exec vitest run packages/v8/src/modules/repository-context/internal/context-selection
+pnpm exec vitest run packages/v8/src/modules/repository-context/helpers/context-selection
 ```
 
 ## Example Flow

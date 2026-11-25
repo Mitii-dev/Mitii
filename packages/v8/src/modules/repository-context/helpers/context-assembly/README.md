@@ -60,7 +60,7 @@ Does not own retrieval ranking, selection scoring, prompt section budgeting, or 
 ## Tests
 
 ```bash
-pnpm exec vitest run packages/v8/src/modules/repository-context/internal/context-assembly
+pnpm exec vitest run packages/v8/src/modules/repository-context/helpers/context-assembly
 ```
 
 ## Example Flow

@@ -1,16 +1,16 @@
 import {
   WINDOW_BUDGET_SCHEMA_VERSION,
   deriveWindowPolicy,
-} from "../window-budget";
+} from "../../window-budget";
 import {
   CONTEXT_SELECTION_DEFAULTS,
   CONTEXT_SELECTION_LIMITS,
-} from "./internal/context-selection/constants";
+} from "../helpers/context-selection/constants";
 import type {
   ContextFileReference,
   ContextSelectionBudget,
   ContextSelectionReferences,
-} from "./internal/context-selection/types";
+} from "../helpers/context-selection/types";
 
 /**
  * Public selection-budget policy for callers (Agent Engine) that scale

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { HybridRetrievalRequestNormalizer } from "../internal/hybrid-retrieval/HybridRetrievalRequestNormalizer";
-import { HybridRetrieverOptionsResolver } from "../internal/hybrid-retrieval/HybridRetrieverOptionsResolver";
+import { HybridRetrievalRequestNormalizer } from "../helpers/hybrid-retrieval/HybridRetrievalRequestNormalizer";
+import { HybridRetrieverOptionsResolver } from "../helpers/hybrid-retrieval/HybridRetrieverOptionsResolver";
 import type { RepoMap } from "../../repository-state";
 
 const emptyMap = (workspaceSnapshotId: string): RepoMap => ({

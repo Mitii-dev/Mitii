@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { HYBRID_RETRIEVAL_IDS } from "../internal/hybrid-retrieval/constants";
-import { HybridRetriever } from "../internal/hybrid-retrieval/HybridRetriever";
+import { HYBRID_RETRIEVAL_IDS } from "../helpers/hybrid-retrieval/constants";
+import { HybridRetriever } from "../helpers/hybrid-retrieval/HybridRetriever";
 import type {
   RetrievalCandidate,
   RetrievalSource,
   RetrievalSourceResult,
-} from "../internal/hybrid-retrieval/types";
+} from "../helpers/hybrid-retrieval/types";
 
 class StaticRetrievalSource implements RetrievalSource {
   public constructor(

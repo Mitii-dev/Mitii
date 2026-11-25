@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { HybridRetriever } from "../internal/hybrid-retrieval/HybridRetriever";
+import { HybridRetriever } from "../helpers/hybrid-retrieval/HybridRetriever";
 import {
   SessionContextRetrievalSource,
-} from "../internal/hybrid-retrieval/sources/SessionContextRetrievalSource";
-import { buildHybridRetrievalRankingContext } from "../policy";
+} from "../helpers/hybrid-retrieval/sources/SessionContextRetrievalSource";
+import { buildHybridRetrievalRankingContext } from "../rules";
 
 import {
   isImportantRepoMapFile,
