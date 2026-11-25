@@ -241,3 +241,36 @@ export const DIAGNOSIS_TASK_INTENTS = [
 ] as const;
 
 export const ANSWER_TASK_INTENTS = ["question", "docs"] as const;
+
+export type DecisionReasonCodeConst =
+  (typeof DECISION_REASON_CODES)[number];
+
+/**
+ * Named accessors for frequently logged reason codes.
+ * Full catalog remains {@link DECISION_REASON_CODES}.
+ */
+export const DECISION_REASON = {
+  turnContinuation: "turn_continuation",
+  grantNarrowed: "grant_narrowed",
+  grantExpanded: "grant_expanded",
+  mutationBudgetTight: "mutation_budget_tight",
+} as const satisfies Record<string, DecisionReasonCodeConst>;
+
+export const DECISION_POLICY_MESSAGES = {
+  inputInvalid: "Decision Policy input failed schema validation.",
+} as const;
+
+/** Ordered flow stage names (decide path + logger). */
+export const DECISION_POLICY_STAGES = {
+  scanInjection: "1-scan-injection",
+  planRoute: "2-plan-route",
+  compileGrant: "3-compile-grant",
+  clampInjection: "4-clamp-injection",
+  intersectSafety: "5-intersect-safety",
+  resolveContext: "6-resolve-context",
+  finalizeDecision: "7-finalize-decision",
+} as const;
+
+export type DecisionPolicyStageName =
+  (typeof DECISION_POLICY_STAGES)[keyof typeof DECISION_POLICY_STAGES];
+

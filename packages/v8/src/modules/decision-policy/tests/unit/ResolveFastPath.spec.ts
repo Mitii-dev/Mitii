@@ -4,8 +4,8 @@ import {
   extractExplicitFilePaths,
   FAST_PATH_DECLINE_REASONS,
   resolveFastPath,
-} from "../../actions/ResolveFastPath";
-import { resolvePlanningDepth } from "../../actions/ResolvePlanningDepth";
+} from "../../helpers/ResolveFastPath";
+import { resolvePlanningDepth } from "../../helpers/ResolvePlanningDepth";
 import { executionDecisionSchema } from "../../contracts";
 import { createUnderstanding } from "../fixtures/decisionCases";
 

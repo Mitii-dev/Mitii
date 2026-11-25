@@ -4,8 +4,8 @@ import { executionDecisionSchema } from "../../contracts";
 import {
   detectBehavioralAskSignals,
   looksLikeBehavioralAsk,
-} from "../../actions/DetectBehavioralAsk";
-import { resolveVerificationRequirement } from "../../actions/ResolveVerificationRequirement";
+} from "../../helpers/DetectBehavioralAsk";
+import { resolveVerificationRequirement } from "../../helpers/ResolveVerificationRequirement";
 import { createUnderstanding } from "../fixtures/decisionCases";
 
 describe("detectBehavioralAskSignals", () => {

@@ -8,7 +8,7 @@ import type {
 import {
   DECISION_POLICY_THRESHOLDS,
   MUTATION_BUDGET_PROFILES,
-} from "../policy";
+} from "../rules";
 
 export type MutationBudgetProfile = keyof typeof MUTATION_BUDGET_PROFILES;
 

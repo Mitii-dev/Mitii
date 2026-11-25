@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildToolGrant,
   selectGrantProfile,
-} from "../../actions/BuildToolGrant";
-import { DecisionPolicyPipeline } from "../../pipeline/DecisionPolicyPipeline";
+} from "../../helpers/BuildToolGrant";
+import { DecisionPolicyPipeline } from "../../flow/DecisionPolicyPipeline";
 import {
   createInput,
   createUnderstanding,

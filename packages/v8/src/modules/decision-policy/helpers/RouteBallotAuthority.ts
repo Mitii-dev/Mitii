@@ -9,7 +9,7 @@ import type {
 } from "../contracts";
 import {
   DECISION_POLICY_THRESHOLDS,
-} from "../policy";
+} from "../rules";
 import {
   isMutationIntent,
 } from "./RouteIntents";

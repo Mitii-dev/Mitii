@@ -1,6 +1,6 @@
 import type { RequestUnderstandingResult } from "../../request-understanding";
 
-import { DECISION_POLICY_THRESHOLDS } from "../policy";
+import { DECISION_POLICY_THRESHOLDS } from "../rules";
 import { DECISION_POLICY_PATTERNS } from "../patterns";
 import { EXECUTION_ROUTE } from "../constants";
 

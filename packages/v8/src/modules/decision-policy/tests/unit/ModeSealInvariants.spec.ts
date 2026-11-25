@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { DecisionPolicyPipeline } from "../../pipeline/DecisionPolicyPipeline";
+import { DecisionPolicyPipeline } from "../../flow/DecisionPolicyPipeline";
 import { MUTATION_TOOL_IDS } from "../../constants";
 import { createInput, createUnderstanding } from "../fixtures/decisionCases";
 

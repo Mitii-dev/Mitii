@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { looksLikeVcsHistoryRewrite } from "./DetectVcsHistoryRewrite";
+import { looksLikeVcsHistoryRewrite } from "../../helpers/DetectVcsHistoryRewrite";
 
 describe("looksLikeVcsHistoryRewrite", () => {
   it("detects DCO incorrectly signed off prompts", () => {

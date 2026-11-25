@@ -20,11 +20,18 @@ export {
   GITHUB_MUTATION_TOOL_IDS,
   GIT_MUTATION_TOOL_IDS,
   DECISION_REASON_CODES,
+  DECISION_REASON,
+  DECISION_POLICY_MESSAGES,
+  DECISION_POLICY_STAGES,
   DECISION_POLICY_ERROR_CODES,
   MUTATION_TASK_INTENTS,
   DIAGNOSIS_TASK_INTENTS,
   ANSWER_TASK_INTENTS,
 } from "./constants";
+export type { DecisionPolicyStageName } from "./constants";
+export type { ModuleLoggerPort } from "./ports/ModuleLoggerPort";
+export { noopModuleLogger } from "./ports/ModuleLoggerPort";
+export type { DecisionPolicyPipelineDependencies } from "./flow/DecisionPolicyPipeline";
 
 export {
   buildVerificationGrant,
@@ -56,15 +63,15 @@ export {
   formatDecisionBriefForPrompt,
   selectGrantProfile,
   GRANT_PROFILES,
-} from "./actions";
+} from "./helpers";
 export type {
   GrantProfile,
   FastPathResolution,
   BehavioralAskSignals,
   FastPathDeclineReason,
-} from "./actions";
+} from "./helpers";
 
-export { DecisionPolicyPipeline } from "./pipeline/DecisionPolicyPipeline";
+export { DecisionPolicyPipeline } from "./flow/DecisionPolicyPipeline";
 
 export {
   isRepairIntentTaxonomy,
@@ -127,4 +134,4 @@ export type {
 export type {
   ApprovalPresetCopy,
   VsCodeApprovalPreset,
-} from "./actions";
+} from "./helpers";

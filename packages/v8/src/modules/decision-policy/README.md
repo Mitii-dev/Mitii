@@ -1,155 +1,32 @@
 # Decision Policy
 
-Decision Policy is V8's authority module. It converts request evidence into one `ExecutionDecision` that tells the rest of the system what route to take, whether planning is required, what tools may run, how approvals work, and what verification evidence is required.
+Authority module: converts request evidence into one `ExecutionDecision`
+(route, planning, tool grant, verification, approvals). Does not execute
+tools or plans.
 
-## What This Module Does
+## Contract
 
-- Resolves execution route and run disposition.
-- Applies hard caps from interaction mode.
-- Decides planning depth and plan gate.
-- Decides whether repository context is required.
-- Compiles `ToolGrant` with allowed tools, effects, paths, command/network rules, limits, approval mode, mutation budget, and optional mutation path scopes.
-- Scans prompt-injection signals and clamps authority when needed.
-- Builds verification requirements.
-- Produces a trace for audit/debugging.
+**In:** `DecisionPolicyInput` (envelope, understanding, optional repo state,
+approval/plan modes, host capabilities, windowPolicy).  
+**Out:** `ExecutionDecision` (route, grant, verification, reason codes, trace).
 
-## Structure
+| Facade | Stages |
+|---|---|
+| `decide` | 1-scan → 2-route → 3-grant → 4-clamp → 5-safety → 6-context → 7-finalize |
+| `narrow` / `widen` | grant adjustment helpers (post-decide) |
 
-```text
-decision-policy/
-  pipeline/                 DecisionPolicyPipeline
-  contracts/
-    input/                  DecisionPolicyInput
-    output/                 ExecutionDecision, ToolGrant
-    errors/                 DecisionPolicyErrors
-  actions/                  Route, grant, verification, mutation, injection decisions
-  constants.ts
-  policy.ts
-  patterns.ts
-  tests/
+Optional `ModuleLoggerPort` via `new DecisionPolicyPipeline({ log })`.
+
+## Example
+
+```ts
+import { DecisionPolicyPipeline } from "@mitii/v8/modules/decision-policy";
+
+const decision = new DecisionPolicyPipeline().decide(input);
 ```
 
-## Types And Contracts
+## Non-responsibilities
 
-- `DecisionPolicyInput`: envelope, understanding, optional repository-state summary, approval mode, plan approval mode, host capability flags, and optional `windowPolicy` from Window Budget. When `windowPolicy` is omitted, visible-plan and change-impact affordances stay on (large-window behavior). When present, planning depth and mutation batch size follow the derived usable-input / output reserves.
-- `ExecutionDecision`: route, planning depth, plan gate, run disposition, repository-context requirement, optional pinned state, tool grant, verification requirement, reason codes, warnings, rationale, and optional trace.
-- `ToolGrant`: maximum workspace effect, allowed tools/effects, path scopes, optional mutation path scopes, command rules, network hosts, approval mode, limits, and optional mutation budget.
-- `MutationBudget`: per-call patch limits and preferred batching hints.
-- `DecisionTrace`: route priority step, grant profile, mutation profile, injection clamp, and signals used.
-
-## Technical Details
-
-- **Grant profiles:** `BuildToolGrant` selects exactly one profile from mode×route — `none` | `network_only` | `readonly` | `agent_execute`. Ask/plan never get `agent_execute`. Only **agent + route `execute`** grants `apply_patch` (and other mutation tools). Profile is emitted as `grant_profile_*` reason codes for audit.
-- **Authority ladder:** Intake (mode / turnKind / artifacts) → Request Understanding Officer ballot (LLM ≥0.70; TurnKind clears soft clarify) → Decision Policy authorizes route + grant. Soft `looksLike*` heuristics lose to a trusted write ballot; **vitest/jest failure pastes** also yield to accepted act+mutation at ≥0.60. Hard plan-only / hard read-only still win.
-- **Facts-first default:** When understanding is high-confidence (≥0.70 + margin, accepted, no clarify), route resolution prefers the ballot over classic heuristics. Set `policyFactsFirst: false` only as a kill-switch. Continuation turns (`steer` / `follow_up` / `continue` / `recover`) emit `turn_continuation` and do not re-suspend on soft Task Analyzer clarity alone.
-- **Officer plan-then-finish:** RU `taskSize` / `planningHint` (`medium`/`short` → internal; `large`/`long` → visible when affordable) emit `officer_task_size_plan` on agent execute — still **route execute**, not plan-only. **Long briefs** (`long_prompt_visible_plan`) and **multi-outcome campaigns** (`multi_outcome_campaign_visible_plan`) upgrade to visible **before** Officer medium→internal so large asks are not buried.
-- Ask and plan modes cannot receive write grants.
-- Optional `userSafetyRules` (from `.mitii/safety.json`) may only tighten a grant after mode seals and injection clamp — never widen.
-- Agent (and ask) "run the tests / can you test" requests route to `diagnose` with `run_readonly_command`. Implement/fix phrasing still wins over a mention of running tests.
-- Agent clarify gate: clear "implement/fix …" asks still execute when understanding only has soft ambiguity. **Localized UI copy** (`change/rename … to …`, nav/label/button) and path-targeted asks also execute — short length alone is not "bare ambiguous." Material forks (diagnose vs mutation alternatives, investigate-vs-fix ambiguity questions) still clarify. On continuation turns, material heuristic↔ballot conflict prefers safe `diagnose` over re-clarify.
-- Intent ballot: rule↔LLM agreement grows confidence; on conflict, LLM ≥ 0.70 wins the route (e.g. LLM `act` over rule `question`) unless `needsClarification` is set. The same ≥0.70 write ballot also wins soft Decision Policy keyword hits on follow-ups (soft read-only, soft "make a plan", pasted dumps, verification/symptom when they would steal the route). Hard overrides still win: `plan only`, "no code/file changes".
-- Soft workspace symptoms (stuck loading / hang with server or localhost) route to `diagnose` in Agent mode — never tool-less `direct_answer`.
-- Injection scanning never broadens authority.
-- `narrow()` may reduce write scope or tighten approval/budgets after discovery; it cannot add authority. Workspace-wide read (`pathScopes: ["."]`) is preserved so config files stay readable. When `approvalMode` is `never` (full access / `--approve`), write mutation scopes stay workspace-wide and are not narrowed away from required companion files.
-- `widen()` may add path/mutation scopes after `path_out_of_scope` or compiler errors; it cannot add tools, effects, or write authority that was not already granted. Agent Engine suspends with `grant_expansion_required` so the user can approve expanding path scopes (reads or writes) — it does not silent-auto-widen, including when `approvalMode` is `never`.
-- Large greenfield / full-package feature work (`large_implementation_visible_plan`) is treated like architecture-scale planning when the window can afford a visible plan.
-- `narrow()` returns the previous decision when the grant is unchanged.
-  Callers MUST emit `grant_narrowed` only when `toolGrantsEquivalent` is false.
-- Mutation profiles are `relaxed`, `standard`, and `tight`. When `windowPolicy` is present, each numeric cap is `min(profile, window)` and `requireBatchedExecution` is OR'd.
-- Write grants may set `mutationPathScopes` from **explicit** folder/file targets only. Implicit UI folder pins are focus hints (look-here), not a hard mutation fence — workspace remains the default write ceiling. Discovery tools keep `pathScopes: ["."]` for package / multi-file work so `glob_files` / `search_files` can still see the repo; `apply_patch` / delete / move enforce `mutationPathScopes` when set.
-- `narrow()` also narrows `mutationPathScopes` when they were set (skipped for `approvalMode: never` and visible plans).
-- Verification requirements specify required evidence and whether unavailable evidence is acceptable.
-- **Behavioral asks:** `detectBehavioralAskSignals` / `looksLikeBehavioralAsk` flag HTTP/routes, script runs, and test asks (docs-only asks excluded). `resolveVerificationRequirement` then adds `tests` and `behavior` to `minimumEvidence` and emits `verification_behavior_evidence_preferred`, so a passing typecheck alone cannot accept an unwired route.
-- **Fast path:** `resolveFastPath` (agent + execute, 1–3 explicit file paths, short, low/medium risk) sets `planningDepth: "none"` with `fast_path_explicit_paths`. Declines carry `FAST_PATH_DECLINE_REASONS`.
-- **Explicit create asks:** `isExplicitCreateAsk` (leading create verb + mutation request, not plan/question vocabulary) routes agent-mode asks to `execute` with `agent_create_ask_execute`, never plan-only. Plan-only wording and read-only asks still win.
-- Host capability flags currently include web search availability.
-
-## Ownership Boundaries
-
-Owns route authority, grant compilation, approval mode, mutation budgets, repository-context need, and verification requirement.
-
-Does not own classification, model prompts, tool execution, repository indexing, checkpointing, or UI.
-
-## Tests
-
-```bash
-pnpm exec vitest run packages/v8/src/modules/decision-policy
-```
-
-## Example Flow
-
-This example uses a realistic coding-agent request and shows the kind of structure this module receives and returns. The output is representative: ids, timings, and scores are examples, but the shape matches how this module is meant to be understood.
-
-### Real Prompt
-
-```text
-I am in a React app. In src/LoginForm.tsx, when the user clicks the "Sign in" button, show a loading label and disable the button until the login request finishes. Keep the existing validation and error handling. Add or update a focused test if there is already a LoginForm test nearby.
-```
-
-### Real Input Structure
-
-DecisionPolicyInput -> ExecutionDecision:
-
-```json
-{
-  "schemaVersion": 1,
-  "envelope": "UserRequestEnvelope from Request Intake",
-  "understanding": "RequestUnderstandingResult from Request Understanding",
-  "repositoryState": {
-    "reference": { "workspaceId": "workspace-1", "stateToken": "state-abc" },
-    "readiness": "ready"
-  },
-  "hostCapabilities": { "webSearch": false }
-}
-```
-
-### Step-By-Step Flow
-
-1. A user sends the real prompt shown above from an editor or chat host.
-2. The host attaches workspace id `workspace-1` and the explicit target file `src/LoginForm.tsx`.
-3. The module receives the real structure shown in the input block.
-4. The module validates schema/version/limits before doing any work.
-5. The module extracts the important target: `src/LoginForm.tsx`.
-6. The module keeps the user constraint: existing validation and error handling must stay intact.
-7. The module performs only its own responsibility and does not cross into neighboring modules.
-8. Any budget, path, state, or provider constraint is applied before output is produced.
-9. The module records warnings/reason codes instead of hiding degraded behavior.
-10. The module returns the realistic output shape shown below.
-11. The next pipeline stage consumes that output without reinterpreting raw user text.
-
-### Realistic Output
-
-Decision Policy execution decision returns a result like this:
-
-```json
-{
-  "schemaVersion": 1,
-  "route": "execute",
-  "planningDepth": "none",
-  "planGate": "not_required",
-  "runDisposition": "continue",
-  "repositoryContextRequired": true,
-  "pinnedState": { "workspaceId": "workspace-1", "stateToken": "state-abc" },
-  "toolGrant": {
-    "maximumWorkspaceEffect": "write",
-    "allowedTools": ["read_file", "search", "apply_patch", "shell"],
-    "allowedEffects": ["read", "write", "execute"],
-    "pathScopes": ["."],
-    "approvalMode": "on_request",
-    "limits": { "maxToolCalls": 20, "maxWallTimeMs": 120000, "maxOutputBytes": 256000 },
-    "mutationBudget": { "maxPatchesPerCall": 16, "maxUniqueFilesPerCall": 8, "maxPatchPayloadCharacters": 32000, "preferredBatchSize": 8, "requireBatchedExecution": true }
-  },
-  "verification": { "required": true, "minimumEvidence": ["tests_or_diagnostics"], "allowUnavailable": false },
-  "reasonCodes": ["execute_requested", "localized_change", "verification_required"]
-}
-```
-
-## Single-owner constants
-
-- `toolIds.ts` owns tool-id groups and `TOOL_EFFECTS`; the tool runtime re-exports
-  them so this module never imports `engine/tool-runtime`.
-- `EXECUTION_ROUTE` is the only place route string literals are defined; compare
-  routes through it instead of inline strings.
-- `ResolveRoute` stages live in `RouteIntents`, `RouteMessageSignals`,
-  `RouteBallotAuthority` and `RouteClarification`; numeric thresholds are in
-  `policy.ts` (`DECISION_POLICY_THRESHOLDS`).
+Tool runtime, repository indexing, prompt construction, and Officer
+classification (request-understanding). Route/grant algorithms live under
+`helpers/`; thresholds under `rules/`.

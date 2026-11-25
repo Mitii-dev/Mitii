@@ -4,7 +4,7 @@ import {
   grantNeverWidens,
   intersectUserSafetyRules,
   resolveApprovalSkipCategories,
-} from "../../actions/IntersectUserSafetyRules";
+} from "../../helpers/IntersectUserSafetyRules";
 import type { ToolGrant, UserSafetyRules } from "../../contracts";
 
 function baseWriteGrant(overrides: Partial<ToolGrant> = {}): ToolGrant {

@@ -7,7 +7,7 @@ import type {
   ExecutionRoute,
   PlanningDepth,
 } from "../contracts";
-import { DECISION_POLICY_THRESHOLDS } from "../policy";
+import { DECISION_POLICY_THRESHOLDS } from "../rules";
 import {
   isBroadSharedScopeRepair,
   shouldRecommendChangeImpact,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolvePlanningDepth } from "../../actions/ResolvePlanningDepth";
+import { resolvePlanningDepth } from "../../helpers/ResolvePlanningDepth";
 import { createUnderstanding } from "../fixtures/decisionCases";
 
 describe("resolvePlanningDepth", () => {

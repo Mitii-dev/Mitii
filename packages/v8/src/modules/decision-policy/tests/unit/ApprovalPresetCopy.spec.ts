@@ -4,7 +4,7 @@ import {
   APPROVAL_PRESET_COPY,
   formatApprovalPresetHelp,
   getApprovalPresetCopy,
-} from "../../actions/ApprovalPresetCopy";
+} from "../../helpers/ApprovalPresetCopy";
 
 describe("ApprovalPresetCopy", () => {
   it("documents Safe / Guided / Pilot", () => {

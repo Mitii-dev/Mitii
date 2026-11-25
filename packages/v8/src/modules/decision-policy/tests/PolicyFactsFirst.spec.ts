@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { DecisionPolicyPipeline } from "../pipeline/DecisionPolicyPipeline";
+import { DecisionPolicyPipeline } from "../flow/DecisionPolicyPipeline";
 import {
   createDecisionInput,
   createUnderstanding,

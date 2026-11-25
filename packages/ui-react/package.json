@@ -1,6 +1,6 @@
 {
   "name": "@mitii/ui-react",
-  "version": "2.11.38",
+  "version": "2.11.39",
   "description": "Props-only React components shared by Mitii Desktop and the VS Code webview: plan banner, memory panel, token meter, token budget editor.",
   "license": "AGPL-3.0-or-later",
   "type": "module",

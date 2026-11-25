@@ -4,9 +4,9 @@ import {
   isBroadSharedScopeRepair,
   isConcreteLocalizedMutationAsk,
   shouldRecommendChangeImpact,
-} from "../../actions/ClassifySharedScopeRepair";
+} from "../../helpers/ClassifySharedScopeRepair";
 import { createUnderstanding } from "../fixtures/decisionCases";
-import { resolvePlanningDepth } from "../../actions/ResolvePlanningDepth";
+import { resolvePlanningDepth } from "../../helpers/ResolvePlanningDepth";
 
 describe("shouldRecommendChangeImpact", () => {
   it("recommends shared type/interface edits even when single_location", () => {

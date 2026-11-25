@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveRoute } from "../../actions/ResolveRoute";
-import { isExplicitCreateAsk } from "../../actions/RouteCreateAsk";
+import { resolveRoute } from "../../helpers/ResolveRoute";
+import { isExplicitCreateAsk } from "../../helpers/RouteCreateAsk";
 import { DECISION_REASON_CODES } from "../../constants";
 import { createUnderstanding } from "../fixtures/decisionCases";
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { TaskTargetExtractor } from "../../../request-understanding";
-import { DecisionPolicyPipeline } from "../../pipeline/DecisionPolicyPipeline";
+import { DecisionPolicyPipeline } from "../../flow/DecisionPolicyPipeline";
 import { createInput, createUnderstanding } from "../fixtures/decisionCases";
 import { isPathWithinScopes } from "../helpers/pathScopes";
 import type { RequestUnderstandingResult } from "../../../request-understanding";

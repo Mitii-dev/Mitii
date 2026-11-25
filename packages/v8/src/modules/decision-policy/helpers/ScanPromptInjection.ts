@@ -1,4 +1,4 @@
-import { PROMPT_INJECTION_PATTERNS } from "../policy";
+import { PROMPT_INJECTION_PATTERNS } from "../rules";
 import type { DecisionReasonCode } from "../contracts";
 
 export interface InjectionScanResult {

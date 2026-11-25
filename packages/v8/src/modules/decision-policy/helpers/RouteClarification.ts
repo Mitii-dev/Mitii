@@ -3,7 +3,7 @@ import type {
 } from "../../request-understanding";
 import {
   DECISION_POLICY_THRESHOLDS,
-} from "../policy";
+} from "../rules";
 import {
   isConcreteLocalizedMutationAsk,
   isLocalizedSmallClearAsk,

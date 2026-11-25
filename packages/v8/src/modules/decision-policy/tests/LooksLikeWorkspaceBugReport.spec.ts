@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   looksLikePastedTestFailureDump,
   looksLikeWorkspaceBugReport,
-} from "../actions/LooksLikeWorkspaceBugReport";
+} from "../helpers/LooksLikeWorkspaceBugReport";
 
 describe("looksLikeWorkspaceBugReport", () => {
   it("matches exact not-working workspace reports", () => {
