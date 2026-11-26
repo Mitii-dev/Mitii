@@ -10,3 +10,5 @@ export {
   changeImpactRetryPatchMessage,
   unfulfilledExecuteNudgeMessage,
 } from "./MutationNudge";
+
+export { buildForcedMutationNudgeMessage } from "./ForcedMutationNudgeMessage";

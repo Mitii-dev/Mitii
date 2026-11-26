@@ -24,7 +24,12 @@ helpers/clarification/ UI-safe ask clarification payload + resume amend
 helpers/tool-recovery/ summarize/rejected recovery + leaked markup → tool calls
 helpers/context-focus/ understanding focus + file relevance + candidate paths
 helpers/preflight/     preflight grant/input/targets + unconditional capture gate
-helpers/budgets/       clamp run budget + loop input tokens + exploration signal
+helpers/budgets/       clamp run budget + loop input tokens + wall-time/cache/turn clamp
+helpers/thresholds/    agent + loop-policy thresholds + code-intel nudges
+helpers/working-set/   recoverability block + mutation budget lines + sticky chars
+helpers/skills/        preferred ids + skills_ready event + enrichment select (ports)
+helpers/evidence-rail/ bind/recovery exhaustion terminals + sticky strip
+helpers/mutation-cache/ post-mutation content/ledger/fact invalidation (ports)
 helpers/handoff/      TaskHandoffNote + advance/skip/steer + Briefcase peaks (S13)
 helpers/run-state/    RunState storeroom facade + checkpoint hydrate (S11-RS)
 helpers/heartbeat/    Soft emit + durable heartbeat checkpoints (S11-HEART)
@@ -95,11 +100,13 @@ consume it. Widen grants only via registered upgrade plates (`upgradePlateId`).
 
 ## Status
 
-P8 + S1–S3A + leaked-tool-markup recover + budgets/window-policy + preflight +
-context-focus + tool-recovery + clarification + verify repair/critique +
-output-truncation recovery + loop-turn + tool-serialize + planningContext +
-run-evidence + established-facts + decideVerificationGate + compaction ladder +
-session-control evacuate + residual engine evacuate closed + execution-seed +
-soft loop-rails + plan/shaped-discovery + §10.3 + S10/S11/S12/S13 + S2C/S2-RU
-live. Intentional engine-local: applyPostPlanTaskListGate +
-refreshMemoryFactsForCompaction.
+P8 + S1–S3A + pinDiscoveryPass thin + skills/evidence-rail/mutation-cache +
+residual helpers pile + leaked-tool-markup recover + budgets/window-policy +
+preflight + context-focus + tool-recovery + clarification + verify
+repair/critique + output-truncation recovery + loop-turn + tool-serialize +
+planningContext + run-evidence + established-facts + decideVerificationGate +
+compaction ladder + session-control evacuate + residual engine evacuate closed +
+execution-seed + soft loop-rails + plan/shaped-discovery + §10.3 +
+S10/S11/S12/S13 + S2C/S2-RU live. Intentional engine-local:
+applyPostPlanTaskListGate + refreshMemoryFactsForCompaction. Optional next: thin
+remaining fat pipeline (`executeStart` / `executeToolFinish` / …).

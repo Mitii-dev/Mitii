@@ -1,6 +1,6 @@
 {
   "name": "@mitii/cli",
-  "version": "2.11.48",
+  "version": "2.11.49",
   "description": "Mitii headless CLI over @mitii/sdk. --origin/--autonomy/--agent for CI automation.",
   "license": "AGPL-3.0-or-later",
   "publishConfig": {

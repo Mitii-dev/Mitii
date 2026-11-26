@@ -9,3 +9,5 @@ export {
   resolveClarificationAnswer,
   amendMessageWithClarification,
 } from "./ResolveClarificationAnswer";
+
+export { buildPlanClarifySuspension } from "./BuildPlanClarifySuspension";

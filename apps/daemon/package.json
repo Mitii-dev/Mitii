@@ -1,6 +1,6 @@
 {
   "name": "@mitii/daemon",
-  "version": "2.11.48",
+  "version": "2.11.49",
   "description": "Mitii automation daemon process entry. Long-lived schedule runner.",
   "license": "AGPL-3.0-or-later",
   "type": "module",

@@ -103,3 +103,12 @@ export type {
   ShouldContinueVerificationRepairInput,
   VerificationRepairStopReason,
 } from "./ShouldContinueVerificationRepair";
+
+export { buildMissingModuleStubPatches } from "./BuildMissingModuleStubPatches";
+export type { MissingModuleStubPatch } from "./BuildMissingModuleStubPatches";
+export {
+  shouldSuspendContinueAfterVerificationAccept,
+  shouldSuspendContinueAfterRepairExhausted,
+  isIllegalVerificationPhaseTransition,
+} from "./ResolveVerificationTerminal";
+export type { VerificationFinishPhase } from "./ResolveVerificationTerminal";

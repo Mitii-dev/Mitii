@@ -42,3 +42,8 @@ export {
   requiresMutationForExecute,
   buildUnfulfilledExecuteRecoveryMessage,
 } from "./UnfulfilledExecute";
+
+export {
+  isLowValueAnswerFollowUp,
+  preserveSubstantiveAssistantAnswer,
+} from "./PreserveSubstantiveAssistantAnswer";
