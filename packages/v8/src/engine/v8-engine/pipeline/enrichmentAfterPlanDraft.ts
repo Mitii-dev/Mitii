@@ -16,10 +16,11 @@ import {
   ensurePlanClarifyDraft,
   formatPlanAnswerWithNextPhase,
 } from "../modules/plan-discovery";
+import { shouldForceCampaignPhaseLock } from "../../../runtime";
 import {
-  shouldForceCampaignPhaseLock,
-  shouldSuspendForPlanScopeFork,
-} from "../../../runtime";
+  consultRuntimeGate,
+  hubSuspendKind,
+} from "../helpers/ConsultRuntimeGate";
 import { applyPostPlanTaskListGate } from "../modules/execution-seed";
 import type {
   AgentEngineStartInput,
@@ -109,36 +110,50 @@ export async function maybeSuspendAfterPlanDraft(params: {
   const runScopeFork = phase === "all" || phase === "scope_fork";
   const runAfterScope = phase === "all" || phase === "after_scope";
 
-  if (
-    runScopeFork &&
-    shouldSuspendForPlanScopeFork({
-      mode: envelope.mode,
-      strategy: planStrategy?.strategy,
-      hasClarifyDraft: Boolean(clarifyDraft),
-      scopeChoiceResolved,
-      qualityFloor: planQualityFloor,
-      forceCampaignPhaseLock,
-      askNeedsScopeFork,
-    })
-  ) {
+  // S10-EVAC: scope-fork decision via gates hub (after_plan).
+  const scopeForkVerdict =
+    runScopeFork
+      ? consultRuntimeGate("after_plan", {
+          runId,
+          mode: envelope.mode,
+          planStrategy: planStrategy?.strategy,
+          hasClarifyDraft: Boolean(clarifyDraft),
+          scopeChoiceResolved,
+          qualityFloor: planQualityFloor,
+          forceCampaignPhaseLock,
+          askNeedsScopeFork,
+        })
+      : undefined;
+  const scopeForkSuspend =
+    scopeForkVerdict?.action === "suspend" &&
+    scopeForkVerdict.kind === "clarification_required" &&
+    (scopeForkVerdict.payload as { clarifyOrigin?: string })?.clarifyOrigin ===
+      "scope_fork";
+
+  if (runScopeFork && scopeForkSuspend) {
     const clarify = buildPlanClarifySuspension(clarifyDraft!);
     reasonCodes.push("clarification_suspended");
     if (forceCampaignPhaseLock && planStrategy?.strategy !== "clarify") {
       reasonCodes.push("plan_scope_campaign_phase_lock");
     }
+    warnings.push("gates_hub:scope_fork");
     const rationale =
       envelope.mode === "agent"
         ? forceCampaignPhaseLock && planStrategy?.strategy !== "clarify"
           ? "Multi-outcome plan drafted — choose scope (first phase) before execute so this run stays bounded."
           : "Choose scope (and optionally first delivery) before executing this Agent phase — keeps reads/turns bounded."
         : "Choose plan scope (and optionally first delivery) before a concrete Change plan is locked.";
+    const suspendKind = hubSuspendKind(
+      scopeForkVerdict,
+      "clarification_required",
+    );
     if (runtime.deps.checkpointStore) {
       await saveSuspendedRun({
       store: runtime.deps.checkpointStore,
       checkpoint: {
         runId,
         requestId: shared.requestId,
-        suspensionKind: "clarification_required",
+        suspensionKind: suspendKind,
         input,
         decision,
         pinnedState: undefined,
@@ -162,7 +177,7 @@ export async function maybeSuspendAfterPlanDraft(params: {
     runtime.emit(bus, {
       type: "suspended",
       runId,
-      kind: "clarification_required",
+      kind: suspendKind,
       rationale,
       at: runtime.isoNow(),
     });
@@ -176,7 +191,7 @@ export async function maybeSuspendAfterPlanDraft(params: {
         plan,
         answer: clarify.answer,
         suspension: {
-          kind: "clarification_required",
+          kind: suspendKind,
           rationale,
           clarificationPrompt: clarify.clarificationPrompt,
           clarificationOptions: clarify.clarificationOptions,
@@ -196,16 +211,29 @@ export async function maybeSuspendAfterPlanDraft(params: {
   }
 
   if (!skipPlanGate && decision.planGate === "required_before_execute") {
+    // S10-EVAC: stamp hub kind; entry condition stays planGate (legacy-compatible).
+    const planApprovalVerdict = consultRuntimeGate("after_plan", {
+      runId,
+      mode: "agent",
+      route: "execute",
+      planningDepth: "visible",
+      planGate: "required_before_execute",
+    });
     reasonCodes.push("plan_approval_suspended");
+    warnings.push("gates_hub:plan_approval");
     const rationale =
       "A reviewable plan is required before mutation. Approve, edit, or reject the plan to continue.";
+    const suspendKind = hubSuspendKind(
+      planApprovalVerdict,
+      "plan_approval_required",
+    );
     if (runtime.deps.checkpointStore) {
       await saveSuspendedRun({
       store: runtime.deps.checkpointStore,
       checkpoint: {
         runId,
         requestId: shared.requestId,
-        suspensionKind: "plan_approval_required",
+        suspensionKind: suspendKind,
         input,
         decision,
         pinnedState: shared.pinnedState,
@@ -241,7 +269,7 @@ export async function maybeSuspendAfterPlanDraft(params: {
     runtime.emit(bus, {
       type: "suspended",
       runId,
-      kind: "plan_approval_required",
+      kind: suspendKind,
       rationale,
       at: runtime.isoNow(),
     });
@@ -258,7 +286,7 @@ export async function maybeSuspendAfterPlanDraft(params: {
           reasonCodes,
         }),
         suspension: {
-          kind: "plan_approval_required",
+          kind: suspendKind,
           rationale,
           plan,
         },

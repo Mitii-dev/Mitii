@@ -8,11 +8,13 @@ import {
 import { buildIdempotencyKey } from "../../helpers/tool-journal/BuildIdempotencyKey";
 import { settleToolInvocation } from "../../helpers/tool-journal/SettleToolInvocation";
 import type { ToolInvocationRecord } from "../../helpers/tool-journal";
+import { applyTaskSettleToStore } from "../../helpers/task";
 import type { RuntimeDependencies } from "../../ports/RuntimeDependencies";
 import type { GrantSurface } from "../../tools/CheckToolAgainstGrant";
 import { checkToolAgainstGrant } from "../../tools/CheckToolAgainstGrant";
 import { classifyToolEffect } from "../../tools/ClassifyToolEffect";
 import { needsMutationApproval } from "../../tools/NeedsMutationApproval";
+import type { TaskList } from "../../../modules/task-list";
 import type { ContextBundleSketch } from "./9-EnrichContext";
 import type { RuntimeDecisionSketch } from "./5-Decide";
 import type { StepContext } from "./StepContext";
@@ -49,12 +51,15 @@ export async function turnLoopWithPorts(
   const loopStartedAtMs = Date.now();
   const decision = ctx.store.getSlice<RuntimeDecisionSketch>("decision");
   const bundle = ctx.store.getSlice<ContextBundleSketch>("contextBundle");
+  const taskList = ctx.store.getSlice<TaskList>("taskList");
   const grant: GrantSurface = opts?.grant ?? defaultGrantFromDecision(decision);
 
   const packed = packTurn({
     messages: [{ role: "user", content: ctx.input.message }],
     grant,
     contextBundleSummary: bundle?.summary,
+    ...(bundle ? { contextBundle: bundle } : {}),
+    ...(taskList ? { taskList } : {}),
   });
 
   let journal =
@@ -162,6 +167,14 @@ export async function turnLoopWithPorts(
           status,
           finishedAt: new Date().toISOString(),
         });
+        reasonCodes.push(
+          ...applyTaskSettleToStore({
+            store: ctx.store,
+            args: call.args,
+            effect,
+            status,
+          }),
+        );
       }
     }
   }

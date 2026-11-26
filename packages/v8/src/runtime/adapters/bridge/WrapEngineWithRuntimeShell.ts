@@ -45,11 +45,23 @@ export function wrapEngineWithRuntimeShell<T extends RuntimeShellEngineSurface>(
       requiredMcpServerIds: input.requiredMcpServerIds,
       workspaceRoot: input.workspaceRoot,
       windowBudget: input.windowBudget,
+      runtimeSituation: input.runtimeSituation,
+      instructions: input.instructions,
+      userSafetyRules: input.userSafetyRules,
       host: {
-        dirtyPaths: input.dirtyPaths ?? [],
-        cwd: input.workspaceRoot,
-        diagnostics: [],
+        dirtyPaths: [
+          ...(input.dirtyPaths ?? []),
+          ...(input.runtimeSituation?.host?.dirtyPaths ?? []),
+        ],
+        cwd: input.runtimeSituation?.host?.cwd ?? input.workspaceRoot,
+        focusedFile: input.runtimeSituation?.host?.focusedFile,
+        diagnostics: input.runtimeSituation?.host?.diagnostics ?? [],
+        selection: input.runtimeSituation?.host?.selection,
       },
+      git: input.runtimeSituation?.git,
+      catalog: input.runtimeSituation?.catalog,
+      impact: input.runtimeSituation?.impact,
+      memory: input.runtimeSituation?.memory,
     });
     const runId =
       adapted.runId ??

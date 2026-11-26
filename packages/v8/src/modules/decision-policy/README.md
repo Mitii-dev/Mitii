@@ -8,13 +8,18 @@ The referee: it reads the evidence about a request and decides what the agent is
 - Compiles the tool grant, intersected with host safety limits.
 - Sets verification requirements and approval needs.
 - Records the decision with reason codes and a trace; `narrow` / `widen` adjust a grant afterward.
+- **`widen` requires a registered upgrade plate id** (S2C-UPGRADE) — no casual grant expansion.
 
 ## Contract
 Works on a contract: validated input in → pipeline/steps → validated output out. Reason codes explain outcomes.
 
 **Input:** `DecisionPolicyInput` (request envelope, understanding result, optional repository state, approval / plan modes, host capabilities, `windowPolicy`).
 **Output:** `ExecutionDecision` (route, planning, tool grant, verification, approvals, reason codes, trace). Invalid input throws `DecisionPolicyError`.
-**Pipeline:** `DecisionPolicyPipeline` stages: `1-scan-injection` → `2-plan-route` → `3-compile-grant` → `4-clamp-injection` → `5-intersect-safety` → `6-resolve-context` → `7-finalize-decision`
+**Pipeline:** `DecisionPolicyPipeline` 4 stages (S2C-FLOW):
+`1-normalize-and-guard` → `2-resolve-route-and-gate` → `3-compile-grant-and-fences` → `4-emit-decision-and-trace`
+(legacy 7 micro-steps remain as private helpers inside those stages).
+**Scopes:** dual-write `pathScopes`/`mutationPathScopes` + unified `scopes.readPaths`/`writePaths`/`protectedPaths`.
+**Tool families:** `rules/tool-families.ts` is the SSOT; `toModelToolSurface(grant)` owns prompt tool lists.
 **Ports we offer / need:** none of its own; optional `ModuleLoggerPort`. No adapters are required.
 
 ## Dependencies

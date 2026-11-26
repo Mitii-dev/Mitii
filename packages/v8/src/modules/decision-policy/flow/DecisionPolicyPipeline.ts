@@ -19,30 +19,29 @@ import {
   resolveRoutePriorityStep,
   uniqueReasonCodes,
 } from "../helpers/decisionSupport";
-import { narrowToolGrant, widenToolGrant } from "../helpers/grantAdjustment";
+import { narrowToolGrant } from "../helpers/grantAdjustment";
+import { attachUnifiedScopes } from "../helpers/AttachUnifiedScopes";
+import { applyUpgradePlate } from "../helpers/ApplyUpgradePlate";
 import { uniqueStrings } from "../helpers/pathScopes";
 import {
   noopModuleLogger,
   type ModuleLoggerPort,
 } from "../ports/ModuleLoggerPort";
-import { scanDecisionInjection } from "./steps/1-scan-injection";
-import { planDecisionRoute } from "./steps/2-plan-route";
-import { compileDecisionGrant } from "./steps/3-compile-grant";
-import { clampDecisionGrantAgainstInjection } from "./steps/4-clamp-injection";
-import { intersectDecisionSafety } from "./steps/5-intersect-safety";
-import { resolveDecisionContext } from "./steps/6-resolve-context";
-import { finalizeDecision } from "./steps/7-finalize-decision";
+import { normalizeAndGuard } from "./steps/1-NormalizeAndGuard";
+import { resolveRouteAndGate } from "./steps/2-ResolveRouteAndGate";
+import { compileGrantAndFences } from "./steps/3-CompileGrantAndFences";
+import { emitDecisionAndTrace } from "./steps/4-EmitDecisionAndTrace";
 
 export type DecisionPolicyPipelineDependencies = {
   log?: ModuleLoggerPort;
 };
 
 /**
- * Decision Policy facade.
+ * Decision Policy facade (S2C-FLOW: 4 stages).
  *
  * Flow (decide):
- *   1-scan-injection → 2-plan-route → 3-compile-grant → 4-clamp-injection
- *   → 5-intersect-safety → 6-resolve-context → 7-finalize-decision
+ *   1-normalize-and-guard → 2-resolve-route-and-gate
+ *   → 3-compile-grant-and-fences → 4-emit-decision-and-trace
  */
 export class DecisionPolicyPipeline {
   private readonly log: ModuleLoggerPort;
@@ -70,20 +69,20 @@ export class DecisionPolicyPipeline {
     const message = extractPrimaryUserMessage(rawMessage) || rawMessage;
 
     let stageStartedMs = Date.now();
-    const injection = scanDecisionInjection(rawMessage);
+    const injection = normalizeAndGuard(rawMessage);
     this.log.stage({
       module: "decision-policy",
-      stage: DECISION_POLICY_STAGES.scanInjection,
+      stage: DECISION_POLICY_STAGES.normalizeAndGuard,
       durationMs: Date.now() - stageStartedMs,
       reasonCodes: injection.reasonCodes,
       outputSummary: { detected: injection.detected },
     });
 
     stageStartedMs = Date.now();
-    const routePlan = planDecisionRoute({ parsed, message });
+    const routePlan = resolveRouteAndGate({ parsed, message });
     this.log.stage({
       module: "decision-policy",
-      stage: DECISION_POLICY_STAGES.planRoute,
+      stage: DECISION_POLICY_STAGES.resolveRouteAndGate,
       durationMs: Date.now() - stageStartedMs,
       reasonCodes: routePlan.reasonCodes,
       outputSummary: {
@@ -94,91 +93,43 @@ export class DecisionPolicyPipeline {
     });
 
     stageStartedMs = Date.now();
-    const grantCompiled = compileDecisionGrant({
+    const grantStage = compileGrantAndFences({
       parsed,
       message,
       routePlan,
-    });
-    this.log.stage({
-      module: "decision-policy",
-      stage: DECISION_POLICY_STAGES.compileGrant,
-      durationMs: Date.now() - stageStartedMs,
-      reasonCodes: grantCompiled.reasonCodes,
-      outputSummary: {
-        maximumWorkspaceEffect:
-          grantCompiled.toolGrant.maximumWorkspaceEffect,
-        toolCount: grantCompiled.toolGrant.allowedTools.length,
-      },
-    });
-
-    stageStartedMs = Date.now();
-    const clampResult = clampDecisionGrantAgainstInjection({
-      toolGrant: grantCompiled.toolGrant,
       injectionDetected: injection.detected,
-      route: routePlan.route,
       mode,
     });
     this.log.stage({
       module: "decision-policy",
-      stage: DECISION_POLICY_STAGES.clampInjection,
+      stage: DECISION_POLICY_STAGES.compileGrantAndFences,
       durationMs: Date.now() - stageStartedMs,
-      reasonCodes: [],
-      outputSummary: { clamped: clampResult.clamped },
-    });
-
-    stageStartedMs = Date.now();
-    const safetyResult = intersectDecisionSafety({
-      toolGrant: clampResult.toolGrant,
-      userSafetyRules: parsed.userSafetyRules,
-    });
-    this.log.stage({
-      module: "decision-policy",
-      stage: DECISION_POLICY_STAGES.intersectSafety,
-      durationMs: Date.now() - stageStartedMs,
-      reasonCodes: safetyResult.reasonCodes,
-    });
-
-    stageStartedMs = Date.now();
-    const { contextResult, hostCapabilityCodes, preflightBuild } =
-      resolveDecisionContext({
-        parsed,
-        routePlan,
-        toolGrant: safetyResult.toolGrant,
-      });
-    this.log.stage({
-      module: "decision-policy",
-      stage: DECISION_POLICY_STAGES.resolveContext,
-      durationMs: Date.now() - stageStartedMs,
-      reasonCodes: [
-        ...contextResult.reasonCodes,
-        ...hostCapabilityCodes,
-        ...preflightBuild.reasonCodes,
-      ],
+      reasonCodes: grantStage.reasonCodes,
       outputSummary: {
-        repositoryContextRequired: contextResult.repositoryContextRequired,
+        maximumWorkspaceEffect: grantStage.toolGrant.maximumWorkspaceEffect,
+        toolCount: grantStage.toolGrant.allowedTools.length,
+        clamped: grantStage.clampResult.clamped,
+        hasUnifiedScopes: Boolean(grantStage.toolGrant.scopes),
       },
     });
 
     stageStartedMs = Date.now();
-    const decision = finalizeDecision({
+    const { decision, contextReasonCodes } = emitDecisionAndTrace({
       parsed,
       mode,
       routePlan,
-      toolGrant: safetyResult.toolGrant,
-      verification: grantCompiled.verification,
-      clampResult,
+      toolGrant: grantStage.toolGrant,
+      verification: grantStage.verification,
+      clampResult: grantStage.clampResult,
       injection,
-      safetyResult,
-      contextResult,
-      hostCapabilityCodes,
-      preflightBuild,
-      grantCompiledReasonCodes: grantCompiled.reasonCodes,
+      safetyResult: grantStage.safetyResult,
+      grantCompiledReasonCodes: grantStage.grantCompiledReasonCodes,
     });
     this.log.stage({
       module: "decision-policy",
-      stage: DECISION_POLICY_STAGES.finalizeDecision,
+      stage: DECISION_POLICY_STAGES.emitDecisionAndTrace,
       durationMs: Date.now() - stageStartedMs,
-      reasonCodes: decision.reasonCodes,
+      reasonCodes: [...decision.reasonCodes, ...contextReasonCodes],
       outputSummary: {
         route: decision.route,
         runDisposition: decision.runDisposition,
@@ -194,14 +145,16 @@ export class DecisionPolicyPipeline {
     residualRisk?: "low" | "medium" | "high" | "critical";
   }): ExecutionDecision {
     const previous = executionDecisionSchema.parse(input.previous);
-    const narrowedGrant = narrowToolGrant({
-      previous: previous.toolGrant,
-      discoveredPaths: input.discoveredPaths ?? [],
-      residualRisk: input.residualRisk,
-      keepWriteWide:
-        previous.planningDepth === "visible" ||
-        previous.toolGrant.approvalMode === "never",
-    });
+    const narrowedGrant = attachUnifiedScopes(
+      narrowToolGrant({
+        previous: previous.toolGrant,
+        discoveredPaths: input.discoveredPaths ?? [],
+        residualRisk: input.residualRisk,
+        keepWriteWide:
+          previous.planningDepth === "visible" ||
+          previous.toolGrant.approvalMode === "never",
+      }),
+    );
     const changed = !toolGrantsEquivalent(previous.toolGrant, narrowedGrant);
     if (!changed) {
       return previous;
@@ -234,64 +187,39 @@ export class DecisionPolicyPipeline {
           "discovered_paths",
           ...(input.residualRisk ? ["residual_risk"] : []),
         ]),
+        overrides: [
+          ...(previous.trace?.overrides ?? []),
+          {
+            field: "toolGrant",
+            to: "narrowed",
+            reasonCode: DECISION_REASON.grantNarrowed,
+          },
+        ],
       },
     });
   }
 
+  /**
+   * Widen only via a registered upgrade plate (S2C-UPGRADE).
+   * Casual widen without `upgradePlateId` is rejected.
+   */
   public widen(input: {
     previous: ExecutionDecision;
+    upgradePlateId: string;
     extraPaths?: readonly string[];
     extraAllowedRoots?: readonly string[];
     extraNetworkHosts?: readonly string[];
   }): ExecutionDecision {
-    const previous = executionDecisionSchema.parse(input.previous);
-    const extraPaths = (input.extraPaths ?? []).filter(
-      (path) => path.trim().length > 0,
-    );
-    const extraAllowedRoots = (input.extraAllowedRoots ?? [])
-      .map((root) => root.trim())
-      .filter((root) => root.length > 0);
-    const extraNetworkHosts = (input.extraNetworkHosts ?? [])
-      .map((host) => host.trim().toLowerCase())
-      .filter((host) => host.length > 0);
-    if (
-      extraPaths.length === 0 &&
-      extraAllowedRoots.length === 0 &&
-      extraNetworkHosts.length === 0
-    ) {
-      return previous;
-    }
-    const widenedGrant = widenToolGrant({
-      previous: previous.toolGrant,
-      extraPaths,
-      extraAllowedRoots,
-      extraNetworkHosts,
-    });
-    if (toolGrantsEquivalent(previous.toolGrant, widenedGrant)) {
-      return previous;
-    }
-    const reasonCodes = uniqueReasonCodes([
-      ...previous.reasonCodes,
-      DECISION_REASON.grantExpanded,
-    ]);
-    return executionDecisionSchema.parse({
-      ...previous,
-      toolGrant: widenedGrant,
-      reasonCodes,
-      rationale: `${previous.rationale}; grant=expanded`,
-      trace: {
-        ...previous.trace,
-        routePriorityStep:
-          previous.trace?.routePriorityStep ??
-          resolveRoutePriorityStep(previous.reasonCodes),
-        grantProfile: widenedGrant.maximumWorkspaceEffect,
-        mutationProfile: resolveMutationProfile(reasonCodes),
-        clampedByInjection: previous.trace?.clampedByInjection ?? false,
-        signalsUsed: uniqueStrings([
-          ...(previous.trace?.signalsUsed ?? []),
-          "grant_expanded",
-        ]),
-      },
+    return applyUpgradePlate({
+      previous: input.previous,
+      upgradePlateId: input.upgradePlateId,
+      extraPaths: (input.extraPaths ?? []).filter((p) => p.trim().length > 0),
+      extraAllowedRoots: (input.extraAllowedRoots ?? [])
+        .map((root) => root.trim())
+        .filter((root) => root.length > 0),
+      extraNetworkHosts: (input.extraNetworkHosts ?? [])
+        .map((host) => host.trim().toLowerCase())
+        .filter((host) => host.length > 0),
     });
   }
 }

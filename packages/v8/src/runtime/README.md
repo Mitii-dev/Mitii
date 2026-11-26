@@ -10,26 +10,72 @@ logic stays in `modules/*`.
 ```text
 flow/                 numbered pump (order.ts is the spine)
 helpers/adapt/        host/SDK start → RuntimeStartInput
-helpers/store/        Store + StoreManager (+ packTurn)
-helpers/gates/        all suspend / complete
+helpers/store/        Store + StoreManager (+ packTurn / buildBriefcase)
+helpers/task/         TaskList briefcase format + settle advance (S11-TASK)
+helpers/gates/        all suspend / complete (evaluateGates → applyGate only)
 helpers/orient/       SituationPack builders (focus≠fence, cues)
+helpers/enrich/       ContextBundle + retrieval + omission budgets (S11)
+helpers/verify/       VerificationRequest/Outcome + baseline + budgets/wall + repair (S12)
+helpers/handoff/      TaskHandoffNote + advance/skip/steer + Briefcase peaks (S13)
+helpers/run-state/    RunState storeroom facade + checkpoint hydrate (S11-RS)
+helpers/heartbeat/    Soft emit + durable heartbeat checkpoints (S11-HEART)
+helpers/replate/      Approve-plan → new execute decision, scopes ⊆ plan (S10-REPLATE)
+helpers/mcp/          attach/revoke mid-run (§16)
 helpers/grant/        scopesFromVerdict
 helpers/plan/         when-to-run 3A + hollow reject + PlanningInput map
 helpers/routes/       job-card bodies
-helpers/rails/        soft nudges
+helpers/rails/        soft nudges (never suspend)
 helpers/tool-journal/ append / settle / idempotency
 tools/                grant enforce + toModelToolSurface
 adapters/             composeRuntime + shell wrap
 ```
 
-## Host wiring (started)
+## Three layers (S10)
 
-`adaptHostStartToRuntime` maps AgentEngine/SDK start bags (dirtyPaths, cwd,
-skills/MCP pins, conversation digest, git) into `RuntimeStartInput`.
-`wrapEngineWithRuntimeShell` uses it so desktop/SDK starts feed Orient.
+1. **Soft rails** (`helpers/rails`) — nudges only; never checkpoint.
+2. **Gates** (`helpers/gates`) — `evaluateGates(phase)` → `applyGate` sole I/O.
+3. **Resume** (`helpers/gates/resume`) — pure `ResumePlan`; flow executes.
 
-Still later: VS Code / desktop / CLI UI-specific gather (live catalog, LSP).
+## Enrich / Briefcase (S11)
+
+`enrichContext` builds a typed `ContextBundle` (cacheClass per slice).
+When `deps.enrich` ports are set, `enrichContextWithRetrieval` pulls skills /
+memory / repo via module adapters (pump never reimplements retrieval).
+`prioritizeOmissions` trims against `WindowPolicy` section shares (drop order
+table-driven). `packTurn` layouts stable → semi → volatile and marks
+capability-based cache breakpoints; tools ⊆ `toModelToolSurface(grant)`.
+
+## TaskList handoff (S13)
+
+One active task. Completing/skipping writes a `TaskHandoffNote` into RunState.
+Briefcase peaks = active task + previous handoff (truncated) + plan objective —
+not the full handoff history.
+
+## Storeroom (S11-RS)
+
+`RunState` wraps `StoreManager` for the live visit inventory. Checkpoints embed
+`storeSnapshot` via `buildCheckpointFromRunState`; resume uses
+`hydrateRunStateFromCheckpoint`. See `helpers/run-state/README.md` for A–E
+lost-context handling. Mid-run MCP: `applyMcpMidRun` / `applyMcpMidRunToRunState`.
+
+## Host wiring
+
+`prepareStartInput` gathers `runtimeSituation` for all hosts. Orient + Decide
+consume it. Widen grants only via registered upgrade plates (`upgradePlateId`).
+
+## Glossary (S3A)
+
+| Term | Meaning |
+|---|---|
+| **mode** | Host interaction posture: `ask` / `plan` / `agent` |
+| **route** | Job card from DecisionPolicy (`execute`, `plan`, `diagnose`, …) — not a nested engine |
+| **planGate** | Whether execute must pause for plan approval (`none` \| `required_before_execute`) |
+| **suspend** | Hub gate only — `evaluateGates` → `applyGate` (checkpoint). Soft rails never suspend |
+| **steer** | Edit `PlanArtifact` without full rediscovery (`steerPlanArtifact`); rediscover only if targets invalidate |
+| **replate** | On plan approve, mint a new execute decision with scopes ⊆ plan write targets |
+| **windowBand** | `compact` / `standard` / `wide` from host `contextWindowTokens` (SSOT); plan vs execute budget split |
 
 ## Status
 
-P8 + semantic S1–S3A closed. Host adapter + S2-READS peeks + decide verification live.
+P8 + S1–S3A (STEER/WINDOW/EXIT/TASKLIST) + host situation + S2C + enrich/briefcase +
+S12-SELECT + S10 policy map live.

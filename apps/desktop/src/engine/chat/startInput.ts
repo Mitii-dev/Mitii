@@ -111,7 +111,10 @@ export async function buildStartInput(
   return start;
 }
 
-/** Optional host context blocks from ui.contextToggles (gitDiff today). */
+/**
+ * Always attach runtimeSituation (git + dirtyPaths + cwd) for Orient.
+ * Optionally also attach a prompt environment block when ui.contextToggles.gitDiff.
+ */
 export async function attachContextEnvironment(
   startInput: MitiiStartInput,
   workspaceRoot: string,
@@ -127,32 +130,80 @@ export async function attachContextEnvironment(
     typeof toggles === 'object' &&
     !Array.isArray(toggles) &&
     (toggles as Record<string, unknown>).gitDiff === true;
-  if (!gitDiffOn) return startInput;
+
+  let next: MitiiStartInput = {
+    ...startInput,
+    runtimeSituation: {
+      ...(startInput.runtimeSituation ?? {}),
+      host: {
+        ...(startInput.runtimeSituation?.host ?? {}),
+        cwd: startInput.runtimeSituation?.host?.cwd ?? workspaceRoot,
+        dirtyPaths: [
+          ...(startInput.dirtyPaths ?? []),
+          ...(startInput.runtimeSituation?.host?.dirtyPaths ?? []),
+        ],
+      },
+    },
+  };
 
   try {
     const status = await getGitStatus(workspaceRoot);
-    if (!status.ok || status.files.length === 0) return startInput;
-    const lines = status.files
-      .slice(0, 40)
-      .map((f) => `${f.status} ${f.path}`);
-    const content = [
-      status.branch ? `Branch: ${status.branch}` : null,
-      status.summary,
-      ...lines,
-    ]
-      .filter(Boolean)
-      .join('\n');
-    const block = {
-      id: 'git-diff',
-      title: 'Git working tree',
-      content,
-      priority: 40,
-    };
-    return {
-      ...startInput,
-      environment: [...(startInput.environment ?? []), block],
-    };
+    if (status.ok) {
+      const dirtyFromGit = status.files.map((f) => f.path).slice(0, 64);
+      const mergedDirty = [
+        ...new Set([
+          ...(next.dirtyPaths ?? []),
+          ...(next.runtimeSituation?.host?.dirtyPaths ?? []),
+          ...dirtyFromGit,
+        ]),
+      ].slice(0, 64);
+
+      next = {
+        ...next,
+        dirtyPaths: mergedDirty.length > 0 ? mergedDirty : next.dirtyPaths,
+        runtimeSituation: {
+          ...(next.runtimeSituation ?? {}),
+          host: {
+            ...(next.runtimeSituation?.host ?? {}),
+            cwd: workspaceRoot,
+            dirtyPaths: mergedDirty,
+          },
+          git: {
+            branch: status.branch,
+            dirty: status.files.length > 0,
+            recentCommits: [],
+          },
+        },
+      };
+
+      if (gitDiffOn && status.files.length > 0) {
+        const lines = status.files
+          .slice(0, 40)
+          .map((f) => `${f.status} ${f.path}`);
+        const content = [
+          status.branch ? `Branch: ${status.branch}` : null,
+          status.summary,
+          ...lines,
+        ]
+          .filter(Boolean)
+          .join('\n');
+        next = {
+          ...next,
+          environment: [
+            ...(next.environment ?? []),
+            {
+              id: 'git-diff',
+              title: 'Git working tree',
+              content,
+              priority: 40,
+            },
+          ],
+        };
+      }
+    }
   } catch {
-    return startInput;
+    // keep cwd-only situation
   }
+
+  return next;
 }

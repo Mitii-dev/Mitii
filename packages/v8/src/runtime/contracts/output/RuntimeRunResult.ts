@@ -25,7 +25,17 @@ export const runtimeVerifySketchSchema = z
     ranVerify: z.boolean(),
     invalidated: z.boolean(),
     finished: z.boolean(),
-    runnerStatus: z.enum(["passed", "failed", "skipped"]).optional(),
+    runnerStatus: z
+      .enum([
+        "passed",
+        "failed",
+        "skipped",
+        "unavailable",
+        "repair_requested",
+        "repair_capped",
+        "blocked",
+      ])
+      .optional(),
   })
   .strict();
 
@@ -41,6 +51,7 @@ export const runtimeHandoffSketchSchema = z
     fromTaskId: z.string().min(1).optional(),
     toTaskId: z.string().min(1).optional(),
     reason: z.string().min(1),
+    doneSummary: z.string().min(1).optional(),
   })
   .strict();
 

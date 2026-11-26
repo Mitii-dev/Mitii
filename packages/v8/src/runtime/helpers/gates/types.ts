@@ -26,6 +26,8 @@ export interface GateContext {
   needsGrantExpansion?: boolean;
   needsMutationApproval?: boolean;
   needsExternalSideEffectApproval?: boolean;
+  /** Destructive mutation (delete/force-push/etc.) — S10-EXT-DESTRUCT. */
+  needsDestructiveApproval?: boolean;
   authOrDependencyMissing?: boolean;
   providerUnavailable?: boolean;
   budgetHardWall?: boolean;
@@ -72,11 +74,15 @@ export interface GateCheckpointStorePort {
   load?(runId: string): Promise<RuntimeGateCheckpoint | undefined>;
 }
 
+/** Internal non-user checkpoint kinds (S11-HEART). */
+export type InternalCheckpointKind = "heartbeat";
+
 /** Minimal checkpoint shape for the hub (engine maps to AgentRunCheckpoint). */
 export interface RuntimeGateCheckpoint {
   runId: string;
   requestId: string;
-  suspensionKind: GateKind;
+  /** User-facing gate kind, or internal `heartbeat` (not a host decision). */
+  suspensionKind: GateKind | InternalCheckpointKind;
   payload: Record<string, unknown>;
   reasonCodes: string[];
   suspendedAtMs: number;

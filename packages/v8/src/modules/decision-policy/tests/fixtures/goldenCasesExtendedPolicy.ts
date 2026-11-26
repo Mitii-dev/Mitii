@@ -193,7 +193,8 @@ export const GOLDEN_DECISION_CASES_EXTENDED_B: GoldenDecisionCase[] = [
     id: "golden-adjustment-narrow-monorepo-package",
     category: "grant",
     mode: "agent",
-    message: "@packages/mui-builder fix all the ts errors",
+    message:
+      "Only edit under packages/mui-builder — fix all the ts errors",
     understanding: createUnderstanding({
       primaryTaskIntent: "bugfix",
       interactionIntent: "act",

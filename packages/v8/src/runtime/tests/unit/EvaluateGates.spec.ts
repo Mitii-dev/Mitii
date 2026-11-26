@@ -57,6 +57,20 @@ describe("evaluateGates", () => {
     });
   });
 
+  it("after_plan suspends for hollow plan", () => {
+    const verdict = evaluateGates("after_plan", {
+      runId: "r1",
+      mode: "agent",
+      hollowPlan: true,
+    });
+    expect(verdict).toMatchObject({
+      action: "suspend",
+      kind: "clarification_required",
+      payload: { clarifyOrigin: "hollow_plan" },
+    });
+    expect(verdict?.reasonCodes).toContain("gate_clarify_hollow_plan");
+  });
+
   it("on_budget raises provider continue", () => {
     const verdict = evaluateGates("on_budget", {
       runId: "r1",

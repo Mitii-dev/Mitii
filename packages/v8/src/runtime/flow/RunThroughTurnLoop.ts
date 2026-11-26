@@ -2,7 +2,11 @@ import {
   runThroughPlanPipeline,
   type RunThroughPlanPipelineResult,
 } from "./RunThroughPlanPipeline";
-import { enrichContext, type ContextBundleSketch } from "./steps/9-EnrichContext";
+import {
+  enrichContext,
+  enrichContextWithRetrieval,
+  type ContextBundleSketch,
+} from "./steps/9-EnrichContext";
 import { turnLoopShell, type TurnLoopSketch } from "./steps/10-TurnLoop";
 import { turnLoopWithPorts } from "./steps/10-TurnLoopWithPorts";
 import type { RuntimeStartInput } from "../contracts/input/RuntimeStartInput";
@@ -53,7 +57,10 @@ export async function runThroughTurnLoop(input: {
     abortSignal: input.abortSignal,
   };
 
-  const contextBundle = enrichContext(ctx);
+  const contextBundle =
+    input.deps?.enrich != null
+      ? await enrichContextWithRetrieval(ctx)
+      : enrichContext(ctx);
   const turnLoop =
     input.deps?.model != null
       ? await turnLoopWithPorts(ctx, input.deps, { grant: input.grant })

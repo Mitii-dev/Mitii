@@ -20,6 +20,10 @@ import {
   isExecutionSeedTrusted,
   type ExecutionSeed,
 } from "./resolve";
+import {
+  consultRuntimeGate,
+  hubSuspendKind,
+} from "../../helpers/ConsultRuntimeGate";
 import { saveSuspendedRun } from "../../helpers/SaveSuspendedRun";
 import type { AgentEngineRuntime } from "../../pipeline/runtime";
 import type { ExecuteStartSharedState } from "../../pipeline/executeStartEarlyPipeline";
@@ -135,6 +139,18 @@ export async function applyPostPlanTaskListGate(params: {
   }
 
   reasonCodes.push("task_list_plan_not_concrete");
+
+  // S10-EVAC: hollow plan suspend decision owned by gates hub.
+  const gateVerdict = consultRuntimeGate("after_plan", {
+    runId,
+    mode: mode === "ask" || mode === "plan" || mode === "agent" ? mode : "agent",
+    hollowPlan: true,
+  });
+  const suspendKind = hubSuspendKind(gateVerdict, "clarification_required");
+  if (gateVerdict?.action === "suspend") {
+    warnings.push("gates_hub:hollow_plan");
+  }
+
   const rationale =
     "Plan did not yield a concrete file-scoped task list after bounded seed recovery. Clarify the change surface or replan before execute.";
   warnings.push(rationale);
@@ -144,7 +160,7 @@ export async function applyPostPlanTaskListGate(params: {
       checkpoint: {
         runId,
         requestId: shared.requestId,
-        suspensionKind: "clarification_required",
+        suspensionKind: suspendKind,
         input,
         decision,
         pinnedState: undefined,
@@ -167,7 +183,7 @@ export async function applyPostPlanTaskListGate(params: {
   runtime.emit(bus, {
     type: "suspended",
     runId,
-    kind: "clarification_required",
+    kind: suspendKind,
     rationale,
     at: runtime.isoNow(),
   });
@@ -181,7 +197,7 @@ export async function applyPostPlanTaskListGate(params: {
       plan: ensured.plan,
       answer: rationale,
       suspension: {
-        kind: "clarification_required",
+        kind: suspendKind,
         rationale,
         clarificationPrompt: rationale,
       },

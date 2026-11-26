@@ -22,6 +22,9 @@ export type ComposeRuntimeOptions = {
   workspaceRoot?: string;
   wallTimeSoftMs?: number;
   heartbeatIntervalMs?: number;
+  /** S11-HEART durable checkpoint kill-switch / every-N-turns. */
+  heartbeat?: boolean;
+  heartbeatEveryTurns?: number;
   /** Defaults to in-memory carry store when omitted. */
   sessionStore?: RuntimeSessionStorePort;
   /** When true, skip default in-memory session store. */
@@ -36,6 +39,8 @@ export type ComposeRuntimeOptions = {
   disableVerification?: boolean;
   /** MCP server ids stamped onto the run at start. */
   mcpServerIds?: string[];
+  /** Enrich retrieval ports (skills / memory / repo). */
+  enrich?: RuntimeDependencies["enrich"];
   /**
    * Full modules/verification pipeline — replaces inline runner when set
    * (with `verificationInput` factory).
@@ -91,10 +96,13 @@ export function composeRuntime(
     tools,
     wallTimeSoftMs: options.wallTimeSoftMs,
     heartbeatIntervalMs: options.heartbeatIntervalMs,
+    heartbeat: options.heartbeat,
+    heartbeatEveryTurns: options.heartbeatEveryTurns,
     sessionStore,
     checkpointStore,
     verification,
     mcpServerIds: options.mcpServerIds,
+    enrich: options.enrich,
   };
   return new RuntimePipeline(deps);
 }

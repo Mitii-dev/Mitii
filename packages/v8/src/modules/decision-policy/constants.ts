@@ -75,10 +75,14 @@ export {
   OPT_IN_MUTATION_TOOL_IDS,
   PROCESS_TOOL_IDS,
   READ_ONLY_TOOL_IDS,
-} from "./rules/toolIds";
+  TOOL_FAMILIES,
+  expandToolFamilies,
+} from "./rules/tool-families";
+export type { ToolFamilyId } from "./rules/tool-families";
 
 export const DECISION_REASON_CODES = [
   "mode_ask_readonly",
+  "mode_database_readonly",
   "mode_plan_only",
   "clarification_material",
   "diagnosis_readonly",
@@ -263,13 +267,24 @@ export const DECISION_POLICY_MESSAGES = {
 
 /** Ordered flow stage names (decide path + logger). */
 export const DECISION_POLICY_STAGES = {
-  scanInjection: "1-scan-injection",
-  planRoute: "2-plan-route",
-  compileGrant: "3-compile-grant",
-  clampInjection: "4-clamp-injection",
-  intersectSafety: "5-intersect-safety",
-  resolveContext: "6-resolve-context",
-  finalizeDecision: "7-finalize-decision",
+  normalizeAndGuard: "1-normalize-and-guard",
+  resolveRouteAndGate: "2-resolve-route-and-gate",
+  compileGrantAndFences: "3-compile-grant-and-fences",
+  emitDecisionAndTrace: "4-emit-decision-and-trace",
+  /** @deprecated Prefer normalizeAndGuard */
+  scanInjection: "1-normalize-and-guard",
+  /** @deprecated Prefer resolveRouteAndGate */
+  planRoute: "2-resolve-route-and-gate",
+  /** @deprecated Prefer compileGrantAndFences */
+  compileGrant: "3-compile-grant-and-fences",
+  /** @deprecated Prefer compileGrantAndFences */
+  clampInjection: "3-compile-grant-and-fences",
+  /** @deprecated Prefer compileGrantAndFences */
+  intersectSafety: "3-compile-grant-and-fences",
+  /** @deprecated Prefer emitDecisionAndTrace */
+  resolveContext: "4-emit-decision-and-trace",
+  /** @deprecated Prefer emitDecisionAndTrace */
+  finalizeDecision: "4-emit-decision-and-trace",
 } as const;
 
 export type DecisionPolicyStageName =

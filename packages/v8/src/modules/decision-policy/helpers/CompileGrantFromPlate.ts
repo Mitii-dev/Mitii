@@ -9,6 +9,7 @@ import {
   DEFAULT_READ_ONLY_TOOL_GRANT_LIMITS,
   DEFAULT_TOOL_GRANT_LIMITS,
 } from "../defaults";
+import { attachUnifiedScopes } from "./AttachUnifiedScopes";
 import { DEFAULT_AGENT_READONLY_COMMAND_PREFIXES } from "./BuildVerificationGrant";
 import type { GrantProfile } from "./SelectGrantProfile";
 import { profileReasonCode } from "./SelectGrantProfile";
@@ -47,10 +48,15 @@ export function compileGrantFromPlate(
     reasonCodes.push("grant_mutation_fence_applied");
   }
 
+  const wrap = (toolGrant: ToolGrant, codes: string[]) => ({
+    toolGrant: attachUnifiedScopes(toolGrant),
+    reasonCodes: codes,
+  });
+
   switch (input.grantProfile) {
     case "none":
-      return {
-        toolGrant: {
+      return wrap(
+        {
           maximumWorkspaceEffect: "none",
           allowedTools: [],
           allowedEffects: [],
@@ -59,10 +65,10 @@ export function compileGrantFromPlate(
           limits: { ...DEFAULT_NONE_TOOL_GRANT_LIMITS },
         },
         reasonCodes,
-      };
+      );
     case "network_only":
-      return {
-        toolGrant: {
+      return wrap(
+        {
           maximumWorkspaceEffect: "read",
           allowedTools: ["web_search", "fetch_url"],
           allowedEffects: ["network_access"],
@@ -72,11 +78,11 @@ export function compileGrantFromPlate(
           limits: { ...DEFAULT_READ_ONLY_TOOL_GRANT_LIMITS },
         },
         reasonCodes,
-      };
+      );
     case "readonly":
     case "research":
-      return {
-        toolGrant: {
+      return wrap(
+        {
           maximumWorkspaceEffect: "read",
           allowedTools: [...READ_ONLY_TOOL_IDS],
           allowedEffects: ["workspace_read", "process_execute"],
@@ -95,10 +101,10 @@ export function compileGrantFromPlate(
             : {}),
         },
         reasonCodes,
-      };
+      );
     case "agent_execute":
-      return {
-        toolGrant: {
+      return wrap(
+        {
           maximumWorkspaceEffect: "write",
           allowedTools: [
             ...READ_ONLY_TOOL_IDS,
@@ -124,16 +130,16 @@ export function compileGrantFromPlate(
             ? { allowedMcpServerIds: [...input.mcpServerIds] }
             : {}),
         },
-        reasonCodes: [
+        [
           ...reasonCodes,
           ...(fence ? [] : ["grant_mutation_workspace_ceiling"]),
         ],
-      };
+      );
     default: {
       const _exhaustive: never = input.grantProfile;
       void _exhaustive;
-      return {
-        toolGrant: {
+      return wrap(
+        {
           maximumWorkspaceEffect: "none",
           allowedTools: [],
           allowedEffects: [],
@@ -141,8 +147,8 @@ export function compileGrantFromPlate(
           approvalMode: "never",
           limits: { ...DEFAULT_NONE_TOOL_GRANT_LIMITS },
         },
-        reasonCodes: [...reasonCodes, "grant_profile_unknown"],
-      };
+        [...reasonCodes, "grant_profile_unknown"],
+      );
     }
   }
 }

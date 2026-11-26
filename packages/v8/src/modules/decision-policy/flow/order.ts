@@ -1,5 +1,15 @@
-/** Single source of flow step order for decide(). Pipeline must follow this list. */
+/** Single source of flow stage order for decide() (S2C-FLOW: 4 stages). */
 export const FLOW_ORDER = [
+  "1-normalize-and-guard",
+  "2-resolve-route-and-gate",
+  "3-compile-grant-and-fences",
+  "4-emit-decision-and-trace",
+] as const;
+
+export type FlowStepId = (typeof FLOW_ORDER)[number];
+
+/** Legacy 7-step ids kept for stage-log compat / docs. */
+export const LEGACY_FLOW_ORDER = [
   "1-scan-injection",
   "2-plan-route",
   "3-compile-grant",
@@ -8,5 +18,3 @@ export const FLOW_ORDER = [
   "6-resolve-context",
   "7-finalize-decision",
 ] as const;
-
-export type FlowStepId = (typeof FLOW_ORDER)[number];

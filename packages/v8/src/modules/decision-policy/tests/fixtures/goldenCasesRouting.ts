@@ -232,7 +232,8 @@ export const GOLDEN_DECISION_CASES_ROUTING: GoldenDecisionCase[] = [
     expected: {
       route: "execute",
       maximumWorkspaceEffect: "write",
-      mutationPathScopes: ["app"],
+      // Path mention is focus, not an automatic mutation fence.
+      pathScopes: ["."],
       reasonCodesIncludes: ["mutation_execute"],
     },
   },

@@ -235,6 +235,72 @@ export const agentEngineStartInputSchema = z
       })
       .strict()
       .optional(),
+    /**
+     * Host situation snapshot for runtime Orient (git/dirty/cwd/catalog).
+     * Optional — ignored by legacy event-bus start; consumed by shell adapt.
+     */
+    runtimeSituation: z
+      .object({
+        host: z
+          .object({
+            focusedFile: z.string().optional(),
+            cwd: z.string().optional(),
+            dirtyPaths: z.array(z.string()).max(64).optional(),
+            diagnostics: z.array(z.string()).max(32).optional(),
+            selection: z
+              .object({
+                path: z.string(),
+                startLine: z.number().optional(),
+                endLine: z.number().optional(),
+              })
+              .optional(),
+          })
+          .strict()
+          .optional(),
+        git: z
+          .object({
+            branch: z.string().optional(),
+            dirty: z.boolean().optional(),
+            recentCommits: z.array(z.string()).max(16).optional(),
+          })
+          .strict()
+          .optional(),
+        catalog: z
+          .object({
+            projects: z
+              .array(
+                z
+                  .object({
+                    id: z.string().min(1),
+                    language: z.string().optional(),
+                    packageManager: z.string().optional(),
+                    scripts: z.record(z.string()).optional(),
+                    testRoots: z.array(z.string()).optional(),
+                  })
+                  .strict(),
+              )
+              .max(64)
+              .optional(),
+            configPointers: z.array(z.string()).max(64).optional(),
+          })
+          .strict()
+          .optional(),
+        impact: z
+          .object({
+            relatedSeeds: z.array(z.string()).max(64).optional(),
+          })
+          .strict()
+          .optional(),
+        memory: z
+          .object({
+            factCount: z.number().int().nonnegative().default(0),
+          })
+          .strict()
+          .optional(),
+        projectRuleIds: z.array(z.string().min(1)).max(32).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

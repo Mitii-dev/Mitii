@@ -3,15 +3,20 @@ import {
   type SituationPack,
 } from "../../contracts/orient/SituationPack";
 import {
+  buildOrientSurroundings,
   buildScopeVerdict,
   extractFocusPaths,
   extractIntentCues,
+  resolveConfigNearFocus,
+  resolveRelatedProjects,
+  resolveWorkRoot,
 } from "../../helpers/orient";
 import type { StepContext } from "./StepContext";
 
 /**
  * Step 2 — Orient → SituationPack (best-effort).
  * Focus from path-like tokens + host; mutationFence only on explicit edit limits.
+ * workRoot + related packages from catalog; surroundings/config are boosts.
  */
 export function orientSituation(ctx: StepContext): SituationPack {
   const message = ctx.input.message;
@@ -30,8 +35,35 @@ export function orientSituation(ctx: StepContext): SituationPack {
   ];
   const uniqueFocus = [...new Set(focusPaths.filter((p) => p.length > 0))];
   const intentCues = extractIntentCues(message);
-  const relatedSeeds = impact?.relatedSeeds ?? [];
-  const scope = buildScopeVerdict({ message, focusPaths: uniqueFocus });
+  const workRoot = resolveWorkRoot({
+    focusPaths: uniqueFocus,
+    projects: catalog?.projects,
+  });
+  const relatedFromCatalog = resolveRelatedProjects({
+    workRoot,
+    relationships: catalog?.relationships,
+  });
+  const relatedSeeds = [
+    ...new Set([
+      ...(impact?.relatedSeeds ?? []),
+      ...relatedFromCatalog,
+    ]),
+  ].slice(0, 32);
+  const surroundings = buildOrientSurroundings({
+    focusPaths: uniqueFocus,
+    workRoot,
+    relatedProjects: relatedFromCatalog,
+  });
+  const configPointers = resolveConfigNearFocus({
+    configPointers: catalog?.configPointers ?? [],
+    focusPaths: uniqueFocus,
+    workRoot,
+  });
+  const scope = buildScopeVerdict({
+    message,
+    focusPaths: uniqueFocus,
+    ...(workRoot ? { workRoot } : {}),
+  });
   const scopeWithSeeds = {
     ...scope,
     relatedSeeds: [...new Set([...scope.relatedSeeds, ...relatedSeeds])],
@@ -48,9 +80,16 @@ export function orientSituation(ctx: StepContext): SituationPack {
     host?.focusedFile ||
       host?.cwd ||
       (host?.dirtyPaths && host.dirtyPaths.length > 0) ||
-      host?.selection,
+      host?.selection ||
+      (host?.diagnostics && host.diagnostics.length > 0),
   );
-  const hasPins = skillIds.length > 0 || mcpIds.length > 0;
+  const projectRuleIds = ctx.input.projectRuleIds ?? [];
+  const userSafetyRuleIds = ctx.input.userSafetyRuleIds ?? [];
+  const hasPins =
+    skillIds.length > 0 ||
+    mcpIds.length > 0 ||
+    projectRuleIds.length > 0 ||
+    userSafetyRuleIds.length > 0;
   const hasHistory = Boolean(
     history?.digest ||
       history?.priorRoute ||
@@ -61,9 +100,14 @@ export function orientSituation(ctx: StepContext): SituationPack {
   );
   const hasMemory = typeof memory?.factCount === "number";
   const hasCatalog = Boolean(
-    catalog?.projects?.length || catalog?.configPointers?.length,
+    catalog?.projects?.length ||
+      catalog?.configPointers?.length ||
+      catalog?.relationships?.length,
   );
   const hasImpact = relatedSeeds.length > 0;
+  const hasSurroundings = surroundings.length > 0;
+  const hasConfig = configPointers.length > 0;
+  const hasRelationships = Boolean(catalog?.relationships?.length);
 
   const omissions: Record<string, string> = {};
   if (!hasHost) omissions.host = "not_wired";
@@ -73,6 +117,8 @@ export function orientSituation(ctx: StepContext): SituationPack {
   if (!hasMemory) omissions.memory = "not_provided";
   if (!hasCatalog) omissions.catalog = "not_provided";
   if (!hasImpact) omissions.impact = "not_provided";
+  if (!hasSurroundings) omissions.navigation = "not_provided";
+  if (!hasConfig) omissions.config = "not_provided";
 
   const reasonCodes = [
     "orient_situation_pack",
@@ -83,13 +129,21 @@ export function orientSituation(ctx: StepContext): SituationPack {
     ...(scopeWithSeeds.mutationFence
       ? ["scope_explicit_mutation_fence"]
       : []),
+    ...(workRoot ? ["orient_work_root"] : []),
     ...(hasHost ? ["orient_host_snapshot"] : []),
     ...(hasPins ? ["orient_pins_attached"] : []),
     ...(hasHistory ? ["orient_history_digest"] : []),
     ...(hasGit ? ["orient_git_snapshot"] : []),
     ...(hasMemory ? ["orient_memory_facts"] : []),
     ...(hasCatalog ? ["orient_catalog_slice"] : []),
+    ...(hasRelationships ? ["orient_catalog_relationships"] : []),
+    ...(relatedFromCatalog.length > 0 ? ["orient_related_projects"] : []),
     ...(hasImpact ? ["orient_impact_seeds"] : []),
+    ...(hasSurroundings ? ["orient_surroundings"] : []),
+    ...(hasConfig ? ["orient_config_near_focus"] : []),
+    ...(host?.diagnostics && host.diagnostics.length > 0
+      ? ["orient_host_diagnostics"]
+      : []),
   ];
 
   const pack = situationPackSchema.parse({
@@ -117,8 +171,8 @@ export function orientSituation(ctx: StepContext): SituationPack {
           pins: {
             skillIds,
             mcpIds,
-            projectRules: [],
-            userSafetyRules: [],
+            projectRules: projectRuleIds,
+            userSafetyRules: userSafetyRuleIds,
           },
         }
       : {}),
@@ -151,9 +205,22 @@ export function orientSituation(ctx: StepContext): SituationPack {
     ...(hasCatalog
       ? {
           projects: catalog?.projects ?? [],
-          config: {
-            pointers: catalog?.configPointers ?? [],
-          },
+          ...(hasRelationships
+            ? { relationships: catalog?.relationships ?? [] }
+            : {}),
+          ...(hasConfig
+            ? {
+                config: {
+                  pointers: configPointers,
+                },
+              }
+            : catalog?.configPointers?.length
+              ? {
+                  config: {
+                    pointers: catalog.configPointers,
+                  },
+                }
+              : {}),
         }
       : {}),
     ...(hasImpact
@@ -165,7 +232,7 @@ export function orientSituation(ctx: StepContext): SituationPack {
       : {}),
     navigation: {
       mentionedPaths: uniqueFocus,
-      surroundings: [],
+      surroundings,
     },
     scope: scopeWithSeeds,
     budget: {

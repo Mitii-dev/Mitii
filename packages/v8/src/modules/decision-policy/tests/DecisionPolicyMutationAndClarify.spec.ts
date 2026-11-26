@@ -3,7 +3,7 @@ import { DecisionPolicyPipeline } from "../index";
 import { createInput, createUnderstanding } from "./fixtures/decisionCases";
 
 describe("DecisionPolicyPipeline mutation and clarification", () => {
-  it("keeps discovery pathScopes at workspace root even with explicit file targets", () => {
+  it("keeps discovery pathScopes at workspace root; mentions are focus not fence", () => {
     const decision = new DecisionPolicyPipeline().decide(
       createInput({
         mode: "agent",
@@ -33,10 +33,9 @@ describe("DecisionPolicyPipeline mutation and clarification", () => {
 
     expect(decision.route).toBe("execute");
     expect(decision.toolGrant.pathScopes).toEqual(["."]);
-    expect(decision.toolGrant.mutationPathScopes).toEqual([
-      "apps/docs/src/components",
-      "packages",
-    ]);
+    // Folder/file mentions alone never set mutationPathScopes (focus ≠ fence).
+    expect(decision.toolGrant.mutationPathScopes).toBeUndefined();
+    expect(decision.toolGrant.scopes?.readPaths).toEqual(["."]);
     expect(decision.toolGrant.allowedTools).toContain("search_files");
     expect(decision.toolGrant.allowedTools).toContain("glob_files");
     expect(decision.toolGrant.allowedTools).toContain("list_directory");

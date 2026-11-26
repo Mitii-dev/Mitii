@@ -354,7 +354,7 @@ export const GOLDEN_DECISION_CASES_EXTENDED_A: GoldenDecisionCase[] = [
     expected: {
       route: "execute",
       pathScopes: ["."],
-      mutationPathScopes: ["apps/docs/src/components", "packages"],
+      // Mentions stay focus — no automatic mutation fence.
       allowedToolsIncludes: ["search_files", "glob_files", "list_directory"],
     },
   },

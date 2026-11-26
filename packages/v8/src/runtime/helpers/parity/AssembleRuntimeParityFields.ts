@@ -10,6 +10,7 @@ export interface RuntimeParityFields {
     fromTaskId?: string;
     toTaskId?: string;
     reason: string;
+    doneSummary?: string;
   };
   context?: {
     summary: string;
@@ -30,6 +31,12 @@ export function assembleRuntimeParityFields(params: {
   contextBundle?: ContextBundleSketch;
   turnLoop?: TurnLoopSketch;
   suspendedGateKind?: string;
+  /** Latest TaskHandoffNote ids when advancing mid-run (S13). */
+  latestHandoff?: {
+    fromTaskId?: string;
+    toTaskId?: string;
+    doneSummary?: string;
+  };
 }): RuntimeParityFields {
   const reasonCodes: string[] = [];
   let mcpServerIds = [...(params.startMcpServerIds ?? [])];
@@ -44,7 +51,21 @@ export function assembleRuntimeParityFields(params: {
   }
 
   let handoff: RuntimeParityFields["handoff"];
-  if (params.suspendedGateKind) {
+  if (params.latestHandoff?.fromTaskId) {
+    const built = buildTaskHandoff({
+      fromTaskId: params.latestHandoff.fromTaskId,
+      toTaskId: params.latestHandoff.toTaskId,
+      reason: "task_advance",
+      doneSummary: params.latestHandoff.doneSummary,
+    });
+    handoff = {
+      fromTaskId: built.fromTaskId,
+      toTaskId: built.toTaskId,
+      reason: built.reason,
+      doneSummary: built.doneSummary,
+    };
+    reasonCodes.push(...built.reasonCodes);
+  } else if (params.suspendedGateKind) {
     const built = buildTaskHandoff({
       reason: `suspend:${params.suspendedGateKind}`,
     });

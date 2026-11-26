@@ -1,5 +1,8 @@
 import { PLANNING_SCHEMA_VERSION } from "../../../modules/planning/constants";
-import type { PlanningInput } from "../../../modules/planning";
+import type {
+  DiscoveryBrief,
+  PlanningInput,
+} from "../../../modules/planning";
 import type { TaskDirectionAssessment } from "../../contracts/assess/TaskDirectionAssessment";
 import type { SituationPack } from "../../contracts/orient/SituationPack";
 import type { RuntimeDecisionSketch } from "../../flow/steps/5-Decide";
@@ -12,6 +15,7 @@ export function buildPlanningInputFromRuntime(params: {
   assessment: TaskDirectionAssessment;
   decision: RuntimeDecisionSketch;
   mode: "ask" | "plan" | "agent";
+  discoveryBrief?: DiscoveryBrief;
 }): PlanningInput {
   const { pack, assessment, decision, mode } = params;
   const query = pack?.request?.text ?? pack?.requestText ?? "";
@@ -62,5 +66,8 @@ export function buildPlanningInputFromRuntime(params: {
     },
     knownPathHints: focus.slice(0, 16),
     skills: (pack?.pins?.skillIds ?? []).map((id) => ({ id })),
+    ...(params.discoveryBrief
+      ? { discoveryBrief: params.discoveryBrief }
+      : {}),
   };
 }

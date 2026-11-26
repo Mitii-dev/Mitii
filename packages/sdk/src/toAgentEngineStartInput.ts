@@ -124,6 +124,9 @@ export function toAgentEngineStartInput(
     steering: parsed.steering,
     userSafetyRules: parsed.userSafetyRules,
     dirtyPaths: parsed.dirtyPaths,
+    ...(parsed.runtimeSituation
+      ? { runtimeSituation: parsed.runtimeSituation }
+      : {}),
     explorationDepth: parsed.explorationDepth,
     windowBudget: parsed.windowBudget,
     loopPolicy: parsed.loopPolicy,

@@ -258,6 +258,7 @@ export async function refreshAuthorityAfterTools(
     if (widenHosts.length > 0) {
       const widened = runtime.deps.decision.widen({
         previous,
+        upgradePlateId: "upgrade_unlock_network",
         extraPaths: [],
         extraNetworkHosts: widenHosts,
       });

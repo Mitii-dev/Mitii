@@ -11,3 +11,20 @@ export {
 } from "./StoreSnapshot";
 export { packTurn } from "./PackTurn";
 export type { PackTurnInput, ModelRequestSketch } from "./PackTurn";
+export { buildBriefcase } from "./BuildBriefcase";
+export type { BuildBriefcaseInput, BriefcaseSketch } from "./BuildBriefcase";
+export {
+  layoutBriefcaseSlots,
+  cacheBreakpointsForCapability,
+  flattenBriefcaseSlots,
+} from "./LayoutBriefcaseSlots";
+export type {
+  BriefcaseSlots,
+  CacheBreakpointMark,
+  LayoutBriefcaseSlotsInput,
+} from "./LayoutBriefcaseSlots";
+export {
+  resolvePromptCacheCapability,
+  PROMPT_CACHE_CAPABILITIES,
+} from "./PromptCacheCapability";
+export type { PromptCacheCapability } from "./PromptCacheCapability";

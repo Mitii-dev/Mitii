@@ -21,6 +21,9 @@ describe("decision plate registry", () => {
     expect(DECISION_PLATE_REGISTRY.upgrades.map((u) => u.id)).toContain(
       "upgrade_unlock_network",
     );
+    expect(DECISION_PLATE_REGISTRY.modes.map((m) => m.id)).toContain(
+      "database_mode_seal",
+    );
   });
 
   it("maps planningHint to planningDepth", () => {

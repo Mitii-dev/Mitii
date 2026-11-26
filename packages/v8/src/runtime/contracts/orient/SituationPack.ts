@@ -77,10 +77,22 @@ export const situationPackSchema = z
         z
           .object({
             id: z.string(),
+            name: z.string().optional(),
             language: z.string().optional(),
             packageManager: z.string().optional(),
             scripts: z.record(z.string()).optional(),
             testRoots: z.array(z.string()).optional(),
+          })
+          .strict(),
+      )
+      .optional(),
+    relationships: z
+      .array(
+        z
+          .object({
+            fromProjectId: z.string(),
+            toProjectId: z.string(),
+            type: z.string(),
           })
           .strict(),
       )

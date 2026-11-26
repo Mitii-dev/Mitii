@@ -16,3 +16,8 @@ Resume handlers return a `ResumePlan`; flow executes it.
 - `shouldSuspendForPlanScopeFork` owned here; engine re-exports
 - Engine suspends go through `engine/v8-engine/helpers/SaveSuspendedRun.ts`
   (normalizes hub kinds → store wire kinds). No raw `checkpointStore.save` left.
+- Hollow post-plan task-list suspend consults `evaluateGates("after_plan", { hollowPlan })`
+  before `saveSuspendedRun` (S10-EVAC partial).
+- Engine call sites consult via `ConsultRuntimeGate`: early clarify, scope fork,
+  plan approval, mutation approval, grant expansion, budget/continue walls.
+  Checkpoint I/O remains `saveSuspendedRun` only.

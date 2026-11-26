@@ -21,7 +21,10 @@ import {
 import type * as vscode from 'vscode';
 
 import { resolveApprovalPolicy as resolveApprovalPolicyFromModule } from './approvalPolicy.js';
-import { collectVsCodeEnvironmentSnapshot } from './collectEnvironmentDetails.js';
+import {
+  collectVsCodeEditorSituation,
+  collectVsCodeEnvironmentSnapshot,
+} from './collectEnvironmentDetails.js';
 import { mergePromptBudgetIntoBreakdown } from './contextUsage.js';
 import { ensureRepositoryStateForAsk } from './hostAskAutoIndex.js';
 import { prepareHostAskContext } from './hostAskContextPrep.js';
@@ -174,6 +177,7 @@ export async function runAskInOutputChannel(options: {
       cfg.get<string>('safety.approvalMode') ??
       'guided';
 
+    const editorSituation = collectVsCodeEditorSituation({ workspaceRoot });
     const prepared = await prepareStartInput({
       prompt,
       ...(workspaceRoot ? { workspaceRoot } : {}),
@@ -220,6 +224,18 @@ export async function runAskInOutputChannel(options: {
         : {}),
       ...(options.taskList ? { taskList: options.taskList } : {}),
       logVerbosity: resolveLogVerbosity(vs),
+      ...(editorSituation.focusedFile
+        ? { focusedFile: editorSituation.focusedFile }
+        : {}),
+      ...(editorSituation.dirtyPaths.length > 0
+        ? { dirtyPaths: editorSituation.dirtyPaths }
+        : {}),
+      ...(editorSituation.selection
+        ? { selection: editorSituation.selection }
+        : {}),
+      ...(editorSituation.diagnostics.length > 0
+        ? { diagnostics: editorSituation.diagnostics }
+        : {}),
     });
 
     const effectiveMode = prepared.effectiveMode;

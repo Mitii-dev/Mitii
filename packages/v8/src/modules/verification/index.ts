@@ -122,6 +122,9 @@ export {
   normalizeVerificationPath,
 } from "./rules/patterns";
 
+/** S12-HEAVY: browser/e2e/emulator script tokens never auto-selected. */
+export { BROWSER_E2E_TEST_PATTERN } from "./rules";
+
 export {
   InMemoryManifestReader,
   WorkspaceFileSystemManifestReader,

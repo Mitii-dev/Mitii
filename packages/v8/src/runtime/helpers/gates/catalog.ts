@@ -7,6 +7,7 @@ import { requireClarificationAfterPlan } from "./predicates/RequireClarification
 import { requireContinueAfterVerifyCapped } from "./predicates/RequireContinueAfterVerifyCapped";
 import { requireContinueOnBudgetOrStall } from "./predicates/RequireContinueOnBudgetOrStall";
 import { requireContinueOnProvider } from "./predicates/RequireContinueOnProvider";
+import { requireDestructiveAction } from "./predicates/RequireDestructiveAction";
 import { requireExternalSideEffectApproval } from "./predicates/RequireExternalSideEffectApproval";
 import { requireGrantExpansion } from "./predicates/RequireGrantExpansion";
 import { requireMutationApproval } from "./predicates/RequireMutationApproval";
@@ -35,7 +36,10 @@ export function predicatesForPhase(
     case "after_tool": {
       const list: GatePredicate[] = [requireGrantExpansion];
       if (extended) {
-        list.push(requireExternalSideEffectApproval);
+        list.push(
+          requireExternalSideEffectApproval,
+          requireDestructiveAction,
+        );
       }
       list.push(requireMutationApproval);
       return list;

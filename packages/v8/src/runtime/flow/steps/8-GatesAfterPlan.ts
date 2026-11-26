@@ -1,11 +1,13 @@
 import { applyGate, evaluateGates } from "../../helpers/gates";
 import type { ApplyGateResult } from "../../helpers/gates";
+import { resolvePlanExit } from "../../helpers/plan";
 import type { RuntimeDecisionSketch } from "./5-Decide";
 import type { PlanPipelineSketch } from "./7-PlanPipeline";
 import type { StepContext } from "./StepContext";
 
 /**
  * Step 8 — gates after plan (plan_approval_required, clarify-from-plan, etc.).
+ * Exit policy from resolvePlanExit (S3A-EXIT) stamps reason codes; hub still owns I/O.
  */
 export async function gatesAfterPlan(
   ctx: StepContext,
@@ -26,6 +28,17 @@ export async function gatesAfterPlan(
     decision.planningDepth === "internal"
       ? decision.planningDepth
       : ("none" as const);
+
+  const planExit =
+    plan.planExit ??
+    resolvePlanExit({
+      mode: ctx.mode,
+      route: decision.route,
+      planGate,
+      planningDepth,
+      hollow: Boolean(plan.hollowCheck && !plan.hollowCheck.ok),
+      planRan: true,
+    });
 
   if (plan.hollowCheck && !plan.hollowCheck.ok) {
     const verdict = evaluateGates("after_plan", {
@@ -48,9 +61,23 @@ export async function gatesAfterPlan(
           storeSnapshot: ctx.store.snapshot(),
         },
       );
-      ctx.store.setSlice("lastGate", result);
+      ctx.store.setSlice("lastGate", {
+        ...result,
+        reasonCodes: [...result.reasonCodes, ...planExit.reasonCodes],
+      });
       return result;
     }
+  }
+
+  // Internal plan → no suspend (S3A-EXIT continue_internal).
+  if (planExit.kind === "continue_internal") {
+    ctx.store.setSlice("lastGate", {
+      status: "completed",
+      checkpointSaved: false,
+      reasonCodes: [...planExit.reasonCodes, "gate_after_plan_continue_internal"],
+      payload: {},
+    });
+    return undefined;
   }
 
   const verdict = evaluateGates("after_plan", {
@@ -75,6 +102,9 @@ export async function gatesAfterPlan(
       storeSnapshot: ctx.store.snapshot(),
     },
   );
-  ctx.store.setSlice("lastGate", result);
+  ctx.store.setSlice("lastGate", {
+    ...result,
+    reasonCodes: [...result.reasonCodes, ...planExit.reasonCodes],
+  });
   return result;
 }

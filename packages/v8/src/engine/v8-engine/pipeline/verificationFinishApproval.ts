@@ -13,6 +13,10 @@ import { RunBudgetTracker } from "../internal/RunBudget";
 import type { TaskListRef } from "../internal/taskListRuntime";
 import type { AgentEngineRuntime } from "./runtime";
 import type { ToolLoopOutcome } from "./types";
+import {
+  consultRuntimeGate,
+  hubSuspendKind,
+} from "../helpers/ConsultRuntimeGate";
 import { saveSuspendedRun } from "../helpers/SaveSuspendedRun";
 
 export async function finishIfApprovalRequired(
@@ -75,7 +79,17 @@ export async function finishIfApprovalRequired(
       });
     }
 
+    // S10-EVAC: mutation approval via gates hub (after_tool).
+    const approvalVerdict = consultRuntimeGate("after_tool", {
+      runId,
+      needsMutationApproval: true,
+    });
+    const hubKind = hubSuspendKind(
+      approvalVerdict,
+      "mutation_approval_required",
+    );
     reasonCodes.push("approval_suspended");
+    warnings.push("gates_hub:mutation_approval");
     await saveSuspendedRun({
       store: runtime.deps.checkpointStore,
       checkpoint: {
@@ -84,7 +98,8 @@ export async function finishIfApprovalRequired(
       ...(runtime.contextEpochs.get(runId)
         ? { contextEpoch: runtime.contextEpochs.get(runId) }
         : {}),
-      suspensionKind: "approval_required",
+      // Store wire still uses approval_required (toStoreSuspensionKind maps).
+      suspensionKind: hubKind,
       input,
       decision,
       pinnedState,
@@ -110,10 +125,12 @@ export async function finishIfApprovalRequired(
     });
 
     const rationale = `Approval required for "${currentOutcome.pendingApproval.toolName}".`;
+    // Host-facing suspension kind stays approval_required for wire compat.
+    const emitKind = "approval_required";
     runtime.emit(bus, {
       type: "suspended",
       runId,
-      kind: "approval_required",
+      kind: emitKind,
       rationale,
       at: runtime.isoNow(),
     });
@@ -125,7 +142,7 @@ export async function finishIfApprovalRequired(
       route: decision.route,
       planningDepth: decision.planningDepth,
       suspension: {
-        kind: "approval_required",
+        kind: emitKind,
         rationale,
         approval: {
           approvalId: currentOutcome.pendingApproval.approvalId,

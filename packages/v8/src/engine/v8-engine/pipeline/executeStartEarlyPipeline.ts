@@ -68,6 +68,10 @@ import {
 import { applyClarificationResolutionOverlay } from "./clarificationResolutionOverlay";
 import { applyStartReuse, type StartReuseState } from "./startReuse";
 import { EXECUTION_ROUTE } from "../../../modules/decision-policy";
+import {
+  consultRuntimeGate,
+  hubSuspendKind,
+} from "../helpers/ConsultRuntimeGate";
 import { saveSuspendedRun } from "../helpers/SaveSuspendedRun";
 
 export type ExecuteStartSharedState = {
@@ -450,12 +454,23 @@ export async function runStartEarlyPipeline(
     return { kind: "terminal", result: await cancelledResult() };
   }
 
-  // Clarification suspends without model/tools.
+  // S10-EVAC: early clarify via gates hub (after_decide).
+  const clarifyVerdict = consultRuntimeGate("after_decide", {
+    runId,
+    route: decision.route,
+    runDisposition: decision.runDisposition,
+  });
   if (
+    clarifyVerdict?.action === "suspend" ||
     decision.runDisposition === "clarification_required" ||
     decision.route === EXECUTION_ROUTE.CLARIFY
   ) {
     reasonCodes.push("clarification_suspended");
+    warnings.push("gates_hub:after_decide");
+    const suspendKind = hubSuspendKind(
+      clarifyVerdict,
+      "clarification_required",
+    );
     const rationale =
       decision.rationale ||
       "Material clarification is required before continuing.";
@@ -470,7 +485,7 @@ export async function runStartEarlyPipeline(
       checkpoint: {
         runId,
         requestId: shared.requestId,
-        suspensionKind: "clarification_required",
+        suspensionKind: suspendKind,
         input,
         decision,
         pinnedState: undefined,
@@ -499,7 +514,7 @@ export async function runStartEarlyPipeline(
     runtime.emit(bus, {
       type: "suspended",
       runId,
-      kind: "clarification_required",
+      kind: suspendKind,
       rationale,
       at: runtime.isoNow(),
     });
@@ -514,7 +529,7 @@ export async function runStartEarlyPipeline(
         route: decision.route,
         planningDepth: decision.planningDepth,
         suspension: {
-          kind: "clarification_required",
+          kind: suspendKind,
           rationale,
           clarificationPrompt: clarification.clarificationPrompt,
           clarificationOptions:

@@ -49,3 +49,11 @@ export { resumeMutationApproval } from "./resume/ResumeMutationApproval";
 export { resumeGrantExpansion } from "./resume/ResumeGrantExpansion";
 export { resumeContinueDecision } from "./resume/ResumeContinueDecision";
 export { resumeCheckpointConflict } from "./resume/ResumeCheckpointConflict";
+export { resumeExternalSideEffect } from "./resume/ResumeExternalSideEffect";
+
+export {
+  POLICY_GATE_OWNER_MAP,
+  POLICY_GATE_CONCERNS,
+  resolvePolicyGateOwner,
+} from "./PolicyGateOwnerMap";
+export type { PolicyGateConcern, PolicyGateOwner } from "./PolicyGateOwnerMap";

@@ -7,6 +7,7 @@ import {
 import { saveRuntimeGateCheckpoint } from "../helpers/checkpoint/SaveRuntimeGateCheckpoint";
 import { saveRuntimeSessionCarry } from "../helpers/checkpoint/SaveRuntimeSessionCarry";
 import { buildPlanFingerprint } from "../helpers/build/CheckPlanFreshness";
+import { maybeSaveHeartbeatCheckpoint } from "../helpers/heartbeat/SaveHeartbeatCheckpoint";
 import { commitRuntimeMemory } from "../helpers/memory/CommitRuntimeMemory";
 import { assembleRuntimeParityFields } from "../helpers/parity/AssembleRuntimeParityFields";
 import { pushRuntimeProgressEvents } from "../helpers/events/PushRuntimeProgressEvents";
@@ -14,7 +15,10 @@ import type { RuntimeEventSink } from "../helpers/events/RuntimeEventChannel";
 import type { StoreSnapshot } from "../helpers/store/StoreSnapshot";
 import { buildRuntimeUsageSketch } from "../helpers/usage/BuildRuntimeUsageSketch";
 import { runThroughTurnLoop } from "./RunThroughTurnLoop";
-import { verifyFinish } from "./steps/11-VerifyFinish";
+import {
+  verifyFinish,
+  verifyFinishAsync,
+} from "./steps/11-VerifyFinish";
 import type { RuntimeDecisionSketch } from "./steps/5-Decide";
 import type { VerifyFinishSketch } from "./steps/11-VerifyFinish";
 import type { ContextBundleSketch } from "./steps/9-EnrichContext";
@@ -100,12 +104,69 @@ export async function executeRuntimeStart(
           ? through.turnLoop.gate.kind
           : undefined;
 
+  // S11-HEART: durable RunState freeze between turns (not a user gate).
+  const turnCount = Math.max(
+    1,
+    usageSketch.usage.loopIterations ||
+      through.turnLoop?.journal?.length ||
+      1,
+  );
+  const lastHb = through.store.getSlice<{ turnCount?: number }>("lastHeartbeat");
+  const turnsSince =
+    lastHb?.turnCount != null
+      ? Math.max(0, turnCount - lastHb.turnCount)
+      : turnCount;
+  const mutationBatchSucceeded = (through.turnLoop?.journal ?? []).some(
+    (j) =>
+      j.status === "succeeded" &&
+      (j.effectClass === "mutate" || j.effectClass === "external"),
+  );
+  const heartbeat =
+    suspendedGateKind == null
+      ? await maybeSaveHeartbeatCheckpoint({
+          deps: input.deps,
+          store: through.store,
+          runId,
+          requestId: runId,
+          mode,
+          route: decision.route,
+          turnCount,
+          turnsSinceLastHeartbeat: turnsSince,
+          mutationBatchSucceeded,
+          heartbeat: input.deps?.heartbeat,
+          heartbeatEveryTurns: input.deps?.heartbeatEveryTurns,
+        })
+      : {
+          saved: false,
+          policyEnabled: false,
+          reasonCodes: ["heartbeat_skip_suspended"],
+        };
+
+  const handoffHistory = through.store.getSlice<
+    Array<{
+      fromTaskId: string;
+      toTaskId?: string;
+      doneSummary: string;
+    }>
+  >("taskHandoffs");
+  const latestNote =
+    handoffHistory && handoffHistory.length > 0
+      ? handoffHistory[handoffHistory.length - 1]
+      : undefined;
+
   const parity = assembleRuntimeParityFields({
     startMcpServerIds: start.mcpServerIds,
     deps: input.deps,
     contextBundle: contextBundle ?? through.contextBundle,
     turnLoop: through.turnLoop,
     suspendedGateKind,
+    latestHandoff: latestNote
+      ? {
+          fromTaskId: latestNote.fromTaskId,
+          toTaskId: latestNote.toTaskId,
+          doneSummary: latestNote.doneSummary,
+        }
+      : undefined,
   });
 
   let result: RuntimeRunResult;
@@ -216,42 +277,57 @@ export async function executeRuntimeStart(
       ],
     });
   } else {
-    if (body?.runVerify) {
+    let verify: VerifyFinishSketch | undefined;
+    const runnerCodes: string[] = [];
+    let runnerStatus:
+      | "passed"
+      | "failed"
+      | "skipped"
+      | "unavailable"
+      | "repair_requested"
+      | "repair_capped"
+      | "blocked"
+      | undefined;
+
+    if (body?.runVerify || decision.verification?.required) {
       pushRuntimeProgressEvents(sink, {
         runId,
         at: new Date().toISOString(),
         phase: "verifying",
       });
-      verifyFinish({
+      verify = await verifyFinishAsync(
+        {
+          store: through.store,
+          input: start,
+          mode,
+          deps: input.deps,
+        },
+        {
+          runId,
+          runner: input.deps?.verification,
+          workspaceRoot: start.host?.cwd,
+          changedPaths: start.host?.dirtyPaths,
+          onProgress: (event) => {
+            if (event.phase === "verify_started") {
+              pushRuntimeProgressEvents(sink, {
+                runId,
+                at: new Date().toISOString(),
+                phase: "verifying",
+              });
+            }
+          },
+        },
+      );
+      if (verify.outcome) {
+        runnerStatus = verify.outcome.status;
+        runnerCodes.push(...verify.outcome.reasonCodes);
+      }
+    } else {
+      verify = verifyFinish({
         store: through.store,
         input: start,
         mode,
       });
-    } else {
-      through.store.setSlice("verifyFinish", {
-        ranVerify: false,
-        invalidated: false,
-        finished: true,
-        reasonCodes: ["verify_skipped_by_route"],
-      });
-    }
-
-    let verify = through.store.getSlice<VerifyFinishSketch>("verifyFinish");
-    const runnerCodes: string[] = [];
-    let runnerStatus: "passed" | "failed" | "skipped" | undefined;
-
-    if (verify?.ranVerify && input.deps?.verification) {
-      const outcome = await input.deps.verification.run({
-        runId,
-        route: decision.route,
-      });
-      runnerStatus = outcome.status;
-      runnerCodes.push(...outcome.reasonCodes);
-      verify = {
-        ...verify,
-        reasonCodes: [...(verify.reasonCodes ?? []), ...outcome.reasonCodes],
-      };
-      through.store.setSlice("verifyFinish", verify);
     }
 
     const answer = through.store.getSlice<string>("lastAssistantText");
@@ -277,17 +353,32 @@ export async function executeRuntimeStart(
         }
       : undefined;
 
+    // repair_capped → continue_required suspend; blocked → failed; else complete.
+    const finishStatus = through.store.isCancelling()
+      ? ("cancelled" as const)
+      : verify?.suspendContinue
+        ? ("suspended" as const)
+        : runnerStatus === "blocked"
+          ? ("failed" as const)
+          : ("completed" as const);
+
     const memory = commitRuntimeMemory({
       mode,
-      status: through.store.isCancelling() ? "cancelled" : "completed",
+      status: finishStatus,
       route: decision.route,
-      verify: verifySketch,
+      verify: verify
+        ? {
+            ranVerify: verify.ranVerify,
+            invalidated: verify.invalidated,
+            outcomeStatus: verify.outcome?.status,
+          }
+        : undefined,
     });
 
     result = runtimeRunResultSchema.parse({
       schemaVersion: 1,
       runId,
-      status: through.store.isCancelling() ? "cancelled" : "completed",
+      status: finishStatus,
       route: decision.route,
       plateId: decision.plateId,
       grantProfile: decision.grantProfile,
@@ -304,6 +395,9 @@ export async function executeRuntimeStart(
       context: parity.context,
       prompt: parity.prompt,
       storeHydrated,
+      ...(finishStatus === "suspended"
+        ? { gateKind: "continue_required" as const }
+        : {}),
       reasonCodes: [
         ...decision.reasonCodes,
         ...(through.turnLoop?.reasonCodes ?? []),
@@ -311,8 +405,11 @@ export async function executeRuntimeStart(
         ...runnerCodes,
         ...memory.reasonCodes,
         ...parity.reasonCodes,
+        ...heartbeat.reasonCodes,
         ...(storeHydrated ? ["runtime_store_hydrated"] : []),
-        "runtime_start_completed",
+        finishStatus === "completed"
+          ? "runtime_start_completed"
+          : `runtime_start_${finishStatus}`,
       ],
     });
   }

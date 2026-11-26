@@ -30,7 +30,9 @@ export function resolveVerificationRequirement(params: {
       verification: {
         required: false,
         minimumEvidence: [],
+        checks: [],
         allowUnavailable: true,
+        onFailure: "report",
       },
       reasonCodes,
     };
@@ -89,7 +91,9 @@ export function resolveVerificationRequirement(params: {
     verification: {
       required: true,
       minimumEvidence,
+      checks: [...minimumEvidence],
       allowUnavailable: false,
+      onFailure: "retry",
     },
     reasonCodes,
   };

@@ -8,6 +8,10 @@ import {
 } from "./executeTool";
 import { resumeV8ToolLoopFromCheckpoint } from "./resumeToolLoop";
 import type { ResumeHandlerContext } from "./resumeHandlerTypes";
+import {
+  consultRuntimeGate,
+  hubSuspendKind,
+} from "../helpers/ConsultRuntimeGate";
 import { saveSuspendedRun } from "../helpers/SaveSuspendedRun";
 
 export async function handleGrantExpansionResume(
@@ -77,6 +81,7 @@ export async function handleGrantExpansionResume(
 
   const widenedDecision = runtime.deps.decision.widen({
     previous: decision,
+    upgradePlateId: "upgrade_expand_write_paths",
     extraPaths: pending.extraPaths,
     extraAllowedRoots: pending.externalRoots,
   });
@@ -126,11 +131,20 @@ export async function handleGrantExpansionResume(
       // Widened grant still needs mutation approval — suspend for that next.
       await runtime.deps.checkpointStore!.delete(runId);
       const approvalId = runtime.deps.idGenerator.next("appr");
+      const approvalVerdict = consultRuntimeGate("after_tool", {
+        runId,
+        needsMutationApproval: true,
+      });
+      const hubKind = hubSuspendKind(
+        approvalVerdict,
+        "mutation_approval_required",
+      );
+      warnings.push("gates_hub:mutation_after_grant");
       await saveSuspendedRun({
         store: runtime.deps.checkpointStore!,
         checkpoint: {
         ...checkpoint,
-        suspensionKind: "approval_required",
+        suspensionKind: hubKind,
         decision: widenedDecision,
         messages,
         toolCacheEntries: toolCache.entries(),

@@ -19,7 +19,23 @@ export { runThroughPlanPipeline } from "./flow/RunThroughPlanPipeline";
 export type { RunThroughPlanPipelineResult } from "./flow/RunThroughPlanPipeline";
 export { runThroughTurnLoop } from "./flow/RunThroughTurnLoop";
 export type { RunThroughTurnLoopResult } from "./flow/RunThroughTurnLoop";
-export { shouldRunPlanPipeline, rejectHollowPlan } from "./helpers/plan";
+export {
+  shouldRunPlanPipeline,
+  rejectHollowPlan,
+  steerPlanArtifact,
+  resolvePlanExit,
+  assertWindowBand,
+  splitPlanExecuteBudgets,
+  deriveTaskListAfterPlan,
+  beginDiscoveryTaskList,
+  replaceDiscoveryWithExecution,
+} from "./helpers/plan";
+export type {
+  SteerPlanPatch,
+  PlanExitKind,
+  ResolvePlanExitResult,
+  AssertWindowBandResult,
+} from "./helpers/plan";
 export {
   selectRouteBody,
   clarifyRouteBody,
@@ -29,13 +45,76 @@ export {
   executeRouteBody,
 } from "./helpers/routes";
 export type { RouteBodyPlan } from "./helpers/routes";
-export { verifyFinish } from "./flow/steps/11-VerifyFinish";
+export {
+  verifyFinish,
+  verifyFinishAsync,
+} from "./flow/steps/11-VerifyFinish";
 export type { VerifyFinishSketch } from "./flow/steps/11-VerifyFinish";
-export { shouldEmitHeartbeat } from "./helpers/heartbeat/ShouldEmitHeartbeat";
-export { countTurnHeartbeats } from "./helpers/heartbeat/CountTurnHeartbeats";
+export { verificationRequestSchema } from "./contracts/verify/VerificationRequest";
+export type {
+  VerificationRequest,
+  VerificationOnFailure,
+} from "./contracts/verify/VerificationRequest";
+export { verificationOutcomeSchema } from "./contracts/verify/VerificationOutcome";
+export type { VerificationOutcome } from "./contracts/verify/VerificationOutcome";
+export { verificationBaselineSnapshotSchema } from "./contracts/verify/VerificationBaselineSnapshot";
+export type { VerificationBaselineSnapshot } from "./contracts/verify/VerificationBaselineSnapshot";
+export {
+  selectVerificationPolicy,
+  runVerificationPhase,
+  commitMemoryOnFinish,
+  captureVerificationBaseline,
+  compareAgainstBaseline,
+  resolveVerificationBudgets,
+  DEFAULT_VERIFICATION_BUDGETS,
+  runWithVerifyWall,
+  omitHeavyVerificationChecks,
+  isHeavyVerificationCandidate,
+  discoverChecksFromCatalog,
+  classifyChangedPaths,
+  selectPolicyForChangedPaths,
+  orderChecksFastFirst,
+  CHANGE_CLASS_SELECT_TABLE,
+} from "./helpers/verify";
+export type { ChangeClass, ChangeClassSelectPolicy } from "./helpers/verify";
+export {
+  shouldEmitHeartbeat,
+  countTurnHeartbeats,
+  selectHeartbeatPolicy,
+  shouldSaveHeartbeatCheckpoint,
+  maybeSaveHeartbeatCheckpoint,
+  buildHeartbeatCheckpoint,
+  HEARTBEAT_CHECKPOINT_KIND,
+} from "./helpers/heartbeat";
 export { stampMcpAttach, revokeMcpAttach } from "./helpers/mcp/StampMcpAttach";
-export { buildTaskHandoff } from "./helpers/handoff/BuildTaskHandoff";
+export { applyMcpMidRun } from "./helpers/mcp/ApplyMcpMidRun";
+export { applyMcpMidRunToRunState } from "./helpers/mcp/ApplyMcpMidRunToRunState";
+export {
+  RunState,
+  RUN_STATE_KEYS,
+  isRunStateKey,
+  buildCheckpointFromRunState,
+  hydrateRunStateFromCheckpoint,
+} from "./helpers/run-state";
+export {
+  replateDecisionOnPlanApprove,
+  applyReplateToSnapshot,
+  extractPlanWriteTargets,
+  intersectScopesWithPlanTargets,
+} from "./helpers/replate";
+export {
+  buildTaskHandoff,
+  buildTaskHandoffNote,
+  advanceTaskWithHandoff,
+  reorderTaskListForSteer,
+  selectBriefcaseHandoffPeaks,
+  appendTaskHandoff,
+  sanitizeHandoffText,
+  softWarnTaskListLength,
+} from "./helpers/handoff";
 export type { TaskHandoff } from "./helpers/handoff/BuildTaskHandoff";
+export { taskHandoffNoteSchema } from "./contracts/handoff/TaskHandoffNote";
+export type { TaskHandoffNote } from "./contracts/handoff/TaskHandoffNote";
 export { commitRuntimeMemory } from "./helpers/memory/CommitRuntimeMemory";
 export { isApprovedPlanFresh } from "./helpers/build/IsApprovedPlanFresh";
 export {
@@ -45,6 +124,20 @@ export {
 export { assembleRuntimeParityFields } from "./helpers/parity/AssembleRuntimeParityFields";
 export { situationPackSchema } from "./contracts/orient/SituationPack";
 export type { SituationPack } from "./contracts/orient/SituationPack";
+export { contextBundleSchema } from "./contracts/enrich/ContextBundle";
+export type {
+  ContextBundle,
+  CacheClass,
+} from "./contracts/enrich/ContextBundle";
+export {
+  buildFullContextBundle,
+  refreshContextBundleLight,
+  retrieveEnrichMaterials,
+  prioritizeOmissions,
+  sectionBudgetsFromWindowPolicy,
+  ENRICH_OMISSION_PRIORITY,
+} from "./helpers/enrich";
+export type { EnrichOmissionKind, EnrichSectionBudgets } from "./helpers/enrich";
 export { scopeVerdictSchema } from "./contracts/orient/ScopeVerdict";
 export type {
   ScopeVerdict,
@@ -56,6 +149,10 @@ export type { IntentCues } from "./contracts/orient/IntentCues";
 export {
   buildScopeVerdict,
   extractFocusPaths,
+  resolveWorkRoot,
+  resolveRelatedProjects,
+  buildOrientSurroundings,
+  resolveConfigNearFocus,
   extractIntentCues,
 } from "./helpers/orient";
 export { scopesFromVerdict } from "./helpers/grant/ScopesFromVerdict";
@@ -98,8 +195,21 @@ export type {
   ToolGrantCheckResult,
 } from "./tools";
 
-export { evaluateSoftRails } from "./helpers/rails";
-export type { SoftRailKind, SoftRailNudge } from "./helpers/rails";
+export { evaluateSoftRails, assessBlastRadius } from "./helpers/rails";
+export type {
+  SoftRailKind,
+  SoftRailNudge,
+  AssessBlastRadiusInput,
+  AssessBlastRadiusResult,
+  BlastRadiusEscalate,
+} from "./helpers/rails";
+
+export {
+  formatTaskListForBriefcase,
+  updateTaskListOnSettle,
+  extractChangedPathsFromToolArgs,
+  applyTaskSettleToStore,
+} from "./helpers/task";
 
 export {
   runtimeStartInputSchema,
@@ -160,8 +270,21 @@ export type {
   RuntimeToolExecutorPort,
   RuntimeVerificationRunnerPort,
   RuntimeVerificationOutcome,
+  RuntimeEnrichRetrievalPorts,
+  RuntimeSkillsRetrievalPort,
+  RuntimeMemoryRetrievalPort,
+  RuntimeRepoContextRetrievalPort,
 } from "./ports";
 export { createInlineVerificationRunner } from "./ports";
+
+export {
+  createInlineSkillsRetrieval,
+  createInlineMemoryRetrieval,
+  createInlineRepoRetrieval,
+  createSkillsPipelineRetrieval,
+  createMemoryPipelineRetrieval,
+  createRepoContextPipelineRetrieval,
+} from "./adapters/enrich";
 
 export {
   evaluateGates,
@@ -181,7 +304,11 @@ export {
   resumeGrantExpansion,
   resumeContinueDecision,
   resumeCheckpointConflict,
+  resumeExternalSideEffect,
+  POLICY_GATE_OWNER_MAP,
+  resolvePolicyGateOwner,
 } from "./helpers/gates";
+export type { PolicyGateConcern, PolicyGateOwner } from "./helpers/gates";
 export type {
   GatePhase,
   GateKind,

@@ -19,6 +19,10 @@ import { EventBus } from "../internal/EventBus";
 import { RunBudgetTracker } from "../internal/RunBudget";
 import type { ToolCallCache } from "../internal/ToolCallCache";
 import type { TaskListRef } from "../internal/taskListRuntime";
+import {
+  consultRuntimeGate,
+  hubSuspendKind,
+} from "../helpers/ConsultRuntimeGate";
 import { saveSuspendedRun } from "../helpers/SaveSuspendedRun";
 import type { ExecutionSeed } from "../modules/execution-seed";
 import type { AgentEngineRuntime } from "./runtime";
@@ -113,7 +117,15 @@ export async function suspendForBudgetWall(
     answer: opts.answer,
     mutationRequired: opts.mutationRequired,
   });
+  // S10-EVAC: budget wall via gates hub.
+  const wallVerdict = consultRuntimeGate("on_budget", {
+    runId,
+    budgetHardWall: opts.wallReason === "budget_exhausted",
+    stalledOrBlocked: opts.wallReason !== "budget_exhausted",
+  });
+  const wallKind = hubSuspendKind(wallVerdict, "continue_required");
   reasonCodes.push("stall_continue_suspended");
+  warnings.push("gates_hub:budget_wall");
   await saveSuspendedRun({
     store: runtime.deps.checkpointStore,
     checkpoint: {
@@ -122,7 +134,7 @@ export async function suspendForBudgetWall(
     ...(runtime.contextEpochs.get(runId)
       ? { contextEpoch: runtime.contextEpochs.get(runId) }
       : {}),
-    suspensionKind: "continue_required",
+    suspensionKind: wallKind,
     input,
     decision,
     pinnedState,

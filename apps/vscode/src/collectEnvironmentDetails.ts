@@ -97,3 +97,60 @@ function toWorkspaceRelative(
   }
   return undefined;
 }
+
+/**
+ * Active editor + dirty docs for prepareStartInput.runtimeSituation.
+ */
+export function collectVsCodeEditorSituation(params: {
+  workspaceRoot?: string;
+}): {
+  focusedFile?: string;
+  dirtyPaths: string[];
+  selection?: { path: string; startLine?: number; endLine?: number };
+  diagnostics: string[];
+} {
+  const root = params.workspaceRoot
+    ? path.resolve(params.workspaceRoot)
+    : undefined;
+  const editor = vscode.window.activeTextEditor;
+  const focusedAbs = editor?.document?.uri?.fsPath;
+  const focusedFile = focusedAbs
+    ? toWorkspaceRelative(focusedAbs, root)
+    : undefined;
+
+  let selection:
+    | { path: string; startLine?: number; endLine?: number }
+    | undefined;
+  if (focusedFile && editor && !editor.selection.isEmpty) {
+    selection = {
+      path: focusedFile,
+      startLine: editor.selection.start.line + 1,
+      endLine: editor.selection.end.line + 1,
+    };
+  }
+
+  const dirtyPaths = uniqueRelPaths(
+    vscode.workspace.textDocuments
+      .filter((doc) => doc.isDirty && doc.uri.scheme === 'file')
+      .map((doc) => doc.uri.fsPath),
+    root,
+    64,
+  );
+
+  const diagnostics: string[] = [];
+  if (editor?.document) {
+    for (const d of vscode.languages
+      .getDiagnostics(editor.document.uri)
+      .slice(0, 12)) {
+      const line = d.range.start.line + 1;
+      diagnostics.push(`L${line}: ${d.message}`);
+    }
+  }
+
+  return {
+    ...(focusedFile ? { focusedFile } : {}),
+    dirtyPaths,
+    ...(selection ? { selection } : {}),
+    diagnostics,
+  };
+}

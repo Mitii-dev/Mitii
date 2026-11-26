@@ -11,7 +11,7 @@ export const GOLDEN_DECISION_CASES_POLICY: GoldenDecisionCase[] = [
     id: "golden-grant-scoped-mutation",
     category: "grant",
     mode: "agent",
-    message: "Update src/utils/format.ts only",
+    message: "Only edit under src/utils — update src/utils/format.ts",
     understanding: createUnderstanding({
       primaryTaskIntent: "refactor",
       taskAnalysis: {
@@ -23,7 +23,7 @@ export const GOLDEN_DECISION_CASES_POLICY: GoldenDecisionCase[] = [
     expected: {
       route: "execute",
       maximumWorkspaceEffect: "write",
-      pathScopes: ["src/utils"],
+      pathScopes: ["."],
       mutationPathScopes: ["src/utils"],
     },
   },

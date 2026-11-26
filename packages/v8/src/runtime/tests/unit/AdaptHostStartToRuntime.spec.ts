@@ -32,6 +32,30 @@ describe("adaptHostStartToRuntime", () => {
     expect(adapted.git?.branch).toBe("main");
   });
 
+  it("merges runtimeSituation snapshot from desktop/SDK", () => {
+    const adapted = adaptHostStartToRuntime({
+      request: { userMessage: "continue", mode: "agent" },
+      workspaceRoot: "/ws",
+      runtimeSituation: {
+        host: {
+          cwd: "/ws",
+          focusedFile: "apps/desktop/src/a.ts",
+          dirtyPaths: ["apps/desktop/src/a.ts"],
+        },
+        git: { branch: "feat/host", dirty: true },
+        projectRuleIds: ["rule.safety"],
+      },
+      instructions: {
+        projectRules: [{ id: "rule.docs", content: "keep docs" }],
+      },
+    });
+    expect(adapted.host?.focusedFile).toBe("apps/desktop/src/a.ts");
+    expect(adapted.git?.branch).toBe("feat/host");
+    expect(adapted.projectRuleIds).toEqual(
+      expect.arrayContaining(["rule.safety", "rule.docs"]),
+    );
+  });
+
   it("early pipeline peeks via tool port when filesToRead present", async () => {
     const reads: string[] = [];
     const result = await runEarlyPipeline({

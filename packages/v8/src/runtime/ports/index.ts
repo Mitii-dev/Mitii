@@ -10,3 +10,15 @@ export type {
   RuntimeVerificationOutcome,
 } from "./RuntimeVerificationRunnerPort";
 export { createInlineVerificationRunner } from "./RuntimeVerificationRunnerPort";
+export type {
+  RuntimeEnrichRetrievalPorts,
+  RuntimeSkillsRetrievalPort,
+  RuntimeMemoryRetrievalPort,
+  RuntimeRepoContextRetrievalPort,
+  EnrichSkillsRetrievalInput,
+  EnrichSkillsRetrievalResult,
+  EnrichMemoryRetrievalInput,
+  EnrichMemoryRetrievalResult,
+  EnrichRepoRetrievalInput,
+  EnrichRepoRetrievalResult,
+} from "./RuntimeEnrichRetrievalPorts";

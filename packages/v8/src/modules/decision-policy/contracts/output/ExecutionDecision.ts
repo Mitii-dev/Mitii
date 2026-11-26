@@ -22,17 +22,37 @@ export const verificationEvidenceKindSchema = z.enum(
   VERIFICATION_EVIDENCE_KINDS,
 );
 
+export const VERIFICATION_ON_FAILURE = [
+  "retry",
+  "report",
+  "block",
+] as const;
+
 export const verificationRequirementSchema = z
   .object({
     required: z.boolean(),
+    /** @deprecated Prefer checks — kept for one-release compat. */
     minimumEvidence: z.array(verificationEvidenceKindSchema),
+    /** Alias of minimumEvidence (S2C-VERIFY). */
+    checks: z.array(verificationEvidenceKindSchema).optional(),
     allowUnavailable: z.boolean(),
+    /** What to do when a required check fails (S2C-VERIFY). Default report. */
+    onFailure: z.enum(VERIFICATION_ON_FAILURE).default("report"),
   })
   .strict();
 
 export type VerificationRequirement = z.infer<
   typeof verificationRequirementSchema
 >;
+
+export const decisionOverrideTraceEntrySchema = z
+  .object({
+    field: z.string().min(1),
+    from: z.string().optional(),
+    to: z.string().optional(),
+    reasonCode: z.string().min(1),
+  })
+  .strict();
 
 export const decisionTraceSchema = z
   .object({
@@ -41,6 +61,8 @@ export const decisionTraceSchema = z
     mutationProfile: z.enum(["none", "relaxed", "standard", "tight"]),
     clampedByInjection: z.boolean(),
     signalsUsed: z.array(z.string().min(1)),
+    /** Model→final overrides (S2C-TRACE). */
+    overrides: z.array(decisionOverrideTraceEntrySchema).optional(),
   })
   .strict();
 

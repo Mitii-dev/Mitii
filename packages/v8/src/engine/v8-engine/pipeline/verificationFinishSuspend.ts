@@ -15,6 +15,10 @@ import type { TaskListRef } from "../internal/taskListRuntime";
 import type { ExecutionSeed } from "../modules/execution-seed";
 import type { AgentEngineRuntime } from "./runtime";
 import type { ToolLoopOutcome } from "./types";
+import {
+  consultRuntimeGate,
+  hubSuspendKind,
+} from "../helpers/ConsultRuntimeGate";
 import { saveSuspendedRun } from "../helpers/SaveSuspendedRun";
 
 type FinishFn = (partial: {
@@ -87,7 +91,17 @@ export async function finishIfGrantExpansionRequired(
     }
 
     const expansionId = runtime.deps.idGenerator.next("gexp");
+    // S10-EVAC: grant expansion via gates hub.
+    const grantVerdict = consultRuntimeGate("after_tool", {
+      runId,
+      needsGrantExpansion: true,
+    });
+    const suspendKind = hubSuspendKind(
+      grantVerdict,
+      "grant_expansion_required",
+    );
     reasonCodes.push("grant_expansion_suspended");
+    warnings.push("gates_hub:grant_expansion");
     await saveSuspendedRun({
       store: runtime.deps.checkpointStore,
       checkpoint: {
@@ -96,7 +110,7 @@ export async function finishIfGrantExpansionRequired(
       ...(runtime.contextEpochs.get(runId)
         ? { contextEpoch: runtime.contextEpochs.get(runId) }
         : {}),
-      suspensionKind: "grant_expansion_required",
+      suspensionKind: suspendKind,
       input,
       decision,
       pinnedState,
@@ -229,7 +243,15 @@ export async function finishIfContinueRequired(
       });
     }
 
+    // S10-EVAC: continue wall via gates hub (on_budget).
+    const continueVerdict = consultRuntimeGate("on_budget", {
+      runId,
+      budgetHardWall: currentOutcome.wallReason === "budget_exhausted",
+      stalledOrBlocked: currentOutcome.wallReason !== "budget_exhausted",
+    });
+    const continueKind = hubSuspendKind(continueVerdict, "continue_required");
     reasonCodes.push("stall_continue_suspended");
+    warnings.push("gates_hub:continue_wall");
     await saveSuspendedRun({
       store: runtime.deps.checkpointStore,
       checkpoint: {
@@ -238,7 +260,7 @@ export async function finishIfContinueRequired(
       ...(runtime.contextEpochs.get(runId)
         ? { contextEpoch: runtime.contextEpochs.get(runId) }
         : {}),
-      suspensionKind: "continue_required",
+      suspensionKind: continueKind,
       input,
       decision,
       pinnedState,

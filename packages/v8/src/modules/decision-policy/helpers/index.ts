@@ -76,6 +76,18 @@ export type {
   CompileGrantFromPlateInput,
   CompileGrantFromPlateResult,
 } from "./CompileGrantFromPlate";
+export {
+  attachUnifiedScopes,
+  deriveUnifiedScopes,
+} from "./AttachUnifiedScopes";
+export type { UnifiedGrantScopes } from "./AttachUnifiedScopes";
+export { toModelToolSurface } from "./ToModelToolSurface";
+export type { GrantToolSurface } from "./ToModelToolSurface";
+export {
+  applyUpgradePlate,
+  isRegisteredUpgradePlate,
+} from "./ApplyUpgradePlate";
+export type { ApplyUpgradePlateInput } from "./ApplyUpgradePlate";
 
 export {
   buildVerificationGrant,

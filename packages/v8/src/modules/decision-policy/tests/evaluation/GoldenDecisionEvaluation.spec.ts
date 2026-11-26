@@ -25,6 +25,8 @@ describe("Golden decision policy cases", () => {
       } else if (fixture.adjustment?.kind === "widen") {
         decision = pipeline.widen({
           previous: decision,
+          upgradePlateId:
+            fixture.adjustment.upgradePlateId ?? "upgrade_expand_write_paths",
           extraPaths: fixture.adjustment.extraPaths,
         });
       }

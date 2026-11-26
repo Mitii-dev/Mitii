@@ -19,6 +19,8 @@ export {
   MUTATION_TOOL_IDS,
   GITHUB_MUTATION_TOOL_IDS,
   GIT_MUTATION_TOOL_IDS,
+  TOOL_FAMILIES,
+  expandToolFamilies,
   DECISION_REASON_CODES,
   DECISION_REASON,
   DECISION_POLICY_MESSAGES,
@@ -28,7 +30,7 @@ export {
   DIAGNOSIS_TASK_INTENTS,
   ANSWER_TASK_INTENTS,
 } from "./constants";
-export type { DecisionPolicyStageName } from "./constants";
+export type { DecisionPolicyStageName, ToolFamilyId } from "./constants";
 export type { ModuleLoggerPort } from "./ports/ModuleLoggerPort";
 export { noopModuleLogger } from "./ports/ModuleLoggerPort";
 export type { DecisionPolicyPipelineDependencies } from "./flow/DecisionPolicyPipeline";
@@ -57,6 +59,11 @@ export {
   applyAntiNagAsk,
   mapPlanningHintToDepth,
   compileGrantFromPlate,
+  attachUnifiedScopes,
+  deriveUnifiedScopes,
+  toModelToolSurface,
+  applyUpgradePlate,
+  isRegisteredUpgradePlate,
   intersectUserSafetyRules,
   grantNeverWidens,
   formatEffectiveGrant,

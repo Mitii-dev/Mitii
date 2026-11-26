@@ -59,6 +59,10 @@ export const runtimeStartInputSchema = z
     turnKind: z
       .enum(["new", "continue", "steer", "follow_up", "recover"])
       .optional(),
+    /** Project rule ids from host instructions (pins). */
+    projectRuleIds: z.array(z.string().min(1)).max(32).optional(),
+    /** Safety deny-tool / deny-path ids for early pins (S1-MCP-RULES). */
+    userSafetyRuleIds: z.array(z.string().min(1)).max(32).optional(),
     /** Catalog slice for Orient (S1-CATALOG) — host/precomputed. */
     catalog: z
       .object({
@@ -67,6 +71,7 @@ export const runtimeStartInputSchema = z
             z
               .object({
                 id: z.string().min(1),
+                name: z.string().optional(),
                 language: z.string().optional(),
                 packageManager: z.string().optional(),
                 scripts: z.record(z.string()).optional(),
@@ -77,6 +82,22 @@ export const runtimeStartInputSchema = z
           .max(64)
           .optional(),
         configPointers: z.array(z.string()).max(64).optional(),
+        relationships: z
+          .array(
+            z
+              .object({
+                fromProjectId: z.string().min(1),
+                toProjectId: z.string().min(1),
+                type: z.enum([
+                  "workspace_member",
+                  "depends_on",
+                  "development_depends_on",
+                ]),
+              })
+              .strict(),
+          )
+          .max(128)
+          .optional(),
       })
       .strict()
       .optional(),

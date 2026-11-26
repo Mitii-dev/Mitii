@@ -7,6 +7,7 @@ import {
 import { selectRouteBody } from "../../helpers/routes";
 import type { RouteBodyPlan } from "../../helpers/routes";
 import { scopesFromVerdict } from "../../helpers/grant/ScopesFromVerdict";
+import { captureVerificationBaseline } from "../../helpers/verify/CaptureVerificationBaseline";
 import type { TaskDirectionAssessment } from "../../contracts/assess/TaskDirectionAssessment";
 import type { SituationPack } from "../../contracts/orient/SituationPack";
 import type { StepContext } from "./StepContext";
@@ -14,7 +15,10 @@ import type { StepContext } from "./StepContext";
 export interface RuntimeVerificationSketch {
   required: boolean;
   minimumEvidence: string[];
+  /** Alias of minimumEvidence (S12). */
+  checks?: string[];
   allowUnavailable: boolean;
+  onFailure?: "retry" | "report" | "block";
 }
 
 export interface RuntimeDecisionSketch {
@@ -40,6 +44,16 @@ export interface RuntimeDecisionSketch {
  * Step 5 — Decide via plate registry (authority). Maps plate `answer` → live wire route.
  */
 export function decide(ctx: StepContext): RuntimeDecisionSketch {
+  // S10-REPLATE: keep minted execute decision from plan-approve resume.
+  const replateMeta = ctx.store.getSlice("replateMeta");
+  const existing = ctx.store.getSlice<RuntimeDecisionSketch>("decision");
+  if (
+    replateMeta &&
+    existing?.reasonCodes?.includes("replate_on_plan_approve")
+  ) {
+    return existing;
+  }
+
   const assessment = ctx.store.getSlice<TaskDirectionAssessment>("assessment");
   if (!assessment) {
     throw new Error("decide requires assessment slice");
@@ -97,13 +111,32 @@ export function decide(ctx: StepContext): RuntimeDecisionSketch {
     ? {
         required: true,
         minimumEvidence: ["diagnostics", "diff_review"],
+        checks: ["diagnostics", "diff_review"],
         allowUnavailable: true,
+        onFailure: "retry",
       }
     : {
         required: false,
         minimumEvidence: [],
+        checks: [],
         allowUnavailable: true,
+        onFailure: "report",
       };
+
+  // S12-BASELINE: pin cheap host diagnostics before mutations.
+  let baselineCode: string | undefined;
+  if (isExecute) {
+    const baseline = captureVerificationBaseline({
+      diagnostics: ctx.input.host?.diagnostics,
+      dirtyPaths: ctx.input.host?.dirtyPaths,
+      focusedFile: ctx.input.host?.focusedFile,
+    });
+    ctx.store.setSlice("verifyBaseline", baseline);
+    baselineCode =
+      baseline.source === "empty"
+        ? "verify_baseline_empty"
+        : "verify_baseline_pinned";
+  }
 
   const sketch: RuntimeDecisionSketch = {
     plateId: plate.id,
@@ -130,6 +163,7 @@ export function decide(ctx: StepContext): RuntimeDecisionSketch {
       ...scopes.reasonCodes,
       ...compiled.reasonCodes,
       isExecute ? "verification_required" : "verification_not_required",
+      ...(baselineCode ? [baselineCode] : []),
       "runtime_decide_plate",
     ],
   };

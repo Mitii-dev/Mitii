@@ -10,7 +10,7 @@ import { createPipelineVerificationRunner } from "../../adapters/verification/Cr
 import { composeRuntime } from "../../adapters/compose/ComposeRuntime";
 
 describe("pipeline verification runner", () => {
-  it("skips when buildInput returns undefined", async () => {
+  it("marks unavailable when buildInput returns undefined", async () => {
     const pipeline = new VerificationPipeline({
       tools: createTools(() => {
         throw new Error("unused");
@@ -22,7 +22,7 @@ describe("pipeline verification runner", () => {
       buildInput: () => undefined,
     });
     const outcome = await runner.run({ runId: "v-1" });
-    expect(outcome.status).toBe("skipped");
+    expect(outcome.status).toBe("unavailable");
     expect(outcome.reasonCodes).toContain("verification_runner_needs_input");
   });
 

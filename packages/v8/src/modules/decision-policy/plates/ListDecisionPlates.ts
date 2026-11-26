@@ -10,6 +10,7 @@ import {
 import { askModeSeal } from "./modes/ask";
 import { planModeSeal } from "./modes/plan";
 import { agentModeDefault } from "./modes/agent";
+import { databaseModeSeal } from "./modes/database";
 import { antiNagClarifyClamp } from "./clamps/anti_nag_clarify";
 import { injectionClamp } from "./clamps/injection_clamp";
 import { userSafetyIntersectClamp } from "./clamps/user_safety_intersect";
@@ -37,7 +38,7 @@ export function listDecisionPlates(): readonly DecisionPlate[] {
 /** Registry surface for clamps / mode seals / upgrades (S2C). */
 export const DECISION_PLATE_REGISTRY = {
   routes: ROUTE_DECISION_PLATES,
-  modes: [askModeSeal, planModeSeal, agentModeDefault],
+  modes: [askModeSeal, planModeSeal, agentModeDefault, databaseModeSeal],
   clamps: [antiNagClarifyClamp, injectionClamp, userSafetyIntersectClamp],
   upgrades: [
     unlockRunCommandUpgrade,

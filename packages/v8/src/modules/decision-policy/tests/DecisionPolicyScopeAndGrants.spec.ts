@@ -85,6 +85,7 @@ describe("DecisionPolicyPipeline scope and grants", () => {
 
     const widened = pipeline.widen({
       previous: base,
+      upgradePlateId: "upgrade_unlock_network",
       extraNetworkHosts: ["www.zebra.com", "support.zebra.com", "www.zebra.com"],
     });
     expect(widened.toolGrant.networkHosts).toEqual([
@@ -226,7 +227,8 @@ describe("DecisionPolicyPipeline scope and grants", () => {
     const decision = pipeline.decide(
       createInput({
         mode: "agent",
-        message: "@packages/mui-builder fix all the ts errors",
+        message:
+          "Only edit under packages/mui-builder — fix all the ts errors",
         understanding: createUnderstanding({
           primaryTaskIntent: "bugfix",
           interactionIntent: "act",
@@ -247,6 +249,9 @@ describe("DecisionPolicyPipeline scope and grants", () => {
 
     expect(decision.toolGrant.pathScopes).toEqual(["."]);
     expect(decision.toolGrant.mutationPathScopes).toEqual([
+      "packages/mui-builder",
+    ]);
+    expect(decision.toolGrant.scopes?.writePaths).toEqual([
       "packages/mui-builder",
     ]);
     const narrowed = pipeline.narrow({
@@ -282,7 +287,7 @@ describe("DecisionPolicyPipeline scope and grants", () => {
     const decision = pipeline.decide(
       createInput({
         mode: "agent",
-        message: "Fix src/parser/parse.ts",
+        message: "Only edit under src/parser — fix src/parser/parse.ts",
         understanding: createUnderstanding({
           primaryTaskIntent: "bugfix",
           interactionIntent: "act",
@@ -297,14 +302,17 @@ describe("DecisionPolicyPipeline scope and grants", () => {
       }),
     );
 
-    expect(decision.toolGrant.pathScopes).toEqual(["src/parser"]);
+    // Reads stay workspace-wide; writes fenced by explicit limit.
+    expect(decision.toolGrant.pathScopes).toEqual(["."]);
+    expect(decision.toolGrant.mutationPathScopes).toEqual(["src/parser"]);
     const narrowed = pipeline.narrow({
       previous: decision,
       discoveredPaths: ["apps/other/file.ts"],
     });
 
     expect(narrowed.reasonCodes).not.toContain("grant_narrowed");
-    expect(narrowed.toolGrant.pathScopes).toEqual(["src/parser"]);
+    expect(narrowed.toolGrant.pathScopes).toEqual(["."]);
+    expect(narrowed.toolGrant.mutationPathScopes).toEqual(["src/parser"]);
   });
 
   it("raises approval mode and tightens mutation budget on high residual risk", () => {
@@ -344,7 +352,7 @@ describe("DecisionPolicyPipeline scope and grants", () => {
     const decision = pipeline.decide(
       createInput({
         mode: "agent",
-        message: "Fix src/parser/parse.ts",
+        message: "Only edit under src/parser — fix src/parser/parse.ts",
         approvalMode: "never",
         understanding: createUnderstanding({
           primaryTaskIntent: "bugfix",
@@ -420,6 +428,7 @@ describe("DecisionPolicyPipeline scope and grants", () => {
 
     const widened = pipeline.widen({
       previous: narrowed,
+      upgradePlateId: "upgrade_expand_write_paths",
       extraPaths: ["test/Desktop/pages/NavigationPage.ts"],
     });
     expect(widened.reasonCodes).toContain("grant_expanded");
