@@ -60,3 +60,32 @@ export {
   isSafeRelativePlanningPath,
   uniqueStrings,
 } from "./PlanningPathUtils";
+export {
+  isProsePathToken,
+  resolveDiscoverySeedPaths,
+  DISCOVERY_SEED_DROP_REASONS,
+} from "./DiscoverySeedPaths";
+export type {
+  DiscoverySeedDropReason,
+  DroppedSeedPath,
+  RewrittenSeedPath,
+  DiscoverySeedPathResolution,
+} from "./DiscoverySeedPaths";
+export {
+  inferDiscoveryTargetKind,
+  buildScopedRepoMapForPlanning,
+  toPlanningBuildEvidence,
+  inferLanguageFromPaths,
+  buildPlanningQuery,
+  looksLikeMultiItemPlanGuidance,
+} from "./PlanningQuery";
+export type { PlanningTaskSize } from "./PlanningPathHints";
+export {
+  resolveFollowUpPlanningTaskSize,
+  extractPriorPathHints,
+  resolvePriorPathHintBudget,
+  mergeContextPathsWithPriorHints,
+  collectPreferredPlanningPaths,
+  collectTrustedSeedPaths,
+  extractFileLikePaths,
+} from "./PlanningPathHints";

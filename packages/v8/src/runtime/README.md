@@ -15,7 +15,16 @@ helpers/task/         TaskList briefcase format + settle advance (S11-TASK)
 helpers/gates/        all suspend / complete (evaluateGates → applyGate only)
 helpers/orient/       SituationPack builders (focus≠fence, cues)
 helpers/enrich/       ContextBundle + retrieval + omission budgets (S11)
-helpers/verify/       VerificationRequest/Outcome + baseline + budgets/wall + repair (S12)
+helpers/verify/       VerificationRequest/Outcome + baseline + budgets/wall + repair/critique + decideVerificationGate (S12)
+helpers/established-facts/ mid-run observation + compiler-queue facts (survive compaction)
+helpers/run-evidence/ ledger + clamp for discovery/plan/tool/verify/stop evidence
+helpers/tool-serialize/ model-facing tool result JSON + output budgets
+helpers/loop-turn/      turn disposition + incomplete/unfulfilled recovery
+helpers/clarification/ UI-safe ask clarification payload + resume amend
+helpers/tool-recovery/ summarize/rejected recovery + leaked markup → tool calls
+helpers/context-focus/ understanding focus + file relevance + candidate paths
+helpers/preflight/     preflight grant/input/targets + unconditional capture gate
+helpers/budgets/       clamp run budget + loop input tokens + exploration signal
 helpers/handoff/      TaskHandoffNote + advance/skip/steer + Briefcase peaks (S13)
 helpers/run-state/    RunState storeroom facade + checkpoint hydrate (S11-RS)
 helpers/heartbeat/    Soft emit + durable heartbeat checkpoints (S11-HEART)
@@ -86,9 +95,11 @@ consume it. Widen grants only via registered upgrade plates (`upgradePlateId`).
 
 ## Status
 
-P8 + S1–S3A + execution-seed/user-path-priority evacuate + soft loop-rails +
-plan/shaped-discovery evacuate + §10.3 continue-reason trim + S10-EXT-AUTH +
-S2-SCOPE + S1-MCP-RULES + S2C `answer` merge + S2-RU assess wrap + engine
-assess flip + S13-ENGINE handoffs + S1 pre-decide materials + S11-MEM +
-S3A-QUALITY + S1-GATE + S11-LOOP hub gates + ToolCallCache + S13 checkpoints +
-host situation + enrich/briefcase-via-PC + S12-SELECT + S10 policy map live.
+P8 + S1–S3A + leaked-tool-markup recover + budgets/window-policy + preflight +
+context-focus + tool-recovery + clarification + verify repair/critique +
+output-truncation recovery + loop-turn + tool-serialize + planningContext +
+run-evidence + established-facts + decideVerificationGate + compaction ladder +
+session-control evacuate + residual engine evacuate closed + execution-seed +
+soft loop-rails + plan/shaped-discovery + §10.3 + S10/S11/S12/S13 + S2C/S2-RU
+live. Intentional engine-local: applyPostPlanTaskListGate +
+refreshMemoryFactsForCompaction.

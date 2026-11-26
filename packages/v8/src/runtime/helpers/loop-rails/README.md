@@ -5,7 +5,7 @@ Non-suspending mid-turn nudges (§10 soft rails). Hard suspend/complete stays in
 
 ## Owns
 - Tool-loop thrash guard (soft → force final → reject)
-- Truncation / reasoning-abort recovery decisions
+- Truncation / reasoning-abort recovery decisions + output truncation recovery plan
 - Loop file-read tracker + exploration re-read thrash
 - Mutate readiness / evidence gate / mutate-lock tool narrowing
 - Mutation critic (evaluate + run) + mutation nudge messages

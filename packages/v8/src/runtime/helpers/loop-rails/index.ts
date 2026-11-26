@@ -21,6 +21,8 @@ export type {
   TruncationRecoveryKind,
   TruncationRecoveryDecision,
 } from "./truncation/DecideTruncationRecovery";
+export { buildOutputTruncationRecovery } from "./truncation/BuildOutputTruncationRecovery";
+export type { TruncationRecoveryPlan } from "./truncation/BuildOutputTruncationRecovery";
 
 export {
   createLoopFileReadTracker,

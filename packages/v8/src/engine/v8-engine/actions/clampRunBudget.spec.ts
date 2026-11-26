@@ -1,3 +1,6 @@
+/**
+ * Shim — owner is runtime/tests/unit/budgets/WindowPolicyRuntime.spec.ts.
+ */
 import { describe, expect, it } from "vitest";
 
 import {
@@ -7,7 +10,7 @@ import {
 import { agentRunBudgetSchema } from "../contracts";
 import { clampRunBudget } from "./windowPolicyRuntime";
 
-describe("clampRunBudget soft/hard", () => {
+describe("clampRunBudget soft/hard (engine shim)", () => {
   const windowPolicy = deriveWindowPolicy({
     schemaVersion: WINDOW_BUDGET_SCHEMA_VERSION,
     contextWindowTokens: 30_000,
@@ -22,19 +25,5 @@ describe("clampRunBudget soft/hard", () => {
     });
     const { budget } = clampRunBudget(parsed, windowPolicy);
     expect(budget.maxModelCalls).toBe(windowPolicy.run.maxModelCalls);
-    expect(budget.hardMaxModelCalls).toBe(windowPolicy.run.hardMaxModelCalls);
-    expect(budget.hardMaxModelCalls).toBeGreaterThan(budget.maxModelCalls);
-  });
-
-  it("lets unlimited rise to the hard ceiling, not soft", () => {
-    const parsed = agentRunBudgetSchema.parse({
-      unlimited: true,
-      maxModelCalls: 500,
-      maxToolCalls: 500,
-      maxLoopIterations: 500,
-    });
-    const { budget } = clampRunBudget(parsed, windowPolicy);
-    expect(budget.maxModelCalls).toBe(windowPolicy.run.hardMaxModelCalls);
-    expect(budget.hardMaxModelCalls).toBe(windowPolicy.run.hardMaxModelCalls);
   });
 });

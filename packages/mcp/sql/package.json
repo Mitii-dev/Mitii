@@ -1,6 +1,6 @@
 {
   "name": "@mitii/mcp-sql",
-  "version": "2.11.47",
+  "version": "2.11.48",
   "description": "Mitii MCP stdio server for multi-dialect SQL (Postgres/MySQL/MariaDB/SQLite) — readonly or readwrite via MCP_DB_ACCESS.",
   "license": "AGPL-3.0-or-later",
   "type": "module",

@@ -8,6 +8,8 @@ Bounded readonly discovery before PlanningPipeline (S3A-DISCOVER).
 - Discovery strategy contract (`applyPlanModeDiscoveryContract`)
 - Scope-phase bounds / clarify draft / next-phase answer formatting
 - Planning follow-up detection + path utils
+- Planning query / path hints / preferred seed paths (`PlanningQuery`, `PlanningPathHints`)
+- Discovery seed-path hygiene (`DiscoverySeedPaths`)
 - Readonly discovery grant surface
 
 ## Does not own

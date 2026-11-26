@@ -57,3 +57,49 @@ export type {
   ChangeClassSelectPolicy,
   VerificationCheckKind,
 } from "./ChangeClassSelectTable";
+export {
+  decideVerificationGate,
+  resolveFailedVerificationTerminalStatus,
+} from "./DecideVerificationGate";
+export type { VerificationGateDecision } from "./DecideVerificationGateTypes";
+export { isUserGoalComplete } from "./IsUserGoalComplete";
+export {
+  isPhantomConfigDiagnostic,
+  packageCompileEvidencePassed,
+  failuresAreIgnorableWhenPackagePassed,
+  isPackageScopedCheck,
+  isWorkspaceRootCheck,
+  askScopedDiagnosticsClean,
+} from "./VerificationGateEvidence";
+export {
+  parseVerificationCritique,
+  formatVerificationCritiqueWarnings,
+  VERIFICATION_CRITIQUE_DECISIONS,
+  VERIFICATION_CRITIQUE_SEVERITIES,
+} from "./ParseVerificationCritique";
+export type {
+  VerificationCritiqueDecision,
+  VerificationCritiqueIssue,
+  VerificationCritiqueResult,
+  VerificationCritiqueSeverity,
+} from "./ParseVerificationCritique";
+export {
+  buildVerificationRepairPrompt,
+  filterDiagnosticsToAskScope,
+} from "./BuildVerificationRepairPrompt";
+export {
+  diagnosticSourceLineKey,
+  loadDiagnosticSourceLines,
+} from "./LoadDiagnosticSourceLines";
+export { buildPreflightDiagnosticRepairInstruction } from "./BuildPreflightDiagnosticRepairInstruction";
+export type { PreflightDiagnosticRepairInstructionInput } from "./BuildPreflightDiagnosticRepairInstruction";
+export {
+  shouldContinueVerificationRepair,
+  maxVerificationRepairsForDepth,
+  nextStalledRepairCount,
+  reservedVerificationRepairModelCalls,
+} from "./ShouldContinueVerificationRepair";
+export type {
+  ShouldContinueVerificationRepairInput,
+  VerificationRepairStopReason,
+} from "./ShouldContinueVerificationRepair";
