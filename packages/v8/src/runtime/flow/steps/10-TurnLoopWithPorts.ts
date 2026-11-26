@@ -1,19 +1,20 @@
 import { packTurnOrBriefcase } from "../../helpers/store/PackTurnOrBriefcase";
+import { getOrCreateToolCallCache } from "../../helpers/store/ToolCallCache";
 import { evaluateSoftRails } from "../../helpers/rails";
 import { countTurnHeartbeats } from "../../helpers/heartbeat/CountTurnHeartbeats";
-import {
-  appendToolInvocation,
-  findByIdempotencyKey,
-} from "../../helpers/tool-journal/AppendToolInvocation";
-import { buildIdempotencyKey } from "../../helpers/tool-journal/BuildIdempotencyKey";
-import { settleToolInvocation } from "../../helpers/tool-journal/SettleToolInvocation";
 import type { ToolInvocationRecord } from "../../helpers/tool-journal";
-import { applyTaskSettleToStore } from "../../helpers/task";
+import {
+  evaluateAfterToolGate,
+  evaluateOnBudgetGate,
+  mapGateVerdictToTurnGate,
+  resolveBudgetHardWall,
+} from "../../helpers/turn";
+import { settleToolCallWithCache } from "../../helpers/turn/SettleToolCallWithCache";
 import type { RuntimeDependencies } from "../../ports/RuntimeDependencies";
 import type { GrantSurface } from "../../tools/CheckToolAgainstGrant";
 import { checkToolAgainstGrant } from "../../tools/CheckToolAgainstGrant";
 import { classifyToolEffect } from "../../tools/ClassifyToolEffect";
-import { needsMutationApproval } from "../../tools/NeedsMutationApproval";
+import { isGrantDenyReason } from "../../tools/GrantDenyReasons";
 import type { TaskList } from "../../../modules/task-list";
 import type { ContextBundleSketch } from "./9-EnrichContext";
 import type { RuntimeDecisionSketch } from "./5-Decide";
@@ -27,8 +28,8 @@ import {
 const MAX_PORT_TURNS = 4;
 
 /**
- * Step 10 with injected model/tool ports — packTurn → model → grant → journal settle.
- * Mutate tools under every_mutation / when_required suspend mid-turn.
+ * Step 10 with injected model/tool ports — pack → model → after_tool hub → settle.
+ * Mutate / expansion / budget walls go through evaluateGates (S11-LOOP).
  */
 export async function turnLoopWithPorts(
   ctx: StepContext,
@@ -53,7 +54,8 @@ export async function turnLoopWithPorts(
   const bundle = ctx.store.getSlice<ContextBundleSketch>("contextBundle");
   const taskList = ctx.store.getSlice<TaskList>("taskList");
   const grant: GrantSurface = opts?.grant ?? defaultGrantFromDecision(decision);
-
+  const runId = ctx.store.getStore().runId;
+  const toolCache = getOrCreateToolCallCache(ctx.store);
   const windowTokens =
     (ctx.store.getSlice<{ contextWindowTokens?: number }>("windowPolicy")
       ?.contextWindowTokens as number | undefined) ?? undefined;
@@ -80,9 +82,8 @@ export async function turnLoopWithPorts(
   if (deps.model) {
     for (let turn = 0; turn < MAX_PORT_TURNS; turn++) {
       if (ctx.store.isCancelling() || gate) break;
-      if (ctx.abortSignal?.aborted || ctx.store.isCancelling()) {
-        break;
-      }
+      if (ctx.abortSignal?.aborted || ctx.store.isCancelling()) break;
+
       const response = await deps.model.complete(
         {
           messages: [
@@ -113,75 +114,79 @@ export async function turnLoopWithPorts(
         });
         if (!check.ok) {
           denials.push(check.reason ?? "tool_not_allowed");
+          const denyReason =
+            check.reason && isGrantDenyReason(check.reason)
+              ? check.reason
+              : undefined;
+          gate = mapGateVerdictToTurnGate(
+            evaluateAfterToolGate({
+              runId,
+              mode: ctx.mode,
+              route: decision?.route,
+              effect,
+              grant,
+              denyReason,
+              enableExtendedGates: deps.enableExtendedGates === true,
+            }),
+            {
+              toolId: call.toolId,
+              invocationId: call.callId || `inv_${journal.length + 1}`,
+            },
+          );
+          if (gate) {
+            reasonCodes.push(...gate.reasonCodes);
+            break;
+          }
           continue;
         }
 
-        if (needsMutationApproval({ effect, grant })) {
-          const invocationId = call.callId || `inv_${journal.length + 1}`;
-          gate = {
-            status: "suspended",
-            kind: "mutation_approval_required",
+        const hubGate = mapGateVerdictToTurnGate(
+          evaluateAfterToolGate({
+            runId,
+            mode: ctx.mode,
+            route: decision?.route,
+            effect,
+            grant,
+            needsExternalSideEffectApproval: effect === "external",
+            enableExtendedGates: deps.enableExtendedGates === true,
+          }),
+          {
             toolId: call.toolId,
-            invocationId,
-            reasonCodes: [
-              "gate_mutation_approval_required",
-              "approval_required",
-            ],
-          };
-          reasonCodes.push(...gate.reasonCodes);
+            invocationId: call.callId || `inv_${journal.length + 1}`,
+          },
+        );
+        if (hubGate) {
+          gate = hubGate;
+          reasonCodes.push(...hubGate.reasonCodes);
           ctx.store.setSlice("pendingMutationApproval", {
             toolId: call.toolId,
-            invocationId,
+            invocationId: hubGate.invocationId,
             args: call.args,
           });
           break;
         }
 
-        const idempotencyKey = buildIdempotencyKey({
+        const settled = await settleToolCallWithCache({
+          journal,
+          toolCache,
+          store: ctx.store,
           toolId: call.toolId,
           args: call.args,
+          effect,
+          invocationId: call.callId || `inv_${journal.length + 1}`,
+          execute: deps.tools
+            ? () =>
+                deps.tools!.execute({
+                  toolId: call.toolId,
+                  args: call.args,
+                  grant,
+                  invocationId: call.callId || `inv_${journal.length + 1}`,
+                })
+            : undefined,
         });
-        const existing = findByIdempotencyKey(journal, idempotencyKey);
-        if (existing?.status === "succeeded") continue;
-
-        const invocationId = call.callId || `inv_${journal.length + 1}`;
-        const now = new Date().toISOString();
-        journal = appendToolInvocation(journal, {
-          invocationId,
-          toolId: call.toolId,
-          idempotencyKey,
-          status: "pending",
-          inputHash: idempotencyKey,
-          effectClass: effect === "mutate" ? "mutate" : "read",
-          startedAt: now,
-        });
-
-        let status: "succeeded" | "failed" = "succeeded";
-        if (deps.tools) {
-          const result = await deps.tools.execute({
-            toolId: call.toolId,
-            args: call.args,
-            grant,
-            invocationId,
-          });
-          if (!result.ok) {
-            status = "failed";
-            if (result.reasonCode) denials.push(result.reasonCode);
-          }
-        }
-        journal = settleToolInvocation(journal, {
-          invocationId,
-          status,
-          finishedAt: new Date().toISOString(),
-        });
-        reasonCodes.push(
-          ...applyTaskSettleToStore({
-            store: ctx.store,
-            args: call.args,
-            effect,
-            status,
-          }),
-        );
+        journal = settled.journal;
+        reasonCodes.push(...settled.reasonCodes);
+        if (settled.denial) denials.push(settled.denial);
       }
     }
   }
@@ -193,13 +198,26 @@ export async function turnLoopWithPorts(
     repeatedToolCalls: toolCallCount,
     budgetUsedRatio: denials.length > 0 ? 0.5 : 0.1,
     wallTimeSoftMs: deps.wallTimeSoftMs,
+    elapsedMs: Date.now() - loopStartedAtMs,
   });
 
-  const heartbeats = countTurnHeartbeats({
-    startedAtMs: loopStartedAtMs,
-    nowMs: Date.now(),
-    intervalMs: deps.heartbeatIntervalMs,
-  });
+  if (!gate) {
+    gate = mapGateVerdictToTurnGate(
+      evaluateOnBudgetGate({
+        runId,
+        mode: ctx.mode,
+        route: decision?.route,
+        budgetHardWall: resolveBudgetHardWall({
+          toolCallCount,
+          maxToolCalls: decision?.toolGrant?.limits?.maxToolCalls,
+          elapsedMs: Date.now() - loopStartedAtMs,
+          wallTimeSoftMs: deps.wallTimeSoftMs,
+        }),
+        softRails,
+      }),
+    );
+    if (gate) reasonCodes.push(...gate.reasonCodes);
+  }
 
   const sketch: TurnLoopSketch = {
     cancelled: false,
@@ -207,8 +225,16 @@ export async function turnLoopWithPorts(
     softRails,
     journal,
     denials,
-    heartbeats,
-    reasonCodes: [...reasonCodes, ...denials.map((d) => `deny_${d}`)],
+    heartbeats: countTurnHeartbeats({
+      startedAtMs: loopStartedAtMs,
+      nowMs: Date.now(),
+      intervalMs: deps.heartbeatIntervalMs,
+    }),
+    reasonCodes: [
+      ...reasonCodes,
+      ...denials.map((d) => `deny_${d}`),
+      "turn_loop_hub_gates",
+    ],
     gate,
   };
   ctx.store.setSlice("turnLoop", sketch);

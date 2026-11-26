@@ -36,6 +36,8 @@ export interface RuntimeDependencies {
    * uses buildBriefcaseViaPC when set.
    */
   promptConstruction?: RuntimePromptConstructionPort;
+  /** Opt-in extended gate kinds (external / destructive / auth). */
+  enableExtendedGates?: boolean;
   /**
    * Live event sink for progressive MitiiRun streaming while the pump runs.
    * Prefer per-start override via ExecuteRuntimeStartInput.eventSink.

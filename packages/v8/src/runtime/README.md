@@ -24,6 +24,7 @@ helpers/mcp/          attach/revoke mid-run (§16)
 helpers/grant/        scopesFromVerdict
 helpers/plan/         when-to-run 3A + hollow reject + PlanningInput map + telemetry
 helpers/plan-discovery/ readonly discovery pump + quality floor (S3A-DISCOVER)
+helpers/turn/         after_tool / on_budget hub + settle+ToolCallCache (S11-LOOP)
 helpers/routes/       job-card bodies
 helpers/rails/        soft nudges (never suspend)
 helpers/tool-journal/ append / settle / idempotency
@@ -85,5 +86,5 @@ consume it. Widen grants only via registered upgrade plates (`upgradePlateId`).
 
 ## Status
 
-P8 + S1–S3A (DISCOVER/TELEMETRY/STEER/WINDOW/EXIT/TASKLIST) + host situation +
-S2C + enrich/briefcase-via-PC + S12-SELECT + S10 policy map live.
+P8 + S1–S3A + S11-LOOP hub gates + ToolCallCache + S13 checkpoint handoffs +
+host situation + S2C + enrich/briefcase-via-PC + S12-SELECT + S10 policy map live.

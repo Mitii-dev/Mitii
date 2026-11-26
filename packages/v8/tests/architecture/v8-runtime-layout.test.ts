@@ -114,6 +114,7 @@ describe("v8 runtime layout (rewrite P0)", () => {
         "routes",
         "plan",
         "plan-discovery",
+        "turn",
         "rails",
       ]),
     );

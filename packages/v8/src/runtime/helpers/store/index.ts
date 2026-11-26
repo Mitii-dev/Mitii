@@ -18,6 +18,11 @@ export { buildBriefcaseViaPC } from "./BuildBriefcaseViaPC";
 export type { BuildBriefcaseViaPCInput } from "./BuildBriefcaseViaPC";
 export { mapSketchToPromptConstructionInput } from "./MapSketchToPromptConstructionInput";
 export {
+  ToolCallCache,
+  getOrCreateToolCallCache,
+} from "./ToolCallCache";
+export type { ToolCallCacheEntry } from "./ToolCallCache";
+export {
   layoutBriefcaseSlots,
   cacheBreakpointsForCapability,
   flattenBriefcaseSlots,

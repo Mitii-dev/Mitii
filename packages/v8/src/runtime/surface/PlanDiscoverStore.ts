@@ -77,3 +77,19 @@ export {
   extractChangedPathsFromToolArgs,
   applyTaskSettleToStore,
 } from "../helpers/task";
+export {
+  evaluateAfterToolGate,
+  evaluateOnBudgetGate,
+  resolveBudgetHardWall,
+  mapGateVerdictToTurnGate,
+} from "../helpers/turn";
+export type {
+  TurnLoopHubGate,
+  TurnLoopHubGateKind,
+} from "../helpers/turn";
+export {
+  ToolCallCache,
+  getOrCreateToolCallCache,
+} from "../helpers/store/ToolCallCache";
+export type { ToolCallCacheEntry } from "../helpers/store/ToolCallCache";
+export { attachHandoffsToCheckpointPayload } from "../helpers/checkpoint/AttachHandoffsToCheckpointPayload";

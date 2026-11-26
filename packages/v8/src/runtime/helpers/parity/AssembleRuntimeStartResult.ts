@@ -90,6 +90,7 @@ export async function assembleRuntimeStartResult(input: {
       reasonCodes: through.planGate.reasonCodes,
       payload: { planFingerprint },
       storeSnapshot: through.store.snapshot(),
+      liveStore: through.store,
     });
     return runtimeRunResultSchema.parse({
       schemaVersion: 1,
@@ -131,6 +132,7 @@ export async function assembleRuntimeStartResult(input: {
         invocationId: mutationGate.invocationId,
       },
       storeSnapshot: through.store.snapshot(),
+      liveStore: through.store,
     });
     return runtimeRunResultSchema.parse({
       schemaVersion: 1,
