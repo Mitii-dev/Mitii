@@ -30,6 +30,8 @@ export {
 } from "./helpers/direction/AssessDirectionWithLlm";
 export type { DirectionLlmComplete } from "./helpers/direction/AssessDirectionWithLlm";
 export { mapAssessmentToTaskAnalysis } from "./helpers/direction/MapAssessmentToTaskAnalysis";
+export { mapAssessmentToUnderstandingResult } from "./helpers/direction/MapAssessmentToUnderstandingResult";
+export { buildDirectionInputFromEnvelope } from "./helpers/direction/BuildDirectionInputFromEnvelope";
 
 export { TaskAnalysisSchema } from "./helpers/task-analyzer/contracts/output/TaskAnalysis";
 export type { TaskAnalysis } from "./helpers/task-analyzer/contracts/output/TaskAnalysis";

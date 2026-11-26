@@ -10,6 +10,11 @@
 Predicates read structured `GateContext` flags only — never benchmark wording.
 Resume handlers return a `ResumePlan`; flow executes it.
 
+**Continue reasons (§10.3):** hosts see the trimmed `CONTINUE_REASONS` set.
+Legacy engine strings (`exploration_stall`, `unfulfilled_execute`, …) map via
+`mapLegacyContinueReason`. Rationale / reset copy lives in
+`BuildBudgetWallRationale` / `BuildBudgetWallResetMessage`.
+
 ## Evacuate status
 
 - Hub API live (P1)

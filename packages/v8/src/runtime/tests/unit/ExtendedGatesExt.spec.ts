@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { evaluateGates } from "../../helpers/gates";
 import {
+  resumeAuthOrDependency,
   resumeCheckpointConflict,
   resumeExternalSideEffect,
 } from "../../helpers/gates";
@@ -50,7 +51,7 @@ describe("S10-EXT kinds", () => {
     expect(verdict?.kind).toBe("checkpoint_conflict_required");
   });
 
-  it("resume helpers map conflict / external", () => {
+  it("resume helpers map conflict / external / auth", () => {
     expect(resumeCheckpointConflict({ action: "resync" }).reenter).toBe(
       "orient",
     );
@@ -61,9 +62,12 @@ describe("S10-EXT kinds", () => {
     expect(resumeExternalSideEffect({ approved: false }).terminal).toBe(
       "cancelled",
     );
+    expect(resumeAuthOrDependency({ action: "connected" }).replayTool).toBe(
+      true,
+    );
   });
 
-  it("resume input accepts conflict/external/destructive targets", () => {
+  it("resume input accepts conflict/external/destructive/auth targets", () => {
     const parsed = runtimeResumeInputSchema.parse({
       runId: "r1",
       decision: "approve",
@@ -80,5 +84,14 @@ describe("S10-EXT kinds", () => {
         target: "external",
       }).target,
     ).toBe("external");
+
+    expect(
+      runtimeResumeInputSchema.parse({
+        runId: "r1",
+        decision: "approve",
+        target: "auth",
+        authAction: "skip_fallback",
+      }).authAction,
+    ).toBe("skip_fallback");
   });
 });

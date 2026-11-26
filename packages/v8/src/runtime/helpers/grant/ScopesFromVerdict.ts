@@ -25,6 +25,14 @@ export function scopesFromVerdict(scope: ScopeVerdict | undefined): {
     };
   }
 
+  const protectedPaths =
+    scope.protectedPaths && scope.protectedPaths.length > 0
+      ? [...scope.protectedPaths]
+      : undefined;
+  if (protectedPaths) {
+    reasonCodes.push("scopes_verdict_protected_paths");
+  }
+
   if (scope.mutationFence && scope.mutationFence.length > 0) {
     reasonCodes.push("scopes_verdict_mutation_fence");
     const fence = [...scope.mutationFence];
@@ -34,6 +42,7 @@ export function scopesFromVerdict(scope: ScopeVerdict | undefined): {
       scopes: {
         readPaths: ["."],
         writePaths: fence,
+        ...(protectedPaths ? { protectedPaths } : {}),
       },
       reasonCodes,
     };
@@ -43,7 +52,10 @@ export function scopesFromVerdict(scope: ScopeVerdict | undefined): {
   return {
     pathScopes: ["."],
     mutationPathScopes: undefined,
-    scopes: { readPaths: ["."] },
+    scopes: {
+      readPaths: ["."],
+      ...(protectedPaths ? { protectedPaths } : {}),
+    },
     reasonCodes,
   };
 }

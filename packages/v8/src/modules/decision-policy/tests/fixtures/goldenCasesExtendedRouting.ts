@@ -142,7 +142,7 @@ export const GOLDEN_DECISION_CASES_EXTENDED_A: GoldenDecisionCase[] = [
       interactionIntent: "act",
     }),
     expected: {
-      route: "repository_answer",
+      route: "answer",
       maximumWorkspaceEffect: "read",
       reasonCodesIncludes: ["prompt_injection_ignored"],
       warningsIncludes: ["ignored"],
@@ -183,7 +183,7 @@ export const GOLDEN_DECISION_CASES_EXTENDED_A: GoldenDecisionCase[] = [
       },
     }),
     expected: {
-      route: "repository_answer",
+      route: "answer",
       maximumWorkspaceEffect: "read",
       reasonCodesIncludes: ["repository_grounded_answer"],
       allowedToolsIncludes: ["read_file"],
@@ -203,7 +203,7 @@ export const GOLDEN_DECISION_CASES_EXTENDED_A: GoldenDecisionCase[] = [
       },
     }),
     expected: {
-      route: "repository_answer",
+      route: "answer",
       allowedToolsIncludes: ["search_files"],
     },
   },
@@ -222,7 +222,7 @@ export const GOLDEN_DECISION_CASES_EXTENDED_A: GoldenDecisionCase[] = [
       },
     }),
     expected: {
-      route: "repository_answer",
+      route: "answer",
       reasonCodesIncludes: ["repository_grounded_answer"],
     },
   },
@@ -237,7 +237,7 @@ export const GOLDEN_DECISION_CASES_EXTENDED_A: GoldenDecisionCase[] = [
       taskAnalysis: { scope: "unknown", recommendsRepositoryDiscovery: false },
     }),
     expected: {
-      route: "repository_answer",
+      route: "answer",
       allowedToolsIncludes: ["read_file"],
     },
   },
@@ -256,9 +256,10 @@ export const GOLDEN_DECISION_CASES_EXTENDED_A: GoldenDecisionCase[] = [
       },
     }),
     expected: {
-      route: "direct_answer",
-      maximumWorkspaceEffect: "none",
-      allowedToolsExcludes: ["read_file"],
+      route: "answer",
+      maximumWorkspaceEffect: "read",
+      allowedToolsIncludes: ["read_file"],
+      allowedToolsExcludes: ["apply_patch"],
     },
   },
   {
@@ -275,7 +276,7 @@ export const GOLDEN_DECISION_CASES_EXTENDED_A: GoldenDecisionCase[] = [
       },
     }),
     expected: {
-      route: "repository_answer",
+      route: "answer",
       maximumWorkspaceEffect: "read",
       allowedToolsExcludes: ["apply_patch", "run_command"],
     },
@@ -330,7 +331,7 @@ export const GOLDEN_DECISION_CASES_EXTENDED_A: GoldenDecisionCase[] = [
       taskAnalysis: { scope: "unknown", recommendsRepositoryDiscovery: false },
     }),
     expected: {
-      route: "direct_answer",
+      route: "answer",
       allowedToolsExcludes: ["apply_patch"],
     },
   },

@@ -54,7 +54,13 @@ export {
   softWarnTaskListLength,
 } from "../helpers/handoff";
 export type { TaskHandoff } from "../helpers/handoff/BuildTaskHandoff";
-export { commitRuntimeMemory } from "../helpers/memory/CommitRuntimeMemory";
+export {
+  commitRuntimeMemory,
+  commitRuntimeMemoryAsync,
+} from "../helpers/memory/CommitRuntimeMemory";
+export type { RuntimeMemoryCommitSketch } from "../helpers/memory/CommitRuntimeMemory";
+export { buildFinishMemoryContent } from "../helpers/memory/BuildFinishMemoryContent";
+export { createMemoryPipelineCommit } from "../adapters/memory/CreateMemoryPipelineCommit";
 export { isApprovedPlanFresh } from "../helpers/build/IsApprovedPlanFresh";
 export {
   checkPlanFreshness,
@@ -105,6 +111,9 @@ export type {
   RuntimeMemoryRetrievalPort,
   RuntimeRepoContextRetrievalPort,
   RuntimePromptConstructionPort,
+  RuntimeMemoryCommitPort,
+  RuntimeMemoryCommitInput,
+  RuntimeMemoryCommitResult,
 } from "../ports";
 export { createInlineVerificationRunner } from "../ports";
 export {
@@ -121,6 +130,12 @@ export {
   buildCheckpoint,
   InMemoryGateCheckpointStore,
   mapLegacySuspensionKind,
+  mapLegacyContinueReason,
+  LEGACY_CONTINUE_REASON_MAP,
+  isLegacyContinueReason,
+  buildBudgetWallRationale,
+  buildBudgetWallResetMessage,
+  shouldOfferBudgetWallContinue,
   GATE_PHASES,
   GATE_KINDS,
   CORE_GATE_KINDS,
@@ -134,11 +149,14 @@ export {
   resumeContinueDecision,
   resumeCheckpointConflict,
   resumeExternalSideEffect,
+  resumeAuthOrDependency,
   POLICY_GATE_OWNER_MAP,
   resolvePolicyGateOwner,
 } from "../helpers/gates";
-export type { PolicyGateConcern, PolicyGateOwner } from "../helpers/gates";
 export type {
+  PolicyGateConcern,
+  PolicyGateOwner,
+  LegacyContinueReason,
   GatePhase,
   GateKind,
   GateContext,

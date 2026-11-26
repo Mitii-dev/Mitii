@@ -44,7 +44,7 @@ export async function gatesAfterPlan(
     const verdict = evaluateGates("after_plan", {
       runId: ctx.store.getStore().runId,
       mode: ctx.mode,
-      route: decision.route === "repository_answer" ? "answer" : decision.route,
+      route: decision.route,
       runDisposition: "clarification_required",
       planGate,
       hollowPlan: true,
@@ -83,7 +83,7 @@ export async function gatesAfterPlan(
   const verdict = evaluateGates("after_plan", {
     runId: ctx.store.getStore().runId,
     mode: ctx.mode,
-    route: decision.route === "repository_answer" ? "answer" : decision.route,
+    route: decision.route,
     runDisposition: decision.runDisposition,
     planGate,
     planningDepth,

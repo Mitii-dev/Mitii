@@ -527,6 +527,9 @@ export async function finishExecuteOneTool(
         taskListAutoAdvanceBudget.remaining - 1,
       );
       reasonCodes.push("task_list_auto_advanced", "task_list_updated");
+      if (autoAdvanced.handoff) {
+        reasonCodes.push("task_handoff_recorded");
+      }
       if (autoAdvanced.refilled) {
         reasonCodes.push("task_list_refilled");
       }

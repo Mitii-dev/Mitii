@@ -120,7 +120,7 @@ describe("resolvePlanningDepth", () => {
 
     const result = resolvePlanningDepth({
       mode: "agent",
-      route: "repository_answer",
+      route: "answer",
       understanding,
       message,
       windowPolicy: {

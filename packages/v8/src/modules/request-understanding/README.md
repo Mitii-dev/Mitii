@@ -4,7 +4,7 @@ The interpreter: it reads the clean request and works out what the user wants an
 
 ## Does
 - Extracts messages and builds an evidence pack from the request and repository signals.
-- Classifies intent with a rule classifier plus an LLM "Officer" classifier.
+- Prefers assessment ballot (`assessDirection` / `understandViaAssessment`) without RuleIntent dual scores; legacy dual-path `understand()` still available.
 - Analyzes the task (size, clarity, targets) and can recommend clarification.
 - Never grants authority.
 
@@ -15,6 +15,8 @@ Works on a contract: validated input in → pipeline/steps → validated output 
 **Output:** `RequestUnderstandingResult` — `intent` (status accepted | clarification_required, classification, scores), `taskAnalysis`, optional `evidence`.
 **Pipeline:** `RequestUnderstandingPipeline` stages: `1-extract-messages` → `2-build-evidence` → `3-classify-intent` → `4-analyze-task` → `5-finalize-result`
 **Ports we offer / need:** needs an `LlmPort` (constructor argument) for the Officer; offers `RuleIntentClassifierPort` and `LlmIntentClassifierPort`, fulfilled by default adapters (rule and LLM classifiers) and replaceable through dependencies. Optional `ModuleLoggerPort`.
+
+**S2 path:** prefer `assessDirection` / `understandViaAssessment` (or `understand(..., { useAssessmentBallot: true })`) — SituationPack-shaped ballot with no RuleIntent dual scores. Legacy dual-path `understand()` remains for engine callers until flipped.
 
 ## Dependencies
 **Upstream (this module uses):** request-intake (envelope), model-gateway (`LlmPort`), repository-state, window-budget.

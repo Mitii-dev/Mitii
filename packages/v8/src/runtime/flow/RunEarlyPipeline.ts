@@ -4,6 +4,7 @@ import type { RuntimeStartInput } from "../contracts/input/RuntimeStartInput";
 import type { RuntimeDependencies } from "../ports/RuntimeDependencies";
 import { applyWindowPolicy } from "./steps/1-ApplyWindowPolicy";
 import { orientSituation } from "./steps/2-OrientSituation";
+import { attachPreDecideMaterialsStep } from "./steps/2b-AttachPreDecideMaterials";
 import { assessDirection } from "./steps/3-AssessDirection";
 import { fetchEphemeralPeeks } from "./steps/4-FetchEphemeralPeeks";
 import { decide } from "./steps/5-Decide";
@@ -42,6 +43,7 @@ export async function runEarlyPipeline(input: {
 
   applyWindowPolicy(ctx);
   orientSituation(ctx);
+  await attachPreDecideMaterialsStep(ctx);
   await assessDirection(ctx);
   await fetchEphemeralPeeks(ctx);
   const decision = decide(ctx);

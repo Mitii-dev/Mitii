@@ -2,6 +2,7 @@ import type { RuntimeSessionStorePort } from "../helpers/checkpoint/RuntimeSessi
 import type { RuntimeEventSink } from "../helpers/events/RuntimeEventChannel";
 import type { GateCheckpointStorePort } from "../helpers/gates/types";
 import type { RuntimeEnrichRetrievalPorts } from "./RuntimeEnrichRetrievalPorts";
+import type { RuntimeMemoryCommitPort } from "./RuntimeMemoryCommitPort";
 import type { RuntimeModelPort } from "./RuntimeModelPort";
 import type { RuntimePromptConstructionPort } from "./RuntimePromptConstructionPort";
 import type { RuntimeToolExecutorPort } from "./RuntimeToolExecutorPort";
@@ -38,6 +39,8 @@ export interface RuntimeDependencies {
   promptConstruction?: RuntimePromptConstructionPort;
   /** Opt-in extended gate kinds (external / destructive / auth). */
   enableExtendedGates?: boolean;
+  /** Finish-time memory commit via modules/memory (S11-MEM). */
+  memoryCommit?: RuntimeMemoryCommitPort;
   /**
    * Live event sink for progressive MitiiRun streaming while the pump runs.
    * Prefer per-start override via ExecuteRuntimeStartInput.eventSink.

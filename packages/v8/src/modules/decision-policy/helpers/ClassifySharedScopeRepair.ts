@@ -177,6 +177,8 @@ export function shouldRecommendChangeImpact(params: {
   if (
     route === EXECUTION_ROUTE.CLARIFY ||
     route === EXECUTION_ROUTE.DIRECT_ANSWER
+    // Canonical answer uses research grant; blast-radius recommend still applies
+    // when phrasing matches below (same as legacy repository_answer).
   ) {
     return false;
   }

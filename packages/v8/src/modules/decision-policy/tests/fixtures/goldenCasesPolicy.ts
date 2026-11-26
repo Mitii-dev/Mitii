@@ -96,7 +96,7 @@ export const GOLDEN_DECISION_CASES_POLICY: GoldenDecisionCase[] = [
       taskAnalysis: { scope: "unknown", recommendsRepositoryDiscovery: false },
     }),
     expected: {
-      route: "repository_answer",
+      route: "answer",
       allowedToolsIncludes: ["web_search", "fetch_url"],
       reasonCodesIncludes: ["network_access_granted"],
     },
@@ -113,7 +113,7 @@ export const GOLDEN_DECISION_CASES_POLICY: GoldenDecisionCase[] = [
       taskAnalysis: { scope: "unknown", recommendsRepositoryDiscovery: false },
     }),
     expected: {
-      route: "repository_answer",
+      route: "answer",
       allowedToolsExcludes: ["web_search"],
     },
   },
@@ -130,7 +130,7 @@ export const GOLDEN_DECISION_CASES_POLICY: GoldenDecisionCase[] = [
       taskAnalysis: { scope: "unknown", recommendsRepositoryDiscovery: false },
     }),
     expected: {
-      route: "direct_answer",
+      route: "answer",
       allowedToolsIncludes: ["web_search", "fetch_url"],
       reasonCodesIncludes: ["network_access_granted"],
     },
@@ -148,7 +148,7 @@ export const GOLDEN_DECISION_CASES_POLICY: GoldenDecisionCase[] = [
       taskAnalysis: { scope: "unknown", recommendsRepositoryDiscovery: false },
     }),
     expected: {
-      route: "direct_answer",
+      route: "answer",
       allowedToolsExcludes: ["web_search"],
     },
   },
@@ -168,7 +168,7 @@ export const GOLDEN_DECISION_CASES_POLICY: GoldenDecisionCase[] = [
       },
     }),
     expected: {
-      route: "repository_answer",
+      route: "answer",
       allowedToolsExcludes: ["web_search"],
     },
   },

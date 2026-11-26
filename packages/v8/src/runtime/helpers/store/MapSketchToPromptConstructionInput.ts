@@ -28,9 +28,11 @@ const EVIDENCE = new Set([
 type EvidenceKind = VerificationRequirement["minimumEvidence"][number];
 
 function mapRoute(route: string): ExecutionDecision["route"] {
+  if (route === "direct_answer" || route === "repository_answer") {
+    return "answer";
+  }
   if (
-    route === "direct_answer" ||
-    route === "repository_answer" ||
+    route === "answer" ||
     route === "clarify" ||
     route === "diagnose" ||
     route === "plan" ||

@@ -171,7 +171,7 @@ export const GOLDEN_DECISION_CASES_VERIFICATION: GoldenDecisionCase[] = [
       },
     }),
     expected: {
-      route: "repository_answer",
+      route: "answer",
       reasonCodesIncludes: ["repository_state_degraded"],
       warningsIncludes: ["degraded"],
     },

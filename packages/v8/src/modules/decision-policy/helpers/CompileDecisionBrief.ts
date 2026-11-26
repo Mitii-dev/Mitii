@@ -78,6 +78,7 @@ export function compileDecisionBrief(params: {
   }
 
   if (
+    decision.route === EXECUTION_ROUTE.ANSWER ||
     decision.route === EXECUTION_ROUTE.DIRECT_ANSWER ||
     decision.route === EXECUTION_ROUTE.REPOSITORY_ANSWER ||
     decision.route === EXECUTION_ROUTE.DIAGNOSE ||

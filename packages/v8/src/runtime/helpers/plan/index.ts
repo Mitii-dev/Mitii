@@ -29,3 +29,13 @@ export {
 export type { DeriveTaskListAfterPlanResult } from "./DeriveTaskListAfterPlan";
 export { emitPlanPhaseTelemetry } from "./EmitPlanPhaseTelemetry";
 export type { PlanPhaseTelemetry } from "./EmitPlanPhaseTelemetry";
+export { enforcePlanQuality } from "./EnforcePlanQuality";
+export type {
+  EnforcePlanQualityInput,
+  EnforcePlanQualityResult,
+} from "./EnforcePlanQuality";
+export { assemblePlanQualityGates } from "./AssemblePlanQualityGates";
+export type {
+  AssemblePlanQualityGatesInput,
+  AssemblePlanQualityGatesResult,
+} from "./AssemblePlanQualityGates";

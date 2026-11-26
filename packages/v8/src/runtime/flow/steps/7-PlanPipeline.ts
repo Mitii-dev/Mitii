@@ -5,9 +5,11 @@ import {
 import { PlanningPipeline } from "../../../modules/planning";
 import type { DiscoveryBrief, PlanningResult } from "../../../modules/planning";
 import {
+  assemblePlanQualityGates,
   beginDiscoveryTaskList,
   deriveTaskListAfterPlan,
   emitPlanPhaseTelemetry,
+  enforcePlanQuality,
   rejectHollowPlan,
   resolvePlanExit,
   shouldRunPlanPipeline,
@@ -35,6 +37,7 @@ export interface PlanPipelineSketch {
     fileReads?: number;
   };
   hollowCheck?: ReturnType<typeof rejectHollowPlan>;
+  quality?: ReturnType<typeof enforcePlanQuality>;
   planningStatus?: PlanningResult["status"];
   planTitle?: string;
   taskListDerived?: boolean;
@@ -98,7 +101,6 @@ export async function planPipeline(
     return sketch;
   }
 
-  // S3A-DISCOVER — temp discovery TaskList + bounded readonly pass.
   const discoverGate = shouldRunDiscoveryPass({
     mode: ctx.mode,
     route: decision.route,
@@ -114,7 +116,6 @@ export async function planPipeline(
     );
     ctx.store.setSlice("taskList", discoveryList.taskList);
 
-    // Quality floor only when tools can actually peek; seed-only is best-effort.
     const toolsAvailable = ctx.deps?.tools != null;
     discoveryResult = await runDiscoveryPass({
       objective:
@@ -149,25 +150,17 @@ export async function planPipeline(
     ctx.store.setSlice("planArtifact", artifact);
   }
 
-  const hollowCheck = artifact
-    ? rejectHollowPlan({
-        title: artifact.objective,
-        phases: artifact.phases?.map((phase) => ({
-          name: phase.name,
-          steps: phase.steps,
-        })),
-      })
-    : result.status === "ok"
-      ? ({ ok: false, reasonCode: "plan_hollow_no_artifact" } as const)
-      : ({ ok: true } as const);
+  const gates = assemblePlanQualityGates({
+    artifact,
+    planningStatus: result.status,
+    planningDepth: decision.planningDepth,
+    mode: ctx.mode,
+    discoveryQualityOk: discoveryResult?.quality.ok,
+    discoveryRan: Boolean(discoveryResult),
+  });
+  const { hollowCheck, quality, effectiveHollow, discoveryQualityFailed } =
+    gates;
 
-  // Hollow when discovery quality floor failed (required passes only).
-  const discoveryQualityFailed =
-    discoveryResult != null && !discoveryResult.quality.ok;
-
-  const effectiveHollow = !hollowCheck.ok || discoveryQualityFailed;
-
-  // S3A-TASKLIST — replace discovery temp list with execution checklist.
   const derived = deriveTaskListAfterPlan({
     plan: artifact,
     maxTasks: ctx.store.getSlice<{ taskList?: { maxTasks?: number } }>(
@@ -226,13 +219,16 @@ export async function planPipeline(
     hollowCheck: effectiveHollow
       ? ({
           ok: false,
-          reasonCode: discoveryQualityFailed
-            ? "plan_hollow_discovery_quality"
-            : hollowCheck.ok
+          reasonCode: !quality.ok
+            ? "plan_quality_failed"
+            : discoveryQualityFailed
               ? "plan_hollow_discovery_quality"
-              : hollowCheck.reasonCode,
+              : hollowCheck.ok
+                ? "plan_hollow_discovery_quality"
+                : hollowCheck.reasonCode,
         } as const)
       : hollowCheck,
+    quality,
     planningStatus: result.status,
     planTitle: artifact?.objective,
     taskListDerived: derived.status === "applied",
@@ -253,6 +249,7 @@ export async function planPipeline(
               ? "plan_hollow_discovery_or_artifact"
               : hollowCheck.reasonCode,
           ]),
+      ...quality.reasonCodes,
       ...derived.reasonCodes,
       ...planExit.reasonCodes,
       ...telemetry.reasonCodes,

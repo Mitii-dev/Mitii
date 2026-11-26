@@ -13,6 +13,8 @@ export interface BuildScopeVerdictInput {
   focusPaths: readonly string[];
   workRoot?: string;
   safetyFencePaths?: readonly string[];
+  /** Hard-caution paths (never auto-write without approval) — S2-SCOPE. */
+  protectedPaths?: readonly string[];
 }
 
 function inferReadHint(focusPaths: readonly string[]): ScopeReadHint {
@@ -32,6 +34,11 @@ function inferReadHint(focusPaths: readonly string[]): ScopeReadHint {
 export function buildScopeVerdict(input: BuildScopeVerdictInput): ScopeVerdict {
   const focusPaths = [...new Set(input.focusPaths.filter((p) => p.length > 0))];
   const safety = (input.safetyFencePaths ?? []).filter((p) => p.length > 0);
+  const protectedPaths = [
+    ...new Set((input.protectedPaths ?? []).filter((p) => p.length > 0)),
+  ].sort((a, b) => a.localeCompare(b));
+  const protectedField =
+    protectedPaths.length > 0 ? { protectedPaths } : {};
 
   if (safety.length > 0) {
     return scopeVerdictSchema.parse({
@@ -39,6 +46,7 @@ export function buildScopeVerdict(input: BuildScopeVerdictInput): ScopeVerdict {
       workRoot: input.workRoot,
       readHint: inferReadHint(focusPaths),
       mutationFence: [...new Set(safety)].sort((a, b) => a.localeCompare(b)),
+      ...protectedField,
       evidence: "safety_rule",
       relatedSeeds: [],
     });
@@ -51,6 +59,7 @@ export function buildScopeVerdict(input: BuildScopeVerdictInput): ScopeVerdict {
       workRoot: input.workRoot,
       readHint: inferReadHint(focusPaths),
       ...(fence ? { mutationFence: fence } : {}),
+      ...protectedField,
       evidence: fence ? "explicit_limit" : "unclear",
       relatedSeeds: [],
     });
@@ -60,6 +69,7 @@ export function buildScopeVerdict(input: BuildScopeVerdictInput): ScopeVerdict {
     focusPaths,
     workRoot: input.workRoot,
     readHint: inferReadHint(focusPaths),
+    ...protectedField,
     // mutationFence omitted — folder mention ≠ edit prison
     evidence: "focus_only",
     relatedSeeds: [],

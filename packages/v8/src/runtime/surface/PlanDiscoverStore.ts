@@ -3,6 +3,7 @@
 export {
   shouldRunPlanPipeline,
   rejectHollowPlan,
+  enforcePlanQuality,
   steerPlanArtifact,
   resolvePlanExit,
   assertWindowBand,
@@ -18,7 +19,13 @@ export type {
   ResolvePlanExitResult,
   AssertWindowBandResult,
   PlanPhaseTelemetry,
+  EnforcePlanQualityResult,
 } from "../helpers/plan";
+export { resolveOrientDepth } from "../helpers/orient";
+export type {
+  OrientDepth,
+  ResolveOrientDepthResult,
+} from "../helpers/orient";
 export {
   shouldRunDiscoveryPass,
   buildReadonlyDiscoveryGrant,
@@ -26,7 +33,21 @@ export {
   runDiscoveryPass,
   countProductiveReads,
   isProductiveDiscoveryPath,
+  requiresPlanDiscoveryQualityFloor,
+  isPlanDiscoveryEvidenceSufficient,
+  ensurePlanClarifyDraft,
+  formatPlanAnswerWithNextPhase,
+  applyPlanScopePhaseBounds,
+  boundImpactSeedsForPlanScope,
+  applyPlanModeDiscoveryContract,
+  isAgentWidePlanningScope,
+  isPlanningFollowUp,
 } from "../helpers/plan-discovery";
+export {
+  resolveShapedDiscoveryProfile,
+  SHAPED_DISCOVERY_PROFILES,
+  rankPathsForShapedDiscovery,
+} from "../helpers/shaped-discovery";
 export {
   selectRouteBody,
   clarifyRouteBody,

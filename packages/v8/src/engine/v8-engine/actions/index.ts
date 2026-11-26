@@ -121,9 +121,15 @@ export {
   buildBudgetWallResetMessage,
   shouldOfferStallContinue,
   shouldOfferBudgetWallContinue,
+  normalizeBudgetWallReason,
+  mapLegacyContinueReason,
   BUDGET_WALL_REASONS,
+  CONTINUE_REASONS,
 } from "./buildStallContinueRationale";
-export type { BudgetWallReason } from "./buildStallContinueRationale";
+export type {
+  BudgetWallReason,
+  ContinueReason,
+} from "./buildStallContinueRationale";
 export { buildPreflightDiagnosticRepairInstruction } from "./buildPreflightDiagnosticRepairInstruction";
 export { buildForcedMutationNudgeMessage } from "./buildForcedMutationNudgeMessage";
 export { buildMissingModuleStubPatches } from "./buildMissingModuleStubPatches";

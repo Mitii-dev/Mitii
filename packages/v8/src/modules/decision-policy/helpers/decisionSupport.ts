@@ -23,6 +23,8 @@ export function resolveRepositoryContextNeed(params: {
   const warnings: string[] = [];
 
   const repositoryContextRequired =
+    // Canonical answer defaults to research — repo context is available.
+    route === EXECUTION_ROUTE.ANSWER ||
     route === EXECUTION_ROUTE.REPOSITORY_ANSWER ||
     route === EXECUTION_ROUTE.DIAGNOSE ||
     route === EXECUTION_ROUTE.PLAN ||

@@ -39,7 +39,7 @@ describe("runtime bridge events", () => {
       schemaVersion: 1,
       runId: "ev-2",
       status: "completed",
-      route: "repository_answer",
+      route: "answer",
       answer: "done",
       usage: { modelCalls: 1, toolCalls: 1, loopIterations: 1 },
       toolInvocations: [

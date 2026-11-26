@@ -86,5 +86,9 @@ consume it. Widen grants only via registered upgrade plates (`upgradePlateId`).
 
 ## Status
 
-P8 + S1–S3A + S11-LOOP hub gates + ToolCallCache + S13 checkpoint handoffs +
-host situation + S2C + enrich/briefcase-via-PC + S12-SELECT + S10 policy map live.
+P8 + S1–S3A + execution-seed/user-path-priority evacuate + soft loop-rails +
+plan/shaped-discovery evacuate + §10.3 continue-reason trim + S10-EXT-AUTH +
+S2-SCOPE + S1-MCP-RULES + S2C `answer` merge + S2-RU assess wrap + engine
+assess flip + S13-ENGINE handoffs + S1 pre-decide materials + S11-MEM +
+S3A-QUALITY + S1-GATE + S11-LOOP hub gates + ToolCallCache + S13 checkpoints +
+host situation + enrich/briefcase-via-PC + S12-SELECT + S10 policy map live.

@@ -9,6 +9,7 @@ import {
 import type { RuntimeSkillsRetrievalPort } from "../../ports/RuntimeEnrichRetrievalPorts";
 
 const EXECUTION_ROUTES = [
+  "answer",
   "direct_answer",
   "repository_answer",
   "clarify",
@@ -20,6 +21,9 @@ const EXECUTION_ROUTES = [
 type ExecutionRoute = (typeof EXECUTION_ROUTES)[number];
 
 function mapExecutionRoute(route?: string): ExecutionRoute {
+  if (route === "direct_answer" || route === "repository_answer") {
+    return "answer";
+  }
   if (route && (EXECUTION_ROUTES as readonly string[]).includes(route)) {
     return route as ExecutionRoute;
   }

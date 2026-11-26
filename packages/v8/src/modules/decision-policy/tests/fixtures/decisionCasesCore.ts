@@ -171,7 +171,7 @@ export const DECISION_EVALUATION_CASES_CORE: DecisionCaseFixture[] = [
       },
     }),
     expected: {
-      route: "repository_answer",
+      route: "answer",
       maximumWorkspaceEffect: "read",
       planningDepth: "none",
     },
@@ -193,7 +193,7 @@ export const DECISION_EVALUATION_CASES_CORE: DecisionCaseFixture[] = [
       },
     }),
     expected: {
-      route: "repository_answer",
+      route: "answer",
       maximumWorkspaceEffect: "read",
     },
   },

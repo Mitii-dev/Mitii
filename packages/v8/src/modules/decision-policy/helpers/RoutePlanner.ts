@@ -30,7 +30,7 @@ function isUnattendedOrigin(origin: UserRequestOrigin | undefined): boolean {
 
 /**
  * Explicit MCP attach (Database mode / `@mcp:` pins) means the user expects
- * live tools this turn. Do not collapse to tool-less direct_answer.
+ * live tools this turn. Stamp reason codes; route is already canonical answer.
  */
 function groundRouteForMcpAttach(
   routeResult: RouteResolution,
@@ -39,11 +39,14 @@ function groundRouteForMcpAttach(
   if (!requiredMcpServerIds || requiredMcpServerIds.length === 0) {
     return routeResult;
   }
-  if (routeResult.route !== EXECUTION_ROUTE.DIRECT_ANSWER) {
+  if (
+    routeResult.route !== EXECUTION_ROUTE.ANSWER &&
+    routeResult.route !== EXECUTION_ROUTE.DIRECT_ANSWER
+  ) {
     return routeResult;
   }
   return {
-    route: "repository_answer",
+    route: EXECUTION_ROUTE.ANSWER,
     runDisposition: "continue",
     reasonCodes: [
       ...routeResult.reasonCodes,
@@ -73,8 +76,7 @@ export function planRoute(params: {
   /** Intake turn kind — continuation prefers ballot over soft re-clarify. */
   turnKind?: RequestTurnKind;
   /**
-   * When non-empty, upgrade tool-less `direct_answer` to `repository_answer`
-   * so attached MCP tools stay on a read grant.
+   * When non-empty, stamp MCP attach on answer so research grant stays tool-live.
    */
   requiredMcpServerIds?: readonly string[];
 }): RoutePlanResult {

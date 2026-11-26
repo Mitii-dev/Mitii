@@ -74,7 +74,7 @@ describe("resolveVerificationRequirement behavior evidence", () => {
       route: "answer",
       mode: "ask",
       understanding,
-      maximumWorkspaceEffect: "none",
+      maximumWorkspaceEffect: "read",
       message: "Does the /api/login endpoint return 404?",
     });
     expect(result.verification.required).toBe(false);

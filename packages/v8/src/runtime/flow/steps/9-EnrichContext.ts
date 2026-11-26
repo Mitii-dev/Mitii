@@ -10,6 +10,7 @@ import {
   sectionBudgetsFromWindowPolicy,
 } from "../../helpers/enrich";
 import { selectBriefcaseHandoffPeaks } from "../../helpers/handoff";
+import { resolveOrientDepth } from "../../helpers/orient";
 import type { TaskList } from "../../../modules/task-list";
 import type { RuntimeDecisionSketch } from "./5-Decide";
 
@@ -126,12 +127,30 @@ export async function enrichContextWithRetrieval(
 ): Promise<ContextBundle> {
   const pack = ctx.store.getSlice<SituationPack>("situationPack");
   const decision = ctx.store.getSlice<RuntimeDecisionSketch>("decision");
+  const windowPolicy = ctx.store.getSlice<{
+    band?: string;
+    contextWindowTokens?: number;
+  }>("windowPolicy");
+  const windowBand = ctx.store.getSlice<{ band?: string }>("windowBand");
+  const depth = resolveOrientDepth({
+    mode: ctx.mode,
+    windowBand: windowBand?.band ?? windowPolicy?.band,
+    contextWindowTokens:
+      windowPolicy?.contextWindowTokens ?? ctx.input.contextWindowTokens,
+    route: decision?.route,
+  });
+  ctx.store.setSlice("orientDepth", depth);
+
+  // S1-GATE — light: pin/focus stubs only; heavy: module retrieve ports.
   const materials = await retrieveEnrichMaterials({
-    ports: ctx.deps?.enrich,
+    ports: depth.depth === "heavy" ? ctx.deps?.enrich : undefined,
     skillIds: pack?.pins?.skillIds ?? [],
     query: pack?.request?.text ?? ctx.input.message,
     focusPaths: pack?.scope.focusPaths ?? [],
     route: decision?.route,
+    maxSkills: depth.maxSkills,
+    maxMemory: depth.maxMemory,
+    maxRepo: depth.maxRepo,
   });
 
   return enrichContext(ctx, {
@@ -140,6 +159,6 @@ export async function enrichContextWithRetrieval(
     repoSlices: materials.repoSlices,
     projectRulesText: opts?.projectRulesText,
     decisionBrief: opts?.decisionBrief,
-    extraReasonCodes: materials.reasonCodes,
+    extraReasonCodes: [...depth.reasonCodes, ...materials.reasonCodes],
   });
 }

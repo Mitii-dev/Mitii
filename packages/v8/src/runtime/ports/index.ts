@@ -7,6 +7,11 @@ export type {
 export type { RuntimeDependencies } from "./RuntimeDependencies";
 export type { RuntimePromptConstructionPort } from "./RuntimePromptConstructionPort";
 export type {
+  RuntimeMemoryCommitPort,
+  RuntimeMemoryCommitInput,
+  RuntimeMemoryCommitResult,
+} from "./RuntimeMemoryCommitPort";
+export type {
   RuntimeVerificationRunnerPort,
   RuntimeVerificationOutcome,
 } from "./RuntimeVerificationRunnerPort";

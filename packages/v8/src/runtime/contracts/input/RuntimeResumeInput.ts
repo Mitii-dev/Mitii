@@ -24,10 +24,13 @@ export const runtimeResumeInputSchema = z
         "external",
         "conflict",
         "destructive",
+        "auth",
       ])
       .optional(),
     /** Conflict resume action when target=conflict (default force on approve). */
     conflictAction: z.enum(["resync", "force", "cancel"]).optional(),
+    /** Auth/dependency resume when target=auth (default connected on approve). */
+    authAction: z.enum(["connected", "skip_fallback", "cancel"]).optional(),
     clarifyAnswer: z.string().optional(),
     guidance: z.string().optional(),
     /** Host Build — fingerprint of the plan being approved (freshness check). */

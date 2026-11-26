@@ -2,6 +2,7 @@ export {
   DECISION_POLICY_SCHEMA_VERSION,
   EXECUTION_ROUTE,
   EXECUTION_ROUTES,
+  LEGACY_ANSWER_ROUTES,
   PLANNING_DEPTHS,
   PLAN_GATES,
   RUN_DISPOSITIONS,
@@ -76,6 +77,8 @@ export {
   formatDecisionBriefForPrompt,
   selectGrantProfile,
   GRANT_PROFILES,
+  normalizeExecutionRoute,
+  isAnswerRoute,
 } from "./helpers";
 export type {
   GrantProfile,

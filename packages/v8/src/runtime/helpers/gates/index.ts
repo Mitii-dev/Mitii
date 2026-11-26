@@ -35,6 +35,17 @@ export type { ApplyGateDeps } from "./ApplyGate";
 export { buildCheckpoint } from "./BuildCheckpoint";
 export { InMemoryGateCheckpointStore } from "./InMemoryGateCheckpointStore";
 export { mapLegacySuspensionKind } from "./MapLegacySuspensionKind";
+export {
+  mapLegacyContinueReason,
+  LEGACY_CONTINUE_REASON_MAP,
+  isLegacyContinueReason,
+} from "./MapLegacyContinueReason";
+export type { LegacyContinueReason } from "./MapLegacyContinueReason";
+export { buildBudgetWallRationale } from "./BuildBudgetWallRationale";
+export type { BuildBudgetWallRationaleInput } from "./BuildBudgetWallRationale";
+export { buildBudgetWallResetMessage } from "./BuildBudgetWallResetMessage";
+export type { BuildBudgetWallResetMessageInput } from "./BuildBudgetWallResetMessage";
+export { shouldOfferBudgetWallContinue } from "./ShouldOfferBudgetWallContinue";
 export { predicatesForPhase } from "./catalog";
 
 export {
@@ -50,6 +61,8 @@ export { resumeGrantExpansion } from "./resume/ResumeGrantExpansion";
 export { resumeContinueDecision } from "./resume/ResumeContinueDecision";
 export { resumeCheckpointConflict } from "./resume/ResumeCheckpointConflict";
 export { resumeExternalSideEffect } from "./resume/ResumeExternalSideEffect";
+export { resumeAuthOrDependency } from "./resume/ResumeAuthOrDependency";
+export type { AuthOrDependencyAction } from "./resume/ResumeAuthOrDependency";
 
 export {
   POLICY_GATE_OWNER_MAP,

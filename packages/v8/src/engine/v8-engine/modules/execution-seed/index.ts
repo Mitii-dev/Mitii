@@ -1,3 +1,7 @@
+/**
+ * Shim — seed ownership is runtime/helpers/execution-seed.
+ * applyPostPlanTaskListGate stays engine-local (suspend orchestration).
+ */
 export {
   resolveExecutionSeed,
   isExecutionSeedTrusted,
@@ -5,20 +9,20 @@ export {
   EXECUTION_SEED_MAX_PATHS,
   EXECUTION_SEED_MAX_SYMBOLS,
   EXECUTION_SEED_MAX_CAUSE_NOTES,
-} from "./resolve";
+  applyExecutionSeedToTaskList,
+  recoverPlanTargetsFromSeed,
+  ensureConcreteTaskListFromPlan,
+  refineExecutionSeedFromContext,
+  enrichUiWiringSeeds,
+  enrichAuthMountSeeds,
+  refineExecutionSeedFromPlan,
+} from "../../../../runtime/helpers/execution-seed";
 export type {
   ExecutionSeed,
   ExecutionSeedConfidence,
   ExecutionSeedSource,
   ExecutionSeedDiagnostic,
-} from "./resolve";
-export { applyExecutionSeedToTaskList } from "./applyExecutionSeedToTaskList";
-export { recoverPlanTargetsFromSeed } from "./recoverPlanTargetsFromSeed";
-export {
-  ensureConcreteTaskListFromPlan,
-} from "./ensureConcreteTaskList";
-export type { EnsureConcreteTaskListResult } from "./ensureConcreteTaskList";
+  EnsureConcreteTaskListResult,
+} from "../../../../runtime/helpers/execution-seed";
 export { applyPostPlanTaskListGate } from "./applyPostPlanTaskListGate";
 export type { MediumTaskListGateResult } from "./applyPostPlanTaskListGate";
-export { refineExecutionSeedFromContext, enrichUiWiringSeeds, enrichAuthMountSeeds } from "./refineFromContext";
-export { refineExecutionSeedFromPlan } from "./refineFromPlan";

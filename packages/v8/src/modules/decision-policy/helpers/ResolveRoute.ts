@@ -260,14 +260,14 @@ export function resolveRoute(params: {
     if (needsRepositoryGrounding(taskAnalysis, message)) {
       reasonCodes.push("repository_grounded_answer");
       return {
-        route: "repository_answer",
+        route: "answer",
         runDisposition: "continue",
         reasonCodes,
       };
     }
     reasonCodes.push("direct_knowledge_answer");
     return {
-      route: "direct_answer",
+      route: "answer",
       runDisposition: "continue",
       reasonCodes,
     };
@@ -276,7 +276,7 @@ export function resolveRoute(params: {
   if (needsRepositoryGrounding(taskAnalysis, message)) {
     reasonCodes.push("repository_grounded_answer");
     return {
-      route: "repository_answer",
+      route: "answer",
       runDisposition: "continue",
       reasonCodes,
     };
@@ -284,7 +284,7 @@ export function resolveRoute(params: {
 
   reasonCodes.push("direct_knowledge_answer");
   return {
-    route: "direct_answer",
+    route: "answer",
     runDisposition: "continue",
     reasonCodes,
   };
@@ -426,14 +426,14 @@ function resolveAgentRouteFactsFirst(params: {
     if (needsRepositoryGrounding(taskAnalysis, message)) {
       reasonCodes.push("repository_grounded_answer");
       return {
-        route: "repository_answer",
+        route: "answer",
         runDisposition: "continue",
         reasonCodes,
       };
     }
     reasonCodes.push("direct_knowledge_answer");
     return {
-      route: "direct_answer",
+      route: "answer",
       runDisposition: "continue",
       reasonCodes,
     };
@@ -442,7 +442,7 @@ function resolveAgentRouteFactsFirst(params: {
   if (needsRepositoryGrounding(taskAnalysis, message)) {
     reasonCodes.push("repository_grounded_answer");
     return {
-      route: "repository_answer",
+      route: "answer",
       runDisposition: "continue",
       reasonCodes,
     };
@@ -450,7 +450,7 @@ function resolveAgentRouteFactsFirst(params: {
 
   reasonCodes.push("direct_knowledge_answer");
   return {
-    route: "direct_answer",
+    route: "answer",
     runDisposition: "continue",
     reasonCodes,
   };
@@ -498,7 +498,7 @@ function resolveAskRoute(params: {
   ) {
     reasonCodes.push("repository_grounded_answer");
     return {
-      route: "repository_answer",
+      route: "answer",
       runDisposition: "continue",
       reasonCodes,
     };
@@ -506,7 +506,7 @@ function resolveAskRoute(params: {
 
   reasonCodes.push("direct_knowledge_answer");
   return {
-    route: "direct_answer",
+    route: "answer",
     runDisposition: "continue",
     reasonCodes,
   };

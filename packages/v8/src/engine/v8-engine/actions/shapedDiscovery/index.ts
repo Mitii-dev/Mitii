@@ -1,42 +1,38 @@
-export type { ShapedDiscoveryProfile } from "./types";
-export type { CreateShapedDiscoveryProfileInput, PathScoreRule } from "./factory";
+/**
+ * Shim — owner is runtime/helpers/shaped-discovery.
+ */
+export type { ShapedDiscoveryProfile } from "../../../../runtime/helpers/shaped-discovery";
+export type {
+  CreateShapedDiscoveryProfileInput,
+  PathScoreRule,
+} from "../../../../runtime/helpers/shaped-discovery";
 export {
   createPathScorer,
   createShapedDiscoveryProfile,
   normalizeShapedQuery,
-} from "./factory";
-export { scoreCommonDiscoveryNoise } from "./pathNoise";
-export {
+  scoreCommonDiscoveryNoise,
   extractGlobPathsFromToolOutput,
   extractSearchPathsFromToolOutput,
-} from "./toolOutput";
-export {
   hasExplicitFilePathTargets,
   isExplicitFilePathTarget,
   rankPathsForShapedDiscovery,
   selectShapedDiscoverySeeds,
-} from "./ranking";
-export { apiBackendDiscoveryProfile } from "./profiles/apiBackend";
-export { authDiscoveryProfile } from "./profiles/auth";
-export { browserTestRunnerDiscoveryProfile } from "./profiles/browserTestRunner";
-export { buildConfigDiscoveryProfile } from "./profiles/buildConfig";
-export { ciCdDiscoveryProfile } from "./profiles/ciCd";
-export { databaseDiscoveryProfile } from "./profiles/database";
-export { frontendComponentDiscoveryProfile } from "./profiles/frontendComponent";
-export { monorepoDiscoveryProfile } from "./profiles/monorepo";
-export { securityDiscoveryProfile } from "./profiles/security";
-export { testingDiscoveryProfile } from "./profiles/testing";
-export { matchesBrowserTestRunnerQuery } from "./profiles/browserTestRunner";
-export {
+  apiBackendDiscoveryProfile,
+  authDiscoveryProfile,
+  browserTestRunnerDiscoveryProfile,
+  buildConfigDiscoveryProfile,
+  ciCdDiscoveryProfile,
+  databaseDiscoveryProfile,
+  frontendComponentDiscoveryProfile,
+  monorepoDiscoveryProfile,
+  securityDiscoveryProfile,
+  testingDiscoveryProfile,
+  matchesBrowserTestRunnerQuery,
   SHAPED_DISCOVERY_PROFILES,
   resolveShapedDiscoveryProfile,
-} from "./registry";
-export {
   cappedGlobPatterns,
   cappedSearchQueries,
   collectShapedDiscoveryHits,
-} from "./preflight";
-export {
   buildForceExplorationSearchQueries,
   collectForceExplorationFallbackHits,
-} from "./forceExplorationFallback";
+} from "../../../../runtime/helpers/shaped-discovery";

@@ -63,6 +63,9 @@ export function orientSituation(ctx: StepContext): SituationPack {
     message,
     focusPaths: uniqueFocus,
     ...(workRoot ? { workRoot } : {}),
+    ...(ctx.input.protectedPaths && ctx.input.protectedPaths.length > 0
+      ? { protectedPaths: ctx.input.protectedPaths }
+      : {}),
   });
   const scopeWithSeeds = {
     ...scope,
@@ -70,11 +73,14 @@ export function orientSituation(ctx: StepContext): SituationPack {
   };
 
   const skillIds = ctx.input.requiredSkillIds ?? [];
-  const mcpIds =
-    ctx.input.requiredMcpServerIds ??
-    ctx.input.mcpServerIds ??
-    ctx.deps?.mcpServerIds ??
-    [];
+  const mcpIds = [
+    ...new Set([
+      ...(ctx.input.requiredMcpServerIds ?? []),
+      ...(ctx.input.mcpServerIds ?? []),
+      ...(ctx.deps?.mcpServerIds ?? []),
+      ...(ctx.input.mcpAttachments?.map((a) => a.serverId) ?? []),
+    ]),
+  ];
 
   const hasHost = Boolean(
     host?.focusedFile ||
@@ -83,13 +89,32 @@ export function orientSituation(ctx: StepContext): SituationPack {
       host?.selection ||
       (host?.diagnostics && host.diagnostics.length > 0),
   );
-  const projectRuleIds = ctx.input.projectRuleIds ?? [];
-  const userSafetyRuleIds = ctx.input.userSafetyRuleIds ?? [];
+  const projectRuleIds = [
+    ...new Set([
+      ...(ctx.input.projectRuleIds ?? []),
+      ...(ctx.input.projectRuleAttachments?.map((a) => a.id) ?? []),
+    ]),
+  ];
+  const userSafetyRuleIds = [
+    ...new Set([
+      ...(ctx.input.userSafetyRuleIds ?? []),
+      ...(ctx.input.userSafetyRuleAttachments?.map((a) => a.id) ?? []),
+    ]),
+  ];
+  const mcpAttachments = ctx.input.mcpAttachments;
+  const projectRuleAttachments = ctx.input.projectRuleAttachments;
+  const userSafetyRuleAttachments = ctx.input.userSafetyRuleAttachments;
+  const hasStructuredPins = Boolean(
+    mcpAttachments?.length ||
+      projectRuleAttachments?.length ||
+      userSafetyRuleAttachments?.length,
+  );
   const hasPins =
     skillIds.length > 0 ||
     mcpIds.length > 0 ||
     projectRuleIds.length > 0 ||
-    userSafetyRuleIds.length > 0;
+    userSafetyRuleIds.length > 0 ||
+    hasStructuredPins;
   const hasHistory = Boolean(
     history?.digest ||
       history?.priorRoute ||
@@ -129,9 +154,14 @@ export function orientSituation(ctx: StepContext): SituationPack {
     ...(scopeWithSeeds.mutationFence
       ? ["scope_explicit_mutation_fence"]
       : []),
+    ...(scopeWithSeeds.protectedPaths &&
+    scopeWithSeeds.protectedPaths.length > 0
+      ? ["scope_protected_paths"]
+      : []),
     ...(workRoot ? ["orient_work_root"] : []),
     ...(hasHost ? ["orient_host_snapshot"] : []),
     ...(hasPins ? ["orient_pins_attached"] : []),
+    ...(hasStructuredPins ? ["orient_mcp_rules_structured"] : []),
     ...(hasHistory ? ["orient_history_digest"] : []),
     ...(hasGit ? ["orient_git_snapshot"] : []),
     ...(hasMemory ? ["orient_memory_facts"] : []),
@@ -173,6 +203,16 @@ export function orientSituation(ctx: StepContext): SituationPack {
             mcpIds,
             projectRules: projectRuleIds,
             userSafetyRules: userSafetyRuleIds,
+            ...(mcpAttachments && mcpAttachments.length > 0
+              ? { mcpAttachments }
+              : {}),
+            ...(projectRuleAttachments && projectRuleAttachments.length > 0
+              ? { projectRuleAttachments }
+              : {}),
+            ...(userSafetyRuleAttachments &&
+            userSafetyRuleAttachments.length > 0
+              ? { userSafetyRuleAttachments }
+              : {}),
           },
         }
       : {}),

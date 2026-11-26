@@ -1,3 +1,4 @@
+import { isAnswerRoute } from "../../../decision-policy";
 import { DEFAULT_CHARACTERS_PER_TOKEN } from "../../defaults";
 import type { SkillIndexEntry, SkillsSelectParsedInput } from "../../contracts";
 import type { SkillSimilarityPort } from "../../ports/SkillSimilarityPort";
@@ -67,7 +68,7 @@ export async function matchSkills(params: {
     }
 
     if (skill.routes.length > 0) {
-      if (skill.routes.includes(input.route)) {
+      if (routesCompatible(skill.routes, input.route)) {
         score += SKILLS_THRESHOLDS.routeWeight;
         reasons.push("route");
       }
@@ -307,6 +308,22 @@ function overlapBoost(
     evidence.has(value.toLowerCase()),
   ).length;
   return hits === 0 ? 0 : hits / skillValues.length;
+}
+
+/**
+ * Canonical `answer` matches skill tags still listing legacy answer aliases.
+ */
+function routesCompatible(
+  skillRoutes: readonly string[],
+  inputRoute: string,
+): boolean {
+  if (skillRoutes.includes(inputRoute)) {
+    return true;
+  }
+  if (!isAnswerRoute(inputRoute)) {
+    return false;
+  }
+  return skillRoutes.some((route) => isAnswerRoute(route));
 }
 
 export function matchesPathGlob(pattern: string, path: string): boolean {

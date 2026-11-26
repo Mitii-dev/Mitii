@@ -5,7 +5,11 @@ export const DECISION_POLICY_SCHEMA_VERSION = 1 as const;
 
 /** Stable route identifiers; compare against these instead of inline strings. */
 export const EXECUTION_ROUTE = {
+  /** Canonical merged answer (ex direct_answer + repository_answer). */
+  ANSWER: "answer",
+  /** @deprecated One-release shim — normalize to answer. */
   DIRECT_ANSWER: "direct_answer",
+  /** @deprecated One-release shim — normalize to answer. */
   REPOSITORY_ANSWER: "repository_answer",
   CLARIFY: "clarify",
   DIAGNOSE: "diagnose",
@@ -14,12 +18,19 @@ export const EXECUTION_ROUTE = {
 } as const;
 
 export const EXECUTION_ROUTES = [
+  EXECUTION_ROUTE.ANSWER,
   EXECUTION_ROUTE.DIRECT_ANSWER,
   EXECUTION_ROUTE.REPOSITORY_ANSWER,
   EXECUTION_ROUTE.CLARIFY,
   EXECUTION_ROUTE.DIAGNOSE,
   EXECUTION_ROUTE.PLAN,
   EXECUTION_ROUTE.EXECUTE,
+] as const;
+
+/** Legacy answer aliases accepted on parse; emitters use ANSWER. */
+export const LEGACY_ANSWER_ROUTES = [
+  EXECUTION_ROUTE.DIRECT_ANSWER,
+  EXECUTION_ROUTE.REPOSITORY_ANSWER,
 ] as const;
 
 export const PLANNING_DEPTHS = ["none", "internal", "visible"] as const;
@@ -136,6 +147,10 @@ export const DECISION_REASON_CODES = [
   "grant_profile_readonly",
   "grant_profile_research",
   "grant_profile_agent_execute",
+  /** ScopeVerdict protectedPaths dual-written onto grant (S2-SCOPE). */
+  "grant_protected_paths_applied",
+  "grant_mutation_fence_applied",
+  "grant_from_plate",
   /** Workspace-grounded bug report promoted to execute (may still be diagnose-first). */
   "workspace_bug_execute",
   /** Agent reported a runtime symptom (loading/hang) — diagnose with tools, not tool-less chat. */

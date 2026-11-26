@@ -84,6 +84,7 @@ export function applyUpgradePlate(
     case "upgrade_diagnose_to_execute":
       if (
         previous.route === "diagnose" ||
+        previous.route === "answer" ||
         previous.route === "direct_answer" ||
         previous.route === "repository_answer"
       ) {

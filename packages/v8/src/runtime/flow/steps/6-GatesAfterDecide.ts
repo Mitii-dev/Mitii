@@ -15,7 +15,7 @@ export async function gatesAfterDecide(
   const verdict = evaluateGates("after_decide", {
     runId: ctx.store.getStore().runId,
     mode: ctx.mode,
-    route: decision.route === "repository_answer" ? "answer" : decision.route,
+    route: decision.route,
     runDisposition: decision.runDisposition,
   });
 

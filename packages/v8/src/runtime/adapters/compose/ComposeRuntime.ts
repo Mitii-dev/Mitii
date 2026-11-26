@@ -46,6 +46,8 @@ export type ComposeRuntimeOptions = {
   promptConstruction?: RuntimeDependencies["promptConstruction"];
   /** When true, skip default prompt-construction port. */
   disablePromptConstruction?: boolean;
+  /** Finish-time memory commit port (S11-MEM). */
+  memoryCommit?: RuntimeDependencies["memoryCommit"];
   /**
    * Full modules/verification pipeline — replaces inline runner when set
    * (with `verificationInput` factory).
@@ -115,6 +117,7 @@ export function composeRuntime(
     mcpServerIds: options.mcpServerIds,
     enrich: options.enrich,
     promptConstruction,
+    memoryCommit: options.memoryCommit,
   };
   return new RuntimePipeline(deps);
 }

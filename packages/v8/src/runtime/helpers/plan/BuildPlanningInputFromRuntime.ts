@@ -22,7 +22,11 @@ export function buildPlanningInputFromRuntime(params: {
   const focus = pack?.scope.focusPaths ?? [];
 
   const route =
-    decision.route === "repository_answer" ? "plan" : decision.route;
+    decision.route === "answer" ||
+    decision.route === "repository_answer" ||
+    decision.route === "direct_answer"
+      ? "plan"
+      : decision.route;
   const planningRoute =
     route === "plan" || route === "execute" ? route : "plan";
 

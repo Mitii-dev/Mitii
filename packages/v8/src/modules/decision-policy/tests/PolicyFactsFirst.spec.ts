@@ -22,7 +22,7 @@ describe("policyFactsFirst routing", () => {
         }),
       }),
     );
-    expect(["clarify", "diagnose", "repository_answer", "direct_answer"]).toContain(
+    expect(["clarify", "diagnose", "answer", "answer"]).toContain(
       decision.route,
     );
     expect(decision.route).not.toBe("execute");

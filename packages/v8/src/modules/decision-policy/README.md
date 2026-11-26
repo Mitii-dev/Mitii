@@ -19,6 +19,7 @@ Works on a contract: validated input in → pipeline/steps → validated output 
 `1-normalize-and-guard` → `2-resolve-route-and-gate` → `3-compile-grant-and-fences` → `4-emit-decision-and-trace`
 (legacy 7 micro-steps remain as private helpers inside those stages).
 **Scopes:** dual-write `pathScopes`/`mutationPathScopes` + unified `scopes.readPaths`/`writePaths`/`protectedPaths`.
+**Routes:** canonical `answer` (merged `direct_answer` + `repository_answer`); legacy aliases still parse for one release via `normalizeExecutionRoute`. Answer defaults to grant profile `research`.
 **Tool families:** `rules/tool-families.ts` is the SSOT; `toModelToolSurface(grant)` owns prompt tool lists.
 **Ports we offer / need:** none of its own; optional `ModuleLoggerPort`. No adapters are required.
 

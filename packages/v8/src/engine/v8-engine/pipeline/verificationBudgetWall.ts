@@ -6,6 +6,7 @@ import type { RepoBuildState } from "../../../modules/verification";
 
 import {
   buildBudgetWallRationale,
+  normalizeBudgetWallReason,
   shouldOfferBudgetWallContinue,
 } from "../actions";
 import type { BudgetWallReason } from "../actions/buildStallContinueRationale";
@@ -110,8 +111,9 @@ export async function suspendForBudgetWall(
   if (!runtime.deps.checkpointStore) {
     return undefined;
   }
+  const wallReason = normalizeBudgetWallReason(opts.wallReason);
   const rationale = buildBudgetWallRationale({
-    reason: opts.wallReason,
+    reason: wallReason,
     changedFiles: opts.changedFiles,
     taskList: taskListRef.current,
     answer: opts.answer,
@@ -120,8 +122,11 @@ export async function suspendForBudgetWall(
   // S10-EVAC: budget wall via gates hub.
   const wallVerdict = consultRuntimeGate("on_budget", {
     runId,
-    budgetHardWall: opts.wallReason === "budget_exhausted",
-    stalledOrBlocked: opts.wallReason !== "budget_exhausted",
+    budgetHardWall: wallReason === "budget_exhausted",
+    stalledOrBlocked:
+      wallReason === "stalled_or_blocked" ||
+      wallReason === "incomplete_progress",
+    incompleteProgress: wallReason === "incomplete_progress",
   });
   const wallKind = hubSuspendKind(wallVerdict, "continue_required");
   reasonCodes.push("stall_continue_suspended");
@@ -144,7 +149,7 @@ export async function suspendForBudgetWall(
     mutationCheckpointIds: opts.mutationCheckpointIds,
     stallContinueRationale: rationale,
     continuePartialAnswer: opts.answer || undefined,
-    continueWallReason: opts.wallReason,
+    continueWallReason: wallReason,
     continueOverrideCount,
     reasonCodes,
     warnings,

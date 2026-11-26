@@ -10,6 +10,7 @@ import {
   resumeCheckpointConflict,
   resumeClarification,
   resumeContinueDecision,
+  resumeAuthOrDependency,
   resumeExternalSideEffect,
   resumeGrantExpansion,
   resumeMutationApproval,
@@ -46,13 +47,19 @@ export async function executeRuntimeResume(
     decision: input.decision,
     target: input.target,
     conflictAction: input.conflictAction,
+    authAction: input.authAction,
     clarifyAnswer: input.clarifyAnswer,
     guidance: input.guidance,
     approvedPlanFingerprint: input.approvedPlanFingerprint,
     planSteer: input.planSteer,
   });
   const decision = parsed.decision ?? "continue";
-  const plan = mapResumeDecision(decision, parsed.target, parsed.conflictAction);
+  const plan = mapResumeDecision(
+    decision,
+    parsed.target,
+    parsed.conflictAction,
+    parsed.authAction,
+  );
 
   if (plan.terminal) {
     return runtimeRunResultSchema.parse({
@@ -178,6 +185,7 @@ function mapResumeDecision(
   decision: NonNullable<RuntimeResumeInput["decision"]> | "continue",
   target?: RuntimeResumeInput["target"],
   conflictAction?: RuntimeResumeInput["conflictAction"],
+  authAction?: RuntimeResumeInput["authAction"],
 ): ResumePlan {
   if (target === "conflict") {
     if (decision === "reject" || conflictAction === "cancel") {
@@ -187,6 +195,16 @@ function mapResumeDecision(
       return resumeCheckpointConflict({ action: "resync" });
     }
     return resumeCheckpointConflict({ action: "force" });
+  }
+
+  if (target === "auth") {
+    if (decision === "reject" || authAction === "cancel") {
+      return resumeAuthOrDependency({ action: "cancel" });
+    }
+    if (authAction === "skip_fallback") {
+      return resumeAuthOrDependency({ action: "skip_fallback" });
+    }
+    return resumeAuthOrDependency({ action: "connected" });
   }
 
   switch (decision) {

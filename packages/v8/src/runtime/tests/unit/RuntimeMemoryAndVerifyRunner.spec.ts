@@ -14,7 +14,7 @@ describe("memory commit + verification runner", () => {
       commitRuntimeMemory({
         mode: "ask",
         status: "completed",
-        route: "repository_answer",
+        route: "answer",
       }).committed,
     ).toBe(false);
 

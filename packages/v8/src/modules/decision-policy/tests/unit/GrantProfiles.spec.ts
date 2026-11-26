@@ -68,6 +68,20 @@ describe("selectGrantProfile", () => {
         hasNetworkTools: false,
       }),
     ).toBe("research");
+    expect(
+      selectGrantProfile({
+        mode: "agent",
+        route: "answer",
+        hasNetworkTools: false,
+      }),
+    ).toBe("research");
+    expect(
+      selectGrantProfile({
+        mode: "ask",
+        route: "answer",
+        hasNetworkTools: false,
+      }),
+    ).toBe("research");
   });
 });
 

@@ -4,8 +4,10 @@ import type { TaskList } from "../../../modules/task-list";
 
 import {
   buildBudgetWallRationale,
+  normalizeBudgetWallReason,
   shouldOfferBudgetWallContinue,
   type BudgetWallReason,
+  type ContinueReason,
 } from "../actions/buildStallContinueRationale";
 import type { ToolCallCache } from "../internal/ToolCallCache";
 import type { ToolLoopOutcome } from "./types";
@@ -13,9 +15,10 @@ import type { ToolLoopOutcome } from "./types";
 /**
  * Build a `continue_required` loop outcome when the user still has Continue
  * overrides left. Returns undefined so callers can fall back to terminal fail.
+ * Host payload uses trimmed §10.3 ContinueReason (legacy reasons shimmed).
  */
 export function tryOfferBudgetWallContinue(params: {
-  wallReason: BudgetWallReason;
+  wallReason: BudgetWallReason | ContinueReason | string;
   messages: ModelMessage[];
   toolCache: ToolCallCache;
   changedFiles: string[];
@@ -39,12 +42,14 @@ export function tryOfferBudgetWallContinue(params: {
     return undefined;
   }
 
+  const wallReason = normalizeBudgetWallReason(params.wallReason);
+
   return {
     kind: "continue_required",
     messages: params.messages,
     toolCache: params.toolCache,
     rationale: buildBudgetWallRationale({
-      reason: params.wallReason,
+      reason: wallReason,
       changedFiles: params.changedFiles,
       taskList: params.taskList,
       answer: params.answer,
@@ -58,6 +63,6 @@ export function tryOfferBudgetWallContinue(params: {
     answer: params.answer,
     decision: params.decision,
     continueOverrideCount: params.continueOverrideCount,
-    wallReason: params.wallReason,
+    wallReason,
   };
 }

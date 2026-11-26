@@ -18,6 +18,8 @@ export interface CompileGrantFromPlateInput {
   grantProfile: GrantProfile;
   pathScopes: readonly string[];
   mutationPathScopes?: readonly string[];
+  /** Hard-caution paths from ScopeVerdict (S2-SCOPE). */
+  protectedPathGlobs?: readonly string[];
   mcpServerIds?: readonly string[];
 }
 
@@ -47,9 +49,19 @@ export function compileGrantFromPlate(
   if (fence) {
     reasonCodes.push("grant_mutation_fence_applied");
   }
+  const protectedPathGlobs =
+    input.protectedPathGlobs && input.protectedPathGlobs.length > 0
+      ? [...input.protectedPathGlobs]
+      : undefined;
+  if (protectedPathGlobs) {
+    reasonCodes.push("grant_protected_paths_applied");
+  }
 
   const wrap = (toolGrant: ToolGrant, codes: string[]) => ({
-    toolGrant: attachUnifiedScopes(toolGrant),
+    toolGrant: attachUnifiedScopes({
+      ...toolGrant,
+      ...(protectedPathGlobs ? { protectedPathGlobs } : {}),
+    }),
     reasonCodes: codes,
   });
 

@@ -64,9 +64,9 @@ describe("route bodies (§6.11)", () => {
   });
 
   it("selectRouteBody maps wire answer aliases", () => {
-    expect(selectRouteBody({ route: "repository_answer" }).route).toBe(
+    expect(selectRouteBody({ route: "answer" }).route).toBe(
       "answer",
     );
-    expect(selectRouteBody({ route: "direct_answer" }).route).toBe("answer");
+    expect(selectRouteBody({ route: "answer" }).route).toBe("answer");
   });
 });

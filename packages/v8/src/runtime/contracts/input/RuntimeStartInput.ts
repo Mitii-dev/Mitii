@@ -61,8 +61,47 @@ export const runtimeStartInputSchema = z
       .optional(),
     /** Project rule ids from host instructions (pins). */
     projectRuleIds: z.array(z.string().min(1)).max(32).optional(),
+    /** Optional summaries for project rules (S1-MCP-RULES). */
+    projectRuleAttachments: z
+      .array(
+        z
+          .object({
+            id: z.string().min(1),
+            summary: z.string().max(500).optional(),
+          })
+          .strict(),
+      )
+      .max(32)
+      .optional(),
     /** Safety deny-tool / deny-path ids for early pins (S1-MCP-RULES). */
     userSafetyRuleIds: z.array(z.string().min(1)).max(32).optional(),
+    /** Optional summaries for safety rules. */
+    userSafetyRuleAttachments: z
+      .array(
+        z
+          .object({
+            id: z.string().min(1),
+            summary: z.string().max(500).optional(),
+          })
+          .strict(),
+      )
+      .max(32)
+      .optional(),
+    /** Optional MCP attach summaries (serverId + summary). */
+    mcpAttachments: z
+      .array(
+        z
+          .object({
+            serverId: z.string().min(1),
+            summary: z.string().max(500).optional(),
+            required: z.boolean().optional(),
+          })
+          .strict(),
+      )
+      .max(32)
+      .optional(),
+    /** Paths that require hard caution / approval (S2-SCOPE protectedPaths). */
+    protectedPaths: z.array(z.string().min(1)).max(64).optional(),
     /** Catalog slice for Orient (S1-CATALOG) — host/precomputed. */
     catalog: z
       .object({

@@ -317,9 +317,11 @@ export async function runStartEarlyPipeline(
   const historyDigest = buildUnderstandingHistoryDigest(
     input.conversation ?? [],
   );
+  // S2-RU: assessment ballot path — no RuleIntent dual-path merge.
   const understandingRaw = await runtime.deps.understanding.understand(
     understandingEnvelope,
     {
+      useAssessmentBallot: true,
       ...(diagnosticSummary ? { diagnosticSummary } : {}),
       ...(historyDigest ? { historyDigest } : {}),
       ...(input.requiredMcpServerIds && input.requiredMcpServerIds.length > 0

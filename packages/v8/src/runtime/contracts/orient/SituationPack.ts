@@ -5,7 +5,7 @@ import { scopeVerdictSchema } from "./ScopeVerdict";
 
 /**
  * Best-effort orient pack (§4.5). Grows additively; omissions are OK.
- * Heavy sections stay optional until their S1-* owners wire them.
+ * Heavy sections (impact / deep memory / rich nav) remain optional-by-design.
  */
 export const situationPackSchema = z
   .object({
@@ -48,6 +48,40 @@ export const situationPackSchema = z
         mcpIds: z.array(z.string()).default([]),
         projectRules: z.array(z.string()).default([]),
         userSafetyRules: z.array(z.string()).default([]),
+        /** Structured MCP attach list (S1-MCP-RULES) — ids still mirrored in mcpIds. */
+        mcpAttachments: z
+          .array(
+            z
+              .object({
+                serverId: z.string().min(1),
+                summary: z.string().optional(),
+                required: z.boolean().default(false),
+              })
+              .strict(),
+          )
+          .optional(),
+        /** Structured project rule summaries for DirectionAnalysisInput. */
+        projectRuleAttachments: z
+          .array(
+            z
+              .object({
+                id: z.string().min(1),
+                summary: z.string().optional(),
+              })
+              .strict(),
+          )
+          .optional(),
+        /** Structured user safety rule summaries. */
+        userSafetyRuleAttachments: z
+          .array(
+            z
+              .object({
+                id: z.string().min(1),
+                summary: z.string().optional(),
+              })
+              .strict(),
+          )
+          .optional(),
       })
       .strict()
       .optional(),

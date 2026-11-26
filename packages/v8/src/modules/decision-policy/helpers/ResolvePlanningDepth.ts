@@ -43,6 +43,7 @@ export function resolvePlanningDepth(params: {
 
   if (
     route === EXECUTION_ROUTE.CLARIFY ||
+    route === EXECUTION_ROUTE.ANSWER ||
     route === EXECUTION_ROUTE.DIRECT_ANSWER ||
     route === EXECUTION_ROUTE.REPOSITORY_ANSWER
   ) {

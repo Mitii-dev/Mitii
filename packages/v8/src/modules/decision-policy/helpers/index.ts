@@ -3,6 +3,10 @@ export { toolGrantsEquivalent } from "./CompareToolGrants";
 export { resolveRoute } from "./ResolveRoute";
 export { isExplicitCreateAsk } from "./RouteCreateAsk";
 export type { RouteResolution } from "./ResolveRoute";
+export {
+  normalizeExecutionRoute,
+  isAnswerRoute,
+} from "./NormalizeExecutionRoute";
 export { isMutationIntent, isDiagnosisIntent } from "./RouteIntents";
 export {
   looksLikeAgentVerificationRequest,
@@ -67,7 +71,10 @@ export {
   extractExplicitMutationFence,
   hasExplicitEditLimit,
 } from "./ExtractExplicitMutationFence";
-export { looksLikeWorkspaceRootMutation } from "./ResolveGrantPathScopes";
+export {
+  looksLikeWorkspaceRootMutation,
+  resolveProtectedPathGlobs,
+} from "./ResolveGrantPathScopes";
 export { applyAntiNagAsk } from "./ApplyAntiNagAsk";
 export type { AntiNagAskInput, AntiNagAskResult } from "./ApplyAntiNagAsk";
 export { mapPlanningHintToDepth } from "./MapPlanningHintToDepth";

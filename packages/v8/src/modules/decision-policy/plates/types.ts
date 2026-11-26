@@ -4,11 +4,11 @@ import type { PlanningDepth, PlanGate } from "../contracts";
 
 /**
  * One decision plate — route/grant/plan knobs (§5.12).
- * Live ExecutionRoute may still use direct_answer/repository_answer until answer merge.
+ * Canonical answer route; legacy direct/repository aliases still parse.
  */
 export interface DecisionPlate {
   id: string;
-  route: ExecutionRoute | "answer";
+  route: ExecutionRoute;
   grantProfile: GrantProfile;
   planningDepth: PlanningDepth;
   planGate: PlanGate;

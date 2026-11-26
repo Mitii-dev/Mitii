@@ -83,8 +83,8 @@ export function decide(ctx: StepContext): RuntimeDecisionSketch {
     turnKind: ctx.input.turnKind ?? "new",
   });
 
-  const wireRoute =
-    plate.route === "answer" ? "repository_answer" : plate.route;
+  // S2C: plate `answer` is the live wire route (legacy aliases shimmed elsewhere).
+  const wireRoute = plate.route;
 
   const routeBody = selectRouteBody({
     route: wireRoute,
@@ -103,6 +103,7 @@ export function decide(ctx: StepContext): RuntimeDecisionSketch {
     grantProfile: plate.grantProfile as GrantProfile,
     pathScopes: scopes.pathScopes,
     mutationPathScopes: scopes.mutationPathScopes,
+    protectedPathGlobs: scopes.scopes.protectedPaths,
     mcpServerIds: mcpIds,
   });
 

@@ -224,7 +224,7 @@ describe("resolvePlanningDepth change-impact recommend", () => {
 
     const result = resolvePlanningDepth({
       mode: "ask",
-      route: "repository_answer",
+      route: "answer",
       understanding,
       message: "What breaks if I rename createSession?",
       windowPolicy: {

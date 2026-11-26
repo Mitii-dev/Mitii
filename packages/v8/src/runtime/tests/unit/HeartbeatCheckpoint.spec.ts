@@ -18,7 +18,7 @@ describe("S11-HEART heartbeat checkpoints", () => {
     expect(on.onMutationBatch).toBe(true);
     expect(on.everyTurns).toBe(3);
 
-    const ask = selectHeartbeatPolicy({ mode: "ask", route: "repository_answer" });
+    const ask = selectHeartbeatPolicy({ mode: "ask", route: "answer" });
     expect(ask.enabled).toBe(false);
 
     const killed = selectHeartbeatPolicy({

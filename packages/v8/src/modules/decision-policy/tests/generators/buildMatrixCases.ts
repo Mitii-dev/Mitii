@@ -86,9 +86,9 @@ function expectedForMatrix(params: {
       scope === "multi_file" ||
       scope === "single_location"
     ) {
-      return { route: "repository_answer", maximumWorkspaceEffect: "read" };
+      return { route: "answer", maximumWorkspaceEffect: "read" };
     }
-    return { route: "direct_answer", maximumWorkspaceEffect: "none" };
+    return { route: "answer", maximumWorkspaceEffect: "read" };
   }
 
   // agent
@@ -101,7 +101,7 @@ function expectedForMatrix(params: {
     return { route: "diagnose", maximumWorkspaceEffect: "read" };
   }
   if (intent === "question" || intent === "docs") {
-    return { route: "repository_answer", maximumWorkspaceEffect: "read" };
+    return { route: "answer", maximumWorkspaceEffect: "read" };
   }
   if (
     intent === "migrate" ||

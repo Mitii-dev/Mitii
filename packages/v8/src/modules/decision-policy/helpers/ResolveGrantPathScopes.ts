@@ -20,7 +20,21 @@ export interface MutationScopeOptions {
   scopeVerdict?: {
     mutationFence?: readonly string[];
     focusPaths?: readonly string[];
+    protectedPaths?: readonly string[];
   };
+}
+
+/** Protected paths from ScopeVerdict (hard caution; dual-write to grant). */
+export function resolveProtectedPathGlobs(
+  options?: MutationScopeOptions,
+): string[] | undefined {
+  const protectedPaths = options?.scopeVerdict?.protectedPaths;
+  if (!protectedPaths || protectedPaths.length === 0) {
+    return undefined;
+  }
+  return [...new Set(protectedPaths.map(normalizeScopePath))].sort((a, b) =>
+    a.localeCompare(b),
+  );
 }
 
 /**

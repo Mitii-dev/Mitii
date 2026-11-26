@@ -27,6 +27,11 @@ export const scopeVerdictSchema = z
     readHint: scopeReadHintSchema.default("workspace"),
     /** Set ONLY for explicit edit limits / safety. Folder mention alone ≠ fence. */
     mutationFence: z.array(z.string()).optional(),
+    /**
+     * Paths that still need approval / hard caution (S2-SCOPE).
+     * Precedence: protectedPaths > writePaths > readPaths.
+     */
+    protectedPaths: z.array(z.string()).optional(),
     evidence: scopeVerdictEvidenceSchema.default("focus_only"),
     /** Optional dependents/importers from change-impact (awareness, not fence). */
     relatedSeeds: z.array(z.string()).default([]),

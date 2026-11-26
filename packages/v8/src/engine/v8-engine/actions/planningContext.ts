@@ -12,22 +12,17 @@ import {
   rankPathsForShapedDiscovery,
   resolveShapedDiscoveryProfile,
 } from "./shapedDiscovery";
+import { isPlanningFollowUp } from "../../../runtime/helpers/plan-discovery/IsPlanningFollowUp";
 
 export {
   isSafeRelativePlanningPath,
   normalizePlanningPath,
   uniqueStrings,
 } from "./planningPathUtils";
+export { isPlanningFollowUp } from "../../../runtime/helpers/plan-discovery/IsPlanningFollowUp";
 
 const FILE_LIKE_PATH =
   /(?:^|[\s`"'(=,[])((?:[\w.-]+\/)+[\w.-]+\.[\w]{1,16})\b/g;
-
-const FOLLOW_UP_PLAN_QUERY =
-  /^(?:please\s+|can\s+you\s+|could\s+you\s+)?(?:fix|update|change|check|do|handle|implement)\s+(?:it|this|that)\b/i;
-
-/** "plan the above / plan that / for implementation / based on above" */
-const FOLLOW_UP_PLAN_REFERENCE =
-  /(?:\bplan\b.{0,40}\b(?:above|that|this|it)\b|\b(?:above|prior|previous)\b.{0,40}\b(?:plan|implement)|(?:for|to)\s+implement(?:ation)?\b|\bbased\s+on\s+(?:the\s+)?(?:above|prior|previous)\b)/i;
 
 const MAX_PRIOR_ASSISTANT_CHARS = 24_000;
 const MAX_PLANNING_QUERY_CHARS = 12_000;
@@ -138,8 +133,7 @@ export function buildPlanningQuery(
   const shouldMergePrior =
     Boolean(priorUser) &&
     (current.length < 24 ||
-      FOLLOW_UP_PLAN_QUERY.test(current) ||
-      FOLLOW_UP_PLAN_REFERENCE.test(current));
+      isPlanningFollowUp(currentQuery, conversation));
 
   if (!shouldMergePrior || !priorUser) {
     return current.slice(0, MAX_PLANNING_QUERY_CHARS);
@@ -166,38 +160,6 @@ export function buildPlanningQuery(
     );
   }
   return parts.join("\n").slice(0, MAX_PLANNING_QUERY_CHARS);
-}
-
-/**
- * True when the live turn continues a prior ask ("plan the above", "fix it",
- * short plan-after-ask). Requires prior conversation — cold plan prompts like
- * "plan for implementing headless tests" are not follow-ups.
- */
-export function isPlanningFollowUp(
-  currentQuery: string,
-  conversation: readonly { role: string; content: string }[],
-): boolean {
-  const hasPriorTurns = conversation.some(
-    (entry) =>
-      (entry.role === "user" || entry.role === "assistant") &&
-      entry.content.trim().length > 0,
-  );
-  if (!hasPriorTurns) {
-    return false;
-  }
-
-  const current = currentQuery.trim().replace(/\s+/g, " ");
-  if (
-    FOLLOW_UP_PLAN_QUERY.test(current) ||
-    FOLLOW_UP_PLAN_REFERENCE.test(current)
-  ) {
-    return true;
-  }
-
-  return (
-    current.length < 80 &&
-    /\bplan\b.{0,24}\b(?:above|that|this|it)\b/i.test(current)
-  );
 }
 
 /**

@@ -1,28 +1,22 @@
 /**
- * File-backed discovery quality floor (S3A-DISCOVER) — runtime-owned thin bar.
- * Planning module still owns full validators; this decides clarify vs continue.
+ * File-backed discovery quality floor (S3A-DISCOVER) — thin bar for the pump.
+ * Full sufficiency helpers live in PlanDiscoveryQuality (evacuated from engine).
  */
 
 import type { DiscoveryBrief } from "../../../modules/planning";
-
-const NOISE =
-  /(?:^|\/)(?:package-lock\.json|pnpm-lock\.yaml|yarn\.lock|Cargo\.lock|\.mitii\/)/i;
-const MANIFEST = /(?:^|\/)(?:package\.json|tsconfig[\w.-]*\.json)$/i;
+import {
+  countProductiveDiscoveryReads,
+  isProductiveDiscoveryReadPath,
+} from "./PlanDiscoveryQuality";
 
 export function isProductiveDiscoveryPath(path: string): boolean {
-  const normalized = path.replace(/\\/g, "/");
-  return !NOISE.test(normalized) && !MANIFEST.test(normalized);
+  return isProductiveDiscoveryReadPath(path);
 }
 
 export function countProductiveReads(
   filesRead: readonly { path: string }[],
 ): number {
-  const seen = new Set<string>();
-  for (const file of filesRead) {
-    if (!isProductiveDiscoveryPath(file.path)) continue;
-    seen.add(file.path.replace(/\\/g, "/").toLowerCase());
-  }
-  return seen.size;
+  return countProductiveDiscoveryReads(filesRead);
 }
 
 export interface EnforceDiscoveryQualityFloorInput {

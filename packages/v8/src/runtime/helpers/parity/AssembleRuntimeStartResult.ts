@@ -1,14 +1,11 @@
-/**
- * Build RuntimeRunResult from through-turn pump outputs (start facade).
- */
-
+/** Build RuntimeRunResult from through-turn pump outputs (start facade). */
 import { runtimeRunResultSchema } from "../../contracts/output/RuntimeRunResult";
 import type { RuntimeRunResult } from "../../contracts/output/RuntimeRunResult";
 import type { RuntimeStartInput } from "../../contracts/input/RuntimeStartInput";
 import type { RuntimeDependencies } from "../../ports/RuntimeDependencies";
 import { buildPlanFingerprint } from "../build/CheckPlanFreshness";
 import { saveRuntimeGateCheckpoint } from "../checkpoint/SaveRuntimeGateCheckpoint";
-import { commitRuntimeMemory } from "../memory/CommitRuntimeMemory";
+import { assembleFinishMemoryCommit } from "./AssembleFinishMemoryCommit";
 import type { RuntimeParityFields } from "./AssembleRuntimeParityFields";
 import type { RuntimeDecisionSketch } from "../../flow/steps/5-Decide";
 import type { VerifyFinishSketch } from "../../flow/steps/11-VerifyFinish";
@@ -246,17 +243,19 @@ export async function assembleRuntimeStartResult(input: {
         ? ("failed" as const)
         : ("completed" as const);
 
-  const memory = commitRuntimeMemory({
+  const memory = await assembleFinishMemoryCommit({
     mode,
-    status: finishStatus,
-    route: decision.route,
-    verify: verify
-      ? {
-          ranVerify: verify.ranVerify,
-          invalidated: verify.invalidated,
-          outcomeStatus: verify.outcome?.status,
-        }
-      : undefined,
+    finishStatus,
+    decision,
+    verify,
+    deps,
+    start,
+    runId,
+    trimmedAnswer: trimmed,
+    journal: through.turnLoop?.journal ?? [],
+    planObjective: through.store.getSlice<{ objective?: string }>(
+      "planArtifact",
+    )?.objective,
   });
 
   return runtimeRunResultSchema.parse({

@@ -118,7 +118,7 @@ describe("DecisionPolicyPipeline routing", () => {
       }),
     );
 
-    expect(decision.route).toBe("repository_answer");
+    expect(decision.route).toBe("answer");
     expect(decision.toolGrant.maximumWorkspaceEffect).toBe("read");
     expect(decision.toolGrant.allowedTools).toContain("read_file");
     expect(decision.toolGrant.allowedTools).toContain("search_files");
@@ -143,7 +143,7 @@ describe("DecisionPolicyPipeline routing", () => {
       }),
     );
 
-    expect(decision.route).toBe("repository_answer");
+    expect(decision.route).toBe("answer");
     expect(decision.reasonCodes).toContain("repository_grounded_answer");
     expect(decision.toolGrant.maximumWorkspaceEffect).toBe("read");
     expect(decision.toolGrant.allowedTools).toContain("read_file");
@@ -167,7 +167,7 @@ describe("DecisionPolicyPipeline routing", () => {
       }),
     );
 
-    expect(decision.route).toBe("repository_answer");
+    expect(decision.route).toBe("answer");
     expect(decision.toolGrant.allowedTools).toContain("search_files");
   });
 
@@ -189,7 +189,7 @@ describe("DecisionPolicyPipeline routing", () => {
       }),
     );
 
-    expect(decision.route).toBe("repository_answer");
+    expect(decision.route).toBe("answer");
     expect(decision.reasonCodes).toContain("repository_grounded_answer");
     expect(decision.toolGrant.maximumWorkspaceEffect).toBe("read");
   });
@@ -211,7 +211,7 @@ describe("DecisionPolicyPipeline routing", () => {
       }),
     );
 
-    expect(decision.route).toBe("repository_answer");
+    expect(decision.route).toBe("answer");
     expect(decision.toolGrant.allowedTools).toContain("read_file");
   });
 
@@ -236,14 +236,14 @@ describe("DecisionPolicyPipeline routing", () => {
       }),
     );
 
-    expect(decision.route).toBe("repository_answer");
+    expect(decision.route).toBe("answer");
     expect(decision.toolGrant.maximumWorkspaceEffect).toBe("read");
     expect(decision.toolGrant.allowedTools).toContain("read_file");
     expect(decision.toolGrant.allowedTools).toContain("search_files");
     expect(decision.repositoryContextRequired).toBe(true);
   });
 
-  it("keeps pure knowledge questions on direct_answer without tools", () => {
+  it("routes pure knowledge questions to answer with research grant", () => {
     const decision = new DecisionPolicyPipeline().decide(
       createInput({
         mode: "ask",
@@ -260,9 +260,10 @@ describe("DecisionPolicyPipeline routing", () => {
       }),
     );
 
-    expect(decision.route).toBe("direct_answer");
-    expect(decision.toolGrant.allowedTools).toEqual([]);
-    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("none");
+    expect(decision.route).toBe("answer");
+    expect(decision.toolGrant.maximumWorkspaceEffect).toBe("read");
+    expect(decision.toolGrant.allowedTools.length).toBeGreaterThan(0);
+    expect(decision.toolGrant.allowedTools).not.toContain("apply_patch");
   });
 
   it("upgrades ask direct_answer to repository_answer when MCP is attached", () => {
@@ -283,7 +284,7 @@ describe("DecisionPolicyPipeline routing", () => {
       }),
     );
 
-    expect(decision.route).toBe("repository_answer");
+    expect(decision.route).toBe("answer");
     expect(decision.toolGrant.maximumWorkspaceEffect).toBe("read");
     expect(decision.toolGrant.allowedTools.length).toBeGreaterThan(0);
     expect(decision.toolGrant.allowedMcpServerIds).toEqual(["mongo"]);
@@ -354,7 +355,7 @@ describe("DecisionPolicyPipeline routing", () => {
       }),
     );
 
-    expect(decision.route).toBe("repository_answer");
+    expect(decision.route).toBe("answer");
     expect(decision.reasonCodes).not.toContain("verification_run_requested");
   });
 });

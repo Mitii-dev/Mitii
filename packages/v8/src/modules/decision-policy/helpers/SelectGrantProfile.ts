@@ -4,6 +4,7 @@ import type {
   ExecutionRoute,
   ToolGrant,
 } from "../contracts";
+import { isAnswerRoute } from "./NormalizeExecutionRoute";
 
 /**
  * Discrete grant profiles. Mode + route select exactly one; layers then add
@@ -11,10 +12,10 @@ import type {
  *
  * | Profile        | Max effect | Notes |
  * |----------------|------------|-------|
- * | none           | none       | clarify; rare tool-less direct_answer |
+ * | none           | none       | clarify; rare tool-less answer shim |
  * | network_only   | read       | rare clamp |
  * | readonly       | read       | legacy clamp |
- * | research       | read       | default ask/plan/diagnose/repository_answer |
+ * | research       | read       | default ask/answer/plan/diagnose |
  * | agent_execute  | write      | agent + execute only |
  */
 export const GRANT_PROFILES = [
@@ -48,11 +49,8 @@ export function selectGrantProfile(params: {
     return "none";
   }
 
-  // Tool-less knowledge Q&A stays none unless network tools are configured.
+  // Legacy direct_answer shim: tool-less unless network tools configured.
   if (route === EXECUTION_ROUTE.DIRECT_ANSWER) {
-    if (mode === "ask" || mode === "plan") {
-      return hasNetworkTools ? "research" : "none";
-    }
     return hasNetworkTools ? "research" : "none";
   }
 
@@ -65,7 +63,11 @@ export function selectGrantProfile(params: {
     return "agent_execute";
   }
 
-  // diagnose | repository_answer | plan
+  // answer | diagnose | plan | legacy repository_answer
+  if (isAnswerRoute(route) || route === EXECUTION_ROUTE.DIAGNOSE || route === EXECUTION_ROUTE.PLAN) {
+    return "research";
+  }
+
   return "research";
 }
 

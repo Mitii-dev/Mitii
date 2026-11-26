@@ -25,6 +25,8 @@ import type { DirectionAnalysisInput } from "../contracts/input/DirectionAnalysi
 import type { TaskDirectionAssessment } from "../contracts/output/TaskDirectionAssessment";
 import { assessDirectionWithLlm } from "../helpers/direction/AssessDirectionWithLlm";
 import type { DirectionLlmComplete } from "../helpers/direction/AssessDirectionWithLlm";
+import { buildDirectionInputFromEnvelope } from "../helpers/direction/BuildDirectionInputFromEnvelope";
+import { mapAssessmentToUnderstandingResult } from "../helpers/direction/MapAssessmentToUnderstandingResult";
 import { extractUnderstandingMessages } from "./steps/1-extract-messages";
 import { buildUnderstandingEvidence } from "./steps/2-build-evidence";
 import { classifyUnderstandingIntent } from "./steps/3-classify-intent";
@@ -84,6 +86,11 @@ export class RequestUnderstandingPipeline {
       diagnosticSummaryOrOptions,
       maybeOptions,
     );
+
+    // S2-RU / S2-NO-HEURISTICS — assessment ballot path (no RuleIntent dual).
+    if (options.useAssessmentBallot) {
+      return this.understandViaAssessment(envelope, options);
+    }
 
     let stageStartedMs = Date.now();
     const { userMessage, analysisMessage } =
@@ -212,6 +219,38 @@ export class RequestUnderstandingPipeline {
     });
     return assessment;
   }
+
+  /**
+   * Legacy understand() shape via assessment ballot (S2-RU).
+   * Skips RuleIntent / SuperIntent dual-path merge.
+   */
+  public async understandViaAssessment(
+    input: RequestUnderstandingPipelineInput,
+    options: RequestUnderstandingOptions = {},
+    complete?: DirectionLlmComplete,
+  ): Promise<RequestUnderstandingResult> {
+    const envelope = requestUnderstandingPipelineInputSchema.parse(input);
+    const startedMs = Date.now();
+    const directionInput = buildDirectionInputFromEnvelope(envelope, options);
+    const assessment = await assessDirectionWithLlm(directionInput, complete);
+    const result = mapAssessmentToUnderstandingResult(assessment);
+    this.log.stage({
+      module: "request-understanding",
+      stage: "understand-via-assessment",
+      durationMs: Date.now() - startedMs,
+      reasonCodes: [
+        ...assessment.reasonCodes,
+        "understand_via_assessment",
+        "s2_ru_no_rule_dual_path",
+      ],
+      outputSummary: {
+        primaryTaskIntent: assessment.primaryTaskIntent,
+        planningHint: assessment.planningHint,
+        recommendsPlanning: result.taskAnalysis.recommendsPlanning,
+      },
+    });
+    return result;
+  }
 }
 
 function normalizeUnderstandOptions(
@@ -231,6 +270,7 @@ function normalizeUnderstandOptions(
       priorRoute: maybeOptions?.priorRoute,
       priorTaskSize: maybeOptions?.priorTaskSize,
       requiredMcpServerIds: maybeOptions?.requiredMcpServerIds,
+      useAssessmentBallot: maybeOptions?.useAssessmentBallot,
     };
   }
 
@@ -243,7 +283,8 @@ function normalizeUnderstandOptions(
       diagnosticSummary:
         asOptions.diagnosticSummary ?? maybeOptions?.diagnosticSummary,
       candidateRelativePaths:
-        asOptions.candidateRelativePaths ?? maybeOptions?.candidateRelativePaths,
+        asOptions.candidateRelativePaths ??
+        maybeOptions?.candidateRelativePaths,
       historyDigest: asOptions.historyDigest ?? maybeOptions?.historyDigest,
       priorRoute: asOptions.priorRoute ?? maybeOptions?.priorRoute,
       priorTaskSize: asOptions.priorTaskSize ?? maybeOptions?.priorTaskSize,
@@ -251,6 +292,8 @@ function normalizeUnderstandOptions(
         asOptions.requiredMcpServerIds ?? maybeOptions?.requiredMcpServerIds,
       projectFingerprint:
         asOptions.projectFingerprint ?? maybeOptions?.projectFingerprint,
+      useAssessmentBallot:
+        asOptions.useAssessmentBallot ?? maybeOptions?.useAssessmentBallot,
     };
   }
 
@@ -260,5 +303,6 @@ function normalizeUnderstandOptions(
     priorRoute: maybeOptions?.priorRoute,
     priorTaskSize: maybeOptions?.priorTaskSize,
     requiredMcpServerIds: maybeOptions?.requiredMcpServerIds,
+    useAssessmentBallot: maybeOptions?.useAssessmentBallot,
   };
 }

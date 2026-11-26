@@ -40,6 +40,7 @@ import {
 import {
   resolveMutationPathScopes,
   resolvePathScopes,
+  resolveProtectedPathGlobs,
 } from "./ResolveGrantPathScopes";
 import {
   resolveNetworkAuthority,
@@ -69,10 +70,11 @@ export function buildToolGrant(params: {
   /** When false/undefined, never grant web_search (honest hide until SearchPort). */
   allowWebSearch?: boolean;
   windowPolicy?: WindowPolicy;
-  /** SituationPack.scope — mutationFence only when set (S2-SCOPE). */
+  /** SituationPack.scope — mutationFence / protectedPaths when set (S2-SCOPE). */
   scopeVerdict?: {
     mutationFence?: readonly string[];
     focusPaths?: readonly string[];
+    protectedPaths?: readonly string[];
   };
 }): ToolGrantResolution {
   const { mode, route, understanding } = params;
@@ -86,6 +88,12 @@ export function buildToolGrant(params: {
     params.message,
     { scopeVerdict: params.scopeVerdict },
   );
+  const protectedPathGlobs = resolveProtectedPathGlobs({
+    scopeVerdict: params.scopeVerdict,
+  });
+  if (protectedPathGlobs) {
+    reasonCodes.push("grant_protected_paths_applied");
+  }
 
   const network = resolveNetworkAuthority({
     understanding,
@@ -108,22 +116,29 @@ export function buildToolGrant(params: {
     reasonCodes,
   });
 
+  const withProtected = (toolGrant: ToolGrant): ToolGrant =>
+    protectedPathGlobs
+      ? { ...toolGrant, protectedPathGlobs }
+      : toolGrant;
+
   switch (grantProfile) {
     case "none":
       return {
         grantProfile,
         reasonCodes,
-        toolGrant: buildNoneGrant(pathScopes),
+        toolGrant: withProtected(buildNoneGrant(pathScopes)),
       };
     case "network_only":
       reasonCodes.push(...network.reasonCodes);
       return {
         grantProfile,
         reasonCodes,
-        toolGrant: buildNetworkOnlyGrant({
-          pathScopes,
-          network,
-        }),
+        toolGrant: withProtected(
+          buildNetworkOnlyGrant({
+            pathScopes,
+            network,
+          }),
+        ),
       };
     case "readonly":
     case "research":
@@ -131,28 +146,33 @@ export function buildToolGrant(params: {
       return {
         grantProfile,
         reasonCodes,
-        toolGrant: buildReadonlyGrant({
-          readOnlyTools,
-          pathScopes,
-          network,
-        }),
+        toolGrant: withProtected(
+          buildReadonlyGrant({
+            readOnlyTools,
+            pathScopes,
+            network,
+          }),
+        ),
       };
-    case "agent_execute":
+    case "agent_execute": {
+      const execute = buildAgentExecuteGrant({
+        understanding,
+        message: params.message,
+        approvalMode: params.approvalMode,
+        windowPolicy: params.windowPolicy,
+        changeImpactAffordable,
+        readOnlyTools,
+        pathScopes,
+        mutationPathScopes,
+        network,
+        reasonCodes,
+      });
       return {
         grantProfile,
-        ...buildAgentExecuteGrant({
-          understanding,
-          message: params.message,
-          approvalMode: params.approvalMode,
-          windowPolicy: params.windowPolicy,
-          changeImpactAffordable,
-          readOnlyTools,
-          pathScopes,
-          mutationPathScopes,
-          network,
-          reasonCodes,
-        }),
+        reasonCodes: execute.reasonCodes,
+        toolGrant: withProtected(execute.toolGrant),
       };
+    }
   }
 }
 

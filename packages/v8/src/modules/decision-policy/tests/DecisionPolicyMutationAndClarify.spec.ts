@@ -375,7 +375,7 @@ describe("DecisionPolicyPipeline mutation and clarification", () => {
       }),
     );
 
-    expect(decision.route).toBe("repository_answer");
+    expect(decision.route).toBe("answer");
     expect(decision.toolGrant.maximumWorkspaceEffect).toBe("read");
     expect(decision.toolGrant.allowedTools).not.toContain("apply_patch");
   });

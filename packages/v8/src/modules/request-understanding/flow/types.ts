@@ -16,4 +16,9 @@ export interface RequestUnderstandingOptions {
   requiredMcpServerIds?: readonly string[];
   /** Optional catalog/host project fingerprint for the Officer evidence pack. */
   projectFingerprint?: ProjectFingerprint;
+  /**
+   * When true, understand() uses assessDirection ballot → shim (S2-RU),
+   * skipping RuleIntent dual-path. Default false until engine callers migrate.
+   */
+  useAssessmentBallot?: boolean;
 }
