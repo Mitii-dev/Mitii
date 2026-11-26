@@ -100,13 +100,14 @@ consume it. Widen grants only via registered upgrade plates (`upgradePlateId`).
 
 ## Status
 
-P8 + S1–S3A + pinDiscoveryPass thin + skills/evidence-rail/mutation-cache +
-residual helpers pile + leaked-tool-markup recover + budgets/window-policy +
-preflight + context-focus + tool-recovery + clarification + verify
-repair/critique + output-truncation recovery + loop-turn + tool-serialize +
-planningContext + run-evidence + established-facts + decideVerificationGate +
-compaction ladder + session-control evacuate + residual engine evacuate closed +
-execution-seed + soft loop-rails + plan/shaped-discovery + §10.3 +
-S10/S11/S12/S13 + S2C/S2-RU live. Intentional engine-local:
-applyPostPlanTaskListGate + refreshMemoryFactsForCompaction. Optional next: thin
-remaining fat pipeline (`executeStart` / `executeToolFinish` / …).
+P8 + S1–S3A + enrichmentTail/toolFinish thin + executeStart early-pipeline thin +
+pinDiscoveryPass thin + skills/evidence-rail/mutation-cache + residual helpers
+pile + leaked-tool-markup recover + budgets/window-policy + preflight +
+context-focus + tool-recovery + clarification + verify repair/critique +
+output-truncation recovery + loop-turn + tool-serialize + planningContext +
+run-evidence + established-facts + decideVerificationGate + compaction ladder +
+session-control evacuate + residual engine evacuate closed + execution-seed +
+soft loop-rails + plan/shaped-discovery + §10.3 + S10/S11/S12/S13 + S2C/S2-RU
+live. Intentional engine-local: applyPostPlanTaskListGate +
+refreshMemoryFactsForCompaction. Optional next: thin remaining fat pipeline
+(`advanceAfterToolSettle` / `modelLoop` / `settleTools` / …).

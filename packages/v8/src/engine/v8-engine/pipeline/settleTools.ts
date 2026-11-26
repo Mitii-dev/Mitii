@@ -29,12 +29,15 @@ import type { ToolLoopOutcome } from "./types";
 import type { ToolResult } from "../../tool-runtime";
 import type { ToolLoopGuard, ToolLoopResult } from "../modules/tool-loop-guard";
 import { isMutateLockAllowedToolName } from "../modules/mutate-readiness";
-import { serializeToolResultForModel } from "../actions/serializeToolResultForModel";
-import { TOOL_RUNTIME_SCHEMA_VERSION } from "../../tool-runtime";
 import {
   collectGrantExpansionFromBatch,
   toolResultError,
 } from "./settleToolsGrantExpansion";
+import { rejectMutateLockBlockedTool } from "./settleToolsMutateLockReject";
+import {
+  batchNeedsWorkspaceTools,
+  settleToolsPreflightFailure,
+} from "./settleToolsPreflight";
 
 export type RejectedMutationInfo = {
   toolName: string;
@@ -144,52 +147,16 @@ export async function settleToolBatch(params: {
     params.mutateLockAllowTargetedReads !== false;
 
   const grant = decision.toolGrant;
-  const needsWorkspaceTools = toolCalls.some(
-    (call) => call.name !== "update_todos",
-  );
-
-  if (needsWorkspaceTools && grant.allowedTools.length === 0) {
-    return {
-      kind: "return",
-      outcome: {
-        kind: "failed",
-        answer: answer || undefined,
-        extraReasons: ["misconfigured"],
-        error: {
-          code: "tool_calls_without_grant",
-          message:
-            "Model requested workspace tools on a route where no tools were granted.",
-        },
-      },
-    };
-  }
-  if (needsWorkspaceTools && !runtime.deps.tools) {
-    return {
-      kind: "return",
-      outcome: {
-        kind: "failed",
-        answer: answer || undefined,
-        extraReasons: ["misconfigured"],
-        error: {
-          code: "misconfigured",
-          message: "Model requested tools but Tool Runtime is not configured.",
-        },
-      },
-    };
-  }
-  if (needsWorkspaceTools && !workspaceRoot) {
-    return {
-      kind: "return",
-      outcome: {
-        kind: "failed",
-        answer: answer || undefined,
-        extraReasons: ["misconfigured"],
-        error: {
-          code: "misconfigured",
-          message: "Model requested tools but workspaceRoot was not provided.",
-        },
-      },
-    };
+  const needsWorkspaceTools = batchNeedsWorkspaceTools(toolCalls);
+  const preflightFailure = settleToolsPreflightFailure({
+    needsWorkspaceTools,
+    grant,
+    runtime,
+    workspaceRoot,
+    answer,
+  });
+  if (preflightFailure) {
+    return { kind: "return", outcome: preflightFailure };
   }
 
   messages.push({
@@ -244,82 +211,19 @@ export async function settleToolBatch(params: {
         allowTargetedReads: mutateLockAllowTargetedReads,
       })
     ) {
-      budget.recordToolCall();
-      let argumentsValue: unknown = {};
-      try {
-        argumentsValue =
-          toolCall.arguments.trim().length === 0
-            ? {}
-            : JSON.parse(toolCall.arguments);
-      } catch {
-        argumentsValue = { _raw: toolCall.arguments };
-      }
-      const summary = summarizeToolCall(toolCall.name, argumentsValue);
-      const rejectMessage =
-        `Tool "${toolCall.name}" is blocked under mutate lock (tool_not_allowed). ` +
-        (mutateLockAllowTargetedReads
-          ? "Call read_file/read_many_files for named write/mustRead paths, then apply_patch."
-          : "Call apply_patch now. Discovery tools are not allowed until the patch lands.");
-      const nowIso = runtime.isoNow();
-      const rejected: ToolResult = {
-        schemaVersion: TOOL_RUNTIME_SCHEMA_VERSION,
-        callId: toolCall.id,
-        toolName: toolCall.name,
-        status: "rejected",
-        reasonCode: "tool_not_allowed",
-        truncated: false,
-        redacted: false,
-        durationMs: 0,
-        bytesProduced: 0,
-        warnings: [rejectMessage],
-        output: rejectMessage,
-        audit: {
-          callId: toolCall.id,
-          toolName: toolCall.name,
-          startedAt: nowIso,
-          endedAt: nowIso,
-          status: "rejected",
-          reasonCode: "tool_not_allowed",
-          inputPreview: summary ?? toolCall.name,
-          bytesProduced: 0,
-          durationMs: 0,
-          truncated: false,
-          redacted: false,
-        },
-      };
-      toolCache.set(toolCall.id, rejected);
-      reasonCodes.push("step_mutate_lock_enforced");
-      warnings.push(rejectMessage);
-      runtime.emit(bus, {
-        type: "tool_started",
+      rejectMutateLockBlockedTool({
+        runtime,
+        bus,
         runId,
-        callId: toolCall.id,
-        toolName: toolCall.name,
-        ...(summary ? { summary } : {}),
-        at: runtime.isoNow(),
-      });
-      runtime.emit(bus, {
-        type: "tool_completed",
-        runId,
-        callId: toolCall.id,
-        toolName: toolCall.name,
-        status: "rejected",
-        reasonCode: "tool_not_allowed",
-        ...(summary ? { summary } : {}),
-        warnings: [rejectMessage],
-        at: runtime.isoNow(),
-      });
-      messages.push({
-        role: "tool",
-        toolCallId: toolCall.id,
-        content: serializeToolResultForModel(rejected, {
-          maxContentChars: windowPolicy.compaction.toolResultContentChars,
-        }),
-      });
-      results.push({
-        name: toolCall.name,
-        success: false,
-        error: rejectMessage,
+        toolCall,
+        mutateLockAllowTargetedReads,
+        budget,
+        toolCache,
+        messages,
+        reasonCodes,
+        warnings,
+        windowPolicy,
+        results,
       });
       continue;
     }

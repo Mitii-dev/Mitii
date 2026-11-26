@@ -1,5 +1,4 @@
 import type { DiscoveryBrief, PlanArtifact } from "../../../modules/planning";
-import type { ToolResult } from "../../../engine/tool-runtime";
 import type {
   AgentReasonCode,
   AgentRunStatus,
@@ -13,6 +12,8 @@ import {
 import { uniqueStrings } from "../plan-discovery/PlanningPathUtils";
 import {
   extractEvidencePaths,
+  hasCheckpointOutput,
+  isVerificationCommandOutput,
   trimEvidence,
   upsertLedgerEntry,
 } from "./RunEvidenceLedger";

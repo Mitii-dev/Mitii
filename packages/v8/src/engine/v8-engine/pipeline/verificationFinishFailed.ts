@@ -1,4 +1,3 @@
-import type { ExecutionDecision } from "../../../modules/decision-policy";
 import type { ModelRequest } from "../../../modules/model-gateway";
 import type { RepositoryStateReference } from "../../../modules/repository-state";
 import type { WindowPolicy } from "../../../modules/window-budget";
@@ -8,54 +7,25 @@ import type {
   VerificationRecordStatus,
 } from "../../../modules/verification";
 
-import {
-  buildVerificationRepairPrompt,
-  loadDiagnosticSourceLines,
-  resolveFailedVerificationTerminalStatus,
-  selectUserFacingLoopAnswer,
-  shouldContinueVerificationRepair,
-  shouldSuspendContinueAfterRepairExhausted,
-  nextStalledRepairCount,
-  resolveLoopPolicyThresholds,
-} from "../actions";
-import { resolveSteeringFeatureFlags } from "../legacy/steeringFlags";
-import {
-  prepareRepairWorkingSet,
-  planProgressOf,
-  type TaskListRef,
-} from "../internal/taskListRuntime";
+import { resolveLoopPolicyThresholds } from "../actions";
+import type { TaskListRef } from "../internal/taskListRuntime";
 import type {
   AgentEngineStartInput,
   AgentReasonCode,
   AgentRunResult,
   RunEvidence,
 } from "../contracts";
-import { EventBus } from "../internal/EventBus";
-import { RunBudgetTracker } from "../internal/RunBudget";
-import { logVerbosityAtLeast } from "../internal/logVerbosity";
+import type { EventBus } from "../internal/EventBus";
+import type { RunBudgetTracker } from "../internal/RunBudget";
 import type { AgentEngineRuntime } from "./runtime";
-import { resolveWorkspaceId } from "./runtime";
-import type { ToolLoopOutcome, VerificationGateOutcome } from "./types";
-import { runV8ModelLoop } from "./modelLoop";
-import {
-  commitMutations,
-  commitVerificationMemory,
-  persistVerificationArtifact,
-  summarizeVerificationForUser,
-} from "./verificationSupport";
-import {
-  suspendForBudgetWall,
-  type SuspendBudgetWallContext,
-} from "./verificationBudgetWall";
+import type { VerificationGateOutcome } from "./types";
+import type { SuspendBudgetWallContext } from "./verificationBudgetWall";
+import { tryVerificationRepairAttempt } from "./verificationFinishRepairAttempt";
+import { finishFailedVerificationTerminal } from "./verificationFinishFailedTerminal";
+import type { VerificationRepairState } from "./verificationFinishFailedTypes";
+import type { FinishAfterLoopFinish } from "./verificationFinishTypes";
 
-export type VerificationRepairState = {
-  currentOutcome: ToolLoopOutcome;
-  decision: ExecutionDecision;
-  afterState?: RepoBuildState;
-  repairAttempts: number;
-  previousAfterErrorCount?: number;
-  consecutiveStalledRepairs: number;
-};
+export type { VerificationRepairState } from "./verificationFinishFailedTypes";
 
 type FailedGate = Extract<VerificationGateOutcome, { kind: "failed" }>;
 
@@ -72,7 +42,7 @@ export async function handleVerificationFailed(params: {
   warnings: string[];
   budget: RunBudgetTracker;
   startedAtMs: number;
-  finish: SuspendBudgetWallContext["finish"];
+  finish: FinishAfterLoopFinish;
   cancelledResult: () => Promise<AgentRunResult>;
   taskListRef: TaskListRef;
   repoBuildStateBefore?: RepoBuildState;
@@ -142,21 +112,14 @@ export async function handleVerificationFailed(params: {
     dirtyPaths,
   } = params;
 
-  let {
-    currentOutcome,
-    decision,
-    afterState,
-    repairAttempts,
-    previousAfterErrorCount,
-    consecutiveStalledRepairs,
-  } = params.state;
+  let state = params.state;
 
   const budgetWallCtx = (): SuspendBudgetWallContext => ({
     runtime,
     runId,
     requestId,
     input,
-    decision,
+    decision: state.decision,
     bus,
     pinnedState,
     reasonCodes,
@@ -166,317 +129,65 @@ export async function handleVerificationFailed(params: {
     finish,
     taskListRef,
     repoBuildStateBefore,
-    afterState,
-    repoBuildStateAfter: afterState,
+    afterState: state.afterState,
+    repoBuildStateAfter: state.afterState,
     continueOverrideCount,
     maxContinueOverrides: thresholds.maxContinueOverrides,
     plan: loopContext?.plan,
   });
 
-  const currentAfterErrorCount =
-    verificationOutcome.comparison?.afterErrorCount ??
-    verificationOutcome.verification?.diagnostics.filter(
-      (diagnostic) => diagnostic.severity === "error",
-    ).length ??
-    0;
-  consecutiveStalledRepairs = nextStalledRepairCount({
-    previousAfterErrorCount,
-    currentAfterErrorCount,
-    consecutiveStalledRepairs,
-  });
-  previousAfterErrorCount = currentAfterErrorCount;
-
-  const repairDecision = shouldContinueVerificationRepair({
-    repairAttempts,
-    explorationDepth: input.explorationDepth,
-    consecutiveStalledRepairs,
-    // Near the host wall-time budget a repair turn cannot finish + re-verify;
-    // report the failed gate with partial results instead.
-    canStartModelCall:
-      budget.canStartModelCall() && !budget.isNearWallDeadline(),
-    maxAttempts: windowPolicy.run.maxVerificationRepairs,
-    thresholds,
-  });
-  const canRepair =
-    verificationOutcome.repairable &&
-    repairDecision.continue &&
-    currentOutcome.kind === "completed";
-  if (canRepair && currentOutcome.kind === "completed") {
-    repairAttempts += 1;
-    reasonCodes.push("verification_repair_attempted");
-    const repairPrep = prepareRepairWorkingSet({
-      current: taskListRef.current,
-      plan: loopContext?.plan,
-      maxTasks: taskListRef.maxTasks,
-      completedPlanStepIds: taskListRef.completedPlanStepIds,
-    });
-    if (repairPrep.refilled) {
-      reasonCodes.push("task_list_refilled");
-    }
-    if (repairPrep.taskList) {
-      taskListRef.current = repairPrep.taskList;
-      if (repairPrep.refilled || repairPrep.activated) {
-        reasonCodes.push("task_list_updated");
-      }
-      if (repairPrep.activated) {
-        reasonCodes.push("verification_repair_batch_activated");
-      }
-      runtime.emitTaskListUpdated(
-        bus,
-        runId,
-        repairPrep.taskList,
-        planProgressOf({
-          plan: loopContext?.plan,
-          completedPlanStepIds: taskListRef.completedPlanStepIds,
-        }),
-      );
-    }
-    currentOutcome.messages.push({
-      role: "user",
-      content: buildVerificationRepairPrompt({
-        verification: verificationOutcome.verification,
-        comparison: verificationOutcome.comparison,
-        changedFiles: loopChangedFiles,
-        mutationBudget: decision.toolGrant.mutationBudget,
-        sourceLines: await loadRepairSourceLines({
-          workspaceRoot: input.workspaceRoot,
-          verification: verificationOutcome.verification,
-        }),
-        askScopePaths: [
-          ...(loopContext?.executionSeed?.paths ?? []),
-          ...(loopContext?.memoryFileTargets ?? []),
-          ...loopChangedFiles,
-        ],
-        userPrompt: loopContext?.skillsQuery ?? loopContext?.memoryQuery ?? "",
-        ...(repairPrep.activeItem
-          ? {
-              activeBatch: {
-                title: repairPrep.activeItem.title,
-                write: repairPrep.activeItem.write,
-                mustRead: repairPrep.activeItem.mustRead,
-                affected: repairPrep.activeItem.affected,
-              },
-            }
-          : {}),
-      }),
-    });
-    currentOutcome = await runV8ModelLoop(runtime, {
-      runId,
-      requestId,
-      interactionMode: loopContext?.mode ?? input.request.mode,
-      llm: runtime.deps.llm,
-      request,
-      decision,
-      understanding: loopContext?.understanding,
-      dirtyPaths,
-      pinnedState,
-      workspaceRoot: input.workspaceRoot,
-      bus,
-      signal,
-      budget,
-      reasonCodes,
-      warnings,
-      messages: currentOutcome.messages,
-      toolCache: currentOutcome.toolCache,
-      changedFiles: loopChangedFiles,
-      mutationCheckpointIds: loopMutationIds,
-      taskListRef,
-      memoryFacts: loopContext?.memoryFacts,
-      memoryQuery: loopContext?.memoryQuery,
-      memoryWorkspaceId: loopContext?.memoryWorkspaceId,
-      memoryFileTargets: loopContext?.memoryFileTargets,
-      establishedFacts: loopContext?.establishedFacts ?? [],
-      selectedSkillIds: loopContext?.selectedSkillIds,
-      projectRuleIds: loopContext?.projectRuleIds,
-      environmentIds: loopContext?.environmentIds,
-      instructionBodies: loopContext?.instructionBodies,
-      evidence,
-      windowPolicy,
-      continueOverrideCount,
-      thresholdOverrides: input.v8LoopPolicy?.thresholds ?? input.loopPolicy?.thresholds,
-      repoBuildStateBefore: afterState ?? repoBuildStateBefore,
-      logVerbosity: input.logVerbosity,
-      criticMode: resolveSteeringFeatureFlags(input.steering).criticMode,
-    });
-    if (
-      currentOutcome.kind === "completed" ||
-      currentOutcome.kind === "approval_required" ||
-      currentOutcome.kind === "continue_required" ||
-      currentOutcome.kind === "grant_expansion_required"
-    ) {
-      decision = currentOutcome.decision;
-      return {
-        kind: "continue",
-        state: {
-          currentOutcome,
-          decision,
-          afterState,
-          repairAttempts,
-          previousAfterErrorCount,
-          consecutiveStalledRepairs,
-        },
-      };
-    }
-    if (currentOutcome.kind === "cancelled") {
-      await runtime.safeUnpin(runId, pinnedState);
-      return { kind: "return", result: await cancelledResult() };
-    }
-    if (currentOutcome.kind === "failed") {
-      await runtime.safeUnpin(runId, pinnedState);
-      return { kind: "return", result: finish({
-        status: "failed",
-        answer: currentOutcome.answer,
-        reasonCodes: [...reasonCodes, ...currentOutcome.extraReasons],
-        error: currentOutcome.error,
-      }) };
-    }
-    reasonCodes.push("budget_exhausted");
-  }
-
-  // Verification did not pass (or remaining-error repairs stalled / capped).
-  // Keep the edits, summarize the delta, and end the task.
-  commitMutations(runtime, loopMutationIds, {
+  const repair = await tryVerificationRepairAttempt({
+    runtime,
     runId,
+    requestId,
+    input,
+    request,
     bus,
-    warnings,
-    logVerbosity: input.logVerbosity,
-  });
-  reasonCodes.push(
-    "verification_kept_changes",
-    "verification_incomplete",
-    "verification_failed",
-  );
-  if (
-    !verificationOutcome.repairable &&
-    logVerbosityAtLeast(input.logVerbosity, "standard")
-  ) {
-    reasonCodes.push("verification_rejected_kept");
-    runtime.emit(bus, {
-      type: "warning",
-      runId,
-      message: `Changes were kept despite a non-repairable verification rejection (${verificationOutcome.rejectKind}).`,
-      code: "verification_rejected_kept",
-      data: { rejectKind: verificationOutcome.rejectKind },
-      at: runtime.isoNow(),
-    });
-  }
-  const summary = await summarizeVerificationForUser(runtime, {
-    bus,
-    runId,
-    record,
-    verification: verificationOutcome.verification,
-    error: verificationOutcome.error,
-    before: repoBuildStateBefore,
-    after: afterState,
-    comparison: verificationOutcome.comparison,
-    changedFiles: loopChangedFiles,
     signal,
-    logVerbosity: input.logVerbosity,
-  });
-  reasonCodes.push("verification_summary_produced");
-  const summarized =
-    (await persistVerificationArtifact(runtime, {
-      runId,
-      requestId,
-      workspaceId: resolveWorkspaceId(input),
-      bus,
-      reasonCodes,
-      warnings,
-      status: recordStatus,
-      before: repoBuildStateBefore,
-      after: afterState,
-      comparison: verificationOutcome.comparison,
-      verification: verificationOutcome.verification,
-      changedFiles: loopChangedFiles,
-      userSummary: summary,
-      previous: record,
-      logVerbosity: input.logVerbosity,
-    })) ?? record;
-  if (summarized) {
-    params.onVerificationRecord?.(summarized);
-  }
-  await commitVerificationMemory(runtime, {
-    record: summarized,
-    summary,
-    workspaceId: resolveWorkspaceId(input),
+    pinnedState,
     reasonCodes,
     warnings,
+    budget,
+    finish,
+    cancelledResult,
+    taskListRef,
+    repoBuildStateBefore,
+    evidence,
+    windowPolicy,
+    loopContext,
+    verificationOutcome,
+    loopChangedFiles,
+    loopMutationIds,
+    thresholds,
+    continueOverrideCount,
+    dirtyPaths,
+    state,
   });
-  if (record?.retry) {
-    reasonCodes.push("verification_retry_available");
-    runtime.emit(bus, {
-      type: "verification_retry_available",
-      runId,
-      recordId: record.recordId,
-      at: runtime.isoNow(),
-    });
+  if (repair.kind === "continue" || repair.kind === "return") {
+    return repair;
   }
-  // Finalize verification evidence and memory. Repair exhaustion is a hard
- // STOP/REPORT — never offer verification_repair_capped Continue.
-  if (
-    verificationOutcome.repairable &&
-    currentOutcome.kind === "completed" &&
-    loopChangedFiles.length > 0
-  ) {
-    if (shouldSuspendContinueAfterRepairExhausted()) {
-      const suspended = await suspendForBudgetWall(budgetWallCtx(), {
-        wallReason: "verification_repair_capped",
-        messages: currentOutcome.messages,
-        toolCache: currentOutcome.toolCache,
-        changedFiles: loopChangedFiles,
-        mutationCheckpointIds: loopMutationIds,
-        answer:
-          selectUserFacingLoopAnswer({
-            loopAnswer: currentOutcome.answer,
-            fallbackSummary: summary,
-            changedFiles: loopChangedFiles,
-          }) ?? summary,
-        mutationRequired: true,
-      });
-      if (suspended) {
-        return { kind: "return", result: suspended };
-      }
-      reasonCodes.push("stall_continue_override_capped");
-    } else {
-      reasonCodes.push("verification_repair_exhausted_terminal");
-    }
-  }
-  await runtime.safeUnpin(runId, pinnedState);
-  reasonCodes.push("answer_produced");
-  const status = resolveFailedVerificationTerminalStatus({
-    changedFileCount: loopChangedFiles.length,
-    rejectKind: verificationOutcome.rejectKind,
-  });
-  if (status === "failed" && verificationOutcome.rejectKind === "no_mutation_performed") {
-    reasonCodes.push("no_mutation_performed", "incomplete_execute");
-  }
-  return { kind: "return", result: finish({
-    status,
-    answer: selectUserFacingLoopAnswer({
-      loopAnswer:
-        "answer" in currentOutcome ? currentOutcome.answer : loopAnswer,
-      fallbackSummary: summary,
-      changedFiles: loopChangedFiles,
-    }),
-    reasonCodes,
-    error: status === "failed" ? verificationOutcome.error : undefined,
-  }) };
-}
+  state = repair.state;
 
-async function loadRepairSourceLines(params: {
-  workspaceRoot: string | undefined;
-  verification: import("../../../modules/verification").VerificationResult | undefined;
-}): Promise<ReadonlyMap<string, string> | undefined> {
-  if (!params.workspaceRoot || !params.verification) {
-    return undefined;
-  }
-  try {
-    const lines = await loadDiagnosticSourceLines({
-      workspaceRoot: params.workspaceRoot,
-      diagnostics: params.verification.diagnostics,
-    });
-    return lines.size > 0 ? lines : undefined;
-  } catch {
-    return undefined;
-  }
+  return finishFailedVerificationTerminal({
+    runtime,
+    runId,
+    requestId,
+    input,
+    bus,
+    signal,
+    pinnedState,
+    reasonCodes,
+    warnings,
+    finish,
+    verificationOutcome,
+    record,
+    recordStatus,
+    loopChangedFiles,
+    loopMutationIds,
+    loopAnswer,
+    repoBuildStateBefore,
+    onVerificationRecord: params.onVerificationRecord,
+    budgetWallCtx,
+    state,
+  });
 }

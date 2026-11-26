@@ -1,7 +1,8 @@
 import type { VerificationResult } from "../../../modules/verification";
 import type { RunEvidence } from "../../../engine/v8-engine/contracts";
 import type { ToolResult } from "../../../engine/tool-runtime";
-import { clampRunEvidence, clipEvidenceText, RUN_EVIDENCE_LIMITS } from "./ClampRunEvidence";
+import { clipEvidenceText, RUN_EVIDENCE_LIMITS } from "./ClampRunEvidence";
+import { uniqueStrings } from "../plan-discovery/PlanningPathUtils";
 
 export function isSuccessfulVerificationToolResult(
   toolName: string,

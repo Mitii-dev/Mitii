@@ -4,23 +4,14 @@
 
 import {
   askNeedsPlanScopeFork,
-  formatPlanAsAnswer,
   type PlanArtifact,
   type PlanClarifyDraft,
   type PlanStrategyDecision,
 } from "../../../modules/planning";
 import type { ExecutionDecision } from "../../../modules/decision-policy";
 import type { UserRequestEnvelope } from "../../../modules/request-intake";
-import { buildPlanClarifySuspension } from "../actions/buildPlanClarifySuspension";
-import {
-  ensurePlanClarifyDraft,
-  formatPlanAnswerWithNextPhase,
-} from "../modules/plan-discovery";
+import { ensurePlanClarifyDraft } from "../modules/plan-discovery";
 import { shouldForceCampaignPhaseLock } from "../../../runtime";
-import {
-  consultRuntimeGate,
-  hubSuspendKind,
-} from "../helpers/ConsultRuntimeGate";
 import { applyPostPlanTaskListGate } from "../modules/execution-seed";
 import type {
   AgentEngineStartInput,
@@ -41,7 +32,8 @@ import type { ExecuteStartSharedState } from "./executeStartEarlyPipeline";
 import type { StartEnrichmentOutcome } from "./executeStartEnrichmentTypes";
 import { recordPlanEvidence } from "../actions";
 import { serializePlanForPrompt } from "../../../modules/planning";
-import { saveSuspendedRun } from "../helpers/SaveSuspendedRun";
+import { maybeSuspendForPlanScopeFork } from "./enrichmentPlanScopeFork";
+import { maybeSuspendAfterPlanScope } from "./enrichmentPlanAfterScope";
 
 export async function maybeSuspendAfterPlanDraft(params: {
   runtime: AgentEngineRuntime;
@@ -110,96 +102,31 @@ export async function maybeSuspendAfterPlanDraft(params: {
   const runScopeFork = phase === "all" || phase === "scope_fork";
   const runAfterScope = phase === "all" || phase === "after_scope";
 
-  // S10-EVAC: scope-fork decision via gates hub (after_plan).
-  const scopeForkVerdict =
-    runScopeFork
-      ? consultRuntimeGate("after_plan", {
-          runId,
-          mode: envelope.mode,
-          planStrategy: planStrategy?.strategy,
-          hasClarifyDraft: Boolean(clarifyDraft),
-          scopeChoiceResolved,
-          qualityFloor: planQualityFloor,
-          forceCampaignPhaseLock,
-          askNeedsScopeFork,
-        })
-      : undefined;
-  const scopeForkSuspend =
-    scopeForkVerdict?.action === "suspend" &&
-    scopeForkVerdict.kind === "clarification_required" &&
-    (scopeForkVerdict.payload as { clarifyOrigin?: string })?.clarifyOrigin ===
-      "scope_fork";
-
-  if (runScopeFork && scopeForkSuspend) {
-    const clarify = buildPlanClarifySuspension(clarifyDraft!);
-    reasonCodes.push("clarification_suspended");
-    if (forceCampaignPhaseLock && planStrategy?.strategy !== "clarify") {
-      reasonCodes.push("plan_scope_campaign_phase_lock");
-    }
-    warnings.push("gates_hub:scope_fork");
-    const rationale =
-      envelope.mode === "agent"
-        ? forceCampaignPhaseLock && planStrategy?.strategy !== "clarify"
-          ? "Multi-outcome plan drafted — choose scope (first phase) before execute so this run stays bounded."
-          : "Choose scope (and optionally first delivery) before executing this Agent phase — keeps reads/turns bounded."
-        : "Choose plan scope (and optionally first delivery) before a concrete Change plan is locked.";
-    const suspendKind = hubSuspendKind(
-      scopeForkVerdict,
-      "clarification_required",
-    );
-    if (runtime.deps.checkpointStore) {
-      await saveSuspendedRun({
-      store: runtime.deps.checkpointStore,
-      checkpoint: {
-        runId,
-        requestId: shared.requestId,
-        suspensionKind: suspendKind,
-        input,
-        decision,
-        pinnedState: undefined,
-        messages: [],
-        toolCacheEntries: [],
-        pendingApproval: undefined,
-        plan,
-        ...(planStrategy ? { planStrategy } : {}),
-        clarificationSession: clarify.clarificationSession,
-        changedFiles: [],
-        mutationCheckpointIds: [],
-        reasonCodes,
-        warnings,
-        usage: budget.snapshot(),
-        startedAtMs: startedMs,
-        repoBuildStateBefore: shared.repoBuildStateBefore,
-        repoBuildStateAfter: shared.repoBuildStateAfter,
-      },
-      });
-    }
-    runtime.emit(bus, {
-      type: "suspended",
+  if (runScopeFork) {
+    const scopeFork = await maybeSuspendForPlanScopeFork({
+      runtime,
       runId,
-      kind: suspendKind,
-      rationale,
-      at: runtime.isoNow(),
+      input,
+      bus,
+      budget,
+      reasonCodes,
+      warnings,
+      startedMs,
+      shared,
+      envelope,
+      decision,
+      plan,
+      planStrategy,
+      clarifyDraft,
+      scopeChoiceResolved,
+      planQualityFloor,
+      forceCampaignPhaseLock,
+      askNeedsScopeFork,
+      finish,
     });
-    await runtime.safeUnpin(runId, shared.pinnedState);
-    return {
-      kind: "terminal",
-      result: finish({
-        status: "suspended",
-        route: decision.route,
-        planningDepth: decision.planningDepth,
-        plan,
-        answer: clarify.answer,
-        suspension: {
-          kind: suspendKind,
-          rationale,
-          clarificationPrompt: clarify.clarificationPrompt,
-          clarificationOptions: clarify.clarificationOptions,
-          plan,
-        },
-        reasonCodes,
-      }),
-    };
+    if (scopeFork) {
+      return scopeFork;
+    }
   }
 
   if (phase === "scope_fork") {
@@ -210,112 +137,25 @@ export async function maybeSuspendAfterPlanDraft(params: {
     return undefined;
   }
 
-  if (!skipPlanGate && decision.planGate === "required_before_execute") {
-    // S10-EVAC: stamp hub kind; entry condition stays planGate (legacy-compatible).
-    const planApprovalVerdict = consultRuntimeGate("after_plan", {
-      runId,
-      mode: "agent",
-      route: "execute",
-      planningDepth: "visible",
-      planGate: "required_before_execute",
-    });
-    reasonCodes.push("plan_approval_suspended");
-    warnings.push("gates_hub:plan_approval");
-    const rationale =
-      "A reviewable plan is required before mutation. Approve, edit, or reject the plan to continue.";
-    const suspendKind = hubSuspendKind(
-      planApprovalVerdict,
-      "plan_approval_required",
-    );
-    if (runtime.deps.checkpointStore) {
-      await saveSuspendedRun({
-      store: runtime.deps.checkpointStore,
-      checkpoint: {
-        runId,
-        requestId: shared.requestId,
-        suspensionKind: suspendKind,
-        input,
-        decision,
-        pinnedState: shared.pinnedState,
-        messages: [],
-        toolCacheEntries: [],
-        pendingApproval: undefined,
-        plan,
-        ...(planStrategy ? { planStrategy } : {}),
-        changedFiles: [],
-        mutationCheckpointIds: [],
-        reasonCodes,
-        warnings,
-        usage: budget.snapshot(),
-        startedAtMs: startedMs,
-        repoBuildStateBefore: shared.repoBuildStateBefore,
-        repoBuildStateAfter: shared.repoBuildStateAfter,
-        ...(taskListRef.current ? { taskList: taskListRef.current } : {}),
-        ...(taskListRef.completedPlanStepIds &&
-        taskListRef.completedPlanStepIds.length > 0
-          ? {
-              completedPlanStepIds: [...taskListRef.completedPlanStepIds],
-            }
-          : {}),
-        ...(shared.executionSeed
-          ? { executionSeed: shared.executionSeed }
-          : {}),
-        ...(shared.understanding
-          ? { understanding: shared.understanding }
-          : {}),
-      },
-      });
-    }
-    runtime.emit(bus, {
-      type: "suspended",
-      runId,
-      kind: suspendKind,
-      rationale,
-      at: runtime.isoNow(),
-    });
-    return {
-      kind: "terminal",
-      result: finish({
-        status: "suspended",
-        route: decision.route,
-        planningDepth: decision.planningDepth,
-        plan,
-        answer: formatPlanAnswerWithNextPhase({
-          answer: formatPlanAsAnswer(plan, planStrategy, clarifyDraft),
-          nextPlanPhaseOffer: shared.nextPlanPhaseOffer,
-          reasonCodes,
-        }),
-        suspension: {
-          kind: suspendKind,
-          rationale,
-          plan,
-        },
-        reasonCodes,
-      }),
-    };
-  }
-
-  if (envelope.mode === "plan") {
-    reasonCodes.push("plan_mode_completed", "answer_produced");
-    await runtime.safeUnpin(runId, shared.pinnedState);
-    return {
-      kind: "terminal",
-      result: finish({
-        status: "completed",
-        route: decision.route,
-        planningDepth: decision.planningDepth,
-        plan,
-        answer: formatPlanAnswerWithNextPhase({
-          answer: formatPlanAsAnswer(plan, planStrategy, clarifyDraft),
-          nextPlanPhaseOffer: shared.nextPlanPhaseOffer,
-          reasonCodes,
-        }),
-        reasonCodes,
-      }),
-    };
-  }
-
-  return undefined;
+  return maybeSuspendAfterPlanScope({
+    runtime,
+    runId,
+    input,
+    bus,
+    budget,
+    reasonCodes,
+    warnings,
+    startedMs,
+    shared,
+    taskListRef,
+    envelope,
+    decision,
+    plan,
+    planStrategy,
+    clarifyDraft,
+    skipPlanGate,
+    finish,
+  });
 }
 
 type PostPlanFinish = Parameters<

@@ -1,501 +1,128 @@
-import type {
-  ExecutionDecision,
-} from "../../../modules/decision-policy";
-import type {
-  ModelRequest,
-} from "../../../modules/model-gateway";
-import type {
-  PlanArtifact,
-} from "../../../modules/planning";
-import type {
-  ProjectDescriptor,
-  RepositoryStateReference,
-} from "../../../modules/repository-state";
-import type { WindowPolicy } from "../../../modules/window-budget";
-import type {
-  RequestUnderstandingResult,
-} from "../../../modules/request-understanding";
-import type {
-  RepoBuildState,
-  VerificationRecord,
-  VerificationRecordStatus,
-} from "../../../modules/verification";
-
-import {
-  selectUserFacingLoopAnswer,
-  markPlanEvidenceStepsDone,
-  resolveLoopPolicyThresholds,
-} from "../actions";
-import {
-  completePlanStepsFromDiagnostics,
-  markTaskListUpdated,
-  planProgressOf,
-  type TaskListRef,
-} from "../internal/taskListRuntime";
-import type {
-  EstablishedFact,
-} from "../actions";
-import type {
-  AgentEngineStartInput,
-  AgentReasonCode,
-  AgentRunResult,
-  AgentRunStatus,
-  RunEvidence,
-} from "../contracts";
-import { EventBus } from "../internal/EventBus";
-import { RunBudgetTracker } from "../internal/RunBudget";
-
+import { resolveLoopPolicyThresholds } from "../actions";
 import type { AgentEngineRuntime } from "./runtime";
-import { resolveWorkspaceId } from "./runtime";
-import type {
-  ToolLoopOutcome,
-} from "./types";
+import type { AgentRunResult } from "../contracts";
 
-import {
-  commitMutations,
-  persistVerificationArtifact,
-  runVerificationGate,
-} from "./verificationSupport";
-
-import { finishIfApprovalRequired } from "./verificationFinishApproval";
-import {
-  finishIfGrantExpansionRequired,
-  finishIfContinueRequired,
-} from "./verificationFinishSuspend";
+import { finishIfNonCompletedOutcome } from "./verificationFinishEarlyOutcomes";
+import { runCompletedVerificationPass } from "./verificationFinishCompletedPass";
 import { handleVerificationFailed } from "./verificationFinishFailed";
 import { finishVerificationAccepted } from "./finishVerificationAccepted";
+import type {
+  FinishAfterLoopParams,
+  FinishLoopMutable,
+} from "./verificationFinishTypes";
+
+export type {
+  FinishAfterLoopParams,
+  FinishAfterLoopFinish,
+  FinishAfterLoopContext,
+} from "./verificationFinishTypes";
 
 export async function finishAfterLoop(
   runtime: AgentEngineRuntime,
-  params: {
-  runId: string;
-  requestId: string;
-  input: AgentEngineStartInput;
-  request: ModelRequest;
-  decision: ExecutionDecision;
-  bus: EventBus;
-  signal: AbortSignal;
-  pinnedState: RepositoryStateReference | undefined;
-  dirtyPaths: readonly string[] | undefined;
-  loopOutcome: ToolLoopOutcome;
-  reasonCodes: AgentReasonCode[];
-  warnings: string[];
-  budget: RunBudgetTracker;
-  startedAtMs: number;
-  finish: (partial: {
-    status: AgentRunStatus;
-    route?: AgentRunResult["route"];
-    planningDepth?: AgentRunResult["planningDepth"];
-    answer?: string;
-    suspension?: AgentRunResult["suspension"];
-    pinnedState?: RepositoryStateReference;
-    reasonCodes?: AgentReasonCode[];
-    warnings?: string[];
-    error?: { code: string; message: string };
-  }) => AgentRunResult;
-  cancelledResult: () => Promise<AgentRunResult>;
-  taskListRef: TaskListRef;
-  repoBuildStateBefore?: RepoBuildState;
-  repoBuildStateAfter?: RepoBuildState;
-  evidence?: RunEvidence;
-  onRepoBuildStateAfter?: (state: RepoBuildState) => void;
-  onVerificationRecord?: (record: VerificationRecord) => void;
-  windowPolicy: WindowPolicy;
-  /** Seeded after a Continue resume so nested walls honor the override cap. */
-  continueOverrideCount?: number;
-  loopContext?: {
-    understanding?: RequestUnderstandingResult;
-    skillsQuery?: string;
-    mode?: "ask" | "plan" | "agent";
-    projects?: readonly ProjectDescriptor[];
-    memoryFacts?: readonly { id: string; content: string }[];
-    memoryQuery?: string;
-    memoryWorkspaceId?: string;
-    memoryFileTargets?: readonly string[];
-    selectedSkillIds?: string[];
-    projectRuleIds?: string[];
-    environmentIds?: string[];
-    instructionBodies?: import("../internal/system-context").InstructionBodiesByKind;
-    requiredSkillIds?: string[];
-    excludedSkillIds?: string[];
-    establishedFacts: EstablishedFact[];
-    plan?: PlanArtifact;
-    executionSeed?: import("../modules/execution-seed").ExecutionSeed;
-    nextPlanPhaseOffer?: string;
-  };
-}): Promise<AgentRunResult> {
-  const {
-    runId,
-    requestId,
-    input,
-    bus,
-    signal,
-    pinnedState,
-    loopOutcome,
-    reasonCodes,
-    warnings,
-    budget,
-    startedAtMs,
-    finish,
-    cancelledResult,
-    taskListRef,
-    repoBuildStateBefore,
-    evidence,
-    windowPolicy,
-  } = params;
+  params: FinishAfterLoopParams,
+): Promise<AgentRunResult> {
+  const { loopOutcome, windowPolicy, input } = params;
   const continueOverrideCount = params.continueOverrideCount ?? 0;
   const thresholds = resolveLoopPolicyThresholds({
     contextWindowTokens: windowPolicy.contextWindowTokens,
     overrides: input.loopPolicy?.thresholds,
   }).thresholds;
 
-  let currentOutcome = loopOutcome;
-  // Authority may have been refreshed mid-loop (e.g. after approval or
-  // escalation); prefer whatever the loop last resolved over the pre-loop
-  // decision so verification and any repair rerun use live authority.
-  let decision =
-    currentOutcome.kind === "completed" ||
-    currentOutcome.kind === "approval_required" ||
-    currentOutcome.kind === "grant_expansion_required" ||
-    currentOutcome.kind === "continue_required"
-      ? currentOutcome.decision
-      : params.decision;
-  let afterState = params.repoBuildStateAfter;
-  let repairAttempts = 0;
-  let previousAfterErrorCount: number | undefined;
-  let consecutiveStalledRepairs = 0;
+  const state: FinishLoopMutable = {
+    currentOutcome: loopOutcome,
+    // Authority may have been refreshed mid-loop (e.g. after approval or
+    // escalation); prefer whatever the loop last resolved over the pre-loop
+    // decision so verification and any repair rerun use live authority.
+    decision:
+      loopOutcome.kind === "completed" ||
+      loopOutcome.kind === "approval_required" ||
+      loopOutcome.kind === "grant_expansion_required" ||
+      loopOutcome.kind === "continue_required"
+        ? loopOutcome.decision
+        : params.decision,
+    afterState: params.repoBuildStateAfter,
+    repairAttempts: 0,
+    previousAfterErrorCount: undefined,
+    consecutiveStalledRepairs: 0,
+  };
 
   while (true) {
-    if (currentOutcome.kind === "approval_required") {
-      return await finishIfApprovalRequired(runtime, {
-        runId,
-        requestId,
-        input,
-        decision,
-        bus,
-        pinnedState,
-        currentOutcome,
-        reasonCodes,
-        warnings,
-        budget,
-        startedAtMs,
-        finish,
-        taskListRef,
-        repoBuildStateBefore,
-        repoBuildStateAfter: params.repoBuildStateAfter,
-      });
+    const early = await finishIfNonCompletedOutcome(runtime, params, state);
+    if (early) {
+      return early;
     }
 
-    if (currentOutcome.kind === "grant_expansion_required") {
-      return await finishIfGrantExpansionRequired(runtime, {
-        runId,
-        requestId,
-        input,
-        decision,
-        bus,
-        pinnedState,
-        currentOutcome,
-        reasonCodes,
-        warnings,
-        budget,
-        startedAtMs,
-        finish,
-        taskListRef,
-        repoBuildStateBefore,
-        repoBuildStateAfter: params.repoBuildStateAfter,
-        plan: params.loopContext?.plan,
-      });
-    }
+    const pass = await runCompletedVerificationPass(runtime, params, state);
 
-    if (currentOutcome.kind === "continue_required") {
-      return await finishIfContinueRequired(runtime, {
-        runId,
-        requestId,
-        input,
-        decision,
-        bus,
-        pinnedState,
-        currentOutcome,
-        reasonCodes,
-        warnings,
-        budget,
-        startedAtMs,
-        finish,
-        taskListRef,
-        repoBuildStateBefore,
-        repoBuildStateAfter: params.repoBuildStateAfter,
-        afterState,
-        plan: params.loopContext?.plan,
-        executionSeed: params.loopContext?.executionSeed,
-      });
-    }
-
-    if (currentOutcome.kind === "cancelled") {
-      await runtime.safeUnpin(runId, pinnedState);
-      return await cancelledResult();
-    }
-
-    if (currentOutcome.kind === "budget_exhausted") {
-      if (currentOutcome.changedFiles.length > 0) {
-        const verificationOutcome = await runVerificationGate(runtime, {
-          runId,
-          bus,
-          decision,
-          primaryTaskIntent:
-            params.loopContext?.understanding?.intent.classification
-              .primaryTaskIntent,
-          input,
-          pinnedState,
-          changedFiles: currentOutcome.changedFiles,
-          mutationCheckpointIds: currentOutcome.mutationCheckpointIds,
-          reasonCodes,
-          warnings,
-          repoBuildStateBefore,
-          onRepoBuildStateAfter: (state) => {
-            afterState = state;
-            params.onRepoBuildStateAfter?.(state);
-          },
-          evidence,
-          windowPolicy,
-          signal: params.signal,
-          askScopePaths: [
-            ...(params.loopContext?.executionSeed?.paths ?? []),
-            ...(params.loopContext?.memoryFileTargets ?? []),
-          ],
-        });
-        commitMutations(runtime, currentOutcome.mutationCheckpointIds, {
-          runId,
-          bus,
-          warnings,
-          logVerbosity: input.logVerbosity,
-        });
-        const record = await persistVerificationArtifact(runtime, {
-          runId,
-          requestId,
-          workspaceId: resolveWorkspaceId(input),
-          bus,
-          reasonCodes,
-          warnings,
-          status:
-            verificationOutcome.kind === "ok" &&
-            verificationOutcome.acceptKind === "verified_success"
-              ? "passed"
-              : "incomplete",
-          before: repoBuildStateBefore,
-          after: afterState,
-          comparison: verificationOutcome.comparison,
-          verification: verificationOutcome.verification,
-          changedFiles: currentOutcome.changedFiles,
-          logVerbosity: input.logVerbosity,
-        });
-        if (record) {
-          params.onVerificationRecord?.(record);
-        }
-      }
-      await runtime.safeUnpin(runId, pinnedState);
-      reasonCodes.push("budget_exhausted");
-      return finish({
-        status: "budget_exhausted",
-        answer: selectUserFacingLoopAnswer({
-          loopAnswer: currentOutcome.answer,
-          changedFiles: currentOutcome.changedFiles,
-        }),
-        reasonCodes,
-        error: {
-          code: "budget_exhausted",
-          message: currentOutcome.message,
-        },
-      });
-    }
-
-    if (currentOutcome.kind === "failed") {
-      await runtime.safeUnpin(runId, pinnedState);
-      return finish({
-        status: "failed",
-        answer: currentOutcome.answer,
-        reasonCodes: [...reasonCodes, ...currentOutcome.extraReasons],
-        error: currentOutcome.error,
-      });
-    }
-
-    if (currentOutcome.kind !== "completed") {
-      await runtime.safeUnpin(runId, pinnedState);
-      return finish({
-        status: "failed",
-        reasonCodes: [...reasonCodes, "misconfigured"],
-        error: {
-          code: "misconfigured",
-          message: "Verification gate expected a completed model/tool loop.",
-        },
-      });
-    }
-
-    const loopChangedFiles = currentOutcome.changedFiles;
-    const loopMutationIds = currentOutcome.mutationCheckpointIds;
-    const loopAnswer = currentOutcome.answer;
-
-    const verificationOutcome = await runVerificationGate(runtime, {
-      runId,
-      bus,
-      decision,
-      primaryTaskIntent:
-        params.loopContext?.understanding?.intent.classification
-          .primaryTaskIntent,
-      input,
-      pinnedState,
-      changedFiles: loopChangedFiles,
-      mutationCheckpointIds: loopMutationIds,
-      reasonCodes,
-      warnings,
-      repoBuildStateBefore,
-      onRepoBuildStateAfter: (state) => {
-        afterState = state;
-        params.onRepoBuildStateAfter?.(state);
-      },
-      evidence,
-      windowPolicy,
-      signal: params.signal,
-      askScopePaths: [
-        ...(params.loopContext?.executionSeed?.paths ?? []),
-        ...(params.loopContext?.memoryFileTargets ?? []),
-      ],
-    });
-
-    const recordStatus: VerificationRecordStatus =
-      verificationOutcome.kind === "ok" &&
-      verificationOutcome.acceptKind === "verified_success"
-        ? "passed"
-        : verificationOutcome.kind === "ok"
-          ? "compared"
-          : "incomplete";
-    const record = await persistVerificationArtifact(runtime, {
-      runId,
-      requestId,
-      workspaceId: resolveWorkspaceId(input),
-      bus,
-      reasonCodes,
-      warnings,
-      status: recordStatus,
-      before: repoBuildStateBefore,
-      after: afterState,
-      comparison: verificationOutcome.comparison,
-      verification: verificationOutcome.verification,
-      changedFiles: loopChangedFiles,
-      logVerbosity: input.logVerbosity,
-    });
-    if (record) {
-      params.onVerificationRecord?.(record);
-    }
-
-    const newErrorsIntroduced =
-      verificationOutcome.comparison?.reasonCodes?.includes(
-        "new_errors_introduced",
-      ) === true;
-    const diagnosticAdvance = completePlanStepsFromDiagnostics({
-      current: taskListRef.current,
-      plan: params.loopContext?.plan,
-      maxTasks: taskListRef.maxTasks,
-      taskListRef,
-      diagnostics: verificationOutcome.verification?.diagnostics,
-      newErrorsIntroduced,
-    });
-    if (diagnosticAdvance.taskList) {
-      taskListRef.current = diagnosticAdvance.taskList;
-    }
-    if (diagnosticAdvance.advanced) {
-      markTaskListUpdated(taskListRef, budget.snapshot().modelCalls);
-      reasonCodes.push("task_list_auto_advanced", "task_list_updated");
-      if (diagnosticAdvance.refilled) {
-        reasonCodes.push("task_list_refilled");
-      }
-      markPlanEvidenceStepsDone(evidence, diagnosticAdvance.completedStepIds);
-      if (diagnosticAdvance.taskList) {
-        runtime.emitTaskListUpdated(
-          bus,
-          runId,
-          diagnosticAdvance.taskList,
-          planProgressOf({
-            plan: params.loopContext?.plan,
-            completedPlanStepIds: taskListRef.completedPlanStepIds,
-          }),
-        );
-        runtime.emitEvidenceUpdated(bus, runId, evidence);
-      }
-    }
-
-    if (verificationOutcome.kind === "ok") {
+    if (pass.verificationOutcome.kind === "ok") {
       // ACCEPTED = hard terminal. Never Continue/repair/rediscover.
       return finishVerificationAccepted({
         runtime,
-        runId,
-        pinnedState,
-        reasonCodes,
-        repairAttempts,
-        loopAnswer,
-        loopChangedFiles,
-        record,
+        runId: params.runId,
+        pinnedState: params.pinnedState,
+        reasonCodes: params.reasonCodes,
+        repairAttempts: state.repairAttempts,
+        loopAnswer: pass.loopAnswer,
+        loopChangedFiles: pass.loopChangedFiles,
+        record: pass.record,
         remainingErrorCount:
-          verificationOutcome.comparison?.remainingErrorCount ?? 0,
-        newErrorCount: verificationOutcome.comparison?.newErrorCount ?? 0,
-        decision,
+          pass.verificationOutcome.comparison?.remainingErrorCount ?? 0,
+        newErrorCount: pass.verificationOutcome.comparison?.newErrorCount ?? 0,
+        decision: state.decision,
         understanding: params.loopContext?.understanding,
-        taskList: taskListRef.current,
+        taskList: params.taskListRef.current,
         nextPlanPhaseOffer: params.loopContext?.nextPlanPhaseOffer,
-        finish,
+        finish: params.finish,
       });
     }
 
-    {
-      const handled = await handleVerificationFailed({
-        runtime,
-        runId,
-        requestId,
-        input,
-        request: params.request,
-        bus,
-        signal,
-        pinnedState,
-        reasonCodes,
-        warnings,
-        budget,
-        startedAtMs,
-        finish,
-        cancelledResult,
-        taskListRef,
-        repoBuildStateBefore,
-        evidence,
-        windowPolicy,
-        loopContext: params.loopContext,
-        verificationOutcome,
-        record,
-        recordStatus,
-        loopChangedFiles,
-        loopMutationIds,
-        loopAnswer,
-        thresholds,
-        continueOverrideCount,
-        dirtyPaths: params.dirtyPaths,
-        onVerificationRecord: params.onVerificationRecord,
-        state: {
-          currentOutcome,
-          decision,
-          afterState,
-          repairAttempts,
-          previousAfterErrorCount,
-          consecutiveStalledRepairs,
-        },
-      });
-      if (handled.kind === "return") {
-        return handled.result;
-      }
-      currentOutcome = handled.state.currentOutcome;
-      decision = handled.state.decision;
-      afterState = handled.state.afterState;
-      repairAttempts = handled.state.repairAttempts;
-      previousAfterErrorCount = handled.state.previousAfterErrorCount;
-      consecutiveStalledRepairs = handled.state.consecutiveStalledRepairs;
-      continue;
+    const handled = await handleVerificationFailed({
+      runtime,
+      runId: params.runId,
+      requestId: params.requestId,
+      input: params.input,
+      request: params.request,
+      bus: params.bus,
+      signal: params.signal,
+      pinnedState: params.pinnedState,
+      reasonCodes: params.reasonCodes,
+      warnings: params.warnings,
+      budget: params.budget,
+      startedAtMs: params.startedAtMs,
+      finish: params.finish,
+      cancelledResult: params.cancelledResult,
+      taskListRef: params.taskListRef,
+      repoBuildStateBefore: params.repoBuildStateBefore,
+      evidence: params.evidence,
+      windowPolicy: params.windowPolicy,
+      loopContext: params.loopContext,
+      verificationOutcome: pass.verificationOutcome,
+      record: pass.record,
+      recordStatus: pass.recordStatus,
+      loopChangedFiles: pass.loopChangedFiles,
+      loopMutationIds: pass.loopMutationIds,
+      loopAnswer: pass.loopAnswer,
+      thresholds,
+      continueOverrideCount,
+      dirtyPaths: params.dirtyPaths,
+      onVerificationRecord: params.onVerificationRecord,
+      state: {
+        currentOutcome: state.currentOutcome,
+        decision: state.decision,
+        afterState: state.afterState,
+        repairAttempts: state.repairAttempts,
+        previousAfterErrorCount: state.previousAfterErrorCount,
+        consecutiveStalledRepairs: state.consecutiveStalledRepairs,
+      },
+    });
+    if (handled.kind === "return") {
+      return handled.result;
     }
-
+    state.currentOutcome = handled.state.currentOutcome;
+    state.decision = handled.state.decision;
+    state.afterState = handled.state.afterState;
+    state.repairAttempts = handled.state.repairAttempts;
+    state.previousAfterErrorCount = handled.state.previousAfterErrorCount;
+    state.consecutiveStalledRepairs = handled.state.consecutiveStalledRepairs;
   }
 }
