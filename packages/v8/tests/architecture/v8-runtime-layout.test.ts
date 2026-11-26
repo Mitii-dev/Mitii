@@ -77,15 +77,26 @@ describe("v8 runtime layout (rewrite P0)", () => {
 
   it("exposes intentional runtime/index.ts exports only", () => {
     const index = readFileSync(join(runtimeRoot, "index.ts"), "utf8");
-    expect(index).toContain("composeRuntime");
-    expect(index).toContain("StoreManager");
+    const planSurface = readFileSync(
+      join(runtimeRoot, "surface/PlanDiscoverStore.ts"),
+      "utf8",
+    );
+    const verifySurface = readFileSync(
+      join(runtimeRoot, "surface/VerifyGatesAdapters.ts"),
+      "utf8",
+    );
+    const surface = `${index}\n${planSurface}\n${verifySurface}`;
+    expect(surface).toContain("composeRuntime");
+    expect(surface).toContain("StoreManager");
     expect(index).toContain("RUNTIME_FLOW_STEP_IDS");
     expect(index).toContain("runThroughTurnLoop");
-    expect(index).toContain("selectRouteBody");
+    expect(surface).toContain("selectRouteBody");
     expect(index).toContain("checkToolAgainstGrant");
-    expect(index).toContain("wrapEngineWithRuntimeShell");
-    expect(index).toContain("createAgentRunHandleFromRuntimeResult");
-    expect(index).not.toMatch(/export \* from/);
+    expect(surface).toContain("wrapEngineWithRuntimeShell");
+    expect(surface).toContain("createAgentRunHandleFromRuntimeResult");
+    // Star re-exports only from intentional surface/ barrels (keeps index ≤300).
+    const starExports = index.match(/export \* from\s+['"][^'"]+['"]/g) ?? [];
+    expect(starExports.every((line) => line.includes("./surface/"))).toBe(true);
   });
 
   it("keeps engine/ present until cutover (dual-run during rewrite)", () => {
@@ -102,6 +113,7 @@ describe("v8 runtime layout (rewrite P0)", () => {
         "tool-journal",
         "routes",
         "plan",
+        "plan-discovery",
         "rails",
       ]),
     );

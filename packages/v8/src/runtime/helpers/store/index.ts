@@ -11,8 +11,12 @@ export {
 } from "./StoreSnapshot";
 export { packTurn } from "./PackTurn";
 export type { PackTurnInput, ModelRequestSketch } from "./PackTurn";
+export { packTurnOrBriefcase } from "./PackTurnOrBriefcase";
 export { buildBriefcase } from "./BuildBriefcase";
 export type { BuildBriefcaseInput, BriefcaseSketch } from "./BuildBriefcase";
+export { buildBriefcaseViaPC } from "./BuildBriefcaseViaPC";
+export type { BuildBriefcaseViaPCInput } from "./BuildBriefcaseViaPC";
+export { mapSketchToPromptConstructionInput } from "./MapSketchToPromptConstructionInput";
 export {
   layoutBriefcaseSlots,
   cacheBreakpointsForCapability,

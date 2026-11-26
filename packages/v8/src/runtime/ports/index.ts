@@ -5,6 +5,7 @@ export type {
   RuntimeToolExecuteResult,
 } from "./RuntimeToolExecutorPort";
 export type { RuntimeDependencies } from "./RuntimeDependencies";
+export type { RuntimePromptConstructionPort } from "./RuntimePromptConstructionPort";
 export type {
   RuntimeVerificationRunnerPort,
   RuntimeVerificationOutcome,

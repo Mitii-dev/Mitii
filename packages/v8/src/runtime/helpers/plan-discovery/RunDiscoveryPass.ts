@@ -138,9 +138,10 @@ export async function runDiscoveryPass(
   const planning = new PlanningPipeline();
   const brief = planning.compileDiscovery(observation);
 
+  // Floor only after tool-backed peeks; seed-only / no-target passes stay best-effort.
   const quality = enforceDiscoveryQualityFloor({
     brief,
-    requireFloor: input.requireQualityFloor === true,
+    requireFloor: input.requireQualityFloor === true && toolCalls > 0,
     searchCount: searches,
   });
 

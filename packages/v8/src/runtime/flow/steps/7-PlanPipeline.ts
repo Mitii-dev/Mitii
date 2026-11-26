@@ -114,6 +114,8 @@ export async function planPipeline(
     );
     ctx.store.setSlice("taskList", discoveryList.taskList);
 
+    // Quality floor only when tools can actually peek; seed-only is best-effort.
+    const toolsAvailable = ctx.deps?.tools != null;
     discoveryResult = await runDiscoveryPass({
       objective:
         pack?.request?.text?.trim() ||
@@ -122,10 +124,11 @@ export async function planPipeline(
       budget: discoveryBudget,
       tools: ctx.deps?.tools,
       requireQualityFloor:
-        ctx.mode === "plan" ||
-        taskSize === "medium" ||
-        taskSize === "large" ||
-        decision.planningDepth === "visible",
+        toolsAvailable &&
+        (ctx.mode === "plan" ||
+          taskSize === "medium" ||
+          taskSize === "large" ||
+          decision.planningDepth === "visible"),
     });
     discoveryBrief = discoveryResult.brief;
     ctx.store.setSlice("discoveryBrief", discoveryBrief);

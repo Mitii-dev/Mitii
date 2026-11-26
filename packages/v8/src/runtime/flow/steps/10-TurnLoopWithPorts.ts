@@ -1,4 +1,4 @@
-import { packTurn } from "../../helpers/store/PackTurn";
+import { packTurnOrBriefcase } from "../../helpers/store/PackTurnOrBriefcase";
 import { evaluateSoftRails } from "../../helpers/rails";
 import { countTurnHeartbeats } from "../../helpers/heartbeat/CountTurnHeartbeats";
 import {
@@ -54,12 +54,19 @@ export async function turnLoopWithPorts(
   const taskList = ctx.store.getSlice<TaskList>("taskList");
   const grant: GrantSurface = opts?.grant ?? defaultGrantFromDecision(decision);
 
-  const packed = packTurn({
-    messages: [{ role: "user", content: ctx.input.message }],
+  const windowTokens =
+    (ctx.store.getSlice<{ contextWindowTokens?: number }>("windowPolicy")
+      ?.contextWindowTokens as number | undefined) ?? undefined;
+
+  const packed = packTurnOrBriefcase({
+    message: ctx.input.message,
     grant,
+    decision,
+    promptConstruction: deps.promptConstruction,
     contextBundleSummary: bundle?.summary,
     ...(bundle ? { contextBundle: bundle } : {}),
     ...(taskList ? { taskList } : {}),
+    contextWindowTokens: windowTokens,
   });
 
   let journal =

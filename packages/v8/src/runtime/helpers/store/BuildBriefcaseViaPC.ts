@@ -9,8 +9,8 @@ import type { RuntimePromptConstructionPort } from "../../ports/RuntimePromptCon
 import type { TaskList } from "../../../modules/task-list";
 import { toModelToolSurface } from "../../tools/ToModelToolSurface";
 import type { GrantSurface } from "../../tools/CheckToolAgainstGrant";
-import { mapSketchToPromptConstructionInput } from "../../adapters/prompt/MapSketchToPromptConstructionInput";
 import { buildBriefcase, type BriefcaseSketch } from "./BuildBriefcase";
+import { mapSketchToPromptConstructionInput } from "./MapSketchToPromptConstructionInput";
 import type { PromptCacheCapability } from "./PromptCacheCapability";
 
 export interface BuildBriefcaseViaPCInput {

@@ -22,12 +22,13 @@ helpers/heartbeat/    Soft emit + durable heartbeat checkpoints (S11-HEART)
 helpers/replate/      Approve-plan → new execute decision, scopes ⊆ plan (S10-REPLATE)
 helpers/mcp/          attach/revoke mid-run (§16)
 helpers/grant/        scopesFromVerdict
-helpers/plan/         when-to-run 3A + hollow reject + PlanningInput map
+helpers/plan/         when-to-run 3A + hollow reject + PlanningInput map + telemetry
+helpers/plan-discovery/ readonly discovery pump + quality floor (S3A-DISCOVER)
 helpers/routes/       job-card bodies
 helpers/rails/        soft nudges (never suspend)
 helpers/tool-journal/ append / settle / idempotency
 tools/                grant enforce + toModelToolSurface
-adapters/             composeRuntime + shell wrap
+adapters/             composeRuntime + PC/enrich ports + shell wrap
 ```
 
 ## Three layers (S10)
@@ -44,6 +45,13 @@ memory / repo via module adapters (pump never reimplements retrieval).
 `prioritizeOmissions` trims against `WindowPolicy` section shares (drop order
 table-driven). `packTurn` layouts stable → semi → volatile and marks
 capability-based cache breakpoints; tools ⊆ `toModelToolSurface(grant)`.
+When `deps.promptConstruction` is set (default via `composeRuntime`), the turn
+loop uses `buildBriefcaseViaPC` → PromptConstructionPipeline (still ⊆ grant).
+
+Plan 3A discovery: `shouldRunDiscoveryPass` → temp TaskList →
+`runDiscoveryPass` (readonly grant + optional tool peeks) →
+`PlanningPipeline.compileDiscovery` → quality floor → plan draft →
+`emitPlanPhaseTelemetry`.
 
 ## TaskList handoff (S13)
 
@@ -77,5 +85,5 @@ consume it. Widen grants only via registered upgrade plates (`upgradePlateId`).
 
 ## Status
 
-P8 + S1–S3A (STEER/WINDOW/EXIT/TASKLIST) + host situation + S2C + enrich/briefcase +
-S12-SELECT + S10 policy map live.
+P8 + S1–S3A (DISCOVER/TELEMETRY/STEER/WINDOW/EXIT/TASKLIST) + host situation +
+S2C + enrich/briefcase-via-PC + S12-SELECT + S10 policy map live.

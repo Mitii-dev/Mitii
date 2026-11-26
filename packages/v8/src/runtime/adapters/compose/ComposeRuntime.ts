@@ -10,6 +10,7 @@ import { completeViaLlmPort } from "../model/CompleteViaLlmPort";
 import type { RuntimeToolExecutorPort } from "../../ports/RuntimeToolExecutorPort";
 import { createInlineVerificationRunner } from "../../ports/RuntimeVerificationRunnerPort";
 import { createPipelineVerificationRunner } from "../verification/CreatePipelineVerificationRunner";
+import { createPromptConstructionPort } from "../prompt/CreatePromptConstructionPort";
 import { executeViaToolRuntime } from "../tools/ExecuteViaToolRuntime";
 
 export type ComposeRuntimeOptions = {
@@ -41,6 +42,10 @@ export type ComposeRuntimeOptions = {
   mcpServerIds?: string[];
   /** Enrich retrieval ports (skills / memory / repo). */
   enrich?: RuntimeDependencies["enrich"];
+  /** Prompt-construction port (S11-BRIEF). Defaults to PromptConstructionPipeline. */
+  promptConstruction?: RuntimeDependencies["promptConstruction"];
+  /** When true, skip default prompt-construction port. */
+  disablePromptConstruction?: boolean;
   /**
    * Full modules/verification pipeline — replaces inline runner when set
    * (with `verificationInput` factory).
@@ -89,6 +94,12 @@ export function composeRuntime(
         ? undefined
         : createInlineVerificationRunner());
 
+  const promptConstruction =
+    options.promptConstruction ??
+    (options.disablePromptConstruction
+      ? undefined
+      : createPromptConstructionPort());
+
   const deps: RuntimeDependencies = {
     model:
       options.model ??
@@ -103,6 +114,7 @@ export function composeRuntime(
     verification,
     mcpServerIds: options.mcpServerIds,
     enrich: options.enrich,
+    promptConstruction,
   };
   return new RuntimePipeline(deps);
 }

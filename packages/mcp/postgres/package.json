@@ -1,6 +1,6 @@
 {
   "name": "@mitii/mcp-postgres",
-  "version": "2.11.44",
+  "version": "2.11.45",
   "description": "Mitii MCP stdio server for Postgres — readonly or readwrite via MCP_DB_ACCESS.",
   "license": "AGPL-3.0-or-later",
   "type": "module",

@@ -3,6 +3,7 @@ import type { RuntimeEventSink } from "../helpers/events/RuntimeEventChannel";
 import type { GateCheckpointStorePort } from "../helpers/gates/types";
 import type { RuntimeEnrichRetrievalPorts } from "./RuntimeEnrichRetrievalPorts";
 import type { RuntimeModelPort } from "./RuntimeModelPort";
+import type { RuntimePromptConstructionPort } from "./RuntimePromptConstructionPort";
 import type { RuntimeToolExecutorPort } from "./RuntimeToolExecutorPort";
 import type { RuntimeVerificationRunnerPort } from "./RuntimeVerificationRunnerPort";
 
@@ -30,6 +31,11 @@ export interface RuntimeDependencies {
    * Enrich retrieval ports (skills / memory / repo) — modules own pipelines.
    */
   enrich?: RuntimeEnrichRetrievalPorts;
+  /**
+   * Prompt-construction port (S11-BRIEF) — modules own packing; turn loop
+   * uses buildBriefcaseViaPC when set.
+   */
+  promptConstruction?: RuntimePromptConstructionPort;
   /**
    * Live event sink for progressive MitiiRun streaming while the pump runs.
    * Prefer per-start override via ExecuteRuntimeStartInput.eventSink.
