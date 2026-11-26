@@ -5,33 +5,24 @@ import type { ModelMessage, ModelToolDefinition } from "../../../modules/model-g
 import type { RepositoryStateReference } from "../../../modules/repository-state";
 import type { WindowPolicy } from "../../../modules/window-budget";
 import type { ToolGrant } from "../../../modules/decision-policy";
-import { TOOL_RUNTIME_SCHEMA_VERSION } from "../../tool-runtime";
 
-import {
-  serializeToolResultForModel,
-  resolveReasoningProgressBudget,
-  summarizeToolCall,
-  extractFileReadPaths,
-} from "../actions";
+import { resolveReasoningProgressBudget } from "../actions";
 import type { DiscoveryPassBudget } from "../modules/plan-discovery";
 import {
-  discoveryBudgetRemaining,
   discoveryCanModelTurn,
   discoveryHasSymbolEvidence,
-  extractDiscoveryReadText,
-  hasDiscoveryReadPath,
   isDiscoveryToolAllowed,
-  recordDiscoveryToolUse,
   type DiscoveryObservationCollector,
 } from "../internal/discovery";
-import { EventBus } from "../internal/EventBus";
-import { RunBudgetTracker } from "../internal/RunBudget";
+import type { EventBus } from "../internal/EventBus";
+import type { RunBudgetTracker } from "../internal/RunBudget";
 import type { AgentEngineRuntime } from "./runtime";
 import { consumeModelTurn } from "./consumeModelTurn";
 import {
   DISCOVERY_SEARCH_EVIDENCE_NUDGE,
   DISCOVERY_SYMBOL_EVIDENCE_NUDGE,
 } from "./pinDiscoveryPassNudges";
+import { executeDiscoveryPassToolBatch } from "./pinDiscoveryPassLoopTools";
 
 export type DiscoveryPassStopReason =
   | "natural"
@@ -214,120 +205,23 @@ export async function runDiscoveryPassModelLoop(params: {
       content: turnResult.content,
       toolCalls,
     });
-    let executedFreshTool = false;
-    for (const toolCall of toolCalls) {
-      if (!discoveryBudgetRemaining(collector) || signal.aborted) {
-        break;
-      }
-      let argumentsValue: unknown = {};
-      try {
-        argumentsValue =
-          toolCall.arguments.trim().length === 0
-            ? {}
-            : JSON.parse(toolCall.arguments);
-      } catch {
-        argumentsValue = {};
-        warnings.push(`Invalid JSON arguments for tool ${toolCall.name}.`);
-      }
-      const summary = summarizeToolCall(toolCall.name, argumentsValue);
-      const readPath =
-        typeof (argumentsValue as { path?: unknown }).path === "string"
-          ? (argumentsValue as { path: string }).path
-          : undefined;
-      const normalizedReadPath = readPath
-        ? readPath.replace(/\\/g, "/").replace(/^\.\//, "")
-        : undefined;
-      if (
-        normalizedReadPath &&
-        (toolCall.name === "read_file" || toolCall.name === "read_many_files") &&
-        hasDiscoveryReadPath(collector, normalizedReadPath)
-      ) {
-        const cached = preReadByPath.get(normalizedReadPath);
-        messages.push({
-          role: "tool",
-          toolCallId: toolCall.id,
-          content: cached
-            ? `Already read during discovery (cached content for ${normalizedReadPath}):\n${cached}`
-            : `Already read during discovery: ${normalizedReadPath}. Content was provided in <pre_read_evidence>; do not re-read it.`,
-        });
-        continue;
-      }
-      executedFreshTool = true;
-      runtime.emit(bus, {
-        type: "tool_started",
-        runId,
-        callId: toolCall.id,
-        toolName: toolCall.name,
-        ...(summary ? { summary } : {}),
-        at: runtime.isoNow(),
-      });
-      budget.recordToolCall();
-      const result = runtime.deps.tools
-        ? await runtime.deps.tools.execute(
-            {
-              schemaVersion: TOOL_RUNTIME_SCHEMA_VERSION,
-              callId: toolCall.id,
-              toolName: toolCall.name,
-              arguments: argumentsValue,
-              grant,
-              workspaceRoot,
-              pinnedState,
-            },
-            {
-              maxContentChars: windowPolicy.compaction.toolResultContentChars,
-            },
-          )
-        : undefined;
-      const status = result?.status ?? "failed";
-      recordDiscoveryToolUse({
-        collector,
-        toolName: toolCall.name,
-        argumentsValue,
-        resultOutput: result?.output,
-        status,
-      });
-      const readPaths = extractFileReadPaths(toolCall.name, argumentsValue);
-      if (readPaths && status === "succeeded") {
-        budget.recordFileRead(readPaths);
-        const text = extractDiscoveryReadText(result?.output);
-        const rawPath =
-          typeof (argumentsValue as { path?: unknown }).path === "string"
-            ? (argumentsValue as { path: string }).path
-            : readPaths[0]?.replace(/:\d+(?:-\d+)?$/, "");
-        if (text.length > 0 && rawPath) {
-          preReadByPath.set(
-            rawPath.replace(/\\/g, "/").replace(/^\.\//, ""),
-            text.slice(0, perFileChars),
-          );
-        }
-      }
-      runtime.emit(bus, {
-        type: "tool_completed",
-        runId,
-        callId: toolCall.id,
-        toolName: toolCall.name,
-        status,
-        ...(summary ? { summary } : {}),
-        at: runtime.isoNow(),
-      });
-      runtime.emit(bus, {
-        type: "discovery_progress",
-        runId,
-        filesRead: collector.fileReads,
-        searches: collector.searches,
-        ...(summary ? { summary } : {}),
-        at: runtime.isoNow(),
-      });
-      messages.push({
-        role: "tool",
-        toolCallId: toolCall.id,
-        content: result
-          ? serializeToolResultForModel(result, {
-              maxContentChars: windowPolicy.compaction.toolResultContentChars,
-            })
-          : "Tool runtime unavailable.",
-      });
-    }
+    const { executedFreshTool } = await executeDiscoveryPassToolBatch({
+      runtime,
+      runId,
+      bus,
+      signal,
+      budget,
+      warnings,
+      windowPolicy,
+      workspaceRoot,
+      pinnedState,
+      grant,
+      messages,
+      toolCalls,
+      collector,
+      preReadByPath,
+      perFileChars,
+    });
     // All tool calls were redundant re-reads — stop instead of another empty turn.
     if (!executedFreshTool && collector.fileReads > 0) {
       break;

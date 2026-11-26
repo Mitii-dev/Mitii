@@ -9,6 +9,10 @@ import { handlePreSettleTurnRails } from "./handlePreSettleTurnRails";
 import { initModelLoopSession } from "./modelLoopInit";
 import { settleModelLoopToolTurn } from "./modelLoopSettleTools";
 import type { V8ModelLoopParams } from "./modelLoopTypes";
+import {
+  applyPreSettleStateToSession,
+  snapshotPreSettleState,
+} from "./modelLoopApplyPreSettle";
 
 export type { V8ModelLoopParams } from "./modelLoopTypes";
 
@@ -180,35 +184,12 @@ export async function runV8ModelLoop(
           session.thresholds.maxSoftMutationNudgesBeforeContinue,
       },
       offerContinue,
-      state: {
-        forceFinalOnly: session.forceFinalOnly,
-        truncationRecoveriesUsed: session.truncationRecoveriesUsed,
-        reasoningAbortRecoveriesUsed: session.reasoningAbortRecoveriesUsed,
-        readOnlyTurnsWithoutMutation: session.readOnlyTurnsWithoutMutation,
-        readonlyTurnsOnActiveStep: session.readonlyTurnsOnActiveStep,
-        lastActiveStepId: session.lastActiveStepId,
-        evidenceGateNudges: session.evidenceGateNudges,
-        evidenceRecoveryUsed: session.evidenceRecoveryUsed,
-        awaitingMutateOnly: session.awaitingMutateOnly,
-        mutateLockAllowTargetedReads: session.mutateLockAllowTargetedReads,
-        softMutationNudges: session.softMutationNudges,
-      },
+      state: snapshotPreSettleState(session),
     });
-    softNudgeAfterSettle = preSettle.state.softNudgeAfterSettle;
-    session.forceFinalOnly = preSettle.state.forceFinalOnly;
-    session.truncationRecoveriesUsed = preSettle.state.truncationRecoveriesUsed;
-    session.reasoningAbortRecoveriesUsed =
-      preSettle.state.reasoningAbortRecoveriesUsed;
-    session.readOnlyTurnsWithoutMutation =
-      preSettle.state.readOnlyTurnsWithoutMutation;
-    session.readonlyTurnsOnActiveStep = preSettle.state.readonlyTurnsOnActiveStep;
-    session.lastActiveStepId = preSettle.state.lastActiveStepId;
-    session.evidenceGateNudges = preSettle.state.evidenceGateNudges;
-    session.evidenceRecoveryUsed = preSettle.state.evidenceRecoveryUsed;
-    session.awaitingMutateOnly = preSettle.state.awaitingMutateOnly;
-    session.mutateLockAllowTargetedReads =
-      preSettle.state.mutateLockAllowTargetedReads;
-    session.softMutationNudges = preSettle.state.softMutationNudges;
+    softNudgeAfterSettle = applyPreSettleStateToSession({
+      session,
+      state: preSettle.state,
+    });
     if (preSettle.kind === "done") {
       return preSettle.outcome;
     }

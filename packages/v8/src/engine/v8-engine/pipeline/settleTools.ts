@@ -1,70 +1,42 @@
+/**
+ * Settle one tool batch. No mutation-lock / evidence-spend rails.
+ * Writes restore points after successful mutating tools when the store supports it.
+ */
 import type { ExecutionDecision } from "../../../modules/decision-policy";
 import type { ModelMessage, ModelToolCall } from "../../../modules/model-gateway";
 import type { AgentMode } from "../../../modules/request-intake";
 import type { WindowPolicy } from "../../../modules/window-budget";
-import type {
-  RepositoryStateReference,
-} from "../../../modules/repository-state";
+import type { RepositoryStateReference } from "../../../modules/repository-state";
 
-import type {
-  AgentReasonCode,
-  RunEvidence,
-} from "../contracts";
+import type { AgentReasonCode, RunEvidence } from "../contracts";
 import type { EstablishedFact } from "../actions";
-import { summarizeToolCall } from "../actions/summarizeToolCall";
 import type { LoopFileReadTracker } from "../actions/isExplorationRereadHeavy";
-import { EventBus } from "../internal/EventBus";
-import { ReadLedger } from "../internal/ReadLedger";
-import { RunBudgetTracker } from "../internal/RunBudget";
-import { ToolCallCache } from "../internal/ToolCallCache";
+import type { EventBus } from "../internal/EventBus";
+import type { ReadLedger } from "../internal/ReadLedger";
+import type { RunBudgetTracker } from "../internal/RunBudget";
+import type { ToolCallCache } from "../internal/ToolCallCache";
 import type { TaskListRef } from "../internal/taskListRuntime";
-import {
-  DEFAULT_MUTATING_TOOL_NAMES,
-  GIT_WRITE_TOOL_NAMES,
-  executeOneTool,
-} from "./executeTool";
-import { writeRestorePointAfterMutation } from "./writeRestorePoint";
-import type { AgentEngineRuntime } from "./runtime";
-import type { ToolLoopOutcome } from "./types";
-import type { ToolResult } from "../../tool-runtime";
 import type { ToolLoopGuard, ToolLoopResult } from "../modules/tool-loop-guard";
 import { isMutateLockAllowedToolName } from "../modules/mutate-readiness";
-import {
-  collectGrantExpansionFromBatch,
-  toolResultError,
-} from "./settleToolsGrantExpansion";
+import type { AgentEngineRuntime } from "./runtime";
 import { rejectMutateLockBlockedTool } from "./settleToolsMutateLockReject";
 import {
   batchNeedsWorkspaceTools,
   settleToolsPreflightFailure,
 } from "./settleToolsPreflight";
+import { settleOneToolCall } from "./settleToolsOneCall";
+import { finalizeSettledToolBatch } from "./settleToolsFinalize";
+import type {
+  RejectedMutationInfo,
+  SettleToolsResult,
+} from "./settleToolsTypes";
 
-export type RejectedMutationInfo = {
-  toolName: string;
-  status: ToolResult["status"];
-  reasonCode?: ToolResult["reasonCode"];
-  warnings: readonly string[];
-  summary?: string;
-};
+export type {
+  RejectedMutationInfo,
+  SettleBatchStats,
+  SettleToolsResult,
+} from "./settleToolsTypes";
 
-export type SettleBatchStats = {
-  succeededMutating: boolean;
-  /** Succeeded git_write tool (e.g. git_signoff_range) — satisfies VCS-only execute. */
-  succeededGitWrite: boolean;
-  readonlyOnly: boolean;
-  results: ToolLoopResult[];
-  /** Last failed mutating tool in this batch (if any). */
-  rejectedMutation?: RejectedMutationInfo;
-};
-
-export type SettleToolsResult =
-  | { kind: "continue"; decision: ExecutionDecision; stats: SettleBatchStats }
-  | { kind: "return"; outcome: ToolLoopOutcome };
-
-/**
- * Settle one tool batch. No mutation-lock / evidence-spend rails.
- * Writes restore points after successful mutating tools when the store supports it.
- */
 export async function settleToolBatch(params: {
   runtime: AgentEngineRuntime;
   runId: string;
@@ -146,11 +118,10 @@ export async function settleToolBatch(params: {
   const mutateLockAllowTargetedReads =
     params.mutateLockAllowTargetedReads !== false;
 
-  const grant = decision.toolGrant;
   const needsWorkspaceTools = batchNeedsWorkspaceTools(toolCalls);
   const preflightFailure = settleToolsPreflightFailure({
     needsWorkspaceTools,
-    grant,
+    grant: decision.toolGrant,
     runtime,
     workspaceRoot,
     answer,
@@ -228,186 +199,65 @@ export async function settleToolBatch(params: {
       continue;
     }
 
-    const mutationIdsBefore = mutationCheckpointIds.length;
-    const outcome = await executeOneTool(runtime, {
+    const one = await settleOneToolCall({
+      runtime,
       runId,
-      toolCall,
-      grant,
-      pinnedState,
-      workspaceRoot: workspaceRoot ?? ".",
+      requestId,
+      interactionMode,
       bus,
       signal,
+      decision,
+      toolCall,
+      messages,
       toolCache,
       readLedger,
       budget,
       warnings,
       reasonCodes,
       dirtyPaths,
+      pinnedState,
+      workspaceRoot: workspaceRoot ?? ".",
       changedFiles,
       mutationCheckpointIds,
-      approvalToken: undefined,
       taskListRef,
-      taskListAutoAdvance: runtime.deps.taskListAutoAdvance === true,
-      taskListAutoAdvanceBudget,
-      mutatingToolNames: DEFAULT_MUTATING_TOOL_NAMES,
-      changeImpactGate,
-      changeImpactNudgeBudget,
-      mustReadNudgeBudget,
       evidence,
       establishedFacts,
       windowPolicy,
+      answer,
+      mustReadNudgeBudget,
+      changeImpactGate,
+      changeImpactNudgeBudget,
       loopFileReads,
+      taskListAutoAdvanceBudget,
+      results,
+      priorRejectedMutation: rejectedMutation,
     });
-
-    if (outcome.kind === "approval_required") {
-      const approvalId = runtime.deps.idGenerator.next("appr");
-      return {
-        kind: "return",
-        outcome: {
-          kind: "approval_required",
-          messages,
-          toolCache,
-          pendingApproval: {
-            approvalId,
-            fingerprint: outcome.fingerprint,
-            toolName: outcome.toolName,
-            callId: outcome.callId,
-            arguments: outcome.arguments,
-            paths: outcome.paths,
-          },
-          changedFiles,
-          mutationCheckpointIds,
-          answer: answer || undefined,
-          decision,
-        },
-      };
+    if (one.kind === "return") {
+      return { kind: "return", outcome: one.outcome };
     }
-
-    messages.push(outcome.message);
-    const cached = toolCache.get(toolCall.id);
-    const success = cached?.status === "succeeded";
-    results.push({
-      name: toolCall.name,
-      success,
-      output:
-        typeof cached?.output === "string"
-          ? cached.output
-          : cached?.output
-            ? JSON.stringify(cached.output).slice(0, 240)
-            : undefined,
-      error: toolResultError(cached),
-    });
-
-    const isMutating = DEFAULT_MUTATING_TOOL_NAMES.has(toolCall.name);
-    const isGitWrite = GIT_WRITE_TOOL_NAMES.has(toolCall.name);
-    if (success && isGitWrite) {
-      succeededGitWrite = true;
-    }
-    if (success && isMutating) {
-      succeededMutating = true;
-      if (mutationCheckpointIds.length > mutationIdsBefore) {
-        const mutationCheckpointId =
-          mutationCheckpointIds[mutationCheckpointIds.length - 1]!;
-        await writeRestorePointAfterMutation(runtime, {
-          runId,
-          requestId,
-          interactionMode,
-          mutationCheckpointId,
-          mutationCheckpointIds,
-          messages,
-          toolCache,
-          changedFiles,
-          taskList: taskListRef.current,
-          completedPlanStepIds: taskListRef.completedPlanStepIds,
-        });
-      }
-    } else if (
-      isMutating &&
-      cached &&
-      cached.status !== "succeeded" &&
-      cached.reasonCode !== "approval_required" &&
-      cached.reasonCode !== "must_read_incomplete" &&
-      cached.reasonCode !== "change_impact_incomplete"
-    ) {
-      let parsedArgs: unknown = {};
-      try {
-        parsedArgs =
-          toolCall.arguments.trim().length === 0
-            ? {}
-            : JSON.parse(toolCall.arguments);
-      } catch {
-        parsedArgs = {};
-      }
-      rejectedMutation = {
-        toolName: toolCall.name,
-        status: cached.status,
-        reasonCode: cached.reasonCode,
-        warnings: cached.warnings,
-        summary: summarizeToolCall(toolCall.name, parsedArgs),
-      };
-    }
+    if (one.succeededMutating) succeededMutating = true;
+    if (one.succeededGitWrite) succeededGitWrite = true;
+    rejectedMutation = one.rejectedMutation;
   }
 
-  if (toolLoopGuard) {
-    toolLoopGuard.observeResults(results);
-  }
-
-  const expansion = collectGrantExpansionFromBatch({
+  return finalizeSettledToolBatch({
+    runtime,
+    bus,
+    runId,
+    decision,
     toolCalls,
+    messages,
     toolCache,
     warnings,
-    workspaceRoot: workspaceRoot ?? ".",
+    reasonCodes,
+    workspaceRoot,
+    changedFiles,
+    mutationCheckpointIds,
+    answer,
+    toolLoopGuard,
+    results,
+    succeededMutating,
+    succeededGitWrite,
+    rejectedMutation,
   });
-  if (
-    expansion.extraPaths.length > 0 ||
-    expansion.externalRoots.length > 0
-  ) {
-    const preview = [
-      ...expansion.extraPaths.slice(0, 4),
-      ...expansion.externalRoots.slice(0, 2),
-    ];
-    reasonCodes.push("grant_expansion_suspended");
-    warnings.push(
-      `Path access needs permission: ${preview.join(", ")}. Approve to expand the grant and continue, or deny to stop.`,
-    );
-    runtime.emitStage(bus, runId, "tool_running", "completed");
-    return {
-      kind: "return",
-      outcome: {
-        kind: "grant_expansion_required",
-        messages,
-        toolCache,
-        extraPaths: expansion.extraPaths,
-        ...(expansion.externalRoots.length > 0
-          ? { externalRoots: expansion.externalRoots }
-          : {}),
-        ...(expansion.pendingToolCalls.length > 0
-          ? { pendingToolCalls: expansion.pendingToolCalls }
-          : {}),
-        changedFiles,
-        mutationCheckpointIds,
-        answer: answer || undefined,
-        decision,
-      },
-    };
-  }
-
-  runtime.emitStage(bus, runId, "tool_running", "completed");
-  return {
-    kind: "continue",
-    decision,
-    stats: {
-      succeededMutating,
-      succeededGitWrite,
-      readonlyOnly: toolCalls.every(
-        (call) =>
-          call.name === "update_todos" ||
-          (!DEFAULT_MUTATING_TOOL_NAMES.has(call.name) &&
-            !GIT_WRITE_TOOL_NAMES.has(call.name)),
-      ),
-      results,
-      rejectedMutation,
-    },
-  };
 }
-

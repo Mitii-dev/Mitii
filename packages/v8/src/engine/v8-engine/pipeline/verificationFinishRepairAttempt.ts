@@ -4,24 +4,14 @@
 import type { ModelRequest } from "../../../modules/model-gateway";
 import type { RepositoryStateReference } from "../../../modules/repository-state";
 import type { WindowPolicy } from "../../../modules/window-budget";
-import type {
-  RepoBuildState,
-  VerificationResult,
-} from "../../../modules/verification";
+import type { RepoBuildState } from "../../../modules/verification";
 
 import {
-  buildVerificationRepairPrompt,
-  loadDiagnosticSourceLines,
   nextStalledRepairCount,
   resolveLoopPolicyThresholds,
   shouldContinueVerificationRepair,
 } from "../actions";
-import { resolveSteeringFeatureFlags } from "../legacy/steeringFlags";
-import {
-  prepareRepairWorkingSet,
-  planProgressOf,
-  type TaskListRef,
-} from "../internal/taskListRuntime";
+import type { TaskListRef } from "../internal/taskListRuntime";
 import type {
   AgentEngineStartInput,
   AgentReasonCode,
@@ -32,9 +22,9 @@ import type { EventBus } from "../internal/EventBus";
 import type { RunBudgetTracker } from "../internal/RunBudget";
 import type { AgentEngineRuntime } from "./runtime";
 import type { VerificationGateOutcome } from "./types";
-import { runV8ModelLoop } from "./modelLoop";
 import type { VerificationRepairState } from "./verificationFinishFailedTypes";
 import type { FinishAfterLoopFinish } from "./verificationFinishTypes";
+import { runVerificationRepairLoop } from "./verificationFinishRepairRun";
 
 type FailedGate = Extract<VerificationGateOutcome, { kind: "failed" }>;
 
@@ -87,27 +77,15 @@ export async function tryVerificationRepairAttempt(params: {
   const {
     runtime,
     runId,
-    requestId,
-    input,
-    request,
-    bus,
-    signal,
     pinnedState,
     reasonCodes,
-    warnings,
     budget,
     finish,
     cancelledResult,
-    taskListRef,
-    evidence,
-    windowPolicy,
-    loopContext,
     verificationOutcome,
-    loopChangedFiles,
-    loopMutationIds,
     thresholds,
-    continueOverrideCount,
-    dirtyPaths,
+    windowPolicy,
+    input,
   } = params;
 
   let {
@@ -162,103 +140,23 @@ export async function tryVerificationRepairAttempt(params: {
     };
   }
 
-  repairAttempts += 1;
-  reasonCodes.push("verification_repair_attempted");
-  const repairPrep = prepareRepairWorkingSet({
-    current: taskListRef.current,
-    plan: loopContext?.plan,
-    maxTasks: taskListRef.maxTasks,
-    completedPlanStepIds: taskListRef.completedPlanStepIds,
+  const nextState = await runVerificationRepairLoop({
+    ...params,
+    state: {
+      currentOutcome,
+      decision,
+      afterState,
+      repairAttempts,
+      previousAfterErrorCount,
+      consecutiveStalledRepairs,
+    },
   });
-  if (repairPrep.refilled) {
-    reasonCodes.push("task_list_refilled");
-  }
-  if (repairPrep.taskList) {
-    taskListRef.current = repairPrep.taskList;
-    if (repairPrep.refilled || repairPrep.activated) {
-      reasonCodes.push("task_list_updated");
-    }
-    if (repairPrep.activated) {
-      reasonCodes.push("verification_repair_batch_activated");
-    }
-    runtime.emitTaskListUpdated(
-      bus,
-      runId,
-      repairPrep.taskList,
-      planProgressOf({
-        plan: loopContext?.plan,
-        completedPlanStepIds: taskListRef.completedPlanStepIds,
-      }),
-    );
-  }
-  currentOutcome.messages.push({
-    role: "user",
-    content: buildVerificationRepairPrompt({
-      verification: verificationOutcome.verification,
-      comparison: verificationOutcome.comparison,
-      changedFiles: loopChangedFiles,
-      mutationBudget: decision.toolGrant.mutationBudget,
-      sourceLines: await loadRepairSourceLines({
-        workspaceRoot: input.workspaceRoot,
-        verification: verificationOutcome.verification,
-      }),
-      askScopePaths: [
-        ...(loopContext?.executionSeed?.paths ?? []),
-        ...(loopContext?.memoryFileTargets ?? []),
-        ...loopChangedFiles,
-      ],
-      userPrompt: loopContext?.skillsQuery ?? loopContext?.memoryQuery ?? "",
-      ...(repairPrep.activeItem
-        ? {
-            activeBatch: {
-              title: repairPrep.activeItem.title,
-              write: repairPrep.activeItem.write,
-              mustRead: repairPrep.activeItem.mustRead,
-              affected: repairPrep.activeItem.affected,
-            },
-          }
-        : {}),
-    }),
-  });
-  currentOutcome = await runV8ModelLoop(runtime, {
-    runId,
-    requestId,
-    interactionMode: loopContext?.mode ?? input.request.mode,
-    llm: runtime.deps.llm,
-    request,
-    decision,
-    understanding: loopContext?.understanding,
-    dirtyPaths,
-    pinnedState,
-    workspaceRoot: input.workspaceRoot,
-    bus,
-    signal,
-    budget,
-    reasonCodes,
-    warnings,
-    messages: currentOutcome.messages,
-    toolCache: currentOutcome.toolCache,
-    changedFiles: loopChangedFiles,
-    mutationCheckpointIds: loopMutationIds,
-    taskListRef,
-    memoryFacts: loopContext?.memoryFacts,
-    memoryQuery: loopContext?.memoryQuery,
-    memoryWorkspaceId: loopContext?.memoryWorkspaceId,
-    memoryFileTargets: loopContext?.memoryFileTargets,
-    establishedFacts: loopContext?.establishedFacts ?? [],
-    selectedSkillIds: loopContext?.selectedSkillIds,
-    projectRuleIds: loopContext?.projectRuleIds,
-    environmentIds: loopContext?.environmentIds,
-    instructionBodies: loopContext?.instructionBodies,
-    evidence,
-    windowPolicy,
-    continueOverrideCount,
-    thresholdOverrides:
-      input.v8LoopPolicy?.thresholds ?? input.loopPolicy?.thresholds,
-    repoBuildStateBefore: afterState ?? params.repoBuildStateBefore,
-    logVerbosity: input.logVerbosity,
-    criticMode: resolveSteeringFeatureFlags(input.steering).criticMode,
-  });
+  currentOutcome = nextState.currentOutcome;
+  decision = nextState.decision;
+  afterState = nextState.afterState;
+  repairAttempts = nextState.repairAttempts;
+  previousAfterErrorCount = nextState.previousAfterErrorCount;
+  consecutiveStalledRepairs = nextState.consecutiveStalledRepairs;
 
   if (
     currentOutcome.kind === "completed" ||
@@ -266,7 +164,6 @@ export async function tryVerificationRepairAttempt(params: {
     currentOutcome.kind === "continue_required" ||
     currentOutcome.kind === "grant_expansion_required"
   ) {
-    decision = currentOutcome.decision;
     return {
       kind: "continue",
       state: {
@@ -307,22 +204,4 @@ export async function tryVerificationRepairAttempt(params: {
       consecutiveStalledRepairs,
     },
   };
-}
-
-async function loadRepairSourceLines(params: {
-  workspaceRoot: string | undefined;
-  verification: VerificationResult | undefined;
-}): Promise<ReadonlyMap<string, string> | undefined> {
-  if (!params.workspaceRoot || !params.verification) {
-    return undefined;
-  }
-  try {
-    const lines = await loadDiagnosticSourceLines({
-      workspaceRoot: params.workspaceRoot,
-      diagnostics: params.verification.diagnostics,
-    });
-    return lines.size > 0 ? lines : undefined;
-  } catch {
-    return undefined;
-  }
 }

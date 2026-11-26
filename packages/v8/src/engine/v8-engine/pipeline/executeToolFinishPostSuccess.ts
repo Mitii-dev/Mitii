@@ -14,7 +14,6 @@ import {
   extractToolContentPaths,
   upsertEstablishedFact,
   recordToolEvidence,
-  markPlanEvidenceStepsDone,
 } from "../actions";
 import type { EstablishedFact, LoopFileReadTracker } from "../actions";
 import type { ToolCallCache } from "../internal/ToolCallCache";
@@ -22,15 +21,11 @@ import type { ReadLedger } from "../internal/ReadLedger";
 import type { AgentReasonCode, RunEvidence } from "../contracts";
 import type { EventBus } from "../internal/EventBus";
 import type { RunBudgetTracker } from "../internal/RunBudget";
-import {
-  markTaskListUpdated,
-  maybeAutoAdvanceTaskList,
-  planProgressOf,
-  type TaskListRef,
-} from "../internal/taskListRuntime";
+import type { TaskListRef } from "../internal/taskListRuntime";
 import type { ToolCallOutcome } from "./types";
 import { toolCompletionDiagnostics } from "./executeToolSupport";
 import { markReadCoverageFromToolResult } from "./executeToolFinishHelpers";
+import { maybeAutoAdvanceAfterSucceededTool } from "./executeToolFinishAutoAdvance";
 import type { AgentEngineRuntime } from "./runtime";
 
 export function approvalRequiredOutcome(params: {
@@ -213,49 +208,23 @@ export function applySucceededToolSideEffects(params: {
     reasonCodes,
   });
 
-  const autoAdvanced = maybeAutoAdvanceTaskList({
-    enabled: taskListAutoAdvance,
-    allowAdvance: taskListAutoAdvanceBudget.remaining > 0,
-    current: taskListRef?.current,
-    preToolActiveId,
-    toolStatus: result.status,
-    isMutatingTool: mutatingToolNames.has(toolCall.name),
-    changedFiles: output?.changedFiles ?? [],
-    plan,
-    maxTasks: taskListRef?.maxTasks,
+  maybeAutoAdvanceAfterSucceededTool({
+    runtime,
+    bus,
+    runId,
+    toolCall,
+    result,
+    reasonCodes,
+    warnings,
+    taskListAutoAdvance,
+    taskListAutoAdvanceBudget,
     taskListRef,
+    preToolActiveId,
+    mutatingToolNames,
+    plan,
+    budget,
+    evidence,
   });
-  if (autoAdvanced.warnings.length > 0) {
-    warnings.push(...autoAdvanced.warnings);
-  }
-  if (autoAdvanced.advanced && autoAdvanced.taskList && taskListRef) {
-    taskListRef.current = autoAdvanced.taskList;
-    markTaskListUpdated(taskListRef, budget.snapshot().modelCalls);
-    taskListAutoAdvanceBudget.remaining = Math.max(
-      0,
-      taskListAutoAdvanceBudget.remaining - 1,
-    );
-    reasonCodes.push("task_list_auto_advanced", "task_list_updated");
-    if (autoAdvanced.handoff) {
-      reasonCodes.push("task_handoff_recorded" as AgentReasonCode);
-    }
-    if (autoAdvanced.refilled) {
-      reasonCodes.push("task_list_refilled");
-    }
-    runtime.emitTaskListUpdated(
-      bus,
-      runId,
-      autoAdvanced.taskList,
-      planProgressOf({
-        plan,
-        completedPlanStepIds: taskListRef.completedPlanStepIds,
-        evidence,
-      }),
-    );
-    if (evidence?.plan && autoAdvanced.completedStepIds) {
-      markPlanEvidenceStepsDone(evidence, autoAdvanced.completedStepIds);
-    }
-  }
 }
 
 export function emitToolCompletedAndRecord(params: {

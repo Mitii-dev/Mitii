@@ -1,90 +1,37 @@
 import type { ExecutionDecision } from "../../../modules/decision-policy";
-import { buildVerificationGrant } from "../../../modules/decision-policy";
 import type { RepositoryStateReference } from "../../../modules/repository-state";
 import type { WindowPolicy } from "../../../modules/window-budget";
-import { VERIFICATION_SCHEMA_VERSION } from "../../../modules/verification";
 import type {
   RepoBuildState,
-  RepoBuildStateComparison,
-  VerificationInput,
   VerificationResult,
 } from "../../../modules/verification";
 
 import {
   decideVerificationGate,
   requiresMutationForExecute,
-  resolveVerificationProjects,
-  recordBuildStateDeltaEvidence,
   recordStopEvidence,
-  recordVerificationEvidence,
 } from "../actions";
 import type {
   AgentEngineStartInput,
   AgentReasonCode,
   RunEvidence,
 } from "../contracts";
-import { EventBus } from "../internal/EventBus";
+import type { EventBus } from "../internal/EventBus";
 import type { AgentLogVerbosity } from "../internal/logVerbosity";
 import type { AgentEngineRuntime } from "./runtime";
 import type { VerificationGateOutcome } from "./types";
 import {
   applyVerificationAcceptSideEffects,
   commitMutations,
-  emitVerificationCompleted,
   tryCritiqueVerification,
 } from "./verificationArtifacts";
 export { isVerificationRetryAsk } from "./verificationRetryAsk";
 import { resolveSteeringFeatureFlags } from "../legacy/steeringFlags";
-import { resolveVerificationImpactWiden } from "./resolveVerificationImpactWiden";
-
-export function captureBuildStateFromVerificationResult(
-  runtime: AgentEngineRuntime,
-  params: {
-    input: VerificationInput;
-    result: VerificationResult;
-    phase: "before" | "after";
-  },
-): RepoBuildState | undefined {
-  return runtime.deps.verification?.buildStateFromResult?.(
-    params.input,
-    params.result,
-    {
-      phase: params.phase,
-      capturedAt: runtime.isoNow(),
-    },
-  );
-}
-
-export function applyRepoBuildStateComparisonReasonCodes(
-  runtime: AgentEngineRuntime,
-  params: {
-    before: RepoBuildState | undefined;
-    after: RepoBuildState;
-    reasonCodes: AgentReasonCode[];
-    askScopePaths?: readonly string[];
-    changedFiles?: readonly string[];
-  },
-): RepoBuildStateComparison | undefined {
-  const comparison = runtime.deps.verification?.compareBuildStates?.({
-    before: params.before,
-    after: params.after,
-    askScopePaths: params.askScopePaths,
-    changedFiles: params.changedFiles,
-  });
-  if (!comparison) {
-    return undefined;
-  }
-  if (comparison.reasonCodes.includes("errors_cleared")) {
-    params.reasonCodes.push("repo_build_state_errors_cleared");
-  }
-  if (comparison.reasonCodes.includes("errors_remaining")) {
-    params.reasonCodes.push("repo_build_state_errors_remaining");
-  }
-  if (comparison.reasonCodes.includes("new_errors_introduced")) {
-    params.reasonCodes.push("repo_build_state_new_errors");
-  }
-  return comparison;
-}
+export {
+  applyRepoBuildStateComparisonReasonCodes,
+  captureBuildStateFromVerificationResult,
+} from "./verificationGateBuildState";
+import { runVerificationGateChecks } from "./verificationGateRunChecks";
 
 /**
  * Gate completion on Verification when the decision requires it and a
@@ -149,7 +96,9 @@ export async function runVerificationGate(
   const canVerify = missingInfrastructure.length === 0;
 
   let verificationResult: VerificationResult | undefined;
-  let comparison: RepoBuildStateComparison | undefined;
+  let comparison: Awaited<
+    ReturnType<typeof runVerificationGateChecks>
+  >["comparison"];
 
   const shouldRunVerificationChecks =
     changedFiles.length > 0 &&
@@ -157,102 +106,27 @@ export async function runVerificationGate(
     (decision.verification.required || Boolean(repoBuildStateBefore));
 
   if (shouldRunVerificationChecks) {
-    runtime.emitStage(bus, runId, "verifying", "started");
-    const verificationGrant = buildVerificationGrant(decision.toolGrant);
-    const projects = resolveVerificationProjects(input);
-    const impactWiden = await resolveVerificationImpactWiden({
-      repoGraphs: runtime.deps.repoGraphs,
-      changedFiles,
-      explicitAffectedFiles: params.impactAffectedFiles,
-      explicitWiden: params.impactWidenVerification,
-      signal,
-    });
-    if (impactWiden.widenScope || impactWiden.impactAffectedFiles?.length) {
-      warnings.push(
-        "Verification scope widened from change-impact affected files.",
-      );
-    }
-    verificationResult = await runtime.deps.verification!.verify({
-      schemaVersion: VERIFICATION_SCHEMA_VERSION,
-      workspaceRoot: input.workspaceRoot!,
+    const checks = await runVerificationGateChecks({
+      runtime,
+      runId,
+      bus,
+      decision,
+      input,
       pinnedState: pinnedState!,
-      changedFiles: [...changedFiles],
-      projects,
-      verification: decision.verification.required
-        ? decision.verification
-        : {
-            ...decision.verification,
-            required: true,
-            allowUnavailable: true,
-          },
-      grant: verificationGrant,
-      changeScope: "localized",
-      baselineDiagnostics: repoBuildStateBefore?.diagnostics,
-      stateReadiness: input.repositoryState?.readiness ?? "ready",
-      maxChecks: windowPolicy.maxVerificationChecks,
-      ...(typeof impactWiden.widenScope === "boolean"
-        ? { widenScope: impactWiden.widenScope }
-        : {}),
-      ...(impactWiden.impactAffectedFiles
-        ? { impactAffectedFiles: impactWiden.impactAffectedFiles }
-        : {}),
+      changedFiles,
+      reasonCodes,
+      warnings,
+      repoBuildStateBefore,
+      onRepoBuildStateAfter,
+      evidence,
+      windowPolicy,
+      signal,
+      askScopePaths: params.askScopePaths,
+      impactAffectedFiles: params.impactAffectedFiles,
+      impactWidenVerification: params.impactWidenVerification,
     });
-    const afterState = captureBuildStateFromVerificationResult(runtime, {
-      input: {
-        schemaVersion: VERIFICATION_SCHEMA_VERSION,
-        workspaceRoot: input.workspaceRoot!,
-        pinnedState: pinnedState!,
-        changedFiles: [...changedFiles],
-        projects,
-        verification: decision.verification,
-        grant: verificationGrant,
-        changeScope: "localized",
-        stateReadiness: input.repositoryState?.readiness ?? "ready",
-        baselineDiagnostics: repoBuildStateBefore?.diagnostics,
-      },
-      result: verificationResult,
-      phase: "after",
-    });
-    if (afterState) {
-      onRepoBuildStateAfter?.(afterState);
-      recordBuildStateDeltaEvidence(evidence, {
-        before: repoBuildStateBefore,
-        after: afterState,
-      });
-      reasonCodes.push("repo_build_state_after_captured");
-      comparison = applyRepoBuildStateComparisonReasonCodes(runtime, {
-        before: repoBuildStateBefore,
-        after: afterState,
-        reasonCodes,
-        askScopePaths: params.askScopePaths,
-        changedFiles,
-      });
-    }
-    recordVerificationEvidence(evidence, {
-      verification: verificationResult,
-      before: repoBuildStateBefore,
-    });
-    emitVerificationCompleted(runtime, bus, runId, verificationResult);
-    runtime.emitEvidenceUpdated(bus, runId, evidence);
-    if (afterState) {
-      runtime.emitRepoBuildStateCaptured(bus, runId, afterState);
-    }
-    if (comparison) {
-      runtime.emit(bus, {
-        type: "verification_comparison",
-        runId,
-        beforeErrorCount: comparison.beforeErrorCount,
-        afterErrorCount: comparison.afterErrorCount,
-        clearedErrorCount: comparison.clearedErrorCount,
-        newErrorCount: comparison.newErrorCount,
-        remainingErrorCount: comparison.remainingErrorCount,
-        newWarningCount: comparison.newWarningCount,
-        clearedWarningCount: comparison.clearedWarningCount,
-        failedCheckIdsAfter: comparison.failedCheckIdsAfter.slice(0, 16),
-        reasonCodes: comparison.reasonCodes.slice(0, 16),
-        at: runtime.isoNow(),
-      });
-    }
+    verificationResult = checks.verificationResult;
+    comparison = checks.comparison;
   }
 
   const decisionOutcome = decideVerificationGate({

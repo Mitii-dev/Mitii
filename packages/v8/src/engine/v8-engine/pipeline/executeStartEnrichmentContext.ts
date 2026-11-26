@@ -4,29 +4,12 @@
 import type { ExecutionDecision } from "../../../modules/decision-policy";
 import { toolGrantsEquivalent } from "../../../modules/decision-policy";
 import type { PromptRepositoryContext } from "../../../modules/prompt-construction";
-import { mapContextToPromptSlice } from "../../../modules/prompt-construction";
-import { deriveContextSelectionBudget } from "../../../modules/repository-context";
 import type { UserRequestEnvelope } from "../../../modules/request-intake";
 import { extractPrimaryUserMessage } from "../../../modules/request-understanding";
-import {
-  resolveFuzzyFileTargets,
-  type RequestUnderstandingResult,
-} from "../../../modules/request-understanding";
+import type { RequestUnderstandingResult } from "../../../modules/request-understanding";
 import type { WindowPolicy } from "../../../modules/window-budget";
 
-import {
-  extractMentionedPaths,
-  CONTEXT_READY_VERBOSE_WARNING_CODES,
-  CONTEXT_READY_WARNING_CODES,
-  buildPlanningQuery,
-  deriveContextFocusFromUnderstanding,
-  extractPriorPathHints,
-  isPlanningFollowUp,
-  mergeContextFocusWithPriorPathHints,
-  mergeContextPathsWithPriorHints,
-  resolvePriorPathHintBudget,
-  scopeDiscoveredContextPaths,
-} from "../actions";
+import { extractMentionedPaths } from "../actions";
 import type {
   AgentEngineStartInput,
   AgentReasonCode,
@@ -34,15 +17,14 @@ import type {
   AgentRunStatus,
 } from "../contracts";
 import type { EventBus } from "../internal/EventBus";
-import { logVerbosityAtLeast } from "../internal/logVerbosity";
 import type { AgentEngineRuntime } from "./runtime";
 import { resolveWorkspaceId } from "./runtime";
 import { capturePreflightBuildState } from "./pinAndDiscovery";
 import { persistVerificationArtifact } from "./verification";
 import type { ExecuteStartSharedState } from "./executeStartEarlyPipeline";
 import type { StartEnrichmentOutcome } from "./executeStartEnrichmentTypes";
-import { refineExecutionSeedFromContext } from "../modules/execution-seed";
 import type { RepositoryStateReference } from "../../../modules/repository-state";
+import { retrieveEnrichmentRepositoryContext } from "./executeStartEnrichmentContextRetrieve";
 
 export type EnrichmentContextResult =
   | Extract<StartEnrichmentOutcome, { kind: "terminal" }>
@@ -99,196 +81,31 @@ export async function runEnrichmentContext(params: {
   } = params;
   let { understanding, decision } = params;
 
-  // --- Context ---
   let repositoryContext: PromptRepositoryContext | undefined;
   let contextPaths: string[] = [];
 
   if (decision.repositoryContextRequired) {
-    if (!runtime.deps.repositoryContext || !shared.pinnedState) {
-      reasonCodes.push("state_unavailable");
-      await runtime.safeUnpin(runId, shared.pinnedState);
-      return {
-        kind: "terminal",
-        result: finish({
-          status: "failed",
-          reasonCodes,
-          error: {
-            code: "state_unavailable",
-            message:
-              "Repository context is required but state/context ports are unavailable.",
-          },
-        }),
-      };
-    }
-
-    runtime.emitStage(bus, runId, "context_ready", "started");
-    const liveQuery = extractPrimaryUserMessage(envelope.message);
-    const conversation = input.conversation ?? [];
-    const planFollowUp =
-      envelope.mode === "plan" ||
-      isPlanningFollowUp(liveQuery, conversation);
-    // Plan / follow-up: retrieve against the merged prior ask + guidance, not
-    // only the short "plan the above" prompt.
-    const contextQuery = planFollowUp
-      ? buildPlanningQuery(liveQuery, conversation)
-      : liveQuery;
-    const priorPathHints = extractPriorPathHints(conversation, {
-      max: resolvePriorPathHintBudget({
-        currentQuery: liveQuery,
-        conversation,
-        mode: envelope.mode,
-      }),
-    });
-    let contextFocus = deriveContextFocusFromUnderstanding(understanding);
-    if (priorPathHints.length > 0 && planFollowUp) {
-      contextFocus = mergeContextFocusWithPriorPathHints(
-        contextFocus,
-        priorPathHints,
-      );
-      reasonCodes.push("plan_prior_path_hints_carried");
-    }
-    const contextResult = await runtime.deps.repositoryContext.execute({
-      state: shared.pinnedState,
-      query: contextQuery,
-      mode: envelope.mode,
-      selectionBudget: deriveContextSelectionBudget(
-        runtime.deps.llm.capabilities.contextWindowTokens,
-        { maximumTokens: windowPolicy.sections.repositoryTokens },
-      ),
-      ...(contextFocus.folderPrefix
-        ? { folderPrefix: contextFocus.folderPrefix }
-        : {}),
-      ...(contextFocus.filePaths.length > 0
-        ? { filePaths: contextFocus.filePaths }
-        : {}),
-      ...(contextFocus.kinds.length > 0
-        ? { kinds: contextFocus.kinds }
-        : {}),
-      ...(contextFocus.references
-        ? { references: contextFocus.references }
-        : {}),
-      abortSignal: signal,
-    });
-
-    if (signal.aborted || contextResult.status === "cancelled") {
-      await runtime.safeUnpin(runId, shared.pinnedState);
-      return { kind: "terminal", result: await cancelledResult() };
-    }
-
-    if (contextResult.status === "failed") {
-      reasonCodes.push("context_failed");
-      await runtime.safeUnpin(runId, shared.pinnedState);
-      return {
-        kind: "terminal",
-        result: finish({
-          status: "failed",
-          reasonCodes,
-          error: {
-            code: "context_failed",
-            message: "Repository context retrieval failed.",
-          },
-        }),
-      };
-    }
-
-    repositoryContext = mapContextToPromptSlice(contextResult);
-    reasonCodes.push("context_retrieved");
-    const discoveredPaths = contextResult.assembly.blocks
-      .map((block) => block.relativePath)
-      .filter((path): path is string => Boolean(path?.trim()));
-    // Fuzzy-resolve basenames against retrieved paths (+ dirty/@ hints).
-    if (discoveredPaths.length > 0) {
-      const fuzzy = resolveFuzzyFileTargets(
-        understanding.taskAnalysis.targets,
-        [...candidateRelativePaths, ...discoveredPaths],
-      );
-      if (fuzzy.resolved.length > 0) {
-        understanding = {
-          ...understanding,
-          taskAnalysis: {
-            ...understanding.taskAnalysis,
-            targets: fuzzy.targets,
-          },
-        };
-      }
-    }
-    const scopedFocus = deriveContextFocusFromUnderstanding(understanding);
-    contextPaths = scopeDiscoveredContextPaths(discoveredPaths, scopedFocus);
-    // Keep Ask-touched paths even when retrieval collapses to one file.
-    if (priorPathHints.length > 0 && planFollowUp) {
-      const before = contextPaths.join("\0");
-      contextPaths = mergeContextPathsWithPriorHints({
-        contextPaths,
-        priorPathHints,
-      });
-      if (
-        contextPaths.join("\0") !== before &&
-        !reasonCodes.includes("plan_prior_path_hints_carried")
-      ) {
-        reasonCodes.push("plan_prior_path_hints_carried");
-      }
-    }
-    if (shared.executionSeed && contextPaths.length > 0) {
-      const refined = refineExecutionSeedFromContext({
-        seed: shared.executionSeed,
-        contextPaths,
-        userPrompt: extractPrimaryUserMessage(envelope.message),
-      });
-      if (
-        refined.paths.join("\0") !== shared.executionSeed.paths.join("\0")
-      ) {
-        shared.executionSeed = refined;
-        reasonCodes.push("execution_seed_context_refined");
-      }
-    }
-    runtime.emit(bus, {
-      type: "context_ready",
+    const retrieved = await retrieveEnrichmentRepositoryContext({
+      runtime,
       runId,
-      stateToken: contextResult.stateToken,
-      blockCount: contextResult.assembly.blocks.length,
-      retrievedCandidates: contextResult.statistics.retrievedCandidates,
-      selectedItems: contextResult.statistics.selectedItems,
-      droppedBlocks: contextResult.statistics.droppedBlocks,
-      status: contextResult.status,
-      ...(contextPaths.length > 0 ? { paths: contextPaths } : {}),
-      ...(contextResult.retrieval?.sourceReports &&
-      contextResult.retrieval.sourceReports.length > 0
-        ? {
-            retrievalSources: contextResult.retrieval.sourceReports
-              .slice(0, 8)
-              .map((report) => ({
-                sourceId: report.sourceId,
-                status: report.status,
-                candidateCount: report.candidateCount,
-                ...(report.status === "failed" && report.error
-                  ? { error: report.error.slice(0, 300) }
-                  : {}),
-              })),
-          }
-        : {}),
-      at: runtime.isoNow(),
+      input,
+      bus,
+      signal,
+      windowPolicy,
+      reasonCodes,
+      shared,
+      envelope,
+      understanding,
+      candidateRelativePaths,
+      finish,
+      cancelledResult,
     });
-    for (const warning of contextResult.warnings) {
-      const standard = CONTEXT_READY_WARNING_CODES.has(warning.code);
-      const verboseOnly = CONTEXT_READY_VERBOSE_WARNING_CODES.has(
-        warning.code,
-      );
-      if (!standard && !verboseOnly) continue;
-      if (!logVerbosityAtLeast(input.logVerbosity, standard ? "standard" : "verbose")) {
-        continue;
-      }
-      runtime.emit(bus, {
-        type: "warning",
-        runId,
-        message: warning.message,
-        code: warning.code,
-        stage: "context_ready",
-        at: runtime.isoNow(),
-      });
+    if (retrieved.kind === "terminal") {
+      return retrieved;
     }
-    runtime.emitStage(bus, runId, "context_ready", "completed", [
-      "context_retrieved",
-    ]);
+    understanding = retrieved.understanding;
+    repositoryContext = retrieved.repositoryContext;
+    contextPaths = retrieved.contextPaths;
   } else {
     reasonCodes.push("context_skipped");
   }
@@ -304,9 +121,7 @@ export async function runEnrichmentContext(params: {
       discoveredPaths: contextPaths,
       residualRisk: understanding.taskAnalysis.risk,
     });
-    if (
-      !toolGrantsEquivalent(decision.toolGrant, narrowed.toolGrant)
-    ) {
+    if (!toolGrantsEquivalent(decision.toolGrant, narrowed.toolGrant)) {
       decision = narrowed;
       reasonCodes.push("grant_narrowed");
       runtime.emit(bus, {
@@ -344,7 +159,11 @@ export async function runEnrichmentContext(params: {
       ),
     });
     if (shared.repoBuildStateBefore) {
-      runtime.emitRepoBuildStateCaptured(bus, runId, shared.repoBuildStateBefore);
+      runtime.emitRepoBuildStateCaptured(
+        bus,
+        runId,
+        shared.repoBuildStateBefore,
+      );
       shared.verificationRecord =
         (await persistVerificationArtifact(runtime, {
           runId,
@@ -360,8 +179,6 @@ export async function runEnrichmentContext(params: {
         })) ?? shared.verificationRecord;
     }
   }
-
-
 
   return {
     kind: "ready",
