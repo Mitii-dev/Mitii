@@ -337,13 +337,26 @@ export class VerificationPipeline {
     params: { phase: "before" | "after"; capturedAt?: string },
     options: VerificationPipelineOptions = {},
   ): Promise<RepoBuildState> {
+    const stageStartedMs = Date.now();
     const result = await this.verify(input, options);
-    return captureRepoBuildState({
+    const state = captureRepoBuildState({
       phase: params.phase,
       input,
       result,
       capturedAt: params.capturedAt,
     });
+    this.log.stage({
+      module: "verification",
+      stage: VERIFICATION_STAGES.captureBuildState,
+      durationMs: Date.now() - stageStartedMs,
+      reasonCodes: result.reasonCodes,
+      outputSummary: {
+        phase: params.phase,
+        status: result.status,
+        checkCount: result.checks.length,
+      },
+    });
+    return state;
   }
 
   public buildStateFromResult(

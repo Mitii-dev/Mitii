@@ -142,6 +142,9 @@ export const VERIFICATION_STAGES = {
   normalizeDiagnostics: "5-normalize-diagnostics",
   inspectDiff: "6-inspect-diff",
   recommendCompletion: "7-recommend-completion",
+  captureBuildState: "8-capture-build-state",
+  buildRecord: "9-build-record",
+  buildUserSummary: "10-build-user-summary",
 } as const;
 
 export type VerificationStageName =

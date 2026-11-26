@@ -5,7 +5,7 @@ import {
 import {
   CONTEXT_SELECTION_DEFAULTS,
   CONTEXT_SELECTION_LIMITS,
-} from "../helpers/context-selection/constants";
+} from "./contextSelection";
 import type {
   ContextFileReference,
   ContextSelectionBudget,

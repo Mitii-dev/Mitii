@@ -352,7 +352,18 @@ export class ReviewPipeline {
   }
 
   public toSarif(result: ReviewResult): SarifReport {
-    return exportSarif({ result });
+    const stageStartedMs = Date.now();
+    const report = exportSarif({ result });
+    this.log.stage({
+      module: "review",
+      stage: REVIEW_STAGES.exportSarif,
+      durationMs: Date.now() - stageStartedMs,
+      reasonCodes: [],
+      outputSummary: {
+        findingCount: result.findingCount,
+      },
+    });
+    return report;
   }
 
   public async persistRecord(record: ReviewRecord): Promise<void> {

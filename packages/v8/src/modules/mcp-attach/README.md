@@ -1,42 +1,47 @@
 # MCP Attach
 
-**Does:** per-turn MCP server scoping from `@mcp:id` mentions and host pins — parse, merge, filter tools, stamp grants, format a project-rule hint. Does not connect MCP clients or enforce grants.
+A per-turn guest list: it decides which MCP servers are "invited" this turn and hides the tools of the rest.
+
+## Does
+- Parses `@mcp:id` mentions from the user message and merges them with host pins.
+- Normalizes server ids and matches tool names to servers.
+- Filters the visible tool list to the attached servers.
+- Stamps the attach list onto the tool grant.
+- Formats a short project-rule hint for the prompt.
 
 ## Contract
+Works on a contract: validated input in → pipeline/steps → validated output out. Reason codes explain outcomes.
 
-```text
-message + optional host pins
-  → McpAttachPipeline.resolveAttachList()
-  → { cleanedMessage, requiredMcpServerIds }
+**Input:** `{ message, explicitIds? }` for `resolveAttachList`; then the attach list plus a tool catalog / grant for the other methods.
+**Output:** `{ cleanedMessage, requiredMcpServerIds }`, a filtered tool list, a stamped grant, and an instruction block.
+**Pipeline:** `McpAttachPipeline` stages: `1-normalize-server-id` → `2-parse-mentions` → `3-merge-server-ids` → `4-match-tool` → `5-filter-tools` → `6-stamp-grant` → `7-format-instruction`
+**Ports we offer / need:** none of its own; optional `ModuleLoggerPort`. No adapters are required.
 
-requiredMcpServerIds
-  → filterTools / stampGrant / formatInstruction
+## Dependencies
+**Upstream (this module uses):** none.
+**Downstream (who uses this):** prompt-construction, and the engine / tool-runtime (start of a turn, grant validation, tool description).
+
+## How to use
+```ts
+import { McpAttachPipeline } from "@mitii/v8/modules/mcp-attach";
+
+const attach = new McpAttachPipeline();
+const { cleanedMessage, requiredMcpServerIds } = attach.resolveAttachList({
+  message, explicitIds,
+});
+const tools = attach.filterTools(allTools, requiredMcpServerIds);
 ```
-
-| Attach list | Effect on `mcp__*` tools |
-|---|---|
-| empty / omitted | all grant-allowed MCP tools stay visible |
-| non-empty | only `mcp__{attachedServer}__*` tools stay visible |
 
 ## Example
-
-```ts
-const attach = new McpAttachPipeline();
-
-const { cleanedMessage, requiredMcpServerIds } = attach.resolveAttachList({
-  message: "@mcp:memory Draw the billing flow",
-  explicitIds: ["filesystem"],
-});
-// cleanedMessage === "Draw the billing flow"
-// requiredMcpServerIds === ["filesystem", "memory"]  (pins first, then mentions)
-
-const tools = attach.filterTools(
-  [
-    { name: "read_file" },
-    { name: "mcp__memory__store" },
-    { name: "mcp__other__x" },
-  ],
-  requiredMcpServerIds,
-);
-// keeps read_file + mcp__memory__store (filesystem has no tools in this catalog)
+Input:
+```json
+{ "message": "@mcp:memory Draw the billing flow", "explicitIds": ["filesystem"] }
 ```
+Output:
+```json
+{ "cleanedMessage": "Draw the billing flow", "requiredMcpServerIds": ["filesystem", "memory"] }
+```
+With a non-empty list, only `mcp__<attachedServer>__*` tools stay visible; an empty list leaves all allowed MCP tools visible.
+
+## Non-responsibilities
+Does not connect MCP clients, run MCP tools, or enforce grants — tool-runtime enforces them.

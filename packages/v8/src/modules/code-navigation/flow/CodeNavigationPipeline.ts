@@ -125,6 +125,16 @@ export class CodeNavigationPipeline {
           provider: result.provider,
         },
       });
+      this.log.stage({
+        module: "code-navigation",
+        stage: CODE_NAVIGATION_STAGES.buildResult,
+        durationMs: 0,
+        reasonCodes: result.reasonCodes,
+        outputSummary: {
+          status: result.status,
+          locationCount: result.locations.length,
+        },
+      });
       return result;
     } catch (error) {
       if (isAbortError(error) || options.signal?.aborted) {

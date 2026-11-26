@@ -167,6 +167,7 @@ describe("CodeNavigationPipeline", () => {
       CODE_NAVIGATION_STAGES.resolvePort,
       CODE_NAVIGATION_STAGES.prepareDocument,
       CODE_NAVIGATION_STAGES.executeOperation,
+      CODE_NAVIGATION_STAGES.buildResult,
     ]);
   });
 

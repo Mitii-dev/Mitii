@@ -112,6 +112,8 @@ export const REVIEW_STAGES = {
   anchorFindings: "5-anchor-findings",
   reflectFindings: "6-reflect-findings",
   buildRecord: "7-build-record",
+  exportSarif: "8-export-sarif",
+  formatPrep: "9-format-prep",
 } as const;
 
 export type ReviewStageName =

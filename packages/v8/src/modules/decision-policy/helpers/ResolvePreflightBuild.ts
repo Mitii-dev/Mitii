@@ -5,7 +5,7 @@ import type {
   ExecutionRoute,
   ToolGrant,
 } from "../contracts";
-import { isRepairIntentTaxonomy } from "../patterns";
+import { isRepairIntentTaxonomy } from "../rules/patterns";
 import { EXECUTION_ROUTE } from "../constants";
 
 export interface PreflightBuildResolution {

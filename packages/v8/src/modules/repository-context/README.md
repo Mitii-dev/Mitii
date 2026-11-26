@@ -1,34 +1,28 @@
 # Repository Context
 
-Turns a pinned repository state and a user query into prompt-safe
-code/context blocks: resolve state → retrieve → select → assemble.
+The research assistant: it finds the most relevant code for a question and packages it as prompt-safe blocks.
+
+## Does
+- Resolves the pinned repository state.
+- Retrieves candidates with hybrid search, selects the best under a breadth / budget, and assembles context blocks.
+- Reports status, warnings, and statistics.
 
 ## Contract
+Works on a contract: validated input in → pipeline/steps → validated output out. Reason codes explain outcomes.
 
-**In:** `RepositoryContextPipelineInput` (state reference, query, mode,
-filters, breadth, references, selection budget).  
-**Out:** `RepositoryContextPipelineResult` (retrieval, selection, assembly,
-warnings, statistics).
+**Input:** `RepositoryContextPipelineInput` (`state` reference, `query`, `mode`, filters, `breadth`, `references`, `selectionBudget`).
+**Output:** `RepositoryContextPipelineResult` (`status` complete | partial | …, `retrieval`, `selection`, `assembly`, `warnings`, `statistics`).
+**Pipeline:** `RepositoryContextPipeline` stages: `1-resolve-state` → `2-prepare-retrieval` → `3-retrieve` → `4-select` → `5-assemble` → `6-finalize-result`
+**Ports we offer / need:** needs `RepositoryContextStateResolverPort`, `RepositoryContextRetrieverPort`, `RepositoryContextSelectorPort`, `RepositoryContextAssemblerPort`; optional `ModuleLoggerPort`. Adapters fulfill them (`HybridRetrievalFactory`, `ContextSelector`, `ContextAssemblyFactory`).
 
-| Facade | Stages |
-|---|---|
-| `execute` | 1-resolve → 2-prepare → 3-retrieve → 4-select → 5-assemble → 6-finalize |
+## Dependencies
+**Upstream (this module uses):** repository-state, request-intake, window-budget.
+**Downstream (who uses this):** prompt-construction and the engine (start enrichment, context focus, composition).
 
-Ports (injected): `RepositoryContextStateResolverPort`,
-`RepositoryContextRetrieverPort`, `RepositoryContextSelectorPort`,
-`RepositoryContextAssemblerPort`, optional `ModuleLoggerPort`.
-
-Factories: `HybridRetrievalFactory`, `ContextSelector`,
-`ContextAssemblyFactory` (adapters).
-
-## Example
-
+## How to use
 ```ts
 import {
-  RepositoryContextPipeline,
-  HybridRetrievalFactory,
-  ContextSelector,
-  ContextAssemblyFactory,
+  RepositoryContextPipeline, HybridRetrievalFactory, ContextSelector, ContextAssemblyFactory,
 } from "@mitii/v8/modules/repository-context";
 
 const pipeline = new RepositoryContextPipeline({
@@ -40,8 +34,15 @@ const pipeline = new RepositoryContextPipeline({
 const result = await pipeline.execute(input);
 ```
 
-## Non-responsibilities
+## Example
+Input (illustrative, abbreviated):
+```json
+{ "state": { "stateToken": "st_123" }, "query": "where is login validated?", "mode": "agent", "maximumResults": 20 }
+```
+Output (illustrative, abbreviated):
+```json
+{ "status": "complete", "selection": { "selected": 6 }, "assembly": { "blocks": ["…"] }, "warnings": [] }
+```
 
-Repository indexing/publishing (repository-state), prompt assembly
-(prompt-construction), and tool execution. Hybrid retrieval / selection /
-assembly internals live under `helpers/`.
+## Non-responsibilities
+Does not index or publish repository state (repository-state), build prompts (prompt-construction), or run tools.

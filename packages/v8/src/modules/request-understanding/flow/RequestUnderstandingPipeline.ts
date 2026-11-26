@@ -128,10 +128,21 @@ export class RequestUnderstandingPipeline {
       module: "request-understanding",
       stage: REQUEST_UNDERSTANDING_STAGES.classifyIntent,
       durationMs: Date.now() - stageStartedMs,
-      reasonCodes: [REQUEST_UNDERSTANDING_REASON.intentClassified],
+      reasonCodes: [
+        REQUEST_UNDERSTANDING_REASON.intentClassified,
+        ...(intent.diagnostics.officerFallback
+          ? [`officer_fallback_${intent.diagnostics.officerFallback}`]
+          : []),
+      ],
       outputSummary: {
         status: intent.status,
         primaryTaskIntent: intent.classification?.primaryTaskIntent,
+        confidenceMargin: intent.confidenceMargin,
+        rulePrimary: intent.diagnostics.rulePrimaryIntent ?? null,
+        llmPrimary: intent.diagnostics.llmPrimaryIntent,
+        taskAgreement: intent.diagnostics.taskAgreement,
+        officerFallback: intent.diagnostics.officerFallback ?? null,
+        recommendsClarification: intent.recommendsClarification,
       },
     });
 

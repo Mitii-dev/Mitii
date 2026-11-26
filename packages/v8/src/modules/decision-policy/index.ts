@@ -78,7 +78,7 @@ export {
   isArchitectureIntentTaxonomy,
   DECISION_POLICY_PATTERNS,
   WORKSPACE_BUG_FAILURE_LANGUAGE,
-} from "./patterns";
+} from "./rules/patterns";
 
 export {
   decisionPolicyInputSchema,

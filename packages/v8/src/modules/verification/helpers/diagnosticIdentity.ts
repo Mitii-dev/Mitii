@@ -1,5 +1,5 @@
 import type { VerificationDiagnostic } from "../contracts";
-import { normalizeVerificationPath } from "../patterns";
+import { normalizeVerificationPath } from "../rules/patterns";
 
 /**
  * Stable identity for before→after / baseline diagnostic compare.

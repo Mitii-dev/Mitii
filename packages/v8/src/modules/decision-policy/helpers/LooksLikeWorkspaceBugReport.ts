@@ -12,7 +12,7 @@ import {
   WORKSPACE_BUG_REPO_PATH,
   WORKSPACE_BUG_RUNTIME_ERROR,
   WORKSPACE_BUG_WORD_BEFORE_WORKING,
-} from "../patterns";
+} from "../rules/patterns";
 
 /**
  * Detect workspace-grounded bug reports that understanding often classifies

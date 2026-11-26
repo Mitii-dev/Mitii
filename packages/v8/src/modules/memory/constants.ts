@@ -113,6 +113,7 @@ export const MEMORY_STAGES = {
   applyBudget: "3-apply-budget",
   prepareCommit: "4-prepare-commit",
   commitAndConsolidate: "5-commit-and-consolidate",
+  buildSyntheticDraft: "6-build-synthetic-draft",
 } as const;
 
 export type MemoryStageName =

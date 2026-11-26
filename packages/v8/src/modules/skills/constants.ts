@@ -97,6 +97,10 @@ export const SKILLS_STAGES = {
   mergeCandidates: "4-merge-candidates",
   resolveConflicts: "5-resolve-conflicts",
   applyBudget: "6-apply-budget",
+  parseMentions: "7-parse-mentions",
+  mapUnderstandingEvidence: "8-map-understanding-evidence",
+  deriveRepoEvidence: "9-derive-repo-evidence",
+  formatPromptContent: "10-format-prompt-content",
 } as const;
 
 export type SkillsStageName =

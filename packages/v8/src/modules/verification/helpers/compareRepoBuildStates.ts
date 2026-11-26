@@ -5,7 +5,7 @@ import {
   type RepoBuildStateComparisonReason,
   type VerificationDiagnostic,
 } from "../contracts";
-import { normalizeVerificationPath } from "../patterns";
+import { normalizeVerificationPath } from "../rules/patterns";
 import {
   projectLocalCompilePassed,
   selectAskScopedDefects,

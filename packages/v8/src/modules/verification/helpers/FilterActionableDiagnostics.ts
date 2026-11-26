@@ -5,7 +5,7 @@ import {
   isPhantomSecondaryDiagnostic,
   isSyntheticDiagnosticPath,
   normalizeVerificationPath,
-} from "../patterns";
+} from "../rules/patterns";
 
 export interface FilterActionableDiagnosticsResult {
   actionable: VerificationDiagnostic[];

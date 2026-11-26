@@ -93,6 +93,7 @@ export const CODE_NAVIGATION_STAGES = {
   resolvePort: "1-resolve-port",
   prepareDocument: "2-prepare-document",
   executeOperation: "3-execute-operation",
+  buildResult: "4-build-result",
 } as const;
 
 export type CodeNavigationStageName =

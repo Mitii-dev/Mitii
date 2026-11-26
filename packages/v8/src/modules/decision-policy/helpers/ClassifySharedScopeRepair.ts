@@ -1,7 +1,7 @@
 import type { RequestUnderstandingResult } from "../../request-understanding";
 
 import { DECISION_POLICY_THRESHOLDS } from "../rules";
-import { DECISION_POLICY_PATTERNS } from "../patterns";
+import { DECISION_POLICY_PATTERNS } from "../rules/patterns";
 import { EXECUTION_ROUTE } from "../constants";
 
 const BROAD_REPAIR_INTENTS = new Set([

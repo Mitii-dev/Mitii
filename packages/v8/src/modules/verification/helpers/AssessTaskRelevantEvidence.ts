@@ -9,7 +9,7 @@ import {
   isPhantomSecondaryDiagnostic,
   isWorkspaceRootCheckId,
   normalizeVerificationPath,
-} from "../patterns";
+} from "../rules/patterns";
 import {
   isBehaviorDefectCheck,
   requiresBehaviorEvidence,

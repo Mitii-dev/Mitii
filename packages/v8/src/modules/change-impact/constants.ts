@@ -161,6 +161,13 @@ export const CHANGE_IMPACT_STAGES = {
   walkImpact: "3-walk-impact",
   applyCouplingCycles: "4-apply-coupling-cycles",
   finalizeResult: "5-finalize-result",
+  analyzeMany: "6-analyze-many",
+  mergeResults: "7-merge-results",
+  evaluateSpillover: "8-evaluate-spillover",
+  planCheck: "9-plan-check",
+  mergeNavigationEnrichment: "10-merge-navigation-enrichment",
+  compactModelFacing: "11-compact-model-facing",
+  recommendWiden: "12-recommend-widen",
 } as const;
 
 export type ChangeImpactStageName =

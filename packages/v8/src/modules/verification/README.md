@@ -1,44 +1,42 @@
 # Verification
 
-Gathers post-change evidence: maps files to projects, discovers trusted
-checks, executes them through a tool port, normalizes diagnostics, and
-recommends completion from that evidence. Does not own mutation or tool
-runtime itself.
+The inspector: after a change, it runs the right trusted checks and says whether the work looks done.
+
+## Does
+- Maps changed files to projects from the pinned repository state.
+- Discovers trusted checks from manifests, selects them under a cap, and executes them through a tool port.
+- Normalizes diagnostics (new vs baseline), inspects the diff, and recommends completion.
+- Captures and compares build state, builds records, and writes a user summary.
 
 ## Contract
+Works on a contract: validated input in → pipeline/steps → validated output out. Reason codes explain outcomes.
 
-**In:** `VerificationInput` (changed files, projects, grant, pinned state,
-verification requirement, optional baseline).  
-**Out:** `VerificationResult` (+ optional `RepoBuildState` /
-`VerificationRecord`).
+**Input:** `VerificationInput` (`workspaceRoot`, `pinnedState`, `changedFiles`, `projects`, `verification` requirement, `grant`, optional baseline / `maxChecks` / `widenScope`).
+**Output:** `VerificationResult` (checks run, diagnostics, completion recommendation, reason codes); optionally `RepoBuildState` or `VerificationRecord`.
+**Pipeline:** `VerificationPipeline` stages: `1-map-affected-projects` → `2-discover-checks` → `3-select-checks` → `4-execute-checks` → `5-normalize-diagnostics` → `6-inspect-diff` → `7-recommend-completion`; plus `8-capture-build-state`, `9-build-record`, `10-build-user-summary`
+**Ports we offer / need:** needs `VerificationToolExecutorPort` and `VerificationManifestReaderPort`; optional `VerificationRecordStorePort`, `VerificationSyntaxPort`, and `ModuleLoggerPort`. Adapters fulfill them (`InMemoryManifestReader`, `WorkspaceFileSystemManifestReader`, in-memory and file record stores).
 
-| Facade | Stages |
-|---|---|
-| `verify` | 1-map → 2-discover → 3-select → 4-execute → 5-normalize → 6-inspect → 7-recommend |
-| `captureBuildState` / `compareBuildStates` | 8-capture + helpers/compare |
-| `buildRecord` / `buildUserSummary` | 9–10 |
+## Dependencies
+**Upstream (this module uses):** decision-policy (grant and verification requirement), repository-state (projects and pinned state).
+**Downstream (who uses this):** planning (verify steps) and the engine (preflight build, start reuse, composition).
 
-Ports (injected): `VerificationToolExecutorPort`,
-`VerificationManifestReaderPort`, optional `VerificationRecordStorePort`,
-`VerificationSyntaxPort`, `ModuleLoggerPort`.
-
-## Example
-
+## How to use
 ```ts
-import {
-  VerificationPipeline,
-  InMemoryManifestReader,
-} from "@mitii/v8/modules/verification";
+import { VerificationPipeline, InMemoryManifestReader } from "@mitii/v8/modules/verification";
 
-const pipeline = new VerificationPipeline({
-  tools,
-  manifests: new InMemoryManifestReader({}),
-});
+const pipeline = new VerificationPipeline({ tools, manifests: new InMemoryManifestReader({}) });
 const result = await pipeline.verify(input);
 ```
 
-## Non-responsibilities
+## Example
+Input (illustrative, abbreviated):
+```json
+{ "schemaVersion": 1, "workspaceRoot": "/repo", "changedFiles": ["src/auth.ts"], "changeScope": "localized", "maxChecks": 3 }
+```
+Output (illustrative, abbreviated):
+```json
+{ "checks": [{ "id": "typecheck", "status": "passed" }], "diagnostics": [], "recommendation": "complete" }
+```
 
-Git shelling, tool runtime implementation, decision-policy grants, mutation,
-and review finding generation. Language discovery stays under
-`helpers/discovery/`.
+## Non-responsibilities
+Does not run git, implement the tool runtime, grant authority (decision-policy), mutate files, or generate review findings.

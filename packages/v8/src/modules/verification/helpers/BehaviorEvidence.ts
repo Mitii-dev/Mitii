@@ -1,5 +1,5 @@
 import type { VerificationCheckResult } from "../contracts";
-import { isWorkspaceRootCheckId } from "../patterns";
+import { isWorkspaceRootCheckId } from "../rules/patterns";
 
 /** Minimum-evidence kind that demands executed test/smoke evidence. */
 export const BEHAVIOR_EVIDENCE_KIND = "behavior" as const;

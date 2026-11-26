@@ -120,7 +120,7 @@ export {
   isPhantomSecondaryDiagnostic,
   isWorkspaceRootCheckId,
   normalizeVerificationPath,
-} from "./patterns";
+} from "./rules/patterns";
 
 export {
   InMemoryManifestReader,

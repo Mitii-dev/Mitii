@@ -75,7 +75,7 @@ export {
   OPT_IN_MUTATION_TOOL_IDS,
   PROCESS_TOOL_IDS,
   READ_ONLY_TOOL_IDS,
-} from "./toolIds";
+} from "./rules/toolIds";
 
 export const DECISION_REASON_CODES = [
   "mode_ask_readonly",

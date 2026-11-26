@@ -193,7 +193,11 @@ export class PlanningPipeline {
       stage: PLANNING_STAGES.applyDiscoveryDraft,
       durationMs: Date.now() - stageStartedMs,
       reasonCodes: state.draftReasonCodes,
-      outputSummary: { draftedFromDiscovery: state.draftedFromDiscovery },
+      outputSummary: {
+        draftedFromDiscovery: state.draftedFromDiscovery,
+        llmConfigured: Boolean(this.llm),
+        warnings: state.draftWarnings.slice(-3),
+      },
     });
 
     stageStartedMs = Date.now();
@@ -219,7 +223,11 @@ export class PlanningPipeline {
       stage: PLANNING_STAGES.draftClarify,
       durationMs: Date.now() - stageStartedMs,
       reasonCodes: state.draftReasonCodes,
-      outputSummary: { hasClarifyDraft: Boolean(state.clarifyDraft) },
+      outputSummary: {
+        hasClarifyDraft: Boolean(state.clarifyDraft),
+        llmConfigured: Boolean(this.llm),
+        warnings: state.draftWarnings.slice(-3),
+      },
     });
 
     stageStartedMs = Date.now();
