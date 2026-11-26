@@ -1,4 +1,4 @@
-import type { MetaCommandLifecycle } from "../request-envelope/contracts";
+import type { MetaCommandLifecycle } from "../request-envelope/types";
 
 export interface BuiltinMetaCommandSpec {
   name: string;

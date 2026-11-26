@@ -173,5 +173,6 @@ export function mapSketchToPromptConstructionInput(input: {
       description: name,
       inputSchema: { type: "object", properties: {} },
     })),
+    injectSkillCatalogL1: false,
   };
 }

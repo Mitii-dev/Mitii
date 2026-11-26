@@ -2,7 +2,7 @@ import type {
   ModelCallContext,
   ModelEvent,
   ModelRequest,
-} from "../../contracts/contracts";
+} from "../../contracts";
 
 /** Port method: `LlmPort.complete` (echo). */
 export async function* echoComplete(params: {

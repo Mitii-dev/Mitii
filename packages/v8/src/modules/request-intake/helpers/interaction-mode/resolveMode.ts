@@ -1,4 +1,4 @@
-import type { AgentMode } from "./contracts";
+import type { AgentMode } from "./types";
 import { INTERACTION_MODE_DEFAULT } from "./constants";
 
 /**

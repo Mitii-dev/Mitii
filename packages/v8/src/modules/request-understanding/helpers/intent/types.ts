@@ -8,7 +8,7 @@ import type {
   RequestArtifactReference,
 } from "../../../request-intake";
 
-import type { DiagnosticSummary } from "../contracts";
+import type { DiagnosticSummary } from "../../contracts";
 
 import {
   INTENT_CONSTANTS,
@@ -20,6 +20,7 @@ import type {
   AmbiguousSlotKind,
 } from "./schema";
 import type { RulePrior, UnderstandingEvidencePack } from "./evidence";
+export type { RulePrior, UnderstandingEvidencePack };
 export type TaskIntent = (typeof INTENT_CONSTANTS.TASK_INTENTS)[number];
 
 export interface IntentDefinition {

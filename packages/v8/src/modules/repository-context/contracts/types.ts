@@ -11,15 +11,11 @@ import type {
   WorkspaceSnapshot,
 } from "../../repository-state/index";
 
-import type {
-  ContextAssemblyInput,
-  ContextAssemblyResult,
-} from "../helpers/context-assembly/types";
+import type { ContextAssemblyResult } from "../helpers/context-assembly/types";
 
 import type {
   ContextSelectionBreadth,
   ContextSelectionBudget,
-  ContextSelectionInput,
   ContextSelectionReferences,
   ContextSelectionResult,
 } from "../helpers/context-selection/types";
@@ -27,10 +23,7 @@ import type {
 /** Public selection budget contract (owned by repository-context). */
 export type { ContextSelectionBudget };
 
-import type {
-  HybridRetrievalInput,
-  HybridRetrievalResult,
-} from "../helpers/hybrid-retrieval/types";
+import type { HybridRetrievalResult } from "../helpers/hybrid-retrieval/types";
 
 /**
  * Artifacts bound to one published repository state.

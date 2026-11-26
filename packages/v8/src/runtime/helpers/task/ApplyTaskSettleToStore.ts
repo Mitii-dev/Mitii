@@ -4,12 +4,14 @@
 
 import type { TaskList } from "../../../modules/task-list";
 import type { TaskHandoffNote } from "../../contracts/handoff/TaskHandoffNote";
-import type { StoreManager } from "../store/StoreManager";
 import { extractChangedPathsFromToolArgs } from "./ExtractChangedPathsFromToolArgs";
 import { updateTaskListOnSettle } from "./UpdateTaskListOnSettle";
 
 export function applyTaskSettleToStore(input: {
-  store: StoreManager;
+  store: {
+    getSlice: <T>(key: string) => T | undefined;
+    setSlice: (key: string, value: unknown) => void;
+  };
   args: unknown;
   effect: "none" | "read" | "mutate" | "external";
   status: "succeeded" | "failed";

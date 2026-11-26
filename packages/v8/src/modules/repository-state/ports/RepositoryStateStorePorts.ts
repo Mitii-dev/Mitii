@@ -1,5 +1,5 @@
-import type { RepositoryStateDescriptor } from "../output/RepositoryStateDescriptor";
-import type { RepositoryStateReference } from "../output/RepositoryStateReference";
+import type { RepositoryStateDescriptor } from "../contracts/output/RepositoryStateDescriptor";
+import type { RepositoryStateReference } from "../contracts/output/RepositoryStateReference";
 
 /**
  * Immutable publication store for repository state descriptors.

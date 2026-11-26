@@ -77,10 +77,10 @@ export function assessDirection(
     reasonCodes.push("assess_vague_command");
   }
 
-  // Anti-nag: trivial + low risk → prefer assumptions over ask (DP still clamps).
+  // Anti-nag: simple + low risk → prefer assumptions over ask (DP still clamps).
   if (
     !askUserSuggested &&
-    (difficulty === "trivial" || difficulty === "simple") &&
+    difficulty === "simple" &&
     risk === "low" &&
     input.turnKind !== "new"
   ) {
@@ -97,7 +97,7 @@ export function assessDirection(
   ].slice(0, 12);
 
   const taskBand =
-    difficulty === "very_complex" || difficulty === "complex"
+    difficulty === "complex"
       ? "large"
       : difficulty === "moderate" || planningHint === "medium"
         ? "medium"

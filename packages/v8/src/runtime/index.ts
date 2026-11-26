@@ -57,12 +57,14 @@ export { taskDirectionAssessmentSchema } from "./contracts/assess/TaskDirectionA
 export type { TaskDirectionAssessment } from "./contracts/assess/TaskDirectionAssessment";
 export {
   runtimeStartInputSchema,
+  runtimeSituationSnapshotSchema,
   runtimeResumeInputSchema,
   runtimeRunStatusSchema,
   runtimeRunResultSchema,
 } from "./contracts";
 export type {
   RuntimeStartInput,
+  RuntimeSituationSnapshot,
   RuntimeResumeInput,
   RuntimeRunStatus,
   RuntimeRunResult,

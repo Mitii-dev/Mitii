@@ -1,4 +1,3 @@
-import type { VerificationRequirement } from "../../../modules/decision-policy";
 import type {
   RepoBuildStateComparison,
   VerificationResult,

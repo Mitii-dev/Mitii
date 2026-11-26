@@ -26,9 +26,9 @@ export type {
   UserRequestEnvelopeBuilderDependencies,
   RequestEnvelopeClockPort,
   RequestEnvelopeIdGeneratorPort,
-} from "../helpers/request-envelope/contracts";
+} from "../helpers/request-envelope/types";
 
-export type { AgentMode } from "../helpers/interaction-mode/contracts";
+export type { AgentMode } from "../helpers/interaction-mode/types";
 export { agentModeSchema } from "../helpers/interaction-mode/schema";
 
 export {

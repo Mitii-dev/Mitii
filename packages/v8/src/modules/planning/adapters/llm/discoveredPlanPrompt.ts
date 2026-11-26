@@ -1,4 +1,4 @@
-import type { PlanningParsedInput } from "../../contracts";
+import type { DiscoveryBrief, PlanningParsedInput } from "../../contracts";
 import {
   remapPathThroughScaffoldMapping,
   resolveScaffoldPackageMapping,

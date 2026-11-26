@@ -5,7 +5,6 @@ import {
   isUnfinishedInvestigationAnswer,
 } from "./AssistantTurnDetectors";
 import { synthesizeFallbackAnswer } from "./IsIncompleteAssistantTurn";
-import { compactRecoveredAssistantContent } from "./RecoveredAssistantContent";
 
 export function selectUserFacingLoopAnswer(params: {
   loopAnswer?: string;

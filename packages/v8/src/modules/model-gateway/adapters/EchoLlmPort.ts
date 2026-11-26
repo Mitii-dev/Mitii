@@ -9,7 +9,7 @@ import type {
   ModelCapabilities,
   ModelEvent,
   ModelRequest,
-} from "../contracts/contracts";
+} from "../contracts";
 import { echoComplete } from "./echo/complete";
 import { echoCountTokens } from "./echo/count-tokens";
 

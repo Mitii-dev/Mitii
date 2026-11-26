@@ -10,7 +10,10 @@ import { toStoreSuspensionKind } from "./ToStoreSuspensionKind";
  */
 export async function saveSuspendedRun(params: {
   store: AgentEngineRunCheckpointStorePort;
-  checkpoint: AgentRunCheckpoint;
+  /** Hub may pass GateKind; normalized to store wire before save. */
+  checkpoint: Omit<AgentRunCheckpoint, "suspensionKind"> & {
+    suspensionKind: string;
+  };
 }): Promise<AgentRunCheckpoint> {
   const normalized: AgentRunCheckpoint = {
     ...params.checkpoint,

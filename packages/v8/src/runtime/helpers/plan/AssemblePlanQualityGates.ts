@@ -1,5 +1,8 @@
 import type { PlanningResult } from "../../../modules/planning";
-import { enforcePlanQuality } from "./EnforcePlanQuality";
+import {
+  enforcePlanQuality,
+  type EnforcePlanQualityResult,
+} from "./EnforcePlanQuality";
 import { rejectHollowPlan } from "./RejectHollowPlan";
 
 export interface AssemblePlanQualityGatesInput {
@@ -33,11 +36,13 @@ export function assemblePlanQualityGates(
           steps: phase.steps,
         })),
       })
-    : input.planningStatus === "ok"
+    : input.planningStatus === "drafted" ||
+        input.planningStatus === "validated" ||
+        input.planningStatus === "compacted"
       ? ({ ok: false, reasonCode: "plan_hollow_no_artifact" } as const)
       : ({ ok: true } as const);
 
-  const quality = artifact
+  const quality: EnforcePlanQualityResult = artifact
     ? enforcePlanQuality({
         objective: artifact.objective,
         phases: artifact.phases?.map((phase) => ({
@@ -60,7 +65,7 @@ export function assemblePlanQualityGates(
         requireConcreteTargets: input.planningDepth === "visible",
         requireVerification: input.planningDepth === "visible",
       })
-    : ({ ok: true, reasonCodes: ["plan_quality_skipped_no_artifact"] } as const);
+    : { ok: true, reasonCodes: ["plan_quality_skipped_no_artifact"] };
 
   const discoveryQualityFailed =
     input.discoveryRan && input.discoveryQualityOk === false;

@@ -19,8 +19,8 @@ import type {
   UserRequestEnvelope,
   UserRequestEnvelopeBuilderDependencies,
   UserRequestWorkspaceScope,
-} from "./contracts";
-import type { AgentMode } from "../interaction-mode/contracts";
+} from "./types";
+import type { AgentMode } from "../interaction-mode/types";
 
 export interface BuildEnvelopeFields {
   mode: AgentMode;

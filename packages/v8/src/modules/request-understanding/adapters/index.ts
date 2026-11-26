@@ -1,4 +1,4 @@
 export { RuleIntentClassifier } from "./rule/RuleIntentClassifier";
-export { RulePatterns } from "./rule/RulePatterns";
+export { PATTERNS as RulePatterns } from "./rule/RulePatterns";
 export { LlmIntentClassifier } from "./llm/LlmIntentClassifier";
-export { coerceLlmClassification } from "./llm/coerceLlmClassification";
+export { coerceLlmClassificationJson as coerceLlmClassification } from "./llm/coerceLlmClassification";

@@ -1,3 +1,3 @@
-import type { LlmPort } from "../../../model-gateway";
+import type { LlmPort } from "../../model-gateway";
 
 export type PlanningLlmPort = LlmPort;

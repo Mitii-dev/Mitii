@@ -247,7 +247,9 @@ export async function planPipeline(
             "plan_hollow_rejected",
             effectiveHollow
               ? "plan_hollow_discovery_or_artifact"
-              : hollowCheck.reasonCode,
+              : !hollowCheck.ok
+                ? hollowCheck.reasonCode
+                : "plan_hollow_unknown",
           ]),
       ...quality.reasonCodes,
       ...derived.reasonCodes,

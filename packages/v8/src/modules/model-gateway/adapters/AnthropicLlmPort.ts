@@ -12,7 +12,7 @@ import type {
   ModelEvent,
   ModelRequest,
   ResolveModelCapabilitiesInput,
-} from "../contracts/contracts";
+} from "../contracts";
 import {
   approximateTokenCount,
   cancelledEvent,

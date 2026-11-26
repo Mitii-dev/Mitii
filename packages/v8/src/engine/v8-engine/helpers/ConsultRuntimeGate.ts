@@ -24,10 +24,10 @@ export function consultRuntimeGate(
   phase: GatePhase,
   ctx: ConsultRuntimeGateContext,
 ): GateVerdict | undefined {
+  const { phase: _ignoredPhase, runId, ...rest } = ctx;
   return evaluateGates(phase, {
-    ...ctx,
-    phase,
-    runId: ctx.runId,
+    ...rest,
+    runId,
   });
 }
 

@@ -4,7 +4,7 @@ import {
   MODEL_GATEWAY_LIMITS,
   MODEL_GATEWAY_MESSAGES,
 } from "../constants";
-import type { ModelError, ModelErrorCode, ModelEvent } from "../contracts/contracts";
+import type { ModelError, ModelErrorCode, ModelEvent } from "../contracts";
 
 export function defaultSleep(
   ms: number,

@@ -1,2 +1,2 @@
 export { RuleIntentClassifier } from "../../../../adapters/rule/RuleIntentClassifier";
-export { RulePatterns } from "../../../../adapters/rule/RulePatterns";
+export { PATTERNS as RulePatterns } from "../../../../adapters/rule/RulePatterns";

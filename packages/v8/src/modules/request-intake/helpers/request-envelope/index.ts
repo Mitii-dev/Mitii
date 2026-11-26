@@ -16,7 +16,7 @@ export type {
   RequestTurnKind,
   RequestSessionAction,
   MetaCommandLifecycle,
-} from "./contracts";
+} from "./types";
 export {
   userRequestEnvelopeSchema,
   requestArtifactReferenceSchema,

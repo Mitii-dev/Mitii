@@ -9,7 +9,7 @@ import {
 import type {
   UserRequestEnvelope,
   UserRequestEnvelopeBuilderDependencies,
-} from "../helpers/request-envelope/contracts";
+} from "../helpers/request-envelope/types";
 import { REQUEST_ENVELOPE_DEFAULTS } from "../rules";
 import {
   sanitizeUserMessage,

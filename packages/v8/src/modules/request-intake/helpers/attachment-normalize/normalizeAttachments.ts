@@ -2,7 +2,7 @@ import {
   REQUEST_ENVELOPE_LIMITS,
   SUPPORTED_IMAGE_MIME_TYPES,
 } from "../request-envelope/constants";
-import type { RequestImageAttachment } from "../request-envelope/contracts";
+import type { RequestImageAttachment } from "../request-envelope/types";
 
 const SUPPORTED = new Set<string>(SUPPORTED_IMAGE_MIME_TYPES);
 

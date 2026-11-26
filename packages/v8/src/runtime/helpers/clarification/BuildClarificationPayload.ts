@@ -3,7 +3,6 @@ import { parseClarificationOptionId } from "../../../modules/request-understandi
 import type {
   ClarificationOptionPayload,
   ClarificationPayload,
-  ClarificationSession,
   ClarificationSessionOption,
 } from "./ClarificationTypes";
 

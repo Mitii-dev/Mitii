@@ -69,7 +69,10 @@ export function buildPlanningInputFromRuntime(params: {
       changeImpact: [],
     },
     knownPathHints: focus.slice(0, 16),
-    skills: (pack?.pins?.skillIds ?? []).map((id) => ({ id })),
+    skills: (pack?.pins?.skillIds ?? []).map((id) => ({
+      id,
+      content: id,
+    })),
     ...(params.discoveryBrief
       ? { discoveryBrief: params.discoveryBrief }
       : {}),

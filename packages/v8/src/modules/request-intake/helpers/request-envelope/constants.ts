@@ -3,7 +3,7 @@ import type {
   RequestSessionAction,
   RequestTurnKind,
   UserRequestOrigin,
-} from "./contracts";
+} from "./types";
 
 export const REQUEST_ENVELOPE_SCHEMA_VERSION =
   1 as const;

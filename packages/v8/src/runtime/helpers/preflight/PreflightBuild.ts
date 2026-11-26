@@ -86,6 +86,7 @@ export function buildPreflightVerificationInput(params: {
         "build",
       ]),
       allowUnavailable: true,
+      onFailure: params.decision?.verification.onFailure ?? "report",
     },
     grant: params.verificationGrant,
     changeScope: params.understanding

@@ -17,11 +17,6 @@ export const LOOP_TURN_DISPOSITIONS = [
 
 export type LoopTurnDisposition = (typeof LOOP_TURN_DISPOSITIONS)[number];
 
-import {
-  grantAllowsWorkspaceFileMutation,
-  WORKSPACE_FILE_MUTATION_TOOL_IDS,
-} from "./WorkspaceMutationGrant";
-
 export interface ResolveLoopTurnOutcomeInput {
   route: ExecutionRoute;
   maximumWorkspaceEffect: ToolGrant["maximumWorkspaceEffect"];

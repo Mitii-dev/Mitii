@@ -5,7 +5,7 @@ import type {
   RequestTurnKind,
   UserRequestOrigin,
 } from "../../../../request-intake";
-import type { DiagnosticSummary } from "../../contracts";
+import type { DiagnosticSummary } from "../../../contracts";
 import { DEFAULT_CLOSED_SKILL_TAGS } from "../intersectRecommendedSkillTags";
 import type {
   ProjectFingerprint,

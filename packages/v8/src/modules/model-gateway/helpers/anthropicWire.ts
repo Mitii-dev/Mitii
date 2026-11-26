@@ -1,4 +1,4 @@
-import type { ModelMessage, ModelRequest } from "../contracts/contracts";
+import type { ModelMessage, ModelRequest } from "../contracts";
 
 export interface AnthropicContentBlock {
   type?: string;

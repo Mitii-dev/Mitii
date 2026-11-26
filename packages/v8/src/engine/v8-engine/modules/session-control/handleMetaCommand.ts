@@ -1,11 +1,6 @@
 /**
  * Shim — injects compactModelLoopMessages into runtime meta dispatch.
  */
-import type { ModelMessage } from "../../../../modules/model-gateway";
-import type { TokenEstimatorPort } from "../../../../modules/prompt-construction";
-import type { WindowPolicy } from "../../../../modules/window-budget";
-import type { RequestMetaCommand } from "../../../../modules/request-intake";
-
 import { compactModelLoopMessages } from "../../actions/compactModelLoopMessages";
 import {
   handleMetaCommand as handleMetaCommandRuntime,

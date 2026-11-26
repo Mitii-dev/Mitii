@@ -6,7 +6,6 @@ import {
   recoverOrExhaustUnfulfilled,
 } from "./UnfulfilledExecute";
 import type {
-  LoopTurnDisposition,
   ResolveLoopTurnOutcome,
   ResolveLoopTurnOutcomeInput,
 } from "./LoopTurnTypes";

@@ -12,11 +12,18 @@ export function grantSurfaceToToolGrant(surface: GrantSurface): ToolGrant {
         ? (["workspace_read", "workspace_write"] as ToolGrant["allowedEffects"])
         : (["workspace_read"] as ToolGrant["allowedEffects"]);
 
+  const pathScopes =
+    surface.pathScopes && surface.pathScopes.length > 0
+      ? surface.pathScopes
+      : surface.readPaths && surface.readPaths.length > 0
+        ? surface.readPaths
+        : ["."];
+
   return {
     maximumWorkspaceEffect,
     allowedTools,
     allowedEffects,
-    pathScopes: ["."],
+    pathScopes,
     approvalMode: surface.approvalMode ?? "never",
     limits: {
       maxToolCalls: 24,
@@ -25,5 +32,13 @@ export function grantSurfaceToToolGrant(surface: GrantSurface): ToolGrant {
       maxConcurrentTools: 1,
     },
     networkHosts: [],
+    ...(surface.readPaths || surface.writePaths
+      ? {
+          scopes: {
+            readPaths: surface.readPaths ?? pathScopes,
+            writePaths: surface.writePaths ?? [],
+          },
+        }
+      : {}),
   };
 }

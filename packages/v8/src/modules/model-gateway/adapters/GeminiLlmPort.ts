@@ -14,7 +14,7 @@ import type {
   ModelRequest,
   ModelToolCallDelta,
   ResolveModelCapabilitiesInput,
-} from "../contracts/contracts";
+} from "../contracts";
 import {
   approximateTokenCount,
   cancelledEvent,

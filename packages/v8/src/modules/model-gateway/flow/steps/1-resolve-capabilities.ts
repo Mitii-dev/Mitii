@@ -7,7 +7,7 @@ import { modelCapabilitiesSchema } from "../../contracts/schema";
 import type {
   ModelCapabilities,
   ResolveModelCapabilitiesInput,
-} from "../../contracts/contracts";
+} from "../../contracts";
 
 /**
  * Flow step 1: fill capability defaults and validate the provider-neutral contract.

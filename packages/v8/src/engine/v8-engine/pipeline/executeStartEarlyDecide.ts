@@ -1,10 +1,7 @@
 /**
  * Early-start Decide phase: decision, web-search warn, clarify suspend, route guard.
  */
-import type {
-  DecisionPolicyInput,
-  ExecutionDecision,
-} from "../../../modules/decision-policy";
+import type { DecisionPolicyInput } from "../../../modules/decision-policy";
 import {
   DECISION_POLICY_SCHEMA_VERSION,
   isExplicitWebSearchAsk,

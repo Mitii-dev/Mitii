@@ -7,6 +7,10 @@ export interface GrantSurface {
   maximumWorkspaceEffect?: "none" | "read" | "write";
   /** Mirrors decision-policy ApprovalMode — drives mid-turn mutate suspend. */
   approvalMode?: "never" | "when_required" | "every_mutation";
+  /** Optional path scopes; lifted into ToolGrant.pathScopes when present. */
+  pathScopes?: string[];
+  readPaths?: string[];
+  writePaths?: string[];
 }
 
 export interface ToolGrantCheckResult {

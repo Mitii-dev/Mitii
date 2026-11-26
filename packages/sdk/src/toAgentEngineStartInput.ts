@@ -133,6 +133,9 @@ export function toAgentEngineStartInput(
     v8LoopPolicy: parsed.v8LoopPolicy,
     logVerbosity: parsed.logVerbosity,
     requiredSkillIds,
+    ...(parsed.excludedSkillIds && parsed.excludedSkillIds.length > 0
+      ? { excludedSkillIds: parsed.excludedSkillIds }
+      : {}),
     requiredMcpServerIds,
     instructions: buildStartInstructions(parsed),
   });

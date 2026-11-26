@@ -1,4 +1,4 @@
-import type { DiscoveryBrief } from "./contracts";
+import type { DiscoveryBrief } from "../contracts";
 
 const DEFAULT_CLARIFY_QUESTION =
   "Which concrete files, symbols, and verify commands should this plan cover before any Change steps?";

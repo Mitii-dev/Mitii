@@ -31,7 +31,7 @@ export type {
   ModelResponseFormat,
   ModelErrorCode,
   ModelAgenticTier,
-} from "./contracts";
+} from "./types";
 
 export { noopModuleLogger } from "../ports/ModuleLoggerPort";
 export type { ModuleLoggerPort } from "../ports/ModuleLoggerPort";

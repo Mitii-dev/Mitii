@@ -25,6 +25,7 @@ import {
   hubSuspendKind,
 } from "../../helpers/ConsultRuntimeGate";
 import { saveSuspendedRun } from "../../helpers/SaveSuspendedRun";
+import { toStoreSuspensionKind } from "../../helpers/ToStoreSuspensionKind";
 import type { AgentEngineRuntime } from "../../pipeline/runtime";
 import type { ExecuteStartSharedState } from "../../pipeline/executeStartEarlyPipeline";
 
@@ -141,12 +142,15 @@ export async function applyPostPlanTaskListGate(params: {
   reasonCodes.push("task_list_plan_not_concrete");
 
   // S10-EVAC: hollow plan suspend decision owned by gates hub.
+  // This branch only runs after `mode === "agent"` narrows above.
   const gateVerdict = consultRuntimeGate("after_plan", {
     runId,
-    mode: mode === "ask" || mode === "plan" || mode === "agent" ? mode : "agent",
+    mode: "agent",
     hollowPlan: true,
   });
-  const suspendKind = hubSuspendKind(gateVerdict, "clarification_required");
+  const suspendKind = toStoreSuspensionKind(
+    hubSuspendKind(gateVerdict, "clarification_required"),
+  );
   if (gateVerdict?.action === "suspend") {
     warnings.push("gates_hub:hollow_plan");
   }

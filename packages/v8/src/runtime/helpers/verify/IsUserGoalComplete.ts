@@ -25,6 +25,7 @@ export function isUserGoalComplete(params: {
       required: true,
       minimumEvidence,
       allowUnavailable: true,
+      onFailure: "report",
     },
     checks: verification.checks,
     diagnostics: verification.diagnostics,

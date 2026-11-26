@@ -403,6 +403,54 @@ describe('MitiiClient contract', () => {
     });
   });
 
+  it('passes host catalog name + relationships through toAgentEngineStartInput', () => {
+    const engineInput = toAgentEngineStartInput(
+      {
+        prompt: 'Orient on the monorepo',
+        mode: 'ask',
+        runtimeSituation: {
+          catalog: {
+            projects: [
+              {
+                id: 'packages/sdk',
+                name: '@mitii/sdk',
+                language: 'typescript',
+                packageManager: 'pnpm',
+              },
+              {
+                id: 'packages/v8',
+                name: '@mitii/v8',
+                language: 'typescript',
+              },
+            ],
+            relationships: [
+              {
+                fromProjectId: 'packages/sdk',
+                toProjectId: 'packages/v8',
+                type: 'depends_on',
+              },
+            ],
+          },
+          memory: { factCount: 0 },
+        },
+        excludedSkillIds: ['skill_noise'],
+      },
+      { mode: 'ask', sessionId: 'sess_situation' },
+    );
+
+    expect(engineInput.runtimeSituation?.catalog?.projects?.[0]?.name).toBe(
+      '@mitii/sdk',
+    );
+    expect(engineInput.runtimeSituation?.catalog?.relationships).toEqual([
+      {
+        fromProjectId: 'packages/sdk',
+        toProjectId: 'packages/v8',
+        type: 'depends_on',
+      },
+    ]);
+    expect(engineInput.excludedSkillIds).toEqual(['skill_noise']);
+  });
+
   it('lets explicit mode override autonomyPreset mode', () => {
     const engineInput = toAgentEngineStartInput(
       {

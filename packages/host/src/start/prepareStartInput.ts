@@ -11,6 +11,7 @@ import {
   type AgentMode,
   type MitiiStartInput,
 } from '@mitii/sdk';
+import { MAX_REQUIRED_MCP_SERVERS } from '@mitii/v8';
 
 import {
   isDatabaseUiMode,
@@ -190,7 +191,7 @@ export async function prepareStartInput(
     databaseOverlay &&
     databaseOverlay.startFields.requiredMcpServerIds.length > 0
       ? [...databaseOverlay.startFields.requiredMcpServerIds]
-      : uniqueIds(input.requiredMcpServerIds, 16);
+      : uniqueIds(input.requiredMcpServerIds, MAX_REQUIRED_MCP_SERVERS);
 
   const explorationDepth =
     input.explorationDepth ??

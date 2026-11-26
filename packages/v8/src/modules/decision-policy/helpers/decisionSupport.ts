@@ -147,9 +147,9 @@ export function clampGrantAgainstInjection(
 }
 
 export function uniqueReasonCodes(
-  codes: readonly DecisionReasonCode[],
+  codes: readonly string[],
 ): DecisionReasonCode[] {
-  return [...new Set(codes)];
+  return [...new Set(codes)] as DecisionReasonCode[];
 }
 
 export function buildRationale(params: {

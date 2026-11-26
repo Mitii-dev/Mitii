@@ -26,6 +26,7 @@ export function hasInScopeActionableRepairTarget(params: {
       required: true,
       minimumEvidence: normalizeMinimumEvidence(params.minimumEvidence),
       allowUnavailable: true,
+      onFailure: "report",
     },
     checks: params.verification.checks,
     diagnostics: params.verification.diagnostics,

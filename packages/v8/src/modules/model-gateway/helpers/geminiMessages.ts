@@ -1,4 +1,4 @@
-import type { ModelMessage } from "../contracts/contracts";
+import type { ModelMessage } from "../contracts";
 
 export interface GeminiPart {
   text?: string;
