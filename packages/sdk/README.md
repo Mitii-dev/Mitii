@@ -50,12 +50,17 @@ const result = await run.result;
 | API | Role |
 |---|---|
 | `createMitiiClient(options)` | Compose default V8 facades; inject `LlmPort`s (secrets stay on the port) |
-| `client.start(input)` | Validate intake-facing input -> Agent Engine run handle |
+| `client.start(input)` | Intake → run handle. Default `startPath: 'auto'`: all modes → runtime shell |
+| `client.startRuntimeShell(input)` | Explicit runtime pump 1–11 (`RuntimeRunResult`); requires `enableRuntimeShell` (default true) |
+| `client.getRuntime()` | Dual-run `RuntimePipeline` |
+| `client.resolveStartPath(mode?)` | `'engine' \| 'runtime'` for current settings |
 | `run.events` | Async iterable of V8 `RunEvent` |
 | `run.result` | Terminal `AgentRunResult` |
 | `run.cancel()` | Cancel in-flight model/tool work |
-| `client.resume(input)` | Resume after `clarification_required` / `approval_required` |
+| `client.resume(input)` | Resume after suspend — runtime if the run started on the shell; else engine |
 | `client.publishRepositoryState(input)` | Optional; calls V8 Repository State facade |
+
+`startPath`: `'auto'` (default, all modes → runtime shell wrap) · `'runtime'` · `'engine'` (**deprecated** event-bus escape). Opt out with `enableRuntimeShell: false`.
 
 Filesystem checkpoints, skills catalogs, search, and indexing live in **`@mitii/host`** (or your own port implementations). The SDK stays host-neutral.
 

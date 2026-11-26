@@ -4,25 +4,27 @@ import {
   resolveDiscoveryPassBudget,
   scaleDiscoveryPassBudget,
   DEFAULT_DISCOVERY_PASS_BUDGET,
+  assertDiscoveryBudgetsMonotonic,
 } from "./discoveryBudgets";
 
 describe("resolveDiscoveryPassBudget", () => {
-  it("uses the taskSize × window band table (turns = model/tool-loop turns)", () => {
+  it("is monotonic: compact ≤ standard ≤ wide per taskSize", () => {
+    expect(() => assertDiscoveryBudgetsMonotonic()).not.toThrow();
     expect(resolveDiscoveryPassBudget("medium", "compact")).toMatchObject({
       maxModelTurns: 5,
       maxFileReads: 10,
     });
     expect(resolveDiscoveryPassBudget("medium", "standard")).toMatchObject({
-      maxModelTurns: 4,
-      maxFileReads: 8,
+      maxModelTurns: 6,
+      maxFileReads: 12,
     });
     expect(resolveDiscoveryPassBudget("medium", "wide")).toMatchObject({
-      maxModelTurns: 3,
-      maxFileReads: 8,
+      maxModelTurns: 8,
+      maxFileReads: 16,
     });
     expect(resolveDiscoveryPassBudget("small", "standard")).toMatchObject({
-      maxModelTurns: 2,
-      maxFileReads: 4,
+      maxModelTurns: 4,
+      maxFileReads: 8,
     });
     expect(resolveDiscoveryPassBudget("large", "compact")).toMatchObject({
       maxModelTurns: 7,
@@ -30,18 +32,18 @@ describe("resolveDiscoveryPassBudget", () => {
     });
   });
 
-  it("maps context-window token counts through the 100k band cutoff", () => {
+  it("maps context-window token counts with larger windows getting more headroom", () => {
     expect(resolveDiscoveryPassBudget("medium", 40_000).maxModelTurns).toBe(5);
-    expect(resolveDiscoveryPassBudget("medium", 80_000).maxModelTurns).toBe(4);
-    expect(resolveDiscoveryPassBudget("medium", 120_000).maxModelTurns).toBe(3);
+    expect(resolveDiscoveryPassBudget("medium", 80_000).maxModelTurns).toBe(6);
+    expect(resolveDiscoveryPassBudget("medium", 120_000).maxModelTurns).toBe(8);
   });
 
   it("keeps search/tool caps proportional without unbounded explore", () => {
     const medium = resolveDiscoveryPassBudget("medium", "standard");
     expect(medium.maxSearches).toBeGreaterThanOrEqual(6);
-    expect(medium.maxSearches).toBeLessThanOrEqual(12);
+    expect(medium.maxSearches).toBeLessThanOrEqual(24);
     expect(medium.maxToolCalls).toBeGreaterThanOrEqual(medium.maxFileReads);
-    expect(medium.maxToolCalls).toBeLessThanOrEqual(20);
+    expect(medium.maxToolCalls).toBeLessThanOrEqual(36);
   });
 
   it("defaults unknown size to small standard-shaped envelope", () => {

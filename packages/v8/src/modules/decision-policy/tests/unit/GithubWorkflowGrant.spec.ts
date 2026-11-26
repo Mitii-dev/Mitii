@@ -37,15 +37,14 @@ describe("GitHub Actions workflow grants", () => {
       }),
     );
 
+    // Path mention is focus, not an automatic fence (§4.3). Workspace ceiling
+    // still allows writing the normalized .github workflow path.
+    expect(decision.toolGrant.mutationPathScopes).toBeUndefined();
+    expect(decision.toolGrant.pathScopes).toEqual(["."]);
+
     const mutationScopes =
       decision.toolGrant.mutationPathScopes ?? decision.toolGrant.pathScopes;
-
-    expect(mutationScopes.some((scope) => scope.startsWith(".github"))).toBe(
-      true,
-    );
-    expect(mutationScopes.some((scope) => scope.startsWith("github"))).toBe(
-      false,
-    );
+    expect(mutationScopes.some((scope) => scope === "github")).toBe(false);
     expect(
       isPathWithinScopes(".github/workflows/ci.yml", mutationScopes),
     ).toBe(true);

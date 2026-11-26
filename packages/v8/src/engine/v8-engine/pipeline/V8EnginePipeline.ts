@@ -24,8 +24,11 @@ import { executeV8Resume } from "./executeResume";
 export type V8EnginePipelineDependencies = AgentEngineDependencies;
 
 /**
- * V8 Engine facade. Same host surface as AgentEnginePipeline.
- * start + resume (Continue/clarify/plan/approval) + restore.
+ * V8 Engine facade (event-bus implementation).
+ *
+ * Product hosts must use `composeAgentEngine().engine` (runtime shell).
+ * Composed `eventBusEngine.start/resume` are sealed. This class retains
+ * start/resume for **internal goldens / harnesses** that construct it directly.
  */
 export class V8EnginePipeline {
   private readonly runtime: AgentEngineRuntime;

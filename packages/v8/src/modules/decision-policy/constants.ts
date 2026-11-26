@@ -130,6 +130,7 @@ export const DECISION_REASON_CODES = [
   "grant_profile_none",
   "grant_profile_network_only",
   "grant_profile_readonly",
+  "grant_profile_research",
   "grant_profile_agent_execute",
   /** Workspace-grounded bug report promoted to execute (may still be diagnose-first). */
   "workspace_bug_execute",

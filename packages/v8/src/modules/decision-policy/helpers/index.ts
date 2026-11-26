@@ -64,6 +64,20 @@ export type { ToolGrantResolution, GrantProfile } from "./BuildToolGrant";
 export { looksLikeVcsHistoryRewrite } from "./DetectVcsHistoryRewrite";
 
 export {
+  extractExplicitMutationFence,
+  hasExplicitEditLimit,
+} from "./ExtractExplicitMutationFence";
+export { looksLikeWorkspaceRootMutation } from "./ResolveGrantPathScopes";
+export { applyAntiNagAsk } from "./ApplyAntiNagAsk";
+export type { AntiNagAskInput, AntiNagAskResult } from "./ApplyAntiNagAsk";
+export { mapPlanningHintToDepth } from "./MapPlanningHintToDepth";
+export { compileGrantFromPlate } from "./CompileGrantFromPlate";
+export type {
+  CompileGrantFromPlateInput,
+  CompileGrantFromPlateResult,
+} from "./CompileGrantFromPlate";
+
+export {
   buildVerificationGrant,
   DEFAULT_VERIFICATION_COMMAND_PREFIXES,
   DEFAULT_AGENT_READONLY_COMMAND_PREFIXES,

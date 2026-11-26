@@ -69,6 +69,11 @@ export function buildToolGrant(params: {
   /** When false/undefined, never grant web_search (honest hide until SearchPort). */
   allowWebSearch?: boolean;
   windowPolicy?: WindowPolicy;
+  /** SituationPack.scope — mutationFence only when set (S2-SCOPE). */
+  scopeVerdict?: {
+    mutationFence?: readonly string[];
+    focusPaths?: readonly string[];
+  };
 }): ToolGrantResolution {
   const { mode, route, understanding } = params;
   const reasonCodes: DecisionReasonCode[] = [];
@@ -79,6 +84,7 @@ export function buildToolGrant(params: {
   const mutationPathScopes = resolveMutationPathScopes(
     understanding,
     params.message,
+    { scopeVerdict: params.scopeVerdict },
   );
 
   const network = resolveNetworkAuthority({
@@ -120,6 +126,7 @@ export function buildToolGrant(params: {
         }),
       };
     case "readonly":
+    case "research":
       reasonCodes.push(...network.reasonCodes);
       return {
         grantProfile,

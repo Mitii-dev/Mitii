@@ -19,6 +19,7 @@ import { EventBus } from "../internal/EventBus";
 import { RunBudgetTracker } from "../internal/RunBudget";
 import type { ToolCallCache } from "../internal/ToolCallCache";
 import type { TaskListRef } from "../internal/taskListRuntime";
+import { saveSuspendedRun } from "../helpers/SaveSuspendedRun";
 import type { ExecutionSeed } from "../modules/execution-seed";
 import type { AgentEngineRuntime } from "./runtime";
 
@@ -113,7 +114,9 @@ export async function suspendForBudgetWall(
     mutationRequired: opts.mutationRequired,
   });
   reasonCodes.push("stall_continue_suspended");
-  await runtime.deps.checkpointStore.save({
+  await saveSuspendedRun({
+    store: runtime.deps.checkpointStore,
+    checkpoint: {
     runId,
     requestId,
     ...(runtime.contextEpochs.get(runId)
@@ -146,6 +149,7 @@ export async function suspendForBudgetWall(
       : {}),
     ...(plan ? { plan } : {}),
     ...(executionSeed ? { executionSeed } : {}),
+    },
   });
   runtime.emit(bus, {
     type: "suspended",

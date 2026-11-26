@@ -13,6 +13,17 @@ export type {
 } from "./bands";
 
 export {
+  DEFAULT_DISCOVERY_PASS_BUDGET,
+  resolveDiscoveryPassBudget,
+  scaleDiscoveryPassBudget,
+  assertDiscoveryBudgetsMonotonic,
+} from "./discoveryPassBudgets";
+export type {
+  DiscoveryPassBudget,
+  DiscoveryTaskSize,
+} from "./discoveryPassBudgets";
+
+export {
   WINDOW_BUDGET_EFFORTS,
   DEFAULT_WINDOW_BUDGET_EFFORT,
   WINDOW_BUDGET_EFFORT_OVERLAY,

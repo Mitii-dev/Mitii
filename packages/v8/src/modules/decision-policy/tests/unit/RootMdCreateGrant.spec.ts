@@ -118,7 +118,8 @@ describe("root markdown creation grants", () => {
       }),
     );
 
-    expect(decision.toolGrant.mutationPathScopes).toEqual([".", "docs"]);
+    // Root create ask → "."; docs folder mention is focus only (§4.3).
+    expect(decision.toolGrant.mutationPathScopes).toEqual(["."]);
 
     const mutationScopes =
       decision.toolGrant.mutationPathScopes ?? decision.toolGrant.pathScopes;

@@ -47,6 +47,10 @@ export {
   resolveWindowBudgetModelProfile,
   COMPACT_TOOL_LOOP_OUTPUT_HARD_CAP,
   resolveToolLoopMaxOutputTokens,
+  DEFAULT_DISCOVERY_PASS_BUDGET,
+  resolveDiscoveryPassBudget,
+  scaleDiscoveryPassBudget,
+  assertDiscoveryBudgetsMonotonic,
 } from "./rules";
 export type {
   ResolveWindowBudgetPolicyInput,
@@ -58,6 +62,8 @@ export type {
   WindowBudgetMode,
   WindowBudgetModeOverlay,
   WindowBudgetModelProfile,
+  DiscoveryPassBudget,
+  DiscoveryTaskSize,
 } from "./rules";
 
 export {

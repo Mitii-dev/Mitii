@@ -13,6 +13,7 @@ import { RunBudgetTracker } from "../internal/RunBudget";
 import type { TaskListRef } from "../internal/taskListRuntime";
 import type { AgentEngineRuntime } from "./runtime";
 import type { ToolLoopOutcome } from "./types";
+import { saveSuspendedRun } from "../helpers/SaveSuspendedRun";
 
 export async function finishIfApprovalRequired(
   runtime: AgentEngineRuntime,
@@ -75,7 +76,9 @@ export async function finishIfApprovalRequired(
     }
 
     reasonCodes.push("approval_suspended");
-    await runtime.deps.checkpointStore.save({
+    await saveSuspendedRun({
+      store: runtime.deps.checkpointStore,
+      checkpoint: {
       runId,
       requestId,
       ...(runtime.contextEpochs.get(runId)
@@ -103,6 +106,7 @@ export async function finishIfApprovalRequired(
       taskListRef.completedPlanStepIds.length > 0
         ? { completedPlanStepIds: [...taskListRef.completedPlanStepIds] }
         : {}),
+      },
     });
 
     const rationale = `Approval required for "${currentOutcome.pendingApproval.toolName}".`;

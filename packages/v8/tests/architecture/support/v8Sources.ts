@@ -6,11 +6,19 @@ import { dirname, join, relative, sep } from 'path';
  * source analysis; no test in this folder imports production code.
  */
 
-export const repoRoot = process.cwd();
-export const v8PackageRoot = join(repoRoot, 'packages/v8');
+/** Monorepo root or `packages/v8` — vitest may start in either. */
+const cwd = process.cwd();
+export const v8PackageRoot = existsSync(join(cwd, 'src/runtime'))
+  ? cwd
+  : join(cwd, 'packages/v8');
+export const repoRoot = existsSync(join(cwd, 'packages/v8/src'))
+  ? cwd
+  : join(v8PackageRoot, '../..');
 export const v8SrcRoot = join(v8PackageRoot, 'src');
 export const modulesRoot = join(v8SrcRoot, 'modules');
 export const engineRoot = join(v8SrcRoot, 'engine');
+/** Clubbed rewrite target (ENGINE_REWRITE_PLAN) — coexists with engine/ during cutover. */
+export const runtimeRoot = join(v8SrcRoot, 'runtime');
 export const baselinesRoot = join(
   v8PackageRoot,
   'tests/architecture/baselines',
@@ -69,7 +77,7 @@ export function listTypeScriptFiles(root: string): string[] {
 }
 
 export function listRuntimeTypeScriptFiles(): string[] {
-  return [modulesRoot, engineRoot].flatMap(listTypeScriptFiles);
+  return [modulesRoot, engineRoot, runtimeRoot].flatMap(listTypeScriptFiles);
 }
 
 export function isTestFile(file: string): boolean {

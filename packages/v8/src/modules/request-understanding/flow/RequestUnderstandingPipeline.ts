@@ -21,6 +21,10 @@ import {
   noopModuleLogger,
   type ModuleLoggerPort,
 } from "../ports/ModuleLoggerPort";
+import type { DirectionAnalysisInput } from "../contracts/input/DirectionAnalysisInput";
+import type { TaskDirectionAssessment } from "../contracts/output/TaskDirectionAssessment";
+import { assessDirectionWithLlm } from "../helpers/direction/AssessDirectionWithLlm";
+import type { DirectionLlmComplete } from "../helpers/direction/AssessDirectionWithLlm";
 import { extractUnderstandingMessages } from "./steps/1-extract-messages";
 import { buildUnderstandingEvidence } from "./steps/2-build-evidence";
 import { classifyUnderstandingIntent } from "./steps/3-classify-intent";
@@ -42,6 +46,8 @@ export interface RequestUnderstandingPipelineDependencies {
  * Flow (understand):
  *   1-extract-messages → 2-build-evidence → 3-classify-intent
  *   → 4-analyze-task → 5-finalize-result
+ *
+ * Flow (assessDirection): SituationPack-shaped ballot (§5) — DP owns authority.
  */
 export class RequestUnderstandingPipeline {
   public readonly id = REQUEST_UNDERSTANDING_IDS.PIPELINE;
@@ -181,6 +187,30 @@ export class RequestUnderstandingPipeline {
     });
 
     return result;
+  }
+
+  /**
+   * Step 2a ballot from SituationPack. LLM when `complete` provided;
+   * deterministic fallback otherwise. Does not compile route/grant.
+   */
+  public async assessDirection(
+    input: DirectionAnalysisInput,
+    complete?: DirectionLlmComplete,
+  ): Promise<TaskDirectionAssessment> {
+    const startedMs = Date.now();
+    const assessment = await assessDirectionWithLlm(input, complete);
+    this.log.stage({
+      module: "request-understanding",
+      stage: "assess-direction",
+      durationMs: Date.now() - startedMs,
+      reasonCodes: assessment.reasonCodes,
+      outputSummary: {
+        primaryTaskIntent: assessment.primaryTaskIntent,
+        planningHint: assessment.planningHint,
+        askUserSuggested: assessment.askUserSuggested,
+      },
+    });
+    return assessment;
   }
 }
 

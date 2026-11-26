@@ -15,6 +15,7 @@ import type { TaskListRef } from "../internal/taskListRuntime";
 import type { ExecutionSeed } from "../modules/execution-seed";
 import type { AgentEngineRuntime } from "./runtime";
 import type { ToolLoopOutcome } from "./types";
+import { saveSuspendedRun } from "../helpers/SaveSuspendedRun";
 
 type FinishFn = (partial: {
   status: AgentRunStatus;
@@ -87,7 +88,9 @@ export async function finishIfGrantExpansionRequired(
 
     const expansionId = runtime.deps.idGenerator.next("gexp");
     reasonCodes.push("grant_expansion_suspended");
-    await runtime.deps.checkpointStore.save({
+    await saveSuspendedRun({
+      store: runtime.deps.checkpointStore,
+      checkpoint: {
       runId,
       requestId,
       ...(runtime.contextEpochs.get(runId)
@@ -127,6 +130,7 @@ export async function finishIfGrantExpansionRequired(
         ? { completedPlanStepIds: [...taskListRef.completedPlanStepIds] }
         : {}),
       ...(plan ? { plan } : {}),
+      },
     });
 
     const allPreview = [
@@ -226,7 +230,9 @@ export async function finishIfContinueRequired(
     }
 
     reasonCodes.push("stall_continue_suspended");
-    await runtime.deps.checkpointStore.save({
+    await saveSuspendedRun({
+      store: runtime.deps.checkpointStore,
+      checkpoint: {
       runId,
       requestId,
       ...(runtime.contextEpochs.get(runId)
@@ -259,6 +265,7 @@ export async function finishIfContinueRequired(
         : {}),
       ...(plan ? { plan: plan } : {}),
       ...(executionSeed ? { executionSeed } : {}),
+      },
     });
 
     runtime.emit(bus, {

@@ -51,6 +51,12 @@ export {
   isExplicitCreateAsk,
   FAST_PATH_DECLINE_REASONS,
   looksLikeVcsHistoryRewrite,
+  extractExplicitMutationFence,
+  hasExplicitEditLimit,
+  looksLikeWorkspaceRootMutation,
+  applyAntiNagAsk,
+  mapPlanningHintToDepth,
+  compileGrantFromPlate,
   intersectUserSafetyRules,
   grantNeverWidens,
   formatEffectiveGrant,
@@ -72,6 +78,21 @@ export type {
 } from "./helpers";
 
 export { DecisionPolicyPipeline } from "./flow/DecisionPolicyPipeline";
+
+export {
+  selectDecisionPlate,
+  listDecisionPlates,
+  DECISION_PLATE_REGISTRY,
+  ROUTE_DECISION_PLATES,
+  clarifyPlate,
+  answerResearchPlate,
+  diagnosePlate,
+  planVisiblePlate,
+  executeMutatePlate,
+  executeVisiblePlate,
+  executeFastPathPlate,
+} from "./plates";
+export type { DecisionPlate, SelectDecisionPlateInput } from "./plates";
 
 export {
   isRepairIntentTaxonomy,

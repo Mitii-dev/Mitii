@@ -9,17 +9,19 @@ import type {
  * Discrete grant profiles. Mode + route select exactly one; layers then add
  * network / process / approval / scopes. Ask/plan never select agent_execute.
  *
- * | Profile        | Max effect | apply_patch? |
- * |----------------|------------|--------------|
- * | none           | none       | no           |
- * | network_only   | read       | no           |
- * | readonly       | read       | no           |
- * | agent_execute  | write      | yes          |
+ * | Profile        | Max effect | Notes |
+ * |----------------|------------|-------|
+ * | none           | none       | clarify; rare tool-less direct_answer |
+ * | network_only   | read       | rare clamp |
+ * | readonly       | read       | legacy clamp |
+ * | research       | read       | default ask/plan/diagnose/repository_answer |
+ * | agent_execute  | write      | agent + execute only |
  */
 export const GRANT_PROFILES = [
   "none",
   "network_only",
   "readonly",
+  "research",
   "agent_execute",
 ] as const;
 
@@ -28,7 +30,6 @@ export type GrantProfile = (typeof GRANT_PROFILES)[number];
 export interface ToolGrantResolution {
   toolGrant: ToolGrant;
   reasonCodes: DecisionReasonCode[];
-  /** Selected profile — debug / decision_made honesty. */
   grantProfile: GrantProfile;
 }
 
@@ -39,7 +40,6 @@ export interface ToolGrantResolution {
 export function selectGrantProfile(params: {
   mode: "ask" | "plan" | "agent";
   route: ExecutionRoute;
-  /** When true, direct_answer may become network_only instead of none. */
   hasNetworkTools: boolean;
 }): GrantProfile {
   const { mode, route, hasNetworkTools } = params;
@@ -48,23 +48,25 @@ export function selectGrantProfile(params: {
     return "none";
   }
 
-  // Ask / plan are hard seals: never agent_execute regardless of route.
-  if (mode === "ask" || mode === "plan") {
-    if (route === EXECUTION_ROUTE.DIRECT_ANSWER) {
-      return hasNetworkTools ? "network_only" : "none";
+  // Tool-less knowledge Q&A stays none unless network tools are configured.
+  if (route === EXECUTION_ROUTE.DIRECT_ANSWER) {
+    if (mode === "ask" || mode === "plan") {
+      return hasNetworkTools ? "research" : "none";
     }
-    return "readonly";
+    return hasNetworkTools ? "research" : "none";
   }
 
-  // Agent mode
-  if (route === EXECUTION_ROUTE.DIRECT_ANSWER) {
-    return hasNetworkTools ? "network_only" : "none";
+  // Ask / plan seals: never agent_execute.
+  if (mode === "ask" || mode === "plan") {
+    return "research";
   }
+
   if (route === EXECUTION_ROUTE.EXECUTE) {
     return "agent_execute";
   }
+
   // diagnose | repository_answer | plan
-  return "readonly";
+  return "research";
 }
 
 export function profileReasonCode(profile: GrantProfile): DecisionReasonCode {
@@ -75,6 +77,8 @@ export function profileReasonCode(profile: GrantProfile): DecisionReasonCode {
       return "grant_profile_network_only";
     case "readonly":
       return "grant_profile_readonly";
+    case "research":
+      return "grant_profile_research";
     case "agent_execute":
       return "grant_profile_agent_execute";
   }

@@ -9,13 +9,27 @@ export {
   requestUnderstandingResultSchema,
   diagnosticSummarySchema,
   diagnosticSummaryEntrySchema,
+  directionAnalysisInputSchema,
+  taskDirectionAssessmentSchema,
 } from "./contracts";
 export type {
   RequestUnderstandingPipelineInput,
   RequestUnderstandingResult,
   DiagnosticSummary,
   DiagnosticSummaryEntry,
+  DirectionAnalysisInput,
+  TaskDirectionAssessment,
 } from "./contracts";
+
+export {
+  assessDirection,
+  directionInputFromSituationPack,
+} from "./helpers/direction/AssessDirection";
+export {
+  assessDirectionWithLlm,
+} from "./helpers/direction/AssessDirectionWithLlm";
+export type { DirectionLlmComplete } from "./helpers/direction/AssessDirectionWithLlm";
+export { mapAssessmentToTaskAnalysis } from "./helpers/direction/MapAssessmentToTaskAnalysis";
 
 export { TaskAnalysisSchema } from "./helpers/task-analyzer/contracts/output/TaskAnalysis";
 export type { TaskAnalysis } from "./helpers/task-analyzer/contracts/output/TaskAnalysis";

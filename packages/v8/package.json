@@ -1,6 +1,6 @@
 {
   "name": "@mitii/v8",
-  "version": "2.11.42",
+  "version": "2.11.43",
   "description": "Host-neutral Mitii V8 agent runtime (modules + engine).",
   "license": "AGPL-3.0-or-later",
   "type": "module",
@@ -37,7 +37,8 @@
     "test": "node ../../scripts/ensure-node-native.mjs && vitest run",
     "eval:nightly": "node ./scripts/eval-nightly.mjs",
     "eval:live": "MITII_LIVE_EVAL=1 node ./scripts/eval-nightly.mjs",
-    "test:v8-engine": "node ../../scripts/ensure-node-native.mjs && vitest run src/engine/v8-engine"
+    "test:v8-engine": "node ../../scripts/ensure-node-native.mjs && vitest run src/engine/v8-engine",
+    "test:runtime": "node ../../scripts/ensure-node-native.mjs && vitest run src/runtime"
   },
   "dependencies": {
     "fast-xml-parser": "^5.10.1",

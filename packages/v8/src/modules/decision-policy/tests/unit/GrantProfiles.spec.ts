@@ -25,21 +25,21 @@ describe("selectGrantProfile", () => {
         route: "diagnose",
         hasNetworkTools: false,
       }),
-    ).toBe("readonly");
+    ).toBe("research");
     expect(
       selectGrantProfile({
         mode: "ask",
         route: "execute",
         hasNetworkTools: false,
       }),
-    ).toBe("readonly");
+    ).toBe("research");
     expect(
       selectGrantProfile({
         mode: "plan",
         route: "execute",
         hasNetworkTools: false,
       }),
-    ).toBe("readonly");
+    ).toBe("research");
     expect(
       selectGrantProfile({
         mode: "agent",
@@ -53,7 +53,7 @@ describe("selectGrantProfile", () => {
         route: "direct_answer",
         hasNetworkTools: true,
       }),
-    ).toBe("network_only");
+    ).toBe("research");
     expect(
       selectGrantProfile({
         mode: "agent",
@@ -61,6 +61,13 @@ describe("selectGrantProfile", () => {
         hasNetworkTools: false,
       }),
     ).toBe("none");
+    expect(
+      selectGrantProfile({
+        mode: "agent",
+        route: "repository_answer",
+        hasNetworkTools: false,
+      }),
+    ).toBe("research");
   });
 });
 
@@ -93,15 +100,15 @@ describe("BuildToolGrant profiles", () => {
       }),
       message: "Why is the preview blank?",
     });
-    expect(result.grantProfile).toBe("readonly");
+    expect(result.grantProfile).toBe("research");
     expect(result.toolGrant.maximumWorkspaceEffect).toBe("read");
     expect(result.toolGrant.allowedTools).not.toContain("apply_patch");
     expect(result.toolGrant.allowedTools).toContain("run_readonly_command");
-    expect(result.reasonCodes).toContain("grant_profile_readonly");
+    expect(result.reasonCodes).toContain("grant_profile_research");
     expect(result.reasonCodes).toContain("diagnosis_readonly");
   });
 
-  it("ask mode seals execute-shaped routes to readonly without apply_patch", () => {
+  it("ask mode seals execute-shaped routes to research without apply_patch", () => {
     const result = buildToolGrant({
       mode: "ask",
       route: "repository_answer",
@@ -111,7 +118,7 @@ describe("BuildToolGrant profiles", () => {
       }),
       message: "How does auth work in this repo?",
     });
-    expect(result.grantProfile).toBe("readonly");
+    expect(result.grantProfile).toBe("research");
     expect(result.toolGrant.allowedTools).not.toContain("apply_patch");
     expect(result.reasonCodes).toContain("mode_ask_readonly");
   });
@@ -158,6 +165,6 @@ describe("DecisionPolicyPipeline grant profile honesty", () => {
     );
     expect(decision.route).toBe("diagnose");
     expect(decision.toolGrant.allowedTools).not.toContain("apply_patch");
-    expect(decision.reasonCodes).toContain("grant_profile_readonly");
+    expect(decision.reasonCodes).toContain("grant_profile_research");
   });
 });

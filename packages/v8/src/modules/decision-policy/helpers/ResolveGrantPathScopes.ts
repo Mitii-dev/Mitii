@@ -1,9 +1,11 @@
 import type { RequestUnderstandingResult } from "../../request-understanding";
+import {
+  extractExplicitMutationFence,
+} from "./ExtractExplicitMutationFence";
 
 function normalizeScopePath(value: string): string {
   let normalized =
     value.replace(/\\/g, "/").replace(/^\.?\//, "").replace(/\/+$/, "") || ".";
-  // Same CI rewrite as tool-runtime: never grant a parallel `github/` tree.
   if (/^github\//i.test(normalized) || normalized === "github") {
     normalized =
       normalized === "github"
@@ -13,92 +15,59 @@ function normalizeScopePath(value: string): string {
   return normalized;
 }
 
-function parentDirectoryScope(filePath: string): string {
-  const normalized = normalizeScopePath(filePath);
-  const slash = normalized.lastIndexOf("/");
-  if (slash <= 0) {
-    return ".";
-  }
-  return normalized.slice(0, slash);
+export interface MutationScopeOptions {
+  /** From SituationPack.scope — preferred when present (S2-SCOPE). */
+  scopeVerdict?: {
+    mutationFence?: readonly string[];
+    focusPaths?: readonly string[];
+  };
 }
 
+/**
+ * Read scopes stay workspace-wide. Mentions are focus, not a pathScopes prison.
+ */
 export function resolvePathScopes(
-  understanding: RequestUnderstandingResult,
+  _understanding: RequestUnderstandingResult,
 ): string[] {
-  const primaryIntent =
-    understanding.intent.classification.primaryTaskIntent;
-  if (
-    primaryIntent === "dependency" ||
-    primaryIntent === "security" ||
-    primaryIntent === "audit"
-  ) {
-    return ["."];
-  }
-
-  const { taskAnalysis } = understanding;
-
-  // Discovery-heavy / wide scope: keep workspace-wide read access.
-  // Pinned folders are focus hints only — they do not fence workspace reads.
-  if (
-    taskAnalysis.recommendsRepositoryDiscovery ||
-    taskAnalysis.scope === "repository" ||
-    taskAnalysis.scope === "workspace" ||
-    taskAnalysis.scope === "package" ||
-    taskAnalysis.scope === "multi_file" ||
-    taskAnalysis.scope === "unknown"
-  ) {
-    return ["."];
-  }
-
-  // Localized work: only *explicit* folder/file mentions narrow read scopes.
-  // Implicit artifact / UI pins stay workspace-wide so the agent can still
-  // read elsewhere in the workspace (and ask before leaving it).
-  const scopes = new Set<string>();
-  for (const target of taskAnalysis.targets) {
-    if (!target.explicit || target.value.length === 0) {
-      continue;
-    }
-    if (target.kind === "folder") {
-      scopes.add(normalizeScopePath(target.value));
-      continue;
-    }
-    if (target.kind === "file") {
-      scopes.add(parentDirectoryScope(target.value));
-    }
-  }
-
-  if (scopes.size === 0) {
-    return ["."];
-  }
-
-  return [...scopes];
+  return ["."];
 }
 
+/**
+ * Mutation fence: ScopeVerdict.mutationFence → explicit prose → root create.
+ * Folder/file @-mentions alone never set mutationPathScopes.
+ */
 export function resolveMutationPathScopes(
   understanding: RequestUnderstandingResult,
   message?: string,
+  options?: MutationScopeOptions,
 ): string[] | undefined {
-  const scopes = new Set<string>();
-  for (const target of understanding.taskAnalysis.targets) {
-    if (target.value.length === 0) {
-      continue;
-    }
-    // Explicit folder/file mentions only. Implicit UI pins are focus, not a
-    // hard mutation fence — workspace remains the default write ceiling.
-    if (!target.explicit) {
-      continue;
-    }
-    if (target.kind === "folder") {
-      scopes.add(normalizeScopePath(target.value));
-      continue;
-    }
-    if (target.kind === "file") {
-      scopes.add(parentDirectoryScope(target.value));
-    }
+  const verdictFence = options?.scopeVerdict?.mutationFence;
+  if (verdictFence && verdictFence.length > 0) {
+    return [...new Set(verdictFence.map(normalizeScopePath))].sort((a, b) =>
+      a.localeCompare(b),
+    );
   }
-  if (message && looksLikeWorkspaceRootMutation(message)) {
+
+  const text = message ?? "";
+  const focusFromTargets = understanding.taskAnalysis.targets
+    .filter((t) => t.explicit && t.value.length > 0)
+    .filter((t) => t.kind === "folder" || t.kind === "file")
+    .map((t) => normalizeScopePath(t.value));
+
+  const focusFromVerdict = (options?.scopeVerdict?.focusPaths ?? []).map(
+    normalizeScopePath,
+  );
+
+  const fence = extractExplicitMutationFence(text, [
+    ...focusFromTargets,
+    ...focusFromVerdict,
+  ]);
+  const scopes = new Set<string>(fence ?? []);
+
+  if (text.length > 0 && looksLikeWorkspaceRootMutation(text)) {
     scopes.add(".");
   }
+
   if (scopes.size === 0) {
     return undefined;
   }

@@ -15,9 +15,11 @@ import { buildPlanClarifySuspension } from "../actions/buildPlanClarifySuspensio
 import {
   ensurePlanClarifyDraft,
   formatPlanAnswerWithNextPhase,
+} from "../modules/plan-discovery";
+import {
   shouldForceCampaignPhaseLock,
   shouldSuspendForPlanScopeFork,
-} from "../modules/plan-discovery";
+} from "../../../runtime";
 import { applyPostPlanTaskListGate } from "../modules/execution-seed";
 import type {
   AgentEngineStartInput,
@@ -38,6 +40,7 @@ import type { ExecuteStartSharedState } from "./executeStartEarlyPipeline";
 import type { StartEnrichmentOutcome } from "./executeStartEnrichmentTypes";
 import { recordPlanEvidence } from "../actions";
 import { serializePlanForPrompt } from "../../../modules/planning";
+import { saveSuspendedRun } from "../helpers/SaveSuspendedRun";
 
 export async function maybeSuspendAfterPlanDraft(params: {
   runtime: AgentEngineRuntime;
@@ -130,7 +133,9 @@ export async function maybeSuspendAfterPlanDraft(params: {
           : "Choose scope (and optionally first delivery) before executing this Agent phase — keeps reads/turns bounded."
         : "Choose plan scope (and optionally first delivery) before a concrete Change plan is locked.";
     if (runtime.deps.checkpointStore) {
-      await runtime.deps.checkpointStore.save({
+      await saveSuspendedRun({
+      store: runtime.deps.checkpointStore,
+      checkpoint: {
         runId,
         requestId: shared.requestId,
         suspensionKind: "clarification_required",
@@ -151,6 +156,7 @@ export async function maybeSuspendAfterPlanDraft(params: {
         startedAtMs: startedMs,
         repoBuildStateBefore: shared.repoBuildStateBefore,
         repoBuildStateAfter: shared.repoBuildStateAfter,
+      },
       });
     }
     runtime.emit(bus, {
@@ -194,7 +200,9 @@ export async function maybeSuspendAfterPlanDraft(params: {
     const rationale =
       "A reviewable plan is required before mutation. Approve, edit, or reject the plan to continue.";
     if (runtime.deps.checkpointStore) {
-      await runtime.deps.checkpointStore.save({
+      await saveSuspendedRun({
+      store: runtime.deps.checkpointStore,
+      checkpoint: {
         runId,
         requestId: shared.requestId,
         suspensionKind: "plan_approval_required",
@@ -227,6 +235,7 @@ export async function maybeSuspendAfterPlanDraft(params: {
         ...(shared.understanding
           ? { understanding: shared.understanding }
           : {}),
+      },
       });
     }
     runtime.emit(bus, {

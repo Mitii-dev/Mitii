@@ -449,4 +449,144 @@ describe('MitiiClient contract', () => {
     expect(isTerminalRunEvent(runEventSchema.parse(terminal))).toBe(true);
     expect(isRunEvent({ type: 'not_a_real_event' })).toBe(false);
   });
+
+  it('gates startRuntimeShell behind enableRuntimeShell', async () => {
+    const closed = createMitiiClient({
+      understandingLlm: new UnderstandingLlmPort({
+        interactionIntent: 'question',
+        primaryTaskIntent: 'question',
+        needsClarification: false,
+        confidence: 0.9,
+        alternatives: [],
+        secondaryTaskIntents: [],
+        reason: 'test',
+      }),
+      runLlm: new EchoLlmPort(),
+      enableRuntimeShell: false,
+    });
+    await expect(closed.startRuntimeShell({ prompt: 'hi' })).rejects.toBeInstanceOf(
+      MitiiSdkError,
+    );
+
+    const open = createMitiiClient({
+      understandingLlm: new UnderstandingLlmPort({
+        interactionIntent: 'question',
+        primaryTaskIntent: 'question',
+        needsClarification: false,
+        confidence: 0.9,
+        alternatives: [],
+        secondaryTaskIntents: [],
+        reason: 'test',
+      }),
+      runLlm: new EchoLlmPort(),
+    });
+    const result = await open.startRuntimeShell({ prompt: 'fix it' });
+    expect(result.status).toBe('suspended');
+    expect(result.route).toBe('clarify');
+    expect(open.getRuntime().stepIds[0]).toBe('1-window-policy');
+  });
+
+  it('auto startPath routes ask/plan/agent to runtime', async () => {
+    const client = createMitiiClient({
+      understandingLlm: new UnderstandingLlmPort({
+        interactionIntent: 'question',
+        primaryTaskIntent: 'question',
+        needsClarification: false,
+        confidence: 0.9,
+        alternatives: [],
+        secondaryTaskIntents: [],
+        reason: 'test',
+      }),
+      runLlm: new EchoLlmPort(),
+      startPath: 'auto',
+    });
+    expect(client.resolveStartPath('ask')).toBe('runtime');
+    expect(client.resolveStartPath('plan')).toBe('runtime');
+    expect(client.resolveStartPath('agent')).toBe('runtime');
+
+    const ask = client.start({ prompt: 'fix it', mode: 'ask' });
+    const askResult = await ask.result;
+    expect(askResult.status).toBe('suspended');
+    expect(askResult.route).toBe('clarify');
+    expect(askResult.suspension?.kind).toBe('clarification_required');
+
+    const agent = client.start({ prompt: 'fix it', mode: 'agent' });
+    const agentResult = await agent.result;
+    expect(agentResult.status).toBe('suspended');
+    expect(agentResult.route).toBe('clarify');
+  });
+
+  it('startPath engine is hard-deleted and resolves to runtime shell', async () => {
+    const client = createMitiiClient({
+      understandingLlm: new UnderstandingLlmPort({
+        interactionIntent: 'question',
+        primaryTaskIntent: 'question',
+        needsClarification: false,
+        confidence: 0.9,
+        alternatives: [],
+        secondaryTaskIntents: [],
+        reason: 'test',
+      }),
+      runLlm: new EchoLlmPort(),
+      startPath: 'engine',
+    });
+    expect(client.resolveStartPath('agent')).toBe('runtime');
+    expect(client.resolveStartPath('ask')).toBe('runtime');
+  });
+
+  it('resumes ask clarify on the runtime path after auto start', async () => {
+    const { AGENT_ENGINE_SCHEMA_VERSION } = await import('@mitii/v8');
+    const client = createMitiiClient({
+      understandingLlm: new UnderstandingLlmPort({
+        interactionIntent: 'question',
+        primaryTaskIntent: 'question',
+        needsClarification: false,
+        confidence: 0.9,
+        alternatives: [],
+        secondaryTaskIntents: [],
+        reason: 'test',
+      }),
+      runLlm: new EchoLlmPort(),
+      startPath: 'auto',
+    });
+
+    const first = client.start({ prompt: 'fix it', mode: 'ask' });
+    const suspended = await first.result;
+    expect(suspended.status).toBe('suspended');
+
+    const resumed = client.resume({
+      schemaVersion: AGENT_ENGINE_SCHEMA_VERSION,
+      runId: first.runId,
+      clarificationAnswer: 'what is 2+2 in general?',
+    });
+    const result = await resumed.result;
+    expect(['completed', 'suspended']).toContain(result.status);
+    if (result.status === 'completed') {
+      expect(result.answer).toContain('Echo:');
+    }
+  });
+
+  it('startPath runtime keeps agent on the shell', async () => {
+    const client = createMitiiClient({
+      understandingLlm: new UnderstandingLlmPort({
+        interactionIntent: 'task',
+        primaryTaskIntent: 'task',
+        needsClarification: false,
+        confidence: 0.9,
+        alternatives: [],
+        secondaryTaskIntents: [],
+        reason: 'test',
+      }),
+      runLlm: new EchoLlmPort(),
+      startPath: 'runtime',
+    });
+    expect(client.resolveStartPath('agent')).toBe('runtime');
+
+    const shell = await client.startRuntimeShell({
+      prompt: 'fix it',
+      mode: 'agent',
+    });
+    expect(shell.status).toBe('suspended');
+    expect(shell.route).toBe('clarify');
+  });
 });

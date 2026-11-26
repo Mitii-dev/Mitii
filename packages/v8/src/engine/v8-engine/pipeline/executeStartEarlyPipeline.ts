@@ -68,6 +68,7 @@ import {
 import { applyClarificationResolutionOverlay } from "./clarificationResolutionOverlay";
 import { applyStartReuse, type StartReuseState } from "./startReuse";
 import { EXECUTION_ROUTE } from "../../../modules/decision-policy";
+import { saveSuspendedRun } from "../helpers/SaveSuspendedRun";
 
 export type ExecuteStartSharedState = {
   pinnedState: RepositoryStateReference | undefined;
@@ -464,7 +465,9 @@ export async function runStartEarlyPipeline(
       { ballotV2: steering.understandingBallotV2 },
     );
     if (runtime.deps.checkpointStore) {
-      await runtime.deps.checkpointStore.save({
+      await saveSuspendedRun({
+      store: runtime.deps.checkpointStore,
+      checkpoint: {
         runId,
         requestId: shared.requestId,
         suspensionKind: "clarification_required",
@@ -490,6 +493,7 @@ export async function runStartEarlyPipeline(
         taskListRef.completedPlanStepIds.length > 0
           ? { completedPlanStepIds: [...taskListRef.completedPlanStepIds] }
           : {}),
+      },
       });
     }
     runtime.emit(bus, {

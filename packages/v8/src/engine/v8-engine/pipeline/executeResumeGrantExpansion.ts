@@ -8,6 +8,7 @@ import {
 } from "./executeTool";
 import { resumeV8ToolLoopFromCheckpoint } from "./resumeToolLoop";
 import type { ResumeHandlerContext } from "./resumeHandlerTypes";
+import { saveSuspendedRun } from "../helpers/SaveSuspendedRun";
 
 export async function handleGrantExpansionResume(
   ctx: ResumeHandlerContext,
@@ -125,7 +126,9 @@ export async function handleGrantExpansionResume(
       // Widened grant still needs mutation approval — suspend for that next.
       await runtime.deps.checkpointStore!.delete(runId);
       const approvalId = runtime.deps.idGenerator.next("appr");
-      await runtime.deps.checkpointStore!.save({
+      await saveSuspendedRun({
+        store: runtime.deps.checkpointStore!,
+        checkpoint: {
         ...checkpoint,
         suspensionKind: "approval_required",
         decision: widenedDecision,
@@ -146,6 +149,7 @@ export async function handleGrantExpansionResume(
         warnings,
         usage: budget.snapshot(),
         suspendedAtMs: Date.now(),
+        },
       });
       return finish({
         status: "suspended",

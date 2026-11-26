@@ -14,27 +14,51 @@ import {
 import { EchoLlmPort } from "../../../modules/model-gateway";
 
 describe("composeAgentEngine", () => {
-  it("defaults to v8 V8EnginePipeline", () => {
+  it("defaults to runtime-shell engine + eventBus escape + dual-run runtime", () => {
     const llm = new EchoLlmPort();
-    const { implementation, engine } = composeAgentEngine({
+    const { implementation, engine, eventBusEngine, runtime } =
+      composeAgentEngine({
+        understandingLlm: llm,
+        runLlm: llm,
+        enablePlanning: false,
+      });
+    expect(implementation).toBe("v8");
+    expect(typeof eventBusEngine.restore).toBe("function");
+    expect(engine).not.toBe(eventBusEngine);
+    expect(runtime.stepIds[0]).toBe("1-window-policy");
+  });
+
+  it("eventBusEngine.start is sealed (hard-deleted on product surface)", () => {
+    const llm = new EchoLlmPort();
+    const { engine, eventBusEngine } = composeAgentEngine({
       understandingLlm: llm,
       runLlm: llm,
       enablePlanning: false,
     });
-    expect(implementation).toBe("v8");
-    expect(engine).toBeInstanceOf(V8EnginePipeline);
+    expect(engine).not.toBe(eventBusEngine);
+    expect(() =>
+      eventBusEngine.start({
+        schemaVersion: 1,
+        request: {
+          sessionId: "sealed",
+          mode: "ask",
+          userMessage: "hi",
+          workspace: { workspaceId: "ws" },
+        },
+      }),
+    ).toThrow(/event_bus_start_deleted/);
   });
 
- it("maps legacy implementation to v8", () => {
+  it("maps legacy implementation to v8", () => {
     const llm = new EchoLlmPort();
-    const { implementation, engine } = composeAgentEngine({
+    const { implementation, eventBusEngine } = composeAgentEngine({
       understandingLlm: llm,
       runLlm: llm,
       enablePlanning: false,
       implementation: "legacy",
     });
     expect(implementation).toBe("v8");
-    expect(engine).toBeInstanceOf(V8EnginePipeline);
+    expect(typeof eventBusEngine.restore).toBe("function");
   });
 
   it("parseV8EngineImplementation falls back to promoted default", () => {

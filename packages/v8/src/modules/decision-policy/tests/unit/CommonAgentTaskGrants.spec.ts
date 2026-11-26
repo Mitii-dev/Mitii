@@ -64,8 +64,8 @@ describe("common agent task grants", () => {
     expect(mutationScopesOf(decision)).toEqual(["."]);
   });
 
-  it("explicit folder mentions still narrow mutation scopes", () => {
-    const decision = decideAgent(
+  it("explicit 'only under' prose fences mutations; bare folder mention does not", () => {
+    const fenced = decideAgent(
       "fix tests only under @suites/js/atomic/backend/apollo-user-query",
       {
         primaryTaskIntent: "test",
@@ -83,9 +83,29 @@ describe("common agent task grants", () => {
       },
     );
 
-    expect(decision.toolGrant.mutationPathScopes).toEqual([
+    expect(fenced.toolGrant.mutationPathScopes).toEqual([
       "suites/js/atomic/backend/apollo-user-query",
     ]);
+
+    const focusOnly = decideAgent(
+      "fix tests under @suites/js/atomic/backend/apollo-user-query",
+      {
+        primaryTaskIntent: "test",
+        taskAnalysis: {
+          scope: "single_location",
+          recommendsRepositoryDiscovery: false,
+          targets: [
+            {
+              kind: "folder",
+              value: "suites/js/atomic/backend/apollo-user-query",
+              explicit: true,
+            },
+          ],
+        },
+      },
+    );
+    expect(focusOnly.toolGrant.mutationPathScopes).toBeUndefined();
+    expect(focusOnly.toolGrant.pathScopes).toEqual(["."]);
   });
 
   it("installing packages grants write + process tools at workspace root", () => {
@@ -182,7 +202,7 @@ describe("common agent task grants", () => {
     ).toBe(true);
   });
 
-  it("fixing TS errors keeps package mutation scope and verification tools", () => {
+  it("folder @-mention is focus not mutation prison; verification tools still granted", () => {
     const message = "@packages/mui-builder fix all the ts errors";
     const decision = decideAgent(message, {
       primaryTaskIntent: "bugfix",
@@ -205,9 +225,8 @@ describe("common agent task grants", () => {
     expect(decision.route).toBe("execute");
     expect(decision.toolGrant.maximumWorkspaceEffect).toBe("write");
     expect(decision.toolGrant.pathScopes).toEqual(["."]);
-    expect(decision.toolGrant.mutationPathScopes).toEqual([
-      "packages/mui-builder",
-    ]);
+    // Mentions → focus only (§4.3); no automatic mutationPathScopes.
+    expect(decision.toolGrant.mutationPathScopes).toBeUndefined();
     expect(decision.toolGrant.allowedTools).toContain("apply_patch");
     expect(decision.toolGrant.allowedTools).toContain("run_readonly_command");
     expect(decision.reasonCodes).toContain("process_execution_granted");
@@ -219,20 +238,10 @@ describe("common agent task grants", () => {
         mutationScopes,
       ),
     ).toBe(true);
+    // Workspace write ceiling — siblings not imprisoned by folder mention.
     expect(
       isPathWithinScopes("apps/docs/src/index.ts", mutationScopes),
-    ).toBe(false);
-
-    const narrowed = new DecisionPolicyPipeline().narrow({
-      previous: decision,
-      discoveredPaths: [
-        "packages/mui-builder/src/FormBuilder.tsx",
-        "packages/mui-builder/src/hooks/useFormBuilder.ts",
-      ],
-    });
-    expect(narrowed.toolGrant.mutationPathScopes).toEqual([
-      "packages/mui-builder",
-    ]);
+    ).toBe(true);
   });
 
   it("writing an API grants execute write for feature implementation", () => {

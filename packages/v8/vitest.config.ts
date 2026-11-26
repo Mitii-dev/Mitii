@@ -10,6 +10,8 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: [
+      'src/runtime/**/*.spec.ts',
+      'tests/architecture/**/*.test.ts',
       'src/engine/**/*.spec.ts',
       'src/modules/decision-policy/**/*.spec.ts',
       'src/modules/request-intake/tests/**/*.spec.ts',

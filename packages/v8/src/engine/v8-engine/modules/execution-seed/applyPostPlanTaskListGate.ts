@@ -20,6 +20,7 @@ import {
   isExecutionSeedTrusted,
   type ExecutionSeed,
 } from "./resolve";
+import { saveSuspendedRun } from "../../helpers/SaveSuspendedRun";
 import type { AgentEngineRuntime } from "../../pipeline/runtime";
 import type { ExecuteStartSharedState } from "../../pipeline/executeStartEarlyPipeline";
 
@@ -138,26 +139,29 @@ export async function applyPostPlanTaskListGate(params: {
     "Plan did not yield a concrete file-scoped task list after bounded seed recovery. Clarify the change surface or replan before execute.";
   warnings.push(rationale);
   if (runtime.deps.checkpointStore) {
-    await runtime.deps.checkpointStore.save({
-      runId,
-      requestId: shared.requestId,
-      suspensionKind: "clarification_required",
-      input,
-      decision,
-      pinnedState: undefined,
-      messages: [],
-      toolCacheEntries: [],
-      pendingApproval: undefined,
-      plan: ensured.plan,
-      ...(planStrategy ? { planStrategy } : {}),
-      changedFiles: [],
-      mutationCheckpointIds: [],
-      reasonCodes,
-      warnings,
-      usage: budget.snapshot(),
-      startedAtMs: startedMs,
-      repoBuildStateBefore: shared.repoBuildStateBefore,
-      repoBuildStateAfter: shared.repoBuildStateAfter,
+    await saveSuspendedRun({
+      store: runtime.deps.checkpointStore,
+      checkpoint: {
+        runId,
+        requestId: shared.requestId,
+        suspensionKind: "clarification_required",
+        input,
+        decision,
+        pinnedState: undefined,
+        messages: [],
+        toolCacheEntries: [],
+        pendingApproval: undefined,
+        plan: ensured.plan,
+        ...(planStrategy ? { planStrategy } : {}),
+        changedFiles: [],
+        mutationCheckpointIds: [],
+        reasonCodes,
+        warnings,
+        usage: budget.snapshot(),
+        startedAtMs: startedMs,
+        repoBuildStateBefore: shared.repoBuildStateBefore,
+        repoBuildStateAfter: shared.repoBuildStateAfter,
+      },
     });
   }
   runtime.emit(bus, {
